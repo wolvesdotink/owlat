@@ -80,6 +80,14 @@ export function isInterpretationEligible(
 export const CATEGORY_SETTLE_MS = 10 * 60 * 1000;
 
 /**
+ * A thread category the bulk rule does not decide on yet: none, or the `other`
+ * baseline the heuristic writes while the model refinement is scheduled.
+ */
+export function isProvisionalCategory(category?: { label: string; source: string }): boolean {
+	return !category || (category.source === 'heuristic' && category.label === 'other');
+}
+
+/**
  * The eligibility a run decides on: the snapshot's immutable ingest signals
  * (live, folder, mute, bulk headers, known sender) with the CATEGORY settled.
  *
@@ -107,10 +115,8 @@ export function settleCategory(
 		return { signals };
 	}
 	const category = input.threadCategory;
-	const isProvisional =
-		!category || (category.source === 'heuristic' && category.label === 'other');
 	const settlesAt = input.capturedAt + CATEGORY_SETTLE_MS;
-	if (isProvisional && input.now < settlesAt) return { pendingUntil: settlesAt };
+	if (isProvisionalCategory(category) && input.now < settlesAt) return { pendingUntil: settlesAt };
 	const label = category?.label ?? signals.category;
 	return { signals: { ...signals, ...(label ? { category: label } : {}) } };
 }

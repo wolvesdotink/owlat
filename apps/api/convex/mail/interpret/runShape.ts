@@ -18,6 +18,7 @@ import type { NeedsReplyProjection } from './needsReplyProjection';
 import type { ReduceResult } from './reduceInput';
 import type { ApplyOutcome } from './reduce';
 import type { PredecessorMode } from './defer';
+import type { Depth } from '@owlat/shared/arrival';
 
 export interface InterpretArgs {
 	source: InterpretationSource;
@@ -31,6 +32,10 @@ export interface InterpretArgs {
 	predecessors?: PredecessorMode;
 	/** The awaiting caller's root, deadline included (ADR-0073); else the message's own. */
 	root?: LlmRootContext;
+	/** The depth asked for; a source already terminal for it is `done` (`lease.ts`). */
+	depth?: Depth;
+	/** Set by the run itself: the source lease it holds, checked at commit (`lease.ts`). */
+	leaseToken?: string;
 }
 
 export type InterpretRunResult =
@@ -50,7 +55,13 @@ export type InterpretRunResult =
 			budgetRefusal?: RunBudgetRefusal;
 	  }
 	/** The source or its thread is gone, or a purge ran meanwhile: nothing written. */
-	| { status: 'gone' };
+	| { status: 'gone' }
+	/** Another run holds the source's lease (`lease.ts`): nothing done; try at `retryAt`. */
+	| { status: 'busy'; retryAt: number }
+	/** The run waits for the thread's category (`categoryDefer.ts`) until at most `retryAt`. */
+	| { status: 'wait'; retryAt: number }
+	/** The source is already terminal for the depth asked for. */
+	| { status: 'done' };
 
 /** A spend admission refusal the run met, for a caller that holds on it. */
 export type RunBudgetRefusal = { reason: BudgetHoldReason; limit: string };
@@ -71,8 +82,18 @@ export type RunRecord = {
 	budgetRefusal?: RunBudgetRefusal;
 };
 
-/** The run must start over: the body or the thread's mode changed under it. */
-export type Restart = { restart: 'modeChanged' | 'sourceChanged' };
+/**
+ * The run must start over: the body or the thread's mode changed under it, or
+ * the category it was about to wait for settled meanwhile.
+ */
+export type Restart = { restart: 'modeChanged' | 'sourceChanged' | 'categorySettled' };
+
+/** The failure a run records when it had to start over on every attempt. */
+export const RESTART_ERROR_CODE: Record<Restart['restart'], string> = {
+	sourceChanged: 'source_changed',
+	modeChanged: 'mode_changed',
+	categorySettled: 'category_changed',
+};
 
 /** The run's answer from the reducer's; `restart` when the run must start over. */
 export function finish(
@@ -87,6 +108,9 @@ export function finish(
 		case 'gone':
 		case 'erased':
 			return { status: 'gone' };
+		case 'leaseLost':
+			// Another run took the source over: its commit is the one that counts.
+			return { status: 'busy', retryAt: outcome.retryAt };
 		case 'modeChanged':
 		case 'sourceChanged':
 			return { restart: outcome.outcome };

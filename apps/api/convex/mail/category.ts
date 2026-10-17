@@ -45,6 +45,7 @@ import { noteSenderKind } from './senders/profiles';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
 import { invalidateSenderMemoryForCorrection } from '../decision/senderMemory';
 import { recordOwnerCorrection } from '../decision/artifacts';
+import { wakeCategoryDeferredRuns } from './interpret/categoryDefer';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
@@ -162,11 +163,15 @@ async function latestInboundMessage(
 	return (await threadInboundView(ctx, thread))?.latestInbound ?? null;
 }
 
-/** The thread's messages oldest-first plus its latest inbound one (see above). */
+/** The thread's messages oldest-first, its latest inbound one (see above) and the mailbox owner. */
 async function threadInboundView(
 	ctx: { db: QueryCtx['db'] },
 	thread: Doc<'mailThreads'>
-): Promise<{ ordered: Doc<'mailMessages'>[]; latestInbound: Doc<'mailMessages'> } | null> {
+): Promise<{
+	ordered: Doc<'mailMessages'>[];
+	latestInbound: Doc<'mailMessages'>;
+	ownerUserId: string;
+} | null> {
 	const mailbox = await ctx.db.get(thread.mailboxId);
 	if (!mailbox || mailbox.status !== 'active') return null;
 	const ownerAddress = mailbox.address.toLowerCase();
@@ -182,7 +187,7 @@ async function threadInboundView(
 		const isFromOwner = m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress;
 		if (!isFromOwner) latestInbound = m;
 	}
-	return latestInbound ? { ordered, latestInbound } : null;
+	return latestInbound ? { ordered, latestInbound, ownerUserId: mailbox.userId } : null;
 }
 
 /**
@@ -247,6 +252,8 @@ export const getThreadCategoryContext = internalQuery({
 
 		return {
 			latestMessageId: thread.latestMessageId,
+			// Whose background AI bucket the refinement is charged to (#1380).
+			ownerUserId: view.ownerUserId,
 			senderEmail: signals.senderEmail,
 			override: signals.override,
 			deterministicInput: signals.deterministicInput,
@@ -286,7 +293,8 @@ export const applyCategory = internalMutation({
 /**
  * Stamp a thread's category. Spam goes to the Spam folder the moment the
  * classifier says so; the thread keeps its label, so "Not spam"
- * (recategorize) can bring it back.
+ * (recategorize) can bring it back. A settled label wakes the thread's
+ * interpretation runs waiting for it (interpret/categoryDefer.ts).
  */
 export async function writeCategory(
 	ctx: MutationCtx,
@@ -301,6 +309,7 @@ export async function writeCategory(
 		updatedAt: now,
 	});
 	await noteSenderKind(ctx, thread, label);
+	await wakeCategoryDeferredRuns(ctx, thread._id, { label, source }, thread.category);
 	if (label === 'spam' && previous !== 'spam') {
 		await moveThreadBetweenRoles(ctx, thread, 'inbox', 'spam');
 	}
@@ -396,6 +405,13 @@ export const recategorize = postboxMutation({
 			updatedAt: now,
 		});
 		await noteSenderKind(ctx, thread, args.label);
+		// The owner settled it: waiting interpretation runs go now (categoryDefer.ts).
+		await wakeCategoryDeferredRuns(
+			ctx,
+			args.threadId,
+			{ label: args.label, source: 'user' },
+			thread.category
+		);
 		// The owner is in charge: marking spam files it away, and "Not spam" —
 		// any other label on a thread the classifier filed as spam — brings the
 		// messages back to the inbox. The per-sender override above makes sure

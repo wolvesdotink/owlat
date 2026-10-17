@@ -71,6 +71,7 @@ function makeCtx() {
 			if (name.includes('getClarificationContext')) {
 				return {
 					mailboxId: 'mailbox_1',
+					ownerUserId: 'owner_user',
 					latestMessageId: 'msg_1',
 					ownerAddress: 'ada@example.com',
 					contactId: 'contact_1',

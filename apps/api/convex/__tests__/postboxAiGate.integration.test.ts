@@ -1,23 +1,31 @@
 /**
  * mail.ai.gate.assertAiAllowed — the spend-gate run before every Postbox LLM
- * call. Enforces the `ai` feature flag and the per-user rate limit.
+ * call. Enforces the `ai` feature flag and the rate limit: a session user's
+ * interactive bucket, or, for session-less (scheduled) work, the named
+ * owner's `postboxAiBackground` bucket (#1380).
  */
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { internal } from '../_generated/api';
+import { MISSING_AI_OWNER_MESSAGE, rateLimitRefusalOf } from '../mail/ai/gate';
+
+/** The session the gate sees; null is a scheduled function (no auth). */
+const auth = vi.hoisted(() => ({ session: null as null | { userId: string } }));
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		getBetterAuthSessionWithRole: vi.fn().mockResolvedValue({
-			userId: 'test-user',
-			role: 'owner',
-			activeOrganizationId: 'test-org',
-		}),
+		getBetterAuthSessionWithRole: vi.fn(async () =>
+			auth.session ? { ...auth.session, role: 'owner', activeOrganizationId: 'test-org' } : null
+		),
 	};
+});
+
+beforeEach(() => {
+	auth.session = { userId: 'test-user' };
 });
 
 const allModules = import.meta.glob('../**/*.*s');
@@ -100,5 +108,90 @@ describe('mail.ai.gate.assertAiAllowed', () => {
 			t.mutation(internal.mail.ai.gate.assertAiAllowed, { rateLimitBucket: 'quickQueryPerUser' })
 		).resolves.toBeNull();
 		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).resolves.toBeNull();
+	});
+
+	it('rejects a session-less call that names no owner instead of sharing a key', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await setAiFlag(t, true);
+		auth.session = null;
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).rejects.toThrow(
+			MISSING_AI_OWNER_MESSAGE
+		);
+		// Even with AI off: a caller that names nobody is a bug, not a refusal.
+		const off = convexTest(schema, modules);
+		rateLimiterTest.register(off);
+		await setAiFlag(off, false);
+		await expect(off.mutation(internal.mail.ai.gate.assertAiAllowed, {})).rejects.toThrow(
+			MISSING_AI_OWNER_MESSAGE
+		);
+	});
+
+	it('keeps two owners’ background work in separate buckets', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await setAiFlag(t, true);
+		auth.session = null;
+
+		const drain = async (ownerUserId: string) => {
+			for (let i = 0; i < 200; i++) {
+				const error = await t.mutation(internal.mail.ai.gate.assertAiAllowed, { ownerUserId }).then(
+					() => null,
+					(e: unknown) => e
+				);
+				if (error) return { allowed: i, error };
+			}
+			return { allowed: 200, error: null };
+		};
+		// Owner A's arrival burst empties A's background bucket (capacity 120)...
+		const a = await drain('owner-a');
+		expect(a.allowed).toBe(120);
+		expect(rateLimitRefusalOf(a.error)).not.toBeNull();
+		// ...and owner B's background work is untouched by it.
+		await expect(
+			t.mutation(internal.mail.ai.gate.assertAiAllowed, { ownerUserId: 'owner-b' })
+		).resolves.toBeNull();
+
+		// Nor is owner A's interactive bucket: a click still goes through.
+		auth.session = { userId: 'owner-a' };
+		await expect(
+			t.mutation(internal.mail.ai.gate.assertAiAllowed, { ownerUserId: 'ignored' })
+		).resolves.toBeNull();
+	});
+
+	it('charges a session call to the session user, never to the background bucket', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await setAiFlag(t, true);
+		// Drain test-user's interactive bucket (capacity 30).
+		for (let i = 0; i < 30; i++) {
+			await t.mutation(internal.mail.ai.gate.assertAiAllowed, { ownerUserId: 'test-user' });
+		}
+		const limited = await t.mutation(internal.mail.ai.gate.assertAiAllowed, {}).then(
+			() => null,
+			(e: unknown) => e
+		);
+		expect(rateLimitRefusalOf(limited)).toMatchObject({ retryAfter: expect.any(Number) });
+		// The same user's background work keeps its own headroom.
+		auth.session = null;
+		await expect(
+			t.mutation(internal.mail.ai.gate.assertAiAllowed, { ownerUserId: 'test-user' })
+		).resolves.toBeNull();
+	});
+});
+
+describe('rateLimitRefusalOf', () => {
+	it('recognises only the rate-limited operation error', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await setAiFlag(t, false);
+		const forbidden = await t.mutation(internal.mail.ai.gate.assertAiAllowed, {}).then(
+			() => null,
+			(e: unknown) => e
+		);
+		expect(forbidden).not.toBeNull();
+		expect(rateLimitRefusalOf(forbidden)).toBeNull();
+		expect(rateLimitRefusalOf(new Error('rate_limited'))).toBeNull();
+		expect(rateLimitRefusalOf(undefined)).toBeNull();
 	});
 });

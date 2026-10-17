@@ -97,6 +97,8 @@ export const loadForDraft = internalQuery({
 			// Who the questions a held draft asks are attributed to.
 			senderAddress: trigger.fromAddress,
 			mailboxId: thread.mailboxId,
+			// Whose background AI bucket the draft is charged to (#1380).
+			ownerUserId: mailbox.userId,
 			ownerAddress,
 			// Stale guard the persister re-checks: a newer inbound moves this.
 			latestMessageId: thread.latestMessageId,
