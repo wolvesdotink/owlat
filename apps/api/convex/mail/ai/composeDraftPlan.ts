@@ -16,7 +16,10 @@ import { attachmentSetHashOf, draftHashOf } from '@owlat/shared/threadBriefRules
 import { toPromptItems, type PlanPromptItem } from '../interpret/planCheck';
 import { planVerdictOf, type PlanCoverage } from '../interpret/responsePlanRules';
 import type { PlanForDraft } from '../interpret/responsePlanState';
-import { prepareAskTargetForConsumer, prepareThreadForConsumer } from '../interpret/fullReadPrepare';
+import {
+	prepareAskTargetForConsumer,
+	prepareThreadForConsumer,
+} from '../interpret/fullReadPrepare';
 
 /**
  * A team reply's exact draft: the inbound message the drafter's context
