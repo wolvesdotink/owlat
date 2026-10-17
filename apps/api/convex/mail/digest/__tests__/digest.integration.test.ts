@@ -147,7 +147,9 @@ describe('groundDigestLines', () => {
 
 /** A personal mailbox with `count` digest threads from a sender set to Digest. */
 async function digestSetup(count: number, opts: { briefEmail?: boolean } = {}) {
-	vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+	// Timers too: the deliveries' background jobs (classifiers, runs) must not race the
+	// assertions by moving a thread out of the digest; nothing here waits on one.
+	vi.useFakeTimers({ now: NOW, toFake: ['Date', 'setTimeout', 'clearTimeout'] });
 	const t = convexTest(schema, modules);
 	rateLimiterTest.register(t);
 	await enableFeatures(t, ['ai', 'postbox']);
