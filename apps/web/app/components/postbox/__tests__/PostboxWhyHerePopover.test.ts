@@ -155,4 +155,21 @@ describe('PostboxWhyHerePopover', () => {
 		);
 		expectFullyLocalized(w);
 	});
+
+	it('flips above a lower row when the window has no room below', async () => {
+		const anchor = document.createElement('button');
+		anchor.getBoundingClientRect = () =>
+			({ top: 670, bottom: 710, left: 600, right: 640, width: 40, height: 40 }) as DOMRect;
+		vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(900);
+		vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1440);
+		vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(320);
+		const w = mountPopover(anchor);
+		await flushPromises();
+		const style = (w.get('[data-testid="why-here-popover"]').element as HTMLElement).style;
+		expect(style.bottom).toBe('236px');
+		expect(style.top).toBe('');
+		expect(style.maxHeight).toBe('656px');
+		vi.restoreAllMocks();
+		w.unmount();
+	});
 });
