@@ -83,7 +83,9 @@ export const mailArrivalRulesTables = {
 		claimUntil: v.number(),
 		// Incremented in the claim mutation before the paid call; capped at 2.
 		generationAttempts: v.number(),
-		// ≤15 rendered lines (≤5 per kind); spans sealed.
+		// ≤15 rendered lines (≤5 per kind); spans sealed. Non-empty ONLY while
+		// `generated`; failed and sent digests are stripped, and a mailbox has at
+		// most one generated digest (invariants in mail/arrival/digestState.ts).
 		items: v.array(digestItemValidator),
 		// ≤200 threads consumed on send, with the boundary snapshotted at selection.
 		visited: v.array(digestVisitedValidator),
@@ -96,7 +98,7 @@ export const mailArrivalRulesTables = {
 		expiresAt: v.number(), // 30 days
 	})
 		.index('by_mailbox_period', ['mailboxId', 'periodKey'])
-		// Message purge: the mailbox's unsent digests.
+		// Message purge reads the mailbox's (single) generated digest.
 		.index('by_mailbox_state', ['mailboxId', 'state'])
 		.index('by_expires', ['expiresAt']),
 };

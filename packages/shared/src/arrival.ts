@@ -36,6 +36,7 @@ export interface ReasonKey {
 /**
  * The reason keys the contract itself names (§2.3, §2.6); lanes add their own
  * and export the runtime constants where they first write them.
+ * @public Contract type for the read-on-arrival lanes.
  */
 export type ArrivalReasonKey =
 	| 'arrival.reason.budget'
@@ -104,6 +105,7 @@ export interface ChooseArrivalDepthResult {
 	reasonKeys: ReasonKey[];
 }
 
+/** @public Contract type for the read-on-arrival lanes. */
 export type ChooseArrivalDepth = (input: ChooseArrivalDepthInput) => ChooseArrivalDepthResult;
 
 /** The arrival-record half of `computePlacement`'s input (§2.8). */
@@ -141,6 +143,7 @@ export interface ComputePlacementResult {
 	decidedBy: PlacementDecider;
 }
 
+/** @public Contract type for the read-on-arrival lanes. */
 export type ComputePlacement = (
 	record: PlacementRecordInput,
 	thread: PlacementThreadInput,
@@ -149,6 +152,7 @@ export type ComputePlacement = (
 
 /** Why a record read less than its row would allow (§2.6, §2.1). */
 export const DEGRADED_BY = ['budget', 'owner_limit', 'ai_off', 'read_on_arrival_off'] as const;
+/** @public Contract type for the read-on-arrival lanes. */
 export type DegradedBy = (typeof DEGRADED_BY)[number];
 
 /** Writers of an exclusive action (folder, section, placement), §6.2 rule 5. */
@@ -168,6 +172,7 @@ export interface ExclusiveWinner {
 	priority: number;
 }
 
+/** @public Contract type for the read-on-arrival lanes. */
 export interface ExclusiveWinners {
 	folder?: ExclusiveWinner;
 	section?: ExclusiveWinner;
@@ -186,12 +191,15 @@ export const ARRIVAL_OPERATION_KINDS = [
 	'rule_apply',
 	'delayed_archive',
 ] as const;
+/** @public Contract type for the read-on-arrival lanes. */
 export type ArrivalOperationKind = (typeof ARRIVAL_OPERATION_KINDS)[number];
 
 export const ARRIVAL_OPERATION_ACTORS = ['user', 'learning', 'rule', 'system'] as const;
+/** @public Contract type for the read-on-arrival lanes. */
 export type ArrivalOperationActor = (typeof ARRIVAL_OPERATION_ACTORS)[number];
 
 export const ARRIVAL_OPERATION_STATUSES = ['applied', 'undone', 'undo_partial'] as const;
+/** @public Contract type for the read-on-arrival lanes. */
 export type ArrivalOperationStatus = (typeof ARRIVAL_OPERATION_STATUSES)[number];
 
 export interface SenderStatusValue {
@@ -252,10 +260,12 @@ export type ArrivalOperationChange =
 			after: Placement | null;
 	  };
 
+/** @public Contract type for the read-on-arrival lanes. */
 export type ArrivalOperationChangeKind = ArrivalOperationChange['kind'];
 
 /** Digest groups (§6.5). */
 export const DIGEST_KINDS = ['newsletter', 'updates', 'promotion'] as const;
+/** @public Contract type for the read-on-arrival lanes. */
 export type DigestKind = (typeof DIGEST_KINDS)[number];
 
 /** The filter action types this plan adds (§6.3). */
@@ -270,4 +280,5 @@ export type ArrivalFilterActionType = (typeof ARRIVAL_FILTER_ACTION_TYPES)[numbe
 
 /** Where a filter came from (§6.1). Absent on a stored row = `manual`. */
 export const FILTER_ORIGINS = ['manual', 'plain_language', 'fix'] as const;
+/** @public Contract type for the read-on-arrival lanes. */
 export type FilterOrigin = (typeof FILTER_ORIGINS)[number];

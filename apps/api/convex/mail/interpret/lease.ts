@@ -9,9 +9,11 @@
  *     compare-and-set: `leaseUntil = now + LEASE_MS` and a fresh token. A
  *     live lease someone else holds answers `busy` (retry at its expiry); a
  *     source already terminal for the requested depth answers `done`.
- *   - The run's commit (`reduce.ts applyInterpretation`) checks the token: a
- *     lease another run holds now refuses the write (`leaseLost`), and a
- *     recorded outcome clears the lease in the same transaction.
+ *   - The run's commit (`reduce.ts applyInterpretation`) checks the token:
+ *     unless it is the source's CURRENT lease the write is refused
+ *     (`leaseLost`). A recorded outcome clears the lease in the same
+ *     transaction; one the run goes on from (a stale revision, a restart on
+ *     a changed body or mode) keeps it, so the run stays the only reader.
  *   - Every other way a run ends releases it ({@link releaseSourceLease},
  *     compare-and-set on the token; the run's side is `runApply.ts
  *     withSourceLease`), and the category wait releases it when
@@ -39,7 +41,8 @@ export const LEASE_MS = 10 * 60 * 1000;
 
 /** What a claim answers. */
 export type LeaseClaim =
-	| { kind: 'claimed'; token: string }
+	/** `isHeld` false: the source has no snapshot row yet, so nothing was stored to check. */
+	| { kind: 'claimed'; token: string; isHeld: boolean }
 	| { kind: 'busy'; retryAt: number }
 	| { kind: 'done' };
 
@@ -64,14 +67,14 @@ export const claimSourceLease = internalMutation({
 	handler: async (ctx, args): Promise<LeaseClaim> => {
 		const token = globalThis.crypto.randomUUID();
 		const row = await loadInterpretSource(ctx, args.source);
-		if (!row) return { kind: 'claimed', token };
+		if (!row) return { kind: 'claimed', token, isHeld: false };
 		if (isTerminalFor(row.readOutcome, args.depth)) return { kind: 'done' };
 		const now = Date.now();
 		if (row.leaseToken !== undefined && row.leaseUntil !== undefined && row.leaseUntil > now) {
 			return { kind: 'busy', retryAt: row.leaseUntil };
 		}
 		await ctx.db.patch(row._id, { leaseToken: token, leaseUntil: now + LEASE_MS });
-		return { kind: 'claimed', token };
+		return { kind: 'claimed', token, isHeld: true };
 	},
 });
 
@@ -96,8 +99,10 @@ export async function releaseLeaseIfHeld(
 
 /**
  * The commit's token check: null when a write with `token` may go through
- * (no token given, the source is gone, or nobody else holds the lease), else
- * when the lease another run holds ends.
+ * (no token given, the source is gone, or `token` is the source's CURRENT
+ * lease), else when to look again: the end of the lease another run holds,
+ * or now when the lease was given up. A cleared lease is not the run's any
+ * more: another run may have read and committed the source since.
  */
 export async function leaseLostAt(
 	ctx: MutationCtx,
@@ -106,6 +111,6 @@ export async function leaseLostAt(
 ): Promise<number | null> {
 	if (token === undefined) return null;
 	const row = await loadInterpretSource(ctx, source);
-	if (!row || row.leaseToken === undefined || row.leaseToken === token) return null;
+	if (!row || row.leaseToken === token) return null;
 	return row.leaseUntil ?? Date.now();
 }
