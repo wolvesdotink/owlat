@@ -18,6 +18,7 @@ import { LEASE_MS } from '../lease';
 import { CATEGORY_SETTLE_MS } from '../eligibility';
 import { BUSY_RECHECK_MS, continuesLater } from '../../ai/needsReplyGates';
 import { modules, seedMailThread, type Test } from './interpret.testlib';
+import type * as RunApply from '../runApply';
 
 const llm = vi.hoisted(() => ({
 	runLlmObject: vi.fn(),
@@ -33,7 +34,7 @@ vi.mock('../../../lib/llm/dispatch', async () => {
 const afterClaim = vi.hoisted(() => ({ hook: undefined as undefined | (() => Promise<void>) }));
 
 vi.mock('../runApply', async () => {
-	const actual = await vi.importActual<typeof import('../runApply')>('../runApply');
+	const actual = await vi.importActual<typeof RunApply>('../runApply');
 	const { getFunctionName } = await import('convex/server');
 	const withSourceLease: typeof actual.withSourceLease = (ctx, source, depth, body) =>
 		actual.withSourceLease(
