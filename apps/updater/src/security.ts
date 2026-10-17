@@ -36,8 +36,8 @@ export const ALLOWED_IMAGE_PREFIXES = [
 	// No release from v0.6.14 on names these: Convex moved its images to
 	// ghcr.io/convex/, and Owlat ships them as ghcr.io/wolvesdotink/convex-backend
 	// and convex-dashboard (docker/convex-backend.Dockerfile). They stay listed
-	// so the third-party reclaim in storage.ts still removes the image an older
-	// release left behind, and so an older template still validates.
+	// so an older template still validates; storage.ts reclaims the images an
+	// older release left behind on its own (RETIRED_IMAGE_PREFIXES).
 	'ghcr.io/get-convex/convex-backend',
 	'ghcr.io/get-convex/convex-dashboard', // `dashboard` profile, localhost-only
 	'ghcr.io/wolvesdotink/', // canonical org — emitted by the root docker-compose.yml, the VPS template, and gen-release-compose.sh
