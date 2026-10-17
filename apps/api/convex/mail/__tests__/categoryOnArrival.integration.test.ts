@@ -12,6 +12,7 @@
  * runs the action itself with AI off (the default), which is the fail-soft path.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
@@ -153,6 +154,7 @@ async function withHeldScheduler(body: () => Promise<void>): Promise<void> {
 describe('category on arrival', () => {
 	it('labels a known correspondent in the insert and schedules no LLM job', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const seeded = await seed(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('mailContacts', {
@@ -175,6 +177,7 @@ describe('category on arrival', () => {
 
 	it('labels a receipt from its subject in the insert', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const seeded = await seed(t);
 
 		await withHeldScheduler(async () => {
@@ -188,6 +191,7 @@ describe('category on arrival', () => {
 
 	it('writes the other baseline for ambiguous mail and schedules the LLM told so', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const seeded = await seed(t);
 
 		await withHeldScheduler(async () => {
@@ -203,6 +207,7 @@ describe('category on arrival', () => {
 
 	it('applies a remembered spam override in the insert and files the mail as spam', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const seeded = await seed(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('mailSenderCategoryOverrides', {
@@ -233,6 +238,7 @@ describe('category on arrival', () => {
 
 	it('keeps a standing LLM label while an ambiguous follow-up is re-classified', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const seeded = await seed(t);
 
 		await withHeldScheduler(async () => {
@@ -254,6 +260,7 @@ describe('category on arrival', () => {
 
 	it('resets a standing LLM spam label so the follow-up is filed again', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const seeded = await seed(t);
 
 		await withHeldScheduler(async () => {
@@ -290,6 +297,7 @@ describe('categoryClassify.classifyThread baseline', () => {
 
 	it('skips the baseline write when the scheduling mutation already made it', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const threadId = await llmLabelledThread(t);
 
 		// AI is off by default, so the gate throws and the fail-soft path runs.
@@ -304,6 +312,7 @@ describe('categoryClassify.classifyThread baseline', () => {
 
 	it('still writes the baseline for a job scheduled without the flag', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const threadId = await llmLabelledThread(t);
 
 		await t.action(internal.mail.ai.categoryClassify.classifyThread, { threadId });
@@ -386,6 +395,7 @@ describe('category on arrival stays off the rest of the thread', () => {
 
 	it('reads only the newest message of a long thread', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const seeded = await seed(t);
 		await withHeldScheduler(async () => {
 			await ingest(t, seeded, { uid: 1, subject: 'Your order confirmation' });
@@ -407,6 +417,7 @@ describe('category on arrival stays off the rest of the thread', () => {
 
 	it('hands the thread to the LLM job when the newest rows are all the owner’s', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const seeded = await seed(t);
 		await withHeldScheduler(async () => {
 			await ingest(t, seeded, { uid: 1, subject: 'Your order confirmation' });
@@ -433,6 +444,7 @@ describe('category on arrival stays off the rest of the thread', () => {
 
 	it('files a long thread as spam from a scheduled job, not inside the delivery', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const seeded = await seed(t);
 		await withHeldScheduler(async () => {
 			await ingest(t, seeded, { uid: 1, subject: 'Your order confirmation' });

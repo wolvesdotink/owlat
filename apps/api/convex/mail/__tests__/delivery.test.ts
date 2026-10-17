@@ -27,6 +27,7 @@
  * MTA-supplied verdict still wins.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { scanInboundAttachments } from '../deliveryPipeline/scan';
@@ -632,6 +633,7 @@ const SPAM_HTML =
 describe('deliverToMailbox — inbound content/spam scan for personal mailboxes (PR-40)', () => {
 	it('scores high-spam inbound mail and routes it to the Spam folder when the MTA gave no verdict', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		let inboxId!: Id<'mailFolders'>;
 		let spamId!: Id<'mailFolders'>;
 		let rawStorageId!: Id<'_storage'>;
@@ -674,6 +676,7 @@ describe('deliverToMailbox — inbound content/spam scan for personal mailboxes 
 
 	it('does not re-score a message the MTA already classified as ham (verdict wins)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		let inboxId!: Id<'mailFolders'>;
 		let rawStorageId!: Id<'_storage'>;
 		await t.run(async (ctx) => {
@@ -715,6 +718,7 @@ describe('deliverToMailbox — inbound content/spam scan for personal mailboxes 
 
 	it('keeps a genuinely clean inbound message in the inbox with a low score', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		let inboxId!: Id<'mailFolders'>;
 		let rawStorageId!: Id<'_storage'>;
 		await t.run(async (ctx) => {

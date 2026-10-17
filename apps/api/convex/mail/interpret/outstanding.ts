@@ -41,6 +41,7 @@ import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
 import { sourceOrderKey } from './sourceOrder';
 import type { Depth, ReasonKey } from '@owlat/shared/arrival';
 import { clearGistOf } from './gistState';
+import { noteArrivalRun } from '../arrival/records';
 
 /** A source outstanding this long without an outcome has lost its run. */
 export const STALE_MS = 30 * 60_000;
@@ -240,6 +241,10 @@ async function dischargeArrival(
 		updatedAt: Date.now(),
 	});
 	await clearGistOf(ctx, threadRefFromFields(snapshot), snapshot.sourceKey);
+	// The record and the projection say what was read now (Sol r1 F8).
+	if (snapshot.source.kind === 'mail') {
+		await noteArrivalRun(ctx, snapshot.source.id, { depth: 'full' });
+	}
 	return true;
 }
 

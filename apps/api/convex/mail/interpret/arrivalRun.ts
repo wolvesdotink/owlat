@@ -18,6 +18,7 @@ import { detectExactWording } from '@owlat/shared/exactWordingDetector';
 import { freshTextOf } from '../arrival/scopedInput';
 import { isSecurityMail } from './eligibility';
 import type { ArrivalVerdict } from './arrivalDecide';
+import type { ArrivalAdmission } from './arrivalAdmit';
 import type { InterpretArgs, InterpretRunResult } from './runShape';
 
 /** The `errorCode` of a run that settled its source short of a full read. */
@@ -40,12 +41,14 @@ export function isArrivalRead(
 export async function decideArrival(
 	ctx: Pick<ActionCtx, 'runMutation'>,
 	args: InterpretArgs & { source: { kind: 'mail' } },
-	scoped: { subject: string; segmented: SegmentedMessage }
+	scoped: { subject: string; segmented: SegmentedMessage },
+	deletionEpoch: number
 ): Promise<ArrivalVerdict> {
 	const fresh = freshTextOf(scoped.segmented);
 	return ctx.runMutation(internal.mail.interpret.arrivalDecide.decideArrivalDepth, {
 		source: { kind: 'mail', id: args.source.id },
 		...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
+		deletionEpoch,
 		isSecurityMail: isSecurityMail({ subject: scoped.subject, freshText: fresh }),
 		isExactWordingCandidate:
 			detectExactWording({ subject: scoped.subject, text: fresh }).length > 0,
@@ -60,6 +63,15 @@ export function settledAnswer(depth: string): InterpretRunResult {
 		createdItemIds: [],
 		errorCode: `${ARRIVAL_SETTLED}_${depth}`,
 	};
+}
+
+/** The run's answer for an admission that stops it before anything is read. */
+export function admissionAnswer(
+	admitted: Exclude<ArrivalAdmission, { kind: 'go' }>
+): InterpretRunResult {
+	if (admitted.kind === 'settled') return settledAnswer('count');
+	if (admitted.kind === 'done') return { status: 'done' };
+	return { status: admitted.kind, retryAt: admitted.retryAt };
 }
 
 /** The run's answer for every verdict that ends it before the model (not `full` / `gist`). */
@@ -87,11 +99,13 @@ export function arrivalAnswer(
 export async function countArrival(
 	ctx: Pick<ActionCtx, 'runMutation'>,
 	args: InterpretArgs & { source: { kind: 'mail' } },
-	reason: 'budget' | 'gistUnavailable' | 'gistFailed'
+	reason: 'budget' | 'gistUnavailable' | 'gistFailed',
+	deletionEpoch: number
 ): Promise<InterpretRunResult> {
 	const outcome = await ctx.runMutation(internal.mail.interpret.arrivalDecide.settleArrivalCount, {
 		source: { kind: 'mail', id: args.source.id },
 		...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
+		deletionEpoch,
 		reason,
 	});
 	if (outcome === 'gone') return { status: 'gone' };

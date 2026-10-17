@@ -70,6 +70,7 @@ export function usePostboxReaderBrief(opts: {
 
 	const gist = computed(() => (isShared.value ? null : readerGistOf(read.brief.value)));
 	// Read on arrival: whether a pending brief is being read now (the "reading" line).
+	const { isEnabled: isAiEnabled } = useFeatureFlag();
 	const arrivalPreference = useConvexQuery(
 		api.mail.interpret.preferences.getArrivalPreference,
 		() => ({})
@@ -81,6 +82,7 @@ export function usePostboxReaderBrief(opts: {
 			brief: read.brief.value,
 			gist: gist.value,
 			isReadOnArrival: arrivalPreference.data.value?.isReadOnArrival,
+			isAiOn: isAiEnabled('ai'),
 		})
 	);
 

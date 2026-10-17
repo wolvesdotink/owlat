@@ -11,6 +11,7 @@
  * DMARC→Spam routing for an ordinary spoof.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../../schema';
@@ -105,6 +106,7 @@ function deliver(
 describe('mail.delivery.deliverToMailbox — ARC override (Sealed Mail A5)', () => {
 	it('RESCUES a DMARC fail from a trusted forwarder: inbox + dmarcOverride=arc', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 
 		const result = await deliver(t, rawStorageId, '<arc-1@author.example>', {
@@ -123,6 +125,7 @@ describe('mail.delivery.deliverToMailbox — ARC override (Sealed Mail A5)', () 
 
 	it('does NOT rescue an untrusted sealer: routed to Spam, no override', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 
 		const result = await deliver(t, rawStorageId, '<arc-2@author.example>', {
@@ -141,6 +144,7 @@ describe('mail.delivery.deliverToMailbox — ARC override (Sealed Mail A5)', () 
 
 	it('does NOT rescue a broken chain (cv!=pass) even from a trusted forwarder', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 
 		const result = await deliver(t, rawStorageId, '<arc-3@author.example>', {
@@ -158,6 +162,7 @@ describe('mail.delivery.deliverToMailbox — ARC override (Sealed Mail A5)', () 
 
 	it('does NOT rescue when the sealer did not attest the original passed', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 
 		const result = await deliver(t, rawStorageId, '<arc-4@author.example>', {
@@ -174,6 +179,7 @@ describe('mail.delivery.deliverToMailbox — ARC override (Sealed Mail A5)', () 
 
 	it('respects an operator allow-list that EXPLICITLY excludes the default sealer', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 		// An operator who trusts only their own list — a default sealer is no longer honoured.
 		await t.run(async (ctx) => {
@@ -198,6 +204,7 @@ describe('mail.delivery.deliverToMailbox — ARC override (Sealed Mail A5)', () 
 
 	it('honours a custom allow-list that INCLUDES the sealer', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('instanceSettings', {
@@ -222,6 +229,7 @@ describe('mail.delivery.deliverToMailbox — ARC override (Sealed Mail A5)', () 
 
 	it('an explicit EMPTY allow-list disables the rescue entirely', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('instanceSettings', {
@@ -244,6 +252,7 @@ describe('mail.delivery.deliverToMailbox — ARC override (Sealed Mail A5)', () 
 
 	it('does NOT let a single-label allow-list entry act as a TLD wildcard', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 		// A malicious/typo'd bare `com` entry must not trust every `.com` sealer,
 		// even though a real settings.update sanitizes it away — this pins the
@@ -270,6 +279,7 @@ describe('mail.delivery.deliverToMailbox — ARC override (Sealed Mail A5)', () 
 
 	it('leaves an ordinary DMARC quarantine-fail (no ARC) routed to Spam', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 
 		const result = await deliver(t, rawStorageId, '<arc-8@author.example>', {});

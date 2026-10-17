@@ -68,6 +68,9 @@ describe('PreferencesReading: read on arrival', () => {
 		const text = card.text();
 		expect(text).toContain('Read new mail when it arrives');
 		expect(text).toContain('including mail you never open');
+		// Off is D10, not "nothing is read": replies and categories are still checked (Sol r1 F11).
+		expect(text).toContain('still checks new mail for replies and categories');
+		expect(text).toContain('only builds the overview of other mail when you open it');
 		expect(card.get('#postbox-read-on-arrival').attributes('data-on')).toBe('true');
 		expectFullyLocalized(card);
 	});

@@ -47,7 +47,7 @@ const ASK = 'Could you send me the signed contract by Friday?';
 const SESSION = { userId: 'user-A', role: 'member', activeOrganizationId: 'org-1' };
 
 vi.mock('../../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../../lib/sessionOrganization')>();
+	const actual = await importOriginal<Record<string, unknown>>();
 	return { ...actual, getBetterAuthSessionWithRole: vi.fn(async () => SESSION) };
 });
 

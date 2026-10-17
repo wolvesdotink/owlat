@@ -33,11 +33,14 @@ import { isSecurityMail } from '../interpret/eligibility';
 /** The segment kinds a short read is offered. */
 const OFFERED_KINDS: ReadonlySet<string> = new Set(['fresh', 'forwarded']);
 
-/** One offered segment, its id as interpretation names it. */
+/** One offered segment, its id as interpretation names it, and where its offered text sits. */
 export interface ScopedSegment {
 	id: string;
 	kind: string;
 	text: string;
+	/** Canonical offsets of `text` (`segmented.canonicalText.slice(start, end) === text`). */
+	start: number;
+	end: number;
 }
 
 export interface ScopedMessageInput {
@@ -48,6 +51,8 @@ export interface ScopedMessageInput {
 	segmented: SegmentedMessage;
 	/** Some offered text did not fit `maxChars`, or the HTML ran past the scanner's cap. */
 	isTruncated: boolean;
+	/** The body fingerprint read (`interpret/sourceVersion.ts`); a commit rechecks it. */
+	sourceVersion?: string;
 }
 
 /** The text of the sender's own segments (security and exact-wording screens read it). Pure. */
@@ -75,7 +80,14 @@ export function offeredSegments(
 			break;
 		}
 		if (text.length > left) isCut = true;
-		segments.push({ id: segment.id, kind: segment.kind, text: text.slice(0, left) });
+		const offered = text.slice(0, left);
+		segments.push({
+			id: segment.id,
+			kind: segment.kind,
+			text: offered,
+			start: segment.start,
+			end: segment.start + offered.length,
+		});
 		left -= text.length;
 	}
 	return { segments, isCut };
@@ -103,5 +115,6 @@ export async function buildScopedMessageInput(
 		segments: offered.segments,
 		segmented,
 		isTruncated: isTruncated || offered.isCut,
+		...(scoped.sourceVersion ? { sourceVersion: scoped.sourceVersion } : {}),
 	};
 }

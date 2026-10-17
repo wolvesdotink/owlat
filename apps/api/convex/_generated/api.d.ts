@@ -1809,6 +1809,10 @@ import type * as mail_senders_suggestions from '../mail/senders/suggestions.js';
 import type * as mail_senders_unsubscribe from '../mail/senders/unsubscribe.js';
 import type * as mail_senders_unsubscribeActions from '../mail/senders/unsubscribeActions.js';
 import type * as mail_senders_targets from '../mail/senders/targets.js';
+import type * as mail_interpret_arrivalAdmit from '../mail/interpret/arrivalAdmit.js';
+import type * as mail_interpret_fullRead from '../mail/interpret/fullRead.js';
+import type * as mail_interpret_arrivalHold from '../mail/interpret/arrivalHold.js';
+import type * as mail_interpret_fullReadPrepare from '../mail/interpret/fullReadPrepare.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3614,6 +3618,10 @@ declare const fullApi: ApiFromModules<{
 	'mail/senders/unsubscribe': typeof mail_senders_unsubscribe;
 	'mail/senders/unsubscribeActions': typeof mail_senders_unsubscribeActions;
 	'mail/senders/targets': typeof mail_senders_targets;
+	'mail/interpret/arrivalAdmit': typeof mail_interpret_arrivalAdmit;
+	'mail/interpret/fullRead': typeof mail_interpret_fullRead;
+	'mail/interpret/arrivalHold': typeof mail_interpret_arrivalHold;
+	'mail/interpret/fullReadPrepare': typeof mail_interpret_fullReadPrepare;
 }>;
 
 /**
