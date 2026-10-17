@@ -5,7 +5,7 @@
  * model calls, the reason keys), and its buttons open Fix, keep mail from the
  * sender where this one is ("Always here"), or go to the Senders page.
  */
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
@@ -171,5 +171,75 @@ describe('PostboxWhyHerePopover', () => {
 		expect(style.maxHeight).toBe('656px');
 		vi.restoreAllMocks();
 		w.unmount();
+	});
+
+	describe('when the window resizes or something scrolls', () => {
+		let rect = { top: 670, bottom: 710, left: 600, right: 640 };
+		let height = 900;
+		function anchorAt() {
+			const anchor = document.createElement('button');
+			anchor.getBoundingClientRect = () =>
+				({ ...rect, width: 40, height: 40, x: rect.left, y: rect.top }) as DOMRect;
+			return anchor;
+		}
+		beforeEach(() => {
+			rect = { top: 670, bottom: 710, left: 600, right: 640 };
+			height = 900;
+			vi.spyOn(window, 'innerHeight', 'get').mockImplementation(() => height);
+			vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1440);
+			vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(320);
+		});
+		afterEach(() => vi.restoreAllMocks());
+
+		it('re-places on resize: below once the taller window has room', async () => {
+			const w = mountPopover(anchorAt());
+			await flushPromises();
+			const style = (w.get('[data-testid="why-here-popover"]').element as HTMLElement).style;
+			expect(style.bottom).toBe('236px');
+			height = 1400;
+			window.dispatchEvent(new Event('resize'));
+			expect(style.top).toBe('716px');
+			expect(style.bottom).toBe('');
+			w.unmount();
+		});
+
+		it('follows its anchor on a scroll in any container, kept inside the window', async () => {
+			const w = mountPopover(anchorAt());
+			await flushPromises();
+			const style = (w.get('[data-testid="why-here-popover"]').element as HTMLElement).style;
+			const column = document.createElement('div');
+			document.body.appendChild(column);
+			rect = { top: 200, bottom: 240, left: 600, right: 640 };
+			column.dispatchEvent(new Event('scroll'));
+			expect(style.top).toBe('246px');
+			expect(w.emitted('update:target')).toBeUndefined();
+			w.unmount();
+		});
+
+		it('closes once a scroll or resize takes the anchor out of the window', async () => {
+			const scrolled = mountPopover(anchorAt());
+			await flushPromises();
+			rect = { top: -200, bottom: -160, left: 600, right: 640 };
+			document.body.dispatchEvent(new Event('scroll'));
+			expect(scrolled.emitted('update:target')?.[0]).toEqual([null]);
+			scrolled.unmount();
+
+			rect = { top: 670, bottom: 710, left: 600, right: 640 };
+			const resized = mountPopover(anchorAt());
+			await flushPromises();
+			height = 600;
+			window.dispatchEvent(new Event('resize'));
+			expect(resized.emitted('update:target')?.[0]).toEqual([null]);
+			resized.unmount();
+		});
+
+		it('ignores scrolling inside its own panel', async () => {
+			const w = mountPopover(anchorAt());
+			await flushPromises();
+			rect = { top: -200, bottom: -160, left: 600, right: 640 };
+			w.get('[data-testid="why-here-popover"]').element.dispatchEvent(new Event('scroll'));
+			expect(w.emitted('update:target')).toBeUndefined();
+			w.unmount();
+		});
 	});
 });

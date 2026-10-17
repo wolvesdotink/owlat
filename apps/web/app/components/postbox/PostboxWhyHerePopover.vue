@@ -25,7 +25,7 @@ import {
 	type PostboxFixTarget,
 } from '~/composables/postbox/usePostboxArrivalExplain';
 import { useLocalized } from '~/composables/useLocalized';
-import { placeAnchoredPanel } from '~/utils/anchoredPanelPlacement';
+import { isAnchorInView, placeAnchoredPanel } from '~/utils/anchoredPanelPlacement';
 
 const target = defineModel<PostboxWhyHereTarget | null>('target', { required: true });
 const emit = defineEmits<{ fix: [target: PostboxFixTarget] }>();
@@ -52,7 +52,9 @@ let returnFocus: HTMLElement | null = null;
 function restoreFocus(anchor: HTMLElement | null) {
 	for (const el of [anchor, returnFocus]) {
 		if (!el?.isConnected) continue;
-		el.focus();
+		// An anchor scrolled out of view takes focus where it is, without
+		// scrolling the page back to it.
+		el.focus({ preventScroll: true });
 		if (document.activeElement === el) break;
 	}
 	returnFocus = null;
@@ -79,9 +81,11 @@ const { data: why, isLoading } = useConvexQuery(api.mail.arrival.explain.forThre
  * Under the anchor; above it when there is no room below (a lower row on a
  * short window); capped with internal scroll when it fits on neither side.
  * Centred near the top without an anchor. Placed once the panel has rendered
- * (it is measured), again when the record arrives (it grows) and on resize.
- * Written straight onto the element: a reactive style would re-render the
- * panel right after it took focus.
+ * (it is measured), again when the record arrives (it grows), and on resize
+ * and on any scroll outside the panel, always inside the window. An anchor
+ * that a scroll or resize took out of the window closes the popover rather
+ * than leaving it pointing at nothing. Written straight onto the element: a
+ * reactive style would re-render the panel right after it took focus.
  */
 const PANEL_WIDTH = 352;
 function place() {
@@ -104,8 +108,33 @@ watch([() => target.value, panel, () => why.value, () => isLoading.value], place
 	immediate: true,
 	flush: 'post',
 });
-onMounted(() => window.addEventListener('resize', place));
-onBeforeUnmount(() => window.removeEventListener('resize', place));
+function onViewportChange(event: Event) {
+	if (!target.value) return;
+	// Scrolling the panel's own content moves nothing it is anchored to.
+	if (
+		event.type === 'scroll' &&
+		event.target instanceof Node &&
+		panel.value?.contains(event.target)
+	)
+		return;
+	const anchor = target.value.anchor;
+	const viewport = { width: window.innerWidth, height: window.innerHeight };
+	if (anchor?.isConnected && !isAnchorInView(anchor.getBoundingClientRect(), viewport)) {
+		target.value = null;
+		return;
+	}
+	place();
+}
+// Capture: a scroll inside any container (the list column) never bubbles to window.
+const SCROLL_OPTIONS = { capture: true, passive: true } as const;
+onMounted(() => {
+	window.addEventListener('resize', onViewportChange);
+	window.addEventListener('scroll', onViewportChange, SCROLL_OPTIONS);
+});
+onBeforeUnmount(() => {
+	window.removeEventListener('resize', onViewportChange);
+	window.removeEventListener('scroll', onViewportChange, SCROLL_OPTIONS);
+});
 
 const placement = computed<Placement | undefined>(
 	() => why.value?.placement ?? target.value?.placement
