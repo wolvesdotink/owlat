@@ -14,12 +14,16 @@
  * "12+" with a tooltip saying so, rather than as a precise total the window
  * cannot back up (see usePostboxTriageFilters for why there is no cheap
  * folder-wide count).
+ *
+ * A Priority placement filter (`?placement=`, the Priority view's digest link,
+ * read on arrival §3) shows as one more active chip whose × drops it.
  */
 import type { PostboxTriageFilter } from '~/composables/postbox/usePostboxTriageFilters';
 import {
 	POSTBOX_TRIAGE_SEARCH_TOKENS,
 	postboxTriageSearchPath,
 } from '~/composables/postbox/usePostboxTriageFilters';
+import { parsePlacementQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 
 const props = defineProps<{
 	filter: PostboxTriageFilter;
@@ -33,6 +37,14 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const route = useRoute();
+const router = useRouter();
+
+const placement = computed(() => parsePlacementQuery(route.query['placement']));
+function clearPlacement() {
+	const { placement: _placement, ...rest } = route.query;
+	void router.replace({ query: rest });
+}
 
 const CHIPS: Array<{ value: PostboxTriageFilter; labelKey: string }> = [
 	{ value: 'all', labelKey: 'components.postbox.postboxTriageFilterChips.all' },
@@ -86,11 +98,24 @@ const searchToken = computed(() =>
 	     can find. The handover token drops to a second line when the four chips
 	     have taken the first. -->
 	<div
-		v-if="visibleChips.length > 1"
+		v-if="visibleChips.length > 1 || placement"
 		class="px-4 pb-2.5 -mt-1 flex flex-wrap items-center gap-1.5"
 		role="group"
 		:aria-label="t('components.postbox.postboxTriageFilterChips.groupLabel')"
 	>
+		<button
+			v-if="placement"
+			type="button"
+			class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs whitespace-nowrap bg-brand-subtle border-brand/25 text-brand font-medium outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+			:aria-label="
+				t('postbox.priority.filter.clear', { name: t(`postbox.priority.filter.${placement}`) })
+			"
+			data-testid="placement-filter-chip"
+			@click="clearPlacement"
+		>
+			{{ t(`postbox.priority.filter.${placement}`) }}
+			<Icon name="lucide:x" class="w-3 h-3" aria-hidden="true" />
+		</button>
 		<button
 			v-for="chip in visibleChips"
 			:key="chip.value"

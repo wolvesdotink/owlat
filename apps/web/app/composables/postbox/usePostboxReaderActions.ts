@@ -86,6 +86,8 @@ export function usePostboxReaderActions(opts: {
 		folderRole: () => string | undefined;
 		inPlace: () => boolean | undefined;
 		emit: (messageId: string | null) => void;
+		/** The list's query to keep on the routes advance and close go to (`?placement=`). */
+		query?: () => string;
 	};
 	compose: {
 		reply: () => void;
@@ -217,7 +219,7 @@ export function usePostboxReaderActions(opts: {
 			targetPath = target
 				? `/dashboard/postbox/${folderRole}/${target}`
 				: `/dashboard/postbox/${folderRole}`;
-			navigation = Promise.resolve(navigateTo(targetPath));
+			navigation = Promise.resolve(navigateTo(targetPath + (advance.query?.() ?? '')));
 		}
 
 		const outcome = await run(id);
@@ -232,7 +234,9 @@ export function usePostboxReaderActions(opts: {
 		}
 		await navigation;
 		if (router.currentRoute.value.path !== targetPath) return;
-		void navigateTo(`/dashboard/postbox/${folderRole}/${id}`, { replace: true });
+		void navigateTo(`/dashboard/postbox/${folderRole}/${id}${advance.query?.() ?? ''}`, {
+			replace: true,
+		});
 	}
 
 	/**
@@ -247,7 +251,11 @@ export function usePostboxReaderActions(opts: {
 			return;
 		}
 		const folderRole = advance.folderRole();
-		if (folderRole) void navigateTo(`/dashboard/postbox/${folderRole}`, { replace: true });
+		if (folderRole) {
+			void navigateTo(`/dashboard/postbox/${folderRole}${advance.query?.() ?? ''}`, {
+				replace: true,
+			});
+		}
 	}
 
 	// Live flags of the open message (the prop can be a stale list row).

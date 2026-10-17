@@ -321,7 +321,6 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 				@update:model-value="setAutoSummarize"
 			/>
 		</div>
-		<PreferencesThreadView v-if="isEnabled('ai') && autoSummarize" />
 		<PreferencesBriefBackfill v-if="isEnabled('ai') && autoSummarize" />
 		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 			<div class="min-w-0">

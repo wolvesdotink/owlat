@@ -13003,6 +13003,72 @@
 			"requestOperation": "Postfach anfragen",
 			"reservedBody": "{address} ist für dich reserviert. Es erscheint hier automatisch, sobald es bereit ist.",
 			"reservedHeading": "Dein Postfach wird eingerichtet"
+		},
+		"reader": {
+			"header": {
+				"reply": "Antworten",
+				"archive": "Archivieren",
+				"whyHere": "Warum ist das hier?",
+				"details": "Einzelheiten",
+				"snooze": "Zurückstellen",
+				"ask": "Frag zu diesem Verlauf"
+			},
+			"strip": {
+				"reading": "Dieser Verlauf wird gerade gelesen",
+				"waitingOn": "Du wartest auf {name}: {text}",
+				"waiting": "Du wartest: {text}",
+				"due": "bis {date}",
+				"fullBrief": "Ganze Übersicht",
+				"exactWording": "Den genauen Wortlaut lesen",
+				"whyHere": "Warum hier?",
+				"details": "Einzelheiten"
+			},
+			"summary": {
+				"signed": "signiert",
+				"imagesOff": "Bilder aus"
+			},
+			"sheet": {
+				"title": "Ganze Übersicht"
+			},
+			"cite": {
+				"clear": "Markierung entfernen"
+			}
+		},
+		"priority": {
+			"needsYou": {
+				"title": "Braucht dich",
+				"queue": "Antwortliste ({count})"
+			},
+			"everythingElse": {
+				"title": "Alles andere"
+			},
+			"state": {
+				"due": "bis {date}",
+				"reply": "antworten",
+				"waiting": "ausstehend"
+			},
+			"draftReady": "Entwurf bereit",
+			"updates": {
+				"title": "Neuigkeiten · keine Antwort nötig",
+				"show": "anzeigen",
+				"foldOne": "{count} weitere Neuigkeit von {a} | {count} weitere Neuigkeiten von {a}",
+				"foldTwo": "{count} weitere Neuigkeiten von {a} und {b}",
+				"foldOneOther": "{count} weitere Neuigkeiten von {a}, {b} und einem weiteren Absender",
+				"foldOthers": "{count} weitere Neuigkeiten von {a}, {b} und {others} weiteren"
+			},
+			"digest": {
+				"count": "{count} Newsletter oder Werbemail | {count} Newsletter und Werbemails",
+				"inDigest": "in deiner Zusammenfassung",
+				"open": "öffnen"
+			},
+			"filter": {
+				"needs_me": "Braucht dich",
+				"today": "Alles andere",
+				"updates": "Neuigkeiten",
+				"digest": "In deiner Zusammenfassung",
+				"archived": "Abgelegt",
+				"clear": "Wieder alle E-Mails zeigen, nicht nur „{name}“"
+			}
 		}
 	},
 	"recipient": {

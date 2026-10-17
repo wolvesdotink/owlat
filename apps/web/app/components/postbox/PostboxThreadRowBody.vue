@@ -11,12 +11,24 @@
  *
  * It owns no link, selection, triage or swipe: those stay with the element that
  * wraps it, because only the flat list wires them. Pure presentational.
+ *
+ * Under the Priority view (`POSTBOX_PRIORITY_ROWS`, read on arrival §3) the
+ * row is one line: sender, the brief's lead or ask (else the gist, else the
+ * subject) and one state. Elsewhere a row without a brief line shows the gist
+ * in place of the snippet when the thread has one.
  */
+import { inject } from 'vue';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
 import { useLocalized } from '~/composables/useLocalized';
 import { usePostboxThreadTimestamp } from '~/composables/postbox/usePostboxListClock';
 import { briefRowLine } from '~/utils/briefRowLine';
+import { rowGistOf } from '~/utils/postboxReaderStrip';
+import {
+	POSTBOX_PRIORITY_ROWS,
+	priorityGroupOf,
+	priorityRowLine,
+} from '~/utils/postboxPriorityGroups';
 
 const { t, locale } = useI18n();
 // Ticks with the list's shared minute clock (usePostboxListClock).
@@ -75,6 +87,19 @@ const trustMarkerLabel = computed(() => {
 
 /** The top open item instead of the snippet, once the thread is interpreted (SPEC §7). */
 const briefLine = computed(() => briefRowLine(props.msg.briefTop, locale.value));
+/** Read on arrival: the gist where a row has no brief line (SPEC §3). */
+const gistLine = computed(() => rowGistOf(props.msg.briefTop));
+
+const isPriority = inject(POSTBOX_PRIORITY_ROWS, false);
+const priorityLine = computed(() =>
+	isPriority ? priorityRowLine(props.msg, priorityGroupOf(props.msg.placement), locale.value) : null
+);
+const priorityState = computed(() => {
+	const state = priorityLine.value?.state;
+	if (!state || state.kind === 'time') return formatTimestamp(props.msg.receivedAt);
+	if (state.kind === 'due') return t('postbox.priority.state.due', { date: state.date });
+	return t(`postbox.priority.state.${state.kind}`);
+});
 
 /** Absolute wake time of a snoozed row, formatted against the active locale. */
 function snoozedTitle(until: number): string {
@@ -92,7 +117,52 @@ function onCancelFollowUp(event: MouseEvent) {
 </script>
 
 <template>
-	<PostboxRowCore :unread="!msg.flagSeen">
+	<div
+		v-if="priorityLine"
+		class="flex-1 min-w-0 flex gap-x-3 gap-y-0.5 max-sm:flex-col sm:items-baseline"
+		data-testid="priority-row"
+	>
+		<span
+			class="flex items-baseline gap-2 truncate text-sm sm:w-40 sm:flex-shrink-0"
+			:class="msg.flagSeen ? 'text-text-secondary' : 'font-semibold text-text-primary'"
+		>
+			<span class="truncate">{{ sender }}</span>
+			<span
+				class="ml-auto text-xs font-normal tabular-nums sm:hidden"
+				:class="priorityLine.state.kind === 'time' ? 'text-text-tertiary' : 'text-brand'"
+				>{{ priorityState }}</span
+			>
+		</span>
+		<span
+			class="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-text-secondary"
+			:data-source="priorityLine.source"
+			data-testid="priority-row-line"
+		>
+			<Icon
+				v-if="trustMarker"
+				:name="trustMarker.icon"
+				class="w-3.5 h-3.5 flex-shrink-0 text-error"
+				:aria-label="trustMarkerLabel"
+				data-testid="row-trust-marker"
+			/>
+			<span class="truncate max-sm:whitespace-normal max-sm:line-clamp-2">{{
+				priorityLine.text
+			}}</span>
+		</span>
+		<span
+			class="flex-shrink-0 text-xs tabular-nums max-sm:hidden"
+			:class="
+				priorityLine.state.kind === 'time'
+					? 'text-text-tertiary'
+					: priorityLine.state.kind === 'waiting'
+						? 'text-warning'
+						: 'text-brand'
+			"
+			data-testid="priority-row-state"
+			>{{ priorityState }}</span
+		>
+	</div>
+	<PostboxRowCore v-else :unread="!msg.flagSeen">
 		<template #identifier>{{ sender }}</template>
 		<template #meta>{{ formatTimestamp(msg.receivedAt) }}</template>
 		<div class="flex items-center gap-1.5 mt-0.5">
@@ -169,8 +239,12 @@ function onCancelFollowUp(event: MouseEvent) {
 				· “{{ msg.snippet }}”</span
 			>
 		</p>
-		<p v-else-if="!compact" class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
-			{{ msg.snippet }}
+		<p
+			v-else-if="!compact"
+			class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5"
+			:data-testid="gistLine ? 'row-gist-line' : undefined"
+		>
+			{{ gistLine ?? msg.snippet }}
 		</p>
 	</PostboxRowCore>
 </template>

@@ -1,31 +1,31 @@
 /**
- * The thread brief inside the Postbox reader (SPEC §7), kept out of
- * PostboxThreadReader.vue, which is at its size cap:
+ * The thread brief inside the Postbox reader (SPEC §7, read on arrival §3),
+ * kept out of PostboxThreadReader.vue, which is at its size cap:
  *
- *  - the brief read and the Overview / Conversation view (useThreadBrief,
- *    useThreadView), for personal mailboxes only. A shared (team) mailbox gets
- *    no switch, no Overview and no per-message latest lines: `isShared` is the
- *    seam the team stream fills in;
- *  - a cited quote: its message is loaded (earlier pages are walked back to
- *    it, like an opened search hit), expanded, scrolled to and the quote
- *    marked (`citeQuoteFor`); the header line says what is being shown, or
- *    that the message could not be reached;
+ *  - the brief read for personal mailboxes only, and the calm reader's strip
+ *    resolved from it (`strip`, utils/postboxReaderStrip). A shared (team)
+ *    mailbox gets no strip and no per-message latest lines: `isShared` is the
+ *    seam the team stream fills in. The reader is one page: there is no
+ *    Overview / Conversation switch any more;
+ *  - a cited quote (`?cite=`, from the full brief): its message is loaded
+ *    (earlier pages are walked back to it, like an opened search hit),
+ *    expanded, scrolled to and the quote marked (`citeQuoteFor`); the cite
+ *    line says what is being shown, or that the message could not be reached;
  *  - the messages whose exact wording matters (legal notices, changed terms,
- *    payment details): loaded and expanded the same way, and kept open beside
- *    the Overview (`exactWordingMessages`);
+ *    payment details): loaded and expanded the same way (`exactWording`);
  *  - the collapsed rows' "latest update" sentence (`latestFor`);
- *  - marking the brief seen once the Overview has been on screen;
+ *  - marking the brief seen once the strip has shown it;
  *  - running item reactions, with the replying ones handed to the reader.
  */
 import type { Ref } from 'vue';
-import type { ThreadView } from '@owlat/shared/threadBrief';
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
 import { useThreadBrief } from '~/composables/useThreadBrief';
-import { useThreadView } from '~/composables/useThreadView';
 import { useBriefReactions } from '~/composables/threadBrief/useBriefReactions';
 import { THREAD_ANCHOR_PAGE_LIMIT } from '~/composables/postbox/postboxThreadPage';
 import { messageLatestMap, resolveCite, type BriefAction } from '~/utils/threadBriefItems';
 import type { BriefSource } from '~/utils/threadBriefContext';
+import { formatCite, parseCite } from '~/utils/threadBriefView';
+import { briefHasContent, readerGistOf, resolveReaderStrip } from '~/utils/postboxReaderStrip';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import type { SecureMessageClass } from '@owlat/shared/secureMessage';
 
@@ -57,6 +57,8 @@ export function usePostboxReaderBrief(opts: {
 	pages: ReaderPages;
 	/** The reader's PGP/S-MIME structure per message (a clearsigned one scopes the brief). */
 	secureClass: (msg: { _id: string }) => SecureMessageClass;
+	/** One of the mailbox's own addresses (a gist is never attributed to us). */
+	isOwnAddress: (address: string) => boolean;
 	/** A replying reaction or the brief's Reply: open Answer mode (guarded). */
 	onReply: (item: BriefItemView | null, action: BriefAction | null) => void;
 }) {
@@ -64,24 +66,41 @@ export function usePostboxReaderBrief(opts: {
 	const isShared = computed(() => byId.value.get(opts.mailboxId() as never)?.scope === 'shared');
 
 	const read = useThreadBrief({ threadId: () => (isShared.value ? null : opts.threadId()) });
-	const viewState = useThreadView({
-		threadRef: () => read.threadRef.value,
-		brief: () => read.brief.value,
-		availability: () => read.availability.value,
-		isShared: () => isShared.value,
+
+	const gist = computed(() => (isShared.value ? null : readerGistOf(read.brief.value)));
+	/** The one element under the header: the brief strip or the slim meta line. */
+	const strip = computed(() =>
+		resolveReaderStrip({ isShared: isShared.value, brief: read.brief.value, gist: gist.value })
+	);
+
+	/** "Full brief" opens whenever the brief holds anything, whatever the strip shows. */
+	const hasFullBrief = computed(() => !isShared.value && briefHasContent(read.brief.value));
+
+	/** Who the gist quotes: its message's sender, else the newest message not from us. */
+	const gistAttribution = computed(() => {
+		const id = gist.value?.messageId;
+		const all = opts.messages.value;
+		const from =
+			(id ? all.find((m) => m._id === id) : undefined) ??
+			[...all].reverse().find((m) => !opts.isOwnAddress(m.fromAddress));
+		return from ? from.fromName?.trim() || from.fromAddress : '';
 	});
 
-	/** The header switch's state; null hides it (shared mailboxes). */
-	const switchView = computed(() => (isShared.value ? null : viewState.view.value));
-	const showsOverview = computed(() => !isShared.value && viewState.view.value !== 'conversation');
+	// A cite is for this visit only: it lives in the URL and writes nothing.
+	const route = useRoute();
+	const router = useRouter();
+	const cite = computed(() => parseCite(route.query['cite']));
+	function withoutCite() {
+		const { cite: _cite, ...rest } = route.query;
+		return rest;
+	}
 
 	const cited = computed(() => {
 		const brief = read.brief.value;
-		const cite = viewState.cite.value;
-		return brief && cite ? resolveCite(brief, cite) : null;
+		return brief && cite.value ? resolveCite(brief, cite.value) : null;
 	});
 
-	/** Messages whose original stays open beside the Overview. */
+	/** Messages whose original matters as written: kept expanded in the conversation. */
 	const exactWordingIds = computed(() =>
 		isShared.value ? [] : (read.brief.value?.exactWording ?? []).map((e) => e.messageId)
 	);
@@ -153,11 +172,11 @@ export function usePostboxReaderBrief(opts: {
 		}
 	);
 
-	// Seen once the Overview is actually showing a brief.
+	// Seen once the strip actually shows the brief.
 	watch(
-		() => [viewState.view.value, read.brief.value?.interpretationRevision] as const,
-		([view]) => {
-			if (view === 'overview' && !isShared.value) read.markSeen();
+		() => [strip.value.kind, read.brief.value?.interpretationRevision] as const,
+		([kind]) => {
+			if (kind !== 'meta' && !isShared.value) read.markSeen();
 		},
 		{ immediate: true }
 	);
@@ -177,7 +196,7 @@ export function usePostboxReaderBrief(opts: {
 		};
 	}
 
-	/** Messages whose original stays open beside the Overview (loaded or not). */
+	/** Messages whose original matters as written (loaded or not). */
 	const exactWording = computed(() => new Set(exactWordingIds.value));
 
 	const sources = computed(
@@ -207,15 +226,21 @@ export function usePostboxReaderBrief(opts: {
 		brief: read.brief,
 		itemsState: read.itemsState,
 		isClosedTruncated: read.isClosedTruncated,
-		switchView,
-		showsOverview,
+		strip,
+		hasFullBrief,
+		gistAttribution,
 		cited,
 		citeState,
 		exactWording,
+		/** The first message whose wording matters, for "Read the exact wording". */
+		firstExactWordingId: computed(() => exactWordingIds.value[0] ?? null),
 		secureClass: opts.secureClass,
-		setView: (next: ThreadView) => viewState.setView(next),
-		openCite: (ref: string, quoteIndex: number) => viewState.openCite({ ref, quoteIndex }),
-		backToOverview: viewState.backToOverview,
+		/** Show where a line of the brief comes from, for this visit only. */
+		openCite: (ref: string, quoteIndex: number) =>
+			void router.replace({
+				query: { ...withoutCite(), cite: formatCite({ ref, quoteIndex }) },
+			}),
+		clearCite: () => void router.replace({ query: withoutCite() }),
 		latestFor,
 		citeQuoteFor,
 		sourceOf,
