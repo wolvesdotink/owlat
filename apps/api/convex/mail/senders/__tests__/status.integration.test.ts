@@ -24,6 +24,7 @@ import {
 	SENDER,
 	seedPersonalMailbox,
 	seedProfile,
+	seedSenderMessages,
 	type T,
 } from './senders.testlib';
 
@@ -113,6 +114,33 @@ describe('setStatus', () => {
 			after: { status: 'keep', statusSource: 'user' },
 		});
 		expect((await t.query(api.mail.senders.page.review, { mailboxId })).total).toBe(0);
+	});
+
+	it('archives the newest 200 Inbox messages by arrival, whatever else the sender has', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, folders } = await seedPersonalMailbox(t);
+		const base = Date.UTC(2026, 9, 1);
+		// Newest mail first, then an import of 200 older ones (inserted later),
+		// then newer mail already sitting in Archive.
+		const [newest] = await seedSenderMessages(t, mailboxId, folders.inbox, [base + 10_000]);
+		const imported = await seedSenderMessages(
+			t,
+			mailboxId,
+			folders.inbox,
+			Array.from({ length: 200 }, (_, i) => base - 1000 - i)
+		);
+		await seedSenderMessages(t, mailboxId, folders.archive, [base + 20_000, base + 30_000]);
+		const profile = await seedProfile(t, mailboxId);
+
+		const result = await t.mutation(api.mail.senders.status.setStatus, {
+			target: { mailboxId, senderDigest: profile.senderDigest },
+			status: 'auto_archive',
+		});
+		expect(result.archived).toBe(200);
+		expect(await roleOf(t, newest!)).toBe('archive');
+		// The single oldest import is the one past the bound.
+		expect(await roleOf(t, imported[199]!)).toBe('inbox');
+		expect(await roleOf(t, imported[0]!)).toBe('archive');
 	});
 
 	it('writes nothing when the status is already set', async () => {

@@ -103,3 +103,74 @@ export async function profileOf(
 		return rows.find((row) => row.address === address) ?? null;
 	});
 }
+
+/**
+ * Many messages from `address` in one folder and one thread, inserted in the
+ * given order (insertion order ≠ `receivedAt` order models an import).
+ */
+export async function seedSenderMessages(
+	t: T,
+	mailboxId: Id<'mailboxes'>,
+	folderId: Id<'mailFolders'>,
+	receivedAts: number[],
+	address = SENDER
+): Promise<Id<'mailMessages'>[]> {
+	return await t.run(async (ctx) => {
+		const folder = (await ctx.db.get(folderId))!;
+		const threadId = await ctx.db.insert('mailThreads', {
+			mailboxId,
+			normalizedSubject: 'bulk',
+			participants: [address],
+			messageCount: receivedAts.length,
+			unreadCount: receivedAts.length,
+			hasFlagged: false,
+			hasAttachments: false,
+			lastMessageAt: Math.max(...receivedAts),
+			firstMessageAt: Math.min(...receivedAts),
+			latestSnippet: 'bulk',
+			latestFromAddress: address,
+			latestSubject: 'bulk',
+			folderRoles: [folder.role ?? 'inbox'],
+			labelIds: [],
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		});
+		const rawStorageId = await ctx.storage.store(new Blob(['raw']));
+		const ids: Id<'mailMessages'>[] = [];
+		for (const [index, receivedAt] of receivedAts.entries()) {
+			ids.push(
+				await ctx.db.insert('mailMessages', {
+					mailboxId,
+					folderId,
+					uid: index + 1,
+					modseq: 1,
+					rfc822MessageId: `<bulk-${folderId}-${index}@shop.example>`,
+					threadId,
+					fromAddress: address,
+					toAddresses: [OWNER],
+					ccAddresses: [],
+					bccAddresses: [],
+					subject: 'bulk',
+					normalizedSubject: 'bulk',
+					snippet: 'bulk',
+					rawStorageId,
+					rawSize: 3,
+					attachments: [],
+					hasAttachments: false,
+					flagSeen: false,
+					flagFlagged: false,
+					flagAnswered: false,
+					flagDraft: false,
+					flagDeleted: false,
+					customFlags: [],
+					labelIds: [],
+					receivedAt,
+					internalDate: receivedAt,
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				})
+			);
+		}
+		return ids;
+	});
+}

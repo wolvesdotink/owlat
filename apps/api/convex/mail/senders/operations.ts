@@ -27,9 +27,6 @@ import { refreshArrivalProjection } from './arrivalProjection';
 /** The newest Inbox messages (and their threads) one status change touches. */
 export const SENDER_RESORT_LIMIT = 200;
 
-/** Sender messages read to find the newest ≤200 still in the Inbox. */
-const SENDER_MESSAGE_SCAN = 2 * SENDER_RESORT_LIMIT;
-
 type OperationKind = Doc<'mailArrivalOperations'>['kind'];
 type OperationActor = Doc<'mailArrivalOperations'>['actor'];
 
@@ -119,20 +116,23 @@ async function folderId(
 	return folder?._id ?? null;
 }
 
-/** The sender's newest ≤200 messages that are still in the Inbox, newest first. */
+/**
+ * The sender's newest ≤200 Inbox messages by arrival time (`receivedAt`), from
+ * the folder-qualified index: mail in other folders never crowds the Inbox out
+ * of the page, and history imported later never displaces newer mail.
+ */
 async function senderInboxMessages(
 	ctx: MutationCtx,
-	profile: Pick<Doc<'mailSenderProfiles'>, 'mailboxId' | 'address'>,
+	profile: Pick<Doc<'mailSenderProfiles'>, 'address'>,
 	inboxId: Id<'mailFolders'>
 ): Promise<Doc<'mailMessages'>[]> {
-	const newest = await ctx.db
+	return await ctx.db
 		.query('mailMessages')
-		.withIndex('by_mailbox_and_from', (q) =>
-			q.eq('mailboxId', profile.mailboxId).eq('fromAddress', profile.address)
+		.withIndex('by_folder_from_received', (q) =>
+			q.eq('folderId', inboxId).eq('fromAddress', profile.address)
 		)
 		.order('desc')
-		.take(SENDER_MESSAGE_SCAN);
-	return newest.filter((message) => message.folderId === inboxId).slice(0, SENDER_RESORT_LIMIT);
+		.take(SENDER_RESORT_LIMIT);
 }
 
 /**
