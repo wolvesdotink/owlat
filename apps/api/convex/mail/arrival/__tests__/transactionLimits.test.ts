@@ -64,6 +64,29 @@ describe('sender-wide re-sorts at 200 threads, under production limits', () => {
 		expect(await placements(t, threadIds)).toEqual({ digest: THREADS });
 	});
 
+	it('a Resume while the chain runs neither stops it nor is undone by it', async () => {
+		vi.useFakeTimers();
+		const t = learnTest({ transactionLimits: true });
+		const { mailboxId, folders } = await seedPersonalMailbox(t);
+		const profile = await seedProfile(t, mailboxId, {
+			autoDraftPausedAt: 5,
+			unusedDraftStreak: 5,
+		});
+		const { threadIds } = await seedSenderThreads(t, mailboxId, folders.inbox, THREADS);
+		await t.mutation(api.mail.senders.status.setStatus, {
+			target: { mailboxId, senderDigest: profile.senderDigest },
+			status: 'digest',
+		});
+		const resumed = await t.mutation(api.mail.senders.status.resumeDrafts, {
+			target: { mailboxId, senderDigest: profile.senderDigest },
+		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect(await placements(t, threadIds)).toEqual({ digest: THREADS });
+		const after = await t.run(async (ctx) => ctx.db.get(profile._id));
+		expect(after).toMatchObject({ status: 'digest', unusedDraftStreak: 0 });
+		expect(after!.lastOperationId).toBe(resumed.operationId);
+	});
+
 	it('auto-archive moves 200 messages of 200 conversations and re-sorts them', async () => {
 		vi.useFakeTimers();
 		const t = learnTest({ transactionLimits: true });

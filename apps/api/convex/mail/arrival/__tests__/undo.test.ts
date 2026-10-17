@@ -9,7 +9,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Id } from '../../../_generated/dataModel';
 import { api } from '../../../_generated/api';
 import { arrivalChangeRow } from '../changeRows';
+import { recordDraftUse, UNUSED_DRAFT_PAUSE_AT } from '../../draftPause';
 import {
+	SENDER,
 	deliverLive,
 	messageOf,
 	operationOf,
@@ -373,6 +375,33 @@ describe('operations.undo', () => {
 			autoDraftPausedAt: 5,
 			unusedDraftStreak: 5,
 		});
+	});
+
+	it('undoes the automatic draft pause (draft_pause) end to end, without a re-sort', async () => {
+		const t = learnTest();
+		const { mailboxId } = await seedPersonalMailbox(t);
+		await seedProfile(t, mailboxId, { unusedDraftStreak: UNUSED_DRAFT_PAUSE_AT - 1 });
+		await t.run(async (ctx) => {
+			await recordDraftUse(ctx, { mailboxId, address: SENDER, use: 'unused', now: Date.now() });
+		});
+		const paused = (await profileOf(t, mailboxId))!;
+		expect(paused.autoDraftPausedAt).toEqual(expect.any(Number));
+		const { operation } = await operationOf(t, paused.lastOperationId!);
+		expect(operation.kind).toBe('draft_pause');
+
+		const result = await undo(t, operation._id);
+		expect(result).toMatchObject({
+			status: 'undone',
+			kind: 'draft_pause',
+			restored: 1,
+			hasMore: false,
+		});
+		expect(
+			await t.query(api.mail.arrival.operations.undoStatus, { operationId: operation._id })
+		).toMatchObject({ isDone: true, pendingResorts: 0 });
+		const after = (await profileOf(t, mailboxId))!;
+		expect(after.autoDraftPausedAt).toBeUndefined();
+		expect(after.unusedDraftStreak).toBe(UNUSED_DRAFT_PAUSE_AT - 1);
 	});
 
 	it('refuses an operation of a mailbox the caller cannot reach', async () => {
