@@ -19,7 +19,7 @@ function hostOf(url: string | undefined): string | null {
 }
 
 /**
- * ⇧E / ⇧U from the open message (SPEC §5): Auto-archive its sender, or
+ * ⇧E / ⇧O from the open message (SPEC §5): Auto-archive its sender, or
  * unsubscribe from it. A one-click sender gets the Unsubscribe chip's own
  * confirm, naming the host the request goes to.
  */

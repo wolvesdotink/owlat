@@ -26,9 +26,6 @@ export const SHORTCUT_PRESETS = {
 		// Gmail's snooze is `b`; ours is `h` (Superhuman's). Give `b` up.
 		'postbox.snooze': ['b'],
 		'postbox.toggleBrowse': [],
-		// Gmail's Shift+U is "mark unread"; ⇧U unsubscribe gives it back.
-		'postbox.markUnread': ['U'],
-		'postbox.senderUnsubscribe': [],
 	},
 	superhuman: {
 		// Superhuman puts reply-all and forward behind Shift, leaving `a` and `f`
@@ -41,7 +38,6 @@ export const SHORTCUT_PRESETS = {
 		// toggling, and flags with Insert.
 		'postbox.toggleRead': ['q'],
 		'postbox.markUnread': ['u', 'U'],
-		'postbox.senderUnsubscribe': [],
 		'postbox.star': ['Insert', 's'],
 	},
 } as const satisfies Record<string, ShortcutOverlay>;

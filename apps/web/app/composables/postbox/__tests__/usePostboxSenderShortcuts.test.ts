@@ -1,5 +1,5 @@
 /**
- * ⇧E / ⇧U from the open message (SPEC §5): the sender chords name the sender
+ * ⇧E / ⇧O from the open message (SPEC §5): the sender chords name the sender
  * by the message, and a one-click sender gets the chip's confirm with its host.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -33,7 +33,7 @@ describe('usePostboxSenderShortcuts', () => {
 		expect(setStatus).toHaveBeenCalledWith({ messageId: 'm1' }, 'auto_archive', 'Shop');
 	});
 
-	it('⇧U unsubscribes behind the chip’s confirm for a one-click sender', () => {
+	it('⇧O unsubscribes behind the chip’s confirm for a one-click sender', () => {
 		const { runSenderShortcut } = usePostboxSenderShortcuts(mailboxId);
 		runSenderShortcut('senderUnsubscribe', message);
 		expect(unsubscribe).toHaveBeenCalledWith(

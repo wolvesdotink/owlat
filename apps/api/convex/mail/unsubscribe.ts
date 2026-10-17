@@ -3,7 +3,7 @@
 /**
  * RFC 8058 One-Click unsubscribe for Postbox list mail.
  *
- * Every person-facing unsubscribe (the reader's chip, ⇧U, the Senders page,
+ * Every person-facing unsubscribe (the reader's chip, ⇧O, the Senders page,
  * the Subscriptions panel) reaches this POST through
  * `mail/senders/unsubscribeActions.ts`, after an explicit user confirmation;
  * the POST happens server-side (the sender's endpoint

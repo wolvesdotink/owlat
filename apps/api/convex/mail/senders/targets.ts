@@ -1,7 +1,7 @@
 /**
  * How a sender is named by the Senders calls (SPEC §5): by
  * `{mailboxId, senderDigest}` (the Senders page) or by a message from it (the
- * reader's ⇧E / ⇧U and chip, the Subscriptions panel).
+ * reader's ⇧E / ⇧O and chip, the Subscriptions panel).
  *
  * A leaf: shared by the mutations (`./status.ts`) and the Node action
  * (`./unsubscribeActions.ts`) without pulling one runtime into the other.

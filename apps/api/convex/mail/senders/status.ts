@@ -3,7 +3,7 @@
  * resume paused auto-drafts. Each is one undoable operation (`./operations.ts`).
  *
  * A sender is named either by `{mailboxId, senderDigest}` (the Senders page)
- * or by a `messageId` from it (the reader's ⇧E / ⇧U), which creates an empty
+ * or by a `messageId` from it (the reader's ⇧E / ⇧O), which creates an empty
  * profile when the sender has none yet. Personal mailboxes only.
  */
 
@@ -124,7 +124,7 @@ function targetFields(target: UnsubscribeTarget | null) {
 
 /**
  * The local half of the ONE unsubscribe path (Senders page, Subscriptions
- * panel, reader chip, ⇧U; `./unsubscribeActions.ts unsubscribe` runs it):
+ * panel, reader chip, ⇧O; `./unsubscribeActions.ts unsubscribe` runs it):
  * personal mail gets local status `unsubscribed` (undoable, archives the
  * newest ≤200 Inbox messages) and a mailto / https target is recorded as
  * `opened`; the one-click result is recorded by the action after its POST.

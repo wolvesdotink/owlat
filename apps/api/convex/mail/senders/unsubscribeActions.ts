@@ -7,7 +7,7 @@
  * fail-soft result. The URL is always re-read from the message at run time.
  *
  *   - `unsubscribe({target})`: THE unsubscribe path for a person (Senders
- *     page, Subscriptions panel, reader chip, ⇧U). Local suppression first
+ *     page, Subscriptions panel, reader chip, ⇧O). Local suppression first
  *     (`./status.ts startUnsubscribe`), then the one-click POST inline with
  *     its result recorded on the sender, so the caller can say how it went.
  *     A team-inbox message gets the POST only; nothing is recorded.

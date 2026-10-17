@@ -30,16 +30,19 @@ describe('resolvePostboxShortcut', () => {
 		expect(resolvePostboxShortcut('v')).toBe('move');
 		expect(resolvePostboxShortcut('x')).toBe('toggleSelect');
 		// Shift+U produces the key 'U' — distinct from the plain 'u' toggle.
-		expect(resolvePostboxShortcut('U')).toBe('senderUnsubscribe');
+		expect(resolvePostboxShortcut('U')).toBe('markUnread');
 		expect(resolvePostboxShortcut('?')).toBe('help');
 	});
 
-	it('maps the sender chords: ⇧E auto-archives, ⇧U unsubscribes', () => {
+	it('maps the sender chords: ⇧E auto-archives, ⇧O unsubscribes, ⇧U stays mark-unread', () => {
 		expect(resolvePostboxShortcut('E')).toBe('senderAutoArchive');
-		expect(resolvePostboxShortcut('U')).toBe('senderUnsubscribe');
-		// Gmail keeps Shift+U for "mark unread" and leaves unsubscribe unbound.
-		applyShortcutPreferences('gmail');
-		expect(resolvePostboxShortcut('U')).toBe('markUnread');
+		expect(resolvePostboxShortcut('O')).toBe('senderUnsubscribe');
+		// ⇧U keeps its shipped meaning in every map.
+		for (const preset of ['owlat', 'gmail', 'superhuman', 'outlook'] as const) {
+			applyShortcutPreferences(preset);
+			expect(resolvePostboxShortcut('U')).toBe('markUnread');
+			expect(resolvePostboxShortcut('O')).toBe('senderUnsubscribe');
+		}
 		applyShortcutPreferences('owlat');
 	});
 

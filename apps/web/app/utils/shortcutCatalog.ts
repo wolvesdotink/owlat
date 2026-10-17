@@ -282,7 +282,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 	{
 		id: 'postbox.markUnread',
 		scope: 'postbox',
-		keys: [],
+		keys: ['U'],
 		labelKey: L('markUnread'),
 		groupKey: G.triage,
 	},

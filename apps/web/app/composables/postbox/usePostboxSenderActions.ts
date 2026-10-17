@@ -14,7 +14,7 @@ export type PostboxSenderTarget =
 
 /**
  * What a person does to a sender (SPEC §5), shared by the Senders page, the
- * Subscriptions panel, the reader's Unsubscribe chip and ⇧E / ⇧U: set the
+ * Subscriptions panel, the reader's Unsubscribe chip and ⇧E / ⇧O: set the
  * status, unsubscribe, resume paused drafts.
  * Each server call is one undoable operation; the toast says what happened,
  * including the recent mail it archived.
