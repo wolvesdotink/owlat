@@ -13045,6 +13045,8 @@
 				"auto_archive": "Auto-archive",
 				"unsubscribe": "Unsubscribe"
 			},
+			"keepAsIs": "Keep as is",
+			"keepAsIsTitle": "Keep this sender as it is and stop suggesting a change",
 			"result": {
 				"confirmed": "Unsubscribed",
 				"failed": "Couldn't unsubscribe; mail from them is archived",

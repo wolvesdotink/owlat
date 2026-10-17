@@ -13045,6 +13045,8 @@
 				"auto_archive": "Auto-Archiv",
 				"unsubscribe": "Abmelden"
 			},
+			"keepAsIs": "So lassen",
+			"keepAsIsTitle": "Absender so lassen und keine Änderung mehr vorschlagen",
 			"result": {
 				"confirmed": "Abgemeldet",
 				"failed": "Abmelden hat nicht geklappt; ihre Mails werden archiviert",

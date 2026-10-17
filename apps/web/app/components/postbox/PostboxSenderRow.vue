@@ -6,7 +6,8 @@
  *
  * Below the name: the unsubscribe result, the "drafts paused" marker lane
  * drafts writes (with Resume), and on the To review tab what the suggestion
- * would set. The row emits; the panel runs the server calls.
+ * would set, with "Keep as is" to turn the suggestion down (a user Keep).
+ * The row emits; the panel runs the server calls.
  */
 import {
 	SENDER_STATUSES,
@@ -52,12 +53,24 @@ function onStatus(value: string) {
 				{{ name }}
 			</p>
 			<p v-if="row.displayName" class="text-xs text-text-tertiary truncate">{{ row.address }}</p>
-			<p v-if="row.suggestion" class="text-xs text-brand mt-0.5">
+			<p v-if="row.suggestion" class="text-xs text-brand mt-0.5 flex items-center gap-1.5">
 				{{
 					t('postbox.senders.suggested', {
 						status: t(`postbox.senders.status.${suggestedStatus(row.suggestion)}`),
 					})
 				}}
+				<!-- Keep is already the selected segment, so the control cannot say
+				     "I chose Keep": this records it, and the suggestion goes away. -->
+				<button
+					type="button"
+					class="text-text-secondary font-medium hover:underline disabled:opacity-50"
+					:disabled="busy"
+					:title="t('postbox.senders.keepAsIsTitle')"
+					data-testid="sender-keep-as-is"
+					@click="emit('setStatus', 'keep')"
+				>
+					{{ t('postbox.senders.keepAsIs') }}
+				</button>
 			</p>
 			<p v-if="resultKey" class="text-xs text-text-secondary mt-0.5">{{ t(resultKey) }}</p>
 			<p

@@ -60,6 +60,15 @@ describe('PostboxSenderRow', () => {
 		expect(w.emitted('setStatus')).toEqual([['unsubscribed']]);
 	});
 
+	it('lets the person turn a suggestion down with an explicit Keep', async () => {
+		// Keep is already the selected segment on a default profile, so the
+		// control alone can never record "I chose Keep".
+		const w = mountRow({ suggestion: 'digest' });
+		await w.get('[data-testid="sender-keep-as-is"]').trigger('click');
+		expect(w.emitted('setStatus')).toEqual([['keep']]);
+		expect(mountRow().find('[data-testid="sender-keep-as-is"]').exists()).toBe(false);
+	});
+
 	it('shows the drafts-paused marker with Resume', async () => {
 		const w = mountRow({ autoDraftPausedAt: 1 });
 		expect(w.text()).toContain('Drafts paused');

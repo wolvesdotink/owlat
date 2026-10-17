@@ -96,6 +96,25 @@ describe('setStatus', () => {
 		expect(profile.statusOperationId).toBe(result.operationId);
 	});
 
+	it('records an explicit Keep on a default profile and drops its suggestion', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedPersonalMailbox(t);
+		let weeks = emptySenderWeeks(Date.now());
+		for (let i = 0; i < 6; i++) weeks = addSenderDelivery(weeks, Date.now());
+		const profile = await seedProfile(t, mailboxId, { ...weeks, lastDeliveredAt: Date.now() });
+		expect((await t.query(api.mail.senders.page.review, { mailboxId })).total).toBe(1);
+		const result = await t.mutation(api.mail.senders.status.setStatus, {
+			target: { mailboxId, senderDigest: profile.senderDigest },
+			status: 'keep',
+		});
+		const { changes } = await changesOf(t, result.operationId!);
+		expect(changes[0]!.change).toMatchObject({
+			before: { status: 'keep', statusSource: 'default' },
+			after: { status: 'keep', statusSource: 'user' },
+		});
+		expect((await t.query(api.mail.senders.page.review, { mailboxId })).total).toBe(0);
+	});
+
 	it('writes nothing when the status is already set', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seedPersonalMailbox(t);
