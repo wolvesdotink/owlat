@@ -22,6 +22,7 @@ const undoRun = vi.fn(async (_args: unknown): Promise<unknown> => ({ ok: false }
 const ackRun = vi.fn(async (_args: unknown): Promise<unknown> => ({ ok: true }));
 const showToast = vi.fn();
 const notices = ref<unknown[] | null>(null);
+const undoStatus = ref<Record<string, unknown> | null>(null);
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', () => i18n.global);
@@ -30,7 +31,11 @@ beforeAll(() => {
 		run: opts.label() === 'Undo' ? undoRun : ackRun,
 		isLoading: ref(false),
 	}));
-	vi.stubGlobal('useConvexQuery', () => ({ data: notices, isLoading: ref(false) }));
+	vi.stubGlobal('useConvexQuery', (_query: unknown, args: () => unknown) => {
+		const value = args();
+		const isStatus = typeof value === 'object' && value !== null && 'operationId' in value;
+		return { data: isStatus ? undoStatus : notices, isLoading: ref(false) };
+	});
 });
 
 beforeEach(() => {
@@ -38,6 +43,7 @@ beforeEach(() => {
 	ackRun.mockClear();
 	showToast.mockReset();
 	notices.value = null;
+	undoStatus.value = null;
 });
 
 function result(overrides: Record<string, unknown>) {
@@ -88,6 +94,34 @@ describe('usePostboxArrivalUndo', () => {
 		showToast.mockReset();
 		undoRun.mockResolvedValue(result({ status: 'expired' }));
 		expect((await pressUndo())[0]).toBe('This can no longer be undone');
+	});
+
+	it('announces a multi-page undo once its last page ran, with every page counted', async () => {
+		undoRun.mockResolvedValue(result({ restored: 100, hasMore: true }));
+		const [first] = await pressUndo();
+		expect(first).toBe('Undoing. The rest follows in a moment.');
+		undoStatus.value = {
+			status: 'undone',
+			kind: 'fix',
+			restored: 140,
+			skipped: 0,
+			isNeedsReplyCleared: false,
+			isDone: false,
+		};
+		await nextTick();
+		expect(showToast).toHaveBeenCalledTimes(2);
+		// A later page skipped a row and found a cleared reminder.
+		undoStatus.value = {
+			...undoStatus.value,
+			status: 'undo_partial',
+			restored: 150,
+			skipped: 1,
+			isNeedsReplyCleared: true,
+			isDone: true,
+		};
+		await nextTick();
+		expect(showToast).toHaveBeenCalledTimes(3);
+		expect(showToast.mock.calls[2]![0]).toBe('Moved back; reply reminders were not restored.');
 	});
 
 	it('shows a plain toast when there is no operation to undo', () => {

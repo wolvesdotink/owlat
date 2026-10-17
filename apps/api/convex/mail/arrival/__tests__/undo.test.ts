@@ -144,7 +144,7 @@ describe('operations.undo', () => {
 		});
 	});
 
-	it('pages through more than 100 rows and says a reply reminder was not restored', async () => {
+	it('pages through more than 100 rows and reports the outcome of every page', async () => {
 		vi.useFakeTimers();
 		const t = learnTest();
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
@@ -155,10 +155,14 @@ describe('operations.undo', () => {
 			folders.inbox,
 			Array.from({ length: 149 }, (_, i) => 1_000 + i)
 		);
-		// The oldest thread waits for a reply: its archive row sits on the second page.
+		// The oldest message is a conversation of its own that waits for a reply:
+		// archived last, its row (the one marked) sits on a later undo page.
 		await t.run(async (ctx) => {
 			const oldest = (await ctx.db.get(ids[0]!))!;
-			await ctx.db.patch(oldest.threadId, {
+			const { _id, _creationTime, ...thread } = (await ctx.db.get(oldest.threadId))!;
+			const own = await ctx.db.insert('mailThreads', {
+				...thread,
+				messageCount: 1,
 				needsReply: {
 					messageId: oldest._id,
 					source: 'llm',
@@ -166,6 +170,7 @@ describe('operations.undo', () => {
 					detectedAt: Date.now(),
 				},
 			});
+			await ctx.db.patch(oldest._id, { threadId: own });
 		});
 		const fix = await t.mutation(api.mail.arrival.fix.apply, {
 			messageId: message._id,
@@ -173,16 +178,35 @@ describe('operations.undo', () => {
 			scope: 'sender',
 		});
 		expect(fix.archived).toBe(150);
-		const result = await undo(t, fix.operationId!);
-		expect(result).toMatchObject({
-			status: 'undone',
-			restored: 100,
-			hasMore: true,
-			isNeedsReplyCleared: true,
+		const { changes } = await operationOf(t, fix.operationId!);
+		const marked = changes.findIndex((row) => row.isNeedsReplyCleared === true);
+		expect(marked).toBeGreaterThanOrEqual(100);
+		// Moved on by hand since: its row, on a later page, is skipped.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(ids[1]!, { folderId: folders.trash });
 		});
+		const first = await undo(t, fix.operationId!);
+		expect(first).toMatchObject({ status: 'undone', restored: 100, hasMore: true });
+		expect(first.isNeedsReplyCleared).toBe(false);
+		expect(
+			await t.query(api.mail.arrival.operations.undoStatus, { operationId: fix.operationId! })
+		).toMatchObject({ isDone: false, restored: 100 });
+
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		for (const id of [message._id, ...ids]) expect(await roleOf(t, id)).toBe('inbox');
-		expect((await operationOf(t, fix.operationId!)).operation.status).toBe('undone');
+		expect(
+			await t.query(api.mail.arrival.operations.undoStatus, { operationId: fix.operationId! })
+		).toEqual({
+			status: 'undo_partial',
+			kind: 'fix',
+			restored: 150,
+			skipped: 1,
+			isNeedsReplyCleared: true,
+			isDone: true,
+		});
+		for (const id of [message._id, ...ids.filter((id) => id !== ids[1])]) {
+			expect(await roleOf(t, id)).toBe('inbox');
+		}
+		expect((await operationOf(t, fix.operationId!)).operation.status).toBe('undo_partial');
 		// The cleared reminder stays cleared.
 		const oldest = await messageOf(t, ids[0]!);
 		expect((await threadOf(t, oldest.threadId)).needsReply).toBeUndefined();

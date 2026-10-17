@@ -13297,6 +13297,7 @@
 		"undo": {
 			"operation": "Undo",
 			"done": "Undone",
+			"inProgress": "Undoing. The rest follows in a moment.",
 			"partial": "Undone, except what changed since",
 			"movedBackNoReminders": "Moved back; reply reminders were not restored.",
 			"unsubscribeNotRecalled": "The unsubscribe request was already sent and cannot be taken back.",

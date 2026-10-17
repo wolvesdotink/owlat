@@ -17,6 +17,7 @@ import {
 	senderStatusSourceValidator,
 	senderStatusValidator,
 	senderUnsubscribeValidator,
+	undoProgressValidator,
 	unreadArchiveEvidenceValidator,
 } from '../lib/validators/arrival';
 import { mailArrivalRulesTables } from './mailArrivalRules';
@@ -149,6 +150,8 @@ export const mailArrivalTables = {
 		status: arrivalOperationStatusValidator,
 		createdAt: v.number(),
 		undoneAt: v.optional(v.number()),
+		// Summed over the undo's pages (mail/arrival/operations.ts).
+		undoProgress: v.optional(undoProgressValidator),
 		expiresAt: v.number(), // 30 days
 	})
 		.index('by_mailbox_created', ['mailboxId', 'createdAt'])

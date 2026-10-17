@@ -197,6 +197,20 @@ export const arrivalOperationChangeValidator = v.union(
 
 export type ArrivalOperationChangeRow = Infer<typeof arrivalOperationChangeValidator>;
 
+/**
+ * `mailArrivalOperations.undoProgress` (§4.4): what an undo restored so far,
+ * summed over its pages, and whether the last page ran. The client announces
+ * the outcome once `isDone`.
+ */
+export const undoProgressValidator = v.object({
+	restored: v.number(),
+	skipped: v.number(),
+	isNeedsReplyCleared: v.boolean(),
+	isDone: v.boolean(),
+});
+
+export type UndoProgress = Infer<typeof undoProgressValidator>;
+
 // ── Rules: filter fields, delayed actions ─────────────────────────────────
 
 /** `mailFilters.aiCondition` (§6.2): the question R2 answers, revision-bound. */
