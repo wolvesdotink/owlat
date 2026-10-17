@@ -4,7 +4,7 @@
  * the band could not list everything it says so instead of dropping rows.
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -12,8 +12,15 @@ vi.mock('@owlat/api', () => ({
 	api: { mail: { interpret: { todo: { listNoReplyToDo: 'todo' } } } },
 }));
 const data = ref<unknown>(undefined);
+// The viewer's "Show the brief above conversations", and the mailbox's scope.
+const isBriefShown = ref(true);
+const scope = ref<'personal' | 'shared'>('personal');
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+	vi.stubGlobal('usePostboxSettings', () => ({ autoSummarize: isBriefShown }));
+	vi.stubGlobal('useInboxes', () => ({
+		byId: computed(() => new Map([['mb1', { scope: scope.value }]])),
+	}));
 	vi.stubGlobal('useConvexQuery', () => ({ data, isLoading: ref(false) }));
 });
 
@@ -79,5 +86,25 @@ describe('TodayToDo', () => {
 	it('renders nothing with nothing to do', () => {
 		data.value = { rows: [], isTruncated: false };
 		expect(mountBand().find('[data-testid="today-todo"]').exists()).toBe(false);
+	});
+
+	it('shows a personal row as its subject and sender, without AI wording or chip, with the brief off', () => {
+		data.value = { rows: [row], isTruncated: false };
+		isBriefShown.value = false;
+		try {
+			const w = mountBand();
+			expect(w.text()).toContain('Invoice 2026-10');
+			expect(w.text()).toContain('Hetzner Online');
+			expect(w.text()).not.toContain('Pay invoice');
+			expect(w.text()).not.toContain('+2 more');
+			// A shared mailbox's rows are the team's actions and stay.
+			scope.value = 'shared';
+			const shared = mountBand();
+			expect(shared.text()).toContain('Pay invoice 2026-10, €38.08');
+			expect(shared.text()).toContain('+2 more');
+		} finally {
+			isBriefShown.value = true;
+			scope.value = 'personal';
+		}
 	});
 });

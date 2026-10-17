@@ -9,7 +9,8 @@ import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
-import { POSTBOX_PRIORITY_BRIEF_LINES, POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
+import { POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
+import { POSTBOX_BRIEF_LINES } from '~/composables/postbox/usePostboxBriefLines';
 
 vi.mock('~/composables/postbox/usePostboxListClock', () => ({
 	usePostboxThreadTimestamp: () => () => '09:12',
@@ -45,7 +46,7 @@ function mountRow(
 			provide: {
 				...(opts.priority ? { [POSTBOX_PRIORITY_ROWS as symbol]: true } : {}),
 				...(opts.briefShown !== undefined
-					? { [POSTBOX_PRIORITY_BRIEF_LINES as symbol]: ref(opts.briefShown) }
+					? { [POSTBOX_BRIEF_LINES as symbol]: ref(opts.briefShown) }
 					: {}),
 			},
 			stubs: {
@@ -130,5 +131,30 @@ describe('PostboxThreadRowBody in All mail', () => {
 		const w = mountRow({});
 		expect(w.find('[data-testid="row-gist-line"]').exists()).toBe(false);
 		expect(w.text()).toContain('raw snippet');
+	});
+	it('shows the plain snippet, never a brief or gist line, when the viewer turned the brief off', () => {
+		const ask = {
+			...BRIEF_TOP,
+			forYou: 2,
+			isReplyNeeded: true,
+			top: {
+				itemId: 'i1',
+				bucket: 'forUs',
+				responsibility: 'us',
+				text: { en: 'Send the signed quote', de: 'Schick das Angebot' },
+			},
+		};
+		const on = mountRow({ briefTop: ask }, { briefShown: true });
+		expect(on.text()).toContain('Send the signed quote');
+		for (const briefTop of [ask, GIST]) {
+			const off = mountRow({ briefTop }, { briefShown: false });
+			expect(off.text()).not.toContain('Send the signed quote');
+			expect(off.text()).not.toContain('for you');
+			expect(off.find('[data-testid="row-gist-line"]').exists()).toBe(false);
+			expect(off.text()).toContain('raw snippet');
+		}
+		// A shared mailbox's action line is the team's, not the viewer's brief.
+		const shared = mountRow({ briefTop: { ...ask, mode: 'actions' } }, { briefShown: false });
+		expect(shared.text()).toContain('Send the signed quote');
 	});
 });

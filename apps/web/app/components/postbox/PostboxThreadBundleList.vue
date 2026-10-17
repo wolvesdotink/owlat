@@ -22,6 +22,7 @@ import {
 import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
+import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 
 const props = defineProps<{
 	entries: Array<PostboxFeedEntry<PostboxThreadRowMessage>>;
@@ -43,6 +44,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+// The viewer's brief preference for every row (no AI lines when it is off).
+provideBriefLines(usePostboxSettings().autoSummarize);
 usePostboxListNow(); // one minute clock for every row's timestamp
 
 // The sender-trust marker gate, resolved once for the list (not per row).
