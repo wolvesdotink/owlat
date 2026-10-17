@@ -23,6 +23,11 @@
  * has at most {@link MAX_QUOTES_PER_CLAIM} quotes within the schema's quote
  * limit; any other claim stays unverified and the verification incomplete
  * (Sol r5 F1), which keeps automation held.
+ *
+ * Batches run side by side, at most {@link VERIFY_PARALLELISM} in flight, and
+ * their answers are merged in batch order, so the verdicts are exactly the
+ * ones the one-after-the-other loop produced. Each call is still metered and
+ * admitted on its own, against its own request id on the run's hold.
  */
 
 import { z } from 'zod';
@@ -48,6 +53,8 @@ import type { InterpretRunHold } from './runHold';
 
 export const VERIFY_BATCH_SIZE = 3;
 export const VERIFY_FEATURE = 'interpret_verify';
+/** Verify batches in flight at once. */
+export const VERIFY_PARALLELISM = 4;
 
 /** A claim statement's length in the prompt (an item's or fact's two clamped assertions and framing). */
 export const VERIFY_STATEMENT_CHARS = 2 * INTERPRET_TEXT_LIMITS.assertion + 200;
@@ -113,6 +120,37 @@ export function batchClaims<T>(claims: readonly T[], size = VERIFY_BATCH_SIZE): 
 	return out;
 }
 
+/** What one verify batch came back with. */
+type BatchOutcome =
+	| { kind: 'answered'; verdicts: z.infer<typeof verdictSchema>['verdicts'] }
+	| { kind: 'failed'; refusal?: AdmissionRefusalData }
+	/** Not sent: an earlier batch's spend refusal stopped the rest. */
+	| { kind: 'skipped' };
+
+/**
+ * Run `count` tasks, at most `limit` at once, in index order of start. A
+ * task's result lands at its index. `shouldStop` is asked before each start;
+ * a task not started gets `stopped`. Never rejects when no task does.
+ */
+async function runBounded<R>(
+	count: number,
+	limit: number,
+	task: (index: number) => Promise<R>,
+	shouldStop: () => boolean,
+	stopped: R
+): Promise<R[]> {
+	const results: R[] = [];
+	let next = 0;
+	const lane = async () => {
+		while (next < count) {
+			const index = next++;
+			results[index] = shouldStop() ? stopped : await task(index);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(Math.max(limit, 1), count) }, lane));
+	return results;
+}
+
 /**
  * Check every claim. Returns the verdicts that came back, whether any batch
  * failed (its claims get no verdict and stay unverified), and a spend refusal
@@ -130,6 +168,8 @@ export async function verifyClaims(
 		model?: Awaited<ReturnType<typeof resolveLanguageModel>>;
 		/** The run's hold: every batch draws on it (`runHold.ts`). */
 		hold?: InterpretRunHold;
+		/** Batches in flight at once; 1 is the serial loop (tests compare the two). */
+		parallelism?: number;
 	} = {}
 ): Promise<{
 	verdicts: Map<string, VerifyVerdict>;
@@ -153,7 +193,8 @@ export async function verifyClaims(
 	// hold covers, stays unverified, and the run is `partial` without a retry.
 	const checkable = claims.filter(fitsVerifyPrompt).slice(0, MAX_VERIFY_CLAIMS);
 	const isUnsendable = checkable.length < claims.length;
-	for (const [index, batch] of batchClaims(checkable).entries()) {
+	const batches = batchClaims(checkable);
+	const runBatch = async (index: number): Promise<BatchOutcome> => {
 		try {
 			const { object } = await meterLlmCall(
 				ctx,
@@ -169,7 +210,7 @@ export async function verifyClaims(
 							meter,
 							model,
 							schema: verdictSchema,
-							prompt: buildVerifyPrompt(batch),
+							prompt: buildVerifyPrompt(batches[index]!),
 							temperature: 0,
 						});
 					} finally {
@@ -179,17 +220,42 @@ export async function verifyClaims(
 				// A lost ledger row under-counts; failing verification over it would drop claims.
 				{ onWriteError: 'ignore' }
 			);
-			const ids = new Set(batch.map((c) => c.id));
-			for (const { claimId, verdict } of object.verdicts) {
-				if (ids.has(claimId) && !verdicts.has(claimId)) verdicts.set(claimId, verdict);
-			}
-			if (batch.some((c) => !verdicts.has(c.id))) isIncomplete = true;
+			return { kind: 'answered', verdicts: object.verdicts };
 		} catch (error) {
-			isIncomplete = true;
-			// A refusal stops the rest too: they would be refused the same way.
-			refusal = admissionRefusalOf(error) ?? undefined;
-			if (refusal) break;
+			const refused = admissionRefusalOf(error);
+			return refused ? { kind: 'failed', refusal: refused } : { kind: 'failed' };
 		}
+	};
+	// A refusal stops the batches not sent yet: they would be refused the same way.
+	let isRefused = false;
+	const outcomes = await runBounded(
+		batches.length,
+		opts.parallelism ?? VERIFY_PARALLELISM,
+		async (index) => {
+			const outcome = await runBatch(index);
+			if (outcome.kind === 'failed' && outcome.refusal) isRefused = true;
+			return outcome;
+		},
+		() => isRefused,
+		{ kind: 'skipped' } as BatchOutcome
+	);
+	// Merged in batch order, as the serial loop did: the first answer for a claim
+	// wins, and nothing after the first refused batch counts (the serial loop
+	// never sent it), even when it was in flight already.
+	for (const [index, batch] of batches.entries()) {
+		const outcome = outcomes[index]!;
+		if (outcome.kind === 'skipped') break; // only ever after a refused batch
+		if (outcome.kind === 'failed') {
+			isIncomplete = true;
+			refusal = outcome.refusal;
+			if (refusal) break;
+			continue;
+		}
+		const ids = new Set(batch.map((c) => c.id));
+		for (const { claimId, verdict } of outcome.verdicts) {
+			if (ids.has(claimId) && !verdicts.has(claimId)) verdicts.set(claimId, verdict);
+		}
+		if (batch.some((c) => !verdicts.has(c.id))) isIncomplete = true;
 	}
 	return { verdicts, isIncomplete, isUnsendable, ...(refusal ? { refusal } : {}) };
 }

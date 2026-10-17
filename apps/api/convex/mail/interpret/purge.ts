@@ -23,7 +23,8 @@
  *     go `stale`; 7. the surviving sources' claim records lose deleted
  *     items and facts; 8. the clarification questions (Postbox thread, Team Inbox
  *     messages) and 9. the Answer mode ask sessions lose their links to
- *     deleted items (`purgeQuestions.ts`).
+ *     deleted items (`purgeQuestions.ts`); 10. read on arrival's rows, digest
+ *     lines, projection and gist (`mail/arrival/purgeRanges.ts`).
  *
  * Settling (`purgeQuestions.ts settleSourcesJob`) bumps the brief's deletion
  * epoch and revision, drops the overview, recomputes completeness, clears a
@@ -55,6 +56,7 @@ import {
 	type RangeRun,
 } from './purgeDrain';
 import { clarificationAndRereadRanges, settleSourcesJob, stripPlan } from './purgeQuestions';
+import { arrivalSourceRanges, releaseArrivalSourceAccounting } from '../arrival/purgeRanges';
 
 /**
  * Activity key families the send pipeline (`sendActivity.ts`) writes per
@@ -214,7 +216,7 @@ const extractionsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
 	);
 
 /** 2. The purged sources' snapshots (and claim records). */
-const snapshotsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
+const snapshotsRange: PurgeRange = (ctx, { ref, cursor, budget, state }) =>
 	drainSteps(
 		budget,
 		cursor,
@@ -229,6 +231,7 @@ const snapshotsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
 				async (row) => {
 					// A purged source will never record an outcome.
 					await settleSource(ctx, row.sourceKey, 'purged');
+					await releaseArrivalSourceAccounting(ctx, ref, row);
 					return deleting(ctx)(row);
 				}
 			)
@@ -487,6 +490,8 @@ export const sourcesPlan: JobPlan = {
 		plansRange,
 		claimRecordsRange,
 		...clarificationAndRereadRanges,
+		// Read on arrival (appended: a job mid-walk keeps its range index).
+		...arrivalSourceRanges,
 	],
 	settle: settleSourcesJob,
 };

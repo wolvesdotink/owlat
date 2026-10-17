@@ -30,7 +30,7 @@ import { isOrgInfrastructureAccount } from '../../mail/external/personalAccount'
 import { deleteStoredAccessToken } from '../../mail/external/accessTokenStore';
 import { drainThreadBrief, eraseDraftPlans } from '../../contacts/erasure/threadBriefPhases';
 import { eraseCapturedFiles } from './capturedFilePhases';
-import { arrivalMailboxRanges } from './arrivalPhases';
+import { arrivalMailboxRanges } from '../../mail/arrival/mailboxRows';
 import {
 	deleteAskSession,
 	deleteBlobAndReceipt,

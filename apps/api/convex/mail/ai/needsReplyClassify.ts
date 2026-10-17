@@ -170,8 +170,10 @@ export const classifyThread = internalAction({
 
 			// Never throws; a replayed run (the sweep, a retry) hands back the stored
 			// projection instead of calling the model again. While the thread's
-			// earlier deferred mail is still being read (D10), this classification
-			// continues later and the thread stays pending (needsReplyGates.ts).
+			// earlier deferred mail is still being read (D10), or another run holds
+			// the message or it waits for its category (SPEC §2.5), this
+			// classification continues later and the thread stays pending
+			// (needsReplyGates.ts).
 			const run = await runInterpretation(ctx, {
 				source: { kind: 'mail', id: latestInbound.messageId },
 				predecessors: 'caller_continues',
@@ -188,6 +190,7 @@ export const classifyThread = internalAction({
 				? await applyProjection(ctx, {
 						threadId: args.threadId,
 						mailboxId: context.mailboxId,
+						ownerUserId: context.ownerUserId,
 						expectedLatestMessageId: context.latestMessageId,
 						latestInbound: {
 							messageId: latestInbound.messageId,
@@ -224,6 +227,7 @@ async function applyProjection(
 	args: {
 		threadId: Id<'mailThreads'>;
 		mailboxId: Id<'mailboxes'>;
+		ownerUserId: string;
 		expectedLatestMessageId?: Id<'mailMessages'>;
 		latestInbound: LatestInbound;
 		projection: NeedsReplyProjection;
@@ -240,6 +244,7 @@ async function applyProjection(
 	const clarification =
 		decision.needsReply && !(await isHeldOutByScreener(ctx, args))
 			? await clarifyWithMemory(ctx, {
+					ownerUserId: args.ownerUserId,
 					transcript: args.transcript,
 					fromAddress: args.latestInbound.fromAddress,
 					threadId: args.threadId,
@@ -287,6 +292,8 @@ async function applyProjection(
 async function clarifyWithMemory(
 	ctx: ActionCtx,
 	opts: {
+		/** Whose background AI bucket pays (#1380). */
+		ownerUserId: string;
 		transcript: string;
 		fromAddress: string;
 		threadId: Id<'mailThreads'>;
@@ -295,7 +302,9 @@ async function clarifyWithMemory(
 	}
 ): Promise<ClarificationFlag | undefined> {
 	try {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
+			ownerUserId: opts.ownerUserId,
+		});
 	} catch (error) {
 		rethrowAdmissionRefusal(error);
 		return undefined;
@@ -353,14 +362,23 @@ async function slotItemsFor(
  * starter draft — the plain "Draft reply" button still works.
  */
 export const draftWithAnswers = internalAction({
-	args: { threadId: v.id('mailThreads'), deferrals: v.optional(v.number()) },
-	handler: deferredHandler<{ threadId: Id<'mailThreads'>; deferrals?: number }>(
-		deferDraft,
-		async (ctx, args) => {
-			anchorActionDeadline(ctx);
-			await draftClarificationReply(ctx, { threadId: args.threadId });
-		}
-	),
+	args: {
+		threadId: v.id('mailThreads'),
+		/** Who answered the card: the rate limit is theirs (#1380). */
+		triggeredByUserId: v.optional(v.string()),
+		deferrals: v.optional(v.number()),
+	},
+	handler: deferredHandler<{
+		threadId: Id<'mailThreads'>;
+		triggeredByUserId?: string;
+		deferrals?: number;
+	}>(deferDraft, async (ctx, args) => {
+		anchorActionDeadline(ctx);
+		await draftClarificationReply(ctx, {
+			threadId: args.threadId,
+			...(args.triggeredByUserId ? { triggeredByUserId: args.triggeredByUserId } : {}),
+		});
+	}),
 });
 
 function deferDraft(): DeferrableAction {

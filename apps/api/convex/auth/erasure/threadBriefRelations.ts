@@ -44,6 +44,7 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 	),
 	descendant('mailboxes', 'threadItems', 'mailboxId', 'delete', WITH_THREAD),
 	descendant('mailThreads', 'threadPurgeJobs', 'mailThreadId', 'retain', PURGE_JOB),
+	descendant('mailboxes', 'threadPurgeJobs', 'mailboxId', 'retain', PURGE_JOB),
 	descendant('mailMessages', 'threadPurgeJobs', 'sources[].id', 'retain', PURGE_JOB),
 	descendant('mailMessages', 'messageInterpretations', 'source.id', 'delete', WITH_THREAD),
 	descendant(

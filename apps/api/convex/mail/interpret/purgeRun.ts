@@ -100,15 +100,26 @@ async function startScheduled(ctx: MutationCtx, fields: NewPurgeJob, isInline: b
 	}
 }
 
-/** Remove what `sources` contributed to one thread's brief (see `purge.ts`). */
+/**
+ * Remove what `sources` contributed to one thread's brief (see `purge.ts`).
+ * A Postbox job records the messages' mailbox now, while the thread still
+ * exists: `mailboxId`, else the thread's.
+ */
 export async function purgeSourcesFromThread(
 	ctx: MutationCtx,
 	ref: ThreadRef,
-	sources: readonly InterpretationSource[]
+	sources: readonly InterpretationSource[],
+	opts: { mailboxId?: Id<'mailboxes'> } = {}
 ): Promise<void> {
 	if (sources.length === 0) return;
+	const mailboxId =
+		opts.mailboxId ?? (ref.kind === 'mail' ? (await ctx.db.get(ref.id))?.mailboxId : undefined);
 	await bumpDeletionEpoch(ctx, ref);
-	await startScheduled(ctx, { ref, kind: 'sources', sources: [...sources] }, true);
+	await startScheduled(
+		ctx,
+		{ ref, kind: 'sources', sources: [...sources], ...(mailboxId ? { mailboxId } : {}) },
+		true
+	);
 }
 
 /** Purge a deleted thread's brief (see `purgeThread.ts`). Call where the thread is deleted. */
