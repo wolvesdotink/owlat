@@ -29,6 +29,35 @@ vi.mock('../../../lib/llm/dispatch', async () => {
 	const { metered } = await import('../../../analytics/__tests__/meteredDispatch.testlib');
 	return { runLlmObject: metered((opts: unknown) => llm.runLlmObject(opts)) };
 });
+/** Runs right after a run's lease claim returns, once (Sol fixes-r3 F1's interleaving). */
+const afterClaim = vi.hoisted(() => ({ hook: undefined as undefined | (() => Promise<void>) }));
+
+vi.mock('../runApply', async () => {
+	const actual = await vi.importActual<typeof import('../runApply')>('../runApply');
+	const { getFunctionName } = await import('convex/server');
+	const withSourceLease: typeof actual.withSourceLease = (ctx, source, depth, body) =>
+		actual.withSourceLease(
+			{
+				runMutation: (async (ref: Parameters<typeof getFunctionName>[0], args: unknown) => {
+					const out = await (ctx.runMutation as (r: unknown, a: unknown) => Promise<unknown>)(
+						ref,
+						args
+					);
+					const hook = afterClaim.hook;
+					if (hook && getFunctionName(ref).includes('claimSourceLease')) {
+						afterClaim.hook = undefined;
+						await hook();
+					}
+					return out;
+				}) as typeof ctx.runMutation,
+			},
+			source,
+			depth,
+			body
+		);
+	return { ...actual, withSourceLease };
+});
+
 vi.mock('../../../lib/llmProvider', () => ({
 	resolveLanguageModel: vi.fn(async () => ({ modelId: 'stub-model' })),
 }));
@@ -70,6 +99,7 @@ const extractions = () =>
 	).length;
 
 beforeEach(() => {
+	afterClaim.hook = undefined;
 	llm.beforeExtraction = undefined;
 	llm.runLlmObject.mockReset();
 	llm.runLlmObject.mockImplementation(
@@ -170,6 +200,56 @@ describe('per-source lease', () => {
 		const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
 
 		expect(out.status).toBe('busy');
+		const rows = await t.run((ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows).toEqual([]);
+	});
+
+	it('a snapshot captured between a run’s claim and its read buys one extraction', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId } = await seedMailThread(t, { text: TEXT });
+		const source = { kind: 'mail' as const, id: messageId };
+		let competitor: Promise<unknown> | undefined;
+		// The run claims while the source has no snapshot; delivery captures it
+		// right after and starts the run that reads it (Sol fixes-r3 F1).
+		afterClaim.hook = async () => {
+			await t.run((ctx) => captureInterpretSource(ctx, { source, isLive: true }));
+			competitor = t.action(internal.mail.interpret.run.interpretMessage, { source });
+		};
+
+		const first = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		const second = await competitor;
+
+		expect(first).toEqual({
+			status: 'skipped',
+			isReplayed: false,
+			createdItemIds: [],
+			errorCode: 'no_snapshot',
+		});
+		expect(second).toMatchObject({ status: 'complete', isReplayed: false });
+		expect(extractions()).toBe(1);
+		const rows = await t.run((ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows).toHaveLength(1);
+	});
+
+	it('refuses a tokenless commit for a source with a snapshot row', async () => {
+		const t = convexTest(schema, modules);
+		const { source, messageId, threadId } = await eligibleSource(t);
+		const out = await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+			source,
+			threadRef: { kind: 'mail', id: threadId },
+			mode: 'brief',
+			contentRevision: 'r1',
+			extractorVersion: 1,
+			expectedRevision: 0,
+			deletionEpoch: 0,
+			sourceAt: Date.now(),
+			direction: 'inbound',
+			status: 'skipped',
+			skipReason: 'ineligible',
+		});
+		expect(out).toMatchObject({ outcome: 'leaseLost' });
+		expect((await leaseOf(t, messageId)).token).toBeNull();
 		const rows = await t.run((ctx) => ctx.db.query('messageInterpretations').collect());
 		expect(rows).toEqual([]);
 	});

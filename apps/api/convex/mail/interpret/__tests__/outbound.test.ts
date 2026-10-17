@@ -26,6 +26,7 @@ import {
 	seedTeamThread,
 	type Test,
 } from './interpret.testlib';
+import { applyAsRun } from './lease.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../../lib/sessionOrganization');
@@ -99,7 +100,7 @@ async function seedOutbound(
 
 /** Two open items from the inbound message: one from Jonas, one from Mia. */
 async function seedItems(t: Test, messageId: Id<'mailMessages'>, threadId: Id<'mailThreads'>) {
-	await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+	await applyAsRun(t, {
 		source: { kind: 'mail', id: messageId },
 		threadRef: { kind: 'mail', id: threadId },
 		mode: 'brief',
@@ -143,7 +144,7 @@ async function applyReply(
 				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
 				.first())!.interpretationRevision
 	);
-	await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+	await applyAsRun(t, {
 		source: { kind: 'outboundMail', id: outboundId },
 		threadRef: { kind: 'mail', id: threadId },
 		mode: 'brief',
@@ -529,7 +530,7 @@ describe('Team send finalization → thread brief', () => {
 		const t = convexTest(schema, modules);
 		const { threadId, inboundId } = await seedTeamThread(t);
 		const { sendId } = await seedFollowUp(t, threadId, inboundId);
-		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+		await applyAsRun(t, {
 			source: { kind: 'inbound', id: inboundId },
 			threadRef: { kind: 'team', id: threadId },
 			mode: 'actions',
@@ -593,7 +594,7 @@ describe('Team send finalization → thread brief', () => {
 		const t = convexTest(schema, modules);
 		const { threadId, inboundId } = await seedTeamThread(t);
 		const sendId = await seedSend(t, inboundId);
-		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+		await applyAsRun(t, {
 			source: { kind: 'inbound', id: inboundId },
 			threadRef: { kind: 'team', id: threadId },
 			mode: 'actions',
@@ -618,7 +619,7 @@ describe('Team send finalization → thread brief', () => {
 				)
 				.first()
 		);
-		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+		await applyAsRun(t, {
 			source: { kind: 'teamReply', id: sendId },
 			threadRef: { kind: 'team', id: threadId },
 			mode: 'actions',
