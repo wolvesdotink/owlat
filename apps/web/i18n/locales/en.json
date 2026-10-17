@@ -12,6 +12,14 @@
 		"requestSentTitle": "Request sent",
 		"signOut": "Sign out"
 	},
+	"answer": {
+		"nudge": {
+			"draft": "Draft a nudge",
+			"overdue": "Past its due date",
+			"stale": "No reply for 3 business days",
+			"markReceivedOperation": "Mark received"
+		}
+	},
 	"auth": {
 		"fields": {
 			"email": "Email",

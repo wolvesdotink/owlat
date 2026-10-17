@@ -45,7 +45,10 @@ vi.mock('~/composables/useResponsePlan', () => ({
 		return planState;
 	},
 }));
-vi.mock('~/composables/useAnswerAskSession', () => ({ useAnswerAskSession: () => ({}) }));
+const askStart = vi.fn(async () => {});
+vi.mock('~/composables/useAnswerAskSession', () => ({
+	useAnswerAskSession: () => ({ start: askStart }),
+}));
 const preparedText = ref<string | null>(null);
 const preparedAttach = vi.fn(async () => {});
 vi.mock('~/composables/useAnswerPreparedDraft', () => ({
@@ -69,6 +72,7 @@ beforeEach(() => {
 	planOpts = {};
 	planState.checkCoverage.mockClear();
 	preparedText.value = null;
+	askStart.mockClear();
 	indexIdOf.mockReset();
 	toFile.mockReset();
 	upload.mockReset();
@@ -97,7 +101,14 @@ function composerMock(written = ''): AnswerComposerApi {
 	};
 }
 
-function host(opts: { composer?: AnswerComposerApi | null; count?: number; fresh?: boolean } = {}) {
+function host(
+	opts: {
+		composer?: AnswerComposerApi | null;
+		count?: number;
+		fresh?: boolean;
+		nudge?: boolean;
+	} = {}
+) {
 	// Shallow, as the page holds it: the API's refs stay refs.
 	const composer = shallowRef<AnswerComposerApi | null>(opts.composer ?? null);
 	const count = ref<number | undefined>(opts.count);
@@ -113,6 +124,7 @@ function host(opts: { composer?: AnswerComposerApi | null; count?: number; fresh
 					freshReply: () => opts.fresh ?? true,
 					messageCount: () => count.value,
 					view,
+					...(opts.nudge ? { nudge: true } : {}),
 				});
 				return () => h('div');
 			},
@@ -324,5 +336,34 @@ describe('useAnswerModeAssist: the footer note', () => {
 	it("is the response plan's own note", () => {
 		const { assist } = host();
 		expect(assist.statusNote).toBe(planState.statusNote);
+	});
+});
+
+describe('useAnswerModeAssist: "Draft a nudge"', () => {
+	it('drafts a nudge once the composer is there, once', async () => {
+		const { composer } = host({ nudge: true });
+		await flushPromises();
+		expect(askStart).not.toHaveBeenCalled();
+		composer.value = composerMock();
+		await flushPromises();
+		expect(askStart).toHaveBeenCalledExactlyOnceWith('', 'nudge');
+		composer.value = composerMock();
+		await flushPromises();
+		expect(askStart).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves a reply the person already wrote alone, and takes no prepared draft', async () => {
+		const composer = composerMock('Hi Tom, any news?');
+		host({ composer, nudge: true });
+		preparedText.value = 'Hi Tom, here it is.';
+		await flushPromises();
+		expect(askStart).not.toHaveBeenCalled();
+		expect(composer.applyAiDraft).not.toHaveBeenCalled();
+	});
+
+	it('drafts nothing on its own without the nudge request', async () => {
+		host({ composer: composerMock() });
+		await flushPromises();
+		expect(askStart).not.toHaveBeenCalled();
 	});
 });

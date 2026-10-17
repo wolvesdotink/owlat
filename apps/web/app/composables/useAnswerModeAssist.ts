@@ -39,6 +39,8 @@ export function useAnswerModeAssist(opts: {
 	freshReply: () => boolean;
 	messageCount: () => number | undefined;
 	view: Ref<AnswerConversationView>;
+	/** Opened from "Draft a nudge": draft a follow-up nudge as soon as the composer is there. */
+	nudge?: boolean;
 }) {
 	const { t } = useI18n();
 	const { showToast } = useToast();
@@ -123,6 +125,20 @@ export function useAnswerModeAssist(opts: {
 				.then(() => adoptPrepared(composer))
 				.then(() => prepared.attachFiles(composer))
 				.then(() => plan.checkCoverage());
+		},
+		{ immediate: true }
+	);
+
+	// "Draft a nudge" (answer queue follow-up card): once, into an empty fresh reply.
+	let nudgeStarted = false;
+	watch(
+		() => [opts.composer(), aiEnabled.value] as const,
+		([composer, enabled]) => {
+			if (!opts.nudge || nudgeStarted || !composer || !enabled || !opts.freshReply()) return;
+			nudgeStarted = true;
+			preparedTaken = true;
+			if (composer.draftText.value.trim()) return;
+			void ask.start('', 'nudge');
 		},
 		{ immediate: true }
 	);
