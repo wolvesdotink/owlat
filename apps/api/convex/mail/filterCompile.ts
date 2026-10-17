@@ -24,6 +24,7 @@ import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
+import { internalAction, type ActionCtx } from '../_generated/server';
 import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { meterLlmCall } from '../analytics/meteredSpend';
@@ -151,6 +152,57 @@ export function previewFromCompiled(
 }
 
 /**
+ * Run the model over a `compiling` draft and land it `ready` or `failed`.
+ * The AI gate charges the session's user, or `ownerUserId`'s background
+ * bucket when there is no session (a Fix reason compiled after the Fix).
+ */
+async function runCompile(
+	ctx: ActionCtx,
+	args: {
+		draftId: Id<'mailRuleDrafts'>;
+		sourceText: string;
+		targets: CompileTargets;
+		ownerUserId?: string;
+	}
+): Promise<void> {
+	let preview: Preview | null = null;
+	try {
+		await ctx.runMutation(
+			internal.mail.ai.gate.assertAiAllowed,
+			args.ownerUserId ? { ownerUserId: args.ownerUserId } : {}
+		);
+		const model = await resolveLanguageModel(ctx, 'mail.rule_compile');
+		const { object } = await meterLlmCall(
+			ctx,
+			{
+				feature: 'filter_rule_compile',
+				task: 'mail.rule_compile',
+				root: newRootRequest('rules'),
+			},
+			(meter) =>
+				runLlmObject({
+					meter,
+					model,
+					schema: compiledFilterSchema,
+					prompt: buildFilterCompilePrompt(args.sourceText.trim(), args.targets),
+					temperature: 0,
+				})
+		);
+		const parsed = compiledFilterSchema.safeParse(object);
+		preview = parsed.success ? previewFromCompiled(parsed.data, args.targets) : null;
+	} catch (error) {
+		logWarn(
+			'[rules] compile failed:',
+			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
+		);
+	}
+	await ctx.runMutation(internal.mail.filterCompileStore.finishDraft, {
+		draftId: args.draftId,
+		...(preview ? { preview } : {}),
+	});
+}
+
+/**
  * Compile a plain-language (or Fix) rule into a `mailRuleDrafts` row the UI
  * subscribes to (`filterCompileStore.recentDrafts`): it shows `compiling`
  * while the model runs, then `ready` or `failed`. Returns the draft's id.
@@ -174,39 +226,33 @@ export const compile = authedAction({
 			origin: args.origin ?? 'plain_language',
 			...(args.fromMessageId ? { fromMessageId: args.fromMessageId } : {}),
 		});
-		const { draftId } = started;
-		let preview: Preview | null = null;
-		try {
-			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-			const model = await resolveLanguageModel(ctx, 'mail.rule_compile');
-			const { object } = await meterLlmCall(
-				ctx,
-				{
-					feature: 'filter_rule_compile',
-					task: 'mail.rule_compile',
-					root: newRootRequest('rules'),
-				},
-				(meter) =>
-					runLlmObject({
-						meter,
-						model,
-						schema: compiledFilterSchema,
-						prompt: buildFilterCompilePrompt(args.sourceText.trim(), started),
-						temperature: 0,
-					})
-			);
-			const parsed = compiledFilterSchema.safeParse(object);
-			preview = parsed.success ? previewFromCompiled(parsed.data, started) : null;
-		} catch (error) {
-			logWarn(
-				'[rules] compile failed:',
-				error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
-			);
-		}
-		await ctx.runMutation(internal.mail.filterCompileStore.finishDraft, {
-			draftId,
-			...(preview ? { preview } : {}),
+		await runCompile(ctx, {
+			draftId: started.draftId,
+			sourceText: args.sourceText,
+			targets: started,
 		});
-		return { draftId };
+		return { draftId: started.draftId };
+	},
+});
+
+/**
+ * Compile a draft another mutation already wrote (`compiling`): the reason a
+ * person gave in Fix (`mail/arrival/fix.ts`, through the `compileFixRuleDraft`
+ * hook). That mutation checked the person's access; the model call is charged
+ * to the mailbox owner's background bucket. A draft that is gone, settled, or
+ * no longer in a personal mailbox is left alone.
+ */
+export const compileDraft = internalAction({
+	args: { draftId: v.id('mailRuleDrafts') },
+	handler: async (ctx, args): Promise<void> => {
+		anchorActionDeadline(ctx);
+		const pending = await ctx.runQuery(internal.mail.filterCompileStore.draftForCompile, args);
+		if (!pending) return;
+		await runCompile(ctx, {
+			draftId: args.draftId,
+			sourceText: pending.sourceText,
+			targets: pending,
+			ownerUserId: pending.ownerUserId,
+		});
 	},
 });

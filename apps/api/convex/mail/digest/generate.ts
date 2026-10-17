@@ -116,9 +116,9 @@ async function offeredInputs(ctx: ActionCtx, items: ClaimedItems): Promise<Offer
 		)
 	);
 	const offered: Offered[] = [];
-	inputs.forEach((input, index) => {
+	for (const [index, input] of inputs.entries()) {
 		if (input && input.segments.length > 0) offered.push({ ref: index + 1, input });
-	});
+	}
 	return offered;
 }
 

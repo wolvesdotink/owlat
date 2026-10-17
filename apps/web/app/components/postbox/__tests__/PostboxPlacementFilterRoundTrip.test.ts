@@ -120,6 +120,7 @@ const INERT = Object.fromEntries(
 		'PostboxPaneResizer',
 		'PostboxReaderPlaceholder',
 		'PostboxShortcutHelp',
+		'PostboxArrivalExplain',
 		'PostboxThreadBundleList',
 		'PostboxThreadCategoryList',
 		'PostboxThreadGroupList',

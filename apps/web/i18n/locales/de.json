@@ -13194,6 +13194,125 @@
 				"gistFailed": "Nur gezählt: das kurze Lesen ist fehlgeschlagen"
 			}
 		},
+		"explain": {
+			"title": {
+				"needs_me": "Warum das dich braucht",
+				"today": "Warum das bei allem anderen liegt",
+				"updates": "Warum das unter Neuigkeiten liegt",
+				"digest": "Warum das in deine Zusammenfassung kommt",
+				"archived": "Warum das archiviert wurde"
+			},
+			"titleUnknown": "Warum das hier liegt",
+			"loading": "Wird nachgeschaut",
+			"empty": "Nichts zu erklären: Diese Mail wurde beim Eintreffen nicht einsortiert.",
+			"noStats": "noch keine Mail von ihnen gezählt",
+			"senderStats": "{count} Mail in etwa 90 Tagen, du hast {opened} geöffnet | {count} Mails in etwa 90 Tagen, du hast {opened} geöffnet",
+			"fenced": "Einige Gründe sind ausgeblendet, solange diese Unterhaltung erneut geprüft wird.",
+			"replyNeeded": "Wartet auf deine Antwort",
+			"rowLink": "Warum liegt das hier?",
+			"label": {
+				"sender": "Absender",
+				"decidedBy": "Entschieden durch",
+				"kind": "Art",
+				"reply": "Antwort",
+				"readAs": "Gelesen als"
+			},
+			"decided": {
+				"thread_override": "Du hast diese Unterhaltung hierher gelegt",
+				"sender_override": "Du hast Mail von diesem Absender hierher gelegt",
+				"needs_reply": "Sie fragt dich etwas und wartet auf deine Antwort",
+				"sender_status": "Wie du mit diesem Absender umgehst",
+				"rule": "Eine deiner Regeln",
+				"category": "Die Art der Mail",
+				"senderStatus": {
+					"default": "Wie du mit diesem Absender umgehst: {status}",
+					"user": "Wie du mit diesem Absender umgehst: {status}, von dir festgelegt",
+					"suggestion": "Wie du mit diesem Absender umgehst: {status}, ein Vorschlag, den du angenommen hast",
+					"learned": "Wie du mit diesem Absender umgehst: {status}, gelernt aus Mails, die du ungelesen archiviert hast"
+				}
+			},
+			"status": {
+				"keep": "Behalten",
+				"digest": "Zusammenfassung",
+				"auto_archive": "Automatisch archivieren",
+				"unsubscribed": "Abgemeldet"
+			},
+			"categorySource": {
+				"heuristic": "aus den Kopfzeilen geschätzt",
+				"llm": "von der KI gelesen",
+				"user": "von dir festgelegt"
+			},
+			"depth": {
+				"full": "Vollständig",
+				"gist": "Kurzfassung",
+				"count": "Nur gezählt",
+				"none": "Nicht gelesen",
+				"pending": "Noch nicht gelesen"
+			},
+			"modelCalls": "keine Modellaufrufe | 1 Modellaufruf | {count} Modellaufrufe",
+			"action": {
+				"wrong": "Das stimmt nicht",
+				"always": "Immer hier",
+				"senders": "Absenderseite"
+			}
+		},
+		"fix": {
+			"title": "Wohin soll Mail wie diese?",
+			"destination": {
+				"needs_me": "Braucht dich: ganz oben zeigen",
+				"today": "Bei allem anderen",
+				"updates": "Neuigkeiten: eine Zeile, keine Antwort",
+				"digest": "Zusammenfassung: in deiner täglichen Übersicht",
+				"auto_archive": "Automatisch archivieren"
+			},
+			"applyTo": "Gilt für",
+			"scope": {
+				"message": "Diese Unterhaltung",
+				"sender": "Alles von {name}"
+			},
+			"reason": {
+				"label": "Warum? (optional, hilft der Regel)",
+				"placeholder": "Zum Beispiel: Verspätungen bei Reisen, die ich gebucht habe, sind mir wichtig",
+				"help": "Owlat macht daraus einen Regelentwurf, den du unter Regeln prüfen kannst. Er wird nie von selbst eingeschaltet."
+			},
+			"save": "Speichern",
+			"cancel": "Abbrechen",
+			"operation": "Korrektur speichern",
+			"toast": {
+				"unchanged": "Das war schon so einsortiert",
+				"archivedSender": "{count} neue Mail von {name} archiviert | {count} neue Mails von {name} archiviert",
+				"ruleDraft": "Ein Regelentwurf aus deiner Notiz wartet unter Regeln.",
+				"thread": {
+					"needs_me": "Diese Unterhaltung steht jetzt unter „Braucht dich“",
+					"today": "Diese Unterhaltung steht jetzt bei allem anderen",
+					"updates": "Diese Unterhaltung steht jetzt unter Neuigkeiten",
+					"digest": "Diese Unterhaltung kommt jetzt in deine Zusammenfassung",
+					"auto_archive": "Diese Unterhaltung wurde archiviert"
+				},
+				"sender": {
+					"needs_me": "Mail von {name} steht jetzt unter „Braucht dich“",
+					"today": "Mail von {name} steht jetzt bei allem anderen",
+					"updates": "Mail von {name} steht jetzt unter Neuigkeiten",
+					"digest": "Mail von {name} kommt jetzt in deine Zusammenfassung",
+					"auto_archive": "Mail von {name} wird ab jetzt archiviert"
+				}
+			}
+		},
+		"learned": {
+			"notice": "Mail von {name} kommt jetzt in deine Zusammenfassung",
+			"operation": "Hinweis bestätigen"
+		},
+		"undo": {
+			"operation": "Rückgängig machen",
+			"done": "Rückgängig gemacht.",
+			"inProgress": "Wird rückgängig gemacht. Der Rest folgt gleich.",
+			"partial": "Rückgängig gemacht, außer was sich seitdem geändert hat.",
+			"movedBack": "Zurückgelegt.",
+			"remindersNotRestored": "Antworterinnerungen wurden nicht wiederhergestellt.",
+			"unsubscribeNotRecalled": "Die Abmeldung wurde schon gesendet und lässt sich nicht zurücknehmen.",
+			"expired": "Das lässt sich nicht mehr rückgängig machen",
+			"already": "Das wurde schon rückgängig gemacht"
+		},
 		"rules": {
 			"title": "Regeln in deinen Worten",
 			"intro": "Sag, was mit bestimmter Mail passieren soll. Owlat macht daraus eine Regel, die du prüfst, bevor sie läuft. Regeln sortieren, labeln, markieren, ordnen ein oder benachrichtigen; sie leiten nie weiter, löschen nie und antworten nie.",

@@ -1,0 +1,273 @@
+/**
+ * Read on arrival, Undo (SPEC §4.4): `undo({ operationId })` puts back what
+ * one operation changed.
+ *
+ * One bounded mutation per page of ≤{@link UNDO_PAGE} change rows: the public
+ * mutation runs the first page and schedules {@link undoPage} for the rest.
+ * Each row is restored only while its guards hold (`./undoChanges.ts`);
+ * otherwise it is skipped and the operation ends `undo_partial`. The operation
+ * is marked undone on the first page, so a second Undo (or a scheduled
+ * settlement under the same operation) sees it is no longer applied.
+ *
+ * Each page also cancels the pending delayed actions the operation created
+ * (`createdByOperationId`) for the messages it names, and recomputes the
+ * projections it touched, a restored sender's newest ≤200 Inbox threads
+ * included, in the same mutation (pages that name senders are smaller).
+ *
+ * Progress is summed on the header (`undoProgress`) by every page. The first
+ * page's result says whether more pages follow (`hasMore`); the client then
+ * subscribes to {@link undoStatus} and announces the outcome once `isDone`.
+ *
+ * Not restored: a reply reminder an archive cleared (`moveMessagesToFolder`
+ * clears it). The outcome says so (`isNeedsReplyCleared`), accumulated from
+ * every page's rows. Nor is an external unsubscribe request recalled;
+ * the client says that for `unsubscribe` operations.
+ */
+
+import { v } from 'convex/values';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx } from '../../_generated/server';
+import { internal } from '../../_generated/api';
+import { internalMutation } from '../../lib/writeFence';
+import { throwForbidden, throwNotFound } from '../../_utils/errors';
+import { postboxMutation, postboxQuery } from '../_helpers';
+import { FolderFlagWrites, writeMessageFlags } from '../flagWrites';
+import { reconcileThreadLabel } from '../labelsMembership';
+import { moveMessagesToFolder } from '../messageActions';
+import { requireMailboxAccess } from '../permissions';
+import { recordRemoteChanges, type RemoteChange } from '../external/remoteOps';
+import { resortSenderThreads } from '../senders/operations';
+import { isPersonalMailboxId } from '../senders/profiles';
+import { applyThreadFlagDeltas, type ThreadFlagDeltas } from '../threadAggregates';
+import type { UndoProgress } from '../../lib/validators/arrival';
+import { addUndoPage } from './undoProgress';
+import { cancelDelayedActionsOf } from '../rules/delayedActions';
+import { refreshArrivalProjection } from './projection';
+import { newUndoBatch, restoreChange, type UndoBatch } from './undoChanges';
+
+type Operation = Doc<'mailArrivalOperations'>;
+
+/** Change rows one undo mutation restores. */
+export const UNDO_PAGE = 100;
+
+/** Change rows a page reads while sender rows (each one a re-sort) are in reach. */
+export const SENDER_UNDO_PAGE = 10;
+
+/** An undo's accumulated outcome (`undoStatus`). */
+export type UndoStatus = UndoProgress & {
+	status: 'undone' | 'undo_partial';
+	kind: Operation['kind'];
+};
+
+/** What one Undo did, for the toast. Counts and the reminder flag cover every page run so far. */
+export interface UndoResult {
+	status: 'undone' | 'undo_partial' | 'not_applied' | 'expired';
+	kind: Operation['kind'];
+	restored: number;
+	skipped: number;
+	/** More pages run in the background. */
+	hasMore: boolean;
+	/** Mail moved back, but a reply reminder its archive cleared did not come back. */
+	isNeedsReplyCleared: boolean;
+}
+
+async function applyFlags(ctx: MutationCtx, batch: UndoBatch): Promise<void> {
+	if (batch.flags.size === 0) return;
+	const folders = new FolderFlagWrites(ctx);
+	const threads: ThreadFlagDeltas = new Map();
+	const remote: RemoteChange[] = [];
+	for (const [messageId, deltas] of batch.flags) {
+		const message = await ctx.db.get(messageId);
+		if (!message) continue;
+		const change = await writeMessageFlags(ctx, folders, threads, message, deltas);
+		if (change) remote.push(change);
+	}
+	await folders.flush();
+	await applyThreadFlagDeltas(ctx, threads);
+	await recordRemoteChanges(ctx, remote);
+}
+
+/**
+ * Cancel the pending delayed actions this operation created
+ * (`createdByOperationId`). Page one calls lane rules' `cancelDelayedActionsOf`
+ * (`mail/rules/delayedActions.ts`), which finds them by the header's
+ * `messageId`; every page also passes the messages its change rows name, for
+ * operations whose delayed actions hang off other messages. The rules
+ * executor refuses a row whose creating operation is no longer `applied`,
+ * which page one marks first.
+ */
+async function cancelDelayedActions(
+	ctx: MutationCtx,
+	operation: Operation,
+	messageIds: Iterable<Id<'mailMessages'>>
+): Promise<void> {
+	const now = Date.now();
+	for (const messageId of messageIds) {
+		const rows = await ctx.db
+			.query('mailDelayedActions')
+			.withIndex('by_message', (q) => q.eq('messageId', messageId))
+			.take(10); // bounded: one per action key (`${messageId}:archive:${source}`)
+		for (const row of rows) {
+			if (row.state !== 'pending' || row.createdByOperationId !== operation._id) continue;
+			await ctx.db.patch(row._id, { state: 'cancelled', cancelledBy: 'undo', updatedAt: now });
+		}
+	}
+}
+
+/**
+ * Apply what a page of restored rows collected (see `UndoBatch`). Returns how
+ * many sender re-sort chains it started (§16).
+ */
+async function applyBatch(
+	ctx: MutationCtx,
+	operation: Operation,
+	batch: UndoBatch
+): Promise<number> {
+	// Flags first, while each message still sits in the folder the write counts it in.
+	await applyFlags(ctx, batch);
+	for (const [targetFolderId, messageIds] of batch.moves) {
+		await moveMessagesToFolder(ctx, { messageIds, targetFolderId });
+	}
+	const now = Date.now();
+	for (const { threadId, labelId } of batch.labels.values()) {
+		await reconcileThreadLabel(ctx, threadId, labelId, now);
+	}
+	await cancelDelayedActions(ctx, operation, batch.messages);
+	for (const threadId of batch.threads) await refreshArrivalProjection(ctx, threadId);
+	// A restored sender is re-sorted from the mutation that restored it: its
+	// first batch of threads here, the rest by a chain tied to this undo (§16).
+	let startedResorts = 0;
+	for (const profileId of batch.senders) {
+		const profile = await ctx.db.get(profileId);
+		if (!profile || !(await isPersonalMailboxId(ctx, profile.mailboxId))) continue;
+		const { isContinued } = await resortSenderThreads(ctx, profile, {
+			undoOperationId: operation._id,
+		});
+		if (isContinued) startedResorts += 1;
+	}
+	return startedResorts;
+}
+
+/**
+ * Rows the next page reads. A sender re-sort reads up to 200 messages and
+ * their threads, so a page that names senders stays small; message-level
+ * pages take the full {@link UNDO_PAGE}. A suggestions operation leads with
+ * its (≤50) sender rows, so its first page starts small.
+ */
+function pageSizeAfter(page: readonly Doc<'mailArrivalOperationChanges'>[]): number {
+	return page.some((row) => isSenderChange(row)) ? SENDER_UNDO_PAGE : UNDO_PAGE;
+}
+
+function isSenderChange(row: Doc<'mailArrivalOperationChanges'>): boolean {
+	const kind = row.change.kind;
+	return kind === 'senderStatus' || kind === 'senderPlacementOverride';
+}
+
+/** Restore one page of the operation's change rows; schedule the next page. */
+async function runPage(
+	ctx: MutationCtx,
+	operation: Operation,
+	cursor: string | null,
+	numItems: number
+): Promise<Omit<UndoResult, 'status' | 'kind'>> {
+	const page = await ctx.db
+		.query('mailArrivalOperationChanges')
+		.withIndex('by_operation', (q) => q.eq('operationId', operation._id))
+		.paginate({ cursor, numItems });
+	const batch = newUndoBatch();
+	if (cursor === null) await cancelDelayedActionsOf(ctx, operation);
+	let restored = 0;
+	let skipped = 0;
+	for (const row of page.page) {
+		if (await restoreChange(ctx, operation, row, batch)) restored += 1;
+		else skipped += 1;
+	}
+	const startedResorts = await applyBatch(ctx, operation, batch);
+	// Re-read: a chain an earlier page started may have finished since.
+	const current = (await ctx.db.get(operation._id))?.undoProgress;
+	const undoProgress = addUndoPage(current, {
+		restored,
+		skipped,
+		isNeedsReplyCleared: batch.isNeedsReplyCleared,
+		isLastPage: page.isDone,
+		startedResorts,
+	});
+	await ctx.db.patch(operation._id, {
+		undoProgress,
+		...(skipped > 0 ? { status: 'undo_partial' as const } : {}),
+	});
+	if (!page.isDone) {
+		await ctx.scheduler.runAfter(0, internal.mail.arrival.operations.undoPage, {
+			operationId: operation._id,
+			cursor: page.continueCursor,
+			numItems: pageSizeAfter(page.page),
+		});
+	}
+	return {
+		restored: undoProgress.restored,
+		skipped: undoProgress.skipped,
+		// More pages, or a sender re-sort chain still running (§16).
+		hasMore: !undoProgress.isDone,
+		isNeedsReplyCleared: undoProgress.isNeedsReplyCleared,
+	};
+}
+
+/** Undo one operation (see the module doc). */
+// authz: requireMailboxAccess on the operation's mailbox.
+export const undo = postboxMutation({
+	args: { operationId: v.id('mailArrivalOperations') },
+	handler: async (ctx, args, session): Promise<UndoResult> => {
+		const operation = await ctx.db.get(args.operationId);
+		if (!operation) throwNotFound('Operation');
+		const owned = await requireMailboxAccess(ctx, operation.mailboxId, 'member', session);
+		if (!owned.ok) throwForbidden('Mailbox not accessible');
+		const none = { kind: operation.kind, restored: 0, skipped: 0, hasMore: false };
+		if (operation.status !== 'applied') {
+			return { ...none, status: 'not_applied', isNeedsReplyCleared: false };
+		}
+		const now = Date.now();
+		if (operation.expiresAt < now)
+			return { ...none, status: 'expired', isNeedsReplyCleared: false };
+		await ctx.db.patch(operation._id, { status: 'undone', undoneAt: now });
+		const marked = { ...operation, status: 'undone' as const };
+		const firstPage = operation.kind === 'suggestions' ? SENDER_UNDO_PAGE : UNDO_PAGE;
+		const page = await runPage(ctx, marked, null, firstPage);
+		const status = page.skipped > 0 ? 'undo_partial' : 'undone';
+		return { ...page, kind: operation.kind, status };
+	},
+});
+
+/**
+ * Where an undo stands: the client subscribes while pages still run in the
+ * background (`hasMore`) and announces the outcome once `isDone`. Null for an
+ * operation that is gone, not reachable, or never undone.
+ */
+export const undoStatus = postboxQuery({
+	args: { operationId: v.id('mailArrivalOperations') },
+	handler: async (ctx, args, session): Promise<UndoStatus | null> => {
+		const operation = await ctx.db.get(args.operationId);
+		if (!operation?.undoProgress) return null;
+		const owned = await requireMailboxAccess(ctx, operation.mailboxId, 'member', session);
+		if (!owned.ok) return null;
+		return {
+			status: operation.status === 'undo_partial' ? 'undo_partial' : 'undone',
+			kind: operation.kind,
+			...operation.undoProgress,
+		};
+	},
+});
+
+/** The next page of an undo the public mutation started (after its access check). */
+export const undoPage = internalMutation({
+	args: {
+		operationId: v.id('mailArrivalOperations'),
+		cursor: v.string(),
+		numItems: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<void> => {
+		const operation = await ctx.db.get(args.operationId);
+		if (!operation || operation.status === 'applied') return;
+		const numItems = Math.min(Math.max(1, args.numItems ?? UNDO_PAGE), UNDO_PAGE);
+		await runPage(ctx, operation, args.cursor, numItems);
+	},
+});

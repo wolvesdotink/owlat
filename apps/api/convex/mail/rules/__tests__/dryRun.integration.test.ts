@@ -20,6 +20,7 @@ import {
 } from '../dryRun';
 import { DRY_RUN_MESSAGES } from '../dryRunData';
 import { deliverHosted, seedFilter, seedPersonalMailbox } from './rules.testlib';
+import type * as SessionOrganization from '../../../lib/sessionOrganization';
 
 const llm = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
 
@@ -33,7 +34,7 @@ vi.mock('../../../lib/llmProvider', () => ({
 
 const SESSION = { userId: 'user-A', role: 'owner' as const, activeOrganizationId: 'org-1' };
 vi.mock('../../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		requireOrgMember: vi.fn(async () => SESSION),

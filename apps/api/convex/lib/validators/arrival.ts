@@ -201,6 +201,23 @@ export const arrivalOperationChangeValidator = v.union(
 
 export type ArrivalOperationChangeRow = Infer<typeof arrivalOperationChangeValidator>;
 
+/**
+ * `mailArrivalOperations.undoProgress` (§4.4, §16): what an undo restored so
+ * far, summed over its pages; whether the last page ran (`isPagingDone`); how
+ * many sender re-sort chains it started are still running (`pendingResorts`).
+ * `isDone` = paging done and no chain left; the client announces then.
+ */
+export const undoProgressValidator = v.object({
+	restored: v.number(),
+	skipped: v.number(),
+	isNeedsReplyCleared: v.boolean(),
+	isPagingDone: v.boolean(),
+	pendingResorts: v.number(),
+	isDone: v.boolean(),
+});
+
+export type UndoProgress = Infer<typeof undoProgressValidator>;
+
 // ── Rules: filter fields, delayed actions ─────────────────────────────────
 
 /** `mailFilters.aiCondition` (§6.2): the question R2 answers, revision-bound. */

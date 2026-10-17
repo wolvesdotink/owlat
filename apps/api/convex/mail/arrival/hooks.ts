@@ -11,8 +11,9 @@
  */
 
 import type { Placement } from '@owlat/shared/arrival';
+import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import type { ActionCtx, MutationCtx, QueryCtx } from '../../_generated/server';
 import type { InboundOrigin } from '../deliveryPipeline/insert';
 import { applySenderStatus, countSenderDelivery } from '../senders/delivery';
 import { countFirstOpen } from '../senders/opens';
@@ -166,13 +167,32 @@ export async function recordFirstOpen(
 	await countFirstOpen(ctx, messageId);
 }
 
+/**
+ * Lane rules / wiring (SPEC §4.2, §6.1). Compile the rule a person described
+ * in Fix's optional "why" into its `mailRuleDrafts` row. Fix
+ * (`mail/arrival/fix.ts`) writes the row (`status: 'compiling'`, origin `fix`,
+ * `sourceText` sealed, `fromMessageId`) in the Fix mutation and schedules
+ * `internal.mail.arrival.fixCompile.compile`, which calls this. It runs the
+ * §6.1 compile (`mail/filterCompile.compileDraft`, the same model path as
+ * `compile`, charged to the mailbox owner's background bucket) over that
+ * draft and lands it `ready` (a draft rule waiting in Rules) or `failed`. It
+ * never enables a rule: the person confirms the preview.
+ */
+export async function compileFixRuleDraft(
+	ctx: ActionCtx,
+	args: { draftId: Id<'mailRuleDrafts'> }
+): Promise<void> {
+	await ctx.runAction(internal.mail.filterCompile.compileDraft, args);
+}
+
 export type ArrivalHookName =
 	| 'evaluateArrivalRules'
 	| 'listArrivalAiQuestions'
 	| 'applyArrivalAiAnswers'
 	| 'applySenderStatusAtDelivery'
 	| 'recordSenderDelivery'
-	| 'recordFirstOpen';
+	| 'recordFirstOpen'
+	| 'compileFixRuleDraft';
 
 /** The lane that owns each hook. */
 export const ARRIVAL_HOOK_OWNERS: Readonly<Record<ArrivalHookName, 'rules' | 'senders'>> = {
@@ -182,6 +202,7 @@ export const ARRIVAL_HOOK_OWNERS: Readonly<Record<ArrivalHookName, 'rules' | 'se
 	applySenderStatusAtDelivery: 'senders',
 	recordSenderDelivery: 'senders',
 	recordFirstOpen: 'senders',
+	compileFixRuleDraft: 'rules',
 };
 
 /** Hooks still stubbed. Remove a name when its implementation lands. */

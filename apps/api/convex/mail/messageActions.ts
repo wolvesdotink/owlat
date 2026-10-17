@@ -37,6 +37,7 @@ import { recordMessageCounters } from './messageCounters';
 import { recordFolderMembership } from './folderMembership';
 import { recordRemoteChanges, type RemoteChange } from './external/remoteOps';
 import { recordArchivedMoves } from './interpret/threadEvents';
+import { recordUnreadArchives, unreadArchiveCandidates } from './arrival/learningSignals';
 
 // Re-exported so the modules that reach the rebuild through this one keep
 // working unchanged; it lives in ./threadAggregates now (size cap).
@@ -279,9 +280,18 @@ export const move = postboxMutation({
 	args: {
 		messageIds: v.array(v.id('mailMessages')),
 		targetFolderId: v.id('mailFolders'),
+		// A server caller's side-effect archive (mute, unsubscribe): never evidence (§4.3).
+		isAutomatic: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args, session): Promise<MoveResult> =>
-		moveWithAccess(ctx, createMailboxAccessGate(ctx, session), args),
+	handler: async (ctx, args, session): Promise<MoveResult> => {
+		const { isAutomatic, ...move } = args;
+		const unread = isAutomatic
+			? null
+			: await unreadArchiveCandidates(ctx, move.messageIds, move.targetFolderId);
+		const result = await moveWithAccess(ctx, createMailboxAccessGate(ctx, session), move);
+		await recordUnreadArchives(ctx, unread, result.moved, { now: Date.now() });
+		return result;
+	},
 });
 
 /** Archive: move to the Archive system folder. */
@@ -301,6 +311,8 @@ export const archive = postboxMutation({
 			)
 			.first();
 		if (!archive) throwInvalidState('Archive folder missing');
+		// Read on arrival §4.3: which messages were unread live mail, read BEFORE the move.
+		const unread = await unreadArchiveCandidates(ctx, args.messageIds, archive._id);
 		const result = await moveWithAccess(ctx, createMailboxAccessGate(ctx, session), {
 			messageIds: args.messageIds,
 			targetFolderId: archive._id,
@@ -310,6 +322,7 @@ export const archive = postboxMutation({
 		// mail through `move`, and a rule's own work must never become evidence
 		// for suggesting that rule again.
 		await recordTriageVerb(ctx, args.messageIds, 'archive');
+		await recordUnreadArchives(ctx, unread, result.moved, { now: Date.now() });
 		await recordArchivedMoves(ctx, result.moved, session.userId);
 		return result;
 	},

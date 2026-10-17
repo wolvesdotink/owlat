@@ -13194,6 +13194,125 @@
 				"gistFailed": "Counted only: the short read failed"
 			}
 		},
+		"explain": {
+			"title": {
+				"needs_me": "Why this needs you",
+				"today": "Why this is with everything else",
+				"updates": "Why this is among your updates",
+				"digest": "Why this goes to your digest",
+				"archived": "Why this was archived"
+			},
+			"titleUnknown": "Why this is here",
+			"loading": "Looking it up",
+			"empty": "Nothing to explain: this mail was not sorted when it arrived.",
+			"noStats": "no mail counted from them yet",
+			"senderStats": "{count} mail in about 90 days, you opened {opened} | {count} mails in about 90 days, you opened {opened}",
+			"fenced": "Some reasons are hidden while this conversation is checked again.",
+			"replyNeeded": "Waiting for your reply",
+			"rowLink": "Why is this here?",
+			"label": {
+				"sender": "Sender",
+				"decidedBy": "Decided by",
+				"kind": "Kind",
+				"reply": "Reply",
+				"readAs": "Read as"
+			},
+			"decided": {
+				"thread_override": "You placed this conversation here",
+				"sender_override": "You placed mail from this sender here",
+				"needs_reply": "It asks you something and waits for your reply",
+				"sender_status": "How you handle this sender",
+				"rule": "One of your rules",
+				"category": "Its kind of mail",
+				"senderStatus": {
+					"default": "How you handle this sender: {status}",
+					"user": "How you handle this sender: {status}, set by you",
+					"suggestion": "How you handle this sender: {status}, a suggestion you accepted",
+					"learned": "How you handle this sender: {status}, learned from mail you archived unread"
+				}
+			},
+			"status": {
+				"keep": "Keep",
+				"digest": "Digest",
+				"auto_archive": "Auto-archive",
+				"unsubscribed": "Unsubscribed"
+			},
+			"categorySource": {
+				"heuristic": "guessed from the headers",
+				"llm": "read by AI",
+				"user": "set by you"
+			},
+			"depth": {
+				"full": "In full",
+				"gist": "Gist",
+				"count": "Counted only",
+				"none": "Not read",
+				"pending": "Not read yet"
+			},
+			"modelCalls": "no model calls | 1 model call | {count} model calls",
+			"action": {
+				"wrong": "That's wrong",
+				"always": "Always here",
+				"senders": "Senders page"
+			}
+		},
+		"fix": {
+			"title": "Where should mail like this go?",
+			"destination": {
+				"needs_me": "Needs you: show it at the top",
+				"today": "With everything else",
+				"updates": "Updates: one line, no reply",
+				"digest": "Digest: in your daily summary",
+				"auto_archive": "Archive automatically"
+			},
+			"applyTo": "Apply to",
+			"scope": {
+				"message": "This conversation",
+				"sender": "Everything from {name}"
+			},
+			"reason": {
+				"label": "Why? (optional, helps the rule)",
+				"placeholder": "For example: delays on trips I'm booked on matter to me",
+				"help": "Owlat turns this into a draft rule you can review in Rules. It is never switched on by itself."
+			},
+			"save": "Save",
+			"cancel": "Cancel",
+			"operation": "Save the correction",
+			"toast": {
+				"unchanged": "It was already sorted that way",
+				"archivedSender": "Archived {count} recent mail from {name} | Archived {count} recent mails from {name}",
+				"ruleDraft": "A draft rule from your note is waiting in Rules.",
+				"thread": {
+					"needs_me": "This conversation now shows in Needs you",
+					"today": "This conversation now shows with everything else",
+					"updates": "This conversation now shows in Updates",
+					"digest": "This conversation now goes to your digest",
+					"auto_archive": "Archived this conversation"
+				},
+				"sender": {
+					"needs_me": "Mail from {name} now shows in Needs you",
+					"today": "Mail from {name} now shows with everything else",
+					"updates": "Mail from {name} now shows in Updates",
+					"digest": "Mail from {name} now goes to your digest",
+					"auto_archive": "Mail from {name} is archived from now on"
+				}
+			}
+		},
+		"learned": {
+			"notice": "Mail from {name} now goes to your digest",
+			"operation": "Confirm the notice"
+		},
+		"undo": {
+			"operation": "Undo",
+			"done": "Undone.",
+			"inProgress": "Undoing. The rest follows in a moment.",
+			"partial": "Undone, except what changed since.",
+			"movedBack": "Moved back.",
+			"remindersNotRestored": "Reply reminders were not restored.",
+			"unsubscribeNotRecalled": "The unsubscribe request was already sent and cannot be taken back.",
+			"expired": "This can no longer be undone",
+			"already": "This was already undone"
+		},
 		"rules": {
 			"title": "Rules in your words",
 			"intro": "Say what should happen to some of your mail. Owlat turns it into a rule you check before it runs. Rules only file, label, flag, place or notify; they never forward, delete or reply.",

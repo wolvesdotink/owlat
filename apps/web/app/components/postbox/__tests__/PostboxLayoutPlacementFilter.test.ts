@@ -106,6 +106,7 @@ const INERT = Object.fromEntries(
 		'PostboxReaderBackBar',
 		'PostboxReaderPlaceholder',
 		'PostboxShortcutHelp',
+		'PostboxArrivalExplain',
 		'PostboxThreadBundleList',
 		'PostboxThreadCategoryList',
 		'PostboxThreadGroupList',

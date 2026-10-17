@@ -1,6 +1,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
+import { usePostboxArrivalUndo } from '~/composables/postbox/usePostboxArrivalUndo';
 
 /** What one unsubscribe did (local half, request result), as the action returns it. */
 export type PostboxUnsubscribeOutcome = FunctionReturnType<
@@ -27,6 +28,7 @@ export function usePostboxSenderActions() {
 	const { t } = useI18n();
 	const { showToast } = useToast();
 	const { openManualUnsubscribe } = usePostboxUnsubscribeOpen();
+	const { offerUndo } = usePostboxArrivalUndo();
 
 	const setStatusOp = useBackendOperation(api.mail.senders.status.setStatus, {
 		label: () => t('postbox.senders.operations.setStatus'),
@@ -39,12 +41,19 @@ export function usePostboxSenderActions() {
 		label: () => t('postbox.senders.operations.resumeDrafts'),
 	});
 
-	function archivedToast(name: string, archived: number, fallbackKey: string) {
-		if (archived > 0) {
-			showToast(t('postbox.senders.toast.archived', { count: archived, name }, archived));
-		} else {
-			showToast(t(fallbackKey, { name }));
-		}
+	/** What a sender change did, with Undo for its operation (read on arrival §4.4). */
+	function archivedToast(
+		name: string,
+		archived: number,
+		fallbackKey: string,
+		operationId: Id<'mailArrivalOperations'> | null
+	) {
+		offerUndo(
+			archived > 0
+				? t('postbox.senders.toast.archived', { count: archived, name }, archived)
+				: t(fallbackKey, { name }),
+			operationId
+		);
 	}
 
 	async function setStatus(
@@ -57,7 +66,8 @@ export function usePostboxSenderActions() {
 		archivedToast(
 			name ?? result.result.address,
 			result.result.archived,
-			`postbox.senders.toast.status.${status}`
+			`postbox.senders.toast.status.${status}`,
+			result.result.operationId
 		);
 		return true;
 	}
@@ -87,16 +97,19 @@ export function usePostboxSenderActions() {
 		const name = opts.name ?? outcome.address;
 		if (outcome.method === 'mailto' || outcome.method === 'https') {
 			openManualUnsubscribe(outcome, opts.mailboxId);
-			if (outcome.scope === 'personal') showToast(t('postbox.senders.result.opened'));
+			if (outcome.scope === 'personal') {
+				offerUndo(t('postbox.senders.result.opened'), outcome.operationId);
+			}
 			return outcome;
 		}
 		if (outcome.result === 'failed') {
-			showToast(
-				outcome.scope === 'personal'
-					? t('postbox.senders.result.failed')
-					: t('components.postbox.postboxUnsubscribeChip.requestFailed'),
-				'error'
-			);
+			if (outcome.scope === 'personal') {
+				// The request failed, but local suppression (and its archive) went
+				// through as an operation: it can be undone like any other.
+				offerUndo(t('postbox.senders.result.failed'), outcome.operationId, { type: 'error' });
+			} else {
+				showToast(t('components.postbox.postboxUnsubscribeChip.requestFailed'), 'error');
+			}
 			openFallbackPage(outcome);
 			return outcome;
 		}
@@ -111,14 +124,15 @@ export function usePostboxSenderActions() {
 			outcome.archived,
 			outcome.result === 'confirmed'
 				? 'postbox.senders.toast.unsubscribed'
-				: 'postbox.senders.toast.localOnly'
+				: 'postbox.senders.toast.localOnly',
+			outcome.operationId
 		);
 		return outcome;
 	}
 
 	async function resumeDrafts(target: PostboxSenderTarget): Promise<boolean> {
 		const result = await resumeOp.run({ target });
-		if (result.ok) showToast(t('postbox.senders.toast.draftsResumed'));
+		if (result.ok) offerUndo(t('postbox.senders.toast.draftsResumed'), result.result.operationId);
 		return result.ok;
 	}
 

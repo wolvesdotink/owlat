@@ -342,7 +342,8 @@ export const mailMessagesTables = {
 		// actions. "Another message of this thread is still in the Inbox"
 		// (`archiveSingleMessage`) and "the owner replied in this thread since the
 		// anchor" (Sent copies by folder, the owner's address by sender), without a
-		// truncated scan of a long thread.
+		// truncated scan of a long thread. Lane learn's Fix reads a conversation's
+		// newest Inbox messages through it too (the folder before the 200 bound).
 		.index('by_thread_folder_received', ['threadId', 'folderId', 'receivedAt'])
 		.index('by_thread_from_received', ['threadId', 'fromAddress', 'receivedAt'])
 		.index('by_rfc822_message_id', ['rfc822MessageId'])
