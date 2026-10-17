@@ -23,7 +23,7 @@ import { formatDraftGap } from '@owlat/shared/answerMode';
 import { pickAttachmentSuggestion, MATCH_FLOOR } from '../../inbox/attachmentMatch';
 import { isCredentialSolicitation } from '../../inbox/clarificationSlots';
 import { detectInjection } from '../../agent/steps/security_scan/patterns';
-import { formatPromisedDay, weekdayAfter } from './composeDraftDates';
+import { formatPromisedDay, resolveFollowUpAt, weekdayAfter } from './composeDraftDates';
 import { NOT_READY_OPTION, hasUsableAnswer } from '../../inbox/clarificationAnswers';
 import type { FoundFile } from '../../inbox/attachmentSuggest';
 import type {
@@ -331,6 +331,22 @@ export function gapLabelFor(question: AskQuestion, fileLabel: string | undefined
 /** The `[[...]]` placeholder an open question leaves in the draft. */
 export function formatGapFor(question: AskQuestion, fileLabel: string | undefined): string {
 	return formatDraftGap(gapLabelFor(question, fileLabel));
+}
+
+/** What the draft promises when the requested file is not ready yet. */
+export function followUpFor(
+	questions: readonly AskQuestion[],
+	fileLabel: string | undefined,
+	now: number,
+	timeZone: string | undefined
+): { value: string; at?: number } | undefined {
+	const file = questions.find((q) => q.id === FILE_QUESTION_ID);
+	if (!file || !isNotReadyAnswer(file, file.answer?.value)) return undefined;
+	const date = questions.find((q) => q.id === FOLLOW_UP_QUESTION_ID);
+	if (!date) return { value: 'as soon as it is ready' };
+	if (!date.answer) return { value: formatGapFor(date, fileLabel) };
+	const at = resolveFollowUpAt(date.answer.value, now, timeZone);
+	return { value: date.answer.value, ...(at !== undefined ? { at } : {}) };
 }
 
 /** Placeholders for every question still without an answer, in question order. */
