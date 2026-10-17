@@ -47,6 +47,7 @@ import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
 import { clearThreadNeedsReply, isOwnMessage } from './needsReply';
 import { mailboxOwnAddresses } from './identities';
 import { noteOwnerReply } from './arrival/learningSignals';
+import { noteDraftDiscarded, noteReplyWithoutAiDraft } from './draftPause';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -93,8 +94,12 @@ export function isAutomatedResponse(headers: Record<string, string> | undefined)
 	return isMachineGeneratedForReply(evidence) || isBulkPrecedenceForReply(evidence);
 }
 
-/** Delete a draft row with its uploads and Answer mode ask sessions. */
+/**
+ * Delete an unsent draft row with its uploads and Answer mode ask sessions.
+ * An AI draft that dies this way went unused (mail/draftPause.ts).
+ */
 export async function deleteDraftRow(ctx: MutationCtx, draft: Doc<'mailDrafts'>): Promise<void> {
+	await noteDraftDiscarded(ctx, draft);
 	for (const att of draft.attachments) {
 		await deleteOwnedUpload(ctx, att.storageId, `mailDrafts:${draft._id}`);
 	}
@@ -246,15 +251,16 @@ export async function settleOwnerReply(
 	if (!mailbox || !isOwnMessage(message, await mailboxOwnAddresses(ctx, mailbox))) return;
 	if ((await ctx.db.get(message.folderId))?.role === 'drafts') return;
 
+	const trigger = thread.needsReply ? await ctx.db.get(thread.needsReply.messageId) : null;
+	const settlesFlag = !!thread.needsReply && !(trigger && trigger.receivedAt > message.receivedAt);
+	// Before the AI drafts are hidden: one the thread offered went unused (mail/draftPause.ts).
+	if (settlesFlag) await noteReplyWithoutAiDraft(ctx, thread);
 	await obsoleteAnsweredDrafts(ctx, drafts, {
 		byMessageId: message._id,
 		answeredUpTo: message.receivedAt,
 		respondedAt: message.receivedAt,
 	});
-	if (!thread.needsReply) return;
-	const trigger = await ctx.db.get(thread.needsReply.messageId);
-	if (trigger && trigger.receivedAt > message.receivedAt) return;
-	await clearThreadNeedsReply(ctx, thread._id);
+	if (settlesFlag) await clearThreadNeedsReply(ctx, thread._id);
 }
 
 /**

@@ -12,6 +12,14 @@
 		"requestSentTitle": "Anfrage gesendet",
 		"signOut": "Abmelden"
 	},
+	"answer": {
+		"nudge": {
+			"draft": "Erinnerung entwerfen",
+			"overdue": "Frist verstrichen",
+			"stale": "Seit 3 Werktagen keine Antwort",
+			"markReceivedOperation": "Als erhalten markieren"
+		}
+	},
 	"auth": {
 		"fields": {
 			"email": "E-Mail",

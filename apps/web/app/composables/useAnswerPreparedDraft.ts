@@ -50,6 +50,13 @@ export function useAnswerPreparedDraft(opts: {
 		return prepared?.clarificationDraft ?? prepared?.slotDraft ?? null;
 	});
 
+	/** The offer the prepared reply is (the unused-draft streak); read tolerantly. */
+	const offerKey = computed<string | null>(() => {
+		if (!opts.enabled() || !opts.threadId()) return null;
+		const prepared = preparedQuery.data.value as { offerKey?: string | null } | null | undefined;
+		return prepared?.offerKey ?? null;
+	});
+
 	// Read tolerantly: older deployments return no `files`.
 	const files = computed<PreparedFile[]>(() => {
 		const prepared = preparedQuery.data.value as { files?: PreparedFile[] } | null | undefined;
@@ -106,5 +113,5 @@ export function useAnswerPreparedDraft(opts: {
 		}
 	}
 
-	return { text, files, attachFiles };
+	return { text, files, offerKey, attachFiles };
 }

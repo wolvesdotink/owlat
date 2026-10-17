@@ -160,6 +160,7 @@ const assist = useAnswerModeAssist({
 	freshReply: () => !openedDraftId && kind.value !== 'forward',
 	messageCount: () => messageCount.value,
 	view,
+	nudge: route.query['nudge'] === '1',
 });
 const { ask } = assist;
 // An uploaded file answer is kept in Files only by someone who may add to

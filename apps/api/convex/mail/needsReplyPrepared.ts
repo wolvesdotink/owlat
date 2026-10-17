@@ -21,6 +21,7 @@ import { loadReadableMailbox } from './permissions';
 import { mailThreadUploadKey } from '../storage/uploads';
 import { answerFiles } from '../inbox/clarificationAnswers';
 import { visibleThreadClarification, visibleThreadDraftSlot } from './needsReplySlot';
+import { draftOfferKeyOf } from './draftPause';
 
 /**
  * Hand an upload the thread holds for a Reply Queue answer to a draft of that
@@ -113,6 +114,8 @@ export const getPreparedDraft = postboxQuery({
 		slotDraft: string | null;
 		files: PreparedFile[];
 		clarification: (Infer<typeof needsReplyClarificationValidator> & { isPaused?: true }) | null;
+		/** The offer the prepared reply is (mail/draftPause.ts): sent with every write applying it. */
+		offerKey: string | null;
 	} | null> => {
 		const thread = await ctx.db.get(args.threadId);
 		const flag = thread?.needsReply;
@@ -125,6 +128,7 @@ export const getPreparedDraft = postboxQuery({
 			slotDraft: visibleThreadDraftSlot(thread)?.draft.trim() || null,
 			files: await answeredFiles(ctx, thread._id, flag, session.userId),
 			clarification,
+			offerKey: draftOfferKeyOf(thread) ?? null,
 		};
 	},
 });

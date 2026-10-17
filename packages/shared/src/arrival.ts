@@ -187,6 +187,8 @@ export const ARRIVAL_OPERATION_KINDS = [
 	'sender_archive',
 	'unsubscribe',
 	'draft_resume',
+	// The unused-draft streak paused draft-on-arrival for a sender, or an AI-based send reset it (§7).
+	'draft_pause',
 	'suggestions',
 	'rule_apply',
 	'delayed_archive',

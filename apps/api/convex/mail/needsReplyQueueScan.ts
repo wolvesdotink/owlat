@@ -37,7 +37,8 @@ export interface FollowUpQueueRow {
 /**
  * The mailbox's visible queue rows, newest first per kind: flagged threads
  * whose trigger still exists and is not snoozed, and sent mail whose follow-up
- * deadline passed. Muted threads are skipped in both.
+ * deadline passed. Muted threads are skipped in both. Nudge cards
+ * (mail/nudges.ts) are the list's alone: the badge does not count them.
  */
 export async function scanReplyQueue(
 	ctx: QueryCtx,

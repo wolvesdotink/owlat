@@ -18,6 +18,7 @@ import { threadBriefRanges } from './purgeRows';
 import { drainFactLinks, drainItemLinks } from './purgeLinks';
 import { drainShrinking, type JobPlan, type PurgeRange, type RangeRun } from './purgeDrain';
 import type { Doc } from '../../_generated/dataModel';
+import { arrivalThreadRanges } from '../arrival/purgeRanges';
 
 function isItemRow(row: BriefRow): row is Doc<'threadItems'> {
 	return 'disposition' in row && 'evidence' in row;
@@ -64,7 +65,11 @@ function rangeCount(kind: ThreadRefKind): number {
 /** The walk of a `thread` job. */
 export function threadPlan(kind: ThreadRefKind): JobPlan {
 	return {
-		ranges: Array.from({ length: rangeCount(kind) }, (_, i) => threadRange(i)),
+		ranges: [
+			...Array.from({ length: rangeCount(kind) }, (_, i) => threadRange(i)),
+			// Read on arrival (appended: a job mid-walk keeps its range index).
+			...(kind === 'mail' ? arrivalThreadRanges : []),
+		],
 		settle: settleThreadJob,
 	};
 }

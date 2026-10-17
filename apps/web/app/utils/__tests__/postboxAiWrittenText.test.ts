@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { describe, expect, it } from 'vitest';
 import { aiTextToHtml } from '@owlat/shared/answerMode';
-import { aiWrittenTextOf, setAiWrittenText } from '../postboxAiWrittenText';
+import { aiWrittenOf, aiWrittenTextOf, setAiWrittenText } from '../postboxAiWrittenText';
 
 const QUOTE = '<br><br><div class="gmail_quote">On Monday Sam wrote: ready?</div>';
 
@@ -22,5 +22,12 @@ describe('postboxAiWrittenText', () => {
 
 	it('never tags a composer the AI did not write into', () => {
 		expect(aiWrittenTextOf(ref('<p>Hi</p>'))).toBeUndefined();
+	});
+
+	it('carries the offer key of the reply it applied while the text stands', () => {
+		const body = ref(`${aiTextToHtml('Hi Sam,\n\nAttached.')}${QUOTE}`);
+		setAiWrittenText(body, 'Hi Sam,\n\nAttached.', 'thr_1:msg_1');
+		expect(aiWrittenOf(body)).toEqual({ text: 'Hi Sam,\n\nAttached.', offerKey: 'thr_1:msg_1' });
+		expect(aiWrittenOf(body, `<p>Hi Sam, see the link.</p>${QUOTE}`)).toBeUndefined();
 	});
 });

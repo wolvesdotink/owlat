@@ -87,18 +87,43 @@ const generatedDigestRange: PurgeRange = async (ctx, run) => {
 	return { isDone: true };
 };
 
-/** 2. Every per-message arrival row of the purged messages. */
+/**
+ * 2. Every per-message arrival row of the purged messages, and the counted
+ * draft offer a purged message was owed for (`mailDraftOfferUsage`, keyed
+ * `<threadId>:<messageId>`, mail/draftPause.ts).
+ */
 const messageRowsRange: PurgeRange = (ctx, run) => {
 	const deleting = async (row: {
-		_id: Id<'mailArrivalRecords' | 'mailDelayedActions' | 'mailArrivalOperationChanges'>;
+		_id: Id<
+			| 'mailArrivalRecords'
+			| 'mailDelayedActions'
+			| 'mailArrivalOperationChanges'
+			| 'mailDraftOfferUsage'
+		>;
 	}) => {
 		await ctx.db.delete(row._id);
 		return true;
 	};
+	const mailboxId = mailboxOfRun(run);
+	const threadId = run.ref.kind === 'mail' ? run.ref.id : null;
 	return drainSteps(
 		run.budget,
 		run.cursor,
 		purgedMessageIds(run).flatMap((messageId) => [
+			() =>
+				mailboxId && threadId
+					? drainShrinking(
+							run.budget,
+							(n) =>
+								ctx.db
+									.query('mailDraftOfferUsage')
+									.withIndex('by_mailbox_offer', (q) =>
+										q.eq('mailboxId', mailboxId).eq('offerKey', `${threadId}:${messageId}`)
+									)
+									.take(n),
+							deleting
+						)
+					: Promise.resolve(true),
 			() =>
 				drainShrinking(
 					run.budget,
@@ -174,6 +199,31 @@ async function loadMailBrief(
 		.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', mailThreadId))
 		.unique();
 }
+
+/**
+ * A deleted Postbox thread's counted draft offers (`mailDraftOfferUsage`,
+ * mail/draftPause.ts), drained in the `thread` purge job's shared budget.
+ */
+const threadOfferUsageRange: PurgeRange = async (ctx, run) => {
+	if (run.ref.kind !== 'mail') return { isDone: true };
+	const threadId = run.ref.id;
+	const isEmpty = await drainShrinking(
+		run.budget,
+		(n) =>
+			ctx.db
+				.query('mailDraftOfferUsage')
+				.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+				.take(n),
+		async (row) => {
+			await ctx.db.delete(row._id);
+			return true;
+		}
+	);
+	return isEmpty ? { isDone: true } : { isDone: false, cursor: undefined };
+};
+
+/** The read-on-arrival ranges of a `thread` purge job, appended after the brief's. */
+export const arrivalThreadRanges: readonly PurgeRange[] = [threadOfferUsageRange];
 
 /** The read-on-arrival ranges of a `sources` purge job, in order. */
 export const arrivalSourceRanges: readonly PurgeRange[] = [

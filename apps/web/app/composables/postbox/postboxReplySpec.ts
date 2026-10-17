@@ -32,6 +32,11 @@ export type ReplyComposeSeed = ComposeSpec;
 
 type RecipientFields = { fromAddress: string; toAddresses: string[]; ccAddresses: string[] };
 
+function isOwnAddress(address: string, own: readonly string[]): boolean {
+	const key = extractEmailAddress(address).toLowerCase();
+	return own.some((a) => extractEmailAddress(a).toLowerCase() === key);
+}
+
 /** Whether Reply-All would add anyone beyond a plain Reply (extra To/Cc). */
 export function replyAllAddsRecipients(
 	msg: RecipientFields,
@@ -79,7 +84,16 @@ export async function buildReplyComposeSeed(
 		};
 	}
 	const spec: ReplyComposeSeed = buildReplySpec(ctx.mailboxId, target, ctx.leadText);
-	const extras = deriveReplyAllExtras(target, [...ctx.ownAddresses]);
+	// A reply to our own message (a follow-up, a nudge) goes to the people it
+	// went to, not back to us: its To, else its Cc when it went only to us.
+	const own = [...ctx.ownAddresses];
+	if (isOwnAddress(target.fromAddress, own)) {
+		const others = (list: string[]) => list.filter((a) => !isOwnAddress(a, own));
+		const to = others(target.toAddresses);
+		const recipients = to.length > 0 ? to : others(target.ccAddresses);
+		if (recipients.length > 0) spec.prefillTo = recipients;
+	}
+	const extras = deriveReplyAllExtras(target, [...own, ...(spec.prefillTo ?? [])]);
 	if (kind === 'replyAll') {
 		spec.prefillCc = extras;
 	} else if (extras.length > 0) {

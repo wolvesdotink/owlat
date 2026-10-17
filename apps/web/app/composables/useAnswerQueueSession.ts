@@ -203,9 +203,11 @@ export function createAnswerQueueSession() {
 			},
 			back,
 			next,
-			openAnswer: () => {
+			openAnswer: (opts) => {
 				const target = answerModeTarget(item);
-				if (target) void navigateTo(answerQueueItemHref(target, filter.value), { replace: true });
+				if (target) {
+					void navigateTo(answerQueueItemHref(target, filter.value, opts), { replace: true });
+				}
 			},
 		};
 	}

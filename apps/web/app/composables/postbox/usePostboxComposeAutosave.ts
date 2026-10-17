@@ -55,7 +55,7 @@ import type { ComposerMode } from './usePostboxCompose';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 import type { ComposeTouched } from './usePostboxComposeTouched';
 import type { ExpectedAttachmentRequest } from './usePostboxComposeExpected';
-import { aiWrittenTextOf } from '~/utils/postboxAiWrittenText';
+import { aiWrittenOf } from '~/utils/postboxAiWrittenText';
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 /** Writes `settlePendingSave` makes before giving up on fields that keep changing. */
@@ -288,7 +288,7 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		if (initialHydration.value !== 'ready') return { ok: false };
 		const fields = take();
 		// Still exactly the AI's text: the server must not count it as a person's edit.
-		const aiText = aiWrittenTextOf(bodyHtml, fields.bodyHtml);
+		const ai = aiWrittenOf(bodyHtml, fields.bodyHtml);
 		// What this write acknowledges, fixed now: the fields keep changing while
 		// it is out, and a later edit must not count as saved by it.
 		const key = JSON.stringify(acknowledgedAs());
@@ -297,7 +297,9 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 			const result = await updateDraft.run({
 				draftId: id,
 				...fields,
-				...(aiText !== undefined ? { aiText } : {}),
+				...(ai !== undefined ? { aiText: ai.text } : {}),
+				// The offered reply it copies, with whichever write lands first.
+				...(ai?.offerKey ? { offerKey: ai.offerKey } : {}),
 			});
 			if (!result.ok) return { ok: false };
 			acknowledged = { id, key };

@@ -45,7 +45,7 @@ import { copyExistingIntoDraft } from '../attachExisting';
 import { candidateForLabel } from '../../inbox/clarificationAnswers';
 import { throwAskSessionClaimed, toAskSessionView, type AskSessionView } from './composeDraftStore';
 import { draftContextOf, loadAnswerContext } from './composeDraftLoad';
-import { normalizeTimeZone, resolveFollowUpAt } from './composeDraftDates';
+import { normalizeTimeZone } from './composeDraftDates';
 import { attributionFor, localizeForOwner, runGapCheck } from './composeDraftGap';
 import { writeAnswerDraft } from './composeDraftWrite';
 import { loadAnswerPlan, loadSlotItems } from './composeDraftPlan';
@@ -56,13 +56,14 @@ import {
 	buildFileQuestion,
 	buildFollowUpQuestion,
 	canonicalAnswerValue,
-	formatGapFor,
+	followUpFor,
 	isNotReadyAnswer,
 	leavesQuestionsOpen,
 	type AskFileRef,
 	type AskQuestion,
 } from './composeDraftPolicy';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
+import { NUDGE_GAP_CHECK, draftInstruction } from './nudgeDraft';
 
 const MAX_INSTRUCTION_CHARS = 2000;
 const MAX_ANSWER_CHARS = 2000;
@@ -153,22 +154,6 @@ async function keepCopyInFiles(
 		logError('[composeDraft] keeping a copy in Files failed:', err);
 		if (copyId) await ctx.storage.delete(copyId);
 	}
-}
-
-/** What the draft promises when the requested file is not ready yet. */
-function followUpFor(
-	questions: readonly AskQuestion[],
-	fileLabel: string | undefined,
-	now: number,
-	timeZone: string | undefined
-): { value: string; at?: number } | undefined {
-	const file = questions.find((q) => q.id === FILE_QUESTION_ID);
-	if (!file || !isNotReadyAnswer(file, file.answer?.value)) return undefined;
-	const date = questions.find((q) => q.id === FOLLOW_UP_QUESTION_ID);
-	if (!date) return { value: 'as soon as it is ready' };
-	if (!date.answer) return { value: formatGapFor(date, fileLabel) };
-	const at = resolveFollowUpAt(date.answer.value, now, timeZone);
-	return { value: date.answer.value, ...(at !== undefined ? { at } : {}) };
 }
 
 const DRAFT_NOT_STARTED = 'The draft could not be started. Try again.';
@@ -265,30 +250,35 @@ export const start = authedAction({
 		locale: v.string(),
 		// The owner's IANA time zone, for round 2's dates (UTC when absent).
 		timeZone: v.optional(v.string()),
+		// "Draft a nudge" on a Postbox reply (mail/ai/nudgeDraft.ts).
+		purpose: v.optional(v.literal('nudge')),
 	},
 	handler: async (ctx, args): Promise<AskSessionView> => {
 		// One model budget for this action, from its start (ADR-0073).
 		anchorActionDeadline(ctx);
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-		const instruction = args.instruction?.trim().slice(0, MAX_INSTRUCTION_CHARS) || undefined;
+		const note = args.instruction?.trim().slice(0, MAX_INSTRUCTION_CHARS) || undefined;
+		const instruction = draftInstruction(args.purpose, note);
 		const locale = isAppLocale(args.locale) ? args.locale : 'en';
 		const timeZone = normalizeTimeZone(args.timeZone);
-		const context = await loadAnswerContext(ctx, args.target);
+		const context = await loadAnswerContext(ctx, args.target, args.purpose);
 		// Read on arrival: no model call on a thread not fully read (Sol r2 F1).
 		await requireFullRead(ctx, args.target);
-		const gap = await runGapCheck(ctx, {
-			context: context.context,
-			triggerText: context.triggerText,
-			subject: context.subject,
-			counterpartAddress: context.counterpartAddress,
-			contactId: context.contactId,
-			mailboxScope: context.mailboxScope,
-			eagerness: context.eagerness,
-			instruction,
-			locale,
-			slotItems: await loadSlotItems(ctx, args.target),
-			decisionSubject: context.decisionSubject,
-		});
+		const gap = args.purpose
+			? NUDGE_GAP_CHECK
+			: await runGapCheck(ctx, {
+					context: context.context,
+					triggerText: context.triggerText,
+					subject: context.subject,
+					counterpartAddress: context.counterpartAddress,
+					contactId: context.contactId,
+					mailboxScope: context.mailboxScope,
+					eagerness: context.eagerness,
+					instruction,
+					locale,
+					slotItems: await loadSlotItems(ctx, args.target),
+					decisionSubject: context.decisionSubject,
+				});
 
 		let questions = gap.questions;
 

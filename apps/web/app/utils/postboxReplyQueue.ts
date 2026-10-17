@@ -74,6 +74,14 @@ export interface ReplyQueueItem {
 	kind?: 'needs_reply' | 'followup';
 	/** Who we're waiting on (follow-up items only) — the first recipient. */
 	waitingOn?: string;
+	/**
+	 * Follow-up items only: the card offers "Draft a nudge" (absent while the
+	 * thread's AI reading is paused). `reminder` is a "Remind me if no reply"
+	 * deadline; `overdue` / `stale` is a "Waiting on others" brief item past
+	 * its due date, or 3 business days old with no reply since
+	 * (mail/nudges.ts). Item nudges name the item, which Done marks received.
+	 */
+	nudge?: { reason: 'reminder' } | { reason: 'overdue' | 'stale'; itemId: string; dueAt?: number };
 	threadId: string;
 	messageId: string;
 	urgency: ReplyQueueUrgency;

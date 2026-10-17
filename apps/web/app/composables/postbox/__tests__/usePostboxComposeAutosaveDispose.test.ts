@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
 import { usePostboxComposeAutosave } from '../usePostboxComposeAutosave';
 import { usePostboxComposeTouched } from '../usePostboxComposeTouched';
+import { aiTextToHtml } from '@owlat/shared/answerMode';
+import { setAiWrittenText } from '~/utils/postboxAiWrittenText';
 
 function setup(draftId: string | null = null) {
 	const createRun = vi.fn(async () => ({
@@ -72,6 +74,19 @@ describe('usePostboxComposeAutosave — after the composer is gone', () => {
 		// Saved once, not again when the debounce would have fired.
 		await vi.advanceTimersByTimeAsync(2000);
 		expect(updateRun).toHaveBeenCalledOnce();
+	});
+
+	it('tags a save of an applied offered reply with its text and offer key', async () => {
+		const { scope, bodyHtml, updateRun } = setup('draft-1');
+		bodyHtml.value = `${aiTextToHtml('Attached.')}${QUOTE}`;
+		setAiWrittenText(bodyHtml, 'Attached.', 'thr_1:msg_1');
+		await nextTick();
+		scope.stop();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(updateRun.mock.calls[0]![0]).toMatchObject({
+			aiText: 'Attached.',
+			offerKey: 'thr_1:msg_1',
+		});
 	});
 
 	it('saves an envelope-only edit too (a subject typed)', async () => {
