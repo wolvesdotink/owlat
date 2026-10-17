@@ -349,9 +349,12 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	// A product noun ("Chat") and the category name ("Spam") read the same in German.
 	'components.shell.chat.title',
 	'dashboard.inboxes.category.spam',
-	// Senders page kinds (read on arrival): the same category nouns.
+	// Senders page kinds (read on arrival), each a correct German word as is:
+	// "Newsletter" is the German term (Duden), not a loan awaiting translation.
 	'postbox.senders.kind.newsletter',
+	// "Person" is the German noun, same spelling and meaning.
 	'postbox.senders.kind.person',
+	// "Spam" is the German term, as for the folder and category names above.
 	'postbox.senders.kind.spam',
 	'shared.channelKinds.addable.sms',
 	'shared.channelKinds.addable.whatsapp',
