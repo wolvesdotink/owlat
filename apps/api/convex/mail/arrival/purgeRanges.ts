@@ -5,12 +5,12 @@
  * they share its transaction budget and its durable cursor
  * (`mail/interpret/purgeDrain.ts`). In order:
  *
- *  1–3. the purged messages' lines in every unsent digest of the mailbox
- *       (`claimed`, `generated`, `failed`), walked by creation time with a
- *       tie-safe cursor; the mailbox is the one persisted on the job;
- *  4.   the messages' arrival records, delayed actions and undo-log change rows;
- *  5.   the thread's projection when it points at a purged message, and the
- *       brief's gist when it was read from one (`briefTop.gist` with it).
+ *  1. the purged messages' lines in the mailbox's generated digest, the only
+ *     state that holds item text (`digestState.ts`); the mailbox is the one
+ *     persisted on the job;
+ *  2. the messages' arrival records, delayed actions and undo-log change rows;
+ *  3. the thread's projection when it points at a purged message, and the
+ *     brief's gist when it was read from one (`briefTop.gist` with it).
  *
  * `releaseArrivalSourceAccounting` is called by the job's snapshot range as it
  * deletes a purged source's `interpretSources` row: a gist-only or skipped
@@ -28,11 +28,9 @@ import type { MutationCtx } from '../../_generated/server';
 import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import {
-	DRAIN_CHUNK,
 	drainShrinking,
 	drainSteps,
 	type PurgeRange,
-	type RangeOutcome,
 	type RangeRun,
 } from '../interpret/purgeDrain';
 
@@ -56,73 +54,39 @@ function mailboxOfRun(run: RangeRun): Id<'mailboxes'> | null {
 }
 
 /**
- * Walk one unsent digest state of the mailbox by `_creationTime`, which rows
- * can share: the cursor keeps the last position and the ids already handled
- * there (`tieIds`), the next read starts AT that position and skips them. A
- * handled digest keeps its index position (only `items` changes).
+ * Most generated digests a mailbox can hold is one (`digestState.ts`); two
+ * are read so a broken invariant is seen, logged and still handled.
  */
-async function scanUnsentDigests(
-	ctx: MutationCtx,
-	run: RangeRun,
-	mailboxId: Id<'mailboxes'>,
-	state: 'claimed' | 'generated' | 'failed',
-	handle: (digest: Doc<'mailDigests'>) => Promise<void>
-): Promise<RangeOutcome> {
-	let at = run.cursor?.at;
-	let ties = new Set<string>(run.cursor?.tieIds ?? []);
-	const save = (): RangeOutcome => ({
-		isDone: false,
-		cursor: {
-			...(at !== undefined ? { at } : {}),
-			...(ties.size > 0 ? { tieIds: [...ties] } : {}),
-		},
-	});
-	for (;;) {
-		if (run.budget.isExhausted()) return save();
-		const asked = run.budget.chunk(DRAIN_CHUNK);
-		// Ask past the skipped ties, so a short read still means the end.
-		const limit = asked + ties.size;
-		const from = at;
-		run.budget.range();
-		const rows = await ctx.db
-			.query('mailDigests')
-			.withIndex('by_mailbox_state', (q) =>
-				from === undefined
-					? q.eq('mailboxId', mailboxId).eq('state', state)
-					: q.eq('mailboxId', mailboxId).eq('state', state).gte('_creationTime', from)
-			)
-			.take(limit);
-		for (const row of rows) run.budget.charge(row);
-		const fresh = rows.filter((row) => !(row._creationTime === from && ties.has(row._id)));
-		const batch = fresh.slice(0, asked);
-		for (const digest of batch) {
-			await handle(digest);
-			run.budget.progress();
-			if (digest._creationTime !== at) {
-				at = digest._creationTime;
-				ties = new Set();
-			}
-			ties.add(digest._id);
-		}
-		if (rows.length < limit && fresh.length <= asked) return { isDone: true };
+const GENERATED_DIGEST_PROBE = 2;
+
+/**
+ * 1. The purged messages' lines in the mailbox's generated digest. Only a
+ * `generated` digest holds item text (`digestState.ts`: claimed has none yet,
+ * failed and sent are stripped), so this is one bounded read, no cursor.
+ */
+const generatedDigestRange: PurgeRange = async (ctx, run) => {
+	const ids = purgedMessageIds(run);
+	const mailboxId = mailboxOfRun(run);
+	if (ids.length === 0 || !mailboxId) return { isDone: true };
+	const purged = new Set<string>(ids);
+	run.budget.range();
+	const digests = await ctx.db
+		.query('mailDigests')
+		.withIndex('by_mailbox_state', (q) => q.eq('mailboxId', mailboxId).eq('state', 'generated'))
+		.take(GENERATED_DIGEST_PROBE);
+	for (const digest of digests) run.budget.charge(digest);
+	if (digests.length >= GENERATED_DIGEST_PROBE) {
+		console.warn('arrival: more than one generated digest in a mailbox', { mailboxId });
 	}
-}
+	for (const digest of digests) {
+		const items = digest.items.filter((item) => !purged.has(item.messageId));
+		if (items.length !== digest.items.length) await ctx.db.patch(digest._id, { items });
+		run.budget.progress();
+	}
+	return { isDone: true };
+};
 
-/** One unsent digest state: drop the purged messages' lines. */
-function unsentDigestRange(state: 'claimed' | 'generated' | 'failed'): PurgeRange {
-	return async (ctx, run) => {
-		const ids = purgedMessageIds(run);
-		const mailboxId = mailboxOfRun(run);
-		if (ids.length === 0 || !mailboxId) return { isDone: true };
-		const purged = new Set<string>(ids);
-		return scanUnsentDigests(ctx, run, mailboxId, state, async (digest) => {
-			const items = digest.items.filter((item) => !purged.has(item.messageId));
-			if (items.length !== digest.items.length) await ctx.db.patch(digest._id, { items });
-		});
-	};
-}
-
-/** 4. Every per-message arrival row of the purged messages. */
+/** 2. Every per-message arrival row of the purged messages. */
 const messageRowsRange: PurgeRange = (ctx, run) => {
 	const deleting = async (row: {
 		_id: Id<'mailArrivalRecords' | 'mailDelayedActions' | 'mailArrivalOperationChanges'>;
@@ -168,7 +132,7 @@ const messageRowsRange: PurgeRange = (ctx, run) => {
 	);
 };
 
-/** 5. The thread projection and the gist, when a purged message is what they show. */
+/** 3. The thread projection and the gist, when a purged message is what they show. */
 const projectionRange: PurgeRange = async (ctx, run) => {
 	if (run.ref.kind !== 'mail') return { isDone: true };
 	const threadId = run.ref.id;
@@ -209,9 +173,7 @@ async function loadMailBrief(
 
 /** The read-on-arrival ranges of a `sources` purge job, in order. */
 export const arrivalSourceRanges: readonly PurgeRange[] = [
-	unsentDigestRange('claimed'),
-	unsentDigestRange('generated'),
-	unsentDigestRange('failed'),
+	generatedDigestRange,
 	messageRowsRange,
 	projectionRange,
 ];

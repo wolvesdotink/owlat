@@ -9,7 +9,7 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
-import type { Id } from '../../../_generated/dataModel';
+import type { Doc, Id } from '../../../_generated/dataModel';
 import { modules, seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.testlib';
 import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from '../../messagePurge';
 import { rebuildThreadAggregates } from '../../threadAggregates';
@@ -17,7 +17,8 @@ import { scheduleScopeInvalidation, startScopeChange } from '../../interpret/sco
 import { MAIL_ARRIVAL_TABLES } from '../../../schema/mailArrival';
 import { arrivalChangeRow } from '../changeRows';
 import { drivePurgeJob } from '../../interpret/purgeRun';
-import { unitBudget } from '../../interpret/purgeDrain';
+import { unitBudget, type DrainBudget } from '../../interpret/purgeDrain';
+import { markDigestFailed, markDigestSent, retireGeneratedDigests } from '../digestState';
 import { mailMessageSources } from '../../interpret/purge';
 import { seedArrivalRows } from './arrival.testlib';
 
@@ -88,48 +89,10 @@ describe('message purge', () => {
 					})
 				);
 			}
-			// Twelve unsent digests (more than any fixed page) naming the message
-			// next to another line, and a sent one, which keeps what was sent.
+			// The generated digest names the message next to another line.
 			const digest = (await ctx.db.get(seeded.digestId))!;
-			const unsent: Id<'mailDigests'>[] = [seeded.digestId];
 			await ctx.db.patch(seeded.digestId, {
 				items: [...digest.items, { threadId: otherThreadId, messageId: otherId, kind: 'updates' }],
-			});
-			for (let i = 0; i < 11; i++) {
-				unsent.push(
-					await ctx.db.insert('mailDigests', {
-						mailboxId,
-						periodKey: `failed-${i}`,
-						state: 'failed',
-						claimToken: 't',
-						claimUntil: 0,
-						generationAttempts: 2,
-						items: [
-							...digest.items,
-							{ threadId: otherThreadId, messageId: otherId, kind: 'updates' },
-						],
-						visited: digest.visited,
-						overflowByKind: digest.overflowByKind,
-						overflowLabel: 'exact',
-						createdAt: now,
-						expiresAt: digest.expiresAt,
-					})
-				);
-			}
-			const sentId = await ctx.db.insert('mailDigests', {
-				mailboxId,
-				periodKey: 'sent',
-				state: 'sent',
-				claimToken: 's',
-				claimUntil: 0,
-				generationAttempts: 1,
-				items: digest.items,
-				visited: digest.visited,
-				overflowByKind: digest.overflowByKind,
-				overflowLabel: 'exact',
-				sentAt: now,
-				createdAt: now,
-				expiresAt: digest.expiresAt,
 			});
 			await ctx.db.insert('interpretSources', {
 				threadKind: 'mail',
@@ -169,7 +132,7 @@ describe('message purge', () => {
 				arrival: { placement: 'digest', messageId, decidedAt: now },
 				digestPendingSince: now,
 			});
-			return { ...seeded, unsent, sentId, briefId };
+			return { ...seeded, briefId };
 		});
 
 		await purge(t, messageId);
@@ -180,12 +143,9 @@ describe('message purge', () => {
 			// Only the thread-override row names no message.
 			const left = await ctx.db.query('mailArrivalOperationChanges').collect();
 			expect(left.map((row) => row.change.kind)).toEqual(['threadPlacementOverride']);
-			for (const digestId of ids.unsent) {
-				expect((await ctx.db.get(digestId))!.items.map((item) => item.messageId)).toEqual([
-					otherId,
-				]);
-			}
-			expect((await ctx.db.get(ids.sentId))!.items).toHaveLength(1);
+			expect((await ctx.db.get(ids.digestId))!.items.map((item) => item.messageId)).toEqual([
+				otherId,
+			]);
 			const thread = (await ctx.db.get(threadId))!;
 			expect(thread.arrival).toBeUndefined();
 			expect(thread.digestPendingSince).toBeUndefined();
@@ -220,10 +180,10 @@ describe('message purge', () => {
 /** One digest of `state` for `mailboxId` naming the given lines. */
 function digestRow(
 	mailboxId: Id<'mailboxes'>,
-	state: 'claimed' | 'failed',
+	state: Doc<'mailDigests'>['state'],
 	periodKey: string,
 	items: Array<{ threadId: Id<'mailThreads'>; messageId: Id<'mailMessages'> }>,
-	expiresAt: number
+	expiresAt = Number.MAX_SAFE_INTEGER
 ) {
 	return {
 		mailboxId,
@@ -233,78 +193,105 @@ function digestRow(
 		claimUntil: 0,
 		generationAttempts: 1,
 		items: items.map((item) => ({ ...item, kind: 'newsletter' as const })),
-		visited: [],
-		overflowByKind: { newsletter: 0, updates: 0, promotion: 0 },
+		visited: items.map((item) => ({
+			threadId: item.threadId,
+			throughSourceOrderKey: 'k1',
+			kind: 'newsletter' as const,
+		})),
+		overflowByKind: { newsletter: 3, updates: 0, promotion: 0 },
 		overflowLabel: 'exact' as const,
 		createdAt: 0,
 		expiresAt,
 	};
 }
 
-describe('the digest walk across purge slices', () => {
-	it('handles digests that share a creation time, a slice boundary between them', async () => {
-		const { t, mailboxId, messageId, otherId, threadId, otherThreadId } = await setup();
-		// Far enough out that convex-test's +0.001 ms bump no longer moves the
-		// float: every row inserted now shares one `_creationTime`.
-		vi.useFakeTimers();
-		vi.setSystemTime(8_000_000_000_000_000);
-		const digestIds = await t.run(async (ctx) => {
-			const ids: Id<'mailDigests'>[] = [];
-			for (let i = 0; i < 12; i++) {
-				ids.push(
-					await ctx.db.insert(
-						'mailDigests',
-						digestRow(
-							mailboxId,
-							'failed',
-							`p${i}`,
-							[
-								{ threadId, messageId },
-								{ threadId: otherThreadId, messageId: otherId },
-							],
-							Number.MAX_SAFE_INTEGER
-						)
-					)
-				);
+/** A budget that counts the digest rows a slice fetches. */
+function countingBudget() {
+	const inner = unitBudget(10_000);
+	const counts = { digests: 0 };
+	const budget: DrainBudget = {
+		isExhausted: inner.isExhausted,
+		chunk: inner.chunk,
+		range: inner.range,
+		progress: inner.progress,
+		charge: (doc) => {
+			if (doc && typeof doc === 'object' && 'periodKey' in doc && 'claimToken' in doc) {
+				counts.digests += 1;
 			}
-			return ids;
-		});
-		vi.useRealTimers();
-		const times = await t.run(async (ctx) =>
-			Promise.all(digestIds.map(async (id) => (await ctx.db.get(id))!._creationTime))
-		);
-		expect(new Set(times).size).toBe(1);
+			inner.charge(doc);
+		},
+	};
+	return { budget, counts };
+}
 
-		// A few rows per slice, so the cursor lands inside the tie.
-		let slices = 0;
-		for (; slices < 200; slices++) {
-			const isDone = await t.run((ctx) =>
-				drivePurgeJob(
-					ctx,
-					'ties',
-					{
-						ref: { kind: 'mail', id: threadId },
-						kind: 'sources',
-						sources: mailMessageSources(messageId),
-						mailboxId,
-					},
-					unitBudget(5)
-				)
-			);
-			if (isDone) break;
-		}
-		expect(slices).toBeGreaterThan(1);
-		await t.run(async (ctx) => {
-			for (const id of digestIds) {
-				expect((await ctx.db.get(id))!.items.map((item) => item.messageId)).toEqual([otherId]);
+describe('the digest a purge reads', () => {
+	it('reads only the generated digest, however many failed and sent ones exist', async () => {
+		const { t, mailboxId, messageId, otherId, threadId, otherThreadId } = await setup();
+		const line = { threadId, messageId };
+		const other = { threadId: otherThreadId, messageId: otherId };
+		const generatedId = await t.run(async (ctx) => {
+			// Failed and sent digests are stripped (digestState.ts); many of them.
+			for (let i = 0; i < 40; i++) {
+				await ctx.db.insert('mailDigests', digestRow(mailboxId, 'failed', `f${i}`, []));
+				await ctx.db.insert('mailDigests', digestRow(mailboxId, 'sent', `s${i}`, []));
 			}
+			await ctx.db.insert('mailDigests', digestRow(mailboxId, 'claimed', 'c', []));
+			return ctx.db.insert('mailDigests', digestRow(mailboxId, 'generated', 'g', [line, other]));
+		});
+
+		const { budget, counts } = countingBudget();
+		const isDone = await t.run((ctx) =>
+			drivePurgeJob(
+				ctx,
+				'budget',
+				{
+					ref: { kind: 'mail', id: threadId },
+					kind: 'sources',
+					sources: mailMessageSources(messageId),
+					mailboxId,
+				},
+				budget
+			)
+		);
+
+		expect(isDone).toBe(true);
+		expect(counts.digests).toBe(1);
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(generatedId))!.items.map((item) => item.messageId)).toEqual([
+				otherId,
+			]);
 		});
 	});
 
+	it('logs and still handles a broken invariant (two generated digests)', async () => {
+		const { t, mailboxId, messageId, threadId } = await setup();
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const ids = await t.run(async (ctx) => [
+			await ctx.db.insert(
+				'mailDigests',
+				digestRow(mailboxId, 'generated', 'a', [{ threadId, messageId }])
+			),
+			await ctx.db.insert(
+				'mailDigests',
+				digestRow(mailboxId, 'generated', 'b', [{ threadId, messageId }])
+			),
+		]);
+
+		await purge(t, messageId);
+
+		await t.run(async (ctx) => {
+			for (const id of ids) expect((await ctx.db.get(id))!.items).toEqual([]);
+		});
+		expect(warn).toHaveBeenCalledWith(
+			'arrival: more than one generated digest in a mailbox',
+			expect.objectContaining({ mailboxId })
+		);
+		warn.mockRestore();
+	});
+
 	it('still finds the mailbox after the thread is gone and retention took the record', async () => {
-		const { t, mailboxId, messageId, threadId, otherId, otherThreadId } = await setup();
-		const far = Date.now() + 365 * 24 * 60 * 60 * 1000;
-		const failedId = await t.run(async (ctx) => {
+		const { t, mailboxId, messageId, threadId } = await setup();
+		const generatedId = await t.run(async (ctx) => {
 			const now = Date.now();
 			await ctx.db.insert('mailArrivalRecords', {
 				mailboxId,
@@ -317,23 +304,26 @@ describe('the digest walk across purge slices', () => {
 				updatedAt: now,
 				expiresAt: now + 1000,
 			});
-			// More claimed digests than the inline slice can read, so the failed
-			// one is reached only by a scheduled continuation.
+			// More extraction rows than the inline slice can delete, so the digest
+			// range is reached only by a scheduled continuation.
 			for (let i = 0; i < 500; i++) {
-				await ctx.db.insert(
-					'mailDigests',
-					digestRow(
-						mailboxId,
-						'claimed',
-						`c${i}`,
-						[{ threadId: otherThreadId, messageId: otherId }],
-						far
-					)
-				);
+				await ctx.db.insert('messageInterpretations', {
+					threadKind: 'mail',
+					mailThreadId: threadId,
+					source: { kind: 'mail', id: messageId },
+					sourceKey: `mail:${messageId}`,
+					contentRevision: `rev-${i}`,
+					extractorVersion: 1,
+					mode: 'brief',
+					status: 'complete',
+					deletionEpoch: 0,
+					createdAt: now,
+					updatedAt: now,
+				});
 			}
 			return ctx.db.insert(
 				'mailDigests',
-				digestRow(mailboxId, 'failed', 'f', [{ threadId, messageId }], far)
+				digestRow(mailboxId, 'generated', 'g', [{ threadId, messageId }])
 			);
 		});
 
@@ -346,6 +336,7 @@ describe('the digest walk across purge slices', () => {
 		});
 		const job = await t.run(async (ctx) => ctx.db.query('threadPurgeJobs').first());
 		expect(job?.mailboxId).toBe(mailboxId);
+		expect((await t.run(async (ctx) => ctx.db.get(generatedId)))!.items).toHaveLength(1);
 		// Retention runs between the slices and takes the arrival record.
 		await t.mutation(internal.maintenance.retention.sweepArrivalRecords, {
 			now: Date.now() + 60_000,
@@ -358,8 +349,71 @@ describe('the digest walk across purge slices', () => {
 		await drain(t);
 
 		await t.run(async (ctx) => {
-			expect((await ctx.db.get(failedId))!.items).toEqual([]);
+			expect((await ctx.db.get(generatedId))!.items).toEqual([]);
 			expect(await ctx.db.query('threadPurgeJobs').collect()).toEqual([]);
+		});
+	});
+});
+
+describe('digest state invariants', () => {
+	it('strips the lines of a failed digest and keeps its counts', async () => {
+		const { t, mailboxId, messageId, threadId } = await setup();
+		await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'mailDigests',
+				digestRow(mailboxId, 'claimed', 'p', [{ threadId, messageId }])
+			);
+			await markDigestFailed(ctx, { _id: id });
+			const row = (await ctx.db.get(id))!;
+			expect(row.state).toBe('failed');
+			expect(row.items).toEqual([]);
+			expect(row.overflowByKind.newsletter).toBe(3);
+			expect(row.visited).toHaveLength(1);
+		});
+	});
+
+	it('strips the lines of a sent digest and keeps visited for consumption', async () => {
+		const { t, mailboxId, messageId, threadId } = await setup();
+		await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'mailDigests',
+				digestRow(mailboxId, 'generated', 'p', [{ threadId, messageId }])
+			);
+			const sentAt = Date.now();
+			expect(
+				await markDigestSent(ctx, (await ctx.db.get(id))!, { sentMessageId: messageId, sentAt })
+			).toBe(true);
+			const row = (await ctx.db.get(id))!;
+			expect(row).toMatchObject({ state: 'sent', items: [], sentMessageId: messageId, sentAt });
+			expect(row.visited).toEqual([{ threadId, throughSourceOrderKey: 'k1', kind: 'newsletter' }]);
+			// A second delivery sees `sent` and writes nothing.
+			expect(await markDigestSent(ctx, row, { sentMessageId: messageId, sentAt: sentAt + 1 })).toBe(
+				false
+			);
+			expect((await ctx.db.get(id))!.sentAt).toBe(sentAt);
+		});
+	});
+
+	it('retires older generated digests when a new period is claimed', async () => {
+		const { t, mailboxId, messageId, threadId } = await setup();
+		await t.run(async (ctx) => {
+			const older = await ctx.db.insert(
+				'mailDigests',
+				digestRow(mailboxId, 'generated', '2026-10-16', [{ threadId, messageId }])
+			);
+			const current = await ctx.db.insert(
+				'mailDigests',
+				digestRow(mailboxId, 'generated', '2026-10-17', [{ threadId, messageId }])
+			);
+			expect(await retireGeneratedDigests(ctx, mailboxId, '2026-10-17')).toBe(1);
+			expect(await ctx.db.get(older)).toMatchObject({ state: 'failed', items: [] });
+			expect((await ctx.db.get(current))!.state).toBe('generated');
+			expect((await ctx.db.get(current))!.items).toHaveLength(1);
+			const generated = await ctx.db
+				.query('mailDigests')
+				.withIndex('by_mailbox_state', (q) => q.eq('mailboxId', mailboxId).eq('state', 'generated'))
+				.collect();
+			expect(generated).toHaveLength(1);
 		});
 	});
 });
