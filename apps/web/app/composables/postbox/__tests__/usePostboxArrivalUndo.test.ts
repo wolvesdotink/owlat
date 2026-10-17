@@ -6,9 +6,8 @@
  * The learned-digest notice shows once and is acknowledged when it leaves.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { flushPromises } from '@vue/test-utils';
 import { defineComponent, h, nextTick, ref } from 'vue';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createTestI18n } from '~/__tests__/i18n';
 import {
 	pendingArrivalUndos,
