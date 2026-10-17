@@ -17,7 +17,8 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 import { listBucketOf } from '../interpret/counters';
 import type { T } from '../senders/__tests__/senders.testlib';
-import { NUDGE_THREAD_BUDGET, THREAD_MESSAGE_SCAN } from '../nudges';
+import { NUDGE_ITEM_BUDGET, NUDGE_THREAD_BUDGET, scanNudges, THREAD_MESSAGE_SCAN } from '../nudges';
+import type { QueryCtx } from '../../_generated/server';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -288,5 +289,51 @@ describe('nudge cards', () => {
 		const items = await queue(t, w.mailboxId);
 		expect(items).toHaveLength(1);
 		expect(items[0]!.nudge).toBeUndefined();
+	});
+
+	it('never fetches a waiting item past the item budget (r2 F2)', async () => {
+		const t = convexTest(schema, modules);
+		const w = await seedWaiting(t);
+		// Unconfirmed proposals: read, and skipped, one after another.
+		await t.run(async (ctx) => {
+			const { _id, _creationTime, ...item } = (await ctx.db.get(w.itemId))!;
+			await ctx.db.patch(w.itemId, { verify: 'proposal' });
+			for (let i = 0; i < NUDGE_ITEM_BUDGET + 20; i++) {
+				await ctx.db.insert('threadItems', { ...item, verify: 'proposal' });
+			}
+		});
+		const fetched = await t.run(async (ctx) => {
+			let items = 0;
+			const db = new Proxy(ctx.db, {
+				get(target, prop) {
+					if (prop !== 'query') return Reflect.get(target, prop).bind(target);
+					return (table: string) => {
+						const query = target.query(table as never);
+						if (table !== 'threadItems') return query;
+						return {
+							withIndex: (...args: Parameters<typeof query.withIndex>) => {
+								const ranged = query.withIndex(...args);
+								return {
+									take: async (n: number) => {
+										const rows = await ranged.take(n);
+										items += rows.length;
+										return rows;
+									},
+									async *[Symbol.asyncIterator]() {
+										for await (const row of ranged) {
+											items++;
+											yield row;
+										}
+									},
+								};
+							},
+						};
+					};
+				},
+			});
+			await scanNudges({ db } as unknown as QueryCtx, w.mailboxId, Date.now(), new Set());
+			return items;
+		});
+		expect(fetched).toBe(NUDGE_ITEM_BUDGET);
 	});
 });

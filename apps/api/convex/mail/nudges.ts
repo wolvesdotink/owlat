@@ -117,13 +117,17 @@ function openWaitingItems(
 	ctx: Pick<QueryCtx, 'db'>,
 	mailboxId: Id<'mailboxes'>,
 	now: number,
-	isDated: boolean
-): AsyncIterable<Doc<'threadItems'>> {
-	return ctx.db.query('threadItems').withIndex('by_mailbox_responsibility_due', (q) => {
-		const open = q.eq('mailboxId', mailboxId).eq('responsibility', 'them').eq('status', 'open');
-		// Dated items only once their date passed; a future deadline is not nudged.
-		return isDated ? open.gte('due.at', 0).lt('due.at', now) : open.eq('due.at', undefined);
-	});
+	isDated: boolean,
+	limit: number
+): Promise<Doc<'threadItems'>[]> {
+	return ctx.db
+		.query('threadItems')
+		.withIndex('by_mailbox_responsibility_due', (q) => {
+			const open = q.eq('mailboxId', mailboxId).eq('responsibility', 'them').eq('status', 'open');
+			// Dated items only once their date passed; a future deadline is not nudged.
+			return isDated ? open.gte('due.at', 0).lt('due.at', now) : open.eq('due.at', undefined);
+		})
+		.take(limit);
 }
 
 async function ownAddressesOf(
@@ -206,8 +210,10 @@ export async function scanNudges(
 	const signals = new Map<string, ThreadSignals | null>();
 	let read = 0;
 	for (const isDated of [true, false]) {
-		for await (const item of openWaitingItems(ctx, mailboxId, now, isDated)) {
-			if (++read > NUDGE_ITEM_BUDGET) return rows;
+		// Each read fetches only what is left of the budget: item 101 is never read.
+		const items = await openWaitingItems(ctx, mailboxId, now, isDated, NUDGE_ITEM_BUDGET - read);
+		read += items.length;
+		for (const item of items) {
 			const threadId = item.mailThreadId;
 			if (!threadId || item.verify === 'proposal' || emitted.has(threadId)) continue;
 			// Cheap first: a dateless item younger than the wait cannot be stale.
