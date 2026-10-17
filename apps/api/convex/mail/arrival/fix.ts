@@ -179,12 +179,13 @@ async function threadInboxMessages(fix: FixContext): Promise<Doc<'mailMessages'>
 	const { ctx, thread } = fix;
 	const inboxId = await folderId(ctx, thread.mailboxId, 'inbox');
 	if (!inboxId) return [];
-	const messages = await ctx.db
+	return await ctx.db
 		.query('mailMessages')
-		.withIndex('by_thread_and_received', (q) => q.eq('threadId', thread._id))
+		.withIndex('by_thread_folder_received', (q) =>
+			q.eq('threadId', thread._id).eq('folderId', inboxId)
+		)
 		.order('desc')
 		.take(SENDER_RESORT_LIMIT);
-	return messages.filter((m) => m.folderId === inboxId);
 }
 
 type ScopeOutcome = Pick<FixResult, 'archived' | 'resorted' | 'isNeedsReplyCleared'> & {

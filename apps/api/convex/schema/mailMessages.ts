@@ -335,6 +335,9 @@ export const mailMessagesTables = {
 		// `by_thread` is a prefix of `by_thread_and_received` and can go once its
 		// readers move over.
 		.index('by_thread_and_received', ['threadId', 'receivedAt'])
+		// Read on arrival Fix (§4.2): a conversation's newest Inbox messages, the
+		// folder applied before the 200-message bound.
+		.index('by_thread_folder_received', ['threadId', 'folderId', 'receivedAt'])
 		.index('by_thread_and_seen', ['threadId', 'flagSeen'])
 		.index('by_thread_and_flagged', ['threadId', 'flagFlagged'])
 		.index('by_thread_and_outbound_state', ['threadId', 'outbound.state'])

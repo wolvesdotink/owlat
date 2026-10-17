@@ -108,6 +108,28 @@ describe('fix.apply, message scope', () => {
 		});
 	});
 
+	it("archives the conversation's Inbox mail even behind 200 newer messages elsewhere", async () => {
+		const t = learnTest();
+		const { mailboxId, folders } = await seedPersonalMailbox(t);
+		const ids = await seedSenderMessages(
+			t,
+			mailboxId,
+			folders.inbox,
+			Array.from({ length: 205 }, (_, i) => 1_000 + i)
+		);
+		// The 200 newest were archived already; the 5 oldest still sit in the Inbox.
+		await t.run(async (ctx) => {
+			for (const id of ids.slice(5)) await ctx.db.patch(id, { folderId: folders.archive });
+		});
+		const result = await t.mutation(api.mail.arrival.fix.apply, {
+			messageId: ids[0]!,
+			destination: 'auto_archive',
+			scope: 'message',
+		});
+		expect(result.archived).toBe(5);
+		for (const id of ids.slice(0, 5)) expect(await roleOf(t, id)).toBe('archive');
+	});
+
 	it('writes no operation when nothing changes and there is no reason', async () => {
 		const t = learnTest();
 		await seedPersonalMailbox(t);
@@ -182,7 +204,7 @@ describe('fix.apply, sender scope', () => {
 		]);
 	});
 
-	it('makes a default keep the person\'s own, so learning can never override it', async () => {
+	it("makes a default keep the person's own, so learning can never override it", async () => {
 		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const { message } = await deliverLive(t);
