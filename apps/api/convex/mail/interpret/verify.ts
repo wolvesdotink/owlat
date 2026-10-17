@@ -139,7 +139,7 @@ async function runBounded<R>(
 	shouldStop: () => boolean,
 	stopped: R
 ): Promise<R[]> {
-	const results = new Array<R>(count);
+	const results: R[] = [];
 	let next = 0;
 	const lane = async () => {
 		while (next < count) {
