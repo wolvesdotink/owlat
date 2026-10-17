@@ -362,4 +362,51 @@ describe('read on arrival, the main story', () => {
 		expect(second.delivered).toBe(0);
 		expect(callsFor(digestOutputSchema)).toHaveLength(1);
 	});
+
+	it('keeps a full read on the record when a rerun after a reclassification skips it (Sol r1 F1)', async () => {
+		const t = learnTest();
+		await enableFeatures(t, ['ai', 'postbox']);
+		await seedPersonalMailbox(t);
+		const questionId = await deliver(t, QUESTION, 'question');
+		await drain(t);
+		const read = await stateOf(t, questionId);
+		expect(read.record).toMatchObject({ depth: 'full', modelCalls: 1 });
+
+		// The thread is reclassified as bulk mail from a stranger, and the message runs again.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(read.thread._id, {
+				category: { label: 'newsletter', source: 'user', classifiedAt: Date.now() },
+			});
+			const source = await ctx.db
+				.query('interpretSources')
+				.withIndex('by_source_key', (q) => q.eq('sourceKey', `mail:${questionId}`))
+				.first();
+			await ctx.db.patch(source!._id, {
+				eligibility: {
+					...source!.eligibility!,
+					category: 'newsletter',
+					isBulkHeaderPresent: true,
+					isSenderKnown: false,
+				},
+			});
+		});
+		await t.action(internal.mail.interpret.run.interpretMessage, {
+			source: { kind: 'mail', id: questionId },
+		});
+		await drain(t);
+
+		const rerun = await stateOf(t, questionId);
+		const skipped = await t.run(
+			async (ctx) =>
+				await ctx.db
+					.query('messageInterpretations')
+					.collect()
+					.then((rows) => rows.filter((row) => row.status === 'skipped'))
+		);
+		expect(skipped.length).toBeGreaterThan(0);
+		expect(rerun.record).toMatchObject({ depth: 'full', modelCalls: 1 });
+		expect(rerun.record?.reasonKeys.map((reason) => reason.key)).not.toContain(
+			'arrival.reason.ineligible'
+		);
+	});
 });

@@ -159,6 +159,8 @@ const SKIP_DEPTH_REASONS: Readonly<Record<string, string>> = {
  * A run that skipped the message before any depth decision (bulk mail from a
  * stranger, a muted thread, security mail flagged by the guard) read it at
  * depth `none`: the record says so, instead of "not read yet" for good.
+ * Only a record without a depth gets one. A later skip (a rerun after the
+ * thread was reclassified) never replaces what an earlier read recorded.
  */
 export async function noteArrivalSkip(
 	ctx: MutationCtx,
@@ -166,7 +168,10 @@ export async function noteArrivalSkip(
 	skipReason: string | undefined
 ): Promise<void> {
 	const key = skipReason ? SKIP_DEPTH_REASONS[skipReason] : undefined;
-	if (key) await noteArrivalRun(ctx, messageId, { depth: 'none', reasonKeys: [{ key }] });
+	if (!key) return;
+	const record = await loadArrivalRecord(ctx, messageId);
+	if (!record || record.depth !== undefined) return;
+	await noteArrivalRun(ctx, messageId, { depth: 'none', reasonKeys: [{ key }] });
 }
 
 /**
