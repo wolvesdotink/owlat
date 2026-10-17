@@ -53,23 +53,30 @@ export const ARRIVAL_SPAM_MOVE_MAX_MESSAGES = 25;
  * moves a second later. Ambiguous mail gets the fail-soft baseline (`other`, or
  * the thread's standing LLM label when it has one, so a follow-up does not
  * flicker) and the LLM refines it in the background.
+ *
+ * Returns whether the LLM refinement was scheduled: read on arrival waits a
+ * little for it before it decides how deep to read (`interpret/enqueue.ts`).
+ * `messageId` names the delivered message, so the refinement also answers
+ * that message's pending rule questions (SPEC §6.2 R2).
  */
 export async function enqueueCategoryCheck(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
-	opts: { precedence?: string } = {}
-): Promise<void> {
+	opts: { precedence?: string; messageId?: Id<'mailMessages'> } = {}
+): Promise<boolean> {
 	const thread = await ctx.db.get(threadId);
-	if (!thread) return;
+	if (!thread) return false;
 	const latestInbound = await newestInboundMessage(ctx, thread);
-	if (latestInbound === null) return; // owner-only thread (or inactive mailbox)
+	if (latestInbound === null) return false; // owner-only thread (or inactive mailbox)
+	const messageId = opts.messageId ? { messageId: opts.messageId } : {};
 	if (latestInbound === 'beyondScan') {
 		// The whole-thread read belongs to the background job, not the delivery.
 		await ctx.scheduler.runAfter(0, internal.mail.ai.categoryClassify.classifyThread, {
 			threadId,
 			precedence: opts.precedence,
+			...messageId,
 		});
-		return;
+		return true;
 	}
 	const signals = await loadCategorySignals(ctx, thread, latestInbound);
 
@@ -80,10 +87,10 @@ export async function enqueueCategoryCheck(
 				label: signals.override,
 				source: 'user',
 			});
-			return;
+			return false;
 		}
 		await writeCategory(ctx, thread, signals.override, 'user');
-		return;
+		return false;
 	}
 
 	const deterministic = classifyMailCategory({
@@ -93,7 +100,7 @@ export async function enqueueCategoryCheck(
 	if (deterministic) {
 		const resolved = resolveCategory({ deterministic });
 		await writeCategory(ctx, thread, resolved.label, resolved.source);
-		return;
+		return false;
 	}
 
 	if (!keepsStandingLabel(thread.category)) {
@@ -103,7 +110,9 @@ export async function enqueueCategoryCheck(
 		threadId,
 		precedence: opts.precedence,
 		baselineApplied: true,
+		...messageId,
 	});
+	return true;
 }
 
 /**

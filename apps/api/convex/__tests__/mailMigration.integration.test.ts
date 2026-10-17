@@ -1052,6 +1052,11 @@ describe('purging an external account drops its migration rows', () => {
 });
 
 describe('completeBackfillImport — writing-voice refresh', () => {
+	/** The read-on-arrival backfill the import also starts (its own test below). */
+	const BACKFILL_BATCH = 'mail/interpret/backfill:runBatch';
+	const voiceJobs = async (t: ReturnType<typeof convexTest>) =>
+		(await scheduledNames(t)).filter((name) => name !== BACKFILL_BATCH);
+
 	async function setupWithProfile(profile: { isEnabled: boolean } | null) {
 		const t = convexTest(schema, modules);
 		await enableFlags(t, { 'mail.external': true, ai: true });
@@ -1079,7 +1084,7 @@ describe('completeBackfillImport — writing-voice refresh', () => {
 		const { t, mailboxId, migrationId } = await setupWithProfile({ isEnabled: true });
 		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
 
-		expect(await scheduledNames(t)).toEqual(['mail/ai/voiceProfileActions:refresh']);
+		expect(await voiceJobs(t)).toEqual(['mail/ai/voiceProfileActions:refresh']);
 		await t.run(async (ctx) => {
 			const row = await ctx.db
 				.query('mailVoiceProfiles')
@@ -1092,7 +1097,7 @@ describe('completeBackfillImport — writing-voice refresh', () => {
 		// while the first is still in flight.
 		await t.run((ctx) => ctx.db.patch(migrationId, { status: 'importing' }));
 		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
-		expect(await scheduledNames(t)).toEqual(['mail/ai/voiceProfileActions:refresh']);
+		expect(await voiceJobs(t)).toEqual(['mail/ai/voiceProfileActions:refresh']);
 	});
 
 	it('schedules nothing when there is no profile or personalization is off', async () => {
@@ -1100,12 +1105,20 @@ describe('completeBackfillImport — writing-voice refresh', () => {
 		await none.t.mutation(internal.mail.migrationBackfill.completeBackfillImport, {
 			migrationId: none.migrationId,
 		});
-		expect(await scheduledNames(none.t)).toEqual([]);
+		expect(await voiceJobs(none.t)).toEqual([]);
 
 		const off = await setupWithProfile({ isEnabled: false });
 		await off.t.mutation(internal.mail.migrationBackfill.completeBackfillImport, {
 			migrationId: off.migrationId,
 		});
-		expect(await scheduledNames(off.t)).toEqual([]);
+		expect(await voiceJobs(off.t)).toEqual([]);
+	});
+
+	it('starts the 30-day interpretation backfill once (read on arrival, D4)', async () => {
+		const { t, migrationId } = await setupWithProfile(null);
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
+		await t.run((ctx) => ctx.db.patch(migrationId, { status: 'importing' }));
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
+		expect((await scheduledNames(t)).filter((name) => name === BACKFILL_BATCH)).toHaveLength(1);
 	});
 });

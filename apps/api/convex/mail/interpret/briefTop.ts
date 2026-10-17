@@ -96,10 +96,33 @@ export async function refreshBriefTop(
 		waiting: counts.them,
 		...(top ? { top } : {}),
 		...(latest ? { latest } : {}),
+		// The arrival gist is written apart (`setBriefTopGist`) and kept here.
+		...(mode === 'brief' && thread.briefTop?.gist ? { gist: thread.briefTop.gist } : {}),
 		revision: brief.interpretationRevision,
 		updatedAt: Date.now(),
 	};
 	await ctx.db.patch(mailThreadId, { briefTop: next });
+}
+
+/**
+ * Read on arrival (SPEC §2.4): set the list row's gist (sealed by the
+ * caller), keeping the rest of the projection. A thread with no projection
+ * yet gets an empty brief-mode one around it.
+ */
+export async function setBriefTopGist(
+	ctx: MutationCtx,
+	thread: Doc<'mailThreads'>,
+	gist: NonNullable<BriefTop['gist']>,
+	revision: number
+): Promise<void> {
+	const base: BriefTop = thread.briefTop ?? {
+		mode: 'brief',
+		forYou: 0,
+		waiting: 0,
+		revision,
+		updatedAt: Date.now(),
+	};
+	await ctx.db.patch(thread._id, { briefTop: { ...base, gist, updatedAt: Date.now() } });
 }
 
 async function nextLatest(
@@ -126,6 +149,8 @@ export type BriefTopRow = {
 		dueAt?: number;
 	};
 	latest?: { en: string; de: string };
+	/** Read on arrival: the gist line for a row without a brief line (SPEC §2.4). */
+	gist?: { text: string; factQuote?: string };
 	/** The thread is in the Answer queue (`needsReply` set): "for you", not "to do". */
 	isReplyNeeded: boolean;
 };
@@ -156,9 +181,11 @@ export async function openBriefTop(
 	// A fenced thread has no projection, even one written before the fence.
 	if (!stored || isFencedThread(thread)) return undefined;
 	const storedLatest = mode === 'brief' && stored.mode === 'brief' ? stored.latest : undefined;
-	const [topText, latest] = await Promise.all([
+	const storedGist = mode === 'brief' && stored.mode === 'brief' ? stored.gist : undefined;
+	const [topText, latest, gist] = await Promise.all([
 		stored.top ? openPair(stored.top.text) : Promise.resolve(undefined),
 		storedLatest ? openPair(storedLatest) : Promise.resolve(undefined),
+		storedGist ? openGistLine(storedGist) : Promise.resolve(undefined),
 	]);
 	return {
 		mode,
@@ -176,6 +203,17 @@ export async function openBriefTop(
 				}
 			: {}),
 		...(latest ? { latest } : {}),
+		...(gist ? { gist } : {}),
 		isReplyNeeded: thread.needsReply !== undefined,
 	};
+}
+
+async function openGistLine(
+	gist: NonNullable<BriefTop['gist']>
+): Promise<{ text: string; factQuote?: string }> {
+	const [text, factQuote] = await Promise.all([
+		openMessageBody(gist.text),
+		gist.factQuote ? openMessageBody(gist.factQuote) : Promise.resolve(undefined),
+	]);
+	return { text, ...(factQuote ? { factQuote } : {}) };
 }

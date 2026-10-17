@@ -13162,6 +13162,29 @@
 				"archived": "Filed away",
 				"clear": "Show all mail again, not only “{name}”"
 			}
+		},
+		"arrival": {
+			"settings": {
+				"label": "Read new mail when it arrives",
+				"help": "Your AI provider reads personal mail as soon as it arrives, including mail you never open, so it is sorted and summed up before you look. Turn it off to have mail read only when you open it."
+			},
+			"reason": {
+				"aiOff": "AI is off",
+				"ineligible": "Not read: AI never reads this kind of mail",
+				"openWork": "Read in full: it may need you",
+				"readOnArrivalOff": "Read on arrival is off",
+				"senderStatus": "Not read because of how you handle this sender",
+				"security": "Not read: security mail is shown as written",
+				"budget": "Counted only: the AI budget was used up",
+				"digest": "Counted for your digest",
+				"override": "Read the way you placed it",
+				"category": "Read by its kind of mail",
+				"exactWording": "Read in full: the exact wording matters",
+				"ownerLimit": "Counted only: a lot of mail arrived at once",
+				"categoryTimeout": "Decided before its kind of mail was clear",
+				"gistUnavailable": "Counted only: no short quote was possible",
+				"gistFailed": "Counted only: the short read failed"
+			}
 		}
 	},
 	"recipient": {

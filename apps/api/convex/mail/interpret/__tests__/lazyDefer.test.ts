@@ -9,6 +9,9 @@
  *   - every consumer other than the display keeps the eager run: a shared
  *     mailbox, a reply candidate, a thread with tracked items or a response
  *     plan, and an ineligible source (its run skips without a model call).
+ *
+ * All of it with read on arrival turned off: with it on (the default), the
+ * display-only source is read on arrival instead (`arrival/__tests__`).
  */
 
 import { convexTest } from 'convex-test';
@@ -88,6 +91,17 @@ async function deliver(
 async function seed(t: Test, mailbox: MailboxSeed = {}) {
 	const mailboxId = await seedMailbox(t, { address: 'me@owlat.test', ...mailbox });
 	for (const role of ['inbox', 'archive'] as const) await seedFolder(t, mailboxId, role);
+	// D10 as it stands: read on arrival is off (SPEC §2.1; on, the run reads it now).
+	await t.run(async (ctx) => {
+		const owner = (await ctx.db.get(mailboxId))!.userId;
+		await ctx.db.insert('mailUserSettings', {
+			userId: owner,
+			autoAdvance: 'next',
+			isReadOnArrival: false,
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		});
+	});
 	return mailboxId;
 }
 
@@ -172,7 +186,7 @@ describe('D10: display-only interpretation is deferred', () => {
 			runs: 1,
 		});
 		const { runs, snapshot, brief } = await state(t, message);
-		expect(runs).toEqual([{ source: { kind: 'mail', id: message._id } }]);
+		expect(runs).toEqual([{ source: { kind: 'mail', id: message._id }, depth: 'full' }]);
 		expect(snapshot).toMatchObject({ isOutstanding: true });
 		expect(snapshot?.isDeferred).toBeUndefined();
 		expect(brief?.deferredSources).toBeUndefined();
@@ -226,7 +240,7 @@ describe('D10: display-only interpretation is deferred', () => {
 		// The newest runs (and reads the older one first, in its run); the older
 		// one stays deferred until that run takes it.
 		const { runs } = await state(t, second);
-		expect(runs).toEqual([{ source: { kind: 'mail', id: second._id } }]);
+		expect(runs).toEqual([{ source: { kind: 'mail', id: second._id }, depth: 'full' }]);
 		expect((await state(t, second)).snapshot).toMatchObject({ isOutstanding: true });
 		expect((await state(t, first)).snapshot?.isDeferred).toBe(true);
 		// A second open while that run is in flight starts no second reader.

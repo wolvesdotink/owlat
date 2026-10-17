@@ -718,6 +718,13 @@ catalog, and the decision-to-auto-send contract. This plan lives in
     opening a thread process newly deferred sources even when its history
     backfill is done (`mail/interpret/lazy.ts` returns early today). The brief
     then appears after a short delay the first time such a thread is opened.
+
+    _Amended 2026-10-17 (read on arrival, ADR-0073 amendment)._ This deferral
+    now applies only when the owner turns read on arrival off. With it on (the
+    default), a display-only personal source is read when it arrives, at a
+    depth the run chooses: a full read, an extractive gist, a count or
+    nothing. A budget or owner-limit refusal counts it instead of deferring it,
+    and a later full read in the thread upgrades it.
 11. **Triage before Team interpretation (L11).** Recommendation: build a
     message-only triage bundle (spam, automated, needs work) that runs before
     retrieval and interpretation, in shadow first. Matching today's classifier

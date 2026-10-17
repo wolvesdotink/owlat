@@ -46,6 +46,18 @@
 			"types": "./src/arrival.ts",
 			"import": "./src/arrival.ts"
 		},
+		"./arrivalDepth": {
+			"types": "./src/arrivalDepth.ts",
+			"import": "./src/arrivalDepth.ts"
+		},
+		"./arrivalPlacement": {
+			"types": "./src/arrivalPlacement.ts",
+			"import": "./src/arrivalPlacement.ts"
+		},
+		"./exactWordingDetector": {
+			"types": "./src/exactWordingDetector.ts",
+			"import": "./src/exactWordingDetector.ts"
+		},
 		"./quoteNormalize": {
 			"types": "./src/quoteNormalize.ts",
 			"import": "./src/quoteNormalize.ts"

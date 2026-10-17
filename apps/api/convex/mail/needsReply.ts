@@ -27,6 +27,7 @@
  * — a muted thread is skipped by the queue read too), or the manual `clear`.
  */
 
+import { refreshArrivalProjection } from './arrival/projection';
 import { v, type Infer } from 'convex/values';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -123,6 +124,7 @@ export async function clearThreadNeedsReply(
 		needsReplyRetryCount: undefined,
 		updatedAt: Date.now(),
 	});
+	await refreshArrivalProjection(ctx, threadId);
 }
 
 // ─── Convex functions ────────────────────────────────────────────────────────
@@ -269,6 +271,8 @@ export const applyResult = internalMutation({
 				: { needsReplyPendingAt: undefined, needsReplyRetryCount: undefined }),
 			updatedAt: Date.now(),
 		});
+		// Read on arrival: a settled verdict is `needs_me`, a cleared one is not (§2.8).
+		await refreshArrivalProjection(ctx, args.threadId);
 
 		// Draft-on-arrival (postbox.aiDraft): the moment a message is confirmed to
 		// need a reply, pre-generate a draft into the review slot via the shared

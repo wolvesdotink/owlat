@@ -17,6 +17,7 @@
  *  - marking the brief seen once the strip has shown it;
  *  - running item reactions, with the replying ones handed to the reader.
  */
+import { api } from '@owlat/api';
 import type { Ref } from 'vue';
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
 import { useThreadBrief } from '~/composables/useThreadBrief';
@@ -68,9 +69,19 @@ export function usePostboxReaderBrief(opts: {
 	const read = useThreadBrief({ threadId: () => (isShared.value ? null : opts.threadId()) });
 
 	const gist = computed(() => (isShared.value ? null : readerGistOf(read.brief.value)));
+	// Read on arrival: whether a pending brief is being read now (the "reading" line).
+	const arrivalPreference = useConvexQuery(
+		api.mail.interpret.preferences.getArrivalPreference,
+		() => ({})
+	);
 	/** The one element under the header: the brief strip or the slim meta line. */
 	const strip = computed(() =>
-		resolveReaderStrip({ isShared: isShared.value, brief: read.brief.value, gist: gist.value })
+		resolveReaderStrip({
+			isShared: isShared.value,
+			brief: read.brief.value,
+			gist: gist.value,
+			isReadOnArrival: arrivalPreference.data.value?.isReadOnArrival,
+		})
 	);
 
 	/** "Full brief" opens whenever the brief holds anything, whatever the strip shows. */

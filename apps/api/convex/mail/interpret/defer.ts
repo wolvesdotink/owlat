@@ -59,6 +59,7 @@ import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { loadInterpretSource } from './sources';
 import { CLOSED_STATUSES, recentlyClosedItems, threadItemsWithStatus } from './load';
 import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
+import { isReadOnArrivalOn } from './preferences';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
@@ -116,20 +117,25 @@ export async function isDisplayOnlyInterpretation(
 }
 
 /**
- * Defer a captured Postbox source when its interpretation is display-only.
- * True when it was deferred (the caller then runs nothing).
+ * Defer a captured Postbox source when its interpretation is display-only
+ * and its owner turned read on arrival off (SPEC §2.1: with it on, the run
+ * reads it now at the depth it chooses, `arrivalDecide.ts`). True when it was
+ * deferred (the caller then runs nothing).
  */
 export async function deferIfDisplayOnly(
 	ctx: MutationCtx,
 	message: Doc<'mailMessages'>
 ): Promise<boolean> {
 	if (!(await isDisplayOnlyInterpretation(ctx, message))) return false;
+	const mailbox = await ctx.db.get(message.mailboxId);
+	if (mailbox && (await isReadOnArrivalOn(ctx, mailbox.userId))) return false;
 	return deferSource(ctx, interpretationSourceKey({ kind: 'mail', id: message._id }), DISPLAY_ONLY);
 }
 
 /**
  * The needs-reply classifier's question for a delivered message that is no
- * reply candidate (`mail/ai/needsReplyClassify.ts`): defer it, or run it now.
+ * reply candidate (`mail/ai/needsReplyClassify.ts`): defer it, or run it now
+ * (`mail/arrival/dispatch.ts`).
  */
 export const deferDeliveredIfDisplayOnly = internalMutation({
 	args: { mailMessageId: v.id('mailMessages') },
@@ -154,7 +160,15 @@ export async function resumeDeferredSources(
 	const newest = await deferredInOrder(ctx, ref.id).order('desc').first();
 	if (!newest) return 0;
 	await markOutstanding(ctx, newest.sourceKey);
-	await ctx.scheduler.runAfter(0, runOf(newest.source), { source: newest.source });
+	// An open reads in full (read on arrival never lowers what an open reads).
+	if (newest.source.kind === 'mail') {
+		await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
+			source: newest.source,
+			depth: 'full',
+		});
+	} else {
+		await ctx.scheduler.runAfter(0, runOf(newest.source), { source: newest.source });
+	}
 	await markBriefPending(ctx, ref);
 	return 1;
 }
@@ -234,19 +248,44 @@ export const oldestDeferredBefore = internalQuery({
 		const message = await ctx.db.get(args.source.id);
 		if (!message) return null;
 		const ownKey = interpretationSourceKey(args.source);
+		const key = sourceOrderKey(message);
 		// The source itself is never its own predecessor, even as a keyless
 		// (pre-key) deferred row, which sorts before every key: of the first
 		// two rows below its key, the first that is not itself.
-		const candidates = await ctx.db
-			.query('interpretSources')
-			.withIndex('by_mail_thread_deferred_order', (q) =>
-				q
-					.eq('mailThreadId', message.threadId)
-					.eq('isDeferred', true)
-					.lt('sourceOrderKey', sourceOrderKey(message))
-			)
-			.take(2);
-		return candidates.find((row) => row.sourceKey !== ownKey)?.source ?? null;
+		const deferred = (
+			await ctx.db
+				.query('interpretSources')
+				.withIndex('by_mail_thread_deferred_order', (q) =>
+					q.eq('mailThreadId', message.threadId).eq('isDeferred', true).lt('sourceOrderKey', key)
+				)
+				.take(2)
+		).find((row) => row.sourceKey !== ownKey);
+		// Read on arrival (SPEC §2.3.4): a source that needs a full read (a sent
+		// reply, mail that is not display-only) reads the thread's earlier
+		// gist-only or counted mail first, the same way. Display-only mail never
+		// upgrades anything, and neither does an open.
+		const isUpgrading =
+			args.source.kind === 'outboundMail' || !(await isDisplayOnlyInterpretation(ctx, message));
+		const upgradeable = isUpgrading
+			? (
+					await ctx.db
+						.query('interpretSources')
+						.withIndex('by_mail_thread_upgradeable_order', (q) =>
+							q
+								.eq('mailThreadId', message.threadId)
+								.eq('isUpgradeable', true)
+								.lt('sourceOrderKey', key)
+						)
+						.take(2)
+				).find((row) => row.sourceKey !== ownKey)
+			: undefined;
+		const oldest =
+			deferred && upgradeable
+				? (deferred.sourceOrderKey ?? '') <= (upgradeable.sourceOrderKey ?? '')
+					? deferred
+					: upgradeable
+				: (deferred ?? upgradeable);
+		return oldest?.source ?? null;
 	},
 });
 

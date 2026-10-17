@@ -33,6 +33,7 @@ import {
 	type PurgeRange,
 	type RangeRun,
 } from '../interpret/purgeDrain';
+import { refreshArrivalProjection } from './projection';
 
 /** The purged Postbox messages of a `sources` job (received and sent sources share an id). */
 function purgedMessageIds(run: RangeRun): Id<'mailMessages'>[] {
@@ -156,6 +157,9 @@ const projectionRange: PurgeRange = async (ctx, run) => {
 		if (brief && isGistPurged) {
 			await ctx.db.patch(brief._id, { gist: undefined, updatedAt: Date.now() });
 		}
+		// The thread's next newest inbound message (its record survives) is
+		// projected at once; the purged message's record went in range 4.
+		if (isArrivalPurged) await refreshArrivalProjection(ctx, threadId);
 		run.budget.progress();
 	}
 	return { isDone: true };

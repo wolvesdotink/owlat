@@ -313,6 +313,16 @@ export const briefModeViewValidator = v.object({
 	),
 	// More such messages than one read lists: the reader says so.
 	isExactWordingTruncated: v.optional(v.boolean()),
+	// Read on arrival (SPEC §2.4): the extractive gist of a message read short
+	// of a full read, verbatim spans (unsealed) and the message they quote.
+	// Hidden by the stale fence; superseded by a later full read.
+	gist: v.optional(
+		v.object({
+			spans: v.array(v.object({ segmentId: v.string(), quote: v.string() })),
+			fact: v.optional(v.object({ kind: v.string(), quote: v.string() })),
+			messageId: v.optional(v.string()),
+		})
+	),
 });
 
 /** Team surfaces (actions mode): the "Open for the team" strip's data. */

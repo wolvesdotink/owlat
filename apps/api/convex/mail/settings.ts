@@ -56,6 +56,7 @@ export const get = publicQuery({
 			autoAdvance: row.autoAdvance,
 			isWritingSuggestionsOn: row.isWritingSuggestionsOn,
 			isAutoSummarizeOn: row.isAutoSummarizeOn,
+			isReadOnArrival: row.isReadOnArrival,
 			replyDefault: row.replyDefault,
 			density: row.density,
 			viewMode: row.viewMode,
@@ -92,6 +93,8 @@ export const update = postboxMutation({
 		autoAdvance: v.optional(mailAutoAdvanceValidator),
 		isWritingSuggestionsOn: v.optional(v.boolean()),
 		isAutoSummarizeOn: v.optional(v.boolean()),
+		// Read on arrival (SPEC §2.1): absent = on.
+		isReadOnArrival: v.optional(v.boolean()),
 		replyDefault: v.optional(mailReplyDefaultValidator),
 		density: v.optional(mailDensityValidator),
 		viewMode: v.optional(mailViewModeValidator),
@@ -134,6 +137,7 @@ export const update = postboxMutation({
 			autoAdvance?: (typeof args)['autoAdvance'];
 			isWritingSuggestionsOn?: boolean;
 			isAutoSummarizeOn?: boolean;
+			isReadOnArrival?: boolean;
 			replyDefault?: (typeof args)['replyDefault'];
 			density?: (typeof args)['density'];
 			viewMode?: (typeof args)['viewMode'];
@@ -163,6 +167,7 @@ export const update = postboxMutation({
 		if (args.isWritingSuggestionsOn !== undefined)
 			patch.isWritingSuggestionsOn = args.isWritingSuggestionsOn;
 		if (args.isAutoSummarizeOn !== undefined) patch.isAutoSummarizeOn = args.isAutoSummarizeOn;
+		if (args.isReadOnArrival !== undefined) patch.isReadOnArrival = args.isReadOnArrival;
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.density !== undefined) patch.density = args.density;
 		if (args.viewMode !== undefined) patch.viewMode = args.viewMode;
