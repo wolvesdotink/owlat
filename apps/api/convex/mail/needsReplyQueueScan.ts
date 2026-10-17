@@ -16,6 +16,7 @@ import type { QueryCtx } from '../_generated/server';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { isThreadMuted } from '../lib/mailMute';
 import { readQueueTrigger, type NeedsReplyTrigger } from './needsReplyTrigger';
+import { scanNudges, type NudgeQueueRow } from './nudges';
 
 /** Rows read per index; the queue shows at most this many of each kind. */
 export const QUEUE_LIMIT = 100;
@@ -36,14 +37,19 @@ export interface FollowUpQueueRow {
 
 /**
  * The mailbox's visible queue rows, newest first per kind: flagged threads
- * whose trigger still exists and is not snoozed, and sent mail whose follow-up
- * deadline passed. Muted threads are skipped in both.
+ * whose trigger still exists and is not snoozed, sent mail whose follow-up
+ * deadline passed, and stale "Waiting on others" items of other threads
+ * (mail/nudges.ts). Muted threads are skipped in all three.
  */
 export async function scanReplyQueue(
 	ctx: QueryCtx,
 	mailboxId: Id<'mailboxes'>,
 	now: number
-): Promise<{ needsReply: NeedsReplyQueueRow[]; followUps: FollowUpQueueRow[] }> {
+): Promise<{
+	needsReply: NeedsReplyQueueRow[];
+	followUps: FollowUpQueueRow[];
+	nudges: NudgeQueueRow[];
+}> {
 	const flagged = await ctx.db
 		.query('mailThreads')
 		.withIndex('by_mailbox_needs_reply', (q) =>
@@ -78,5 +84,6 @@ export async function scanReplyQueue(
 		if (!message || isMessageSnoozed(message, now)) continue;
 		followUps.push({ thread, flag: { ...flag, dueAt: flag.dueAt }, message });
 	}
-	return { needsReply, followUps };
+	const taken = new Set<string>([...needsReply, ...followUps].map((row) => row.thread._id));
+	return { needsReply, followUps, nudges: await scanNudges(ctx, mailboxId, now, taken) };
 }

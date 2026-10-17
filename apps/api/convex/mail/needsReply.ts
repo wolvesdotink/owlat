@@ -37,6 +37,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { needsReplyTriggerOf } from './needsReplyTrigger';
 import { QUEUE_LIMIT, scanReplyQueue } from './needsReplyQueueScan';
+import { nudgeQueueItem } from './nudgeQueue';
+import { reminderNudge, type QueueNudge } from './nudges';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { visibleThreadClarification, visibleThreadDraftSlot } from './needsReplySlot';
@@ -314,7 +316,7 @@ export const listQueue = publicQuery({
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return { items: [] };
 
-		const { needsReply, followUps } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
+		const { needsReply, followUps, nudges } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
 		const items = [];
 		for (const { thread, flag, trigger } of needsReply) {
 			items.push({
@@ -350,6 +352,7 @@ export const listQueue = publicQuery({
 				receivedAt: trigger.receivedAt,
 				// The brief's top item and first latest line (unsealed), when interpreted.
 				briefTop: await openBriefTop(thread, modeOfMailbox(mailbox)),
+				nudge: undefined as QueueNudge | undefined,
 			});
 		}
 		for (const { thread, flag, message } of followUps) {
@@ -376,8 +379,11 @@ export const listQueue = publicQuery({
 				snippet: thread.latestSnippet,
 				receivedAt: message.receivedAt,
 				briefTop: await openBriefTop(thread, modeOfMailbox(mailbox)),
+				// "Draft a nudge" (mail/nudges.ts): never on a fenced thread.
+				nudge: reminderNudge(thread),
 			});
 		}
+		for (const row of nudges) items.push(await nudgeQueueItem(ctx, mailbox, row));
 		return { items };
 	},
 });
@@ -395,8 +401,8 @@ export const countQueue = publicQuery({
 	handler: async (ctx, args): Promise<number> => {
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return 0;
-		const { needsReply, followUps } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
-		return needsReply.length + followUps.length;
+		const { needsReply, followUps, nudges } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
+		return needsReply.length + followUps.length + nudges.length;
 	},
 });
 

@@ -117,6 +117,8 @@ import type * as mail_interpret_verify from '../mail/interpret/verify.js';
 import type * as mail_interpret_verifyRoute from '../mail/interpret/verifyRoute.js';
 import type * as mail_messageCounters from '../mail/messageCounters.js';
 import type * as mail_needsReplySlot from '../mail/needsReplySlot.js';
+import type * as mail_nudgeQueue from '../mail/nudgeQueue.js';
+import type * as mail_nudges from '../mail/nudges.js';
 import type * as maintenance_counterBackfill from '../maintenance/counterBackfill.js';
 import type * as migrations_0048_backfill_counters from '../migrations/0048_backfill_counters.js';
 import type * as migrations_0049_move_message_bodies from '../migrations/0049_move_message_bodies.js';
@@ -1920,6 +1922,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/verifyRoute': typeof mail_interpret_verifyRoute;
 	'mail/messageCounters': typeof mail_messageCounters;
 	'mail/needsReplySlot': typeof mail_needsReplySlot;
+	'mail/nudgeQueue': typeof mail_nudgeQueue;
+	'mail/nudges': typeof mail_nudges;
 	'maintenance/counterBackfill': typeof maintenance_counterBackfill;
 	'migrations/0048_backfill_counters': typeof migrations_0048_backfill_counters;
 	'migrations/0049_move_message_bodies': typeof migrations_0049_move_message_bodies;
