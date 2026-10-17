@@ -7,8 +7,8 @@
  * profile when the sender has none yet. Personal mailboxes only.
  */
 
-import { v, type Infer } from 'convex/values';
-import type { Doc } from '../../_generated/dataModel';
+import { v } from 'convex/values';
+import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { MutationSessionContext } from '../../lib/sessionOrganization';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../../_utils/errors';
@@ -26,19 +26,18 @@ import {
 	startSenderOperation,
 } from './operations';
 import { ensureSenderProfile, isPersonalMailboxId, loadSenderProfile } from './profiles';
-import { findUnsubscribeTarget, requestExternalUnsubscribe } from './unsubscribe';
-
-export const senderTargetValidator = v.union(
-	v.object({ mailboxId: v.id('mailboxes'), senderDigest: v.string() }),
-	v.object({ messageId: v.id('mailMessages') })
-);
-
-type SenderTarget = Infer<typeof senderTargetValidator>;
+import { senderTargetValidator, type SenderTarget } from './targets';
+import {
+	findUnsubscribeTarget,
+	requestExternalUnsubscribe,
+	type UnsubscribeMethod,
+	type UnsubscribeTarget,
+} from './unsubscribe';
 
 async function requirePersonalMailbox(
 	ctx: MutationCtx,
 	mailboxId: Doc<'mailboxes'>['_id'],
-	session: MutationSessionContext
+	session?: MutationSessionContext
 ): Promise<Doc<'mailboxes'>> {
 	const owned = await requireMailboxAccess(ctx, mailboxId, 'member', session);
 	if (!owned.ok) throwForbidden('Mailbox not accessible');
@@ -50,7 +49,7 @@ async function requirePersonalMailbox(
 export async function resolveSenderTarget(
 	ctx: MutationCtx,
 	target: SenderTarget,
-	session: MutationSessionContext
+	session?: MutationSessionContext
 ): Promise<{ profile: Doc<'mailSenderProfiles'>; message?: Doc<'mailMessages'> }> {
 	if ('messageId' in target) {
 		const message = await ctx.db.get(target.messageId);
@@ -95,16 +94,60 @@ export const setStatus = postboxMutation({
 	},
 });
 
+/** What `startUnsubscribe` decided, for the action that runs the external request. */
+export type UnsubscribeStart = {
+	method: UnsubscribeMethod | null;
+	/** The message whose header the request uses. */
+	messageId?: Id<'mailMessages'>;
+	httpUrl?: string;
+	mailtoUrl?: string;
+	address: string;
+} & (
+	| {
+			scope: 'personal';
+			profileId: Id<'mailSenderProfiles'>;
+			requestedAt: number;
+			operationId: Id<'mailArrivalOperations'> | null;
+			archived: number;
+	  }
+	| { scope: 'shared' }
+);
+
+function targetFields(target: UnsubscribeTarget | null) {
+	return {
+		method: target?.method ?? null,
+		...(target ? { messageId: target.messageId } : {}),
+		...(target?.httpUrl ? { httpUrl: target.httpUrl } : {}),
+		...(target?.mailtoUrl ? { mailtoUrl: target.mailtoUrl } : {}),
+	};
+}
+
 /**
- * Unsubscribe: local status `unsubscribed` (undoable, archives the newest
- * ≤200 Inbox messages), then the external request by the best method. The
- * answer names the method so the client can open a mailto / https target.
+ * The local half of the ONE unsubscribe path (Senders page, Subscriptions
+ * panel, reader chip, ⇧U; `./unsubscribeActions.ts unsubscribe` runs it):
+ * personal mail gets local status `unsubscribed` (undoable, archives the
+ * newest ≤200 Inbox messages) and a mailto / https target is recorded as
+ * `opened`; the one-click result is recorded by the action after its POST.
+ * A team inbox has no sender standing, so its message only yields the target
+ * and nothing is written.
  */
-// authz: requireMailboxAccess on the sender's mailbox (resolveSenderTarget).
-export const unsubscribe = postboxMutation({
+// authz: requireMailboxAccess on the message's / sender's mailbox, with the
+// session the calling action propagates.
+export const startUnsubscribe = internalMutation({
 	args: { target: senderTargetValidator },
-	handler: async (ctx, args, session) => {
-		const { profile, message } = await resolveSenderTarget(ctx, args.target, session);
+	handler: async (ctx, args): Promise<UnsubscribeStart> => {
+		if ('messageId' in args.target) {
+			const message = await ctx.db.get(args.target.messageId);
+			if (!message) throwNotFound('Message');
+			const owned = await requireMailboxAccess(ctx, message.mailboxId);
+			if (!owned.ok) throwForbidden('Mailbox not accessible');
+			if (!isPersonalMailbox(owned.mailbox)) {
+				const sender = { mailboxId: message.mailboxId, address: message.fromAddress };
+				const target = await findUnsubscribeTarget(ctx, sender, message);
+				return { scope: 'shared', address: message.fromAddress, ...targetFields(target) };
+			}
+		}
+		const { profile, message } = await resolveSenderTarget(ctx, args.target);
 		const target = await findUnsubscribeTarget(ctx, profile, message);
 		const change = await changeSenderStatus(ctx, {
 			profile,
@@ -113,14 +156,18 @@ export const unsubscribe = postboxMutation({
 			kind: 'unsubscribe',
 			actor: 'user',
 		});
-		if (target) await requestExternalUnsubscribe(ctx, profile, target, { now: Date.now() });
+		const requestedAt = Date.now();
+		if (target && target.method !== 'one_click') {
+			await requestExternalUnsubscribe(ctx, profile, target, { now: requestedAt });
+		}
 		return {
+			scope: 'personal',
+			profileId: profile._id,
+			requestedAt,
 			operationId: change?.operationId ?? null,
 			archived: change?.archived ?? 0,
 			address: profile.address,
-			method: target?.method ?? null,
-			...(target?.httpUrl ? { httpUrl: target.httpUrl } : {}),
-			...(target?.mailtoUrl ? { mailtoUrl: target.mailtoUrl } : {}),
+			...targetFields(target),
 		};
 	},
 });

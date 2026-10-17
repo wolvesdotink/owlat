@@ -13086,7 +13086,7 @@
 					"digest": "Mail from {name} now goes to your digest",
 					"auto_archive": "Mail from {name} is archived from now on"
 				},
-				"unsubscribing": "Unsubscribing from {name}; their mail is archived",
+				"unsubscribed": "Unsubscribed from {name}",
 				"localOnly": "{name} offers no unsubscribe link; their mail is archived from now on",
 				"draftsResumed": "Drafts resumed",
 				"applied": "Applied {count} suggestion | Applied {count} suggestions"

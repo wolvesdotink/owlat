@@ -10,12 +10,13 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
 import type { Id } from '../../../_generated/dataModel';
 import { api, internal } from '../../../_generated/api';
 import { modules } from '../../__tests__/helpers.testlib';
 import { performOneClickRequest } from '../unsubscribeActions';
+import { fetchGuarded } from '../../../lib/ssrfGuard';
 import { addSenderDelivery, emptySenderWeeks } from '../counters';
 import {
 	deliverHosted,
@@ -27,6 +28,9 @@ import {
 	seedSenderMessages,
 	type T,
 } from './senders.testlib';
+
+// The guarded POST's transport; `mail/__tests__/unsubscribe.test.ts` covers the guard itself.
+vi.mock('../../../lib/ssrfGuard', () => ({ fetchGuarded: vi.fn() }));
 
 vi.mock('../../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../../lib/sessionOrganization');
@@ -48,10 +52,6 @@ async function changesOf(t: T, operationId: Id<'mailArrivalOperations'>) {
 			.withIndex('by_operation', (q) => q.eq('operationId', operationId))
 			.collect(),
 	}));
-}
-
-async function scheduled(t: T) {
-	return await t.run(async (ctx) => await ctx.db.system.query('_scheduled_functions').collect());
 }
 
 const ONE_CLICK = { oneClick: true, httpUrl: 'https://shop.example/unsub?u=1' };
@@ -176,22 +176,52 @@ describe('setStatus', () => {
 });
 
 describe('unsubscribe', () => {
-	it('suppresses locally and schedules the one-click request', async () => {
+	beforeEach(() => vi.mocked(fetchGuarded).mockReset());
+
+	it('suppresses locally, POSTs one-click and records the result', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
-		const result = await t.mutation(api.mail.senders.status.unsubscribe, {
+		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 200 }));
+		const result = await t.action(api.mail.senders.unsubscribeActions.unsubscribe, {
 			target: { messageId: id },
 		});
-		expect(result.method).toBe('one_click');
-		expect(result.archived).toBe(1);
+		expect(result).toMatchObject({ scope: 'personal', method: 'one_click', result: 'confirmed' });
+		expect(fetchGuarded).toHaveBeenCalledWith(ONE_CLICK.httpUrl, expect.anything());
 		const profile = (await profileOf(t, mailboxId))!;
 		expect(profile).toMatchObject({ status: 'unsubscribed', statusSource: 'user' });
-		expect(profile.unsubscribe).toBeUndefined();
-		const jobs = await scheduled(t);
-		expect(jobs.some((job) => job.name.includes('unsubscribeActions'))).toBe(true);
+		expect(profile.unsubscribe).toMatchObject({ method: 'one_click', result: 'confirmed' });
+		if (result.scope !== 'personal') throw new Error('expected personal');
+		expect(result.archived).toBe(1);
 		const { operation } = await changesOf(t, result.operationId!);
 		expect(operation.kind).toBe('unsubscribe');
+	});
+
+	it('keeps the local suppression and records "failed" when the POST fails', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedPersonalMailbox(t);
+		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
+		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 500 }));
+		const result = await t.action(api.mail.senders.unsubscribeActions.unsubscribe, {
+			target: { messageId: id },
+		});
+		expect(result).toMatchObject({ result: 'failed', error: 'http_500' });
+		const profile = (await profileOf(t, mailboxId))!;
+		expect(profile.status).toBe('unsubscribed');
+		expect(profile.unsubscribe?.result).toBe('failed');
+	});
+
+	it('only sends the request for a team inbox message, recording nothing', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedPersonalMailbox(t, { scope: 'shared' });
+		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
+		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 200 }));
+		const result = await t.action(api.mail.senders.unsubscribeActions.unsubscribe, {
+			target: { messageId: id },
+		});
+		expect(result).toMatchObject({ scope: 'shared', result: 'confirmed' });
+		expect(await profileOf(t, mailboxId)).toBeNull();
+		expect(await roleOf(t, id)).toBe('inbox');
 	});
 
 	it('records "opened" for a mailto or https sender and hands the target to the client', async () => {
@@ -199,10 +229,15 @@ describe('unsubscribe', () => {
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await deliverHosted(t, { unsubscribe: { oneClick: false, httpUrl: 'https://shop.example/u' } });
 		const profile = (await profileOf(t, mailboxId))!;
-		const result = await t.mutation(api.mail.senders.status.unsubscribe, {
+		const result = await t.action(api.mail.senders.unsubscribeActions.unsubscribe, {
 			target: { mailboxId, senderDigest: profile.senderDigest },
 		});
-		expect(result).toMatchObject({ method: 'https', httpUrl: 'https://shop.example/u' });
+		expect(result).toMatchObject({
+			method: 'https',
+			httpUrl: 'https://shop.example/u',
+			result: null,
+		});
+		expect(fetchGuarded).not.toHaveBeenCalled();
 		expect((await profileOf(t, mailboxId))!.unsubscribe).toMatchObject({
 			method: 'https',
 			result: 'opened',
@@ -213,7 +248,7 @@ describe('unsubscribe', () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t))!;
-		const result = await t.mutation(api.mail.senders.status.unsubscribe, {
+		const result = await t.action(api.mail.senders.unsubscribeActions.unsubscribe, {
 			target: { messageId: id },
 		});
 		expect(result.method).toBeNull();
@@ -331,5 +366,29 @@ describe('suggestions', () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe('the Subscriptions panel batch (one unsubscribe path)', () => {
+	it('suppresses personal mail locally and records the result', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedPersonalMailbox(t);
+		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
+		vi.mocked(fetchGuarded)
+			.mockReset()
+			.mockResolvedValue(new Response(null, { status: 200 }));
+		const { results } = await t.action(api.mail.subscriptions.unsubscribeAndArchive, {
+			mailboxId,
+			senderEmails: [SENDER],
+			messageIds: [id],
+		});
+		expect(results).toEqual([{ senderEmail: SENDER, status: 'unsubscribed', archived: 1 }]);
+		const profile = (await profileOf(t, mailboxId))!;
+		expect(profile).toMatchObject({ status: 'unsubscribed', statusSource: 'user' });
+		expect(profile.unsubscribe?.result).toBe('confirmed');
+		const operations = await t.run(
+			async (ctx) => await ctx.db.query('mailArrivalOperations').collect()
+		);
+		expect(operations.map((operation) => operation.kind)).toEqual(['unsubscribe']);
 	});
 });

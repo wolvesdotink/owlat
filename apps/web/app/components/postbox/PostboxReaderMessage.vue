@@ -346,6 +346,7 @@ const renderToggleLabel = computed(() =>
 					:message-id="msg._id"
 					:mailbox-id="mailboxId"
 					:unsubscribe="msg.unsubscribe"
+					:sender-name="msg.fromName || msg.fromAddress"
 				/>
 				<!-- The badge's claims, made checkable: the real headers behind them,
 				     the original .eml (UX plan idea 52) — and, in the slot, the three

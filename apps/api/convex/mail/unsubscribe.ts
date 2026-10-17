@@ -3,8 +3,10 @@
 /**
  * RFC 8058 One-Click unsubscribe for Postbox list mail.
  *
- * The reader's Unsubscribe chip calls `performOneClick` after an explicit
- * user confirmation; the POST happens server-side (the sender's endpoint
+ * Every person-facing unsubscribe (the reader's chip, ⇧U, the Senders page,
+ * the Subscriptions panel) reaches this POST through
+ * `mail/senders/unsubscribeActions.ts`, after an explicit user confirmation;
+ * the POST happens server-side (the sender's endpoint
  * never sees the user's browser/IP context, and the request works even when
  * the endpoint lacks CORS). The target URL comes from an attacker-controlled
  * mail header. The shared URL policy requires https without credentials or
@@ -16,13 +18,8 @@
  * message is modified either way.
  */
 
-import { v } from 'convex/values';
-import { authedAction } from '../lib/authedFunctions';
-import { api } from '../_generated/api';
 import { isSafeUnsubscribeUrl } from '@owlat/shared/listUnsubscribe';
 import { fetchGuarded, SsrfBlockedError } from '../lib/ssrfGuard';
-import { logError } from '../lib/runtimeLog';
-import { throwNotFound } from '../_utils/errors';
 
 /** Bounded wait for the sender's unsubscribe endpoint. */
 export const ONE_CLICK_TIMEOUT_MS = 10_000;
@@ -59,29 +56,3 @@ export async function postOneClickUnsubscribe(
 		return { ok: false, error: error instanceof SsrfBlockedError ? 'unsafe_url' : 'network' };
 	}
 }
-
-/**
- * One-Click unsubscribe for a received list message. Only ever invoked from
- * an explicit user confirmation in the reader — never on render.
- */
-// authz: ownership enforced by mail.mailbox.messages.getMessage (returns null for a
-// non-owned message); org membership enforced by authedAction.
-export const performOneClick = authedAction({
-	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args): Promise<OneClickResult> => {
-		const message = await ctx.runQuery(api.mail.mailbox.messages.getMessage, {
-			messageId: args.messageId,
-		});
-		if (!message) throwNotFound('Message');
-		const target = message.unsubscribe;
-		if (!target?.oneClick || !target.httpUrl) {
-			return { ok: false, error: 'not_one_click' };
-		}
-		const result = await postOneClickUnsubscribe(target.httpUrl);
-		if (!result.ok) {
-			// Fail-soft: surfaced to the user as a toast; log for the operator.
-			logError('[Postbox unsubscribe] one-click POST failed', result.error);
-		}
-		return result;
-	},
-});

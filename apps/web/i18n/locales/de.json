@@ -13086,7 +13086,7 @@
 					"digest": "Mails von {name} gehen jetzt in deinen Digest",
 					"auto_archive": "Mails von {name} werden ab jetzt archiviert"
 				},
-				"unsubscribing": "Abmeldung von {name} läuft; ihre Mails werden archiviert",
+				"unsubscribed": "Von {name} abgemeldet",
 				"localOnly": "{name} bietet keinen Abmeldelink; ihre Mails werden ab jetzt archiviert",
 				"draftsResumed": "Entwürfe fortgesetzt",
 				"applied": "{count} Vorschlag übernommen | {count} Vorschläge übernommen"

@@ -1794,6 +1794,7 @@ import type * as mail_senders_status from '../mail/senders/status.js';
 import type * as mail_senders_suggestions from '../mail/senders/suggestions.js';
 import type * as mail_senders_unsubscribe from '../mail/senders/unsubscribe.js';
 import type * as mail_senders_unsubscribeActions from '../mail/senders/unsubscribeActions.js';
+import type * as mail_senders_targets from '../mail/senders/targets.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3584,6 +3585,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/senders/suggestions': typeof mail_senders_suggestions;
 	'mail/senders/unsubscribe': typeof mail_senders_unsubscribe;
 	'mail/senders/unsubscribeActions': typeof mail_senders_unsubscribeActions;
+	'mail/senders/targets': typeof mail_senders_targets;
 }>;
 
 /**

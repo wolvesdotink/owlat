@@ -1,9 +1,14 @@
 // @vitest-environment happy-dom
 /**
- * PostboxUnsubscribeChip's non-one-click paths (issue #864, finding 10). The
- * mailto target goes through the shared RFC 6068 parser, so a List-Unsubscribe
- * `mailto:?to=…` (recipient in a `to` field, empty path) opens a prefilled
- * composer. A mailto with no To recipient falls back to the https page.
+ * PostboxUnsubscribeChip. Every click goes through the ONE unsubscribe path
+ * (review r1, F6: `api.mail.senders.unsubscribeActions.unsubscribe`, local
+ * suppression plus the guarded request with a recorded result), driven here
+ * through the real `usePostboxSenderActions` over a stubbed backend.
+ *
+ * The non-one-click paths (issue #864, finding 10): the mailto target goes
+ * through the shared RFC 6068 parser, so a List-Unsubscribe `mailto:?to=…`
+ * (recipient in a `to` field, empty path) opens a prefilled composer. A mailto
+ * with no To recipient falls back to the https page.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -13,6 +18,7 @@ import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import PostboxUnsubscribeChip from '../PostboxUnsubscribeChip.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { usePostboxUnsubscribeOpen } from '~/composables/postbox/usePostboxUnsubscribeOpen';
+import { usePostboxSenderActions } from '~/composables/postbox/usePostboxSenderActions';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -25,6 +31,7 @@ vi.mock('@owlat/api', () => {
 const composeOpen = vi.fn();
 const oneClickRun = vi.fn();
 const windowOpen = vi.fn();
+const confirmSpy = vi.fn(() => true);
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -33,6 +40,7 @@ beforeAll(() => {
 	vi.stubGlobal('usePostboxUnsubscribeOpen', usePostboxUnsubscribeOpen);
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: oneClickRun, isLoading: ref(false) }));
+	vi.stubGlobal('usePostboxSenderActions', usePostboxSenderActions);
 });
 
 beforeEach(() => {
@@ -40,13 +48,41 @@ beforeEach(() => {
 	oneClickRun.mockReset();
 	windowOpen.mockReset();
 	vi.spyOn(window, 'open').mockImplementation(windowOpen);
+	window.confirm = confirmSpy;
+	confirmSpy.mockReset().mockReturnValue(true);
 });
 
 afterEach(() => {
 	vi.restoreAllMocks();
 });
 
+/** The action's answer for a personal mailbox, echoing the message's own target. */
+function serverAnswers(
+	target: ListUnsubscribeTarget,
+	result: 'confirmed' | 'failed' | null = null
+) {
+	const method =
+		target.oneClick && target.httpUrl ? 'one_click' : target.mailtoUrl ? 'mailto' : 'https';
+	oneClickRun.mockResolvedValue({
+		ok: true,
+		result: {
+			scope: 'personal',
+			profileId: 'p1',
+			requestedAt: 1,
+			operationId: 'op1',
+			archived: 0,
+			address: 'news@list.example',
+			method,
+			messageId: 'msg-1',
+			...(target.httpUrl ? { httpUrl: target.httpUrl } : {}),
+			...(target.mailtoUrl ? { mailtoUrl: target.mailtoUrl } : {}),
+			result,
+		},
+	});
+}
+
 function mountChip(unsubscribe: ListUnsubscribeTarget) {
+	serverAnswers(unsubscribe);
 	return mount(PostboxUnsubscribeChip, {
 		props: { messageId: 'msg-1', mailboxId: 'mbx-1', unsubscribe },
 		global: {
@@ -57,6 +93,33 @@ function mountChip(unsubscribe: ListUnsubscribeTarget) {
 }
 
 describe('PostboxUnsubscribeChip', () => {
+	it('unsubscribes one-click senders through the one path, behind the host confirm', async () => {
+		const target = { httpUrl: 'https://list.example/unsub', oneClick: true };
+		const wrapper = mountChip(target);
+		serverAnswers(target, 'confirmed');
+		await wrapper.get('button').trigger('click');
+		await flushPromises();
+
+		expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('list.example'));
+		expect(oneClickRun).toHaveBeenCalledWith({ target: { messageId: 'msg-1' } });
+		expect(wrapper.text()).toContain('Unsubscribed');
+		expect(windowOpen).not.toHaveBeenCalled();
+	});
+
+	it('opens the sender page when the one-click request fails', async () => {
+		const target = { httpUrl: 'https://list.example/unsub', oneClick: true };
+		const wrapper = mountChip(target);
+		serverAnswers(target, 'failed');
+		await wrapper.get('button').trigger('click');
+		await flushPromises();
+
+		expect(windowOpen).toHaveBeenCalledWith(
+			'https://list.example/unsub',
+			'_blank',
+			'noopener,noreferrer'
+		);
+	});
+
 	it('opens a composer for a recipient given only in a `to` field', async () => {
 		const wrapper = mountChip({
 			mailtoUrl: 'mailto:?to=unsub@list.example&subject=unsubscribe',
