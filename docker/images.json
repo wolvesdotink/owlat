@@ -108,7 +108,7 @@
 		"dockerfile": "docker/convex-backend.Dockerfile",
 		"context": "docker",
 		"title": "owlat-convex-backend",
-		"description": "Owlat Convex backend (wrapper around upstream convex-backend)",
+		"description": "Owlat Convex backend (pinned wrapper around ghcr.io/convex/convex-backend)",
 		"rootCompose": "ghcr"
 	},
 	{
@@ -116,7 +116,7 @@
 		"dockerfile": "docker/convex-dashboard.Dockerfile",
 		"context": "docker",
 		"title": "owlat-convex-dashboard",
-		"description": "Owlat Convex dashboard (wrapper around upstream convex-dashboard)",
+		"description": "Owlat Convex dashboard (pinned wrapper around ghcr.io/convex/convex-dashboard)",
 		"rootCompose": "ghcr"
 	}
 ]

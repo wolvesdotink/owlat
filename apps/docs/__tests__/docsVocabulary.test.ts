@@ -66,6 +66,8 @@ const EXTERNAL_NAMES: Readonly<Record<string, string>> = {
 	ANALYTICS_PROVIDER: 'named as a seam that was removed',
 	NOTIFICATION_PROVIDER: 'named as a seam that was removed',
 	VECTOR_STORE: 'named as a seam that was removed',
+	CONVEX_BACKEND_VERSION: 'named to say 0.6.14 stopped reading it',
+	CONVEX_DASHBOARD_VERSION: 'named to say 0.6.14 stopped reading it',
 	UPPER_SNAKE: 'the shape of a plugin env-var name, not a name',
 };
 

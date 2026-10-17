@@ -79,6 +79,19 @@ describe('validateComposeTemplate', () => {
 		expect(validateComposeTemplate(okCompose)).toEqual({ valid: true });
 	});
 
+	// Releases up to v0.6.13 pulled Convex from ghcr.io/get-convex/. Their
+	// templates must keep validating, and storage.ts derives the third-party
+	// images it reclaims from this list.
+	it('still accepts the pre-v0.6.14 Convex images', () => {
+		const legacy = `services:
+  convex:
+    image: ghcr.io/get-convex/convex-backend:latest
+  convex-dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:latest
+`;
+		expect(validateComposeTemplate(legacy)).toEqual({ valid: true });
+	});
+
 	it('rejects an image outside the allowlist', () => {
 		const bad = `services:
   evil:

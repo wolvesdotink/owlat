@@ -54,6 +54,7 @@ describe('which images are judged for drift', () => {
 			'ghcr.io/wolvesdotink/imap:0.4.12',
 			'owlat-code-worker:0.4.13',
 			'owlat-convex-fn-proxy:dev',
+			'ghcr.io/wolvesdotink/convex-backend:0.6.14',
 		]) {
 			expect(isJudgedForDrift(image)).toBe(true);
 		}
@@ -67,7 +68,7 @@ describe('which images are judged for drift', () => {
 			'alpine:3.20',
 			'ollama/ollama:latest',
 			'tecnativa/docker-socket-proxy:0.3',
-			'ghcr.io/convex/convex-backend:latest',
+			'ghcr.io/get-convex/convex-backend:latest',
 		]) {
 			expect(isJudgedForDrift(image)).toBe(false);
 		}
@@ -226,7 +227,7 @@ describe('evaluateVersionDrift', () => {
 			service({ service: 'caddy', image: 'caddy:2.8-alpine', imageTag: '2.8-alpine' }),
 			service({
 				service: 'convex',
-				image: 'ghcr.io/convex/convex-backend:latest',
+				image: 'ghcr.io/get-convex/convex-backend:latest',
 				imageTag: 'latest',
 			}),
 		];

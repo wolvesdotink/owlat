@@ -80,17 +80,11 @@ async function ownImageSource(): Promise<string | null> {
 /**
  * The third-party images the stack runs: every allowlisted image prefix except
  * our own published images and the two sidecars built on the host (removing
- * those would force a rebuild, not a pull) — plus the repositories a release
- * stopped naming, whose last image nothing will ever replace or remove.
+ * those would force a rebuild, not a pull).
  */
-const THIRD_PARTY_IMAGE_PREFIXES = [
-	...ALLOWED_IMAGE_PREFIXES.filter(
-		(prefix) => !prefix.startsWith('ghcr.io/wolvesdotink/') && !prefix.startsWith('owlat-')
-	),
-	// Convex's images before upstream moved them to ghcr.io/convex/ (≤ 0.6.13).
-	'ghcr.io/get-convex/convex-backend',
-	'ghcr.io/get-convex/convex-dashboard',
-];
+const THIRD_PARTY_IMAGE_PREFIXES = ALLOWED_IMAGE_PREFIXES.filter(
+	(prefix) => !prefix.startsWith('ghcr.io/wolvesdotink/') && !prefix.startsWith('owlat-')
+);
 
 const reclaimedSpace = (stdout: string) =>
 	stdout.match(/Total reclaimed space:\s*(.+)/)?.[1]?.trim() ?? '0B';

@@ -188,7 +188,11 @@ One entry per published image, `ghcr.io/wolvesdotink/<name>`:
   `catalog:` versions only resolve through a bun workspace install (see each
   Dockerfile). `clamav`, `tinyproxy` and `unbound` are thin wrappers around
   upstream images that are not multi-arch under one name; they build from
-  `docker/` and need nothing else from the tree.
+  `docker/` and need nothing else from the tree. `convex-backend` and
+  `convex-dashboard` wrap Convex's images (moved from `ghcr.io/get-convex/` to
+  `ghcr.io/convex/`, a prefix shipped updaters refuse) and pin them by digest:
+  bump both digests together, as the header of
+  `docker/convex-backend.Dockerfile` describes.
 - **Labels.** The Dockerfiles carry no `LABEL` lines. The release build sets
   `title` and `description` from the manifest through `docker/metadata-action`,
   which also computes `source`, `licenses`, `version`, `revision` and `created`.
