@@ -213,12 +213,35 @@ async function senderOf(
 	return message && message.mailboxId === mailboxId ? message.fromAddress : null;
 }
 
-/** Mark the thread's offered AI reply counted. */
+/**
+ * Mark the thread's offered AI reply counted, and every saved copy of it with
+ * it, so no copy counts once the flag is gone (an archive, a new message).
+ */
 async function settleOfferedReply(ctx: MutationCtx, thread: Doc<'mailThreads'>): Promise<void> {
-	if (!thread.needsReply || thread.needsReply.isDraftUsageCounted) return;
-	await ctx.db.patch(thread._id, {
-		needsReply: { ...thread.needsReply, isDraftUsageCounted: true },
-	});
+	const flag = thread.needsReply;
+	if (!flag) return;
+	for (const row of await uncountedAiRows(ctx, thread, flag.messageId, undefined)) {
+		if (isOfferedCopy(row, thread)) await ctx.db.patch(row._id, { isDraftUsageCounted: true });
+	}
+	if (flag.isDraftUsageCounted) return;
+	await ctx.db.patch(thread._id, { needsReply: { ...flag, isDraftUsageCounted: true } });
+}
+
+/**
+ * `drafts.update` as it snapshots a draft's AI baseline: a copy of an offered
+ * reply that already counted is counted from the start, so it never counts
+ * once that reply's flag is gone.
+ */
+export async function baselineUsagePatch(
+	ctx: Pick<QueryCtx, 'db'>,
+	draft: Doc<'mailDrafts'>,
+	baseline: string
+): Promise<{ isDraftUsageCounted?: true }> {
+	const thread = draft.threadId ? await ctx.db.get(draft.threadId) : null;
+	if (!thread || thread.mailboxId !== draft.mailboxId) return {};
+	if (!thread.needsReply?.isDraftUsageCounted) return {};
+	const withBaseline = { ...draft, aiDraftBaseline: { text: baseline, capturedAt: 0 } };
+	return isOfferedCopy(withBaseline, thread) ? { isDraftUsageCounted: true } : {};
 }
 
 /**

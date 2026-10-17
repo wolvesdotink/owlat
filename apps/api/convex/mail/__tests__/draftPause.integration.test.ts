@@ -195,6 +195,22 @@ describe('the unused-draft streak', () => {
 		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
 	});
 
+	it('never counts a copy left behind once its counted reply is archived (r2 F1)', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		const copyA = await seedDraft(t, c, { baseline: SLOT });
+		const copyB = await seedDraft(t, c, { baseline: SLOT });
+		await t.mutation(api.mail.drafts.discard, { draftId: copyA });
+		// A copy made after the reply counted is counted from the start.
+		const copyC = await seedDraft(t, c);
+		await t.mutation(api.mail.drafts.update, { draftId: copyC, aiBaseline: SLOT });
+		// Archive clears the flag.
+		await t.run(async (ctx) => ctx.db.patch(c.threadId, { needsReply: undefined }));
+		await t.mutation(api.mail.drafts.discard, { draftId: copyB });
+		await t.mutation(api.mail.drafts.discard, { draftId: copyC });
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
+	});
+
 	it('counts discard-then-archive of each arrival reply (F2)', async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);

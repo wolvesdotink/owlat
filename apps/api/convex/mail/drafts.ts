@@ -42,7 +42,7 @@ import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } fro
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteDraftRow } from './answeredReply';
-import { noteDraftDiscarded } from './draftPause';
+import { baselineUsagePatch, noteDraftDiscarded } from './draftPause';
 import { editPatch, humanEdit, provenancePatch } from './draftProvenance';
 import { expectedAttachmentsFor, withoutAttachment } from './draftExpectedAttachments';
 import { expectedAttachmentRequestValidator } from '../lib/validators/mailContent';
@@ -220,14 +220,14 @@ export const update = postboxMutation({
 		if (args.followUpRemindAt !== undefined) {
 			patch['followUpRemindAt'] = args.followUpRemindAt ?? undefined;
 		}
-		// Snapshot the AI baseline exactly once — the first apply wins so a later
-		// human edit still diffs against the AI's original text on send.
+		// Snapshot the AI baseline once (the first apply wins: a later edit diffs against it).
 		if (
 			args.aiBaseline !== undefined &&
 			args.aiBaseline.trim().length > 0 &&
 			draft.aiDraftBaseline === undefined
 		) {
 			patch['aiDraftBaseline'] = { text: args.aiBaseline, capturedAt: Date.now() };
+			Object.assign(patch, await baselineUsagePatch(ctx, draft, args.aiBaseline)); // draftPause.ts
 		}
 		// Every AI text, not only the first: a later one may be the one that
 		// leaves gaps (a draft that still waits for files).
