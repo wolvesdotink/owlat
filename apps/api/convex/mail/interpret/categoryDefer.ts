@@ -37,7 +37,7 @@ import { loadInterpretSource } from './sources';
  * less than the settle time ago, so it is among the newest; one beyond the
  * bound still runs at its ceiling.
  */
-export const CATEGORY_WAKE_SCAN = 25;
+const CATEGORY_WAKE_SCAN = 25;
 
 export const deferForCategory = internalMutation({
 	args: { source: interpretationSourceValidator, until: v.number() },
