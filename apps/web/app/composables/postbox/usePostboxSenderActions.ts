@@ -103,12 +103,13 @@ export function usePostboxSenderActions() {
 			return outcome;
 		}
 		if (outcome.result === 'failed') {
-			showToast(
-				outcome.scope === 'personal'
-					? t('postbox.senders.result.failed')
-					: t('components.postbox.postboxUnsubscribeChip.requestFailed'),
-				'error'
-			);
+			if (outcome.scope === 'personal') {
+				// The request failed, but local suppression (and its archive) went
+				// through as an operation: it can be undone like any other.
+				offerUndo(t('postbox.senders.result.failed'), outcome.operationId, { type: 'error' });
+			} else {
+				showToast(t('components.postbox.postboxUnsubscribeChip.requestFailed'), 'error');
+			}
 			openFallbackPage(outcome);
 			return outcome;
 		}
