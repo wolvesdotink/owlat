@@ -248,6 +248,23 @@ describe('reply reversal', () => {
 		});
 	});
 
+	it('a reply before a queued learned digest runs cancels it', async () => {
+		vi.useFakeTimers();
+		const t = learnTest();
+		const { mailboxId, folders } = await seedPersonalMailbox(t);
+		// Both gates crossed: the learned digest is queued, not run yet.
+		for (let i = 0; i < 3; i++) await archiveSession(t, 2);
+		expect((await profileOf(t, mailboxId))!.unreadArchiveEvidence?.count).toBe(6);
+		await replyToSender(t, mailboxId, folders.sent);
+		const after = (await profileOf(t, mailboxId))!;
+		expect(after).toMatchObject({
+			status: 'keep',
+			statusSource: 'default',
+			unreadArchiveEvidence: { count: 0, sessions: 0, version: 1 },
+		});
+		expect(after.lastOperationId).toBeUndefined();
+	});
+
 	it('leaves a user digest alone', async () => {
 		vi.useFakeTimers();
 		const t = learnTest();

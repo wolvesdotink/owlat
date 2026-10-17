@@ -11,8 +11,9 @@
  *     backfill or import never qualifies) and not seen. Rules, delayed actions,
  *     filters, Fix and auto-archive move mail through `moveMessagesToFolder`
  *     directly and never reach this module.
- *   - **Owner replies** ({@link noteOwnerReply}): our own reply to a sender
- *     whose digest status was learned.
+ *   - **Owner replies** ({@link noteOwnerReply}): our own reply resets the
+ *     recipient's evidence at once (a queued learned digest then finds it
+ *     unearned) and reverses a digest status that was learned.
  *
  * One call is one session per sender: `sessions` grows only when the session
  * key differs from the last one (the client action id, else the minute
@@ -193,7 +194,19 @@ export async function noteOwnerReply(
 	);
 	for (const digest of digests) {
 		const profile = await loadSenderProfile(ctx, mailbox._id, digest);
-		if (profile?.status !== 'digest' || profile.statusSource !== 'learned') continue;
+		if (!profile) continue;
+		// A reply says the person wants this sender's mail: evidence gathered so
+		// far no longer counts, in THIS mutation, so a learned digest already
+		// queued (`learning.learnDigest` re-checks the evidence) finds nothing to
+		// act on. The "do not relearn" sentinel stays.
+		const evidence = profile.unreadArchiveEvidence;
+		if (evidence && evidence.count > 0) {
+			await ctx.db.patch(profile._id, {
+				unreadArchiveEvidence: NO_EVIDENCE,
+				updatedAt: Date.now(),
+			});
+		}
+		if (profile.status !== 'digest' || profile.statusSource !== 'learned') continue;
 		await ctx.scheduler.runAfter(0, internal.mail.arrival.learning.reverseOnReply, {
 			profileId: profile._id,
 		});
