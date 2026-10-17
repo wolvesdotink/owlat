@@ -1815,6 +1815,8 @@ import type * as mail_rules_delayedActions from '../mail/rules/delayedActions.js
 import type * as mail_rules_operationLog from '../mail/rules/operationLog.js';
 import type * as mail_rules_ruleApply from '../mail/rules/ruleApply.js';
 import type * as mail_rules_rulesPass from '../mail/rules/rulesPass.js';
+import type * as mail_rules_dryRun from '../mail/rules/dryRun.js';
+import type * as mail_rules_dryRunData from '../mail/rules/dryRunData.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3626,6 +3628,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/rules/operationLog': typeof mail_rules_operationLog;
 	'mail/rules/ruleApply': typeof mail_rules_ruleApply;
 	'mail/rules/rulesPass': typeof mail_rules_rulesPass;
+	'mail/rules/dryRun': typeof mail_rules_dryRun;
+	'mail/rules/dryRunData': typeof mail_rules_dryRunData;
 }>;
 
 /**

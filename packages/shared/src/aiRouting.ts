@@ -77,6 +77,9 @@ export const AI_TASK_NAMES = [
 	'mail.clarify_sample',
 	// Language plane: read on arrival's extractive gist (INBOX_ZERO_PLAN §2.4)
 	'mail.gist',
+	// Language plane: read on arrival's digest lines and the rule dry run (§6)
+	'mail.digest',
+	'mail.rule_test',
 ] as const;
 
 export type AiTaskName = (typeof AI_TASK_NAMES)[number];

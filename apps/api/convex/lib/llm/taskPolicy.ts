@@ -184,6 +184,24 @@ const ENTRIES = {
 		maxAttempts: 1,
 		features: ['interpret_gist'],
 	}),
+	// Read on arrival (§6.5): one batched call per digest, verbatim spans per line.
+	// One attempt: the digest's durable claim counter is the only retry owner.
+	'mail.digest': language({
+		...MEDIUM_OUTPUT,
+		tiers: ['fast'],
+		...background,
+		deadlineMs: ONE_SHOT_DEADLINE_MS,
+		maxAttempts: 1,
+		features: ['digest_lines'],
+	}),
+	// Read on arrival (§6.2): a rule's AI question over the last 50 mails, one call.
+	'mail.rule_test': language({
+		...MEDIUM_OUTPUT,
+		tiers: ['fast'],
+		...interactive,
+		...oneShot,
+		features: ['rule_test'],
+	}),
 	'mail.verify': language({
 		...SMALL_OUTPUT,
 		tiers: ['fast'],
