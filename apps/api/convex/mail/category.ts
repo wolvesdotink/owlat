@@ -41,6 +41,7 @@ import { buildThreadTranscript, CATEGORY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { requireMailboxAccess } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
+import { noteSenderKind } from './senders/profiles';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
 import { invalidateSenderMemoryForCorrection } from '../decision/senderMemory';
 import { recordOwnerCorrection } from '../decision/artifacts';
@@ -308,6 +309,7 @@ export async function writeCategory(
 		category: { label, source, classifiedAt: now },
 		updatedAt: now,
 	});
+	await noteSenderKind(ctx, thread, label);
 	await wakeCategoryDeferredRuns(ctx, thread._id, { label, source }, thread.category);
 	// Read on arrival: the newest inbound message's record takes the category,
 	// the projection follows, and a run waiting on it to choose its depth runs now.
@@ -407,6 +409,7 @@ export const recategorize = postboxMutation({
 			category: { label: args.label, source: 'user', classifiedAt: now },
 			updatedAt: now,
 		});
+		await noteSenderKind(ctx, thread, args.label);
 		// The owner settled it: waiting interpretation runs go now (categoryDefer.ts).
 		await wakeCategoryDeferredRuns(
 			ctx,

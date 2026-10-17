@@ -137,6 +137,16 @@ export const mailAiTables = {
 			notification: v.number(),
 			receipt: v.number(),
 		}),
+		// Weekly (Mondays) Senders line (mail/senders/brief.ts): rarely-read
+		// senders waiting on To review, and senders opened nearly always in Updates.
+		senders: v.optional(
+			v.object({
+				rarelyRead: v.number(),
+				openedInUpdates: v.array(
+					v.object({ address: v.string(), displayName: v.optional(v.string()) })
+				),
+			})
+		),
 		createdAt: v.number(),
 	}).index('by_mailbox_and_generated', ['mailboxId', 'generatedAt']),
 

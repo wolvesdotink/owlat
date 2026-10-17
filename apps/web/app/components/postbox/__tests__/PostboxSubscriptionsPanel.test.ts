@@ -4,7 +4,8 @@
  *
  * The batch can only finish RFC 8058 One-Click senders. Everything downstream
  * of that fact is what this suite holds:
- *   - a non-one-click sender cannot be ticked, and is offered its own page;
+ *   - a non-one-click sender cannot be ticked, and is offered its own
+ *     unsubscribe through the one path (local suppression, then its page);
  *   - "select all" picks the one-click senders and nothing else;
  *   - the action sends exactly those addresses, once the confirm is accepted,
  *     and does nothing at all when it is declined.
@@ -56,6 +57,7 @@ const senders = [
 		lastReceivedAt: NOW - 2 * DAY,
 		lastReadAt: NOW - DAY,
 		method: 'http' as const,
+		actionMessageId: 'msg-manual',
 		httpUrl: 'https://manual.example/unsubscribe',
 	},
 ];
@@ -70,6 +72,11 @@ vi.stubGlobal('useConvexQuery', () => ({
 	isLoading: ref(false),
 }));
 vi.stubGlobal('useBackendOperation', () => ({ run: runSpy, isLoading: ref(false) }));
+const senderUnsubscribe = vi.fn(async () => null);
+vi.stubGlobal('usePostboxSenderActions', () => ({
+	unsubscribe: senderUnsubscribe,
+	isBusy: ref(false),
+}));
 
 const stubs = {
 	UiButton: {
@@ -102,11 +109,20 @@ describe('PostboxSubscriptionsPanel', () => {
 		expect(rows[1]!.text()).toContain('Opened 6 months ago');
 	});
 
-	it('cannot tick a sender the batch is unable to finish, and links their page', () => {
+	it('cannot tick a sender the batch is unable to finish, and unsubscribes it on its own', async () => {
 		const w = mountPanel();
 		const boxes = w.findAll('input[type="checkbox"]');
 		expect(boxes[2]!.attributes('disabled')).toBeDefined();
-		expect(w.find('a[href="https://manual.example/unsubscribe"]').exists()).toBe(true);
+		// Not a bare link: the one unsubscribe path (local suppression, then the page).
+		expect(w.find('a[href="https://manual.example/unsubscribe"]').exists()).toBe(false);
+		await w
+			.findAll('button')
+			.find((b) => b.text().includes('Open page'))!
+			.trigger('click');
+		expect(senderUnsubscribe).toHaveBeenCalledWith(
+			{ messageId: 'msg-manual' },
+			{ mailboxId: 'mb1', name: 'Manual Only' }
+		);
 	});
 
 	it('"select all" picks the one-click senders only', async () => {

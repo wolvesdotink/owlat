@@ -9,10 +9,11 @@
  *   - `list` groups the inbox senders whose mail carried a `List-Unsubscribe`
  *     target (`mailMessages.unsubscribe`, parsed once at ingest) with volume,
  *     unread count, and a last-read signal.
- *   - `unsubscribeAndArchive` runs the selected senders through the EXISTING
- *     one-click flow (`api.mail.unsubscribe.performOneClick`) one at a time,
- *     spaced out, and archives what each successful sender still has in the
- *     Inbox. It returns a per-sender outcome so a partial failure reads as
+ *   - `unsubscribeAndArchive` runs the selected senders through the ONE
+ *     unsubscribe path (`api.mail.senders.unsubscribeActions.unsubscribe`:
+ *     local suppression for personal mail, then the guarded one-click POST
+ *     with its result recorded) one at a time, spaced out. A team inbox only
+ *     archives what a successful sender still has in the Inbox. It returns a per-sender outcome so a partial failure reads as
  *     "three done, one needs the sender's web page" rather than a red toast.
  *
  * The scan is a bounded window, not an all-time tally: `SUBSCRIPTION_SCAN_LIMIT`
@@ -32,7 +33,7 @@ import type { Id } from '../_generated/dataModel';
 import { authedAction, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden } from '../_utils/errors';
-import type { OneClickResult } from './unsubscribe';
+import type { UnsubscribeOutcome } from './senders/unsubscribeActions';
 
 /** Newest inbox messages the aggregation reads. See the module note. */
 export const SUBSCRIPTION_SCAN_LIMIT = 300;
@@ -333,7 +334,8 @@ export const archiveSenderInInbox = internalMutation({
  *   - `unsubscribed`   → the One-Click POST succeeded; `archived` says how much
  *                        of their inbox mail was filed away
  *   - `failed`         → the POST was attempted and did not succeed (`error`
- *                        carries the reason); nothing was archived
+ *                        carries the reason); personal mail is suppressed
+ *                        anyway, so `archived` may be non-zero
  *   - `manual`         → no One-Click target; the user has to finish on the
  *                        sender's page or by mail (`httpUrl` / `mailtoUrl`)
  *   - `not_found`      → the sender has no list mail left in the window
@@ -432,20 +434,26 @@ export const unsubscribeAndArchive = authedAction({
 				continue;
 			}
 
-			// Reuse the single-message flow verbatim: it owns the SSRF guard, the
-			// bounded timeout, and the fail-soft result shape.
-			const outcome: OneClickResult = await ctx.runAction(api.mail.unsubscribe.performOneClick, {
-				messageId: sender.actionMessageId,
-			});
-			if (!outcome.ok) {
-				results.push({ senderEmail, status: 'failed', archived: 0, error: outcome.error });
+			// The one unsubscribe path: personal mail is suppressed locally first
+			// (recent Inbox mail archived, undoable) and the guarded POST's result
+			// is recorded on the sender (mail/senders/unsubscribeActions.ts).
+			const outcome: UnsubscribeOutcome = await ctx.runAction(
+				api.mail.senders.unsubscribeActions.unsubscribe,
+				{ target: { messageId: sender.actionMessageId } }
+			);
+			let archived = outcome.scope === 'personal' ? outcome.archived : 0;
+			if (outcome.result !== 'confirmed') {
+				const error = outcome.error ?? 'not_one_click';
+				results.push({ senderEmail, status: 'failed', archived, error });
 				continue;
 			}
-
-			const { archived }: { archived: number } = await ctx.runMutation(
-				internal.mail.subscriptions.archiveSenderInInbox,
-				{ mailboxId: args.mailboxId, senderEmail }
-			);
+			// A team inbox keeps no sender standing: archive once the sender agreed.
+			if (outcome.scope === 'shared') {
+				({ archived } = await ctx.runMutation(internal.mail.subscriptions.archiveSenderInInbox, {
+					mailboxId: args.mailboxId,
+					senderEmail,
+				}));
+			}
 			results.push({ senderEmail, status: 'unsubscribed', archived });
 		}
 

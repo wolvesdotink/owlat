@@ -55,6 +55,10 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'the previous reader view switch, in tabs opened before the deploy (read on arrival §3)',
 	'mail/interpret/preferences.ts#getViewPreference':
 		'the previous reader and "Open threads on" row, in tabs opened before the deploy (read on arrival §3)',
+	// Read on arrival §5: the chip now calls mail/senders/unsubscribeActions.ts
+	// `unsubscribe`; this shim delegates to it with the old {ok, error?} answer.
+	'mail/unsubscribe.ts#performOneClick':
+		'the previous Unsubscribe chip, in desktop bundles and tabs opened before the deploy (read on arrival §5)',
 	'mail/interpret/preferences.ts#setThreadDefaultView':
 		'the previous "Open threads on" row, in tabs opened before the deploy (read on arrival §3)',
 };

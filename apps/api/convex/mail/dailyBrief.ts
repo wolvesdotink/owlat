@@ -31,6 +31,7 @@ import { urgencyFallbackScore } from './ai/priorityScore';
 import { resolveCounterpartName } from './counterpartName';
 import type { MailCategory } from './category';
 import { isFencedThread } from './interpret/staleFence';
+import { weeklySenderBriefLine } from './senders/brief';
 
 // ─── Pure ranking + bundling (unit-tested, framework-free) ───────────────────
 
@@ -250,6 +251,8 @@ async function buildBriefForMailbox(ctx: MutationCtx, mailboxId: Id<'mailboxes'>
 
 	const ranked = rankBriefItems(items).slice(0, MAX_ITEMS);
 	const { bundled, bundledCounts } = bundleLowSignal(bundledEntries);
+	const mailbox = await ctx.db.get(mailboxId);
+	const senders = mailbox ? await weeklySenderBriefLine(ctx, mailbox, now) : null;
 
 	await ctx.db.insert('mailDailyBriefs', {
 		mailboxId,
@@ -257,6 +260,7 @@ async function buildBriefForMailbox(ctx: MutationCtx, mailboxId: Id<'mailboxes'>
 		items: ranked,
 		bundled,
 		bundledCounts,
+		...(senders ? { senders } : {}),
 		createdAt: now,
 	});
 }

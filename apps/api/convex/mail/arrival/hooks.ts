@@ -14,6 +14,8 @@ import type { Placement } from '@owlat/shared/arrival';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { InboundOrigin } from '../deliveryPipeline/insert';
+import { applySenderStatus, countSenderDelivery } from '../senders/delivery';
+import { countFirstOpen } from '../senders/opens';
 
 /** The live ingest origins (hosted MX, forward sync). Never a history import. */
 export type LiveInboundOrigin = Exclude<InboundOrigin, 'backfill'>;
@@ -107,31 +109,40 @@ export async function applyArrivalAiAnswers(
 /**
  * Lane senders (SPEC §5). Sender-status enforcement at delivery, after user
  * filters: `unsubscribed` and `auto_archive` file to Archive, `digest` stays.
+ * Implemented in `mail/senders/delivery.ts applySenderStatus` (the seam with
+ * the arrival record is documented there).
  */
 export async function applySenderStatusAtDelivery(
-	_ctx: MutationCtx,
-	_input: SenderDeliveryInput
+	ctx: MutationCtx,
+	input: SenderDeliveryInput
 ): Promise<SenderStatusAtDelivery> {
-	return null;
+	return await applySenderStatus(ctx, input);
 }
 
 /**
  * Lane senders (SPEC §5). Count a live delivery in the sender's profile
  * (delivered weeks, kind, last delivered). Ignores any non-live origin.
+ * Implemented in `mail/senders/delivery.ts countSenderDelivery`; both live
+ * paths reach it through `settleSenderDelivery`.
  */
 export async function recordSenderDelivery(
-	_ctx: MutationCtx,
-	_args: { message: Doc<'mailMessages'>; origin: InboundOrigin }
-): Promise<void> {}
+	ctx: MutationCtx,
+	args: { message: Doc<'mailMessages'>; origin: InboundOrigin }
+): Promise<void> {
+	await countSenderDelivery(ctx, args);
+}
 
 /**
  * Lane senders (SPEC §5). Count a message's first reader open in its sender's
  * opened weeks, once (`mailMessages.isOpenCounted`), for live mail only.
+ * Implemented in `mail/senders/opens.ts countFirstOpen`.
  */
 export async function recordFirstOpen(
-	_ctx: MutationCtx,
-	_messageId: Id<'mailMessages'>
-): Promise<void> {}
+	ctx: MutationCtx,
+	messageId: Id<'mailMessages'>
+): Promise<void> {
+	await countFirstOpen(ctx, messageId);
+}
 
 export type ArrivalHookName =
 	| 'evaluateArrivalRules'
@@ -156,7 +167,4 @@ export const ARRIVAL_HOOK_STUBS: ReadonlySet<ArrivalHookName> = new Set<ArrivalH
 	'evaluateArrivalRules',
 	'listArrivalAiQuestions',
 	'applyArrivalAiAnswers',
-	'applySenderStatusAtDelivery',
-	'recordSenderDelivery',
-	'recordFirstOpen',
 ]);

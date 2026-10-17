@@ -143,6 +143,7 @@ const {
 	hideBody: () => props.hideBody,
 	active: () => props.expanded,
 });
+usePostboxSenderBodyOpen(props); // Senders §5: counts once a readable body is on screen
 
 /**
  * The legacy DMARC-fail line. `senderAuthBadges` moved this into the auth badge;
@@ -348,6 +349,7 @@ const renderToggleLabel = computed(() =>
 						:message-id="msg._id"
 						:mailbox-id="mailboxId"
 						:unsubscribe="msg.unsubscribe"
+						:sender-name="msg.fromName || msg.fromAddress"
 					/>
 					<!-- The badge's claims, made checkable: the real headers behind them,
 				     the original .eml (UX plan idea 52) — and, in the slot, the three
@@ -436,8 +438,7 @@ const renderToggleLabel = computed(() =>
 			:signature="shownSignature"
 			:omits-content="signedView.kind === 'signed' && signedView.omitsContent"
 		/>
-		<!-- Off-screen bodies of a long thread wait as a sized placeholder
-		     until they scroll near the viewport (plan D8). -->
+		<!-- Off-screen bodies wait as a sized placeholder until near the viewport (plan D8). -->
 		<PostboxLazyBody
 			v-else
 			:message-id="msg._id"

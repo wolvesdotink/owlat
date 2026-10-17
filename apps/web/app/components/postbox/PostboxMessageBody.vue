@@ -47,6 +47,7 @@ import {
 } from '~/utils/postboxBodyPlaceholder';
 import { applyPostboxImageConsent } from '~/utils/postboxRemoteResources';
 import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
+import { useRegisterReadableBody } from '~/composables/postbox/usePostboxSenderOpen';
 import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
 import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
 import { usePostboxQuoteHighlight } from '~/composables/postbox/usePostboxQuoteHighlight';
@@ -203,6 +204,9 @@ const placeholder = computed(() =>
 // in for it. Degrades to the normal "(empty message)" iframe if the action
 // errors or the download fails.
 const bodyLoading = computed(() => waiting.value && !placeholder.value);
+// Senders (§5): the live body is the readable one; skeleton and saved copy are not.
+const readableEl = ref<HTMLElement | null>(null);
+useRegisterReadableBody(() => (waiting.value ? null : readableEl.value));
 
 function sanitize(html: string): string {
 	return sanitizeHtml(html, POSTBOX_SANITIZE_CONFIG);
@@ -441,7 +445,7 @@ usePostboxFrameAutosize({
 	<div v-if="bodyLoading" class="mt-4">
 		<PostboxReaderSkeleton :with-header="false" />
 	</div>
-	<div v-else class="mt-4">
+	<div v-else ref="readableEl" class="mt-4">
 		<Teleport :to="imageBannerTo" :disabled="!imageBannerTo">
 			<PostboxImageBanner
 				:kind="imageBannerKind"

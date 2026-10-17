@@ -32,6 +32,7 @@ const fetchMock = vi.fn();
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+	vi.stubGlobal('usePostboxSenderBodyOpen', () => ({ shownBody: { value: null } }));
 	vi.stubGlobal('requireConvex', () => ({ action, mutation }));
 	vi.stubGlobal('fetch', fetchMock);
 });

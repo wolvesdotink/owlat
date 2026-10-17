@@ -1795,6 +1795,20 @@ import type * as mail_interpret_arrivalRun from '../mail/interpret/arrivalRun.js
 import type * as mail_interpret_gist from '../mail/interpret/gist.js';
 import type * as mail_interpret_gistCommit from '../mail/interpret/gistCommit.js';
 import type * as mail_arrival_autoBackfill from '../mail/arrival/autoBackfill.js';
+import type * as mail_external_syncCursor from '../mail/external/syncCursor.js';
+import type * as mail_senders_arrivalProjection from '../mail/senders/arrivalProjection.js';
+import type * as mail_senders_brief from '../mail/senders/brief.js';
+import type * as mail_senders_counters from '../mail/senders/counters.js';
+import type * as mail_senders_delivery from '../mail/senders/delivery.js';
+import type * as mail_senders_operations from '../mail/senders/operations.js';
+import type * as mail_senders_opens from '../mail/senders/opens.js';
+import type * as mail_senders_page from '../mail/senders/page.js';
+import type * as mail_senders_profiles from '../mail/senders/profiles.js';
+import type * as mail_senders_status from '../mail/senders/status.js';
+import type * as mail_senders_suggestions from '../mail/senders/suggestions.js';
+import type * as mail_senders_unsubscribe from '../mail/senders/unsubscribe.js';
+import type * as mail_senders_unsubscribeActions from '../mail/senders/unsubscribeActions.js';
+import type * as mail_senders_targets from '../mail/senders/targets.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3586,6 +3600,20 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/gist': typeof mail_interpret_gist;
 	'mail/interpret/gistCommit': typeof mail_interpret_gistCommit;
 	'mail/arrival/autoBackfill': typeof mail_arrival_autoBackfill;
+	'mail/external/syncCursor': typeof mail_external_syncCursor;
+	'mail/senders/arrivalProjection': typeof mail_senders_arrivalProjection;
+	'mail/senders/brief': typeof mail_senders_brief;
+	'mail/senders/counters': typeof mail_senders_counters;
+	'mail/senders/delivery': typeof mail_senders_delivery;
+	'mail/senders/operations': typeof mail_senders_operations;
+	'mail/senders/opens': typeof mail_senders_opens;
+	'mail/senders/page': typeof mail_senders_page;
+	'mail/senders/profiles': typeof mail_senders_profiles;
+	'mail/senders/status': typeof mail_senders_status;
+	'mail/senders/suggestions': typeof mail_senders_suggestions;
+	'mail/senders/unsubscribe': typeof mail_senders_unsubscribe;
+	'mail/senders/unsubscribeActions': typeof mail_senders_unsubscribeActions;
+	'mail/senders/targets': typeof mail_senders_targets;
 }>;
 
 /**

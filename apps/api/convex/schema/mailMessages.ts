@@ -304,6 +304,10 @@ export const mailMessagesTables = {
 		// Folder-scoped arrival order — backs the per-folder list page directly (no
 		// mailbox-wide overfetch-then-filter that starved minority folders).
 		.index('by_folder_and_received', ['folderId', 'receivedAt'])
+		// One sender's mail in one folder, newest arrival first (read on arrival,
+		// mail/senders/operations.ts): a sender-status change archives / re-sorts
+		// the newest 200 Inbox messages without imported history displacing them.
+		.index('by_folder_from_received', ['folderId', 'fromAddress', 'receivedAt'])
 		// Split inbox (idea 24) — ONE INDEX PER SECTION SLICE, which is what keeps
 		// the sectioned renderer from starving a section. Paging a single mixed
 		// feed and bucketing it client-side would let a chatty section eat the

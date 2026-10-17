@@ -110,7 +110,7 @@ describe('PostboxRailMoreGroup', () => {
 		expect(hrefs).toEqual([
 			'/dashboard/postbox/snoozed',
 			'/dashboard/postbox/files',
-			'/dashboard/postbox/subscriptions',
+			'/dashboard/postbox/senders',
 			'/dashboard/postbox/contacts',
 			'/dashboard/postbox/migrate',
 			'/dashboard/preferences',

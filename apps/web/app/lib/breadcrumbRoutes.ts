@@ -194,7 +194,7 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		'/dashboard/postbox/search': 'shared.breadcrumbRoutes.pages.mailSearch',
 		'/dashboard/postbox/contacts': 'shared.breadcrumbRoutes.pages.contacts',
 		'/dashboard/postbox/files': 'shared.breadcrumbRoutes.pages.files',
-		'/dashboard/postbox/subscriptions': 'shared.breadcrumbRoutes.pages.subscriptions',
+		'/dashboard/postbox/senders': 'postbox.senders.pageTitle',
 		'/dashboard/postbox/migrate': 'shared.breadcrumbRoutes.pages.importMail',
 	}),
 

@@ -26,7 +26,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { MailCategory } from '@owlat/shared/arrival';
 import { computePlacement } from '@owlat/shared/arrivalPlacement';
-import { senderDigest } from '../../decision/senderMemory';
+import { loadSenderProfile, senderKeyOf } from '../senders/profiles';
 import { isPersonalMailbox } from '../permissions';
 
 type Thread = Doc<'mailThreads'>;
@@ -44,18 +44,13 @@ export function isReplyVerdictSettled(
 	return thread.needsReply.source !== 'heuristic' || thread.needsReplyPendingAt === undefined;
 }
 
-/** The sender profile of a message's From address in its mailbox, or null. */
+/** The sender profile of a message's From address in its mailbox, or null (lane senders' key). */
 export async function senderProfileOf(
 	ctx: Pick<MutationCtx, 'db'>,
 	mailboxId: Id<'mailboxes'>,
 	fromAddress: string
 ): Promise<Doc<'mailSenderProfiles'> | null> {
-	return ctx.db
-		.query('mailSenderProfiles')
-		.withIndex('by_mailbox_sender', (q) =>
-			q.eq('mailboxId', mailboxId).eq('senderDigest', senderDigest(fromAddress))
-		)
-		.first();
+	return loadSenderProfile(ctx, mailboxId, senderKeyOf(fromAddress).senderDigest);
 }
 
 function sameArrival(a: Thread['arrival'], b: NonNullable<Thread['arrival']>): boolean {
