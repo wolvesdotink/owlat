@@ -26,41 +26,24 @@ export interface ReaderGist {
 	messageId?: string;
 }
 
-function quotesOf(spans: unknown): string[] {
-	if (!Array.isArray(spans)) return [];
-	return spans
-		.map((span) => (span as { quote?: unknown } | null)?.quote)
-		.filter((quote): quote is string => typeof quote === 'string' && quote.trim() !== '')
-		.map((quote) => quote.trim());
-}
-
 /**
- * Typed adapter for `brief.get`'s gist. Lane arrival adds the field (SPEC
- * §2.4, the unsealed `threadBriefs.gist`: `{ spans: { quote }[], … }`); until
- * then the view has none and this returns null. Accepts the spans shape with
- * an optional `messageId`, or a `{ text }` line like `briefTop.gist`.
+ * `brief.get`'s gist (SPEC §2.4: the unsealed `threadBriefs.gist`, verbatim
+ * spans of one message and that message's id), or null when it has none.
  */
 export function readerGistOf(brief: BriefModeView | null | undefined): ReaderGist | null {
-	const raw = (brief as { gist?: unknown } | null | undefined)?.gist as
-		| { spans?: unknown; text?: unknown; messageId?: unknown }
-		| null
-		| undefined;
-	if (!raw || typeof raw !== 'object') return null;
-	const quotes =
-		typeof raw.text === 'string' && raw.text.trim() ? [raw.text.trim()] : quotesOf(raw.spans);
+	const gist = brief?.gist;
+	if (!gist) return null;
+	const quotes = gist.spans.map((span) => span.quote.trim()).filter((quote) => quote !== '');
 	if (quotes.length === 0) return null;
-	return typeof raw.messageId === 'string' ? { quotes, messageId: raw.messageId } : { quotes };
+	return gist.messageId ? { quotes, messageId: gist.messageId } : { quotes };
 }
 
 /**
- * Typed adapter for a list row's gist (`briefTop.gist`, SPEC §2.9). Lane arrival
- * opens it in `openBriefTop`; until then `BriefTopRow` has no `gist` and this
- * returns null. A fenced thread has no `briefTop` at all, so no gist either.
+ * A list row's gist line (`briefTop.gist`, opened by `openBriefTop`). A fenced
+ * thread has no `briefTop` at all, so no gist either.
  */
 export function rowGistOf(briefTop: BriefTopRow | undefined): string | null {
-	const gist = (briefTop as { gist?: { text?: unknown } } | undefined)?.gist;
-	const text = typeof gist?.text === 'string' ? gist.text.trim() : '';
-	return text || null;
+	return briefTop?.gist?.text.trim() || null;
 }
 
 export type ReaderStrip =
@@ -80,6 +63,11 @@ export interface ReaderStripInput {
 	/** undefined while loading, null when the server has no brief. */
 	brief: BriefModeView | null | undefined;
 	gist: ReaderGist | null;
+	/**
+	 * The viewer's read-on-arrival preference (`getArrivalPreference`): on, a
+	 * pending brief is being read now; off, only when this open reads it.
+	 */
+	isReadOnArrival?: boolean;
 }
 
 const META: ReaderStrip = { kind: 'meta', note: null };
@@ -95,9 +83,11 @@ export function resolveReaderStrip(input: ReaderStripInput): ReaderStrip {
 	// The original is the primary view: short mail, security mail.
 	if (reason === 'short' || reason === 'security') return META;
 	if (brief.completeness === 'none' || brief.completeness === 'pending') {
-		// Nothing recorded yet. Quietly say it is being read when this open is
-		// what reads it; otherwise the strip just fades in once it is ready.
-		return { kind: 'meta', note: (brief.deferredSources ?? 0) > 0 ? 'reading' : null };
+		// Nothing recorded yet. Quietly say it is being read: when this open is
+		// what reads it (D10), or when mail is read as it arrives. Otherwise the
+		// strip just fades in once it is ready.
+		const isBeingRead = (brief.deferredSources ?? 0) > 0 || input.isReadOnArrival === true;
+		return { kind: 'meta', note: isBeingRead ? 'reading' : null };
 	}
 	const latest = brief.latest?.[0]?.text.trim();
 	const owe = firstOpen(brief.forYou);

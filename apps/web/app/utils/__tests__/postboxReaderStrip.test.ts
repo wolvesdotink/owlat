@@ -91,6 +91,21 @@ describe('resolveReaderStrip', () => {
 			kind: 'meta',
 			note: null,
 		});
+		// With read on arrival on, a pending brief is being read right now.
+		expect(
+			resolveReaderStrip({
+				...base,
+				isReadOnArrival: true,
+				brief: briefView({ completeness: 'pending' }),
+			})
+		).toEqual({ kind: 'meta', note: 'reading' });
+		expect(
+			resolveReaderStrip({
+				...base,
+				isReadOnArrival: false,
+				brief: briefView({ completeness: 'pending' }),
+			})
+		).toEqual({ kind: 'meta', note: null });
 	});
 
 	it('has no strip for count or none depth, or all skipped sources (nothing read, no gist)', () => {
@@ -115,7 +130,10 @@ describe('gist adapters', () => {
 		const brief = {
 			...briefView(),
 			gist: {
-				spans: [{ segmentId: 's0', quote: ' Delivered. ' }, { quote: 'Signed by K.' }],
+				spans: [
+					{ segmentId: 's0', quote: ' Delivered. ' },
+					{ segmentId: 's1', quote: 'Signed by K.' },
+				],
 				messageId: 'm2',
 			},
 		};
@@ -125,20 +143,20 @@ describe('gist adapters', () => {
 		});
 	});
 
-	it('reads a text gist, and nothing from a brief without one', () => {
-		expect(readerGistOf({ ...briefView(), gist: { text: 'One line.' } } as never)).toEqual({
-			quotes: ['One line.'],
-		});
+	it('reads nothing from a brief without a gist, or with only blank spans', () => {
 		expect(readerGistOf(briefView())).toBeNull();
-		expect(readerGistOf({ ...briefView(), gist: { spans: [] } } as never)).toBeNull();
+		expect(readerGistOf({ ...briefView(), gist: { spans: [] } })).toBeNull();
+		expect(
+			readerGistOf({ ...briefView(), gist: { spans: [{ segmentId: 's0', quote: '  ' }] } })
+		).toBeNull();
 		expect(readerGistOf(undefined)).toBeNull();
 	});
 
 	it('reads a list row gist from briefTop', () => {
 		const top = { mode: 'brief', forYou: 0, waiting: 0, isReplyNeeded: false } as BriefTopRow;
-		expect(
-			rowGistOf({ ...top, gist: { text: ' Payout of €2,410.00 arrives tomorrow ' } } as never)
-		).toBe('Payout of €2,410.00 arrives tomorrow');
+		expect(rowGistOf({ ...top, gist: { text: ' Payout of €2,410.00 arrives tomorrow ' } })).toBe(
+			'Payout of €2,410.00 arrives tomorrow'
+		);
 		expect(rowGistOf(top)).toBeNull();
 		expect(rowGistOf(undefined)).toBeNull();
 	});
