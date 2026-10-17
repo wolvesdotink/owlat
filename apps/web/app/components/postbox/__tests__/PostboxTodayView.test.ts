@@ -1,8 +1,12 @@
 // @vitest-environment happy-dom
 /**
- * PostboxTodayView smoke — the focused inbox landing surface:
- *   - renders the sections in order (header → For you → Today → Show past)
- *   - "For you" strips come from the Reply Queue feed and route there
+ * PostboxTodayView smoke — the focused inbox landing surface (the Priority view):
+ *   - renders the sections in order (header → Needs you → Received today →
+ *     Show past)
+ *   - "Needs you" rows come from the Reply Queue feed and route there, plus the
+ *     threads placed `needs_me` (read on arrival §3)
+ *   - rows group by their thread's placement: Updates fold after three, the
+ *     digest placement is a count that opens All mail filtered to it
  *   - auto-filed roll-up line summarises categorized Today mail, read off
  *     each row's own `category` (no second thread subscription)
  *   - inbox-zero shows the quiet "All clear" line; a failed inbox read does not
@@ -15,11 +19,13 @@
  */
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { ref, computed, nextTick, reactive } from 'vue';
+import { ref, computed, nextTick, reactive, inject, defineComponent, h } from 'vue';
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxTodayView from '../PostboxTodayView.vue';
+import PostboxPriorityQueueList from '../PostboxPriorityQueueList.vue';
+import PostboxPriorityUpdates from '../PostboxPriorityUpdates.vue';
 import { partitionTodayMessages } from '~/utils/postboxTodayPartition';
 import type * as PartitionModule from '~/utils/postboxTodayPartition';
 
@@ -29,6 +35,7 @@ vi.mock('~/utils/postboxTodayPartition', async (importOriginal) => {
 	return { ...actual, partitionTodayMessages: vi.fn(actual.partitionTodayMessages) };
 });
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
+import { POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -99,7 +106,7 @@ function queueItem(id: string, overrides: Partial<ReplyQueueItem> = {}): ReplyQu
 
 const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
 const nuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
-const threadListStub = {
+const threadListStub = defineComponent({
 	props: {
 		messages: { type: Array, default: () => [] },
 		loading: { type: Boolean, default: false },
@@ -111,9 +118,20 @@ const threadListStub = {
 		scrollParent: { type: Object, default: null },
 	},
 	emits: ['select', 'load-more'],
-	template:
-		'<div class="thread-list" :data-count="messages.length" :data-selectable="selectable" :data-active="activeMessageId ?? \'\'" />',
-};
+	setup(props) {
+		// The rows render as one line under the Priority view.
+		const isPriority = inject(POSTBOX_PRIORITY_ROWS, false);
+		return () =>
+			h('div', {
+				class: 'thread-list',
+				'data-count': props.messages.length,
+				'data-ids': (props.messages as Array<{ _id: string }>).map((m) => m._id).join(','),
+				'data-selectable': String(props.selectable),
+				'data-active': props.activeMessageId ?? '',
+				'data-priority': String(isPriority),
+			});
+	},
+});
 const overlayStub = {
 	props: ['message', 'advanceIds'],
 	emits: ['close', 'open'],
@@ -168,6 +186,9 @@ function mountView(extraProps: Record<string, unknown> = {}) {
 				PostboxThreadList: threadListStub,
 				PostboxThreadListSkeleton: skeletonStub,
 				PostboxTodayReaderOverlay: overlayStub,
+				UiAvatar: { props: ['name', 'email'], template: '<span class="avatar" />' },
+				PostboxPriorityQueueList,
+				PostboxPriorityUpdates,
 			},
 			// Render Transition content synchronously so v-if swaps (overlay
 			// open/close, Show past) can be asserted without racing rAF timing.
@@ -179,7 +200,7 @@ function mountView(extraProps: Record<string, unknown> = {}) {
 }
 
 describe('PostboxTodayView', () => {
-	it('renders header, For you, Today and Show past mails in order', () => {
+	it('renders header, Needs you, Received today and Show past mails in order', () => {
 		feed.messages.value = [
 			todayMsg('m-today'),
 			todayMsg('m-old', { receivedAt: Date.now() - 8 * 86_400_000, flagSeen: true }),
@@ -187,19 +208,21 @@ describe('PostboxTodayView', () => {
 		queue.items.value = [queueItem('q1', { threadId: 't1', fromAddress: 'boss@example.com' })];
 		const w = mountView();
 		const text = w.text();
-		// Section order: header count → For you → Received today → Show past.
-		expect(text.indexOf('Inbox')).toBeLessThan(text.indexOf('For you (1)'));
-		expect(text.indexOf('For you (1)')).toBeLessThan(text.indexOf('Received today'));
+		// Section order: header count → Needs you → Received today → Show past.
+		expect(text.indexOf('Inbox')).toBeLessThan(text.indexOf('Needs you'));
+		expect(text.indexOf('Needs you')).toBeLessThan(text.indexOf('Received today'));
 		expect(text.indexOf('Received today')).toBeLessThan(text.indexOf('Show past mails (1)'));
 		// "Today" names the home page only (#776).
 		expect(text).not.toMatch(/\bToday\b/);
 		expect(w.find('#postbox-for-you').exists()).toBe(true);
 		expect(w.find('#postbox-today').exists()).toBe(true);
-		// The strip carries the ask + one muted context line and routes to the
-		// Answer queue, filtered to this mailbox (#767).
-		expect(text).toContain('Need the deck');
-		expect(text).toContain('Boss — Can you send it today?');
-		expect(text).toContain('Answer');
+		// One line: who, what they want, a state; it routes to the Answer queue,
+		// filtered to this mailbox (#767).
+		const queueRow = w.find('[data-testid="priority-queue"] li');
+		expect(queueRow.text()).toContain('Boss');
+		expect(queueRow.text()).toContain('Need the deck');
+		expect(queueRow.text()).toContain('reply');
+		expect(text).toContain('Answer queue (1)');
 		expect(w.find('a[href="/dashboard/answer?in=mbx-1"]').exists()).toBe(true);
 		expect(w.find('a[href="/dashboard/postbox/reply-queue"]').exists()).toBe(false);
 		// Today rows go through the shared thread list (hover actions, j/k, triage).
@@ -237,7 +260,7 @@ describe('PostboxTodayView', () => {
 		queue.items.value = [];
 		const w = mountView();
 		expect(w.text()).toContain('All clear');
-		expect(w.text()).not.toContain('For you');
+		expect(w.text()).not.toContain('Needs you');
 		expect(w.text()).not.toContain('Show past mails');
 	});
 
@@ -414,5 +437,53 @@ describe('PostboxTodayView', () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+
+	it('groups rows by placement: needs_me, today, three updates and a fold, a digest count', async () => {
+		const now = Date.now();
+		feed.messages.value = [
+			// An older needs_me thread still needs you; today's grouping would bury it.
+			todayMsg('m-ask', {
+				threadId: 't-ask',
+				placement: 'needs_me',
+				receivedAt: now - 9 * 86_400_000,
+				flagSeen: true,
+			}),
+			todayMsg('m-venue', { threadId: 't-venue', placement: 'today' }),
+			...['DB', 'Stripe', 'DHL', 'GitHub', 'Hetzner'].map((name, i) =>
+				todayMsg(`m-up-${i}`, { threadId: `t-up-${i}`, placement: 'updates', fromName: name })
+			),
+			todayMsg('m-news-1', { threadId: 't-n1', placement: 'digest', category: 'newsletter' }),
+			todayMsg('m-news-2', { threadId: 't-n2', placement: 'digest', category: 'promotion' }),
+			// No arrival projection yet: today's grouping (category roll-up).
+			todayMsg('m-legacy', { threadId: 't-legacy', category: 'receipt' }),
+			// Listed in the Reply Queue: shown once, as the queue's row.
+			todayMsg('m-queued', { threadId: 't-queued', placement: 'today' }),
+		];
+		queue.items.value = [queueItem('q1', { threadId: 't-queued' })];
+		const w = mountView();
+
+		expect(w.find('#postbox-for-you .thread-list').attributes('data-ids')).toBe('m-ask');
+		expect(w.find('#postbox-today .thread-list').attributes('data-ids')).toBe('m-venue');
+		const updates = w.find('#postbox-updates .thread-list');
+		expect(updates.attributes('data-ids')).toBe('m-up-0,m-up-1,m-up-2');
+		expect(w.find('#postbox-updates').text()).toContain('Updates · no reply needed');
+		const fold = w.get('[data-testid="priority-updates-fold"]');
+		expect(fold.text()).toContain('2 more updates from GitHub and Hetzner');
+		// Placement-less rows keep the old roll-up line.
+		expect(w.get('[data-testid="auto-filed-line"]').text()).toContain('1 receipt');
+		// Every list renders one-line rows.
+		for (const list of w.findAll('.thread-list'))
+			expect(list.attributes('data-priority')).toBe('true');
+
+		await fold.trigger('click');
+		expect(w.find('#postbox-updates .thread-list').attributes('data-count')).toBe('5');
+		expect(w.find('[data-testid="priority-updates-fold"]').exists()).toBe(false);
+
+		const digest = w.get('[data-testid="priority-digest-fold"]');
+		expect(digest.text()).toContain('2 newsletters and promotions');
+		expect(digest.text()).toContain('in your digest');
+		await digest.trigger('click');
+		expect(w.emitted('view-digest')).toHaveLength(1);
 	});
 });
