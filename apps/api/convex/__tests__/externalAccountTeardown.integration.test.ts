@@ -427,7 +427,18 @@ describe('what a purge takes with the mailbox: read on arrival', () => {
 			const refs = { mailboxId, threadId: message.threadId, messageId, folderId: message.folderId };
 			// More rows than one teardown page (PURGE_CHUNK) across the tables.
 			for (let i = 0; i < 30; i++) await seedArrivalRows(ctx, refs);
-			await seedArrivalRows(ctx, { ...refs, mailboxId: bystander.mailboxId });
+			// The bystander's rows name a thread of its own: the purged threads'
+			// purge jobs take every row of those threads (mailDraftOfferUsage).
+			const { _id, _creationTime, ...thread } = (await ctx.db.get(message.threadId))!;
+			const bystanderThreadId = await ctx.db.insert('mailThreads', {
+				...thread,
+				mailboxId: bystander.mailboxId,
+			});
+			await seedArrivalRows(ctx, {
+				...refs,
+				mailboxId: bystander.mailboxId,
+				threadId: bystanderThreadId,
+			});
 		});
 		await t.mutation(api.mail.external.accounts.disconnect, {});
 
