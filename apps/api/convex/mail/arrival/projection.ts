@@ -23,8 +23,8 @@
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
-import type { MutationCtx } from '../../_generated/server';
-import type { MailCategory } from '@owlat/shared/arrival';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import type { ComputePlacementResult, MailCategory } from '@owlat/shared/arrival';
 import { computePlacement } from '@owlat/shared/arrivalPlacement';
 import { loadSenderProfile, senderKeyOf } from '../senders/profiles';
 import { isPersonalMailbox } from '../permissions';
@@ -44,9 +44,43 @@ export function isReplyVerdictSettled(
 	return thread.needsReply.source !== 'heuristic' || thread.needsReplyPendingAt === undefined;
 }
 
+/**
+ * `computePlacement` over the stored inputs: the record (its rule placement and
+ * category, else the thread's), the thread (override, settled reply verdict)
+ * and the sender profile. Shared by the projection and Explain, so "why here"
+ * always answers from the same inputs the projection placed it with. Pure.
+ */
+export function placementOf(
+	record: Pick<Doc<'mailArrivalRecords'>, 'rulePlacement' | 'category' | 'categorySource'>,
+	thread: Pick<Thread, 'category' | 'placementOverride' | 'needsReply' | 'needsReplyPendingAt'>,
+	profile: Pick<Doc<'mailSenderProfiles'>, 'status' | 'placementOverride'> | null
+): ComputePlacementResult {
+	const category: MailCategory | undefined = record.category ?? thread.category?.label;
+	const categorySource = record.categorySource ?? thread.category?.source;
+	return computePlacement(
+		{
+			...(record.rulePlacement ? { rulePlacement: record.rulePlacement } : {}),
+			...(category ? { category } : {}),
+			...(categorySource ? { categorySource } : {}),
+		},
+		{
+			...(thread.placementOverride
+				? { placementOverride: { placement: thread.placementOverride.placement } }
+				: {}),
+			isReplyNeeded: isReplyVerdictSettled(thread),
+		},
+		profile
+			? {
+					status: profile.status,
+					...(profile.placementOverride ? { placementOverride: profile.placementOverride } : {}),
+				}
+			: null
+	);
+}
+
 /** The sender profile of a message's From address in its mailbox, or null (lane senders' key). */
 export async function senderProfileOf(
-	ctx: Pick<MutationCtx, 'db'>,
+	ctx: Pick<QueryCtx, 'db'>,
 	mailboxId: Id<'mailboxes'>,
 	fromAddress: string
 ): Promise<Doc<'mailSenderProfiles'> | null> {
@@ -86,27 +120,7 @@ export async function refreshArrivalProjection(
 	const message = record ? await ctx.db.get(record.messageId) : null;
 	if (!record || !message) return clearProjection(ctx, thread);
 	const profile = await senderProfileOf(ctx, thread.mailboxId, message.fromAddress);
-	const category: MailCategory | undefined = record.category ?? thread.category?.label;
-	const categorySource = record.categorySource ?? thread.category?.source;
-	const { placement } = computePlacement(
-		{
-			...(record.rulePlacement ? { rulePlacement: record.rulePlacement } : {}),
-			...(category ? { category } : {}),
-			...(categorySource ? { categorySource } : {}),
-		},
-		{
-			...(thread.placementOverride
-				? { placementOverride: { placement: thread.placementOverride.placement } }
-				: {}),
-			isReplyNeeded: isReplyVerdictSettled(thread),
-		},
-		profile
-			? {
-					status: profile.status,
-					...(profile.placementOverride ? { placementOverride: profile.placementOverride } : {}),
-				}
-			: null
-	);
+	const { placement } = placementOf(record, thread, profile);
 	const now = Date.now();
 	const next = {
 		placement,
