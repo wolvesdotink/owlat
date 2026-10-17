@@ -40,8 +40,9 @@ export type ExclusiveWinners = NonNullable<Doc<'mailArrivalRecords'>['exclusiveW
 type ExclusiveWinner = NonNullable<ExclusiveWinners['folder']>;
 type FilterRow = Doc<'mailFilters'>;
 
-/** Folder roles a late (AI-answered) move may take a message out of. */
+/** Folder roles a late move may leave from when the recorded winner predates `folderId`. */
 const LATE_MOVE_FROM_ROLES: ReadonlySet<string> = new Set(['inbox', 'archive']);
+const INBOX_ONLY: ReadonlySet<string> = new Set(['inbox']);
 
 const PLACEMENT_OF: Readonly<Record<string, Placement>> = {
 	sendToDigest: 'digest',
@@ -65,13 +66,19 @@ export function claimExclusive(
 	return true;
 }
 
+/** Whether `claim` would take a field from its current winner (a lower number; ties stay). Pure. */
+function outranks(current: ExclusiveWinner | undefined, claim: ExclusiveWinner): boolean {
+	return !current || claim.priority < current.priority;
+}
+
 /** Everything the matched filters of one pass do to one message. */
 export interface RulePlan {
 	labelIds: Id<'mailLabels'>[];
 	isMarkRead: boolean;
 	isMarkFlagged: boolean;
 	section?: string;
-	folderId?: Id<'mailFolders'>;
+	/** The folder move that outranks the recorded winner; recorded only once applied. */
+	folder?: ExclusiveWinner & { folderId: Id<'mailFolders'> };
 	placement?: Placement;
 	archiveAfter?: { hours: number; filterId: Id<'mailFilters'> };
 	isNotify: boolean;
@@ -118,8 +125,11 @@ export function addFilterToPlan(
 				}
 				break;
 			case 'moveToFolder':
-				if (action.folderId && claimExclusive(winners, 'folder', claim)) {
-					plan.folderId = action.folderId;
+				// The first (highest-priority) move of this pass that outranks the
+				// recorded winner. `winners.folder` changes only once the move is
+				// applied (`commitRulePlan`).
+				if (action.folderId && !plan.folder && outranks(winners.folder, claim)) {
+					plan.folder = { ...claim, folderId: action.folderId };
 				}
 				break;
 			case 'pinToSection':
@@ -210,28 +220,46 @@ async function writeSection(
 	});
 }
 
+/**
+ * Whether a LATE answer may still move the message: only while it sits where
+ * the recorded folder winner put it (a rule, the manual pass or sender
+ * status), or, with no winner, where delivery left it (the Inbox). Anywhere
+ * else a person or another writer moved it since, and the answer leaves it.
+ */
+async function isWhereTheWinnerLeftIt(
+	ctx: MutationCtx,
+	message: Doc<'mailMessages'>,
+	winner: ExclusiveWinner | undefined
+): Promise<boolean> {
+	if (winner?.folderId) return message.folderId === winner.folderId;
+	const current = await ctx.db.get(message.folderId);
+	// A winner recorded before folders were stamped on it: the roles it could have filed into.
+	const roles = winner ? LATE_MOVE_FROM_ROLES : INBOX_ONLY;
+	return current?.role !== undefined && roles.has(current.role);
+}
+
+/** Apply the folder move; true when the message is (now) in the target folder. */
 async function writeFolder(
 	ctx: MutationCtx,
 	message: Doc<'mailMessages'>,
 	folderId: Id<'mailFolders'>,
-	opts: { isLate: boolean },
+	opts: { isLate: boolean; winner: ExclusiveWinner | undefined },
 	log: RuleOperationLog
-): Promise<void> {
-	if (message.folderId === folderId) return;
+): Promise<boolean> {
 	const target = await ctx.db.get(folderId);
-	if (!target || target.mailboxId !== message.mailboxId || !isAllowedHookTarget(target)) return;
-	if (opts.isLate) {
-		// A late answer moves mail only out of where delivery left it, never
-		// back out of a folder the person (or anything else) filed it into.
-		const current = await ctx.db.get(message.folderId);
-		if (current?.role === undefined || !LATE_MOVE_FROM_ROLES.has(current.role)) return;
+	if (!target || target.mailboxId !== message.mailboxId || !isAllowedHookTarget(target)) {
+		return false;
 	}
+	if (opts.isLate && !(await isWhereTheWinnerLeftIt(ctx, message, opts.winner))) return false;
+	// Already there (a rule that files into the Inbox): applied, nothing to move.
+	if (message.folderId === folderId) return true;
 	const move = await moveSingleMessage(ctx, message._id, folderId);
-	if (!move) return;
+	if (!move) return false;
 	await log.add(
 		{ kind: 'messageFolder', messageId: message._id, before: move.sourceFolderId, after: folderId },
 		move.isNeedsReplyCleared
 	);
+	return true;
 }
 
 /**
@@ -245,6 +273,8 @@ export async function commitRulePlan(
 	args: {
 		messageId: Id<'mailMessages'>;
 		plan: RulePlan;
+		/** The record's winners; the folder winner is updated here once a move applied. */
+		winners: ExclusiveWinners;
 		isLate: boolean;
 		placementBefore: Placement | null;
 		now: number;
@@ -272,8 +302,16 @@ export async function commitRulePlan(
 	if (labelled && plan.section) await writeSection(ctx, labelled, plan.section, log, now);
 	// The move goes last so the writes above act on the row in its first folder.
 	const sectioned = await ctx.db.get(first._id);
-	if (sectioned && plan.folderId) {
-		await writeFolder(ctx, sectioned, plan.folderId, { isLate: args.isLate }, log);
+	if (sectioned && plan.folder) {
+		const { folderId, ...claim } = plan.folder;
+		const isApplied = await writeFolder(
+			ctx,
+			sectioned,
+			folderId,
+			{ isLate: args.isLate, winner: args.winners.folder },
+			log
+		);
+		if (isApplied) args.winners.folder = { ...claim, folderId };
 	}
 	if (plan.placement && plan.placement !== args.placementBefore) {
 		await log.add({

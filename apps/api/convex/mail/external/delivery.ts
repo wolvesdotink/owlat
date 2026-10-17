@@ -192,7 +192,8 @@ export const ingestExternalMessage = internalMutation({
 						mailboxId: mailbox._id,
 						fromAddress: args.from,
 						origin,
-						isMovedByFilter: folder.role !== 'inbox',
+						// A rule that holds the folder (even "file into Inbox") wins (§6.2).
+						isMovedByFilter: folder.role !== 'inbox' || !!arrival?.exclusiveWinners?.folder,
 						messageId,
 					})
 				: null;

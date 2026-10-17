@@ -141,6 +141,7 @@ describe('the hook pass at hosted delivery', () => {
 			source: 'hook',
 			filterId: ruleId,
 			priority: 100,
+			folderId: ruleFolder,
 		});
 
 		// A hook rule ranked after the manual one leaves the manual folder alone.
@@ -151,6 +152,7 @@ describe('the hook pass at hosted delivery', () => {
 			source: 'manual',
 			filterId: manualId,
 			priority: 300,
+			folderId: manualFolder,
 		});
 	});
 
@@ -356,5 +358,120 @@ describe('R2 answers', () => {
 		await t.run(async (ctx) => await ctx.db.patch(id, { folderId: elsewhere }));
 		await answer(t, id, [{ filterId, revision: 0, answer: true }]);
 		expect((await messageOf(t, id)).folderId).toBe(elsewhere);
+	});
+});
+
+describe('review r1', () => {
+	async function aiSetup() {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		const { mailboxId, folders } = await seedPersonalMailbox(t);
+		const finance = await seedUserFolder(t, mailboxId, 'Finance');
+		const filterId = await seedFilter(t, mailboxId, {
+			priority: 100,
+			aiCondition: { question: 'Is this an invoice?', revision: 0 },
+			actions: [{ type: 'moveToFolder', folderId: finance }],
+		});
+		return { t, mailboxId, folders, finance, filterId };
+	}
+
+	it('F1: an answer for a fenced thread applies nothing and counts as unknown', async () => {
+		const { t, mailboxId, filterId } = await aiSetup();
+		const id = (await deliverHosted(t))!;
+		const { threadId } = await messageOf(t, id);
+		await t.run(async (ctx) => await ctx.db.patch(threadId, { interpretationStaleSince: 1 }));
+		await answer(t, id, [{ filterId, revision: 0, answer: true }]);
+		expect(await roleOf(t, id)).toBe('inbox');
+		expect((await recordOf(t, id))!.filterMatches).toEqual([
+			{ filterId, revision: 0, pass: 'ai', answer: null },
+		]);
+		expect(await operationsOf(t, mailboxId)).toHaveLength(0);
+	});
+
+	it('F1: an answer for a mailbox that went shared writes nothing', async () => {
+		const { t, mailboxId, filterId } = await aiSetup();
+		const id = (await deliverHosted(t))!;
+		await t.run(async (ctx) => await ctx.db.patch(mailboxId, { scope: 'shared' }));
+		await answer(t, id, [{ filterId, revision: 0, answer: true }]);
+		expect(await roleOf(t, id)).toBe('inbox');
+		expect((await recordOf(t, id))!.pendingAiFilters).toHaveLength(1);
+		expect(await operationsOf(t, mailboxId)).toHaveLength(0);
+	});
+
+	it('F3: a higher-priority answer replaces an earlier rule move while the mail is still there', async () => {
+		const { t, mailboxId, finance, filterId } = await aiSetup();
+		const custom = await seedUserFolder(t, mailboxId, 'Custom');
+		const ruleId = await seedFilter(t, mailboxId, {
+			priority: 200,
+			actions: [{ type: 'moveToFolder', folderId: custom }],
+		});
+		const id = (await deliverHosted(t))!;
+		expect((await recordOf(t, id))!.exclusiveWinners?.folder).toEqual({
+			source: 'hook',
+			filterId: ruleId,
+			priority: 200,
+			folderId: custom,
+		});
+		await answer(t, id, [{ filterId, revision: 0, answer: true }]);
+		expect((await messageOf(t, id)).folderId).toBe(finance);
+		expect((await recordOf(t, id))!.exclusiveWinners?.folder).toEqual({
+			source: 'ai',
+			filterId,
+			priority: 100,
+			folderId: finance,
+		});
+	});
+
+	it('F3: a person’s move since the rule wins, and the winner stays the rule', async () => {
+		const { t, mailboxId, filterId } = await aiSetup();
+		const custom = await seedUserFolder(t, mailboxId, 'Custom');
+		const elsewhere = await seedUserFolder(t, mailboxId, 'Elsewhere');
+		await seedFilter(t, mailboxId, {
+			priority: 200,
+			actions: [{ type: 'moveToFolder', folderId: custom }],
+		});
+		const id = (await deliverHosted(t))!;
+		await t.run(async (ctx) => await ctx.db.patch(id, { folderId: elsewhere }));
+		await answer(t, id, [{ filterId, revision: 0, answer: true }]);
+		expect((await messageOf(t, id)).folderId).toBe(elsewhere);
+		expect((await recordOf(t, id))!.exclusiveWinners?.folder?.source).toBe('hook');
+	});
+
+	it('F3: a move that cannot apply records no winner', async () => {
+		const { t, finance, filterId } = await aiSetup();
+		const id = (await deliverHosted(t))!;
+		await t.run(async (ctx) => await ctx.db.delete(finance));
+		await answer(t, id, [{ filterId, revision: 0, answer: true }]);
+		expect(await roleOf(t, id)).toBe('inbox');
+		expect((await recordOf(t, id))!.exclusiveWinners?.folder).toBeUndefined();
+	});
+
+	it('F4: a rule that files into the Inbox holds it against sender status, hosted and synced', async () => {
+		const hosted = convexTest(schema, modules);
+		rateLimiterTest.register(hosted);
+		const { mailboxId, folders } = await seedPersonalMailbox(hosted);
+		await seedProfile(hosted, mailboxId, { status: 'auto_archive', statusSource: 'user' });
+		await seedFilter(hosted, mailboxId, {
+			actions: [{ type: 'moveToFolder', folderId: folders.inbox }],
+		});
+		const id = (await deliverHosted(hosted))!;
+		expect(await roleOf(hosted, id)).toBe('inbox');
+		const record = (await recordOf(hosted, id))!;
+		expect(record.exclusiveWinners?.folder?.source).toBe('hook');
+		expect(record.reasonKeys.some((r) => r.key === 'arrival.reason.senderStatus')).toBe(false);
+
+		const synced = convexTest(schema, modules);
+		rateLimiterTest.register(synced);
+		const external = await seedExternalMailbox(synced);
+		await seedProfile(synced, external.mailboxId, {
+			status: 'auto_archive',
+			statusSource: 'user',
+		});
+		await seedFilter(synced, external.mailboxId, {
+			actions: [{ type: 'moveToFolder', folderId: external.folders.inbox }],
+		});
+		const live = (await ingestSynced(synced, external.accountId))!;
+		expect(await roleOf(synced, live)).toBe('inbox');
+		expect((await recordOf(synced, live))!.exclusiveWinners?.folder?.source).toBe('hook');
 	});
 });

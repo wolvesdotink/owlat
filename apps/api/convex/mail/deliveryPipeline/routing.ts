@@ -102,6 +102,7 @@ export function resolveFilterOutcome(
 			source: 'manual',
 			filterId: moveAction.filterId,
 			priority: moveAction.priority,
+			folderId: moveAction.folderId,
 		};
 	}
 	if (pinAction?.filterId && pinAction.priority !== undefined) {

@@ -165,6 +165,7 @@ export async function stampSenderStatusOnRecord(
 	// may have moved it on): sender status ranks after every filter (§6.2).
 	const folderWinner = record?.exclusiveWinners?.folder;
 	if (!record || (folderWinner && folderWinner.source !== 'sender_status')) return false;
+	const message = await ctx.db.get(messageId);
 	const reason: ReasonKey = { key: SENDER_STATUS_REASON_KEY, params: { status: outcome.status } };
 	const reasonKeys = record.reasonKeys.some((key) => key.key === SENDER_STATUS_REASON_KEY)
 		? record.reasonKeys
@@ -172,7 +173,12 @@ export async function stampSenderStatusOnRecord(
 	await ctx.db.patch(record._id, {
 		exclusiveWinners: {
 			...record.exclusiveWinners,
-			folder: { source: 'sender_status', priority: SENDER_STATUS_WINNER_PRIORITY },
+			folder: {
+				source: 'sender_status',
+				priority: SENDER_STATUS_WINNER_PRIORITY,
+				// Where enforcement filed it: a later rule answer moves it only from here.
+				...(message ? { folderId: message.folderId } : {}),
+			},
 		},
 		reasonKeys,
 		updatedAt: Date.now(),

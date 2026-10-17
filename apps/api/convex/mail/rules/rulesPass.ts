@@ -43,6 +43,7 @@ import { isHookFilter } from '../filterValidation';
 import { isCodeOrSignInMail } from '../interpret/eligibility';
 import { loadArrivalRecord } from '../arrival/records';
 import { refreshArrivalProjection } from '../arrival/projection';
+import { isFencedThread } from '../interpret/staleFence';
 import type { ManualPassOutcome } from '../deliveryPipeline/routing';
 import type { InboundOrigin } from '../deliveryPipeline/insert';
 import { addFilterToPlan, commitRulePlan, emptyRulePlan, type ExclusiveWinners } from './ruleApply';
@@ -156,6 +157,7 @@ export async function runArrivalRulesPass(
 	const commit = await commitRulePlan(ctx, {
 		messageId: message._id,
 		plan,
+		winners,
 		isLate: false,
 		placementBefore: null,
 		now,
@@ -203,6 +205,12 @@ export async function applyRuleAnswers(
 	const record = await loadArrivalRecord(ctx, args.messageId);
 	const message = await ctx.db.get(args.messageId);
 	if (!record || !message || record.mailboxId !== message.mailboxId) return;
+	// Re-checked in this transaction: a mailbox that went shared writes no rule
+	// rows at all (its drain removes them), and a fenced thread's answer came
+	// from text the fence now distrusts, so it counts as unknown (no match).
+	const mailbox = await ctx.db.get(record.mailboxId);
+	if (!mailbox || !isPersonalMailbox(mailbox)) return;
+	const isFenced = isFencedThread(await ctx.db.get(message.threadId));
 	const pending = record.pendingAiFilters ?? [];
 	const answered = new Set<Id<'mailFilters'>>();
 	const matches: FilterMatch[] = [];
@@ -225,9 +233,9 @@ export async function applyRuleAnswers(
 			filterId: entry.filterId,
 			revision: entry.revision,
 			pass: 'ai',
-			answer: isCurrent ? answer.answer : null,
+			answer: isCurrent && !isFenced ? answer.answer : null,
 		});
-		if (isCurrent && answer.answer === true) matched.push(filter);
+		if (isCurrent && !isFenced && answer.answer === true) matched.push(filter);
 	}
 	if (answered.size === 0) return;
 
@@ -239,6 +247,7 @@ export async function applyRuleAnswers(
 	const commit = await commitRulePlan(ctx, {
 		messageId: message._id,
 		plan,
+		winners,
 		isLate: true,
 		placementBefore: record.rulePlacement ?? null,
 		now: Date.now(),
