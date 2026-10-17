@@ -17,6 +17,7 @@
  */
 import type { BriefItemView, BriefModeView } from '../../../api/convex/mail/interpret/briefShape';
 import type { BriefTopRow } from '../../../api/convex/mail/interpret/briefTop';
+import type { BriefAction } from '~/utils/threadBriefItems';
 
 /** The gist as the reader shows it: verbatim spans of one message, never a summary. */
 export interface ReaderGist {
@@ -112,4 +113,50 @@ export function resolveReaderStrip(input: ReaderStripInput): ReaderStrip {
 			? ({ kind: 'gist', gist: input.gist } as const)
 			: null;
 	return { kind: 'brief', lead, owe, waiting };
+}
+
+/** How long the gist line may run (SPEC §2.4: a list row's gist is ≤160 characters). */
+export const GIST_LINE_MAX = 160;
+
+/**
+ * The gist as one line: its spans joined, cut at a word boundary with an
+ * ellipsis once it passes {@link GIST_LINE_MAX}. A single over-long word is cut
+ * mid-word rather than dropped.
+ */
+export function gistLine(gist: ReaderGist, max: number = GIST_LINE_MAX): string {
+	const line = gist.quotes.join(' … ');
+	if (line.length <= max) return line;
+	const room = line.slice(0, max - 1);
+	const cut = room.lastIndexOf(' ');
+	return `${(cut > 0 ? room.slice(0, cut) : room).replace(/[\s.,;:…-]+$/, '')}…`;
+}
+
+/**
+ * Whether "Full brief" has anything to open, independent of what the strip
+ * shows: any item in any state (open, closed, unclear, hidden), a fact or an
+ * overview, activity, files, or other people to look up elsewhere.
+ */
+export function briefHasContent(brief: BriefModeView | null | undefined): boolean {
+	if (!brief || brief.completeness === 'none') return false;
+	const { counts } = brief;
+	return (
+		(brief.latest?.length ?? 0) > 0 ||
+		brief.forYou.length + brief.waitingOnOthers.length + brief.unclear.length > 0 ||
+		counts.forYou + counts.waitingOnOthers + counts.unclear + counts.closed + counts.hidden > 0 ||
+		(brief.standing?.facts.length ?? 0) > 0 ||
+		!!brief.standing?.overview ||
+		brief.activity.length > 0 ||
+		brief.files.length > 0 ||
+		brief.participants.some((p) => !p.isUs)
+	);
+}
+
+/**
+ * The actions the strip offers on the item you owe, with BriefItem's
+ * semantics: an unconfirmed proposal ("Check this") is not an obligation
+ * until confirmed, so it offers Track and "Not a request"; a tracked item
+ * offers Reply and Mark done.
+ */
+export function stripItemActions(item: Pick<BriefItemView, 'verify'>): BriefAction[] {
+	return item.verify === 'proposal' ? ['confirmProposal', 'notARequest'] : ['reply', 'markDone'];
 }

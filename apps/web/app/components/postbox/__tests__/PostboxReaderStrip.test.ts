@@ -47,7 +47,7 @@ describe('PostboxReaderStrip', () => {
 	it('shows the lead, the item you owe and the item you wait on, then the meta row', async () => {
 		const w = mountStrip(
 			{ kind: 'brief', lead: { kind: 'latest', text: 'Lena moved delivery.' }, owe, waiting },
-			{ summary: 'signed · images off' }
+			{ summary: 'signed · images off', hasFullBrief: true }
 		);
 		expect(w.get('[data-testid="strip-lead"]').text()).toBe('Lena moved delivery.');
 		expect(w.get('[data-testid="strip-owe"]').text()).toContain('Send the signed quote');
@@ -60,8 +60,10 @@ describe('PostboxReaderStrip', () => {
 		expect(meta).toContain('Details');
 		expect(w.get('[data-testid="strip-summary"]').text()).toBe('signed · images off');
 
+		expect(w.get('[data-testid="strip-owe-reply"]').text()).toBe('Reply');
+		expect(w.get('[data-testid="strip-owe-markDone"]').text()).toBe('Mark done');
 		await w.get('[data-testid="strip-owe-reply"]').trigger('click');
-		await w.get('[data-testid="strip-owe-done"]').trigger('click');
+		await w.get('[data-testid="strip-owe-markDone"]').trigger('click');
 		expect(w.emitted('react')).toEqual([
 			[owe, 'reply'],
 			[owe, 'markDone'],
@@ -128,5 +130,38 @@ describe('PostboxReaderStrip', () => {
 		const w = mountStrip({ kind: 'meta', note: null }, { hasExactWording: true });
 		await w.get('[data-testid="strip-exact-wording"]').trigger('click');
 		expect(w.emitted('exact-wording')).toHaveLength(1);
+	});
+
+	it('offers Full brief on the slim line too, whenever the brief holds anything', async () => {
+		const w = mountStrip({ kind: 'meta', note: null }, { hasFullBrief: true });
+		await w.get('[data-testid="strip-full-brief"]').trigger('click');
+		expect(w.emitted('full-brief')).toHaveLength(1);
+		expect(
+			mountStrip({ kind: 'meta', note: null }).find('[data-testid="strip-full-brief"]').exists()
+		).toBe(false);
+	});
+
+	it('keeps an unconfirmed proposal a "Check this" with Track and Not a request', async () => {
+		const proposal = item({ id: 'i_prop', text: 'Pay the deposit', verify: 'proposal' });
+		const w = mountStrip({ kind: 'brief', lead: null, owe: proposal, waiting: null });
+		expect(w.get('[data-testid="strip-owe-text"]').text()).toBe('Check this: Pay the deposit');
+		expect(w.find('[data-testid="strip-owe-reply"]').exists()).toBe(false);
+		expect(w.find('[data-testid="strip-owe-markDone"]').exists()).toBe(false);
+		expect(w.get('[data-testid="strip-owe-confirmProposal"]').text()).toBe('Track');
+		await w.get('[data-testid="strip-owe-confirmProposal"]').trigger('click');
+		await w.get('[data-testid="strip-owe-notARequest"]').trigger('click');
+		expect(w.emitted('react')).toEqual([
+			[proposal, 'confirmProposal'],
+			[proposal, 'notARequest'],
+		]);
+		expect(w.get('[data-ring]').attributes('data-ring')).toBe('proposal');
+	});
+
+	it('trims a long gist to 160 characters at a word boundary', () => {
+		const long = Array.from({ length: 50 }, (_, i) => `span${i}`).join(' ');
+		const w = mountStrip({ kind: 'gist', gist: { quotes: [long] } });
+		const quote = w.get('[data-testid="strip-gist"] q').text();
+		expect(quote.length).toBeLessThanOrEqual(160);
+		expect(quote.endsWith('…')).toBe(true);
 	});
 });

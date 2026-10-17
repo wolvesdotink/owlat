@@ -4,7 +4,14 @@
  * until lane arrival exposes the gist.
  */
 import { describe, expect, it } from 'vitest';
-import { readerGistOf, resolveReaderStrip, rowGistOf } from '../postboxReaderStrip';
+import {
+	briefHasContent,
+	gistLine,
+	readerGistOf,
+	resolveReaderStrip,
+	rowGistOf,
+	stripItemActions,
+} from '../postboxReaderStrip';
 import { briefView, item } from './threadBriefFixtures';
 import type { BriefTopRow } from '../../../../api/convex/mail/interpret/briefTop';
 
@@ -134,5 +141,67 @@ describe('gist adapters', () => {
 		).toBe('Payout of €2,410.00 arrives tomorrow');
 		expect(rowGistOf(top)).toBeNull();
 		expect(rowGistOf(undefined)).toBeNull();
+	});
+});
+
+describe('gistLine', () => {
+	it('joins the spans and keeps a short gist whole', () => {
+		expect(gistLine({ quotes: ['Delivered.', 'Signed by K.'] })).toBe('Delivered. … Signed by K.');
+	});
+
+	it('cuts a long gist at a word boundary with an ellipsis, within 160 characters', () => {
+		const words = Array.from({ length: 40 }, (_, i) => `word${i}`).join(' ');
+		const line = gistLine({ quotes: [words] });
+		expect(line.length).toBeLessThanOrEqual(160);
+		expect(line.endsWith('…')).toBe(true);
+		expect(words.startsWith(line.slice(0, -1))).toBe(true);
+		expect(words.charAt(line.length - 1)).toBe(' ');
+	});
+
+	it('cuts one over-long word mid-word rather than dropping it', () => {
+		const line = gistLine({ quotes: ['x'.repeat(300)] });
+		expect(line).toBe(`${'x'.repeat(159)}…`);
+	});
+});
+
+describe('briefHasContent (Full brief)', () => {
+	const empty = briefView({
+		latest: [],
+		forYou: [],
+		waitingOnOthers: [],
+		unclear: [],
+		standing: undefined,
+		activity: [],
+		files: [],
+		participants: [],
+		counts: { forYou: 0, forTeam: 0, waitingOnOthers: 0, unclear: 0, closed: 0, hidden: 0 },
+	});
+
+	it('is true for content the strip never shows', () => {
+		expect(briefHasContent(empty)).toBe(false);
+		expect(briefHasContent({ ...empty, unclear: [item({ id: 'i_u', text: 'Who books?' })] })).toBe(
+			true
+		);
+		expect(briefHasContent({ ...empty, counts: { ...empty.counts, closed: 2 } })).toBe(true);
+		expect(briefHasContent({ ...empty, standing: briefView().standing })).toBe(true);
+		expect(briefHasContent({ ...empty, activity: briefView().activity })).toBe(true);
+		expect(
+			briefHasContent({
+				...empty,
+				participants: [{ email: 'lena@studio.example', isUs: false, role: 'from' }],
+			})
+		).toBe(true);
+	});
+
+	it('is false with no brief, or nothing interpreted', () => {
+		expect(briefHasContent(null)).toBe(false);
+		expect(briefHasContent(briefView({ completeness: 'none' }))).toBe(false);
+	});
+});
+
+describe('stripItemActions', () => {
+	it('offers Track and Not a request on a proposal, Reply and Mark done otherwise', () => {
+		expect(stripItemActions({ verify: 'proposal' })).toEqual(['confirmProposal', 'notARequest']);
+		expect(stripItemActions({ verify: 'passed' })).toEqual(['reply', 'markDone']);
 	});
 });

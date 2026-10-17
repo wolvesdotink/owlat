@@ -22,8 +22,8 @@
  * emits, with the link as the popover's anchor.
  */
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
-import type { ReaderStrip } from '~/utils/postboxReaderStrip';
-import type { BriefAction } from '~/utils/threadBriefItems';
+import { gistLine, stripItemActions, type ReaderStrip } from '~/utils/postboxReaderStrip';
+import { briefActionLabelKey, type BriefAction } from '~/utils/threadBriefItems';
 import { briefDueDate } from '~/utils/threadBriefContext';
 
 const props = defineProps<{
@@ -37,6 +37,8 @@ const props = defineProps<{
 	showWhyHere?: boolean;
 	/** Offer "Read the exact wording" (the brief lists such a message). */
 	hasExactWording?: boolean;
+	/** The brief holds anything at all (`briefHasContent`): offer "Full brief". */
+	hasFullBrief?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -60,6 +62,13 @@ const lead = computed(() => {
 });
 const owe = computed(() => (props.strip.kind === 'brief' ? props.strip.owe : null));
 const waiting = computed(() => (props.strip.kind === 'brief' ? props.strip.waiting : null));
+/** BriefItem's semantics: a proposal reads "Check this" and offers Track / Not a request. */
+const oweActions = computed(() => (owe.value ? stripItemActions(owe.value) : []));
+function itemText(item: BriefItemView): string {
+	return item.verify === 'proposal'
+		? `${t('components.brief.item.checkThis')} ${item.text}`
+		: item.text;
+}
 const oweDue = computed(() =>
 	owe.value?.due?.at !== undefined ? briefDueDate(owe.value.due.at, locale.value) : null
 );
@@ -68,14 +77,14 @@ const waitingLine = computed(() => {
 	if (!item) return '';
 	const name = item.responsible.name?.trim();
 	return name
-		? t('postbox.reader.strip.waitingOn', { name, text: item.text })
-		: t('postbox.reader.strip.waiting', { text: item.text });
+		? t('postbox.reader.strip.waitingOn', { name, text: itemText(item) })
+		: t('postbox.reader.strip.waiting', { text: itemText(item) });
 });
 const note = computed(() => (props.strip.kind === 'meta' ? props.strip.note : null));
 
 /** The meta row's props and handlers, one set for both renderings. */
 const linkProps = computed(() => ({
-	showFullBrief: props.strip.kind === 'brief',
+	showFullBrief: props.hasFullBrief,
 	hasExactWording: props.hasExactWording,
 	showWhyHere: props.showWhyHere,
 	detailsOpen: props.detailsOpen,
@@ -110,7 +119,7 @@ const linkHandlers = {
 					class="text-sm text-text-primary"
 					data-testid="strip-gist"
 				>
-					<q>{{ lead.gist.quotes.join(' … ') }}</q
+					<q>{{ gistLine(lead.gist) }}</q
 					><span v-if="gistAttribution" class="text-text-tertiary"> — {{ gistAttribution }}</span>
 				</p>
 				<div
@@ -119,24 +128,29 @@ const linkHandlers = {
 					data-testid="strip-owe"
 				>
 					<span
-						class="size-3.5 flex-shrink-0 rounded-full border-[1.5px] border-brand"
+						class="size-3.5 flex-shrink-0 rounded-full border-[1.5px]"
+						:class="
+							owe.verify === 'proposal' ? 'border-dotted border-border-strong' : 'border-brand'
+						"
 						aria-hidden="true"
+						:data-ring="owe.verify === 'proposal' ? 'proposal' : 'open'"
 					/>
-					<span class="min-w-0 flex-1 text-text-primary">{{ owe.text }}</span>
+					<span class="min-w-0 flex-1 text-text-primary" data-testid="strip-owe-text">{{
+						itemText(owe)
+					}}</span>
 					<span v-if="oweDue" class="text-xs font-medium text-error">{{
 						t('postbox.reader.strip.due', { date: oweDue })
 					}}</span>
 					<span class="ml-auto flex items-center gap-1">
-						<UiButton size="sm" data-testid="strip-owe-reply" @click="emit('react', owe, 'reply')">
-							{{ t('postbox.reader.strip.reply') }}
-						</UiButton>
 						<UiButton
+							v-for="(action, i) in oweActions"
+							:key="action"
 							size="sm"
-							variant="ghost"
-							data-testid="strip-owe-done"
-							@click="emit('react', owe, 'markDone')"
+							:variant="i === 0 ? 'primary' : 'ghost'"
+							:data-testid="`strip-owe-${action}`"
+							@click="emit('react', owe, action)"
 						>
-							{{ t('postbox.reader.strip.done') }}
+							{{ t(briefActionLabelKey(action)) }}
 						</UiButton>
 					</span>
 				</div>

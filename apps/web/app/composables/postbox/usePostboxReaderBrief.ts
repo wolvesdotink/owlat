@@ -25,7 +25,7 @@ import { THREAD_ANCHOR_PAGE_LIMIT } from '~/composables/postbox/postboxThreadPag
 import { messageLatestMap, resolveCite, type BriefAction } from '~/utils/threadBriefItems';
 import type { BriefSource } from '~/utils/threadBriefContext';
 import { formatCite, parseCite } from '~/utils/threadBriefView';
-import { readerGistOf, resolveReaderStrip } from '~/utils/postboxReaderStrip';
+import { briefHasContent, readerGistOf, resolveReaderStrip } from '~/utils/postboxReaderStrip';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import type { SecureMessageClass } from '@owlat/shared/secureMessage';
 
@@ -72,6 +72,9 @@ export function usePostboxReaderBrief(opts: {
 	const strip = computed(() =>
 		resolveReaderStrip({ isShared: isShared.value, brief: read.brief.value, gist: gist.value })
 	);
+
+	/** "Full brief" opens whenever the brief holds anything, whatever the strip shows. */
+	const hasFullBrief = computed(() => !isShared.value && briefHasContent(read.brief.value));
 
 	/** Who the gist quotes: its message's sender, else the newest message not from us. */
 	const gistAttribution = computed(() => {
@@ -224,6 +227,7 @@ export function usePostboxReaderBrief(opts: {
 		itemsState: read.itemsState,
 		isClosedTruncated: read.isClosedTruncated,
 		strip,
+		hasFullBrief,
 		gistAttribution,
 		cited,
 		citeState,

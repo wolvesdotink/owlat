@@ -13018,8 +13018,6 @@
 				"waitingOn": "Waiting on {name}: {text}",
 				"waiting": "Waiting: {text}",
 				"due": "by {date}",
-				"reply": "Reply",
-				"done": "Done",
 				"fullBrief": "Full brief",
 				"exactWording": "Read the exact wording",
 				"whyHere": "Why here?",

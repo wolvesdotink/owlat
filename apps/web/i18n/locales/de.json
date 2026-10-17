@@ -13018,8 +13018,6 @@
 				"waitingOn": "Du wartest auf {name}: {text}",
 				"waiting": "Du wartest: {text}",
 				"due": "bis {date}",
-				"reply": "Antworten",
-				"done": "Erledigt",
 				"fullBrief": "Ganze Übersicht",
 				"exactWording": "Den genauen Wortlaut lesen",
 				"whyHere": "Warum hier?",
