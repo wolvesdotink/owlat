@@ -242,6 +242,8 @@ export interface NewPurgeJob {
 	sources?: InterpretationSource[];
 	/** `sources` jobs of a received Team Inbox message: its team replies are added as found. */
 	inboundMessageId?: Id<'inboundMessages'>;
+	/** Postbox `sources` jobs: the purged messages' mailbox (see `threadPurgeJobs.mailboxId`). */
+	mailboxId?: Id<'mailboxes'>;
 	mode?: InterpretMode;
 }
 
@@ -253,6 +255,7 @@ export async function createPurgeJob(ctx: MutationCtx, job: NewPurgeJob): Promis
 		...(job.jobKey ? { jobKey: job.jobKey } : {}),
 		...(job.sources ? { sources: job.sources } : {}),
 		...(job.inboundMessageId ? { inboundMessageId: job.inboundMessageId } : {}),
+		...(job.mailboxId ? { mailboxId: job.mailboxId } : {}),
 		...(job.mode ? { mode: job.mode } : {}),
 		rangeIndex: 0,
 		isInterpreted: false,
