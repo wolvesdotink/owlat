@@ -235,3 +235,61 @@ describe('the code detector', () => {
 		expect(await delayedOf(t, plain)).toHaveLength(0);
 	});
 });
+
+describe('review r1', () => {
+	/** `count` copies of `messageId` in its thread and the given folder, `offsetMs` apart. */
+	async function copies(
+		t: T,
+		messageId: Id<'mailMessages'>,
+		folderId: Id<'mailFolders'>,
+		count: number,
+		start: number
+	): Promise<void> {
+		await t.run(async (ctx) => {
+			const { _id, _creationTime, ...row } = (await ctx.db.get(messageId))!;
+			for (let i = 0; i < count; i += 1) {
+				await ctx.db.insert('mailMessages', {
+					...row,
+					folderId,
+					rfc822MessageId: `<copy-${start}-${i}@x>`,
+					receivedAt: row.receivedAt + start + i,
+				});
+			}
+		});
+	}
+
+	it('F5: finds an owner reply behind more than 50 newer thread messages', async () => {
+		const { t, folders, id, row } = await archiveAfterSetup();
+		await copies(t, id, folders.archive, 60, 1_000);
+		await ownerReply(t, id, folders.archive, 5_000);
+		expect(await run(t, row._id, row.runAt)).toBe('cancelled');
+		expect((await delayedOf(t, id))[0]!.cancelledBy).toBe('reply');
+	});
+
+	it('F6: keeps the reply state for an older Inbox message behind 200 newer ones', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		const { folders } = await seedPersonalMailbox(t);
+		const old = (await deliverHosted(t, { subject: 'Plans' }))!;
+		const target = await t.run(async (ctx) => {
+			const { _id, _creationTime, ...row } = (await ctx.db.get(old))!;
+			return await ctx.db.insert('mailMessages', {
+				...row,
+				rfc822MessageId: '<target@x>',
+				receivedAt: row.receivedAt + 10_000,
+			});
+		});
+		await copies(t, old, folders.archive, 210, 1);
+		const { threadId } = await messageOf(t, target);
+		await t.run(
+			async (ctx) =>
+				await ctx.db.patch(threadId, {
+					needsReply: { messageId: old, source: 'llm', urgency: 'normal', detectedAt: 1 },
+				})
+		);
+		const moved = await t.run(async (ctx) => await archiveSingleMessage(ctx, target));
+		expect(moved?.isNeedsReplyCleared).toBe(false);
+		const thread = await t.run(async (ctx) => await ctx.db.get(threadId));
+		expect(thread?.needsReply).toBeDefined();
+	});
+});

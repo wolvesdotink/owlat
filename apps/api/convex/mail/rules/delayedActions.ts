@@ -27,7 +27,6 @@ import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { internalMutation } from '../../lib/writeFence';
 import { HOUR_MS } from '../../lib/constants';
-import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { isPersonalMailbox } from '../permissions';
 import { archiveSingleMessage } from '../archiveSingleMessage';
 import { refreshArrivalProjection } from '../arrival/projection';
@@ -36,9 +35,6 @@ import { RuleOperationLog } from './operationLog';
 
 /** Due rows one cron tick schedules. */
 export const DELAYED_ACTION_BATCH = 100;
-
-/** Thread messages read for the owner-reply re-check. */
-const REPLY_SCAN = 50;
 
 /** Folders whose mail there is nothing to archive from. */
 const SETTLED_ROLES: ReadonlySet<string> = new Set(['archive', 'trash', 'spam', 'sent', 'drafts']);
@@ -71,16 +67,60 @@ export async function delayedCancelReason(
 	if ((thread?.needsReply?.detectedAt ?? 0) > row.anchor.messageReceivedAt) return 'reply';
 	const mailbox = await ctx.db.get(message.mailboxId);
 	if (!mailbox || !isPersonalMailbox(mailbox)) return 'moved';
-	const since = await ctx.db
-		.query('mailMessages')
-		.withIndex('by_thread_and_received', (q) =>
-			q.eq('threadId', row.threadId).gte('receivedAt', row.anchor.messageReceivedAt)
-		)
-		.take(REPLY_SCAN);
-	if (since.some((m) => m._id !== message._id && isFromMailboxOwner(m, mailbox.address))) {
+	if (await hasOwnerReplySince(ctx, mailbox, row.threadId, row.anchor.messageReceivedAt)) {
 		return 'reply';
 	}
 	return null;
+}
+
+/** Outbound states that mean the owner replied (or is about to: undo-send). */
+const REPLIED_STATES = ['queued', 'sent', 'partial', 'bounced'] as const;
+
+/**
+ * Whether the owner sent anything in the thread at or after `since`, proved by
+ * index-backed `.first()` reads, never a truncated scan: an outbound send
+ * created since then, a message in Sent received since then (a synced Sent
+ * copy), or a message from the owner's address received since then (one filed
+ * elsewhere).
+ */
+export async function hasOwnerReplySince(
+	ctx: Pick<MutationCtx, 'db'>,
+	mailbox: Doc<'mailboxes'>,
+	threadId: Id<'mailThreads'>,
+	since: number
+): Promise<boolean> {
+	for (const state of REPLIED_STATES) {
+		const sent = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread_and_outbound_state', (q) =>
+				q.eq('threadId', threadId).eq('outbound.state', state).gte('_creationTime', since)
+			)
+			.first();
+		if (sent) return true;
+	}
+	const sentFolder = await ctx.db
+		.query('mailFolders')
+		.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailbox._id).eq('role', 'sent'))
+		.first();
+	if (sentFolder) {
+		const copy = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread_folder_received', (q) =>
+				q.eq('threadId', threadId).eq('folderId', sentFolder._id).gte('receivedAt', since)
+			)
+			.first();
+		if (copy) return true;
+	}
+	for (const address of new Set([mailbox.address, mailbox.address.toLowerCase()])) {
+		const own = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread_from_received', (q) =>
+				q.eq('threadId', threadId).eq('fromAddress', address).gte('receivedAt', since)
+			)
+			.first();
+		if (own) return true;
+	}
+	return false;
 }
 
 /**

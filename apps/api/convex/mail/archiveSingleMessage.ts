@@ -19,9 +19,6 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { moveMessagesToFolder } from './messageActions';
 
-/** Thread messages read to decide whether another one is still in the Inbox. */
-const THREAD_INBOX_SCAN = 200;
-
 /** One move that happened. */
 export interface SingleMove {
 	sourceFolderId: Id<'mailFolders'>;
@@ -41,17 +38,20 @@ async function folderByRole(
 		.first();
 }
 
+/** Whether another message of the thread is in the Inbox: an index-backed existence proof. */
 async function hasOtherInboxMessage(
 	ctx: MutationCtx,
 	message: Doc<'mailMessages'>,
 	inboxId: Id<'mailFolders'>
 ): Promise<boolean> {
-	const recent = await ctx.db
+	// Two rows prove one that is not `message`, however long the thread.
+	const inInbox = await ctx.db
 		.query('mailMessages')
-		.withIndex('by_thread_and_received', (q) => q.eq('threadId', message.threadId))
-		.order('desc')
-		.take(THREAD_INBOX_SCAN);
-	return recent.some((row) => row._id !== message._id && row.folderId === inboxId);
+		.withIndex('by_thread_folder_received', (q) =>
+			q.eq('threadId', message.threadId).eq('folderId', inboxId)
+		)
+		.take(2);
+	return inInbox.some((row) => row._id !== message._id);
 }
 
 /**

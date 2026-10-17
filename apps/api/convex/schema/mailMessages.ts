@@ -338,6 +338,13 @@ export const mailMessagesTables = {
 		.index('by_thread_and_seen', ['threadId', 'flagSeen'])
 		.index('by_thread_and_flagged', ['threadId', 'flagFlagged'])
 		.index('by_thread_and_outbound_state', ['threadId', 'outbound.state'])
+		// Read on arrival (lane rules): index-backed existence proofs for delayed
+		// actions. "Another message of this thread is still in the Inbox"
+		// (`archiveSingleMessage`) and "the owner replied in this thread since the
+		// anchor" (Sent copies by folder, the owner's address by sender), without a
+		// truncated scan of a long thread.
+		.index('by_thread_folder_received', ['threadId', 'folderId', 'receivedAt'])
+		.index('by_thread_from_received', ['threadId', 'fromAddress', 'receivedAt'])
 		.index('by_rfc822_message_id', ['rfc822MessageId'])
 		// Per-mailbox Message-ID lookups — the delivery dedup and the threading
 		// walk seek straight to one mailbox's copy instead of reading every
