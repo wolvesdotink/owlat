@@ -18,6 +18,7 @@ import { dashboardShellStubs, installNuxtStubs, paginatedResult } from '~/__test
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useClickOutside } from '~/composables/useClickOutside';
 import { POSTBOX_WHY_HERE_KEY } from '~/composables/postbox/usePostboxWhyHere';
+import { POSTBOX_LIST_QUERY } from '~/composables/postbox/usePostboxPlacementFilter';
 import { briefView, item } from '~/utils/__tests__/threadBriefFixtures';
 import type { BriefModeView } from '../../../../../api/convex/mail/interpret/briefShape';
 
@@ -61,6 +62,7 @@ interface Fixture {
 }
 
 let fixture: Fixture;
+const navigateTo = vi.fn();
 const states = new Map<string, Ref<unknown>>();
 
 function message(id: string, over: Partial<PostboxReaderMessage> = {}): PostboxReaderMessage {
@@ -95,7 +97,7 @@ beforeEach(() => {
 		usePaginatedQuery: () => paginatedResult([]),
 		// The first-open read (lazy.ensure) and mark-seen answer like the server.
 		useBackendOperation: () => ({
-			run: vi.fn(async () => ({ ok: true, result: { isEnqueued: true } })),
+			run: vi.fn(async () => ({ ok: true, result: { isEnqueued: true, moved: [] } })),
 			isLoading: ref(false),
 			error: ref(null),
 		}),
@@ -103,6 +105,7 @@ beforeEach(() => {
 		registerCommandPaletteProvider: vi.fn(),
 		unregisterCommandPaletteProvider: vi.fn(),
 		useRoute: () => ({ path: '/dashboard/postbox/inbox/m3', params: {}, query: {}, meta: {} }),
+		navigateTo,
 		// Shared state (the left Answer-mode draft) has to be one ref per key.
 		useState: (key: string, init?: () => unknown) => {
 			let state = states.get(key);
@@ -508,5 +511,18 @@ describe('the "Why here?" seam', () => {
 		await w.get('[data-testid="thread-menu-why-here"]').trigger('click');
 		expect(open).toHaveBeenCalledTimes(2);
 		expect(open.mock.calls[1]?.[0]?.anchor).toBe(w.get('header').element);
+	});
+});
+
+describe('a reader opened from the filtered list (read on arrival §3)', () => {
+	it('archives onto the next message with ?placement= kept', async () => {
+		navigateTo.mockClear();
+		const w = await mountReader(
+			{ messages: [message('m3')], brief: briefView() },
+			{ [POSTBOX_LIST_QUERY]: ref('?placement=digest') }
+		);
+		await w.setProps({ advanceIds: ['m3', 'm9'] });
+		await w.get('[data-testid="thread-header-archive"]').trigger('click');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox/m9?placement=digest');
 	});
 });

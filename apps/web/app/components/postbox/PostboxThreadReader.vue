@@ -78,6 +78,7 @@ import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
 import { usePostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
 import { usePostboxCalmReader } from '~/composables/postbox/usePostboxCalmReader';
+import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 import { usePostboxTeamStream } from '~/composables/postbox/usePostboxTeamStream';
 import { usePostboxReaderExpansion } from '~/composables/postbox/usePostboxReaderExpansion';
 import { usePostboxReaderOpenRow } from '~/composables/postbox/usePostboxReaderOpenRow';
@@ -120,6 +121,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const listQuery = usePostboxListQuery();
 
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 
@@ -675,6 +677,8 @@ const {
 		folderRole: () => props.folderRole,
 		inPlace: () => props.advanceInPlace,
 		emit: (target) => emit('advance', target),
+		// A filtered list (`?placement=`) keeps its filter as the reader moves on.
+		query: () => listQuery.value,
 	},
 	compose: {
 		reply: replyToLatest,

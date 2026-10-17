@@ -70,8 +70,11 @@ import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import { usePostboxRowGestures } from '~/composables/postbox/usePostboxRowGestures';
 import { usePostboxMessageDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
+import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 
 const { t } = useI18n();
+// A filtered list (`?placement=`) keeps its filter on the message route.
+const listQuery = usePostboxListQuery();
 
 const props = defineProps<{
 	msg: PostboxThreadRowMessage;
@@ -307,7 +310,7 @@ function onCapturedClick(event: MouseEvent) {
 					role="option"
 					:tabindex="selectable ? -1 : undefined"
 					:aria-selected="focused"
-					:to="selectable ? undefined : `/dashboard/postbox/${folderRole}/${msg._id}`"
+					:to="selectable ? undefined : `/dashboard/postbox/${folderRole}/${msg._id}${listQuery}`"
 					class="pbx-row-link block w-full text-left px-4 py-3 hover:bg-(--surface-1-hover)"
 					:class="{
 						'bg-(--surface-1-selected)': active,

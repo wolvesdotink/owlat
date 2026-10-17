@@ -6,12 +6,18 @@
  */
 
 import type { Id } from '@owlat/api/dataModel';
+import {
+	parsePlacementQuery,
+	placementQuerySuffix,
+} from '~/composables/postbox/usePostboxPlacementFilter';
 
 export function usePostboxLayoutNav(args: {
 	folderRole: Ref<string>;
 	folderId: Ref<Id<'mailFolders'> | undefined>;
 	activeMessageId: Ref<string | null | undefined>;
 }) {
+	// Back to a filtered list (`?placement=`, read on arrival §3) keeps the filter.
+	const route = useRoute();
 	/**
 	 * Drill-in "back": from the reader to the folder's list route. Replace, don't
 	 * push — opening the message pushed the entry this button dismisses, so a push
@@ -19,9 +25,9 @@ export function usePostboxLayoutNav(args: {
 	 * closed, and grow the history stack by two entries per open/close cycle.
 	 */
 	function backToList() {
-		void navigateTo(`/dashboard/postbox/${String(args.folderId.value ?? args.folderRole.value)}`, {
-			replace: true,
-		});
+		const folder = String(args.folderId.value ?? args.folderRole.value);
+		const query = placementQuerySuffix(parsePlacementQuery(route.query['placement']));
+		void navigateTo(`/dashboard/postbox/${folder}${query}`, { replace: true });
 	}
 
 	/**
