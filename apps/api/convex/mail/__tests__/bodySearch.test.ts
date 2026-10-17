@@ -13,6 +13,7 @@
  *     emptied index.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
@@ -161,12 +162,14 @@ describe('delivery — the excerpt is written only when the instance opted in', 
 
 	it('leaves the column absent while the switch is off (today’s row, unchanged)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const messageId = await deliver(t);
 		expect(await excerptOf(t, messageId)).toBeUndefined();
 	});
 
 	it('writes the excerpt once the switch is on', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await setIndexing(t, true);
 		const messageId = await deliver(t);
 		expect(await excerptOf(t, messageId)).toContain('penaltyclause in section 8.2');
@@ -176,6 +179,7 @@ describe('delivery — the excerpt is written only when the instance opted in', 
 describe('mail.bodySearchBackfill', () => {
 	it('refuses to start while the instance switch is off', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId);
 		await expect(t.mutation(api.mail.bodySearchBackfill.start, { mailboxId })).rejects.toThrow();
@@ -185,6 +189,7 @@ describe('mail.bodySearchBackfill', () => {
 	// the surface does not exist, even for the owner with indexing switched on.
 	it('refuses start and cancel when neither postbox nor mail.external is on', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId);
 		await setIndexing(t, true);
@@ -207,6 +212,7 @@ describe('mail.bodySearchBackfill', () => {
 
 	it('refuses a non-owner', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t, { userId: 'user-A' });
 		await setIndexing(t, true);
 		sessionMocks.userId = 'user-B';
@@ -217,6 +223,7 @@ describe('mail.bodySearchBackfill', () => {
 
 	it('walks existing mail, reports completion, and is idempotent on re-run', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId);
 		const messageId = await seedMessage(t, mailboxId, {
@@ -248,6 +255,7 @@ describe('mail.bodySearchBackfill', () => {
 
 	it('falls back to the snippet for a message with no readable body', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId);
 		const messageId = await seedMessage(t, mailboxId, {
@@ -278,6 +286,7 @@ describe('search — which index the free-text branch reads', () => {
 
 	it('finds nothing past character 200 while the switch is off', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedDeepMailbox(t);
 		const result = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -288,6 +297,7 @@ describe('search — which index the free-text branch reads', () => {
 
 	it('keeps reading the snippet until the backfill completes', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedDeepMailbox(t);
 		await setIndexing(t, true);
 		// Switch on, walk NOT run: the body index holds nothing for this mailbox,
@@ -306,6 +316,7 @@ describe('search — which index the free-text branch reads', () => {
 
 	it('finds the deep phrase once the backfill has completed', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedDeepMailbox(t);
 		await setIndexing(t, true);
 		await t.mutation(api.mail.bodySearchBackfill.start, { mailboxId });
@@ -322,6 +333,7 @@ describe('search — which index the free-text branch reads', () => {
 describe('turning the switch off', () => {
 	it('clears the stored excerpts and retires the completeness flag', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId);
 		const messageId = await seedMessage(t, mailboxId, {
@@ -355,6 +367,7 @@ describe('turning the switch off', () => {
 
 	it('does not sweep on a save of other settings, but an explicit off clears leftovers', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId);
 		const messageId = await seedMessage(t, mailboxId, {

@@ -9,6 +9,7 @@
  * will read.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
@@ -59,6 +60,7 @@ const ONE_CLICK = { oneClick: true, httpUrl: 'https://shop.example/unsub?u=1' };
 describe('setStatus', () => {
 	it('logs the status change and archives the newest Inbox mail, one row per message', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const first = (await deliverHosted(t))!;
 		const second = (await deliverHosted(t))!;
@@ -99,6 +101,7 @@ describe('setStatus', () => {
 
 	it('records an explicit Keep on a default profile and drops its suggestion', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		let weeks = emptySenderWeeks(Date.now());
 		for (let i = 0; i < 6; i++) weeks = addSenderDelivery(weeks, Date.now());
@@ -118,6 +121,7 @@ describe('setStatus', () => {
 
 	it('archives the newest 200 Inbox messages by arrival, whatever else the sender has', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		const base = Date.UTC(2026, 9, 1);
 		// Newest mail first, then an import of 200 older ones (inserted later),
@@ -145,6 +149,7 @@ describe('setStatus', () => {
 
 	it('writes nothing when the status is already set', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const profile = await seedProfile(t, mailboxId, { status: 'digest', statusSource: 'user' });
 		const result = await t.mutation(api.mail.senders.status.setStatus, {
@@ -160,6 +165,7 @@ describe('setStatus', () => {
 
 	it('creates a profile from a message (⇧E from the reader)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t))!;
 		await t.run(async (ctx) => {
@@ -180,6 +186,7 @@ describe('unsubscribe', () => {
 
 	it('suppresses locally, POSTs one-click and records the result', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
 		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 200 }));
@@ -199,6 +206,7 @@ describe('unsubscribe', () => {
 
 	it('keeps the local suppression and records "failed" when the POST fails', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
 		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 500 }));
@@ -213,6 +221,7 @@ describe('unsubscribe', () => {
 
 	it('only sends the request for a team inbox message, recording nothing', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t, { scope: 'shared' });
 		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
 		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 200 }));
@@ -226,6 +235,7 @@ describe('unsubscribe', () => {
 
 	it('records "opened" for a mailto or https sender and hands the target to the client', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await deliverHosted(t, { unsubscribe: { oneClick: false, httpUrl: 'https://shop.example/u' } });
 		const profile = (await profileOf(t, mailboxId))!;
@@ -246,6 +256,7 @@ describe('unsubscribe', () => {
 
 	it('still suppresses locally when the sender offers no unsubscribe at all', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t))!;
 		const result = await t.action(api.mail.senders.unsubscribeActions.unsubscribe, {
@@ -258,6 +269,7 @@ describe('unsubscribe', () => {
 
 	it('records the one-click result, never over a newer request', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const profile = await seedProfile(t, mailboxId, {
 			status: 'unsubscribed',
@@ -295,6 +307,7 @@ describe('unsubscribe', () => {
 describe('resumeDrafts', () => {
 	it('clears the draft pause as one operation', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const profile = await seedProfile(t, mailboxId, { autoDraftPausedAt: 5, unusedDraftStreak: 5 });
 		const result = await t.mutation(api.mail.senders.status.resumeDrafts, {
@@ -320,6 +333,7 @@ describe('suggestions', () => {
 		vi.useFakeTimers();
 		try {
 			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
 			const { mailboxId } = await seedPersonalMailbox(t);
 			let weeks = emptySenderWeeks(Date.now());
 			for (let i = 0; i < 6; i++) weeks = addSenderDelivery(weeks, Date.now());
@@ -372,6 +386,7 @@ describe('suggestions', () => {
 describe('the Subscriptions panel batch (one unsubscribe path)', () => {
 	it('suppresses personal mail locally and records the result', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
 		vi.mocked(fetchGuarded)
@@ -398,6 +413,7 @@ describe('performOneClick (one-release shim for the previous chip)', () => {
 
 	it('runs the one path and answers in the old {ok} shape', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
 		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 200 }));
@@ -411,6 +427,7 @@ describe('performOneClick (one-release shim for the previous chip)', () => {
 
 	it('answers {ok: false, error} when the POST fails', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
 		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 503 }));
@@ -422,6 +439,7 @@ describe('performOneClick (one-release shim for the previous chip)', () => {
 
 	it('changes nothing for a message without a one-click target', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t, {
 			unsubscribe: { oneClick: false, httpUrl: 'https://shop.example/u' },

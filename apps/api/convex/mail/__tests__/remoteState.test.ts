@@ -15,6 +15,7 @@
  *   - provider folders are mirrored as local folders, and mail lands in them.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest, type TestConvex } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
@@ -44,6 +45,7 @@ const REMOTE: Record<Roles, string> = {
 
 async function fullSyncMailbox(opts: { aligned?: boolean; syncMode?: 'full' | 'incoming' } = {}) {
 	const t = convexTest(schema, modules);
+	rateLimiterTest.register(t);
 	const mailboxId = await seedMailbox(t, { kind: 'external' });
 	const folders = {} as Record<Roles, Id<'mailFolders'>>;
 	for (const role of Object.keys(REMOTE) as Roles[]) {

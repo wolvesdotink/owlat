@@ -10,6 +10,7 @@
  * than the inbox (delivery.ts §4, RFC 8601).
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../schema';
@@ -99,6 +100,7 @@ async function deliver(
 describe('deliverToMailbox — auth/scan verdict storage + spam routing (PR-38)', () => {
 	it('persists spfResult/dmarcResult and routes an SPF+DMARC fail to the Spam folder', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		let mailboxId!: Id<'mailboxes'>;
 		let inboxId!: Id<'mailFolders'>;
 		let spamId!: Id<'mailFolders'>;
@@ -136,6 +138,7 @@ describe('deliverToMailbox — auth/scan verdict storage + spam routing (PR-38)'
 		// body "hi") so the content verdict is `ham`; the move to Spam is driven
 		// purely by the enforcing DMARC policy (RFC 7489 §6.6.2), not the verdict.
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		let mailboxId!: Id<'mailboxes'>;
 		let inboxId!: Id<'mailFolders'>;
 		let spamId!: Id<'mailFolders'>;
@@ -173,6 +176,7 @@ describe('deliverToMailbox — auth/scan verdict storage + spam routing (PR-38)'
 		// A `p=none` fail is report-only — record the verdict but keep the
 		// message in the inbox (RFC 7489 §6.3).
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		let mailboxId!: Id<'mailboxes'>;
 		let inboxId!: Id<'mailFolders'>;
 		let rawStorageId!: Id<'_storage'>;
@@ -201,6 +205,7 @@ describe('deliverToMailbox — auth/scan verdict storage + spam routing (PR-38)'
 
 	it('routes a permanent DMARC evaluation error to Spam without requiring a policy', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		let mailboxId!: Id<'mailboxes'>;
 		let inboxId!: Id<'mailFolders'>;
 		let spamId!: Id<'mailFolders'>;
@@ -229,6 +234,7 @@ describe('deliverToMailbox — auth/scan verdict storage + spam routing (PR-38)'
 
 	it('stores a passing SPF verdict and keeps a clean message in the inbox', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		let mailboxId!: Id<'mailboxes'>;
 		let inboxId!: Id<'mailFolders'>;
 		let rawStorageId!: Id<'_storage'>;
