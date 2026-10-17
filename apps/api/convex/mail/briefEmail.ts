@@ -197,7 +197,10 @@ export const listDue = internalQuery({
 			// fresh mailbox before the build cron's first run), or an empty one,
 			// sends nothing rather than a mail that looks like a bug.
 			const hasDigest = await hasDigestPending(ctx, mailbox._id);
-			if (!hasDigest && (!brief || (brief.items.length === 0 && !brief.senders))) continue;
+			// A deferred brief is always listed: with nothing left to send, the
+			// delivery pass ends its wait (`endBriefDeferral`) rather than leave it.
+			const isEmpty = !brief || (brief.items.length === 0 && !brief.senders);
+			if (!hasDigest && isEmpty && !isDeferred) continue;
 
 			// The item threads are independent rows — read them in one pass.
 			const itemRows = (brief?.items ?? []).slice(0, MAX_EMAIL_ITEMS);
@@ -357,16 +360,66 @@ async function markThreadAsBrief(ctx: MutationCtx, messageId: Id<'mailMessages'>
 /**
  * The brief waits for a digest another tick is still generating (§6.5): no
  * delivery stamp, so the next tick sends it ({@link isDeferredBriefDue}).
- * The first deferral's time is kept, which bounds the wait.
+ * A wait that continues (`deferredSince`, from `listDue`) keeps its start,
+ * which bounds it; a new wait always writes a fresh timestamp, whatever an
+ * abandoned earlier one left behind.
  */
 export const deferBriefEmail = internalMutation({
-	args: { userId: v.string(), now: v.number() },
+	args: { userId: v.string(), now: v.number(), deferredSince: v.optional(v.number()) },
 	handler: async (ctx, args): Promise<void> => {
 		const settings = await ctx.db
 			.query('mailUserSettings')
 			.withIndex('by_user', (q) => q.eq('userId', args.userId))
 			.first();
-		if (!settings || settings.dailyBriefDeferredAt !== undefined) return;
-		await ctx.db.patch(settings._id, { dailyBriefDeferredAt: args.now, updatedAt: args.now });
+		if (!settings) return;
+		const deferredAt = args.deferredSince ?? args.now;
+		if (settings.dailyBriefDeferredAt === deferredAt) return;
+		await ctx.db.patch(settings._id, { dailyBriefDeferredAt: deferredAt, updatedAt: args.now });
+	},
+});
+
+/**
+ * A deferred brief that this pass neither deferred again nor delivered (its
+ * digest is no longer busy and nothing was left to send): the wait is over.
+ * Clears only the deferral it was given.
+ */
+export const endBriefDeferral = internalMutation({
+	args: { userId: v.string(), deferredAt: v.number() },
+	handler: async (ctx, args): Promise<void> => {
+		const settings = await ctx.db
+			.query('mailUserSettings')
+			.withIndex('by_user', (q) => q.eq('userId', args.userId))
+			.first();
+		if (settings?.dailyBriefDeferredAt !== args.deferredAt) return;
+		await ctx.db.patch(settings._id, { dailyBriefDeferredAt: undefined, updatedAt: Date.now() });
+	},
+});
+
+/** Whether a stored deferral is stale: delivered since, or past its bound. Pure. */
+export function isStaleBriefDeferral(
+	row: { dailyBriefDeferredAt?: number; lastDailyBriefEmailAt?: number },
+	nowMs: number
+): boolean {
+	const deferredAt = row.dailyBriefDeferredAt;
+	if (deferredAt === undefined) return false;
+	if ((row.lastDailyBriefEmailAt ?? 0) >= deferredAt) return true;
+	return nowMs - deferredAt > DIGEST_WAIT_MS + DELIVERY_WINDOW_MINUTES * 60_000;
+}
+
+/**
+ * Every pass starts here: clear stale deferrals (the same bounded read as
+ * {@link listDue}), so an abandoned wait can never linger.
+ */
+export const sweepBriefDeferrals = internalMutation({
+	args: { now: v.number() },
+	handler: async (ctx, args): Promise<number> => {
+		const rows = await ctx.db.query('mailUserSettings').take(MAX_BRIEF_EMAIL_USERS);
+		let cleared = 0;
+		for (const row of rows) {
+			if (!isStaleBriefDeferral(row, args.now)) continue;
+			await ctx.db.patch(row._id, { dailyBriefDeferredAt: undefined });
+			cleared += 1;
+		}
+		return cleared;
 	},
 });

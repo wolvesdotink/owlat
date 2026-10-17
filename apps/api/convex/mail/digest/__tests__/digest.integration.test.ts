@@ -512,3 +512,83 @@ describe('review r1', () => {
 		expect(settings!.lastDailyBriefEmailAt).toBe(NOW);
 	});
 });
+
+describe('review r2', () => {
+	const DAY = 86_400_000;
+	const periodOf = (now: number) => `day:${Math.floor(now / DAY)}`;
+	const settings = async (t: T) =>
+		await t.run(async (ctx) => await ctx.db.query('mailUserSettings').first());
+	/** Another tick's live claim on the mailbox's digest for `now`'s day. */
+	const holdClaim = async (t: T, mailboxId: Id<'mailboxes'>, now: number) =>
+		await t.mutation(internal.mail.digest.claim.claimDigest, {
+			mailboxId,
+			periodKey: periodOf(now),
+			now,
+		});
+
+	it('F7: an abandoned deferral is cleared, and the next day’s wait still delivers', async () => {
+		const { t, mailboxId, messageIds } = await digestSetup(1, { briefEmail: true });
+		// 1. The digest is busy: the brief waits.
+		await holdClaim(t, mailboxId, NOW);
+		expect((await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {})).delivered).toBe(
+			0
+		);
+		expect((await settings(t))!.dailyBriefDeferredAt).toBe(NOW);
+
+		// 2. The last pending digest thread is reclassified: nothing is left to wait for.
+		const thread = await threadOf(t, messageIds[0]!);
+		await t.run(async (ctx) => await ctx.db.patch(thread._id, { digestPendingSince: undefined }));
+
+		// 3. The next tick finds nothing to send and ends the wait instead of leaving it behind.
+		vi.setSystemTime(NOW + 15 * 60_000);
+		expect((await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {})).delivered).toBe(
+			0
+		);
+		expect((await settings(t))!.dailyBriefDeferredAt).toBeUndefined();
+
+		// 4. The next day the thread is pending again and the digest busy: a fresh wait…
+		const tomorrow = NOW + DAY;
+		vi.setSystemTime(tomorrow);
+		await t.run(async (ctx) => await ctx.db.patch(thread._id, { digestPendingSince: tomorrow }));
+		await holdClaim(t, mailboxId, tomorrow);
+		expect((await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {})).delivered).toBe(
+			0
+		);
+		expect((await settings(t))!.dailyBriefDeferredAt).toBe(tomorrow);
+
+		// 5. …that the next tick delivers, with the digest.
+		vi.setSystemTime(tomorrow + 15 * 60_000);
+		expect((await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {})).delivered).toBe(
+			1
+		);
+		expect((await settings(t))!.dailyBriefDeferredAt).toBeUndefined();
+	});
+
+	it('F7: a new wait overwrites a stale deferral left by an earlier day', async () => {
+		const { t, mailboxId } = await digestSetup(1, { briefEmail: true });
+		await t.run(async (ctx) => {
+			const row = (await ctx.db.query('mailUserSettings').first())!;
+			// Left behind yesterday, never cleared.
+			await ctx.db.patch(row._id, { dailyBriefDeferredAt: NOW - DAY });
+		});
+		await holdClaim(t, mailboxId, NOW);
+		expect((await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {})).delivered).toBe(
+			0
+		);
+		expect((await settings(t))!.dailyBriefDeferredAt).toBe(NOW);
+		vi.setSystemTime(NOW + 15 * 60_000);
+		expect((await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {})).delivered).toBe(
+			1
+		);
+	});
+
+	it('F7: every pass sweeps deferrals past their bound or already delivered', async () => {
+		const { t } = await digestSetup(0, { briefEmail: true });
+		await t.run(async (ctx) => {
+			const row = (await ctx.db.query('mailUserSettings').first())!;
+			await ctx.db.patch(row._id, { dailyBriefDeferredAt: NOW - 2 * 3_600_000 });
+		});
+		await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {});
+		expect((await settings(t))!.dailyBriefDeferredAt).toBeUndefined();
+	});
+});

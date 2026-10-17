@@ -250,9 +250,32 @@ async function deliverOne(ctx: ActionCtx, entry: DueBrief, baseUrl: string): Pro
 			})
 		: { kind: 'none' };
 	if (prepared.kind === 'busy' && now - (entry.deferredSince ?? now) < DIGEST_WAIT_MS) {
-		await ctx.runMutation(internal.mail.briefEmail.deferBriefEmail, { userId: entry.userId, now });
+		await ctx.runMutation(internal.mail.briefEmail.deferBriefEmail, {
+			userId: entry.userId,
+			now,
+			...(entry.deferredSince !== undefined ? { deferredSince: entry.deferredSince } : {}),
+		});
 		return false;
 	}
+	const isDelivered = await renderLoop(ctx, entry, baseUrl, prepared);
+	// Not deferred again and not delivered (delivery clears it itself): the
+	// digest is no longer busy and there was nothing to send, so the wait ends.
+	if (!isDelivered && entry.deferredSince !== undefined) {
+		await ctx.runMutation(internal.mail.briefEmail.endBriefDeferral, {
+			userId: entry.userId,
+			deferredAt: entry.deferredSince,
+		});
+	}
+	return isDelivered;
+}
+
+/** Render and deliver, re-rendering when the digest's lines changed meanwhile. */
+async function renderLoop(
+	ctx: ActionCtx,
+	entry: DueBrief,
+	baseUrl: string,
+	prepared: PreparedDigest
+): Promise<boolean> {
 	const ref = prepared.kind === 'ready' ? prepared : null;
 	for (let render = 0; render <= MAX_DIGEST_RENDERS; render += 1) {
 		// The last render goes without the digest: its threads stay pending.
@@ -285,6 +308,7 @@ export const deliverDueBriefs = internalAction({
 	handler: async (ctx): Promise<{ delivered: number }> => {
 		// The digest lines are one model call per due mailbox (§6.5).
 		anchorActionDeadline(ctx);
+		await ctx.runMutation(internal.mail.briefEmail.sweepBriefDeferrals, { now: Date.now() });
 		const due = await ctx.runQuery(internal.mail.briefEmail.listDue, {});
 		if (due.length === 0) return { delivered: 0 };
 
