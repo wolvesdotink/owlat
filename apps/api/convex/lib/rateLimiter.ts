@@ -200,6 +200,17 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 120,
 	},
 
+	// Read on arrival (SPEC §2.6): every arrival read that will call a model,
+	// keyed by the mailbox owner. It bounds what outside senders can make one
+	// owner spend per hour: over it, display-only mail is counted instead of
+	// read, and eager work waits for the bucket (never dropped).
+	arrivalReadPerOwner: {
+		kind: 'token bucket',
+		rate: 120,
+		period: HOUR,
+		capacity: 60,
+	},
+
 	// "Send a test notification" in Preferences → This device (push/). Each one
 	// is an outbound request to a push service; a handful a minute is plenty for
 	// someone checking that their phone rings.

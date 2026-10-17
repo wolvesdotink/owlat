@@ -1789,6 +1789,11 @@ import type * as mail_arrival_dispatch from '../mail/arrival/dispatch.js';
 import type * as mail_arrival_r2 from '../mail/arrival/r2.js';
 import type * as mail_interpret_gistState from '../mail/interpret/gistState.js';
 import type * as mail_ai_categoryQuestions from '../mail/ai/categoryQuestions.js';
+import type * as mail_interpret_runOnce from '../mail/interpret/runOnce.js';
+import type * as mail_interpret_arrivalDecide from '../mail/interpret/arrivalDecide.js';
+import type * as mail_interpret_arrivalRun from '../mail/interpret/arrivalRun.js';
+import type * as mail_interpret_gist from '../mail/interpret/gist.js';
+import type * as mail_interpret_gistCommit from '../mail/interpret/gistCommit.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3574,6 +3579,11 @@ declare const fullApi: ApiFromModules<{
 	'mail/arrival/r2': typeof mail_arrival_r2;
 	'mail/interpret/gistState': typeof mail_interpret_gistState;
 	'mail/ai/categoryQuestions': typeof mail_ai_categoryQuestions;
+	'mail/interpret/runOnce': typeof mail_interpret_runOnce;
+	'mail/interpret/arrivalDecide': typeof mail_interpret_arrivalDecide;
+	'mail/interpret/arrivalRun': typeof mail_interpret_arrivalRun;
+	'mail/interpret/gist': typeof mail_interpret_gist;
+	'mail/interpret/gistCommit': typeof mail_interpret_gistCommit;
 }>;
 
 /**

@@ -173,6 +173,17 @@ const ENTRIES = {
 		...oneShot,
 		features: ['interpret', 'postbox_commitment'],
 	}),
+	// Read on arrival (INBOX_ZERO_PLAN §2.4): 1–2 verbatim spans and a fact.
+	// One attempt: a failed gist counts instead (`mail/interpret/gist.ts`).
+	'mail.gist': language({
+		maxOutputTokens: 256,
+		maxReasoningTokens: 0,
+		tiers: ['fast'],
+		...background,
+		deadlineMs: ONE_SHOT_DEADLINE_MS,
+		maxAttempts: 1,
+		features: ['interpret_gist'],
+	}),
 	'mail.verify': language({
 		...SMALL_OUTPUT,
 		tiers: ['fast'],

@@ -6,6 +6,7 @@
  * oldest first, for an inbound and for an outbound (sent) eager source.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
@@ -144,6 +145,7 @@ async function capture(t: Test, source: InterpretationSource) {
 describe('D10: an eager run reads its deferred predecessors first (Sol r2 F1)', () => {
 	it('inbound: the later message is read after the deferred invoice', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { mailboxId, threadId, messageId: invoiceId } = await seedDeferredInvoice(t);
 		const cancelId = await addMessageToThread(
@@ -172,6 +174,7 @@ describe('D10: an eager run reads its deferred predecessors first (Sol r2 F1)', 
 
 	it('outbound: a sent reply is read after the deferred invoice', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { mailboxId, threadId } = await seedDeferredInvoice(t);
 		const sentId = await addMessageToThread(
@@ -194,6 +197,7 @@ describe('D10: an eager run reads its deferred predecessors first (Sol r2 F1)', 
 
 	it('a deferred message LATER than the eager one stays deferred', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { mailboxId, threadId, messageId: firstId } = await seedMailThread(t, { text: INVOICE });
 		const laterId = await addMessageToThread(
@@ -216,6 +220,7 @@ describe('D10: an eager run reads its deferred predecessors first (Sol r2 F1)', 
 
 	it('runs nothing out of order on a thread with no deferred mail', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId } = await seedMailThread(t, { text: INVOICE });
 		const only = { kind: 'mail' as const, id: messageId };
@@ -297,6 +302,7 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 
 	it('more predecessors than the budget: reads the oldest ones, reschedules, then the rest', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { ids, eager } = await seedChain(t);
 
@@ -315,6 +321,7 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 
 	it('a crash after one predecessor completes: the retry resumes at the next', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { ids, eager } = await seedChain(t);
 		let calls = 0;
@@ -337,6 +344,7 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 		vi.useFakeTimers();
 		try {
 			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
 			await enableFeatures(t, ['ai']);
 			const { ids, eager } = await seedChain(t);
 			const dead = async () => {
@@ -370,6 +378,7 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 
 	it('a predecessor its own run did not settle: look again later, do not spin', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { ids, eager } = await seedChain(t);
 		const noop = vi.fn(async () => undefined);
 		const { done, scheduled } = loop(t, eager, noop);
@@ -444,6 +453,7 @@ describe('D10: indexed thread order (Sol r4 F2)', () => {
 
 	it('a large backlog is read in thread order, a few per run, to the end', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { tags, eager } = await seedBacklog(t, 30);
 		const order: string[] = [];
 		let runs = 0;
@@ -454,6 +464,7 @@ describe('D10: indexed thread order (Sol r4 F2)', () => {
 
 	it('a legacy deferred row without an order key is read first', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { tags, ids, eager } = await seedBacklog(t, 3);
 		// p2 (written first) loses its key, as a row from before the key.
 		await t.run(async (ctx) => {
@@ -470,6 +481,7 @@ describe('D10: indexed thread order (Sol r4 F2)', () => {
 
 	it('a predecessor whose message is gone is released, not waited on forever', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { tags, ids, eager } = await seedBacklog(t, 2);
 		const gone = ids[ids.length - 1]!; // p0, the oldest
 		await t.run((ctx) => ctx.db.delete(gone));
@@ -489,6 +501,7 @@ describe('D10: indexed thread order (Sol r4 F2)', () => {
 
 	it('opening a thread schedules its newest deferred source, by the index', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { threadId, ids } = await seedBacklog(t, 5);
 		await t.run((ctx) => resumeDeferredSources(ctx, { kind: 'mail', id: threadId }));
 		// ids[0] was written first and is the newest (p4).
@@ -509,6 +522,7 @@ describe('D10: indexed thread order (Sol r4 F2)', () => {
 describe('D10: keyless rows and predecessor mode (Sol r5)', () => {
 	it('a keyless deferred row and a later eager source settle with the real runner, no self-recursion', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { mailboxId, threadId, messageId: legacyId } = await seedMailThread(t, { text: INVOICE });
 		const legacy = { kind: 'mail' as const, id: legacyId };
@@ -573,6 +587,7 @@ describe('D10: keyless rows and predecessor mode (Sol r5)', () => {
 
 	it('every deferred row carries its order key, and a source without one is not deferred', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId, threadId, messageId } = await seedMailThread(t, { text: INVOICE });
 		const goneId = await addMessageToThread(
 			t,

@@ -160,7 +160,15 @@ export async function resumeDeferredSources(
 	const newest = await deferredInOrder(ctx, ref.id).order('desc').first();
 	if (!newest) return 0;
 	await markOutstanding(ctx, newest.sourceKey);
-	await ctx.scheduler.runAfter(0, runOf(newest.source), { source: newest.source });
+	// An open reads in full (read on arrival never lowers what an open reads).
+	if (newest.source.kind === 'mail') {
+		await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
+			source: newest.source,
+			depth: 'full',
+		});
+	} else {
+		await ctx.scheduler.runAfter(0, runOf(newest.source), { source: newest.source });
+	}
 	await markBriefPending(ctx, ref);
 	return 1;
 }
@@ -240,19 +248,44 @@ export const oldestDeferredBefore = internalQuery({
 		const message = await ctx.db.get(args.source.id);
 		if (!message) return null;
 		const ownKey = interpretationSourceKey(args.source);
+		const key = sourceOrderKey(message);
 		// The source itself is never its own predecessor, even as a keyless
 		// (pre-key) deferred row, which sorts before every key: of the first
 		// two rows below its key, the first that is not itself.
-		const candidates = await ctx.db
-			.query('interpretSources')
-			.withIndex('by_mail_thread_deferred_order', (q) =>
-				q
-					.eq('mailThreadId', message.threadId)
-					.eq('isDeferred', true)
-					.lt('sourceOrderKey', sourceOrderKey(message))
-			)
-			.take(2);
-		return candidates.find((row) => row.sourceKey !== ownKey)?.source ?? null;
+		const deferred = (
+			await ctx.db
+				.query('interpretSources')
+				.withIndex('by_mail_thread_deferred_order', (q) =>
+					q.eq('mailThreadId', message.threadId).eq('isDeferred', true).lt('sourceOrderKey', key)
+				)
+				.take(2)
+		).find((row) => row.sourceKey !== ownKey);
+		// Read on arrival (SPEC §2.3.4): a source that needs a full read (a sent
+		// reply, mail that is not display-only) reads the thread's earlier
+		// gist-only or counted mail first, the same way. Display-only mail never
+		// upgrades anything, and neither does an open.
+		const isUpgrading =
+			args.source.kind === 'outboundMail' || !(await isDisplayOnlyInterpretation(ctx, message));
+		const upgradeable = isUpgrading
+			? (
+					await ctx.db
+						.query('interpretSources')
+						.withIndex('by_mail_thread_upgradeable_order', (q) =>
+							q
+								.eq('mailThreadId', message.threadId)
+								.eq('isUpgradeable', true)
+								.lt('sourceOrderKey', key)
+						)
+						.take(2)
+				).find((row) => row.sourceKey !== ownKey)
+			: undefined;
+		const oldest =
+			deferred && upgradeable
+				? (deferred.sourceOrderKey ?? '') <= (upgradeable.sourceOrderKey ?? '')
+					? deferred
+					: upgradeable
+				: (deferred ?? upgradeable);
+		return oldest?.source ?? null;
 	},
 });
 
