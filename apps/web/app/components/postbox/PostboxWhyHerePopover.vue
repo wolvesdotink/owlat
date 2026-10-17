@@ -10,8 +10,9 @@
  * "Senders page" goes to the sender list. Reasons arrive as keys and render
  * from `postbox.<key>`; a key this build has no copy for is left out.
  *
- * Anchored under the element the click came from (the strip link, the header,
- * a Priority row's hover button); Esc and a click elsewhere close it.
+ * Anchored to the element the click came from (the strip link, the header,
+ * a Priority row's hover button), below it or flipped above when there is no
+ * room; Esc and a click elsewhere close it.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
