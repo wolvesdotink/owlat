@@ -19,10 +19,10 @@ function vueFiles(dir: string): string[] {
 	});
 }
 
-const pages = vueFiles(postboxPagesRoot).map((path) => ({
-	page: relative(postboxPagesRoot, path),
-	source: readFileSync(path, 'utf8'),
-}));
+// A redirect-only page never renders, so it has no transition to carry.
+const pages = vueFiles(postboxPagesRoot)
+	.map((path) => ({ page: relative(postboxPagesRoot, path), source: readFileSync(path, 'utf8') }))
+	.filter(({ source }) => !/definePageMeta\(\{\s*redirect:/.test(source));
 
 describe('Postbox pages swap without a page transition', () => {
 	it('finds the Postbox pages', () => {

@@ -13003,6 +13003,97 @@
 			"requestOperation": "Postfach anfragen",
 			"reservedBody": "{address} ist für dich reserviert. Es erscheint hier automatisch, sobald es bereit ist.",
 			"reservedHeading": "Dein Postfach wird eingerichtet"
+		},
+		"senders": {
+			"pageTitle": "Absender",
+			"rail": "Absender",
+			"heading": "Absender",
+			"subtitle": "Wer dir schreibt und was Owlat mit diesen Mails macht.",
+			"tabs": {
+				"review": "Zu prüfen",
+				"all": "Alle",
+				"digest": "Im Digest",
+				"auto_archive": "Automatisch archiviert",
+				"unsubscribed": "Abgemeldet"
+			},
+			"columns": {
+				"sender": "Absender",
+				"mails": "Mails, etwa 90 Tage",
+				"read": "Gelesen",
+				"kind": "Art",
+				"action": "Was Owlat macht"
+			},
+			"status": {
+				"keep": "Behalten",
+				"digest": "In den Digest",
+				"auto_archive": "Auto-Archiv",
+				"unsubscribed": "Abmelden"
+			},
+			"kind": {
+				"person": "Person",
+				"newsletter": "Newsletter",
+				"notification": "Benachrichtigung",
+				"receipt": "Beleg",
+				"promotion": "Werbung",
+				"spam": "Spam",
+				"other": "Sonstiges",
+				"unknown": "Noch nicht eingeordnet"
+			},
+			"suggested": "Vorschlag: {status}",
+			"suggestion": {
+				"digest": "In den Digest",
+				"auto_archive": "Auto-Archiv",
+				"unsubscribe": "Abmelden"
+			},
+			"result": {
+				"confirmed": "Abgemeldet",
+				"failed": "Abmelden hat nicht geklappt; ihre Mails werden archiviert",
+				"opened": "Schließ die Abmeldung auf der geöffneten Seite ab; bis dahin werden ihre Mails archiviert"
+			},
+			"draftsPaused": "Entwürfe pausiert",
+			"resume": "Fortsetzen",
+			"readTitle": "Du hast {opened} von {delivered} geöffnet",
+			"readPercent": "{percent} % gelesen",
+			"controlLabel": "Was Owlat mit Mails von {name} macht",
+			"empty": {
+				"review": "Nichts zu prüfen. Absender, die du selten liest, erscheinen hier.",
+				"all": "Noch keine Absender. Sie erscheinen, sobald neue Mails ankommen.",
+				"digest": "Kein Absender landet in deinem Digest.",
+				"auto_archive": "Kein Absender wird automatisch archiviert.",
+				"unsubscribed": "Du hast dich hier noch von niemandem abgemeldet."
+			},
+			"loadMore": "Mehr laden",
+			"apply": "{count} Vorschlag übernehmen | {count} Vorschläge übernehmen",
+			"applyRule": "Vorschläge: in etwa 90 Tagen unter 10 % gelesen → Digest; Werbung, die du nie öffnest → Abmelden",
+			"dialog": {
+				"title": "{count} Vorschlag übernehmen? | {count} Vorschläge übernehmen?",
+				"description": "Jeder Absender bekommt den angezeigten Status. Beim Abmelden bitten wir One-Click-Absender aufzuhören und archivieren ihre neueren Mails. Du kannst alles später ändern.",
+				"confirm": "Übernehmen"
+			},
+			"operations": {
+				"setStatus": "Absender ändern",
+				"unsubscribe": "Abmelden",
+				"resumeDrafts": "Entwürfe fortsetzen",
+				"apply": "Vorschläge übernehmen",
+				"markOpened": "Als gelesen zählen"
+			},
+			"toast": {
+				"archived": "{count} neuere Mail von {name} archiviert | {count} neuere Mails von {name} archiviert",
+				"status": {
+					"keep": "Mails von {name} bleiben, wo sie landen",
+					"digest": "Mails von {name} gehen jetzt in deinen Digest",
+					"auto_archive": "Mails von {name} werden ab jetzt archiviert"
+				},
+				"unsubscribing": "Abmeldung von {name} läuft; ihre Mails werden archiviert",
+				"localOnly": "{name} bietet keinen Abmeldelink; ihre Mails werden ab jetzt archiviert",
+				"draftsResumed": "Entwürfe fortgesetzt",
+				"applied": "{count} Vorschlag übernommen | {count} Vorschläge übernommen"
+			},
+			"confirmUnsubscribe": "Von {name} abmelden? Ihre Mails werden ab jetzt archiviert.",
+			"shortcuts": {
+				"autoArchive": "Mails dieses Absenders automatisch archivieren",
+				"unsubscribe": "Von diesem Absender abmelden"
+			}
 		}
 	},
 	"recipient": {

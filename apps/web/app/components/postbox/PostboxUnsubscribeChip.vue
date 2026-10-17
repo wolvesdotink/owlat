@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
-import { parseMailto } from '@owlat/shared/mailto';
 
 /**
  * Quiet "Unsubscribe" chip for list mail, shown only when the message carried
@@ -26,7 +24,7 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const composeNav = usePostboxComposeNav();
+const { openManualUnsubscribe } = usePostboxUnsubscribeOpen();
 const { showToast } = useToast();
 
 const oneClickOp = useBackendOperation(api.mail.unsubscribe.performOneClick, {
@@ -71,23 +69,7 @@ async function onClick() {
 		}
 		return;
 	}
-	if (target.mailtoUrl) {
-		const mailto = parseMailto(target.mailtoUrl);
-		if (mailto && mailto.to.length > 0) {
-			void composeNav.open({
-				mailboxId: props.mailboxId as Id<'mailboxes'>,
-				prefillTo: mailto.to,
-				prefillSubject: mailto.subject ?? 'Unsubscribe',
-				// The header is attacker-controlled — mailto bodies are plain
-				// text, so escape before embedding as compose HTML.
-				...(mailto.body ? { prefillBodyHtml: `<p>${escapeHtmlWithBreaks(mailto.body)}</p>` } : {}),
-			});
-			return;
-		}
-	}
-	if (target.httpUrl) {
-		window.open(target.httpUrl, '_blank', 'noopener,noreferrer');
-	}
+	openManualUnsubscribe(target, props.mailboxId);
 }
 </script>
 

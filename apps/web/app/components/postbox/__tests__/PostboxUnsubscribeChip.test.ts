@@ -12,6 +12,7 @@ import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 
 import PostboxUnsubscribeChip from '../PostboxUnsubscribeChip.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { usePostboxUnsubscribeOpen } from '~/composables/postbox/usePostboxUnsubscribeOpen';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -28,6 +29,8 @@ const windowOpen = vi.fn();
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('usePostboxComposeNav', () => ({ open: composeOpen }));
+	// The real opener (shared with the Senders page) over the stubbed composer.
+	vi.stubGlobal('usePostboxUnsubscribeOpen', usePostboxUnsubscribeOpen);
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: oneClickRun, isLoading: ref(false) }));
 });

@@ -283,7 +283,14 @@ describe('useBreadcrumbs', () => {
 			const { patternConfigs } = await import('~/lib/breadcrumbPatterns');
 			const matches = (path: string) => patternConfigs.some((c) => c.pattern.test(path));
 			expect(matches('/dashboard/postbox/inbox')).toBe(true);
-			for (const page of ['contacts', 'files', 'search', 'reply-queue', 'subscriptions']) {
+			for (const page of [
+				'contacts',
+				'files',
+				'search',
+				'reply-queue',
+				'subscriptions',
+				'senders',
+			]) {
 				expect(matches(`/dashboard/postbox/${page}`)).toBe(false);
 			}
 		});
@@ -298,7 +305,7 @@ describe('useBreadcrumbs', () => {
 			['/dashboard/postbox/search', 'Search'],
 			['/dashboard/postbox/contacts', 'Contacts'],
 			['/dashboard/postbox/files', 'Files'],
-			['/dashboard/postbox/subscriptions', 'Subscriptions'],
+			['/dashboard/postbox/senders', 'Senders'],
 			['/dashboard/postbox/migrate', 'Import mail'],
 		])('names %s under the same section as the folders', (route, page) => {
 			expect(labelsFor(route)).toEqual([

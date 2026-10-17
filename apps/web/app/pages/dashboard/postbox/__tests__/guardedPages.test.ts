@@ -18,7 +18,7 @@ import { i18nStubs } from '~/__tests__/i18n';
 import { mountDashboardPage } from '~/__tests__/a11y';
 import PostboxMailboxGuard from '~/components/postbox/PostboxMailboxGuard.vue';
 import FilesPage from '../files.vue';
-import SubscriptionsPage from '../subscriptions.vue';
+import SendersPage from '../senders.vue';
 import FolderPage from '../[folder]/[[messageId]].vue';
 
 vi.mock('@owlat/api', () => {
@@ -100,6 +100,7 @@ function mountPage(page: Component) {
 			I18nT: marker('I18nT'),
 			PostboxFilesPanel: marker('PostboxFilesPanel'),
 			PostboxSubscriptionsPanel: marker('PostboxSubscriptionsPanel'),
+			PostboxSendersPanel: marker('PostboxSendersPanel'),
 			PostboxLayout: marker('PostboxLayout'),
 			DashboardGettingStarted: marker('DashboardGettingStarted'),
 			UiErrorAlert: marker('UiErrorAlert'),
@@ -125,7 +126,7 @@ afterEach(() => {
 // (/inbox/<id>); each case sets the message id it is mounted under.
 const pages: Array<[string, Component, string, string]> = [
 	['files', FilesPage, 'PostboxFilesPanel', ''],
-	['subscriptions', SubscriptionsPage, 'PostboxSubscriptionsPanel', ''],
+	['senders', SendersPage, 'PostboxSendersPanel', ''],
 	['folder index', FolderPage, 'PostboxLayout', ''],
 	['message route', FolderPage, 'PostboxLayout', 'msg-1'],
 ];

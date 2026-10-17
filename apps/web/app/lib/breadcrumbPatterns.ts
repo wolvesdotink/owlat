@@ -99,7 +99,7 @@ export const patternConfigs: PatternConfig[] = [
 	 */
 	{
 		pattern:
-			/^\/dashboard\/postbox\/(?!(?:search|contacts|files|subscriptions|migrate|reply-queue|label)$)([^/]+)$/,
+			/^\/dashboard\/postbox\/(?!(?:search|contacts|files|subscriptions|senders|migrate|reply-queue|label)$)([^/]+)$/,
 		getConfig: () => ({
 			section: 'shared.dashboardNavigation.sections.postbox',
 			sectionHref: '/dashboard/postbox/inbox',
