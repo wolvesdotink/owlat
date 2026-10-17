@@ -173,6 +173,35 @@ const ENTRIES = {
 		...oneShot,
 		features: ['interpret', 'postbox_commitment'],
 	}),
+	// Read on arrival (INBOX_ZERO_PLAN §2.4): 1–2 verbatim spans and a fact.
+	// One attempt: a failed gist counts instead (`mail/interpret/gist.ts`).
+	'mail.gist': language({
+		maxOutputTokens: 256,
+		maxReasoningTokens: 0,
+		tiers: ['fast'],
+		...background,
+		deadlineMs: ONE_SHOT_DEADLINE_MS,
+		maxAttempts: 1,
+		features: ['interpret_gist'],
+	}),
+	// Read on arrival (§6.5): one batched call per digest, verbatim spans per line.
+	// One attempt: the digest's durable claim counter is the only retry owner.
+	'mail.digest': language({
+		...MEDIUM_OUTPUT,
+		tiers: ['fast'],
+		...background,
+		deadlineMs: ONE_SHOT_DEADLINE_MS,
+		maxAttempts: 1,
+		features: ['digest_lines'],
+	}),
+	// Read on arrival (§6.2): a rule's AI question over the last 50 mails, one call.
+	'mail.rule_test': language({
+		...MEDIUM_OUTPUT,
+		tiers: ['fast'],
+		...interactive,
+		...oneShot,
+		features: ['rule_test'],
+	}),
 	'mail.verify': language({
 		...SMALL_OUTPUT,
 		tiers: ['fast'],
@@ -297,7 +326,7 @@ const ENTRIES = {
 		tiers: ['fast'],
 		...interactive,
 		...oneShot,
-		features: ['handling_rule_compile'],
+		features: ['handling_rule_compile', 'filter_rule_compile'],
 	}),
 	'knowledge.extract': language({
 		...LARGE_OUTPUT,

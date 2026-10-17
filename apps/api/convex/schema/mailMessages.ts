@@ -103,6 +103,9 @@ export const mailMessagesTables = {
 		flagDeleted: v.boolean(),
 		customFlags: v.array(v.string()),
 		labelIds: v.array(v.id('mailLabels')),
+		// Read on arrival (SPEC §5): the first open was counted in the sender's
+		// opened weeks. Set once by `recordFirstOpen`.
+		isOpenCounted: v.optional(v.boolean()),
 
 		// When this message was moved INTO the trash (idea 67). Stamped by
 		// `moveMessagesToFolder` on a trash destination and cleared on the way
@@ -301,6 +304,10 @@ export const mailMessagesTables = {
 		// Folder-scoped arrival order — backs the per-folder list page directly (no
 		// mailbox-wide overfetch-then-filter that starved minority folders).
 		.index('by_folder_and_received', ['folderId', 'receivedAt'])
+		// One sender's mail in one folder, newest arrival first (read on arrival,
+		// mail/senders/operations.ts): a sender-status change archives / re-sorts
+		// the newest 200 Inbox messages without imported history displacing them.
+		.index('by_folder_from_received', ['folderId', 'fromAddress', 'receivedAt'])
 		// Split inbox (idea 24) — ONE INDEX PER SECTION SLICE, which is what keeps
 		// the sectioned renderer from starving a section. Paging a single mixed
 		// feed and bucketing it client-side would let a chatty section eat the
@@ -331,6 +338,14 @@ export const mailMessagesTables = {
 		.index('by_thread_and_seen', ['threadId', 'flagSeen'])
 		.index('by_thread_and_flagged', ['threadId', 'flagFlagged'])
 		.index('by_thread_and_outbound_state', ['threadId', 'outbound.state'])
+		// Read on arrival (lane rules): index-backed existence proofs for delayed
+		// actions. "Another message of this thread is still in the Inbox"
+		// (`archiveSingleMessage`) and "the owner replied in this thread since the
+		// anchor" (Sent copies by folder, the owner's address by sender), without a
+		// truncated scan of a long thread. Lane learn's Fix reads a conversation's
+		// newest Inbox messages through it too (the folder before the 200 bound).
+		.index('by_thread_folder_received', ['threadId', 'folderId', 'receivedAt'])
+		.index('by_thread_from_received', ['threadId', 'fromAddress', 'receivedAt'])
 		.index('by_rfc822_message_id', ['rfc822MessageId'])
 		// Per-mailbox Message-ID lookups — the delivery dedup and the threading
 		// walk seek straight to one mailbox's copy instead of reading every

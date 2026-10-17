@@ -12,9 +12,9 @@
  *     every one of them and filtered down to this mailbox.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import schema from '../../schema';
+import type schema from '../../schema';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { findDuplicateInMailbox, insertDeliveredMessage } from '../deliveryPipeline/insert';
@@ -23,7 +23,7 @@ import { runPostInsertInboundEffects } from '../deliveryPipeline/afterInsert';
 import { resolveDeliveryThread } from '../deliveryPipeline/threading';
 import { enqueueNeedsReplyCheck } from '../needsReply';
 import { recordingDb, type IndexSeek } from '../../__tests__/indexRecorder.testlib';
-import { modules, seedFolder, seedMailbox } from './helpers.testlib';
+import { seedFolder, seedMailbox, liveMailTest } from './helpers.testlib';
 
 type T = TestConvex<typeof schema>;
 /** The `t.run` context: a mutation context whose storage can also `store`. */
@@ -77,7 +77,7 @@ async function scheduledNames(t: T): Promise<string[]> {
 describe('Reply Queue pending marker rides the insert thread patch', () => {
 	it('a live inbox delivery stamps the marker in the aggregate patch and still schedules the classify', async () => {
 		vi.useFakeTimers();
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId, 'inbox');
 
@@ -105,10 +105,12 @@ describe('Reply Queue pending marker rides the insert thread patch', () => {
 		const markerPatches = threadPatches.filter((keys) => keys.includes('needsReplyPendingAt'));
 		expect(markerPatches).toHaveLength(1);
 		expect(markerPatches[0]).toContain('latestMessageId');
-		// The only other thread write is the category stamp, which the heuristic
-		// now writes in the same mutation (plan E7) instead of a later one.
+		// The only other thread writes are the category stamp, which the heuristic
+		// now writes in the same mutation (plan E7) instead of a later one, and
+		// the read-on-arrival projection, once (`arrival/projection.ts`).
 		expect(threadPatches.filter((keys) => !keys.includes('needsReplyPendingAt'))).toEqual([
 			['category', 'updatedAt'],
+			['arrival'],
 		]);
 		expect(thread.category).toEqual(expect.objectContaining({ source: 'heuristic' }));
 		expect(thread.needsReplyPendingAt).toBe(thread.updatedAt);
@@ -118,7 +120,7 @@ describe('Reply Queue pending marker rides the insert thread patch', () => {
 	});
 
 	it('an insert without an inbound origin (archive import, brief) stamps nothing', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId, 'inbox');
 
@@ -131,7 +133,7 @@ describe('Reply Queue pending marker rides the insert thread patch', () => {
 	});
 
 	it('a backfill insert stamps nothing', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId, 'inbox');
 
@@ -148,7 +150,7 @@ describe('Reply Queue pending marker rides the insert thread patch', () => {
 
 	it('the requeue path still stamps the marker itself', async () => {
 		vi.useFakeTimers();
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId, 'inbox');
 
@@ -180,7 +182,7 @@ describe('Message-ID lookups seek one mailbox', () => {
 	}
 
 	it('the dedup finds this mailbox copy through the per-mailbox index', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const { mine, myCopy } = await twoMailboxesSharingAMessageId(t);
 
 		const { found, seeks } = await t.run(async (ctx) => {
@@ -207,7 +209,7 @@ describe('Message-ID lookups seek one mailbox', () => {
 	});
 
 	it('the dedup misses a Message-ID only another mailbox holds', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const mine = await seedMailbox(t, { address: 'me@owlat.test', userId: 'user-A' });
 		const theirs = await seedMailbox(t, { address: 'them@owlat.test', userId: 'user-B' });
 		await seedFolder(t, theirs, 'inbox');
@@ -219,7 +221,7 @@ describe('Message-ID lookups seek one mailbox', () => {
 	});
 
 	it('the References walk joins this mailbox thread through the per-mailbox index', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const { mine, myCopy } = await twoMailboxesSharingAMessageId(t);
 
 		const { threadId, expected, seeks } = await t.run(async (ctx) => {

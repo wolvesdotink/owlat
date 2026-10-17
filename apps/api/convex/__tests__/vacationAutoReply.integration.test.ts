@@ -12,6 +12,7 @@
  * post-delivery hook → (no) MTA /send call + (no) vacation-log write.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
@@ -160,6 +161,7 @@ afterEach(() => {
 describe('vacation auto-reply — null-return-path bounce suppression (PR-45)', () => {
 	it('does NOT auto-reply to a DSN (null envelope return-path, From: MAILER-DAEMON)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const calls = captureSend();
 
 		let mailboxId!: Id<'mailboxes'>;
@@ -191,6 +193,7 @@ describe('vacation auto-reply — null-return-path bounce suppression (PR-45)', 
 
 	it('does NOT auto-reply when there is no From address to reply to', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const calls = captureSend();
 
 		let mailboxId!: Id<'mailboxes'>;
@@ -216,6 +219,7 @@ describe('vacation auto-reply — null-return-path bounce suppression (PR-45)', 
 
 	it('DOES auto-reply to a normal message with a real envelope return-path', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const calls = captureSend();
 
 		let mailboxId!: Id<'mailboxes'>;
@@ -263,6 +267,7 @@ describe('vacation auto-reply — null-return-path bounce suppression (PR-45)', 
 describe('vacation auto-reply — threading + envelope return-path (PR-47)', () => {
 	it('threads In-Reply-To/References to the triggering message and replies to the envelope return-path', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const calls = captureSend();
 
 		let mailboxId!: Id<'mailboxes'>;
@@ -307,6 +312,7 @@ describe('vacation auto-reply — threading + envelope return-path (PR-47)', () 
 
 	it('falls back to the From header when the envelope was not threaded (legacy MTA)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const calls = captureSend();
 
 		let mailboxId!: Id<'mailboxes'>;

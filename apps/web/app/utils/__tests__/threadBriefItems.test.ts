@@ -169,7 +169,7 @@ describe('briefBanners', () => {
 		]);
 	});
 
-	it("says a fenced thread's overview is paused, without the signed-part note", () => {
+	it("says a fenced thread's brief is paused, without the signed-part note", () => {
 		const banners = briefBanners(
 			briefView({
 				completeness: 'partial',

@@ -16,10 +16,13 @@ import {
 } from '~/utils/postboxReplyQueue';
 
 /**
- * A Postbox follow-up reminder as an Answer-queue card: we are waiting on
- * them, so its one verb is Done (dismiss the reminder). Reply writes a nudge
- * in Answer mode, from the inbox the mail is in (`mailboxId`); Open shows the
- * thread.
+ * A Postbox follow-up as an Answer-queue card: a "Remind me if no reply"
+ * reminder, or a "Waiting on others" item that went stale (mail/nudges.ts).
+ * We are waiting on them, so its one verb is Done (dismiss the reminder, or
+ * mark the item received). "Draft a nudge" opens Answer mode with an AI
+ * follow-up in the editor (only while AI is on and the thread offers one);
+ * Reply writes one by hand, from the inbox the mail is in (`mailboxId`); Open
+ * shows the thread.
  *
  * This is the only mail row the queue shows as a card. Every other row opens
  * in Answer mode (`opensInAnswerMode`), where a prepared draft is in the
@@ -58,9 +61,23 @@ const mail = useAnswerMailActions(
 	() => props.controls
 );
 
+const { isEnabled } = useFeatureFlag();
+const canDraftNudge = computed(() => isEnabled('ai') && props.row.nudge !== undefined);
+/** Why the card asks for a nudge: past the item's due date, or no reply for days. */
+const nudgeReason = computed(() => {
+	const reason = props.row.nudge?.reason;
+	if (reason === 'overdue') return t('answer.nudge.overdue');
+	if (reason === 'stale') return t('answer.nudge.stale');
+	return undefined;
+});
+
 /** Write a nudge in Answer mode. The queue keeps the item until it is sent. */
 function answerInAnswerMode() {
 	props.controls.openAnswer();
+}
+/** The same, with the AI's follow-up drafted there. */
+function draftNudge() {
+	props.controls.openAnswer({ nudge: true });
 }
 function markDone() {
 	void mail.markDone();
@@ -103,12 +120,29 @@ const secondaryButton =
 					<Icon name="lucide:alarm-clock" class="w-3 h-3" />
 					{{ t('components.postbox.postboxReplyFlow.followUp') }}
 				</span>
+				<span
+					v-if="nudgeReason"
+					class="text-[10px] font-medium px-1.5 py-px rounded-full bg-bg-elevated text-text-secondary"
+					data-testid="answer-mail-nudge-reason"
+				>
+					{{ nudgeReason }}
+				</span>
 			</template>
 		</TaskContext>
 
 		<TaskAsk class="mt-3 mb-4" :ask="headline" :detail="row.snippet" />
 
 		<TaskActions :primary-label="t('common.done')" primary-icon="lucide:check" @primary="markDone">
+			<button
+				v-if="canDraftNudge"
+				type="button"
+				:class="secondaryButton"
+				data-testid="answer-mail-draft-nudge"
+				@click="draftNudge"
+			>
+				<Icon name="lucide:sparkles" class="w-3.5 h-3.5" />
+				{{ t('answer.nudge.draft') }}
+			</button>
 			<button
 				type="button"
 				:class="secondaryButton"

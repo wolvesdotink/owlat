@@ -18,6 +18,7 @@
  * come back. The draft and the item texts reach the model only as data.
  */
 
+import { awaitFullRead } from './fullReadPrepare';
 import { v } from 'convex/values';
 import { authedAction } from '../../lib/authedFunctions';
 import { internal } from '../../_generated/api';
@@ -116,11 +117,21 @@ export const check = authedAction({
 	handler: async (ctx, args): Promise<CoverageResult | null> => {
 		// One model budget for this action, from its start (ADR-0073).
 		anchorActionDeadline(ctx);
-		const loaded = await ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForCoverage, {
-			threadRef: args.threadRef,
-			draftRef: args.draftRef,
-		});
+		const read = () =>
+			ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForCoverage, {
+				threadRef: args.threadRef,
+				draftRef: args.draftRef,
+			});
+		let loaded = await read();
 		if (!loaded) return null;
+		// Read on arrival: gist-only mail of the thread is read in full first,
+		// waited for a little; still preparing, nothing is checked (Sol r2 F1).
+		// After the access check above.
+		if (!loaded.isFullyRead) {
+			if ((await awaitFullRead(ctx, args.threadRef)) === 'preparing') return null;
+			loaded = await read();
+			if (!loaded) return null;
+		}
 		const draft = args.draftText.slice(0, MAX_DRAFT_CHARS);
 		const items = toPromptItems(loaded.items, loaded.stances);
 		let budgetRefusal: BudgetHoldReason | undefined;

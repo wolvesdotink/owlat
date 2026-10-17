@@ -56,6 +56,10 @@ export const threadPurgeJobTables = {
 		// `sources` jobs of a received Team Inbox message: every team reply
 		// that answered it is added to `sources` (paged, before anything else).
 		inboundMessageId: v.optional(v.id('inboundMessages')),
+		// Postbox `sources` jobs: the purged messages' mailbox, persisted when the
+		// job starts, while the thread still exists (read on arrival's digest
+		// ranges, mail/arrival/purgeRanges.ts, run after it may be gone).
+		mailboxId: v.optional(v.id('mailboxes')),
 		// `scope` jobs: the thread's new mode.
 		mode: v.optional(interpretModeValidator),
 		// The range being drained (index into the kind's range list) and its cursor.

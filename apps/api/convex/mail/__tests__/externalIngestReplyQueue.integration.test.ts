@@ -20,12 +20,12 @@
  * the mutation it delegates to.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
-import schema from '../../schema';
+import type schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
-import { modules } from './helpers.testlib';
+import { liveMailTest } from './helpers.testlib';
 import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
 import { SYNC_STAMP_REFRESH_MS } from '../external/accountShared';
 
@@ -180,7 +180,7 @@ async function withHeldScheduler(body: () => Promise<void>): Promise<void> {
 
 describe('external IMAP ingest → Reply Queue enqueue', () => {
 	it('forward sync into the inbox marks the thread pending and schedules both classifiers', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 
 		await withHeldScheduler(async () => {
@@ -198,7 +198,7 @@ describe('external IMAP ingest → Reply Queue enqueue', () => {
 	});
 
 	it('a historical import (backfill) schedules nothing', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 
 		await withHeldScheduler(async () => {
@@ -210,7 +210,7 @@ describe('external IMAP ingest → Reply Queue enqueue', () => {
 	});
 
 	it('an older worker that sends no origin at all schedules nothing (fails safe)', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 
 		await withHeldScheduler(async () => {
@@ -222,7 +222,7 @@ describe('external IMAP ingest → Reply Queue enqueue', () => {
 	});
 
 	it('forward sync into a NON-inbox folder (Sent) schedules nothing', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 
 		await withHeldScheduler(async () => {
@@ -233,7 +233,7 @@ describe('external IMAP ingest → Reply Queue enqueue', () => {
 	});
 
 	it('a MUTED thread whose delivery is re-routed to Archive schedules nothing', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 		// The insert threads the reply by subject window (same correspondent, Re:
 		// prefix), then mail/mute.ts re-routes the delivery into Archive — so the
@@ -279,7 +279,7 @@ describe('external IMAP ingest → Reply Queue enqueue', () => {
 	});
 
 	it('a Precedence: bulk header reaches the Reply Queue job as its precedence arg', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 
 		await withHeldScheduler(async () => {
@@ -331,7 +331,7 @@ describe('external IMAP ingest → owner reply settles the Reply Queue', () => {
 	}
 
 	it('a reply the owner sent from the provider client clears the flag and its draft', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 		const now = Date.now();
 
@@ -354,7 +354,7 @@ describe('external IMAP ingest → owner reply settles the Reply Queue', () => {
 	});
 
 	it('an OLDER Sent copy arriving out of order leaves the flag alone', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 		const now = Date.now();
 
@@ -461,7 +461,7 @@ describe('ingestExternalRaw → Reply Queue enqueue', () => {
 	}
 
 	it("forwards origin 'sync' and the parsed Precedence to both classifiers", async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 
 		await withHeldScheduler(async () => {
@@ -488,7 +488,7 @@ describe('ingestExternalRaw → Reply Queue enqueue', () => {
 	});
 
 	it("forwards origin 'backfill', which schedules nothing", async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 
 		await withHeldScheduler(async () => {
@@ -502,7 +502,7 @@ describe('ingestExternalRaw → Reply Queue enqueue', () => {
 
 describe('ingest sync stamp', () => {
 	it('stamps the account once per refresh window, not once per message', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 		const lastSyncAt = () => t.run(async (ctx) => (await ctx.db.get(seeded.accountId))?.lastSyncAt);
 

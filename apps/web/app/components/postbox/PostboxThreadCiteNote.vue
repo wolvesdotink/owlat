@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
- * The line over the Conversation while it shows the source of a line of the
- * brief (plan §4.2): what is being shown, and the way back to the Overview.
- * While the cited message is still being loaded (an earlier page) it says so,
- * and when it cannot be reached it says that instead of showing nothing.
- * Going back writes no preference; the cite was for this visit only.
+ * The line over the conversation while it shows the source of a line of the
+ * brief (plan §4.2): what is being shown, and a way to drop the mark. While
+ * the cited message is still being loaded (an earlier page) it says so, and
+ * when it cannot be reached it says that instead of showing nothing. The cite
+ * was for this visit only; dropping it writes nothing.
  */
 import type { PostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
 
@@ -33,8 +33,8 @@ const citeState = computed(() => props.state.citeState.value);
 			· {{ t('components.brief.cite.unreachable') }}</span
 		>
 		<span aria-hidden="true">·</span>
-		<button type="button" class="text-brand hover:underline" @click="state.backToOverview()">
-			{{ t('components.brief.cite.back') }}
+		<button type="button" class="text-brand hover:underline" @click="state.clearCite()">
+			{{ t('postbox.reader.cite.clear') }}
 		</button>
 	</p>
 </template>

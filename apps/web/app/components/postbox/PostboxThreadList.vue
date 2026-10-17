@@ -9,6 +9,8 @@ import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import { usePostboxThreadListWindow } from '~/composables/postbox/usePostboxThreadListWindow';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { postboxListEmptyState } from '~/utils/postboxListEmptyState';
+import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
+import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -53,6 +55,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const listQuery = usePostboxListQuery(); // a filtered list keeps `?placement=` on its routes
 usePostboxListNow(); // one minute clock for every row's timestamp
 
 // Row trust markers (idea 51) ride the badge's flag, resolved once for the list.
@@ -227,7 +230,7 @@ const {
 	onActivate: (m) =>
 		props.selectable
 			? emit('select', m._id)
-			: void navigateTo(`/dashboard/postbox/${folderKey.value}/${m._id}`),
+			: void navigateTo(`/dashboard/postbox/${folderKey.value}/${m._id}${listQuery.value}`),
 	// Shift+J / Shift+K drag the selection along with the focus, extending from
 	// the anchor the last plain toggle set.
 	onExtendSelection: (to, from) => bulk.extendTo(visibleIds.value, to._id, from?._id),
@@ -263,7 +266,9 @@ const {
 			case 'close':
 				// Esc from the list closes the conversation open beside it.
 				if (props.activeMessageId && !props.selectable && !props.emptyContext) {
-					void navigateTo(`/dashboard/postbox/${folderKey.value}`, { replace: true });
+					void navigateTo(`/dashboard/postbox/${folderKey.value}${listQuery.value}`, {
+						replace: true,
+					});
 				}
 				break;
 			case 'snooze':
@@ -318,7 +323,8 @@ watch([focusedIndex, () => props.activeMessageId], () => {
 });
 
 // --- Windowed rendering + infinite scroll (large folders) --------------------
-const { density, swipeLeftAction, swipeRightAction } = usePostboxSettings();
+const { density, swipeLeftAction, swipeRightAction, autoSummarize } = usePostboxSettings();
+provideBriefLines(autoSummarize); // rows: no AI lines with the brief turned off
 const {
 	scrollEl,
 	listEl,

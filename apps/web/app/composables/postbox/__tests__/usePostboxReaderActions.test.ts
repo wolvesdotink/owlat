@@ -68,6 +68,7 @@ beforeEach(() => {
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));
 	vi.stubGlobal('usePostboxFolders', () => ({ folders: ref([]) }));
 	vi.stubGlobal('usePostboxTriageUndo', () => ({ registerMoveBack }));
+	vi.stubGlobal('usePostboxSenderShortcuts', () => ({ runSenderShortcut: vi.fn() }));
 	vi.stubGlobal(
 		'useBackendOperation',
 		(_fn: unknown, opts: { label: () => string; optimisticUpdate?: unknown }) => {
@@ -95,6 +96,8 @@ type HostOptions = {
 	inPlace?: boolean;
 	autoAdvance?: PostboxAutoAdvanceMode;
 	thread?: { _id: string; mutedAt?: number } | null;
+	/** The list's query the reader keeps (`?placement=`). */
+	query?: string;
 };
 
 /** The open message m2 in a list m1, m2, m3 — plus that list's optimistic hide. */
@@ -117,6 +120,7 @@ async function setup(options: HostOptions = {}) {
 				folderRole: () => ('folderRole' in options ? options.folderRole : 'inbox'),
 				inPlace: () => options.inPlace,
 				emit: (id) => emitted.push(id),
+				...(options.query !== undefined ? { query: () => options.query! } : {}),
 			},
 			compose: { reply: vi.fn(), replyAll: vi.fn(), forward: vi.fn() },
 		});
@@ -398,5 +402,41 @@ describe('usePostboxReaderActions — Esc closes the open conversation', () => {
 		const { actions } = await setup({ folderRole: undefined });
 		actions.runReaderAction('close');
 		expect(navigateTo).not.toHaveBeenCalled();
+	});
+});
+
+describe('usePostboxReaderActions — a filtered list keeps its filter (read on arrival §3)', () => {
+	beforeEach(() => {
+		// Like the router: the path never carries the query.
+		navigateTo.mockImplementation((to: string) => {
+			currentRoute.value = { path: to.split('?')[0]! };
+			return Promise.resolve();
+		});
+	});
+
+	it('advances to the next message with ?placement= kept', async () => {
+		const { actions, scope } = await setup({ query: '?placement=digest' });
+		actions.runReaderAction('archive');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox/m3?placement=digest');
+		scope.stop();
+	});
+
+	it('returns to the message with the filter when the triage fails', async () => {
+		const { actions, scope } = await setup({ query: '?placement=digest' });
+		actions.runReaderAction('archive');
+		pending[0]!.resolve({ ok: false });
+		await flush();
+		expect(navigateTo).toHaveBeenLastCalledWith('/dashboard/postbox/inbox/m2?placement=digest', {
+			replace: true,
+		});
+		scope.stop();
+	});
+
+	it('closes onto the filtered list', async () => {
+		const { actions } = await setup({ query: '?placement=digest' });
+		actions.runReaderAction('close');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox?placement=digest', {
+			replace: true,
+		});
 	});
 });

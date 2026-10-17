@@ -163,11 +163,18 @@ const INVENTORY: readonly CallSite[] = [
 		branches: [[undefined, 'classify']],
 	},
 	site('mail/handlingRulesCompile.ts', "ctx, 'mail.rule_compile'", 'classify'),
+	// Read on arrival (§6): the rule dry run's one batched question.
+	site('mail/rules/dryRun.ts', "ctx, 'mail.rule_test'", 'classify'),
+	site('mail/filterCompile.ts', "ctx, 'mail.rule_compile'", 'classify'),
+	site('mail/digest/generate.ts', "ctx, 'mail.digest'", 'classify'),
 	site('mail/replyOptions.ts', "ctx, 'mail.suggest'", 'suggest'),
 	site('mail/interpret/coverage.ts', "ctx, 'mail.plan_coverage'", 'summarize'),
 	site('mail/interpret/verify.ts', "ctx, 'mail.verify'", 'guard'),
 	site('mail/interpret/extractOutput.ts', "ctx, 'mail.extract'", 'extract'),
-	site('mail/interpret/run.ts', "ctx, 'mail.verify'", 'guard'),
+	// Split out of run.ts at the size cap (read on arrival).
+	site('mail/interpret/runOnce.ts', "ctx, 'mail.verify'", 'guard'),
+	// Read on arrival's gist (new; fast like the classifier it sits beside).
+	site('mail/interpret/gist.ts', "ctx, 'mail.gist'", 'summarize'),
 	site(
 		'mail/ai/reviseDraft.ts',
 		"ctx, 'mail.compose', args.instruction",
@@ -203,6 +210,8 @@ const INVENTORY: readonly CallSite[] = [
 	site('mail/ai/composeDraftWrite.ts', "ctx, 'mail.compose'", 'draft'),
 	site('mail/ai/coach.ts', "ctx, 'mail.coach'", 'classify'),
 	site('mail/ai/categoryClassify.ts', "ctx, 'mail.classify'", 'summarize'),
+	// Read on arrival R2: the category refinement with this message's rule questions.
+	site('mail/ai/categoryQuestions.ts', "ctx, 'mail.classify'", 'summarize'),
 	// Postbox localization; its slots go through the shared service.
 	site('mail/ai/needsReplyRefine.ts', "ctx, 'mail.clarify'", 'summarize'),
 	// The questions about a held draft's gaps, localized like the clarification's.

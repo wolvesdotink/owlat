@@ -15,6 +15,8 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { SYNC_STAMP_REFRESH_MS, takeLiveSeedAccounts } from '../mail/external/accountShared';
 import { stopExternalAccountSync } from '../mail/external/accountTeardown';
+import { MAIL_ARRIVAL_TABLES } from '../schema/mailArrival';
+import { seedArrivalRows } from '../mail/arrival/__tests__/arrival.testlib';
 
 const sessionMocks = vi.hoisted(() => ({
 	getBetterAuthSessionWithRole: vi.fn(),
@@ -409,6 +411,49 @@ describe('what a purge takes with the mailbox', () => {
 			stream: null,
 			heldReceipt: null,
 			heldBlob: null,
+		});
+	});
+});
+
+describe('what a purge takes with the mailbox: read on arrival', () => {
+	it('deletes every arrival table’s rows of the mailbox and no other mailbox’s', async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		setSession('user-A', 'owner');
+		const { mailboxId, messageId } = await connectWithMail(t);
+		const bystander = await bystanderMailbox(t);
+		await t.run(async (ctx) => {
+			const message = (await ctx.db.get(messageId))!;
+			const refs = { mailboxId, threadId: message.threadId, messageId, folderId: message.folderId };
+			// More rows than one teardown page (PURGE_CHUNK) across the tables.
+			for (let i = 0; i < 30; i++) await seedArrivalRows(ctx, refs);
+			// The bystander's rows name a thread of its own: the purged threads'
+			// purge jobs take every row of those threads (mailDraftOfferUsage).
+			const { _id, _creationTime, ...thread } = (await ctx.db.get(message.threadId))!;
+			const bystanderThreadId = await ctx.db.insert('mailThreads', {
+				...thread,
+				mailboxId: bystander.mailboxId,
+			});
+			await seedArrivalRows(ctx, {
+				...refs,
+				mailboxId: bystander.mailboxId,
+				threadId: bystanderThreadId,
+			});
+		});
+		await t.mutation(api.mail.external.accounts.disconnect, {});
+
+		await drainPurge(t);
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(mailboxId)).toBeNull();
+			for (const table of MAIL_ARRIVAL_TABLES) {
+				const rows = await ctx.db.query(table).collect();
+				expect(
+					rows.map((row) => row.mailboxId),
+					table
+				).toEqual(rows.map(() => bystander.mailboxId));
+				expect(rows.length, table).toBeGreaterThan(0);
+			}
 		});
 	});
 });

@@ -9,7 +9,12 @@
  *   - `writingSuggestions` — inline ghost-text autocomplete in the composer.
  *     Defaults ON (undefined => true) so it's on by default wherever the `ai`
  *     feature flag is enabled; the flag itself is the master gate.
- *   - `autoSummarize` — the cached one-line AI summary strip on long threads.
+ *   - `autoSummarize` — show the brief (the AI strip above the conversation
+ *     and the AI lead lines of the Priority view). Off: the reader shows the
+ *     slim "Why here? · Details" line and Priority rows show the subject.
+ *     Defaults ON (undefined => true).
+ *   - `readOnArrival` — read on arrival: personal mail is read by the AI
+ *     provider when it arrives, not when it is opened.
  *     Defaults ON (undefined => true), same master-gate reasoning as above.
  *   - `replyDefault` — whether the primary reply affordance (Reply button /
  *     `r`) opens a plain Reply or a Reply-all. Defaults to 'reply'.
@@ -124,8 +129,14 @@ export function usePostboxSettings() {
 	const writingSuggestions = computed<boolean>(() => data.value?.isWritingSuggestionsOn ?? true);
 
 	// Default ON, same as writing suggestions: the `ai` flag is the master gate,
-	// this is a per-user opt-out for the long-thread summary strip.
+	// this is a per-user opt-out from seeing AI briefs (`isAutoSummarizeOn`).
 	const autoSummarize = computed<boolean>(() => data.value?.isAutoSummarizeOn ?? true);
+
+	// Read on arrival (SPEC §2.1): default ON. The AI provider reads personal
+	// mail as it arrives; off, mail waits until a thread is opened.
+	const readOnArrival = computed<boolean>(() => data.value?.isReadOnArrival ?? true);
+	// Read on arrival (SPEC §6.4): archive codes and sign-in links after a day. Default OFF.
+	const codeAutoArchive = computed<boolean>(() => data.value?.isCodeAutoArchiveOn ?? false);
 
 	// Which mode the primary reply affordance (Reply button / `r`) uses. Reads
 	// default to 'reply' while loading or when never saved, so the reader can
@@ -275,6 +286,14 @@ export function usePostboxSettings() {
 		await updateOp.run({ isAutoSummarizeOn: enabled });
 	}
 
+	async function setReadOnArrival(enabled: boolean) {
+		await updateOp.run({ isReadOnArrival: enabled });
+	}
+
+	async function setCodeAutoArchive(enabled: boolean) {
+		await updateOp.run({ isCodeAutoArchiveOn: enabled });
+	}
+
 	async function setReplyDefault(mode: PostboxReplyDefaultMode) {
 		await updateOp.run({ replyDefault: mode });
 	}
@@ -393,6 +412,8 @@ export function usePostboxSettings() {
 		autoAdvance,
 		writingSuggestions,
 		autoSummarize,
+		readOnArrival,
+		codeAutoArchive,
 		replyDefault,
 		density,
 		viewMode,
@@ -421,6 +442,8 @@ export function usePostboxSettings() {
 		setAutoAdvance,
 		setWritingSuggestions,
 		setAutoSummarize,
+		setReadOnArrival,
+		setCodeAutoArchive,
 		setReplyDefault,
 		setDensity,
 		setViewMode,

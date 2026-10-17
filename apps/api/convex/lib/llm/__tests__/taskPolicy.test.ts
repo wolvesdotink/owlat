@@ -123,6 +123,8 @@ describe('task-policy catalog', () => {
 				expect(entry.maxReasoningTokens, entry.task).toBeNull();
 				continue;
 			}
+			// Read on arrival's gist is capped small on purpose (SPEC §0): two quotes and a fact.
+			if (entry.task === 'mail.gist') continue;
 			expect(entry.maxOutputTokens, entry.task).toBeGreaterThanOrEqual(1_024);
 			if (entry.task !== 'plugin.invoke') {
 				expect(entry.maxReasoningTokens, entry.task).toBeGreaterThanOrEqual(4_096);
@@ -132,6 +134,12 @@ describe('task-policy catalog', () => {
 		expect(taskPolicy('plugin.invoke')).toMatchObject({
 			maxOutputTokens: PLUGIN_LLM_MAX_OUTPUT_TOKENS,
 			maxReasoningTokens: null,
+		});
+		expect(taskPolicy('mail.gist')).toMatchObject({
+			maxOutputTokens: 256,
+			maxReasoningTokens: 0,
+			maxAttempts: 1,
+			tiers: ['fast'],
 		});
 		// Sized by what each task writes today.
 		expect(taskPolicy('mail.classify').maxOutputTokens).toBe(1_024);

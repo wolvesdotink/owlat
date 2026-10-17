@@ -18,6 +18,7 @@
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
 import { itemStateKey } from '@owlat/shared/threadBriefRules';
 import {
+	briefActionLabelKey,
 	briefRing,
 	canUndoItem,
 	menuReactions,
@@ -89,9 +90,7 @@ const menu = computed<BriefAction[]>(() => {
 });
 
 function actionLabel(action: BriefAction): string {
-	if (action === 'undo') return t('components.brief.item.undo');
-	if (action === 'confirmProposal') return t('components.brief.item.track');
-	return t(`components.brief.reaction.${action}`);
+	return t(briefActionLabelKey(action));
 }
 
 const RING_CLASS: Record<ReturnType<typeof briefRing>, string> = {

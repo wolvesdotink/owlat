@@ -12,6 +12,14 @@
 		"requestSentTitle": "Request sent",
 		"signOut": "Sign out"
 	},
+	"answer": {
+		"nudge": {
+			"draft": "Draft a nudge",
+			"overdue": "Past its due date",
+			"stale": "No reply for 3 business days",
+			"markReceivedOperation": "Mark received"
+		}
+	},
 	"auth": {
 		"fields": {
 			"email": "Email",
@@ -1059,31 +1067,31 @@
 			},
 			"incomplete": {
 				"partialLead": "Partly read.",
-				"partialCount": "{done} of {total} messages are in this overview.",
-				"partialPlain": "Some of this thread is not in this overview.",
+				"partialCount": "{done} of {total} messages are in this brief.",
+				"partialPlain": "Some of this thread is not in this brief.",
 				"partialReason": {
-					"tooLong": "{done} of {total} messages are in this overview. The rest was too long to process.",
-					"failed": "{done} of {total} messages are in this overview. Reading the rest failed.",
-					"undecryptable": "{done} of {total} messages are in this overview. The rest could not be decrypted.",
-					"pending": "{done} of {total} messages are in this overview. The rest is still being read.",
-					"history": "{done} of {total} messages are in this overview. Some earlier replies were sent before Owlat kept their text, so they are not in it."
+					"tooLong": "{done} of {total} messages are in this brief. The rest was too long to process.",
+					"failed": "{done} of {total} messages are in this brief. Reading the rest failed.",
+					"undecryptable": "{done} of {total} messages are in this brief. The rest could not be decrypted.",
+					"pending": "{done} of {total} messages are in this brief. The rest is still being read.",
+					"history": "{done} of {total} messages are in this brief. Some earlier replies were sent before Owlat kept their text, so they are not in it."
 				},
-				"pending": "Reading this thread. The overview fills in shortly.",
+				"pending": "Reading this thread. The brief fills in shortly.",
 				"none": {
-					"default": "There is no overview for this thread yet. The conversation shows everything.",
-					"aiOff": "AI is off, so there is no overview. The conversation shows everything.",
-					"undecryptable": "This message could not be decrypted, so there is no overview.",
-					"ineligible": "Mail like this is not summarised, so there is no overview.",
-					"failed": "Reading this thread failed, so there is no overview.",
-					"pending": "This thread has not been read yet. The overview fills in shortly."
+					"default": "There is no brief for this thread yet. The conversation shows everything.",
+					"aiOff": "AI is off, so there is no brief. The conversation shows everything.",
+					"undecryptable": "This message could not be decrypted, so there is no brief.",
+					"ineligible": "Mail like this is not summarised, so there is no brief.",
+					"failed": "Reading this thread failed, so there is no brief.",
+					"pending": "This thread has not been read yet. The brief fills in shortly."
 				},
 				"short": "Shown as written. There's nothing to summarise.",
 				"securityLead": "Security email.",
 				"security": "Shown as written, never summarised.",
 				"signed": "Only the signed part is summarised.",
-				"stale": "The overview is paused: a signature check changed what one message here can be trusted for. The conversation shows everything.",
+				"stale": "The brief is paused: a signature check changed what one message here can be trusted for. The conversation shows everything.",
 				"openConversation": "Open the conversation",
-				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the overview fills in shortly."
+				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the brief fills in shortly."
 			},
 			"conversation": {
 				"read": "Read the whole thread",
@@ -1103,7 +1111,7 @@
 			},
 			"cite": {
 				"showing": "Showing the source of “{label}”",
-				"back": "back to the overview",
+				"back": "back to the brief",
 				"notLocated": "Couldn't locate the exact passage in this message.",
 				"loading": "loading that message…",
 				"unreachable": "that message isn't in the loaded conversation"
@@ -1131,10 +1139,10 @@
 				"reminder": "You'll be reminded tomorrow morning."
 			},
 			"operations": {
-				"markSeen": "Mark the overview as seen",
+				"markSeen": "Mark the brief as seen",
 				"saveView": "Save the thread view",
 				"react": "Update the item",
-				"ensure": "Prepare the overview"
+				"ensure": "Prepare the brief"
 			},
 			"evidence": {
 				"label": "Show the source: {name}, {date}",
@@ -4659,7 +4667,12 @@
 					"markFlagged": "Star",
 					"markRead": "Mark read",
 					"moveToFolder": "Move to folder",
-					"pinToSection": "Pin to inbox section"
+					"pinToSection": "Pin to inbox section",
+					"sendToDigest": "Send to digest",
+					"placeInUpdates": "Show as an update",
+					"placeInNeedsMe": "Show as needing me",
+					"archiveAfter": "Archive after a while",
+					"notify": "Notify me"
 				},
 				"actionsHeading": "Then do…",
 				"addAction": "+ Add action",
@@ -6024,14 +6037,10 @@
 				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
 				"writingSuggestionsLabel": "Writing suggestions",
 				"writingSuggestionsHelp": "Show inline AI autocomplete as you write. Press Tab to accept.",
-				"autoSummarizeLabel": "Show overviews",
-				"autoSummarizeHelp": "Open a conversation on what is new, where things stand and what is asked of you, with a link to every source. Personal mailboxes only.",
-				"threadViewLabel": "Open threads on",
-				"threadViewHelp": "Overview or the whole conversation. Switching inside a thread remembers that thread. Personal mailboxes only.",
-				"threadViewConversation": "Conversation",
-				"threadViewOperation": "Save where threads open",
-				"backfillLabel": "Prepare overviews for recent mail",
-				"backfillHelp": "Reads your active conversations from the last 30 days so they open on an overview. Older ones are prepared when you first open them. This uses the AI budget.",
+				"autoSummarizeLabel": "Show the brief above conversations",
+				"autoSummarizeHelp": "A short AI summary of what changed and what you owe, above the mail. Off: you see only the conversation.",
+				"backfillLabel": "Prepare briefs for recent mail",
+				"backfillHelp": "Reads your active conversations from the last 30 days, so each one opens with its brief above the conversation. Older ones are read when you first open them. This uses the AI budget.",
 				"backfillStart": "Prepare",
 				"backfillResume": "Resume",
 				"backfillCancel": "Stop",
@@ -6041,8 +6050,8 @@
 				"backfillPausedOff": "Paused: AI is turned off.",
 				"backfillPausedCap": "Paused after {count} conversations. Resume to continue.",
 				"backfillCancelled": "Stopped. Resume to continue where it left off.",
-				"backfillOperation": "Prepare overviews",
-				"backfillCancelOperation": "Stop preparing overviews",
+				"backfillOperation": "Prepare briefs",
+				"backfillCancelOperation": "Stop preparing briefs",
 				"sendSoundLabel": "Play sound when sending",
 				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default.",
 				"swipeLeftLabel": "Swipe left on a message",
@@ -12998,6 +13007,357 @@
 			"requestOperation": "Request a mailbox",
 			"reservedBody": "{address} is reserved for you. It'll appear here automatically as soon as it's ready.",
 			"reservedHeading": "Your mailbox is being set up"
+		},
+		"senders": {
+			"pageTitle": "Senders",
+			"rail": "Senders",
+			"heading": "Senders",
+			"subtitle": "Who writes to you, and what Owlat does with their mail.",
+			"tabs": {
+				"review": "To review",
+				"all": "All",
+				"digest": "Digest",
+				"auto_archive": "Auto-archived",
+				"unsubscribed": "Unsubscribed"
+			},
+			"columns": {
+				"sender": "Sender",
+				"mails": "Mails, about 90 days",
+				"read": "You read",
+				"kind": "Kind",
+				"action": "What Owlat does"
+			},
+			"status": {
+				"keep": "Keep",
+				"digest": "Digest",
+				"auto_archive": "Auto-archive",
+				"unsubscribed": "Unsubscribe"
+			},
+			"kind": {
+				"person": "Person",
+				"newsletter": "Newsletter",
+				"notification": "Notification",
+				"receipt": "Receipt",
+				"promotion": "Promotion",
+				"spam": "Spam",
+				"other": "Other",
+				"unknown": "Not sorted yet"
+			},
+			"suggested": "Suggested: {status}",
+			"suggestion": {
+				"digest": "Digest",
+				"auto_archive": "Auto-archive",
+				"unsubscribe": "Unsubscribe"
+			},
+			"keepAsIs": "Keep as is",
+			"keepAsIsTitle": "Keep this sender as it is and stop suggesting a change",
+			"result": {
+				"confirmed": "Unsubscribed",
+				"failed": "Couldn't unsubscribe; mail from them is archived",
+				"opened": "Finish unsubscribing on the page we opened; mail from them is archived meanwhile"
+			},
+			"draftsPaused": "Drafts paused",
+			"resume": "Resume",
+			"readTitle": "You opened {opened} of {delivered}",
+			"readPercent": "{percent}% read",
+			"phoneStats": "{count} mail · read {percent}% | {count} mails · read {percent}%",
+			"controlLabel": "What Owlat does with mail from {name}",
+			"empty": {
+				"review": "Nothing to review. Senders you rarely read show up here.",
+				"all": "No senders yet. They appear as new mail arrives.",
+				"digest": "No sender goes to your digest.",
+				"auto_archive": "No sender is auto-archived.",
+				"unsubscribed": "You haven't unsubscribed from anyone here."
+			},
+			"loadMore": "Load more",
+			"apply": "Apply {count} suggestion | Apply {count} suggestions",
+			"applyRule": "Suggestions: under 10% read in about 90 days → Digest; promotions you never read → Unsubscribe",
+			"dialog": {
+				"title": "Apply {count} suggestion? | Apply {count} suggestions?",
+				"description": "Each sender gets the status shown. Unsubscribing asks one-click senders to stop and archives their recent mail. You can change any of them later.",
+				"confirm": "Apply"
+			},
+			"operations": {
+				"setStatus": "Change sender",
+				"unsubscribe": "Unsubscribe",
+				"resumeDrafts": "Resume drafts",
+				"apply": "Apply suggestions",
+				"markOpened": "Count as read"
+			},
+			"toast": {
+				"archived": "Archived {count} recent mail from {name} | Archived {count} recent mails from {name}",
+				"status": {
+					"keep": "Mail from {name} stays where it lands",
+					"digest": "Mail from {name} now goes to your digest",
+					"auto_archive": "Mail from {name} is archived from now on"
+				},
+				"unsubscribed": "Unsubscribed from {name}",
+				"localOnly": "{name} offers no unsubscribe link; their mail is archived from now on",
+				"draftsResumed": "Drafts resumed",
+				"applied": "Applied {count} suggestion | Applied {count} suggestions"
+			},
+			"confirmUnsubscribe": "Unsubscribe from {name}? Their mail will be archived from now on.",
+			"shortcuts": {
+				"autoArchive": "Auto-archive this sender's mail",
+				"unsubscribe": "Unsubscribe from this sender"
+			}
+		},
+		"reader": {
+			"header": {
+				"reply": "Reply",
+				"archive": "Archive",
+				"whyHere": "Why is this here?",
+				"details": "Details",
+				"fullBrief": "Full brief",
+				"snooze": "Snooze",
+				"ask": "Ask about this thread"
+			},
+			"strip": {
+				"reading": "Reading this thread now",
+				"waitingOn": "Waiting on {name}: {text}",
+				"waiting": "Waiting: {text}",
+				"due": "by {date}",
+				"fullBrief": "Full brief",
+				"exactWording": "Read the exact wording",
+				"whyHere": "Why here?",
+				"details": "Details"
+			},
+			"summary": {
+				"signed": "signed",
+				"imagesOff": "images off"
+			},
+			"sheet": {
+				"title": "Full brief"
+			},
+			"cite": {
+				"clear": "clear the mark"
+			}
+		},
+		"priority": {
+			"needsYou": {
+				"title": "Needs you",
+				"queue": "Answer queue ({count})"
+			},
+			"everythingElse": {
+				"title": "Everything else"
+			},
+			"state": {
+				"due": "by {date}",
+				"reply": "reply",
+				"waiting": "waiting"
+			},
+			"draftReady": "draft ready",
+			"updates": {
+				"title": "Updates · no reply needed",
+				"show": "show",
+				"foldOne": "{count} more update from {a} | {count} more updates from {a}",
+				"foldTwo": "{count} more updates from {a} and {b}",
+				"foldOneOther": "{count} more updates from {a}, {b} and 1 other",
+				"foldOthers": "{count} more updates from {a}, {b} and {others} others"
+			},
+			"digest": {
+				"count": "{count} newsletter or promotion | {count} newsletters and promotions",
+				"inDigest": "in your digest",
+				"open": "open"
+			},
+			"filter": {
+				"needs_me": "Needs you",
+				"today": "Everything else",
+				"updates": "Updates",
+				"digest": "In your digest",
+				"archived": "Filed away",
+				"clear": "Show all mail again, not only “{name}”"
+			}
+		},
+		"arrival": {
+			"settings": {
+				"label": "Read new mail when it arrives",
+				"help": "When on, your AI provider reads personal mail as soon as it arrives, including mail you never open. When off, Owlat still checks new mail for replies and categories, but only prepares the brief of other mail when you open it."
+			},
+			"reason": {
+				"aiOff": "AI is off",
+				"ineligible": "Not read: AI never reads this kind of mail",
+				"openWork": "Read in full: it may need you",
+				"readOnArrivalOff": "Read on arrival is off",
+				"senderStatus": "Not read because of how you handle this sender",
+				"security": "Not read: security mail is shown as written",
+				"budget": "Counted only: the AI budget was used up",
+				"digest": "Counted for your digest",
+				"override": "Read the way you placed it",
+				"category": "Read by its kind of mail",
+				"exactWording": "Read in full: the exact wording matters",
+				"ownerLimit": "Counted only: a lot of mail arrived at once",
+				"categoryTimeout": "Decided before its kind of mail was clear",
+				"gistUnavailable": "Counted only: no short quote was possible",
+				"gistFailed": "Counted only: the short read failed"
+			}
+		},
+		"explain": {
+			"title": {
+				"needs_me": "Why this needs you",
+				"today": "Why this is with everything else",
+				"updates": "Why this is among your updates",
+				"digest": "Why this goes to your digest",
+				"archived": "Why this was archived"
+			},
+			"titleUnknown": "Why this is here",
+			"loading": "Looking it up",
+			"empty": "Nothing to explain: this mail was not sorted when it arrived.",
+			"noStats": "no mail counted from them yet",
+			"senderStats": "{count} mail in about 90 days, you opened {opened} | {count} mails in about 90 days, you opened {opened}",
+			"fenced": "Some reasons are hidden while this conversation is checked again.",
+			"replyNeeded": "Waiting for your reply",
+			"rowLink": "Why is this here?",
+			"label": {
+				"sender": "Sender",
+				"decidedBy": "Decided by",
+				"kind": "Kind",
+				"reply": "Reply",
+				"readAs": "Read as"
+			},
+			"decided": {
+				"thread_override": "You placed this conversation here",
+				"sender_override": "You placed mail from this sender here",
+				"needs_reply": "It asks you something and waits for your reply",
+				"sender_status": "How you handle this sender",
+				"rule": "One of your rules",
+				"category": "Its kind of mail",
+				"senderStatus": {
+					"default": "How you handle this sender: {status}",
+					"user": "How you handle this sender: {status}, set by you",
+					"suggestion": "How you handle this sender: {status}, a suggestion you accepted",
+					"learned": "How you handle this sender: {status}, learned from mail you archived unread"
+				}
+			},
+			"status": {
+				"keep": "Keep",
+				"digest": "Digest",
+				"auto_archive": "Auto-archive",
+				"unsubscribed": "Unsubscribed"
+			},
+			"categorySource": {
+				"heuristic": "guessed from the headers",
+				"llm": "read by AI",
+				"user": "set by you"
+			},
+			"depth": {
+				"full": "In full",
+				"gist": "Gist",
+				"count": "Counted only",
+				"none": "Not read",
+				"pending": "Not read yet"
+			},
+			"modelCalls": "no model calls | 1 model call | {count} model calls",
+			"action": {
+				"wrong": "That's wrong",
+				"always": "Always here",
+				"senders": "Senders page"
+			}
+		},
+		"fix": {
+			"title": "Where should mail like this go?",
+			"destination": {
+				"needs_me": "Needs you: show it at the top",
+				"today": "With everything else",
+				"updates": "Updates: one line, no reply",
+				"digest": "Digest: in your daily summary",
+				"auto_archive": "Archive automatically"
+			},
+			"applyTo": "Apply to",
+			"scope": {
+				"message": "This conversation",
+				"sender": "Everything from {name}"
+			},
+			"reason": {
+				"label": "Why? (optional, helps the rule)",
+				"placeholder": "For example: delays on trips I'm booked on matter to me",
+				"help": "Owlat turns this into a draft rule you can review in Rules. It is never switched on by itself."
+			},
+			"save": "Save",
+			"cancel": "Cancel",
+			"operation": "Save the correction",
+			"toast": {
+				"unchanged": "It was already sorted that way",
+				"archivedSender": "Archived {count} recent mail from {name} | Archived {count} recent mails from {name}",
+				"ruleDraft": "A draft rule from your note is waiting in Rules.",
+				"thread": {
+					"needs_me": "This conversation now shows in Needs you",
+					"today": "This conversation now shows with everything else",
+					"updates": "This conversation now shows in Updates",
+					"digest": "This conversation now goes to your digest",
+					"auto_archive": "Archived this conversation"
+				},
+				"sender": {
+					"needs_me": "Mail from {name} now shows in Needs you",
+					"today": "Mail from {name} now shows with everything else",
+					"updates": "Mail from {name} now shows in Updates",
+					"digest": "Mail from {name} now goes to your digest",
+					"auto_archive": "Mail from {name} is archived from now on"
+				}
+			}
+		},
+		"learned": {
+			"notice": "Mail from {name} now goes to your digest",
+			"operation": "Confirm the notice"
+		},
+		"undo": {
+			"operation": "Undo",
+			"done": "Undone.",
+			"inProgress": "Undoing. The rest follows in a moment.",
+			"partial": "Undone, except what changed since.",
+			"movedBack": "Moved back.",
+			"remindersNotRestored": "Reply reminders were not restored.",
+			"unsubscribeNotRecalled": "The unsubscribe request was already sent and cannot be taken back.",
+			"expired": "This can no longer be undone",
+			"already": "This was already undone"
+		},
+		"rules": {
+			"title": "Rules in your words",
+			"intro": "Say what should happen to some of your mail. Owlat turns it into a rule you check before it runs. Rules only file, label, flag, place or notify; they never forward, delete or reply.",
+			"placeholder": "Invoices from suppliers go to Finance",
+			"inputLabel": "Describe a rule",
+			"add": "Add rule",
+			"compiling": "Turning this into a rule…",
+			"failed": "Couldn't turn this into a rule. Try naming a sender, a subject or one of your folders.",
+			"save": "Save rule",
+			"discard": "Discard",
+			"test": "Test on recent mail",
+			"empty": "No rules in your words yet.",
+			"aiNote": "The AI question is asked once, when a mail arrives. A mail waits for at most five of them; rules further down are skipped for it. AI rules never run on older mail.",
+			"chips": {
+				"condition": "{field} {op} “{value}”",
+				"ai": "AI: {question}",
+				"and": "and",
+				"or": "or",
+				"moveTo": "Move to {folder}",
+				"label": "Label {label}",
+				"section": "Section {section}",
+				"archiveAfter": "Archive after {hours} h"
+			},
+			"codes": {
+				"label": "Archive codes and sign-in links after a day",
+				"help": "One-time codes and sign-in links leave your inbox 24 hours after they arrive, unless you star them or reply."
+			},
+			"dryRun": {
+				"title": "Dry run · last {count} mails",
+				"summary": "{matches} of {count} match",
+				"aiUnavailable": "The AI question couldn't be asked right now, so those mails are not tested.",
+				"empty": "Nothing in your recent mail matches.",
+				"source": {
+					"noMatch": "no match",
+					"rule": "rule",
+					"aiYes": "AI · yes",
+					"aiNo": "AI · no",
+					"aiUnknown": "AI · unsure",
+					"notTested": "not tested"
+				}
+			},
+			"operations": {
+				"compile": "Create rule",
+				"confirm": "Save rule",
+				"discard": "Discard rule draft",
+				"test": "Test rule"
+			}
 		}
 	},
 	"recipient": {
@@ -15865,12 +16225,8 @@
 					"keywords": "ai, autocomplete, drafting help"
 				},
 				"autoSummarize": {
-					"title": "Show overviews",
-					"keywords": "ai, summary, digest, overview, brief"
-				},
-				"threadView": {
-					"title": "Open threads on",
-					"keywords": "overview, conversation, default view"
+					"title": "Show the brief above conversations",
+					"keywords": "ai, summary, brief, overview, strip"
 				},
 				"sendSound": {
 					"title": "Play sound when sending",

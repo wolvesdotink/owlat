@@ -3,8 +3,10 @@
 /**
  * RFC 8058 One-Click unsubscribe for Postbox list mail.
  *
- * The reader's Unsubscribe chip calls `performOneClick` after an explicit
- * user confirmation; the POST happens server-side (the sender's endpoint
+ * Every person-facing unsubscribe (the reader's chip, ⇧O, the Senders page,
+ * the Subscriptions panel) reaches this POST through
+ * `mail/senders/unsubscribeActions.ts`, after an explicit user confirmation;
+ * the POST happens server-side (the sender's endpoint
  * never sees the user's browser/IP context, and the request works even when
  * the endpoint lacks CORS). The target URL comes from an attacker-controlled
  * mail header. The shared URL policy requires https without credentials or
@@ -17,12 +19,11 @@
  */
 
 import { v } from 'convex/values';
-import { authedAction } from '../lib/authedFunctions';
-import { api } from '../_generated/api';
 import { isSafeUnsubscribeUrl } from '@owlat/shared/listUnsubscribe';
+import { api, internal } from '../_generated/api';
+import { authedAction } from '../lib/authedFunctions';
+import type { UnsubscribeOutcome } from './senders/unsubscribeActions';
 import { fetchGuarded, SsrfBlockedError } from '../lib/ssrfGuard';
-import { logError } from '../lib/runtimeLog';
-import { throwNotFound } from '../_utils/errors';
 
 /** Bounded wait for the sender's unsubscribe endpoint. */
 export const ONE_CLICK_TIMEOUT_MS = 10_000;
@@ -61,27 +62,29 @@ export async function postOneClickUnsubscribe(
 }
 
 /**
- * One-Click unsubscribe for a received list message. Only ever invoked from
- * an explicit user confirmation in the reader — never on render.
+ * ONE-RELEASE COMPATIBILITY SHIM (`scripts/entryWiringPreviousRelease.ts`):
+ * the previous Unsubscribe chip, in shipped desktop bundles and tabs opened
+ * before the deploy, still calls this path. It delegates to the one
+ * unsubscribe path (`api.mail.senders.unsubscribeActions.unsubscribe`, so
+ * personal mail is also suppressed locally and the result recorded) and
+ * answers in the old `{ ok, error? }` shape. A message without a one-click
+ * target answers `not_one_click` with nothing changed, as it always did.
+ * Delete with its ledger line in the next release.
  */
-// authz: ownership enforced by mail.mailbox.messages.getMessage (returns null for a
-// non-owned message); org membership enforced by authedAction.
+// authz: org membership via authedAction; mailbox access in the delegated
+// flow (startUnsubscribe: requireMailboxAccess on the propagated session).
 export const performOneClick = authedAction({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args): Promise<OneClickResult> => {
-		const message = await ctx.runQuery(api.mail.mailbox.messages.getMessage, {
+		const target = await ctx.runQuery(internal.mail.senders.unsubscribe.oneClickTarget, {
 			messageId: args.messageId,
 		});
-		if (!message) throwNotFound('Message');
-		const target = message.unsubscribe;
-		if (!target?.oneClick || !target.httpUrl) {
-			return { ok: false, error: 'not_one_click' };
-		}
-		const result = await postOneClickUnsubscribe(target.httpUrl);
-		if (!result.ok) {
-			// Fail-soft: surfaced to the user as a toast; log for the operator.
-			logError('[Postbox unsubscribe] one-click POST failed', result.error);
-		}
-		return result;
+		if (!target) return { ok: false, error: 'not_one_click' };
+		const outcome: UnsubscribeOutcome = await ctx.runAction(
+			api.mail.senders.unsubscribeActions.unsubscribe,
+			{ target: { messageId: args.messageId } }
+		);
+		if (outcome.result === 'confirmed') return { ok: true };
+		return { ok: false, error: outcome.error ?? 'not_one_click' };
 	},
 });

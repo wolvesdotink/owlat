@@ -15,7 +15,8 @@
  * be pushed to the deployment, where `import.meta.glob` crashes the isolate.
  */
 
-import type { TestConvex } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import type { Id } from '../../_generated/dataModel';
 import schema from '../../schema';
 import { enableFeatures } from '../../__tests__/factories';
@@ -54,6 +55,21 @@ export const modules = Object.fromEntries(
 				: ([key, val] as const)
 		)
 );
+
+/**
+ * A test deployment for suites that deliver live mail. A live delivery
+ * schedules the category classifier, the reply classifier and the arrival
+ * read, and those take rate-limiter tokens. Without the component registered,
+ * a job that happens to run before the test ends (a loaded host) throws
+ * "Component rateLimiter is not registered", so the result depended on timing.
+ */
+export function liveMailTest(
+	opts: { transactionLimits?: boolean } = {}
+): TestConvex<typeof schema> {
+	const t = convexTest({ schema, modules, transactionLimits: opts.transactionLimits ?? false });
+	rateLimiterTest.register(t);
+	return t;
+}
 
 export type MailboxSeed = {
 	userId?: string;

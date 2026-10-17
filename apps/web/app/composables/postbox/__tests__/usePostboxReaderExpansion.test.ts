@@ -44,6 +44,32 @@ describe('initialExpandedIds', () => {
 		expect([...set].sort()).toEqual(['c', 'e']);
 	});
 
+	it('leaves unread earlier messages collapsed too for the calm reader (read on arrival §3)', () => {
+		const thread = [msg('a', false), msg('b', false), msg('c', false), msg('d', false)];
+		expect([...initialExpandedIds(thread, 'd', true, false, false)]).toEqual(['d']);
+		// The opened message is still expanded wherever it sits.
+		expect([...initialExpandedIds(thread, 'b', true, false, false)].sort()).toEqual(['b', 'd']);
+	});
+
+	it('passes the reader-only option through the composable, Answer mode keeps its default', () => {
+		const thread = [msg('a', false), msg('b', false), msg('c', false)];
+		const calm = usePostboxReaderExpansion({
+			threadKey: () => 't1',
+			activeId: () => 'c',
+			messages: () => thread,
+			expandFirst: false,
+			expandUnread: false,
+		});
+		expect([...calm.expanded.value]).toEqual(['c']);
+		const answer = usePostboxReaderExpansion({
+			threadKey: () => 't1',
+			activeId: () => 'c',
+			messages: () => thread,
+			expandFirst: false,
+		});
+		expect([...answer.expanded.value].sort()).toEqual(['a', 'b', 'c']);
+	});
+
 	it('leaves the first message collapsed in a two-message thread', () => {
 		expect([...initialExpandedIds([msg('a'), msg('b')], 'b')]).toEqual(['b']);
 	});

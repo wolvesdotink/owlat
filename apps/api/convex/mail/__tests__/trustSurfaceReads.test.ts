@@ -17,6 +17,7 @@
  * derives from.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
@@ -103,6 +104,7 @@ describe('getMessageDetails', () => {
 	it('returns the header facts the details panel renders', async () => {
 		setOwnerSession();
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setup(t);
 
 		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {
@@ -151,6 +153,7 @@ describe('getMessageDetails', () => {
 	it('leaves isReplyToMismatch unset for a Reply-To on a subdomain of the same org', async () => {
 		setOwnerSession();
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setup(t);
 
 		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {
@@ -171,6 +174,7 @@ describe('getMessageDetails', () => {
 	it('leaves a check the message never carried ABSENT rather than defaulting it', async () => {
 		setOwnerSession();
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setup(t);
 
 		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {
@@ -194,6 +198,7 @@ describe('getMessageDetails', () => {
 	it('returns null for a caller with no session — headers are recipient-scoped', async () => {
 		setOwnerSession();
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setup(t);
 
 		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {
@@ -223,6 +228,7 @@ describe('listMessages — the fields the row trust marker derives from', () => 
 	it('carries the verdicts, the alignment domains and the ingest heuristics', async () => {
 		setOwnerSession();
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setup(t);
 
 		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {

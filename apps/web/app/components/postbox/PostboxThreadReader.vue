@@ -77,6 +77,8 @@ import { deriveReplyRisk, senderRiskInputOf, type ReplyRisk } from '~/utils/send
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
 import { usePostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
+import { usePostboxCalmReader } from '~/composables/postbox/usePostboxCalmReader';
+import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 import { usePostboxTeamStream } from '~/composables/postbox/usePostboxTeamStream';
 import { usePostboxReaderExpansion } from '~/composables/postbox/usePostboxReaderExpansion';
 import { usePostboxReaderOpenRow } from '~/composables/postbox/usePostboxReaderOpenRow';
@@ -100,6 +102,7 @@ import {
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
 import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
+import type { Placement } from '@owlat/shared/arrival';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -118,6 +121,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const listQuery = usePostboxListQuery();
 
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 
@@ -208,6 +212,10 @@ const { expanded, toggleExpanded } = usePostboxReaderExpansion({
 	activeId: () => props.message._id,
 	messages: () => threadPages.newestRows.value,
 	startsThread: () => threadPages.startsThread.value,
+	// One page (read on arrival §3): earlier messages, read or not, are one
+	// line each; the latest (and the opened one) are expanded.
+	expandFirst: false,
+	expandUnread: false,
 });
 // The opened message is always in the conversation, even before the page that
 // holds it has loaded; an expanded envelope gets its body folded in.
@@ -251,11 +259,18 @@ const readerThread = computed(
 					mutedAt?: number;
 					notifyOnReplyAt?: number;
 					snoozeReturnedAt?: number;
+					// The Priority placement (read on arrival §2.8), for "Why here?".
+					arrival?: { placement: Placement };
+					placementOverride?: { placement: Placement };
 			  }
 			| null
 			| undefined
 );
-// The thread brief (SPEC §7, personal mailboxes): Overview, cites, latest lines, reactions.
+// The thread brief (SPEC §7, personal mailboxes): the strip, cites, latest lines, reactions.
+// Per-user reader preferences (auto-advance, reply default, mark-read policy, the
+// brief), read before the brief and the mark-read watcher, which both run immediately.
+const { autoAdvance, replyDefault, markReadPolicy, autoSummarize } = usePostboxSettings();
+
 const rb = usePostboxReaderBrief({
 	mailboxId: () => props.message.mailboxId,
 	threadId: () => readerThread.value?._id ?? props.message.threadId,
@@ -264,7 +279,9 @@ const rb = usePostboxReaderBrief({
 	toggleExpanded,
 	pages: threadPages,
 	secureClass,
+	isOwnAddress: (address) => ownAddresses.value.has(extractEmailAddress(address)),
 	onReply: () => runReaderAction('reply'),
+	showBrief: () => autoSummarize.value,
 });
 
 const latestOutboundId = computed(() => {
@@ -346,10 +363,6 @@ function schedulingTimesFor(msg: {
 	});
 	return show ? (intent?.proposedTimes ?? []) : null;
 }
-
-// Per-user reader preferences (auto-advance, reply default, mark-read policy), read
-// here because the mark-read watcher below runs immediately.
-const { autoAdvance, replyDefault, markReadPolicy } = usePostboxSettings();
 
 // Mark-as-read on open under markReadPolicy: 'immediate' on render (also unset),
 // 'after-dwell' after POSTBOX_MARK_READ_DWELL_MS of visible dwell (cancelled on
@@ -551,6 +564,22 @@ const {
 	keyChanged: correspondentKeyChanged,
 	refetch: refetchCorrespondentKey,
 } = usePostboxCorrespondentKey(() => (sealedMailEnabled.value ? threadCounterpart.value : ''));
+// The calm reader's chrome (read on arrival §3): one notice, Details, the
+// Full brief sheet, Ask, and the "Why here?" seam lane learn fills.
+const stripEl = ref<{ detailsEl: HTMLElement | null } | null>(null);
+const calm = usePostboxCalmReader({
+	threadKey,
+	mailboxId: () => props.message.mailboxId,
+	threadId: () => discussionThreadId.value,
+	placement: () =>
+		readerThread.value?.placementOverride?.placement ?? readerThread.value?.arrival?.placement,
+	messages: allMessages,
+	latest: latestMessage,
+	expanded,
+	keyChanged: computed(() => !!correspondentKeyChanged.value),
+	isSigned: rb.isSigned,
+	detailsEl: computed(() => stripEl.value?.detailsEl ?? null),
+});
 /** The seal status belongs to the ONE sender it describes, not to every message. */
 function sealStatusFor(msg: { fromAddress: string }) {
 	const from = extractEmailAddress(msg.fromAddress).toLowerCase();
@@ -649,6 +678,8 @@ const {
 		folderRole: () => props.folderRole,
 		inPlace: () => props.advanceInPlace,
 		emit: (target) => emit('advance', target),
+		// A filtered list (`?placement=`) keeps its filter as the reader moves on.
+		query: () => listQuery.value,
 	},
 	compose: {
 		reply: replyToLatest,
@@ -711,21 +742,28 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 		class="pbx-reader-article p-6 max-w-4xl mx-auto"
 		:class="team.isActive.value ? '' : discussionArticleClass"
 	>
+		<!-- One page (read on arrival §3): header line, the strip (or the slim
+		     "Why here? · Details" line), one notice, then the conversation. -->
 		<PostboxThreadHeader
 			:subject="message.subject"
 			:message-count="threadMessageCount"
 			:message-id="messageId"
 			:thread="readerThread"
-			:latest-outbound-id="latestOutboundId"
-			:label-ids="threadLabels"
-			:labels="labelMap"
 			:show-mark-read="showsManualMarkReadButton"
 			:marking-read="markThreadReadOp.isLoading.value"
-			:view="rb.switchView.value"
-			@update:view="rb.setView"
+			:show-why-here="!rb.isShared.value"
+			:show-ask="isFeatureEnabled('ai')"
+			:show-full-brief="rb.hasFullBrief.value"
 			@toggle-mute="toggleOpenThreadMute"
 			@toggle-alert="toggleOpenThreadAlert"
 			@mark-read="markOpenThreadRead"
+			@reply="runReaderAction('reply')"
+			@archive="runReaderAction('archive')"
+			@snooze="runReaderAction('snooze')"
+			@ask="calm.asking.value = !calm.asking.value"
+			@details="calm.detailsOpen.value = true"
+			@full-brief="calm.sheetOpen.value = true"
+			@why-here="calm.openWhyHere"
 		>
 			<template #actions>
 				<PostboxThreadDiscussionToggle
@@ -735,37 +773,58 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			</template>
 		</PostboxThreadHeader>
 
-		<!-- The same conversation, seen from the other surface (idea 31). Renders
-		     only when this message ALSO exists in the Team Inbox and the viewer is
-		     permitted on both sides; read-only, and it merges nothing. -->
-		<PostboxCrossSurfaceStrip :message-id="messageId" class="mb-3" />
+		<PostboxReaderStrip
+			ref="stripEl"
+			v-model:details-open="calm.detailsOpen.value"
+			:strip="rb.strip.value"
+			:gist-attribution="rb.gistAttribution.value"
+			:summary="calm.summary.value"
+			:show-why-here="!rb.isShared.value"
+			:has-exact-wording="!!rb.firstExactWordingId.value"
+			:has-full-brief="rb.hasFullBrief.value && rb.isBriefShown.value"
+			@why-here="calm.openWhyHere"
+			@full-brief="calm.sheetOpen.value = true"
+			@exact-wording="rb.citeMessage(rb.firstExactWordingId.value ?? '')"
+			@react="rb.react"
+		>
+			<template #details>
+				<PostboxReaderDetails
+					:message-id="messageId"
+					:thread="readerThread"
+					:latest-outbound-id="latestOutboundId"
+					:label-ids="threadLabels"
+					:labels="labelMap"
+				/>
+			</template>
+		</PostboxReaderStrip>
 
-		<!-- Sealed Mail (E5): the Signal-style key-change banner (explicit re-pin).
-		     An alarm, so it stays at thread level; the contact key PANEL moved into
-		     the correspondent's trust chip. Flag-gated; renders nothing without an
-		     unsigned rotation on file. -->
-		<PostboxKeyChangeBanner
-			v-if="correspondentKeyChanged"
-			:address="threadCounterpart"
-			:old-fingerprint="correspondentKey?.pinnedFingerprint"
-			:new-fingerprint="correspondentKey?.observedFingerprint"
-			:was-verified="correspondentKeyWasVerified"
+		<PostboxReaderNotice
+			:kind="calm.notice.value"
+			:danger="calm.danger.value"
+			:danger-text="calm.dangerText.value"
+		>
+			<!-- Sealed Mail (E5): the Signal-style key-change banner (explicit re-pin). -->
+			<template #keyChange>
+				<PostboxKeyChangeBanner
+					:address="threadCounterpart"
+					:old-fingerprint="correspondentKey?.pinnedFingerprint"
+					:new-fingerprint="correspondentKey?.observedFingerprint"
+					:was-verified="correspondentKeyWasVerified"
+					@accepted="refetchCorrespondentKey()"
+				/>
+			</template>
+		</PostboxReaderNotice>
+
+		<PostboxAiStrip
+			v-if="calm.asking.value && latestMessage"
 			class="mb-3"
-			@accepted="refetchCorrespondentKey()"
+			:message-id="latestMessage._id"
+			@close="calm.asking.value = false"
 		/>
 
 		<!-- No skeleton while the thread loads: the opened row renders with its
-		     inline body, and the rest of the conversation joins it on arrival.
-		     What depends on the whole thread (the Overview, the triage offer)
-		     waits for it. -->
-		<PostboxThreadOverview
-			v-if="rb.showsOverview.value"
-			:state="rb"
-			:messages="allMessages"
-			:message-count="threadMessageCount"
-			@action="runReaderAction"
-		/>
-		<div v-show="!rb.showsOverview.value" class="space-y-2">
+		     inline body, and the rest of the conversation joins it on arrival. -->
+		<div class="space-y-2">
 			<PostboxThreadCiteNote :state="rb" />
 
 			<TeamPinnedItems
@@ -810,6 +869,8 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 					:eager-body="mountAllBodies"
 					:latest-line="rb.latestFor(msg._id)"
 					:cite-quote="rb.citeQuoteFor(msg._id)"
+					v-bind="calm.cardOf(msg._id)"
+					@image-state="calm.onImageState(msg._id, $event)"
 					@toggle-expanded="toggleExpanded(msg._id)"
 					@open-sender-profile="openSenderProfile(msg)"
 					@toggle-forced-light="toggleForcedLight(msg._id)"
@@ -880,6 +941,9 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			@update:open="moveDialogOpen = $event"
 			@pick="moveOpenMessageTo"
 		/>
+
+		<!-- "Full brief": the whole brief card beside the conversation. -->
+		<PostboxBriefSheet v-model:open="calm.sheetOpen.value" :state="rb" :messages="allMessages" />
 
 		<!-- Plan idea 45: one slide-over for whichever sender line was clicked. -->
 		<PostboxSenderProfile

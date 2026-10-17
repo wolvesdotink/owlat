@@ -208,6 +208,8 @@ export async function admitInterpretRun(
 		readonly verify: VerifyHoldPlan;
 		readonly root: LlmRootContext;
 		readonly priority: AdmissionPriority;
+		/** Reserve through the caller's mutation (read on arrival acts on a refusal there). */
+		readonly reserve?: NonNullable<Parameters<typeof reserveHolds>[2]>['reserve'];
 	}
 ): Promise<InterpretRunHold> {
 	const extractSize = dispatchRequestSize(opts.extract.prompt);
@@ -280,7 +282,8 @@ export async function admitInterpretRun(
 			budgetClass: 'standard' as const,
 			priority: opts.priority,
 			root: opts.root,
-		}))
+		})),
+		opts.reserve ? { reserve: opts.reserve } : {}
 	);
 	const languageId = wanted[0]?.plane === 'language' ? (ids[0] ?? undefined) : undefined;
 	const decisionIndex = wanted.findIndex((a) => a.plane === 'decision');
@@ -299,6 +302,61 @@ export async function admitInterpretRun(
 		settle: async () => {
 			await Promise.all([language.settle(), decision.settle()]);
 		},
+	};
+}
+
+/**
+ * The hold of a one-call path (read on arrival's gist): every attempt of that
+ * one call at its output ceiling, reserved before it is sent. Refused, it
+ * throws `AdmissionRefusedError` and nothing is held; `reserve` lets the
+ * caller act on the refusal in the reserving transaction (Sol r2 F4).
+ */
+export async function admitSingleCall(
+	ctx: ActionCtx,
+	opts: {
+		readonly task: AiTaskName;
+		readonly model: LanguageModel;
+		readonly prompt: Parameters<typeof dispatchRequestSize>[0];
+		readonly schema: Parameters<typeof zodSchema>[0];
+		readonly root: LlmRootContext;
+		readonly priority: AdmissionPriority;
+		readonly reserve?: NonNullable<Parameters<typeof reserveHolds>[2]>['reserve'];
+	}
+): Promise<InterpretRunHold> {
+	const size = dispatchRequestSize(opts.prompt);
+	const call = callBound(opts.model, opts.task, {
+		bytes: size.bytes + serializedBytes(zodSchema(opts.schema).jsonSchema),
+		messages: size.messages,
+	});
+	const requestId = globalThis.crypto.randomUUID();
+	const bounds = Array.from({ length: call.maxRequests }, (_, index) => ({
+		requestId,
+		attempt: index + 1,
+		microusd: call.maxRequestMicrousd,
+	}));
+	const wanted = allocation({
+		task: opts.task,
+		plane: 'language',
+		microusd: call.microusd,
+		maxRequests: call.maxRequests,
+		bounds,
+		call,
+	});
+	if (!wanted) return NO_RUN_HOLD;
+	const [id] = await reserveHolds(
+		ctx,
+		[{ ...wanted, budgetClass: 'standard' as const, priority: opts.priority, root: opts.root }],
+		opts.reserve ? { reserve: opts.reserve } : {}
+	);
+	if (!id) return NO_RUN_HOLD;
+	const held = settleable(ctx, id);
+	return {
+		extractTarget: { reservationId: id, requestId },
+		verifyTarget: () => ({}),
+		claimCheckTarget: () => ({}),
+		count: held.count,
+		countClaimChecks: () => {},
+		settle: held.settle,
 	};
 }
 

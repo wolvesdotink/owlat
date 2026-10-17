@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { threadRefFields } from '../lib/validators/threadRef';
 import { runBudgetRefusalValidator } from '../lib/validators/aiRouting';
+import { threadBriefGistValidator } from '../lib/validators/arrival';
 import { threadBriefFeedbackTables } from './threadBriefFeedback';
 import { interpretSourceTables } from './interpretSources';
 import {
@@ -414,6 +415,11 @@ export const threadBriefTables = {
 				de: v.optional(v.string()), // sealed
 			})
 		),
+		// Read on arrival (SPEC §2.4, §2.5): the extractive gist (quotes sealed)
+		// and the sources settled as skipped or gist-only (settled, not pending).
+		gist: v.optional(threadBriefGistValidator),
+		skippedSources: v.optional(v.number()),
+		gistSources: v.optional(v.number()),
 		updatedAt: v.number(),
 	})
 		.index('by_mail_thread', ['mailThreadId'])

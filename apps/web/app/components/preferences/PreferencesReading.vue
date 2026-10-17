@@ -35,6 +35,8 @@ const {
 	setWritingSuggestions,
 	autoSummarize,
 	setAutoSummarize,
+	readOnArrival,
+	setReadOnArrival,
 	replyDefault,
 	setReplyDefault,
 	density,
@@ -321,7 +323,25 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 				@update:model-value="setAutoSummarize"
 			/>
 		</div>
-		<PreferencesThreadView v-if="isEnabled('ai') && autoSummarize" />
+		<div
+			v-if="isEnabled('ai')"
+			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+		>
+			<div class="min-w-0">
+				<label for="postbox-read-on-arrival" class="font-medium text-sm block">
+					{{ t('postbox.arrival.settings.label') }}
+				</label>
+				<p class="text-xs text-text-tertiary mt-0.5">
+					{{ t('postbox.arrival.settings.help') }}
+				</p>
+			</div>
+			<UiSwitch
+				id="postbox-read-on-arrival"
+				:model-value="readOnArrival"
+				:disabled="isSaving"
+				@update:model-value="setReadOnArrival"
+			/>
+		</div>
 		<PreferencesBriefBackfill v-if="isEnabled('ai') && autoSummarize" />
 		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 			<div class="min-w-0">

@@ -11,6 +11,7 @@ import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
 import { CATEGORY_SETTLE_MS, isInterpretationEligible, settleCategory } from '../eligibility';
 import { captureInterpretSource } from '../sources';
+import type { InterpretRunResult } from '../runShape';
 import { modules, seedMailThread } from './interpret.testlib';
 
 const NOW = Date.UTC(2026, 9, 11, 9, 0);
@@ -118,21 +119,26 @@ describe('owner’s repro: provisional category, List-Id capture, newsletter ref
 			await captureInterpretSource(ctx, { source, isLive: true, listId: '<news.acme.test>' });
 		});
 		// Repeated and concurrent calls (a re-run, the stale sweep, two jobs).
-		const results = await Promise.all([
+		const results: InterpretRunResult[] = await Promise.all([
 			t.action(internal.mail.interpret.run.interpretMessage, { source }),
 			t.action(internal.mail.interpret.run.interpretMessage, { source }),
 		]);
 		results.push(await t.action(internal.mail.interpret.run.interpretMessage, { source }));
+		// Each waits for the category, or found the source leased by one that does.
 		for (const result of results) {
-			expect(result).toMatchObject({ status: 'skipped', errorCode: 'category_pending' });
+			expect(['wait', 'busy']).toContain(result.status);
 		}
+		expect(results.filter((r) => r.status === 'wait').length).toBeGreaterThanOrEqual(1);
+		expect(results[2]).toEqual({ status: 'wait', retryAt: NOW + CATEGORY_SETTLE_MS });
 		const scheduled = await t.run(async (ctx) =>
-			(await ctx.db.system.query('_scheduled_functions').collect()).filter((f) =>
-				f.name.includes('interpretMessage')
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+				(f) => f.name.includes('interpretMessage') || f.name.includes('settleAtCeiling')
 			)
 		);
-		// One deferred job for the source, at the settle time; recorded on its snapshot.
-		expect(scheduled.map((f) => f.scheduledTime)).toEqual([NOW + CATEGORY_SETTLE_MS]);
+		// One deferred job for the source, its ceiling at the settle time; recorded on its snapshot.
+		expect(scheduled.map((f) => [f.name, f.scheduledTime])).toEqual([
+			[expect.stringContaining('settleAtCeiling'), NOW + CATEGORY_SETTLE_MS],
+		]);
 		const row = await t.run(async (ctx) =>
 			ctx.db
 				.query('interpretSources')

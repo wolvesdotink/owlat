@@ -10,13 +10,13 @@
  * reply back.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import { describe, expect, it } from 'vitest';
 import { aiTextToHtml } from '@owlat/shared/answerMode';
-import schema from '../../schema';
+import type schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
+import { seedFolder, seedMailbox, seedMessage, liveMailTest } from './helpers.testlib';
 import {
 	ANSWERED_RETENTION_MS,
 	MAX_TRACKED_ANSWERS,
@@ -237,7 +237,7 @@ async function syncIn(
 
 describe('a reply sent through Owlat', () => {
 	it('hides the AI-only drafts once the correspondent accepts it, and keeps a person’s', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		const newerId = await addMessage(t, c, { from: SENDER, at: T0 + 5_000, role: 'inbox' });
 		await flagWithSlot(t, c, c.askId);
@@ -278,7 +278,7 @@ describe('a reply sent through Owlat', () => {
 	});
 
 	it('does not settle on a Bcc copy alone', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		const sending = await seedDraft(t, c, {
 			inReplyTo: c.askId,
@@ -296,7 +296,7 @@ describe('a reply sent through Owlat', () => {
 	});
 
 	it('brings the drafts back when the reply later bounces for the correspondent', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		const sending = await seedDraft(t, c, {
 			inReplyTo: c.askId,
@@ -314,7 +314,7 @@ describe('a reply sent through Owlat', () => {
 	});
 
 	it('keeps a draft hidden while another accepted reply still answers it', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 2_000, ai: true });
 		const replyA = await seedDraft(t, c, {
@@ -346,7 +346,7 @@ describe('a reply sent through Owlat', () => {
 	});
 
 	it('keeps a draft through the newest reply’s bounce window, not the first one’s', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 2_000, ai: true });
 		const replyA = await seedDraft(t, c, {
@@ -390,7 +390,7 @@ describe('a reply sent through Owlat', () => {
 	});
 
 	it('stops tracking past the cap and keeps such a draft hidden for good', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 2_000, ai: true });
 		const replyA = await seedDraft(t, c, {
@@ -427,7 +427,7 @@ describe('a reply sent through Owlat', () => {
 	it.each(['bounced', 'failed'] as const)(
 		'keeps the drafts when the transport refuses it after queuing (%s)',
 		async (verdict) => {
-			const t = convexTest(schema, modules);
+			const t = liveMailTest();
 			const c = await seedConversation(t);
 			const sending = await seedDraft(t, c, {
 				inReplyTo: c.askId,
@@ -444,7 +444,7 @@ describe('a reply sent through Owlat', () => {
 	);
 
 	it('keeps every draft when the send is cancelled in the undo window', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		await flagWithSlot(t, c, c.askId);
 		const sending = await seedDraft(t, c, {
@@ -468,7 +468,7 @@ describe('a reply sent through Owlat', () => {
 
 describe('the retention window', () => {
 	it('keeps an obsoleted draft and its upload until the window passes, then purges both', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 1_000, ai: true });
 		const storageId = await t.run(async (ctx) => {
@@ -516,7 +516,7 @@ describe('the retention window', () => {
 
 describe('the purge under real transaction limits', () => {
 	it('works through large drafts in bounded runs, each one making progress', async () => {
-		const t = convexTest({ schema, modules, transactionLimits: true });
+		const t = liveMailTest({ transactionLimits: true });
 		const c = await seedConversation(t);
 		const body = `<p>${'x'.repeat(700 * 1024)}</p>`;
 		const old = Date.now() - ANSWERED_RETENTION_MS - 1;
@@ -563,7 +563,7 @@ describe('the purge under real transaction limits', () => {
 
 describe('a reply sent from an external client', () => {
 	it('hides the AI draft once sync detects it, and repeated syncs or a late generation change nothing', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		await flagWithSlot(t, c, c.askId);
 		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 1_000, ai: true });
@@ -587,7 +587,7 @@ describe('a reply sent from an external client', () => {
 	});
 
 	it('keeps a draft a person wrote, and an AI draft a person touched', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		const written = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 1_000 });
 		const touched = await seedDraft(t, c, {
@@ -605,7 +605,7 @@ describe('a reply sent from an external client', () => {
 	});
 
 	it('settles the same way when a desktop client APPENDs it', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		await flagWithSlot(t, c, c.askId);
 		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 1_000, ai: true });
@@ -618,7 +618,7 @@ describe('a reply sent from an external client', () => {
 	});
 
 	it('keeps an AI draft saved after the reply was sent', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		const sentId = await addMessage(t, c, { from: OWNER, at: T0 + 10_000, role: 'sent' });
 		const later = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 20_000, ai: true });
@@ -629,7 +629,7 @@ describe('a reply sent from an external client', () => {
 	});
 
 	it('does not treat an auto-reply from the owner as an answer', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		await flagWithSlot(t, c, c.askId);
 		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 1_000, ai: true });
@@ -642,7 +642,7 @@ describe('a reply sent from an external client', () => {
 	});
 
 	it('does not treat our own draft synced from the Drafts folder as a reply', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		await flagWithSlot(t, c, c.askId);
 		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 1_000, ai: true });
@@ -655,7 +655,7 @@ describe('a reply sent from an external client', () => {
 	});
 
 	it('a delayed sync of an older reply leaves the draft for a newer inbound mail', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		const answered = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 1_000, ai: true });
 		const newerId = await addMessage(t, c, { from: SENDER, at: T0 + 20_000, role: 'inbox' });
@@ -676,7 +676,7 @@ describe('a reply sent from an external client', () => {
 
 describe('a new inbound mail after the response', () => {
 	it('reopens the draft flow for that mail with a fresh draft', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const c = await seedConversation(t);
 		await flagWithSlot(t, c, c.askId);
 		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 1_000, ai: true });

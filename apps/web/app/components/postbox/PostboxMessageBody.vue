@@ -47,6 +47,7 @@ import {
 } from '~/utils/postboxBodyPlaceholder';
 import { applyPostboxImageConsent } from '~/utils/postboxRemoteResources';
 import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
+import { useRegisterReadableBody } from '~/composables/postbox/usePostboxSenderOpen';
 import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
 import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
 import { usePostboxQuoteHighlight } from '~/composables/postbox/usePostboxQuoteHighlight';
@@ -57,6 +58,7 @@ import {
 	postboxSenderKey,
 	postboxSenderTrustLabel,
 	resolvePostboxImageBanner,
+	type PostboxImageBannerState,
 } from '~/utils/postboxImageAllowlist';
 
 const props = defineProps<{
@@ -92,6 +94,8 @@ const props = defineProps<{
 	senderImagesAllowed?: boolean;
 	/** A cited quote of the thread brief to mark and scroll to (plan §4.2). */
 	highlightQuote?: CitedQuote | null;
+	/** Render the image banner there instead (the calm reader's Details, §3). */
+	imageBannerTo?: HTMLElement | null;
 }>();
 
 const emit = defineEmits<{
@@ -103,6 +107,8 @@ const emit = defineEmits<{
 	untrustSender: [fromAddress: string];
 	/** Whether the cited passage was found in the rendered body. */
 	citeLocated: [isLocated: boolean];
+	/** The image banner's state, for the calm reader's notice slot and summary. */
+	imageState: [kind: PostboxImageBannerState['kind']];
 }>();
 
 const { t } = useI18n();
@@ -198,6 +204,9 @@ const placeholder = computed(() =>
 // in for it. Degrades to the normal "(empty message)" iframe if the action
 // errors or the download fails.
 const bodyLoading = computed(() => waiting.value && !placeholder.value);
+// Senders (§5): the live body is the readable one; skeleton and saved copy are not.
+const readableEl = ref<HTMLElement | null>(null);
+useRegisterReadableBody(() => (waiting.value ? null : readableEl.value));
 
 function sanitize(html: string): string {
 	return sanitizeHtml(html, POSTBOX_SANITIZE_CONFIG);
@@ -367,6 +376,7 @@ const imageBanner = computed(() =>
 /** Flattened for the template: narrowing a discriminated union across
  *  sibling v-else-if branches is more fragile than reading a plain kind. */
 const imageBannerKind = computed(() => imageBanner.value.kind);
+watch(imageBannerKind, (kind) => emit('imageState', kind), { immediate: true });
 const canTrustSender = computed(() => senderKey.value !== null);
 
 const hasQuotedContent = computed(() => quotedSplit.value.hasQuote);
@@ -435,17 +445,19 @@ usePostboxFrameAutosize({
 	<div v-if="bodyLoading" class="mt-4">
 		<PostboxReaderSkeleton :with-header="false" />
 	</div>
-	<div v-else class="mt-4">
-		<PostboxImageBanner
-			:kind="imageBannerKind"
-			:tracker-count="trackerDetection.pixelCount"
-			:can-trust-sender="canTrustSender"
-			:sender-label="senderTrustLabel"
-			@show-once="showImages = true"
-			@load-everything="loadEverythingNow()"
-			@trust-sender="trustSender()"
-			@untrust-sender="untrustSender()"
-		/>
+	<div v-else ref="readableEl" class="mt-4">
+		<Teleport :to="imageBannerTo" :disabled="!imageBannerTo">
+			<PostboxImageBanner
+				:kind="imageBannerKind"
+				:tracker-count="trackerDetection.pixelCount"
+				:can-trust-sender="canTrustSender"
+				:sender-label="senderTrustLabel"
+				@show-once="showImages = true"
+				@load-everything="loadEverythingNow()"
+				@trust-sender="trustSender()"
+				@untrust-sender="untrustSender()"
+			/>
+		</Teleport>
 		<!-- palette-ok: designed mail keeps its own colors on a white paper card
 		     (also on the dark app background). Plain mail paints nothing, so it
 		     reads as part of the message card; `color-scheme` is pinned to the

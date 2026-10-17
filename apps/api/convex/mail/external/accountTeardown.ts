@@ -30,6 +30,7 @@ import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import { removeMessageAttachments } from '../attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../messagePurge';
+import { deleteArrivalMailboxPage } from '../arrival/mailboxRows';
 import { deleteMailboxUsage } from '../mailboxUsage';
 import { deleteFolderCounters, deleteMailboxCounters } from '../messageCounters';
 import { dropFolderMembership } from '../folderMembership';
@@ -237,6 +238,13 @@ export const _purgeChunk = internalMutation({
 			.take(PURGE_CHUNK);
 		for (const op of remoteOps) await ctx.db.delete(op._id);
 		if (remoteOps.length === PURGE_CHUNK) {
+			await ctx.scheduler.runAfter(0, internal.mail.external.accountTeardown._purgeChunk, args);
+			return;
+		}
+
+		// Read on arrival: sender profiles, the undo log (with its sealed reasons),
+		// rule drafts, delayed actions, digests and records, a page at a time.
+		if (!(await deleteArrivalMailboxPage(ctx, args.mailboxId, PURGE_CHUNK))) {
 			await ctx.scheduler.runAfter(0, internal.mail.external.accountTeardown._purgeChunk, args);
 			return;
 		}

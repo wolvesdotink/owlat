@@ -15,6 +15,7 @@
  * at rest like every other derived text (`responsePlanDraft.recordCheck`).
  */
 
+import { isThreadFullyRead } from './fullRead';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { v } from 'convex/values';
@@ -259,7 +260,10 @@ export async function retirePlansForDraft(
 /** A thread's plan as it stands: its items now, and the stances over them. */
 export interface PlanState {
 	threadRevision: number;
+	/** `partial` while the thread is not fully read (read on arrival, `fullRead.ts`). */
 	completeness: BriefCompleteness;
+	/** Every message of the thread read in full (no gist-only or counted one left). */
+	isFullyRead: boolean;
 	rows: Doc<'threadItems'>[];
 	items: PlanItem<ItemId>[];
 	isOverflow: boolean;
@@ -280,11 +284,12 @@ export async function loadPlanState(
 	// A fenced thread (staleFence.ts) has no items to plan, no brief, and no
 	// stored check to show: its coverage, claims and promises read the old plan.
 	const isFenced = await isInterpretationFenced(ctx, ref);
-	const [brief, loaded, row, slots] = await Promise.all([
+	const [brief, loaded, row, slots, isFullyRead] = await Promise.all([
 		loadBriefRow(ctx, ref),
 		isFenced ? { rows: [], items: [], isOverflow: false } : loadPlanItems(ctx, ref),
 		draftRef && !isFenced ? readPlanRow(ctx, draftRef) : Promise.resolve(null),
 		openSlotItemIds(ctx, ref, draftRef),
+		isThreadFullyRead(ctx, ref),
 	]);
 	for (const id of options.openSlots ?? []) slots.add(id);
 	const chosen = [...(row?.stances ?? []), ...(options.chosen ?? [])];
@@ -292,7 +297,12 @@ export async function loadPlanState(
 	const latest = [...new Map(chosen.map((s) => [s.itemId as string, s])).values()];
 	return {
 		threadRevision: brief?.interpretationRevision ?? 0,
-		completeness: isFenced ? 'none' : (brief?.completeness ?? 'none'),
+		completeness: isFenced
+			? 'none'
+			: !isFullyRead && brief?.completeness === 'complete'
+				? 'partial'
+				: (brief?.completeness ?? 'none'),
+		isFullyRead,
 		rows: loaded.rows,
 		items: loaded.items,
 		isOverflow: loaded.isOverflow,
@@ -393,6 +403,8 @@ export async function upsertPlan(
 export interface PlanForDraft {
 	threadRevision: number;
 	completeness: BriefCompleteness;
+	/** False while read on arrival's upgrades of the thread are still to land (`fullRead.ts`). */
+	isFullyRead: boolean;
 	items: PlanItem<ItemId>[];
 	isOverflow: boolean;
 	stances: PlanStance<ItemId>[];
@@ -413,6 +425,7 @@ export async function planForDraft(
 	return {
 		threadRevision: state.threadRevision,
 		completeness: state.completeness,
+		isFullyRead: state.isFullyRead,
 		items: state.items,
 		isOverflow: state.isOverflow,
 		stances: state.stances,

@@ -4,6 +4,7 @@
  * `interpretMessage` (SPEC §4 `run.ts`): interpret one message and fold it
  * into its thread.
  *
+ *   0. lease     one run per source (`lease.ts`): held elsewhere → `busy`
  *   1. load      thread, mode, the eligibility snapshot taken at enqueue
  *                (`sources.ts`; none → not interpreted), brief revision, items, facts
  *   2. eligible? an ineligible message is recorded as skipped and stops here
@@ -23,6 +24,11 @@
  *  10. reduce    `applyInterpretation`, compare-and-set, retried when stale;
  *                a changed body or mode starts the run over once
  *
+ * Read on arrival (SPEC §2.3): between 5 and 6 an arrival read decides how
+ * deep it goes (`arrivalRun.ts`, `arrivalDecide.ts`): full as above, a gist
+ * (`gist.ts`), or a count / nothing settled without a model call. Steps 1–10
+ * of one attempt live in `runOnce.ts`.
+ *
  * FAIL-SOFT: any refusal or failure records a `failed` extraction, so the brief says
  * it is incomplete. Never deletes items, never reads as "nothing to do", never throws.
  * `runInterpretation` is the plain core the wiring calls inside its own actions
@@ -32,55 +38,24 @@
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
-import { admissionRefusalOf } from '../../lib/llm/admissionPort';
-import { logWarn } from '../../lib/runtimeLog';
-import type { InterpretMode } from '@owlat/shared/threadBrief';
+import { admissionAnswer } from './arrivalRun';
 import {
 	interpretModeValidator,
 	interpretationSourceValidator,
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
-import { INTERPRET_EXTRACTOR_VERSION } from './schema';
-import { renderSegments } from './prompt';
-import { extractOutput, prepareExtraction } from './extractOutput';
-import { admitInterpretRun, type InterpretRunHold } from './runHold';
-import { resolveLanguageModel } from '../../lib/llmProvider';
 import { predecessorRoot, predecessorsPending, runDeferredPredecessors } from './defer';
-import {
-	finish,
-	type InterpretArgs,
-	type InterpretRunResult,
-	type Restart,
-	type RunRecord,
-} from './runShape';
-import { groundProposals } from './ground';
-import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
-import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scope';
-import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from './pipeline';
-import { needsReplyProjectionOf } from './needsReplyProjection';
-import { interpretRoot } from './verify';
-import { planVerification, verifyHoldPlanOf, verifyRouted } from './verifyRoute';
-import { apply as applyRecord } from './runApply';
-import { isRetryDue } from './retry';
-import { guardAllowsInterpretation } from '../../agent/steps/security_scan/guard';
+import type { InterpretArgs, InterpretRunResult, Restart } from './runShape';
+import { withSourceLease } from './runApply';
+import { recordRestartFailure, runOnce } from './runOnce';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 import { llmRootContextValidator } from '../../lib/llmUsageTags';
+import { depthValidator } from '../../lib/validators/arrival';
 
 export type { InterpretArgs, InterpretRunResult } from './runShape';
 
 /** Whole-run attempts when the body or the thread's mode changed under it. */
 const MAX_RUN_ATTEMPTS = 2;
-
-type Loaded = NonNullable<Awaited<ReturnType<typeof loadState>>>;
-
-function loadState(ctx: ActionCtx, args: InterpretArgs) {
-	return ctx.runQuery(internal.mail.interpret.load.loadForInterpretation, { source: args.source });
-}
-
-/** Write the run's record through the reducer (`./runApply.ts`), reloading while stale. */
-function apply(ctx: ActionCtx, args: InterpretArgs, loaded: Loaded, record: RunRecord) {
-	return applyRecord(ctx, args, loaded, record, () => loadState(ctx, args));
-}
 
 /** Interpret one message (see the module doc). Never throws. */
 export async function runInterpretation(
@@ -88,12 +63,35 @@ export async function runInterpretation(
 	args: InterpretArgs
 ): Promise<InterpretRunResult> {
 	anchorActionDeadline(ctx); // one model budget per action, from here (ADR-0073)
+	// One run per source at a time (lease.ts): claimed before anything is read or bought.
+	return withSourceLease(ctx, args.source, args.depth, (leaseToken) =>
+		runLeased(ctx, { ...args, leaseToken })
+	);
+}
+
+async function runLeased(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRunResult> {
+	// Read on arrival: admitted before anything is read, predecessors included (Sol r1 F3/F4).
+	if (args.source.kind === 'mail') {
+		const admitted = await ctx.runMutation(internal.mail.interpret.arrivalAdmit.admitArrivalRun, {
+			source: { kind: 'mail', id: args.source.id },
+			...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
+			...(args.depth ? { depth: args.depth } : {}),
+			...(args.isUpgrade ? { isUpgrade: true } : {}),
+			isCallerResuming: args.predecessors !== undefined,
+			...(args.parentSource ? { parentSource: args.parentSource } : {}),
+		});
+		if (admitted.kind !== 'go') return admissionAnswer(admitted);
+	}
 	// D10: earlier deferred mail of the thread first, under the caller's deadline (defer.ts).
 	const deadlineAt = args.root?.deadlineAt;
+	// Each is read in full: a deferred one as today, an upgradeable one (read on
+	// arrival as gist or count) because this source needs the whole thread.
 	const readFirst = (source: InterpretationSource) =>
 		runInterpretation(ctx, {
 			source,
 			predecessors: 'already_read',
+			parentSource: args.source,
+			depth: 'full',
 			...predecessorRoot(source, deadlineAt),
 		});
 	const pending = await runDeferredPredecessors(ctx, args.source, readFirst, args);
@@ -104,376 +102,7 @@ export async function runInterpretation(
 		if (!('restart' in out)) return out;
 		reason = out.restart;
 	}
-	// The body (or the scope) kept changing under every attempt: record that, with
-	// no claims written, and keep the last good read (the reducer does).
-	const errorCode = reason === 'sourceChanged' ? 'source_changed' : 'mode_changed';
-	const loaded = await loadState(ctx, args);
-	if (!loaded) return { status: 'gone' };
-	const out = finish(
-		await apply(ctx, args, loaded, { contentRevision: 'unread', status: 'failed', errorCode }),
-		{ errorCode }
-	);
-	return 'restart' in out
-		? { status: 'failed', isReplayed: false, createdItemIds: [], errorCode }
-		: out;
-}
-
-async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRunResult | Restart> {
-	const loaded = await loadState(ctx, args);
-	if (!loaded) return { status: 'gone' };
-	const mode: InterpretMode = loaded.mode;
-
-	// A fenced thread (staleFence.ts) is not read: nothing is recorded (a record
-	// would rebuild what the fence hides), and the source stops being outstanding.
-	const source = { source: args.source };
-	if (await ctx.runQuery(internal.mail.interpret.staleFence.isSourceFenced, source)) {
-		await ctx.runMutation(internal.mail.interpret.outstanding.settleRecorded, source);
-		const skipped: InterpretRunResult = {
-			status: 'skipped',
-			isReplayed: false,
-			createdItemIds: [],
-			errorCode: 'interpretation_fenced',
-		};
-		return skipped;
-	}
-
-	// A bulk-stranger candidate whose thread category is still provisional
-	// (PR-4): wait for the category refinement, bounded, instead of deciding
-	// the bulk rule on the baseline label. Only the deferral is recorded.
-	if (loaded.categoryPendingUntil !== undefined) {
-		// One deferred job per source and deadline (categoryDefer.ts).
-		await ctx.runMutation(internal.mail.interpret.categoryDefer.deferForCategory, {
-			source: args.source,
-			until: loaded.categoryPendingUntil,
-		});
-		return {
-			status: 'skipped',
-			isReplayed: false,
-			createdItemIds: [],
-			errorCode: 'category_pending',
-		};
-	}
-
-	const eligible = loaded.eligibility
-		? isInterpretationEligible(loaded.eligibility, { direction: loaded.direction })
-		: ({ isEligible: false, skipReason: 'ineligible', detail: 'no_snapshot' } as const);
-	if (!eligible.isEligible) {
-		return finish(
-			await apply(ctx, args, loaded, {
-				contentRevision: 'skip',
-				status: 'skipped',
-				skipReason: eligible.skipReason,
-				errorCode: eligible.detail,
-			}),
-			{ errorCode: eligible.detail }
-		);
-	}
-
-	// D13 (ADR-0073): a Team message whose scan skipped the model guard gets it
-	// before this generative consumer; one it flags is not interpreted.
-	let isGuardClear: boolean;
-	try {
-		isGuardClear = await guardAllowsInterpretation(ctx, args.source, args.root?.deadlineAt);
-	} catch (error) {
-		// The late guard was refused by spend admission: a budget deferral (D1).
-		const refusal = admissionRefusalOf(error);
-		if (!refusal) throw error;
-		const budgetRefusal = { reason: refusal.reason, limit: refusal.limit };
-		const deferred = { contentRevision: 'unread', status: 'failed' as const, errorCode: 'budget' };
-		return finish(await apply(ctx, args, loaded, { ...deferred, budgetRefusal }), {
-			errorCode: 'budget',
-			budgetRefusal,
-		});
-	}
-	if (!isGuardClear) {
-		const skip = { skipReason: 'security' as const, errorCode: 'guard_flagged' };
-		const record = { contentRevision: 'skip', status: 'skipped' as const, ...skip };
-		return finish(await apply(ctx, args, loaded, record), { errorCode: skip.errorCode });
-	}
-
-	let contentRevision = 'unread';
-	let retryCount: number | undefined;
-	// The run's one spend hold, settled however the run ends (`runHold.ts`).
-	let hold: InterpretRunHold | undefined;
-	try {
-		const scoped = await scopeForInterpretation(ctx, args.source);
-		if (!scoped) return { status: 'gone' };
-		if (!scoped.ok) {
-			return finish(
-				await apply(ctx, args, loaded, {
-					contentRevision: scoped.skipReason,
-					status: 'skipped',
-					skipReason: scoped.skipReason,
-					...('detail' in scoped ? { errorCode: scoped.detail } : {}),
-				}),
-				'detail' in scoped ? { errorCode: scoped.detail } : {}
-			);
-		}
-		// Every attempt is checked against the body it read (review round 2 F1).
-		const sourceVersion = scoped.sourceVersion;
-		const { segmented, isTruncated } = segmentScoped(scoped);
-		contentRevision = await contentRevisionOf(segmented);
-		const sourceManifest = {
-			segments: segmented.segments.map((s) => ({
-				id: s.id,
-				kind: s.kind,
-				start: s.start,
-				end: s.end,
-			})),
-			isUncertain: segmented.uncertain,
-		};
-
-		// Reuse only on an EXACT match (review round 3 P3): the source's counted
-		// extraction (its newest attempt) is for this content revision,
-		// extractor version and mode. Then a complete one is reported as it
-		// stands, an incomplete one is repaired once its retry is due. Anything
-		// else (an older revision current again, another mode) re-extracts.
-		const counted = loaded.counted;
-		const isExact =
-			!!counted &&
-			counted.isApplied &&
-			counted.contentRevision === contentRevision &&
-			counted.extractorVersion === INTERPRET_EXTRACTOR_VERSION &&
-			counted.mode === mode;
-		// Admitted attempts (model calls) for this revision so far (round 4 M5):
-		// gate refusals carry the count unchanged, every admitted attempt adds one.
-		const priorAttempts = counted && isExact ? (counted.retryCount ?? 0) : 0;
-		if (counted && isExact) {
-			const isFinished = counted.status === 'complete' || counted.status === 'skipped';
-			const isCurrentRead =
-				loaded.current?.interpretationId === counted.interpretationId || !counted.hasPayload;
-			if ((isFinished && isCurrentRead) || (!isFinished && !isRetryDue(counted, Date.now()))) {
-				const good = loaded.current?.hasPayload ? loaded.current : null;
-				// A reused result is an outcome: the source is no longer outstanding.
-				await ctx.runMutation(internal.mail.interpret.outstanding.settleRecorded, {
-					source: args.source,
-				});
-				const stored =
-					good && good.contentRevision === contentRevision
-						? await ctx.runQuery(internal.mail.interpret.load.readStoredResult, {
-								interpretationId: good.interpretationId,
-							})
-						: null;
-				return {
-					status: counted.status,
-					isReplayed: true,
-					interpretationId: counted.interpretationId,
-					createdItemIds: [],
-					...(stored ? { projection: needsReplyProjectionOf(stored, loaded.ownerLocale) } : {}),
-					...(counted.errorCode ? { errorCode: counted.errorCode } : {}),
-					...(counted.nextRetryAt !== undefined ? { retryAt: counted.nextRetryAt } : {}),
-					// The stored refusal: a caller that defers or holds on it does so again.
-					...(counted.budgetRefusal ? { budgetRefusal: counted.budgetRefusal } : {}),
-				};
-			}
-		}
-		retryCount = priorAttempts + 1;
-		const attempt = {
-			...(retryCount !== undefined ? { retryCount } : {}),
-			...(sourceVersion ? { sourceVersion } : {}),
-		};
-
-		const gate = await ctx.runQuery(internal.mail.interpret.gate.checkAllowed, { mode });
-		if (!gate.isAllowed) {
-			const gateRefusal =
-				gate.code === 'budget' ? { reason: gate.reason, limit: gate.limit } : undefined;
-			return finish(
-				await apply(ctx, args, loaded, {
-					contentRevision,
-					status: 'failed',
-					errorCode: gate.code,
-					sourceManifest,
-					...(sourceVersion ? { sourceVersion } : {}),
-					// A refusal is not an admitted attempt: the count stays.
-					retryCount: priorAttempts,
-					...(gateRefusal ? { budgetRefusal: gateRefusal } : {}),
-				}),
-				{ errorCode: gate.code, ...(gateRefusal ? { budgetRefusal: gateRefusal } : {}) }
-			);
-		}
-
-		const input = buildInterpretInput({
-			mode,
-			segmented,
-			sentAt: loaded.sourceAt,
-			timezone: loaded.timezone,
-			contentRevision,
-			participants: loaded.participants,
-			openItems: loaded.openItems,
-			isItemsOverflow: loaded.isItemsOverflow,
-			currentFacts: loaded.currentFacts,
-			isFactsOverflow: loaded.isFactsOverflow,
-			locales: loaded.locales,
-		});
-		const { truncatedSegmentIds } = renderSegments(input.message.segments);
-		const root = args.root ?? interpretRoot(args.source);
-		// Spend admission (ADR-0073, D1): brief mode is background work, so its
-		// holds stop at the advisory reserve like its gate; actions mode feeds
-		// the Team pipeline.
-		const priority = mode === 'brief' ? 'background' : 'pipeline';
-		const prepared = await prepareExtraction(ctx, input, mode);
-		const verifyModel = await resolveLanguageModel(ctx, 'mail.verify');
-		// The verification path (cap, language verifier or claim checks), decided
-		// now so the hold below covers exactly it (`./verifyRoute.ts`, Sol r2 F2).
-		const source = {
-			source: args.source,
-			...(loaded.mailboxId ? { mailboxId: loaded.mailboxId } : {}),
-		};
-		const verifyPlan = await planVerification(ctx, source);
-		// One hold for the extraction and that verification, before anything
-		// is bought (Sol r4): refused, the whole run defers, backed off, with no
-		// retry spent; admitted, no call of the run can be refused halfway.
-		try {
-			const verify = verifyHoldPlanOf(verifyPlan);
-			hold = await admitInterpretRun(ctx, {
-				extract: prepared,
-				verifyModel,
-				verify,
-				root,
-				priority,
-			});
-		} catch (error) {
-			const refusal = admissionRefusalOf(error);
-			if (!refusal) throw error;
-			const budgetRefusal = { reason: refusal.reason, limit: refusal.limit };
-			const deferrals = (isExact ? (counted?.budgetDeferrals ?? 0) : 0) + 1;
-			return finish(
-				await apply(ctx, args, loaded, {
-					contentRevision,
-					status: 'failed',
-					errorCode: 'budget',
-					sourceManifest,
-					...(sourceVersion ? { sourceVersion } : {}),
-					retryCount: priorAttempts,
-					budgetDeferrals: deferrals,
-					budgetRefusal,
-				}),
-				{ errorCode: 'budget', budgetRefusal }
-			);
-		}
-		const output = await extractOutput(ctx, prepared, { root, priority, hold });
-		const grounding = groundProposals(output, segmented);
-		const ownAddresses = new Set(loaded.ownAddresses);
-
-		const itemText = new Map(loaded.openItems.map((i) => [i.id, i.assertion]));
-		const factText = new Map(loaded.currentFacts.map((f) => [f.id, f.assertion]));
-		const claims = verifyClaimsOf(grounding, segmented.canonicalText, {
-			participants: loaded.participants,
-			ownAddresses,
-			itemText: (id) => itemText.get(id),
-			factText: (id) => factText.get(id),
-		});
-		// The routing policy's claim cap and claim-check switch (`./verifyRoute.ts`).
-		const verified = await verifyRouted(ctx, claims, verifyPlan, {
-			root,
-			priority,
-			model: verifyModel,
-			hold,
-		});
-
-		const freshText = segmented.segments
-			.filter((s) => s.kind === 'fresh')
-			.map((s) => segmented.canonicalText.slice(s.start, s.end))
-			.join('\n');
-		const latestSuppressed =
-			mode !== 'brief'
-				? undefined
-				: isSecurityMail({ subject: scoped.subject, freshText })
-					? ('security' as const)
-					: isShortMail({
-								freshChars: freshText.length,
-								threadMessageCount: loaded.threadMessageCount,
-						  })
-						? ('short' as const)
-						: undefined;
-
-		const result = toReduceResult(output, grounding, {
-			mode,
-			canonicalText: segmented.canonicalText,
-			participants: loaded.participants,
-			ownAddresses,
-			timezone: loaded.timezone,
-			sentAt: loaded.sourceAt,
-			verdicts: verified.verdicts,
-			checked: new Set(claims.map((c) => c.id)),
-			...(latestSuppressed ? { latestSuppressed } : {}),
-		});
-		const run = runStatusOf({
-			grounding,
-			output,
-			isItemsOverflow: loaded.isItemsOverflow,
-			isFactsOverflow: loaded.isFactsOverflow,
-			truncatedSegmentIds,
-			isVerifyIncomplete: verified.isIncomplete,
-			isVerifyUnsendable: verified.isUnsendable,
-			isVerifyCapped: verified.isCapped,
-			isVerifyUnavailable: verified.isUnavailable,
-			isBodyIncomplete: scoped.omitted.includes('body_unavailable'),
-			isBodyTruncated: isTruncated,
-		});
-		const runErrorCode = run.errorCode;
-		// Not expected under the run's hold; when it happens the verification is an
-		// ordinary incomplete one, and the refusal is reported (Sol r4 F2) and
-		// stored, so a replay reports it too (Sol r2 F1).
-		const verifyRefusal = verified.refusal
-			? { reason: verified.refusal.reason, limit: verified.refusal.limit }
-			: undefined;
-		const outcome = await apply(ctx, args, loaded, {
-			contentRevision,
-			status: run.status,
-			...(runErrorCode ? { errorCode: runErrorCode } : {}),
-			sourceManifest,
-			coverage: {
-				segmentsRead: output.coverage.segmentsRead.slice(0, 50),
-				isUncertain: output.coverage.uncertain,
-				isOverflow: output.coverage.overflow,
-			},
-			result,
-			...attempt,
-			...(verifyRefusal ? { budgetRefusal: verifyRefusal } : {}),
-		});
-		return finish(outcome, {
-			projection: needsReplyProjectionOf(result, loaded.ownerLocale),
-			...(runErrorCode ? { errorCode: runErrorCode } : {}),
-			...(verifyRefusal ? { budgetRefusal: verifyRefusal } : {}),
-		});
-	} catch (error) {
-		// Spend admission refused the model call after the gate passed (the
-		// request did not fit, or another call took the headroom): a budget
-		// deferral like the gate's, not a model error, and no retry is spent.
-		const refusal = admissionRefusalOf(error);
-		const isBudget = refusal !== null;
-		const errorCode = isBudget ? 'budget' : 'model_error';
-		const budgetRefusal = refusal ? { reason: refusal.reason, limit: refusal.limit } : undefined;
-		// Only the first line: a validation error goes on to print its argument.
-		logWarn(
-			'[interpret] run failed:',
-			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
-		);
-		try {
-			const attempts = isBudget && retryCount !== undefined ? retryCount - 1 : retryCount;
-			return finish(
-				await apply(ctx, args, loaded, {
-					contentRevision,
-					status: 'failed',
-					errorCode,
-					...(attempts !== undefined ? { retryCount: attempts } : {}),
-					...(budgetRefusal ? { budgetRefusal } : {}),
-				}),
-				{ errorCode, ...(budgetRefusal ? { budgetRefusal } : {}) }
-			);
-		} catch {
-			return {
-				status: 'failed',
-				isReplayed: false,
-				createdItemIds: [],
-				errorCode,
-				...(budgetRefusal ? { budgetRefusal } : {}),
-			};
-		}
-	} finally {
-		await hold?.settle();
-	}
+	return recordRestartFailure(ctx, args, reason);
 }
 
 /** The schedulable entry point (wiring: delivery, outbound lifecycle, team pipeline). */
@@ -486,6 +115,8 @@ export const interpretMessage = internalAction({
 		precedence: v.optional(v.string()),
 		listId: v.optional(v.string()),
 		root: v.optional(llmRootContextValidator),
+		depth: v.optional(depthValidator),
+		isUpgrade: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<InterpretRunResult> => runInterpretation(ctx, args),
 });

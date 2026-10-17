@@ -46,14 +46,18 @@ export type Test = TestConvex<typeof schema>;
 /** A personal (or shared) mailbox with one inbound message in one thread. */
 export async function seedMailThread(
 	t: Test,
-	seed: MailboxSeed & { text?: string } = {}
+	seed: MailboxSeed & { text?: string; isReadOnArrival?: boolean } = {}
 ): Promise<{
 	mailboxId: Id<'mailboxes'>;
 	messageId: Id<'mailMessages'>;
 	threadId: Id<'mailThreads'>;
 }> {
-	const mailboxId = await seedMailbox(t, { address: 'me@owlat.test', ...seed });
+	const { isReadOnArrival, ...mailboxSeed } = seed;
+	const mailboxId = await seedMailbox(t, { address: 'me@owlat.test', ...mailboxSeed });
 	await seedFolder(t, mailboxId, 'inbox');
+	// Read on arrival stays off unless a test asks for it: these suites test the
+	// full read itself, which is what a run does with the preference off (SPEC §2.1).
+	if (isReadOnArrival !== true) await setReadOnArrival(t, mailboxId, false);
 	const messageId = await seedMessage(t, mailboxId, {
 		fromAddress: 'jonas@example.com',
 		textBodyInline: seed.text ?? 'Could you send the signed contract by Friday?',
@@ -213,4 +217,30 @@ export function reduceResult(overrides: Partial<ReduceResult> = {}): ReduceResul
 		dropped: { grounding: 0, verify: 0 },
 		...overrides,
 	};
+}
+
+/** The mailbox owner's read-on-arrival preference (`mailUserSettings.isReadOnArrival`). */
+export async function setReadOnArrival(
+	t: Test,
+	mailboxId: Id<'mailboxes'>,
+	isReadOnArrival: boolean
+): Promise<void> {
+	await t.run(async (ctx) => {
+		const userId = (await ctx.db.get(mailboxId))!.userId;
+		const row = await ctx.db
+			.query('mailUserSettings')
+			.withIndex('by_user', (q) => q.eq('userId', userId))
+			.first();
+		if (row) {
+			await ctx.db.patch(row._id, { isReadOnArrival });
+			return;
+		}
+		await ctx.db.insert('mailUserSettings', {
+			userId,
+			autoAdvance: 'next',
+			isReadOnArrival,
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		});
+	});
 }

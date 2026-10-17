@@ -46,6 +46,8 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 	const { t, locale } = useI18n();
 	const { isEnabled } = useFeatureFlag();
 	const { isAdmin } = usePermissions();
+	// "Show the brief above conversations": off, no AI sentence on a mail line.
+	const { autoSummarize } = usePostboxSettings();
 
 	// Only the team tab's model reads this, and only until the state arrives.
 	const mountedAt = Date.now();
@@ -84,6 +86,7 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 			teamUpdates: teamTab.value ? (teamUpdates.value ?? []) : [],
 			teamCounts: teamTab.value ? (teamCounts.value ?? null) : null,
 			since: since.value ?? mountedAt,
+			isBriefShown: autoSummarize.value,
 		});
 		const teamTimes = [...model.worth, ...model.also].map((line) => line.at);
 		const digestTime = mailboxIds.value

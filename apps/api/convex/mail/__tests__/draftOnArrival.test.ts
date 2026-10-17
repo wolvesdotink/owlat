@@ -69,6 +69,7 @@ function makeLoaded(over: Record<string, unknown> = {}) {
 		triggerMessageId: 'msg1',
 		triggerSubject: 'Hi',
 		mailboxId: 'mbx1',
+		ownerUserId: 'owner1',
 		latestMessageId: 'msg1',
 		urgency: 'normal',
 		isBulk: false,
@@ -79,13 +80,15 @@ function makeLoaded(over: Record<string, unknown> = {}) {
 
 /**
  * Build a mock ActionCtx. runMutation distinguishes the three call sites by the
- * shape of their args (assertAiAllowed: {}, getGuidanceForMailbox: {mailboxId},
+ * shape of their args (assertAiAllowed: {ownerUserId}, getGuidanceForMailbox: {mailboxId},
  * persistDraftSlot: {draft}). runQuery always returns `loaded`.
  */
-function makeCtx(opts: { aiOff?: boolean; loaded: unknown }) {
+function makeCtx(opts: { aiOff?: boolean; loaded: unknown; fullRead?: 'ready' | 'preparing' }) {
 	const persisted: Persisted[] = [];
 	const held: unknown[] = [];
 	const runMutation = vi.fn(async (_ref: unknown, params: Record<string, unknown>) => {
+		// Read on arrival: the thread is fully read (mail/interpret/fullRead.ts).
+		if (params && 'threadRef' in params) return opts.fullRead ?? 'ready';
 		if (params && 'draft' in params) {
 			persisted.push(params as unknown as Persisted);
 			return;
@@ -95,7 +98,7 @@ function makeCtx(opts: { aiOff?: boolean; loaded: unknown }) {
 			return;
 		}
 		if (params && 'mailboxId' in params) return { guidance: null };
-		// assertAiAllowed ({})
+		// assertAiAllowed ({ ownerUserId })
 		if (opts.aiOff) throw new Error('AI disabled');
 		return;
 	});
@@ -118,11 +121,21 @@ beforeEach(() => {
 });
 
 describe('generateDraftOnArrival', () => {
-	it('FAIL-SOFT: AI disabled → no slot persisted, loader never consulted', async () => {
+	it('FAIL-SOFT: AI disabled → no slot persisted, nothing past the gate runs', async () => {
 		const h = makeCtx({ aiOff: true, loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 		expect(h.persisted).toHaveLength(0);
-		expect(h.runQuery).not.toHaveBeenCalled();
+		// Only the loader ran: the gate needs the owner it names (#1380).
+		expect(h.runQuery).toHaveBeenCalledTimes(1);
+		// The full-read check, then the gate.
+		expect(h.runMutation).toHaveBeenCalledTimes(2);
+		expect(h.runMutation.mock.calls[1]![1]).toEqual({ ownerUserId: 'owner1' });
+	});
+
+	it('no live needs-reply thread → the gate is not charged at all', async () => {
+		const h = makeCtx({ loaded: null });
+		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
+		expect(h.runMutation).not.toHaveBeenCalled();
 	});
 
 	it('FAIL-SOFT: no live needs-reply thread (loader null) → no slot persisted', async () => {
@@ -267,5 +280,25 @@ describe('generateDraftOnArrival', () => {
 		const h = makeCtx({ loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 		expect(h.persisted).toHaveLength(0);
+	});
+});
+
+describe('generateDraftOnArrival: read on arrival (Sol r2 F1)', () => {
+	it('drafts nothing while the thread is not fully read, and looks again later', async () => {
+		const h = makeCtx({ loaded: makeLoaded(), fullRead: 'preparing' });
+		const runAfter = vi.fn(async () => undefined);
+		const ctx = { ...(h.ctx as object), scheduler: { runAfter } } as never;
+		await generateDraftOnArrival(ctx, { threadId: 'thr1' as never });
+		expect(runLlmTextMock).not.toHaveBeenCalled();
+		expect(h.persisted).toHaveLength(0);
+		expect(runAfter).toHaveBeenCalledWith(expect.any(Number), expect.anything(), {
+			threadId: 'thr1',
+			fullReadWaits: 1,
+		});
+		// Bounded: past the last look it gives up without a draft.
+		runAfter.mockClear();
+		await generateDraftOnArrival(ctx, { threadId: 'thr1' as never, fullReadWaits: 10 });
+		expect(runAfter).not.toHaveBeenCalled();
+		expect(runLlmTextMock).not.toHaveBeenCalled();
 	});
 });

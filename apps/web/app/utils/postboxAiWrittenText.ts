@@ -13,18 +13,30 @@
 import type { Ref } from 'vue';
 import { aiTextToHtml, splitAnswerBody } from '@owlat/shared/answerMode';
 
-const written = new WeakMap<Ref<string>, string>();
+const written = new WeakMap<Ref<string>, { text: string; offerKey?: string }>();
 
-/** Record (or, with null, forget) the AI text just written into `body`. */
-export function setAiWrittenText(body: Ref<string>, text: string | null): void {
+/**
+ * Record (or, with null, forget) the AI text just written into `body`, with
+ * the key of the thread's offered reply when the text is that reply (the
+ * unused-draft streak, apps/api/convex/mail/draftPause.ts).
+ */
+export function setAiWrittenText(body: Ref<string>, text: string | null, offerKey?: string): void {
 	if (text === null) written.delete(body);
-	else written.set(body, text);
+	else written.set(body, { text, ...(offerKey ? { offerKey } : {}) });
+}
+
+/** The AI text `html` (default: the body as it is now) still holds verbatim, with its offer key. */
+export function aiWrittenOf(
+	body: Ref<string>,
+	html: string = body.value
+): { text: string; offerKey?: string } | undefined {
+	const entry = written.get(body);
+	if (entry === undefined) return undefined;
+	const expected = aiTextToHtml(entry.text);
+	return expected !== '' && splitAnswerBody(html).fresh.trim() === expected ? entry : undefined;
 }
 
 /** The AI text `html` (default: the body as it is now) still holds verbatim, if any. */
 export function aiWrittenTextOf(body: Ref<string>, html: string = body.value): string | undefined {
-	const text = written.get(body);
-	if (text === undefined) return undefined;
-	const expected = aiTextToHtml(text);
-	return expected !== '' && splitAnswerBody(html).fresh.trim() === expected ? text : undefined;
+	return aiWrittenOf(body, html)?.text;
 }

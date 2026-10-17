@@ -4,6 +4,7 @@ import type { Doc, Id } from '@owlat/api/dataModel';
 import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import type { SenderAuthMessage } from '~/utils/senderAuth';
 import type { BriefTopRow } from '../../../../api/convex/mail/interpret/briefTop';
+import type { Placement } from '@owlat/shared/arrival';
 
 /**
  * One thread-list row's message shape. Extracted here (shared with
@@ -19,6 +20,7 @@ import type { BriefTopRow } from '../../../../api/convex/mail/interpret/briefTop
  */
 export type PostboxThreadRowMessage = SenderAuthMessage & {
 	_id: Id<'mailMessages'>;
+	mailboxId?: string;
 	threadId?: string;
 	fromAddress: string;
 	fromName?: string;
@@ -47,6 +49,8 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
 	// The thread brief's top open item (mail/interpret/briefTop.ts), shown
 	// instead of the snippet once the thread is interpreted.
 	briefTop?: BriefTopRow;
+	// The thread's Priority placement (read on arrival §3), attached server-side.
+	placement?: Placement;
 };
 </script>
 
@@ -67,8 +71,14 @@ import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import { usePostboxRowGestures } from '~/composables/postbox/usePostboxRowGestures';
 import { usePostboxMessageDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
+import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
+import { inject } from 'vue';
+import { usePostboxWhyHere } from '~/composables/postbox/usePostboxWhyHere';
+import { POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
 
 const { t } = useI18n();
+// A filtered list (`?placement=`) keeps its filter on the message route.
+const listQuery = usePostboxListQuery();
 
 const props = defineProps<{
 	msg: PostboxThreadRowMessage;
@@ -171,6 +181,25 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 	event.stopPropagation();
 	event.preventDefault();
 	triage(e);
+}
+
+// Read on arrival §4.1: a Priority row explains its placement from the hover bar.
+const whyHere = usePostboxWhyHere();
+const isPriorityRow = inject(POSTBOX_PRIORITY_ROWS, false);
+const isWhyHereShown = computed(
+	() => isPriorityRow && !!props.msg.placement && !!props.msg.threadId
+);
+function openWhyHere(event: MouseEvent) {
+	event.stopPropagation();
+	event.preventDefault();
+	const { mailboxId, threadId, placement } = props.msg;
+	if (!mailboxId || !threadId) return;
+	whyHere.open({
+		mailboxId,
+		threadId,
+		...(placement ? { placement } : {}),
+		anchor: event.currentTarget as HTMLElement,
+	});
 }
 
 // Right-click / context-menu-key items — the same triage verbs as the hover
@@ -304,7 +333,7 @@ function onCapturedClick(event: MouseEvent) {
 					role="option"
 					:tabindex="selectable ? -1 : undefined"
 					:aria-selected="focused"
-					:to="selectable ? undefined : `/dashboard/postbox/${folderRole}/${msg._id}`"
+					:to="selectable ? undefined : `/dashboard/postbox/${folderRole}/${msg._id}${listQuery}`"
 					class="pbx-row-link block w-full text-left px-4 py-3 hover:bg-(--surface-1-hover)"
 					:class="{
 						'bg-(--surface-1-selected)': active,
@@ -355,6 +384,17 @@ function onCapturedClick(event: MouseEvent) {
 				<div
 					class="ui-hover-reveal absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
 				>
+					<button
+						v-if="isWhyHereShown"
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
+						:title="t('postbox.explain.rowLink')"
+						:aria-label="t('postbox.explain.rowLink')"
+						data-testid="row-why-here"
+						@click="openWhyHere($event)"
+					>
+						<Icon name="lucide:help-circle" class="w-4 h-4" />
+					</button>
 					<button
 						type="button"
 						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-warning"

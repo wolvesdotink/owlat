@@ -75,9 +75,12 @@ export const extractCommitment = internalAction({
 			if (!context) return;
 
 			try {
-				// Same gate as the user-triggered Postbox AI: `ai` flag + rate limit +
-				// spend budget. Throws when disabled/limited → no commitment row.
-				await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
+				// Same gate as the user-triggered Postbox AI: `ai` flag + rate limit
+				// (the owner's background bucket, #1380) + spend budget. Throws when
+				// disabled/limited → no commitment row.
+				await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
+					ownerUserId: context.ownerUserId,
+				});
 
 				const who =
 					args.direction === 'outbound'

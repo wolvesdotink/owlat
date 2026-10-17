@@ -7,12 +7,12 @@
  * is gone.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import { describe, it, expect } from 'vitest';
-import schema from '../../schema';
+import type schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { modules, seedMailbox, seedFolder } from './helpers.testlib';
+import { seedMailbox, seedFolder, liveMailTest } from './helpers.testlib';
 
 const ME = 'me@owlat.test';
 
@@ -21,7 +21,7 @@ async function setup(): Promise<{
 	sentId: Id<'mailFolders'>;
 	rawStorageId: Id<'_storage'>;
 }> {
-	const t = convexTest(schema, modules);
+	const t = liveMailTest();
 	const mailboxId = await seedMailbox(t, { address: ME, domain: 'owlat.test' });
 	const sentId = await seedFolder(t, mailboxId, 'sent');
 	const rawStorageId = await t.run((ctx) => ctx.storage.store(new Blob(['raw'])));

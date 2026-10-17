@@ -14,7 +14,11 @@
  *    brief). A row a new-mode run already wrote stays;
  *  - every viewer's `viewOverride` (team surfaces have no Overview switch);
  *  - the thread's response plans (marked `stale`);
- *  - `mailThreads.briefTop`, recomputed in the new mode (no latest line).
+ *  - `mailThreads.briefTop`, recomputed in the new mode (no latest line);
+ *  - going shared, read on arrival's state: `threadBriefs.gist` and the
+ *    thread's arrival fields (`mail/arrival/sharedConversion.ts
+ *    clearSharedThreadArrival`), and the mailbox's arrival rows
+ *    (`drainSharedMailbox`, scheduled with the walk).
  *
  * Items carry over: both modes produce them. The brief row takes the new
  * mode (the reducer reconciles the mode the same way on its next run and
@@ -43,6 +47,7 @@ import type { InterpretMode } from '@owlat/shared/threadBrief';
 import { mailboxScope } from '../mailbox/shared';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';
+import { clearSharedThreadArrival } from '../arrival/sharedConversion';
 import { deleteExtractions, recomputeCompleteness } from './purgeRows';
 import {
 	drainShrinking,
@@ -72,6 +77,12 @@ export async function scheduleScopeInvalidation(
 		mode,
 		cursor: null,
 	});
+	// Read on arrival is personal-only: the mailbox's arrival rows go too.
+	if (mode === 'actions') {
+		await ctx.scheduler.runAfter(0, internal.mail.arrival.sharedConversion.drainSharedMailbox, {
+			mailboxId,
+		});
+	}
 }
 
 /**
@@ -85,6 +96,9 @@ export async function startScopeChange(
 	threadId: Id<'mailThreads'>,
 	mode: InterpretMode
 ): Promise<boolean> {
+	// Read on arrival is personal-only: a team inbox keeps no placement,
+	// override, digest eligibility or arrival record (SPEC §2.9).
+	if (mode === 'actions') await clearSharedThreadArrival(ctx, threadId);
 	const brief = await loadBriefRow(ctx, { kind: 'mail', id: threadId });
 	if (!brief) {
 		const thread = await ctx.db.get(threadId);
@@ -97,6 +111,13 @@ export async function startScopeChange(
 		interpretationRevision: brief.interpretationRevision + 1,
 		overview: undefined,
 		checkpoint: undefined,
+		// The arrival gist is a brief-mode reading (SPEC §2.4), and so are the
+		// gist-only and counted settlements: the team surfaces read the brief as
+		// what was actually extracted (`none` once the extractions are gone). The
+		// sources stay upgradeable, so the thread's next full read reads them.
+		...(mode === 'actions'
+			? { gist: undefined, gistSources: undefined, skippedSources: undefined }
+			: {}),
 		updatedAt: Date.now(),
 	});
 	return true;

@@ -118,11 +118,19 @@ export function opensInAnswerMode(item: AnswerRoutable): boolean {
 	return answerModeTarget(item) !== null;
 }
 
-/** The Answer mode route of `target` while the queue (filtered to `filter`) drives it. */
-export function answerQueueItemHref(target: AnswerModeTarget, filter: string): string {
+/**
+ * The Answer mode route of `target` while the queue (filtered to `filter`)
+ * drives it. `nudge` opens a Postbox reply that drafts a follow-up nudge.
+ */
+export function answerQueueItemHref(
+	target: AnswerModeTarget,
+	filter: string,
+	opts: { nudge?: boolean } = {}
+): string {
 	const queue = `queue=${encodeURIComponent(filter)}`;
 	if (target.kind === 'mail') {
-		return `/dashboard/answer/m/${encodeURIComponent(target.messageId)}?${queue}`;
+		const nudge = opts.nudge ? '&nudge=1' : '';
+		return `/dashboard/answer/m/${encodeURIComponent(target.messageId)}?${queue}${nudge}`;
 	}
 	return `/dashboard/answer/t/${encodeURIComponent(target.threadId)}?message=${encodeURIComponent(
 		target.messageId

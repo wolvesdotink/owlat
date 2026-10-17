@@ -16,6 +16,7 @@
  * Split out of `mail/needsReply.ts`, which is at the domain-file size gate.
  */
 
+import { refreshArrivalProjection } from './arrival/projection';
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
@@ -73,6 +74,8 @@ export const sweepPending = internalMutation({
 					needsReplyPendingAt: undefined,
 					needsReplyRetryCount: undefined,
 				});
+				// A heuristic flag left for a human is settled now (Sol r1 F9).
+				await refreshArrivalProjection(ctx, thread._id);
 				abandoned += 1;
 				continue;
 			}
@@ -118,5 +121,7 @@ export const settlePending = internalMutation({
 			needsReplyPendingAt: undefined,
 			needsReplyRetryCount: undefined,
 		});
+		// The heuristic flag stands now: settled, so the thread reads as needs_me.
+		await refreshArrivalProjection(ctx, args.threadId);
 	},
 });

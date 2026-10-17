@@ -18,6 +18,7 @@
  * (https://www.eicar.org/download-anti-malware-testfile/).
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
@@ -155,6 +156,7 @@ describe('ingestFromWebhook — inbound EICAR scan + Spam routing (PR-39)', () =
 		spamId: Id<'mailFolders'>;
 	}> {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		let inboxId!: Id<'mailFolders'>;
 		let spamId!: Id<'mailFolders'>;
 		await t.run(async (ctx) => {

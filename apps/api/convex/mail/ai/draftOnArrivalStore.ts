@@ -29,6 +29,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { checkDraftGaps } from './gapQuestions';
 import type { AskQuestion } from './composeDraftPolicy';
 import { isFencedThread } from '../interpret/staleFence';
+import { isDraftOnArrivalPaused } from '../draftPause';
 
 /**
  * Load everything the draft-on-arrival action needs for one thread, or `null`
@@ -67,6 +68,8 @@ export const loadForDraft = internalQuery({
 		// answer — drafting anyway produces a reply to our own message.
 		const ownerAddress = mailbox.address;
 		if (isFromMailboxOwner(trigger, ownerAddress)) return null;
+		// Their last drafts went unused: paused until Resume (mail/draftPause.ts).
+		if (await isDraftOnArrivalPaused(ctx, thread.mailboxId, trigger.fromAddress)) return null;
 		if (
 			newestDesc.some(
 				(m) => isFromMailboxOwner(m, ownerAddress) && m.receivedAt >= trigger.receivedAt
@@ -97,6 +100,8 @@ export const loadForDraft = internalQuery({
 			// Who the questions a held draft asks are attributed to.
 			senderAddress: trigger.fromAddress,
 			mailboxId: thread.mailboxId,
+			// Whose background AI bucket the draft is charged to (#1380).
+			ownerUserId: mailbox.userId,
 			ownerAddress,
 			// Stale guard the persister re-checks: a newer inbound moves this.
 			latestMessageId: thread.latestMessageId,
@@ -140,6 +145,10 @@ export const persistDraftSlot = internalMutation({
 		// Questions arrived meanwhile: the reply waits for their answers.
 		if (thread.needsReply.clarification) return;
 		const trigger = await ctx.db.get(args.triggerMessageId);
+		// Paused while this run was drafting (mail/draftPause.ts): no slot.
+		if (trigger && (await isDraftOnArrivalPaused(ctx, thread.mailboxId, trigger.fromAddress))) {
+			return;
+		}
 		const gaps = checkDraftGaps(args.draft, {
 			fromAddress: trigger?.fromAddress ?? '',
 			existing: [],

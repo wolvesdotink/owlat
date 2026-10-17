@@ -1,21 +1,18 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import type { ThreadView } from '@owlat/shared/threadBrief';
 
 /**
- * The thread header: subject, message count, the follow-up chip, the team badge,
- * the label chips — and ONE ⋯ menu.
+ * The calm reader's header line (read on arrival §3, plan §6): the subject,
+ * Reply, Archive and ONE ⋯ menu. Nothing else sits between the subject and
+ * the strip: the follow-up chip, the team badge, the labels and the
+ * cross-surface link moved into the strip's Details row.
  *
- * Four separate toggle chips used to sit between the subject and the first word
- * of the message (alerting-on-reply, muted, back-from-snooze, mark-read). They
- * are conversation STATE, not daily verbs, so they moved into the menu as
- * checkable items: the check IS the state, and clicking it is still the way back
- * out. Nothing was dropped — mark-read still appears only under the `manual`
- * mark-read policy, and back-from-snooze is still the one-shot recognition cue
- * (informational, cleared by the reader on open).
- *
- * The follow-up chip stays visible: it carries a date and real actions rather
- * than a binary state.
+ * The ⋯ menu holds the conversation's state as checkable items (alert on
+ * reply, muted, back-from-snooze, mark-read under the `manual` policy), the
+ * ways into the strip that also work without one ("Why is this here?",
+ * "Details", and "Full brief", the only way to the brief when the viewer turned
+ * the strip off), and the verbs that left the old Overview's button row (Snooze,
+ * "Ask about this thread").
  */
 const props = defineProps<{
 	subject?: string;
@@ -23,7 +20,6 @@ const props = defineProps<{
 	messageId: Id<'mailMessages'>;
 	thread?: {
 		_id: string;
-		followUp?: { messageId: string; remindAt: number; dueAt?: number; waitingOn?: string };
 		/** Muted conversation (mail/mute.ts) — new mail skips the inbox. */
 		mutedAt?: number;
 		/**
@@ -34,32 +30,33 @@ const props = defineProps<{
 		/** Just came back from snooze (mail/snooze.ts sweep); cleared on open. */
 		snoozeReturnedAt?: number;
 	} | null;
-	latestOutboundId?: string;
-	labelIds: string[];
-	labels: Map<string, { _id: string; name: string; color?: string }>;
 	/** Offer the explicit mark-read affordance (markReadPolicy 'manual', unread thread). */
 	showMarkRead?: boolean;
 	/** True while the mark-read mutation is in flight. */
 	markingRead?: boolean;
-	/**
-	 * The Overview / Conversation switch of a personal thread (`pending` while
-	 * the opening view is being worked out); absent on shared mailboxes.
-	 */
-	view?: ThreadView | 'pending' | null;
+	/** Offer "Why is this here?" (personal mailboxes; a team inbox has no arrival). */
+	showWhyHere?: boolean;
+	/** Offer "Ask about this thread" (the AI flag). */
+	showAsk?: boolean;
+	/** Offer "Full brief" (the brief holds anything, `briefHasContent`). */
+	showFullBrief?: boolean;
 }>();
 
 const emit = defineEmits<{
 	(e: 'toggle-mute'): void;
 	(e: 'mark-read'): void;
 	(e: 'toggle-alert'): void;
-	(e: 'update:view', view: ThreadView): void;
+	(e: 'reply'): void;
+	(e: 'archive'): void;
+	(e: 'snooze'): void;
+	(e: 'ask'): void;
+	(e: 'details'): void;
+	(e: 'full-brief'): void;
+	(e: 'why-here', anchor: HTMLElement | null): void;
 }>();
 
-const switchView = computed<ThreadView | null>(() =>
-	props.view == null ? null : props.view === 'pending' ? 'overview' : props.view
-);
-
 const { t } = useI18n();
+const headerEl = ref<HTMLElement | null>(null);
 
 const isMuted = computed(() => props.thread?.mutedAt != null);
 const isAlerted = computed(() => props.thread?.notifyOnReplyAt != null);
@@ -76,15 +73,18 @@ const subjectParts = computed(() => {
 	return { head: text.slice(0, Math.max(cut, 0)), tail: text.slice(Math.max(cut, 0)) };
 });
 
-/** Shared item shape — one string rather than four copies drifting apart. */
+/** Shared item shape — one string rather than copies drifting apart. */
 const ITEM_CLASS =
 	'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left whitespace-nowrap text-text-primary hover:bg-bg-surface disabled:opacity-60';
+const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 </script>
 
 <template>
-	<header class="pbx-reader-header mb-4">
+	<header ref="headerEl" class="pbx-reader-header mb-3" data-reader-chrome="header">
 		<div class="flex items-start gap-2">
-			<h1 class="flex-1 min-w-0 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+			<h1
+				class="flex-1 min-w-0 text-xl sm:text-2xl font-medium tracking-[-0.02em] text-text-primary"
+			>
 				<template v-if="messageCount > 1"
 					>{{ subjectParts.head
 					}}<span class="whitespace-nowrap"
@@ -96,21 +96,106 @@ const ITEM_CLASS =
 				>
 				<template v-else>{{ subjectText }}</template>
 			</h1>
-			<PostboxThreadViewSwitch
-				v-if="switchView"
-				class="max-sm:hidden"
-				:view="switchView"
-				:message-count="messageCount"
-				@update:view="emit('update:view', $event)"
-			/>
+			<!-- The thread's two verbs. On a phone they shrink to icons. -->
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="flex-shrink-0"
+				:aria-label="t('postbox.reader.header.reply')"
+				data-testid="thread-header-reply"
+				@click="emit('reply')"
+			>
+				<Icon name="lucide:reply" class="w-4 h-4 sm:hidden" aria-hidden="true" />
+				<span class="max-sm:sr-only">{{ t('postbox.reader.header.reply') }}</span>
+			</UiButton>
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="flex-shrink-0"
+				:aria-label="t('postbox.reader.header.archive')"
+				data-testid="thread-header-archive"
+				@click="emit('archive')"
+			>
+				<Icon name="lucide:archive" class="w-4 h-4 sm:hidden" aria-hidden="true" />
+				<span class="max-sm:sr-only">{{ t('postbox.reader.header.archive') }}</span>
+			</UiButton>
 			<!-- Host-owned thread actions (the reader's "Discuss" toggle). -->
 			<slot name="actions" />
-			<!-- The conversation's state, made checkable. -->
 			<PostboxOverflowMenu
 				class="flex-shrink-0"
 				:label="t('components.postbox.postboxThreadHeader.menuLabel')"
 			>
 				<template #default="{ close }">
+					<button
+						v-if="showWhyHere"
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						data-testid="thread-menu-why-here"
+						@click="
+							emit('why-here', headerEl);
+							close();
+						"
+					>
+						<Icon name="lucide:circle-help" :class="ICON_CLASS" aria-hidden="true" />
+						{{ t('postbox.reader.header.whyHere') }}
+					</button>
+					<button
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						data-testid="thread-menu-details"
+						@click="
+							emit('details');
+							close();
+						"
+					>
+						<Icon name="lucide:list" :class="ICON_CLASS" aria-hidden="true" />
+						{{ t('postbox.reader.header.details') }}
+					</button>
+					<button
+						v-if="showFullBrief"
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						data-testid="thread-menu-full-brief"
+						@click="
+							emit('full-brief');
+							close();
+						"
+					>
+						<Icon name="lucide:file-text" :class="ICON_CLASS" aria-hidden="true" />
+						{{ t('postbox.reader.header.fullBrief') }}
+					</button>
+					<button
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						data-testid="thread-menu-snooze"
+						@click="
+							emit('snooze');
+							close();
+						"
+					>
+						<Icon name="lucide:clock" :class="ICON_CLASS" aria-hidden="true" />
+						{{ t('postbox.reader.header.snooze') }}
+					</button>
+					<button
+						v-if="showAsk"
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						data-testid="thread-menu-ask"
+						@click="
+							emit('ask');
+							close();
+						"
+					>
+						<Icon name="lucide:message-circle-question" :class="ICON_CLASS" aria-hidden="true" />
+						{{ t('postbox.reader.header.ask') }}
+					</button>
+					<div class="my-1 border-t border-border-subtle" role="separator" />
+					<!-- The conversation's state, made checkable. -->
 					<button
 						type="button"
 						role="menuitemcheckbox"
@@ -165,11 +250,7 @@ const ITEM_CLASS =
 							close();
 						"
 					>
-						<Icon
-							name="lucide:mail-open"
-							class="w-3.5 h-3.5 flex-shrink-0 text-text-tertiary"
-							aria-hidden="true"
-						/>
+						<Icon name="lucide:mail-open" :class="ICON_CLASS" aria-hidden="true" />
 						{{ t('components.postbox.postboxThreadHeader.markRead') }}
 					</button>
 					<!-- The one-shot "you asked for this back" cue: a state with no verb,
@@ -181,47 +262,11 @@ const ITEM_CLASS =
 						:class="ITEM_CLASS"
 						data-testid="thread-menu-back-from-snooze"
 					>
-						<Icon
-							name="lucide:undo-2"
-							class="w-3.5 h-3.5 flex-shrink-0 text-text-tertiary"
-							aria-hidden="true"
-						/>
+						<Icon name="lucide:undo-2" :class="ICON_CLASS" aria-hidden="true" />
 						{{ t('components.postbox.postboxThreadHeader.backFromSnooze') }}
 					</p>
 				</template>
 			</PostboxOverflowMenu>
-		</div>
-		<PostboxThreadViewSwitch
-			v-if="switchView"
-			class="mt-3 sm:hidden"
-			full
-			:view="switchView"
-			:message-count="messageCount"
-			@update:view="emit('update:view', $event)"
-		/>
-		<PostboxFollowUpChip
-			v-if="thread"
-			:thread="thread"
-			:latest-outbound-id="latestOutboundId"
-			class="mt-2"
-		/>
-		<PostboxTeamReplyBadge :message-id="messageId" class="mt-2" />
-		<div v-if="labelIds.length > 0" class="mt-2 flex flex-wrap items-center gap-1.5">
-			<span
-				v-for="labelId in labelIds"
-				:key="labelId"
-				class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs"
-				:style="{
-					backgroundColor: (labels.get(labelId)?.color || '#6b7280') + '20',
-					color: labels.get(labelId)?.color || '#6b7280',
-				}"
-			>
-				<span
-					class="w-1.5 h-1.5 rounded-full"
-					:style="{ backgroundColor: labels.get(labelId)?.color || '#6b7280' }"
-				/>
-				{{ labels.get(labelId)?.name }}
-			</span>
 		</div>
 	</header>
 </template>

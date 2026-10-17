@@ -1,4 +1,5 @@
 import { convexTest } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
@@ -36,6 +37,13 @@ const modules = Object.fromEntries(
 			!path.includes('llmProvider')
 	)
 );
+
+/** IMAP APPEND into the Inbox schedules the classifiers, which take rate-limiter tokens. */
+function harness() {
+	const t = convexTest(schema, modules);
+	rateLimiterTest.register(t);
+	return t;
+}
 
 async function seedMailbox(t: ReturnType<typeof convexTest>, address: string) {
 	let mailboxId!: Id<'mailboxes'>;
@@ -86,7 +94,7 @@ async function seedMailbox(t: ReturnType<typeof convexTest>, address: string) {
 
 describe('mailIdentities.resolveAllowedFromAddresses', () => {
 	it('returns the mailbox address plus any aliases', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const { mailboxId } = await seedMailbox(t, 'alice@example.com');
 
 		await t.run(async (ctx) => {
@@ -114,7 +122,7 @@ describe('mailIdentities.resolveAllowedFromAddresses', () => {
 	});
 
 	it('returns an empty set for a non-active mailbox', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const { mailboxId } = await seedMailbox(t, 'suspended@example.com');
 		await t.run(async (ctx) => {
 			await ctx.db.patch(mailboxId, { status: 'suspended' });
@@ -157,7 +165,7 @@ describe('mail.draftLifecycle.transition({ to: "sent" }) — From-binding', () =
 	}
 
 	it('succeeds when fromAddress is the mailbox address', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const { mailboxId } = await seedMailbox(t, 'alice@example.com');
 
 		let draftId!: Id<'mailDrafts'>;
@@ -190,7 +198,7 @@ describe('mail.draftLifecycle.transition({ to: "sent" }) — From-binding', () =
 	});
 
 	it('succeeds when fromAddress is an alias', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const { mailboxId } = await seedMailbox(t, 'alice@example.com');
 
 		let draftId!: Id<'mailDrafts'>;
@@ -228,7 +236,7 @@ describe('mail.draftLifecycle.transition({ to: "sent" }) — From-binding', () =
 	});
 
 	it('rejects a draft with a forged fromAddress with reason "from_revoked" (caller reverts)', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const { mailboxId } = await seedMailbox(t, 'alice@example.com');
 
 		let draftId!: Id<'mailDrafts'>;
@@ -293,7 +301,7 @@ describe('mailImap.appendMessage — From-binding', () => {
 	}
 
 	it('accepts an APPEND with From = mailbox address', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const { mailboxId, inboxFolderId } = await seedMailbox(t, 'alice@example.com');
 		const storageId = await seedStorageBlob(t);
 
@@ -315,7 +323,7 @@ describe('mailImap.appendMessage — From-binding', () => {
 	});
 
 	it('rejects an APPEND with a forged From with the from-not-authorized error', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const { inboxFolderId } = await seedMailbox(t, 'alice@example.com');
 		const storageId = await seedStorageBlob(t);
 
@@ -335,7 +343,7 @@ describe('mailImap.appendMessage — From-binding', () => {
 	});
 
 	it('accepts an APPEND with From = active alias of the mailbox', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const { mailboxId, inboxFolderId } = await seedMailbox(t, 'alice@example.com');
 		await t.run(async (ctx) => {
 			await ctx.db.insert('mailAliases', {

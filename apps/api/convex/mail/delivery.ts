@@ -58,6 +58,9 @@ import {
 	isOverQuota,
 } from './deliveryPipeline/insert';
 import { runPostInsertInboundEffects } from './deliveryPipeline/afterInsert';
+import { applySenderStatusAtDelivery, evaluateArrivalRules } from './arrival/hooks';
+import { getOrThrow } from '../_utils/errors';
+import { settleSenderDelivery } from './senders/delivery';
 import { withMailboxUsage } from './mailboxUsage';
 import { partBlobIds, recordStoredParts, stageMessageParts } from './messageParts';
 import { mailMessageStoredPartsValidator } from '../schema/mailComposition';
@@ -191,15 +194,10 @@ export const ingestFromWebhook = internalAction({
 		// timeout (see `deliveryPipeline/deferredCapture.ts`). Best-effort: a
 		// failed capture never fails delivery (the message is already stored).
 		try {
-			// WHICH LEAVES MAY BE INDEXED and WHAT WAS WITHHELD, as one pair from
-			// one place — `mailboxIndexableParts` owns the whole policy, including
-			// the "nobody scanned it" branch this route keeps and the team inbox
-			// does not. Two ternaries here testing the same condition could
-			// disagree, and the condition they tested (`verdict !== undefined`)
-			// was the wrong question: `/scan/attachment` fails open, so on a
-			// deployment running without the optional `clamav` sidecar the verdict
-			// is a perfectly defined `'skipped'` with nothing cleared, and this
-			// route quietly stopped capturing anything at all.
+			// WHICH LEAVES MAY BE INDEXED and WHAT WAS WITHHELD, as one pair from one
+			// place: `mailboxIndexableParts` owns the whole policy, including the
+			// "nobody scanned it" branch (`/scan/attachment` fails open, so without
+			// the optional `clamav` sidecar the verdict is a defined `'skipped'`).
 			const { parts, withheld } = mailboxIndexableParts(prepared.scan);
 			// L6, behind `attachmentGates` (off by default).
 			const gateSkip = await resolveAttachmentGate(ctx, mailboxGateSignals(result, prepared));
@@ -359,12 +357,20 @@ export const deliverToMailbox = internalMutation({
 			settings?.trustedArcForwarders
 		);
 
-		const initialRole =
-			spamVerdict === 'spam' || args.virusVerdict === 'infected' || isDmarcQuarantine
-				? 'spam'
-				: filterOutcome.isTrashed
-					? 'trash'
-					: 'inbox';
+		const isQuarantined =
+			spamVerdict === 'spam' || args.virusVerdict === 'infected' || isDmarcQuarantine;
+		// 4a. Sender status (§5) after user filters, only for mail headed for the Inbox.
+		const senderStatus = await applySenderStatusAtDelivery(ctx, {
+			mailboxId: mailbox._id,
+			fromAddress: args.from,
+			origin: 'mx',
+			isMovedByFilter: isQuarantined || filterOutcome.isTrashed || !!filterOutcome.folderId,
+		});
+		const initialRole = isQuarantined
+			? 'spam'
+			: filterOutcome.isTrashed
+				? 'trash'
+				: (senderStatus?.filedTo ?? 'inbox');
 		const folder = filterOutcome.folderId
 			? await ctx.db.get(filterOutcome.folderId)
 			: await ctx.db
@@ -377,12 +383,8 @@ export const deliverToMailbox = internalMutation({
 			return { skipped: true };
 		}
 
-		// 4b. Sender-impersonation heuristics (Sealed Mail A4). Computed on this
-		// hosted-mailbox ingest path only — the same place the content scan runs —
-		// so the reader's sender badge can surface first-time-sender and
-		// lookalike-of-contact detail without re-parsing the raw .eml. Returns
-		// undefined when nothing notable fired, so an unremarkable sender stores no
-		// object at all.
+		// 4b. Sender-impersonation heuristics (Sealed Mail A4), on this hosted path
+		// only, for the reader's sender badge; undefined when nothing notable fired.
 		const senderHeuristics = await computeSenderHeuristics(ctx, {
 			mailbox,
 			fromAddress,
@@ -414,7 +416,7 @@ export const deliverToMailbox = internalMutation({
 			references: args.references,
 			receivedAt: args.receivedAt,
 			attachments: args.attachments,
-			flagSeen: filterOutcome.flagSeen,
+			flagSeen: filterOutcome.flagSeen || senderStatus?.status === 'auto_archive',
 			flagFlagged: filterOutcome.flagFlagged,
 			labelIds: filterOutcome.labelIds,
 			spamScore,
@@ -437,6 +439,13 @@ export const deliverToMailbox = internalMutation({
 			inboundOrigin: 'mx',
 		});
 
+		// 11a. Plain-language and AI rules (§6.2), ranked against the manual pass.
+		const arrival = await evaluateArrivalRules(ctx, {
+			message: await getOrThrow(ctx, messageId, 'Message'),
+			mailboxId: mailbox._id,
+			origin: 'mx',
+			manualPass: filterOutcome.manualPass,
+		});
 		// 11b. Classifier enqueues, follow-up / snooze-until-reply clears and the
 		// owner-reply Reply Queue settle — the tail shared with IMAP sync.
 		await runPostInsertInboundEffects(ctx, {
@@ -444,7 +453,10 @@ export const deliverToMailbox = internalMutation({
 			folder,
 			origin: 'mx',
 			antiLoopHeaders: args.antiLoopHeaders,
+			arrival,
 		});
+		// 11b, senders: count the delivery, stamp the status outcome on the record.
+		await settleSenderDelivery(ctx, { messageId, origin: 'mx', senderStatus });
 
 		// 11c. The attachment parts the ingest action stored on their own, so the
 		// reader downloads one part instead of the whole raw message (plan 3.5).
@@ -458,25 +470,18 @@ export const deliverToMailbox = internalMutation({
 			mailboxAddress: mailbox.address,
 			messageId,
 			fromAddress,
-			// SMTP envelope sender (RFC 5321 MAIL FROM). `''` for a bounce/DSN
-			// null sender; the hook uses this to suppress vacation auto-replies
-			// to bounces (RFC 3834 §2) off the envelope, not the `From:` header,
-			// AND as the recipient of the auto-reply itself (RFC 3834 §4).
+			// SMTP envelope sender (RFC 5321 MAIL FROM; `''` for a bounce): vacation
+			// replies skip bounces off it (RFC 3834 §2) and are addressed to it (§4).
 			returnPath: args.returnPath,
-			// RFC Message-Id + References of the triggering inbound message, so the
-			// vacation auto-reply threads onto it (RFC 3834 §3.1.5/§3.1.6) instead
-			// of orphaning a new thread.
+			// So the vacation auto-reply threads onto this message (RFC 3834 §3.1.5/6).
 			triggeringMessageId: args.messageId,
 			triggeringReferences: args.references,
 			subject: args.subject,
 			bodyText: args.textBodyInline,
 			bodyHtml: args.htmlBodyInline,
-			// Pass through the raw header map — the hook re-parses for
-			// Auto-Submitted / List-Id / Precedence checks (RFC 3834), parsed at
-			// ingest from the raw MIME header block.
+			// Raw headers: the hook re-checks Auto-Submitted / List-Id / Precedence.
 			headers: args.antiLoopHeaders ?? {},
-			// Filter-level "Forward to…" targets — forwarded alongside any
-			// account-level forwarding rules by the post-delivery hook.
+			// Filter-level "Forward to…" targets, beside account-level forwarding.
 			filterForwardTo: filterOutcome.filterForwardTo,
 		});
 

@@ -39,6 +39,9 @@ import { ensureBriefRow, loadBriefRow } from './briefRow';
 import { briefCompleteness } from './purgeRepairs';
 import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
 import { sourceOrderKey } from './sourceOrder';
+import type { Depth, ReasonKey } from '@owlat/shared/arrival';
+import { clearGistOf } from './gistState';
+import { noteArrivalRun } from '../arrival/records';
 
 /** A source outstanding this long without an outcome has lost its run. */
 export const STALE_MS = 30 * 60_000;
@@ -63,20 +66,27 @@ export function runOf(source: InterpretationSource) {
 		: internal.mail.interpret.run.interpretMessage;
 }
 
+/** A brief counter moved by `delta`, never below zero; zero is stored as absent. */
+function shifted(value: number | undefined, delta: number): number | undefined {
+	const next = Math.max(0, (value ?? 0) + delta);
+	return next > 0 ? next : undefined;
+}
+
 /** Move the brief's counters and store its completeness, in this transaction. */
 async function shiftCounts(
 	ctx: MutationCtx,
 	brief: Doc<'threadBriefs'>,
-	delta: { pending: number; unread: number; deferred?: number }
+	delta: { pending: number; unread: number; deferred?: number; skipped?: number; gist?: number }
 ): Promise<void> {
-	const pendingSources = Math.max(0, (brief.pendingSources ?? 0) + delta.pending);
-	const unreadSources = Math.max(0, (brief.unreadSources ?? 0) + delta.unread);
-	const deferredSources = Math.max(0, (brief.deferredSources ?? 0) + (delta.deferred ?? 0));
-	const next = { ...brief, pendingSources, unreadSources, deferredSources };
+	const pendingSources = shifted(brief.pendingSources, delta.pending);
+	const unreadSources = shifted(brief.unreadSources, delta.unread);
+	const deferredSources = shifted(brief.deferredSources, delta.deferred ?? 0);
+	const skippedSources = shifted(brief.skippedSources, delta.skipped ?? 0);
+	const gistSources = shifted(brief.gistSources, delta.gist ?? 0);
+	const counts = { pendingSources, unreadSources, deferredSources, skippedSources, gistSources };
+	const next = { ...brief, ...counts };
 	await ctx.db.patch(brief._id, {
-		pendingSources: pendingSources > 0 ? pendingSources : undefined,
-		unreadSources: unreadSources > 0 ? unreadSources : undefined,
-		deferredSources: deferredSources > 0 ? deferredSources : undefined,
+		...counts,
 		// Recomputed from the counts every time, `pending` included: a brief
 		// whose last outstanding source settled reads what it holds.
 		completeness: briefCompleteness(next),
@@ -151,6 +161,97 @@ export async function deferSource(
 	return true;
 }
 
+/** A source settled short of a full read (SPEC §2.5), as the run decided it. */
+export interface ArrivalSettlement {
+	readOutcome: 'gist' | 'skipped';
+	depth: Depth;
+	isUpgradeable: boolean;
+	skipReason?: ReasonKey;
+}
+
+/** The brief counter a short-of-full outcome counts in. */
+function arrivalDelta(readOutcome: ArrivalSettlement['readOutcome'] | undefined, sign: 1 | -1) {
+	if (readOutcome === 'gist') return { gist: sign };
+	if (readOutcome === 'skipped') return { skipped: sign };
+	return {};
+}
+
+/**
+ * Read on arrival (SPEC §2.5): the source is settled as gist-only or skipped.
+ * Terminal: it stops being outstanding or deferred, the stale sweep and the
+ * backfill never run it again, and only the upgrade rule (`defer.ts`) reads it
+ * in full later. Counted in `threadBriefs.gistSources` / `skippedSources`,
+ * which the brief reads as settled (`purgeRepairs.ts briefCompleteness`).
+ * Clears the run's lease and the category wait marker in the same write.
+ */
+export async function settleArrivalSource(
+	ctx: MutationCtx,
+	sourceKey: string,
+	settlement: ArrivalSettlement
+): Promise<void> {
+	const snapshot = await snapshotOf(ctx, sourceKey);
+	if (!snapshot) return;
+	const wasPending = snapshot.isOutstanding === true;
+	const wasDeferred = snapshot.isDeferred === true;
+	const wasUnread = snapshot.isUnread === true;
+	await ctx.db.patch(snapshot._id, {
+		isOutstanding: undefined,
+		outstandingSince: undefined,
+		outstandingTries: undefined,
+		isUnread: undefined,
+		...NOT_DEFERRED,
+		depth: settlement.depth,
+		readOutcome: settlement.readOutcome,
+		isUpgradeable: settlement.isUpgradeable,
+		skipReason: settlement.skipReason,
+		categoryPendingAt: undefined,
+		arrivalRetryAt: undefined,
+		// The read job is over: its admission covers nothing more (Sol r3 F1).
+		arrivalAdmittedUntil: undefined,
+		leaseToken: undefined,
+		leaseUntil: undefined,
+		updatedAt: Date.now(),
+	});
+	const brief = await ensureBriefRow(ctx, threadRefFromFields(snapshot));
+	if (!brief) return;
+	await shiftCounts(ctx, brief, {
+		pending: wasPending ? -1 : 0,
+		unread: wasUnread ? -1 : 0,
+		deferred: wasDeferred ? -1 : 0,
+		...arrivalDelta(snapshot.readOutcome, -1),
+		...arrivalDelta(settlement.readOutcome, 1),
+	});
+}
+
+/**
+ * The upgrade discharge (SPEC §2.3.4): a source settled short of a full read
+ * got a recorded outcome after all (a full read, or the skip, failure or
+ * fence its upgrade run recorded). It leaves the gist / skipped count, and it
+ * is no longer upgradeable either way, so it can never hold a successor up.
+ * A gist read from it is superseded with it. True when it was discharged.
+ */
+async function dischargeArrival(
+	ctx: MutationCtx,
+	snapshot: Doc<'interpretSources'>
+): Promise<boolean> {
+	if (snapshot.readOutcome === undefined && snapshot.isUpgradeable !== true) return false;
+	await ctx.db.patch(snapshot._id, {
+		readOutcome: undefined,
+		isUpgradeable: false,
+		depth: 'full',
+		skipReason: undefined,
+		categoryPendingAt: undefined,
+		arrivalRetryAt: undefined,
+		updatedAt: Date.now(),
+	});
+	await clearGistOf(ctx, threadRefFromFields(snapshot), snapshot.sourceKey);
+	// The record and the projection say what was read now (Sol r1 F8).
+	if (snapshot.source.kind === 'mail') {
+		await noteArrivalRun(ctx, snapshot.source.id, { depth: 'full' });
+	}
+	return true;
+}
+
 /** The source has an outcome (see the module doc for the kinds). */
 export async function settleSource(
 	ctx: MutationCtx,
@@ -159,12 +260,29 @@ export async function settleSource(
 ): Promise<void> {
 	const snapshot = await snapshotOf(ctx, sourceKey);
 	if (!snapshot) return;
+	// A recorded outcome of a gist-only or skipped source discharges it; a
+	// purge leaves its count to the purge (`arrival/purgeRanges.ts`).
+	const isDischarged = outcome !== 'purged' && (await dischargeArrival(ctx, snapshot));
+	if (isDischarged) {
+		const brief = await loadBriefRow(ctx, threadRefFromFields(snapshot));
+		if (brief) {
+			await shiftCounts(ctx, brief, {
+				pending: 0,
+				unread: 0,
+				...arrivalDelta(snapshot.readOutcome, -1),
+			});
+		}
+	}
 	const wasPending = snapshot.isOutstanding === true;
 	const wasUnread = snapshot.isUnread === true;
 	// A deferred source that got an outcome after all (a purge, a run someone
 	// else started) is no longer waiting for the thread to be opened.
 	const wasDeferred = snapshot.isDeferred === true;
 	const isUnread = outcome === 'unread';
+	// A recorded outcome ends the source's read job: its admission stamp goes (Sol r3 F1).
+	if (outcome !== 'purged' && snapshot.arrivalAdmittedUntil !== undefined) {
+		await ctx.db.patch(snapshot._id, { arrivalAdmittedUntil: undefined });
+	}
 	if (!wasPending && !wasDeferred && wasUnread === isUnread) return;
 	if (outcome !== 'purged') {
 		await ctx.db.patch(snapshot._id, {

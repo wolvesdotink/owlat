@@ -24,7 +24,7 @@ import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
-import { getOrThrow, throwForbidden } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { evalMessageFromRow, filterConditionsMatch } from './filters';
 import { moveMessagesToFolder, rebuildThreadAggregates } from './messageActions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
@@ -50,6 +50,8 @@ const SAFE_ACTION_TYPES = new Set([
 	// and is undone by deleting the rule — the stamp then names no rendered
 	// section, so `mail/sections.ts` reads the mail back under "Everything else".
 	'pinToSection',
+	// sendToDigest / placeInUpdates / placeInNeedsMe / archiveAfter / notify are
+	// not retroactive: explicit no-ops here, handled by lane rules (SPEC §6.3).
 ]);
 
 /**
@@ -57,7 +59,11 @@ const SAFE_ACTION_TYPES = new Set([
  * forwards or deletes has nothing safe to apply, and the UI uses this to say so
  * instead of offering a run that would silently do nothing.
  */
-export function hasRetroactiveActions(filter: Pick<Doc<'mailFilters'>, 'actions'>): boolean {
+export function hasRetroactiveActions(
+	filter: Pick<Doc<'mailFilters'>, 'actions'> & Partial<Pick<Doc<'mailFilters'>, 'aiCondition'>>
+): boolean {
+	// An AI condition is answered once, at arrival (§6.2): never over the backlog.
+	if (filter.aiCondition) return false;
 	return filter.actions.some((action) => SAFE_ACTION_TYPES.has(action.type));
 }
 
@@ -87,6 +93,7 @@ export const start = postboxMutation({
 		const filter = await getOrThrow(ctx, args.filterId, 'Filter');
 		const owned = await requireMailboxAccess(ctx, filter.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Filter not accessible');
+		if (filter.aiCondition) throwInvalidInput('A rule with an AI condition runs on new mail only');
 
 		return startJob(ctx, {
 			table: 'mailFilterRunJobs',
@@ -213,7 +220,9 @@ export const runBatch = internalMutation({
 
 		const now = Date.now();
 		const filter = await ctx.db.get(args.filterId);
-		if (!filter) {
+		// Gone, or (since the run started) given an AI condition, which is
+		// answered at arrival only and never over the backlog (§6.2).
+		if (!filter || filter.aiCondition) {
 			await ctx.db.patch(job._id, { status: 'cancelled', updatedAt: now, finishedAt: now });
 			return;
 		}

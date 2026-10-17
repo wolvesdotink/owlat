@@ -108,6 +108,17 @@ export const mailCompositionTables = {
 		// its send guard on after a reload (mail/ai/composeDraftStore.ts
 		// assertNoAnswerGaps). Set by `drafts.update`; never cleared.
 		isGapGuarded: v.optional(v.boolean()),
+		// Unused-draft streak (mail/draftPause.ts): the person took the AI draft
+		// back out in the editor ("AI draft · Discard"); a later AI write clears
+		// it. While set, sending this row is not an AI-based send.
+		aiDraftDiscardedAt: v.optional(v.number()),
+		// This row's AI draft already counted toward its sender's streak (used or
+		// unused), so no later discard, reply or send counts it again.
+		isDraftUsageCounted: v.optional(v.boolean()),
+		// The thread's offered AI reply (arrival slot or clarification draft) this
+		// row is a copy of, `<threadId>:<owed messageId>` (mail/draftPause.ts):
+		// stamped by the write that applies it, so the copy counts with its offer.
+		offerKey: v.optional(v.string()),
 		// Provenance for answered-conversation cleanup (mail/answeredReply.ts).
 		// `aiAuthored`: the AI text the written part holds, refreshed by every
 		// AI write (unlike the once-only `aiDraftBaseline` above). `humanTouchedAt`:

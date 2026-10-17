@@ -34,6 +34,8 @@ import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { rootRequest } from '../../lib/llm/requestMeter';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 import { deferRefusedRun, rethrowAdmissionRefusal } from '../../analytics/backgroundDeferral';
+import { prepareThreadForConsumer } from '../interpret/fullReadPrepare';
+import { FULL_READ_RECHECK_MS, MAX_FULL_READ_WAITS } from '../interpret/fullRead';
 
 /** Map the personal-mail urgency bucket onto the shared draft block's priority vocabulary. */
 function priorityForUrgency(urgency: 'high' | 'normal' | 'low'): string {
@@ -53,22 +55,39 @@ const UNKNOWN_QUALITY_CONFIDENCE = 0.4;
  */
 export async function generateDraftOnArrival(
 	ctx: ActionCtx,
-	args: { threadId: Id<'mailThreads'> }
+	args: { threadId: Id<'mailThreads'>; fullReadWaits?: number }
 ): Promise<void> {
-	// Defense-in-depth: refuse if the AI stack is off, even though the schedule
-	// site already flag-gated. assertAiAllowed throws when AI is disabled; that
-	// (and every other failure below) degrades to no slot.
-	try {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-	} catch (error) {
-		rethrowAdmissionRefusal(error);
-		return;
-	}
-
 	const loaded = await ctx.runQuery(internal.mail.ai.draftOnArrivalStore.loadForDraft, {
 		threadId: args.threadId,
 	});
 	if (!loaded) return; // not a live needs-reply personal-mail thread
+
+	// Read on arrival (Sol r2 F1): no draft of a thread not fully read. Its
+	// gist-only mail is read in full first; this draft looks again then.
+	if ((await prepareThreadForConsumer(ctx, { kind: 'mail', id: args.threadId })) !== 'ready') {
+		const fullReadWaits = (args.fullReadWaits ?? 0) + 1;
+		if (fullReadWaits <= MAX_FULL_READ_WAITS) {
+			await ctx.scheduler.runAfter(
+				FULL_READ_RECHECK_MS,
+				internal.mail.ai.draftOnArrival.generateForThread,
+				{ threadId: args.threadId, fullReadWaits }
+			);
+		}
+		return;
+	}
+
+	// Defense-in-depth: refuse if the AI stack is off, even though the schedule
+	// site already flag-gated. assertAiAllowed throws when AI is disabled; that
+	// (and every other failure below) degrades to no slot. Loaded first: the
+	// rate limit is charged to the mailbox owner's background bucket (#1380).
+	try {
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
+			ownerUserId: loaded.ownerUserId,
+		});
+	} catch (error) {
+		rethrowAdmissionRefusal(error);
+		return;
+	}
 
 	// Personalize to the owner's learned writing voice (opt-in, fail-soft). No
 	// access check: a scheduled internal action for the thread's own mailbox.
@@ -152,12 +171,17 @@ export const generateForThread = internalAction({
 		threadId: v.id('mailThreads'),
 		/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
 		deferrals: v.optional(v.number()),
+		/** Times it looked again for the thread to be fully read (read on arrival). */
+		fullReadWaits: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<void> => {
 		anchorActionDeadline(ctx);
 		// At the spend ceiling the draft defers to a later run (ADR-0073, D1).
 		await deferRefusedRun(ctx, internal.mail.ai.draftOnArrival.generateForThread, args, () =>
-			generateDraftOnArrival(ctx, { threadId: args.threadId })
+			generateDraftOnArrival(ctx, {
+				threadId: args.threadId,
+				...(args.fullReadWaits !== undefined ? { fullReadWaits: args.fullReadWaits } : {}),
+			})
 		);
 	},
 });

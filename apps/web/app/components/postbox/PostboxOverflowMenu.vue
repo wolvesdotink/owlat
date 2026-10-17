@@ -60,7 +60,17 @@ const open = ref(false);
 const triggerEl = ref<ComponentPublicInstance | null>(null);
 const menuEl = ref<HTMLElement | null>(null);
 
+/**
+ * Closing from inside the panel (an item ran, or Esc) hands focus back to the
+ * trigger, the menu-button pattern: the item is about to unmount, and a dialog
+ * an item opened (Full brief, Snooze) would otherwise remember a removed
+ * element as its opener and drop focus on <body> when it closes.
+ */
 function close() {
+	if (open.value && menuEl.value?.contains(document.activeElement)) {
+		const trigger = triggerEl.value?.$el as HTMLElement | undefined;
+		trigger?.focus?.();
+	}
 	open.value = false;
 }
 function toggle() {
@@ -71,7 +81,12 @@ function toggle() {
 // wherever focus is (the trigger keeps it after a click). The Esc is claimed,
 // so the same press does not also leave Answer mode or close the reader.
 useClickOutside([triggerEl, menuEl], close);
-useEscapeToClose(open);
+useEscapeToClose(
+	computed({
+		get: () => open.value,
+		set: (value: boolean) => (value ? (open.value = true) : close()),
+	})
+);
 </script>
 
 <template>

@@ -6,6 +6,7 @@
 
 import type { OrganizationDeletionTable } from './_common';
 import { THREAD_BRIEF_TABLES } from '../../../schema/threadBrief';
+import { MAIL_ARRIVAL_TABLES } from '../../../schema/mailArrival';
 
 /**
  * Ordered cascade: children before parents, storage-bearing tables
@@ -44,6 +45,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// (ADR-0073): before every parent they name.
 	'decisionArtifacts',
 	'senderMemory',
+	// Read on arrival (records, senders, undo log, rules, digests): before the
+	// messages, threads, filters and mailboxes they point at.
+	...MAIL_ARRIVAL_TABLES,
 	// Inline bodies (plan 3.2), 1:1 with mailMessages: swept before their rows
 	// like the attachment index, so no body outlives its message.
 	'mailMessageBodies',

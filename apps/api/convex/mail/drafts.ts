@@ -6,11 +6,10 @@
  *   which is the sole writer of `mailDrafts.state` and its companion fields
  *   (`scheduledSendAt`, `undoToken`). See ADR-0028.
  *
- * Drafts live in mailDrafts (separate from mailMessages) so autosaves
- * don't pollute the Drafts folder visible to IMAP. On final send the
- * draft row is deleted and a new mailMessages row is inserted in Sent
- * (with outbound.state='queued') by the Mail draft lifecycle module's
- * `→ sent` reducer (invoked from the dispatch action in mail/outbound.ts).
+ * Drafts live in mailDrafts (separate from mailMessages) so autosaves don't
+ * pollute the Drafts folder visible to IMAP. On final send the draft row is
+ * deleted and a new mailMessages row (outbound.state='queued') is inserted in
+ * Sent by the lifecycle's `→ sent` reducer (from mail/outbound.ts's dispatch).
  */
 
 import { v } from 'convex/values';
@@ -23,7 +22,6 @@ import { postboxQuery, postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
-import { hasDraftGaps } from '@owlat/shared/answerMode';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { requireMailboxAccess } from './permissions';
 import { resolveSendAsIdentitiesForCtx } from './identities';
@@ -43,7 +41,7 @@ import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } fro
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteDraftRow } from './answeredReply';
-import { editPatch, humanEdit, provenancePatch } from './draftProvenance';
+import { aiWritePatch, editPatch, humanEdit, provenancePatch } from './draftProvenance';
 import { expectedAttachmentsFor, withoutAttachment } from './draftExpectedAttachments';
 import { expectedAttachmentRequestValidator } from '../lib/validators/mailContent';
 import {
@@ -198,6 +196,9 @@ export const update = postboxMutation({
 		isGapGuarded: v.optional(v.literal(true)),
 		// The written part holds this AI text: not a person's edit (mail/draftProvenance.ts).
 		aiText: v.optional(v.string()),
+		// The thread's offered AI reply that AI text copies (mail/draftPause.ts): sent
+		// with every write that applies it, whichever lands first.
+		offerKey: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
@@ -220,20 +221,8 @@ export const update = postboxMutation({
 		if (args.followUpRemindAt !== undefined) {
 			patch['followUpRemindAt'] = args.followUpRemindAt ?? undefined;
 		}
-		// Snapshot the AI baseline exactly once — the first apply wins so a later
-		// human edit still diffs against the AI's original text on send.
-		if (
-			args.aiBaseline !== undefined &&
-			args.aiBaseline.trim().length > 0 &&
-			draft.aiDraftBaseline === undefined
-		) {
-			patch['aiDraftBaseline'] = { text: args.aiBaseline, capturedAt: Date.now() };
-		}
-		// Every AI text, not only the first: a later one may be the one that
-		// leaves gaps (a draft that still waits for files).
-		if (args.aiBaseline !== undefined && !draft.isGapGuarded && hasDraftGaps(args.aiBaseline)) {
-			patch['isGapGuarded'] = true;
-		}
+		// The AI baseline (once), its gaps, the offer it copies (mail/draftProvenance.ts).
+		Object.assign(patch, aiWritePatch(draft, args, now));
 		if (args.isGapGuarded) patch['isGapGuarded'] = true;
 
 		await ctx.db.patch(args.draftId, patch);

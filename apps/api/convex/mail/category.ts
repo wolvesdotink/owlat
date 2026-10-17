@@ -28,7 +28,7 @@
  * arrives already labelled; only the ambiguous remainder schedules the LLM.
  */
 
-import { v, type Infer } from 'convex/values';
+import { v, type Infer, type ObjectType } from 'convex/values';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { postboxMutation } from './_helpers';
@@ -41,9 +41,12 @@ import { buildThreadTranscript, CATEGORY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { requireMailboxAccess } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
+import { noteSenderKind } from './senders/profiles';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
 import { invalidateSenderMemoryForCorrection } from '../decision/senderMemory';
 import { recordOwnerCorrection } from '../decision/artifacts';
+import { wakeCategoryDeferredRuns, wakeCategoryDepthWaits } from './interpret/categoryDefer';
+import { noteRecordCategory } from './arrival/records';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
@@ -161,11 +164,15 @@ async function latestInboundMessage(
 	return (await threadInboundView(ctx, thread))?.latestInbound ?? null;
 }
 
-/** The thread's messages oldest-first plus its latest inbound one (see above). */
+/** The thread's messages oldest-first, its latest inbound one (see above) and the mailbox owner. */
 async function threadInboundView(
 	ctx: { db: QueryCtx['db'] },
 	thread: Doc<'mailThreads'>
-): Promise<{ ordered: Doc<'mailMessages'>[]; latestInbound: Doc<'mailMessages'> } | null> {
+): Promise<{
+	ordered: Doc<'mailMessages'>[];
+	latestInbound: Doc<'mailMessages'>;
+	ownerUserId: string;
+} | null> {
 	const mailbox = await ctx.db.get(thread.mailboxId);
 	if (!mailbox || mailbox.status !== 'active') return null;
 	const ownerAddress = mailbox.address.toLowerCase();
@@ -181,7 +188,7 @@ async function threadInboundView(
 		const isFromOwner = m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress;
 		if (!isFromOwner) latestInbound = m;
 	}
-	return latestInbound ? { ordered, latestInbound } : null;
+	return latestInbound ? { ordered, latestInbound, ownerUserId: mailbox.userId } : null;
 }
 
 /**
@@ -246,6 +253,8 @@ export const getThreadCategoryContext = internalQuery({
 
 		return {
 			latestMessageId: thread.latestMessageId,
+			// Whose background AI bucket the refinement is charged to (#1380).
+			ownerUserId: view.ownerUserId,
 			senderEmail: signals.senderEmail,
 			override: signals.override,
 			deterministicInput: signals.deterministicInput,
@@ -260,32 +269,48 @@ export const getThreadCategoryContext = internalQuery({
  * non-user result is dropped — the newer ingest re-enqueued its own check. A
  * `user` override always applies (it is authoritative and set synchronously).
  */
+/** `applyCategory`'s arguments (also carried by R2's one combined commit, `arrival/r2.ts`). */
+export const applyCategoryArgs = {
+	threadId: v.id('mailThreads'),
+	expectedLatestMessageId: v.optional(v.id('mailMessages')),
+	label: mailCategoryLabelValidator,
+	source: mailCategorySourceValidator,
+};
+
+/**
+ * Write the category unless a newer ingest made the call stale (an owner's
+ * label always lands). True when it was written.
+ */
+export async function applyCategoryIfCurrent(
+	ctx: MutationCtx,
+	args: ObjectType<typeof applyCategoryArgs>
+): Promise<boolean> {
+	const thread = await ctx.db.get(args.threadId);
+	if (!thread) return false;
+	if (
+		args.source !== 'user' &&
+		args.expectedLatestMessageId !== undefined &&
+		thread.latestMessageId !== undefined &&
+		thread.latestMessageId !== args.expectedLatestMessageId
+	) {
+		return false; // stale — a newer ingest re-enqueued its own check
+	}
+	await writeCategory(ctx, thread, args.label, args.source);
+	return true;
+}
+
 export const applyCategory = internalMutation({
-	args: {
-		threadId: v.id('mailThreads'),
-		expectedLatestMessageId: v.optional(v.id('mailMessages')),
-		label: mailCategoryLabelValidator,
-		source: mailCategorySourceValidator,
-	},
-	handler: async (ctx, args) => {
-		const thread = await ctx.db.get(args.threadId);
-		if (!thread) return;
-		if (
-			args.source !== 'user' &&
-			args.expectedLatestMessageId !== undefined &&
-			thread.latestMessageId !== undefined &&
-			thread.latestMessageId !== args.expectedLatestMessageId
-		) {
-			return; // stale — a newer ingest re-enqueued its own check
-		}
-		await writeCategory(ctx, thread, args.label, args.source);
+	args: applyCategoryArgs,
+	handler: async (ctx, args): Promise<void> => {
+		await applyCategoryIfCurrent(ctx, args);
 	},
 });
 
 /**
  * Stamp a thread's category. Spam goes to the Spam folder the moment the
  * classifier says so; the thread keeps its label, so "Not spam"
- * (recategorize) can bring it back.
+ * (recategorize) can bring it back. A settled label wakes the thread's
+ * interpretation runs waiting for it (interpret/categoryDefer.ts).
  */
 export async function writeCategory(
 	ctx: MutationCtx,
@@ -299,6 +324,12 @@ export async function writeCategory(
 		category: { label, source, classifiedAt: now },
 		updatedAt: now,
 	});
+	await noteSenderKind(ctx, thread, label);
+	await wakeCategoryDeferredRuns(ctx, thread._id, { label, source }, thread.category);
+	// Read on arrival: the newest inbound message's record takes the category,
+	// the projection follows, and a run waiting on it to choose its depth runs now.
+	await noteRecordCategory(ctx, thread._id, { label, source });
+	await wakeCategoryDepthWaits(ctx, thread._id);
 	if (label === 'spam' && previous !== 'spam') {
 		await moveThreadBetweenRoles(ctx, thread, 'inbox', 'spam');
 	}
@@ -393,6 +424,18 @@ export const recategorize = postboxMutation({
 			category: { label: args.label, source: 'user', classifiedAt: now },
 			updatedAt: now,
 		});
+		await noteSenderKind(ctx, thread, args.label);
+		// The owner settled it: waiting interpretation runs go now (categoryDefer.ts).
+		await wakeCategoryDeferredRuns(
+			ctx,
+			args.threadId,
+			{ label: args.label, source: 'user' },
+			thread.category
+		);
+		// Read on arrival (final review F3): the record takes the owner's label,
+		// placement and digest eligibility follow, a depth wait on it ends.
+		await noteRecordCategory(ctx, args.threadId, { label: args.label, source: 'user' });
+		await wakeCategoryDepthWaits(ctx, args.threadId);
 		// The owner is in charge: marking spam files it away, and "Not spam" —
 		// any other label on a thread the classifier filed as spam — brings the
 		// messages back to the inbox. The per-sender override above makes sure

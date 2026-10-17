@@ -38,6 +38,7 @@ import {
 import { threadBriefViewValidator, type ThreadBriefView } from './briefShape';
 import { loadBriefRow } from './briefRow';
 import { projectBrief } from './briefProject';
+import { countThreadOpen } from '../senders/opens';
 import { readResult } from './load';
 import {
 	gapOf,
@@ -59,6 +60,7 @@ import type { MutationCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
 import { requireThreadReader } from './threadAccess';
 import { isHistoryRunning } from './backfillSources';
+import { openGist } from './gistState';
 
 // public: soft-auth — returns null for anonymous callers and for anyone the
 // thread's reader rule refuses (mailbox access, or the shared-inbox reader gate).
@@ -199,6 +201,8 @@ export const get = publicQuery({
 					}
 				: {}),
 			...(brief?.deferredSources ? { deferredSources: brief.deferredSources } : {}),
+			// Read on arrival: the gist (the fenced branch above never shows it).
+			...(mode === 'brief' && brief?.gist ? { gist: await openGist(ctx, brief.gist) } : {}),
 			isNoReplyNeeded: checkpointResult
 				? !isReplyExpectingIntent(checkpointResult.replyIntent as ReplyIntent)
 				: false,
@@ -262,6 +266,8 @@ export const markSeen = threadBriefMutation({
 			seenActivitySeq: brief?.lastActivitySeq ?? 0,
 			...(args.streamPosition ? { streamPosition: args.streamPosition } : {}),
 		});
+		// Senders (§5): seeing a mail thread's Overview opens its newest inbound message.
+		if (args.threadRef.kind === 'mail') await countThreadOpen(ctx, args.threadRef.id);
 		return null;
 	},
 });

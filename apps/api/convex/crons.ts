@@ -366,6 +366,14 @@ crons.interval(
 	{}
 );
 
+// Read on arrival (§6.4): run due delayed archives, each re-checked in its own mutation.
+crons.interval(
+	'postbox delayed actions',
+	{ minutes: 5 },
+	internal.mail.rules.delayedActions.runDue,
+	{}
+);
+
 // Postbox follow-up sweep — resurface sent threads whose "remind me if no
 // reply" deadline passed without an inbound reply.
 crons.interval(

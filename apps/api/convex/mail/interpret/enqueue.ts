@@ -22,7 +22,7 @@
  * mailboxes and Team Inbox threads run in `actions` mode), so none is passed.
  */
 
-import type { Doc } from '../../_generated/dataModel';
+import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { ThreadRef } from '../../lib/validators/threadRef';
@@ -32,7 +32,7 @@ import { captureInterpretSource } from './sources';
 import { markOutstanding } from './outstanding';
 import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import type { OutboundSource } from './sendFailure';
-import { deferIfDisplayOnly } from './defer';
+import { scheduleArrivalRead } from '../arrival/dispatch';
 
 /**
  * The part of eligibility known at delivery: live mail outside spam, trash,
@@ -66,6 +66,8 @@ export async function enqueueDeliveredInterpretation(
 		isInterpretedByClassify: boolean;
 		precedence?: string;
 		listId?: string;
+		/** Delivery queued the category refinement: read on arrival waits for it a little (§2.3.1). */
+		isCategoryRefining?: boolean;
 	}
 ): Promise<boolean> {
 	if (!opts.isLive) return false;
@@ -82,13 +84,24 @@ export async function enqueueDeliveredInterpretation(
 	});
 	if (!captured) return false;
 	if (!opts.isInterpretedByClassify) {
-		// D10: no Reply Queue check was queued for it, so the reader display may
-		// be its only consumer; then it waits for the thread to be opened.
-		if (await deferIfDisplayOnly(ctx, message)) return true;
-		await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, { source });
+		// No Reply Queue check was queued for it, so the reader display may be
+		// its only consumer: D10 defers it with read on arrival off, else its run
+		// reads it now at the depth it chooses (`mail/arrival/dispatch.ts`).
+		if ((await scheduleArrivalRead(ctx, message)) === 'deferred') return true;
 	}
+	// Read on arrival (SPEC §2.3.1): the per-message marker the run's depth
+	// decision waits on, cleared by this message's category write. Never on a
+	// source D10 deferred (Sol r1 F1).
+	if (opts.isCategoryRefining) await stampCategoryPending(ctx, captured);
 	await markBriefPending(ctx, ref);
 	return true;
+}
+
+async function stampCategoryPending(ctx: MutationCtx, id: Id<'interpretSources'>): Promise<void> {
+	const row = await ctx.db.get(id);
+	if (!row || row.isDeferred === true || row.readOutcome !== undefined) return;
+	if (row.categoryPendingAt !== undefined) return;
+	await ctx.db.patch(id, { categoryPendingAt: Date.now() });
 }
 
 /** Interpretation of a message we sent, once it went out (see the module doc). */

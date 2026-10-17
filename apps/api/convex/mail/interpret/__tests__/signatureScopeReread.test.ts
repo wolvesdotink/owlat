@@ -37,6 +37,7 @@ import { refreshBriefTop } from '../briefTop';
 import { sourceVersionOf } from '../sourceVersion';
 import type { ReduceResult } from '../reduceInput';
 import { modules, reduceItem, reduceResult, seedMailThread, type Test } from './interpret.testlib';
+import { applyAsRun } from './lease.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../../lib/sessionOrganization');
@@ -195,7 +196,7 @@ async function interpret(
 			.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
 			.first()
 	);
-	return t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+	return applyAsRun(t, {
 		source: { kind: 'mail', id: messageId },
 		threadRef: { kind: 'mail', id: threadId },
 		mode: 'brief',
@@ -501,7 +502,7 @@ describe('the stale fence (#1320)', () => {
 		const { messageId, threadId } = await seedLegacy(t);
 		// Filed in Sent and read by the history pass: an `outboundMail:` source only.
 		const source = { kind: 'outboundMail' as const, id: messageId };
-		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+		await applyAsRun(t, {
 			source,
 			threadRef: { kind: 'mail', id: threadId },
 			mode: 'brief',

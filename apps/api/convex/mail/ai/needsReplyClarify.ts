@@ -64,10 +64,8 @@ import { isFencedThread } from '../interpret/staleFence';
  * Backs the "Needs your input" card: the owner types / taps the scoped answers
  * inline and the card flips to "Draft ready". This folds each answer onto
  * `needsReply.clarification`, stamps `answeredAt`, and schedules
- * `draftWithAnswers` off the scheduler (so a slow model never blocks the
- * mutation) which reuses the suggestReplies infra + voice profile + the pinned
- * answers to produce the starter reply. Fail-soft: if the draft never lands the
- * answer is still recorded and the plain "Draft reply" button keeps working.
+ * `draftWithAnswers` off the scheduler (a slow model never blocks the
+ * mutation), charged to the answering user's AI rate limit (#1380).
  */
 // authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation. File answers re-check the file (resolveClarificationFile).
@@ -261,6 +259,7 @@ export const answerClarification = postboxMutation({
 		// Off the scheduler — the answer is already committed above.
 		await ctx.scheduler.runAfter(0, internal.mail.ai.needsReplyClassify.draftWithAnswers, {
 			threadId: args.threadId,
+			triggeredByUserId: session.userId,
 		});
 
 		return { success: true };
@@ -326,6 +325,7 @@ export const getClarificationContext = internalQuery({
 
 		return {
 			mailboxId: thread.mailboxId,
+			ownerUserId: mailbox.userId, // the AI rate-limit fallback for older jobs (#1380)
 			latestMessageId: thread.latestMessageId,
 			// The answers this context holds; a write for older ones is dropped.
 			answeredAt: clarification.answeredAt,

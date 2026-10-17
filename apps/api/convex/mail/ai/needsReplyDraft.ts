@@ -19,6 +19,8 @@
  * (mail/ai/gapQuestions.ts), and answering it writes the draft again.
  */
 
+import { prepareThreadForConsumer } from '../interpret/fullReadPrepare';
+import { FULL_READ_RECHECK_MS, MAX_FULL_READ_WAITS } from '../interpret/fullRead';
 import type { Id } from '../../_generated/dataModel';
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
@@ -72,17 +74,14 @@ const CLASSIFICATION = {
  */
 export async function draftClarificationReply(
 	ctx: ActionCtx,
-	args: { threadId: Id<'mailThreads'> }
-): Promise<void> {
-	// Same gate as the user-triggered Postbox AI (feature flag + rate limit). A
-	// refusal (AI off, rate-limited) is expected and stays silent.
-	try {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-	} catch (error) {
-		rethrowAdmissionRefusal(error);
-		return;
+	args: {
+		threadId: Id<'mailThreads'>;
+		/** The person whose answer scheduled this draft (#1380); absent on older jobs. */
+		triggeredByUserId?: string;
+		/** Times it looked again for the thread to be fully read (read on arrival). */
+		fullReadWaits?: number;
 	}
-
+): Promise<void> {
 	try {
 		const context = await ctx.runQuery(internal.mail.ai.needsReplyClarify.getClarificationContext, {
 			threadId: args.threadId,
@@ -90,6 +89,36 @@ export async function draftClarificationReply(
 		if (!context) return;
 		// Nothing answered: only "Draft with what I have" drafts all of it as gaps.
 		if (context.answers.length === 0 && !context.isGapsAccepted) return;
+		// Read on arrival (Sol r2 F1): no starter draft of a thread not fully read.
+		if ((await prepareThreadForConsumer(ctx, { kind: 'mail', id: args.threadId })) !== 'ready') {
+			const fullReadWaits = (args.fullReadWaits ?? 0) + 1;
+			if (fullReadWaits <= MAX_FULL_READ_WAITS) {
+				await ctx.scheduler.runAfter(
+					FULL_READ_RECHECK_MS,
+					internal.mail.ai.needsReplyClassify.draftWithAnswers,
+					{
+						threadId: args.threadId,
+						...(args.triggeredByUserId ? { triggeredByUserId: args.triggeredByUserId } : {}),
+						fullReadWaits,
+					}
+				);
+			}
+			return;
+		}
+
+		// Same gate as the user-triggered Postbox AI (feature flag + rate limit). A
+		// refusal (AI off, rate-limited) is expected and stays silent. A person
+		// asked for this draft, so it is charged to them, not to the mailbox's
+		// arrival volume; a job scheduled before that was recorded falls back to
+		// the owner (#1380).
+		try {
+			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
+				ownerUserId: args.triggeredByUserId ?? context.ownerUserId,
+			});
+		} catch (error) {
+			rethrowAdmissionRefusal(error);
+			return;
+		}
 
 		// Personalize to the owner's learned voice (opt-in, fail-soft). No access
 		// check: a scheduled internal action for the flagged thread's own mailbox.

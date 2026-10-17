@@ -27,6 +27,7 @@
  * — a muted thread is skipped by the queue read too), or the manual `clear`.
  */
 
+import { refreshArrivalProjection } from './arrival/projection';
 import { v, type Infer } from 'convex/values';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -37,6 +38,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { needsReplyTriggerOf } from './needsReplyTrigger';
 import { QUEUE_LIMIT, scanReplyQueue } from './needsReplyQueueScan';
+import { nudgeQueueItem } from './nudgeQueue';
+import { reminderNudge, scanNudges, type QueueNudge } from './nudges';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { visibleThreadClarification, visibleThreadDraftSlot } from './needsReplySlot';
@@ -83,6 +86,7 @@ export async function enqueueNeedsReplyCheck(
 		needsReplyRetryCount: undefined,
 		updatedAt: Date.now(),
 	});
+	await refreshArrivalProjection(ctx, threadId); // a re-checked heuristic flag is pending again
 	await scheduleNeedsReplyClassify(ctx, threadId, opts);
 }
 
@@ -123,6 +127,7 @@ export async function clearThreadNeedsReply(
 		needsReplyRetryCount: undefined,
 		updatedAt: Date.now(),
 	});
+	await refreshArrivalProjection(ctx, threadId);
 }
 
 // ─── Convex functions ────────────────────────────────────────────────────────
@@ -161,6 +166,8 @@ export const getThreadContext = internalQuery({
 		const ownAddresses = await mailboxOwnAddresses(ctx, mailbox);
 		return {
 			mailboxId: thread.mailboxId,
+			// Whose background AI bucket the clarification is charged to (#1380).
+			ownerUserId: mailbox.userId,
 			ownerAddress,
 			ownerAddresses: [...ownAddresses],
 			latestMessageId: thread.latestMessageId,
@@ -267,6 +274,8 @@ export const applyResult = internalMutation({
 				: { needsReplyPendingAt: undefined, needsReplyRetryCount: undefined }),
 			updatedAt: Date.now(),
 		});
+		// Read on arrival: a settled verdict is `needs_me`, a cleared one is not (§2.8).
+		await refreshArrivalProjection(ctx, args.threadId);
 
 		// Draft-on-arrival (postbox.aiDraft): the moment a message is confirmed to
 		// need a reply, pre-generate a draft into the review slot via the shared
@@ -312,7 +321,10 @@ export const listQueue = publicQuery({
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return { items: [] };
 
-		const { needsReply, followUps } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
+		const now = Date.now();
+		const { needsReply, followUps } = await scanReplyQueue(ctx, args.mailboxId, now);
+		const taken = new Set<string>([...needsReply, ...followUps].map((row) => row.thread._id));
+		const nudges = await scanNudges(ctx, args.mailboxId, now, taken); // list only, not the badge
 		const items = [];
 		for (const { thread, flag, trigger } of needsReply) {
 			items.push({
@@ -348,6 +360,7 @@ export const listQueue = publicQuery({
 				receivedAt: trigger.receivedAt,
 				// The brief's top item and first latest line (unsealed), when interpreted.
 				briefTop: await openBriefTop(thread, modeOfMailbox(mailbox)),
+				nudge: undefined as QueueNudge | undefined,
 			});
 		}
 		for (const { thread, flag, message } of followUps) {
@@ -374,8 +387,11 @@ export const listQueue = publicQuery({
 				snippet: thread.latestSnippet,
 				receivedAt: message.receivedAt,
 				briefTop: await openBriefTop(thread, modeOfMailbox(mailbox)),
+				// "Draft a nudge" (mail/nudges.ts): never on a fenced thread.
+				nudge: reminderNudge(thread, mailbox),
 			});
 		}
+		for (const row of nudges) items.push(await nudgeQueueItem(ctx, mailbox, row));
 		return { items };
 	},
 });
@@ -384,8 +400,9 @@ export const listQueue = publicQuery({
  * How many rows `listQueue` returns for the mailbox, without building them
  * (plan 2.11). The shell's Answer badge subscribes to this on every dashboard
  * page; the full list is only read on the Answer and Today pages. Same scan,
- * same filters, so the badge matches the list; it skips the per-follow-up name
- * lookups, and a change to a card's text does not re-send anything.
+ * same filters, so the badge matches the list's reply and follow-up rows; it
+ * skips the name lookups and the nudge cards (mail/nudges.ts), whose scan is
+ * too heavy for every rerun.
  */
 // public: soft-auth — returns 0 for anonymous; mailbox access is still enforced in-handler
 export const countQueue = publicQuery({

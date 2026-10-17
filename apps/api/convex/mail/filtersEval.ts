@@ -12,6 +12,7 @@
 
 import type { Doc, Id } from '../_generated/dataModel';
 import type { DatabaseReader } from '../_generated/server';
+import type { ArrivalFilterActionType } from '@owlat/shared/arrival';
 import { openStoredInlineBody } from '../lib/messageBodyStore';
 
 export interface EvalMessage {
@@ -35,11 +36,19 @@ export interface EvalResultAction {
 		| 'forward'
 		| 'delete'
 		| 'pinToSection'
-		| 'discard';
+		| 'discard'
+		// Read on arrival (SPEC §6.3). Explicit no-ops in this evaluator's
+		// consumers (`resolveFilterOutcome`, the retroactive run): handled by
+		// lane rules (SPEC §6.3) in the arrival hook.
+		| ArrivalFilterActionType;
 	folderId?: Id<'mailFolders'>;
 	labelId?: Id<'mailLabels'>;
 	forwardTo?: string;
 	sectionName?: string;
+	hours?: number;
+	/** The filter this action came from, and its priority (exclusive winners, §6.2). */
+	filterId?: Id<'mailFilters'>;
+	priority?: number;
 }
 
 export interface EvalResult {
@@ -202,6 +211,9 @@ export function evaluateFilters(filters: Doc<'mailFilters'>[], message: EvalMess
 				labelId: action.labelId,
 				forwardTo: action.forwardTo,
 				sectionName: action.sectionName,
+				hours: action.hours,
+				filterId: filter._id,
+				priority: filter.priority,
 			});
 		}
 		if (filter.stopProcessing) {

@@ -86,6 +86,8 @@ const erasureSource = [
 	'threadBriefPhases',
 ]
 	.map((file) => readFileSync(join(__dirname, '..', 'auth', 'erasure', `${file}.ts`), 'utf8'))
+	// The arrival tables' mailbox readers, spread into the `mailboxRecords` phase.
+	.concat(readFileSync(join(__dirname, '..', 'mail', 'arrival', 'mailboxRows.ts'), 'utf8'))
 	.join('\n');
 
 /**

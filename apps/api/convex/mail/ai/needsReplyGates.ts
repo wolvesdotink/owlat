@@ -13,6 +13,9 @@ import { internal } from '../../_generated/api';
 import type { LatestInbound } from '../interpret/needsReplyProjection';
 import { PREDECESSORS_PENDING } from '../interpret/defer';
 
+/** How soon a classification whose source another run holds looks again, at most. */
+export const BUSY_RECHECK_MS = 30_000;
+
 /**
  * D10: defer a delivered non-candidate's interpretation when the reader
  * display is its only consumer (`mail/interpret/defer.ts`). Fail-open: a
@@ -64,8 +67,15 @@ export async function continuesLater(
 	run: { status: string; errorCode?: string; retryAt?: number },
 	args: ClassifyArgs
 ): Promise<boolean> {
-	if (run.status !== 'skipped' || run.errorCode !== PREDECESSORS_PENDING) return false;
-	const delayMs = Math.max(0, (run.retryAt ?? Date.now()) - Date.now());
+	// Another run holds the source (`busy`), or it waits for its category
+	// (`wait`): the verdict comes from that run, so this continues once it can,
+	// and never settles on the heuristic because of contention (SPEC §2.5).
+	const isContended = run.status === 'busy' || run.status === 'wait';
+	const isPredecessorWait = run.status === 'skipped' && run.errorCode === PREDECESSORS_PENDING;
+	if (!isContended && !isPredecessorWait) return false;
+	let delayMs = Math.max(0, (run.retryAt ?? Date.now()) - Date.now());
+	// A lease names its expiry; the run holding it usually ends far sooner.
+	if (run.status === 'busy') delayMs = Math.min(delayMs, BUSY_RECHECK_MS);
 	await ctx.scheduler.runAfter(delayMs, internal.mail.ai.needsReplyClassify.classifyThread, args);
 	return true;
 }

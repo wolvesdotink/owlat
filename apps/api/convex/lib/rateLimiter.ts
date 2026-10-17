@@ -184,6 +184,33 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 30,
 	},
 
+	// Background Postbox AI (category refinement, clarification, draft on
+	// arrival, commitment extraction, the Reply Queue starter draft), keyed per
+	// mailbox owner (#1380). Scheduled work has no session, so it used to share
+	// one 'anon' key in `postboxAiPerUser` across the whole instance. Sized for
+	// one person's arrival burst: one message spends at most three gated calls
+	// (refinement, clarification, draft), so the capacity covers a ~40-message
+	// IMAP catch-up and the rate ~20 such messages a minute after it. Spend is
+	// bounded by the ADR-0073 ceilings, not by this bucket; it only keeps one
+	// owner's volume from starving another's.
+	postboxAiBackground: {
+		kind: 'token bucket',
+		rate: 60,
+		period: MINUTE,
+		capacity: 120,
+	},
+
+	// Read on arrival (SPEC §2.6): every arrival read that will call a model,
+	// keyed by the mailbox owner. It bounds what outside senders can make one
+	// owner spend per hour: over it, display-only mail is counted instead of
+	// read, and eager work waits for the bucket (never dropped).
+	arrivalReadPerOwner: {
+		kind: 'token bucket',
+		rate: 120,
+		period: HOUR,
+		capacity: 60,
+	},
+
 	// "Send a test notification" in Preferences → This device (push/). Each one
 	// is an outbound request to a push service; a handful a minute is plenty for
 	// someone checking that their phone rings.

@@ -12,6 +12,14 @@
 		"requestSentTitle": "Anfrage gesendet",
 		"signOut": "Abmelden"
 	},
+	"answer": {
+		"nudge": {
+			"draft": "Erinnerung entwerfen",
+			"overdue": "Frist verstrichen",
+			"stale": "Seit 3 Werktagen keine Antwort",
+			"markReceivedOperation": "Als erhalten markieren"
+		}
+	},
 	"auth": {
 		"fields": {
 			"email": "E-Mail",
@@ -1059,31 +1067,31 @@
 			},
 			"incomplete": {
 				"partialLead": "Teilweise gelesen.",
-				"partialCount": "{done} von {total} Nachrichten sind in diesem Überblick.",
-				"partialPlain": "Ein Teil dieses Verlaufs fehlt in diesem Überblick.",
+				"partialCount": "{done} von {total} Nachrichten sind in dieser Übersicht.",
+				"partialPlain": "Ein Teil dieses Verlaufs fehlt in dieser Übersicht.",
 				"partialReason": {
-					"tooLong": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest war zu lang.",
-					"failed": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest konnte nicht gelesen werden.",
-					"undecryptable": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest ließ sich nicht entschlüsseln.",
-					"pending": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest wird noch gelesen.",
-					"history": "{done} von {total} Nachrichten sind in diesem Überblick. Einige frühere Antworten wurden gesendet, bevor Owlat ihren Text aufbewahrt hat, deshalb fehlen sie."
+					"tooLong": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest war zu lang.",
+					"failed": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest konnte nicht gelesen werden.",
+					"undecryptable": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest ließ sich nicht entschlüsseln.",
+					"pending": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest wird noch gelesen.",
+					"history": "{done} von {total} Nachrichten sind in dieser Übersicht. Einige frühere Antworten wurden gesendet, bevor Owlat ihren Text aufbewahrt hat, deshalb fehlen sie."
 				},
-				"pending": "Dieser Verlauf wird gerade gelesen. Der Überblick folgt gleich.",
+				"pending": "Dieser Verlauf wird gerade gelesen. Die Übersicht folgt gleich.",
 				"none": {
-					"default": "Für diesen Verlauf gibt es noch keinen Überblick. Im E-Mail-Verlauf siehst du alles.",
-					"aiOff": "Die KI ist aus, deshalb gibt es keinen Überblick. Im E-Mail-Verlauf siehst du alles.",
-					"undecryptable": "Diese Nachricht ließ sich nicht entschlüsseln, deshalb gibt es keinen Überblick.",
-					"ineligible": "Mails wie diese werden nicht zusammengefasst, deshalb gibt es keinen Überblick.",
-					"failed": "Das Lesen dieses Verlaufs ist fehlgeschlagen, deshalb gibt es keinen Überblick.",
-					"pending": "Dieser Verlauf wurde noch nicht gelesen. Der Überblick folgt gleich."
+					"default": "Für diesen Verlauf gibt es noch keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
+					"aiOff": "Die KI ist aus, deshalb gibt es keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
+					"undecryptable": "Diese Nachricht ließ sich nicht entschlüsseln, deshalb gibt es keine Übersicht.",
+					"ineligible": "Mails wie diese werden nicht zusammengefasst, deshalb gibt es keine Übersicht.",
+					"failed": "Das Lesen dieses Verlaufs ist fehlgeschlagen, deshalb gibt es keine Übersicht.",
+					"pending": "Dieser Verlauf wurde noch nicht gelesen. Die Übersicht folgt gleich."
 				},
 				"short": "So angezeigt, wie geschrieben. Hier gibt es nichts zusammenzufassen.",
 				"securityLead": "Sicherheits-E-Mail.",
 				"security": "Wird so angezeigt, wie geschrieben, und nie zusammengefasst.",
 				"signed": "Nur der signierte Teil ist zusammengefasst.",
-				"stale": "Der Überblick ist pausiert: Eine Signaturprüfung hat geändert, wofür eine Nachricht hier verlässlich ist. Im E-Mail-Verlauf siehst du alles.",
+				"stale": "Die Übersicht ist pausiert: Eine Signaturprüfung hat geändert, wofür eine Nachricht hier verlässlich ist. Im E-Mail-Verlauf siehst du alles.",
 				"openConversation": "E-Mail-Verlauf öffnen",
-				"deferred": "Neue Mails in diesem Verlauf werden jetzt gelesen. Mails wie diese werden erst gelesen, wenn du ihren Verlauf öffnest, deshalb füllt sich der Überblick gleich."
+				"deferred": "Neue Mails in diesem Verlauf werden jetzt gelesen. Mails wie diese werden erst gelesen, wenn du ihren Verlauf öffnest, deshalb füllt sich die Übersicht gleich."
 			},
 			"conversation": {
 				"read": "Den ganzen Verlauf lesen",
@@ -1103,7 +1111,7 @@
 			},
 			"cite": {
 				"showing": "Quelle von „{label}“",
-				"back": "zurück zum Überblick",
+				"back": "zurück zur Übersicht",
 				"notLocated": "Die genaue Stelle ließ sich in dieser Nachricht nicht finden.",
 				"loading": "diese Nachricht wird geladen…",
 				"unreachable": "diese Nachricht ist nicht im geladenen Verlauf"
@@ -1131,10 +1139,10 @@
 				"reminder": "Du wirst morgen früh erinnert."
 			},
 			"operations": {
-				"markSeen": "Überblick als gesehen markieren",
+				"markSeen": "Übersicht als gesehen markieren",
 				"saveView": "Ansicht des Verlaufs speichern",
 				"react": "Punkt aktualisieren",
-				"ensure": "Überblick vorbereiten"
+				"ensure": "Übersicht vorbereiten"
 			},
 			"evidence": {
 				"label": "Quelle zeigen: {name}, {date}",
@@ -4659,7 +4667,12 @@
 					"markFlagged": "Mit Stern markieren",
 					"markRead": "Als gelesen markieren",
 					"moveToFolder": "In Ordner verschieben",
-					"pinToSection": "In Posteingangs-Bereich anheften"
+					"pinToSection": "In Posteingangs-Bereich anheften",
+					"sendToDigest": "In den Digest",
+					"placeInUpdates": "Als Update einordnen",
+					"placeInNeedsMe": "Als „braucht dich“ einordnen",
+					"archiveAfter": "Nach einer Weile archivieren",
+					"notify": "Benachrichtige mich"
 				},
 				"actionsHeading": "Dann Folgendes tun…",
 				"addAction": "+ Aktion hinzufügen",
@@ -6024,14 +6037,10 @@
 				"replyDefaultHelp": "Was die Schaltfläche „Antworten“ und das Tastenkürzel {replyKey} tun. {replyAllKey} antwortet immer allen; beim Verfassen kannst du eine Antwort auf „Allen antworten“ umstellen.",
 				"writingSuggestionsLabel": "Schreibvorschläge",
 				"writingSuggestionsHelp": "Inline-KI-Autovervollständigung beim Schreiben anzeigen. Mit Tab übernehmen.",
-				"autoSummarizeLabel": "Überblicke anzeigen",
-				"autoSummarizeHelp": "Öffne einen Verlauf mit dem Neuesten, dem Stand der Dinge und dem, worum du gebeten wirst, jeweils mit Link zur Quelle. Nur für persönliche Postfächer.",
-				"threadViewLabel": "Verläufe öffnen mit",
-				"threadViewHelp": "Überblick oder der ganze E-Mail-Verlauf. Wechselst du in einem Verlauf, merkt er sich das. Nur für persönliche Postfächer.",
-				"threadViewConversation": "E-Mail-Verlauf",
-				"threadViewOperation": "Speichern, womit Verläufe öffnen",
-				"backfillLabel": "Überblicke für neuere E-Mails vorbereiten",
-				"backfillHelp": "Liest deine aktiven Gespräche der letzten 30 Tage, damit sie mit einem Überblick öffnen. Ältere werden vorbereitet, wenn du sie zum ersten Mal öffnest. Das nutzt das KI-Budget.",
+				"autoSummarizeLabel": "Übersicht über dem Verlauf anzeigen",
+				"autoSummarizeHelp": "Eine kurze KI-Zusammenfassung über der Mail: was sich geändert hat und was du noch tun musst. Aus: du siehst nur den Verlauf.",
+				"backfillLabel": "Übersichten für neuere E-Mails vorbereiten",
+				"backfillHelp": "Liest deine aktiven Gespräche der letzten 30 Tage, damit jedes mit seiner Übersicht über dem Verlauf öffnet. Ältere werden gelesen, wenn du sie zum ersten Mal öffnest. Das nutzt das KI-Budget.",
 				"backfillStart": "Vorbereiten",
 				"backfillResume": "Fortsetzen",
 				"backfillCancel": "Stoppen",
@@ -6041,8 +6050,8 @@
 				"backfillPausedOff": "Pausiert: KI ist ausgeschaltet.",
 				"backfillPausedCap": "Nach {count} Gesprächen pausiert. Setz es fort, um weiterzumachen.",
 				"backfillCancelled": "Gestoppt. Setz es fort, um dort weiterzumachen, wo es aufgehört hat.",
-				"backfillOperation": "Überblicke vorbereiten",
-				"backfillCancelOperation": "Vorbereitung der Überblicke stoppen",
+				"backfillOperation": "Übersichten vorbereiten",
+				"backfillCancelOperation": "Vorbereitung der Übersichten stoppen",
 				"sendSoundLabel": "Ton beim Senden abspielen",
 				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus.",
 				"swipeLeftLabel": "Nach links wischen",
@@ -12998,6 +13007,357 @@
 			"requestOperation": "Postfach anfragen",
 			"reservedBody": "{address} ist für dich reserviert. Es erscheint hier automatisch, sobald es bereit ist.",
 			"reservedHeading": "Dein Postfach wird eingerichtet"
+		},
+		"senders": {
+			"pageTitle": "Absender",
+			"rail": "Absender",
+			"heading": "Absender",
+			"subtitle": "Wer dir schreibt und was Owlat mit diesen Mails macht.",
+			"tabs": {
+				"review": "Zu prüfen",
+				"all": "Alle",
+				"digest": "Im Digest",
+				"auto_archive": "Automatisch archiviert",
+				"unsubscribed": "Abgemeldet"
+			},
+			"columns": {
+				"sender": "Absender",
+				"mails": "Mails, etwa 90 Tage",
+				"read": "Gelesen",
+				"kind": "Art",
+				"action": "Was Owlat macht"
+			},
+			"status": {
+				"keep": "Behalten",
+				"digest": "In den Digest",
+				"auto_archive": "Auto-Archiv",
+				"unsubscribed": "Abmelden"
+			},
+			"kind": {
+				"person": "Person",
+				"newsletter": "Newsletter",
+				"notification": "Benachrichtigung",
+				"receipt": "Beleg",
+				"promotion": "Werbung",
+				"spam": "Spam",
+				"other": "Sonstiges",
+				"unknown": "Noch nicht eingeordnet"
+			},
+			"suggested": "Vorschlag: {status}",
+			"suggestion": {
+				"digest": "In den Digest",
+				"auto_archive": "Auto-Archiv",
+				"unsubscribe": "Abmelden"
+			},
+			"keepAsIs": "So lassen",
+			"keepAsIsTitle": "Absender so lassen und keine Änderung mehr vorschlagen",
+			"result": {
+				"confirmed": "Abgemeldet",
+				"failed": "Abmelden hat nicht geklappt; ihre Mails werden archiviert",
+				"opened": "Schließ die Abmeldung auf der geöffneten Seite ab; bis dahin werden ihre Mails archiviert"
+			},
+			"draftsPaused": "Entwürfe pausiert",
+			"resume": "Fortsetzen",
+			"readTitle": "Du hast {opened} von {delivered} geöffnet",
+			"readPercent": "{percent} % gelesen",
+			"phoneStats": "{count} Mail · {percent} % gelesen | {count} Mails · {percent} % gelesen",
+			"controlLabel": "Was Owlat mit Mails von {name} macht",
+			"empty": {
+				"review": "Nichts zu prüfen. Absender, die du selten liest, erscheinen hier.",
+				"all": "Noch keine Absender. Sie erscheinen, sobald neue Mails ankommen.",
+				"digest": "Kein Absender landet in deinem Digest.",
+				"auto_archive": "Kein Absender wird automatisch archiviert.",
+				"unsubscribed": "Du hast dich hier noch von niemandem abgemeldet."
+			},
+			"loadMore": "Mehr laden",
+			"apply": "{count} Vorschlag übernehmen | {count} Vorschläge übernehmen",
+			"applyRule": "Vorschläge: in etwa 90 Tagen unter 10 % gelesen → Digest; Werbung, die du nie öffnest → Abmelden",
+			"dialog": {
+				"title": "{count} Vorschlag übernehmen? | {count} Vorschläge übernehmen?",
+				"description": "Jeder Absender bekommt den angezeigten Status. Beim Abmelden bitten wir One-Click-Absender aufzuhören und archivieren ihre neueren Mails. Du kannst alles später ändern.",
+				"confirm": "Übernehmen"
+			},
+			"operations": {
+				"setStatus": "Absender ändern",
+				"unsubscribe": "Abmelden",
+				"resumeDrafts": "Entwürfe fortsetzen",
+				"apply": "Vorschläge übernehmen",
+				"markOpened": "Als gelesen zählen"
+			},
+			"toast": {
+				"archived": "{count} neuere Mail von {name} archiviert | {count} neuere Mails von {name} archiviert",
+				"status": {
+					"keep": "Mails von {name} bleiben, wo sie landen",
+					"digest": "Mails von {name} gehen jetzt in deinen Digest",
+					"auto_archive": "Mails von {name} werden ab jetzt archiviert"
+				},
+				"unsubscribed": "Von {name} abgemeldet",
+				"localOnly": "{name} bietet keinen Abmeldelink; ihre Mails werden ab jetzt archiviert",
+				"draftsResumed": "Entwürfe fortgesetzt",
+				"applied": "{count} Vorschlag übernommen | {count} Vorschläge übernommen"
+			},
+			"confirmUnsubscribe": "Von {name} abmelden? Ihre Mails werden ab jetzt archiviert.",
+			"shortcuts": {
+				"autoArchive": "Mails dieses Absenders automatisch archivieren",
+				"unsubscribe": "Von diesem Absender abmelden"
+			}
+		},
+		"reader": {
+			"header": {
+				"reply": "Antworten",
+				"archive": "Archivieren",
+				"whyHere": "Warum ist das hier?",
+				"details": "Einzelheiten",
+				"fullBrief": "Ganze Übersicht",
+				"snooze": "Zurückstellen",
+				"ask": "Frag zu diesem Verlauf"
+			},
+			"strip": {
+				"reading": "Dieser Verlauf wird gerade gelesen",
+				"waitingOn": "Du wartest auf {name}: {text}",
+				"waiting": "Du wartest: {text}",
+				"due": "bis {date}",
+				"fullBrief": "Ganze Übersicht",
+				"exactWording": "Den genauen Wortlaut lesen",
+				"whyHere": "Warum hier?",
+				"details": "Einzelheiten"
+			},
+			"summary": {
+				"signed": "signiert",
+				"imagesOff": "Bilder aus"
+			},
+			"sheet": {
+				"title": "Ganze Übersicht"
+			},
+			"cite": {
+				"clear": "Markierung entfernen"
+			}
+		},
+		"priority": {
+			"needsYou": {
+				"title": "Braucht dich",
+				"queue": "Antwortliste ({count})"
+			},
+			"everythingElse": {
+				"title": "Alles andere"
+			},
+			"state": {
+				"due": "bis {date}",
+				"reply": "antworten",
+				"waiting": "ausstehend"
+			},
+			"draftReady": "Entwurf bereit",
+			"updates": {
+				"title": "Neuigkeiten · keine Antwort nötig",
+				"show": "anzeigen",
+				"foldOne": "{count} weitere Neuigkeit von {a} | {count} weitere Neuigkeiten von {a}",
+				"foldTwo": "{count} weitere Neuigkeiten von {a} und {b}",
+				"foldOneOther": "{count} weitere Neuigkeiten von {a}, {b} und einem weiteren Absender",
+				"foldOthers": "{count} weitere Neuigkeiten von {a}, {b} und {others} weiteren"
+			},
+			"digest": {
+				"count": "{count} Newsletter oder Werbemail | {count} Newsletter und Werbemails",
+				"inDigest": "in deiner Zusammenfassung",
+				"open": "öffnen"
+			},
+			"filter": {
+				"needs_me": "Braucht dich",
+				"today": "Alles andere",
+				"updates": "Neuigkeiten",
+				"digest": "In deiner Zusammenfassung",
+				"archived": "Abgelegt",
+				"clear": "Wieder alle E-Mails zeigen, nicht nur „{name}“"
+			}
+		},
+		"arrival": {
+			"settings": {
+				"label": "Neue Mails beim Eingang lesen",
+				"help": "Wenn das an ist, liest dein KI-Anbieter persönliche Mails, sobald sie ankommen, auch Mails, die du nie öffnest. Wenn es aus ist, prüft Owlat neue Mails weiter auf Antworten und Kategorien, bereitet die Übersicht anderer Mails aber erst vor, wenn du sie öffnest."
+			},
+			"reason": {
+				"aiOff": "KI ist aus",
+				"ineligible": "Nicht gelesen: diese Art Mail liest die KI nie",
+				"openWork": "Ganz gelesen: sie braucht dich vielleicht",
+				"readOnArrivalOff": "Lesen beim Eingang ist aus",
+				"senderStatus": "Nicht gelesen, weil du diesen Absender so eingestellt hast",
+				"security": "Nicht gelesen: Sicherheitsmails zeigen wir so, wie sie sind",
+				"budget": "Nur gezählt: das KI-Budget war aufgebraucht",
+				"digest": "Für deinen Digest gezählt",
+				"override": "So gelesen, wie du es eingeordnet hast",
+				"category": "Nach Art der Mail gelesen",
+				"exactWording": "Ganz gelesen: der genaue Wortlaut zählt",
+				"ownerLimit": "Nur gezählt: gerade kam sehr viel Mail an",
+				"categoryTimeout": "Entschieden, bevor die Art der Mail klar war",
+				"gistUnavailable": "Nur gezählt: kein kurzes Zitat möglich",
+				"gistFailed": "Nur gezählt: das kurze Lesen ist fehlgeschlagen"
+			}
+		},
+		"explain": {
+			"title": {
+				"needs_me": "Warum das dich braucht",
+				"today": "Warum das bei allem anderen liegt",
+				"updates": "Warum das unter Neuigkeiten liegt",
+				"digest": "Warum das in deine Zusammenfassung kommt",
+				"archived": "Warum das archiviert wurde"
+			},
+			"titleUnknown": "Warum das hier liegt",
+			"loading": "Wird nachgeschaut",
+			"empty": "Nichts zu erklären: Diese Mail wurde beim Eintreffen nicht einsortiert.",
+			"noStats": "noch keine Mail von ihnen gezählt",
+			"senderStats": "{count} Mail in etwa 90 Tagen, du hast {opened} geöffnet | {count} Mails in etwa 90 Tagen, du hast {opened} geöffnet",
+			"fenced": "Einige Gründe sind ausgeblendet, solange diese Unterhaltung erneut geprüft wird.",
+			"replyNeeded": "Wartet auf deine Antwort",
+			"rowLink": "Warum liegt das hier?",
+			"label": {
+				"sender": "Absender",
+				"decidedBy": "Entschieden durch",
+				"kind": "Art",
+				"reply": "Antwort",
+				"readAs": "Gelesen als"
+			},
+			"decided": {
+				"thread_override": "Du hast diese Unterhaltung hierher gelegt",
+				"sender_override": "Du hast Mail von diesem Absender hierher gelegt",
+				"needs_reply": "Sie fragt dich etwas und wartet auf deine Antwort",
+				"sender_status": "Wie du mit diesem Absender umgehst",
+				"rule": "Eine deiner Regeln",
+				"category": "Die Art der Mail",
+				"senderStatus": {
+					"default": "Wie du mit diesem Absender umgehst: {status}",
+					"user": "Wie du mit diesem Absender umgehst: {status}, von dir festgelegt",
+					"suggestion": "Wie du mit diesem Absender umgehst: {status}, ein Vorschlag, den du angenommen hast",
+					"learned": "Wie du mit diesem Absender umgehst: {status}, gelernt aus Mails, die du ungelesen archiviert hast"
+				}
+			},
+			"status": {
+				"keep": "Behalten",
+				"digest": "Zusammenfassung",
+				"auto_archive": "Automatisch archivieren",
+				"unsubscribed": "Abgemeldet"
+			},
+			"categorySource": {
+				"heuristic": "aus den Kopfzeilen geschätzt",
+				"llm": "von der KI gelesen",
+				"user": "von dir festgelegt"
+			},
+			"depth": {
+				"full": "Vollständig",
+				"gist": "Kurzfassung",
+				"count": "Nur gezählt",
+				"none": "Nicht gelesen",
+				"pending": "Noch nicht gelesen"
+			},
+			"modelCalls": "keine Modellaufrufe | 1 Modellaufruf | {count} Modellaufrufe",
+			"action": {
+				"wrong": "Das stimmt nicht",
+				"always": "Immer hier",
+				"senders": "Absenderseite"
+			}
+		},
+		"fix": {
+			"title": "Wohin soll Mail wie diese?",
+			"destination": {
+				"needs_me": "Braucht dich: ganz oben zeigen",
+				"today": "Bei allem anderen",
+				"updates": "Neuigkeiten: eine Zeile, keine Antwort",
+				"digest": "Zusammenfassung: in deiner täglichen Übersicht",
+				"auto_archive": "Automatisch archivieren"
+			},
+			"applyTo": "Gilt für",
+			"scope": {
+				"message": "Diese Unterhaltung",
+				"sender": "Alles von {name}"
+			},
+			"reason": {
+				"label": "Warum? (optional, hilft der Regel)",
+				"placeholder": "Zum Beispiel: Verspätungen bei Reisen, die ich gebucht habe, sind mir wichtig",
+				"help": "Owlat macht daraus einen Regelentwurf, den du unter Regeln prüfen kannst. Er wird nie von selbst eingeschaltet."
+			},
+			"save": "Speichern",
+			"cancel": "Abbrechen",
+			"operation": "Korrektur speichern",
+			"toast": {
+				"unchanged": "Das war schon so einsortiert",
+				"archivedSender": "{count} neue Mail von {name} archiviert | {count} neue Mails von {name} archiviert",
+				"ruleDraft": "Ein Regelentwurf aus deiner Notiz wartet unter Regeln.",
+				"thread": {
+					"needs_me": "Diese Unterhaltung steht jetzt unter „Braucht dich“",
+					"today": "Diese Unterhaltung steht jetzt bei allem anderen",
+					"updates": "Diese Unterhaltung steht jetzt unter Neuigkeiten",
+					"digest": "Diese Unterhaltung kommt jetzt in deine Zusammenfassung",
+					"auto_archive": "Diese Unterhaltung wurde archiviert"
+				},
+				"sender": {
+					"needs_me": "Mail von {name} steht jetzt unter „Braucht dich“",
+					"today": "Mail von {name} steht jetzt bei allem anderen",
+					"updates": "Mail von {name} steht jetzt unter Neuigkeiten",
+					"digest": "Mail von {name} kommt jetzt in deine Zusammenfassung",
+					"auto_archive": "Mail von {name} wird ab jetzt archiviert"
+				}
+			}
+		},
+		"learned": {
+			"notice": "Mail von {name} kommt jetzt in deine Zusammenfassung",
+			"operation": "Hinweis bestätigen"
+		},
+		"undo": {
+			"operation": "Rückgängig machen",
+			"done": "Rückgängig gemacht.",
+			"inProgress": "Wird rückgängig gemacht. Der Rest folgt gleich.",
+			"partial": "Rückgängig gemacht, außer was sich seitdem geändert hat.",
+			"movedBack": "Zurückgelegt.",
+			"remindersNotRestored": "Antworterinnerungen wurden nicht wiederhergestellt.",
+			"unsubscribeNotRecalled": "Die Abmeldung wurde schon gesendet und lässt sich nicht zurücknehmen.",
+			"expired": "Das lässt sich nicht mehr rückgängig machen",
+			"already": "Das wurde schon rückgängig gemacht"
+		},
+		"rules": {
+			"title": "Regeln in deinen Worten",
+			"intro": "Sag, was mit bestimmter Mail passieren soll. Owlat macht daraus eine Regel, die du prüfst, bevor sie läuft. Regeln sortieren, labeln, markieren, ordnen ein oder benachrichtigen; sie leiten nie weiter, löschen nie und antworten nie.",
+			"placeholder": "Rechnungen von Lieferanten kommen in Finanzen",
+			"inputLabel": "Beschreib eine Regel",
+			"add": "Regel hinzufügen",
+			"compiling": "Wird zur Regel …",
+			"failed": "Daraus ließ sich keine Regel machen. Nenn am besten einen Absender, einen Betreff oder einen deiner Ordner.",
+			"save": "Regel speichern",
+			"discard": "Verwerfen",
+			"test": "Mit aktueller Mail testen",
+			"empty": "Noch keine Regeln in deinen Worten.",
+			"aiNote": "Die KI-Frage wird einmal gestellt, wenn eine Mail ankommt. Eine Mail wartet auf höchstens fünf davon; Regeln weiter unten werden für sie übersprungen. KI-Regeln laufen nie über ältere Mail.",
+			"chips": {
+				"condition": "{field} {op} „{value}“",
+				"ai": "KI: {question}",
+				"and": "und",
+				"or": "oder",
+				"moveTo": "Nach {folder} verschieben",
+				"label": "Label {label} setzen",
+				"section": "Bereich {section}",
+				"archiveAfter": "Nach {hours} Std. archivieren"
+			},
+			"codes": {
+				"label": "Codes und Anmeldelinks nach einem Tag archivieren",
+				"help": "Einmalcodes und Anmeldelinks verlassen deinen Posteingang 24 Stunden nach ihrer Ankunft, außer du markierst sie mit Stern oder antwortest."
+			},
+			"dryRun": {
+				"title": "Probelauf · letzte {count} Mails",
+				"summary": "{matches} von {count} passen",
+				"aiUnavailable": "Die KI-Frage ließ sich gerade nicht stellen, deshalb sind diese Mails nicht getestet.",
+				"empty": "Nichts in deiner aktuellen Mail passt.",
+				"source": {
+					"noMatch": "passt nicht",
+					"rule": "Regel",
+					"aiYes": "KI · ja",
+					"aiNo": "KI · nein",
+					"aiUnknown": "KI · unsicher",
+					"notTested": "nicht getestet"
+				}
+			},
+			"operations": {
+				"compile": "Regel erstellen",
+				"confirm": "Regel speichern",
+				"discard": "Regelentwurf verwerfen",
+				"test": "Regel testen"
+			}
 		}
 	},
 	"recipient": {
@@ -15865,12 +16225,8 @@
 					"keywords": "KI, Autovervollständigung, Schreibhilfe"
 				},
 				"autoSummarize": {
-					"title": "Überblicke anzeigen",
-					"keywords": "ki, zusammenfassung, überblick"
-				},
-				"threadView": {
-					"title": "Verläufe öffnen mit",
-					"keywords": "überblick, e-mail-verlauf, standardansicht"
+					"title": "Übersicht über dem Verlauf anzeigen",
+					"keywords": "ki, zusammenfassung, übersicht, überblick"
 				},
 				"sendSound": {
 					"title": "Ton beim Senden abspielen",

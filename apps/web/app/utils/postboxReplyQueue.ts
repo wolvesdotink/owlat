@@ -74,6 +74,14 @@ export interface ReplyQueueItem {
 	kind?: 'needs_reply' | 'followup';
 	/** Who we're waiting on (follow-up items only) — the first recipient. */
 	waitingOn?: string;
+	/**
+	 * Follow-up items only: the card offers "Draft a nudge" (absent while the
+	 * thread's AI reading is paused). `reminder` is a "Remind me if no reply"
+	 * deadline; `overdue` / `stale` is a "Waiting on others" brief item past
+	 * its due date, or 3 business days old with no reply since
+	 * (mail/nudges.ts). Item nudges name the item, which Done marks received.
+	 */
+	nudge?: { reason: 'reminder' } | { reason: 'overdue' | 'stale'; itemId: string; dueAt?: number };
 	threadId: string;
 	messageId: string;
 	urgency: ReplyQueueUrgency;
@@ -163,7 +171,7 @@ export function replyQueueHeadline(
 	item: Pick<ReplyQueueItem, 'askSummary' | 'subject' | 'kind' | 'waitingOn'> &
 		Partial<Pick<ReplyQueueItem, 'fromAddress' | 'fromName' | 'briefTop'>>,
 	locale?: string,
-	opts: { isShared?: boolean } = {}
+	opts: { isShared?: boolean; showBrief?: boolean } = {}
 ): ReplyQueueText {
 	// Follow-up items invert the framing: WE are waiting on THEM. The server
 	// resolves the counterpart's name when it knows one; the address is the fallback.
@@ -173,12 +181,17 @@ export function replyQueueHeadline(
 			? { key: 'shared.postboxReplyQueue.waitingOn', params: { who } }
 			: 'shared.postboxReplyQueue.waitingOnReply';
 	}
+	const isShared = opts.isShared === true || item.briefTop?.mode === 'actions';
+	// The viewer turned their (personal) brief off: no AI line, the subject. A
+	// shared mailbox's actions are the team's, not the brief, and stay.
+	if (opts.showBrief === false && !isShared) {
+		return item.subject.trim() || 'shared.postboxReplyQueue.noSubject';
+	}
 	const top = item.briefTop?.top;
 	if (top && top.responsibility !== 'them') {
 		const text = (locale?.toLowerCase().startsWith('de') ? top.text.de : top.text.en).trim();
 		if (text) return text;
 	}
-	const isShared = opts.isShared === true || item.briefTop?.mode === 'actions';
 	const ask = isShared ? undefined : item.askSummary?.trim();
 	if (ask) return ask;
 	return item.subject.trim() || 'shared.postboxReplyQueue.noSubject';

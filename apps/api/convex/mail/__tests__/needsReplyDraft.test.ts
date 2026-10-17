@@ -63,6 +63,7 @@ function context(overrides: Record<string, unknown> = {}) {
 		questionIds: ['clarify_0'],
 		senderAddress: 'jonas@brightpath.example',
 		ownerAddress: 'ada@example.com',
+		ownerUserId: 'owner_user',
 		contactId: 'contact_1',
 		transcript: 'Them: could you send us the September invoice?',
 		answers: [{ question: 'Is the PO number on it?', answer: 'Yes, it is on it' }],
@@ -74,7 +75,9 @@ function context(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-function makeCtx(opts: { context?: unknown; gateThrows?: boolean; plan?: unknown } = {}) {
+function makeCtx(
+	opts: { context?: unknown; gateThrows?: boolean; plan?: unknown; fullRead?: string } = {}
+) {
 	const mutations: { name: string; args: Record<string, unknown> }[] = [];
 	const ctx = {
 		runQuery: vi.fn(async (ref: unknown) => {
@@ -90,11 +93,14 @@ function makeCtx(opts: { context?: unknown; gateThrows?: boolean; plan?: unknown
 		}),
 		runMutation: vi.fn(async (ref: unknown, args: Record<string, unknown>) => {
 			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+			// Read on arrival: the thread is fully read (mail/interpret/fullRead.ts).
+			if (name.includes('fullRead')) return opts.fullRead ?? 'ready';
 			if (name.includes('assertAiAllowed') && opts.gateThrows) throw new Error('AI off');
 			mutations.push({ name, args });
 			return undefined;
 		}),
 		runAction: vi.fn(),
+		scheduler: { runAfter: vi.fn(async () => undefined) },
 	};
 	return {
 		ctx: ctx as unknown as Parameters<typeof draftClarificationReply>[0],
@@ -299,8 +305,25 @@ describe('draftClarificationReply', () => {
 
 		const off = makeCtx({ gateThrows: true });
 		await draftClarificationReply(off.ctx, { threadId });
-		expect(off.raw.runQuery).not.toHaveBeenCalled();
+		// Only the context read ran: the gate needs the owner it names (#1380).
+		expect(off.raw.runQuery).toHaveBeenCalledOnce();
 		expect(mocks.runSharedDraft).toHaveBeenCalledOnce();
+	});
+
+	it('charges the person who answered the card, else the mailbox owner (#1380)', async () => {
+		const gateArgs = (raw: ReturnType<typeof makeCtx>['raw']) =>
+			raw.runMutation.mock.calls
+				.filter(([ref]) =>
+					getFunctionName(ref as Parameters<typeof getFunctionName>[0]).includes('assertAiAllowed')
+				)
+				.map(([, args]) => args);
+		const answered = makeCtx();
+		await draftClarificationReply(answered.ctx, { threadId, triggeredByUserId: 'member_user' });
+		expect(gateArgs(answered.raw)).toEqual([{ ownerUserId: 'member_user' }]);
+
+		const legacy = makeCtx();
+		await draftClarificationReply(legacy.ctx, { threadId });
+		expect(gateArgs(legacy.raw)).toEqual([{ ownerUserId: 'owner_user' }]);
 	});
 
 	it('skips drafting when the card has no answers', async () => {
@@ -343,5 +366,18 @@ describe('draftClarificationReply: the thread plan (review F13)', () => {
 		const { ctx } = makeCtx();
 		await draftClarificationReply(ctx, { threadId });
 		expect(mocks.runSharedDraft.mock.calls[0]![1].responsePlan).toBeUndefined();
+	});
+});
+
+describe('draftClarificationReply: read on arrival (Sol r2 F1)', () => {
+	it('drafts nothing while the thread is not fully read, and looks again later', async () => {
+		const h = makeCtx({ fullRead: 'preparing' });
+		await draftClarificationReply(h.ctx, { threadId, triggeredByUserId: 'member_user' });
+		expect(mocks.runSharedDraft).not.toHaveBeenCalled();
+		expect(h.raw.scheduler.runAfter).toHaveBeenCalledWith(expect.any(Number), expect.anything(), {
+			threadId,
+			triggeredByUserId: 'member_user',
+			fullReadWaits: 1,
+		});
 	});
 });

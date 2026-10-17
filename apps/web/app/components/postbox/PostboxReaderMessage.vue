@@ -2,21 +2,19 @@
 /**
  * ONE message inside the thread reader — collapsed header row or expanded card.
  *
- * Split out of PostboxThreadReader.vue (which was 1571 lines and rendered this
- * whole card inline) so the reader shell keeps the conversation-level concerns
- * — queries, triage, shortcuts, dialogs — and this file keeps the per-message
- * rendering. Purely presentational over semantic emits: every verb it offers is
- * handed back to the reader, which owns the mutations, the auto-advance and the
- * undo registration. Behaviour is unchanged by the move.
+ * Split out of PostboxThreadReader.vue so the reader shell keeps the
+ * conversation-level concerns (queries, triage, shortcuts, dialogs) and this
+ * file the per-message rendering. Presentational over semantic emits: the
+ * reader owns the mutations, the auto-advance and the undo registration.
  *
- * The composer's diet applied to a message (plan §05):
- *   • Star / Reply / Reply-all / Forward stay visible.
- *   • The ⋯ keeps only genuine overflow — report spam, block sender, create a
- *     filter from this message, print, download the original. Reply-all and
- *     Forward left it because they are visible; mute and notify-on-reply left it
- *     because they are conversation state and live in the thread ⋯ menu.
- *   • The dark-render toggle, delivery strip and scheduling chip moved into the
- *     message-details disclosure, which already existed right there.
+ * Star / Reply / Reply-all / Forward stay visible; the ⋯ keeps genuine
+ * overflow (spam, block, filter, print, original). The dark-render toggle,
+ * delivery strip and scheduling chip live in the message-details disclosure.
+ *
+ * The calm reader (read on arrival §3) hands the LATEST message `detailsTo`:
+ * its trust chip, unsubscribe chip and message details then render in the
+ * strip's Details row instead of the card, and `hideDanger` leaves the spam /
+ * DMARC line to the thread's notice slot.
  */
 import { extractEmailAddress } from '~/utils/emailAddress';
 import { formatDateTime } from '~/utils/formatters';
@@ -30,6 +28,7 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
 import { usePostboxSignedBody } from '~/composables/postbox/usePostboxSignedBody';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
+import type { PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -77,6 +76,12 @@ const props = defineProps<{
 	 * the message details behind a click on the sender name.
 	 */
 	reduced?: boolean;
+	/** The calm reader's Details panel: the card's chips render there (§3). */
+	detailsTo?: HTMLElement | null;
+	/** Where the image banner renders instead of above the body (Details). */
+	imageBannerTo?: HTMLElement | null;
+	/** The thread's notice slot says the danger; the card does not repeat it. */
+	hideDanger?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -101,6 +106,7 @@ const emit = defineEmits<{
 	(e: 'dismiss-scheduling'): void;
 	/** A sealing-key verification changed; the reader should re-read the status. */
 	(e: 'seal-refetch'): void;
+	(e: 'image-state', kind: PostboxImageBannerState['kind']): void;
 }>();
 
 const { t } = useI18n();
@@ -137,6 +143,7 @@ const {
 	hideBody: () => props.hideBody,
 	active: () => props.expanded,
 });
+usePostboxSenderBodyOpen(props); // Senders §5: counts once a readable body is on screen
 
 /**
  * The legacy DMARC-fail line. `senderAuthBadges` moved this into the auth badge;
@@ -152,7 +159,9 @@ const senderAuthSummary = computed(() => {
 });
 
 const showSpamBanner = computed(
-	() => msg.value.spamVerdict === 'spam' || (!props.authEnabled && msg.value.dmarcResult === 'fail')
+	() =>
+		!props.hideDanger &&
+		(msg.value.spamVerdict === 'spam' || (!props.authEnabled && msg.value.dmarcResult === 'fail'))
 );
 
 // A cited quote (plan §4.2): bring the message into view; the body marks the
@@ -248,8 +257,7 @@ const renderToggleLabel = computed(() =>
 					class="flex items-baseline justify-between gap-x-3 gap-y-1 max-sm:flex-wrap @max-lg:flex-wrap"
 					data-testid="reader-message-sender-row"
 				>
-					<!-- Plan idea 45: the sender line was a text label. It now opens
-					     everything this mailbox knows about the person. -->
+					<!-- Plan idea 45: the sender line opens what the mailbox knows of them. -->
 					<button
 						type="button"
 						class="min-w-0 break-words text-left hover:underline"
@@ -281,27 +289,27 @@ const renderToggleLabel = computed(() =>
 						class="ml-auto flex max-w-full flex-shrink-0 items-center gap-2"
 						data-testid="reader-message-indicators"
 					>
-						<!-- Five indicators, one pixel budget: the popover still holds the
-						     auth badge, the security / sealed badge, the tracker findings,
-						     the correspondent's sealing key and the sender controls. -->
-						<PostboxTrustChip
-							:mailbox-id="mailboxId"
-							:from-address="msg.fromAddress"
-							:auth-enabled="authEnabled"
-							:auth="authInput"
-							:heuristics="msg.senderHeuristics"
-							:sealed-enabled="sealedEnabled"
-							:sealed="msg.inboundEncryptionInfo"
-							:signature="shownSignature"
-							:secure-class="shownSecureClass"
-							:message="msg"
-							:tracker="signedOnly ? null : tracker"
-							:show-sender-controls="showSenderControls"
-							:seal-status="sealStatus"
-							:show-security-detail="!holdBody"
-							:hide-when-ok="reduced"
-							@seal-refetch="emit('seal-refetch')"
-						/>
+						<!-- Five indicators, one pixel budget: the popover holds the auth
+						     badge, security / sealed badge, trackers, sealing key, controls. -->
+						<Teleport :to="detailsTo" :disabled="!detailsTo"
+							><PostboxTrustChip
+								:mailbox-id="mailboxId"
+								:from-address="msg.fromAddress"
+								:auth-enabled="authEnabled"
+								:auth="authInput"
+								:heuristics="msg.senderHeuristics"
+								:sealed-enabled="sealedEnabled"
+								:sealed="msg.inboundEncryptionInfo"
+								:signature="shownSignature"
+								:secure-class="shownSecureClass"
+								:message="msg"
+								:tracker="signedOnly ? null : tracker"
+								:show-sender-controls="showSenderControls"
+								:seal-status="sealStatus"
+								:show-security-detail="!holdBody"
+								:hide-when-ok="reduced"
+								@seal-refetch="emit('seal-refetch')"
+						/></Teleport>
 						<button
 							type="button"
 							class="text-xs text-text-tertiary tabular-nums whitespace-nowrap hover:text-text-primary"
@@ -334,58 +342,59 @@ const renderToggleLabel = computed(() =>
 				>
 					{{ t('components.postbox.postboxSenderProfile.open') }}
 				</button>
-				<PostboxUnsubscribeChip
-					v-if="msg.unsubscribe && showMeta"
-					class="mt-1.5"
-					:message-id="msg._id"
-					:mailbox-id="mailboxId"
-					:unsubscribe="msg.unsubscribe"
-				/>
-				<!-- The badge's claims, made checkable: the real headers behind them,
+				<Teleport :to="detailsTo" :disabled="!detailsTo">
+					<PostboxUnsubscribeChip
+						v-if="msg.unsubscribe && showMeta"
+						class="mt-1.5"
+						:message-id="msg._id"
+						:mailbox-id="mailboxId"
+						:unsubscribe="msg.unsubscribe"
+						:sender-name="msg.fromName || msg.fromAddress"
+					/>
+					<!-- The badge's claims, made checkable: the real headers behind them,
 				     the original .eml (UX plan idea 52) — and, in the slot, the three
 				     message-scoped details that used to be permanent chrome. -->
-				<PostboxMessageDetails v-if="showMeta" :message-id="msg._id">
-					<button
-						v-if="showRenderToggle"
-						type="button"
-						class="mt-3 inline-flex items-center gap-1.5 text-text-tertiary hover:text-text-primary"
-						:title="renderToggleLabel"
-						:aria-label="renderToggleLabel"
-						:aria-pressed="forcedLight"
-						@click="emit('toggle-forced-light')"
-					>
-						<Icon :name="forcedLight ? 'lucide:moon' : 'lucide:sun'" class="w-3.5 h-3.5" />
-						{{ renderToggleLabel }}
-					</button>
+					<PostboxMessageDetails v-if="showMeta" :message-id="msg._id">
+						<button
+							v-if="showRenderToggle"
+							type="button"
+							class="mt-3 inline-flex items-center gap-1.5 text-text-tertiary hover:text-text-primary"
+							:title="renderToggleLabel"
+							:aria-label="renderToggleLabel"
+							:aria-pressed="forcedLight"
+							@click="emit('toggle-forced-light')"
+						>
+							<Icon :name="forcedLight ? 'lucide:moon' : 'lucide:sun'" class="w-3.5 h-3.5" />
+							{{ renderToggleLabel }}
+						</button>
 
-					<!-- Quiet "draft a reply?" prompt for a plain-prose scheduling
+						<!-- Quiet "draft a reply?" prompt for a plain-prose scheduling
 					     request. Never renders beside a real .ics invite. -->
-					<PostboxSchedulingChip
-						v-if="schedulingTimes && !signedOnly"
-						:message-id="msg._id"
-						:proposed-times="schedulingTimes"
-						@use-reply="(text) => emit('use-reply', text)"
-						@dismiss="emit('dismiss-scheduling')"
-					/>
+						<PostboxSchedulingChip
+							v-if="schedulingTimes && !signedOnly"
+							:message-id="msg._id"
+							:proposed-times="schedulingTimes"
+							@use-reply="(text) => emit('use-reply', text)"
+							@dismiss="emit('dismiss-scheduling')"
+						/>
 
-					<!-- What actually happened to a message WE sent (plan idea 1): one
+						<!-- What actually happened to a message WE sent (plan idea 1): one
 					     row per recipient, plus a resend that targets only the ones it
 					     never reached. Renders nothing for inbound mail (no `outbound`
 					     record) and nothing for the ordinary single-recipient send that
 					     simply went out. -->
-					<PostboxDeliveryStrip
-						v-if="delivery"
-						:delivery="delivery"
-						@resend="(addresses) => emit('resend', addresses)"
-					/>
-				</PostboxMessageDetails>
+						<PostboxDeliveryStrip
+							v-if="delivery"
+							:delivery="delivery"
+							@resend="(addresses) => emit('resend', addresses)"
+						/>
+					</PostboxMessageDetails>
+				</Teleport>
 			</div>
 		</header>
 
-		<!-- The ad-hoc DMARC-fail line moved into PostboxAuthBadge (in the sender
-		     header) behind `senderAuthBadges`. When the flag is off the legacy
-		     banner still surfaces a DMARC failure so behavior is unchanged; the
-		     spam line always shows. -->
+		<!-- DMARC fails show in PostboxAuthBadge behind `senderAuthBadges`; with the
+		     flag off this legacy line still says it. Spam always shows here. -->
 		<p
 			v-if="citeQuote?.quote && (isCiteMissed || holdBody)"
 			role="status"
@@ -429,8 +438,7 @@ const renderToggleLabel = computed(() =>
 			:signature="shownSignature"
 			:omits-content="signedView.kind === 'signed' && signedView.omitsContent"
 		/>
-		<!-- Off-screen bodies of a long thread wait as a sized placeholder
-		     until they scroll near the viewport (plan D8). -->
+		<!-- Off-screen bodies wait as a sized placeholder until near the viewport (plan D8). -->
 		<PostboxLazyBody
 			v-else
 			:message-id="msg._id"
@@ -443,6 +451,8 @@ const renderToggleLabel = computed(() =>
 				:force-light="forcedLight"
 				:sender-images-allowed="imagesAllowed"
 				:highlight-quote="citeQuote"
+				:image-banner-to="imageBannerTo"
+				@image-state="emit('image-state', $event)"
 				@cite-located="isCiteMissed = !$event"
 				@trackers="emit('trackers', $event)"
 				@trust-sender="emit('trust-sender', $event)"

@@ -30,6 +30,7 @@ import {
 	seedTeamThread,
 	type Test,
 } from './interpret.testlib';
+import { applyAsRun } from './lease.testlib';
 
 const session = vi.hoisted(() => ({
 	current: { userId: 'user-A', role: 'member', activeOrganizationId: 'org-1' } as {
@@ -454,7 +455,7 @@ describe('history and the auto-send hold (round 2 F1)', () => {
 			threadRef: { kind: 'team', id: threadId },
 		});
 		// The customer's email is read completely.
-		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+		await applyAsRun(t, {
 			source: { kind: 'inbound', id: inboundId },
 			threadRef: { kind: 'team', id: threadId },
 			mode: 'actions',
@@ -536,7 +537,7 @@ describe('admitted history sources until each records an outcome (round 3 F1)', 
 			pendingSources: 2,
 		});
 		const apply = (messageId: typeof first, revision: number, status: 'complete' | 'skipped') =>
-			t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+			applyAsRun(t, {
 				source: { kind: 'mail', id: messageId },
 				threadRef,
 				mode: 'brief',
@@ -575,7 +576,7 @@ describe('every enqueued source is outstanding until it records an outcome (fina
 			| { kind: 'team'; id: Id<'conversationThreads'> },
 		revision: number
 	) =>
-		t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+		applyAsRun(t, {
 			source,
 			threadRef,
 			mode: threadRef.kind === 'mail' ? 'brief' : 'actions',
@@ -666,7 +667,7 @@ describe('the outstanding-source owner (round 4)', () => {
 		revision: number,
 		contentRevision = `rev-${revision}`
 	) =>
-		t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+		applyAsRun(t, {
 			source,
 			threadRef,
 			mode: threadRef.kind === 'mail' ? 'brief' : 'actions',
