@@ -14,7 +14,7 @@ import { internalMutation } from '../../lib/writeFence';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
 import { htmlToPlainText } from '@owlat/shared/html';
-import { requireMailboxAccess } from '../permissions';
+import { isPersonalMailbox, requireMailboxAccess } from '../permissions';
 import { assertStateIs } from '../draftLifecycle/reducers';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
 import { openInboundMessageBody } from '../../lib/messageBodyInbound';
@@ -29,7 +29,8 @@ import {
 } from '../../lib/answerFileToFiles';
 import { asEagernessMode, type EagernessMode } from '../../inbox/askEagerness';
 import { throwForbidden, throwInvalidState, throwNotFound } from '../../_utils/errors';
-import { isThreadInterpretationFenced } from '../interpret/staleFence';
+import { isFencedThread } from '../interpret/staleFence';
+import { isThreadMuted } from '../../lib/mailMute';
 import type { MailboxAttachmentScope } from '../../lib/validators/answerAsk';
 import { buildThreadTranscript, ANSWER_DRAFT } from './transcript';
 
@@ -81,9 +82,18 @@ export const loadMailDraftContext = internalQuery({
 		const replied = draft.inReplyToMessageId ? await ctx.db.get(draft.inReplyToMessageId) : null;
 		const trigger = replied && replied.mailboxId === draft.mailboxId ? replied : null;
 		const threadId = draft.threadId ?? trigger?.threadId;
-		// A nudge only where the queue offers one: a thread whose reading is not fenced off.
-		if (args.purpose && (!threadId || (await isThreadInterpretationFenced(ctx, threadId)))) {
-			throwInvalidState('No nudge can be drafted for this conversation');
+		// A nudge only where the queue offers one (mail/nudges.ts): a personal
+		// mailbox's thread, not muted, its reading not fenced off.
+		if (args.purpose) {
+			const thread = threadId ? await ctx.db.get(threadId) : null;
+			if (
+				!thread ||
+				!isPersonalMailbox(mailbox) ||
+				isThreadMuted(thread) ||
+				isFencedThread(thread)
+			) {
+				throwInvalidState('No nudge can be drafted for this conversation');
+			}
 		}
 		let messages: Doc<'mailMessages'>[] = trigger ? [trigger] : [];
 		if (threadId) {

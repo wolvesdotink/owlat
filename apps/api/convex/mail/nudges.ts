@@ -244,9 +244,15 @@ async function loadSignals(
 	return { thread, newest, isComplete: newest.length < THREAD_MESSAGE_SCAN };
 }
 
-/** The nudge a "Remind me" follow-up card offers: none while the thread is fenced. */
-export function reminderNudge(thread: Doc<'mailThreads'>): QueueNudge | undefined {
-	return isFencedThread(thread) ? undefined : { reason: 'reminder' };
+/**
+ * The nudge a "Remind me" follow-up card offers: personal mailboxes only,
+ * and none while the thread is fenced.
+ */
+export function reminderNudge(
+	thread: Doc<'mailThreads'>,
+	mailbox: Pick<Doc<'mailboxes'>, 'scope'>
+): QueueNudge | undefined {
+	return isPersonalMailbox(mailbox) && !isFencedThread(thread) ? { reason: 'reminder' } : undefined;
 }
 
 /** The nudge a stale item's card offers. */

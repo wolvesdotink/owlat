@@ -276,4 +276,17 @@ describe('nudge cards', () => {
 		expect(items).toHaveLength(NUDGE_THREAD_BUDGET);
 		expect(await t.query(api.mail.needsReply.countQueue, { mailboxId: first.mailboxId })).toBe(0);
 	});
+
+	it('offers no nudge on a team inbox reminder card (F6)', async () => {
+		const t = convexTest(schema, modules);
+		const w = await seedWaiting(t, { scope: 'shared' });
+		await t.run(async (ctx) => {
+			await ctx.db.patch(w.threadId, {
+				followUp: { messageId: w.askId, remindAt: ASKED + DAY, armedAt: ASKED, dueAt: ASKED + DAY },
+			});
+		});
+		const items = await queue(t, w.mailboxId);
+		expect(items).toHaveLength(1);
+		expect(items[0]!.nudge).toBeUndefined();
+	});
 });

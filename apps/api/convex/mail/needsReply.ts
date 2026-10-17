@@ -387,7 +387,7 @@ export const listQueue = publicQuery({
 				receivedAt: message.receivedAt,
 				briefTop: await openBriefTop(thread, modeOfMailbox(mailbox)),
 				// "Draft a nudge" (mail/nudges.ts): never on a fenced thread.
-				nudge: reminderNudge(thread),
+				nudge: reminderNudge(thread, mailbox),
 			});
 		}
 		for (const row of nudges) items.push(await nudgeQueueItem(ctx, mailbox, row));

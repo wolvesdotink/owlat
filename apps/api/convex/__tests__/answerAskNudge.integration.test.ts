@@ -3,7 +3,8 @@
  * `purpose: 'nudge'` runs the ordinary Answer mode drafter on a reply to our
  * own last message, with the server's nudge instruction as trusted owner
  * input, written as a follow-up to the person we wait on, without asking
- * anything first. A fenced thread offers no nudge. The model and provider are mocked; convex-test runs the real
+ * anything first. A fenced or muted thread, or a team inbox, offers no
+ * nudge. The model and provider are mocked; convex-test runs the real
  * queries and mutations.
  */
 
@@ -74,7 +75,7 @@ type Tx = Awaited<ReturnType<typeof makeT>>;
  * Jonas asked, we answered, and he has not replied: a reply draft to our own
  * answer, addressed to him as the composer addresses it.
  */
-async function nudgeDraft(t: Tx, opts: { isFenced?: boolean } = {}) {
+async function nudgeDraft(t: Tx, opts: { isFenced?: boolean; isMuted?: boolean } = {}) {
 	const { mailboxId, messageId } = await seedRequest(t);
 	const ourReply = await t.run(async (ctx) => {
 		const asked = (await ctx.db.get(messageId))!;
@@ -97,6 +98,7 @@ async function nudgeDraft(t: Tx, opts: { isFenced?: boolean } = {}) {
 		if (opts.isFenced) {
 			await ctx.db.patch(asked.threadId, { interpretationStaleSince: Date.now() });
 		}
+		if (opts.isMuted) await ctx.db.patch(asked.threadId, { mutedAt: Date.now() });
 		return id;
 	});
 	const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -104,7 +106,7 @@ async function nudgeDraft(t: Tx, opts: { isFenced?: boolean } = {}) {
 		inReplyToMessageId: ourReply,
 	});
 	await t.mutation(api.mail.drafts.update, { draftId, toAddresses: [CUSTOMER] });
-	return { target: { kind: 'mailDraft' as const, draftId } };
+	return { mailboxId, target: { kind: 'mailDraft' as const, draftId } };
 }
 
 function lastDraftPrompt(): string {
@@ -151,6 +153,29 @@ describe('start with purpose nudge', () => {
 		const { target } = await nudgeDraft(t, { isFenced: true });
 		await expect(
 			t.action(api.mail.ai.composeDraft.start, { target, purpose: 'nudge', locale: 'en' })
+		).rejects.toThrow(/No nudge/);
+		expect(vi.mocked(runLlmTextWithTools)).not.toHaveBeenCalled();
+	});
+
+	it('refuses a nudge on a muted thread or in a team inbox (F6)', async () => {
+		const t = await makeT();
+		const muted = await nudgeDraft(t, { isMuted: true });
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, {
+				target: muted.target,
+				purpose: 'nudge',
+				locale: 'en',
+			})
+		).rejects.toThrow(/No nudge/);
+
+		const team = await nudgeDraft(t);
+		await t.run(async (ctx) => ctx.db.patch(team.mailboxId, { scope: 'shared' }));
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, {
+				target: team.target,
+				purpose: 'nudge',
+				locale: 'en',
+			})
 		).rejects.toThrow(/No nudge/);
 		expect(vi.mocked(runLlmTextWithTools)).not.toHaveBeenCalled();
 	});
