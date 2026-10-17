@@ -1823,6 +1823,7 @@ import type * as mail_interpret_arrivalAdmit from '../mail/interpret/arrivalAdmi
 import type * as mail_interpret_arrivalHold from '../mail/interpret/arrivalHold.js';
 import type * as mail_interpret_fullRead from '../mail/interpret/fullRead.js';
 import type * as mail_interpret_fullReadPrepare from '../mail/interpret/fullReadPrepare.js';
+import type * as mail_ai_composeDraftFullRead from '../mail/ai/composeDraftFullRead.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3642,6 +3643,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/arrivalHold': typeof mail_interpret_arrivalHold;
 	'mail/interpret/fullRead': typeof mail_interpret_fullRead;
 	'mail/interpret/fullReadPrepare': typeof mail_interpret_fullReadPrepare;
+	'mail/ai/composeDraftFullRead': typeof mail_ai_composeDraftFullRead;
 }>;
 
 /**

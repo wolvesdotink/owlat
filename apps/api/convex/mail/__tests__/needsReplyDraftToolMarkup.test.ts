@@ -91,7 +91,10 @@ function makeCtx() {
 			throw new Error(`unexpected runQuery: ${name}`);
 		}),
 		runMutation: vi.fn(async (ref: unknown, args: Record<string, unknown>) => {
-			mutations.push({ name: getFunctionName(ref as Parameters<typeof getFunctionName>[0]), args });
+			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+			// Read on arrival: the thread is fully read (mail/interpret/fullRead.ts).
+			if (name.includes('fullRead')) return 'ready';
+			mutations.push({ name, args });
 			return undefined;
 		}),
 		runAction: vi.fn(),

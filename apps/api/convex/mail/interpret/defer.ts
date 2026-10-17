@@ -393,8 +393,15 @@ export async function runDeferredPredecessors(
 			continue;
 		}
 		if (reads >= budget) return comeBack(0);
-		await run(next);
+		const out = (await run(next)) as { status?: string; retryAt?: number } | undefined;
 		reads++;
 		previous = key;
+		// A predecessor that waits (its category, the owner bucket, a gist retry)
+		// or is busy names when to look again: honour it (Sol r2 F2).
+		if (out?.status === 'wait' && out.retryAt !== undefined) {
+			return comeBack(Math.max(0, out.retryAt - Date.now()));
+		}
+		// Busy: its lease names its expiry, the run holding it usually ends far sooner.
+		if (out?.status === 'busy') return comeBack(PREDECESSOR_RETRY_MS);
 	}
 }

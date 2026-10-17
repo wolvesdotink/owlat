@@ -1,6 +1,13 @@
 /**
- * Read on arrival (SPEC §2.6, Sol r1 F13): the spend hold of a display-only
- * full read, reserved in a mutation that settles the refusal itself. When
+ * Read on arrival (SPEC §2.6, Sol r1 F13, r2 F4): every spend refusal of a
+ * display-only arrival read is settled in the transaction that sees it.
+ *
+ *   - {@link reserveArrivalRun}: the run's one hold (a full read) or the
+ *     gist's one-call hold, reserved in a mutation that settles the refusal
+ *     itself.
+ *   - {@link gateOrCount}: the full read's spend gate, asked in a mutation
+ *     that counts the source when it refuses on budget.
+ * When
  * the run's one hold is refused, the source is settled as an upgradeable
  * `count` (`arrival.reason.budget`) in the same transaction that saw the
  * refusal, so no lost action in between can leave it for the stale sweep to
@@ -17,6 +24,10 @@ import {
 } from '../../aiRouting/admission';
 import { leaseLostAt } from './lease';
 import { loadInterpretSource } from './sources';
+import { interpretModeValidator } from '../../lib/validators/threadBrief';
+import { interpretGate, type InterpretGateVerdict } from './gate';
+import type { MutationCtx } from '../../_generated/server';
+import type { Id } from '../../_generated/dataModel';
 import {
 	ARRIVAL_ADMISSION_REASONS,
 	isSettlementCurrent,
@@ -34,14 +45,42 @@ export const reserveArrivalRun = internalMutation({
 	returns: reserveRunReturns,
 	handler: async (ctx, args) => {
 		const verdict = await reserveRunAllocations(ctx, args.allocations);
-		if (verdict.isAdmitted) return verdict;
-		const row = await loadInterpretSource(ctx, args.source);
-		const message = await ctx.db.get(args.source.id);
-		if (!row || !message) return verdict;
-		if ((await leaseLostAt(ctx, args.source, args.leaseToken)) !== null) return verdict;
-		if (!(await isSettlementCurrent(ctx, message, args.deletionEpoch))) return verdict;
-		const choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS.budget });
-		await settleArrivalSkip(ctx, row, message._id, choice, 'budget');
+		if (!verdict.isAdmitted) await countRefused(ctx, args);
 		return verdict;
+	},
+});
+
+/** Count the refused source, when the refusing run still holds it in the loaded epoch. */
+async function countRefused(
+	ctx: MutationCtx,
+	args: {
+		source: { kind: 'mail'; id: Id<'mailMessages'> };
+		leaseToken?: string;
+		deletionEpoch: number;
+	}
+): Promise<boolean> {
+	const row = await loadInterpretSource(ctx, args.source);
+	const message = await ctx.db.get(args.source.id);
+	if (!row || !message) return false;
+	if ((await leaseLostAt(ctx, args.source, args.leaseToken)) !== null) return false;
+	if (!(await isSettlementCurrent(ctx, message, args.deletionEpoch))) return false;
+	const choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS.budget });
+	await settleArrivalSkip(ctx, row, message._id, choice, 'budget');
+	return true;
+}
+
+/** The spend gate of a display-only full read; a budget refusal counts it here. */
+export const gateOrCount = internalMutation({
+	args: {
+		source: v.object({ kind: v.literal('mail'), id: v.id('mailMessages') }),
+		leaseToken: v.optional(v.string()),
+		deletionEpoch: v.number(),
+		mode: interpretModeValidator,
+	},
+	handler: async (ctx, args): Promise<{ verdict: InterpretGateVerdict; isCounted: boolean }> => {
+		const verdict = await interpretGate(ctx, args.mode);
+		const isCounted =
+			!verdict.isAllowed && verdict.code === 'budget' ? await countRefused(ctx, args) : false;
+		return { verdict, isCounted };
 	},
 });

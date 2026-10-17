@@ -78,6 +78,7 @@ async function runLeased(ctx: ActionCtx, args: InterpretArgs): Promise<Interpret
 			...(args.depth ? { depth: args.depth } : {}),
 			...(args.isUpgrade ? { isUpgrade: true } : {}),
 			isCallerResuming: args.predecessors !== undefined,
+			...(args.predecessors === 'already_read' ? { isCoveredByParent: true } : {}),
 		});
 		if (admitted.kind !== 'go') return admissionAnswer(admitted);
 	}
