@@ -25,6 +25,7 @@ import {
 } from './hooks';
 import type { ScopedMessageInput } from './scopedInput';
 import { releaseDepthWait } from '../interpret/categoryDefer';
+import { applyCategoryArgs, applyCategoryIfCurrent } from '../category';
 import { defuseDelimiters } from '../interpret/prompt';
 
 /** The most characters of the message one R2 question pass reads. */
@@ -46,14 +47,30 @@ const answerValidator = v.object({
 	answer: v.union(v.boolean(), v.null()),
 });
 
-/** Commit R2's answers for one message through the rules hook (revision-checked there). */
+/**
+ * Commit R2's answers for one message through the rules hook (revision-checked
+ * there), then end its depth wait. The combined R2 call carries the thread
+ * category too: written FIRST in this same mutation, so the depth decision
+ * never runs on the provisional label (final review r2 F2). A commit that
+ * must not release (the model gave no category) passes `isReleasing: false`
+ * and leaves the wait to its bound.
+ */
 export const commitArrivalAiAnswers = internalMutation({
-	args: { messageId: v.id('mailMessages'), answers: v.array(answerValidator) },
+	args: {
+		messageId: v.id('mailMessages'),
+		answers: v.array(answerValidator),
+		category: v.optional(v.object(applyCategoryArgs)),
+		isReleasing: v.optional(v.boolean()),
+	},
 	handler: async (ctx, args): Promise<void> => {
+		// A stale category (a newer message arrived) is not this message's to
+		// settle: its wait is then left to the bound, never released on a
+		// provisional label.
+		const isCategoryIn = args.category ? await applyCategoryIfCurrent(ctx, args.category) : true;
 		if (args.answers.length === 0) return;
 		await applyArrivalAiAnswers(ctx, { messageId: args.messageId, answers: args.answers });
 		// The answers are in: a display-only read waiting on them runs now (final review F4).
-		await releaseDepthWait(ctx, args.messageId);
+		if (args.isReleasing !== false && isCategoryIn) await releaseDepthWait(ctx, args.messageId);
 	},
 });
 

@@ -237,8 +237,10 @@ export const classifyThread = internalAction({
 				});
 			}
 
-			// Whether this message's R2 questions got their answers committed.
+			// Whether this message's R2 questions got their answers committed, and
+			// whether that commit also wrote the category (the combined call).
 			let isR2Settled = questions.length === 0;
+			let isCategoryCommitted = false;
 			// What this action settled on, for the Phase 2 bundle's comparison.
 			let settled: MailCategory = 'other';
 			try {
@@ -268,10 +270,30 @@ export const classifyThread = internalAction({
 						if (await retryRateLimited(ctx, args, outcome.retryAfter)) return;
 						throw new Error('rate limited');
 					}
-					await commitAnswers(ctx, args.messageId, outcome.answers);
+					// The category and the answers in ONE commit, the category first,
+					// and only then the depth wait released (final review r2 F2).
+					const resolved = outcome.category ? resolveCategory({ llm: outcome.category }) : null;
+					await ctx.runMutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
+						messageId: args.messageId,
+						answers: outcome.answers,
+						...(resolved
+							? {
+									category: {
+										threadId: args.threadId,
+										...(context.latestMessageId
+											? { expectedLatestMessageId: context.latestMessageId }
+											: {}),
+										label: resolved.label,
+										source: resolved.source,
+									},
+								}
+							: { isReleasing: false }),
+					});
 					isR2Settled = true;
-					if (!outcome.category) throw new Error('no category');
-					llm = outcome.category;
+					if (!resolved) throw new Error('no category');
+					settled = resolved.label;
+					isCategoryCommitted = true;
+					llm = resolved.label;
 				} else {
 					// High-volume background classification → cheap "summarize" tier.
 					const model = await resolveLanguageModel(ctx, 'mail.classify');
@@ -290,14 +312,16 @@ export const classifyThread = internalAction({
 					llm = object.category;
 				}
 
-				const resolved = resolveCategory({ llm });
-				await ctx.runMutation(internal.mail.category.applyCategory, {
-					threadId: args.threadId,
-					expectedLatestMessageId: context.latestMessageId,
-					label: resolved.label,
-					source: resolved.source,
-				});
-				settled = resolved.label;
+				if (!isCategoryCommitted) {
+					const resolved = resolveCategory({ llm });
+					await ctx.runMutation(internal.mail.category.applyCategory, {
+						threadId: args.threadId,
+						expectedLatestMessageId: context.latestMessageId,
+						label: resolved.label,
+						source: resolved.source,
+					});
+					settled = resolved.label;
+				}
 			} catch (error) {
 				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
 				// Rate-limited: try again, backed off and bounded, instead of
