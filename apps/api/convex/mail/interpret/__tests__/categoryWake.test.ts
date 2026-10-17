@@ -13,7 +13,7 @@ import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { CATEGORY_SETTLE_MS } from '../eligibility';
 import { captureInterpretSource } from '../sources';
-import { modules, seedMailThread } from './interpret.testlib';
+import { modules, seedMailThread, type Test } from './interpret.testlib';
 
 const session = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -37,7 +37,7 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-type T = ReturnType<typeof convexTest>;
+type T = Test;
 
 /** A stranger's List-Id mail on a provisional thread, its run waiting for the category. */
 async function waitingSource(t: T) {
