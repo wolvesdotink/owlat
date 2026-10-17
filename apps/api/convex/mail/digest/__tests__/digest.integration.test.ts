@@ -18,7 +18,8 @@ import { modules } from '../../__tests__/helpers.testlib';
 import { localMinuteOfDay } from '../../briefEmail';
 import { digestOutputSchema, groundDigestLines } from '../generate';
 import { DIGEST_MAX_VISITED, selectDigest, type DigestCandidate } from '../select';
-import { MAX_DIGEST_ATTEMPTS } from '../claim';
+import { DIGEST_CLAIM_LEASE_MS, MAX_DIGEST_ATTEMPTS } from '../claim';
+import { renderedMessageIds } from '../view';
 import { openStoredInlineBody } from '../../../lib/messageBodyStore';
 import {
 	deliverHosted,
@@ -170,6 +171,19 @@ async function digestSetup(count: number, opts: { briefEmail?: boolean } = {}) {
 	return { t, mailboxId, messageIds };
 }
 
+/** A claimed digest's delivery reference, with the lines it renders now. */
+async function renderedRef(t: T, claim: { digestId: Id<'mailDigests'>; claimToken: string }) {
+	const email = await t.query(internal.mail.digest.view.digestForEmail, {
+		digestId: claim.digestId,
+		claimToken: claim.claimToken,
+	});
+	return {
+		digestId: claim.digestId,
+		claimToken: claim.claimToken,
+		renderedMessageIds: email ? renderedMessageIds(email) : [],
+	};
+}
+
 async function threadOf(t: T, messageId: Id<'mailMessages'>) {
 	return await t.run(async (ctx) => {
 		const message = (await ctx.db.get(messageId))!;
@@ -301,7 +315,7 @@ describe('generation and delivery', () => {
 				bodyText: 'digest',
 				bodyHtml: '<p>digest</p>',
 				snippet: 'digest',
-				digest: { digestId: claim.digestId, claimToken: claim.claimToken },
+				digest: await renderedRef(t, claim),
 			});
 		};
 		expect(await deliver()).toEqual({ delivered: true });
@@ -349,7 +363,7 @@ describe('generation and delivery', () => {
 			bodyText: 'b',
 			bodyHtml: '<p>b</p>',
 			snippet: 'b',
-			digest: { digestId: claim.digestId, claimToken: claim.claimToken },
+			digest: await renderedRef(t, claim),
 		});
 		const stillPending = await threadOf(t, messageIds[0]!);
 		expect(stillPending.digestConsumedThrough).toBe(boundary);
@@ -377,5 +391,122 @@ describe('generation and delivery', () => {
 			['a', 'failed'],
 			['b', 'generated'],
 		]);
+	});
+});
+
+describe('review r1', () => {
+	async function claimAndCommit(t: T, mailboxId: Id<'mailboxes'>) {
+		const claim = await t.mutation(internal.mail.digest.claim.claimDigest, {
+			mailboxId,
+			periodKey: 'p',
+		});
+		if (claim.kind !== 'claimed') throw new Error('expected a claim');
+		await t.mutation(internal.mail.digest.claim.commitDigest, {
+			digestId: claim.digestId,
+			claimToken: claim.claimToken,
+			items: claim.items,
+		});
+		return claim;
+	}
+
+	async function deliver(
+		t: T,
+		mailboxId: Id<'mailboxes'>,
+		digest: Awaited<ReturnType<typeof renderedRef>>
+	) {
+		const rawStorageId = await t.run(async (ctx) => await ctx.storage.store(new Blob(['raw'])));
+		return await t.mutation(internal.mail.briefEmail.deliverBriefEmail, {
+			userId: 'user-A',
+			mailboxId,
+			rawStorageId,
+			rawSize: 3,
+			messageId: `<brief-${Math.random()}@owlat.test>`,
+			subject: 's',
+			bodyText: 'b',
+			bodyHtml: '<p>b</p>',
+			snippet: 'b',
+			digest,
+		});
+	}
+
+	it('F2: a purge or fence after rendering asks for a re-render instead of sending', async () => {
+		const { t, mailboxId, messageIds } = await digestSetup(2);
+		const claim = await claimAndCommit(t, mailboxId);
+		const rendered = await renderedRef(t, claim);
+		expect(rendered.renderedMessageIds).toHaveLength(2);
+		const fenced = await threadOf(t, messageIds[0]!);
+		await t.run(async (ctx) => await ctx.db.patch(fenced._id, { interpretationStaleSince: NOW }));
+		expect(await deliver(t, mailboxId, rendered)).toEqual({
+			delivered: false,
+			isDigestStale: true,
+		});
+		expect((await digestsOf(t, mailboxId))[0]!.state).toBe('generated');
+		// Re-rendered without the fenced line, it goes out.
+		const again = await renderedRef(t, claim);
+		expect(again.renderedMessageIds).toEqual([messageIds[1]]);
+		expect(await deliver(t, mailboxId, again)).toEqual({ delivered: true });
+	});
+
+	it('F2: a mailbox that went shared sends no digest', async () => {
+		const { t, mailboxId } = await digestSetup(1);
+		const claim = await claimAndCommit(t, mailboxId);
+		const rendered = await renderedRef(t, claim);
+		await t.run(async (ctx) => await ctx.db.patch(mailboxId, { scope: 'shared' }));
+		expect(await deliver(t, mailboxId, rendered)).toEqual({ delivered: false });
+	});
+
+	it('F7: a busy digest defers the whole brief to the next tick, without the stamp', async () => {
+		const { t, mailboxId } = await digestSetup(2, { briefEmail: true });
+		// Another tick holds the claim.
+		await t.mutation(internal.mail.digest.claim.claimDigest, {
+			mailboxId,
+			periodKey: `day:${Math.floor(NOW / 86_400_000)}`,
+			now: NOW,
+		});
+		expect((await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {})).delivered).toBe(
+			0
+		);
+		const settings = async () =>
+			await t.run(async (ctx) => await ctx.db.query('mailUserSettings').first());
+		expect((await settings())!.dailyBriefDeferredAt).toBe(NOW);
+		expect((await settings())!.lastDailyBriefEmailAt).toBeUndefined();
+
+		// The next tick: outside the brief's window, the lease is over; it goes out with the digest.
+		vi.setSystemTime(NOW + 15 * 60_000);
+		expect(NOW + 15 * 60_000 - NOW).toBeGreaterThan(DIGEST_CLAIM_LEASE_MS);
+		expect((await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {})).delivered).toBe(
+			1
+		);
+		expect((await settings())!.dailyBriefDeferredAt).toBeUndefined();
+		expect((await digestsOf(t, mailboxId))[0]!.state).toBe('sent');
+	});
+
+	it('F7: stops waiting after two ticks and sends the brief without the digest', async () => {
+		const { t, mailboxId } = await digestSetup(1, { briefEmail: true });
+		await t.run(async (ctx) => {
+			const row = (await ctx.db.query('mailUserSettings').first())!;
+			await ctx.db.patch(row._id, { dailyBriefDeferredAt: NOW - 30 * 60_000 });
+			await ctx.db.insert('mailDailyBriefs', {
+				mailboxId,
+				generatedAt: NOW - 3_600_000,
+				items: [],
+				bundled: [],
+				bundledCounts: { newsletter: 0, notification: 0, receipt: 0 },
+				senders: { rarelyRead: 2, openedInUpdates: [] },
+				createdAt: NOW - 3_600_000,
+			});
+		});
+		await t.mutation(internal.mail.digest.claim.claimDigest, {
+			mailboxId,
+			periodKey: `day:${Math.floor(NOW / 86_400_000)}`,
+			now: NOW,
+		});
+		expect((await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {})).delivered).toBe(
+			1
+		);
+		const [digest] = await digestsOf(t, mailboxId);
+		expect(digest!.state).toBe('claimed');
+		const settings = await t.run(async (ctx) => await ctx.db.query('mailUserSettings').first());
+		expect(settings!.lastDailyBriefEmailAt).toBe(NOW);
 	});
 });

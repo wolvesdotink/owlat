@@ -15,7 +15,8 @@
  * hand-written HTML string.
  */
 
-import { internalAction } from '../_generated/server';
+import { internalAction, type ActionCtx } from '../_generated/server';
+import type { FunctionReturnType } from 'convex/server';
 import { internal } from '../_generated/api';
 import type { EditorBlock } from '@owlat/shared';
 import { escapeHtml } from '@owlat/shared/html';
@@ -23,9 +24,15 @@ import { renderEmailHtml, renderPlainText } from '@owlat/email-renderer';
 import { buildMessageId, buildRfc822, type DraftRow } from './rfc822';
 import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
-import { MAX_EMAIL_ITEMS, type BriefEmailItem, type BriefEmailPayloadSenders } from './briefEmail';
+import {
+	DIGEST_WAIT_MS,
+	MAX_EMAIL_ITEMS,
+	type BriefEmailItem,
+	type BriefEmailPayloadSenders,
+} from './briefEmail';
 import { dailyBriefEmailCopy, systemEmailLocale } from '../lib/systemEmailCopy';
-import { prepareDigest } from './digest/generate';
+import { prepareDigest, type PreparedDigest } from './digest/generate';
+import { renderedMessageIds, type DigestEmail } from './digest/view';
 import { digestBlocks } from './digest/emailBlocks';
 import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
@@ -156,6 +163,115 @@ export function sendersBlocks(input: {
 	];
 }
 
+type DueBrief = FunctionReturnType<typeof internal.mail.briefEmail.listDue>[number];
+type DigestRef = Extract<PreparedDigest, { kind: 'ready' }>;
+
+/** Renders of one brief before it goes without a digest whose lines keep changing. */
+const MAX_DIGEST_RENDERS = 2;
+
+/** Render one brief (with its digest lines, when given), store it and deliver it. */
+async function renderAndDeliver(
+	ctx: ActionCtx,
+	entry: DueBrief,
+	baseUrl: string,
+	digest: { ref: DigestRef; email: DigestEmail } | null
+): Promise<{ delivered: boolean; isDigestStale?: boolean }> {
+	// In the recipient's own language, from `userProfiles.locale` — absent means
+	// English, exactly what every account had before the picker existed.
+	const copy = dailyBriefEmailCopy(systemEmailLocale(entry.locale));
+	const subject = briefEmailSubject(copy, entry.items.length, Boolean(entry.senders), !!digest);
+	const blocks = briefEmailBlocks({
+		items: entry.items,
+		bundledCounts: entry.bundledCounts,
+		heading: copy.heading,
+		bundledLine: copy.bundledLine,
+		emptyLine: copy.emptyLine,
+		baseUrl,
+	});
+	if (digest) blocks.push(...digestBlocks({ digest: digest.email, copy, baseUrl }));
+	if (entry.senders) blocks.push(...sendersBlocks({ senders: entry.senders, copy, baseUrl }));
+	const bodyHtml = renderEmailHtml(blocks);
+	const bodyText = renderPlainText(blocks);
+	const domain = entry.address.split('@')[1] ?? 'localhost';
+	const rfc822MessageId = buildMessageId(domain);
+	const draft: DraftRow = {
+		_id: 'brief' as DraftRow['_id'],
+		mailboxId: entry.mailboxId,
+		toAddresses: [entry.address],
+		ccAddresses: [],
+		bccAddresses: [],
+		fromAddress: entry.address,
+		subject,
+		bodyHtml,
+		bodyText,
+		state: 'pending_send',
+		attachments: [],
+	};
+	const { raw, size } = buildRfc822(draft, [], rfc822MessageId, undefined, undefined);
+	const rawStorageId = await ctx.storage.store(new Blob([new Uint8Array(raw)]));
+	const result = await ctx.runMutation(internal.mail.briefEmail.deliverBriefEmail, {
+		userId: entry.userId,
+		mailboxId: entry.mailboxId,
+		rawStorageId,
+		rawSize: size,
+		messageId: rfc822MessageId,
+		subject,
+		bodyText,
+		bodyHtml,
+		snippet: bodyText.replace(/\s+/g, ' ').trim().slice(0, SNIPPET_LENGTH),
+		...(digest
+			? {
+					digest: {
+						digestId: digest.ref.digestId,
+						claimToken: digest.ref.claimToken,
+						renderedMessageIds: renderedMessageIds(digest.email),
+					},
+				}
+			: {}),
+	});
+	if (!result.delivered) await ctx.storage.delete(rawStorageId);
+	return result;
+}
+
+/**
+ * One due brief (§6.5 for the digest): claim and generate the digest, then
+ * render and deliver. A digest another tick is still generating defers the
+ * whole brief to the next tick, without the delivery stamp, for at most
+ * `DIGEST_WAIT_MS`; then it goes without the digest. A digest whose lines
+ * changed between render and delivery (a purge, a fence) is rendered again.
+ */
+async function deliverOne(ctx: ActionCtx, entry: DueBrief, baseUrl: string): Promise<boolean> {
+	const now = Date.now();
+	const prepared: PreparedDigest = entry.digestPeriodKey
+		? await prepareDigest(ctx, {
+				mailboxId: entry.mailboxId,
+				periodKey: entry.digestPeriodKey,
+				ownerUserId: entry.userId,
+			})
+		: { kind: 'none' };
+	if (prepared.kind === 'busy' && now - (entry.deferredSince ?? now) < DIGEST_WAIT_MS) {
+		await ctx.runMutation(internal.mail.briefEmail.deferBriefEmail, { userId: entry.userId, now });
+		return false;
+	}
+	const ref = prepared.kind === 'ready' ? prepared : null;
+	for (let render = 0; render <= MAX_DIGEST_RENDERS; render += 1) {
+		// The last render goes without the digest: its threads stay pending.
+		const email =
+			ref && render < MAX_DIGEST_RENDERS
+				? await ctx.runQuery(internal.mail.digest.view.digestForEmail, {
+						digestId: ref.digestId,
+						claimToken: ref.claimToken,
+					})
+				: null;
+		const digest = ref && email && email.groups.length > 0 ? { ref, email } : null;
+		if (entry.items.length === 0 && !entry.senders && !digest) return false;
+		const result = await renderAndDeliver(ctx, entry, baseUrl, digest);
+		if (result.delivered) return true;
+		if (!result.isDigestStale) return false;
+	}
+	return false;
+}
+
 /**
  * Deliver every brief that is due in this tick.
  *
@@ -174,76 +290,9 @@ export const deliverDueBriefs = internalAction({
 
 		const baseUrl = (getOptional('SITE_URL') ?? '').replace(/\/+$/, '');
 		let delivered = 0;
-
 		for (const entry of due) {
 			try {
-				// In the recipient's own language, from `userProfiles.locale` —
-				// absent means English, exactly what every account had before the
-				// picker existed.
-				const copy = dailyBriefEmailCopy(systemEmailLocale(entry.locale));
-				// Read on arrival (§6.5): claim and generate the digest, then read its lines.
-				const digestRef = entry.digestPeriodKey
-					? await prepareDigest(ctx, {
-							mailboxId: entry.mailboxId,
-							periodKey: entry.digestPeriodKey,
-							ownerUserId: entry.userId,
-						})
-					: null;
-				const digest = digestRef
-					? await ctx.runQuery(internal.mail.digest.view.digestForEmail, digestRef)
-					: null;
-				const hasDigest = (digest?.groups.length ?? 0) > 0;
-				if (entry.items.length === 0 && !entry.senders && !hasDigest) continue;
-				const subject = briefEmailSubject(
-					copy,
-					entry.items.length,
-					Boolean(entry.senders),
-					hasDigest
-				);
-				const blocks = briefEmailBlocks({
-					items: entry.items,
-					bundledCounts: entry.bundledCounts,
-					heading: copy.heading,
-					bundledLine: copy.bundledLine,
-					emptyLine: copy.emptyLine,
-					baseUrl,
-				});
-				if (digest && hasDigest) blocks.push(...digestBlocks({ digest, copy, baseUrl }));
-				if (entry.senders) blocks.push(...sendersBlocks({ senders: entry.senders, copy, baseUrl }));
-				const bodyHtml = renderEmailHtml(blocks);
-				const bodyText = renderPlainText(blocks);
-				const domain = entry.address.split('@')[1] ?? 'localhost';
-				const rfc822MessageId = buildMessageId(domain);
-
-				const draft: DraftRow = {
-					_id: 'brief' as DraftRow['_id'],
-					mailboxId: entry.mailboxId,
-					toAddresses: [entry.address],
-					ccAddresses: [],
-					bccAddresses: [],
-					fromAddress: entry.address,
-					subject,
-					bodyHtml,
-					bodyText,
-					state: 'pending_send',
-					attachments: [],
-				};
-				const { raw, size } = buildRfc822(draft, [], rfc822MessageId, undefined, undefined);
-
-				const rawStorageId = await ctx.storage.store(new Blob([new Uint8Array(raw)]));
-				const result = await ctx.runMutation(internal.mail.briefEmail.deliverBriefEmail, {
-					userId: entry.userId,
-					mailboxId: entry.mailboxId,
-					rawStorageId,
-					rawSize: size,
-					messageId: rfc822MessageId,
-					subject,
-					bodyText,
-					bodyHtml,
-					snippet: bodyText.replace(/\s+/g, ' ').trim().slice(0, SNIPPET_LENGTH),
-					...(digestRef && hasDigest ? { digest: digestRef } : {}),
-				});
-				if (result.delivered) delivered += 1;
+				if (await deliverOne(ctx, entry, baseUrl)) delivered += 1;
 			} catch (err) {
 				logError('[Daily Brief] email delivery failed', err);
 			}

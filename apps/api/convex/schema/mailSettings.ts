@@ -148,6 +148,10 @@ export const mailSettingsTables = {
 		// its LOCAL day against today's, which is what makes the send
 		// at-most-once-per-day and idempotent across cron ticks and retries.
 		lastDailyBriefEmailAt: v.optional(v.number()),
+		// Read on arrival (§6.5): the brief waited for a digest another tick was
+		// still generating. Set by the first deferral, cleared on delivery; the
+		// brief is due again on the next tick, bounded (mail/briefEmail.ts).
+		dailyBriefDeferredAt: v.optional(v.number()),
 		// Trash auto-purge horizon in days (idea 67): how long a trashed message
 		// survives before `mail/trashRetention.ts` deletes it for good. `0` is
 		// "Never", and so is ABSENT — Owlat has never auto-emptied a trash folder,

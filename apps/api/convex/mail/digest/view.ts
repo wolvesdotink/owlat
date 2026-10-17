@@ -22,10 +22,12 @@ import { internalQuery, type MutationCtx } from '../../_generated/server';
 import { openMessageBody } from '../../lib/messageBody';
 import { markDigestSent } from '../arrival/digestState';
 import { isLineCurrent } from './claim';
+import { isPersonalMailbox } from '../permissions';
 import { DIGEST_KIND_ORDER } from './select';
 
 /** One rendered digest line. */
 export interface DigestEmailLine {
+	messageId: Id<'mailMessages'>;
 	sender: string;
 	subject: string;
 	/** Verbatim spans from the mail; empty renders the subject alone. */
@@ -60,6 +62,7 @@ export const digestForEmail = internalQuery({
 				if (item.kind !== kind || !(await isLineCurrent(ctx, digest.mailboxId, item))) continue;
 				const message = (await ctx.db.get(item.messageId))!;
 				lines.push({
+					messageId: item.messageId,
 					sender: message.fromName || message.fromAddress,
 					subject: message.subject,
 					spans: await Promise.all((item.spans ?? []).map((span) => openMessageBody(span.quote))),
@@ -72,6 +75,46 @@ export const digestForEmail = internalQuery({
 		return { groups, overflowLabel: digest.overflowLabel };
 	},
 });
+
+/** The message ids of a rendered digest, in render order. Pure. */
+export function renderedMessageIds(digest: DigestEmail): Id<'mailMessages'>[] {
+	return digest.groups.flatMap((group) => group.lines.map((line) => line.messageId));
+}
+
+/**
+ * Inside the delivery mutation: whether the digest is still `generated` under
+ * the claim and its current lines (fence, purge, scope re-checked here) are
+ * exactly the lines the email was rendered with. `stale` asks the caller to
+ * re-render; `gone` means it was sent or replaced meanwhile.
+ */
+export async function checkDigestDelivery(
+	ctx: Pick<MutationCtx, 'db'>,
+	mailbox: Pick<Doc<'mailboxes'>, '_id' | 'scope'>,
+	ref: { digestId: Id<'mailDigests'>; claimToken: string; renderedMessageIds: Id<'mailMessages'>[] }
+): Promise<{ kind: 'ok'; digest: Doc<'mailDigests'> } | { kind: 'stale' | 'gone' }> {
+	const digest = await ctx.db.get(ref.digestId);
+	if (
+		!digest ||
+		digest.mailboxId !== mailbox._id ||
+		digest.state !== 'generated' ||
+		digest.claimToken !== ref.claimToken ||
+		!isPersonalMailbox(mailbox)
+	) {
+		return { kind: 'gone' };
+	}
+	const current: Id<'mailMessages'>[] = [];
+	for (const kind of DIGEST_KIND_ORDER) {
+		for (const item of digest.items) {
+			if (item.kind === kind && (await isLineCurrent(ctx, digest.mailboxId, item))) {
+				current.push(item.messageId);
+			}
+		}
+	}
+	const isSame =
+		current.length === ref.renderedMessageIds.length &&
+		current.every((id, index) => id === ref.renderedMessageIds[index]);
+	return isSame ? { kind: 'ok', digest } : { kind: 'stale' };
+}
 
 /**
  * Mark the digest sent and consume its visited threads. Call in the mutation

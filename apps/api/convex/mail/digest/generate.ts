@@ -161,22 +161,31 @@ async function generateSpans(
 	}
 }
 
+/** What {@link prepareDigest} found. */
+export type PreparedDigest =
+	| { kind: 'ready'; digestId: Id<'mailDigests'>; claimToken: string }
+	/** Another tick holds the claim: the brief should wait for it (`briefEmail.ts`). */
+	| { kind: 'busy' }
+	/** Nothing to send: no pending threads, already sent, or the commit was refused. */
+	| { kind: 'none' };
+
 /**
  * The mailbox's generated digest for the period, claiming and generating it
- * when needed: `{ digestId, claimToken }`, or null when there is nothing to
- * send (no pending threads, already sent, another tick holds the claim, or
- * the commit was refused).
+ * when needed.
  */
 export async function prepareDigest(
 	ctx: ActionCtx,
 	args: { mailboxId: Id<'mailboxes'>; periodKey: string; ownerUserId: string }
-): Promise<{ digestId: Id<'mailDigests'>; claimToken: string } | null> {
+): Promise<PreparedDigest> {
 	const claim: DigestClaim = await ctx.runMutation(internal.mail.digest.claim.claimDigest, {
 		mailboxId: args.mailboxId,
 		periodKey: args.periodKey,
 	});
-	if (claim.kind === 'ready') return { digestId: claim.digestId, claimToken: claim.claimToken };
-	if (claim.kind !== 'claimed') return null;
+	if (claim.kind === 'ready') {
+		return { kind: 'ready', digestId: claim.digestId, claimToken: claim.claimToken };
+	}
+	if (claim.kind === 'busy') return { kind: 'busy' };
+	if (claim.kind !== 'claimed') return { kind: 'none' };
 	const spans = claim.isPaid
 		? await generateSpans(ctx, { ...args, digestId: claim.digestId, items: claim.items })
 		: new Map<number, string[]>();
@@ -189,5 +198,7 @@ export async function prepareDigest(
 		claimToken: claim.claimToken,
 		items,
 	});
-	return isCommitted ? { digestId: claim.digestId, claimToken: claim.claimToken } : null;
+	return isCommitted
+		? { kind: 'ready', digestId: claim.digestId, claimToken: claim.claimToken }
+		: { kind: 'none' };
 }
