@@ -425,7 +425,7 @@ function backgroundColorOf(d: Decl): { value: string; rgba: Rgba } | null {
 	if (whole) return { value, rgba: whole };
 	if (d.prop !== 'background') return null;
 	let color: { value: string; rgba: Rgba } | null = null;
-	for (const token of value.match(/[a-z-]+\([^()]*\)|[^\s()]+/gi) ?? []) {
+	for (const token of value.match(/[a-z-]+\([^()]*\)|\/|[^\s()/]+/gi) ?? []) {
 		const rgba = parseCssColor(token);
 		if (rgba) {
 			if (color) return null;
@@ -434,7 +434,8 @@ function backgroundColorOf(d: Decl): { value: string; rgba: Rgba } | null {
 			return null;
 		}
 	}
-	return color;
+	// No color layer: the shorthand resets the color to transparent.
+	return color ?? { value: 'transparent', rgba: { r: 0, g: 0, b: 0, a: 0 } };
 }
 
 /**
@@ -562,10 +563,21 @@ function adaptOnDark(
 	under: Fill | null
 ): Adapted {
 	// Text the sender hid on an ancestor's white fill (white on white) would show
-	// once that fill is dropped, so the element gets the fill back. A color that
-	// cannot be parsed cannot be judged, so it keeps the fill too.
-	if (under && ownColor && !paintsBackground(decls) && !textShowsOn(text, under.rgba)) {
-		decls = appendWinning(decls, 'background-color', under.value);
+	// once that fill is dropped, so the element gets the fill back. Judged on
+	// what showed behind the text: the dropped fill, under the element's own
+	// fill where that is translucent. A color that cannot be parsed cannot be
+	// judged, so it keeps the fill too.
+	if (under && ownColor) {
+		const ownDecl = winningDecl(decls, isBackgroundProp);
+		const own = ownDecl ? backgroundColorOf(ownDecl) : null;
+		const backdrop = !ownDecl
+			? under.rgba
+			: own && own.rgba.a < 1
+				? composite(own.rgba, under.rgba)
+				: null;
+		if (backdrop && !hasBackgroundImage(decls) && !textShowsOn(text, backdrop)) {
+			decls = appendWinning(decls, 'background-color', under.value);
+		}
 	}
 
 	// A white fill on a dark page is a white box, and the text inside it has just

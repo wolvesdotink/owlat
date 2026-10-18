@@ -349,6 +349,28 @@ describe('remapInlineColorsForDark', () => {
 		);
 	});
 
+	it('restores the dropped fill under a translucent child fill that hid text', () => {
+		const html =
+			'<span style="background:#fff"><span style="background:rgba(255,255,255,0.1);color:#fff">hidden</span></span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			'<span><span style="background:rgba(255,255,255,0.1);color:#fff;background-color:#fff">hidden</span></span>'
+		);
+	});
+
+	it('restores the dropped fill under a colorless shorthand that hid text', () => {
+		const html =
+			'<span style="background:#fff"><span style="background:none repeat scroll 0% 0%;color:#fff">hidden</span></span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			'<span><span style="background:none repeat scroll 0% 0%;color:#fff;background-color:#fff">hidden</span></span>'
+		);
+	});
+
+	it('drops a white shorthand fill with an unspaced position/size', () => {
+		expect(remapInlineColorsForDark('<span style="background:#fff 0 0/auto">text</span>')).toBe(
+			'<span>text</span>'
+		);
+	});
+
 	it('stays linear on deeply nested markup', () => {
 		// Quadratic stack handling took seconds at this depth; linear is ~0.2 s.
 		const depth = 40_000;
