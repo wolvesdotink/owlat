@@ -229,6 +229,56 @@ describe('remapInlineColorsForDark', () => {
 		expect(remapInlineColorsForDark(html)).toBe(html);
 	});
 
+	it('gives a nested white-on-white span back the white fill it hid on', () => {
+		const html = '<span style="background:#fff"><span style="color:#fff">hidden</span></span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			'<span><span style="color:#fff;background-color:#fff">hidden</span></span>'
+		);
+	});
+
+	it('keeps an inherited color it cannot parse on a kept light fill', () => {
+		const html = '<p style="color:hsl(0,0%,100%)"><span style="background:#fff">hidden</span></p>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			'<p style="color:hsl(0,0%,100%)"><span style="background:#fff;color:hsl(0,0%,100%)">hidden</span></p>'
+		);
+	});
+
+	it('treats color:inherit as no color of its own on a light fill', () => {
+		expect(
+			remapInlineColorsForDark('<span style="background:#ffff00;color:inherit">x</span>')
+		).toBe('<span style="background:#ffff00;color:inherit;color:#1a1a1a">x</span>');
+	});
+
+	it('gives inherited text in a dark fill inside a highlight the palette text', () => {
+		const html =
+			'<span style="background:#ffff00"><span style="background:#222222">text</span></span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			`<span style="background:#ffff00;color:#1a1a1a"><span style="background:#222222;color:${POSTBOX_DARK_PALETTE.text}">text</span></span>`
+		);
+	});
+
+	it('keeps a white background under a shorthand background image', () => {
+		const html =
+			'<span style="background:url(https://example.com/a.png);background-color:#fff;color:#111">x</span>';
+		expect(remapInlineColorsForDark(html)).toBe(html);
+	});
+
+	it('keeps encoded image URLs intact when it rewrites a style', () => {
+		const html =
+			'<span style="background:#ff0;background-image:url(https://example.com/a.png?a=1&amp;b=2)">x</span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			'<span style="background:#ff0;background-image:url(https://example.com/a.png?a=1&amp;b=2);color:#1a1a1a">x</span>'
+		);
+	});
+
+	it('does not split on a semicolon inside url()', () => {
+		const html =
+			'<p style="background-image:url(https://example.com/a.png?a=1;b=2);color:#000">x</p>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			`<p style="background-image:url(https://example.com/a.png?a=1;b=2);color:${POSTBOX_DARK_PALETTE.text}">x</p>`
+		);
+	});
+
 	it('stays linear on deeply nested markup', () => {
 		// Quadratic stack handling took seconds at this depth; linear is ~0.2 s.
 		const depth = 40_000;
@@ -255,7 +305,7 @@ describe('remapInlineColorsForDark', () => {
 		const html =
 			'<span style="font-size:10.0pt;font-family:&quot;Arial&quot;,sans-serif;color:black">sig</span>';
 		const out = remapInlineColorsForDark(html);
-		expect(out).toContain("font-family:'Arial',sans-serif");
+		expect(out).toContain('font-family:&quot;Arial&quot;,sans-serif');
 		expect(out).toContain('font-size:10.0pt');
 		expect(out).not.toContain('color:black');
 	});
