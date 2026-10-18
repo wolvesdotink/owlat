@@ -251,7 +251,7 @@ describe('remapInlineColorsForDark', () => {
 	it('gives a nested white-on-white span back the white fill it hid on', () => {
 		const html = '<span style="background:#fff"><span style="color:#fff">hidden</span></span>';
 		expect(remapInlineColorsForDark(html)).toBe(
-			'<span><span style="color:#fff;background-color:#fff">hidden</span></span>'
+			'<span><span style="color:#fff;background-color:#ffffff">hidden</span></span>'
 		);
 	});
 
@@ -308,7 +308,7 @@ describe('remapInlineColorsForDark', () => {
 		const html =
 			'<span style="background:#fff"><span style="color:hsl(0,0%,100%)">hidden</span></span>';
 		expect(remapInlineColorsForDark(html)).toBe(
-			'<span><span style="color:hsl(0,0%,100%);background-color:#fff">hidden</span></span>'
+			'<span><span style="color:hsl(0,0%,100%);background-color:#ffffff">hidden</span></span>'
 		);
 	});
 
@@ -316,7 +316,7 @@ describe('remapInlineColorsForDark', () => {
 		const html =
 			'<span style="background:#fff"><span style="background:transparent!important;color:#fff">hidden</span></span>';
 		expect(remapInlineColorsForDark(html)).toContain(
-			'<span style="background:transparent!important;color:#fff;background-color:#fff !important">'
+			'<span style="background:transparent!important;color:#fff;background-color:#ffffff !important">'
 		);
 	});
 
@@ -353,7 +353,7 @@ describe('remapInlineColorsForDark', () => {
 		const html =
 			'<span style="background:#fff"><span style="background:rgba(255,255,255,0.1);color:#fff">hidden</span></span>';
 		expect(remapInlineColorsForDark(html)).toBe(
-			'<span><span style="background:rgba(255,255,255,0.1);color:#fff;background-color:#fff">hidden</span></span>'
+			'<span><span style="background:rgba(255,255,255,0.1);color:#fff;background-color:#ffffff">hidden</span></span>'
 		);
 	});
 
@@ -361,13 +361,37 @@ describe('remapInlineColorsForDark', () => {
 		const html =
 			'<span style="background:#fff"><span style="background:none repeat scroll 0% 0%;color:#fff">hidden</span></span>';
 		expect(remapInlineColorsForDark(html)).toBe(
-			'<span><span style="background:none repeat scroll 0% 0%;color:#fff;background-color:#fff">hidden</span></span>'
+			'<span><span style="background:none repeat scroll 0% 0%;color:#fff;background-color:#ffffff">hidden</span></span>'
 		);
 	});
 
 	it('drops a white shorthand fill with an unspaced position/size', () => {
 		expect(remapInlineColorsForDark('<span style="background:#fff 0 0/auto">text</span>')).toBe(
 			'<span>text</span>'
+		);
+	});
+
+	it('restores the dropped fill behind a background reset to initial', () => {
+		for (const style of ['background:initial', 'background-color:unset']) {
+			const html = `<span style="background:#fff"><span style="${style};color:#fff">hidden</span></span>`;
+			expect(remapInlineColorsForDark(html)).toContain('background-color:#ffffff">hidden');
+		}
+	});
+
+	it('keeps hidden text hidden through a translucent wrapper', () => {
+		const html =
+			'<span style="background:#fff"><span style="background:rgba(255,255,255,0.1)"><span style="color:#fff">hidden</span></span></span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			'<span><span><span style="color:#fff;background-color:#ffffff">hidden</span></span></span>'
+		);
+	});
+
+	it('resolves a translucent tint over a dropped fill to the gray it showed', () => {
+		// rgba(0,0,0,0.3) over white is #b3b3b3; the matching text stays hidden on it.
+		const html =
+			'<span style="background:#fff"><span style="background:rgba(0,0,0,0.3);color:#b3b3b3">hidden</span></span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			'<span><span style="background:rgba(0,0,0,0.3);color:#b3b3b3;background-color:#b3b3b3">hidden</span></span>'
 		);
 	});
 

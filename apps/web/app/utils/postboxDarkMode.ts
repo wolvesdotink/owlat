@@ -421,6 +421,10 @@ const BACKGROUND_KEYWORD =
  */
 function backgroundColorOf(d: Decl): { value: string; rgba: Rgba } | null {
 	const { value } = splitImportant(d.value);
+	// Background is not inherited: the reset keywords leave it transparent.
+	if (/^(initial|unset|revert|revert-layer|none)$/i.test(value)) {
+		return { value: 'transparent', rgba: { r: 0, g: 0, b: 0, a: 0 } };
+	}
 	const whole = parseCssColor(value);
 	if (whole) return { value, rgba: whole };
 	if (d.prop !== 'background') return null;
@@ -538,14 +542,14 @@ function hasBackgroundImage(decls: Decl[]): boolean {
  */
 type Surface = 'dark' | 'light';
 
-/** A white fill dropped on the dark path, which the text below it was written on. */
-type Fill = { value: string; rgba: Rgba };
-
 interface Adapted {
 	decls: Decl[];
 	surface: Surface;
-	/** The dropped white fill this element's content sits on, if any. */
-	canvasFill: Fill | null;
+	/**
+	 * The opaque color a dropped white fill showed behind this element's content
+	 * in light mode, if one was dropped from it or an ancestor.
+	 */
+	canvasFill: Rgba | null;
 }
 
 /** Void elements in the sanitizer allowlist: they open no element to close. */
@@ -554,29 +558,26 @@ const VOID_TAGS = new Set(['br', 'hr', 'img']);
 /**
  * Adapts one element's style on a dark surface. `ownColor` is its own text
  * color declaration, `text` the sender's color its text renders with, and
- * `under` the white fill dropped from an ancestor.
+ * `under` the color of the white fill dropped from an ancestor.
  */
 function adaptOnDark(
 	decls: Decl[],
 	ownColor: Decl | undefined,
 	text: SenderText,
-	under: Fill | null
+	under: Rgba | null
 ): Adapted {
-	// Text the sender hid on an ancestor's white fill (white on white) would show
-	// once that fill is dropped, so the element gets the fill back. Judged on
-	// what showed behind the text: the dropped fill, under the element's own
-	// fill where that is translucent. A color that cannot be parsed cannot be
-	// judged, so it keeps the fill too.
-	if (under && ownColor) {
+	// Under a dropped white fill, the element was drawn on that fill. A
+	// translucent (or transparent) fill of its own is resolved to the opaque
+	// color it showed there, and judged like any fill below; text the sender hid
+	// on the dropped fill (white on white) gets it back, so it stays hidden.
+	// Fills that cannot be read (images, gradients) are left alone.
+	if (under && !hasBackgroundImage(decls)) {
 		const ownDecl = winningDecl(decls, isBackgroundProp);
 		const own = ownDecl ? backgroundColorOf(ownDecl) : null;
-		const backdrop = !ownDecl
-			? under.rgba
-			: own && own.rgba.a < 1
-				? composite(own.rgba, under.rgba)
-				: null;
-		if (backdrop && !hasBackgroundImage(decls) && !textShowsOn(text, backdrop)) {
-			decls = appendWinning(decls, 'background-color', under.value);
+		if (own && own.rgba.a < 1) {
+			decls = appendWinning(decls, 'background-color', toCss(composite(own.rgba, under)));
+		} else if (!ownDecl && ownColor && !textShowsOn(text, under)) {
+			decls = appendWinning(decls, 'background-color', toCss(under));
 		}
 	}
 
@@ -595,7 +596,7 @@ function adaptOnDark(
 		textShowsOn(text, background.rgba)
 	) {
 		decls = decls.filter((d) => !isBackgroundProp(d.prop));
-		canvasFill = background;
+		canvasFill = composite(background.rgba, WHITE);
 	}
 
 	const fillDecl = winningDecl(decls, isBackgroundProp);
@@ -666,7 +667,7 @@ function serialize(decls: Decl[]): string {
  */
 export function remapInlineColorsForDark(sanitizedHtml: string): string {
 	// One entry per open element.
-	const stack: Array<{ tag: string; surface: Surface; text: SenderText; canvasFill: Fill | null }> =
+	const stack: Array<{ tag: string; surface: Surface; text: SenderText; canvasFill: Rgba | null }> =
 		[];
 	return sanitizedHtml.replace(
 		/<(\/?)([a-z][a-z0-9]*)\b([^>]*)>/gi,
