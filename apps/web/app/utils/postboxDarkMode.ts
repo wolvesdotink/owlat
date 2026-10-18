@@ -16,6 +16,30 @@
  *    light "paper" card on the dark app background.
  */
 
+import {
+	composite,
+	contrastRatio,
+	parseCssColor,
+	toCss,
+	WHITE,
+	type Rgba,
+} from './postboxCssColor';
+import {
+	appendWinning,
+	backgroundColorOf,
+	encodeAttr,
+	findStyleAttr,
+	hasBackgroundImage,
+	isBackgroundProp,
+	isNonTransparentBackground,
+	paintsBackground,
+	serialize,
+	splitImportant,
+	styleDeclarations,
+	winningDecl,
+	type Decl,
+} from './postboxInlineStyle';
+
 /** Iframe color scheme for a rendered message. */
 export type PostboxRenderScheme = 'light' | 'dark';
 
@@ -30,144 +54,6 @@ export const POSTBOX_DARK_PALETTE = {
 	mutedBorder: '#3a3a3c',
 	mutedText: '#a1a1a6',
 } as const;
-
-/* ------------------------------------------------------------------ */
-/* Color parsing + luminance                                          */
-/* ------------------------------------------------------------------ */
-
-export interface Rgba {
-	r: number;
-	g: number;
-	b: number;
-	a: number;
-}
-
-const NAMED_COLORS: Record<string, string> = {
-	black: '#000000',
-	white: '#ffffff',
-	gray: '#808080',
-	grey: '#808080',
-	silver: '#c0c0c0',
-	red: '#ff0000',
-	maroon: '#800000',
-	orange: '#ffa500',
-	yellow: '#ffff00',
-	olive: '#808000',
-	green: '#008000',
-	lime: '#00ff00',
-	teal: '#008080',
-	aqua: '#00ffff',
-	cyan: '#00ffff',
-	blue: '#0000ff',
-	navy: '#000080',
-	purple: '#800080',
-	fuchsia: '#ff00ff',
-	magenta: '#ff00ff',
-};
-
-const NUMBER = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+))(%|deg)?$/;
-
-function parseNumber(raw: string): { n: number; unit: string } | null {
-	const m = raw.match(NUMBER);
-	return m ? { n: Number(m[1]), unit: m[2] ?? '' } : null;
-}
-
-const clamp = (n: number, max: number) => Math.min(max, Math.max(0, n));
-
-/**
- * Parses the arguments of rgb()/rgba()/hsl()/hsla(), comma- or
- * space-separated, with an optional `/ alpha`, numbers or percentages.
- */
-function parseColorFunction(isHsl: boolean, args: string): Rgba | null {
-	const parts = args
-		.trim()
-		.split(/\s*[,/]\s*|\s+/)
-		.filter(Boolean)
-		.map(parseNumber);
-	if ((parts.length !== 3 && parts.length !== 4) || parts.some((p) => p === null)) return null;
-	const [x, y, z, alphaPart] = parts as Array<{ n: number; unit: string }>;
-	const a = alphaPart ? clamp(alphaPart.unit === '%' ? alphaPart.n / 100 : alphaPart.n, 1) : 1;
-	if (!isHsl) {
-		const channel = (p: { n: number; unit: string }) =>
-			Math.round(clamp(p.unit === '%' ? p.n * 2.55 : p.n, 255));
-		if ([x!, y!, z!].some((p) => p.unit === 'deg')) return null;
-		return { r: channel(x!), g: channel(y!), b: channel(z!), a };
-	}
-	if (y!.unit !== '%' || z!.unit !== '%') return null;
-	const h = (((x!.n % 360) + 360) % 360) / 360;
-	const sat = clamp(y!.n, 100) / 100;
-	const light = clamp(z!.n, 100) / 100;
-	const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
-	const p = 2 * light - q;
-	const hue = (t: number) => {
-		const u = t < 0 ? t + 1 : t > 1 ? t - 1 : t;
-		if (u < 1 / 6) return p + (q - p) * 6 * u;
-		if (u < 1 / 2) return q;
-		if (u < 2 / 3) return p + (q - p) * (2 / 3 - u) * 6;
-		return p;
-	};
-	return {
-		r: Math.round(hue(h + 1 / 3) * 255),
-		g: Math.round(hue(h) * 255),
-		b: Math.round(hue(h - 1 / 3) * 255),
-		a,
-	};
-}
-
-/**
- * Parses a CSS color value (hex, rgb()/rgba(), hsl()/hsla(), common named
- * colors).
- * Returns null for anything unparseable (gradients, var(), currentColor…) —
- * callers must treat null as "do not touch".
- */
-export function parseCssColor(raw: string): Rgba | null {
-	const value = raw.trim().toLowerCase();
-	if (value === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
-	const named = NAMED_COLORS[value];
-	const v = named ?? value;
-
-	const hexMatch = v.match(/^#([0-9a-f]{3,8})$/);
-	if (hexMatch?.[1]) {
-		const hex = hexMatch[1];
-		if (hex.length === 3 || hex.length === 4) {
-			const r = parseInt(hex[0]! + hex[0]!, 16);
-			const g = parseInt(hex[1]! + hex[1]!, 16);
-			const b = parseInt(hex[2]! + hex[2]!, 16);
-			const a = hex.length === 4 ? parseInt(hex[3]! + hex[3]!, 16) / 255 : 1;
-			return { r, g, b, a };
-		}
-		if (hex.length === 6 || hex.length === 8) {
-			const r = parseInt(hex.slice(0, 2), 16);
-			const g = parseInt(hex.slice(2, 4), 16);
-			const b = parseInt(hex.slice(4, 6), 16);
-			const a = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1;
-			return { r, g, b, a };
-		}
-		return null;
-	}
-
-	const fnMatch = v.match(/^(rgba?|hsla?)\(([^()]*)\)$/);
-	if (fnMatch) return parseColorFunction(fnMatch[1]!.startsWith('hsl'), fnMatch[2]!);
-
-	return null;
-}
-
-/** WCAG relative luminance (0 = black, 1 = white). */
-export function relativeLuminance({ r, g, b }: Rgba): number {
-	const channel = (c: number) => {
-		const s = c / 255;
-		return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-	};
-	return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-}
-
-/** WCAG contrast ratio between two colors (1..21). */
-export function contrastRatio(a: Rgba, b: Rgba): number {
-	const la = relativeLuminance(a);
-	const lb = relativeLuminance(b);
-	const [hi, lo] = la >= lb ? [la, lb] : [lb, la];
-	return (hi + 0.05) / (lo + 0.05);
-}
 
 const MIN_READABLE_CONTRAST = 3;
 
@@ -211,130 +97,12 @@ export function lightenForDark(color: Rgba): Rgba {
 	return current;
 }
 
-function toCss({ r, g, b }: Rgba): string {
-	const hex = (n: number) => n.toString(16).padStart(2, '0');
-	return `#${hex(r)}${hex(g)}${hex(b)}`;
-}
-
 /* ------------------------------------------------------------------ */
 /* Classification: simple vs designed                                 */
 /* ------------------------------------------------------------------ */
 
 /** Tags that count as "large containers" for background detection. */
 const CONTAINER_TAGS = new Set(['body', 'table', 'tr', 'td', 'th', 'div', 'center', 'section']);
-
-function isNonTransparentBackground(value: string): boolean {
-	const trimmed = value.trim();
-	if (!trimmed) return false;
-	if (/^(transparent|none|inherit|initial|unset)$/i.test(trimmed)) return false;
-	const parsed = parseCssColor(trimmed);
-	if (parsed) return parsed.a > 0;
-	// Unparseable (gradient, url(), var()) — assume it paints something.
-	return true;
-}
-
-type Decl = { prop: string; value: string };
-
-const ATTR_ENTITIES: Record<string, string> = {
-	amp: '&',
-	quot: '"',
-	lt: '<',
-	gt: '>',
-	'#39': "'",
-	'#x27': "'",
-};
-
-/** Decodes the entities sanitize-html writes into attribute values. */
-function decodeAttr(value: string): string {
-	return value.replace(/&(amp|quot|lt|gt|#39|#x27);/g, (_, name: string) => ATTR_ENTITIES[name]!);
-}
-
-/** Encodes CSS text for an attribute value delimited by `quote`. */
-function encodeAttr(css: string, quote: '"' | "'"): string {
-	const encoded = css.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-	return quote === '"' ? encoded.replace(/"/g, '&quot;') : encoded.replace(/'/g, '&#39;');
-}
-
-/**
- * Splits CSS declarations on the semicolons that end them, not those inside a
- * quoted string or parentheses (`url(…?a=1;b=2)`).
- */
-function splitDeclarations(css: string): string[] {
-	const parts: string[] = [];
-	let quote: string | null = null;
-	let depth = 0;
-	let start = 0;
-	for (let i = 0; i < css.length; i++) {
-		const ch = css[i]!;
-		if (ch === '\\') {
-			i++;
-		} else if (quote) {
-			if (ch === quote) quote = null;
-		} else if (ch === '"' || ch === "'") {
-			quote = ch;
-		} else if (ch === '(') {
-			depth++;
-		} else if (ch === ')') {
-			depth = Math.max(0, depth - 1);
-		} else if (ch === ';' && depth === 0) {
-			parts.push(css.slice(start, i));
-			start = i + 1;
-		}
-	}
-	parts.push(css.slice(start));
-	return parts;
-}
-
-/**
- * Parses a style attribute value. sanitize-html writes it entity-encoded
- * (`font-family:&quot;Arial&quot;`, `url(…?a=1&amp;b=2)`), so it is decoded
- * first: splitting the raw value on `;` cut through those entities, which
- * dropped fonts and broke image URLs.
- */
-function styleDeclarations(style: string): Decl[] {
-	return splitDeclarations(decodeAttr(style))
-		.map((decl) => {
-			const idx = decl.indexOf(':');
-			if (idx === -1) return null;
-			return {
-				prop: decl.slice(0, idx).trim().toLowerCase(),
-				value: decl.slice(idx + 1).trim(),
-			};
-		})
-		.filter((d): d is Decl => d !== null && d.prop.length > 0);
-}
-
-/** Attribute tokens of a tag; a quoted value is consumed whole. */
-const ATTR_RE = /([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
-
-interface StyleAttr {
-	/** Offset of the attribute name within the attribute string. */
-	start: number;
-	end: number;
-	quote: '"' | "'";
-	value: string;
-}
-
-/**
- * Finds the `style` attribute in a tag's attribute string. Walks the attributes
- * one by one, so `style=` written inside another attribute's quoted value
- * (`title=" style='…'"`) is never mistaken for it.
- */
-function findStyleAttr(attrs: string): StyleAttr | null {
-	ATTR_RE.lastIndex = 0;
-	let match: RegExpExecArray | null;
-	while ((match = ATTR_RE.exec(attrs)) !== null) {
-		if (match[1]!.toLowerCase() !== 'style') continue;
-		const single = match[3] !== undefined;
-		return {
-			start: match.index,
-			end: match.index + match[0].length,
-			quote: single ? "'" : '"',
-			value: match[2] ?? match[3] ?? match[4] ?? '',
-		};
-	}
-	return null;
-}
 
 /**
  * Classifies sanitized email HTML.
@@ -372,92 +140,13 @@ export function classifyEmailHtml(sanitizedHtml: string): EmailHtmlKind {
 /* ------------------------------------------------------------------ */
 
 /** Text color of the light scheme, given to text that sits on a light surface. */
-const LIGHT_TEXT = '#1a1a1a';
-
-const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
+export const LIGHT_TEXT = '#1a1a1a';
 
 /**
  * A background closer to white than this is the light page itself, not a
  * surface the sender meant to show. #ebebeb sits at roughly 1.2:1 against white.
  */
 const CANVAS_MAX_CONTRAST = 1.2;
-
-function isBackgroundProp(prop: string): boolean {
-	return prop === 'background' || prop === 'background-color';
-}
-
-function splitImportant(value: string): { value: string; important: boolean } {
-	const match = value.match(/^(.*?)\s*!\s*important$/i);
-	return match ? { value: match[1]!, important: true } : { value, important: false };
-}
-
-/**
- * The declaration CSS applies among those whose property matches: the last
- * one, except that a normal declaration never overrides an `!important` one.
- */
-function winningDecl(decls: Decl[], matches: (prop: string) => boolean): Decl | undefined {
-	let winner: Decl | undefined;
-	let winnerImportant = false;
-	for (const d of decls) {
-		if (!matches(d.prop)) continue;
-		const { important } = splitImportant(d.value);
-		if (important || !winnerImportant) {
-			winner = d;
-			winnerImportant = important;
-		}
-	}
-	return winner;
-}
-
-/** Keywords and lengths a `background` shorthand may carry besides its color. */
-const BACKGROUND_KEYWORD =
-	/^(none|repeat|repeat-x|repeat-y|no-repeat|space|round|scroll|fixed|local|top|bottom|left|right|center|auto|cover|contain|border-box|padding-box|content-box|\/|[+-]?[\d.]+(%|px|em|rem|pt|cm|mm|in)?)$/i;
-
-/**
- * The color a background declaration paints, with the token that spells it,
- * or null when it paints no plain color. Reads the color layer of a full
- * shorthand too (`background: rgb(255, 255, 255) none repeat scroll 0% 0%`, as
- * pasted computed styles write it) as long as it carries no image.
- */
-function backgroundColorOf(d: Decl): { value: string; rgba: Rgba } | null {
-	const { value } = splitImportant(d.value);
-	// Background is not inherited: the reset keywords leave it transparent.
-	if (/^(initial|unset|revert|revert-layer|none)$/i.test(value)) {
-		return { value: 'transparent', rgba: { r: 0, g: 0, b: 0, a: 0 } };
-	}
-	const whole = parseCssColor(value);
-	if (whole) return { value, rgba: whole };
-	if (d.prop !== 'background') return null;
-	let color: { value: string; rgba: Rgba } | null = null;
-	for (const token of value.match(/[a-z-]+\([^()]*\)|\/|[^\s()/]+/gi) ?? []) {
-		const rgba = parseCssColor(token);
-		if (rgba) {
-			if (color) return null;
-			color = { value: token, rgba };
-		} else if (!BACKGROUND_KEYWORD.test(token)) {
-			return null;
-		}
-	}
-	// No color layer: the shorthand resets the color to transparent.
-	return color ?? { value: 'transparent', rgba: { r: 0, g: 0, b: 0, a: 0 } };
-}
-
-/**
- * Appends a declaration that has to win over the ones already there for the
- * same property, so it is `!important` when one of those is.
- */
-function appendWinning(decls: Decl[], prop: string, value: string): Decl[] {
-	const group = prop === 'color' ? (p: string) => p === 'color' : isBackgroundProp;
-	const rival = winningDecl(decls, group);
-	const important = rival !== undefined && splitImportant(rival.value).important;
-	return [...decls, { prop, value: important ? `${value} !important` : value }];
-}
-
-/** `top` painted over an opaque `bottom`. */
-function composite(top: Rgba, bottom: Rgba): Rgba {
-	const mix = (t: number, b: number) => Math.round(t * top.a + b * (1 - top.a));
-	return { r: mix(top.r, bottom.r), g: mix(top.g, bottom.g), b: mix(top.b, bottom.b), a: 1 };
-}
 
 /**
  * True for a fill that looks white or near-white gray on the light page. In
@@ -516,25 +205,6 @@ function resolveTextColor(
 	}
 	if (/^initial$/i.test(value)) return { own: undefined, text: null };
 	return { own: decl, text: { value, rgba: parseCssColor(value) } };
-}
-
-/** True when the winning background declaration paints something. */
-function paintsBackground(decls: Decl[]): boolean {
-	const decl = winningDecl(decls, isBackgroundProp);
-	if (!decl) return false;
-	const color = backgroundColorOf(decl);
-	if (color) return color.rgba.a > 0 || hasBackgroundImage([decl]);
-	return isNonTransparentBackground(splitImportant(decl.value).value);
-}
-
-/** True when the style paints an image (or gradient) layer. */
-function hasBackgroundImage(decls: Decl[]): boolean {
-	// The shorthand resets the image layer, so only the winning one counts.
-	const decl = winningDecl(decls, (prop) => prop === 'background' || prop === 'background-image');
-	if (!decl) return false;
-	const { value } = splitImportant(decl.value);
-	if (decl.prop === 'background-image') return !/^none$/i.test(value);
-	return /\b(url|[a-z-]*gradient|image-set|image)\s*\(/i.test(value);
 }
 
 /**
@@ -664,10 +334,6 @@ function adaptOnLight(decls: Decl[], ownColor: Decl | undefined, text: SenderTex
 	return { decls, surface: 'dark', canvasFill: null };
 }
 
-function serialize(decls: Decl[]): string {
-	return decls.map((d) => `${d.prop}:${d.value}`).join(';');
-}
-
 /**
  * Remaps inline colors for the dark background.
  *
@@ -704,22 +370,40 @@ export function remapInlineColorsForDark(sanitizedHtml: string): string {
 			}
 
 			const outer = stack.at(-1) ?? { surface: 'page' as Surface, text: null, canvasFill: null };
-			// `<mark>` paints its own yellow with black text by default, so its
-			// content (and any fill on it) sits on a light surface.
-			const parent = tag === 'mark' ? MARK_DEFAULTS : outer;
 			const isVoid = VOID_TAGS.has(tag) || /\/\s*$/.test(attrs);
 			const styleAttr = findStyleAttr(attrs);
+			const decls = styleAttr ? styleDeclarations(styleAttr.value) : [];
+			// `<mark>` paints yellow with black text by default. While that yellow
+			// shows, its content sits on a light surface. A background of its own
+			// replaces the yellow and is judged as usual, except that a white one is
+			// never dropped: the yellow would show through.
+			const isMark = tag === 'mark';
+			const markYellow = isMark && !winningDecl(decls, isBackgroundProp);
+			const parent = markYellow ? MARK_DEFAULTS : outer;
 			if (!styleAttr) {
 				if (!isVoid) stack.push({ ...parent, tag });
 				return full;
 			}
 
-			const decls = styleDeclarations(styleAttr.value);
-			const { own: ownColor, text } = resolveTextColor(decls, parent.text);
-			const adapted =
+			const { own: ownColor, text } = resolveTextColor(
+				decls,
+				isMark ? MARK_DEFAULTS.text : parent.text
+			);
+			let adapted =
 				parent.surface === 'light'
 					? adaptOnLight(decls, ownColor, text)
-					: adaptOnDark(decls, ownColor, text, parent.surface, parent.canvasFill);
+					: adaptOnDark(decls, ownColor, text, isMark ? 'dark' : parent.surface, parent.canvasFill);
+			if (isMark && !markYellow && parent.surface !== 'light' && adapted.surface === 'dark') {
+				adapted = {
+					...adapted,
+					// Its default black text does not read on the dark page or a dark fill.
+					decls: ownColor
+						? adapted.decls
+						: appendWinning(adapted.decls, 'color', POSTBOX_DARK_PALETTE.text),
+					// Without a fill, its content is back on the surrounding surface.
+					surface: paintsBackground(adapted.decls) ? 'dark' : outer.surface,
+				};
+			}
 
 			let rewritten = full;
 			const rebuilt = serialize(adapted.decls);
@@ -738,83 +422,6 @@ export function remapInlineColorsForDark(sanitizedHtml: string): string {
 			}
 			return rewritten;
 		}
-	);
-}
-
-/* ------------------------------------------------------------------ */
-/* Base stylesheet per scheme                                         */
-/* ------------------------------------------------------------------ */
-
-/** The app's own UI font stack, so plain mail reads like the rest of Owlat. */
-const FONT_STACK = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
-
-/**
- * Outlook ships its paragraph reset (`p.MsoNormal{margin:0;font-size:11pt}`)
- * in a <style> block, which sanitization drops. Without it every
- * `<p>&nbsp;</p>` spacer Outlook writes between lines picks up the default 1em
- * margins on both sides, and each line box is sized from our 15px body font
- * rather than Outlook's 11pt, so a short reply balloons into a wall of blank
- * space. Restoring the reset is faithful to how the sender saw it, so it
- * applies to designed mail too. The line height stays a little looser than
- * Outlook's own for reading comfort.
- */
-const OUTLOOK_RESET_STYLE =
-	'p.MsoNormal,li.MsoNormal,div.MsoNormal{margin:0;font-size:11pt;line-height:1.4;}';
-
-/**
- * Reading-typography block for "simple" (mostly-text) mail: a comfortable
- * measure capped around 72ch and aligned with the message header (not
- * centered, which left the text floating in the middle of a wide reader), a
- * slightly larger base size, a roomier line-height, long URLs that wrap instead
- * of scrolling sideways, and no stray margin above the first or below the last
- * block. The background stays transparent so the body sits directly on the
- * message card instead of in a second box. "Designed" mail (marketing /
- * newsletter layouts) never receives this — its own layout stays untouched.
- *
- * `pre` wraps: a plain-text body arrives as a `<pre style="white-space:pre-wrap">`,
- * but the sanitizer allowlist has no `white-space`, so the inline style is
- * stripped and every plain-text message ran off the card on one line.
- */
-function simpleMeasureStyle(quoteBorder: string, quoteText: string): string {
-	return (
-		'html,body{background:transparent;}' +
-		'body{max-width:72ch;font-size:15px;line-height:1.6;overflow-wrap:break-word;}' +
-		'pre{white-space:pre-wrap;}' +
-		'body>:first-child{margin-top:0;}body>:last-child{margin-bottom:0;}' +
-		`blockquote{margin:0.5em 0 0.5em 0.25em;padding-left:0.9em;border-left:2px solid ${quoteBorder};color:${quoteText};}`
-	);
-}
-
-/**
- * Base <style> for the iframe head. "Designed" mail (the default `kind`) keeps
- * its own canvas on a white paper card and only gets the shared basics; "simple"
- * mail additionally gets the reading-measure block and a transparent canvas.
- */
-export function buildBaseStyle(
-	scheme: PostboxRenderScheme,
-	kind: EmailHtmlKind = 'designed'
-): string {
-	const base = `font-family:${FONT_STACK};font-size:14px;line-height:1.55;margin:0;padding:0;`;
-	if (scheme === 'dark') {
-		return (
-			'<style>:root{color-scheme:dark;}' +
-			`html,body{${base}color:${POSTBOX_DARK_PALETTE.text};background:${POSTBOX_DARK_PALETTE.background};}` +
-			'img{max-width:100%;height:auto;}' +
-			`a{color:${POSTBOX_DARK_PALETTE.link};}` +
-			`blockquote{border-color:${POSTBOX_DARK_PALETTE.mutedBorder};}` +
-			OUTLOOK_RESET_STYLE +
-			(kind === 'simple'
-				? simpleMeasureStyle(POSTBOX_DARK_PALETTE.mutedBorder, POSTBOX_DARK_PALETTE.mutedText)
-				: '') +
-			'</style>'
-		);
-	}
-	return (
-		`<style>html,body{${base}color:${LIGHT_TEXT};}` +
-		'img{max-width:100%;height:auto;}a{color:#0a6cdd;}' +
-		OUTLOOK_RESET_STYLE +
-		(kind === 'simple' ? simpleMeasureStyle('#d4d4d8', '#52525b') : '') +
-		'</style>'
 	);
 }
 

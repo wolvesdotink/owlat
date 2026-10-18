@@ -1,13 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import { buildBaseStyle } from '../postboxBaseStyle';
+import { contrastRatio, parseCssColor, relativeLuminance } from '../postboxCssColor';
 import {
 	adaptEmailHtml,
-	buildBaseStyle,
 	classifyEmailHtml,
-	contrastRatio,
 	isReadableOnDark,
 	lightenForDark,
-	parseCssColor,
-	relativeLuminance,
 	remapInlineColorsForDark,
 	POSTBOX_DARK_PALETTE,
 } from '../postboxDarkMode';
@@ -71,6 +69,14 @@ describe('luminance / contrast', () => {
 		const text = parseCssColor(POSTBOX_DARK_PALETTE.text);
 		expect(lightenForDark(parseCssColor('#000000')!)).toEqual(text);
 		expect(lightenForDark(parseCssColor('#333333')!)).toEqual(text);
+	});
+});
+
+describe('parseCssColor named colors', () => {
+	it('knows the full CSS named color list', () => {
+		expect(parseCssColor('whitesmoke')).toEqual({ r: 245, g: 245, b: 245, a: 1 });
+		expect(parseCssColor('RebeccaPurple')).toEqual({ r: 102, g: 51, b: 153, a: 1 });
+		expect(parseCssColor('notacolor')).toBeNull();
 	});
 });
 
@@ -422,6 +428,29 @@ describe('remapInlineColorsForDark', () => {
 		expect(remapInlineColorsForDark('<mark style="color:#333">x</mark>')).toBe(
 			'<mark style="color:#333">x</mark>'
 		);
+	});
+
+	it('lightens text on a <mark> whose background is reset to transparent', () => {
+		expect(
+			remapInlineColorsForDark('<mark style="background:transparent;color:#333">x</mark>')
+		).toBe(`<mark style="background:transparent;color:${POSTBOX_DARK_PALETTE.text}">x</mark>`);
+		expect(remapInlineColorsForDark('<mark style="background:none">x</mark>')).toBe(
+			`<mark style="background:none;color:${POSTBOX_DARK_PALETTE.text}">x</mark>`
+		);
+	});
+
+	it('gives a <mark> on a dark fill readable text instead of its default black', () => {
+		expect(remapInlineColorsForDark('<mark style="background:#222222">x</mark>')).toBe(
+			`<mark style="background:#222222;color:${POSTBOX_DARK_PALETTE.text}">x</mark>`
+		);
+	});
+
+	it('drops named near-white line fills', () => {
+		for (const name of ['whitesmoke', 'snow', 'ghostwhite', 'white']) {
+			expect(
+				remapInlineColorsForDark(`<span style="background-color:${name}">pasted line</span>`)
+			).toBe('<span>pasted line</span>');
+		}
 	});
 
 	it('stays linear on deeply nested markup', () => {
