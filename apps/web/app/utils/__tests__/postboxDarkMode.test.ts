@@ -395,6 +395,25 @@ describe('remapInlineColorsForDark', () => {
 		);
 	});
 
+	it('keeps a white chip inside a colored fill', () => {
+		const html =
+			'<span style="background:#008000;color:#fff"><span style="background:#fff;color:#008000">Approved</span></span>';
+		expect(remapInlineColorsForDark(html)).toBe(html);
+	});
+
+	it('restores the dropped fill behind background:inherit', () => {
+		for (const style of ['background:inherit', 'background-color:inherit']) {
+			const html = `<span style="background:#fff"><span style="${style};color:#fff">hidden</span></span>`;
+			expect(remapInlineColorsForDark(html)).toContain('background-color:#ffffff">hidden');
+		}
+	});
+
+	it('ignores a background image the shorthand overrides', () => {
+		const html =
+			'<span style="background-image:url(https://example.com/old.png);background:#fff">line</span>';
+		expect(remapInlineColorsForDark(html)).toBe('<span>line</span>');
+	});
+
 	it('stays linear on deeply nested markup', () => {
 		// Quadratic stack handling took seconds at this depth; linear is ~0.2 s.
 		const depth = 40_000;

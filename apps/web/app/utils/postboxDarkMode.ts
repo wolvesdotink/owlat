@@ -529,18 +529,20 @@ function paintsBackground(decls: Decl[]): boolean {
 
 /** True when the style paints an image (or gradient) layer. */
 function hasBackgroundImage(decls: Decl[]): boolean {
-	return decls.some((d) => {
-		const { value } = splitImportant(d.value);
-		if (d.prop === 'background-image') return !/^none$/i.test(value);
-		return d.prop === 'background' && /\b(url|[a-z-]*gradient|image-set|image)\s*\(/i.test(value);
-	});
+	// The shorthand resets the image layer, so only the winning one counts.
+	const decl = winningDecl(decls, (prop) => prop === 'background' || prop === 'background-image');
+	if (!decl) return false;
+	const { value } = splitImportant(decl.value);
+	if (decl.prop === 'background-image') return !/^none$/i.test(value);
+	return /\b(url|[a-z-]*gradient|image-set|image)\s*\(/i.test(value);
 }
 
 /**
- * What an element's content reads against: the dark page (or a dark fill), or
- * a light fill the sender's colors were chosen for.
+ * What an element's content reads against: the dark page (where the light page
+ * was), a dark or colored fill the sender set, or a light fill the sender's
+ * colors were chosen for.
  */
-type Surface = 'dark' | 'light';
+type Surface = 'page' | 'dark' | 'light';
 
 interface Adapted {
 	decls: Decl[];
@@ -556,14 +558,16 @@ interface Adapted {
 const VOID_TAGS = new Set(['br', 'hr', 'img']);
 
 /**
- * Adapts one element's style on a dark surface. `ownColor` is its own text
- * color declaration, `text` the sender's color its text renders with, and
- * `under` the color of the white fill dropped from an ancestor.
+ * Adapts one element's style on the dark page or a dark fill (`surface`).
+ * `ownColor` is its own text color declaration, `text` the sender's color its
+ * text renders with, and `under` the color of the white fill dropped from an
+ * ancestor.
  */
 function adaptOnDark(
 	decls: Decl[],
 	ownColor: Decl | undefined,
 	text: SenderText,
+	surface: 'page' | 'dark',
 	under: Rgba | null
 ): Adapted {
 	// Under a dropped white fill, the element was drawn on that fill. A
@@ -574,7 +578,10 @@ function adaptOnDark(
 	if (under && !hasBackgroundImage(decls)) {
 		const ownDecl = winningDecl(decls, isBackgroundProp);
 		const own = ownDecl ? backgroundColorOf(ownDecl) : null;
-		if (own && own.rgba.a < 1) {
+		if (ownDecl && /^inherit$/i.test(splitImportant(ownDecl.value).value)) {
+			// It inherited the dropped fill itself.
+			decls = appendWinning(decls, 'background-color', toCss(under));
+		} else if (own && own.rgba.a < 1) {
 			decls = appendWinning(decls, 'background-color', toCss(composite(own.rgba, under)));
 		} else if (!ownDecl && ownColor && !textShowsOn(text, under)) {
 			decls = appendWinning(decls, 'background-color', toCss(under));
@@ -583,19 +590,23 @@ function adaptOnDark(
 
 	// A white fill on a dark page is a white box, and the text inside it has just
 	// been lightened. Drop it so the text sits on the dark page like the rest of
-	// the body. Kept when an image paints on top of it, or when the text did not
-	// show on it (white-on-white hidden text stays hidden).
+	// the body. Only on the page: inside a colored fill it was a visible chip in
+	// light mode too. Kept when an image paints on top of it, or when the text
+	// did not show on it (white-on-white hidden text stays hidden).
 	let canvasFill = under;
 	const backgroundDecl = winningDecl(decls, isBackgroundProp);
 	const background = backgroundDecl ? backgroundColorOf(backgroundDecl) : null;
 	if (
+		surface === 'page' &&
 		background &&
 		background.rgba.a > 0 &&
 		isCanvasBackground(background.rgba) &&
 		!hasBackgroundImage(decls) &&
 		textShowsOn(text, background.rgba)
 	) {
-		decls = decls.filter((d) => !isBackgroundProp(d.prop));
+		// No image is in effect here, so a `background-image` left behind was
+		// overridden by the shorthand and would take effect once it is gone.
+		decls = decls.filter((d) => !isBackgroundProp(d.prop) && d.prop !== 'background-image');
 		canvasFill = composite(background.rgba, WHITE);
 	}
 
@@ -622,7 +633,7 @@ function adaptOnDark(
 			const lightened = toCss(lightenForDark(parsed));
 			return { prop: 'color', value: important ? `${lightened} !important` : lightened };
 		}),
-		surface: 'dark',
+		surface,
 		canvasFill,
 	};
 }
@@ -686,7 +697,7 @@ export function remapInlineColorsForDark(sanitizedHtml: string): string {
 			}
 
 			const parent = stack.at(-1) ?? {
-				surface: 'dark' as Surface,
+				surface: 'page' as Surface,
 				text: null,
 				canvasFill: null,
 			};
@@ -702,7 +713,7 @@ export function remapInlineColorsForDark(sanitizedHtml: string): string {
 			const adapted =
 				parent.surface === 'light'
 					? adaptOnLight(decls, ownColor, text)
-					: adaptOnDark(decls, ownColor, text, parent.canvasFill);
+					: adaptOnDark(decls, ownColor, text, parent.surface, parent.canvasFill);
 
 			let rewritten = full;
 			const rebuilt = serialize(adapted.decls);
