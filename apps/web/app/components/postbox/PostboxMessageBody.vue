@@ -32,7 +32,8 @@ import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import { applyLinkTransparency } from '@owlat/shared/postboxLinkTransparency';
-import { adaptEmailHtml, buildBaseStyle, type PostboxRenderScheme } from '~/utils/postboxDarkMode';
+import { adaptEmailHtml, type PostboxRenderScheme } from '~/utils/postboxDarkMode';
+import { buildBaseStyle } from '~/utils/postboxBaseStyle';
 import { trimTrailingBlankBlocks } from '~/utils/postboxBodyTidy';
 import {
 	getPostboxRenderCache,

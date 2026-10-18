@@ -16,6 +16,31 @@
  *    light "paper" card on the dark app background.
  */
 
+import {
+	composite,
+	contrastRatio,
+	parseCssColor,
+	systemColorHex,
+	toCss,
+	WHITE,
+	type Rgba,
+} from './postboxCssColor';
+import {
+	appendWinning,
+	backgroundColorOf,
+	encodeAttr,
+	findStyleAttr,
+	hasBackgroundImage,
+	isBackgroundProp,
+	isNonTransparentBackground,
+	paintsBackground,
+	serialize,
+	splitImportant,
+	styleDeclarations,
+	winningDecl,
+	type Decl,
+} from './postboxInlineStyle';
+
 /** Iframe color scheme for a rendered message. */
 export type PostboxRenderScheme = 'light' | 'dark';
 
@@ -30,103 +55,6 @@ export const POSTBOX_DARK_PALETTE = {
 	mutedBorder: '#3a3a3c',
 	mutedText: '#a1a1a6',
 } as const;
-
-/* ------------------------------------------------------------------ */
-/* Color parsing + luminance                                          */
-/* ------------------------------------------------------------------ */
-
-export interface Rgba {
-	r: number;
-	g: number;
-	b: number;
-	a: number;
-}
-
-const NAMED_COLORS: Record<string, string> = {
-	black: '#000000',
-	white: '#ffffff',
-	gray: '#808080',
-	grey: '#808080',
-	silver: '#c0c0c0',
-	red: '#ff0000',
-	maroon: '#800000',
-	orange: '#ffa500',
-	yellow: '#ffff00',
-	olive: '#808000',
-	green: '#008000',
-	lime: '#00ff00',
-	teal: '#008080',
-	aqua: '#00ffff',
-	cyan: '#00ffff',
-	blue: '#0000ff',
-	navy: '#000080',
-	purple: '#800080',
-	fuchsia: '#ff00ff',
-	magenta: '#ff00ff',
-};
-
-/**
- * Parses a CSS color value (hex, rgb()/rgba(), common named colors).
- * Returns null for anything unparseable (gradients, var(), currentColor…) —
- * callers must treat null as "do not touch".
- */
-export function parseCssColor(raw: string): Rgba | null {
-	const value = raw.trim().toLowerCase();
-	if (value === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
-	const named = NAMED_COLORS[value];
-	const v = named ?? value;
-
-	const hexMatch = v.match(/^#([0-9a-f]{3,8})$/);
-	if (hexMatch?.[1]) {
-		const hex = hexMatch[1];
-		if (hex.length === 3 || hex.length === 4) {
-			const r = parseInt(hex[0]! + hex[0]!, 16);
-			const g = parseInt(hex[1]! + hex[1]!, 16);
-			const b = parseInt(hex[2]! + hex[2]!, 16);
-			const a = hex.length === 4 ? parseInt(hex[3]! + hex[3]!, 16) / 255 : 1;
-			return { r, g, b, a };
-		}
-		if (hex.length === 6 || hex.length === 8) {
-			const r = parseInt(hex.slice(0, 2), 16);
-			const g = parseInt(hex.slice(2, 4), 16);
-			const b = parseInt(hex.slice(4, 6), 16);
-			const a = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1;
-			return { r, g, b, a };
-		}
-		return null;
-	}
-
-	const rgbMatch = v.match(
-		/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*([\d.]+)\s*)?\)$/
-	);
-	if (rgbMatch) {
-		return {
-			r: Math.min(255, Number(rgbMatch[1])),
-			g: Math.min(255, Number(rgbMatch[2])),
-			b: Math.min(255, Number(rgbMatch[3])),
-			a: rgbMatch[4] === undefined ? 1 : Math.min(1, Number(rgbMatch[4])),
-		};
-	}
-
-	return null;
-}
-
-/** WCAG relative luminance (0 = black, 1 = white). */
-export function relativeLuminance({ r, g, b }: Rgba): number {
-	const channel = (c: number) => {
-		const s = c / 255;
-		return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-	};
-	return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-}
-
-/** WCAG contrast ratio between two colors (1..21). */
-export function contrastRatio(a: Rgba, b: Rgba): number {
-	const la = relativeLuminance(a);
-	const lb = relativeLuminance(b);
-	const [hi, lo] = la >= lb ? [la, lb] : [lb, la];
-	return (hi + 0.05) / (lo + 0.05);
-}
 
 const MIN_READABLE_CONTRAST = 3;
 
@@ -170,48 +98,12 @@ export function lightenForDark(color: Rgba): Rgba {
 	return current;
 }
 
-function toCss({ r, g, b }: Rgba): string {
-	const hex = (n: number) => n.toString(16).padStart(2, '0');
-	return `#${hex(r)}${hex(g)}${hex(b)}`;
-}
-
 /* ------------------------------------------------------------------ */
 /* Classification: simple vs designed                                 */
 /* ------------------------------------------------------------------ */
 
 /** Tags that count as "large containers" for background detection. */
 const CONTAINER_TAGS = new Set(['body', 'table', 'tr', 'td', 'th', 'div', 'center', 'section']);
-
-function isNonTransparentBackground(value: string): boolean {
-	const trimmed = value.trim();
-	if (!trimmed) return false;
-	if (/^(transparent|none|inherit|initial|unset)$/i.test(trimmed)) return false;
-	const parsed = parseCssColor(trimmed);
-	if (parsed) return parsed.a > 0;
-	// Unparseable (gradient, url(), var()) — assume it paints something.
-	return true;
-}
-
-function styleDeclarations(style: string): Array<{ prop: string; value: string }> {
-	// sanitize-html writes the quotes of a font name as `&quot;` inside the
-	// attribute (`font-family:&quot;Arial&quot;,sans-serif`). Splitting on `;`
-	// first would cut through the entity and leave `font-family:&quot`, which
-	// the browser drops, so the text fell back to the default serif. CSS takes
-	// single quotes equally well, and sanitize-html always double-quotes the
-	// attribute, so a single quote is safe to write back.
-	return style
-		.replace(/&quot;/g, "'")
-		.split(';')
-		.map((decl) => {
-			const idx = decl.indexOf(':');
-			if (idx === -1) return null;
-			return {
-				prop: decl.slice(0, idx).trim().toLowerCase(),
-				value: decl.slice(idx + 1).trim(),
-			};
-		})
-		.filter((d): d is { prop: string; value: string } => d !== null && d.prop.length > 0);
-}
 
 /**
  * Classifies sanitized email HTML.
@@ -232,9 +124,9 @@ export function classifyEmailHtml(sanitizedHtml: string): EmailHtmlKind {
 		const tag = match[1]!.toLowerCase();
 		if (!CONTAINER_TAGS.has(tag)) continue;
 		const attrs = match[2] ?? '';
-		const styleMatch = attrs.match(/style\s*=\s*(["'])(.*?)\1/i);
-		if (!styleMatch?.[2]) continue;
-		for (const { prop, value } of styleDeclarations(styleMatch[2])) {
+		const style = findStyleAttr(attrs)?.value;
+		if (!style) continue;
+		for (const { prop, value } of styleDeclarations(style)) {
 			if (prop === 'background-image') return 'designed';
 			if (prop === 'background' || prop === 'background-color') {
 				if (isNonTransparentBackground(value)) return 'designed';
@@ -248,118 +140,315 @@ export function classifyEmailHtml(sanitizedHtml: string): EmailHtmlKind {
 /* Inline color remap for the dark (simple) path                      */
 /* ------------------------------------------------------------------ */
 
+/** Text color of the light scheme, given to text that sits on a light surface. */
+export const LIGHT_TEXT = '#1a1a1a';
+
 /**
- * Remaps inline `color:` declarations that would be unreadable on the dark
- * background. Elements that set their OWN non-transparent background (e.g. a
- * white-on-blue button) are left completely untouched — their colors were
- * designed as a pair. Readable colored text is kept as-is.
+ * A background closer to white than this is the light page itself, not a
+ * surface the sender meant to show. #ebebeb sits at roughly 1.2:1 against white.
+ */
+const CANVAS_MAX_CONTRAST = 1.2;
+
+/**
+ * True for a fill that looks white or near-white gray on the light page. In
+ * light mode such a fill vanishes into the page; mail editors write it all the
+ * time, typically as `background-color: rgb(255, 255, 255)` on every line of
+ * text pasted from a web page.
+ */
+function isCanvasBackground(color: Rgba): boolean {
+	const seen = composite(color, WHITE);
+	const spread = Math.max(seen.r, seen.g, seen.b) - Math.min(seen.r, seen.g, seen.b);
+	return spread <= NEUTRAL_SPREAD && contrastRatio(seen, WHITE) < CANVAS_MAX_CONTRAST;
+}
+
+/** True when a fill, painted on the dark page, is too light for the palette's text. */
+function isLightOnDark(fill: Rgba): boolean {
+	const page = parseCssColor(POSTBOX_DARK_PALETTE.background)!;
+	const text = parseCssColor(POSTBOX_DARK_PALETTE.text)!;
+	return contrastRatio(text, composite(fill, page)) < MIN_READABLE_CONTRAST;
+}
+
+/**
+ * The text color the sender's own (light) rendering used for an element:
+ * null for the default dark text, `rgba: null` when it cannot be parsed.
+ */
+type SenderText = { value: string; rgba: Rgba | null } | null;
+
+/**
+ * Under this contrast against its background, text was hidden in light mode
+ * (white on white, a near-transparent color) rather than merely faint.
+ */
+const HIDDEN_MAX_CONTRAST = 1.5;
+
+/** True when text in the sender's color showed on the fill in light mode. */
+function textShowsOn(text: SenderText, fill: Rgba): boolean {
+	if (text === null) return true;
+	if (text.rgba === null) return false;
+	const seenFill = composite(fill, WHITE);
+	return contrastRatio(composite(text.rgba, seenFill), seenFill) >= HIDDEN_MAX_CONTRAST;
+}
+
+/**
+ * The element's own text color declaration and the sender's color its text
+ * renders with. Keywords set no color of their own: `initial` resets to the
+ * default, the others keep the inherited color.
+ */
+function resolveTextColor(
+	decls: Decl[],
+	inherited: SenderText
+): { own: Decl | undefined; text: SenderText } {
+	const decl = winningDecl(decls, (prop) => prop === 'color');
+	if (!decl) return { own: undefined, text: inherited };
+	const { value } = splitImportant(decl.value);
+	// `color` is inherited, so `unset` and `revert` inherit as well.
+	if (/^(inherit|currentcolor|unset|revert|revert-layer)$/i.test(value)) {
+		return { own: undefined, text: inherited };
+	}
+	if (/^initial$/i.test(value)) return { own: undefined, text: null };
+	return { own: decl, text: { value, rgba: parseCssColor(value) } };
+}
+
+/**
+ * What an element's content reads against: the dark page (where the light page
+ * was), a dark or colored fill the sender set, or a light fill the sender's
+ * colors were chosen for.
+ */
+type Surface = 'page' | 'dark' | 'light';
+
+interface Adapted {
+	decls: Decl[];
+	surface: Surface;
+	/**
+	 * The opaque color a dropped white fill showed behind this element's content
+	 * in light mode, if one was dropped from it or an ancestor.
+	 */
+	canvasFill: Rgba | null;
+}
+
+/** What `<mark>`'s default style paints under its content. */
+const MARK_DEFAULTS = {
+	surface: 'light' as Surface,
+	text: { value: '#000000', rgba: { r: 0, g: 0, b: 0, a: 1 } } as SenderText,
+	canvasFill: null,
+};
+
+/**
+ * Writes system color keywords out as the light scheme paints them. Content
+ * kept on a light surface was written against that scheme, but the iframe
+ * renders dark, where `windowtext` would turn white on the light fill.
+ */
+function pinSystemColors(decls: Decl[]): Decl[] {
+	return decls.map((d) => {
+		if (d.prop !== 'color' && !isBackgroundProp(d.prop)) return d;
+		const { value, important } = splitImportant(d.value);
+		const hex = systemColorHex(value);
+		if (!hex) return d;
+		return { prop: d.prop, value: important ? `${hex} !important` : hex };
+	});
+}
+
+/** Void elements in the sanitizer allowlist: they open no element to close. */
+const VOID_TAGS = new Set(['br', 'hr', 'img']);
+
+/**
+ * Adapts one element's style on the dark page or a dark fill (`surface`).
+ * `ownColor` is its own text color declaration, `text` the sender's color its
+ * text renders with, and `under` the color of the white fill dropped from an
+ * ancestor.
+ */
+function adaptOnDark(
+	decls: Decl[],
+	ownColor: Decl | undefined,
+	text: SenderText,
+	surface: 'page' | 'dark',
+	under: Rgba | null
+): Adapted {
+	// Under a dropped white fill, the element was drawn on that fill. A
+	// translucent (or transparent) fill of its own is resolved to the opaque
+	// color it showed there, and judged like any fill below; text the sender hid
+	// on the dropped fill (white on white) gets it back, so it stays hidden.
+	// Fills that cannot be read (images, gradients) are left alone.
+	if (under && !hasBackgroundImage(decls)) {
+		const ownDecl = winningDecl(decls, isBackgroundProp);
+		const own = ownDecl ? backgroundColorOf(ownDecl) : null;
+		if (ownDecl && /^inherit$/i.test(splitImportant(ownDecl.value).value)) {
+			// It inherited the dropped fill itself.
+			decls = appendWinning(decls, 'background-color', toCss(under));
+		} else if (own && own.rgba.a < 1) {
+			decls = appendWinning(decls, 'background-color', toCss(composite(own.rgba, under)));
+		} else if (!ownDecl && ownColor && !textShowsOn(text, under)) {
+			decls = appendWinning(decls, 'background-color', toCss(under));
+		}
+	}
+
+	// A white fill on a dark page is a white box, and the text inside it has just
+	// been lightened. Drop it so the text sits on the dark page like the rest of
+	// the body. Only on the page: inside a colored fill it was a visible chip in
+	// light mode too. Kept when an image paints on top of it, or when the text
+	// did not show on it (white-on-white hidden text stays hidden).
+	let canvasFill = under;
+	const backgroundDecl = winningDecl(decls, isBackgroundProp);
+	const background = backgroundDecl ? backgroundColorOf(backgroundDecl) : null;
+	if (
+		surface === 'page' &&
+		background &&
+		background.rgba.a > 0 &&
+		isCanvasBackground(background.rgba) &&
+		!hasBackgroundImage(decls) &&
+		textShowsOn(text, background.rgba)
+	) {
+		// No image is in effect here, so a `background-image` left behind was
+		// overridden by the shorthand and would take effect once it is gone.
+		decls = decls.filter((d) => !isBackgroundProp(d.prop) && d.prop !== 'background-image');
+		canvasFill = composite(background.rgba, WHITE);
+	}
+
+	const fillDecl = winningDecl(decls, isBackgroundProp);
+	if (fillDecl && paintsBackground(decls)) {
+		// The element's colors were designed as a pair (a white-on-blue button)
+		// and are left alone. A light fill with no text color of its own would
+		// inherit the dark palette's light text, so it gets the sender's.
+		const fill = backgroundColorOf(fillDecl)?.rgba ?? null;
+		if (fill === null || !isLightOnDark(fill)) return { decls, surface: 'dark', canvasFill: null };
+		if (!ownColor) {
+			const value = text ? text.value : LIGHT_TEXT;
+			return {
+				decls: pinSystemColors(appendWinning(decls, 'color', value)),
+				surface: 'light',
+				canvasFill: null,
+			};
+		}
+		return { decls: pinSystemColors(decls), surface: 'light', canvasFill: null };
+	}
+
+	return {
+		decls: decls.map((d) => {
+			if (d.prop !== 'color') return d;
+			const { value, important } = splitImportant(d.value);
+			const parsed = parseCssColor(value);
+			if (!parsed || parsed.a === 0 || isReadableOnDark(parsed)) return d;
+			const lightened = toCss(lightenForDark(parsed));
+			return { prop: 'color', value: important ? `${lightened} !important` : lightened };
+		}),
+		surface,
+		canvasFill,
+	};
+}
+
+/**
+ * Adapts one element's style on a light surface. The sender's colors were
+ * chosen against that fill, which stays light, so they are kept. A dark fill
+ * nested in it starts a dark surface again; text that inherits a color it does
+ * not show on there gets the dark palette's text, as on the dark page.
+ */
+function adaptOnLight(decls: Decl[], ownColor: Decl | undefined, text: SenderText): Adapted {
+	const fillDecl = winningDecl(decls, isBackgroundProp);
+	const fill = fillDecl ? (backgroundColorOf(fillDecl)?.rgba ?? null) : null;
+	const seen = fill && fill.a > 0 ? composite(fill, WHITE) : null;
+	if (!seen || isLightOnDark(seen)) {
+		return { decls: pinSystemColors(decls), surface: 'light', canvasFill: null };
+	}
+	const readable =
+		text?.rgba != null && contrastRatio(composite(text.rgba, seen), seen) >= MIN_READABLE_CONTRAST;
+	if (!ownColor && !readable) {
+		decls = appendWinning(decls, 'color', POSTBOX_DARK_PALETTE.text);
+	}
+	return { decls, surface: 'dark', canvasFill: null };
+}
+
+/**
+ * Remaps inline colors for the dark background.
  *
- * Operates on the sanitized string only; never touches tags without a style
- * attribute, so it cannot change document structure.
+ * - Text colors that would be unreadable on the dark background are lightened;
+ *   readable colored text is kept as-is.
+ * - White and near-white backgrounds are dropped, because they turn into white
+ *   boxes behind text that has just been lightened.
+ * - Elements that set any other background keep their colors as a pair (e.g. a
+ *   white-on-blue button). A light fill with no text color of its own gets the
+ *   sender's text color, and nothing inside it is lightened.
+ *
+ * Operates on the sanitized string only and rewrites nothing but style
+ * attributes, so it cannot change document structure. sanitize-html emits
+ * balanced tags, which is what the element stack relies on.
  */
 export function remapInlineColorsForDark(sanitizedHtml: string): string {
+	// One entry per open element.
+	const stack: Array<{ tag: string; surface: Surface; text: SenderText; canvasFill: Rgba | null }> =
+		[];
 	return sanitizedHtml.replace(
-		/style\s*=\s*(["'])(.*?)\1/gi,
-		(full, quote: string, style: string) => {
-			const decls = styleDeclarations(style);
-			const hasOwnBackground = decls.some(
-				(d) =>
-					(d.prop === 'background' || d.prop === 'background-color') &&
-					isNonTransparentBackground(d.value)
+		/<(\/?)([a-z][a-z0-9]*)\b([^>]*)>/gi,
+		(full, closing: string, rawTag: string, attrs: string) => {
+			const tag = rawTag.toLowerCase();
+			if (closing) {
+				// Balanced input closes the top element; search down only for
+				// anything else.
+				for (let i = stack.length - 1; i >= 0; i--) {
+					if (stack[i]!.tag === tag) {
+						stack.length = i;
+						break;
+					}
+				}
+				return full;
+			}
+
+			const outer = stack.at(-1) ?? { surface: 'page' as Surface, text: null, canvasFill: null };
+			const isVoid = VOID_TAGS.has(tag) || /\/\s*$/.test(attrs);
+			const styleAttr = findStyleAttr(attrs);
+			const decls = styleAttr ? styleDeclarations(styleAttr.value) : [];
+			// `<mark>` paints yellow with black text by default. While that yellow
+			// shows, its content sits on a light surface. A background of its own
+			// replaces the yellow and is judged as usual, except that a white one is
+			// never dropped: the yellow would show through.
+			const isMark = tag === 'mark';
+			const markBackground = isMark ? winningDecl(decls, isBackgroundProp) : undefined;
+			// `revert` puts the default yellow back.
+			const markYellow =
+				isMark &&
+				(!markBackground ||
+					/^(revert|revert-layer)$/i.test(splitImportant(markBackground.value).value));
+			const parent = markYellow ? MARK_DEFAULTS : outer;
+			if (!styleAttr) {
+				if (!isVoid) stack.push({ ...parent, tag });
+				return full;
+			}
+
+			const { own: ownColor, text } = resolveTextColor(
+				decls,
+				isMark ? MARK_DEFAULTS.text : parent.text
 			);
-			if (hasOwnBackground) return full;
+			let adapted =
+				parent.surface === 'light'
+					? adaptOnLight(decls, ownColor, text)
+					: adaptOnDark(decls, ownColor, text, isMark ? 'dark' : parent.surface, parent.canvasFill);
+			if (isMark && !markYellow && parent.surface !== 'light' && adapted.surface === 'dark') {
+				adapted = {
+					...adapted,
+					// Its default black text does not read on the dark page or a dark fill.
+					decls: ownColor
+						? adapted.decls
+						: appendWinning(adapted.decls, 'color', POSTBOX_DARK_PALETTE.text),
+					// Without a fill, its content is back on the surrounding surface.
+					surface: paintsBackground(adapted.decls) ? 'dark' : outer.surface,
+				};
+			}
 
-			let changed = false;
-			const remapped = decls.map((d) => {
-				if (d.prop !== 'color') return d;
-				const parsed = parseCssColor(d.value);
-				if (!parsed || parsed.a === 0) return d;
-				if (isReadableOnDark(parsed)) return d;
-				changed = true;
-				return { prop: 'color', value: toCss(lightenForDark(parsed)) };
-			});
-			if (!changed) return full;
-			const rebuilt = remapped.map((d) => `${d.prop}:${d.value}`).join(';');
-			const escaped = quote === "'" ? rebuilt.replace(/'/g, '&quot;') : rebuilt;
-			return `style=${quote}${escaped}${quote}`;
+			let rewritten = full;
+			const rebuilt = serialize(adapted.decls);
+			if (rebuilt !== serialize(decls)) {
+				const before = attrs.slice(0, styleAttr.start);
+				const after = attrs.slice(styleAttr.end);
+				const { quote } = styleAttr;
+				// Nothing left once the white background is gone: drop the attribute.
+				const newAttrs = rebuilt
+					? `${before}style=${quote}${encodeAttr(rebuilt, quote)}${quote}${after}`
+					: `${before.replace(/\s+$/, '')}${after}`;
+				rewritten = `<${rawTag}${newAttrs}>`;
+			}
+			if (!isVoid) {
+				stack.push({ tag, surface: adapted.surface, text, canvasFill: adapted.canvasFill });
+			}
+			return rewritten;
 		}
-	);
-}
-
-/* ------------------------------------------------------------------ */
-/* Base stylesheet per scheme                                         */
-/* ------------------------------------------------------------------ */
-
-/** The app's own UI font stack, so plain mail reads like the rest of Owlat. */
-const FONT_STACK = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
-
-/**
- * Outlook ships its paragraph reset (`p.MsoNormal{margin:0;font-size:11pt}`)
- * in a <style> block, which sanitization drops. Without it every
- * `<p>&nbsp;</p>` spacer Outlook writes between lines picks up the default 1em
- * margins on both sides, and each line box is sized from our 15px body font
- * rather than Outlook's 11pt, so a short reply balloons into a wall of blank
- * space. Restoring the reset is faithful to how the sender saw it, so it
- * applies to designed mail too. The line height stays a little looser than
- * Outlook's own for reading comfort.
- */
-const OUTLOOK_RESET_STYLE =
-	'p.MsoNormal,li.MsoNormal,div.MsoNormal{margin:0;font-size:11pt;line-height:1.4;}';
-
-/**
- * Reading-typography block for "simple" (mostly-text) mail: a comfortable
- * measure capped around 72ch and aligned with the message header (not
- * centered, which left the text floating in the middle of a wide reader), a
- * slightly larger base size, a roomier line-height, long URLs that wrap instead
- * of scrolling sideways, and no stray margin above the first or below the last
- * block. The background stays transparent so the body sits directly on the
- * message card instead of in a second box. "Designed" mail (marketing /
- * newsletter layouts) never receives this — its own layout stays untouched.
- *
- * `pre` wraps: a plain-text body arrives as a `<pre style="white-space:pre-wrap">`,
- * but the sanitizer allowlist has no `white-space`, so the inline style is
- * stripped and every plain-text message ran off the card on one line.
- */
-function simpleMeasureStyle(quoteBorder: string, quoteText: string): string {
-	return (
-		'html,body{background:transparent;}' +
-		'body{max-width:72ch;font-size:15px;line-height:1.6;overflow-wrap:break-word;}' +
-		'pre{white-space:pre-wrap;}' +
-		'body>:first-child{margin-top:0;}body>:last-child{margin-bottom:0;}' +
-		`blockquote{margin:0.5em 0 0.5em 0.25em;padding-left:0.9em;border-left:2px solid ${quoteBorder};color:${quoteText};}`
-	);
-}
-
-/**
- * Base <style> for the iframe head. "Designed" mail (the default `kind`) keeps
- * its own canvas on a white paper card and only gets the shared basics; "simple"
- * mail additionally gets the reading-measure block and a transparent canvas.
- */
-export function buildBaseStyle(
-	scheme: PostboxRenderScheme,
-	kind: EmailHtmlKind = 'designed'
-): string {
-	const base = `font-family:${FONT_STACK};font-size:14px;line-height:1.55;margin:0;padding:0;`;
-	if (scheme === 'dark') {
-		return (
-			'<style>:root{color-scheme:dark;}' +
-			`html,body{${base}color:${POSTBOX_DARK_PALETTE.text};background:${POSTBOX_DARK_PALETTE.background};}` +
-			'img{max-width:100%;height:auto;}' +
-			`a{color:${POSTBOX_DARK_PALETTE.link};}` +
-			`blockquote{border-color:${POSTBOX_DARK_PALETTE.mutedBorder};}` +
-			OUTLOOK_RESET_STYLE +
-			(kind === 'simple'
-				? simpleMeasureStyle(POSTBOX_DARK_PALETTE.mutedBorder, POSTBOX_DARK_PALETTE.mutedText)
-				: '') +
-			'</style>'
-		);
-	}
-	return (
-		`<style>html,body{${base}color:#1a1a1a;}` +
-		'img{max-width:100%;height:auto;}a{color:#0a6cdd;}' +
-		OUTLOOK_RESET_STYLE +
-		(kind === 'simple' ? simpleMeasureStyle('#d4d4d8', '#52525b') : '') +
-		'</style>'
 	);
 }
 

@@ -17,7 +17,7 @@ import {
 	splitQuotedText,
 	splitQuotedHtml,
 } from '../../../composables/postbox/usePostboxQuotedText';
-import { buildBaseStyle } from '~/utils/postboxDarkMode';
+import { buildBaseStyle } from '~/utils/postboxBaseStyle';
 import { POSTBOX_BODY_META_CSP, POSTBOX_SRCDOC_HEAD } from '~/utils/postboxBodyPlaceholder';
 
 vi.mock('@owlat/api', () => {

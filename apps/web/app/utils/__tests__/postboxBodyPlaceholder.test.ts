@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBaseStyle } from '../postboxDarkMode';
+import { buildBaseStyle } from '../postboxBaseStyle';
 import {
 	POSTBOX_BODY_META_CSP,
 	POSTBOX_BODY_META_CSP_NO_REMOTE,
