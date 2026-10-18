@@ -121,8 +121,63 @@ describe('remapInlineColorsForDark', () => {
 		expect(remapInlineColorsForDark(html)).toBe(html);
 	});
 
-	it('leaves dark text untouched when the element sets its own light background', () => {
+	it('drops a white background and lightens the text it carried', () => {
 		const html = '<span style="color:#111111;background:#ffffff">label</span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			`<span style="color:${POSTBOX_DARK_PALETTE.text}">label</span>`
+		);
+	});
+
+	it('drops the white line background a pasted web.de body puts on every line', () => {
+		// The text inherits the dark palette's light color; left in place, the
+		// white fill made every line light-on-white.
+		const html =
+			'<div style="font-family:Verdana;font-size:12.0px"><div><span style="background-color:rgb(255, 255, 255)">first line</span></div>' +
+			'<div><span style="background-color:rgb(255, 255, 255)">&nbsp;</span></div></div>';
+		const out = remapInlineColorsForDark(html);
+		expect(out).not.toContain('background');
+		expect(out).toContain('<span>first line</span>');
+		expect(out).toContain('font-family:Verdana;font-size:12.0px');
+	});
+
+	it('also drops near-white gray fills, but keeps a visible gray box', () => {
+		expect(remapInlineColorsForDark('<p style="background-color:#f5f5f5">a</p>')).toBe('<p>a</p>');
+		expect(remapInlineColorsForDark('<p style="background-color:#cccccc">a</p>')).toBe(
+			'<p style="background-color:#cccccc;color:#1a1a1a">a</p>'
+		);
+	});
+
+	it('lightens dark text nested inside a dropped white background', () => {
+		const html =
+			'<span style="background-color:#fff"><span style="color:#000000">nested</span></span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			`<span><span style="color:${POSTBOX_DARK_PALETTE.text}">nested</span></span>`
+		);
+	});
+
+	it('keeps white-on-white hidden text hidden', () => {
+		const html = '<span style="color:#ffffff;background-color:#ffffff">hidden</span>';
+		expect(remapInlineColorsForDark(html)).toBe(html);
+	});
+
+	it('gives a colored light highlight without its own text color dark text', () => {
+		const html = '<span style="background-color:#ffff00">highlighted</span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			'<span style="background-color:#ffff00;color:#1a1a1a">highlighted</span>'
+		);
+	});
+
+	it('keeps colors inside a light highlight as written, and resumes after it', () => {
+		const html =
+			'<p style="background:#ffeb3b"><span style="color:#000000">on yellow</span><br></p>' +
+			'<p style="color:#000000">after</p>';
+		const out = remapInlineColorsForDark(html);
+		expect(out).toContain('<span style="color:#000000">on yellow</span>');
+		expect(out).toContain(`<p style="color:${POSTBOX_DARK_PALETTE.text}">after</p>`);
+	});
+
+	it('leaves a translucent tint that stays dark on the dark page alone', () => {
+		const html = '<span style="background-color:rgba(255, 235, 59, 0.15)">tint</span>';
 		expect(remapInlineColorsForDark(html)).toBe(html);
 	});
 

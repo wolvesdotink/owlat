@@ -192,7 +192,9 @@ function isNonTransparentBackground(value: string): boolean {
 	return true;
 }
 
-function styleDeclarations(style: string): Array<{ prop: string; value: string }> {
+type Decl = { prop: string; value: string };
+
+function styleDeclarations(style: string): Decl[] {
 	// sanitize-html writes the quotes of a font name as `&quot;` inside the
 	// attribute (`font-family:&quot;Arial&quot;,sans-serif`). Splitting on `;`
 	// first would cut through the entity and leave `font-family:&quot`, which
@@ -210,7 +212,7 @@ function styleDeclarations(style: string): Array<{ prop: string; value: string }
 				value: decl.slice(idx + 1).trim(),
 			};
 		})
-		.filter((d): d is { prop: string; value: string } => d !== null && d.prop.length > 0);
+		.filter((d): d is Decl => d !== null && d.prop.length > 0);
 }
 
 /**
@@ -248,40 +250,159 @@ export function classifyEmailHtml(sanitizedHtml: string): EmailHtmlKind {
 /* Inline color remap for the dark (simple) path                      */
 /* ------------------------------------------------------------------ */
 
+/** Text color of the light scheme, given to text that sits on a light surface. */
+const LIGHT_TEXT = '#1a1a1a';
+
+const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
+
 /**
- * Remaps inline `color:` declarations that would be unreadable on the dark
- * background. Elements that set their OWN non-transparent background (e.g. a
- * white-on-blue button) are left completely untouched — their colors were
- * designed as a pair. Readable colored text is kept as-is.
+ * A background closer to white than this is the light page itself, not a
+ * surface the sender meant to show. #ebebeb sits at roughly 1.2:1 against white.
+ */
+const CANVAS_MAX_CONTRAST = 1.2;
+
+function isBackgroundProp(prop: string): boolean {
+	return prop === 'background' || prop === 'background-color';
+}
+
+/**
+ * True for a white or near-white gray background. In light mode such a fill
+ * vanishes into the page; mail editors write it all the time, typically as
+ * `background-color: rgb(255, 255, 255)` on every line of text pasted from a
+ * web page.
+ */
+function isCanvasBackground(color: Rgba): boolean {
+	const spread = Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b);
+	return spread <= NEUTRAL_SPREAD && contrastRatio(color, WHITE) < CANVAS_MAX_CONTRAST;
+}
+
+/** The color a style's own background paints, or null when it is not a plain color. */
+function ownBackgroundColor(decls: Decl[]): Rgba | null {
+	let color: Rgba | null = null;
+	for (const d of decls) {
+		if (!isBackgroundProp(d.prop)) continue;
+		// The last declaration wins, as in CSS. Anything that is not a plain
+		// color (gradient, url(), var()) leaves the result unknown.
+		color = parseCssColor(d.value);
+	}
+	return color;
+}
+
+/** What a possibly translucent fill looks like painted over the dark background. */
+function overDarkBackground(color: Rgba): Rgba {
+	const bg = parseCssColor(POSTBOX_DARK_PALETTE.background)!;
+	const mix = (c: number, b: number) => Math.round(c * color.a + b * (1 - color.a));
+	return { r: mix(color.r, bg.r), g: mix(color.g, bg.g), b: mix(color.b, bg.b), a: 1 };
+}
+
+/** Void elements in the sanitizer allowlist: they open no element to close. */
+const VOID_TAGS = new Set(['br', 'hr', 'img']);
+
+/**
+ * How one element's style is adapted for the dark (simple) path, and whether
+ * its content keeps reading against a light surface.
+ */
+function adaptStyle(decls: Decl[]): { decls: Decl[]; lightSurface: boolean } {
+	const declaredColor = [...decls].reverse().find((d) => d.prop === 'color');
+	const parsedColor = declaredColor ? parseCssColor(declaredColor.value) : null;
+	const background = ownBackgroundColor(decls);
+
+	// A white fill on a dark page is a white box, and the text inside it has just
+	// been lightened. Drop it so the text sits on the dark page like the rest of
+	// the body. Text that only shows because of that fill (or that is hidden by
+	// it) keeps its pair untouched.
+	if (
+		background &&
+		background.a > 0 &&
+		isCanvasBackground(background) &&
+		(!declaredColor ||
+			(parsedColor !== null && contrastRatio(parsedColor, background) >= MIN_READABLE_CONTRAST))
+	) {
+		decls = decls.filter((d) => !isBackgroundProp(d.prop));
+	}
+
+	const hasOwnBackground = decls.some(
+		(d) => isBackgroundProp(d.prop) && isNonTransparentBackground(d.value)
+	);
+	if (hasOwnBackground) {
+		// The element's colors were designed as a pair (a white-on-blue button)
+		// and are left alone. A light fill with no text color of its own would
+		// inherit the dark palette's light text, so it gets the light scheme's.
+		const fill = ownBackgroundColor(decls);
+		const fillIsLight =
+			fill !== null &&
+			fill.a > 0 &&
+			contrastRatio(parseCssColor(POSTBOX_DARK_PALETTE.text)!, overDarkBackground(fill)) <
+				MIN_READABLE_CONTRAST;
+		if (fillIsLight && !declaredColor) {
+			return { decls: [...decls, { prop: 'color', value: LIGHT_TEXT }], lightSurface: true };
+		}
+		return { decls, lightSurface: fillIsLight };
+	}
+
+	return {
+		decls: decls.map((d) => {
+			if (d.prop !== 'color') return d;
+			const parsed = parseCssColor(d.value);
+			if (!parsed || parsed.a === 0) return d;
+			if (isReadableOnDark(parsed)) return d;
+			return { prop: 'color', value: toCss(lightenForDark(parsed)) };
+		}),
+		lightSurface: false,
+	};
+}
+
+/**
+ * Remaps inline colors for the dark background.
  *
- * Operates on the sanitized string only; never touches tags without a style
- * attribute, so it cannot change document structure.
+ * - Text colors that would be unreadable on the dark background are lightened;
+ *   readable colored text is kept as-is.
+ * - White and near-white backgrounds are dropped, because they turn into white
+ *   boxes behind text that has just been lightened.
+ * - Elements that set any other background keep their colors as a pair (e.g. a
+ *   white-on-blue button). A light fill with no text color of its own gets the
+ *   light scheme's text color, and nothing inside it is lightened.
+ *
+ * Operates on the sanitized string only and rewrites nothing but style
+ * attributes, so it cannot change document structure. sanitize-html emits
+ * balanced tags, which is what the light-surface stack relies on.
  */
 export function remapInlineColorsForDark(sanitizedHtml: string): string {
+	// One entry per open element: whether its content sits on a light surface.
+	const stack: Array<{ tag: string; lightSurface: boolean }> = [];
 	return sanitizedHtml.replace(
-		/style\s*=\s*(["'])(.*?)\1/gi,
-		(full, quote: string, style: string) => {
-			const decls = styleDeclarations(style);
-			const hasOwnBackground = decls.some(
-				(d) =>
-					(d.prop === 'background' || d.prop === 'background-color') &&
-					isNonTransparentBackground(d.value)
-			);
-			if (hasOwnBackground) return full;
+		/<(\/?)([a-z][a-z0-9]*)\b([^>]*)>/gi,
+		(full, closing: string, rawTag: string, attrs: string) => {
+			const tag = rawTag.toLowerCase();
+			if (closing) {
+				const idx = stack.map((e) => e.tag).lastIndexOf(tag);
+				if (idx !== -1) stack.length = idx;
+				return full;
+			}
 
-			let changed = false;
-			const remapped = decls.map((d) => {
-				if (d.prop !== 'color') return d;
-				const parsed = parseCssColor(d.value);
-				if (!parsed || parsed.a === 0) return d;
-				if (isReadableOnDark(parsed)) return d;
-				changed = true;
-				return { prop: 'color', value: toCss(lightenForDark(parsed)) };
-			});
-			if (!changed) return full;
-			const rebuilt = remapped.map((d) => `${d.prop}:${d.value}`).join(';');
-			const escaped = quote === "'" ? rebuilt.replace(/'/g, '&quot;') : rebuilt;
-			return `style=${quote}${escaped}${quote}`;
+			const insideLight = stack.at(-1)?.lightSurface ?? false;
+			let lightSurface = insideLight;
+			// Inside a light surface the sender's colors were chosen against that
+			// surface, which stays light, so they are kept as written.
+			const rewritten = insideLight
+				? full
+				: full.replace(
+						/(\s+)style\s*=\s*(["'])(.*?)\2/i,
+						(attr, space: string, quote: string, style: string) => {
+							const decls = styleDeclarations(style);
+							const adapted = adaptStyle(decls);
+							lightSurface = adapted.lightSurface;
+							const rebuilt = adapted.decls.map((d) => `${d.prop}:${d.value}`).join(';');
+							if (rebuilt === decls.map((d) => `${d.prop}:${d.value}`).join(';')) return attr;
+							// Nothing left once the white background is gone.
+							if (!rebuilt) return '';
+							const escaped = quote === "'" ? rebuilt.replace(/'/g, '&quot;') : rebuilt;
+							return `${space}style=${quote}${escaped}${quote}`;
+						}
+					);
+
+			if (!VOID_TAGS.has(tag) && !/\/\s*$/.test(attrs)) stack.push({ tag, lightSurface });
+			return rewritten;
 		}
 	);
 }
@@ -355,7 +476,7 @@ export function buildBaseStyle(
 		);
 	}
 	return (
-		`<style>html,body{${base}color:#1a1a1a;}` +
+		`<style>html,body{${base}color:${LIGHT_TEXT};}` +
 		'img{max-width:100%;height:auto;}a{color:#0a6cdd;}' +
 		OUTLOOK_RESET_STYLE +
 		(kind === 'simple' ? simpleMeasureStyle('#d4d4d8', '#52525b') : '') +
