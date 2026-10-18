@@ -74,6 +74,25 @@ describe('luminance / contrast', () => {
 	});
 });
 
+describe('parseCssColor functional notations', () => {
+	it('parses percentage and space-separated rgb()', () => {
+		expect(parseCssColor('rgb(100%, 0%, 0%)')).toEqual({ r: 255, g: 0, b: 0, a: 1 });
+		expect(parseCssColor('rgb(255 255 255 / 50%)')).toEqual({ r: 255, g: 255, b: 255, a: 0.5 });
+	});
+
+	it('parses hsl() and hsla()', () => {
+		expect(parseCssColor('hsl(0, 0%, 100%)')).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+		expect(parseCssColor('hsl(120deg 100% 25%)')).toEqual({ r: 0, g: 128, b: 0, a: 1 });
+		expect(parseCssColor('hsla(240, 100%, 50%, 0.5)')).toEqual({ r: 0, g: 0, b: 255, a: 0.5 });
+	});
+
+	it('rejects malformed functions', () => {
+		expect(parseCssColor('rgb(10, 20)')).toBeNull();
+		expect(parseCssColor('hsl(10, 20, 30)')).toBeNull();
+		expect(parseCssColor('rgb(var(--x))')).toBeNull();
+	});
+});
+
 describe('classifyEmailHtml', () => {
 	it('plain paragraphs classify as simple', () => {
 		const html = '<p>Hi there,</p><p>See you <b>tomorrow</b> at 10.</p><p>Best,<br>Ana</p>';
@@ -276,6 +295,57 @@ describe('remapInlineColorsForDark', () => {
 			'<p style="background-image:url(https://example.com/a.png?a=1;b=2);color:#000">x</p>';
 		expect(remapInlineColorsForDark(html)).toBe(
 			`<p style="background-image:url(https://example.com/a.png?a=1;b=2);color:${POSTBOX_DARK_PALETTE.text}">x</p>`
+		);
+	});
+
+	it('treats color:unset as inheriting, so inherited hidden text keeps its fill', () => {
+		const html =
+			'<p style="color:#fff"><span style="background:#fff;color:unset">hidden</span></p>';
+		expect(remapInlineColorsForDark(html)).toContain('background:#fff');
+	});
+
+	it('gives a nested span the white fill back when its hsl() text hid on it', () => {
+		const html =
+			'<span style="background:#fff"><span style="color:hsl(0,0%,100%)">hidden</span></span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			'<span><span style="color:hsl(0,0%,100%);background-color:#fff">hidden</span></span>'
+		);
+	});
+
+	it('makes a restored fill win over an !important transparent background', () => {
+		const html =
+			'<span style="background:#fff"><span style="background:transparent!important;color:#fff">hidden</span></span>';
+		expect(remapInlineColorsForDark(html)).toContain(
+			'<span style="background:transparent!important;color:#fff;background-color:#fff !important">'
+		);
+	});
+
+	it('makes the added highlight text color win over color:inherit!important', () => {
+		expect(
+			remapInlineColorsForDark('<span style="background:#ffff00;color:inherit!important">x</span>')
+		).toBe(
+			'<span style="background:#ffff00;color:inherit!important;color:#1a1a1a !important">x</span>'
+		);
+	});
+
+	it('drops a white fill written as a full background shorthand', () => {
+		const html = '<span style="background:rgb(255, 255, 255) none repeat scroll 0% 0%">line</span>';
+		expect(remapInlineColorsForDark(html)).toBe('<span>line</span>');
+	});
+
+	it('reads the color of a shorthand that carries no image', () => {
+		const html = '<span style="background:#ffff00 none repeat scroll 0% 0%">x</span>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			'<span style="background:#ffff00 none repeat scroll 0% 0%;color:#1a1a1a">x</span>'
+		);
+	});
+
+	it('lightens dark hsl() and space-separated rgb() text', () => {
+		expect(remapInlineColorsForDark('<p style="color:hsl(0, 0%, 10%)">x</p>')).toBe(
+			`<p style="color:${POSTBOX_DARK_PALETTE.text}">x</p>`
+		);
+		expect(remapInlineColorsForDark('<p style="color:rgb(0 0 0 / 100%)">x</p>')).toBe(
+			`<p style="color:${POSTBOX_DARK_PALETTE.text}">x</p>`
 		);
 	});
 

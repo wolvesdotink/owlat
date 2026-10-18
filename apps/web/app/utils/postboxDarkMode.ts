@@ -65,8 +65,58 @@ const NAMED_COLORS: Record<string, string> = {
 	magenta: '#ff00ff',
 };
 
+const NUMBER = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+))(%|deg)?$/;
+
+function parseNumber(raw: string): { n: number; unit: string } | null {
+	const m = raw.match(NUMBER);
+	return m ? { n: Number(m[1]), unit: m[2] ?? '' } : null;
+}
+
+const clamp = (n: number, max: number) => Math.min(max, Math.max(0, n));
+
 /**
- * Parses a CSS color value (hex, rgb()/rgba(), common named colors).
+ * Parses the arguments of rgb()/rgba()/hsl()/hsla(), comma- or
+ * space-separated, with an optional `/ alpha`, numbers or percentages.
+ */
+function parseColorFunction(isHsl: boolean, args: string): Rgba | null {
+	const parts = args
+		.trim()
+		.split(/\s*[,/]\s*|\s+/)
+		.filter(Boolean)
+		.map(parseNumber);
+	if ((parts.length !== 3 && parts.length !== 4) || parts.some((p) => p === null)) return null;
+	const [x, y, z, alphaPart] = parts as Array<{ n: number; unit: string }>;
+	const a = alphaPart ? clamp(alphaPart.unit === '%' ? alphaPart.n / 100 : alphaPart.n, 1) : 1;
+	if (!isHsl) {
+		const channel = (p: { n: number; unit: string }) =>
+			Math.round(clamp(p.unit === '%' ? p.n * 2.55 : p.n, 255));
+		if ([x!, y!, z!].some((p) => p.unit === 'deg')) return null;
+		return { r: channel(x!), g: channel(y!), b: channel(z!), a };
+	}
+	if (y!.unit !== '%' || z!.unit !== '%') return null;
+	const h = (((x!.n % 360) + 360) % 360) / 360;
+	const sat = clamp(y!.n, 100) / 100;
+	const light = clamp(z!.n, 100) / 100;
+	const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+	const p = 2 * light - q;
+	const hue = (t: number) => {
+		const u = t < 0 ? t + 1 : t > 1 ? t - 1 : t;
+		if (u < 1 / 6) return p + (q - p) * 6 * u;
+		if (u < 1 / 2) return q;
+		if (u < 2 / 3) return p + (q - p) * (2 / 3 - u) * 6;
+		return p;
+	};
+	return {
+		r: Math.round(hue(h + 1 / 3) * 255),
+		g: Math.round(hue(h) * 255),
+		b: Math.round(hue(h - 1 / 3) * 255),
+		a,
+	};
+}
+
+/**
+ * Parses a CSS color value (hex, rgb()/rgba(), hsl()/hsla(), common named
+ * colors).
  * Returns null for anything unparseable (gradients, var(), currentColor…) —
  * callers must treat null as "do not touch".
  */
@@ -96,17 +146,8 @@ export function parseCssColor(raw: string): Rgba | null {
 		return null;
 	}
 
-	const rgbMatch = v.match(
-		/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*([\d.]+)\s*)?\)$/
-	);
-	if (rgbMatch) {
-		return {
-			r: Math.min(255, Number(rgbMatch[1])),
-			g: Math.min(255, Number(rgbMatch[2])),
-			b: Math.min(255, Number(rgbMatch[3])),
-			a: rgbMatch[4] === undefined ? 1 : Math.min(1, Number(rgbMatch[4])),
-		};
-	}
+	const fnMatch = v.match(/^(rgba?|hsla?)\(([^()]*)\)$/);
+	if (fnMatch) return parseColorFunction(fnMatch[1]!.startsWith('hsl'), fnMatch[2]!);
 
 	return null;
 }
@@ -368,8 +409,43 @@ function winningDecl(decls: Decl[], matches: (prop: string) => boolean): Decl | 
 	return winner;
 }
 
-function declColor(d: Decl): Rgba | null {
-	return parseCssColor(splitImportant(d.value).value);
+/** Keywords and lengths a `background` shorthand may carry besides its color. */
+const BACKGROUND_KEYWORD =
+	/^(none|repeat|repeat-x|repeat-y|no-repeat|space|round|scroll|fixed|local|top|bottom|left|right|center|auto|cover|contain|border-box|padding-box|content-box|\/|[+-]?[\d.]+(%|px|em|rem|pt|cm|mm|in)?)$/i;
+
+/**
+ * The color a background declaration paints, with the token that spells it,
+ * or null when it paints no plain color. Reads the color layer of a full
+ * shorthand too (`background: rgb(255, 255, 255) none repeat scroll 0% 0%`, as
+ * pasted computed styles write it) as long as it carries no image.
+ */
+function backgroundColorOf(d: Decl): { value: string; rgba: Rgba } | null {
+	const { value } = splitImportant(d.value);
+	const whole = parseCssColor(value);
+	if (whole) return { value, rgba: whole };
+	if (d.prop !== 'background') return null;
+	let color: { value: string; rgba: Rgba } | null = null;
+	for (const token of value.match(/[a-z-]+\([^()]*\)|[^\s()]+/gi) ?? []) {
+		const rgba = parseCssColor(token);
+		if (rgba) {
+			if (color) return null;
+			color = { value: token, rgba };
+		} else if (!BACKGROUND_KEYWORD.test(token)) {
+			return null;
+		}
+	}
+	return color;
+}
+
+/**
+ * Appends a declaration that has to win over the ones already there for the
+ * same property, so it is `!important` when one of those is.
+ */
+function appendWinning(decls: Decl[], prop: string, value: string): Decl[] {
+	const group = prop === 'color' ? (p: string) => p === 'color' : isBackgroundProp;
+	const rival = winningDecl(decls, group);
+	const important = rival !== undefined && splitImportant(rival.value).important;
+	return [...decls, { prop, value: important ? `${value} !important` : value }];
 }
 
 /** `top` painted over an opaque `bottom`. */
@@ -419,8 +495,8 @@ function textShowsOn(text: SenderText, fill: Rgba): boolean {
 
 /**
  * The element's own text color declaration and the sender's color its text
- * renders with. Keywords set no color of their own: `inherit` and
- * `currentColor` keep the inherited color, `initial` and `unset` the default.
+ * renders with. Keywords set no color of their own: `initial` resets to the
+ * default, the others keep the inherited color.
  */
 function resolveTextColor(
 	decls: Decl[],
@@ -429,15 +505,21 @@ function resolveTextColor(
 	const decl = winningDecl(decls, (prop) => prop === 'color');
 	if (!decl) return { own: undefined, text: inherited };
 	const { value } = splitImportant(decl.value);
-	if (/^(inherit|currentcolor)$/i.test(value)) return { own: undefined, text: inherited };
-	if (/^(initial|unset|revert|revert-layer)$/i.test(value)) return { own: undefined, text: null };
+	// `color` is inherited, so `unset` and `revert` inherit as well.
+	if (/^(inherit|currentcolor|unset|revert|revert-layer)$/i.test(value)) {
+		return { own: undefined, text: inherited };
+	}
+	if (/^initial$/i.test(value)) return { own: undefined, text: null };
 	return { own: decl, text: { value, rgba: parseCssColor(value) } };
 }
 
 /** True when the winning background declaration paints something. */
 function paintsBackground(decls: Decl[]): boolean {
 	const decl = winningDecl(decls, isBackgroundProp);
-	return decl !== undefined && isNonTransparentBackground(splitImportant(decl.value).value);
+	if (!decl) return false;
+	const color = backgroundColorOf(decl);
+	if (color) return color.rgba.a > 0 || hasBackgroundImage([decl]);
+	return isNonTransparentBackground(splitImportant(decl.value).value);
 }
 
 /** True when the style paints an image (or gradient) layer. */
@@ -480,15 +562,10 @@ function adaptOnDark(
 	under: Fill | null
 ): Adapted {
 	// Text the sender hid on an ancestor's white fill (white on white) would show
-	// once that fill is dropped, so the element gets the fill back.
-	if (
-		under &&
-		ownColor &&
-		text?.rgba &&
-		!paintsBackground(decls) &&
-		!textShowsOn(text, under.rgba)
-	) {
-		decls = [...decls, { prop: 'background-color', value: under.value }];
+	// once that fill is dropped, so the element gets the fill back. A color that
+	// cannot be parsed cannot be judged, so it keeps the fill too.
+	if (under && ownColor && !paintsBackground(decls) && !textShowsOn(text, under.rgba)) {
+		decls = appendWinning(decls, 'background-color', under.value);
 	}
 
 	// A white fill on a dark page is a white box, and the text inside it has just
@@ -497,29 +574,28 @@ function adaptOnDark(
 	// show on it (white-on-white hidden text stays hidden).
 	let canvasFill = under;
 	const backgroundDecl = winningDecl(decls, isBackgroundProp);
-	const background = backgroundDecl ? declColor(backgroundDecl) : null;
+	const background = backgroundDecl ? backgroundColorOf(backgroundDecl) : null;
 	if (
-		backgroundDecl &&
 		background &&
-		background.a > 0 &&
-		isCanvasBackground(background) &&
+		background.rgba.a > 0 &&
+		isCanvasBackground(background.rgba) &&
 		!hasBackgroundImage(decls) &&
-		textShowsOn(text, background)
+		textShowsOn(text, background.rgba)
 	) {
 		decls = decls.filter((d) => !isBackgroundProp(d.prop));
-		canvasFill = { value: splitImportant(backgroundDecl.value).value, rgba: background };
+		canvasFill = background;
 	}
 
 	const fillDecl = winningDecl(decls, isBackgroundProp);
-	if (fillDecl && isNonTransparentBackground(splitImportant(fillDecl.value).value)) {
+	if (fillDecl && paintsBackground(decls)) {
 		// The element's colors were designed as a pair (a white-on-blue button)
 		// and are left alone. A light fill with no text color of its own would
 		// inherit the dark palette's light text, so it gets the sender's.
-		const fill = declColor(fillDecl);
+		const fill = backgroundColorOf(fillDecl)?.rgba ?? null;
 		if (fill === null || !isLightOnDark(fill)) return { decls, surface: 'dark', canvasFill: null };
 		if (!ownColor) {
 			const value = text ? text.value : LIGHT_TEXT;
-			return { decls: [...decls, { prop: 'color', value }], surface: 'light', canvasFill: null };
+			return { decls: appendWinning(decls, 'color', value), surface: 'light', canvasFill: null };
 		}
 		return { decls, surface: 'light', canvasFill: null };
 	}
@@ -546,13 +622,13 @@ function adaptOnDark(
  */
 function adaptOnLight(decls: Decl[], ownColor: Decl | undefined, text: SenderText): Adapted {
 	const fillDecl = winningDecl(decls, isBackgroundProp);
-	const fill = fillDecl ? declColor(fillDecl) : null;
+	const fill = fillDecl ? (backgroundColorOf(fillDecl)?.rgba ?? null) : null;
 	const seen = fill && fill.a > 0 ? composite(fill, WHITE) : null;
 	if (!seen || isLightOnDark(seen)) return { decls, surface: 'light', canvasFill: null };
 	const readable =
 		text?.rgba != null && contrastRatio(composite(text.rgba, seen), seen) >= MIN_READABLE_CONTRAST;
 	if (!ownColor && !readable) {
-		decls = [...decls, { prop: 'color', value: POSTBOX_DARK_PALETTE.text }];
+		decls = appendWinning(decls, 'color', POSTBOX_DARK_PALETTE.text);
 	}
 	return { decls, surface: 'dark', canvasFill: null };
 }
