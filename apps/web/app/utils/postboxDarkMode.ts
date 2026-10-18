@@ -215,6 +215,38 @@ function styleDeclarations(style: string): Decl[] {
 		.filter((d): d is Decl => d !== null && d.prop.length > 0);
 }
 
+/** Attribute tokens of a tag; a quoted value is consumed whole. */
+const ATTR_RE = /([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+
+interface StyleAttr {
+	/** Offset of the attribute name within the attribute string. */
+	start: number;
+	end: number;
+	quote: '"' | "'";
+	value: string;
+}
+
+/**
+ * Finds the `style` attribute in a tag's attribute string. Walks the attributes
+ * one by one, so `style=` written inside another attribute's quoted value
+ * (`title=" style='…'"`) is never mistaken for it.
+ */
+function findStyleAttr(attrs: string): StyleAttr | null {
+	ATTR_RE.lastIndex = 0;
+	let match: RegExpExecArray | null;
+	while ((match = ATTR_RE.exec(attrs)) !== null) {
+		if (match[1]!.toLowerCase() !== 'style') continue;
+		const single = match[3] !== undefined;
+		return {
+			start: match.index,
+			end: match.index + match[0].length,
+			quote: single ? "'" : '"',
+			value: match[2] ?? match[3] ?? match[4] ?? '',
+		};
+	}
+	return null;
+}
+
 /**
  * Classifies sanitized email HTML.
  *
@@ -234,9 +266,9 @@ export function classifyEmailHtml(sanitizedHtml: string): EmailHtmlKind {
 		const tag = match[1]!.toLowerCase();
 		if (!CONTAINER_TAGS.has(tag)) continue;
 		const attrs = match[2] ?? '';
-		const styleMatch = attrs.match(/style\s*=\s*(["'])(.*?)\1/i);
-		if (!styleMatch?.[2]) continue;
-		for (const { prop, value } of styleDeclarations(styleMatch[2])) {
+		const style = findStyleAttr(attrs)?.value;
+		if (!style) continue;
+		for (const { prop, value } of styleDeclarations(style)) {
 			if (prop === 'background-image') return 'designed';
 			if (prop === 'background' || prop === 'background-color') {
 				if (isNonTransparentBackground(value)) return 'designed';
@@ -265,91 +297,149 @@ function isBackgroundProp(prop: string): boolean {
 	return prop === 'background' || prop === 'background-color';
 }
 
+function splitImportant(value: string): { value: string; important: boolean } {
+	const match = value.match(/^(.*?)\s*!\s*important$/i);
+	return match ? { value: match[1]!, important: true } : { value, important: false };
+}
+
 /**
- * True for a white or near-white gray background. In light mode such a fill
- * vanishes into the page; mail editors write it all the time, typically as
- * `background-color: rgb(255, 255, 255)` on every line of text pasted from a
- * web page.
+ * The declaration CSS applies among those whose property matches: the last
+ * one, except that a normal declaration never overrides an `!important` one.
+ */
+function winningDecl(decls: Decl[], matches: (prop: string) => boolean): Decl | undefined {
+	let winner: Decl | undefined;
+	let winnerImportant = false;
+	for (const d of decls) {
+		if (!matches(d.prop)) continue;
+		const { important } = splitImportant(d.value);
+		if (important || !winnerImportant) {
+			winner = d;
+			winnerImportant = important;
+		}
+	}
+	return winner;
+}
+
+function declColor(d: Decl): Rgba | null {
+	return parseCssColor(splitImportant(d.value).value);
+}
+
+/** `top` painted over an opaque `bottom`. */
+function composite(top: Rgba, bottom: Rgba): Rgba {
+	const mix = (t: number, b: number) => Math.round(t * top.a + b * (1 - top.a));
+	return { r: mix(top.r, bottom.r), g: mix(top.g, bottom.g), b: mix(top.b, bottom.b), a: 1 };
+}
+
+/**
+ * True for a fill that looks white or near-white gray on the light page. In
+ * light mode such a fill vanishes into the page; mail editors write it all the
+ * time, typically as `background-color: rgb(255, 255, 255)` on every line of
+ * text pasted from a web page.
  */
 function isCanvasBackground(color: Rgba): boolean {
-	const spread = Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b);
-	return spread <= NEUTRAL_SPREAD && contrastRatio(color, WHITE) < CANVAS_MAX_CONTRAST;
+	const seen = composite(color, WHITE);
+	const spread = Math.max(seen.r, seen.g, seen.b) - Math.min(seen.r, seen.g, seen.b);
+	return spread <= NEUTRAL_SPREAD && contrastRatio(seen, WHITE) < CANVAS_MAX_CONTRAST;
 }
 
-/** The color a style's own background paints, or null when it is not a plain color. */
-function ownBackgroundColor(decls: Decl[]): Rgba | null {
-	let color: Rgba | null = null;
-	for (const d of decls) {
-		if (!isBackgroundProp(d.prop)) continue;
-		// The last declaration wins, as in CSS. Anything that is not a plain
-		// color (gradient, url(), var()) leaves the result unknown.
-		color = parseCssColor(d.value);
-	}
-	return color;
+/** True when a fill, painted on the dark page, is too light for the palette's text. */
+function isLightOnDark(fill: Rgba): boolean {
+	const page = parseCssColor(POSTBOX_DARK_PALETTE.background)!;
+	const text = parseCssColor(POSTBOX_DARK_PALETTE.text)!;
+	return contrastRatio(text, composite(fill, page)) < MIN_READABLE_CONTRAST;
 }
 
-/** What a possibly translucent fill looks like painted over the dark background. */
-function overDarkBackground(color: Rgba): Rgba {
-	const bg = parseCssColor(POSTBOX_DARK_PALETTE.background)!;
-	const mix = (c: number, b: number) => Math.round(c * color.a + b * (1 - color.a));
-	return { r: mix(color.r, bg.r), g: mix(color.g, bg.g), b: mix(color.b, bg.b), a: 1 };
+/**
+ * The text color the sender's own (light) rendering used for an element:
+ * null for the default dark text, `rgba: null` when it cannot be parsed.
+ */
+type SenderText = { value: string; rgba: Rgba | null } | null;
+
+/** True when text in the sender's color showed on the fill in light mode. */
+function textShowsOn(text: SenderText, fill: Rgba): boolean {
+	if (text === null) return true;
+	if (text.rgba === null) return false;
+	const seenFill = composite(fill, WHITE);
+	return contrastRatio(composite(text.rgba, seenFill), seenFill) >= MIN_READABLE_CONTRAST;
 }
+
+/**
+ * What an element's content reads against: the dark page (or a dark fill), or
+ * a light fill the sender's colors were chosen for.
+ */
+type Surface = 'dark' | 'light';
 
 /** Void elements in the sanitizer allowlist: they open no element to close. */
 const VOID_TAGS = new Set(['br', 'hr', 'img']);
 
 /**
- * How one element's style is adapted for the dark (simple) path, and whether
- * its content keeps reading against a light surface.
+ * Adapts one element's style on the dark path. `ownColor` is its own winning
+ * `color` declaration, `text` the sender's text color it renders with.
  */
-function adaptStyle(decls: Decl[]): { decls: Decl[]; lightSurface: boolean } {
-	const declaredColor = [...decls].reverse().find((d) => d.prop === 'color');
-	const parsedColor = declaredColor ? parseCssColor(declaredColor.value) : null;
-	const background = ownBackgroundColor(decls);
-
+function adaptOnDark(
+	decls: Decl[],
+	ownColor: Decl | undefined,
+	text: SenderText
+): { decls: Decl[]; surface: Surface } {
 	// A white fill on a dark page is a white box, and the text inside it has just
 	// been lightened. Drop it so the text sits on the dark page like the rest of
-	// the body. Text that only shows because of that fill (or that is hidden by
-	// it) keeps its pair untouched.
+	// the body. Kept when an image paints on top of it, or when the text does not
+	// show on it (white-on-white hidden text stays hidden).
+	const backgroundDecl = winningDecl(decls, isBackgroundProp);
+	const background = backgroundDecl ? declColor(backgroundDecl) : null;
+	const hasImage = decls.some(
+		(d) => d.prop === 'background-image' && !/^none$/i.test(splitImportant(d.value).value)
+	);
 	if (
 		background &&
 		background.a > 0 &&
 		isCanvasBackground(background) &&
-		(!declaredColor ||
-			(parsedColor !== null && contrastRatio(parsedColor, background) >= MIN_READABLE_CONTRAST))
+		!hasImage &&
+		textShowsOn(text, background)
 	) {
 		decls = decls.filter((d) => !isBackgroundProp(d.prop));
 	}
 
-	const hasOwnBackground = decls.some(
-		(d) => isBackgroundProp(d.prop) && isNonTransparentBackground(d.value)
-	);
-	if (hasOwnBackground) {
+	const fillDecl = winningDecl(decls, isBackgroundProp);
+	if (fillDecl && isNonTransparentBackground(splitImportant(fillDecl.value).value)) {
 		// The element's colors were designed as a pair (a white-on-blue button)
 		// and are left alone. A light fill with no text color of its own would
-		// inherit the dark palette's light text, so it gets the light scheme's.
-		const fill = ownBackgroundColor(decls);
-		const fillIsLight =
-			fill !== null &&
-			fill.a > 0 &&
-			contrastRatio(parseCssColor(POSTBOX_DARK_PALETTE.text)!, overDarkBackground(fill)) <
-				MIN_READABLE_CONTRAST;
-		if (fillIsLight && !declaredColor) {
-			return { decls: [...decls, { prop: 'color', value: LIGHT_TEXT }], lightSurface: true };
+		// inherit the dark palette's light text, so it gets the sender's.
+		const fill = declColor(fillDecl);
+		if (fill === null || !isLightOnDark(fill)) return { decls, surface: 'dark' };
+		if (!ownColor) {
+			const value = text?.rgba ? text.value : LIGHT_TEXT;
+			return { decls: [...decls, { prop: 'color', value }], surface: 'light' };
 		}
-		return { decls, lightSurface: fillIsLight };
+		return { decls, surface: 'light' };
 	}
 
 	return {
 		decls: decls.map((d) => {
 			if (d.prop !== 'color') return d;
-			const parsed = parseCssColor(d.value);
-			if (!parsed || parsed.a === 0) return d;
-			if (isReadableOnDark(parsed)) return d;
-			return { prop: 'color', value: toCss(lightenForDark(parsed)) };
+			const { value, important } = splitImportant(d.value);
+			const parsed = parseCssColor(value);
+			if (!parsed || parsed.a === 0 || isReadableOnDark(parsed)) return d;
+			const lightened = toCss(lightenForDark(parsed));
+			return { prop: 'color', value: important ? `${lightened} !important` : lightened };
 		}),
-		lightSurface: false,
+		surface: 'dark',
 	};
+}
+
+/**
+ * Inside a light fill the sender's colors were chosen against that fill, which
+ * stays light, so nothing is rewritten. A dark fill nested in it starts a dark
+ * surface again, whose content is adapted as usual.
+ */
+function surfaceOnLight(decls: Decl[]): Surface {
+	const fillDecl = winningDecl(decls, isBackgroundProp);
+	const fill = fillDecl ? declColor(fillDecl) : null;
+	return fill && fill.a > 0 && !isLightOnDark(fill) ? 'dark' : 'light';
+}
+
+function serialize(decls: Decl[]): string {
+	return decls.map((d) => `${d.prop}:${d.value}`).join(';');
 }
 
 /**
@@ -361,47 +451,65 @@ function adaptStyle(decls: Decl[]): { decls: Decl[]; lightSurface: boolean } {
  *   boxes behind text that has just been lightened.
  * - Elements that set any other background keep their colors as a pair (e.g. a
  *   white-on-blue button). A light fill with no text color of its own gets the
- *   light scheme's text color, and nothing inside it is lightened.
+ *   sender's text color, and nothing inside it is lightened.
  *
  * Operates on the sanitized string only and rewrites nothing but style
  * attributes, so it cannot change document structure. sanitize-html emits
- * balanced tags, which is what the light-surface stack relies on.
+ * balanced tags, which is what the element stack relies on.
  */
 export function remapInlineColorsForDark(sanitizedHtml: string): string {
-	// One entry per open element: whether its content sits on a light surface.
-	const stack: Array<{ tag: string; lightSurface: boolean }> = [];
+	// One entry per open element.
+	const stack: Array<{ tag: string; surface: Surface; text: SenderText }> = [];
 	return sanitizedHtml.replace(
 		/<(\/?)([a-z][a-z0-9]*)\b([^>]*)>/gi,
 		(full, closing: string, rawTag: string, attrs: string) => {
 			const tag = rawTag.toLowerCase();
 			if (closing) {
-				const idx = stack.map((e) => e.tag).lastIndexOf(tag);
-				if (idx !== -1) stack.length = idx;
+				// Balanced input closes the top element; search down only for
+				// anything else.
+				for (let i = stack.length - 1; i >= 0; i--) {
+					if (stack[i]!.tag === tag) {
+						stack.length = i;
+						break;
+					}
+				}
 				return full;
 			}
 
-			const insideLight = stack.at(-1)?.lightSurface ?? false;
-			let lightSurface = insideLight;
-			// Inside a light surface the sender's colors were chosen against that
-			// surface, which stays light, so they are kept as written.
-			const rewritten = insideLight
-				? full
-				: full.replace(
-						/(\s+)style\s*=\s*(["'])(.*?)\2/i,
-						(attr, space: string, quote: string, style: string) => {
-							const decls = styleDeclarations(style);
-							const adapted = adaptStyle(decls);
-							lightSurface = adapted.lightSurface;
-							const rebuilt = adapted.decls.map((d) => `${d.prop}:${d.value}`).join(';');
-							if (rebuilt === decls.map((d) => `${d.prop}:${d.value}`).join(';')) return attr;
-							// Nothing left once the white background is gone.
-							if (!rebuilt) return '';
-							const escaped = quote === "'" ? rebuilt.replace(/'/g, '&quot;') : rebuilt;
-							return `${space}style=${quote}${escaped}${quote}`;
-						}
-					);
+			const parent = stack.at(-1) ?? { surface: 'dark' as Surface, text: null };
+			const isVoid = VOID_TAGS.has(tag) || /\/\s*$/.test(attrs);
+			const styleAttr = findStyleAttr(attrs);
+			if (!styleAttr) {
+				if (!isVoid) stack.push({ tag, surface: parent.surface, text: parent.text });
+				return full;
+			}
 
-			if (!VOID_TAGS.has(tag) && !/\/\s*$/.test(attrs)) stack.push({ tag, lightSurface });
+			const decls = styleDeclarations(styleAttr.value);
+			const ownColor = winningDecl(decls, (prop) => prop === 'color');
+			const text: SenderText = ownColor
+				? { value: splitImportant(ownColor.value).value, rgba: declColor(ownColor) }
+				: parent.text;
+			let rewritten = full;
+			let surface: Surface;
+			if (parent.surface === 'light') {
+				surface = surfaceOnLight(decls);
+			} else {
+				const adapted = adaptOnDark(decls, ownColor, text);
+				surface = adapted.surface;
+				const rebuilt = serialize(adapted.decls);
+				if (rebuilt !== serialize(decls)) {
+					const before = attrs.slice(0, styleAttr.start);
+					const after = attrs.slice(styleAttr.end);
+					const { quote } = styleAttr;
+					const escaped = quote === "'" ? rebuilt.replace(/'/g, '&quot;') : rebuilt;
+					// Nothing left once the white background is gone: drop the attribute.
+					const newAttrs = rebuilt
+						? `${before}style=${quote}${escaped}${quote}${after}`
+						: `${before.replace(/\s+$/, '')}${after}`;
+					rewritten = `<${rawTag}${newAttrs}>`;
+				}
+			}
+			if (!isVoid) stack.push({ tag, surface, text });
 			return rewritten;
 		}
 	);

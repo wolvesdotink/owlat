@@ -176,6 +176,68 @@ describe('remapInlineColorsForDark', () => {
 		expect(out).toContain(`<p style="color:${POSTBOX_DARK_PALETTE.text}">after</p>`);
 	});
 
+	it('keeps a white background whose inherited text only hides on it', () => {
+		const html = '<p style="color:#fff"><span style="background:#fff">hidden</span></p>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			'<p style="color:#fff"><span style="background:#fff;color:#fff">hidden</span></p>'
+		);
+	});
+
+	it('keeps a white background behind near-transparent text', () => {
+		const html = '<span style="background:#fff;color:rgba(0, 0, 0, 0.1)">faint</span>';
+		expect(remapInlineColorsForDark(html)).toBe(html);
+	});
+
+	it('gives a light highlight the color its parent set, not the lightened one', () => {
+		const html = '<p style="color:#333333"><span style="background-color:#ffff00">x</span></p>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			`<p style="color:${POSTBOX_DARK_PALETTE.text}"><span style="background-color:#ffff00;color:#333333">x</span></p>`
+		);
+	});
+
+	it('adapts text inside a dark fill nested in a light highlight', () => {
+		const html =
+			'<span style="background:#ffff00"><span style="background:#222222"><span style="color:#111111">deep</span></span></span>';
+		expect(remapInlineColorsForDark(html)).toContain(
+			`<span style="color:${POSTBOX_DARK_PALETTE.text}">deep</span>`
+		);
+	});
+
+	it('only reads the real style attribute, not style= inside another value', () => {
+		const html =
+			'<a title=" style=\'background:#ff0\'"><span style="color:#000000">text</span></a>';
+		expect(remapInlineColorsForDark(html)).toBe(
+			`<a title=" style='background:#ff0'"><span style="color:${POSTBOX_DARK_PALETTE.text}">text</span></a>`
+		);
+	});
+
+	it('lets an !important background win over a later white one', () => {
+		const html =
+			'<span style="background:#ff0!important;background-color:#fff;color:#111">x</span>';
+		expect(remapInlineColorsForDark(html)).toBe(html);
+	});
+
+	it('lightens an !important text color and keeps it important', () => {
+		expect(remapInlineColorsForDark('<p style="color:#000 !important">x</p>')).toBe(
+			`<p style="color:${POSTBOX_DARK_PALETTE.text} !important">x</p>`
+		);
+	});
+
+	it('keeps a white background under a background image', () => {
+		const html =
+			'<span style="background-color:#fff;background-image:url(https://example.com/a.png);color:#111">x</span>';
+		expect(remapInlineColorsForDark(html)).toBe(html);
+	});
+
+	it('stays linear on deeply nested markup', () => {
+		// Quadratic stack handling took seconds at this depth; linear is ~0.2 s.
+		const depth = 40_000;
+		const html = `${'<span style="color:#000">'.repeat(depth)}x${'</span>'.repeat(depth)}`;
+		const startedAt = performance.now();
+		remapInlineColorsForDark(html);
+		expect(performance.now() - startedAt).toBeLessThan(2000);
+	});
+
 	it('leaves a translucent tint that stays dark on the dark page alone', () => {
 		const html = '<span style="background-color:rgba(255, 235, 59, 0.15)">tint</span>';
 		expect(remapInlineColorsForDark(html)).toBe(html);
