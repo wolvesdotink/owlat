@@ -453,6 +453,34 @@ describe('remapInlineColorsForDark', () => {
 		}
 	});
 
+	it('drops a white line fill under Outlook system text colors', () => {
+		for (const color of ['windowtext', 'WindowText', 'canvastext']) {
+			expect(
+				remapInlineColorsForDark(
+					`<span style="background-color:rgb(255,255,255);color:${color}">text</span>`
+				)
+			).toBe(`<span style="color:${POSTBOX_DARK_PALETTE.text}">text</span>`);
+		}
+	});
+
+	it('pins system text colors on a light fill to their light-scheme value', () => {
+		expect(
+			remapInlineColorsForDark('<span style="background:#ffff00;color:windowtext">x</span>')
+		).toBe('<span style="background:#ffff00;color:#000000">x</span>');
+		expect(
+			remapInlineColorsForDark(
+				'<p style="color:windowtext"><span style="background:#ffff00">x</span></p>'
+			)
+		).toBe(
+			`<p style="color:${POSTBOX_DARK_PALETTE.text}"><span style="background:#ffff00;color:#000000">x</span></p>`
+		);
+	});
+
+	it('keeps text on a <mark> whose background reverts to the default yellow', () => {
+		const html = '<mark style="background-color:revert;color:#333">x</mark>';
+		expect(remapInlineColorsForDark(html)).toBe(html);
+	});
+
 	it('stays linear on deeply nested markup', () => {
 		// Quadratic stack handling took seconds at this depth; linear is ~0.2 s.
 		const depth = 40_000;

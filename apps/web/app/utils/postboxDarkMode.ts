@@ -20,6 +20,7 @@ import {
 	composite,
 	contrastRatio,
 	parseCssColor,
+	systemColorHex,
 	toCss,
 	WHITE,
 	type Rgba,
@@ -231,6 +232,21 @@ const MARK_DEFAULTS = {
 	canvasFill: null,
 };
 
+/**
+ * Writes system color keywords out as the light scheme paints them. Content
+ * kept on a light surface was written against that scheme, but the iframe
+ * renders dark, where `windowtext` would turn white on the light fill.
+ */
+function pinSystemColors(decls: Decl[]): Decl[] {
+	return decls.map((d) => {
+		if (d.prop !== 'color' && !isBackgroundProp(d.prop)) return d;
+		const { value, important } = splitImportant(d.value);
+		const hex = systemColorHex(value);
+		if (!hex) return d;
+		return { prop: d.prop, value: important ? `${hex} !important` : hex };
+	});
+}
+
 /** Void elements in the sanitizer allowlist: they open no element to close. */
 const VOID_TAGS = new Set(['br', 'hr', 'img']);
 
@@ -296,9 +312,13 @@ function adaptOnDark(
 		if (fill === null || !isLightOnDark(fill)) return { decls, surface: 'dark', canvasFill: null };
 		if (!ownColor) {
 			const value = text ? text.value : LIGHT_TEXT;
-			return { decls: appendWinning(decls, 'color', value), surface: 'light', canvasFill: null };
+			return {
+				decls: pinSystemColors(appendWinning(decls, 'color', value)),
+				surface: 'light',
+				canvasFill: null,
+			};
 		}
-		return { decls, surface: 'light', canvasFill: null };
+		return { decls: pinSystemColors(decls), surface: 'light', canvasFill: null };
 	}
 
 	return {
@@ -325,7 +345,9 @@ function adaptOnLight(decls: Decl[], ownColor: Decl | undefined, text: SenderTex
 	const fillDecl = winningDecl(decls, isBackgroundProp);
 	const fill = fillDecl ? (backgroundColorOf(fillDecl)?.rgba ?? null) : null;
 	const seen = fill && fill.a > 0 ? composite(fill, WHITE) : null;
-	if (!seen || isLightOnDark(seen)) return { decls, surface: 'light', canvasFill: null };
+	if (!seen || isLightOnDark(seen)) {
+		return { decls: pinSystemColors(decls), surface: 'light', canvasFill: null };
+	}
 	const readable =
 		text?.rgba != null && contrastRatio(composite(text.rgba, seen), seen) >= MIN_READABLE_CONTRAST;
 	if (!ownColor && !readable) {
@@ -378,7 +400,12 @@ export function remapInlineColorsForDark(sanitizedHtml: string): string {
 			// replaces the yellow and is judged as usual, except that a white one is
 			// never dropped: the yellow would show through.
 			const isMark = tag === 'mark';
-			const markYellow = isMark && !winningDecl(decls, isBackgroundProp);
+			const markBackground = isMark ? winningDecl(decls, isBackgroundProp) : undefined;
+			// `revert` puts the default yellow back.
+			const markYellow =
+				isMark &&
+				(!markBackground ||
+					/^(revert|revert-layer)$/i.test(splitImportant(markBackground.value).value));
 			const parent = markYellow ? MARK_DEFAULTS : outer;
 			if (!styleAttr) {
 				if (!isVoid) stack.push({ ...parent, tag });

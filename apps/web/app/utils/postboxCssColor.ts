@@ -103,15 +103,45 @@ function parseColorFunction(isHsl: boolean, args: string): Rgba | null {
 }
 
 /**
- * Parses a CSS color value (hex, rgb()/rgba(), hsl()/hsla(), common named
- * colors).
+ * CSS system colors, as the light scheme the sender wrote against paints them.
+ * Outlook writes `color:windowtext` on nearly every span; inside the iframe's
+ * dark color scheme the browser paints the same keyword white.
+ */
+const SYSTEM_COLORS: Record<string, string> = {
+	canvas: '#ffffff',
+	canvastext: '#000000',
+	window: '#ffffff',
+	windowtext: '#000000',
+	field: '#ffffff',
+	fieldtext: '#000000',
+	buttonface: '#efefef',
+	buttontext: '#000000',
+	mark: '#ffff00',
+	marktext: '#000000',
+	graytext: '#808080',
+	linktext: '#0000ee',
+	infobackground: '#ffffff',
+	infotext: '#000000',
+	menu: '#ffffff',
+	menutext: '#000000',
+	captiontext: '#000000',
+};
+
+/** The light-scheme hex of a CSS system color keyword, or null for anything else. */
+export function systemColorHex(value: string): string | null {
+	return SYSTEM_COLORS[value.trim().toLowerCase()] ?? null;
+}
+
+/**
+ * Parses a CSS color value (hex, rgb()/rgba(), hsl()/hsla(), named colors, and
+ * system colors as the light scheme paints them).
  * Returns null for anything unparseable (gradients, var(), currentColor…) —
  * callers must treat null as "do not touch".
  */
 export function parseCssColor(raw: string): Rgba | null {
 	const value = raw.trim().toLowerCase();
 	if (value === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
-	const named = NAMED_COLORS[value];
+	const named = NAMED_COLORS[value] ?? SYSTEM_COLORS[value];
 	const v = named ?? value;
 
 	const hexMatch = v.match(/^#([0-9a-f]{3,8})$/);
