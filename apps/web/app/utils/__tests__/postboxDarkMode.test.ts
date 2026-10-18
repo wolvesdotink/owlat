@@ -414,6 +414,16 @@ describe('remapInlineColorsForDark', () => {
 		expect(remapInlineColorsForDark(html)).toBe('<span>line</span>');
 	});
 
+	it('keeps fills and colors on a <mark>, whose default background is yellow', () => {
+		const html = '<mark style="background:#fff;color:#000">text</mark>';
+		expect(remapInlineColorsForDark(html)).toBe(html);
+		const nested = '<mark><span style="background:#fff;color:#000">text</span></mark>';
+		expect(remapInlineColorsForDark(nested)).toBe(nested);
+		expect(remapInlineColorsForDark('<mark style="color:#333">x</mark>')).toBe(
+			'<mark style="color:#333">x</mark>'
+		);
+	});
+
 	it('stays linear on deeply nested markup', () => {
 		// Quadratic stack handling took seconds at this depth; linear is ~0.2 s.
 		const depth = 40_000;

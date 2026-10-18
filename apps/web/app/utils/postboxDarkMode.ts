@@ -554,6 +554,13 @@ interface Adapted {
 	canvasFill: Rgba | null;
 }
 
+/** What `<mark>`'s default style paints under its content. */
+const MARK_DEFAULTS = {
+	surface: 'light' as Surface,
+	text: { value: '#000000', rgba: { r: 0, g: 0, b: 0, a: 1 } } as SenderText,
+	canvasFill: null,
+};
+
 /** Void elements in the sanitizer allowlist: they open no element to close. */
 const VOID_TAGS = new Set(['br', 'hr', 'img']);
 
@@ -696,11 +703,10 @@ export function remapInlineColorsForDark(sanitizedHtml: string): string {
 				return full;
 			}
 
-			const parent = stack.at(-1) ?? {
-				surface: 'page' as Surface,
-				text: null,
-				canvasFill: null,
-			};
+			const outer = stack.at(-1) ?? { surface: 'page' as Surface, text: null, canvasFill: null };
+			// `<mark>` paints its own yellow with black text by default, so its
+			// content (and any fill on it) sits on a light surface.
+			const parent = tag === 'mark' ? MARK_DEFAULTS : outer;
 			const isVoid = VOID_TAGS.has(tag) || /\/\s*$/.test(attrs);
 			const styleAttr = findStyleAttr(attrs);
 			if (!styleAttr) {
