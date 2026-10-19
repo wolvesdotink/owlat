@@ -131,6 +131,7 @@ function mountPage() {
 				PostboxOfflineSettings: true,
 				PostboxNotificationSettings: true,
 				DesktopUpdateCard: true,
+				DesktopWorkspaceAccentPicker: true,
 			},
 		},
 	});
