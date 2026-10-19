@@ -10018,6 +10018,8 @@
 					"subtitle": "People your team knows and their recent activity",
 					"table": {
 						"created": "Created",
+						"createdSortHint": "Sort contacts by creation date",
+						"createdSortSearchHint": "Search results are ordered by relevance",
 						"firstName": "First name",
 						"lastName": "Last name"
 					},

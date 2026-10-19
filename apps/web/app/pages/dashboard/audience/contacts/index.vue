@@ -37,6 +37,10 @@ const {
 	getAriaSort,
 	pageSize,
 } = useDataTable<SortField>({ defaultSort: 'createdAt', sortableFields: ['createdAt'] });
+// Search results are relevance-ordered and the backend ignores sort/order on
+// that path (lib/listing.ts trims the same way), so while a search is active the
+// Created header claims no sort, by chevron or by aria-sort.
+const sortApplies = computed(() => !debouncedSearch.value.trim());
 
 // Bulk selection
 const bulkSelection = useBulkSelection<Id<'contacts'>>();
@@ -783,20 +787,29 @@ onUnmounted(() => {
 									</th>
 									<th
 										class="text-left px-6 py-4 text-sm font-medium text-text-secondary"
-										:aria-sort="getAriaSort('createdAt')"
+										:aria-sort="sortApplies ? getAriaSort('createdAt') : undefined"
 									>
 										<button
 											type="button"
 											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+											aria-describedby="contacts-created-sort-hint"
 											@click="toggleSort('createdAt')"
 										>
 											{{ t('dashboard.audience.contacts.index.table.created') }}
 											<Icon
-												v-if="getSortIcon('createdAt')"
+												v-if="sortApplies && getSortIcon('createdAt')"
 												:name="getSortIcon('createdAt')!"
 												class="w-4 h-4"
 											/>
 										</button>
+										<!-- Hidden, so it describes the button without joining the header's name. -->
+										<span id="contacts-created-sort-hint" hidden>
+											{{
+												sortApplies
+													? t('dashboard.audience.contacts.index.table.createdSortHint')
+													: t('dashboard.audience.contacts.index.table.createdSortSearchHint')
+											}}
+										</span>
 									</th>
 								</tr>
 							</thead>
