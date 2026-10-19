@@ -27,8 +27,16 @@ const { canManageContacts } = usePermissions();
 // page. Email/name have no such index (a post-filter would drop rows), so they
 // stay plain headers rather than offering a misleading partial-page sort.
 type SortField = 'createdAt';
-const { searchQuery, debouncedSearch, sortBy, sortOrder, toggleSort, getSortIcon, pageSize } =
-	useDataTable<SortField>({ defaultSort: 'createdAt', sortableFields: ['createdAt'] });
+const {
+	searchQuery,
+	debouncedSearch,
+	sortBy,
+	sortOrder,
+	toggleSort,
+	getSortIcon,
+	getAriaSort,
+	pageSize,
+} = useDataTable<SortField>({ defaultSort: 'createdAt', sortableFields: ['createdAt'] });
 
 // Bulk selection
 const bulkSelection = useBulkSelection<Id<'contacts'>>();
@@ -773,7 +781,10 @@ onUnmounted(() => {
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 										{{ t('dashboard.audience.contacts.index.table.lastName') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary"
+										:aria-sort="getAriaSort('createdAt')"
+									>
 										<button
 											type="button"
 											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
