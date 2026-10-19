@@ -158,39 +158,43 @@ const formatCreatedAt = (createdAt: number) =>
 			:error-title="t('dashboard.files.index.errorTitle')"
 			:loading-label="t('dashboard.files.index.loadingLabel')"
 		>
-			<!-- Empty state -->
-			<div
-				v-if="!files || files.length === 0"
-				class="flex flex-col items-center justify-center py-16 text-center"
-			>
-				<UiIconBox
-					icon="lucide:folder-open"
-					size="xl"
-					variant="surface"
-					rounded="full"
-					class="mb-4"
-				/>
-				<p class="text-text-secondary font-medium">
-					{{
-						searchQuery
-							? t('dashboard.files.index.empty.noMatches')
-							: t('dashboard.files.index.empty.noFiles')
-					}}
-				</p>
-				<p class="text-sm text-text-tertiary mt-1">
-					{{
-						searchQuery
-							? t('dashboard.files.index.empty.adjustSearch')
-							: isAdmin
-								? t('dashboard.files.index.empty.uploadFirst')
-								: t('dashboard.files.index.empty.waitForAdmin')
-					}}
-				</p>
-				<UiButton v-if="!searchQuery && isAdmin" class="mt-4" @click="showUploadModal = true">
-					<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
-					{{ t('dashboard.files.index.uploadFile') }}
-				</UiButton>
-			</div>
+			<!-- Empty state, only once the walk has reached the end. A page can hold
+			     no file the member may open while later pages do; then only "Load
+			     more" below shows. -->
+			<template v-if="!files || files.length === 0">
+				<div
+					v-if="status === 'Exhausted'"
+					class="flex flex-col items-center justify-center py-16 text-center"
+				>
+					<UiIconBox
+						icon="lucide:folder-open"
+						size="xl"
+						variant="surface"
+						rounded="full"
+						class="mb-4"
+					/>
+					<p class="text-text-secondary font-medium">
+						{{
+							searchQuery
+								? t('dashboard.files.index.empty.noMatches')
+								: t('dashboard.files.index.empty.noFiles')
+						}}
+					</p>
+					<p class="text-sm text-text-tertiary mt-1">
+						{{
+							searchQuery
+								? t('dashboard.files.index.empty.adjustSearch')
+								: isAdmin
+									? t('dashboard.files.index.empty.uploadFirst')
+									: t('dashboard.files.index.empty.waitForAdmin')
+						}}
+					</p>
+					<UiButton v-if="!searchQuery && isAdmin" class="mt-4" @click="showUploadModal = true">
+						<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
+						{{ t('dashboard.files.index.uploadFile') }}
+					</UiButton>
+				</div>
+			</template>
 
 			<!-- Grid view -->
 			<div
@@ -317,10 +321,7 @@ const formatCreatedAt = (createdAt: number) =>
 		</UiQueryBoundary>
 
 		<!-- Load more -->
-		<div
-			v-if="files && files.length > 0 && status === 'CanLoadMore'"
-			class="flex justify-center mt-8"
-		>
+		<div v-if="status === 'CanLoadMore'" class="flex justify-center mt-8">
 			<UiButton variant="outline" size="sm" @click="loadMore()">
 				{{ t('dashboard.files.index.loadMore') }}
 			</UiButton>
