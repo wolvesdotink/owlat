@@ -27,8 +27,9 @@
  *   that can reach the core `invoke` or the `__TAURI_INTERNALS__` /
  *   `__TAURI__` globals must be called directly; exporting it, destructuring
  *   it from a namespace or global, element access, assignment or passing it as
- *   a value is an "untraceable invoke use". A scan that finds no calls at all
- *   fails too.
+ *   a value is an "untraceable invoke use", and so is an `import()` of a
+ *   non-literal module name anywhere in the scanned code. A scan that finds no
+ *   calls at all fails too.
  *
  * Plugin commands (`plugin:<plugin>|<command>`, what the @tauri-apps/plugin-*
  * packages send) are not app commands: the plugin's own ACL authorises them.
@@ -42,7 +43,13 @@ import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { CORE_MODULE, scanFile, TAURI_GLOBAL_PATTERN, vueScript } from './desktop-invoke-scan';
+import {
+	CORE_MODULE,
+	nonLiteralImports,
+	scanFile,
+	TAURI_GLOBAL_PATTERN,
+	vueScript,
+} from './desktop-invoke-scan';
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -220,11 +227,21 @@ export async function checkDesktopInvokeContract(
 	let permissions: Set<string> | undefined;
 	for (const file of files) {
 		const raw = await readFile(join(root, file), 'utf8');
-		if (!raw.includes(CORE_MODULE) && !TAURI_GLOBAL_PATTERN.test(raw)) continue;
+		const namesTheIpc = raw.includes(CORE_MODULE) || TAURI_GLOBAL_PATTERN.test(raw);
+		// A non-literal import() could load the module under an assembled name, so
+		// it is checked in every file, before the module-name prefilter skips one.
+		if (!namesTheIpc && !/\bimport\s*\(/.test(raw)) continue;
 		const text = file.endsWith('.vue') ? vueScript(raw) : raw;
 		const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-		const found = scanFile(source);
-		for (const problem of found.problems)
+		const found = namesTheIpc ? scanFile(source) : { calls: [], problems: [] };
+		const fileProblems = [
+			...nonLiteralImports(source).map((line) => ({
+				line,
+				message: 'untraceable invoke use: import() of a non-literal module name',
+			})),
+			...found.problems,
+		].sort((a, b) => a.line - b.line);
+		for (const problem of fileProblems)
 			problems.push(`${file}:${problem.line}  ${problem.message}`);
 		callCount += found.calls.length;
 		for (const call of found.calls) {

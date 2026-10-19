@@ -262,7 +262,57 @@ describe('the desktop invoke contract gate', () => {
 		expect(result.problems).toEqual([
 			`apps/desktop/src/a.ts:1  untraceable invoke use: ${named}`,
 			`apps/desktop/src/b.ts:1  untraceable invoke use: ${named}`,
+			'apps/desktop/src/b.ts:2  untraceable invoke use: import() of a non-literal module name',
 			`apps/desktop/src/b.ts:3  untraceable invoke use: ${named}`,
+		]);
+	});
+
+	it('rejects an import() of any non-literal module name, in every scanned file', async () => {
+		const nonLiteral = 'untraceable invoke use: import() of a non-literal module name';
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/desktop/src/assembled.ts':
+				"const mod = '@tauri-apps/api/' + 'core';\nconst { invoke } = await import(mod);\ninvoke('removed_command');\n",
+			'apps/web/app/lazy.ts':
+				"export const a = (x: string) => import(`./locales/${x}.js`);\nexport const b = () => import(`./fixed.js`);\nexport const c = () => import('./plain.js');\n",
+		});
+		expect(result.problems).toEqual([
+			`apps/desktop/src/assembled.ts:2  ${nonLiteral}`,
+			`apps/web/app/lazy.ts:1  ${nonLiteral}`,
+		]);
+	});
+
+	it('compares names by value, so quoted specifiers cannot slip a re-export past it', async () => {
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/desktop/src/a.ts': "export { 'invoke' as call } from '@tauri-apps/api/core';\n",
+			'apps/desktop/src/b.ts': "import { call } from './a';\ncall('removed_command');\n",
+			'apps/desktop/src/c.ts':
+				"const { 'invoke': run } = await import('@tauri-apps/api/core');\nrun('nope_c');\n",
+		});
+		expect(result.problems).toEqual([
+			'apps/desktop/src/a.ts:1  untraceable invoke use: re-export from @tauri-apps/api/core',
+			`apps/desktop/src/c.ts:2  invoke('nope_c') is not a command in ${IPC_COMMANDS_FILE}`,
+		]);
+	});
+
+	it('lets type-only re-exports through, whole-statement or per specifier', async () => {
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/desktop/src/types.ts':
+				"export type { invoke } from '@tauri-apps/api/core';\nexport { type invoke as Invoke, Channel } from '@tauri-apps/api/core';\n",
+		});
+		expect(result.problems).toEqual([]);
+	});
+
+	it('names a dynamic import bound in an unsupported place for what it is', async () => {
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/desktop/src/loop.ts':
+				"for (const core = await import('@tauri-apps/api/core'); false; ) core.invoke('zoom_level');\n",
+		});
+		expect(result.problems).toEqual([
+			"apps/desktop/src/loop.ts:1  untraceable invoke use: import('@tauri-apps/api/core') bound outside a plain variable statement",
 		]);
 	});
 

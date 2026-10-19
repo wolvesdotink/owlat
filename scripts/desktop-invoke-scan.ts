@@ -32,10 +32,19 @@
  *   (`import core = require(...)`, `require(...)`, a constant later passed to
  *   `import(name)`) it is a finding.
  *
+ * - Every `import()` in a scanned file takes a plain string literal (or a
+ *   template without `${}`), checked before any file is skipped for not naming
+ *   the module, so a name assembled at runtime (`'@tauri-apps/api/' + 'core'`)
+ *   cannot load it unseen (`nonLiteralImports`).
+ *
+ * Names are compared by their `.text` (an identifier's or a string literal's
+ * value), never by source text, so `export { 'invoke' as call }` is the same
+ * name as `export { invoke as call }`. Type-only specifiers are erased and
+ * skipped.
+ *
  * Limits, by design: names are matched per file, not per scope, so a shadowing
- * local can only add findings; code outside the scanned directories, a module
- * name assembled at runtime (`'@tauri-apps/api/' + x`), and strings handed to
- * `eval` or a webview from Rust, are not seen.
+ * local can only add findings; code outside the scanned directories, and
+ * strings handed to `eval` or a webview from Rust, are not seen.
  */
 import ts from 'typescript';
 
@@ -145,6 +154,26 @@ function isNameOnly(node: ts.Identifier): boolean {
 	return ts.isBindingElement(parent) && parent.propertyName === node;
 }
 
+/**
+ * Lines of every `import()` whose argument is not a plain string literal. The
+ * scan cannot tell what such a call loads (`'@tauri-apps/api/' + 'core'`), so
+ * the gate rejects it in every scanned file, whatever the file mentions.
+ */
+export function nonLiteralImports(source: ts.SourceFile): number[] {
+	const lines: number[] = [];
+	const visit = (node: ts.Node) => {
+		if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+			const [arg] = node.arguments;
+			if (!arg || !ts.isStringLiteralLike(arg)) {
+				lines.push(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1);
+			}
+		}
+		ts.forEachChild(node, visit);
+	};
+	visit(source);
+	return lines;
+}
+
 /** The module name in an `import`/`export ... from`, an `import()` or a type import. */
 function isModuleSpecifier(node: ts.StringLiteralLike): boolean {
 	const parent = node.parent;
@@ -186,12 +215,15 @@ export function scanFile(source: ts.SourceFile): FileScan {
 		if (!ts.isVariableDeclaration(parent) || parent.initializer !== outer) {
 			return untraceable(node, `import('${CORE_MODULE}') consumed some other way`);
 		}
-		// A binding another module can import is out of reach of this file's scan.
 		const statement = parent.parent.parent;
-		if (
-			!ts.isVariableStatement(statement) ||
-			statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
-		) {
+		if (!ts.isVariableStatement(statement)) {
+			return untraceable(
+				parent,
+				`import('${CORE_MODULE}') bound outside a plain variable statement`
+			);
+		}
+		// A binding another module can import is out of reach of this file's scan.
+		if (statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
 			return untraceable(parent, `exported binding of import('${CORE_MODULE}')`);
 		}
 		if (ts.isIdentifier(parent.name)) return bindName(parent.name, namespaces);
@@ -201,8 +233,9 @@ export function scanFile(source: ts.SourceFile): FileScan {
 		for (const element of parent.name.elements) {
 			const imported = element.propertyName ?? element.name;
 			if (element.dotDotDotToken) untraceable(element, `rest destructuring of ${CORE_MODULE}`);
-			else if (!ts.isIdentifier(imported)) untraceable(element, 'computed destructuring key');
-			else if (imported.text !== 'invoke') continue;
+			else if (!ts.isIdentifier(imported) && !ts.isStringLiteral(imported)) {
+				untraceable(element, 'computed destructuring key');
+			} else if (imported.text !== 'invoke') continue;
 			else if (ts.isIdentifier(element.name)) bindName(element.name, invokeNames);
 			else untraceable(element, 'nested destructuring of invoke');
 		}
@@ -226,7 +259,7 @@ export function scanFile(source: ts.SourceFile): FileScan {
 			const exportsInvoke =
 				!clause ||
 				!ts.isNamedExports(clause) ||
-				clause.elements.some((e) => (e.propertyName ?? e.name).getText(source) === 'invoke');
+				clause.elements.some((e) => !e.isTypeOnly && (e.propertyName ?? e.name).text === 'invoke');
 			if (exportsInvoke) untraceable(node, `re-export from ${CORE_MODULE}`);
 		} else if (isCoreImport(node)) {
 			bindDynamic(node);
