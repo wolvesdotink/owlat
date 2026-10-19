@@ -277,14 +277,14 @@ describe('DropdownMenu placement', () => {
 
 	it('sees content grow once the menu already fills its room', async () => {
 		// 210 px of room below and only 134 px above: a 210 px menu fills the room
-		// exactly, so the menu's own box cannot grow any further. Only the content
-		// inside it does.
+		// exactly. The growth is seen on the content, which the menu wraps.
 		viewport = { width: 1280, height: 400 };
 		trigger = { top: 400 - 8 - 210 - 4 - TRIGGER, left: 600 };
 		menuHeight = 210;
 		const { wrapper, menu } = await openMenu('right', 6);
 		try {
-			expect(menu.style.maxHeight).toBe('210px');
+			// It fits, so it is not capped.
+			expect(menu.style.maxHeight).toBe('');
 			expect(menu.classList.contains('overflow-y-auto')).toBe(false);
 			menuHeight = 330;
 			resize(menu.firstElementChild!);
@@ -451,6 +451,69 @@ describe('DropdownMenu placement', () => {
 				expect(document.querySelectorAll('input[name="sort"]')).toHaveLength(2);
 			} finally {
 				watcher.disconnect();
+				wrapper.unmount();
+			}
+		});
+	});
+
+	describe('at a fractional device scale', () => {
+		/**
+		 * Lays the menu out in fractional pixels, as Chrome does at a 1.5 device
+		 * scale: the content's used height and the border are fractions of a
+		 * pixel, and `offsetHeight` rounds the content (`menuHeight`).
+		 */
+		async function fractional(menu: HTMLElement, contentHeight: number) {
+			(menu.firstElementChild as HTMLElement).style.height = `${contentHeight}px`;
+			menu.style.border = '0.666667px solid';
+			window.dispatchEvent(new Event('resize'));
+			await nextTick();
+		}
+
+		it('keeps a menu that fits exactly unscrolled and uncapped', async () => {
+			// 198 px of room below, 146 px above. 196.67 px of content and two
+			// 0.67 px borders: 198 px. Rounding the content first made it 198.33.
+			viewport = { width: 1280, height: 400 };
+			trigger = { top: 400 - 8 - 198 - 4 - TRIGGER, left: 600 };
+			menuHeight = 197;
+			const { wrapper, menu } = await openMenu('right', 6);
+			try {
+				await fractional(menu, 196.666667);
+				expect(menu.style.top).toBe(`${400 - 8 - 198}px`);
+				expect(menu.style.maxHeight).toBe('');
+				expect(menu.classList.contains('overflow-y-auto')).toBe(false);
+			} finally {
+				wrapper.unmount();
+			}
+		});
+
+		it('does not flip a menu above for a fraction of a pixel', async () => {
+			// 198 px of room below and much more above: 198.33 px is within the
+			// snapping tolerance, so the menu stays below and is not a scroll box.
+			trigger = { top: 720 - 8 - 198 - 4 - TRIGGER, left: 600 };
+			menuHeight = 197;
+			const { wrapper, menu } = await openMenu('right', 6);
+			try {
+				await fractional(menu, 197);
+				expect(menu.style.top).toBe(`${720 - 8 - 198}px`);
+				expect(menu.style.bottom).toBe('');
+				expect(menu.classList.contains('overflow-y-auto')).toBe(false);
+			} finally {
+				wrapper.unmount();
+			}
+		});
+
+		it('scrolls a menu that is taller than its room by more than the tolerance', async () => {
+			// 197.4 px of content and the borders: 198.73 px in 198 px of room.
+			viewport = { width: 1280, height: 400 };
+			trigger = { top: 400 - 8 - 198 - 4 - TRIGGER, left: 600 };
+			menuHeight = 197;
+			const { wrapper, menu } = await openMenu('right', 6);
+			try {
+				await fractional(menu, 197.4);
+				expect(menu.style.top).toBe(`${400 - 8 - 198}px`);
+				expect(menu.style.maxHeight).toBe('198px');
+				expect(menu.classList.contains('overflow-y-auto')).toBe(true);
+			} finally {
 				wrapper.unmount();
 			}
 		});

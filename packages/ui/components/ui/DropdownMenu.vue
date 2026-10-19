@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useEscapeLayer } from '../../composables/useEscapeLayer';
-import { placeAnchoredPanel } from '../../utils/anchoredPanelPlacement';
+import { fitsWithin, placeAnchoredPanel } from '../../utils/anchoredPanelPlacement';
 
 type DropdownPosition = 'left' | 'right';
 
@@ -69,12 +69,20 @@ const MENU_WIDTH = 176; // w-44, until the menu has rendered
  * moves where the menu is scrolled to nor touches anything in it, and whatever
  * the browser lays out inside the content (wrappers, hidden children, margins)
  * counts exactly as shown.
+ *
+ * In fractional CSS pixels throughout: at a fractional zoom or device scale
+ * the boxes are not whole pixels, and a rounded `offsetHeight` next to a
+ * fractional border overshoots a menu that fits. The content's computed
+ * height is its used height, unaffected by the opening scale transition
+ * (unlike `getBoundingClientRect`); `offsetHeight` stands in only where there
+ * is no layout to resolve it.
  */
 function measureMenu(menu: HTMLElement, content: HTMLElement): number {
 	const style = getComputedStyle(menu);
 	const px = (value: string) => Number.parseFloat(value) || 0;
+	const contentHeight = Number.parseFloat(getComputedStyle(content).height);
 	return (
-		content.offsetHeight +
+		(Number.isFinite(contentHeight) ? contentHeight : content.offsetHeight) +
 		px(style.paddingTop) +
 		px(style.paddingBottom) +
 		px(style.borderTopWidth) +
@@ -99,8 +107,12 @@ const placeMenu = () => {
 		align: props.position === 'right' ? 'end' : 'start',
 	});
 	openSide.value = placed.side;
-	menuStyle.value = placed.style;
-	menuScrolls.value = menuHeight > Number.parseFloat(placed.style.maxHeight);
+	menuScrolls.value = !fitsWithin(menuHeight, placed.room);
+	// Only a menu that scrolls is capped. The cap is whole pixels, and a menu
+	// that fits its room to within the snapping tolerance would lose its last
+	// fraction of a pixel to it.
+	const { maxHeight, ...uncapped } = placed.style;
+	menuStyle.value = menuScrolls.value ? { ...uncapped, maxHeight } : uncapped;
 };
 
 const measureAndPlaceMenu = () => {
