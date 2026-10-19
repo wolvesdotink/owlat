@@ -104,7 +104,7 @@ interface LocalPerfTraceExport {
 	recorded: number;
 	/** Accepted samples the ring buffer has overwritten since the last clear. */
 	overwritten: number;
-	/** Samples refused because their event name is not an `owlat_*` name. */
+	/** Samples refused because their event is not listed in `PERF_EVENTS`. */
 	rejected: number;
 	samples: TraceSample[];
 	summary: TraceSummary[];

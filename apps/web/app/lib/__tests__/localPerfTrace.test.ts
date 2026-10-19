@@ -210,7 +210,7 @@ describe('createLocalPerfTrace', () => {
 				'jane.doe@example.com': 1,
 				jd7f3k2m9q8w1e4r5t6y7u8i9o0p1a2s: 2,
 			});
-			// Event names that are not `owlat_*` names are refused, sentinel or not.
+			// Events that are not listed in `PERF_EVENTS` are refused, sentinel or not.
 			for (const sentinel of SENTINELS) trace.record(sentinel, { duration_ms: 1 });
 			trace.record(`owlat_${SENTINELS[4]}@x`, { duration_ms: 1 });
 			trace.recordLongTask(SENTINELS[2]!, 75);

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * caller (or the URL) could have handed it. Nothing goes over the network.
  */
 
-type Guard = (to: { name: unknown }, from: unknown, failure?: unknown) => void;
+type Guard = (to: { name: unknown; fullPath: string }, from: unknown, failure?: unknown) => void;
 type EntryFeed = (entries: Array<Record<string, unknown>>) => void;
 
 const ROUTES = ['dashboard', 'dashboard-postbox-folder', 'auth-login'];
@@ -24,7 +24,7 @@ let guards: Guard[];
 let hooks: Map<string, Array<() => void>>;
 let observers: number;
 let feeds: Map<string, EntryFeed>;
-let currentRouteName: unknown;
+let currentRoute: { name: unknown; fullPath: string };
 
 class FakeObserver {
 	static supportedEntryTypes = ['longtask', 'largest-contentful-paint', 'layout-shift', 'event'];
@@ -71,7 +71,7 @@ async function loadPlugin() {
 		},
 		currentRoute: {
 			get value() {
-				return { name: currentRouteName };
+				return currentRoute;
 			},
 		},
 	}));
@@ -85,14 +85,31 @@ async function loadPlugin() {
 	return { plugin: () => definition(fakeNuxtApp), telemetry, registry };
 }
 
-function navigate(name: unknown, failure?: unknown) {
-	if (!failure) currentRouteName = name;
-	for (const guard of guards) guard({ name }, {}, failure);
+function callHook(name: string) {
+	for (const fn of hooks.get(name) ?? []) fn();
 }
 
-/** Nuxt finished rendering the destination (`page:loading:end`). */
+/**
+ * A navigation as Nuxt 4.5 runs it: on success the route changes; on a
+ * failure (aborted, cancelled, duplicated) it does not, and the router plugin
+ * calls `page:loading:end` from its own `afterEach`.
+ */
+function navigate(name: unknown, options: { failure?: unknown; query?: string } = {}) {
+	const to = { name, fullPath: `/${String(name)}${options.query ?? ''}` };
+	if (!options.failure) currentRoute = to;
+	for (const guard of guards) guard(to, {}, options.failure);
+	if (options.failure) callHook('page:loading:end');
+}
+
+/** The destination's page Suspense resolved: Nuxt calls `page:finish`, then `page:loading:end`. */
 function pageRendered() {
-	for (const fn of hooks.get('page:loading:end') ?? []) fn();
+	callHook('page:finish');
+	callHook('page:loading:end');
+}
+
+/** A re-render that kept the page (same page key): Nuxt calls `page:loading:end` only. */
+function samePageRendered() {
+	callHook('page:loading:end');
 }
 
 function nextFrame() {
@@ -118,7 +135,7 @@ describe('perf-trace plugin', () => {
 		hooks = new Map();
 		observers = 0;
 		feeds = new Map();
-		currentRouteName = 'dashboard';
+		currentRoute = { name: 'dashboard', fullPath: '/dashboard' };
 		localStorage.clear();
 		delete window.owlatPerfTrace;
 		vi.useFakeTimers({
@@ -266,7 +283,66 @@ describe('perf-trace plugin', () => {
 			const { plugin } = await loadPlugin();
 			plugin();
 
-			navigate('auth-login', new Error('aborted'));
+			navigate('auth-login', { failure: new Error('aborted') });
+			nextFrame();
+			pageRendered();
+			nextFrame();
+
+			expect(exported().samples).toEqual([]);
+		});
+
+		it('records nothing wrong when the navigation is repeated while it renders', async () => {
+			localStorage.setItem('owlat:perf-trace', 'on');
+			const { plugin, registry } = await loadPlugin();
+			plugin();
+			const leaveA = holdQuery(registry, 'page-a');
+
+			navigate('dashboard-postbox-folder');
+			// The same link again before the page rendered: a duplicated
+			// navigation, whose failure makes Nuxt call `page:loading:end`.
+			navigate('dashboard-postbox-folder', { failure: { type: 16 } });
+			nextFrame();
+			expect(exported().samples).toEqual([]);
+
+			leaveA();
+			holdQuery(registry, 'page-b-1');
+			holdQuery(registry, 'page-b-2');
+			pageRendered();
+			nextFrame();
+
+			// No `active 1, lingering 0` under the destination: the failure
+			// cancelled the pending sample, so this navigation takes none.
+			expect(exported().samples).toEqual([]);
+		});
+
+		it('ignores page:loading:end on its own, as a same-page re-render sends it', async () => {
+			localStorage.setItem('owlat:perf-trace', 'on');
+			const { plugin, registry } = await loadPlugin();
+			plugin();
+			holdQuery(registry, 'page-a');
+
+			// A query-only change keeps the page mounted: no Suspense, no sample.
+			navigate('dashboard', { query: '?filter=unread' });
+			samePageRendered();
+			nextFrame();
+			expect(exported().samples).toEqual([]);
+
+			navigate('auth-login');
+			samePageRendered();
+			nextFrame();
+			expect(exported().samples).toEqual([]);
+			pageRendered();
+			nextFrame();
+			expect(exported().samples.map((s: { route: string }) => s.route)).toEqual(['auth-login']);
+		});
+
+		it('takes none when the route moved on without a navigation of its own', async () => {
+			localStorage.setItem('owlat:perf-trace', 'on');
+			const { plugin } = await loadPlugin();
+			plugin();
+
+			navigate('dashboard-postbox-folder');
+			currentRoute = { name: 'dashboard-postbox-folder', fullPath: '/elsewhere' };
 			pageRendered();
 			nextFrame();
 
