@@ -974,7 +974,13 @@ either: its seeded leg carries over Redis and ClamAV volumes, not Convex data.
 - `emailTemplates.contentBlockVersion` / `transactionalEmails.contentBlockVersion`
   / `mailDrafts.bodyBlocksVersion` track the `EditorBlock[]` JSON format.
   `packages/email-renderer` must support every historical version, or write
-  a one-shot migration when a version is retired.
+  a one-shot migration when a version is retired. The stored-shape corpus in
+  `packages/email-renderer/src/__tests__/storedBlocks/` holds real stored
+  documents of each version and their HTML per renderer version; its
+  `corpus.ts` has the rules (add fixtures, never edit them; retiring a version
+  names its migration in `retired.json`; snapshots change only with an
+  `EMAIL_RENDERER_VERSION` bump), and `bun run lint:stored-block-corpus`
+  enforces them against the base branch.
 - `*.rendererVersion` tracks the renderer engine. Bump when re-rendering
   the same blocks produces materially different HTML — needed when reading
   a `shareLinks` snapshot or rehydrating cached output. The version is

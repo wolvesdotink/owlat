@@ -96,6 +96,12 @@ of `bun run lint` and will fail CI, including:
   whose algorithm is not a literal, any `timingSafeEqual` reference or an
   XOR-accumulate compare loop fails (`scripts/check-crypto-primitives.sh`). It
   is a pattern check: Node's `createHmac` and other spellings are not covered.
+- `lint:stored-block-corpus` (root, in `ci:lint`) — against the base branch,
+  no stored EditorBlock fixture or HTML snapshot in
+  `packages/email-renderer/src/__tests__/storedBlocks/` is edited in place, a
+  fixture goes only with its `contentBlockVersion` retired in `retired.json`,
+  and a snapshot of the current renderer version goes only with its fixture or
+  an `EMAIL_RENDERER_VERSION` bump (`scripts/check-stored-block-corpus.ts`).
 
 The web app's `lint` script (`apps/web`) runs gates of its own, including:
 
