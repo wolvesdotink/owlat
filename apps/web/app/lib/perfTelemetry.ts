@@ -15,7 +15,13 @@
  * while `posthog-js` is still loading), so a handful of them wait in memory for
  * the sender. They leave the browser only once the flag is on and the client
  * is started, and they are forgotten when an admin switches the flag back off.
+ *
+ * A local trace (`lib/localPerfTrace`, opted into per browser) is a second
+ * sink: it sees every sample whether or not PostHog is configured, armed or
+ * sending, and keeps it in memory. Without either, a report does nothing.
  */
+import type { Router } from 'vue-router';
+import { observeWebVitals } from '~/lib/webVitals';
 
 export type PerfProperties = Record<string, number | string>;
 type PerfSender = (event: string, properties: PerfProperties) => void;
@@ -26,6 +32,7 @@ const PENDING_LIMIT = 20;
 let armed = false;
 let routeName: () => string = () => 'unknown';
 let sender: PerfSender | null = null;
+let localSink: PerfSender | null = null;
 const pending: Array<[string, PerfProperties]> = [];
 let settledViews = 0;
 let firstRoute: string | null = null;
@@ -50,9 +57,23 @@ export function setPerfSender(next: PerfSender | null): void {
 	for (const [event, properties] of pending.splice(0)) next(event, properties);
 }
 
+/**
+ * Hand every sample to `sink` as well, PostHog or not; with `null`, stop.
+ * `currentRoute` names the route a sample was taken on.
+ */
+export function setLocalPerfSink(
+	sink: PerfSender | null,
+	options?: { currentRoute: () => string }
+): void {
+	localSink = sink;
+	if (options) routeName = options.currentRoute;
+}
+
 export function reportPerf(event: string, properties: PerfProperties): void {
-	if (!armed) return;
+	if (!armed && !localSink) return;
 	const sample: PerfProperties = { route: routeName(), ...properties };
+	localSink?.(event, sample);
+	if (!armed) return;
 	if (sender) sender(event, sample);
 	else if (pending.length < PENDING_LIMIT) pending.push([event, sample]);
 }
@@ -75,4 +96,27 @@ export function isFirstView(): boolean {
 /** The route name the page load landed on, once the first navigation settled. */
 export function landingRoute(): string {
 	return firstRoute ?? 'unknown';
+}
+
+/** Route name of a location, never its path: names carry no ids or addresses. */
+export function routeLabel(name: unknown): string {
+	return typeof name === 'string' && name ? name : 'unknown';
+}
+
+let collecting = false;
+
+/**
+ * The page-load side shared by both sinks: settled navigations (for
+ * `isFirstView`) and the web vitals. Started by whichever sink comes first,
+ * once, so a tab with PostHog and a local trace observes everything one time.
+ */
+export function startPerfCollection(router: Pick<Router, 'afterEach'>): void {
+	if (collecting) return;
+	collecting = true;
+	router.afterEach((to, _from, failure) => {
+		if (!failure) noteViewSettled(routeLabel(to.name));
+	});
+	observeWebVitals((vitals) =>
+		reportPerf('owlat_web_vitals', { ...vitals, landing_route: landingRoute() })
+	);
 }
