@@ -51,6 +51,8 @@ Thumbs.db
 
 # Testing
 coverage/
+# `bun run perf:bench` reports and raw samples (scripts/perf-bench/run.ts).
+/.perf-bench/
 .nyc_output/
 # The send-provider scaffold's conformance gate materialises the generator's
 # output here (rather than under /tmp) so the emitted package resolves `vitest`
