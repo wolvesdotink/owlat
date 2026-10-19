@@ -51,13 +51,26 @@ beforeEach(() => {
 			? rect(trigger, TRIGGER, TRIGGER)
 			: rect({ top: 0, left: 0 }, 0, 0);
 	});
-	// A laid-out box: a `max-height` caps the menu's border-box height.
+	// A laid-out box: a `max-height` caps the menu's border-box height, and, as
+	// in a browser, lifting the cap leaves nothing to scroll, so the menu's
+	// scroll position is lost. The items share the menu's height, stacked.
 	vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
 		this: HTMLElement
 	) {
-		if (!isMenu(this)) return 0;
-		const cap = Number.parseFloat(this.style.maxHeight);
-		return Number.isNaN(cap) ? menuHeight : Math.min(menuHeight, cap);
+		if (isMenu(this)) {
+			const cap = Number.parseFloat(this.style.maxHeight);
+			if (Number.isNaN(cap)) this.scrollTop = 0;
+			return Number.isNaN(cap) ? menuHeight : Math.min(menuHeight, cap);
+		}
+		const parent = this.parentElement;
+		return parent && isMenu(parent) ? menuHeight / parent.children.length : 0;
+	});
+	vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (
+		this: HTMLElement
+	) {
+		const parent = this.parentElement;
+		if (!parent || !isMenu(parent)) return 0;
+		return (Array.from(parent.children).indexOf(this) * menuHeight) / parent.children.length;
 	});
 	vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (
 		this: HTMLElement
@@ -72,13 +85,16 @@ afterEach(() => {
 	viewport = { width: 1280, height: 720 };
 });
 
-async function openMenu(position: 'left' | 'right') {
+async function openMenu(position: 'left' | 'right', items = 1) {
 	const wrapper = mount(DropdownMenu, {
 		attachTo: document.body,
 		props: { position },
 		slots: {
 			trigger: '<button id="menu-trigger">More actions</button>',
-			default: '<button role="menuitem">Duplicate</button>',
+			default: Array.from(
+				{ length: items },
+				(_, i) => `<button role="menuitem">Action ${i + 1}</button>`
+			).join(''),
 		},
 	});
 	await wrapper.setProps({ open: true });
@@ -239,6 +255,67 @@ describe('DropdownMenu placement', () => {
 			await nextTick();
 			expect(menu.style.top).toBe('');
 			expectInsideWindow(layout(menu));
+		} finally {
+			wrapper.unmount();
+			globalThis.ResizeObserver = original;
+		}
+	});
+
+	it('keeps where a capped menu was scrolled to, and does not move it for that scroll', async () => {
+		trigger = { top: 100, left: 600 };
+		menuHeight = 1000;
+		const { wrapper, menu } = await openMenu('right', 20);
+		try {
+			const placed = menu.getAttribute('style');
+			expect(menu.classList.contains('overflow-y-auto')).toBe(true);
+			// The trigger has moved; a scroll inside the menu must not re-place it.
+			trigger = { top: 300, left: 600 };
+			menu.scrollTop = 100;
+			menu.dispatchEvent(new Event('scroll'));
+			await nextTick();
+			expect(menu.scrollTop).toBe(100);
+			expect(menu.getAttribute('style')).toBe(placed);
+			// A scroll anywhere else still does.
+			document.dispatchEvent(new Event('scroll'));
+			await nextTick();
+			expect(menu.style.top).toBe(`${300 + TRIGGER + 4}px`);
+			expect(menu.scrollTop).toBe(100);
+		} finally {
+			wrapper.unmount();
+		}
+	});
+
+	it('keeps the keyboard-focused last item of a capped menu in view', async () => {
+		const observers: Array<() => void> = [];
+		const original = globalThis.ResizeObserver;
+		globalThis.ResizeObserver = class {
+			constructor(callback: () => void) {
+				observers.push(callback);
+			}
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		} as unknown as typeof ResizeObserver;
+		trigger = { top: 100, left: 600 };
+		menuHeight = 1000;
+		const { wrapper, menu } = await openMenu('right', 20);
+		try {
+			const items = menu.querySelectorAll<HTMLElement>('[role="menuitem"]');
+			// The browser scrolls the menu to the item it focuses.
+			items[19]!.addEventListener('focus', () => {
+				menu.scrollTop = 1000 - 576;
+				menu.dispatchEvent(new Event('scroll'));
+			});
+			items[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+			await nextTick();
+			expect(document.activeElement).toBe(items[19]);
+			// Measuring again (a resize, a page scroll) leaves the menu where it is.
+			for (const callback of observers) callback();
+			window.dispatchEvent(new Event('resize'));
+			document.dispatchEvent(new Event('scroll'));
+			await nextTick();
+			expect(menu.scrollTop).toBe(1000 - 576);
+			expect(menu.style.maxHeight).toBe('576px');
 		} finally {
 			wrapper.unmount();
 			globalThis.ResizeObserver = original;

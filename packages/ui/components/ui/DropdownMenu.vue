@@ -62,16 +62,26 @@ const MENU_GAP = 4;
 const MENU_WIDTH = 176; // w-44, until the menu has rendered
 
 /**
- * The menu's full border-box height. Lifts the cap an earlier placement set
- * first: a capped box under-reports its content (its bottom padding is not part
- * of the overflow), and `scrollHeight` leaves out the border either way.
+ * The menu's full border-box height, read from where its children are laid out
+ * (their `offsetTop` counts from the menu's padding edge, which it is the offset
+ * parent of as a fixed box). Neither the cap an earlier placement set nor the
+ * menu's scroll position changes these, and nothing on the live menu is touched:
+ * lifting its `max-height` to measure would throw away where the user had
+ * scrolled it to. (`scrollHeight` is no substitute: a capped box that is not
+ * yet a scroll box leaves its bottom padding out, and it never has the border.)
  */
 function naturalHeight(menu: HTMLElement): number {
-	const cap = menu.style.maxHeight;
-	menu.style.maxHeight = 'none';
-	const height = menu.offsetHeight;
-	menu.style.maxHeight = cap;
-	return height;
+	const style = getComputedStyle(menu);
+	const px = (value: string) => Number.parseFloat(value) || 0;
+	let contentBottom = px(style.paddingTop);
+	for (const child of Array.from(menu.children)) {
+		if (!(child instanceof HTMLElement)) continue;
+		const marginBottom = px(getComputedStyle(child).marginBottom);
+		contentBottom = Math.max(contentBottom, child.offsetTop + child.offsetHeight + marginBottom);
+	}
+	return (
+		px(style.borderTopWidth) + contentBottom + px(style.paddingBottom) + px(style.borderBottomWidth)
+	);
 }
 
 const updatePosition = () => {
@@ -91,6 +101,12 @@ const updatePosition = () => {
 	openSide.value = placed.side;
 	menuStyle.value = placed.style;
 	menuScrolls.value = panelHeight > Number.parseFloat(placed.style.maxHeight);
+};
+
+// Scrolling the menu itself does not move the trigger it is anchored to.
+const handleScroll = (event: Event) => {
+	if (menuRef.value && event.target instanceof Node && menuRef.value.contains(event.target)) return;
+	updatePosition();
 };
 
 // Content that changes size while open (items that load late) moves the edge
@@ -192,7 +208,7 @@ watch(isOpen, async (open) => {
 	if (open) {
 		document.addEventListener('click', handleClickOutside);
 		document.addEventListener('keydown', handleKeydown);
-		window.addEventListener('scroll', updatePosition, true);
+		window.addEventListener('scroll', handleScroll, true);
 		window.addEventListener('resize', updatePosition);
 
 		// Auto-focus first menu item when opened via keyboard
@@ -202,7 +218,7 @@ watch(isOpen, async (open) => {
 	} else {
 		document.removeEventListener('click', handleClickOutside);
 		document.removeEventListener('keydown', handleKeydown);
-		window.removeEventListener('scroll', updatePosition, true);
+		window.removeEventListener('scroll', handleScroll, true);
 		window.removeEventListener('resize', updatePosition);
 	}
 });
@@ -211,7 +227,7 @@ onUnmounted(() => {
 	menuObserver?.disconnect();
 	document.removeEventListener('click', handleClickOutside);
 	document.removeEventListener('keydown', handleKeydown);
-	window.removeEventListener('scroll', updatePosition, true);
+	window.removeEventListener('scroll', handleScroll, true);
 	window.removeEventListener('resize', updatePosition);
 });
 
