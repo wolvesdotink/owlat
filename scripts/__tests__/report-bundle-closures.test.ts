@@ -12,8 +12,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
+import { scriptGzipSizes } from './bundleGzip.testlib';
 
 const SCRIPT = resolve(import.meta.dirname, '../report-bundle-closures.ts');
 
@@ -143,11 +143,13 @@ function incompressible(bytes: number): string {
 
 const raw = (...files: string[]) =>
 	files.reduce((sum, file) => sum + (CHUNKS[file] as string).length, 0);
-const gz = (file: string) => gzipSync(Buffer.from(CHUNKS[file] as string), { level: 9 }).length;
 
 describe('the route and deferred-feature closure report', () => {
 	it('reports each page by source path with what it adds beyond the entry closure', () => {
-		const result = report(build(CHUNKS, RESOURCES));
+		const output = build(CHUNKS, RESOURCES);
+		const sizes = scriptGzipSizes(join(output, 'public/_nuxt'), Object.keys(CHUNKS));
+		const gz = (file: string) => sizes[file] as number;
+		const result = report(output);
 
 		expect(result.meta).toEqual({ assets: 'javascript-only', budget: null });
 		expect(result.entry).toEqual({

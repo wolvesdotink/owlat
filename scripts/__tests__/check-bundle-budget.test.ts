@@ -11,8 +11,8 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
+import { scriptGzipSizes } from './bundleGzip.testlib';
 
 const SCRIPT = resolve(import.meta.dirname, '../check-bundle-budget.ts');
 
@@ -86,15 +86,15 @@ describe('the entry-bundle budget', () => {
 
 	it('lists equal-sized files in the order the walk reaches them', () => {
 		const same = (name: string) => `export const ${name}="${'x'.repeat(2000)}";\n`;
-		expect(gzipSync(same('a'), { level: 9 }).length).toBe(gzipSync(same('z'), { level: 9 }).length);
+		const output = build({
+			'entry.js': 'import{a}from"./a.js";import{z}from"./z.js";\n',
+			'a.js': same('a'),
+			'z.js': same('z'),
+		});
+		const sizes = scriptGzipSizes(join(output, 'public/_nuxt'), ['a.js', 'z.js']);
+		expect(sizes['a.js']).toBe(sizes['z.js']);
 
-		const result = run(
-			build({
-				'entry.js': 'import{a}from"./a.js";import{z}from"./z.js";\n',
-				'a.js': same('a'),
-				'z.js': same('z'),
-			})
-		);
+		const result = run(output);
 
 		// The walk pops the last import first, so z.js is reached before a.js.
 		expect(result.output.indexOf('  z.js')).toBeGreaterThan(-1);
