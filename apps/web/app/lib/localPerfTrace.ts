@@ -9,20 +9,20 @@
  * is off nothing below runs: no buffer, no observer, no console handle.
  *
  * What a trace holds is decided here, not by the callers:
- *  - samples: an `owlat_*` event name, the route NAME it was taken on and its
- *    numeric properties, in a ring buffer of the configured size;
+ *  - samples: an event listed in `PERF_EVENTS`, the route NAME it was taken on
+ *    and the numbers that event lists, in a ring buffer of the configured size;
  *  - long tasks: a count, total and longest duration per route name;
  *  - the shared Convex subscription counts (active and lingering);
  *  - the build version, git sha and deployment mode.
- * Any other string a caller hands in (a URL, an id, an address, a subject) is
- * dropped before it is stored, a number survives only under a unit-suffixed
- * key, and a route value that is not one of the router's own names becomes
- * `unknown`. Nothing is sent: the trace leaves the tab only when someone
+ * Anything else is dropped before it is stored: an event that is not listed,
+ * a property its event does not list (whatever its name or value), and every
+ * string except the route names, where a value that is not one of the router's
+ * own names becomes `unknown`. Nothing is sent: the trace leaves the tab only when someone
  * exports it from the console (`owlatPerfTrace.export()` / `.download()`).
  *
  * The bound is a memory limit, not a performance target.
  */
-import type { PerfProperties } from '~/lib/perfTelemetry';
+import { PERF_EVENTS, type PerfEvent } from '~/lib/perfTelemetry';
 
 export const LOCAL_PERF_TRACE_KEY = 'owlat:perf-trace';
 export const DEFAULT_TRACE_LIMIT = 500;
@@ -32,9 +32,6 @@ const TRACE_FORMAT = 'owlat-perf-trace/1';
 
 /** The route the trace falls back to for anything that is not a route name. */
 const UNKNOWN_ROUTE = 'unknown';
-const EVENT_NAME = /^owlat_[a-z0-9_]{1,58}$/;
-/** Numbers are kept only under keys that name a unit or a count, or `cls`. */
-const METRIC_KEY = /^[a-z][a-z0-9_]{0,40}_(ms|count|bytes)$|^cls$/;
 
 /**
  * The bound this browser asked for, or `null` when the trace is off. `on`
@@ -117,7 +114,8 @@ interface LocalPerfTraceExport {
 
 export interface LocalPerfTrace {
 	readonly limit: number;
-	record(event: string, properties: PerfProperties): void;
+	/** Keep what `PERF_EVENTS` lists for `event`; drop the rest. */
+	record(event: string, properties: Readonly<Record<string, unknown>>): void;
 	recordLongTask(route: string, durationMs: number): void;
 	snapshot(): LocalPerfTraceExport;
 	/** The snapshot as JSON, ready to save or paste. */
@@ -209,14 +207,14 @@ export function createLocalPerfTrace(options: {
 	const trace: LocalPerfTrace = {
 		limit,
 		record(event, properties) {
-			if (!EVENT_NAME.test(event)) {
+			if (!Object.hasOwn(PERF_EVENTS, event)) {
 				rejected += 1;
 				return;
 			}
 			const values: Record<string, number> = {};
-			for (const [key, value] of Object.entries(properties)) {
-				if (typeof value !== 'number' || !Number.isFinite(value) || !METRIC_KEY.test(key)) continue;
-				values[key] = round(value, 4);
+			for (const key of PERF_EVENTS[event as PerfEvent]) {
+				const value = properties[key];
+				if (typeof value === 'number' && Number.isFinite(value)) values[key] = round(value, 4);
 			}
 			const sample: TraceSample = {
 				t: Math.round(options.now()),

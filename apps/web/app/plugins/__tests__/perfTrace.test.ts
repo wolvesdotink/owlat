@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 type Guard = (to: { name: unknown }, from: unknown, failure?: unknown) => void;
+type EntryFeed = (entries: Array<Record<string, unknown>>) => void;
 
 const ROUTES = ['dashboard', 'dashboard-postbox-folder', 'auth-login'];
 
@@ -20,31 +21,35 @@ const SENTINELS = [
 ];
 
 let guards: Guard[];
+let hooks: Map<string, Array<() => void>>;
 let observers: number;
-let deliverLongTasks: (durations: number[]) => void;
+let feeds: Map<string, EntryFeed>;
 let currentRouteName: unknown;
 
 class FakeObserver {
-	static supportedEntryTypes = ['longtask'];
+	static supportedEntryTypes = ['longtask', 'largest-contentful-paint', 'layout-shift', 'event'];
 	constructor(private readonly callback: (list: { getEntries(): unknown[] }) => void) {
 		observers += 1;
 	}
 	observe(options: { type: string }) {
-		if (options.type !== 'longtask') return;
-		deliverLongTasks = (durations) =>
-			this.callback({
-				getEntries: () =>
-					durations.map((duration) => ({
-						duration,
-						attribution: [{ containerSrc: SENTINELS[2] }],
-					})),
-			});
+		feeds.set(options.type, (entries) => this.callback({ getEntries: () => entries }));
 	}
 	disconnect() {}
 	takeRecords() {
 		return [];
 	}
 }
+
+function feed(type: string, entries: Array<Record<string, unknown>>) {
+	feeds.get(type)?.(entries);
+}
+
+const fakeNuxtApp = {
+	hook(name: string, fn: () => void) {
+		hooks.set(name, [...(hooks.get(name) ?? []), fn]);
+		return () => {};
+	},
+};
 
 async function loadPlugin() {
 	vi.stubGlobal('defineNuxtPlugin', (def: unknown) => def);
@@ -71,14 +76,38 @@ async function loadPlugin() {
 		},
 	}));
 	vi.resetModules();
-	const plugin = (await import('../perf-trace.client')).default as unknown as () => void;
+	const definition = (await import('../perf-trace.client')).default as unknown as (
+		nuxtApp: typeof fakeNuxtApp
+	) => void;
+	// Same module registry as the plugin: loaded right after the reset.
 	const telemetry = await import('~/lib/perfTelemetry');
-	return { plugin, telemetry };
+	const registry = await import('~/lib/sharedConvexSubscriptions');
+	return { plugin: () => definition(fakeNuxtApp), telemetry, registry };
 }
 
-function navigate(name: unknown) {
-	currentRouteName = name;
-	for (const guard of guards) guard({ name }, {});
+function navigate(name: unknown, failure?: unknown) {
+	if (!failure) currentRouteName = name;
+	for (const guard of guards) guard({ name }, {}, failure);
+}
+
+/** Nuxt finished rendering the destination (`page:loading:end`). */
+function pageRendered() {
+	for (const fn of hooks.get('page:loading:end') ?? []) fn();
+}
+
+function nextFrame() {
+	vi.advanceTimersByTime(16);
+}
+
+function exported() {
+	return JSON.parse(window.owlatPerfTrace!.export());
+}
+
+type Registry = Awaited<ReturnType<typeof loadPlugin>>['registry'];
+
+/** A page component's query: opened on mount, released (to linger) on unmount. */
+function holdQuery(registry: Registry, key: string): () => void {
+	return registry.openShared(key, {}, () => () => {}, { update: () => {}, fail: () => {} }, false);
 }
 
 describe('perf-trace plugin', () => {
@@ -86,12 +115,21 @@ describe('perf-trace plugin', () => {
 
 	beforeEach(() => {
 		guards = [];
+		hooks = new Map();
 		observers = 0;
-		deliverLongTasks = () => {};
+		feeds = new Map();
 		currentRouteName = 'dashboard';
 		localStorage.clear();
 		delete window.owlatPerfTrace;
-		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+		vi.useFakeTimers({
+			toFake: [
+				'setTimeout',
+				'clearTimeout',
+				'requestAnimationFrame',
+				'cancelAnimationFrame',
+				'performance',
+			],
+		});
 		vi.stubGlobal('PerformanceObserver', FakeObserver);
 		vi.stubGlobal('fetch', network);
 		vi.stubGlobal('XMLHttpRequest', network);
@@ -112,6 +150,7 @@ describe('perf-trace plugin', () => {
 
 		expect(window.owlatPerfTrace).toBeUndefined();
 		expect(guards).toEqual([]);
+		expect(hooks.size).toBe(0);
 		expect(observers).toBe(0);
 		expect(console.info).not.toHaveBeenCalled();
 	});
@@ -137,10 +176,10 @@ describe('perf-trace plugin', () => {
 			vi.advanceTimersByTime(5);
 			telemetry.reportPerf('owlat_reader_open_ms', { duration_ms: i });
 		}
-		const trace = JSON.parse(handle.export());
+		const trace = exported();
 
 		expect(trace.samples).toHaveLength(10);
-		expect(trace.recorded).toBe(31);
+		expect(trace.recorded).toBe(30);
 		expect(trace.samples.at(-1)).toEqual({
 			t: 150,
 			event: 'owlat_reader_open_ms',
@@ -149,7 +188,7 @@ describe('perf-trace plugin', () => {
 		});
 
 		handle.clear();
-		const cleared = JSON.parse(handle.export());
+		const cleared = exported();
 		expect(cleared.samples).toEqual([]);
 		expect(cleared.recorded).toBe(0);
 		expect(cleared.summary).toEqual([]);
@@ -157,24 +196,113 @@ describe('perf-trace plugin', () => {
 		expect(network).not.toHaveBeenCalled();
 	});
 
-	it('samples the shared subscription counts on every settled navigation', async () => {
+	describe('subscription samples', () => {
+		it('counts after the destination rendered and the page before let go', async () => {
+			localStorage.setItem('owlat:perf-trace', 'on');
+			const { plugin, registry } = await loadPlugin();
+			plugin();
+			const leaveA = holdQuery(registry, 'page-a');
+
+			navigate('dashboard-postbox-folder');
+			// The old page is still leaving (out-in transition): nothing yet.
+			nextFrame();
+			expect(exported().samples).toEqual([]);
+
+			// It unmounts, the new page mounts two queries, Nuxt reports the render.
+			leaveA();
+			holdQuery(registry, 'page-b-1');
+			holdQuery(registry, 'page-b-2');
+			pageRendered();
+			expect(exported().samples).toEqual([]);
+			nextFrame();
+
+			expect(exported().samples).toEqual([
+				{
+					t: 32,
+					event: 'owlat_subscriptions',
+					route: 'dashboard-postbox-folder',
+					values: { active_count: 2, lingering_count: 1, lingering_body_count: 0 },
+				},
+			]);
+			expect(exported().subscriptions).toEqual({ active: 2, lingering: 1, lingeringBody: 0 });
+
+			// One sample per navigation: a later render of the same page adds none.
+			pageRendered();
+			nextFrame();
+			expect(exported().samples).toHaveLength(1);
+		});
+
+		it('drops a sample a newer navigation superseded before the render finished', async () => {
+			localStorage.setItem('owlat:perf-trace', 'on');
+			const { plugin } = await loadPlugin();
+			plugin();
+
+			navigate('dashboard-postbox-folder');
+			navigate('auth-login');
+			pageRendered();
+			nextFrame();
+
+			expect(exported().samples.map((s: { route: string }) => s.route)).toEqual(['auth-login']);
+		});
+
+		it('drops a sample a newer navigation superseded during its last frame', async () => {
+			localStorage.setItem('owlat:perf-trace', 'on');
+			const { plugin } = await loadPlugin();
+			plugin();
+
+			navigate('dashboard-postbox-folder');
+			pageRendered();
+			navigate('auth-login');
+			nextFrame();
+			expect(exported().samples).toEqual([]);
+
+			pageRendered();
+			nextFrame();
+			expect(exported().samples.map((s: { route: string }) => s.route)).toEqual(['auth-login']);
+		});
+
+		it('takes none for a failed navigation', async () => {
+			localStorage.setItem('owlat:perf-trace', 'on');
+			const { plugin } = await loadPlugin();
+			plugin();
+
+			navigate('auth-login', new Error('aborted'));
+			pageRendered();
+			nextFrame();
+
+			expect(exported().samples).toEqual([]);
+		});
+	});
+
+	it("keeps every listed producer's event with all of its numbers", async () => {
 		localStorage.setItem('owlat:perf-trace', 'on');
-		const { plugin } = await loadPlugin();
+		const { plugin, telemetry } = await loadPlugin();
 		plugin();
+		const { usePerfMark } = await import('~/composables/usePerfMark');
+		vi.useRealTimers();
 
+		// The real producers: the span timings, the web vitals, the subscriptions.
+		const { mark, measure, measureBoot } = usePerfMark();
+		measureBoot('owlat_boot_shell_ms');
+		mark('owlat_reader_open_start');
+		measure('owlat_reader_open_ms', 'owlat_reader_open_start');
+		mark('owlat_back_list_start');
+		measure('owlat_back_list_ms', 'owlat_back_list_start');
+		feed('largest-contentful-paint', [{ startTime: 812 }]);
+		feed('layout-shift', [{ value: 0.02, hadRecentInput: false, startTime: 100 }]);
+		feed('event', [{ interactionId: 7, duration: 48 }]);
+		window.dispatchEvent(new Event('pagehide'));
 		navigate('dashboard');
-		for (const guard of guards) guard({ name: 'auth-login' }, {}, new Error('aborted'));
-		const trace = JSON.parse(window.owlatPerfTrace!.export());
+		pageRendered();
+		await new Promise((resolve) => requestAnimationFrame(resolve));
 
-		expect(trace.samples).toEqual([
-			{
-				t: 0,
-				event: 'owlat_subscriptions',
-				route: 'dashboard',
-				values: { active_count: 0, lingering_count: 0, lingering_body_count: 0 },
-			},
-		]);
-		expect(trace.subscriptions).toEqual({ active: 0, lingering: 0, lingeringBody: 0 });
+		const samples: Array<{ event: string; values: Record<string, number> }> = exported().samples;
+		for (const [event, keys] of Object.entries(telemetry.PERF_EVENTS)) {
+			const sample = samples.find((s) => s.event === event);
+			expect(sample, event).toBeDefined();
+			expect(Object.keys(sample!.values).sort(), event).toEqual([...keys].sort());
+		}
+		expect(samples).toHaveLength(Object.keys(telemetry.PERF_EVENTS).length);
 	});
 
 	it('exports and downloads no personal data, URLs, ids or credentials', async () => {
@@ -183,17 +311,22 @@ describe('perf-trace plugin', () => {
 		plugin();
 
 		// A route the router does not know (a URL leaked into a name) and a
-		// caller handing in every kind of string.
+		// caller that slipped past the types with every kind of string.
 		navigate(SENTINELS[2]);
-		telemetry.reportPerf('owlat_reader_open_ms', {
+		const hostile: Record<string, unknown> = {
 			duration_ms: 88,
-			subject: SENTINELS[1]!,
-			from: SENTINELS[0]!,
-			messageId: SENTINELS[3]!,
-			authorization: SENTINELS[4]!,
-			landing_route: SENTINELS[0]!,
-		});
-		deliverLongTasks([120, 64]);
+			subject: SENTINELS[1],
+			from: SENTINELS[0],
+			messageId: SENTINELS[3],
+			authorization: SENTINELS[4],
+			landing_route: SENTINELS[0],
+			[`${SENTINELS[3]}_ms`]: 1,
+		};
+		telemetry.reportPerf('owlat_reader_open_ms', hostile as never);
+		feed('longtask', [
+			{ duration: 120, attribution: [{ containerSrc: SENTINELS[2] }] },
+			{ duration: 64, attribution: [{ containerSrc: SENTINELS[2] }] },
+		]);
 
 		let blob: Blob | null = null;
 		vi.spyOn(URL, 'createObjectURL').mockImplementation((value) => {
@@ -205,18 +338,18 @@ describe('perf-trace plugin', () => {
 		window.owlatPerfTrace!.download();
 		vi.runAllTimers();
 
-		const exported = window.owlatPerfTrace!.export();
+		const json = window.owlatPerfTrace!.export();
 		const downloaded = await (blob as Blob | null)!.text();
 		expect(click).toHaveBeenCalledTimes(1);
 		expect(revoke).toHaveBeenCalledWith('blob:owlat-perf-trace');
 		expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe(
 			'owlat-perf-trace-0.7.0.json'
 		);
-		expect(downloaded).toBe(exported);
-		for (const sentinel of SENTINELS) expect(exported).not.toContain(sentinel);
-		expect(exported).not.toMatch(/@|https?:|\/dashboard/);
+		expect(downloaded).toBe(json);
+		for (const sentinel of SENTINELS) expect(json).not.toContain(sentinel);
+		expect(json).not.toMatch(/@|https?:|\/dashboard/);
 
-		const trace = JSON.parse(exported);
+		const trace = JSON.parse(json);
 		expect(trace.samples.at(-1)).toEqual({
 			t: 0,
 			event: 'owlat_reader_open_ms',

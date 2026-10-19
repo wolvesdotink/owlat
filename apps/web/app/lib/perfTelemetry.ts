@@ -19,9 +19,38 @@
  * A local trace (`lib/localPerfTrace`, opted into per browser) is a second
  * sink: it sees every sample whether or not PostHog is configured, armed or
  * sending, and keeps it in memory. Without either, a report does nothing.
+ *
+ * Every event and the numbers it may carry are listed once, in `PERF_EVENTS`:
+ * `reportPerf` and `usePerfMark` accept nothing else, and the local trace keeps
+ * nothing else.
  */
 import type { Router } from 'vue-router';
 import { observeWebVitals } from '~/lib/webVitals';
+
+/**
+ * The performance events the app reports, each with the numeric properties it
+ * may carry. Besides these a sample has only its route names (`route`,
+ * `landing_route`). `owlat_subscriptions` is taken by the local trace alone.
+ */
+export const PERF_EVENTS = {
+	owlat_boot_shell_ms: ['duration_ms'],
+	owlat_reader_open_ms: ['duration_ms'],
+	owlat_back_list_ms: ['duration_ms'],
+	owlat_web_vitals: ['lcp_ms', 'inp_ms', 'cls'],
+	owlat_subscriptions: ['active_count', 'lingering_count', 'lingering_body_count'],
+} as const satisfies Record<string, readonly string[]>;
+
+export type PerfEvent = keyof typeof PERF_EVENTS;
+type PerfMetricOf<E extends PerfEvent> = (typeof PERF_EVENTS)[E][number];
+/** The events that are a single span, `duration_ms`. */
+export type PerfDurationEvent = {
+	[E in PerfEvent]: 'duration_ms' extends PerfMetricOf<E> ? E : never;
+}[PerfEvent];
+/** What a producer may hand in for `E`: its listed numbers and route names. */
+export type PerfSampleOf<E extends PerfEvent> = { [K in PerfMetricOf<E>]?: number } & {
+	route?: string;
+	landing_route?: string;
+};
 
 export type PerfProperties = Record<string, number | string>;
 type PerfSender = (event: string, properties: PerfProperties) => void;
@@ -69,9 +98,9 @@ export function setLocalPerfSink(
 	if (options) routeName = options.currentRoute;
 }
 
-export function reportPerf(event: string, properties: PerfProperties): void {
+export function reportPerf<E extends PerfEvent>(event: E, properties: PerfSampleOf<E>): void {
 	if (!armed && !localSink) return;
-	const sample: PerfProperties = { route: routeName(), ...properties };
+	const sample = { route: routeName(), ...properties } as PerfProperties;
 	localSink?.(event, sample);
 	if (!armed) return;
 	if (sender) sender(event, sample);

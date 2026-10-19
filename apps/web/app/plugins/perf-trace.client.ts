@@ -35,7 +35,7 @@ declare global {
  * console gets `owlatPerfTrace` to export, download or clear it. This works
  * with or without PostHog and never sends anything.
  */
-export default defineNuxtPlugin(() => {
+export default defineNuxtPlugin((nuxtApp) => {
 	const limit = readLocalPerfTraceLimit(storage());
 	if (limit === null) return;
 
@@ -63,16 +63,30 @@ export default defineNuxtPlugin(() => {
 
 	setLocalPerfSink((event, properties) => trace.record(event, properties), { currentRoute });
 	startPerfCollection(router);
-	// One subscription sample per settled navigation: what the page opened and
-	// what the previous one left lingering.
+	// One subscription sample per navigation, taken once the destination has
+	// rendered: what its page opened and what the page before left lingering.
+	// Nuxt calls `page:loading:end` after the new page's Suspense resolved (with
+	// the `out-in` page transition, after the old page left and released its
+	// queries), or right after the re-render when the page stayed the same. One
+	// more frame lets post-flush watchers and scope disposals finish. A newer
+	// navigation replaces the pending one, so a superseded sample is dropped.
+	let pending: { route: string } | null = null;
 	router.afterEach((to, _from, failure) => {
-		if (failure) return;
-		const counts = sharedSubscriptionCounts();
-		trace.record('owlat_subscriptions', {
-			route: routeLabel(to.name),
-			active_count: counts.active,
-			lingering_count: counts.lingering,
-			lingering_body_count: counts.lingeringBody,
+		if (!failure) pending = { route: routeLabel(to.name) };
+	});
+	nuxtApp.hook('page:loading:end', () => {
+		const rendered = pending;
+		if (!rendered) return;
+		requestAnimationFrame(() => {
+			if (pending !== rendered) return;
+			pending = null;
+			const counts = sharedSubscriptionCounts();
+			trace.record('owlat_subscriptions', {
+				route: rendered.route,
+				active_count: counts.active,
+				lingering_count: counts.lingering,
+				lingering_body_count: counts.lingeringBody,
+			});
 		});
 	});
 	observeLongTasks((duration) => trace.recordLongTask(currentRoute(), duration));

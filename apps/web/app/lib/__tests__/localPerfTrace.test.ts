@@ -232,17 +232,43 @@ describe('createLocalPerfTrace', () => {
 			expect(longTasks).toEqual([{ route: 'unknown', count: 1, total_ms: 75, max_ms: 75 }]);
 		});
 
-		it('drops numbers that are not finite and keys that name no unit', () => {
+		it('refuses id-shaped names that look like the listed ones', () => {
+			const id = SENTINELS[4]!;
 			const trace = makeTrace(10);
-			trace.record('owlat_boot_shell_ms', {
+			for (const event of [`owlat_${id}`, `owlat_${id}_ms`, `owlat_web_vitals_${id}`]) {
+				trace.record(event, { route: 'dashboard', duration_ms: 1 });
+			}
+			trace.record('owlat_subscriptions', {
 				route: 'dashboard',
-				duration_ms: Number.NaN,
-				size_bytes: Number.POSITIVE_INFINITY,
-				row_count: 12,
+				active_count: 3,
+				[`${id}_count`]: 1,
+				[`${id}_ms`]: 2,
+				'jane.doe@example.com_count': 4,
+				[`${id}_bytes`]: 5,
+			});
+			const json = trace.export();
+
+			for (const sentinel of SENTINELS) expect(json).not.toContain(sentinel);
+			const { samples, rejected } = JSON.parse(json);
+			expect(rejected).toBe(3);
+			expect(samples.map((s: { values: unknown }) => s.values)).toEqual([{ active_count: 3 }]);
+		});
+
+		it('keeps only the numbers its event lists, and only finite ones', () => {
+			const trace = makeTrace(10);
+			trace.record('owlat_web_vitals', {
+				route: 'dashboard',
+				lcp_ms: Number.NaN,
+				inp_ms: Number.POSITIVE_INFINITY,
+				cls: 0.1,
+				// Listed for other events, not for this one.
+				duration_ms: 5,
+				active_count: 2,
 				userAge: 41,
 				phone: 4915112345678,
+				lcp_label: 'slow',
 			});
-			expect(trace.snapshot().samples[0]?.values).toEqual({ row_count: 12 });
+			expect(trace.snapshot().samples[0]?.values).toEqual({ cls: 0.1 });
 		});
 	});
 });
