@@ -4540,6 +4540,7 @@
 				"failed": "Failed",
 				"largeWarning": "Large attachments may bounce — consider sharing a link for oversized files.",
 				"percent": "{value}%",
+				"queued": "Queued",
 				"remove": "Remove {filename}",
 				"retry": "Retry {filename}",
 				"retryTitle": "Retry upload",
@@ -7265,6 +7266,7 @@
 					"remove": "Remove {file}",
 					"retry": "Retry",
 					"cancelUpload": "Cancel the upload of {file}",
+					"queued": "Queued",
 					"hold": {
 						"uploading": "Send waits until the upload has finished.",
 						"copying": "Send waits until the file is copied.",

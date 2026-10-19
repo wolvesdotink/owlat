@@ -13,7 +13,7 @@ interface ComposerAttachment {
 const props = defineProps<{
 	/** Committed attachments (uploaded, graduated out of the upload chips). */
 	attachments: ComposerAttachment[];
-	/** In-flight / failed upload chips (no storageId yet). */
+	/** Queued / in-flight / failed upload chips (no storageId yet). */
 	uploads: UploadChip[];
 	/** Total-size meter state; only rendered when `visible`. */
 	meter: AttachmentMeter;
@@ -94,7 +94,8 @@ const offerShare = computed(() => shouldOfferShareLink(props.meter));
 				</button>
 			</span>
 
-			<!-- In-flight / failed uploads -->
+			<!-- Queued / in-flight / failed uploads. A queued file waits for one of
+			     the composer's transfer slots; it has sent nothing yet. -->
 			<span
 				v-for="up in uploads"
 				:key="up.id"
@@ -109,13 +110,22 @@ const offerShare = computed(() => shouldOfferShareLink(props.meter));
 				/>
 				<Icon
 					v-else
-					:name="up.status === 'failed' ? 'lucide:alert-circle' : 'lucide:paperclip'"
+					:name="
+						up.status === 'failed'
+							? 'lucide:alert-circle'
+							: up.status === 'queued'
+								? 'lucide:clock'
+								: 'lucide:paperclip'
+					"
 					class="w-3 h-3"
 					:class="up.status === 'failed' ? 'text-error' : 'text-text-tertiary'"
 				/>
 				<span class="truncate max-w-[140px]">{{ up.filename }}</span>
 				<span v-if="up.status === 'failed'" class="text-error">{{
 					t('components.postbox.postboxComposerAttachments.failed')
+				}}</span>
+				<span v-else-if="up.status === 'queued'" class="text-text-tertiary">{{
+					t('components.postbox.postboxComposerAttachments.queued')
 				}}</span>
 				<span v-else class="text-text-tertiary tabular-nums">
 					{{

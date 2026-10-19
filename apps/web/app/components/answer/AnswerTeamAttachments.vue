@@ -157,7 +157,13 @@ const menuItem =
 				data-testid="answer-team-upload"
 			>
 				<Icon
-					:name="upload.status === 'failed' ? 'lucide:alert-triangle' : 'lucide:loader-2'"
+					:name="
+						upload.status === 'failed'
+							? 'lucide:alert-triangle'
+							: upload.status === 'queued'
+								? 'lucide:clock'
+								: 'lucide:loader-2'
+					"
 					class="size-3.5 shrink-0"
 					:class="{
 						'animate-spin motion-reduce:animate-none': upload.status === 'uploading',
@@ -166,6 +172,10 @@ const menuItem =
 					aria-hidden="true"
 				/>
 				<span class="truncate">{{ upload.filename }}</span>
+				<!-- Waiting for a transfer slot; nothing has been sent yet. -->
+				<span v-if="upload.status === 'queued'" class="shrink-0 text-text-tertiary">
+					{{ t('components.answer.team.attachments.queued') }}
+				</span>
 				<span v-if="upload.status === 'uploading' && !upload.indeterminate" class="tabular-nums">
 					{{ Math.round(upload.progress * 100) }}%
 				</span>
