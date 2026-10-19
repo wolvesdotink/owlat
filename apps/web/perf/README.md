@@ -24,11 +24,18 @@ the baseline and after teardown.
 | Scenario                    | Components                                                                                | Workload                                                                |
 | --------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `assistant-stream/start`    | `AssistantMessage` list under the assistant page's scroll container and `useFollowLatest` | answer streams from empty, one write per 250 ms, under 20 settled turns |
-| `assistant-stream/near-cap` | same                                                                                      | the last 12 s of an answer that ends at the 8,192-token output cap      |
+| `assistant-stream/near-cap` | same                                                                                      | the last 12 s of an estimated near-cap answer (see below)               |
 | `chat-history/500`          | `ChatMessageList` (and every `ChatMessage`)                                               | a room's full 500-message window, scrolled newest to oldest             |
 
-Every limit the workloads obey (`perf/workload.ts`) is read back out of the
-backend source by `perf/__tests__/workload.test.ts`, which does run in CI.
+The limits the workloads obey live in `scripts/perf-scenarios/writerLimits.ts`.
+`apps/api/convex/__tests__/perfScenarioWriterLimits.integration.test.ts` checks
+each one against the real backend (the task policy's output ceiling, the
+runner's write cadence, the questions and messages the mutations accept, the
+history the queries return), and it runs in CI.
+
+The near-cap answer is an estimate. It is 32,768 characters: the 8,192-token
+output cap at an assumed 4 characters a token. Nothing is tokenized, so a real
+answer at the cap may be shorter or longer than that.
 
 ## Reading the report
 

@@ -1,40 +1,33 @@
 /**
  * Synthetic workloads for the component performance scenarios.
  *
- * Every size and cadence here comes from the code that bounds it in
- * production, so a scenario never measures a conversation or a stream the app
- * cannot produce. `perf/__tests__/workload.test.ts` reads each limit back out
- * of its source file, so a change there fails that test instead of leaving the
- * fixture measuring the old shape.
+ * Every size and cadence here comes from `WRITER_LIMITS`
+ * (scripts/perf-scenarios/writerLimits.ts), the production limits an API
+ * contract test checks against the real policy, writer and queries, so a
+ * scenario never measures a conversation or a stream the app cannot produce.
  *
  * Pure and deterministic: the same seed builds the same rows on every run and
  * machine, which is what lets the report compare runs at all.
  */
+import { WRITER_LIMITS } from '../../../scripts/perf-scenarios/writerLimits';
 
-export const WRITER_LIMITS = {
-	/** `FLUSH_INTERVAL_MS` in apps/api/convex/assistant/runner.ts: one row write per 250 ms. */
-	assistantFlushIntervalMs: 250,
-	/** `LARGE_OUTPUT.maxOutputTokens`, the policy of `assistant.answer` (lib/llm/taskPolicy.ts). */
-	assistantMaxOutputTokens: 8_192,
-	/** `MESSAGE_MAX` in apps/api/convex/assistant/conversations.ts: a question's length cap. */
-	assistantQuestionMaxChars: 8_000,
-	/** `MESSAGES_LIMIT` in apps/api/convex/assistant/conversations.ts: the history a reader gets. */
-	assistantHistoryLimit: 500,
-	/** `MESSAGE_TEXT_MAX` in apps/api/convex/chat/_helpers.ts. */
-	chatMessageMaxChars: 8_000,
-	/** The cap `chat.messages.listMessages` puts on its `limit` argument. */
-	chatHistoryLimit: 500,
-} as const;
+export { WRITER_LIMITS };
 
 /**
  * A planning estimate, not a tokenizer: English prose averages about four
  * characters a token. It turns the token cap into a character cap and a token
  * rate into characters per flush; the report states it next to the numbers.
+ * Nothing here is ever tokenized, so a workload sized from it is an estimate.
  */
 export const CHARS_PER_TOKEN = 4;
 
-/** The longest answer an assistant turn can store, in characters (8,192 tokens). */
-export const ASSISTANT_ANSWER_MAX_CHARS = WRITER_LIMITS.assistantMaxOutputTokens * CHARS_PER_TOKEN;
+/**
+ * The estimated longest answer in characters: the output cap at
+ * {@link CHARS_PER_TOKEN}. A real answer at the cap can be shorter or longer
+ * depending on how its text tokenizes.
+ */
+export const ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS =
+	WRITER_LIMITS.assistantMaxOutputTokens * CHARS_PER_TOKEN;
 
 /** Deterministic PRNG (mulberry32): the same seed gives the same sequence everywhere. */
 export function seededRandom(seed: number): () => number {
@@ -217,9 +210,9 @@ export function assistantStreamWorkload(options: AssistantStreamOptions): Assist
 		((tokensPerSecond * WRITER_LIMITS.assistantFlushIntervalMs) / 1000) * CHARS_PER_TOKEN
 	);
 	const finalChars = startChars + charsPerFlush * flushes;
-	if (finalChars > ASSISTANT_ANSWER_MAX_CHARS) {
+	if (finalChars > ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS) {
 		throw new Error(
-			`a ${finalChars}-character answer exceeds the ${ASSISTANT_ANSWER_MAX_CHARS}-character output cap`
+			`a ${finalChars}-character answer exceeds the estimated ${ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS}-character output cap`
 		);
 	}
 

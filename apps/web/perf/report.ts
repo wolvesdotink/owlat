@@ -5,7 +5,7 @@
  */
 import type { FidelitySentinels } from './fixtureApi';
 import type { MetricSummary } from './stats';
-import { ASSISTANT_ANSWER_MAX_CHARS, CHARS_PER_TOKEN, WRITER_LIMITS } from './workload';
+import { ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS, CHARS_PER_TOKEN, WRITER_LIMITS } from './workload';
 
 export interface Environment {
 	cpu: string;
@@ -109,7 +109,7 @@ export function formatReport(report: Report): string {
 		'',
 		'## Limits the fixtures obey',
 		'',
-		`- Assistant stream: one write per ${WRITER_LIMITS.assistantFlushIntervalMs} ms; answers end at or before the ${fmt(WRITER_LIMITS.assistantMaxOutputTokens)}-token output cap (${fmt(ASSISTANT_ANSWER_MAX_CHARS)} characters at an estimated ${CHARS_PER_TOKEN} per token); questions at most ${fmt(WRITER_LIMITS.assistantQuestionMaxChars)} characters; at most ${WRITER_LIMITS.assistantHistoryLimit} messages loaded.`,
+		`- Assistant stream: one write per ${WRITER_LIMITS.assistantFlushIntervalMs} ms; answers end at or before an estimated ${fmt(ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS)} characters (the ${fmt(WRITER_LIMITS.assistantMaxOutputTokens)}-token output cap at an assumed ${CHARS_PER_TOKEN} characters per token; the text is never tokenized); questions at most ${fmt(WRITER_LIMITS.assistantQuestionMaxChars)} characters; at most ${WRITER_LIMITS.assistantHistoryLimit} messages loaded.`,
 		`- Chat room: at most ${WRITER_LIMITS.chatHistoryLimit} messages loaded, each at most ${fmt(WRITER_LIMITS.chatMessageMaxChars)} characters.`,
 		'',
 	];

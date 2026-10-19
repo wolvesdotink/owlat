@@ -3,7 +3,7 @@
  * (which picks and repeats them) and the browser fixture (which builds and
  * mounts them), so both always mean the same workload by the same id.
  */
-import { ASSISTANT_ANSWER_MAX_CHARS, CHARS_PER_TOKEN, WRITER_LIMITS } from './workload';
+import { ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS, CHARS_PER_TOKEN, WRITER_LIMITS } from './workload';
 
 /** A model writing at a steady 50 tokens a second: 50 characters per 250 ms flush. */
 const TOKENS_PER_SECOND = 50;
@@ -54,11 +54,10 @@ export const SCENARIOS: readonly Scenario[] = [
 	{
 		id: 'assistant-stream/near-cap',
 		family: 'assistant-stream',
-		description:
-			'The last 12 s of an answer that ends at the 8,192-token output cap, under 20 settled turns, then teardown.',
+		description: `The last 12 s of an estimated near-cap answer: ${ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS.toLocaleString('en-US')} characters, the ${WRITER_LIMITS.assistantMaxOutputTokens.toLocaleString('en-US')}-token output cap at an assumed ${CHARS_PER_TOKEN} characters a token (never tokenized), under 20 settled turns, then teardown.`,
 		seed: 73,
 		historyTurns: 20,
-		startChars: ASSISTANT_ANSWER_MAX_CHARS - STREAM_CHARS,
+		startChars: ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS - STREAM_CHARS,
 		flushes: STREAM_FLUSHES,
 		tokensPerSecond: TOKENS_PER_SECOND,
 	},
