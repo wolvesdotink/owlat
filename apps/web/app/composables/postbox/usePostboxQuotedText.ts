@@ -17,6 +17,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { escapeHtml, escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
+import { applyPostboxImageConsent } from '~/utils/postboxRemoteResources';
 import { consumeResolvedPostboxMessageBody } from './postboxBodyResolver';
 
 // The quote-boundary splitters are shared with the Convex server (voice-profile
@@ -41,9 +42,17 @@ interface QuoteSource {
  * composer's contenteditable (an `el.innerHTML =` sink in the app origin), so
  * it MUST be run through the same sanitize-html allowlist here or an
  * `<img onerror=…>` payload would execute on Reply/Forward (stored DOM-XSS).
+ *
+ * The composer is not the reader's sandboxed frame, so the reader's image
+ * consent is applied here too: probable tracking pixels are always dropped,
+ * and every remote image is dropped when `loadImages` is false (the source
+ * would not load its images on open: suspicious mail, or "ask first").
  */
-function originalAsHtml(msg: QuoteSource): string {
-	if (msg.htmlBodyInline) return sanitizeHtml(msg.htmlBodyInline, POSTBOX_SANITIZE_CONFIG);
+function originalAsHtml(msg: QuoteSource, loadImages: boolean): string {
+	if (msg.htmlBodyInline) {
+		const sanitized = sanitizeHtml(msg.htmlBodyInline, POSTBOX_SANITIZE_CONFIG);
+		return applyPostboxImageConsent(sanitized, loadImages ? 'images' : 'blocked', null).html;
+	}
 	if (msg.textBodyInline) {
 		return `<pre style="white-space:pre-wrap;font-family:inherit;margin:0;">${escapeHtml(
 			msg.textBodyInline
@@ -62,12 +71,12 @@ function formatSender(msg: QuoteSource): string {
  * A Gmail-style quoted reply body: blank space for the reply on top, then an
  * attribution line and the original wrapped in a quote block.
  */
-export function buildQuotedReply(msg: QuoteSource): string {
+export function buildQuotedReply(msg: QuoteSource, loadImages: boolean): string {
 	const attribution = `On ${new Date(msg.receivedAt).toLocaleString()}, ${formatSender(msg)} wrote:`;
 	return (
 		`<br><br><div class="gmail_quote"><div>${attribution}</div>` +
 		`<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;color:#555;">` +
-		`${originalAsHtml(msg)}</blockquote></div>`
+		`${originalAsHtml(msg, loadImages)}</blockquote></div>`
 	);
 }
 
@@ -115,15 +124,16 @@ function replySubject(subject: string): string {
 export function buildReplySpec(
 	mailboxId: Id<'mailboxes'>,
 	target: ReplyQuoteTarget,
-	leadText = ''
+	opts: { leadText?: string; loadImages: boolean }
 ): ComposeSpec {
+	const leadText = opts.leadText ?? '';
 	const lead = leadText ? `<p>${escapeHtmlWithBreaks(leadText)}</p>` : '';
 	return {
 		mailboxId,
 		inReplyToMessageId: target._id as Id<'mailMessages'>,
 		prefillTo: [target.fromAddress],
 		prefillSubject: replySubject(target.subject),
-		prefillBodyHtml: `${lead}${buildQuotedReply(target)}`,
+		prefillBodyHtml: `${lead}${buildQuotedReply(target, opts.loadImages)}`,
 	};
 }
 
@@ -155,13 +165,14 @@ export function buildResendSpec(
 		mailboxId,
 		prefillTo: toAddresses,
 		prefillSubject: target.subject,
-		prefillBodyHtml: originalAsHtml(target),
+		// Our own sent mail: its images are ours to load.
+		prefillBodyHtml: originalAsHtml(target, true),
 		forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'>,
 	};
 }
 
 /** A "Forwarded message" header block followed by the original body. */
-export function buildForwardedBody(msg: QuoteSource): string {
+export function buildForwardedBody(msg: QuoteSource, loadImages: boolean): string {
 	const to = (msg.toAddresses ?? []).map(escapeHtml).join(', ');
 	const header =
 		`---------- Forwarded message ----------<br>` +
@@ -169,5 +180,5 @@ export function buildForwardedBody(msg: QuoteSource): string {
 		`Date: ${new Date(msg.receivedAt).toLocaleString()}<br>` +
 		`Subject: ${escapeHtml(msg.subject ?? '')}<br>` +
 		(to ? `To: ${to}<br>` : '');
-	return `<br><br><div class="gmail_quote">${header}<br>${originalAsHtml(msg)}</div>`;
+	return `<br><br><div class="gmail_quote">${header}<br>${originalAsHtml(msg, loadImages)}</div>`;
 }

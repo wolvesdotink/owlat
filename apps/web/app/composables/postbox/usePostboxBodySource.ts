@@ -89,9 +89,16 @@ export function usePostboxBodySource(message: () => PostboxBodySourceMessage) {
 	const waiting = computed(
 		() => bodyPending.value || (needsBodyFetch.value && !bodyFetchSettled.value && !bodyError.value)
 	);
-	/** The body content will not change any more (safe to memoise its render). */
+	/**
+	 * The body content will not change any more (safe to memoise its render).
+	 * A failed download is not final: the inline text standing in for it (or
+	 * "(empty message)") must not be cached, or a later successful fetch would
+	 * keep losing to the cached fallback.
+	 */
 	const contentFinal = computed(
-		() => !bodyPending.value && (!needsBodyFetch.value || bodyFetchSettled.value)
+		() =>
+			!bodyPending.value &&
+			(!needsBodyFetch.value || (bodyFetchSettled.value && bodyError.value === null))
 	);
 
 	const effectiveHtml = computed(() => message().htmlBodyInline ?? fetchedHtml.value ?? undefined);

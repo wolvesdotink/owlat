@@ -20,7 +20,7 @@ vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	return state.get(key);
 });
 vi.stubGlobal('useConvexQuery', () => ({ data: ownData, error: ownError }));
-vi.stubGlobal('usePostboxSettings', () => ({ replyDefault }));
+vi.stubGlobal('usePostboxSettings', () => ({ replyDefault, autoLoadImages: ref(true) }));
 vi.mock('@owlat/api', () => ({ api: { mail: { identities: { listForOwnedMailbox: {} } } } }));
 vi.mock('~/composables/postbox/postboxBodyResolver', () => ({
 	consumeResolvedPostboxMessageBody: async () => null,

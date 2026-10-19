@@ -45,7 +45,7 @@ export function useAnswerModeSession(opts: {
 	const ownAddresses = computed(
 		() => new Set(((ownQuery.data.value as string[] | undefined) ?? []).map(extractEmailAddress))
 	);
-	const { replyDefault } = usePostboxSettings();
+	const { replyDefault, autoLoadImages } = usePostboxSettings();
 	const pendingLead = useAnswerPendingLead();
 
 	const seed: ShallowRef<ReplyComposeSeed | null> = shallowRef(null);
@@ -57,6 +57,7 @@ export function useAnswerModeSession(opts: {
 		seed.value = await buildReplyComposeSeed(resolved, message, {
 			mailboxId: message.mailboxId as Id<'mailboxes'>,
 			ownAddresses: ownAddresses.value,
+			autoLoadImages: autoLoadImages.value,
 			leadText: pendingLead.take(message._id),
 		});
 	}

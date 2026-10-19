@@ -50,12 +50,17 @@ export function usePostboxCalmReader(opts: {
 	const detailsOpen = ref(false);
 	const sheetOpen = ref(false);
 	const asking = ref(false);
-	const latestImage = ref<ImageKind>('none');
+	/** Each expanded card's image banner state, by message id. */
+	const imageKinds = ref<Record<string, ImageKind>>({});
+	const latestImage = computed<ImageKind>(() => {
+		const id = opts.latest.value?._id;
+		return (id && imageKinds.value[id]) || 'none';
+	});
 	watch(opts.threadKey, () => {
 		detailsOpen.value = false;
 		sheetOpen.value = false;
 		asking.value = false;
-		latestImage.value = 'none';
+		imageKinds.value = {};
 	});
 
 	const { left } = useAnswerLeftDraft();
@@ -88,34 +93,31 @@ export function usePostboxCalmReader(opts: {
 		})
 	);
 
-	/**
-	 * Where the latest message's image banner renders: in place when it is the
-	 * notice, and for suspicious mail, whose images never load on their own, so
-	 * "Show images" must not hide in Details behind the danger notice.
-	 */
+	/** Where the latest message's image banner renders: in place only when it is the notice. */
 	const imageBannerTo = computed(() =>
-		notice.value === 'images' || latestImage.value === 'suspicious'
-			? null
-			: (opts.detailsEl.value ?? null)
+		notice.value === 'images' ? null : (opts.detailsEl.value ?? null)
 	);
 
 	/**
 	 * A card's part in the one-page chrome: the LATEST card's chips render in
 	 * Details; every card leaves the danger to the notice slot; image banners go
-	 * to Details except the latest one's while it is the notice.
+	 * to Details except the latest one's while it is the notice, and except on
+	 * suspicious mail: its images never load on their own, so its "Show images"
+	 * must stay beside the body, not in closed Details behind the danger notice.
 	 */
 	function cardOf(messageId: string) {
 		const isLatest = messageId === opts.latest.value?._id;
 		const details = opts.detailsEl.value ?? null;
+		const inPlace = imageKinds.value[messageId] === 'suspicious';
 		return {
 			detailsTo: isLatest ? details : null,
-			imageBannerTo: isLatest ? imageBannerTo.value : details,
+			imageBannerTo: inPlace ? null : isLatest ? imageBannerTo.value : details,
 			hideDanger: true,
 		};
 	}
 
 	function onImageState(messageId: string, kind: ImageKind) {
-		if (messageId === opts.latest.value?._id) latestImage.value = kind;
+		imageKinds.value = { ...imageKinds.value, [messageId]: kind };
 	}
 
 	const summary = computed(() => {

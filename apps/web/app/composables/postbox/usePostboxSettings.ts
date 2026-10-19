@@ -184,9 +184,13 @@ export function usePostboxSettings() {
 	// no sound, so the composer stays silent unless the user turns it on.
 	const sendSound = computed<boolean>(() => data.value?.isSendSoundOn ?? false);
 
-	// Remote images on open. Default ON: an unset preference loads images in
-	// mail that is not suspicious; the reader still asks for suspicious mail.
-	const autoLoadImages = computed<boolean>(() => data.value?.isAutoLoadImagesOn ?? true);
+	// Remote images on open. Default ON once the row is known: an unset
+	// preference loads images in mail that is not suspicious. Until the query
+	// answers (or when it fails) this is OFF, because a load cannot be taken
+	// back if the saved preference turns out to be "ask first".
+	const autoLoadImages = computed<boolean>(() =>
+		data.value === undefined ? false : (data.value?.isAutoLoadImagesOn ?? true)
+	);
 
 	// Undo-send window. An unset (or unknown) value resolves to 10s — the server
 	// default the composer gets by sending no `undoSendDelayMs` at all.

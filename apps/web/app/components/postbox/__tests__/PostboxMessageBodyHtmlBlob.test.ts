@@ -61,14 +61,14 @@ beforeEach(() => {
 
 const iconStub = { props: ['name'], template: '<span />' };
 
-function mountBody(props: Record<string, unknown> = {}) {
+function mountBody(props: Record<string, unknown> = {}, id?: string) {
 	// A fresh id per mount: the client-scoped body cache would otherwise answer
 	// the second test from the first one's download.
 	messageSequence += 1;
 	return mount(PostboxMessageBody, {
 		props: {
 			message: {
-				_id: `newsletter-${messageSequence}`,
+				_id: id ?? `newsletter-${messageSequence}`,
 				textBodyInline: 'https://example.com/tips?utm_source=x plain alternative',
 				htmlBodyStorageId: 'blob-html',
 			},
@@ -101,6 +101,19 @@ describe('PostboxMessageBody with an HTML blob beside inline text', () => {
 		await flushPromises();
 
 		expect(srcdocOf(w)).toContain('plain alternative');
+	});
+
+	it('does not cache the text fallback, so a later successful fetch shows the HTML', async () => {
+		action.mockRejectedValueOnce(new Error('offline'));
+		const failed = mountBody({}, 'reopened');
+		await flushPromises();
+		expect(srcdocOf(failed)).toContain('plain alternative');
+		failed.unmount();
+
+		const reopened = mountBody({}, 'reopened');
+		await flushPromises();
+		expect(srcdocOf(reopened)).toContain('Top camps');
+		expect(srcdocOf(reopened)).not.toContain('plain alternative');
 	});
 
 	it('loads remote images on open when the preference says so', async () => {

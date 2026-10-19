@@ -33,6 +33,7 @@ vi.stubGlobal('useRouter', () => ({
 	}),
 }));
 vi.stubGlobal('navigateTo', navigateTo);
+vi.stubGlobal('usePostboxSettings', () => ({ autoLoadImages: ref(true) }));
 // Two operations in declaration order: drafts.create, then drafts.update.
 let operationIndex = 0;
 vi.stubGlobal('useBackendOperation', () => {
@@ -47,12 +48,16 @@ vi.stubGlobal('useBackendOperation', () => {
 vi.mock('@owlat/api', () => ({ api: { mail: { drafts: { create: {}, update: {} } } } }));
 vi.mock('../usePostboxQuotedText', () => ({
 	resolveBodyFields: async (source: unknown) => source,
-	buildReplySpec: (mailboxId: string, target: { _id: string; fromAddress: string }, lead = '') => ({
+	buildReplySpec: (
+		mailboxId: string,
+		target: { _id: string; fromAddress: string },
+		opts: { leadText?: string }
+	) => ({
 		mailboxId,
 		inReplyToMessageId: target._id,
 		prefillTo: [target.fromAddress],
 		prefillSubject: 'Re: Hi',
-		prefillBodyHtml: `<p>${lead}</p><div class="gmail_quote">quote</div>`,
+		prefillBodyHtml: `<p>${opts.leadText ?? ''}</p><div class="gmail_quote">quote</div>`,
 	}),
 	buildForwardedBody: () => '',
 	buildResendSpec: (mailboxId: string, _t: unknown, to: string[]) => ({ mailboxId, prefillTo: to }),

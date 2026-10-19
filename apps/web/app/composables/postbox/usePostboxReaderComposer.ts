@@ -44,6 +44,7 @@ export function usePostboxReaderComposer(opts: {
 	const composeNav = usePostboxComposeNav();
 	const answerNav = useAnswerModeNav();
 	const pendingLead = useAnswerPendingLead();
+	const { autoLoadImages } = usePostboxSettings();
 
 	const createDraft = useBackendOperation(api.mail.drafts.create, {
 		label: () => t('shared.postbox.usePostboxCompose.createOperation'),
@@ -87,6 +88,7 @@ export function usePostboxReaderComposer(opts: {
 		const seed = await buildReplyComposeSeed('reply', replyTarget, {
 			mailboxId,
 			ownAddresses: ownAddresses.value,
+			autoLoadImages: autoLoadImages.value,
 			leadText: bodyText,
 		});
 		const created = await createDraft.run({
