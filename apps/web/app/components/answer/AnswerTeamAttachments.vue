@@ -10,6 +10,7 @@ import type {
 import { formatCompactFileSize } from '~/utils/formatters';
 import { useClickOutside } from '~/composables/useClickOutside';
 import { useEscapeToClose } from '~/composables/useEscapeToClose';
+import { useUploadQueueStatus } from '~/composables/postbox/useUploadQueueStatus';
 
 /**
  * The files on a Team inbox reply, under the editor in Answer mode: what is
@@ -103,12 +104,26 @@ function statusLine(attachment: TeamReplyAttachmentView): string {
 	return formatCompactFileSize(attachment.size);
 }
 
+const queueStatus = useUploadQueueStatus(() => props.uploads);
+
 const menuItem =
 	'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-bg-surface disabled:opacity-50';
 </script>
 
 <template>
 	<div class="space-y-2" data-testid="answer-team-attachments">
+		<!-- First child, so `space-y` spacing between the visible parts is
+		     unchanged. Always mounted, so the first "waiting" is read; only the
+		     queue count changes it (never byte progress). -->
+		<p
+			class="sr-only"
+			role="status"
+			aria-live="polite"
+			aria-atomic="true"
+			data-testid="answer-team-upload-queue-status"
+		>
+			{{ queueStatus }}
+		</p>
 		<InboxAttachSuggestion
 			v-if="suggestion && suggestion.candidates.length > 0"
 			:suggestions="suggestion"

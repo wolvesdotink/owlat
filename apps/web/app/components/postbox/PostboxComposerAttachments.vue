@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { UploadChip } from '~/composables/postbox/postboxAttachmentUploads';
 import type { AttachmentMeter } from '~/composables/postbox/postboxAttachmentMeter';
+import { useUploadQueueStatus } from '~/composables/postbox/useUploadQueueStatus';
+
+// Two roots: the parent's attributes (`inert` while the draft mirror is busy)
+// belong on the visible row, not on the queue status beside it.
+defineOptions({ inheritAttrs: false });
 
 /** A committed attachment (already uploaded, has a storageId). */
 interface ComposerAttachment {
@@ -41,11 +46,17 @@ const { t } = useI18n();
  * attachment a decision, so it stays hidden.
  */
 const offerShare = computed(() => shouldOfferShareLink(props.meter));
+
+const queueStatus = useUploadQueueStatus(() => props.uploads);
 </script>
 
 <template>
+	<!-- Always mounted, so the first "waiting" is read. Only the queue count
+	     changes it, never byte progress. -->
+	<p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ queueStatus }}</p>
 	<div
 		v-if="attachments.length > 0 || uploads.length > 0"
+		v-bind="$attrs"
 		class="px-3 py-2 border-t border-border-subtle flex flex-col gap-2"
 	>
 		<!-- The chips' icon buttons are 16px for a mouse; on touch

@@ -15545,7 +15545,9 @@
 				"tooLarge": "{filename} is too large (max {max} MB).",
 				"tooManyFiles": "You can attach up to {count} files.",
 				"totalTooLarge": "Attachments exceed the {max} MB total limit.",
-				"uploadFailed": "Couldn't upload {filename}."
+				"uploadFailed": "Couldn't upload {filename}.",
+				"uploadQueueEmpty": "No more files waiting to upload",
+				"uploadQueued": "{count} file waiting to upload | {count} files waiting to upload"
 			},
 			"usePostboxComposerKeys": {
 				"schedule": "Schedule send (Ctrl+Shift+Enter)",

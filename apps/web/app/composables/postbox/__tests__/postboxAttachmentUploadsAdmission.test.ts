@@ -193,6 +193,58 @@ describe('createAttachmentUploads admission', () => {
 		expect(h.peak()).toBe(1);
 	});
 
+	it('cancelling while the upload URLs are minted frees each slot at once, and only once', async () => {
+		const urls: Deferred<string | null>[] = [];
+		const generateUploadUrl = vi.fn(() => {
+			const d = deferred<string | null>();
+			urls.push(d);
+			return d.promise;
+		});
+		const h = harness({ generateUploadUrl });
+		h.uploader.addFiles(names(4));
+		await tick();
+		expect(urls).toHaveLength(3);
+		expect(h.statuses()[3]).toBe('f3.txt:queued');
+
+		// The URL requests take no signal and stay out; the cancels free the slots anyway.
+		for (const chip of h.uploader.uploads.value.slice(0, 3)) h.uploader.cancel(chip.id);
+		expect(h.statuses()).toEqual(['f3.txt:uploading']);
+		expect(urls).toHaveLength(4);
+
+		// The late URLs land: the cancelled runs stop without a second release.
+		for (const d of urls.slice(0, 3)) d.resolve('https://upload.owlat.example');
+		await tick();
+		expect(h.puts).toHaveLength(0);
+
+		// One slot is taken (f3), so three new files start two and queue one.
+		h.uploader.addFiles([makeFile('a.txt'), makeFile('b.txt'), makeFile('c.txt')]);
+		expect(h.statuses()).toEqual([
+			'f3.txt:uploading',
+			'a.txt:uploading',
+			'b.txt:uploading',
+			'c.txt:queued',
+		]);
+		expect(urls).toHaveLength(6);
+	});
+
+	it('cancelling during the upload frees the slot before the abort settles, and only once', async () => {
+		const h = harness({ maxActive: 1 });
+		h.uploader.addFiles(names(2));
+		await tick();
+		expect(h.puts).toHaveLength(1);
+
+		h.uploader.cancel(h.uploader.uploads.value[0]!.id);
+		// No await: the next file has its slot before the aborted request settles.
+		expect(h.statuses()).toEqual(['f1.txt:uploading']);
+
+		await tick(); // the abort rejects the first transfer; its run settles
+		expect(h.puts.map((p) => p.filename)).toEqual(['f0.txt', 'f1.txt']);
+		h.uploader.addFiles([makeFile('next.txt')]);
+		expect(h.statuses()).toEqual(['f1.txt:uploading', 'next.txt:queued']);
+		await tick();
+		expect(h.peak()).toBe(1);
+	});
+
 	it('holds the slot of a cancelled run until its attach settles', async () => {
 		const attachCall = deferred<boolean>();
 		const h = harness({ maxActive: 1, attach: vi.fn(() => attachCall.promise) });

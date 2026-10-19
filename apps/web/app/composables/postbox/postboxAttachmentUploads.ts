@@ -18,9 +18,12 @@
  * Each composer runs at most `MAX_ACTIVE_UPLOADS` transfers at once. Files
  * past that wait as `queued` chips and start in the order they were added as
  * slots free up; a queued chip that is cancelled is dropped before it mints an
- * upload URL. A slot is held from the start of a run until the run settles, so
- * a cancelled upload whose attach is still in flight keeps its slot until that
- * returns. The cap is per instance: two composers never share a queue.
+ * upload URL. A run holds its slot until it settles, or until it is cancelled
+ * before its attach began: the run is then stopped, so its slot goes to the
+ * next file at once, even while a step that takes no signal (minting the
+ * upload URL) is still out. A cancel during the attach keeps the slot until
+ * that run has undone it. The cap is per instance: two composers never share
+ * a queue.
  *
  * The transport is injected (generateUploadUrl / putFile / attach / detach) so
  * the state machine is unit-testable with a mocked transport and never imports
@@ -132,6 +135,9 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 	// Chip ids waiting for a slot, oldest first, and the number of runs holding one.
 	const queue: string[] = [];
 	let active = 0;
+	// Each slot-holding run's release, which frees the slot once however often it
+	// is called: by a cancel and again when the run settles.
+	const releases = new Map<string, () => void>();
 
 	const isUploading = computed(
 		() =>
@@ -153,16 +159,22 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 		if (queued >= 0) queue.splice(queued, 1);
 	}
 
-	/** Start queued chips while a slot is free; each run gives its slot back when it settles. */
+	/** Start queued chips while a slot is free; each run gives its slot back once. */
 	function pump() {
 		while (active < maxActive && queue.length > 0) {
 			const id = queue.shift()!;
 			if (!files.has(id)) continue;
 			active += 1;
-			void run(id).finally(() => {
+			let held = true;
+			const release = () => {
+				if (!held) return;
+				held = false;
+				if (releases.get(id) === release) releases.delete(id);
 				active -= 1;
 				pump();
-			});
+			};
+			releases.set(id, release);
+			void run(id).finally(release);
 		}
 	}
 
@@ -284,6 +296,9 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			controller.abort();
 		}
 		if (uploads.value.some((c) => c.id === id)) forget(id);
+		// Cancelled before its attach began, the run will never attach: its slot
+		// is free now, not when a step that takes no signal comes back.
+		if (!attaching.has(id)) releases.get(id)?.();
 	}
 
 	/** Retry a failed upload with the original File, behind any queued files. */

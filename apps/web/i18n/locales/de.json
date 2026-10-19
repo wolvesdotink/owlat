@@ -15545,7 +15545,9 @@
 				"tooLarge": "{filename} ist zu groß (max. {max} MB).",
 				"tooManyFiles": "Du kannst bis zu {count} Dateien anhängen.",
 				"totalTooLarge": "Die Anhänge überschreiten das Gesamtlimit von {max} MB.",
-				"uploadFailed": "{filename} konnte nicht hochgeladen werden."
+				"uploadFailed": "{filename} konnte nicht hochgeladen werden.",
+				"uploadQueueEmpty": "Keine Dateien warten mehr auf den Upload",
+				"uploadQueued": "{count} Datei wartet auf den Upload | {count} Dateien warten auf den Upload"
 			},
 			"usePostboxComposerKeys": {
 				"schedule": "Senden planen (Strg+Umschalt+Enter)",
