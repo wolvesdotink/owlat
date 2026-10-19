@@ -40,6 +40,18 @@ const rect = ({ top, left }: Box, width: number, height: number) =>
 
 const isMenu = (el: Element) => el.getAttribute('role') === 'menu';
 
+/**
+ * Where a browser reports a direct child of the menu: by default the children
+ * share the menu's height, stacked. A test can report the boxes a browser
+ * gives in a layout that summing children gets wrong.
+ */
+type ChildBox = (child: HTMLElement, menu: HTMLElement) => { top: number; height: number };
+const stacked: ChildBox = (child, menu) => {
+	const share = menuHeight / menu.children.length;
+	return { top: Array.from(menu.children).indexOf(child) * share, height: share };
+};
+let childBox: ChildBox = stacked;
+
 beforeEach(() => {
 	vi.spyOn(window, 'innerWidth', 'get').mockImplementation(() => viewport.width);
 	vi.spyOn(window, 'innerHeight', 'get').mockImplementation(() => viewport.height);
@@ -53,7 +65,8 @@ beforeEach(() => {
 	});
 	// A laid-out box: a `max-height` caps the menu's border-box height, and, as
 	// in a browser, lifting the cap leaves nothing to scroll, so the menu's
-	// scroll position is lost. The items share the menu's height, stacked.
+	// scroll position is lost. `menuHeight` is the height the browser would lay
+	// the uncapped menu out at.
 	vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
 		this: HTMLElement
 	) {
@@ -63,14 +76,13 @@ beforeEach(() => {
 			return Number.isNaN(cap) ? menuHeight : Math.min(menuHeight, cap);
 		}
 		const parent = this.parentElement;
-		return parent && isMenu(parent) ? menuHeight / parent.children.length : 0;
+		return parent && isMenu(parent) ? childBox(this, parent).height : 0;
 	});
 	vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (
 		this: HTMLElement
 	) {
 		const parent = this.parentElement;
-		if (!parent || !isMenu(parent)) return 0;
-		return (Array.from(parent.children).indexOf(this) * menuHeight) / parent.children.length;
+		return parent && isMenu(parent) ? childBox(this, parent).top : 0;
 	});
 	vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (
 		this: HTMLElement
@@ -81,20 +93,23 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	childBox = stacked;
 	scrollY = 0;
 	viewport = { width: 1280, height: 720 };
 });
 
-async function openMenu(position: 'left' | 'right', items = 1) {
+const itemsHtml = (count: number) =>
+	Array.from({ length: count }, (_, i) => `<button role="menuitem">Action ${i + 1}</button>`).join(
+		''
+	);
+
+async function openMenu(position: 'left' | 'right', items: number | string = 1) {
 	const wrapper = mount(DropdownMenu, {
 		attachTo: document.body,
 		props: { position },
 		slots: {
 			trigger: '<button id="menu-trigger">More actions</button>',
-			default: Array.from(
-				{ length: items },
-				(_, i) => `<button role="menuitem">Action ${i + 1}</button>`
-			).join(''),
+			default: typeof items === 'number' ? itemsHtml(items) : items,
 		},
 	});
 	await wrapper.setProps({ open: true });
@@ -320,6 +335,85 @@ describe('DropdownMenu placement', () => {
 			wrapper.unmount();
 			globalThis.ResizeObserver = original;
 		}
+	});
+
+	describe('measures the menu as laid out, not by adding up its children', () => {
+		it('counts items inside a display: contents wrapper', async () => {
+			// Twenty 50 px items and 10 px of padding: 1010 px. The wrapper itself
+			// has no box, so a browser reports it at 0 px.
+			childBox = () => ({ top: 0, height: 0 });
+			trigger = { top: 100, left: 600 };
+			menuHeight = 1010;
+			const { wrapper, menu } = await openMenu(
+				'right',
+				`<div style="display: contents">${itemsHtml(20)}</div>`
+			);
+			try {
+				expect(menu.style.top).toBe('136px');
+				expect(menu.style.maxHeight).toBe('576px');
+				expect(menu.classList.contains('overflow-y-auto')).toBe(true);
+				expectInsideWindow(layout(menu));
+			} finally {
+				wrapper.unmount();
+			}
+		});
+
+		it('ignores the margin of a hidden child', async () => {
+			// A 60 px menu with 76 px of room below the trigger stays below, however
+			// large the margin of a child that is not displayed.
+			childBox = (child) =>
+				child.style.display === 'none' ? { top: 0, height: 0 } : { top: 0, height: 60 };
+			trigger = { top: 720 - 8 - 76 - 4 - TRIGGER, left: 600 };
+			menuHeight = 60;
+			const { wrapper, menu } = await openMenu(
+				'right',
+				`${itemsHtml(1)}<div style="display: none; margin-bottom: 80px"></div>`
+			);
+			try {
+				expect(menu.style.top).toBe(`${720 - 8 - 76}px`);
+				expect(menu.style.bottom).toBe('');
+				expect(menu.classList.contains('overflow-y-auto')).toBe(false);
+			} finally {
+				wrapper.unmount();
+			}
+		});
+
+		it('counts the margins between items', async () => {
+			// Four 60 px items fit the 290 px below; with their 15 px margins the
+			// menu is 300 px, so it opens above.
+			childBox = (child, menu) => ({
+				top: Array.from(menu.children).indexOf(child) * 75,
+				height: 60,
+			});
+			trigger = { top: 720 - 8 - 290 - 4 - TRIGGER, left: 600 };
+			menuHeight = 300;
+			const { wrapper, menu } = await openMenu(
+				'right',
+				Array.from(
+					{ length: 4 },
+					(_, i) => `<button role="menuitem" style="margin-bottom: 15px">Action ${i + 1}</button>`
+				).join('')
+			);
+			try {
+				expect(menu.style.top).toBe('');
+				expect(menu.style.bottom).toBe(`${8 + 290 + 4 + TRIGGER + 4}px`);
+				expect(menu.classList.contains('overflow-y-auto')).toBe(false);
+				expectInsideWindow(layout(menu));
+			} finally {
+				wrapper.unmount();
+			}
+		});
+
+		it('measures a copy, leaving nothing behind in the page', async () => {
+			trigger = { top: 100, left: 600 };
+			menuHeight = 300;
+			const { wrapper } = await openMenu('right', 3);
+			try {
+				expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
+			} finally {
+				wrapper.unmount();
+			}
+		});
 	});
 
 	it('places the menu again when the window resizes', async () => {

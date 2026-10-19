@@ -53,60 +53,73 @@ watch(
 
 /**
  * The menu is teleported to <body> and fixed to the trigger's box, in viewport
- * coordinates. It is measured once rendered, and again whenever its size
- * changes: below the trigger when it fits, above when there is more room there,
- * capped to the room it has (scrolling inside) otherwise, and kept inside the
- * window on every edge.
+ * coordinates. It is measured once rendered, and again whenever its size can
+ * have changed: below the trigger when it fits, above when there is more room
+ * there, capped to the room it has (scrolling inside) otherwise, and kept
+ * inside the window on every edge.
  */
 const MENU_GAP = 4;
 const MENU_WIDTH = 176; // w-44, until the menu has rendered
 
 /**
- * The menu's full border-box height, read from where its children are laid out
- * (their `offsetTop` counts from the menu's padding edge, which it is the offset
- * parent of as a fixed box). Neither the cap an earlier placement set nor the
- * menu's scroll position changes these, and nothing on the live menu is touched:
- * lifting its `max-height` to measure would throw away where the user had
- * scrolled it to. (`scrollHeight` is no substitute: a capped box that is not
- * yet a scroll box leaves its bottom padding out, and it never has the border.)
+ * The menu's full border-box height, measured on an invisible copy with no
+ * height cap, so whatever the browser lays out (wrappers, hidden children,
+ * gaps, margins) counts exactly as it would, and the live menu is never
+ * touched: lifting its own cap would throw away where the user had scrolled it
+ * to. Its `scrollHeight` is no substitute: while a cap clips it before it has
+ * become a scroll box, the browser leaves the bottom padding out.
  */
-function naturalHeight(menu: HTMLElement): number {
-	const style = getComputedStyle(menu);
-	const px = (value: string) => Number.parseFloat(value) || 0;
-	let contentBottom = px(style.paddingTop);
-	for (const child of Array.from(menu.children)) {
-		if (!(child instanceof HTMLElement)) continue;
-		const marginBottom = px(getComputedStyle(child).marginBottom);
-		contentBottom = Math.max(contentBottom, child.offsetTop + child.offsetHeight + marginBottom);
-	}
-	return (
-		px(style.borderTopWidth) + contentBottom + px(style.paddingBottom) + px(style.borderBottomWidth)
-	);
+function measureMenu(menu: HTMLElement): number {
+	const copy = menu.cloneNode(true) as HTMLElement;
+	for (const el of copy.querySelectorAll('[id]')) el.removeAttribute('id');
+	copy.setAttribute('aria-hidden', 'true');
+	copy.inert = true;
+	Object.assign(copy.style, {
+		top: '0px',
+		bottom: 'auto',
+		left: '0px',
+		maxHeight: 'none',
+		visibility: 'hidden',
+		pointerEvents: 'none',
+	});
+	if (menu.offsetWidth) copy.style.width = `${menu.offsetWidth}px`;
+	document.body.appendChild(copy);
+	const height = copy.offsetHeight;
+	copy.remove();
+	return height;
 }
 
-const updatePosition = () => {
+// The last measured height. A scroll only moves the trigger, so it re-places
+// the menu with this; opening, the menu's own resize and a window resize
+// measure again first.
+let menuHeight = 0;
+
+const placeMenu = () => {
 	const trigger = triggerRef.value;
 	if (!trigger) return;
-	const menu = menuRef.value;
-	// 0 before the first render; placed again once the menu has a height.
-	const panelHeight = menu ? naturalHeight(menu) : 0;
 	const placed = placeAnchoredPanel({
 		anchor: trigger.getBoundingClientRect(),
-		panelHeight,
-		panelWidth: menu?.offsetWidth || MENU_WIDTH,
+		panelHeight: menuHeight,
+		panelWidth: menuRef.value?.offsetWidth || MENU_WIDTH,
 		viewport: { width: window.innerWidth, height: window.innerHeight },
 		gap: MENU_GAP,
 		align: props.position === 'right' ? 'end' : 'start',
 	});
 	openSide.value = placed.side;
 	menuStyle.value = placed.style;
-	menuScrolls.value = panelHeight > Number.parseFloat(placed.style.maxHeight);
+	menuScrolls.value = menuHeight > Number.parseFloat(placed.style.maxHeight);
+};
+
+const measureAndPlaceMenu = () => {
+	// 0 before the first render; measured again once the menu has rendered.
+	menuHeight = menuRef.value ? measureMenu(menuRef.value) : 0;
+	placeMenu();
 };
 
 // Scrolling the menu itself does not move the trigger it is anchored to.
 const handleScroll = (event: Event) => {
 	if (menuRef.value && event.target instanceof Node && menuRef.value.contains(event.target)) return;
-	updatePosition();
+	placeMenu();
 };
 
 // Content that changes size while open (items that load late) moves the edge
@@ -116,7 +129,7 @@ watch(menuRef, (menu) => {
 	menuObserver?.disconnect();
 	menuObserver = null;
 	if (!menu || typeof ResizeObserver === 'undefined') return;
-	menuObserver = new ResizeObserver(() => updatePosition());
+	menuObserver = new ResizeObserver(() => measureAndPlaceMenu());
 	menuObserver.observe(menu);
 });
 
@@ -187,7 +200,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 // Toggle dropdown
 const toggle = () => {
 	if (!isOpen.value) {
-		updatePosition();
+		measureAndPlaceMenu();
 	}
 	isOpen.value = !isOpen.value;
 };
@@ -200,7 +213,7 @@ const close = () => {
 // Watch for open changes to update position
 watch(isOpen, (newValue) => {
 	if (newValue) {
-		nextTick(updatePosition);
+		nextTick(measureAndPlaceMenu);
 	}
 });
 
@@ -209,7 +222,7 @@ watch(isOpen, async (open) => {
 		document.addEventListener('click', handleClickOutside);
 		document.addEventListener('keydown', handleKeydown);
 		window.addEventListener('scroll', handleScroll, true);
-		window.addEventListener('resize', updatePosition);
+		window.addEventListener('resize', measureAndPlaceMenu);
 
 		// Auto-focus first menu item when opened via keyboard
 		await nextTick();
@@ -219,7 +232,7 @@ watch(isOpen, async (open) => {
 		document.removeEventListener('click', handleClickOutside);
 		document.removeEventListener('keydown', handleKeydown);
 		window.removeEventListener('scroll', handleScroll, true);
-		window.removeEventListener('resize', updatePosition);
+		window.removeEventListener('resize', measureAndPlaceMenu);
 	}
 });
 
@@ -228,7 +241,7 @@ onUnmounted(() => {
 	document.removeEventListener('click', handleClickOutside);
 	document.removeEventListener('keydown', handleKeydown);
 	window.removeEventListener('scroll', handleScroll, true);
-	window.removeEventListener('resize', updatePosition);
+	window.removeEventListener('resize', measureAndPlaceMenu);
 });
 
 // Provide close function to child items
