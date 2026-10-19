@@ -16,7 +16,7 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
-const SWATCH = '[data-testid="workspace-accent-swatch"]';
+const SWATCH = '[data-testid="workspace-swatch"]';
 
 function render(modelValue = WORKSPACE_ACCENT_OPTIONS[2].value) {
 	return mount(WorkspaceAccentPicker, {

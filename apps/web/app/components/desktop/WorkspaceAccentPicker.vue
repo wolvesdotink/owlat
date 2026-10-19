@@ -38,7 +38,7 @@ const { t } = useI18n();
 			:title="t(option.label)"
 			:aria-label="t('desktop.settings.workspaces.accentOption', { accent: t(option.label) })"
 			:aria-pressed="modelValue === option.value"
-			data-testid="workspace-accent-swatch"
+			data-testid="workspace-swatch"
 			@click="emit('update:modelValue', option.value)"
 		>
 			<span
