@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { useFileVersionHistory } from '~/composables/useFileVersionHistory';
 
 const { t } = useI18n();
 
@@ -31,10 +32,14 @@ const {
 	fileId: fileId.value,
 }));
 
-// Version history
-const { data: versions } = useConvexQuery(api.semanticFiles.getVersionHistory, () => ({
-	fileId: fileId.value,
-}));
+// Version history, a page at a time
+const {
+	versions,
+	hasOlder: hasOlderVersions,
+	isLoadingOlder: isLoadingOlderVersions,
+	loadOlderFailed: loadOlderVersionsFailed,
+	loadOlder: loadOlderVersions,
+} = useFileVersionHistory(() => fileId.value);
 
 // Mutations
 const { run: updateFile } = useBackendOperation(api.semanticFiles.update, {
@@ -402,7 +407,7 @@ const sourceLabel = computed(() => {
 									t('dashboard.files.detail.versionHistory')
 								}}</span>
 								<span v-if="versions" class="text-xs text-text-tertiary"
-									>({{ versions.length }})</span
+									>({{ versions.length }}{{ hasOlderVersions ? '+' : '' }})</span
 								>
 							</div>
 							<Icon
@@ -412,7 +417,14 @@ const sourceLabel = computed(() => {
 							/>
 						</button>
 						<div v-if="showVersions" class="px-5 pb-4">
-							<FilesVersionHistory :versions="versions || []" :current-version-id="file._id" />
+							<FilesVersionHistory
+								:versions="versions || []"
+								:current-version-id="file._id"
+								:has-older="hasOlderVersions"
+								:loading-older="isLoadingOlderVersions"
+								:load-older-failed="loadOlderVersionsFailed"
+								@load-older="loadOlderVersions"
+							/>
 						</div>
 					</div>
 				</div>

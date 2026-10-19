@@ -3951,7 +3951,9 @@
 			"versionHistory": {
 				"current": "Aktuell",
 				"download": "Diese Version herunterladen",
-				"empty": "Keine früheren Versionen."
+				"empty": "Keine früheren Versionen.",
+				"olderFailed": "Ältere Versionen konnten nicht geladen werden. Versuch es erneut.",
+				"showOlder": "Ältere Versionen anzeigen"
 			}
 		},
 		"forms": {
