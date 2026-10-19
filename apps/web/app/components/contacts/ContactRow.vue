@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
+import { contactPrimaryIdentity } from '~/utils/contactIdentity';
 
 /**
  * One row of the audience contacts table.
@@ -32,14 +33,9 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const { showToast } = useToast();
 
-// Who the selection box names: a contact without an email is still named (its
-// name, then a localized fallback), never a bare "Select ".
-const selectionName = computed(
-	() =>
-		props.contact.email ||
-		[props.contact.firstName, props.contact.lastName].filter(Boolean).join(' ') ||
-		t('dashboard.audience.contacts.index.contactWithoutEmail')
-);
+// What the row shows and announces for the contact: its email, else its name,
+// else "Unnamed contact". The email is optional, so this is never left blank.
+const identity = computed(() => contactPrimaryIdentity(props.contact, t));
 
 async function copyEmail(email: string) {
 	try {
@@ -100,9 +96,7 @@ function menuItems(): ContextMenuItem[] {
 				     stays put. Its click (or Space) stops here and never opens the row. -->
 				<UiCheckbox
 					:model-value="selected"
-					:aria-label="
-						t('dashboard.audience.contacts.index.selectContact', { email: selectionName })
-					"
+					:aria-label="t('dashboard.audience.contacts.index.selectContact', { email: identity })"
 					@update:model-value="emit('toggle-select')"
 					@click.stop
 				/>

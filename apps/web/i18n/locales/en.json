@@ -9961,7 +9961,6 @@
 					},
 					"clearSearch": "Clear search",
 					"clearSelection": "Clear selection",
-					"contactWithoutEmail": "Contact without email",
 					"contextMenu": {
 						"copyEmail": "Copy email address",
 						"deselect": "Deselect",
@@ -10026,7 +10025,8 @@
 						"created": "Contact {email} created successfully",
 						"emailCopied": "Email address copied",
 						"imported": "Successfully processed {count} contact | Successfully processed {count} contacts"
-					}
+					},
+					"unnamedContact": "Unnamed contact"
 				}
 			},
 			"segments": {

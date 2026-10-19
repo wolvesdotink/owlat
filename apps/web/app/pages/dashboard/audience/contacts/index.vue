@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { languageSelectOptions } from '~/data/languageOptions';
 import { isValidEmail } from '@owlat/shared';
 import type { ImportResults } from '~/composables/useCsvImport';
+import { contactPrimaryIdentity } from '~/utils/contactIdentity';
 
 const { t } = useI18n();
 
@@ -679,10 +680,7 @@ onUnmounted(() => {
 									:model-value="bulkSelection.selectedIds.value.has(contact._id)"
 									:aria-label="
 										t('dashboard.audience.contacts.index.selectContact', {
-											email:
-												contact.email ||
-												contactName(contact) ||
-												t('dashboard.audience.contacts.index.contactWithoutEmail'),
+											email: contactPrimaryIdentity(contact, t),
 										})
 									"
 									@update:model-value="toggleContactSelection(contact._id)"
@@ -902,6 +900,12 @@ onUnmounted(() => {
 .contact-select {
 	position: relative;
 	z-index: 10;
+}
+
+/* No text sits beside this box, so drop UiCheckbox's text-baseline nudge: the
+ * label is then exactly the box and the hit area centres on it. */
+.contact-select :deep(input) {
+	margin-top: 0;
 }
 
 .contact-select::after {

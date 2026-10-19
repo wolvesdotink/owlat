@@ -199,7 +199,7 @@ describe('audience contacts table', () => {
 		);
 		const wrapper = mountPage();
 		expect(wrapper.find(box('Select Grace Hopper')).exists()).toBe(true);
-		expect(wrapper.find(box('Select Contact without email')).exists()).toBe(true);
+		expect(wrapper.find(box('Select Unnamed contact')).exists()).toBe(true);
 		wrapper.unmount();
 	});
 });
