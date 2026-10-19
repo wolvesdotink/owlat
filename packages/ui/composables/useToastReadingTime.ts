@@ -1,4 +1,4 @@
-import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue';
+import { effectScope, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue';
 
 /**
  * Reading time for ordinary notification toasts.
@@ -39,14 +39,25 @@ type CardHold = 'hover' | 'focus';
 interface ReadingBudget {
 	/** Reading time still owed while the budget is paused, in ms. */
 	remainingMs: number;
-	/** When the running stretch began; `null` while paused. */
+	/** When the running stretch began on the monotonic clock; `null` while paused. */
 	runningSince: number | null;
 	timer: ReturnType<typeof setTimeout> | undefined;
 	holds: Set<CardHold>;
 	onExpire: () => void;
+	/** Stops watching whether the toast is still listed. */
+	stopWatching: () => void;
 }
 
 const budgets = new Map<string, ReadingBudget>();
+
+/**
+ * Elapsed reading time is measured on the monotonic clock: a wall-clock jump
+ * (NTP correction, the user changing the time, a laptop waking up) must not
+ * shorten or stretch what is left.
+ */
+function now(): number {
+	return performance.now();
+}
 
 /** The page can be read: the document is visible and its window has focus. */
 let pageReadable = true;
@@ -61,22 +72,29 @@ function readPageReadable(): boolean {
 function sync(id: string, budget: ReadingBudget): void {
 	const shouldRun = pageReadable && budget.holds.size === 0;
 	if (shouldRun && budget.runningSince === null) {
-		budget.runningSince = Date.now();
+		budget.runningSince = now();
 		budget.timer = setTimeout(() => expire(id), budget.remainingMs);
 	} else if (!shouldRun && budget.runningSince !== null) {
-		budget.remainingMs = Math.max(0, budget.remainingMs - (Date.now() - budget.runningSince));
+		budget.remainingMs = Math.max(0, budget.remainingMs - (now() - budget.runningSince));
 		budget.runningSince = null;
 		clearTimeout(budget.timer);
 		budget.timer = undefined;
 	}
 }
 
-function expire(id: string): void {
+/** Drop the budget for good: no timer, no list watcher, no page listeners once none is left. */
+function discard(id: string): ReadingBudget | undefined {
 	const budget = budgets.get(id);
-	if (!budget) return;
+	if (!budget) return undefined;
 	budgets.delete(id);
+	clearTimeout(budget.timer);
+	budget.stopWatching();
 	if (budgets.size === 0) unwatchPage();
-	budget.onExpire();
+	return budget;
+}
+
+function expire(id: string): void {
+	discard(id)?.onExpire();
 }
 
 function onPageChange(): void {
@@ -105,19 +123,40 @@ function unwatchPage(): void {
 /**
  * Give toast `id` a reading-time budget of `durationMs`, calling `onExpire`
  * once it has been readable that long. A non-positive or non-finite duration
- * is a sticky toast: no budget, nothing expires. Expiring a toast that was
- * already dismissed is the caller's no-op.
+ * is a sticky toast: no budget, nothing expires.
+ *
+ * `isListed` reports whether the toast is still in the stack. The moment it
+ * is not (closed, cleared, removed before its card ever rendered) the budget
+ * is dropped, so a dismissed toast leaves no timer or page listener behind.
  */
-export function startToastReadingTime(id: string, durationMs: number, onExpire: () => void): void {
+export function startToastReadingTime(
+	id: string,
+	durationMs: number,
+	onExpire: () => void,
+	isListed: () => boolean
+): void {
 	if (!(Number.isFinite(durationMs) && durationMs > 0)) return;
 	watchPage();
 	pageReadable = readPageReadable();
+	// Detached, so a toast shown during some component's setup is not left
+	// unwatched when that component unmounts.
+	const scope = effectScope(true);
+	scope.run(() =>
+		watch(
+			isListed,
+			(listed) => {
+				if (!listed) discard(id);
+			},
+			{ flush: 'sync' }
+		)
+	);
 	const budget: ReadingBudget = {
 		remainingMs: durationMs,
 		runningSince: null,
 		timer: undefined,
 		holds: new Set(),
 		onExpire,
+		stopWatching: () => scope.stop(),
 	};
 	budgets.set(id, budget);
 	sync(id, budget);

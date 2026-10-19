@@ -61,6 +61,29 @@ function unhover(el: HTMLElement, pointerType = 'mouse') {
 
 const undo = () => ({ label: 'Undo', onAction: vi.fn() });
 
+/**
+ * How many page listeners (visibilitychange on the document, blur and focus on
+ * the window) are attached right now, counted from the add/remove calls made
+ * since `countPageListeners` was set up.
+ */
+function countPageListeners(): () => number {
+	const events = new Set(['visibilitychange', 'blur', 'focus']);
+	let active = 0;
+	for (const target of [document, window]) {
+		const add = target.addEventListener.bind(target);
+		const remove = target.removeEventListener.bind(target);
+		vi.spyOn(target, 'addEventListener').mockImplementation((type, ...rest) => {
+			if (events.has(type)) active++;
+			add(type, ...rest);
+		});
+		vi.spyOn(target, 'removeEventListener').mockImplementation((type, ...rest) => {
+			if (events.has(type)) active--;
+			remove(type, ...rest);
+		});
+	}
+	return () => active;
+}
+
 beforeEach(() => {
 	vi.useFakeTimers();
 	hidden = false;
@@ -74,11 +97,12 @@ afterEach(() => {
 	mounted?.unmount();
 	mounted = null;
 	useToast().clearToasts();
-	// Let every budget left over from a dismissed toast run out, so the next
-	// test starts with no budgets and no page listeners.
+	// clearToasts drops every budget; running the clock out is a backstop so a
+	// test that breaks that cannot leak a budget into the next one.
 	setHidden(false);
 	setWindowFocused(true);
 	vi.runAllTimers();
+	vi.restoreAllMocks();
 	delete (document as { hidden?: boolean }).hidden;
 	delete (document as { hasFocus?: () => boolean }).hasFocus;
 	vi.useRealTimers();
@@ -231,12 +255,90 @@ describe('ordinary toast reading time', () => {
 		expect(messages()).toEqual(['Stay put', 'Forever']);
 	});
 
+	it('measures on the monotonic clock: a forward wall-clock jump does not cut it short', () => {
+		useToast().showToast('Saved', 'success', { durationMs: 3000 });
+		vi.advanceTimersByTime(1000);
+		vi.setSystemTime(Date.now() + 60_000);
+		setHidden(true);
+		setHidden(false);
+		vi.advanceTimersByTime(1999);
+		expect(messages()).toEqual(['Saved']);
+		vi.advanceTimersByTime(1);
+		expect(messages()).toEqual([]);
+	});
+
+	it('measures on the monotonic clock: a backward wall-clock jump does not stretch it', () => {
+		useToast().showToast('Saved', 'success', { durationMs: 3000 });
+		vi.advanceTimersByTime(1000);
+		vi.setSystemTime(Date.now() - 60_000);
+		setHidden(true);
+		setHidden(false);
+		vi.advanceTimersByTime(1999);
+		expect(messages()).toEqual(['Saved']);
+		vi.advanceTimersByTime(1);
+		expect(messages()).toEqual([]);
+	});
+
 	it('stops listening to the page once no budget is left', () => {
 		const remove = vi.spyOn(document, 'removeEventListener');
 		useToast().showToast('Saved', 'success', { durationMs: 1000 });
 		vi.advanceTimersByTime(1000);
 		expect(remove).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
 		remove.mockRestore();
+	});
+});
+
+describe('a dismissed ordinary toast leaves nothing behind', () => {
+	it('drops every budget and page listener when cleared while the page is hidden', () => {
+		const listeners = countPageListeners();
+		const onDismiss = vi.fn();
+		useToast().showToast('Saved', 'success', { onDismiss });
+		useToast().showToast('Heads up', 'info', { onDismiss });
+		expect(listeners()).toBe(3);
+
+		setHidden(true);
+		useToast().clearToasts();
+		expect(listeners()).toBe(0);
+		expect(vi.getTimerCount()).toBe(0);
+		expect(onDismiss).toHaveBeenCalledTimes(2);
+
+		setHidden(false);
+		vi.advanceTimersByTime(60_000);
+		expect(onDismiss).toHaveBeenCalledTimes(2);
+	});
+
+	it('cancels a running budget when the toast is closed', () => {
+		const listeners = countPageListeners();
+		const { showToast, removeToast } = useToast();
+		const id = showToast('Saved', 'success', { durationMs: 3000 });
+		expect(vi.getTimerCount()).toBe(1);
+
+		removeToast(id);
+		expect(vi.getTimerCount()).toBe(0);
+		expect(listeners()).toBe(0);
+	});
+
+	it('cancels a budget whose toast is removed before its card renders', async () => {
+		await mountStack();
+		const listeners = countPageListeners();
+		const { showToast, removeToast } = useToast();
+		removeToast(showToast('Saved', 'success', { durationMs: 3000 }));
+		await nextTick();
+		expect(document.querySelectorAll('[aria-live] > div')).toHaveLength(0);
+		expect(vi.getTimerCount()).toBe(0);
+		expect(listeners()).toBe(0);
+	});
+
+	it('keeps the budget of a toast still listed when the stack unmounts', async () => {
+		await mountStack();
+		useToast().showToast('Saved', 'success', { durationMs: 3000 });
+		await nextTick();
+		mounted?.unmount();
+		mounted = null;
+		vi.advanceTimersByTime(2999);
+		expect(messages()).toEqual(['Saved']);
+		vi.advanceTimersByTime(1);
+		expect(messages()).toEqual([]);
 	});
 });
 

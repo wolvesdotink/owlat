@@ -95,8 +95,11 @@ export function useToast() {
 		// one-shot timer below sees a sticky toast. A toast with an action keeps
 		// that timer: pausing it would stretch the action's window.
 		if (isReadingTimeToast(options)) {
-			startToastReadingTime(id, options?.durationMs ?? DEFAULT_DURATIONS_MS[type], () =>
-				removeToast(id)
+			startToastReadingTime(
+				id,
+				options?.durationMs ?? DEFAULT_DURATIONS_MS[type],
+				() => removeToast(id),
+				() => toasts.value.some((t) => t.id === id)
 			);
 			options = { ...options, durationMs: 0 };
 		}
