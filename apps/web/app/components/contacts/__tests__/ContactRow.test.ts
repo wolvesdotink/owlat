@@ -134,13 +134,24 @@ describe('ContactsContactRow', () => {
 
 	// Plan OW-037: the email is optional, so the row falls back to the name,
 	// then to "Unnamed contact", in both its visible cell and its checkbox name.
+	// Under the "Email" header, a fallback cell also says "No email".
 	it.each([
-		['an email', {}, 'ada@example.com'],
-		['a name but no email', { email: undefined, lastName: 'Lovelace' }, 'Ada Lovelace'],
-		['no email and no name', { email: undefined, firstName: null }, 'Unnamed contact'],
-	])('labels a contact with %s by its primary identity', (_case, override, label) => {
+		['an email', {}, 'ada@example.com', 'ada@example.com'],
+		[
+			'a name but no email',
+			{ email: undefined, lastName: 'Lovelace' },
+			'Ada Lovelace',
+			'Ada Lovelace No email',
+		],
+		[
+			'no email and no name',
+			{ email: undefined, firstName: null },
+			'Unnamed contact',
+			'Unnamed contact No email',
+		],
+	])('labels a contact with %s by its primary identity', (_case, override, label, cell) => {
 		const { host } = mountRow({ contact: override });
-		expect(host.findAll('td')[1]?.text()).toBe(label);
+		expect(host.findAll('td')[1]?.text()).toBe(cell);
 		expect(host.find(`button[aria-label="Select ${label}"]`).exists()).toBe(true);
 		host.unmount();
 

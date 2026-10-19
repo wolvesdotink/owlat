@@ -6,9 +6,10 @@
  * `contacts.email` is optional, so a row used to render a blank primary cell
  * and a checkbox named "Select " for such a contact. The page now shows the
  * email, else the full name, else "Unnamed contact", and names the checkbox
- * after the same identity. The card list adds the name as a second line only
- * when the email is the first one, so a named email-less card does not repeat
- * its name.
+ * after the same identity. Since that cell sits under the "Email" header, a
+ * fallback also reads "No email" there; on a card, "No email" takes the second
+ * line, which otherwise holds the name under an email (so a named email-less
+ * card does not repeat its name).
  */
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -41,6 +42,9 @@ const contacts = [
 	{ _id: 'c_unnamed', firstName: null, lastName: null, createdAt: 1 },
 ];
 const IDENTITIES = ['ada@example.com', 'Grace Hopper', 'Unnamed contact'];
+// The table's "Email" cell, and the card's second line, tell a fallback apart.
+const EMAIL_CELLS = ['ada@example.com', 'Grace Hopper No email', 'Unnamed contact No email'];
+const CARD_SECOND_LINES = ['Ada Lovelace', 'No email', 'No email'];
 
 function mountPage(tableFits: boolean) {
 	installNuxtStubs({
@@ -99,7 +103,7 @@ describe('contacts list identity for email-less contacts', () => {
 		expect(rows).toHaveLength(3);
 		for (const [i, row] of rows.entries()) {
 			const label = IDENTITIES[i]!;
-			expect(row.findAll('td')[1]?.text()).toBe(label);
+			expect(row.findAll('td')[1]?.text()).toBe(EMAIL_CELLS[i]);
 			expect(row.find('button').attributes('aria-label')).toBe(`Select ${label}`);
 		}
 		wrapper.unmount();
@@ -114,7 +118,9 @@ describe('contacts list identity for email-less contacts', () => {
 			const label = IDENTITIES[i]!;
 			const [select, open] = card.findAll('button');
 			expect(select?.attributes('aria-label')).toBe(`Select ${label}`);
-			expect(open?.findAll('span')[0]?.text()).toBe(label);
+			const [identity, secondLine] = open?.findAll('span') ?? [];
+			expect(identity?.text()).toBe(label);
+			expect(secondLine?.text()).toBe(CARD_SECOND_LINES[i]);
 		}
 		// The name line follows an email, and is not repeated under a name.
 		expect(cards[0]?.text()).toContain('Ada Lovelace');

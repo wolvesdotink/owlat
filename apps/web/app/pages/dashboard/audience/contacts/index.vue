@@ -720,8 +720,8 @@ onUnmounted(() => {
 									class="flex-1 min-w-0 text-left"
 									@click="openContact(contact._id)"
 								>
-									<!-- Email, else name, else "Unnamed contact"; the name line below
-									     only adds something when the email is the primary line. -->
+									<!-- Email, else name, else "Unnamed contact". The second line is the
+									     name under an email, or says that there is no email. -->
 									<span
 										class="block font-medium truncate"
 										:class="contactHasEmail(contact) ? 'text-text-primary' : 'text-text-secondary'"
@@ -732,6 +732,12 @@ onUnmounted(() => {
 										class="block text-sm text-text-secondary truncate"
 									>
 										{{ contactName(contact) }}
+									</span>
+									<span
+										v-else-if="!contactHasEmail(contact)"
+										class="block text-sm text-text-tertiary"
+									>
+										{{ t('dashboard.audience.contacts.index.noEmail') }}
 									</span>
 									<span class="block text-xs text-text-tertiary mt-0.5">
 										{{

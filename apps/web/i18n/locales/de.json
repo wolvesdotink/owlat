@@ -9992,6 +9992,7 @@
 						"integrationsTitle": "Integrationen"
 					},
 					"loadMore": "Mehr laden",
+					"noEmail": "Keine E-Mail",
 					"noResults": {
 						"description": "Keine Kontakte passen zu „{query}“. Versuche einen anderen Suchbegriff.",
 						"title": "Keine Ergebnisse gefunden"

@@ -115,6 +115,13 @@ function menuItems(): ContextMenuItem[] {
 					:class="contactHasEmail(contact) ? 'text-text-primary' : 'text-text-secondary'"
 					>{{ identity }}</span
 				>
+				<!-- The cell sits under the "Email" header, so a name or placeholder
+				     says, visibly and to a screen reader, that the email is missing. The
+				     leading space keeps it a separate word in the cell's text (the template
+				     compiler drops whitespace between the two spans). -->
+				<span v-if="!contactHasEmail(contact)" class="ml-1 text-xs text-text-tertiary">{{
+					` ${t('dashboard.audience.contacts.index.noEmail')}`
+				}}</span>
 			</td>
 			<td class="px-6 py-4">
 				<span class="text-text-secondary">{{ contact.firstName || '-' }}</span>
