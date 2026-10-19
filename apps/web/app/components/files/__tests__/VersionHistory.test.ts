@@ -66,4 +66,18 @@ describe('FilesVersionHistory — older versions', () => {
 		expect(wrapper.find('button').attributes('data-loading')).toBe('true');
 		expect(wrapper.find('[role="alert"]').text()).toContain('could not be loaded');
 	});
+
+	it('says when older versions exist but cannot be loaded, without a dead control', () => {
+		const wrapper = mountList({ olderUnavailable: true });
+		expect(wrapper.find('button').exists()).toBe(false);
+		expect(wrapper.text()).toContain('There are older versions, but they cannot be loaded here.');
+	});
+
+	it('says the list started over when it did', () => {
+		const wrapper = mountList({ hasOlder: true, historyRestarted: true });
+		expect(wrapper.find('[role="status"]').text()).toContain(
+			'starts again from the newest version'
+		);
+		expect(wrapper.find('button').exists()).toBe(true);
+	});
 });

@@ -3953,6 +3953,8 @@
 				"download": "Diese Version herunterladen",
 				"empty": "Keine früheren Versionen.",
 				"olderFailed": "Ältere Versionen konnten nicht geladen werden. Versuch es erneut.",
+				"olderUnavailable": "Es gibt ältere Versionen, sie lassen sich hier aber nicht laden.",
+				"restarted": "Die Liste hat sich geändert, während du sie gelesen hast. Sie beginnt deshalb wieder bei der neuesten Version.",
 				"showOlder": "Ältere Versionen anzeigen"
 			}
 		},

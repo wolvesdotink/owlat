@@ -29,7 +29,10 @@ export interface VersionChainStep {
 	/**
 	 * The next row to visit when the budget ran out first; null when the walk
 	 * reached the end of the chain: no predecessor, a predecessor that no
-	 * longer exists, or a row this walk already visited.
+	 * longer exists, or a row this walk already visited. When the budget runs
+	 * out, the walk spends one more read to confirm the next row exists, so a
+	 * deleted row right past the budget ends the chain instead of being
+	 * offered as a continuation.
 	 */
 	next: Id<'semanticFiles'> | null;
 }
@@ -52,5 +55,6 @@ export async function walkVersionChain(
 		currentId = file.previousVersionId;
 	}
 
-	return { readable, next: currentId && !visited.has(currentId) ? currentId : null };
+	if (!currentId || visited.has(currentId)) return { readable, next: null };
+	return { readable, next: (await ctx.db.get(currentId)) ? currentId : null };
 }

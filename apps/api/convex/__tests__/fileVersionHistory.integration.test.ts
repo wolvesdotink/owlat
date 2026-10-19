@@ -319,14 +319,48 @@ describe('files.history.list', () => {
 		answers['malformed'] = await list(ids[0]!, 'not-a-cursor');
 		answers['empty'] = await list(ids[0]!, '');
 		answers['bareId'] = await list(ids[0]!, ids[VERSION_HISTORY_PAGE_BUDGET]!);
-		// A genuine cursor whose version was deleted since.
+		// Once the cursor's version is deleted: a bare id of it, and the token
+		// presented by anyone it was not issued to.
 		await t.run(async (ctx) => {
 			await ctx.db.delete(ids[VERSION_HISTORY_PAGE_BUDGET]!);
 		});
-		answers['deletedTarget'] = await list(ids[0]!, token);
+		answers['bareDeletedId'] = await list(ids[0]!, ids[VERSION_HISTORY_PAGE_BUDGET]!);
+		answers['otherHistoryDeleted'] = await list(otherHead!, token);
+		sessionMock.userId = 'someone-else';
+		answers['otherUserDeleted'] = await list(ids[0]!, token);
+		sessionMock.userId = 'reader';
 
 		for (const answer of Object.values(answers)) expect(answer).toMatch(INVALID_CURSOR);
 		expect(new Set(Object.values(answers)).size).toBe(1);
+	});
+
+	it("ends the history when a genuine cursor's version was deleted since it was issued", async () => {
+		const t = convexTest(schema, modules);
+		const ids = await seedChain(t, VERSION_HISTORY_PAGE_BUDGET + 5);
+		const first = await t.query(api.files.history.list, { fileId: ids[0]! });
+		expect(first.continueCursor).toEqual(expect.any(String));
+		await t.run(async (ctx) => {
+			await ctx.db.delete(ids[VERSION_HISTORY_PAGE_BUDGET]!);
+		});
+
+		expect(
+			await t.query(api.files.history.list, { fileId: ids[0]!, cursor: first.continueCursor })
+		).toEqual({ page: [], isDone: true, continueCursor: null });
+	});
+
+	it('is done, with no cursor, when the version right past the budget is gone', async () => {
+		const t = convexTest(schema, modules);
+		const ids = await seedChain(t, VERSION_HISTORY_PAGE_BUDGET + 5);
+		await t.run(async (ctx) => {
+			await ctx.db.delete(ids[VERSION_HISTORY_PAGE_BUDGET]!);
+		});
+
+		const result = await t.query(api.files.history.list, { fileId: ids[0]! });
+		expect(result.page.map((row) => row._id)).toEqual(ids.slice(0, VERSION_HISTORY_PAGE_BUDGET));
+		expect(result.isDone).toBe(true);
+		expect(result.continueCursor).toBeNull();
+		// The legacy walk ends at the same place.
+		expect(await legacyIds(t, ids[0]!)).toEqual(ids.slice(0, VERSION_HISTORY_PAGE_BUDGET));
 	});
 
 	it('says more versions exist but offers no cursor without INSTANCE_SECRET', async () => {

@@ -12,8 +12,12 @@ defineProps<{
 	currentVersionId?: string;
 	/** Older versions wait behind the last one shown. */
 	hasOlder?: boolean;
+	/** Older versions exist, but there is no way to load them. */
+	olderUnavailable?: boolean;
 	loadingOlder?: boolean;
 	loadOlderFailed?: boolean;
+	/** The list started over from the newest version. */
+	historyRestarted?: boolean;
 }>();
 
 const emit = defineEmits<{ loadOlder: [] }>();
@@ -92,9 +96,15 @@ const { t } = useI18n();
 				</div>
 			</div>
 		</div>
-		<div v-if="hasOlder" class="flex flex-col items-start gap-1 pt-1">
+		<p v-if="olderUnavailable" class="text-xs text-text-tertiary pt-1">
+			{{ t('components.files.versionHistory.olderUnavailable') }}
+		</p>
+		<div v-else-if="hasOlder" class="flex flex-col items-start gap-1 pt-1">
 			<p v-if="loadOlderFailed" class="text-xs text-error" role="alert">
 				{{ t('components.files.versionHistory.olderFailed') }}
+			</p>
+			<p v-else-if="historyRestarted" class="text-xs text-text-tertiary" role="status">
+				{{ t('components.files.versionHistory.restarted') }}
 			</p>
 			<UiButton variant="ghost" size="sm" :loading="loadingOlder" @click="emit('loadOlder')">
 				<Icon name="lucide:history" class="w-4 h-4 mr-2" />

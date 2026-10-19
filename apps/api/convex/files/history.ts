@@ -10,8 +10,9 @@
  * The budget counts rows walked, not rows returned: a version the caller may
  * not read costs a step and is left out, so a page can come back short, or
  * empty with `isDone: false`, while permitted older versions wait behind the
- * cursor. Redeeming a cursor reads the origin and the cursor's version once
- * more each, outside the budget.
+ * cursor. Outside the budget, a call reads the origin once more when it
+ * redeems a cursor, and the version just past the budget once to confirm it
+ * still exists before offering a cursor to it.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -75,9 +76,11 @@ function throwInvalidCursor(): never {
  *
  * `fileId` must be a version the caller may read: otherwise the history is
  * empty and done, and any cursor is refused. Every cursor that is not one this
- * caller was given for this `fileId` (malformed, empty, tampered, minted for
- * another history or another caller, or pointing at a version since deleted)
- * is refused with the same error, so a cursor cannot probe for documents.
+ * caller was given for this `fileId` (malformed, empty, tampered, or minted
+ * for another history or another caller) is refused with the same error, so
+ * a cursor cannot probe for documents. A genuine cursor whose version was
+ * deleted since it was issued ends the history: an empty, done page. Only the
+ * caller it was issued to, for this history, can get that answer.
  */
 export const list = authedQuery({
 	args: {
@@ -107,7 +110,7 @@ export const list = authedQuery({
 		if (hasCursor) {
 			const sealed = await openVersionHistoryCursor(binding, args.cursor!);
 			const id = sealed === null ? null : ctx.db.normalizeId('semanticFiles', sealed);
-			if (!id || !(await ctx.db.get(id))) throwInvalidCursor();
+			if (!id) throwInvalidCursor();
 			startId = id;
 		}
 
