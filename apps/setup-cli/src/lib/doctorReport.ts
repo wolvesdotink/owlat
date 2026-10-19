@@ -21,7 +21,7 @@
 
 import pc from 'picocolors';
 import type { EnvMap } from './env';
-import { createDoctorRedactor, type DoctorText } from './doctorText';
+import { createDoctorRedactor, type DoctorRedactor, type DoctorText } from './doctorText';
 
 /** Bumped only for a breaking change to the JSON shape or to an existing id. */
 export const DOCTOR_REPORT_SCHEMA_VERSION = 1;
@@ -152,7 +152,7 @@ export interface DoctorReport {
 /** Collects checks in run order and notifies a listener as each one lands. */
 export class DoctorReportBuilder {
 	readonly checks: DoctorCheck[] = [];
-	private redact: (text: string) => string = (text) => text;
+	private redact: DoctorRedactor = (message) => String(message);
 
 	constructor(private readonly onCheck?: (check: DoctorCheck) => void) {}
 
@@ -169,7 +169,7 @@ export class DoctorReportBuilder {
 			component: meta.component,
 			status: finding.ok ? 'pass' : 'fail',
 			severity: 'error',
-			message: finding.message.render(this.redact),
+			message: this.redact(finding.message),
 			...(finding.ok ? {} : { remediation: meta.remediation }),
 		};
 		this.checks.push(check);

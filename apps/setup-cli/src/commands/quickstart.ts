@@ -341,7 +341,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		);
 		const redact = createDoctorRedactor(envAfterCompose);
 		for (const finding of identityFindings) {
-			const message = finding.message.render(redact);
+			const message = redact(finding.message);
 			reporter.log(`${finding.ok ? '✓' : '✗'} ${message}`, finding.ok ? 'stdout' : 'stderr');
 			if (finding.ok) log.success(message);
 			else log.error(message);
@@ -371,7 +371,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			log.info(
 				`Re-run ${pc.cyan('owlat quickstart')} once the PTR record resolves — provisioning resumes where it stopped.`
 			);
-			reporter.fail(failedIdentity.message.render(redact));
+			reporter.fail(redact(failedIdentity.message));
 			reporter.done(false);
 			return 1;
 		}

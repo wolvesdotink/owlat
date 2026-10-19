@@ -189,45 +189,57 @@ function mergeSpans(spans: readonly Span[]): Span[] {
 const WHITESPACE = /\s+/gu;
 
 /**
- * Full case folding after compatibility normalisation. NFKC unifies composed
- * and decomposed accents and compatibility forms. The case mapping is
- * lower, then upper, then lower: upper-then-lower alone would keep the
- * capital `ẞ` (already upper case) as `ß`, while lowering it first lets `ß`,
- * `ẞ` and `SS` all end as `ss`. NFKC runs again at the end, because case
- * mapping can produce decomposed sequences (`ǰ` upper-cases to `J` + U+030C).
+ * Full case folding after compatibility normalisation, one code point at a
+ * time. NFKC unifies composed and decomposed accents and compatibility forms.
+ * Each code point is then mapped on its own, lower, upper, then lower: on its
+ * own so no context rule can apply (a whole-string lower-case turns a final
+ * `Σ` into `ς` but a mid-word one into `σ`), and lower first so the capital
+ * `ẞ` (already upper case) ends as `ss` like `ß` and `SS`. NFKC runs again at
+ * the end, because case mapping can produce decomposed sequences (`ǰ`
+ * upper-cases to `J` + U+030C).
  */
 function fold(text: string): string {
-	return text.normalize('NFKC').toLowerCase().toUpperCase().toLowerCase().normalize('NFKC');
+	return [...text.normalize('NFKC')]
+		.map((char) => char.toLowerCase().toUpperCase().toLowerCase())
+		.join('')
+		.normalize('NFKC');
 }
 
+/** Renders a doctor message with every secret withheld or masked. */
+export type DoctorRedactor = (message: DoctorText | string) => string;
+
 /**
- * The known-secret pass for one doctor run, over untrusted text only. Three
- * rules, all exact matches or presence checks; nothing is decoded.
+ * The known-secret pass for one doctor run, over WHOLE messages. A plain
+ * string counts as a message of one runtime part. All rules are exact matches
+ * or presence checks; nothing is decoded.
  *
- * 1. A part holding a `%` anywhere is withheld whole, before any masking.
- *    Every percent-encoding of a secret, at any depth and however partial,
- *    carries one, and no mask can consume it first. The cost, intended: an
- *    ordinary error with an unrelated escape (a URL with `%20`) loses its
- *    detail too.
- * 2. Every printed form of every secret ({@link secretForms}) is located as
- *    positions in the input and the union is masked. Positions, not marker
- *    characters: a literal `[redacted]` in runtime text is ordinary text.
- * 3. The text left outside the masks, joined as a reader would join it after
- *    deleting the markers and stripped of all whitespace, must not contain any
- *    form (whitespace-stripped too), nor, after {@link fold}, any folded raw
- *    secret; otherwise the whole part is withheld. That catches base64 or a
- *    secret split by spaces, tabs or line breaks, and every case variant:
- *    raw matching is Unicode case-insensitive after NFKC normalisation and full
- *    case folding (lower, upper, then lower), so `STRASSE-PAß-42` cannot slip
- *    past a secret `Straße-paß-42`. Joining can occasionally create a match that was
- *    not there; withholding then is the safe failure.
+ * 1. If any runtime part holds a `%`, every runtime part of the message is
+ *    withheld, before any masking. Every percent-encoding of a secret, at any
+ *    depth and however partial, carries one, and no mask can consume it
+ *    first. The cost, intended: an ordinary error with an unrelated escape (a
+ *    URL with `%20`) loses its detail too.
+ * 2. In each runtime part, every printed form of every secret
+ *    ({@link secretForms}) is located as positions and masked. Positions, not
+ *    marker characters: a literal `[redacted]` in runtime text is ordinary
+ *    text.
+ * 3. The whole message as a reader sees it (code-owned text and every runtime
+ *    part's unmasked text, joined in order, markers deleted, all whitespace
+ *    stripped) must not contain any form (whitespace-stripped too) nor, after
+ *    {@link fold}, any folded raw secret; otherwise every runtime part of the
+ *    message is withheld and only the code-owned text prints. Checking the
+ *    whole message means neither two adjacent runtime parts nor a runtime part
+ *    and the copy beside it can rebuild a secret between them. It also catches
+ *    base64 or a secret split by spaces, tabs or line breaks, and every case
+ *    variant: raw matching is Unicode case-insensitive after NFKC
+ *    normalisation and full case folding, per code point. A match that lies
+ *    wholly in the code-owned text withholds the runtime parts too; that
+ *    over-redaction is the safe failure.
  *
  * Encodings these producers do not emit (hex dumps, HTML entities, `\u`
  * escapes) are out of scope. Secrets are every secret-keyed `.env` value and
- * every credential part of a configured URL, with no length exemption:
- * code-owned text is out of reach, so over-redaction only costs runtime detail.
+ * every credential part of a configured URL, with no length exemption.
  */
-export function createDoctorRedactor(env: EnvMap): (text: string) => string {
+export function createDoctorRedactor(env: EnvMap): DoctorRedactor {
 	const textual = new Set<string>();
 	const base64 = new Set<string>();
 	const folded = new Set<string>();
@@ -252,21 +264,50 @@ export function createDoctorRedactor(env: EnvMap): (text: string) => string {
 		...compact(textual).map((form) => formPattern(form, 'iu')),
 		...compact(base64).map((form) => formPattern(form, 'u')),
 	];
-	return (text) => {
-		if (text.includes('%')) return REDACTED;
+	return (message) => {
+		const parts = typeof message === 'string' ? [{ text: message, trusted: false }] : message.parts;
+		if (parts.some((part) => !part.trusted && part.text.includes('%'))) return withheld(parts);
 		let visible = '';
 		let out = '';
-		let from = 0;
-		for (const [start, end] of mergeSpans(exactSpans(text, masks))) {
-			visible += text.slice(from, start);
-			out += text.slice(from, start) + REDACTED;
-			from = end;
+		for (const part of parts) {
+			if (part.trusted) {
+				visible += part.text;
+				out += part.text;
+				continue;
+			}
+			let from = 0;
+			for (const [start, end] of mergeSpans(exactSpans(part.text, masks))) {
+				visible += part.text.slice(from, start);
+				out += part.text.slice(from, start) + REDACTED;
+				from = end;
+			}
+			visible += part.text.slice(from);
+			out += part.text.slice(from);
 		}
-		visible += text.slice(from);
 		const joined = visible.replace(WHITESPACE, '');
-		if (presence.some((pattern) => pattern.test(joined))) return REDACTED;
+		if (presence.some((pattern) => pattern.test(joined))) return withheld(parts);
 		const foldedJoined = fold(joined);
-		for (const secret of folded) if (foldedJoined.includes(secret)) return REDACTED;
-		return out + text.slice(from);
+		for (const secret of folded) if (foldedJoined.includes(secret)) return withheld(parts);
+		return out;
 	};
+}
+
+/**
+ * The message with only its code-owned text: each run of runtime parts
+ * becomes one `[redacted]` (an empty runtime part reveals nothing and stays
+ * empty).
+ */
+function withheld(parts: readonly DoctorTextPart[]): string {
+	let out = '';
+	let pending = false;
+	for (const part of parts) {
+		if (!part.trusted) {
+			pending ||= part.text !== '';
+			continue;
+		}
+		if (pending) out += REDACTED;
+		pending = false;
+		out += part.text;
+	}
+	return pending ? out + REDACTED : out;
 }

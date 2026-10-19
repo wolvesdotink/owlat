@@ -180,6 +180,29 @@ describe('doctor text — known-secret pass', () => {
 		expect(redact(`auth rejected ${echo}`)).toBe('[redacted]');
 	});
 
+	// Sol round 7: folding per code point, so no context rule (final sigma) applies.
+	it.each([
+		['a final Σ, upper-cased with ß expanded', 'StraßeΟΣ', 'invalid credential STRASSEΟΣ rejected'],
+		['a final ς and ß, upper-cased mid-sentence', 'ßκωδικός', 'login SSΚΩΔΙΚΌΣ failed twice'],
+		[
+			'an upper-case Σ and SS, lower-cased mid-sentence',
+			'SSΚΩΔΙΚΌΣ',
+			'login ßκωδικός failed twice',
+		],
+	])('withholds a part echoing a secret with %s', (_label, secret, echo) => {
+		const redact = createDoctorRedactor({ MTA_API_KEY: secret });
+		expect(redact(echo)).toBe('[redacted]');
+	});
+
+	// Sigma alone is within simple case folding: masked in place, rest readable.
+	it.each([
+		['κωδικός', 'login ΚΩΔΙΚΌΣ failed twice'],
+		['ΚΩΔΙΚΌΣ', 'login κωδικός failed twice'],
+	])('masks the sigma secret %s in another case mid-sentence', (secret, echo) => {
+		const redact = createDoctorRedactor({ MTA_API_KEY: secret });
+		expect(redact(echo)).toBe('login [redacted] failed twice');
+	});
+
 	// Sol round 5, scenario 2: base64 split by whitespace.
 	it.each([
 		['a space', ' '],
@@ -208,6 +231,31 @@ describe('doctor text — known-secret pass', () => {
 			.join('');
 		expect(redact(`upstream said ${fullyEncoded}`)).toBe('[redacted]');
 		expect(redact('upstream said private%2Ftoken%2Bend')).toBe('[redacted]');
+	});
+
+	// Sol round 7: the check covers the whole message, not each part alone.
+	it('withholds every runtime part when adjacent parts rebuild a secret', () => {
+		const redact = createDoctorRedactor({ REDIS_PASSWORD: 'private token' });
+		const message = doctorText`IP audit for ${'192.0.2.10'}: ${'private'}${' token'}${''}`;
+		expect(redact(message)).toBe('IP audit for [redacted]: [redacted]');
+	});
+
+	it('withholds every runtime part when a secret spans a part and the copy beside it', () => {
+		const redact = createDoctorRedactor({ MTA_API_KEY: 'unreachable (pw-77' });
+		const message = doctorText`${'http://mta:3100/health'} is unreachable (${'pw-77 refused'})`;
+		expect(redact(message)).toBe('[redacted] is unreachable ([redacted])');
+	});
+
+	it('masks in place and keeps the message readable when nothing spans parts', () => {
+		const redact = createDoctorRedactor({ MTA_API_KEY: 'private/token' });
+		const message = doctorText`${'http://mta:3100/health'} is unreachable (${'bad key private/token'})`;
+		expect(redact(message)).toBe('http://mta:3100/health is unreachable (bad key [redacted])');
+	});
+
+	it('withholds every runtime part when any one holds a %', () => {
+		const redact = createDoctorRedactor({ MTA_API_KEY: 'private/token' });
+		const message = doctorText`${'http://mta:3100/health'} is unreachable (${'GET /a%20b'})`;
+		expect(redact(message)).toBe('[redacted] is unreachable ([redacted])');
 	});
 
 	it('leaves a plain error without % fully readable', () => {

@@ -371,6 +371,57 @@ const FIXTURES: Record<string, Fixture> = {
 		},
 		secrets: [DEEP_SECRET, FULL_BYTES],
 	},
+	sigmaFold: {
+		env: ['EMAIL_PROVIDER=mta', 'MTA_API_URL=http://mta:3100', 'MTA_API_KEY=StraßeΟΣ'].join('\n'),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: () => {
+			throw new Error('invalid credential STRASSEΟΣ rejected');
+		},
+		secrets: ['StraßeΟΣ', 'STRASSEΟΣ'],
+	},
+	finalSigmaMidSentence: {
+		// ß expands to SS, so masking cannot catch it and the fold check must:
+		// the secret's final ς and the echo's mid-sentence Σ fold alike.
+		env: ['EMAIL_PROVIDER=mta', 'MTA_API_URL=http://mta:3100', 'MTA_API_KEY=ßκωδικός'].join('\n'),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: () => {
+			throw new Error('login SSΚΩΔΙΚΌΣ failed twice');
+		},
+		secrets: ['ßκωδικός', 'SSΚΩΔΙΚΌΣ'],
+	},
+	splitAuditParts: {
+		env: ['EMAIL_PROVIDER=mta', 'MTA_API_URL=http://mta:3100', 'REDIS_PASSWORD=private token'].join(
+			'\n'
+		),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: (url) =>
+			Response.json(
+				url.endsWith('/ip-audit')
+					? {
+							audits: [
+								{ ip: '192.0.2.10', verdict: 'clean', headline: 'private', nextAction: 'token' },
+							],
+						}
+					: healthyMta
+			),
+		secrets: ['private token'],
+	},
+	splitAcrossCopy: {
+		env: [
+			'EMAIL_PROVIDER=mta',
+			'MTA_API_URL=http://mta:3100',
+			'MTA_API_KEY=unreachable (pw-77',
+		].join('\n'),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: () => {
+			throw new Error('pw-77 refused');
+		},
+		secrets: ['unreachable (pw-77'],
+	},
 	commonWordSecret: {
 		// A secret equal to a word in key names and subjects: identifiers stay intact.
 		env: ['LLM_API_KEY=LLM', 'OWLAT_VERSION=0.6.15'].join('\n'),
@@ -565,7 +616,7 @@ describe('doctor --json — report contents', () => {
 
 	it('prints a configured URL without its query or fragment, and withholds an escaped echo', async () => {
 		expect(await messageOf('encodedQuery', 'mta.health')).toBe(
-			'http://mta:3100/ is unreachable ([redacted])'
+			'[redacted] is unreachable ([redacted])'
 		);
 	});
 
@@ -587,7 +638,7 @@ describe('doctor --json — report contents', () => {
 
 	it('withholds a runtime part echoing a mixed-case escaped query secret', async () => {
 		expect(await messageOf('mixedCaseQuery', 'mta.health')).toBe(
-			'http://mta:3100/ is unreachable ([redacted])'
+			'[redacted] is unreachable ([redacted])'
 		);
 	});
 
@@ -606,36 +657,32 @@ describe('doctor --json — report contents', () => {
 	it.each(FOLD_CASES.map(([name]) => name))(
 		'withholds a runtime part echoing a full-case-folded or renormalised secret: %s',
 		async (fixture) => {
-			expect(await messageOf(fixture, 'mta.health')).toBe(
-				'http://mta:3100/health is unreachable ([redacted])'
-			);
+			expect(await messageOf(fixture, 'mta.health')).toBe('[redacted] is unreachable ([redacted])');
 		}
 	);
 
 	it.each(['splitBase64Space', 'splitBase64Tab', 'splitBase64Lf', 'splitBase64Crlf'])(
 		'withholds a runtime part holding whitespace-split base64 of a secret: %s',
 		async (fixture) => {
-			expect(await messageOf(fixture, 'mta.health')).toBe(
-				'http://mta:3100/health is unreachable ([redacted])'
-			);
+			expect(await messageOf(fixture, 'mta.health')).toBe('[redacted] is unreachable ([redacted])');
 		}
 	);
 
 	it('withholds a runtime part with a % even when a secret mask would swallow it', async () => {
 		expect(await messageOf('percentSecret', 'mta.health')).toBe(
-			'http://mta:3100/health is unreachable ([redacted])'
+			'[redacted] is unreachable ([redacted])'
 		);
 	});
 
 	it('drops a runtime part whose escapes another secret splits apart', async () => {
 		expect(await messageOf('splitEscapes', 'mta.health')).toBe(
-			'http://mta:3100/health is unreachable ([redacted])'
+			'[redacted] is unreachable ([redacted])'
 		);
 	});
 
 	it('drops a runtime part where invalid UTF-8 precedes an encoded secret', async () => {
 		expect(await messageOf('invalidUtf8', 'mta.health')).toBe(
-			'http://mta:3100/health is unreachable ([redacted])'
+			'[redacted] is unreachable ([redacted])'
 		);
 	});
 
@@ -648,34 +695,56 @@ describe('doctor --json — report contents', () => {
 	// Intended trade: any escape outside the masks drops the part.
 	it('drops a runtime error that holds an unrelated escape', async () => {
 		expect(await messageOf('unrelatedEscape', 'mta.health')).toBe(
-			'http://mta:3100/health is unreachable ([redacted])'
+			'[redacted] is unreachable ([redacted])'
 		);
 	});
 
 	it('drops a runtime part encoded deeper than the decoding rounds reach', async () => {
 		expect(await messageOf('deepEncoded', 'mta.health')).toBe(
-			'http://mta:3100/health is unreachable ([redacted])'
+			'[redacted] is unreachable ([redacted])'
 		);
 	});
 
 	it('drops a runtime part whose credential contains a literal [redacted]', async () => {
 		expect(await messageOf('literalMarkerUrl', 'mta.health')).toBe(
-			'http://mta:3100/ is unreachable ([redacted])'
+			'[redacted] is unreachable ([redacted])'
+		);
+	});
+
+	it.each(['sigmaFold', 'finalSigmaMidSentence'])(
+		'withholds a runtime part echoing a sigma secret in another case: %s',
+		async (fixture) => {
+			expect(await messageOf(fixture, 'mta.health')).toBe('[redacted] is unreachable ([redacted])');
+		}
+	);
+
+	it('withholds every runtime part when adjacent parts rebuild a secret', async () => {
+		expect(await messageOf('splitAuditParts', 'mta.ip_audit')).toBe(
+			'IP audit for [redacted]: [redacted]'
+		);
+	});
+
+	it('withholds every runtime part when a secret spans a part and the copy beside it', async () => {
+		expect(await messageOf('splitAcrossCopy', 'mta.health')).toBe(
+			'[redacted] is unreachable ([redacted])'
 		);
 	});
 
 	it('keeps key names and remediation commands in drift findings intact', async () => {
 		const { report } = await runBoth(FIXTURES['productNameSecret']!);
+		// The copy itself contains the secret word, so the whole-message check
+		// withholds the runtime values (safe over-redaction); the code-owned key
+		// name, product name and command still print intact.
 		expect(report.checks.filter((check) => check.id === 'version.drift')).toMatchObject([
 			{
 				subject: 'web',
 				message:
-					'container "web" runs 0.6.14 but OWLAT_VERSION is 0.6.15 — ' +
+					'container "[redacted]" runs [redacted] but OWLAT_VERSION is [redacted] — ' +
 					'the configured and running versions have diverged',
 			},
 			{
 				message:
-					'1 of 1 Owlat container(s) were never recreated for 0.6.15. ' +
+					'1 of 1 Owlat container(s) were never recreated for [redacted]. ' +
 					'Run `owlat start` (docker compose up -d) to apply the configured version.',
 			},
 		]);
