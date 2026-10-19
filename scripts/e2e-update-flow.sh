@@ -7,8 +7,10 @@
 # app sends when an operator clicks "Update now") and then checks what an
 # operator would check: the updater answered success, every step it reports
 # went through, the containers run TO's images and report TO's version, `.env`
-# and the compose file moved with them, the updater replaced itself, and the
-# web app still answers.
+# and the compose file moved with them, the updater replaced itself, the web app
+# still answers, and the Convex data FROM wrote is still there: a named contact,
+# sent campaign, draft campaign and queued Send, seeded at FROM with sending off
+# (scripts/e2e-update-flow-data.sh).
 #
 # Every in-app update bug so far lived in the gaps between those steps (a proxy
 # that 403'd `compose up`, a version pin that never reached the containers, a
@@ -42,6 +44,8 @@ FROM="${FROM#v}"
 TO="${TO#v}"
 
 REPO="${OWLAT_REPO:-wolvesdotink/owlat}"
+# shellcheck source=scripts/e2e-update-flow-data.sh
+source "$(dirname "${BASH_SOURCE[0]}")/e2e-update-flow-data.sh"
 BASE="${WORK_DIR:-$(mktemp -d)}"
 INSTALL="$BASE/owlat"
 mkdir -p "$INSTALL"
@@ -155,6 +159,13 @@ wait_for_web() {
 }
 wait_for_web || fail "web never answered on :3000 at $FROM"
 pass "web answers at $FROM"
+
+# ── 2b. Convex data the update has to keep ───────────────────────────────────
+log "Seeding Convex data at $FROM"
+# Nothing may send it: no MTA, no provider. The queued Send stays unattempted
+# only because of that, and its invariant checks it did.
+! grep -qE '^(EMAIL_PROVIDER|COMPOSE_PROFILES=.+)' .env || fail "this install must not be able to send mail"
+seed_convex_data "$BASE/convex-data.json"
 
 from_deploy_image="$(docker image inspect --format '{{.Id}}' \
 	"$(grep -m1 -oE 'ghcr.io/[a-z0-9-]+/convex-deploy:[^[:space:]]+' docker-compose.yml)")"
@@ -279,5 +290,8 @@ if docker image inspect "$from_deploy_image" >/dev/null 2>&1; then
 else
 	pass "$FROM's unused convex-deploy image was reclaimed before the pull"
 fi
+
+log "Checking the Convex data seeded at $FROM"
+verify_convex_data "$BASE/convex-data.json"
 
 log "Update $FROM → $TO works end to end"

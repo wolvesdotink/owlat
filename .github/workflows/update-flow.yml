@@ -1,8 +1,9 @@
 name: Update flow
 
 # A real in-app update, end to end (scripts/e2e-update-flow.sh): install the
-# previous release, have the updater apply the latest one, check the stack
-# landed on it.
+# previous release, seed Convex data through it, have the updater apply the
+# latest one, check the stack landed on it and the seeded rows survived
+# (scripts/e2e-update-flow-data.sh).
 #
 # Two modes:
 #   - pull requests that touch the updater: the PR's updater image performs the
@@ -18,6 +19,7 @@ on:
       - 'apps/updater/**'
       - 'packages/shared/src/containerHealth*'
       - 'scripts/e2e-update-flow.sh'
+      - 'scripts/e2e-update-flow-data.sh'
       - '.github/workflows/update-flow.yml'
   # Publication with GITHUB_TOKEN suppresses release events. The unified
   # release explicitly calls this workflow after publishing instead.

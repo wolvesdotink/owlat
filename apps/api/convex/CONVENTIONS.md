@@ -948,8 +948,13 @@ does not match, so a deployment whose migration has not completed keeps its
 old release. The guard covers
 the schema half of the contract only. It does not check function arguments,
 JSON stored in strings or what values mean, and it is no substitute for
-upgrading a real previous-release dataset. The release E2E does not do that
-either: its seeded leg carries over Redis and ClamAV volumes, not Convex data.
+upgrading a real previous-release dataset. The release E2E install does not do
+that either: its seeded leg carries over Redis and ClamAV volumes, not Convex
+data. The update flow (`scripts/e2e-update-flow.sh`, run after each release and
+nightly) does: the previous release writes a contact, a sent and a draft
+campaign and a queued Send, and after the in-app update they must have the same
+ids and fields. It checks that rows survive, not what the functions return, and
+it does not interrupt a migration.
 
 ### Never do these without a version bump
 
