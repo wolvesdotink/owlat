@@ -1,0 +1,126 @@
+{
+	"description": "Rows saved before writes normalized numeric style fields (2026-09-29): numbers stored as numeric strings, an empty string and a non-numeric word.",
+	"field": "emailTemplates.content",
+	"stored": [
+		{
+			"id": "num-text",
+			"type": "text",
+			"content": {
+				"html": "<p>Spacing stored as strings.</p>",
+				"blockType": "paragraph",
+				"fontSize": "18",
+				"textColor": "#374151",
+				"lineHeight": "1.6",
+				"paddingTop": "20",
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": "",
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": "8",
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "num-image",
+			"type": "image",
+			"content": {
+				"src": "https://owlat.example/media/wide.png",
+				"alt": "Wide",
+				"width": "80",
+				"align": "center",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0,
+				"borderRadius": "4"
+			}
+		},
+		{
+			"id": "num-button",
+			"type": "button",
+			"content": {
+				"text": "Continue",
+				"url": "https://example.com/next",
+				"backgroundColor": "#c4785a",
+				"textColor": "#12110e",
+				"align": "center",
+				"borderRadius": "12",
+				"paddingX": "28",
+				"paddingY": "wide",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "num-divider",
+			"type": "divider",
+			"content": {
+				"color": "#282D3A",
+				"thickness": "2",
+				"width": "50",
+				"style": "solid",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "num-spacer",
+			"type": "spacer",
+			"content": {
+				"height": "32",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "num-progress",
+			"type": "progressBar",
+			"content": {
+				"value": "45",
+				"barColor": "#c4785a",
+				"trackColor": "#e0e0e0",
+				"height": "12",
+				"borderRadius": 10,
+				"showLabel": true,
+				"labelPosition": "right",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		}
+	]
+}
