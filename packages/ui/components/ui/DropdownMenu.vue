@@ -91,8 +91,13 @@ const handleClickOutside = (event: MouseEvent) => {
 	}
 };
 
-const MENU_ITEM_SELECTOR =
-	'[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])';
+const ITEM_ROLES = ['menuitem', 'menuitemcheckbox', 'menuitemradio'];
+/** Any item, disabled or not: the keys it gets are the menu's. */
+const ITEM_SELECTOR = ITEM_ROLES.map((role) => `[role="${role}"]`).join(', ');
+/** The items focus moves between. */
+const MENU_ITEM_SELECTOR = ITEM_ROLES.map(
+	(role) => `[role="${role}"]:not([disabled]):not([aria-disabled="true"])`
+).join(', ');
 
 /**
  * Escape closes the menu and nothing else: not a surrounding dialog, and not
@@ -105,41 +110,45 @@ useEscapeLayer(isOpen, () => {
 	(triggerControl() ?? triggerRef.value)?.focus();
 });
 
-// Handle keyboard navigation within the dropdown
+/**
+ * Keys pressed inside the menu, and only there: a dialog opened over it, or
+ * anything else holding focus, keeps its keys. It listens on the window in the
+ * capture phase, so Tab reaches it before a surrounding dialog's focus trap.
+ */
 const handleKeydown = (event: KeyboardEvent) => {
-	if (!isOpen.value) return;
+	const menu = menuRef.value;
+	const target = event.target as HTMLElement | null;
+	if (!isOpen.value || !menu || !target || !menu.contains(target)) return;
 
-	if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-		event.preventDefault();
-		if (!menuRef.value) return;
-
-		const items = Array.from(menuRef.value.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR));
-		if (items.length === 0) return;
-
-		const currentIndex = items.findIndex((item) => item === document.activeElement);
-
-		let nextIndex: number;
-		if (event.key === 'ArrowDown') {
-			nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
-		} else {
-			nextIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
-		}
-		items[nextIndex]?.focus();
+	// Tab leaves the menu and closes it. The press is not prevented: from the
+	// trigger, where the menu belongs in the page, the browser moves focus on
+	// to the next (or previous) control as it would anyway. The menu itself is
+	// teleported to the end of <body>, so from there Tab would leave the page.
+	if (event.key === 'Tab') {
+		triggerControl()?.focus();
+		isOpen.value = false;
 		return;
 	}
 
-	if (event.key === 'Home') {
-		event.preventDefault();
-		const first = menuRef.value?.querySelector<HTMLElement>(MENU_ITEM_SELECTOR);
-		first?.focus();
+	// Arrows, Home and End move between the items. A field or other widget in
+	// the menu keeps them for itself (the caret, its own options).
+	if (!target.matches(ITEM_SELECTOR)) return;
+	const items = Array.from(menu.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR));
+	const currentIndex = items.indexOf(target);
+	let next: HTMLElement | undefined;
+	if (event.key === 'ArrowDown') {
+		next = items[currentIndex < items.length - 1 ? currentIndex + 1 : 0];
+	} else if (event.key === 'ArrowUp') {
+		next = items[currentIndex > 0 ? currentIndex - 1 : items.length - 1];
+	} else if (event.key === 'Home') {
+		next = items[0];
+	} else if (event.key === 'End') {
+		next = items.at(-1);
+	} else {
 		return;
 	}
-
-	if (event.key === 'End') {
-		event.preventDefault();
-		const items = menuRef.value?.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR);
-		items?.[items.length - 1]?.focus();
-	}
+	event.preventDefault();
+	next?.focus();
 };
 
 // Toggle dropdown
@@ -165,17 +174,17 @@ watch(isOpen, (newValue) => {
 watch(isOpen, async (open) => {
 	if (open) {
 		document.addEventListener('click', handleClickOutside);
-		document.addEventListener('keydown', handleKeydown);
+		window.addEventListener('keydown', handleKeydown, true);
 		window.addEventListener('scroll', updatePosition, true);
 		window.addEventListener('resize', updatePosition);
 
-		// Auto-focus first menu item when opened via keyboard
+		// The first enabled item takes focus on open, opened by pointer or key.
 		await nextTick();
 		const firstItem = menuRef.value?.querySelector<HTMLElement>(MENU_ITEM_SELECTOR);
 		firstItem?.focus();
 	} else {
 		document.removeEventListener('click', handleClickOutside);
-		document.removeEventListener('keydown', handleKeydown);
+		window.removeEventListener('keydown', handleKeydown, true);
 		window.removeEventListener('scroll', updatePosition, true);
 		window.removeEventListener('resize', updatePosition);
 	}
@@ -183,7 +192,7 @@ watch(isOpen, async (open) => {
 
 onUnmounted(() => {
 	document.removeEventListener('click', handleClickOutside);
-	document.removeEventListener('keydown', handleKeydown);
+	window.removeEventListener('keydown', handleKeydown, true);
 	window.removeEventListener('scroll', updatePosition, true);
 	window.removeEventListener('resize', updatePosition);
 });
