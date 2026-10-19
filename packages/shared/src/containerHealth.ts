@@ -37,6 +37,8 @@ export interface ComposeService {
 export interface ContainerFinding {
 	ok: boolean;
 	message: string;
+	/** The compose service a per-container finding is about; absent on fleet-wide summaries. */
+	service?: string;
 }
 
 /**
@@ -158,6 +160,7 @@ export function evaluateContainerStates(services: ComposeService[]): ContainerFi
 				: `is not running (${service.state || 'unknown'})`;
 		return {
 			ok: false,
+			service: service.service,
 			message: `container "${service.service}" ${reason} — ${detail}`,
 		};
 	});
@@ -192,6 +195,7 @@ export function evaluateVersionDrift(
 
 	const findings: ContainerFinding[] = drifted.map((service) => ({
 		ok: false,
+		service: service.service,
 		message:
 			`container "${service.service}" runs ${service.imageTag || '(untagged)'} but ` +
 			`OWLAT_VERSION is ${configuredVersion} — the configured and running versions have diverged`,

@@ -224,7 +224,7 @@ describe('doctor — evaluateMtaHealth', () => {
 
 	it('fails closed on an incomplete response', () => {
 		expect(evaluateMtaHealth({ status: 'ok' })).toEqual([
-			{ ok: false, message: 'MTA returned an incomplete health response' },
+			{ check: 'mta.health', ok: false, message: 'MTA returned an incomplete health response' },
 		]);
 	});
 

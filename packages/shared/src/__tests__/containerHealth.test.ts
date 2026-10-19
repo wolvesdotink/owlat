@@ -129,6 +129,7 @@ describe('evaluateContainerStates', () => {
 		expect(findings).toHaveLength(1);
 		expect(findings[0]?.ok).toBe(true);
 		expect(findings[0]?.message).toContain('3 running container(s) are healthy');
+		expect(findings[0]?.service).toBeUndefined();
 	});
 
 	it('FAILS on a crash-looping container and surfaces its status line', () => {
@@ -147,6 +148,7 @@ describe('evaluateContainerStates', () => {
 		expect(findings[0]?.message).toContain('imap');
 		expect(findings[0]?.message).toContain('not running (restarting)');
 		expect(findings[0]?.message).toContain('Restarting (1) 5 seconds ago');
+		expect(findings[0]?.service).toBe('imap');
 	});
 
 	it('FAILS a container that is running but failing its healthcheck', () => {
@@ -217,6 +219,8 @@ describe('evaluateVersionDrift', () => {
 		const failures = findings.filter((finding) => !finding.ok);
 		expect(failures).toHaveLength(2);
 		expect(failures[0]?.message).toContain('imap');
+		// Per-container findings name their service; the summary names none.
+		expect(failures.map((finding) => finding.service)).toEqual(['imap', undefined]);
 		expect(failures.some((finding) => finding.message.includes('web'))).toBe(false);
 	});
 
