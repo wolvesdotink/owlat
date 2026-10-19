@@ -253,10 +253,15 @@ function refreshPreview() {
 	runAnalysis();
 }
 
+/** No client selected: drop any analysis in flight along with the last report. */
+function clearAnalysis() {
+	cancelAnalysis();
+	report.value = null;
+}
+
 async function runAnalysis() {
 	if (!selectedClient.value) {
-		cancelAnalysis();
-		report.value = null;
+		clearAnalysis();
 		return;
 	}
 
@@ -314,7 +319,10 @@ function handleRenderOptionsUpdate(options: Partial<PreviewRenderOptions>) {
 watch(
 	[() => props.html, selectedClient],
 	() => {
-		if (props.autoAnalyze) {
+		// Clearing the client stops a manual (Refresh) analysis too.
+		if (!selectedClient.value) {
+			clearAnalysis();
+		} else if (props.autoAnalyze) {
 			runAnalysis();
 		}
 	},

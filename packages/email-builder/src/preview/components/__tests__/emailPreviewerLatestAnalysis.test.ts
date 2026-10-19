@@ -41,7 +41,10 @@ afterEach(() => {
 });
 
 // A fresh module graph per test: the caniemail cache is module-level.
-async function mountPreviewer(onReport: (report: CompatibilityReport) => void) {
+async function mountPreviewer(
+	onReport: (report: CompatibilityReport) => void,
+	props: Record<string, unknown> = {}
+) {
 	vi.resetModules();
 	const { default: EmailPreviewer } = await import('../EmailPreviewer.vue');
 	const { default: ClientSelector } = await import('../ClientSelector.vue');
@@ -51,12 +54,17 @@ async function mountPreviewer(onReport: (report: CompatibilityReport) => void) {
 			html: '<div style="display: flex"></div>',
 			autoAnalyze: true,
 			onCompatibilityReport: onReport,
+			...props,
 		},
 	});
-	// Picking a client is what starts an analysis.
-	wrapper.findComponent(ClientSelector).vm.$emit('update:selectedClient', emailClients[0]);
+	const selector = wrapper.findComponent(ClientSelector);
+	// Picking a client is what starts an analysis (with autoAnalyze).
+	selector.vm.$emit('update:selectedClient', emailClients[0]);
 	await flushPromises();
-	return wrapper;
+	return {
+		w: wrapper,
+		selectClient: (client: unknown) => selector.vm.$emit('update:selectedClient', client),
+	};
 }
 
 const features = (report: CompatibilityReport) => report.issues.map((i) => i.feature);
@@ -64,7 +72,7 @@ const features = (report: CompatibilityReport) => report.issues.map((i) => i.fea
 describe('EmailPreviewer — latest-only compatibility analysis', () => {
 	it('emits one report, for the newest html, when an edit lands during the first load', async () => {
 		const reports: CompatibilityReport[] = [];
-		const w = await mountPreviewer((r) => reports.push(r));
+		const { w } = await mountPreviewer((r) => reports.push(r));
 		await w.setProps({ html: '<div style="display: grid"></div>' });
 
 		respond();
@@ -77,7 +85,7 @@ describe('EmailPreviewer — latest-only compatibility analysis', () => {
 
 	it('emits nothing once unmounted mid-analysis', async () => {
 		const reports: CompatibilityReport[] = [];
-		const w = await mountPreviewer((r) => reports.push(r));
+		const { w } = await mountPreviewer((r) => reports.push(r));
 		w.unmount();
 		wrapper = null;
 
@@ -85,5 +93,25 @@ describe('EmailPreviewer — latest-only compatibility analysis', () => {
 		await flushPromises();
 
 		expect(reports).toEqual([]);
+	});
+
+	it('clearing the client stops a manual analysis when autoAnalyze is off', async () => {
+		const reports: CompatibilityReport[] = [];
+		const { w, selectClient } = await mountPreviewer((r) => reports.push(r), {
+			autoAnalyze: false,
+			// Keeps the analysis panel (and its spinner) on screen without a client.
+			validationIssues: [{ severity: 'warning', message: 'Check the footer' }],
+		});
+		await w.find('button[title="Refresh preview"]').trigger('click');
+		expect(w.find('.ep-analysis-spinner').exists()).toBe(true);
+
+		selectClient(null);
+		await flushPromises();
+		expect(w.find('.ep-analysis-spinner').exists()).toBe(false);
+
+		respond();
+		await flushPromises();
+		expect(reports).toEqual([]);
+		expect(w.find('.ep-analysis-spinner').exists()).toBe(false);
 	});
 });
