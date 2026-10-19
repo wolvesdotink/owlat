@@ -77,6 +77,14 @@ const buttonClasses = computed(() => {
 	return classes.join(' ');
 });
 
+// A link has no native `disabled`, so it gets `aria-disabled` from the props.
+// A native button keeps the caller's own `aria-disabled` (the binding below
+// runs after `v-bind="$attrs"` and would otherwise erase it): that is how a
+// control stays in the tab order, announced as unavailable with its reason,
+// while the caller's click handler keeps it inert. `disabled` would drop it
+// from the tab order, so its reason could never be reached.
+type Booleanish = boolean | 'true' | 'false' | undefined;
+
 const element = computed(() => {
 	if (props.to) return resolveComponent('NuxtLink');
 	if (props.href) return 'a';
@@ -95,7 +103,7 @@ const element = computed(() => {
 		:type="!to && !href ? type : undefined"
 		:class="buttonClasses"
 		:disabled="!to && !href ? disabled || loading : undefined"
-		:aria-disabled="to || href ? disabled || loading : undefined"
+		:aria-disabled="to || href ? disabled || loading : ($attrs['aria-disabled'] as Booleanish)"
 		@click="handleClick"
 	>
 		<slot name="iconLeft" />

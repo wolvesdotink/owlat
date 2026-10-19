@@ -7,12 +7,18 @@
  * `pending_review` is a first-class state here, not a variant of draft: the
  * content scanner flagged the publish, so the template is NOT sendable until an
  * admin approves it. That is why the pill has its own tone and the primary
- * action becomes a disabled, honest control rather than "Publish" — there is no
- * author-side action that moves it forward.
+ * action becomes an unavailable, honest control rather than "Publish" — there
+ * is no author-side action that moves it forward.
+ *
+ * An unavailable publish control is `aria-disabled`, not `disabled`. A
+ * `disabled` button leaves the tab order and (through `.btn`'s
+ * `pointer-events: none`) never shows its `title` either, so nobody learned
+ * why Publish was held. Focusable + `aria-describedby` makes the reason
+ * arrive with the control; the click handler is what keeps it inert.
  */
 import type { Id } from '@owlat/api/dataModel';
 
-defineProps<{
+const props = defineProps<{
 	/** The email being edited; the share-links popover scopes itself to it. */
 	emailId: Id<'transactionalEmails'>;
 	/** Published — sendable; the publish control flips to Unpublish. */
@@ -39,6 +45,27 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+/** Publish is held until the unsaved edits are saved. */
+const isPublishHeld = computed(() => props.hasChanges && !props.isPublished);
+
+/** Why the publish control does nothing right now, or null when it is live. */
+const unavailableReason = computed(() =>
+	props.isPendingReview
+		? t('dashboard.send.transactional.detail.edit.pendingReviewButtonHint')
+		: isPublishHeld.value
+			? t('dashboard.send.transactional.detail.edit.publishHint.saveFirst')
+			: null
+);
+const unavailableReasonId = useId();
+
+/** `.btn`'s `disabled:` look, plus no press/hover feedback for a held control. */
+const unavailableClass = 'opacity-50 cursor-not-allowed active:scale-100';
+
+function onTogglePublish() {
+	if (isPublishHeld.value) return;
+	emit('toggle-publish');
+}
 </script>
 
 <template>
@@ -92,13 +119,15 @@ const { t } = useI18n();
 		}}</span>
 	</UiButton>
 	<!-- Awaiting review — no author-side action moves this forward, so the
-	     primary action is a disabled, honest state rather than "Publish". -->
+	     primary action is an unavailable, honest state rather than "Publish". -->
 	<UiButton
 		v-if="isPendingReview"
 		variant="secondary"
 		size="sm"
-		disabled
-		:title="t('dashboard.send.transactional.detail.edit.pendingReviewButtonHint')"
+		aria-disabled="true"
+		:aria-describedby="unavailableReasonId"
+		:class="[unavailableClass, 'hover:bg-surface-3']"
+		:title="unavailableReason ?? undefined"
 	>
 		<template #iconLeft>
 			<Icon name="lucide:clock-3" class="w-4 h-4" />
@@ -112,7 +141,9 @@ const { t } = useI18n();
 		:variant="isPublished ? 'secondary' : 'primary'"
 		size="sm"
 		:loading="isPublishing"
-		:disabled="hasChanges && !isPublished"
+		:aria-disabled="isPublishHeld ? 'true' : undefined"
+		:aria-describedby="isPublishHeld ? unavailableReasonId : undefined"
+		:class="isPublishHeld ? [unavailableClass, 'hover:bg-text-primary'] : undefined"
 		:title="
 			isPublished
 				? t('dashboard.send.transactional.detail.edit.publishHint.unpublish')
@@ -120,7 +151,7 @@ const { t } = useI18n();
 					? t('dashboard.send.transactional.detail.edit.publishHint.saveFirst')
 					: t('dashboard.send.transactional.detail.edit.publishHint.publish')
 		"
-		@click="emit('toggle-publish')"
+		@click="onTogglePublish"
 	>
 		<template v-if="!isPublishing" #iconLeft>
 			<Icon :name="isPublished ? 'lucide:rotate-ccw' : 'lucide:rocket'" class="w-4 h-4" />
@@ -131,4 +162,8 @@ const { t } = useI18n();
 				: t('dashboard.send.transactional.detail.edit.publish')
 		}}
 	</UiButton>
+	<!-- The unavailable reason, for the control's accessible description. -->
+	<span v-if="unavailableReason" :id="unavailableReasonId" class="sr-only">{{
+		unavailableReason
+	}}</span>
 </template>
