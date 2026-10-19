@@ -10,7 +10,12 @@ import { useUiI18n } from '../../composables/useUiI18n';
  */
 const props = defineProps<{ toast: Toast }>();
 
-const emit = defineEmits<{ dismiss: [] }>();
+const emit = defineEmits<{
+	/** The inline action was pressed; the stack decides whether the toast goes. */
+	dismiss: [];
+	/** The close button: the toast goes, whatever its action is doing. */
+	close: [];
+}>();
 
 interface ToastStyle {
 	container: string;
@@ -69,7 +74,22 @@ const STYLES: Record<ToastType, ToastStyle> = {
 
 const { t } = useUiI18n();
 
-const style = computed(() => STYLES[props.toast.type]);
+/**
+ * While an observed action runs, the icon turns into a spinner and the action
+ * (now showing its pending label) stops taking pointer presses; a keyboard
+ * press is ignored by the toast store. Both are expressed through the style
+ * entries so the card's markup stays the same in every state.
+ */
+const style = computed<ToastStyle>(() => {
+	const base = STYLES[props.toast.type];
+	if (!props.toast.pending) return base;
+	return {
+		...base,
+		icon: 'lucide:loader-2',
+		iconColor: `${base.iconColor} animate-spin motion-reduce:animate-none`,
+		actionHover: `${base.text} opacity-70 cursor-progress pointer-events-none`,
+	};
+});
 </script>
 
 <template>
@@ -114,7 +134,7 @@ const style = computed(() => STYLES[props.toast.type]);
 		<button
 			:class="['p-1 rounded-lg transition-colors flex-shrink-0', style.closeHover]"
 			:aria-label="t('ui.toast.dismiss')"
-			@click="emit('dismiss')"
+			@click="emit('close')"
 		>
 			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path
