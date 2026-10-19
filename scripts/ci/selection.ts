@@ -41,6 +41,29 @@ export function groupWorkspaces(workspaces: Workspace[], count = 4) {
 	}
 	return bins.map(({ id, workspaces: items }) => ({ id, workspaces: items }));
 }
+/**
+ * Files the desktop SPA (`generate:desktop`) is built from beyond the web
+ * workspace's own package graph: the bridge the web app imports by path (it is
+ * not a declared dependency, so turbo does not see it), the Tauri config that
+ * names the dist, and the inspector itself.
+ */
+const DESKTOP_SPA_INPUTS = [
+	'apps/desktop/src/',
+	'apps/desktop/package.json',
+	'apps/desktop/src-tauri/tauri.conf.json',
+	'scripts/check-desktop-spa.ts',
+];
+export function desktopSpaSelected(full: boolean, web: boolean, changed: string[]): boolean {
+	return (
+		full ||
+		web ||
+		changed.some((file) =>
+			DESKTOP_SPA_INPUTS.some((input) =>
+				input.endsWith('/') ? file.startsWith(input) : file === input
+			)
+		)
+	);
+}
 export function expectedJobs(selection: {
 	groups: unknown[];
 	api: boolean;
@@ -48,6 +71,7 @@ export function expectedJobs(selection: {
 	mta: boolean;
 	images: unknown[];
 	java: boolean;
+	desktopSpa: boolean;
 }): string[] {
 	return [
 		'detect',
@@ -60,6 +84,7 @@ export function expectedJobs(selection: {
 		...(selection.mta ? ['test-mta'] : []),
 		...(selection.images.length ? ['docker-build'] : []),
 		...(selection.java ? ['sdk-java'] : []),
+		...(selection.desktopSpa ? ['desktop-spa'] : []),
 	];
 }
 export function assertJobResults(expected: string[], needs: Record<string, { result: string }>) {

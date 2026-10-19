@@ -1,6 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
-import { coverageWorkspaces, expectedJobs, groupWorkspaces, type Task } from './selection';
+import {
+	coverageWorkspaces,
+	desktopSpaSelected,
+	expectedJobs,
+	groupWorkspaces,
+	type Task,
+} from './selection';
 const full = process.env['RUN_ALL'] === 'true',
 	base = process.env['BASE_SHA'];
 if (!full && !base) throw new Error('Affected selection requires BASE_SHA');
@@ -32,10 +38,11 @@ const names = full
 	: (
 			turbo(['ls', ...affected, '--output=json']) as { packages: { items: { name: string }[] } }
 		).packages.items.map((item) => item.name);
+const web = workspaces.some((w) => w.name === 'web');
 const selection = {
 	groups,
 	api: workspaces.some((w) => w.name === 'api'),
-	web: workspaces.some((w) => w.name === 'web'),
+	web,
 	mta: workspaces.some((w) => w.name === 'mta'),
 	images:
 		full || changed.includes('.github/docker-images.json')
@@ -44,6 +51,7 @@ const selection = {
 					(image) => names.includes(image.package) || changed.includes(image.dockerfile)
 				),
 	java: full || changed.some((file) => file.startsWith('packages/sdk-java/')),
+	desktopSpa: desktopSpaSelected(full, web, changed),
 };
 const outputs = { ...selection, expected: expectedJobs(selection), full };
 const lines = Object.entries(outputs)

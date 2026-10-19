@@ -42,6 +42,7 @@ jobs:
       api: ${{ steps.select.outputs.api }}
       images: ${{ steps.select.outputs.images }}
       java: ${{ steps.select.outputs.java }}
+      desktopSpa: ${{ steps.select.outputs.desktopSpa }}
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
@@ -470,6 +471,39 @@ jobs:
       - name: Build + test
         run: mvn -q --batch-mode --file packages/sdk-java/pom.xml verify
 
+  # The real desktop frontend: the static `generate:desktop` build the Tauri app
+  # packages (tauri.conf.json `build.frontendDist`). Desktop CI compiles the Rust
+  # shell against a placeholder index.html, so this is the only PR-time build of
+  # it; scripts/check-desktop-spa.ts fails on a referenced chunk, stylesheet,
+  # font, icon or app manifest that was not emitted or does not match its
+  # integrity hash. Selected when web is affected, when the bridge or Tauri config
+  # changes (scripts/ci/selection.ts), and on every full run. The JS -> Rust
+  # invoke-name contract needs no build and runs in Lint (lint:desktop-invoke).
+  desktop-spa:
+    name: Desktop SPA (build + inspect)
+    needs: detect
+    if: needs.detect.outputs.desktopSpa == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-bun
+      - name: Turborepo remote cache
+        if: github.ref_type != 'tag'
+        uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
+      # The same two steps the release build runs before tauri-action
+      # (_desktop-build.yml): the web bundle imports some workspace libraries as
+      # built dist/ entries, then tauri's beforeBuildCommand runs generate:desktop.
+      - name: Build workspace libraries for the web bundle
+        run: bunx turbo build --filter='@owlat/web^...'
+      - name: Generate the desktop SPA
+        run: bun run --cwd apps/web generate:desktop
+      - name: Inspect the emitted SPA
+        run: bun scripts/check-desktop-spa.ts
+
   # Single required status check. Skipped matrix jobs (a docs-only PR skips the
   # api shards, most images, etc.) don't count as failures — only real failures
   # or cancellations do. Point branch protection at THIS job, not the matrices.
@@ -490,6 +524,7 @@ jobs:
         typecheck,
         docker-build,
         sdk-java,
+        desktop-spa,
       ]
     runs-on: ubuntu-latest
     steps:

@@ -236,6 +236,13 @@ manual dispatch run the full set as a safety valve.
     packaged Node entry imported once.
   - **Test (packages/sdk-java).** Maven `verify`, when `packages/sdk-java`
     changes.
+  - **Desktop SPA (build + inspect).** Builds the real `generate:desktop`
+    bundle the desktop app packages and fails on a referenced chunk,
+    stylesheet, font, icon or app manifest that was not emitted or does not
+    match its integrity hash (`scripts/check-desktop-spa.ts`). When web is
+    affected, when the desktop bridge or Tauri config changes, and on full
+    runs. The bridge's `invoke()` names are checked against `ipc_commands.rs`
+    in **Lint** (`lint:desktop-invoke`).
   - **Test Summary.** The single required status check; point branch
     protection at it. Selected jobs must succeed; unselected jobs must be
     skipped. Missing reports, selected skips, failures and cancellations fail

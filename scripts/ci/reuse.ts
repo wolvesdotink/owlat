@@ -12,6 +12,7 @@ export const FULL_JOBS = [
 	'test-mta',
 	'docker-build',
 	'sdk-java',
+	'desktop-spa',
 ];
 export interface Verification {
 	version: number;

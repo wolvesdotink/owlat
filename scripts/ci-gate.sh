@@ -59,7 +59,7 @@ fi
 # inside each lint:* entry, which booted vitest once per gate and left the
 # test files without a matching lint:* entry running only in security.yml.
 for gate in warnings scripts script-tests deadcode catalog build-graph convex-orphans convex-globals filesize adr branding format imports providers \
-	ui-buttons page-headers tokens member-jargon docker-workspaces deploy-closure installer compose mail-services html-to-text crypto-primitives source-bytes \
+	ui-buttons desktop-invoke page-headers tokens member-jargon docker-workspaces deploy-closure installer compose mail-services html-to-text crypto-primitives source-bytes \
 	stored-block-corpus; do
 	step bun run "lint:$gate"
 done
