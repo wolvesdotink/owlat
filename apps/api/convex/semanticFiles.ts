@@ -45,6 +45,7 @@ import {
 } from './lib/literalValidators';
 import { batchGet } from './_utils/batchLoader';
 import { dropExtractionProgress } from './knowledge/extractionProgress';
+import { walkVersionChain } from './lib/semanticFileVersions';
 import {
 	listFilesPage,
 	readableFilesPage,
@@ -260,24 +261,17 @@ export const search = authedQuery({
 /**
  * Get version history for a file. Each version is read-checked on its own,
  * like `get`, so a chain cannot surface a version the caller may not read.
+ *
+ * Walks the whole chain (a loop in stored data stops at the first revisit) and
+ * returns every readable version whole. The web reads compact pages from
+ * `files.history.list`; this shape stays for older clients and API callers.
  */
 export const getVersionHistory = authedQuery({
 	args: { fileId: v.id('semanticFiles') },
 	handler: async (ctx, args, session) => {
 		const canReadSemanticFile = semanticFileReadGate(ctx, session);
-		const versions: Array<Doc<'semanticFiles'> & { url: string | null }> = [];
-		let currentId: Id<'semanticFiles'> | undefined = args.fileId;
-
-		while (currentId) {
-			const file: Doc<'semanticFiles'> | null = await ctx.db.get(currentId);
-			if (!file) break;
-
-			if (await canReadSemanticFile(file)) versions.push(await hydrateFile(ctx, file));
-
-			currentId = file.previousVersionId;
-		}
-
-		return versions;
+		const { readable } = await walkVersionChain(ctx, args.fileId, canReadSemanticFile);
+		return hydrateFiles(ctx, readable);
 	},
 });
 

@@ -3951,7 +3951,11 @@
 			"versionHistory": {
 				"current": "Current",
 				"download": "Download this version",
-				"empty": "No previous versions."
+				"empty": "No previous versions.",
+				"olderFailed": "Older versions could not be loaded. Try again.",
+				"olderUnavailable": "There are older versions, but they cannot be loaded here.",
+				"restarted": "The list changed while you were reading it, so it starts again from the newest version.",
+				"showOlder": "Show older versions"
 			}
 		},
 		"forms": {

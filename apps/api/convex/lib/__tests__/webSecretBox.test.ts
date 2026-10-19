@@ -24,6 +24,19 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 describe('createWebSecretBox', () => {
+	it('seals under a caller-supplied nonce, deterministically, and refuses a wrong-sized one', async () => {
+		const box = createWebSecretBox(SECRET, { salt: 's:v1', info: 'i:v1' });
+		const iv = new Uint8Array(12).fill(7);
+		const first = await box.sealBytes(encoder.encode(CANARY), undefined, iv);
+		const second = await box.sealBytes(encoder.encode(CANARY), undefined, iv);
+		expect(toBase64(first.iv)).toBe(toBase64(iv));
+		expect(toBase64(first.ciphertext)).toBe(toBase64(second.ciphertext));
+		expect(decoder.decode(await box.openBytes(first))).toBe(CANARY);
+		await expect(
+			box.sealBytes(encoder.encode(CANARY), undefined, new Uint8Array(8))
+		).rejects.toThrow(/nonce/);
+	});
+
 	it('round-trips bytes and never emits the plaintext', async () => {
 		const box = createWebSecretBox(SECRET, { salt: 's:v1', info: 'i:v1' });
 		const sealed = await box.sealBytes(encoder.encode(CANARY));
