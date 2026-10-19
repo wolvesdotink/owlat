@@ -47,6 +47,15 @@ async function copyEmail(email: string) {
 	}
 }
 
+// The link's text, and so its accessible name: a contact without an email
+// still gets a named link, never an empty one.
+const linkLabel = computed(
+	() =>
+		props.contact.email ||
+		[props.contact.firstName, props.contact.lastName].filter(Boolean).join(' ') ||
+		t('dashboard.audience.contacts.index.contactWithoutEmail')
+);
+
 // A click that landed on the link or the checkbox is theirs; a modified or
 // non-primary click is the browser's (new tab, new window), not a row open.
 function onRowClick(event: MouseEvent) {
@@ -126,7 +135,7 @@ function menuItems(): ContextMenuItem[] {
 					class="text-text-primary font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					@keydown="onKeydown"
 				>
-					{{ contact.email }}
+					{{ linkLabel }}
 				</NuxtLink>
 			</td>
 			<td class="px-6 py-4">

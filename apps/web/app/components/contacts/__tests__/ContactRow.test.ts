@@ -150,6 +150,16 @@ describe('ContactsContactRow', () => {
 		host.unmount();
 	});
 
+	it.each([
+		['the full name', { firstName: 'Ada', lastName: 'Lovelace' }, 'Ada Lovelace'],
+		['a fallback', { firstName: null, lastName: null }, 'Contact without email'],
+	])('names the link of an email-less contact with %s', (_label, name, expected) => {
+		const { host } = mountRow({}, [{ ...contact, email: undefined, ...name } as never]);
+		const link = host.get(`a[href="${pathOf('contact_1')}"]`);
+		expect(link.text()).toBe(expected);
+		host.unmount();
+	});
+
 	it('opens the contact through the link once, without a second row open', async () => {
 		const { host, row, router } = mountRow();
 		await router.push('/dashboard/audience/contacts');

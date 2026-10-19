@@ -9961,6 +9961,7 @@
 					},
 					"clearSearch": "Clear search",
 					"clearSelection": "Clear selection",
+					"contactWithoutEmail": "Contact without email",
 					"contextMenu": {
 						"copyEmail": "Copy email address",
 						"deselect": "Deselect",
