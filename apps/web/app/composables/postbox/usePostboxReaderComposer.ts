@@ -44,10 +44,25 @@ export function usePostboxReaderComposer(opts: {
 	const composeNav = usePostboxComposeNav();
 	const answerNav = useAnswerModeNav();
 	const pendingLead = useAnswerPendingLead();
-	const { autoLoadImages } = usePostboxSettings();
+	const { autoLoadImages, isLoading: settingsLoading } = usePostboxSettings();
 	const imageAllowlist = usePostboxImageAllowlist(
 		computed(() => getMessage().mailboxId as Id<'mailboxes'>)
 	);
+	const imagePolicyPending = computed(
+		() => settingsLoading.value || imageAllowlist.isLoading.value
+	);
+
+	/** Resolves once the image preference and the sender grant have been read. */
+	function imagePolicySettled(): Promise<void> {
+		if (!imagePolicyPending.value) return Promise.resolve();
+		return new Promise((resolve) => {
+			const stop = watch(imagePolicyPending, (pending) => {
+				if (pending) return;
+				stop();
+				resolve();
+			});
+		});
+	}
 
 	const createDraft = useBackendOperation(api.mail.drafts.create, {
 		label: () => t('shared.postbox.usePostboxCompose.createOperation'),
@@ -88,6 +103,7 @@ export function usePostboxReaderComposer(opts: {
 	 */
 	async function openReplyWithBody(replyTarget: ReplyForwardSource, bodyText: string) {
 		const mailboxId = getMessage().mailboxId as Id<'mailboxes'>;
+		await imagePolicySettled();
 		const seed = await buildReplyComposeSeed('reply', replyTarget, {
 			mailboxId,
 			ownAddresses: ownAddresses.value,

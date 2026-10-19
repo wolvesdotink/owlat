@@ -33,8 +33,11 @@ vi.stubGlobal('useRouter', () => ({
 	}),
 }));
 vi.stubGlobal('navigateTo', navigateTo);
-vi.stubGlobal('usePostboxSettings', () => ({ autoLoadImages: ref(true) }));
-vi.stubGlobal('usePostboxImageAllowlist', () => ({ isAllowed: () => false }));
+vi.stubGlobal('usePostboxSettings', () => ({ autoLoadImages: ref(true), isLoading: ref(false) }));
+vi.stubGlobal('usePostboxImageAllowlist', () => ({
+	isAllowed: () => false,
+	isLoading: ref(false),
+}));
 // Two operations in declaration order: drafts.create, then drafts.update.
 let operationIndex = 0;
 vi.stubGlobal('useBackendOperation', () => {

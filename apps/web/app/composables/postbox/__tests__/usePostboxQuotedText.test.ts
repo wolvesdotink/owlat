@@ -105,6 +105,23 @@ describe('resolveBodyFields', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('falls back to the inline text when the read-ahead found no blob URL', async () => {
+		const client = {
+			query: vi.fn(async () => ({
+				htmlInline: null,
+				textInline: 'plain alternative',
+				hasHtmlBlob: true,
+				hasTextBlob: false,
+			})),
+			action: vi.fn(async () => ({ htmlUrl: null, textUrl: null })),
+		};
+		vi.stubGlobal('requireConvex', () => client);
+		await resolvePostboxMessageBody(client as never, 'row-3', { blobOnly: true });
+		const resolved = await resolveBodyFields({ ...base, _id: 'row-3' });
+		expect(resolved.textBodyInline).toBe('plain alternative');
+		vi.unstubAllGlobals();
+	});
+
 	it('falls back to the inline text after joining a read-ahead whose download failed', async () => {
 		const client = {
 			query: vi.fn(async () => ({

@@ -104,7 +104,9 @@ export async function resolveBodyFields<
 		const data = await consumeResolvedPostboxMessageBody(requireConvex(), t._id);
 		if (!data) return t;
 		const html = data.html ?? undefined;
-		const text = data.text ?? t.textBodyInline;
+		// No body at all (a blob whose URL could not be minted, in a read-ahead
+		// this call joined): the inline text part may still be there.
+		const text = data.text ?? t.textBodyInline ?? (html ? undefined : await inlineTextOf(t._id));
 		return { ...t, htmlBodyInline: html, textBodyInline: text };
 	} catch {
 		// The HTML did not download (here, or in a read-ahead this call joined):

@@ -45,7 +45,7 @@ export function useAnswerModeSession(opts: {
 	const ownAddresses = computed(
 		() => new Set(((ownQuery.data.value as string[] | undefined) ?? []).map(extractEmailAddress))
 	);
-	const { replyDefault, autoLoadImages } = usePostboxSettings();
+	const { replyDefault, autoLoadImages, isLoading: settingsLoading } = usePostboxSettings();
 	const imageAllowlist = usePostboxImageAllowlist(
 		computed(() => (opts.message()?.mailboxId as Id<'mailboxes'> | undefined) ?? null)
 	);
@@ -66,9 +66,21 @@ export function useAnswerModeSession(opts: {
 		});
 	}
 
+	// The quote's images follow the image preference and the sender grant, and
+	// the seed is built once: wait for both reads to settle (a failed read
+	// settles too, and falls back to dropping remote images).
+	const imagePolicyPending = computed(
+		() => settingsLoading.value || imageAllowlist.isLoading.value
+	);
+
 	watch(
-		[opts.message, () => ownQuery.data.value, () => ownQuery.error.value] as const,
-		([message, own, ownError]) => {
+		[
+			opts.message,
+			() => ownQuery.data.value,
+			() => ownQuery.error.value,
+			imagePolicyPending,
+		] as const,
+		([message, own, ownError, policyPending]) => {
 			if (started || !message) return;
 			if (opts.draftId) {
 				started = true;
@@ -84,6 +96,7 @@ export function useAnswerModeSession(opts: {
 			// The reply-all math needs the mailbox's own addresses; a failed read
 			// degrades to "no one is us" rather than never opening.
 			if (own === undefined && !ownError) return;
+			if (policyPending) return;
 			started = true;
 			const resolved =
 				opts.kind ?? primaryReplyKindFor(replyDefault.value, message, ownAddresses.value);
