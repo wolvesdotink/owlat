@@ -7,6 +7,10 @@ import {
 	probeMtaIdentityHealth,
 } from '../doctor';
 import { DELIVERY_PROVIDER_KINDS, type FeatureFlagState } from '@owlat/shared/featureFlags';
+import type { DoctorFinding } from '../../lib/doctorReport';
+
+/** A finding's message as printed (sanitized; no `.env` for the known-secret pass). */
+const text = (finding: DoctorFinding | undefined): string => String(finding?.message ?? '');
 
 /**
  * `evaluateSendPath` is the pure decision that drives doctor's SEND-PATH check
@@ -31,7 +35,7 @@ describe('doctor — evaluateSendPath', () => {
 
 	it('FAILS when provider=mta but MTA_API_URL is absent', () => {
 		const findings = evaluateSendPath(sending, { EMAIL_PROVIDER: 'mta', MTA_API_KEY: 'k' });
-		const urlFinding = findings.find((f) => f.message.includes('MTA_API_URL'));
+		const urlFinding = findings.find((f) => text(f).includes('MTA_API_URL'));
 		expect(urlFinding?.ok).toBe(false);
 		// Doctor fails iff any finding is not ok.
 		expect(findings.some((f) => !f.ok)).toBe(true);
@@ -51,14 +55,14 @@ describe('doctor — evaluateSendPath', () => {
 		const findings = evaluateSendPath(sending, {});
 		expect(findings).toHaveLength(1);
 		expect(findings[0]?.ok).toBe(false);
-		expect(findings[0]?.message).toMatch(/EMAIL_PROVIDER is unset/);
+		expect(text(findings[0])).toMatch(/EMAIL_PROVIDER is unset/);
 	});
 
 	it('FAILS when EMAIL_PROVIDER names an unknown provider (no implicit MTA default)', () => {
 		const findings = evaluateSendPath(sending, { EMAIL_PROVIDER: 'sendgrid' });
 		expect(findings).toHaveLength(1);
 		expect(findings[0]?.ok).toBe(false);
-		expect(findings[0]?.message).toContain('sendgrid');
+		expect(text(findings[0])).toContain('sendgrid');
 	});
 
 	// The two rejection messages name the choices, and the guard that rejected is
@@ -70,7 +74,7 @@ describe('doctor — evaluateSendPath', () => {
 		['unknown provider', { EMAIL_PROVIDER: 'sendgrid' }],
 		['unset provider', {}],
 	])('names every delivery provider kind when rejecting an %s', (_label, env) => {
-		const message = evaluateSendPath(sending, env)[0]?.message ?? '';
+		const message = text(evaluateSendPath(sending, env)[0]);
 		for (const kind of DELIVERY_PROVIDER_KINDS) {
 			expect(message).toContain(kind);
 		}
@@ -85,7 +89,7 @@ describe('doctor — evaluateSendPath', () => {
 			// AWS_SES_SECRET_ACCESS_KEY intentionally absent
 		});
 		expect(findings.some((f) => !f.ok)).toBe(true);
-		const secret = findings.find((f) => f.message.includes('AWS_SES_SECRET_ACCESS_KEY'));
+		const secret = findings.find((f) => text(f).includes('AWS_SES_SECRET_ACCESS_KEY'));
 		expect(secret?.ok).toBe(false);
 	});
 
@@ -145,8 +149,8 @@ describe('doctor — evaluateMtaHealth', () => {
 		});
 		const failed = findings.filter((finding) => !finding.ok);
 		expect(failed).toHaveLength(1);
-		expect(failed[0]?.message).toContain('192.0.2.11');
-		expect(failed[0]?.message).toContain('network unreachable');
+		expect(text(failed[0])).toContain('192.0.2.11');
+		expect(text(failed[0])).toContain('network unreachable');
 	});
 
 	it('adds one short provider note when TCP/25 is blocked, and none when it is open', () => {
@@ -163,14 +167,14 @@ describe('doctor — evaluateMtaHealth', () => {
 		};
 		const withHint = evaluateMtaHealth(blocked, { MTA_VPS_PROVIDER: 'digitalocean' });
 		const failed = withHint.filter((finding) => !finding.ok);
-		expect(failed[0]?.message).toContain('DigitalOcean blocks SMTP ports');
+		expect(text(failed[0])).toContain('DigitalOcean blocks SMTP ports');
 
 		const generic = evaluateMtaHealth(blocked, {});
-		expect(generic.filter((finding) => !finding.ok)[0]?.message).toMatch(/block/i);
+		expect(text(generic.filter((finding) => !finding.ok)[0])).toMatch(/block/i);
 
 		expect(
 			evaluateMtaHealth(healthy, { MTA_VPS_PROVIDER: 'digitalocean' }).every(
-				(finding) => !finding.message.includes('DigitalOcean')
+				(finding) => !text(finding).includes('DigitalOcean')
 			)
 		).toBe(true);
 	});
@@ -191,10 +195,10 @@ describe('doctor — evaluateMtaHealth', () => {
 			},
 			{ MTA_VPS_PROVIDER: 'digitalocean' }
 		);
-		const nudged = findings.filter((finding) => finding.message.includes('DigitalOcean'));
+		const nudged = findings.filter((finding) => text(finding).includes('DigitalOcean'));
 		expect(nudged).toHaveLength(1);
-		expect(nudged[0]?.message).toContain('192.0.2.11');
-		expect(findings.filter((finding) => finding.message.includes('TCP/25'))).toHaveLength(3);
+		expect(text(nudged[0])).toContain('192.0.2.11');
+		expect(findings.filter((finding) => text(finding).includes('TCP/25'))).toHaveLength(3);
 	});
 
 	it('points a shared NAT egress at the network mode, not at the provider', () => {
@@ -215,15 +219,16 @@ describe('doctor — evaluateMtaHealth', () => {
 		const failed = findings.filter((finding) => !finding.ok);
 		expect(failed).toHaveLength(2);
 		for (const finding of failed) {
-			expect(finding.message).toContain('shares one NAT egress address');
-			expect(finding.message).toContain('host networking or macvlan');
-			expect(finding.message).not.toContain('DigitalOcean');
-			expect(finding.message).not.toContain('is reachable');
+			expect(text(finding)).toContain('shares one NAT egress address');
+			expect(text(finding)).toContain('host networking or macvlan');
+			expect(text(finding)).not.toContain('DigitalOcean');
+			expect(text(finding)).not.toContain('is reachable');
 		}
 	});
 
 	it('fails closed on an incomplete response', () => {
-		expect(evaluateMtaHealth({ status: 'ok' })).toEqual([
+		const findings = evaluateMtaHealth({ status: 'ok' });
+		expect(findings.map((finding) => ({ ...finding, message: text(finding) }))).toEqual([
 			{ check: 'mta.health', ok: false, message: 'MTA returned an incomplete health response' },
 		]);
 	});
@@ -248,8 +253,8 @@ describe('doctor — evaluateMtaHealth', () => {
 		});
 		const failed = findings.filter((finding) => !finding.ok);
 		expect(failed).toHaveLength(1);
-		expect(failed[0]?.message).toContain('20 of 20');
-		expect(failed[0]?.message).toContain('Redis runs out of memory');
+		expect(text(failed[0])).toContain('20 of 20');
+		expect(text(failed[0])).toContain('Redis runs out of memory');
 	});
 
 	it('says nothing when the MTA predates the queue probe', () => {
@@ -280,9 +285,9 @@ describe('doctor — pre-flight IP audit verdict', () => {
 		});
 		expect(findings).toHaveLength(1);
 		expect(findings[0]?.ok).toBe(true);
-		expect(findings[0]?.message).toContain('203.0.113.10');
-		expect(findings[0]?.message).toContain('looks clean');
-		expect(findings[0]?.message).not.toContain('confidence');
+		expect(text(findings[0])).toContain('203.0.113.10');
+		expect(text(findings[0])).toContain('looks clean');
+		expect(text(findings[0])).not.toContain('confidence');
 	});
 
 	it('shows the zone-specific removal URL and next action for a PBL listing', () => {
@@ -307,8 +312,8 @@ describe('doctor — pre-flight IP audit verdict', () => {
 		expect(findings).toHaveLength(1);
 		// Fixable, so it does not fail the install — but it is never silent.
 		expect(findings[0]?.ok).toBe(true);
-		expect(findings[0]?.message).toContain('PBL exclusion');
-		expect(findings[0]?.message).toContain('https://www.spamhaus.org/pbl/removal/');
+		expect(text(findings[0])).toContain('PBL exclusion');
+		expect(text(findings[0])).toContain('https://www.spamhaus.org/pbl/removal/');
 	});
 
 	it('FAILS doctor on an unusable address so the installer cannot proceed silently', () => {
@@ -331,8 +336,8 @@ describe('doctor — pre-flight IP audit verdict', () => {
 			],
 		});
 		expect(findings[0]?.ok).toBe(false);
-		expect(findings[0]?.message).toContain('will not work');
-		expect(findings[0]?.message).toContain('https://www.spamhaus.org/drop/');
+		expect(text(findings[0])).toContain('will not work');
+		expect(text(findings[0])).toContain('https://www.spamhaus.org/drop/');
 	});
 
 	it('names low measurement confidence rather than hiding it', () => {
@@ -348,7 +353,7 @@ describe('doctor — pre-flight IP audit verdict', () => {
 			],
 		});
 		expect(findings[0]?.ok).toBe(true);
-		expect(findings[0]?.message).toContain('measurement confidence: low');
+		expect(text(findings[0])).toContain('measurement confidence: low');
 	});
 
 	it('prints nothing when no audit exists, the payload is unreadable, or a row is malformed', () => {
@@ -390,8 +395,8 @@ describe('doctor — FCrDNS setup guidance', () => {
 			],
 		});
 		expect(findings[0]?.ok).toBe(false);
-		expect(findings[0]?.message).toContain('Set its PTR exactly to mail.example.com');
-		expect(findings[0]?.message).toContain('Hetzner Console');
+		expect(text(findings[0])).toContain('Set its PTR exactly to mail.example.com');
+		expect(text(findings[0])).toContain('Hetzner Console');
 	});
 });
 

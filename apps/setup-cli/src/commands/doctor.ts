@@ -14,6 +14,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import type { EnvMap } from '../lib/env';
 import type { DoctorFinding } from '../lib/doctorReport';
+import { doctorText, envValue, trusted, urlValue } from '../lib/doctorText';
 import {
 	fcrdnsReasonMessage,
 	reverseDnsGuidance,
@@ -30,11 +31,17 @@ export type MtaHealthFinding = DoctorFinding;
 export function evaluateMtaIdentityHealth(value: unknown): MtaHealthFinding[] {
 	if (!isRecord(value) || !Array.isArray(value['ips'])) {
 		return [
-			{ check: 'mta.identity', ok: false, message: 'MTA returned no outbound-IP identity status' },
+			{
+				check: 'mta.identity',
+				ok: false,
+				message: doctorText`MTA returned no outbound-IP identity status`,
+			},
 		];
 	}
 	if (value['ips'].length === 0) {
-		return [{ check: 'mta.identity', ok: false, message: 'MTA has no configured outbound IPs' }];
+		return [
+			{ check: 'mta.identity', ok: false, message: doctorText`MTA has no configured outbound IPs` },
+		];
 	}
 	const findings: MtaHealthFinding[] = [];
 	for (const item of value['ips']) {
@@ -42,7 +49,7 @@ export function evaluateMtaIdentityHealth(value: unknown): MtaHealthFinding[] {
 			findings.push({
 				check: 'mta.identity',
 				ok: false,
-				message: 'MTA returned an invalid outbound-IP identity result',
+				message: doctorText`MTA returned an invalid outbound-IP identity result`,
 			});
 			continue;
 		}
@@ -60,7 +67,7 @@ export function evaluateMtaIdentityHealth(value: unknown): MtaHealthFinding[] {
 				check: 'mta.identity',
 				subject: item['ip'],
 				ok: true,
-				message: `FCrDNS ready for ${item['ip']}: PTR ${ptrNames.join(', ') || '(none)'} matches EHLO ${ehlo}${warning}${bypass}`,
+				message: doctorText`FCrDNS ready for ${item['ip']}: PTR ${ptrNames.join(', ') || '(none)'} matches EHLO ${ehlo}${trusted(warning)}${trusted(bypass)}`,
 			});
 			continue;
 		}
@@ -73,9 +80,7 @@ export function evaluateMtaIdentityHealth(value: unknown): MtaHealthFinding[] {
 			check: 'mta.identity',
 			subject: item['ip'],
 			ok: false,
-			message:
-				`FCrDNS blocked for ${item['ip']}: ${fcrdnsReasonMessage(reason)} ` +
-				`Set its PTR exactly to ${ehlo}. ${guidance.instruction}`,
+			message: doctorText`FCrDNS blocked for ${item['ip']}: ${trusted(fcrdnsReasonMessage(reason))} Set its PTR exactly to ${ehlo}. ${trusted(guidance.instruction)}`,
 		});
 	}
 	return findings;
@@ -107,8 +112,8 @@ export function evaluateSendPath(flags: FeatureFlagState, env: EnvMap): SendPath
 				check: 'send_path.provider',
 				ok: false,
 				message: provider
-					? `a sending feature is enabled but EMAIL_PROVIDER="${provider}" is not a delivery provider (${kinds})`
-					: `a sending feature is enabled but EMAIL_PROVIDER is unset — set ${kinds} and its credentials, or this install cannot send mail`,
+					? doctorText`a sending feature is enabled but EMAIL_PROVIDER="${envValue('EMAIL_PROVIDER', provider)}" is not a delivery provider (${trusted(kinds)})`
+					: doctorText`a sending feature is enabled but EMAIL_PROVIDER is unset — set ${trusted(kinds)} and its credentials, or this install cannot send mail`,
 			},
 		];
 	}
@@ -117,7 +122,7 @@ export function evaluateSendPath(flags: FeatureFlagState, env: EnvMap): SendPath
 		check: 'send_path.credential',
 		subject: key,
 		ok: Boolean(env[key]),
-		message: `${key} is set (required to send via ${provider})`,
+		message: doctorText`${trusted(key)} is set (required to send via ${trusted(provider)})`,
 	}));
 }
 
@@ -141,9 +146,7 @@ export function evaluateMtaQueueHealth(value: unknown): MtaHealthFinding[] {
 		{
 			check: 'mta.queue_leak',
 			ok: false,
-			message:
-				`MTA retry queue is leaking — ${orphaned} of ${sampled} sampled overdue jobs have no message left to send, ` +
-				`out of ${overdue} overdue. These grow until Redis runs out of memory; capture \`owlat logs mta\` and report this.`,
+			message: doctorText`MTA retry queue is leaking — ${orphaned} of ${sampled} sampled overdue jobs have no message left to send, out of ${overdue} overdue. These grow until Redis runs out of memory; capture \`owlat logs mta\` and report this.`,
 		},
 	];
 }
@@ -151,14 +154,24 @@ export function evaluateMtaQueueHealth(value: unknown): MtaHealthFinding[] {
 /** Pure interpretation of the MTA health body, separated for unit tests. */
 export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFinding[] {
 	if (!isRecord(value)) {
-		return [{ check: 'mta.health', ok: false, message: 'MTA returned an invalid health response' }];
+		return [
+			{
+				check: 'mta.health',
+				ok: false,
+				message: doctorText`MTA returned an invalid health response`,
+			},
+		];
 	}
 	const worker = isRecord(value['worker']) ? value['worker'] : null;
 	const emergency = isRecord(value['emergency']) ? value['emergency'] : null;
 	const smtp = isRecord(value['smtpOutbound']) ? value['smtpOutbound'] : null;
 	if (!worker || !emergency || !smtp || !Array.isArray(smtp['ips'])) {
 		return [
-			{ check: 'mta.health', ok: false, message: 'MTA returned an incomplete health response' },
+			{
+				check: 'mta.health',
+				ok: false,
+				message: doctorText`MTA returned an incomplete health response`,
+			},
 		];
 	}
 
@@ -166,14 +179,22 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 		{
 			check: 'mta.queue_store',
 			ok: value['redis'] === 'connected',
-			message: 'MTA queue store is connected',
+			message: doctorText`MTA queue store is connected`,
 		},
-		{ check: 'mta.worker', ok: worker['alive'] === true, message: 'MTA delivery worker is alive' },
-		{ check: 'mta.dns', ok: value['dns'] === 'ok', message: 'MTA DNS resolver is reachable' },
+		{
+			check: 'mta.worker',
+			ok: worker['alive'] === true,
+			message: doctorText`MTA delivery worker is alive`,
+		},
+		{
+			check: 'mta.dns',
+			ok: value['dns'] === 'ok',
+			message: doctorText`MTA DNS resolver is reachable`,
+		},
 		{
 			check: 'mta.circuit_breaker',
 			ok: emergency['allIpsBlocked'] === false,
-			message: 'MTA emergency circuit breaker is clear',
+			message: doctorText`MTA emergency circuit breaker is clear`,
 		},
 	];
 	findings.push(...evaluateMtaIdentityHealth(value));
@@ -183,7 +204,7 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 		findings.push({
 			check: 'mta.sending_ips',
 			ok: false,
-			message: 'MTA has no sending IPs to probe',
+			message: doctorText`MTA has no sending IPs to probe`,
 		});
 	}
 	// A blocked TCP/25 is nearly always the provider, not the install. The note
@@ -195,7 +216,7 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 			findings.push({
 				check: 'mta.sending_ips',
 				ok: false,
-				message: 'MTA returned an invalid sending-IP result',
+				message: doctorText`MTA returned an invalid sending-IP result`,
 			});
 			continue;
 		}
@@ -207,7 +228,7 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 				check: 'mta.tcp25',
 				subject: item['ip'],
 				ok: false,
-				message: `${item['ip']} shares one NAT egress address with other sending IPs, so it does not send from its own address (TCP/25 not probed) — run the MTA with host networking or macvlan, or send from one IP per install`,
+				message: doctorText`${item['ip']} shares one NAT egress address with other sending IPs, so it does not send from its own address (TCP/25 not probed) — run the MTA with host networking or macvlan, or send from one IP per install`,
 			});
 			continue;
 		}
@@ -221,7 +242,7 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 			check: 'mta.tcp25',
 			subject: item['ip'],
 			ok,
-			message: `TCP/25 is reachable from ${item['ip']}${detail}${nudge}`,
+			message: doctorText`TCP/25 is reachable from ${item['ip']}${detail}${trusted(nudge)}`,
 		});
 	}
 	return findings;
@@ -263,7 +284,7 @@ export function evaluateIpAuditReport(value: unknown): MtaHealthFinding[] {
 			check: 'mta.ip_audit',
 			subject: audit['ip'],
 			ok: verdict !== 'unusable',
-			message: `IP audit for ${audit['ip']}: ${headline}${nextAction}${links}${confidence}`,
+			message: doctorText`IP audit for ${audit['ip']}: ${headline}${nextAction}${links}${trusted(confidence)}`,
 		});
 	}
 	return findings;
@@ -291,16 +312,28 @@ export async function probeIpAudit(baseUrl: string, apiKey?: string): Promise<Mt
 	}
 }
 
-async function fetchMtaHealth(baseUrl: string): Promise<unknown> {
+type MtaHealthBody = { ok: true; body: unknown } | { ok: false; finding: MtaHealthFinding };
+
+/** GET `/health`; a failure comes back as the finding to report, never as a throw. */
+async function fetchMtaHealth(baseUrl: string): Promise<MtaHealthBody> {
 	const url = `${baseUrl.replace(/\/+$/, '')}/health`;
+	// The configured URL may carry credentials; only its sanitized form is printed.
+	const unreachable = (detail: string): MtaHealthBody => ({
+		ok: false,
+		finding: {
+			check: 'mta.health',
+			ok: false,
+			message: doctorText`${urlValue(url)} is unreachable (${detail})`,
+		},
+	});
 	const ctrl = new AbortController();
 	const timer = setTimeout(() => ctrl.abort(), 3000);
 	try {
 		const resp = await fetch(url, { signal: ctrl.signal });
-		if (!resp.ok) throw new Error(`${url} returned HTTP ${resp.status}`);
-		return await resp.json();
+		if (!resp.ok) return unreachable(`${urlValue(url)} returned HTTP ${resp.status}`);
+		return { ok: true, body: await resp.json() };
 	} catch (err) {
-		throw new Error(`${url} is unreachable (${(err as Error).message})`);
+		return unreachable((err as Error).message);
 	} finally {
 		clearTimeout(timer);
 	}
@@ -311,11 +344,8 @@ export async function probeMtaHealth(
 	baseUrl: string,
 	env: EnvMap = {}
 ): Promise<MtaHealthFinding[]> {
-	try {
-		return evaluateMtaHealth(await fetchMtaHealth(baseUrl), env);
-	} catch (err) {
-		return [{ check: 'mta.health', ok: false, message: (err as Error).message }];
-	}
+	const health = await fetchMtaHealth(baseUrl);
+	return health.ok ? evaluateMtaHealth(health.body, env) : [health.finding];
 }
 
 /**
@@ -368,9 +398,6 @@ export async function probeMtaIdentityHealth(
 ): Promise<MtaHealthFinding[]> {
 	const refreshed = await refreshMtaIdentity(baseUrl, apiKey);
 	if (refreshed) return refreshed;
-	try {
-		return evaluateMtaIdentityHealth(await fetchMtaHealth(baseUrl));
-	} catch (err) {
-		return [{ check: 'mta.health', ok: false, message: (err as Error).message }];
-	}
+	const health = await fetchMtaHealth(baseUrl);
+	return health.ok ? evaluateMtaIdentityHealth(health.body) : [health.finding];
 }

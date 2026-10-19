@@ -47,6 +47,7 @@ import type { CliOptions } from '../lib/cliOptions';
 import { ProvisioningCheckpoint, type CheckpointInputs } from '../lib/provisioningCheckpoint';
 import { resolveLocalHost } from '../lib/localHost';
 import { probeMtaIdentityHealth } from './doctor';
+import { createDoctorRedactor } from '../lib/doctorText';
 import { applyOutboundIpDefaults, detectPrimaryIpv4 } from '../lib/outboundIp';
 import {
 	announceReverseDns,
@@ -338,13 +339,12 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			localMtaUrl,
 			envAfterCompose['MTA_API_KEY']
 		);
+		const redact = createDoctorRedactor(envAfterCompose);
 		for (const finding of identityFindings) {
-			reporter.log(
-				`${finding.ok ? '✓' : '✗'} ${finding.message}`,
-				finding.ok ? 'stdout' : 'stderr'
-			);
-			if (finding.ok) log.success(finding.message);
-			else log.error(finding.message);
+			const message = finding.message.render(redact);
+			reporter.log(`${finding.ok ? '✓' : '✗'} ${message}`, finding.ok ? 'stdout' : 'stderr');
+			if (finding.ok) log.success(message);
+			else log.error(message);
 		}
 		const failedIdentity = identityFindings.find((finding) => !finding.ok);
 		if (failedIdentity) {
@@ -371,7 +371,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			log.info(
 				`Re-run ${pc.cyan('owlat quickstart')} once the PTR record resolves — provisioning resumes where it stopped.`
 			);
-			reporter.fail(failedIdentity.message);
+			reporter.fail(failedIdentity.message.render(redact));
 			reporter.done(false);
 			return 1;
 		}

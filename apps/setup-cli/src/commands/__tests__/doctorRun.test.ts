@@ -31,6 +31,8 @@ interface Fixture {
 	/** stdout of `docker compose ps`, or an error when docker cannot run. */
 	compose: string | Error;
 	fetch?: (url: string, init?: RequestInit) => Response;
+	/** Values from this fixture's `.env` that must appear in neither output. */
+	secrets?: string[];
 }
 
 const healthyMta = {
@@ -124,14 +126,60 @@ const FIXTURES: Record<string, Fixture> = {
 	unreachable: {
 		env: [
 			'EMAIL_PROVIDER=mta',
-			`MTA_API_URL=http://admin:${URL_PASSWORD}@mta:3100`,
+			// A password holding an `@`: userinfo runs to the LAST `@`.
+			`MTA_API_URL=http://admin:${URL_PASSWORD}@second@mta:3100`,
 			`MTA_API_KEY=${MTA_KEY}`,
 		].join('\n'),
 		flags: '{ not json',
 		compose: new Error('spawn docker ENOENT'),
-		fetch: () => {
-			throw new Error('connect ECONNREFUSED');
+		// The runtime error echoes the raw URL, credentials and all.
+		fetch: (url) => {
+			throw new Error(`connect ECONNREFUSED ${url}`);
 		},
+		secrets: [`${URL_PASSWORD}@second`],
+	},
+	shortCredential: {
+		// A three-character key, pasted into the provider variable too.
+		env: ['EMAIL_PROVIDER=q~z', 'RESEND_API_KEY=q~z'].join('\n'),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		secrets: ['q~z'],
+	},
+	encodedQuery: {
+		env: [
+			'EMAIL_PROVIDER=mta',
+			'MTA_API_KEY=private/token',
+			'MTA_API_URL=http://mta:3100/?api_key=private%2Ftoken#frag-secret-77',
+		].join('\n'),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: (url) => {
+			throw new Error(`connect ECONNREFUSED ${url}`);
+		},
+		secrets: ['private/token', 'private%2Ftoken', 'frag-secret-77'],
+	},
+	connectionStrings: {
+		env: [
+			'DATABASE_URL=postgres://owlat:db-pass-123@db:5432/owlat',
+			'REDIS_URL=redis://:redis-pass-456@redis:6379',
+		].join('\n'),
+		compose: composeRows([
+			{
+				Service: 'worker',
+				State: 'exited',
+				// Docker's status line is runtime data and may echo configuration.
+				Status:
+					'Exited (1) postgres://owlat:db-pass-123@db:5432/owlat refused; NOAUTH redis-pass-456',
+				Image: 'ghcr.io/wolvesdotink/worker:0.6.15',
+			},
+		]),
+		secrets: ['db-pass-123', 'redis-pass-456'],
+	},
+	commonWordSecret: {
+		// A secret equal to a word in key names and subjects: identifiers stay intact.
+		env: ['LLM_API_KEY=LLM', 'OWLAT_VERSION=0.6.15'].join('\n'),
+		flags: JSON.stringify({ ai: true }),
+		compose: '',
 	},
 	invalidHealth: {
 		env: ['EMAIL_PROVIDER=mta', 'MTA_API_URL=http://mta:3100'].join('\n'),
@@ -243,7 +291,7 @@ describe('doctor --json — text/JSON parity', () => {
 		expect(report.generatedAt).toBe(NOW.toISOString());
 
 		// No secret value in either output.
-		for (const secret of SECRETS) {
+		for (const secret of [...SECRETS, ...(FIXTURES[name]!.secrets ?? [])]) {
 			expect(text.stdout).not.toContain(secret);
 			expect(json.stdout).not.toContain(secret);
 		}
@@ -303,14 +351,55 @@ describe('doctor --json — report contents', () => {
 		});
 	});
 
-	it('redacts a URL password and a secret pasted into a plain variable', async () => {
-		const unreachable = await runBoth(FIXTURES['unreachable']!);
-		const health = unreachable.report.checks.find((check) => check.id === 'mta.health');
-		expect(health?.message).toContain('http://[redacted]@mta:3100/health');
+	/** The message of the first `id` check, in JSON and as the text line printed it. */
+	async function messageOf(fixture: string, id: string) {
+		const { text, report } = await runBoth(FIXTURES[fixture]!);
+		const message = report.checks.find((check) => check.id === id)?.message ?? '';
+		const line = checklist(text.stdout).find(([, row]) => row.endsWith(message))?.[1];
+		expect(line).toBeDefined();
+		return message;
+	}
 
-		const mixup = await runBoth(FIXTURES['providerMixup']!);
-		expect(
-			mixup.report.checks.find((check) => check.id === 'send_path.provider')?.message
-		).toContain('EMAIL_PROVIDER="[redacted]"');
+	it('prints a configured URL without userinfo, even when the password holds an @', async () => {
+		expect(await messageOf('unreachable', 'mta.health')).toBe(
+			'http://mta:3100/health is unreachable ' +
+				'(connect ECONNREFUSED http://admin:[redacted]@mta:3100/health)'
+		);
+	});
+
+	it('prints a configured URL without its query or fragment, and redacts their echo', async () => {
+		expect(await messageOf('encodedQuery', 'mta.health')).toBe(
+			'http://mta:3100/ is unreachable ' +
+				'(connect ECONNREFUSED http://mta:3100/?api_key=[redacted]#[redacted]/health)'
+		);
+	});
+
+	it('redacts a credential pasted into a displayable variable, however short', async () => {
+		expect(await messageOf('providerMixup', 'send_path.provider')).toContain(
+			'EMAIL_PROVIDER="[redacted]"'
+		);
+		expect(await messageOf('shortCredential', 'send_path.provider')).toContain(
+			'EMAIL_PROVIDER="[redacted]"'
+		);
+	});
+
+	it('redacts connection-string passwords that runtime data echoes', async () => {
+		expect(await messageOf('connectionStrings', 'containers.health')).toBe(
+			'container "worker" is not running (exited) — Exited (1) ' +
+				'postgres://owlat:[redacted]@db:5432/owlat refused; NOAUTH [redacted]'
+		);
+	});
+
+	it('never redacts an identifier that equals a secret', async () => {
+		const { report } = await runBoth(FIXTURES['commonWordSecret']!);
+		const provider = report.checks.find((check) => check.subject === 'LLM_PROVIDER');
+		expect(provider).toMatchObject({
+			id: 'env.required',
+			status: 'fail',
+			message: 'LLM_PROVIDER is set (required by an active feature)',
+		});
+		expect(report.checks.find((check) => check.subject === 'LLM_API_KEY')?.message).toBe(
+			'LLM_API_KEY is set (required by an active feature)'
+		);
 	});
 });

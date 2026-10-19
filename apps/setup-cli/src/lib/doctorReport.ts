@@ -7,9 +7,11 @@
  * `--json` document. Neither output builds its own list, so a check cannot
  * appear in one and not the other, or pass in one and fail in the other.
  *
- * Redaction happens at record time, before either renderer sees the message:
- * the value of every secret-shaped `.env` key and the userinfo of any URL are
- * replaced, so a secret never reaches stdout in either mode.
+ * What a message may contain is decided by `doctorText.ts`: messages are built
+ * from code-owned and untrusted parts, configured values only go through its
+ * sanitizers, and the known-secret pass runs over the untrusted parts once, at
+ * record time, before either renderer sees them. Ids, subjects and the other
+ * structured fields are identifiers and never pass through it.
  *
  * The JSON shape is a contract for scripts (deployment verification, support
  * bundles). Ids, components and remediation codes are stable; renaming one is a
@@ -19,6 +21,7 @@
 
 import pc from 'picocolors';
 import type { EnvMap } from './env';
+import { createDoctorRedactor, type DoctorText } from './doctorText';
 
 /** Bumped only for a breaking change to the JSON shape or to an existing id. */
 export const DOCTOR_REPORT_SCHEMA_VERSION = 1;
@@ -116,8 +119,11 @@ const TEXT_PREFIX: Record<DoctorComponent, string> = {
 export interface DoctorFinding {
 	check: DoctorCheckId;
 	ok: boolean;
-	message: string;
-	/** What the check is about when it runs once per item: an env key, an IP, a service. */
+	message: DoctorText;
+	/**
+	 * What the check is about when it runs once per item: an env key name, an IP,
+	 * a compose service. An identifier, printed as is.
+	 */
 	subject?: string;
 }
 
@@ -127,7 +133,7 @@ export interface DoctorCheck {
 	component: DoctorComponent;
 	status: 'pass' | 'fail';
 	severity: DoctorSeverity;
-	/** Redacted, uncoloured, without the text-mode component prefix. */
+	/** Sanitized and redacted, uncoloured, without the text-mode component prefix. */
 	message: string;
 	/** Present on failed checks only. */
 	remediation?: DoctorRemediation;
@@ -143,34 +149,10 @@ export interface DoctorReport {
 	checks: DoctorCheck[];
 }
 
-const REDACTED = '[redacted]';
-/** Env keys whose values are credentials (a superset of `env --show`'s masking). */
-const SECRET_KEY = /(^|_)(KEY|SECRET|PASSWORD|TOKEN|CREDENTIALS?)(_|$)/;
-/** Shorter values would redact ordinary words in a message, not credentials. */
-const MIN_SECRET_LENGTH = 4;
-const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
-
-/**
- * Build the redactor for one doctor run: replaces the value of every
- * secret-shaped key in `env` and the `user:password@` part of any URL.
- */
-export function createDoctorRedactor(env: EnvMap): (message: string) => string {
-	const secrets = Object.entries(env)
-		.filter(([key, value]) => SECRET_KEY.test(key) && value.length >= MIN_SECRET_LENGTH)
-		.map(([, value]) => value)
-		// Longest first, so a secret that contains another is replaced whole.
-		.sort((a, b) => b.length - a.length);
-	return (message) => {
-		let out = message.replace(URL_USERINFO, `$1${REDACTED}@`);
-		for (const secret of secrets) out = out.split(secret).join(REDACTED);
-		return out;
-	};
-}
-
 /** Collects checks in run order and notifies a listener as each one lands. */
 export class DoctorReportBuilder {
 	readonly checks: DoctorCheck[] = [];
-	private redact: (message: string) => string = (message) => message;
+	private redact: (text: string) => string = (text) => text;
 
 	constructor(private readonly onCheck?: (check: DoctorCheck) => void) {}
 
@@ -183,11 +165,11 @@ export class DoctorReportBuilder {
 		const meta = CHECK_META[finding.check];
 		const check: DoctorCheck = {
 			id: finding.check,
-			...(finding.subject !== undefined ? { subject: this.redact(finding.subject) } : {}),
+			...(finding.subject !== undefined ? { subject: finding.subject } : {}),
 			component: meta.component,
 			status: finding.ok ? 'pass' : 'fail',
 			severity: 'error',
-			message: this.redact(finding.message),
+			message: finding.message.render(this.redact),
 			...(finding.ok ? {} : { remediation: meta.remediation }),
 		};
 		this.checks.push(check);

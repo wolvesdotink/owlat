@@ -48,6 +48,7 @@ import {
 	type DoctorCheck,
 	type DoctorReport,
 } from '../lib/doctorReport';
+import { doctorText, trusted } from '../lib/doctorText';
 import { evaluateSendPath, probeIpAudit, probeMtaHealth, refreshMtaIdentity } from './doctor';
 
 interface DoctorOptions {
@@ -93,7 +94,11 @@ export async function collectDoctorReport(
 	const envPresent = existsSync(envPath);
 	const env = envPresent ? await readEnv(envPath) : {};
 	report.useEnv(env);
-	report.record({ check: 'env.file', ok: envPresent, message: `.env file present at ${envPath}` });
+	report.record({
+		check: 'env.file',
+		ok: envPresent,
+		message: doctorText`.env file present at ${trusted(envPath)}`,
+	});
 
 	// Read flags from the local mirror.
 	const statePath = join(owlatDir, '.owlat-flags.json');
@@ -105,7 +110,7 @@ export async function collectDoctorReport(
 			report.record({
 				check: 'flags.state',
 				ok: false,
-				message: 'Feature flags state file is unreadable',
+				message: doctorText`Feature flags state file is unreadable`,
 			});
 		}
 	}
@@ -116,7 +121,7 @@ export async function collectDoctorReport(
 			check: 'env.required',
 			subject: key,
 			ok: !!env[key],
-			message: `${key} is set (required by an active feature)`,
+			message: doctorText`${trusted(key)} is set (required by an active feature)`,
 		});
 	}
 
@@ -148,7 +153,7 @@ export async function collectDoctorReport(
 	report.record({
 		check: 'compose.override',
 		ok: existsSync(overridePath),
-		message: `Compose override present at ${overridePath}`,
+		message: doctorText`Compose override present at ${trusted(overridePath)}`,
 	});
 
 	// Best-effort docker check via shelling out.
@@ -157,14 +162,20 @@ export async function collectDoctorReport(
 		report.record({
 			check: 'compose.services',
 			ok: services.length > 0,
-			message: `${services.length} compose service(s) running`,
+			message: doctorText`${services.length} compose service(s) running`,
 		});
 
 		// Being LISTED is not being up. `docker compose ps` reports a container
 		// that has been crash-looping for hours exactly like a healthy one, so
 		// counting services green-lit an install with a dead service in it.
 		for (const finding of evaluateContainerStates(services)) {
-			report.record({ check: 'containers.health', subject: finding.service, ...finding });
+			// Built from docker's own status lines: runtime data, not code-owned.
+			report.record({
+				check: 'containers.health',
+				subject: finding.service,
+				ok: finding.ok,
+				message: doctorText`${finding.message}`,
+			});
 		}
 
 		// VERSION DRIFT — the configured version (.env, which every version
@@ -172,13 +183,18 @@ export async function collectDoctorReport(
 		// actually created from. Advancing .env without recreating the
 		// containers leaves the product claiming a version it is not running.
 		for (const finding of evaluateVersionDrift(services, env['OWLAT_VERSION'] ?? '')) {
-			report.record({ check: 'version.drift', subject: finding.service, ...finding });
+			report.record({
+				check: 'version.drift',
+				subject: finding.service,
+				ok: finding.ok,
+				message: doctorText`${finding.message}`,
+			});
 		}
 	} catch {
 		report.record({
 			check: 'compose.cli',
 			ok: false,
-			message: 'docker compose not callable from this shell',
+			message: doctorText`docker compose not callable from this shell`,
 		});
 	}
 

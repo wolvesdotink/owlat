@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
 	DOCTOR_CHECK_IDS,
 	DoctorReportBuilder,
-	createDoctorRedactor,
 	renderDoctorCheckLine,
 	renderDoctorSummary,
 	type DoctorCheck,
 } from '../doctorReport';
+import { doctorText, trusted } from '../doctorText';
 
 // eslint-disable-next-line no-control-regex
 const stripAnsi = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, '');
@@ -42,46 +42,21 @@ describe('doctor report — stable ids', () => {
 	});
 });
 
-describe('doctor report — redaction', () => {
-	it('replaces the value of every secret-shaped key', () => {
-		const redact = createDoctorRedactor({
-			MTA_API_KEY: 'key-value-1',
-			INSTANCE_SECRET: 'secret-value-2',
-			INSTANCE_SECRET_PREVIOUS: 'previous-value-3',
-			REDIS_PASSWORD: 'password-value-4',
-			TWILIO_AUTH_TOKEN: 'token-value-5',
-			EMAIL_PROVIDER: 'mta',
-		});
-		expect(
-			redact('key-value-1 secret-value-2 previous-value-3 password-value-4 token-value-5 mta')
-		).toBe('[redacted] [redacted] [redacted] [redacted] [redacted] mta');
-	});
-
-	it('replaces a secret that contains another one whole', () => {
-		const redact = createDoctorRedactor({ A_KEY: 'abcd', B_KEY: 'abcdefgh' });
-		expect(redact('x abcdefgh y abcd')).toBe('x [redacted] y [redacted]');
-	});
-
-	it('leaves ordinary words alone when a secret is too short to be one', () => {
-		const redact = createDoctorRedactor({ REDIS_PASSWORD: 'mta' });
-		expect(redact('MTA queue store is connected via mta')).toBe(
-			'MTA queue store is connected via mta'
-		);
-	});
-
-	it('strips the credentials from any URL', () => {
-		const redact = createDoctorRedactor({});
-		expect(redact('https://user:pa55@mta.owlat.example:3100/health is unreachable')).toBe(
-			'https://[redacted]@mta.owlat.example:3100/health is unreachable'
-		);
-		expect(redact('redis://:pa55@redis:6379')).toBe('redis://[redacted]@redis:6379');
-	});
-
-	it('redacts subjects as well as messages', () => {
+describe('doctor report — recording', () => {
+	it('redacts the untrusted parts of a message, never its identifiers', () => {
 		const builder = new DoctorReportBuilder();
-		builder.useEnv({ MTA_API_KEY: 'key-value-1' });
-		builder.record({ check: 'mta.tcp25', subject: 'key-value-1', ok: true, message: 'ok' });
-		expect(builder.checks[0]?.subject).toBe('[redacted]');
+		// A secret equal to a word that also appears in a key name and a subject.
+		builder.useEnv({ SMTP_RELAY_PASSWORD: 'SMTP' });
+		builder.record({
+			check: 'env.required',
+			subject: 'SMTP_RELAY_HOST',
+			ok: false,
+			message: doctorText`${trusted('SMTP_RELAY_HOST')} is set (runtime said: ${'SMTP'})`,
+		});
+		expect(builder.checks[0]).toMatchObject({
+			subject: 'SMTP_RELAY_HOST',
+			message: 'SMTP_RELAY_HOST is set (runtime said: [redacted])',
+		});
 	});
 });
 
@@ -113,12 +88,12 @@ describe('doctor report — text rendering', () => {
 
 	it('summarises the run', () => {
 		const builder = new DoctorReportBuilder();
-		builder.record({ check: 'env.file', ok: true, message: 'a' });
+		builder.record({ check: 'env.file', ok: true, message: doctorText`a` });
 		const passing = builder.build(['campaigns', 'inbox'], new Date(0));
 		expect(stripAnsi(renderDoctorSummary(passing))).toBe(
 			'All checks passed. Active features: campaigns, inbox'
 		);
-		builder.record({ check: 'compose.cli', ok: false, message: 'b' });
+		builder.record({ check: 'compose.cli', ok: false, message: doctorText`b` });
 		const failing = builder.build([], new Date(0));
 		expect(failing.summary).toEqual({ total: 2, passed: 1, failed: 1 });
 		expect(stripAnsi(renderDoctorSummary(failing))).toBe(
