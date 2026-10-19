@@ -99,7 +99,7 @@ export function useToast() {
 				id,
 				options?.durationMs ?? DEFAULT_DURATIONS_MS[type],
 				() => removeToast(id),
-				() => toasts.value.some((t) => t.id === id)
+				() => toasts.value
 			);
 			options = { ...options, durationMs: 0 };
 		}

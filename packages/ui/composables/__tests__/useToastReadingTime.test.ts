@@ -14,10 +14,10 @@
  *    would stretch the window in which its action may still run.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 import Toast from '../../components/ui/Toast.vue';
 import { useToast, type ToastOptions } from '../useToast';
-import { isReadingTimeToast } from '../useToastReadingTime';
+import { isReadingTimeToast, startToastReadingTime } from '../useToastReadingTime';
 import { mountUi, type MountedUi } from '../../__tests__/i18n';
 
 let hidden = false;
@@ -335,6 +335,51 @@ describe('a dismissed ordinary toast leaves nothing behind', () => {
 		expect(messages()).toEqual(['Saved']);
 		vi.advanceTimersByTime(1);
 		expect(messages()).toEqual([]);
+	});
+});
+
+describe('a burst of notifications', () => {
+	it('reconciles the list once per change, not once per budget', () => {
+		// The shape of a hidden page building up a backlog: many notifications
+		// pushed in one task, each with its own budget.
+		const N = 400;
+		const list = ref<{ id: string }[]>([]);
+		const read = vi.fn(() => list.value);
+		const expired = vi.fn();
+		setHidden(true);
+		for (let i = 0; i < N; i++) {
+			const id = `toast-${i}`;
+			list.value.push({ id });
+			startToastReadingTime(id, 3000, expired, read);
+		}
+		// One read when the reconciler starts, then one per push after it.
+		expect(read).toHaveBeenCalledTimes(N);
+
+		read.mockClear();
+		list.value.splice(N / 2, 1);
+		expect(read).toHaveBeenCalledTimes(1);
+
+		read.mockClear();
+		list.value = [];
+		expect(read).toHaveBeenCalledTimes(1);
+		// Every budget went with the list, and with the last one the reconciler.
+		list.value = [{ id: 'toast-0' }];
+		expect(read).toHaveBeenCalledTimes(1);
+		setHidden(false);
+		vi.advanceTimersByTime(60_000);
+		expect(expired).not.toHaveBeenCalled();
+	});
+
+	it('closing one toast of a burst cancels only its own budget', () => {
+		const listeners = countPageListeners();
+		const { showToast, removeToast } = useToast();
+		const ids = Array.from({ length: 50 }, (_, i) => showToast(`Imported batch ${i}`, 'info'));
+		removeToast(ids[25]!);
+		expect(vi.getTimerCount()).toBe(49);
+		vi.advanceTimersByTime(4000);
+		expect(messages()).toEqual([]);
+		expect(vi.getTimerCount()).toBe(0);
+		expect(listeners()).toBe(0);
 	});
 });
 

@@ -44,11 +44,41 @@ interface ReadingBudget {
 	timer: ReturnType<typeof setTimeout> | undefined;
 	holds: Set<CardHold>;
 	onExpire: () => void;
-	/** Stops watching whether the toast is still listed. */
-	stopWatching: () => void;
 }
 
 const budgets = new Map<string, ReadingBudget>();
+
+/** The toast list as the reconciler reads it: only the ids matter. */
+type ListedToasts = () => readonly { readonly id: string }[];
+
+/** Stops the list reconciler; `null` while no budget exists. */
+let stopReconciler: (() => void) | null = null;
+
+/**
+ * One watcher for all budgets: on every change to the toast list it diffs the
+ * listed ids against the budgets once and drops the budgets whose toast is
+ * gone (closed, cleared, removed before its card ever rendered). A watcher per
+ * budget would rescan the list once per budget on every change, which turns a
+ * burst of notifications quadratic or worse.
+ *
+ * Runs in a detached scope, so a toast shown during some component's setup is
+ * not left unwatched when that component unmounts.
+ */
+function reconcileWith(listed: ListedToasts): void {
+	if (stopReconciler) return;
+	const scope = effectScope(true);
+	scope.run(() =>
+		watch(
+			() => listed().map((toast) => toast.id),
+			(ids) => {
+				const live = new Set(ids);
+				for (const id of [...budgets.keys()]) if (!live.has(id)) discard(id);
+			},
+			{ flush: 'sync' }
+		)
+	);
+	stopReconciler = () => scope.stop();
+}
 
 /**
  * Elapsed reading time is measured on the monotonic clock: a wall-clock jump
@@ -82,14 +112,17 @@ function sync(id: string, budget: ReadingBudget): void {
 	}
 }
 
-/** Drop the budget for good: no timer, no list watcher, no page listeners once none is left. */
+/** Drop the budget for good; once none is left, stop the reconciler and the page listeners. */
 function discard(id: string): ReadingBudget | undefined {
 	const budget = budgets.get(id);
 	if (!budget) return undefined;
 	budgets.delete(id);
 	clearTimeout(budget.timer);
-	budget.stopWatching();
-	if (budgets.size === 0) unwatchPage();
+	if (budgets.size === 0) {
+		stopReconciler?.();
+		stopReconciler = null;
+		unwatchPage();
+	}
 	return budget;
 }
 
@@ -125,40 +158,29 @@ function unwatchPage(): void {
  * once it has been readable that long. A non-positive or non-finite duration
  * is a sticky toast: no budget, nothing expires.
  *
- * `isListed` reports whether the toast is still in the stack. The moment it
- * is not (closed, cleared, removed before its card ever rendered) the budget
- * is dropped, so a dismissed toast leaves no timer or page listener behind.
+ * `listed` reads the toast list (the same list on every call). The moment
+ * the toast is no longer in it (closed, cleared, removed before its card ever
+ * rendered) the budget is dropped, so a dismissed toast leaves no timer or
+ * page listener behind.
  */
 export function startToastReadingTime(
 	id: string,
 	durationMs: number,
 	onExpire: () => void,
-	isListed: () => boolean
+	listed: ListedToasts
 ): void {
 	if (!(Number.isFinite(durationMs) && durationMs > 0)) return;
 	watchPage();
 	pageReadable = readPageReadable();
-	// Detached, so a toast shown during some component's setup is not left
-	// unwatched when that component unmounts.
-	const scope = effectScope(true);
-	scope.run(() =>
-		watch(
-			isListed,
-			(listed) => {
-				if (!listed) discard(id);
-			},
-			{ flush: 'sync' }
-		)
-	);
 	const budget: ReadingBudget = {
 		remainingMs: durationMs,
 		runningSince: null,
 		timer: undefined,
 		holds: new Set(),
 		onExpire,
-		stopWatching: () => scope.stop(),
 	};
 	budgets.set(id, budget);
+	reconcileWith(listed);
 	sync(id, budget);
 }
 
