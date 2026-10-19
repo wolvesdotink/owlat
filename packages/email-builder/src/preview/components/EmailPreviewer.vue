@@ -148,7 +148,7 @@ const diffPanelOpen = ref(false);
 const copiedFormat = ref<string | null>(null);
 
 // Compatibility analysis
-const { analyzeHtml, report, isAnalyzing } = useCompatibilityAnalysis();
+const { analyzeHtml, cancelAnalysis, report, isAnalyzing } = useCompatibilityAnalysis();
 
 // Computed
 const simulationResult = computed<SimulationResult>(() => {
@@ -250,6 +250,7 @@ const ampNeeded = computed(() => viewMode.value === 'amp' || exportMenuOpen.valu
 watch(ampNeeded, (needed) => emit('update:amp-requested', needed));
 onBeforeUnmount(() => {
 	if (ampNeeded.value) emit('update:amp-requested', false);
+	cancelAnalysis();
 });
 
 const hasWarnings = computed(() => (props.renderWarnings?.length ?? 0) > 0);
@@ -268,16 +269,23 @@ function refreshPreview() {
 	runAnalysis();
 }
 
+/** No client selected: drop any analysis in flight along with the last report. */
+function clearAnalysis() {
+	cancelAnalysis();
+	report.value = null;
+}
+
 async function runAnalysis() {
 	if (!selectedClient.value) {
-		report.value = null;
+		clearAnalysis();
 		return;
 	}
 
 	const result = await analyzeHtml(props.html, {
 		clients: [selectedClient.value],
 	});
-	emit('compatibility-report', result);
+	// null: a newer analysis (or unmount) superseded this one.
+	if (result) emit('compatibility-report', result);
 }
 
 // Export functions
@@ -327,7 +335,10 @@ function handleRenderOptionsUpdate(options: Partial<PreviewRenderOptions>) {
 watch(
 	[() => props.html, selectedClient],
 	() => {
-		if (props.autoAnalyze) {
+		// Clearing the client stops a manual (Refresh) analysis too.
+		if (!selectedClient.value) {
+			clearAnalysis();
+		} else if (props.autoAnalyze) {
 			runAnalysis();
 		}
 	},
