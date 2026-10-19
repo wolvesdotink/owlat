@@ -20,7 +20,18 @@ vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	return state.get(key);
 });
 vi.stubGlobal('useConvexQuery', () => ({ data: ownData, error: ownError }));
-vi.stubGlobal('usePostboxSettings', () => ({ replyDefault }));
+const settingsLoading = ref(false);
+const allowlistLoading = ref(false);
+const senderTrusted = ref(false);
+vi.stubGlobal('usePostboxSettings', () => ({
+	replyDefault,
+	autoLoadImages: ref(false),
+	isLoading: settingsLoading,
+}));
+vi.stubGlobal('usePostboxImageAllowlist', () => ({
+	isAllowed: () => senderTrusted.value,
+	isLoading: allowlistLoading,
+}));
 vi.mock('@owlat/api', () => ({ api: { mail: { identities: { listForOwnedMailbox: {} } } } }));
 vi.mock('~/composables/postbox/postboxBodyResolver', () => ({
 	consumeResolvedPostboxMessageBody: async () => null,
@@ -67,6 +78,9 @@ beforeEach(() => {
 	ownData.value = ['ada@example.com'];
 	ownError.value = null;
 	replyDefault.value = 'reply';
+	settingsLoading.value = false;
+	allowlistLoading.value = false;
+	senderTrusted.value = false;
 });
 
 describe('useAnswerModeSession', () => {
@@ -101,6 +115,24 @@ describe('useAnswerModeSession', () => {
 			replyAllRecipients: ['finance@example.com'],
 		});
 		expect(seed.value?.prefillBodyHtml).toContain('gmail_quote');
+	});
+
+	it('waits for the image preference and the sender grant before quoting', async () => {
+		settingsLoading.value = true;
+		allowlistLoading.value = true;
+		const { seed, msg } = start({ kind: 'forward' });
+		msg.value = { ...message, htmlBodyInline: '<p>Hi</p><img src="https://cdn.example/a.jpg">' };
+		await settle();
+		expect(seed.value).toBeNull();
+
+		settingsLoading.value = false;
+		await settle();
+		expect(seed.value).toBeNull();
+
+		senderTrusted.value = true;
+		allowlistLoading.value = false;
+		await settle();
+		expect(seed.value?.prefillBodyHtml).toContain('cdn.example/a.jpg');
 	});
 
 	it('opens a forward without the guard', async () => {

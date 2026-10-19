@@ -4,6 +4,7 @@
  * nudge from the Answer queue) goes to the people it went to, never back to
  * us; its Cc stays the reply-all hint.
  */
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import { buildReplyComposeSeed } from '../postboxReplySpec';
 
@@ -21,7 +22,7 @@ describe('buildReplyComposeSeed', () => {
 		const seed = await buildReplyComposeSeed(
 			'reply',
 			{ ...base, fromAddress: 'sam@acme.test', toAddresses: ['me@example.com'] },
-			{ mailboxId: 'mb-1' as never, ownAddresses: OWN }
+			{ mailboxId: 'mb-1' as never, ownAddresses: OWN, autoLoadImages: true }
 		);
 		expect(seed.prefillTo).toEqual(['sam@acme.test']);
 		expect(seed.replyAllRecipients).toEqual(['legal@acme.test']);
@@ -35,7 +36,7 @@ describe('buildReplyComposeSeed', () => {
 				fromAddress: 'Me <ME@example.com>',
 				toAddresses: ['sam@acme.test', 'me@example.com'],
 			},
-			{ mailboxId: 'mb-1' as never, ownAddresses: OWN }
+			{ mailboxId: 'mb-1' as never, ownAddresses: OWN, autoLoadImages: true }
 		);
 		expect(seed.prefillTo).toEqual(['sam@acme.test']);
 		expect(seed.replyAllRecipients).toEqual(['legal@acme.test']);
@@ -46,9 +47,37 @@ describe('buildReplyComposeSeed', () => {
 		const seed = await buildReplyComposeSeed(
 			'reply',
 			{ ...base, fromAddress: 'me@example.com', toAddresses: ['me@example.com'] },
-			{ mailboxId: 'mb-1' as never, ownAddresses: OWN }
+			{ mailboxId: 'mb-1' as never, ownAddresses: OWN, autoLoadImages: true }
 		);
 		expect(seed.prefillTo).toEqual(['legal@acme.test']);
 		expect(seed.replyAllRecipients).toBeUndefined();
+	});
+
+	it('quotes remote images only where the reader would load them', async () => {
+		const html = '<p>Deal</p><img src="https://cdn.example/a.jpg" width="400" height="200">';
+		const from = { ...base, htmlBodyInline: html, fromAddress: 'sam@acme.test', toAddresses: [] };
+		const ctx = { mailboxId: 'mb-1' as never, ownAddresses: OWN };
+		const shown = await buildReplyComposeSeed('reply', from, { ...ctx, autoLoadImages: true });
+		expect(shown.prefillBodyHtml).toContain('cdn.example/a.jpg');
+
+		const optedOut = await buildReplyComposeSeed('forward', from, {
+			...ctx,
+			autoLoadImages: false,
+		});
+		expect(optedOut.prefillBodyHtml).not.toContain('cdn.example');
+
+		const trusted = await buildReplyComposeSeed('forward', from, {
+			...ctx,
+			autoLoadImages: false,
+			isSenderAllowed: true,
+		});
+		expect(trusted.prefillBodyHtml).toContain('cdn.example/a.jpg');
+
+		const spam = await buildReplyComposeSeed(
+			'reply',
+			{ ...from, spamVerdict: 'spam' },
+			{ ...ctx, autoLoadImages: true, isSenderAllowed: true }
+		);
+		expect(spam.prefillBodyHtml).not.toContain('cdn.example');
 	});
 });

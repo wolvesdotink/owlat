@@ -4991,10 +4991,12 @@
 				"hideQuoted": "Zitierten Text ausblenden",
 				"imagesAutoLoaded": "Bilder von {host} werden automatisch geladen. Zählpixel werden weiterhin entfernt.",
 				"imagesBlocked": "Bilder blockiert, um deine Privatsphäre zu schützen.",
+				"imagesBlockedSuspicious": "Bilder blockiert, weil diese Nachricht verdächtig wirkt.",
 				"imagesBlockedTrackers": "Bilder blockiert — {count} Trackingpixel erkannt. | Bilder blockiert — {count} Trackingpixel erkannt.",
 				"imagesUnchecked": "Bilder bleiben blockiert, weil diese Nachricht nicht sicher geprüft werden konnte.",
 				"loadEverything": "Alles laden",
 				"manageTrustedSenders": "Vertraute Absender verwalten",
+				"showImages": "Bilder anzeigen",
 				"showOnce": "Einmalig anzeigen",
 				"showQuoted": "Zitierten Text anzeigen",
 				"stopTrustingSender": "Wieder blockieren",
@@ -6054,6 +6056,8 @@
 				"backfillCancelOperation": "Vorbereitung der Übersichten stoppen",
 				"sendSoundLabel": "Ton beim Senden abspielen",
 				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus.",
+				"autoLoadImagesLabel": "Bilder automatisch laden",
+				"autoLoadImagesHelp": "Bilder in E-Mails gleich beim Öffnen anzeigen. Trackingpixel bleiben blockiert, und bei verdächtigen Nachrichten wirst du immer zuerst gefragt.",
 				"swipeLeftLabel": "Nach links wischen",
 				"swipeRightLabel": "Nach rechts wischen",
 				"swipeHelp": "Ziehe eine Zeile auf dem Touchscreen zur Seite, um sie abzuarbeiten. Mit der Maus passiert nichts.",
@@ -16231,6 +16235,10 @@
 				"sendSound": {
 					"title": "Ton beim Senden abspielen",
 					"keywords": "Ton, Audio, stumm"
+				},
+				"autoLoadImages": {
+					"title": "Bilder automatisch laden",
+					"keywords": "Bilder, externe Inhalte, Privatsphäre, Tracking"
 				},
 				"mailboxes": {
 					"title": "Postfächer",

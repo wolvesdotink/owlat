@@ -33,6 +33,9 @@
  *   - `sortOrder` — which end of the folder the message list starts at:
  *     'newest' (arrival descending, the default) or 'oldest'. Date direction
  *     only; the server flips `.order()` on the existing arrival index.
+ *   - `autoLoadImages` — load remote images when a message opens. Suspicious
+ *     mail (see utils/postboxImageAllowlist) always asks first, and tracking
+ *     pixels stay stripped either way. Defaults ON (undefined => true).
  *   - `sendSound` — play a short confirmation sound when a message is
  *     dispatched. Defaults OFF (opt-in).
  *   - `undoSendSeconds` — how long a sent message is held before it dispatches
@@ -180,6 +183,14 @@ export function usePostboxSettings() {
 	// Confirmation sound on send. Default OFF (opt-in): an unset preference means
 	// no sound, so the composer stays silent unless the user turns it on.
 	const sendSound = computed<boolean>(() => data.value?.isSendSoundOn ?? false);
+
+	// Remote images on open. Default ON once the row is known: an unset
+	// preference loads images in mail that is not suspicious. Until the query
+	// answers (or when it fails) this is OFF, because a load cannot be taken
+	// back if the saved preference turns out to be "ask first".
+	const autoLoadImages = computed<boolean>(() =>
+		data.value === undefined ? false : (data.value?.isAutoLoadImagesOn ?? true)
+	);
 
 	// Undo-send window. An unset (or unknown) value resolves to 10s — the server
 	// default the composer gets by sending no `undoSendDelayMs` at all.
@@ -340,6 +351,10 @@ export function usePostboxSettings() {
 		await updateOp.run({ isSendSoundOn: enabled });
 	}
 
+	async function setAutoLoadImages(enabled: boolean) {
+		await updateOp.run({ isAutoLoadImagesOn: enabled });
+	}
+
 	async function setUndoSendSeconds(seconds: PostboxUndoSendSeconds) {
 		await updateOp.run({ undoSendSeconds: seconds });
 	}
@@ -423,6 +438,7 @@ export function usePostboxSettings() {
 		inboxMode,
 		sortOrder,
 		sendSound,
+		autoLoadImages,
 		undoSendSeconds,
 		notifyAbout,
 		badgeNonPeople,
@@ -452,6 +468,7 @@ export function usePostboxSettings() {
 		setInboxMode,
 		setSortOrder,
 		setSendSound,
+		setAutoLoadImages,
 		setUndoSendSeconds,
 		setNotifyAbout,
 		setBadgeNonPeople,

@@ -121,12 +121,13 @@ function blockedPlaceholder(doc: Document, url: string, label: string): HTMLElem
 /**
  * Inventory the body's remote resources and withhold the ones the current
  * consent does not cover. `blockedLabel` is the text of the stand-in shown for
- * a withheld image.
+ * a withheld image; null drops the image without a stand-in (a quote, whose
+ * stand-in would otherwise go out in the reply).
  */
 export function applyPostboxImageConsent(
 	html: string,
 	consent: PostboxImageConsent,
-	blockedLabel: string
+	blockedLabel: string | null
 ): PostboxRemoteResourceResult {
 	try {
 		return gateResources(html, consent, blockedLabel);
@@ -243,7 +244,7 @@ function failElementClosed(el: Element, consent: PostboxImageConsent): ElementOu
 function gateResources(
 	html: string,
 	consent: PostboxImageConsent,
-	blockedLabel: string
+	blockedLabel: string | null
 ): PostboxRemoteResourceResult {
 	const template = document.createElement('template');
 	template.innerHTML = html;
@@ -273,9 +274,9 @@ function gateResources(
 		}
 		if (hasTracker) pixelCount += 1;
 
-		if (outcome.replacement === 'placeholder') {
+		if (outcome.replacement === 'placeholder' && blockedLabel !== null) {
 			el.replaceWith(blockedPlaceholder(doc, outcome.blockedUrl, blockedLabel));
-		} else if (outcome.replacement === 'remove') {
+		} else if (outcome.replacement !== 'none') {
 			el.remove();
 		}
 	}

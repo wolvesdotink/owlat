@@ -17,6 +17,8 @@ import type { Id } from '@owlat/api/dataModel';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { escapeHtml, escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
+import { applyPostboxImageConsent } from '~/utils/postboxRemoteResources';
+import { api } from '@owlat/api';
 import { consumeResolvedPostboxMessageBody } from './postboxBodyResolver';
 
 // The quote-boundary splitters are shared with the Convex server (voice-profile
@@ -41,9 +43,17 @@ interface QuoteSource {
  * composer's contenteditable (an `el.innerHTML =` sink in the app origin), so
  * it MUST be run through the same sanitize-html allowlist here or an
  * `<img onerror=…>` payload would execute on Reply/Forward (stored DOM-XSS).
+ *
+ * The composer is not the reader's sandboxed frame, so the reader's image
+ * consent is applied here too: probable tracking pixels are always dropped,
+ * and every remote image is dropped when `loadImages` is false (the source
+ * would not load its images on open: suspicious mail, or "ask first").
  */
-function originalAsHtml(msg: QuoteSource): string {
-	if (msg.htmlBodyInline) return sanitizeHtml(msg.htmlBodyInline, POSTBOX_SANITIZE_CONFIG);
+function originalAsHtml(msg: QuoteSource, loadImages: boolean): string {
+	if (msg.htmlBodyInline) {
+		const sanitized = sanitizeHtml(msg.htmlBodyInline, POSTBOX_SANITIZE_CONFIG);
+		return applyPostboxImageConsent(sanitized, loadImages ? 'images' : 'blocked', null).html;
+	}
 	if (msg.textBodyInline) {
 		return `<pre style="white-space:pre-wrap;font-family:inherit;margin:0;">${escapeHtml(
 			msg.textBodyInline
@@ -62,12 +72,12 @@ function formatSender(msg: QuoteSource): string {
  * A Gmail-style quoted reply body: blank space for the reply on top, then an
  * attribution line and the original wrapped in a quote block.
  */
-export function buildQuotedReply(msg: QuoteSource): string {
+export function buildQuotedReply(msg: QuoteSource, loadImages: boolean): string {
 	const attribution = `On ${new Date(msg.receivedAt).toLocaleString()}, ${formatSender(msg)} wrote:`;
 	return (
 		`<br><br><div class="gmail_quote"><div>${attribution}</div>` +
 		`<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;color:#555;">` +
-		`${originalAsHtml(msg)}</blockquote></div>`
+		`${originalAsHtml(msg, loadImages)}</blockquote></div>`
 	);
 }
 
@@ -78,22 +88,44 @@ export interface ReplyQuoteTarget extends QuoteSource {
 }
 
 /**
- * Resolve the original body for quoting. Messages over ~64KB store their body
- * in blob storage with empty inline fields, so a reply/forward would quote an
- * empty original — fetch the full body in that case (the same source
- * PostboxMessageBody renders from). Falls back to the input on any error so
+ * Resolve the original body for quoting. A body part over ~64KB is stored in
+ * blob storage, so a reply/forward would quote an empty original (or only the
+ * text alternative of a large HTML mail) — fetch the full body in that case
+ * (the same source PostboxMessageBody renders from). Falls back to the input on any error so
  * the composer always opens. Shared by the thread reader and the Reply Queue.
  */
-export async function resolveBodyFields<T extends { _id: string } & QuoteSource>(t: T): Promise<T> {
-	if (t.htmlBodyInline || t.textBodyInline) return t;
+export async function resolveBodyFields<
+	T extends { _id: string; htmlBodyStorageId?: string; hasBodyBlob?: boolean } & QuoteSource,
+>(t: T): Promise<T> {
+	if (t.htmlBodyInline) return t;
+	// An inline text part does not stand in for an HTML part stored as a blob.
+	if (t.textBodyInline && !t.htmlBodyStorageId && !t.hasBodyBlob) return t;
 	try {
 		const data = await consumeResolvedPostboxMessageBody(requireConvex(), t._id);
 		if (!data) return t;
 		const html = data.html ?? undefined;
-		const text = data.text ?? undefined;
+		// No body at all (a blob whose URL could not be minted, in a read-ahead
+		// this call joined): the inline text part may still be there.
+		const text = data.text ?? t.textBodyInline ?? (html ? undefined : await inlineTextOf(t._id));
 		return { ...t, htmlBodyInline: html, textBodyInline: text };
 	} catch {
-		return t;
+		// The HTML did not download (here, or in a read-ahead this call joined):
+		// quote the text part instead of an empty original, when it is inline.
+		if (t.textBodyInline) return t;
+		const text = await inlineTextOf(t._id);
+		return text ? { ...t, textBodyInline: text } : t;
+	}
+}
+
+/** The message's inline text part, or undefined (none, or unreadable). */
+async function inlineTextOf(messageId: string): Promise<string | undefined> {
+	try {
+		const inline = await requireConvex().query(api.mail.mailbox.messages.getMessageInlineBody, {
+			messageId: messageId as Id<'mailMessages'>,
+		});
+		return inline?.textInline ?? undefined;
+	} catch {
+		return undefined;
 	}
 }
 
@@ -111,15 +143,16 @@ function replySubject(subject: string): string {
 export function buildReplySpec(
 	mailboxId: Id<'mailboxes'>,
 	target: ReplyQuoteTarget,
-	leadText = ''
+	opts: { leadText?: string; loadImages: boolean }
 ): ComposeSpec {
+	const leadText = opts.leadText ?? '';
 	const lead = leadText ? `<p>${escapeHtmlWithBreaks(leadText)}</p>` : '';
 	return {
 		mailboxId,
 		inReplyToMessageId: target._id as Id<'mailMessages'>,
 		prefillTo: [target.fromAddress],
 		prefillSubject: replySubject(target.subject),
-		prefillBodyHtml: `${lead}${buildQuotedReply(target)}`,
+		prefillBodyHtml: `${lead}${buildQuotedReply(target, opts.loadImages)}`,
 	};
 }
 
@@ -151,13 +184,14 @@ export function buildResendSpec(
 		mailboxId,
 		prefillTo: toAddresses,
 		prefillSubject: target.subject,
-		prefillBodyHtml: originalAsHtml(target),
+		// Our own sent mail: its images are ours to load.
+		prefillBodyHtml: originalAsHtml(target, true),
 		forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'>,
 	};
 }
 
 /** A "Forwarded message" header block followed by the original body. */
-export function buildForwardedBody(msg: QuoteSource): string {
+export function buildForwardedBody(msg: QuoteSource, loadImages: boolean): string {
 	const to = (msg.toAddresses ?? []).map(escapeHtml).join(', ');
 	const header =
 		`---------- Forwarded message ----------<br>` +
@@ -165,5 +199,5 @@ export function buildForwardedBody(msg: QuoteSource): string {
 		`Date: ${new Date(msg.receivedAt).toLocaleString()}<br>` +
 		`Subject: ${escapeHtml(msg.subject ?? '')}<br>` +
 		(to ? `To: ${to}<br>` : '');
-	return `<br><br><div class="gmail_quote">${header}<br>${originalAsHtml(msg)}</div>`;
+	return `<br><br><div class="gmail_quote">${header}<br>${originalAsHtml(msg, loadImages)}</div>`;
 }

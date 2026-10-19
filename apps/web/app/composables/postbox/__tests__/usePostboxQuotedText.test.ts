@@ -1,5 +1,15 @@
-import { describe, it, expect } from 'vitest';
-import { buildQuotedReply, buildForwardedBody } from '../usePostboxQuotedText';
+// @vitest-environment happy-dom
+import { describe, it, expect, vi } from 'vitest';
+import { buildQuotedReply, buildForwardedBody, resolveBodyFields } from '../usePostboxQuotedText';
+import { resolvePostboxMessageBody } from '../postboxBodyResolver';
+
+vi.mock('@owlat/api', () => {
+	const anyPath: unknown = new Proxy(function () {}, {
+		get: () => anyPath,
+		apply: () => anyPath,
+	});
+	return { api: anyPath };
+});
 
 const base = {
 	fromAddress: 'sara@example.com',
@@ -11,7 +21,7 @@ const base = {
 
 describe('buildQuotedReply', () => {
 	it('wraps the original HTML body in an attributed quote block', () => {
-		const out = buildQuotedReply({ ...base, htmlBodyInline: '<p>Hi there</p>' });
+		const out = buildQuotedReply({ ...base, htmlBodyInline: '<p>Hi there</p>' }, true);
 		expect(out).toContain('gmail_quote');
 		expect(out).toContain('Sara &lt;sara@example.com&gt; wrote:');
 		expect(out).toContain('<blockquote');
@@ -19,16 +29,19 @@ describe('buildQuotedReply', () => {
 	});
 
 	it('falls back to a <pre>-wrapped, escaped text body', () => {
-		const out = buildQuotedReply({ ...base, textBodyInline: 'a < b & c' });
+		const out = buildQuotedReply({ ...base, textBodyInline: 'a < b & c' }, true);
 		expect(out).toContain('<pre');
 		expect(out).toContain('a &lt; b &amp; c');
 	});
 
 	it('sanitizes attacker-controlled inbound HTML (no DOM-XSS into the composer)', () => {
-		const out = buildQuotedReply({
-			...base,
-			htmlBodyInline: '<img src=x onerror="alert(1)"><script>alert(2)</script><p>ok</p>',
-		});
+		const out = buildQuotedReply(
+			{
+				...base,
+				htmlBodyInline: '<img src=x onerror="alert(1)"><script>alert(2)</script><p>ok</p>',
+			},
+			true
+		);
 		expect(out).not.toContain('onerror');
 		expect(out).not.toContain('<script');
 		expect(out).toContain('<p>ok</p>');
@@ -37,11 +50,96 @@ describe('buildQuotedReply', () => {
 
 describe('buildForwardedBody', () => {
 	it('prepends a forwarded-message header with the original recipients', () => {
-		const out = buildForwardedBody({ ...base, htmlBodyInline: '<p>original</p>' });
+		const out = buildForwardedBody({ ...base, htmlBodyInline: '<p>original</p>' }, true);
 		expect(out).toContain('Forwarded message');
 		expect(out).toContain('From: Sara &lt;sara@example.com&gt;');
 		expect(out).toContain('Subject: Lunch?');
 		expect(out).toContain('To: me@example.com, team@example.com');
 		expect(out).toContain('<p>original</p>');
+	});
+});
+
+describe('quoted remote images', () => {
+	const html =
+		'<p>Hi</p><img src="https://cdn.example/hero.jpg" width="600" height="300">' +
+		'<img src="https://track.example/open.gif" width="1" height="1">';
+
+	it('keeps real images but always drops tracking pixels', () => {
+		const out = buildQuotedReply({ ...base, htmlBodyInline: html }, true);
+		expect(out).toContain('src="https://cdn.example/hero.jpg"');
+		expect(out).not.toContain('track.example');
+	});
+
+	it('drops every remote image, without a stand-in, when the source would not load them', () => {
+		for (const out of [
+			buildQuotedReply({ ...base, htmlBodyInline: html }, false),
+			buildForwardedBody({ ...base, htmlBodyInline: html }, false),
+		]) {
+			expect(out).not.toContain('cdn.example');
+			expect(out).not.toContain('track.example');
+			expect(out).not.toContain('data-blocked-img');
+			expect(out).toContain('<p>Hi</p>');
+		}
+	});
+});
+
+describe('resolveBodyFields', () => {
+	it('quotes the inline text part when the HTML blob fails to download', async () => {
+		const client = {
+			query: vi.fn(async () => ({
+				htmlInline: null,
+				textInline: 'plain alternative',
+				hasHtmlBlob: true,
+				hasTextBlob: false,
+			})),
+			action: vi.fn(async () => {
+				throw new Error('offline');
+			}),
+		};
+		vi.stubGlobal('requireConvex', () => client);
+		// A list row: no body fields of its own.
+		const resolved = await resolveBodyFields({ ...base, _id: 'row-1' });
+		expect(resolved.htmlBodyInline).toBeUndefined();
+		expect(resolved.textBodyInline).toBe('plain alternative');
+		expect(buildQuotedReply(resolved, true)).toContain('plain alternative');
+		vi.unstubAllGlobals();
+	});
+
+	it('falls back to the inline text when the read-ahead found no blob URL', async () => {
+		const client = {
+			query: vi.fn(async () => ({
+				htmlInline: null,
+				textInline: 'plain alternative',
+				hasHtmlBlob: true,
+				hasTextBlob: false,
+			})),
+			action: vi.fn(async () => ({ htmlUrl: null, textUrl: null })),
+		};
+		vi.stubGlobal('requireConvex', () => client);
+		await resolvePostboxMessageBody(client as never, 'row-3', { blobOnly: true });
+		const resolved = await resolveBodyFields({ ...base, _id: 'row-3' });
+		expect(resolved.textBodyInline).toBe('plain alternative');
+		vi.unstubAllGlobals();
+	});
+
+	it('falls back to the inline text after joining a read-ahead whose download failed', async () => {
+		const client = {
+			query: vi.fn(async () => ({
+				htmlInline: null,
+				textInline: 'plain alternative',
+				hasHtmlBlob: true,
+				hasTextBlob: false,
+			})),
+			action: vi.fn(async () => {
+				throw new Error('offline');
+			}),
+		};
+		vi.stubGlobal('requireConvex', () => client);
+		// The read-ahead starts the blob-only download first; the reply joins it.
+		const readAhead = resolvePostboxMessageBody(client as never, 'row-2', { blobOnly: true });
+		readAhead.catch(() => {});
+		const resolved = await resolveBodyFields({ ...base, _id: 'row-2' });
+		expect(resolved.textBodyInline).toBe('plain alternative');
+		vi.unstubAllGlobals();
 	});
 });

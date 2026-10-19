@@ -10,12 +10,13 @@ import {
 	usePostboxLazyBody,
 } from '~/composables/postbox/usePostboxLazyBody';
 import { getPostboxRenderCache } from '~/utils/postboxRenderCache';
+import { postboxImagesLoadOnOpen, type PostboxBodyImageProps } from '~/utils/postboxImageAllowlist';
 
 const props = defineProps<{
 	messageId: string;
 	/** Same inputs PostboxMessageBody starts its first render with. */
 	forceLight: boolean;
-	imagesAllowed: boolean;
+	images: PostboxBodyImageProps;
 	/** Mount now, wherever the body sits (printing). */
 	eager?: boolean;
 }>();
@@ -31,7 +32,7 @@ const placeholderHeight = computed(
 	() =>
 		getPostboxRenderCache().heightFor(props.messageId, {
 			scheme: isDark.value && !props.forceLight ? 'dark' : 'light',
-			showImages: props.imagesAllowed,
+			showImages: postboxImagesLoadOnOpen(props.images),
 			loadEverything: false,
 			showQuoted: false,
 		}) ?? POSTBOX_BODY_PLACEHOLDER_PX

@@ -42,7 +42,7 @@ export function rowCarriesBody(message: OpenRowMessage): boolean {
 /**
  * The open row with the inline body query's answer folded in: pending while
  * the query loads, the inline html/text once it answers, `hasBodyBlob` when
- * the body only exists as a blob. A failed or empty answer leaves the row as
+ * the body to render is a blob (an HTML blob next to inline text counts). A failed or empty answer leaves the row as
  * it is, which renders as "(empty message)".
  */
 export function withInlineBody<T extends OpenRowMessage>(

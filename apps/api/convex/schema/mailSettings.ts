@@ -96,6 +96,11 @@ export const mailSettingsTables = {
 		// Play a short confirmation sound when a message is dispatched. Optional so
 		// existing rows read as undefined; the reader defaults it OFF (opt-in).
 		isSendSoundOn: v.optional(v.boolean()),
+		// Load remote images when a message opens, except in suspicious mail
+		// (spam verdict, failed or misaligned sender auth, lookalike sender),
+		// which always asks first. Tracking pixels stay stripped either way.
+		// Optional so existing rows read as undefined; the reader defaults it ON.
+		isAutoLoadImagesOn: v.optional(v.boolean()),
 		// Undo-send window, in seconds: how long a sent message waits in
 		// `pending_send` before it dispatches (0 = Off, dispatch immediately and
 		// show no undo toast). Optional so existing rows read as undefined; the

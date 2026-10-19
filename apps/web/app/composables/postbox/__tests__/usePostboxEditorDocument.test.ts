@@ -183,11 +183,10 @@ describe('usePostboxEditorDocument — sanitizing incoming values', () => {
 	});
 
 	it('keeps the quoted-reply bar and plain-text wrapping', () => {
-		const quoted = buildQuotedReply({
-			fromAddress: 'ana@example.com',
-			receivedAt: 0,
-			textBodyInline: 'original',
-		});
+		const quoted = buildQuotedReply(
+			{ fromAddress: 'ana@example.com', receivedAt: 0, textBodyInline: 'original' },
+			true
+		);
 		const { el } = setup(`<p>Reply</p>${quoted}`);
 		expect(el().innerHTML).toContain('border-left:1px solid #ccc');
 		expect(el().innerHTML).toContain('white-space:pre-wrap');

@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { mount } from '@vue/test-utils';
+import type { PostboxBodyImageProps } from '~/utils/postboxImageAllowlist';
 import PostboxLazyBody from '../PostboxLazyBody.vue';
 import { getPostboxRenderCache, postboxRenderKey } from '../../../utils/postboxRenderCache';
 import {
@@ -76,9 +77,11 @@ afterEach(() => {
 
 const LIGHT = { scheme: 'light', showImages: false, loadEverything: false, showQuoted: false };
 
-function mountBody(props: Partial<{ eager: boolean; imagesAllowed: boolean }> = {}) {
+const ASK = { senderImagesAllowed: false, autoLoadImages: false, suspicious: false };
+
+function mountBody(props: Partial<{ eager: boolean; images: PostboxBodyImageProps }> = {}) {
 	return mount(PostboxLazyBody, {
-		props: { messageId: 'm1', forceLight: false, imagesAllowed: false, ...props },
+		props: { messageId: 'm1', forceLight: false, images: ASK, ...props },
 		slots: { default: () => h('div', { class: 'real-body' }, 'body') },
 		attachTo: document.body,
 	});
@@ -131,6 +134,24 @@ describe('PostboxLazyBody', () => {
 			`height: ${POSTBOX_BODY_PLACEHOLDER_PX}px`
 		);
 		fresh.unmount();
+	});
+
+	it('sizes the placeholder from the render the body opens with', async () => {
+		setHeight(LIGHT, 300);
+		setHeight({ ...LIGHT, showImages: true }, 820);
+		const auto = mountBody({ images: { ...ASK, autoLoadImages: true } });
+		await nextTick();
+		expect(auto.get('[data-testid="postbox-lazy-body"]').attributes('style')).toContain(
+			'height: 820px'
+		);
+		auto.unmount();
+
+		const suspicious = mountBody({ images: { ...ASK, autoLoadImages: true, suspicious: true } });
+		await nextTick();
+		expect(suspicious.get('[data-testid="postbox-lazy-body"]').attributes('style')).toContain(
+			'height: 300px'
+		);
+		suspicious.unmount();
 	});
 
 	it('mounts a body that is already near the viewport without waiting for the observer', async () => {

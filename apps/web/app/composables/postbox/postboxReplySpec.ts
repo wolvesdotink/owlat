@@ -12,10 +12,15 @@ import { deriveReplyAllExtras } from '~/utils/recipientHints';
 import { resolvePrimaryReplyKind, type PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import type { AnswerModeKind } from '~/utils/answerMode';
 import type { ComposeSpec } from './usePostboxComposeNav';
+import {
+	isPostboxMessageSuspicious,
+	postboxImagesLoadOnOpen,
+	type PostboxImageRiskMessage,
+} from '~/utils/postboxImageAllowlist';
 import { buildForwardedBody, buildReplySpec, resolveBodyFields } from './usePostboxQuotedText';
 
 /** The reply/forward source shape the composer quotes from. */
-export type ReplyForwardSource = {
+export type ReplyForwardSource = PostboxImageRiskMessage & {
 	_id: string;
 	subject: string;
 	fromAddress: string;
@@ -65,25 +70,43 @@ export function primaryReplyKindFor(
 /**
  * The one-time seed for `kind` of `source`. The body is resolved first (a body
  * over the inline threshold lives in blob storage). `leadText` (an AI
- * suggestion) goes above the quote of a reply.
+ * suggestion) goes above the quote of a reply. `autoLoadImages` and
+ * `isSenderAllowed` are the reader's preference and sender grant: the quote
+ * keeps remote images only where the reader would load them on open
+ * (utils/postboxImageAllowlist).
  */
 export async function buildReplyComposeSeed(
 	kind: AnswerModeKind,
 	source: ReplyForwardSource,
-	ctx: { mailboxId: Id<'mailboxes'>; ownAddresses: ReadonlySet<string>; leadText?: string }
+	ctx: {
+		mailboxId: Id<'mailboxes'>;
+		ownAddresses: ReadonlySet<string>;
+		leadText?: string;
+		autoLoadImages: boolean;
+		/** The source's sender is on the mailbox's image allowlist. */
+		isSenderAllowed?: boolean;
+	}
 ): Promise<ReplyComposeSeed> {
 	const target = await resolveBodyFields(source);
+	const loadImages = postboxImagesLoadOnOpen({
+		autoLoadImages: ctx.autoLoadImages,
+		senderImagesAllowed: ctx.isSenderAllowed,
+		suspicious: isPostboxMessageSuspicious(source),
+	});
 	if (kind === 'forward') {
 		return {
 			mailboxId: ctx.mailboxId,
 			prefillSubject: target.subject.match(/^fwd?\s*:\s*/i)
 				? target.subject
 				: `Fwd: ${target.subject}`,
-			prefillBodyHtml: buildForwardedBody(target),
+			prefillBodyHtml: buildForwardedBody(target, loadImages),
 			forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'>,
 		};
 	}
-	const spec: ReplyComposeSeed = buildReplySpec(ctx.mailboxId, target, ctx.leadText);
+	const spec: ReplyComposeSeed = buildReplySpec(ctx.mailboxId, target, {
+		leadText: ctx.leadText,
+		loadImages,
+	});
 	// A reply to our own message (a follow-up, a nudge) goes to the people it
 	// went to, not back to us: its To, else its Cc when it went only to us.
 	const own = [...ctx.ownAddresses];

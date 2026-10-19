@@ -76,7 +76,7 @@ function mountCard(props: Record<string, unknown>, message: Record<string, unkno
 			hideBody: false,
 			showRenderToggle: false,
 			forcedLight: false,
-			imagesAllowed: false,
+			images: { senderImagesAllowed: false, autoLoadImages: false, suspicious: false },
 			hasInvite: false,
 			...props,
 		},

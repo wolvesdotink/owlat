@@ -43,11 +43,16 @@ type CacheEntry = {
 	blob: 'none' | 'queued' | 'loading' | 'settled';
 };
 
-/** True when the inline body query reports a body that only exists as a blob. */
+/**
+ * True when the body the reader renders only exists as a blob. HTML wins over
+ * text, so an HTML part over the inline threshold needs its blob even when the
+ * short text part of the same message stayed inline (most newsletters).
+ */
 export function inlineBodyNeedsBlob(body: InlineBody | undefined): boolean {
 	if (!body) return false;
-	if (body.htmlInline !== null || body.textInline !== null) return false;
-	return body.hasHtmlBlob || body.hasTextBlob;
+	if (body.htmlInline !== null) return false;
+	if (body.hasHtmlBlob) return true;
+	return body.textInline === null && body.hasTextBlob;
 }
 
 export function usePostboxPrefetch(options?: {

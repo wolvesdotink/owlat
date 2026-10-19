@@ -1,10 +1,12 @@
 /**
- * Per-sender remote-image allowlist — the pure half.
+ * Remote-image policy and the per-sender allowlist — the pure half.
  *
- * The reader blocks remote images by default and asks again on every issue of
- * the same newsletter. A sender on this list has its images loaded on render
- * instead. Two invariants are encoded here rather than in the component, so
- * they can be asserted without mounting a Convex-backed reader:
+ * The reader loads remote images when a message opens (the `autoLoadImages`
+ * preference, default on), except in suspicious mail, which always asks first
+ * (see {@link isPostboxMessageSuspicious}). With the preference off, the reader
+ * asks on every message, and a sender on the allowlist has its images loaded
+ * on render instead. Three invariants are encoded here rather than in the
+ * component, so they can be asserted without mounting a Convex-backed reader:
  *
  *   1. Tracking-pixel stripping is INDEPENDENT of the allowlist. Being trusted
  *      loads a sender's real images; it never un-strips their pixels. Only the
@@ -12,11 +14,15 @@
  *   2. A sender can only be trusted when we actually resolved an address to key
  *      the grant on — a malformed `From` offers no "Always for…" affordance,
  *      because the grant would key on something no message can match.
+ *   3. Suspicious mail never loads images on open, not even for a trusted
+ *      sender: a forged From is exactly how it would borrow that trust.
  *
  * The banner state machine lives here too: the reader renders exactly one
  * banner state (see `PostboxImageBannerState`), and which one is a pure
  * function of the render's facts.
  */
+
+import { deriveSenderRowMarker, senderRiskInputOf, type SenderAuthMessage } from './senderAuth';
 
 /** A stored grant, as the settings list and the reader both consume it. */
 export interface PostboxImageAllowlistEntry {
@@ -60,11 +66,63 @@ export function isPostboxSenderImageAllowed(
 	return entries.some((entry) => entry.senderEmail.toLowerCase() === key);
 }
 
+/** What a message carries into the suspicious-mail check. */
+export interface PostboxImageRiskMessage extends SenderAuthMessage {
+	spamVerdict?: string;
+}
+
+/**
+ * Mail whose images must not load on open: the spam filter flagged it, or the
+ * sender looks forged (authentication failed or passed for another domain, or
+ * the domain imitates one of your contacts' domains). The same signals as the
+ * list's danger marker, so a message the list marks is never one the reader
+ * quietly loads. A Reply-To on another domain alone does not count; it says
+ * where a reply would go, not who sent the mail.
+ */
+export function isPostboxMessageSuspicious(message: PostboxImageRiskMessage): boolean {
+	if (message.spamVerdict === 'spam') return true;
+	return deriveSenderRowMarker(senderRiskInputOf(message)) !== null;
+}
+
+/**
+ * The remote-image inputs a reader message hands its body, named as
+ * PostboxMessageBody's props so the reader can bind the object as is.
+ */
+export interface PostboxBodyImageProps {
+	/** The sender is on the mailbox allowlist. */
+	senderImagesAllowed: boolean;
+	/** The `autoLoadImages` preference. */
+	autoLoadImages: boolean;
+	/** {@link isPostboxMessageSuspicious} for this message. */
+	suspicious: boolean;
+}
+
+export function postboxBodyImageProps(
+	message: PostboxImageRiskMessage,
+	input: { autoLoadImages: boolean; isSenderAllowed: boolean }
+): PostboxBodyImageProps {
+	return {
+		senderImagesAllowed: input.isSenderAllowed,
+		autoLoadImages: input.autoLoadImages,
+		suspicious: isPostboxMessageSuspicious(message),
+	};
+}
+
+/** Whether a message's remote images load as soon as it opens. */
+export function postboxImagesLoadOnOpen(input: Partial<PostboxBodyImageProps>): boolean {
+	if (input.suspicious) return false;
+	return !!input.autoLoadImages || !!input.senderImagesAllowed;
+}
+
 /**
  * The one banner the reader shows above a message body.
  *
  *   - `blocked`         → remote images are still gated. Offers "Show once" and,
  *                         when the sender is keyable, "Always for {host}".
+ *   - `suspicious`      → images are gated because the message looks suspicious.
+ *                         Says so and offers "Show images" for this message
+ *                         only; never "Always for…", which would hand a forged
+ *                         sender the real one's trust.
  *   - `auto-allowed`    → images loaded because the sender is trusted. Says so,
  *                         says pixels are still stripped, and links to the
  *                         management list — a silent auto-load would be the
@@ -81,6 +139,7 @@ export function isPostboxSenderImageAllowed(
 export type PostboxImageBannerState =
 	| { kind: 'none' }
 	| { kind: 'blocked'; trackerCount: number; canTrustSender: boolean }
+	| { kind: 'suspicious'; trackerCount: number }
 	| { kind: 'auto-allowed'; trackerCount: number }
 	| { kind: 'trackers-blocked'; trackerCount: number }
 	| { kind: 'unchecked' };
@@ -99,10 +158,13 @@ export function resolvePostboxImageBanner(input: {
 	trackerCount: number;
 	/** The body could not be inventoried; remote loads stay blocked. */
 	inventoryFailed: boolean;
+	/** {@link isPostboxMessageSuspicious}; absent reads as not suspicious. */
+	isSuspicious?: boolean;
 }): PostboxImageBannerState {
 	if (!input.hasRemoteImages) return { kind: 'none' };
 	if (input.inventoryFailed && !input.loadEverything) return { kind: 'unchecked' };
 	if (!input.showImages) {
+		if (input.isSuspicious) return { kind: 'suspicious', trackerCount: input.trackerCount };
 		return {
 			kind: 'blocked',
 			trackerCount: input.trackerCount,

@@ -20,9 +20,11 @@
  *      every URL attribute). Replaces a regex-based stripper that left several
  *      privacy/exfiltration holes (style-tag CSS exfil, meta refresh, srcset
  *      bypass) under a sandboxed-but-not-script-free iframe.
- *   4. External images (img src/srcset, CSS backgrounds) are gated behind a
- *      "Show images" button; inline `cid:` images are resolved from the
- *      message's own parts to `data:` URLs
+ *   4. External images (img src/srcset, CSS backgrounds) load on open only when
+ *      the reader says so (preference on and the mail not suspicious, or a
+ *      trusted sender); otherwise they wait behind a "Show images" button.
+ *      Probable tracking pixels stay stripped either way. Inline `cid:` images
+ *      are resolved from the message's own parts to `data:` URLs
  *   5. All <a> rewritten to target=_blank rel=noreferrer noopener
  *   6. Link transparency: real-destination-host tooltips, inline markers on
  *      text-vs-href host mismatches, tracking query params stripped
@@ -51,6 +53,7 @@ import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource
 import { useRegisterReadableBody } from '~/composables/postbox/usePostboxSenderOpen';
 import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
 import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
+import { usePostboxImageConsent } from '~/composables/postbox/usePostboxImageConsent';
 import { usePostboxQuoteHighlight } from '~/composables/postbox/usePostboxQuoteHighlight';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { resolveCidImages, type CidAttachment } from '~/utils/postboxCidImages';
@@ -93,6 +96,17 @@ const props = defineProps<{
 	 * sender exactly as they do for an untrusted one.
 	 */
 	senderImagesAllowed?: boolean;
+	/**
+	 * Load remote images on open (the `autoLoadImages` preference). Absent means
+	 * ask first, so a caller that does not know the message's risk signals keeps
+	 * the conservative behaviour.
+	 */
+	autoLoadImages?: boolean;
+	/**
+	 * The message looks suspicious (utils/postboxImageAllowlist): images never
+	 * load on open, whatever the preference or the allowlist says.
+	 */
+	suspicious?: boolean;
 	/** A cited quote of the thread brief to mark and scroll to (plan §4.2). */
 	highlightQuote?: CitedQuote | null;
 	/** Render the image banner there instead (the calm reader's Details, §3). */
@@ -144,14 +158,11 @@ const appScheme = computed<PostboxRenderScheme>(() =>
 	isDark.value && !props.forceLight ? 'dark' : 'light'
 );
 
-// Per-message consent to load remote images. Starts false; an allowlisted
-// sender flips it before first paint (see the watcher below), which is the
-// whole point of the allowlist — no click, no flash of the blocked banner.
-const showImages = ref(false);
-// Escalation past "Show images": also load probable tracking pixels, which
-// otherwise stay stripped even after images are shown. Deliberately NOT
-// implied by the allowlist and deliberately never persisted.
-const loadEverything = ref(false);
+// Remote-image consent: the load-on-open policy, "Show once", "Load everything".
+const { showImages, loadEverything, loadEverythingNow } = usePostboxImageConsent({
+	messageId: () => props.message._id,
+	images: () => props,
+});
 const showQuoted = ref(false);
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 usePostboxQuoteHighlight({
@@ -159,22 +170,6 @@ usePostboxQuoteHighlight({
 	quote: () => props.highlightQuote,
 	onResult: (isLocated) => emit('citeLocated', isLocated),
 });
-
-// Apply (and un-apply) the sender grant. Watching rather than initialising
-// once matters twice over: the allowlist query resolves after first render,
-// and the reader reuses this component across messages, so a revoke in
-// settings — or moving to an untrusted sender — must take the images back.
-watch(
-	[() => props.senderImagesAllowed, () => props.message._id],
-	([allowed]) => {
-		if (allowed) showImages.value = true;
-		else {
-			showImages.value = false;
-			loadEverything.value = false;
-		}
-	},
-	{ immediate: true }
-);
 
 /** Canonical sender key, or null when the From header holds no address. */
 const senderKey = computed(() => postboxSenderKey(props.message.fromAddress));
@@ -367,10 +362,13 @@ const imageBanner = computed(() =>
 		hasRemoteImages: hasRemoteImages.value,
 		showImages: showImages.value,
 		loadEverything: loadEverything.value,
-		isSenderAllowed: !!props.senderImagesAllowed,
+		// The grant only says something when the preference would ask; with images
+		// loading for everyone, "Always for this sender" has nothing to add.
+		isSenderAllowed: !!props.senderImagesAllowed && !props.autoLoadImages && !props.suspicious,
 		hasSenderKey: senderKey.value !== null,
 		trackerCount: trackerDetection.value.pixelCount,
 		inventoryFailed: render.value.inventoryFailed,
+		isSuspicious: !!props.suspicious,
 	})
 );
 
@@ -389,15 +387,6 @@ function trustSender() {
 	// reader should not wait on a round trip to honour a click it already has.
 	showImages.value = true;
 	emit('trustSender', from);
-}
-
-/**
- * "Load everything" from any banner. From the `unchecked` banner images may
- * not be shown yet, and the escalation has to include them.
- */
-function loadEverythingNow() {
-	showImages.value = true;
-	loadEverything.value = true;
 }
 
 function untrustSender() {

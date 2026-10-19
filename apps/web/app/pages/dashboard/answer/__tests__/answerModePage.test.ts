@@ -130,7 +130,12 @@ beforeAll(() => {
 			refetch: () => {},
 		}),
 		useConvexQuery: () => ({ data: ref(['ada@example.com']), error: ref(null) }),
-		usePostboxSettings: () => ({ replyDefault: ref('reply') }),
+		usePostboxSettings: () => ({
+			replyDefault: ref('reply'),
+			autoLoadImages: ref(true),
+			isLoading: ref(false),
+		}),
+		usePostboxImageAllowlist: () => ({ isAllowed: () => false, isLoading: ref(false) }),
 		useFeatureFlag: () => ({ isEnabled: () => false }),
 		useInboxes: () => ({
 			byId: ref(new Map([['mbx_1', { name: 'Ada', slot: 0, address: 'ada@example.com' }]])),

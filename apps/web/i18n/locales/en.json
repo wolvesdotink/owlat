@@ -4991,10 +4991,12 @@
 				"hideQuoted": "Hide quoted text",
 				"imagesAutoLoaded": "Images from {host} load automatically. Tracking pixels are still stripped.",
 				"imagesBlocked": "Images blocked to protect your privacy.",
+				"imagesBlockedSuspicious": "Images blocked because this message looks suspicious.",
 				"imagesBlockedTrackers": "Images blocked — {count} tracking pixel detected. | Images blocked — {count} tracking pixels detected.",
 				"imagesUnchecked": "Images stay blocked because this message couldn't be checked safely.",
 				"loadEverything": "Load everything",
 				"manageTrustedSenders": "Manage trusted senders",
+				"showImages": "Show images",
 				"showOnce": "Show once",
 				"showQuoted": "Show quoted text",
 				"stopTrustingSender": "Block again",
@@ -6054,6 +6056,8 @@
 				"backfillCancelOperation": "Stop preparing briefs",
 				"sendSoundLabel": "Play sound when sending",
 				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default.",
+				"autoLoadImagesLabel": "Load images automatically",
+				"autoLoadImagesHelp": "Show pictures in mail as soon as you open it. Tracking pixels stay blocked, and mail that looks suspicious always asks first.",
 				"swipeLeftLabel": "Swipe left on a message",
 				"swipeRightLabel": "Swipe right on a message",
 				"swipeHelp": "Drag a row sideways on a touchscreen to triage it. A mouse never triggers this.",
@@ -16231,6 +16235,10 @@
 				"sendSound": {
 					"title": "Play sound when sending",
 					"keywords": "sound, audio, mute"
+				},
+				"autoLoadImages": {
+					"title": "Load images automatically",
+					"keywords": "images, pictures, remote content, privacy, tracking"
 				},
 				"mailboxes": {
 					"title": "Mailboxes",
