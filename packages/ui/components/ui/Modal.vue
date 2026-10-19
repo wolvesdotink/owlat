@@ -13,6 +13,14 @@ interface Props {
 	persistent?: boolean;
 	/** Custom z-index for rendering above high-z elements like the email builder */
 	zIndex?: number;
+	/**
+	 * Id of the element that names the dialog, for a caller that draws its own
+	 * heading inside the body (ConfirmationDialog) instead of passing `title`,
+	 * which would add a second, visible header. Wins over `title`.
+	 */
+	labelledBy?: string;
+	/** Id of the element whose text describes the dialog (aria-describedby). */
+	describedBy?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -21,6 +29,8 @@ const props = withDefaults(defineProps<Props>(), {
 	closable: true,
 	persistent: false,
 	zIndex: undefined,
+	labelledBy: undefined,
+	describedBy: undefined,
 });
 
 const emit = defineEmits<{
@@ -49,6 +59,7 @@ const dialogRef = ref<HTMLElement | null>(null);
 // Unique per instance — the old hardcoded 'modal-title' produced duplicate
 // ids (and wrong aria-labelledby targets) whenever two modals stacked.
 const titleId = useId();
+const ariaLabelledby = computed(() => props.labelledBy ?? (props.title ? titleId : undefined));
 
 const close = () => {
 	if (props.closable) {
@@ -142,7 +153,8 @@ useModalFocus(
 					ref="dialogRef"
 					role="dialog"
 					aria-modal="true"
-					:aria-labelledby="title ? titleId : undefined"
+					:aria-labelledby="ariaLabelledby"
+					:aria-describedby="describedBy"
 					:class="[
 						'modal-panel bg-bg-elevated border border-border-subtle shadow-xl w-full flex flex-col max-h-[85dvh] rounded-t-2xl sm:rounded-2xl',
 						{ 'is-dragging': dragging },

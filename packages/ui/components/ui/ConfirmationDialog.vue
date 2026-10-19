@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, useId } from 'vue';
 import { useUiI18n } from '../../composables/useUiI18n';
 
 type Variant = 'danger' | 'warning' | 'default';
@@ -81,6 +81,12 @@ const variantConfig: Record<Variant, { icon: string; iconClass: string }> = {
 
 const config = computed(() => variantConfig[props.variant]);
 
+// The dialog's name and description are the heading and lead drawn below, not a
+// UiModal `title` (that would add a second, visible header). Per-instance ids,
+// so a confirmation stacked over another still points at its own copy.
+const titleId = useId();
+const descriptionId = useId();
+
 const close = () => {
 	if (!props.isLoading) {
 		emit('update:open', false);
@@ -109,6 +115,8 @@ const handleBackdropClick = () => {
 		:open="open"
 		:persistent="persistent || isLoading"
 		:closable="!isLoading"
+		:labelled-by="titleId"
+		:described-by="descriptionId"
 		@update:open="close"
 	>
 		<div class="flex flex-col items-center text-center">
@@ -118,13 +126,18 @@ const handleBackdropClick = () => {
 				<Icon :name="config.icon" class="w-6 h-6" />
 			</div>
 
-			<h3 class="text-lg font-semibold text-text-primary mb-2">{{ resolvedTitle }}</h3>
+			<h3 :id="titleId" class="text-lg font-semibold text-text-primary mb-2">
+				{{ resolvedTitle }}
+			</h3>
 
 			<!-- `#description` replaces the plain lead when the copy needs markup,
-			     e.g. a delete prompt that sets the item's name in bold. -->
-			<slot name="description">
-				<p class="text-text-secondary">{{ resolvedDescription }}</p>
-			</slot>
+			     e.g. a delete prompt that sets the item's name in bold. The wrapper
+			     carries the description id either way. -->
+			<div :id="descriptionId">
+				<slot name="description">
+					<p class="text-text-secondary">{{ resolvedDescription }}</p>
+				</slot>
+			</div>
 
 			<slot />
 		</div>
