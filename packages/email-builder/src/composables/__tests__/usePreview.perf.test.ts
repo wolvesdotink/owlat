@@ -1,8 +1,8 @@
 /**
  * Report-only benchmark of the preview hot path (plan item OW-072): `usePreview`
- * `regenerate` (plain text, Block validation, HTML, analysis, diff, health
- * score) and the dark-mode toggle's `regenerateHtml`, on the canvases in
- * previewCanvasFixtures.ts.
+ * `regenerate` (plain text, Block validation, HTML, analysis, health score;
+ * the diff is derived only while the diff panel asks for it) and the dark-mode
+ * toggle's `regenerateHtml`, on the canvases in previewCanvasFixtures.ts.
  *
  * The fidelity block always runs: every canvas validates without errors, would
  * fit the one `emailTemplates` document it is saved to, and renders through the
@@ -110,7 +110,12 @@ describe('preview canvas fixture fidelity', () => {
 		expect(open.preview.plainText.value).not.toContain('{{first_name}}');
 		expect(open.preview.emailAnalysis.value).not.toBeNull();
 		expect(open.preview.healthScore.value).not.toBeNull();
+		// The diff is derived on request (the diff panel sets diffRequested), so a
+		// regenerate alone does not pay for it; opening the panel diffs the pair.
+		expect(open.preview.emailDiff.value).toBeNull();
+		open.preview.diffRequested.value = true;
 		expect(open.preview.emailDiff.value).not.toBeNull();
+		expect(open.preview.emailDiff.value!.identical).toBe(false);
 		// AMP is rendered only on request, so the benchmark leaves it out too.
 		expect(open.preview.ampHtml.value).toBe('');
 		open.toggleDarkMode();

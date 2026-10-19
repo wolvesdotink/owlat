@@ -102,6 +102,10 @@ describe('EmailPreviewer — latest-only compatibility analysis', () => {
 			// Keeps the analysis panel (and its spinner) on screen without a client.
 			validationIssues: [{ severity: 'warning', message: 'Check the footer' }],
 		});
+		// The analysis panel loads with its first render (lazyPanels.ts).
+		await vi.dynamicImportSettled();
+		await flushPromises();
+		expect(w.find('.ep-analysis-panel').exists()).toBe(true);
 		await w.find('button[title="Refresh preview"]').trigger('click');
 		expect(w.find('.ep-analysis-spinner').exists()).toBe(true);
 
