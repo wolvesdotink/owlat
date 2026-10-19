@@ -40,6 +40,12 @@ const BASE64_SECRET = Buffer.from(DEEP_SECRET).toString('base64');
 const SPLIT_BASE64 = (gap: string) => `${BASE64_SECRET.slice(0, 8)}${gap}${BASE64_SECRET.slice(8)}`;
 // ß folds to its capital ẞ; the combining acute must stay attached.
 const ESZETT = 'Straße-pa\u0301ss-42';
+// Case variants only full folding after NFKC reaches: [fixture, secret, echo].
+const FOLD_CASES = [
+	['foldMixedEszett', 'Straße-paß-42', 'STRASSE-PAß-42'],
+	['foldCapitalEszett', 'Straẞe-páss-42', 'STRASSE-PÁSS-42'],
+	['foldDecomposedAccent', 'p\u00e1ss-word-42', 'pa\u0301ss-word-42'],
+] as const;
 // The same text again, for the fixture where a second secret (`25`) is masked
 // inside its escapes and splits them.
 const THREE_ROUNDS_OVER_FULL_BYTES = FOUR_ROUNDS_FULL_BYTES;
@@ -306,10 +312,26 @@ const FIXTURES: Record<string, Fixture> = {
 		flags: JSON.stringify({ campaigns: true }),
 		compose: '',
 		fetch: () => {
-			throw new Error(`auth rejected ${ESZETT} and ${ESZETT.toUpperCase()}`);
+			throw new Error(`auth rejected ${ESZETT} and STRAẞE-PA\u0301SS-42`);
 		},
-		secrets: [ESZETT, ESZETT.toUpperCase()],
+		secrets: [ESZETT, 'STRAẞE-PA\u0301SS-42'],
 	},
+	...Object.fromEntries(
+		FOLD_CASES.map(([name, secret, echo]): [string, Fixture] => [
+			name,
+			{
+				env: ['EMAIL_PROVIDER=mta', 'MTA_API_URL=http://mta:3100', `MTA_API_KEY=${secret}`].join(
+					'\n'
+				),
+				flags: JSON.stringify({ campaigns: true }),
+				compose: '',
+				fetch: () => {
+					throw new Error(`auth rejected ${echo}`);
+				},
+				secrets: [secret, echo],
+			},
+		])
+	),
 	...Object.fromEntries(
 		(
 			[
@@ -580,6 +602,15 @@ describe('doctor --json — report contents', () => {
 			'http://mta:3100/health is unreachable (auth rejected [redacted] and [redacted])'
 		);
 	});
+
+	it.each(FOLD_CASES.map(([name]) => name))(
+		'withholds a runtime part echoing a full-case-folded or renormalised secret: %s',
+		async (fixture) => {
+			expect(await messageOf(fixture, 'mta.health')).toBe(
+				'http://mta:3100/health is unreachable ([redacted])'
+			);
+		}
+	);
 
 	it.each(['splitBase64Space', 'splitBase64Tab', 'splitBase64Lf', 'splitBase64Crlf'])(
 		'withholds a runtime part holding whitespace-split base64 of a secret: %s',

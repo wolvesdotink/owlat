@@ -134,11 +134,11 @@ function urlSecrets(value: string): string[] {
  * The printed forms of a secret, each kept exactly as computed: the original
  * is never replaced by a case-mapped copy, because a lower-cased form need
  * not match its original back (`İ` lower-cases to two code points).
- * `textual` is matched case-insensitively (simple case folding): raw,
- * `encodeURIComponent`, the form-encoded variants (`+` for a space), plus the
- * full upper- and lower-case mappings of the raw secret as extra forms, which
- * simple folding cannot reach (`ß` upper-cases to `SS`). `base64` is matched
- * exactly: padded, unpadded and url-safe.
+ * `textual` is masked case-insensitively (simple case folding): raw,
+ * `encodeURIComponent` and the form-encoded variants (`+` for a space). Case
+ * variants simple folding cannot reach (`ß` against `SS`) are caught by the
+ * fold check in {@link createDoctorRedactor}. `base64` is matched exactly:
+ * padded, unpadded and url-safe.
  */
 function secretForms(secret: string): { textual: string[]; base64: string[] } {
 	const encoded = encodeURIComponent(secret);
@@ -146,8 +146,6 @@ function secretForms(secret: string): { textual: string[]; base64: string[] } {
 	return {
 		textual: [
 			secret,
-			secret.toUpperCase(),
-			secret.toLowerCase(),
 			encoded,
 			encoded.replace(/%20/g, '+'),
 			new URLSearchParams([['', secret]]).toString().slice(1),
@@ -191,6 +189,18 @@ function mergeSpans(spans: readonly Span[]): Span[] {
 const WHITESPACE = /\s+/gu;
 
 /**
+ * Full case folding after compatibility normalisation. NFKC unifies composed
+ * and decomposed accents and compatibility forms. The case mapping is
+ * lower, then upper, then lower: upper-then-lower alone would keep the
+ * capital `ẞ` (already upper case) as `ß`, while lowering it first lets `ß`,
+ * `ẞ` and `SS` all end as `ss`. NFKC runs again at the end, because case
+ * mapping can produce decomposed sequences (`ǰ` upper-cases to `J` + U+030C).
+ */
+function fold(text: string): string {
+	return text.normalize('NFKC').toLowerCase().toUpperCase().toLowerCase().normalize('NFKC');
+}
+
+/**
  * The known-secret pass for one doctor run, over untrusted text only. Three
  * rules, all exact matches or presence checks; nothing is decoded.
  *
@@ -204,10 +214,13 @@ const WHITESPACE = /\s+/gu;
  *    characters: a literal `[redacted]` in runtime text is ordinary text.
  * 3. The text left outside the masks, joined as a reader would join it after
  *    deleting the markers and stripped of all whitespace, must not contain any
- *    form (whitespace-stripped too); otherwise the whole part is withheld. That
- *    catches base64 or a secret split by spaces, tabs or line breaks.
- *    Joining can occasionally create a match that was not there; withholding
- *    then is the safe failure.
+ *    form (whitespace-stripped too), nor, after {@link fold}, any folded raw
+ *    secret; otherwise the whole part is withheld. That catches base64 or a
+ *    secret split by spaces, tabs or line breaks, and every case variant:
+ *    raw matching is Unicode case-insensitive after NFKC normalisation and full
+ *    case folding (lower, upper, then lower), so `STRASSE-PAß-42` cannot slip
+ *    past a secret `Straße-paß-42`. Joining can occasionally create a match that was
+ *    not there; withholding then is the safe failure.
  *
  * Encodings these producers do not emit (hex dumps, HTML entities, `\u`
  * escapes) are out of scope. Secrets are every secret-keyed `.env` value and
@@ -217,10 +230,13 @@ const WHITESPACE = /\s+/gu;
 export function createDoctorRedactor(env: EnvMap): (text: string) => string {
 	const textual = new Set<string>();
 	const base64 = new Set<string>();
+	const folded = new Set<string>();
 	for (const [key, value] of Object.entries(env)) {
 		const raw = SECRET_KEY.test(key) ? [value, ...urlSecrets(value)] : urlSecrets(value);
 		for (const secret of raw) {
 			if (!secret) continue;
+			const foldedSecret = fold(secret.replace(WHITESPACE, ''));
+			if (foldedSecret) folded.add(foldedSecret);
 			const forms = secretForms(secret);
 			for (const form of forms.textual) if (form) textual.add(form);
 			for (const form of forms.base64) if (form) base64.add(form);
@@ -249,6 +265,8 @@ export function createDoctorRedactor(env: EnvMap): (text: string) => string {
 		visible += text.slice(from);
 		const joined = visible.replace(WHITESPACE, '');
 		if (presence.some((pattern) => pattern.test(joined))) return REDACTED;
+		const foldedJoined = fold(joined);
+		for (const secret of folded) if (foldedJoined.includes(secret)) return REDACTED;
 		return out + text.slice(from);
 	};
 }

@@ -158,13 +158,26 @@ describe('doctor text — known-secret pass', () => {
 		expect(redact('login with İstanbul-password-42 failed')).toBe('login with [redacted] failed');
 	});
 
-	it('masks a secret with ß and a combining character, in either case', () => {
+	it('masks a secret with ß and a combining character, in either simple case', () => {
 		const secret = 'Straße-pa\u0301ss-42';
 		const redact = createDoctorRedactor({ A_KEY: secret });
 		expect(redact(`got ${secret}`)).toBe('got [redacted]');
 		expect(redact('got STRAẞE-PA\u0301SS-42')).toBe('got [redacted]');
-		// Full upper-case mapping: ß becomes SS, which simple folding cannot reach.
-		expect(redact('got STRASSE-PA\u0301SS-42')).toBe('got [redacted]');
+		// Full case mapping (ß to SS) is beyond position masking: the fold
+		// check withholds the whole part.
+		expect(redact('got STRASSE-PA\u0301SS-42')).toBe('[redacted]');
+	});
+
+	// Sol round 6: case variants that expand some characters and keep others.
+	it.each([
+		['one ß expanded, one kept', 'Straße-paß-42', 'STRASSE-PAß-42'],
+		['capital ẞ and an accent, upper-cased', 'Straẞe-páss-42', 'STRASSE-PÁSS-42'],
+		['a decomposed accent for a composed one', 'p\u00e1ss-word-42', 'pa\u0301ss-word-42'],
+		['a composed accent for a decomposed one', 'pa\u0301ss-word-42', 'p\u00e1ss-word-42'],
+		['ß in the echo for SS in the secret', 'STRASSE-PASS-42', 'straße-paß-42'],
+	])('withholds a part echoing a secret with %s', (_label, secret, echo) => {
+		const redact = createDoctorRedactor({ A_KEY: secret });
+		expect(redact(`auth rejected ${echo}`)).toBe('[redacted]');
 	});
 
 	// Sol round 5, scenario 2: base64 split by whitespace.
