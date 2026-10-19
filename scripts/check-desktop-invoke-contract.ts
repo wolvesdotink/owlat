@@ -43,7 +43,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { nonLiteralImports, scanFile, vueScript } from './desktop-invoke-scan';
+import { type InvokeCall, type LineOf, nonLiteralImports, scanFile } from './desktop-invoke-scan';
+import { type CompiledSfc, compileSfc } from './desktop-invoke-vue';
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -222,21 +223,41 @@ export async function checkDesktopInvokeContract(
 	for (const file of files) {
 		// Every file is parsed and every decision made on its AST: a raw-text
 		// prefilter misses comments and escapes (desktop-invoke-scan.ts header).
+		// A .vue file is compiled first, so its template is code the scan reads
+		// (desktop-invoke-vue.ts); positions map back to the .vue file.
 		const raw = await readFile(join(root, file), 'utf8');
-		const text = file.endsWith('.vue') ? vueScript(raw) : raw;
-		const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-		const found = scanFile(source);
-		const fileProblems = [
-			...nonLiteralImports(source).map((line) => ({
-				line,
-				message: 'untraceable invoke use: import() of a non-literal module name',
-			})),
-			...found.problems,
-		].sort((a, b) => a.line - b.line);
+		const compiled: CompiledSfc = file.endsWith('.vue')
+			? compileSfc(raw, file)
+			: { parts: [{ text: raw, lineOf: (line) => line + 1 }], problems: [] };
+		const fileProblems = [...compiled.problems];
+		const fileCalls: { source: ts.SourceFile; call: InvokeCall }[] = [];
+		for (const part of compiled.parts) {
+			const source = ts.createSourceFile(
+				file,
+				part.text,
+				ts.ScriptTarget.Latest,
+				true,
+				ts.ScriptKind.TS
+			);
+			const lineOf: LineOf = (at, node) => {
+				const position = at.getLineAndCharacterOfPosition(node.getStart(at));
+				return part.lineOf(position.line, position.character);
+			};
+			const found = scanFile(source, lineOf);
+			for (const line of nonLiteralImports(source, lineOf)) {
+				fileProblems.push({
+					line,
+					message: 'untraceable invoke use: import() of a non-literal module name',
+				});
+			}
+			fileProblems.push(...found.problems);
+			for (const call of found.calls) fileCalls.push({ source, call });
+		}
+		fileProblems.sort((a, b) => a.line - b.line);
 		for (const problem of fileProblems)
 			problems.push(`${file}:${problem.line}  ${problem.message}`);
-		callCount += found.calls.length;
-		for (const call of found.calls) {
+		callCount += fileCalls.length;
+		for (const { source, call } of fileCalls) {
 			const at = `${file}:${call.line}`;
 			let names: readonly string[];
 			if (call.arg && ts.isStringLiteralLike(call.arg)) {

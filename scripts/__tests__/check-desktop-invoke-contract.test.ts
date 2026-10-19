@@ -358,6 +358,81 @@ describe('the desktop invoke contract gate', () => {
 		expect(result.problems).toEqual([]);
 	});
 
+	it('rejects value imports from the package root, which re-exports core', async () => {
+		const useCore = "import from '@tauri-apps/api/core' instead";
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/desktop/src/named.ts':
+				"import { core } from '@tauri-apps/api';\ncore.invoke('removed_command');\n",
+			'apps/desktop/src/namespace.ts':
+				"import * as api from '@tauri-apps/api';\napi.core.invoke('x');\n",
+			'apps/desktop/src/dynamic.ts': "const api = await import('@tauri-apps/api');\n",
+			'apps/desktop/src/reexport.ts': "export { core } from '@tauri-apps/api';\n",
+			'apps/desktop/src/types.ts':
+				"import type { core } from '@tauri-apps/api';\nimport { type window as w } from '@tauri-apps/api';\nexport type { core } from '@tauri-apps/api';\nexport type C = typeof core | w.Window;\n",
+		});
+		const untraceable = (at: string, what: string) => `${at}  untraceable invoke use: ${what}`;
+		expect(result.problems).toEqual([
+			untraceable('apps/desktop/src/dynamic.ts:1', `import('@tauri-apps/api'); ${useCore}`),
+			untraceable('apps/desktop/src/named.ts:1', `value import from '@tauri-apps/api'; ${useCore}`),
+			untraceable(
+				'apps/desktop/src/namespace.ts:1',
+				`value import from '@tauri-apps/api'; ${useCore}`
+			),
+			untraceable(
+				'apps/desktop/src/reexport.ts:1',
+				`value re-export from '@tauri-apps/api'; ${useCore}`
+			),
+		]);
+	});
+
+	it('reads .vue templates as compiled code bound to the script setup', async () => {
+		const component = [
+			'<template>',
+			'  <div>',
+			'    <button @click="invoke(\'removed_command\')">x</button>',
+			'    <Child :fn="invoke" />',
+			'    <button @click="save(count as number)">y</button>',
+			'    <button @click="invoke(\'zoom_level\')">z</button>',
+			'  </div>',
+			'</template>',
+			'',
+			'<script setup lang="ts">',
+			"import { invoke } from '@tauri-apps/api/core';",
+			'const count = 1;',
+			'const save = (n: number) => n;',
+			'</script>',
+			'',
+		].join('\n');
+		const result = await check({
+			'apps/web/app/components/Bridge.vue': component,
+			'apps/web/app/components/Plain.vue':
+				'<template><button @click="save()">{{ label }}</button></template>\n<script setup lang="ts">\nconst label = "Save";\nconst save = () => label;\n</script>\n',
+			'apps/web/app/components/Options.vue':
+				'<template><p>{{ msg }}</p></template>\n<script lang="ts">\nexport default { data: () => ({ msg: \'hi\' }) };\n</script>\n',
+		});
+		expect(result.problems).toEqual([
+			'apps/web/app/components/Bridge.vue:4  untraceable invoke use: invoke (invoke) is not called directly',
+			`apps/web/app/components/Bridge.vue:3  invoke('removed_command') is not a command in ${IPC_COMMANDS_FILE}`,
+		]);
+		expect(result.calls).toEqual([
+			'apps/web/app/components/Bridge.vue:3 removed_command',
+			'apps/web/app/components/Bridge.vue:6 zoom_level',
+		]);
+	});
+
+	it('reports a component whose template does not compile', async () => {
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/web/app/components/Broken.vue':
+				'<template>\n  <button @click="invoke(">x</button>\n</template>\n<script setup lang="ts">\nconst a = 1;\n</script>\n',
+		});
+		expect(result.problems).toHaveLength(1);
+		expect(result.problems[0]).toMatch(
+			/^apps\/web\/app\/components\/Broken\.vue:2 {2}untraceable invoke use: the component does not compile/
+		);
+	});
+
 	it('accepts the direct global calls and checks their names', async () => {
 		const result = await check({
 			'apps/web/app/global.ts':

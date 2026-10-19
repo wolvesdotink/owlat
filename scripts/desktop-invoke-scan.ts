@@ -31,6 +31,15 @@
  *   as the argument of `import()`, or in a type import. Anywhere else
  *   (`import core = require(...)`, `require(...)`, a constant later passed to
  *   `import(name)`) it is a finding.
+ * - The package root `@tauri-apps/api` re-exports `core` (and so `invoke`).
+ *   Every value import or re-export from it, and every `import()` of it, is a
+ *   finding that says to import from `@tauri-apps/api/core` instead; type-only
+ *   imports and re-exports stay allowed.
+ * - `.vue` files are compiled first (scripts/desktop-invoke-vue.ts): the
+ *   template becomes the render code `compileScript` would inline, so
+ *   `@click="invoke('x')"` is a call this scan checks and `:fn="invoke"` is a
+ *   value use. `unref(x)` / `_unref(x)`, the compiled form of a setup binding,
+ *   is transparent.
  *
  * - Every `import()` in a scanned file takes a plain string literal (or a
  *   template without `${}`), so a name assembled at runtime
@@ -48,9 +57,10 @@
  * and global names are all read as decoded `.text` values.
  *
  * Threat model: the gate catches accidental and ordinary drift (a call to a
- * command Rust renamed or removed, a binding the scan cannot follow). It is not
- * a sandbox against deliberately obfuscated code. Anything expressible as an
- * AST literal is handled; out of scope are `eval`, `new Function`, keys
+ * command Rust renamed or removed, a binding the scan cannot follow), in the
+ * TypeScript and the `.vue` scripts and templates of the scanned roots. It is
+ * not a sandbox against deliberately obfuscated code. Anything expressible as
+ * an AST literal is handled; out of scope are `eval`, `new Function`, keys
  * computed from variables at runtime (`window[key]`, `core[name]`), code
  * outside the scanned roots, and strings Rust hands to a webview `eval`. Names
  * are matched per file, not per scope, so a shadowing local can only add
@@ -59,6 +69,17 @@
 import ts from 'typescript';
 
 const CORE_MODULE = '@tauri-apps/api/core';
+
+/** The package's root entry, which re-exports `core` (and so `invoke`). */
+const ROOT_MODULE = '@tauri-apps/api';
+
+const USE_CORE = `import from '${CORE_MODULE}' instead`;
+
+/** A 1-based line for a node; a compiled `.vue` part maps it back to the file. */
+export type LineOf = (source: ts.SourceFile, node: ts.Node) => number;
+
+const sourceLine: LineOf = (source, node) =>
+	source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
 
 const TAURI_GLOBALS = new Set(['__TAURI_INTERNALS__', '__TAURI__']);
 
@@ -70,24 +91,6 @@ export interface InvokeCall {
 export interface FileScan {
 	readonly calls: InvokeCall[];
 	readonly problems: { line: number; message: string }[];
-}
-
-/**
- * A `.vue` file with everything outside its `<script>` blocks blanked, newlines
- * kept, so offsets and line numbers still match the file.
- */
-export function vueScript(text: string): string {
-	const keep = new Uint8Array(text.length);
-	for (const match of text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
-		const start = match.index + match[0].indexOf('>') + 1;
-		keep.fill(1, start, start + (match[1] as string).length);
-	}
-	let out = '';
-	for (let i = 0; i < text.length; i += 1) {
-		const char = text[i] as string;
-		out += keep[i] || char === '\n' ? char : ' ';
-	}
-	return out;
 }
 
 function isCoreImport(node: ts.Node): node is ts.CallExpression {
@@ -102,10 +105,28 @@ function isCoreImport(node: ts.Node): node is ts.CallExpression {
 	);
 }
 
-/** Skip `await` and parentheses between an expression and what consumes it. */
+/**
+ * `unref(x)` / `_unref(x)`: how a compiled `.vue` template reads a setup
+ * binding. It returns a non-ref unchanged, so it is transparent here.
+ */
+function isUnrefOf(parent: ts.Node, node: ts.Node): boolean {
+	return (
+		ts.isCallExpression(parent) &&
+		parent.arguments.length === 1 &&
+		parent.arguments[0] === node &&
+		ts.isIdentifier(parent.expression) &&
+		(parent.expression.text === '_unref' || parent.expression.text === 'unref')
+	);
+}
+
+/** Skip `await`, parentheses and `unref()` between an expression and its consumer. */
 function outermost(node: ts.Node): ts.Node {
 	let current = node;
-	while (ts.isAwaitExpression(current.parent) || ts.isParenthesizedExpression(current.parent)) {
+	while (
+		ts.isAwaitExpression(current.parent) ||
+		ts.isParenthesizedExpression(current.parent) ||
+		isUnrefOf(current.parent, current)
+	) {
 		current = current.parent;
 	}
 	return current;
@@ -170,13 +191,13 @@ function isNameOnly(node: ts.Identifier): boolean {
  * scan cannot tell what such a call loads (`'@tauri-apps/api/' + 'core'`), so
  * the gate rejects it in every scanned file, whatever the file mentions.
  */
-export function nonLiteralImports(source: ts.SourceFile): number[] {
+export function nonLiteralImports(source: ts.SourceFile, lineOf = sourceLine): number[] {
 	const lines: number[] = [];
 	const visit = (node: ts.Node) => {
 		if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
 			const [arg] = node.arguments;
 			if (!arg || !ts.isStringLiteralLike(arg)) {
-				lines.push(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1);
+				lines.push(lineOf(source, node));
 			}
 		}
 		ts.forEachChild(node, visit);
@@ -191,15 +212,16 @@ function isModuleSpecifier(node: ts.StringLiteralLike): boolean {
 	if (ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent)) {
 		return parent.moduleSpecifier === node;
 	}
-	if (isCoreImport(parent)) return true;
+	if (ts.isCallExpression(parent) && parent.expression.kind === ts.SyntaxKind.ImportKeyword) {
+		return true;
+	}
 	return ts.isLiteralTypeNode(parent) && ts.isImportTypeNode(parent.parent);
 }
 
-export function scanFile(source: ts.SourceFile): FileScan {
+export function scanFile(source: ts.SourceFile, lineOf = sourceLine): FileScan {
 	const calls: FileScan['calls'] = [];
 	const problems: FileScan['problems'] = [];
-	const line = (node: ts.Node) =>
-		source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
+	const line = (node: ts.Node) => lineOf(source, node);
 	const untraceable = (node: ts.Node, what: string) =>
 		problems.push({ line: line(node), message: `untraceable invoke use: ${what}` });
 	const invokeNames = new Set<string>();
@@ -255,6 +277,15 @@ export function scanFile(source: ts.SourceFile): FileScan {
 	const bind = (node: ts.Node) => {
 		if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
 			const clause = node.importClause;
+			if (node.moduleSpecifier.text === ROOT_MODULE && clause && !clause.isTypeOnly) {
+				const bindings = clause.namedBindings;
+				const value =
+					clause.name !== undefined ||
+					(bindings !== undefined &&
+						(ts.isNamespaceImport(bindings) || bindings.elements.some((e) => !e.isTypeOnly)));
+				if (value) untraceable(node, `value import from '${ROOT_MODULE}'; ${USE_CORE}`);
+				return;
+			}
 			if (node.moduleSpecifier.text !== CORE_MODULE || !clause || clause.isTypeOnly) return;
 			if (clause.name) untraceable(clause.name, `default import of ${CORE_MODULE}`);
 			const bindings = clause.namedBindings;
@@ -264,9 +295,15 @@ export function scanFile(source: ts.SourceFile): FileScan {
 				if (imported.text === 'invoke' && !element.isTypeOnly) bindName(element.name, invokeNames);
 			}
 		} else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
-			if ((node.moduleSpecifier as ts.StringLiteral).text !== CORE_MODULE || node.isTypeOnly)
-				return;
+			const from = (node.moduleSpecifier as ts.StringLiteral).text;
+			if ((from !== CORE_MODULE && from !== ROOT_MODULE) || node.isTypeOnly) return;
 			const clause = node.exportClause;
+			if (from === ROOT_MODULE) {
+				const value =
+					!clause || !ts.isNamedExports(clause) || clause.elements.some((e) => !e.isTypeOnly);
+				if (value) untraceable(node, `value re-export from '${ROOT_MODULE}'; ${USE_CORE}`);
+				return;
+			}
 			const exportsInvoke =
 				!clause ||
 				!ts.isNamedExports(clause) ||
@@ -275,13 +312,21 @@ export function scanFile(source: ts.SourceFile): FileScan {
 		} else if (isCoreImport(node)) {
 			bindDynamic(node);
 		} else if (
+			ts.isCallExpression(node) &&
+			node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+			node.arguments[0] &&
+			ts.isStringLiteralLike(node.arguments[0]) &&
+			node.arguments[0].text === ROOT_MODULE
+		) {
+			untraceable(node, `import('${ROOT_MODULE}'); ${USE_CORE}`);
+		} else if (
 			ts.isStringLiteralLike(node) &&
-			node.text === CORE_MODULE &&
+			(node.text === CORE_MODULE || node.text === ROOT_MODULE) &&
 			!isModuleSpecifier(node)
 		) {
 			// `import x = require(...)`, `require(...)`, a module name kept in a
 			// variable for a later `import(name)`: shapes the scan cannot follow.
-			untraceable(node, `${CORE_MODULE} named outside an import declaration or import()`);
+			untraceable(node, `${node.text} named outside an import declaration or import()`);
 		}
 		ts.forEachChild(node, bind);
 	};
