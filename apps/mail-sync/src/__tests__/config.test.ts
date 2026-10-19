@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { loadConfig } from '../config.js';
+import { loadConfig, MailSyncConfigError } from '../config.js';
 
 const REQUIRED = {
 	CONVEX_URL: 'https://example.convex.cloud',
@@ -74,4 +74,68 @@ describe('loadConfig', () => {
 			expect(() => loadConfig()).toThrow(new RegExp(missing));
 		}
 	);
+
+	it('reports every invalid key together, without secret values', () => {
+		stubRequired();
+		vi.stubEnv('CONVEX_URL', 'https://deploy:url-secret@');
+		vi.stubEnv('MAIL_SYNC_API_KEY', '');
+		vi.stubEnv('MAIL_SYNC_PORT', '0');
+		vi.stubEnv('MAIL_SYNC_FETCH_ORIGINS', 'https://ok.example.com, not a url');
+		let caught: unknown;
+		try {
+			loadConfig();
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(MailSyncConfigError);
+		const error = caught as MailSyncConfigError;
+		expect(error.issues.map((issue) => issue.key)).toEqual([
+			'MAIL_SYNC_API_KEY',
+			'CONVEX_URL',
+			'MAIL_SYNC_FETCH_ORIGINS',
+			'MAIL_SYNC_PORT',
+		]);
+		expect(error.message).toContain('4 problems');
+		expect(error.message).toContain('MAIL_SYNC_API_KEY is required');
+		expect(error.message).toContain('CONVEX_URL must be an absolute http(s) URL');
+		expect(error.message).toContain('MAIL_SYNC_FETCH_ORIGINS entry 2 must be');
+		expect(error.message).toContain('MAIL_SYNC_PORT must be an integer between 1 and 65535');
+		const printed = `${error.message}\n${JSON.stringify(error)}`;
+		for (const secret of [REQUIRED.CONVEX_ADMIN_KEY, 'url-secret', 'deploy', 'not a url']) {
+			expect(printed).not.toContain(secret);
+		}
+	});
+
+	it('reports three missing secrets in one error', () => {
+		for (const key of Object.keys(REQUIRED)) vi.stubEnv(key, '');
+		expect(() => loadConfig()).toThrow(
+			'Invalid mail-sync configuration (3 problems):\n' +
+				'  - CONVEX_URL is required\n' +
+				'  - CONVEX_ADMIN_KEY is required\n' +
+				'  - MAIL_SYNC_API_KEY is required'
+		);
+	});
+
+	it.each([
+		['CONVEX_URL', 'convex.example.com'],
+		['CONVEX_URL', 'ftp://convex.example.com'],
+		['CONVEX_SITE_URL', '/http'],
+	])('refuses %s=%j that is not an absolute http(s) URL', (key, value) => {
+		stubRequired();
+		vi.stubEnv(key, value);
+		expect(() => loadConfig()).toThrow(`${key} must be an absolute http(s) URL`);
+	});
+
+	it('allows fetches from the CONVEX_URL origin plus MAIL_SYNC_FETCH_ORIGINS', () => {
+		stubRequired();
+		vi.stubEnv(
+			'MAIL_SYNC_FETCH_ORIGINS',
+			' https://public.example.com/storage , ,http://10.example.com:3210/x'
+		);
+		expect(loadConfig().allowedFetchOrigins).toEqual([
+			'https://example.convex.cloud',
+			'https://public.example.com',
+			'http://10.example.com:3210',
+		]);
+	});
 });
