@@ -39,7 +39,8 @@ const {
 } = useDataTable<SortField>({ defaultSort: 'createdAt', sortableFields: ['createdAt'] });
 // Search results are relevance-ordered and the backend ignores sort/order on
 // that path (lib/listing.ts trims the same way), so while a search is active the
-// Created header claims no sort, by chevron or by aria-sort.
+// Created header claims no sort, by chevron or by aria-sort, and its button is
+// inert (aria-disabled but focusable, so its hint is still announced).
 const sortApplies = computed(() => !debouncedSearch.value.trim());
 
 // Bulk selection
@@ -791,9 +792,20 @@ onUnmounted(() => {
 									>
 										<button
 											type="button"
-											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+											:class="
+												sortApplies
+													? 'hover:text-text-primary'
+													: 'text-text-tertiary cursor-not-allowed'
+											"
+											:aria-disabled="sortApplies ? undefined : 'true'"
+											:title="
+												sortApplies
+													? undefined
+													: t('dashboard.audience.contacts.index.table.createdSortSearchHint')
+											"
 											aria-describedby="contacts-created-sort-hint"
-											@click="toggleSort('createdAt')"
+											@click="sortApplies && toggleSort('createdAt')"
 										>
 											{{ t('dashboard.audience.contacts.index.table.created') }}
 											<Icon

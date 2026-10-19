@@ -149,13 +149,26 @@ describe('contacts table sort announcement', () => {
 		expect(createdSortButton(wrapper).find('icon-stub').exists()).toBe(false);
 		expect(sortHint(wrapper)).toBe('Search results are ordered by relevance');
 
+		// The control is inert but stays focusable, and says why on hover too.
+		const button = createdSortButton(wrapper);
+		expect(button.attributes('aria-disabled')).toBe('true');
+		expect(button.attributes('disabled')).toBeUndefined();
+		expect(button.attributes('title')).toBe('Search results are ordered by relevance');
+		await button.trigger('click');
+		expect(listArgs().order).toBe('desc');
+		expect(sortedHeaders(wrapper)).toHaveLength(0);
+
 		// Whitespace is no search: the backend trims it and sorts by date.
 		await search(wrapper, '   ');
 		expect(sortedHeaders(wrapper)).toHaveLength(1);
 
 		await search(wrapper, '');
+		// The click during the search left the stored direction alone.
+		expect(listArgs().order).toBe('desc');
 		expectOneTruthfulAriaSort(wrapper);
 		expect(createdSortButton(wrapper).find('icon-stub').exists()).toBe(true);
+		expect(createdSortButton(wrapper).attributes('aria-disabled')).toBeUndefined();
+		expect(createdSortButton(wrapper).attributes('title')).toBeUndefined();
 		wrapper.unmount();
 	});
 });
