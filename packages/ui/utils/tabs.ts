@@ -4,9 +4,10 @@
  * UiTabs only draws the tabs; the content under them belongs to the caller,
  * which usually renders just the selected tab's content in one region. So the
  * caller owns one panel id and hands it to both sides: `:panel-id` on UiTabs
- * (the selected tab then points `aria-controls` at it) and `tabPanelAttrs` on
- * the region (which labels it by the selected tab). Without a panel id UiTabs
- * emits no `aria-controls` at all, so nothing ever points at a missing element.
+ * (every tab then points `aria-controls` at it, since activating any of them
+ * swaps its content) and `tabPanelAttrs` on the region (which labels it by the
+ * selected tab). Without a panel id UiTabs emits no `aria-controls` at all, so
+ * nothing ever points at a missing element.
  */
 
 export interface UiTabOption {
@@ -37,16 +38,22 @@ export function tabElementId(panelId: string, value: string): string {
 	return `${panelId}-tab-${safe}`;
 }
 
-/** Attributes for the caller's panel region: `v-bind="tabPanelAttrs(...)"`. */
+/**
+ * Attributes for the caller's panel region: `v-bind="tabPanelAttrs(...)"`.
+ * The panel is a tab stop of its own, so Tab from the strip lands on the
+ * content even when it opens with static text; the shared `[tabindex]` rule
+ * draws its ring for keyboard focus only.
+ */
 export function tabPanelAttrs(
 	panelId: string,
 	tabs: readonly UiTabOption[],
 	modelValue: string | undefined
-): { id: string; role: 'tabpanel'; 'aria-labelledby'?: string } {
+): { id: string; role: 'tabpanel'; tabindex: 0; 'aria-labelledby'?: string } {
 	const selected = selectedTabValue(tabs, modelValue);
 	return {
 		id: panelId,
 		role: 'tabpanel',
+		tabindex: 0,
 		...(selected === undefined ? {} : { 'aria-labelledby': tabElementId(panelId, selected) }),
 	};
 }

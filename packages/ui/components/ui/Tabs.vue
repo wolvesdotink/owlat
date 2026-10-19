@@ -5,8 +5,9 @@ interface Props {
 	tabs: UiTabOption[];
 	modelValue?: string;
 	/**
-	 * Id of the panel the caller renders for the selected tab (see
-	 * utils/tabs.ts). Without it the tabs claim no panel: no `aria-controls`.
+	 * Id of the one panel the caller renders for the selected tab (see
+	 * utils/tabs.ts); every tab controls it. Without it the tabs claim no
+	 * panel: no `aria-controls`.
 	 */
 	panelId?: string;
 }
@@ -96,7 +97,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
 			type="button"
 			role="tab"
 			:aria-selected="selectedValue === tab.value"
-			:aria-controls="panelId && selectedValue === tab.value ? panelId : undefined"
+			:aria-controls="panelId || undefined"
 			:tabindex="selectedValue === tab.value ? 0 : -1"
 			:class="[
 				'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-(--motion-moderate) ease-spring',

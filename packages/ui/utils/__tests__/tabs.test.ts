@@ -42,6 +42,7 @@ describe('tabPanelAttrs', () => {
 		expect(tabPanelAttrs('p1', TABS, 'review')).toEqual({
 			id: 'p1',
 			role: 'tabpanel',
+			tabindex: 0,
 			'aria-labelledby': 'p1-tab-review',
 		});
 	});
@@ -51,6 +52,6 @@ describe('tabPanelAttrs', () => {
 	});
 
 	it('names no tab when there is none', () => {
-		expect(tabPanelAttrs('p1', [], undefined)).toEqual({ id: 'p1', role: 'tabpanel' });
+		expect(tabPanelAttrs('p1', [], undefined)).toEqual({ id: 'p1', role: 'tabpanel', tabindex: 0 });
 	});
 });

@@ -150,29 +150,43 @@ describe('UiTabs ↔ panel contract', () => {
 		expect(new Set(ids).size).toBe(6);
 	});
 
-	it('points the selected tab at the rendered panel, which names that tab', async () => {
+	it('points every tab at the one rendered panel, which names the selected tab', async () => {
 		const wrapper = mountWithPanel('timeline');
 		const panel = document.querySelector<HTMLElement>('[role="tabpanel"]')!;
-		const selected = tabButtons()[1]!;
-		expect(selected.getAttribute('aria-controls')).toBe(panel.id);
-		expect(panel.getAttribute('aria-labelledby')).toBe(selected.id);
-		// Only the selected tab claims the one panel the caller renders.
-		expect(tabButtons().filter((tab) => tab.hasAttribute('aria-controls'))).toEqual([selected]);
+		// Activating any tab swaps this panel's content, so every tab controls it.
+		expect(tabButtons().map((tab) => tab.getAttribute('aria-controls'))).toEqual([
+			panel.id,
+			panel.id,
+			panel.id,
+		]);
+		expect(panel.getAttribute('aria-labelledby')).toBe(tabButtons()[1]!.id);
 		expect(danglingRefs()).toEqual([]);
 
 		await wrapper.get('[role="tablist"]').trigger('keydown', { key: 'End' });
-		const files = tabButtons()[2]!;
-		expect(files.getAttribute('aria-controls')).toBe(panel.id);
-		expect(panel.getAttribute('aria-labelledby')).toBe(files.id);
+		expect(panel.getAttribute('aria-labelledby')).toBe(tabButtons()[2]!.id);
 		expect(panel.textContent).toBe('content of files');
+		expect(tabButtons().every((tab) => tab.getAttribute('aria-controls') === panel.id)).toBe(true);
 		expect(danglingRefs()).toEqual([]);
+	});
+
+	it('makes the panel the next tab stop after the strip, even for static content', () => {
+		mountWithPanel('profile');
+		const panel = document.querySelector<HTMLElement>('[role="tabpanel"]')!;
+		expect(panel.getAttribute('tabindex')).toBe('0');
+		// Sequential focus order in DOM order: the selected tab, then the panel.
+		const stops = [...document.querySelectorAll<HTMLElement>('button, [tabindex]')].filter(
+			(el) => el.getAttribute('tabindex') !== '-1'
+		);
+		expect(stops).toEqual([tabButtons()[0], panel]);
+		panel.focus();
+		expect(document.activeElement).toBe(panel);
 	});
 
 	it('labels the panel by the fallback tab when the caller has no value yet', () => {
 		mountWithPanel(undefined);
 		const panel = document.querySelector<HTMLElement>('[role="tabpanel"]')!;
 		expect(panel.getAttribute('aria-labelledby')).toBe(tabButtons()[0]!.id);
-		expect(tabButtons()[0]!.getAttribute('aria-controls')).toBe(panel.id);
+		expect(tabButtons().every((tab) => tab.getAttribute('aria-controls') === panel.id)).toBe(true);
 		expect(tabbable()).toHaveLength(1);
 		expect(danglingRefs()).toEqual([]);
 	});
