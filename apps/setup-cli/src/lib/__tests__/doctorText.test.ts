@@ -122,6 +122,41 @@ describe('doctor text — known-secret pass', () => {
 		expect(redact('api_key=private%2Ftoken refused')).toBe('api_key=[redacted] refused');
 	});
 
+	it('drops a whole part encoded deeper than the decoding rounds reach', () => {
+		const redact = createDoctorRedactor({ MTA_API_KEY: 'private/token+end' });
+		let fiveRounds = 'private/token+end';
+		for (let round = 0; round < 5; round++) fiveRounds = encodeURIComponent(fiveRounds);
+		expect(redact(`upstream said ${fiveRounds}`)).toBe('[redacted]');
+		// Four layers where the first percent-encodes every byte.
+		let fourRounds = [...Buffer.from('private/token+end')]
+			.map((byte) => `%${byte.toString(16).padStart(2, '0')}`)
+			.join('');
+		for (let round = 0; round < 3; round++) fourRounds = encodeURIComponent(fourRounds);
+		expect(redact(`upstream said ${fourRounds}`)).toBe('[redacted]');
+	});
+
+	it('treats a literal [redacted] in runtime text as ordinary text', () => {
+		// The configured credential itself contains the marker text.
+		const redact = createDoctorRedactor({
+			MTA_API_URL: 'http://mta:3100/?token=private[redacted]%2ftoken',
+		});
+		expect(redact('connect ECONNREFUSED http://mta:3100/?token=private[redacted]%2ftoken')).toBe(
+			'[redacted]'
+		);
+		// And a marker or a private-use character in input never fakes a replacement.
+		const plain = createDoctorRedactor({ MTA_API_KEY: 'private/token' });
+		expect(plain('[redacted] \uE000 private/token')).toBe('[redacted] \uE000 [redacted]');
+		expect(plain('private\uE000/token')).toBe('private\uE000/token');
+	});
+
+	it('drops a whole part when another secret covers half of an encoded occurrence', () => {
+		// `iva` (exact) sits inside a mixed-case occurrence of the longer secret.
+		const redact = createDoctorRedactor({ A_KEY: 'private/token', B_KEY: 'iva' });
+		expect(redact('PrivaTE%2ftoken')).toBe('[redacted]');
+		// Exact occurrences of both are simply masked.
+		expect(redact('private/token and iva')).toBe('[redacted] and [redacted]');
+	});
+
 	it('replaces in one pass, so a short secret cannot match inside a replacement', () => {
 		const redact = createDoctorRedactor({ A_KEY: 'abcdefgh', B_KEY: 'act', C_KEY: 'd' });
 		expect(redact('x abcdefgh y act')).toBe('x [redacted] y [redacted]');

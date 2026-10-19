@@ -23,6 +23,18 @@ const stripAnsi = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, '');
 const MTA_KEY = 'mta-master-key-0123456789';
 const URL_PASSWORD = 'url-password-9876';
 const RESEND_KEY = 're_live_secret_abcdef';
+const DEEP_SECRET = 'private/token+end';
+const encodeRounds = (text: string, rounds: number) => {
+	let out = text;
+	for (let round = 0; round < rounds; round++) out = encodeURIComponent(out);
+	return out;
+};
+const FIVE_ROUNDS = encodeRounds(DEEP_SECRET, 5);
+// Four layers where the first percent-encodes every byte.
+const FOUR_ROUNDS_FULL_BYTES = encodeRounds(
+	[...Buffer.from(DEEP_SECRET)].map((byte) => `%${byte.toString(16).padStart(2, '0')}`).join(''),
+	3
+);
 
 interface Fixture {
 	env: string;
@@ -199,6 +211,29 @@ const FIXTURES: Record<string, Fixture> = {
 				Image: 'ghcr.io/wolvesdotink/web:0.6.14',
 			},
 		]),
+	},
+	deepEncoded: {
+		env: ['EMAIL_PROVIDER=mta', 'MTA_API_URL=http://mta:3100', `MTA_API_KEY=${DEEP_SECRET}`].join(
+			'\n'
+		),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: () => {
+			throw new Error(`upstream said ${FIVE_ROUNDS} and ${FOUR_ROUNDS_FULL_BYTES}`);
+		},
+		secrets: [DEEP_SECRET, FIVE_ROUNDS, FOUR_ROUNDS_FULL_BYTES],
+	},
+	literalMarkerUrl: {
+		env: [
+			'EMAIL_PROVIDER=mta',
+			'MTA_API_URL=http://mta:3100/?token=private[redacted]%2ftoken',
+		].join('\n'),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: (url) => {
+			throw new Error(`connect ECONNREFUSED ${url}`);
+		},
+		secrets: ['private[redacted]%2ftoken', 'private[redacted]/token'],
 	},
 	commonWordSecret: {
 		// A secret equal to a word in key names and subjects: identifiers stay intact.
@@ -417,6 +452,18 @@ describe('doctor --json — report contents', () => {
 
 	it('drops a runtime part that echoes a mixed-case or form-encoded query secret', async () => {
 		expect(await messageOf('mixedCaseQuery', 'mta.health')).toBe(
+			'http://mta:3100/ is unreachable ([redacted])'
+		);
+	});
+
+	it('drops a runtime part encoded deeper than the decoding rounds reach', async () => {
+		expect(await messageOf('deepEncoded', 'mta.health')).toBe(
+			'http://mta:3100/health is unreachable ([redacted])'
+		);
+	});
+
+	it('drops a runtime part whose credential contains a literal [redacted]', async () => {
+		expect(await messageOf('literalMarkerUrl', 'mta.health')).toBe(
 			'http://mta:3100/ is unreachable ([redacted])'
 		);
 	});
