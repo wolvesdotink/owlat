@@ -68,20 +68,16 @@ const undo = () => ({ label: 'Undo', onAction: vi.fn() });
  */
 function countPageListeners(): () => number {
 	const events = new Set(['visibilitychange', 'blur', 'focus']);
-	let active = 0;
-	for (const target of [document, window]) {
-		const add = target.addEventListener.bind(target);
-		const remove = target.removeEventListener.bind(target);
-		vi.spyOn(target, 'addEventListener').mockImplementation((type, ...rest) => {
-			if (events.has(type)) active++;
-			add(type, ...rest);
-		});
-		vi.spyOn(target, 'removeEventListener').mockImplementation((type, ...rest) => {
-			if (events.has(type)) active--;
-			remove(type, ...rest);
-		});
-	}
-	return () => active;
+	const spies = [document, window].map((target) => ({
+		add: vi.spyOn(target, 'addEventListener'),
+		remove: vi.spyOn(target, 'removeEventListener'),
+	}));
+	const count = (calls: unknown[][]) => calls.filter(([type]) => events.has(type as string)).length;
+	return () =>
+		spies.reduce(
+			(sum, { add, remove }) => sum + count(add.mock.calls) - count(remove.mock.calls),
+			0
+		);
 }
 
 beforeEach(() => {
