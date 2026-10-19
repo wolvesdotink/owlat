@@ -40,6 +40,13 @@ const BASE64_SECRET = Buffer.from(DEEP_SECRET).toString('base64');
 const SPLIT_BASE64 = (gap: string) => `${BASE64_SECRET.slice(0, 8)}${gap}${BASE64_SECRET.slice(8)}`;
 // ß folds to its capital ẞ; the combining acute must stay attached.
 const ESZETT = 'Straße-pa\u0301ss-42';
+// Compatibility characters whose NFKC form is a space plus a combining mark,
+// echoed in that form, and the reverse: [fixture, secret, echo].
+const NFKC_CASES = [
+	['nfkcDiaeresis', 'pw\u00a8secret42', 'pw\u00a8secret42'.normalize('NFKC')],
+	['nfkcTilde', 'pw\u02dcsecret42', 'pw\u02dcsecret42'.normalize('NFKC')],
+	['nfkcReverse', 'pw\u00a8secret42'.normalize('NFKC'), 'pw\u00a8secret42'],
+] as const;
 // Case variants only full folding after NFKC reaches: [fixture, secret, echo].
 const FOLD_CASES = [
 	['foldMixedEszett', 'Straße-paß-42', 'STRASSE-PAß-42'],
@@ -422,6 +429,24 @@ const FIXTURES: Record<string, Fixture> = {
 		},
 		secrets: ['unreachable (pw-77'],
 	},
+	...Object.fromEntries(
+		NFKC_CASES.map(([name, secret, echo]): [string, Fixture] => [
+			name,
+			{
+				env: [
+					'EMAIL_PROVIDER=mta',
+					'MTA_API_URL=http://mta:3100',
+					`MTA_API_KEY=${JSON.stringify(secret)}`,
+				].join('\n'),
+				flags: JSON.stringify({ campaigns: true }),
+				compose: '',
+				fetch: () => {
+					throw new Error(`auth rejected ${echo}`);
+				},
+				secrets: [secret, echo],
+			},
+		])
+	),
 	commonWordSecret: {
 		// A secret equal to a word in key names and subjects: identifiers stay intact.
 		env: ['LLM_API_KEY=LLM', 'OWLAT_VERSION=0.6.15'].join('\n'),
@@ -713,6 +738,13 @@ describe('doctor --json — report contents', () => {
 
 	it.each(['sigmaFold', 'finalSigmaMidSentence'])(
 		'withholds a runtime part echoing a sigma secret in another case: %s',
+		async (fixture) => {
+			expect(await messageOf(fixture, 'mta.health')).toBe('[redacted] is unreachable ([redacted])');
+		}
+	);
+
+	it.each(NFKC_CASES.map(([name]) => name))(
+		'withholds a runtime part echoing a secret across NFKC whitespace: %s',
 		async (fixture) => {
 			expect(await messageOf(fixture, 'mta.health')).toBe('[redacted] is unreachable ([redacted])');
 		}

@@ -205,6 +205,16 @@ function fold(text: string): string {
 		.normalize('NFKC');
 }
 
+/**
+ * The folded text with all whitespace stripped, in that order: NFKC can
+ * introduce whitespace (`¨` becomes a space plus U+0308), so stripping first
+ * would leave it on one side only. The same function serves the secret and
+ * the message.
+ */
+function compact(text: string): string {
+	return fold(text).replace(WHITESPACE, '');
+}
+
 /** Renders a doctor message with every secret withheld or masked. */
 export type DoctorRedactor = (message: DoctorText | string) => string;
 
@@ -224,9 +234,13 @@ export type DoctorRedactor = (message: DoctorText | string) => string;
  *    text.
  * 3. The whole message as a reader sees it (code-owned text and every runtime
  *    part's unmasked text, joined in order, markers deleted, all whitespace
- *    stripped) must not contain any form (whitespace-stripped too) nor, after
- *    {@link fold}, any folded raw secret; otherwise every runtime part of the
- *    message is withheld and only the code-owned text prints. Checking the
+ *    stripped) must not contain any form (whitespace-stripped too) nor any raw
+ *    secret after folding: {@link compact} of the message must not contain
+ *    {@link compact} of a secret, and, so that a fold adding or removing
+ *    whitespace cannot hide a match either way, the plain {@link fold} of the
+ *    message must not contain the plain fold of a secret. Otherwise every
+ *    runtime part of the message is withheld and only the code-owned text
+ *    prints. Checking the
  *    whole message means neither two adjacent runtime parts nor a runtime part
  *    and the copy beside it can rebuild a secret between them. It also catches
  *    base64 or a secret split by spaces, tabs or line breaks, and every case
@@ -242,12 +256,15 @@ export type DoctorRedactor = (message: DoctorText | string) => string;
 export function createDoctorRedactor(env: EnvMap): DoctorRedactor {
 	const textual = new Set<string>();
 	const base64 = new Set<string>();
+	const compacted = new Set<string>();
 	const folded = new Set<string>();
 	for (const [key, value] of Object.entries(env)) {
 		const raw = SECRET_KEY.test(key) ? [value, ...urlSecrets(value)] : urlSecrets(value);
 		for (const secret of raw) {
 			if (!secret) continue;
-			const foldedSecret = fold(secret.replace(WHITESPACE, ''));
+			const compactSecret = compact(secret);
+			if (compactSecret) compacted.add(compactSecret);
+			const foldedSecret = fold(secret);
 			if (foldedSecret) folded.add(foldedSecret);
 			const forms = secretForms(secret);
 			for (const form of forms.textual) if (form) textual.add(form);
@@ -258,11 +275,11 @@ export function createDoctorRedactor(env: EnvMap): DoctorRedactor {
 		...[...textual].map((form) => formPattern(form, 'giu')),
 		...[...base64].map((form) => formPattern(form, 'gu')),
 	];
-	const compact = (forms: Set<string>) =>
+	const stripped = (forms: Set<string>) =>
 		[...forms].map((form) => form.replace(WHITESPACE, '')).filter(Boolean);
 	const presence = [
-		...compact(textual).map((form) => formPattern(form, 'iu')),
-		...compact(base64).map((form) => formPattern(form, 'u')),
+		...stripped(textual).map((form) => formPattern(form, 'iu')),
+		...stripped(base64).map((form) => formPattern(form, 'u')),
 	];
 	return (message) => {
 		const parts = typeof message === 'string' ? [{ text: message, trusted: false }] : message.parts;
@@ -286,8 +303,10 @@ export function createDoctorRedactor(env: EnvMap): DoctorRedactor {
 		}
 		const joined = visible.replace(WHITESPACE, '');
 		if (presence.some((pattern) => pattern.test(joined))) return withheld(parts);
-		const foldedJoined = fold(joined);
-		for (const secret of folded) if (foldedJoined.includes(secret)) return withheld(parts);
+		const compactMessage = compact(visible);
+		for (const secret of compacted) if (compactMessage.includes(secret)) return withheld(parts);
+		const foldedMessage = fold(visible);
+		for (const secret of folded) if (foldedMessage.includes(secret)) return withheld(parts);
 		return out;
 	};
 }

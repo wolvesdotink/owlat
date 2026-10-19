@@ -203,6 +203,25 @@ describe('doctor text — known-secret pass', () => {
 		expect(redact(echo)).toBe('login [redacted] failed twice');
 	});
 
+	// Sol round 8: NFKC can introduce whitespace (a space plus a combining mark),
+	// so whitespace is stripped only after folding, on both sides alike.
+	it.each([
+		['¨ (U+00A8)', 'pw\u00a8secret42'],
+		['´ (U+00B4)', 'pw\u00b4secret42'],
+		['˜ (U+02DC)', 'pw\u02dcsecret42'],
+	])('withholds a part echoing a secret with %s in its NFKC form', (_label, secret) => {
+		const echo = secret.normalize('NFKC');
+		expect(echo).toContain(' ');
+		const redact = createDoctorRedactor({ MTA_API_KEY: secret });
+		expect(redact(`auth rejected ${echo}`)).toBe('[redacted]');
+	});
+
+	it('withholds a part echoing the original of a secret given in NFKC form', () => {
+		const original = 'pw\u00a8secret42';
+		const redact = createDoctorRedactor({ MTA_API_KEY: original.normalize('NFKC') });
+		expect(redact(`auth rejected ${original}`)).toBe('[redacted]');
+	});
+
 	// Sol round 5, scenario 2: base64 split by whitespace.
 	it.each([
 		['a space', ' '],
