@@ -1,8 +1,6 @@
 import { nextTick, onScopeDispose, watch, type Ref } from 'vue';
+import { tabbableIn } from '../utils/tabbable';
 import { useEscapeLayer } from './useEscapeLayer';
-
-const FOCUSABLE_SELECTOR =
-	'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
 
 // Nested dialogs suspend the parent trap until the child closes.
 const activeDialogs: symbol[] = [];
@@ -18,12 +16,7 @@ export function useModalFocus(
 	let opener: HTMLElement | null = null;
 	let generation = 0;
 	const isTop = () => activeDialogs.at(-1) === token;
-	const focusable = () =>
-		Array.from(container.value?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? []).filter(
-			(el) =>
-				!el.closest('[hidden], [inert], [aria-hidden="true"]') &&
-				(el.tabIndex >= 0 || el.getAttribute('contenteditable') === 'true')
-		);
+	const focusable = () => (container.value ? tabbableIn(container.value) : []);
 
 	// Escape goes to the innermost open layer, which may be a menu or listbox
 	// opened inside this dialog rather than the dialog itself.
