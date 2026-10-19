@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useEscapeLayer } from '../../composables/useEscapeLayer';
+import { fitsWithin, placeAnchoredPanel } from '../../utils/anchoredPanelPlacement';
 
 type DropdownPosition = 'left' | 'right';
 
@@ -25,8 +26,13 @@ const isOpen = computed({
 // Refs for positioning
 const triggerRef = ref<HTMLElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
-const menuPosition = ref({ top: 0, left: 0, bottom: 0 });
-const openDirection = ref<'down' | 'up'>('down');
+// The menu's content, never height-capped, so its height is the menu's own.
+const contentRef = ref<HTMLElement | null>(null);
+const menuStyle = ref<Record<string, string>>({});
+const openSide = ref<'below' | 'above' | 'overlay'>('below');
+// Only a menu taller than its room scrolls: a scroll box would clip the sides
+// of its items' focus outline.
+const menuScrolls = ref(false);
 
 /** The caller's own control in the trigger slot (a UiButton, mostly). */
 function triggerControl(): HTMLElement | null {
@@ -47,36 +53,93 @@ watch(
 	{ immediate: true, flush: 'post' }
 );
 
-// Calculate menu position based on trigger element
-const updatePosition = () => {
-	if (!triggerRef.value) return;
+/**
+ * The menu is teleported to <body> and fixed to the trigger's box, in viewport
+ * coordinates. It is measured once rendered, and again whenever its size can
+ * have changed: below the trigger when it fits, above when there is more room
+ * there, capped to the room it has (scrolling inside) otherwise, and kept
+ * inside the window on every edge.
+ */
+const MENU_GAP = 4;
+const MENU_WIDTH = 176; // w-44, until the menu has rendered
 
-	const rect = triggerRef.value.getBoundingClientRect();
-	const viewportHeight = window.innerHeight;
-	const menuHeight = 200; // Estimated menu height for positioning calculation
+/**
+ * The menu's full border-box height: its content box, which is never capped,
+ * plus the menu's own padding and border. Only reads layout, so it neither
+ * moves where the menu is scrolled to nor touches anything in it, and whatever
+ * the browser lays out inside the content (wrappers, hidden children, margins)
+ * counts exactly as shown.
+ *
+ * In fractional CSS pixels throughout: at a fractional zoom or device scale
+ * the boxes are not whole pixels, and a rounded `offsetHeight` next to a
+ * fractional border overshoots a menu that fits. The content's computed
+ * height is its used height, unaffected by the opening scale transition
+ * (unlike `getBoundingClientRect`); `offsetHeight` stands in only where there
+ * is no layout to resolve it.
+ */
+function measureMenu(menu: HTMLElement, content: HTMLElement): number {
+	const style = getComputedStyle(menu);
+	const px = (value: string) => Number.parseFloat(value) || 0;
+	const contentHeight = Number.parseFloat(getComputedStyle(content).height);
+	return (
+		(Number.isFinite(contentHeight) ? contentHeight : content.offsetHeight) +
+		px(style.paddingTop) +
+		px(style.paddingBottom) +
+		px(style.borderTopWidth) +
+		px(style.borderBottomWidth)
+	);
+}
 
-	// Check if there's enough space below
-	const spaceBelow = viewportHeight - rect.bottom;
-	const spaceAbove = rect.top;
+// The last measured height. A scroll only moves the trigger, so it re-places
+// the menu with this; opening, the menu's own resize and a window resize
+// measure again first.
+let menuHeight = 0;
 
-	if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
-		// Open upward
-		openDirection.value = 'up';
-		menuPosition.value = {
-			top: rect.top + window.scrollY,
-			left: props.position === 'right' ? rect.right - 176 : rect.left, // 176px = 11rem (w-44)
-			bottom: viewportHeight - rect.top + 4, // 4px gap above trigger
-		};
-	} else {
-		// Open downward
-		openDirection.value = 'down';
-		menuPosition.value = {
-			top: rect.bottom + window.scrollY + 4, // 4px gap
-			left: props.position === 'right' ? rect.right - 176 : rect.left,
-			bottom: 0,
-		};
-	}
+const placeMenu = () => {
+	const trigger = triggerRef.value;
+	if (!trigger) return;
+	const placed = placeAnchoredPanel({
+		anchor: trigger.getBoundingClientRect(),
+		panelHeight: menuHeight,
+		panelWidth: menuRef.value?.offsetWidth || MENU_WIDTH,
+		viewport: { width: window.innerWidth, height: window.innerHeight },
+		gap: MENU_GAP,
+		align: props.position === 'right' ? 'end' : 'start',
+	});
+	openSide.value = placed.side;
+	menuScrolls.value = !fitsWithin(menuHeight, placed.room);
+	// Only a menu that scrolls is capped. The cap is whole pixels, and a menu
+	// that fits its room to within the snapping tolerance would lose its last
+	// fraction of a pixel to it.
+	const { maxHeight, ...uncapped } = placed.style;
+	menuStyle.value = menuScrolls.value ? { ...uncapped, maxHeight } : uncapped;
 };
+
+const measureAndPlaceMenu = () => {
+	// 0 before the first render; measured again once the menu has rendered.
+	const menu = menuRef.value;
+	const content = contentRef.value;
+	menuHeight = menu && content ? measureMenu(menu, content) : 0;
+	placeMenu();
+};
+
+// Scrolling the menu itself does not move the trigger it is anchored to.
+const handleScroll = (event: Event) => {
+	if (menuRef.value && event.target instanceof Node && menuRef.value.contains(event.target)) return;
+	placeMenu();
+};
+
+// Content that changes size while open (items that load late) moves the edge
+// the placement was computed for. Observed on the content, which grows even
+// when the menu around it is already at its cap.
+let menuObserver: ResizeObserver | null = null;
+watch(contentRef, (content) => {
+	menuObserver?.disconnect();
+	menuObserver = null;
+	if (!content || typeof ResizeObserver === 'undefined') return;
+	menuObserver = new ResizeObserver(() => measureAndPlaceMenu());
+	menuObserver.observe(content);
+});
 
 // Handle click outside
 const handleClickOutside = (event: MouseEvent) => {
@@ -145,7 +208,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 // Toggle dropdown
 const toggle = () => {
 	if (!isOpen.value) {
-		updatePosition();
+		measureAndPlaceMenu();
 	}
 	isOpen.value = !isOpen.value;
 };
@@ -158,7 +221,7 @@ const close = () => {
 // Watch for open changes to update position
 watch(isOpen, (newValue) => {
 	if (newValue) {
-		nextTick(updatePosition);
+		nextTick(measureAndPlaceMenu);
 	}
 });
 
@@ -166,8 +229,8 @@ watch(isOpen, async (open) => {
 	if (open) {
 		document.addEventListener('click', handleClickOutside);
 		document.addEventListener('keydown', handleKeydown);
-		window.addEventListener('scroll', updatePosition, true);
-		window.addEventListener('resize', updatePosition);
+		window.addEventListener('scroll', handleScroll, true);
+		window.addEventListener('resize', measureAndPlaceMenu);
 
 		// Auto-focus first menu item when opened via keyboard
 		await nextTick();
@@ -176,16 +239,17 @@ watch(isOpen, async (open) => {
 	} else {
 		document.removeEventListener('click', handleClickOutside);
 		document.removeEventListener('keydown', handleKeydown);
-		window.removeEventListener('scroll', updatePosition, true);
-		window.removeEventListener('resize', updatePosition);
+		window.removeEventListener('scroll', handleScroll, true);
+		window.removeEventListener('resize', measureAndPlaceMenu);
 	}
 });
 
 onUnmounted(() => {
+	menuObserver?.disconnect();
 	document.removeEventListener('click', handleClickOutside);
 	document.removeEventListener('keydown', handleKeydown);
-	window.removeEventListener('scroll', updatePosition, true);
-	window.removeEventListener('resize', updatePosition);
+	window.removeEventListener('scroll', handleScroll, true);
+	window.removeEventListener('resize', measureAndPlaceMenu);
 });
 
 // Provide close function to child items
@@ -214,14 +278,17 @@ provide('dropdownClose', close);
 					ref="menuRef"
 					role="menu"
 					class="fixed w-44 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-50 py-1"
+					:class="{ 'overflow-y-auto': menuScrolls }"
 					:style="{
-						top: openDirection === 'up' ? 'auto' : `${menuPosition.top}px`,
-						bottom: openDirection === 'up' ? `${menuPosition.bottom}px` : 'auto',
-						left: `${menuPosition.left}px`,
-						transformOrigin: openDirection === 'up' ? 'bottom' : 'top',
+						...menuStyle,
+						transformOrigin: openSide === 'above' ? 'bottom' : 'top',
 					}"
 				>
-					<slot />
+					<!-- flow-root keeps the first and last child's margins inside, where
+					     the menu's padding kept them, so they count in its height. -->
+					<div ref="contentRef" class="flow-root">
+						<slot />
+					</div>
 				</div>
 			</Transition>
 		</Teleport>
