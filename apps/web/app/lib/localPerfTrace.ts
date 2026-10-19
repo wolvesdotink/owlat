@@ -28,7 +28,7 @@ export const LOCAL_PERF_TRACE_KEY = 'owlat:perf-trace';
 export const DEFAULT_TRACE_LIMIT = 500;
 export const MIN_TRACE_LIMIT = 10;
 export const MAX_TRACE_LIMIT = 5000;
-export const TRACE_FORMAT = 'owlat-perf-trace/1';
+const TRACE_FORMAT = 'owlat-perf-trace/1';
 
 /** The route the trace falls back to for anything that is not a route name. */
 const UNKNOWN_ROUTE = 'unknown';
@@ -57,7 +57,7 @@ export function readLocalPerfTraceLimit(
 	return Math.min(MAX_TRACE_LIMIT, Math.max(MIN_TRACE_LIMIT, Number(value)));
 }
 
-export interface TraceBuild {
+interface TraceBuild {
 	version: string;
 	gitSha: string;
 	buildDate: string;
@@ -71,7 +71,7 @@ export interface SubscriptionCounts {
 	lingeringBody: number;
 }
 
-export interface TraceSample {
+interface TraceSample {
 	/** Milliseconds since the page started (`performance.now()`), rounded. */
 	t: number;
 	event: string;
@@ -80,7 +80,7 @@ export interface TraceSample {
 	values: Record<string, number>;
 }
 
-export interface TraceSummary {
+interface TraceSummary {
 	event: string;
 	route: string;
 	metric: string;
@@ -92,14 +92,14 @@ export interface TraceSummary {
 	p95: number;
 }
 
-export interface LongTaskSummary {
+interface LongTaskSummary {
 	route: string;
 	count: number;
 	total_ms: number;
 	max_ms: number;
 }
 
-export interface LocalPerfTraceExport {
+interface LocalPerfTraceExport {
 	format: typeof TRACE_FORMAT;
 	build: TraceBuild;
 	limit: number;

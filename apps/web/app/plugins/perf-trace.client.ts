@@ -9,7 +9,7 @@ import { routeLabel, setLocalPerfSink, startPerfCollection } from '~/lib/perfTel
 import { sharedSubscriptionCounts } from '~/lib/sharedConvexSubscriptions';
 
 /** What the browser console gets while the local trace is on. */
-export interface PerfTraceHandle {
+interface PerfTraceHandle {
 	readonly limit: number;
 	/** The trace as JSON. */
 	export(): string;
