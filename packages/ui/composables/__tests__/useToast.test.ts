@@ -162,6 +162,25 @@ describe('useToast — onDismiss', () => {
  * untouched, whatever their callback returns.
  */
 describe('useToast — observed actions', () => {
+	/*
+	 * The action window runs on a stubbed monotonic clock: `elapse` moves it
+	 * together with the fake timers, `mono += ms` moves it alone (time passing
+	 * while no timer gets to run, as in a throttled tab), and `vi.setSystemTime`
+	 * moves only the wall clock.
+	 */
+	let mono = 0;
+	beforeEach(() => {
+		mono = 1_000;
+		vi.spyOn(performance, 'now').mockImplementation(() => mono);
+	});
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+	function elapse(ms: number) {
+		mono += ms;
+		vi.advanceTimersByTime(ms);
+	}
+
 	function deferred<T>() {
 		let resolve!: (value: T) => void;
 		let reject!: (error: unknown) => void;
@@ -214,9 +233,9 @@ describe('useToast — observed actions', () => {
 			durationMs: 8000,
 			action: { label: 'Undo', onAction: () => {} },
 		});
-		vi.advanceTimersByTime(7999);
+		elapse(7999);
 		expect(toasts.value).toHaveLength(1);
-		vi.advanceTimersByTime(1);
+		elapse(1);
 		expect(toasts.value).toHaveLength(0);
 	});
 
@@ -262,9 +281,9 @@ describe('useToast — observed actions', () => {
 		expect(current()?.action).toBeUndefined();
 		expect(run).toHaveBeenCalledTimes(1);
 
-		vi.advanceTimersByTime(5999);
+		elapse(5999);
 		expect(current()).toBeDefined();
-		vi.advanceTimersByTime(1);
+		elapse(1);
 		expect(current()).toBeUndefined();
 	});
 
@@ -302,7 +321,7 @@ describe('useToast — observed actions', () => {
 	it('keeps a sticky toast sticky after a failure', async () => {
 		const { current, press } = observedToast(async () => false, { durationMs: 0 });
 		await press();
-		vi.advanceTimersByTime(60_000);
+		elapse(60_000);
 		expect(current()?.message).toBe('Moved to Later. Not undone.');
 	});
 
@@ -323,10 +342,10 @@ describe('useToast — observed actions', () => {
 	it('leaves the action deadline alone: a retry is not offered past it', async () => {
 		const work = deferred<boolean | { retryable: true }>();
 		const { current, press } = observedToast(() => work.promise);
-		vi.advanceTimersByTime(7000);
+		elapse(7000);
 		const running = press();
 		// The deadline passes while the work runs: the toast is held for the outcome.
-		vi.advanceTimersByTime(2000);
+		elapse(2000);
 		expect(current()?.pending).toBe(true);
 		work.resolve({ retryable: true });
 		await running;
@@ -355,10 +374,10 @@ describe('useToast — observed actions', () => {
 	it('does not bring the action back after its deadline, even before the overdue timer runs', async () => {
 		const work = deferred<boolean | { retryable: true }>();
 		const { current, press } = observedToast(() => work.promise);
-		vi.advanceTimersByTime(7000);
+		elapse(7000);
 		const running = press();
 		// The clock passes the deadline while no timer gets to run (a throttled tab).
-		vi.setSystemTime(Date.now() + 2000);
+		mono += 2000;
 		work.resolve({ retryable: true });
 		await running;
 		expect(current()).toMatchObject({ message: 'Moved to Later. Not undone.' });
@@ -368,9 +387,33 @@ describe('useToast — observed actions', () => {
 	it('does not run the action when pressed past its deadline before the timer runs', async () => {
 		const run = vi.fn(async () => true);
 		const { current, press } = observedToast(run);
-		vi.setSystemTime(Date.now() + 8000);
+		mono += 8000;
 		await press();
 		expect(run).not.toHaveBeenCalled();
+		expect(current()).toBeUndefined();
+	});
+
+	it('does not stretch the window when the wall clock moves backward', async () => {
+		const work = deferred<boolean | { retryable: true }>();
+		const { current, press } = observedToast(() => work.promise);
+		const running = press();
+		vi.setSystemTime(Date.now() - 60_000);
+		elapse(9000);
+		work.resolve({ retryable: true });
+		await running;
+		// 9 s into an 8 s window: the action does not come back.
+		expect(current()).toMatchObject({ message: 'Moved to Later. Not undone.' });
+		expect(current()?.action).toBeUndefined();
+	});
+
+	it('does not cut the window when the wall clock moves forward', async () => {
+		const run = vi.fn(async () => true);
+		const { current, press } = observedToast(run);
+		vi.setSystemTime(Date.now() + 60_000);
+		elapse(1000);
+		expect(current()?.action?.label).toBe('Undo');
+		await press();
+		expect(run).toHaveBeenCalledTimes(1);
 		expect(current()).toBeUndefined();
 	});
 
@@ -378,20 +421,20 @@ describe('useToast — observed actions', () => {
 		const work = deferred<boolean | { retryable: true }>();
 		const { current, press } = observedToast(() => work.promise);
 		const running = press();
-		vi.advanceTimersByTime(1000);
+		elapse(1000);
 		work.resolve({ retryable: true });
 		await running;
 		expect(current()).toMatchObject({ pending: false, action: { label: 'Undo' } });
-		vi.advanceTimersByTime(6999);
+		elapse(6999);
 		expect(current()).toBeDefined();
-		vi.advanceTimersByTime(1);
+		elapse(1);
 		expect(current()).toBeUndefined();
 	});
 
 	it('removes an unpressed observed toast at its deadline, exactly like a plain one', () => {
 		const run = vi.fn(async () => true);
 		const { current } = observedToast(run);
-		vi.advanceTimersByTime(8000);
+		elapse(8000);
 		expect(current()).toBeUndefined();
 		expect(run).not.toHaveBeenCalled();
 	});

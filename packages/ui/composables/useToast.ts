@@ -114,10 +114,12 @@ interface ObservedEntry {
 	durationMs: number;
 	timer: ReturnType<typeof setTimeout> | undefined;
 	/**
-	 * When the action stops being offered, as a `Date.now()` instant fixed at
-	 * show time (`Infinity` for a sticky toast). Checked before the action runs
-	 * and before a retry brings it back, so neither depends on whether an
-	 * overdue timer has fired yet.
+	 * When the action stops being offered, as a `performance.now()` instant
+	 * fixed at show time (`Infinity` for a sticky toast). Checked before the
+	 * action runs and before a retry brings it back, so neither depends on
+	 * whether an overdue timer has fired yet. Monotonic on purpose: a wall-clock
+	 * change must neither stretch nor cut the window. (The server's own expiry
+	 * check stays the authority on whether the work itself may still happen.)
 	 */
 	actionDeadlineAt: number;
 }
@@ -181,7 +183,7 @@ async function runObservedAction(id: string): Promise<void> {
 	const entry = observed.get(id);
 	const toast = toasts.value.find((t) => t.id === id);
 	if (!entry || !toast?.action || toast.pending) return;
-	if (Date.now() >= entry.actionDeadlineAt) {
+	if (performance.now() >= entry.actionDeadlineAt) {
 		removeToast(id);
 		return;
 	}
@@ -214,7 +216,7 @@ function settleObservedAction(id: string, outcome: ToastActionOutcome): void {
 		removeToast(id);
 		return;
 	}
-	const now = Date.now();
+	const now = performance.now();
 	if (outcome !== false && outcome.retryable && now < entry.actionDeadlineAt) {
 		// Back to idle until the original deadline, re-armed from the instant so
 		// a timer that already fired while the work ran cannot leave it sticky.
@@ -293,7 +295,9 @@ export function useToast() {
 				action: observedAction,
 				durationMs,
 				timer,
-				actionDeadlineAt: isSticky(durationMs) ? Number.POSITIVE_INFINITY : Date.now() + durationMs,
+				actionDeadlineAt: isSticky(durationMs)
+					? Number.POSITIVE_INFINITY
+					: performance.now() + durationMs,
 			});
 		}
 

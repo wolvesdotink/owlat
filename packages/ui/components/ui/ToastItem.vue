@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, watchPostEffect } from 'vue';
+import { computed, getCurrentInstance, nextTick, ref, watch, watchPostEffect } from 'vue';
 import type { Toast, ToastType } from '../../composables/useToast';
 import { useUiI18n } from '../../composables/useUiI18n';
 
@@ -91,12 +91,18 @@ const style = computed<ToastStyle>(() => {
 	};
 });
 
-const cardRef = ref<HTMLElement | null>(null);
+const instance = getCurrentInstance();
 const closeRef = ref<HTMLButtonElement | null>(null);
 
-/** The inline action button: the card's only button besides close. */
+/**
+ * The inline action button: the card's only button besides close. Found from
+ * the component's root element at use time (the card is its single root), so
+ * the root needs no template ref of its own for this.
+ */
 function actionButton(): HTMLButtonElement | undefined {
-	return [...(cardRef.value?.querySelectorAll('button') ?? [])].find((b) => b !== closeRef.value);
+	const card: unknown = instance?.proxy?.$el;
+	if (!(card instanceof HTMLElement)) return undefined;
+	return [...card.querySelectorAll('button')].find((b) => b !== closeRef.value);
 }
 
 /*
@@ -132,7 +138,6 @@ watch(
 			'flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border min-w-[280px] max-w-md',
 			style.container,
 		]"
-		ref="cardRef"
 	>
 		<!-- Icon -->
 		<div
@@ -149,7 +154,7 @@ watch(
 			{{ toast.message }}
 		</p>
 
-		<!-- Optional inline action (e.g. "Undo") — clicking it dismisses the toast -->
+		<!-- Optional inline action (e.g. "Undo") — a plain one dismisses the toast; an observed one keeps it until its outcome -->
 		<button
 			v-if="toast.action"
 			type="button"
