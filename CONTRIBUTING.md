@@ -239,6 +239,13 @@ manual dispatch run the full set as a safety valve.
 - **desktop-ci.yml** (`Desktop CI`). **Rust build + tests** on Ubuntu, macOS
   and Windows, including the TS-bridge lint, typecheck and tests. Only when
   `apps/desktop/**`, `bun.lock` or `package.json` change.
+- **desktop-spa.yml** (`Desktop SPA`). Builds the real `generate:desktop`
+  bundle the app packages and fails on a referenced chunk, stylesheet, font or
+  icon that was not emitted or does not match its integrity hash
+  (`scripts/check-desktop-spa.ts`). Only when the web app, its workspace
+  dependencies, the desktop bridge or the Tauri config change. The bridge's
+  `invoke()` names are checked against `ipc_commands.rs` in **Lint**
+  (`lint:desktop-invoke`).
 - **dependabot-lockfile.yml**. On Dependabot's own PRs, regenerates `bun.lock`
   and pushes it back (needs `DEPENDABOT_LOCKFILE_PAT`, see below).
 

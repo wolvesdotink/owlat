@@ -1,0 +1,63 @@
+name: Desktop SPA
+
+# Builds the real desktop frontend, the static `generate:desktop` output the
+# Tauri app packages (tauri.conf.json `build.frontendDist`), and inspects it:
+# every chunk, stylesheet, font and icon the pages and chunks reference must be
+# emitted and match its integrity hash (scripts/check-desktop-spa.ts). Desktop
+# CI compiles the Rust shell against a placeholder index.html, and the release
+# workflow is the only other place this bundle is built.
+#
+# Path-filtered on what the bundle is built from: the web app and its workspace
+# dependencies, the desktop bridge it imports, and the Tauri config. The JS ->
+# Rust invoke-name contract is not here: it is a source check in ci:lint
+# (scripts/check-desktop-invoke-contract.ts), which needs no build.
+
+on:
+  pull_request:
+    branches: [main, 'integration/**', 'ux/**']
+    paths:
+      - 'apps/web/**'
+      - 'apps/api/**'
+      - 'packages/**'
+      - 'apps/desktop/src/**'
+      - 'apps/desktop/package.json'
+      - 'apps/desktop/src-tauri/tauri.conf.json'
+      - 'scripts/check-desktop-spa.ts'
+      - '.github/workflows/desktop-spa.yml'
+      - 'bun.lock'
+      - 'package.json'
+  workflow_dispatch: {}
+
+concurrency:
+  group: desktop-spa-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  spa:
+    name: Build + inspect desktop SPA
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: ./.github/actions/setup-bun
+
+      # The same two steps the release build runs before tauri-action
+      # (_desktop-build.yml): the web bundle imports some workspace libraries
+      # as built dist/ entries, then tauri's beforeBuildCommand runs
+      # `generate:desktop`.
+      - name: Build workspace libraries for the web bundle
+        run: bunx turbo build --filter='@owlat/web^...'
+
+      - name: Generate the desktop SPA
+        run: bun run --cwd apps/web generate:desktop
+
+      - name: Inspect the emitted SPA
+        run: bun scripts/check-desktop-spa.ts

@@ -69,8 +69,9 @@ jobs:
           workspaces: apps/desktop/src-tauri
 
       # `tauri::generate_context!()` embeds the frontend dist at compile time, so
-      # the path must exist. A placeholder is enough for a Rust-only gate (the
-      # real SPA bundle is built by tauri-action in the release workflow).
+      # the path must exist. A placeholder is enough for a Rust-only gate: the
+      # real SPA bundle is built and inspected by desktop-spa.yml, and packaged
+      # by tauri-action in the release workflow.
       # `shell: bash` keeps mkdir -p / the redirect working under Git Bash on
       # windows-latest (bash is preinstalled) instead of PowerShell.
       - name: Stub frontend dist
