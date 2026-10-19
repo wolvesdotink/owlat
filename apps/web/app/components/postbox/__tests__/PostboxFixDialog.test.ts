@@ -100,7 +100,7 @@ describe('PostboxFixDialog', () => {
 		expect(showToast).toHaveBeenCalledWith(
 			'Mail from Deutsche Bahn now shows in Needs you A draft rule from your note is waiting in Rules.',
 			'success',
-			expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })
+			expect.objectContaining({ observedAction: expect.objectContaining({ label: 'Undo' }) })
 		);
 		expect(w.emitted('close')).toHaveLength(1);
 	});
