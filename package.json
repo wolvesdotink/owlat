@@ -125,6 +125,7 @@
 		"test": "turbo test",
 		"test:watch": "turbo test:watch",
 		"test:ramp": "bun run --cwd apps/api test:ramp",
+		"perf:bench": "bun scripts/perf-bench/run.ts",
 		"goldens:update": "bun --cwd packages/mail-message run goldens:update",
 		"release:cut": "bun scripts/release.ts"
 	},
