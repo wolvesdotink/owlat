@@ -243,7 +243,7 @@ export async function checkDesktopInvokeContract(
 				part.text,
 				ts.ScriptTarget.Latest,
 				true,
-				ts.ScriptKind.TS
+				part.kind ?? ts.ScriptKind.TS
 			);
 			const lineOf: LineOf = (at, node) => {
 				const position = at.getLineAndCharacterOfPosition(node.getStart(at));
@@ -251,9 +251,12 @@ export async function checkDesktopInvokeContract(
 			};
 			// A syntax error leaves code the scan cannot read, so each parse
 			// diagnostic is a finding. A `.vue` part's blocks were already parsed
-			// one by one (desktop-invoke-vue.ts): the joined text can hide one
-			// block's error behind the next block's code.
-			if (!part.syntaxChecked) fileProblems.push(...syntaxErrors(source, part.lineOf));
+			// one by one (desktop-invoke-vue.ts), since the joined text can hide one
+			// block's error behind the next block's code; when those are clean, the
+			// joined text must parse too, or the scan below would read a broken AST.
+			if (!part.syntaxChecked || compiled.problems.length === 0) {
+				fileProblems.push(...syntaxErrors(source, part.lineOf));
+			}
 			const found = scanFile(source, lineOf);
 			for (const line of nonLiteralImports(source, lineOf)) {
 				fileProblems.push({

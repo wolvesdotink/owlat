@@ -514,6 +514,56 @@ describe('the desktop invoke contract gate', () => {
 		);
 	});
 
+	it('parses a script block with the parser its lang names', async () => {
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/web/app/components/Tsx.vue': [
+				'<script setup lang="tsx">',
+				"import { invoke } from '@tauri-apps/api/core';",
+				"const View = () => <span>{invoke('removed_command')}</span>;",
+				'</script>',
+				'<template><View /></template>',
+				'',
+			].join('\n'),
+			'apps/web/app/components/Clean.vue': [
+				'<script setup lang="tsx">',
+				'const View = () => <span>{1 + 1}</span>;',
+				'</script>',
+				'<template><View /></template>',
+				'',
+			].join('\n'),
+		});
+		expect(result.problems).toEqual([
+			`apps/web/app/components/Tsx.vue:3  invoke('removed_command') is not a command in ${IPC_COMMANDS_FILE}`,
+		]);
+	});
+
+	it('reports the joined text when only it fails to parse, instead of scanning a broken AST', async () => {
+		// Each block parses under its own lang; joined, the scan reads TSX, where
+		// the `<number>` cast of the ts block is not valid syntax.
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/web/app/components/Mixed.vue': [
+				'<script lang="ts">',
+				'export const n = <number>(1 as unknown);',
+				'</script>',
+				'<script setup lang="tsx">',
+				'const v = <b>x</b>;',
+				'</script>',
+				'',
+			].join('\n'),
+		});
+		// The `<number>` cast opens a JSX element (line 2) that runs to the end of
+		// the joined text, which is reported on its last line of code (line 5).
+		expect(result.problems.map((p) => p.split('  ')[0])).toEqual([
+			'apps/web/app/components/Mixed.vue:2',
+			'apps/web/app/components/Mixed.vue:5',
+		]);
+		expect(result.problems.every((p) => p.includes('untraceable invoke use: syntax error'))).toBe(
+			true
+		);
+	});
+
 	it('reports a template compile error on its own line', async () => {
 		const component = [
 			'<script setup lang="ts">',

@@ -41,6 +41,19 @@ export interface CompiledPart {
 	readonly lineOf: (line: number, column: number) => number;
 	/** Its syntax was already checked piece by piece; the joined text is not. */
 	readonly syntaxChecked?: boolean;
+	/** How to parse `text`: from the script blocks' `lang` (TypeScript if unset). */
+	readonly kind?: ts.ScriptKind;
+}
+
+/**
+ * The parser for a script block's `lang`: `tsx`, `jsx`, `ts`, and plain
+ * JavaScript otherwise, as Vue reads it.
+ */
+function blockKind(lang: string | undefined): ts.ScriptKind {
+	if (lang === 'tsx') return ts.ScriptKind.TSX;
+	if (lang === 'jsx') return ts.ScriptKind.JSX;
+	if (lang === 'ts') return ts.ScriptKind.TS;
+	return ts.ScriptKind.JS;
 }
 
 export interface CompiledSfc {
@@ -49,8 +62,8 @@ export interface CompiledSfc {
 }
 
 /** Every top-level value binding a script block declares or imports. */
-function scriptBindings(content: string, into: BindingMetadata): void {
-	const source = ts.createSourceFile('block.ts', content, ts.ScriptTarget.Latest, true);
+function scriptBindings(content: string, kind: ts.ScriptKind, into: BindingMetadata): void {
+	const source = ts.createSourceFile('block', content, ts.ScriptTarget.Latest, true, kind);
 	const bindName = (name: ts.BindingName) => {
 		if (ts.isIdentifier(name)) into[name.text] = 'setup-maybe-ref' as BindingMetadata[string];
 		else
@@ -111,8 +124,7 @@ export function compileSfc(raw: string, file: string): CompiledSfc {
 		// A block's content starts on its opening tag's line. Its syntax is
 		// checked on its own: joined to the next block, `const x =` would just
 		// take that block's first statement as its value.
-		const kind =
-			block.lang === 'tsx' || block.lang === 'jsx' ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+		const kind = blockKind(block.lang);
 		const alone = ts.createSourceFile(file, block.content, ts.ScriptTarget.Latest, true, kind);
 		// An error at the end of the block (an unclosed comment) stays on its
 		// last line of code instead of the closing tag's or the template's.
@@ -122,7 +134,7 @@ export function compileSfc(raw: string, file: string): CompiledSfc {
 		);
 		append(block.content, (line) => block.loc.start.line + line);
 		// Both blocks' top-level bindings reach a `<script setup>` template.
-		if (scriptSetup) scriptBindings(block.content, bindingMetadata);
+		if (scriptSetup) scriptBindings(block.content, kind, bindingMetadata);
 	}
 	if (template) {
 		const isTS = blocks.some((block) => block.lang === 'ts' || block.lang === 'tsx');
@@ -159,7 +171,15 @@ export function compileSfc(raw: string, file: string): CompiledSfc {
 			append(scriptSetup ? `;(${out.code});` : out.code, templateLine);
 		}
 	}
+	// A position past the last line of code (an error at the end of the joined
+	// text) is reported on that last line, as within a block.
+	const lastLine = Math.max(0, text.trimEnd().split('\n').length - 1);
 	const lineOf = (line: number, column: number) =>
-		origins[line]?.(column) ?? template?.loc.start.line ?? 1;
-	return { parts: text ? [{ text, lineOf, syntaxChecked: true }] : [], problems };
+		origins[Math.min(line, lastLine)]?.(column) ?? template?.loc.start.line ?? 1;
+	// One kind for the joined text: the blocks' own when they agree, TSX (which
+	// reads every other kind's syntax) when they differ.
+	const kinds = new Set(blocks.map((block) => blockKind(block.lang)));
+	const [only] = kinds;
+	const kind = kinds.size === 1 && only !== undefined ? only : ts.ScriptKind.TSX;
+	return { parts: text ? [{ text, lineOf, syntaxChecked: true, kind }] : [], problems };
 }
