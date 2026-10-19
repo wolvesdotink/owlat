@@ -1,12 +1,13 @@
 /**
  * The component performance scenarios' limits (plan item OW-073) live in one
- * root module, scripts/perf-scenarios/writerLimits.ts, imported from inside
+ * root module, scripts/perf-bench/scenarioWriterLimits.ts, imported from inside
  * apps/web and apps/api. turbo hashes only a package's own directory by
- * default, so turbo.json lists that module as an input of each importing
- * workspace's `test`, `test:coverage` and `typecheck`. This finds every file
- * that imports it and checks the real `turbo run --dry=json` input lists,
- * so it fails when a new workspace starts importing it or an override is
- * dropped.
+ * default; the generic `test`, `test:coverage` and `typecheck` tasks add
+ * `scripts/perf-bench/**` to their inputs (the hunk shared with the OW-072
+ * benchmarks, pinned for their files by turbo-perf-bench-inputs.test.ts). This
+ * finds every file in apps/ or packages/ that imports the module and checks the
+ * real `turbo run --dry=json` input lists of its package, so it fails when the
+ * generic inputs stop covering the module or a package override replaces them.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -16,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const MODULE = 'scripts/perf-scenarios/writerLimits.ts';
+const MODULE = 'scripts/perf-bench/scenarioWriterLimits.ts';
 const TASKS = ['test', 'test:coverage', 'typecheck'] as const;
 
 /** The workspace (package name) of every source file in apps/ or packages/ that imports MODULE. */
@@ -27,7 +28,7 @@ function importingWorkspaces(): string[] {
 			'grep',
 			'-lE',
 			'--untracked',
-			"from '(\\.\\./)+scripts/perf-scenarios/writerLimits'",
+			"from '(\\.\\./)+scripts/perf-bench/scenarioWriterLimits'",
 			'--',
 			'apps',
 			'packages',

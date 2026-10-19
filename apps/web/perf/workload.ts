@@ -2,14 +2,14 @@
  * Synthetic workloads for the component performance scenarios.
  *
  * Every size and cadence here comes from `WRITER_LIMITS`
- * (scripts/perf-scenarios/writerLimits.ts), the production limits an API
+ * (scripts/perf-bench/scenarioWriterLimits.ts), the production limits an API
  * contract test checks against the real policy, writer and queries, so a
  * scenario never measures a conversation or a stream the app cannot produce.
  *
  * Pure and deterministic: the same seed builds the same rows on every run and
  * machine, which is what lets the report compare runs at all.
  */
-import { WRITER_LIMITS } from '../../../scripts/perf-scenarios/writerLimits';
+import { WRITER_LIMITS } from '../../../scripts/perf-bench/scenarioWriterLimits';
 
 export { WRITER_LIMITS };
 

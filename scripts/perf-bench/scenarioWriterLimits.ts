@@ -10,7 +10,9 @@
  * checks each value against the real policy resolver, writer and queries, so a
  * change of an effective limit fails that test instead of leaving the fixture
  * measuring the old shape. It lives under the root scripts/ because neither
- * workspace may import the other by a relative path (lint:imports).
+ * workspace may import the other by a relative path (lint:imports), and under
+ * scripts/perf-bench/ because turbo's generic test and typecheck inputs hash
+ * that directory for every package.
  */
 export const WRITER_LIMITS = {
 	/** The assistant runner writes a streaming answer at most once per this interval. */

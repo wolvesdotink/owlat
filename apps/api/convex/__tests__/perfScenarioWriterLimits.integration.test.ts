@@ -1,6 +1,6 @@
 /**
  * The component performance scenarios (apps/web/perf, plan item OW-073) size
- * their workloads from WRITER_LIMITS (scripts/perf-scenarios/writerLimits.ts).
+ * their workloads from WRITER_LIMITS (scripts/perf-bench/scenarioWriterLimits.ts).
  * This holds each value to the backend's effective behaviour, so a real change
  * of a limit fails here, and a refactor that keeps the behaviour does not:
  *
@@ -16,7 +16,7 @@
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WRITER_LIMITS } from '../../../../scripts/perf-scenarios/writerLimits';
+import { WRITER_LIMITS } from '../../../../scripts/perf-bench/scenarioWriterLimits';
 import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 import type * as LlmProviderModule from '../lib/llmProvider';
 import type * as DispatchModule from '../lib/llm/dispatch';

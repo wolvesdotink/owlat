@@ -27,11 +27,14 @@ the baseline and after teardown.
 | `assistant-stream/near-cap` | same                                                                                      | the last 12 s of an estimated near-cap answer (see below)               |
 | `chat-history/500`          | `ChatMessageList` (and every `ChatMessage`)                                               | a room's full 500-message window, scrolled newest to oldest             |
 
-The limits the workloads obey live in `scripts/perf-scenarios/writerLimits.ts`.
+The limits the workloads obey live in `scripts/perf-bench/scenarioWriterLimits.ts`.
 `apps/api/convex/__tests__/perfScenarioWriterLimits.integration.test.ts` checks
 each one against the real backend (the task policy's output ceiling, the
 runner's write cadence, the questions and messages the mutations accept, the
-history the queries return), and it runs in CI.
+history the queries return), and it runs in CI. Turbo's generic `test`,
+`test:coverage` and `typecheck` inputs hash `scripts/perf-bench/**`, so a change
+to the limits re-runs both workspaces' tests and typechecks instead of
+replaying a cached result.
 
 The near-cap answer is an estimate. It is 32,768 characters: the 8,192-token
 output cap at an assumed 4 characters a token. Nothing is tokenized, so a real

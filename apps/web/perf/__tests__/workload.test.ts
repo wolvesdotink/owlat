@@ -1,6 +1,6 @@
 /**
  * The scenario workloads stay inside the production limits in
- * scripts/perf-scenarios/writerLimits.ts. Whether those limits are still the
+ * scripts/perf-bench/scenarioWriterLimits.ts. Whether those limits are still the
  * effective ones is the API's side of the contract:
  * apps/api/convex/__tests__/perfScenarioWriterLimits.integration.test.ts.
  */

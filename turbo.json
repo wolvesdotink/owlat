@@ -25,8 +25,15 @@
 			"cache": false,
 			"persistent": true
 		},
+		// Specs and their typechecks in several workspaces import the root
+		// report-only benchmark files under scripts/perf-bench/ (the sampler, the
+		// Postbox list-page fixture). turbo hashes only the package directory by
+		// default, so these generic inputs add them; a change there is rare and
+		// re-runs every package's typecheck and tests, which is the safe side.
+		// scripts/__tests__/turbo-perf-bench-inputs.test.ts pins it.
 		"typecheck": {
-			"dependsOn": ["^build"]
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-bench/**"]
 		},
 		// oxlint follows imports into the workspace packages a package depends on
 		// (import/no-cycle reads them), so a lint result depends on their sources
@@ -111,51 +118,17 @@
 		"transit": {
 			"dependsOn": ["^transit"]
 		},
+		// The perf-bench inputs: see `typecheck` above.
 		"test": {
 			"env": ["VITEST_MAX_WORKERS"],
-			"dependsOn": ["transit", "@owlat/plugin-kit#build"]
+			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-bench/**"]
 		},
 		"test:coverage": {
 			"env": ["VITEST_MAX_WORKERS"],
 			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
-			"outputs": ["coverage/**"]
-		},
-		// The component performance scenarios' limits live in one root module,
-		// scripts/perf-scenarios/writerLimits.ts, read by apps/web/perf (its tests
-		// and its tsc) and by the api contract test that holds the limits to the
-		// backend. turbo hashes only the package directory by default, so these
-		// overrides add that file and repeat the generic entries above, because a
-		// `pkg#task` entry replaces one. scripts/__tests__/turbo-perf-scenarios-
-		// inputs.test.ts checks them against the files that import it.
-		"@owlat/web#test": {
-			"env": ["VITEST_MAX_WORKERS"],
-			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-scenarios/writerLimits.ts"]
-		},
-		"@owlat/web#test:coverage": {
-			"env": ["VITEST_MAX_WORKERS"],
-			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
 			"outputs": ["coverage/**"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-scenarios/writerLimits.ts"]
-		},
-		"@owlat/web#typecheck": {
-			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-scenarios/writerLimits.ts"]
-		},
-		"@owlat/api#test": {
-			"env": ["VITEST_MAX_WORKERS"],
-			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-scenarios/writerLimits.ts"]
-		},
-		"@owlat/api#test:coverage": {
-			"env": ["VITEST_MAX_WORKERS"],
-			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
-			"outputs": ["coverage/**"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-scenarios/writerLimits.ts"]
-		},
-		"@owlat/api#typecheck": {
-			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-scenarios/writerLimits.ts"]
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-bench/**"]
 		},
 		"test:watch": {
 			"cache": false,
