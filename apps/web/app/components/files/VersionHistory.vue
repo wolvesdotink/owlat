@@ -10,71 +10,107 @@ defineProps<{
 		url?: string | null;
 	}>;
 	currentVersionId?: string;
+	/** Older versions wait behind the last one shown. */
+	hasOlder?: boolean;
+	/** Older versions exist, but there is no way to load them. */
+	olderUnavailable?: boolean;
+	loadingOlder?: boolean;
+	loadOlderFailed?: boolean;
+	/** The list started over from the newest version. */
+	historyRestarted?: boolean;
 }>();
+
+const emit = defineEmits<{ loadOlder: [] }>();
 
 const { t } = useI18n();
 </script>
 
 <template>
-	<div v-if="versions.length === 0" class="text-sm text-text-tertiary py-4">
-		{{ t('components.files.versionHistory.empty') }}
-	</div>
-	<div v-else class="relative">
-		<!-- Timeline line -->
-		<div class="absolute left-4 top-3 bottom-3 w-px bg-border-subtle" />
+	<div>
+		<div v-if="versions.length === 0" class="text-sm text-text-tertiary py-4">
+			{{ t('components.files.versionHistory.empty') }}
+		</div>
+		<div v-else class="relative">
+			<!-- Timeline line -->
+			<div class="absolute left-4 top-3 bottom-3 w-px bg-border-subtle" />
 
-		<div class="space-y-0">
-			<div
-				v-for="(version, index) in versions"
-				:key="version._id"
-				class="relative flex items-start gap-4 py-3"
-			>
-				<!-- Timeline dot -->
+			<div class="space-y-0">
 				<div
-					class="relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
-					:class="version._id === currentVersionId
-						? 'bg-brand text-text-inverse'
-						: 'bg-bg-surface border border-border-subtle text-text-tertiary'"
+					v-for="(version, index) in versions"
+					:key="version._id"
+					class="relative flex items-start gap-4 py-3"
 				>
-					<span class="text-xs font-semibold">{{ version.version ?? versions.length - index }}</span>
-				</div>
+					<!-- Timeline dot -->
+					<div
+						class="relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
+						:class="
+							version._id === currentVersionId
+								? 'bg-brand text-text-inverse'
+								: 'bg-bg-surface border border-border-subtle text-text-tertiary'
+						"
+					>
+						<span class="text-xs font-semibold">{{
+							version.version ?? versions.length - index
+						}}</span>
+					</div>
 
-				<!-- Version info -->
-				<div class="flex-1 min-w-0 pt-0.5">
-					<div class="flex items-center gap-2">
-						<p class="text-sm font-medium text-text-primary truncate">
-							{{ version.filename }}
+					<!-- Version info -->
+					<div class="flex-1 min-w-0 pt-0.5">
+						<div class="flex items-center gap-2">
+							<p class="text-sm font-medium text-text-primary truncate">
+								{{ version.filename }}
+							</p>
+							<span
+								v-if="version._id === currentVersionId"
+								class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-brand-subtle text-brand"
+							>
+								{{ t('components.files.versionHistory.current') }}
+							</span>
+						</div>
+						<div class="flex items-center gap-2 mt-0.5">
+							<span class="text-xs text-text-tertiary">{{
+								formatCompactFileSize(version.fileSize)
+							}}</span>
+							<span class="text-xs text-text-tertiary">&middot;</span>
+							<span class="text-xs text-text-tertiary">{{
+								formatDateTime(version.createdAt)
+							}}</span>
+						</div>
+						<p v-if="version.changeSummary" class="text-xs text-text-tertiary mt-1 italic">
+							{{ version.changeSummary }}
 						</p>
-						<span
-							v-if="version._id === currentVersionId"
-							class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-brand-subtle text-brand"
-						>
-							{{ t('components.files.versionHistory.current') }}
-						</span>
 					</div>
-					<div class="flex items-center gap-2 mt-0.5">
-						<span class="text-xs text-text-tertiary">{{ formatCompactFileSize(version.fileSize) }}</span>
-						<span class="text-xs text-text-tertiary">&middot;</span>
-						<span class="text-xs text-text-tertiary">{{ formatDateTime(version.createdAt) }}</span>
-					</div>
-					<p v-if="version.changeSummary" class="text-xs text-text-tertiary mt-1 italic">
-						{{ version.changeSummary }}
-					</p>
-				</div>
 
-				<!-- Download link -->
-				<a
-					v-if="version.url"
-					:href="version.url"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="flex-shrink-0 p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-					:title="t('components.files.versionHistory.download')"
-					@click.stop
-				>
-					<Icon name="lucide:download" class="w-4 h-4" />
-				</a>
+					<!-- Download link -->
+					<a
+						v-if="version.url"
+						:href="version.url"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="flex-shrink-0 p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+						:title="t('components.files.versionHistory.download')"
+						@click.stop
+					>
+						<Icon name="lucide:download" class="w-4 h-4" />
+					</a>
+				</div>
 			</div>
+		</div>
+		<!-- Says why the list is shorter than before, however it ends now. -->
+		<p v-if="historyRestarted" class="text-xs text-text-tertiary pt-1" role="status">
+			{{ t('components.files.versionHistory.restarted') }}
+		</p>
+		<p v-if="olderUnavailable" class="text-xs text-text-tertiary pt-1">
+			{{ t('components.files.versionHistory.olderUnavailable') }}
+		</p>
+		<div v-else-if="hasOlder" class="flex flex-col items-start gap-1 pt-1">
+			<p v-if="loadOlderFailed" class="text-xs text-error" role="alert">
+				{{ t('components.files.versionHistory.olderFailed') }}
+			</p>
+			<UiButton variant="ghost" size="sm" :loading="loadingOlder" @click="emit('loadOlder')">
+				<Icon name="lucide:history" class="w-4 h-4 mr-2" />
+				{{ t('components.files.versionHistory.showOlder') }}
+			</UiButton>
 		</div>
 	</div>
 </template>

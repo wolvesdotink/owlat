@@ -59,6 +59,38 @@ describe('UiModal (semantics inherited by every converted overlay)', () => {
 		const dialog = wrapper.find('[role="dialog"]');
 		expect(dialog.exists()).toBe(true);
 		expect(dialog.attributes('aria-modal')).toBe('true');
+		expect(dialog.attributes('aria-labelledby')).toBe(wrapper.find('h2').attributes('id'));
+		wrapper.unmount();
+	});
+
+	it('takes its name and description from ids a caller draws in the body', () => {
+		const wrapper = mount(UiModal, {
+			props: { open: true, labelledBy: 'own-heading', describedBy: 'own-lead' },
+			slots: { default: '<h3 id="own-heading">Delete</h3><p id="own-lead">Gone for good.</p>' },
+			attachTo: document.body,
+			global: { stubs: { Icon: true, teleport: true } },
+		});
+		const dialog = wrapper.find('[role="dialog"]');
+		expect(dialog.attributes('aria-labelledby')).toBe('own-heading');
+		expect(dialog.attributes('aria-describedby')).toBe('own-lead');
+		// No title, so no second header heading next to the caller's own.
+		expect(wrapper.find('h2').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('prefers an explicit labelledBy over its own title heading', () => {
+		const wrapper = mount(UiModal, {
+			props: { open: true, title: 'Upload File', labelledBy: 'own-heading' },
+			attachTo: document.body,
+			global: { stubs: { Icon: true, teleport: true } },
+		});
+		expect(wrapper.find('[role="dialog"]').attributes('aria-labelledby')).toBe('own-heading');
+		wrapper.unmount();
+	});
+
+	it('sets no aria-describedby unless a caller supplies one', () => {
+		const wrapper = mountModal();
+		expect(wrapper.find('[role="dialog"]').attributes('aria-describedby')).toBeUndefined();
 		wrapper.unmount();
 	});
 

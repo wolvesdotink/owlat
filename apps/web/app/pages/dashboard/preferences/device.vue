@@ -17,6 +17,7 @@
  * ("notify me about", "launch at login") lands on the right card.
  */
 import { WORKSPACE_ACCENT_OPTIONS } from '~/lib/desktop/workspaceTypes';
+import type { RemovalOwner } from '~/composables/useDesktopWorkspaces';
 
 const { t } = useI18n();
 
@@ -33,8 +34,15 @@ const hasMail = computed(() => isEnabled('postbox') || isEnabled('mail.external'
 
 const { settings, isReady, setGlobal, workspaceLocal, setWorkspaceLocal } = useDesktopAppSettings();
 const { autostartEnabled, isReady: autostartReady, setAutostart } = useDesktopSettings();
-const { workspaces, activeId, switchTo, removeWorkspace, setWorkspaceAccent } =
-	useDesktopWorkspaces();
+const {
+	workspaces,
+	activeId,
+	switchTo,
+	removeWorkspace,
+	abandonRemoval,
+	createRemovalOwner,
+	setWorkspaceAccent,
+} = useDesktopWorkspaces();
 
 function onStartupWorkspaceChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value;
@@ -53,11 +61,74 @@ function openWorkspaceSettings(id: string) {
 
 const workspaceToRemove = ref<{ id: string; label: string } | null>(null);
 const isRemoving = ref(false);
-async function confirmRemoveWorkspace() {
-	if (!workspaceToRemove.value) return;
+// The last attempt rejected part-way: the dialog stays open, says so, and offers
+// the removal again.
+const removeFailed = ref(false);
+
+function askRemoveWorkspace(ws: { id: string; label: string }) {
+	removeFailed.value = false;
+	workspaceToRemove.value = { id: ws.id, label: ws.label };
+}
+
+// This page instance owns the removals it starts: while it is mounted, a
+// failed one waits here for Retry or Cancel. Unmounting releases the owner, and
+// the composable then settles that removal's failure, whether it already
+// rejected or does so later. A later instance of this page gets its own owner
+// and has no say over a removal this one started.
+let removalOwner: RemovalOwner | null = null;
+onMounted(() => {
+	removalOwner = createRemovalOwner();
+});
+onBeforeUnmount(() => {
+	removalOwner?.release();
+	removalOwner = null;
+});
+
+/**
+ * Every way out of the failed dialog (Cancel, close, Esc, backdrop) goes
+ * through here. A removal that got part-way may have left the page out of step
+ * with what is stored; `abandonRemoval` then reloads to re-seed it, and the
+ * dialog waits for that in its loading state.
+ */
+function settleFailedRemoval(): boolean {
+	if (!removeFailed.value) return false;
+	removeFailed.value = false;
+	const reload = abandonRemoval(removalOwner ?? undefined);
+	if (!reload) return false;
 	isRemoving.value = true;
-	// Navigates away (webview reload) on completion — no local cleanup needed.
-	await removeWorkspace(workspaceToRemove.value.id);
+	void reload.then(() => {
+		// Still here: the reload was refused (an unsaved-changes prompt) or
+		// stalled. Offer Retry and Cancel again instead of waiting for it.
+		isRemoving.value = false;
+		removeFailed.value = true;
+	});
+	return true;
+}
+
+function onRemoveDialogOpen(open: boolean) {
+	if (open) return;
+	if (settleFailedRemoval()) return;
+	workspaceToRemove.value = null;
+}
+
+async function confirmRemoveWorkspace() {
+	const target = workspaceToRemove.value;
+	if (!target || isRemoving.value) return;
+	isRemoving.value = true;
+	removeFailed.value = false;
+	try {
+		// Navigates away (webview reload) on completion, so the dialog stays in
+		// its loading state on success: there is nothing to clean up, and a
+		// second confirm cannot start another removal.
+		await removeWorkspace(target.id, removalOwner ?? undefined);
+	} catch (e) {
+		// A step can reject after earlier ones landed (signed out, session
+		// discarded, maybe already off the list). Every step is safe to repeat,
+		// so Retry runs the whole removal again; Cancel settles the page instead.
+		console.warn('[desktop] removing the workspace failed:', e);
+		removeFailed.value = true;
+		isRemoving.value = false;
+	}
 }
 </script>
 
@@ -255,36 +326,22 @@ async function confirmRemoveWorkspace() {
 								<button
 									type="button"
 									class="text-xs text-text-secondary hover:text-error"
-									@click="workspaceToRemove = { id: ws.id, label: ws.label }"
+									@click="askRemoveWorkspace(ws)"
 								>
 									{{ t('common.remove') }}
 								</button>
 							</div>
 						</div>
 
-						<div class="mt-3 flex items-center justify-between border-t border-border-subtle pt-3">
+						<div
+							class="mt-3 flex items-center justify-between border-t border-border-subtle pt-3 pointer-coarse:flex-wrap pointer-coarse:gap-3"
+						>
 							<!-- Identity accent -->
-							<div class="flex items-center gap-1.5">
-								<span class="mr-1 text-xs text-text-secondary">{{
-									t('desktop.settings.workspaces.accent')
-								}}</span>
-								<button
-									v-for="option in WORKSPACE_ACCENT_OPTIONS"
-									:key="option.value"
-									type="button"
-									class="size-5 rounded-full border-2 transition-transform hover:scale-110"
-									:class="
-										ws.accentColor === option.value ? 'border-text-primary' : 'border-transparent'
-									"
-									:style="{ backgroundColor: option.value }"
-									:title="t(option.label)"
-									:aria-label="
-										t('desktop.settings.workspaces.accentOption', { accent: t(option.label) })
-									"
-									:aria-pressed="ws.accentColor === option.value"
-									@click="setWorkspaceAccent(ws.id, option.value)"
-								/>
-							</div>
+							<DesktopWorkspaceAccentPicker
+								:options="WORKSPACE_ACCENT_OPTIONS"
+								:model-value="ws.accentColor"
+								@update:model-value="setWorkspaceAccent(ws.id, $event)"
+							/>
 
 							<!-- Device-local mute -->
 							<label class="flex items-center gap-2 text-xs text-text-secondary">
@@ -310,11 +367,19 @@ async function confirmRemoveWorkspace() {
 								t('desktop.settings.workspaces.removeDialog.fallbackName'),
 						})
 					"
-					:confirm-text="t('desktop.settings.workspaces.removeDialog.confirm')"
+					:confirm-text="
+						removeFailed
+							? t('desktop.settings.workspaces.removeDialog.retry')
+							: t('desktop.settings.workspaces.removeDialog.confirm')
+					"
 					:is-loading="isRemoving"
-					@update:open="(v: boolean) => !v && (workspaceToRemove = null)"
+					@update:open="onRemoveDialogOpen"
 					@confirm="confirmRemoveWorkspace"
-				/>
+				>
+					<p v-if="removeFailed" role="alert" class="mt-3 text-sm text-error">
+						{{ t('desktop.settings.workspaces.removeDialog.failed') }}
+					</p>
+				</UiConfirmationDialog>
 			</section>
 		</template>
 

@@ -6,7 +6,9 @@
 // command against the capabilities: a command no capability grants to a window
 // cannot be invoked from it, and a registered command missing from these lists
 // cannot be invoked at all. The tests below keep the lists, the capabilities
-// and main.rs's `generate_handler!` in step.
+// and main.rs's `generate_handler!` in step; scripts/check-desktop-invoke-contract.ts
+// (`bun run lint:desktop-invoke`) checks the JS `invoke()` callers against them,
+// reading these three lists as plain string-literal arrays.
 
 /// Commands every app window uses (`main` and `compose`): notifications, the
 /// keychain, user-picked files, window chrome, zoom and updates.

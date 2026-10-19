@@ -266,9 +266,71 @@ async function setWorkspaceAccent(id: string, color: WorkspaceAccent): Promise<v
 	await persistStore();
 }
 
-async function removeWorkspace(id: string): Promise<void> {
+/**
+ * Set once a removal has changed what this page holds: the live session (an
+ * active workspace is signed out and its storage discarded first) or the
+ * in-memory list and active id (filtered before the store save). A removal that
+ * rejects after that leaves the page out of step with the persisted store and
+ * the keychain, e.g. a failed save shows the next workspace as active while the
+ * clients are still bound to the removed one. See `abandonRemoval`.
+ */
+let removalChangedPage = false;
+
+/**
+ * The view instance that started a removal and can offer Retry and Cancel if it
+ * rejects. Made by `createRemovalOwner` when the view mounts, passed to the
+ * removals that view starts, and released when that same view unmounts. It
+ * speaks only for the removals it was passed: another view, or a fresh
+ * instance of the same page, has its own owner and cannot keep someone else's
+ * failure waiting.
+ */
+export interface RemovalOwner {
+	release(): void;
+}
+
+class RemovalOwnerHandle implements RemovalOwner {
+	released = false;
+	/** A removal this owner started rejected after it changed the page, and the
+	 * owner has not retried or given up yet. */
+	unsettled = false;
+
+	release(): void {
+		if (this.released) return;
+		this.released = true;
+		if (this.unsettled) void abandonRemoval(this);
+	}
+}
+
+function createRemovalOwner(): RemovalOwner {
+	return new RemovalOwnerHandle();
+}
+
+/**
+ * Remove a workspace from this device; navigates away on success. A rejection
+ * that left the page out of step is reconciled by this module, not by the
+ * caller. When the removal was started with an `owner` that is still mounted,
+ * the failure waits for that owner: a retry (the next removal it starts), giving
+ * up (`abandonRemoval`), or its release. Otherwise (no owner, or the owner went
+ * away while the removal ran) nobody can retry, so it is reconciled at once.
+ */
+async function removeWorkspace(id: string, owner?: RemovalOwner): Promise<void> {
+	const handle = owner instanceof RemovalOwnerHandle ? owner : null;
+	if (handle) handle.unsettled = false;
+	try {
+		await runRemoval(id);
+	} catch (e) {
+		if (removalChangedPage) {
+			if (handle && !handle.released) handle.unsettled = true;
+			else void abandonRemoval();
+		}
+		throw e;
+	}
+}
+
+async function runRemoval(id: string): Promise<void> {
 	const wasActive = id === activeId.value;
 	if (wasActive) {
+		removalChangedPage = true;
 		try {
 			await authClient.signOut();
 		} catch {
@@ -292,6 +354,7 @@ async function removeWorkspace(id: string): Promise<void> {
 		console.warn('[desktop] removing the workspace session failed:', e);
 	});
 
+	removalChangedPage = true;
 	workspaces.value = workspaces.value.filter((w) => w.id !== id);
 	if (wasActive) activeId.value = workspaces.value[0]?.id ?? null;
 	await persistStore();
@@ -307,6 +370,44 @@ async function removeWorkspace(id: string): Promise<void> {
 	}
 
 	window.location.assign(workspaces.value.length ? '/dashboard' : '/desktop/welcome');
+}
+
+/**
+ * Reconcile the page after a removal that rejected part-way was given up: by
+ * the user (Cancel, passing the owner that started it), by its owner going
+ * away, or with nobody left to retry. When the removal had already changed what
+ * this page holds, reload so the boot re-seeds the list, the active workspace
+ * and the session from what was actually persisted, the same way a switch does.
+ * Nothing is written back: a keychain entry the removal already deleted stays
+ * deleted, so the reload comes up signed out of it.
+ *
+ * Returns null when there was nothing to reconcile. Otherwise the reload has
+ * been asked for, and the returned promise resolves only if this document is
+ * still here once the reload should have unloaded it: the user stayed on an
+ * unsaved-changes prompt, or the navigation stalled (the same window
+ * `switchTo` gives its own reload). The failure is then pending again for its
+ * owner, if that owner is still mounted, so the view can offer Retry and Cancel
+ * instead of waiting for a reload that is not coming. Nothing is remembered
+ * between calls, so a later give-up always asks for a reload again.
+ */
+function abandonRemoval(owner?: RemovalOwner): Promise<void> | null {
+	const handle = owner instanceof RemovalOwnerHandle ? owner : null;
+	if (handle) handle.unsettled = false;
+	if (!removalChangedPage) return null;
+	let unloading = false;
+	const onPageHide = () => {
+		unloading = true;
+	};
+	window.addEventListener('pagehide', onPageHide, { once: true });
+	window.location.reload();
+	return new Promise<void>((resolve) => {
+		window.setTimeout(() => {
+			window.removeEventListener('pagehide', onPageHide);
+			if (unloading) return;
+			if (handle && !handle.released) handle.unsettled = true;
+			resolve();
+		}, SWITCH_FLAG_TTL_MS);
+	});
 }
 
 /**
@@ -360,6 +461,8 @@ export function useDesktopWorkspaces() {
 			localizeErrors(() => completeConnection(params)),
 		switchTo,
 		removeWorkspace,
+		abandonRemoval,
+		createRemovalOwner,
 		setWorkspaceAccent,
 		signOutWorkspace: removeWorkspace,
 	};

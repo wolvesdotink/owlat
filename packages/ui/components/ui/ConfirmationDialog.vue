@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, useId } from 'vue';
 import { useUiI18n } from '../../composables/useUiI18n';
 
 type Variant = 'danger' | 'warning' | 'default';
@@ -23,6 +23,12 @@ interface Props {
 	 * never fires. The page says why in the dialog body.
 	 */
 	confirmDisabled?: boolean;
+	/**
+	 * The button focused on open. Cancel by default, so Enter on a freshly
+	 * opened confirmation never performs the action; pass `confirm` for a
+	 * prompt the user opened precisely to say yes to.
+	 */
+	initialFocus?: 'cancel' | 'confirm';
 }
 
 // The copy props have no defaults: prop defaults are evaluated outside the
@@ -36,6 +42,7 @@ const props = withDefaults(defineProps<Props>(), {
 	isLoading: false,
 	persistent: false,
 	confirmDisabled: false,
+	initialFocus: 'cancel',
 });
 
 const { t } = useUiI18n();
@@ -46,6 +53,12 @@ const resolvedDescription = computed(
 );
 const resolvedConfirmText = computed(() => props.confirmText ?? t('ui.actions.confirm'));
 const resolvedCancelText = computed(() => props.cancelText ?? t('ui.actions.cancel'));
+// A refused action cannot take focus, so Cancel stands in for it.
+const initialFocusSelector = computed(() =>
+	props.initialFocus === 'confirm' && !props.confirmDisabled
+		? '[data-confirmation-confirm]'
+		: '[data-confirmation-cancel]'
+);
 
 const emit = defineEmits<{
 	'update:open': [value: boolean];
@@ -81,6 +94,12 @@ const variantConfig: Record<Variant, { icon: string; iconClass: string }> = {
 
 const config = computed(() => variantConfig[props.variant]);
 
+// The dialog's name and description are the heading and lead drawn below, not a
+// UiModal `title` (that would add a second, visible header). Per-instance ids,
+// so a confirmation stacked over another still points at its own copy.
+const titleId = useId();
+const descriptionId = useId();
+
 const close = () => {
 	if (!props.isLoading) {
 		emit('update:open', false);
@@ -106,9 +125,12 @@ const handleBackdropClick = () => {
 
 <template>
 	<UiModal
+		:initial-focus="initialFocusSelector"
 		:open="open"
 		:persistent="persistent || isLoading"
 		:closable="!isLoading"
+		:labelled-by="titleId"
+		:described-by="descriptionId"
 		@update:open="close"
 	>
 		<div class="flex flex-col items-center text-center">
@@ -118,22 +140,33 @@ const handleBackdropClick = () => {
 				<Icon :name="config.icon" class="w-6 h-6" />
 			</div>
 
-			<h3 class="text-lg font-semibold text-text-primary mb-2">{{ resolvedTitle }}</h3>
+			<h3 :id="titleId" class="text-lg font-semibold text-text-primary mb-2">
+				{{ resolvedTitle }}
+			</h3>
 
 			<!-- `#description` replaces the plain lead when the copy needs markup,
-			     e.g. a delete prompt that sets the item's name in bold. -->
-			<slot name="description">
-				<p class="text-text-secondary">{{ resolvedDescription }}</p>
-			</slot>
+			     e.g. a delete prompt that sets the item's name in bold. The wrapper
+			     carries the description id either way. -->
+			<div :id="descriptionId">
+				<slot name="description">
+					<p class="text-text-secondary">{{ resolvedDescription }}</p>
+				</slot>
+			</div>
 
 			<slot />
 		</div>
 
 		<template #footer>
-			<UiButton variant="secondary" :disabled="isLoading" @click="handleCancel">
+			<UiButton
+				variant="secondary"
+				data-confirmation-cancel
+				:disabled="isLoading"
+				@click="handleCancel"
+			>
 				{{ resolvedCancelText }}
 			</UiButton>
 			<UiButton
+				data-confirmation-confirm
 				:variant="variant === 'danger' ? 'danger' : 'primary'"
 				:loading="isLoading"
 				:disabled="confirmDisabled"

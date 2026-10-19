@@ -36,9 +36,7 @@ import { applyClientSimulation, type SimulationResult } from '../clientSimulatio
 import { formatHtml } from '../formatHtml';
 import ClientSelector from './ClientSelector.vue';
 import DeviceFrame from './DeviceFrame.vue';
-import AnalysisPanel from './AnalysisPanel.vue';
-import RenderOptionsPanel from './RenderOptionsPanel.vue';
-import DiffPanel from './DiffPanel.vue';
+import { AnalysisPanel, RenderOptionsPanel, DiffPanel } from './lazyPanels';
 
 const props = withDefaults(
 	defineProps<{
@@ -80,6 +78,12 @@ const props = withDefaults(
 		validationIssues?: PreviewValidationIssue[];
 		/** Email diff from previous version */
 		emailDiff?: PreviewEmailDiff | null;
+		/**
+		 * The host diffs on request: the HTML changed since the previous render, so
+		 * offer the diff while `emailDiff` is still null, and listen to
+		 * `update:diff-requested`.
+		 */
+		diffAvailable?: boolean;
 		/** Current render options */
 		renderOptions?: Partial<PreviewRenderOptions>;
 		/** Whether to show render options gear icon */
@@ -109,6 +113,7 @@ const props = withDefaults(
 		healthScore: null,
 		validationIssues: () => [],
 		emailDiff: null,
+		diffAvailable: false,
 		renderOptions: undefined,
 		showRenderOptions: true,
 		useRendererSimulation: false,
@@ -123,6 +128,7 @@ const emit = defineEmits<{
 	(e: 'update:dark-mode', value: boolean): void;
 	(e: 'update:plain-text-override', value: string): void;
 	(e: 'update:amp-requested', value: boolean): void;
+	(e: 'update:diff-requested', value: boolean): void;
 }>();
 
 // State
@@ -140,7 +146,7 @@ const diffPanelOpen = ref(false);
 const copiedFormat = ref<string | null>(null);
 
 // Compatibility analysis
-const { analyzeHtml, report, isAnalyzing } = useCompatibilityAnalysis();
+const { analyzeHtml, cancelAnalysis, report, isAnalyzing } = useCompatibilityAnalysis();
 
 // Computed
 const simulationResult = computed<SimulationResult>(() => {
@@ -242,26 +248,42 @@ const ampNeeded = computed(() => viewMode.value === 'amp' || exportMenuOpen.valu
 watch(ampNeeded, (needed) => emit('update:amp-requested', needed));
 onBeforeUnmount(() => {
 	if (ampNeeded.value) emit('update:amp-requested', false);
+	cancelAnalysis();
 });
 
 const hasWarnings = computed(() => (props.renderWarnings?.length ?? 0) > 0);
-const hasDiff = computed(() => props.emailDiff && !props.emailDiff.identical);
+const hasDiff = computed(
+	() => props.diffAvailable || (!!props.emailDiff && !props.emailDiff.identical)
+);
+
+// Only the diff panel reads the diff; tell the host while it is open.
+watch(diffPanelOpen, (open) => emit('update:diff-requested', open));
+onBeforeUnmount(() => {
+	if (diffPanelOpen.value) emit('update:diff-requested', false);
+});
 
 function refreshPreview() {
 	iframeKey.value++;
 	runAnalysis();
 }
 
+/** No client selected: drop any analysis in flight along with the last report. */
+function clearAnalysis() {
+	cancelAnalysis();
+	report.value = null;
+}
+
 async function runAnalysis() {
 	if (!selectedClient.value) {
-		report.value = null;
+		clearAnalysis();
 		return;
 	}
 
 	const result = await analyzeHtml(props.html, {
 		clients: [selectedClient.value],
 	});
-	emit('compatibility-report', result);
+	// null: a newer analysis (or unmount) superseded this one.
+	if (result) emit('compatibility-report', result);
 }
 
 // Export functions
@@ -311,7 +333,10 @@ function handleRenderOptionsUpdate(options: Partial<PreviewRenderOptions>) {
 watch(
 	[() => props.html, selectedClient],
 	() => {
-		if (props.autoAnalyze) {
+		// Clearing the client stops a manual (Refresh) analysis too.
+		if (!selectedClient.value) {
+			clearAnalysis();
+		} else if (props.autoAnalyze) {
 			runAnalysis();
 		}
 	},

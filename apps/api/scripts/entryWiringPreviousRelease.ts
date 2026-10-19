@@ -61,4 +61,14 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'the previous Unsubscribe chip, in desktop bundles and tabs opened before the deploy (read on arrival §5)',
 	'mail/interpret/preferences.ts#setThreadDefaultView':
 		'the previous "Open threads on" row, in tabs opened before the deploy (read on arrival §3)',
+	// The whole-chain, whole-row history; the web now pages files/history.ts.
+	// Removal waits for an inventory of API, SDK and plugin callers too.
+	'semanticFiles.ts#getVersionHistory':
+		'the previous file detail page, in tabs opened before the deploy',
+	// Whole-row file lists; the web now reads compact cards (files/cards.ts).
+	// Removal waits for an inventory of API, SDK and plugin callers too.
+	'semanticFiles.ts#list':
+		'the previous Files page and Answer file picker, in tabs opened before the deploy',
+	'semanticFiles.ts#search':
+		'the previous Files page and Answer file picker, in tabs opened before the deploy',
 };

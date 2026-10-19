@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	coverageWorkspaces,
+	desktopSpaSelected,
 	groupWorkspaces,
 	expectedJobs,
 	assertJobResults,
@@ -59,6 +60,7 @@ describe('CI work selection', () => {
 			web: false,
 			mta: false,
 			java: false,
+			desktopSpa: false,
 		});
 		const needs = Object.fromEntries(expected.map((job) => [job, { result: 'success' }]));
 		expect(() => assertJobResults(expected, needs)).not.toThrow();
@@ -73,5 +75,25 @@ describe('CI work selection', () => {
 		expect(() =>
 			assertJobResults(expected, { ...needs, 'test-api': { result: 'skipped' } })
 		).not.toThrow();
+	});
+	it('builds the desktop SPA on full runs, web changes and the bridge or Tauri config', () => {
+		expect(desktopSpaSelected(true, false, [])).toBe(true);
+		expect(desktopSpaSelected(false, true, [])).toBe(true);
+		for (const file of [
+			'apps/desktop/src/window.ts',
+			'apps/desktop/package.json',
+			'apps/desktop/src-tauri/tauri.conf.json',
+			'scripts/check-desktop-spa.ts',
+		])
+			expect(desktopSpaSelected(false, false, [file])).toBe(true);
+		for (const file of [
+			'apps/desktop/src-tauri/src/main.rs',
+			'apps/desktop/README.md',
+			'docs/x.md',
+		])
+			expect(desktopSpaSelected(false, false, [file])).toBe(false);
+		const selection = { groups: [], images: [], api: false, web: false, mta: false, java: false };
+		expect(expectedJobs({ ...selection, desktopSpa: true })).toContain('desktop-spa');
+		expect(expectedJobs({ ...selection, desktopSpa: false })).not.toContain('desktop-spa');
 	});
 });

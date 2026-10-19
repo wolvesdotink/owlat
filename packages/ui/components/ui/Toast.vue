@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { useToast } from '../../composables/useToast';
 import ToastItem from './ToastItem.vue';
 
-const { toasts, removeToast } = useToast();
+const { toasts, removeToast, dismissAfterAction } = useToast();
 
 // Errors go in an assertive live region (interrupt the screen reader — the user
 // needs to know an action failed now). Everything else stays polite.
@@ -13,27 +13,37 @@ const politeToasts = computed(() => toasts.value.filter((t) => t.type !== 'error
 
 <template>
 	<Teleport to="body">
-		<div class="fixed bottom-6 right-6 z-(--z-toast) flex flex-col gap-3">
+		<!--
+			Phones: the stack spans the viewport minus a 1rem gutter and the safe-area
+			insets, so a card can never be wider than the screen. From `sm` up it
+			returns to the bottom-right corner. The stack itself lets taps through
+			(it overlays the mobile tab bar); only the cards take pointer events.
+		-->
+		<div
+			class="pointer-events-none fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] left-[calc(1rem+env(safe-area-inset-left,0px))] right-[calc(1rem+env(safe-area-inset-right,0px))] z-(--z-toast) flex flex-col gap-3 sm:left-auto sm:right-[calc(1.5rem+env(safe-area-inset-right,0px))]"
+		>
 			<!-- Assertive region: failures interrupt so the user reacts immediately. -->
-			<div class="flex flex-col gap-3" role="alert" aria-live="assertive">
+			<div class="flex flex-col items-end gap-3" role="alert" aria-live="assertive">
 				<TransitionGroup name="toast">
 					<ToastItem
 						v-for="toast in errorToasts"
 						:key="toast.id"
 						:toast="toast"
-						@dismiss="removeToast(toast.id)"
+						@dismiss="dismissAfterAction(toast.id)"
+						@close="removeToast(toast.id)"
 					/>
 				</TransitionGroup>
 			</div>
 
 			<!-- Polite region: success / info / warning are announced without interrupting. -->
-			<div class="flex flex-col gap-3" role="status" aria-live="polite">
+			<div class="flex flex-col items-end gap-3" role="status" aria-live="polite">
 				<TransitionGroup name="toast">
 					<ToastItem
 						v-for="toast in politeToasts"
 						:key="toast.id"
 						:toast="toast"
-						@dismiss="removeToast(toast.id)"
+						@dismiss="dismissAfterAction(toast.id)"
+						@close="removeToast(toast.id)"
 					/>
 				</TransitionGroup>
 			</div>

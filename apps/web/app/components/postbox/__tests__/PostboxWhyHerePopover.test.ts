@@ -130,7 +130,7 @@ describe('PostboxWhyHerePopover', () => {
 		expect(showToast).toHaveBeenCalledWith(
 			'Mail from Deutsche Bahn now shows in Updates',
 			'success',
-			expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })
+			expect.objectContaining({ observedAction: expect.objectContaining({ label: 'Undo' }) })
 		);
 		expect(w.emitted('update:target')?.[0]).toEqual([null]);
 	});

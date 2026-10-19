@@ -127,7 +127,16 @@ export function usePostboxArrivalUndo() {
 		}
 		showToast(message, opts.type ?? 'success', {
 			durationMs: UNDO_TOAST_MS,
-			action: { label: t('common.undo'), onAction: () => void undo(operationId) },
+			// The toast waits for the undo: "Undoing…" while it runs, gone once it
+			// worked, marked "Not undone" when it did not. `false` covers both a
+			// failure (useBackendOperation already toasted it) and a terminal
+			// "expired" / "already undone"; neither is safe to offer again.
+			observedAction: {
+				label: t('common.undo'),
+				pendingLabel: t('postbox.undo.undoing'),
+				failedNote: t('postbox.undo.notUndone'),
+				run: () => undo(operationId),
+			},
 			...(opts.onDismiss ? { onDismiss: opts.onDismiss } : {}),
 		});
 	}

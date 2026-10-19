@@ -3951,7 +3951,11 @@
 			"versionHistory": {
 				"current": "Current",
 				"download": "Download this version",
-				"empty": "No previous versions."
+				"empty": "No previous versions.",
+				"olderFailed": "Older versions could not be loaded. Try again.",
+				"olderUnavailable": "There are older versions, but they cannot be loaded here.",
+				"restarted": "The list changed while you were reading it, so it starts again from the newest version.",
+				"showOlder": "Show older versions"
 			}
 		},
 		"forms": {
@@ -4540,6 +4544,7 @@
 				"failed": "Failed",
 				"largeWarning": "Large attachments may bounce — consider sharing a link for oversized files.",
 				"percent": "{value}%",
+				"queued": "Queued",
 				"remove": "Remove {filename}",
 				"retry": "Retry {filename}",
 				"retryTitle": "Retry upload",
@@ -7265,6 +7270,7 @@
 					"remove": "Remove {file}",
 					"retry": "Retry",
 					"cancelUpload": "Cancel the upload of {file}",
+					"queued": "Queued",
 					"hold": {
 						"uploading": "Send waits until the upload has finished.",
 						"copying": "Send waits until the file is copied.",
@@ -9990,6 +9996,7 @@
 						"integrationsTitle": "Integrations"
 					},
 					"loadMore": "Load more",
+					"noEmail": "No email",
 					"noResults": {
 						"description": "No contacts match \"{query}\". Try a different search term.",
 						"title": "No results found"
@@ -10016,6 +10023,8 @@
 					"subtitle": "People your team knows and their recent activity",
 					"table": {
 						"created": "Created",
+						"createdSortHint": "Sort contacts by creation date",
+						"createdSortSearchHint": "Search results are ordered by relevance",
 						"firstName": "First name",
 						"lastName": "Last name"
 					},
@@ -12689,7 +12698,9 @@
 				"removeDialog": {
 					"confirm": "Remove workspace",
 					"description": "Remove {workspace} from this device? You'll be signed out here; the workspace itself and your account are untouched.",
+					"failed": "Removing the workspace didn't finish. You may already be signed out of it here. Try again to finish removing it, or cancel.",
 					"fallbackName": "this workspace",
+					"retry": "Try again",
 					"title": "Remove workspace?"
 				},
 				"settings": "Workspace settings"
@@ -13312,7 +13323,9 @@
 			"remindersNotRestored": "Reply reminders were not restored.",
 			"unsubscribeNotRecalled": "The unsubscribe request was already sent and cannot be taken back.",
 			"expired": "This can no longer be undone",
-			"already": "This was already undone"
+			"already": "This was already undone",
+			"undoing": "Undoing…",
+			"notUndone": "Not undone."
 		},
 		"rules": {
 			"title": "Rules in your words",
@@ -15542,7 +15555,9 @@
 				"tooLarge": "{filename} is too large (max {max} MB).",
 				"tooManyFiles": "You can attach up to {count} files.",
 				"totalTooLarge": "Attachments exceed the {max} MB total limit.",
-				"uploadFailed": "Couldn't upload {filename}."
+				"uploadFailed": "Couldn't upload {filename}.",
+				"uploadQueueEmpty": "No more files waiting to upload",
+				"uploadQueued": "{count} file waiting to upload | {count} files waiting to upload"
 			},
 			"usePostboxComposerKeys": {
 				"schedule": "Schedule send (Ctrl+Shift+Enter)",

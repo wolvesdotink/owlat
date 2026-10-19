@@ -45,7 +45,7 @@ const itemClasses = computed(() => {
 <template>
 	<button
 		role="menuitem"
-		:tabindex="disabled ? -1 : 0"
+		tabindex="-1"
 		:class="itemClasses"
 		:disabled="disabled"
 		@click="handleClick"

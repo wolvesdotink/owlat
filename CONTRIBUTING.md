@@ -96,6 +96,13 @@ of `bun run lint` and will fail CI, including:
   whose algorithm is not a literal, any `timingSafeEqual` reference or an
   XOR-accumulate compare loop fails (`scripts/check-crypto-primitives.sh`). It
   is a pattern check: Node's `createHmac` and other spellings are not covered.
+- `lint:stored-block-corpus` (root, in `ci:lint`) — against a pull request's
+  base branch, the commit a push replaced, or (other CI runs) the default
+  branch, failing in CI when that history cannot be resolved, no stored EditorBlock fixture or HTML snapshot in
+  `packages/email-renderer/src/__tests__/storedBlocks/` is edited in place, a
+  fixture goes only with its `contentBlockVersion` retired in `retired.json`,
+  and a snapshot of the current renderer version goes only with its fixture or
+  an `EMAIL_RENDERER_VERSION` bump (`scripts/check-stored-block-corpus.ts`).
 
 The web app's `lint` script (`apps/web`) runs gates of its own, including:
 
@@ -229,6 +236,13 @@ manual dispatch run the full set as a safety valve.
     packaged Node entry imported once.
   - **Test (packages/sdk-java).** Maven `verify`, when `packages/sdk-java`
     changes.
+  - **Desktop SPA (build + inspect).** Builds the real `generate:desktop`
+    bundle the desktop app packages and fails on a referenced chunk,
+    stylesheet, font, icon or app manifest that was not emitted or does not
+    match its integrity hash (`scripts/check-desktop-spa.ts`). When web is
+    affected, when the desktop bridge or Tauri config changes, and on full
+    runs. The bridge's `invoke()` names are checked against `ipc_commands.rs`
+    in **Lint** (`lint:desktop-invoke`).
   - **Test Summary.** The single required status check; point branch
     protection at it. Selected jobs must succeed; unselected jobs must be
     skipped. Missing reports, selected skips, failures and cancellations fail
