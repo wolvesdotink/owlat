@@ -717,6 +717,8 @@ const {
 	healthScore: previewHealthScore,
 	validationIssues: previewValidationIssues,
 	emailDiff: previewEmailDiff,
+	diffRequested: previewDiffRequested,
+	htmlChanged: previewHtmlChanged,
 	regenerate: regeneratePreview,
 	regenerateHtml: regeneratePreviewHtml,
 	togglePreviewMode,
@@ -1265,10 +1267,12 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				:health-score="previewHealthScore"
 				:validation-issues="previewValidationIssues"
 				:email-diff="previewEmailDiff"
+				:diff-available="previewHtmlChanged"
 				:render-options="renderOptions"
 				@update:render-options="renderOptions = $event"
 				@update:dark-mode="handlePreviewDarkMode"
 				@update:amp-requested="previewAmpRequested = $event"
+				@update:diff-requested="previewDiffRequested = $event"
 				@send-test="emit('send-test', previewHtml)"
 				@update:plain-text-override="emit('update:plainTextOverride', $event)"
 			/>

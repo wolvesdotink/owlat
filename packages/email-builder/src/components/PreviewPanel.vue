@@ -26,6 +26,8 @@ const props = defineProps<{
 	healthScore?: PreviewHealthScore | null;
 	validationIssues?: PreviewValidationIssue[];
 	emailDiff?: PreviewEmailDiff | null;
+	/** The diff is computed on request; see EmailPreviewer's `diffAvailable`. */
+	diffAvailable?: boolean;
 	renderOptions?: Partial<PreviewRenderOptions>;
 	darkMode?: boolean;
 }>();
@@ -36,6 +38,7 @@ const emit = defineEmits<{
 	(e: 'update:dark-mode', value: boolean): void;
 	(e: 'update:plain-text-override', value: string): void;
 	(e: 'update:amp-requested', value: boolean): void;
+	(e: 'update:diff-requested', value: boolean): void;
 }>();
 </script>
 
@@ -64,6 +67,7 @@ const emit = defineEmits<{
 			:health-score="props.healthScore"
 			:validation-issues="props.validationIssues"
 			:email-diff="props.emailDiff"
+			:diff-available="props.diffAvailable"
 			:render-options="props.renderOptions"
 			:dark-mode="props.darkMode"
 			:show-compatibility="true"
@@ -78,6 +82,7 @@ const emit = defineEmits<{
 			@update:dark-mode="emit('update:dark-mode', $event)"
 			@update:plain-text-override="emit('update:plain-text-override', $event)"
 			@update:amp-requested="emit('update:amp-requested', $event)"
+			@update:diff-requested="emit('update:diff-requested', $event)"
 		/>
 	</div>
 </template>
