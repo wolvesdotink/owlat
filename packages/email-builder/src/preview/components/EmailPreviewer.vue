@@ -36,9 +36,7 @@ import { applyClientSimulation, type SimulationResult } from '../clientSimulatio
 import { formatHtml } from '../formatHtml';
 import ClientSelector from './ClientSelector.vue';
 import DeviceFrame from './DeviceFrame.vue';
-import AnalysisPanel from './AnalysisPanel.vue';
-import RenderOptionsPanel from './RenderOptionsPanel.vue';
-import DiffPanel from './DiffPanel.vue';
+import { AnalysisPanel, RenderOptionsPanel, DiffPanel } from './lazyPanels';
 
 const props = withDefaults(
 	defineProps<{

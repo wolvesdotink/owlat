@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, afterEach } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { diffEmails } from '@owlat/email-renderer';
 import EmailPreviewer from '../EmailPreviewer.vue';
 import PreviewPanel from '../../../components/PreviewPanel.vue';
@@ -34,6 +34,12 @@ const mountPreviewer = (props: Record<string, unknown> = {}) => {
 const requests = (w: VueWrapper) =>
 	(w.emitted('update:diff-requested') ?? []).map(([value]) => value);
 
+/** The preview's panels load with their first render (lazyPanels.ts). */
+const settlePanels = async () => {
+	await vi.dynamicImportSettled();
+	await flushPromises();
+};
+
 const diffButton = (w: VueWrapper) => w.find('button[title="Compare changes"]');
 
 describe('EmailPreviewer — diff request signal', () => {
@@ -50,11 +56,14 @@ describe('EmailPreviewer — diff request signal', () => {
 
 		await diffButton(w).trigger('click');
 		expect(requests(w)).toEqual([true]);
+		// The panel loads lazily: let any chunk settle so its absence is real.
+		await settlePanels();
 		expect(w.find('.ep-diff-panel').exists()).toBe(false);
 
 		// The host answers the request; the panel shows exactly that diff.
 		const diff = diffEmails(before, after);
 		await w.setProps({ emailDiff: diff });
+		await settlePanels();
 		expect(w.find('.ep-diff-panel').exists()).toBe(true);
 		expect(w.find('.ep-diff-panel').text()).toContain(diff.changes[0]!.description);
 
