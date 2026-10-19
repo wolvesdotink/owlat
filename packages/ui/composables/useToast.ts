@@ -1,4 +1,5 @@
 import { generateId } from '@owlat/shared';
+import { isReadingTimeToast, startToastReadingTime } from './useToastReadingTime';
 
 /**
  * Toast notification composable
@@ -87,6 +88,21 @@ export function useToast() {
 		});
 
 		if (options?.onDismiss) dismissHandlers.set(id, options.onDismiss);
+
+		// An ordinary notification counts reading time instead: its budget pauses
+		// while the card is hovered or focused and while the page is hidden or
+		// unfocused (see useToastReadingTime). It takes over the lifetime, so the
+		// one-shot timer below sees a sticky toast. A toast with an action keeps
+		// that timer: pausing it would stretch the action's window.
+		if (isReadingTimeToast(options)) {
+			startToastReadingTime(
+				id,
+				options?.durationMs ?? DEFAULT_DURATIONS_MS[type],
+				() => removeToast(id),
+				() => toasts.value
+			);
+			options = { ...options, durationMs: 0 };
+		}
 
 		// Auto-dismiss after the resolved window. A non-positive or non-finite
 		// duration means "sticky" — leave it up until dismissed manually.

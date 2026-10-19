@@ -1,0 +1,17 @@
+{
+	"description": "A saved Block from before the envelope existed: one bare { type, content } object without an id.",
+	"field": "emailBlocks.content",
+	"stored": {
+		"type": "button",
+		"content": {
+			"text": "Read more",
+			"url": "https://example.com",
+			"backgroundColor": "#2563eb",
+			"textColor": "#ffffff",
+			"align": "center",
+			"borderRadius": 6,
+			"paddingX": 24,
+			"paddingY": 12
+		}
+	}
+}

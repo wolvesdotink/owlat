@@ -76,4 +76,66 @@ describe('perfTelemetry', () => {
 		expect(telemetry.isFirstView()).toBe(false);
 		expect(telemetry.landingRoute()).toBe('auth-login');
 	});
+
+	it('does no work at all without PostHog armed or a local trace', () => {
+		const currentRoute = vi.fn(() => 'dashboard');
+		telemetry.setLocalPerfSink(null, { currentRoute });
+		telemetry.reportPerf('owlat_boot_shell_ms', { duration_ms: 300 });
+
+		expect(currentRoute).not.toHaveBeenCalled();
+	});
+
+	it('hands every sample to a local trace while PostHog is absent', () => {
+		const local = vi.fn();
+		telemetry.setLocalPerfSink(local, { currentRoute: () => 'dashboard-postbox-folder' });
+		telemetry.reportPerf('owlat_boot_shell_ms', { duration_ms: 300 });
+
+		const send = vi.fn();
+		telemetry.setPerfSender(send);
+
+		expect(local.mock.calls).toEqual([
+			['owlat_boot_shell_ms', { route: 'dashboard-postbox-folder', duration_ms: 300 }],
+		]);
+		// Not armed: nothing waits for a PostHog sender.
+		expect(send).not.toHaveBeenCalled();
+	});
+
+	it('feeds both sinks when PostHog is armed and a local trace is on', () => {
+		const local = vi.fn();
+		const send = vi.fn();
+		telemetry.armPerfReporting({ currentRoute: () => 'dashboard' });
+		telemetry.setLocalPerfSink(local);
+		telemetry.setPerfSender(send);
+		telemetry.reportPerf('owlat_reader_open_ms', { duration_ms: 90 });
+
+		const sample = { route: 'dashboard', duration_ms: 90 };
+		expect(local).toHaveBeenCalledWith('owlat_reader_open_ms', sample);
+		expect(send).toHaveBeenCalledWith('owlat_reader_open_ms', sample);
+	});
+
+	it('stops feeding a local trace once its sink is removed', () => {
+		const local = vi.fn();
+		telemetry.setLocalPerfSink(local, { currentRoute: () => 'dashboard' });
+		telemetry.setLocalPerfSink(null);
+		telemetry.reportPerf('owlat_boot_shell_ms', { duration_ms: 300 });
+
+		expect(local).not.toHaveBeenCalled();
+	});
+
+	it('starts the shared page-load collection once, whichever sink asks first', () => {
+		const afterEach = vi.fn();
+		telemetry.startPerfCollection({ afterEach });
+		telemetry.startPerfCollection({ afterEach });
+
+		expect(afterEach).toHaveBeenCalledTimes(1);
+		const guard = afterEach.mock.calls[0]![0] as (
+			to: { name: unknown },
+			from: unknown,
+			failure?: unknown
+		) => void;
+		guard({ name: 'auth-login' }, {});
+		guard({ name: 'dashboard' }, {}, new Error('aborted'));
+		expect(telemetry.landingRoute()).toBe('auth-login');
+		expect(telemetry.isFirstView()).toBe(true);
+	});
 });

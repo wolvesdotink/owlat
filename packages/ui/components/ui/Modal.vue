@@ -10,17 +10,35 @@ interface Props {
 	title?: string;
 	size?: ModalSize;
 	closable?: boolean;
+	/**
+	 * What takes focus on open: a selector resolved inside the panel, or an
+	 * element. Without it (or when it cannot take focus) the first focusable
+	 * element does, which is the Close button whenever the dialog is closable.
+	 * Focus a child component already moved into the panel is kept.
+	 */
+	initialFocus?: string | HTMLElement | null;
 	persistent?: boolean;
 	/** Custom z-index for rendering above high-z elements like the email builder */
 	zIndex?: number;
+	/**
+	 * Id of the element that names the dialog, for a caller that draws its own
+	 * heading inside the body (ConfirmationDialog) instead of passing `title`,
+	 * which would add a second, visible header. Wins over `title`.
+	 */
+	labelledBy?: string;
+	/** Id of the element whose text describes the dialog (aria-describedby). */
+	describedBy?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	title: undefined,
 	size: 'md',
 	closable: true,
+	initialFocus: undefined,
 	persistent: false,
 	zIndex: undefined,
+	labelledBy: undefined,
+	describedBy: undefined,
 });
 
 const emit = defineEmits<{
@@ -49,6 +67,7 @@ const dialogRef = ref<HTMLElement | null>(null);
 // Unique per instance — the old hardcoded 'modal-title' produced duplicate
 // ids (and wrong aria-labelledby targets) whenever two modals stacked.
 const titleId = useId();
+const ariaLabelledby = computed(() => props.labelledBy ?? (props.title ? titleId : undefined));
 
 const close = () => {
 	if (props.closable) {
@@ -119,6 +138,12 @@ useModalFocus(
 	() => props.open,
 	() => {
 		if (dismissible.value) close();
+	},
+	{
+		initialFocus: () =>
+			typeof props.initialFocus === 'string'
+				? dialogRef.value?.querySelector<HTMLElement>(props.initialFocus)
+				: props.initialFocus,
 	}
 );
 </script>
@@ -140,9 +165,11 @@ useModalFocus(
 				-->
 				<div
 					ref="dialogRef"
+					tabindex="-1"
 					role="dialog"
 					aria-modal="true"
-					:aria-labelledby="title ? titleId : undefined"
+					:aria-labelledby="ariaLabelledby"
+					:aria-describedby="describedBy"
 					:class="[
 						'modal-panel bg-bg-elevated border border-border-subtle shadow-xl w-full flex flex-col max-h-[85dvh] rounded-t-2xl sm:rounded-2xl',
 						{ 'is-dragging': dragging },

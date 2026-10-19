@@ -1,0 +1,670 @@
+{
+	"description": "Every block type as the current editor writes it: full default content from the builder factories, nested Column, Container (with a Social item), Hero and accordion children, stored and dark image identities, a decorative image and a linked saved Block.",
+	"field": "emailTemplates.content",
+	"stored": [
+		{
+			"id": "cur-text",
+			"type": "text",
+			"content": {
+				"html": "<p>Hello {{first_name}}, here is the <strong>monthly</strong> update.</p>",
+				"blockType": "paragraph",
+				"fontSize": 16,
+				"textColor": "#374151",
+				"lineHeight": 1.5,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-image",
+			"type": "image",
+			"content": {
+				"src": "https://owlat.example/media/header.png",
+				"alt": "Owlat header",
+				"width": 100,
+				"align": "center",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0,
+				"storageId": "storage-cur-h",
+				"mediaAssetId": "media-cur-h",
+				"darkSrc": "https://owlat.example/media/header-dark.png",
+				"darkStorageId": "storage-cur-hd",
+				"darkMediaAssetId": "media-cur-hd",
+				"linkUrl": "https://example.com"
+			}
+		},
+		{
+			"id": "cur-button",
+			"type": "button",
+			"content": {
+				"text": "Open dashboard",
+				"url": "https://example.com/dashboard",
+				"backgroundColor": "#c4785a",
+				"textColor": "#12110e",
+				"align": "center",
+				"borderRadius": 8,
+				"paddingX": 24,
+				"paddingY": 12,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-divider",
+			"type": "divider",
+			"content": {
+				"color": "#282D3A",
+				"thickness": 1,
+				"width": 100,
+				"style": "solid",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-spacer",
+			"type": "spacer",
+			"content": {
+				"height": 20,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-columns",
+			"type": "columns",
+			"content": {
+				"columnCount": 2,
+				"ratio": "equal",
+				"mobileStacking": true,
+				"columns": [
+					[
+						{
+							"id": "cur-col-img",
+							"type": "image",
+							"content": {
+								"src": "https://owlat.example/media/product-a.png",
+								"alt": "Product A",
+								"width": 100,
+								"align": "center",
+								"storageId": "storage-cur-a",
+								"mediaAssetId": "media-cur-a"
+							}
+						},
+						{
+							"id": "cur-col-t",
+							"type": "text",
+							"content": {
+								"html": "<p>Product A</p>",
+								"blockType": "paragraph",
+								"fontSize": 14,
+								"textColor": "#374151",
+								"paddingTop": 16,
+								"paddingRight": 0,
+								"paddingBottom": 16,
+								"paddingLeft": 0,
+								"paddingLinked": false,
+								"marginTop": 0,
+								"marginRight": 0,
+								"marginBottom": 0,
+								"marginLeft": 0
+							}
+						},
+						{
+							"id": "cur-col-btn",
+							"type": "button",
+							"content": {
+								"text": "Buy A",
+								"url": "https://example.com/a",
+								"backgroundColor": "#c4785a",
+								"textColor": "#12110e",
+								"align": "center",
+								"borderRadius": 8,
+								"paddingX": 16,
+								"paddingY": 8,
+								"marginTop": 0,
+								"marginBottom": 0
+							}
+						}
+					],
+					[
+						{
+							"id": "cur-col-div",
+							"type": "divider",
+							"content": {
+								"color": "#282D3A",
+								"thickness": 1,
+								"width": 100,
+								"style": "solid"
+							}
+						},
+						{
+							"id": "cur-col-sp",
+							"type": "spacer",
+							"content": {
+								"height": 16
+							}
+						},
+						{
+							"id": "cur-col-t2",
+							"type": "text",
+							"content": {
+								"html": "<p>Product B</p>",
+								"blockType": "paragraph",
+								"fontSize": 14,
+								"textColor": "#374151",
+								"paddingTop": 16,
+								"paddingRight": 0,
+								"paddingBottom": 16,
+								"paddingLeft": 0,
+								"paddingLinked": false,
+								"marginTop": 0,
+								"marginRight": 0,
+								"marginBottom": 0,
+								"marginLeft": 0
+							}
+						}
+					]
+				],
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-social",
+			"type": "social",
+			"content": {
+				"links": [
+					{
+						"platform": "twitter",
+						"url": "https://example.com/x",
+						"enabled": true
+					},
+					{
+						"platform": "linkedin",
+						"url": "https://example.com/in",
+						"enabled": true
+					},
+					{
+						"platform": "youtube",
+						"url": "",
+						"enabled": false
+					}
+				],
+				"iconStyle": "filled",
+				"align": "center",
+				"iconSize": 64,
+				"iconSpacing": 12,
+				"iconColor": "#374151",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-container",
+			"type": "container",
+			"content": {
+				"items": [
+					{
+						"id": "cur-cont-t",
+						"type": "text",
+						"content": {
+							"html": "<p>Inside a container.</p>",
+							"blockType": "paragraph",
+							"fontSize": 14,
+							"textColor": "#374151",
+							"paddingTop": 16,
+							"paddingRight": 0,
+							"paddingBottom": 16,
+							"paddingLeft": 0,
+							"paddingLinked": false,
+							"marginTop": 0,
+							"marginRight": 0,
+							"marginBottom": 0,
+							"marginLeft": 0
+						}
+					},
+					{
+						"id": "cur-cont-img",
+						"type": "image",
+						"content": {
+							"src": "https://owlat.example/media/banner.png",
+							"alt": "",
+							"width": 100,
+							"align": "center",
+							"decorative": true
+						}
+					},
+					{
+						"id": "cur-cont-soc",
+						"type": "social",
+						"content": {
+							"links": [
+								{
+									"platform": "twitter",
+									"url": "https://example.com/x",
+									"enabled": true
+								},
+								{
+									"platform": "linkedin",
+									"url": "https://example.com/in",
+									"enabled": true
+								},
+								{
+									"platform": "youtube",
+									"url": "",
+									"enabled": false
+								}
+							],
+							"iconStyle": "filled",
+							"align": "center",
+							"iconSize": 64,
+							"iconSpacing": 12,
+							"iconColor": "#374151",
+							"paddingTop": 16,
+							"paddingRight": 24,
+							"paddingBottom": 16,
+							"paddingLeft": 24,
+							"paddingLinked": false,
+							"marginTop": 0,
+							"marginRight": 0,
+							"marginBottom": 0,
+							"marginLeft": 0
+						}
+					}
+				],
+				"maxWidth": 100,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0,
+				"borderWidth": 0,
+				"borderColor": "#e5e5e5",
+				"borderStyle": "solid",
+				"borderRadius": 8,
+				"backgroundColor": "#f9fafb"
+			}
+		},
+		{
+			"id": "cur-hero",
+			"type": "hero",
+			"content": {
+				"backgroundImage": "https://owlat.example/media/hero.png",
+				"backgroundPosition": "center",
+				"backgroundSize": "cover",
+				"height": 400,
+				"mode": "fixed-height",
+				"verticalAlign": "middle",
+				"items": [
+					{
+						"id": "cur-hero-t",
+						"type": "text",
+						"content": {
+							"html": "<h1>Spring update</h1>",
+							"blockType": "paragraph",
+							"fontSize": 14,
+							"textColor": "#ffffff",
+							"paddingTop": 16,
+							"paddingRight": 0,
+							"paddingBottom": 16,
+							"paddingLeft": 0,
+							"paddingLinked": false,
+							"marginTop": 0,
+							"marginRight": 0,
+							"marginBottom": 0,
+							"marginLeft": 0
+						}
+					},
+					{
+						"id": "cur-hero-btn",
+						"type": "button",
+						"content": {
+							"text": "Read more",
+							"url": "https://example.com/spring",
+							"backgroundColor": "#c4785a",
+							"textColor": "#12110e",
+							"align": "center",
+							"borderRadius": 8,
+							"paddingX": 16,
+							"paddingY": 8,
+							"marginTop": 0,
+							"marginBottom": 0
+						}
+					}
+				],
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-table",
+			"type": "table",
+			"content": {
+				"headers": ["Header 1", "Header 2", "Header 3"],
+				"rows": [
+					["Cell 1", "Cell 2", "Cell 3"],
+					["Cell 4", "Cell 5", "Cell 6"]
+				],
+				"headerBackgroundColor": "#f5f5f5",
+				"headerTextColor": "#333333",
+				"borderColor": "#e0e0e0",
+				"striped": true,
+				"stripeColor": "#fafafa",
+				"cellPadding": 8,
+				"textAlign": "left",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-rawhtml",
+			"type": "rawHtml",
+			"content": {
+				"html": "<table role=\"presentation\"><tr><td>Custom row</td></tr></table>",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-video",
+			"type": "video",
+			"content": {
+				"thumbnailUrl": "https://owlat.example/media/video-thumb.png",
+				"videoUrl": "https://example.com/video",
+				"alt": "Video",
+				"width": 100,
+				"align": "center",
+				"playButtonColor": "rgba(255,255,255,0.9)",
+				"playButtonSize": 64,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-accordion",
+			"type": "accordion",
+			"content": {
+				"sections": [
+					{
+						"id": "sec-cur-1",
+						"title": "Shipping",
+						"items": [
+							{
+								"id": "cur-acc-t1",
+								"type": "text",
+								"content": {
+									"html": "<p>Orders ship within two days.</p>",
+									"blockType": "paragraph",
+									"fontSize": 14,
+									"textColor": "#374151",
+									"paddingTop": 16,
+									"paddingRight": 0,
+									"paddingBottom": 16,
+									"paddingLeft": 0,
+									"paddingLinked": false,
+									"marginTop": 0,
+									"marginRight": 0,
+									"marginBottom": 0,
+									"marginLeft": 0
+								}
+							}
+						]
+					},
+					{
+						"id": "sec-cur-2",
+						"title": "Returns",
+						"items": [
+							{
+								"id": "cur-acc-t2",
+								"type": "text",
+								"content": {
+									"html": "<p>Returns are free for 30 days.</p>",
+									"blockType": "paragraph",
+									"fontSize": 14,
+									"textColor": "#374151",
+									"paddingTop": 16,
+									"paddingRight": 0,
+									"paddingBottom": 16,
+									"paddingLeft": 0,
+									"paddingLinked": false,
+									"marginTop": 0,
+									"marginRight": 0,
+									"marginBottom": 0,
+									"marginLeft": 0
+								}
+							}
+						]
+					}
+				],
+				"allowMultiple": false,
+				"initialExpanded": 0,
+				"headerBackgroundColor": "#f5f5f5",
+				"headerTextColor": "#333333",
+				"headerFontSize": 16,
+				"contentBackgroundColor": "#ffffff",
+				"iconColor": "#666666",
+				"sectionBorderColor": "#e0e0e0",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-menu",
+			"type": "menu",
+			"content": {
+				"items": [
+					{
+						"label": "Home",
+						"url": "https://example.com"
+					},
+					{
+						"label": "Blog",
+						"url": "https://example.com/blog"
+					}
+				],
+				"align": "center",
+				"fontSize": 14,
+				"textColor": "#374151",
+				"separator": "|",
+				"separatorColor": "#cccccc",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-carousel",
+			"type": "carousel",
+			"content": {
+				"images": [
+					{
+						"src": "https://owlat.example/media/slide-1.png",
+						"alt": "Slide one",
+						"linkUrl": "https://example.com/1"
+					},
+					{
+						"src": "https://owlat.example/media/slide-2.png",
+						"alt": "Slide two",
+						"thumbnailSrc": "https://owlat.example/media/slide-2-thumb.png"
+					}
+				],
+				"iconWidth": 12,
+				"iconColor": "#c4785a",
+				"iconInactiveColor": "#cccccc",
+				"thumbnailWidth": 0,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-list",
+			"type": "list",
+			"content": {
+				"items": ["First item", "Second item", "Third item"],
+				"listType": "bullet",
+				"bulletColor": "#374151",
+				"fontSize": 16,
+				"textColor": "#374151",
+				"itemSpacing": 6,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-progress",
+			"type": "progressBar",
+			"content": {
+				"value": 70,
+				"barColor": "#c4785a",
+				"trackColor": "#e0e0e0",
+				"height": 20,
+				"borderRadius": 10,
+				"showLabel": true,
+				"labelPosition": "right",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "cur-linked",
+			"type": "text",
+			"content": {
+				"html": "<p>Owlat Example · 1 Example Street</p>",
+				"blockType": "paragraph",
+				"fontSize": 12,
+				"textColor": "#374151",
+				"lineHeight": 1.5,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			},
+			"savedBlockRef": {
+				"blockId": "saved-block-footer",
+				"groupId": "group-cur-1",
+				"blockName": "Footer"
+			}
+		}
+	]
+}

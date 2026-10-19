@@ -90,6 +90,10 @@
 				"server/**/*.ts",
 				"e2e/**/*.ts",
 				"scripts/**",
+				// The performance runner and its fixture page (loaded from
+				// perf/fixture/index.html, which knip does not read).
+				"perf/run.ts",
+				"perf/fixture/main.ts",
 				"i18n/**/*.ts",
 				"service-worker/**/*.js",
 			],

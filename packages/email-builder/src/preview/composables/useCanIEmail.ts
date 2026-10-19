@@ -13,6 +13,9 @@ interface CachedData {
 const cachedData = shallowRef<CachedData | null>(null);
 const isLoading = ref(false);
 const error = ref<Error | null>(null);
+// The network load in flight, shared so concurrent callers wait for the same
+// response instead of returning before the data has arrived.
+let inFlight: Promise<void> | null = null;
 
 /**
  * Composable for fetching and managing caniemail.com data
@@ -40,6 +43,8 @@ export function useCanIEmail(): {
 	 * Fetch data from caniemail.com API with caching
 	 */
 	async function fetchData(): Promise<void> {
+		if (inFlight) return inFlight;
+
 		error.value = null;
 
 		// Check cache validity
@@ -61,8 +66,13 @@ export function useCanIEmail(): {
 			// Ignore localStorage errors
 		}
 
-		if (isLoading.value) return;
+		inFlight = loadFromApi().finally(() => {
+			inFlight = null;
+		});
+		return inFlight;
+	}
 
+	async function loadFromApi(): Promise<void> {
 		isLoading.value = true;
 
 		try {

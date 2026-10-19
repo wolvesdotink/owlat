@@ -13,6 +13,10 @@ export default defineConfig({
 			// Node-side helpers of the Playwright suite (the seed call, the report
 			// secret scan), not the browser specs themselves.
 			'e2e/**/__tests__/**/*.test.ts',
+			// The performance scenarios' pure parts (workload limits, statistics,
+			// report); the browser scenarios themselves run only through
+			// `perf:scenarios`, never in this suite.
+			'perf/**/__tests__/**/*.test.ts',
 		],
 		environment: 'happy-dom',
 		setupFiles: ['app/__tests__/setup.ts'],

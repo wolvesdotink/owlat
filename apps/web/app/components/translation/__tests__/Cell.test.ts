@@ -5,7 +5,7 @@
  * with real key events, for empty and filled cells and for plain-text and HTML
  * rows.
  */
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import TranslationCell from '../Cell.vue';
@@ -88,6 +88,82 @@ describe.each(CASES)('$name', ({ value, isHtml }) => {
 		await nextTick();
 
 		expect(w.emitted('save')).toEqual([['Neu']]);
+		expect(document.activeElement).toBe(entry(w).element);
+	});
+});
+
+/**
+ * Plan item OW-033: while an input method composes, its Escape cancels the
+ * candidate and its Enter confirms it. Neither is the cell's to act on, so the
+ * editor stays open, nothing is saved and the key's default is left alone.
+ * Safari sends the confirming Enter after compositionend with only keyCode 229.
+ */
+describe('TranslationCell during IME composition', () => {
+	async function openEditor(text: string) {
+		const w = mountCell({ value: 'Hallo' });
+		await entry(w).trigger('click');
+		await nextTick();
+		await w.get('textarea').setValue(text);
+		return w;
+	}
+
+	function press(w: VueWrapper, init: KeyboardEventInit) {
+		const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+		w.get('textarea').element.dispatchEvent(event);
+		return event;
+	}
+
+	it.each([
+		['Escape with isComposing', { key: 'Escape', isComposing: true }],
+		['Escape with keyCode 229', { key: 'Escape', keyCode: 229 }],
+		['Ctrl+Enter with isComposing', { key: 'Enter', ctrlKey: true, isComposing: true }],
+		['Ctrl+Enter with keyCode 229', { key: 'Enter', ctrlKey: true, keyCode: 229 }],
+		['Cmd+Enter with keyCode 229', { key: 'Enter', metaKey: true, keyCode: 229 }],
+	])('ignores %s', async (_name, init) => {
+		const w = await openEditor('こんにちは');
+		const outer = vi.fn();
+		document.body.addEventListener('keydown', outer);
+		try {
+			const event = press(w, init);
+			await nextTick();
+			await nextTick();
+
+			expect(event.defaultPrevented).toBe(false);
+			// The IME's Escape still reaches a dialog's own guard around the cell.
+			expect(outer).toHaveBeenCalledTimes(1);
+		} finally {
+			document.body.removeEventListener('keydown', outer);
+		}
+		expect(w.find('textarea').exists()).toBe(true);
+		expect((w.get('textarea').element as HTMLTextAreaElement).value).toBe('こんにちは');
+		expect(w.emitted('save')).toBeUndefined();
+	});
+
+	it('saves on Ctrl+Enter once the composition is over', async () => {
+		const w = await openEditor('こんにちは');
+		press(w, { key: 'Enter', ctrlKey: true, keyCode: 229 });
+		await nextTick();
+		expect(w.emitted('save')).toBeUndefined();
+
+		const event = press(w, { key: 'Enter', ctrlKey: true });
+		await nextTick();
+		await nextTick();
+		expect(event.defaultPrevented).toBe(true);
+		expect(w.emitted('save')).toEqual([['こんにちは']]);
+		expect(w.find('textarea').exists()).toBe(false);
+	});
+
+	it('cancels on Escape once the composition is over', async () => {
+		const w = await openEditor('こんにちは');
+		press(w, { key: 'Escape', isComposing: true });
+		await nextTick();
+		expect(w.find('textarea').exists()).toBe(true);
+
+		press(w, { key: 'Escape' });
+		await nextTick();
+		await nextTick();
+		expect(w.find('textarea').exists()).toBe(false);
+		expect(w.emitted('save')).toBeUndefined();
 		expect(document.activeElement).toBe(entry(w).element);
 	});
 });

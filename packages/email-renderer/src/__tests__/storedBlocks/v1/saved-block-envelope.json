@@ -1,0 +1,42 @@
+{
+	"description": "A saved Block in the { blocks } envelope the saved-block editor writes.",
+	"field": "emailBlocks.content",
+	"stored": {
+		"blocks": [
+			{
+				"id": "sb-hdr",
+				"type": "container",
+				"content": {
+					"items": [
+						{
+							"id": "sb-hdr-t",
+							"type": "text",
+							"content": {
+								"html": "Owlat Example",
+								"blockType": "h1",
+								"fontSize": 32,
+								"textColor": "#ffffff",
+								"lineHeight": 1.3
+							}
+						}
+					],
+					"maxWidth": 100,
+					"paddingTop": 24,
+					"paddingRight": 24,
+					"paddingBottom": 24,
+					"paddingLeft": 24,
+					"paddingLinked": true,
+					"marginTop": 0,
+					"marginRight": 0,
+					"marginBottom": 0,
+					"marginLeft": 0,
+					"borderWidth": 0,
+					"borderColor": "#e5e5e5",
+					"borderStyle": "solid",
+					"borderRadius": 8,
+					"backgroundColor": "#1f2937"
+				}
+			}
+		]
+	}
+}

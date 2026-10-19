@@ -301,3 +301,19 @@ export function resetSharedConvexSubscriptions(): void {
 	// Deleting the entry being visited is safe while iterating a Map.
 	for (const entry of sharedEntries.values()) detach(entry);
 }
+
+/**
+ * How many shared queries are open right now: `active` ones have an owner,
+ * `lingering` ones wait out their linger (`lingeringBody` of them carry
+ * message bodies). Detached entries that still serve their last owners are not
+ * in the registry and not counted. Read by the local performance trace.
+ */
+export function sharedSubscriptionCounts(): {
+	active: number;
+	lingering: number;
+	lingeringBody: number;
+} {
+	let active = 0;
+	for (const entry of sharedEntries.values()) if (entry.listeners.size > 0) active += 1;
+	return { active, lingering: lingering.size, lingeringBody: lingeringBodies.size };
+}

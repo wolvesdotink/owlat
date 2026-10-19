@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TranslationCellStatus } from '~/composables/useTranslationDrafts';
+import { isImeComposing } from '~/utils/imeComposition';
 
 interface Props {
 	value: string;
@@ -94,6 +95,8 @@ const cancelEdit = () => {
 };
 
 const handleKeydown = (e: KeyboardEvent) => {
+	// An input method owns this keystroke (confirming or cancelling a candidate).
+	if (isImeComposing(e)) return;
 	if (e.key === 'Escape') {
 		// The cell owns this Escape; a dialog or drawer around it must not close.
 		e.stopPropagation();

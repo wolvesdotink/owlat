@@ -4540,6 +4540,7 @@
 				"failed": "Fehlgeschlagen",
 				"largeWarning": "Große Anhänge können unzustellbar sein — teile übergroße Dateien besser als Link.",
 				"percent": "{value} %",
+				"queued": "Wartet",
 				"remove": "{filename} entfernen",
 				"retry": "{filename} erneut versuchen",
 				"retryTitle": "Upload erneut versuchen",
@@ -7265,6 +7266,7 @@
 					"remove": "{file} entfernen",
 					"retry": "Erneut versuchen",
 					"cancelUpload": "Upload von {file} abbrechen",
+					"queued": "Wartet",
 					"hold": {
 						"uploading": "Senden wartet, bis der Upload fertig ist.",
 						"copying": "Senden wartet, bis die Datei kopiert ist.",
@@ -9992,6 +9994,7 @@
 						"integrationsTitle": "Integrationen"
 					},
 					"loadMore": "Mehr laden",
+					"noEmail": "Keine E-Mail",
 					"noResults": {
 						"description": "Keine Kontakte passen zu „{query}“. Versuche einen anderen Suchbegriff.",
 						"title": "Keine Ergebnisse gefunden"
@@ -10018,6 +10021,8 @@
 					"subtitle": "Menschen, die dein Team kennt, und ihre letzten Aktivitäten",
 					"table": {
 						"created": "Erstellt",
+						"createdSortHint": "Kontakte nach Erstelldatum sortieren",
+						"createdSortSearchHint": "Suchergebnisse sind nach Relevanz sortiert",
 						"firstName": "Vorname",
 						"lastName": "Nachname"
 					},
@@ -10027,7 +10032,8 @@
 						"created": "Kontakt {email} wurde erstellt",
 						"emailCopied": "E-Mail-Adresse kopiert",
 						"imported": "{count} Kontakt erfolgreich verarbeitet | {count} Kontakte erfolgreich verarbeitet"
-					}
+					},
+					"unnamedContact": "Unbenannter Kontakt"
 				}
 			},
 			"segments": {
@@ -15545,7 +15551,9 @@
 				"tooLarge": "{filename} ist zu groß (max. {max} MB).",
 				"tooManyFiles": "Du kannst bis zu {count} Dateien anhängen.",
 				"totalTooLarge": "Die Anhänge überschreiten das Gesamtlimit von {max} MB.",
-				"uploadFailed": "{filename} konnte nicht hochgeladen werden."
+				"uploadFailed": "{filename} konnte nicht hochgeladen werden.",
+				"uploadQueueEmpty": "Keine Dateien warten mehr auf den Upload",
+				"uploadQueued": "{count} Datei wartet auf den Upload | {count} Dateien warten auf den Upload"
 			},
 			"usePostboxComposerKeys": {
 				"schedule": "Senden planen (Strg+Umschalt+Enter)",
