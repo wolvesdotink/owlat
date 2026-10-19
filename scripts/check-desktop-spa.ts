@@ -23,7 +23,7 @@
  *
  * Usage: bun scripts/check-desktop-spa.ts [path/to/dist]
  *   (defaults to tauri.conf.json's frontendDist; run `bun run generate:desktop`
- *   in apps/web first). CI: .github/workflows/desktop-spa.yml.
+ *   in apps/web first). CI: the desktop-spa job in .github/workflows/test.yml.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -151,7 +151,8 @@ function integrityMatches(integrity: string, file: string): boolean {
 
 let entries = 0;
 let verifiedIntegrity = 0;
-let buildId: string | undefined;
+const buildIds = new Map<string, string>();
+let buildAssetsDir: string | undefined;
 let manifestLink: { ref: string; from: string } | undefined;
 
 const pages = files.filter((file) => file.endsWith('.html'));
@@ -177,7 +178,9 @@ for (const page of pages) {
 		const map = JSON.parse(match[1] as string) as { imports?: Record<string, string> };
 		for (const target of Object.values(map.imports ?? {})) reference(target, page);
 	}
-	buildId ??= /\bbuildId:"([^"]+)"/.exec(html)?.[1];
+	const buildId = /\bbuildId:"([^"]+)"/.exec(html)?.[1];
+	if (buildId) buildIds.set(page, buildId);
+	buildAssetsDir ??= /\bbuildAssetsDir:"([^"]+)"/.exec(html)?.[1];
 }
 if (entries === 0) problem('no page loads a module script; the build has no entry');
 
@@ -193,28 +196,45 @@ if (manifestLink) {
 	}
 }
 
-// Nuxt's app manifest: the client fetches builds/meta/<buildId>.json at boot.
-const latest = join(dist, '_nuxt/builds/latest.json');
-if (isFile(latest)) {
+// Nuxt's app manifest: at boot the client fetches builds/meta/<buildId>.json
+// for the build id in its page, and builds/latest.json to spot a newer build.
+// Both are required, and checked independently of each other.
+const assetsDir = `/${(buildAssetsDir ?? '/_nuxt/').replace(/^\/+|\/+$/g, '')}/`;
+const pageBuilds = new Set(buildIds.values());
+if (pageBuilds.size === 0) problem('no page carries a Nuxt buildId');
+if (pageBuilds.size > 1) problem(`the pages carry ${pageBuilds.size} different build ids`);
+for (const [page, id] of buildIds) reference(`${assetsDir}builds/meta/${id}.json`, page);
+const latest = join(dist, `${assetsDir}builds/latest.json`);
+if (!isFile(latest)) {
+	problem(`${show(latest)} is missing`);
+} else {
 	const { id } = JSON.parse(readFileSync(latest, 'utf8')) as { id?: string };
-	if (buildId && id !== buildId)
-		problem(`_nuxt/builds/latest.json is build ${id}, the pages are ${buildId}`);
-	if (id) reference(`/_nuxt/builds/meta/${id}.json`, latest);
+	if (!id || !pageBuilds.has(id)) {
+		problem(`${show(latest)} is build ${id}, the pages are ${[...pageBuilds].join(', ')}`);
+	}
 }
 
 /**
  * Sibling-file references inside a chunk: `import("./x.js")`, `from "./x.js"`,
- * Vite's `__vite__mapDeps` preload lists and the build-assets-dir paths.
+ * Vite's `__vite__mapDeps` preload lists and build-assets-dir paths. The whole
+ * string literal is captured, query and fragment included, and `localTarget`
+ * strips those; a literal counts as a file reference when its path ends in an
+ * asset extension. Template literals with a `${}` hole are computed, not files.
  */
-const JS_REFERENCE =
-	/["'`]((?:\.{1,2}\/|\/_nuxt\/)[\w\-./]+?\.(?:m?js|css|json|wasm|woff2?|ttf|otf|png|svg|jpe?g|webp|gif|avif))["'`]/g;
+const assetsDirPattern = assetsDir.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&');
+const JS_REFERENCE = new RegExp(
+	`["'\`]((?:\\.{1,2}/|${assetsDirPattern})[^"'\`\\s\\\\]*)["'\`]`,
+	'g'
+);
+const ASSET_PATH = /\.(?:m?js|css|json|wasm|woff2?|ttf|otf|png|svg|jpe?g|webp|gif|avif)$/;
 const CSS_REFERENCE = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"']*))\s*\)|@import\s+["']([^"']+)["']/g;
 
 while (queue.length > 0) {
 	const file = queue.shift() as string;
 	if (/\.m?js$/.test(file)) {
 		for (const match of readFileSync(file, 'utf8').matchAll(JS_REFERENCE)) {
-			reference(match[1] as string, file);
+			const ref = match[1] as string;
+			if (!ref.includes('${') && ASSET_PATH.test(ref.replace(/[?#].*$/, ''))) reference(ref, file);
 		}
 	} else if (file.endsWith('.css')) {
 		for (const match of readFileSync(file, 'utf8').matchAll(CSS_REFERENCE)) {

@@ -173,26 +173,106 @@ describe('the desktop invoke contract gate', () => {
 		]);
 	});
 
-	it('fails closed on uses of invoke it cannot follow', async () => {
+	it('reports every use of invoke other than a direct call as untraceable', async () => {
 		const result = await check({
-			[WINDOW]: `${IMPORT}export const bridge = { invoke };\nexport const alias = invoke;\ninvoke('zoom_level');\n`,
+			[WINDOW]: `${IMPORT}export const bridge = { invoke };\nexport const alias = invoke;\ninvoke('zoom_level');\nexport { invoke };\nexport { invoke as call };\n`,
 			'apps/desktop/src/reexport.ts': "export { invoke } from '@tauri-apps/api/core';\n",
 			'apps/desktop/src/star.ts': "export * from '@tauri-apps/api/core';\n",
+			'apps/desktop/src/default.ts': "import core from '@tauri-apps/api/core';\n",
+			'apps/desktop/src/ns.ts':
+				"import * as core from '@tauri-apps/api/core';\nconst { invoke } = core;\ncore['invoke']('zoom_level');\nexport const n = core;\nconst c = core.Channel;\n",
 			'apps/web/app/promise.ts':
 				"import('@tauri-apps/api/core').then((m) => m.invoke('zoom_level'));\n",
+			'apps/web/app/global.ts':
+				"const { invoke } = window.__TAURI_INTERNALS__;\nwindow.__TAURI_INTERNALS__['invoke']('zoom_level');\nconst t = window.__TAURI__;\nconst i = (globalThis as any).__TAURI_INTERNALS__.invoke;\nexport const ok = typeof window.__TAURI__;\n",
+		});
+		const untraceable = (at: string, what: string) => `${at}  untraceable invoke use: ${what}`;
+		expect(result.problems).toEqual([
+			untraceable('apps/desktop/src/default.ts:1', 'default import of @tauri-apps/api/core'),
+			untraceable(
+				'apps/desktop/src/ns.ts:2',
+				'the @tauri-apps/api/core namespace core used as a value'
+			),
+			untraceable(
+				'apps/desktop/src/ns.ts:3',
+				'the @tauri-apps/api/core namespace core used as a value'
+			),
+			untraceable(
+				'apps/desktop/src/ns.ts:4',
+				'the @tauri-apps/api/core namespace core used as a value'
+			),
+			untraceable('apps/desktop/src/reexport.ts:1', 're-export from @tauri-apps/api/core'),
+			untraceable('apps/desktop/src/star.ts:1', 're-export from @tauri-apps/api/core'),
+			untraceable(`${WINDOW}:2`, 'invoke (invoke) is not called directly'),
+			untraceable(`${WINDOW}:3`, 'invoke (invoke) is not called directly'),
+			untraceable(`${WINDOW}:5`, 'invoke (invoke) is not called directly'),
+			untraceable(`${WINDOW}:6`, 'invoke (invoke) is not called directly'),
+			untraceable(
+				'apps/web/app/global.ts:1',
+				'__TAURI_INTERNALS__ used other than as __TAURI_INTERNALS__.invoke(...)'
+			),
+			untraceable(
+				'apps/web/app/global.ts:2',
+				'__TAURI_INTERNALS__ used other than as __TAURI_INTERNALS__.invoke(...)'
+			),
+			untraceable('apps/web/app/global.ts:3', '__TAURI__ used other than as __TAURI__.invoke(...)'),
+			untraceable('apps/web/app/global.ts:4', '__TAURI_INTERNALS__.invoke is not called directly'),
+			untraceable('apps/web/app/global.ts:5', '__TAURI__ used other than as __TAURI__.invoke(...)'),
+			untraceable(
+				'apps/web/app/promise.ts:1',
+				"import('@tauri-apps/api/core') consumed some other way"
+			),
+		]);
+	});
+
+	it('accepts the direct global calls and checks their names', async () => {
+		const result = await check({
+			'apps/web/app/global.ts':
+				"window['__TAURI_INTERNALS__'].invoke('nope_a');\nwindow.__TAURI__.core.invoke('zoom_level');\nexport const inApp = '__TAURI_INTERNALS__' in window;\n",
 		});
 		expect(result.problems).toEqual([
-			'apps/desktop/src/reexport.ts:1  re-exports invoke from @tauri-apps/api/core',
-			'apps/desktop/src/star.ts:1  re-exports invoke from @tauri-apps/api/core',
-			`${WINDOW}:2  invoke used as a value; call it with a command name`,
-			`${WINDOW}:3  invoke used as a value; call it with a command name`,
-			"apps/web/app/promise.ts:1  cannot follow this import('@tauri-apps/api/core')",
+			`apps/web/app/global.ts:1  invoke('nope_a') is not a command in ${IPC_COMMANDS_FILE}`,
 		]);
+		expect(result.calls).toEqual([
+			'apps/web/app/global.ts:1 nope_a',
+			'apps/web/app/global.ts:2 zoom_level',
+		]);
+	});
+
+	it('leaves plugin commands to the plugin ACL, but needs the plugin granted', async () => {
+		const capability = JSON.stringify({
+			windows: ['main'],
+			permissions: ['notification:default', 'core:default'],
+		});
+		const result = await check({
+			'apps/desktop/src-tauri/capabilities/default.json': capability,
+			[WINDOW]: `${IMPORT}invoke('plugin:notification|is_permission_granted');\ninvoke('plugin:window|set_title');\ninvoke('plugin:store|load');\ninvoke('plugin:notification');\n`,
+		});
+		expect(result.problems).toEqual([
+			`${WINDOW}:4  invoke('plugin:store|load'): no capability grants the store plugin`,
+			`${WINDOW}:5  invoke('plugin:notification') is not a plugin:<plugin>|<command> name`,
+		]);
+	});
+
+	it('passes a plugin command granted by the real capability files', async () => {
+		const root = await fixture({
+			[WINDOW]: `${IMPORT}invoke('plugin:notification|is_permission_granted');\n`,
+		});
+		await cp(
+			join(REPOSITORY_ROOT, 'apps/desktop/src-tauri/capabilities'),
+			join(root, 'apps/desktop/src-tauri/capabilities'),
+			{ recursive: true }
+		);
+		const result = await checkDesktopInvokeContract({ root, mainWindowModules: [] });
+		expect(result.problems).toEqual([]);
+		expect(result.calls).toEqual([`${WINDOW}:2 plugin:notification|is_permission_granted`]);
 	});
 
 	it('ignores tests, type-only uses and non-invoke imports', async () => {
 		const result = await check({
 			[WINDOW]: `${IMPORT}import { Channel } from '@tauri-apps/api/core';\ntype Invoke = typeof invoke;\nexport const c = new Channel();\ninvoke('zoom_level');\n`,
+			'apps/desktop/src/types.ts':
+				"import type { invoke } from '@tauri-apps/api/core';\ninterface Window { __TAURI_INTERNALS__: unknown }\nexport type T = typeof invoke;\n",
 			'apps/desktop/src/__tests__/window.test.ts': `${IMPORT}invoke('not_real');\n`,
 			'apps/web/app/x.test.ts': `${IMPORT}invoke('not_real');\n`,
 		});

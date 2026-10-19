@@ -122,6 +122,41 @@ describe('the desktop SPA gate', () => {
 		expect(result.status).toBe(1);
 	});
 
+	it('requires both Nuxt app manifests, each on its own', () => {
+		const gone = run(
+			build({ '_nuxt/builds/latest.json': null, '_nuxt/builds/meta/b1.json': null })
+		);
+		expect(gone.output).toContain('_nuxt/builds/latest.json is missing');
+		expect(gone.output).toContain(
+			'_nuxt/builds/meta/b1.json is missing, linked as /_nuxt/builds/meta/b1.json (in dashboard/index.html and 1 more)'
+		);
+		expect(gone.status).toBe(1);
+
+		const latestOnly = run(build({ '_nuxt/builds/latest.json': null }));
+		expect(latestOnly.output).toContain('_nuxt/builds/latest.json is missing');
+		expect(latestOnly.output).not.toContain('meta/b1.json is missing');
+		expect(latestOnly.status).toBe(1);
+	});
+
+	it('follows chunk references that carry a query string or fragment', () => {
+		const result = run(
+			build({
+				'_nuxt/entry.js': `${ENTRY}import("./versioned.js?v=1");import("./anchored.js#x");import("./lazy.js?v=2");\n`,
+			})
+		);
+		expect(result.output).toContain('_nuxt/versioned.js is missing, linked as ./versioned.js?v=1');
+		expect(result.output).toContain('_nuxt/anchored.js is missing, linked as ./anchored.js#x');
+		expect(result.output).not.toContain('lazy.js is missing');
+		expect(result.status).toBe(1);
+	});
+
+	it('does not read a computed template literal as a file', () => {
+		const result = run(
+			build({ '_nuxt/entry.js': `${ENTRY}const n="x";import(\`./\${n}.js\`);\n` })
+		);
+		expect(result.status).toBe(0);
+	});
+
 	it('fails when an asset does not match the integrity hash the page carries', () => {
 		const result = run(
 			build({}, (files) => ({
@@ -148,6 +183,7 @@ describe('the desktop SPA gate', () => {
 		);
 		expect(result.output).toContain('../../secret.svg points outside the bundle');
 		expect(result.output).toContain('no page loads a module script');
+		expect(result.output).toContain('no page carries a Nuxt buildId');
 		expect(result.status).toBe(1);
 	});
 

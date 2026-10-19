@@ -21,11 +21,19 @@
  *   command (PROVISIONING_COMMANDS / DEV_PROVISIONING_COMMANDS; the capability
  *   files grant those to `main` alone), or
  * - a call's command name is not a string literal and has no entry in
- *   DYNAMIC_INVOKES naming the commands it can take.
+ *   DYNAMIC_INVOKES naming the commands it can take, or
+ * - `invoke` is used in any way other than a direct call (the rule and its
+ *   limits are in scripts/desktop-invoke-scan.ts): every binding or reference
+ *   that can reach the core `invoke` or the `__TAURI_INTERNALS__` /
+ *   `__TAURI__` globals must be called directly; exporting it, destructuring
+ *   it from a namespace or global, element access, assignment or passing it as
+ *   a value is an "untraceable invoke use". A scan that finds no calls at all
+ *   fails too.
  *
- * It fails closed on anything it cannot read: `invoke` passed around as a
- * value, re-exported, or reached through a namespace it cannot follow is a
- * finding, not a skip, and so is a scan that finds no calls at all.
+ * Plugin commands (`plugin:<plugin>|<command>`, what the @tauri-apps/plugin-*
+ * packages send) are not app commands: the plugin's own ACL authorises them.
+ * The gate only checks that some capability file grants that plugin anything,
+ * and does not check them against ipc_commands.rs.
  *
  * Run by `bun run lint:desktop-invoke`, and from `ci:lint` / `ci:verify`.
  * Exercised by `scripts/__tests__/check-desktop-invoke-contract.test.ts`.
@@ -34,6 +42,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { CORE_MODULE, scanFile, TAURI_GLOBAL_PATTERN, vueScript } from './desktop-invoke-scan';
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -42,7 +51,13 @@ export const IPC_COMMANDS_FILE = 'apps/desktop/src-tauri/src/ipc_commands.rs';
 /** Where JS that can reach the Tauri IPC lives: the bridge and the web app. */
 export const SCAN_DIRS: readonly string[] = ['apps/desktop/src', 'apps/web/app'];
 
-const CORE_MODULE = '@tauri-apps/api/core';
+const CAPABILITY_DIRS = [
+	'apps/desktop/src-tauri/capabilities',
+	'apps/desktop/src-tauri/capabilities-dev',
+];
+
+/** `plugin:<plugin>|<command>`: a plugin command, authorised by the plugin's ACL. */
+const PLUGIN_COMMAND = /^plugin:([a-z0-9-]+)\|([a-z0-9_-]+)$/;
 
 /**
  * Bridge modules only the main window loads, so they may call the
@@ -139,174 +154,49 @@ async function collect(root: string, dir: string, out: string[]): Promise<void> 
 }
 
 /**
- * A `.vue` file with everything outside its `<script>` blocks blanked, newlines
- * kept, so offsets and line numbers still match the file.
+ * Tauri's core plugins: their permissions are `core:<plugin>:*`, and
+ * `core:default` grants each one's default set.
  */
-function vueScript(text: string): string {
-	const keep = new Uint8Array(text.length);
-	for (const match of text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
-		const start = match.index + match[0].indexOf('>') + 1;
-		keep.fill(1, start, start + (match[1] as string).length);
+const CORE_PLUGINS = new Set([
+	'app',
+	'event',
+	'image',
+	'menu',
+	'path',
+	'resources',
+	'tray',
+	'webview',
+	'window',
+]);
+
+/** Every permission any capability file grants (release and dev). */
+async function capabilityPermissions(root: string): Promise<Set<string>> {
+	const permissions = new Set<string>();
+	for (const dir of CAPABILITY_DIRS) {
+		let names: string[];
+		try {
+			names = await readdir(join(root, dir));
+		} catch {
+			continue;
+		}
+		for (const name of names.filter((n) => n.endsWith('.json'))) {
+			const json = JSON.parse(await readFile(join(root, dir, name), 'utf8')) as {
+				permissions?: (string | { identifier?: string })[];
+			};
+			for (const entry of json.permissions ?? []) {
+				const id = typeof entry === 'string' ? entry : entry.identifier;
+				if (id) permissions.add(id);
+			}
+		}
 	}
-	let out = '';
-	for (let i = 0; i < text.length; i += 1) {
-		const char = text[i] as string;
-		out += keep[i] || char === '\n' ? char : ' ';
-	}
-	return out;
+	return permissions;
 }
 
-function isCoreImport(node: ts.Node): node is ts.CallExpression {
-	return (
-		ts.isCallExpression(node) &&
-		node.expression.kind === ts.SyntaxKind.ImportKeyword &&
-		node.arguments.length === 1 &&
-		ts.isStringLiteralLike(node.arguments[0] as ts.Expression) &&
-		(node.arguments[0] as ts.StringLiteralLike).text === CORE_MODULE
+function pluginGranted(plugin: string, permissions: Set<string>): boolean {
+	if (CORE_PLUGINS.has(plugin) && permissions.has('core:default')) return true;
+	return [...permissions].some(
+		(p) => p.startsWith(`${plugin}:`) || p.startsWith(`core:${plugin}:`)
 	);
-}
-
-/** Skip `await` and parentheses between an expression and what consumes it. */
-function consumer(node: ts.Node): ts.Node {
-	let current = node;
-	while (ts.isAwaitExpression(current.parent) || ts.isParenthesizedExpression(current.parent)) {
-		current = current.parent;
-	}
-	return current;
-}
-
-interface FileFindings {
-	readonly calls: { line: number; arg: ts.Expression | undefined }[];
-	readonly problems: { line: number; message: string }[];
-}
-
-/**
- * Every `invoke()` call in one file, and every use of `invoke` this cannot
- * follow. Identifiers are matched by name file-wide (no scope analysis): a
- * shadowing local only ever adds findings, it never hides a call.
- */
-function scanFile(source: ts.SourceFile, hasTauriGlobal: boolean): FileFindings {
-	const calls: FileFindings['calls'] = [];
-	const problems: FileFindings['problems'] = [];
-	const line = (node: ts.Node) =>
-		source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
-	const invokeNames = new Set<string>();
-	const namespaces = new Set<string>();
-	const declarations = new Set<ts.Node>();
-
-	const bindPattern = (pattern: ts.BindingName, at: ts.Node) => {
-		if (ts.isIdentifier(pattern)) {
-			namespaces.add(pattern.text);
-			declarations.add(pattern);
-		} else if (ts.isObjectBindingPattern(pattern)) {
-			for (const element of pattern.elements) {
-				const imported = (element.propertyName ?? element.name) as ts.Node;
-				if (element.dotDotDotToken) {
-					problems.push({ line: line(at), message: `rest binding of ${CORE_MODULE} hides invoke` });
-				} else if (ts.isIdentifier(imported) && imported.text === 'invoke') {
-					if (ts.isIdentifier(element.name)) {
-						invokeNames.add(element.name.text);
-						declarations.add(element.name);
-					}
-				}
-			}
-		} else {
-			problems.push({ line: line(at), message: `unreadable binding of ${CORE_MODULE}` });
-		}
-	};
-
-	const bind = (node: ts.Node) => {
-		if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-			if (node.moduleSpecifier.text !== CORE_MODULE || node.importClause?.isTypeOnly) return;
-			const bindings = node.importClause?.namedBindings;
-			if (bindings && ts.isNamespaceImport(bindings)) {
-				namespaces.add(bindings.name.text);
-				declarations.add(bindings.name);
-			} else if (bindings) {
-				for (const element of bindings.elements) {
-					if ((element.propertyName ?? element.name).text === 'invoke' && !element.isTypeOnly) {
-						invokeNames.add(element.name.text);
-						declarations.add(element.name);
-					}
-				}
-			}
-		} else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
-			if ((node.moduleSpecifier as ts.StringLiteral).text !== CORE_MODULE) return;
-			const exportsInvoke =
-				!node.exportClause ||
-				!ts.isNamedExports(node.exportClause) ||
-				node.exportClause.elements.some(
-					(e) => (e.propertyName ?? e.name).getText(source) === 'invoke'
-				);
-			if (exportsInvoke)
-				problems.push({ line: line(node), message: `re-exports invoke from ${CORE_MODULE}` });
-		} else if (isCoreImport(node)) {
-			const outer = consumer(node);
-			const parent = outer.parent;
-			if (ts.isVariableDeclaration(parent) && parent.initializer === outer) {
-				bindPattern(parent.name, node);
-			} else if (
-				ts.isPropertyAccessExpression(parent) &&
-				parent.expression === outer &&
-				parent.name.text === 'invoke'
-			) {
-				record(parent);
-			} else {
-				problems.push({ line: line(node), message: `cannot follow this import('${CORE_MODULE}')` });
-			}
-		}
-		ts.forEachChild(node, bind);
-	};
-
-	/** `callee` is an expression that evaluates to `invoke`. */
-	const record = (callee: ts.Node) => {
-		const parent = callee.parent;
-		if (ts.isCallExpression(parent) && parent.expression === callee) {
-			calls.push({ line: line(parent), arg: parent.arguments[0] });
-		} else {
-			problems.push({
-				line: line(callee),
-				message: 'invoke used as a value; call it with a command name',
-			});
-		}
-	};
-
-	const use = (node: ts.Node) => {
-		if (ts.isIdentifier(node) && !declarations.has(node)) {
-			const parent = node.parent;
-			const isPropertyName =
-				(ts.isPropertyAccessExpression(parent) && parent.name === node) ||
-				(ts.isPropertyAssignment(parent) && parent.name === node) ||
-				ts.isImportSpecifier(parent) ||
-				ts.isExportSpecifier(parent) ||
-				ts.isBindingElement(parent) ||
-				ts.isTypeQueryNode(parent);
-			if (invokeNames.has(node.text) && !isPropertyName) {
-				record(node);
-			} else if (namespaces.has(node.text) && !isPropertyName) {
-				if (ts.isPropertyAccessExpression(parent) && parent.expression === node) {
-					if (parent.name.text === 'invoke') record(parent);
-				} else if (!ts.isTypeQueryNode(parent) && !ts.isQualifiedName(parent)) {
-					problems.push({ line: line(node), message: `${CORE_MODULE} namespace used as a value` });
-				}
-			}
-		} else if (
-			hasTauriGlobal &&
-			ts.isPropertyAccessExpression(node) &&
-			node.name.text === 'invoke' &&
-			/__TAURI(?:_INTERNALS)?__/.test(node.expression.getText(source))
-		) {
-			record(node);
-		}
-		ts.forEachChild(node, use);
-	};
-
-	bind(source);
-	use(source);
-	// The two walks each find calls; report them in source order.
-	calls.sort((a, b) => a.line - b.line);
-	problems.sort((a, b) => a.line - b.line);
-	return { calls, problems };
 }
 
 export async function checkDesktopInvokeContract(
@@ -327,13 +217,13 @@ export async function checkDesktopInvokeContract(
 	const problems: string[] = [];
 	const usedFixtures = new Set<string>();
 	let callCount = 0;
+	let permissions: Set<string> | undefined;
 	for (const file of files) {
 		const raw = await readFile(join(root, file), 'utf8');
-		const hasTauriGlobal = /__TAURI(?:_INTERNALS)?__/.test(raw);
-		if (!raw.includes(CORE_MODULE) && !hasTauriGlobal) continue;
+		if (!raw.includes(CORE_MODULE) && !TAURI_GLOBAL_PATTERN.test(raw)) continue;
 		const text = file.endsWith('.vue') ? vueScript(raw) : raw;
 		const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-		const found = scanFile(source, hasTauriGlobal);
+		const found = scanFile(source);
 		for (const problem of found.problems)
 			problems.push(`${file}:${problem.line}  ${problem.message}`);
 		callCount += found.calls.length;
@@ -357,7 +247,15 @@ export async function checkDesktopInvokeContract(
 			}
 			for (const name of names) {
 				calls.push(`${at} ${name}`);
-				if (!registered.has(name)) {
+				const plugin = PLUGIN_COMMAND.exec(name)?.[1];
+				if (plugin) {
+					permissions ??= await capabilityPermissions(root);
+					if (!pluginGranted(plugin, permissions)) {
+						problems.push(`${at}  invoke('${name}'): no capability grants the ${plugin} plugin`);
+					}
+				} else if (name.startsWith('plugin:')) {
+					problems.push(`${at}  invoke('${name}') is not a plugin:<plugin>|<command> name`);
+				} else if (!registered.has(name)) {
 					problems.push(`${at}  invoke('${name}') is not a command in ${IPC_COMMANDS_FILE}`);
 				} else if (!everyWindow.has(name) && !mainWindowModules.has(file)) {
 					problems.push(
