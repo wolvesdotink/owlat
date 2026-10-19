@@ -26,6 +26,7 @@
 import { createHash } from 'node:crypto';
 import { SourceMapConsumer, type RawSourceMap } from 'source-map-js';
 import ts from 'typescript';
+import { syntaxErrors } from './desktop-invoke-scan';
 import {
 	type BindingMetadata,
 	compileTemplate,
@@ -38,6 +39,8 @@ export interface CompiledPart {
 	readonly text: string;
 	/** 1-based `.vue` line for a 0-based line and column of `text`. */
 	readonly lineOf: (line: number, column: number) => number;
+	/** Its syntax was already checked piece by piece; the joined text is not. */
+	readonly syntaxChecked?: boolean;
 }
 
 export interface CompiledSfc {
@@ -105,7 +108,18 @@ export function compileSfc(raw: string, file: string): CompiledSfc {
 	};
 	const bindingMetadata: BindingMetadata = {};
 	for (const block of blocks) {
-		// A block's content starts on its opening tag's line.
+		// A block's content starts on its opening tag's line. Its syntax is
+		// checked on its own: joined to the next block, `const x =` would just
+		// take that block's first statement as its value.
+		const kind =
+			block.lang === 'tsx' || block.lang === 'jsx' ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+		const alone = ts.createSourceFile(file, block.content, ts.ScriptTarget.Latest, true, kind);
+		// An error at the end of the block (an unclosed comment) stays on its
+		// last line of code instead of the closing tag's or the template's.
+		const lastLine = Math.max(0, block.content.trimEnd().split('\n').length - 1);
+		problems.push(
+			...syntaxErrors(alone, (line) => block.loc.start.line + Math.min(line, lastLine))
+		);
 		append(block.content, (line) => block.loc.start.line + line);
 		// Both blocks' top-level bindings reach a `<script setup>` template.
 		if (scriptSetup) scriptBindings(block.content, bindingMetadata);
@@ -128,15 +142,24 @@ export function compileSfc(raw: string, file: string): CompiledSfc {
 			const consumer = out.map ? new SourceMapConsumer(out.map as RawSourceMap) : undefined;
 			// The template map is relative to the block's content.
 			const offset = template.loc.start.line - 1;
-			// Inline mode yields one render arrow (wrapped to stand as a statement);
-			// otherwise a module with its own imports and `export function render`.
-			append(scriptSetup ? `;(${out.code});` : out.code, (line, column) => {
+			const templateLine = (line: number, column: number) => {
 				const original = consumer?.originalPositionFor({ line: line + 1, column });
 				return original?.line ? original.line + offset : template.loc.start.line;
-			});
+			};
+			const rendered = ts.createSourceFile(
+				file,
+				out.code,
+				ts.ScriptTarget.Latest,
+				true,
+				ts.ScriptKind.TS
+			);
+			problems.push(...syntaxErrors(rendered, templateLine));
+			// Inline mode yields one render arrow (wrapped to stand as a statement);
+			// otherwise a module with its own imports and `export function render`.
+			append(scriptSetup ? `;(${out.code});` : out.code, templateLine);
 		}
 	}
 	const lineOf = (line: number, column: number) =>
 		origins[line]?.(column) ?? template?.loc.start.line ?? 1;
-	return { parts: text ? [{ text, lineOf }] : [], problems };
+	return { parts: text ? [{ text, lineOf, syntaxChecked: true }] : [], problems };
 }

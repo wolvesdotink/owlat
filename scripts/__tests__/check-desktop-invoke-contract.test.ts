@@ -474,6 +474,46 @@ describe('the desktop invoke contract gate', () => {
 		);
 	});
 
+	it('parses each script block on its own, so one block cannot hide the error of the next', async () => {
+		const component = [
+			'<script lang="ts">',
+			'export const x =',
+			'</script>',
+			'<script setup lang="ts">',
+			'initialize();',
+			'</script>',
+			'<template><p>x</p></template>',
+			'',
+		].join('\n');
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/web/app/components/Split.vue': component,
+		});
+		expect(result.problems).toHaveLength(1);
+		expect(result.problems[0]).toMatch(
+			/^apps\/web\/app\/components\/Split\.vue:2 {2}untraceable invoke use: syntax error/
+		);
+	});
+
+	it('keeps a script error at the end of its block inside that block', async () => {
+		const unclosed = (body: string) =>
+			['<script setup lang="ts">', body, '</script>', '<template><p>x</p></template>', ''].join(
+				'\n'
+			);
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/web/app/components/Fn.vue': unclosed('function f() {'),
+			'apps/web/app/components/Comment.vue': unclosed('/* never closed'),
+		});
+		expect(result.problems.map((p) => p.split('  ')[0])).toEqual([
+			'apps/web/app/components/Comment.vue:2',
+			'apps/web/app/components/Fn.vue:2',
+		]);
+		expect(result.problems.every((p) => p.includes('untraceable invoke use: syntax error'))).toBe(
+			true
+		);
+	});
+
 	it('reports a template compile error on its own line', async () => {
 		const component = [
 			'<script setup lang="ts">',

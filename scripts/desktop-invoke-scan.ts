@@ -191,6 +191,28 @@ function isNameOnly(node: ts.Identifier): boolean {
  * scan cannot tell what such a call loads (`'@tauri-apps/api/' + 'core'`), so
  * the gate rejects it in every scanned file, whatever the file mentions.
  */
+/**
+ * The parser's own syntax errors as findings, each at the line `lineOf` gives
+ * for its 0-based line and column. `createSourceFile` keeps them off the
+ * public type.
+ */
+export function syntaxErrors(
+	source: ts.SourceFile,
+	lineOf: (line: number, column: number) => number
+): { line: number; message: string }[] {
+	const diagnostics =
+		(source as unknown as { parseDiagnostics?: ts.DiagnosticWithLocation[] }).parseDiagnostics ??
+		[];
+	return diagnostics.map((diagnostic) => {
+		const position = source.getLineAndCharacterOfPosition(diagnostic.start);
+		const text = ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ');
+		return {
+			line: lineOf(position.line, position.character),
+			message: `untraceable invoke use: syntax error (${text})`,
+		};
+	});
+}
+
 export function nonLiteralImports(source: ts.SourceFile, lineOf = sourceLine): number[] {
 	const lines: number[] = [];
 	const visit = (node: ts.Node) => {

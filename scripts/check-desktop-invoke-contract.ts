@@ -43,7 +43,13 @@ import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { type InvokeCall, type LineOf, nonLiteralImports, scanFile } from './desktop-invoke-scan';
+import {
+	type InvokeCall,
+	type LineOf,
+	nonLiteralImports,
+	scanFile,
+	syntaxErrors,
+} from './desktop-invoke-scan';
 import { type CompiledSfc, compileSfc } from './desktop-invoke-vue';
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -129,13 +135,6 @@ export interface InvokeContractResult {
 	readonly calls: readonly string[];
 	/** Each violation as `file:line  message`. */
 	readonly problems: readonly string[];
-}
-
-/** The parser's own syntax errors; `createSourceFile` keeps them off the public type. */
-function parseDiagnostics(source: ts.SourceFile): readonly ts.DiagnosticWithLocation[] {
-	return (
-		(source as unknown as { parseDiagnostics?: ts.DiagnosticWithLocation[] }).parseDiagnostics ?? []
-	);
 }
 
 function isSource(path: string): boolean {
@@ -250,15 +249,11 @@ export async function checkDesktopInvokeContract(
 				const position = at.getLineAndCharacterOfPosition(node.getStart(at));
 				return part.lineOf(position.line, position.character);
 			};
-			// A syntax error leaves code the scan cannot read (a `.vue` script is
-			// not otherwise compiled here), so each parse diagnostic is a finding.
-			for (const diagnostic of parseDiagnostics(source)) {
-				const position = source.getLineAndCharacterOfPosition(diagnostic.start);
-				fileProblems.push({
-					line: part.lineOf(position.line, position.character),
-					message: `untraceable invoke use: syntax error (${ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')})`,
-				});
-			}
+			// A syntax error leaves code the scan cannot read, so each parse
+			// diagnostic is a finding. A `.vue` part's blocks were already parsed
+			// one by one (desktop-invoke-vue.ts): the joined text can hide one
+			// block's error behind the next block's code.
+			if (!part.syntaxChecked) fileProblems.push(...syntaxErrors(source, part.lineOf));
 			const found = scanFile(source, lineOf);
 			for (const line of nonLiteralImports(source, lineOf)) {
 				fileProblems.push({
