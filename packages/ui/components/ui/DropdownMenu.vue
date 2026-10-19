@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useEscapeLayer } from '../../composables/useEscapeLayer';
+import { placeAnchoredPanel } from '../../utils/anchoredPanelPlacement';
 
 type DropdownPosition = 'left' | 'right';
 
@@ -25,8 +26,11 @@ const isOpen = computed({
 // Refs for positioning
 const triggerRef = ref<HTMLElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
-const menuPosition = ref({ top: 0, left: 0, bottom: 0 });
-const openDirection = ref<'down' | 'up'>('down');
+const menuStyle = ref<Record<string, string>>({});
+const openSide = ref<'below' | 'above' | 'overlay'>('below');
+// Only a menu taller than its room scrolls: a scroll box would clip the sides
+// of its items' focus outline.
+const menuScrolls = ref(false);
 
 /** The caller's own control in the trigger slot (a UiButton, mostly). */
 function triggerControl(): HTMLElement | null {
@@ -47,35 +51,31 @@ watch(
 	{ immediate: true, flush: 'post' }
 );
 
-// Calculate menu position based on trigger element
+/**
+ * The menu is teleported to <body> and fixed to the trigger's box, in viewport
+ * coordinates. It is measured once rendered: below the trigger when it fits,
+ * above when there is more room there, capped to the room it has (scrolling
+ * inside) otherwise, and kept inside the window on every edge.
+ */
+const MENU_GAP = 4;
+const MENU_WIDTH = 176; // w-44, until the menu has rendered
+
 const updatePosition = () => {
-	if (!triggerRef.value) return;
-
-	const rect = triggerRef.value.getBoundingClientRect();
-	const viewportHeight = window.innerHeight;
-	const menuHeight = 200; // Estimated menu height for positioning calculation
-
-	// Check if there's enough space below
-	const spaceBelow = viewportHeight - rect.bottom;
-	const spaceAbove = rect.top;
-
-	if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
-		// Open upward
-		openDirection.value = 'up';
-		menuPosition.value = {
-			top: rect.top + window.scrollY,
-			left: props.position === 'right' ? rect.right - 176 : rect.left, // 176px = 11rem (w-44)
-			bottom: viewportHeight - rect.top + 4, // 4px gap above trigger
-		};
-	} else {
-		// Open downward
-		openDirection.value = 'down';
-		menuPosition.value = {
-			top: rect.bottom + window.scrollY + 4, // 4px gap
-			left: props.position === 'right' ? rect.right - 176 : rect.left,
-			bottom: 0,
-		};
-	}
+	const trigger = triggerRef.value;
+	if (!trigger) return;
+	const menu = menuRef.value;
+	const placed = placeAnchoredPanel({
+		anchor: trigger.getBoundingClientRect(),
+		// 0 before the first render; placed again once the menu has a height.
+		panelHeight: menu?.scrollHeight ?? 0,
+		panelWidth: menu?.offsetWidth || MENU_WIDTH,
+		viewport: { width: window.innerWidth, height: window.innerHeight },
+		gap: MENU_GAP,
+		align: props.position === 'right' ? 'end' : 'start',
+	});
+	openSide.value = placed.side;
+	menuStyle.value = placed.style;
+	menuScrolls.value = !!menu && menu.scrollHeight > Number.parseFloat(placed.style.maxHeight);
 };
 
 // Handle click outside
@@ -214,11 +214,10 @@ provide('dropdownClose', close);
 					ref="menuRef"
 					role="menu"
 					class="fixed w-44 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-50 py-1"
+					:class="{ 'overflow-y-auto': menuScrolls }"
 					:style="{
-						top: openDirection === 'up' ? 'auto' : `${menuPosition.top}px`,
-						bottom: openDirection === 'up' ? `${menuPosition.bottom}px` : 'auto',
-						left: `${menuPosition.left}px`,
-						transformOrigin: openDirection === 'up' ? 'bottom' : 'top',
+						...menuStyle,
+						transformOrigin: openSide === 'above' ? 'bottom' : 'top',
 					}"
 				>
 					<slot />

@@ -4,10 +4,15 @@
  * the room it gets (the panel scrolls inside) when it fits on neither side. If
  * even the larger side is a sliver (an anchor at the very edge of a short
  * window), the panel is laid over the anchor instead, kept inside the window.
- * Sideways it starts at the anchor's left edge and is kept inside the window.
- * An anchor partly or wholly outside the window is clamped into it first, so
- * every bound this returns lies inside the window; whether to keep a panel
- * whose anchor has left the window is the caller's call (`isAnchorInView`).
+ * Sideways it starts at the anchor's left edge (or, with `align: 'end'`, ends at
+ * its right edge) and is kept inside the window. An anchor partly or wholly
+ * outside the window is clamped into it first, so every bound this returns lies
+ * inside the window; whether to keep a panel whose anchor has left the window
+ * is the caller's call (`isAnchorInView`).
+ *
+ * Every coordinate is a viewport (client) coordinate, as a `position: fixed`
+ * panel needs: pass `getBoundingClientRect()` as is, never add the window's
+ * scroll offset.
  *
  * Pure so the flip and clamp are testable without layout; the caller measures
  * the panel's natural height (`scrollHeight`) and the anchor's rect.
@@ -40,6 +45,8 @@ interface AnchoredPanelInput {
 	margin?: number;
 	/** Below this much room on the chosen side the panel overlays the anchor. */
 	minRoom?: number;
+	/** Line the panel's left edge up with the anchor's (`start`) or its right edge (`end`). */
+	align?: 'start' | 'end';
 }
 
 interface AnchoredPanelPlacement {
@@ -67,7 +74,9 @@ export function placeAnchoredPanel(input: AnchoredPanelInput): AnchoredPanelPlac
 	const side = panelHeight > roomBelow && roomAbove > roomBelow ? 'above' : 'below';
 	const room = side === 'above' ? roomAbove : roomBelow;
 	const width = Math.min(panelWidth, viewport.width - 2 * margin);
-	const left = `${Math.round(Math.min(Math.max(margin, anchor.left), viewport.width - width - margin))}px`;
+	const start =
+		input.align === 'end' ? (input.anchor.right ?? anchor.left + width) - width : anchor.left;
+	const left = `${Math.round(Math.min(Math.max(margin, start), viewport.width - width - margin))}px`;
 	const fullRoom = Math.max(0, viewport.height - 2 * margin);
 	if (room < Math.min(panelHeight, input.minRoom ?? 160)) {
 		const height = Math.min(panelHeight, fullRoom);

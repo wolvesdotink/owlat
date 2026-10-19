@@ -25,7 +25,7 @@ import {
 	type PostboxFixTarget,
 } from '~/composables/postbox/usePostboxArrivalExplain';
 import { useLocalized } from '~/composables/useLocalized';
-import { isAnchorInView, placeAnchoredPanel } from '~/utils/anchoredPanelPlacement';
+import { isAnchorInView, placeAnchoredPanel } from '@owlat/ui/utils/anchoredPanelPlacement';
 
 const target = defineModel<PostboxWhyHereTarget | null>('target', { required: true });
 const emit = defineEmits<{ fix: [target: PostboxFixTarget] }>();

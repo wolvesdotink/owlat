@@ -153,3 +153,45 @@ describe('isAnchorInView', () => {
 		expect(isAnchorInView({ top: 100, bottom: 140, left: -80, right: -40 }, viewport)).toBe(false);
 	});
 });
+
+describe('placeAnchoredPanel align end', () => {
+	it("ends the panel at the anchor's right edge", () => {
+		const placed = placeAnchoredPanel({
+			anchor: { top: 200, bottom: 232, left: 600, right: 632 },
+			panelHeight: 200,
+			panelWidth: 176,
+			viewport,
+			align: 'end',
+		});
+		expect(placed.style.left).toBe(`${632 - 176}px`);
+	});
+
+	it('keeps an end-aligned panel inside the window next to its left edge', () => {
+		const placed = placeAnchoredPanel({
+			anchor: { top: 200, bottom: 232, left: 0, right: 32 },
+			panelHeight: 200,
+			panelWidth: 176,
+			viewport,
+			align: 'end',
+		});
+		expect(placed.style.left).toBe('8px');
+	});
+
+	it('never puts either side edge outside the window, wherever the anchor is', () => {
+		const margin = 8;
+		for (const align of ['start', 'end'] as const) {
+			for (let left = -200; left <= viewport.width + 200; left += 41) {
+				const { style } = placeAnchoredPanel({
+					anchor: { top: 200, bottom: 232, left, right: left + 32 },
+					panelHeight: 200,
+					panelWidth: 176,
+					viewport,
+					align,
+				});
+				const panelLeft = Number.parseFloat(style.left);
+				expect(panelLeft).toBeGreaterThanOrEqual(margin);
+				expect(panelLeft + 176).toBeLessThanOrEqual(viewport.width - margin);
+			}
+		}
+	});
+});
