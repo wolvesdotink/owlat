@@ -96,12 +96,17 @@ const receivingProviderLabel = computed(() =>
 	t(EXTERNAL_RECEIVING_PROVIDER_KEYS[props.domain.externalReceivingProvider ?? 'other'])
 );
 
+const disclosureRef = ref<HTMLButtonElement | null>(null);
+
 /**
  * A click on the header text toggles the row like the rest of the header, but
- * not when it ends a text selection: the text stays copyable.
+ * not when it ends a text selection: the text stays copyable. Focus moves to the
+ * disclosure, as a click anywhere else on the row does, so the keyboard picks
+ * up from there.
  */
 function toggleFromText() {
 	if (window.getSelection()?.isCollapsed === false) return;
+	disclosureRef.value?.focus({ preventScroll: true });
 	emit('toggle');
 }
 
@@ -132,6 +137,7 @@ const registrationSettled = computed(
 			class="relative px-6 py-4 flex items-center justify-between hover:bg-bg-surface/50 transition-colors"
 		>
 			<button
+				ref="disclosureRef"
 				type="button"
 				class="absolute inset-0 w-full h-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
 				:aria-expanded="isExpanded"

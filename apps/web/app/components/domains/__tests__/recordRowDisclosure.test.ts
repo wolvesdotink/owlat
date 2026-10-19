@@ -160,6 +160,17 @@ describe('domain row header text', () => {
 		wrapper.unmount();
 	});
 
+	it('moves focus to the disclosure, so Space and Enter carry on from there', async () => {
+		const wrapper = mountRow();
+		(document.activeElement as HTMLElement | null)?.blur();
+		await wrapper.get('p').trigger('click');
+		expect(document.activeElement).toBe(disclosure(wrapper).element);
+		disclosure(wrapper).element.blur();
+		await text(wrapper).trigger('click');
+		expect(document.activeElement).toBe(disclosure(wrapper).element);
+		wrapper.unmount();
+	});
+
 	it('does not toggle on the click that ends a text selection', async () => {
 		const wrapper = mountRow();
 		const range = document.createRange();
@@ -170,6 +181,7 @@ describe('domain row header text', () => {
 		expect(selection.toString()).toContain('anyone@mail.example.com');
 		await text(wrapper).trigger('click');
 		expect(wrapper.emitted('toggle')).toBeUndefined();
+		expect(selection.toString()).toContain('anyone@mail.example.com');
 		selection.removeAllRanges();
 		wrapper.unmount();
 	});
