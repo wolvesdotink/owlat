@@ -152,7 +152,7 @@ describe('ContactsContactRow', () => {
 
 	it.each([
 		['the full name', { firstName: 'Ada', lastName: 'Lovelace' }, 'Ada Lovelace'],
-		['a fallback', { firstName: null, lastName: null }, 'Contact without email'],
+		['the unnamed label', { firstName: null, lastName: null }, 'Unnamed contact'],
 	])('names the link of an email-less contact with %s', (_label, name, expected) => {
 		const { host } = mountRow({}, [{ ...contact, email: undefined, ...name } as never]);
 		const link = host.get(`a[href="${pathOf('contact_1')}"]`);
