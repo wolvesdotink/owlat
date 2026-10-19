@@ -1,13 +1,14 @@
 <script setup lang="ts">
-interface TabOption {
-	value: string;
-	label: string;
-	count?: number;
-}
+import { selectedTabValue, tabElementId, type UiTabOption } from '../../utils/tabs';
 
 interface Props {
-	tabs: TabOption[];
+	tabs: UiTabOption[];
 	modelValue?: string;
+	/**
+	 * Id of the panel the caller renders for the selected tab (see
+	 * utils/tabs.ts). Without it the tabs claim no panel: no `aria-controls`.
+	 */
+	panelId?: string;
 }
 
 const props = defineProps<Props>();
@@ -19,11 +20,18 @@ const emit = defineEmits<{
 // Generate unique ID for accessibility
 const tabsId = useId();
 
+// One fallback for markup and keys alike: no (or an unknown) modelValue
+// selects the first tab, so exactly one tab is tabbable.
+const selectedValue = computed(() => selectedTabValue(props.tabs, props.modelValue));
+
 // Get the index of the currently selected tab
 const selectedIndex = computed(() => {
-	const index = props.tabs.findIndex((tab) => tab.value === props.modelValue);
+	const index = props.tabs.findIndex((tab) => tab.value === selectedValue.value);
 	return index >= 0 ? index : 0;
 });
+
+const tabId = (tab: UiTabOption, index: number) =>
+	props.panelId ? tabElementId(props.panelId, tab.value) : `${tabsId}-tab-${index}`;
 
 // Handle tab selection
 const selectTab = (value: string) => {
@@ -83,16 +91,16 @@ const handleKeyDown = (event: KeyboardEvent) => {
 		<button
 			v-for="(tab, index) in tabs"
 			:ref="setButtonRef(index)"
-			:id="`${tabsId}-tab-${index}`"
+			:id="tabId(tab, index)"
 			:key="tab.value"
 			type="button"
 			role="tab"
-			:aria-selected="modelValue === tab.value"
-			:aria-controls="`${tabsId}-panel-${index}`"
-			:tabindex="modelValue === tab.value ? 0 : -1"
+			:aria-selected="selectedValue === tab.value"
+			:aria-controls="panelId && selectedValue === tab.value ? panelId : undefined"
+			:tabindex="selectedValue === tab.value ? 0 : -1"
 			:class="[
 				'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-(--motion-moderate) ease-spring',
-				modelValue === tab.value
+				selectedValue === tab.value
 					? 'bg-bg-elevated text-text-primary shadow-sm'
 					: 'text-text-secondary hover:text-text-primary',
 			]"
