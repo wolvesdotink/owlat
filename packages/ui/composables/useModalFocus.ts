@@ -28,12 +28,11 @@ export function useModalFocus(
 	let opener: HTMLElement | null = null;
 	let generation = 0;
 	const isTop = () => activeDialogs.at(-1) === token;
-	const isTabbable = (el: HTMLElement) =>
-		!el.closest('[hidden], [inert], [aria-hidden="true"]') &&
-		(el.tabIndex >= 0 || el.getAttribute('contenteditable') === 'true');
 	const focusable = () =>
 		Array.from(container.value?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? []).filter(
-			isTabbable
+			(el) =>
+				!el.closest('[hidden], [inert], [aria-hidden="true"]') &&
+				(el.tabIndex >= 0 || el.getAttribute('contenteditable') === 'true')
 		);
 
 	// Escape goes to the innermost open layer, which may be a menu or listbox
@@ -86,7 +85,10 @@ export function useModalFocus(
 	function inShadowTabOrder(host: HTMLElement): boolean {
 		let deep: Element = host;
 		while (deep.shadowRoot?.activeElement) deep = deep.shadowRoot.activeElement;
-		return deep !== host && deep instanceof HTMLElement && isTabbable(deep);
+		// The deep element holds focus, so it is neither hidden nor inert.
+		return (
+			deep !== host && deep instanceof HTMLElement && (deep.tabIndex >= 0 || deep.isContentEditable)
+		);
 	}
 
 	/**
