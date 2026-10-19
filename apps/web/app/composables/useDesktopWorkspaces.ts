@@ -297,10 +297,7 @@ class RemovalOwnerHandle implements RemovalOwner {
 	release(): void {
 		if (this.released) return;
 		this.released = true;
-		if (this.unsettled) {
-			this.unsettled = false;
-			abandonRemoval();
-		}
+		if (this.unsettled) void abandonRemoval(this);
 	}
 }
 
@@ -324,7 +321,7 @@ async function removeWorkspace(id: string, owner?: RemovalOwner): Promise<void> 
 	} catch (e) {
 		if (removalChangedPage) {
 			if (handle && !handle.released) handle.unsettled = true;
-			else abandonRemoval();
+			else void abandonRemoval();
 		}
 		throw e;
 	}
@@ -375,26 +372,42 @@ async function runRemoval(id: string): Promise<void> {
 	window.location.assign(workspaces.value.length ? '/dashboard' : '/desktop/welcome');
 }
 
-/** Set once `abandonRemoval` has started the reload; the page is going away. */
-let removalReloadStarted = false;
-
 /**
  * Reconcile the page after a removal that rejected part-way was given up: by
- * the user (Cancel), by its owner going away, or with nobody left to retry.
- * When the removal had already changed what this page holds, reload so the
- * boot re-seeds the list, the active workspace and the session from what was
- * actually persisted, the same way a switch does. Nothing is written back: a
- * keychain entry the removal already deleted stays deleted, so the reload comes
- * up signed out of it. Returns whether a reload is under way (the caller keeps
- * its loading state); a second call while one is under way does not reload
- * again.
+ * the user (Cancel, passing the owner that started it), by its owner going
+ * away, or with nobody left to retry. When the removal had already changed what
+ * this page holds, reload so the boot re-seeds the list, the active workspace
+ * and the session from what was actually persisted, the same way a switch does.
+ * Nothing is written back: a keychain entry the removal already deleted stays
+ * deleted, so the reload comes up signed out of it.
+ *
+ * Returns null when there was nothing to reconcile. Otherwise the reload has
+ * been asked for, and the returned promise resolves only if this document is
+ * still here once the reload should have unloaded it: the user stayed on an
+ * unsaved-changes prompt, or the navigation stalled (the same window
+ * `switchTo` gives its own reload). The failure is then pending again for its
+ * owner, if that owner is still mounted, so the view can offer Retry and Cancel
+ * instead of waiting for a reload that is not coming. Nothing is remembered
+ * between calls, so a later give-up always asks for a reload again.
  */
-function abandonRemoval(): boolean {
-	if (!removalChangedPage) return false;
-	if (removalReloadStarted) return true;
-	removalReloadStarted = true;
+function abandonRemoval(owner?: RemovalOwner): Promise<void> | null {
+	const handle = owner instanceof RemovalOwnerHandle ? owner : null;
+	if (handle) handle.unsettled = false;
+	if (!removalChangedPage) return null;
+	let unloading = false;
+	const onPageHide = () => {
+		unloading = true;
+	};
+	window.addEventListener('pagehide', onPageHide, { once: true });
 	window.location.reload();
-	return true;
+	return new Promise<void>((resolve) => {
+		window.setTimeout(() => {
+			window.removeEventListener('pagehide', onPageHide);
+			if (unloading) return;
+			if (handle && !handle.released) handle.unsettled = true;
+			resolve();
+		}, SWITCH_FLAG_TTL_MS);
+	});
 }
 
 /**

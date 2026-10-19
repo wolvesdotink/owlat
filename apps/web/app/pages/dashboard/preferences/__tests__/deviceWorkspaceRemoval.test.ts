@@ -64,7 +64,10 @@ const WORKSPACES = [
 ];
 
 const removeWorkspace = vi.fn<(id: string) => Promise<void>>();
-const abandonRemoval = vi.fn<() => boolean>();
+// Resolves only if the document outlives the reload it asked for; a reload
+// that unloads the page never settles it.
+const abandonRemoval = vi.fn<(owner?: unknown) => Promise<void> | null>();
+const RELOADING = () => new Promise<void>(() => {});
 // Each page instance gets its own removal owner, passes it to the removals it
 // starts, and releases it on unmount; the composable settles an owner's
 // unsettled failure on release (pinned in its own suite).
@@ -79,7 +82,7 @@ const createRemovalOwner = vi.fn((): Owner => {
 beforeEach(() => {
 	removeWorkspace.mockReset();
 	abandonRemoval.mockReset();
-	abandonRemoval.mockReturnValue(false);
+	abandonRemoval.mockReturnValue(null);
 	owners = [];
 	createRemovalOwner.mockClear();
 	vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -185,7 +188,7 @@ describe('Preferences → This device: removing a workspace', () => {
 
 	it('waits for the reload when Cancel has to settle a removal that got part-way', async () => {
 		removeWorkspace.mockRejectedValueOnce(new Error('store save failed'));
-		abandonRemoval.mockReturnValue(true);
+		abandonRemoval.mockImplementation(RELOADING);
 		const w = mountPage();
 		await openRemoval(w);
 		await confirmButton(w).trigger('click');
@@ -193,7 +196,9 @@ describe('Preferences → This device: removing a workspace', () => {
 
 		await cancelButton(w).trigger('click');
 
+		// Cancel gives up on behalf of this page's own owner.
 		expect(abandonRemoval).toHaveBeenCalledTimes(1);
+		expect(abandonRemoval).toHaveBeenCalledWith(owners[0]);
 		// The page is reloading into the stored state: the dialog stays up,
 		// loading, and offers nothing that would act on the stale page.
 		expect(dialog(w).exists()).toBe(true);
@@ -204,9 +209,42 @@ describe('Preferences → This device: removing a workspace', () => {
 		expect(abandonRemoval).toHaveBeenCalledTimes(1);
 	});
 
+	it('offers Retry and Cancel again when the reload does not happen', async () => {
+		removeWorkspace.mockRejectedValueOnce(new Error('store save failed'));
+		let stillHere!: () => void;
+		abandonRemoval.mockImplementationOnce(
+			() =>
+				new Promise<void>((resolve) => {
+					stillHere = resolve;
+				})
+		);
+		const w = mountPage();
+		await openRemoval(w);
+		await confirmButton(w).trigger('click');
+		await flushPromises();
+		await cancelButton(w).trigger('click');
+		expect(cancelButton(w).attributes('disabled')).toBeDefined();
+
+		// An unsaved-changes prompt kept the page: the reload never came.
+		stillHere();
+		await flushPromises();
+
+		expect(alert(w).text()).toContain(FAILED);
+		expect(confirmButton(w).text()).toBe('Try again');
+		expect(confirmButton(w).attributes('disabled')).toBeUndefined();
+		expect(cancelButton(w).attributes('disabled')).toBeUndefined();
+
+		// Cancel asks for the reload again.
+		abandonRemoval.mockImplementationOnce(RELOADING);
+		await cancelButton(w).trigger('click');
+		expect(abandonRemoval).toHaveBeenCalledTimes(2);
+		expect(cancelButton(w).attributes('disabled')).toBeDefined();
+		w.unmount();
+	});
+
 	it('settles through the same step when the dialog is dismissed from the backdrop', async () => {
 		removeWorkspace.mockRejectedValueOnce(new Error('store save failed'));
-		abandonRemoval.mockReturnValue(true);
+		abandonRemoval.mockImplementation(RELOADING);
 		const w = mountPage();
 		await openRemoval(w);
 		await confirmButton(w).trigger('click');

@@ -70,26 +70,6 @@ function askRemoveWorkspace(ws: { id: string; label: string }) {
 	workspaceToRemove.value = { id: ws.id, label: ws.label };
 }
 
-/**
- * Every way out of the failed dialog (Cancel, close, Esc, backdrop) goes
- * through here. A removal that got part-way may have left the page out of step
- * with what is stored; `abandonRemoval` then reloads to re-seed it, and the
- * dialog waits for that in its loading state.
- */
-function settleFailedRemoval(): boolean {
-	if (!removeFailed.value) return false;
-	removeFailed.value = false;
-	if (!abandonRemoval()) return false;
-	isRemoving.value = true;
-	return true;
-}
-
-function onRemoveDialogOpen(open: boolean) {
-	if (open) return;
-	if (settleFailedRemoval()) return;
-	workspaceToRemove.value = null;
-}
-
 // This page instance owns the removals it starts: while it is mounted, a
 // failed one waits here for Retry or Cancel. Unmounting releases the owner, and
 // the composable then settles that removal's failure, whether it already
@@ -103,6 +83,33 @@ onBeforeUnmount(() => {
 	removalOwner?.release();
 	removalOwner = null;
 });
+
+/**
+ * Every way out of the failed dialog (Cancel, close, Esc, backdrop) goes
+ * through here. A removal that got part-way may have left the page out of step
+ * with what is stored; `abandonRemoval` then reloads to re-seed it, and the
+ * dialog waits for that in its loading state.
+ */
+function settleFailedRemoval(): boolean {
+	if (!removeFailed.value) return false;
+	removeFailed.value = false;
+	const reload = abandonRemoval(removalOwner ?? undefined);
+	if (!reload) return false;
+	isRemoving.value = true;
+	void reload.then(() => {
+		// Still here: the reload was refused (an unsaved-changes prompt) or
+		// stalled. Offer Retry and Cancel again instead of waiting for it.
+		isRemoving.value = false;
+		removeFailed.value = true;
+	});
+	return true;
+}
+
+function onRemoveDialogOpen(open: boolean) {
+	if (open) return;
+	if (settleFailedRemoval()) return;
+	workspaceToRemove.value = null;
+}
 
 async function confirmRemoveWorkspace() {
 	const target = workspaceToRemove.value;

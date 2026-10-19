@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
 import { workspaceTokenRef } from '~/lib/desktop/workspaceTypes';
 import type * as KeychainStorageModule from '~/lib/desktop/keychainStorage';
@@ -147,6 +147,8 @@ async function boot({ owned = true }: { owned?: boolean } = {}) {
 	const workspaces = {
 		...api,
 		removeWorkspace: (id: string) => api.removeWorkspace(id, owner),
+		// Cancel gives up on behalf of the owner that started the removal.
+		abandonRemoval: () => api.abandonRemoval(owner),
 	};
 	return { api, workspaces, keychainStorage, owner };
 }
@@ -264,7 +266,7 @@ describe('abandoning a removal that rejected part-way', () => {
 			failOnce = stage;
 			await expect(workspaces.removeWorkspace('w1')).rejects.toThrow(`${stage} failed`);
 
-			expect(workspaces.abandonRemoval()).toBe(true);
+			expect(workspaces.abandonRemoval()).not.toBeNull();
 
 			expect(reload).toHaveBeenCalledTimes(1);
 			expect(assign).not.toHaveBeenCalled();
@@ -285,7 +287,7 @@ describe('abandoning a removal that rejected part-way', () => {
 		await first.workspaces.switchTo('w2');
 		expect(assign).not.toHaveBeenCalled();
 
-		expect(first.workspaces.abandonRemoval()).toBe(true);
+		expect(first.workspaces.abandonRemoval()).not.toBeNull();
 		expect(reload).toHaveBeenCalledTimes(1);
 
 		// The reload boots from what was persisted: the save never landed, so the
@@ -310,7 +312,7 @@ describe('abandoning a removal that rejected part-way', () => {
 		// The list in memory already lost w2; the store on disk did not.
 		expect(workspaces.workspaces.value.map((w) => w.id)).toEqual(['w1']);
 
-		expect(workspaces.abandonRemoval()).toBe(true);
+		expect(workspaces.abandonRemoval()).not.toBeNull();
 		expect(reload).toHaveBeenCalledTimes(1);
 	});
 
@@ -323,7 +325,7 @@ describe('abandoning a removal that rejected part-way', () => {
 
 			// Only device caches changed; the list, the active workspace and the
 			// session this page is bound to are as they were.
-			expect(workspaces.abandonRemoval()).toBe(false);
+			expect(workspaces.abandonRemoval()).toBeNull();
 			expect(reload).not.toHaveBeenCalled();
 			expect(workspaces.workspaces.value.map((w) => w.id)).toEqual(['w1', 'w2']);
 			expect(workspaces.activeId.value).toBe('w1');
@@ -332,7 +334,7 @@ describe('abandoning a removal that rejected part-way', () => {
 
 	it('does nothing when no removal ran', async () => {
 		const { workspaces } = await boot();
-		expect(workspaces.abandonRemoval()).toBe(false);
+		expect(workspaces.abandonRemoval()).toBeNull();
 		expect(reload).not.toHaveBeenCalled();
 	});
 });
@@ -454,7 +456,7 @@ describe('who settles a failed removal', () => {
 		failOnce = 'persist';
 		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
 
-		expect(workspaces.abandonRemoval()).toBe(true);
+		expect(workspaces.abandonRemoval()).not.toBeNull();
 		owner!.release();
 		owner!.release();
 
@@ -471,5 +473,105 @@ describe('who settles a failed removal', () => {
 
 		expect(assign).toHaveBeenCalledTimes(1);
 		expect(reload).not.toHaveBeenCalled();
+	});
+});
+
+describe('a reload that does not happen', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/** Whether the promise from `abandonRemoval` resolved, i.e. the document
+	 * outlived the reload it asked for. */
+	function watch(reloadRequest: Promise<void> | null) {
+		const state = { survived: false };
+		void reloadRequest?.then(() => {
+			state.survived = true;
+		});
+		return state;
+	}
+
+	/** Let the window in which the reload should have unloaded the page pass
+	 * (its length is the mocked switch TTL). */
+	async function outlastTheReload() {
+		await vi.runOnlyPendingTimersAsync();
+	}
+
+	it('hands the failure back to its owner when the user stays on the page', async () => {
+		const { workspaces, owner } = await boot();
+		failOnce = 'persist';
+		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
+		vi.useFakeTimers();
+
+		// Cancel asks for the reload; an unsaved-changes prompt keeps the page.
+		const first = watch(workspaces.abandonRemoval());
+		expect(reload).toHaveBeenCalledTimes(1);
+		await outlastTheReload();
+		expect(first.survived).toBe(true);
+
+		// Giving up again asks again: nothing remembers the refused one.
+		const second = watch(workspaces.abandonRemoval());
+		expect(reload).toHaveBeenCalledTimes(2);
+		await outlastTheReload();
+		expect(second.survived).toBe(true);
+
+		// And the owner leaving still settles it, since it is pending again.
+		owner!.release();
+		expect(reload).toHaveBeenCalledTimes(3);
+	});
+
+	it('asks for a reload again when a later attempt fails after a refused one', async () => {
+		const { workspaces } = await boot();
+		failOnce = 'persist';
+		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
+		vi.useFakeTimers();
+		watch(workspaces.abandonRemoval());
+		await outlastTheReload();
+
+		failOnce = 'persist';
+		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
+		expect(workspaces.abandonRemoval()).not.toBeNull();
+
+		expect(reload).toHaveBeenCalledTimes(2);
+		expect(assign).not.toHaveBeenCalled();
+	});
+
+	it('reloads for a fresh page after a refused reload for an abandoned removal', async () => {
+		// Leave during the removal of another workspace; the reload asked for
+		// when it rejects is refused (a form with unsaved changes elsewhere).
+		const { api, workspaces, owner } = await boot();
+		failOnce = 'persist';
+		const removal = workspaces.removeWorkspace('w2');
+		owner!.release();
+		vi.useFakeTimers();
+		await expect(removal).rejects.toThrow('persist failed');
+		expect(reload).toHaveBeenCalledTimes(1);
+		await outlastTheReload();
+
+		// Back on the preferences page: a new owner, another failing removal,
+		// then Cancel. It reloads again rather than waiting on the refused one.
+		const remounted = api.createRemovalOwner();
+		failOnce = 'persist';
+		await expect(api.removeWorkspace('w1', remounted)).rejects.toThrow('persist failed');
+		const request = watch(api.abandonRemoval(remounted));
+
+		expect(reload).toHaveBeenCalledTimes(2);
+		await outlastTheReload();
+		expect(request.survived).toBe(true);
+	});
+
+	it('does not hand anything back when the document did unload', async () => {
+		const { workspaces, owner } = await boot();
+		failOnce = 'persist';
+		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
+		vi.useFakeTimers();
+
+		const request = watch(workspaces.abandonRemoval());
+		window.dispatchEvent(new Event('pagehide'));
+		await outlastTheReload();
+
+		expect(request.survived).toBe(false);
+		owner!.release();
+		expect(reload).toHaveBeenCalledTimes(1);
 	});
 });
