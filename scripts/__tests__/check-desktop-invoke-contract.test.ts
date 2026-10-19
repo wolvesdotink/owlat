@@ -225,6 +225,47 @@ describe('the desktop invoke contract gate', () => {
 		]);
 	});
 
+	it('reports exported import bindings, so another module cannot call them unseen', async () => {
+		const result = await check({
+			'apps/desktop/src/a.ts':
+				"export const { invoke: call } = await import('@tauri-apps/api/core');\n",
+			'apps/desktop/src/b.ts': "export const core = await import('@tauri-apps/api/core');\n",
+			'apps/desktop/src/c.ts':
+				"import * as core from '@tauri-apps/api/core';\nexport default core;\n",
+			'apps/desktop/src/d.ts': `${IMPORT}export default invoke;\n`,
+			'apps/desktop/src/user.ts': "import { call } from './a';\ncall('removed_command');\n",
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+		});
+		const untraceable = (at: string, what: string) => `${at}  untraceable invoke use: ${what}`;
+		expect(result.problems).toEqual([
+			untraceable('apps/desktop/src/a.ts:1', "exported binding of import('@tauri-apps/api/core')"),
+			untraceable('apps/desktop/src/b.ts:1', "exported binding of import('@tauri-apps/api/core')"),
+			untraceable(
+				'apps/desktop/src/c.ts:2',
+				'the @tauri-apps/api/core namespace core used as a value'
+			),
+			untraceable('apps/desktop/src/d.ts:2', 'invoke (invoke) is not called directly'),
+		]);
+	});
+
+	it('reports the module name anywhere but an import, export or import()', async () => {
+		const named = '@tauri-apps/api/core named outside an import declaration or import()';
+		const result = await check({
+			'apps/desktop/src/a.ts':
+				"import core = require('@tauri-apps/api/core');\ncore.invoke('zoom_level');\n",
+			'apps/desktop/src/b.ts':
+				"const name = '@tauri-apps/api/core';\nexport const load = () => import(name);\nconst r = require('@tauri-apps/api/core');\n",
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/desktop/src/c.ts':
+				"export type Core = typeof import('@tauri-apps/api/core');\nexport { Channel } from '@tauri-apps/api/core';\n",
+		});
+		expect(result.problems).toEqual([
+			`apps/desktop/src/a.ts:1  untraceable invoke use: ${named}`,
+			`apps/desktop/src/b.ts:1  untraceable invoke use: ${named}`,
+			`apps/desktop/src/b.ts:3  untraceable invoke use: ${named}`,
+		]);
+	});
+
 	it('accepts the direct global calls and checks their names', async () => {
 		const result = await check({
 			'apps/web/app/global.ts':

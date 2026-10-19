@@ -94,7 +94,7 @@ describe('the desktop SPA gate', () => {
 	it('fails on a chunk the pages preload that was not emitted, once for all pages', () => {
 		const result = run(build({ '_nuxt/lazy.js': null }));
 		expect(result.output).toContain(
-			'_nuxt/lazy.js is missing, linked as /_nuxt/lazy.js (in dashboard/index.html and 1 more)'
+			'_nuxt/lazy.js is missing, linked as /_nuxt/lazy.js (in dashboard/index.html, index.html)'
 		);
 		expect(result.output).toContain(
 			'_nuxt/lazy.js is missing, linked as ./lazy.js (in _nuxt/entry.js)'
@@ -128,7 +128,7 @@ describe('the desktop SPA gate', () => {
 		);
 		expect(gone.output).toContain('_nuxt/builds/latest.json is missing');
 		expect(gone.output).toContain(
-			'_nuxt/builds/meta/b1.json is missing, linked as /_nuxt/builds/meta/b1.json (in dashboard/index.html and 1 more)'
+			'_nuxt/builds/meta/b1.json is missing, linked as /_nuxt/builds/meta/b1.json (in dashboard/index.html, index.html)'
 		);
 		expect(gone.status).toBe(1);
 
@@ -171,7 +171,9 @@ describe('the desktop SPA gate', () => {
 
 	it('fails on a build id the app manifest does not know', () => {
 		const result = run(build({ '_nuxt/builds/latest.json': '{"id":"b0"}' }));
-		expect(result.output).toContain('_nuxt/builds/latest.json is build b0, the pages are b1');
+		expect(result.output).toContain(
+			'the page is build b1, _nuxt/builds/latest.json is b0 (in dashboard/index.html, index.html)'
+		);
 		expect(result.status).toBe(1);
 	});
 
@@ -182,9 +184,43 @@ describe('the desktop SPA gate', () => {
 			}))
 		);
 		expect(result.output).toContain('../../secret.svg points outside the bundle');
-		expect(result.output).toContain('no page loads a module script');
-		expect(result.output).toContain('no page carries a Nuxt buildId');
+		expect(result.output).toContain('the page loads no module entry that resolves (in index.html)');
+		expect(result.output).toContain('the page carries no Nuxt buildId (in index.html)');
 		expect(result.status).toBe(1);
+	});
+
+	it('checks every page on its own: one complete page does not cover a broken index.html', () => {
+		const placeholder = run(
+			build({}, (files) => ({
+				'index.html': '<!doctype html><title>ci</title>',
+				'dashboard/index.html': page(files),
+			}))
+		);
+		expect(placeholder.output).toContain(
+			'the page loads no module entry that resolves (in index.html)'
+		);
+		expect(placeholder.output).toContain('the page carries no Nuxt buildId (in index.html)');
+		expect(placeholder.status).toBe(1);
+
+		const mixed = run(
+			build({}, (files) => ({
+				'index.html': page(files),
+				'compose/index.html': page(files).replaceAll(
+					'src="/_nuxt/entry.js"',
+					'src="/_nuxt/gone.js"'
+				),
+				'dashboard/index.html': page({ ...files, '_nuxt/entry.js': 'stale build' }),
+				'settings/index.html': page(files).replace('buildId:"b1"', 'buildId:"b0"'),
+			}))
+		);
+		expect(mixed.output).toContain(
+			'the page loads no module entry that resolves (in compose/index.html, dashboard/index.html)'
+		);
+		expect(mixed.output).toContain(
+			'the page is build b0, _nuxt/builds/latest.json is b1 (in settings/index.html)'
+		);
+		expect(mixed.output).not.toMatch(/in index\.html/);
+		expect(mixed.status).toBe(1);
 	});
 
 	it('fails when the bundle carries the service worker or precompressed copies', () => {

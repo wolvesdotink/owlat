@@ -19,10 +19,23 @@
  * - Every other use is an "untraceable invoke use" finding: exporting or
  *   re-exporting, destructuring, element access, assignment, passing as a
  *   value, a default import, a dynamic import consumed any other way.
+ * - The tainted bindings are only the import forms above, and none of them may
+ *   be exported: `export const { invoke } = await import(...)` and
+ *   `export const core = await import(...)` are findings (another module would
+ *   call them out of this file's reach), as are `export default core` and
+ *   `export { invoke }`. Any other declaration whose initializer holds a taint
+ *   (`const f = invoke`, `const t = window.__TAURI_INTERNALS__`, an
+ *   `import()` inside a larger expression) is already a non-call use, so a
+ *   finding. The result of an accepted call is IPC data, not a taint.
+ * - The module name itself may only appear as an import or export specifier,
+ *   as the argument of `import()`, or in a type import. Anywhere else
+ *   (`import core = require(...)`, `require(...)`, a constant later passed to
+ *   `import(name)`) it is a finding.
  *
  * Limits, by design: names are matched per file, not per scope, so a shadowing
- * local can only add findings; code outside the scanned directories, and
- * strings handed to `eval` or a webview from Rust, are not seen.
+ * local can only add findings; code outside the scanned directories, a module
+ * name assembled at runtime (`'@tauri-apps/api/' + x`), and strings handed to
+ * `eval` or a webview from Rust, are not seen.
  */
 import ts from 'typescript';
 
@@ -132,6 +145,16 @@ function isNameOnly(node: ts.Identifier): boolean {
 	return ts.isBindingElement(parent) && parent.propertyName === node;
 }
 
+/** The module name in an `import`/`export ... from`, an `import()` or a type import. */
+function isModuleSpecifier(node: ts.StringLiteralLike): boolean {
+	const parent = node.parent;
+	if (ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent)) {
+		return parent.moduleSpecifier === node;
+	}
+	if (isCoreImport(parent)) return true;
+	return ts.isLiteralTypeNode(parent) && ts.isImportTypeNode(parent.parent);
+}
+
 export function scanFile(source: ts.SourceFile): FileScan {
 	const calls: FileScan['calls'] = [];
 	const problems: FileScan['problems'] = [];
@@ -162,6 +185,14 @@ export function scanFile(source: ts.SourceFile): FileScan {
 		if (invoke) return accept(invoke, `(await import('${CORE_MODULE}')).invoke`);
 		if (!ts.isVariableDeclaration(parent) || parent.initializer !== outer) {
 			return untraceable(node, `import('${CORE_MODULE}') consumed some other way`);
+		}
+		// A binding another module can import is out of reach of this file's scan.
+		const statement = parent.parent.parent;
+		if (
+			!ts.isVariableStatement(statement) ||
+			statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+		) {
+			return untraceable(parent, `exported binding of import('${CORE_MODULE}')`);
 		}
 		if (ts.isIdentifier(parent.name)) return bindName(parent.name, namespaces);
 		if (!ts.isObjectBindingPattern(parent.name)) {
@@ -199,6 +230,14 @@ export function scanFile(source: ts.SourceFile): FileScan {
 			if (exportsInvoke) untraceable(node, `re-export from ${CORE_MODULE}`);
 		} else if (isCoreImport(node)) {
 			bindDynamic(node);
+		} else if (
+			ts.isStringLiteralLike(node) &&
+			node.text === CORE_MODULE &&
+			!isModuleSpecifier(node)
+		) {
+			// `import x = require(...)`, `require(...)`, a module name kept in a
+			// variable for a later `import(name)`: shapes the scan cannot follow.
+			untraceable(node, `${CORE_MODULE} named outside an import declaration or import()`);
 		}
 		ts.forEachChild(node, bind);
 	};

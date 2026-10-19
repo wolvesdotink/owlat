@@ -9,6 +9,10 @@
  * or icon it did not write would ship: the packaged app has no server to fall
  * back to, so the window stays blank or the asset is just missing. This reads a
  * finished build and fails when
+ * - an emitted HTML page (each one, index.html included: a window or a reload
+ *   opens a route's page directly) has no module entry that resolves and
+ *   matches its hash, or carries no Nuxt buildId, or one other than
+ *   builds/latest.json's,
  * - a `<script>`, `<link>` or `<img>` in any emitted HTML page, or the import
  *   map, points at a local file that does not exist,
  * - a referenced file's bytes do not match its `integrity` hash (the webview
@@ -149,7 +153,6 @@ function integrityMatches(integrity: string, file: string): boolean {
 		});
 }
 
-let entries = 0;
 let verifiedIntegrity = 0;
 const buildIds = new Map<string, string>();
 let buildAssetsDir: string | undefined;
@@ -158,31 +161,35 @@ let manifestLink: { ref: string; from: string } | undefined;
 const pages = files.filter((file) => file.endsWith('.html'));
 for (const page of pages) {
 	const html = readFileSync(page, 'utf8');
+	// Every page is a cold-start document of its own: the main window opens
+	// index.html, the compose window opens compose/index.html (window.rs), and a
+	// reload lands on the route's page. Each one needs a working entry.
+	let entries = 0;
 	for (const match of html.matchAll(/<(script|link|img)\b([^>]*)>/gi)) {
 		const tag = (match[1] as string).toLowerCase();
 		const attrs = attributes(match[2] as string);
 		const ref = tag === 'link' ? attrs.get('href') : attrs.get('src');
 		if (ref === undefined) continue;
 		const target = reference(ref, page);
-		if (tag === 'script' && attrs.get('type') === 'module' && target) entries += 1;
 		if (tag === 'link' && attrs.get('rel') === 'manifest') manifestLink ??= { ref, from: page };
 		const integrity = attrs.get('integrity');
+		const intact = !integrity || !target || integrityMatches(integrity, target);
 		if (integrity && target) {
 			verifiedIntegrity += 1;
-			if (!integrityMatches(integrity, target)) {
-				problem(`${show(target)} does not match its integrity hash`, page);
-			}
+			if (!intact) problem(`${show(target)} does not match its integrity hash`, page);
 		}
+		if (tag === 'script' && attrs.get('type') === 'module' && target && intact) entries += 1;
 	}
+	if (entries === 0) problem('the page loads no module entry that resolves', page);
 	for (const match of html.matchAll(/<script\b[^>]*type="importmap"[^>]*>([\s\S]*?)<\/script>/gi)) {
 		const map = JSON.parse(match[1] as string) as { imports?: Record<string, string> };
 		for (const target of Object.values(map.imports ?? {})) reference(target, page);
 	}
 	const buildId = /\bbuildId:"([^"]+)"/.exec(html)?.[1];
 	if (buildId) buildIds.set(page, buildId);
+	else problem('the page carries no Nuxt buildId', page);
 	buildAssetsDir ??= /\bbuildAssetsDir:"([^"]+)"/.exec(html)?.[1];
 }
-if (entries === 0) problem('no page loads a module script; the build has no entry');
 
 // The web app manifest (index.html <link rel="manifest">) and its icons.
 if (manifestLink) {
@@ -198,19 +205,18 @@ if (manifestLink) {
 
 // Nuxt's app manifest: at boot the client fetches builds/meta/<buildId>.json
 // for the build id in its page, and builds/latest.json to spot a newer build.
-// Both are required, and checked independently of each other.
+// Both are required: each page's meta file on its own, and latest.json naming
+// the build every page carries.
 const assetsDir = `/${(buildAssetsDir ?? '/_nuxt/').replace(/^\/+|\/+$/g, '')}/`;
-const pageBuilds = new Set(buildIds.values());
-if (pageBuilds.size === 0) problem('no page carries a Nuxt buildId');
-if (pageBuilds.size > 1) problem(`the pages carry ${pageBuilds.size} different build ids`);
 for (const [page, id] of buildIds) reference(`${assetsDir}builds/meta/${id}.json`, page);
 const latest = join(dist, `${assetsDir}builds/latest.json`);
 if (!isFile(latest)) {
 	problem(`${show(latest)} is missing`);
 } else {
 	const { id } = JSON.parse(readFileSync(latest, 'utf8')) as { id?: string };
-	if (!id || !pageBuilds.has(id)) {
-		problem(`${show(latest)} is build ${id}, the pages are ${[...pageBuilds].join(', ')}`);
+	if (!id) problem(`${show(latest)} names no build id`);
+	for (const [page, pageId] of buildIds) {
+		if (id && pageId !== id) problem(`the page is build ${pageId}, ${show(latest)} is ${id}`, page);
 	}
 }
 
@@ -254,8 +260,9 @@ if (precompressed.length > 0) {
 if (problems.size > 0) {
 	console.error(`The desktop SPA at ${dist} is incomplete:\n`);
 	for (const [message, where] of problems) {
-		const [first, ...rest] = [...where].sort();
-		const from = first ? ` (in ${first}${rest.length > 0 ? ` and ${rest.length} more` : ''})` : '';
+		const sorted = [...where].sort();
+		const more = sorted.length > 3 ? ` and ${sorted.length - 3} more` : '';
+		const from = sorted.length > 0 ? ` (in ${sorted.slice(0, 3).join(', ')}${more})` : '';
 		console.error(`  - ${message}${from}`);
 	}
 	process.exit(1);
