@@ -13313,7 +13313,9 @@
 			"remindersNotRestored": "Antworterinnerungen wurden nicht wiederhergestellt.",
 			"unsubscribeNotRecalled": "Die Abmeldung wurde schon gesendet und lässt sich nicht zurücknehmen.",
 			"expired": "Das lässt sich nicht mehr rückgängig machen",
-			"already": "Das wurde schon rückgängig gemacht"
+			"already": "Das wurde schon rückgängig gemacht",
+			"undoing": "Wird rückgängig gemacht…",
+			"notUndone": "Nicht rückgängig gemacht."
 		},
 		"rules": {
 			"title": "Regeln in deinen Worten",
