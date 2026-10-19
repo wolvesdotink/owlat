@@ -15,13 +15,24 @@
  * Here the real `resend` package runs and only `fetch` is replaced, so an SDK
  * upgrade that renames either field fails this suite. No request leaves the
  * process: the stub records the request and answers it, and the API key is
- * synthetic. Stubbing `fetch` alone would not keep an SDK that moved to
- * `node:https` or its own fetch off the network, so every outbound socket
- * connect is refused while this file runs and any attempt fails the test.
+ * synthetic.
+ *
+ * Stubbing `fetch` alone would not keep an SDK that moved to `node:https`, its
+ * own fetch or its own DNS client off the network. So while this file runs,
+ * `refuseEgress` refuses and records every Node egress entry point a JS
+ * dependency can reach (TCP/TLS socket connects, every `node:dns` lookup and
+ * resolve, UDP sends), and any attempt fails the test.
+ *
+ * Limits: the guard covers this JS realm only. A native addon, a child process
+ * or a worker thread opens its own sockets and is out of reach of an
+ * in-process guard. This suite proves the JS transport boundary, nothing more.
  */
 
+import dgram from 'node:dgram';
+import dns, { lookup as esmLookup } from 'node:dns';
+import { syncBuiltinESMExports } from 'node:module';
 import net from 'node:net';
-import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resendSendProvider, _resetResendClientCacheForTests } from '../resend';
 import { resolveSendTransport, _resetSendTransportCacheForTests } from '../transports';
 import type { EmailSendParams } from '../types';
@@ -45,23 +56,100 @@ const params: EmailSendParams = {
 const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0xff, 0x00, 0x80]);
 
 let requests: CapturedRequest[];
-let blockedConnects: unknown[];
-let connectGuard: MockInstance<net.Socket['connect']>;
+
+const EGRESS_BLOCKED = 'resendWireEncoding.test: egress blocked';
+/** Every refused attempt, as `<entry point>(<host>)`. */
+const egressAttempts: string[] = [];
+
+/** `node:dns` names that send a query: `lookup*`, `resolve*` and `reverse*`. */
+function dnsQueryNames(target: object): string[] {
+	return Object.getOwnPropertyNames(target).filter(
+		(name) =>
+			/^(lookup|resolve|reverse)/.test(name) &&
+			typeof (target as Record<string, unknown>)[name] === 'function'
+	);
+}
+
+/** Each egress family, as the objects whose methods it replaces. */
+const EGRESS_FAMILIES: ReadonlyArray<{ label: string; target: object; names: string[] }> = [
+	// Every TCP or TLS client (`http(s).request`, `http2`, `tls.connect`,
+	// undici's fetch) opens its socket here, before its own DNS lookup.
+	{ label: 'net.Socket#', target: net.Socket.prototype, names: ['connect'] },
+	{ label: 'dns.', target: dns, names: dnsQueryNames(dns) },
+	// The same object as `node:dns/promises`.
+	{ label: 'dns.promises.', target: dns.promises, names: dnsQueryNames(dns.promises) },
+	{
+		label: 'dns.Resolver#',
+		target: dns.Resolver.prototype,
+		names: dnsQueryNames(dns.Resolver.prototype),
+	},
+	{
+		label: 'dns.promises.Resolver#',
+		target: dns.promises.Resolver.prototype,
+		names: dnsQueryNames(dns.promises.Resolver.prototype),
+	},
+	{ label: 'dgram.Socket#', target: dgram.Socket.prototype, names: ['send', 'connect'] },
+];
 
 /**
- * Fail closed on any transport other than the stubbed `fetch`. Every Node TCP
- * or TLS client (`http(s).request`, `tls.connect`, undici's fetch) opens its
- * socket through `net.Socket#connect`, so refusing it here stops the attempt
- * before DNS, and recording it fails the test even when the SDK swallows the
- * error into an `{ error }` result.
+ * Replace every egress entry point with one that records the attempt and
+ * throws, synchronously even for the promise APIs. Recording is what fails
+ * the test: the SDK turns a transport error into an `{ error }` result, so the
+ * throw alone could go unseen. Returns the
+ * restore function, and restores itself if installing fails halfway: the
+ * builtins are shared with every other file this worker runs.
+ * `syncBuiltinESMExports` carries the swap to ESM named imports
+ * (`import { lookup } from 'node:dns'`), which otherwise keep the original.
  */
-function guardOutboundConnections(): void {
-	blockedConnects = [];
-	connectGuard = vi.spyOn(net.Socket.prototype, 'connect').mockImplementation((...args) => {
-		blockedConnects.push(args[0]);
-		throw new Error('resendWireEncoding.test: outbound connection blocked');
-	});
+function refuseEgress(): () => void {
+	const originals: Array<{ target: Record<string, unknown>; name: string; original: unknown }> = [];
+	const restore = (): void => {
+		for (const { target, name, original } of originals) target[name] = original;
+		syncBuiltinESMExports();
+	};
+	try {
+		for (const { label, target, names } of EGRESS_FAMILIES) {
+			const methods = target as Record<string, unknown>;
+			for (const name of names) {
+				originals.push({ target: methods, name, original: methods[name] });
+				methods[name] = function refusedEgress(...args: unknown[]): never {
+					egressAttempts.push(`${label}${name}(${describeTarget(args)})`);
+					throw new Error(`${EGRESS_BLOCKED}: ${label}${name}`);
+				};
+			}
+		}
+		syncBuiltinESMExports();
+	} catch (error) {
+		restore();
+		throw error;
+	}
+	return restore;
 }
+
+/** The first host-like argument: a string, an `{ host }` or either nested in an array. */
+function describeTarget(args: readonly unknown[]): string {
+	for (const arg of args) {
+		if (typeof arg === 'string') return arg;
+		if (Array.isArray(arg)) return describeTarget(arg);
+		if (arg && typeof arg === 'object' && 'host' in arg) return String(arg.host);
+	}
+	return '?';
+}
+
+/** The attempts so far, cleared, for a test that makes one on purpose. */
+function takeEgressAttempts(): string[] {
+	return egressAttempts.splice(0);
+}
+
+let restoreEgress: (() => void) | undefined;
+
+beforeAll(() => {
+	restoreEgress = refuseEgress();
+});
+
+afterAll(() => {
+	restoreEgress?.();
+});
 
 function stubResendApi(): void {
 	vi.stubGlobal(
@@ -85,7 +173,7 @@ function onlyRequest(): CapturedRequest {
 
 beforeEach(() => {
 	requests = [];
-	guardOutboundConnections();
+	egressAttempts.length = 0;
 	_resetSendTransportCacheForTests();
 	_resetResendClientCacheForTests();
 	vi.stubEnv('RESEND_API_KEY', 're_synthetic_test_key');
@@ -93,25 +181,89 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	connectGuard.mockRestore();
 	vi.unstubAllGlobals();
 	vi.unstubAllEnvs();
 	_resetSendTransportCacheForTests();
 	_resetResendClientCacheForTests();
 	// Last, so a failure here cannot skip the cleanup above.
-	expect(blockedConnects, 'a request bypassed the stubbed fetch').toEqual([]);
+	expect(takeEgressAttempts(), 'a request bypassed the stubbed fetch').toEqual([]);
+});
+
+// Every host and address below is reserved (`.example`, TEST-NET 192.0.2.0/24),
+// so even a broken guard reaches no one.
+describe('egress guard (around the stubbed fetch)', () => {
+	it('refuses a TCP connect', () => {
+		expect(() => net.connect({ host: 'api.owlat.example', port: 443 })).toThrow(EGRESS_BLOCKED);
+		expect(takeEgressAttempts()).toEqual(['net.Socket#connect(api.owlat.example)']);
+	});
+
+	it('refuses a callback DNS lookup before it resolves, including the ESM binding', () => {
+		const callback = vi.fn();
+		expect(() => dns.lookup('api.owlat.example', callback)).toThrow(EGRESS_BLOCKED);
+		expect(() => esmLookup('api.owlat.example', callback)).toThrow(EGRESS_BLOCKED);
+		expect(callback).not.toHaveBeenCalled();
+		expect(takeEgressAttempts()).toEqual([
+			'dns.lookup(api.owlat.example)',
+			'dns.lookup(api.owlat.example)',
+		]);
+	});
+
+	it('refuses a promise DNS lookup', () => {
+		expect(() => dns.promises.lookup('api.owlat.example')).toThrow(EGRESS_BLOCKED);
+		expect(takeEgressAttempts()).toEqual(['dns.promises.lookup(api.owlat.example)']);
+	});
+
+	it('refuses a query on a callback and a promise Resolver', () => {
+		expect(() => new dns.Resolver().resolve4('api.owlat.example', vi.fn())).toThrow(EGRESS_BLOCKED);
+		expect(() => new dns.promises.Resolver().resolveTxt('api.owlat.example')).toThrow(
+			EGRESS_BLOCKED
+		);
+		expect(takeEgressAttempts()).toEqual([
+			'dns.Resolver#resolve4(api.owlat.example)',
+			'dns.promises.Resolver#resolveTxt(api.owlat.example)',
+		]);
+	});
+
+	it('refuses every query entry point node:dns exposes', () => {
+		// The names come from the live module, so a query API a later Node adds
+		// is guarded and exercised here without editing this file.
+		const owners: ReadonlyArray<[label: string, owner: object]> = [
+			['dns.', dns],
+			['dns.promises.', dns.promises],
+			['dns.Resolver#', new dns.Resolver()],
+			['dns.promises.Resolver#', new dns.promises.Resolver()],
+		];
+		let expected = 0;
+		for (const [label, owner] of owners) {
+			const { names } = EGRESS_FAMILIES.find((family) => family.label === label)!;
+			expect(names, label).toEqual(expect.arrayContaining(['resolve4', 'resolveTxt', 'reverse']));
+			for (const name of names) {
+				const query = (owner as Record<string, (...args: unknown[]) => unknown>)[name]!;
+				expect(() => query.call(owner, '192.0.2.1', 443, vi.fn()), `${label}${name}`).toThrow(
+					EGRESS_BLOCKED
+				);
+				expected += 1;
+			}
+		}
+		expect(takeEgressAttempts()).toHaveLength(expected);
+	});
+
+	it('refuses a UDP send and connect', () => {
+		const socket = dgram.createSocket('udp4');
+		try {
+			expect(() => socket.send(Buffer.from('q'), 53, 'ns.owlat.example')).toThrow(EGRESS_BLOCKED);
+			expect(() => socket.connect(53, 'ns.owlat.example')).toThrow(EGRESS_BLOCKED);
+		} finally {
+			socket.close();
+		}
+		expect(takeEgressAttempts()).toEqual([
+			'dgram.Socket#send(ns.owlat.example)',
+			'dgram.Socket#connect(ns.owlat.example)',
+		]);
+	});
 });
 
 describe('Resend wire encoding (real SDK, fetch intercepted)', () => {
-	it('refuses an outbound connection made around the stubbed fetch', () => {
-		// `.example` never resolves, so even a broken guard reaches no one.
-		expect(() => net.connect({ host: 'api.owlat.example', port: 443 })).toThrow(
-			'outbound connection blocked'
-		);
-		expect(blockedConnects).toHaveLength(1);
-		blockedConnects = [];
-	});
-
 	it('posts one JSON request to the Resend emails endpoint with the synthetic key', async () => {
 		const result = await resendSendProvider.sendEmail(resolveSendTransport('resend'), params);
 
