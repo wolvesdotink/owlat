@@ -4,12 +4,12 @@
  * needs Docker and two published releases, so it only happens in the Update
  * flow workflow; these cases pin the parts that decide its verdict:
  *
- *   - the two read-only queries the script sends with `convex run
- *     --inline-query`, evaluated here against an in-memory `ctx.db`;
- *   - the precondition check on the seeded snapshot;
+ *   - the read-only queries the script sends with `convex run --inline-query`
+ *     (roles, baseline, reload), evaluated here against an in-memory `ctx.db`;
+ *   - the precondition check on the seeded baseline;
  *   - the comparison that names each invariant that broke. Its regressions
- *     change the underlying rows between the two snapshots, the way an
- *     upgrade would, and take both snapshots with the real query.
+ *     change the underlying rows between the baseline and the reload, the way
+ *     an upgrade would, and take both with the real queries.
  *
  * Every case runs the REAL functions from scripts/e2e-update-flow-data.sh
  * under bash.
@@ -59,8 +59,8 @@ type Tables = Record<string, Doc[]>;
 const id = (name: string) => name.padEnd(32, '0');
 
 /**
- * The subset of a Convex query `ctx` the two queries use. Like the real
- * `db.get`, a string that is not an id throws and an unknown id is null.
+ * The subset of a Convex query `ctx` the queries use. Like the real `db.get`,
+ * a string that is not an id throws and an unknown id is null.
  */
 function fakeCtx(tables: Tables) {
 	return {
@@ -99,13 +99,14 @@ const ASSET = id('assetlogo');
 const TOPIC = id('topicpromo');
 const S1 = id('senddelivered');
 const QUEUED = id('sendqueued');
-const IDS = { contact: C1, campaign: SENT, draft: DRAFT, queuedSend: QUEUED };
+const ROLES = { contact: C1, campaign: SENT, draft: DRAFT, queuedSend: QUEUED };
 
 /** A fresh copy of the seeded tables, for a case to change. */
 function tables(): Tables {
 	return structuredClone({
 		contacts: [
-			{ _id: C2, _creationTime: 2, email: 'zoe@example.com', firstName: 'Zoe', seedTag: 'demo' },
+			// Alan received the sample Send but is not the named contact.
+			{ _id: C2, _creationTime: 2, email: 'alan@example.com', firstName: 'Alan', seedTag: 'demo' },
 			{
 				_id: C1,
 				_creationTime: 1,
@@ -131,7 +132,8 @@ function tables(): Tables {
 				emailTemplateId: T1,
 				audience: { kind: 'topic', topicId: TOPIC },
 				sentAt: 9,
-				statsSent: 1,
+				statsSent: 0,
+				statsUpdatedAt: 50,
 			},
 			{
 				_id: DRAFT,
@@ -142,7 +144,6 @@ function tables(): Tables {
 				seedTag: 'demo',
 				emailTemplateId: T2,
 				audience: { kind: 'topic', topicId: TOPIC },
-				statsSent: 0,
 			},
 			{
 				_id: OWN,
@@ -165,8 +166,8 @@ function tables(): Tables {
 				_id: S1,
 				_creationTime: 6,
 				campaignId: SENT,
-				contactId: C1,
-				contactEmail: 'ada@example.com',
+				contactId: C2,
+				contactEmail: 'alan@example.com',
 				status: 'delivered',
 				queuedAt: 6,
 			},
@@ -192,12 +193,27 @@ function row(data: Tables, docId: string): Doc {
 	return doc;
 }
 
-type Snapshot = { docs: Record<string, Doc | null>; rows: Record<string, string[]> };
+type Baseline = {
+	roles: typeof ROLES;
+	sends: string[];
+	manifest: Record<string, { invariant: string; label: string; strict: boolean }>;
+	docs: Record<string, Doc | null>;
+	rows: Record<string, string[]>;
+};
+type Reload = { docs: Record<string, Doc | null>; rows: Record<string, string[]> };
 
-async function snapshotOf(data: Tables): Promise<Snapshot> {
-	const { code, stdout } = await runLib('data_snapshot_query', [JSON.stringify(IDS)]);
+async function baselineOf(data: Tables): Promise<Baseline> {
+	const { code, stdout } = await runLib('data_baseline_query', [JSON.stringify(ROLES)]);
 	expect(code).toBe(0);
-	return (await evaluateQuery(stdout, data)) as Snapshot;
+	return (await evaluateQuery(stdout, data)) as Baseline;
+}
+
+async function reloadOf(data: Tables, baseline: Baseline): Promise<Reload> {
+	const { code, stdout } = await runLib('data_reload_query', [
+		JSON.stringify(Object.keys(baseline.docs)),
+	]);
+	expect(code).toBe(0);
+	return (await evaluateQuery(stdout, data)) as Reload;
 }
 
 describe('data_roles_query', () => {
@@ -220,34 +236,44 @@ describe('data_roles_query', () => {
 	});
 });
 
-describe('data_snapshot_query', () => {
-	it('keeps whole documents: the named rows, the Sends of the sent campaign and what they reference, two hops deep', async () => {
-		const snapshot = await snapshotOf(tables());
-		expect(Object.keys(snapshot.docs).sort()).toEqual([
-			'campaign',
-			'campaign/audience.topicId',
-			'campaign/emailTemplateId',
-			`campaign/send:${S1}`,
-			'contact',
-			'draft',
-			'draft/emailTemplateId',
-			'draft/emailTemplateId/blocks.0',
-			'queued-send',
-		]);
-		expect(snapshot.docs['contact']).toEqual(row(tables(), C1));
-		expect(snapshot.docs['draft/emailTemplateId/blocks.0']).toEqual(row(tables(), BLOCK));
+describe('data_baseline_query', () => {
+	it('keys whole documents by id: the roots and everything within two hops of any of them, Sends included', async () => {
+		const baseline = await baselineOf(tables());
+		const labels = Object.fromEntries(
+			Object.entries(baseline.manifest).map(([docId, entry]) => [docId, entry.label])
+		);
+		expect(labels).toEqual({
+			[C1]: 'contact',
+			[SENT]: 'campaign',
+			[S1]: `campaign/send:${S1}`,
+			[DRAFT]: 'draft',
+			[QUEUED]: 'queued-send',
+			[T1]: 'campaign/emailTemplateId',
+			[TOPIC]: 'campaign/audience.topicId',
+			[C2]: `campaign/send:${S1}/contactId`,
+			[T2]: 'draft/emailTemplateId',
+			[BLOCK]: 'draft/emailTemplateId/blocks.0',
+		});
+		expect(baseline.manifest[C2]!.invariant).toBe('campaign');
+		expect(Object.keys(baseline.docs).sort()).toEqual(Object.keys(baseline.manifest).sort());
+		expect(baseline.docs[C1]).toEqual(row(tables(), C1));
+		expect(baseline.sends).toEqual([S1]);
 	});
 
-	it('stops after two hops and lists a document reached twice only once', async () => {
-		const { docs } = await snapshotOf(tables());
+	it('marks only the queued Send strict', async () => {
+		const { manifest } = await baselineOf(tables());
+		expect(Object.keys(manifest).filter((docId) => manifest[docId]!.strict)).toEqual([QUEUED]);
+	});
+
+	it('stops after two hops and ignores an id-shaped string that is no document', async () => {
+		const { docs } = await baselineOf(tables());
 		// The asset is a third hop (draft → template → block → asset).
-		expect(Object.values(docs).some((doc) => doc?._id === ASSET)).toBe(false);
-		// Both campaigns name the same topic; it is listed under the first.
-		expect(Object.values(docs).filter((doc) => doc?._id === TOPIC)).toHaveLength(1);
+		expect(ASSET in docs).toBe(false);
+		expect('f'.repeat(32) in docs).toBe(false);
 	});
 
 	it('lists every row id of the checked tables', async () => {
-		const { rows } = await snapshotOf(tables());
+		const { rows } = await baselineOf(tables());
 		expect(rows).toEqual({
 			contacts: [C0, C1, C2].sort(),
 			campaigns: [SENT, DRAFT, OWN].sort(),
@@ -256,29 +282,42 @@ describe('data_snapshot_query', () => {
 		});
 	});
 
-	it('returns null for a named row that is gone', async () => {
-		const data = tables();
-		data['emailSends'] = data['emailSends']!.filter((send) => send._id !== QUEUED);
-		expect((await snapshotOf(data)).docs['queued-send']).toBeNull();
-	});
-
 	it('refuses ids that are not Convex ids, so nothing but an id reaches the query source', async () => {
-		const { code, stdout } = await runLib('data_snapshot_query', [
-			JSON.stringify({ ...IDS, draft: "k2'); throw 1; ('" }),
+		const { code, stdout } = await runLib('data_baseline_query', [
+			JSON.stringify({ ...ROLES, draft: "k2'); throw 1; ('" }),
 		]);
 		expect(code).not.toBe(0);
 		expect(stdout).toBe('');
 	});
 });
 
+describe('data_reload_query', () => {
+	it('loads exactly the given ids, a missing one as null', async () => {
+		const data = tables();
+		data['emailSends'] = data['emailSends']!.filter((send) => send._id !== QUEUED);
+		const { code, stdout } = await runLib('data_reload_query', [JSON.stringify([C1, QUEUED])]);
+		expect(code).toBe(0);
+		const reload = (await evaluateQuery(stdout, data)) as Reload;
+		expect(reload.docs).toEqual({ [C1]: row(tables(), C1), [QUEUED]: null });
+	});
+
+	it('refuses anything but a list of Convex ids', async () => {
+		for (const ids of ['[]', '["ok", "x\'); throw 1; (\'"]', '{"a": "b"}']) {
+			const { code, stdout } = await runLib('data_reload_query', [ids]);
+			expect(code).not.toBe(0);
+			expect(stdout).toBe('');
+		}
+	});
+});
+
 describe('data_snapshot_problems', () => {
 	async function problems(data: Tables) {
 		return runLib('data_snapshot_problems', [
-			await writeJson('before.json', await snapshotOf(data)),
+			await writeJson('baseline.json', await baselineOf(data)),
 		]);
 	}
 
-	it('accepts a snapshot in the state every invariant describes', async () => {
+	it('accepts a baseline in the state every invariant describes', async () => {
 		const { code, stdout } = await problems(tables());
 		expect(code).toBe(0);
 		expect(stdout).toBe('');
@@ -313,18 +352,19 @@ describe('data_snapshot_problems', () => {
 
 describe('data_compare_snapshots', () => {
 	/**
-	 * Snapshots the seeded tables, applies `change` to them the way an upgrade
-	 * would, snapshots again and compares, for an update to 0.6.15. `allowlist`
-	 * replaces DATA_REWRITE_ALLOWLIST after the library set its default.
+	 * Takes the baseline of the seeded tables, applies `change` to them the way
+	 * an upgrade would, reloads the baseline's ids and compares, for an update
+	 * to 0.6.15. `allowlist` replaces DATA_REWRITE_ALLOWLIST after the library
+	 * set its default.
 	 */
 	async function upgrade(change: (data: Tables) => void, allowlist?: unknown[]) {
 		const data = tables();
-		const before = await snapshotOf(data);
+		const baseline = await baselineOf(data);
 		change(data);
-		const after = await snapshotOf(data);
+		const reload = await reloadOf(data, baseline);
 		const files = [
-			await writeJson('before.json', before),
-			await writeJson('after.json', after),
+			await writeJson('baseline.json', baseline),
+			await writeJson('after.json', reload),
 			'0.6.15',
 		];
 		const { code, stdout } = allowlist
@@ -350,6 +390,15 @@ describe('data_compare_snapshots', () => {
 		expect(code).toBe(0);
 	});
 
+	it('lets a reference to an already captured document be added without moving it', async () => {
+		const { code, lines } = await upgrade((data) => {
+			row(data, C1)['favoriteTemplateId'] = T2;
+			row(data, T2)['ownerContactId'] = C1;
+		});
+		expect(code).toBe(0);
+		expect(lines).toContain('ok|draft');
+	});
+
 	it("fails the draft when its template's content is cleared", async () => {
 		const { code, lines } = await upgrade((data) => void (row(data, T2)['html'] = ''));
 		expect(code).toBe(1);
@@ -365,6 +414,14 @@ describe('data_compare_snapshots', () => {
 		expect(code).toBe(1);
 		expect(lines).toContain(
 			'bad|contact|contact:deletedAt added 10 (soft-deleted); contact:deletedBy added "system" (soft-deleted)'
+		);
+	});
+
+	it('fails the campaign when the recipient of one of its Sends loses their name', async () => {
+		const { code, lines } = await upgrade((data) => void delete row(data, C2)['firstName']);
+		expect(code).toBe(1);
+		expect(lines).toContain(
+			`bad|campaign|campaign/send:${S1}/contactId:firstName removed (was "Alan")`
 		);
 	});
 
@@ -394,19 +451,45 @@ describe('data_compare_snapshots', () => {
 		expect(lines).toContain('bad|draft|draft/emailTemplateId/blocks.0:html "<footer/>" → ""');
 	});
 
-	it('fails the queued Send once anything attempted it', async () => {
-		const { code, lines } = await upgrade((data) => {
-			row(data, QUEUED)['status'] = 'failed';
-			row(data, QUEUED)['firstAttemptAt'] = 8;
-		});
+	it.each<[string, (send: Doc) => void, string]>([
+		[
+			'a first attempt time, status still queued',
+			(send) => void (send['firstAttemptAt'] = 8),
+			'queued-send:firstAttemptAt added 8',
+		],
+		[
+			'a provider message id, status still queued',
+			(send) => void (send['providerMessageId'] = 'mta-1'),
+			'queued-send:providerMessageId added "mta-1"',
+		],
+		[
+			'a new status',
+			(send) => void (send['status'] = 'failed'),
+			'queued-send:status "queued" → "failed"',
+		],
+	])('fails the queued Send once it gains %s', async (_case, change, message) => {
+		const { code, lines } = await upgrade((data) => change(row(data, QUEUED)));
 		expect(code).toBe(1);
-		expect(lines).toContain('bad|queued-send|queued-send:status "queued" → "failed"');
+		expect(lines).toContain(`bad|queued-send|${message}`);
 	});
 
 	it('fails the campaign when one of its Sends changes', async () => {
 		const { code, lines } = await upgrade((data) => void (row(data, S1)['status'] = 'bounced'));
 		expect(code).toBe(1);
 		expect(lines).toContain(`bad|campaign|campaign/send:${S1}:status "delivered" → "bounced"`);
+	});
+
+	it.each<[string, (campaign: Doc) => void, string]>([
+		[
+			'removed',
+			(campaign) => void delete campaign['statsSent'],
+			'campaign:statsSent removed (was 0)',
+		],
+		['wrong', (campaign) => void (campaign['statsSent'] = 7), 'campaign:statsSent 0 → 7'],
+	])('compares the stats counters strictly: statsSent %s fails', async (_case, change, message) => {
+		const { code, lines } = await upgrade((data) => change(row(data, SENT)));
+		expect(code).toBe(1);
+		expect(lines).toContain(`bad|campaign|${message}`);
 	});
 
 	it('reports a named row that is gone, and the row ids it took with it', async () => {
@@ -416,20 +499,6 @@ describe('data_compare_snapshots', () => {
 		expect(code).toBe(1);
 		expect(lines).toContain(`bad|contact|contact is gone (was ${C1})`);
 		expect(lines).toContain(`bad|rows|missing contacts: ${C1}`);
-	});
-
-	it("ignores the sent campaign's stats cache, which the stats rollup recomputes on its own timer", async () => {
-		const { code, lines } = await upgrade((data) => {
-			Object.assign(row(data, SENT), { statsSent: 0, statsUpdatedAt: 99 });
-		});
-		expect(code).toBe(0);
-		expect(lines).toContain('ok|campaign');
-	});
-
-	it('still compares the same stats field on a document the rollup does not own', async () => {
-		const { code, lines } = await upgrade((data) => void (row(data, DRAFT)['statsSent'] = 5));
-		expect(code).toBe(1);
-		expect(lines).toContain('bad|draft|draft:statsSent 0 → 5');
 	});
 
 	it('skips a field the allowlist names for the release being updated to, and only for that release', async () => {
@@ -444,20 +513,14 @@ describe('data_compare_snapshots', () => {
 	});
 });
 
-describe('DATA_DERIVED_FIELDS', () => {
-	it('lists exactly the fields the campaign stats rollup writes', async () => {
-		const source = await readFile(
-			fileURLToPath(new URL('../../apps/api/convex/lib/validators/campaigns.ts', import.meta.url)),
+describe('data_rollup_stats', () => {
+	it("runs the function the backend's campaign stats cron runs", async () => {
+		const crons = await readFile(
+			fileURLToPath(new URL('../../apps/api/convex/crons.ts', import.meta.url)),
 			'utf8'
 		);
-		const block = /CAMPAIGN_SHARDED_STAT_FIELDS = \[([^\]]*)\]/.exec(source)?.[1] ?? '';
-		const sharded = [...block.matchAll(/'([A-Za-z]+)'/g)].map((match) => match[1]);
-		expect(sharded.length).toBeGreaterThan(0);
-		const { stdout } = await runLib('printf "%s" "$DATA_DERIVED_FIELDS"');
-		const derived = JSON.parse(stdout) as { doc: string; field: string }[];
-		expect(new Set(derived.map((entry) => entry.doc))).toEqual(new Set(['campaign']));
-		expect(derived.map((entry) => entry.field).sort()).toEqual(
-			['statsUpdatedAt', ...sharded].sort()
-		);
+		expect(crons).toContain('internal.campaigns.statShards.rollupSentCampaignStats');
+		const lib = await readFile(LIB, 'utf8');
+		expect(lib).toContain('convex run campaigns/statShards:rollupSentCampaignStats');
 	});
 });

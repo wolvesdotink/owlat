@@ -952,10 +952,12 @@ upgrading a real previous-release dataset. The release E2E install does not do
 that either: its seeded leg carries over Redis and ClamAV volumes, not Convex
 data. The update flow (`scripts/e2e-update-flow.sh`, run after each release and
 nightly) does: the previous release writes a contact, a sent and a draft
-campaign and a queued Send, and after the in-app update those documents and the
-ones they reference must still hold every field they had, unchanged. A migration
-that rewrites such a field on purpose lists it in `DATA_REWRITE_ALLOWLIST`
-(`scripts/e2e-update-flow-data.sh`). It checks that rows survive, not what the
+campaign and a queued Send. After the in-app update, those documents, the
+campaign's Sends and every document within two id references of them must still
+exist with every field they had, deep-equal, and no added soft-delete marker.
+Added fields are allowed, except on the queued Send, which must be identical. A
+migration that rewrites such a field on purpose lists it in
+`DATA_REWRITE_ALLOWLIST` (`scripts/e2e-update-flow-data.sh`). It checks that rows survive, not what the
 functions return, and it does not interrupt a migration.
 
 ### Never do these without a version bump
