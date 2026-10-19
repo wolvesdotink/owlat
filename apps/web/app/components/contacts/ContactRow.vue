@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
-import { contactPrimaryIdentity } from '~/utils/contactIdentity';
+import { contactHasEmail, contactPrimaryIdentity } from '~/utils/contactIdentity';
 
 /**
  * One row of the audience contacts table.
@@ -117,8 +117,8 @@ function menuItems(): ContextMenuItem[] {
 					@click.stop="emit('toggle-select')"
 					:aria-label="
 						selected
-							? t('dashboard.audience.contacts.index.deselectContact', { email: contact.email })
-							: t('dashboard.audience.contacts.index.selectContact', { email: contact.email })
+							? t('dashboard.audience.contacts.index.deselectContact', { email: identity })
+							: t('dashboard.audience.contacts.index.selectContact', { email: identity })
 					"
 				>
 					<Icon v-if="selected" name="lucide:check" class="w-3 h-3" />
@@ -128,11 +128,20 @@ function menuItems(): ContextMenuItem[] {
 				<!-- The row is not focusable, so the menu key listens on its link. -->
 				<NuxtLink
 					:to="to"
-					class="text-text-primary font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					class="font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					:class="contactHasEmail(contact) ? 'text-text-primary' : 'text-text-secondary'"
 					@keydown="onKeydown"
 				>
 					{{ identity }}
 				</NuxtLink>
+				<!-- The cell sits under the "Email" header, so a name or placeholder
+				     says, visibly and to a screen reader, that the email is missing. The
+				     leading space keeps it a separate word in the cell's text (the template
+				     compiler drops whitespace between the two elements). It stays outside
+				     the link, whose name is the contact's identity alone. -->
+				<span v-if="!contactHasEmail(contact)" class="ml-1 text-xs text-text-tertiary">{{
+					` ${t('dashboard.audience.contacts.index.noEmail')}`
+				}}</span>
 			</td>
 			<td class="px-6 py-4">
 				<span class="text-text-secondary">{{ contact.firstName || '-' }}</span>

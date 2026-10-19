@@ -24,8 +24,10 @@
  *   - any source line carrying an `x-release-version` marker comment
  *
  * The release commit also carries the schema-compat snapshot of the release's
- * own schema (apps/api/convex/__tests__/schemaCompat/previousRelease.json), so
- * every later PR is checked against the rows this release can store.
+ * own schema and callable functions
+ * (apps/api/convex/__tests__/schemaCompat/previousRelease.json), so every later
+ * PR is checked against the rows this release can store and the calls its
+ * clients and workers can make.
  */
 
 import { execFileSync } from 'node:child_process';

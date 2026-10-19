@@ -49,6 +49,7 @@ const renderer = {
 	validateBlocks,
 	diffEmails,
 };
+const actualRenderer = await vi.importActual<typeof renderer>('@owlat/email-renderer');
 const SPIED = Object.keys(renderer) as (keyof typeof renderer)[];
 
 const calls = () =>
@@ -128,13 +129,13 @@ describe('usePreview — work per generation', () => {
 			validateBlocks: 0,
 			analyzeEmail: 1,
 			getEmailHealthScore: 1,
-			diffEmails: 1,
+			diffEmails: 0,
 		});
 		expect(vi.mocked(renderEmailHtml).mock.calls[0]![1]?.darkMode).toBe(true);
 		expect(preview.generatedHtml.value).not.toBe(lightHtml);
 		expect(preview.plainText.value).toBe(plain);
-		// The diff still compares against the render the author was looking at.
-		expect(vi.mocked(diffEmails).mock.calls[0]![0]).toBe(lightHtml);
+		// The diff is not computed, but it is on offer.
+		expect(preview.htmlChanged.value).toBe(true);
 	});
 
 	it('shared results match what the standalone renderer calls produce', () => {
@@ -223,5 +224,116 @@ describe('usePreview — AMP on request', () => {
 		preview.ampRequested.value = true;
 		preview.togglePreviewMode();
 		expect(preview.ampRequested.value).toBe(false);
+	});
+});
+
+describe('usePreview — diff on request', () => {
+	// What the eager path computed after every render: the diff of the previous
+	// render against the current one, or null without a previous render. Uses
+	// the unspied renderer so it does not count as the composable's work.
+	const eagerDiff = (previous: string, current: string) =>
+		previous && current ? actualRenderer.diffEmails(previous, current) : null;
+
+	it('makes no diffEmails calls while the diff is not requested', () => {
+		const { canvasBlocks, renderOptions, preview } = setup();
+		preview.togglePreviewMode();
+		preview.toggleDarkModePreview();
+		canvasBlocks.value = [textBlock('a', 'Edited body')];
+		preview.regenerate();
+		renderOptions.value = { title: 'New title' };
+		preview.toggleDarkModePreview();
+
+		expect(preview.emailDiff.value).toBeNull();
+		expect(calls().diffEmails).toBe(0);
+	});
+
+	it('offers the diff exactly when the eager diff was not identical', () => {
+		const { canvasBlocks, preview } = setup();
+		const offered: boolean[] = [];
+		const baseline: boolean[] = [];
+		const step = (render: () => void) => {
+			const previous = preview.generatedHtml.value;
+			render();
+			offered.push(preview.htmlChanged.value);
+			const eager = eagerDiff(previous, preview.generatedHtml.value);
+			baseline.push(!!eager && !eager.identical);
+		};
+
+		step(() => preview.togglePreviewMode()); // no previous render
+		step(() => preview.regenerate()); // identical HTML
+		step(() => preview.toggleDarkModePreview()); // changed
+		step(() => preview.toggleDarkModePreview()); // changed back
+		step(() => preview.regenerateHtml()); // identical again
+		step(() => {
+			canvasBlocks.value = [textBlock('a', 'Edited body')];
+			preview.regenerate();
+		});
+
+		expect(offered).toEqual(baseline);
+		expect(offered).toEqual([false, false, true, true, false, true]);
+	});
+
+	it('diffs the same render pair when the panel opens', () => {
+		const { preview } = setup();
+		preview.togglePreviewMode();
+		const lightHtml = preview.generatedHtml.value;
+		preview.toggleDarkModePreview();
+		const darkHtml = preview.generatedHtml.value;
+		vi.clearAllMocks();
+
+		preview.diffRequested.value = true;
+		const diff = preview.emailDiff.value;
+
+		expect(calls().diffEmails).toBe(1);
+		// Against the render the author was looking at before the toggle.
+		expect(vi.mocked(diffEmails).mock.calls[0]).toEqual([lightHtml, darkHtml]);
+		expect(diff).toEqual(eagerDiff(lightHtml, darkHtml));
+		expect(diff?.identical).toBe(false);
+
+		// Reading it again reuses the result.
+		void preview.emailDiff.value;
+		expect(calls().diffEmails).toBe(1);
+	});
+
+	it('diffs only the latest pair after rapid renders, and follows renders while open', () => {
+		const { canvasBlocks, preview } = setup();
+		preview.togglePreviewMode();
+		preview.toggleDarkModePreview();
+		preview.toggleDarkModePreview();
+		canvasBlocks.value = [textBlock('a', 'Edited body')];
+		preview.regenerate();
+		const before = preview.generatedHtml.value;
+		preview.toggleDarkModePreview();
+		const after = preview.generatedHtml.value;
+		expect(calls().diffEmails).toBe(0);
+
+		preview.diffRequested.value = true;
+		expect(preview.emailDiff.value).toEqual(eagerDiff(before, after));
+		expect(calls().diffEmails).toBe(1);
+
+		// An open panel keeps up with the next render, identical or not.
+		preview.regenerateHtml();
+		expect(preview.htmlChanged.value).toBe(false);
+		expect(preview.emailDiff.value).toEqual(eagerDiff(after, after));
+		expect(preview.emailDiff.value?.identical).toBe(true);
+		expect(calls().diffEmails).toBe(2);
+	});
+
+	it('has no diff without a previous render, even when requested', () => {
+		const { preview } = setup();
+		preview.diffRequested.value = true;
+		preview.togglePreviewMode();
+
+		expect(preview.htmlChanged.value).toBe(false);
+		expect(preview.emailDiff.value).toBeNull();
+		expect(calls().diffEmails).toBe(0);
+	});
+
+	it('drops the diff request when leaving preview', () => {
+		const { preview } = setup();
+		preview.togglePreviewMode();
+		preview.diffRequested.value = true;
+		preview.togglePreviewMode();
+		expect(preview.diffRequested.value).toBe(false);
 	});
 });

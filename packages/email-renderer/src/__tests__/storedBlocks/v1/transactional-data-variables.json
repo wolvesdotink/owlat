@@ -1,0 +1,154 @@
+{
+	"description": "A transactional email: data variables, a condition, a repeated Block and a table with rich cells, column widths and the stacking mode.",
+	"field": "transactionalEmails.content",
+	"stored": [
+		{
+			"id": "tx-h",
+			"type": "text",
+			"content": {
+				"html": "<h2>Order {{orderNumber}} confirmed</h2>",
+				"blockType": "h2",
+				"fontSize": 24,
+				"textColor": "#374151",
+				"lineHeight": 1.5,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "tx-vip",
+			"type": "text",
+			"content": {
+				"html": "<p>Thanks for being a member, {{firstName}}.</p>",
+				"blockType": "paragraph",
+				"fontSize": 16,
+				"textColor": "#374151",
+				"lineHeight": 1.5,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0,
+				"condition": {
+					"variable": "isMember",
+					"operator": "equals",
+					"value": "true"
+				}
+			}
+		},
+		{
+			"id": "tx-line",
+			"type": "text",
+			"content": {
+				"html": "<p>{{item.name}} × {{item.quantity}}</p>",
+				"blockType": "paragraph",
+				"fontSize": 16,
+				"textColor": "#374151",
+				"lineHeight": 1.5,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0,
+				"repeat": {
+					"variable": "items",
+					"itemAlias": "item",
+					"maxItems": 10
+				}
+			}
+		},
+		{
+			"id": "tx-table",
+			"type": "table",
+			"content": {
+				"headers": ["Item", "Qty", "Price"],
+				"rows": [["{{firstItemName}}", "1", "{{firstItemPrice}}"]],
+				"headerBackgroundColor": "#f5f5f5",
+				"headerTextColor": "#333333",
+				"borderColor": "#e0e0e0",
+				"striped": true,
+				"stripeColor": "#fafafa",
+				"cellPadding": 8,
+				"textAlign": "left",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0,
+				"columns": [
+					{
+						"width": "60%"
+					},
+					{
+						"width": "15%",
+						"textAlign": "center"
+					},
+					{
+						"width": "25%",
+						"textAlign": "right"
+					}
+				],
+				"cells": [
+					[
+						{
+							"content": "Total",
+							"colSpan": 2,
+							"fontWeight": 700
+						},
+						{
+							"content": "{{totalAmount}}",
+							"textAlign": "right"
+						}
+					]
+				],
+				"responsiveMode": "stack"
+			}
+		},
+		{
+			"id": "tx-btn",
+			"type": "button",
+			"content": {
+				"text": "Track order",
+				"url": "https://example.com/orders/{{orderNumber}}",
+				"backgroundColor": "#c4785a",
+				"textColor": "#12110e",
+				"align": "center",
+				"borderRadius": 8,
+				"paddingX": 24,
+				"paddingY": 12,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0,
+				"condition": {
+					"variable": "trackingUrl",
+					"operator": "exists"
+				}
+			}
+		}
+	]
+}

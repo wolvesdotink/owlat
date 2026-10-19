@@ -39,16 +39,16 @@ describe('usePerfMark', () => {
 		const { mark, measure } = composable.usePerfMark();
 
 		mark('owlat_test_start');
-		const duration = measure('owlat_test_ms', 'owlat_test_start');
+		const duration = measure('owlat_reader_open_ms', 'owlat_test_start');
 
 		expect(duration).not.toBeNull();
 		expect(sent).toEqual([
 			[
-				'owlat_test_ms',
+				'owlat_reader_open_ms',
 				{ route: 'dashboard-postbox-folder', duration_ms: Math.round(duration as number) },
 			],
 		]);
-		expect(performance.getEntriesByName('owlat_test_ms', 'measure')).toHaveLength(1);
+		expect(performance.getEntriesByName('owlat_reader_open_ms', 'measure')).toHaveLength(1);
 		// The start mark is spent, so a second measure cannot reuse a stale start.
 		expect(performance.getEntriesByName('owlat_test_start', 'mark')).toHaveLength(0);
 	});
@@ -62,14 +62,16 @@ describe('usePerfMark', () => {
 
 		expect(performance.getEntriesByName('owlat_test_start', 'mark')[0]?.startTime).toBe(startTime);
 		const before = performance.now();
-		expect(measure('owlat_test_ms', 'owlat_test_start')).toBeGreaterThanOrEqual(before - startTime);
+		expect(measure('owlat_reader_open_ms', 'owlat_test_start')).toBeGreaterThanOrEqual(
+			before - startTime
+		);
 		expect(sent).toHaveLength(1);
 	});
 
 	it('reports nothing for a start mark that was never set', async () => {
 		const { composable, sent } = await load();
 
-		expect(composable.usePerfMark().measure('owlat_test_ms', 'never_set')).toBeNull();
+		expect(composable.usePerfMark().measure('owlat_reader_open_ms', 'never_set')).toBeNull();
 		expect(sent).toEqual([]);
 	});
 

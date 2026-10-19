@@ -4540,6 +4540,7 @@
 				"failed": "Failed",
 				"largeWarning": "Large attachments may bounce — consider sharing a link for oversized files.",
 				"percent": "{value}%",
+				"queued": "Queued",
 				"remove": "Remove {filename}",
 				"retry": "Retry {filename}",
 				"retryTitle": "Retry upload",
@@ -7265,6 +7266,7 @@
 					"remove": "Remove {file}",
 					"retry": "Retry",
 					"cancelUpload": "Cancel the upload of {file}",
+					"queued": "Queued",
 					"hold": {
 						"uploading": "Send waits until the upload has finished.",
 						"copying": "Send waits until the file is copied.",
@@ -9992,6 +9994,7 @@
 						"integrationsTitle": "Integrations"
 					},
 					"loadMore": "Load more",
+					"noEmail": "No email",
 					"noResults": {
 						"description": "No contacts match \"{query}\". Try a different search term.",
 						"title": "No results found"
@@ -10018,6 +10021,8 @@
 					"subtitle": "People your team knows and their recent activity",
 					"table": {
 						"created": "Created",
+						"createdSortHint": "Sort contacts by creation date",
+						"createdSortSearchHint": "Search results are ordered by relevance",
 						"firstName": "First name",
 						"lastName": "Last name"
 					},
@@ -15544,7 +15549,9 @@
 				"tooLarge": "{filename} is too large (max {max} MB).",
 				"tooManyFiles": "You can attach up to {count} files.",
 				"totalTooLarge": "Attachments exceed the {max} MB total limit.",
-				"uploadFailed": "Couldn't upload {filename}."
+				"uploadFailed": "Couldn't upload {filename}.",
+				"uploadQueueEmpty": "No more files waiting to upload",
+				"uploadQueued": "{count} file waiting to upload | {count} files waiting to upload"
 			},
 			"usePostboxComposerKeys": {
 				"schedule": "Schedule send (Ctrl+Shift+Enter)",

@@ -140,10 +140,13 @@ function onDownload(att: AttachmentMeta): void {
 						{{ metaLine(att) }}
 					</p>
 				</div>
+				<!-- Compact icon buttons for a mouse; on touch (pointer-coarse) each
+				     grows to the 44px target of the `.btn` recipe as its own box in
+				     the row, so the eye and the download never share a hit area. -->
 				<button
 					v-if="isPreviewEnabled && previewLabel && isPreviewableFile(att.contentType)"
 					type="button"
-					class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
+					class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:items-center pointer-coarse:justify-center"
 					:title="previewLabel(att.filename)"
 					:aria-label="previewLabel(att.filename)"
 					data-testid="message-attachment-preview"
@@ -154,7 +157,7 @@ function onDownload(att: AttachmentMeta): void {
 				<button
 					v-if="!isDownloadHidden"
 					type="button"
-					class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary disabled:opacity-50 aria-disabled:opacity-50"
+					class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary disabled:opacity-50 aria-disabled:opacity-50 pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:items-center pointer-coarse:justify-center"
 					:title="downloadLabel(att.filename)"
 					:aria-label="downloadLabel(att.filename)"
 					:aria-describedby="hasNotice ? noticeId : undefined"
