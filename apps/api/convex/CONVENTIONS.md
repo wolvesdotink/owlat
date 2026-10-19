@@ -965,8 +965,18 @@ sends in `RETIRED_ARGUMENTS`, in the contract PR.
 The guard does not check result shapes (a removed or changed result field), the
 arguments of jobs the previous release scheduled on internal functions, HTTP
 routes, JSON stored in strings or what values mean, and it is no substitute for
-upgrading a real previous-release dataset. The release E2E does not do that
-either: its seeded leg carries over Redis and ClamAV volumes, not Convex data.
+upgrading a real previous-release dataset. The release E2E install does not do
+that either: its seeded leg carries over Redis and ClamAV volumes, not Convex
+data. The update flow (`scripts/e2e-update-flow.sh`, run after each release and
+nightly) does: the previous release writes a contact, a sent and a draft
+campaign and a queued Send. After the in-app update, those documents, the
+campaign's Sends and every document within two id references of them must still
+exist with every field they had, deep-equal, and no added soft-delete marker.
+Added fields are allowed, except on the queued Send, which must be identical. A
+migration that rewrites such a field on purpose lists it in
+`DATA_REWRITE_ALLOWLIST` (`scripts/e2e-update-flow-data.sh`). The update flow
+checks that rows survive, not what the functions return, and it does not
+interrupt a migration.
 
 ### Never do these without a version bump
 
