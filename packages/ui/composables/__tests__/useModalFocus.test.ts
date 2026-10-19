@@ -261,4 +261,56 @@ describe('modal focus lifecycle', () => {
 		expect(document.activeElement).toBe(grid);
 		wrapper.unmount();
 	});
+
+	it('leaves Tab to the browser inside a closed shadow tree it cannot inspect', async () => {
+		let inner: HTMLButtonElement[] = [];
+		const wrapper = mount(
+			defineComponent({
+				setup() {
+					const root = ref<HTMLElement | null>(null);
+					const host = ref<HTMLElement | null>(null);
+					useModalFocus(root, () => true);
+					onMounted(() => {
+						const shadow = host.value!.attachShadow({ mode: 'closed' });
+						inner = ['Inner one', 'Inner two'].map((label) => {
+							const button = document.createElement('button');
+							button.textContent = label;
+							shadow.append(button);
+							return button;
+						});
+					});
+					return () =>
+						h('div', { ref: root, tabindex: -1 }, [
+							h('button', 'First'),
+							h('div', { ref: host, 'data-host': '' }),
+							h('button', 'Last'),
+						]);
+				},
+			}),
+			{ attachTo: document.body }
+		);
+		await nextTick();
+		const host = wrapper.find('[data-host]').element as HTMLElement;
+		expect(host.shadowRoot).toBeNull();
+		const [one, two] = inner;
+		const press = (target: Element, shiftKey: boolean) => {
+			const event = new KeyboardEvent('keydown', {
+				key: 'Tab',
+				shiftKey,
+				bubbles: true,
+				cancelable: true,
+				composed: true,
+			});
+			target.dispatchEvent(event);
+			return event;
+		};
+		one!.focus();
+		expect(document.activeElement).toBe(host);
+		expect(press(one!, false).defaultPrevented).toBe(false);
+		expect(document.activeElement).toBe(host);
+		two!.focus();
+		expect(press(two!, true).defaultPrevented).toBe(false);
+		expect(document.activeElement).toBe(host);
+		wrapper.unmount();
+	});
 });

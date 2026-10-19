@@ -62,33 +62,32 @@ export function useModalFocus(
 	}
 
 	/**
-	 * Focus inside the dialog but off the Tab order (the panel itself, a
-	 * tabindex="-1" initial target) has no defined next stop, which the browser
-	 * may place past the dialog's edge: Tab enters at the first control and
-	 * Shift+Tab at the last. This runs on the way back up, so a descendant that
-	 * handles Tab itself (and prevents the default) keeps it.
+	 * Focus that is deliberately off the Tab order, on the panel itself or on a
+	 * descendant with a negative tabindex (an intro heading as initial target),
+	 * has no defined next stop, which the browser may place past the dialog's
+	 * edge: Tab enters at the first control and Shift+Tab at the last. Anything
+	 * else, a shadow host included, is left to the browser, which knows the
+	 * order inside trees this code cannot see. This runs on the way back up, so
+	 * a descendant that handles Tab itself (and prevents the default) keeps it.
 	 */
 	function handleOffOrderTab(event: KeyboardEvent) {
 		if (!isTop() || event.defaultPrevented) return;
 		if (event.key !== 'Tab' || !container.value) return;
-		const current = document.activeElement;
-		if (!(current instanceof HTMLElement) || !container.value.contains(current)) return;
+		if (!container.value.contains(document.activeElement)) return;
+		// Follow open shadow roots, so a host with tabindex="-1" whose inner
+		// control holds focus is not taken for the off-order target itself.
+		let current = document.activeElement;
+		while (current?.shadowRoot?.activeElement) current = current.shadowRoot.activeElement;
+		const offOrder =
+			current === container.value ||
+			(current instanceof HTMLElement && current.hasAttribute('tabindex') && current.tabIndex < 0);
+		if (!offOrder) return;
 		const nodes = focusable();
 		const first = nodes[0];
 		const last = nodes.at(-1);
-		if (!first || !last || nodes.includes(current) || inShadowTabOrder(current)) return;
+		if (!first || !last) return;
 		event.preventDefault();
 		(event.shiftKey ? last : first).focus();
-	}
-
-	/** Focus on a tabbable element inside `host`'s shadow tree, where the browser owns the order. */
-	function inShadowTabOrder(host: HTMLElement): boolean {
-		let deep: Element = host;
-		while (deep.shadowRoot?.activeElement) deep = deep.shadowRoot.activeElement;
-		// The deep element holds focus, so it is neither hidden nor inert.
-		return (
-			deep !== host && deep instanceof HTMLElement && (deep.tabIndex >= 0 || deep.isContentEditable)
-		);
 	}
 
 	/**
