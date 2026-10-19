@@ -117,6 +117,32 @@ describe('loadConfig', () => {
 	});
 
 	it.each([
+		[
+			'https://user:sentinel@example.convex.site',
+			'CONVEX_URL must be the deployment API address (*.convex.cloud)',
+		],
+		[
+			'HTTPS://user:sentinel@convex.example.com',
+			'CONVEX_URL is not a deployment address the Convex client accepts',
+		],
+	])('collects the Convex client rejecting CONVEX_URL=%j with the other issues', (url, message) => {
+		stubRequired();
+		vi.stubEnv('CONVEX_URL', url);
+		vi.stubEnv('MAIL_SYNC_PORT', '0');
+		let caught: unknown;
+		try {
+			loadConfig();
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(MailSyncConfigError);
+		const error = caught as MailSyncConfigError;
+		expect(error.issues.map((issue) => issue.key)).toEqual(['CONVEX_URL', 'MAIL_SYNC_PORT']);
+		expect(error.message).toContain(message);
+		expect(`${error.message}\n${JSON.stringify(error)}`).not.toContain('sentinel');
+	});
+
+	it.each([
 		['CONVEX_URL', 'convex.example.com'],
 		['CONVEX_URL', 'ftp://convex.example.com'],
 		['CONVEX_SITE_URL', '/http'],

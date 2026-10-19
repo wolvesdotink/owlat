@@ -4,6 +4,7 @@ import {
 	TIMER_DELAY_MS_RANGE,
 	type IntEnvOptions,
 } from '@owlat/shared/nodeEnv';
+import { ConvexHttpClient } from 'convex/browser';
 
 export interface MailSyncConfig {
 	/** HTTP port for the internal /send + /test + /health endpoints. */
@@ -82,6 +83,24 @@ function httpOrigin(raw: string): string | undefined {
 const URL_FORM = 'an absolute http(s) URL, e.g. https://convex.example.com';
 
 /**
+ * Why the Convex client would refuse `url` as a deployment address, or
+ * undefined if it accepts it. The client's own constructor is the check (it
+ * validates synchronously and opens no connection), so this cannot drift from
+ * the SDK; its error is dropped because it quotes the URL, credentials included.
+ */
+function convexDeploymentUrlProblem(url: string): string | undefined {
+	try {
+		void new ConvexHttpClient(url, { logger: false });
+		return undefined;
+	} catch {
+		if (url.endsWith('.convex.site')) {
+			return 'CONVEX_URL must be the deployment API address (*.convex.cloud), not the HTTP actions host (*.convex.site)';
+		}
+		return `CONVEX_URL is not a deployment address the Convex client accepts; it must be ${URL_FORM}`;
+	}
+}
+
+/**
  * Read and validate the worker's configuration. Runs before any side effect
  * (Convex client, IMAP connections, HTTP server) and throws one
  * `MailSyncConfigError` listing every invalid key.
@@ -110,7 +129,12 @@ export function loadConfig(): MailSyncConfig {
 	const apiKey = required('MAIL_SYNC_API_KEY');
 
 	const convexOrigin = convexUrl ? httpOrigin(convexUrl) : undefined;
-	if (convexUrl && convexOrigin === undefined) fail('CONVEX_URL', `CONVEX_URL must be ${URL_FORM}`);
+	if (convexUrl && convexOrigin === undefined) {
+		fail('CONVEX_URL', `CONVEX_URL must be ${URL_FORM}`);
+	} else if (convexUrl) {
+		const problem = convexDeploymentUrlProblem(convexUrl);
+		if (problem) fail('CONVEX_URL', problem);
+	}
 
 	const siteUrlOverride = env['CONVEX_SITE_URL'];
 	if (siteUrlOverride && httpOrigin(siteUrlOverride) === undefined) {
