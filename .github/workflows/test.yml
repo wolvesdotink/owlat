@@ -409,6 +409,14 @@ jobs:
           bun scripts/check-bundle-budget.ts "$out"
           bun scripts/check-web-build-test-code.ts "$out"
 
+      # Report-only (plan item OW-076): what each page and each lazily loaded
+      # feature adds on top of the entry closure, read from the same copy. There
+      # is no budget yet, so a change in these numbers never fails the job.
+      - name: Report web route and deferred-feature closures
+        if: matrix.name == 'web'
+        continue-on-error: true
+        run: bun scripts/report-bundle-closures.ts "$RUNNER_TEMP/web-output"
+
       - name: Smoke-test packaged Node runtime
         if: matrix.runtimeSmoke == true
         run: |
