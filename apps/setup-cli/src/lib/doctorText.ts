@@ -80,12 +80,15 @@ export function urlValue(raw: string): string {
 
 /**
  * Tag for every doctor message. Literal text and {@link trusted} values are
- * code-owned; numbers are counts the code computed; every other string is
- * untrusted and will pass the known-secret redaction.
+ * code-owned; numbers are counts the code computed; a nested `DoctorText`
+ * keeps its own parts; every other string is untrusted and will pass the
+ * known-secret redaction. It also fits the shared evaluators' `MessageFormat`
+ * hook (`@owlat/shared/containerHealth`), so their literal copy stays
+ * code-owned and only the docker and `.env` values they interpolate are not.
  */
 export function doctorText(
 	strings: TemplateStringsArray,
-	...values: Array<string | number | Trusted>
+	...values: Array<string | number | Trusted | DoctorText>
 ): DoctorText {
 	const parts: DoctorTextPart[] = [];
 	for (const [index, literal] of strings.entries()) {
@@ -94,6 +97,7 @@ export function doctorText(
 		const value = values[index]!;
 		if (typeof value === 'number') parts.push({ text: String(value), trusted: true });
 		else if (typeof value === 'string') parts.push({ text: value, trusted: false });
+		else if (value instanceof DoctorText) parts.push(...value.parts);
 		else parts.push({ text: value.trustedText, trusted: true });
 	}
 	return new DoctorText(parts);
@@ -139,12 +143,51 @@ function secretForms(secret: string): string[] {
 	];
 }
 
+/** How many layers of percent-encoding the fail-closed check peels off. */
+const MAX_DECODE_ROUNDS = 3;
+
 /**
- * The known-secret pass for one doctor run: replaces every form of every
- * secret-keyed `.env` value, and of every credential part of a configured URL,
- * in untrusted text. No length exemption: an over-redacted runtime detail is
- * a lesser failure than a printed credential, and code-owned text is out of
- * its reach.
+ * One round of form decoding: `+` is a space, and every run of `%XX` escapes
+ * (either hex case) is decoded; a run that is not valid UTF-8 stays as written.
+ */
+function formDecode(text: string): string {
+	return text.replace(/\+/g, ' ').replace(/(?:%[0-9a-f]{2})+/gi, (run) => {
+		try {
+			return decodeURIComponent(run);
+		} catch {
+			return run;
+		}
+	});
+}
+
+/** The text as written and after each decoding round, lower-cased. */
+function normalisedViews(text: string): string[] {
+	const views = [text];
+	let current = text;
+	for (let round = 0; round < MAX_DECODE_ROUNDS; round++) {
+		const next = formDecode(current);
+		if (next === current) break;
+		views.push(next);
+		current = next;
+	}
+	return views.map((view) => view.toLowerCase());
+}
+
+/**
+ * The known-secret pass for one doctor run, over untrusted text only.
+ *
+ * Two steps. First every known printed form of every secret is replaced
+ * exactly, which keeps the rest of an error message readable. Then the
+ * guarantee: the result is normalised (decoded and lower-cased as
+ * {@link normalisedViews} does) and if any secret, normalised the same way,
+ * still occurs in any view, the WHOLE part becomes `[redacted]`. That catches
+ * the encodings the first step does not enumerate (mixed-case escapes, `+` for
+ * a space, double encoding) without having to list them. Runtime parts are
+ * error strings and status lines; losing one is the safe failure.
+ *
+ * Secrets are every secret-keyed `.env` value and every credential part of a
+ * configured URL. No length exemption: code-owned text is out of reach, so
+ * over-redaction can only cost runtime detail.
  */
 export function createDoctorRedactor(env: EnvMap): (text: string) => string {
 	const secrets = new Set<string>();
@@ -165,5 +208,15 @@ export function createDoctorRedactor(env: EnvMap): (text: string) => string {
 			.join('|'),
 		'g'
 	);
-	return (text) => text.replace(pattern, REDACTED);
+	const needles = new Set([...secrets].flatMap(normalisedViews).filter(Boolean));
+	return (text) => {
+		const substituted = text.replace(pattern, REDACTED);
+		// Check only what survived the replacement: the markers themselves would
+		// otherwise match any secret that is a substring of `[redacted]`.
+		const views = substituted.split(REDACTED).flatMap(normalisedViews);
+		for (const needle of needles) {
+			if (views.some((view) => view.includes(needle))) return REDACTED;
+		}
+		return substituted;
+	};
 }

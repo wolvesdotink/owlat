@@ -175,6 +175,31 @@ const FIXTURES: Record<string, Fixture> = {
 		]),
 		secrets: ['db-pass-123', 'redis-pass-456'],
 	},
+	mixedCaseQuery: {
+		env: [
+			'EMAIL_PROVIDER=mta',
+			'MTA_API_URL=http://mta:3100/?token=private%2ftoken%2Bend&alt=private+token',
+		].join('\n'),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: (url) => {
+			throw new Error(`connect ECONNREFUSED ${url}`);
+		},
+		secrets: ['private/token+end', 'private%2ftoken%2Bend', 'private+token', 'private token'],
+	},
+	productNameSecret: {
+		// Secrets equal to the product name, in both cases: the drift findings'
+		// key name and remediation command are code-owned and stay intact.
+		env: ['PRIVATE_KEY=OWLAT', 'DKIM_PRIVATE_KEY=owlat', 'OWLAT_VERSION=0.6.15'].join('\n'),
+		compose: composeRows([
+			{
+				Service: 'web',
+				State: 'running',
+				Status: 'Up 2 hours',
+				Image: 'ghcr.io/wolvesdotink/web:0.6.14',
+			},
+		]),
+	},
 	commonWordSecret: {
 		// A secret equal to a word in key names and subjects: identifiers stay intact.
 		env: ['LLM_API_KEY=LLM', 'OWLAT_VERSION=0.6.15'].join('\n'),
@@ -388,6 +413,29 @@ describe('doctor --json — report contents', () => {
 			'container "worker" is not running (exited) — Exited (1) ' +
 				'postgres://owlat:[redacted]@db:5432/owlat refused; NOAUTH [redacted]'
 		);
+	});
+
+	it('drops a runtime part that echoes a mixed-case or form-encoded query secret', async () => {
+		expect(await messageOf('mixedCaseQuery', 'mta.health')).toBe(
+			'http://mta:3100/ is unreachable ([redacted])'
+		);
+	});
+
+	it('keeps key names and remediation commands in drift findings intact', async () => {
+		const { report } = await runBoth(FIXTURES['productNameSecret']!);
+		expect(report.checks.filter((check) => check.id === 'version.drift')).toMatchObject([
+			{
+				subject: 'web',
+				message:
+					'container "web" runs 0.6.14 but OWLAT_VERSION is 0.6.15 — ' +
+					'the configured and running versions have diverged',
+			},
+			{
+				message:
+					'1 of 1 Owlat container(s) were never recreated for 0.6.15. ' +
+					'Run `owlat start` (docker compose up -d) to apply the configured version.',
+			},
+		]);
 	});
 
 	it('never redacts an identifier that equals a secret', async () => {

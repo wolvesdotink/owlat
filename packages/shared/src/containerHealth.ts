@@ -34,12 +34,27 @@ export interface ComposeService {
 	health: string;
 }
 
-export interface ContainerFinding {
+export interface ContainerFinding<Message = string> {
 	ok: boolean;
-	message: string;
+	message: Message;
 	/** The compose service a per-container finding is about; absent on fleet-wide summaries. */
 	service?: string;
 }
+
+/**
+ * Builds a finding message from a tagged template. The template's literal text
+ * is code-owned copy; every interpolated string is runtime data (a service
+ * name, docker's status line, the configured version). A caller that must
+ * treat the two differently — `owlat doctor`'s redaction never touches its own
+ * copy — passes its own tag; everyone else gets the plain string.
+ */
+export type MessageFormat<Message> = (
+	strings: TemplateStringsArray,
+	...values: Array<string | number | Message>
+) => Message;
+
+const plainMessage: MessageFormat<string> = (strings, ...values) =>
+	String.raw({ raw: strings }, ...values);
 
 /**
  * Split an image reference into repository and tag. Internal: exercised
@@ -144,24 +159,32 @@ function isServiceHealthy(service: ComposeService): boolean {
  * containers that exit on purpose (`imap-cert-init`, `convex-deploy`), so a
  * legitimately-finished job is never reported as a failure.
  */
-export function evaluateContainerStates(services: ComposeService[]): ContainerFinding[] {
+export function evaluateContainerStates(services: ComposeService[]): ContainerFinding[];
+export function evaluateContainerStates<Message>(
+	services: ComposeService[],
+	format: MessageFormat<Message>
+): ContainerFinding<Message>[];
+export function evaluateContainerStates(
+	services: ComposeService[],
+	format: MessageFormat<unknown> = plainMessage as MessageFormat<unknown>
+): ContainerFinding<unknown>[] {
 	if (services.length === 0) return [];
 
 	const unhealthy = services.filter((service) => !isServiceHealthy(service));
 	if (unhealthy.length === 0) {
-		return [{ ok: true, message: `all ${services.length} running container(s) are healthy` }];
+		return [{ ok: true, message: format`all ${services.length} running container(s) are healthy` }];
 	}
 
 	return unhealthy.map((service) => {
 		const detail = service.status || service.state || 'unknown state';
 		const reason =
 			service.health === 'unhealthy' && service.state === 'running'
-				? 'is failing its healthcheck'
-				: `is not running (${service.state || 'unknown'})`;
+				? format`is failing its healthcheck`
+				: format`is not running (${service.state || 'unknown'})`;
 		return {
 			ok: false,
 			service: service.service,
-			message: `container "${service.service}" ${reason} — ${detail}`,
+			message: format`container "${service.service}" ${reason} — ${detail}`,
 		};
 	});
 }
@@ -177,7 +200,17 @@ export function evaluateContainerStates(services: ComposeService[]): ContainerFi
 export function evaluateVersionDrift(
 	services: ComposeService[],
 	configuredVersion: string
-): ContainerFinding[] {
+): ContainerFinding[];
+export function evaluateVersionDrift<Message>(
+	services: ComposeService[],
+	configuredVersion: string,
+	format: MessageFormat<Message>
+): ContainerFinding<Message>[];
+export function evaluateVersionDrift(
+	services: ComposeService[],
+	configuredVersion: string,
+	format: MessageFormat<unknown> = plainMessage as MessageFormat<unknown>
+): ContainerFinding<unknown>[] {
 	if (!configuredVersion) return [];
 
 	const owned = services.filter((service) => isOwlatOwnedImage(service.image));
@@ -188,23 +221,19 @@ export function evaluateVersionDrift(
 		return [
 			{
 				ok: true,
-				message: `all ${owned.length} Owlat container(s) run the configured version ${configuredVersion}`,
+				message: format`all ${owned.length} Owlat container(s) run the configured version ${configuredVersion}`,
 			},
 		];
 	}
 
-	const findings: ContainerFinding[] = drifted.map((service) => ({
+	const findings: ContainerFinding<unknown>[] = drifted.map((service) => ({
 		ok: false,
 		service: service.service,
-		message:
-			`container "${service.service}" runs ${service.imageTag || '(untagged)'} but ` +
-			`OWLAT_VERSION is ${configuredVersion} — the configured and running versions have diverged`,
+		message: format`container "${service.service}" runs ${service.imageTag || '(untagged)'} but OWLAT_VERSION is ${configuredVersion} — the configured and running versions have diverged`,
 	}));
 	findings.push({
 		ok: false,
-		message:
-			`${drifted.length} of ${owned.length} Owlat container(s) were never recreated for ` +
-			`${configuredVersion}. Run \`owlat start\` (docker compose up -d) to apply the configured version.`,
+		message: format`${drifted.length} of ${owned.length} Owlat container(s) were never recreated for ${configuredVersion}. Run \`owlat start\` (docker compose up -d) to apply the configured version.`,
 	});
 	return findings;
 }

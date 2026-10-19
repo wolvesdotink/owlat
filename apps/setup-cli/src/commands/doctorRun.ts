@@ -48,7 +48,7 @@ import {
 	type DoctorCheck,
 	type DoctorReport,
 } from '../lib/doctorReport';
-import { doctorText, trusted } from '../lib/doctorText';
+import { doctorText, envValue, trusted } from '../lib/doctorText';
 import { evaluateSendPath, probeIpAudit, probeMtaHealth, refreshMtaIdentity } from './doctor';
 
 interface DoctorOptions {
@@ -168,27 +168,19 @@ export async function collectDoctorReport(
 		// Being LISTED is not being up. `docker compose ps` reports a container
 		// that has been crash-looping for hours exactly like a healthy one, so
 		// counting services green-lit an install with a dead service in it.
-		for (const finding of evaluateContainerStates(services)) {
-			// Built from docker's own status lines: runtime data, not code-owned.
-			report.record({
-				check: 'containers.health',
-				subject: finding.service,
-				ok: finding.ok,
-				message: doctorText`${finding.message}`,
-			});
+		// `doctorText` as the format keeps the evaluators' copy code-owned; only
+		// docker's values (service, state, status line) are runtime parts.
+		for (const finding of evaluateContainerStates(services, doctorText)) {
+			report.record({ check: 'containers.health', subject: finding.service, ...finding });
 		}
 
 		// VERSION DRIFT — the configured version (.env, which every version
 		// surface in the product reports) against the tag each container was
 		// actually created from. Advancing .env without recreating the
 		// containers leaves the product claiming a version it is not running.
-		for (const finding of evaluateVersionDrift(services, env['OWLAT_VERSION'] ?? '')) {
-			report.record({
-				check: 'version.drift',
-				subject: finding.service,
-				ok: finding.ok,
-				message: doctorText`${finding.message}`,
-			});
+		const configuredVersion = envValue('OWLAT_VERSION', env['OWLAT_VERSION'] ?? '');
+		for (const finding of evaluateVersionDrift(services, configuredVersion, doctorText)) {
+			report.record({ check: 'version.drift', subject: finding.service, ...finding });
 		}
 	} catch {
 		report.record({

@@ -29,6 +29,12 @@ describe('doctor text — sanitizers', () => {
 });
 
 describe('doctor text — trusted and untrusted parts', () => {
+	it('keeps the parts of a nested text', () => {
+		const inner = doctorText`is not running (${'exited'})`;
+		const text = doctorText`container ${'web'} ${inner}`;
+		expect(text.render((part) => `<${part}>`)).toBe('container <web> is not running (<exited>)');
+	});
+
 	it('keeps literals, trusted values and counts out of the redactor', () => {
 		const text = doctorText`${trusted('SMTP_RELAY_HOST')} saw ${3} rows: ${'SMTP down'}`;
 		expect(text.render(() => 'X')).toBe('SMTP_RELAY_HOST saw 3 rows: X');
@@ -88,6 +94,32 @@ describe('doctor text — known-secret pass', () => {
 		expect(redact('clone https://ghp-token-123@git.example.com/r failed')).toBe(
 			'clone https://[redacted]@git.example.com/r failed'
 		);
+	});
+
+	it('drops a whole runtime part when an encoding it does not enumerate still holds a secret', () => {
+		// Configured query values: `URL` decodes them, so the secrets are the
+		// decoded strings, while the echo carries them encoded.
+		const redact = createDoctorRedactor({
+			MTA_API_URL: 'http://mta:3100/?token=private%2ftoken%2Bend&alt=private+token',
+		});
+		// Mixed-case escapes.
+		expect(redact('connect ECONNREFUSED http://mta:3100/?token=private%2ftoken%2Bend')).toBe(
+			'[redacted]'
+		);
+		// `+` for a space (form encoding).
+		expect(redact('GET /?alt=private+token failed')).toBe('[redacted]');
+	});
+
+	it('drops a whole runtime part for a lower-case, mixed-case or double escape of a key value', () => {
+		const redact = createDoctorRedactor({ MTA_API_KEY: 'a/b+c' });
+		expect(redact('key=a%2fb%2Bc')).toBe('[redacted]');
+		expect(redact('key=a%252Fb%252Bc')).toBe('[redacted]');
+		expect(redact('key=A%2FB%2BC')).toBe('[redacted]');
+	});
+
+	it('keeps the readable rest of a part when exact replacement removed every secret', () => {
+		const redact = createDoctorRedactor({ MTA_API_KEY: 'private/token' });
+		expect(redact('api_key=private%2Ftoken refused')).toBe('api_key=[redacted] refused');
 	});
 
 	it('replaces in one pass, so a short secret cannot match inside a replacement', () => {
