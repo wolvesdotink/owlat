@@ -1,9 +1,10 @@
 /**
  * Where the open menu lands. It is fixed to the trigger's box in viewport
- * coordinates, measured once it has rendered: below when it fits, flipped above
- * when there is more room there, capped (and scrolling inside) when it fits on
- * neither side, and kept 8 px inside the window on every edge, whichever corner
- * the trigger sits in and however far the page has scrolled.
+ * coordinates, measured once it has rendered and whenever its size changes:
+ * below when it fits, flipped above when there is more room there, capped (and
+ * scrolling inside) when it fits on neither side, and kept 8 px inside the
+ * window on every edge, whichever corner the trigger sits in and however far
+ * the page has scrolled.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -50,10 +51,13 @@ beforeEach(() => {
 			? rect(trigger, TRIGGER, TRIGGER)
 			: rect({ top: 0, left: 0 }, 0, 0);
 	});
-	vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
+	// A laid-out box: a `max-height` caps the menu's border-box height.
+	vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
 		this: HTMLElement
 	) {
-		return isMenu(this) ? menuHeight : 0;
+		if (!isMenu(this)) return 0;
+		const cap = Number.parseFloat(this.style.maxHeight);
+		return Number.isNaN(cap) ? menuHeight : Math.min(menuHeight, cap);
 	});
 	vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (
 		this: HTMLElement
@@ -189,6 +193,55 @@ describe('DropdownMenu placement', () => {
 			expect(menu.classList.contains('overflow-y-auto')).toBe(true);
 		} finally {
 			wrapper.unmount();
+		}
+	});
+
+	it('measures the whole menu, not the height an earlier placement capped it to', async () => {
+		// Placed first with no height (below, capped to 76 px of room), then
+		// measured: the 199 px menu must flip above, not read the stale cap back.
+		viewport = { width: 1280, height: 300 };
+		trigger = { top: 180, left: 600 };
+		menuHeight = 199;
+		const { wrapper, menu } = await openMenu('right');
+		try {
+			expect(menu.style.top).toBe('');
+			expect(menu.style.bottom).toBe(`${300 - 180 + 4}px`);
+			// 168 px of room above: capped there, scrolling inside.
+			expect(menu.style.maxHeight).toBe('168px');
+			expect(menu.classList.contains('overflow-y-auto')).toBe(true);
+			expectInsideWindow(layout(menu));
+		} finally {
+			wrapper.unmount();
+		}
+	});
+
+	it('places the menu again when its content grows while open', async () => {
+		const observers: Array<() => void> = [];
+		// Swapped by hand: vi.unstubAllGlobals() would also drop the setup file's
+		// auto-import globals.
+		const original = globalThis.ResizeObserver;
+		globalThis.ResizeObserver = class {
+			constructor(callback: () => void) {
+				observers.push(callback);
+			}
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		} as unknown as typeof ResizeObserver;
+		trigger = { top: 400, left: 600 };
+		menuHeight = 120;
+		const { wrapper, menu } = await openMenu('right');
+		try {
+			expect(menu.style.top).toBe(`${400 + TRIGGER + 4}px`);
+			// Late items: now taller than the room below.
+			menuHeight = 400;
+			for (const callback of observers) callback();
+			await nextTick();
+			expect(menu.style.top).toBe('');
+			expectInsideWindow(layout(menu));
+		} finally {
+			wrapper.unmount();
+			globalThis.ResizeObserver = original;
 		}
 	});
 

@@ -53,21 +53,36 @@ watch(
 
 /**
  * The menu is teleported to <body> and fixed to the trigger's box, in viewport
- * coordinates. It is measured once rendered: below the trigger when it fits,
- * above when there is more room there, capped to the room it has (scrolling
- * inside) otherwise, and kept inside the window on every edge.
+ * coordinates. It is measured once rendered, and again whenever its size
+ * changes: below the trigger when it fits, above when there is more room there,
+ * capped to the room it has (scrolling inside) otherwise, and kept inside the
+ * window on every edge.
  */
 const MENU_GAP = 4;
 const MENU_WIDTH = 176; // w-44, until the menu has rendered
+
+/**
+ * The menu's full border-box height. Lifts the cap an earlier placement set
+ * first: a capped box under-reports its content (its bottom padding is not part
+ * of the overflow), and `scrollHeight` leaves out the border either way.
+ */
+function naturalHeight(menu: HTMLElement): number {
+	const cap = menu.style.maxHeight;
+	menu.style.maxHeight = 'none';
+	const height = menu.offsetHeight;
+	menu.style.maxHeight = cap;
+	return height;
+}
 
 const updatePosition = () => {
 	const trigger = triggerRef.value;
 	if (!trigger) return;
 	const menu = menuRef.value;
+	// 0 before the first render; placed again once the menu has a height.
+	const panelHeight = menu ? naturalHeight(menu) : 0;
 	const placed = placeAnchoredPanel({
 		anchor: trigger.getBoundingClientRect(),
-		// 0 before the first render; placed again once the menu has a height.
-		panelHeight: menu?.scrollHeight ?? 0,
+		panelHeight,
 		panelWidth: menu?.offsetWidth || MENU_WIDTH,
 		viewport: { width: window.innerWidth, height: window.innerHeight },
 		gap: MENU_GAP,
@@ -75,8 +90,19 @@ const updatePosition = () => {
 	});
 	openSide.value = placed.side;
 	menuStyle.value = placed.style;
-	menuScrolls.value = !!menu && menu.scrollHeight > Number.parseFloat(placed.style.maxHeight);
+	menuScrolls.value = panelHeight > Number.parseFloat(placed.style.maxHeight);
 };
+
+// Content that changes size while open (items that load late) moves the edge
+// the placement was computed for.
+let menuObserver: ResizeObserver | null = null;
+watch(menuRef, (menu) => {
+	menuObserver?.disconnect();
+	menuObserver = null;
+	if (!menu || typeof ResizeObserver === 'undefined') return;
+	menuObserver = new ResizeObserver(() => updatePosition());
+	menuObserver.observe(menu);
+});
 
 // Handle click outside
 const handleClickOutside = (event: MouseEvent) => {
@@ -182,6 +208,7 @@ watch(isOpen, async (open) => {
 });
 
 onUnmounted(() => {
+	menuObserver?.disconnect();
 	document.removeEventListener('click', handleClickOutside);
 	document.removeEventListener('keydown', handleKeydown);
 	window.removeEventListener('scroll', updatePosition, true);
