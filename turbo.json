@@ -120,6 +120,53 @@
 			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
 			"outputs": ["coverage/**"]
 		},
+		// The report-only benchmark specs (bun run perf:bench) import root files
+		// under scripts/perf-bench/: web and email-builder the sampler, web and
+		// api the Postbox list-page fixture. turbo hashes only the package
+		// directory by default, so a change to one of those files alone would
+		// replay a cached result. These overrides add them and repeat the
+		// generic test entries above, because a `pkg#task` entry replaces one.
+		"@owlat/web#test": {
+			"env": ["VITEST_MAX_WORKERS"],
+			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/scripts/perf-bench/sample.ts",
+				"$TURBO_ROOT$/scripts/perf-bench/postboxListPage.ts"
+			]
+		},
+		"@owlat/web#test:coverage": {
+			"env": ["VITEST_MAX_WORKERS"],
+			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
+			"outputs": ["coverage/**"],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/scripts/perf-bench/sample.ts",
+				"$TURBO_ROOT$/scripts/perf-bench/postboxListPage.ts"
+			]
+		},
+		"@owlat/email-builder#test": {
+			"env": ["VITEST_MAX_WORKERS"],
+			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-bench/sample.ts"]
+		},
+		"@owlat/email-builder#test:coverage": {
+			"env": ["VITEST_MAX_WORKERS"],
+			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
+			"outputs": ["coverage/**"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-bench/sample.ts"]
+		},
+		"@owlat/api#test": {
+			"env": ["VITEST_MAX_WORKERS"],
+			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-bench/postboxListPage.ts"]
+		},
+		"@owlat/api#test:coverage": {
+			"env": ["VITEST_MAX_WORKERS"],
+			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
+			"outputs": ["coverage/**"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-bench/postboxListPage.ts"]
+		},
 		"test:watch": {
 			"cache": false,
 			"persistent": true,

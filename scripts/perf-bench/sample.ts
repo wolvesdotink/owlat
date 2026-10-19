@@ -4,6 +4,8 @@
  * runs only when `OWLAT_PERF_BENCH_OUT` names an output file, which only
  * `bun run perf:bench` (scripts/perf-bench/run.ts) sets. CI never sets it, so
  * the timing block is skipped there and nothing gates on wall-clock time.
+ * (turbo passes `OWLAT_*` variables through to tasks, so a shell that exported
+ * it would reach a `turbo test` run too; nothing exports it but the driver.)
  *
  * Sampling is fixed-count rather than time-boxed: every run does the same
  * number of operations, so two runs differ only in how long the machine took.

@@ -9,13 +9,19 @@ import {
 	type ReportContext,
 } from '../perf-bench/stats';
 
-function run(tasks: Record<string, number[]>): FamilyResult {
+/** One run; a task is its samples, or its samples and calls per sample. */
+function run(tasks: Record<string, number[] | [number[], number]>): FamilyResult {
 	return {
 		family: 'demo',
 		title: 'demo family',
 		dataset: { rows: 50 },
 		runtime: { node: 'v24.0.0', v8: '13.0' },
-		tasks: Object.entries(tasks).map(([name, samplesMs]) => ({ name, opsPerSample: 1, samplesMs })),
+		tasks: Object.entries(tasks).map(([name, spec]) => {
+			const [samplesMs, opsPerSample] = Array.isArray(spec[0])
+				? (spec as [number[], number])
+				: [spec as number[], 1];
+			return { name, opsPerSample, samplesMs };
+		}),
 	};
 }
 
@@ -85,6 +91,26 @@ describe('aggregateFamily', () => {
 		).toEqual(['b', 'a']);
 		expect(() => aggregateFamily([run({ a: [1] }), run({ b: [1] })])).toThrow(/task "a" missing/);
 	});
+
+	it('keeps each task its own sampling and refuses runs that sampled a task differently', () => {
+		const mixed = run({ small: [[1, 1, 1, 1], 20], large: [[5, 5], 2] });
+		expect(
+			aggregateFamily([mixed, mixed]).map(({ name, samplesPerRun, opsPerSample }) => ({
+				name,
+				samplesPerRun,
+				opsPerSample,
+			}))
+		).toEqual([
+			{ name: 'small', samplesPerRun: 4, opsPerSample: 20 },
+			{ name: 'large', samplesPerRun: 2, opsPerSample: 2 },
+		]);
+		expect(() => aggregateFamily([run({ a: [[1, 1], 20] }), run({ a: [[1, 1], 2] })])).toThrow(
+			/sampled differently/
+		);
+		expect(() => aggregateFamily([run({ a: [1, 1] }), run({ a: [1, 1, 1] })])).toThrow(
+			/sampled differently/
+		);
+	});
 });
 
 describe('formatDuration', () => {
@@ -109,8 +135,17 @@ describe('renderReport', () => {
 	it('lists the dataset and one row per task with its variance', () => {
 		expect(report).toContain('## demo: demo family');
 		expect(report).toContain('- rows: 50');
-		expect(report).toContain('2 separate processes; per process 3 samples of 1 call(s)');
-		expect(report).toContain('| a | 2.50 ms | 3.40 ms | 2.00 ms to 3.00 ms | 40.0% | 28.3% |');
+		expect(report).toContain('2 separate processes.');
+		expect(report).toContain(
+			'| a | 3 × 1 | 2.50 ms | 3.40 ms | 2.00 ms to 3.00 ms | 40.0% | 28.3% |'
+		);
+	});
+
+	it('states the sampling of each task, not only of the first', () => {
+		const mixed = run({ small: [[1, 1, 1, 1], 20], large: [[5, 5], 2] });
+		const text = renderReport(context, [{ runs: [mixed, mixed] }]);
+		expect(text).toContain('| small | 4 × 20 |');
+		expect(text).toContain('| large | 2 × 2 |');
 	});
 
 	it('states that nothing is gated', () => {

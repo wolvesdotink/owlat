@@ -83,6 +83,10 @@ export function aggregateTask(name: string, runs: readonly FamilyResult[]): Task
 	const runMedianMax = Math.max(...medians);
 	const first = perRun[0];
 	if (!first) throw new Error(`no runs for task "${name}"`);
+	const sampling = (r: (typeof perRun)[number]) => `${r.summary.samples}x${r.task.opsPerSample}`;
+	if (perRun.some((r) => sampling(r) !== sampling(first))) {
+		throw new Error(`task "${name}" was sampled differently across runs`);
+	}
 	return {
 		name,
 		runs: perRun.length,
@@ -159,24 +163,20 @@ export function renderReport(
 		lines.push(`## ${head.family}: ${head.title}`, '');
 		for (const [key, value] of Object.entries(head.dataset)) lines.push(`- ${key}: ${value}`);
 		const tasks = aggregateFamily(runs);
-		const shape = tasks[0];
-		if (shape) {
-			lines.push(
-				'',
-				`${shape.runs} separate processes; per process ${shape.samplesPerRun} samples of ` +
-					`${shape.opsPerSample} call(s) after warm-up. Median and p95 are per process, ` +
-					'then the median over processes; the last three columns are the run-to-run variance ' +
-					'of the per-process medians.'
-			);
-		}
 		lines.push(
 			'',
-			'| task | median | p95 | run medians (min to max) | spread | CV |',
-			'| --- | ---: | ---: | ---: | ---: | ---: |'
+			`${tasks[0]?.runs ?? 0} separate processes. "Sampling" is each process's timed samples ` +
+				'times the calls per sample, after warm-up. Median and p95 are per process, then the ' +
+				'median over processes; the last three columns are the run-to-run variance of the ' +
+				'per-process medians.',
+			'',
+			'| task | sampling | median | p95 | run medians (min to max) | spread | CV |',
+			'| --- | ---: | ---: | ---: | ---: | ---: | ---: |'
 		);
 		for (const t of tasks) {
 			lines.push(
-				`| ${t.name} | ${formatDuration(t.median)} | ${formatDuration(t.p95)} | ` +
+				`| ${t.name} | ${t.samplesPerRun} × ${t.opsPerSample} | ${formatDuration(t.median)} | ` +
+					`${formatDuration(t.p95)} | ` +
 					`${formatDuration(t.runMedianMin)} to ${formatDuration(t.runMedianMax)} | ` +
 					`${t.spreadPct.toFixed(1)}% | ${t.cvPct.toFixed(1)}% |`
 			);
