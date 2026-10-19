@@ -4,7 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { languageSelectOptions } from '~/data/languageOptions';
 import { isValidEmail } from '@owlat/shared';
 import type { ImportResults } from '~/composables/useCsvImport';
-import { contactFullName, contactHasEmail, contactPrimaryIdentity } from '~/utils/contactIdentity';
+import { contactHasEmail, contactPrimaryIdentity } from '~/utils/contactIdentity';
 
 const { t } = useI18n();
 
@@ -139,6 +139,10 @@ const toggleSelectAll = () => {
 const toggleContactSelection = (contactId: Id<'contacts'>) => {
 	bulkSelection.toggleSelection(contactId);
 };
+
+/** First + last for the card list, which has no room for a column each. */
+const contactName = (contact: { firstName?: string | null; lastName?: string | null }) =>
+	[contact.firstName, contact.lastName].filter(Boolean).join(' ');
 
 /** Row click and the row menu's "Open" both land on the contact's page. */
 const openContact = (contactId: Id<'contacts'>) =>
@@ -724,10 +728,10 @@ onUnmounted(() => {
 										>{{ contactPrimaryIdentity(contact, t) }}</span
 									>
 									<span
-										v-if="contactHasEmail(contact) && contactFullName(contact)"
+										v-if="contactHasEmail(contact) && contactName(contact)"
 										class="block text-sm text-text-secondary truncate"
 									>
-										{{ contactFullName(contact) }}
+										{{ contactName(contact) }}
 									</span>
 									<span class="block text-xs text-text-tertiary mt-0.5">
 										{{

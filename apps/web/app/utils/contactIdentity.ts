@@ -24,7 +24,7 @@ export function contactHasEmail(contact: ContactIdentityFields): boolean {
 }
 
 /** First and last name joined by a space; '' when the contact has neither. */
-export function contactFullName(contact: ContactIdentityFields): string {
+function contactFullName(contact: ContactIdentityFields): string {
 	return [contact.firstName?.trim(), contact.lastName?.trim()].filter(Boolean).join(' ');
 }
 
