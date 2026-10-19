@@ -72,7 +72,8 @@ function reconcileWith(listed: ListedToasts): void {
 			() => listed().map((toast) => toast.id),
 			(ids) => {
 				const live = new Set(ids);
-				for (const id of [...budgets.keys()]) if (!live.has(id)) discard(id);
+				// Deleting the current entry while iterating a Map is well-defined.
+				for (const id of budgets.keys()) if (!live.has(id)) discard(id);
 			},
 			{ flush: 'sync' }
 		)
