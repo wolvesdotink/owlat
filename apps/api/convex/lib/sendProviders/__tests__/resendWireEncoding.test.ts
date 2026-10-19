@@ -15,10 +15,13 @@
  * Here the real `resend` package runs and only `fetch` is replaced, so an SDK
  * upgrade that renames either field fails this suite. No request leaves the
  * process: the stub records the request and answers it, and the API key is
- * synthetic.
+ * synthetic. Stubbing `fetch` alone would not keep an SDK that moved to
+ * `node:https` or its own fetch off the network, so every outbound socket
+ * connect is refused while this file runs and any attempt fails the test.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import net from 'node:net';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { resendSendProvider, _resetResendClientCacheForTests } from '../resend';
 import { resolveSendTransport, _resetSendTransportCacheForTests } from '../transports';
 import type { EmailSendParams } from '../types';
@@ -42,6 +45,23 @@ const params: EmailSendParams = {
 const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0xff, 0x00, 0x80]);
 
 let requests: CapturedRequest[];
+let blockedConnects: unknown[];
+let connectGuard: MockInstance<net.Socket['connect']>;
+
+/**
+ * Fail closed on any transport other than the stubbed `fetch`. Every Node TCP
+ * or TLS client (`http(s).request`, `tls.connect`, undici's fetch) opens its
+ * socket through `net.Socket#connect`, so refusing it here stops the attempt
+ * before DNS, and recording it fails the test even when the SDK swallows the
+ * error into an `{ error }` result.
+ */
+function guardOutboundConnections(): void {
+	blockedConnects = [];
+	connectGuard = vi.spyOn(net.Socket.prototype, 'connect').mockImplementation((...args) => {
+		blockedConnects.push(args[0]);
+		throw new Error('resendWireEncoding.test: outbound connection blocked');
+	});
+}
 
 function stubResendApi(): void {
 	vi.stubGlobal(
@@ -65,6 +85,7 @@ function onlyRequest(): CapturedRequest {
 
 beforeEach(() => {
 	requests = [];
+	guardOutboundConnections();
 	_resetSendTransportCacheForTests();
 	_resetResendClientCacheForTests();
 	vi.stubEnv('RESEND_API_KEY', 're_synthetic_test_key');
@@ -72,13 +93,25 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	connectGuard.mockRestore();
 	vi.unstubAllGlobals();
 	vi.unstubAllEnvs();
 	_resetSendTransportCacheForTests();
 	_resetResendClientCacheForTests();
+	// Last, so a failure here cannot skip the cleanup above.
+	expect(blockedConnects, 'a request bypassed the stubbed fetch').toEqual([]);
 });
 
 describe('Resend wire encoding (real SDK, fetch intercepted)', () => {
+	it('refuses an outbound connection made around the stubbed fetch', () => {
+		// `.example` never resolves, so even a broken guard reaches no one.
+		expect(() => net.connect({ host: 'api.owlat.example', port: 443 })).toThrow(
+			'outbound connection blocked'
+		);
+		expect(blockedConnects).toHaveLength(1);
+		blockedConnects = [];
+	});
+
 	it('posts one JSON request to the Resend emails endpoint with the synthetic key', async () => {
 		const result = await resendSendProvider.sendEmail(resolveSendTransport('resend'), params);
 
