@@ -175,4 +175,90 @@ describe('modal focus lifecycle', () => {
 		expect(document.activeElement).toBe(first);
 		wrapper.unmount();
 	});
+
+	it('leaves Tab to the browser inside a shadow tree that has its own controls', async () => {
+		let inner: HTMLButtonElement[] = [];
+		const wrapper = mount(
+			defineComponent({
+				setup() {
+					const root = ref<HTMLElement | null>(null);
+					const host = ref<HTMLElement | null>(null);
+					useModalFocus(root, () => true);
+					onMounted(() => {
+						const shadow = host.value!.attachShadow({ mode: 'open' });
+						inner = ['Inner one', 'Inner two'].map((label) => {
+							const button = document.createElement('button');
+							button.textContent = label;
+							shadow.append(button);
+							return button;
+						});
+					});
+					return () =>
+						h('div', { ref: root, tabindex: -1 }, [
+							h('button', 'First'),
+							h('div', { ref: host, 'data-host': '' }),
+							h('button', 'Last'),
+						]);
+				},
+			}),
+			{ attachTo: document.body }
+		);
+		await nextTick();
+		const [one, two] = inner;
+		const press = (target: Element, shiftKey: boolean) => {
+			const event = new KeyboardEvent('keydown', {
+				key: 'Tab',
+				shiftKey,
+				bubbles: true,
+				cancelable: true,
+				composed: true,
+			});
+			target.dispatchEvent(event);
+			return event;
+		};
+		one!.focus();
+		expect(document.activeElement).toBe(wrapper.find('[data-host]').element);
+		expect(press(one!, false).defaultPrevented).toBe(false);
+		two!.focus();
+		expect(press(two!, true).defaultPrevented).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('lets a non-tabbable descendant that handles Tab itself keep it', async () => {
+		const wrapper = mount(
+			defineComponent({
+				setup() {
+					const root = ref<HTMLElement | null>(null);
+					useModalFocus(root, () => true, undefined, {
+						initialFocus: () => root.value?.querySelector<HTMLElement>('[role="grid"]'),
+					});
+					return () =>
+						h('div', { ref: root, tabindex: -1 }, [
+							h('button', 'First'),
+							h(
+								'div',
+								{
+									role: 'grid',
+									tabindex: -1,
+									onKeydown: (event: KeyboardEvent) => {
+										if (event.key === 'Tab') event.preventDefault();
+									},
+								},
+								'Cells'
+							),
+							h('button', 'Last'),
+						]);
+				},
+			}),
+			{ attachTo: document.body }
+		);
+		await nextTick();
+		const grid = wrapper.find('[role="grid"]').element;
+		expect(document.activeElement).toBe(grid);
+		key('Tab');
+		expect(document.activeElement).toBe(grid);
+		key('Tab', true);
+		expect(document.activeElement).toBe(grid);
+		wrapper.unmount();
+	});
 });

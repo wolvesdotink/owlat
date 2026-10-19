@@ -28,11 +28,12 @@ export function useModalFocus(
 	let opener: HTMLElement | null = null;
 	let generation = 0;
 	const isTop = () => activeDialogs.at(-1) === token;
+	const isTabbable = (el: HTMLElement) =>
+		!el.closest('[hidden], [inert], [aria-hidden="true"]') &&
+		(el.tabIndex >= 0 || el.getAttribute('contenteditable') === 'true');
 	const focusable = () =>
 		Array.from(container.value?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? []).filter(
-			(el) =>
-				!el.closest('[hidden], [inert], [aria-hidden="true"]') &&
-				(el.tabIndex >= 0 || el.getAttribute('contenteditable') === 'true')
+			isTabbable
 		);
 
 	// Escape goes to the innermost open layer, which may be a menu or listbox
@@ -45,22 +46,47 @@ export function useModalFocus(
 		const nodes = focusable();
 		const first = nodes[0];
 		const last = nodes.at(-1);
-		const current = document.activeElement;
-		// Outside the dialog, or on something inside it that Tab order skips (the
-		// panel itself, a tabindex="-1" initial target): the browser's next stop
-		// could be past the dialog's edge, so Tab enters at the first control and
-		// Shift+Tab at the last.
-		const offOrder = !(current instanceof HTMLElement) || !nodes.includes(current);
+		const outside = !container.value.contains(document.activeElement);
 		if (!first || !last) {
 			event.preventDefault();
 			container.value.focus();
-		} else if (event.shiftKey && (offOrder || current === first)) {
+		} else if (
+			event.shiftKey &&
+			(outside || document.activeElement === first || document.activeElement === container.value)
+		) {
 			event.preventDefault();
 			last.focus();
-		} else if (!event.shiftKey && (offOrder || current === last)) {
+		} else if (!event.shiftKey && (outside || document.activeElement === last)) {
 			event.preventDefault();
 			first.focus();
 		}
+	}
+
+	/**
+	 * Focus inside the dialog but off the Tab order (the panel itself, a
+	 * tabindex="-1" initial target) has no defined next stop, which the browser
+	 * may place past the dialog's edge: Tab enters at the first control and
+	 * Shift+Tab at the last. This runs on the way back up, so a descendant that
+	 * handles Tab itself (and prevents the default) keeps it.
+	 */
+	function handleOffOrderTab(event: KeyboardEvent) {
+		if (!isTop() || event.defaultPrevented) return;
+		if (event.key !== 'Tab' || !container.value) return;
+		const current = document.activeElement;
+		if (!(current instanceof HTMLElement) || !container.value.contains(current)) return;
+		const nodes = focusable();
+		const first = nodes[0];
+		const last = nodes.at(-1);
+		if (!first || !last || nodes.includes(current) || inShadowTabOrder(current)) return;
+		event.preventDefault();
+		(event.shiftKey ? last : first).focus();
+	}
+
+	/** Focus on a tabbable element inside `host`'s shadow tree, where the browser owns the order. */
+	function inShadowTabOrder(host: HTMLElement): boolean {
+		let deep: Element = host;
+		while (deep.shadowRoot?.activeElement) deep = deep.shadowRoot.activeElement;
+		return deep !== host && deep instanceof HTMLElement && isTabbable(deep);
 	}
 
 	/**
@@ -87,6 +113,7 @@ export function useModalFocus(
 		const index = activeDialogs.indexOf(token);
 		if (index !== -1) activeDialogs.splice(index, 1);
 		document.removeEventListener('keydown', handleKeydown, true);
+		document.removeEventListener('keydown', handleOffOrderTab);
 		if (restore && opener?.isConnected) opener.focus();
 		opener = null;
 	}
@@ -101,6 +128,7 @@ export function useModalFocus(
 			opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 			activeDialogs.push(token);
 			document.addEventListener('keydown', handleKeydown, true);
+			document.addEventListener('keydown', handleOffOrderTab);
 			const current = ++generation;
 			await nextTick();
 			if (current !== generation || !isTop()) return;
