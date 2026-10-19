@@ -12690,7 +12690,9 @@
 				"removeDialog": {
 					"confirm": "Workspace entfernen",
 					"description": "{workspace} von diesem Gerät entfernen? Du wirst hier abgemeldet; der Workspace selbst und dein Konto bleiben unberührt.",
+					"failed": "Das Entfernen des Workspace wurde nicht abgeschlossen. Eventuell bist du hier schon abgemeldet. Versuch es erneut, um es abzuschließen, oder brich ab.",
 					"fallbackName": "Diesen Workspace",
+					"retry": "Erneut versuchen",
 					"title": "Workspace entfernen?"
 				},
 				"settings": "Workspace-Einstellungen"

@@ -53,11 +53,39 @@ function openWorkspaceSettings(id: string) {
 
 const workspaceToRemove = ref<{ id: string; label: string } | null>(null);
 const isRemoving = ref(false);
+// The last attempt rejected part-way: the dialog stays open, says so, and offers
+// the removal again.
+const removeFailed = ref(false);
+
+function askRemoveWorkspace(ws: { id: string; label: string }) {
+	removeFailed.value = false;
+	workspaceToRemove.value = { id: ws.id, label: ws.label };
+}
+
+function onRemoveDialogOpen(open: boolean) {
+	if (open) return;
+	workspaceToRemove.value = null;
+	removeFailed.value = false;
+}
+
 async function confirmRemoveWorkspace() {
-	if (!workspaceToRemove.value) return;
+	const target = workspaceToRemove.value;
+	if (!target || isRemoving.value) return;
 	isRemoving.value = true;
-	// Navigates away (webview reload) on completion — no local cleanup needed.
-	await removeWorkspace(workspaceToRemove.value.id);
+	removeFailed.value = false;
+	try {
+		// Navigates away (webview reload) on completion, so the dialog stays in
+		// its loading state on success: there is nothing to clean up, and a
+		// second confirm cannot start another removal.
+		await removeWorkspace(target.id);
+	} catch (e) {
+		// A step can reject after earlier ones landed (signed out, session
+		// discarded, maybe already off the list). Every step is safe to repeat,
+		// so Retry runs the whole removal again; Cancel leaves it there.
+		console.warn('[desktop] removing the workspace failed:', e);
+		removeFailed.value = true;
+		isRemoving.value = false;
+	}
 }
 </script>
 
@@ -255,7 +283,7 @@ async function confirmRemoveWorkspace() {
 								<button
 									type="button"
 									class="text-xs text-text-secondary hover:text-error"
-									@click="workspaceToRemove = { id: ws.id, label: ws.label }"
+									@click="askRemoveWorkspace(ws)"
 								>
 									{{ t('common.remove') }}
 								</button>
@@ -310,11 +338,19 @@ async function confirmRemoveWorkspace() {
 								t('desktop.settings.workspaces.removeDialog.fallbackName'),
 						})
 					"
-					:confirm-text="t('desktop.settings.workspaces.removeDialog.confirm')"
+					:confirm-text="
+						removeFailed
+							? t('desktop.settings.workspaces.removeDialog.retry')
+							: t('desktop.settings.workspaces.removeDialog.confirm')
+					"
 					:is-loading="isRemoving"
-					@update:open="(v: boolean) => !v && (workspaceToRemove = null)"
+					@update:open="onRemoveDialogOpen"
 					@confirm="confirmRemoveWorkspace"
-				/>
+				>
+					<p v-if="removeFailed" role="alert" class="mt-3 text-sm text-error">
+						{{ t('desktop.settings.workspaces.removeDialog.failed') }}
+					</p>
+				</UiConfirmationDialog>
 			</section>
 		</template>
 

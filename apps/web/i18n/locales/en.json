@@ -12690,7 +12690,9 @@
 				"removeDialog": {
 					"confirm": "Remove workspace",
 					"description": "Remove {workspace} from this device? You'll be signed out here; the workspace itself and your account are untouched.",
+					"failed": "Removing the workspace didn't finish. You may already be signed out of it here. Try again to finish removing it, or cancel.",
 					"fallbackName": "this workspace",
+					"retry": "Try again",
 					"title": "Remove workspace?"
 				},
 				"settings": "Workspace settings"
