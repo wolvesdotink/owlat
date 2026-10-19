@@ -80,6 +80,12 @@ const props = withDefaults(
 		validationIssues?: PreviewValidationIssue[];
 		/** Email diff from previous version */
 		emailDiff?: PreviewEmailDiff | null;
+		/**
+		 * The host diffs on request: the HTML changed since the previous render, so
+		 * offer the diff while `emailDiff` is still null, and listen to
+		 * `update:diff-requested`.
+		 */
+		diffAvailable?: boolean;
 		/** Current render options */
 		renderOptions?: Partial<PreviewRenderOptions>;
 		/** Whether to show render options gear icon */
@@ -109,6 +115,7 @@ const props = withDefaults(
 		healthScore: null,
 		validationIssues: () => [],
 		emailDiff: null,
+		diffAvailable: false,
 		renderOptions: undefined,
 		showRenderOptions: true,
 		useRendererSimulation: false,
@@ -123,6 +130,7 @@ const emit = defineEmits<{
 	(e: 'update:dark-mode', value: boolean): void;
 	(e: 'update:plain-text-override', value: string): void;
 	(e: 'update:amp-requested', value: boolean): void;
+	(e: 'update:diff-requested', value: boolean): void;
 }>();
 
 // State
@@ -245,7 +253,15 @@ onBeforeUnmount(() => {
 });
 
 const hasWarnings = computed(() => (props.renderWarnings?.length ?? 0) > 0);
-const hasDiff = computed(() => props.emailDiff && !props.emailDiff.identical);
+const hasDiff = computed(
+	() => props.diffAvailable || (!!props.emailDiff && !props.emailDiff.identical)
+);
+
+// Only the diff panel reads the diff; tell the host while it is open.
+watch(diffPanelOpen, (open) => emit('update:diff-requested', open));
+onBeforeUnmount(() => {
+	if (diffPanelOpen.value) emit('update:diff-requested', false);
+});
 
 function refreshPreview() {
 	iframeKey.value++;
