@@ -68,8 +68,17 @@ export interface WebSealedBytes {
 export interface WebSecretBox {
 	/** Derive the 256-bit AES-GCM key from the secret via HKDF-SHA256. */
 	deriveKey(): Promise<CryptoKey>;
-	/** Encrypt bytes under a fresh random nonce. */
-	sealBytes(plaintext: Uint8Array, additionalData?: Uint8Array): Promise<WebSealedBytes>;
+	/**
+	 * Encrypt bytes under a fresh random nonce, or under `iv` when given. A
+	 * caller-supplied nonce must never repeat for different plaintext or
+	 * additional data under one key: derive it from both (a synthetic IV, as
+	 * `files/historyCursor.ts` does), never from a counter or a constant.
+	 */
+	sealBytes(
+		plaintext: Uint8Array,
+		additionalData?: Uint8Array,
+		iv?: Uint8Array<ArrayBuffer>
+	): Promise<WebSealedBytes>;
 	/** Decrypt bytes. Throws on auth-tag mismatch (tamper / wrong key / wrong AAD). */
 	openBytes(sealed: WebSealedBytes, additionalData?: Uint8Array): Promise<Uint8Array<ArrayBuffer>>;
 }
@@ -138,9 +147,10 @@ export function createWebSecretBox(secret: string, context: WebSecretBoxContext)
 
 	return {
 		deriveKey,
-		async sealBytes(plaintext, additionalData) {
+		async sealBytes(plaintext, additionalData, nonce) {
+			if (nonce !== undefined && nonce.length !== IV_BYTES) throw new Error('Invalid nonce length');
 			const key = await deriveKey();
-			const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+			const iv = nonce ?? crypto.getRandomValues(new Uint8Array(IV_BYTES));
 			const ciphertext = new Uint8Array(
 				await crypto.subtle.encrypt(
 					additionalData === undefined

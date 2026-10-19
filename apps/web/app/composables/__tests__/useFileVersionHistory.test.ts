@@ -124,6 +124,35 @@ describe('useFileVersionHistory', () => {
 		expect(calls[1]).toEqual({ fileId: 'f2', cursor: 'y' });
 	});
 
+	it('keeps older pages and the read in flight across a live update that leaves the file and cursor alone', async () => {
+		const { history } = setup();
+		newest.value = page(['a'], 'b');
+		await nextTick();
+		const load = history.loadOlder();
+		pending[0]!.resolve(page(['b'], 'c'));
+		await load;
+
+		// A rename arrives: a new page object with the same end.
+		const renamed = page(['a'], 'b');
+		renamed.page[0]!.filename = 'renamed.txt';
+		newest.value = renamed;
+		await nextTick();
+		expect(ids(history.versions.value)).toEqual(['a', 'b']);
+		expect(history.versions.value![0]!.filename).toBe('renamed.txt');
+		expect(history.hasOlder.value).toBe(true);
+
+		// And while the next older page is on its way.
+		const inFlight = history.loadOlder();
+		newest.value = page(['a'], 'b');
+		await nextTick();
+		expect(history.isLoadingOlder.value).toBe(true);
+		pending[1]!.resolve(page(['c'], null));
+		await inFlight;
+		expect(ids(history.versions.value)).toEqual(['a', 'b', 'c']);
+		expect(history.hasOlder.value).toBe(false);
+		expect(history.isLoadingOlder.value).toBe(false);
+	});
+
 	it('starts over when the newest page ends somewhere else', async () => {
 		const { history } = setup();
 		newest.value = page(['a'], 'b');

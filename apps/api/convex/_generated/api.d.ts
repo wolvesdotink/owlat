@@ -817,6 +817,7 @@ import type * as emailCoediting_sweep from '../emailCoediting/sweep.js';
 import type * as emailCoediting_target from '../emailCoediting/target.js';
 import type * as eventsApi from '../eventsApi.js';
 import type * as files_history from '../files/history.js';
+import type * as files_historyCursor from '../files/historyCursor.js';
 import type * as forms__helpers from '../forms/_helpers.js';
 import type * as forms_apiHttp from '../forms/apiHttp.js';
 import type * as forms_endpoints from '../forms/endpoints.js';
@@ -2659,6 +2660,7 @@ declare const fullApi: ApiFromModules<{
 	'emailCoediting/target': typeof emailCoediting_target;
 	eventsApi: typeof eventsApi;
 	'files/history': typeof files_history;
+	'files/historyCursor': typeof files_historyCursor;
 	'forms/_helpers': typeof forms__helpers;
 	'forms/apiHttp': typeof forms_apiHttp;
 	'forms/endpoints': typeof forms_endpoints;

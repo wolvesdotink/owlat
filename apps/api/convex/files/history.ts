@@ -10,7 +10,8 @@
  * The budget counts rows walked, not rows returned: a version the caller may
  * not read costs a step and is left out, so a page can come back short, or
  * empty with `isDone: false`, while permitted older versions wait behind the
- * cursor.
+ * cursor. Redeeming a cursor reads the origin and the cursor's version once
+ * more each, outside the budget.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -19,6 +20,11 @@ import { authedQuery } from '../lib/authedFunctions';
 import { semanticFileReadGate } from '../lib/semanticFileAccess';
 import { walkVersionChain } from '../lib/semanticFileVersions';
 import { throwInvalidInput } from '../_utils/errors';
+import {
+	openVersionHistoryCursor,
+	sealVersionHistoryCursor,
+	type VersionHistoryCursorBinding,
+} from './historyCursor';
 
 /** Rows one call may read from the chain, readable or not. */
 export const VERSION_HISTORY_PAGE_BUDGET = 20;
@@ -52,12 +58,26 @@ async function toFileVersionRow(
 	};
 }
 
+const EMPTY_HISTORY = { page: [], isDone: true, continueCursor: null };
+
+/** The one answer to every cursor that does not continue this caller's history. */
+function throwInvalidCursor(): never {
+	throwInvalidInput('Invalid version history cursor');
+}
+
 /**
  * One page of `fileId`'s version history, newest first. Pass the previous
  * page's `continueCursor` as `cursor` to read further back. `isDone` is true
  * only when the chain has nothing further to walk; it is false whenever the
- * budget ran out with a predecessor still unread, and `continueCursor` then
- * points at it.
+ * budget ran out with a predecessor still unread. `continueCursor` is then an
+ * opaque token (files/historyCursor.ts) that only this caller can redeem, and
+ * only together with the same `fileId`; it is null without INSTANCE_SECRET.
+ *
+ * `fileId` must be a version the caller may read: otherwise the history is
+ * empty and done, and any cursor is refused. Every cursor that is not one this
+ * caller was given for this `fileId` (malformed, empty, tampered, minted for
+ * another history or another caller, or pointing at a version since deleted)
+ * is refused with the same error, so a cursor cannot probe for documents.
  */
 export const list = authedQuery({
 	args: {
@@ -70,13 +90,27 @@ export const list = authedQuery({
 		continueCursor: v.union(v.string(), v.null()),
 	}),
 	handler: async (ctx, args, session) => {
-		let startId = args.fileId;
-		if (args.cursor) {
-			const id = ctx.db.normalizeId('semanticFiles', args.cursor);
-			if (!id) throwInvalidInput('Invalid version history cursor');
+		const canReadSemanticFile = semanticFileReadGate(ctx, session);
+		const hasCursor = args.cursor !== undefined && args.cursor !== null;
+		const origin = await ctx.db.get(args.fileId);
+		if (!origin || !(await canReadSemanticFile(origin))) {
+			if (hasCursor) throwInvalidCursor();
+			return EMPTY_HISTORY;
+		}
+		const binding: VersionHistoryCursorBinding = {
+			organizationId: session.activeOrganizationId,
+			userId: session.userId,
+			originId: origin._id,
+		};
+
+		let startId = origin._id;
+		if (hasCursor) {
+			const sealed = await openVersionHistoryCursor(binding, args.cursor!);
+			const id = sealed === null ? null : ctx.db.normalizeId('semanticFiles', sealed);
+			if (!id || !(await ctx.db.get(id))) throwInvalidCursor();
 			startId = id;
 		}
-		const canReadSemanticFile = semanticFileReadGate(ctx, session);
+
 		const { readable, next } = await walkVersionChain(
 			ctx,
 			startId,
@@ -86,7 +120,7 @@ export const list = authedQuery({
 		return {
 			page: await Promise.all(readable.map((file) => toFileVersionRow(ctx, file))),
 			isDone: next === null,
-			continueCursor: next,
+			continueCursor: next === null ? null : await sealVersionHistoryCursor(binding, next),
 		};
 	},
 });

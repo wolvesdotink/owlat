@@ -8,14 +8,18 @@
  *     call, returns compact rows, and says truthfully whether more remain and
  *     where they start. Every walked row goes through semanticFileReadGate: an
  *     unreadable version is left out but walked through (and counts against the
- *     budget), so a permitted older version behind it is still reached.
+ *     budget), so a permitted older version behind it is still reached. The
+ *     cursor is an opaque token bound to the caller, the organization and the
+ *     origin `fileId`, so it cannot be redeemed against another history, and
+ *     every cursor that does not continue the caller's own walk is refused
+ *     with one identical error.
  *
  * The session floor is mocked to a role/user pair; the read gate is the real
  * one (`team_inbox` captures are for shared-inbox readers only).
  */
 
 import { convexTest } from 'convex-test';
-import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '../_generated/api';
@@ -25,6 +29,7 @@ import { VERSION_HISTORY_PAGE_BUDGET } from '../files/history';
 const sessionMock = vi.hoisted(() => ({
 	userId: 'reader',
 	role: 'owner' as 'owner' | 'editor',
+	organizationId: 'test-org',
 }));
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -32,7 +37,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const session = () => ({
 		userId: sessionMock.userId,
 		role: sessionMock.role,
-		activeOrganizationId: 'test-org',
+		activeOrganizationId: sessionMock.organizationId,
 	});
 	return {
 		...actual,
@@ -118,9 +123,26 @@ async function allPages(t: Harness, fileId: FileId) {
 	return pages;
 }
 
+const INVALID_CURSOR = /^.*Invalid version history cursor.*$/;
+
+/** The error a call fails with, or the result when it does not fail. */
+async function failure(promise: Promise<unknown>): Promise<string> {
+	try {
+		return `resolved: ${JSON.stringify(await promise)}`;
+	} catch (error) {
+		return String(error instanceof Error ? error.message : error);
+	}
+}
+
 beforeEach(() => {
 	sessionMock.userId = 'reader';
 	sessionMock.role = 'owner';
+	sessionMock.organizationId = 'test-org';
+	vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret-for-history-cursors');
+});
+
+afterEach(() => {
+	vi.unstubAllEnvs();
 });
 
 describe('semanticFiles.getVersionHistory (legacy)', () => {
@@ -174,14 +196,26 @@ describe('files.history.list', () => {
 			5,
 		]);
 		expect(pages.map((page) => page.isDone)).toEqual([false, false, true]);
-		// The cursor is the next version to walk; the last page has none.
-		expect(pages[0]!.continueCursor).toBe(ids[VERSION_HISTORY_PAGE_BUDGET]);
-		expect(pages[1]!.continueCursor).toBe(ids[VERSION_HISTORY_PAGE_BUDGET * 2]);
 		expect(pages[2]!.continueCursor).toBeNull();
+		// The cursor is opaque: it does not carry the next version's id.
+		for (const page of pages.slice(0, 2)) {
+			expect(page.continueCursor).toEqual(expect.any(String));
+			for (const id of ids) expect(page.continueCursor).not.toContain(id);
+		}
 		// Together the pages are exactly the legacy history.
 		expect(pages.flatMap((page) => page.page.map((row) => row._id))).toEqual(
 			await legacyIds(t, ids[0]!)
 		);
+	});
+
+	it('mints the same cursor every time the same page is read', async () => {
+		const t = convexTest(schema, modules);
+		const ids = await seedChain(t, VERSION_HISTORY_PAGE_BUDGET + 1);
+
+		const first = await t.query(api.files.history.list, { fileId: ids[0]! });
+		const again = await t.query(api.files.history.list, { fileId: ids[0]! });
+		expect(first.continueCursor).toEqual(expect.any(String));
+		expect(again.continueCursor).toBe(first.continueCursor);
 	});
 
 	it('returns compact rows, not whole documents', async () => {
@@ -208,33 +242,102 @@ describe('files.history.list', () => {
 		});
 	});
 
-	it('leaves unreadable versions out but walks through them, and they count against the budget', async () => {
+	it('walks through unreadable versions, which count against the budget, to the readable ones behind them', async () => {
 		const t = convexTest(schema, modules);
-		// Newest upload, then a run of Team Inbox captures longer than one page,
+		// A readable newest upload, then two pages' worth of Team Inbox captures,
 		// then uploads again.
-		const ids = await seedChain(t, VERSION_HISTORY_PAGE_BUDGET + 5, (i) =>
-			i >= 1 && i <= VERSION_HISTORY_PAGE_BUDGET ? { captureSource: 'team_inbox' } : {}
+		const run = VERSION_HISTORY_PAGE_BUDGET * 2;
+		const ids = await seedChain(t, run + 5, (i) =>
+			i >= 1 && i <= run ? { captureSource: 'team_inbox' } : {}
 		);
 		sessionMock.role = 'editor';
 
 		const pages = await allPages(t, ids[0]!);
-		expect(pages).toHaveLength(2);
-		expect(pages[0]!.page.map((row) => row._id)).toEqual([ids[0]]);
-		expect(pages[0]!.isDone).toBe(false);
-		expect(pages[1]!.page.map((row) => row._id)).toEqual(
-			ids.slice(VERSION_HISTORY_PAGE_BUDGET + 1)
-		);
-		expect(pages[1]!.isDone).toBe(true);
-
-		// A page can be empty and still not done.
-		const empty = await t.query(api.files.history.list, { fileId: ids[1]! });
-		expect(empty.page).toEqual([]);
-		expect(empty.isDone).toBe(false);
+		expect(pages.map((page) => page.page.map((row) => row._id))).toEqual([
+			[ids[0]],
+			// A page of unreadable versions only: empty, and not done.
+			[],
+			ids.slice(run + 1),
+		]);
+		expect(pages.map((page) => page.isDone)).toEqual([false, false, true]);
+		// The first cursor continues at an unreadable capture without naming it.
+		expect(pages[0]!.continueCursor).not.toContain(ids[VERSION_HISTORY_PAGE_BUDGET]!);
 
 		// An owner may read the captures: the same walk shows every version.
 		sessionMock.role = 'owner';
 		const owner = await allPages(t, ids[0]!);
 		expect(owner.flatMap((page) => page.page.map((row) => row._id))).toEqual(ids);
+	});
+
+	it('is empty and done for a version the caller may not read, and refuses any cursor with it', async () => {
+		const t = convexTest(schema, modules);
+		const ids = await seedChain(t, VERSION_HISTORY_PAGE_BUDGET + 5, (i) =>
+			i === 0 ? { captureSource: 'team_inbox' } : {}
+		);
+		const asOwner = await t.query(api.files.history.list, { fileId: ids[0]! });
+		expect(asOwner.isDone).toBe(false);
+
+		sessionMock.role = 'editor';
+		expect(await t.query(api.files.history.list, { fileId: ids[0]! })).toEqual({
+			page: [],
+			isDone: true,
+			continueCursor: null,
+		});
+		await expect(
+			t.query(api.files.history.list, { fileId: ids[0]!, cursor: asOwner.continueCursor })
+		).rejects.toThrow(INVALID_CURSOR);
+	});
+
+	it("refuses every cursor that does not continue this caller's walk of this history, identically", async () => {
+		const t = convexTest(schema, modules);
+		const ids = await seedChain(t, VERSION_HISTORY_PAGE_BUDGET + 5);
+		const [otherHead] = await seedChain(t, 3);
+		const { continueCursor: cursor } = await t.query(api.files.history.list, {
+			fileId: ids[0]!,
+		});
+		expect(cursor).toEqual(expect.any(String));
+		const token = cursor!;
+		const list = (fileId: FileId, value: string) =>
+			failure(t.query(api.files.history.list, { fileId, cursor: value }));
+
+		const answers: Record<string, string> = {};
+		// Redeemed against another, readable history.
+		answers['otherHistory'] = await list(otherHead!, token);
+		// By another member of the same organization.
+		sessionMock.userId = 'someone-else';
+		answers['otherUser'] = await list(ids[0]!, token);
+		sessionMock.userId = 'reader';
+		// From another organization.
+		sessionMock.organizationId = 'other-org';
+		answers['otherOrganization'] = await list(ids[0]!, token);
+		sessionMock.organizationId = 'test-org';
+		// Tampered with, malformed, empty, or a bare document id.
+		const parts = token.split('.');
+		const last = parts[3]!;
+		parts[3] = `${last.slice(0, -1)}${last.endsWith('A') ? 'B' : 'A'}`;
+		answers['tampered'] = await list(ids[0]!, parts.join('.'));
+		answers['malformed'] = await list(ids[0]!, 'not-a-cursor');
+		answers['empty'] = await list(ids[0]!, '');
+		answers['bareId'] = await list(ids[0]!, ids[VERSION_HISTORY_PAGE_BUDGET]!);
+		// A genuine cursor whose version was deleted since.
+		await t.run(async (ctx) => {
+			await ctx.db.delete(ids[VERSION_HISTORY_PAGE_BUDGET]!);
+		});
+		answers['deletedTarget'] = await list(ids[0]!, token);
+
+		for (const answer of Object.values(answers)) expect(answer).toMatch(INVALID_CURSOR);
+		expect(new Set(Object.values(answers)).size).toBe(1);
+	});
+
+	it('says more versions exist but offers no cursor without INSTANCE_SECRET', async () => {
+		const t = convexTest(schema, modules);
+		vi.stubEnv('INSTANCE_SECRET', '');
+		const ids = await seedChain(t, VERSION_HISTORY_PAGE_BUDGET + 1);
+
+		const result = await t.query(api.files.history.list, { fileId: ids[0]! });
+		expect(result.page).toHaveLength(VERSION_HISTORY_PAGE_BUDGET);
+		expect(result.isDone).toBe(false);
+		expect(result.continueCursor).toBeNull();
 	});
 
 	it('ends at a deleted version, as the legacy walk does', async () => {
@@ -263,25 +366,5 @@ describe('files.history.list', () => {
 		expect(result.page.map((row) => row._id)).toEqual(ids);
 		expect(result.isDone).toBe(true);
 		expect(result.continueCursor).toBeNull();
-	});
-
-	it('refuses a cursor that is not a file id', async () => {
-		const t = convexTest(schema, modules);
-		const ids = await seedChain(t, 1);
-		const contactId = await t.run((ctx) =>
-			ctx.db.insert('contacts', {
-				email: 'someone@example.com',
-				source: 'api',
-				doiStatus: 'not_required',
-				createdAt: 1,
-				updatedAt: 1,
-			})
-		);
-
-		for (const cursor of ['not-an-id', contactId]) {
-			await expect(t.query(api.files.history.list, { fileId: ids[0]!, cursor })).rejects.toThrow(
-				/cursor/
-			);
-		}
 	});
 });

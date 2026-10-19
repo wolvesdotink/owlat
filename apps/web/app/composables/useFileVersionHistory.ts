@@ -30,17 +30,17 @@ export function useFileVersionHistory(fileId: () => Id<'semanticFiles'>) {
 	let requested = new Set<string>();
 	let generation = 0;
 
-	watch(
-		() => [fileId(), newest.value?.continueCursor ?? null] as const,
-		() => {
-			generation += 1;
-			older.value = [];
-			olderCursor.value = undefined;
-			isLoadingOlder.value = false;
-			loadOlderFailed.value = false;
-			requested = new Set();
-		}
-	);
+	// Two primitive sources, compared one by one: a live update that leaves the
+	// file and the end of the newest page where they were (a rename, a finished
+	// extraction) keeps the older pages and any read in flight.
+	watch([fileId, () => newest.value?.continueCursor ?? null], () => {
+		generation += 1;
+		older.value = [];
+		olderCursor.value = undefined;
+		isLoadingOlder.value = false;
+		loadOlderFailed.value = false;
+		requested = new Set();
+	});
 
 	/** Every version read so far, newest first; undefined until the first page lands. */
 	const versions = computed<FileVersionRow[] | undefined>(() => {
