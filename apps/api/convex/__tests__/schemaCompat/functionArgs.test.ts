@@ -152,6 +152,20 @@ describe('previous-release calls are still accepted', () => {
 		).toEqual(['mail/filters:create: name: accepted string, now only id of users']);
 	});
 
+	it('a new required argument named like an inherited property fails', () => {
+		for (const name of ['constructor', 'toString', '__proto__']) {
+			expect(
+				callIncompatibilities(
+					snapshot.functions,
+					withArgument('mail/filters:create', name, {
+						fieldType: { type: 'string' },
+						optional: false,
+					})
+				)
+			).toEqual([`mail/filters:create: ${name}: new and required`]);
+		}
+	});
+
 	it('a real worker argument union narrowed, or an optional one made required, fails', () => {
 		const path = 'mail/imap/flags:storeFlags';
 		expect(

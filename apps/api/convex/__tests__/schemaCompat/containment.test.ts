@@ -172,3 +172,54 @@ describe('removing a retired field from a validator', () => {
 		expect(withoutValidatorField(previous, 'missing')).toEqual(previous);
 	});
 });
+
+describe('containment edge cases Convex encodes specially', () => {
+	/** An object validator built from JSON, so a field can be named `__proto__`. */
+	const object = (fields: Record<string, string>) =>
+		JSON.parse(
+			`{"type":"object","value":{${Object.entries(fields)
+				.map(
+					([name, type]) =>
+						`${JSON.stringify(name)}:{"fieldType":{"type":"${type}"},"optional":false}`
+				)
+				.join(',')}}}`
+		) as ValidatorJSON;
+
+	it('sees fields named like inherited properties as fields', () => {
+		for (const name of ['constructor', 'toString', '__proto__']) {
+			const base = { a: 'string' };
+			expect(containmentGap(object({ ...base, [name]: 'string' }), object(base))).toBe(
+				`${name}: new and required`
+			);
+			expect(containmentGap(object(base), object({ ...base, [name]: 'string' }))).toBe(
+				`${name}: no longer accepted`
+			);
+			expect(
+				containmentGap(object({ ...base, [name]: 'string' }), object({ ...base, [name]: 'string' }))
+			).toBeNull();
+		}
+	});
+
+	it('reads -0, NaN and the infinities as number literals', () => {
+		for (const value of [-0, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+			expect(gap(v.number(), v.literal(value))).toBeNull();
+			expect(gap(v.literal(value), v.literal(value))).toBeNull();
+			expect(gap(v.object({}), v.literal(value))).toMatch(
+				/^\(value\): accepted -?\w+, now only \{\}$/
+			);
+			expect(gap(v.literal(value), v.number())).toMatch(
+				/^\(value\): accepted number, now only -?\w+$/
+			);
+		}
+		expect(gap(v.literal(-0), v.literal(0))).toBe('(value): accepted 0, now only -0');
+		expect(gap(v.literal(0), v.literal(-0))).toBe('(value): accepted -0, now only 0');
+	});
+
+	it('reads int64 literals as int64, not as objects or numbers', () => {
+		expect(gap(v.int64(), v.literal(1n))).toBeNull();
+		expect(gap(v.number(), v.literal(1n))).toBe('(value): accepted 1n, now only number');
+		expect(gap(v.object({}), v.literal(1n))).toBe('(value): accepted 1n, now only {}');
+		expect(gap(v.literal(2n), v.literal(1n))).toBe('(value): accepted 1n, now only 2n');
+		expect(gap(v.int64(), v.literal(1))).toBe('(value): accepted 1, now only bigint');
+	});
+});

@@ -1,4 +1,4 @@
-import type { ValidatorJSON } from 'convex/values';
+import { jsonToConvex, type JSONValue, type ValidatorJSON } from 'convex/values';
 
 /**
  * Whether a validator accepts every value an older one accepted, proved from
@@ -35,8 +35,12 @@ type ObjectJSON = Extract<ValidatorJSON, { type: 'object' }>;
 
 function label(validator: ValidatorJSON): string {
 	switch (validator.type) {
-		case 'literal':
-			return JSON.stringify(validator.value);
+		case 'literal': {
+			const value = jsonToConvex(validator.value as JSONValue);
+			if (typeof value === 'bigint') return `${value}n`;
+			if (typeof value === 'number') return Object.is(value, -0) ? '-0' : String(value);
+			return JSON.stringify(value);
+		}
 		case 'id':
 			return `id of ${validator.tableName}`;
 		case 'union':
@@ -52,10 +56,23 @@ function label(validator: ValidatorJSON): string {
 	}
 }
 
-/** The primitive kind a literal belongs to. */
-function literalKind(value: unknown): string {
-	if (typeof value === 'object' && value !== null && '$integer' in value) return 'bigint';
-	return typeof value;
+/**
+ * `record[key]` only when `record` has it as its own property: a field named
+ * `constructor`, `toString` or `__proto__` must not resolve to what every
+ * object inherits.
+ */
+export function ownEntry<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
+	return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
+}
+
+/**
+ * The validator kind a literal's value belongs to, decoded from its JSON
+ * form: `-0`, `NaN` and the infinities are stored as `{"$float": ...}` and an
+ * int64 as `{"$integer": ...}`, which read as plain objects otherwise.
+ */
+function literalKind(value: JSONValue): string {
+	const decoded = jsonToConvex(value);
+	return typeof decoded === 'bigint' ? 'bigint' : typeof decoded;
 }
 
 /** A union's members with nested unions flattened, and a boolean as its two literals. */
@@ -130,7 +147,7 @@ function gap(
 			if (next.type === 'literal') {
 				return JSON.stringify(next.value) === JSON.stringify(previous.value) ? null : narrowed();
 			}
-			return next.type === literalKind(previous.value) ? null : narrowed();
+			return next.type === literalKind(previous.value as JSONValue) ? null : narrowed();
 		case 'id':
 			if (next.type === 'string') return null;
 			return next.type === 'id' && next.tableName === previous.tableName ? null : narrowed();
@@ -157,14 +174,14 @@ function gap(
 		case 'object': {
 			if (next.type !== 'object') return narrowed();
 			for (const [name, field] of Object.entries(previous.value)) {
-				const now = next.value[name];
+				const now = ownEntry(next.value, name);
 				if (!now) return `${join(path, name)}: no longer accepted`;
 				if (field.optional && !now.optional) return `${join(path, name)}: optional, now required`;
 				const problem = gap(now.fieldType, field.fieldType, join(path, name), root);
 				if (problem) return problem;
 			}
 			for (const [name, field] of Object.entries(next.value)) {
-				if (!(name in previous.value) && !field.optional) {
+				if (ownEntry(previous.value, name) === undefined && !field.optional) {
 					return `${join(path, name)}: new and required`;
 				}
 			}
@@ -193,7 +210,7 @@ function dropField(validator: ValidatorJSON, segments: readonly string[]): Valid
 	if (validator.type !== 'object') return validator;
 	const isArray = segment.endsWith('[]');
 	const name = isArray ? segment.slice(0, -2) : segment;
-	const field = validator.value[name];
+	const field = ownEntry(validator.value, name);
 	if (!field) return validator;
 	if (rest.length === 0) {
 		const { [name]: _removed, ...kept } = validator.value;

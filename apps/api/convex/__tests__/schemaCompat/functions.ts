@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { ValidatorJSON } from 'convex/values';
-import { containmentGap, withoutValidatorField } from './containment';
+import { containmentGap, ownEntry, withoutValidatorField } from './containment';
 
 /**
  * The calling side of a release's function contract: for each Convex function
@@ -155,7 +155,7 @@ export function callIncompatibilities(
 ): string[] {
 	const problems: string[] = [];
 	for (const [path, before] of Object.entries(previous)) {
-		const now = current[path];
+		const now = ownEntry(current, path);
 		if (!now) {
 			if (!retired.has(path)) problems.push(`${path}: function is no longer exported`);
 			continue;
@@ -168,7 +168,10 @@ export function callIncompatibilities(
 			problems.push(`${path}: was public, now internal`);
 			continue;
 		}
-		const sent = (retiredArguments[path] ?? []).reduce(withoutValidatorField, before.args);
+		const sent = (ownEntry(retiredArguments, path) ?? []).reduce(
+			withoutValidatorField,
+			before.args
+		);
 		const problem = containmentGap(now.args, sent, '(arguments)');
 		if (problem) problems.push(`${path}: ${problem}`);
 	}
