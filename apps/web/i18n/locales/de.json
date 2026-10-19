@@ -9992,6 +9992,7 @@
 						"integrationsTitle": "Integrationen"
 					},
 					"loadMore": "Mehr laden",
+					"noEmail": "Keine E-Mail",
 					"noResults": {
 						"description": "Keine Kontakte passen zu „{query}“. Versuche einen anderen Suchbegriff.",
 						"title": "Keine Ergebnisse gefunden"
@@ -10029,7 +10030,8 @@
 						"created": "Kontakt {email} wurde erstellt",
 						"emailCopied": "E-Mail-Adresse kopiert",
 						"imported": "{count} Kontakt erfolgreich verarbeitet | {count} Kontakte erfolgreich verarbeitet"
-					}
+					},
+					"unnamedContact": "Unbenannter Kontakt"
 				}
 			},
 			"segments": {

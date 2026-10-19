@@ -9992,6 +9992,7 @@
 						"integrationsTitle": "Integrations"
 					},
 					"loadMore": "Load more",
+					"noEmail": "No email",
 					"noResults": {
 						"description": "No contacts match \"{query}\". Try a different search term.",
 						"title": "No results found"
@@ -10029,7 +10030,8 @@
 						"created": "Contact {email} created successfully",
 						"emailCopied": "Email address copied",
 						"imported": "Successfully processed {count} contact | Successfully processed {count} contacts"
-					}
+					},
+					"unnamedContact": "Unnamed contact"
 				}
 			},
 			"segments": {

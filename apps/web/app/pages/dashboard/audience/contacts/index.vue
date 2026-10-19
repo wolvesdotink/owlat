@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { languageSelectOptions } from '~/data/languageOptions';
 import { isValidEmail } from '@owlat/shared';
 import type { ImportResults } from '~/composables/useCsvImport';
+import { contactHasEmail, contactPrimaryIdentity } from '~/utils/contactIdentity';
 
 const { t } = useI18n();
 
@@ -713,10 +714,10 @@ onUnmounted(() => {
 									:aria-label="
 										bulkSelection.selectedIds.value.has(contact._id)
 											? t('dashboard.audience.contacts.index.deselectContact', {
-													email: contact.email,
+													email: contactPrimaryIdentity(contact, t),
 												})
 											: t('dashboard.audience.contacts.index.selectContact', {
-													email: contact.email,
+													email: contactPrimaryIdentity(contact, t),
 												})
 									"
 									@click="toggleContactSelection(contact._id)"
@@ -732,14 +733,24 @@ onUnmounted(() => {
 									class="flex-1 min-w-0 text-left"
 									@click="openContact(contact._id)"
 								>
-									<span class="block text-text-primary font-medium truncate">{{
-										contact.email
-									}}</span>
+									<!-- Email, else name, else "Unnamed contact". The second line is the
+									     name under an email, or says that there is no email. -->
 									<span
-										v-if="contactName(contact)"
+										class="block font-medium truncate"
+										:class="contactHasEmail(contact) ? 'text-text-primary' : 'text-text-secondary'"
+										>{{ contactPrimaryIdentity(contact, t) }}</span
+									>
+									<span
+										v-if="contactHasEmail(contact) && contactName(contact)"
 										class="block text-sm text-text-secondary truncate"
 									>
 										{{ contactName(contact) }}
+									</span>
+									<span
+										v-else-if="!contactHasEmail(contact)"
+										class="block text-sm text-text-tertiary"
+									>
+										{{ t('dashboard.audience.contacts.index.noEmail') }}
 									</span>
 									<span class="block text-xs text-text-tertiary mt-0.5">
 										{{
