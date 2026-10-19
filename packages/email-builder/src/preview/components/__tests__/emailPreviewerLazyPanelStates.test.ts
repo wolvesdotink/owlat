@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, onErrorCaptured } from 'vue';
 import { diffEmails } from '@owlat/email-renderer';
 import EmailPreviewer from '../EmailPreviewer.vue';
 
@@ -76,23 +76,52 @@ describe('EmailPreviewer — lazy panel loading and failure states', () => {
 		expect(wrapper!.find('.ep-settings-panel').exists()).toBe(true);
 	});
 
-	it('shows a failure in place of a panel that does not load', async () => {
-		const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-		const warns = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	it('shows a failure in place of a panel that does not load, without raising it', async () => {
+		// The web editor sits in an error boundary; a raised loader error would
+		// replace the whole editor with its fallback.
+		const captured = vi.fn(() => false);
+		const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
 		try {
-			const w = mountPreviewer({
-				emailDiff: diffEmails('<p>Hi</p>', '<p>Hello</p>'),
+			const Host = defineComponent({
+				setup() {
+					onErrorCaptured(captured);
+					return () =>
+						h(EmailPreviewer, {
+							html: '<html><body><p>Hello</p></body></html>',
+							autoAnalyze: false,
+							showDeviceControls: false,
+							emailDiff: diffEmails('<p>Hi</p>', '<p>Hello</p>'),
+						});
+				},
 			});
+			const w = mount(Host);
 			await w.find('button[title="Compare changes"]').trigger('click');
 			await vi.dynamicImportSettled();
 			await flushPromises();
 
+			expect(captured).not.toHaveBeenCalled();
+			expect(w.find('.ep-toolbar').exists()).toBe(true);
 			const failed = w.find('.ep-panel-loading');
 			expect(failed.attributes('role')).toBe('alert');
-			expect(failed.text()).toContain("Couldn't load changes");
+			// The browser keeps a failed chunk for the page's life, so reopening the
+			// panel cannot recover it; only a reload can.
+			expect(failed.text()).toContain("Couldn't load changes. Reload the page to try again.");
+			expect(failed.text()).not.toMatch(/reopen/i);
+			// The panel's props do not leak onto the stand-in as attributes.
+			expect(failed.attributes('email-diff')).toBeUndefined();
+
+			await failed.find('button').trigger('click');
+			expect(reload).toHaveBeenCalledTimes(1);
+
+			// Closing and reopening shows the same failure, still contained.
+			await w.find('button[title="Compare changes"]').trigger('click');
+			await w.find('button[title="Compare changes"]').trigger('click');
+			await flushPromises();
+			expect(w.find('.ep-panel-loading').attributes('role')).toBe('alert');
+			expect(captured).not.toHaveBeenCalled();
+			w.unmount();
 		} finally {
-			errors.mockRestore();
-			warns.mockRestore();
+			reload.mockRestore();
 		}
 	});
 });
