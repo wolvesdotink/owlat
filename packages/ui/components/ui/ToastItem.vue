@@ -104,9 +104,9 @@ const closeRef = ref<HTMLButtonElement | null>(null);
  * the root needs no template ref of its own for this.
  */
 function actionButton(): HTMLButtonElement | undefined {
-	const card: unknown = instance?.proxy?.$el;
-	if (!(card instanceof HTMLElement)) return undefined;
-	return [...card.querySelectorAll('button')].find((b) => b !== closeRef.value);
+	const root: unknown = instance?.proxy?.$el;
+	if (!(root instanceof HTMLElement)) return undefined;
+	return [...root.querySelectorAll('button')].find((b) => b !== closeRef.value);
 }
 
 /*
