@@ -73,11 +73,30 @@ describe('FilesVersionHistory — older versions', () => {
 		expect(wrapper.text()).toContain('There are older versions, but they cannot be loaded here.');
 	});
 
-	it('says the list started over when it did', () => {
-		const wrapper = mountList({ hasOlder: true, historyRestarted: true });
-		expect(wrapper.find('[role="status"]').text()).toContain(
-			'starts again from the newest version'
-		);
-		expect(wrapper.find('button').exists()).toBe(true);
+	it('says the list started over however it ends now', () => {
+		const restarted = 'starts again from the newest version';
+		// Still older versions to show.
+		const paging = mountList({ hasOlder: true, historyRestarted: true });
+		expect(paging.find('[role="status"]').text()).toContain(restarted);
+		expect(paging.find('button').exists()).toBe(true);
+		// The whole history.
+		const complete = mountList({ historyRestarted: true });
+		expect(complete.find('[role="status"]').text()).toContain(restarted);
+		expect(complete.find('button').exists()).toBe(false);
+		// Older versions that cannot be loaded.
+		const unavailable = mountList({ historyRestarted: true, olderUnavailable: true });
+		expect(unavailable.find('[role="status"]').text()).toContain(restarted);
+		expect(unavailable.text()).toContain('they cannot be loaded here');
+	});
+
+	it('offers Try again when starting over failed, instead of the older-versions control', async () => {
+		const wrapper = mountList({ historyRestarted: true, recoveryFailed: true, hasOlder: false });
+		expect(wrapper.find('[role="alert"]').text()).toContain('could not be loaded again');
+		const buttons = wrapper.findAll('button');
+		expect(buttons).toHaveLength(1);
+		expect(buttons[0]!.text()).toBe('Try again');
+		await buttons[0]!.trigger('click');
+		expect(wrapper.emitted('retryRecovery')).toHaveLength(1);
+		expect(wrapper.emitted('loadOlder')).toBeUndefined();
 	});
 });

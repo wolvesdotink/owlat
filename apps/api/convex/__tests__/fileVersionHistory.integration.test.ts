@@ -24,7 +24,7 @@ import schema from '../schema';
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { VERSION_HISTORY_PAGE_BUDGET } from '../files/history';
+import { VERSION_HISTORY_CURSOR_REJECTED, VERSION_HISTORY_PAGE_BUDGET } from '../files/history';
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'reader',
@@ -125,12 +125,13 @@ async function allPages(t: Harness, fileId: FileId) {
 
 const INVALID_CURSOR = /^.*Invalid version history cursor.*$/;
 
-/** The error a call fails with, or the result when it does not fail. */
+/** The error a call fails with (message and Operation payload), or the result when it does not fail. */
 async function failure(promise: Promise<unknown>): Promise<string> {
 	try {
 		return `resolved: ${JSON.stringify(await promise)}`;
 	} catch (error) {
-		return String(error instanceof Error ? error.message : error);
+		const message = String(error instanceof Error ? error.message : error);
+		return JSON.stringify({ message, data: (error as { data?: unknown }).data });
 	}
 }
 
@@ -332,6 +333,12 @@ describe('files.history.list', () => {
 
 		for (const answer of Object.values(answers)) expect(answer).toMatch(INVALID_CURSOR);
 		expect(new Set(Object.values(answers)).size).toBe(1);
+		// The one machine-readable mark a client acts on.
+		expect(JSON.parse(answers['malformed']!).data).toEqual({
+			category: 'invalid_input',
+			message: 'Invalid version history cursor',
+			data: { reason: VERSION_HISTORY_CURSOR_REJECTED },
+		});
 	});
 
 	it("ends the history when a genuine cursor's version was deleted since it was issued", async () => {

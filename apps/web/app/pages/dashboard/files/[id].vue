@@ -40,7 +40,10 @@ const {
 	isLoadingOlder: isLoadingOlderVersions,
 	loadOlderFailed: loadOlderVersionsFailed,
 	historyRestarted: versionHistoryRestarted,
+	recoveryFailed: versionHistoryRecoveryFailed,
+	isIncomplete: versionHistoryIncomplete,
 	loadOlder: loadOlderVersions,
+	retryRecovery: retryVersionHistory,
 } = useFileVersionHistory(() => fileId.value);
 
 // Mutations
@@ -409,8 +412,7 @@ const sourceLabel = computed(() => {
 									t('dashboard.files.detail.versionHistory')
 								}}</span>
 								<span v-if="versions" class="text-xs text-text-tertiary"
-									>({{ versions.length
-									}}{{ hasOlderVersions || olderVersionsUnavailable ? '+' : '' }})</span
+									>({{ versions.length }}{{ versionHistoryIncomplete ? '+' : '' }})</span
 								>
 							</div>
 							<Icon
@@ -428,7 +430,9 @@ const sourceLabel = computed(() => {
 								:loading-older="isLoadingOlderVersions"
 								:load-older-failed="loadOlderVersionsFailed"
 								:history-restarted="versionHistoryRestarted"
+								:recovery-failed="versionHistoryRecoveryFailed"
 								@load-older="loadOlderVersions"
+								@retry-recovery="retryVersionHistory"
 							/>
 						</div>
 					</div>

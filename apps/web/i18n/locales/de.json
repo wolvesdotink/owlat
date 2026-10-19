@@ -3954,6 +3954,7 @@
 				"empty": "Keine früheren Versionen.",
 				"olderFailed": "Ältere Versionen konnten nicht geladen werden. Versuch es erneut.",
 				"olderUnavailable": "Es gibt ältere Versionen, sie lassen sich hier aber nicht laden.",
+				"recoveryFailed": "Die neuesten Versionen konnten nicht neu geladen werden.",
 				"restarted": "Die Liste hat sich geändert, während du sie gelesen hast. Sie beginnt deshalb wieder bei der neuesten Version.",
 				"showOlder": "Ältere Versionen anzeigen"
 			}

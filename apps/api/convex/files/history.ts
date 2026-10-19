@@ -61,9 +61,18 @@ async function toFileVersionRow(
 
 const EMPTY_HISTORY = { page: [], isDone: true, continueCursor: null };
 
+/**
+ * `data.reason` of a refused cursor: the one machine-readable mark that tells
+ * "this cursor can never be redeemed" apart from any other `invalid_input`, so
+ * the client starts its list over instead of retrying the token.
+ */
+export const VERSION_HISTORY_CURSOR_REJECTED = 'version_history_cursor_rejected';
+
 /** The one answer to every cursor that does not continue this caller's history. */
 function throwInvalidCursor(): never {
-	throwInvalidInput('Invalid version history cursor');
+	throwInvalidInput('Invalid version history cursor', {
+		reason: VERSION_HISTORY_CURSOR_REJECTED,
+	});
 }
 
 /**

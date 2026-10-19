@@ -18,9 +18,11 @@ defineProps<{
 	loadOlderFailed?: boolean;
 	/** The list started over from the newest version. */
 	historyRestarted?: boolean;
+	/** Starting over failed; "Try again" reloads the newest versions. */
+	recoveryFailed?: boolean;
 }>();
 
-const emit = defineEmits<{ loadOlder: [] }>();
+const emit = defineEmits<{ loadOlder: []; retryRecovery: [] }>();
 
 const { t } = useI18n();
 </script>
@@ -96,15 +98,24 @@ const { t } = useI18n();
 				</div>
 			</div>
 		</div>
-		<p v-if="olderUnavailable" class="text-xs text-text-tertiary pt-1">
+		<!-- Says why the list is shorter than before, however it ends now. -->
+		<p v-if="historyRestarted" class="text-xs text-text-tertiary pt-1" role="status">
+			{{ t('components.files.versionHistory.restarted') }}
+		</p>
+		<div v-if="recoveryFailed" class="flex flex-col items-start gap-1 pt-1">
+			<p class="text-xs text-error" role="alert">
+				{{ t('components.files.versionHistory.recoveryFailed') }}
+			</p>
+			<UiButton variant="ghost" size="sm" @click="emit('retryRecovery')">
+				{{ t('common.tryAgain') }}
+			</UiButton>
+		</div>
+		<p v-else-if="olderUnavailable" class="text-xs text-text-tertiary pt-1">
 			{{ t('components.files.versionHistory.olderUnavailable') }}
 		</p>
 		<div v-else-if="hasOlder" class="flex flex-col items-start gap-1 pt-1">
 			<p v-if="loadOlderFailed" class="text-xs text-error" role="alert">
 				{{ t('components.files.versionHistory.olderFailed') }}
-			</p>
-			<p v-else-if="historyRestarted" class="text-xs text-text-tertiary" role="status">
-				{{ t('components.files.versionHistory.restarted') }}
 			</p>
 			<UiButton variant="ghost" size="sm" :loading="loadingOlder" @click="emit('loadOlder')">
 				<Icon name="lucide:history" class="w-4 h-4 mr-2" />
