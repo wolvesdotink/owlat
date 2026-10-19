@@ -288,7 +288,7 @@ const FIXTURES: Record<string, Fixture> = {
 		flags: JSON.stringify({ campaigns: true }),
 		compose: '',
 		fetch: () => {
-			throw new Error('connect ECONNREFUSED 10.0.0.1:3100');
+			throw new Error('connect ECONNREFUSED 192.0.2.1:3100');
 		},
 	},
 	unrelatedEscape: {
@@ -713,7 +713,7 @@ describe('doctor --json — report contents', () => {
 
 	it('keeps a plain runtime error with no escape and no secret readable', async () => {
 		expect(await messageOf('plainError', 'mta.health')).toBe(
-			'http://mta:3100/health is unreachable (connect ECONNREFUSED 10.0.0.1:3100)'
+			'http://mta:3100/health is unreachable (connect ECONNREFUSED 192.0.2.1:3100)'
 		);
 	});
 

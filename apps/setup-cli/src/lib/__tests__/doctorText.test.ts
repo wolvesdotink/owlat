@@ -135,8 +135,8 @@ describe('doctor text — known-secret pass', () => {
 
 	it('leaves a plain error with no escape and no secret fully readable', () => {
 		const redact = createDoctorRedactor({ A_KEY: 'private/token+end' });
-		expect(redact('connect ECONNREFUSED 10.0.0.1:3100 (after 3 attempts)')).toBe(
-			'connect ECONNREFUSED 10.0.0.1:3100 (after 3 attempts)'
+		expect(redact('connect ECONNREFUSED 192.0.2.1:3100 (after 3 attempts)')).toBe(
+			'connect ECONNREFUSED 192.0.2.1:3100 (after 3 attempts)'
 		);
 	});
 
