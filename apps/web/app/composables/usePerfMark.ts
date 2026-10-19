@@ -1,4 +1,4 @@
-import { isFirstView, reportPerf } from '~/lib/perfTelemetry';
+import { isFirstView, reportPerf, type PerfDurationEvent } from '~/lib/perfTelemetry';
 
 /**
  * Custom timings on the browser's User Timing API.
@@ -35,7 +35,7 @@ export function usePerfMark() {
 		performance.mark(name, startTime === undefined ? undefined : { startTime });
 	}
 
-	function measure(metric: string, startMark?: string): number | null {
+	function measure(metric: PerfDurationEvent, startMark?: string): number | null {
 		const duration = measureSpan(metric, startMark);
 		if (startMark && typeof performance !== 'undefined') performance.clearMarks(startMark);
 		if (duration !== null) reportPerf(metric, { duration_ms: Math.round(duration) });
@@ -46,7 +46,7 @@ export function usePerfMark() {
 	 * Navigation start to now, reported once per page load and only while the
 	 * app still shows the route it booted into (see `isFirstView`).
 	 */
-	function measureBoot(metric: string): void {
+	function measureBoot(metric: PerfDurationEvent): void {
 		if (reportedBoot.has(metric) || !isFirstView()) return;
 		reportedBoot.add(metric);
 		measure(metric);
