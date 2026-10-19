@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useEscapeLayer } from '../../composables/useEscapeLayer';
+import { tabbableIn } from '../../utils/tabbable';
 
 type DropdownPosition = 'left' | 'right';
 
@@ -91,12 +92,20 @@ const handleClickOutside = (event: MouseEvent) => {
 	}
 };
 
-const ITEM_ROLES = ['menuitem', 'menuitemcheckbox', 'menuitemradio'];
-/** Any item, disabled or not: the keys it gets are the menu's. */
-const ITEM_SELECTOR = ITEM_ROLES.map((role) => `[role="${role}"]`).join(', ');
-/** The items focus moves between. */
-const MENU_ITEM_SELECTOR = ITEM_ROLES.map(
-	(role) => `[role="${role}"]:not([disabled]):not([aria-disabled="true"])`
+/**
+ * What the arrows move between: the menu's items, and any plain button or link
+ * a caller put in the menu (a stepper, say). With Tab closing the menu, a
+ * control the arrows skipped could not be reached from the keyboard at all.
+ */
+const ITEM_KINDS = [
+	...['menuitem', 'menuitemcheckbox', 'menuitemradio'].map((role) => `[role="${role}"]`),
+	'button:not([role])',
+	'a[href]:not([role])',
+];
+const ITEM_SELECTOR = ITEM_KINDS.join(', ');
+/** The enabled ones, which focus lands on. */
+const MENU_ITEM_SELECTOR = ITEM_KINDS.map(
+	(kind) => `${kind}:not([disabled]):not([aria-disabled="true"])`
 ).join(', ');
 
 /**
@@ -109,6 +118,27 @@ useEscapeLayer(isOpen, () => {
 	// Restore focus to trigger
 	(triggerControl() ?? triggerRef.value)?.focus();
 });
+
+/**
+ * Tab when the trigger cannot take focus (disabled, or gone while the menu was
+ * open): move to the control after (Shift: before) the trigger's place in the
+ * page, or in its dialog, which wraps like the dialog's own trap does.
+ */
+function tabPastTrigger(event: KeyboardEvent) {
+	const anchor = triggerRef.value;
+	if (!anchor?.isConnected) return;
+	const root = anchor.closest<HTMLElement>('[aria-modal="true"]') ?? document.body;
+	const candidates = tabbableIn(root).filter(
+		(el) => !anchor.contains(el) && !menuRef.value?.contains(el)
+	);
+	const after = (el: HTMLElement) =>
+		Boolean(anchor.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+	let next = event.shiftKey ? candidates.findLast((el) => !after(el)) : candidates.find(after);
+	if (!next && root !== document.body) next = event.shiftKey ? candidates.at(-1) : candidates[0];
+	event.preventDefault();
+	if (next) next.focus();
+	else (document.activeElement as HTMLElement | null)?.blur();
+}
 
 /**
  * Keys pressed inside the menu, and only there: a dialog opened over it, or
@@ -124,29 +154,34 @@ const handleKeydown = (event: KeyboardEvent) => {
 	// trigger, where the menu belongs in the page, the browser moves focus on
 	// to the next (or previous) control as it would anyway. The menu itself is
 	// teleported to the end of <body>, so from there Tab would leave the page.
+	// A trigger that cannot take focus gets the move made for it.
 	if (event.key === 'Tab') {
-		triggerControl()?.focus();
 		isOpen.value = false;
+		const control = triggerControl();
+		control?.focus();
+		if (!control || document.activeElement !== control) tabPastTrigger(event);
 		return;
 	}
 
 	// Arrows, Home and End move between the items. A field or other widget in
 	// the menu keeps them for itself (the caret, its own options).
 	if (!target.matches(ITEM_SELECTOR)) return;
-	const items = Array.from(menu.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR));
-	const currentIndex = items.indexOf(target);
+	const items = Array.from(menu.querySelectorAll<HTMLElement>(ITEM_SELECTOR));
+	// The nearest enabled item from `from`, stepping by `by` and wrapping.
+	const step = (from: number, by: 1 | -1) => {
+		for (let i = 1; i <= items.length; i++) {
+			const item = items[(((from + by * i) % items.length) + items.length) % items.length];
+			if (item?.matches(MENU_ITEM_SELECTOR)) return item;
+		}
+		return undefined;
+	};
+	const current = items.indexOf(target);
 	let next: HTMLElement | undefined;
-	if (event.key === 'ArrowDown') {
-		next = items[currentIndex < items.length - 1 ? currentIndex + 1 : 0];
-	} else if (event.key === 'ArrowUp') {
-		next = items[currentIndex > 0 ? currentIndex - 1 : items.length - 1];
-	} else if (event.key === 'Home') {
-		next = items[0];
-	} else if (event.key === 'End') {
-		next = items.at(-1);
-	} else {
-		return;
-	}
+	if (event.key === 'ArrowDown') next = step(current, 1);
+	else if (event.key === 'ArrowUp') next = step(current, -1);
+	else if (event.key === 'Home') next = step(-1, 1);
+	else if (event.key === 'End') next = step(items.length, -1);
+	else return;
 	event.preventDefault();
 	next?.focus();
 };

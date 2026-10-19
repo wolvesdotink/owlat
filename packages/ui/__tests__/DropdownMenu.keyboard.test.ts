@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { defineComponent, h, nextTick, ref, type VNode } from 'vue';
+import { defineComponent, h, nextTick, ref, type Ref, type VNode } from 'vue';
 import DropdownMenu from '../components/ui/DropdownMenu.vue';
 import DropdownMenuItem from '../components/ui/DropdownMenuItem.vue';
 import Modal from '../components/ui/Modal.vue';
@@ -27,14 +27,23 @@ afterEach(() => {
 	document.body.innerHTML = '';
 });
 
+type TriggerState = 'enabled' | 'disabled' | 'gone';
+
 /** A menu as the app mounts it: v-model:open, between two page controls. */
-function mountMenu(items: () => VNode[], { inModal = false } = {}) {
+function mountMenu(
+	items: () => VNode[],
+	{ inModal = false, triggerState = ref<TriggerState>('enabled') as Ref<TriggerState> } = {}
+) {
 	const open = ref(false);
+	const triggerSlot = () =>
+		triggerState.value === 'gone'
+			? []
+			: h('button', { id: 'trigger', disabled: triggerState.value === 'disabled' }, 'More actions');
 	const menu = () =>
 		h(
 			DropdownMenu,
 			{ open: open.value, 'onUpdate:open': (next: boolean) => (open.value = next) },
-			{ trigger: () => h('button', { id: 'trigger' }, 'More actions'), default: items }
+			{ trigger: triggerSlot, default: items }
 		);
 	const Host = defineComponent({
 		setup: () => () => {
@@ -190,5 +199,67 @@ describe('DropdownMenu keyboard', () => {
 		expect(tab.defaultPrevented).toBe(false);
 		expect(focused()).toBe(trigger());
 		expect(open.value).toBe(false);
+	});
+
+	it('moves the arrows through plain buttons a caller put in the menu', async () => {
+		mountMenu(() => [
+			h('button', { 'aria-label': 'Fewer' }, '-'),
+			h('button', { 'aria-label': 'More' }, '+'),
+			h(DropdownMenuItem, null, () => 'Recent'),
+		]);
+		await openByClick();
+		const named = (label: string) => document.querySelector(`[aria-label="${label}"]`);
+		expect(focused()).toBe(named('Fewer'));
+		press(focused(), 'ArrowDown');
+		expect(focused()).toBe(named('More'));
+		press(focused(), 'ArrowDown');
+		expect(focused()).toBe(item('Recent'));
+		press(focused(), 'ArrowDown');
+		expect(focused()).toBe(named('Fewer'));
+	});
+
+	it('steps on from an aria-disabled item that holds focus', async () => {
+		mountMenu(actions);
+		await openByClick();
+		item('Export').focus();
+		press(focused(), 'ArrowDown');
+		expect(focused()).toBe(item('Closed'));
+		item('Export').focus();
+		press(focused(), 'ArrowUp');
+		expect(focused()).toBe(item('Pinned'));
+	});
+
+	describe('Tab when the trigger cannot take focus', () => {
+		for (const state of ['disabled', 'gone'] as const) {
+			for (const [shiftKey, lands] of [
+				[false, 'after'],
+				[true, 'before'],
+			] as const) {
+				it(`${shiftKey ? 'Shift+Tab' : 'Tab'} with the trigger ${state} moves to the control ${lands} it`, async () => {
+					const triggerState = ref<TriggerState>('enabled');
+					const open = mountMenu(actions, { triggerState });
+					await openByClick();
+					triggerState.value = state;
+					await nextTick();
+					const tab = press(focused(), 'Tab', { shiftKey });
+					expect(tab.defaultPrevented).toBe(true);
+					expect(focused()).toBe(document.getElementById(lands));
+					expect(open.value).toBe(false);
+				});
+			}
+		}
+
+		it('stays inside a surrounding dialog', async () => {
+			const triggerState = ref<TriggerState>('enabled');
+			const open = mountMenu(actions, { inModal: true, triggerState });
+			await nextTick();
+			await openByClick();
+			triggerState.value = 'disabled';
+			await nextTick();
+			expect(press(focused(), 'Tab').defaultPrevented).toBe(true);
+			expect(focused()).toBe(document.getElementById('after'));
+			expect(focused()!.closest('[aria-modal="true"]')).not.toBeNull();
+			expect(open.value).toBe(false);
+		});
 	});
 });
