@@ -1,21 +1,32 @@
 <script setup lang="ts">
+import { onMounted, useTemplateRef } from 'vue';
 import { Loader2, AlertTriangle } from '@lucide/vue';
+import { useUiI18n } from '@owlat/ui/composables/useUiI18n';
 
 // Stands in for a lazily loaded preview panel (see lazyPanels.ts) while its
-// chunk loads, or once it has failed to; only a page reload fetches it again.
-withDefaults(
+// chunk loads, or once it has failed to. The copy is the UI layer's own
+// localized loading/error/retry copy, so it follows the app's locale.
+const props = withDefaults(
 	defineProps<{
-		label: string;
 		failed?: boolean;
+		/** Focus "Try again" on mount: this failure answers a retry. */
+		focusRetry?: boolean;
 		/** Which edge of the preview the panel docks to; picks the divider side. */
 		placement?: 'top' | 'bottom';
 	}>(),
-	{ failed: false, placement: 'top' }
+	{ failed: false, focusRetry: false, placement: 'top' }
 );
 
-function reloadPage() {
-	window.location.reload();
-}
+const emit = defineEmits<{
+	(e: 'retry'): void;
+}>();
+
+const { t } = useUiI18n();
+
+const retryButton = useTemplateRef<HTMLButtonElement>('retryButton');
+onMounted(() => {
+	if (props.focusRetry) retryButton.value?.focus();
+});
 </script>
 
 <template>
@@ -24,16 +35,19 @@ function reloadPage() {
 		:class="`ep-panel-loading-${placement}`"
 		:role="failed ? 'alert' : 'status'"
 	>
-		<AlertTriangle v-if="failed" class="ep-panel-loading-icon" />
-		<Loader2 v-else class="ep-panel-loading-icon ep-panel-loading-spinner" />
 		<template v-if="failed">
-			<span>Couldn't load {{ label }}. Reload the page to try again.</span>
-			<button type="button" class="ep-panel-loading-reload" @click="reloadPage">Reload</button>
+			<AlertTriangle class="ep-panel-loading-icon" aria-hidden="true" />
+			<span>{{ t('ui.errorBoundary.message') }}</span>
+			<button ref="retryButton" type="button" class="ep-panel-loading-retry" @click="emit('retry')">
+				{{ t('ui.actions.retry') }}
+			</button>
 		</template>
-		<span v-else>Loading {{ label }}…</span>
+		<template v-else>
+			<Loader2 class="ep-panel-loading-icon ep-panel-loading-spinner" aria-hidden="true" />
+			<span>{{ t('ui.progress.loading') }}</span>
+		</template>
 	</div>
 </template>
-
 <style scoped>
 .ep-panel-loading {
 	display: flex;
@@ -59,7 +73,7 @@ function reloadPage() {
 	flex-shrink: 0;
 }
 
-.ep-panel-loading-reload {
+.ep-panel-loading-retry {
 	margin-left: auto;
 	padding: 4px 10px;
 	border: 1px solid var(--ep-border-subtle);
@@ -70,7 +84,7 @@ function reloadPage() {
 	cursor: pointer;
 }
 
-.ep-panel-loading-reload:hover {
+.ep-panel-loading-retry:hover {
 	background: var(--ep-bg-elevated);
 }
 

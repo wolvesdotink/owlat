@@ -6,8 +6,9 @@ import { diffEmails } from '@owlat/email-renderer';
 import EmailPreviewer from '../EmailPreviewer.vue';
 
 /**
- * A lazily loaded panel shows a compact loading state while its chunk is slow
- * (plan item OW-060), and a failure in place of the panel when it does not load.
+ * Through the previewer: a lazily loaded panel shows a compact loading state
+ * while its chunk is slow (plan item OW-060), and a contained failure in place
+ * of the panel when it does not load. lazyPanelRetry.test.ts covers retrying.
  */
 const gate = vi.hoisted(() => {
 	let open!: () => void;
@@ -63,7 +64,7 @@ describe('EmailPreviewer — lazy panel loading and failure states', () => {
 
 			const loading = w.find('.ep-panel-loading');
 			expect(loading.attributes('role')).toBe('status');
-			expect(loading.text()).toBe('Loading render options…');
+			expect(loading.text()).toBe('Loading…');
 			expect(w.find('.ep-settings-panel').exists()).toBe(false);
 		} finally {
 			vi.useRealTimers();
@@ -80,48 +81,37 @@ describe('EmailPreviewer — lazy panel loading and failure states', () => {
 		// The web editor sits in an error boundary; a raised loader error would
 		// replace the whole editor with its fallback.
 		const captured = vi.fn(() => false);
-		const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
-		try {
-			const Host = defineComponent({
-				setup() {
-					onErrorCaptured(captured);
-					return () =>
-						h(EmailPreviewer, {
-							html: '<html><body><p>Hello</p></body></html>',
-							autoAnalyze: false,
-							showDeviceControls: false,
-							emailDiff: diffEmails('<p>Hi</p>', '<p>Hello</p>'),
-						});
-				},
-			});
-			const w = mount(Host);
-			await w.find('button[title="Compare changes"]').trigger('click');
-			await vi.dynamicImportSettled();
-			await flushPromises();
+		const Host = defineComponent({
+			setup() {
+				onErrorCaptured(captured);
+				return () =>
+					h(EmailPreviewer, {
+						html: '<html><body><p>Hello</p></body></html>',
+						autoAnalyze: false,
+						showDeviceControls: false,
+						emailDiff: diffEmails('<p>Hi</p>', '<p>Hello</p>'),
+					});
+			},
+		});
+		const w = mount(Host);
+		await w.find('button[title="Compare changes"]').trigger('click');
+		await vi.dynamicImportSettled();
+		await flushPromises();
 
-			expect(captured).not.toHaveBeenCalled();
-			expect(w.find('.ep-toolbar').exists()).toBe(true);
-			const failed = w.find('.ep-panel-loading');
-			expect(failed.attributes('role')).toBe('alert');
-			// The browser keeps a failed chunk for the page's life, so reopening the
-			// panel cannot recover it; only a reload can.
-			expect(failed.text()).toContain("Couldn't load changes. Reload the page to try again.");
-			expect(failed.text()).not.toMatch(/reopen/i);
-			// The panel's props do not leak onto the stand-in as attributes.
-			expect(failed.attributes('email-diff')).toBeUndefined();
+		expect(captured).not.toHaveBeenCalled();
+		expect(w.find('.ep-toolbar').exists()).toBe(true);
+		const failed = w.find('.ep-panel-loading');
+		expect(failed.attributes('role')).toBe('alert');
+		expect(failed.text()).toContain('Something went wrong. Please try again.');
+		expect(failed.attributes('email-diff')).toBeUndefined();
 
-			await failed.find('button').trigger('click');
-			expect(reload).toHaveBeenCalledTimes(1);
-
-			// Closing and reopening shows the same failure, still contained.
-			await w.find('button[title="Compare changes"]').trigger('click');
-			await w.find('button[title="Compare changes"]').trigger('click');
-			await flushPromises();
-			expect(w.find('.ep-panel-loading').attributes('role')).toBe('alert');
-			expect(captured).not.toHaveBeenCalled();
-			w.unmount();
-		} finally {
-			reload.mockRestore();
-		}
+		// Trying again while the chunk still fails stays contained.
+		await failed.find('button').trigger('click');
+		await vi.dynamicImportSettled();
+		await flushPromises();
+		expect(w.find('.ep-panel-loading').attributes('role')).toBe('alert');
+		expect(w.find('.ep-toolbar').exists()).toBe(true);
+		expect(captured).not.toHaveBeenCalled();
+		w.unmount();
 	});
 });
