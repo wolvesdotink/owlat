@@ -13319,7 +13319,9 @@
 			"remindersNotRestored": "Reply reminders were not restored.",
 			"unsubscribeNotRecalled": "The unsubscribe request was already sent and cannot be taken back.",
 			"expired": "This can no longer be undone",
-			"already": "This was already undone"
+			"already": "This was already undone",
+			"undoing": "Undoing…",
+			"notUndone": "Not undone."
 		},
 		"rules": {
 			"title": "Rules in your words",

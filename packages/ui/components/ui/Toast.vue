@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { useToast } from '../../composables/useToast';
 import ToastItem from './ToastItem.vue';
 
-const { toasts, removeToast } = useToast();
+const { toasts, removeToast, dismissAfterAction } = useToast();
 
 // Errors go in an assertive live region (interrupt the screen reader — the user
 // needs to know an action failed now). Everything else stays polite.
@@ -29,7 +29,8 @@ const politeToasts = computed(() => toasts.value.filter((t) => t.type !== 'error
 						v-for="toast in errorToasts"
 						:key="toast.id"
 						:toast="toast"
-						@dismiss="removeToast(toast.id)"
+						@dismiss="dismissAfterAction(toast.id)"
+						@close="removeToast(toast.id)"
 					/>
 				</TransitionGroup>
 			</div>
@@ -41,7 +42,8 @@ const politeToasts = computed(() => toasts.value.filter((t) => t.type !== 'error
 						v-for="toast in politeToasts"
 						:key="toast.id"
 						:toast="toast"
-						@dismiss="removeToast(toast.id)"
+						@dismiss="dismissAfterAction(toast.id)"
+						@close="removeToast(toast.id)"
 					/>
 				</TransitionGroup>
 			</div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, getCurrentInstance, nextTick, ref, watch, watchPostEffect } from 'vue';
 import type { Toast, ToastType } from '../../composables/useToast';
 import { useUiI18n } from '../../composables/useUiI18n';
 import { useToastReadingTimeHolds } from '../../composables/useToastReadingTime';
@@ -11,7 +11,12 @@ import { useToastReadingTimeHolds } from '../../composables/useToastReadingTime'
  */
 const props = defineProps<{ toast: Toast }>();
 
-const emit = defineEmits<{ dismiss: [] }>();
+const emit = defineEmits<{
+	/** The inline action was pressed; the stack decides whether the toast goes. */
+	dismiss: [];
+	/** The close button: the toast goes, whatever its action is doing. */
+	close: [];
+}>();
 
 interface ToastStyle {
 	container: string;
@@ -73,7 +78,62 @@ const card = useToastReadingTimeHolds(() => props.toast.id);
 
 const { t } = useUiI18n();
 
-const style = computed(() => STYLES[props.toast.type]);
+/**
+ * While an observed action runs, the icon turns into a spinner and the action
+ * (now showing its pending label) stops taking pointer presses; a keyboard
+ * press is ignored by the toast store. Both are expressed through the style
+ * entries so the card's markup stays the same in every state.
+ */
+const style = computed<ToastStyle>(() => {
+	const base = STYLES[props.toast.type];
+	if (!props.toast.pending) return base;
+	return {
+		...base,
+		icon: 'lucide:loader-2',
+		iconColor: `${base.iconColor} animate-spin motion-reduce:animate-none`,
+		actionHover: `${base.text} opacity-70 cursor-progress pointer-events-none`,
+	};
+});
+
+const instance = getCurrentInstance();
+const closeRef = ref<HTMLButtonElement | null>(null);
+
+/**
+ * The inline action button: the card's only button besides close. Found from
+ * the component's root element at use time (the card is its single root), so
+ * the root needs no template ref of its own for this.
+ */
+function actionButton(): HTMLButtonElement | undefined {
+	const root: unknown = instance?.proxy?.$el;
+	if (!(root instanceof HTMLElement)) return undefined;
+	return [...root.querySelectorAll('button')].find((b) => b !== closeRef.value);
+}
+
+/*
+ * An observed action (see ToastObservedAction) does not take the toast with it
+ * on press. While it runs, the action reads as disabled (`aria-disabled`, still
+ * focusable; the store ignores the press); when it ends without the toast
+ * going, the button disappears and focus that was on it moves to close rather
+ * than dropping to <body>. Both are kept out of the action button's markup,
+ * which is shared with the phone-layout rewrite of this card.
+ */
+watchPostEffect(() => {
+	const button = actionButton();
+	if (!button) return;
+	if (props.toast.pending) button.setAttribute('aria-disabled', 'true');
+	else button.removeAttribute('aria-disabled');
+});
+
+watch(
+	() => Boolean(props.toast.action),
+	(hasAction, hadAction) => {
+		// Runs before the DOM update, while the leaving button still holds focus.
+		if (hasAction || !hadAction) return;
+		const button = actionButton();
+		if (!button || button !== document.activeElement) return;
+		void nextTick(() => closeRef.value?.focus());
+	}
+);
 </script>
 
 <template>
@@ -104,7 +164,7 @@ const style = computed(() => STYLES[props.toast.type]);
 				{{ toast.message }}
 			</p>
 
-			<!-- Optional inline action (e.g. "Undo") — clicking it dismisses the toast -->
+			<!-- Optional inline action (e.g. "Undo") — a plain one dismisses the toast; an observed one keeps it until its outcome -->
 			<button
 				v-if="toast.action"
 				type="button"
@@ -123,9 +183,10 @@ const style = computed(() => STYLES[props.toast.type]);
 
 		<!-- Close button (optional - auto-dismisses but allows manual close) -->
 		<button
+			ref="closeRef"
 			:class="['p-1 rounded-lg transition-colors flex-shrink-0', style.closeHover]"
 			:aria-label="t('ui.toast.dismiss')"
-			@click="emit('dismiss')"
+			@click="emit('close')"
 		>
 			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path

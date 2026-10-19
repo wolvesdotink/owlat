@@ -56,7 +56,7 @@ describe('usePostboxSenderActions undo', () => {
 		expect(showToast).toHaveBeenCalledWith(
 			"Couldn't unsubscribe; mail from them is archived",
 			'error',
-			expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })
+			expect.objectContaining({ observedAction: expect.objectContaining({ label: 'Undo' }) })
 		);
 	});
 
@@ -70,7 +70,7 @@ describe('usePostboxSenderActions undo', () => {
 		expect(showToast).toHaveBeenCalledWith(
 			'Mail from Shop now goes to your digest',
 			'success',
-			expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })
+			expect.objectContaining({ observedAction: expect.objectContaining({ label: 'Undo' }) })
 		);
 	});
 });

@@ -66,15 +66,33 @@ function result(overrides: Record<string, unknown>) {
 	};
 }
 
-/** Show the toast, press its Undo, and return the toast the undo showed. */
-async function pressUndo(): Promise<unknown[]> {
+interface ObservedUndo {
+	label: string;
+	pendingLabel: string;
+	failedNote: string;
+	run: () => Promise<boolean | { retryable: true }>;
+}
+
+/** Show the toast and return the observed Undo it carries. */
+function offeredUndo(): ObservedUndo {
 	const { offerUndo } = usePostboxArrivalUndo();
 	offerUndo('Archived this conversation', 'op1' as never);
 	const options = showToast.mock.calls[0]![2] as {
-		action: { label: string; onAction: () => void };
+		action?: unknown;
+		observedAction: ObservedUndo;
 	};
-	expect(options.action.label).toBe('Undo');
-	options.action.onAction();
+	expect(options.action).toBeUndefined();
+	expect(options.observedAction).toMatchObject({
+		label: 'Undo',
+		pendingLabel: 'Undoing…',
+		failedNote: 'Not undone.',
+	});
+	return options.observedAction;
+}
+
+/** Show the toast, press its Undo, and return the toast the undo showed. */
+async function pressUndo(): Promise<unknown[]> {
+	await offeredUndo().run();
 	await flushPromises();
 	expect(undoRun).toHaveBeenCalledWith({ operationId: 'op1' });
 	return showToast.mock.calls[1]!;
@@ -162,6 +180,32 @@ describe('usePostboxArrivalUndo', () => {
 		host.unmount();
 	});
 
+	it('hands the toast the outcome: true only when the undo went through', async () => {
+		undoRun.mockResolvedValue(result({}));
+		expect(await offeredUndo().run()).toBe(true);
+		showToast.mockReset();
+		undoRun.mockResolvedValue(result({ hasMore: true }));
+		expect(await offeredUndo().run()).toBe(true);
+	});
+
+	it('reports a failure envelope as not done, never as a success or a retry', async () => {
+		// useBackendOperation resolves { ok: false } (it has already shown the
+		// categorized error toast); it does not reject.
+		undoRun.mockResolvedValue({ ok: false });
+		const undo = offeredUndo();
+		expect(await undo.run()).toBe(false);
+		expect(showToast).toHaveBeenCalledTimes(1);
+	});
+
+	it('reports the terminal expired / already-undone answers as not done', async () => {
+		undoRun.mockResolvedValue(result({ status: 'expired' }));
+		expect(await offeredUndo().run()).toBe(false);
+		showToast.mockReset();
+		undoRun.mockResolvedValue(result({ status: 'not_applied' }));
+		expect(await offeredUndo().run()).toBe(false);
+		expect(showToast.mock.calls[1]![0]).toBe('This was already undone');
+	});
+
 	it('shows a plain toast when there is no operation to undo', () => {
 		const { offerUndo } = usePostboxArrivalUndo();
 		offerUndo('It was already sorted that way', null);
@@ -186,11 +230,11 @@ describe('usePostboxLearnedNotices', () => {
 		const [message, type, options] = showToast.mock.calls[0]! as [
 			string,
 			string,
-			{ action: { label: string }; onDismiss: () => void },
+			{ observedAction: { label: string }; onDismiss: () => void },
 		];
 		expect(message).toBe('Mail from Shop now goes to your digest');
 		expect(type).toBe('info');
-		expect(options.action.label).toBe('Undo');
+		expect(options.observedAction.label).toBe('Undo');
 		options.onDismiss();
 		expect(ackRun).toHaveBeenCalledWith({ operationId: 'op9' });
 	});
