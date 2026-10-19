@@ -3,9 +3,10 @@
  * "Pick from Files" for a file question (plan §06): a small dialog over the
  * files the person can already read, searchable by name.
  *
- *  - Files: the organization's Files library (`semanticFiles`), newest first,
- *    or its full-text search. A row whose bytes the retention sweep released
- *    has nothing left to attach and is not offered.
+ *  - Files: the organization's Files library as compact cards
+ *    (`files.cards`), newest first, or its full-text search. A row whose
+ *    bytes the retention sweep released has nothing left to attach and is not
+ *    offered.
  *  - Mail attachments: this inbox's attachment index, newest first, or by
  *    filename.
  *
@@ -40,18 +41,18 @@ const { t } = useI18n();
 const { query, debouncedQuery } = useDebouncedSearch(250);
 
 const filesList = usePaginatedQuery(
-	api.semanticFiles.list,
+	api.files.cards.list,
 	() => (props.open && !debouncedQuery.value ? {} : 'skip'),
 	{ initialNumItems: PAGE }
 );
 const filesSearch = usePaginatedQuery(
-	api.semanticFiles.search,
+	api.files.cards.search,
 	() => (props.open && debouncedQuery.value ? { query: debouncedQuery.value } : 'skip'),
 	{ initialNumItems: PAGE }
 );
 const files = computed(() =>
 	(debouncedQuery.value ? filesSearch.results.value : filesList.results.value)
-		.filter((f) => f.storageId)
+		.filter((f) => f.hasBytes)
 		.map((f) => ({
 			key: `sf:${f._id}`,
 			ref: { source: 'semanticFile' as const, id: f._id, filename: f.filename },

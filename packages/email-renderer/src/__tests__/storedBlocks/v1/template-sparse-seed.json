@@ -1,0 +1,54 @@
+{
+	"description": "The sparse content the demo seed writes: text and button Blocks with only their visible fields, no padding, margin or paddingLinked.",
+	"field": "emailTemplates.content",
+	"stored": [
+		{
+			"id": "seed-h",
+			"type": "text",
+			"content": {
+				"html": "Seasonal sale: 20% off",
+				"blockType": "h2",
+				"fontSize": 24,
+				"textColor": "#374151",
+				"lineHeight": 1.3
+			}
+		},
+		{
+			"id": "seed-p",
+			"type": "text",
+			"content": {
+				"html": "Hi {{first_name}}, use code EXAMPLE20 at checkout.",
+				"blockType": "paragraph",
+				"fontSize": 16,
+				"textColor": "#374151",
+				"lineHeight": 1.5
+			}
+		},
+		{
+			"id": "seed-btn",
+			"type": "button",
+			"content": {
+				"text": "Shop the sale",
+				"url": "https://example.com/sale",
+				"backgroundColor": "#2563eb",
+				"textColor": "#ffffff",
+				"align": "center",
+				"borderRadius": 6,
+				"paddingX": 24,
+				"paddingY": 12
+			}
+		},
+		{
+			"id": "seed-footer",
+			"type": "text",
+			"content": {
+				"html": "Owlat Example · 1 Example Street · {{unsubscribe_link}}",
+				"blockType": "paragraph",
+				"fontSize": 12,
+				"textColor": "#6b7280",
+				"textAlign": "center",
+				"lineHeight": 1.5
+			}
+		}
+	]
+}

@@ -47,7 +47,12 @@ function vueFiles(dir: string): string[] {
 
 describe('z-index layers', () => {
 	it('toasts sit above the modal backdrop', () => {
-		const toast = classLayer(read('packages/ui/components/ui/Toast.vue'), 'fixed bottom-6 right-6');
+		// Marked by what makes it the stack (a fixed, click-through container),
+		// not by its offsets, which change with the phone/safe-area geometry.
+		const toast = classLayer(
+			read('packages/ui/components/ui/Toast.vue'),
+			'pointer-events-none fixed'
+		);
 		const backdrop = classLayer(read('packages/ui/components/ui/Modal.vue'), 'fixed inset-0');
 		expect(toast).toBeGreaterThan(backdrop);
 		expect(toast).toBeGreaterThan(layer('overlay'));

@@ -1,14 +1,15 @@
 /**
  * Accessibility contract for the interactive rows that used to be mouse-only
- * <div @click> / <tr @click> elements on the delivery (domains, webhooks) and
+ * <div @click> / <tr @click> elements on the delivery (webhooks) and
  * send (marketing, transactional) pages. They are exposed to assistive tech
  * and the keyboard as real buttons: focusable (tabindex="0"), announced
  * (role="button"), operable with Enter and Space, and — for the expandable
- * delivery rows — reflecting open/closed state via aria-expanded.
+ * delivery row — reflecting open/closed state via aria-expanded.
  *
- * The rows are MOUNTED and driven with real keyboard events; the domain row,
- * whose header nests action controls, also proves that activating one never
- * fires the row's own action. The marketing and transactional lists share one
+ * The rows are MOUNTED and driven with real keyboard events. The domain row is
+ * no longer one of them: its header is a native disclosure button beside its
+ * action buttons, pinned in `components/domains/__tests__/recordRowDisclosure.test.ts`.
+ * The marketing and transactional lists share one
  * grid card and one table row (`components/send/TemplateGrid.vue`,
  * `TemplateTable.vue`) and one sort menu (`components/list/ListSortMenu.vue`).
  *
@@ -22,9 +23,8 @@
  * a mouse-only `<span @click>`.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { capitalize, defineComponent, h, nextTick, useSlots, type Component } from 'vue';
+import { defineComponent, h, nextTick, useSlots, type Component } from 'vue';
 import { mount } from '@vue/test-utils';
-import RecordRow from '~/components/domains/RecordRow.vue';
 import WebhookRow from '~/components/webhooks/WebhookRow.vue';
 import TemplateGrid from '~/components/send/TemplateGrid.vue';
 import TemplateTable from '~/components/send/TemplateTable.vue';
@@ -53,48 +53,7 @@ const rowStubs = {
 	Icon: { template: '<i />' },
 	UiIconBox: { template: '<i />' },
 	UiBadge: { template: '<span><slot /></span>' },
-	DomainsDNSRecordPanel: true,
-	DomainsReceivingDnsSection: true,
-	DomainsExternalReceivingSection: true,
-	DomainsReceivingModeSwitch: true,
-	DomainsReturnPathEditor: true,
-	DomainsStreamSubdomainPlanPanel: true,
-	DomainsYahooCflPanel: true,
-	DomainsDnsPropagationNote: true,
 };
-
-function mountDomainRow() {
-	return mount(RecordRow, {
-		props: {
-			domain: {
-				_id: 'domain_1',
-				domain: 'mail.example.com',
-				status: 'pending',
-				createdAt: 0,
-				verifiedAt: null,
-				lastVerifiedAt: null,
-				lastRegistrationError: null,
-				dmarcPolicy: 'none',
-				dnsRecords: { spf: { type: 'TXT', host: '@', value: 'v=spf1 ~all' }, dkim: [] },
-				verificationResults: undefined,
-			},
-			isExpanded: false,
-			canForceVerify: false,
-			canManageDomains: true,
-			isForcing: false,
-			isVerifying: false,
-			isUpdatingDmarc: false,
-			autoRecheckActive: false,
-			spfCoexistence: null,
-			dmarcPolicyOptions: [{ value: 'none', label: 'None', hint: '' }],
-			showReceivingDns: false,
-			inboundMailHost: null,
-			inboundPort: 25,
-			inboundEnabled: false,
-		} as never,
-		global: { plugins: [createTestI18n()], stubs: rowStubs, mocks: { capitalize } },
-	});
-}
 
 function mountWebhookRow() {
 	return mount(WebhookRow, {
@@ -117,7 +76,6 @@ function mountWebhookRow() {
 }
 
 describe.each([
-	['domains', mountDomainRow, 'toggle', 'domain-records-domain_1'],
 	['webhooks', mountWebhookRow, 'toggleExpanded', 'webhook-details-webhook_1'],
 ] as const)('%s row header', (_name, mountRow, event, panelId) => {
 	it('is a focusable button that names its state and its panel', () => {
@@ -139,17 +97,6 @@ describe.each([
 		expect(wrapper.emitted(event)).toHaveLength(2);
 		expect(space.defaultPrevented).toBe(true);
 	});
-});
-
-// Only the domain row nests action controls (Verify/Remove) inside its header,
-// hence the `.self` modifier on its keydown handlers; the webhook row keeps its
-// actions in the panel, where a keydown can never reach the header anyway.
-it('domains row header does not toggle when a nested control is activated', async () => {
-	const wrapper = mountDomainRow();
-	const nested = wrapper.get('[role="button"]').get('button');
-	await nested.trigger('keydown', { key: 'Enter' });
-	await nested.trigger('keydown', { key: ' ' });
-	expect(wrapper.emitted('toggle')).toBeUndefined();
 });
 
 const template = {

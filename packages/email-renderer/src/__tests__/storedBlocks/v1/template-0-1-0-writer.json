@@ -1,0 +1,239 @@
+{
+	"description": "Shapes the 0.1.0 editor wrote: images without the decorative flag and the media-asset and dark-storage identities added later, a column image with only its four required fields, and an accordion without allowMultiple or initialExpanded.",
+	"field": "emailTemplates.content",
+	"stored": [
+		{
+			"id": "b010-text",
+			"type": "text",
+			"content": {
+				"html": "<p>Welcome to the 0.1.0 newsletter.</p>",
+				"blockType": "paragraph",
+				"fontSize": 16,
+				"textColor": "#374151",
+				"lineHeight": 1.5,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "b010-image",
+			"type": "image",
+			"content": {
+				"src": "https://owlat.example/media/photo.png",
+				"alt": "Team photo",
+				"width": 100,
+				"align": "center",
+				"storageId": "storage-010-a",
+				"darkSrc": "https://owlat.example/media/photo-dark.png",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "b010-columns",
+			"type": "columns",
+			"content": {
+				"columnCount": 2,
+				"ratio": "equal",
+				"mobileStacking": true,
+				"columns": [
+					[
+						{
+							"id": "b010-col-img",
+							"type": "image",
+							"content": {
+								"src": "https://owlat.example/media/left.png",
+								"alt": "Left",
+								"width": 100,
+								"align": "center"
+							}
+						}
+					],
+					[
+						{
+							"id": "b010-col-t",
+							"type": "text",
+							"content": {
+								"html": "<p>Right column</p>",
+								"blockType": "paragraph",
+								"fontSize": 14,
+								"textColor": "#374151",
+								"paddingTop": 16,
+								"paddingRight": 0,
+								"paddingBottom": 16,
+								"paddingLeft": 0,
+								"paddingLinked": false,
+								"marginTop": 0,
+								"marginRight": 0,
+								"marginBottom": 0,
+								"marginLeft": 0
+							}
+						}
+					]
+				],
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "b010-container",
+			"type": "container",
+			"content": {
+				"items": [
+					{
+						"id": "b010-cont-t",
+						"type": "text",
+						"content": {
+							"html": "<p>Boxed text</p>",
+							"blockType": "paragraph",
+							"fontSize": 14,
+							"textColor": "#374151",
+							"paddingTop": 16,
+							"paddingRight": 0,
+							"paddingBottom": 16,
+							"paddingLeft": 0,
+							"paddingLinked": false,
+							"marginTop": 0,
+							"marginRight": 0,
+							"marginBottom": 0,
+							"marginLeft": 0
+						}
+					},
+					{
+						"id": "b010-cont-btn",
+						"type": "button",
+						"content": {
+							"text": "Go",
+							"url": "https://example.com/go",
+							"backgroundColor": "#c4785a",
+							"textColor": "#12110e",
+							"align": "center",
+							"borderRadius": 8,
+							"paddingX": 16,
+							"paddingY": 8,
+							"marginTop": 0,
+							"marginBottom": 0
+						}
+					}
+				],
+				"maxWidth": 100,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0,
+				"borderWidth": 0,
+				"borderColor": "#e5e5e5",
+				"borderStyle": "solid",
+				"borderRadius": 8
+			}
+		},
+		{
+			"id": "b010-accordion",
+			"type": "accordion",
+			"content": {
+				"sections": [
+					{
+						"id": "b010-sec-1",
+						"title": "Question one",
+						"items": []
+					},
+					{
+						"id": "b010-sec-2",
+						"title": "Question two",
+						"items": [
+							{
+								"id": "b010-acc-t",
+								"type": "text",
+								"content": {
+									"html": "<p>Answer two</p>",
+									"blockType": "paragraph",
+									"fontSize": 14,
+									"textColor": "#374151",
+									"paddingTop": 16,
+									"paddingRight": 0,
+									"paddingBottom": 16,
+									"paddingLeft": 0,
+									"paddingLinked": false,
+									"marginTop": 0,
+									"marginRight": 0,
+									"marginBottom": 0,
+									"marginLeft": 0
+								}
+							}
+						]
+					}
+				],
+				"headerBackgroundColor": "#f5f5f5",
+				"headerTextColor": "#333333",
+				"headerFontSize": 16,
+				"contentBackgroundColor": "#ffffff",
+				"iconColor": "#666666",
+				"sectionBorderColor": "#e0e0e0",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "b010-carousel",
+			"type": "carousel",
+			"content": {
+				"images": [
+					{
+						"src": "https://owlat.example/media/c1.png",
+						"alt": "One"
+					},
+					{
+						"src": "https://owlat.example/media/c2.png",
+						"alt": "Two"
+					}
+				],
+				"iconWidth": 12,
+				"iconColor": "#c4785a",
+				"iconInactiveColor": "#cccccc",
+				"thumbnailWidth": 0,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		}
+	]
+}

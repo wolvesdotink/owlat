@@ -5,7 +5,8 @@
  * Pinned here: packs are the visible controls and the individual flags wait
  * behind a per-pack Customize disclosure; flag keys, env names and Docker
  * profiles only appear inside a flag's collapsed "Technical details"; and a
- * blocked flag names its missing parent by label, not by key.
+ * blocked flag names its missing parent by label, not by key; and a partial
+ * pack reads as a mixed checkbox.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -91,6 +92,29 @@ describe('FeaturePackList', () => {
 
 		await wrapper.get('[data-testid="feature-switch-ai.agent"]').trigger('click');
 		expect(wrapper.emitted('toggle-flag')).toEqual([['ai.agent', true]]);
+	});
+
+	it('reports a pack as a checkbox that is unchecked, mixed or checked', () => {
+		const marketing = (stored: FeatureFlagState) =>
+			mountList(stored).get('button[aria-label="Toggle Marketing"]');
+		const none = { campaigns: false, automations: false, transactional: false };
+		const some = { campaigns: true, automations: false, transactional: false };
+		const all = { campaigns: true, automations: true, transactional: true };
+
+		expect(marketing(none).attributes('role')).toBe('checkbox');
+		expect(marketing(none).attributes('aria-checked')).toBe('false');
+		expect(marketing(some).attributes('aria-checked')).toBe('mixed');
+		expect(marketing(all).attributes('aria-checked')).toBe('true');
+	});
+
+	it('reports a single flag as checked or unchecked, never mixed', () => {
+		const wrapper = mountList({ inbox: true, chat: false });
+		expect(wrapper.get('[data-testid="feature-switch-inbox"]').attributes('aria-checked')).toBe(
+			'true'
+		);
+		expect(wrapper.get('[data-testid="feature-switch-chat"]').attributes('aria-checked')).toBe(
+			'false'
+		);
 	});
 
 	it('flags a group that holds a feature needing setup', () => {
