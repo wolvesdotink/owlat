@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
 import { workspaceTokenRef } from '~/lib/desktop/workspaceTypes';
+import type * as KeychainStorageModule from '~/lib/desktop/keychainStorage';
+import type * as WorkspaceStateModule from '~/lib/desktop/workspaceState';
 
 /**
  * Removing a workspace is several steps (sign out, discard the session, wipe
@@ -42,7 +44,7 @@ vi.mock('@owlat/desktop/src/keychain', () => ({
 
 // The two bridges the removal awaits, failing once on demand.
 vi.mock('~/lib/desktop/workspaceState', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('~/lib/desktop/workspaceState')>();
+	const actual = await importOriginal<typeof WorkspaceStateModule>();
 	return {
 		...actual,
 		keychain: async () => {
@@ -57,7 +59,7 @@ vi.mock('~/lib/desktop/workspaceState', async (importOriginal) => {
 });
 
 vi.mock('~/lib/desktop/keychainStorage', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('~/lib/desktop/keychainStorage')>();
+	const actual = await importOriginal<typeof KeychainStorageModule>();
 	return {
 		...actual,
 		getActiveKeychainStorage: () => {
