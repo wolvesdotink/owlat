@@ -21,16 +21,17 @@ export function useSemanticFiles() {
 	const PAGE_SIZE = 24;
 
 	// List query (used when no search query). sourceType is pushed to the backend
-	// so the filter spans the whole table, not just one fetched page.
+	// so the filter spans the whole table, not just one fetched page. Both reads
+	// return compact cards, not whole rows with their vectors and extracted text.
 	const list = usePaginatedQuery(
-		api.semanticFiles.list,
+		api.files.cards.list,
 		() => (debouncedQuery.value ? 'skip' : { sourceType: sourceFilter.value ?? undefined }),
 		{ initialNumItems: PAGE_SIZE }
 	);
 
 	// Search query (used when search is active)
 	const search = usePaginatedQuery(
-		api.semanticFiles.search,
+		api.files.cards.search,
 		() =>
 			debouncedQuery.value
 				? { query: debouncedQuery.value, sourceType: sourceFilter.value ?? undefined }

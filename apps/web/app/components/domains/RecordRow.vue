@@ -96,6 +96,20 @@ const receivingProviderLabel = computed(() =>
 	t(EXTERNAL_RECEIVING_PROVIDER_KEYS[props.domain.externalReceivingProvider ?? 'other'])
 );
 
+const disclosureRef = ref<HTMLButtonElement | null>(null);
+
+/**
+ * A click on the header text toggles the row like the rest of the header, but
+ * not when it ends a text selection: the text stays copyable. Focus moves to the
+ * disclosure, as a click anywhere else on the row does, so the keyboard picks
+ * up from there.
+ */
+function toggleFromText() {
+	if (window.getSelection()?.isCollapsed === false) return;
+	disclosureRef.value?.focus({ preventScroll: true });
+	emit('toggle');
+}
+
 // Registration has SETTLED: the domain is no longer mid-registration and is not
 // sitting on a registration failure. The registering placeholder and the
 // failure notice REPLACE the setup sections rather than sitting alongside them,
@@ -111,21 +125,31 @@ const registrationSettled = computed(
 
 <template>
 	<div class="card p-0 overflow-hidden">
-		<!-- Domain Header -->
+		<!-- Domain Header. A plain layout row: ONE disclosure button and, beside
+		     it, the operation buttons, so no interactive control is nested inside
+		     another and a key pressed on an action can never reach the toggle. The
+		     disclosure is an overlay over the whole row (the full-row click target)
+		     and holds no visible content of its own. The identity text and the
+		     actions are positioned above it: the text stays selectable and a plain
+		     click on it toggles too (`toggleFromText`); everything else in the row
+		     either sits below the overlay or ignores the pointer. -->
 		<div
-			class="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-bg-surface/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
-			role="button"
-			tabindex="0"
-			:aria-expanded="isExpanded"
-			:aria-controls="`domain-records-${domain._id}`"
-			:aria-label="t('components.domains.recordRow.rowLabel', { domain: domain.domain })"
-			@click="emit('toggle')"
-			@keydown.enter.self="emit('toggle')"
-			@keydown.space.self.prevent="emit('toggle')"
+			class="relative px-6 py-4 flex items-center justify-between hover:bg-bg-surface/50 transition-colors"
 		>
+			<button
+				ref="disclosureRef"
+				type="button"
+				class="absolute inset-0 w-full h-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
+				:aria-expanded="isExpanded"
+				:aria-controls="`domain-records-${domain._id}`"
+				:aria-label="t('components.domains.recordRow.rowLabel', { domain: domain.domain })"
+				data-testid="domain-disclosure"
+				@click="emit('toggle')"
+			/>
 			<div class="flex items-center gap-4">
 				<UiIconBox icon="lucide:globe" size="sm" variant="surface" rounded="lg" />
-				<div>
+				<!-- Mouse-only by design: the disclosure above is the keyboard route. -->
+				<div class="relative cursor-pointer" @click="toggleFromText">
 					<div class="flex items-center gap-3">
 						<p class="font-medium text-text-primary">{{ domain.domain }}</p>
 						<span
@@ -197,10 +221,10 @@ const registrationSettled = computed(
 			<div class="flex items-center gap-2">
 				<UiButton
 					v-if="canForceVerify && domain.status !== 'verified'"
-					class="gap-1.5 text-sm py-1.5 px-3 border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
+					class="relative gap-1.5 text-sm py-1.5 px-3 border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
 					:title="t('components.domains.recordRow.forceVerifyTitle')"
 					:disabled="isForcing"
-					@click.stop="emit('forceVerify')"
+					@click="emit('forceVerify')"
 				>
 					<Icon
 						v-if="isForcing"
@@ -217,14 +241,14 @@ const registrationSettled = computed(
 				</UiButton>
 				<UiButton
 					variant="secondary"
-					class="gap-1.5 text-sm py-1.5 px-3"
+					class="relative gap-1.5 text-sm py-1.5 px-3"
 					:title="
 						domain.status === 'registering'
 							? t('components.domains.recordRow.waitingForRegistration')
 							: t('components.domains.recordRow.verifyTitle')
 					"
 					:disabled="isVerifying || domain.status === 'registering'"
-					@click.stop="
+					@click="
 						domain.status === 'failed' && domain.lastRegistrationError
 							? emit('retryRegistration')
 							: emit('verify')
@@ -250,16 +274,19 @@ const registrationSettled = computed(
 				</UiButton>
 				<UiButton
 					variant="ghost"
-					class="p-2 text-error hover:bg-error/10"
+					class="relative p-2 text-error hover:bg-error/10"
 					:title="t('components.domains.recordRow.removeDomain')"
 					:aria-label="t('components.domains.recordRow.removeDomain')"
-					@click.stop="emit('delete')"
+					@click="emit('delete')"
 				>
 					<Icon name="lucide:trash-2" class="w-4 h-4" />
 				</UiButton>
+				<!-- Decorative. Its rotation makes it a stacking context painted above
+				     the overlay, so it lets the pointer through to the disclosure. -->
 				<div
+					aria-hidden="true"
 					:class="[
-						'w-5 h-5 flex items-center justify-center transition-transform',
+						'w-5 h-5 flex items-center justify-center transition-transform pointer-events-none',
 						isExpanded ? 'rotate-180' : '',
 					]"
 				>

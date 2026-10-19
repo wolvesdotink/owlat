@@ -129,6 +129,7 @@ describe('evaluateContainerStates', () => {
 		expect(findings).toHaveLength(1);
 		expect(findings[0]?.ok).toBe(true);
 		expect(findings[0]?.message).toContain('3 running container(s) are healthy');
+		expect(findings[0]?.service).toBeUndefined();
 	});
 
 	it('FAILS on a crash-looping container and surfaces its status line', () => {
@@ -147,6 +148,7 @@ describe('evaluateContainerStates', () => {
 		expect(findings[0]?.message).toContain('imap');
 		expect(findings[0]?.message).toContain('not running (restarting)');
 		expect(findings[0]?.message).toContain('Restarting (1) 5 seconds ago');
+		expect(findings[0]?.service).toBe('imap');
 	});
 
 	it('FAILS a container that is running but failing its healthcheck', () => {
@@ -217,6 +219,8 @@ describe('evaluateVersionDrift', () => {
 		const failures = findings.filter((finding) => !finding.ok);
 		expect(failures).toHaveLength(2);
 		expect(failures[0]?.message).toContain('imap');
+		// Per-container findings name their service; the summary names none.
+		expect(failures.map((finding) => finding.service)).toEqual(['imap', undefined]);
 		expect(failures.some((finding) => finding.message.includes('web'))).toBe(false);
 	});
 
@@ -252,6 +256,46 @@ describe('evaluateVersionDrift', () => {
 
 	it('stays silent when no Owlat-owned container is running', () => {
 		expect(evaluateVersionDrift([service({ image: 'redis:7.4-alpine' })], '0.4.13')).toEqual([]);
+	});
+});
+
+describe('message format hook', () => {
+	/** Marks interpolated values, so the test sees which text is runtime data. */
+	const marked = (strings: TemplateStringsArray, ...values: Array<string | number>) =>
+		strings.reduce(
+			(out, literal, index) =>
+				index < values.length ? `${out}${literal}<${values[index]}>` : `${out}${literal}`,
+			''
+		);
+
+	it('interpolates only runtime values; the copy stays literal', () => {
+		const drift = evaluateVersionDrift(
+			[service({ service: 'web', image: 'ghcr.io/wolvesdotink/web:0.4.12', imageTag: '0.4.12' })],
+			'0.4.13',
+			marked
+		);
+		expect(drift.map((finding) => finding.message)).toEqual([
+			'container "<web>" runs <0.4.12> but OWLAT_VERSION is <0.4.13> — the configured and running versions have diverged',
+			'<1> of <1> Owlat container(s) were never recreated for <0.4.13>. Run `owlat start` (docker compose up -d) to apply the configured version.',
+		]);
+		const states = evaluateContainerStates(
+			[service({ service: 'imap', state: 'exited', status: 'Exited (1)', health: '' })],
+			marked
+		);
+		expect(states[0]?.message).toBe(
+			'container "<imap>" <is not running (<exited>)> — <Exited (1)>'
+		);
+	});
+
+	it('renders the same text without a hook', () => {
+		const services = [
+			service({ service: 'web', image: 'ghcr.io/wolvesdotink/web:0.4.12', imageTag: '0.4.12' }),
+		];
+		const plain = evaluateVersionDrift(services, '0.4.13').map((finding) => finding.message);
+		const hooked = evaluateVersionDrift(services, '0.4.13', marked).map((finding) =>
+			finding.message.replace(/[<>]/g, '')
+		);
+		expect(hooked).toEqual(plain);
 	});
 });
 

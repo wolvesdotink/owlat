@@ -178,7 +178,8 @@ export function useCompatibilityAnalysis(): {
 	report: Ref<CompatibilityReport | null>;
 	issues: ComputedRef<CompatibilityIssue[]>;
 	score: ComputedRef<number>;
-	analyzeHtml: (html: string, options?: AnalysisOptions) => Promise<CompatibilityReport>;
+	analyzeHtml: (html: string, options?: AnalysisOptions) => Promise<CompatibilityReport | null>;
+	cancelAnalysis: () => void;
 	getClientSupport: (feature: CanIEmailFeature, client: EmailClient) => SupportCode | null;
 	getUnsupportedClients: (feature: CanIEmailFeature, clients?: EmailClient[]) => EmailClient[];
 } {
@@ -192,6 +193,9 @@ export function useCompatibilityAnalysis(): {
 
 	const isAnalyzing = ref(false);
 	const report = ref<CompatibilityReport | null>(null);
+	// Bumped by every analysis and by cancelAnalysis; only the newest analysis
+	// may publish, so a slow first data load cannot overwrite a later report.
+	let generation = 0;
 
 	const issues = computed(() => report.value?.issues ?? []);
 	const score = computed(() => report.value?.score ?? 100);
@@ -281,17 +285,29 @@ export function useCompatibilityAnalysis(): {
 	}
 
 	/**
-	 * Analyze HTML for compatibility issues
+	 * Drop any analysis still in flight: it will neither publish nor clear the
+	 * loading flag of a later one.
+	 */
+	function cancelAnalysis(): void {
+		generation++;
+		isAnalyzing.value = false;
+	}
+
+	/**
+	 * Analyze HTML for compatibility issues. Resolves to null, without touching
+	 * `report`, when a newer analysis or cancelAnalysis superseded this one.
 	 */
 	async function analyzeHtml(
 		html: string,
 		options: AnalysisOptions = {}
-	): Promise<CompatibilityReport> {
+	): Promise<CompatibilityReport | null> {
+		const current = ++generation;
 		isAnalyzing.value = true;
 
 		try {
 			// Ensure caniemail data is loaded
 			await fetchData();
+			if (current !== generation) return null;
 
 			const clientsToCheck = options.clients ?? emailClients;
 			const foundIssues: CompatibilityIssue[] = [];
@@ -403,7 +419,7 @@ export function useCompatibilityAnalysis(): {
 			report.value = newReport;
 			return newReport;
 		} finally {
-			isAnalyzing.value = false;
+			if (current === generation) isAnalyzing.value = false;
 		}
 	}
 
@@ -413,6 +429,7 @@ export function useCompatibilityAnalysis(): {
 		issues,
 		score,
 		analyzeHtml,
+		cancelAnalysis,
 		getClientSupport,
 		getUnsupportedClients,
 	};

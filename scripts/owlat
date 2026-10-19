@@ -28,7 +28,7 @@
 #                               only; does NOT pick up .env changes — use apply)
 #   owlat status              — docker compose ps
 #   owlat logs [service]      — docker compose logs -f [service]
-#   owlat doctor              — diagnose a broken install
+#   owlat doctor [--json]     — diagnose a broken install (--json: machine-readable report)
 #   owlat upgrade             — trigger in-app update to latest
 #   owlat upgrade --version X — pin to a specific semver version
 #   owlat backup [path]       — bash scripts/backup.sh [path]

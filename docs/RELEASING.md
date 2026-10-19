@@ -20,11 +20,12 @@ is built. Preview the body with
 `bun scripts/release-body.ts <X.Y.Z> --repo wolvesdotink/owlat`.
 
 `release:cut` also moves the schema-compatibility guard forward: it snapshots
-HEAD's table validators as the new release into
+HEAD's table validators and the argument validators of the functions its
+clients and workers call as the new release into
 `apps/api/convex/__tests__/schemaCompat/previousRelease.json` and puts the
 file in the release commit, so later PRs are checked against the rows this
-release can store (see "Release data compatibility" in
-`apps/api/convex/CONVENTIONS.md`). To redo the snapshot by hand, for example
+release can store and the calls it can make (see "Release data compatibility"
+in `apps/api/convex/CONVENTIONS.md`). To redo the snapshot by hand, for example
 after a cut made without the script:
 
 ```sh
@@ -33,8 +34,9 @@ git add apps/api/convex/__tests__/schemaCompat/previousRelease.json
 git commit -m "test(api): snapshot the v<X.Y.Z> schema for the compat guard"
 ```
 
-The snapshot's diff shows that release's schema changes, one field per line. If
-the release ships data migrations, its notes carry the migration manifest.
+The snapshot's diff shows that release's schema and argument changes, one field
+or function per line. If the release ships data migrations, its notes carry the
+migration manifest.
 
 Pushing the tag triggers one of three pipelines:
 

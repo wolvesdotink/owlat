@@ -10,6 +10,7 @@
  * applies it as one operation.
  */
 import { api } from '@owlat/api';
+import { tabPanelAttrs } from '@owlat/ui/utils/tabs';
 import { usePostboxArrivalUndo } from '~/composables/postbox/usePostboxArrivalUndo';
 import type { Id } from '@owlat/api/dataModel';
 import {
@@ -47,6 +48,7 @@ const list = usePaginatedQuery(
 	{ initialNumItems: 50 }
 );
 
+const tabPanelId = useId();
 const tabs = computed(() =>
 	SENDER_TABS.map((value) => ({
 		value,
@@ -116,66 +118,76 @@ async function applySuggestions() {
 			<!-- On a phone the strip scrolls out to the card's edges instead of
 			     being cut inside its padding. -->
 			<div class="-mx-5 mt-3 overflow-x-auto px-5 md:mx-0 md:overflow-visible md:px-0">
-				<UiTabs v-model="tab" :tabs="tabs" class="max-md:w-max max-md:max-w-none!" />
+				<UiTabs
+					v-model="tab"
+					:tabs="tabs"
+					:panel-id="tabPanelId"
+					class="max-md:w-max max-md:max-w-none!"
+				/>
 			</div>
 		</header>
 
-		<div v-if="isLoading" class="p-8 flex justify-center">
-			<Icon
-				name="lucide:loader-2"
-				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
-		</div>
-		<!-- A failed read is not "no senders" (#721). -->
-		<UiQueryBoundary v-else-if="error" :error="error" @retry="retry" />
-		<div v-else-if="rows.length === 0" class="p-8 text-center">
-			<p class="text-text-secondary">{{ t(`postbox.senders.empty.${tab}`) }}</p>
-		</div>
-		<div v-else class="px-5 overflow-x-auto">
-			<!-- Below md each row is a stacked card (PostboxSenderRow). -->
-			<table class="block w-full text-left md:table">
-				<thead class="hidden md:table-header-group">
-					<tr class="text-xs text-text-tertiary">
-						<th class="py-2 pr-3 font-medium">{{ t('postbox.senders.columns.sender') }}</th>
-						<th class="py-2 pr-3 font-medium whitespace-nowrap">
-							{{ t('postbox.senders.columns.mails') }}
-						</th>
-						<th class="py-2 pr-3 font-medium whitespace-nowrap">
-							{{ t('postbox.senders.columns.read') }}
-						</th>
-						<th class="py-2 pr-3 font-medium">{{ t('postbox.senders.columns.kind') }}</th>
-						<th class="py-2 font-medium whitespace-nowrap">
-							{{ t('postbox.senders.columns.action') }}
-						</th>
-					</tr>
-				</thead>
-				<tbody class="block divide-y divide-border-subtle md:table-row-group">
-					<PostboxSenderRow
-						v-for="row in rows"
-						:key="row.senderDigest"
-						:row="row"
-						:busy="actions.isBusy.value"
-						@set-status="(status) => onSetStatus(row, status)"
-						@resume="actions.resumeDrafts(targetOf(row))"
-					/>
-				</tbody>
-			</table>
-			<div v-if="tab !== 'review' && list.status.value === 'CanLoadMore'" class="py-3 text-center">
-				<UiButton variant="secondary" size="sm" @click="list.loadMore(50)">
-					{{ t('postbox.senders.loadMore') }}
-				</UiButton>
+		<div v-bind="tabPanelAttrs(tabPanelId, tabs, tab)">
+			<div v-if="isLoading" class="p-8 flex justify-center">
+				<Icon
+					name="lucide:loader-2"
+					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+				/>
 			</div>
-		</div>
+			<!-- A failed read is not "no senders" (#721). -->
+			<UiQueryBoundary v-else-if="error" :error="error" @retry="retry" />
+			<div v-else-if="rows.length === 0" class="p-8 text-center">
+				<p class="text-text-secondary">{{ t(`postbox.senders.empty.${tab}`) }}</p>
+			</div>
+			<div v-else class="px-5 overflow-x-auto">
+				<!-- Below md each row is a stacked card (PostboxSenderRow). -->
+				<table class="block w-full text-left md:table">
+					<thead class="hidden md:table-header-group">
+						<tr class="text-xs text-text-tertiary">
+							<th class="py-2 pr-3 font-medium">{{ t('postbox.senders.columns.sender') }}</th>
+							<th class="py-2 pr-3 font-medium whitespace-nowrap">
+								{{ t('postbox.senders.columns.mails') }}
+							</th>
+							<th class="py-2 pr-3 font-medium whitespace-nowrap">
+								{{ t('postbox.senders.columns.read') }}
+							</th>
+							<th class="py-2 pr-3 font-medium">{{ t('postbox.senders.columns.kind') }}</th>
+							<th class="py-2 font-medium whitespace-nowrap">
+								{{ t('postbox.senders.columns.action') }}
+							</th>
+						</tr>
+					</thead>
+					<tbody class="block divide-y divide-border-subtle md:table-row-group">
+						<PostboxSenderRow
+							v-for="row in rows"
+							:key="row.senderDigest"
+							:row="row"
+							:busy="actions.isBusy.value"
+							@set-status="(status) => onSetStatus(row, status)"
+							@resume="actions.resumeDrafts(targetOf(row))"
+						/>
+					</tbody>
+				</table>
+				<div
+					v-if="tab !== 'review' && list.status.value === 'CanLoadMore'"
+					class="py-3 text-center"
+				>
+					<UiButton variant="secondary" size="sm" @click="list.loadMore(50)">
+						{{ t('postbox.senders.loadMore') }}
+					</UiButton>
+				</div>
+			</div>
 
-		<footer
-			v-if="tab === 'review' && suggestions.length > 0"
-			class="px-5 py-3 border-t border-border-subtle flex flex-wrap items-center gap-3"
-		>
-			<UiButton size="sm" :loading="applyOp.isLoading.value" @click="isDialogOpen = true">
-				{{ t('postbox.senders.apply', { count: suggestions.length }, suggestions.length) }}
-			</UiButton>
-			<p class="text-xs text-text-tertiary">{{ t('postbox.senders.applyRule') }}</p>
-		</footer>
+			<footer
+				v-if="tab === 'review' && suggestions.length > 0"
+				class="px-5 py-3 border-t border-border-subtle flex flex-wrap items-center gap-3"
+			>
+				<UiButton size="sm" :loading="applyOp.isLoading.value" @click="isDialogOpen = true">
+					{{ t('postbox.senders.apply', { count: suggestions.length }, suggestions.length) }}
+				</UiButton>
+				<p class="text-xs text-text-tertiary">{{ t('postbox.senders.applyRule') }}</p>
+			</footer>
+		</div>
 
 		<UiConfirmationDialog
 			v-model:open="isDialogOpen"

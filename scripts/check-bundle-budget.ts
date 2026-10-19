@@ -16,12 +16,13 @@
  * Lower the budget when a change shrinks the entry for good, so the room it
  * freed cannot be spent silently. Raising it needs a reason in the commit.
  *
+ * Pages and lazily loaded features are not budgeted; `report-bundle-closures.ts`
+ * reports their closures with the same rules (scripts/bundle-closure.ts).
+ *
  * Usage: bun scripts/check-bundle-budget.ts [path/to/.output]
  *   (defaults to apps/web/.output; CI copies the output out of the web image)
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { gzipSync } from 'node:zlib';
+import { kb, measure, readWebBuild, staticClosure } from './bundle-closure';
 
 /**
  * Gzip budget for the entry closure, in KiB (1024 bytes).
@@ -34,60 +35,12 @@ import { gzipSync } from 'node:zlib';
  */
 const GZIP_BUDGET_KB = 254;
 
-const workspace = resolve(import.meta.dirname, '..');
-const outputDir = resolve(process.argv[2] ?? join(workspace, 'apps/web/.output'));
-const publicDir = join(outputDir, 'public/_nuxt');
-const rendererPath = join(outputDir, 'server/chunks/routes/renderer.mjs');
+const { publicDir, entry } = readWebBuild('check-bundle-budget', process.argv[2]);
 
-if (!existsSync(rendererPath) || !existsSync(publicDir)) {
-	console.error(
-		`check-bundle-budget: no server build at ${outputDir}.\n` +
-			'Run `nuxt build` in apps/web first (a `nuxt generate` output has no renderer to read the entry from).'
-	);
-	process.exit(2);
-}
-
-const entry = /entryFileName = "([^"]+)"/.exec(readFileSync(rendererPath, 'utf8'))?.[1];
-if (!entry) {
-	console.error(`check-bundle-budget: no entryFileName in ${rendererPath}.`);
-	process.exit(2);
-}
-
-/** `from "./x.js"` and bare `import "./x.js"`; never `import("./x.js")`. */
-const FROM_IMPORT = /\bfrom\s*["']\.\/([\w\-.]+\.js)["']/g;
-const BARE_IMPORT = /(?:^|[;\n}])\s*import\s*["']\.\/([\w\-.]+\.js)["']/g;
-
-function staticImports(file: string): string[] {
-	const source = readFileSync(join(publicDir, file), 'utf8');
-	const found = new Set<string>();
-	for (const pattern of [FROM_IMPORT, BARE_IMPORT]) {
-		for (const match of source.matchAll(pattern)) found.add(match[1] as string);
-	}
-	return [...found];
-}
-
-const closure = new Set<string>();
-const stack = [entry];
-while (stack.length > 0) {
-	const file = stack.pop() as string;
-	if (closure.has(file) || !existsSync(join(publicDir, file))) continue;
-	closure.add(file);
-	stack.push(...staticImports(file));
-}
-
-if (!closure.has(entry)) {
-	console.error(`check-bundle-budget: entry ${entry} is missing from ${publicDir}.`);
-	process.exit(2);
-}
-
-const rows = [...closure]
-	.map((file) => {
-		const bytes = readFileSync(join(publicDir, file));
-		return { file, raw: bytes.length, gz: gzipSync(bytes, { level: 9 }).length };
-	})
+const rows = staticClosure(publicDir, entry)
+	.map((file) => measure(publicDir, file))
 	.sort((a, b) => b.gz - a.gz);
 
-const kb = (bytes: number) => (bytes / 1024).toFixed(1);
 const rawTotal = rows.reduce((sum, row) => sum + row.raw, 0);
 const gzTotal = rows.reduce((sum, row) => sum + row.gz, 0);
 const budget = GZIP_BUDGET_KB * 1024;

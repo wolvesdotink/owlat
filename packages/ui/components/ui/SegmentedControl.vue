@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, nextTick } from 'vue';
+import { segmentEnabledIndex, segmentTabStopIndex } from '../../utils/segmentedControl';
 
 interface SegmentOption {
 	value: string;
@@ -51,36 +52,41 @@ const setButtonRef = (index: number) => (el: unknown) => {
 	if (el) tabButtonRefs.value[index] = el as HTMLButtonElement;
 };
 
+// Exactly one tabbable segment while any is enabled, even when the selection
+// is missing or disabled (a disabled button cannot take focus).
+const tabStopIndex = computed(() => segmentTabStopIndex(props.options, props.modelValue));
+
 const handleKeyDown = (event: KeyboardEvent) => {
-	const current = selectedIndex.value;
+	const focused = tabButtonRefs.value.indexOf(event.target as HTMLButtonElement);
+	const current = focused >= 0 ? focused : tabStopIndex.value;
+	const last = props.options.length - 1;
 	let next: number | null = null;
 
+	// Disabled segments are skipped, never landed on: each key scans for the
+	// nearest enabled option in its direction (-1 when there is none).
 	switch (event.key) {
 		case 'ArrowLeft':
 			event.preventDefault();
-			next = current > 0 ? current - 1 : props.options.length - 1;
+			next = segmentEnabledIndex(props.options, current - 1, -1);
 			break;
 		case 'ArrowRight':
 			event.preventDefault();
-			next = current < props.options.length - 1 ? current + 1 : 0;
+			next = segmentEnabledIndex(props.options, current + 1, 1);
 			break;
 		case 'Home':
 			event.preventDefault();
-			next = 0;
+			next = segmentEnabledIndex(props.options, 0, 1);
 			break;
 		case 'End':
 			event.preventDefault();
-			next = props.options.length - 1;
+			next = segmentEnabledIndex(props.options, last, -1);
 			break;
 	}
 
-	if (next !== null) {
-		const option = props.options[next];
-		if (option && !option.disabled) {
-			select(option);
-			tabButtonRefs.value[next]?.focus();
-		}
-	}
+	const option = next === null ? undefined : props.options[next];
+	if (next === null || !option) return;
+	select(option);
+	tabButtonRefs.value[next]?.focus();
 };
 
 /**
@@ -167,7 +173,7 @@ const indicatorStyle = computed(() => {
 			type="button"
 			role="tab"
 			:aria-selected="modelValue === option.value"
-			:tabindex="modelValue === option.value ? 0 : -1"
+			:tabindex="index === tabStopIndex ? 0 : -1"
 			:disabled="option.disabled"
 			class="segmented-control__btn"
 			:class="{ 'segmented-control__btn--active': modelValue === option.value }"
