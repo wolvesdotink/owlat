@@ -15,7 +15,7 @@ import { internalQuery, type MutationCtx, type QueryCtx } from './_generated/ser
 import { internalMutation } from './lib/writeFence';
 import { internal } from './_generated/api';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireAdminContext, type MutationSessionContext } from './lib/sessionOrganization';
+import { requireAdminContext } from './lib/sessionOrganization';
 import { isSharedInboxReader } from './inbox/access';
 import {
 	mailCaptureScopeValidator,
@@ -46,13 +46,16 @@ import {
 import { batchGet } from './_utils/batchLoader';
 import { dropExtractionProgress } from './knowledge/extractionProgress';
 import { walkVersionChain } from './lib/semanticFileVersions';
+import {
+	listFilesPage,
+	readableFilesPage,
+	searchFilesPage,
+	type StorageReader,
+} from './lib/semanticFileCards';
 
 // ============================================================
 // Queries
 // ============================================================
-
-/** Minimal storage accessor — both query and mutation ctx satisfy it. */
-type StorageReader = { storage: { getUrl: (id: Id<'_storage'>) => Promise<string | null> } };
 
 /**
  * Attach a resolved storage URL to a file row. Every reader returns files with a
@@ -204,46 +207,29 @@ export const getProcessingContext = internalQuery({
 });
 
 /**
- * Apply the `sourceType` provenance filter and the caller's read check to a
- * page of files and resolve a storage URL for each survivor. Both run after
- * pagination (mirroring `mediaAssets.list`), so a page can come back sparse
- * while matching files sit on later pages — the client auto-loads further
- * pages until the grid fills. This pushes filtering across the whole table
- * instead of the old client-side narrowing over only the newest 50/20 fetched
- * rows.
+ * Hydrate a gated page whole: the legacy list/search result, every column plus
+ * `url`. Kept for N-1 clients and API callers; the web cards read the compact
+ * `files.cards.list` / `search` over the same page and gate.
  */
-async function applySourceFilter(
+async function hydratePage(
 	ctx: QueryCtx,
-	session: MutationSessionContext,
-	results: PaginationResult<Doc<'semanticFiles'>>,
-	sourceType: 'upload' | 'email_attachment' | 'agent_generated' | undefined
+	results: PaginationResult<Doc<'semanticFiles'>>
 ): Promise<PaginationResult<Doc<'semanticFiles'> & { url: string | null }>> {
-	const canReadSemanticFile = semanticFileReadGate(ctx, session);
-	const page: Doc<'semanticFiles'>[] = [];
-	for (const file of results.page) {
-		if (sourceType && file.sourceType !== sourceType) continue;
-		if (await canReadSemanticFile(file)) page.push(file);
-	}
-	const hydrated = await hydrateFiles(ctx, page);
-	return { ...results, page: hydrated };
+	return { ...results, page: await hydrateFiles(ctx, results.page) };
 }
 
 /**
  * List files (paginated, newest first) with an optional `sourceType` filter.
  */
-// authz: applySourceFilter drops every file semanticFileReadGate refuses the caller.
+// authz: readableFilesPage drops every file semanticFileReadGate refuses the caller.
 export const list = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
 		sourceType: v.optional(semanticFileSourceTypeValidator),
 	},
 	handler: async (ctx, args, session) => {
-		const results = await ctx.db
-			.query('semanticFiles')
-			.withIndex('by_created_at')
-			.order('desc')
-			.paginate(args.paginationOpts);
-		return applySourceFilter(ctx, session, results, args.sourceType);
+		const results = await listFilesPage(ctx, args.paginationOpts);
+		return hydratePage(ctx, await readableFilesPage(ctx, session, results, args.sourceType));
 	},
 });
 
@@ -251,7 +237,7 @@ export const list = authedQuery({
  * Full-text search for files by content/title (paginated), with an optional
  * `sourceType` filter applied across the whole result set, not just one page.
  */
-// authz: applySourceFilter drops every file semanticFileReadGate refuses the caller.
+// authz: readableFilesPage drops every file semanticFileReadGate refuses the caller.
 export const search = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
@@ -259,11 +245,8 @@ export const search = authedQuery({
 		sourceType: v.optional(semanticFileSourceTypeValidator),
 	},
 	handler: async (ctx, args, session) => {
-		const results = await ctx.db
-			.query('semanticFiles')
-			.withSearchIndex('search_files', (q) => q.search('searchableText', args.query))
-			.paginate(args.paginationOpts);
-		return applySourceFilter(ctx, session, results, args.sourceType);
+		const results = await searchFilesPage(ctx, args.query, args.paginationOpts);
+		return hydratePage(ctx, await readableFilesPage(ctx, session, results, args.sourceType));
 	},
 });
 

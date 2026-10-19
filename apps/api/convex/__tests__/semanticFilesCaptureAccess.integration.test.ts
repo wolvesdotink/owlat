@@ -6,7 +6,8 @@
  * mail, not a shared upload. Before the fix any editor could enumerate those
  * captures — with a download URL — through `semanticFiles.list` / `search` /
  * `get` / `getVersionHistory` / `listByContact`, without access to the mailbox
- * they came from. These tests drive every one of those reads as:
+ * they came from. The compact `files.cards.list` / `search` are held to
+ * the same rows. These tests drive every one of those reads as:
  *
  *   - the mailbox's own user and a shared-mailbox member (allowed),
  *   - an owner (allowed: owners and admins may open every mailbox),
@@ -147,6 +148,20 @@ async function readAll(t: Harness, seeded: Seeded) {
 	const byContact = await t.query(api.semanticFiles.listByContact, {
 		contactId: seeded.contactId,
 	});
+	// The compact card endpoints run the same gate on every row: for every
+	// session below they must hand back exactly the rows the legacy reads do.
+	const cardList = await t.query(api.files.cards.list, { paginationOpts: page });
+	const cardAttachments = await t.query(api.files.cards.list, {
+		paginationOpts: page,
+		sourceType: 'email_attachment',
+	});
+	const cardSearch = await t.query(api.files.cards.search, {
+		paginationOpts: page,
+		query: 'confidential',
+	});
+	expect(names(cardList.page)).toEqual(names(list.page));
+	expect(names(cardAttachments.page)).toEqual(names(attachments.page));
+	expect(names(cardSearch.page)).toEqual(names(search.page));
 	const get: Record<string, boolean> = {};
 	const history: Record<string, number> = {};
 	for (const [key, fileId] of Object.entries(seeded)) {

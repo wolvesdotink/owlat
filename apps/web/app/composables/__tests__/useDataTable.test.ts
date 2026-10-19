@@ -82,6 +82,27 @@ describe('useDataTable getSortIcon', () => {
 	});
 });
 
+describe('useDataTable getAriaSort', () => {
+	it('announces a direction only on the active sort column', () => {
+		const { toggleSort, getAriaSort } = useDataTable<'name' | 'createdAt'>({
+			defaultSort: 'createdAt',
+			defaultOrder: 'desc',
+			sortableFields: ['name', 'createdAt'],
+		});
+
+		// Undefined (not "none") so Vue drops the attribute from inactive headers.
+		expect(getAriaSort('createdAt')).toBe('descending');
+		expect(getAriaSort('name')).toBeUndefined();
+
+		toggleSort('name');
+		expect(getAriaSort('name')).toBe('ascending');
+		expect(getAriaSort('createdAt')).toBeUndefined();
+
+		toggleSort('name');
+		expect(getAriaSort('name')).toBe('descending');
+	});
+});
+
 describe('useDataTable paging', () => {
 	it('returns to page 1 when the sort column or direction changes', async () => {
 		const { currentPage, toggleSort } = useDataTable<'name' | 'createdAt'>({

@@ -3,6 +3,12 @@
  * Bespoke tri-state switch for the admin features page. The puck
  * packages/ui Switch.vue draws is two-state; feature packs need "partial",
  * so this stays hand-rolled and is shared by the pack and flag rows.
+ *
+ * To assistive tech it is a checkbox, not a switch: a switch has no mixed
+ * value, so a partial pack would be announced as off. `aria-checked` is
+ * "mixed" for partial. Activation only emits `toggle`; the parent decides the
+ * next state (both feature pages turn a partial pack fully on, like an
+ * unchecked one, and only a fully-on pack off).
  */
 const props = defineProps<{
 	state: 'on' | 'off' | 'partial';
@@ -19,13 +25,17 @@ defineEmits<{ toggle: [] }>();
 // The features page is this switch's only surface, so it borrows that page's
 // accessible-name phrasing rather than minting a second copy of it.
 const { t } = useI18n();
+
+const ariaChecked = computed(() =>
+	props.state === 'partial' ? 'mixed' : props.state === 'on' ? 'true' : 'false'
+);
 </script>
 
 <template>
 	<button
 		type="button"
-		role="switch"
-		:aria-checked="props.state === 'on'"
+		role="checkbox"
+		:aria-checked="ariaChecked"
 		:aria-label="t('dashboard.admin.instance.features.toggleAria', { label: props.label })"
 		class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
 		:class="

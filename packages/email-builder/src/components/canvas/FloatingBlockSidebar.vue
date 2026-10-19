@@ -85,46 +85,57 @@ function updatePosition() {
 	posTop.value = Math.max(rect.top + topOffset, topOffset);
 }
 
-let resizeObserver: ResizeObserver | null = null;
+// Scroll/resize bursts fire many events per frame; read geometry once per frame.
+let frameId: number | null = null;
+function scheduleUpdate() {
+	if (frameId !== null) return;
+	frameId = requestAnimationFrame(() => {
+		frameId = null;
+		updatePosition();
+	});
+}
 
-function setupObservers() {
-	if (!props.canvasElement) return;
+// Everything installed for one canvas element, torn down against the exact
+// targets it was installed on (the canvas prop has already moved on by then).
+let teardown: (() => void) | null = null;
 
+function setupObservers(canvas: HTMLElement) {
 	updatePosition();
 
-	resizeObserver = new ResizeObserver(updatePosition);
-	resizeObserver.observe(props.canvasElement);
+	const resizeObserver = new ResizeObserver(scheduleUpdate);
+	resizeObserver.observe(canvas);
 
 	// Listen for scroll on the canvas background parent
-	const scrollParent = props.canvasElement.closest('.document-canvas__bg');
-	if (scrollParent) {
-		scrollParent.addEventListener('scroll', updatePosition, { passive: true });
-	}
-	window.addEventListener('resize', updatePosition, { passive: true });
+	const scrollParent = canvas.closest('.document-canvas__bg');
+	scrollParent?.addEventListener('scroll', scheduleUpdate, { passive: true });
+	window.addEventListener('resize', scheduleUpdate, { passive: true });
+
+	teardown = () => {
+		resizeObserver.disconnect();
+		scrollParent?.removeEventListener('scroll', scheduleUpdate);
+		window.removeEventListener('resize', scheduleUpdate);
+	};
 }
 
 function cleanupObservers() {
-	resizeObserver?.disconnect();
-	resizeObserver = null;
-
-	const scrollParent = props.canvasElement?.closest('.document-canvas__bg');
-	if (scrollParent) {
-		scrollParent.removeEventListener('scroll', updatePosition);
+	teardown?.();
+	teardown = null;
+	if (frameId !== null) {
+		cancelAnimationFrame(frameId);
+		frameId = null;
 	}
-	window.removeEventListener('resize', updatePosition);
 }
 
 watch(
 	() => props.canvasElement,
-	(newEl, oldEl) => {
-		if (oldEl) cleanupObservers();
-		if (newEl) setupObservers();
-	},
-	{ immediate: false }
+	(newEl) => {
+		cleanupObservers();
+		if (newEl) setupObservers(newEl);
+	}
 );
 
 onMounted(() => {
-	if (props.canvasElement) setupObservers();
+	if (props.canvasElement) setupObservers(props.canvasElement);
 });
 
 onUnmounted(() => {

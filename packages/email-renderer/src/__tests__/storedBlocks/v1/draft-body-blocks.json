@@ -1,0 +1,104 @@
+{
+	"description": "A Postbox draft written with the full block designer, including an accordion, so the send also builds an AMP part.",
+	"field": "mailDrafts.bodyBlocks",
+	"stored": [
+		{
+			"id": "draft-t",
+			"type": "text",
+			"content": {
+				"html": "<p>Hi team, notes from today are below.</p>",
+				"blockType": "paragraph",
+				"fontSize": 16,
+				"textColor": "#374151",
+				"lineHeight": 1.5,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "draft-acc",
+			"type": "accordion",
+			"content": {
+				"sections": [
+					{
+						"id": "draft-sec-1",
+						"title": "Decisions",
+						"items": [
+							{
+								"id": "draft-acc-t",
+								"type": "text",
+								"content": {
+									"html": "<p>Ship on Friday.</p>",
+									"blockType": "paragraph",
+									"fontSize": 14,
+									"textColor": "#374151",
+									"paddingTop": 16,
+									"paddingRight": 0,
+									"paddingBottom": 16,
+									"paddingLeft": 0,
+									"paddingLinked": false,
+									"marginTop": 0,
+									"marginRight": 0,
+									"marginBottom": 0,
+									"marginLeft": 0
+								}
+							}
+						]
+					},
+					{
+						"id": "draft-sec-2",
+						"title": "Open questions",
+						"items": []
+					}
+				],
+				"allowMultiple": false,
+				"initialExpanded": 0,
+				"headerBackgroundColor": "#f5f5f5",
+				"headerTextColor": "#333333",
+				"headerFontSize": 16,
+				"contentBackgroundColor": "#ffffff",
+				"iconColor": "#666666",
+				"sectionBorderColor": "#e0e0e0",
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		},
+		{
+			"id": "draft-btn",
+			"type": "button",
+			"content": {
+				"text": "Open the doc",
+				"url": "https://example.com/notes",
+				"backgroundColor": "#c4785a",
+				"textColor": "#12110e",
+				"align": "center",
+				"borderRadius": 8,
+				"paddingX": 24,
+				"paddingY": 12,
+				"paddingTop": 16,
+				"paddingRight": 24,
+				"paddingBottom": 16,
+				"paddingLeft": 24,
+				"paddingLinked": false,
+				"marginTop": 0,
+				"marginRight": 0,
+				"marginBottom": 0,
+				"marginLeft": 0
+			}
+		}
+	]
+}

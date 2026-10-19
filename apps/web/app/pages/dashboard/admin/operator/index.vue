@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { tabPanelAttrs } from '@owlat/ui/utils/tabs';
 import { formatNumber } from '~/utils/formatters';
 import { formatRate, operatorConsoleLayout } from '~/utils/operatorConsole';
 
@@ -18,6 +19,7 @@ const { showToast } = useToast();
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 type TabValue = 'overview' | 'review' | 'organizations' | 'admins';
 const activeTab = ref<TabValue>('overview');
+const tabPanelId = useId();
 
 // ── Queries (all requirePlatformAdmin-gated; no org arg needed) ───────────────
 const statsQuery = useConvexQuery(api.platformAdmin.queries.getPlatformStats, () => ({}));
@@ -311,413 +313,417 @@ const anyMutationLoading = computed(
 			</div>
 		</div>
 
-		<UiTabs v-model="activeTab" :tabs="tabs" class="mb-6" />
+		<UiTabs v-model="activeTab" :tabs="tabs" :panel-id="tabPanelId" class="mb-6" />
 
-		<UiQueryBoundary v-if="tabError" :error="tabError" @retry="retryTab" />
+		<div v-bind="tabPanelAttrs(tabPanelId, tabs, activeTab)">
+			<UiQueryBoundary v-if="tabError" :error="tabError" @retry="retryTab" />
 
-		<!-- ── OVERVIEW ── -->
-		<div v-else-if="activeTab === 'overview'" class="space-y-6">
-			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-				<template v-if="layout.showDeliveryStats">
+			<!-- ── OVERVIEW ── -->
+			<div v-else-if="activeTab === 'overview'" class="space-y-6">
+				<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+					<template v-if="layout.showDeliveryStats">
+						<div class="card p-5">
+							<p class="text-xs text-text-tertiary uppercase tracking-wider">
+								{{ t('dashboard.admin.operator.index.stats.totalSent') }}
+							</p>
+							<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+								{{ formatCount(stats?.sending?.totalSent) }}
+							</p>
+						</div>
+						<div class="card p-5">
+							<p class="text-xs text-text-tertiary uppercase tracking-wider">
+								{{ t('dashboard.admin.operator.index.stats.bounceRate') }}
+							</p>
+							<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+								{{ formatPercent(stats?.sending?.bounceRate) }}
+							</p>
+						</div>
+						<div class="card p-5">
+							<p class="text-xs text-text-tertiary uppercase tracking-wider">
+								{{ t('dashboard.admin.operator.index.stats.complaintRate') }}
+							</p>
+							<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+								{{ formatPercent(stats?.sending?.complaintRate) }}
+							</p>
+						</div>
+					</template>
 					<div class="card p-5">
 						<p class="text-xs text-text-tertiary uppercase tracking-wider">
-							{{ t('dashboard.admin.operator.index.stats.totalSent') }}
+							{{ t('dashboard.admin.operator.index.stats.abuseStatus') }}
 						</p>
-						<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-							{{ formatCount(stats?.sending?.totalSent) }}
-						</p>
+						<div class="mt-1.5">
+							<UiBadge :variant="abuseStatusVariant(stats?.abuseStatus)" size="md">
+								{{ stats?.abuseStatus ?? 'clean' }}
+							</UiBadge>
+						</div>
 					</div>
-					<div class="card p-5">
-						<p class="text-xs text-text-tertiary uppercase tracking-wider">
-							{{ t('dashboard.admin.operator.index.stats.bounceRate') }}
-						</p>
-						<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-							{{ formatPercent(stats?.sending?.bounceRate) }}
-						</p>
+				</div>
+
+				<!-- Recent abuse signals -->
+				<div class="card">
+					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
+						{{ t('dashboard.admin.operator.index.abuse.title') }}
+					</h3>
+					<div
+						v-if="
+							!recentAbuse ||
+							(!recentAbuse.flaggedScans?.length && !recentAbuse.pendingReview?.length)
+						"
+						class="text-caption text-text-tertiary"
+					>
+						{{ t('dashboard.admin.operator.index.abuse.empty') }}
 					</div>
-					<div class="card p-5">
-						<p class="text-xs text-text-tertiary uppercase tracking-wider">
-							{{ t('dashboard.admin.operator.index.stats.complaintRate') }}
-						</p>
-						<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-							{{ formatPercent(stats?.sending?.complaintRate) }}
-						</p>
-					</div>
-				</template>
-				<div class="card p-5">
-					<p class="text-xs text-text-tertiary uppercase tracking-wider">
-						{{ t('dashboard.admin.operator.index.stats.abuseStatus') }}
-					</p>
-					<div class="mt-1.5">
-						<UiBadge :variant="abuseStatusVariant(stats?.abuseStatus)" size="md">
-							{{ stats?.abuseStatus ?? 'clean' }}
-						</UiBadge>
+					<div v-else class="space-y-4">
+						<div v-if="recentAbuse.pendingReview?.length">
+							<p class="text-xs font-medium text-text-secondary mb-2">
+								{{
+									t('dashboard.admin.operator.index.abuse.pendingReview', {
+										count: recentAbuse.pendingReview.length,
+									})
+								}}
+							</p>
+							<ul class="space-y-1">
+								<li
+									v-for="c in recentAbuse.pendingReview"
+									:key="c.id"
+									class="flex items-center justify-between text-caption text-text-primary"
+								>
+									<span>{{ c.name }}</span>
+									<span class="text-text-tertiary">{{ formatRelativeTime(c.updatedAt) }}</span>
+								</li>
+							</ul>
+						</div>
+						<div v-if="recentAbuse.flaggedScans?.length">
+							<p class="text-xs font-medium text-text-secondary mb-2">
+								{{
+									t('dashboard.admin.operator.index.abuse.flaggedScans', {
+										count: recentAbuse.flaggedScans.length,
+									})
+								}}
+							</p>
+							<ul class="space-y-1">
+								<li
+									v-for="(s, i) in recentAbuse.flaggedScans"
+									:key="`${s.resourceType}-${s.resourceId}-${i}`"
+									class="flex items-center justify-between text-caption"
+								>
+									<span class="text-text-primary">
+										{{
+											t('dashboard.admin.operator.index.abuse.scanEntry', {
+												resourceType: s.resourceType,
+												score: s.score,
+											})
+										}}
+									</span>
+									<UiBadge :variant="scanLevelVariant(s.level)">{{ s.level }}</UiBadge>
+								</li>
+							</ul>
+						</div>
 					</div>
 				</div>
 			</div>
 
-			<!-- Recent abuse signals -->
-			<div class="card">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
-					{{ t('dashboard.admin.operator.index.abuse.title') }}
-				</h3>
-				<div
-					v-if="
-						!recentAbuse ||
-						(!recentAbuse.flaggedScans?.length && !recentAbuse.pendingReview?.length)
-					"
-					class="text-caption text-text-tertiary"
-				>
-					{{ t('dashboard.admin.operator.index.abuse.empty') }}
-				</div>
-				<div v-else class="space-y-4">
-					<div v-if="recentAbuse.pendingReview?.length">
-						<p class="text-xs font-medium text-text-secondary mb-2">
-							{{
-								t('dashboard.admin.operator.index.abuse.pendingReview', {
-									count: recentAbuse.pendingReview.length,
-								})
-							}}
-						</p>
-						<ul class="space-y-1">
-							<li
-								v-for="c in recentAbuse.pendingReview"
-								:key="c.id"
-								class="flex items-center justify-between text-caption text-text-primary"
-							>
-								<span>{{ c.name }}</span>
-								<span class="text-text-tertiary">{{ formatRelativeTime(c.updatedAt) }}</span>
-							</li>
-						</ul>
-					</div>
-					<div v-if="recentAbuse.flaggedScans?.length">
-						<p class="text-xs font-medium text-text-secondary mb-2">
-							{{
-								t('dashboard.admin.operator.index.abuse.flaggedScans', {
-									count: recentAbuse.flaggedScans.length,
-								})
-							}}
-						</p>
-						<ul class="space-y-1">
-							<li
-								v-for="(s, i) in recentAbuse.flaggedScans"
-								:key="`${s.resourceType}-${s.resourceId}-${i}`"
-								class="flex items-center justify-between text-caption"
-							>
-								<span class="text-text-primary">
+			<!-- ── CONTENT REVIEW ── -->
+			<div v-else-if="activeTab === 'review'" class="space-y-6">
+				<div class="card">
+					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
+						{{ t('dashboard.admin.operator.index.review.title') }}
+					</h3>
+
+					<UiEmptyState
+						v-if="!reviewQueue?.pending?.length"
+						icon="lucide:check-circle-2"
+						:title="t('dashboard.admin.operator.index.review.emptyTitle')"
+						:description="t('dashboard.admin.operator.index.review.emptyDescription')"
+					/>
+
+					<div v-else class="space-y-3">
+						<div
+							v-for="item in reviewQueue.pending as ReviewItem[]"
+							:key="`${item.type}-${item.id}`"
+							class="flex items-start justify-between gap-4 rounded-lg shadow-surface-1 p-4"
+						>
+							<div class="min-w-0">
+								<div class="flex items-center gap-2 flex-wrap">
+									<UiBadge variant="neutral">{{ item.type }}</UiBadge>
+									<span class="font-medium text-text-primary truncate">{{ item.name }}</span>
+									<UiBadge v-if="item.scan" :variant="scanLevelVariant(item.scan.level)">
+										{{ item.scan.level }} · {{ item.scan.score }}
+									</UiBadge>
+								</div>
+								<p v-if="item.subject" class="mt-1 text-caption text-text-secondary truncate">
+									{{ item.subject }}
+								</p>
+								<p class="mt-1 text-xs text-text-tertiary">
 									{{
-										t('dashboard.admin.operator.index.abuse.scanEntry', {
-											resourceType: s.resourceType,
-											score: s.score,
+										t('dashboard.admin.operator.index.review.updated', {
+											time: formatRelativeTime(item.updatedAt),
 										})
 									}}
-								</span>
-								<UiBadge :variant="scanLevelVariant(s.level)">{{ s.level }}</UiBadge>
-							</li>
-						</ul>
+								</p>
+							</div>
+							<div class="flex gap-2 shrink-0">
+								<UiButton
+									variant="primary"
+									size="sm"
+									:loading="approvingCampaign || approvingTransactional"
+									:disabled="anyMutationLoading"
+									@click="onApprove(item)"
+								>
+									{{ t('dashboard.admin.operator.index.review.approve') }}
+								</UiButton>
+								<UiButton
+									variant="danger-outline"
+									size="sm"
+									:disabled="anyMutationLoading"
+									@click="openReject(item)"
+								>
+									{{ t('dashboard.admin.operator.index.review.reject') }}
+								</UiButton>
+							</div>
+						</div>
 					</div>
 				</div>
+
+				<!-- Recently reviewed -->
+				<div v-if="reviewQueue?.recentlyReviewed?.length" class="card">
+					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
+						{{ t('dashboard.admin.operator.index.review.recentlyReviewed') }}
+					</h3>
+					<ul class="space-y-2">
+						<li
+							v-for="(a, i) in reviewQueue.recentlyReviewed"
+							:key="i"
+							class="flex items-center justify-between text-caption"
+						>
+							<span class="text-text-primary">{{ t(auditActionLabel(a.action)) }}</span>
+							<span class="text-text-tertiary">{{ formatRelativeTime(a.createdAt) }}</span>
+						</li>
+					</ul>
+				</div>
 			</div>
-		</div>
 
-		<!-- ── CONTENT REVIEW ── -->
-		<div v-else-if="activeTab === 'review'" class="space-y-6">
-			<div class="card">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
-					{{ t('dashboard.admin.operator.index.review.title') }}
-				</h3>
-
-				<UiEmptyState
-					v-if="!reviewQueue?.pending?.length"
-					icon="lucide:check-circle-2"
-					:title="t('dashboard.admin.operator.index.review.emptyTitle')"
-					:description="t('dashboard.admin.operator.index.review.emptyDescription')"
-				/>
-
-				<div v-else class="space-y-3">
-					<div
-						v-for="item in reviewQueue.pending as ReviewItem[]"
-						:key="`${item.type}-${item.id}`"
-						class="flex items-start justify-between gap-4 rounded-lg shadow-surface-1 p-4"
-					>
-						<div class="min-w-0">
-							<div class="flex items-center gap-2 flex-wrap">
-								<UiBadge variant="neutral">{{ item.type }}</UiBadge>
-								<span class="font-medium text-text-primary truncate">{{ item.name }}</span>
-								<UiBadge v-if="item.scan" :variant="scanLevelVariant(item.scan.level)">
-									{{ item.scan.level }} · {{ item.scan.score }}
-								</UiBadge>
+			<!-- ── ORGANIZATIONS ── -->
+			<div v-else-if="activeTab === 'organizations'" class="space-y-6">
+				<!-- Sending status control -->
+				<div class="card">
+					<div class="flex items-start justify-between gap-4 flex-wrap">
+						<div>
+							<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">
+								{{ t('dashboard.admin.operator.index.sending.title') }}
+							</h3>
+							<div class="flex items-center gap-2">
+								<UiBadge :variant="abuseStatusVariant(currentAbuseStatus)" size="md">{{
+									currentAbuseStatus
+								}}</UiBadge>
+								<span
+									v-if="isBlockingAbuseStatus(currentAbuseStatus)"
+									class="text-caption text-error"
+								>
+									{{ t('dashboard.admin.operator.index.sending.blocked') }}
+								</span>
+								<span v-else-if="isWarnedAbuseStatus" class="text-caption text-warning">
+									{{ t('dashboard.admin.operator.index.sending.warned') }}
+								</span>
 							</div>
-							<p v-if="item.subject" class="mt-1 text-caption text-text-secondary truncate">
-								{{ item.subject }}
-							</p>
-							<p class="mt-1 text-xs text-text-tertiary">
+							<p
+								v-if="orgDetail?.settings?.abuseStatusReason"
+								class="mt-2 text-caption text-text-secondary"
+							>
 								{{
-									t('dashboard.admin.operator.index.review.updated', {
-										time: formatRelativeTime(item.updatedAt),
+									t('dashboard.admin.operator.index.sending.reason', {
+										reason: orgDetail?.settings?.abuseStatusReason,
 									})
 								}}
 							</p>
 						</div>
-						<div class="flex gap-2 shrink-0">
+						<div class="flex gap-2">
 							<UiButton
+								v-if="isBlockingAbuseStatus(currentAbuseStatus)"
 								variant="primary"
 								size="sm"
-								:loading="approvingCampaign || approvingTransactional"
 								:disabled="anyMutationLoading"
-								@click="onApprove(item)"
+								@click="openStatus('clean')"
 							>
-								{{ t('dashboard.admin.operator.index.review.approve') }}
+								{{ t('dashboard.admin.operator.index.sending.unsuspend') }}
 							</UiButton>
 							<UiButton
+								v-else
 								variant="danger-outline"
 								size="sm"
 								:disabled="anyMutationLoading"
-								@click="openReject(item)"
+								@click="openStatus('suspended')"
 							>
-								{{ t('dashboard.admin.operator.index.review.reject') }}
+								{{ t('dashboard.admin.operator.index.sending.suspend') }}
 							</UiButton>
 						</div>
 					</div>
 				</div>
-			</div>
 
-			<!-- Recently reviewed -->
-			<div v-if="reviewQueue?.recentlyReviewed?.length" class="card">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
-					{{ t('dashboard.admin.operator.index.review.recentlyReviewed') }}
-				</h3>
-				<ul class="space-y-2">
-					<li
-						v-for="(a, i) in reviewQueue.recentlyReviewed"
-						:key="i"
-						class="flex items-center justify-between text-caption"
+				<!-- Flagged organizations -->
+				<div class="card">
+					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
+						{{ t('dashboard.admin.operator.index.flagged.title') }}
+					</h3>
+					<div
+						v-if="!flaggedOrgs || flaggedOrgs.length === 0"
+						class="text-caption text-text-tertiary"
 					>
-						<span class="text-text-primary">{{ t(auditActionLabel(a.action)) }}</span>
-						<span class="text-text-tertiary">{{ formatRelativeTime(a.createdAt) }}</span>
-					</li>
-				</ul>
-			</div>
-		</div>
-
-		<!-- ── ORGANIZATIONS ── -->
-		<div v-else-if="activeTab === 'organizations'" class="space-y-6">
-			<!-- Sending status control -->
-			<div class="card">
-				<div class="flex items-start justify-between gap-4 flex-wrap">
-					<div>
-						<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">
-							{{ t('dashboard.admin.operator.index.sending.title') }}
-						</h3>
-						<div class="flex items-center gap-2">
-							<UiBadge :variant="abuseStatusVariant(currentAbuseStatus)" size="md">{{
-								currentAbuseStatus
-							}}</UiBadge>
-							<span
-								v-if="isBlockingAbuseStatus(currentAbuseStatus)"
-								class="text-caption text-error"
-							>
-								{{ t('dashboard.admin.operator.index.sending.blocked') }}
-							</span>
-							<span v-else-if="isWarnedAbuseStatus" class="text-caption text-warning">
-								{{ t('dashboard.admin.operator.index.sending.warned') }}
-							</span>
-						</div>
-						<p
-							v-if="orgDetail?.settings?.abuseStatusReason"
-							class="mt-2 text-caption text-text-secondary"
-						>
-							{{
-								t('dashboard.admin.operator.index.sending.reason', {
-									reason: orgDetail?.settings?.abuseStatusReason,
-								})
-							}}
-						</p>
+						{{ t('dashboard.admin.operator.index.flagged.empty') }}
 					</div>
-					<div class="flex gap-2">
-						<UiButton
-							v-if="isBlockingAbuseStatus(currentAbuseStatus)"
-							variant="primary"
-							size="sm"
-							:disabled="anyMutationLoading"
-							@click="openStatus('clean')"
+					<ul v-else class="space-y-3">
+						<li
+							v-for="(o, i) in flaggedOrgs"
+							:key="i"
+							class="flex items-center justify-between gap-4 rounded-lg shadow-surface-1 p-4"
 						>
-							{{ t('dashboard.admin.operator.index.sending.unsuspend') }}
-						</UiButton>
-						<UiButton
-							v-else
-							variant="danger-outline"
-							size="sm"
-							:disabled="anyMutationLoading"
-							@click="openStatus('suspended')"
-						>
-							{{ t('dashboard.admin.operator.index.sending.suspend') }}
-						</UiButton>
-					</div>
-				</div>
-			</div>
-
-			<!-- Flagged organizations -->
-			<div class="card">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
-					{{ t('dashboard.admin.operator.index.flagged.title') }}
-				</h3>
-				<div
-					v-if="!flaggedOrgs || flaggedOrgs.length === 0"
-					class="text-caption text-text-tertiary"
-				>
-					{{ t('dashboard.admin.operator.index.flagged.empty') }}
-				</div>
-				<ul v-else class="space-y-3">
-					<li
-						v-for="(o, i) in flaggedOrgs"
-						:key="i"
-						class="flex items-center justify-between gap-4 rounded-lg shadow-surface-1 p-4"
-					>
-						<div>
-							<div class="flex items-center gap-2">
-								<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{ o.abuseStatus }}</UiBadge>
-								<UiBadge :variant="riskLevelVariant(o.riskLevel)">
-									{{ t('dashboard.admin.operator.index.flagged.risk', { level: o.riskLevel }) }}
-								</UiBadge>
-							</div>
-							<p class="mt-1 text-xs text-text-tertiary">
-								{{
-									t('dashboard.admin.operator.index.flagged.rates', {
-										bounce: formatPercent(o.bounceRate),
-										complaint: formatPercent(o.complaintRate),
-										sent: formatCount(o.totalSent),
-									})
-								}}
-							</p>
-						</div>
-					</li>
-				</ul>
-			</div>
-
-			<!-- All organizations -->
-			<div class="card">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
-					{{ t('dashboard.admin.operator.index.workspaces.title') }}
-				</h3>
-				<!-- Scroll container: sender, two badges and a count do not fit a
-				     phone, and without this the card just clipped them. The negative
-				     margin lets the scroll area bleed to the card's edges. -->
-				<div class="-mx-6 px-6 overflow-x-auto">
-					<table class="w-full min-w-max text-caption">
-						<thead>
-							<tr class="border-b border-border-subtle text-text-tertiary">
-								<th class="text-left py-2 font-medium">
-									{{ t('dashboard.admin.operator.index.workspaces.sender') }}
-								</th>
-								<th class="text-left py-2 font-medium">{{ t('common.status') }}</th>
-								<th class="text-left py-2 font-medium">
-									{{ t('dashboard.admin.operator.index.workspaces.risk') }}
-								</th>
-								<th class="text-right py-2 font-medium">
-									{{ t('dashboard.admin.operator.index.workspaces.contacts') }}
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr
-								v-for="(o, i) in allOrgs ?? []"
-								:key="i"
-								class="border-b border-border-subtle last:border-b-0"
-							>
-								<td class="py-2 text-text-primary">
-									{{ o.defaultFromName || o.defaultFromEmail || '—' }}
-								</td>
-								<td class="py-2">
+							<div>
+								<div class="flex items-center gap-2">
 									<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{
 										o.abuseStatus
 									}}</UiBadge>
-								</td>
-								<td class="py-2">
-									<UiBadge :variant="riskLevelVariant(o.riskLevel)">{{ o.riskLevel }}</UiBadge>
-								</td>
-								<td class="py-2 text-right text-text-secondary">
-									{{ formatCount(o.contactCount) }}
-								</td>
-							</tr>
-						</tbody>
-					</table>
+									<UiBadge :variant="riskLevelVariant(o.riskLevel)">
+										{{ t('dashboard.admin.operator.index.flagged.risk', { level: o.riskLevel }) }}
+									</UiBadge>
+								</div>
+								<p class="mt-1 text-xs text-text-tertiary">
+									{{
+										t('dashboard.admin.operator.index.flagged.rates', {
+											bounce: formatPercent(o.bounceRate),
+											complaint: formatPercent(o.complaintRate),
+											sent: formatCount(o.totalSent),
+										})
+									}}
+								</p>
+							</div>
+						</li>
+					</ul>
+				</div>
+
+				<!-- All organizations -->
+				<div class="card">
+					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
+						{{ t('dashboard.admin.operator.index.workspaces.title') }}
+					</h3>
+					<!-- Scroll container: sender, two badges and a count do not fit a
+					     phone, and without this the card just clipped them. The negative
+					     margin lets the scroll area bleed to the card's edges. -->
+					<div class="-mx-6 px-6 overflow-x-auto">
+						<table class="w-full min-w-max text-caption">
+							<thead>
+								<tr class="border-b border-border-subtle text-text-tertiary">
+									<th class="text-left py-2 font-medium">
+										{{ t('dashboard.admin.operator.index.workspaces.sender') }}
+									</th>
+									<th class="text-left py-2 font-medium">{{ t('common.status') }}</th>
+									<th class="text-left py-2 font-medium">
+										{{ t('dashboard.admin.operator.index.workspaces.risk') }}
+									</th>
+									<th class="text-right py-2 font-medium">
+										{{ t('dashboard.admin.operator.index.workspaces.contacts') }}
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr
+									v-for="(o, i) in allOrgs ?? []"
+									:key="i"
+									class="border-b border-border-subtle last:border-b-0"
+								>
+									<td class="py-2 text-text-primary">
+										{{ o.defaultFromName || o.defaultFromEmail || '—' }}
+									</td>
+									<td class="py-2">
+										<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{
+											o.abuseStatus
+										}}</UiBadge>
+									</td>
+									<td class="py-2">
+										<UiBadge :variant="riskLevelVariant(o.riskLevel)">{{ o.riskLevel }}</UiBadge>
+									</td>
+									<td class="py-2 text-right text-text-secondary">
+										{{ formatCount(o.contactCount) }}
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
 				</div>
 			</div>
-		</div>
 
-		<!-- ── ADMINS ── -->
-		<div v-else-if="activeTab === 'admins'" class="space-y-6">
-			<div class="card">
-				<div class="flex items-center justify-between mb-4">
-					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">
-						{{ t('dashboard.admin.operator.index.admins.title') }}
-					</h3>
-					<UiButton
-						variant="secondary"
-						size="sm"
-						:disabled="anyMutationLoading || !hasPromotableUsers"
-						:title="
-							hasPromotableUsers
-								? undefined
-								: t('dashboard.admin.operator.index.admins.allPromoted')
-						"
-						@click="openAddAdmin"
-					>
-						<template #iconLeft>
-							<Icon name="lucide:plus" class="w-4 h-4" />
-						</template>
-						{{ t('dashboard.admin.operator.index.admins.add') }}
-					</UiButton>
-				</div>
+			<!-- ── ADMINS ── -->
+			<div v-else-if="activeTab === 'admins'" class="space-y-6">
+				<div class="card">
+					<div class="flex items-center justify-between mb-4">
+						<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">
+							{{ t('dashboard.admin.operator.index.admins.title') }}
+						</h3>
+						<UiButton
+							variant="secondary"
+							size="sm"
+							:disabled="anyMutationLoading || !hasPromotableUsers"
+							:title="
+								hasPromotableUsers
+									? undefined
+									: t('dashboard.admin.operator.index.admins.allPromoted')
+							"
+							@click="openAddAdmin"
+						>
+							<template #iconLeft>
+								<Icon name="lucide:plus" class="w-4 h-4" />
+							</template>
+							{{ t('dashboard.admin.operator.index.admins.add') }}
+						</UiButton>
+					</div>
 
-				<!-- Scroll container: email, role, added and the remove action do not
-				     fit a phone, and without this the card just clipped them. The
-				     negative margin lets the scroll area bleed to the card's edges. -->
-				<div class="-mx-6 px-6 overflow-x-auto">
-					<table class="w-full min-w-max text-caption">
-						<thead>
-							<tr class="border-b border-border-subtle text-text-tertiary">
-								<th class="text-left py-2 font-medium">{{ t('common.email') }}</th>
-								<th class="text-left py-2 font-medium">
-									{{ t('dashboard.admin.operator.index.admins.role') }}
-								</th>
-								<th class="text-left py-2 font-medium">
-									{{ t('dashboard.admin.operator.index.admins.added') }}
-								</th>
-								<th class="text-right py-2 font-medium" />
-							</tr>
-						</thead>
-						<tbody>
-							<tr
-								v-for="a in admins ?? []"
-								:key="a.id"
-								class="border-b border-border-subtle last:border-b-0"
-							>
-								<td class="py-2 text-text-primary">{{ a.email }}</td>
-								<td class="py-2">
-									<UiBadge :variant="a.role === 'superadmin' ? 'warning' : 'neutral'">{{
-										a.role
-									}}</UiBadge>
-								</td>
-								<td class="py-2 text-text-secondary">{{ formatRelativeTime(a.createdAt) }}</td>
-								<td class="py-2 text-right">
-									<UiButton
-										variant="danger-ghost"
-										size="sm"
-										:disabled="anyMutationLoading"
-										@click="onRemoveAdmin(a.id, a.email)"
-									>
-										{{ t('common.remove') }}
-									</UiButton>
-								</td>
-							</tr>
-						</tbody>
-					</table>
+					<!-- Scroll container: email, role, added and the remove action do not
+					     fit a phone, and without this the card just clipped them. The
+					     negative margin lets the scroll area bleed to the card's edges. -->
+					<div class="-mx-6 px-6 overflow-x-auto">
+						<table class="w-full min-w-max text-caption">
+							<thead>
+								<tr class="border-b border-border-subtle text-text-tertiary">
+									<th class="text-left py-2 font-medium">{{ t('common.email') }}</th>
+									<th class="text-left py-2 font-medium">
+										{{ t('dashboard.admin.operator.index.admins.role') }}
+									</th>
+									<th class="text-left py-2 font-medium">
+										{{ t('dashboard.admin.operator.index.admins.added') }}
+									</th>
+									<th class="text-right py-2 font-medium" />
+								</tr>
+							</thead>
+							<tbody>
+								<tr
+									v-for="a in admins ?? []"
+									:key="a.id"
+									class="border-b border-border-subtle last:border-b-0"
+								>
+									<td class="py-2 text-text-primary">{{ a.email }}</td>
+									<td class="py-2">
+										<UiBadge :variant="a.role === 'superadmin' ? 'warning' : 'neutral'">{{
+											a.role
+										}}</UiBadge>
+									</td>
+									<td class="py-2 text-text-secondary">{{ formatRelativeTime(a.createdAt) }}</td>
+									<td class="py-2 text-right">
+										<UiButton
+											variant="danger-ghost"
+											size="sm"
+											:disabled="anyMutationLoading"
+											@click="onRemoveAdmin(a.id, a.email)"
+										>
+											{{ t('common.remove') }}
+										</UiButton>
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+					<p class="mt-3 text-xs text-text-tertiary">
+						{{ t('dashboard.admin.operator.index.admins.footnote') }}
+					</p>
 				</div>
-				<p class="mt-3 text-xs text-text-tertiary">
-					{{ t('dashboard.admin.operator.index.admins.footnote') }}
-				</p>
 			</div>
 		</div>
 

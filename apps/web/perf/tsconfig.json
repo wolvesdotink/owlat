@@ -1,0 +1,12 @@
+{
+	"extends": "../../../tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"types": ["node", "vite/client"],
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"paths": {
+			"~/*": ["../app/*"]
+		}
+	},
+	"include": ["**/*.ts"]
+}

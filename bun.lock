@@ -309,6 +309,7 @@
         "postcss": "^8.5.26",
         "tailwindcss": "catalog:vue",
         "typescript": "catalog:",
+        "vite": "8.3.0",
         "vitest": "catalog:",
         "vue-i18n": "^11.4.8",
         "vue-tsc": "catalog:",
