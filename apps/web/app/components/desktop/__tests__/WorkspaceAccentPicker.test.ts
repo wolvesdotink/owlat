@@ -20,7 +20,7 @@ const SWATCH = '[data-testid="workspace-swatch"]';
 
 function render(modelValue = WORKSPACE_ACCENT_OPTIONS[2].value) {
 	return mount(WorkspaceAccentPicker, {
-		props: { modelValue },
+		props: { modelValue, options: WORKSPACE_ACCENT_OPTIONS },
 		global: { plugins: [createTestI18n()] },
 	});
 }

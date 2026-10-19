@@ -11,11 +11,13 @@
  * and the row wraps instead of letting a target shrink. Real boxes side by side, never an invisible overlay reaching into a
  * neighbour.
  */
-import { WORKSPACE_ACCENT_OPTIONS, type WorkspaceAccent } from '~/lib/desktop/workspaceTypes';
+import type { WorkspaceAccent } from '~/lib/desktop/workspaceTypes';
 
 defineProps<{
 	/** The workspace's current accent. */
 	modelValue: WorkspaceAccent;
+	/** The accents on offer, in order (the page passes `WORKSPACE_ACCENT_OPTIONS`). */
+	options: readonly { value: WorkspaceAccent; label: string }[];
 }>();
 
 const emit = defineEmits<{
@@ -31,7 +33,7 @@ const { t } = useI18n();
 			t('desktop.settings.workspaces.accent')
 		}}</span>
 		<button
-			v-for="option in WORKSPACE_ACCENT_OPTIONS"
+			v-for="option in options"
 			:key="option.value"
 			type="button"
 			class="group/swatch flex size-5 shrink-0 items-center justify-center rounded-full pointer-coarse:size-11"

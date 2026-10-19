@@ -16,6 +16,8 @@
  * `id`s are the settings registry's control anchors, so a palette deep link
  * ("notify me about", "launch at login") lands on the right card.
  */
+import { WORKSPACE_ACCENT_OPTIONS } from '~/lib/desktop/workspaceTypes';
+
 const { t } = useI18n();
 
 useHead({ title: () => t('desktop.settings.pageTitle') });
@@ -265,6 +267,7 @@ async function confirmRemoveWorkspace() {
 						>
 							<!-- Identity accent -->
 							<DesktopWorkspaceAccentPicker
+								:options="WORKSPACE_ACCENT_OPTIONS"
 								:model-value="ws.accentColor"
 								@update:model-value="setWorkspaceAccent(ws.id, $event)"
 							/>
