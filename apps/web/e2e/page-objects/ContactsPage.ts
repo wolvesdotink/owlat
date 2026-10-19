@@ -13,7 +13,7 @@ export class ContactsPage extends BasePage {
 		this.searchInput = page.getByPlaceholder('Search by email or name...');
 		this.addContactButton = this.headerAction('Add contact');
 		this.importButton = page.getByRole('button', { name: 'Import' });
-		this.selectAllCheckbox = page.locator('thead button').first();
+		this.selectAllCheckbox = page.getByRole('checkbox', { name: 'Select all loaded contacts' });
 		this.selectedCountText = page.locator('text=/\\d+ selected/');
 	}
 

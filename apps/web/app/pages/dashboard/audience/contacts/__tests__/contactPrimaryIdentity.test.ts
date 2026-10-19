@@ -104,7 +104,7 @@ describe('contacts list identity for email-less contacts', () => {
 		for (const [i, row] of rows.entries()) {
 			const label = IDENTITIES[i]!;
 			expect(row.findAll('td')[1]?.text()).toBe(EMAIL_CELLS[i]);
-			expect(row.find('button').attributes('aria-label')).toBe(`Select ${label}`);
+			expect(row.find('input[type="checkbox"]').attributes('aria-label')).toBe(`Select ${label}`);
 		}
 		wrapper.unmount();
 	});
@@ -116,9 +116,10 @@ describe('contacts list identity for email-less contacts', () => {
 		expect(cards).toHaveLength(3);
 		for (const [i, card] of cards.entries()) {
 			const label = IDENTITIES[i]!;
-			const [select, open] = card.findAll('button');
-			expect(select?.attributes('aria-label')).toBe(`Select ${label}`);
-			const [identity, secondLine] = open?.findAll('span') ?? [];
+			const select = card.find('input[type="checkbox"]');
+			const open = card.find('button');
+			expect(select.attributes('aria-label')).toBe(`Select ${label}`);
+			const [identity, secondLine] = open.findAll('span');
 			expect(identity?.text()).toBe(label);
 			expect(secondLine?.text()).toBe(CARD_SECOND_LINES[i]);
 		}

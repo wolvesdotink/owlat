@@ -10,10 +10,15 @@
  *
  * Row renders are counted through `formatDate`, which each row calls once per
  * render for its "Created" cell and which nothing else in the table calls.
+ *
+ * Selection is real checkboxes (plan OW-029): each row box carries its
+ * contact's name (a fallback when it has no email) and checked state, and the
+ * select-all box is named for the loaded contacts it covers and reads "mixed"
+ * while only some are selected.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 
 import ContactsIndex from '../index.vue';
 import ContactRow from '~/components/contacts/ContactRow.vue';
@@ -62,6 +67,9 @@ beforeEach(() => {
 		usePaginatedQuery: () => paginatedResult(contacts),
 	});
 });
+
+const box = (name: string) => `input[type="checkbox"][aria-label="${name}"]`;
+const SELECT_ALL = 'Select all loaded contacts';
 
 function mountPage() {
 	return mount(ContactsIndex, {
@@ -112,7 +120,7 @@ describe('audience contacts table', () => {
 		const wrapper = mountPage();
 		formatDate.mockClear();
 
-		await wrapper.get('button[aria-label="Select person3@example.com"]').trigger('click');
+		await wrapper.get(box('Select person3@example.com')).trigger('click');
 		await nextTick();
 
 		expect(formatDate).toHaveBeenCalledTimes(1);
@@ -121,7 +129,7 @@ describe('audience contacts table', () => {
 		expect(rows.filter((row) => row.props('selected'))).toHaveLength(1);
 
 		formatDate.mockClear();
-		await wrapper.get('button[aria-label="Deselect person3@example.com"]').trigger('click');
+		await wrapper.get(box('Select person3@example.com')).trigger('click');
 		await nextTick();
 		expect(formatDate).toHaveBeenCalledTimes(1);
 		wrapper.unmount();
@@ -137,6 +145,65 @@ describe('audience contacts table', () => {
 		await nextTick();
 
 		expect(wrapper.findAllComponents(ContactRow)[5]?.props('selected')).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('names the select-all box for the loaded contacts and reads mixed on a partial selection', async () => {
+		const wrapper = mountPage();
+		const all = () => wrapper.get<HTMLInputElement>(`thead ${box(SELECT_ALL)}`).element;
+		const rowBoxes = () =>
+			wrapper.findAll<HTMLInputElement>('tbody input[type="checkbox"]').map((b) => b.element);
+		expect([all().checked, all().indeterminate]).toEqual([false, false]);
+
+		await wrapper.get(box('Select person3@example.com')).trigger('click');
+		await nextTick();
+		expect([all().checked, all().indeterminate]).toEqual([false, true]);
+		expect(rowBoxes().filter((b) => b.checked)).toHaveLength(1);
+
+		await wrapper.get(`thead ${box(SELECT_ALL)}`).trigger('click');
+		await nextTick();
+		expect([all().checked, all().indeterminate]).toEqual([true, false]);
+		expect(rowBoxes().every((b) => b.checked)).toBe(true);
+
+		await wrapper.get(`thead ${box(SELECT_ALL)}`).trigger('click');
+		await nextTick();
+		expect([all().checked, all().indeterminate]).toEqual([false, false]);
+		expect(rowBoxes().some((b) => b.checked)).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('gives the narrow card list the same named checkboxes', async () => {
+		// Below md the table becomes a card list (the beforeEach re-installs the real query).
+		vi.stubGlobal('useDataTableViewport', () => ref(false));
+		const wrapper = mountPage();
+		expect(wrapper.find('table').exists()).toBe(false);
+		// The card list's select-all is named by its visible label, the same truthful text.
+		const allLabel = wrapper.findAll('label').find((l) => l.text() === SELECT_ALL);
+		const all = () => allLabel!.get<HTMLInputElement>('input[type="checkbox"]').element;
+		expect([all().checked, all().indeterminate]).toEqual([false, false]);
+
+		const card = wrapper.get<HTMLInputElement>(box('Select person3@example.com'));
+		await card.trigger('click');
+		await nextTick();
+		expect(card.element.checked).toBe(true);
+		expect([all().checked, all().indeterminate]).toEqual([false, true]);
+		wrapper.unmount();
+	});
+
+	it.each([
+		['table', true],
+		['card list', false],
+	])('names the %s checkbox of a contact without an email', (_view, fits) => {
+		vi.stubGlobal('useDataTableViewport', () => ref(fits));
+		vi.stubGlobal('usePaginatedQuery', () =>
+			paginatedResult([
+				{ _id: 'contact_a', firstName: 'Grace', lastName: 'Hopper', createdAt: 0 },
+				{ _id: 'contact_b', createdAt: 0 },
+			])
+		);
+		const wrapper = mountPage();
+		expect(wrapper.find(box('Select Grace Hopper')).exists()).toBe(true);
+		expect(wrapper.find(box('Select Unnamed contact')).exists()).toBe(true);
 		wrapper.unmount();
 	});
 });

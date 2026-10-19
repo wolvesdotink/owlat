@@ -88,7 +88,7 @@ function mountRow(
 
 /** Focusable in sequential (Tab) order: native controls without a negative tabindex. */
 const tabbables = (root: Element) =>
-	Array.from(root.querySelectorAll<HTMLElement>('a[href], button, [tabindex]')).filter(
+	Array.from(root.querySelectorAll<HTMLElement>('a[href], button, input, [tabindex]')).filter(
 		(el) => el.tabIndex >= 0
 	);
 
@@ -115,7 +115,7 @@ describe('ContactsContactRow', () => {
 	it('toggles selection from the checkbox without opening the contact', async () => {
 		const { host, row, router } = mountRow();
 		await router.push('/dashboard/audience/contacts');
-		const checkbox = host.get('button[aria-label="Select ada@example.com"]');
+		const checkbox = host.get('input[type="checkbox"][aria-label="Select ada@example.com"]');
 		await checkbox.trigger('click');
 		await flushPromises();
 		expect(row.emitted('toggle-select')).toHaveLength(1);
@@ -135,9 +135,9 @@ describe('ContactsContactRow', () => {
 				`${el.tagName.toLowerCase()}:${el.getAttribute('href') ?? el.getAttribute('aria-label')}`
 		);
 		expect(order).toEqual([
-			'button:Select ada@example.com',
+			'input:Select ada@example.com',
 			`a:${pathOf('contact_1')}`,
-			'button:Select bo@example.com',
+			'input:Select bo@example.com',
 			`a:${pathOf('contact_2')}`,
 		]);
 		// The link carries the email as its name; the row itself is not a stop.
@@ -217,7 +217,7 @@ describe('ContactsContactRow', () => {
 	it('paints the selected state from the boolean prop', () => {
 		const { host } = mountRow({ selected: true });
 		expect(host.get('tr').classes()).toContain('bg-brand/5');
-		expect(host.find('button[aria-label="Deselect ada@example.com"]').exists()).toBe(true);
+		expect(host.get<HTMLInputElement>('input[type="checkbox"]').element.checked).toBe(true);
 		host.unmount();
 	});
 
@@ -272,11 +272,50 @@ describe('ContactsContactRow', () => {
 	])('labels a contact with %s by its primary identity', (_case, override, label, cell) => {
 		const { host } = mountRow({ contact: override });
 		expect(host.findAll('td')[1]?.text()).toBe(cell);
-		expect(host.find(`button[aria-label="Select ${label}"]`).exists()).toBe(true);
+		const box = `input[type="checkbox"][aria-label="Select ${label}"]`;
+		expect(host.get<HTMLInputElement>(box).element.checked).toBe(false);
 		host.unmount();
 
+		// Selected: the same name, now checked.
 		const selected = mountRow({ contact: override, selected: true });
-		expect(selected.host.find(`button[aria-label="Deselect ${label}"]`).exists()).toBe(true);
+		expect(selected.host.get<HTMLInputElement>(box).element.checked).toBe(true);
 		selected.host.unmount();
+	});
+});
+
+/**
+ * The selection box is a real checkbox (plan OW-029): one stable name per
+ * contact, the selection carried as its checked state, and a click on the box
+ * or its label never opens the row.
+ */
+describe('ContactsContactRow selection checkbox', () => {
+	const box = (host: ReturnType<typeof mountRow>['host']) =>
+		host.get<HTMLInputElement>('td input[type="checkbox"]');
+
+	it('keeps one name and reports the selection as checked', () => {
+		const unselected = mountRow();
+		expect(box(unselected.host).attributes('aria-label')).toBe('Select ada@example.com');
+		expect(box(unselected.host).element.checked).toBe(false);
+		unselected.host.unmount();
+
+		const selected = mountRow({ selected: true });
+		expect(box(selected.host).attributes('aria-label')).toBe('Select ada@example.com');
+		expect(box(selected.host).element.checked).toBe(true);
+		selected.host.unmount();
+	});
+
+	it('toggles from the box or its label without opening the contact', async () => {
+		const { host, row } = mountRow();
+		await box(host).trigger('click');
+		await host.get('td label').trigger('click');
+		expect(row.emitted('toggle-select')?.length).toBeGreaterThan(0);
+		expect(row.emitted('open')).toBeUndefined();
+		host.unmount();
+	});
+
+	it('shows no checkbox to a viewer', () => {
+		const { host } = mountRow({ canManage: false });
+		expect(host.find('input[type="checkbox"]').exists()).toBe(false);
+		host.unmount();
 	});
 });

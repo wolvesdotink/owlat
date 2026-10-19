@@ -58,7 +58,7 @@ function onRowClick(event: MouseEvent) {
 	if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
 		return;
 	}
-	if ((event.target as Element | null)?.closest('a, button')) return;
+	if ((event.target as Element | null)?.closest('a, button, label, input')) return;
 	emit('open');
 }
 
@@ -107,22 +107,13 @@ function menuItems(): ContextMenuItem[] {
 			@contextmenu="onContextmenu"
 		>
 			<td v-if="canManage" class="w-12 px-4 py-4">
-				<button
-					class="w-5 h-5 rounded border flex items-center justify-center transition-colors"
-					:class="[
-						selected
-							? 'bg-brand border-brand text-text-inverse'
-							: 'border-border-default hover:border-border-strong',
-					]"
-					@click.stop="emit('toggle-select')"
-					:aria-label="
-						selected
-							? t('dashboard.audience.contacts.index.deselectContact', { email: identity })
-							: t('dashboard.audience.contacts.index.selectContact', { email: identity })
-					"
-				>
-					<Icon v-if="selected" name="lucide:check" class="w-3 h-3" />
-				</button>
+				<!-- A real checkbox: its checked state is the selection, so the name
+				     stays put. The row's click guard leaves its clicks (and Space) alone. -->
+				<UiCheckbox
+					:model-value="selected"
+					:aria-label="t('dashboard.audience.contacts.index.selectContact', { email: identity })"
+					@update:model-value="emit('toggle-select')"
+				/>
 			</td>
 			<td class="px-6 py-4">
 				<!-- The row is not focusable, so the menu key listens on its link. -->

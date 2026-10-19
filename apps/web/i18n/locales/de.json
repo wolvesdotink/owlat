@@ -9975,8 +9975,6 @@
 					},
 					"createContact": "Kontakt erstellen",
 					"creating": "Wird erstellt...",
-					"deselectAll": "Auswahl aufheben",
-					"deselectContact": "Auswahl von {email} aufheben",
 					"empty": {
 						"descriptionManage": "Füge deinen ersten Kontakt hinzu oder importiere eine CSV-Datei.",
 						"descriptionReadOnly": "Es wurden noch keine Kundinnen und Kunden hinzugefügt.",
@@ -10014,7 +10012,7 @@
 					},
 					"pageTitle": "Kontakte — Owlat",
 					"searchPlaceholder": "Nach E-Mail oder Name suchen...",
-					"selectAll": "Alle auswählen",
+					"selectAllLoaded": "Alle geladenen Kontakte auswählen",
 					"selectAllMatching": "Alle {count} auswählen",
 					"selectContact": "{email} auswählen",
 					"showing": {
