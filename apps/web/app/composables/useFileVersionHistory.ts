@@ -13,7 +13,7 @@
  * row comes round a second time.
  *
  * A cursor the server refuses (its `version_history_cursor_rejected` reason,
- * for instance after INSTANCE_SECRET was rotated) cannot continue this list,
+ * for instance after INSTANCE_SECRET was rotated) does not continue this list,
  * so the older pages are dropped and the list starts again from the live
  * newest page, with `historyRestarted` saying so. Nothing is refetched: the
  * newest page is a live subscription the server recomputes, cursor included,
@@ -122,7 +122,7 @@ export function useFileVersionHistory(fileId: () => Id<'semanticFiles'>) {
 		} catch (error) {
 			if (run !== generation) return;
 			if (isCursorRejection(error)) {
-				// This cursor cannot continue the list: start again from the live
+				// The server refused this continuation: start again from the live
 				// newest page, whose cursor is the next one a click sends.
 				resetOlder();
 				historyRestarted.value = true;

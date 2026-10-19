@@ -63,8 +63,12 @@ const EMPTY_HISTORY = { page: [], isDone: true, continueCursor: null };
 
 /**
  * `data.reason` of a refused cursor: the one machine-readable mark that tells
- * "this cursor can never be redeemed" apart from any other `invalid_input`, so
- * the client starts its list over instead of retrying the token.
+ * "this cursor does not continue the history now" apart from any other
+ * `invalid_input`, so the client starts its list over from the live newest
+ * page. The refusal is about the current continuation, not the token for
+ * good: tokens are deterministic, so once access is restored the same token
+ * can be issued and redeemed again, and the client's next click sends
+ * whatever token the live page carries at that moment.
  */
 export const VERSION_HISTORY_CURSOR_REJECTED = 'version_history_cursor_rejected';
 
