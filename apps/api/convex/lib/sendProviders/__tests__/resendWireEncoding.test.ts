@@ -142,6 +142,14 @@ const egress = vi.hoisted(() => {
 const EGRESS_BLOCKED = egress.BLOCKED;
 const takeEgressAttempts = egress.takeAttempts;
 
+/**
+ * Fail with every attempt recorded since the last check. The only way the
+ * shared hooks clear the list: an attempt is never dropped unchecked.
+ */
+function expectNoEgress(during: string): void {
+	expect(takeEgressAttempts(), `egress attempted during ${during}`).toEqual([]);
+}
+
 // Loaded only now, with the guard in place (see the header). The type-only
 // imports above are erased, so they load nothing.
 let resendSendProvider: typeof ResendModule.resendSendProvider;
@@ -152,6 +160,8 @@ let _resetSendTransportCacheForTests: typeof TransportsModule._resetSendTranspor
 beforeAll(async () => {
 	({ resendSendProvider, _resetResendClientCacheForTests } = await import('../resend'));
 	({ resolveSendTransport, _resetSendTransportCacheForTests } = await import('../transports'));
+	// An attempt made and swallowed while the SDK graph initialized.
+	expectNoEgress('the adapter and SDK import');
 });
 
 afterAll(() => {
@@ -200,7 +210,7 @@ function onlyRequest(): CapturedRequest {
 
 beforeEach(() => {
 	requests = [];
-	takeEgressAttempts();
+	expectNoEgress('setup before this test');
 	_resetSendTransportCacheForTests();
 	_resetResendClientCacheForTests();
 	vi.stubEnv('RESEND_API_KEY', 're_synthetic_test_key');
@@ -213,7 +223,7 @@ afterEach(() => {
 	_resetSendTransportCacheForTests();
 	_resetResendClientCacheForTests();
 	// Last, so a failure here cannot skip the cleanup above.
-	expect(takeEgressAttempts(), 'a request bypassed the stubbed fetch').toEqual([]);
+	expectNoEgress('this test: a request bypassed the stubbed fetch');
 });
 
 // Every host and address below is reserved (`.example`, TEST-NET 192.0.2.0/24),
@@ -289,9 +299,12 @@ describe('egress guard (around the stubbed fetch)', () => {
 		]);
 	});
 
-	it('refuses a DNS method a dependency cached while it loaded', async () => {
-		// Imported after the guard, like the adapter and the SDK graph.
-		const { cachedResolve4 } = await import('./resendWireEncoding.cachedResolver');
+	it('reports a swallowed import-time attempt and guards a method cached at import', async () => {
+		// Imported after the guard, like the adapter and the SDK graph. One test,
+		// because the module's import-time code runs only once per file.
+		const { cachedResolve4 } = await import('./resendWireEncoding.importTimeEgress');
+		expect(() => expectNoEgress('the fixture import')).toThrow('dns.lookup(api.owlat.example)');
+
 		expect(() => cachedResolve4('api.owlat.example')).toThrow(EGRESS_BLOCKED);
 		expect(takeEgressAttempts()).toEqual(['dns.promises.Resolver#resolve4(api.owlat.example)']);
 	});
