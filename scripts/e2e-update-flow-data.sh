@@ -213,7 +213,7 @@ seed_convex_data() {
 
 # At TO, after the update: the same snapshot, compared with FROM's.
 verify_convex_data() {
-	local before="$1" after="$1.after" ids line
+	local before="$1" after="$1.after" ids
 	ids="$(cat "$before.ids")"
 	convex_query "$(data_snapshot_query "$ids")" >"$after" || fail "could not snapshot the seeded rows at $TO"
 	local report status=0
