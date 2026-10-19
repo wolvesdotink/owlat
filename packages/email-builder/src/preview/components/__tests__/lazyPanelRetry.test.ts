@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { defineComponent, h, onErrorCaptured, type Component } from 'vue';
+import { defineComponent, h, nextTick, onErrorCaptured, ref, type Component } from 'vue';
 import { createI18n } from 'vue-i18n';
 import uiEn from '@owlat/ui/i18n/locales/en.json';
 import uiDe from '@owlat/ui/i18n/locales/de.json';
@@ -105,6 +105,66 @@ describe('lazyPanel — failure and retry', () => {
 		const again = wrapper.find<HTMLButtonElement>('.ep-panel-loading button');
 		expect(again.element).not.toBe(first.element);
 		expect(document.activeElement).toBe(again.element);
+	});
+
+	it('gives focus only to the instance whose Try again was pressed', async () => {
+		const loader = vi.fn<() => Promise<{ default: Component }>>().mockRejectedValue(chunkError());
+		const Lazy = lazyPanel(loader);
+		const Host = defineComponent({
+			setup: () => () =>
+				h('div', [
+					h('section', { id: 'first' }, [h(Lazy)]),
+					h('section', { id: 'second' }, [h(Lazy)]),
+				]),
+		});
+		wrapper = mount(Host, { attachTo: document.body });
+		await flushPromises();
+
+		const pressed = wrapper.find<HTMLButtonElement>('#second .ep-panel-loading button');
+		pressed.element.focus();
+		await pressed.trigger('click');
+		await flushPromises();
+
+		// Both mounts show the failure again; only the second takes focus.
+		const first = wrapper.find<HTMLButtonElement>('#first .ep-panel-loading button');
+		const second = wrapper.find<HTMLButtonElement>('#second .ep-panel-loading button');
+		expect(second.element).not.toBe(pressed.element);
+		expect(document.activeElement).toBe(second.element);
+		expect(document.activeElement).not.toBe(first.element);
+	});
+
+	it('does not take focus on a remount after the retry was left pending', async () => {
+		let failRetry!: () => void;
+		const loader = vi
+			.fn<() => Promise<{ default: Component }>>()
+			.mockRejectedValueOnce(chunkError())
+			.mockImplementationOnce(
+				() => new Promise((_, reject) => (failRetry = () => reject(chunkError())))
+			);
+		const Lazy = lazyPanel(loader);
+		const open = ref(true);
+		const Host = defineComponent({
+			setup: () => () =>
+				h('div', [h('button', { id: 'gear' }, 'gear'), open.value ? h(Lazy) : null]),
+		});
+		wrapper = mount(Host, { attachTo: document.body });
+		await flushPromises();
+
+		// Try again, then close the panel while the retry is still loading.
+		await wrapper.find('.ep-panel-loading button').trigger('click');
+		open.value = false;
+		await nextTick();
+		failRetry();
+		await flushPromises();
+
+		// Reopen from the gear: the failure shows, focus stays on the gear.
+		const gear = wrapper.find<HTMLButtonElement>('#gear');
+		gear.element.focus();
+		open.value = true;
+		await flushPromises();
+		expect(loader).toHaveBeenCalledTimes(2);
+		expect(wrapper.find('.ep-panel-loading').attributes('role')).toBe('alert');
+		expect(document.activeElement).toBe(gear.element);
 	});
 
 	it('offers nothing that reloads the host page', async () => {

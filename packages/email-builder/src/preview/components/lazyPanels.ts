@@ -1,4 +1,14 @@
-import { defineAsyncComponent, defineComponent, h, shallowRef, type Component } from 'vue';
+import {
+	defineAsyncComponent,
+	defineComponent,
+	h,
+	inject,
+	onBeforeUnmount,
+	provide,
+	shallowRef,
+	type Component,
+	type InjectionKey,
+} from 'vue';
 import PanelLoading from './PanelLoading.vue';
 
 // The analysis, render-options and diff panels are secondary to the preview:
@@ -6,6 +16,17 @@ import PanelLoading from './PanelLoading.vue';
 // report. Each loads with its first render instead of with the previewer's
 // chunk. Nothing else may import these modules statically, or the bundler
 // folds them back into that chunk.
+
+/**
+ * Set by "Try again" on the panel instance whose button was pressed: the
+ * failure that answers that retry takes focus back to its own button, which
+ * replaced the pressed one. Owned per instance, so another mount of the same
+ * panel, or a later remount, never takes focus for it.
+ */
+interface RetryFocusIntent {
+	requested: boolean;
+}
+const retryFocusKey: InjectionKey<RetryFocusIntent> = Symbol('lazyPanelRetryFocus');
 
 /**
  * A panel loaded on first render, with a loading state for a slow chunk and a
@@ -28,23 +49,21 @@ export function lazyPanel<T extends Component>(
 			// A host's <Suspense> would otherwise hold the panel without a loading state.
 			suspensible: false,
 		});
-	// Set by "Try again": a failure that answers a retry takes focus back to its
-	// button, which replaced the one the user pressed.
-	let retried = false;
 	const Failed = defineComponent({
 		name: 'PreviewPanelFailed',
 		// The panel's own props and listeners have nowhere to go.
 		inheritAttrs: false,
 		setup() {
-			const focusRetry = retried;
-			retried = false;
+			const intent = inject(retryFocusKey, { requested: false });
+			const focusRetry = intent.requested;
+			intent.requested = false;
 			return () =>
 				h(PanelLoading, {
 					placement,
 					failed: true,
 					focusRetry,
 					onRetry: () => {
-						retried = true;
+						intent.requested = true;
 						current.value = attempt();
 					},
 				});
@@ -56,10 +75,14 @@ export function lazyPanel<T extends Component>(
 	return defineComponent({
 		name: 'LazyPreviewPanel',
 		inheritAttrs: false,
-		setup:
-			(_, { attrs, slots }) =>
-			() =>
-				h(current.value, attrs, slots),
+		setup(_, { attrs, slots }) {
+			const intent: RetryFocusIntent = { requested: false };
+			provide(retryFocusKey, intent);
+			onBeforeUnmount(() => {
+				intent.requested = false;
+			});
+			return () => h(current.value, attrs, slots);
+		},
 	}) as unknown as T;
 }
 
