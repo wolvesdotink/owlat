@@ -103,14 +103,23 @@ const toasts = ref<Toast[]>([]);
 // the callback exactly-once.
 const dismissHandlers = new Map<string, () => void>();
 
-/** Book-keeping for a toast with an observed action, beside the list for the same reason. */
+/**
+ * Book-keeping for a toast with an observed action, beside the list for the
+ * same reason. It lives as long as the toast does, so the card's action button
+ * can never dismiss an observed toast, whatever state its action is in.
+ */
 interface ObservedEntry {
 	action: ToastObservedAction;
 	/** The toast's own lifetime in ms; non-positive means sticky. */
 	durationMs: number;
 	timer: ReturnType<typeof setTimeout> | undefined;
-	/** The deadline came while the action ran: no retry is offered after it. */
-	isPastDeadline: boolean;
+	/**
+	 * When the action stops being offered, as a `Date.now()` instant fixed at
+	 * show time (`Infinity` for a sticky toast). Checked before the action runs
+	 * and before a retry brings it back, so neither depends on whether an
+	 * overdue timer has fired yet.
+	 */
+	actionDeadlineAt: number;
 }
 
 const observed = new Map<string, ObservedEntry>();
@@ -148,11 +157,7 @@ function removeToast(id: string): void {
 
 /** The lifetime ran out. A running observed action holds its toast until it settles. */
 function expireToast(id: string): void {
-	const entry = observed.get(id);
-	if (entry && toasts.value.find((t) => t.id === id)?.pending) {
-		entry.isPastDeadline = true;
-		return;
-	}
+	if (observed.has(id) && toasts.value.find((t) => t.id === id)?.pending) return;
 	removeToast(id);
 }
 
@@ -167,13 +172,19 @@ function renderedAction(id: string, label: string): ToastAction {
 
 /**
  * Run an observed action once. A press while it runs is ignored, so the work
- * cannot start twice; a rejection is re-thrown after the toast is updated, so
- * an unexpected error still surfaces the way a discarded promise's would.
+ * cannot start twice; a press after the deadline (its timer not yet run) only
+ * lets the toast go. A rejection, or a synchronous throw, is re-thrown after
+ * the toast is updated, so an unexpected error still surfaces the way a
+ * discarded promise's would.
  */
 async function runObservedAction(id: string): Promise<void> {
 	const entry = observed.get(id);
 	const toast = toasts.value.find((t) => t.id === id);
 	if (!entry || !toast?.action || toast.pending) return;
+	if (Date.now() >= entry.actionDeadlineAt) {
+		removeToast(id);
+		return;
+	}
 	patchToast(id, (t) => ({
 		...t,
 		pending: true,
@@ -203,35 +214,43 @@ function settleObservedAction(id: string, outcome: ToastActionOutcome): void {
 		removeToast(id);
 		return;
 	}
-	if (outcome !== false && outcome.retryable && !entry.isPastDeadline) {
-		// Back to idle; the original deadline keeps running.
+	const now = Date.now();
+	if (outcome !== false && outcome.retryable && now < entry.actionDeadlineAt) {
+		// Back to idle until the original deadline, re-armed from the instant so
+		// a timer that already fired while the work ran cannot leave it sticky.
 		patchToast(id, (t) => ({
 			...t,
 			pending: false,
 			action: renderedAction(id, entry.action.label),
 		}));
+		clearTimeout(entry.timer);
+		if (Number.isFinite(entry.actionDeadlineAt)) {
+			entry.timer = setTimeout(() => expireToast(id), entry.actionDeadlineAt - now);
+		}
 		return;
 	}
 	// Not done, and nothing to press again: the message stays true (the thing
 	// the toast announced still stands), marked as not done, for a fresh
 	// reading time as a warning.
 	clearTimeout(entry.timer);
-	observed.delete(id);
+	entry.timer = undefined;
 	const toast = toasts.value.find((t) => t.id === id);
 	if (!toast) return;
 	const type: ToastType = toast.type === 'error' ? 'error' : 'warning';
 	patchToast(id, () => ({ id, message: withNote(toast.message, entry.action.failedNote), type }));
 	if (!isSticky(entry.durationMs)) {
-		setTimeout(() => removeToast(id), DEFAULT_DURATIONS_MS[type]);
+		entry.timer = setTimeout(() => removeToast(id), DEFAULT_DURATIONS_MS[type]);
 	}
 }
 
 /**
- * The card's action button was pressed. A plain action is done with its toast;
- * an observed one that is now running keeps it until the outcome is in.
+ * The card's action button was pressed. A plain action is done with its toast.
+ * An observed toast never goes on the press: its outcome, its deadline or the
+ * close button decide, so even an action that settled synchronously (a throw
+ * before its promise) keeps the card showing that outcome.
  */
 function dismissAfterAction(id: string): void {
-	if (toasts.value.find((t) => t.id === id)?.pending) return;
+	if (observed.has(id)) return;
 	removeToast(id);
 }
 
@@ -270,7 +289,12 @@ export function useToast() {
 					expireToast(id);
 				}, durationMs);
 		if (observedAction) {
-			observed.set(id, { action: observedAction, durationMs, timer, isPastDeadline: false });
+			observed.set(id, {
+				action: observedAction,
+				durationMs,
+				timer,
+				actionDeadlineAt: isSticky(durationMs) ? Number.POSITIVE_INFINITY : Date.now() + durationMs,
+			});
 		}
 
 		return id;

@@ -81,6 +81,58 @@ describe('Toast card with an observed action', () => {
 		expect(failed.className).toContain('bg-warning-subtle');
 	});
 
+	it('marks the pending action aria-disabled but keeps it focusable', async () => {
+		let finish!: (outcome: boolean | { retryable: true }) => void;
+		mounted = mountUi(Toast);
+		useToast().showToast('Moved to Later', 'success', {
+			durationMs: 0,
+			observedAction: {
+				label: 'Undo',
+				pendingLabel: 'Undoing…',
+				failedNote: 'Not undone.',
+				run: () => new Promise((resolve) => (finish = resolve)),
+			},
+		});
+		await nextTick();
+		const idle = button(card('Moved to Later'), 'Undo')!;
+		expect(idle.hasAttribute('aria-disabled')).toBe(false);
+
+		idle.click();
+		await nextTick();
+		const pending = button(card('Moved to Later'), 'Undoing…')!;
+		expect(pending.getAttribute('aria-disabled')).toBe('true');
+		expect(pending.hasAttribute('disabled')).toBe(false);
+		pending.focus();
+		expect(document.activeElement).toBe(pending);
+
+		finish({ retryable: true });
+		await vi.waitFor(() => expect(button(card('Moved to Later'), 'Undo')).toBeDefined());
+		expect(button(card('Moved to Later'), 'Undo')!.hasAttribute('aria-disabled')).toBe(false);
+	});
+
+	it('moves focus from the action to close when a failure takes the action away', async () => {
+		let finish!: (ok: boolean) => void;
+		await renderObserved(() => new Promise<boolean>((resolve) => (finish = resolve)));
+		const action = button(card('Moved to Later'), 'Undo')!;
+		action.focus();
+		action.click();
+		await nextTick();
+		expect(document.activeElement?.textContent?.trim()).toBe('Undoing…');
+
+		finish(false);
+		await vi.waitFor(() => expect(card('Not undone.')).toBeDefined());
+		await nextTick();
+		expect(document.activeElement).toBe(button(card('Not undone.'), 'Dismiss notification'));
+	});
+
+	it('leaves focus alone when the action was not focused', async () => {
+		await renderObserved(async () => false);
+		button(card('Moved to Later'), 'Undo')!.click();
+		await vi.waitFor(() => expect(card('Not undone.')).toBeDefined());
+		await nextTick();
+		expect(document.activeElement).toBe(document.body);
+	});
+
 	it('closes a pending toast from its close button', async () => {
 		await renderObserved(() => new Promise<boolean>(() => {}));
 		button(card('Moved to Later'), 'Undo')!.click();

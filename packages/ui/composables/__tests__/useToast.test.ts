@@ -334,6 +334,60 @@ describe('useToast — observed actions', () => {
 		expect(current()?.action).toBeUndefined();
 	});
 
+	it('keeps the card showing the outcome when the action throws before returning a promise', async () => {
+		const run = vi.fn((): Promise<boolean> => {
+			throw new Error('sync boom');
+		});
+		const { current, press } = observedToast(run);
+		// press() runs the action and then asks to be dismissed, as the card does.
+		await expect(press()).rejects.toThrow('sync boom');
+		expect(current()).toMatchObject({ message: 'Moved to Later. Not undone.', type: 'warning' });
+		expect(current()?.action).toBeUndefined();
+	});
+
+	it('never dismisses an observed toast on press, even after its outcome is in', async () => {
+		const { id, current, press } = observedToast(async () => false);
+		await press();
+		useToast().dismissAfterAction(id);
+		expect(current()?.message).toBe('Moved to Later. Not undone.');
+	});
+
+	it('does not bring the action back after its deadline, even before the overdue timer runs', async () => {
+		const work = deferred<boolean | { retryable: true }>();
+		const { current, press } = observedToast(() => work.promise);
+		vi.advanceTimersByTime(7000);
+		const running = press();
+		// The clock passes the deadline while no timer gets to run (a throttled tab).
+		vi.setSystemTime(Date.now() + 2000);
+		work.resolve({ retryable: true });
+		await running;
+		expect(current()).toMatchObject({ message: 'Moved to Later. Not undone.' });
+		expect(current()?.action).toBeUndefined();
+	});
+
+	it('does not run the action when pressed past its deadline before the timer runs', async () => {
+		const run = vi.fn(async () => true);
+		const { current, press } = observedToast(run);
+		vi.setSystemTime(Date.now() + 8000);
+		await press();
+		expect(run).not.toHaveBeenCalled();
+		expect(current()).toBeUndefined();
+	});
+
+	it('keeps the original deadline for an action a retry brought back', async () => {
+		const work = deferred<boolean | { retryable: true }>();
+		const { current, press } = observedToast(() => work.promise);
+		const running = press();
+		vi.advanceTimersByTime(1000);
+		work.resolve({ retryable: true });
+		await running;
+		expect(current()).toMatchObject({ pending: false, action: { label: 'Undo' } });
+		vi.advanceTimersByTime(6999);
+		expect(current()).toBeDefined();
+		vi.advanceTimersByTime(1);
+		expect(current()).toBeUndefined();
+	});
+
 	it('removes an unpressed observed toast at its deadline, exactly like a plain one', () => {
 		const run = vi.fn(async () => true);
 		const { current } = observedToast(run);

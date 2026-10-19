@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, ref, watch, watchPostEffect } from 'vue';
 import type { Toast, ToastType } from '../../composables/useToast';
 import { useUiI18n } from '../../composables/useUiI18n';
 
@@ -90,6 +90,40 @@ const style = computed<ToastStyle>(() => {
 		actionHover: `${base.text} opacity-70 cursor-progress pointer-events-none`,
 	};
 });
+
+const cardRef = ref<HTMLElement | null>(null);
+const closeRef = ref<HTMLButtonElement | null>(null);
+
+/** The inline action button: the card's only button besides close. */
+function actionButton(): HTMLButtonElement | undefined {
+	return [...(cardRef.value?.querySelectorAll('button') ?? [])].find((b) => b !== closeRef.value);
+}
+
+/*
+ * An observed action (see ToastObservedAction) does not take the toast with it
+ * on press. While it runs, the action reads as disabled (`aria-disabled`, still
+ * focusable; the store ignores the press); when it ends without the toast
+ * going, the button disappears and focus that was on it moves to close rather
+ * than dropping to <body>. Both are kept out of the action button's markup,
+ * which is shared with the phone-layout rewrite of this card.
+ */
+watchPostEffect(() => {
+	const button = actionButton();
+	if (!button) return;
+	if (props.toast.pending) button.setAttribute('aria-disabled', 'true');
+	else button.removeAttribute('aria-disabled');
+});
+
+watch(
+	() => Boolean(props.toast.action),
+	(hasAction, hadAction) => {
+		// Runs before the DOM update, while the leaving button still holds focus.
+		if (hasAction || !hadAction) return;
+		const button = actionButton();
+		if (!button || button !== document.activeElement) return;
+		void nextTick(() => closeRef.value?.focus());
+	}
+);
 </script>
 
 <template>
@@ -98,6 +132,7 @@ const style = computed<ToastStyle>(() => {
 			'flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border min-w-[280px] max-w-md',
 			style.container,
 		]"
+		ref="cardRef"
 	>
 		<!-- Icon -->
 		<div
@@ -132,6 +167,7 @@ const style = computed<ToastStyle>(() => {
 
 		<!-- Close button (optional - auto-dismisses but allows manual close) -->
 		<button
+			ref="closeRef"
 			:class="['p-1 rounded-lg transition-colors flex-shrink-0', style.closeHover]"
 			:aria-label="t('ui.toast.dismiss')"
 			@click="emit('close')"
