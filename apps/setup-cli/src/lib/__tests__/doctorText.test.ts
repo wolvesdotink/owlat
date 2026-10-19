@@ -96,25 +96,58 @@ describe('doctor text — known-secret pass', () => {
 		);
 	});
 
-	it('drops a whole runtime part when an encoding it does not enumerate still holds a secret', () => {
+	it('masks mixed-case and form-encoded echoes of a configured query secret', () => {
 		// Configured query values: `URL` decodes them, so the secrets are the
 		// decoded strings, while the echo carries them encoded.
 		const redact = createDoctorRedactor({
 			MTA_API_URL: 'http://mta:3100/?token=private%2ftoken%2Bend&alt=private+token',
 		});
-		// Mixed-case escapes.
+		// Mixed-case escapes: the encoded form matches case-insensitively.
 		expect(redact('connect ECONNREFUSED http://mta:3100/?token=private%2ftoken%2Bend')).toBe(
-			'[redacted]'
+			'connect ECONNREFUSED http://mta:3100/?token=[redacted]'
 		);
 		// `+` for a space (form encoding).
-		expect(redact('GET /?alt=private+token failed')).toBe('[redacted]');
+		expect(redact('GET /?alt=private+token failed')).toBe('GET /?alt=[redacted] failed');
 	});
 
-	it('drops a whole runtime part for a lower-case, mixed-case or double escape of a key value', () => {
+	it('masks any case of a key value, and drops a part holding a double escape', () => {
 		const redact = createDoctorRedactor({ MTA_API_KEY: 'a/b+c' });
-		expect(redact('key=a%2fb%2Bc')).toBe('[redacted]');
+		expect(redact('key=a%2fb%2Bc')).toBe('key=[redacted]');
+		expect(redact('key=A%2FB%2BC')).toBe('key=[redacted]');
+		expect(redact('key=A/B+C')).toBe('key=[redacted]');
 		expect(redact('key=a%252Fb%252Bc')).toBe('[redacted]');
-		expect(redact('key=A%2FB%2BC')).toBe('[redacted]');
+	});
+
+	it('drops a part whose escapes the masks of another secret split apart', () => {
+		const redact = createDoctorRedactor({ A_KEY: 'private/token+end', B_KEY: '25' });
+		const fullyEncoded = [...Buffer.from('private/token+end')]
+			.map((byte) => `%${byte.toString(16).padStart(2, '0')}`)
+			.join('');
+		let threeMore = fullyEncoded;
+		for (let round = 0; round < 3; round++) threeMore = encodeURIComponent(threeMore);
+		expect(redact(`upstream said ${threeMore}`)).toBe('[redacted]');
+	});
+
+	it('drops a part where invalid UTF-8 makes an escape run undecodable', () => {
+		const redact = createDoctorRedactor({ A_KEY: 'private/token+end' });
+		const fullyEncoded = [...Buffer.from('private/token+end')]
+			.map((byte) => `%${byte.toString(16).padStart(2, '0')}`)
+			.join('');
+		expect(redact(`upstream said %FF${fullyEncoded}`)).toBe('[redacted]');
+	});
+
+	it('leaves a plain error with no escape and no secret fully readable', () => {
+		const redact = createDoctorRedactor({ A_KEY: 'private/token+end' });
+		expect(redact('connect ECONNREFUSED 10.0.0.1:3100 (after 3 attempts)')).toBe(
+			'connect ECONNREFUSED 10.0.0.1:3100 (after 3 attempts)'
+		);
+	});
+
+	// Intended: an escape outside the masks could be any encoding of a secret,
+	// so an error that merely contains an unrelated `%20` loses its detail too.
+	it('drops a part with an unrelated escape even when no secret is in it', () => {
+		const redact = createDoctorRedactor({ A_KEY: 'private/token+end' });
+		expect(redact('GET /files/annual%20report.pdf returned 404')).toBe('[redacted]');
 	});
 
 	it('keeps the readable rest of a part when exact replacement removed every secret', () => {

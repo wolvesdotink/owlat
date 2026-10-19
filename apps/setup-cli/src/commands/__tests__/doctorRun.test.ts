@@ -31,10 +31,14 @@ const encodeRounds = (text: string, rounds: number) => {
 };
 const FIVE_ROUNDS = encodeRounds(DEEP_SECRET, 5);
 // Four layers where the first percent-encodes every byte.
-const FOUR_ROUNDS_FULL_BYTES = encodeRounds(
-	[...Buffer.from(DEEP_SECRET)].map((byte) => `%${byte.toString(16).padStart(2, '0')}`).join(''),
-	3
-);
+// Every byte percent-escaped: no exact form, and the first layer of the next two.
+const FULL_BYTES = [...Buffer.from(DEEP_SECRET)]
+	.map((byte) => `%${byte.toString(16).padStart(2, '0')}`)
+	.join('');
+const FOUR_ROUNDS_FULL_BYTES = encodeRounds(FULL_BYTES, 3);
+// The same text again, for the fixture where a second secret (`25`) is masked
+// inside its escapes and splits them.
+const THREE_ROUNDS_OVER_FULL_BYTES = FOUR_ROUNDS_FULL_BYTES;
 
 interface Fixture {
 	env: string;
@@ -234,6 +238,51 @@ const FIXTURES: Record<string, Fixture> = {
 			throw new Error(`connect ECONNREFUSED ${url}`);
 		},
 		secrets: ['private[redacted]%2ftoken', 'private[redacted]/token'],
+	},
+	splitEscapes: {
+		env: [
+			'EMAIL_PROVIDER=mta',
+			'MTA_API_URL=http://mta:3100',
+			`MTA_API_KEY=${DEEP_SECRET}`,
+			'SPLIT_KEY=25',
+		].join('\n'),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: () => {
+			throw new Error(`upstream said ${THREE_ROUNDS_OVER_FULL_BYTES}`);
+		},
+		secrets: [DEEP_SECRET, FULL_BYTES, THREE_ROUNDS_OVER_FULL_BYTES],
+	},
+	invalidUtf8: {
+		env: ['EMAIL_PROVIDER=mta', 'MTA_API_URL=http://mta:3100', `MTA_API_KEY=${DEEP_SECRET}`].join(
+			'\n'
+		),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: () => {
+			throw new Error(`upstream said %FF${FULL_BYTES}`);
+		},
+		secrets: [DEEP_SECRET, FULL_BYTES],
+	},
+	plainError: {
+		env: ['EMAIL_PROVIDER=mta', 'MTA_API_URL=http://mta:3100', `MTA_API_KEY=${DEEP_SECRET}`].join(
+			'\n'
+		),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: () => {
+			throw new Error('connect ECONNREFUSED 10.0.0.1:3100');
+		},
+	},
+	unrelatedEscape: {
+		env: ['EMAIL_PROVIDER=mta', 'MTA_API_URL=http://mta:3100', `MTA_API_KEY=${DEEP_SECRET}`].join(
+			'\n'
+		),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: () => {
+			throw new Error('GET /files/annual%20report.pdf returned 404');
+		},
 	},
 	commonWordSecret: {
 		// A secret equal to a word in key names and subjects: identifiers stay intact.
@@ -450,9 +499,35 @@ describe('doctor --json — report contents', () => {
 		);
 	});
 
-	it('drops a runtime part that echoes a mixed-case or form-encoded query secret', async () => {
+	it('masks mixed-case and form-encoded echoes of a query secret', async () => {
 		expect(await messageOf('mixedCaseQuery', 'mta.health')).toBe(
-			'http://mta:3100/ is unreachable ([redacted])'
+			'http://mta:3100/ is unreachable ' +
+				'(connect ECONNREFUSED http://mta:3100/?token=[redacted]&alt=[redacted]/health)'
+		);
+	});
+
+	it('drops a runtime part whose escapes another secret splits apart', async () => {
+		expect(await messageOf('splitEscapes', 'mta.health')).toBe(
+			'http://mta:3100/health is unreachable ([redacted])'
+		);
+	});
+
+	it('drops a runtime part where invalid UTF-8 precedes an encoded secret', async () => {
+		expect(await messageOf('invalidUtf8', 'mta.health')).toBe(
+			'http://mta:3100/health is unreachable ([redacted])'
+		);
+	});
+
+	it('keeps a plain runtime error with no escape and no secret readable', async () => {
+		expect(await messageOf('plainError', 'mta.health')).toBe(
+			'http://mta:3100/health is unreachable (connect ECONNREFUSED 10.0.0.1:3100)'
+		);
+	});
+
+	// Intended trade: any escape outside the masks drops the part.
+	it('drops a runtime error that holds an unrelated escape', async () => {
+		expect(await messageOf('unrelatedEscape', 'mta.health')).toBe(
+			'http://mta:3100/health is unreachable ([redacted])'
 		);
 	});
 

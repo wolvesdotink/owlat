@@ -16,8 +16,10 @@
  *   status line, an error message).
  *
  * Everything that is not code-owned then passes the known-secret pass of
- * {@link createDoctorRedactor} as defence in depth: every secret from `.env`,
- * in raw, URL-encoded and base64 form, with no length exemption.
+ * {@link createDoctorRedactor} as defence in depth: every secret from `.env`
+ * is masked in its raw, URL-encoded and base64 forms, with no length
+ * exemption, and a part with any percent-escape left outside those masks is
+ * dropped whole.
  */
 
 import type { EnvMap } from './env';
@@ -129,72 +131,37 @@ function urlSecrets(value: string): string[] {
 	return [...encoded, ...decoded, ...url.searchParams.values()];
 }
 
-/** Every printed form a secret could take: raw, URL-encoded (either hex case) and base64. */
+/**
+ * Every printed form of a secret the exact pass masks: raw, URL-encoded (as
+ * `encodeURIComponent` and as a form value, `+` for a space) and base64
+ * (padded, unpadded, url-safe). Matched case-insensitively, which also covers
+ * either hex case in an escape.
+ */
 function secretForms(secret: string): string[] {
 	const encoded = encodeURIComponent(secret);
 	const base64 = Buffer.from(secret).toString('base64');
 	return [
 		secret,
 		encoded,
-		encoded.replace(/%[0-9A-F]{2}/g, (escape) => escape.toLowerCase()),
+		encoded.replace(/%20/g, '+'),
+		new URLSearchParams([['', secret]]).toString().slice(1),
 		base64,
 		base64.replace(/=+$/, ''),
 		Buffer.from(secret).toString('base64url'),
 	];
 }
 
-/** How many layers of percent-encoding the fail-closed check peels off. */
-const MAX_DECODE_ROUNDS = 3;
-
-/**
- * One round of form decoding: `+` is a space, and every run of `%XX` escapes
- * (either hex case) is decoded; a run that is not valid UTF-8 stays as written.
- */
-function formDecode(text: string): string {
-	return text.replace(/\+/g, ' ').replace(/(?:%[0-9a-f]{2})+/gi, (run) => {
-		try {
-			return decodeURIComponent(run);
-		} catch {
-			return run;
-		}
-	});
-}
-
-interface NormalisedViews {
-	/** The text as written and after each decoding round, lower-cased. */
-	views: string[];
-	/**
-	 * False when one more round would still change the text: it is encoded
-	 * deeper than {@link MAX_DECODE_ROUNDS} peels off, so what it decodes to is
-	 * unknown and it must be treated as holding a secret.
-	 */
-	stable: boolean;
-}
-
-function normalise(text: string): NormalisedViews {
-	const views = [text];
-	let current = text;
-	for (let round = 0; round < MAX_DECODE_ROUNDS; round++) {
-		const next = formDecode(current);
-		if (next === current) return { views: views.map((view) => view.toLowerCase()), stable: true };
-		views.push(next);
-		current = next;
-	}
-	return {
-		views: views.map((view) => view.toLowerCase()),
-		stable: formDecode(current) === current,
-	};
-}
-
 /** A half-open `[start, end)` span of the input. */
 type Span = [number, number];
 
-/** Every occurrence of every form, overlapping ones included. */
-function exactSpans(text: string, forms: readonly string[]): Span[] {
+/** Every case-insensitive occurrence of every form, overlapping ones included. */
+function exactSpans(text: string, forms: readonly RegExp[]): Span[] {
 	const spans: Span[] = [];
 	for (const form of forms) {
-		for (let at = text.indexOf(form); at !== -1; at = text.indexOf(form, at + 1)) {
-			spans.push([at, at + form.length]);
+		form.lastIndex = 0;
+		for (let match = form.exec(text); match; match = form.exec(text)) {
+			spans.push([match.index, match.index + match[0].length]);
+			form.lastIndex = match.index + 1;
 		}
 	}
 	return spans;
@@ -211,92 +178,55 @@ function mergeSpans(spans: readonly Span[]): Span[] {
 	return merged;
 }
 
-/** The text outside the spans, as separate pieces (never joined across a span). */
-function outside(text: string, spans: readonly Span[]): string[] {
-	const pieces: string[] = [];
-	let from = 0;
-	for (const [start, end] of mergeSpans(spans)) {
-		pieces.push(text.slice(from, start));
-		from = end;
-	}
-	pieces.push(text.slice(from));
-	return pieces;
-}
-
-interface SecretGroup {
-	/** The printed forms replaced exactly. */
-	forms: string[];
-	/** The forms normalised as {@link normalise} does, for the fail-closed check. */
-	needles: string[];
-}
+/** A percent-escape, the one thing every deeper or partial URL encoding of a secret contains. */
+const PERCENT_ESCAPE = /%[0-9a-f]{2}/i;
 
 /**
  * The known-secret pass for one doctor run, over untrusted text only.
  *
- * Every known printed form of every secret (raw, URL-encoded, base64) is
- * located exactly, as positions in the input, and masked in the output; the
- * rest of an error message stays readable. Positions, not marker characters:
- * nothing is spliced into the text, so a literal `[redacted]` in runtime text
- * is ordinary text and can never fake or split a replacement.
+ * Step 1, the exact pass: every printed form of every secret (see
+ * {@link secretForms}) is located as positions in the input, and the union is
+ * masked in the output. Positions, not marker characters: nothing is spliced
+ * into the text, so a literal `[redacted]` in runtime text is ordinary text.
  *
- * Then the guarantee. For each secret, the text outside ONLY that secret's
- * own exact spans is normalised (decoded and lower-cased as {@link normalise}
- * does); if the secret, normalised the same way, occurs in any view, the WHOLE
- * part becomes `[redacted]`. Checking each secret against its own spans means
- * another secret's replacement can never cover half of an encoded occurrence
- * and leave the other half printed. And if any text left unmasked is encoded
- * deeper than the decoding rounds reach, the whole part goes too. That catches
- * the encodings the exact pass does not enumerate (mixed-case escapes, `+` for
- * a space, repeated encoding) without listing them. Runtime parts are error
- * strings and status lines; losing one is the safe failure.
+ * Step 2, the guarantee, with no decoding: if the text outside the masks,
+ * joined as a reader would join it after deleting the markers, contains any
+ * percent-escape, the WHOLE part becomes `[redacted]`. A secret the exact pass
+ * did not mask can only hide in an encoding, and every repeated, partial or
+ * odd percent-encoding of it (double encoding, every byte escaped, escapes
+ * split around another secret's mask, an invalid `%FF` in front) carries
+ * escapes. The cost is readability: a runtime error whose URL holds an
+ * unrelated `%20` loses its detail too. For doctor output that is the right
+ * trade.
  *
  * Secrets are every secret-keyed `.env` value and every credential part of a
  * configured URL. No length exemption: code-owned text is out of reach, so
  * over-redaction can only cost runtime detail.
  */
 export function createDoctorRedactor(env: EnvMap): (text: string) => string {
-	// Grouped by what a secret decodes to, so the encoded and decoded forms of
-	// one URL password are one secret and never "find" each other.
-	const bySecret = new Map<string, SecretGroup>();
+	const forms = new Set<string>();
 	for (const [key, value] of Object.entries(env)) {
 		const raw = SECRET_KEY.test(key) ? [value, ...urlSecrets(value)] : urlSecrets(value);
 		for (const secret of raw) {
-			if (!secret) continue;
-			const identity = normalise(secret).views.at(-1)!;
-			const group = bySecret.get(identity) ?? { forms: [], needles: [] };
-			const forms = secretForms(secret).filter(Boolean);
-			group.forms = [...new Set([...group.forms, ...forms])];
-			group.needles = [
-				...new Set([...group.needles, ...forms.flatMap((form) => normalise(form).views)]),
-			].filter(Boolean);
-			bySecret.set(identity, group);
+			if (secret) for (const form of secretForms(secret)) if (form) forms.add(form.toLowerCase());
 		}
 	}
-	const groups = [...bySecret.values()];
-	if (groups.length === 0) return (text) => text;
+	if (forms.size === 0) return (text) => text;
+	const patterns = [...forms].map(
+		(form) => new RegExp(form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+	);
 	return (text) => {
-		const masked: Span[] = [];
-		for (const group of groups) {
-			const own = exactSpans(text, group.forms);
-			// Outside ONLY this secret's own exact spans: another secret's
-			// replacement must not hide part of an occurrence of this one.
-			for (const piece of outside(text, own)) {
-				const { views } = normalise(piece);
-				if (group.needles.some((needle) => views.some((view) => view.includes(needle)))) {
-					return REDACTED;
-				}
-			}
-			masked.push(...own);
-		}
-		const spans = mergeSpans(masked);
-		// Encoded deeper than the decoding rounds reach: what it hides is unknown.
-		if (outside(text, spans).some((piece) => !normalise(piece).stable)) return REDACTED;
+		const spans = mergeSpans(exactSpans(text, patterns));
+		let visible = '';
 		let out = '';
 		let from = 0;
 		for (const [start, end] of spans) {
+			visible += text.slice(from, start);
 			out += text.slice(from, start) + REDACTED;
 			from = end;
 		}
+		visible += text.slice(from);
+		if (PERCENT_ESCAPE.test(visible)) return REDACTED;
 		return out + text.slice(from);
 	};
 }
