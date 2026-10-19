@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { useEscapeLayer } from '../../composables/useEscapeLayer';
 import { tabbableIn } from '../../utils/tabbable';
+import { useEscapeLayer } from '../../composables/useEscapeLayer';
 
 type DropdownPosition = 'left' | 'right';
 
@@ -140,32 +140,44 @@ function tabPastTrigger(event: KeyboardEvent) {
 	else (document.activeElement as HTMLElement | null)?.blur();
 }
 
+/** A press on something inside the menu, the only presses the menu acts on. */
+function inMenu(event: KeyboardEvent): HTMLElement | null {
+	const target = event.target as HTMLElement | null;
+	return isOpen.value && target && menuRef.value?.contains(target) ? target : null;
+}
+
 /**
- * Keys pressed inside the menu, and only there: a dialog opened over it, or
- * anything else holding focus, keeps its keys. It listens on the window in the
- * capture phase, so Tab reaches it before a surrounding dialog's focus trap.
+ * Tab leaves the menu and closes it. The press is not prevented: from the
+ * trigger, where the menu belongs in the page, the browser moves focus on to
+ * the next (or previous) control as it would anyway. The menu itself is
+ * teleported to the end of <body>, so from there Tab would leave the page. A
+ * trigger that cannot take focus gets the move made for it.
+ *
+ * On the window in the capture phase, so it runs before a surrounding dialog's
+ * focus trap, which then sees focus on the trigger inside the dialog.
+ */
+const handleTab = (event: KeyboardEvent) => {
+	if (event.key !== 'Tab' || !inMenu(event)) return;
+	isOpen.value = false;
+	const control = triggerControl();
+	control?.focus();
+	if (!control || document.activeElement !== control) tabPastTrigger(event);
+};
+watch(isOpen, (open) => {
+	if (open) window.addEventListener('keydown', handleTab, true);
+	else window.removeEventListener('keydown', handleTab, true);
+});
+onUnmounted(() => window.removeEventListener('keydown', handleTab, true));
+
+/**
+ * Arrows, Home and End move between the items, for a press on an item only: a
+ * field or other widget in the menu keeps them (the caret, its own options),
+ * and so does anything outside it, like a dialog opened over the menu.
  */
 const handleKeydown = (event: KeyboardEvent) => {
+	const target = inMenu(event);
 	const menu = menuRef.value;
-	const target = event.target as HTMLElement | null;
-	if (!isOpen.value || !menu || !target || !menu.contains(target)) return;
-
-	// Tab leaves the menu and closes it. The press is not prevented: from the
-	// trigger, where the menu belongs in the page, the browser moves focus on
-	// to the next (or previous) control as it would anyway. The menu itself is
-	// teleported to the end of <body>, so from there Tab would leave the page.
-	// A trigger that cannot take focus gets the move made for it.
-	if (event.key === 'Tab') {
-		isOpen.value = false;
-		const control = triggerControl();
-		control?.focus();
-		if (!control || document.activeElement !== control) tabPastTrigger(event);
-		return;
-	}
-
-	// Arrows, Home and End move between the items. A field or other widget in
-	// the menu keeps them for itself (the caret, its own options).
-	if (!target.matches(ITEM_SELECTOR)) return;
+	if (!menu || !target?.matches(ITEM_SELECTOR)) return;
 	const items = Array.from(menu.querySelectorAll<HTMLElement>(ITEM_SELECTOR));
 	// The nearest enabled item from `from`, stepping by `by` and wrapping.
 	const step = (from: number, by: 1 | -1) => {
@@ -209,7 +221,7 @@ watch(isOpen, (newValue) => {
 watch(isOpen, async (open) => {
 	if (open) {
 		document.addEventListener('click', handleClickOutside);
-		window.addEventListener('keydown', handleKeydown, true);
+		document.addEventListener('keydown', handleKeydown);
 		window.addEventListener('scroll', updatePosition, true);
 		window.addEventListener('resize', updatePosition);
 
@@ -219,7 +231,7 @@ watch(isOpen, async (open) => {
 		firstItem?.focus();
 	} else {
 		document.removeEventListener('click', handleClickOutside);
-		window.removeEventListener('keydown', handleKeydown, true);
+		document.removeEventListener('keydown', handleKeydown);
 		window.removeEventListener('scroll', updatePosition, true);
 		window.removeEventListener('resize', updatePosition);
 	}
@@ -227,7 +239,7 @@ watch(isOpen, async (open) => {
 
 onUnmounted(() => {
 	document.removeEventListener('click', handleClickOutside);
-	window.removeEventListener('keydown', handleKeydown, true);
+	document.removeEventListener('keydown', handleKeydown);
 	window.removeEventListener('scroll', updatePosition, true);
 	window.removeEventListener('resize', updatePosition);
 });
