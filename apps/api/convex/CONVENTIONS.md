@@ -945,9 +945,24 @@ migration that emptied it. The guard then checks the previous release's rows
 without that field. The deploy is what enforces the precondition: Convex
 validates every stored row against the new schema and refuses one that a row
 does not match, so a deployment whose migration has not completed keeps its
-old release. The guard covers
-the schema half of the contract only. It does not check function arguments,
-JSON stored in strings or what values mean, and it is no substitute for
+old release.
+
+The same snapshot carries the previous release's callable surface: the kind,
+visibility and argument validator of every public function and of each internal
+function a worker addresses by string path (`'mail/imap/fetch:fetchEnvelopes'`
+in `apps/imap`, `apps/mail-sync`, `apps/code-worker`, ...). Its companion
+`convex/__tests__/schemaCompat/functionArgs.test.ts` builds that release's
+calls from those validators the way the table check builds rows, and fails when
+a current function refuses one: the function removed or renamed, its kind
+changed, a public function made internal, an argument removed or renamed, a new
+required argument, an optional one made required, a type changed, a union
+narrowed. A function deliberately removed after its shim release goes in that
+test's `RETIRED_FUNCTIONS`, and an argument the previous release no longer
+sends in `RETIRED_ARGUMENTS`, in the contract PR.
+
+The guard does not check result shapes (a removed or changed result field), the
+arguments of jobs the previous release scheduled on internal functions, HTTP
+routes, JSON stored in strings or what values mean, and it is no substitute for
 upgrading a real previous-release dataset. The release E2E does not do that
 either: its seeded leg carries over Redis and ClamAV volumes, not Convex data.
 

@@ -152,3 +152,33 @@ export function rowsForTable(validator: ValidatorJSON): JSONValue[] {
 	}
 	return [...rows.values()];
 }
+
+/** `row` without the field at `path`, given as segments (see {@link withoutRetiredFields}). */
+function withoutField(row: JSONValue, path: readonly string[]): JSONValue {
+	const [segment, ...rest] = path;
+	if (segment === undefined || row === null || typeof row !== 'object' || Array.isArray(row)) {
+		return row;
+	}
+	const isArray = segment.endsWith('[]');
+	const name = isArray ? segment.slice(0, -2) : segment;
+	if (!(name in row)) return row;
+	if (rest.length === 0) {
+		const { [name]: _removed, ...kept } = row;
+		return kept;
+	}
+	const value = row[name] as JSONValue;
+	const next =
+		isArray && Array.isArray(value)
+			? value.map((item) => withoutField(item, rest))
+			: withoutField(value, rest);
+	return { ...row, [name]: next };
+}
+
+/**
+ * `row` without the fields at `paths`: `.` between fields, `[]` for every
+ * element of an array. How a retired field or argument is read out of what
+ * the previous release stored or sent.
+ */
+export function withoutRetiredFields(row: JSONValue, paths: readonly string[] = []): JSONValue {
+	return paths.reduce((current, path) => withoutField(current, path.split('.')), row);
+}
