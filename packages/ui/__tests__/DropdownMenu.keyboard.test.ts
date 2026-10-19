@@ -32,7 +32,11 @@ type TriggerState = 'enabled' | 'disabled' | 'gone';
 /** A menu as the app mounts it: v-model:open, between two page controls. */
 function mountMenu(
 	items: () => VNode[],
-	{ inModal = false, triggerState = ref<TriggerState>('enabled') as Ref<TriggerState> } = {}
+	{
+		inModal = false,
+		triggerState = ref<TriggerState>('enabled') as Ref<TriggerState>,
+		around = (): VNode[] => [],
+	} = {}
 ) {
 	const open = ref(false);
 	const triggerSlot = () =>
@@ -49,7 +53,9 @@ function mountMenu(
 		setup: () => () => {
 			const page = [
 				h('button', { id: 'before' }, 'Before'),
+				...around(),
 				menu(),
+				...around(),
 				h('button', { id: 'after' }, 'After'),
 			];
 			return inModal ? h(Modal, { open: true, title: 'Edit contact' }, () => page) : h('div', page);
@@ -201,21 +207,74 @@ describe('DropdownMenu keyboard', () => {
 		expect(open.value).toBe(false);
 	});
 
-	it('moves the arrows through plain buttons a caller put in the menu', async () => {
+	it('moves only between its own items: not plain buttons, not a nested menu', async () => {
 		mountMenu(() => [
-			h('button', { 'aria-label': 'Fewer' }, '-'),
-			h('button', { 'aria-label': 'More' }, '+'),
-			h(DropdownMenuItem, null, () => 'Recent'),
+			h('button', { id: 'clear', 'aria-label': 'Clear search' }, 'x'),
+			h(DropdownMenuItem, null, () => 'Duplicate'),
+			h('div', { role: 'menu', 'aria-label': 'Move to' }, [
+				h('button', { role: 'menuitem', tabindex: -1 }, 'Archive folder'),
+			]),
+			h(DropdownMenuItem, null, () => 'Delete'),
 		]);
 		await openByClick();
-		const named = (label: string) => document.querySelector(`[aria-label="${label}"]`);
-		expect(focused()).toBe(named('Fewer'));
+		expect(focused()).toBe(item('Duplicate'));
 		press(focused(), 'ArrowDown');
-		expect(focused()).toBe(named('More'));
+		expect(focused()).toBe(item('Delete'));
 		press(focused(), 'ArrowDown');
-		expect(focused()).toBe(item('Recent'));
+		expect(focused()).toBe(item('Duplicate'));
+
+		// A plain button keeps its keys, and so does an item of the nested menu.
+		for (const id of ['clear', null]) {
+			const own = id ? document.getElementById(id)! : item('Archive folder');
+			own.focus();
+			expect(press(own, 'ArrowDown').defaultPrevented).toBe(false);
+			expect(focused()).toBe(own);
+		}
+	});
+
+	it('leaves a press an item already handled alone', async () => {
+		mountMenu(() => [
+			h(
+				DropdownMenuItem,
+				{ onKeydown: (event: KeyboardEvent) => event.preventDefault() },
+				() => 'Duplicate'
+			),
+			h(DropdownMenuItem, null, () => 'Delete'),
+		]);
+		await openByClick();
 		press(focused(), 'ArrowDown');
-		expect(focused()).toBe(named('Fewer'));
+		expect(focused()).toBe(item('Duplicate'));
+	});
+
+	it('leaves Tab to a dialog nested in the menu', async () => {
+		const trapped: string[] = [];
+		const open = mountMenu(() => [
+			h(DropdownMenuItem, null, () => 'Duplicate'),
+			h(
+				'div',
+				{
+					role: 'dialog',
+					'aria-modal': 'true',
+					// The nested dialog's own trap: Tab wraps to its first field.
+					onKeydown: (event: KeyboardEvent) => {
+						if (event.key !== 'Tab') return;
+						event.preventDefault();
+						trapped.push('tab');
+						document.getElementById('name')!.focus();
+					},
+				},
+				[
+					h('input', { id: 'name', 'aria-label': 'Name' }),
+					h('input', { id: 'note', 'aria-label': 'Note' }),
+				]
+			),
+		]);
+		await openByClick();
+		document.getElementById('note')!.focus();
+		press(focused(), 'Tab');
+		expect(trapped).toEqual(['tab']);
+		expect(open.value).toBe(true);
+		expect(focused()).toBe(document.getElementById('name'));
 	});
 
 	it('steps on from an aria-disabled item that holds focus', async () => {
@@ -259,6 +318,56 @@ describe('DropdownMenu keyboard', () => {
 			expect(press(focused(), 'Tab').defaultPrevented).toBe(true);
 			expect(focused()).toBe(document.getElementById('after'));
 			expect(focused()!.closest('[aria-modal="true"]')).not.toBeNull();
+			expect(open.value).toBe(false);
+		});
+
+		/**
+		 * Controls Tab skips although they look tabbable. happy-dom focuses
+		 * anything, so they refuse focus here the way a browser makes them.
+		 */
+		const refusing = (): VNode[] => [
+			h('button', { style: 'display: none', 'data-refuses': '' }, 'Hidden'),
+			h('input', { type: 'hidden', name: 'token', 'data-refuses': '' }),
+			h('fieldset', { disabled: true }, [h('button', { 'data-refuses': '' }, 'Off')]),
+		];
+		function refuseFocus() {
+			for (const el of document.querySelectorAll<HTMLElement>('[data-refuses]'))
+				el.focus = () => {};
+		}
+
+		for (const inModal of [false, true]) {
+			for (const [shiftKey, lands] of [
+				[false, 'after'],
+				[true, 'before'],
+			] as const) {
+				it(`${shiftKey ? 'Shift+Tab' : 'Tab'} skips controls that refuse focus${inModal ? ' inside a dialog' : ''}`, async () => {
+					const triggerState = ref<TriggerState>('enabled');
+					const open = mountMenu(actions, { inModal, triggerState, around: refusing });
+					await nextTick();
+					refuseFocus();
+					await openByClick();
+					triggerState.value = 'disabled';
+					await nextTick();
+					expect(press(focused(), 'Tab', { shiftKey }).defaultPrevented).toBe(true);
+					expect(focused()).toBe(document.getElementById(lands));
+					expect(open.value).toBe(false);
+				});
+			}
+		}
+
+		it('leaves Tab to the browser when nothing takes focus', async () => {
+			const triggerState = ref<TriggerState>('enabled');
+			const open = mountMenu(actions, { triggerState, around: refusing });
+			await nextTick();
+			for (const id of ['before', 'after'])
+				document.getElementById(id)!.setAttribute('data-refuses', '');
+			refuseFocus();
+			await openByClick();
+			triggerState.value = 'disabled';
+			await nextTick();
+			const from = focused();
+			expect(press(from, 'Tab').defaultPrevented).toBe(false);
+			expect(focused()).toBe(from);
 			expect(open.value).toBe(false);
 		});
 	});

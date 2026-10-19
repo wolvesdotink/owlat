@@ -92,21 +92,29 @@ const handleClickOutside = (event: MouseEvent) => {
 	}
 };
 
-/**
- * What the arrows move between: the menu's items, and any plain button or link
- * a caller put in the menu (a stepper, say). With Tab closing the menu, a
- * control the arrows skipped could not be reached from the keyboard at all.
- */
-const ITEM_KINDS = [
-	...['menuitem', 'menuitemcheckbox', 'menuitemradio'].map((role) => `[role="${role}"]`),
-	'button:not([role])',
-	'a[href]:not([role])',
-];
-const ITEM_SELECTOR = ITEM_KINDS.join(', ');
-/** The enabled ones, which focus lands on. */
-const MENU_ITEM_SELECTOR = ITEM_KINDS.map(
-	(kind) => `${kind}:not([disabled]):not([aria-disabled="true"])`
-).join(', ');
+const ITEM_SELECTOR = ['menuitem', 'menuitemcheckbox', 'menuitemradio']
+	.map((role) => `[role="${role}"]`)
+	.join(', ');
+/** Whatever inside the menu has keys of its own: a nested menu or dialog. */
+const NESTED_SCOPE =
+	'[role="menu"], [role="menubar"], [role="dialog"], [role="alertdialog"], [aria-modal="true"]';
+
+/** `el` is this menu's own: inside it, and not inside a menu or dialog nested in it. */
+function ownedByMenu(el: EventTarget | null): el is HTMLElement {
+	const menu = menuRef.value;
+	return el instanceof HTMLElement && !!menu && el.closest(NESTED_SCOPE) === menu;
+}
+
+/** This menu's items, in order. */
+function menuItems(): HTMLElement[] {
+	const menu = menuRef.value;
+	if (!menu) return [];
+	return Array.from(menu.querySelectorAll<HTMLElement>(ITEM_SELECTOR)).filter(ownedByMenu);
+}
+
+/** The items focus lands on. */
+const isEnabled = (item: HTMLElement) =>
+	!item.matches(':disabled') && item.getAttribute('aria-disabled') !== 'true';
 
 /**
  * Escape closes the menu and nothing else: not a surrounding dialog, and not
@@ -119,31 +127,43 @@ useEscapeLayer(isOpen, () => {
 	(triggerControl() ?? triggerRef.value)?.focus();
 });
 
+/** The focused element, looking into shadow roots. */
+function deepActiveElement(): Element | null {
+	let active = document.activeElement;
+	while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+	return active;
+}
+
 /**
  * Tab when the trigger cannot take focus (disabled, or gone while the menu was
- * open): move to the control after (Shift: before) the trigger's place in the
- * page, or in its dialog, which wraps like the dialog's own trap does.
+ * open): move to the first control after (Shift: before) the trigger's place
+ * in the page that takes focus, wrapping inside a dialog like its own trap
+ * does. A tabbable-looking control may still refuse focus (display:none, a
+ * hidden input, a disabled fieldset), so each one is tried. If none takes it,
+ * the press is left to the browser.
  */
 function tabPastTrigger(event: KeyboardEvent) {
 	const anchor = triggerRef.value;
 	if (!anchor?.isConnected) return;
-	const root = anchor.closest<HTMLElement>('[aria-modal="true"]') ?? document.body;
-	const candidates = tabbableIn(root).filter(
+	const dialog = anchor.closest<HTMLElement>('[aria-modal="true"]');
+	const candidates = tabbableIn(dialog ?? document.body).filter(
 		(el) => !anchor.contains(el) && !menuRef.value?.contains(el)
 	);
-	const after = (el: HTMLElement) =>
+	const isAfter = (el: HTMLElement) =>
 		Boolean(anchor.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
-	let next = event.shiftKey ? candidates.findLast((el) => !after(el)) : candidates.find(after);
-	if (!next && root !== document.body) next = event.shiftKey ? candidates.at(-1) : candidates[0];
-	event.preventDefault();
-	if (next) next.focus();
-	else (document.activeElement as HTMLElement | null)?.blur();
-}
-
-/** A press on something inside the menu, the only presses the menu acts on. */
-function inMenu(event: KeyboardEvent): HTMLElement | null {
-	const target = event.target as HTMLElement | null;
-	return isOpen.value && target && menuRef.value?.contains(target) ? target : null;
+	// In the direction of the press, from the first control past the trigger;
+	// a dialog then wraps around to the controls behind it.
+	const ordered = event.shiftKey ? [...candidates].reverse() : candidates;
+	const start = ordered.findIndex((el) => isAfter(el) !== event.shiftKey);
+	const ahead = start === -1 ? [] : ordered.slice(start);
+	const behind = start === -1 ? ordered : ordered.slice(0, start);
+	for (const candidate of dialog ? [...ahead, ...behind] : ahead) {
+		candidate.focus();
+		if (deepActiveElement() === candidate) {
+			event.preventDefault();
+			return;
+		}
+	}
 }
 
 /**
@@ -157,11 +177,12 @@ function inMenu(event: KeyboardEvent): HTMLElement | null {
  * focus trap, which then sees focus on the trigger inside the dialog.
  */
 const handleTab = (event: KeyboardEvent) => {
-	if (event.key !== 'Tab' || !inMenu(event)) return;
+	// A dialog or menu nested in this one handles its own Tab.
+	if (event.key !== 'Tab' || !isOpen.value || !ownedByMenu(event.target)) return;
 	isOpen.value = false;
 	const control = triggerControl();
 	control?.focus();
-	if (!control || document.activeElement !== control) tabPastTrigger(event);
+	if (!control || deepActiveElement() !== control) tabPastTrigger(event);
 };
 watch(isOpen, (open) => {
 	if (open) window.addEventListener('keydown', handleTab, true);
@@ -170,20 +191,21 @@ watch(isOpen, (open) => {
 onUnmounted(() => window.removeEventListener('keydown', handleTab, true));
 
 /**
- * Arrows, Home and End move between the items, for a press on an item only: a
- * field or other widget in the menu keeps them (the caret, its own options),
- * and so does anything outside it, like a dialog opened over the menu.
+ * Arrows, Home and End move between the items, for a press on one of this
+ * menu's items only: a field or other widget in the menu keeps them (the caret,
+ * its own options), and so does anything outside it, like a dialog opened over
+ * the menu. A press something else already handled is left alone.
  */
 const handleKeydown = (event: KeyboardEvent) => {
-	const target = inMenu(event);
-	const menu = menuRef.value;
-	if (!menu || !target?.matches(ITEM_SELECTOR)) return;
-	const items = Array.from(menu.querySelectorAll<HTMLElement>(ITEM_SELECTOR));
+	const target = event.target;
+	if (!isOpen.value || event.defaultPrevented || !ownedByMenu(target)) return;
+	if (!target.matches(ITEM_SELECTOR)) return;
+	const items = menuItems();
 	// The nearest enabled item from `from`, stepping by `by` and wrapping.
 	const step = (from: number, by: 1 | -1) => {
 		for (let i = 1; i <= items.length; i++) {
 			const item = items[(((from + by * i) % items.length) + items.length) % items.length];
-			if (item?.matches(MENU_ITEM_SELECTOR)) return item;
+			if (item && isEnabled(item)) return item;
 		}
 		return undefined;
 	};
@@ -227,8 +249,7 @@ watch(isOpen, async (open) => {
 
 		// The first enabled item takes focus on open, opened by pointer or key.
 		await nextTick();
-		const firstItem = menuRef.value?.querySelector<HTMLElement>(MENU_ITEM_SELECTOR);
-		firstItem?.focus();
+		menuItems().find(isEnabled)?.focus();
 	} else {
 		document.removeEventListener('click', handleClickOutside);
 		document.removeEventListener('keydown', handleKeydown);

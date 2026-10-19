@@ -14,6 +14,7 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import SidebarOptions from '../SidebarOptions.vue';
 
 const count = ref(3);
+let sets = 0;
 
 beforeAll(() => {
 	vi.stubGlobal('provide', provide);
@@ -24,7 +25,10 @@ beforeAll(() => {
 			// Clamped like the real setter.
 			perInbox: computed({
 				get: () => count.value,
-				set: (value: number) => (count.value = Math.min(10, Math.max(0, value))),
+				set: (value: number) => {
+					sets += 1;
+					count.value = Math.min(10, Math.max(0, value));
+				},
 			}),
 			sort: ref('recent'),
 		}),
@@ -34,6 +38,7 @@ beforeAll(() => {
 let wrapper: VueWrapper | null = null;
 beforeEach(() => {
 	count.value = 3;
+	sets = 0;
 	wrapper = mount(SidebarOptions, {
 		attachTo: document.body,
 		global: {
@@ -97,5 +102,29 @@ describe('SidebarOptions keyboard', () => {
 		expect(label(focused())).toBe('Show fewer');
 		press('ArrowDown');
 		expect(label(focused())).toBe('Most recent first');
+	});
+
+	it('does not touch the preference when a stepper at its limit is activated', async () => {
+		const stepper = (name: string) =>
+			document.querySelector<HTMLElement>(`[role="menu"] [aria-label="${name}"]`)!;
+		for (const [start, name] of [
+			[10, 'Show more'],
+			[0, 'Show fewer'],
+		] as const) {
+			count.value = start;
+			await openMenu();
+			const button = stepper(name);
+			expect(button.getAttribute('aria-disabled')).toBe('true');
+			button.focus();
+			// Enter and Space on a focused button activate it with a click.
+			button.click();
+			button.click();
+			await nextTick();
+			expect(count.value).toBe(start);
+			expect(focused()).toBe(button);
+			press('Escape');
+			await nextTick();
+		}
+		expect(sets).toBe(0);
 	});
 });

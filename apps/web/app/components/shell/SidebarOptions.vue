@@ -18,6 +18,13 @@ const SORTS: ReadonlyArray<{ value: SidebarThreadSort; label: string }> = [
 	{ value: 'recent', label: 'components.shell.options.sortRecent' },
 	{ value: 'priority', label: 'components.shell.options.sortPriority' },
 ];
+
+/** One more or one fewer; nothing at a limit, where the stepper is aria-disabled. */
+function stepPerInbox(by: 1 | -1) {
+	const next = perInbox.value + by;
+	if (next < SIDEBAR_THREADS_MIN || next > SIDEBAR_THREADS_MAX) return;
+	perInbox.value = next;
+}
 </script>
 
 <template>
@@ -37,7 +44,7 @@ const SORTS: ReadonlyArray<{ value: SidebarThreadSort; label: string }> = [
 		</div>
 		<!-- Menu items, so the arrows reach them: Tab closes the menu. At a limit
 		     a stepper is aria-disabled, not disabled, so the focus it holds stays
-		     in the menu (the setter clamps the count). -->
+		     in the menu. -->
 		<div class="flex items-center gap-1 px-3 pb-2" @click.stop>
 			<button
 				type="button"
@@ -46,7 +53,7 @@ const SORTS: ReadonlyArray<{ value: SidebarThreadSort; label: string }> = [
 				class="flex size-6 items-center justify-center rounded border border-border-subtle text-text-secondary hover:bg-bg-surface aria-disabled:opacity-40"
 				:aria-disabled="perInbox <= SIDEBAR_THREADS_MIN"
 				:aria-label="t('components.shell.options.fewer')"
-				@click="perInbox = perInbox - 1"
+				@click="stepPerInbox(-1)"
 			>
 				<Icon name="lucide:minus" class="size-3" />
 			</button>
@@ -60,7 +67,7 @@ const SORTS: ReadonlyArray<{ value: SidebarThreadSort; label: string }> = [
 				class="flex size-6 items-center justify-center rounded border border-border-subtle text-text-secondary hover:bg-bg-surface aria-disabled:opacity-40"
 				:aria-disabled="perInbox >= SIDEBAR_THREADS_MAX"
 				:aria-label="t('components.shell.options.more')"
-				@click="perInbox = perInbox + 1"
+				@click="stepPerInbox(1)"
 			>
 				<Icon name="lucide:plus" class="size-3" />
 			</button>
