@@ -111,23 +111,28 @@ const registrationSettled = computed(
 
 <template>
 	<div class="card p-0 overflow-hidden">
-		<!-- Domain Header -->
+		<!-- Domain Header. A plain layout row holding ONE disclosure button (the
+		     identity/status area) and the operation buttons as its siblings, so no
+		     interactive control is nested inside another and a key pressed on an
+		     action can never reach the toggle. The disclosure's ::after overlay
+		     stretches over the whole row, keeping the full-row click target; the
+		     action buttons are positioned to sit above it. -->
 		<div
-			class="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-bg-surface/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
-			role="button"
-			tabindex="0"
-			:aria-expanded="isExpanded"
-			:aria-controls="`domain-records-${domain._id}`"
-			:aria-label="t('components.domains.recordRow.rowLabel', { domain: domain.domain })"
-			@click="emit('toggle')"
-			@keydown.enter.self="emit('toggle')"
-			@keydown.space.self.prevent="emit('toggle')"
+			class="relative px-6 py-4 flex items-center justify-between hover:bg-bg-surface/50 transition-colors"
 		>
 			<div class="flex items-center gap-4">
 				<UiIconBox icon="lucide:globe" size="sm" variant="surface" rounded="lg" />
-				<div>
-					<div class="flex items-center gap-3">
-						<p class="font-medium text-text-primary">{{ domain.domain }}</p>
+				<button
+					type="button"
+					class="block text-left cursor-pointer focus-visible:outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-brand focus-visible:after:ring-inset"
+					:aria-expanded="isExpanded"
+					:aria-controls="`domain-records-${domain._id}`"
+					:aria-label="t('components.domains.recordRow.rowLabel', { domain: domain.domain })"
+					data-testid="domain-disclosure"
+					@click="emit('toggle')"
+				>
+					<span class="flex items-center gap-3">
+						<span class="font-medium text-text-primary">{{ domain.domain }}</span>
 						<span
 							:class="[
 								'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
@@ -143,13 +148,13 @@ const registrationSettled = computed(
 							/>
 							{{ statusLabel }}
 						</span>
-					</div>
+					</span>
 					<!-- Single identity + status hint line (§3.1 mock). Says what the
 					     domain is FOR — a concrete example sender address resolves the
 					     "what's this name?" ambiguity — plus the bounce host named from
 					     the actual return-path record so it can't drift, then the
 					     existing status / added-date info. -->
-					<p class="text-sm text-text-tertiary mt-0.5" data-testid="sends-as-line">
+					<span class="block text-sm text-text-tertiary mt-0.5" data-testid="sends-as-line">
 						{{ t('components.domains.recordRow.sendsAs', { address: sendsAsAddress })
 						}}<template v-if="isExternalReceiving">
 							·
@@ -190,17 +195,17 @@ const registrationSettled = computed(
 								})
 							}}
 						</span>
-					</p>
-				</div>
+					</span>
+				</button>
 			</div>
 
 			<div class="flex items-center gap-2">
 				<UiButton
 					v-if="canForceVerify && domain.status !== 'verified'"
-					class="gap-1.5 text-sm py-1.5 px-3 border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
+					class="relative gap-1.5 text-sm py-1.5 px-3 border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
 					:title="t('components.domains.recordRow.forceVerifyTitle')"
 					:disabled="isForcing"
-					@click.stop="emit('forceVerify')"
+					@click="emit('forceVerify')"
 				>
 					<Icon
 						v-if="isForcing"
@@ -217,14 +222,14 @@ const registrationSettled = computed(
 				</UiButton>
 				<UiButton
 					variant="secondary"
-					class="gap-1.5 text-sm py-1.5 px-3"
+					class="relative gap-1.5 text-sm py-1.5 px-3"
 					:title="
 						domain.status === 'registering'
 							? t('components.domains.recordRow.waitingForRegistration')
 							: t('components.domains.recordRow.verifyTitle')
 					"
 					:disabled="isVerifying || domain.status === 'registering'"
-					@click.stop="
+					@click="
 						domain.status === 'failed' && domain.lastRegistrationError
 							? emit('retryRegistration')
 							: emit('verify')
@@ -250,14 +255,17 @@ const registrationSettled = computed(
 				</UiButton>
 				<UiButton
 					variant="ghost"
-					class="p-2 text-error hover:bg-error/10"
+					class="relative p-2 text-error hover:bg-error/10"
 					:title="t('components.domains.recordRow.removeDomain')"
 					:aria-label="t('components.domains.recordRow.removeDomain')"
-					@click.stop="emit('delete')"
+					@click="emit('delete')"
 				>
 					<Icon name="lucide:trash-2" class="w-4 h-4" />
 				</UiButton>
+				<!-- Decorative: left unpositioned so the disclosure overlay above it
+				     takes the click. -->
 				<div
+					aria-hidden="true"
 					:class="[
 						'w-5 h-5 flex items-center justify-center transition-transform',
 						isExpanded ? 'rotate-180' : '',
