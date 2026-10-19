@@ -10,6 +10,10 @@ import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
  * gets new props. The right-click menu is built by a getter that
  * `UiContextMenu` calls when the menu opens, so no row allocates a menu array
  * on render (the page used to build one per row on every selection change).
+ *
+ * The email is a real link to the contact, so it takes keyboard focus, opens
+ * on Enter and honours middle/modified clicks; the rest of the row is a plain
+ * mouse target for the same page.
  */
 const props = defineProps<{
 	contact: {
@@ -19,6 +23,8 @@ const props = defineProps<{
 		lastName?: string | null;
 		createdAt: number;
 	};
+	/** The contact's page; the email cell links here. */
+	to: string;
 	selected: boolean;
 	/** Shows the checkbox column and the menu's select/deselect item. */
 	canManage: boolean;
@@ -39,6 +45,16 @@ async function copyEmail(email: string) {
 	} catch {
 		showToast(t('dashboard.audience.contacts.index.toasts.copyFailed'), 'error');
 	}
+}
+
+// A click that landed on the link or the checkbox is theirs; a modified or
+// non-primary click is the browser's (new tab, new window), not a row open.
+function onRowClick(event: MouseEvent) {
+	if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+		return;
+	}
+	if ((event.target as Element | null)?.closest('a, button')) return;
+	emit('open');
 }
 
 // Right-click row menu: the row's existing affordances (open + select) plus a
@@ -82,9 +98,8 @@ function menuItems(): ContextMenuItem[] {
 		<tr
 			class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
 			:class="{ 'bg-brand/5': selected }"
-			@click="emit('open')"
+			@click="onRowClick"
 			@contextmenu="onContextmenu"
-			@keydown="onKeydown"
 		>
 			<td v-if="canManage" class="w-12 px-4 py-4">
 				<button
@@ -105,7 +120,14 @@ function menuItems(): ContextMenuItem[] {
 				</button>
 			</td>
 			<td class="px-6 py-4">
-				<span class="text-text-primary font-medium">{{ contact.email }}</span>
+				<!-- The row is not focusable, so the menu key listens on its link. -->
+				<NuxtLink
+					:to="to"
+					class="text-text-primary font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					@keydown="onKeydown"
+				>
+					{{ contact.email }}
+				</NuxtLink>
 			</td>
 			<td class="px-6 py-4">
 				<span class="text-text-secondary">{{ contact.firstName || '-' }}</span>

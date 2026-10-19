@@ -101,6 +101,10 @@ describe('audience contacts table', () => {
 		const wrapper = mountPage();
 		expect(wrapper.findAllComponents(ContactRow)).toHaveLength(ROWS);
 		expect(formatDate).toHaveBeenCalledTimes(ROWS);
+		// Each row's email links to that contact's page (plan OW-028).
+		expect(wrapper.findAll('tbody a')[3]?.attributes('href')).toBe(
+			'/dashboard/audience/contacts/contact_3'
+		);
 		wrapper.unmount();
 	});
 

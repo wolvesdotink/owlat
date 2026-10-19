@@ -143,9 +143,9 @@ const toggleContactSelection = (contactId: Id<'contacts'>) => {
 const contactName = (contact: { firstName?: string | null; lastName?: string | null }) =>
 	[contact.firstName, contact.lastName].filter(Boolean).join(' ');
 
-/** Row click and the row menu's "Open" both land on the contact's page. */
-const openContact = (contactId: Id<'contacts'>) =>
-	void router.push(`/dashboard/audience/contacts/${contactId}`);
+/** The desktop row's email link, its row click and its menu's "Open" all land here. */
+const contactPath = (contactId: Id<'contacts'>) => `/dashboard/audience/contacts/${contactId}`;
+const openContact = (contactId: Id<'contacts'>) => void router.push(contactPath(contactId));
 
 // ============================================
 // Add Contact Modal
@@ -796,6 +796,7 @@ onUnmounted(() => {
 									v-for="contact in contacts"
 									:key="contact._id"
 									:contact="contact"
+									:to="contactPath(contact._id)"
 									:selected="bulkSelection.selectedIds.value.has(contact._id)"
 									:can-manage="canManageContacts"
 									@open="openContact(contact._id)"
