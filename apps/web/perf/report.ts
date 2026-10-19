@@ -19,6 +19,9 @@ export interface Environment {
 	commit: string;
 	cpuThrottle: number;
 	viewport: string;
+	/** The browser's timezone and locale, pinned by perf/browserContext.ts and checked in the page. */
+	timezone: string;
+	locale: string;
 	repeats: number;
 	startedAt: string;
 }
@@ -104,6 +107,8 @@ export function formatReport(report: Report): string {
 		`| Commit | ${env.commit} |`,
 		`| CPU throttle | ${env.cpuThrottle}× |`,
 		`| Viewport | ${env.viewport} |`,
+		`| Timezone | ${env.timezone} |`,
+		`| Browser locale | ${env.locale} (the components' messages and formats: en) |`,
 		`| Runs | ${env.repeats} per scenario, each on a fresh page |`,
 		`| Started | ${env.startedAt} |`,
 		'',

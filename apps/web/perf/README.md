@@ -21,6 +21,14 @@ fresh page per run, and calls the page's `window.__owlatPerf`
 counters over the DevTools protocol, with a forced garbage collection before
 the baseline and after teardown.
 
+Every run's context is pinned (`perf/browserContext.ts`): 1280×800 at 1×, light,
+timezone `UTC`, locale `en-US`. The runner checks that the page really runs in
+that timezone and locale, and refuses the run otherwise. The pin matters
+because the chat list groups messages by calendar day in the browser's
+timezone: the same 500 messages make 15 date groups in UTC and 14 in
+Pacific/Gambier. The synthetic timestamps are fixed absolute values, and no
+mounted component reads the current date, so the clock is not pinned.
+
 | Scenario                    | Components                                                                                | Workload                                                                |
 | --------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `assistant-stream/start`    | `AssistantMessage` list under the assistant page's scroll container and `useFollowLatest` | answer streams from empty, one write per 250 ms, under 20 settled turns |

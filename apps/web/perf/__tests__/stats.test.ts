@@ -54,6 +54,8 @@ describe('formatReport', () => {
 			commit: 'abc123',
 			cpuThrottle: 1,
 			viewport: '1280×800 @1x',
+			timezone: 'UTC',
+			locale: 'en-US',
 			repeats: 2,
 			startedAt: '2026-10-19T00:00:00.000Z',
 		},
@@ -74,6 +76,8 @@ describe('formatReport', () => {
 		const md = formatReport(report);
 		expect(md).toContain('| CPU | Example CPU (8 logical cores) |');
 		expect(md).toContain('| Runs | 2 per scenario, each on a fresh page |');
+		expect(md).toContain('| Timezone | UTC |');
+		expect(md).toContain('| Browser locale | en-US');
 		expect(md).toContain('| rows | 500 | 500 | 500 | yes |');
 		expect(md).toContain('| frame p95 (ms) | 16.80 | 16.70 | 16.90 |');
 		expect(md).not.toContain('VOID');

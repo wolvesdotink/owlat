@@ -28,13 +28,13 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { chromium, type CDPSession } from '@playwright/test';
 import { build, preview } from 'vite';
+import { assertPinned, newScenarioContext, SCENARIO_CONTEXT } from './browserContext';
 import type { FidelitySentinels } from './fixtureApi';
 import { formatReport, type Environment, type Report, type ScenarioResult } from './report';
 import { SCENARIOS } from './scenarios';
 import { counter, summarizeSamples, timing, type Sample } from './stats';
 
 const CONFIG = fileURLToPath(new URL('./vite.config.ts', import.meta.url));
-const VIEWPORT = { width: 1280, height: 800 };
 
 const { values: args } = parseArgs({
 	options: {
@@ -107,15 +107,15 @@ try {
 		const samples: Sample[] = [];
 		const voided: FidelitySentinels[] = [];
 		for (let i = 0; i < repeats; i++) {
-			const context = await browser.newContext({
-				viewport: VIEWPORT,
-				deviceScaleFactor: 1,
-				colorScheme: 'light',
-				reducedMotion: 'no-preference',
-			});
+			const context = await newScenarioContext(browser);
 			const page = await context.newPage();
 			await page.goto(url);
 			await page.waitForFunction(() => window.__owlatPerf !== undefined);
+			const resolved = await page.evaluate(() => ({
+				timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+				locale: navigator.language,
+			}));
+			assertPinned(resolved);
 			const cdp = await context.newCDPSession(page);
 			await cdp.send('Performance.enable');
 			if (cpuThrottle > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpuThrottle });
@@ -184,7 +184,9 @@ const environment: Environment = {
 	vue: (require('vue/package.json') as { version: string }).version,
 	commit: sha ? `${sha}${git('status', '--porcelain') ? ' (uncommitted changes)' : ''}` : 'unknown',
 	cpuThrottle,
-	viewport: `${VIEWPORT.width}×${VIEWPORT.height} @1x`,
+	viewport: `${SCENARIO_CONTEXT.viewport.width}×${SCENARIO_CONTEXT.viewport.height} @${SCENARIO_CONTEXT.deviceScaleFactor}x`,
+	timezone: SCENARIO_CONTEXT.timezoneId,
+	locale: SCENARIO_CONTEXT.locale,
 	repeats,
 	startedAt,
 };
