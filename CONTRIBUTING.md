@@ -97,8 +97,8 @@ of `bun run lint` and will fail CI, including:
   XOR-accumulate compare loop fails (`scripts/check-crypto-primitives.sh`). It
   is a pattern check: Node's `createHmac` and other spellings are not covered.
 - `lint:stored-block-corpus` (root, in `ci:lint`) — against a pull request's
-  base branch or the commit a push replaced (failing in CI when that history
-  cannot be resolved), no stored EditorBlock fixture or HTML snapshot in
+  base branch, the commit a push replaced, or (other CI runs) the default
+  branch, failing in CI when that history cannot be resolved, no stored EditorBlock fixture or HTML snapshot in
   `packages/email-renderer/src/__tests__/storedBlocks/` is edited in place, a
   fixture goes only with its `contentBlockVersion` retired in `retired.json`,
   and a snapshot of the current renderer version goes only with its fixture or

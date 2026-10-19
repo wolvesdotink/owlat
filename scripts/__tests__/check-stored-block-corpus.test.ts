@@ -35,7 +35,7 @@ function repository(): { root: string; base: string } {
 	sandboxes.push(root);
 	mkdirSync(join(root, 'scripts'), { recursive: true });
 	copyFileSync(SCRIPT, join(root, 'scripts/check-stored-block-corpus.ts'));
-	git(root, ['init', '--quiet']);
+	git(root, ['init', '--quiet', '--initial-branch', 'main']);
 	git(root, ['config', 'user.email', 'test@example.com']);
 	git(root, ['config', 'user.name', 'Corpus Test']);
 	write(root, VERSION_FILE, 'export const EMAIL_RENDERER_VERSION = 2;\n');
@@ -54,7 +54,9 @@ const GATE_ENV = [
 	'CI',
 	'GITHUB_ACTIONS',
 	'GITHUB_BASE_REF',
+	'GITHUB_EVENT_NAME',
 	'STORED_BLOCK_CORPUS_BASE',
+	'STORED_BLOCK_CORPUS_DEFAULT_BRANCH',
 	'STORED_BLOCK_CORPUS_PUSH_BEFORE',
 ];
 
@@ -71,9 +73,21 @@ function run(root: string, overrides: Record<string, string>): Result {
 
 const check = (root: string, base: string): Result => run(root, { STORED_BLOCK_CORPUS_BASE: base });
 
-/** A CI push event, as the Lint job in .github/workflows/test.yml runs the gate. */
-const ciPush = (root: string, before: string): Result =>
-	run(root, { CI: 'true', GITHUB_ACTIONS: 'true', STORED_BLOCK_CORPUS_PUSH_BEFORE: before });
+/** A CI run of `event`, as the Lint job in .github/workflows/test.yml runs the gate. */
+const ciRun = (root: string, event: string, before = ''): Result =>
+	run(root, {
+		CI: 'true',
+		GITHUB_ACTIONS: 'true',
+		GITHUB_EVENT_NAME: event,
+		STORED_BLOCK_CORPUS_PUSH_BEFORE: before,
+	});
+
+const ciPush = (root: string, before: string): Result => ciRun(root, 'push', before);
+
+/** Point origin's default branch at `ref`, as a checkout of the repository has it. */
+const setOriginMain = (root: string, ref: string): void => {
+	git(root, ['update-ref', 'refs/remotes/origin/main', ref]);
+};
 
 /** The base repository plus one commit that rewrites the snapshot in place. */
 function rewrittenOnTop(): { root: string; base: string } {
@@ -147,20 +161,41 @@ describe('check-stored-block-corpus', () => {
 	describe('push events in CI', () => {
 		it('compares a push with the commit before it, even when origin/main is HEAD', () => {
 			const { root, base } = rewrittenOnTop();
-			git(root, ['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+			setOriginMain(root, 'HEAD');
 			const result = ciPush(root, base);
 			expect(result.status).toBe(1);
 			expect(result.output).toContain('snapshots/renderer-v2/a.html');
 		});
 
-		it("falls back to HEAD's parent when the before sha is all zeros or missing", () => {
+		it('compares a force push with the tip it replaced, not their merge base', () => {
+			const { root, base } = repository();
+			write(root, `${CORPUS}/v1/b.json`, '{"stored": []}\n');
+			write(root, `${CORPUS}/snapshots/renderer-v2/b.html`, '<html>b</html>');
+			git(root, ['add', '.']);
+			git(root, ['commit', '--quiet', '-m', 'old tip adds b']);
+			const oldTip = git(root, ['rev-parse', 'HEAD']);
+
+			git(root, ['checkout', '--quiet', '-B', 'main', base]);
+			write(root, `${CORPUS}/v1/b.json`, '{"stored": []}\n');
+			write(root, `${CORPUS}/snapshots/renderer-v2/b.html`, '<html>b, rewritten</html>');
+			git(root, ['add', '.']);
+			git(root, ['commit', '--quiet', '-m', 'replacement tip rewrites b']);
+			setOriginMain(root, 'HEAD');
+
+			const result = ciPush(root, oldTip);
+			expect(result.status).toBe(1);
+			expect(result.output).toContain('snapshots/renderer-v2/b.html');
+		});
+
+		it("checks a push creating a ref on the default branch against HEAD's parent", () => {
 			const { root } = rewrittenOnTop();
+			setOriginMain(root, 'HEAD');
 			expect(ciPush(root, '0000000000000000000000000000000000000000').status).toBe(1);
-			expect(ciPush(root, '').status).toBe(1);
 		});
 
 		it('compares a root commit with the empty tree', () => {
 			const { root } = repository();
+			setOriginMain(root, 'HEAD');
 			const result = ciPush(root, '');
 			expect(result.status).toBe(0);
 			expect(result.output).toContain('3 corpus change(s)');
@@ -172,6 +207,42 @@ describe('check-stored-block-corpus', () => {
 			const result = ciPush(root, base);
 			expect(result.status).toBe(1);
 			expect(result.output).toContain('snapshots/renderer-v2/a.html');
+		});
+	});
+
+	describe('CI runs without a range of their own', () => {
+		it('compares a branch with the default branch, so an earlier branch commit counts', () => {
+			const { root, base } = repository();
+			setOriginMain(root, base);
+			git(root, ['checkout', '--quiet', '-b', 'feature']);
+			write(root, `${CORPUS}/snapshots/renderer-v2/a.html`, '<html>changed</html>');
+			git(root, ['commit', '--quiet', '-am', 'rewrite']);
+			write(root, 'notes.md', 'unrelated\n');
+			git(root, ['add', '.']);
+			git(root, ['commit', '--quiet', '-m', 'unrelated']);
+
+			for (const [event, before] of [
+				['workflow_dispatch', ''],
+				['schedule', ''],
+				['push', '0000000000000000000000000000000000000000'],
+			] as const) {
+				const result = ciRun(root, event, before);
+				expect(result.status, event).toBe(1);
+				expect(result.output).toContain('snapshots/renderer-v2/a.html');
+			}
+		});
+
+		it('reads the default branch name from STORED_BLOCK_CORPUS_DEFAULT_BRANCH', () => {
+			const { root, base } = rewrittenOnTop();
+			git(root, ['update-ref', 'refs/remotes/origin/trunk', base]);
+			const result = run(root, {
+				CI: 'true',
+				GITHUB_ACTIONS: 'true',
+				GITHUB_EVENT_NAME: 'workflow_dispatch',
+				STORED_BLOCK_CORPUS_DEFAULT_BRANCH: 'trunk',
+			});
+			expect(result.status).toBe(1);
+			expect(result.output).toContain('origin/trunk');
 		});
 	});
 

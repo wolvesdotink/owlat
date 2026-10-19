@@ -13,13 +13,20 @@
  * - a snapshot `renderer-v<N>/<name>.html` is deleted only together with its
  *   fixture, or once EMAIL_RENDERER_VERSION is no longer N.
  *
- * What it compares with:
+ * What it compares with, by event (one table, `resolveBase` below):
+ * - STORED_BLOCK_CORPUS_BASE when set: its merge base with HEAD;
  * - a pull request (GITHUB_BASE_REF): the merge base with its target branch;
- * - a CI push: the commit the branch pointed at before the push
- *   (STORED_BLOCK_CORPUS_PUSH_BEFORE, set from `github.event.before` by the Lint
- *   job in .github/workflows/test.yml), or HEAD's parent when that is missing
- *   or all zeros (a new branch or tag), or the empty tree for a root commit;
- * - STORED_BLOCK_CORPUS_BASE when set, otherwise origin/main locally.
+ * - a push (GITHUB_EVENT_NAME=push) with a before sha
+ *   (STORED_BLOCK_CORPUS_PUSH_BEFORE, from `github.event.before`): that commit
+ *   itself, the state the branch had, so a force push that replaces earlier
+ *   additions is compared with what it replaced;
+ * - any other CI run (a push creating a branch or tag, schedule, dispatch, a
+ *   reusing workflow): the merge base with the default branch
+ *   (STORED_BLOCK_CORPUS_DEFAULT_BRANCH, from
+ *   `github.event.repository.default_branch`, else main), or HEAD's parent
+ *   when HEAD is already on it (the empty tree for a root commit);
+ * - locally: the merge base with origin/main.
+ * The two variables are set on the Lint step in .github/workflows/test.yml.
  * The diff runs from that commit to the working tree, so uncommitted edits
  * count. History a shallow checkout lacks is fetched; if the base still cannot
  * be resolved the gate fails in CI (CI=true) and only warns locally, so a
@@ -72,30 +79,49 @@ function parentOfHead(): string | undefined {
 	return shallow ? undefined : EMPTY_TREE;
 }
 
-function pushBase(): { label: string; commit: string | undefined } {
-	const before = env['STORED_BLOCK_CORPUS_PUSH_BEFORE'] ?? '';
-	if (before === '' || /^0+$/.test(before)) {
-		return { label: 'HEAD~1', commit: parentOfHead() };
-	}
-	if (!commitOf(before)) git(['fetch', '--quiet', 'origin', before]);
-	if (!commitOf(before)) deepen();
-	return { label: before, commit: commitOf(before) ? mergeBaseWith(before) : undefined };
+type Base = { label: string; commit: string | undefined };
+
+/** A commit that may be missing from the checkout, fetched if it is. */
+function fetchedCommit(sha: string): string | undefined {
+	if (!commitOf(sha)) git(['fetch', '--quiet', 'origin', sha]);
+	if (!commitOf(sha)) deepen();
+	return commitOf(sha);
 }
 
-function resolveBase(): { label: string; commit: string | undefined } {
+/** The merge base with a branch of origin, fetching it first. */
+function branchBase(branch: string): Base {
+	git(['fetch', '--quiet', 'origin', branch]);
+	const ref = `origin/${branch}`;
+	return { label: ref, commit: commitOf(ref) ? mergeBaseWith(ref) : undefined };
+}
+
+/**
+ * A CI run with no range of its own: what HEAD adds to the default branch, or,
+ * when HEAD is already on it, its last commit.
+ */
+function defaultBranchBase(): Base {
+	const branch = env['STORED_BLOCK_CORPUS_DEFAULT_BRANCH'] || 'main';
+	const base = branchBase(branch);
+	if (base.commit === undefined || base.commit !== commitOf('HEAD')) return base;
+	return { label: 'HEAD~1', commit: parentOfHead() };
+}
+
+function resolveBase(): Base {
 	const explicit = env['STORED_BLOCK_CORPUS_BASE'];
 	if (explicit) return { label: explicit, commit: mergeBaseWith(explicit) };
 	const target = env['GITHUB_BASE_REF'];
-	if (target) {
-		git(['fetch', '--quiet', 'origin', target]);
-		const ref = `origin/${target}`;
-		return { label: ref, commit: commitOf(ref) ? mergeBaseWith(ref) : undefined };
+	if (target) return branchBase(target);
+	if (env['GITHUB_ACTIONS'] !== 'true') {
+		return {
+			label: 'origin/main',
+			commit: commitOf('origin/main') ? mergeBaseWith('origin/main') : undefined,
+		};
 	}
-	if (env['GITHUB_ACTIONS'] === 'true') return pushBase();
-	return {
-		label: 'origin/main',
-		commit: commitOf('origin/main') ? mergeBaseWith('origin/main') : undefined,
-	};
+	const before = env['STORED_BLOCK_CORPUS_PUSH_BEFORE'] ?? '';
+	if (env['GITHUB_EVENT_NAME'] === 'push' && before !== '' && !/^0+$/.test(before)) {
+		return { label: before, commit: fetchedCommit(before) };
+	}
+	return defaultBranchBase();
 }
 
 const { label: base, commit: baseCommit } = resolveBase();
