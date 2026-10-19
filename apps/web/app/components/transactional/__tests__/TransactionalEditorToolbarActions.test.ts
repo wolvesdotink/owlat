@@ -83,6 +83,18 @@ describe('TransactionalEditorToolbarActions — publish while dirty', () => {
 		expectFullyLocalized(w);
 	});
 
+	it('fades a held control without `opacity`, which would fade its focus ring too', () => {
+		const held = publishButton(mountToolbar({ hasChanges: true }), 'Publish');
+		expect(held.classes().some((c) => c.startsWith('opacity-'))).toBe(false);
+		wrapper!.unmount();
+
+		const pending = publishButton(
+			mountToolbar({ hasChanges: false, isPendingReview: true }),
+			'Awaiting review'
+		);
+		expect(pending.classes().some((c) => c.startsWith('opacity-'))).toBe(false);
+	});
+
 	it('keeps Unpublish enabled with unsaved changes, so the edits can be saved after it', async () => {
 		const w = mountToolbar({ hasChanges: true, isPublished: true });
 		const button = publishButton(w, 'Unpublish');

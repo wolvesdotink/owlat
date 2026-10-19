@@ -59,8 +59,15 @@ const unavailableReason = computed(() =>
 );
 const unavailableReasonId = useId();
 
-/** `.btn`'s `disabled:` look, plus no press/hover feedback for a held control. */
-const unavailableClass = 'opacity-50 cursor-not-allowed active:scale-100';
+/**
+ * The unavailable look, with no press/hover feedback. The fill and label fade
+ * through colour alpha, not `opacity`: `opacity` would fade the focus ring with
+ * them, and this control is meant to be reached by keyboard. The fill at 50%
+ * matches `.btn`'s `disabled:opacity-50` composite.
+ */
+const unavailableClass = 'cursor-not-allowed active:scale-100';
+const heldPublishClass = `${unavailableClass} bg-text-primary/50 hover:bg-text-primary/50`;
+const pendingReviewClass = `${unavailableClass} bg-surface-3/50 hover:bg-surface-3/50 text-text-primary/50`;
 
 function onTogglePublish() {
 	if (isPublishHeld.value) return;
@@ -126,7 +133,7 @@ function onTogglePublish() {
 		size="sm"
 		aria-disabled="true"
 		:aria-describedby="unavailableReasonId"
-		:class="[unavailableClass, 'hover:bg-surface-3']"
+		:class="pendingReviewClass"
 		:title="unavailableReason ?? undefined"
 	>
 		<template #iconLeft>
@@ -143,7 +150,7 @@ function onTogglePublish() {
 		:loading="isPublishing"
 		:aria-disabled="isPublishHeld ? 'true' : undefined"
 		:aria-describedby="isPublishHeld ? unavailableReasonId : undefined"
-		:class="isPublishHeld ? [unavailableClass, 'hover:bg-text-primary'] : undefined"
+		:class="isPublishHeld ? heldPublishClass : undefined"
 		:title="
 			isPublished
 				? t('dashboard.send.transactional.detail.edit.publishHint.unpublish')
