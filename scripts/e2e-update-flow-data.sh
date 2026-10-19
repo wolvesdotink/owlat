@@ -23,11 +23,20 @@
 #     never-attempted Sends alone, and the install has no MTA or provider.
 #
 # The named invariants, checked after the update against the snapshot taken at
-# FROM (same row ids, same fields):
+# FROM. Each covers whole stored documents, not chosen fields:
 #   contact      the first sample contact by email
-#   campaign     the sent sample campaign, and how many Sends it has
-#   draft        the draft sample campaign, and that its template still exists
-#   queued-send  the imported Send: still queued, never attempted
+#   campaign     the sent sample campaign and each of its Sends
+#   draft        the draft sample campaign
+#   queued-send  the imported Send
+# plus every document one of those names by id, and every document that one
+# names (the draft's template and what the template points at). A document
+# survives when every field it had at FROM is still there, deep-equal, and it
+# did not gain a soft-delete marker (`deletedAt`, `archivedAt`, `isDeleted`, ...;
+# an unset optional field is not stored, so tombstoning a row only ADDS one).
+# Other new fields pass: a migration may add defaults. A field a migration of
+# TO rewrites on purpose goes in DATA_REWRITE_ALLOWLIST, naming the migration;
+# a field the backend recomputes on a timer goes in DATA_DERIVED_FIELDS, naming
+# the writer.
 #   rows         no contacts/campaigns/emailSends/emailTemplates row went missing
 #
 # Rows are read with `convex run --inline-query` (a sandboxed read-only query),
@@ -71,9 +80,40 @@ export default query({
 JS
 }
 
+# Fields a migration shipped in TO rewrites on purpose, so their FROM value is
+# not expected to survive. One object per field:
+#   {"to": "<TO version>", "doc": "<snapshot key>", "field": "<dotted path>",
+#    "migration": "<migrations/NNNN_name.ts>"}
+# An entry applies only to an update to its `to` version. v0.6.14 → v0.6.15
+# needs none: no migration or schema change shipped in that range.
+DATA_REWRITE_ALLOWLIST='[]'
+
+# Fields the running backend recomputes itself, in FROM and in TO alike, on a
+# timer that can fire on either side of the update, so their FROM value says
+# nothing about survival. One object per field:
+#   {"doc": "<snapshot key>", "field": "<dotted path>", "writer": "<where>"}
+# Today that is the sent campaign's stats cache: `campaigns/statShards.ts`
+# rollupSentCampaignStats sums the stat shards into it every 2 minutes for
+# campaigns sent in the last 14 days, and stamps statsUpdatedAt. The sample
+# loader writes those numbers inline without shards, so the first rollup resets
+# them to the shard sums. The Sends they summarise are checked under `campaign`.
+# The field list is CAMPAIGN_SHARDED_STAT_FIELDS (convex/lib/validators/
+# campaigns.ts), which a test keeps in step.
+DATA_DERIVED_FIELDS="$(printf '%s\n' statsUpdatedAt statsSent statsFailed statsDelivered statsOpened \
+	statsAutomatedOpened statsClicked statsAutomatedClicked statsBounced statsHardBounced statsSoftBounced \
+	statsSendTimeOptimizedDelivered statsSendTimeOptimizedOpened statsSendTimeOptimizedClicked \
+	statsSendTimeHoldoutDelivered statsSendTimeHoldoutOpened statsSendTimeHoldoutClicked |
+	jq -Rnc '[inputs | {doc: "campaign", field: ., writer: "campaigns/statShards.ts rollupSentCampaignStats, every 2 minutes"}]')"
+
 # The snapshot both sides of the update are compared on. $1 is the ids object
 # `{contact, campaign, draft, queuedSend}`; Convex ids are lowercase
 # alphanumerics, which is checked before they go into the source.
+#
+# `docs` maps a key to a whole stored document: the invariant's name for the
+# named row, `campaign/send:<id>` for each of the sent campaign's Sends, and
+# `<key>/<field path>` for a document reached through an id-shaped field (two
+# hops from a named row, each document listed once). Ids are recognised by
+# shape and confirmed by loading them; a string that is not an id loads nothing.
 data_snapshot_query() {
 	local ids="$1"
 	jq -e '[.contact, .campaign, .draft, .queuedSend] | all(type == "string" and test("^[a-z0-9]+$"))' \
@@ -84,33 +124,46 @@ data_snapshot_query() {
 export default query({
   handler: async (ctx) => {
     const ids = ${compact};
-    const pick = (doc, keys) =>
-      doc === null ? null : Object.fromEntries(keys.map((key) => [key, doc[key] ?? null]));
+    const load = async (id) => {
+      try {
+        return await ctx.db.get(id);
+      } catch {
+        return null;
+      }
+    };
+    const refsOf = (value, path, out) => {
+      if (typeof value === 'string' && /^[0-9a-z]{31,37}\$/.test(value)) out.push([path, value]);
+      else if (Array.isArray(value)) value.forEach((item, i) => refsOf(item, path + '.' + i, out));
+      else if (value !== null && typeof value === 'object')
+        for (const [key, item] of Object.entries(value)) refsOf(item, path ? path + '.' + key : key, out);
+      return out;
+    };
+    const docs = {};
+    const seen = new Set([ids.contact, ids.campaign, ids.draft, ids.queuedSend]);
+    const add = async (key, doc, hops) => {
+      docs[key] = doc;
+      if (doc === null || hops === 0) return;
+      for (const [path, id] of refsOf(doc, '', [])) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const target = await load(id);
+        if (target !== null) await add(key + '/' + path, target, hops - 1);
+      }
+    };
+    const sends = await ctx.db.query('emailSends').collect();
+    const campaignSends = sends.filter(
+      (row) => row.campaignId === ids.campaign && row._id !== ids.queuedSend
+    );
+    for (const row of campaignSends) seen.add(row._id);
+    await add('contact', await load(ids.contact), 2);
+    await add('campaign', await load(ids.campaign), 2);
+    for (const row of campaignSends) await add('campaign/send:' + row._id, row, 0);
+    await add('draft', await load(ids.draft), 2);
+    await add('queued-send', await load(ids.queuedSend), 2);
     const rowIds = async (table) =>
       (await ctx.db.query(table).collect()).map((row) => row._id).sort();
-    const sends = await ctx.db.query('emailSends').collect();
-    const contact = await ctx.db.get(ids.contact);
-    const campaign = await ctx.db.get(ids.campaign);
-    const draft = await ctx.db.get(ids.draft);
-    const queuedSend = await ctx.db.get(ids.queuedSend);
-    const draftTemplate =
-      draft && draft.emailTemplateId ? await ctx.db.get(draft.emailTemplateId) : null;
     return {
-      contact: pick(contact, ['_id', '_creationTime', 'email', 'firstName', 'lastName']),
-      campaign: campaign && {
-        ...pick(campaign, [
-          '_id', '_creationTime', 'name', 'status', 'subject', 'emailTemplateId', 'sentAt', 'statsSent',
-        ]),
-        sends: sends.filter((row) => row.campaignId === ids.campaign).length,
-      },
-      draft: draft && {
-        ...pick(draft, ['_id', '_creationTime', 'name', 'status', 'subject', 'emailTemplateId']),
-        templateExists: draftTemplate !== null,
-      },
-      queuedSend: pick(queuedSend, [
-        '_id', '_creationTime', 'status', 'campaignId', 'contactId', 'contactEmail', 'queuedAt',
-        'providerMessageId', 'firstAttemptAt',
-      ]),
+      docs,
       rows: {
         contacts: await rowIds('contacts'),
         campaigns: await rowIds('campaigns'),
@@ -128,47 +181,68 @@ JS
 # per problem; silent and 0 when the snapshot is usable.
 data_snapshot_problems() {
 	jq -r '
-		(if .contact == null then "the named contact is missing" else empty end),
-		(if .campaign == null then "the sent campaign is missing"
-		 elif .campaign.status != "sent" then "the sent campaign has status \(.campaign.status)"
-		 elif .campaign.sends < 2 then "the sent campaign has \(.campaign.sends) Sends, expected its sample Sends plus the queued one"
+		.docs as $d
+		| (if $d.contact == null then "the named contact is missing" else empty end),
+		(if $d.campaign == null then "the sent campaign is missing"
+		 elif $d.campaign.status != "sent" then "the sent campaign has status \($d.campaign.status)"
+		 elif ($d | keys | any(startswith("campaign/send:")) | not) then "the sent campaign has no sample Sends"
 		 else empty end),
-		(if .draft == null then "the draft campaign is missing"
-		 elif .draft.status != "draft" then "the draft campaign has status \(.draft.status)"
-		 elif .draft.templateExists != true then "the draft campaign has no template"
+		(if $d.draft == null then "the draft campaign is missing"
+		 elif $d.draft.status != "draft" then "the draft campaign has status \($d.draft.status)"
+		 elif $d["draft/emailTemplateId"] == null then "the draft campaign has no template"
 		 else empty end),
-		(if .queuedSend == null then "the queued Send is missing"
-		 elif .queuedSend.status != "queued" then "the queued Send has status \(.queuedSend.status)"
-		 elif .queuedSend.providerMessageId != null or .queuedSend.firstAttemptAt != null then "the queued Send was attempted"
-		 elif .queuedSend.contactId != .contact._id or .queuedSend.campaignId != .campaign._id then "the queued Send does not reference the named contact and campaign"
+		(($d["queued-send"]) as $s
+		 | if $s == null then "the queued Send is missing"
+		 elif $s.status != "queued" then "the queued Send has status \($s.status)"
+		 elif $s.providerMessageId != null or $s.firstAttemptAt != null then "the queued Send was attempted"
+		 elif $s.contactId != $d.contact._id or $s.campaignId != $d.campaign._id then "the queued Send does not reference the named contact and campaign"
 		 else empty end)
 	' "$1"
 }
 
 # Compares the snapshot taken after the update ($2) with the one taken at FROM
-# ($1). Prints `ok|<invariant>` or `bad|<invariant>|<what changed>` per named
-# invariant and returns 1 when any is bad.
+# ($1), for an update to version $3. Every document of an invariant must still
+# exist, still hold every field it had, deep-equal (arrays compare whole), and
+# not have gained a top-level soft-delete marker. Fields in
+# DATA_REWRITE_ALLOWLIST (for $3) and DATA_DERIVED_FIELDS are not compared.
+# Prints `ok|<invariant>` or `bad|<invariant>|<what changed>` per invariant and
+# returns 1 when any is bad.
 data_compare_snapshots() {
 	local result
-	result="$(jq -r --slurpfile after "$2" '
-		. as $before | $after[0] as $after
-		| def changed($role):
-			[($before[$role] // {}) | keys_unsorted[] as $key
-			 | select($before[$role][$key] != ($after[$role] // {})[$key])
-			 | "\($key): \($before[$role][$key] | tojson) → \(($after[$role] // {})[$key] | tojson)"];
-		def check($name; $role):
-			if $after[$role] == null then "bad|\($name)|row \($before[$role]._id) is gone"
-			else changed($role) as $diff
-			| if ($diff | length) == 0 then "ok|\($name)" else "bad|\($name)|\($diff | join("; "))" end
+	result="$(jq -r --slurpfile after "$2" --arg to "$3" --argjson allow "$DATA_REWRITE_ALLOWLIST" \
+		--argjson derived "$DATA_DERIVED_FIELDS" '
+		def leaves($p):
+			if type == "object" and length > 0 then (to_entries[] as $e | $e.value | leaves($p + [$e.key]))
+			else [$p, .] end;
+		def present($doc; $p):
+			($doc | getpath($p[:-1])) as $parent | ($parent | type) == "object" and ($parent | has($p[-1]));
+		def dotted: map(tostring) | join(".");
+		def allowed($key; $field):
+			($allow | any(.to == $to and .doc == $key and .field == $field))
+			or ($derived | any(.doc == $key and .field == $field));
+		def problems($key; $before; $after):
+			if $before == null then empty
+			elif $after == null then "\($key) is gone (was \($before._id))"
+			else $before | leaves([]) | . as [$p, $v] | ($p | dotted) as $field
+			| select(allowed($key; $field) | not)
+			| if present($after; $p) | not then "\($key):\($field) removed (was \($v | tojson))"
+			  elif ($after | getpath($p)) != $v then "\($key):\($field) \($v | tojson) → \($after | getpath($p) | tojson)"
+			  else empty end
+			end,
+			if $before == null or $after == null then empty
+			else $after | keys[] | select(test("^((deleted|archived|erased|trashed)(At|By)|is(Deleted|Archived))$"))
+			| select(. as $field | $before | has($field) | not)
+			| "\($key):\(.) added \($after[.] | tojson) (soft-deleted)"
 			end;
-		check("contact"; "contact"),
-		check("campaign"; "campaign"),
-		check("draft"; "draft"),
-		check("queued-send"; "queuedSend"),
-		([$before.rows | to_entries[] | .key as $table
-		  | (.value - ($after.rows[$table] // [])) as $lost
-		  | select($lost | length > 0) | "\($table): \($lost | join(", "))"] as $missing
-		 | if ($missing | length) == 0 then "ok|rows" else "bad|rows|missing \($missing | join("; "))" end)
+		.docs as $before | $after[0].docs as $now
+		| (["contact", "campaign", "draft", "queued-send"][] as $name
+		   | [$before | keys[] | select(. == $name or startswith($name + "/")) as $key
+		      | problems($key; $before[$key]; $now[$key])] as $diff
+		   | if ($diff | length) == 0 then "ok|\($name)" else "bad|\($name)|\($diff | join("; "))" end),
+		  ([.rows | to_entries[] | .key as $table
+		    | (.value - ($after[0].rows[$table] // [])) as $lost
+		    | select($lost | length > 0) | "\($table): \($lost | join(", "))"] as $missing
+		   | if ($missing | length) == 0 then "ok|rows" else "bad|rows|missing \($missing | join("; "))" end)
 	' "$1")" || return 1
 	printf '%s\n' "$result"
 	! grep -q '^bad|' <<<"$result"
@@ -208,7 +282,7 @@ seed_convex_data() {
 	problems="$(data_snapshot_problems "$snapshot")"
 	[[ -z "$problems" ]] || fail "the seeded data is not what the invariants describe: $problems"
 	printf '%s\n' "$ids" >"$snapshot.ids"
-	pass "seeded: contact, sent campaign, draft campaign and a queued Send ($(jq -c '.rows | map_values(length)' "$snapshot") rows)"
+	pass "seeded: contact, sent campaign, draft campaign and a queued Send ($(jq '.docs | length' "$snapshot") documents snapshotted; rows $(jq -c '.rows | map_values(length)' "$snapshot"))"
 }
 
 # At TO, after the update: the same snapshot, compared with FROM's.
@@ -217,7 +291,7 @@ verify_convex_data() {
 	ids="$(cat "$before.ids")"
 	convex_query "$(data_snapshot_query "$ids")" >"$after" || fail "could not snapshot the seeded rows at $TO"
 	local report status=0
-	report="$(data_compare_snapshots "$before" "$after")" || status=1
+	report="$(data_compare_snapshots "$before" "$after" "$TO")" || status=1
 	while IFS='|' read -r verdict name detail; do
 		if [[ "$verdict" == ok ]]; then
 			pass "$name survived the update"

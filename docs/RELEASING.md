@@ -124,9 +124,11 @@ The unified workflow explicitly calls Update flow after publication, using the
 highest earlier stable unified version and this release's version. This tests
 the actual previous updater applying the new release. Before the update it
 seeds Convex data through the previous release (its sample data plus one queued
-Send, with no way to send mail) and afterwards checks that the named contact,
-sent campaign, draft campaign and queued Send kept their ids and fields
-(`scripts/e2e-update-flow-data.sh`). The rollout result is a
+Send, with no way to send mail). Afterwards it checks that the named contact,
+sent campaign (with its Sends), draft campaign, queued Send and the documents
+they reference still hold every field they had, unchanged, and were not
+soft-deleted (`scripts/e2e-update-flow-data.sh`). A migration that rewrites one
+of those fields on purpose lists it in that script's `DATA_REWRITE_ALLOWLIST`. The rollout result is a
 post-publication check; the three install gates above still block publication.
 GitHub suppresses release events created using GITHUB_TOKEN, so the handoff is
 `workflow_call` rather than `release: published`. Nightly checks remain useful
