@@ -1,7 +1,8 @@
 /**
  * The components Nuxt registers for every page, so a mounted tree can reach
- * them: `Icon` (@nuxt/icon), `NuxtLink`, the UI layer's `UiButton`, and the
- * read-state boundary `UiQueryBoundary` with the three it renders.
+ * them: `Icon` (@nuxt/icon), `NuxtLink`, the UI layer's `UiButton` and
+ * `UiCheckbox`, and the read-state boundary `UiQueryBoundary` with the three
+ * it renders.
  *
  * `UiButton` is the REAL component. A stub that dropped `variant`, `size` and
  * the icon slots would let a regression in the one control every screen uses
@@ -15,6 +16,7 @@
 import { config } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
+import UiCheckbox from '@owlat/ui/components/ui/Checkbox.vue';
 import UiEmptyState from '@owlat/ui/components/ui/EmptyState.vue';
 import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
@@ -45,6 +47,7 @@ export function registerNuxtComponents(): void {
 		Icon: IconStub,
 		NuxtLink: NuxtLinkStub,
 		UiButton,
+		UiCheckbox,
 		UiQueryBoundary,
 		UiEmptyState,
 		UiErrorAlert,

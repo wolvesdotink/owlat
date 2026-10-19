@@ -12,8 +12,9 @@
  * render for its "Created" cell and which nothing else in the table calls.
  *
  * Selection is real checkboxes (plan OW-029): each row box carries its
- * contact's name and checked state, and the select-all box is named for the
- * loaded contacts it covers and reads "mixed" while only some are selected.
+ * contact's name (a fallback when it has no email) and checked state, and the
+ * select-all box is named for the loaded contacts it covers and reads "mixed"
+ * while only some are selected.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -21,7 +22,6 @@ import { nextTick, ref } from 'vue';
 
 import ContactsIndex from '../index.vue';
 import ContactRow from '~/components/contacts/ContactRow.vue';
-import UiCheckbox from '@owlat/ui/components/ui/Checkbox.vue';
 import UiContextMenu from '@owlat/ui/components/ui/ContextMenu.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { installNuxtStubs, paginatedResult, queryResult } from '~/__tests__/a11y';
@@ -81,7 +81,6 @@ function mountPage() {
 			components: {
 				UiQueryBoundary: QueryBoundary,
 				ContactsContactRow: ContactRow,
-				UiCheckbox,
 				UiContextMenu,
 			},
 			stubs: {
@@ -184,6 +183,23 @@ describe('audience contacts table', () => {
 		await nextTick();
 		expect(card.element.checked).toBe(true);
 		expect([all().checked, all().indeterminate]).toEqual([false, true]);
+		wrapper.unmount();
+	});
+
+	it.each([
+		['table', true],
+		['card list', false],
+	])('names the %s checkbox of a contact without an email', (_view, fits) => {
+		vi.stubGlobal('useDataTableViewport', () => ref(fits));
+		vi.stubGlobal('usePaginatedQuery', () =>
+			paginatedResult([
+				{ _id: 'contact_a', firstName: 'Grace', lastName: 'Hopper', createdAt: 0 },
+				{ _id: 'contact_b', createdAt: 0 },
+			])
+		);
+		const wrapper = mountPage();
+		expect(wrapper.find(box('Select Grace Hopper')).exists()).toBe(true);
+		expect(wrapper.find(box('Select Contact without email')).exists()).toBe(true);
 		wrapper.unmount();
 	});
 });

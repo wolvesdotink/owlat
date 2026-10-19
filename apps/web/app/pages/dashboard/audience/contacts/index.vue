@@ -678,7 +678,12 @@ onUnmounted(() => {
 									class="contact-select shrink-0"
 									:model-value="bulkSelection.selectedIds.value.has(contact._id)"
 									:aria-label="
-										t('dashboard.audience.contacts.index.selectContact', { email: contact.email })
+										t('dashboard.audience.contacts.index.selectContact', {
+											email:
+												contact.email ||
+												contactName(contact) ||
+												t('dashboard.audience.contacts.index.contactWithoutEmail'),
+										})
 									"
 									@update:model-value="toggleContactSelection(contact._id)"
 								/>
@@ -890,9 +895,10 @@ onUnmounted(() => {
 
 <style scoped>
 /* The card list's row checkbox paints at its native 16px, but a thumb needs
- * 44px. A transparent pseudo-element grows the hit area without
- * moving anything in the row (same trick as the recipient preferences page);
- * `z-10` keeps the overlap with the row's own tap target on the checkbox. */
+ * 44px. A transparent 44x44 pseudo-element centred on it grows the hit area
+ * (sized, not inset, so the 16px box still gets a full 44px each way) without
+ * moving anything in the row; `z-10` keeps the overlap with the row's own tap
+ * target on the checkbox. */
 .contact-select {
 	position: relative;
 	z-index: 10;
@@ -901,6 +907,10 @@ onUnmounted(() => {
 .contact-select::after {
 	content: '';
 	position: absolute;
-	inset: -12px;
+	top: 50%;
+	left: 50%;
+	width: 44px;
+	height: 44px;
+	transform: translate(-50%, -50%);
 }
 </style>

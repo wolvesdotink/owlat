@@ -9961,6 +9961,7 @@
 					},
 					"clearSearch": "Suche zurücksetzen",
 					"clearSelection": "Auswahl aufheben",
+					"contactWithoutEmail": "Kontakt ohne E-Mail-Adresse",
 					"contextMenu": {
 						"copyEmail": "E-Mail-Adresse kopieren",
 						"deselect": "Auswahl aufheben",

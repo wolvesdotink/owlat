@@ -32,6 +32,15 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const { showToast } = useToast();
 
+// Who the selection box names: a contact without an email is still named (its
+// name, then a localized fallback), never a bare "Select ".
+const selectionName = computed(
+	() =>
+		props.contact.email ||
+		[props.contact.firstName, props.contact.lastName].filter(Boolean).join(' ') ||
+		t('dashboard.audience.contacts.index.contactWithoutEmail')
+);
+
 async function copyEmail(email: string) {
 	try {
 		await navigator.clipboard.writeText(email);
@@ -92,7 +101,7 @@ function menuItems(): ContextMenuItem[] {
 				<UiCheckbox
 					:model-value="selected"
 					:aria-label="
-						t('dashboard.audience.contacts.index.selectContact', { email: contact.email })
+						t('dashboard.audience.contacts.index.selectContact', { email: selectionName })
 					"
 					@update:model-value="emit('toggle-select')"
 					@click.stop
