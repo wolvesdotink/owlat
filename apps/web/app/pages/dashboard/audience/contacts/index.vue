@@ -102,6 +102,12 @@ const contactIds = computed(() =>
 	(contacts.value ?? []).map((c: { _id: Id<'contacts'> }) => c._id)
 );
 const isAllPageSelected = computed(() => bulkSelection.isAllPageSelected(contactIds.value));
+/** Some loaded contacts selected, not all: the select-all box reads "mixed". */
+const isSomePageSelected = computed(
+	() =>
+		!isAllPageSelected.value &&
+		contactIds.value.some((id) => bulkSelection.selectedIds.value.has(id))
+);
 
 // Showing count text
 const showingText = computed(() => {
@@ -652,36 +658,14 @@ onUnmounted(() => {
 						<!-- The table's select-all sits in a `thead` the card list has no
 						     room for, so bulk selection was desktop-only here. Full-width
 						     row: it doubles as its own 44px touch target. -->
-						<button
+						<UiCheckbox
 							v-if="canManageContacts"
-							type="button"
-							class="w-full flex items-center gap-3 px-4 py-3 border-b border-border-subtle text-left transition-colors hover:bg-bg-surface"
-							@click="toggleSelectAll"
-						>
-							<span
-								class="w-5 h-5 shrink-0 rounded border flex items-center justify-center transition-colors"
-								:class="[
-									isAllPageSelected
-										? 'bg-brand border-brand text-text-inverse'
-										: bulkSelection.hasSelected.value
-											? 'border-brand bg-brand/20'
-											: 'border-border-default',
-								]"
-							>
-								<Icon v-if="isAllPageSelected" name="lucide:check" class="w-3 h-3" />
-								<span
-									v-else-if="bulkSelection.hasSelected.value"
-									class="w-2 h-0.5 bg-brand rounded"
-								/>
-							</span>
-							<span class="text-sm text-text-secondary">
-								{{
-									isAllPageSelected
-										? t('dashboard.audience.contacts.index.deselectAll')
-										: t('dashboard.audience.contacts.index.selectAll')
-								}}
-							</span>
-						</button>
+							:model-value="isAllPageSelected"
+							:indeterminate="isSomePageSelected"
+							:label="t('dashboard.audience.contacts.index.selectAllLoaded')"
+							class="w-full px-4 py-3 border-b border-border-subtle transition-colors hover:bg-bg-surface"
+							@update:model-value="toggleSelectAll"
+						/>
 						<ul class="divide-y divide-border-subtle">
 							<li
 								v-for="contact in contacts"
@@ -689,31 +673,15 @@ onUnmounted(() => {
 								class="flex items-center gap-3 px-4 py-3 transition-colors"
 								:class="bulkSelection.selectedIds.value.has(contact._id) ? 'bg-brand/5' : ''"
 							>
-								<button
+								<UiCheckbox
 									v-if="canManageContacts"
-									class="contact-select w-5 h-5 shrink-0 rounded border flex items-center justify-center transition-colors"
-									:class="[
-										bulkSelection.selectedIds.value.has(contact._id)
-											? 'bg-brand border-brand text-text-inverse'
-											: 'border-border-default',
-									]"
+									class="contact-select shrink-0"
+									:model-value="bulkSelection.selectedIds.value.has(contact._id)"
 									:aria-label="
-										bulkSelection.selectedIds.value.has(contact._id)
-											? t('dashboard.audience.contacts.index.deselectContact', {
-													email: contact.email,
-												})
-											: t('dashboard.audience.contacts.index.selectContact', {
-													email: contact.email,
-												})
+										t('dashboard.audience.contacts.index.selectContact', { email: contact.email })
 									"
-									@click="toggleContactSelection(contact._id)"
-								>
-									<Icon
-										v-if="bulkSelection.selectedIds.value.has(contact._id)"
-										name="lucide:check"
-										class="w-3 h-3"
-									/>
-								</button>
+									@update:model-value="toggleContactSelection(contact._id)"
+								/>
 								<button
 									type="button"
 									class="flex-1 min-w-0 text-left"
@@ -746,23 +714,12 @@ onUnmounted(() => {
 							<thead>
 								<tr class="border-b border-border-subtle">
 									<th v-if="canManageContacts" class="w-12 px-4 py-4">
-										<button
-											class="w-5 h-5 rounded border flex items-center justify-center transition-colors"
-											:class="[
-												isAllPageSelected
-													? 'bg-brand border-brand text-text-inverse'
-													: bulkSelection.hasSelected.value
-														? 'border-brand bg-brand/20'
-														: 'border-border-default hover:border-border-strong',
-											]"
-											@click.stop="toggleSelectAll"
-										>
-											<Icon v-if="isAllPageSelected" name="lucide:check" class="w-3 h-3" />
-											<div
-												v-else-if="bulkSelection.hasSelected.value"
-												class="w-2 h-0.5 bg-brand rounded"
-											/>
-										</button>
+										<UiCheckbox
+											:model-value="isAllPageSelected"
+											:indeterminate="isSomePageSelected"
+											:aria-label="t('dashboard.audience.contacts.index.selectAllLoaded')"
+											@update:model-value="toggleSelectAll"
+										/>
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 										{{ t('common.email') }}
@@ -932,8 +889,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* The card list's row checkbox paints at 20px — the size the row wants — but a
- * thumb needs 44px. A transparent pseudo-element grows the hit area without
+/* The card list's row checkbox paints at its native 16px, but a thumb needs
+ * 44px. A transparent pseudo-element grows the hit area without
  * moving anything in the row (same trick as the recipient preferences page);
  * `z-10` keeps the overlap with the row's own tap target on the checkbox. */
 .contact-select {

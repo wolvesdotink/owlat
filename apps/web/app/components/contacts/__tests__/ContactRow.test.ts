@@ -2,7 +2,8 @@
 /**
  * ContactsContactRow: one row of the audience contacts table (plan 3.7).
  *   - renders the contact's cells, with a checkbox only for managers
- *   - the checkbox toggles selection without opening the contact
+ *   - the checkbox is a real, named checkbox whose checked state is the
+ *     selection (plan OW-029), and toggling it never opens the contact
  *   - the right-click menu is handed to UiContextMenu as a getter, so nothing
  *     is built until it opens; it then reflects the row's current selection
  */
@@ -11,6 +12,7 @@ import { mount } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
 
 import ContactRow from '../ContactRow.vue';
+import UiCheckbox from '@owlat/ui/components/ui/Checkbox.vue';
 import UiContextMenu from '@owlat/ui/components/ui/ContextMenu.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -44,7 +46,7 @@ function mountRow(props: { selected?: boolean; canManage?: boolean } = {}) {
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
-			components: { UiContextMenu },
+			components: { UiCheckbox, UiContextMenu },
 			stubs: { Icon: true },
 			// A template global (Nuxt auto-import), so it reaches the row as a mock.
 			mocks: { formatDate: () => 'Mar 3, 2026' },
@@ -52,6 +54,10 @@ function mountRow(props: { selected?: boolean; canManage?: boolean } = {}) {
 	});
 	return { host, row: host.findComponent(ContactRow) };
 }
+
+/** The row's selection box, found by its role and its accessible name. */
+const checkboxNamed = (host: ReturnType<typeof mountRow>['host'], name: string) =>
+	host.get<HTMLInputElement>(`input[type="checkbox"][aria-label="${name}"]`);
 
 const menuLabels = () =>
 	Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')).map((el) =>
@@ -69,15 +75,19 @@ describe('ContactsContactRow', () => {
 	it('shows no checkbox column without manage permission', () => {
 		const { host } = mountRow({ canManage: false });
 		expect(host.findAll('td')).toHaveLength(4);
-		expect(host.find('button').exists()).toBe(false);
+		expect(host.find('input[type="checkbox"]').exists()).toBe(false);
 		host.unmount();
 	});
 
 	it('toggles selection from the checkbox without opening the contact', async () => {
 		const { host, row } = mountRow();
-		const checkbox = host.get('button[aria-label="Select ada@example.com"]');
+		const checkbox = checkboxNamed(host, 'Select ada@example.com');
 		await checkbox.trigger('click');
 		expect(row.emitted('toggle-select')).toHaveLength(1);
+		expect(row.emitted('open')).toBeUndefined();
+
+		// A click on the box's own label wrapper does not open the row either.
+		await host.get('td label').trigger('click');
 		expect(row.emitted('open')).toBeUndefined();
 
 		await host.get('tr').trigger('click');
@@ -88,8 +98,18 @@ describe('ContactsContactRow', () => {
 	it('paints the selected state from the boolean prop', () => {
 		const { host } = mountRow({ selected: true });
 		expect(host.get('tr').classes()).toContain('bg-brand/5');
-		expect(host.find('button[aria-label="Deselect ada@example.com"]').exists()).toBe(true);
 		host.unmount();
+	});
+
+	it('exposes the selection as the checkbox state under one stable name', () => {
+		const unselected = mountRow();
+		expect(checkboxNamed(unselected.host, 'Select ada@example.com').element.checked).toBe(false);
+		unselected.host.unmount();
+
+		// Selected: same name, checked — the state is announced, not the label.
+		const selected = mountRow({ selected: true });
+		expect(checkboxNamed(selected.host, 'Select ada@example.com').element.checked).toBe(true);
+		selected.host.unmount();
 	});
 
 	it('hands the menu over as a getter instead of a per-render array', () => {

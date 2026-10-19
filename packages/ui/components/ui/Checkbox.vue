@@ -1,14 +1,19 @@
 <script setup lang="ts">
 interface Props {
 	modelValue?: boolean;
+	/** Some but not all of a group is checked; read out as "mixed". */
+	indeterminate?: boolean;
 	disabled?: boolean;
 	label?: string;
+	/** Names the box when there is no visible `label` (e.g. a table row's selection). */
+	ariaLabel?: string;
 	description?: string;
 	id?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	modelValue: false,
+	indeterminate: false,
 	disabled: false,
 });
 
@@ -36,7 +41,9 @@ const handleChange = (event: Event) => {
 			:id="checkboxId"
 			type="checkbox"
 			:checked="modelValue"
+			:indeterminate="indeterminate"
 			:disabled="disabled"
+			:aria-label="ariaLabel"
 			class="mt-1 h-4 w-4 rounded border-border-default bg-bg-deep text-brand focus:ring-brand focus:ring-offset-0"
 			@change="handleChange"
 		/>
