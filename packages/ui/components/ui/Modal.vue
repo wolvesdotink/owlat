@@ -10,6 +10,13 @@ interface Props {
 	title?: string;
 	size?: ModalSize;
 	closable?: boolean;
+	/**
+	 * What takes focus on open: a selector resolved inside the panel, or an
+	 * element. Without it (or when it cannot take focus) the first focusable
+	 * element does, which is the Close button whenever the dialog is closable.
+	 * Focus a child component already moved into the panel is kept.
+	 */
+	initialFocus?: string | HTMLElement | null;
 	persistent?: boolean;
 	/** Custom z-index for rendering above high-z elements like the email builder */
 	zIndex?: number;
@@ -27,6 +34,7 @@ const props = withDefaults(defineProps<Props>(), {
 	title: undefined,
 	size: 'md',
 	closable: true,
+	initialFocus: undefined,
 	persistent: false,
 	zIndex: undefined,
 	labelledBy: undefined,
@@ -130,6 +138,12 @@ useModalFocus(
 	() => props.open,
 	() => {
 		if (dismissible.value) close();
+	},
+	{
+		initialFocus: () =>
+			typeof props.initialFocus === 'string'
+				? dialogRef.value?.querySelector<HTMLElement>(props.initialFocus)
+				: props.initialFocus,
 	}
 );
 </script>
@@ -151,6 +165,7 @@ useModalFocus(
 				-->
 				<div
 					ref="dialogRef"
+					tabindex="-1"
 					role="dialog"
 					aria-modal="true"
 					:aria-labelledby="ariaLabelledby"
