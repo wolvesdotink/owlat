@@ -47,6 +47,7 @@ import { useSaveBlockModal } from '../composables/useSaveBlockModal';
 import { useSlashCommands } from '../composables/useSlashCommands';
 import { usePreview } from '../composables/usePreview';
 import { useBrandKit } from '../composables/useBrandKit';
+import { provideBlockRenderCache } from '../composables/useBlockRenderer';
 
 // Render options surfaced in the preview's RenderOptionsPanel.
 import type { PreviewRenderOptions } from '../preview/types';
@@ -285,6 +286,9 @@ const {
 // Share the linked-block index with the canvas so both read one pass over the Blocks
 provide(LINKED_BLOCK_INDEX_KEY, linkedBlockIndex);
 provide('requestDetachLinkedBlock', requestDetachBlock);
+
+// One fragment cache for the canvas previews, released with this editor
+provideBlockRenderCache();
 
 // Block selection
 const blockState = useBlockState({ canvasBlocks });
@@ -717,6 +721,8 @@ const {
 	healthScore: previewHealthScore,
 	validationIssues: previewValidationIssues,
 	emailDiff: previewEmailDiff,
+	diffRequested: previewDiffRequested,
+	htmlChanged: previewHtmlChanged,
 	regenerate: regeneratePreview,
 	regenerateHtml: regeneratePreviewHtml,
 	togglePreviewMode,
@@ -1265,10 +1271,12 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				:health-score="previewHealthScore"
 				:validation-issues="previewValidationIssues"
 				:email-diff="previewEmailDiff"
+				:diff-available="previewHtmlChanged"
 				:render-options="renderOptions"
 				@update:render-options="renderOptions = $event"
 				@update:dark-mode="handlePreviewDarkMode"
 				@update:amp-requested="previewAmpRequested = $event"
+				@update:diff-requested="previewDiffRequested = $event"
 				@send-test="emit('send-test', previewHtml)"
 				@update:plain-text-override="emit('update:plainTextOverride', $event)"
 			/>

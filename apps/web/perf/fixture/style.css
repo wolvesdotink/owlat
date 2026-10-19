@@ -1,0 +1,5 @@
+/* The app's own stylesheet, so the scenarios lay out with the real classes and tokens. */
+@import '../../app/assets/css/main.css';
+
+/* Tailwind scans from the Vite root (perf/fixture); point it at the app's sources. */
+@source '../../app';

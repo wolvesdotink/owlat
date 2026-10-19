@@ -122,6 +122,58 @@ describe('useCanIEmail data loading + queries', () => {
 		expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
 	});
 
+	it('concurrent callers share one request and all wait for its data', async () => {
+		let respond!: () => void;
+		const fetchMock = vi.fn(
+			() =>
+				new Promise((resolve) => {
+					respond = () => resolve({ ok: true, statusText: 'OK', json: async () => fixture });
+				})
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		const c = await freshComposable();
+
+		const settled: string[] = [];
+		const first = c.fetchData().then(() => settled.push('first'));
+		const second = c.fetchData().then(() => settled.push('second'));
+		await Promise.resolve();
+		// The second caller joins the load instead of returning before the data.
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(settled).toEqual([]);
+		expect(c.isLoading.value).toBe(true);
+
+		respond();
+		await Promise.all([first, second]);
+		expect(settled).toEqual(['first', 'second']);
+		expect(c.features.value.map((f) => f.slug)).toEqual(['flexbox', 'grid']);
+		expect(c.isLoading.value).toBe(false);
+	});
+
+	it('a shared failure settles every caller, and the next call retries', async () => {
+		let fail!: () => void;
+		const fetchMock = vi.fn(
+			() =>
+				new Promise((resolve) => {
+					fail = () => resolve({ ok: false, statusText: 'Server Error' });
+				})
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		const c = await freshComposable();
+
+		const callers = Promise.all([c.fetchData(), c.fetchData()]);
+		fail();
+		await callers;
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(c.error.value?.message).toContain('Server Error');
+		expect(c.features.value).toEqual([]);
+
+		fetchMock.mockResolvedValueOnce({ ok: true, statusText: 'OK', json: async () => fixture });
+		await c.fetchData();
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(c.error.value).toBeNull();
+		expect(c.features.value.map((f) => f.slug)).toEqual(['flexbox', 'grid']);
+	});
+
 	it('records an error (and leaves features empty) when the response is not ok', async () => {
 		vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, statusText: 'Server Error' }));
 		const c = await freshComposable();

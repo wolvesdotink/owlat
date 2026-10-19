@@ -262,29 +262,15 @@ async function confirmRemoveWorkspace() {
 							</div>
 						</div>
 
-						<div class="mt-3 flex items-center justify-between border-t border-border-subtle pt-3">
+						<div
+							class="mt-3 flex items-center justify-between border-t border-border-subtle pt-3 pointer-coarse:flex-wrap pointer-coarse:gap-3"
+						>
 							<!-- Identity accent -->
-							<div class="flex items-center gap-1.5">
-								<span class="mr-1 text-xs text-text-secondary">{{
-									t('desktop.settings.workspaces.accent')
-								}}</span>
-								<button
-									v-for="option in WORKSPACE_ACCENT_OPTIONS"
-									:key="option.value"
-									type="button"
-									class="size-5 rounded-full border-2 transition-transform hover:scale-110"
-									:class="
-										ws.accentColor === option.value ? 'border-text-primary' : 'border-transparent'
-									"
-									:style="{ backgroundColor: option.value }"
-									:title="t(option.label)"
-									:aria-label="
-										t('desktop.settings.workspaces.accentOption', { accent: t(option.label) })
-									"
-									:aria-pressed="ws.accentColor === option.value"
-									@click="setWorkspaceAccent(ws.id, option.value)"
-								/>
-							</div>
+							<DesktopWorkspaceAccentPicker
+								:options="WORKSPACE_ACCENT_OPTIONS"
+								:model-value="ws.accentColor"
+								@update:model-value="setWorkspaceAccent(ws.id, $event)"
+							/>
 
 							<!-- Device-local mute -->
 							<label class="flex items-center gap-2 text-xs text-text-secondary">

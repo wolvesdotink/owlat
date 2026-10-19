@@ -5,7 +5,7 @@
  * the window sideways.
  */
 import { describe, expect, it } from 'vitest';
-import { isAnchorInView, placeAnchoredPanel } from '../anchoredPanelPlacement';
+import { fitsWithin, isAnchorInView, placeAnchoredPanel } from '../anchoredPanelPlacement';
 
 const viewport = { width: 1440, height: 900 };
 const rowAt = (top: number, left = 600) => ({ top, bottom: top + 40, left });
@@ -151,5 +151,76 @@ describe('isAnchorInView', () => {
 			false
 		);
 		expect(isAnchorInView({ top: 100, bottom: 140, left: -80, right: -40 }, viewport)).toBe(false);
+	});
+});
+
+describe('placeAnchoredPanel align end', () => {
+	it("ends the panel at the anchor's right edge", () => {
+		const placed = placeAnchoredPanel({
+			anchor: { top: 200, bottom: 232, left: 600, right: 632 },
+			panelHeight: 200,
+			panelWidth: 176,
+			viewport,
+			align: 'end',
+		});
+		expect(placed.style.left).toBe(`${632 - 176}px`);
+	});
+
+	it('keeps an end-aligned panel inside the window next to its left edge', () => {
+		const placed = placeAnchoredPanel({
+			anchor: { top: 200, bottom: 232, left: 0, right: 32 },
+			panelHeight: 200,
+			panelWidth: 176,
+			viewport,
+			align: 'end',
+		});
+		expect(placed.style.left).toBe('8px');
+	});
+
+	it('never puts either side edge outside the window, wherever the anchor is', () => {
+		const margin = 8;
+		for (const align of ['start', 'end'] as const) {
+			for (let left = -200; left <= viewport.width + 200; left += 41) {
+				const { style } = placeAnchoredPanel({
+					anchor: { top: 200, bottom: 232, left, right: left + 32 },
+					panelHeight: 200,
+					panelWidth: 176,
+					viewport,
+					align,
+				});
+				const panelLeft = Number.parseFloat(style.left);
+				expect(panelLeft).toBeGreaterThanOrEqual(margin);
+				expect(panelLeft + 176).toBeLessThanOrEqual(viewport.width - margin);
+			}
+		}
+	});
+});
+
+describe('sub-pixel tolerance', () => {
+	it('counts a height up to half a pixel over the room as fitting', () => {
+		expect(fitsWithin(198.33, 198)).toBe(true);
+		expect(fitsWithin(198.5, 198)).toBe(true);
+		expect(fitsWithin(198.51, 198)).toBe(false);
+	});
+
+	it('does not flip a panel above for a fraction of a pixel', () => {
+		// 198 px of room below the anchor, far more above.
+		const anchor = { top: 900 - 8 - 198 - 6 - 40, bottom: 900 - 8 - 198 - 6, left: 600 };
+		const within = placeAnchoredPanel({ anchor, panelHeight: 198.4, panelWidth: 352, viewport });
+		expect(within.side).toBe('below');
+		expect(within.room).toBe(198);
+		const over = placeAnchoredPanel({ anchor, panelHeight: 198.6, panelWidth: 352, viewport });
+		expect(over.side).toBe('above');
+	});
+
+	it('reports the unrounded room next to the whole-pixel cap', () => {
+		const placed = placeAnchoredPanel({
+			anchor: { top: 200.4, bottom: 240.4, left: 600 },
+			panelHeight: 320,
+			panelWidth: 352,
+			viewport,
+		});
+		expect(placed.room).toBeCloseTo(900 - 246.4 - 8);
+		expect(placed.style.maxHeight).toBe(`${Math.floor(900 - 246.4 - 8)}px`);
 	});
 });

@@ -15,7 +15,42 @@
  * while `posthog-js` is still loading), so a handful of them wait in memory for
  * the sender. They leave the browser only once the flag is on and the client
  * is started, and they are forgotten when an admin switches the flag back off.
+ *
+ * A local trace (`lib/localPerfTrace`, opted into per browser) is a second
+ * sink: it sees every sample whether or not PostHog is configured, armed or
+ * sending, and keeps it in memory. Without either, a report does nothing.
+ *
+ * Every event and the numbers it may carry are listed once, in `PERF_EVENTS`:
+ * `reportPerf` and `usePerfMark` accept nothing else, and the local trace keeps
+ * nothing else.
  */
+import type { Router } from 'vue-router';
+import { observeWebVitals } from '~/lib/webVitals';
+
+/**
+ * The performance events the app reports, each with the numeric properties it
+ * may carry. Besides these a sample has only its route names (`route`,
+ * `landing_route`). `owlat_subscriptions` is taken by the local trace alone.
+ */
+export const PERF_EVENTS = {
+	owlat_boot_shell_ms: ['duration_ms'],
+	owlat_reader_open_ms: ['duration_ms'],
+	owlat_back_list_ms: ['duration_ms'],
+	owlat_web_vitals: ['lcp_ms', 'inp_ms', 'cls'],
+	owlat_subscriptions: ['active_count', 'lingering_count', 'lingering_body_count'],
+} as const satisfies Record<string, readonly string[]>;
+
+export type PerfEvent = keyof typeof PERF_EVENTS;
+type PerfMetricOf<E extends PerfEvent> = (typeof PERF_EVENTS)[E][number];
+/** The events that are a single span, `duration_ms`. */
+export type PerfDurationEvent = {
+	[E in PerfEvent]: 'duration_ms' extends PerfMetricOf<E> ? E : never;
+}[PerfEvent];
+/** What a producer may hand in for `E`: its listed numbers and route names. */
+export type PerfSampleOf<E extends PerfEvent> = { [K in PerfMetricOf<E>]?: number } & {
+	route?: string;
+	landing_route?: string;
+};
 
 export type PerfProperties = Record<string, number | string>;
 type PerfSender = (event: string, properties: PerfProperties) => void;
@@ -26,6 +61,7 @@ const PENDING_LIMIT = 20;
 let armed = false;
 let routeName: () => string = () => 'unknown';
 let sender: PerfSender | null = null;
+let localSink: PerfSender | null = null;
 const pending: Array<[string, PerfProperties]> = [];
 let settledViews = 0;
 let firstRoute: string | null = null;
@@ -50,9 +86,23 @@ export function setPerfSender(next: PerfSender | null): void {
 	for (const [event, properties] of pending.splice(0)) next(event, properties);
 }
 
-export function reportPerf(event: string, properties: PerfProperties): void {
+/**
+ * Hand every sample to `sink` as well, PostHog or not; with `null`, stop.
+ * `currentRoute` names the route a sample was taken on.
+ */
+export function setLocalPerfSink(
+	sink: PerfSender | null,
+	options?: { currentRoute: () => string }
+): void {
+	localSink = sink;
+	if (options) routeName = options.currentRoute;
+}
+
+export function reportPerf<E extends PerfEvent>(event: E, properties: PerfSampleOf<E>): void {
+	if (!armed && !localSink) return;
+	const sample = { route: routeName(), ...properties } as PerfProperties;
+	localSink?.(event, sample);
 	if (!armed) return;
-	const sample: PerfProperties = { route: routeName(), ...properties };
 	if (sender) sender(event, sample);
 	else if (pending.length < PENDING_LIMIT) pending.push([event, sample]);
 }
@@ -75,4 +125,27 @@ export function isFirstView(): boolean {
 /** The route name the page load landed on, once the first navigation settled. */
 export function landingRoute(): string {
 	return firstRoute ?? 'unknown';
+}
+
+/** Route name of a location, never its path: names carry no ids or addresses. */
+export function routeLabel(name: unknown): string {
+	return typeof name === 'string' && name ? name : 'unknown';
+}
+
+let collecting = false;
+
+/**
+ * The page-load side shared by both sinks: settled navigations (for
+ * `isFirstView`) and the web vitals. Started by whichever sink comes first,
+ * once, so a tab with PostHog and a local trace observes everything one time.
+ */
+export function startPerfCollection(router: Pick<Router, 'afterEach'>): void {
+	if (collecting) return;
+	collecting = true;
+	router.afterEach((to, _from, failure) => {
+		if (!failure) noteViewSettled(routeLabel(to.name));
+	});
+	observeWebVitals((vitals) =>
+		reportPerf('owlat_web_vitals', { ...vitals, landing_route: landingRoute() })
+	);
 }

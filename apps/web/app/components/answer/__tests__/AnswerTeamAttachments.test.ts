@@ -184,3 +184,45 @@ describe('AnswerTeamAttachments', () => {
 		expect(wrapper.emitted('attach-existing')?.[0]).toEqual(['semanticFile', 'sf_2']);
 	});
 });
+
+describe('AnswerTeamAttachments upload queue', () => {
+	const upload = (id: string, status: 'queued' | 'uploading', progress = 0) => ({
+		id,
+		filename: `${id}.pdf`,
+		contentType: 'application/pdf',
+		size: 1000,
+		status,
+		progress,
+		indeterminate: status === 'queued',
+		thumbUrl: null,
+	});
+
+	it('shows a queued chip as waiting, without a spinner', () => {
+		const wrapper = mountFiles({ uploads: [upload('a', 'queued')] });
+		const chip = wrapper.get('[data-testid="answer-team-upload"]');
+		expect(chip.attributes('data-status')).toBe('queued');
+		expect(chip.text()).toContain('Queued');
+	});
+
+	it('reads the queue in a polite status region that is mounted up front', async () => {
+		const wrapper = mountFiles();
+		const region = wrapper.get('[data-testid="answer-team-upload-queue-status"]');
+		expect(region.attributes('role')).toBe('status');
+		expect(region.attributes('aria-live')).toBe('polite');
+		expect(region.text()).toBe('');
+
+		await wrapper.setProps({
+			uploads: [upload('a', 'uploading'), upload('b', 'queued'), upload('c', 'queued')],
+		});
+		expect(region.text()).toBe('2 files waiting to upload');
+
+		// Byte progress leaves the queue, and so the message, alone.
+		await wrapper.setProps({
+			uploads: [upload('a', 'uploading', 0.5), upload('b', 'queued'), upload('c', 'queued')],
+		});
+		expect(region.text()).toBe('2 files waiting to upload');
+
+		await wrapper.setProps({ uploads: [upload('b', 'uploading'), upload('c', 'uploading')] });
+		expect(region.text()).toBe('No more files waiting to upload');
+	});
+});

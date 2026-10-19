@@ -15,6 +15,16 @@
  * file the person cancelled. An earlier cancel holds nothing: the run stops
  * before attaching, however long the step it is waiting on takes.
  *
+ * Each composer runs at most `MAX_ACTIVE_UPLOADS` transfers at once. Files
+ * past that wait as `queued` chips and start in the order they were added as
+ * slots free up; a queued chip that is cancelled is dropped before it mints an
+ * upload URL. A run holds its slot until it settles, or until it is cancelled
+ * before its attach began: the run is then stopped, so its slot goes to the
+ * next file at once, even while a step that takes no signal (minting the
+ * upload URL) is still out. A cancel during the attach keeps the slot until
+ * that run has undone it. The cap is per instance: two composers never share
+ * a queue.
+ *
  * The transport is injected (generateUploadUrl / putFile / attach / detach) so
  * the state machine is unit-testable with a mocked transport and never imports
  * Convex or Nuxt-toast context directly.
@@ -28,14 +38,18 @@ export interface CommittedAttachment {
 	size: number;
 }
 
-/** A transient chip: an upload that is in flight or has failed. */
+/** Transfers one composer runs at once; further files wait as queued chips. */
+export const MAX_ACTIVE_UPLOADS = 3;
+
+/** A transient chip: an upload that is waiting, in flight or has failed. */
 export interface UploadChip {
 	/** Stable client id (never a storageId — the upload has none until done). */
 	id: string;
 	filename: string;
 	contentType: string;
 	size: number;
-	status: 'uploading' | 'failed';
+	/** `queued`: waiting for a free transfer slot; nothing has been sent yet. */
+	status: 'queued' | 'uploading' | 'failed';
 	/** 0..1 determinate progress; ignored while `indeterminate`. */
 	progress: number;
 	/** Transport can't report progress yet — render a shimmer instead of a bar. */
@@ -79,6 +93,8 @@ export interface AttachmentUploadsDeps extends UploadTransport {
 	createThumb?: (file: File) => string | null;
 	/** Revoke an object URL (defaults to URL.revokeObjectURL). */
 	revokeThumb?: (url: string) => void;
+	/** Transfers run at once (defaults to MAX_ACTIVE_UPLOADS). */
+	maxActive?: number;
 }
 
 let chipSeq = 0;
@@ -101,6 +117,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 	const createThumb =
 		deps.createThumb ?? ((file: File) => (isImage(file.type) ? URL.createObjectURL(file) : null));
 	const revokeThumb = deps.revokeThumb ?? ((url: string) => URL.revokeObjectURL(url));
+	const maxActive = Math.max(1, deps.maxActive ?? MAX_ACTIVE_UPLOADS);
 
 	const uploads = ref<UploadChip[]>([]);
 	// Non-reactive per-chip state: the source File (for retry) and the live
@@ -115,9 +132,17 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 	// the draft is not settled until each run has finished (and undone it).
 	const settling = new Set<string>();
 	const settlingCount = ref(0);
+	// Chip ids waiting for a slot, oldest first, and the number of runs holding one.
+	const queue: string[] = [];
+	let active = 0;
+	// Each slot-holding run's release, which frees the slot once however often it
+	// is called: by a cancel and again when the run settles.
+	const releases = new Map<string, () => void>();
 
 	const isUploading = computed(
-		() => uploads.value.some((c) => c.status === 'uploading') || settlingCount.value > 0
+		() =>
+			uploads.value.some((c) => c.status === 'queued' || c.status === 'uploading') ||
+			settlingCount.value > 0
 	);
 
 	function patch(id: string, next: Partial<UploadChip>) {
@@ -130,6 +155,32 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 		uploads.value = uploads.value.filter((c) => c.id !== id);
 		files.delete(id);
 		controllers.delete(id);
+		const queued = queue.indexOf(id);
+		if (queued >= 0) queue.splice(queued, 1);
+	}
+
+	/** Start queued chips while a slot is free; each run gives its slot back once. */
+	function pump() {
+		while (active < maxActive && queue.length > 0) {
+			const id = queue.shift()!;
+			if (!files.has(id)) continue;
+			active += 1;
+			let held = true;
+			const release = () => {
+				if (!held) return;
+				held = false;
+				if (releases.get(id) === release) releases.delete(id);
+				active -= 1;
+				pump();
+			};
+			releases.set(id, release);
+			void run(id).finally(release);
+		}
+	}
+
+	function enqueue(id: string) {
+		queue.push(id);
+		pump();
 	}
 
 	async function run(id: string) {
@@ -206,7 +257,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 		}
 	}
 
-	/** Begin uploading each file as its own chip. */
+	/** Add each file as its own chip; it starts once a transfer slot is free. */
 	function addFiles(list: File[]) {
 		for (const file of list) {
 			const id = nextChipId();
@@ -218,17 +269,20 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 					filename: file.name,
 					contentType: file.type || 'application/octet-stream',
 					size: file.size,
-					status: 'uploading',
+					status: 'queued',
 					progress: 0,
 					indeterminate: true,
 					thumbUrl: createThumb(file),
 				},
 			];
-			void run(id);
+			enqueue(id);
 		}
 	}
 
-	/** Cancel an in-flight upload (aborts the request) or dismiss a failed one. */
+	/**
+	 * Cancel an in-flight upload (aborts the request), drop a queued one before
+	 * it starts, or dismiss a failed one.
+	 */
 	function cancel(id: string) {
 		const controller = controllers.get(id);
 		if (controller && !controller.signal.aborted) {
@@ -242,13 +296,17 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 			controller.abort();
 		}
 		if (uploads.value.some((c) => c.id === id)) forget(id);
+		// Cancelled before its attach began, the run will never attach: its slot
+		// is free now, not when a step that takes no signal comes back.
+		if (!attaching.has(id)) releases.get(id)?.();
 	}
 
-	/** Retry a failed upload with the original File. */
+	/** Retry a failed upload with the original File, behind any queued files. */
 	function retry(id: string) {
 		const chip = uploads.value.find((c) => c.id === id);
 		if (!chip || chip.status !== 'failed' || !files.has(id)) return;
-		void run(id);
+		patch(id, { status: 'queued', progress: 0, indeterminate: true });
+		enqueue(id);
 	}
 
 	/** Revoke every outstanding thumbnail (call on unmount). */
@@ -259,6 +317,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 		uploads.value = [];
 		files.clear();
 		controllers.clear();
+		queue.length = 0;
 	}
 
 	return { uploads, isUploading, addFiles, cancel, retry, dispose };

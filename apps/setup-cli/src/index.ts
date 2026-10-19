@@ -9,7 +9,8 @@
  *   feature  Toggle a single feature flag (e.g., `owlat-setup feature ai on`).
  *   env      Set a single env var (e.g., `owlat-setup env LLM_API_KEY sk-...`),
  *            or `owlat-setup env --show` to list the vars the current flags need.
- *   doctor   Diagnose a broken install (port checks, .env sanity, container health).
+ *   doctor   Diagnose a broken install (port checks, .env sanity, container health);
+ *            `doctor --json` prints the same checks as one redacted JSON report.
  *   push-env Push the Convex function-runtime keys from .env to the deployment
  *            (the second half of `owlat apply`).
  *   unset-env
@@ -23,7 +24,7 @@ import { runPack } from './commands/pack';
 import { runEnv } from './commands/env';
 import { runPushEnv } from './commands/pushEnv';
 import { runUnsetEnv } from './commands/unsetEnv';
-import { runDoctor } from './commands/doctor';
+import { runDoctor } from './commands/doctorRun';
 import { runQuickstart } from './commands/quickstart';
 import { runBootstrapOrg } from './commands/bootstrap-org';
 import { runSeed } from './commands/seed';
@@ -62,7 +63,8 @@ Commands:
   unset-env <KEY> [KEY...]
                      Clear Convex function-runtime keys from the deployment and
                      .env (push-env never deletes one; needs the Docker socket).
-  doctor             Diagnose a broken install.
+  doctor [--json]    Diagnose a broken install. --json prints the same checks
+                     as one machine-readable report (secrets redacted).
 
 Options:
   --web              Force web wizard (browser-based).

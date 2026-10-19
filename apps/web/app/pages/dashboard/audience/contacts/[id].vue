@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { tabPanelAttrs } from '@owlat/ui/utils/tabs';
 import { formatContactPropertyValue } from '~/utils/contactPropertyValue';
 import { formatDate } from '~/utils/formatters';
 
@@ -104,6 +105,7 @@ const { canManageContacts, canAnnotateContacts, isAdmin } = usePermissions();
 // Members get a quiet two-tab profile. Admin-only CRM depth stays available
 // without leaking its affordances into the everyday customer view.
 const activeTab = ref('profile');
+const tabPanelId = useId();
 const tabOptions = computed(() =>
 	isAdmin.value
 		? [
@@ -392,10 +394,13 @@ async function handleRemoveSuppression() {
 			</div>
 
 			<div class="mb-6">
-				<UiTabs v-model="activeTab" :tabs="tabOptions" />
+				<UiTabs v-model="activeTab" :tabs="tabOptions" :panel-id="tabPanelId" />
 			</div>
 
-			<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+			<div
+				v-bind="tabPanelAttrs(tabPanelId, tabOptions, activeTab)"
+				class="grid grid-cols-1 lg:grid-cols-3 gap-6"
+			>
 				<!-- Main Info -->
 				<div class="lg:col-span-2 space-y-6">
 					<!-- Contact Details Card -->

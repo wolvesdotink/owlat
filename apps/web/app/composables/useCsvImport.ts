@@ -100,6 +100,9 @@ export const mappableFields: { value: MappableField; label: string }[] = [
 /** Rows per `importBatch` call, well under the backend's per-call cap. */
 const IMPORT_BATCH_SIZE = 100;
 
+/** Data rows the preview step shows. */
+const PREVIEW_ROW_COUNT = 5;
+
 interface PreparedContact {
 	/** 1-based data-row number. */
 	row: number;
@@ -115,7 +118,9 @@ export function useCsvImport() {
 	// File state
 	const fileInputRef = ref<HTMLInputElement | null>(null);
 	const selectedFile = ref<File | null>(null);
-	const parsedData = ref<string[][]>([]);
+	// The parsed cells are never edited in place, only replaced as a whole, so
+	// they stay out of deep reactivity: no proxy per row or per cell.
+	const parsedData = shallowRef<string[][]>([]);
 	const csvHeaders = ref<string[]>([]);
 
 	// Mapping state
@@ -148,13 +153,25 @@ export function useCsvImport() {
 	const scalarOwners = computed(() => scalarFieldOwners(columnMapping.value));
 	const mappingConflict = computed(() => conflictingScalarField(columnMapping.value));
 	/**
-	 * Every data row as the import will send it. Validation, the preview and the
-	 * payload all read this, so what the preview shows is what gets imported.
+	 * Every data row as the import will send it. Validation and the payload read
+	 * this; it is computed lazily, so a mapping change only prepares the whole
+	 * file once validation or the import asks for it.
 	 */
 	const preparedRows = computed<PreparedRow[]>(() =>
 		prepareCsvRows(parsedData.value, csvHeaders.value, columnMapping.value)
 	);
-	const previewRows = computed(() => preparedRows.value.slice(0, 5));
+	/**
+	 * The first rows through the same `prepareCsvRows`. A row's status only
+	 * depends on the rows before it, so this equals the head of `preparedRows`:
+	 * what the preview shows is what gets imported.
+	 */
+	const previewRows = computed<PreparedRow[]>(() =>
+		prepareCsvRows(
+			parsedData.value.slice(0, PREVIEW_ROW_COUNT),
+			csvHeaders.value,
+			columnMapping.value
+		)
+	);
 	/** Header of the column the email comes from, for the preview. */
 	const emailSourceColumn = computed(() => {
 		const owner = scalarOwners.value.email;

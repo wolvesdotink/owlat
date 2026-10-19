@@ -75,7 +75,19 @@ export interface UsePreviewReturn {
 	validationIssues: Ref<ValidationIssue[]>;
 	/** Computed on first read from `generatedHtml`; nothing is spent while no one reads it. */
 	optimizations: Readonly<Ref<OptimizationSuggestion[]>>;
-	emailDiff: Ref<EmailDiff | null>;
+	/**
+	 * Diff of the previous render against the current one. Computed only while
+	 * `diffRequested` is true (the diff panel is open); null otherwise, and when
+	 * there is no previous render.
+	 */
+	emailDiff: Readonly<Ref<EmailDiff | null>>;
+	/** Set while a view needs `emailDiff`; flipping it on diffs the current render pair. */
+	diffRequested: Ref<boolean>;
+	/**
+	 * Whether the last render changed the HTML: the pair `emailDiff` would report
+	 * as not identical. Cheap, so it decides whether a diff is offered at all.
+	 */
+	htmlChanged: Readonly<Ref<boolean>>;
 
 	generateEmailHtml: (darkMode?: boolean) => string;
 	generatePlainText: (options?: { fillVariables?: boolean }) => string;
@@ -118,7 +130,7 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 	const emailAnalysis = ref<EmailAnalysis | null>(null);
 	const healthScore = ref<EmailHealthScore | null>(null);
 	const validationIssues = ref<ValidationIssue[]>([]);
-	const emailDiff = ref<EmailDiff | null>(null);
+	const diffRequested = ref(false);
 	const previousHtml = ref('');
 	// Bumped by every content regenerate; AMP is cached against it.
 	let contentVersion = 0;
@@ -280,18 +292,22 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		}
 	});
 
-	// Compute diff when HTML changes
-	const computeDiff = () => {
-		if (!previousHtml.value || !generatedHtml.value) {
-			emailDiff.value = null;
-			return;
-		}
+	// The diff compares consecutive renders, but only the diff panel reads it, so
+	// it is derived from the current pair on request. `diffEmails` reports two
+	// equal strings as identical, so the cheap string check answers whether a
+	// diff is worth offering without computing one.
+	const htmlChanged = computed(
+		() =>
+			!!previousHtml.value && !!generatedHtml.value && previousHtml.value !== generatedHtml.value
+	);
+	const emailDiff = computed<EmailDiff | null>(() => {
+		if (!diffRequested.value || !previousHtml.value || !generatedHtml.value) return null;
 		try {
-			emailDiff.value = diffEmails(previousHtml.value, generatedHtml.value);
+			return diffEmails(previousHtml.value, generatedHtml.value);
 		} catch {
-			emailDiff.value = null;
+			return null;
 		}
-	};
+	});
 
 	// Render AMP only while a view or export asks for it, once per content
 	// version. Unrequested AMP for outdated content is dropped rather than kept.
@@ -306,13 +322,12 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 	};
 	watch(ampRequested, syncAmp, { flush: 'sync' });
 
-	// HTML, its analysis and the diff against the previous render. Shared by the
-	// dark-mode path, which changes nothing else.
+	// HTML and its analysis, keeping the previous render as the diff baseline.
+	// Shared by the dark-mode path, which changes nothing else.
 	const renderHtml = () => {
 		previousHtml.value = generatedHtml.value;
 		generatedHtml.value = generateEmailHtml(previewDarkMode.value);
 		analyzeHtml();
-		computeDiff();
 	};
 
 	// Regenerate the preview artifacts from the current canvas + render options.
@@ -342,6 +357,7 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		} else {
 			previewMode.value = 'edit';
 			ampRequested.value = false;
+			diffRequested.value = false;
 		}
 	};
 
@@ -378,6 +394,8 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		validationIssues,
 		optimizations,
 		emailDiff,
+		diffRequested,
+		htmlChanged,
 		generateEmailHtml,
 		generatePlainText,
 		generateAmpHtml,
