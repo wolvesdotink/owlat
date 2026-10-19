@@ -30,13 +30,22 @@ const contact = {
 	createdAt: 0,
 };
 
-function mountRow(props: { selected?: boolean; canManage?: boolean } = {}) {
+function mountRow(
+	props: { selected?: boolean; canManage?: boolean; contact?: Partial<typeof contact> } = {}
+) {
 	// A row renders a <tr>, so it is mounted inside a real table body.
 	const Host = defineComponent({
 		setup() {
 			return () =>
 				h('table', [
-					h('tbody', [h(ContactRow, { contact, selected: false, canManage: true, ...props })]),
+					h('tbody', [
+						h(ContactRow, {
+							selected: false,
+							canManage: true,
+							...props,
+							contact: { ...contact, ...props.contact },
+						}),
+					]),
 				]);
 		},
 	});
@@ -121,5 +130,22 @@ describe('ContactsContactRow', () => {
 		await viewer.host.get('tr').trigger('contextmenu', { clientX: 5, clientY: 5 });
 		expect(menuLabels()).toEqual(['Open contact', 'Copy email address']);
 		viewer.host.unmount();
+	});
+
+	// Plan OW-037: the email is optional, so the row falls back to the name,
+	// then to "Unnamed contact", in both its visible cell and its checkbox name.
+	it.each([
+		['an email', {}, 'ada@example.com'],
+		['a name but no email', { email: undefined, lastName: 'Lovelace' }, 'Ada Lovelace'],
+		['no email and no name', { email: undefined, firstName: null }, 'Unnamed contact'],
+	])('labels a contact with %s by its primary identity', (_case, override, label) => {
+		const { host } = mountRow({ contact: override });
+		expect(host.findAll('td')[1]?.text()).toBe(label);
+		expect(host.find(`button[aria-label="Select ${label}"]`).exists()).toBe(true);
+		host.unmount();
+
+		const selected = mountRow({ contact: override, selected: true });
+		expect(selected.host.find(`button[aria-label="Deselect ${label}"]`).exists()).toBe(true);
+		selected.host.unmount();
 	});
 });

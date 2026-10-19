@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { languageSelectOptions } from '~/data/languageOptions';
 import { isValidEmail } from '@owlat/shared';
 import type { ImportResults } from '~/composables/useCsvImport';
+import { contactFullName, contactHasEmail, contactPrimaryIdentity } from '~/utils/contactIdentity';
 
 const { t } = useI18n();
 
@@ -138,10 +139,6 @@ const toggleSelectAll = () => {
 const toggleContactSelection = (contactId: Id<'contacts'>) => {
 	bulkSelection.toggleSelection(contactId);
 };
-
-/** First + last for the card list, which has no room for a column each. */
-const contactName = (contact: { firstName?: string | null; lastName?: string | null }) =>
-	[contact.firstName, contact.lastName].filter(Boolean).join(' ');
 
 /** Row click and the row menu's "Open" both land on the contact's page. */
 const openContact = (contactId: Id<'contacts'>) =>
@@ -700,10 +697,10 @@ onUnmounted(() => {
 									:aria-label="
 										bulkSelection.selectedIds.value.has(contact._id)
 											? t('dashboard.audience.contacts.index.deselectContact', {
-													email: contact.email,
+													email: contactPrimaryIdentity(contact, t),
 												})
 											: t('dashboard.audience.contacts.index.selectContact', {
-													email: contact.email,
+													email: contactPrimaryIdentity(contact, t),
 												})
 									"
 									@click="toggleContactSelection(contact._id)"
@@ -719,14 +716,18 @@ onUnmounted(() => {
 									class="flex-1 min-w-0 text-left"
 									@click="openContact(contact._id)"
 								>
-									<span class="block text-text-primary font-medium truncate">{{
-										contact.email
-									}}</span>
+									<!-- Email, else name, else "Unnamed contact"; the name line below
+									     only adds something when the email is the primary line. -->
 									<span
-										v-if="contactName(contact)"
+										class="block font-medium truncate"
+										:class="contactHasEmail(contact) ? 'text-text-primary' : 'text-text-secondary'"
+										>{{ contactPrimaryIdentity(contact, t) }}</span
+									>
+									<span
+										v-if="contactHasEmail(contact) && contactFullName(contact)"
 										class="block text-sm text-text-secondary truncate"
 									>
-										{{ contactName(contact) }}
+										{{ contactFullName(contact) }}
 									</span>
 									<span class="block text-xs text-text-tertiary mt-0.5">
 										{{

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
+import { contactHasEmail, contactPrimaryIdentity } from '~/utils/contactIdentity';
 
 /**
  * One row of the audience contacts table.
@@ -31,6 +32,10 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const { showToast } = useToast();
+
+// What the row shows and announces for the contact: its email, else its name,
+// else "Unnamed contact". The email is optional, so this is never left blank.
+const identity = computed(() => contactPrimaryIdentity(props.contact, t));
 
 async function copyEmail(email: string) {
 	try {
@@ -97,15 +102,19 @@ function menuItems(): ContextMenuItem[] {
 					@click.stop="emit('toggle-select')"
 					:aria-label="
 						selected
-							? t('dashboard.audience.contacts.index.deselectContact', { email: contact.email })
-							: t('dashboard.audience.contacts.index.selectContact', { email: contact.email })
+							? t('dashboard.audience.contacts.index.deselectContact', { email: identity })
+							: t('dashboard.audience.contacts.index.selectContact', { email: identity })
 					"
 				>
 					<Icon v-if="selected" name="lucide:check" class="w-3 h-3" />
 				</button>
 			</td>
 			<td class="px-6 py-4">
-				<span class="text-text-primary font-medium">{{ contact.email }}</span>
+				<span
+					class="font-medium"
+					:class="contactHasEmail(contact) ? 'text-text-primary' : 'text-text-secondary'"
+					>{{ identity }}</span
+				>
 			</td>
 			<td class="px-6 py-4">
 				<span class="text-text-secondary">{{ contact.firstName || '-' }}</span>

@@ -10027,7 +10027,8 @@
 						"created": "Kontakt {email} wurde erstellt",
 						"emailCopied": "E-Mail-Adresse kopiert",
 						"imported": "{count} Kontakt erfolgreich verarbeitet | {count} Kontakte erfolgreich verarbeitet"
-					}
+					},
+					"unnamedContact": "Unbenannter Kontakt"
 				}
 			},
 			"segments": {
