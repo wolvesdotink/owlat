@@ -5,11 +5,14 @@
  * The header used to be a `role="button"` div with Force verify, Verify and
  * Remove nested inside it, which axe reports as `nested-interactive` and which
  * relied on `.self` / `.stop` modifiers to keep an action's keypress or click
- * from also folding the row. The header is now plain layout: the identity and
- * status area is a native `<button>` carrying `aria-expanded`/`aria-controls`,
+ * from also folding the row. The header is now plain layout: one native
+ * `<button>` carrying `aria-expanded`/`aria-controls` lies over the whole row,
  * and the actions are its siblings, so no event from an action can ever reach
- * the toggle. These tests pin that structure, the keyboard contract on both
- * sides of it, and a clean axe scan of the row.
+ * the toggle. The identity text sits above that overlay so it stays selectable;
+ * a plain click on it still toggles, a click that ends a selection does not.
+ * These tests pin that structure, the keyboard and pointer contract on both
+ * sides of it, and a clean axe scan of the row. Hit-testing itself (which
+ * element a click lands on) needs a layout engine and is checked in a browser.
  */
 import { describe, it, expect } from 'vitest';
 import { capitalize } from 'vue';
@@ -144,6 +147,54 @@ describe('domain row disclosure', () => {
 		}
 		wrapper.unmount();
 	});
+});
+
+describe('domain row header text', () => {
+	const text = (wrapper: VueWrapper) => wrapper.get('[data-testid="sends-as-line"]');
+
+	it('toggles the row on a plain click, on the domain name and on the hint line', async () => {
+		const wrapper = mountRow();
+		await wrapper.get('p').trigger('click');
+		await text(wrapper).trigger('click');
+		expect(wrapper.emitted('toggle')).toHaveLength(2);
+		wrapper.unmount();
+	});
+
+	it('does not toggle on the click that ends a text selection', async () => {
+		const wrapper = mountRow();
+		const range = document.createRange();
+		range.selectNodeContents(text(wrapper).element);
+		const selection = window.getSelection()!;
+		selection.removeAllRanges();
+		selection.addRange(range);
+		expect(selection.toString()).toContain('anyone@mail.example.com');
+		await text(wrapper).trigger('click');
+		expect(wrapper.emitted('toggle')).toBeUndefined();
+		selection.removeAllRanges();
+		wrapper.unmount();
+	});
+
+	it('is plain text, not a control', () => {
+		const wrapper = mountRow();
+		expect(text(wrapper).element.closest(INTERACTIVE)).toBeNull();
+		expect(wrapper.get('p').element.closest(INTERACTIVE)).toBeNull();
+		wrapper.unmount();
+	});
+});
+
+describe('domain row chevron', () => {
+	// Rotated when expanded, which makes it a stacking context painted above the
+	// overlay: without this it would swallow the click that should fold the row.
+	it.each([false, true])(
+		'lets the pointer through to the disclosure (expanded: %s)',
+		(isExpanded) => {
+			const wrapper = mountRow({ isExpanded });
+			const chevron = wrapper.get('svg').element.parentElement!;
+			expect(chevron.getAttribute('aria-hidden')).toBe('true');
+			expect(chevron.classList.contains('pointer-events-none')).toBe(true);
+			wrapper.unmount();
+		}
+	);
 });
 
 describe('domain row actions', () => {

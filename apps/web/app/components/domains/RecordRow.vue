@@ -96,6 +96,15 @@ const receivingProviderLabel = computed(() =>
 	t(EXTERNAL_RECEIVING_PROVIDER_KEYS[props.domain.externalReceivingProvider ?? 'other'])
 );
 
+/**
+ * A click on the header text toggles the row like the rest of the header, but
+ * not when it ends a text selection: the text stays copyable.
+ */
+function toggleFromText() {
+	if (window.getSelection()?.isCollapsed === false) return;
+	emit('toggle');
+}
+
 // Registration has SETTLED: the domain is no longer mid-registration and is not
 // sitting on a registration failure. The registering placeholder and the
 // failure notice REPLACE the setup sections rather than sitting alongside them,
@@ -111,28 +120,32 @@ const registrationSettled = computed(
 
 <template>
 	<div class="card p-0 overflow-hidden">
-		<!-- Domain Header. A plain layout row holding ONE disclosure button (the
-		     identity/status area) and the operation buttons as its siblings, so no
-		     interactive control is nested inside another and a key pressed on an
-		     action can never reach the toggle. The disclosure's ::after overlay
-		     stretches over the whole row, keeping the full-row click target; the
-		     action buttons are positioned to sit above it. -->
+		<!-- Domain Header. A plain layout row: ONE disclosure button and, beside
+		     it, the operation buttons, so no interactive control is nested inside
+		     another and a key pressed on an action can never reach the toggle. The
+		     disclosure is an overlay over the whole row (the full-row click target)
+		     and holds no visible content of its own. The identity text and the
+		     actions are positioned above it: the text stays selectable and a plain
+		     click on it toggles too (`toggleFromText`); everything else in the row
+		     either sits below the overlay or ignores the pointer. -->
 		<div
 			class="relative px-6 py-4 flex items-center justify-between hover:bg-bg-surface/50 transition-colors"
 		>
+			<button
+				type="button"
+				class="absolute inset-0 w-full h-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
+				:aria-expanded="isExpanded"
+				:aria-controls="`domain-records-${domain._id}`"
+				:aria-label="t('components.domains.recordRow.rowLabel', { domain: domain.domain })"
+				data-testid="domain-disclosure"
+				@click="emit('toggle')"
+			/>
 			<div class="flex items-center gap-4">
 				<UiIconBox icon="lucide:globe" size="sm" variant="surface" rounded="lg" />
-				<button
-					type="button"
-					class="block text-left cursor-pointer focus-visible:outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-brand focus-visible:after:ring-inset"
-					:aria-expanded="isExpanded"
-					:aria-controls="`domain-records-${domain._id}`"
-					:aria-label="t('components.domains.recordRow.rowLabel', { domain: domain.domain })"
-					data-testid="domain-disclosure"
-					@click="emit('toggle')"
-				>
-					<span class="flex items-center gap-3">
-						<span class="font-medium text-text-primary">{{ domain.domain }}</span>
+				<!-- Mouse-only by design: the disclosure above is the keyboard route. -->
+				<div class="relative cursor-pointer" @click="toggleFromText">
+					<div class="flex items-center gap-3">
+						<p class="font-medium text-text-primary">{{ domain.domain }}</p>
 						<span
 							:class="[
 								'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
@@ -148,13 +161,13 @@ const registrationSettled = computed(
 							/>
 							{{ statusLabel }}
 						</span>
-					</span>
+					</div>
 					<!-- Single identity + status hint line (§3.1 mock). Says what the
 					     domain is FOR — a concrete example sender address resolves the
 					     "what's this name?" ambiguity — plus the bounce host named from
 					     the actual return-path record so it can't drift, then the
 					     existing status / added-date info. -->
-					<span class="block text-sm text-text-tertiary mt-0.5" data-testid="sends-as-line">
+					<p class="text-sm text-text-tertiary mt-0.5" data-testid="sends-as-line">
 						{{ t('components.domains.recordRow.sendsAs', { address: sendsAsAddress })
 						}}<template v-if="isExternalReceiving">
 							·
@@ -195,8 +208,8 @@ const registrationSettled = computed(
 								})
 							}}
 						</span>
-					</span>
-				</button>
+					</p>
+				</div>
 			</div>
 
 			<div class="flex items-center gap-2">
@@ -262,12 +275,12 @@ const registrationSettled = computed(
 				>
 					<Icon name="lucide:trash-2" class="w-4 h-4" />
 				</UiButton>
-				<!-- Decorative: left unpositioned so the disclosure overlay above it
-				     takes the click. -->
+				<!-- Decorative. Its rotation makes it a stacking context painted above
+				     the overlay, so it lets the pointer through to the disclosure. -->
 				<div
 					aria-hidden="true"
 					:class="[
-						'w-5 h-5 flex items-center justify-center transition-transform',
+						'w-5 h-5 flex items-center justify-center transition-transform pointer-events-none',
 						isExpanded ? 'rotate-180' : '',
 					]"
 				>
