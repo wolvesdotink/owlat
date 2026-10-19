@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const SCRIPT = resolve(import.meta.dirname, '../check-bundle-budget.ts');
@@ -81,6 +82,24 @@ describe('the entry-bundle budget', () => {
 
 		expect(result.output).toContain('entry.js: 3 files,');
 		expect(result.status).toBe(1);
+	});
+
+	it('lists equal-sized files in the order the walk reaches them', () => {
+		const same = (name: string) => `export const ${name}="${'x'.repeat(2000)}";\n`;
+		expect(gzipSync(same('a'), { level: 9 }).length).toBe(gzipSync(same('z'), { level: 9 }).length);
+
+		const result = run(
+			build({
+				'entry.js': 'import{a}from"./a.js";import{z}from"./z.js";\n',
+				'a.js': same('a'),
+				'z.js': same('z'),
+			})
+		);
+
+		// The walk pops the last import first, so z.js is reached before a.js.
+		expect(result.output.indexOf('  z.js')).toBeGreaterThan(-1);
+		expect(result.output.indexOf('  z.js')).toBeLessThan(result.output.indexOf('  a.js'));
+		expect(result.status).toBe(0);
 	});
 
 	it('leaves dynamic imports out of the closure', () => {

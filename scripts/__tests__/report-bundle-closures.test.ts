@@ -87,6 +87,7 @@ interface Closure {
 	};
 }
 interface Report {
+	meta: { assets: string; budget: null };
 	entry: { key: string; closure: { files: number; raw: number; gzip: number } };
 	routes: Closure[];
 	deferred: Closure[];
@@ -124,6 +125,22 @@ const RESOURCES: Record<string, Resource> = {
 	},
 };
 
+/**
+ * `bytes` of seeded pseudo-random data as base64: the same on every run, and
+ * gzip cannot shrink it below about three quarters of its base64 length.
+ */
+function incompressible(bytes: number): string {
+	const buffer = Buffer.alloc(bytes);
+	let state = 0x2545f491;
+	for (let i = 0; i < bytes; i++) {
+		state ^= state << 13;
+		state ^= state >>> 17;
+		state ^= state << 5;
+		buffer[i] = state & 0xff;
+	}
+	return buffer.toString('base64');
+}
+
 const raw = (...files: string[]) =>
 	files.reduce((sum, file) => sum + (CHUNKS[file] as string).length, 0);
 const gz = (file: string) => gzipSync(Buffer.from(CHUNKS[file] as string), { level: 9 }).length;
@@ -132,6 +149,7 @@ describe('the route and deferred-feature closure report', () => {
 	it('reports each page by source path with what it adds beyond the entry closure', () => {
 		const result = report(build(CHUNKS, RESOURCES));
 
+		expect(result.meta).toEqual({ assets: 'javascript-only', budget: null });
 		expect(result.entry).toEqual({
 			key: '../node_modules/nuxt/dist/app/entry.js',
 			closure: { files: 2, raw: raw('entry.js', 'vue.js'), gzip: gz('entry.js') + gz('vue.js') },
@@ -202,10 +220,14 @@ describe('the route and deferred-feature closure report', () => {
 		const output = build(
 			{
 				...CHUNKS,
-				'codemirror.js': `export const c="${Buffer.alloc(400_000, 'x').toString('base64')}${Math.random()}";\n`,
+				'codemirror.js': `export const c="${incompressible(320 * 1024)}";\n`,
 			},
 			RESOURCES
 		);
+
+		// Far over the entry's 254 KiB gzip budget, which must not apply here.
+		const edit = report(output).routes.find((route) => route.key === 'pages/emails/[id]/edit.vue');
+		expect(edit?.beyondEntry.gzip).toBeGreaterThan(254 * 1024);
 
 		const first = run(output);
 		const second = run(output);
@@ -213,6 +235,7 @@ describe('the route and deferred-feature closure report', () => {
 		expect(first.status).toBe(0);
 		expect(second.stdout).toBe(first.stdout);
 		expect(first.stdout).toContain('report-only, no budget');
+		expect(first.stdout).toContain('Totals count JavaScript chunks only');
 		const pageRows = first.stdout
 			.split('\n')
 			.map((line) => line.trim().split(/\s+/).at(3))

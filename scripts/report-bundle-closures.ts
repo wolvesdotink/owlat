@@ -16,6 +16,9 @@
  *   (`components/SendTestEmailModal.vue`) or by chunk name; a chunk the
  *   manifest does not name is shown by who imports it.
  *
+ * Like the entry budget it counts JavaScript chunks only: the stylesheets a
+ * page loads (the manifest lists them per page) are not in these totals.
+ *
  * The output is sorted by key and holds no timings, so two reports diff
  * cleanly before and after a change. There is no budget: the plan (OW-076)
  * keeps route closures report-only until a few releases show how much they
@@ -149,7 +152,7 @@ const totals = (files: string[]): Totals => ({
 });
 
 function describe(root: string) {
-	const closure = staticClosure(publicDir, root);
+	const closure = staticClosure(publicDir, root).sort();
 	const added = closure.filter((file) => !entryClosure.has(file));
 	return {
 		root,
@@ -167,6 +170,11 @@ function describe(root: string) {
 
 const byKey = <T extends { key: string }>(a: T, b: T) => compare(a.key, b.key);
 const report = {
+	meta: {
+		/** What the totals count: `.js` chunks reached by static imports, no CSS. */
+		assets: 'javascript-only',
+		budget: null,
+	},
 	// Keyed by source path, not file: the entry carries the build id, so its
 	// hashed name changes on every build even when nothing else does.
 	entry: { key: labels.get(entry) ?? 'entry', closure: totals([...entryClosure].sort()) },
@@ -186,15 +194,16 @@ const row = ({ files, raw, gzip }: Totals, key: string) =>
 const header = `  ${'files'.padStart(5)}  ${'raw KB'.padStart(8)}  ${'gzip KB'.padStart(8)}`;
 
 console.info('Route and deferred-feature closures (report-only, no budget)');
+console.info('Totals count JavaScript chunks only; stylesheets are not included.');
 console.info(
-	`Entry ${report.entry.key}: ${report.entry.closure.files} files, ` +
+	`Entry ${report.entry.key}: ${report.entry.closure.files} JS files, ` +
 		`${kb(report.entry.closure.raw)} KB raw, ${kb(report.entry.closure.gzip)} KB gzip`
 );
-console.info(`\nRoutes (${report.routes.length}), static closure beyond the entry closure:`);
+console.info(`\nRoutes (${report.routes.length}), static JS closure beyond the entry closure:`);
 console.info(`${header}  page`);
 for (const route of report.routes) console.info(row(route.beyondEntry, route.key));
 console.info(
-	`\nDeferred features (${report.deferred.length}), static closure beyond the entry closure:`
+	`\nDeferred features (${report.deferred.length}), static JS closure beyond the entry closure:`
 );
 console.info(`${header}  chunk  [imported by]`);
 for (const feature of report.deferred) {

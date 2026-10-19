@@ -56,7 +56,7 @@ function matches(source: string, patterns: RegExp[]): string[] {
 	for (const pattern of patterns) {
 		for (const match of source.matchAll(pattern)) found.add(match[1] as string);
 	}
-	return [...found].sort();
+	return [...found];
 }
 
 export function staticImports(publicDir: string, file: string): string[] {
@@ -67,7 +67,10 @@ export function dynamicImports(publicDir: string, file: string): string[] {
 	return matches(readFileSync(join(publicDir, file), 'utf8'), [DYNAMIC_IMPORT]);
 }
 
-/** The root and every file it reaches through static imports, sorted by name. */
+/**
+ * The root and every file it reaches through static imports, in walk order.
+ * The entry budget lists equal-sized files in this order; the report sorts.
+ */
 export function staticClosure(publicDir: string, root: string): string[] {
 	const closure = new Set<string>();
 	const stack = [root];
@@ -77,7 +80,7 @@ export function staticClosure(publicDir: string, root: string): string[] {
 		closure.add(file);
 		stack.push(...staticImports(publicDir, file));
 	}
-	return [...closure].sort();
+	return [...closure];
 }
 
 export interface FileSize {
