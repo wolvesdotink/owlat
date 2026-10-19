@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import type { Toast, ToastType } from '../../composables/useToast';
 import { useUiI18n } from '../../composables/useUiI18n';
+import { useToastReadingTimeHolds } from '../../composables/useToastReadingTime';
 
 /**
  * A single toast card. Extracted from {@link Toast.vue} so the same markup can
@@ -67,6 +68,9 @@ const STYLES: Record<ToastType, ToastStyle> = {
 	},
 };
 
+// Hovering or focusing the card pauses an ordinary toast's reading time.
+const card = useToastReadingTimeHolds(() => props.toast.id);
+
 const { t } = useUiI18n();
 
 const style = computed(() => STYLES[props.toast.type]);
@@ -74,6 +78,7 @@ const style = computed(() => STYLES[props.toast.type]);
 
 <template>
 	<div
+		ref="card"
 		:class="[
 			'flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border min-w-[280px] max-w-md',
 			style.container,
