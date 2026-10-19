@@ -33,26 +33,34 @@
  *   `import(name)`) it is a finding.
  *
  * - Every `import()` in a scanned file takes a plain string literal (or a
- *   template without `${}`), checked before any file is skipped for not naming
- *   the module, so a name assembled at runtime (`'@tauri-apps/api/' + 'core'`)
- *   cannot load it unseen (`nonLiteralImports`).
+ *   template without `${}`), so a name assembled at runtime
+ *   (`'@tauri-apps/api/' + 'core'`) cannot load it unseen (`nonLiteralImports`).
  *
  * Names are compared by their `.text` (an identifier's or a string literal's
  * value), never by source text, so `export { 'invoke' as call }` is the same
  * name as `export { invoke as call }`. Type-only specifiers are erased and
  * skipped.
  *
- * Limits, by design: names are matched per file, not per scope, so a shadowing
- * local can only add findings; code outside the scanned directories, and
- * strings handed to `eval` or a webview from Rust, are not seen.
+ * Every decision is made on the AST, and every scanned file is parsed: no raw
+ * text prefilter, so comments (`import/* c *\/(mod)`) and escapes
+ * (`'@tauri-apps/api/\u0063ore'`, `window['\u005f_TAURI__']`) change nothing.
+ * Module specifiers, `import()` arguments, property and element-access keys
+ * and global names are all read as decoded `.text` values.
+ *
+ * Threat model: the gate catches accidental and ordinary drift (a call to a
+ * command Rust renamed or removed, a binding the scan cannot follow). It is not
+ * a sandbox against deliberately obfuscated code. Anything expressible as an
+ * AST literal is handled; out of scope are `eval`, `new Function`, keys
+ * computed from variables at runtime (`window[key]`, `core[name]`), code
+ * outside the scanned roots, and strings Rust hands to a webview `eval`. Names
+ * are matched per file, not per scope, so a shadowing local can only add
+ * findings.
  */
 import ts from 'typescript';
 
-export const CORE_MODULE = '@tauri-apps/api/core';
+const CORE_MODULE = '@tauri-apps/api/core';
 
 const TAURI_GLOBALS = new Set(['__TAURI_INTERNALS__', '__TAURI__']);
-
-export const TAURI_GLOBAL_PATTERN = /__TAURI(?:_INTERNALS)?__/;
 
 export interface InvokeCall {
 	readonly line: number;
@@ -148,7 +156,10 @@ function isNameOnly(node: ts.Identifier): boolean {
 		return true;
 	}
 	if (ts.isExportSpecifier(parent)) {
-		const fromElsewhere = parent.parent.parent.moduleSpecifier !== undefined;
+		// `export type { invoke }` / `export { type invoke }` are erased.
+		const declaration = parent.parent.parent;
+		if (parent.isTypeOnly || declaration.isTypeOnly) return true;
+		const fromElsewhere = declaration.moduleSpecifier !== undefined;
 		return fromElsewhere || (parent.propertyName !== undefined && parent.name === node);
 	}
 	return ts.isBindingElement(parent) && parent.propertyName === node;
@@ -289,11 +300,39 @@ export function scanFile(source: ts.SourceFile): FileScan {
 		else untraceable(node, `${name} used other than as ${name}.invoke(...)`);
 	};
 
+	/**
+	 * A global's name as a string value (`.text`, so escapes are decoded). As an
+	 * element-access key it is a reference; `'__TAURI__' in window` only asks
+	 * whether the app runs in Tauri; a declared member name or a type is no read.
+	 * Anywhere else (`Reflect.get(window, '__TAURI_INTERNALS__')`, a quoted
+	 * destructuring key) the string can reach the global unseen.
+	 */
+	const useGlobalString = (node: ts.StringLiteralLike) => {
+		const parent = node.parent;
+		if (ts.isElementAccessExpression(parent) && parent.argumentExpression === node) {
+			return useGlobal(parent, node.text);
+		}
+		const inCheck =
+			ts.isBinaryExpression(parent) &&
+			parent.left === node &&
+			parent.operatorToken.kind === ts.SyntaxKind.InKeyword;
+		const memberName =
+			(ts.isPropertyAssignment(parent) ||
+				ts.isPropertySignature(parent) ||
+				ts.isPropertyDeclaration(parent)) &&
+			parent.name === node;
+		if (inCheck || memberName || inTypePosition(node)) return;
+		untraceable(node, `${node.text} named as a string value`);
+	};
+
 	const use = (node: ts.Node) => {
 		if (ts.isIdentifier(node) && !declarations.has(node)) {
 			const parent = node.parent;
 			const isGlobalProperty = ts.isPropertyAccessExpression(parent) && parent.name === node;
-			if (TAURI_GLOBALS.has(node.text) && (isGlobalProperty || !isNameOnly(node))) {
+			const isDestructuredKey = ts.isBindingElement(parent) && parent.propertyName === node;
+			if (TAURI_GLOBALS.has(node.text) && isDestructuredKey) {
+				untraceable(node, `${node.text} destructured out of an object`);
+			} else if (TAURI_GLOBALS.has(node.text) && (isGlobalProperty || !isNameOnly(node))) {
 				useGlobal(isGlobalProperty ? parent : node, node.text);
 			} else if (!isNameOnly(node) && !inTypePosition(node)) {
 				if (invokeNames.has(node.text)) accept(node, `invoke (${node.text})`);
@@ -305,13 +344,8 @@ export function scanFile(source: ts.SourceFile): FileScan {
 					}
 				}
 			}
-		} else if (
-			ts.isStringLiteralLike(node) &&
-			TAURI_GLOBALS.has(node.text) &&
-			ts.isElementAccessExpression(node.parent) &&
-			node.parent.argumentExpression === node
-		) {
-			useGlobal(node.parent, node.text);
+		} else if (ts.isStringLiteralLike(node) && TAURI_GLOBALS.has(node.text)) {
+			useGlobalString(node);
 		}
 		ts.forEachChild(node, use);
 	};

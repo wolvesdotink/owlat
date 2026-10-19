@@ -43,13 +43,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import {
-	CORE_MODULE,
-	nonLiteralImports,
-	scanFile,
-	TAURI_GLOBAL_PATTERN,
-	vueScript,
-} from './desktop-invoke-scan';
+import { nonLiteralImports, scanFile, vueScript } from './desktop-invoke-scan';
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -226,14 +220,12 @@ export async function checkDesktopInvokeContract(
 	let callCount = 0;
 	let permissions: Set<string> | undefined;
 	for (const file of files) {
+		// Every file is parsed and every decision made on its AST: a raw-text
+		// prefilter misses comments and escapes (desktop-invoke-scan.ts header).
 		const raw = await readFile(join(root, file), 'utf8');
-		const namesTheIpc = raw.includes(CORE_MODULE) || TAURI_GLOBAL_PATTERN.test(raw);
-		// A non-literal import() could load the module under an assembled name, so
-		// it is checked in every file, before the module-name prefilter skips one.
-		if (!namesTheIpc && !/\bimport\s*\(/.test(raw)) continue;
 		const text = file.endsWith('.vue') ? vueScript(raw) : raw;
 		const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-		const found = namesTheIpc ? scanFile(source) : { calls: [], problems: [] };
+		const found = scanFile(source);
 		const fileProblems = [
 			...nonLiteralImports(source).map((line) => ({
 				line,

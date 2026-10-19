@@ -316,6 +316,47 @@ describe('the desktop invoke contract gate', () => {
 		]);
 	});
 
+	it('reads the AST, so comments and escapes change nothing', async () => {
+		const nonLiteral = 'untraceable invoke use: import() of a non-literal module name';
+		const notCommand = (at: string, name: string) =>
+			`${at}  invoke('${name}') is not a command in ${IPC_COMMANDS_FILE}`;
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/desktop/src/block.ts': 'const mod = "x";\nexport const a = () => import/* c */(mod);\n',
+			'apps/desktop/src/line.ts': 'const mod = "x";\nexport const a = () => import // c\n(mod);\n',
+			'apps/desktop/src/static.ts':
+				"import { invoke } from '@tauri-apps/api/\\u0063ore';\ninvoke('nope_static');\n",
+			'apps/desktop/src/dynamic.ts':
+				"const { invoke } = await import('@tauri-apps/api/\\u0063ore');\ninvoke('nope_dynamic');\n",
+			'apps/desktop/src/reexport.ts': "export { invoke } from '@tauri-apps/api/\\u0063ore';\n",
+			'apps/web/app/key.ts':
+				"window['\\u005f_TAURI_INTERNALS__'].invoke('nope_key');\nexport const t = window['\\u005f_TAURI__'];\nwindow.\\u005f_TAURI_INTERNALS__.invoke('nope_ident');\n",
+			'apps/web/app/strings.ts':
+				"export const a = Reflect.get(window, '__TAURI_INTERNALS__');\nconst { __TAURI__: t } = window as any;\nconst { '__TAURI_INTERNALS__': u } = window as any;\nexport const inApp = '__TAURI__' in window;\n",
+		});
+		const untraceable = (at: string, what: string) => `${at}  untraceable invoke use: ${what}`;
+		expect(result.problems).toEqual([
+			`apps/desktop/src/block.ts:2  ${nonLiteral}`,
+			notCommand('apps/desktop/src/dynamic.ts:2', 'nope_dynamic'),
+			`apps/desktop/src/line.ts:2  ${nonLiteral}`,
+			untraceable('apps/desktop/src/reexport.ts:1', 're-export from @tauri-apps/api/core'),
+			notCommand('apps/desktop/src/static.ts:2', 'nope_static'),
+			untraceable('apps/web/app/key.ts:2', '__TAURI__ used other than as __TAURI__.invoke(...)'),
+			notCommand('apps/web/app/key.ts:1', 'nope_key'),
+			notCommand('apps/web/app/key.ts:3', 'nope_ident'),
+			untraceable('apps/web/app/strings.ts:1', '__TAURI_INTERNALS__ named as a string value'),
+			untraceable('apps/web/app/strings.ts:2', '__TAURI__ destructured out of an object'),
+			untraceable('apps/web/app/strings.ts:3', '__TAURI_INTERNALS__ named as a string value'),
+		]);
+	});
+
+	it('lets type-only local exports through', async () => {
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\nexport type { invoke };\nexport { type invoke as Invoke };\n`,
+		});
+		expect(result.problems).toEqual([]);
+	});
+
 	it('accepts the direct global calls and checks their names', async () => {
 		const result = await check({
 			'apps/web/app/global.ts':
