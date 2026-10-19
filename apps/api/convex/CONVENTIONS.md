@@ -945,9 +945,26 @@ migration that emptied it. The guard then checks the previous release's rows
 without that field. The deploy is what enforces the precondition: Convex
 validates every stored row against the new schema and refuses one that a row
 does not match, so a deployment whose migration has not completed keeps its
-old release. The guard covers
-the schema half of the contract only. It does not check function arguments,
-JSON stored in strings or what values mean, and it is no substitute for
+old release.
+
+The same snapshot carries the previous release's callable surface: the kind,
+visibility and argument validator of every public function and of each internal
+function a worker addresses by string path (`'mail/imap/fetch:fetchEnvelopes'`
+in `apps/imap`, `apps/mail-sync`, `apps/code-worker`, ...). Its companion
+`convex/__tests__/schemaCompat/functionArgs.test.ts` proves from the two
+validators' structure that each current function accepts every argument object
+the previous one did (`containment.ts`; what it cannot prove counts as a
+failure), and fails on the function removed or renamed, its kind changed, a
+public function made internal, an argument removed or renamed, a new required
+argument, an optional one made required, a type changed or narrowed (a string
+made an id or a literal), a union narrowed or split so that a combination of
+members is lost. A function deliberately removed after its shim release goes in that
+test's `RETIRED_FUNCTIONS`, and an argument the previous release no longer
+sends in `RETIRED_ARGUMENTS`, in the contract PR.
+
+The guard does not check result shapes (a removed or changed result field), the
+arguments of jobs the previous release scheduled on internal functions, HTTP
+routes, JSON stored in strings or what values mean, and it is no substitute for
 upgrading a real previous-release dataset. The release E2E does not do that
 either: its seeded leg carries over Redis and ClamAV volumes, not Convex data.
 
@@ -974,7 +991,13 @@ either: its seeded leg carries over Redis and ClamAV volumes, not Convex data.
 - `emailTemplates.contentBlockVersion` / `transactionalEmails.contentBlockVersion`
   / `mailDrafts.bodyBlocksVersion` track the `EditorBlock[]` JSON format.
   `packages/email-renderer` must support every historical version, or write
-  a one-shot migration when a version is retired.
+  a one-shot migration when a version is retired. The stored-shape corpus in
+  `packages/email-renderer/src/__tests__/storedBlocks/` holds real stored
+  documents of each version and their HTML per renderer version; its
+  `corpus.ts` has the rules (add fixtures, never edit them; retiring a version
+  names its migration in `retired.json`; snapshots change only with an
+  `EMAIL_RENDERER_VERSION` bump), and `bun run lint:stored-block-corpus`
+  enforces them against the base branch.
 - `*.rendererVersion` tracks the renderer engine. Bump when re-rendering
   the same blocks produces materially different HTML — needed when reading
   a `shareLinks` snapshot or rehydrating cached output. The version is

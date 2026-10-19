@@ -3,10 +3,9 @@ import { shallowRef, watch } from 'vue';
 import type { PostHogHandle } from '~/composables/usePostHog';
 import {
 	armPerfReporting,
-	landingRoute,
-	noteViewSettled,
-	reportPerf,
+	routeLabel,
 	setPerfSender,
+	startPerfCollection,
 } from '~/lib/perfTelemetry';
 import {
 	isPrivateRouteName,
@@ -15,7 +14,6 @@ import {
 	type ResolvedRoute,
 } from '~/lib/analyticsPrivacy';
 import { logWarn } from '~/lib/runtimeLog';
-import { observeWebVitals } from '~/lib/webVitals';
 
 /**
  * PostHog boots only when the instance has `analytics.posthog` ON.
@@ -227,19 +225,9 @@ export default defineNuxtPlugin(() => {
 	return { provide };
 });
 
-/** Route name of a location, never its path: names carry no ids or addresses. */
-function routeLabel(name: unknown): string {
-	return typeof name === 'string' && name ? name : 'unknown';
-}
-
 function startPerfReporting(router: ReturnType<typeof useRouter>, handle: PostHogHandle) {
 	armPerfReporting({ currentRoute: () => routeLabel(router.currentRoute.value.name) });
-	router.afterEach((to, _from, failure) => {
-		if (!failure) noteViewSettled(routeLabel(to.name));
-	});
-	observeWebVitals((vitals) =>
-		reportPerf('owlat_web_vitals', { ...vitals, landing_route: landingRoute() })
-	);
+	startPerfCollection(router);
 	// The box fills when the client is running and the flag is on, and empties
 	// when the flag flips off; the samples follow it.
 	watch(handle, (client) => {

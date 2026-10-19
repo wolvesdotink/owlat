@@ -12,6 +12,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { scriptGzipSizes } from './bundleGzip.testlib';
 
 const SCRIPT = resolve(import.meta.dirname, '../check-bundle-budget.ts');
 
@@ -81,6 +82,24 @@ describe('the entry-bundle budget', () => {
 
 		expect(result.output).toContain('entry.js: 3 files,');
 		expect(result.status).toBe(1);
+	});
+
+	it('lists equal-sized files in the order the walk reaches them', () => {
+		const same = (name: string) => `export const ${name}="${'x'.repeat(2000)}";\n`;
+		const output = build({
+			'entry.js': 'import{a}from"./a.js";import{z}from"./z.js";\n',
+			'a.js': same('a'),
+			'z.js': same('z'),
+		});
+		const sizes = scriptGzipSizes(join(output, 'public/_nuxt'), ['a.js', 'z.js']);
+		expect(sizes['a.js']).toBe(sizes['z.js']);
+
+		const result = run(output);
+
+		// The walk pops the last import first, so z.js is reached before a.js.
+		expect(result.output.indexOf('  z.js')).toBeGreaterThan(-1);
+		expect(result.output.indexOf('  z.js')).toBeLessThan(result.output.indexOf('  a.js'));
+		expect(result.status).toBe(0);
 	});
 
 	it('leaves dynamic imports out of the closure', () => {

@@ -82,6 +82,17 @@ export function useDataTable<TSortField extends string = string>(
 	};
 
 	/**
+	 * The `aria-sort` for a column header, read from the same state as the
+	 * chevron and the query args: the active column reports its direction and
+	 * every other header gets `undefined`, so Vue omits the attribute and only
+	 * one header ever claims a sort.
+	 */
+	const getAriaSort = (field: TSortField): 'ascending' | 'descending' | undefined => {
+		if (sortBy.value !== field) return undefined;
+		return sortOrder.value === 'asc' ? 'ascending' : 'descending';
+	};
+
+	/**
 	 * Get page numbers array with ellipsis support
 	 * Returns an array of page numbers and '...' for ellipsis
 	 */
@@ -139,6 +150,7 @@ export function useDataTable<TSortField extends string = string>(
 		sortOrder: readonly(sortOrder),
 		toggleSort,
 		getSortIcon,
+		getAriaSort,
 		isSortable,
 
 		// Pagination

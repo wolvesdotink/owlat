@@ -10,6 +10,7 @@ import {
 	MAX_LINGERING_SUBSCRIPTIONS,
 	lingerClassOf,
 	resetSharedConvexSubscriptions,
+	sharedSubscriptionCounts,
 	SUBSCRIPTION_LINGER_MS,
 } from '../sharedConvexSubscriptions';
 
@@ -242,6 +243,21 @@ describe('shared Convex subscriptions', () => {
 		expect(client.wire[0]!.unsubscribe).not.toHaveBeenCalled();
 		expect(client.wire[1]!.unsubscribe).toHaveBeenCalledOnce();
 		expect(client.wire[2]!.unsubscribe).not.toHaveBeenCalled();
+	});
+
+	it('counts the queries that have an owner and the ones that linger', () => {
+		const client = fakeClient();
+		const shared = own(client, { id: 1 });
+		own(client, { id: 1 });
+		own(client, { id: 2 });
+		own(client, { id: 3 }).leave();
+		own(client, { id: 4 }, { query: bodyQuery }).leave();
+		shared.leave();
+
+		expect(sharedSubscriptionCounts()).toEqual({ active: 2, lingering: 2, lingeringBody: 1 });
+
+		vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS);
+		expect(sharedSubscriptionCounts()).toEqual({ active: 2, lingering: 0, lingeringBody: 0 });
 	});
 
 	it('forgets everything on an identity reset', () => {
