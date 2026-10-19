@@ -140,7 +140,7 @@ const diffPanelOpen = ref(false);
 const copiedFormat = ref<string | null>(null);
 
 // Compatibility analysis
-const { analyzeHtml, report, isAnalyzing } = useCompatibilityAnalysis();
+const { analyzeHtml, cancelAnalysis, report, isAnalyzing } = useCompatibilityAnalysis();
 
 // Computed
 const simulationResult = computed<SimulationResult>(() => {
@@ -242,6 +242,7 @@ const ampNeeded = computed(() => viewMode.value === 'amp' || exportMenuOpen.valu
 watch(ampNeeded, (needed) => emit('update:amp-requested', needed));
 onBeforeUnmount(() => {
 	if (ampNeeded.value) emit('update:amp-requested', false);
+	cancelAnalysis();
 });
 
 const hasWarnings = computed(() => (props.renderWarnings?.length ?? 0) > 0);
@@ -254,6 +255,7 @@ function refreshPreview() {
 
 async function runAnalysis() {
 	if (!selectedClient.value) {
+		cancelAnalysis();
 		report.value = null;
 		return;
 	}
@@ -261,7 +263,8 @@ async function runAnalysis() {
 	const result = await analyzeHtml(props.html, {
 		clients: [selectedClient.value],
 	});
-	emit('compatibility-report', result);
+	// null: a newer analysis (or unmount) superseded this one.
+	if (result) emit('compatibility-report', result);
 }
 
 // Export functions
