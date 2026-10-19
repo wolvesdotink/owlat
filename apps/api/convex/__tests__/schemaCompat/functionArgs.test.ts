@@ -9,17 +9,18 @@ import {
 	workerPaths,
 	type FunctionSignature,
 } from './functions';
-import { rowsForTable, withoutRetiredFields } from './rows';
+import { containmentGap, withoutValidatorField } from './containment';
 import { readSnapshot } from './snapshot';
 
 /**
  * PREVIOUS-RELEASE CALLERS STILL GET THROUGH. Between `convex-deploy` and the
  * container restart, and for as long as a browser tab or desktop client stays
  * open, the previous release's clients and workers call this release's
- * functions with the arguments they were built to send. This builds those
- * calls from the signatures in `previousRelease.json` (every public function,
- * and each internal function a worker addresses by path) and checks that the
- * current functions accept every one.
+ * functions with the arguments they were built to send. This reads the
+ * signatures in `previousRelease.json` (every public function, and each
+ * internal function a worker addresses by path) and proves, from the
+ * validators' structure (`containment.ts`), that each current validator
+ * accepts every argument object the previous one did.
  *
  * A failure here means the PR removes or renames a function such a caller
  * uses, changes its kind, makes it internal, or rejects arguments it accepted:
@@ -43,7 +44,7 @@ const RETIRED_FUNCTIONS: ReadonlySet<string> = new Set();
  * Arguments the current release deliberately removed, per function, as paths
  * into the arguments object (`.` between fields, `[]` for every array element).
  * Only once the previous release no longer sends the argument; the check then
- * reads its calls without it and still checks the rest.
+ * reads the previous validator without it and still checks the rest.
  */
 const RETIRED_ARGUMENTS: Readonly<Record<string, readonly string[]>> = {};
 
@@ -80,6 +81,15 @@ describe('previous-release calls are still accepted', () => {
 		).toEqual([]);
 	});
 
+	it('every current signature contains itself (no false gap on real validators)', () => {
+		expect(
+			Object.entries(current).flatMap(([path, signature]) => {
+				const problem = containmentGap(signature.args, signature.args);
+				return problem ? [`${path}: ${problem}`] : [];
+			})
+		).toEqual([]);
+	});
+
 	it('a renamed worker endpoint or a new required argument on the real snapshot fails', () => {
 		const path = Object.keys(snapshot.functions).find(
 			(candidate) =>
@@ -110,7 +120,64 @@ describe('previous-release calls are still accepted', () => {
 		).toEqual([]);
 		expect(
 			callIncompatibilities(snapshot.functions, { ...current, [path]: withArg(false) })
-		).toContain(`${path} call 0: cursor: required field missing`);
+		).toEqual([`${path}: cursor: new and required`]);
+	});
+
+	/** `current` with one argument of `path` replaced. */
+	const withArgument = (
+		path: string,
+		name: string,
+		field: { fieldType: ValidatorJSON; optional: boolean }
+	) => {
+		const signature = current[path];
+		if (signature?.args.type !== 'object') throw new Error(`${path} has no object arguments`);
+		return {
+			...current,
+			[path]: {
+				...signature,
+				args: { ...signature.args, value: { ...signature.args.value, [name]: field } },
+			},
+		};
+	};
+
+	it('a real string argument turned into an id fails', () => {
+		expect(
+			callIncompatibilities(
+				snapshot.functions,
+				withArgument('mail/filters:create', 'name', {
+					fieldType: { type: 'id', tableName: 'users' },
+					optional: false,
+				})
+			)
+		).toEqual(['mail/filters:create: name: accepted string, now only id of users']);
+	});
+
+	it('a real worker argument union narrowed, or an optional one made required, fails', () => {
+		const path = 'mail/imap/flags:storeFlags';
+		expect(
+			callIncompatibilities(
+				snapshot.functions,
+				withArgument(path, 'mode', {
+					fieldType: {
+						type: 'union',
+						value: [
+							{ type: 'literal', value: 'set' },
+							{ type: 'literal', value: 'add' },
+						],
+					},
+					optional: false,
+				})
+			)
+		).toEqual([`${path}: mode: accepted "remove", now only "set" | "add"`]);
+		expect(
+			callIncompatibilities(
+				snapshot.functions,
+				withArgument(path, 'unchangedSinceModseq', {
+					fieldType: { type: 'number' },
+					optional: false,
+				})
+			)
+		).toEqual([`${path}: unchangedSinceModseq: optional, now required`]);
 	});
 
 	it('names no retired function that is still exported', () => {
@@ -118,25 +185,16 @@ describe('previous-release calls are still accepted', () => {
 	});
 
 	it('names no retired argument that is still accepted', () => {
-		// A call with every optional argument present carries each argument the
-		// validator has; removing a retired one from it must change nothing.
 		const stillThere = Object.entries(RETIRED_ARGUMENTS).flatMap(([path, args]) => {
 			const signature = current[path];
 			if (!signature) return [`${path}: function is no longer exported`];
-			return args.filter((arg) =>
-				rowsForTable(signature.args).some(
-					(call) => JSON.stringify(withoutRetiredFields(call, [arg])) !== JSON.stringify(call)
-				)
+			return args.filter(
+				(arg) =>
+					JSON.stringify(withoutValidatorField(signature.args, arg)) !==
+					JSON.stringify(signature.args)
 			);
 		});
 		expect(stillThere).toEqual([]);
-	});
-
-	it('keeps the call count per function small enough to check every release', () => {
-		const counts = Object.values(snapshot.functions).map(
-			(signature) => rowsForTable(signature.args).length
-		);
-		expect(Math.max(...counts)).toBeLessThan(2_000);
 	});
 });
 
@@ -182,9 +240,9 @@ describe('the call check itself', () => {
 	});
 
 	it('rejects a narrowed argument union', () => {
-		expect(check(signature({ ...fields, mode: v.literal('read') })).join('\n')).toContain(
-			'mode: expected literal "read", got "write"'
-		);
+		expect(check(signature({ ...fields, mode: v.literal('read') }))).toEqual([
+			'mail/imap/flags:storeFlags: mode: accepted "write", now only "read"',
+		]);
 	});
 
 	it('rejects a renamed worker endpoint unless it is retired', () => {
@@ -201,33 +259,33 @@ describe('the call check itself', () => {
 	});
 
 	it('rejects a new required argument and an optional one made required', () => {
-		expect(check(signature({ ...fields, mailboxId: v.id('mailboxes') }))).toContain(
-			'mail/imap/flags:storeFlags call 0: mailboxId: required field missing'
-		);
-		expect(check(signature({ ...fields, since: v.number() }))).toContain(
-			'mail/imap/flags:storeFlags call 0: since: required field missing'
-		);
+		expect(check(signature({ ...fields, mailboxId: v.id('mailboxes') }))).toEqual([
+			'mail/imap/flags:storeFlags: mailboxId: new and required',
+		]);
+		expect(check(signature({ ...fields, since: v.number() }))).toEqual([
+			'mail/imap/flags:storeFlags: since: optional, now required',
+		]);
 	});
 
 	it('rejects a removed or renamed argument unless it is retired, and still checks the rest', () => {
 		const { since: _since, ...withoutSince } = fields;
-		expect(check(signature(withoutSince))).toContain(
-			'mail/imap/flags:storeFlags call 1: since: field is no longer in the schema'
-		);
-		expect(check(signature({ ...withoutSince, after: v.optional(v.number()) }))).toContain(
-			'mail/imap/flags:storeFlags call 1: since: field is no longer in the schema'
-		);
+		expect(check(signature(withoutSince))).toEqual([
+			'mail/imap/flags:storeFlags: since: no longer accepted',
+		]);
+		expect(check(signature({ ...withoutSince, after: v.optional(v.number()) }))).toEqual([
+			'mail/imap/flags:storeFlags: since: no longer accepted',
+		]);
 		const retired = { 'mail/imap/flags:storeFlags': ['since'] };
 		expect(check(signature(withoutSince), retired)).toEqual([]);
-		expect(
-			check(signature({ ...withoutSince, uids: v.array(v.string()) }), retired).join('\n')
-		).toContain('uids[0]: expected string');
+		expect(check(signature({ ...withoutSince, uids: v.array(v.string()) }), retired)).toEqual([
+			'mail/imap/flags:storeFlags: uids[]: accepted number, now only string',
+		]);
 	});
 
 	it('rejects a changed argument type', () => {
-		expect(check(signature({ ...fields, folderId: v.id('mailboxes') })).join('\n')).toContain(
-			'folderId: expected id of mailboxes'
-		);
+		expect(check(signature({ ...fields, folderId: v.id('mailboxes') }))).toEqual([
+			'mail/imap/flags:storeFlags: folderId: accepted id of mailFolders, now only id of mailboxes',
+		]);
 	});
 
 	it('rejects a changed kind and a public function made internal', () => {
@@ -250,7 +308,9 @@ describe('the call check itself', () => {
 			callIncompatibilities(before, {
 				'x:y': signature(fields, { kind: 'query', visibility: 'public' }),
 			})
-		).toEqual(['x:y: took any arguments, now validates them']);
+		).toEqual([
+			'x:y: (arguments): accepted any, now only {folderId: id of mailFolders, mode: "read" | "write", uids: number[], since?: number}',
+		]);
 	});
 });
 

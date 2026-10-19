@@ -951,12 +951,14 @@ The same snapshot carries the previous release's callable surface: the kind,
 visibility and argument validator of every public function and of each internal
 function a worker addresses by string path (`'mail/imap/fetch:fetchEnvelopes'`
 in `apps/imap`, `apps/mail-sync`, `apps/code-worker`, ...). Its companion
-`convex/__tests__/schemaCompat/functionArgs.test.ts` builds that release's
-calls from those validators the way the table check builds rows, and fails when
-a current function refuses one: the function removed or renamed, its kind
-changed, a public function made internal, an argument removed or renamed, a new
-required argument, an optional one made required, a type changed, a union
-narrowed. A function deliberately removed after its shim release goes in that
+`convex/__tests__/schemaCompat/functionArgs.test.ts` proves from the two
+validators' structure that each current function accepts every argument object
+the previous one did (`containment.ts`; what it cannot prove counts as a
+failure), and fails on the function removed or renamed, its kind changed, a
+public function made internal, an argument removed or renamed, a new required
+argument, an optional one made required, a type changed or narrowed (a string
+made an id or a literal), a union narrowed or split so that a combination of
+members is lost. A function deliberately removed after its shim release goes in that
 test's `RETIRED_FUNCTIONS`, and an argument the previous release no longer
 sends in `RETIRED_ARGUMENTS`, in the contract PR.
 

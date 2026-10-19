@@ -1,8 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { ValidatorJSON } from 'convex/values';
-import { rowsForTable, withoutRetiredFields } from './rows';
-import { schemaMismatch } from './validate';
+import { containmentGap, withoutValidatorField } from './containment';
 
 /**
  * The calling side of a release's function contract: for each Convex function
@@ -138,13 +137,13 @@ const withArticle = (kind: FunctionKind): string => `${kind === 'action' ? 'an' 
 /**
  * Every way a call the previous release could make is refused now: the
  * function is gone or renamed, it changed kind, it went from public to
- * internal, or its validator rejects arguments the previous one accepted (an
- * argument removed or renamed, a new required one, an optional one made
- * required, a changed type, a narrowed union). The calls are built from the
- * previous validators the way the table check builds rows (`rows.ts`).
+ * internal, or its validator does not accept everything the previous one did
+ * (an argument removed or renamed, a new required one, an optional one made
+ * required, a changed or narrowed type, a narrowed union). Proved from the two
+ * validators' structure (`containment.ts`), not from sample calls.
  *
  * `retired` names functions deliberately removed, and `retiredArguments`
- * arguments deliberately removed (as paths, see `withoutRetiredFields`), both
+ * arguments deliberately removed (as paths, see `withoutValidatorField`), both
  * in the contract step after the previous release stopped calling or sending
  * them.
  */
@@ -169,17 +168,9 @@ export function callIncompatibilities(
 			problems.push(`${path}: was public, now internal`);
 			continue;
 		}
-		if (before.args.type !== 'object') {
-			// Unvalidated arguments: a caller may have sent anything.
-			if (now.args.type !== 'any') {
-				problems.push(`${path}: took any arguments, now validates them`);
-			}
-			continue;
-		}
-		for (const [index, call] of rowsForTable(before.args).entries()) {
-			const problem = schemaMismatch(now.args, withoutRetiredFields(call, retiredArguments[path]));
-			if (problem) problems.push(`${path} call ${index}: ${problem}`);
-		}
+		const sent = (retiredArguments[path] ?? []).reduce(withoutValidatorField, before.args);
+		const problem = containmentGap(now.args, sent, '(arguments)');
+		if (problem) problems.push(`${path}: ${problem}`);
 	}
 	return problems;
 }
