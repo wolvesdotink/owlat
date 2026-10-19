@@ -421,9 +421,11 @@ export function listUpdates(size: number, seed = 0x0f72): ListUpdate[] {
 	const prev: ListPage = { messages: pageRows, hasMore: true, nextCursor: cursorAfter(ctx.rand) };
 	const middle = Math.floor(size / 2);
 
+	// Opening an unread row: the first unread one from the middle of the page on.
 	const markRead = wireCopy(prev);
-	const target = markRead.messages[middle] as ListRow;
-	markRead.messages[middle] = { ...target, flagSeen: !target.flagSeen };
+	const unread = markRead.messages.findIndex((row, i) => i >= middle && !row.flagSeen);
+	if (unread < 0) throw new Error('no unread row in the second half of the page');
+	markRead.messages[unread] = { ...(markRead.messages[unread] as ListRow), flagSeen: true };
 
 	// A new brief line is a thread-level change: every row of the thread shows it.
 	const briefThread = busiestBriefThread(prev);

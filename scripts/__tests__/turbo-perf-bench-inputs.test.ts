@@ -1,11 +1,12 @@
 /**
  * The report-only benchmark specs (plan item OW-072) import root files under
  * scripts/perf-bench/, outside the workspace turbo hashes by default. turbo.json
- * lists those files as inputs of the importing workspaces' `test` and
- * `test:coverage` tasks, so a change to one of them alone cannot replay a
+ * adds that directory to the inputs of the generic `test`, `test:coverage` and
+ * `typecheck` tasks, so a change to one of those files alone cannot replay a
  * cached result. This reads which perf-bench files each spec really imports
- * and checks them against the real `turbo run --dry=json` input lists, so it
- * fails when a spec starts importing a new one or an override is dropped.
+ * and checks them against the real `turbo run --dry=json` input lists of the
+ * importing workspace, so it fails when the inputs are dropped or narrowed
+ * past a file a spec imports.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -29,6 +30,9 @@ const SPECS = [
 	},
 ] as const;
 
+/** Every task whose result depends on what the specs import. */
+const TASKS = ['test', 'test:coverage', 'typecheck'] as const;
+
 interface DryRunTask {
 	readonly task: string;
 	readonly package: string;
@@ -43,13 +47,7 @@ beforeAll(() => {
 	const dryRun = JSON.parse(
 		execFileSync(
 			join(REPOSITORY_ROOT, 'node_modules/.bin/turbo'),
-			[
-				'run',
-				'test',
-				'test:coverage',
-				'--dry=json',
-				...SPECS.map(({ workspace }) => `--filter=${workspace}`),
-			],
+			['run', ...TASKS, '--dry=json', ...SPECS.map(({ workspace }) => `--filter=${workspace}`)],
 			{ cwd: REPOSITORY_ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 }
 		)
 	) as { tasks: DryRunTask[] };
@@ -69,11 +67,11 @@ function perfBenchImports(spec: string): string[] {
 	);
 }
 
-describe('turbo test inputs for the perf-bench imports', () => {
+describe('turbo test and typecheck inputs for the perf-bench imports', () => {
 	it.each(SPECS)('$workspace hashes every perf-bench file $spec imports', ({ workspace, spec }) => {
 		const imported = perfBenchImports(spec);
 		expect(imported.length).toBeGreaterThan(0);
-		for (const task of ['test', 'test:coverage']) {
+		for (const task of TASKS) {
 			const files = inputs.get(`${workspace}#${task}`);
 			expect(files, `${workspace}#${task} is missing from the dry run`).toBeDefined();
 			for (const file of imported) {

@@ -122,6 +122,17 @@ describe('Postbox list page fixture fidelity', () => {
 		expect(update.keptRows).toBe(size - rows.length);
 	});
 
+	it.each(SIZES)('marking read on a %i-row page turns one unread row read', (size) => {
+		const update = listUpdates(size).find((u) => u.name === 'one row marked read')!;
+		const changed = update.next.messages
+			.map((row, i) => ({ before: update.prev.messages[i]!, after: row }))
+			.filter(({ before, after }) => JSON.stringify(before) !== JSON.stringify(after));
+		expect(changed).toHaveLength(1);
+		const [{ before, after }] = changed as [(typeof changed)[number]];
+		expect([before.flagSeen, after.flagSeen]).toEqual([false, true]);
+		expect({ ...after, flagSeen: before.flagSeen }).toStrictEqual(before);
+	});
+
 	it('builds the same page on every call', () => {
 		expect(JSON.stringify(listUpdates(LIVE_PAGE_SIZE))).toBe(
 			JSON.stringify(listUpdates(LIVE_PAGE_SIZE))
