@@ -43,7 +43,9 @@ function baseRef(): string | undefined {
 const base = baseRef();
 const mergeBase = base ? git(['merge-base', base, 'HEAD']) : undefined;
 if (!mergeBase?.ok) {
-	console.log(`check-stored-block-corpus: no base to compare with (${base ?? 'none'}); skipping.`);
+	process.stdout.write(
+		`check-stored-block-corpus: no base to compare with (${base ?? 'none'}); skipping.\n`
+	);
 	process.exit(0);
 }
 
@@ -101,4 +103,6 @@ if (violations.length > 0) {
 	console.error(violations.join('\n'));
 	process.exit(1);
 }
-console.log(`check-stored-block-corpus: ${changes.length} corpus change(s) against ${base}, ok.`);
+process.stdout.write(
+	`check-stored-block-corpus: ${changes.length} corpus change(s) against ${base}, ok.\n`
+);
