@@ -50,6 +50,8 @@ const {
 	setSwipeAction,
 	sendSound,
 	setSendSound,
+	autoLoadImages,
+	setAutoLoadImages,
 	isSaving,
 } = usePostboxSettings();
 
@@ -343,6 +345,22 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 			/>
 		</div>
 		<PreferencesBriefBackfill v-if="isEnabled('ai') && autoSummarize" />
+		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
+			<div class="min-w-0">
+				<label for="postbox-auto-load-images" class="font-medium text-sm block">
+					{{ t('components.preferences.preferencesReading.autoLoadImagesLabel') }}
+				</label>
+				<p class="text-xs text-text-tertiary mt-0.5">
+					{{ t('components.preferences.preferencesReading.autoLoadImagesHelp') }}
+				</p>
+			</div>
+			<UiSwitch
+				id="postbox-auto-load-images"
+				:model-value="autoLoadImages"
+				:disabled="isSaving"
+				@update:model-value="setAutoLoadImages"
+			/>
+		</div>
 		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 			<div class="min-w-0">
 				<label for="postbox-send-sound" class="font-medium text-sm block">

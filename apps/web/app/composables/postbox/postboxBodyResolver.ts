@@ -87,26 +87,29 @@ async function loadPostboxBody(
 	blobOnly: boolean
 ): Promise<ResolvedPostboxBody> {
 	const id = messageId as Id<'mailMessages'>;
+	let inlineText: string | null = null;
 	if (!blobOnly) {
 		const inline = await client.query(api.mail.mailbox.messages.getMessageInlineBody, {
 			messageId: id,
 		});
 		if (!inline) return null;
-		if (inline.htmlInline !== null || inline.textInline !== null) {
+		// HTML wins: an inline text part does not stand in for an HTML blob.
+		if (inline.htmlInline !== null || (inline.textInline !== null && !inline.hasHtmlBlob)) {
 			return { html: inline.htmlInline, text: inline.textInline };
 		}
 		if (!inline.hasHtmlBlob && !inline.hasTextBlob) return { html: null, text: null };
+		inlineText = inline.textInline;
 	}
 	const urls = await client.action(api.mail.mailbox.messages.getMessageBodyBlobUrls, {
 		messageId: id,
 	});
 	if (!urls) return null;
 	const bodyUrl = urls.htmlUrl ?? urls.textUrl;
-	if (!bodyUrl) return { html: null, text: null };
+	if (!bodyUrl) return { html: null, text: inlineText };
 	const response = await fetchImpl(bodyUrl);
 	if (response.ok === false) throw new Error('Could not load message body');
 	const body = await response.text();
-	return urls.htmlUrl ? { html: body, text: null } : { html: null, text: body };
+	return urls.htmlUrl ? { html: body, text: inlineText } : { html: null, text: body };
 }
 
 /** A message's TEXT part as stored, whatever the HTML part does. */

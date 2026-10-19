@@ -32,6 +32,7 @@ import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
 import { POSTBOX_MARK_READ_DWELL_MS, markReadOnOpen } from '~/utils/postboxMarkReadPolicy';
 import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
+import { postboxBodyImageProps } from '~/utils/postboxImageAllowlist';
 
 export type AnswerConversationView = 'summary' | 'full';
 
@@ -100,7 +101,7 @@ watch(view, (next) => {
 // Answering a conversation reads it: the same mark-read policy the reader
 // applies on open (now, after a dwell, or never), since `r` on a list row now
 // comes straight here without the reader in between.
-const { markReadPolicy } = usePostboxSettings();
+const { markReadPolicy, autoLoadImages } = usePostboxSettings();
 const markThreadRead = useBackendOperation(api.mail.messageActions.markThreadRead, {
 	label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
 	optimisticUpdate: optimisticMarkThreadRead,
@@ -268,7 +269,12 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 			:scheduling-times="null"
 			:show-render-toggle="appIsDark"
 			:forced-light="isForcedLight(msg._id)"
-			:images-allowed="imageAllowlist.isAllowed(msg.fromAddress)"
+			:images="
+				postboxBodyImageProps(msg, {
+					autoLoadImages,
+					isSenderAllowed: imageAllowlist.isAllowed(msg.fromAddress),
+				})
+			"
 			:own-email="ownEmail"
 			:has-invite="hasInvite(msg)"
 			:downloading-attachment="downloadingAttachment"

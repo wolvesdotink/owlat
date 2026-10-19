@@ -78,19 +78,23 @@ export interface ReplyQuoteTarget extends QuoteSource {
 }
 
 /**
- * Resolve the original body for quoting. Messages over ~64KB store their body
- * in blob storage with empty inline fields, so a reply/forward would quote an
- * empty original — fetch the full body in that case (the same source
- * PostboxMessageBody renders from). Falls back to the input on any error so
+ * Resolve the original body for quoting. A body part over ~64KB is stored in
+ * blob storage, so a reply/forward would quote an empty original (or only the
+ * text alternative of a large HTML mail) — fetch the full body in that case
+ * (the same source PostboxMessageBody renders from). Falls back to the input on any error so
  * the composer always opens. Shared by the thread reader and the Reply Queue.
  */
-export async function resolveBodyFields<T extends { _id: string } & QuoteSource>(t: T): Promise<T> {
-	if (t.htmlBodyInline || t.textBodyInline) return t;
+export async function resolveBodyFields<
+	T extends { _id: string; htmlBodyStorageId?: string; hasBodyBlob?: boolean } & QuoteSource,
+>(t: T): Promise<T> {
+	if (t.htmlBodyInline) return t;
+	// An inline text part does not stand in for an HTML part stored as a blob.
+	if (t.textBodyInline && !t.htmlBodyStorageId && !t.hasBodyBlob) return t;
 	try {
 		const data = await consumeResolvedPostboxMessageBody(requireConvex(), t._id);
 		if (!data) return t;
 		const html = data.html ?? undefined;
-		const text = data.text ?? undefined;
+		const text = data.text ?? t.textBodyInline;
 		return { ...t, htmlBodyInline: html, textBodyInline: text };
 	} catch {
 		return t;

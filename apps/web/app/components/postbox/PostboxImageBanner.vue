@@ -11,6 +11,9 @@
  * The states, and the promise each one makes:
  *   - `blocked`          remote images are gated. "Show once" is this message;
  *                        "Always for <host>" persists a per-sender grant.
+ *   - `suspicious`       remote images are gated because the message looks
+ *                        suspicious. "Show images" is this message only; there
+ *                        is no per-sender grant for a sender that may be forged.
  *   - `auto-allowed`     images loaded because the sender is trusted — said out
  *                        loud, with the revoke and the management list one
  *                        click away, because a silent auto-load is the wrong
@@ -88,6 +91,20 @@ const BANNER_CLASS =
 				{{ t('components.postbox.postboxMessageBody.alwaysForSender', { host: senderLabel }) }}
 			</button>
 		</span>
+	</div>
+
+	<div v-else-if="kind === 'suspicious'" :class="BANNER_CLASS">
+		<span class="text-text-secondary inline-flex items-center gap-1.5">
+			<Icon name="lucide:shield-alert" class="w-3.5 h-3.5 flex-shrink-0" />
+			{{ t('components.postbox.postboxMessageBody.imagesBlockedSuspicious') }}
+		</span>
+		<button
+			type="button"
+			class="text-brand font-medium hover:underline flex-shrink-0"
+			@click="emit('showOnce')"
+		>
+			{{ t('components.postbox.postboxMessageBody.showImages') }}
+		</button>
 	</div>
 
 	<div v-else-if="kind === 'auto-allowed'" :class="BANNER_CLASS">

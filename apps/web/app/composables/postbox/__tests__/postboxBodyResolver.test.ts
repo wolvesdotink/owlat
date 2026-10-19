@@ -76,6 +76,36 @@ describe('postboxBodyResolver', () => {
 		expect(fetchImpl).toHaveBeenCalledWith('https://storage.example/text');
 	});
 
+	it('fetches an HTML blob even when the short text part is inline', async () => {
+		const { client, action } = makeClient(
+			{ htmlInline: null, textInline: 'plain alternative', hasHtmlBlob: true, hasTextBlob: false },
+			{ htmlUrl: 'https://storage.example/html', textUrl: null }
+		);
+		const fetchImpl = vi.fn(async () => ({ text: async () => '<table>newsletter</table>' }));
+
+		expect(await resolvePostboxMessageBody(client, 'newsletter', { fetchImpl })).toEqual({
+			html: '<table>newsletter</table>',
+			text: 'plain alternative',
+		});
+		expect(action).toHaveBeenCalledTimes(1);
+		expect(fetchImpl).toHaveBeenCalledWith('https://storage.example/html');
+	});
+
+	it('answers an inline text part without the action when there is no HTML blob', async () => {
+		const { client, action } = makeClient({
+			htmlInline: null,
+			textInline: 'just text',
+			hasHtmlBlob: false,
+			hasTextBlob: false,
+		});
+
+		expect(await resolvePostboxMessageBody(client, 'text', { fetchImpl: vi.fn() })).toEqual({
+			html: null,
+			text: 'just text',
+		});
+		expect(action).not.toHaveBeenCalled();
+	});
+
 	it('skips the inline query when the caller already knows the body is a blob', async () => {
 		const { client, query, action } = makeClient(null, {
 			htmlUrl: 'https://storage.example/html',

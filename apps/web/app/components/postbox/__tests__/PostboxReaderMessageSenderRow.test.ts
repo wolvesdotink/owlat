@@ -57,7 +57,7 @@ function mountCard(reduced: boolean) {
 			hideBody: false,
 			showRenderToggle: false,
 			forcedLight: false,
-			imagesAllowed: false,
+			images: { senderImagesAllowed: false, autoLoadImages: false, suspicious: false },
 			hasInvite: false,
 			reduced,
 		},

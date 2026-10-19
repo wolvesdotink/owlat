@@ -153,7 +153,7 @@ function mountCard(
 			hideBody: opts.hideBody ?? false,
 			showRenderToggle: false,
 			forcedLight: false,
-			imagesAllowed: false,
+			images: { senderImagesAllowed: false, autoLoadImages: false, suspicious: false },
 			hasInvite: opts.hasInvite ?? false,
 			reduced: opts.reduced ?? false,
 			schedulingTimes: opts.schedulingTimes ?? null,

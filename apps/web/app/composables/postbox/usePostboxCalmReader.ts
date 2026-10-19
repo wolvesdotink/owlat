@@ -88,9 +88,15 @@ export function usePostboxCalmReader(opts: {
 		})
 	);
 
-	/** Where the latest message's image banner renders: in place only when it is the notice. */
+	/**
+	 * Where the latest message's image banner renders: in place when it is the
+	 * notice, and for suspicious mail, whose images never load on their own, so
+	 * "Show images" must not hide in Details behind the danger notice.
+	 */
 	const imageBannerTo = computed(() =>
-		notice.value === 'images' ? null : (opts.detailsEl.value ?? null)
+		notice.value === 'images' || latestImage.value === 'suspicious'
+			? null
+			: (opts.detailsEl.value ?? null)
 	);
 
 	/**
@@ -115,7 +121,7 @@ export function usePostboxCalmReader(opts: {
 	const summary = computed(() => {
 		const parts: string[] = [];
 		if (opts.isSigned.value) parts.push(t('postbox.reader.summary.signed'));
-		if (latestImage.value === 'blocked' || latestImage.value === 'unchecked')
+		if (['blocked', 'suspicious', 'unchecked'].includes(latestImage.value))
 			parts.push(t('postbox.reader.summary.imagesOff'));
 		return parts.join(' · ') || null;
 	});

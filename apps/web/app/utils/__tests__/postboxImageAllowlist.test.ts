@@ -7,7 +7,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+	isPostboxMessageSuspicious,
 	isPostboxSenderImageAllowed,
+	postboxBodyImageProps,
+	postboxImagesLoadOnOpen,
 	postboxSenderKey,
 	postboxSenderTrustLabel,
 	resolvePostboxImageBanner,
@@ -63,6 +66,17 @@ describe('resolvePostboxImageBanner', () => {
 		trackerCount: 0,
 		inventoryFailed: false,
 	};
+
+	it('names a suspicious message instead of offering a sender grant', () => {
+		expect(resolvePostboxImageBanner({ ...base, isSuspicious: true, trackerCount: 2 })).toEqual({
+			kind: 'suspicious',
+			trackerCount: 2,
+		});
+		// Once shown, the usual post-consent states apply.
+		expect(
+			resolvePostboxImageBanner({ ...base, isSuspicious: true, showImages: true, trackerCount: 2 })
+		).toEqual({ kind: 'trackers-blocked', trackerCount: 2 });
+	});
 
 	it('says nothing when the body carries no remote images', () => {
 		expect(resolvePostboxImageBanner({ ...base, hasRemoteImages: false })).toEqual({
@@ -138,5 +152,68 @@ describe('resolvePostboxImageBanner', () => {
 
 	it('says nothing when images are shown and there was nothing to withhold', () => {
 		expect(resolvePostboxImageBanner({ ...base, showImages: true })).toEqual({ kind: 'none' });
+	});
+});
+
+describe('isPostboxMessageSuspicious', () => {
+	const clean = {
+		fromAddress: 'hallo@hinterland.example',
+		spfResult: 'pass',
+		dkimResult: 'pass',
+		dmarcResult: 'pass',
+		envelopeFromDomain: 'hinterland.example',
+		dkimSigningDomain: 'hinterland.example',
+	};
+
+	it('passes authenticated mail and legacy rows without verdicts', () => {
+		expect(isPostboxMessageSuspicious(clean)).toBe(false);
+		expect(isPostboxMessageSuspicious({ fromAddress: 'a@b.example' })).toBe(false);
+	});
+
+	it('flags a spam verdict, failed auth, and a lookalike sender', () => {
+		expect(isPostboxMessageSuspicious({ ...clean, spamVerdict: 'spam' })).toBe(true);
+		expect(
+			isPostboxMessageSuspicious({
+				...clean,
+				dmarcResult: 'fail',
+				spfResult: 'fail',
+				dkimResult: 'fail',
+			})
+		).toBe(true);
+		expect(
+			isPostboxMessageSuspicious({
+				...clean,
+				senderHeuristics: { lookalikeOfContactDomain: 'hinterland.camp' },
+			})
+		).toBe(true);
+	});
+
+	it('does not count a Reply-To on another domain alone', () => {
+		expect(
+			isPostboxMessageSuspicious({ ...clean, senderHeuristics: { isReplyToMismatch: true } })
+		).toBe(false);
+	});
+});
+
+describe('postboxImagesLoadOnOpen', () => {
+	it('loads by preference or by grant, never for suspicious mail', () => {
+		const ask = { senderImagesAllowed: false, autoLoadImages: false, suspicious: false };
+		expect(postboxImagesLoadOnOpen(ask)).toBe(false);
+		expect(postboxImagesLoadOnOpen({ ...ask, autoLoadImages: true })).toBe(true);
+		expect(postboxImagesLoadOnOpen({ ...ask, senderImagesAllowed: true })).toBe(true);
+		expect(
+			postboxImagesLoadOnOpen({ senderImagesAllowed: true, autoLoadImages: true, suspicious: true })
+		).toBe(false);
+		// A caller that passes nothing keeps the conservative default.
+		expect(postboxImagesLoadOnOpen({})).toBe(false);
+	});
+
+	it('derives the suspicious flag from the message', () => {
+		expect(
+			postboxBodyImageProps(
+				{ fromAddress: 'a@b.example', spamVerdict: 'spam' },
+				{ autoLoadImages: true, isSenderAllowed: true }
+			)
+		).toEqual({ senderImagesAllowed: true, autoLoadImages: true, suspicious: true });
 	});
 });

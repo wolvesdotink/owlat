@@ -283,13 +283,22 @@ describe('usePostboxPrefetch', () => {
 });
 
 describe('inlineBodyNeedsBlob', () => {
-	it('is true only when there is no inline body but a blob', () => {
+	it('is true when the body the reader renders is only a blob', () => {
 		expect(inlineBodyNeedsBlob(blobBody)).toBe(true);
 		expect(inlineBodyNeedsBlob({ ...blobBody, hasHtmlBlob: false, hasTextBlob: true })).toBe(true);
 		expect(inlineBodyNeedsBlob(inlineBody)).toBe(false);
-		expect(inlineBodyNeedsBlob({ ...blobBody, textInline: 'short' })).toBe(false);
 		expect(inlineBodyNeedsBlob({ ...blobBody, hasHtmlBlob: false })).toBe(false);
+		expect(
+			inlineBodyNeedsBlob({ ...blobBody, hasHtmlBlob: false, hasTextBlob: true, textInline: 'x' })
+		).toBe(false);
 		expect(inlineBodyNeedsBlob(null)).toBe(false);
 		expect(inlineBodyNeedsBlob(undefined)).toBe(false);
+	});
+
+	it('wants the HTML blob even when the short text part is inline (newsletters)', () => {
+		expect(inlineBodyNeedsBlob({ ...blobBody, textInline: 'short' })).toBe(true);
+		expect(inlineBodyNeedsBlob({ ...blobBody, htmlInline: '<p>x</p>', textInline: 'x' })).toBe(
+			false
+		);
 	});
 });

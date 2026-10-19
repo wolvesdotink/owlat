@@ -28,7 +28,7 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
 import { usePostboxSignedBody } from '~/composables/postbox/usePostboxSignedBody';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
-import type { PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
+import type { PostboxBodyImageProps, PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -56,7 +56,7 @@ const props = defineProps<{
 	/** The app is in dark mode, so the per-message light-render escape hatch applies. */
 	showRenderToggle: boolean;
 	forcedLight: boolean;
-	imagesAllowed: boolean;
+	images: PostboxBodyImageProps;
 	ownEmail?: string;
 	/** This message carries a real .ics invite (PostboxInviteCard renders it). */
 	hasInvite: boolean;
@@ -443,13 +443,13 @@ const renderToggleLabel = computed(() =>
 			v-else
 			:message-id="msg._id"
 			:force-light="forcedLight"
-			:images-allowed="imagesAllowed"
+			:images="images"
 			:eager="eagerBody"
 		>
 			<PostboxMessageBody
 				:message="msg"
 				:force-light="forcedLight"
-				:sender-images-allowed="imagesAllowed"
+				v-bind="images"
 				:highlight-quote="citeQuote"
 				:image-banner-to="imageBannerTo"
 				@image-state="emit('image-state', $event)"

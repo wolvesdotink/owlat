@@ -11,7 +11,9 @@ import { consumeResolvedPostboxMessageBody } from './postboxBodyResolver';
  *  - a blob: bodies over the inline threshold are stored as blobs, named by a
  *    storage id on a thread row or by `hasBodyBlob` from the inline query. They
  *    are resolved through the URL-minting action and a download, shared with
- *    the read-ahead through the client-scoped body cache.
+ *    the read-ahead through the client-scoped body cache. Each part is split
+ *    on its own, so an HTML blob can sit next to an inline text part; the HTML
+ *    is still fetched, and the inline text stays the fallback if that fails.
  */
 export interface PostboxBodySourceMessage {
 	_id?: string;
@@ -19,7 +21,7 @@ export interface PostboxBodySourceMessage {
 	textBodyInline?: string;
 	htmlBodyStorageId?: string;
 	textBodyStorageId?: string;
-	/** The inline body query reported a blob-only body. */
+	/** The inline body query reported that the body to render is a blob. */
 	hasBodyBlob?: boolean;
 	/** The inline body has not arrived yet (reader opened on a list row). */
 	bodyPending?: boolean;
@@ -31,14 +33,13 @@ export function usePostboxBodySource(message: () => PostboxBodySourceMessage) {
 
 	const bodyPending = computed(() => message().bodyPending === true);
 
+	// HTML wins: an HTML blob is fetched even when the text part is inline, or
+	// the reader would show a newsletter's text alternative instead of the mail.
 	const needsBodyFetch = computed(() => {
 		const m = message();
-		return (
-			!bodyPending.value &&
-			!m.htmlBodyInline &&
-			!m.textBodyInline &&
-			!!(m.htmlBodyStorageId || m.textBodyStorageId || m.hasBodyBlob)
-		);
+		if (bodyPending.value || m.htmlBodyInline) return false;
+		if (m.htmlBodyStorageId || m.hasBodyBlob) return true;
+		return !m.textBodyInline && !!m.textBodyStorageId;
 	});
 
 	// Flips once the lazy body fetch has resolved (with content, empty, or a

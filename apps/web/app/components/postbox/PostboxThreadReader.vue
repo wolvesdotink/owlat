@@ -74,6 +74,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { extractEmailAddress } from '~/utils/emailAddress';
 import { discussionCounterpartyLabel } from '~/utils/postboxThreadDiscussion';
 import { deriveReplyRisk, senderRiskInputOf, type ReplyRisk } from '~/utils/senderAuth';
+import { postboxBodyImageProps } from '~/utils/postboxImageAllowlist';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
 import { usePostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
@@ -269,7 +270,8 @@ const readerThread = computed(
 // The thread brief (SPEC §7, personal mailboxes): the strip, cites, latest lines, reactions.
 // Per-user reader preferences (auto-advance, reply default, mark-read policy, the
 // brief), read before the brief and the mark-read watcher, which both run immediately.
-const { autoAdvance, replyDefault, markReadPolicy, autoSummarize } = usePostboxSettings();
+const { autoAdvance, replyDefault, markReadPolicy, autoSummarize, autoLoadImages } =
+	usePostboxSettings();
 
 const rb = usePostboxReaderBrief({
 	mailboxId: () => props.message.mailboxId,
@@ -861,7 +863,12 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 					:scheduling-times="schedulingTimesFor(msg)"
 					:show-render-toggle="appIsDark"
 					:forced-light="isForcedLight(msg._id)"
-					:images-allowed="imageAllowlist.isAllowed(msg.fromAddress)"
+					:images="
+						postboxBodyImageProps(msg, {
+							autoLoadImages,
+							isSenderAllowed: imageAllowlist.isAllowed(msg.fromAddress),
+						})
+					"
 					:own-email="ownEmail"
 					:has-invite="!!calendarAttachment(msg)"
 					:seal-status="sealStatusFor(msg)"
