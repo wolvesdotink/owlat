@@ -40,9 +40,6 @@ let newest: ReturnType<typeof shallowRef<Page | undefined>>;
 let calls: Array<{ fileId: string; cursor: string }>;
 let pending: Array<{ resolve: (value: Page) => void; reject: (error: Error) => void }>;
 let refetch: ReturnType<typeof vi.fn>;
-let newestError: ReturnType<typeof ref<Error | null>>;
-let newestLoading: ReturnType<typeof ref<boolean>>;
-let newestRefetching: ReturnType<typeof ref<boolean>>;
 
 /** An Operation error as a backend call throws it. */
 const operationError = (message: string, data?: Record<string, unknown>) =>
@@ -55,32 +52,13 @@ const invalidCursor = () =>
 		reason: 'version_history_cursor_rejected',
 	});
 
-/** The refetched newest page arrives (or fails). */
-async function deliverNewest(value: Page | undefined, error: Error | null = null) {
-	if (value) newest.value = value;
-	newestError.value = error;
-	newestRefetching.value = false;
-	await nextTick();
-}
-
 beforeEach(() => {
 	newest = shallowRef<Page | undefined>(undefined);
 	calls = [];
 	pending = [];
-	newestError = ref<Error | null>(null);
-	newestLoading = ref(false);
-	newestRefetching = ref(false);
-	// A refetch keeps the page on screen and flags a background read.
-	refetch = vi.fn(() => {
-		newestRefetching.value = true;
-	});
-	vi.stubGlobal('useConvexQuery', () => ({
-		data: newest,
-		error: newestError,
-		isLoading: newestLoading,
-		isRefetching: newestRefetching,
-		refetch,
-	}));
+	// Recovery never forces a refetch: the newest page is live on its own.
+	refetch = vi.fn();
+	vi.stubGlobal('useConvexQuery', () => ({ data: newest, refetch }));
 	vi.stubGlobal('requireConvex', () => ({
 		query: (_ref: unknown, args: { fileId: string; cursor: string }) => {
 			calls.push(args);
@@ -254,20 +232,23 @@ describe('useFileVersionHistory', () => {
 		const { history } = setup();
 		newest.value = page(['a'], 'b');
 		await nextTick();
+		const first = history.loadOlder();
+		pending[0]!.resolve(page(['b'], 'c'));
+		await first;
 
 		const failed = history.loadOlder();
-		pending[0]!.reject(operationError('Invalid fileId'));
+		pending[1]!.reject(operationError('Invalid fileId'));
 		await failed;
-		expect(history.state.value).toBe('idle');
 		expect(history.loadOlderFailed.value).toBe(true);
 		expect(history.historyRestarted.value).toBe(false);
-		expect(refetch).not.toHaveBeenCalled();
-		expect(history.hasOlder.value).toBe(true);
+		// The older pages and their cursor stay; the retry resends it.
+		expect(ids(history.versions.value)).toEqual(['a', 'b']);
 		void history.loadOlder();
-		expect(calls[1]).toEqual({ fileId: 'f1', cursor: 'b' });
+		expect(calls[2]).toEqual({ fileId: 'f1', cursor: 'c' });
+		expect(refetch).not.toHaveBeenCalled();
 	});
 
-	it('starts over once from a fresh newest page when the server refuses a cursor it issued', async () => {
+	it('starts again from the live newest page when the server refuses a cursor, with no extra request', async () => {
 		const { history } = setup();
 		newest.value = page(['a'], 'b');
 		await nextTick();
@@ -276,55 +257,75 @@ describe('useFileVersionHistory', () => {
 		await first;
 		expect(ids(history.versions.value)).toEqual(['a', 'b']);
 
-		// The secret was rotated: the token for `c` can never be redeemed again.
 		const refused = history.loadOlder();
 		pending[1]!.reject(invalidCursor());
 		await refused;
-		expect(history.state.value).toBe('recovering');
 		expect(ids(history.versions.value)).toEqual(['a']);
 		expect(history.historyRestarted.value).toBe(true);
 		expect(history.loadOlderFailed.value).toBe(false);
-		expect(refetch).toHaveBeenCalledTimes(1);
-
-		// While the refetch is slow, no cursor is offered and a click sends nothing.
-		expect(history.hasOlder.value).toBe(false);
-		await history.loadOlder();
-		await history.loadOlder();
+		expect(history.isLoadingOlder.value).toBe(false);
 		expect(calls).toHaveLength(2);
-		expect(refetch).toHaveBeenCalledTimes(1);
-
-		// The newest page comes back with a token minted under the new secret.
-		await deliverNewest(page(['a'], 'b2'));
-		expect(history.state.value).toBe('idle');
+		expect(refetch).not.toHaveBeenCalled();
+		// The next click sends the live newest page's cursor, not the refused one.
 		expect(history.hasOlder.value).toBe(true);
+		void history.loadOlder();
+		expect(calls[2]).toEqual({ fileId: 'f1', cursor: 'b' });
+	});
+
+	it('sends one request for a double click while a read is in flight', async () => {
+		const { history } = setup();
+		newest.value = page(['a'], 'b');
+		await nextTick();
+		const first = history.loadOlder();
+		const second = history.loadOlder();
+		expect(calls).toHaveLength(1);
+		pending[0]!.reject(invalidCursor());
+		await Promise.all([first, second]);
+		expect(calls).toHaveLength(1);
+	});
+
+	it('resets again, once per click, when the same token is refused again', async () => {
+		const { history } = setup();
+		newest.value = page(['a'], 'b');
+		await nextTick();
+		for (let attempt = 0; attempt < 2; attempt++) {
+			const refused = history.loadOlder();
+			expect(calls[attempt]).toEqual({ fileId: 'f1', cursor: 'b' });
+			pending[attempt]!.reject(invalidCursor());
+			await refused;
+			expect(ids(history.versions.value)).toEqual(['a']);
+			expect(history.historyRestarted.value).toBe(true);
+			expect(history.isLoadingOlder.value).toBe(false);
+		}
+		// Nothing retried on its own.
+		await nextTick();
+		expect(calls).toHaveLength(2);
+		expect(refetch).not.toHaveBeenCalled();
+	});
+
+	it('loads normally from a fresh cursor on the live page after a refusal, and clears the notice', async () => {
+		const { history } = setup();
+		newest.value = page(['a'], 'b');
+		await nextTick();
+		const refused = history.loadOlder();
+		pending[0]!.reject(invalidCursor());
+		await refused;
 		expect(history.historyRestarted.value).toBe(true);
 
-		// The next successful older read clears the notice.
+		// The server recomputed the live page under the new secret.
+		newest.value = page(['a'], 'b2');
+		await nextTick();
+		expect(history.historyRestarted.value).toBe(true);
 		const next = history.loadOlder();
-		expect(calls[2]).toEqual({ fileId: 'f1', cursor: 'b2' });
-		pending[2]!.resolve(page(['b'], null));
+		expect(calls[1]).toEqual({ fileId: 'f1', cursor: 'b2' });
+		pending[1]!.resolve(page(['b'], null));
 		await next;
+		expect(ids(history.versions.value)).toEqual(['a', 'b']);
 		expect(history.historyRestarted.value).toBe(false);
-	});
-
-	it('never resends a refused newest-page cursor, and moves to recoveryFailed when the refetch brings it back', async () => {
-		const { history } = setup();
-		newest.value = page(['a'], 'b');
-		await nextTick();
-		const refused = history.loadOlder();
-		pending[0]!.reject(invalidCursor());
-		await refused;
-		expect(history.state.value).toBe('recovering');
-
-		// The refetch answers with the same, already refused, token.
-		await deliverNewest(page(['a'], 'b'));
-		expect(history.state.value).toBe('recoveryFailed');
 		expect(history.hasOlder.value).toBe(false);
-		await history.loadOlder();
-		expect(calls).toHaveLength(1);
 	});
 
-	it('moves to recoveryFailed when the refetch fails, and its retry refetches the newest page', async () => {
+	it('keeps the notice when the history is now complete, or cut short without a cursor', async () => {
 		const { history } = setup();
 		newest.value = page(['a'], 'b');
 		await nextTick();
@@ -332,75 +333,43 @@ describe('useFileVersionHistory', () => {
 		pending[0]!.reject(invalidCursor());
 		await refused;
 
-		await deliverNewest(undefined, new Error('network'));
-		expect(history.state.value).toBe('recoveryFailed');
-		expect(history.recoveryFailed.value).toBe(true);
-		expect(history.historyRestarted.value).toBe(true);
-
-		history.retryRecovery();
-		expect(history.state.value).toBe('recovering');
-		expect(refetch).toHaveBeenCalledTimes(2);
-		// The retry is a refetch, never the dead cursor.
-		expect(calls).toHaveLength(1);
-
-		await deliverNewest(page(['a'], 'b3'));
-		expect(history.state.value).toBe('idle');
-		expect(history.hasOlder.value).toBe(true);
-	});
-
-	it('keeps the restart notice when recovery comes back to a complete history', async () => {
-		const { history } = setup();
-		newest.value = page(['a'], 'b');
+		newest.value = page(['a'], null);
 		await nextTick();
-		const refused = history.loadOlder();
-		pending[0]!.reject(invalidCursor());
-		await refused;
-
-		await deliverNewest(page(['a'], null));
-		expect(history.state.value).toBe('idle');
 		expect(history.historyRestarted.value).toBe(true);
-		expect(history.hasOlder.value).toBe(false);
-		expect(history.olderUnavailable.value).toBe(false);
 		expect(history.isIncomplete.value).toBe(false);
-	});
+		expect(history.olderUnavailable.value).toBe(false);
 
-	it('shows both the restart notice and "cannot be loaded" when recovery brings a cursorless page', async () => {
-		const { history } = setup();
-		newest.value = page(['a'], 'b');
+		newest.value = { ...page(['a'], null), isDone: false };
 		await nextTick();
-		const refused = history.loadOlder();
-		pending[0]!.reject(invalidCursor());
-		await refused;
-
-		await deliverNewest({ ...page(['a'], null), isDone: false });
-		expect(history.state.value).toBe('idle');
 		expect(history.historyRestarted.value).toBe(true);
-		expect(history.olderUnavailable.value).toBe(true);
 		expect(history.isIncomplete.value).toBe(true);
+		expect(history.olderUnavailable.value).toBe(true);
 	});
 
-	it('clears everything, recovery included, when the page moves to another file', async () => {
+	it('clears everything when the page moves to another file', async () => {
 		const { fileId, history } = setup();
 		newest.value = page(['a'], 'b');
 		await nextTick();
+		const first = history.loadOlder();
+		pending[0]!.resolve(page(['b'], 'c'));
+		await first;
 		const refused = history.loadOlder();
-		pending[0]!.reject(invalidCursor());
+		pending[1]!.reject(invalidCursor());
 		await refused;
-		await deliverNewest(undefined, new Error('network'));
-		expect(history.state.value).toBe('recoveryFailed');
+		const failed = history.loadOlder();
+		pending[2]!.reject(new Error('network'));
+		await failed;
+		expect(history.loadOlderFailed.value).toBe(true);
+		expect(history.historyRestarted.value).toBe(true);
 
 		fileId.value = 'f2';
-		newest.value = page(['x'], 'b');
-		newestError.value = null;
+		newest.value = page(['x'], 'y');
 		await nextTick();
-		expect(history.state.value).toBe('idle');
 		expect(history.historyRestarted.value).toBe(false);
-		expect(history.recoveryFailed.value).toBe(false);
+		expect(history.loadOlderFailed.value).toBe(false);
 		expect(ids(history.versions.value)).toEqual(['x']);
-		// The other file's `b` was never refused.
-		expect(history.hasOlder.value).toBe(true);
 		void history.loadOlder();
-		expect(calls[1]).toEqual({ fileId: 'f2', cursor: 'b' });
+		expect(calls[3]).toEqual({ fileId: 'f2', cursor: 'y' });
 	});
 
 	it('tells a history it cannot continue apart from a complete one', async () => {

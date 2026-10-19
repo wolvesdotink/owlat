@@ -88,15 +88,4 @@ describe('FilesVersionHistory — older versions', () => {
 		expect(unavailable.find('[role="status"]').text()).toContain(restarted);
 		expect(unavailable.text()).toContain('they cannot be loaded here');
 	});
-
-	it('offers Try again when starting over failed, instead of the older-versions control', async () => {
-		const wrapper = mountList({ historyRestarted: true, recoveryFailed: true, hasOlder: false });
-		expect(wrapper.find('[role="alert"]').text()).toContain('could not be loaded again');
-		const buttons = wrapper.findAll('button');
-		expect(buttons).toHaveLength(1);
-		expect(buttons[0]!.text()).toBe('Try again');
-		await buttons[0]!.trigger('click');
-		expect(wrapper.emitted('retryRecovery')).toHaveLength(1);
-		expect(wrapper.emitted('loadOlder')).toBeUndefined();
-	});
 });

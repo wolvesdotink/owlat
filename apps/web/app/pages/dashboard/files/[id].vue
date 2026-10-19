@@ -40,10 +40,8 @@ const {
 	isLoadingOlder: isLoadingOlderVersions,
 	loadOlderFailed: loadOlderVersionsFailed,
 	historyRestarted: versionHistoryRestarted,
-	recoveryFailed: versionHistoryRecoveryFailed,
 	isIncomplete: versionHistoryIncomplete,
 	loadOlder: loadOlderVersions,
-	retryRecovery: retryVersionHistory,
 } = useFileVersionHistory(() => fileId.value);
 
 // Mutations
@@ -430,9 +428,7 @@ const sourceLabel = computed(() => {
 								:loading-older="isLoadingOlderVersions"
 								:load-older-failed="loadOlderVersionsFailed"
 								:history-restarted="versionHistoryRestarted"
-								:recovery-failed="versionHistoryRecoveryFailed"
 								@load-older="loadOlderVersions"
-								@retry-recovery="retryVersionHistory"
 							/>
 						</div>
 					</div>
