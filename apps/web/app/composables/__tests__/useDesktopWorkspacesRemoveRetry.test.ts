@@ -129,10 +129,10 @@ let reload: ReturnType<typeof vi.fn>;
 
 /**
  * A fresh module graph per test: the workspace list is module state. By default
- * a view offering Retry and Cancel is mounted (as the preferences dialog is),
- * so a failure waits for the test to retry or give up.
+ * the removals run on behalf of a mounted owner (as the preferences dialog
+ * starts them), so a failure waits for the test to retry or give up.
  */
-async function boot({ held = true }: { held?: boolean } = {}) {
+async function boot({ owned = true }: { owned?: boolean } = {}) {
 	vi.resetModules();
 	const mod = await import('../useDesktopWorkspaces');
 	const keychainStorage = await import('~/lib/desktop/keychainStorage');
@@ -142,9 +142,13 @@ async function boot({ held = true }: { held?: boolean } = {}) {
 	sessionReplace.mockClear();
 	signOut.mockClear();
 	wipeOfflineCache.mockClear();
-	const workspaces = mod.useDesktopWorkspaces();
-	const release = held ? workspaces.holdRemovalRecovery() : () => {};
-	return { workspaces, keychainStorage, release };
+	const api = mod.useDesktopWorkspaces();
+	const owner = owned ? api.createRemovalOwner() : undefined;
+	const workspaces = {
+		...api,
+		removeWorkspace: (id: string) => api.removeWorkspace(id, owner),
+	};
+	return { api, workspaces, keychainStorage, owner };
 }
 
 beforeEach(() => {
@@ -334,8 +338,8 @@ describe('abandoning a removal that rejected part-way', () => {
 });
 
 describe('who settles a failed removal', () => {
-	it('settles it at once when no view offers a retry', async () => {
-		const { workspaces } = await boot({ held: false });
+	it('settles it at once when the removal has no owner', async () => {
+		const { workspaces } = await boot({ owned: false });
 		failOnce = 'persist';
 
 		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
@@ -344,8 +348,8 @@ describe('who settles a failed removal', () => {
 		expect(assign).not.toHaveBeenCalled();
 	});
 
-	it('leaves a failure that changed nothing the page holds alone, with or without a view', async () => {
-		const { workspaces } = await boot({ held: false });
+	it('leaves a failure that changed nothing the page holds alone, with or without an owner', async () => {
+		const { workspaces } = await boot({ owned: false });
 		failOnce = 'keychain';
 
 		await expect(workspaces.removeWorkspace('w2')).rejects.toThrow('keychain failed');
@@ -353,7 +357,7 @@ describe('who settles a failed removal', () => {
 		expect(reload).not.toHaveBeenCalled();
 	});
 
-	it('waits for the user while the view is mounted', async () => {
+	it('waits for the owner while it is mounted', async () => {
 		const { workspaces } = await boot();
 		failOnce = 'persist';
 
@@ -362,13 +366,13 @@ describe('who settles a failed removal', () => {
 		expect(reload).not.toHaveBeenCalled();
 	});
 
-	it('settles a removal that rejects after the view went away', async () => {
-		const { workspaces, release } = await boot();
+	it('settles a removal that rejects after its owner went away', async () => {
+		const { workspaces, owner } = await boot();
 		failOnce = 'persist';
 
 		const removal = workspaces.removeWorkspace('w1');
 		// The page unmounts while the removal is still on its first await.
-		release();
+		owner!.release();
 		expect(reload).not.toHaveBeenCalled();
 		await expect(removal).rejects.toThrow('persist failed');
 
@@ -376,50 +380,96 @@ describe('who settles a failed removal', () => {
 		expect(assign).not.toHaveBeenCalled();
 	});
 
-	it('settles a removal that rejected before the view went away', async () => {
-		const { workspaces, release } = await boot();
+	it('settles a removal that rejected before its owner went away', async () => {
+		const { workspaces, owner } = await boot();
 		failOnce = 'discard';
 		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('discard failed');
 		expect(reload).not.toHaveBeenCalled();
 
-		release();
+		owner!.release();
 
 		expect(reload).toHaveBeenCalledTimes(1);
 	});
 
-	it('does not settle twice when the user gave up before the view went away', async () => {
-		const { workspaces, release } = await boot();
+	it('is not held back by a fresh page that mounted while the removal ran (leave, remount, reject)', async () => {
+		const { api, workspaces, owner } = await boot();
+		failOnce = 'persist';
+
+		const removal = workspaces.removeWorkspace('w2');
+		owner!.release();
+		// The user comes back: a new instance of the page, with its own owner and
+		// no dialog for the removal the old one started.
+		const remounted = api.createRemovalOwner();
+		await expect(removal).rejects.toThrow('persist failed');
+
+		expect(reload).toHaveBeenCalledTimes(1);
+		remounted.release();
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it('settles on the owner leaving even when a fresh page mounts after (reject, leave, remount)', async () => {
+		const { api, workspaces, owner } = await boot();
+		failOnce = 'persist';
+		await expect(workspaces.removeWorkspace('w2')).rejects.toThrow('persist failed');
+		// The list in memory lost w2; the store on disk did not.
+		expect(workspaces.workspaces.value.map((w) => w.id)).toEqual(['w1']);
+
+		owner!.release();
+		expect(reload).toHaveBeenCalledTimes(1);
+
+		const remounted = api.createRemovalOwner();
+		remounted.release();
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it('lets only the view that started the removal keep it waiting', async () => {
+		const { api, workspaces, owner } = await boot();
+		// A second view is mounted at the same time but started nothing.
+		const bystander = api.createRemovalOwner();
+		failOnce = 'persist';
+		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
+
+		// The bystander leaving changes nothing: the failure is not its to settle.
+		bystander.release();
+		expect(reload).not.toHaveBeenCalled();
+		// The starter leaving settles it.
+		owner!.release();
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it('settles at once a removal started by a view with no retry while another view is mounted', async () => {
+		const { api } = await boot({ owned: false });
+		const bystander = api.createRemovalOwner();
+		failOnce = 'persist';
+
+		await expect(api.removeWorkspace('w1')).rejects.toThrow('persist failed');
+
+		expect(reload).toHaveBeenCalledTimes(1);
+		bystander.release();
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not settle twice when the user gave up before the owner went away', async () => {
+		const { workspaces, owner } = await boot();
 		failOnce = 'persist';
 		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
 
 		expect(workspaces.abandonRemoval()).toBe(true);
-		release();
-		release();
+		owner!.release();
+		owner!.release();
 
 		expect(reload).toHaveBeenCalledTimes(1);
 	});
 
 	it('has nothing to settle once a retry succeeded', async () => {
-		const { workspaces, release } = await boot();
+		const { workspaces, owner } = await boot();
 		failOnce = 'wipe';
 		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('wipe failed');
 
 		await workspaces.removeWorkspace('w1');
-		release();
+		owner!.release();
 
 		expect(assign).toHaveBeenCalledTimes(1);
 		expect(reload).not.toHaveBeenCalled();
-	});
-
-	it('keeps waiting while another view still offers a retry', async () => {
-		const { workspaces, release } = await boot();
-		const releaseSecond = workspaces.holdRemovalRecovery();
-		failOnce = 'persist';
-		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
-
-		release();
-		expect(reload).not.toHaveBeenCalled();
-		releaseSecond();
-		expect(reload).toHaveBeenCalledTimes(1);
 	});
 });

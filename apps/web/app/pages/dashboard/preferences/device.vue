@@ -17,6 +17,7 @@
  * ("notify me about", "launch at login") lands on the right card.
  */
 import { WORKSPACE_ACCENT_OPTIONS } from '~/lib/desktop/workspaceTypes';
+import type { RemovalOwner } from '~/composables/useDesktopWorkspaces';
 
 const { t } = useI18n();
 
@@ -39,7 +40,7 @@ const {
 	switchTo,
 	removeWorkspace,
 	abandonRemoval,
-	holdRemovalRecovery,
+	createRemovalOwner,
 	setWorkspaceAccent,
 } = useDesktopWorkspaces();
 
@@ -89,17 +90,18 @@ function onRemoveDialogOpen(open: boolean) {
 	workspaceToRemove.value = null;
 }
 
-// While this page is mounted it is the one offering Retry, so a failed removal
-// waits for the user here. Leaving the page hands the failure back to the
-// composable, which settles it whether the removal already rejected or does so
-// later.
-let releaseRemovalRecovery: (() => void) | null = null;
+// This page instance owns the removals it starts: while it is mounted, a
+// failed one waits here for Retry or Cancel. Unmounting releases the owner, and
+// the composable then settles that removal's failure, whether it already
+// rejected or does so later. A later instance of this page gets its own owner
+// and has no say over a removal this one started.
+let removalOwner: RemovalOwner | null = null;
 onMounted(() => {
-	releaseRemovalRecovery = holdRemovalRecovery();
+	removalOwner = createRemovalOwner();
 });
 onBeforeUnmount(() => {
-	releaseRemovalRecovery?.();
-	releaseRemovalRecovery = null;
+	removalOwner?.release();
+	removalOwner = null;
 });
 
 async function confirmRemoveWorkspace() {
@@ -111,7 +113,7 @@ async function confirmRemoveWorkspace() {
 		// Navigates away (webview reload) on completion, so the dialog stays in
 		// its loading state on success: there is nothing to clean up, and a
 		// second confirm cannot start another removal.
-		await removeWorkspace(target.id);
+		await removeWorkspace(target.id, removalOwner ?? undefined);
 	} catch (e) {
 		// A step can reject after earlier ones landed (signed out, session
 		// discarded, maybe already off the list). Every step is safe to repeat,

@@ -65,17 +65,23 @@ const WORKSPACES = [
 
 const removeWorkspace = vi.fn<(id: string) => Promise<void>>();
 const abandonRemoval = vi.fn<() => boolean>();
-// The page holds the composable's removal recovery while mounted; the release
-// hands an unsettled failure back to the composable (pinned in its own suite).
-const releaseRemovalRecovery = vi.fn<() => void>();
-const holdRemovalRecovery = vi.fn<() => () => void>(() => releaseRemovalRecovery);
+// Each page instance gets its own removal owner, passes it to the removals it
+// starts, and releases it on unmount; the composable settles an owner's
+// unsettled failure on release (pinned in its own suite).
+type Owner = { id: number; release: ReturnType<typeof vi.fn<() => void>> };
+let owners: Owner[] = [];
+const createRemovalOwner = vi.fn((): Owner => {
+	const owner = { id: owners.length + 1, release: vi.fn<() => void>() };
+	owners.push(owner);
+	return owner;
+});
 
 beforeEach(() => {
 	removeWorkspace.mockReset();
 	abandonRemoval.mockReset();
 	abandonRemoval.mockReturnValue(false);
-	releaseRemovalRecovery.mockReset();
-	holdRemovalRecovery.mockClear();
+	owners = [];
+	createRemovalOwner.mockClear();
 	vi.spyOn(console, 'warn').mockImplementation(() => {});
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', () => {});
@@ -101,7 +107,7 @@ beforeEach(() => {
 		switchTo: vi.fn(),
 		removeWorkspace,
 		abandonRemoval,
-		holdRemovalRecovery,
+		createRemovalOwner,
 		setWorkspaceAccent: vi.fn(),
 	}));
 });
@@ -151,7 +157,7 @@ describe('Preferences → This device: removing a workspace', () => {
 		await confirmButton(w).trigger('click');
 		await flushPromises();
 
-		expect(removeWorkspace).toHaveBeenCalledWith('w2');
+		expect(removeWorkspace).toHaveBeenCalledWith('w2', owners[0]);
 		expect(alert(w).text()).toContain(FAILED);
 		expect(confirmButton(w).text()).toBe('Try again');
 		expect(confirmButton(w).attributes('disabled')).toBeUndefined();
@@ -213,14 +219,14 @@ describe('Preferences → This device: removing a workspace', () => {
 		w.unmount();
 	});
 
-	it('holds the removal recovery while mounted and hands it back on unmount', async () => {
+	it('owns the removals it starts while mounted and releases that owner on unmount', async () => {
 		const w = mountPage();
-		expect(holdRemovalRecovery).toHaveBeenCalledTimes(1);
-		expect(releaseRemovalRecovery).not.toHaveBeenCalled();
+		expect(createRemovalOwner).toHaveBeenCalledTimes(1);
+		expect(owners[0]!.release).not.toHaveBeenCalled();
 
 		w.unmount();
 
-		expect(releaseRemovalRecovery).toHaveBeenCalledTimes(1);
+		expect(owners[0]!.release).toHaveBeenCalledTimes(1);
 	});
 
 	it('hands a failure back to the composable when the page goes away with the dialog open', async () => {
@@ -233,11 +239,11 @@ describe('Preferences → This device: removing a workspace', () => {
 		w.unmount();
 
 		// The composable settles it on release; the page does not do it twice.
-		expect(releaseRemovalRecovery).toHaveBeenCalledTimes(1);
+		expect(owners[0]!.release).toHaveBeenCalledTimes(1);
 		expect(abandonRemoval).not.toHaveBeenCalled();
 	});
 
-	it('hands back a removal still running when the page goes away, before it rejects', async () => {
+	it('keeps a fresh page instance out of a removal the previous one started', async () => {
 		let fail!: (e: Error) => void;
 		removeWorkspace.mockImplementationOnce(
 			() =>
@@ -245,20 +251,26 @@ describe('Preferences → This device: removing a workspace', () => {
 					fail = reject;
 				})
 		);
-		const w = mountPage();
-		await openRemoval(w);
-		await confirmButton(w).trigger('click');
+		const first = mountPage();
+		await openRemoval(first);
+		await confirmButton(first).trigger('click');
 
-		w.unmount();
-		expect(releaseRemovalRecovery).toHaveBeenCalledTimes(1);
-
+		// Leave while the removal runs, then come back.
+		first.unmount();
+		const second = mountPage();
 		fail(new Error('store save failed'));
 		await flushPromises();
 
-		// The rejection lands on an unmounted page: nothing more is released or
-		// settled from here.
-		expect(releaseRemovalRecovery).toHaveBeenCalledTimes(1);
+		// The removal ran on the first instance's owner, which was released; the
+		// second instance has its own owner, shows no dialog, and settles nothing.
+		expect(removeWorkspace).toHaveBeenCalledWith('w2', owners[0]);
+		expect(owners[0]!.release).toHaveBeenCalledTimes(1);
+		expect(owners[1]).toBeDefined();
+		expect(owners[1]).not.toBe(owners[0]);
+		expect(owners[1]!.release).not.toHaveBeenCalled();
+		expect(dialog(second).exists()).toBe(false);
 		expect(abandonRemoval).not.toHaveBeenCalled();
+		second.unmount();
 	});
 
 	it('does not touch the page when a removal is cancelled before it ran', async () => {
@@ -286,7 +298,7 @@ describe('Preferences → This device: removing a workspace', () => {
 		await flushPromises();
 
 		expect(removeWorkspace).toHaveBeenCalledTimes(2);
-		expect(removeWorkspace).toHaveBeenNthCalledWith(2, 'w2');
+		expect(removeWorkspace).toHaveBeenNthCalledWith(2, 'w2', owners[0]);
 		// Success navigates away: the dialog waits for that in its loading state.
 		expect(alert(w).exists()).toBe(false);
 		expect(cancelButton(w).attributes('disabled')).toBeDefined();

@@ -115,7 +115,7 @@ beforeEach(() => {
 			switchTo: vi.fn(),
 			removeWorkspace: vi.fn(),
 			abandonRemoval: vi.fn(() => false),
-			holdRemovalRecovery: vi.fn(() => () => {}),
+			createRemovalOwner: vi.fn(() => ({ release: vi.fn() })),
 			setWorkspaceAccent: vi.fn(),
 			signOutWorkspace: vi.fn(),
 		}),
