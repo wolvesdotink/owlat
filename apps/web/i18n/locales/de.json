@@ -10018,6 +10018,8 @@
 					"subtitle": "Menschen, die dein Team kennt, und ihre letzten Aktivitäten",
 					"table": {
 						"created": "Erstellt",
+						"createdSortHint": "Kontakte nach Erstelldatum sortieren",
+						"createdSortSearchHint": "Suchergebnisse sind nach Relevanz sortiert",
 						"firstName": "Vorname",
 						"lastName": "Nachname"
 					},
