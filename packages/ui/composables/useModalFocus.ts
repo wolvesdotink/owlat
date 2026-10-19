@@ -45,17 +45,19 @@ export function useModalFocus(
 		const nodes = focusable();
 		const first = nodes[0];
 		const last = nodes.at(-1);
-		const outside = !container.value.contains(document.activeElement);
+		const current = document.activeElement;
+		// Outside the dialog, or on something inside it that Tab order skips (the
+		// panel itself, a tabindex="-1" initial target): the browser's next stop
+		// could be past the dialog's edge, so Tab enters at the first control and
+		// Shift+Tab at the last.
+		const offOrder = !(current instanceof HTMLElement) || !nodes.includes(current);
 		if (!first || !last) {
 			event.preventDefault();
 			container.value.focus();
-		} else if (
-			event.shiftKey &&
-			(outside || document.activeElement === first || document.activeElement === container.value)
-		) {
+		} else if (event.shiftKey && (offOrder || current === first)) {
 			event.preventDefault();
 			last.focus();
-		} else if (!event.shiftKey && (outside || document.activeElement === last)) {
+		} else if (!event.shiftKey && (offOrder || current === last)) {
 			event.preventDefault();
 			first.focus();
 		}

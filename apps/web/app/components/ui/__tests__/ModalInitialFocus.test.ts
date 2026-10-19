@@ -230,6 +230,41 @@ describe('UiModal initial focus', () => {
 		expect(active()).toBe(target.value);
 	});
 
+	it('keeps Tab inside from a tabindex="-1" initial target that precedes the controls', async () => {
+		opener();
+		const wrapper = mountModal({ closable: false, initialFocus: '#intro' }, () => [
+			h('h3', { id: 'intro', tabindex: -1 }, 'Before you continue'),
+			h('button', 'Back'),
+			h('button', 'Continue'),
+		]);
+		await open(wrapper);
+		const intro = wrapper.find('#intro').element as HTMLElement;
+		const [back, next] = wrapper.findAll('button').map((b) => b.element);
+		expect(active()).toBe(intro);
+		expect(tab(true).defaultPrevented).toBe(true);
+		expect(active()).toBe(next);
+		intro.focus();
+		expect(tab().defaultPrevented).toBe(true);
+		expect(active()).toBe(back);
+	});
+
+	it('keeps Tab inside when the panel itself holds focus', async () => {
+		opener();
+		const wrapper = mountModal({ closable: false }, () => [
+			h('button', 'Back'),
+			h('button', 'Continue'),
+		]);
+		await open(wrapper);
+		const panel = wrapper.find('[role="dialog"]').element as HTMLElement;
+		const [back, next] = wrapper.findAll('button').map((b) => b.element);
+		panel.focus();
+		expect(tab(true).defaultPrevented).toBe(true);
+		expect(active()).toBe(next);
+		panel.focus();
+		expect(tab().defaultPrevented).toBe(true);
+		expect(active()).toBe(back);
+	});
+
 	it('ignores a target that cannot take focus and uses the first control', async () => {
 		opener();
 		const wrapper = mountModal({ title: 'Rename', initialFocus: '[data-missing]' }, () => [

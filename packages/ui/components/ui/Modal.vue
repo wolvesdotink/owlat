@@ -244,9 +244,6 @@ useModalFocus(
  */
 .modal-panel {
 	transition: transform var(--motion-moderate) var(--ease-spring);
-	/* Focusable (tabindex="-1") only as the fallback when it holds no control;
-	   the dialog itself is the focus context, so it draws no ring. */
-	outline: none;
 }
 
 .modal-enter-active .modal-panel {

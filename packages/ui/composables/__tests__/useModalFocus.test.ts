@@ -137,4 +137,42 @@ describe('modal focus lifecycle', () => {
 		expect(document.activeElement?.tagName).toBe('INPUT');
 		wrapper.unmount();
 	});
+
+	it('enters the Tab order at its edges from a non-tabbable target or the panel', async () => {
+		const wrapper = mount(
+			defineComponent({
+				setup() {
+					const root = ref<HTMLElement | null>(null);
+					useModalFocus(root, () => true, undefined, {
+						initialFocus: () => root.value?.querySelector<HTMLElement>('#intro'),
+					});
+					return () =>
+						h('div', { ref: root, tabindex: -1 }, [
+							h('h2', { id: 'intro', tabindex: -1 }, 'Intro'),
+							h('button', 'First'),
+							h('button', 'Last'),
+						]);
+				},
+			}),
+			{ attachTo: document.body }
+		);
+		await nextTick();
+		const intro = wrapper.find('#intro').element as HTMLElement;
+		const [first, last] = wrapper.findAll('button').map((b) => b.element);
+		expect(document.activeElement).toBe(intro);
+
+		expect(key('Tab', true).defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(last);
+		intro.focus();
+		expect(key('Tab').defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(first);
+
+		(wrapper.element as HTMLElement).focus();
+		expect(key('Tab', true).defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(last);
+		(wrapper.element as HTMLElement).focus();
+		expect(key('Tab').defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(first);
+		wrapper.unmount();
+	});
 });
