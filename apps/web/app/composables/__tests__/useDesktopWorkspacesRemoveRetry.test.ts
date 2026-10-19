@@ -127,8 +127,12 @@ function workspace(id: string): WorkspaceConfig {
 let assign: ReturnType<typeof vi.fn>;
 let reload: ReturnType<typeof vi.fn>;
 
-/** A fresh module graph per test: the workspace list is module state. */
-async function boot() {
+/**
+ * A fresh module graph per test: the workspace list is module state. By default
+ * a view offering Retry and Cancel is mounted (as the preferences dialog is),
+ * so a failure waits for the test to retry or give up.
+ */
+async function boot({ held = true }: { held?: boolean } = {}) {
 	vi.resetModules();
 	const mod = await import('../useDesktopWorkspaces');
 	const keychainStorage = await import('~/lib/desktop/keychainStorage');
@@ -138,7 +142,9 @@ async function boot() {
 	sessionReplace.mockClear();
 	signOut.mockClear();
 	wipeOfflineCache.mockClear();
-	return { workspaces: mod.useDesktopWorkspaces(), keychainStorage };
+	const workspaces = mod.useDesktopWorkspaces();
+	const release = held ? workspaces.holdRemovalRecovery() : () => {};
+	return { workspaces, keychainStorage, release };
 }
 
 beforeEach(() => {
@@ -324,5 +330,96 @@ describe('abandoning a removal that rejected part-way', () => {
 		const { workspaces } = await boot();
 		expect(workspaces.abandonRemoval()).toBe(false);
 		expect(reload).not.toHaveBeenCalled();
+	});
+});
+
+describe('who settles a failed removal', () => {
+	it('settles it at once when no view offers a retry', async () => {
+		const { workspaces } = await boot({ held: false });
+		failOnce = 'persist';
+
+		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
+
+		expect(reload).toHaveBeenCalledTimes(1);
+		expect(assign).not.toHaveBeenCalled();
+	});
+
+	it('leaves a failure that changed nothing the page holds alone, with or without a view', async () => {
+		const { workspaces } = await boot({ held: false });
+		failOnce = 'keychain';
+
+		await expect(workspaces.removeWorkspace('w2')).rejects.toThrow('keychain failed');
+
+		expect(reload).not.toHaveBeenCalled();
+	});
+
+	it('waits for the user while the view is mounted', async () => {
+		const { workspaces } = await boot();
+		failOnce = 'persist';
+
+		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
+
+		expect(reload).not.toHaveBeenCalled();
+	});
+
+	it('settles a removal that rejects after the view went away', async () => {
+		const { workspaces, release } = await boot();
+		failOnce = 'persist';
+
+		const removal = workspaces.removeWorkspace('w1');
+		// The page unmounts while the removal is still on its first await.
+		release();
+		expect(reload).not.toHaveBeenCalled();
+		await expect(removal).rejects.toThrow('persist failed');
+
+		expect(reload).toHaveBeenCalledTimes(1);
+		expect(assign).not.toHaveBeenCalled();
+	});
+
+	it('settles a removal that rejected before the view went away', async () => {
+		const { workspaces, release } = await boot();
+		failOnce = 'discard';
+		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('discard failed');
+		expect(reload).not.toHaveBeenCalled();
+
+		release();
+
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not settle twice when the user gave up before the view went away', async () => {
+		const { workspaces, release } = await boot();
+		failOnce = 'persist';
+		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
+
+		expect(workspaces.abandonRemoval()).toBe(true);
+		release();
+		release();
+
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it('has nothing to settle once a retry succeeded', async () => {
+		const { workspaces, release } = await boot();
+		failOnce = 'wipe';
+		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('wipe failed');
+
+		await workspaces.removeWorkspace('w1');
+		release();
+
+		expect(assign).toHaveBeenCalledTimes(1);
+		expect(reload).not.toHaveBeenCalled();
+	});
+
+	it('keeps waiting while another view still offers a retry', async () => {
+		const { workspaces, release } = await boot();
+		const releaseSecond = workspaces.holdRemovalRecovery();
+		failOnce = 'persist';
+		await expect(workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
+
+		release();
+		expect(reload).not.toHaveBeenCalled();
+		releaseSecond();
+		expect(reload).toHaveBeenCalledTimes(1);
 	});
 });

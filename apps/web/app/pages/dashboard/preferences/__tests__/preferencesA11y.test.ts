@@ -114,6 +114,8 @@ beforeEach(() => {
 			completeConnection: vi.fn(),
 			switchTo: vi.fn(),
 			removeWorkspace: vi.fn(),
+			abandonRemoval: vi.fn(() => false),
+			holdRemovalRecovery: vi.fn(() => () => {}),
 			setWorkspaceAccent: vi.fn(),
 			signOutWorkspace: vi.fn(),
 		}),

@@ -276,7 +276,40 @@ async function setWorkspaceAccent(id: string, color: WorkspaceAccent): Promise<v
  */
 let removalChangedPage = false;
 
+/**
+ * A removal rejected after it changed the page, and nothing has settled it
+ * yet: neither a retry (the next removal) nor `abandonRemoval`.
+ */
+let unsettledRemovalFailure = false;
+
+/**
+ * Mounted views that offer Retry and Cancel for a failed removal (the
+ * preferences dialog), counted through `holdRemovalRecovery`. While none is
+ * mounted, nobody can retry, so a failure that changed the page is settled
+ * here and then, whoever started the removal and whatever happened to it.
+ */
+let removalRecoveryHolders = 0;
+
+/**
+ * Remove a workspace from this device; navigates away on success. A rejection
+ * that left the page out of step is reconciled by this module, not by the
+ * caller: right away when no view offers a retry, otherwise once the user
+ * gives up (`abandonRemoval`) or the last such view goes away.
+ */
 async function removeWorkspace(id: string): Promise<void> {
+	unsettledRemovalFailure = false;
+	try {
+		await runRemoval(id);
+	} catch (e) {
+		if (removalChangedPage) {
+			unsettledRemovalFailure = true;
+			if (removalRecoveryHolders === 0) abandonRemoval();
+		}
+		throw e;
+	}
+}
+
+async function runRemoval(id: string): Promise<void> {
 	const wasActive = id === activeId.value;
 	if (wasActive) {
 		removalChangedPage = true;
@@ -330,9 +363,27 @@ async function removeWorkspace(id: string): Promise<void> {
  * Returns whether a reload is under way (the caller keeps its loading state).
  */
 function abandonRemoval(): boolean {
+	unsettledRemovalFailure = false;
 	if (!removalChangedPage) return false;
 	window.location.reload();
 	return true;
+}
+
+/**
+ * Held by a view, while it is mounted, that offers Retry and Cancel for a
+ * failed removal. Returns the release. Releasing the last hold while a failure
+ * is still unsettled settles it, so a view that goes away before or after the
+ * removal rejects cannot leave the page out of step.
+ */
+function holdRemovalRecovery(): () => void {
+	removalRecoveryHolders += 1;
+	let released = false;
+	return () => {
+		if (released) return;
+		released = true;
+		removalRecoveryHolders -= 1;
+		if (removalRecoveryHolders === 0 && unsettledRemovalFailure) abandonRemoval();
+	};
 }
 
 /**
@@ -387,6 +438,7 @@ export function useDesktopWorkspaces() {
 		switchTo,
 		removeWorkspace,
 		abandonRemoval,
+		holdRemovalRecovery,
 		setWorkspaceAccent,
 		signOutWorkspace: removeWorkspace,
 	};

@@ -33,8 +33,15 @@ const hasMail = computed(() => isEnabled('postbox') || isEnabled('mail.external'
 
 const { settings, isReady, setGlobal, workspaceLocal, setWorkspaceLocal } = useDesktopAppSettings();
 const { autostartEnabled, isReady: autostartReady, setAutostart } = useDesktopSettings();
-const { workspaces, activeId, switchTo, removeWorkspace, abandonRemoval, setWorkspaceAccent } =
-	useDesktopWorkspaces();
+const {
+	workspaces,
+	activeId,
+	switchTo,
+	removeWorkspace,
+	abandonRemoval,
+	holdRemovalRecovery,
+	setWorkspaceAccent,
+} = useDesktopWorkspaces();
 
 function onStartupWorkspaceChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value;
@@ -63,10 +70,10 @@ function askRemoveWorkspace(ws: { id: string; label: string }) {
 }
 
 /**
- * Every way out of a failed removal (Cancel, close, Esc, backdrop, leaving the
- * page) goes through here. A removal that got part-way may have left the page
- * out of step with what is stored; `abandonRemoval` then reloads to re-seed it,
- * and the dialog waits for that in its loading state.
+ * Every way out of the failed dialog (Cancel, close, Esc, backdrop) goes
+ * through here. A removal that got part-way may have left the page out of step
+ * with what is stored; `abandonRemoval` then reloads to re-seed it, and the
+ * dialog waits for that in its loading state.
  */
 function settleFailedRemoval(): boolean {
 	if (!removeFailed.value) return false;
@@ -82,8 +89,17 @@ function onRemoveDialogOpen(open: boolean) {
 	workspaceToRemove.value = null;
 }
 
+// While this page is mounted it is the one offering Retry, so a failed removal
+// waits for the user here. Leaving the page hands the failure back to the
+// composable, which settles it whether the removal already rejected or does so
+// later.
+let releaseRemovalRecovery: (() => void) | null = null;
+onMounted(() => {
+	releaseRemovalRecovery = holdRemovalRecovery();
+});
 onBeforeUnmount(() => {
-	settleFailedRemoval();
+	releaseRemovalRecovery?.();
+	releaseRemovalRecovery = null;
 });
 
 async function confirmRemoveWorkspace() {

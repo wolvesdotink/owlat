@@ -65,11 +65,17 @@ const WORKSPACES = [
 
 const removeWorkspace = vi.fn<(id: string) => Promise<void>>();
 const abandonRemoval = vi.fn<() => boolean>();
+// The page holds the composable's removal recovery while mounted; the release
+// hands an unsettled failure back to the composable (pinned in its own suite).
+const releaseRemovalRecovery = vi.fn<() => void>();
+const holdRemovalRecovery = vi.fn<() => () => void>(() => releaseRemovalRecovery);
 
 beforeEach(() => {
 	removeWorkspace.mockReset();
 	abandonRemoval.mockReset();
 	abandonRemoval.mockReturnValue(false);
+	releaseRemovalRecovery.mockReset();
+	holdRemovalRecovery.mockClear();
 	vi.spyOn(console, 'warn').mockImplementation(() => {});
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', () => {});
@@ -95,6 +101,7 @@ beforeEach(() => {
 		switchTo: vi.fn(),
 		removeWorkspace,
 		abandonRemoval,
+		holdRemovalRecovery,
 		setWorkspaceAccent: vi.fn(),
 	}));
 });
@@ -206,7 +213,17 @@ describe('Preferences → This device: removing a workspace', () => {
 		w.unmount();
 	});
 
-	it('settles a failed removal when the page goes away with the dialog still open', async () => {
+	it('holds the removal recovery while mounted and hands it back on unmount', async () => {
+		const w = mountPage();
+		expect(holdRemovalRecovery).toHaveBeenCalledTimes(1);
+		expect(releaseRemovalRecovery).not.toHaveBeenCalled();
+
+		w.unmount();
+
+		expect(releaseRemovalRecovery).toHaveBeenCalledTimes(1);
+	});
+
+	it('hands a failure back to the composable when the page goes away with the dialog open', async () => {
 		removeWorkspace.mockRejectedValueOnce(new Error('store save failed'));
 		const w = mountPage();
 		await openRemoval(w);
@@ -215,7 +232,33 @@ describe('Preferences → This device: removing a workspace', () => {
 
 		w.unmount();
 
-		expect(abandonRemoval).toHaveBeenCalledTimes(1);
+		// The composable settles it on release; the page does not do it twice.
+		expect(releaseRemovalRecovery).toHaveBeenCalledTimes(1);
+		expect(abandonRemoval).not.toHaveBeenCalled();
+	});
+
+	it('hands back a removal still running when the page goes away, before it rejects', async () => {
+		let fail!: (e: Error) => void;
+		removeWorkspace.mockImplementationOnce(
+			() =>
+				new Promise<void>((_resolve, reject) => {
+					fail = reject;
+				})
+		);
+		const w = mountPage();
+		await openRemoval(w);
+		await confirmButton(w).trigger('click');
+
+		w.unmount();
+		expect(releaseRemovalRecovery).toHaveBeenCalledTimes(1);
+
+		fail(new Error('store save failed'));
+		await flushPromises();
+
+		// The rejection lands on an unmounted page: nothing more is released or
+		// settled from here.
+		expect(releaseRemovalRecovery).toHaveBeenCalledTimes(1);
+		expect(abandonRemoval).not.toHaveBeenCalled();
 	});
 
 	it('does not touch the page when a removal is cancelled before it ran', async () => {
