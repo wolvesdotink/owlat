@@ -322,6 +322,10 @@ jobs:
       # scripts/ci-gate.sh for the full ordered list.
       - name: Lint
         run: bun run ci:lint
+        env:
+          # A push is checked against the commit its branch held before it
+          # (scripts/check-stored-block-corpus.ts); empty on other events.
+          STORED_BLOCK_CORPUS_PUSH_BEFORE: ${{ github.event.before }}
 
   typecheck:
     name: Typecheck

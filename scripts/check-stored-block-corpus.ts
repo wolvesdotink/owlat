@@ -13,9 +13,17 @@
  * - a snapshot `renderer-v<N>/<name>.html` is deleted only together with its
  *   fixture, or once EMAIL_RENDERER_VERSION is no longer N.
  *
- * The base is the pull request's target branch in CI, STORED_BLOCK_CORPUS_BASE
- * when set, otherwise origin/main. The diff runs from the merge base to the
- * working tree, so uncommitted edits count.
+ * What it compares with:
+ * - a pull request (GITHUB_BASE_REF): the merge base with its target branch;
+ * - a CI push: the commit the branch pointed at before the push
+ *   (STORED_BLOCK_CORPUS_PUSH_BEFORE, set from `github.event.before` by the Lint
+ *   job in .github/workflows/test.yml), or HEAD's parent when that is missing
+ *   or all zeros (a new branch or tag), or the empty tree for a root commit;
+ * - STORED_BLOCK_CORPUS_BASE when set, otherwise origin/main locally.
+ * The diff runs from that commit to the working tree, so uncommitted edits
+ * count. History a shallow checkout lacks is fetched; if the base still cannot
+ * be resolved the gate fails in CI (CI=true) and only warns locally, so a
+ * missing base never passes a rewrite unseen.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -23,33 +31,87 @@ import { join } from 'node:path';
 
 const CORPUS = 'packages/email-renderer/src/__tests__/storedBlocks';
 const VERSION_FILE = 'packages/email-renderer/src/version.ts';
+/** `git hash-object -t tree /dev/null`: the base of a root commit. */
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 const root = join(import.meta.dirname, '..');
+const env = process.env;
 
 function git(args: string[]): { ok: boolean; out: string } {
 	const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
 	return { ok: result.status === 0, out: result.stdout.trim() };
 }
 
-function baseRef(): string | undefined {
-	const target = process.env['GITHUB_BASE_REF'];
-	if (target) {
-		git(['fetch', '--quiet', 'origin', target]);
-		return `origin/${target}`;
+const commitOf = (ref: string): string | undefined => {
+	const result = git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+	return result.ok ? result.out : undefined;
+};
+
+/** Best effort: fill in the history a shallow checkout left out. */
+function deepen(): void {
+	if (git(['rev-parse', '--is-shallow-repository']).out === 'true') {
+		git(['fetch', '--quiet', '--unshallow', 'origin']);
 	}
-	const candidates = [process.env['STORED_BLOCK_CORPUS_BASE'], 'origin/main'];
-	return candidates.find((ref) => ref && git(['rev-parse', '--verify', '--quiet', ref]).ok);
 }
 
-const base = baseRef();
-const mergeBase = base ? git(['merge-base', base, 'HEAD']) : undefined;
-if (!mergeBase?.ok) {
-	process.stdout.write(
-		`check-stored-block-corpus: no base to compare with (${base ?? 'none'}); skipping.\n`
-	);
+/** The merge base of `ref` and HEAD, fetching history once if it is missing. */
+function mergeBaseWith(ref: string): string | undefined {
+	for (const attempt of [0, 1]) {
+		if (attempt === 1) deepen();
+		const result = git(['merge-base', ref, 'HEAD']);
+		if (result.ok) return result.out;
+	}
+	return undefined;
+}
+
+/** HEAD's parent; the empty tree for a root commit; undefined if history is cut. */
+function parentOfHead(): string | undefined {
+	deepen();
+	const parent = commitOf('HEAD~1');
+	if (parent) return parent;
+	const shallow = git(['rev-parse', '--is-shallow-repository']).out === 'true';
+	return shallow ? undefined : EMPTY_TREE;
+}
+
+function pushBase(): { label: string; commit: string | undefined } {
+	const before = env['STORED_BLOCK_CORPUS_PUSH_BEFORE'] ?? '';
+	if (before === '' || /^0+$/.test(before)) {
+		return { label: 'HEAD~1', commit: parentOfHead() };
+	}
+	if (!commitOf(before)) git(['fetch', '--quiet', 'origin', before]);
+	if (!commitOf(before)) deepen();
+	return { label: before, commit: commitOf(before) ? mergeBaseWith(before) : undefined };
+}
+
+function resolveBase(): { label: string; commit: string | undefined } {
+	const explicit = env['STORED_BLOCK_CORPUS_BASE'];
+	if (explicit) return { label: explicit, commit: mergeBaseWith(explicit) };
+	const target = env['GITHUB_BASE_REF'];
+	if (target) {
+		git(['fetch', '--quiet', 'origin', target]);
+		const ref = `origin/${target}`;
+		return { label: ref, commit: commitOf(ref) ? mergeBaseWith(ref) : undefined };
+	}
+	if (env['GITHUB_ACTIONS'] === 'true') return pushBase();
+	return {
+		label: 'origin/main',
+		commit: commitOf('origin/main') ? mergeBaseWith('origin/main') : undefined,
+	};
+}
+
+const { label: base, commit: baseCommit } = resolveBase();
+if (!baseCommit) {
+	const message = `check-stored-block-corpus: cannot resolve the base ${base} to compare the corpus with`;
+	if (env['CI'] === 'true') {
+		console.error(
+			`${message}; fetch the history (fetch-depth: 0) or set STORED_BLOCK_CORPUS_BASE.`
+		);
+		process.exit(1);
+	}
+	process.stderr.write(`${message}; skipping outside CI.\n`);
 	process.exit(0);
 }
 
-const changes = git(['diff', '--no-renames', '--name-status', mergeBase.out, '--', CORPUS])
+const changes = git(['diff', '--no-renames', '--name-status', baseCommit, '--', CORPUS])
 	.out.split('\n')
 	.filter(Boolean)
 	.map((line) => {
