@@ -7,6 +7,7 @@ import {
 	loadPostboxTextBody,
 	resolvePostboxMessageBody,
 	setResolvedPostboxBodyScope,
+	PostboxBodyBlobError,
 	type PostboxBodyClient,
 } from '../postboxBodyResolver';
 
@@ -89,6 +90,28 @@ describe('postboxBodyResolver', () => {
 		});
 		expect(action).toHaveBeenCalledTimes(1);
 		expect(fetchImpl).toHaveBeenCalledWith('https://storage.example/html');
+	});
+
+	it('keeps the inline text on a failed HTML download, without caching it', async () => {
+		const { client, action } = makeClient(
+			{ htmlInline: null, textInline: 'plain alternative', hasHtmlBlob: true, hasTextBlob: false },
+			{ htmlUrl: 'https://storage.example/html', textUrl: null }
+		);
+		const failing = vi.fn(async () => ({ ok: false, text: async () => '' }));
+
+		const error = await resolvePostboxMessageBody(client, 'flaky', { fetchImpl: failing }).catch(
+			(e: unknown) => e
+		);
+		expect(error).toBeInstanceOf(PostboxBodyBlobError);
+		expect((error as PostboxBodyBlobError).fallbackText).toBe('plain alternative');
+
+		// Not cached: the retry downloads the HTML.
+		const working = vi.fn(async () => ({ text: async () => '<table>newsletter</table>' }));
+		expect(await resolvePostboxMessageBody(client, 'flaky', { fetchImpl: working })).toEqual({
+			html: '<table>newsletter</table>',
+			text: 'plain alternative',
+		});
+		expect(action).toHaveBeenCalledTimes(2);
 	});
 
 	it('answers an inline text part without the action when there is no HTML blob', async () => {

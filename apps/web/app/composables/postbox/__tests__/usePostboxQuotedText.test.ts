@@ -1,6 +1,14 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from 'vitest';
-import { buildQuotedReply, buildForwardedBody } from '../usePostboxQuotedText';
+import { describe, it, expect, vi } from 'vitest';
+import { buildQuotedReply, buildForwardedBody, resolveBodyFields } from '../usePostboxQuotedText';
+
+vi.mock('@owlat/api', () => {
+	const anyPath: unknown = new Proxy(function () {}, {
+		get: () => anyPath,
+		apply: () => anyPath,
+	});
+	return { api: anyPath };
+});
 
 const base = {
 	fromAddress: 'sara@example.com',
@@ -71,5 +79,28 @@ describe('quoted remote images', () => {
 			expect(out).not.toContain('data-blocked-img');
 			expect(out).toContain('<p>Hi</p>');
 		}
+	});
+});
+
+describe('resolveBodyFields', () => {
+	it('quotes the inline text part when the HTML blob fails to download', async () => {
+		const client = {
+			query: vi.fn(async () => ({
+				htmlInline: null,
+				textInline: 'plain alternative',
+				hasHtmlBlob: true,
+				hasTextBlob: false,
+			})),
+			action: vi.fn(async () => {
+				throw new Error('offline');
+			}),
+		};
+		vi.stubGlobal('requireConvex', () => client);
+		// A list row: no body fields of its own.
+		const resolved = await resolveBodyFields({ ...base, _id: 'row-1' });
+		expect(resolved.htmlBodyInline).toBeUndefined();
+		expect(resolved.textBodyInline).toBe('plain alternative');
+		expect(buildQuotedReply(resolved, true)).toContain('plain alternative');
+		vi.unstubAllGlobals();
 	});
 });
