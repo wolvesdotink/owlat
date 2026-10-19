@@ -370,24 +370,51 @@ export function scanFile(source: ts.SourceFile, lineOf = sourceLine): FileScan {
 		untraceable(node, `${node.text} named as a string value`);
 	};
 
+	/**
+	 * `node` evaluates to a core namespace. Reading a member (`core.isTauri()`)
+	 * is fine and `core.invoke(...)` is a call; both are judged on
+	 * `outermost(node)`, so a compiled template's `_unref(core).isTauri()` is the
+	 * same as the script's `core.isTauri()`. Anything else is a value use.
+	 */
+	const useNamespace = (node: ts.Node, name: string) => {
+		const invoke = member(node, 'invoke');
+		if (invoke) return accept(invoke, `${name}.invoke`);
+		const outer = outermost(node);
+		if (ts.isPropertyAccessExpression(outer.parent) && outer.parent.expression === outer) return;
+		untraceable(node, `the ${CORE_MODULE} namespace ${name} used as a value`);
+	};
+
+	/**
+	 * `_ctx.name` / `$setup.name`: how a compiled template reads a binding it
+	 * does not inline. A tainted name there is the same reference as the bare one.
+	 */
+	const templateRead = (node: ts.Identifier): ts.Node | undefined => {
+		const parent = node.parent;
+		return ts.isPropertyAccessExpression(parent) &&
+			parent.name === node &&
+			ts.isIdentifier(parent.expression) &&
+			(parent.expression.text === '_ctx' || parent.expression.text === '$setup')
+			? parent
+			: undefined;
+	};
+
 	const use = (node: ts.Node) => {
 		if (ts.isIdentifier(node) && !declarations.has(node)) {
 			const parent = node.parent;
 			const isGlobalProperty = ts.isPropertyAccessExpression(parent) && parent.name === node;
 			const isDestructuredKey = ts.isBindingElement(parent) && parent.propertyName === node;
-			if (TAURI_GLOBALS.has(node.text) && isDestructuredKey) {
+			const viaTemplate = templateRead(node);
+			if (viaTemplate && invokeNames.has(node.text)) {
+				accept(viaTemplate, `invoke (${node.text})`);
+			} else if (viaTemplate && namespaces.has(node.text)) {
+				useNamespace(viaTemplate, node.text);
+			} else if (TAURI_GLOBALS.has(node.text) && isDestructuredKey) {
 				untraceable(node, `${node.text} destructured out of an object`);
 			} else if (TAURI_GLOBALS.has(node.text) && (isGlobalProperty || !isNameOnly(node))) {
 				useGlobal(isGlobalProperty ? parent : node, node.text);
 			} else if (!isNameOnly(node) && !inTypePosition(node)) {
 				if (invokeNames.has(node.text)) accept(node, `invoke (${node.text})`);
-				else if (namespaces.has(node.text)) {
-					const invoke = member(node, 'invoke');
-					if (invoke) accept(invoke, `${node.text}.invoke`);
-					else if (!(ts.isPropertyAccessExpression(parent) && parent.expression === node)) {
-						untraceable(node, `the ${CORE_MODULE} namespace ${node.text} used as a value`);
-					}
-				}
+				else if (namespaces.has(node.text)) useNamespace(node, node.text);
 			}
 		} else if (ts.isStringLiteralLike(node) && TAURI_GLOBALS.has(node.text)) {
 			useGlobalString(node);

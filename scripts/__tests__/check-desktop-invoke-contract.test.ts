@@ -433,6 +433,70 @@ describe('the desktop invoke contract gate', () => {
 		);
 	});
 
+	it('judges a namespace read through compiled-template wrappers like the script form', async () => {
+		const component = [
+			'<template>',
+			'  <div v-if="core.isTauri()">',
+			'    <button @click="core.invoke(\'removed_command\')">x</button>',
+			'  </div>',
+			'</template>',
+			'<script setup lang="ts">',
+			"import * as core from '@tauri-apps/api/core';",
+			'</script>',
+			'',
+		].join('\n');
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/web/app/components/Ns.vue': component,
+			'apps/desktop/src/ctx.ts':
+				"import * as core from '@tauri-apps/api/core';\nimport { invoke } from '@tauri-apps/api/core';\nexport const a = (_ctx: any, $setup: any) => [$setup.core.isTauri(), _ctx.core.invoke('nope_ctx'), $setup.invoke];\n",
+		});
+		expect(result.problems).toEqual([
+			'apps/desktop/src/ctx.ts:3  untraceable invoke use: invoke (invoke) is not called directly',
+			`apps/desktop/src/ctx.ts:3  invoke('nope_ctx') is not a command in ${IPC_COMMANDS_FILE}`,
+			`apps/web/app/components/Ns.vue:3  invoke('removed_command') is not a command in ${IPC_COMMANDS_FILE}`,
+		]);
+	});
+
+	it('reports script syntax errors instead of reading past them', async () => {
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/web/app/components/Bad.vue':
+				'<template><p>x</p></template>\n<script setup lang="ts">\nconst x = ;\n</script>\n',
+			'apps/desktop/src/bad.ts': 'export const y = (;\n',
+		});
+		expect(result.problems).toHaveLength(2);
+		expect(result.problems[0]).toMatch(
+			/^apps\/desktop\/src\/bad\.ts:1 {2}untraceable invoke use: syntax error/
+		);
+		expect(result.problems[1]).toMatch(
+			/^apps\/web\/app\/components\/Bad\.vue:3 {2}untraceable invoke use: syntax error/
+		);
+	});
+
+	it('reports a template compile error on its own line', async () => {
+		const component = [
+			'<script setup lang="ts">',
+			'const ok = true;',
+			'</script>',
+			'<template>',
+			'  <div>',
+			'    <p>first</p>',
+			'    <p v-else>orphan</p>',
+			'  </div>',
+			'</template>',
+			'',
+		].join('\n');
+		const result = await check({
+			[WINDOW]: `${IMPORT}invoke('zoom_level');\n`,
+			'apps/web/app/components/Orphan.vue': component,
+		});
+		expect(result.problems).toHaveLength(1);
+		expect(result.problems[0]).toMatch(
+			/^apps\/web\/app\/components\/Orphan\.vue:7 {2}untraceable invoke use: the component does not compile/
+		);
+	});
+
 	it('accepts the direct global calls and checks their names', async () => {
 		const result = await check({
 			'apps/web/app/global.ts':

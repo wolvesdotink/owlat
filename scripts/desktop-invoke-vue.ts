@@ -121,7 +121,9 @@ export function compileSfc(raw: string, file: string): CompiledSfc {
 		const [templateError] = out.errors;
 		if (templateError) {
 			const message = typeof templateError === 'string' ? templateError : templateError.message;
-			unreadable(template.loc.start.line, message);
+			// The error's location is relative to the template block's content.
+			const at = typeof templateError === 'string' ? undefined : templateError.loc?.start.line;
+			unreadable(at ? template.loc.start.line + at - 1 : template.loc.start.line, message);
 		} else {
 			const consumer = out.map ? new SourceMapConsumer(out.map as RawSourceMap) : undefined;
 			// The template map is relative to the block's content.

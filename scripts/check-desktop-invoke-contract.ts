@@ -131,6 +131,13 @@ export interface InvokeContractResult {
 	readonly problems: readonly string[];
 }
 
+/** The parser's own syntax errors; `createSourceFile` keeps them off the public type. */
+function parseDiagnostics(source: ts.SourceFile): readonly ts.DiagnosticWithLocation[] {
+	return (
+		(source as unknown as { parseDiagnostics?: ts.DiagnosticWithLocation[] }).parseDiagnostics ?? []
+	);
+}
+
 function isSource(path: string): boolean {
 	if (path.includes('/__tests__/') || path.includes('/node_modules/')) return false;
 	if (/\.(test|spec)\.ts$/.test(path) || path.endsWith('.d.ts')) return false;
@@ -243,6 +250,15 @@ export async function checkDesktopInvokeContract(
 				const position = at.getLineAndCharacterOfPosition(node.getStart(at));
 				return part.lineOf(position.line, position.character);
 			};
+			// A syntax error leaves code the scan cannot read (a `.vue` script is
+			// not otherwise compiled here), so each parse diagnostic is a finding.
+			for (const diagnostic of parseDiagnostics(source)) {
+				const position = source.getLineAndCharacterOfPosition(diagnostic.start);
+				fileProblems.push({
+					line: part.lineOf(position.line, position.character),
+					message: `untraceable invoke use: syntax error (${ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')})`,
+				});
+			}
 			const found = scanFile(source, lineOf);
 			for (const line of nonLiteralImports(source, lineOf)) {
 				fileProblems.push({
