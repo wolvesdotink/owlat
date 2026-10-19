@@ -70,9 +70,10 @@ export function primaryReplyKindFor(
 /**
  * The one-time seed for `kind` of `source`. The body is resolved first (a body
  * over the inline threshold lives in blob storage). `leadText` (an AI
- * suggestion) goes above the quote of a reply. `autoLoadImages` is the
- * reader's preference: the quote keeps remote images only where the reader
- * would load them on open (utils/postboxImageAllowlist).
+ * suggestion) goes above the quote of a reply. `autoLoadImages` and
+ * `isSenderAllowed` are the reader's preference and sender grant: the quote
+ * keeps remote images only where the reader would load them on open
+ * (utils/postboxImageAllowlist).
  */
 export async function buildReplyComposeSeed(
 	kind: AnswerModeKind,
@@ -82,11 +83,14 @@ export async function buildReplyComposeSeed(
 		ownAddresses: ReadonlySet<string>;
 		leadText?: string;
 		autoLoadImages: boolean;
+		/** The source's sender is on the mailbox's image allowlist. */
+		isSenderAllowed?: boolean;
 	}
 ): Promise<ReplyComposeSeed> {
 	const target = await resolveBodyFields(source);
 	const loadImages = postboxImagesLoadOnOpen({
 		autoLoadImages: ctx.autoLoadImages,
+		senderImagesAllowed: ctx.isSenderAllowed,
 		suspicious: isPostboxMessageSuspicious(source),
 	});
 	if (kind === 'forward') {

@@ -66,10 +66,17 @@ describe('buildReplyComposeSeed', () => {
 		});
 		expect(optedOut.prefillBodyHtml).not.toContain('cdn.example');
 
+		const trusted = await buildReplyComposeSeed('forward', from, {
+			...ctx,
+			autoLoadImages: false,
+			isSenderAllowed: true,
+		});
+		expect(trusted.prefillBodyHtml).toContain('cdn.example/a.jpg');
+
 		const spam = await buildReplyComposeSeed(
 			'reply',
 			{ ...from, spamVerdict: 'spam' },
-			{ ...ctx, autoLoadImages: true }
+			{ ...ctx, autoLoadImages: true, isSenderAllowed: true }
 		);
 		expect(spam.prefillBodyHtml).not.toContain('cdn.example');
 	});

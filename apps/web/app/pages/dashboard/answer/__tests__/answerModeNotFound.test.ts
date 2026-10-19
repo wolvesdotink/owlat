@@ -116,7 +116,8 @@ beforeAll(() => {
 		useConvex: () => null,
 		useConvexQuery: useConvexQueryByName,
 		usePostboxActiveMessageRead,
-		usePostboxSettings: () => ({ replyDefault: ref('reply') }),
+		usePostboxSettings: () => ({ replyDefault: ref('reply'), autoLoadImages: ref(true) }),
+		usePostboxImageAllowlist: () => ({ isAllowed: () => false }),
 		useFeatureFlag: () => ({ isEnabled: () => false }),
 		useInboxes: () => ({ byId: ref(new Map()) }),
 	});

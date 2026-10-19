@@ -46,6 +46,9 @@ export function useAnswerModeSession(opts: {
 		() => new Set(((ownQuery.data.value as string[] | undefined) ?? []).map(extractEmailAddress))
 	);
 	const { replyDefault, autoLoadImages } = usePostboxSettings();
+	const imageAllowlist = usePostboxImageAllowlist(
+		computed(() => (opts.message()?.mailboxId as Id<'mailboxes'> | undefined) ?? null)
+	);
 	const pendingLead = useAnswerPendingLead();
 
 	const seed: ShallowRef<ReplyComposeSeed | null> = shallowRef(null);
@@ -58,6 +61,7 @@ export function useAnswerModeSession(opts: {
 			mailboxId: message.mailboxId as Id<'mailboxes'>,
 			ownAddresses: ownAddresses.value,
 			autoLoadImages: autoLoadImages.value,
+			isSenderAllowed: imageAllowlist.isAllowed(message.fromAddress),
 			leadText: pendingLead.take(message._id),
 		});
 	}

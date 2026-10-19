@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from 'vitest';
 import { buildQuotedReply, buildForwardedBody, resolveBodyFields } from '../usePostboxQuotedText';
+import { resolvePostboxMessageBody } from '../postboxBodyResolver';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -101,6 +102,27 @@ describe('resolveBodyFields', () => {
 		expect(resolved.htmlBodyInline).toBeUndefined();
 		expect(resolved.textBodyInline).toBe('plain alternative');
 		expect(buildQuotedReply(resolved, true)).toContain('plain alternative');
+		vi.unstubAllGlobals();
+	});
+
+	it('falls back to the inline text after joining a read-ahead whose download failed', async () => {
+		const client = {
+			query: vi.fn(async () => ({
+				htmlInline: null,
+				textInline: 'plain alternative',
+				hasHtmlBlob: true,
+				hasTextBlob: false,
+			})),
+			action: vi.fn(async () => {
+				throw new Error('offline');
+			}),
+		};
+		vi.stubGlobal('requireConvex', () => client);
+		// The read-ahead starts the blob-only download first; the reply joins it.
+		const readAhead = resolvePostboxMessageBody(client as never, 'row-2', { blobOnly: true });
+		readAhead.catch(() => {});
+		const resolved = await resolveBodyFields({ ...base, _id: 'row-2' });
+		expect(resolved.textBodyInline).toBe('plain alternative');
 		vi.unstubAllGlobals();
 	});
 });

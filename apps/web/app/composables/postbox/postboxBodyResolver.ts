@@ -75,22 +75,6 @@ function resolvedBodyCharCount(body: ResolvedPostboxBody): number {
 }
 
 /**
- * The blob download failed, but the inline text part the query already
- * answered is still there. Thrown rather than returned so the cache drops the
- * entry (a fallback must never stand in for the HTML a retry would get), while
- * a caller that can use the text (a quote) still has it.
- */
-export class PostboxBodyBlobError extends Error {
-	constructor(
-		readonly fallbackText: string,
-		options?: { cause?: unknown }
-	) {
-		super('Could not load message body', options);
-		this.name = 'PostboxBodyBlobError';
-	}
-}
-
-/**
  * Inline bodies come from the reactive `getMessageInlineBody` query (answered
  * locally when the reader, the open-message hold or the read-ahead already
  * subscribes to it); the action runs only for bodies stored as blobs, because
@@ -116,20 +100,6 @@ async function loadPostboxBody(
 		if (!inline.hasHtmlBlob && !inline.hasTextBlob) return { html: null, text: null };
 		inlineText = inline.textInline;
 	}
-	if (inlineText === null) return loadBodyBlob(client, id, fetchImpl, null);
-	try {
-		return await loadBodyBlob(client, id, fetchImpl, inlineText);
-	} catch (error) {
-		throw new PostboxBodyBlobError(inlineText, { cause: error });
-	}
-}
-
-async function loadBodyBlob(
-	client: PostboxBodyClient,
-	id: Id<'mailMessages'>,
-	fetchImpl: BodyFetch,
-	inlineText: string | null
-): Promise<ResolvedPostboxBody> {
 	const urls = await client.action(api.mail.mailbox.messages.getMessageBodyBlobUrls, {
 		messageId: id,
 	});

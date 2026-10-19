@@ -18,7 +18,8 @@ import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { escapeHtml, escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
 import { applyPostboxImageConsent } from '~/utils/postboxRemoteResources';
-import { PostboxBodyBlobError, consumeResolvedPostboxMessageBody } from './postboxBodyResolver';
+import { api } from '@owlat/api';
+import { consumeResolvedPostboxMessageBody } from './postboxBodyResolver';
 
 // The quote-boundary splitters are shared with the Convex server (voice-profile
 // sampling strips quoted text from SENT bodies with the identical heuristics).
@@ -105,12 +106,24 @@ export async function resolveBodyFields<
 		const html = data.html ?? undefined;
 		const text = data.text ?? t.textBodyInline;
 		return { ...t, htmlBodyInline: html, textBodyInline: text };
-	} catch (error) {
-		// The HTML did not download; quote the text part the query did answer.
-		if (error instanceof PostboxBodyBlobError && !t.textBodyInline) {
-			return { ...t, textBodyInline: error.fallbackText };
-		}
-		return t;
+	} catch {
+		// The HTML did not download (here, or in a read-ahead this call joined):
+		// quote the text part instead of an empty original, when it is inline.
+		if (t.textBodyInline) return t;
+		const text = await inlineTextOf(t._id);
+		return text ? { ...t, textBodyInline: text } : t;
+	}
+}
+
+/** The message's inline text part, or undefined (none, or unreadable). */
+async function inlineTextOf(messageId: string): Promise<string | undefined> {
+	try {
+		const inline = await requireConvex().query(api.mail.mailbox.messages.getMessageInlineBody, {
+			messageId: messageId as Id<'mailMessages'>,
+		});
+		return inline?.textInline ?? undefined;
+	} catch {
+		return undefined;
 	}
 }
 
