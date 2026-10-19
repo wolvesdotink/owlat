@@ -75,7 +75,7 @@ const style = computed(() => STYLES[props.toast.type]);
 <template>
 	<div
 		:class="[
-			'flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border min-w-[280px] max-w-md',
+			'pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border w-full min-w-0 max-w-md sm:min-w-[280px]',
 			style.container,
 		]"
 	>
@@ -89,26 +89,32 @@ const style = computed(() => STYLES[props.toast.type]);
 			<Icon :name="style.icon" size="16" :class="style.iconColor" />
 		</div>
 
-		<!-- Message -->
-		<p :class="['text-sm font-medium flex-1', style.text]">
-			{{ toast.message }}
-		</p>
+		<!--
+			Message + action wrap as a pair: when both no longer fit on one line (a
+			phone, long copy), the action drops below the message instead of
+			squeezing it or pushing the card past the screen edge.
+		-->
+		<div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+			<p :class="['min-w-0 flex-[1_1_10rem] text-sm font-medium break-words', style.text]">
+				{{ toast.message }}
+			</p>
 
-		<!-- Optional inline action (e.g. "Undo") — clicking it dismisses the toast -->
-		<button
-			v-if="toast.action"
-			type="button"
-			:class="[
-				'text-sm font-semibold flex-shrink-0 px-2 py-1 rounded-lg transition-colors hover:underline',
-				style.actionHover,
-			]"
-			@click="
-				toast.action.onAction();
-				emit('dismiss');
-			"
-		>
-			{{ toast.action.label }}
-		</button>
+			<!-- Optional inline action (e.g. "Undo") — clicking it dismisses the toast -->
+			<button
+				v-if="toast.action"
+				type="button"
+				:class="[
+					'text-sm font-semibold text-left max-w-full break-words px-2 py-1 rounded-lg transition-colors hover:underline',
+					style.actionHover,
+				]"
+				@click="
+					toast.action.onAction();
+					emit('dismiss');
+				"
+			>
+				{{ toast.action.label }}
+			</button>
+		</div>
 
 		<!-- Close button (optional - auto-dismisses but allows manual close) -->
 		<button
