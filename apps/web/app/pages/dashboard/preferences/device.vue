@@ -33,7 +33,7 @@ const hasMail = computed(() => isEnabled('postbox') || isEnabled('mail.external'
 
 const { settings, isReady, setGlobal, workspaceLocal, setWorkspaceLocal } = useDesktopAppSettings();
 const { autostartEnabled, isReady: autostartReady, setAutostart } = useDesktopSettings();
-const { workspaces, activeId, switchTo, removeWorkspace, setWorkspaceAccent } =
+const { workspaces, activeId, switchTo, removeWorkspace, abandonRemoval, setWorkspaceAccent } =
 	useDesktopWorkspaces();
 
 function onStartupWorkspaceChange(event: Event) {
@@ -62,11 +62,29 @@ function askRemoveWorkspace(ws: { id: string; label: string }) {
 	workspaceToRemove.value = { id: ws.id, label: ws.label };
 }
 
+/**
+ * Every way out of a failed removal (Cancel, close, Esc, backdrop, leaving the
+ * page) goes through here. A removal that got part-way may have left the page
+ * out of step with what is stored; `abandonRemoval` then reloads to re-seed it,
+ * and the dialog waits for that in its loading state.
+ */
+function settleFailedRemoval(): boolean {
+	if (!removeFailed.value) return false;
+	removeFailed.value = false;
+	if (!abandonRemoval()) return false;
+	isRemoving.value = true;
+	return true;
+}
+
 function onRemoveDialogOpen(open: boolean) {
 	if (open) return;
+	if (settleFailedRemoval()) return;
 	workspaceToRemove.value = null;
-	removeFailed.value = false;
 }
+
+onBeforeUnmount(() => {
+	settleFailedRemoval();
+});
 
 async function confirmRemoveWorkspace() {
 	const target = workspaceToRemove.value;
@@ -81,7 +99,7 @@ async function confirmRemoveWorkspace() {
 	} catch (e) {
 		// A step can reject after earlier ones landed (signed out, session
 		// discarded, maybe already off the list). Every step is safe to repeat,
-		// so Retry runs the whole removal again; Cancel leaves it there.
+		// so Retry runs the whole removal again; Cancel settles the page instead.
 		console.warn('[desktop] removing the workspace failed:', e);
 		removeFailed.value = true;
 		isRemoving.value = false;

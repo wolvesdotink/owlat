@@ -266,9 +266,20 @@ async function setWorkspaceAccent(id: string, color: WorkspaceAccent): Promise<v
 	await persistStore();
 }
 
+/**
+ * Set once a removal has changed what this page holds: the live session (an
+ * active workspace is signed out and its storage discarded first) or the
+ * in-memory list and active id (filtered before the store save). A removal that
+ * rejects after that leaves the page out of step with the persisted store and
+ * the keychain, e.g. a failed save shows the next workspace as active while the
+ * clients are still bound to the removed one. See `abandonRemoval`.
+ */
+let removalChangedPage = false;
+
 async function removeWorkspace(id: string): Promise<void> {
 	const wasActive = id === activeId.value;
 	if (wasActive) {
+		removalChangedPage = true;
 		try {
 			await authClient.signOut();
 		} catch {
@@ -292,6 +303,7 @@ async function removeWorkspace(id: string): Promise<void> {
 		console.warn('[desktop] removing the workspace session failed:', e);
 	});
 
+	removalChangedPage = true;
 	workspaces.value = workspaces.value.filter((w) => w.id !== id);
 	if (wasActive) activeId.value = workspaces.value[0]?.id ?? null;
 	await persistStore();
@@ -307,6 +319,20 @@ async function removeWorkspace(id: string): Promise<void> {
 	}
 
 	window.location.assign(workspaces.value.length ? '/dashboard' : '/desktop/welcome');
+}
+
+/**
+ * The user gave up on a removal that rejected part-way. When it had already
+ * changed what this page holds, reload so the boot re-seeds the list, the
+ * active workspace and the session from what was actually persisted, the same
+ * way a switch does. Nothing is written back: a keychain entry the removal
+ * already deleted stays deleted, so the reload comes up signed out of it.
+ * Returns whether a reload is under way (the caller keeps its loading state).
+ */
+function abandonRemoval(): boolean {
+	if (!removalChangedPage) return false;
+	window.location.reload();
+	return true;
 }
 
 /**
@@ -360,6 +386,7 @@ export function useDesktopWorkspaces() {
 			localizeErrors(() => completeConnection(params)),
 		switchTo,
 		removeWorkspace,
+		abandonRemoval,
 		setWorkspaceAccent,
 		signOutWorkspace: removeWorkspace,
 	};

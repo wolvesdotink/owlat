@@ -64,9 +64,12 @@ const WORKSPACES = [
 ];
 
 const removeWorkspace = vi.fn<(id: string) => Promise<void>>();
+const abandonRemoval = vi.fn<() => boolean>();
 
 beforeEach(() => {
 	removeWorkspace.mockReset();
+	abandonRemoval.mockReset();
+	abandonRemoval.mockReturnValue(false);
 	vi.spyOn(console, 'warn').mockImplementation(() => {});
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', () => {});
@@ -91,6 +94,7 @@ beforeEach(() => {
 		activeId: ref('w1'),
 		switchTo: vi.fn(),
 		removeWorkspace,
+		abandonRemoval,
 		setWorkspaceAccent: vi.fn(),
 	}));
 });
@@ -148,14 +152,15 @@ describe('Preferences → This device: removing a workspace', () => {
 		w.unmount();
 	});
 
-	it('closes on Cancel after a failed attempt and opens clean the next time', async () => {
-		removeWorkspace.mockRejectedValueOnce(new Error('store save failed'));
+	it('closes on Cancel after a failure that left the page as it was, and opens clean next time', async () => {
+		removeWorkspace.mockRejectedValueOnce(new Error('offline cache wipe failed'));
 		const w = mountPage();
 		await openRemoval(w);
 		await confirmButton(w).trigger('click');
 		await flushPromises();
 
 		await cancelButton(w).trigger('click');
+		expect(abandonRemoval).toHaveBeenCalledTimes(1);
 		expect(dialog(w).exists()).toBe(false);
 
 		await openRemoval(w, 0);
@@ -163,6 +168,64 @@ describe('Preferences → This device: removing a workspace', () => {
 		expect(alert(w).exists()).toBe(false);
 		expect(confirmButton(w).text()).toBe('Remove workspace');
 		w.unmount();
+	});
+
+	it('waits for the reload when Cancel has to settle a removal that got part-way', async () => {
+		removeWorkspace.mockRejectedValueOnce(new Error('store save failed'));
+		abandonRemoval.mockReturnValue(true);
+		const w = mountPage();
+		await openRemoval(w);
+		await confirmButton(w).trigger('click');
+		await flushPromises();
+
+		await cancelButton(w).trigger('click');
+
+		expect(abandonRemoval).toHaveBeenCalledTimes(1);
+		// The page is reloading into the stored state: the dialog stays up,
+		// loading, and offers nothing that would act on the stale page.
+		expect(dialog(w).exists()).toBe(true);
+		expect(alert(w).exists()).toBe(false);
+		expect(cancelButton(w).attributes('disabled')).toBeDefined();
+		expect(confirmButton(w).attributes('disabled')).toBeDefined();
+		w.unmount();
+		expect(abandonRemoval).toHaveBeenCalledTimes(1);
+	});
+
+	it('settles through the same step when the dialog is dismissed from the backdrop', async () => {
+		removeWorkspace.mockRejectedValueOnce(new Error('store save failed'));
+		abandonRemoval.mockReturnValue(true);
+		const w = mountPage();
+		await openRemoval(w);
+		await confirmButton(w).trigger('click');
+		await flushPromises();
+
+		await w.find('.modal .backdrop').trigger('click');
+
+		expect(abandonRemoval).toHaveBeenCalledTimes(1);
+		expect(dialog(w).exists()).toBe(true);
+		w.unmount();
+	});
+
+	it('settles a failed removal when the page goes away with the dialog still open', async () => {
+		removeWorkspace.mockRejectedValueOnce(new Error('store save failed'));
+		const w = mountPage();
+		await openRemoval(w);
+		await confirmButton(w).trigger('click');
+		await flushPromises();
+
+		w.unmount();
+
+		expect(abandonRemoval).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not touch the page when a removal is cancelled before it ran', async () => {
+		const w = mountPage();
+		await openRemoval(w);
+		await cancelButton(w).trigger('click');
+		w.unmount();
+
+		expect(abandonRemoval).not.toHaveBeenCalled();
+		expect(removeWorkspace).not.toHaveBeenCalled();
 	});
 
 	it('runs the removal again on Retry and stays loading once it succeeds', async () => {

@@ -32,10 +32,16 @@ const SESSION_BLOB = JSON.stringify({ 'better-auth.session_token': 'token-of-w1'
 const sessionWrite = vi.fn(
 	async (_account: string, _value: string, _revision: number) => 'written'
 );
-const sessionReplace = vi.fn(async (_account: string, _value: string | null) => 2);
+// The keychain entries, so a reload reads back what the removal deleted.
+const keychainEntries = new Map<string, { value: string | null; revision: number }>();
+const sessionReplace = vi.fn(async (account: string, value: string | null) => {
+	const revision = (keychainEntries.get(account)?.revision ?? 0) + 1;
+	keychainEntries.set(account, { value, revision });
+	return revision;
+});
 vi.mock('@owlat/desktop/src/keychain', () => ({
 	secretGet: vi.fn(async () => null),
-	sessionRead: vi.fn(async () => ({ value: SESSION_BLOB, revision: 1 })),
+	sessionRead: vi.fn(async (account: string) => keychainEntries.get(account) ?? null),
 	sessionWrite: (account: string, value: string, revision: number) =>
 		sessionWrite(account, value, revision),
 	sessionReplace: (account: string, value: string | null) => sessionReplace(account, value),
@@ -81,6 +87,14 @@ vi.mock('~/lib/desktop/activeWorkspace', () => ({
 	setActiveWorkspace: vi.fn(),
 }));
 vi.mock('~/lib/desktop/workspaceAccent', () => ({ applyWorkspaceAccent: vi.fn() }));
+// A switch paints a skeleton and arms a stale-skeleton reload; neither is under
+// test, and the fallback must not fire into a later test's reload spy.
+vi.mock('~/lib/desktop/workspaceSwitch', () => ({
+	showSwitchSkeleton: vi.fn(() => ({})),
+	hideSwitchSkeleton: vi.fn(),
+	writeSwitchFlag: vi.fn(),
+	SWITCH_FLAG_TTL_MS: 1_000_000_000,
+}));
 vi.mock('~/lib/desktop/desktopAuthClient', () => ({ createActiveDesktopAuthClient: vi.fn() }));
 
 const signOut = vi.fn(async () => ({}));
@@ -111,6 +125,7 @@ function workspace(id: string): WorkspaceConfig {
 }
 
 let assign: ReturnType<typeof vi.fn>;
+let reload: ReturnType<typeof vi.fn>;
 
 /** A fresh module graph per test: the workspace list is module state. */
 async function boot() {
@@ -129,11 +144,20 @@ async function boot() {
 beforeEach(() => {
 	failOnce = null;
 	assign = vi.fn();
+	reload = vi.fn();
 	Object.defineProperty(window.location, 'assign', {
 		value: assign,
 		configurable: true,
 		writable: true,
 	});
+	Object.defineProperty(window.location, 'reload', {
+		value: reload,
+		configurable: true,
+		writable: true,
+	});
+	keychainEntries.clear();
+	keychainEntries.set(workspaceTokenRef('w1'), { value: SESSION_BLOB, revision: 1 });
+	keychainEntries.set(workspaceTokenRef('w2'), { value: SESSION_BLOB, revision: 1 });
 	loadWorkspaceStore.mockResolvedValue({
 		workspaces: [workspace('w1'), workspace('w2')],
 		activeWorkspaceId: 'w1',
@@ -219,5 +243,86 @@ describe('removeWorkspace after a rejected step', () => {
 		expect(sessionReplace).toHaveBeenCalledWith(workspaceTokenRef('w2'), null);
 		expect(assign).toHaveBeenCalledTimes(1);
 		expect(assign).toHaveBeenCalledWith('/dashboard');
+	});
+});
+
+describe('abandoning a removal that rejected part-way', () => {
+	it.each<Stage>(['discard', 'wipe', 'keychain', 'persist'])(
+		'reloads after the %s step of removing the active workspace rejected',
+		async (stage) => {
+			const { workspaces } = await boot();
+			failOnce = stage;
+			await expect(workspaces.removeWorkspace('w1')).rejects.toThrow(`${stage} failed`);
+
+			expect(workspaces.abandonRemoval()).toBe(true);
+
+			expect(reload).toHaveBeenCalledTimes(1);
+			expect(assign).not.toHaveBeenCalled();
+			expect(sessionWrite).not.toHaveBeenCalled();
+		}
+	);
+
+	it('comes back from a failed save in a state where the other workspace can be switched to', async () => {
+		const first = await boot();
+		failOnce = 'persist';
+		await expect(first.workspaces.removeWorkspace('w1')).rejects.toThrow('persist failed');
+		// Before settling: the list says w2 is active, the page is bound to w1, and
+		// switching to w2 is a no-op because it already counts as active.
+		expect(first.workspaces.activeId.value).toBe('w2');
+		expect(first.keychainStorage.getActiveKeychainStorage()?.accountKey).toBe(
+			workspaceTokenRef('w1')
+		);
+		await first.workspaces.switchTo('w2');
+		expect(assign).not.toHaveBeenCalled();
+
+		expect(first.workspaces.abandonRemoval()).toBe(true);
+		expect(reload).toHaveBeenCalledTimes(1);
+
+		// The reload boots from what was persisted: the save never landed, so the
+		// store still lists w1 as active, but its keychain entry stays deleted.
+		const second = await boot();
+		expect(second.workspaces.workspaces.value.map((w) => w.id)).toEqual(['w1', 'w2']);
+		expect(second.workspaces.activeId.value).toBe('w1');
+		const bound = second.keychainStorage.getActiveKeychainStorage();
+		expect(bound?.accountKey).toBe(workspaceTokenRef('w1'));
+		expect(bound?.getItem('better-auth.session_token')).toBeNull();
+
+		await second.workspaces.switchTo('w2');
+		expect(assign).toHaveBeenCalledTimes(1);
+		expect(assign).toHaveBeenCalledWith('/dashboard');
+		expect(sessionWrite).not.toHaveBeenCalled();
+	});
+
+	it('reloads after a failed save while removing another workspace', async () => {
+		const { workspaces } = await boot();
+		failOnce = 'persist';
+		await expect(workspaces.removeWorkspace('w2')).rejects.toThrow('persist failed');
+		// The list in memory already lost w2; the store on disk did not.
+		expect(workspaces.workspaces.value.map((w) => w.id)).toEqual(['w1']);
+
+		expect(workspaces.abandonRemoval()).toBe(true);
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it.each<Stage>(['wipe', 'keychain'])(
+		'leaves the page alone when removing another workspace rejected at the %s step',
+		async (stage) => {
+			const { workspaces } = await boot();
+			failOnce = stage;
+			await expect(workspaces.removeWorkspace('w2')).rejects.toThrow(`${stage} failed`);
+
+			// Only device caches changed; the list, the active workspace and the
+			// session this page is bound to are as they were.
+			expect(workspaces.abandonRemoval()).toBe(false);
+			expect(reload).not.toHaveBeenCalled();
+			expect(workspaces.workspaces.value.map((w) => w.id)).toEqual(['w1', 'w2']);
+			expect(workspaces.activeId.value).toBe('w1');
+		}
+	);
+
+	it('does nothing when no removal ran', async () => {
+		const { workspaces } = await boot();
+		expect(workspaces.abandonRemoval()).toBe(false);
+		expect(reload).not.toHaveBeenCalled();
 	});
 });
