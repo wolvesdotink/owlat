@@ -92,6 +92,11 @@ export const semanticFileTables = {
 		.index('by_attachment_retention', ['captureSource', 'bytesReleasedAt', 'createdAt'])
 		.index('by_embedding_space', ['embeddingSpaceId', 'embeddingGeneratedAt'])
 		.index('by_secondary_embedding_space', ['secondaryEmbeddingSpaceId'])
+		// The Files page's source filter (`files.cards.listBySource`): one source,
+		// newest first, so a filtered page holds matches instead of whatever
+		// `by_created_at` returned. Added beside `by_created_at`, never in its
+		// place: live `list` cursors point into that index.
+		.index('by_source_and_created', ['sourceType', 'createdAt'])
 		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): as with knowledge entries,
 		// `searchableText` (full-text) and `embedding` (vector) stay PLAINTEXT-DERIVED
 		// so file search + semantic retrieval keep working — Convex indexes plaintext.
@@ -100,6 +105,13 @@ export const semanticFileTables = {
 		.searchIndex('search_files', {
 			searchField: 'searchableText',
 			filterFields: [],
+		})
+		// The same text, filterable by source (`files.cards.searchBySource`). A
+		// second index rather than a filter field on `search_files`, so live
+		// `search` cursors keep the index that issued them.
+		.searchIndex('search_files_by_source', {
+			searchField: 'searchableText',
+			filterFields: ['sourceType'],
 		})
 		.vectorIndex('vector_files', {
 			vectorField: 'embedding',

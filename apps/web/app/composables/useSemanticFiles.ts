@@ -20,55 +20,54 @@ export function useSemanticFiles() {
 
 	const PAGE_SIZE = 24;
 
-	// List query (used when no search query). sourceType is pushed to the backend
-	// so the filter spans the whole table, not just one fetched page. Both reads
-	// return compact cards, not whole rows with their vectors and extracted text.
+	// Four reads, exactly one live at a time. A source filter goes to its own
+	// endpoint (`listBySource` / `searchBySource`), which narrows through an
+	// index before paginating, so a filtered page is a page of matches. Each
+	// function keeps its own cursors: the Convex client pages a subscription
+	// keyed by function and args, so switching the filter never hands one
+	// query's cursor to another. A released read stays warm for a while
+	// (sharedConvexSubscriptions), so switching back resumes its loaded pages.
+	// All four return compact cards, not whole rows with their vectors and
+	// extracted text.
 	const list = usePaginatedQuery(
 		api.files.cards.list,
-		() => (debouncedQuery.value ? 'skip' : { sourceType: sourceFilter.value ?? undefined }),
+		() => (debouncedQuery.value || sourceFilter.value ? 'skip' : {}),
 		{ initialNumItems: PAGE_SIZE }
 	);
-
-	// Search query (used when search is active)
+	const listBySource = usePaginatedQuery(
+		api.files.cards.listBySource,
+		() =>
+			!debouncedQuery.value && sourceFilter.value ? { sourceType: sourceFilter.value } : 'skip',
+		{ initialNumItems: PAGE_SIZE }
+	);
 	const search = usePaginatedQuery(
 		api.files.cards.search,
+		() => (debouncedQuery.value && !sourceFilter.value ? { query: debouncedQuery.value } : 'skip'),
+		{ initialNumItems: PAGE_SIZE }
+	);
+	const searchBySource = usePaginatedQuery(
+		api.files.cards.searchBySource,
 		() =>
-			debouncedQuery.value
-				? { query: debouncedQuery.value, sourceType: sourceFilter.value ?? undefined }
+			debouncedQuery.value && sourceFilter.value
+				? { query: debouncedQuery.value, sourceType: sourceFilter.value }
 				: 'skip',
 		{ initialNumItems: PAGE_SIZE }
 	);
 
-	const active = computed(() => (debouncedQuery.value ? search : list));
+	const active = computed(() => {
+		if (debouncedQuery.value) return sourceFilter.value ? searchBySource : search;
+		return sourceFilter.value ? listBySource : list;
+	});
 
+	// No automatic page loads: a page can still come back short, or empty with
+	// more to load, when the read gate drops files the member may not open. The
+	// page offers "Load more" for as long as `status` says there is more.
 	const files = computed(() => active.value.results.value);
 	const status = computed(() => active.value.status.value);
 	const isLoading = computed(() => active.value.isLoading.value);
 	const error = computed(() => active.value.error.value);
 	const refetch = () => active.value.refetch();
 	const loadMore = () => active.value.loadMore(PAGE_SIZE);
-
-	// `sourceType` is applied as a POST-pagination filter by the backend, so a
-	// page can come back sparse (or empty) while matching files sit on later
-	// pages. When the filter is active, auto-load further pages until the grid is
-	// filled or the list is exhausted — capped so a rare match can't scan the
-	// whole table. Mirrors useMediaLibrary.
-	const MAX_AUTO_LOADS = 8;
-	let autoLoadCount = 0;
-	watch([() => files.value.length, status], () => {
-		if (
-			sourceFilter.value &&
-			status.value === 'CanLoadMore' &&
-			files.value.length < PAGE_SIZE &&
-			autoLoadCount < MAX_AUTO_LOADS
-		) {
-			autoLoadCount += 1;
-			loadMore();
-		}
-	});
-	watch([debouncedQuery, sourceFilter], () => {
-		autoLoadCount = 0;
-	});
 
 	// Mutations
 	const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {

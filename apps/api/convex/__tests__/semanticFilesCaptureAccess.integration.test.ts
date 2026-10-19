@@ -7,7 +7,8 @@
  * captures — with a download URL — through `semanticFiles.list` / `search` /
  * `get` / `getVersionHistory` / `listByContact`, without access to the mailbox
  * they came from. The compact `files.cards.list` / `search` are held to
- * the same rows. These tests drive every one of those reads as:
+ * the same rows, and so are the by-source `listBySource` / `searchBySource`
+ * over a full walk. These tests drive every one of those reads as:
  *
  *   - the mailbox's own user and a shared-mailbox member (allowed),
  *   - an owner (allowed: owners and admins may open every mailbox),
@@ -132,6 +133,24 @@ async function seed(t: Harness): Promise<Seeded> {
 	});
 }
 
+/** Every filename a paginated read returns, walked to the end two at a time. */
+async function walkNames(
+	read: (paginationOpts: {
+		cursor: string | null;
+		numItems: number;
+	}) => Promise<{ page: Array<{ filename: string }>; isDone: boolean; continueCursor: string }>
+): Promise<string[]> {
+	const filenames: string[] = [];
+	let cursor: string | null = null;
+	for (let guard = 0; guard < 20; guard++) {
+		const res = await read({ cursor, numItems: 2 });
+		filenames.push(...res.page.map((r) => r.filename));
+		if (res.isDone) return filenames.sort();
+		cursor = res.continueCursor;
+	}
+	throw new Error('walk did not finish');
+}
+
 /** Every Files read the issue lists, as the current session. */
 async function readAll(t: Harness, seeded: Seeded) {
 	const page = { cursor: null, numItems: 50 };
@@ -162,6 +181,29 @@ async function readAll(t: Harness, seeded: Seeded) {
 	expect(names(cardList.page)).toEqual(names(list.page));
 	expect(names(cardAttachments.page)).toEqual(names(attachments.page));
 	expect(names(cardSearch.page)).toEqual(names(search.page));
+	// The by-source endpoints narrow through their own index first, then run
+	// the same gate: a full walk in small pages, per source, must reach exactly
+	// what the legacy filtered reads return.
+	for (const sourceType of ['upload', 'email_attachment', 'agent_generated'] as const) {
+		const legacyList = await t.query(api.semanticFiles.list, { paginationOpts: page, sourceType });
+		const legacySearch = await t.query(api.semanticFiles.search, {
+			paginationOpts: page,
+			query: 'confidential',
+			sourceType,
+		});
+		const bySource = await walkNames((paginationOpts) =>
+			t.query(api.files.cards.listBySource, { paginationOpts, sourceType })
+		);
+		const searchBySource = await walkNames((paginationOpts) =>
+			t.query(api.files.cards.searchBySource, {
+				paginationOpts,
+				query: 'confidential',
+				sourceType,
+			})
+		);
+		expect(bySource).toEqual(names(legacyList.page));
+		expect(searchBySource).toEqual(names(legacySearch.page));
+	}
 	const get: Record<string, boolean> = {};
 	const history: Record<string, number> = {};
 	for (const [key, fileId] of Object.entries(seeded)) {

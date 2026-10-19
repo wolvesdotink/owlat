@@ -15,6 +15,12 @@
  * The page readers and `readableFilesPage` below are shared by both query
  * modules, so the legacy and the compact endpoint cannot drift apart on
  * which rows a caller sees or where a cursor points.
+ *
+ * Each reader owns one index, and each endpoint calls exactly one reader. A
+ * pagination cursor belongs to the index that issued it, so an endpoint never
+ * moves to another index: a source-filtered read is a new endpoint over a new
+ * reader (`listFilesBySourcePage` / `searchFilesBySourcePage`), and the
+ * unfiltered readers keep their index for the cursors already in flight.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -54,12 +60,43 @@ export function searchFilesPage(
 		.paginate(paginationOpts);
 }
 
+/** One page of a single source's files, newest first (`by_source_and_created`). */
+export function listFilesBySourcePage(
+	ctx: QueryCtx,
+	sourceType: SourceType,
+	paginationOpts: PaginationOptions
+): Promise<PaginationResult<Doc<'semanticFiles'>>> {
+	return ctx.db
+		.query('semanticFiles')
+		.withIndex('by_source_and_created', (q) => q.eq('sourceType', sourceType))
+		.order('desc')
+		.paginate(paginationOpts);
+}
+
+/** One page of a single source's full-text matches over `search_files_by_source`. */
+export function searchFilesBySourcePage(
+	ctx: QueryCtx,
+	query: string,
+	sourceType: SourceType,
+	paginationOpts: PaginationOptions
+): Promise<PaginationResult<Doc<'semanticFiles'>>> {
+	return ctx.db
+		.query('semanticFiles')
+		.withSearchIndex('search_files_by_source', (q) =>
+			q.search('searchableText', query).eq('sourceType', sourceType)
+		)
+		.paginate(paginationOpts);
+}
+
 /**
  * Apply the `sourceType` provenance filter and the caller's read check to a
- * page of files. Both run after pagination (mirroring `mediaAssets.list`), so
- * a page can come back sparse while matching files sit on later pages; the
- * client loads further pages until the grid fills. The cursor fields pass
- * through untouched.
+ * page of files. On the unfiltered readers both run after pagination
+ * (mirroring `mediaAssets.list`), so a page can come back sparse while
+ * matching files sit on later pages. On the by-source readers the index has
+ * already narrowed to the source and the check here is only a backstop. The
+ * read gate can still leave a page short, or empty with more to load: a
+ * function may paginate only once, so the client pages on (`isDone` decides,
+ * not the row count). The cursor fields pass through untouched.
  */
 export async function readableFilesPage(
 	ctx: QueryCtx,
