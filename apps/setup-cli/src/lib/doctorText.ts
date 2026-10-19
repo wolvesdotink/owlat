@@ -16,10 +16,9 @@
  *   status line, an error message).
  *
  * Everything that is not code-owned then passes the known-secret pass of
- * {@link createDoctorRedactor} as defence in depth: every secret from `.env`
- * is masked in its raw, URL-encoded and base64 forms, with no length
- * exemption, and a part with any percent-escape left outside those masks is
- * dropped whole.
+ * {@link createDoctorRedactor} as defence in depth: a part holding any `%` is
+ * withheld whole, and every secret from `.env` is masked in its raw,
+ * case-varied, form-encoded and base64 forms, with no length exemption.
  */
 
 import type { EnvMap } from './env';
@@ -132,36 +131,47 @@ function urlSecrets(value: string): string[] {
 }
 
 /**
- * Every printed form of a secret the exact pass masks: raw, URL-encoded (as
- * `encodeURIComponent` and as a form value, `+` for a space) and base64
- * (padded, unpadded, url-safe). Matched case-insensitively, which also covers
- * either hex case in an escape.
+ * The printed forms of a secret, each kept exactly as computed: the original
+ * is never replaced by a case-mapped copy, because a lower-cased form need
+ * not match its original back (`İ` lower-cases to two code points).
+ * `textual` is matched case-insensitively (simple case folding): raw,
+ * `encodeURIComponent`, the form-encoded variants (`+` for a space), plus the
+ * full upper- and lower-case mappings of the raw secret as extra forms, which
+ * simple folding cannot reach (`ß` upper-cases to `SS`). `base64` is matched
+ * exactly: padded, unpadded and url-safe.
  */
-function secretForms(secret: string): string[] {
+function secretForms(secret: string): { textual: string[]; base64: string[] } {
 	const encoded = encodeURIComponent(secret);
 	const base64 = Buffer.from(secret).toString('base64');
-	return [
-		secret,
-		encoded,
-		encoded.replace(/%20/g, '+'),
-		new URLSearchParams([['', secret]]).toString().slice(1),
-		base64,
-		base64.replace(/=+$/, ''),
-		Buffer.from(secret).toString('base64url'),
-	];
+	return {
+		textual: [
+			secret,
+			secret.toUpperCase(),
+			secret.toLowerCase(),
+			encoded,
+			encoded.replace(/%20/g, '+'),
+			new URLSearchParams([['', secret]]).toString().slice(1),
+		],
+		base64: [base64, base64.replace(/=+$/, ''), Buffer.from(secret).toString('base64url')],
+	};
+}
+
+/** A pattern for one form, from its regex-escaped source. */
+function formPattern(form: string, flags: string): RegExp {
+	return new RegExp(form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
 }
 
 /** A half-open `[start, end)` span of the input. */
 type Span = [number, number];
 
-/** Every case-insensitive occurrence of every form, overlapping ones included. */
-function exactSpans(text: string, forms: readonly RegExp[]): Span[] {
+/** Every occurrence of every pattern, overlapping ones included. */
+function exactSpans(text: string, patterns: readonly RegExp[]): Span[] {
 	const spans: Span[] = [];
-	for (const form of forms) {
-		form.lastIndex = 0;
-		for (let match = form.exec(text); match; match = form.exec(text)) {
+	for (const pattern of patterns) {
+		pattern.lastIndex = 0;
+		for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
 			spans.push([match.index, match.index + match[0].length]);
-			form.lastIndex = match.index + 1;
+			pattern.lastIndex = match.index + 1;
 		}
 	}
 	return spans;
@@ -178,55 +188,67 @@ function mergeSpans(spans: readonly Span[]): Span[] {
 	return merged;
 }
 
-/** A percent-escape, the one thing every deeper or partial URL encoding of a secret contains. */
-const PERCENT_ESCAPE = /%[0-9a-f]{2}/i;
+const WHITESPACE = /\s+/gu;
 
 /**
- * The known-secret pass for one doctor run, over untrusted text only.
+ * The known-secret pass for one doctor run, over untrusted text only. Three
+ * rules, all exact matches or presence checks; nothing is decoded.
  *
- * Step 1, the exact pass: every printed form of every secret (see
- * {@link secretForms}) is located as positions in the input, and the union is
- * masked in the output. Positions, not marker characters: nothing is spliced
- * into the text, so a literal `[redacted]` in runtime text is ordinary text.
+ * 1. A part holding a `%` anywhere is withheld whole, before any masking.
+ *    Every percent-encoding of a secret, at any depth and however partial,
+ *    carries one, and no mask can consume it first. The cost, intended: an
+ *    ordinary error with an unrelated escape (a URL with `%20`) loses its
+ *    detail too.
+ * 2. Every printed form of every secret ({@link secretForms}) is located as
+ *    positions in the input and the union is masked. Positions, not marker
+ *    characters: a literal `[redacted]` in runtime text is ordinary text.
+ * 3. The text left outside the masks, joined as a reader would join it after
+ *    deleting the markers and stripped of all whitespace, must not contain any
+ *    form (whitespace-stripped too); otherwise the whole part is withheld. That
+ *    catches base64 or a secret split by spaces, tabs or line breaks.
+ *    Joining can occasionally create a match that was not there; withholding
+ *    then is the safe failure.
  *
- * Step 2, the guarantee, with no decoding: if the text outside the masks,
- * joined as a reader would join it after deleting the markers, contains any
- * percent-escape, the WHOLE part becomes `[redacted]`. A secret the exact pass
- * did not mask can only hide in an encoding, and every repeated, partial or
- * odd percent-encoding of it (double encoding, every byte escaped, escapes
- * split around another secret's mask, an invalid `%FF` in front) carries
- * escapes. The cost is readability: a runtime error whose URL holds an
- * unrelated `%20` loses its detail too. For doctor output that is the right
- * trade.
- *
- * Secrets are every secret-keyed `.env` value and every credential part of a
- * configured URL. No length exemption: code-owned text is out of reach, so
- * over-redaction can only cost runtime detail.
+ * Encodings these producers do not emit (hex dumps, HTML entities, `\u`
+ * escapes) are out of scope. Secrets are every secret-keyed `.env` value and
+ * every credential part of a configured URL, with no length exemption:
+ * code-owned text is out of reach, so over-redaction only costs runtime detail.
  */
 export function createDoctorRedactor(env: EnvMap): (text: string) => string {
-	const forms = new Set<string>();
+	const textual = new Set<string>();
+	const base64 = new Set<string>();
 	for (const [key, value] of Object.entries(env)) {
 		const raw = SECRET_KEY.test(key) ? [value, ...urlSecrets(value)] : urlSecrets(value);
 		for (const secret of raw) {
-			if (secret) for (const form of secretForms(secret)) if (form) forms.add(form.toLowerCase());
+			if (!secret) continue;
+			const forms = secretForms(secret);
+			for (const form of forms.textual) if (form) textual.add(form);
+			for (const form of forms.base64) if (form) base64.add(form);
 		}
 	}
-	if (forms.size === 0) return (text) => text;
-	const patterns = [...forms].map(
-		(form) => new RegExp(form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
-	);
+	const masks = [
+		...[...textual].map((form) => formPattern(form, 'giu')),
+		...[...base64].map((form) => formPattern(form, 'gu')),
+	];
+	const compact = (forms: Set<string>) =>
+		[...forms].map((form) => form.replace(WHITESPACE, '')).filter(Boolean);
+	const presence = [
+		...compact(textual).map((form) => formPattern(form, 'iu')),
+		...compact(base64).map((form) => formPattern(form, 'u')),
+	];
 	return (text) => {
-		const spans = mergeSpans(exactSpans(text, patterns));
+		if (text.includes('%')) return REDACTED;
 		let visible = '';
 		let out = '';
 		let from = 0;
-		for (const [start, end] of spans) {
+		for (const [start, end] of mergeSpans(exactSpans(text, masks))) {
 			visible += text.slice(from, start);
 			out += text.slice(from, start) + REDACTED;
 			from = end;
 		}
 		visible += text.slice(from);
-		if (PERCENT_ESCAPE.test(visible)) return REDACTED;
+		const joined = visible.replace(WHITESPACE, '');
+		if (presence.some((pattern) => pattern.test(joined))) return REDACTED;
 		return out + text.slice(from);
 	};
 }

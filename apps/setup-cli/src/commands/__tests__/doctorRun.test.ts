@@ -36,6 +36,10 @@ const FULL_BYTES = [...Buffer.from(DEEP_SECRET)]
 	.map((byte) => `%${byte.toString(16).padStart(2, '0')}`)
 	.join('');
 const FOUR_ROUNDS_FULL_BYTES = encodeRounds(FULL_BYTES, 3);
+const BASE64_SECRET = Buffer.from(DEEP_SECRET).toString('base64');
+const SPLIT_BASE64 = (gap: string) => `${BASE64_SECRET.slice(0, 8)}${gap}${BASE64_SECRET.slice(8)}`;
+// ß folds to its capital ẞ; the combining acute must stay attached.
+const ESZETT = 'Straße-pa\u0301ss-42';
 // The same text again, for the fixture where a second secret (`25`) is masked
 // inside its escapes and splits them.
 const THREE_ROUNDS_OVER_FULL_BYTES = FOUR_ROUNDS_FULL_BYTES;
@@ -284,6 +288,67 @@ const FIXTURES: Record<string, Fixture> = {
 			throw new Error('GET /files/annual%20report.pdf returned 404');
 		},
 	},
+	dottedCapitalI: {
+		env: [
+			'EMAIL_PROVIDER=mta',
+			'MTA_API_URL=http://mta:3100',
+			'MTA_API_KEY=İstanbul-password-42',
+		].join('\n'),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: () => {
+			throw new Error('auth rejected İstanbul-password-42');
+		},
+		secrets: ['İstanbul-password-42'],
+	},
+	eszettCombining: {
+		env: ['EMAIL_PROVIDER=mta', 'MTA_API_URL=http://mta:3100', `MTA_API_KEY=${ESZETT}`].join('\n'),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: () => {
+			throw new Error(`auth rejected ${ESZETT} and ${ESZETT.toUpperCase()}`);
+		},
+		secrets: [ESZETT, ESZETT.toUpperCase()],
+	},
+	...Object.fromEntries(
+		(
+			[
+				['splitBase64Space', ' '],
+				['splitBase64Tab', '\t'],
+				['splitBase64Lf', '\n'],
+				['splitBase64Crlf', '\r\n'],
+			] as const
+		).map(([name, gap]): [string, Fixture] => [
+			name,
+			{
+				env: [
+					'EMAIL_PROVIDER=mta',
+					'MTA_API_URL=http://mta:3100',
+					`MTA_API_KEY=${DEEP_SECRET}`,
+				].join('\n'),
+				flags: JSON.stringify({ campaigns: true }),
+				compose: '',
+				fetch: () => {
+					throw new Error(`Authorization: ${SPLIT_BASE64(gap)}`);
+				},
+				secrets: [DEEP_SECRET, BASE64_SECRET],
+			},
+		])
+	),
+	percentSecret: {
+		env: [
+			'EMAIL_PROVIDER=mta',
+			'MTA_API_URL=http://mta:3100',
+			`MTA_API_KEY=${DEEP_SECRET}`,
+			'PERCENT_KEY=%',
+		].join('\n'),
+		flags: JSON.stringify({ campaigns: true }),
+		compose: '',
+		fetch: () => {
+			throw new Error(`upstream said ${FULL_BYTES}`);
+		},
+		secrets: [DEEP_SECRET, FULL_BYTES],
+	},
 	commonWordSecret: {
 		// A secret equal to a word in key names and subjects: identifiers stay intact.
 		env: ['LLM_API_KEY=LLM', 'OWLAT_VERSION=0.6.15'].join('\n'),
@@ -476,10 +541,9 @@ describe('doctor --json — report contents', () => {
 		);
 	});
 
-	it('prints a configured URL without its query or fragment, and redacts their echo', async () => {
+	it('prints a configured URL without its query or fragment, and withholds an escaped echo', async () => {
 		expect(await messageOf('encodedQuery', 'mta.health')).toBe(
-			'http://mta:3100/ is unreachable ' +
-				'(connect ECONNREFUSED http://mta:3100/?api_key=[redacted]#[redacted]/health)'
+			'http://mta:3100/ is unreachable ([redacted])'
 		);
 	});
 
@@ -499,10 +563,36 @@ describe('doctor --json — report contents', () => {
 		);
 	});
 
-	it('masks mixed-case and form-encoded echoes of a query secret', async () => {
+	it('withholds a runtime part echoing a mixed-case escaped query secret', async () => {
 		expect(await messageOf('mixedCaseQuery', 'mta.health')).toBe(
-			'http://mta:3100/ is unreachable ' +
-				'(connect ECONNREFUSED http://mta:3100/?token=[redacted]&alt=[redacted]/health)'
+			'http://mta:3100/ is unreachable ([redacted])'
+		);
+	});
+
+	it('masks a secret whose lower-case form changes length', async () => {
+		expect(await messageOf('dottedCapitalI', 'mta.health')).toBe(
+			'http://mta:3100/health is unreachable (auth rejected [redacted])'
+		);
+	});
+
+	it('masks a secret with ß and a combining character', async () => {
+		expect(await messageOf('eszettCombining', 'mta.health')).toBe(
+			'http://mta:3100/health is unreachable (auth rejected [redacted] and [redacted])'
+		);
+	});
+
+	it.each(['splitBase64Space', 'splitBase64Tab', 'splitBase64Lf', 'splitBase64Crlf'])(
+		'withholds a runtime part holding whitespace-split base64 of a secret: %s',
+		async (fixture) => {
+			expect(await messageOf(fixture, 'mta.health')).toBe(
+				'http://mta:3100/health is unreachable ([redacted])'
+			);
+		}
+	);
+
+	it('withholds a runtime part with a % even when a secret mask would swallow it', async () => {
+		expect(await messageOf('percentSecret', 'mta.health')).toBe(
+			'http://mta:3100/health is unreachable ([redacted])'
 		);
 	});
 

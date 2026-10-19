@@ -63,12 +63,10 @@ describe('doctor text — known-secret pass', () => {
 		).toBe('[redacted] [redacted] [redacted] [redacted] [redacted] mta');
 	});
 
-	it('redacts URL-encoded and base64 forms of a secret', () => {
+	it('withholds a part holding any URL-encoded form, and masks base64', () => {
 		const redact = createDoctorRedactor({ MTA_API_KEY: 'private/token' });
-		expect(redact('GET http://mta:3100/health?api_key=private%2Ftoken')).toBe(
-			'GET http://mta:3100/health?api_key=[redacted]'
-		);
-		expect(redact('api_key=private%2ftoken')).toBe('api_key=[redacted]');
+		expect(redact('GET http://mta:3100/health?api_key=private%2Ftoken')).toBe('[redacted]');
+		expect(redact('api_key=private%2ftoken')).toBe('[redacted]');
 		const base64 = Buffer.from('private/token').toString('base64');
 		expect(redact(`Authorization: Basic ${base64}`)).toBe('Authorization: Basic [redacted]');
 	});
@@ -96,25 +94,24 @@ describe('doctor text — known-secret pass', () => {
 		);
 	});
 
-	it('masks mixed-case and form-encoded echoes of a configured query secret', () => {
+	it('withholds an escaped echo of a configured query secret, and masks its form-encoded one', () => {
 		// Configured query values: `URL` decodes them, so the secrets are the
 		// decoded strings, while the echo carries them encoded.
 		const redact = createDoctorRedactor({
 			MTA_API_URL: 'http://mta:3100/?token=private%2ftoken%2Bend&alt=private+token',
 		});
-		// Mixed-case escapes: the encoded form matches case-insensitively.
 		expect(redact('connect ECONNREFUSED http://mta:3100/?token=private%2ftoken%2Bend')).toBe(
-			'connect ECONNREFUSED http://mta:3100/?token=[redacted]'
+			'[redacted]'
 		);
-		// `+` for a space (form encoding).
+		// `+` for a space (form encoding) carries no `%`: masked, rest readable.
 		expect(redact('GET /?alt=private+token failed')).toBe('GET /?alt=[redacted] failed');
 	});
 
-	it('masks any case of a key value, and drops a part holding a double escape', () => {
+	it('masks any case of a key value, and withholds any escaped one', () => {
 		const redact = createDoctorRedactor({ MTA_API_KEY: 'a/b+c' });
-		expect(redact('key=a%2fb%2Bc')).toBe('key=[redacted]');
-		expect(redact('key=A%2FB%2BC')).toBe('key=[redacted]');
 		expect(redact('key=A/B+C')).toBe('key=[redacted]');
+		expect(redact('key=a%2fb%2Bc')).toBe('[redacted]');
+		expect(redact('key=A%2FB%2BC')).toBe('[redacted]');
 		expect(redact('key=a%252Fb%252Bc')).toBe('[redacted]');
 	});
 
@@ -150,9 +147,61 @@ describe('doctor text — known-secret pass', () => {
 		expect(redact('GET /files/annual%20report.pdf returned 404')).toBe('[redacted]');
 	});
 
-	it('keeps the readable rest of a part when exact replacement removed every secret', () => {
+	it('keeps the readable rest of a part when masking removed every secret', () => {
 		const redact = createDoctorRedactor({ MTA_API_KEY: 'private/token' });
-		expect(redact('api_key=private%2Ftoken refused')).toBe('api_key=[redacted] refused');
+		expect(redact('api_key=private/token refused')).toBe('api_key=[redacted] refused');
+	});
+
+	// Sol round 5, scenario 1: a lower-cased form need not match its original.
+	it('masks a secret whose lower-case form changes length (dotted capital I)', () => {
+		const redact = createDoctorRedactor({ A_KEY: 'İstanbul-password-42' });
+		expect(redact('login with İstanbul-password-42 failed')).toBe('login with [redacted] failed');
+	});
+
+	it('masks a secret with ß and a combining character, in either case', () => {
+		const secret = 'Straße-pa\u0301ss-42';
+		const redact = createDoctorRedactor({ A_KEY: secret });
+		expect(redact(`got ${secret}`)).toBe('got [redacted]');
+		expect(redact('got STRAẞE-PA\u0301SS-42')).toBe('got [redacted]');
+		// Full upper-case mapping: ß becomes SS, which simple folding cannot reach.
+		expect(redact('got STRASSE-PA\u0301SS-42')).toBe('got [redacted]');
+	});
+
+	// Sol round 5, scenario 2: base64 split by whitespace.
+	it.each([
+		['a space', ' '],
+		['a tab', '\t'],
+		['LF', '\n'],
+		['CRLF', '\r\n'],
+	])('withholds a part holding base64 of a secret split by %s', (_label, gap) => {
+		const redact = createDoctorRedactor({ A_KEY: 'private/token+end' });
+		const base64 = Buffer.from('private/token+end').toString('base64');
+		expect(redact(`Authorization: ${base64.slice(0, 8)}${gap}${base64.slice(8)}`)).toBe(
+			'[redacted]'
+		);
+	});
+
+	it('withholds a part holding a secret split by whitespace', () => {
+		const redact = createDoctorRedactor({ A_KEY: 'private/token+end' });
+		expect(redact('echo private/tok en+end')).toBe('[redacted]');
+	});
+
+	// Sol round 5, scenario 3: a mask must not be able to swallow an escape's `%`.
+	it('withholds a part with a %, whatever a mask would consume', () => {
+		const redact = createDoctorRedactor({ A_KEY: 'private/token+end', B_KEY: '%' });
+		// Every byte escaped: not an exact form, and B's masks would eat every `%`.
+		const fullyEncoded = [...Buffer.from('private/token+end')]
+			.map((byte) => `%${byte.toString(16).padStart(2, '0')}`)
+			.join('');
+		expect(redact(`upstream said ${fullyEncoded}`)).toBe('[redacted]');
+		expect(redact('upstream said private%2Ftoken%2Bend')).toBe('[redacted]');
+	});
+
+	it('leaves a plain error without % fully readable', () => {
+		const redact = createDoctorRedactor({ A_KEY: 'private/token+end' });
+		expect(redact('read ETIMEDOUT after 3000 ms; retried 2 times')).toBe(
+			'read ETIMEDOUT after 3000 ms; retried 2 times'
+		);
 	});
 
 	it('drops a whole part encoded deeper than the decoding rounds reach', () => {
