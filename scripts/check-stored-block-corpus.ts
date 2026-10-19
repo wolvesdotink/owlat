@@ -23,8 +23,9 @@
  * - any other CI run (a push creating a branch or tag, schedule, dispatch, a
  *   reusing workflow): the merge base with the default branch
  *   (STORED_BLOCK_CORPUS_DEFAULT_BRANCH, from
- *   `github.event.repository.default_branch`, else main), or HEAD's parent
- *   when HEAD is already on it (the empty tree for a root commit);
+ *   `github.event.repository.default_branch`; main when the event carries no
+ *   repository metadata), or HEAD's parent when HEAD is already on it (the
+ *   empty tree for a root commit);
  * - locally: the merge base with origin/main.
  * The two variables are set on the Lint step in .github/workflows/test.yml.
  * The diff runs from that commit to the working tree, so uncommitted edits
@@ -88,9 +89,20 @@ function fetchedCommit(sha: string): string | undefined {
 	return commitOf(sha);
 }
 
-/** The merge base with a branch of origin, fetching it first. */
+/**
+ * The merge base with a branch of origin. The branch is fetched into its
+ * remote-tracking ref explicitly: a single-branch or shallow clone has no
+ * `origin/<branch>`, and a bare `git fetch origin <branch>` only fills
+ * FETCH_HEAD. `mergeBaseWith` unshallows if the history still falls short.
+ */
 function branchBase(branch: string): Base {
-	git(['fetch', '--quiet', 'origin', branch]);
+	git([
+		'fetch',
+		'--quiet',
+		'--no-tags',
+		'origin',
+		`+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+	]);
 	const ref = `origin/${branch}`;
 	return { label: ref, commit: commitOf(ref) ? mergeBaseWith(ref) : undefined };
 }

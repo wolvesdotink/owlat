@@ -246,6 +246,49 @@ describe('check-stored-block-corpus', () => {
 		});
 	});
 
+	describe('a shallow single-branch checkout', () => {
+		/** main at the base commit, `feature` on top of it with `change` applied. */
+		function featureClone(change: (root: string) => void): string {
+			const { root: source } = repository();
+			git(source, ['checkout', '--quiet', '-b', 'feature']);
+			change(source);
+			git(source, ['add', '.']);
+			git(source, ['commit', '--quiet', '-m', 'feature work']);
+			git(source, ['checkout', '--quiet', 'main']);
+			const root = mkdtempSync(join(tmpdir(), 'owlat-stored-block-corpus-single-'));
+			sandboxes.push(root);
+			execFileSync('git', [
+				'clone',
+				'--quiet',
+				'--depth',
+				'1',
+				'--single-branch',
+				'--branch',
+				'feature',
+				`file://${source}`,
+				root,
+			]);
+			return root;
+		}
+
+		it('fetches the default branch into origin/main and passes an unchanged corpus', () => {
+			const root = featureClone((source) => write(source, 'notes.md', 'unrelated\n'));
+			expect(git(root, ['branch', '-r'])).not.toContain('origin/main');
+			const result = ciRun(root, 'workflow_dispatch');
+			expect(result.status, result.output).toBe(0);
+			expect(result.output).toContain('0 corpus change(s) against origin/main');
+		});
+
+		it('fetches a pull request target the same way, and still catches a rewrite', () => {
+			const root = featureClone((source) =>
+				write(source, `${CORPUS}/snapshots/renderer-v2/a.html`, '<html>changed</html>')
+			);
+			const result = run(root, { CI: 'true', GITHUB_ACTIONS: 'true', GITHUB_BASE_REF: 'main' });
+			expect(result.status).toBe(1);
+			expect(result.output).toContain('snapshots/renderer-v2/a.html');
+		});
+	});
+
 	describe('a base it cannot resolve', () => {
 		it('fails in CI and warns locally when the target branch is unavailable', () => {
 			const { root } = rewrittenOnTop();
