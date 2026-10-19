@@ -23,6 +23,12 @@ interface Props {
 	 * never fires. The page says why in the dialog body.
 	 */
 	confirmDisabled?: boolean;
+	/**
+	 * The button focused on open. Cancel by default, so Enter on a freshly
+	 * opened confirmation never performs the action; pass `confirm` for a
+	 * prompt the user opened precisely to say yes to.
+	 */
+	initialFocus?: 'cancel' | 'confirm';
 }
 
 // The copy props have no defaults: prop defaults are evaluated outside the
@@ -36,6 +42,7 @@ const props = withDefaults(defineProps<Props>(), {
 	isLoading: false,
 	persistent: false,
 	confirmDisabled: false,
+	initialFocus: 'cancel',
 });
 
 const { t } = useUiI18n();
@@ -46,6 +53,12 @@ const resolvedDescription = computed(
 );
 const resolvedConfirmText = computed(() => props.confirmText ?? t('ui.actions.confirm'));
 const resolvedCancelText = computed(() => props.cancelText ?? t('ui.actions.cancel'));
+// A refused action cannot take focus, so Cancel stands in for it.
+const initialFocusSelector = computed(() =>
+	props.initialFocus === 'confirm' && !props.confirmDisabled
+		? '[data-confirmation-confirm]'
+		: '[data-confirmation-cancel]'
+);
 
 const emit = defineEmits<{
 	'update:open': [value: boolean];
@@ -106,6 +119,7 @@ const handleBackdropClick = () => {
 
 <template>
 	<UiModal
+		:initial-focus="initialFocusSelector"
 		:open="open"
 		:persistent="persistent || isLoading"
 		:closable="!isLoading"
@@ -130,10 +144,16 @@ const handleBackdropClick = () => {
 		</div>
 
 		<template #footer>
-			<UiButton variant="secondary" :disabled="isLoading" @click="handleCancel">
+			<UiButton
+				variant="secondary"
+				data-confirmation-cancel
+				:disabled="isLoading"
+				@click="handleCancel"
+			>
 				{{ resolvedCancelText }}
 			</UiButton>
 			<UiButton
+				data-confirmation-confirm
 				:variant="variant === 'danger' ? 'danger' : 'primary'"
 				:loading="isLoading"
 				:disabled="confirmDisabled"

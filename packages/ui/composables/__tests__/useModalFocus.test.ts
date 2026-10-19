@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineComponent, h, nextTick, ref } from 'vue';
+import { defineComponent, h, nextTick, onMounted, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { useModalFocus } from '../useModalFocus';
 
@@ -74,5 +74,67 @@ describe('modal focus lifecycle', () => {
 		await nextTick();
 		expect(document.activeElement).toBe(opener);
 		opener.remove();
+	});
+
+	it('focuses the requested target, else the first control, else the container', async () => {
+		const mountWith = (children: () => ReturnType<typeof h>[], target?: string) =>
+			mount(
+				defineComponent({
+					setup() {
+						const root = ref<HTMLElement | null>(null);
+						useModalFocus(root, () => true, undefined, {
+							initialFocus: () =>
+								target ? root.value?.querySelector<HTMLElement>(target) : undefined,
+						});
+						return () => h('div', { ref: root, tabindex: -1 }, children());
+					},
+				}),
+				{ attachTo: document.body }
+			);
+
+		const requested = mountWith(
+			() => [h('button', 'Close'), h('button', { 'data-cancel': '' }, 'Cancel')],
+			'[data-cancel]'
+		);
+		await nextTick();
+		expect(document.activeElement?.textContent).toBe('Cancel');
+		requested.unmount();
+
+		const disabled = mountWith(
+			() => [h('button', 'Close'), h('button', { 'data-cancel': '', disabled: true }, 'Cancel')],
+			'[data-cancel]'
+		);
+		await nextTick();
+		expect(document.activeElement?.textContent).toBe('Close');
+		disabled.unmount();
+
+		const empty = mountWith(() => [h('p', 'Working…')], '[data-cancel]');
+		await nextTick();
+		expect(document.activeElement).toBe(empty.element);
+		empty.unmount();
+	});
+
+	it('keeps focus a child already moved into the dialog over the requested target', async () => {
+		const wrapper = mount(
+			defineComponent({
+				setup() {
+					const root = ref<HTMLElement | null>(null);
+					const input = ref<HTMLInputElement | null>(null);
+					useModalFocus(root, () => true, undefined, {
+						initialFocus: () => root.value?.querySelector<HTMLElement>('button'),
+					});
+					onMounted(() => input.value?.focus());
+					return () =>
+						h('div', { ref: root, tabindex: -1 }, [
+							h('button', 'Cancel'),
+							h('input', { ref: input }),
+						]);
+				},
+			}),
+			{ attachTo: document.body }
+		);
+		await nextTick();
+		expect(document.activeElement?.tagName).toBe('INPUT');
+		wrapper.unmount();
 	});
 });

@@ -7,11 +7,21 @@ const FOCUSABLE_SELECTOR =
 // Nested dialogs suspend the parent trap until the child closes.
 const activeDialogs: symbol[] = [];
 
+export interface ModalFocusOptions {
+	/**
+	 * The element to focus on open instead of the first focusable one, e.g.
+	 * Cancel on a destructive confirmation. Ignored when it is missing, outside
+	 * the container or cannot take focus.
+	 */
+	initialFocus?: () => HTMLElement | null | undefined;
+}
+
 /** Capture, contain, and restore focus for a modal, including conditional unmounts. */
 export function useModalFocus(
 	container: Ref<HTMLElement | null>,
 	active: Ref<boolean> | (() => boolean),
-	onEscape?: () => void
+	onEscape?: () => void,
+	options: ModalFocusOptions = {}
 ): void {
 	if (typeof window === 'undefined') return;
 	const token = Symbol('modal focus');
@@ -51,6 +61,24 @@ export function useModalFocus(
 		}
 	}
 
+	/**
+	 * The requested target, else the first focusable descendant, else the
+	 * container itself, which needs tabindex="-1" for that last step to land.
+	 */
+	function focusInitial() {
+		const root = container.value;
+		if (!root) return;
+		const requested = options.initialFocus?.();
+		const candidates = [requested, focusable()[0]].filter(
+			(el): el is HTMLElement =>
+				!!el && root.contains(el) && !el.closest('[hidden], [inert], [aria-hidden="true"]')
+		);
+		for (const el of [...candidates, root]) {
+			el.focus();
+			if (document.activeElement === el) return;
+		}
+	}
+
 	function release() {
 		generation += 1;
 		const restore = isTop();
@@ -76,7 +104,7 @@ export function useModalFocus(
 			if (current !== generation || !isTop()) return;
 			// Respect a component's deliberate initial target, e.g. a reader pane.
 			if (container.value?.contains(document.activeElement)) return;
-			(focusable()[0] ?? container.value)?.focus();
+			focusInitial();
 		},
 		{ immediate: true }
 	);
