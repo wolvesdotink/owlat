@@ -26,6 +26,8 @@ const isOpen = computed({
 // Refs for positioning
 const triggerRef = ref<HTMLElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
+// The menu's content, never height-capped, so its height is the menu's own.
+const contentRef = ref<HTMLElement | null>(null);
 const menuStyle = ref<Record<string, string>>({});
 const openSide = ref<'below' | 'above' | 'overlay'>('below');
 // Only a menu taller than its room scrolls: a scroll box would clip the sides
@@ -62,31 +64,22 @@ const MENU_GAP = 4;
 const MENU_WIDTH = 176; // w-44, until the menu has rendered
 
 /**
- * The menu's full border-box height, measured on an invisible copy with no
- * height cap, so whatever the browser lays out (wrappers, hidden children,
- * gaps, margins) counts exactly as it would, and the live menu is never
- * touched: lifting its own cap would throw away where the user had scrolled it
- * to. Its `scrollHeight` is no substitute: while a cap clips it before it has
- * become a scroll box, the browser leaves the bottom padding out.
+ * The menu's full border-box height: its content box, which is never capped,
+ * plus the menu's own padding and border. Only reads layout, so it neither
+ * moves where the menu is scrolled to nor touches anything in it, and whatever
+ * the browser lays out inside the content (wrappers, hidden children, margins)
+ * counts exactly as shown.
  */
-function measureMenu(menu: HTMLElement): number {
-	const copy = menu.cloneNode(true) as HTMLElement;
-	for (const el of copy.querySelectorAll('[id]')) el.removeAttribute('id');
-	copy.setAttribute('aria-hidden', 'true');
-	copy.inert = true;
-	Object.assign(copy.style, {
-		top: '0px',
-		bottom: 'auto',
-		left: '0px',
-		maxHeight: 'none',
-		visibility: 'hidden',
-		pointerEvents: 'none',
-	});
-	if (menu.offsetWidth) copy.style.width = `${menu.offsetWidth}px`;
-	document.body.appendChild(copy);
-	const height = copy.offsetHeight;
-	copy.remove();
-	return height;
+function measureMenu(menu: HTMLElement, content: HTMLElement): number {
+	const style = getComputedStyle(menu);
+	const px = (value: string) => Number.parseFloat(value) || 0;
+	return (
+		content.offsetHeight +
+		px(style.paddingTop) +
+		px(style.paddingBottom) +
+		px(style.borderTopWidth) +
+		px(style.borderBottomWidth)
+	);
 }
 
 // The last measured height. A scroll only moves the trigger, so it re-places
@@ -112,7 +105,9 @@ const placeMenu = () => {
 
 const measureAndPlaceMenu = () => {
 	// 0 before the first render; measured again once the menu has rendered.
-	menuHeight = menuRef.value ? measureMenu(menuRef.value) : 0;
+	const menu = menuRef.value;
+	const content = contentRef.value;
+	menuHeight = menu && content ? measureMenu(menu, content) : 0;
 	placeMenu();
 };
 
@@ -123,14 +118,15 @@ const handleScroll = (event: Event) => {
 };
 
 // Content that changes size while open (items that load late) moves the edge
-// the placement was computed for.
+// the placement was computed for. Observed on the content, which grows even
+// when the menu around it is already at its cap.
 let menuObserver: ResizeObserver | null = null;
-watch(menuRef, (menu) => {
+watch(contentRef, (content) => {
 	menuObserver?.disconnect();
 	menuObserver = null;
-	if (!menu || typeof ResizeObserver === 'undefined') return;
+	if (!content || typeof ResizeObserver === 'undefined') return;
 	menuObserver = new ResizeObserver(() => measureAndPlaceMenu());
-	menuObserver.observe(menu);
+	menuObserver.observe(content);
 });
 
 // Handle click outside
@@ -276,7 +272,11 @@ provide('dropdownClose', close);
 						transformOrigin: openSide === 'above' ? 'bottom' : 'top',
 					}"
 				>
-					<slot />
+					<!-- flow-root keeps the first and last child's margins inside, where
+					     the menu's padding kept them, so they count in its height. -->
+					<div ref="contentRef" class="flow-root">
+						<slot />
+					</div>
 				</div>
 			</Transition>
 		</Teleport>

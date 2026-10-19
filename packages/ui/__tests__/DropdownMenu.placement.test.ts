@@ -39,20 +39,39 @@ const rect = ({ top, left }: Box, width: number, height: number) =>
 	}) as DOMRect;
 
 const isMenu = (el: Element) => el.getAttribute('role') === 'menu';
+/** The menu's content wrapper, which is never capped. */
+const isContent = (el: Element) => !!el.parentElement && isMenu(el.parentElement);
 
 /**
- * Where a browser reports a direct child of the menu: by default the children
- * share the menu's height, stacked. A test can report the boxes a browser
- * gives in a layout that summing children gets wrong.
+ * ResizeObserver, faked: `resize(el)` runs the callbacks of the observers
+ * watching `el`, as a browser would when that box changed size.
  */
-type ChildBox = (child: HTMLElement, menu: HTMLElement) => { top: number; height: number };
-const stacked: ChildBox = (child, menu) => {
-	const share = menuHeight / menu.children.length;
-	return { top: Array.from(menu.children).indexOf(child) * share, height: share };
-};
-let childBox: ChildBox = stacked;
+let observed: Array<{ callback: () => void; targets: Set<Element> }> = [];
+const originalResizeObserver = globalThis.ResizeObserver;
+function resize(el: Element) {
+	for (const { callback, targets } of observed) if (targets.has(el)) callback();
+}
 
 beforeEach(() => {
+	observed = [];
+	// Swapped by hand: vi.unstubAllGlobals() would also drop the setup file's
+	// auto-import globals.
+	globalThis.ResizeObserver = class {
+		private entry: { callback: () => void; targets: Set<Element> };
+		constructor(callback: () => void) {
+			this.entry = { callback, targets: new Set() };
+			observed.push(this.entry);
+		}
+		observe(el: Element) {
+			this.entry.targets.add(el);
+		}
+		unobserve(el: Element) {
+			this.entry.targets.delete(el);
+		}
+		disconnect() {
+			this.entry.targets.clear();
+		}
+	} as unknown as typeof ResizeObserver;
 	vi.spyOn(window, 'innerWidth', 'get').mockImplementation(() => viewport.width);
 	vi.spyOn(window, 'innerHeight', 'get').mockImplementation(() => viewport.height);
 	vi.spyOn(window, 'scrollY', 'get').mockImplementation(() => scrollY);
@@ -63,10 +82,10 @@ beforeEach(() => {
 			? rect(trigger, TRIGGER, TRIGGER)
 			: rect({ top: 0, left: 0 }, 0, 0);
 	});
-	// A laid-out box: a `max-height` caps the menu's border-box height, and, as
-	// in a browser, lifting the cap leaves nothing to scroll, so the menu's
-	// scroll position is lost. `menuHeight` is the height the browser would lay
-	// the uncapped menu out at.
+	// A laid-out box. `menuHeight` is the menu's natural height (no padding or
+	// border here, so it is all content): its uncapped content box is that tall,
+	// and a `max-height` caps the menu itself. As in a browser, lifting the
+	// menu's cap leaves nothing to scroll, so its scroll position is lost.
 	vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
 		this: HTMLElement
 	) {
@@ -75,14 +94,7 @@ beforeEach(() => {
 			if (Number.isNaN(cap)) this.scrollTop = 0;
 			return Number.isNaN(cap) ? menuHeight : Math.min(menuHeight, cap);
 		}
-		const parent = this.parentElement;
-		return parent && isMenu(parent) ? childBox(this, parent).height : 0;
-	});
-	vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (
-		this: HTMLElement
-	) {
-		const parent = this.parentElement;
-		return parent && isMenu(parent) ? childBox(this, parent).top : 0;
+		return isContent(this) ? menuHeight : 0;
 	});
 	vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (
 		this: HTMLElement
@@ -93,7 +105,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
-	childBox = stacked;
+	globalThis.ResizeObserver = originalResizeObserver;
 	scrollY = 0;
 	viewport = { width: 1280, height: 720 };
 });
@@ -247,18 +259,6 @@ describe('DropdownMenu placement', () => {
 	});
 
 	it('places the menu again when its content grows while open', async () => {
-		const observers: Array<() => void> = [];
-		// Swapped by hand: vi.unstubAllGlobals() would also drop the setup file's
-		// auto-import globals.
-		const original = globalThis.ResizeObserver;
-		globalThis.ResizeObserver = class {
-			constructor(callback: () => void) {
-				observers.push(callback);
-			}
-			observe() {}
-			unobserve() {}
-			disconnect() {}
-		} as unknown as typeof ResizeObserver;
 		trigger = { top: 400, left: 600 };
 		menuHeight = 120;
 		const { wrapper, menu } = await openMenu('right');
@@ -266,13 +266,34 @@ describe('DropdownMenu placement', () => {
 			expect(menu.style.top).toBe(`${400 + TRIGGER + 4}px`);
 			// Late items: now taller than the room below.
 			menuHeight = 400;
-			for (const callback of observers) callback();
+			resize(menu.firstElementChild!);
 			await nextTick();
 			expect(menu.style.top).toBe('');
 			expectInsideWindow(layout(menu));
 		} finally {
 			wrapper.unmount();
-			globalThis.ResizeObserver = original;
+		}
+	});
+
+	it('sees content grow once the menu already fills its room', async () => {
+		// 210 px of room below and only 134 px above: a 210 px menu fills the room
+		// exactly, so the menu's own box cannot grow any further. Only the content
+		// inside it does.
+		viewport = { width: 1280, height: 400 };
+		trigger = { top: 400 - 8 - 210 - 4 - TRIGGER, left: 600 };
+		menuHeight = 210;
+		const { wrapper, menu } = await openMenu('right', 6);
+		try {
+			expect(menu.style.maxHeight).toBe('210px');
+			expect(menu.classList.contains('overflow-y-auto')).toBe(false);
+			menuHeight = 330;
+			resize(menu.firstElementChild!);
+			await nextTick();
+			expect(menu.style.top).toBe(`${400 - 8 - 210}px`);
+			expect(menu.style.maxHeight).toBe('210px');
+			expect(menu.classList.contains('overflow-y-auto')).toBe(true);
+		} finally {
+			wrapper.unmount();
 		}
 	});
 
@@ -301,16 +322,6 @@ describe('DropdownMenu placement', () => {
 	});
 
 	it('keeps the keyboard-focused last item of a capped menu in view', async () => {
-		const observers: Array<() => void> = [];
-		const original = globalThis.ResizeObserver;
-		globalThis.ResizeObserver = class {
-			constructor(callback: () => void) {
-				observers.push(callback);
-			}
-			observe() {}
-			unobserve() {}
-			disconnect() {}
-		} as unknown as typeof ResizeObserver;
 		trigger = { top: 100, left: 600 };
 		menuHeight = 1000;
 		const { wrapper, menu } = await openMenu('right', 20);
@@ -325,7 +336,7 @@ describe('DropdownMenu placement', () => {
 			await nextTick();
 			expect(document.activeElement).toBe(items[19]);
 			// Measuring again (a resize, a page scroll) leaves the menu where it is.
-			for (const callback of observers) callback();
+			resize(menu.firstElementChild!);
 			window.dispatchEvent(new Event('resize'));
 			document.dispatchEvent(new Event('scroll'));
 			await nextTick();
@@ -333,15 +344,13 @@ describe('DropdownMenu placement', () => {
 			expect(menu.style.maxHeight).toBe('576px');
 		} finally {
 			wrapper.unmount();
-			globalThis.ResizeObserver = original;
 		}
 	});
 
-	describe('measures the menu as laid out, not by adding up its children', () => {
+	describe('measures the menu as laid out', () => {
 		it('counts items inside a display: contents wrapper', async () => {
-			// Twenty 50 px items and 10 px of padding: 1010 px. The wrapper itself
-			// has no box, so a browser reports it at 0 px.
-			childBox = () => ({ top: 0, height: 0 });
+			// Twenty 50 px items and 10 px of padding: 1010 px, laid out by the
+			// browser inside the content box.
 			trigger = { top: 100, left: 600 };
 			menuHeight = 1010;
 			const { wrapper, menu } = await openMenu(
@@ -361,8 +370,6 @@ describe('DropdownMenu placement', () => {
 		it('ignores the margin of a hidden child', async () => {
 			// A 60 px menu with 76 px of room below the trigger stays below, however
 			// large the margin of a child that is not displayed.
-			childBox = (child) =>
-				child.style.display === 'none' ? { top: 0, height: 0 } : { top: 0, height: 60 };
 			trigger = { top: 720 - 8 - 76 - 4 - TRIGGER, left: 600 };
 			menuHeight = 60;
 			const { wrapper, menu } = await openMenu(
@@ -381,10 +388,6 @@ describe('DropdownMenu placement', () => {
 		it('counts the margins between items', async () => {
 			// Four 60 px items fit the 290 px below; with their 15 px margins the
 			// menu is 300 px, so it opens above.
-			childBox = (child, menu) => ({
-				top: Array.from(menu.children).indexOf(child) * 75,
-				height: 60,
-			});
 			trigger = { top: 720 - 8 - 290 - 4 - TRIGGER, left: 600 };
 			menuHeight = 300;
 			const { wrapper, menu } = await openMenu(
@@ -404,13 +407,50 @@ describe('DropdownMenu placement', () => {
 			}
 		});
 
-		it('measures a copy, leaving nothing behind in the page', async () => {
+		it('adds the menu padding and border to its content', async () => {
 			trigger = { top: 100, left: 600 };
 			menuHeight = 300;
-			const { wrapper } = await openMenu('right', 3);
+			const { wrapper, menu } = await openMenu('right', 3);
 			try {
-				expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
+				// 300 px of content in a menu with 4 px padding and a 1 px border:
+				// 310 px, more than the 300 px of room left after a resize.
+				menu.style.padding = '4px 0';
+				menu.style.border = '1px solid';
+				viewport = { width: 1280, height: 444 };
+				window.dispatchEvent(new Event('resize'));
+				await nextTick();
+				expect(menu.style.maxHeight).toBe('300px');
+				expect(menu.classList.contains('overflow-y-auto')).toBe(true);
 			} finally {
+				wrapper.unmount();
+			}
+		});
+
+		it('measures without adding anything to the page or changing the menu content', async () => {
+			trigger = { top: 100, left: 600 };
+			menuHeight = 300;
+			const added: Node[] = [];
+			const watcher = new MutationObserver((records) => {
+				for (const record of records) added.push(...record.addedNodes);
+			});
+			const { wrapper, menu } = await openMenu(
+				'right',
+				`<input type="radio" name="sort" value="recent" checked><input type="radio" name="sort" value="priority">`
+			);
+			try {
+				const [recent, priority] = menu.querySelectorAll<HTMLInputElement>('input');
+				watcher.observe(document.body, { childList: true, subtree: true });
+				resize(menu.firstElementChild!);
+				window.dispatchEvent(new Event('resize'));
+				document.dispatchEvent(new Event('scroll'));
+				await nextTick();
+				watcher.disconnect();
+				expect(added.filter((node) => node.nodeType === Node.ELEMENT_NODE)).toEqual([]);
+				expect(recent!.checked).toBe(true);
+				expect(priority!.checked).toBe(false);
+				expect(document.querySelectorAll('input[name="sort"]')).toHaveLength(2);
+			} finally {
+				watcher.disconnect();
 				wrapper.unmount();
 			}
 		});
