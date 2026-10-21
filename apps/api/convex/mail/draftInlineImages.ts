@@ -28,8 +28,8 @@ export interface DraftInlineImageUrl {
 	contentId: string;
 	url: string;
 	/**
-	 * How long the URL stays valid, measured on the server's clock at minting.
-	 * The client schedules renewal from this rather than from the `exp` in the
+	 * How long the URL stays valid, measured on the server's clock once the URL
+	 * is minted, so it never exceeds the token's one-hour lifetime. The client schedules renewal from this rather than from the `exp` in the
 	 * URL, so a client clock that is off cannot push renewal past the expiry.
 	 * Absent for a URL that does not expire.
 	 */
@@ -91,16 +91,17 @@ export const urls = publicAction({
 		);
 		const urls: DraftInlineImageUrl[] = [];
 		for (const part of parts) {
-			const mintedAt = Date.now();
 			const url = await sealedBlobUrl(ctx.storage, part.storageId, part.contentType, {
 				cacheable: true,
 			});
 			if (!url) continue;
 			const exp = expiryOf(url);
+			// Read the clock after minting: `exp` comes from a clock read inside
+			// `sealedBlobUrl`, so an earlier read could put the lifetime past an hour.
 			urls.push(
 				exp === null
 					? { contentId: part.contentId, url }
-					: { contentId: part.contentId, url, expiresInMs: Math.max(0, exp - mintedAt) }
+					: { contentId: part.contentId, url, expiresInMs: Math.max(0, exp - Date.now()) }
 			);
 		}
 		return urls;
