@@ -18,7 +18,6 @@ import {
 	optimisticTrash,
 } from '../mailUpdaters';
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- fixtures cast loose ids into branded types */
 
 const NOW = 1_800_000_000_000;
 const MB = 'mb1';

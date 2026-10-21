@@ -116,7 +116,7 @@ function svgTextForms(text: string): string[] {
 		if (next === decoded) break;
 		decoded = next;
 	}
-	// eslint-disable-next-line no-control-regex
+	// eslint-disable-next-line no-control-regex -- browsers ignore C0 control characters inside a URL scheme
 	const compact = decoded.replace(/[\s\u0000-\u001f\u007f]+/g, '');
 	return [text, decoded, compact];
 }

@@ -14,7 +14,6 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxBulkSelectAllRow from '../PostboxBulkSelectAllRow.vue';
 import { usePostboxBulkActions } from '~/composables/postbox/usePostboxBulkActions';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let stateBuckets: Map<string, any>;
 const listMessageIds = vi.fn(async () => ({ ids: ['a', 'b', 'c'], capped: false }));
 

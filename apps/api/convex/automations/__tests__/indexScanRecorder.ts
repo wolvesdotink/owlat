@@ -66,7 +66,6 @@ export function recordScans(ctx: MutationCtx, table: TableNames, log: ScanRecord
 				const prefix: Eq[] = [];
 				const postFilter: Eq[] = [];
 				let index = 'by_creation_time';
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				let q: any = real;
 				const wrapper = {
 					withIndex(indexName: string, range?: (b: unknown) => unknown) {

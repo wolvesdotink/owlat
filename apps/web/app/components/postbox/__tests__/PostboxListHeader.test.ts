@@ -15,7 +15,6 @@ import { usePostboxBulkActions } from '~/composables/postbox/usePostboxBulkActio
 
 // The header holds the shared per-mailbox selection bucket, so the Nuxt state
 // + Convex layers it reaches through have to exist for any mount.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let stateBuckets: Map<string, any>;
 
 beforeAll(() => {

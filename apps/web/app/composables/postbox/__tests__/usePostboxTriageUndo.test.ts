@@ -30,7 +30,6 @@ const removeToast = vi.fn((id: string) => {
 	if (index > -1) toasts.splice(index, 1);
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let stateBuckets: Map<string, any>;
 vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	if (!stateBuckets.has(key)) stateBuckets.set(key, ref(init()));

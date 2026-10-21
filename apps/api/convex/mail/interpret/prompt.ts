@@ -53,7 +53,7 @@ export function defuseDelimiters(text: string): string {
 
 /** Strip control characters (keep newlines and tabs). */
 function clean(text: string): string {
-	// eslint-disable-next-line no-control-regex
+	// eslint-disable-next-line no-control-regex -- strips C0 control characters (tab and newlines stay) from prompt text
 	return defuseDelimiters(text.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, ''));
 }
 

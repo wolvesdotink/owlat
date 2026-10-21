@@ -24,11 +24,9 @@ const DEFAULT_CHUNK_SIZE = 8192;
 type LogFn = NonNullable<ClamClientOptions['logger']>;
 
 const defaultLogger: LogFn = (level, message, meta) => {
-	// eslint-disable-next-line no-console
 	if (level === 'error') console.error(`[clamav] ${message}`, meta ?? '');
-	// eslint-disable-next-line no-console
 	else if (level === 'warn') console.warn(`[clamav] ${message}`, meta ?? '');
-	// eslint-disable-next-line no-console
+	// eslint-disable-next-line no-console -- the default logger writes info-level events to stdout when none is injected
 	else console.log(`[clamav] ${message}`, meta ?? '');
 };
 
@@ -231,7 +229,7 @@ export async function ping(
 			socket!.write('zPING\0');
 		});
 
-		// eslint-disable-next-line no-control-regex
+		// eslint-disable-next-line no-control-regex -- clamd terminates every reply with NUL
 		return response.replace(/\0/g, '').trim() === 'PONG';
 	} catch {
 		return false;

@@ -80,7 +80,6 @@ let dnsShimActive = false;
 
 function installDnsShim(): void {
 	dnsShimActive = true;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	(dns as any).lookup = ((hostname: string, options: unknown, cb: unknown) => {
 		const callback = (typeof options === 'function' ? options : cb) as (
 			err: NodeJS.ErrnoException | null,
@@ -98,7 +97,6 @@ function installDnsShim(): void {
 
 function restoreDns(): void {
 	if (dnsShimActive) {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(dns as any).lookup = realLookup;
 		dnsShimActive = false;
 	}
