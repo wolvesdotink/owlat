@@ -64,6 +64,49 @@ export function desktopSpaSelected(full: boolean, web: boolean, changed: string[
 		)
 	);
 }
+export interface DockerImage {
+	name: string;
+	package: string;
+	dockerfile: string;
+}
+export interface CiSelection<Image extends DockerImage = DockerImage> {
+	groups: ReturnType<typeof groupWorkspaces>;
+	api: boolean;
+	web: boolean;
+	mta: boolean;
+	images: Image[];
+	java: boolean;
+	desktopSpa: boolean;
+}
+/**
+ * The pull-request work CI selects: the detect job (scripts/ci/select.ts) and
+ * `bun run check:changed` both call this, so the local summary of what CI
+ * still runs cannot drift from the matrix CI builds.
+ */
+export function selectCiWork<Image extends DockerImage>(input: {
+	full: boolean;
+	changed: string[];
+	coverage: Workspace[];
+	affected: string[];
+	images: Image[];
+}): CiSelection<Image> {
+	const { full, changed, coverage, affected, images } = input;
+	const web = coverage.some((w) => w.name === 'web');
+	return {
+		groups: groupWorkspaces(coverage),
+		api: coverage.some((w) => w.name === 'api'),
+		web,
+		mta: coverage.some((w) => w.name === 'mta'),
+		images:
+			full || changed.includes('.github/docker-images.json')
+				? images
+				: images.filter(
+						(image) => affected.includes(image.package) || changed.includes(image.dockerfile)
+					),
+		java: full || changed.some((file) => file.startsWith('packages/sdk-java/')),
+		desktopSpa: desktopSpaSelected(full, web, changed),
+	};
+}
 export function expectedJobs(selection: {
 	groups: unknown[];
 	api: boolean;
@@ -95,4 +138,195 @@ export function assertJobResults(expected: string[], needs: Record<string, { res
 	for (const [job, outcome] of Object.entries(needs))
 		if (!expected.includes(job) && outcome.result !== 'skipped')
 			throw new Error(`Unexpected CI job ${job}: ${outcome.result}`);
+}
+
+// ---- Local selection for `bun run check:changed` ---------------------------
+
+/**
+ * A repo-relative path pattern: a trailing `/` matches everything under that
+ * directory, `**` any number of directories, `*` and `?` within one path
+ * segment, `{a,b}` either alternative; anything else is an exact path.
+ */
+export function pathPattern(pattern: string): RegExp {
+	return new RegExp(`^${globSource(pattern)}${pattern.endsWith('/') ? '' : '$'}`);
+}
+function globSource(pattern: string): string {
+	let source = '';
+	for (let index = 0; index < pattern.length; index++) {
+		const char = pattern[index]!;
+		if (pattern.startsWith('**/', index)) {
+			source += '(?:.*/)?';
+			index += 2;
+		} else if (pattern.startsWith('**', index)) {
+			source += '.*';
+			index += 1;
+		} else if (char === '*') source += '[^/]*';
+		else if (char === '?') source += '[^/]';
+		else if (char === '{') source += '(?:';
+		else if (char === '}') source += ')';
+		else if (char === ',' && openBraces(pattern, index)) source += '|';
+		else source += escapeRegExp(char);
+	}
+	return source;
+}
+function openBraces(pattern: string, index: number): boolean {
+	const before = pattern.slice(0, index);
+	return before.split('{').length > before.split('}').length;
+}
+function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+export function matchesAny(file: string, patterns: readonly string[]): boolean {
+	return patterns.some((pattern) => pathPattern(pattern).test(file));
+}
+/** A gate runs when a changed path matches its inputs or a workspace it reads is affected. */
+export function gateSelected(
+	inputs: { readonly paths: readonly string[]; readonly packages?: readonly string[] },
+	changed: readonly string[],
+	affected: ReadonlySet<string>,
+	globalInputs: readonly string[] = []
+): boolean {
+	const patterns = [...globalInputs, ...inputs.paths];
+	return (
+		changed.some((file) => matchesAny(file, patterns)) ||
+		(inputs.packages ?? []).some((name) => affected.has(name))
+	);
+}
+
+/**
+ * turbo.json `inputs` that live outside a package (`$TURBO_ROOT$/...`), per
+ * task. `turbo --affected` only maps a change to the package whose directory
+ * holds it, so a lint task that reads other packages' files (the api lint's
+ * caller scan, the setup-cli env-key sync) or a generic task input under the
+ * repo root is not selected by it; these patterns close that gap. Negated
+ * entries only drop generated output, which never shows up as a change, so
+ * ignoring them can only widen the selection.
+ */
+export interface TurboTaskConfig {
+	inputs?: string[];
+}
+export function rootTaskInputs(
+	tasks: Record<string, TurboTaskConfig>,
+	task: string
+): { all: string[]; byPackage: Map<string, string[]> } {
+	const rooted = (inputs: string[] | undefined) =>
+		(inputs ?? [])
+			.filter((input) => input.startsWith('$TURBO_ROOT$/'))
+			.map((input) => input.slice('$TURBO_ROOT$/'.length));
+	const byPackage = new Map<string, string[]>();
+	for (const [key, config] of Object.entries(tasks)) {
+		const [name, taskName] = key.includes('#') ? key.split('#') : [undefined, key];
+		if (taskName !== task || !name || name === '/' || name === '//') continue;
+		const patterns = rooted(config.inputs);
+		if (patterns.length) byPackage.set(name, patterns);
+	}
+	return { all: rooted(tasks[task]?.inputs), byPackage };
+}
+/** Workspaces whose `task` reads a changed path outside their own directory. */
+export function rootInputSelection(
+	tasks: Record<string, TurboTaskConfig>,
+	task: string,
+	changed: readonly string[],
+	workspaces: readonly string[]
+): string[] {
+	const { all, byPackage } = rootTaskInputs(tasks, task);
+	const hit = (patterns: string[]) => changed.some((file) => matchesAny(file, patterns));
+	if (all.length && hit(all)) return [...workspaces];
+	return workspaces.filter((name) => hit(byPackage.get(name) ?? []));
+}
+
+export interface Change {
+	path: string;
+	deleted: boolean;
+}
+export interface TestWorkspace extends Workspace {
+	/** `vitest related` follows the import graph; false for suites where that graph is the whole backend. */
+	related: boolean;
+}
+export type TestPlan =
+	| { workspace: TestWorkspace; mode: 'full'; reason: string }
+	| { workspace: TestWorkspace; mode: 'related'; files: string[] }
+	| { workspace: TestWorkspace; mode: 'files'; files: string[] };
+
+/**
+ * A change to one of these can change any test result in any workspace. The
+ * root package.json is not listed: its catalog and overrides only reach a test
+ * through the lockfile, and its scripts reach none.
+ */
+export const ROOT_TEST_INPUTS = [
+	'bun.lock',
+	'tsconfig.base.json',
+	'vitest.shared.ts',
+	'vitest.timeouts.ts',
+];
+/** Relative to a workspace: its manifest, test config and setup files. */
+const WORKSPACE_TEST_CONFIG = [
+	'package.json',
+	'vitest.*',
+	'vite.config.*',
+	'tsconfig*.json',
+	'**/vitest.setup.*',
+	'**/__tests__/setup.*',
+];
+export const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
+const SOURCE_FILE = /\.([cm]?[jt]sx?|vue)$/;
+
+/**
+ * Which tests to run per selected workspace. A change `vitest related` cannot
+ * follow (a deleted file, the workspace's own test config or manifest, a root
+ * test input) runs the whole suite instead of quietly selecting nothing. A
+ * workspace without `related` gets its changed test files and the test files
+ * named after its changed sources (`x.ts` → `x.test.ts`, `x.integration.test.ts`
+ * beside it or in an enclosing `__tests__/`).
+ */
+export function planTests(
+	workspaces: readonly TestWorkspace[],
+	changes: readonly Change[],
+	listDirectory: (directory: string) => string[]
+): TestPlan[] {
+	const present = changes.filter((change) => !change.deleted).map((change) => change.path);
+	const rootChange = changes.find((change) => ROOT_TEST_INPUTS.includes(change.path));
+	return workspaces.map((workspace): TestPlan => {
+		const prefix = `${workspace.directory}/`;
+		const own = changes.filter((change) => change.path.startsWith(prefix));
+		const config = own.find((change) =>
+			matchesAny(change.path.slice(prefix.length), WORKSPACE_TEST_CONFIG)
+		);
+		const deleted = own.find((change) => change.deleted);
+		const reason = rootChange
+			? `${rootChange.path} changed`
+			: config
+				? `${config.path} changed`
+				: deleted
+					? `${deleted.path} was deleted`
+					: undefined;
+		if (reason) return { workspace, mode: 'full', reason };
+		if (workspace.related) return { workspace, mode: 'related', files: present };
+		const tests = new Set<string>();
+		for (const file of present) {
+			if (!file.startsWith(prefix) || !SOURCE_FILE.test(file)) continue;
+			if (TEST_FILE.test(file)) {
+				tests.add(file);
+				continue;
+			}
+			const name = file.slice(file.lastIndexOf('/') + 1);
+			const stem = `${name.slice(0, name.lastIndexOf('.'))}.`;
+			for (const directory of neighbourDirectories(file, workspace.directory))
+				for (const entry of listDirectory(directory))
+					if (entry.startsWith(stem) && TEST_FILE.test(entry)) tests.add(`${directory}/${entry}`);
+		}
+		return { workspace, mode: 'files', files: [...tests].sort() };
+	});
+}
+/** The file's directory, then every enclosing `__tests__/` up to the workspace root. */
+function neighbourDirectories(file: string, root: string): string[] {
+	const directories: string[] = [];
+	let directory = file.slice(0, file.lastIndexOf('/'));
+	directories.push(directory);
+	while (directory.length >= root.length) {
+		if (!directory.endsWith('/__tests__')) directories.push(`${directory}/__tests__`);
+		if (directory === root) break;
+		directory = directory.slice(0, directory.lastIndexOf('/'));
+	}
+	return directories;
 }

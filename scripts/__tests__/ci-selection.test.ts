@@ -5,6 +5,7 @@ import {
 	groupWorkspaces,
 	expectedJobs,
 	assertJobResults,
+	selectCiWork,
 	type Task,
 } from '../ci/selection';
 const task = (name: string): Task => ({
@@ -95,5 +96,39 @@ describe('CI work selection', () => {
 		const selection = { groups: [], images: [], api: false, web: false, mta: false, java: false };
 		expect(expectedJobs({ ...selection, desktopSpa: true })).toContain('desktop-spa');
 		expect(expectedJobs({ ...selection, desktopSpa: false })).not.toContain('desktop-spa');
+	});
+	it('selects the PR work the detect job and check:changed both report', () => {
+		const images = [
+			{ name: 'web', package: '@owlat/web', dockerfile: 'apps/web/Dockerfile' },
+			{ name: 'mta', package: '@owlat/mta', dockerfile: 'apps/mta/Dockerfile' },
+		];
+		const coverage = coverageWorkspaces([task('api'), task('shared')]);
+		const selection = selectCiWork({
+			full: false,
+			changed: ['apps/mta/Dockerfile', 'packages/shared/src/a.ts'],
+			coverage,
+			affected: ['@owlat/api', '@owlat/shared'],
+			images,
+		});
+		expect(selection).toEqual({
+			groups: [{ id: 1, workspaces: coverage.filter((w) => w.name === 'shared') }],
+			api: true,
+			web: false,
+			mta: false,
+			images: [images[1]],
+			java: false,
+			desktopSpa: false,
+		});
+		const all = selectCiWork({ full: true, changed: [], coverage: [], affected: [], images });
+		expect(all).toMatchObject({ images, java: true, desktopSpa: true });
+		expect(
+			selectCiWork({
+				full: false,
+				changed: ['.github/docker-images.json', 'packages/sdk-java/pom.xml'],
+				coverage: [],
+				affected: [],
+				images,
+			})
+		).toMatchObject({ images, java: true });
 	});
 });
