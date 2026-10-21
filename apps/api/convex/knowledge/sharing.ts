@@ -20,16 +20,18 @@
  *     mailbox's permission for good (lib/semanticFileAccess.ts);
  *   - knowledge whose source file is gone, or a file entry whose source is not
  *     recorded: nothing proves it was an upload, so it fails closed;
- *   - a curated answer whose earlier source is not recorded: it may have been
- *     made from any of the above, so it fails closed too.
+ *   - a curated answer whose earlier source is not recorded and whose
+ *     `sourceId` does not name a file to check: it may have been made from
+ *     any of the above, so it fails closed too.
  * Turning an entry into a curated answer (`knowledge.graph.createPolicyEntry`)
  * rewrites `sourceType` to `curated`, keeps `sourceId` and `threadId`, and
  * records the earlier source type in `curatedFromSourceType`, so the rule
  * reads the source from those, never from `sourceType` alone. A curated answer
- * written before that field existed has no record: an answer authored as one
- * looks the same as one made from a file entry without a `sourceId`, so both
- * are refused. An owner or admin can still write it again as a new curated
- * answer, which members see.
+ * written before that field existed has no record. When its `sourceId` names a
+ * file, that file decides, as for any entry. Without one, an answer authored
+ * as one looks the same as one made from a file entry without a `sourceId`, so
+ * both are refused. An owner or admin can still write it again as a new
+ * curated answer, which members see.
  *
  * STALE REVIEWS. The review carries a fingerprint of what it showed (title,
  * content, tags, contact links). Sharing refuses when the entry no longer
@@ -75,7 +77,8 @@ export const RESTRICTION_MIGRATION = '0069_restrict_captured_file_knowledge';
  *   - `team_inbox`: it came from Team Inbox mail or links a Team Inbox thread;
  *   - `mail_capture`: it came from a file captured from inbound mail;
  *   - `source_missing`: its source file is gone or not recorded, or it is a
- *     curated answer whose earlier source is not recorded.
+ *     curated answer whose earlier source is not recorded and that names no
+ *     source file.
  */
 export type ShareBlocker =
 	| 'already_shared'

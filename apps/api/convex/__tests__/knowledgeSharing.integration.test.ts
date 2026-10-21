@@ -453,6 +453,20 @@ describe('sharing a restricted knowledge entry with members', () => {
 			expect((await review(t, entryId)).blocker).toBe('source_missing');
 		});
 
+		it('a legacy curated answer whose source is an uploaded file can be shared', async () => {
+			const t = await setup();
+			const entryId = await seedEntry(t, {
+				sourceType: 'curated',
+				isAuthoritative: true,
+				sourceId: await seedFile(t, { sourceType: 'upload' }),
+				memberAccess: 'restricted',
+			});
+			expect((await read(t, entryId)).curatedFromSourceType).toBeUndefined();
+			expect((await review(t, entryId)).blocker).toBeNull();
+			await share(t, entryId);
+			expect((await read(t, entryId)).memberAccess).toBe('members');
+		});
+
 		it('a manual entry made into a curated answer can be shared', async () => {
 			const t = await setup();
 			const entryId = await seedEntry(t, { sourceType: 'manual', memberAccess: 'restricted' });

@@ -159,8 +159,9 @@ export const knowledgeEntriesFields = {
 	// authored as one, else the `sourceType` the entry had before
 	// `knowledge.graph.createPolicyEntry` rewrote it to `curated` (kept through
 	// later edits). Absent on a curated answer written before this field: its
-	// earlier source is unknown, so it cannot be shared with members
-	// (knowledge/sharing.ts). Never set by a client.
+	// earlier source is unknown, so unless its `sourceId` names a file that
+	// allows it, it cannot be shared with members (knowledge/sharing.ts). Never
+	// set by a client.
 	curatedFromSourceType: v.optional(sourceTypeValidator),
 	// Entity links
 	contactIds: v.optional(v.array(v.id('contacts'))),
