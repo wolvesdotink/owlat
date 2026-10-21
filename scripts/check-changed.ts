@@ -36,6 +36,7 @@ import {
 	ROOT_GATES,
 	SCRIPTS_TYPECHECK_INPUTS,
 	gateCommand,
+	type RootGate,
 } from './ci/gates';
 import {
 	coverageWorkspaces,
@@ -203,16 +204,18 @@ export function buildPlan(input: PlanInput): Plan {
 	};
 	const gateOn = (gate: Parameters<typeof gateSelected>[0]) =>
 		gateSelected(gate, paths, affected, GATE_GLOBAL_INPUTS);
+	const gateStep = (name: string, gate: RootGate): Step => ({
+		name,
+		command: [...gateCommand(gate)],
+		...(gate.baseEnv && {
+			env: { [gate.baseEnv]: input.mergeBase, GITHUB_BASE_REF: undefined },
+		}),
+	});
 
 	const steps: Step[] = [];
 	const skipped: string[] = [];
 	const format = ROOT_GATES.find((gate) => gate.name === 'format')!;
-	if (gateOn(format))
-		steps.push({
-			name: 'format (oxfmt)',
-			command: [...gateCommand(format)],
-			env: { OXFMT_BASE: input.mergeBase, GITHUB_BASE_REF: undefined },
-		});
+	if (gateOn(format)) steps.push(gateStep('format (oxfmt)', format));
 	const lintable = present.filter((file) => LINT_ROOTS.test(file) && LINTABLE.test(file));
 	if (lintable.length)
 		steps.push({
@@ -246,7 +249,7 @@ export function buildPlan(input: PlanInput): Plan {
 
 	for (const gate of ROOT_GATES) {
 		if (gate === format) continue;
-		if (gateOn(gate)) steps.push({ name: `lint:${gate.name}`, command: [...gateCommand(gate)] });
+		if (gateOn(gate)) steps.push(gateStep(`lint:${gate.name}`, gate));
 		else skipped.push(`lint:${gate.name}`);
 	}
 	if (!gateOn(format)) skipped.push('lint:format');

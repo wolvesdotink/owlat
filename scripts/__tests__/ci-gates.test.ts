@@ -61,6 +61,27 @@ describe('root gate manifest', () => {
 			).toBe(true);
 	});
 
+	it('declares the base variable of every gate that compares with a base commit', () => {
+		// A gate that picks its own base (the PR target, origin/main) checks a
+		// different change than check:changed's merge base unless it is told.
+		const readsBase = /GITHUB_BASE_REF|origin\/main/;
+		for (const entry of ROOT_GATES) {
+			const sources = [
+				...(rootScripts[`lint:${entry.name}`] ?? '').matchAll(/\bscripts\/[\w./-]+/g),
+			]
+				.map((match) => match[0])
+				.filter((file) => /\.(sh|ts)$/.test(file))
+				.map(read)
+				.join('\n');
+			if (entry.baseEnv) expect(sources, entry.name).toContain(entry.baseEnv);
+			else expect(readsBase.test(sources), entry.name).toBe(false);
+		}
+		expect(ROOT_GATES.filter((entry) => entry.baseEnv).map((entry) => entry.name)).toEqual([
+			'format',
+			'stored-block-corpus',
+		]);
+	});
+
 	it('names only paths that exist', () => {
 		const literal = [...ROOT_GATES, ...PLUGIN_SMOKES, SCRIPTS_TYPECHECK_INPUTS].flatMap((entry) =>
 			entry.paths.filter((path) => !/[*?{]/.test(path))

@@ -422,6 +422,19 @@ describe('buildPlan', () => {
 		expect(names(q)).toContain('lint:script-tests');
 	});
 
+	it("gives every gate that compares with a base the run's merge base", () => {
+		const p = plan(
+			[{ path: 'packages/email-renderer/src/__tests__/storedBlocks/a.json', deleted: false }],
+			[]
+		);
+		expect(step(p, 'lint:stored-block-corpus')).toMatchObject({
+			command: ['bun', 'run', 'lint:stored-block-corpus'],
+			env: { STORED_BLOCK_CORPUS_BASE: 'abc123', GITHUB_BASE_REF: undefined },
+		});
+		// A gate without a base runs in the caller's environment.
+		expect(step(p, 'lint:branding')?.env).toBeUndefined();
+	});
+
 	it('runs the scripts/ checks for a scripts-only change and no workspace task', () => {
 		const p = plan([{ path: 'scripts/check-format.sh', deleted: false }], []);
 		expect(names(p)).toEqual([

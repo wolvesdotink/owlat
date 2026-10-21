@@ -27,6 +27,13 @@ export interface RootGate extends GateInputs {
 	readonly name: string;
 	/** What CI runs; `bun run lint:<name>` when absent. */
 	readonly command?: readonly string[];
+	/**
+	 * For a gate that compares the tree with a base commit: the environment
+	 * variable that sets that base. check:changed sets it to its own merge base
+	 * (and unsets GITHUB_BASE_REF, which some gates prefer), so the gate checks
+	 * the same change the rest of the run does.
+	 */
+	readonly baseEnv?: string;
 }
 
 export interface PluginSmoke extends GateInputs {
@@ -189,7 +196,11 @@ export const ROOT_GATES: readonly RootGate[] = [
 	},
 	// Scans every tracked file.
 	{ name: 'branding', paths: [ANYWHERE] },
-	{ name: 'format', paths: [CODE_ANYWHERE, 'oxfmtrc.json', 'scripts/check-format.sh'] },
+	{
+		name: 'format',
+		paths: [CODE_ANYWHERE, 'oxfmtrc.json', 'scripts/check-format.sh'],
+		baseEnv: 'OXFMT_BASE',
+	},
 	{
 		name: 'imports',
 		paths: [CODE_ANYWHERE, '**/package.json', 'scripts/check-cross-package-imports.sh'],
@@ -316,6 +327,7 @@ export const ROOT_GATES: readonly RootGate[] = [
 	{
 		name: 'stored-block-corpus',
 		paths: ['packages/email-renderer/src/', 'scripts/check-stored-block-corpus.ts'],
+		baseEnv: 'STORED_BLOCK_CORPUS_BASE',
 	},
 	{
 		// `lint:plugin-imports` without its `plugins:prepare` prefix: the
