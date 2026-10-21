@@ -65,7 +65,7 @@ const globalOptions = {
 		UiSpinner: true,
 		DashboardDetailSkeleton: true,
 		UiEmptyState: true,
-		UnsavedChangesDialog: true,
+		UiUnsavedChangesDialog: true,
 		UiErrorAlert: true,
 		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 		SettingsInboundRetentionCard: true,

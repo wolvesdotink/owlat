@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { languageOptions } from '~/data/languageOptions';
 import { emailSettingsSave } from '~/composables/emailSettingsSave';
 import { useEditorDirtyTracking } from '~/composables/useEditorDirtyTracking';
@@ -355,7 +354,7 @@ const handleBack = () => {
 		</UiQueryBoundary>
 
 		<!-- Unsaved Changes Dialog -->
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="showUnsavedDialog"
 			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"

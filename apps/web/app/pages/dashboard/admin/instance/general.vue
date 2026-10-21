@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { instanceTimezoneSelectOptions } from '~/data/instanceTimezoneOptions';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { isValidEmail } from '@owlat/shared';
@@ -423,7 +422,7 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 		</div>
 
 		<!-- Unsaved Changes Dialog -->
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="unsavedDialog.showDialog"
 			:saving="unsavedDialog.isSavingBeforeLeave"
 			@close="unsavedDialog.cancelNavigation"

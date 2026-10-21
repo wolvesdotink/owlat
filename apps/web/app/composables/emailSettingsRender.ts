@@ -1,5 +1,5 @@
 import type { EditorBlock } from '@owlat/email-builder';
-import { parseStoredBlocks } from '@owlat/email-builder';
+import { parseStoredBlocks } from '@owlat/email-builder/stored-blocks';
 import {
 	extractTranslatableContent,
 	mergeTranslationIntoItem,

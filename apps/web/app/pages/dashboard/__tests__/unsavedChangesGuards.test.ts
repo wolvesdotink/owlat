@@ -70,8 +70,10 @@ const settingsFormSource = readFileSync(
 describe.each(Object.entries(guardedPages))('%s guards its form', (_name, source) => {
 	it('routes through the one shared composable and the one shared dialog', () => {
 		expect(source).toContain('useUnsavedChanges({');
-		expect(source).toContain("import { UnsavedChangesDialog } from '@owlat/email-builder'");
-		expect(source).toContain('<UnsavedChangesDialog');
+		// The ui layer's dialog, auto-registered: importing it from the email
+		// builder barrel shipped the whole editor with the page (#1441).
+		expect(source).not.toContain("from '@owlat/email-builder'");
+		expect(source).toContain('<UiUnsavedChangesDialog');
 	});
 
 	it('feeds its own dirty state into the guard', () => {
@@ -114,7 +116,8 @@ describe.each(Object.entries(settingsFormPages))('%s guards its form', (_name, s
 	});
 
 	it('binds the shared dialog to all three outcomes', () => {
-		expect(source).toContain("import { UnsavedChangesDialog } from '@owlat/email-builder'");
+		expect(source).not.toContain("from '@owlat/email-builder'");
+		expect(source).toContain('<UiUnsavedChangesDialog');
 		expect(source).toContain(':show="unsavedDialog.showDialog"');
 		expect(source).toContain('@close="unsavedDialog.cancelNavigation"');
 		expect(source).toContain('@discard="unsavedDialog.confirmDiscard"');
@@ -147,7 +150,7 @@ const globalOptions = {
 		UiIconBox: true,
 		UiEmptyState: true,
 		UiConfirmationDialog: true,
-		UnsavedChangesDialog: true,
+		UiUnsavedChangesDialog: true,
 		DashboardListSkeleton: true,
 		DeliveryReferenceRelayNotice: true,
 		DeliveryRelayDomainStatus: true,

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 import type { Condition } from '~/composables/conditions';
 
 const { t, locale } = useI18n();
@@ -482,7 +481,7 @@ onMounted(() => {
 		</UiModal>
 
 		<!-- Unsaved Changes Dialog (builder dismissed with pending edits) -->
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="showSegmentDiscardDialog"
 			@close="showSegmentDiscardDialog = false"
 			@discard="discardSegmentEdits"

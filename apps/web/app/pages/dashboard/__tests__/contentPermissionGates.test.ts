@@ -130,7 +130,7 @@ const STUBS = {
 	UiQueryBoundary: SLOTTED,
 	UiEmptyState: { template: '<div><slot name="action" /></div>' },
 	DashboardListSkeleton: true,
-	UnsavedChangesDialog: true,
+	UiUnsavedChangesDialog: true,
 	UiTextarea: true,
 	UiConfirmDialog: true,
 	UiDropdownMenu: true,

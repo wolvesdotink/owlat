@@ -103,7 +103,7 @@ function mountManager(emailType: 'marketing' | 'transactional') {
 				UiDropdownMenu: true,
 				UiDropdownMenuItem: true,
 				UiConfirmationDialog: true,
-				UnsavedChangesDialog: true,
+				UiUnsavedChangesDialog: true,
 			},
 		},
 	});
