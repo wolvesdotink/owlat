@@ -42,7 +42,7 @@ pathspecs=(
 	'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs'
 	':(exclude)**/_generated/**'
 )
-# NUL-delimited end to end: without -z, Git quotes a path holding a space,
+# NUL-delimited end to end: without -z, Git quotes a path holding a tab,
 # quote or non-ASCII byte, the quoted name fails the -f test, and the file is
 # silently left unchecked.
 while IFS= read -r -d '' f; do
