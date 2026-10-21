@@ -11,6 +11,7 @@
  *   - the needs-reply verdict set or cleared (`mail/needsReply.ts applyResult`,
  *     `clearThreadNeedsReply`, the pending settle)
  *   - Fix, Undo, sender-status changes, overrides (lanes learn and senders)
+ *   - a cold-pitch verdict committed or cleared (`coldPitch.ts`)
  *
  * So there is no generation counter: a stale action result is just an input
  * patch followed by a recompute. Placement itself is `computePlacement`
@@ -44,6 +45,30 @@ export function isReplyVerdictSettled(
 	return thread.needsReply.source !== 'heuristic' || thread.needsReplyPendingAt === undefined;
 }
 
+/** Whether a sender profile carries a choice the owner made: a status they set or accepted, a placement. Pure. */
+export function hasOwnerSenderChoice(
+	profile: Pick<Doc<'mailSenderProfiles'>, 'statusSource' | 'placementOverride'> | null
+): boolean {
+	if (!profile) return false;
+	return (
+		profile.statusSource === 'user' ||
+		profile.statusSource === 'suggestion' ||
+		profile.placementOverride !== undefined
+	);
+}
+
+/**
+ * Whether a record's cold-pitch verdict (#1381, `coldPitch.ts`) still counts:
+ * one was committed, and the owner has not since made a choice about the
+ * sender (a choice made before is never asked about at all). Pure.
+ */
+export function isColdPitchStanding(
+	record: Pick<Doc<'mailArrivalRecords'>, 'coldPitchAt'>,
+	profile: Pick<Doc<'mailSenderProfiles'>, 'statusSource' | 'placementOverride'> | null
+): boolean {
+	return record.coldPitchAt !== undefined && !hasOwnerSenderChoice(profile);
+}
+
 /**
  * `computePlacement` over the stored inputs: the record (its rule placement and
  * category, else the thread's), the thread (override, settled reply verdict)
@@ -51,9 +76,12 @@ export function isReplyVerdictSettled(
  * always answers from the same inputs the projection placed it with. Pure.
  */
 export function placementOf(
-	record: Pick<Doc<'mailArrivalRecords'>, 'rulePlacement' | 'category' | 'categorySource'>,
+	record: Pick<
+		Doc<'mailArrivalRecords'>,
+		'rulePlacement' | 'category' | 'categorySource' | 'coldPitchAt'
+	>,
 	thread: Pick<Thread, 'category' | 'placementOverride' | 'needsReply' | 'needsReplyPendingAt'>,
-	profile: Pick<Doc<'mailSenderProfiles'>, 'status' | 'placementOverride'> | null
+	profile: Pick<Doc<'mailSenderProfiles'>, 'status' | 'statusSource' | 'placementOverride'> | null
 ): ComputePlacementResult {
 	const category: MailCategory | undefined = record.category ?? thread.category?.label;
 	const categorySource = record.categorySource ?? thread.category?.source;
@@ -62,6 +90,7 @@ export function placementOf(
 			...(record.rulePlacement ? { rulePlacement: record.rulePlacement } : {}),
 			...(category ? { category } : {}),
 			...(categorySource ? { categorySource } : {}),
+			...(isColdPitchStanding(record, profile) ? { isColdPitch: true } : {}),
 		},
 		{
 			...(thread.placementOverride
@@ -93,7 +122,8 @@ function sameArrival(a: Thread['arrival'], b: NonNullable<Thread['arrival']>): b
 		a.placement === b.placement &&
 		a.depth === b.depth &&
 		a.messageId === b.messageId &&
-		a.sourceOrderKey === b.sourceOrderKey
+		a.sourceOrderKey === b.sourceOrderKey &&
+		a.isColdPitch === b.isColdPitch
 	);
 }
 
@@ -128,6 +158,7 @@ export async function refreshArrivalProjection(
 		messageId: record.messageId,
 		...(record.sourceOrderKey ? { sourceOrderKey: record.sourceOrderKey } : {}),
 		decidedAt: now,
+		...(isColdPitchStanding(record, profile) ? { isColdPitch: true } : {}),
 	};
 	// §6.5: pending for the digest while the placement is digest and the newest
 	// inbound message lies past what the last sent digest consumed.

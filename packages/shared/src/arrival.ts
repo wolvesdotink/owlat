@@ -114,6 +114,12 @@ export interface PlacementRecordInput {
 	rulePlacement?: Placement;
 	category?: MailCategory;
 	categorySource?: CategorySource;
+	/**
+	 * The message carries a standing cold-pitch verdict (#1381,
+	 * `mail/arrival/coldPitch.ts`): unsolicited sales mail from a sender the
+	 * owner never corresponded with.
+	 */
+	isColdPitch?: boolean;
 }
 
 /** The thread half: its override and whether a needs-reply verdict is SETTLED. */
@@ -136,6 +142,7 @@ export type PlacementDecider =
 	| 'sender_status'
 	| 'sender_override'
 	| 'rule'
+	| 'cold_pitch'
 	| 'category';
 
 export interface ComputePlacementResult {
@@ -267,8 +274,8 @@ export type ArrivalOperationChange =
 /** @public Contract type for the read-on-arrival lanes. */
 export type ArrivalOperationChangeKind = ArrivalOperationChange['kind'];
 
-/** Digest groups (§6.5). */
-export const DIGEST_KINDS = ['newsletter', 'updates', 'promotion'] as const;
+/** Digest groups (§6.5). `cold_outreach` holds the cold pitches (#1381). */
+export const DIGEST_KINDS = ['newsletter', 'updates', 'promotion', 'cold_outreach'] as const;
 /** @public Contract type for the read-on-arrival lanes. */
 export type DigestKind = (typeof DIGEST_KINDS)[number];
 

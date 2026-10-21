@@ -86,6 +86,10 @@ export const mailArrivalTables = {
 		exclusiveWinners: v.optional(exclusiveWinnersValidator),
 		// ABA guard for undoing a `recordRulePlacement` change (§4.4).
 		lastOperationId: v.optional(v.id('mailArrivalOperations')),
+		// When R2 judged this message a cold sales pitch (#1381,
+		// mail/arrival/coldPitch.ts). Absent: no verdict, a negative one, or one
+		// an owner reply cleared.
+		coldPitchAt: v.optional(v.number()),
 		modelCalls: v.number(),
 		reasonKeys: v.array(reasonKeyValidator),
 		degradedBy: v.optional(degradedByValidator),

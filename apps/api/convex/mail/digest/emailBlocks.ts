@@ -1,8 +1,9 @@
 /**
  * Read on arrival (SPEC §6.5): the digest section of the personal Daily Brief
- * email, as renderer blocks. Grouped Newsletters / Updates / Promotions, at
- * most 5 lines per group (chosen at selection), each line linking to its
- * mail, then "and N more" (or "and at least N more" past 200 threads).
+ * email, as renderer blocks. Grouped Newsletters / Updates / Promotions /
+ * Cold outreach, at most 5 lines per group (chosen at selection), each line
+ * linking to its mail, then "and N more" (or "and at least N more" past 200
+ * threads).
  *
  * A line is the sender and the verbatim spans picked from the mail, or its
  * subject when there are none. Everything is escaped: spans and subjects are

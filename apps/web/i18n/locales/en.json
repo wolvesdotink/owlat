@@ -13264,6 +13264,7 @@
 				"needs_reply": "It asks you something and waits for your reply",
 				"sender_status": "How you handle this sender",
 				"rule": "One of your rules",
+				"cold_pitch": "A sales pitch from someone you never wrote to",
 				"category": "Its kind of mail",
 				"senderStatus": {
 					"default": "How you handle this sender: {status}",
@@ -18041,6 +18042,10 @@
 					"aiDraft": {
 						"description": "When a personal message needs a reply, have a draft waiting in the Answer queue. You always review it before it is sent.",
 						"label": "Draft replies in personal mail"
+					},
+					"coldPitch": {
+						"description": "Ask whether mail from a sender you have never written to is an unsolicited sales pitch. A pitch waits in your digest under Cold outreach instead of the Answer queue. It is never marked as spam.",
+						"label": "Hold cold sales pitches out of the Answer queue"
 					},
 					"description": "Per-user mailboxes with webmail UI, IMAP/SMTP for native clients, and MX-based delivery (Gmail-equivalent).",
 					"label": "Personal mail (Postbox)"

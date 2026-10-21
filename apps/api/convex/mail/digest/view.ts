@@ -3,8 +3,8 @@
  * and what sending it does.
  *
  * {@link digestForEmail} reads the one generated digest under its claim and
- * groups its lines Newsletters / Updates / Promotions, each with "and N more"
- * from `overflowByKind`. A line whose thread is now fenced or whose message
+ * groups its lines Newsletters / Updates / Promotions / Cold outreach, each
+ * with "and N more" from `overflowByKind`. A line whose thread is now fenced or whose message
  * was purged is dropped here, at delivery, as it was at commit.
  *
  * {@link consumeSentDigest} runs in the SAME mutation that inserts the brief
@@ -69,7 +69,8 @@ export const digestForEmail = internalQuery({
 					path: `/dashboard/postbox/inbox/${item.messageId}`,
 				});
 			}
-			const more = digest.overflowByKind[kind];
+			// A digest stored before the Cold outreach group (#1381) has no count for it.
+			const more = digest.overflowByKind[kind] ?? 0;
 			if (lines.length > 0 || more > 0) groups.push({ kind, lines, more });
 		}
 		return { groups, overflowLabel: digest.overflowLabel };

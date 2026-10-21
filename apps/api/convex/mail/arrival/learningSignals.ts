@@ -38,6 +38,7 @@ import { MIN_OCCURRENCES, MIN_SESSIONS } from '../triageTally';
 import { isOwnMessage } from '../needsReply';
 import { mailboxOwnAddresses } from '../identities';
 import { isPersonalMailbox } from '../permissions';
+import { clearColdPitchOnReply } from './coldPitch';
 import { loadSenderProfile, senderKeyOf } from '../senders/profiles';
 
 type Evidence = NonNullable<Doc<'mailSenderProfiles'>['unreadArchiveEvidence']>;
@@ -180,13 +181,21 @@ export async function recordUnreadArchives(
  * Our own reply went out (synced or appended Sent copy, or an Owlat reply its
  * transport accepted): a To recipient whose digest status was LEARNED goes
  * back to the default (SPEC §4.3 reply reversal), as its own operation. A
- * `user` status stays. Cheap for inbound mail: one folder read.
+ * `user` status stays. The thread's cold-pitch verdict is cleared (#1381).
+ * Cheap for inbound mail: one folder read.
  */
 export async function noteOwnerReply(
 	ctx: MutationCtx,
 	message: Pick<
 		Doc<'mailMessages'>,
-		'_id' | 'mailboxId' | 'folderId' | 'fromAddress' | 'toAddresses' | 'outbound' | 'flagDraft'
+		| '_id'
+		| 'mailboxId'
+		| 'threadId'
+		| 'folderId'
+		| 'fromAddress'
+		| 'toAddresses'
+		| 'outbound'
+		| 'flagDraft'
 	>
 ): Promise<void> {
 	if (message.flagDraft) return;
@@ -195,6 +204,8 @@ export async function noteOwnerReply(
 	const mailbox = await ctx.db.get(message.mailboxId);
 	if (!mailbox || !isPersonalMailbox(mailbox)) return;
 	if (!isOwnMessage(message, await mailboxOwnAddresses(ctx, mailbox))) return;
+	// A reply clears the thread's cold-pitch verdict (#1381).
+	await clearColdPitchOnReply(ctx, message.threadId);
 	const digests = new Set(
 		message.toAddresses.slice(0, MAX_REPLY_RECIPIENTS).map((a) => senderKeyOf(a).senderDigest)
 	);

@@ -58,6 +58,42 @@ describe('computePlacement precedence (§2.8)', () => {
 		).toEqual({ placement: 'needs_me', decidedBy: 'rule' });
 	});
 
+	it('a cold-pitch verdict outranks the inferred needs-reply verdict (#1381)', () => {
+		// The bug: a pitch asking for a call was placed in Needs you.
+		expect(computePlacement({ category: 'promotion' }, { isReplyNeeded: true }, null)).toEqual({
+			placement: 'needs_me',
+			decidedBy: 'needs_reply',
+		});
+		expect(
+			computePlacement({ category: 'promotion', isColdPitch: true }, { isReplyNeeded: true }, null)
+		).toEqual({ placement: 'digest', decidedBy: 'cold_pitch' });
+		expect(
+			computePlacement({ category: 'other', isColdPitch: true }, { isReplyNeeded: false }, null)
+		).toEqual({ placement: 'digest', decidedBy: 'cold_pitch' });
+	});
+
+	it('a cold-pitch verdict never outranks a choice the owner made', () => {
+		const pitch = { category: 'other' as const, isColdPitch: true };
+		expect(
+			computePlacement(
+				pitch,
+				{ placementOverride: { placement: 'today' }, isReplyNeeded: false },
+				null
+			)
+		).toEqual({ placement: 'today', decidedBy: 'thread_override' });
+		expect(computePlacement(pitch, noThread, { status: 'auto_archive' })).toEqual({
+			placement: 'archived',
+			decidedBy: 'sender_status',
+		});
+		expect(
+			computePlacement(pitch, noThread, { status: 'keep', placementOverride: 'today' })
+		).toEqual({ placement: 'today', decidedBy: 'sender_override' });
+		expect(computePlacement({ ...pitch, rulePlacement: 'updates' }, noThread, null)).toEqual({
+			placement: 'updates',
+			decidedBy: 'rule',
+		});
+	});
+
 	it('6: the category decides last', () => {
 		const cases: [MailCategory | undefined, string][] = [
 			['newsletter', 'digest'],

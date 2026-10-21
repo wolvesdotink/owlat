@@ -7,11 +7,14 @@
  * Precedence, first match wins:
  *   1. the thread's placement override (a message-scope Fix)
  *   2. a SETTLED needs-reply verdict → needs_me (a heuristic candidate still
- *      pending is not settled, so it reads as `today` until the verdict lands)
+ *      pending is not settled, so it reads as `today` until the verdict lands),
+ *      unless the record carries a cold-pitch verdict: both are inferred, and
+ *      the cold-pitch one only exists for a sender the owner never wrote to
  *   3. sender status unsubscribed / auto_archive → archived; digest → digest
  *   4. the sender's placement override
  *   5. a rule placement action, from the arrival record
- *   6. the category: newsletter / promotion → digest, notification / receipt
+ *   6. a cold-pitch verdict on the record → digest (#1381)
+ *   7. the category: newsletter / promotion → digest, notification / receipt
  *      → updates, anything else → today
  */
 
@@ -45,7 +48,9 @@ export function computePlacement(
 	if (thread.placementOverride) {
 		return { placement: thread.placementOverride.placement, decidedBy: 'thread_override' };
 	}
-	if (thread.isReplyNeeded) return { placement: 'needs_me', decidedBy: 'needs_reply' };
+	if (thread.isReplyNeeded && !record.isColdPitch) {
+		return { placement: 'needs_me', decidedBy: 'needs_reply' };
+	}
 	const status = senderProfile?.status ?? 'keep';
 	if (status === 'unsubscribed' || status === 'auto_archive') {
 		return { placement: 'archived', decidedBy: 'sender_status' };
@@ -55,5 +60,6 @@ export function computePlacement(
 		return { placement: senderProfile.placementOverride, decidedBy: 'sender_override' };
 	}
 	if (record.rulePlacement) return { placement: record.rulePlacement, decidedBy: 'rule' };
+	if (record.isColdPitch) return { placement: 'digest', decidedBy: 'cold_pitch' };
 	return placementOfCategory(record.category);
 }
