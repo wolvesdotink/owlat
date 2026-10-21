@@ -22,8 +22,15 @@
  * `data:`/`cid:` resources are never flagged — they cannot phone home.
  */
 
-import { escapeImgTextInForeignContent, replaceImgTags, scanStartTag } from './postboxImgTags';
+import {
+	escapeImgTextInForeignContent,
+	replaceImgTags,
+	scanStartTag,
+	type ScanWork,
+} from './postboxImgTags';
 import { TRACKER_HOST_PATTERNS } from './postboxTrackerHosts';
+
+export type { ScanWork } from './postboxImgTags';
 
 export interface TrackerDetection {
 	/** Number of elements in the sanitized HTML that load a probable tracker. */
@@ -51,7 +58,8 @@ const NAMED_CHAR_REFS: ReadonlyMap<string, string> = new Map([
 ]);
 
 /** Decode character references in a raw attribute value read from a tag string. */
-function decodeCharRefs(value: string): string {
+function decodeCharRefs(value: string, work?: ScanWork): string {
+	if (work) work.chars += value.length;
 	return value.replace(/&(?:#(\d+)|#x([\da-f]+)|([a-z]+));?/gi, (ref, dec, hex, name) => {
 		if (dec || hex) {
 			const code = Number.parseInt(dec ?? hex, dec ? 10 : 16);
@@ -67,12 +75,17 @@ function decodeCharRefs(value: string): string {
  * `data-src`) is never mistaken for it; the first of duplicates wins, as in
  * the browser.
  */
-function attrValue(tag: string, name: string): string | null {
+function attrValue(tag: string, name: string, work?: ScanWork): string | null {
 	let raw: string | null = null;
-	scanStartTag(tag, 1, (attr, value) => {
-		if (raw === null && attr === name) raw = value;
-	});
-	return raw === null ? null : decodeCharRefs(raw);
+	scanStartTag(
+		tag,
+		1,
+		(attr, value) => {
+			if (raw === null && attr === name) raw = value;
+		},
+		work
+	);
+	return raw === null ? null : decodeCharRefs(raw, work);
 }
 
 /**
@@ -81,14 +94,17 @@ function attrValue(tag: string, name: string): string | null {
  * did not read as a tag (see `replaceImgTags`), where the browser's reading is
  * not known, so any `src=` in the text may be the one that loads.
  */
-function looseSrcValue(tag: string): string | null {
+function looseSrcValue(tag: string, work?: ScanWork): string | null {
 	const m = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+	if (work) work.chars += m ? m.index + m[0].length : tag.length;
 	const raw = m ? (m[1] ?? m[2] ?? m[3]) : undefined;
-	return raw == null ? null : decodeCharRefs(raw);
+	return raw == null ? null : decodeCharRefs(raw, work);
 }
 
 /** Read one property value out of an inline style string. */
-function styleProp(style: string, prop: string): string | null {
+function styleProp(style: string, prop: string, work?: ScanWork): string | null {
+	// The split reads the whole style, whichever declaration matches.
+	if (work) work.chars += style.length;
 	for (const decl of style.split(';')) {
 		const idx = decl.indexOf(':');
 		if (idx === -1) continue;
@@ -174,15 +190,23 @@ export interface TrackingHints {
 /**
  * Read an element's hints once. The reader classifies every reference on an
  * element (thousands of CSS URLs, possibly) against the same hints, so they
- * must not be re-derived from the style per URL.
+ * must not be re-derived from the style per URL; `work` counts each
+ * derivation and the style it reads, so a test can tell.
  */
-export function elementTrackingHints(context: RemoteResourceContext): TrackingHints {
+export function elementTrackingHints(
+	context: RemoteResourceContext,
+	work?: ScanWork
+): TrackingHints {
+	if (work) {
+		work.steps += 1;
+		work.chars += context.style.length;
+	}
 	if (/display\s*:\s*none/i.test(context.style)) return { looksLikePixel: true };
 	const dims = [
 		context.width,
-		styleProp(context.style, 'width'),
+		styleProp(context.style, 'width', work),
 		context.height,
-		styleProp(context.style, 'height'),
+		styleProp(context.style, 'height', work),
 	];
 	// Pixel-sized: at least one declared 0/1px dimension and none larger.
 	return { looksLikePixel: dims.some(isPixelSize) && !dims.some(isVisibleSize) };
@@ -230,8 +254,11 @@ function isRemoteSrc(src: string | null): boolean {
  * tokenized (see `replaceImgTags`) also counts when any `src=` in its text is
  * remote, as the earlier scanner read it.
  */
-function isRemoteImgTag(tag: string, tokenized: boolean): boolean {
-	return isRemoteSrc(attrValue(tag, 'src')) || (!tokenized && isRemoteSrc(looseSrcValue(tag)));
+function isRemoteImgTag(tag: string, tokenized: boolean, work?: ScanWork): boolean {
+	return (
+		isRemoteSrc(attrValue(tag, 'src', work)) ||
+		(!tokenized && isRemoteSrc(looseSrcValue(tag, work)))
+	);
 }
 
 // A removal can join the text around it into a new tag (`<<img …>img …>`) or
@@ -264,24 +291,31 @@ export interface RemoteImageStripResult {
  *
  * Pure string surgery — makes NO network call and never touches the sanitizer
  * allowlist. Fails soft: any unexpected error returns the input unchanged with
- * a zero count, so callers degrade to their prior behaviour.
+ * a zero count, so callers degrade to their prior behaviour. `work`, when
+ * given, accumulates the characters and tags every pass read.
  */
-export function stripRemoteImages(html: string): RemoteImageStripResult {
+export function stripRemoteImages(html: string, work?: ScanWork): RemoteImageStripResult {
 	try {
 		let out = html;
 		let strippedRemoteImages = 0;
 		for (let round = 0; round < MAX_STRIP_ROUNDS; round++) {
 			let removed = 0;
-			out = replaceImgTags(out, (tag, tokenized) => {
-				if (!isRemoteImgTag(tag, tokenized)) return tag;
-				removed += 1;
-				return '';
-			});
+			if (work) work.steps += 1;
+			out = replaceImgTags(
+				out,
+				(tag, tokenized) => {
+					if (!isRemoteImgTag(tag, tokenized, work)) return tag;
+					removed += 1;
+					return '';
+				},
+				work
+			);
 			strippedRemoteImages += removed;
 			if (removed === 0) {
-				return { html: escapeImgTextInForeignContent(out), strippedRemoteImages };
+				return { html: escapeImgTextInForeignContent(out, work), strippedRemoteImages };
 			}
 		}
+		if (work) work.chars += out.length;
 		return { html: out.replace(IMG_TAG_OPEN_RE, '&lt;'), strippedRemoteImages };
 	} catch {
 		return { html, strippedRemoteImages: 0 };
