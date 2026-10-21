@@ -121,6 +121,9 @@ export async function listSharedInboxReaderIds(ctx: QueryCtx | MutationCtx): Pro
  * since a historical merge may have folded private text into it; until then
  * the dedup leaves those unstamped rows alone. Nobody can edit `sourceType`,
  * `threadId` after creation, or `memberAccess` (`knowledge.graph.updateEntry`).
+ * The one exception: an owner or admin may share a restricted entry with
+ * members after reviewing it, never one whose source keeps it from them
+ * (knowledge/sharing.ts).
  */
 export function isInboxDerivedKnowledge(
 	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId' | 'memberAccess'>

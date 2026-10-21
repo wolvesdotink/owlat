@@ -106,6 +106,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.knowledge.knowledgeEntryForm.sourceTypes.chat',
 	'components.knowledge.knowledgeEntryForm.tags',
 	'components.knowledge.relationsList.count',
+	'components.knowledge.shareWithMembers.tags',
 	'components.postbox.postboxCoachPanel.suggestionCategory',
 	'components.postbox.postboxComposerEnvelope.bcc',
 	'components.postbox.postboxComposerEnvelope.cc',

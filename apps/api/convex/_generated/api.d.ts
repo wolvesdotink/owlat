@@ -923,6 +923,7 @@ import type * as knowledge_maintenance from '../knowledge/maintenance.js';
 import type * as knowledge_messageBackfill from '../knowledge/messageBackfill.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
+import type * as knowledge_sharing from '../knowledge/sharing.js';
 import type * as knowledge_vectorCorpus from '../knowledge/vectorCorpus.js';
 import type * as knowledge_vectorSearch from '../knowledge/vectorSearch.js';
 import type * as knowledge_visibility from '../knowledge/visibility.js';
@@ -2768,6 +2769,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/messageBackfill': typeof knowledge_messageBackfill;
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
+	'knowledge/sharing': typeof knowledge_sharing;
 	'knowledge/vectorCorpus': typeof knowledge_vectorCorpus;
 	'knowledge/vectorSearch': typeof knowledge_vectorSearch;
 	'knowledge/visibility': typeof knowledge_visibility;

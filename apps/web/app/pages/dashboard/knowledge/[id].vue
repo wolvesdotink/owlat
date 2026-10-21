@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { RELATION_TYPES, relationLabel, type RelationType } from '~/utils/knowledgeEntryTypes';
+import { offersShareWithMembers } from '~/utils/knowledgeSharing';
 
 const { t, te, locale } = useI18n();
 
@@ -309,6 +310,11 @@ const handleRemoveRelation = async (relationId: string) => {
 
 				<!-- Actions -->
 				<div v-if="canChangeEntry" class="flex items-center gap-2 flex-shrink-0">
+					<!-- Owner/admin-only knowledge (migration 0069) can be shared again after a review. -->
+					<KnowledgeShareWithMembers
+						v-if="offersShareWithMembers(entry, isAdmin)"
+						:entry-id="entry._id"
+					/>
 					<UiButton variant="secondary" class="gap-2" @click="showEditForm = true">
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 						{{ t('common.edit') }}
