@@ -237,6 +237,29 @@ const SOCKET_MUTATIONS = [
 			'uses volume alias-run, which is the same Docker volume as host-engine (host-engine), so it also uses external volume host-engine, which the gate cannot see into',
 	},
 	{
+		// Sol r5: the legacy `external: {name: X}` names the Docker volume like `name`.
+		breaks: 'a volume named like a legacy external.name',
+		apply: both(
+			addVolume(
+				'  host-engine:\n    external:\n      name: shared-engine-run\n  alias-run:\n    name: shared-engine-run\n'
+			),
+			offline('    volumes:\n      - alias-run:/host-run\n')
+		),
+		expected:
+			'uses volume alias-run, which is the same Docker volume as host-engine (shared-engine-run), so it also uses external volume host-engine, which the gate cannot see into',
+	},
+	{
+		breaks: 'a volume whose project-prefixed name a legacy external.name takes',
+		apply: both(
+			addVolume(
+				'  host-engine:\n    external:\n      name: ${ENGINE_VOLUME:-owlat_alias-run}\n  alias-run: {}\n'
+			),
+			offline('    volumes:\n      - alias-run:/host-run\n')
+		),
+		expected:
+			'uses volume alias-run, which may be the same Docker volume as host-engine (<project>_alias-run and owlat_alias-run), so it also uses external volume host-engine',
+	},
+	{
 		breaks: 'an external named volume',
 		apply: both(
 			addVolume('  engine-run:\n    external: true\n'),

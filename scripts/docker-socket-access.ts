@@ -12,7 +12,8 @@
  *   in short or long syntax, whatever the target and mode;
  * - a named volume, secret or config backed by such a host path, or a named
  *   volume that Compose may create as the same Docker volume as one of those
- *   (two keys with one `name`, or a `name` of `<project>_<key>`);
+ *   (two keys with one `name` or legacy `external.name`, or a `name` of
+ *   `<project>_<key>`);
  * - `volumes_from` a service that has the socket, followed through chains;
  * - `use_api_socket: true`, which mounts the engine socket by itself.
  *
@@ -153,8 +154,8 @@ function ownVolumeViolation(key: string, compose: Compose): string | undefined {
 
 /**
  * The Docker volume a top-level volume key becomes. Compose names it after the
- * key's `name` when there is one, else after the key itself for an external
- * volume and `<project>_<key>` for any other. The project name comes from `-p`,
+ * key's `name` (or the legacy `external.name`) when there is one, else after the
+ * key itself for an external volume and `<project>_<key>` for any other. The project name comes from `-p`,
  * COMPOSE_PROJECT_NAME, the top-level `name` or the directory, so the file
  * cannot pin it down.
  */
@@ -164,16 +165,24 @@ type DockerVolume =
 	| { kind: 'unresolved'; raw: string };
 
 function dockerVolume(key: string, compose: Compose): DockerVolume {
-	const { name: raw, external } = (compose.volumes?.[key] ?? {}) as {
+	const { name: own, external } = (compose.volumes?.[key] ?? {}) as {
 		name?: unknown;
 		external?: unknown;
 	};
-	if (raw === undefined || raw === null) {
+	// The legacy `external: {name: X}` names the Docker volume too; Compose takes
+	// it as `name` and rejects a definition where the two differ.
+	const legacy =
+		external && typeof external === 'object' ? (external as { name?: unknown }).name : undefined;
+	const raws = [own, legacy].filter((raw) => raw !== undefined && raw !== null).map(String);
+	if (raws.length === 0) {
 		const isExternal = external !== undefined && external !== false;
 		return isExternal ? { kind: 'named', name: key } : { kind: 'project', key };
 	}
-	const name = interpolate(String(raw));
-	return name.includes(UNSET) ? { kind: 'unresolved', raw: String(raw) } : { kind: 'named', name };
+	const names = [...new Set(raws.map(interpolate))];
+	if (names.length > 1 || names[0]!.includes(UNSET)) {
+		return { kind: 'unresolved', raw: [...new Set(raws)].join(' or ') };
+	}
+	return { kind: 'named', name: names[0]! };
 }
 
 const describeDockerVolume = (volume: DockerVolume): string =>
