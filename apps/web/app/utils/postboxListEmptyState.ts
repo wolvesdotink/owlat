@@ -9,17 +9,46 @@
  *
  * Labels are catalog KEYS — module scope cannot call `useI18n` — resolved by the
  * list at its own render boundary.
+ *
+ * A hint that teaches a key comes in variants, one per set of keys it can name.
+ * The list passes which shortcuts fire right now (preset, remaps and the scope
+ * on screen decide that), and the first variant whose keys all fire wins, so a
+ * hint never tells someone to press a key that does nothing and never prints a
+ * blank where a key should be.
  */
 
 export interface PostboxListEmptyState {
 	readonly icon: string;
 	readonly titleKey: string;
 	readonly hintKey?: string;
+	/**
+	 * The hint's message parameters that name a key, as shortcut catalog ids,
+	 * so the list prints each key as this person has it bound, for this machine.
+	 */
+	readonly hintShortcuts?: Readonly<Record<string, string>>;
 	/** Offer the "set up a filter" link (empty custom folders only). */
 	readonly showFilterAction: boolean;
 }
 
 const KEY = 'components.postbox.postboxThreadList';
+
+interface HintVariant {
+	readonly key: string;
+	/** Message parameter -> shortcut catalog id. */
+	readonly shortcuts?: Readonly<Record<string, string>>;
+}
+
+/** The first variant whose keys all fire; no hint when none qualifies. */
+function pickHint(
+	variants: readonly HintVariant[],
+	isShortcutLive: (id: string) => boolean
+): Pick<PostboxListEmptyState, 'hintKey' | 'hintShortcuts'> {
+	const variant = variants.find((v) => Object.values(v.shortcuts ?? {}).every(isShortcutLive));
+	if (!variant) return {};
+	return variant.shortcuts
+		? { hintKey: variant.key, hintShortcuts: variant.shortcuts }
+		: { hintKey: variant.key };
+}
 
 export function postboxListEmptyState(args: {
 	/** A triage chip (Unread/Starred/Attachments) is hiding rows that exist. */
@@ -29,6 +58,8 @@ export function postboxListEmptyState(args: {
 	/** The label view renders with folder-role "inbox" but is not the inbox. */
 	emptyContext?: 'label';
 	folderRole: string;
+	/** Whether a shortcut catalog id fires right now. */
+	isShortcutLive: (id: string) => boolean;
 }): PostboxListEmptyState {
 	if (args.filterActive) {
 		return {
@@ -46,7 +77,13 @@ export function postboxListEmptyState(args: {
 		return {
 			icon: 'lucide:tag',
 			titleKey: `${KEY}.emptyLabelTitle`,
-			hintKey: `${KEY}.emptyLabelHint`,
+			...pickHint(
+				[
+					{ key: `${KEY}.emptyLabelHint`, shortcuts: { keys: 'postbox.label' } },
+					{ key: `${KEY}.emptyLabelNoKeyHint` },
+				],
+				args.isShortcutLive
+			),
 			showFilterAction: false,
 		};
 	}
@@ -56,7 +93,21 @@ export function postboxListEmptyState(args: {
 			titleKey: `${KEY}.emptyInboxTitle`,
 			// Teach the two moves a new member reaches for first: compose and the
 			// command palette. Quiet enough to stay welcome once the inbox fills.
-			hintKey: `${KEY}.emptyInboxHint`,
+			// Both moves are keys, so without either key there is nothing to teach.
+			...pickHint(
+				[
+					{
+						key: `${KEY}.emptyInboxHint`,
+						shortcuts: { compose: 'global.compose', palette: 'global.commandPalette' },
+					},
+					{ key: `${KEY}.emptyInboxComposeHint`, shortcuts: { compose: 'global.compose' } },
+					{
+						key: `${KEY}.emptyInboxPaletteHint`,
+						shortcuts: { palette: 'global.commandPalette' },
+					},
+				],
+				args.isShortcutLive
+			),
 			showFilterAction: false,
 		};
 	}

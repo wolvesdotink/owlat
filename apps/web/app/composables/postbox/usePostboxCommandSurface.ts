@@ -69,21 +69,21 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 					{
 						id: 'postbox:compose',
 						label: t('shared.postbox.usePostboxCommandSurface.items.compose'),
-						hint: 'c',
+						shortcutId: 'global.compose',
 						icon: 'lucide:pencil',
 						run: () => void composeNav.open({ mailboxId: mailboxId.value }),
 					},
 					{
 						id: 'postbox:reply-all',
 						label: t('shared.postbox.usePostboxCommandSurface.items.replyAll'),
-						hint: 'a',
+						shortcutId: 'postbox.replyAll',
 						icon: 'lucide:reply-all',
 						run: () => dispatchReaderAction('replyAll'),
 					},
 					{
 						id: 'postbox:forward',
 						label: t('shared.postbox.usePostboxCommandSurface.items.forward'),
-						hint: 'f',
+						shortcutId: 'postbox.forward',
 						icon: 'lucide:forward',
 						run: () => dispatchReaderAction('forward'),
 					},
@@ -102,7 +102,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 					{
 						id: 'postbox:move',
 						label: t('shared.postbox.usePostboxCommandSurface.items.move'),
-						hint: 'v',
+						shortcutId: 'postbox.move',
 						icon: 'lucide:folder-input',
 						run: () => dispatchReaderAction('move'),
 					},
@@ -153,7 +153,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 					{
 						id: 'postbox:search',
 						label: t('shared.postbox.usePostboxCommandSurface.items.search'),
-						hint: '/',
+						shortcutId: 'postbox.search',
 						icon: 'lucide:search',
 						run: () => void navigateTo('/dashboard/postbox/search'),
 					},

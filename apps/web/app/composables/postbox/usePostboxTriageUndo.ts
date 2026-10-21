@@ -11,7 +11,10 @@
  *
  * Every entry gets its own toast with an Undo action; taking an entry (by
  * button or by keyboard) removes that toast, and an entry that expires or is
- * evicted takes its toast and its callback with it.
+ * evicted takes its toast and its callback with it. Only the NEWEST entry's
+ * toast says "Ctrl+Z to undo" (⌘Z on a Mac): the keyboard always takes the top
+ * of the stack, so an older toast offering the chord would be a promise the
+ * key breaks. The hint moves down as the stack shrinks.
  *
  * The Cmd/Ctrl+Z listener is installed APP-WIDE by this module the moment the
  * stack becomes non-empty and removed again when it empties — no surface has
@@ -34,6 +37,7 @@ import {
 	type PostboxUndoEntry,
 } from '~/utils/postboxUndoStack';
 import { DEFAULT_OPTIMISTIC_UNDO_WINDOW_MS } from '~/composables/useOptimisticMutation';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 /** Alias of the shared optimistic undo window — one source of truth for "undo is 8s". */
 export const POSTBOX_TRIAGE_UNDO_WINDOW_MS = DEFAULT_OPTIMISTIC_UNDO_WINDOW_MS;
@@ -80,10 +84,14 @@ let entrySeq = 0;
 // The single app-wide Cmd/Ctrl+Z binding, installed while entries are pending.
 let boundHotkey: ((event: KeyboardEvent) => void) | null = null;
 
+/** The chord `onWindowKeydown` answers, for the hint that names it. */
+const UNDO_CHORD = 'mod+z';
+
 export function usePostboxTriageUndo() {
 	const entries = useState<TriageUndoEntry[]>('postbox:triage-undo', () => []);
-	const { showToast, removeToast } = useToast();
+	const { showToast, removeToast, setToastShortcutHint } = useToast();
 	const { t } = useI18n();
+	const { chordLabel } = useShortcutLabels();
 
 	/** Forget an entry's side tables (toast, callback, expiry timer). */
 	function releaseEntry(entry: TriageUndoEntry) {
@@ -96,8 +104,21 @@ export function usePostboxTriageUndo() {
 		if (entry.toastId) removeToast(entry.toastId);
 	}
 
+	/** Put the keyboard hint on the newest entry's toast and take it off the rest. */
+	function syncHint() {
+		const hint = t('shared.postbox.usePostboxTriageUndo.keyHint', {
+			keys: chordLabel(UNDO_CHORD),
+		});
+		const newest = entries.value[0];
+		for (const entry of entries.value) {
+			if (entry.toastId) setToastShortcutHint(entry.toastId, entry === newest ? hint : undefined);
+		}
+	}
+
+	/** Called after every change to the stack: the binding and its hint follow it. */
 	function syncHotkey() {
 		if (import.meta.server) return;
+		syncHint();
 		const wanted = entries.value.length > 0;
 		if (wanted && !boundHotkey) {
 			boundHotkey = onWindowKeydown;

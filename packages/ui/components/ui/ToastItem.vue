@@ -164,7 +164,10 @@ watch(
 		-->
 		<div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
 			<p :class="['min-w-0 flex-[1_1_10rem] text-sm font-medium break-words', style.text]">
-				{{ toast.message }}
+				{{ toast.message
+				}}<span v-if="toast.shortcutHint" class="font-normal opacity-80 pointer-coarse:hidden">
+					· {{ toast.shortcutHint }}</span
+				>
 			</p>
 
 			<!-- Optional inline action (e.g. "Undo") — a plain one dismisses the toast; an observed one keeps it until its outcome -->

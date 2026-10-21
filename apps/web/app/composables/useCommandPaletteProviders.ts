@@ -80,6 +80,7 @@ export function useCommandPaletteProviders() {
 				id: verb.id,
 				label: t(verb.labelKey),
 				icon: entry.icon,
+				...(entry.shortcutId ? { shortcutId: entry.shortcutId } : {}),
 				// A verb that is a page is the same result as that page under Go to.
 				...(href ? { href } : {}),
 				run: href

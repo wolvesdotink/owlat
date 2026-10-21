@@ -141,6 +141,7 @@ export function buildThreadSurfaceGroups(deps: ThreadSurfaceDeps, query: string)
 			label: deps.t('shared.commandPaletteSurfaces.thread.reply'),
 			...(subject ? { subtitle: subject } : {}),
 			icon: 'lucide:reply',
+			shortcutId: 'postbox.reply',
 			run: deps.onReply,
 		},
 		{
@@ -148,6 +149,7 @@ export function buildThreadSurfaceGroups(deps: ThreadSurfaceDeps, query: string)
 			label: deps.t('shared.commandPaletteSurfaces.thread.archive'),
 			...(subject ? { subtitle: subject } : {}),
 			icon: 'lucide:archive',
+			shortcutId: 'postbox.archive',
 			run: deps.onArchive,
 		},
 	];

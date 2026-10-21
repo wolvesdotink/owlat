@@ -37,7 +37,7 @@ vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	if (!stateBuckets.has(key)) stateBuckets.set(key, ref(init()));
 	return stateBuckets.get(key);
 });
-vi.stubGlobal('useToast', () => ({ showToast, removeToast }));
+vi.stubGlobal('useToast', () => ({ showToast, removeToast, setToastShortcutHint: vi.fn() }));
 // The undo toast's action label is translated, so the real catalog sits behind
 // the `useI18n` auto-import (mirrors usePostboxTriageUndo's own test).
 const i18n = createTestI18n();
