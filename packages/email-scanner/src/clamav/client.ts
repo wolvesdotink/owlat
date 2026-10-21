@@ -33,11 +33,7 @@ const defaultLogger: LogFn = (level, message, meta) => {
 /**
  * Create a TCP connection to clamd.
  */
-function createConnection(
-	host: string,
-	port: number,
-	connectTimeout: number,
-): Promise<Socket> {
+function createConnection(host: string, port: number, connectTimeout: number): Promise<Socket> {
 	return new Promise((resolve, reject) => {
 		const socket = new Socket();
 		const timer = setTimeout(() => {
@@ -60,11 +56,7 @@ function createConnection(
 /**
  * Send INSTREAM command and stream data to clamd, then read the verdict.
  */
-function instreamScan(
-	socket: Socket,
-	data: Buffer,
-	scanTimeout: number,
-): Promise<string> {
+function instreamScan(socket: Socket, data: Buffer, scanTimeout: number): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const timer = setTimeout(() => {
 			socket.destroy();
@@ -160,7 +152,7 @@ export function parseResponse(response: string): ClamScanResult {
  */
 export async function scanBufferDirect(
 	data: Buffer,
-	options?: Partial<ClamClientOptions>,
+	options?: Partial<ClamClientOptions>
 ): Promise<ClamScanResult> {
 	const host = options?.host ?? DEFAULT_HOST;
 	const port = options?.port ?? DEFAULT_PORT;
@@ -198,7 +190,7 @@ export async function scanBufferDirect(
 export async function ping(
 	host: string = DEFAULT_HOST,
 	port: number = DEFAULT_PORT,
-	timeout: number = DEFAULT_CONNECT_TIMEOUT,
+	timeout: number = DEFAULT_CONNECT_TIMEOUT
 ): Promise<boolean> {
 	let socket: Socket | null = null;
 	try {

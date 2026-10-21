@@ -3,7 +3,6 @@ import { api } from '@owlat/api';
 import { fakeLocalStore } from './fakeLocalStore';
 import { optimisticReorderLabels, optimisticUpdateLabel } from '../labelUpdaters';
 
-
 const MB = 'mb1';
 const list = api.mail.labels.list;
 const thread = api.mail.mailbox.messages.listThreadMessages;

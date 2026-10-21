@@ -18,7 +18,6 @@ import {
 	optimisticTrash,
 } from '../mailUpdaters';
 
-
 const NOW = 1_800_000_000_000;
 const MB = 'mb1';
 const INBOX = 'f-inbox';
