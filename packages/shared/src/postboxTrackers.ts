@@ -22,6 +22,7 @@
  * `data:`/`cid:` resources are never flagged — they cannot phone home.
  */
 
+import { escapeImgTextInForeignContent, replaceImgTags, scanStartTag } from './postboxImgTags';
 import { TRACKER_HOST_PATTERNS } from './postboxTrackerHosts';
 
 export interface TrackerDetection {
@@ -29,133 +30,6 @@ export interface TrackerDetection {
 	pixelCount: number;
 	/** Deduped, sorted hosts of the flagged resources (for the badge popover). */
 	trackerHosts: readonly string[];
-}
-
-// The start of an `<img` tag. The tag's end is found by `scanStartTag` rather
-// than `<img\b[^>]*>`, which backtracks quadratically over unterminated tags.
-const IMG_TAG_START_RE = /<img(?![\w])/gi;
-
-// The tokenizer states a start tag passes through between its name and `>`
-// (HTML spec 13.2.5.8 onwards; the self-closing and after-quoted-value states
-// behave like before-attribute-name here, so they share it).
-const TAG_NAME = 0;
-const BEFORE_ATTR_NAME = 1;
-const ATTR_NAME = 2;
-const AFTER_ATTR_NAME = 3;
-const BEFORE_ATTR_VALUE = 4;
-const DOUBLE_QUOTED = 5;
-const SINGLE_QUOTED = 6;
-const UNQUOTED = 7;
-type TagState =
-	| typeof TAG_NAME
-	| typeof BEFORE_ATTR_NAME
-	| typeof ATTR_NAME
-	| typeof AFTER_ATTR_NAME
-	| typeof BEFORE_ATTR_VALUE
-	| typeof DOUBLE_QUOTED
-	| typeof SINGLE_QUOTED
-	| typeof UNQUOTED;
-
-function isTagWhitespace(c: string): boolean {
-	return c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
-}
-
-/**
- * Tokenize the start tag whose name begins at `from` the way the browser does,
- * reporting each attribute (lowercased name, raw value) to `onAttr`. Returns
- * the index of the `>` that closes the tag, or -1 when the input ends first.
- * A `>` inside a quoted value does not close the tag, and a quote only opens a
- * value right after `=`: in a name or an unquoted value it is a character.
- */
-function scanStartTag(
-	html: string,
-	from: number,
-	onAttr?: (name: string, value: string) => void
-): number {
-	let state: TagState = TAG_NAME;
-	let nameStart = 0;
-	let name = '';
-	let valueStart = 0;
-	for (let i = from; i < html.length; i++) {
-		const c = html.charAt(i);
-		switch (state) {
-			case TAG_NAME:
-				if (c === '>') return i;
-				if (isTagWhitespace(c) || c === '/') state = BEFORE_ATTR_NAME;
-				break;
-			case BEFORE_ATTR_NAME:
-				if (c === '>') return i;
-				if (isTagWhitespace(c) || c === '/') break;
-				// Anything else, `=` and quotes included, starts a name.
-				nameStart = i;
-				state = ATTR_NAME;
-				break;
-			case ATTR_NAME:
-			case AFTER_ATTR_NAME:
-				if (state === ATTR_NAME) {
-					if (!isTagWhitespace(c) && c !== '/' && c !== '>' && c !== '=') break;
-					name = html.slice(nameStart, i).toLowerCase();
-					state = AFTER_ATTR_NAME;
-				}
-				if (isTagWhitespace(c)) break;
-				if (c === '=') {
-					state = BEFORE_ATTR_VALUE;
-					break;
-				}
-				onAttr?.(name, '');
-				if (c === '>') return i;
-				if (c === '/') {
-					state = BEFORE_ATTR_NAME;
-				} else {
-					nameStart = i;
-					state = ATTR_NAME;
-				}
-				break;
-			case BEFORE_ATTR_VALUE:
-				if (isTagWhitespace(c)) break;
-				if (c === '>') {
-					onAttr?.(name, '');
-					return i;
-				}
-				valueStart = c === '"' || c === "'" ? i + 1 : i;
-				state = c === '"' ? DOUBLE_QUOTED : c === "'" ? SINGLE_QUOTED : UNQUOTED;
-				break;
-			case DOUBLE_QUOTED:
-			case SINGLE_QUOTED:
-				if (c !== (state === DOUBLE_QUOTED ? '"' : "'")) break;
-				onAttr?.(name, html.slice(valueStart, i));
-				state = BEFORE_ATTR_NAME;
-				break;
-			case UNQUOTED:
-				if (!isTagWhitespace(c) && c !== '>') break;
-				onAttr?.(name, html.slice(valueStart, i));
-				if (c === '>') return i;
-				state = BEFORE_ATTR_NAME;
-				break;
-		}
-	}
-	return -1;
-}
-
-/**
- * Replace every `<img …>` tag in one linear pass. A tag the input ends inside
- * (an unterminated quote, or no `>` at all) is left as it is, and so is the
- * rest of the input: the browser reads it all as part of that tag.
- */
-function replaceImgTags(html: string, replace: (tag: string) => string): string {
-	const starts = new RegExp(IMG_TAG_START_RE.source, 'gi');
-	let out = '';
-	let from = 0;
-	let match: RegExpExecArray | null;
-	while ((match = starts.exec(html))) {
-		const close = scanStartTag(html, match.index + 1);
-		// The tag runs to the end of the input: nothing after it is a tag.
-		if (close === -1) break;
-		out += html.slice(from, match.index) + replace(html.slice(match.index, close + 1));
-		from = close + 1;
-		starts.lastIndex = from;
-	}
-	return out + html.slice(from);
 }
 
 // The named references that can spell a URL's scheme or authority; anything
@@ -197,6 +71,18 @@ function attrValue(tag: string, name: string): string | null {
 		if (raw === null && attr === name) raw = value;
 	});
 	return raw === null ? null : decodeCharRefs(raw);
+}
+
+/**
+ * The first `src=` anywhere in a tag's text, quoted or bare, decoded: how the
+ * scanner read tags before it tokenized them. Only for an `<img` the tokenizer
+ * did not read as a tag (see `replaceImgTags`), where the browser's reading is
+ * not known, so any `src=` in the text may be the one that loads.
+ */
+function looseSrcValue(tag: string): string | null {
+	const m = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+	const raw = m ? (m[1] ?? m[2] ?? m[3]) : undefined;
+	return raw == null ? null : decodeCharRefs(raw);
 }
 
 /** Read one property value out of an inline style string. */
@@ -329,14 +215,29 @@ export function isTrackingPixelTag(tag: string): boolean {
 	);
 }
 
-/** True when an <img ...> tag string has a src that is not an inline `data:`/`cid:` part. */
-function isRemoteImgTag(tag: string): boolean {
-	const src = attrValue(tag, 'src');
+/** True for a src that is set and is not an inline `data:`/`cid:` part. */
+function isRemoteSrc(src: string | null): boolean {
 	if (!src || normalizeResourceUrl(src) === '') return false;
 	// Only inline parts are known not to phone home; anything else, however it
 	// is spelled (`https:&#9;//…`, `//host/…`), is stripped.
 	return !isEmbeddedResourceUrl(src);
 }
+
+/**
+ * True when an <img ...> tag string has a remote src. A tag that was not
+ * tokenized (see `replaceImgTags`) also counts when any `src=` in its text is
+ * remote, as the earlier scanner read it.
+ */
+function isRemoteImgTag(tag: string, tokenized: boolean): boolean {
+	return isRemoteSrc(attrValue(tag, 'src')) || (!tokenized && isRemoteSrc(looseSrcValue(tag)));
+}
+
+// A removal can join the text around it into a new tag (`<<img …>img …>`) or
+// pair a quote differently, so an `<img` that sat inside a value becomes a
+// tag; each round re-reads the previous round's output. Crafted input that
+// keeps doing so past the last round has every `<img` left turned into text.
+const MAX_STRIP_ROUNDS = 4;
+const IMG_TAG_OPEN_RE = /<(?=img(?![\w]))/gi;
 
 export interface RemoteImageStripResult {
 	/** HTML with every remote-src <img> tag removed. */
@@ -365,13 +266,21 @@ export interface RemoteImageStripResult {
  */
 export function stripRemoteImages(html: string): RemoteImageStripResult {
 	try {
+		let out = html;
 		let strippedRemoteImages = 0;
-		const out = replaceImgTags(html, (tag) => {
-			if (!isRemoteImgTag(tag)) return tag;
-			strippedRemoteImages += 1;
-			return '';
-		});
-		return { html: out, strippedRemoteImages };
+		for (let round = 0; round < MAX_STRIP_ROUNDS; round++) {
+			let removed = 0;
+			out = replaceImgTags(out, (tag, tokenized) => {
+				if (!isRemoteImgTag(tag, tokenized)) return tag;
+				removed += 1;
+				return '';
+			});
+			strippedRemoteImages += removed;
+			if (removed === 0) {
+				return { html: escapeImgTextInForeignContent(out), strippedRemoteImages };
+			}
+		}
+		return { html: out.replace(IMG_TAG_OPEN_RE, '&lt;'), strippedRemoteImages };
 	} catch {
 		return { html, strippedRemoteImages: 0 };
 	}

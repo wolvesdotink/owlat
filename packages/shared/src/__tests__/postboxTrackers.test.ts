@@ -249,17 +249,110 @@ describe('stripRemoteImages', () => {
 		);
 	});
 
-	it('keeps the tail of an unterminated quote and stays linear over it', () => {
+	it('reads an unterminated quote to the end once and stays linear over it', () => {
 		// The open quote swallows the rest of the input, so none of the later
-		// `<img` starts is a tag; rescanning from each would be quadratic.
+		// `<img` starts is a tag to the browser; rescanning quote-aware from each
+		// would be quadratic. The first-`>` floor still drops what it reads as a
+		// remote image, the truncated tag that opens the quote included.
 		const flood = (n: number) =>
 			`<img src="https://evil.example/p.gif"><p>x</p><img alt="open ${'<img src=https://evil.example/q.gif>'.repeat(n)}`;
 		expect(scalingRatio(flood, 12_500, stripRemoteImages)).toBeLessThan(LINEAR_RATIO);
 
-		const input = flood(50_000);
-		const out = stripRemoteImages(input);
+		const out = stripRemoteImages(flood(50_000));
+		expect(out.strippedRemoteImages).toBe(50_001);
+		expect(out.html).toBe('<p>x</p>');
+	});
+
+	it('re-reads its output when a removal joins the text around it into a tag', () => {
+		const joined = '<<img src="https://cdn.example/a">img src="https://cdn.example/b"><p>x</p>';
+		expect(stripRemoteImages(joined)).toEqual({ html: '<p>x</p>', strippedRemoteImages: 2 });
+
+		// Nesting deeper than the rounds go: every `<img` left becomes text.
+		const deep = `${'<'.repeat(12)}${'img src=https://cdn.example/a>'.repeat(13)}`;
+		const out = stripRemoteImages(deep);
+		expect(out.strippedRemoteImages).toBeGreaterThan(0);
+		expect(out.html).not.toMatch(/<img/i);
+		expect(out.html).toContain('&lt;img');
+	});
+
+	it('does not read an `<img` inside a comment or another tag as a tag', () => {
+		const real = '<img alt=">" src="https://cdn.example/a">';
+		for (const before of [
+			'<!-- <img alt=" -->',
+			'<!-- <img alt=" --!>',
+			'<!-->',
+			'<!--->',
+			'<a title="<img alt=\'">',
+			"<p data-x='<img alt=\"' >",
+			'</p title="<img alt=\'">',
+			'<!DOCTYPE x "<img alt=\'">',
+			'<?php <img alt=" ?>',
+			'</ <img alt=" >',
+		]) {
+			const out = stripRemoteImages(`${before} ${real}<p>x</p>`);
+			expect(out.strippedRemoteImages, before).toBe(1);
+			expect(out.html, before).toBe(`${before} <p>x</p>`);
+		}
+	});
+
+	it('does not read an `<img` inside raw-text content as a tag', () => {
+		const real = '<img alt=">" src="https://cdn.example/a">';
+		for (const element of [
+			'<style>p[title="<img alt=\'"] { color: red }</style>',
+			'<STYLE>a::after { content: "<img alt=\'" }</Style >',
+			'<title><img alt="</title>',
+			"<textarea><img alt='</textarea>",
+			'<script>var s = "<img alt=\'";</script>',
+		]) {
+			const out = stripRemoteImages(`${element}${real}<p>x</p>`);
+			expect(out.strippedRemoteImages, element).toBe(1);
+			expect(out.html, element).toBe(`${element}<p>x</p>`);
+		}
+	});
+
+	it('still drops what the first-`>` scan sees where the tokenizer model stops', () => {
+		// Outlook renders the content of a conditional comment.
+		const conditional = '<!--[if mso]><img src="https://cdn.example/a"><![endif]-->';
+		expect(stripRemoteImages(conditional)).toEqual({
+			html: '<!--[if mso]><![endif]-->',
+			strippedRemoteImages: 1,
+		});
+		// In SVG a CDATA section runs to `]]>`, not to its first `>`.
+		const cdata =
+			'<svg><![CDATA[ a > b <img alt=" ]]></svg><img src="https://cdn.example/a" alt="y"><p>x</p>';
+		const out = stripRemoteImages(cdata);
 		expect(out.strippedRemoteImages).toBe(1);
-		expect(out.html).toBe(input.slice('<img src="https://evil.example/p.gif">'.length));
+		expect(out.html).not.toContain('cdn.example');
+	});
+
+	it('turns an `<img` it does not read as a tag into text when SVG or MathML is present', () => {
+		// Removing the breakout `<img>` leaves the `<title>` inside MathML,
+		// where it holds markup, so the `<img` in it would become a tag.
+		const html =
+			'<math><img src="https://cdn.example/c"><title><img alt=">" src="https://cdn.example/b">';
+		expect(stripRemoteImages(html)).toEqual({
+			html: '<math><title>&lt;img alt=">" src="https://cdn.example/b">',
+			strippedRemoteImages: 1,
+		});
+		// A tag it does read keeps its form, and without SVG/MathML nothing changes.
+		const inline = `<svg viewBox="0 0 1 1"></svg>${INLINE_CID}<!-- <img alt="x"> -->`;
+		expect(stripRemoteImages(inline).html).toBe(
+			`<svg viewBox="0 0 1 1"></svg>${INLINE_CID}<!-- &lt;img alt="x"> -->`
+		);
+		const plain = `${INLINE_CID}<!-- <img alt="x"> -->`;
+		expect(stripRemoteImages(plain).html).toBe(plain);
+	});
+
+	it('stays linear over floods of comments and raw-text elements', () => {
+		for (const unit of [
+			'<!-- <img alt=" -->',
+			'<style><img alt="</style>',
+			'<!--x--x-',
+			'<title>',
+		]) {
+			const flood = (n: number) => `${unit.repeat(n)}<img src="https://cdn.example/a">`;
+			expect(scalingRatio(flood, 12_500, stripRemoteImages), unit).toBeLessThan(LINEAR_RATIO);
+		}
 	});
 
 	it('fails soft on non-string input', () => {
