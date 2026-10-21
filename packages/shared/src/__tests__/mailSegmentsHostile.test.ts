@@ -29,9 +29,13 @@ const SHAPES: Record<string, (k: number) => string> = {
 	'nested blockquotes': (k) => `${'<blockquote>q'.repeat(k)}${'</blockquote>x'.repeat(k)}`,
 };
 
+// The guard is the counted work, not the clock: a loaded CI runner can take
+// seconds over the largest inputs, so the default 5 s timeout must not decide.
+const SCALING = { timeout: 30_000 };
+
 describe('segmentMessage: linear work on hostile HTML', () => {
 	for (const [name, shape] of Object.entries(SHAPES)) {
-		it(name, () => {
+		it(name, SCALING, () => {
 			for (const k of [4_000, 8_000, 16_000]) {
 				const html = shape(k);
 				// A bounded number of reads per input character.

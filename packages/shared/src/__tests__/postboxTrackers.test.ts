@@ -34,6 +34,13 @@ function scalingRatio(build: (n: number) => string, n: number, run: (input: stri
 /** Linear stays near 4x; the quadratic tag regex this guards measures far higher. */
 const LINEAR_RATIO = 8;
 
+/**
+ * The scaling tests take a few hundred milliseconds locally and several
+ * seconds on a loaded CI runner. The ratio is the guard, so the default 5 s
+ * test timeout must not turn back into a wall-clock budget.
+ */
+const SCALING = { timeout: 30_000 };
+
 const PIXEL_1X1 = '<img src="https://tracker.example.com/open.gif" width="1" height="1" alt="">';
 const HIDDEN_IMG = '<img src="https://tracker.example.net/o.png" style="display:none">';
 const PHOTO =
@@ -203,7 +210,7 @@ describe('stripRemoteImages', () => {
 		expect(out.html).not.toContain('tracker.example.com');
 	});
 
-	it('stays linear on a flood of unterminated <img tags', () => {
+	it('stays linear on a flood of unterminated <img tags', SCALING, () => {
 		// No `>` anywhere: `<img\b[^>]*>` retried every start to the end.
 		const flood = (n: number) => `<img src="https://evil.example/p.gif">${'<img src=x '.repeat(n)}`;
 		expect(scalingRatio(flood, 12_500, stripRemoteImages)).toBeLessThan(LINEAR_RATIO);
@@ -258,7 +265,7 @@ describe('stripRemoteImages', () => {
 		);
 	});
 
-	it('reads an unterminated quote to the end once and stays linear over it', () => {
+	it('reads an unterminated quote to the end once and stays linear over it', SCALING, () => {
 		// The open quote swallows the rest of the input, so none of the later
 		// `<img` starts is a tag to the browser; rescanning quote-aware from each
 		// would be quadratic. The first-`>` floor still drops what it reads as a
@@ -364,7 +371,7 @@ describe('stripRemoteImages', () => {
 		expect(stripRemoteImages(plain).html).toBe(plain);
 	});
 
-	it('stays linear over floods of comments and raw-text elements', () => {
+	it('stays linear over floods of comments and raw-text elements', SCALING, () => {
 		for (const unit of [
 			'<!-- <img alt=" -->',
 			'<style><img alt="</style>',
