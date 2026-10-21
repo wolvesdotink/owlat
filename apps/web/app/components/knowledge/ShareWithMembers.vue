@@ -8,7 +8,10 @@
  * admin shares it (knowledge/sharing.ts). The review shown is kept still: when
  * the entry changes underneath it, the dialog says so and sharing waits for a
  * look at the new version, and the backend refuses a share of a version
- * nobody reviewed.
+ * nobody reviewed. A review that fails to load says so with Try again, and one
+ * the backend no longer returns (the entry was deleted, or the viewer lost the
+ * right to share) says that; neither leaves the dialog loading, and neither
+ * can be confirmed.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -22,9 +25,15 @@ const { t } = useI18n();
 const { showToast } = useToast();
 
 const open = ref(false);
-const { data: liveReview } = useOrganizationQuery(api.knowledge.sharing.getShareReview, () =>
+const {
+	data: liveReview,
+	error: reviewError,
+	refetch: refetchReview,
+} = useOrganizationQuery(api.knowledge.sharing.getShareReview, () =>
 	open.value ? { entryId: props.entryId } : undefined
 );
+/** The backend answered and has no review to give: gone, or no longer ours to share. */
+const isUnavailable = computed(() => liveReview.value === null);
 
 /** The version on screen; the live one only replaces it when asked to. */
 const reviewed = ref<ShareReview | null>(null);
@@ -51,6 +60,8 @@ const canConfirm = computed(
 		!!reviewed.value &&
 		reviewed.value.blocker === null &&
 		!hasChanged.value &&
+		!reviewError.value &&
+		!isUnavailable.value &&
 		!share.isLoading.value
 );
 
@@ -92,7 +103,22 @@ async function confirm(): Promise<void> {
 		size="xl"
 		@update:open="(value: boolean) => !value && close()"
 	>
-		<p v-if="!reviewed" class="text-sm text-text-tertiary">
+		<div v-if="reviewError" data-testid="share-load-failed">
+			<UiQueryBoundary
+				:error="reviewError"
+				:error-title="t('components.knowledge.shareWithMembers.loadFailed')"
+				@retry="refetchReview"
+			/>
+		</div>
+		<p
+			v-else-if="isUnavailable"
+			class="flex items-start gap-2 rounded-lg bg-bg-surface p-3 text-sm text-text-secondary"
+			data-testid="share-unavailable"
+		>
+			<Icon name="lucide:eye-off" class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
+			<span>{{ t('components.knowledge.shareWithMembers.unavailable') }}</span>
+		</p>
+		<p v-else-if="!reviewed" class="text-sm text-text-tertiary">
 			{{ t('components.knowledge.shareWithMembers.loading') }}
 		</p>
 		<div v-else class="space-y-4" data-testid="share-review">

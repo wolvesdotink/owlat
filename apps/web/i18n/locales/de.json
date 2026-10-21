@@ -4386,6 +4386,7 @@
 				"content": "Inhalt",
 				"deletedContact": "Gelöschter Kontakt",
 				"intro": "Mitglieder sehen diesen Eintrag nicht. Bevor er eingeschränkt wurde, kann er Text, Tags oder Kontaktverknüpfungen aus privater Mail aufgenommen haben. Prüf alles unten und teile ihn dann.",
+				"loadFailed": "Eintrag konnte nicht geladen werden",
 				"loading": "Eintrag wird geladen …",
 				"noContacts": "Keine verknüpften Kontakte",
 				"noTags": "Keine Tags",
@@ -4395,7 +4396,8 @@
 				"showLatest": "Neue Version prüfen",
 				"tags": "Tags",
 				"title": "Mit Mitgliedern teilen?",
-				"titleLabel": "Titel"
+				"titleLabel": "Titel",
+				"unavailable": "Dieser Eintrag lässt sich nicht mehr prüfen. Vielleicht wurde er gelöscht, oder du darfst kein Wissen mehr teilen."
 			}
 		},
 		"languagePicker": {

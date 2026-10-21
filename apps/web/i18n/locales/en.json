@@ -4386,6 +4386,7 @@
 				"content": "Content",
 				"deletedContact": "Deleted contact",
 				"intro": "Members can't see this entry. Before it was restricted, it may have taken in text, tags or contact links from private mail. Check everything below, then share it.",
+				"loadFailed": "Couldn't load this entry",
 				"loading": "Loading the entry…",
 				"noContacts": "No linked contacts",
 				"noTags": "No tags",
@@ -4395,7 +4396,8 @@
 				"showLatest": "Review the new version",
 				"tags": "Tags",
 				"title": "Share with members?",
-				"titleLabel": "Title"
+				"titleLabel": "Title",
+				"unavailable": "This entry can't be reviewed any more. It may have been deleted, or you may no longer be allowed to share knowledge."
 			}
 		},
 		"languagePicker": {

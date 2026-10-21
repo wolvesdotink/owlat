@@ -11,7 +11,10 @@
  *    changes underneath it, sharing waits until the admin looks at the new one;
  *  - the refusals. An entry whose source keeps it from members says why and
  *    cannot be confirmed; Cancel shares nothing; nothing subscribes until the
- *    dialog opens.
+ *    dialog opens;
+ *  - the failures. A review that fails to load, or that the backend no longer
+ *    returns, says so instead of loading forever, and cannot be confirmed; Try
+ *    again re-reads the review.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -21,6 +24,8 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 import ShareWithMembers from '../ShareWithMembers.vue';
+import QueryBoundary from '~/components/ui/QueryBoundary.vue';
+import ErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 type Review = NonNullable<FunctionReturnType<typeof api.knowledge.sharing.getShareReview>>;
@@ -47,6 +52,8 @@ const review = (overrides: Partial<Review> = {}): Review => ({
 });
 
 const live: Ref<Review | null | undefined> = ref(undefined);
+const queryError: Ref<Error | null> = ref(null);
+let refetches = 0;
 let argsFactory: (() => unknown) | undefined;
 const runs: { name: string; args: unknown }[] = [];
 let runResult: { ok: boolean } = { ok: true };
@@ -54,6 +61,8 @@ const toasts: string[] = [];
 
 beforeEach(() => {
 	live.value = undefined;
+	queryError.value = null;
+	refetches = 0;
 	argsFactory = undefined;
 	runs.length = 0;
 	runResult = { ok: true };
@@ -65,7 +74,14 @@ beforeEach(() => {
 				getFunctionName(api.knowledge.sharing.getShareReview)
 			);
 			argsFactory = args;
-			return { data: live, isLoading: ref(false), error: ref(null) };
+			return {
+				data: live,
+				isLoading: ref(false),
+				error: queryError,
+				refetch: () => {
+					refetches += 1;
+				},
+			};
 		}
 	);
 	vi.stubGlobal('useBackendOperation', (reference: Parameters<typeof getFunctionName>[0]) => ({
@@ -118,7 +134,15 @@ const mountShare = () =>
 		props: { entryId: ENTRY_ID },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { UiModal: modalStub, UiButton: buttonStub, NuxtLink: linkStub, Icon: true },
+			stubs: {
+				UiModal: modalStub,
+				UiButton: buttonStub,
+				NuxtLink: linkStub,
+				Icon: true,
+				UiSpinner: true,
+				UiEmptyState: true,
+			},
+			components: { UiQueryBoundary: QueryBoundary, UiErrorAlert: ErrorAlert },
 		},
 	});
 
@@ -240,5 +264,63 @@ describe('ShareWithMembers', () => {
 		expect(runs).toHaveLength(1);
 		expect(toasts).toEqual([]);
 		expect(wrapper.find('[data-testid="modal"]').exists()).toBe(true);
+	});
+
+	it('says when the review fails to load, cannot be confirmed, and re-reads it on Try again', async () => {
+		const wrapper = mountShare();
+		await buttonNamed(wrapper, 'Share with members').trigger('click');
+		queryError.value = new Error('Convex query subscription timed out');
+		await flushPromises();
+
+		const failed = wrapper.find('[data-testid="share-load-failed"]');
+		expect(failed.text()).toContain("Couldn't load this entry");
+		expect(failed.text()).not.toContain('timed out');
+		expect(wrapper.text()).not.toContain('Loading the entry…');
+		expectFullyLocalized(wrapper);
+		const confirm = wrapper.find('[data-testid="share-confirm"]');
+		expect(confirm.attributes('disabled')).toBeDefined();
+		await confirm.trigger('click');
+		expect(runs).toEqual([]);
+
+		await buttonNamed(wrapper, 'Try again').trigger('click');
+		expect(refetches).toBe(1);
+
+		// The re-read answers: the review shows and can be shared.
+		queryError.value = null;
+		live.value = review();
+		await flushPromises();
+		expect(wrapper.find('[data-testid="share-load-failed"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="share-content"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="share-confirm"]').attributes('disabled')).toBeUndefined();
+	});
+
+	it('does not offer a review it can no longer check when the read fails mid-review', async () => {
+		const wrapper = mountShare();
+		await openReview(wrapper, review());
+		queryError.value = new Error('Convex query subscription timed out');
+		await flushPromises();
+		expect(wrapper.find('[data-testid="share-load-failed"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="share-review"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="share-confirm"]').attributes('disabled')).toBeDefined();
+	});
+
+	it('says when the entry can no longer be reviewed instead of loading forever', async () => {
+		const wrapper = mountShare();
+		await openReview(wrapper, null);
+		expect(wrapper.find('[data-testid="share-unavailable"]').text()).toContain(
+			"This entry can't be reviewed any more."
+		);
+		expect(wrapper.text()).not.toContain('Loading the entry…');
+		expectFullyLocalized(wrapper);
+		expect(wrapper.find('[data-testid="share-confirm"]').attributes('disabled')).toBeDefined();
+
+		// Deleted while the review was open: the old review is not confirmable.
+		live.value = review();
+		await flushPromises();
+		expect(wrapper.find('[data-testid="share-review"]').exists()).toBe(true);
+		live.value = null;
+		await flushPromises();
+		expect(wrapper.find('[data-testid="share-unavailable"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="share-confirm"]').attributes('disabled')).toBeDefined();
 	});
 });
