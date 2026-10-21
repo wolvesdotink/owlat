@@ -175,14 +175,28 @@ export async function enqueueClientSentInterpretation(
 	return true;
 }
 
-/** Another non-draft row of the mailbox carries the same Message-ID. */
+/**
+ * Rows sharing one Message-ID read before giving up. Clients re-APPEND a draft
+ * on every autosave, and a draft may keep the Message-ID the sent copy gets.
+ */
+const SAME_MESSAGE_ID_SCAN = 100;
+
+/**
+ * Another non-draft row of the mailbox carries the same Message-ID. Drafts are
+ * skipped while reading, so retained autosaves cannot hide an earlier copy.
+ * Past {@link SAME_MESSAGE_ID_SCAN} rows it answers yes: not reading a copy
+ * costs one brief update, reading it twice costs a model call.
+ */
 async function isHeldElsewhere(ctx: MutationCtx, message: Doc<'mailMessages'>): Promise<boolean> {
 	const rfc822MessageId = canonicalMessageId(message.rfc822MessageId);
-	const rows = await ctx.db
+	let read = 0;
+	for await (const row of ctx.db
 		.query('mailMessages')
 		.withIndex('by_mailbox_and_rfc822_message_id', (q) =>
 			q.eq('mailboxId', message.mailboxId).eq('rfc822MessageId', rfc822MessageId)
-		)
-		.take(10); // bounded: copies of one message
-	return rows.some((row) => row._id !== message._id && !row.flagDraft);
+		)) {
+		if (++read > SAME_MESSAGE_ID_SCAN) return true;
+		if (row._id !== message._id && !row.flagDraft) return true;
+	}
+	return false;
 }

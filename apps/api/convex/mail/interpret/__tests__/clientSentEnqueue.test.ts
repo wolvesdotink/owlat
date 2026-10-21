@@ -275,6 +275,17 @@ describe('our reply from another client → interpretation', () => {
 		expect(await outboundRuns(t)).toEqual([{ kind: 'outboundMail', id: first._id }]);
 	});
 
+	it('a re-APPEND is read once even behind ten draft autosaves of the same Message-ID', async () => {
+		const t = harness();
+		const mailboxId = await seed(t);
+		await ask(t, mailboxId);
+		for (let i = 0; i < 10; i++) await appendReply(t, mailboxId, { role: 'drafts' });
+		const first = await appendReply(t, mailboxId);
+		await appendReply(t, mailboxId);
+
+		expect(await outboundRuns(t)).toEqual([{ kind: 'outboundMail', id: first._id }]);
+	});
+
 	it("the Sent copy of an Owlat send is left to the send's own lifecycle", async () => {
 		const t = harness();
 		const mailboxId = await seed(t);
