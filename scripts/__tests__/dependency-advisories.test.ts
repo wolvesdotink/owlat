@@ -17,6 +17,17 @@
  *   product-tour HTML strings with it (no IN_PLACE, no hooks). The repository
  *   has no DOM that DOMPurify runs correctly under (happy-dom's node getters
  *   defeat it), so the floor is asserted on the resolved version.
+ *
+ * The audit gate does block on the dev-server pair below (GHSA-587h-7wmj-h5pm,
+ * high), but only in the networked Security workflow. The floors are asserted
+ * on the copies the Nuxt dev server loads, so an override or lockfile change
+ * that slides back to a vulnerable release also fails the script tests:
+ *
+ * - `vite` as reached from apps/web → nuxt → @nuxt/vite-builder. Vite bundles
+ *   its own copy of launch-editor for the open-in-editor middleware, so the
+ *   fix ships in vite itself (8.3.3 on the 8.3 line).
+ * - `launch-editor` as reached from apps/web → nuxt → @nuxt/devtools, which
+ *   opens component source files from the devtools panel.
  */
 
 import { createServer, type AddressInfo, type Server, type Socket } from 'node:net';
@@ -37,6 +48,9 @@ const { Address4, Address6 } = socksRequire('ip-address') as typeof IpAddress;
 
 const webRequire = createRequire(`${REPOSITORY_ROOT}apps/web/package.json`);
 const posthogRequire = createRequire(webRequire.resolve('posthog-js/package.json'));
+const nuxtRequire = createRequire(webRequire.resolve('nuxt/package.json'));
+const viteBuilderRequire = createRequire(nuxtRequire.resolve('@nuxt/vite-builder/package.json'));
+const devtoolsRequire = createRequire(nuxtRequire.resolve('@nuxt/devtools/package.json'));
 
 function atLeast(version: string, floor: string): boolean {
 	const have = version.split('.').map(Number);
@@ -156,5 +170,17 @@ describe('dompurify on the web analytics path', () => {
 	it('resolves the release that neutralizes hook-detached IN_PLACE subtrees', () => {
 		const { version } = posthogRequire('dompurify') as { version: string };
 		expect(atLeast(version, '3.4.16'), `dompurify ${version}`).toBe(true);
+	});
+});
+
+describe('dev-server editor launching (GHSA-587h-7wmj-h5pm)', () => {
+	it('resolves a vite release with the patched launch-editor middleware', () => {
+		const { version } = viteBuilderRequire('vite/package.json') as { version: string };
+		expect(atLeast(version, '8.3.3'), `vite ${version}`).toBe(true);
+	});
+
+	it('resolves the launch-editor release that rejects Windows existence-check bypasses', () => {
+		const { version } = devtoolsRequire('launch-editor/package.json') as { version: string };
+		expect(atLeast(version, '2.14.2'), `launch-editor ${version}`).toBe(true);
 	});
 });
