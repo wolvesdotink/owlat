@@ -41,6 +41,9 @@ export const CONTACT_REPOINT_TABLES = [
 	// Answer mode ask sessions: no per-contact uniqueness, so a plain swap. The
 	// survivor's erasure must find them (they quote the person's mail).
 	'answerAskSessions',
+	// Idempotency-Key receipts: a replay then names the surviving contact, and
+	// the survivor's erasure finds them.
+	'apiRequestReceipts',
 ] as const;
 
 /**

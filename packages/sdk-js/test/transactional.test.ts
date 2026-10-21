@@ -307,4 +307,30 @@ describe('TransactionalResource', () => {
 			expect(body.language).toBe('de');
 		});
 	});
+
+	describe('idempotencyKey option', () => {
+		it('sends the key as the Idempotency-Key header', async () => {
+			const spy = mockFetch({ status: 200, body: { data: {} }, headers: TEST_RATE_LIMIT_HEADERS });
+			const client = createTestClient();
+
+			await client.transactional.send(
+				{ email: 'user@example.com', slug: 'welcome' },
+				{ idempotencyKey: 'key-1' }
+			);
+
+			const headers = spy.mock.calls[0][1]?.headers as Record<string, string>;
+			expect(spy.mock.calls[0][0]).toContain('/api/v1/transactional');
+			expect(headers['Idempotency-Key']).toBe('key-1');
+		});
+
+		it('sends no Idempotency-Key header without the option', async () => {
+			const spy = mockFetch({ status: 200, body: { data: {} }, headers: TEST_RATE_LIMIT_HEADERS });
+			const client = createTestClient();
+
+			await client.transactional.send({ email: 'user@example.com', slug: 'welcome' });
+
+			const headers = spy.mock.calls[0][1]?.headers as Record<string, string>;
+			expect(headers['Idempotency-Key']).toBeUndefined();
+		});
+	});
 });

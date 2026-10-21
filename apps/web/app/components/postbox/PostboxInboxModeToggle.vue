@@ -16,6 +16,7 @@
  * on the control says so.
  */
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 defineProps<{
 	/** Which surface is on screen. */
@@ -27,6 +28,12 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const { ariaFor, chordAria } = useShortcutLabels();
+
+// The B key follows the preset (Gmail's frees it), Cmd/Ctrl-B is fixed.
+const keyShortcuts = computed(() =>
+	[ariaFor('postbox.toggleBrowse'), chordAria('mod+b'), 'Escape'].filter(Boolean).join(' ')
+);
 
 const options = computed(() => [
 	{ value: 'today', label: t('components.postbox.postboxInboxModeToggle.priority') },
@@ -37,7 +44,7 @@ const options = computed(() => [
 <template>
 	<UiSegmentedControl
 		size="sm"
-		aria-keyshortcuts="b Escape"
+		:aria-keyshortcuts="keyShortcuts"
 		:aria-label="t('components.postbox.postboxInboxModeToggle.label')"
 		:title="t('components.postbox.postboxInboxModeToggle.title')"
 		:options="options"

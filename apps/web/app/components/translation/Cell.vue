@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TranslationCellStatus } from '~/composables/useTranslationDrafts';
 import { isImeComposing } from '~/utils/imeComposition';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 interface Props {
 	value: string;
@@ -15,6 +16,10 @@ interface Props {
 }
 
 const { t } = useI18n();
+const { chordLabel } = useShortcutLabels();
+const saveTitle = computed(() =>
+	t('components.translation.cell.saveTitle', { keys: chordLabel('mod+Enter') })
+);
 
 const props = withDefaults(defineProps<Props>(), {
 	placeholder: '',
@@ -146,8 +151,8 @@ watch(editValue, () => {
 				<button
 					type="button"
 					class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-					:title="t('components.translation.cell.saveTitle')"
-					:aria-label="t('components.translation.cell.saveTitle')"
+					:title="saveTitle"
+					:aria-label="saveTitle"
 					@click="saveEdit"
 				>
 					<Icon name="lucide:check" class="w-4 h-4" />

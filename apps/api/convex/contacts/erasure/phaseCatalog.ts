@@ -31,6 +31,8 @@ export const CONTACT_ERASURE_PHASES = [
 	'senderMemory',
 	// Contact-scoped draft strategy overrides (a contact id in a string field).
 	'draftStrategySelections',
+	// Idempotency-Key receipts of the send API that name the contact.
+	'apiRequestReceipts',
 ] as const;
 
 export type ContactErasurePhase = (typeof CONTACT_ERASURE_PHASES)[number];

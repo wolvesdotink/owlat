@@ -175,12 +175,11 @@ async function confirmSave() {
 							<!-- The visible query is the start of the name (WCAG 2.5.3); what the
 							     button does is added for screen readers only. -->
 							<span class="sr-only">{{ t('dashboard.postbox.search.changeSearch') }}</span>
-							<kbd
+							<UiShortcut
+								id="global.commandPalette"
 								class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-text-tertiary bg-bg-elevated border border-border-subtle rounded"
 								aria-hidden="true"
-							>
-								<span class="text-xs">⌘</span>K
-							</kbd>
+							/>
 						</button>
 						<!-- Save this search: a recurring question ("unread from my boss")
 						     otherwise gets retyped every morning. Saving pins it into the

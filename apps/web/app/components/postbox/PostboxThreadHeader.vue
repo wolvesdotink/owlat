@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 /**
  * The calm reader's header line (read on arrival §3, plan §6): the subject,
@@ -56,6 +57,9 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+// Reply and Archive run the same reader action as their keys, so their
+// tooltips and accessible shortcuts name the key as this person has it bound.
+const { ariaFor, titleWithShortcut } = useShortcutLabels();
 const headerEl = ref<HTMLElement | null>(null);
 
 const isMuted = computed(() => props.thread?.mutedAt != null);
@@ -102,6 +106,8 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 				size="sm"
 				class="flex-shrink-0"
 				:aria-label="t('postbox.reader.header.reply')"
+				:title="titleWithShortcut(t('postbox.reader.header.reply'), 'postbox.reply')"
+				:aria-keyshortcuts="ariaFor('postbox.reply')"
 				data-testid="thread-header-reply"
 				@click="emit('reply')"
 			>
@@ -113,6 +119,8 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 				size="sm"
 				class="flex-shrink-0"
 				:aria-label="t('postbox.reader.header.archive')"
+				:title="titleWithShortcut(t('postbox.reader.header.archive'), 'postbox.archive')"
+				:aria-keyshortcuts="ariaFor('postbox.archive')"
 				data-testid="thread-header-archive"
 				@click="emit('archive')"
 			>
