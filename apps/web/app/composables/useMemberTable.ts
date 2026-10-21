@@ -98,6 +98,7 @@ export function useMemberTable<
 	const isSortable = (field: string) => table.isSortable(field as SortField);
 	const toggleSort = (field: string) => table.toggleSort(field as SortField);
 	const getSortIcon = (field: string) => table.getSortIcon(field as SortField);
+	const getAriaSort = (field: string) => table.getAriaSort(field as SortField);
 
 	const pageNumbers = computed(() => table.getPageNumbers(totalPages.value));
 	const goToPage = (page: number) => table.goToPage(page, totalPages.value);
@@ -131,6 +132,7 @@ export function useMemberTable<
 		sortOrder,
 		toggleSort,
 		getSortIcon,
+		getAriaSort,
 		isSortable,
 		currentPage,
 		totalPages,

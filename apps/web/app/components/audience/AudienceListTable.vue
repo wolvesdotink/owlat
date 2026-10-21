@@ -13,6 +13,9 @@ interface AudienceListItem {
  * the card list below `md` (`layout="cards"`). `ListPageShell` decides which of
  * the two is mounted; this renders the one it is given, plus the count footer.
  *
+ * The sorted column's header carries `aria-sort` (`getAriaSort`), so the sort
+ * is announced and not only drawn by the chevron.
+ *
  * Each item's name is a link to its detail page, with a visible focus ring,
  * so the list has a keyboard route; the edit and delete buttons carry their
  * own. Segments add their filter column and a "view contacts" link through
@@ -38,6 +41,8 @@ const props = defineProps<{
 	deleteLabel: string;
 	canManage: boolean;
 	getSortIcon: (field: TField) => string | null;
+	/** The active header's `aria-sort`; undefined (attribute omitted) on every other. */
+	getAriaSort: (field: TField) => 'ascending' | 'descending' | undefined;
 	/** The card's second line; the description when omitted. */
 	subtitleOf?: (item: T) => string | undefined;
 }>();
@@ -123,7 +128,7 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 				<thead>
 					<tr class="border-b border-border-subtle">
 						<template v-for="(column, index) in sortColumns" :key="column.field">
-							<th :class="headerCell">
+							<th :class="headerCell" :aria-sort="getAriaSort(column.field)">
 								<button
 									type="button"
 									class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"

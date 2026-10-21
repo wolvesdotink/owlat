@@ -44,6 +44,8 @@ const props = defineProps<{
 	empty: EmptyCopy;
 	isSortable: (field: string) => boolean;
 	getSortIcon: (field: string) => string | null;
+	/** The active header's `aria-sort`; undefined (attribute omitted) on every other. */
+	getAriaSort: (field: string) => 'ascending' | 'descending' | undefined;
 	currentPage: number;
 	totalPages: number;
 	pageNumbers: (number | '...')[];
@@ -162,6 +164,7 @@ const pagerButtonClass =
 									v-for="column in columns"
 									:key="column.field"
 									class="text-left px-6 py-4 text-sm font-medium text-text-secondary"
+									:aria-sort="isSortable(column.field) ? getAriaSort(column.field) : undefined"
 								>
 									<button
 										v-if="isSortable(column.field)"
