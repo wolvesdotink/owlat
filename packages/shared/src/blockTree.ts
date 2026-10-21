@@ -188,6 +188,12 @@ function forEachTreeEntry(
  * in place. Missing ids are filled in a first pass and repeated ids renewed in
  * a second, so a Block without an id gets the same id whether or not repeated
  * ids are renewed (the editor and the server render then agree on it).
+ *
+ * A fresh id is always the smallest `<prefix>-<n>` not in use, counted per
+ * prefix. It then depends only on the ids in use, not on how many ids of the
+ * other kind were filled before it, so filling first and renewing in a later
+ * call (the editor: `parseStoredBlocks`, then the canvas renewal) gives the
+ * same ids as one call doing both (the server's `repeatedBlockIdRenewals`).
  */
 function repairTreeIds(
 	roots: readonly unknown[],
@@ -201,12 +207,16 @@ function repairTreeIds(
 	};
 	forEachTreeEntry(roots, collect, collect);
 
-	let counter = 0;
+	// Every `<prefix>-<n>` up to a prefix's counter is in use, so counting on
+	// from it finds the smallest free one without rescanning.
+	const counters = new Map<string, number>();
 	let repaired = false;
 	const freshId = (prefix: string): string => {
+		let counter = counters.get(prefix) ?? 0;
 		let id: string;
 		do id = `${prefix}-${++counter}`;
 		while (taken.has(id));
+		counters.set(prefix, counter);
 		taken.add(id);
 		return id;
 	};

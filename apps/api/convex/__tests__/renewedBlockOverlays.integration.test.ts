@@ -102,6 +102,30 @@ describe('saving a document whose repeated Block id the editor renewed', () => {
 		expect(de.blocks[nestedIdOf(content)].html).toBe('<p>Deutscher Text</p>');
 	});
 
+	it('carries the overlay when the document also holds an accordion section without an id', async () => {
+		// The editor fills the section id on read and renews the repeat on load,
+		// in two steps; the server predicts both in one. The section must not
+		// shift the id the repeat gets, or the copy loses its translation.
+		const stored = JSON.stringify([
+			text('a', '<p>Hello</p>'),
+			text('a', '<p>Hello</p>'),
+			{ id: 'acc', type: 'accordion', content: { sections: [{ title: 'One', items: [] }] } },
+		]);
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, { content: stored });
+
+		const content = editorSave(stored);
+		const renewed = (JSON.parse(content) as Array<{ id: string }>)[1]!.id;
+		expect(renewed).not.toBe('a');
+
+		await t.mutation(api.emailTemplates.emails.update, { templateId, content });
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(JSON.parse(row!.translations!).de.blocks[renewed].html).toBe('<p>Deutscher Text</p>');
+		const deHtml = JSON.parse(row!.htmlTranslations!).de.htmlContent as string;
+		expect(occurrences(deHtml, 'Deutscher Text')).toBe(2);
+	});
+
 	it('leaves translations the save itself sends alone', async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t);

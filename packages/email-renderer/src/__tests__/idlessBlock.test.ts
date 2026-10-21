@@ -46,8 +46,8 @@ describe('renderEmailHtml with a Block that has no id', () => {
 		expect(html).not.toContain('undefined');
 		// Each section gets its own toggle, so one header cannot open the other.
 		expect(html).toContain('owlat-accordion-block-1"');
+		expect(html).toContain('owlat-acc-section-1"');
 		expect(html).toContain('owlat-acc-section-2"');
-		expect(html).toContain('owlat-acc-section-3"');
 	});
 
 	it('renders an id-less Block nested in a container', () => {

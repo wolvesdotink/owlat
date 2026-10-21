@@ -273,6 +273,36 @@ describe('normalizeBlockTreeIds', () => {
 		expect(renewed[1]).not.toBe('b1');
 	});
 
+	it('gives the same ids when filling and renewing happen in separate calls', () => {
+		// The editor fills on read (`parseStoredBlocks`) and renews on load; the
+		// server predicts the renewals in one call. A section filled before a
+		// repeated Block must not shift the id that Block gets (#1430 review).
+		const fixtures: Array<() => Raw[]> = [
+			() => [text('a'), text('a'), raw('accordion', { sections: [{ items: [] }] }, 'acc')],
+			() => [
+				raw('accordion', { sections: [{ items: [text()] }, { items: [] }] }),
+				text('a'),
+				text('a'),
+			],
+			() => [
+				text(),
+				text('a'),
+				raw('container', { items: [text('a'), text(), text('section-1')] }, 'box'),
+				raw('accordion', {
+					sections: [{ id: 's', items: [] }, { id: 's', items: [] }, { items: [] }],
+				}),
+				text('a'),
+				text('block-3'),
+			],
+		];
+		for (const roots of fixtures) {
+			const staged = normalizeBlockTreeIds(normalizeBlockTreeIds(roots()), { renewRepeated: true });
+			expect(idsOf(staged)).toEqual(idsOf(normalizeBlockTreeIds(roots(), { renewRepeated: true })));
+		}
+		const sectionFirst = idsOf(normalizeBlockTreeIds(fixtures[0]!(), { renewRepeated: true }));
+		expect(sectionFirst).toEqual(['a', 'block-1', 'acc', 'section-1']);
+	});
+
 	it('is deterministic, so repeated reads of one document agree', () => {
 		const roots = () => [
 			text('b1'),
@@ -353,6 +383,18 @@ describe('repeatedBlockIdRenewals', () => {
 		]);
 		expect(new Set(renewals.map((renewal) => renewal.to)).size).toBe(2);
 		expect(roots[0]).toEqual(text('a'));
+	});
+
+	it('names the ids the editor gives after filling on read and renewing on load', () => {
+		const roots = () => [
+			text('a'),
+			text('a'),
+			{ id: 'acc', type: 'accordion', content: { sections: [{ items: [] }] } },
+		];
+		const staged = normalizeBlockTreeIds(normalizeBlockTreeIds(roots()), {
+			renewRepeated: true,
+		}) as Array<Record<string, unknown>>;
+		expect(repeatedBlockIdRenewals(roots())).toEqual([{ from: 'a', to: staged[1]!['id'] }]);
 	});
 
 	it('is empty when no Block id repeats', () => {
