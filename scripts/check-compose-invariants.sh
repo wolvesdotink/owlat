@@ -175,10 +175,13 @@ for compose in "$root" "$vps" ${release:+"$release"}; do
 
 	# Network membership is read off the parsed YAML, not grepped: flow lists,
 	# quoted names, comments and `network_mode: service:updater` all attach a
-	# service without a `      - docker-proxy` line.
+	# service without a `      - docker-proxy` line. The same parse rejects
+	# every other route to the socket (a bind of it or a directory above it in
+	# either syntax, volumes_from the proxy, use_api_socket; `:ro` limits none
+	# of them) and any key outside the Compose specification (#1368).
 	network_violations=$(bun scripts/check-docker-proxy-network.ts "$compose")
 	case $? in
-	0) ok "$label keeps docker-proxy internal, holding only docker-socket-proxy (unpublished) and updater (also on default)" ;;
+	0) ok "$label keeps docker-proxy internal, holding only docker-socket-proxy (unpublished) and updater (also on default), and no other service reaches the docker socket" ;;
 	1) while IFS= read -r violation; do bad "$label $violation"; done <<<"$network_violations" ;;
 	*) bad "$label could not be parsed by scripts/check-docker-proxy-network.ts" ;;
 	esac
