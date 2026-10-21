@@ -9,7 +9,8 @@
  *
  *   - category refinement: category, categorySource ({@link noteRecordCategory})
  *   - the interpretation run: depth, modelCalls, reasonKeys, degradedBy
- *     ({@link noteArrivalRun})
+ *     ({@link noteArrivalRun}), the exact-wording screen
+ *     ({@link noteExactWordingScreen})
  *   - delivery: filterMatches (lane rules)
  *
  * Convex mutations are serializable, so field-scoped patches cannot lose each
@@ -142,6 +143,27 @@ export async function noteArrivalRun(
 		modelCalls: record.modelCalls + (run.modelCalls ?? 0),
 		reasonKeys: appendReasonKeys(record.reasonKeys, run.reasonKeys ?? []),
 		...(run.degradedBy ? { degradedBy: run.degradedBy } : {}),
+		updatedAt: Date.now(),
+	});
+	await refreshArrivalProjection(ctx, record.threadId);
+	return true;
+}
+
+/**
+ * The exact-wording screen of the message's own scoped text (#1384), from the
+ * run that scoped it: written when it changed, then the projection is
+ * recomputed (a candidate never reads as digest or updates). A message
+ * without a record is left alone. Returns whether a record was patched.
+ */
+export async function noteExactWordingScreen(
+	ctx: MutationCtx,
+	messageId: Id<'mailMessages'>,
+	isCandidate: boolean
+): Promise<boolean> {
+	const record = await loadArrivalRecord(ctx, messageId);
+	if (!record || (record.isExactWordingCandidate ?? false) === isCandidate) return false;
+	await ctx.db.patch(record._id, {
+		isExactWordingCandidate: isCandidate,
 		updatedAt: Date.now(),
 	});
 	await refreshArrivalProjection(ctx, record.threadId);

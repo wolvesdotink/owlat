@@ -38,7 +38,7 @@
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
-import { admissionAnswer } from './arrivalRun';
+import { admissionAnswer, screenCountedArrival } from './arrivalRun';
 import {
 	interpretModeValidator,
 	interpretationSourceValidator,
@@ -80,6 +80,14 @@ async function runLeased(ctx: ActionCtx, args: InterpretArgs): Promise<Interpret
 			isCallerResuming: args.predecessors !== undefined,
 			...(args.parentSource ? { parentSource: args.parentSource } : {}),
 		});
+		if (admitted.kind === 'settled') {
+			// Counted over the owner limit unread: its text is still screened (#1384).
+			await screenCountedArrival(
+				ctx,
+				{ ...args, source: { kind: 'mail', id: args.source.id } },
+				admitted.deletionEpoch
+			);
+		}
 		if (admitted.kind !== 'go') return admissionAnswer(admitted);
 	}
 	// D10: earlier deferred mail of the thread first, under the caller's deadline (defer.ts).

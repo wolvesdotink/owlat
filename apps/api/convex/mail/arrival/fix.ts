@@ -38,6 +38,7 @@
  */
 
 import { v } from 'convex/values';
+import { doesThreadOverrideHold } from '@owlat/shared/arrivalPlacement';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
@@ -61,6 +62,7 @@ import {
 import { ensureSenderProfile } from '../senders/profiles';
 import { ARRIVAL_RETENTION_MS, arrivalChangeRow } from './changeRows';
 import { refreshArrivalProjection } from './projection';
+import { newestArrivalRecord } from './records';
 
 export const FIX_DESTINATIONS = ['needs_me', 'today', 'updates', 'digest', 'auto_archive'] as const;
 export type FixDestination = (typeof FIX_DESTINATIONS)[number];
@@ -91,14 +93,38 @@ export interface FixResult {
 	ruleDraftId: Id<'mailRuleDrafts'> | null;
 }
 
-/** Set (or clear) the thread's placement override, logged. Returns 1 when it changed. */
+/**
+ * Whether the thread's override no longer places its newest message: a digest
+ * or updates Fix older than an exact-wording candidate (#1384).
+ */
+async function isThreadOverrideOverruled(fix: FixContext): Promise<boolean> {
+	const override = fix.thread.placementOverride;
+	if (!override) return false;
+	const record = await newestArrivalRecord(fix.ctx, fix.thread._id);
+	if (!record) return false;
+	return !doesThreadOverrideHold(
+		{
+			...(record.isExactWordingCandidate ? { isExactWordingCandidate: true } : {}),
+			arrivedAt: record.createdAt,
+		},
+		override
+	);
+}
+
+/**
+ * Set (or clear) the thread's placement override, logged. Returns 1 when it
+ * changed. Choosing the same destination again renews an override the wording
+ * overruled, so the person's newer choice places the message.
+ */
 async function writeThreadOverride(
 	fix: FixContext,
 	placement: ThreadPlacement | null
 ): Promise<number> {
 	const { ctx, thread, operationId, now } = fix;
 	const before = thread.placementOverride ?? null;
-	if ((before?.placement ?? null) === placement) return 0;
+	if ((before?.placement ?? null) === placement) {
+		if (placement === null || !(await isThreadOverrideOverruled(fix))) return 0;
+	}
 	const after: PlacementOverrideRow | null = placement
 		? { placement, setAt: now, operationId }
 		: null;

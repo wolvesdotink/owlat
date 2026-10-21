@@ -93,7 +93,36 @@ describe('chooseArrivalDepth, one test per row of the §2.2 table', () => {
 		expect(decide({ senderStatus: 'digest', category: 'person' }).depth).toBe('count');
 	});
 
-	it('row 8: a needs_me or today override reads in full', () => {
+	it('row 7: only the message-scope digest Fix still counts an exact-wording candidate', () => {
+		expect(
+			decide({ placementOverride: 'digest', isExactWordingCandidate: true, category: 'person' })
+		).toEqual({
+			depth: 'count',
+			reasonKeys: [{ key: ARRIVAL_DEPTH_REASONS.digest, params: { by: 'override' } }],
+			isUpgradeable: true,
+		});
+	});
+
+	it('row 8: a digest rule or a digest sender never counts an exact-wording candidate (#1384)', () => {
+		for (const patch of [
+			{ ruleDepthHint: 'count' as const },
+			{ senderStatus: 'digest' as const },
+			{ ruleDepthHint: 'count' as const, senderStatus: 'digest' as const },
+		]) {
+			for (const category of ['person', 'newsletter', 'promotion', 'notification'] as const) {
+				expect(decide({ ...patch, category, isExactWordingCandidate: true })).toEqual({
+					depth: 'full',
+					reasonKeys: [
+						{ key: ARRIVAL_DEPTH_REASONS.category, params: { category, source: 'heuristic' } },
+						{ key: ARRIVAL_DEPTH_REASONS.exactWording },
+					],
+					isUpgradeable: false,
+				});
+			}
+		}
+	});
+
+	it('row 9: a needs_me or today override reads in full', () => {
 		for (const placementOverride of ['needs_me', 'today'] as const) {
 			expect(decide({ placementOverride, category: 'newsletter' })).toEqual({
 				depth: 'full',
@@ -105,36 +134,28 @@ describe('chooseArrivalDepth, one test per row of the §2.2 table', () => {
 		}
 	});
 
-	it('row 9: an updates override gists, unless the wording must be exact', () => {
+	it('row 10: an updates override gists, unless the wording must be exact', () => {
 		expect(decide({ placementOverride: 'updates', category: 'person' })).toEqual({
 			depth: 'gist',
 			reasonKeys: [{ key: ARRIVAL_DEPTH_REASONS.override, params: { placement: 'updates' } }],
 			isUpgradeable: true,
 		});
-		// The exact-wording candidate falls through to its category.
+		// The exact-wording candidate is read in full, whatever its category.
 		const exact = { placementOverride: 'updates' as const, isExactWordingCandidate: true };
 		expect(decide({ ...exact, category: 'person' }).depth).toBe('full');
 		expect(decide({ ...exact, category: 'receipt' }).depth).toBe('full');
-		expect(decide({ ...exact, category: 'newsletter' }).depth).toBe('count');
+		expect(decide({ ...exact, category: 'newsletter' }).depth).toBe('full');
 	});
 
-	it('row 10: newsletters and promotions count, upgradeable', () => {
-		for (const category of ['newsletter', 'promotion'] as const) {
-			expect(decide({ category })).toEqual({
-				depth: 'count',
-				reasonKeys: [
-					{ key: ARRIVAL_DEPTH_REASONS.category, params: { category, source: 'heuristic' } },
-				],
-				isUpgradeable: true,
-			});
-		}
-		// The exact-wording detector does not lift a newsletter.
-		expect(decide({ category: 'newsletter', isExactWordingCandidate: true }).depth).toBe('count');
-	});
-
-	it('row 11: notifications and receipts gist, or read in full on exact wording', () => {
-		for (const category of ['notification', 'receipt'] as const) {
-			expect(decide({ category })).toMatchObject({ depth: 'gist', isUpgradeable: true });
+	it('row 11: an exact-wording candidate reads in full, whatever its category (#1384)', () => {
+		for (const category of [
+			'newsletter',
+			'promotion',
+			'notification',
+			'receipt',
+			'person',
+			'other',
+		] as const) {
 			expect(decide({ category, isExactWordingCandidate: true })).toEqual({
 				depth: 'full',
 				reasonKeys: [
@@ -146,7 +167,31 @@ describe('chooseArrivalDepth, one test per row of the §2.2 table', () => {
 		}
 	});
 
-	it('row 12: person and other mail read in full', () => {
+	it('row 12: newsletters and promotions count, upgradeable', () => {
+		for (const category of ['newsletter', 'promotion'] as const) {
+			expect(decide({ category })).toEqual({
+				depth: 'count',
+				reasonKeys: [
+					{ key: ARRIVAL_DEPTH_REASONS.category, params: { category, source: 'heuristic' } },
+				],
+				isUpgradeable: true,
+			});
+		}
+	});
+
+	it('row 13: notifications and receipts gist, upgradeable', () => {
+		for (const category of ['notification', 'receipt'] as const) {
+			expect(decide({ category })).toEqual({
+				depth: 'gist',
+				reasonKeys: [
+					{ key: ARRIVAL_DEPTH_REASONS.category, params: { category, source: 'heuristic' } },
+				],
+				isUpgradeable: true,
+			});
+		}
+	});
+
+	it('row 14: person and other mail read in full', () => {
 		for (const category of ['person', 'other', 'spam'] as const) {
 			expect(decide({ category })).toMatchObject({ depth: 'full', isUpgradeable: false });
 		}
@@ -164,6 +209,19 @@ describe('chooseArrivalDepth, combinations', () => {
 		expect(decide({ ruleDepthHint: 'count', budget: 'refused' }).reasonKeys).toEqual([
 			{ key: ARRIVAL_DEPTH_REASONS.budget },
 		]);
+	});
+
+	it('an exact-wording candidate never reads past the budget or a terminal exclusion', () => {
+		const exact = { isExactWordingCandidate: true, senderStatus: 'digest' as const };
+		expect(decide({ ...exact, budget: 'refused' })).toEqual({
+			depth: 'count',
+			reasonKeys: [{ key: ARRIVAL_DEPTH_REASONS.budget }],
+			isUpgradeable: true,
+		});
+		expect(decide({ ...exact, isSecurityMail: true }).depth).toBe('none');
+		for (const senderStatus of ['unsubscribed', 'auto_archive'] as const) {
+			expect(decide({ ...exact, senderStatus }).depth).toBe('none');
+		}
 	});
 
 	it('the terminal exclusions come before the budget', () => {

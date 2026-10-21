@@ -14,11 +14,14 @@
  *     `done`; one still waiting for this message's category waits (§2.3.3b,
  *     the lease given back, a ceiling scheduled; this message's category
  *     write runs it sooner, `categoryDefer.wakeCategoryDepthWaits`); one the
- *     table settles without a model call whatever the text (a count, a
- *     suppressed sender) goes on uncharged.
+ *     text-blind table settles without a model call (a count, a suppressed
+ *     sender) goes on uncharged. Its text may still make it a read (an
+ *     exact-wording candidate is never counted for a digest choice, #1384):
+ *     the run's depth decision then takes the token itself
+ *     (`arrivalDecide.chargeOwnerRead`).
  *   - Everything else takes one token of the owner's `arrivalReadPerOwner`
  *     bucket, once per read job (Sol r2 F2): the charge is stamped on the
- *     source for {@link ARRIVAL_ADMISSION_TTL_MS}, its continuations ride on
+ *     source for `ARRIVAL_ADMISSION_TTL_MS`, its continuations ride on
  *     the stamp, and its predecessor reads ride on the parent's stamp when the
  *     parent has one (verified, Sol r3 F1). Over it, display-only mail is settled as an upgradeable `count`
  *     in this mutation; eager work and full reads wait for the bucket, and the
@@ -36,6 +39,7 @@ import { chooseArrivalDepth } from '@owlat/shared/arrivalDepth';
 import { depthValidator } from '../../lib/validators/arrival';
 import { isPersonalMailbox } from '../permissions';
 import { loadArrivalRecord } from '../arrival/records';
+import { loadBriefRow } from './briefRow';
 import {
 	interpretationSourceValidator,
 	type InterpretationSource,
@@ -47,25 +51,23 @@ import { isReadOnArrivalOn } from './preferences';
 import { loadInterpretSource } from './sources';
 import {
 	ARRIVAL_ADMISSION_REASONS,
+	ARRIVAL_ADMISSION_TTL_MS,
 	CATEGORY_DEPTH_WAIT_MS,
 	arrivalInputs,
 	refusedCount,
 	settleArrivalSkip,
 } from './arrivalDecide';
 
-/**
- * How long one charge covers a source's read job: its predecessor loop's
- * continuations, a classifier's continuations, a retry after a lost lease.
- */
-export const ARRIVAL_ADMISSION_TTL_MS = 30 * 60 * 1000;
-
 /** How long eager work waits when the limiter names no time. */
 const OWNER_LIMIT_FALLBACK_MS = 60_000;
 
 export type ArrivalAdmission =
 	| { kind: 'go' }
-	/** Settled as an upgradeable count (display-only over the owner limit). */
-	| { kind: 'settled' }
+	/**
+	 * Settled as an upgradeable count (display-only over the owner limit), at
+	 * the thread's deletion epoch (its exact-wording screen is checked against it).
+	 */
+	| { kind: 'settled'; deletionEpoch: number }
 	| { kind: 'wait'; retryAt: number }
 	| { kind: 'busy'; retryAt: number }
 	| { kind: 'done' };
@@ -147,7 +149,8 @@ export const admitArrivalRun = internalMutation({
 				const wait = await categoryWait(ctx, args.source, row.categoryPendingAt, args.leaseToken);
 				if (wait) return wait;
 			}
-			// Settled without a model call whatever the text says: nothing to charge.
+			// Counted by the text-blind table: nothing to charge yet. The depth
+			// decision charges it if the exact-wording screen makes it a read.
 			const pre = chooseArrivalDepth(
 				await arrivalInputs(ctx, message, { isSecurityMail: false, isExactWordingCandidate: false })
 			);
@@ -162,7 +165,8 @@ export const admitArrivalRun = internalMutation({
 			if (isDisplayOnly) {
 				const choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS.ownerLimit });
 				await settleArrivalSkip(ctx, row, message._id, choice, 'owner_limit');
-				return { kind: 'settled' };
+				const brief = await loadBriefRow(ctx, { kind: 'mail', id: message.threadId });
+				return { kind: 'settled', deletionEpoch: brief?.deletionEpoch ?? 0 };
 			}
 			const retryAt = Date.now() + (limited.retryAfter ?? OWNER_LIMIT_FALLBACK_MS);
 			if (!args.isCallerResuming) {

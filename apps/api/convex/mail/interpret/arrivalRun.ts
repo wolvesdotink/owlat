@@ -16,10 +16,12 @@ import { internal } from '../../_generated/api';
 import type { SegmentedMessage } from '@owlat/shared/mailSegments';
 import { detectExactWording } from '@owlat/shared/exactWordingDetector';
 import { freshTextOf } from '../arrival/scopedInput';
+import { logWarn } from '../../lib/runtimeLog';
 import { isSecurityMail } from './eligibility';
+import { scopeForInterpretation, segmentScoped } from './scope';
 import type { ArrivalVerdict } from './arrivalDecide';
 import type { ArrivalAdmission } from './arrivalAdmit';
-import type { InterpretArgs, InterpretRunResult } from './runShape';
+import type { InterpretArgs, InterpretRunResult, Restart } from './runShape';
 
 /** The `errorCode` of a run that settled its source short of a full read. */
 export const ARRIVAL_SETTLED = 'arrival_settled';
@@ -41,7 +43,7 @@ export function isArrivalRead(
 export async function decideArrival(
 	ctx: Pick<ActionCtx, 'runMutation'>,
 	args: InterpretArgs & { source: { kind: 'mail' } },
-	scoped: { subject: string; segmented: SegmentedMessage },
+	scoped: { subject: string; segmented: SegmentedMessage; sourceVersion?: string },
 	deletionEpoch: number
 ): Promise<ArrivalVerdict> {
 	const fresh = freshTextOf(scoped.segmented);
@@ -49,10 +51,53 @@ export async function decideArrival(
 		source: { kind: 'mail', id: args.source.id },
 		...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
 		deletionEpoch,
+		...(scoped.sourceVersion ? { sourceVersion: scoped.sourceVersion } : {}),
 		isSecurityMail: isSecurityMail({ subject: scoped.subject, freshText: fresh }),
 		isExactWordingCandidate:
 			detectExactWording({ subject: scoped.subject, text: fresh }).length > 0,
 	});
+}
+
+/** How often a counted source is screened again when its body moved under the screen. */
+const COUNTED_SCREEN_ATTEMPTS = 3;
+
+/**
+ * Admission counted a display-only source over the owner limit before
+ * anything of it was read: still screen its own text for exact wording, so a
+ * candidate is never placed in the digest or updates (#1384). No model call;
+ * a fenced thread or a scope that fails screens nothing. The screen is
+ * written only against the body and deletion epoch it was taken from
+ * (`noteCountedArrivalScreen`); a body that changed in between is screened
+ * again.
+ */
+export async function screenCountedArrival(
+	ctx: ActionCtx,
+	args: InterpretArgs & { source: { kind: 'mail' } },
+	deletionEpoch: number
+): Promise<void> {
+	const source = { kind: 'mail' as const, id: args.source.id };
+	try {
+		for (let attempt = 0; attempt < COUNTED_SCREEN_ATTEMPTS; attempt++) {
+			if (await ctx.runQuery(internal.mail.interpret.staleFence.isSourceFenced, { source })) return;
+			const scoped = await scopeForInterpretation(ctx, source);
+			if (!scoped || !scoped.ok || !scoped.sourceVersion) return;
+			const { segmented } = segmentScoped(scoped);
+			const fresh = freshTextOf(segmented);
+			const noted = await ctx.runMutation(
+				internal.mail.interpret.arrivalDecide.noteCountedArrivalScreen,
+				{
+					source,
+					isExactWordingCandidate:
+						detectExactWording({ subject: scoped.subject, text: fresh }).length > 0,
+					deletionEpoch,
+					sourceVersion: scoped.sourceVersion,
+				}
+			);
+			if (noted !== 'sourceChanged') return;
+		}
+	} catch (error) {
+		logWarn('[arrival] exact-wording screen of a counted source failed', error);
+	}
 }
 
 /** What a run answers for a source settled without a full read. */
@@ -74,11 +119,17 @@ export function admissionAnswer(
 	return { status: admitted.kind, retryAt: admitted.retryAt };
 }
 
-/** The run's answer for every verdict that ends it before the model (not `full` / `gist`). */
+/**
+ * The run's answer for every verdict that ends it before the model (not
+ * `full` / `gist`). `sourceChanged`: the body moved under the screens, so the
+ * run starts over with the new one.
+ */
 export function arrivalAnswer(
 	verdict: Exclude<ArrivalVerdict, { kind: 'full' } | { kind: 'gist' }>
-): InterpretRunResult {
+): InterpretRunResult | Restart {
 	switch (verdict.kind) {
+		case 'sourceChanged':
+			return { restart: 'sourceChanged' };
 		case 'settled':
 			return settledAnswer(verdict.depth);
 		case 'wait':

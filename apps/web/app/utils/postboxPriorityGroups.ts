@@ -2,8 +2,9 @@
  * The Priority view's groups (SPEC §3, plan §6 "The inbox"). Pure, so the
  * grouping and the one-line rows are unit-testable without the view.
  *
- * Rows group by their thread's placement (`row.placement`: the thread's
- * placement override, else its arrival projection, attached server-side):
+ * Rows group by their thread's placement (`row.placement`: its arrival
+ * projection, which applies the thread's override, else the override of a
+ * thread without one; attached server-side):
  *
  *   needsMe   `needs_me`, unless the Reply Queue already lists the thread
  *             (the queue's row stands for it)

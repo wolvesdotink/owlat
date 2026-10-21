@@ -14,17 +14,24 @@
  *   4  sender unsubscribed or auto-archived                    none
  *   5  security mail                                           none
  *   6  budget refused                                          count
- *   7  override digest, a sendToDigest rule, sender digest     count
- *   8  override needs_me or today                              full
- *   9  override updates, no exact-wording candidate            gist
- *  10  newsletter or promotion                                 count
- *  11  notification or receipt                                 gist (full on exact wording)
- *  12  anything else (person, other)                           full
+ *   7  override digest (a message-scope Fix)                   count
+ *   8  a sendToDigest rule or sender digest, no exact wording  count
+ *   9  override needs_me or today                              full
+ *  10  override updates, no exact-wording candidate            gist
+ *  11  exact-wording candidate                                 full
+ *  12  newsletter or promotion                                 count
+ *  13  notification or receipt                                 gist
+ *  14  anything else (person, other)                           full
  *
  * The budget row comes before the overrides, so an override can never buy a
- * read past the budget, and the overrides come before the category.
+ * read past the budget, and the overrides come before the category. An
+ * exact-wording candidate (changed bank details, a legal notice, an invoice
+ * with payment details) is never counted for its category, a digest rule or
+ * the sender's digest status (#1384): only the budget and the person's own
+ * message-scope digest Fix still count it, and only a Fix made after the
+ * candidate arrived (the caller drops an older one: `doesThreadOverrideHold`).
  *
- * A gist or count from rows 6–11 is upgradeable (SPEC §2.3.4): a later source
+ * A gist or count from rows 6–13 is upgradeable (SPEC §2.3.4): a later source
  * of the thread that needs a full read reads it first. Rows 1, 4 and 5 are terminal
  * exclusions, never upgraded and never in anyone's way.
  */
@@ -53,7 +60,7 @@ export const ARRIVAL_DEPTH_REASONS = {
 
 /** {@link chooseArrivalDepth}'s answer with the row's upgrade rule (SPEC §2.3.4). */
 export interface ArrivalDepthChoice extends ChooseArrivalDepthResult {
-	/** A gist or count of rows 6–11: a later full read of the thread reads this source first. */
+	/** A gist or count of rows 6–13: a later full read of the thread reads this source first. */
 	isUpgradeable: boolean;
 }
 
@@ -92,7 +99,9 @@ export function chooseArrivalDepth(i: ChooseArrivalDepthInput): ArrivalDepthChoi
 	if (i.isSecurityMail) return choice('none', [{ key: ARRIVAL_DEPTH_REASONS.security }]);
 	// 6. Budget before every override.
 	if (i.budget === 'refused') return choice('count', [{ key: ARRIVAL_DEPTH_REASONS.budget }], true);
-	// 7–9. Overrides before the category.
+	// 7–10. Overrides before the category. A message-scope digest Fix is the
+	// person's own choice for this conversation; a digest rule or the sender's
+	// digest status never counts an exact-wording candidate (#1384).
 	if (i.placementOverride === 'digest') {
 		return choice(
 			'count',
@@ -100,10 +109,10 @@ export function chooseArrivalDepth(i: ChooseArrivalDepthInput): ArrivalDepthChoi
 			true
 		);
 	}
-	if (i.ruleDepthHint === 'count') {
+	if (!i.isExactWordingCandidate && i.ruleDepthHint === 'count') {
 		return choice('count', [{ key: ARRIVAL_DEPTH_REASONS.digest, params: { by: 'rule' } }], true);
 	}
-	if (i.senderStatus === 'digest') {
+	if (!i.isExactWordingCandidate && i.senderStatus === 'digest') {
 		return choice('count', [{ key: ARRIVAL_DEPTH_REASONS.digest, params: { by: 'sender' } }], true);
 	}
 	if (i.placementOverride === 'needs_me' || i.placementOverride === 'today') {
@@ -117,14 +126,16 @@ export function chooseArrivalDepth(i: ChooseArrivalDepthInput): ArrivalDepthChoi
 		const reason = { key: ARRIVAL_DEPTH_REASONS.override, params: { placement: 'updates' } };
 		return choice('gist', [reason], true);
 	}
-	// 10–12. The category.
+	// 11. The wording itself matters: read in full, whatever the category.
+	if (i.isExactWordingCandidate) {
+		return choice('full', [categoryReason(i), { key: ARRIVAL_DEPTH_REASONS.exactWording }]);
+	}
+	// 12–14. The category.
 	if (i.category === 'newsletter' || i.category === 'promotion') {
 		return choice('count', [categoryReason(i)], true);
 	}
 	if (i.category === 'notification' || i.category === 'receipt') {
-		return i.isExactWordingCandidate
-			? choice('full', [categoryReason(i), { key: ARRIVAL_DEPTH_REASONS.exactWording }])
-			: choice('gist', [categoryReason(i)], true);
+		return choice('gist', [categoryReason(i)], true);
 	}
 	return choice('full', [categoryReason(i)]);
 }
