@@ -109,6 +109,17 @@ export interface ExecOptions {
 
 const EXEC_TIMEOUT_MS = 300_000;
 
+/**
+ * The update's pull and Convex deploy get longer than the default. The deploy
+ * also pulls the ~2 GB convex-deploy image and waits for Convex to backfill
+ * every index the release adds, which grows with the instance's data: one
+ * instance was cut off at 300 s with an index 759 of 774 rows built, and the
+ * deploy it abandoned then finished on its own. The web app's wait for an
+ * update (UPDATE_REQUEST_TIMEOUT_MS in apps/web/server/utils/updater.ts) has
+ * to cover these plus the rest of the rollout.
+ */
+export const UPDATE_STEP_BOUNDS = { pullMs: 10 * 60_000, convexDeployMs: 15 * 60_000 };
+
 /** How long a child that was asked to stop gets before it is killed. */
 const EXEC_KILL_GRACE_MS = 5_000;
 

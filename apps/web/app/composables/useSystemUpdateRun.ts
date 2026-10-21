@@ -8,6 +8,7 @@ import {
 	MIGRATIONS_UNVERIFIED_STATUS,
 	updateFailureMessage,
 	updateRequestWasAnswered,
+	UPDATE_REQUEST_TIMEOUT_MS,
 } from '~/lib/systemUpdate';
 
 /**
@@ -35,12 +36,6 @@ interface UpdateStep {
  * update again would change nothing.
  */
 type UpdateState = 'idle' | 'confirming' | 'running' | 'success' | 'started' | 'failed';
-
-/**
- * The route waits for the updater, and the updater waits for readiness after
- * the recreate, following each service's declared healthcheck cadence.
- */
-const UPDATE_REQUEST_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * 128 random bits as hex. Not `crypto.randomUUID`, which only exists in a

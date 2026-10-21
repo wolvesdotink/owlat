@@ -10,6 +10,18 @@
 export const UPDATER_REPORT_MARKER = 'updaterReport';
 
 /**
+ * How long an in-app update may take before anyone waiting on it gives up:
+ * the server routes waiting for the updater's answer to `POST /update`, and the
+ * browser waiting for the route and for the new version on /health. It has to
+ * outlast the whole rollout, or a slow update that goes on to succeed is
+ * reported as failed: image reclaim, the pull (10 min) and the Convex deploy
+ * (15 min, UPDATE_STEP_BOUNDS in apps/updater/src/http.ts), `up` (5 min) and
+ * the readiness wait, which follows the healthcheck cadence services declare
+ * (ClamAV: up to ~11 min, capped at 12).
+ */
+export const UPDATE_REQUEST_TIMEOUT_MS = 60 * 60 * 1000;
+
+/**
  * Statuses with which the updater refuses to start an update and changes
  * nothing: another rollout holds it (409), or its rate limit does (429).
  */
