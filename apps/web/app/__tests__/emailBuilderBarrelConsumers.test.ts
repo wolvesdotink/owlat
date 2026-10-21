@@ -87,8 +87,8 @@ describe('the stored-blocks subpath is a leaf', () => {
 
 	it('reaches no editor module through its value imports', () => {
 		// Walk the package-relative value imports and re-exports from the subpath entry: the
-		// reader may use the id helper, but never a component, a registry or
-		// the barrel.
+		// reader reaches no other builder module (its id repair comes from
+		// @owlat/shared/blockTree), so never a component, a registry or the barrel.
 		const seen = new Set<string>();
 		const pending = [resolve(builderPackage, manifest.exports['./stored-blocks']!.import)];
 		while (pending.length > 0) {
@@ -104,6 +104,6 @@ describe('the stored-blocks subpath is a leaf', () => {
 			}
 		}
 		const reached = [...seen].map((file) => file.slice(builderPackage.length + 1)).sort();
-		expect(reached).toEqual(['src/utils/id.ts', 'src/utils/storedBlocks.ts']);
+		expect(reached).toEqual(['src/utils/storedBlocks.ts']);
 	});
 });
