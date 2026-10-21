@@ -6,8 +6,7 @@
  *   - the query derives both arms from the stored buckets: the counts and
  *     rates read back are the ones the seeded rows add up to, so a hand-rolled
  *     division sneaking into the read path fails here rather than in production,
- *     where the screen and the ramp controller would quietly disagree
- *     (ADR-0042 / plan D5);
+ *     where the screen and the ramp controller would quietly disagree;
  *   - CROSS-TENANT READS ARE REFUSED: another organization's buckets are never
  *     summed in, and a caller who is not an org member gets nothing at all;
  *   - the STANDALONE configuration (no reference transport) is clean: every

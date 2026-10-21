@@ -1,5 +1,5 @@
 /**
- * The rows the retired thread summaries left behind (ADR-0072): Answer mode's
+ * The rows the retired thread summaries left behind: Answer mode's
  * catch-up cards (`threadCatchUps`), Today's one-sentence summaries
  * (`todayThreadSummaries`) and the reader strip's `mailThreads.summaryCache`.
  * Nothing writes or reads them any more; the thread brief replaced all three.

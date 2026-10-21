@@ -1,5 +1,5 @@
 /**
- * The AI routing policy panel's state (ADR-0073, SPEC §3, U2): the admin read
+ * The AI routing policy panel's state: the admin read
  * (`aiRouting.policy.get`), the form, and the save.
  *
  * The rules are in `utils/aiRoutingPolicy.ts`; this file wires them. Two

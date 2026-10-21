@@ -15,7 +15,7 @@
  * the MTA knows neither. `recordSmtpResponseForSend` resolves the send, joins it
  * through `sendAssignments` with the same `resolveCellArmForSend` that
  * `analytics/transportOutcomes.ts` uses, and bumps ONE RANDOM SHARD of the (org, cell, arm, day) bucket. Two indexed point
- * reads and one patch — no window scan, no `.collect()` (ADR-0042).
+ * reads and one patch — no window scan, no `.collect()`.
  *
  * ONE READER-TYPED SUMMARIZER (`summarizeSmtpBlockObservation`), which sums
  * across shards so the split is invisible, and NO RATE ANYWHERE. The observation

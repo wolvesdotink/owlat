@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The AI routing policy (ADR-0073, SPEC §3, U2), below the decision provider
+ * The AI routing policy, below the decision provider
  * card: which new AI paths run, and how much of the spend ceiling triage and
  * shadow runs may use. Admin only, like the page; the server checks again and
  * writes the audit row.

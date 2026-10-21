@@ -75,7 +75,7 @@ export const store = internalMutation({
 	args: {
 		// An `InboundAdapter['source']` (`./pipeline.ts`) — see the
 		// `webhookPayloads.source` column comment in `schema/webhooks.ts` for what
-		// may land here; the kinds are not re-listed at either site (ADR-0055, D10).
+		// may land here; the kinds are not re-listed at either site.
 		source: v.string(),
 		rawPayload: v.string(),
 	},

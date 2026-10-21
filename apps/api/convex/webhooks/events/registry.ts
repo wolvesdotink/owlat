@@ -4,7 +4,7 @@
  * Single source of truth for outbound Webhook events: each entry pairs a
  * wire literal with its WebhookEventModule. Phase-7 caller migration
  * routes every fanout through this registry's `build` + `schema`
- * validation; the ADR-0002 catalog tuple in `webhooks/events.ts` derives
+ * validation; the catalog tuple in `webhooks/events.ts` derives
  * from the registry keys.
  *
  * Adding a new event = one new module folder + one entry below + bumping

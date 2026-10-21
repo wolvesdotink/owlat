@@ -89,7 +89,7 @@ describe('pipeline hooks', () => {
 		]);
 	});
 
-	it('schedule nothing for a mailbox excluded from hosted decisions (ADR-0060 §9)', async () => {
+	it('schedule nothing for a mailbox excluded from hosted decisions', async () => {
 		const { ctx, scheduled } = fakeCtx(ON, { isAllowed: false });
 		await scheduleTeamTriage(ctx, ON, inboundMessageId);
 		await scheduleTeamMessageBundle(ctx, inboundMessageId, { baseline: { category: 'support' } });

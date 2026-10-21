@@ -9,7 +9,7 @@ import { conversationThreadSlaFields } from '../lib/validators/inboxSla';
  * Split out of `schema/inbox.ts` when that file reached the ~500 LOC cap in
  * apps/api/convex/CONVENTIONS.md; spread back into `inboxTables` there, so
  * `schema.ts` is unchanged. The single writer is `inbox/threads/module.ts`
- * (ADR-0032).
+ *.
  */
 export const conversationThreadTables = {
 	// Conversation Threads - groups related inbound/outbound messages into conversations
@@ -21,7 +21,7 @@ export const conversationThreadTables = {
 		contactId: v.optional(v.id('contacts')),
 		// Channel-neutral thread-list display identifier: an email for
 		// email/generic channels, a raw phone/handle for SMS/WhatsApp/chat.
-		// (Renamed from `contactEmail` in ADR-0032 — the misnomer the
+		// (Renamed from `contactEmail` — the misnomer the
 		// channel work had already broken.)
 		contactIdentifier: v.string(),
 		// Thread status

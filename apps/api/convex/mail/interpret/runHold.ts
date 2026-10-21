@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * One spend hold for a whole interpretation run (ADR-0073, D1; Sol r4).
+ * One spend hold for a whole interpretation run.
  *
  * The plan's rule is to reserve the complete allowed path before dispatch. An
  * interpretation buys an extraction and then up to a schema-bounded number of

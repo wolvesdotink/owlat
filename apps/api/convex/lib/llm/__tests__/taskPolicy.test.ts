@@ -1,5 +1,5 @@
 /**
- * The task-policy catalog reproduces today's routes (ADR-0073, SPEC §2): the
+ * The task-policy catalog reproduces today's routes: the
  * tier each call site resolves through `lib/llmProvider.ts` today, the attempt
  * budget and deadline it runs with, and the ledger feature it records under.
  * The table below is the call-site inventory taken when the catalog landed; a

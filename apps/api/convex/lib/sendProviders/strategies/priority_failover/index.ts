@@ -1,7 +1,7 @@
 /**
  * `priority_failover` send route strategy.
  *
- * Per ADR-0020. Walks enabled providers in order; picks the first that is
+ * Walks enabled providers in order; picks the first that is
  * not currently `down` per the health snapshot. Falls back to the first
  * enabled provider if all are down (or no health data is available).
  */

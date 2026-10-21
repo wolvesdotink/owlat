@@ -14,7 +14,7 @@ type Field = 'sent' | 'delivered' | 'opened' | 'clicked';
  * today-row (a Convex OCC hotspot, since this is bumped inline on every
  * sent/delivered/opened/clicked event for both campaign and transactional
  * sends). `readDailyStats` sums across shards, so the split is invisible to
- * readers. Mirrors the `sendingReputation` shard idiom (ADR-0042).
+ * readers. Mirrors the `sendingReputation` shard idiom.
  */
 const SHARD_COUNT = 16;
 

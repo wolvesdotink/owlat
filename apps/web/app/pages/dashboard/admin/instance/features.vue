@@ -61,7 +61,7 @@ const {
 } = useConvexQuery(api.workspaces.featureFlags.getFlagsConfigStatus, {});
 const { showToast } = useToast();
 
-// Writes go through the Operation module (ADR-0036): categorized failures are
+// Writes go through the Operation module: categorized failures are
 // toasted + telemetry'd automatically and `run` resolves to `undefined`; we only
 // add the success / cascade-info toasts here.
 const { run: setFeatureFlag, isLoading: isSavingFlag } = useBackendOperation(

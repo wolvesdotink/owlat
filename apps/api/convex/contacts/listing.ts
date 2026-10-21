@@ -28,7 +28,7 @@ export function redactContactCapabilityFields<
 }
 
 /**
- * Contact listing descriptor (ADR-0037). The cleanest case: the
+ * Contact listing descriptor. The cleanest case: the
  * `search_contacts` index already exists, so search is genuinely multi-page via
  * a real Convex cursor (the `'search'` sentinel dies), soft-delete rides the
  * index on both paths, and the total is the denormalized contact counter

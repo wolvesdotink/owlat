@@ -1,5 +1,5 @@
 /**
- * The Phase 2 bundle runs end to end (ADR-0073): the scheduled actions, the
+ * The Phase 2 bundle runs end to end: the scheduled actions, the
  * runner, the artifact lease and the ledger, with the provider calls and the
  * admission seam mocked. Never a paid provider.
  *
@@ -408,7 +408,7 @@ describe('the message bundle', () => {
 	});
 });
 
-describe('the opt-out from hosted decisions (ADR-0060 §9)', () => {
+describe('the opt-out from hosted decisions', () => {
 	const baseline = { category: 'support', disposition: 'reply' };
 
 	async function excludeTeamInbox(t: T) {

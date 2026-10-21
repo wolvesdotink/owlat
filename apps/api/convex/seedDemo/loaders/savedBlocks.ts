@@ -1,5 +1,5 @@
 /**
- * Seed loader: emailBlocks (saved blocks per ADR-0023).
+ * Seed loader: emailBlocks (saved blocks).
  *
  * Direct insert. The public mutation lives in the saved-block module but is
  * session-gated; we skip it and the rerender-pool dispatch the public path

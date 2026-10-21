@@ -6,8 +6,6 @@
  * `metadata.source`); a `matched` upsert fires none of them. The two
  * pre-module production bugs (count drift + silent trigger on the upsert
  * paths) are the regressions here.
- *
- * See docs/adr/0038-contact-creation-module.md.
  */
 
 import { convexTest } from 'convex-test';

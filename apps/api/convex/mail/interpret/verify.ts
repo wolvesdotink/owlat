@@ -162,7 +162,7 @@ export async function verifyClaims(
 	claims: readonly VerifyClaim[],
 	opts: {
 		root?: LlmRootContext;
-		/** Spend admission priority: brief mode is background work (ADR-0073, D1). */
+		/** Spend admission priority: brief mode is background work. */
 		priority?: AdmissionPriority;
 		/** The guard-tier model the run's hold was sized for. */
 		model?: Awaited<ReturnType<typeof resolveLanguageModel>>;
@@ -261,7 +261,7 @@ export async function verifyClaims(
 }
 
 /**
- * The root request an interpretation's calls group under (ADR-0073): the
+ * The root request an interpretation's calls group under: the
  * message it reads. A Team Inbox message (and a team reply) is `team:`, a
  * Postbox message, received or sent, is `postbox:`.
  */

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * "Your change to this block was replaced" (co-editing, see
- * docs/adr/0071-email-coediting.md). Floats over the editor when someone
+ * "Your change to this block was replaced" (co-editing). Floats over the editor when someone
  * else's edit landed on a block or field this tab had changed without either
  * of them seeing the other's edit (the edit lease normally prevents that).
  * "Put mine back" re-applies this tab's version as an ordinary, undoable

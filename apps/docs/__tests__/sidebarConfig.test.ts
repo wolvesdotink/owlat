@@ -21,7 +21,6 @@ describe('sidebarGroupsForSection', () => {
 			'Subsystem Internals',
 			'Plugin Platform',
 			'Self-Hosting',
-			'Decisions',
 		],
 		examples: ['Examples'],
 		vision: ['Vision'],

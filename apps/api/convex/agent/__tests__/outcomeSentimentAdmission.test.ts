@@ -1,5 +1,5 @@
 /**
- * The outcome-sentiment admission hook (ADR-0073, D1): background work that
+ * The outcome-sentiment admission hook: background work that
  * defers at the ceiling. No headroom, or a spend state that cannot be
  * verified, means no model call and nothing recorded; a refusal at the
  * dispatch itself is the same `null`; other failures are the caller's.

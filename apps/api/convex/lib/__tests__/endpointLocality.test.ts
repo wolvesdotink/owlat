@@ -1,5 +1,5 @@
 /**
- * Endpoint locality (ADR-0073): one rule for every plane decides which model
+ * Endpoint locality: one rule for every plane decides which model
  * requests are free. Unknown locality is priced, never free.
  */
 

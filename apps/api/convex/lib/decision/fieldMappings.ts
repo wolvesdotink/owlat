@@ -23,7 +23,7 @@
  * later migration and is not asked.
  */
 
-/** Which probability a threshold reads (ADR-0060): never a bare "confidence". */
+/** Which probability a threshold reads: never a bare "confidence". */
 export type ThresholdReading = 'noul_probability' | 'choice_peakedness';
 
 /** The answer a mapped field falls back to when the decision cannot settle it. */

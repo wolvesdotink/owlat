@@ -11,8 +11,7 @@
  * Consent episodes: a confirmation counts only for the episode it was issued
  * in. A global opt-out ends the episode (`endConsentEpisode`: the token is
  * withdrawn and `doiConsentEpisode` moves on), and a later public signup opens
- * a new one (`reopen`) instead of reusing the old confirmation. See ADR-0009's
- * 2026-10 amendments.
+ * a new one (`reopen`) instead of reusing the old confirmation.
  *
  * Effects:
  *   send_confirmation_email          — schedules confirmationEmail.send
@@ -24,8 +23,6 @@
  *                                      on a replaced token to the new one;
  *                                      routed through the Form submission
  *                                      (module)
- *
- * See docs/adr/0009-doi-lifecycle-module.md.
  */
 
 import { v } from 'convex/values';
@@ -71,7 +68,7 @@ export type TransitionInput =
 	| {
 			// Admin-attest path: the contact was already DOI-confirmed at a source
 			// platform (Mailchimp, Klaviyo, Stripe, ...). Relaxes the otherwise-
-			// refused `not_required → confirmed` legal edge. See ADR-0019.
+			// refused `not_required → confirmed` legal edge.
 			to: 'confirmed';
 			at: number;
 			source: 'admin_attest';
@@ -109,7 +106,7 @@ const transitionInputValidator = v.union(
 	}),
 	// Admin-attest variant declared before the plain `{ to: 'confirmed', at }`
 	// variant so the union validator matches the discriminated `source` field
-	// before the simpler shape — see ADR-0019.
+	// before the simpler shape.
 	v.object({
 		to: v.literal('confirmed'),
 		at: v.number(),
@@ -126,11 +123,11 @@ const transitionInputValidator = v.union(
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
 //
 // The graph and the dispatcher preamble that reads it live in the generic
-// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and effects below
+// lifecycle core (`lib/lifecycle.ts`); the reducers and effects below
 // stay here. `confirmed` is terminal and this machine publishes the distinct
 // `terminal` refusal, so `reportsTerminalRefusals` is on. The two edges the
 // graph cannot express ride the per-call `isSanctionedEdge` opt-out in
-// `dispatch` rather than being declared here: ADR-0019's admin-attest
+// `dispatch` rather than being declared here: the admin-attest
 // relaxation of `not_required → confirmed`, and the `reopen` of
 // `confirmed → pending` for a contact whose consent a global opt-out ended.
 

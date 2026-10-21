@@ -1,6 +1,6 @@
 /**
  * The secret-free endpoint identity of a resolved model, for the ledger's
- * `endpoint` column (ADR-0073): a `LanguageEndpointProvenance` for a language
+ * `endpoint` column: a `LanguageEndpointProvenance` for a language
  * model, `embedding:<provider kind>` for an embedding model, plus whether the
  * model runs on the operator's own hardware (a local embedder costs nothing).
  * The resolver (`lib/llmProvider.ts`) knows both when it builds a model and

@@ -1,5 +1,5 @@
 /**
- * AI routing: the vocabulary the backend and the web app share (ADR-0073).
+ * AI routing: the vocabulary the backend and the web app share.
  *
  * These live here, so the settings form, the Convex validators and the code
  * that reads the policy cannot drift apart:

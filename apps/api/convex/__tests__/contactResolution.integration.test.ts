@@ -4,8 +4,6 @@
  * Covers the find-or-create primitive across the three modes (strict, upsert,
  * merge), the soft-delete-skip invariant, and the identity-cascade-at-
  * soft-delete contract that makes identifiers reclaimable on day 1.
- *
- * See docs/adr/0008-contact-resolution-module.md.
  */
 
 import { convexTest } from 'convex-test';

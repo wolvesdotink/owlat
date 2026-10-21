@@ -14,7 +14,7 @@ import { seedCleanInterpretation } from '../mail/interpret/__tests__/interpret.t
 
 // The approved agent reply no longer dispatches inline — it enqueues a
 // `transactionalSends` Send row on the workpool, and `completeSend` drives the
-// inbound message to sent/failed once the worker outcome lands (see ADR + the
+// inbound message to sent/failed once the worker outcome lands (see the
 // sendCompletion tests). Stub the workpool so `enqueueAction` is a no-op and
 // capture the enqueued envelope/context to assert the outbound artifact.
 const { enqueueActionMock } = vi.hoisted(() => ({

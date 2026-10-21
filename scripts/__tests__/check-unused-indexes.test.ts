@@ -177,7 +177,7 @@ describe('check-unused-indexes.sh', () => {
 		expect(result.output).toContain('the schema shape changed');
 	});
 
-	// The ADR-0037 listing descriptors hand lib/listing.ts an index name as data;
+	// The listing descriptors hand lib/listing.ts an index name as data;
 	// the `.withIndex()` call itself takes a variable, so only the descriptor
 	// literal can vouch for the index.
 	it('counts a listing descriptor index literal as a reference', async () => {

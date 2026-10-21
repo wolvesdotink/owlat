@@ -14,8 +14,6 @@
  * Re-issuing is safe because a page is identified by its cursor and the run's
  * page count: if the lost hop did commit after all, the re-issued one finds
  * its page already counted and changes nothing.
- *
- * Per ADR-0027 (#996/#999 amendment).
  */
 
 import type { MutationCtx } from '../_generated/server';

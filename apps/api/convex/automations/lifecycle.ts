@@ -18,8 +18,6 @@
  * Stats counters (`statsEntered`, `statsActive`, `statsCompleted`) are
  * lifetime; the reducer does not touch them on any edge. Stats writes stay
  * in the Trigger fanout (`triggers.ts`) and `stepRunTransitions.ts`.
- *
- * See docs/adr/0024-automation-lifecycle-module.md.
  */
 
 import { v } from 'convex/values';
@@ -68,7 +66,7 @@ const transitionInputValidator = v.union(
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
 //
 // The graph and the dispatcher preamble that reads it live in the generic
-// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducer, the `→ active`
+// lifecycle core (`lib/lifecycle.ts`); the reducer, the `→ active`
 // preconditions and the effects below stay here. `reportsTerminalRefusals` is
 // off — no state is terminal here and the published outcome union carries only
 // `illegal_edge`.

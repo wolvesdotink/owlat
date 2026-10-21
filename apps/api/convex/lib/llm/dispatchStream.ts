@@ -117,7 +117,7 @@ function maxStepsOf(opts: LlmStreamOptions): number {
 
 export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamResult> {
 	const call = callShape(opts);
-	// Spend admission before the opening request (ADR-0073, Phase 1b): every
+	// Spend admission before the opening request: every
 	// step, and the re-sends of the opening request the SDK may make.
 	const requestModel = modelForRequest(opts.model);
 	const hold = await admitDispatch(opts.meter, call, {

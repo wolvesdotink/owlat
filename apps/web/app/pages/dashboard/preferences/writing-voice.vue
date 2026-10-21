@@ -41,7 +41,7 @@ const { isEnabled } = useFeatureFlag();
 		<div v-else class="space-y-4">
 			<template v-for="mb in mailboxes" :key="mb._id">
 				<PostboxVoiceProfileCard :mailbox-id="mb._id as Id<'mailboxes'>" :address="mb.address" />
-				<!-- ADR-0060 §9: this mailbox's opt-out from hosted decision providers.
+				<!-- This mailbox's opt-out from hosted decision providers.
 				     Admins manage every mailbox's on the admin mailbox list in Preferences. -->
 				<SettingsHostedDecisionExclusion
 					:target="{ kind: 'mailbox', mailboxId: mb._id as Id<'mailboxes'> }"

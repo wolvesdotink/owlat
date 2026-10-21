@@ -17,7 +17,7 @@ import { useEmailEditorCoedit, type EmailEditorCoedit } from './useEmailEditorCo
 /**
  * Email editor bridge (module) — the app-side owner that backs the
  * `EmailBuilder` component against Convex and runs its edit loop. See
- * docs/adr/0035-email-editor-bridge-module.md and CONTEXT.md `## Email editor`.
+ * CONTEXT.md `## Email editor`.
  *
  * The three editor surfaces (Email template, Transactional email, Saved block)
  * supply only their divergent halves — a per-surface `initialize(source)` parse
@@ -25,7 +25,7 @@ import { useEmailEditorCoedit, type EmailEditorCoedit } from './useEmailEditorCo
  * dirty-tracked refs. The bridge never branches on which surface it serves.
  *
  * With `coedit`, the email is edited live together with everyone else who
- * has it open (docs/adr/0071-email-coediting.md): the canvas follows the
+ * has it open: the canvas follows the
  * shared session instead of the row, other people's edits arrive block by
  * block, and Save writes the session. A member who cannot co-edit falls back
  * to the classic draft below.

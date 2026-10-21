@@ -223,7 +223,6 @@ inline on the worker's context: a `ctx.runMutation` callee is fenced.
 An HTTP route that ingests deliveries from the MTA or a provider answers a
 fence refusal with a final 2xx, not a 5xx that would be retried and parked for
 a replay into the emptied workspace: see `webhooks/workspaceDeletionAck.ts`.
-See ADR-0025's #898 amendment.
 
 ### Feature-flag floors
 
@@ -331,8 +330,7 @@ three ways:
   is intentionally available to every member.
 
 Do **not** use `isAdminRole`/`isOwnerRole` inline (removed) — they obscure the
-capability being checked. See ADR-0039 (enforcement model) and ADR-0040
-(shared-inbox example).
+capability being checked.
 
 ## Read-side token redaction
 
@@ -868,7 +866,7 @@ calls), N also ships the sweep that finds it and finishes or ends it, as
 **IMAP wire version.** The functions the IMAP server calls (the `fn` table in
 `apps/imap/src/convex.ts`) are a contract with a separately deployed image,
 versioned by `IMAP_WIRE_VERSION` and `IMAP_WIRE_MIN_SUPPORTED` in
-`@owlat/shared/imapWire` (ADR-0063). The IMAP server reports its wire version
+`@owlat/shared/imapWire`. The IMAP server reports its wire version
 at startup and every 5 minutes (`mail/imap/serverRegistry:report`) and serves
 only a backend that speaks it. That handshake only covers servers that report
 (not v0.6.7 and older), and a running one only at its next report, so the

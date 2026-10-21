@@ -5,8 +5,6 @@
  * severity rules (no lateral moves, no demotes except to clean,
  * banned-terminal), the admin override path, the audit-log effect,
  * and the read-side gate predicates.
- *
- * See docs/adr/0011-abuse-status-modules.md.
  */
 
 import { convexTest } from 'convex-test';
@@ -116,7 +114,7 @@ describe('abuseStatus.transition — severity rules', () => {
 	});
 
 	it('refuses warned → clean as severity_downgrade only when from a stricter state', async () => {
-		// Per ADR-0011: downgrades to `clean` are ALLOWED (auto-recover).
+		// Downgrades to `clean` are ALLOWED (auto-recover).
 		const t = convexTest(schema, modules);
 		await seedSettings(t, { abuseStatus: 'warned' });
 
@@ -336,7 +334,7 @@ describe('abuseStatus.adminOverride — bypass', () => {
 });
 
 // ============================================================
-// Audit-log effect (ADR-0011 drift fix #5)
+// Audit-log effect
 // ============================================================
 
 describe('abuseStatus — audit_log effect', () => {

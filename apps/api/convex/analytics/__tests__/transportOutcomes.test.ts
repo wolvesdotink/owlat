@@ -1,5 +1,5 @@
 /**
- * transportOutcomes — the write path (plan D5, ADR-0042 shape).
+ * transportOutcomes — the write path.
  *
  * Coverage here:
  *   - one SHIPPED lifecycle transition bumps exactly ONE shard of exactly ONE

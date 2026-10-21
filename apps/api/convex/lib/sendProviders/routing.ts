@@ -1,7 +1,7 @@
 /**
  * Send route resolution — thin dispatcher.
  *
- * Per ADR-0020. Looks up the strategy module by `routeConfig.strategy` and
+ * Looks up the strategy module by `routeConfig.strategy` and
  * calls its `select()`. Owns the fallback semantics for null configs, empty
  * enabled-provider sets, and the env-var fallback — which resolves to `null`,
  * meaning UNCONFIGURED, when neither a route nor `EMAIL_PROVIDER` names a

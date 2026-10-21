@@ -30,7 +30,7 @@ export interface InterpretArgs {
 	listId?: string;
 	/** D10: how the thread's earlier deferred mail is handled (`defer.ts`). */
 	predecessors?: PredecessorMode;
-	/** The awaiting caller's root, deadline included (ADR-0073); else the message's own. */
+	/** The awaiting caller's root, deadline included; else the message's own. */
 	root?: LlmRootContext;
 	/** The depth asked for; a source already terminal for it is `done` (`lease.ts`). */
 	depth?: Depth;

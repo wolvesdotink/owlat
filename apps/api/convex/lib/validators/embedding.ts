@@ -1,5 +1,5 @@
 /**
- * Validators for embedding provenance (ADR-0073, Phase 1a and Phase 5): the
+ * Validators for embedding provenance: the
  * space identity, the provenance stamp on `knowledgeEntries` and
  * `semanticFiles`, the cohort attestation and the re-embed job. Vocabularies
  * come from `@owlat/shared/aiRouting`. A leaf module: the schema loads it.

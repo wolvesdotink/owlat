@@ -35,7 +35,7 @@ export async function runHostedDraftStrategy(
 	ctx: ActionCtx,
 	strategyKind: string,
 	source: DraftStrategySource,
-	/** The draft's root request: the plugin's model calls are rows under it (ADR-0073). */
+	/** The draft's root request: the plugin's model calls are rows under it. */
 	root?: LlmRootContext
 ): Promise<string | null> {
 	const definition = pluginDraftStrategyDefinition(strategyKind);

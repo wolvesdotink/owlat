@@ -21,7 +21,7 @@
 # `.withIndex('name', …)`. The tree also names them:
 #
 #   * `.withSearchIndex('name', …)` — text search indexes.
-#   * `index:` / `filterIndexes:` / `sortIndexes:` inside the ADR-0037 listing
+#   * `index:` / `filterIndexes:` / `sortIndexes:` inside the listing
 #     descriptors, which lib/listing.ts forwards to `.withIndex()` as a
 #     variable (see `browsePage`).
 #   * `countIndexRange(db, table, 'name', …)` in lib/pagination.ts, whose

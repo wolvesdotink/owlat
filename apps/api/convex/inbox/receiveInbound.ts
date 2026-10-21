@@ -79,7 +79,7 @@ export const inboundMessageArgs = {
 	rawStorageId: v.optional(v.id('_storage')),
 	rawSize: v.optional(v.number()),
 	virusVerdict: v.optional(virusVerdictValidator),
-	// L5 (ADR-0073): the MTA's spam verdict and score, only ever from the
+	// The MTA's spam verdict and score, only ever from the
 	// authenticated MTA delivery (see `inboundEmailMessageValidator`). Recorded
 	// always; terminal only behind the `mtaVerdictTerminal` routing switch.
 	mtaSpamVerdict: v.optional(spamVerdictValidator),

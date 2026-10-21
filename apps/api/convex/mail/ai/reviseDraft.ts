@@ -55,7 +55,7 @@ import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 import { admissionRefusalOf } from '../../lib/llm/admissionPort';
 import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 
-/** One revision is one user action: its own root request (ADR-0073). */
+/** One revision is one user action: its own root request. */
 const REVISE_SPEND: LlmSpendTarget = { feature: 'postbox_revise_draft' };
 
 /**
@@ -152,7 +152,7 @@ export const reviseDraft = authedAction({
 		 */
 		errorCode?: typeof DRAFT_HAS_TOOL_MARKUP;
 	}> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		// Ownership check + reset the buffer to a clean streaming state.

@@ -1,5 +1,5 @@
 /**
- * Spend admission (ADR-0073, Phase 1b; owner decision D1; #1333).
+ * Spend admission (#1333).
  *
  * Reserve before dispatch, settle against the ledger after it:
  *

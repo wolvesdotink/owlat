@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * Who else has this email open in the editor (co-editing, see
- * docs/adr/0071-email-coediting.md): an avatar stack for the editor toolbar,
+ * Who else has this email open in the editor (co-editing): an avatar stack for the editor toolbar,
  * each avatar in the colour that outlines that person's block on the canvas,
  * plus a quiet "not synced" hint while this tab's edits cannot reach the
  * server. Renders nothing while the editor is not live.

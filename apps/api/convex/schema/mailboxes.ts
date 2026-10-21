@@ -93,7 +93,7 @@ export const mailboxesTables = {
 		// mail/sendingSwitch.ts::setSendingPreference, never assumed here.
 		outboundPreference: v.optional(v.union(v.literal('external'), v.literal('instance'))),
 		status: v.union(v.literal('active'), v.literal('suspended'), v.literal('deleted')),
-		// ADR-0060 §9: keep this mailbox's mail away from every hosted decision
+		// Keep this mailbox's mail away from every hosted decision
 		// provider. Absent ⇒ not excluded. Set by
 		// `decision/exclusion.ts setHostedDecisionExclusion` (admin, audited); an
 		// excluded mailbox is judged by a local decision engine only.

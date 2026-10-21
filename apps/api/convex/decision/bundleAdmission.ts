@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Spend admission for a Phase 2 bundle call (ADR-0073 §2, D1, D4): the thin
+ * Spend admission for a Phase 2 bundle call: the thin
  * seam between the decisions lane and the admission lane.
  *
  * A bundle call is paid traffic on the inbound path, so it may run only under

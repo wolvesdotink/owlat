@@ -1,5 +1,5 @@
 /**
- * Settling an admission hold against the ledger (ADR-0073, Phase 1b).
+ * Settling an admission hold against the ledger.
  *
  * Settled spend lives only in `llmUsageEvents`. A hold is closed by reading
  * the ledger rows that ran under it (`by_reservation_id`) and, when some of

@@ -455,7 +455,7 @@ describe('writeAnswerDraft — a stream that fails after a paid tool step (#1256
 	});
 });
 
-describe('writeAnswerDraft — a draft cut off at its output limit (ADR-0073)', () => {
+describe('writeAnswerDraft — a draft cut off at its output limit', () => {
 	it('fails the draft into the existing failure path, never a complete draft', async () => {
 		mocks.runLlmStream.mockImplementationOnce(
 			chunks(['Hi John,\n\nThe room is'], { tokens: 5, truncated: true })

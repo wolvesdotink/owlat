@@ -16,7 +16,7 @@
  * `agentActions.tokenUsage` the walker stores is a reporting view and is never
  * summed here (#1259).
  *
- * ENFORCEMENT is not here (ADR-0073, Phase 1b). Admission and the enforced
+ * ENFORCEMENT is not here. Admission and the enforced
  * status read the complete period aggregate (`aiRouting/admissionState.ts`,
  * `aiRouting/enforcedBudget.ts`) and fail closed when a ceiling is set and the
  * aggregate cannot be verified. At the ceiling:

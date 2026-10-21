@@ -1,5 +1,5 @@
 /**
- * An embedder for a space other than the configured one (ADR-0073, Phase 5
+ * An embedder for a space other than the configured one (the staged
  * rebuild and the re-embed job).
  *
  * A staged rebuild embeds with the target space's model while retrieval keeps

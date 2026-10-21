@@ -1,6 +1,5 @@
 /**
- * Build send-time profiles from the campaign sends that already exist
- * (ADR-0068, migration 0064).
+ * Build send-time profiles from the campaign sends that already exist.
  *
  * New reader opens and clicks fold into a contact's `sendTimeProfile` as they
  * happen (analytics/sendTimeProfileSync.ts). This back-fill gives the contacts

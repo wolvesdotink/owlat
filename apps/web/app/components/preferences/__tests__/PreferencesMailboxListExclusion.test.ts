@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * The hosted-decision opt-out on the admin mailbox list (ADR-0060 §9; Sol r8
- * F2). Only this list reaches every mailbox in the organization, a teammate's
+ * The hosted-decision opt-out on the admin mailbox list. Only this list reaches every mailbox in the organization, a teammate's
  * personal one included, so an admin manages each one here; a member's list
  * has no such control (they keep the read-only line on Writing voice).
  */

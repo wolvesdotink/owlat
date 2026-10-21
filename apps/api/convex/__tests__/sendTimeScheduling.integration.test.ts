@@ -1,5 +1,5 @@
 /**
- * "Optimized per contact" scheduling (ADR-0068): the `schedule` /
+ * "Optimized per contact" scheduling: the `schedule` /
  * `reschedule` arguments that turn it on, change it and switch it off, the
  * combinations they refuse, and the predicted distribution the schedule panel
  * shows (`campaigns/sendTimeQueries.previewSendTimes`).

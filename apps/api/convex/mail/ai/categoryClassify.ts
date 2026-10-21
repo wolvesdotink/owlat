@@ -76,7 +76,7 @@ export function buildCategoryPrompt(transcript: string): string {
 	);
 }
 
-/** This action, for its own budget deferral (ADR-0073, D1). */
+/** This action, for its own budget deferral. */
 const deferThisRun = (): DeferrableAction => internal.mail.ai.categoryClassify.classifyThread;
 
 /** How often a rate-limited refinement is tried again before the baseline stands. */
@@ -112,7 +112,7 @@ const classifyThreadArgs = {
 	// The scheduling mutation already wrote the fail-soft baseline, so step 3
 	// goes straight to the LLM. Absent on jobs scheduled before that change.
 	baselineApplied: v.optional(v.boolean()),
-	/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
+	/** Runs this work deferred at the spend ceiling. */
 	deferrals: v.optional(v.number()),
 	/** Runs this work tried again after a rate-limited gate (#1380). */
 	rateLimitRetries: v.optional(v.number()),
@@ -194,7 +194,7 @@ export const classifyThread = internalAction({
 	handler: deferredHandler<ObjectType<typeof classifyThreadArgs>>(
 		deferThisRun,
 		async (ctx, args) => {
-			// One model budget for this action, from its start (ADR-0073).
+			// One model budget for this action, from its start.
 			anchorActionDeadline(ctx);
 			const context = await ctx.runQuery(internal.mail.category.getThreadCategoryContext, {
 				threadId: args.threadId,

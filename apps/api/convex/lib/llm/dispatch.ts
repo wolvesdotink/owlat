@@ -5,11 +5,11 @@
  * mapping between the AI SDK's `usage` shape and the lifecycle's TokenUsage
  * validator (`./providerUsage.ts`) — adding or rotating SDKs touches one place.
  *
- * Per ADR-0029: lifted from agent/steps/shared/llm.ts (ADR-0014 seam) to a
+ * Lifted from agent/steps/shared/llm.ts to a
  * shared location so non-agent callers (translate, knowledge/extraction,
  * semanticFileProcessing, visualizationAgent) can use the same surface.
  *
- * METERING (ADR-0073). Every helper takes an optional {@link LlmCallMeter} and
+ * METERING. Every helper takes an optional {@link LlmCallMeter} and
  * records each PROVIDER REQUEST into it: every retry attempt, every tool round,
  * every stream step, failed ones included. The caller's spend helper
  * (`analytics/meteredSpend.ts`) turns those records into ledger rows, one per
@@ -165,7 +165,7 @@ export async function runLlmTextWithAttemptMetadata(
 	const sdkArgs =
 		'messages' in opts ? { messages: opts.messages } : { prompt: opts.prompt, system: opts.system };
 	const call = callShape(opts);
-	// Spend admission before each provider request (ADR-0073, Phase 1b).
+	// Spend admission before each provider request.
 	const requestModel = modelForRequest(opts.model);
 	const hold = await admitDispatch(opts.meter, call, {
 		isIncremental: isWrappableModel(requestModel),

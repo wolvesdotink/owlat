@@ -24,7 +24,7 @@ export async function main() {
 	const convex = createConvexClient(config);
 
 	// Report this server's release and wire version, and serve only once the
-	// backend speaks its contract (ADR-0063).
+	// backend speaks its contract.
 	const owlatVersion = process.env['OWLAT_VERSION'] || 'dev';
 	const identity = {
 		instanceId: randomUUID(),

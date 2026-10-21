@@ -10,7 +10,7 @@
  *
  * This is a read-side badge only: opening a thread marks it seen, it never gates
  * a mutation, and — like presence — it records NO audit-log entry. It still sits
- * on the owner/admin floor: the shared inbox is admin-only (ADR-0040), and a
+ * on the owner/admin floor: the shared inbox is admin-only, and a
  * marker anyone could write is a row anyone could create against any thread id.
  */
 

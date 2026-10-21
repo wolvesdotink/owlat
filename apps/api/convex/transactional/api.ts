@@ -17,8 +17,6 @@
  * verification, variable validation, contact upsert, language resolution,
  * route resolution, attachment merging, row insert, counters, enqueue) lives
  * in the **Transactional send intake (module)** at `transactional/dispatch.ts`.
- *
- * See docs/adr/0021-transactional-send-intake-module.md.
  */
 
 import type { Id } from '../_generated/dataModel';

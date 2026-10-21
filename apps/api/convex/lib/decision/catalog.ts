@@ -95,7 +95,7 @@ export const CONNECTION_PROBE_STATE = 'It is raining in Hamburg this afternoon.'
 /** Accounting tag for the probe, so a test button's spend is legible in the ledger. */
 export const CONNECTION_PROBE_FEATURE = 'settings.decision_connection_test';
 
-// ─── Phase 2 mail bundles (ADR-0073, plan Phase 2 and D11) ─────────────────
+// ─── Phase 2 mail bundles ──────────────────────────────────────────────────
 //
 // The production question sets the decisions lane asks, and the exact sets the
 // decision eval measures (`mail/interpret/__eval__/decisionQuestions.ts`
@@ -180,7 +180,7 @@ register(
 	TEAM_MESSAGE_QUESTIONS
 );
 
-// ─── Phase 4 draft quality (ADR-0073, "Auto-send contract") ────────────────
+// ─── Phase 4 draft quality ─────────────────────────────────────────────────
 
 /**
  * Whether a draft reply is send-ready, judged from the thread and the draft.
@@ -208,7 +208,7 @@ register(
 	DRAFT_QUALITY_QUESTIONS
 );
 
-// ─── Phase 3: clarification necessity and claim checks (ADR-0073, D5) ──────
+// ─── Phase 3: clarification necessity and claim checks ─────────────────────
 //
 // Asked inline by the clarification service (`inbox/clarifyJudge.ts`) and by
 // interpretation's verifier (`mail/interpret/verifyRoute.ts`), each behind its

@@ -369,7 +369,7 @@ export const deleteContact = createAuthenticatedHandler(
 /**
  * GET /api/v1/contacts - List contacts with cursor-based pagination and search.
  *
- * Cursor-paginated (ADR-0037): pass `limit` (max 100) and an opaque `cursor`
+ * Cursor-paginated: pass `limit` (max 100) and an opaque `cursor`
  * from the previous response's `pagination.cursor`. `pagination.isDone` is true
  * once the final page has been returned. Search is relevance-ordered and
  * genuinely multi-page. There is no row ceiling — every contact is reachable.

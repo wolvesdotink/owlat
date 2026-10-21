@@ -91,8 +91,6 @@ export const getContactForUnsubscribe = internalQuery({
  * DOI confirmation token. Whether a later signup must confirm again is decided
  * from the contact row by `requiresFreshConfirmation` (topics/subscription.ts),
  * not from the form submissions, whose `confirmedAt` an unsubscribe keeps.
- *
- * See docs/adr/0013-topic-subscription-module.md.
  */
 export const processUnsubscribe = internalMutation({
 	args: {

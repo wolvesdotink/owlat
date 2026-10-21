@@ -126,7 +126,7 @@ describe('contextRetrievalStep.execute — structured current message', () => {
 		// The eligibility snapshot is taken before the first run.
 		expect(captures).toEqual([messageId]);
 		// Awaited, so it runs on this step's clock: the message's root, with the
-		// action's deadline (ADR-0073).
+		// action's deadline.
 		expect(runs).toEqual([
 			{
 				source: { kind: 'inbound', id: messageId },

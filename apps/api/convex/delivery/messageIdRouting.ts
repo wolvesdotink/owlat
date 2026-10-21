@@ -7,8 +7,7 @@
  * the Webhook dispatcher and the workpool completion path agree.
  *
  * Broader orchestration cleanup (one module owning both workpool completion
- * and provider feedback) is deferred to a follow-up ADR — see candidate #5
- * in ADR-0003.
+ * and provider feedback) is deferred.
  */
 
 const POSTBOX_PROVIDER_MESSAGE_ID_PREFIX = 'pb-';

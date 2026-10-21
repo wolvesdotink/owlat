@@ -1,6 +1,6 @@
 /**
- * The plan's prerequisite for decision-driven autonomous input (ADR-0073,
- * "Auto-send contract"): item coverage must be enforced. While any decision
+ * The prerequisite for decision-driven autonomous input (the auto-send
+ * contract): item coverage must be enforced. While any decision
  * verdict feeds auto-send, an admin cannot switch item coverage off. Today no
  * verdict feeds it, so the setting moves freely, as before.
  */

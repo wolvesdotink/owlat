@@ -1,5 +1,5 @@
 /**
- * Embedding provenance fixtures (ADR-0073). Vector search only returns rows
+ * Embedding provenance fixtures. Vector search only returns rows
  * stamped with the active space, so a test that seeds vectors seeds a space
  * and stamps its rows with it.
  */

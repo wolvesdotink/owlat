@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Embedding search" on the AI provider page (U1, D8, ADR-0073 §9), below the
+ * "Embedding search" on the AI provider page, below the
  * embeddings card: which embedding space vector search uses, how much of the
  * knowledge base and file library it reaches, and the work that brings the
  * rest back.

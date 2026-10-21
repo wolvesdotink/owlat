@@ -1,6 +1,6 @@
 /**
  * Ask-the-thread answers are shown, not stored, but an answer that stopped at
- * its output limit is still incomplete (ADR-0073): the action returns
+ * its output limit is still incomplete: the action returns
  * `isTruncated` so the UI can mark it cut off.
  */
 

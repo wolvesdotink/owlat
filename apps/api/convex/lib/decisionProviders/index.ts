@@ -3,8 +3,8 @@
 /**
  * Decision provider adapter (module) — registry + dispatch.
  *
- * Mirrors `lib/llmProviders/index.ts` (and through it `lib/sendProviders`,
- * ADR-0020). One plane, one registry: `decisionProviderFor(kind)`.
+ * Mirrors `lib/llmProviders/index.ts` (and through it `lib/sendProviders`).
+ * One plane, one registry: `decisionProviderFor(kind)`.
  *
  * Adding a provider requires its adapter, kind registration and conformance coverage; the
  * compile-time mapped-type `satisfies` guard catches a missing or mismatched

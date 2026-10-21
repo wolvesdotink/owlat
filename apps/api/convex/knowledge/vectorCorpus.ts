@@ -1,5 +1,5 @@
 /**
- * Could a vector search find anything? (ADR-0073, Phase 1c empty-corpus skip.)
+ * Could a vector search find anything? (The empty-corpus skip.)
  *
  * Read by `embedRetrievalQuery` (`knowledge/vectorSearch.ts`) before it pays for a
  * query embedding: a search over a table with no queryable vector runs its

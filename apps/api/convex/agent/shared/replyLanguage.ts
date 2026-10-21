@@ -2,7 +2,7 @@
  * The one rule about reply language, shared by the primary draft prompt and
  * the alternative-options prompt (agent/shared/draftService.ts): the reply is
  * written in the language the sender wrote in. Split out to keep the draft
- * service under the ~500 LOC file-size ratchet. See ADR-0061.
+ * service under the ~500 LOC file-size ratchet.
  */
 
 /** Human-readable names for the language codes the classifier commonly emits. */

@@ -1,5 +1,5 @@
 /**
- * Send-time profile — the database half (ADR-0068). The arithmetic is in
+ * Send-time profile — the database half. The arithmetic is in
  * `sendTimeProfile.ts`; this module places an engagement in local time, folds
  * it into the contact's profile and into one shard of the organization
  * histogram, and sums those shards for the planner.

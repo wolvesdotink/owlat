@@ -1,5 +1,5 @@
 /**
- * D10 (ADR-0073), lazy interpretation for display-only mail:
+ * Lazy interpretation for display-only mail:
  *
  *   - a personal delivery whose only consumer is the reader display is
  *     deferred: no run is scheduled, the source is stored deferred (not

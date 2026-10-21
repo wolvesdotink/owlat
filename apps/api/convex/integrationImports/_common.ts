@@ -6,8 +6,6 @@
  * The **Integration import walker** dispatches per-provider work through
  * `providerFor(kind)` in `./providers`; provider variation lives entirely
  * behind this seam.
- *
- * Per ADR-0027.
  */
 
 import { v } from 'convex/values';

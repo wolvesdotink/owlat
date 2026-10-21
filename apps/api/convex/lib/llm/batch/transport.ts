@@ -1,5 +1,5 @@
 /**
- * The HTTP side of the provider batch APIs (ADR-0073, L14): submit one
+ * The HTTP side of the provider batch APIs: submit one
  * captured request as a batch, read the batch's state, and read the request's
  * result line. Fixed native endpoints only (the batch path is offered only for
  * `openai-native` and `anthropic-native`), so the key never goes anywhere

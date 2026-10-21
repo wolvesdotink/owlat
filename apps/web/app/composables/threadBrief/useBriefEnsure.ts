@@ -1,5 +1,5 @@
 /**
- * First-open interpretation (ADR-0072, D5): a thread whose brief reads
+ * First-open interpretation: a thread whose brief reads
  * `completeness: 'none'`, or whose earlier history stopped being read
  * (`history: 'stalled'`, the spend gate or AI off), is handed to
  * `mail.interpret.lazy.ensure`, while the surface shows the conversation.

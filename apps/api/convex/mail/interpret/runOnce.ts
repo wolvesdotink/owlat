@@ -111,7 +111,7 @@ export async function runOnce(
 		);
 	}
 
-	// D13 (ADR-0073): a Team message whose scan skipped the model guard gets it
+	// A Team message whose scan skipped the model guard gets it
 	// before this generative consumer; one it flags is not interpreted.
 	let isGuardClear: boolean;
 	try {
@@ -285,7 +285,7 @@ export async function runOnce(
 		});
 		const { truncatedSegmentIds } = renderSegments(input.message.segments);
 		const root = args.root ?? interpretRoot(args.source);
-		// Spend admission (ADR-0073, D1): brief mode is background work, so its
+		// Spend admission: brief mode is background work, so its
 		// holds stop at the advisory reserve like its gate; actions mode feeds
 		// the Team pipeline.
 		const priority = mode === 'brief' ? 'background' : 'pipeline';

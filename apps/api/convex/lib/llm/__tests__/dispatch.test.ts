@@ -1,5 +1,5 @@
 /**
- * Unit tests for `lib/llm/dispatch.ts` — see ADR-0029.
+ * Unit tests for `lib/llm/dispatch.ts`.
  *
  * Covers:
  *   - `normalizeUsage`: SDK-shape → TokenUsage validator mapping.

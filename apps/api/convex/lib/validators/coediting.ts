@@ -1,7 +1,7 @@
 import { v, type Infer } from 'convex/values';
 
 /**
- * Co-editing validators (docs/adr/0071-email-coediting.md): which email a
+ * Co-editing validators: which email a
  * live editing session belongs to, and the block-granular operations editors
  * send to it. Shared by `schema/emailCoediting.ts` and `emailCoediting/*`.
  */

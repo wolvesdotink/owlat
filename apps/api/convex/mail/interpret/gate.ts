@@ -5,7 +5,7 @@
  * takes the two switches that matter:
  *
  *   - the `ai` feature flag;
- *   - spend admission (ADR-0073, D1), read from the complete period
+ *   - spend admission, read from the complete period
  *     aggregate (`aiRouting/enforcedBudget.ts`). Brief mode is background
  *     work: it stops at the advisory reserve and defers. Actions mode feeds
  *     the Team Inbox pipeline and runs until the ceiling itself; past it, the

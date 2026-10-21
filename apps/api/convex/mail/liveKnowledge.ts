@@ -95,7 +95,7 @@ export async function shouldExtractLiveMessage(
 export const extractLiveMessage = internalAction({
 	args: { mailMessageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		// Moved to Spam, Trash, Sent or Drafts since delivery: not extracted.
 		if (!(await ctx.runQuery(internal.mail.liveKnowledge.isInExtractableFolder, args))) return;
@@ -112,7 +112,7 @@ export const extractLiveMessage = internalAction({
 		await ctx.runAction(internal.knowledge.extraction.extractFromMailMessage, {
 			mailMessageId: args.mailMessageId,
 			contactIds: [contactId],
-			// Awaited: it spends from this action's clock (ADR-0073).
+			// Awaited: it spends from this action's clock.
 			root: boundedRoot(ctx, rootRequest('postbox', args.mailMessageId)),
 		});
 	},

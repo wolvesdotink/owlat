@@ -3,7 +3,7 @@
 /**
  * SES Send provider adapter (module).
  *
- * Per ADR-0020. Single-attempt `sendEmail` via the AWS SDK; failures are
+ * Single-attempt `sendEmail` via the AWS SDK; failures are
  * classified by the SDK error's `name` first, then fall back to substring
  * matching for cases where the SDK throws untyped errors.
  *

@@ -3,8 +3,6 @@
  * is the contract every public token endpoint and every API-key endpoint
  * shares post-deepening. These tests pin the shape without going through
  * either factory.
- *
- * See docs/adr/0030-public-token-endpoint-module.md.
  */
 
 import { ConvexError } from 'convex/values';

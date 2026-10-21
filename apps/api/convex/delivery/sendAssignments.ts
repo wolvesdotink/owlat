@@ -1,5 +1,5 @@
 /**
- * Send assignments — the experiment record (ADR-0054 §8).
+ * Send assignments — the experiment record.
  *
  * Send rows record `providerType` POST-HOC, from the dispatch result. That is
  * enough to know what happened to one message and not enough to compare two
@@ -17,7 +17,7 @@
  *   - Every read is org-leading. `sendAssignments` is cell-keyed, and a
  *     cell-keyed table readable across tenants would be a security defect.
  *   - O(N) narrow writes for N recipients, and no unbounded table read
- *     anywhere on this path (ADR-0042's post-mortem). In particular the
+ *     anywhere on this path. In particular the
  *     recorded route comes from the health-free cell seam: the full
  *     per-message resolver reads `providerHealth`, which is patched once per
  *     dispatch, and a campaign enqueue transaction that took a read

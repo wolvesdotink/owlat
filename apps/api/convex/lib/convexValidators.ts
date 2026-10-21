@@ -100,7 +100,7 @@ export const activityMetadataValidator = v.object({
 	newValue: v.optional(v.string()),
 	source: v.optional(v.string()),
 	// `doi_attested` activity metadata — source label from external platform
-	// (Mailchimp, Klaviyo, Stripe, …). See ADR-0019.
+	// (Mailchimp, Klaviyo, Stripe, …).
 	attestSource: v.optional(v.string()),
 });
 
@@ -132,8 +132,8 @@ export const webhookPayloadValidator = v.object({
 	data: jsonPrimitiveRecord,
 });
 
-// Segment filters — canonical `Condition` discriminator is `kind`, per
-// ADR-0004. Each kind has its own required shape; operators applicable to
+// Segment filters — canonical `Condition` discriminator is `kind`.
+// Each kind has its own required shape; operators applicable to
 // the kind live on the per-kind module.
 const contactPropertyOperatorValidator = v.union(
 	v.literal('equals'),
@@ -194,7 +194,7 @@ export const triggerConfigValidator = v.union(
 	v.object({ pluginConfig: jsonPrimitiveRecord }) // plugin trigger config: opaque flat record, plugin-validated
 );
 
-// Automation step config. Condition step: `{ condition, yesBranchStepIndex?, noBranchStepIndex? }` (ADR-0004).
+// Automation step config. Condition step: `{ condition, yesBranchStepIndex?, noBranchStepIndex? }`.
 const conditionStepConfigValidator = v.object({
 	condition: filterConditionValidator,
 	yesBranchStepIndex: v.optional(v.union(v.number(), v.null())),
@@ -272,7 +272,7 @@ export const formFieldValidator = v.object({
 
 // Campaign status union (campaigns.status). Keep CAMPAIGN_STATUSES below in
 // sync — it is the closed bucket set the Listing engine's `byStatus` facet
-// groups over (ADR-0037).
+// groups over.
 export const campaignStatusValidator = v.union(
 	v.literal('draft'),
 	v.literal('scheduled'),
@@ -291,7 +291,7 @@ export const CAMPAIGN_STATUSES = [
 	'pending_review',
 ] as const;
 
-// Campaign audience is a discriminated value (ADR-0033) — see
+// Campaign audience is a discriminated value — see
 // `convex/campaigns/audience.ts` (`audienceValidator`). The flat
 // `audienceTypeValidator` was removed with the four flat columns.
 
@@ -356,7 +356,7 @@ export const securityFlagsValidator = v.object({
 	// but the route step refuses to AUTO-SEND without a clean guard pass
 	// (fail closed on the auto-send path only).
 	guardUnavailable: v.optional(v.boolean()),
-	// D13 (ADR-0073): the deterministic layers ran but the model guard was
+	// The deterministic layers ran but the model guard was
 	// skipped (spam-score archive, agent off). Required before any later
 	// autonomous processing: lib/aiRouting/guardRecord.ts. Absent ⇒ it ran.
 	guardNotRun: v.optional(guardNotRunValidator),

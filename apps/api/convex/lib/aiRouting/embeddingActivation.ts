@@ -1,5 +1,5 @@
 /**
- * The writes of embedding provenance (ADR-0073): activating a space, claiming
+ * The writes of embedding provenance: activating a space, claiming
  * a vector column, committing a vector, and recording that the corpus changed.
  * The rules are in `embeddingRegistry.ts`; this module is the one that applies
  * them in mutations.

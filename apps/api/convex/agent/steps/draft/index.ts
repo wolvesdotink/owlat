@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * `draft` Agent step (module) — see ADR-0014.
+ * `draft` Agent step (module).
  *
  * Generates a reply draft grounded in the organization's tone, signature,
  * and the assembled context. Uses the capable model tier. Defense-in-
@@ -210,7 +210,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		const recallScope: Id<'contacts'> | 'org-general-only' =
 			message?.contactId ?? 'org-general-only';
 		// The message's root, on this action's clock: the draft, its self-check, the
-		// recall searches and the attachment search all group under it (ADR-0073).
+		// recall searches and the attachment search all group under it.
 		const root = boundedRoot(ctx, teamRoot(input.inboundMessageId));
 		const recallKnowledge = buildRecallKnowledgeTool({
 			runAction: ctx.runAction,
@@ -334,7 +334,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			}
 		}
 
-		// Persist the draft fields (in-state side effect — ADR-0010); the route
+		// Persist the draft fields (in-state side effect); the route
 		// step reads them. The advisory, human-confirmed, contact-scoped attachment
 		// suggestion (fail-soft — see ./attachment.ts) folds in as an optional patch.
 		await ctx.runMutation(internal.inbox.stepOutputs.recordDraftOutput, {

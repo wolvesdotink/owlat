@@ -17,7 +17,7 @@ app.use(rateLimiter);
 app.use(workpool, { name: 'transactionalEmailPool' });
 app.use(workpool, { name: 'campaignEmailPool' });
 
-// Saved-block rerender pool (ADR-0023). Reactively re-renders consumer
+// Saved-block rerender pool. Reactively re-renders consumer
 // `htmlContent` after a saved block's content changes. Lower parallelism than
 // send pools — these batches re-render a small set of templates per job.
 app.use(workpool, { name: 'rerenderBlocksPool' });

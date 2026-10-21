@@ -4,8 +4,7 @@
  * Covers per-source resolution, topic assignments (single + per-row),
  * property catalog policy (csv/api skip vs mailchimp/stripe auto-register),
  * DOI admin-attest, contact-count increment, contact-activity recording,
- * within-batch dedup, batch limit, and the four drift-bug regression cases
- * named in docs/adr/0019-contact-import-module.md.
+ * within-batch dedup, batch limit, and four drift-bug regression cases.
  */
 
 import { convexTest } from 'convex-test';
@@ -45,14 +44,14 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 async function createTopic(
 	t: ReturnType<typeof convexTest>,
 	requireDoubleOptIn: boolean,
-	name = 'Newsletter',
+	name = 'Newsletter'
 ): Promise<Id<'topics'>> {
 	return await t.run(async (ctx) => {
 		return await ctx.db.insert('topics', {
@@ -66,7 +65,7 @@ async function createTopic(
 async function createProperty(
 	t: ReturnType<typeof convexTest>,
 	key: string,
-	type: 'string' | 'number' | 'boolean' | 'date' = 'string',
+	type: 'string' | 'number' | 'boolean' | 'date' = 'string'
 ): Promise<Id<'contactProperties'>> {
 	return await t.run(async (ctx) => {
 		return await ctx.db.insert('contactProperties', {
@@ -85,26 +84,20 @@ describe('contacts.import.importBatch — per-source resolution', () => {
 		const t = convexTest(schema, modules);
 		incrementContactCountMock.mockClear();
 
-		const result = await t.mutation(
-			internal.contacts.import.importBatch,
-			{
-				rows: [
-					{ email: 'a@example.com', firstName: 'Alice' },
-					{ email: 'b@example.com', firstName: 'Bob' },
-				],
-				source: 'csv',
-				handleDuplicates: 'skip',
-			},
-		);
+		const result = await t.mutation(internal.contacts.import.importBatch, {
+			rows: [
+				{ email: 'a@example.com', firstName: 'Alice' },
+				{ email: 'b@example.com', firstName: 'Bob' },
+			],
+			source: 'csv',
+			handleDuplicates: 'skip',
+		});
 
 		expect(result.imported).toBe(2);
 		expect(result.updated).toBe(0);
 		expect(result.skipped).toBe(0);
 		expect(result.failed).toBe(0);
-		expect(incrementContactCountMock).toHaveBeenCalledWith(
-			expect.anything(),
-			2,
-		);
+		expect(incrementContactCountMock).toHaveBeenCalledWith(expect.anything(), 2);
 	});
 
 	it('csv import: handleDuplicates=skip on existing email resolves as matched (skipped)', async () => {
@@ -116,14 +109,11 @@ describe('contacts.import.importBatch — per-source resolution', () => {
 			handleDuplicates: 'skip',
 		});
 
-		const result = await t.mutation(
-			internal.contacts.import.importBatch,
-			{
-				rows: [{ email: 'existing@example.com', firstName: 'New' }],
-				source: 'csv',
-				handleDuplicates: 'skip',
-			},
-		);
+		const result = await t.mutation(internal.contacts.import.importBatch, {
+			rows: [{ email: 'existing@example.com', firstName: 'New' }],
+			source: 'csv',
+			handleDuplicates: 'skip',
+		});
 
 		expect(result.imported).toBe(0);
 		expect(result.updated).toBe(0);
@@ -133,9 +123,7 @@ describe('contacts.import.importBatch — per-source resolution', () => {
 		const contacts = await t.run(async (ctx) => {
 			return await ctx.db.query('contacts').collect();
 		});
-		expect(contacts.find((c) => c.email === 'existing@example.com')?.firstName).toBe(
-			'Old',
-		);
+		expect(contacts.find((c) => c.email === 'existing@example.com')?.firstName).toBe('Old');
 	});
 
 	it('csv import: handleDuplicates=update merges non-empty fields on match', async () => {
@@ -146,14 +134,11 @@ describe('contacts.import.importBatch — per-source resolution', () => {
 			handleDuplicates: 'update',
 		});
 
-		const result = await t.mutation(
-			internal.contacts.import.importBatch,
-			{
-				rows: [{ email: 'm@example.com', firstName: 'New' }],
-				source: 'csv',
-				handleDuplicates: 'update',
-			},
-		);
+		const result = await t.mutation(internal.contacts.import.importBatch, {
+			rows: [{ email: 'm@example.com', firstName: 'New' }],
+			source: 'csv',
+			handleDuplicates: 'update',
+		});
 
 		expect(result.updated).toBe(1);
 		expect(result.imported).toBe(0);
@@ -211,11 +196,7 @@ describe('contacts.import.importBatch — email validation', () => {
 	it('records invalid emails in errors[] and increments failed', async () => {
 		const t = convexTest(schema, modules);
 		const result = await t.mutation(internal.contacts.import.importBatch, {
-			rows: [
-				{ email: 'ok@example.com' },
-				{ email: 'not-an-email' },
-				{ email: 'no@dots' },
-			],
+			rows: [{ email: 'ok@example.com' }, { email: 'not-an-email' }, { email: 'no@dots' }],
 			source: 'csv',
 			handleDuplicates: 'skip',
 		});
@@ -230,12 +211,9 @@ describe('contacts.import.importBatch — email validation', () => {
 		const t = convexTest(schema, modules);
 		// `deduplicateContactsByEmail` strips empty/missing emails before the
 		// validation loop sees them — preserves legacy behavior across all
-		// three import shells. ADR-0019.
+		// three import shells.
 		const result = await t.mutation(internal.contacts.import.importBatch, {
-			rows: [
-				{ email: 'ok@example.com' },
-				{ email: '' },
-			],
+			rows: [{ email: 'ok@example.com' }, { email: '' }],
 			source: 'csv',
 			handleDuplicates: 'skip',
 		});
@@ -253,10 +231,7 @@ describe('contacts.import.importBatch — topic assignments', () => {
 		const topicId = await createTopic(t, false);
 
 		const result = await t.mutation(internal.contacts.import.importBatch, {
-			rows: [
-				{ email: 'a@example.com' },
-				{ email: 'b@example.com' },
-			],
+			rows: [{ email: 'a@example.com' }, { email: 'b@example.com' }],
 			source: 'csv',
 			handleDuplicates: 'skip',
 			topicAssignments: { kind: 'single', topicId },
@@ -279,10 +254,7 @@ describe('contacts.import.importBatch — topic assignments', () => {
 		const topicB = await createTopic(t, false, 'B');
 
 		const result = await t.mutation(internal.contacts.import.importBatch, {
-			rows: [
-				{ email: 'a@example.com' },
-				{ email: 'b@example.com' },
-			],
+			rows: [{ email: 'a@example.com' }, { email: 'b@example.com' }],
 			source: 'csv',
 			handleDuplicates: 'skip',
 			topicAssignments: {
@@ -335,9 +307,7 @@ describe('contacts.import.importBatch — property catalog policy', () => {
 		const propertyId = await createProperty(t, 'company');
 
 		const result = await t.mutation(internal.contacts.import.importBatch, {
-			rows: [
-				{ email: 'a@example.com', properties: { company: 'Acme' } },
-			],
+			rows: [{ email: 'a@example.com', properties: { company: 'Acme' } }],
 			source: 'csv',
 			handleDuplicates: 'skip',
 		});
@@ -381,9 +351,7 @@ describe('contacts.import.importBatch — property catalog policy', () => {
 		const t = convexTest(schema, modules);
 
 		const result = await t.mutation(internal.contacts.import.importBatch, {
-			rows: [
-				{ email: 'a@example.com', properties: { COMPANY: 'Acme' } },
-			],
+			rows: [{ email: 'a@example.com', properties: { COMPANY: 'Acme' } }],
 			source: 'mailchimp',
 			handleDuplicates: 'skip',
 		});
@@ -520,9 +488,9 @@ describe('contacts.import.importBatch — DOI attest', () => {
 		});
 		const attested = activities.find((a) => a.activityType === 'doi_attested');
 		expect(attested).toBeTruthy();
-		expect(
-			(attested?.metadata as { attestSource?: string } | undefined)?.attestSource,
-		).toBe('mailchimp');
+		expect((attested?.metadata as { attestSource?: string } | undefined)?.attestSource).toBe(
+			'mailchimp'
+		);
 
 		const auditLogs = await t.run(async (ctx) => {
 			return await ctx.db.query('auditLogs').collect();
@@ -600,9 +568,7 @@ describe('contacts.import.importBatch — contact activity', () => {
 		});
 		const created = activities.filter((a) => a.activityType === 'created');
 		expect(created).toHaveLength(1);
-		expect(
-			(created[0]?.metadata as { source?: string } | undefined)?.source,
-		).toBe('import');
+		expect((created[0]?.metadata as { source?: string } | undefined)?.source).toBe('import');
 	});
 
 	it('existing contact + property writes: one property_updated activity', async () => {
@@ -618,9 +584,7 @@ describe('contacts.import.importBatch — contact activity', () => {
 
 		// Second import: property write triggers property_updated.
 		await t.mutation(internal.contacts.import.importBatch, {
-			rows: [
-				{ email: 'a@example.com', properties: { company: 'Acme' } },
-			],
+			rows: [{ email: 'a@example.com', properties: { company: 'Acme' } }],
 			source: 'csv',
 			handleDuplicates: 'update',
 		});
@@ -628,9 +592,7 @@ describe('contacts.import.importBatch — contact activity', () => {
 		const activities = await t.run(async (ctx) => {
 			return await ctx.db.query('contactActivities').collect();
 		});
-		const propertyUpdates = activities.filter(
-			(a) => a.activityType === 'property_updated',
-		);
+		const propertyUpdates = activities.filter((a) => a.activityType === 'property_updated');
 		expect(propertyUpdates).toHaveLength(1);
 	});
 
@@ -650,9 +612,7 @@ describe('contacts.import.importBatch — contact activity', () => {
 		const activities = await t.run(async (ctx) => {
 			return await ctx.db.query('contactActivities').collect();
 		});
-		const propertyUpdates = activities.filter(
-			(a) => a.activityType === 'property_updated',
-		);
+		const propertyUpdates = activities.filter((a) => a.activityType === 'property_updated');
 		expect(propertyUpdates).toHaveLength(0);
 	});
 });
@@ -665,19 +625,13 @@ describe('contacts.import.importBatch — incrementContactCount', () => {
 		incrementContactCountMock.mockClear();
 
 		await t.mutation(internal.contacts.import.importBatch, {
-			rows: [
-				{ email: 'a@example.com' },
-				{ email: 'b@example.com' },
-			],
+			rows: [{ email: 'a@example.com' }, { email: 'b@example.com' }],
 			source: 'mailchimp',
 			handleDuplicates: 'skip',
 		});
 
 		expect(incrementContactCountMock).toHaveBeenCalledTimes(1);
-		expect(incrementContactCountMock).toHaveBeenCalledWith(
-			expect.anything(),
-			2,
-		);
+		expect(incrementContactCountMock).toHaveBeenCalledWith(expect.anything(), 2);
 	});
 
 	it('zero imported (all duplicates): no incrementContactCount call', async () => {
@@ -716,7 +670,7 @@ describe('contacts.import.importBatch — batch size limit', () => {
 				rows,
 				source: 'csv',
 				handleDuplicates: 'skip',
-			}),
+			})
 		).rejects.toThrow(/more than 500/);
 	});
 
@@ -726,14 +680,11 @@ describe('contacts.import.importBatch — batch size limit', () => {
 			email: `u${i}@example.com`,
 		}));
 
-		const result = await t.mutation(
-			internal.contacts.import.importBatch,
-			{
-				rows,
-				source: 'csv',
-				handleDuplicates: 'skip',
-			},
-		);
+		const result = await t.mutation(internal.contacts.import.importBatch, {
+			rows,
+			source: 'csv',
+			handleDuplicates: 'skip',
+		});
 		expect(result.imported).toBe(500);
 	});
 });

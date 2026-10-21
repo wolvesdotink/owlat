@@ -35,15 +35,15 @@ type Price = {
 
 /**
  * The revision of the price table below, stamped on every ledger row as
- * `priceVersion` (ADR-0073). A row keeps the cost it was written with; changing
+ * `priceVersion`. A row keeps the cost it was written with; changing
  * a rate never reprices history. Bump this with any rate change, to the date
  * the new rates were checked.
  */
 export const PRICE_VERSION = '2026-10-12.batch';
 
 /**
- * Marks the ledger `endpoint` of a request sent through a provider batch API
- * (ADR-0073, L14): `openai-native+batch`, `anthropic-native+batch`.
+ * Marks the ledger `endpoint` of a request sent through a provider batch API:
+ * `openai-native+batch`, `anthropic-native+batch`.
  */
 export const BATCH_ENDPOINT_SUFFIX = '+batch';
 

@@ -1,5 +1,5 @@
 /**
- * Whether a model endpoint runs on the operator's own hardware (ADR-0073). A
+ * Whether a model endpoint runs on the operator's own hardware. A
  * local request costs nothing, so its ledger row is priced at zero; anything
  * else is priced, and counts against the ceiling. ONE rule for the language,
  * embedding and decision planes, so no plane can call a paid service free.

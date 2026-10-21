@@ -1,7 +1,7 @@
 /**
  * A batch request is the request the real-time call would have sent, and its
- * result is read the way the real-time call reads its response (ADR-0073,
- * L14). Each case runs the real-time structured call on the model the
+ * result is read the way the real-time call reads its response.
+ * Each case runs the real-time structured call on the model the
  * resolver's adapter builds, over a stubbed network, and the capture and the
  * replay on the batch route's model, and compares them: the same URL and body
  * byte for byte (the task's output ceiling, the schema mode, the temperature),

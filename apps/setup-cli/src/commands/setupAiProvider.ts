@@ -5,7 +5,7 @@
  * The LANGUAGE plane is everything that writes — drafts, replies, summaries,
  * the assistant — and it is the one question an install with `ai` on has always
  * been asked. The DECISION plane answers the yes/no, category and score
- * judgements those features make (ADR-0060) and is entirely optional; the
+ * judgements those features make and is entirely optional; the
  * EMBEDDING plane is local by default and needs nothing from an operator here.
  *
  * Extracted from `setup.ts` for the same reason `setupSendingProvider.ts` was:
@@ -144,7 +144,7 @@ export function withComposeProfiles(
  *
  * A decision provider answers the yes/no, category and score judgements the AI
  * features make and returns a calibrated probability instead of a text model's
- * self-report (ADR-0060). It is an ADDITION: everything that writes — drafts,
+ * self-report. It is an ADDITION: everything that writes — drafts,
  * replies, summaries, the assistant — stays on the provider chosen above.
  *
  * The recommendation is pre-filled and skipping is one keystroke. Those are two

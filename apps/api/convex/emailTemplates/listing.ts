@@ -1,7 +1,7 @@
 import type { ListingDescriptor } from '../lib/listing';
 
 /**
- * Email-template listing descriptor (ADR-0037). Replaces the worst offender —
+ * Email-template listing descriptor. Replaces the worst offender —
  * the old shell `.collect()`-ed the entire table for every list, filter, and
  * sort. Search routes through `search_templates` (type + status filterFields);
  * type-filtered browse routes through `by_type_and_updated_at`; the default

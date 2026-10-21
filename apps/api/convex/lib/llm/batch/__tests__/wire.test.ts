@@ -1,5 +1,5 @@
 /**
- * The provider batch wire formats (ADR-0073, L14): one captured request becomes
+ * The provider batch wire formats: one captured request becomes
  * one batch request line, and the request's result is read back from the
  * batch's output, with every unbilled outcome told apart from a success and
  * from a result nobody can find.

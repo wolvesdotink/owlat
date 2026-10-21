@@ -61,7 +61,7 @@ export const assertAiAllowed = internalMutation({
 			throwForbidden('AI features are disabled');
 		}
 
-		// Spend admission (ADR-0073, D1): a user-triggered feature needs headroom
+		// Spend admission: a user-triggered feature needs headroom
 		// outside the triage allowance and the reserve held for the Team
 		// pipeline, read from the complete period aggregate. FAIL-CLOSED (#1333):
 		// a spend state that cannot be verified refuses. The refusal carries the

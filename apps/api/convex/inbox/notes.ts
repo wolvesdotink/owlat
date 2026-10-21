@@ -16,7 +16,7 @@
  * lists the modules allowed to read `threadNotes`). They do go into their
  * author's account export, and member erasure anonymizes the author.
  *
- * Access follows the rest of the shared inbox (ADR-0040): writes go through
+ * Access follows the rest of the shared inbox (owner/admin-only): writes go through
  * `adminMutation`, reads are soft-auth `publicQuery`s that return empty for
  * anyone who is not a Team Inbox reader. No audit-log entry: a note is team
  * conversation, like chat, not an action on the record.

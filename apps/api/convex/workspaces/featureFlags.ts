@@ -29,8 +29,6 @@
  * `ai.agent`) does NOT trigger the backfill. Only a direct
  * false→true `setFeatureFlag({ flag: 'ai.agent', value: true })`
  * does, and only when no prior backfill job exists.
- *
- * See docs/adr/0026-organization-settings-modules.md.
  */
 
 import { v } from 'convex/values';

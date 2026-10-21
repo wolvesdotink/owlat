@@ -38,7 +38,7 @@ export function leaveFailedParts(
 	const from = message.processingStatus as ProcessingStatus;
 	if (from !== 'failed' || input.to === 'failed') return { patch: {}, effects: [] };
 	return {
-		// A spend-ceiling hold (D1, ADR-0073) belongs to this failure too: a
+		// A spend-ceiling hold belongs to this failure too: a
 		// re-run holds the message again if the ceiling still says no.
 		patch: { failedStage: undefined, budgetHold: undefined },
 		effects:

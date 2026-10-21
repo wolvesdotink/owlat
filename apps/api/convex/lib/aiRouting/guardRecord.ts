@@ -1,5 +1,5 @@
 /**
- * D13's "guard required before autonomy" check (ADR-0073).
+ * The "guard required before autonomy" check.
  *
  * The deterministic injection, smuggling and URL checks run on every Team
  * message. The model guard may be skipped for mail that is archived on its spam

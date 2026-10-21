@@ -11,8 +11,6 @@
  *
  * Redirect responses (302 to a user-defined success page) use the
  * factory's `raw` Response escape hatch — the shell layers CORS on top.
- *
- * See docs/adr/0030-public-token-endpoint-module.md.
  */
 
 import { httpAction } from '../_generated/server';

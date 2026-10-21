@@ -75,7 +75,7 @@ beforeEach(() => {
 	vi.mocked(persistMeteredSpend).mockClear();
 });
 
-describe('reviseDraft — a revision cut off at its output limit (ADR-0073)', () => {
+describe('reviseDraft — a revision cut off at its output limit', () => {
 	it('settles the buffer as an error instead of a complete revision', async () => {
 		const t = await makeT();
 		await enableFeatures(t, ['ai']);

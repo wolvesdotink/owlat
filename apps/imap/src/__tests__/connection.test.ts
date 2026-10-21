@@ -417,7 +417,7 @@ describe('ImapConnection — LOGIN', () => {
 
 	it('tells the backend its wire version on the LOGIN touch', async () => {
 		// Without it the backend counts the login as one through an IMAP server
-		// too old to report itself (ADR-0063).
+		// too old to report itself.
 		const { socket, convex } = makeMocks();
 		convex.action.mockResolvedValue({
 			mailboxId: 'mb1',

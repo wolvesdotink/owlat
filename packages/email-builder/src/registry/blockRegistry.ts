@@ -12,8 +12,7 @@
  * `registerBlock(def)` is preserved for third-party / dynamic blocks — they
  * supply a `BlockDefinition` and it lives alongside the built-ins.
  *
- * See `docs/adr/0001-block-module-deepening.md` for the full Block module
- * vertical: renderer half in `@owlat/email-renderer/blocks/<type>/`, editor
+ * The full Block module vertical: renderer half in `@owlat/email-renderer/blocks/<type>/`, editor
  * half in `@owlat/email-builder/blocks/<type>/`.
  */
 

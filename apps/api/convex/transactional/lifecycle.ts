@@ -23,8 +23,6 @@
  *   record_content_scan_result   — fires on suspicious / blocked publish.
  *   update_block_usage_counts    — fires on create/duplicate/remove when
  *                                  blocks are linked.
- *
- * See docs/adr/0022-template-lifecycle-modules.md.
  */
 
 import { v } from 'convex/values';
@@ -114,7 +112,7 @@ const transitionInputValidator = v.union(
 //
 // `approved` / `rejected` resolve to statuses; the graph is keyed by the
 // resolved target. The graph and the dispatcher preamble that reads it live in
-// the generic lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and
+// the generic lifecycle core (`lib/lifecycle.ts`); the reducers and
 // effects below stay here. `reportsTerminalRefusals` is off — no state is
 // terminal here and the published outcome union carries only `illegal_edge`.
 

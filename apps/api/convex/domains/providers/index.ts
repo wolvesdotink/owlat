@@ -25,8 +25,6 @@
  * to publish and which reflection action to schedule, so a newly registered kind
  * silently gets neither. That is a separate capability from the identity seams
  * below and it has no home on this interface yet.
- *
- * Per ADR-0018.
  */
 
 import {

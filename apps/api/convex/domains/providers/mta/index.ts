@@ -8,8 +8,6 @@
  *
  * MTA has no provider-side verification call, so `runProviderCheck` is
  * omitted — the lifecycle treats absent as `{ verified: true }`.
- *
- * Per ADR-0018.
  */
 
 import { createMtaIdentityManager } from '../../../lib/emailProviders/mtaIdentity';

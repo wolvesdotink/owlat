@@ -18,7 +18,7 @@
  *   - BOTH WINDOWS COME OFF ONE READ. The controller judges 24 hours and the
  *     dashboard reports seven days, so the summarizer is exercised over both
  *     spans of the same rows.
- *   - THE COUNTER IS SHARDED AND THE READ SUMS (ADR-0042). Concurrent responses
+ *   - THE COUNTER IS SHARDED AND THE READ SUMS. Concurrent responses
  *     must not lose counts to a single-document read-modify-write.
  *   - THE TABLE IS TENANT DATA. A second org's rows may not reach this org's
  *     summary, and an organization wipe must take these rows with it.
@@ -351,7 +351,7 @@ describe('one read, both readers’ windows', () => {
 	});
 });
 
-describe('the counter is sharded and the read sums (ADR-0042)', () => {
+describe('the counter is sharded and the read sums', () => {
 	it('loses no count when many responses land on one bucket', async () => {
 		const t = newHarness();
 		await t.run(async (ctx) => {

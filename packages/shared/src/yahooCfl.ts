@@ -13,7 +13,7 @@
  * Yahoo. Nothing in this module parses a report; it only records that one was
  * OBSERVED, which is what proves the enrollment is still live.
  *
- * `lapsed` IS DERIVED, NEVER STORED (ADR-0042's derive-on-read rule): it is a
+ * `lapsed` IS DERIVED, NEVER STORED (the derive-on-read rule): it is a
  * pure function of the last observed report and the clock, so the re-check needs
  * no cron and no write, and the wizard can never show a stale verdict.
  *
@@ -72,9 +72,9 @@ export const YAHOO_CFL_SUBMISSION_PATIENCE_MS = 14 * 24 * 60 * 60 * 1000;
 /**
  * How much `lastReportAt` must ADVANCE before a report is worth a write.
  *
- * ADR-0042: complaints arrive in bursts, and every report for a domain
+ * Complaints arrive in bursts, and every report for a domain
  * lands on the SAME enrollment row — patching it per complaint is exactly the
- * single-document OCC contention ADR-0042 was written about, and on the complaint
+ * single-document OCC contention, and on the complaint
  * hot path a write conflict costs a complaint. The row exists only to prove
  * liveness against a 90-day lapse window, so one write per hour carries all the
  * information the derived verdict can use; the rest is coalesced away.

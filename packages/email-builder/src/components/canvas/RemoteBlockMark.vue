@@ -1,8 +1,7 @@
 <script setup lang="ts">
 /**
  * Another person on this root block: a coloured outline and their name, or
- * "… is editing" with a lock while they hold the block (co-editing, see
- * docs/adr/0071-email-coediting.md). Purely visual; the canvas decides what a
+ * "… is editing" with a lock while they hold the block (co-editing). Purely visual; the canvas decides what a
  * locked block still allows.
  */
 import { Lock } from '@lucide/vue';

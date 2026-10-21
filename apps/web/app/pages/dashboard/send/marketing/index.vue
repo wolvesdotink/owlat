@@ -60,8 +60,8 @@ const templateLibraryRef = ref<{
 // `reactive` unwraps the composable's refs, so the template reads `list.items`.
 const list = reactive(
 	useTemplateList<TemplateRow>({
-		// Type filter + full-text search run server-side through the Listing engine
-		// (ADR-0037); the sort is applied client-side over the loaded page, and a
+		// Type filter + full-text search run server-side through the Listing engine;
+		// the sort is applied client-side over the loaded page, and a
 		// search keeps the engine's relevance order.
 		query: ({ search, sort }) => {
 			const { results, isLoading, error, refetch } = useOrganizationPaginatedQuery(

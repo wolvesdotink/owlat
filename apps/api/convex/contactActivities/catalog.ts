@@ -26,7 +26,7 @@ export const CONTACT_ACTIVITY_TYPE_LITERALS = [
 	// DOI confirmed for a topic
 	'topic_confirmed',
 	// Contact-level DOI confirmed via admin-attest from external platform
-	// (Mailchimp, Klaviyo, etc.). See ADR-0019.
+	// (Mailchimp, Klaviyo, etc.).
 	'doi_attested',
 	'property_updated',
 	'created',

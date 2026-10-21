@@ -117,7 +117,7 @@ export async function deleteMessageRowAndBlobs(
 	await ctx.db.delete(message._id);
 	await deleteMessageBody(ctx.db, message._id);
 	await dropExtractionProgress(ctx, 'email', message._id);
-	// Decision artifacts are content-derived labels about this message (ADR-0073).
+	// Decision artifacts are content-derived labels about this message.
 	await deleteMailMessageArtifacts(ctx, message._id);
 	await recordMessageCounters(ctx, message, null);
 	await recordFolderMembership(ctx, message, null);

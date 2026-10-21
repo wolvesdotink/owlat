@@ -1,5 +1,5 @@
 /**
- * The empty-corpus skip (ADR-0073, Phase 1c): a retrieval search embeds its
+ * The empty-corpus skip: a retrieval search embeds its
  * query only when the table holds a vector it could return. With none, it
  * makes no embedding call and still runs the full-text leg, which is all a
  * vector search over an empty index came to. With vectors, it embeds as

@@ -1,5 +1,5 @@
 /**
- * The spend-period aggregate's keys and money unit (ADR-0073), shared by every
+ * The spend-period aggregate's keys and money unit, shared by every
  * writer and reader of `llmSpendPeriods` so they cannot disagree about which
  * bucket a ledger row lands in or how much it counts for.
  *

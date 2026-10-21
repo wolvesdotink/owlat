@@ -5,8 +5,6 @@
  * counter increments, and language persistence. The workpool is excluded
  * from the module loader so `enqueueAction` becomes a no-op — the test
  * checks pre-enqueue state only.
- *
- * See docs/adr/0021-transactional-send-intake-module.md.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';

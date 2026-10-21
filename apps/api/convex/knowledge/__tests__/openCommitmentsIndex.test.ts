@@ -389,7 +389,7 @@ describe('open-commitments recall reads the junction projection', () => {
 		const t = convexTest(schema, modules);
 		// The public knowledge functions follow the `ai.knowledge` flag.
 		await enableFeatures(t, ['ai.knowledge']);
-		// Dedup compares vectors of the active space only (ADR-0073).
+		// Dedup compares vectors of the active space only.
 		await configureLocalEmbedder(t);
 		const contactA = await newContact(t);
 		const contactB = await newContact(t);

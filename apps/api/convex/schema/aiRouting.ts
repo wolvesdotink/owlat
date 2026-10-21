@@ -26,7 +26,7 @@ import {
 } from '../lib/validators/aiRouting';
 
 /**
- * AI routing tables (ADR-0073): the routing policy, admission's spend aggregate
+ * AI routing tables: the routing policy, admission's spend aggregate
  * and reservations, decision artifacts and sender memory. The embedding-space
  * tables are in `schema/embeddingSpaces.ts`; the ledger stays `llmUsageEvents`
  * (`schema/inbox.ts`), the single source of settled spend.
@@ -38,7 +38,7 @@ import {
  */
 
 /**
- * Every table ADR-0073 adds (here and in `schema/embeddingSpaces.ts`), children
+ * Every AI routing table (here and in `schema/embeddingSpaces.ts`), children
  * before parents. The tenant registry and the workspace deletion spread it.
  */
 /** One extracted knowledge entry, as the extraction model returns it (`knowledge/extractedEntries.ts`). */

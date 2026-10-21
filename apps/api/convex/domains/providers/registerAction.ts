@@ -10,8 +10,6 @@
  * `transition` to land the `registering → pending` / `registering → failed`
  * outcome atomically. The lifecycle never branches on `providerType` — the
  * provider variation lives entirely behind the `providerFor` seam.
- *
- * Per ADR-0018.
  */
 
 import { v, type Infer } from 'convex/values';

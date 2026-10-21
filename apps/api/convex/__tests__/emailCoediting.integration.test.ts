@@ -1,5 +1,5 @@
 /**
- * Email co-editing (emailCoediting/*, docs/adr/0071-email-coediting.md):
+ * Email co-editing (emailCoediting/*):
  *   - `open` seeds a session from the email and follows a row that changed
  *     elsewhere only while the session has nothing unsaved
  *   - edits to different blocks merge; the later write to one block wins and

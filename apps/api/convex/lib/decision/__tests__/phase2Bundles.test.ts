@@ -1,5 +1,5 @@
 /**
- * The Phase 2 mail bundles (ADR-0073): the per-surface field mappings, the
+ * The Phase 2 mail bundles: the per-surface field mappings, the
  * bundle rendering, the label projection and the evidence state. Pure.
  */
 
@@ -230,7 +230,7 @@ describe('label projection', () => {
 	});
 });
 
-describe('the redacted evidence state (ADR-0060 §9)', () => {
+describe('the redacted evidence state', () => {
 	const evidence: DecisionEvidence = {
 		surface: 'postbox',
 		from: 'ada@example.com',

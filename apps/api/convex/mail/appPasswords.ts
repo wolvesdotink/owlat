@@ -209,7 +209,7 @@ export const verify = internalAction({
 		// The logging-in client's IP (the IMAP peer, or the SMTP peer the MTA
 		// forwarded), keyed per client by the shared auth-failure table.
 		ip: v.optional(v.string()),
-		// The IMAP server's wire version (ADR-0063); absent from IMAP servers
+		// The IMAP server's wire version; absent from IMAP servers
 		// that predate reporting and from SMTP submission.
 		imapWireVersion: v.optional(v.number()),
 	},
@@ -334,7 +334,7 @@ export const _candidatesByAddressAndPrefix = internalQuery({
  * (`mail/authHttp.ts`, `channel: 'smtp'`). An IMAP server from wire version 1
  * on passes `imapWireVersion`; a call with neither comes from an IMAP server
  * too old to report itself (v0.6.7 and older), which the IMAP server registry
- * records (ADR-0063).
+ * records.
  */
 export const touch = internalMutation({
 	args: {

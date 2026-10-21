@@ -1,5 +1,5 @@
 /**
- * The staged embedding rebuild's transactions (ADR-0073, Phase 5).
+ * The staged embedding rebuild's transactions.
  *
  * Build into a staged space while retrieval keeps the active one, validate the
  * staged space with a bounded sample of queries (`embeddingRebuild.ts`), then

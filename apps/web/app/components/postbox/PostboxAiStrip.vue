@@ -11,7 +11,7 @@ import { BUDGET_REASON_KEYS, budgetReasonOf } from '~/utils/aiBudget';
  * and closes with `close`.
  *
  * The strip once also carried the thread's AI summary line; the thread brief
- * replaced it (ADR-0072), so Ask is all that is left.
+ * replaced it, so Ask is all that is left.
  */
 const props = defineProps<{
 	messageId: string;

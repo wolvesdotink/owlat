@@ -5,7 +5,7 @@ import {
 } from '~/lib/operationError';
 
 /**
- * The toast half of the Operation error seam (ADR-0036) for the throws a caller
+ * The toast half of the Operation error seam for the throws a caller
  * catches ITSELF.
  *
  * `useBackendOperation` already owns the category → treatment policy for

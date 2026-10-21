@@ -138,7 +138,7 @@ export const saveConfig = authedAction({
 		decisionApiKey: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'aiProviderConfig'>> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const adapter = languageProviderFor(args.languageProviderKind);
 		const modelFast = args.modelFast?.trim() || adapter.defaultModels.fast;
@@ -228,7 +228,7 @@ export const saveConfig = authedAction({
 export const testConnection = authedAction({
 	args: { plane: planeValidator },
 	handler: async (ctx, args): Promise<{ ok: boolean; error?: string }> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		// Admin floor — actions can't run requireOrgPermission directly, so
 		// assert through the internal query that inherits our identity.
@@ -297,7 +297,7 @@ export const testConnection = authedAction({
 export const listModels = authedAction({
 	args: { plane: planeValidator },
 	handler: async (ctx, args): Promise<{ supported: boolean; models: string[]; error?: string }> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		// Admin floor — see testConnection.
 		await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});

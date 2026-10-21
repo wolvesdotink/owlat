@@ -2,7 +2,7 @@ import type { ListingDescriptor } from '../lib/listing';
 import { countIndexRange } from '../lib/pagination';
 
 /**
- * Topic listing descriptor (ADR-0037). Browse-only (no search index on topics).
+ * Topic listing descriptor. Browse-only (no search index on topics).
  * The `contactCount` enrichment is declared once here and shared by the
  * entity's `list` and `get`, so the two stop duplicating it.
  *

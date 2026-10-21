@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enforce the Resource listing seam (ADR-0037). Every "search → filter → sort →
+# Enforce the Resource listing seam. Every "search → filter → sort →
 # paginate → count" path must flow through the Listing engine
 # (convex/lib/listing.ts) via a per-entity Listing descriptor
 # (convex/<entity>/listing.ts). Run as part of `bun run lint`, sibling to
@@ -75,7 +75,7 @@ if [[ -n "$manual_hasmore_hits" ]]; then
 fi
 
 if [[ "$fail" -ne 0 ]]; then
-	echo "Resource listing check failed. See docs/adr/0037-resource-listing-engine.md."
+	echo "Resource listing check failed."
 	exit 1
 fi
 

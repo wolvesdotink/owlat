@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * The `item_coverage` auto-send gate's setting (SPEC §6, ADR-0051
- * amendment): whether an automatic reply that misses an open item of the
+ * The `item_coverage` auto-send gate's setting: whether an automatic reply that misses an open item of the
  * thread, says a file is attached that is not, or makes a commitment nobody
  * authorised is held for review. Off by default: the gate then only records
  * what it would have held, beside the would-have-sent observations.

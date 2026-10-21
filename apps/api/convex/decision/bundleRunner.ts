@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * The Phase 2 bundle runner (ADR-0073 §5 and §8): asks ONE registered bundle
+ * The Phase 2 bundle runner: asks ONE registered bundle
  * about ONE message, once, on the rung the routing ladder picks, and stores the
  * answer as a decision artifact. It returns nothing a caller could route on:
  * every caller schedules it and moves on (D9).
@@ -271,7 +271,7 @@ export async function resolveBundleRung(
  * Ask `run.bundle` about one message and store the artifact. Never throws for
  * a provider failure.
  *
- * The root is bounded by the calling action's model budget first (ADR-0073):
+ * The root is bounded by the calling action's model budget first:
  * a caller's root (Team, Postbox) may carry no deadline, and the decision
  * rung's dispatch takes its deadline from the root alone. A call that cannot
  * start inside the budget is not admitted and not claimed (`deadline`), so a
@@ -336,7 +336,7 @@ export async function runBundle<Q extends QuestionSet>(
 	if (!admitted.isAdmitted) return { hasRun: false, why: admitted.why };
 
 	// The endpoint this call will use, from the ONE resolution above: its rung,
-	// whether it is the operator's own (ADR-0060 §9), and the flag and
+	// whether it is the operator's own, and the flag and
 	// configuration snapshot it was decided on. The claim checks them all, on
 	// either rung; the call uses exactly this endpoint. The configuration is
 	// the version the dispatched snapshot was resolved from (equal to the

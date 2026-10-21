@@ -4,8 +4,7 @@
  * and composite-block child views. Mirrors the renderer's `BlockModule<T>`
  * (in `@owlat/email-renderer/blocks/_module`) on the builder side.
  *
- * See `docs/adr/0001-block-module-deepening.md` and the project glossary at
- * `CONTEXT.md` (Block, Block module, Placement). Together with the renderer
+ * See the project glossary at `CONTEXT.md` (Block, Block module, Placement). Together with the renderer
  * module, an Editor module forms the "Block module" the docs refer to —
  * physically split across two packages because one half imports Vue components
  * and the other runs on the server/CLI.

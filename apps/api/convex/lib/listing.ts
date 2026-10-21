@@ -6,7 +6,7 @@ import { counterScopeKey, readCounterScope } from './counters';
 import type { ListingCounterKind } from './listingCounters';
 
 /**
- * Resource listing — one engine, per-entity descriptors (ADR-0037).
+ * Resource listing — one engine, per-entity descriptors.
  *
  * This is the single read-side seam for "give me a filtered, searched,
  * paginated, counted page of <entity>". The **Listing engine** here is a thin
@@ -68,7 +68,7 @@ interface ListingBrowse {
 
 /**
  * A named count declared alongside the page. Exactly three strategies exist in
- * the wild (ADR-0037 decision 5); richer facets are rejected at the interface —
+ * the wild; richer facets are rejected at the interface —
  * write a plain query outside the seam instead.
  */
 export type Facet<T extends TableNames> =

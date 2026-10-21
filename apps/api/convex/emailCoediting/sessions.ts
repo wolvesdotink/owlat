@@ -1,5 +1,5 @@
 /**
- * Email co-editing sessions (docs/adr/0071-email-coediting.md).
+ * Email co-editing sessions.
  *
  * While people edit an email, its editor state lives in one shared session
  * row instead of each tab's memory: editors send block-granular operations

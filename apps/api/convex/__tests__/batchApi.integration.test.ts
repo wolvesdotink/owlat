@@ -1,5 +1,5 @@
 /**
- * L14, provider batch APIs for non-interactive work (ADR-0073, Phase 5),
+ * Provider batch APIs for non-interactive work,
  * end to end over a stubbed OpenAI: the consumer's call, the item and its
  * hold, the poller, the ledger row and the continuation. The admission,
  * ledger and item mutations are real; nothing reaches a provider.

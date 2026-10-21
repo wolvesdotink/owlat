@@ -7,7 +7,6 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
  * Bulk-add contacts to a Topic. Thin auth-bearing shell — the Topic
  * subscription (module) owns every write to `contactTopics`, the DOI gate,
  * the trigger fanout, and the (coalesced) `cachedMemberCount` patch.
- * See docs/adr/0013-topic-subscription-module.md.
  */
 export const addContacts = authedMutation({
 	args: {
@@ -19,27 +18,25 @@ export const addContacts = authedMutation({
 		siteUrl: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<string[]> => {
-		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can bulk-edit topic membership');
-
-		const { outcomes } = await ctx.runMutation(
-			internal.topics.subscription.subscribeMany,
-			{
-				topicId: args.topicId,
-				contactIds: args.contactIds,
-				source: 'admin',
-				...(args.skipDoi === true ? { skipDoi: true } : {}),
-				...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
-			},
+		await requireOrgPermission(
+			ctx,
+			'topics:manage',
+			'Only owners and admins can bulk-edit topic membership'
 		);
+
+		const { outcomes } = await ctx.runMutation(internal.topics.subscription.subscribeMany, {
+			topicId: args.topicId,
+			contactIds: args.contactIds,
+			source: 'admin',
+			...(args.skipDoi === true ? { skipDoi: true } : {}),
+			...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
+		});
 
 		// Preserve the legacy return shape: array of membership IDs for
 		// newly-inserted memberships only (excludes `already_member`).
 		const addedIds: string[] = [];
 		for (const outcome of outcomes) {
-			if (
-				outcome.ok &&
-				(outcome.action === 'subscribed' || outcome.action === 'pending_doi')
-			) {
+			if (outcome.ok && (outcome.action === 'subscribed' || outcome.action === 'pending_doi')) {
 				addedIds.push(outcome.membershipId);
 			}
 		}
@@ -60,7 +57,11 @@ export const removeContacts = authedMutation({
 		contactIds: v.array(v.id('contacts')),
 	},
 	handler: async (ctx, args): Promise<void> => {
-		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can bulk-edit topic membership');
+		await requireOrgPermission(
+			ctx,
+			'topics:manage',
+			'Only owners and admins can bulk-edit topic membership'
+		);
 		await ctx.runMutation(internal.topics.subscription.unsubscribeMany, {
 			topicId: args.topicId,
 			contactIds: args.contactIds,

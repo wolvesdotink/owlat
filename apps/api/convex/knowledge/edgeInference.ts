@@ -104,14 +104,14 @@ function scopeForAnchor(anchor: Doc<'knowledgeEntries'>): Id<'contacts'> | 'org-
 	return 'org-general-only';
 }
 
-/** This action, for its own budget deferral (ADR-0073, D1). */
+/** This action, for its own budget deferral. */
 const deferThisRun = (): DeferrableAction => internal.knowledge.edgeInference.inferRelations;
 
 const inferRelationsArgs = {
 	entryIds: v.array(v.id('knowledgeEntries')),
-	/** The root request of the extraction that wrote the entries (ADR-0073). */
+	/** The root request of the extraction that wrote the entries. */
 	root: v.optional(llmRootContextValidator),
-	/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
+	/** Runs this work deferred at the spend ceiling. */
 	deferrals: v.optional(v.number()),
 };
 
@@ -133,7 +133,7 @@ export const inferRelations = internalAction({
 	handler: deferredHandler<ObjectType<typeof inferRelationsArgs>>(
 		deferThisRun,
 		async (ctx, args) => {
-			// One model budget for this action, from its start (ADR-0073).
+			// One model budget for this action, from its start.
 			anchorActionDeadline(ctx);
 			// Authoritative, defense-in-depth flag gate (the schedule already gated, but
 			// the flag can flip between schedule and run, and an action can't read it).

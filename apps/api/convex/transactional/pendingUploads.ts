@@ -22,8 +22,6 @@
  * Release and expiry end a row only once its blob is confirmed gone (deleted,
  * or already absent). A storage error keeps the row, so a later sweep retries
  * the deletion instead of the blob losing its last owner (`freePendingBlob`).
- *
- * See docs/adr/0021-transactional-send-intake-module.md (amendment 2026-10-01).
  */
 
 import { v } from 'convex/values';

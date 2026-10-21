@@ -1,5 +1,5 @@
 /**
- * Background work defers at the spend ceiling (ADR-0073, D1): a semantic
+ * Background work defers at the spend ceiling: a semantic
  * file's paid steps are skipped and a later run is scheduled, a bounded
  * number of times.
  */

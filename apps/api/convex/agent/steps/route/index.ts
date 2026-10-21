@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * `route` Agent step (module) — see ADR-0014.
+ * `route` Agent step (module).
  *
  * Node-only like the step registry that consumes it (`../index.ts`): the
  * hosted auto-send gates below execute plugin gate modules out of the
@@ -86,7 +86,7 @@ export type RouteInput = {
  * always routed to human review. We never auto-approve on a failed/unknown
  * check.
  *
- * DECISION VERDICTS (ADR-0073, "Auto-send contract"): a verdict enters only as
+ * DECISION VERDICTS (the auto-send contract): a verdict enters only as
  * an {@link AdmittedVerdictScore} (`lib/decision/autoSendContract.ts`: a
  * feeding task, item coverage enforced, compatible provenance and a valid
  * calibration stamp), and only LOWERS the score: the result is the minimum.

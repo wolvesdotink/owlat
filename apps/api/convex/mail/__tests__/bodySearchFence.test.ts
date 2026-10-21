@@ -1,5 +1,5 @@
 /**
- * Deep body search (ADR-0059): the fences around its background writes.
+ * Deep body search: the fences around its background writes.
  *
  * Two separate promises, tested separately:
  *   - the index walk's progress is tied to the run that loaded it (#943): a

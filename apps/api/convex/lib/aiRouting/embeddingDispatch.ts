@@ -1,5 +1,5 @@
 /**
- * Dispatching embedding work under admission (ADR-0073, D8; Sol r2 F12, F15).
+ * Dispatching embedding work under admission.
  *
  * The one wrapper every embed-lane dispatch goes through: it classifies the
  * embedder about to be called (the ledger's locality rule, from the same

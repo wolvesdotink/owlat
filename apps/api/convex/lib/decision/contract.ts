@@ -82,7 +82,7 @@ export interface DecisionAttemptRecord {
 	 */
 	readonly error?: unknown;
 	/**
-	 * The provider requests this attempt made, one ledger row each (ADR-0073).
+	 * The provider requests this attempt made, one ledger row each.
 	 * One for the native and local adapters; the language-backed adapter retries
 	 * inside `runLlmObject`, so one attempt there can be up to three requests.
 	 * Each carries its own usage, so a recorder writes these, not `usage`.
@@ -90,7 +90,7 @@ export interface DecisionAttemptRecord {
 	readonly requests: readonly LlmRequestRecord[];
 	/**
 	 * Admission holds whose dispatch ended in this attempt, settled in the same
-	 * write as its rows (ADR-0073, Phase 1b). Absent when nothing was held.
+	 * write as its rows. Absent when nothing was held.
 	 */
 	readonly settlements?: readonly { reservationId: string; expectedRequests: number }[];
 	/** The task-policy entry and root request the caller passed. */
@@ -122,7 +122,7 @@ export interface DecisionUnavailable {
 }
 
 /**
- * The configured decision provider cannot answer at all (D3, ADR-0073): its
+ * The configured decision provider cannot answer at all: its
  * credential is missing, malformed or undecryptable, or its config is invalid.
  * Terminal: never retried, never a fallback hop, never relabelled as the
  * language-backed adapter. The caller's own fail-soft decides what a missing
@@ -224,7 +224,7 @@ export interface RunDecisionOptions<Q extends QuestionSet> {
 	readonly rateLimiter?: DecisionRateLimiter;
 	readonly breaker?: DecisionFallbackBreaker;
 	/**
-	 * Spend admission (ADR-0073, Phase 1b): every paid attempt, and the hop, is
+	 * Spend admission: every paid attempt, and the hop, is
 	 * reserved through it before its request (`analytics/meteredSpend.ts`
 	 * `decisionAdmissionPort`). Required alongside `fallbackTo`: the hop is a
 	 * paid language call and goes through the breaker and admission.

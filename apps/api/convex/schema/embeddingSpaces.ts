@@ -14,7 +14,7 @@ import {
 } from '../lib/validators/embedding';
 
 /**
- * Embedding provenance (ADR-0073, Phase 1a and Phase 5; #1334).
+ * Embedding provenance (#1334).
  *
  * `knowledgeEntries` and `semanticFiles` stamp each vector with the space it
  * lives in (`embeddingSpaceId`) and where that came from (`embeddingProvenance`).

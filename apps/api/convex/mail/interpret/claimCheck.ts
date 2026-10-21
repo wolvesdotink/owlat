@@ -1,5 +1,5 @@
 /**
- * Claim checks as decision questions (ADR-0073, plan Phase 3), the pure half:
+ * Claim checks as decision questions, the pure half:
  * the bounded state of one claim and its quotes, and the verdict a stored
  * claim-check label means for the reducer.
  *

@@ -1,5 +1,5 @@
 /**
- * The decision plane meters every provider request (ADR-0073, Phase 1a). The
+ * The decision plane meters every provider request. The
  * language-backed adapter retries inside `runLlmObject`, so one dispatch
  * attempt can be three billed requests; a per-attempt row (or the attempt
  * limiter alone) would miss two of them. Here the real adapter runs over a

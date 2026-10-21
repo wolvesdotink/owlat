@@ -1,5 +1,5 @@
 /**
- * D4's message share is counted, not sampled (ADR-0073, Sol r1 F6): over any
+ * The shadow allowance's message share is counted, not sampled: over any
  * prefix of a day's eligible messages, at most floor(share × eligible) are
  * shadowed, and asking again for a message changes nothing.
  */

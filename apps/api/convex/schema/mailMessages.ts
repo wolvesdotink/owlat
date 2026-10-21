@@ -72,8 +72,8 @@ export const mailMessagesTables = {
 		// instance opt-in `instanceSettings.isBodySearchIndexingEnabled` is on;
 		// ABSENT is the default and is exactly the pre-idea-32 behaviour. Turning
 		// the switch back off schedules a sweep that clears it again
-		// (`mail/bodySearchBackfill.purgeSearchBodies`). See `mail/searchBody.ts`
-		// and docs/adr/0059-widened-body-search-carve-out.md. Unlike the inline
+		// (`mail/bodySearchBackfill.purgeSearchBodies`). See `mail/searchBody.ts`.
+		// Unlike the inline
 		// bodies it did NOT move to `mailMessageBodies` (plan 3.2): the
 		// `search_message_bodies` filter fields must sit on the searched document.
 		searchBody: v.optional(v.string()),
@@ -163,7 +163,7 @@ export const mailMessagesTables = {
 		// nothing to capture, synced or imported mail, or a message older than
 		// the marker.
 		attachmentIndexing: v.optional(attachmentIndexingValidator),
-		// D12 (ADR-0073): when an owner last corrected a decision about this
+		// When an owner last corrected a decision about this
 		// message. A decision bundle never judges, keeps or learns from a
 		// corrected message (`decision/artifacts.ts`). Absent ⇒ never corrected.
 		decisionCorrectedAt: v.optional(v.number()),
@@ -218,8 +218,7 @@ export const mailMessagesTables = {
 
 		// Outbound tracking (sent path). Per-recipient state lives in
 		// `recipients[]`; `state` is a denormalized aggregate derived by
-		// the Postbox outbound lifecycle module (the only writer). See
-		// docs/adr/0012-postbox-outbound-lifecycle-module.md.
+		// the Postbox outbound lifecycle module (the only writer).
 		outbound: v.optional(
 			v.object({
 				// AGGREGATED — derived from recipients[] by the lifecycle module.
@@ -378,7 +377,7 @@ export const mailMessagesTables = {
 			searchField: 'snippet',
 			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
 		})
-		// THE WIDENED CARVE-OUT (idea 32, ADR-0059). Same exception as above, one
+		// THE WIDENED CARVE-OUT (idea 32). Same exception as above, one
 		// order of magnitude deeper: `searchBody` is a ~8KB normalized excerpt
 		// instead of a 200-character one, so a phrase at character 1,400 of a
 		// contract is findable instead of silently absent. Because that is a real

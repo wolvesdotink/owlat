@@ -56,7 +56,7 @@ export const generate = internalAction({
 		dataset: v.optional(datasetKeyValidator),
 	},
 	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		try {
 			// Step 1: Use live account data only when the caller explicitly opts in

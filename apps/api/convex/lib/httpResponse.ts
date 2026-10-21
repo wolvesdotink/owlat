@@ -10,15 +10,13 @@
  *
  * `errorResponse` derives the HTTP status *from* the `category` — one category,
  * one status, across every endpoint and matching the thrown (in-app) and SDK
- * serializations. See docs/adr/0036-operation-error-taxonomy.md.
+ * serializations.
  *
  * The CORS helper here is a typed wrapper over the lower-level
  * `lib/cors.ts:publicCorsHeaders` — it narrows the methods argument to the
  * union of method sets actually used by public token endpoints. The auth
  * posture (`auth/apiAuth.ts`) keeps using `lib/cors.ts:corsHeaders` directly
  * because it needs origin-aware allow-origin.
- *
- * See docs/adr/0030-public-token-endpoint-module.md.
  */
 
 import {

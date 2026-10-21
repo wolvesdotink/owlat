@@ -1,6 +1,6 @@
 /**
  * A semantic file whose paid stages spend admission refuses at the dispatch
- * (ADR-0073, D1, Sol r1 F8) owes them to a later run: the refused stages
+ * owes them to a later run: the refused stages
  * travel in the scheduled run's arguments, a summary that already landed is
  * reused, and the retries are bounded.
  */

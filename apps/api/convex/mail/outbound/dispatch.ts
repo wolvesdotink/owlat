@@ -47,7 +47,7 @@ interface ExternalSendResult {
  * the external provider fans out — and SMTP is synchronous, so we map the
  * worker's per-recipient result straight onto the postbox outbound lifecycle
  * (no webhook). The worker fetches the raw .eml from `rawEmlUrl` and APPENDs the
- * sent copy to the remote Sent folder. Per ADR-0012.
+ * sent copy to the remote Sent folder.
  */
 export async function dispatchViaExternalWorker(
 	ctx: ActionCtx,
@@ -282,7 +282,7 @@ export async function dispatchViaMta(
 					`[Outbound] MTA /send failed for ${redactEmailAddress(to)}: ${res.status} ${body}`
 				);
 				// Per-recipient synchronous bounce — record it now rather
-				// than waiting forever in `queued`. Per ADR-0012.
+				// than waiting forever in `queued`.
 				await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
 					mailMessageId,
 					recipientIdx: i,

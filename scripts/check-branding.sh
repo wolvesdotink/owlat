@@ -7,7 +7,7 @@
 # their tests — a split that survived ~20 review passes precisely because some
 # tests *asserted* the stale org, so green CI certified the wrong branding.
 #
-# This is a sibling of check-adr-numbers.sh / check-dead-code.sh: a hard-0
+# This is a sibling of check-dead-code.sh: a hard-0
 # invariant (no baseline). It scans every tracked file for the forbidden org
 # slugs and fails on any hit, so the canonical org cannot silently regress.
 #

@@ -1,5 +1,5 @@
 /**
- * The thread brief's backfill (ADR-0072, D5): interpret a mailbox's active
+ * The thread brief's backfill: interpret a mailbox's active
  * threads of the last 30 days, so the Overview, the list rows and the To-do
  * band are there for mail that arrived before the brief did. Older threads
  * are interpreted on first open instead (`lazy.ts`).

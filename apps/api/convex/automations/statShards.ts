@@ -10,7 +10,7 @@
  * `automationStatShards` (inc-only counters — entered / completed / cancelled);
  * a rollup sums the shards into `automations.stats*` (the read interface) and
  * DERIVES statsActive = entered − completed − cancelled. Readers are unchanged.
- * Mirrors campaigns/statShards.ts + the sendingReputation idiom (ADR-0042).
+ * Mirrors campaigns/statShards.ts + the sendingReputation idiom.
  */
 
 import { v } from 'convex/values';

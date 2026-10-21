@@ -21,8 +21,6 @@
  *   - internal callers pass 'system:scheduler_tick' / 'system:content_scan' /
  *     'system:admin_review' / etc. Audit log records the value verbatim;
  *     track_event fires only when the userId is NOT prefixed with 'system:'.
- *
- * See docs/adr/0017-campaign-lifecycle-modules.md.
  */
 
 import { v } from 'convex/values';
@@ -92,7 +90,7 @@ export type CampaignTransitionOutcome =
 /**
  * Translate a failed lifecycle transition outcome into the thrown
  * `invalid_state` error each campaign mutation surfaces to the caller. The
- * thin-shell mutations (ADR-0017) keep their own status pre-checks and auth
+ * thin-shell mutations keep their own status pre-checks and auth
  * preamble — this only folds the shared `outcome → throw` tail.
  *
  * `verb` is the user-facing action ("send", "cancel", "schedule", …); the
@@ -138,7 +136,7 @@ const transitionInputValidator = v.union(
 // no patch and emit no scheduler hops).
 //
 // The graph and the dispatcher preamble that reads it live in the generic
-// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and effects below
+// lifecycle core (`lib/lifecycle.ts`); the reducers and effects below
 // stay here. `sent` and `cancelled` are terminal and this machine publishes the
 // distinct `terminal` refusal, so `reportsTerminalRefusals` is on.
 

@@ -85,7 +85,7 @@ export const forceVerifyDomainInternal = internalMutation({
 		});
 
 		// Synthesise the per-provider identity only for the MTA provider — the
-		// SES provider has its own sibling table and ADR-0018's per-provider
+		// SES provider has its own sibling table and the per-provider
 		// exclusivity invariant requires we don't write across both. SES
 		// domains keep whatever identity row their own register flow created.
 		//

@@ -1,6 +1,5 @@
 /**
- * Clear deep body-search excerpts on an instance where deep body search is OFF
- * (ADR-0059).
+ * Clear deep body-search excerpts on an instance where deep body search is OFF.
  *
  *   npx convex run migrations/0051_clear_residual_search_bodies:run
  *

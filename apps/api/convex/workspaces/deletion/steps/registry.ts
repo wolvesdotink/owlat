@@ -7,8 +7,6 @@
  * churn is: this file grows a line every time a per-org table is added, while
  * the walker's `start`/`runStep` plumbing beside it has not changed in the same
  * time. The compile-time exhaustiveness guard travels with the list it guards.
- *
- * See docs/adr/0025-organization-deletion-module-family.md.
  */
 
 import type { OrganizationDeletionStepModule, OrganizationDeletionTable } from './_common';

@@ -16,8 +16,6 @@
  *                                  duplicate + remove.
  *   update_block_usage_counts    — fires on create/duplicate/remove and on
  *                                  any transition that swaps content.
- *
- * See docs/adr/0022-template-lifecycle-modules.md.
  */
 
 import { v } from 'convex/values';
@@ -94,7 +92,7 @@ const transitionInputValidator = v.union(
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
 //
 // The graph and the dispatcher preamble that reads it live in the generic
-// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and effects below
+// lifecycle core (`lib/lifecycle.ts`); the reducers and effects below
 // stay here. `reportsTerminalRefusals` is off — neither state is terminal
 // (publish and unpublish are both reversible) and the published outcome union
 // carries only `illegal_edge`.

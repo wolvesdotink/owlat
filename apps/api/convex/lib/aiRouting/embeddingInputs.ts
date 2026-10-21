@@ -1,5 +1,5 @@
 /**
- * The text each corpus row is embedded from (ADR-0073). One definition shared
+ * The text each corpus row is embedded from. One definition shared
  * by the writers (`knowledge/extraction.ts`, `semanticFileProcessing.ts`), the
  * re-embed job, the staged rebuild and the sample check, so a re-embedded
  * vector is made from the same input the original writer used.

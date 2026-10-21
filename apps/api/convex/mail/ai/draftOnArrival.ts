@@ -169,14 +169,14 @@ export async function generateDraftOnArrival(
 export const generateForThread = internalAction({
 	args: {
 		threadId: v.id('mailThreads'),
-		/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
+		/** Runs this work deferred at the spend ceiling. */
 		deferrals: v.optional(v.number()),
 		/** Times it looked again for the thread to be fully read (read on arrival). */
 		fullReadWaits: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<void> => {
 		anchorActionDeadline(ctx);
-		// At the spend ceiling the draft defers to a later run (ADR-0073, D1).
+		// At the spend ceiling the draft defers to a later run.
 		await deferRefusedRun(ctx, internal.mail.ai.draftOnArrival.generateForThread, args, () =>
 			generateDraftOnArrival(ctx, {
 				threadId: args.threadId,

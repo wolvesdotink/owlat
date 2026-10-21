@@ -1,6 +1,6 @@
 /**
  * Resume a Postbox message's knowledge extraction after its provider batch
- * result arrived (ADR-0073, L14; `aiRouting/batchItems.ts`). The result is the
+ * result arrived (`aiRouting/batchItems.ts`). The result is the
  * message's `in_progress` extraction marker; this re-runs the extraction with
  * the live path's guards (`mail/liveKnowledge.ts` `extractLiveMessage`): the
  * `ai.knowledge` flag, the folder recheck, the screen, and the sender's
@@ -23,7 +23,7 @@ import { isKnowledgeOn } from './extractionPolicy';
 export const resumeMailExtraction = internalAction({
 	args: { mailMessageId: v.id('mailMessages') },
 	handler: async (ctx, args): Promise<void> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		// Every guard the live path runs, rechecked now: the batch was out for
 		// up to a day (Sol r2 F1). A refusal drops the batch's result.
@@ -50,7 +50,7 @@ export const resumeMailExtraction = internalAction({
 		await ctx.runAction(internal.knowledge.extraction.extractFromMailMessage, {
 			mailMessageId: args.mailMessageId,
 			contactIds: [contactId],
-			// Awaited: it spends from this action's clock (ADR-0073).
+			// Awaited: it spends from this action's clock.
 			root: boundedRoot(ctx, rootRequest('postbox', args.mailMessageId)),
 		});
 	},

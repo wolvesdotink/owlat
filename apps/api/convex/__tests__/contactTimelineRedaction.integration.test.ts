@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 
-// ADR-0040 (docs/adr/0040-shared-inbox-admin-only.md): inbound shared-inbox email
+// Inbound shared-inbox email
 // CONTENT is owner/admin-only. The same bodies are mirrored into unifiedMessages
 // (inbox/messages.ts recordInboundMirror) and surface in the contact timeline, so
 // getTimeline must withhold the inbound *email* body from non-admin members while
@@ -114,7 +114,7 @@ function messageRows(rows: TimelineRow[]): MessageRow[] {
 	return rows.filter((r): r is MessageRow => r.type === 'message');
 }
 
-describe('getTimeline inbound-email redaction (ADR-0040)', () => {
+describe('getTimeline inbound-email redaction', () => {
 	it('shows the inbound email body to an owner/admin', async () => {
 		const t = convexTest(schema, modules);
 		const { contactId, emailRowId } = await seed(t);

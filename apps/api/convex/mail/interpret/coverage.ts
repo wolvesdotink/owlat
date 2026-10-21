@@ -115,7 +115,7 @@ export const check = authedAction({
 		draftText: v.string(),
 	},
 	handler: async (ctx, args): Promise<CoverageResult | null> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const read = () =>
 			ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForCoverage, {

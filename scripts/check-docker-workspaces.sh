@@ -9,7 +9,7 @@
 # root `workspaces` list and every image broke at once.
 #
 # `bun run ci:verify` does not build images, so nothing else in the verify path
-# notices. This is a sibling of check-adr-numbers.sh and check-branding.sh: a
+# notices. This is a sibling of check-branding.sh: a
 # hard-0 invariant with no baseline. It also verifies that every frozen-install
 # stage copies the root patches/ directory whenever patchedDependencies is in
 # use; otherwise Bun fails before dependency installation begins. The guard

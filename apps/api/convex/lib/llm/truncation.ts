@@ -1,5 +1,5 @@
 /**
- * Output that stopped at its ceiling (ADR-0073). Every dispatch now sends an
+ * Output that stopped at its ceiling. Every dispatch now sends an
  * output ceiling, so a reply can end because it hit the limit rather than
  * because the model was done: the provider reports `finishReason: 'length'`
  * (Anthropic's `max_tokens` stop). The dispatch surfaces it as `isTruncated`

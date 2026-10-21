@@ -7,8 +7,6 @@
  * runs the reducer, writes the message patch, applies the effects, and keeps
  * the singleton inbox-stats counter in sync. The public `internalMutation`s
  * in `../processingLifecycle.ts` are thin wrappers over `dispatch`.
- *
- * See docs/adr/0010-inbox-processing-lifecycle-module.md.
  */
 
 import type { MutationCtx } from '../../_generated/server';
@@ -215,8 +213,8 @@ export async function applyEffects(
 			case 'set_thread_draft_status': {
 				// Delegate to the owning Conversation thread module rather than
 				// patching `conversationThreads` in place — this was the one
-				// inbox-lifecycle effect that wrote a table it doesn't own
-				// (ADR-0032 §5). A vanished thread is reported, not thrown, so
+				// inbox-lifecycle effect that wrote a table it doesn't own.
+				// A vanished thread is reported, not thrown, so
 				// it can't roll back the inbound message's own transition.
 				await threadTransition(ctx, {
 					threadId: effect.threadId,

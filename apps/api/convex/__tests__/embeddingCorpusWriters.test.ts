@@ -1,5 +1,5 @@
 /**
- * Custody of the corpus fields that decide vector search (ADR-0073): a row's
+ * Custody of the corpus fields that decide vector search: a row's
  * embedding input (title, content, summary, extracted text), its eligibility
  * (expiry, processing) and its vector stamps. Every write of them goes through
  * `patchCorpusRow` / `noteCorpusInsert` (lib/aiRouting/embeddingActivation.ts),

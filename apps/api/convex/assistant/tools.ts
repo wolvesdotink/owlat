@@ -368,7 +368,7 @@ export interface AssistantToolLimits {
  * runner's action context and the turn's audience. Flag-gates membership (a tool whose `flag` is OFF is
  * omitted — feature-off ⇒ the model never sees it), then wraps each tool so the
  * host injection-scrubs its output before it can reach a prompt. Retrieval
- * tools also share the turn's retrieval allowance (`limits`, ADR-0073 Phase 5).
+ * tools also share the turn's retrieval allowance (`limits`).
  *
  * When no module declares a flag (the built-in set), no flag I/O happens, so the
  * assembled set is exactly the built-ins in declaration order. `modules` is

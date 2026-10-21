@@ -24,8 +24,6 @@
  *
  * The row itself is created by `upsertInstanceSettings` in
  * `lib/instanceSettings.ts`, the one insert site every column owner shares.
- *
- * See docs/adr/0026-organization-settings-modules.md.
  */
 
 import { v } from 'convex/values';
@@ -93,7 +91,7 @@ export const update = authedMutation({
 		// Require STARTTLS before accepting MAIL FROM. Defaults ON; owners/admins
 		// can disable it for legacy senders that cannot negotiate TLS.
 		isInboundTlsRequired: v.optional(v.boolean()),
-		// Deep body search (idea 32, ADR-0059) — index a ~8KB body excerpt instead
+		// Deep body search — index a ~8KB body excerpt instead
 		// of only the 200-char snippet. Defaults OFF because it widens the
 		// sealed-at-rest plaintext carve-out; turning it back off schedules the
 		// sweep that clears the excerpts already written (see below).
@@ -169,7 +167,7 @@ export const update = authedMutation({
 		if (args.isInboundTlsRequired !== undefined) {
 			await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.pushInboundTlsPolicy, {});
 		}
-		// THE OPT-OUT HAS TO REMOVE, NOT JUST STOP (ADR-0059). Deep body search
+		// THE OPT-OUT HAS TO REMOVE, NOT JUST STOP. Deep body search
 		// widens the plaintext carve-out to a ~8KB excerpt per message; an operator
 		// who turns it off is asking for that plaintext to be gone, not merely for
 		// new mail to skip it. Writing the switch off therefore retires every

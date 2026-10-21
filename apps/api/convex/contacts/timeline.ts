@@ -16,7 +16,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 interface TimelineContent extends UnifiedMessageContent {
 	/**
 	 * Set on inbound shared-inbox email rows whose body was withheld from a
-	 * non-admin caller (ADR-0040). The row, subject, and metadata still render;
+	 * non-admin caller. The row, subject, and metadata still render;
 	 * only `text`/`html` are dropped.
 	 */
 	redacted?: boolean;
@@ -66,7 +66,7 @@ export const getTimeline = authedQuery({
 			return [];
 		}
 
-		// ADR-0040 (shared inbox is owner/admin-only): inbound customer-conversation
+		// Shared inbox is owner/admin-only: inbound customer-conversation
 		// email CONTENT is restricted to owner/admin in the shared inbox. The same
 		// bodies are mirrored into unifiedMessages by inbox/messages.ts
 		// (recordInboundMirror) and surface here, so without this gate ANY member
@@ -129,7 +129,7 @@ export const getTimeline = authedQuery({
 
 		for (const msg of messages) {
 			let content: TimelineContent = await openUnifiedMessageContent(msg.content);
-			// ADR-0040: withhold the inbound *email* body from non-admins, but keep
+			// Withhold the inbound *email* body from non-admins, but keep
 			// the row + its subject/metadata so the timeline stays coherent.
 			if (msg.channel === 'email' && msg.direction === 'inbound' && !canReadInboundEmail) {
 				content = redactInboundEmailBody(content);
@@ -258,7 +258,7 @@ export const getTimelineStats = authedQuery({
 /**
  * Drop the message body (`text`/`html`) of an inbound shared-inbox email row
  * while preserving the non-sensitive metadata the timeline needs to render
- * (subject, any mediaUrl). See ADR-0040 — the body is owner/admin-only.
+ * (subject, any mediaUrl). The body is owner/admin-only.
  */
 function redactInboundEmailBody(content: TimelineContent): TimelineContent {
 	const { text: _text, html: _html, ...rest } = content;

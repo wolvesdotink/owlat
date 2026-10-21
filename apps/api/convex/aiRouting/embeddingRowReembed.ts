@@ -1,5 +1,5 @@
 /**
- * Re-embedding one edited row (ADR-0073, the input-change rule).
+ * Re-embedding one edited row.
  *
  * An edit to a row's embedding input clears its vectors in every column
  * (`inputChangeFields`), so the row leaves vector search until it is embedded

@@ -41,8 +41,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailAttachmentBackfillJobs',
 	'interpretBackfillJobs',
 	'mailBodySearchBackfillJobs',
-	// AI routing records that point at messages, mailboxes and contacts
-	// (ADR-0073): before every parent they name.
+	// AI routing records that point at messages, mailboxes and contacts:
+	// before every parent they name.
 	'decisionArtifacts',
 	'senderMemory',
 	// Read on arrival (records, senders, undo log, rules, digests): before the
@@ -72,8 +72,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'agentActions',
 	'agentMetrics',
 	'llmUsageEvents',
-	// Admission's holds and the ledger-derived period aggregate (ADR-0073), and
-	// the provider batch items whose requests those holds cover (L14).
+	// Admission's holds and the ledger-derived period aggregate, and
+	// the provider batch items whose requests those holds cover.
 	'llmBatchItems',
 	'llmReservations',
 	'llmSpendPeriods',
@@ -237,7 +237,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'knowledgeBackfillJobs',
 	'knowledgeEdgeBackfillJobs',
 	'knowledgeGraphStats',
-	// Embedding provenance (ADR-0073): after the knowledge and file rows that
+	// Embedding provenance: after the knowledge and file rows that
 	// reference a space or an attestation, jobs and evidence before spaces.
 	'embeddingReembedJobs',
 	'embeddingAttestations',
@@ -289,7 +289,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// workspace (#1101). Nothing above reads it; the deployment's LLM_* env
 	// fallback is what any later AI call resolves.
 	'aiProviderConfig',
-	// The AI routing policy (ADR-0073); nothing above reads it.
+	// The AI routing policy; nothing above reads it.
 	'aiRoutingPolicy',
 
 	// Independent feature state

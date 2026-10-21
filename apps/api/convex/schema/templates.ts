@@ -89,7 +89,7 @@ export const templateTables = {
 		contentRevision: v.optional(v.number()),
 		// Renderer engine version that produced `htmlContent`. Bump when rendering output changes materially.
 		rendererVersion: v.optional(v.number()),
-		// Saved-block rerender state (ADR-0023).
+		// Saved-block rerender state.
 		htmlRenderState: v.optional(htmlRenderStateValidator),
 		// Marks rows inserted by /seed/demo so they can be wiped on reset.
 		seedTag: v.optional(v.string()),
@@ -98,7 +98,7 @@ export const templateTables = {
 	})
 		.index('by_type', ['type'])
 		.index('by_status', ['status'])
-		// Browse indexes for the Listing engine (ADR-0037): updatedAt is the
+		// Browse indexes for the Listing engine: updatedAt is the
 		// default browse order; the compound serves type-filtered browse
 		// index-natively (type leads, updatedAt orders within it) instead of
 		// `.collect()`-ing the whole table.
@@ -237,7 +237,7 @@ export const templateTables = {
 		// in `transactional/dispatch.ts`. The list page reads this directly
 		// instead of N+1 scanning `transactionalSends` per template.
 		sendCount: v.optional(v.number()),
-		// Saved-block rerender state (ADR-0023).
+		// Saved-block rerender state.
 		htmlRenderState: v.optional(htmlRenderStateValidator),
 		// Marks rows inserted by /seed/demo so they can be wiped on reset.
 		seedTag: v.optional(v.string()),
@@ -300,7 +300,7 @@ export const templateTables = {
 		// Resolved recipient language for this send. Populated at intake by
 		// the Transactional send intake (module) from the request → contact →
 		// template-default fallback chain. Surfaces in analytics queries;
-		// pre-ADR-0021 the resolved language lived on the API response only.
+		// previously the resolved language lived on the API response only.
 		language: v.optional(v.string()),
 		// Data variables that were used for this send
 		dataVariables: v.optional(jsonPrimitiveRecord),
@@ -308,7 +308,7 @@ export const templateTables = {
 		providerMessageId: v.optional(v.string()), // Message ID from email provider (Resend)
 		// Highest accepted MTA pre-network routing handoff enqueued for this Send.
 		mtaRoutingReentryAttempt: v.optional(v.number()),
-		// Current status of this email send. Per ADR-0006, transactional sends
+		// Current status of this email send. Transactional sends
 		// now pre-create in `queued` (symmetric with campaign sends) so the
 		// worker-completion path goes through the Send lifecycle for both
 		// kinds; `failed` rows persist once the worker errors.
@@ -319,7 +319,7 @@ export const templateTables = {
 		...sendTrackingFields,
 		// Storage IDs of attachment blobs, captured at queue time and cleaned
 		// up via the `attachment_cleanup` sendLifecycle effect on terminal
-		// worker outcomes (sent / failed). Per ADR-0006.
+		// worker outcomes (sent / failed).
 		attachmentStorageIds: v.optional(v.array(v.string())),
 	})
 		.index('by_transactional_email', ['transactionalEmailId'])

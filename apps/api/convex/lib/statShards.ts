@@ -5,7 +5,7 @@
  * read-modify-writing one hot row on each event, bump a RANDOM shard so
  * concurrent writes spread across SHARD_COUNT rows, then sum the shards on the
  * read side. campaigns/statShards.ts and automations/statShards.ts (and, in
- * spirit, the sendingReputation shards of ADR-0042) all want this exact idiom;
+ * spirit, the sendingReputation shards) all want this exact idiom;
  * only the table, index, id field and counter set differ.
  *
  * This module owns the idiom — random-shard selection, the patch-or-insert on

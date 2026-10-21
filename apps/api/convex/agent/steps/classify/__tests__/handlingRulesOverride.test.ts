@@ -102,7 +102,7 @@ describe('classifyStep.execute — categorize override cannot widen auto-send', 
 	});
 
 	// Today's post-classify behaviour, which the security scan's early archive
-	// (L4, ADR-0073) must stay equivalent to: a matching `auto_archive` rule
+	// must stay equivalent to: a matching `auto_archive` rule
 	// archives the message whatever the classifier said, complaint and urgent
 	// included. Only `categorize` is barred from relabelling them.
 	it.each([

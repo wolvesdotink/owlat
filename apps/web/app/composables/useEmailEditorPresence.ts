@@ -8,7 +8,7 @@ import type { CoeditTarget } from './useEmailCoediting';
 
 /**
  * Who else has this email open in the editor, and which block each of them
- * is on (docs/adr/0071-email-coediting.md). Drives the avatar stack in the
+ * is on. Drives the avatar stack in the
  * editor toolbar and the coloured outline with a name on the blocks others
  * have selected or are editing.
  *

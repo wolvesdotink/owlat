@@ -7,7 +7,7 @@
  *
  * THE ONE RULE THIS MODULE EXISTS TO ENFORCE: a rate is never computed here.
  * Every rate on the wire comes out of `summarizeTransportOutcomeBuckets` — the
- * ONE derivation seam (ADR-0042) — so the controller's gates and this screen
+ * ONE derivation seam — so the controller's gates and this screen
  * cannot disagree about how a number is DERIVED from a set of rows. WHICH ROWS
  * each is handed used to be a separate question and is no longer: the verdicts
  * on a cell view are reached over the controller's own evaluation window, and

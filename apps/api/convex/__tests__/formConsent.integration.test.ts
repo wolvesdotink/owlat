@@ -1,6 +1,5 @@
 /**
- * Integration tests for the consent rule form signups follow (ADR-0009,
- * ADR-0013 and ADR-0015, 2026-10 amendments).
+ * Integration tests for the consent rule form signups follow.
  *
  * Three independent failure scenarios, each driven through the real form
  * intake and confirmation functions:

@@ -1,5 +1,5 @@
 /**
- * Provider-level metering for streams (ADR-0073). `streamText` makes its own
+ * Provider-level metering for streams. `streamText` makes its own
  * provider requests: one per step, and the SDK re-sends a failed opening
  * request on its own. Neither is visible from the stream the caller reads, and
  * a caller's callback that throws mid-stream ends the read before the SDK's

@@ -2,8 +2,7 @@
  * Shared types for the Dispatch attempt — the per-job execution path that
  * runs through the **Dispatch pipeline** and **Dispatch outcome** modules.
  *
- * See `docs/adr/0007-mta-dispatch-modules.md` and CONTEXT.md's MTA dispatch
- * section for the vocabulary.
+ * See CONTEXT.md's MTA dispatch section for the vocabulary.
  */
 
 import type Redis from 'ioredis';

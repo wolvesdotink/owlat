@@ -1,5 +1,5 @@
 /**
- * The Phase 2 message bundle beside the Team classifier (ADR-0073, D9): with
+ * The message bundle beside the Team classifier: with
  * the switches off nothing is scheduled; with them on the bundle is scheduled
  * with today's verdict as its baseline, and the step's output and route are
  * exactly what they are with the switches off. No model or database runs.

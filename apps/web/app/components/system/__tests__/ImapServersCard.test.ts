@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * The IMAP servers card on System & updates (ADR-0063): the servers that
+ * The IMAP servers card on System & updates: the servers that
  * reported in the last 7 days with their verdicts, a warning when a server the
  * backend no longer serves (or one from before reporting) was seen, and a named
  * empty state.

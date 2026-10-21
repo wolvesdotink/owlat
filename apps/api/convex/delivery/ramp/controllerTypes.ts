@@ -23,7 +23,7 @@ export type RampControlReason =
 	| 'kill_switch'
 	/** `now` was not a usable instant. Never decide against a broken clock. */
 	| 'clock_unusable'
-	/** Org abuse status forbids sending (ADR-0011). */
+	/** Org abuse status forbids sending. */
 	| 'abuse_status'
 	/** The MTA circuit breaker is open for this cell. */
 	| 'breaker'
@@ -162,7 +162,7 @@ export interface RampMixState {
 
 /**
  * The SHIPPED hard-stop signals, read rather than re-derived: the org's abuse
- * status (ADR-0011), the MTA circuit breaker, and the DNSBL reading that
+ * status, the MTA circuit breaker, and the DNSBL reading that
  * already drives shipped routing. The controller consumes verdicts here; it
  * does not own any of these policies.
  */

@@ -1,5 +1,5 @@
 /**
- * Admission before every provider request (ADR-0073, Phase 1b): a call holds
+ * Admission before every provider request: a call holds
  * its first request up front and grows the hold before each later one, so a
  * tool loop or a retry is bounded request by request, and a refusal stops the
  * call before the refused request leaves. The real AI SDK runs over a mock

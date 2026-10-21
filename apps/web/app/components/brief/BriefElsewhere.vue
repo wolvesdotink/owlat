@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "With Jonas elsewhere" (plan §4.3, ADR-0072): the open items this thread's
+ * "With Jonas elsewhere": the open items this thread's
  * people have with you in other conversations, e.g. the signed NDA Jonas
  * still owes you in "Framework agreement". Each row links to its thread.
  *

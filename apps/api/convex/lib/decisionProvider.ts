@@ -31,7 +31,7 @@
  * migrated onto. Nothing leaves a deployment until an operator enters their own
  * key, and there is no path through this module that auto-enables one.
  *
- * UNAVAILABLE IS TERMINAL (ADR-0073, owner decision D3). An explicitly
+ * UNAVAILABLE IS TERMINAL. An explicitly
  * configured provider whose credential is missing, malformed or cannot be
  * decrypted, or whose config is invalid, resolves to ITSELF with
  * {@link ResolvedDecisionPlane.unavailable} set. It is never relabelled as the

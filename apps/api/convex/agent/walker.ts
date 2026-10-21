@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Agent walker — see CONTEXT.md "Agent walker" and ADR-0014.
+ * Agent walker — see CONTEXT.md "Agent walker".
  *
  * Owns the per-step execution loop for the agent pipeline:
  *   1. Dispatches to an Agent step (module) by `kind`.
@@ -153,7 +153,7 @@ async function scheduleAfterPluginStep(
 export const start = internalAction({
 	args: { inboundMessageId: v.id('inboundMessages') },
 	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		// Advance `received → security_check` before the scan runs. The
 		// `security_scan` step's route emits `classifying` / `quarantined` /
@@ -202,7 +202,7 @@ export const start = internalAction({
 export const resumeDraft = internalAction({
 	args: { inboundMessageId: v.id('inboundMessages') },
 	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
@@ -289,7 +289,7 @@ export const runStep = internalAction({
 		coreStep: v.optional(continuationValidator),
 	},
 	handler: async (ctx, args) => {
-		// Every model call of this step spends from one action budget (ADR-0073).
+		// Every model call of this step spends from one action budget.
 		anchorActionDeadline(ctx);
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
@@ -329,7 +329,7 @@ export const runStep = internalAction({
 		// A step already in flight is stopped by the lifecycle instead.
 		if (message?.manualTakeoverAt !== undefined) return;
 
-		// D1 (ADR-0073): at the spend ceiling the message waits for a person
+		// At the spend ceiling the message waits for a person
 		// before a paid step runs (`aiRouting/teamBudgetHold.ts`).
 		if (await isHeldForBudget(ctx, args.inboundMessageId, args.kind)) return;
 

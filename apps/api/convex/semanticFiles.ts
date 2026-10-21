@@ -607,7 +607,7 @@ export const updateProcessedMetadata = internalMutation({
 		);
 		if (isStale)
 			logInfo('[semanticFiles] stale embedding space, stored without vector', { fileId });
-		// Through the one corpus writer (ADR-0073): processing changes the input
+		// Through the one corpus writer: processing changes the input
 		// and the file's eligibility, so a staged rebuild learns of it.
 		await patchCorpusRow(
 			ctx,
@@ -668,7 +668,7 @@ export const update = authedMutation({
 			});
 		}
 
-		// Through the one corpus writer (ADR-0073): the title is part of the
+		// Through the one corpus writer: the title is part of the
 		// embedding input, so a new one leaves no vector of the old one.
 		await patchCorpusRow(ctx, 'semanticFiles', file, cleanUpdates);
 

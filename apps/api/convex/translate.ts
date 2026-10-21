@@ -60,7 +60,7 @@ export const translateBatch = authedAction({
 		targetLanguage: v.string(),
 	},
 	handler: async (ctx, args): Promise<{ translations: TranslatedItem[] }> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		// Require authentication to prevent unauthorized API quota consumption
 		await requireAuthenticatedIdentity(ctx);
@@ -89,8 +89,8 @@ export const translateBatch = authedAction({
 		// Build the translation prompt
 		const prompt = buildTranslationPrompt(items, sourceLanguage, targetLanguage);
 
-		// Call the AI model with a schema-constrained object response (ADR-029
-		// dispatch). generateObject validates the shape, so a malformed response
+		// Call the AI model with a schema-constrained object response. generateObject
+		// validates the shape, so a malformed response
 		// throws through runLlmObject's normal path instead of silently yielding
 		// zero translations the way the old fence-stripping parser did.
 		const model = await resolveLanguageModel(ctx, 'mail.translate');

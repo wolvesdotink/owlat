@@ -17,8 +17,8 @@
 #   - convex/semanticFileProcessing.ts       (semantic files)
 # both of which take `scopeToContact` and filter via isContactScopeVisible. Their
 # vector legs call `searchSpaceVectors` in convex/knowledge/vectorSearch.ts, the
-# one place that filters each vector index to the query vector's embedding space
-# (ADR-0073). It returns ids and scores only; its callers are the two seams above
+# one place that filters each vector index to the query vector's embedding
+# space. It returns ids and scores only; its callers are the two seams above
 # and the staged rebuild's validation, which reads no row content. The
 # org-wide member read path (`assistant.ask`) passes the explicit `'org-wide'`
 # sentinel — it does not call vectorSearch directly.

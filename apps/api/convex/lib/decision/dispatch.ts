@@ -4,8 +4,8 @@
  * Decision plane — the dispatch.
  *
  * `runDecision` is the one choke point every call site on this plane goes
- * through, the way `lib/llm/dispatch.ts` is the one seam for the LANGUAGE plane
- * (ADR-0029). Call sites import this function and their own question set; only
+ * through, the way `lib/llm/dispatch.ts` is the one seam for the LANGUAGE plane.
+ * Call sites import this function and their own question set; only
  * `lib/decisionProvider.ts` and this file touch an adapter, and the one adapter
  * property a call site may read is `calibrated`.
  *
@@ -206,7 +206,7 @@ async function askOnce<Q extends QuestionSet>(
 		...(options.root ? { root: options.root } : {}),
 	} as const;
 
-	// Spend admission (ADR-0073): a native paid adapter's request is reserved
+	// Spend admission: a native paid adapter's request is reserved
 	// here; the language-backed adapter's are reserved inside its `runLlmObject`.
 	const hold = await admitNativeAttempt(ctx.meter, provider, options);
 	let result: DecisionResult;
@@ -343,7 +343,7 @@ function assertFallbackShape<Q extends QuestionSet>(options: RunDecisionOptions<
 	if (options.admission === undefined) {
 		throw new Error(
 			'The decision fallback needs spend admission: the hop is a paid language call and ' +
-				'is reserved before it runs (D3, ADR-0073). Pass the ctx-bound admission port.'
+				'is reserved before it runs. Pass the ctx-bound admission port.'
 		);
 	}
 }
@@ -357,7 +357,7 @@ export async function runDecision<Q extends QuestionSet>(
 	callerOptions: RunDecisionOptions<Q>
 ): Promise<RunDecisionResult<Q>> {
 	// The root's deadline binds every attempt, the backoff and the hop, whatever
-	// adapter answers: it joins the caller's signal (ADR-0073).
+	// adapter answers: it joins the caller's signal.
 	const options = withRootDeadline(callerOptions);
 	const { abortSignal, allowance, fallbackTo, provider } = options;
 	// Defensive, and cheap: the gate returns this shape and nothing else does,

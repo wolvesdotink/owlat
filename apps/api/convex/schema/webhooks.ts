@@ -107,7 +107,7 @@ export const webhookTables = {
 		// Built-in/channel adapters retain by default and may opt out through
 		// `shouldStoreRawPayload`; plugin transports do the inverse and must opt in
 		// through their manifest's `storeRawPayload`. Deliberately NOT re-listed here
-		// (ADR-0055): a fixed literal set silently drops new plugin transports
+		//: a fixed literal set silently drops new plugin transports
 		// and channels.
 		source: v.string(),
 		// A JSON string in one of THREE shapes, each discriminable on read:

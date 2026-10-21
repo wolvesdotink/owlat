@@ -1,5 +1,5 @@
 /**
- * What admission reads (ADR-0073, Phase 1b): the configured limits, the
+ * What admission reads: the configured limits, the
  * complete settled totals of the current UTC day and month, and the
  * outstanding holds, all in the caller's query or mutation, so the verdict
  * and the hold that follows it are one serializable transaction.

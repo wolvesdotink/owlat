@@ -1,11 +1,11 @@
 /**
- * Where the Phase 2 bundles hook into today's pipelines (ADR-0073 §5). Each
+ * Where the Phase 2 bundles hook into today's pipelines. Each
  * hook schedules a separate action and returns: a bundle never runs inside a
  * pipeline step, so its answer, its latency and its failure cannot change the
  * step's outcome (D9). Every hook checks its routing switch first, so with
  * every switch off (the default) nothing is scheduled at all, and a mailbox
  * excluded from hosted decisions gets nothing unless the decision plane is the
- * local engine (ADR-0060 §9). Every hook is fail-soft: a scheduling failure is
+ * local engine. Every hook is fail-soft: a scheduling failure is
  * logged and the pipeline continues.
  *
  * Runtime-neutral: called from the Team steps and the Postbox category action.

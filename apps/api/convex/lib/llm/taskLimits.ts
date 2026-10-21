@@ -1,5 +1,5 @@
 /**
- * The limits the dispatch enforces on one call (ADR-0073, Phase 1a): an output
+ * The limits the dispatch enforces on one call: an output
  * ceiling that covers reasoning, and a deadline. Every dispatch mode (text,
  * structured output, tool loop, stream, embedding) reads them from here, so one
  * table (`lib/llm/taskPolicy.ts`) sets them all.
@@ -149,7 +149,7 @@ export function dispatchLimits(opts: {
 }
 
 /**
- * The step limit of a tool loop or a tool-calling stream (ADR-0073, Phase 5):
+ * The step limit of a tool loop or a tool-calling stream:
  * the caller's, never past the task's `maxToolRounds`. A task without one
  * keeps the caller's limit, as today.
  */

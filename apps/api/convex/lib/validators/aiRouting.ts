@@ -1,5 +1,5 @@
 /**
- * Validators for the AI routing records (ADR-0073): the routing policy row, the
+ * Validators for the AI routing records: the routing policy row, the
  * admission records, the guard and budget markers on Team messages, decision
  * artifacts and sender memory. The vocabularies come from
  * `@owlat/shared/aiRouting`, so the settings form and the stored shape cannot
@@ -139,8 +139,8 @@ export type BudgetRefusal = Infer<typeof budgetRefusalValidator>;
 // ── Provider batch items (L14) ────────────────────────────────────────────
 
 /**
- * The non-interactive model calls that may go through a provider batch API
- * (ADR-0073, Phase 5): knowledge extraction from a Team message, a file or a
+ * The non-interactive model calls that may go through a provider batch API:
+ * knowledge extraction from a Team message, a file or a
  * Postbox message, and a file's (an attachment's) summary.
  */
 export const BATCH_CONSUMERS = [

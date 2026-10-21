@@ -1,5 +1,5 @@
 /**
- * Sending domain lifecycle — the pure half (ADR-0018).
+ * Sending domain lifecycle — the pure half.
  *
  * Everything here decides; nothing here writes. The status and transition
  * types, the argument validators the lifecycle's entry points share, the
@@ -189,7 +189,7 @@ export function deriveVerificationVerdict(
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
 //
 // The graph and the dispatcher preamble that reads it live in the generic
-// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and the effect
+// lifecycle core (`lib/lifecycle.ts`); the reducers and the effect
 // declarations below stay here, and the per-provider identity write and the
 // effect runner live in `lifecycle.ts`. `reportsTerminalRefusals` is
 // off — no state is terminal (a verified domain can be re-registered, a failed

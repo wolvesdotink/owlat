@@ -116,7 +116,7 @@ async function structuredActions(
 			if (!canRun) return null;
 			const run = await ctx.runAction(internal.mail.interpret.run.interpretMessage, {
 				source: { kind: 'inbound', id: inboundMessageId },
-				// Awaited: the interpretation spends from this step's clock (ADR-0073).
+				// Awaited: the interpretation spends from this step's clock.
 				root: boundedRoot(ctx, teamRoot(inboundMessageId)),
 			});
 			// The run answers a spend refusal instead of throwing it: thrown here, it

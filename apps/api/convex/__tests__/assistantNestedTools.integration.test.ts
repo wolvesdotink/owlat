@@ -1,5 +1,5 @@
 /**
- * The assistant under task policies and admission (ADR-0073, Phase 5):
+ * The assistant under task policies and admission:
  *
  *  - nested tools cannot bypass the budget: a nested draft is admitted under
  *    the turn's root, refused before any request at the ceiling, and a nested

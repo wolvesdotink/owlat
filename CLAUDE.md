@@ -47,6 +47,16 @@ Environment variables in the Convex backend must go through `lib/env.ts` —
 direct `process.env.*` reads outside that module are blocked by
 `bun run --cwd apps/api lint:env` (part of that workspace's `lint` script).
 
+## Design decisions
+
+There are no ADRs; the series was removed in October 2026. Put the reason for a
+decision where the next maintainer would get it wrong: a comment next to the
+code it constrains, or a rule in `apps/api/convex/CONVENTIONS.md` when it spans
+modules. Comments state the constraint, not its history or an issue number. The
+PR description records why the change was made. Don't add a numbered decision
+record or a new decisions folder. To read a removed record, use
+`git log --diff-filter=D --name-only -- docs/adr` and `git show <sha>^:<path>`.
+
 ## Pull requests
 
 **A PR that changes the UI must include before/after screenshots in its

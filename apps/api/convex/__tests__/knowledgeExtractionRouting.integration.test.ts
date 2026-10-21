@@ -62,10 +62,10 @@ beforeEach(() => {
 		usage: { tokens: 1 },
 	}));
 	// Scheduled work stays queued: the first write into the local space
-	// activates it and schedules its re-embed kickoff (ADR-0073), whose embedding
+	// activates it and schedules its re-embed kickoff, whose embedding
 	// calls are not this suite's subject and would race the counts below.
 	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-	// The local embedding server answers no revision probe (ADR-0073).
+	// The local embedding server answers no revision probe.
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async () => new Response('not found', { status: 404 }))

@@ -1,6 +1,6 @@
 /**
- * When a Phase 2 bundle runs, on which rung, and the block-only verdict rule
- * (ADR-0073 §5, §8). Pure.
+ * When a Phase 2 bundle runs, on which rung, and the block-only verdict rule.
+ * Pure.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';

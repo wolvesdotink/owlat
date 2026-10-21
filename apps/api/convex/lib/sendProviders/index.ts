@@ -3,7 +3,7 @@
 /**
  * Send provider adapter (module) — registry + dispatch.
  *
- * Per ADR-0020. Mirrors `convex/domains/providers/index.ts` (ADR-0018) shape.
+ * Mirrors `convex/domains/providers/index.ts` shape.
  * Executable transports are composed in `convex/providers/composition.ts`.
  * `SEND_PROVIDERS` below is the compatibility view for callers that still need
  * the closed core map; dispatch itself asks the composed bundle registry.

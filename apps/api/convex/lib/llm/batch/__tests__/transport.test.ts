@@ -1,6 +1,6 @@
 /**
- * The batch transport reads a request's result only from its own record
- * (ADR-0073, L14; Sol r1 F3): an expired or cancelled batch whose output has no
+ * The batch transport reads a request's result only from its own record:
+ * an expired or cancelled batch whose output has no
  * line, or a malformed one, for the request is `missing` (billing unknown, so
  * it is charged in full), on both providers. Only the request's own unrun or
  * error record releases its hold.

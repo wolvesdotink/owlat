@@ -254,7 +254,7 @@ export const start = authedAction({
 		purpose: v.optional(v.literal('nudge')),
 	},
 	handler: async (ctx, args): Promise<AskSessionView> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		const note = args.instruction?.trim().slice(0, MAX_INSTRUCTION_CHARS) || undefined;
@@ -422,7 +422,7 @@ export const answer = authedAction({
 		timeZone: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<AskSessionView> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		const session = await ctx.runQuery(internal.mail.ai.composeDraftStore.getOwnSession, {

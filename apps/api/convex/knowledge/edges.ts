@@ -225,7 +225,7 @@ export const linkStructural = internalMutation({
 		threadId: v.optional(v.id('conversationThreads')),
 		sourceType: sourceTypeValidator,
 		sourceId: v.optional(v.string()),
-		/** The extraction's root request, handed to the inference pass (ADR-0073). */
+		/** The extraction's root request, handed to the inference pass. */
 		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args) => {

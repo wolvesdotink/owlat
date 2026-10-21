@@ -308,7 +308,7 @@ export const changeType = authedMutation({
  */
 // List email templates (paginated, uniform { page, … } contract). Search is
 // relevance-ordered; otherwise updatedAt-descending with index-native type
-// filtering. The old shell `.collect()`-ed the whole table per call. ADR-0037.
+// filtering. The old shell `.collect()`-ed the whole table per call.
 export const list = authedQuery({
 	args: {
 		type: v.optional(emailTemplateTypeValidator),

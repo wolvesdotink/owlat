@@ -1,7 +1,7 @@
 /**
  * Send route strategy (module) — registry + dispatch.
  *
- * Per ADR-0020. Mirrors `convex/lib/sendProviders/index.ts` shape at a
+ * Mirrors `convex/lib/sendProviders/index.ts` shape at a
  * different dispatch unit. Adding a fourth strategy (e.g. `least_loaded`,
  * `geo_aware`) is a one-folder change.
  */

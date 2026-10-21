@@ -156,7 +156,7 @@ export const markIdle = internalMutation({
 
 /**
  * Whether a background refresh may be scheduled now: the `ai` feature is on and
- * spend admission has headroom for background work (ADR-0073, D1, #1333). At
+ * spend admission has headroom for background work (#1333). At
  * the ceiling (or with a spend state that cannot be verified) the refresh
  * defers: nothing is scheduled, and the next stale read asks again.
  */

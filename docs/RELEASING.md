@@ -217,7 +217,6 @@ One entry per published image, `ghcr.io/wolvesdotink/<name>`:
 
 ## Related
 
-- `docs/adr/` — architecture decisions, including supply-chain hardening.
 - `scripts/gen-release-compose.sh` — release compose generation + digest
   pinning (unit-tested via `bun run lint:script-tests`).
 - `install.sh` / `scripts/owlat upgrade` — the consumer side of the release

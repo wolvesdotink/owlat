@@ -2,7 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 /**
- * The thread brief's backfill over a mailbox's recent mail (ADR-0072, D5):
+ * The thread brief's backfill over a mailbox's recent mail:
  * one row per mailbox, driven by `mail/interpret/backfill.ts`.
  *
  * The walk pages the mailbox's threads newest first down to `cutoffAt` (30

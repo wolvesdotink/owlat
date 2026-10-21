@@ -116,7 +116,7 @@ export type SharedDraftParams = Readonly<{
 	 */
 	spendLabels: Readonly<{ draft: string; selfCheck?: string }>;
 	/**
-	 * The inbound message the draft answers, as a root request (ADR-0073): the
+	 * The inbound message the draft answers, as a root request: the
 	 * draft's and the self-check's ledger rows group under it.
 	 */
 	root?: LlmRootContext;

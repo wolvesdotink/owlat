@@ -9,7 +9,7 @@ import { reconcileAnsweredReply } from './answeredReply';
 
 // Postbox outbound lifecycle — the single writer of every
 // `mailMessages.outbound.recipients[].state` and the only producer of the
-// derived `mailMessages.outbound.state` aggregate. See ADR-0012 and CONTEXT.md
+// derived `mailMessages.outbound.state` aggregate. See CONTEXT.md
 // "Postbox outbound state" / "Postbox outbound lifecycle (module)".
 //
 // Unlike the Send lifecycle, this module transitions a *slice* of the row
@@ -75,7 +75,7 @@ const transitionInputValidator = v.union(
 // transitions independently; there is no row-wide downgrade guard.
 //
 // The graph and its dispatcher preamble live in the generic lifecycle core
-// (`lib/lifecycle.ts`, ADR-0058); reducers and effects stay below.
+// (`lib/lifecycle.ts`); reducers and effects stay below.
 
 const RECIPIENT_LIFECYCLE = defineLifecycle<RecipientState>(
 	{

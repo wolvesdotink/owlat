@@ -7,7 +7,7 @@
  * the SAME daily series the server already derives (derive on read, never
  * store), so the arithmetic lives in ONE place that the Convex query and the web
  * screen both import. A dashboard and a controller that disagree about a number
- * is the failure mode ADR-0042 was written about; a dashboard and its own server
+ * is the failure mode one summarizer exists to prevent; a dashboard and its own server
  * disagreeing is the same bug one layer up.
  *
  * NOTHING HERE READS A CLOCK, A DATABASE OR AN ENVIRONMENT. `now` is

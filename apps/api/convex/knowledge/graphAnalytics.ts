@@ -152,7 +152,7 @@ export const getEmbeddingsByIds = internalQuery({
 		// Independent ids: one deduplicated, parallel read.
 		const byId = await batchGet(ctx, args.ids);
 		const out: { id: Id<'knowledgeEntries'>; embedding: number[] }[] = [];
-		// Only active-space vectors, so every distance compares one space (ADR-0073).
+		// Only active-space vectors, so every distance compares one space.
 		const active = await readSearchableSpace(ctx.db);
 		if (!active) return out;
 		const ref = spaceRefOf(active);

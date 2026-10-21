@@ -4,8 +4,6 @@
  * Covers per-recipient legal/illegal/terminal edges, the same-state
  * `recorded` outcome, aggregate-state re-derivation after every transition,
  * `transitionByMtaMessageId` parsing, and the `audit_log` effect.
- *
- * See docs/adr/0012-postbox-outbound-lifecycle-module.md.
  */
 
 import { convexTest } from 'convex-test';

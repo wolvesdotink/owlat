@@ -1,5 +1,5 @@
 /**
- * Tests for the Send completion (module) per ADR-0006.
+ * Tests for the Send completion (module).
  *
  * `completeSend` is the workpool `onComplete` callback — it translates a
  * worker result into a Send lifecycle transition (`sent` on success,
@@ -396,7 +396,7 @@ describe('completeSend — transactional Sends', () => {
 // ============================================================================
 // Provider health is NOT recorded here
 //
-// Per ADR-0020, provider health recording moved upstream to the **Send dispatch
+// Provider health recording moved upstream to the **Send dispatch
 // (helper)** in `lib/sendProviders/dispatch.ts`. Every send producer routes
 // through the helper so health is recorded uniformly; Send completion's only
 // job is the Send lifecycle transition. These regression tests guarantee the
@@ -404,7 +404,7 @@ describe('completeSend — transactional Sends', () => {
 // when `providerType` is set in the result.
 // ============================================================================
 
-describe('completeSend — does NOT write providerHealth (ADR-0020 regression)', () => {
+describe('completeSend — does NOT write providerHealth (regression)', () => {
 	it('does not record a row on success even when providerType is set', async () => {
 		const t = convexTest(schema, modules);
 		const sendId = await setupCampaignSend(t);

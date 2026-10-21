@@ -1,5 +1,5 @@
 /**
- * D13 (ADR-0073) end to end: the security scan skips the model guard for
+ * The guard skip end to end: the security scan skips the model guard for
  * spam-score archived mail and for mail arriving while the agent is off, and
  * records the skip on the message (`securityFlags.guardNotRun`). Nothing
  * autonomous runs on such a message before the guard:

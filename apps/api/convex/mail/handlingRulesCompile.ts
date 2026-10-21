@@ -138,7 +138,7 @@ function boundFacet(entries: string[] | undefined): string[] | undefined {
 export const compile = authedAction({
 	args: { instruction: v.string() },
 	handler: async (ctx, args): Promise<CompiledRule & { compiledModel?: string }> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const instruction = args.instruction.trim();
 		if (!instruction) throwInvalidInput('Rule text is required');

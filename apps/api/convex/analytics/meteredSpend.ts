@@ -1,5 +1,5 @@
 /**
- * The action side of the ledger (ADR-0073): run one metered model call and
+ * The action side of the ledger: run one metered model call and
  * write one `llmUsageEvents` row per provider request it made.
  *
  * {@link meterLlmCall} is the single owner of a call's rows. It builds the

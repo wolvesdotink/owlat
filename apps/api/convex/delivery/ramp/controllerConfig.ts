@@ -1,14 +1,12 @@
 /**
- * The AIMD controller's constants (ADR-0054 §4).
+ * The AIMD controller's constants.
  *
  * THE ASYMMETRY IS THE WHOLE POINT: cheap to retreat, expensive to advance. An
  * increase costs three consecutive clean windows and moves a few percentage
  * points; a decrease costs one breached gate and halves the share instantly.
  * Every number below exists to keep that asymmetry, so changing one in
  * isolation — a smaller cooldown, a bigger step — is a change to the safety
- * property, not a tuning tweak. `docs/adr/0054-deliverability-ramp-controller.md`
- * is where that is argued, and is the thing to read before editing a number
- * here.
+ * property, not a tuning tweak.
  *
  * The PER-STREAM numbers (initial share, step, K_CLEAN) live in `gateConfig.ts`
  * as `RAMP_STREAM_CONFIGS` and are reused here rather than re-declared: one

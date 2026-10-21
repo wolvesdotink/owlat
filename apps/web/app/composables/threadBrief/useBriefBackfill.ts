@@ -1,6 +1,6 @@
 /**
- * The thread brief's 30-day backfill of one mailbox (`mail.interpret.backfill`,
- * ADR-0072 D5): its live status, and Prepare / Resume / Stop for the owner.
+ * The thread brief's 30-day backfill of one mailbox (`mail.interpret.backfill`):
+ * its live status, and Prepare / Resume / Stop for the owner.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';

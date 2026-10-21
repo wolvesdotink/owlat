@@ -111,7 +111,7 @@ export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  *   - `delivery/deliverabilityDashboard.ts`, EAGERLY, ONCE PER SCREEN LOAD. The
  *     read is unconditional there: it happens whether or not any cell has
  *     probes, because the screen must report the verdict the controller would
- *     reach (ADR-0042) and cannot know which cells have evidence before reading.
+ *     reach and cannot know which cells have evidence before reading.
  *     Raising this number therefore lands on an interactive query, not only on a
  *     cron.
  */
@@ -416,7 +416,7 @@ export async function summarizeSeedPlacementSweeps(
 /**
  * Sum the probe ledger for one org into per-provider STATUSES. Reader-typed so
  * the controller and the dashboard read it through the same path and can never
- * disagree (the ADR-0042 rule applied to a second table).
+ * disagree.
  */
 export async function summarizeSeedPlacementWindow(
 	db: DatabaseReader,

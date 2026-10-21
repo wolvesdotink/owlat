@@ -1166,8 +1166,8 @@ describe('sendLifecycle.transition — legal-edges enforcement', () => {
 		expect(outcome.reason).toBe('illegal_edge');
 	});
 
-	it('transactional queued -> sent is legal post-α (ADR-0006)', async () => {
-		// Pre-ADR-0006, transactional sends were created directly in `sent`
+	it('transactional queued -> sent is legal post-α', async () => {
+		// Before the Send lifecycle, transactional sends were created directly in `sent`
 		// by `transactionalSends.createInternal`; the lifecycle rejected
 		// `to:'sent'` for transactional as `invalid_for_kind`. Post-α,
 		// transactional rows pre-create in `queued` and walk the same

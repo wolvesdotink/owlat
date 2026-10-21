@@ -135,7 +135,7 @@ export const coachDraft = authedAction({
 		threadContext: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<{ suggestions: CoachSuggestion[] }> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const draft = args.draftText.trim();
 		if (!draft) return { suggestions: [] };

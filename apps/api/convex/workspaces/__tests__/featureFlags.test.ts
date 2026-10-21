@@ -39,8 +39,6 @@ vi.mock('../../plugins/plugins.generated', () => ({
  * load-bearing per-flag side-effect: an explicit false→true toggle of
  * `ai.agent` via `setFeatureFlag` kicks off the knowledge-graph backfill;
  * a pack-driven or setAll-driven enable does NOT.
- *
- * See docs/adr/0026-organization-settings-modules.md.
  */
 
 let mockRole: OrganizationRole = 'owner';

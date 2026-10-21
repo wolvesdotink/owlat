@@ -1,6 +1,6 @@
 /**
  * Decision plane — which provider requests one attempt made, and the root
- * deadline every attempt runs under (ADR-0073).
+ * deadline every attempt runs under.
  *
  * The ledger holds one row per provider request. A decision attempt is one
  * request for the native and local adapters, but the language-backed adapter

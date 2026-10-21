@@ -65,7 +65,7 @@ export { reduceBounced, reduceComplained } from './feedbackReducers';
 // static spec alone.
 //
 // The graph and the dispatcher preamble that reads it live in the generic
-// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers below stay here.
+// lifecycle core (`lib/lifecycle.ts`); the reducers below stay here.
 
 const SEND_EDGE_SPEC: LifecycleEdgeSpec<SendStatus> = {
 	queued: ['sent', 'failed'],
@@ -110,7 +110,7 @@ export function legalEdgesFor(send: EmailSendDoc | TransactionalSendDoc): Readon
 	return lifecycleFor(send).legalTargets(send.status as SendStatus);
 }
 
-// Per ADR-0006: transactional sends pre-create in `queued` and walk
+// Transactional sends pre-create in `queued` and walk
 // `queued → sent` / `queued → failed` through this lifecycle the same way
 // campaign sends do — the historical CAMPAIGN_ONLY_TARGETS guard is gone.
 
@@ -137,7 +137,7 @@ export function reduceSent(
 	// Campaign-only counter bump. Transactional has no per-template `sent`
 	// counter — the global `instanceSettings.transactionalSendCount` was the
 	// old proxy and is no longer wired (queue-time creation will own that
-	// counter; see ADR-0006).
+	// counter).
 	if (ref.kind === 'campaign') {
 		effects.push({
 			kind: 'campaign_stats_sent',

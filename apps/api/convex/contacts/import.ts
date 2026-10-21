@@ -21,8 +21,6 @@
  * After the row loop:
  *   6. Per-topic subscribeMany coalescing (one mutation call per topic)
  *   7. One incrementContactCount(ctx, imported)
- *
- * See docs/adr/0019-contact-import-module.md.
  */
 
 import { v } from 'convex/values';

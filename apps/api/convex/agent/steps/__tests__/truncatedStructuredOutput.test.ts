@@ -1,6 +1,6 @@
 /**
  * A structured answer that stopped at its output ceiling is incomplete, and
- * `runLlmObject` rejects it centrally (ADR-0073). Here the real dispatch runs
+ * `runLlmObject` rejects it centrally. Here the real dispatch runs
  * over a mocked AI SDK that returns a schema-valid object with a length stop:
  * the injection guard must fail into `guardUnavailable` (closed for
  * auto-send), and the draft self-check must report unknown quality, which the

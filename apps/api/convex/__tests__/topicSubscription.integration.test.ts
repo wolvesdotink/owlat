@@ -3,8 +3,7 @@
  *
  * Covers the five entry points (subscribe / subscribeMany / unsubscribe /
  * unsubscribeMany / unsubscribeAllForContact), the source→effects gating,
- * the DOI handoff at subscribe time, and the drift-bug closures named in
- * docs/adr/0013-topic-subscription-module.md.
+ * the DOI handoff at subscribe time, and the drift-bug closures.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';

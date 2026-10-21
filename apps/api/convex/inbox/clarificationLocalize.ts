@@ -243,7 +243,7 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 	model: LanguageModel,
 	questions: readonly Q[],
 	locales: readonly string[] = APP_LOCALES,
-	/** Records each provider request of both calls, one ledger row each (ADR-0073). */
+	/** Records each provider request of both calls, one ledger row each. */
 	meter?: LlmCallMeter,
 	/** Translate into English too: the canonical text is in another language. */
 	opts: { includeCanonical?: boolean } = {}

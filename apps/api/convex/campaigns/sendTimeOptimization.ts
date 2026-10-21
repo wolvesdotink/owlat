@@ -1,5 +1,5 @@
 /**
- * Send-time optimization — the PURE planner (ADR-0068).
+ * Send-time optimization — the PURE planner.
  *
  * The sender picks a start and a window; this module proposes, per contact,
  * the instant inside that window at which to hand the email to the send

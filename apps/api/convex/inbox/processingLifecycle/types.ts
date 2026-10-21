@@ -7,8 +7,6 @@
  * returns. Pure types + validators — no runtime branching lives here. The
  * state graph and per-state reducers are in `./reducers.ts`; the effect runner
  * is in `./effects.ts`.
- *
- * See docs/adr/0010-inbox-processing-lifecycle-module.md.
  */
 
 import { v, type Infer } from 'convex/values';

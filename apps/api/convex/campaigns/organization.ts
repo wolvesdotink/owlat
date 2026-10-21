@@ -118,6 +118,6 @@ export const listAttentionCandidates = campaignsQuery({
 });
 
 // Audience recipient counts moved to the Audience resolution (module) at
-// `campaigns/audienceResolution.ts:countRecipients` (ADR-0033) — it runs the
+// `campaigns/audienceResolution.ts:countRecipients` — it runs the
 // identical eligibility predicate as the send path, so the count can no longer
 // over-report. The wizard calls `countRecipients({ audience })` directly.

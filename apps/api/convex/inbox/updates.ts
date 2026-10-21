@@ -2,7 +2,7 @@
  * Updates — the shared-inbox dashboard of mail that needs no reply.
  *
  * The classify step parks a message in `informational` when the sender is not
- * waiting for an answer (ADR-0061). Nothing is drafted for it; instead it is
+ * waiting for an answer. Nothing is drafted for it; instead it is
  * ranked here so a reader can walk through the important updates in one place,
  * read the subject and the first lines of the message, and either let it go
  * (`dismissUpdate` → archived) or overrule the classifier and ask for a draft

@@ -1,6 +1,6 @@
 /**
  * What every dispatch mode derives from its options and meter before the first
- * request (ADR-0073): the output ceiling and the deadline (`./taskLimits.ts`),
+ * request: the output ceiling and the deadline (`./taskLimits.ts`),
  * the attempt allowance, and the fields every request record of the call
  * shares. One function, so the text, object, tool-loop, stream and embedding
  * dispatches cannot drift apart. Pure and runtime-neutral.
@@ -48,7 +48,7 @@ export function callShape(opts: {
 	readonly abortSignal?: AbortSignal;
 	readonly maxAttempts?: number;
 }): CallShape {
-	// Model eligibility (ADR-0073, the task-policy catalog): a model the
+	// Model eligibility (the task-policy catalog): a model the
 	// resolver resolved on a tier the call's task does not allow never reaches
 	// the provider. Unstamped models (a test double, a plugin's string) pass.
 	const tier = modelTier(opts.model);

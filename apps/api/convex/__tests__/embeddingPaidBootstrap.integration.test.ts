@@ -1,5 +1,5 @@
 /**
- * The paid re-embed bootstrap (ADR-0073, D8, F3): a hosted deployment's first
+ * The paid re-embed bootstrap: a hosted deployment's first
  * upgrade has only unknown vectors and no searchable space, and no new content
  * may ever arrive. An admin start measures the configured space with one
  * admitted call, activates it and runs the admitted re-embed. Admission is

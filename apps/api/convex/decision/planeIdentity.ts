@@ -2,7 +2,7 @@
 
 /**
  * The identity of the decision plane as it resolves NOW, for the block-only
- * auto-send gate (ADR-0060 §8): the resolver's own output
+ * auto-send gate: the resolver's own output
  * (`lib/decisionProvider.ts resolveDecisionConfig`), never a second reading
  * of its precedence, so a stored kind with an env model or origin, an env
  * fallback after the stored config is removed, or a degraded provider each

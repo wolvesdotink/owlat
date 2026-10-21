@@ -13,12 +13,11 @@ import { transportArmValidator } from '../lib/literalValidators';
  * sanctions a feature-named sibling in exactly that case (the
  * `schema/sendAssignments.ts` precedent).
  *
- * SHAPE IS COPIED FROM `sendingReputation` DELIBERATELY (ADR-0042):
+ * SHAPE IS COPIED FROM `sendingReputation` DELIBERATELY:
  *   - Each (org, cell, arm, day) bucket is SHARDED into `shardKey` 0..N-1 rows.
  *     One lifecycle event bumps ONE random shard, so a blast's per-recipient
  *     writes spread across N documents instead of read-modify-writing a single
- *     daily row N times (the Convex OCC write hotspot ADR-0042 was written
- *     about).
+ *     daily row N times (a Convex OCC write hotspot).
  *   - `analytics/transportOutcomes.ts` holds the ONE reader-typed summarizer,
  *     which sums across all shards so the split is invisible to readers.
  *   - NO RATE IS STORED. Bounce / complaint / delivery / open / click rates are

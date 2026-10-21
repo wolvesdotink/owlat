@@ -7,8 +7,6 @@
  * returns. Pure types + validators — no runtime branching lives here. The
  * state graph and per-transition reducers are in `./reducers.ts`; the effect
  * runner + dispatcher are in `./effects.ts`.
- *
- * See docs/adr/0028-mail-draft-lifecycle-module.md.
  */
 
 import { DEFAULT_UNDO_SEND_SECONDS } from '@owlat/shared/undoSendPolicy';

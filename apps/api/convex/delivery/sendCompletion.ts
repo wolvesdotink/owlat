@@ -34,7 +34,7 @@ import type { MarketingIneligibility } from '../lib/marketingEligibility';
 // counter needs a writer at all.
 //
 // Provider health recording moved upstream to the **Send dispatch (helper)**
-// per ADR-0020 — every send producer routes through that helper, so health
+// — every send producer routes through that helper, so health
 // is recorded uniformly (no longer skipped by test sends / automation
 // emails / direct test send that bypassed this module).
 //

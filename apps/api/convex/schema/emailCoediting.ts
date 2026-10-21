@@ -3,7 +3,7 @@ import { v } from 'convex/values';
 import { coeditTargetFields, coeditWriteValidator } from '../lib/validators/coediting';
 
 /**
- * Email co-editing tables (docs/adr/0071-email-coediting.md): the shared live
+ * Email co-editing tables: the shared live
  * draft two or more people edit at once, who has the email open, and the
  * notices that tell someone their change to a block was replaced.
  *

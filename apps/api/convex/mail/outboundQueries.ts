@@ -7,7 +7,7 @@
  *
  * The claim/revert/writeSentMessage trio that used to live here moved to
  * the Mail draft lifecycle module — the sole writer of `mailDrafts.state`
- * and the multi-table send-success cascade. See ADR-0028. The only thing
+ * and the multi-table send-success cascade. The only thing
  * left in this file is the threading-header lookup the dispatcher does
  * before building the RFC 5322 envelope.
  */

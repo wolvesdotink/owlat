@@ -3,7 +3,7 @@
 /**
  * Send dispatch (helper).
  *
- * Per ADR-0020. Single entry point for send-side provider work. Six producers
+ * Single entry point for send-side provider work. Six producers
  * route through this: the workpool worker, the campaign orchestrator's one-off
  * test send, the post-send resend in `emailsSending.ts`, the automation email
  * step, the transactional HTTP send, and any future internal sender.

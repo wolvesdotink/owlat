@@ -1,7 +1,5 @@
 /**
- * How a decision verdict may feed the auto-send score (ADR-0060 §8, ADR-0073
- * §8 and its "Auto-send contract" section, plan Phase 4). Pure and
- * isolate-safe.
+ * How a decision verdict may feed the auto-send score. Pure and isolate-safe.
  *
  * The route step compares one number with the auto-approve threshold:
  * `resolveAutoApproveScore` (`agent/steps/route/index.ts`), today the draft's

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enforce the Operation error taxonomy (ADR-0036) at the thrown (in-app) seam.
+# Enforce the Operation error taxonomy at the thrown (in-app) seam.
 # Two checks, both scoped to apps/api/convex/ source (excludes _generated and
 # tests). Run as part of `bun run lint`, sibling to check-env.sh.
 #
@@ -102,7 +102,7 @@ if [[ -n "$bare_throws" ]]; then
 fi
 
 if [[ "$fail" -ne 0 ]]; then
-	echo "Operation error taxonomy check failed. See docs/adr/0036-operation-error-taxonomy.md."
+	echo "Operation error taxonomy check failed."
 	exit 1
 fi
 

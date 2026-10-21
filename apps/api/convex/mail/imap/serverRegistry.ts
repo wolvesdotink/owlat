@@ -1,5 +1,5 @@
 /**
- * The IMAP server registry (ADR-0063): which IMAP server releases are calling
+ * The IMAP server registry: which IMAP server releases are calling
  * this backend, and whether the backend still serves their wire contract.
  *
  * - `report`: the IMAP server's handshake, once before it starts listening and
@@ -72,7 +72,7 @@ type ReportResult = {
  * next report. So a function whose contract a later PR contracts takes an
  * optional `imapWireVersion` one release ahead, and the contracting PR calls
  * this at the top of it, before any side effect (CONVENTIONS.md, "IMAP wire
- * version"; ADR-0063). `mail/appPasswords:verify` calls it for IMAP logins.
+ * version"). `mail/appPasswords:verify` calls it for IMAP logins.
  */
 export function assertImapWireSupported(imapWireVersion: number | undefined): void {
 	const wireVersion = imapWireVersion ?? IMAP_WIRE_LEGACY;

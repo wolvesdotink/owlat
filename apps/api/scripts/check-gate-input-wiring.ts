@@ -11,7 +11,7 @@
  *      `.evaluate(...)`. A key whose value is a bare `null`/`undefined` supplies
  *      nothing — `ownSeeds: null` was the shipped spelling.
  *
- * ADR-0042: the controller and the dashboard build the SAME input off the same
+ * The controller and the dashboard build the SAME input off the same
  * rows, so every field is asserted against BOTH named readers. A gap may exist
  * only by being written down in the ledgers below, exactly.
  *

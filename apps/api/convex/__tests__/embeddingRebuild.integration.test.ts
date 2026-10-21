@@ -1,5 +1,5 @@
 /**
- * The staged embedding rebuild (ADR-0073, Phase 5): build into a staged space
+ * The staged embedding rebuild: build into a staged space
  * while retrieval keeps the active one, validate it with a bounded sample of
  * queries, activate it atomically (states and the stored configuration in one
  * transaction), and roll back to the previous space with its vectors intact.

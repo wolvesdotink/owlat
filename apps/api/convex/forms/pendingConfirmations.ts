@@ -15,8 +15,6 @@
  * `doiConsentEpisode` against the one the carry started in, and stops once a
  * global opt-out has moved it on. The rows it had not reached yet stay
  * `pending_confirmation` on their old token.
- *
- * See docs/adr/0015-form-submission-module.md.
  */
 
 import { v } from 'convex/values';

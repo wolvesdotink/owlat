@@ -2,8 +2,7 @@
  * Integration tests for Form submission (module).
  *
  * Covers the two entry points (submit / markConfirmedByToken), the
- * five action classifications, and the drift-bug closures named in
- * docs/adr/0015-form-submission-module.md — especially the
+ * five action classifications, and the drift-bug closures — especially the
  * existing-contact-joins-new-topic regression that the pre-deepening
  * path silently dropped.
  *
@@ -417,7 +416,7 @@ describe('submission.submit', () => {
 			expect(submission?.confirmationEmailSentAt).toBeDefined();
 
 			// The submission's confirmationToken must equal the contact's
-			// doiConfirmationToken (unified token namespace, ADR-0009).
+			// doiConfirmationToken (unified token namespace).
 			const contact = await getContactByEmail(t, 'doi@example.com');
 			expect(contact?.doiStatus).toBe('pending');
 			expect(contact?.doiConfirmationToken).toBe(submission?.confirmationToken);

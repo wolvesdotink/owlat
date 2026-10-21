@@ -1,5 +1,5 @@
 /**
- * Audience resolution (module) tests — ADR-0033.
+ * Audience resolution (module) tests.
  *
  * The interface is the test surface:
  *  1. `selectRecipient` pure unit tests (the deep core, no harness).

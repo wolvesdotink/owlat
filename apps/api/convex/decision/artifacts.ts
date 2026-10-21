@@ -1,5 +1,5 @@
 /**
- * Decision artifacts (ADR-0073 §8, contract §9): one stored verdict per
+ * Decision artifacts: one stored verdict per
  * bundle, message, content, policy version and question-set version, with
  * the provenance and calibration stamp it was answered under.
  *
@@ -137,7 +137,7 @@ async function liveSubject(
  * - `stale`: the `ai.decisionPlane` flag or the provider configuration changed
  *   since the action decided its rung and resolved its provider (either rung);
  * - `excluded`: the mailbox is excluded from hosted decisions and the call
- *   is about to use a hosted endpoint (ADR-0060 §9);
+ *   is about to use a hosted endpoint;
  * - `busy`: another worker's lease is live.
  *
  * A failed attempt, a lapsed lease and an expired row may be taken.

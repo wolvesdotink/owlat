@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * `clarify` Agent step (module) — see ADR-0014.
+ * `clarify` Agent step (module).
  *
  * Sits at the classify fork, BETWEEN classify and draft. Its job is to catch
  * the case where the agent is about to reply while missing a fact only the

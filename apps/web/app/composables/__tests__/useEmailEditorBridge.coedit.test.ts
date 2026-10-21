@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Co-editing through the email editor bridge (docs/adr/0071-email-coediting.md):
+// Co-editing through the email editor bridge:
 // the canvas follows the shared session, local edits go out as block
 // operations, other people's edits come in through the builder's
 // applyRemoteOps, and Save writes the session. Convex is replaced by a fake

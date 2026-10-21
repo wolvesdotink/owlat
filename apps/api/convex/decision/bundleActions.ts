@@ -1,13 +1,13 @@
 'use node';
 
 /**
- * The scheduled Phase 2 bundle actions (ADR-0073), one per hook in
+ * The scheduled Phase 2 bundle actions, one per hook in
  * `./schedule.ts`. Each re-reads the routing policy (a switch may have moved
  * since the hook scheduled it), builds the message's evidence, and hands one
  * bundle to `./bundleRunner.ts`. None returns anything a pipeline reads, and
  * none writes outside `decisionArtifacts` and `senderMemory` (D9, D12).
  *
- * Every action anchors its model budget at entry (ADR-0073 §1).
+ * Every action anchors its model budget at entry.
  */
 
 import { v } from 'convex/values';

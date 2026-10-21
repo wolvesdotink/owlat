@@ -276,5 +276,4 @@ export const dispatchDraft = internalAction({
 // `getMessage` lives in mailOutboundQueries.ts so it can run in the v8
 // isolate (Convex requires query definitions to be non-`'use node'`).
 // The send-success cascade, the per-revert reverts, and the recipient/
-// row-delete fan-out moved to the Mail draft lifecycle (module) — see
-// docs/adr/0028-mail-draft-lifecycle-module.md.
+// row-delete fan-out moved to the Mail draft lifecycle (module).

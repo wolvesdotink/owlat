@@ -3,7 +3,7 @@
  * path that runs through the **Bounce intake pipeline** and **Bounce
  * outcome** modules.
  *
- * Mirrors `apps/mta/src/dispatch/types.ts` (ADR-0007). The two MTA-side
+ * Mirrors `apps/mta/src/dispatch/types.ts`. The two MTA-side
  * Inbound-event producers (Dispatch attempt outcome + Bounce intake) share
  * the same module shape: typed phases that classify, a pure reducer that
  * emits a typed effect list, and a runner that's the only seam to

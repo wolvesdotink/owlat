@@ -24,8 +24,6 @@
  *   propagate_name            — savedBlockRef.blockName patches only.
  *   detach_all                — content + linkedBlockIds strip on delete.
  *   schedule_rerender         — enqueues the rerender pool.
- *
- * See docs/adr/0023-saved-block-module.md.
  */
 
 import { v } from 'convex/values';
@@ -171,7 +169,7 @@ async function walkConsumers(
 
 	// bounded: emailTemplates is intrinsically small (one row per saved
 	// template). Convex doesn't natively index array fields; an
-	// `emailBlockConsumers` sidecar is listed as follow-up in ADR-0023.
+	// `emailBlockConsumers` sidecar is a possible follow-up.
 	const templates = await ctx.db.query('emailTemplates').collect(); // bounded: email templates (org-scale library)
 	for (const template of templates) {
 		const linkedBlockIds = template.linkedBlockIds ?? [];
@@ -350,7 +348,7 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 			}
 			case 'schedule_rerender': {
 				// Enqueue into the saved-block rerender pool. Unlike the
-				// pre-ADR-0023 `ctx.scheduler.runAfter` fire-and-forget,
+				// old `ctx.scheduler.runAfter` fire-and-forget,
 				// failures retry with backoff and the `onComplete` callback
 				// records terminal-failure bookkeeping on the consumer rows.
 				await rerenderBlocksPool.enqueueAction(

@@ -7,7 +7,7 @@ import type { OpenAgent } from '../automatedOpens';
 import type { EmailSendDoc, SendRef, TransactionalSendDoc } from './types';
 
 // ============================================================================
-// Send lifecycle — the send-time optimization hooks (ADR-0068).
+// Send lifecycle — the send-time optimization hooks.
 //
 // Two things ride on the reducers' existing effect list:
 //

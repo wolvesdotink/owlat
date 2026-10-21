@@ -5,7 +5,7 @@
  * step so the two places that run it share one implementation:
  *
  *   - the step itself, which runs it after the deterministic layers and only
- *     when D13 does not skip it (ADR-0073);
+ *     when the scan does not skip it;
  *   - {@link runGuardBeforeAutonomy}, which runs it late, the first time a
  *     generative consumer outside the pipeline (knowledge extraction, thread
  *     interpretation, a briefing's history, Answer mode) reaches a message
@@ -239,7 +239,7 @@ export function isGuardFlagged(
  *     did not flag it. A model error fails open, the way the step does, with
  *     `guardUnavailable` recorded;
  *   - anything else proceeds.
- * `deadlineAt` is the awaiting caller's deadline (ADR-0073): an action called
+ * `deadlineAt` is the awaiting caller's deadline: an action called
  * with a bounded root runs the guard on that clock, not on a fresh one.
  */
 export async function runGuardBeforeAutonomy(

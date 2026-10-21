@@ -14,7 +14,7 @@ import {
 /**
  * Role-enforcement tests for the AI-assisted shared inbox.
  *
- * Per the inbox access policy (docs/adr/0040), the shared inbox is owner/admin
+ * Per the inbox access policy, the shared inbox is owner/admin
  * only: its mutations use the `adminMutation` wrapper (→ requireAdminContext)
  * and its queries gate on `getBetterAuthSessionWithRole`. An `editor` must be
  * rejected (mutations) or receive empty results (queries); owner/admin succeed.

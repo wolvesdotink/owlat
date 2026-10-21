@@ -1,5 +1,5 @@
 /**
- * Test helpers for spend admission (ADR-0073, Phase 1b): reconcile the spend
+ * Test helpers for spend admission: reconcile the spend
  * aggregate to completion, and an action ctx whose mutations and queries run
  * against a convex-test instance, so the action-side ports reach the real
  * admission mutations.

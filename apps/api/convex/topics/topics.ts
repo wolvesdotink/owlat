@@ -201,7 +201,7 @@ export const remove = authedMutation({
 // Mutation to add a contact to a topic.
 // Thin auth-bearing shell — the Topic subscription (module) owns every
 // write to `contactTopics`, the DOI gate, the trigger fanout, and the
-// `cachedMemberCount` patch. See docs/adr/0013-topic-subscription-module.md.
+// `cachedMemberCount` patch.
 type AddContactResult = {
 	membershipId: Id<'contactTopics'>;
 	doiStatus: 'not_required' | 'pending' | 'confirmed';
@@ -436,7 +436,7 @@ export const getContactInTopicDetails = authedQuery({
 		}
 
 		// Fetch campaigns that target this specific topic. The audience is a
-		// discriminated value (ADR-0033) whose topic id lives inside the union,
+		// discriminated value whose topic id lives inside the union,
 		// so filter in JS after a bounded scan.
 		const scanned = await ctx.db.query('campaigns').take(1000); // bounded: topic-detail lookup
 		const campaigns = scanned.filter(
@@ -564,7 +564,7 @@ export const resendDoiConfirmation = authedMutation({
 
 /**
  * List all topics with cursor-based pagination (session-auth shell).
- * Thin wrapper over the Listing engine — see ADR-0037.
+ * Thin wrapper over the Listing engine.
  */
 export const list = authedQuery({
 	args: {

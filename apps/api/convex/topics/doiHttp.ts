@@ -3,8 +3,6 @@
  * Both wrap their domain mutation/query in the **Public token endpoint
  * (module)** shell; the token sits in `?token=` rather than a URL segment
  * here, which the shell handles via the matcher's `?token=` fallback.
- *
- * See docs/adr/0030-public-token-endpoint-module.md.
  */
 
 import { internal } from '../_generated/api';

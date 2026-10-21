@@ -118,7 +118,7 @@ export const deliveryTables = {
 
 	// Sending Reputation — rolling 30-day accumulation of delivery events into
 	// per-day buckets, owned by the **Sending reputation (module)** at
-	// `analytics/sendingReputation.ts` (ADR-0042). One scope-discriminated
+	// `analytics/sendingReputation.ts`. One scope-discriminated
 	// table: `scope: 'org'` rows carry `domain: undefined`; `scope: 'domain'`
 	// rows carry the sending domain. Bounce/complaint rate + risk level are
 	// derived on read by the module's `summarize` — never stored.
@@ -263,7 +263,7 @@ export const deliveryTables = {
 			v.object({
 				// A `SendTransportKind` (`@owlat/shared`): a catalog core kind or a
 				// `plugin.<pluginId>.<localId>`. Deliberately NOT re-listed here — the
-				// column stays an open string (ADR-0055, D10) and the union has one
+				// column stays an open string and the union has one
 				// declaration, which is the catalog.
 				providerType: v.string(),
 				weight: v.optional(v.number()), // For workload_split: traffic percentage (0-100)
@@ -290,7 +290,7 @@ export const deliveryTables = {
 
 	// Provider Health - tracks email provider health for failover decisions
 	providerHealth: defineTable({
-		// A `SendTransportKind` (`@owlat/shared`), stored open per ADR-0055 (D10)
+		// A `SendTransportKind` (`@owlat/shared`), stored open
 		// — see `providerRoutes.providers[].providerType` above.
 		providerType: v.string(),
 		status: healthStatusValidator,

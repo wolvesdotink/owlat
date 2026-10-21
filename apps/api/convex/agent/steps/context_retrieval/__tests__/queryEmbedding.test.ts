@@ -1,6 +1,6 @@
 /**
- * Team retrieval's query embedding (ADR-0073, Phase 1c L8 and the empty-corpus
- * skip): the step embeds the query ONCE and hands the same vector to the
+ * Team retrieval's query embedding (and the empty-corpus skip): the step
+ * embeds the query ONCE and hands the same vector to the
  * knowledge search and the file search, with the query text still passed to
  * both for their full-text legs. When neither table holds a vector it makes no
  * embedding call at all, and an embedding failure leaves both searches out, as
@@ -93,7 +93,7 @@ describe('contextRetrievalStep — one query embedding', () => {
 		await contextRetrievalStep.execute(ctx, input);
 
 		expect(mocks.embed).toHaveBeenCalledTimes(1);
-		// The one embedding is one metered request, under the message's root (ADR-0073).
+		// The one embedding is one metered request, under the message's root.
 		expect(ledger).toEqual([
 			expect.objectContaining({
 				feature: 'embedding_knowledge_search',

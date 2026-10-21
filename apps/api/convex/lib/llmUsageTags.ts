@@ -45,7 +45,7 @@ export type LlmUsagePlane = (typeof LLM_USAGE_PLANES)[number];
 export const llmUsagePlaneValidator = literalUnion(LLM_USAGE_PLANES);
 
 /**
- * The AI routing columns (ADR-0073, Phase 1a and 1b). All optional: a row
+ * The AI routing columns. All optional: a row
  * written before them, or by a caller that knows none of them, is exactly
  * today's row. One row is still one provider request, and the ledger is still
  * the single source of settled spend; these columns say which logical request

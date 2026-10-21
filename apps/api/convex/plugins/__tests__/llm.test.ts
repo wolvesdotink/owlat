@@ -91,7 +91,7 @@ async function setup() {
 	return { t, actionCtx, service: bindAuthenticatedBundledPluginLlm(actionCtx, 'alpha') };
 }
 
-describe('hosted plugin LLM settlement, durably (ADR-0073)', () => {
+describe('hosted plugin LLM settlement, durably', () => {
 	/** A ctx whose settlement mutations fail `failures` times, with a scheduler that queues. */
 	async function flakySettlement(failures: number) {
 		const base = await setup();

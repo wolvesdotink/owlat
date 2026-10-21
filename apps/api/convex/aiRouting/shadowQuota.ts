@@ -1,5 +1,5 @@
 /**
- * D4's message share, enforced (ADR-0073, Sol r1 F6): at most
+ * The shadow allowance's message share, enforced: at most
  * `shadowMaxMessageFraction` of a task's eligible messages are shadowed per
  * UTC day, counted, not sampled.
  *

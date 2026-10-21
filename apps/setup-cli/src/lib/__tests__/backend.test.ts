@@ -24,7 +24,7 @@ import {
  * What the CLI prints when the backend refuses.
  *
  * The `/seed/*`, `/dev/*` and `/sample-data/*` endpoints answer in the locked
- * `{ error: { category, message } }` envelope (ADR-0036), but the CLI ships
+ * `{ error: { category, message } }` envelope, but the CLI ships
  * separately from the container it talks to, so the older `{ error: "…" }`
  * string must keep reading as a message rather than as `[object Object]`.
  */

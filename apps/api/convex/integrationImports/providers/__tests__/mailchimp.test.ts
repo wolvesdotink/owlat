@@ -15,8 +15,6 @@
  *     than `PAGE_SIZE`) → `nextCursor: null`; full page → `nextCursor`
  *     advances by `PAGE_SIZE`. Paging a changing audience with the current
  *     cursor is covered in `mailchimp/__tests__/livePaging.test.ts`.
- *
- * Per ADR-0027.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

@@ -1,5 +1,5 @@
 /**
- * The re-embed job's actions (ADR-0073, Phase 1a, D8 and Phase 5; #1334).
+ * The re-embed job's actions (#1334).
  *
  *   - `kickoff` runs from the cron and after every event that changes what is
  *     searchable (a settings save, a space switch, an attestation). With a
@@ -53,7 +53,7 @@ export const SPACE_PROBE_TEXT = 'Owlat embedding space probe';
 export const kickoff = internalAction({
 	args: { isForced: v.optional(v.boolean()) },
 	handler: async (ctx, args): Promise<void> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		await ctx.runMutation(internal.aiRouting.embeddingCoverage.requestScan, {
 			isForced: args.isForced ?? false,
@@ -113,7 +113,7 @@ export const startReembed = authedAction({
 		expectedTargetKey: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'embeddingReembedJobs'>> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		await ctx.runQuery(internal.aiRouting.embeddingSpaces.assertAdmin, {});
 		const { active } = await ctx.runQuery(internal.aiRouting.embeddingSpaces.getSpaces, {});
@@ -179,7 +179,7 @@ export const startReembed = authedAction({
 export const reembedRow = internalAction({
 	args: { table: embeddingTableValidator, id: v.string() },
 	handler: async (ctx, args): Promise<void> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const row = await ctx.runQuery(internal.aiRouting.embeddingRowReembed.rowForReembed, args);
 		if (!row) return;
@@ -216,7 +216,7 @@ export const runBatch = internalAction({
 		attempt: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<void> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const job = { jobId: args.jobId, generation: args.generation };
 		const attempt = args.attempt ?? 1;

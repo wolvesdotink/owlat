@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * The shared clarification service (ADR-0073, plan Phase 3, D5): the slot
+ * The shared clarification service: the slot
  * extraction and the judgment of which open slots must be asked, used by all
  * three surfaces. The surfaces keep what is theirs: Team Inbox
  * (`agent/steps/clarify`) parks the message, Postbox

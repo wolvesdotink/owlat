@@ -21,7 +21,7 @@ import type { WorkerEnvelopeInput, WorkerRetryState } from './workerEnvelope';
 /**
  * THE governed enqueue seam: the only place that hands a countable Send to
  * `internal.delivery.worker.sendSingleEmail`. Every Send has a row created in
- * `queued` before this runs, and per ADR-0006 its completion is owned by the
+ * `queued` before this runs, and its completion is owned by the
  * Send completion (module) — so the `onComplete` callback and the `sendRef`
  * context are wired HERE, once, rather than by each producer. A producer that
  * forgot either would leave its row `queued` forever with nothing to close it.
@@ -57,7 +57,7 @@ export async function enqueueGovernedSend(
  * (`delivery/seedShadowCopy.ts`) or a scheduled stream probe
  * (`delivery/seedScheduledProbe.ts`). A probe has no Send row — that is what
  * keeps it out of every denominator (D18) — so there is no `SendRef` to carry
- * and no completion owner (ADR-0006): it is enqueued WITHOUT `onComplete`, on
+ * and no completion owner: it is enqueued WITHOUT `onComplete`, on
  * purpose. Its durable record is the `seedPlacementProbes` ledger row, which
  * the placement poller classifies later.
  *

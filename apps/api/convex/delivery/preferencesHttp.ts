@@ -2,8 +2,6 @@
  * Preference-centre HTTP endpoints — verify token (GET) and update
  * preferences (POST). Both are public, token-keyed `httpAction`s wrapped by
  * the **Public token endpoint (module)** for a uniform shell shape.
- *
- * See docs/adr/0030-public-token-endpoint-module.md.
  */
 
 import { internal } from '../_generated/api';

@@ -1,7 +1,7 @@
 /**
  * Send provider adapter (module) — shared types.
  *
- * Per ADR-0020 — the per-provider Send-side surface. Core adapters are declared
+ * The per-provider Send-side surface. Core adapters are declared
  * by the shared send-provider catalog. The **Send dispatch (helper)** in
  * `./dispatch.ts` owns the retry loop and post-attempt orchestration;
  * per-provider modules own single-attempt sends and per-provider error

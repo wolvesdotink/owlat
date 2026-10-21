@@ -292,7 +292,7 @@ function resolveLanguageModelFromPlane(
 	const adapter = languageProviderFor(language.kind);
 	return Object.freeze({
 		// Stamped with its endpoint (ledger rows; a model on our network costs nothing)
-		// and its tier (the dispatch refuses it for a task not allowed it). ADR-0073.
+		// and its tier (the dispatch refuses it for a task not allowed it).
 		model: stampModelEndpoint(
 			adapter.buildChatModel(language.clientConfig, modelId),
 			language.endpointProvenance,
@@ -437,7 +437,7 @@ export function buildIndexEmbedder(
 	adapter.validateCredentials({ ...clientConfig, modelId });
 	return {
 		// Stamped so the embedding's ledger row names its endpoint, and a
-		// self-hosted embedder's rows cost nothing (ADR-0073).
+		// self-hosted embedder's rows cost nothing.
 		model: stampModelEndpoint(
 			adapter.buildEmbeddingModel({ ...clientConfig, modelId }),
 			`embedding:${kind}`,

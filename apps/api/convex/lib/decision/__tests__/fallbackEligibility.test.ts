@@ -1,5 +1,5 @@
 /**
- * D3 (ADR-0073, Sol r1 F4): only a clearly operational failure of a working
+ * Only a clearly operational failure of a working
  * decision provider may hop to a paid language call. The adapters' own error
  * shapes are classified here, and a TypeSafe 404 over the real adapter makes
  * no language request.

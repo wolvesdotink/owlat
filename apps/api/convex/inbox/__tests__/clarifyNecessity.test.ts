@@ -1,5 +1,5 @@
 /**
- * D5 on all three surfaces (ADR-0073, plan Phase 3): with `clarifyNecessity`
+ * The necessity judgment on all three surfaces: with `clarifyNecessity`
  * at `enforce`, one necessity judgment through the decisions lane's runner
  * replaces the sampled replies and the divergence judge.
  *

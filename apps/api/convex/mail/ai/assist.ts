@@ -118,7 +118,7 @@ export const suggestReplies = authedAction({
 		streamId: v.optional(v.id('aiDraftStreams')),
 	},
 	handler: async (ctx, args): Promise<{ replies: string[] }> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const thread = await gateAndLoadThread(ctx, args.messageId);
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
@@ -219,7 +219,7 @@ export const askThread = authedAction({
 	},
 	// `isTruncated`: the answer stopped at its output limit; the UI marks it cut off.
 	handler: async (ctx, args): Promise<{ answer: string; isTruncated: boolean }> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const thread = await gateAndLoadThread(ctx, args.messageId);
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
@@ -267,7 +267,7 @@ export const completeDraft = authedAction({
 		cursorSentence: v.string(),
 	},
 	handler: async (ctx, args): Promise<{ completion: string }> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		// Fast/cheap tier: inline completions are high-volume and must be cheap;
 		// 'summarize' maps to the fast tier in the task router. Resolved while
@@ -385,7 +385,7 @@ export const rewriteSelection = authedAction({
 		mailboxId: v.optional(v.id('mailboxes')),
 	},
 	handler: async (ctx, args): Promise<{ rewritten: string }> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const [voiceGuidance, model] = await gatedInParallel(
 			ctx,

@@ -2,7 +2,7 @@ import type { ListingDescriptor } from '../lib/listing';
 import { CAMPAIGN_STATUSES } from '../lib/convexValidators';
 
 /**
- * Campaign listing descriptor (ADR-0037). Search routes through
+ * Campaign listing descriptor. Search routes through
  * `search_campaigns` (status is a filterField); status-filtered browse routes
  * through the `by_status_and_updated_at` compound index, index-native and
  * updatedAt-ordered. The count zoo collapses into two facets.

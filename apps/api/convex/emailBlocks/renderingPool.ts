@@ -9,8 +9,6 @@
  * merge because actions ('use node') and mutations/queries run in
  * different Convex runtimes. Conceptually they own the same surface:
  * the rerender pool and its action body.
- *
- * Per ADR-0023.
  */
 
 import { v } from 'convex/values';
@@ -45,7 +43,7 @@ export const rerenderBlocksPool = new Workpool(components.rerenderBlocksPool, {
 
 // ─── Helper queries / mutations ─────────────────────────────────────────────
 //
-// Absorbed from the pre-ADR-0023 `linkedBlockRenderHelpers.ts`. The action
+// Absorbed from the former `linkedBlockRenderHelpers.ts`. The action
 // (which runs in 'use node') uses these to read and patch consumer rows
 // via `ctx.runQuery` / `ctx.runMutation`.
 
@@ -191,7 +189,7 @@ export const onRerenderComplete = internalMutation({
 		const now = Date.now();
 		const errorMessage = result.error || 'unknown';
 
-		// One bookkeeping loop per consumer table (ADR-0023 `consumerKind`).
+		// One bookkeeping loop per consumer table (`consumerKind`).
 		// The two consumers differ only by the id array and the audit-log
 		// `consumerKind` tag, so they're driven from a single descriptor list.
 		const consumers: ReadonlyArray<{

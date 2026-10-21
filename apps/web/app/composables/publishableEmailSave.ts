@@ -12,8 +12,7 @@ import { useEmailHtmlRendering, type RenderOptions } from './useEmailHtmlRenderi
  * Transactional email editors (the two surfaces whose `save()` renders HTML,
  * builds translations, derives `linkedBlockIds`, and writes a publishable
  * lifecycle). Kept out of the Email editor bridge so the bridge stays
- * envelope-agnostic — the Saved block editor renders nothing. See
- * docs/adr/0035-email-editor-bridge-module.md.
+ * envelope-agnostic — the Saved block editor renders nothing.
  *
  * Every persisted representation — the block JSON, the default HTML, each
  * language's HTML and the text/plain body — is derived from ONE frozen copy of

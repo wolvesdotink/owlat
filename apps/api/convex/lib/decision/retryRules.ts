@@ -78,7 +78,7 @@ export function mayFallBack(error: unknown): boolean {
 }
 
 /**
- * D3 (ADR-0073): only a clearly OPERATIONAL failure of a working provider may
+ * Only a clearly OPERATIONAL failure of a working provider may
  * hop: a timeout, a 408 or 429, a 5xx, or a dropped connection. Everything
  * else is terminal, whatever its shape: a 4xx or a redirect (our key, our
  * request, our base URL), a guard or configuration refusal without a status,

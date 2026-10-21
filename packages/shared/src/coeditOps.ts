@@ -1,6 +1,6 @@
 /**
  * Co-editing operations: the edit vocabulary two people working on one email
- * exchange (docs/adr/0071-email-coediting.md).
+ * exchange.
  *
  * A document is the email's root block list plus a few named fields (name,
  * subject, the text/plain override, ...). An edit is expressed per root block:

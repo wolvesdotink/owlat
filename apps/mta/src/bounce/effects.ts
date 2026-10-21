@@ -16,7 +16,7 @@
  * - `mailbox_quota_bump` is fire-and-forget — matches the original's
  *   `bumpUsedBytes(...).catch(() => undefined)` orphan.
  *
- * See ADR-0007 follow-up #4 and CONTEXT.md's MTA dispatch section.
+ * See CONTEXT.md's MTA dispatch section.
  */
 
 import type { ParsedMessage } from '@owlat/mail-message';
@@ -149,7 +149,7 @@ class DurableFeedbackPersistenceError extends TransientFeedbackProcessingError {
  *
  * The partitioning preserves the exact behavior of the pre-deepening
  * onData handler, except that `notify_convex` moves from "awaited" to
- * "fire-and-forget" (the documented win in ADR-0007 follow-up #4).
+ * "fire-and-forget".
  */
 export async function applyEffects(
 	effects: ReadonlyArray<BounceEffect>,

@@ -9,8 +9,6 @@
  * Tests drive `createShellHandler` directly with a fake `ctx` and a real
  * `Request`. We do not go through `httpAction` — the inner async function
  * is what we care about.
- *
- * See docs/adr/0030-public-token-endpoint-module.md.
  */
 
 import { describe, expect, it, vi } from 'vitest';

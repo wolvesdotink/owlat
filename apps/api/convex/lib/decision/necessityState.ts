@@ -1,5 +1,5 @@
 /**
- * The state the D5 necessity judgment is asked about (ADR-0073, Phase 3): the
+ * The state the necessity judgment is asked about: the
  * same untrusted context the surface's slot extraction read (the Team
  * briefing, the Postbox transcript, Answer mode's context with the owner's
  * note), bounded head and tail like every decision state.

@@ -1,5 +1,5 @@
 /**
- * A source's knowledge extraction progress (ADR-0073, D1; Sol r2 F3).
+ * A source's knowledge extraction progress.
  *
  * An extraction asks the model once, then saves the entries one by one,
  * embedding each first. A spend refusal (or a crash) between two entries

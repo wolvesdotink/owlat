@@ -6,8 +6,7 @@
  * in `apps/api/convex/CONVENTIONS.md`. The dependency runs ONE way:
  * `audienceResolution.ts` → this module.
  *
- * See CONTEXT.md "Audience resolution (module)" and
- * docs/adr/0033-audience-resolution-module.md.
+ * See CONTEXT.md "Audience resolution (module)".
  */
 
 import type { QueryCtx } from '../_generated/server';
@@ -43,7 +42,7 @@ export interface CampaignRecipient {
 	 * Absent for a contact the scorer has not reached yet.
 	 */
 	engagementScore?: number;
-	/** `contacts.sendTimeProfile`, for the send-time planner (ADR-0068). */
+	/** `contacts.sendTimeProfile`, for the send-time planner. */
 	sendTimeProfile?: Doc<'contacts'>['sendTimeProfile'];
 }
 

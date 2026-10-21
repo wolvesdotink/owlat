@@ -11,7 +11,7 @@
  * `apps/mta/src/lib/phasePipeline.ts`; this module binds it to the dispatch
  * domain's deps/ctx and its `defer`/`drop` terminal vocabulary.
  *
- * See ADR-0007 and CONTEXT.md's MTA dispatch section.
+ * See CONTEXT.md's MTA dispatch section.
  */
 
 import type { BasePhaseCtx, PhaseDeps } from './types.js';

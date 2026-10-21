@@ -55,7 +55,7 @@ import { aiProviderConfigured, sendSummaryThroughBatch, summarizeFile } from './
 export const processFile = internalAction({
 	args: {
 		fileId: v.id('semanticFiles'),
-		/** Runs this file already deferred at the spend ceiling (ADR-0073, D1). */
+		/** Runs this file already deferred at the spend ceiling. */
 		deferrals: v.optional(v.number()),
 		/** The paid stages a deferred run still owes; absent: all of them. */
 		stages: v.optional(v.array(fileStageValidator)),
@@ -63,12 +63,12 @@ export const processFile = internalAction({
 		batchedSummary: v.optional(batchedFileSummaryValidator),
 	},
 	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		// Get file metadata
 		const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
 		if (!file) return;
-		// Every model call processing this file groups under one root (ADR-0073).
+		// Every model call processing this file groups under one root.
 		const fileRoot = rootRequest('file', args.fileId);
 
 		// Resolve the conversation/contact context this file was shared in, so
@@ -133,7 +133,7 @@ export const processFile = internalAction({
 		// Without a provider this action used to throw at the embedding step, so
 		// the file never got its extracted text stored, and the backfill re-ran it
 		// into the same error for two hours.
-		// D1 (ADR-0073): at the spend ceiling the paid steps defer to a later run.
+		// At the spend ceiling the paid steps defer to a later run.
 		const aiConfigured =
 			(await aiProviderConfigured(ctx)) &&
 			!(await deferFileForBudget(
@@ -154,7 +154,7 @@ export const processFile = internalAction({
 		let summary = '';
 		let autoTags: string[] = [];
 		let title = file.title;
-		// Paid stages spend admission refuses are owed to a later run (D1, ADR-0073).
+		// Paid stages spend admission refuses are owed to a later run.
 		const owed = owedFileStages(ctx, args.fileId, args.deferrals);
 		const reused = reusableSummary(file, args.stages);
 		// The summary went to a provider batch: the embedding and the graph wait for it.
@@ -299,7 +299,7 @@ export const processFile = internalAction({
 		) {
 			await ctx.runAction(internal.knowledge.extraction.extractFromFile, {
 				fileId: args.fileId,
-				// Awaited: the extraction spends from this action's clock (ADR-0073).
+				// Awaited: the extraction spends from this action's clock.
 				root: boundedRoot(ctx, fileRoot),
 			});
 		}
@@ -358,7 +358,7 @@ export const semanticSearch = internalAction({
 		ctx,
 		args
 	): Promise<Array<Doc<'semanticFiles'> & { url: string | null; _score: number }>> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const queryText = args.queryText?.trim();
 

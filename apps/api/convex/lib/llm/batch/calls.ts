@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * The structured call each batch consumer makes (ADR-0073, L14): its task, its
+ * The structured call each batch consumer makes: its task, its
  * output schema and temperature, and how its parsed output is handed on. The
  * consumer captures its request with these, and the poller reads the result
  * with the same schema, so a batch request and its reading are the real-time

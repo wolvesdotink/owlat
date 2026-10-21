@@ -1,8 +1,8 @@
 /**
- * THE PACE ACTUATOR'S BOUNDS (ADR-0054 §1 and §4).
+ * THE PACE ACTUATOR'S BOUNDS.
  *
  * These are a safety surface, not a config surface, for the same reason
- * `RAMP_AIMD` is: see `docs/adr/0054-deliverability-ramp-controller.md`.
+ * `RAMP_AIMD` is: see `controllerConfig.ts`.
  *
  * The controller is not really about transport share — it is about how fast we
  * let volume grow against measured evidence. Standalone there is no mix to

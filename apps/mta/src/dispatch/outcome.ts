@@ -1,13 +1,13 @@
 /**
  * Dispatch outcome — pure reducer for the post-send branch.
  *
- * Mirrors the **Send lifecycle (module)** shape from ADR-0006: typed outcome
+ * Mirrors the **Send lifecycle (module)** shape: typed outcome
  * + typed effect list + runner. The reducer has no side effects, no Redis
  * dependency, and no HTTP dependency — it consumes the SMTP send result and
  * AttemptCtx and returns a list of `DispatchEffect`s plus an optional
  * defer instruction.
  *
- * See ADR-0007 and CONTEXT.md's MTA dispatch section.
+ * See CONTEXT.md's MTA dispatch section.
  */
 
 import { parseCampaignFromFeedbackId } from '../intelligence/campaignComplaintRate.js';

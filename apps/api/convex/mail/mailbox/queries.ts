@@ -186,7 +186,8 @@ const LABEL_SCAN_WINDOW = 1000;
  * beyond the returned slice (still inside the window); the UI renders an
  * honest cap note rather than offering a Load-more that has nothing to walk.
  * A membership table with true cursor paging is the eventual fix and needs a
- * migration across every `labelIds` writer (see ADR-0037's one-contract rule).
+ * migration across every `labelIds` writer, and must keep the Listing engine's
+ * one return contract.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listByLabel = publicQuery({

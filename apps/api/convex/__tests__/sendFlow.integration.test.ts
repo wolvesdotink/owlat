@@ -268,7 +268,7 @@ describe('checkpointed audience resolution', () => {
 
 // ============ freezeCampaignAudience (send-time snapshot) ============
 
-describe('freezeCampaignAudience (ADR-0033 segment snapshot)', () => {
+describe('freezeCampaignAudience (segment snapshot)', () => {
 	const segmentFilters = (value: string) => ({
 		logic: 'AND' as const,
 		conditions: [
@@ -693,7 +693,7 @@ describe('full campaign send lifecycle', () => {
 		});
 
 		// Step 7: lifecycle.transition({ to: 'sent' }) — terminal transition.
-		// Pre-ADR-0017 this was emailsQueries.markCampaignSent; under the
+		// This used to be emailsQueries.markCampaignSent; under the
 		// Campaign lifecycle module, the orchestrator calls the lifecycle.
 		await t.mutation(internal.campaigns.lifecycle.transition, {
 			campaignId: data.campaignId,

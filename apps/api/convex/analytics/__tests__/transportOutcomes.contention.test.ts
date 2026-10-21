@@ -1,5 +1,5 @@
 /**
- * transportOutcomes — the OCC lesson (ADR-0042's post-mortem, plan D16).
+ * transportOutcomes — the OCC lesson.
  *
  * `sendingReputation` originally read-modify-wrote ONE daily document per send
  * event and `.collect()`-ed the whole window inline; a campaign blast turned

@@ -1,5 +1,5 @@
 /**
- * "With this contact elsewhere" (ADR-0072, plan §4.3): the open items the
+ * "With this contact elsewhere": the open items the
  * people of this thread have with you in OTHER threads, so "Jonas still owes
  * you the signed NDA" shows up next to the thread about something else.
  *

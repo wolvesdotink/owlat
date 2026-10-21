@@ -28,7 +28,7 @@ export const storageTables = {
 	// A row is deletion authority for one blob until the dispatch mutation claims
 	// it (deleting the row in the transaction that inserts the Send, which owns
 	// the blob from then on). Rejections release it; an interrupted request leaves
-	// it to the expiry sweep (`transactional/pendingUploads.ts`, ADR-0021).
+	// it to the expiry sweep (`transactional/pendingUploads.ts`).
 	transactionalPendingUploads: defineTable({
 		storageId: v.id('_storage'),
 		expiresAt: v.number(),

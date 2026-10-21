@@ -5,7 +5,7 @@
  * platform-admin shell `platformAdmin/queries.ts`, the control-plane reporter)
  * crosses.
  *
- * Shape (ADR-0042; sharded write path — FIX 3a-1):
+ * Shape (sharded write path):
  *   - `recordEvent` is the single writer and the send-event hot path. The Send
  *     lifecycle's `reputation_update` effect schedules it per recipient; it
  *     bumps a random SHARD of the org day-bucket always and a random shard of
@@ -23,9 +23,7 @@
  *   - `recalculateAll` is the cleanup cron: it ages out >60-day buckets across
  *     both scopes. Risk no longer needs periodic recalculation — it is derived.
  *   - `autoEnforceReputation` is the unchanged enforce executor (delegates to
- *     the **Abuse status (module)** per ADR-0011).
- *
- * See docs/adr/0042-sending-reputation-module.md.
+ *     the **Abuse status (module)**).
  */
 
 import { v } from 'convex/values';
@@ -403,7 +401,7 @@ export const evaluateAutoEnforce = internalMutation({
  * - critical → auto-suspend
  * - high → auto-warn
  *
- * Per ADR-0011, the severity-ladder + banned-terminal logic lives in
+ * The severity-ladder + banned-terminal logic lives in
  * the Abuse status (module); this caller picks the target status and
  * delegates. Severity downgrades (e.g., critical → warned) are refused
  * by the lifecycle, matching the prior pre-deepening behavior of

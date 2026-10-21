@@ -121,7 +121,7 @@ const { run: markThreadSeen } = useBackendOperation(api.inbox.reads.markThreadSe
 });
 const markSeen = () => {
 	// The route guard is `auth`, not `admin`, but the shared inbox is owner/admin
-	// only (ADR-0040) — so a member can land here, and calling the mutation would
+	// only — so a member can land here, and calling the mutation would
 	// toast a `forbidden` at them over a badge they cannot see anyway. Same guard
 	// the other admin writes on this page open with.
 	if (!isAdmin.value) return;

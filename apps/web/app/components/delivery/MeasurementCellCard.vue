@@ -20,8 +20,7 @@
  *   - insufficient data       -> "not enough data yet, N of 400 sends", neutral.
  *   - zero volume             -> an empty, calm cell. Nothing is wrong.
  *
- * Nothing here divides: every rate comes off the server summary verbatim
- * (ADR-0042).
+ * Nothing here divides: every rate comes off the server summary verbatim.
  *
  * TWO SPANS ON ONE CARD, both named. The table and the trend are the REPORTED
  * window — seven days, the span the page heading gives dates for — and the checks

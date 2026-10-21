@@ -106,7 +106,7 @@ export async function postJson<T = unknown>(
  * The human-readable message out of a backend refusal.
  *
  * The `/seed/*`, `/dev/*` and `/sample-data/*` endpoints answer failures in the
- * locked envelope `{ error: { category, message } }` (ADR-0036). The string
+ * locked envelope `{ error: { category, message } }`. The string
  * form (`{ error: "…" }`) is still accepted because the CLI is upgraded
  * independently of the backend it talks to, and an operator running a new CLI
  * against an older container should read the reason, not `[object Object]`.

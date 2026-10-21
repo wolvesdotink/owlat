@@ -173,7 +173,7 @@ export const getPlatformStats = platformAdminQuery({
 
 		// Rolling 30-day org reputation, derived on read. (This previously read
 		// a single day's bucket; it now reports the 30-day window like every
-		// other reader — ADR-0042.)
+		// other reader.)
 		const reputation = await summarize(ctx.db, { kind: 'org' });
 
 		const totalContacts = (await readCachedContactCount(ctx.db)) || 0;

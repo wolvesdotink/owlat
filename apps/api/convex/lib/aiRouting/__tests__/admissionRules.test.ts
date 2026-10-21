@@ -1,5 +1,5 @@
 /**
- * The admission rule (ADR-0073, Phase 1b, D1 and D4), pure: the ceiling, the
+ * The admission rule, pure: the ceiling, the
  * triage allowance, the advisory reserve, the per-plane capacity and the
  * shadow allowance, each at its boundary.
  */

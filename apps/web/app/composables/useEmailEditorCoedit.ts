@@ -8,7 +8,7 @@ import { useEmailCoediting, type CoeditEditorDoc, type CoeditTarget } from './us
 import { useEmailEditorPresence } from './useEmailEditorPresence';
 
 /**
- * The email editor bridge's co-editing half (docs/adr/0071-email-coediting.md):
+ * The email editor bridge's co-editing half:
  * binds the live session (`useEmailCoediting`) and presence
  * (`useEmailEditorPresence`) to the bridge's canvas refs and the mounted
  * EmailBuilder, and turns "your change was replaced" notices into something

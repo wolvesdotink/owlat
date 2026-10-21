@@ -20,8 +20,6 @@
  *  - **Nothing to delete.** Mandrill's API has no sender-domain removal call
  *    (`senders/*` is add / check / verify / list), so `deleteFromProvider` is a
  *    documented no-op rather than a best-effort call that would always fail.
- *
- * Per ADR-0018.
  */
 
 import { internal } from '../../../_generated/api';

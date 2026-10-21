@@ -1,6 +1,6 @@
 /**
  * What a decision bundle run and the block-only auto-send gate read from the
- * database (ADR-0073): the routing policy, the `ai.decisionPlane` flag, the
+ * database: the routing policy, the `ai.decisionPlane` flag, the
  * configured decision plane's identity, and the verdicts that feed auto-send.
  * Queries only; actions reach them through `ctx.runQuery`.
  */
@@ -45,7 +45,7 @@ export const routingContext = internalQuery({
 });
 
 /**
- * The scheduling check (ADR-0060 §9): the policy, and whether a bundle may be
+ * The scheduling check: the policy, and whether a bundle may be
  * scheduled for this message's mailbox at all. An excluded mailbox, or the
  * excluded Team Inbox, may only be judged by the local decision engine; every
  * other plane is hosted. `./artifacts.ts claim` checks again at dispatch.

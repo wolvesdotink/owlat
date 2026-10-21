@@ -1,7 +1,7 @@
 import type { ListingDescriptor } from '../lib/listing';
 
 /**
- * Segment listing descriptor (ADR-0037). Browse-only, no enrichment — segments
+ * Segment listing descriptor. Browse-only, no enrichment — segments
  * is an intrinsically small table, so the page is plain creation-ordered rows.
  * The `total` facet replaces the old whole-table `.collect()`.
  */

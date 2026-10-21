@@ -22,7 +22,7 @@ import { abuseStatusValidator } from '../workspaces/abuseStatus';
  * Set the abuse status of an organization.
  * Used by platform admins to warn, suspend, or ban organizations.
  *
- * Per ADR-0011 this routes through `abuseStatus.adminOverride`, which
+ * This routes through `abuseStatus.adminOverride`, which
  * bypasses the severity rules that gate internal writers — admins can
  * demote a `banned` org to `clean` for appeal resolution. The
  * `abuse_status_changed` audit log fires inside the lifecycle module;

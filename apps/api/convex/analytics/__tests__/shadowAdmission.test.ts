@@ -1,5 +1,5 @@
 /**
- * D4's shadow allowance for the decisions lane (ADR-0073): off unless the
+ * The shadow allowance for the decisions lane: off unless the
  * task's switch is at `shadow`, a stable share of messages, and money bounded
  * by the day's shadow allowance, with or without a daily ceiling.
  */

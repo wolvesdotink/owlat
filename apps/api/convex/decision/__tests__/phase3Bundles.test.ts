@@ -1,6 +1,6 @@
 /**
- * The Phase 3 bundles through the decisions lane's runner and artifact claim
- * (ADR-0073, D5): the necessity judgment and the claim check, asked inline.
+ * The Phase 3 bundles through the decisions lane's runner and artifact claim:
+ * the necessity judgment and the claim check, asked inline.
  * The provider calls and the admission seam are mocked. Never a paid provider.
  *
  * - The claim plans them from the CURRENT policy (a switch turned off stops a

@@ -21,8 +21,6 @@
  * The walker never branches on `provider`. Per-provider HTTP knowledge
  * lives behind the **Integration import provider adapter (module)** seam
  * dispatched by `providerFor(kind)`.
- *
- * Per ADR-0027.
  */
 
 import { v } from 'convex/values';

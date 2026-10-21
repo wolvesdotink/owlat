@@ -240,7 +240,7 @@ export const mailThreadsTables = {
 		digestConsumedThrough: v.optional(v.string()),
 		placementOverride: v.optional(placementOverrideValidator),
 		lastArrivalOperationId: v.optional(v.id('mailArrivalOperations')),
-		// RETIRED (ADR-0072): the reader strip's cached thread summary, replaced by
+		// RETIRED: the reader strip's cached thread summary, replaced by
 		// the thread brief. Nothing writes or reads it; migration 0067 clears it and
 		// the next release drops the field (mail/legacySummaryRows.ts).
 		summaryCache: v.optional(

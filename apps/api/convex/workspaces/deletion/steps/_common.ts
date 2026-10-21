@@ -4,8 +4,6 @@
  * Each step module owns one deletable table. Per-module unit-testable;
  * the **Organization deletion walker** in `../walker.ts` owns the loop
  * (batch repeats vs next-step advance) and the typed dispatch.
- *
- * See docs/adr/0025-organization-deletion-module-family.md.
  */
 
 import { v } from 'convex/values';
@@ -18,8 +16,8 @@ import { MAIL_ARRIVAL_TABLES, type MailArrivalTable } from '../../../schema/mail
 /**
  * Typed literal union of every table the wipe walks. The walker's `runStep`
  * validator is built off this union — a typo (e.g. `'campaign'` vs
- * `'campaigns'`) is a compile error, not a silent runtime no-op. Closes drift
- * #5 from ADR-0025. The list is intentionally exhaustive across the schema. Any
+ * `'campaigns'`) is a compile error, not a silent runtime no-op.
+ * The list is intentionally exhaustive across the schema. Any
  * new `defineTable(...)` in `convex/schema/*` that holds per-organization data
  * must add a literal here and a sibling step module.
  */
