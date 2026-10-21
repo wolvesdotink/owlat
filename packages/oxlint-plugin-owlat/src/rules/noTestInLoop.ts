@@ -9,7 +9,8 @@ import type { AstNode, Context, Rule, Scope } from '../types.ts';
  *
  * Only calls that resolve to vitest's own `it` / `test` / `describe` / `suite`
  * import count (with their `.only` / `.skip` / `.concurrent` / … modifiers and
- * the curried `.each(…)(…)` / `.for(…)(…)` / `.skipIf(…)(…)` forms), so an
+ * the curried `.each(…)(…)` / `.for(…)(…)` / `.skipIf(…)(…)` / `.extend(…)(…)`
+ * forms), so an
  * unrelated function that happens to be called `test` is never flagged. A loop
  * inside a test body is fine: a function boundary between the call and the loop
  * ends the search.
@@ -21,7 +22,7 @@ import type { AstNode, Context, Rule, Scope } from '../types.ts';
 
 const TEST_FUNCTIONS = new Set(['it', 'test', 'describe', 'suite']);
 const MODIFIERS = new Set(['only', 'skip', 'todo', 'concurrent', 'sequential', 'fails', 'shuffle']);
-const CURRIED = new Set(['each', 'for', 'skipIf', 'runIf']);
+const CURRIED = new Set(['each', 'for', 'skipIf', 'runIf', 'extend']);
 const LOOPS = new Set([
 	'ForStatement',
 	'ForInStatement',

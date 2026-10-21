@@ -36,6 +36,12 @@ ruleTester.run('owlat/no-test-environment-pragma', rule, {
 			options: allow,
 		},
 		{
+			name: 'a single-character wildcard',
+			filename: '/repo/apps/web/e2e/seed1.test.ts',
+			code: '// @vitest-environment node\nexport {};',
+			options: [{ allow: [{ environment: 'node', files: ['apps/web/e2e/seed?.test.ts'] }] }],
+		},
+		{
 			name: 'a Windows path',
 			filename: 'C:\\repo\\packages\\email-builder\\src\\x.test.ts',
 			code: '// @vitest-environment happy-dom\nexport {};',

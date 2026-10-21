@@ -37,6 +37,31 @@ ruleTester.run('owlat/no-test-in-loop', rule, {
 			code: `${imports}function run(it: (s: string) => void) { for (const n of ["a"]) it(n); }`,
 		},
 		{
+			name: 'a test helper module that happens to export `it`',
+			filename,
+			code: "import { it } from './helpers';\nfor (const n of [1]) it(String(n), () => {});",
+		},
+		{
+			name: 'a local variable named `it` that is not an import',
+			filename,
+			code: "declare const api: { it: (s: string) => void };\nconst { it } = api;\nfor (const n of ['a']) it(n);",
+		},
+		{
+			name: 'a global `it` with no import (vitest globals are off in this repo)',
+			filename,
+			code: "for (const n of ['a']) it(n, () => {});",
+		},
+		{
+			name: 'a computed modifier the rule cannot read',
+			filename,
+			code: `${imports}const mode = 'skip' as const;\nfor (const n of ['a']) it[mode](n, () => {});`,
+		},
+		{
+			name: 'a call whose callee is a call but not a vitest factory',
+			filename,
+			code: `${imports}const make = () => it;\nfor (const n of ['a']) make()(n, () => {});`,
+		},
+		{
 			name: 'node:test, which is not vitest',
 			filename,
 			code: "import { test } from 'node:test';\nfor (const n of [1]) test(String(n), () => {});",
@@ -84,6 +109,24 @@ ruleTester.run('owlat/no-test-in-loop', rule, {
 			filename,
 			code: `${imports}for (const mode of ['a']) it.skipIf(mode === 'b')(mode, () => {});`,
 			errors: 1,
+		},
+		{
+			name: 'a non-null asserted test function',
+			filename,
+			code: `${imports}for (const n of ['a']) it!(n, () => {});`,
+			errors: 1,
+		},
+		{
+			name: 'a modifier read through a string key',
+			filename,
+			code: `${imports}for (const n of ['a']) it['only'](n, () => {});`,
+			errors: 1,
+		},
+		{
+			name: 'an extended test function called inside a loop',
+			filename,
+			code: `${imports}for (const n of ['a']) test.extend({})(n, () => {});`,
+			errors: [{ message: /Do not declare test\(…\)/ }],
 		},
 		{
 			name: 'an aliased vitest import',

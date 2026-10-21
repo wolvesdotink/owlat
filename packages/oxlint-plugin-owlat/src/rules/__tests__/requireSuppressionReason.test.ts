@@ -86,6 +86,11 @@ ruleTester.run('owlat/require-suppression-reason', rule, {
 			errors: 1,
 		},
 		{
+			name: 'a file that holds nothing but an unexplained directive',
+			code: '/* eslint-disable no-console */',
+			errors: 1,
+		},
+		{
 			name: 'a generated marker below the first statement does not exempt the file',
 			code: 'export const a = 1;\n// @generated\n\n// oxlint-disable-next-line no-console\nconsole.log(a);',
 			errors: 1,
