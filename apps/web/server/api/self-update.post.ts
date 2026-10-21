@@ -1,11 +1,7 @@
 import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
-import {
-	requireInstanceSecret,
-	callUpdater,
-	UPDATE_REQUEST_TIMEOUT_MS,
-} from '~~/server/utils/updater';
+import { requireInstanceSecret, callUpdater } from '~~/server/utils/updater';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
-import { isStartedRollout } from '~/lib/systemUpdate';
+import { isStartedRollout, UPDATE_REQUEST_TIMEOUT_MS } from '~/lib/systemUpdate';
 
 /**
  * Self-update proxy endpoint.

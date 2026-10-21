@@ -18,7 +18,6 @@ const { requireInstanceSecretMock, callUpdaterMock, resolveComposeMock } = vi.ho
 vi.mock('~~/server/utils/updater', () => ({
 	requireInstanceSecret: requireInstanceSecretMock,
 	callUpdater: callUpdaterMock,
-	UPDATE_REQUEST_TIMEOUT_MS: 60 * 60 * 1000,
 }));
 vi.mock('~~/server/utils/composeUpdate', () => ({
 	resolveVerifiedComposeTemplate: resolveComposeMock,

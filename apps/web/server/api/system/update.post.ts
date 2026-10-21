@@ -3,11 +3,12 @@ import { api } from '@owlat/api';
 import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
-import { getInstanceSecret, callUpdater, UPDATE_REQUEST_TIMEOUT_MS } from '~~/server/utils/updater';
+import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
 import {
 	MIGRATIONS_PENDING_STATUS,
 	MIGRATIONS_UNVERIFIED_STATUS,
 	UPDATER_REPORT_MARKER,
+	UPDATE_REQUEST_TIMEOUT_MS,
 	isStartedRollout,
 	isUpdateAttemptId,
 	isUpdaterRefusal,
