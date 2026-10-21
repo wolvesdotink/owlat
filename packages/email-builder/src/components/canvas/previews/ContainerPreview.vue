@@ -5,6 +5,9 @@ import { blockBoxStyle } from '../../../utils/blocks';
 import type { ParentContext } from '../types';
 import { VueDraggable } from 'vue-draggable-plus';
 import { gradientCss as buildGradientCss } from '../../../utils/gradient';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 // Lazy import to break circular dependency
 const DocumentBlock = defineAsyncComponent(() => import('../DocumentBlock.vue'));
@@ -124,8 +127,11 @@ function handleChildDoubleClick(item: { id: string; type: string }) {
 				/>
 			</div>
 		</VueDraggable>
-		<div v-if="content.items.length === 0" class="flex items-center justify-center h-[60px] border-2 border-dashed border-border-subtle rounded text-[11px] text-text-tertiary bg-bg-surface">
-			Drop blocks here
+		<div
+			v-if="content.items.length === 0"
+			class="flex items-center justify-center h-[60px] border-2 border-dashed border-border-subtle rounded text-[11px] text-text-tertiary bg-bg-surface"
+		>
+			{{ t('builder.canvas.preview.dropBlocksHere') }}
 		</div>
 	</div>
 </template>

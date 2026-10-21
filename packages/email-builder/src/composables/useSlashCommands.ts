@@ -2,6 +2,7 @@ import { reactive, computed, ref, type ComputedRef } from 'vue';
 import { PanelBottom, Stamp } from '@lucide/vue';
 import type { SlashCommand, SlashMenuState, SavedBlock, BlockType, BrandBlockKind } from '../types';
 import { getSlashCommands } from '../registry';
+import { useBuilderI18n } from '../i18n/useBuilderI18n';
 
 export interface UseSlashCommandsReturn {
 	state: SlashMenuState;
@@ -95,6 +96,8 @@ const savedBlockCommands = computed<SlashCommand[]>(() => {
  * Composable for slash command menu state and navigation.
  */
 export function useSlashCommands(): UseSlashCommandsReturn {
+	// Names and descriptions are displayed translated, so they also match as typed.
+	const { label } = useBuilderI18n();
 	const state = reactive<SlashMenuState>({
 		isOpen: false,
 		position: { top: 0, left: 0 },
@@ -135,6 +138,8 @@ export function useSlashCommands(): UseSlashCommandsReturn {
 		return allCommands.value.filter((cmd) => {
 			if (cmd.name.toLowerCase().includes(q)) return true;
 			if (cmd.description.toLowerCase().includes(q)) return true;
+			if (label(cmd.name).toLowerCase().includes(q)) return true;
+			if (label(cmd.description).toLowerCase().includes(q)) return true;
 			if (cmd.aliases?.some((a) => a.toLowerCase().includes(q))) return true;
 			return false;
 		});

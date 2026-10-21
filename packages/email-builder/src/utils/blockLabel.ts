@@ -28,13 +28,18 @@ import type {
 	VideoBlockContent,
 } from '../types';
 import { getBlock } from '../registry';
+import { translate, type BuilderI18n } from '../i18n/useBuilderI18n';
+
+/** The translator the names are written with; English when none is given. */
+type BlockLabelI18n = Pick<BuilderI18n, 't' | 'label'>;
+
+const ENGLISH: BlockLabelI18n = {
+	t: (key, params) => translate('en', key, params),
+	label: (source) => source,
+};
 
 /** Longest excerpt a screen reader should have to sit through before the next block. */
 const MAX_EXCERPT = 60;
-
-function plural(count: number, singular: string): string {
-	return `${count} ${singular}${count === 1 ? '' : 's'}`;
-}
 
 /** Collapse HTML to its readable text, without needing a DOM. */
 function htmlToText(html: string): string {
@@ -74,7 +79,7 @@ function joinItems(items: string[]): string {
  * excerpt their text; structural blocks describe their shape ("3 columns") so
  * the name still says something more than the type.
  */
-export function blockContentExcerpt(block: EditorBlock): string {
+export function blockContentExcerpt(block: EditorBlock, i18n: BlockLabelI18n = ENGLISH): string {
 	const content = block.content as unknown;
 
 	switch (block.type) {
@@ -87,7 +92,7 @@ export function blockContentExcerpt(block: EditorBlock): string {
 		case 'image': {
 			const image = content as ImageBlockContent;
 			if (image.alt?.trim()) return image.alt.trim();
-			if (image.decorative) return 'decorative';
+			if (image.decorative) return i18n.t('builder.blockLabel.decorative');
 			return fileNameFromUrl(image.src ?? '');
 		}
 		case 'video': {
@@ -114,15 +119,23 @@ export function blockContentExcerpt(block: EditorBlock): string {
 				.join(', ');
 		}
 		case 'carousel':
-			return plural(((content as CarouselBlockContent).images ?? []).length, 'image');
+			return i18n.t('builder.blockLabel.images', {
+				count: ((content as CarouselBlockContent).images ?? []).length,
+			});
 		case 'columns':
-			return plural((content as ColumnsBlockContent).columnCount ?? 0, 'column');
+			return i18n.t('builder.blockLabel.columns', {
+				count: (content as ColumnsBlockContent).columnCount ?? 0,
+			});
 		case 'container':
-			return plural(((content as ContainerBlockContent).items ?? []).length, 'item');
+			return i18n.t('builder.blockLabel.items', {
+				count: ((content as ContainerBlockContent).items ?? []).length,
+			});
 		case 'progressBar':
 			return `${(content as ProgressBarBlockContent).value ?? 0}%`;
 		case 'spacer':
-			return `${(content as SpacerBlockContent).height ?? 0} pixels`;
+			return i18n.t('builder.blockLabel.pixels', {
+				count: (content as SpacerBlockContent).height ?? 0,
+			});
 		default:
 			return '';
 	}
@@ -152,9 +165,11 @@ const CONTENT_BEARING_TYPES: ReadonlySet<string> = new Set([
 /**
  * Accessible name for a canvas block: `"<type label>: <content excerpt>"`.
  */
-export function blockAccessibleLabel(block: EditorBlock): string {
-	const typeLabel = getBlock(block.type)?.label ?? block.type;
-	const excerpt = truncate(blockContentExcerpt(block));
+export function blockAccessibleLabel(block: EditorBlock, i18n: BlockLabelI18n = ENGLISH): string {
+	const typeLabel = i18n.label(getBlock(block.type)?.label ?? block.type);
+	const excerpt = truncate(blockContentExcerpt(block, i18n));
 	if (excerpt) return `${typeLabel}: ${excerpt}`;
-	return CONTENT_BEARING_TYPES.has(block.type) ? `${typeLabel}: empty` : typeLabel;
+	return CONTENT_BEARING_TYPES.has(block.type)
+		? `${typeLabel}: ${i18n.t('builder.blockLabel.empty')}`
+		: typeLabel;
 }

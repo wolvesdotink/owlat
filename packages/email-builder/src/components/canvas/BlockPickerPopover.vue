@@ -3,6 +3,9 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { Component } from 'vue';
 import type { BlockType } from '../../types';
 import { getAllBlocks } from '../../registry';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	anchorElement: HTMLElement;
@@ -33,16 +36,16 @@ const categories = computed(() => {
 		if (groups[cat]) {
 			groups[cat].push({
 				type: block.type,
-				label: block.label,
+				label: label(block.label),
 				icon: block.slashCommand!.icon,
 			});
 		}
 	}
 	return [
-		{ label: 'Text', items: groups['text'] },
-		{ label: 'Media', items: groups['media'] },
-		{ label: 'Components', items: groups['components'] },
-		{ label: 'Layout', items: groups['layout'] },
+		{ label: t('builder.canvas.categories.text'), items: groups['text'] },
+		{ label: t('builder.canvas.categories.media'), items: groups['media'] },
+		{ label: t('builder.canvas.categories.components'), items: groups['components'] },
+		{ label: t('builder.canvas.categories.layout'), items: groups['layout'] },
 	].filter((g) => g.items && g.items.length > 0);
 });
 
@@ -95,7 +98,7 @@ onUnmounted(() => {
 		<div
 			ref="popoverRef"
 			role="menu"
-			aria-label="Insert block"
+			:aria-label="t('builder.canvas.insertBlock')"
 			class="light fixed z-[9999] w-[280px] max-h-[380px] overflow-y-auto bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_4px_8px_rgba(0,0,0,0.08),0_16px_32px_rgba(0,0,0,0.12)] animate-eb-popover-enter"
 			:style="{ top: `${top}px`, left: `${left}px` }"
 		>

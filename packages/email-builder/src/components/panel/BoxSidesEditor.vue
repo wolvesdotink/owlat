@@ -11,6 +11,9 @@ import { ref, computed } from 'vue';
 import type { EditorBlock } from '../../types';
 import { getBlockPadding, getBlockMargin } from '../../utils/blocks';
 import NumberField from './fields/NumberField.vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 type Mode = 'uniform' | 'axis' | 'individual';
 type Side = 'Top' | 'Right' | 'Bottom' | 'Left';
@@ -54,13 +57,16 @@ const MODE_HOLDS: Record<Mode, (v: SideValues) => boolean> = {
 // mode whose equality rule holds. After that the mode is the user's choice.
 const mode = ref<Mode>(props.modes.find((m) => MODE_HOLDS[m](values.value)) ?? 'individual');
 
-const Prefix = computed(() => (props.prefix === 'padding' ? 'Padding' : 'Margin'));
+/** A message about this editor's box (`builder.panel.box.padding.*` / `.margin.*`). */
+const boxText = (name: string) => t(`builder.panel.box.${props.prefix}.${name}`);
 
 const modeTitle = (m: Mode): string => {
-	if (m === 'uniform') return `Uniform ${props.prefix}`;
-	if (m === 'axis') return 'Vertical & horizontal pairs';
-	return 'Individual sides';
+	if (m === 'uniform') return boxText('uniform');
+	if (m === 'axis') return t('builder.panel.box.axis');
+	return t('builder.panel.box.individual');
 };
+
+const sideLabel = (side: Side) => t(`builder.panel.box.side.${side.toLowerCase()}`);
 
 const key = (side: Side) => `${props.prefix}${side}`;
 
@@ -104,7 +110,7 @@ const sides: readonly Side[] = ['Top', 'Right', 'Bottom', 'Left'];
 			<div
 				class="inline-flex border border-border-subtle rounded-md overflow-hidden bg-bg-surface"
 				role="group"
-				:aria-label="`${Prefix} mode`"
+				:aria-label="boxText('mode')"
 			>
 				<button
 					v-for="(m, index) in modes"
@@ -212,7 +218,7 @@ const sides: readonly Side[] = ['Top', 'Right', 'Bottom', 'Left'];
 			<span
 				class="flex items-center justify-center w-[22px] h-[22px] rounded bg-bg-surface text-[9px] font-semibold text-text-tertiary uppercase select-none shrink-0 tracking-wide"
 			>
-				All
+				{{ t('builder.panel.box.all') }}
 			</span>
 			<NumberField
 				class="flex-1"
@@ -220,7 +226,7 @@ const sides: readonly Side[] = ['Top', 'Right', 'Bottom', 'Left'];
 				:min="0"
 				:max="max"
 				unit="px"
-				:label="`${Prefix} on all sides`"
+				:label="boxText('allSides')"
 				@update="handleUniformInput"
 			/>
 		</div>
@@ -230,9 +236,9 @@ const sides: readonly Side[] = ['Top', 'Right', 'Bottom', 'Left'];
 			<div class="flex items-center gap-2">
 				<span
 					class="flex items-center justify-center w-[22px] h-[22px] rounded bg-bg-surface text-[9px] font-semibold text-text-tertiary select-none shrink-0 tracking-wide"
-					title="Vertical (top + bottom)"
+					:title="t('builder.panel.box.verticalHint')"
 				>
-					V
+					{{ t('builder.panel.box.verticalShort') }}
 				</span>
 				<NumberField
 					class="flex-1"
@@ -240,16 +246,16 @@ const sides: readonly Side[] = ['Top', 'Right', 'Bottom', 'Left'];
 					:min="0"
 					:max="max"
 					unit="px"
-					:label="`Vertical ${prefix}`"
+					:label="boxText('vertical')"
 					@update="handleVerticalInput"
 				/>
 			</div>
 			<div class="flex items-center gap-2">
 				<span
 					class="flex items-center justify-center w-[22px] h-[22px] rounded bg-bg-surface text-[9px] font-semibold text-text-tertiary select-none shrink-0 tracking-wide"
-					title="Horizontal (left + right)"
+					:title="t('builder.panel.box.horizontalHint')"
 				>
-					H
+					{{ t('builder.panel.box.horizontalShort') }}
 				</span>
 				<NumberField
 					class="flex-1"
@@ -257,7 +263,7 @@ const sides: readonly Side[] = ['Top', 'Right', 'Bottom', 'Left'];
 					:min="0"
 					:max="max"
 					unit="px"
-					:label="`Horizontal ${prefix}`"
+					:label="boxText('horizontal')"
 					@update="handleHorizontalInput"
 				/>
 			</div>
@@ -267,13 +273,15 @@ const sides: readonly Side[] = ['Top', 'Right', 'Bottom', 'Left'];
 		<template v-else>
 			<div class="grid grid-cols-2 gap-2">
 				<div v-for="side in sides" :key="side" class="flex flex-col gap-1">
-					<span class="text-[10px] font-medium text-text-tertiary select-none">{{ side }}</span>
+					<span class="text-[10px] font-medium text-text-tertiary select-none">{{
+						sideLabel(side)
+					}}</span>
 					<div
 						class="flex items-center border border-border-subtle rounded-lg bg-bg-surface eb-input-ring"
 					>
 						<input
 							type="number"
-							:aria-label="`${side} ${prefix}`"
+							:aria-label="boxText(side.toLowerCase())"
 							class="w-full py-1.5 px-2 text-[13px] font-medium tabular-nums text-text-primary bg-transparent border-none outline-none appearance-number-plain"
 							:value="values[side]"
 							min="0"

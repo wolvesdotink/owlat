@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { TriangleAlert } from '@lucide/vue';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	value: string;
@@ -37,7 +40,7 @@ function focusInput() {
 		<input
 			ref="inputRef"
 			type="text"
-			aria-label="Alternative text"
+			:aria-label="t('builder.panel.altText.label')"
 			class="w-full py-2 px-2.5 text-[13px] border rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring placeholder:text-text-disabled"
 			:class="showNudge ? 'border-warning/50' : 'border-border-subtle'"
 			:value="value"
@@ -53,7 +56,7 @@ function focusInput() {
 			<div class="flex items-start gap-1.5">
 				<TriangleAlert :size="13" class="shrink-0 mt-px text-warning" />
 				<p class="text-[11px] leading-[1.4] text-text-secondary m-0">
-					Missing alt text — screen readers will skip this image
+					{{ t('builder.panel.altText.missing') }}
 				</p>
 			</div>
 			<div class="flex items-center gap-1.5">
@@ -62,14 +65,14 @@ function focusInput() {
 					class="py-1 px-2 rounded-md text-[11px] font-medium border border-border-subtle bg-bg-surface text-text-primary cursor-pointer transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover"
 					@click="focusInput"
 				>
-					Add alt text
+					{{ t('builder.panel.altText.add') }}
 				</button>
 				<button
 					type="button"
 					class="py-1 px-2 rounded-md text-[11px] font-medium border border-transparent bg-transparent text-text-secondary cursor-pointer transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 					@click="emit('mark-decorative')"
 				>
-					Mark decorative
+					{{ t('builder.panel.altText.decorative') }}
 				</button>
 			</div>
 		</div>

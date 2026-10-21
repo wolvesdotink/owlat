@@ -89,77 +89,90 @@ const htmlFeatureMap: Record<string, string> = {
 const problematicPatterns: Array<{
 	pattern: RegExp;
 	message: string;
+	messageKey: string;
 	severity: 'error' | 'warning' | 'info';
 	feature?: string;
 }> = [
 	{
 		pattern: /display\s*:\s*flex/i,
 		message: 'Flexbox is not supported in Outlook (Windows) and some older clients',
+		messageKey: 'builder.analysis.compatibility.issues.flexbox',
 		severity: 'warning',
 		feature: 'css-display-flex',
 	},
 	{
 		pattern: /display\s*:\s*grid/i,
 		message: 'CSS Grid is not supported in most email clients',
+		messageKey: 'builder.analysis.compatibility.issues.grid',
 		severity: 'error',
 		feature: 'css-display-grid',
 	},
 	{
 		pattern: /position\s*:\s*(absolute|fixed)/i,
 		message: 'Absolute/fixed positioning is poorly supported in email clients',
+		messageKey: 'builder.analysis.compatibility.issues.positioning',
 		severity: 'warning',
 		feature: 'css-position',
 	},
 	{
 		pattern: /@media\s*\(/i,
 		message: 'Media queries have limited support in Gmail and some clients',
+		messageKey: 'builder.analysis.compatibility.issues.mediaQueries',
 		severity: 'info',
 		feature: 'css-at-media',
 	},
 	{
 		pattern: /background-image\s*:\s*url/i,
 		message: 'Background images are not supported in Outlook (Windows)',
+		messageKey: 'builder.analysis.compatibility.issues.backgroundImage',
 		severity: 'warning',
 		feature: 'css-background-image',
 	},
 	{
 		pattern: /<video/i,
 		message: 'Video elements are not supported in most email clients',
+		messageKey: 'builder.analysis.compatibility.issues.video',
 		severity: 'error',
 		feature: 'html-video',
 	},
 	{
 		pattern: /<audio/i,
 		message: 'Audio elements are not supported in most email clients',
+		messageKey: 'builder.analysis.compatibility.issues.audio',
 		severity: 'error',
 		feature: 'html-audio',
 	},
 	{
 		pattern: /<svg/i,
 		message: 'Inline SVG has limited support across email clients',
+		messageKey: 'builder.analysis.compatibility.issues.svg',
 		severity: 'warning',
 		feature: 'html-svg',
 	},
 	{
 		pattern: /<form/i,
 		message: 'Forms are not supported in most email clients',
+		messageKey: 'builder.analysis.compatibility.issues.form',
 		severity: 'error',
 		feature: 'html-form',
 	},
 	{
 		pattern: /margin\s*:\s*auto/i,
 		message: 'margin: auto may not work correctly in all clients',
+		messageKey: 'builder.analysis.compatibility.issues.marginAuto',
 		severity: 'info',
 	},
 	{
 		pattern: /:hover/i,
 		message: 'Hover states are not supported in Gmail and mobile clients',
+		messageKey: 'builder.analysis.compatibility.issues.hover',
 		severity: 'info',
 		feature: 'css-pseudo-class-hover',
 	},
 	{
 		pattern: /@font-face/i,
 		message: 'Custom web fonts may not load in many email clients',
+		messageKey: 'builder.analysis.compatibility.issues.fontFace',
 		severity: 'warning',
 		feature: 'css-at-font-face',
 	},
@@ -319,18 +332,23 @@ export function useCompatibilityAnalysis(): {
 			const hasCanIEmailData = features.value.length > 0;
 
 			if (!hasCanIEmailData) {
+				const loadError = canIEmailError.value?.message;
 				foundIssues.push({
 					severity: 'warning',
 					feature: 'caniemail-data',
-					message: canIEmailError.value
-						? `Can I Email data could not be loaded (${canIEmailError.value.message}). Results are heuristic-only.`
+					message: loadError
+						? `Can I Email data could not be loaded (${loadError}). Results are heuristic-only.`
 						: 'Can I Email data is unavailable. Results are heuristic-only.',
+					messageKey: loadError
+						? 'builder.analysis.compatibility.issues.dataFailed'
+						: 'builder.analysis.compatibility.issues.dataUnavailable',
+					...(loadError ? { messageParams: { error: loadError } } : {}),
 					clients: [],
 				});
 			}
 
 			// Check for problematic patterns
-			for (const { pattern, message, severity, feature } of problematicPatterns) {
+			for (const { pattern, message, messageKey, severity, feature } of problematicPatterns) {
 				if (pattern.test(html)) {
 					const affectedClients: string[] = [];
 
@@ -346,6 +364,7 @@ export function useCompatibilityAnalysis(): {
 						severity,
 						feature: feature ?? 'unknown',
 						message,
+						messageKey,
 						clients: affectedClients,
 					});
 				}
@@ -367,6 +386,8 @@ export function useCompatibilityAnalysis(): {
 									severity: unsupported.length > 3 ? 'warning' : 'info',
 									feature: featureSlug,
 									message: `${feature.title} may not work in some clients`,
+									messageKey: 'builder.analysis.compatibility.issues.cssFeature',
+									messageParams: { feature: feature.title },
 									clients: unsupported.map((c) => c.name),
 									cssProperty: prop,
 								});
@@ -392,6 +413,8 @@ export function useCompatibilityAnalysis(): {
 									severity: unsupported.length > 5 ? 'error' : 'warning',
 									feature: featureSlug,
 									message: `<${element}> element has limited support`,
+									messageKey: 'builder.analysis.compatibility.issues.htmlElement',
+									messageParams: { element: `<${element}>` },
 									clients: unsupported.map((c) => c.name),
 									htmlElement: element,
 								});

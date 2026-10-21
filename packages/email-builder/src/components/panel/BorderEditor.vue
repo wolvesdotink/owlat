@@ -5,6 +5,9 @@ import ColorField from './fields/ColorField.vue';
 import NumberField from './fields/NumberField.vue';
 import SelectField from './fields/SelectField.vue';
 import FieldLabel from '../ui/FieldLabel.vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	block: EditorBlock;
@@ -20,12 +23,14 @@ const borderWidth = computed(() => (content.value.borderWidth as number) ?? 0);
 const borderColor = computed(() => (content.value.borderColor as string) ?? '#000000');
 const borderStyle = computed(() => (content.value.borderStyle as string) ?? 'none');
 
-const borderStyleOptions = [
-	{ label: 'None', value: 'none' },
-	{ label: 'Solid', value: 'solid' },
-	{ label: 'Dashed', value: 'dashed' },
-	{ label: 'Dotted', value: 'dotted' },
-];
+const borderStyleOptions = computed(() =>
+	[
+		{ label: 'None', value: 'none' },
+		{ label: 'Solid', value: 'solid' },
+		{ label: 'Dashed', value: 'dashed' },
+		{ label: 'Dotted', value: 'dotted' },
+	].map((option) => ({ ...option, label: label(option.label) }))
+);
 
 const previewStyle = computed(() => {
 	if (borderStyle.value === 'none' || borderWidth.value === 0) {
@@ -46,9 +51,9 @@ const previewStyle = computed(() => {
 		<div class="flex gap-2">
 			<!-- Width -->
 			<div class="flex flex-col gap-[3px]">
-				<FieldLabel size="sm">Width</FieldLabel>
+				<FieldLabel size="sm">{{ t('builder.panel.border.width') }}</FieldLabel>
 				<NumberField
-					label="Border width"
+					:label="t('builder.panel.border.widthLabel')"
 					:value="borderWidth"
 					:min="0"
 					:max="10"
@@ -59,7 +64,7 @@ const previewStyle = computed(() => {
 
 			<!-- Style -->
 			<div class="flex flex-col gap-[3px] flex-1">
-				<FieldLabel size="sm">Style</FieldLabel>
+				<FieldLabel size="sm">{{ t('builder.panel.border.style') }}</FieldLabel>
 				<SelectField
 					:value="borderStyle"
 					:options="borderStyleOptions"
@@ -70,9 +75,9 @@ const previewStyle = computed(() => {
 
 		<!-- Color -->
 		<div class="flex flex-col gap-[3px]">
-			<FieldLabel size="sm">Color</FieldLabel>
+			<FieldLabel size="sm">{{ t('builder.panel.border.color') }}</FieldLabel>
 			<ColorField
-				label="Border color"
+				:label="t('builder.panel.border.colorLabel')"
 				:value="borderColor"
 				@update="(val) => emit('update', 'borderColor', val)"
 			/>

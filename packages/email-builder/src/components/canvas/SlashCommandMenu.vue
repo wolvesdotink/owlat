@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
 import type { SlashCommand } from '../../types';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	commands: SlashCommand[];
@@ -16,13 +19,13 @@ const listEl = ref<HTMLElement | null>(null);
 
 // Category display order
 const categoryOrder = ['text', 'media', 'layout', 'components', 'brand', 'saved'] as const;
-const categoryLabels: Record<string, string> = {
-	text: 'Text',
-	media: 'Media',
-	layout: 'Layout',
-	components: 'Components',
-	brand: 'Brand kit',
-	saved: 'Saved',
+const categoryLabelKeys: Record<string, string> = {
+	text: 'builder.canvas.categories.text',
+	media: 'builder.canvas.categories.media',
+	layout: 'builder.canvas.categories.layout',
+	components: 'builder.canvas.categories.components',
+	brand: 'builder.canvas.categories.brand',
+	saved: 'builder.canvas.categories.saved',
 };
 
 // Group commands by category
@@ -35,7 +38,7 @@ const groupedCommands = computed(() => {
 		if (cmds.length > 0) {
 			groups.push({
 				category: cat,
-				label: categoryLabels[cat] || cat,
+				label: categoryLabelKeys[cat] ? t(categoryLabelKeys[cat]) : cat,
 				commands: cmds.map((cmd) => ({ command: cmd, globalIndex: globalIndex++ })),
 			});
 		}
@@ -47,7 +50,7 @@ const groupedCommands = computed(() => {
 	if (remaining.length > 0) {
 		groups.push({
 			category: 'other',
-			label: 'Other',
+			label: t('builder.canvas.categories.other'),
 			commands: remaining.map((cmd) => ({ command: cmd, globalIndex: globalIndex++ })),
 		});
 	}
@@ -68,7 +71,7 @@ watch(() => props.selectedIndex, () => {
 <template>
 	<div
 		role="listbox"
-		aria-label="Block types"
+		:aria-label="t('builder.canvas.blockTypes')"
 		class="absolute z-[100] w-60 max-h-[280px] overflow-y-auto bg-bg-elevated border border-border-subtle rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.25)] p-1"
 		:style="{
 			top: `${position.top}px`,
@@ -76,7 +79,7 @@ watch(() => props.selectedIndex, () => {
 		}"
 	>
 		<div v-if="commands.length === 0" class="p-3 text-[13px] text-text-tertiary text-center">
-			No matching blocks
+			{{ t('builder.canvas.noMatches') }}
 		</div>
 		<div v-else ref="listEl" class="flex flex-col">
 			<template v-for="group in groupedCommands" :key="group.category">
@@ -100,8 +103,14 @@ watch(() => props.selectedIndex, () => {
 					/>
 					<div v-else class="shrink-0 w-4 h-4 rounded-[3px]" :class="globalIndex === selectedIndex ? 'bg-[rgba(196,120,90,0.2)]' : 'bg-bg-surface'" />
 					<div class="flex flex-col gap-px min-w-0">
-						<span class="text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ command.name }}</span>
-						<span class="text-[11px] text-text-tertiary whitespace-nowrap overflow-hidden text-ellipsis">{{ command.description }}</span>
+						<span
+							class="text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
+							>{{ label(command.name) }}</span
+						>
+						<span
+							class="text-[11px] text-text-tertiary whitespace-nowrap overflow-hidden text-ellipsis"
+							>{{ label(command.description) }}</span
+						>
 					</div>
 				</button>
 			</template>

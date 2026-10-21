@@ -2,6 +2,9 @@
 import { computed } from 'vue';
 import { X, Plus, Minus, Pencil, FileText, Image, Link, Palette, Layout, Tag } from '@lucide/vue';
 import type { PreviewEmailDiff, PreviewEmailDiffChange } from '../types';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	emailDiff: PreviewEmailDiff;
@@ -64,7 +67,7 @@ function getTypeIcon(type: PreviewEmailDiffChange['type']) {
 <template>
 	<div class="ep-diff-panel">
 		<div class="ep-diff-header">
-			<span class="ep-diff-title">Changes</span>
+			<span class="ep-diff-title">{{ t('builder.diff.title') }}</span>
 			<div class="ep-diff-stats">
 				<span class="ep-diff-stat ep-diff-added">+{{ emailDiff.stats.addedElements }}</span>
 				<span class="ep-diff-stat ep-diff-removed">-{{ emailDiff.stats.removedElements }}</span>
@@ -79,11 +82,13 @@ function getTypeIcon(type: PreviewEmailDiffChange['type']) {
 		</div>
 
 		<div class="ep-diff-body">
-			<div v-if="emailDiff.identical" class="ep-diff-identical">No changes detected.</div>
+			<div v-if="emailDiff.identical" class="ep-diff-identical">
+				{{ t('builder.diff.identical') }}
+			</div>
 			<template v-else>
 				<!-- Summary -->
 				<div class="ep-diff-summary">
-					{{ totalChanges }} change{{ totalChanges === 1 ? '' : 's' }} detected
+					{{ t('builder.diff.summary', { count: totalChanges }) }}
 				</div>
 
 				<!-- Change list -->

@@ -18,6 +18,9 @@ import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiSegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
 import type { PreviewMode, EmailBuilderConfig } from '../types';
 import { findShortcut, formatShortcut, useApplePlatform } from '../composables/editorShortcuts';
+import { useBuilderI18n } from '../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	name: string;
@@ -49,24 +52,41 @@ const emit = defineEmits<{
 }>();
 
 const previewModeOptions = computed(() => [
-	{ value: 'edit', label: 'Edit' },
-	{ value: 'preview', label: 'Preview', disabled: props.isGeneratingHtml },
+	{ value: 'edit', label: t('builder.header.edit') },
+	{ value: 'preview', label: t('builder.header.preview'), disabled: props.isGeneratingHtml },
 ]);
 
 // Tooltips read from the shortcut registry so they can never drift from the
 // bindings or from the help sheet. The fallback keys only apply if an entry is
 // ever renamed out of the registry, so the tooltip degrades instead of vanishing.
+// The registry's English description is the lookup id; what is shown is its
+// translation.
 // The modifier symbol comes from a post-mount ref, so the server and the first
 // client render agree on the markup.
 const isApplePlatform = useApplePlatform();
 
 function shortcutTitle(description: string, fallbackKeys: string[]): string {
-	return `${description} (${formatShortcut(
+	const keys = formatShortcut(
 		findShortcut(description)?.keys ?? fallbackKeys,
 		isApplePlatform.value
-	)})`;
+	)
+		.split(' + ')
+		.map((key) => label(key))
+		.join(' + ');
+	return `${label(description)} (${keys})`;
 }
 
+const nameLabel = computed(() =>
+	props.config?.mode === 'block' ? t('builder.header.blockName') : t('builder.header.templateName')
+);
+const settingsLabel = computed(() =>
+	props.config?.mode === 'block'
+		? t('builder.header.blockSettings')
+		: t('builder.header.templateSettings')
+);
+const focusModeLabel = computed(() =>
+	props.isFocusMode ? t('builder.header.exitFocus') : t('builder.header.enterFocus')
+);
 const undoTitle = computed(() => shortcutTitle('Undo', ['Mod', 'Z']));
 const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 </script>
@@ -84,8 +104,8 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 			<UiButton
 				variant="ghost"
 				class="!px-2 !py-2"
-				title="Back"
-				aria-label="Back"
+				:title="t('builder.header.back')"
+				:aria-label="t('builder.header.back')"
 				@click="emit('back')"
 			>
 				<ArrowLeft class="w-5 h-5" aria-hidden="true" />
@@ -95,18 +115,18 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 				<input
 					:value="name"
 					type="text"
-					:aria-label="config?.mode === 'block' ? 'Block name' : 'Template name'"
+					:aria-label="nameLabel"
 					class="w-full min-w-0 truncate bg-transparent text-text-primary font-medium text-sm focus:outline-none border-b border-transparent hover:border-border-strong focus:border-brand transition-colors px-1 -mx-1"
-					:placeholder="config?.mode === 'block' ? 'Block name' : 'Template name'"
+					:placeholder="nameLabel"
 					@input="emit('update:name', ($event.target as HTMLInputElement).value)"
 				/>
 				<input
 					v-if="!hideSubject"
 					:value="subject"
 					type="text"
-					aria-label="Email subject line"
+					:aria-label="t('builder.header.subject')"
 					class="w-full min-w-0 truncate bg-transparent text-text-secondary text-xs focus:outline-none border-b border-transparent hover:border-border-strong focus:border-brand transition-colors px-1 -mx-1 mt-0.5"
-					placeholder="Email subject line"
+					:placeholder="t('builder.header.subject')"
 					@input="emit('update:subject', ($event.target as HTMLInputElement).value)"
 				/>
 			</div>
@@ -121,7 +141,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 			>
 				<template #option-edit>
 					<Code2 class="w-4 h-4" />
-					Edit
+					{{ t('builder.header.edit') }}
 				</template>
 				<template #option-preview>
 					<Loader2
@@ -129,7 +149,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 						class="w-4 h-4 animate-spin motion-reduce:animate-none"
 					/>
 					<Eye v-else class="w-4 h-4" />
-					Preview
+					{{ t('builder.header.preview') }}
 				</template>
 			</UiSegmentedControl>
 
@@ -137,8 +157,8 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 			<UiButton
 				:variant="isFocusMode ? 'primary' : 'ghost'"
 				class="!px-2 !py-2"
-				:title="isFocusMode ? 'Exit focus mode' : 'Enter focus mode'"
-				:aria-label="isFocusMode ? 'Exit focus mode' : 'Enter focus mode'"
+				:title="focusModeLabel"
+				:aria-label="focusModeLabel"
 				:aria-pressed="isFocusMode"
 				@click="emit('toggle-focus-mode')"
 			>
@@ -175,8 +195,8 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 			<UiButton
 				variant="ghost"
 				class="!px-2 !py-2 max-lg:!hidden"
-				title="Keyboard shortcuts (?)"
-				aria-label="Keyboard shortcuts"
+				:title="t('builder.header.shortcutsTitle')"
+				:aria-label="t('builder.header.shortcuts')"
 				@click="emit('show-shortcuts')"
 			>
 				<Keyboard class="w-4 h-4" />
@@ -187,8 +207,8 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 				v-if="canApplyBrand"
 				variant="ghost"
 				class="!px-2 !py-2"
-				title="Apply brand kit"
-				aria-label="Apply brand kit"
+				:title="t('builder.header.applyBrand')"
+				:aria-label="t('builder.header.applyBrand')"
 				data-testid="apply-brand-kit"
 				@click="emit('apply-brand')"
 			>
@@ -205,8 +225,8 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 				v-if="config?.showSettings"
 				variant="ghost"
 				class="!px-2 !py-2"
-				:title="config?.mode === 'block' ? 'Block settings' : 'Template settings'"
-				:aria-label="config?.mode === 'block' ? 'Block settings' : 'Template settings'"
+				:title="settingsLabel"
+				:aria-label="settingsLabel"
 				@click="emit('settings')"
 			>
 				<Settings class="w-4 h-4" />
@@ -216,7 +236,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 			<UiButton variant="primary" size="sm" :disabled="isSaving" @click="emit('save')">
 				<Loader2 v-if="isSaving" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 				<Save v-else class="w-4 h-4" />
-				{{ isSaving ? 'Saving...' : 'Save' }}
+				{{ isSaving ? t('builder.header.saving') : t('builder.header.save') }}
 			</UiButton>
 		</div>
 	</div>

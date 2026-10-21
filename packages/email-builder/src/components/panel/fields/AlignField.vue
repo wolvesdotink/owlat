@@ -2,6 +2,9 @@
 import { computed } from 'vue';
 import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Maximize2 } from '@lucide/vue';
 import ButtonGroup from '../../ui/ButtonGroup.vue';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	value: string;
@@ -24,14 +27,14 @@ const groupOptions = computed(() =>
 	(props.options ?? ['left', 'center', 'right']).map((align) => ({
 		value: align,
 		icon: iconMap[align] ?? AlignLeft,
-		label: align.charAt(0).toUpperCase() + align.slice(1),
+		label: t(`builder.align.${align}`),
 	}))
 );
 </script>
 
 <template>
 	<ButtonGroup
-		label="Alignment"
+		:label="t('builder.align.label')"
 		:options="groupOptions"
 		:value="value"
 		@update="(val) => emit('update', val)"

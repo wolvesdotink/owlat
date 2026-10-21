@@ -3,6 +3,9 @@ import { ref, inject, type Ref } from 'vue';
 import { Pipette } from '@lucide/vue';
 import ColorSwatch from '../../ui/ColorSwatch.vue';
 import { BRAND_SWATCHES_KEY } from '../../../composables/useBrandKit';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	value: string;
@@ -67,13 +70,17 @@ function selectSwatch(color: string) {
 				:class="{ 'bg-checker': !value || value === 'transparent' }"
 				:style="value && value !== 'transparent' ? { backgroundColor: value } : undefined"
 				type="button"
-				title="Open color picker"
-				:aria-label="`Open color picker${label ? `, ${label}` : ''}`"
+				:title="t('builder.panel.color.open')"
+				:aria-label="
+					label ? t('builder.panel.color.openFor', { field: label }) : t('builder.panel.color.open')
+				"
 				@click="openColorPicker"
 			/>
 			<input
 				type="text"
-				:aria-label="label ? `${label}, hex value` : 'Hex color value'"
+				:aria-label="
+					label ? t('builder.panel.color.hexFor', { field: label }) : t('builder.panel.color.hex')
+				"
 				class="flex-1 py-2 px-2 text-[13px] font-mono border-none bg-transparent text-text-primary outline-none min-w-0"
 				:value="value"
 				:placeholder="placeholder ?? '#000000'"
@@ -84,8 +91,10 @@ function selectSwatch(color: string) {
 			<button
 				class="flex items-center justify-center w-8 h-[34px] border-none border-l border-l-border-subtle bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-secondary"
 				type="button"
-				title="Pick color"
-				:aria-label="label ? `Pick color, ${label}` : 'Pick color'"
+				:title="t('builder.panel.color.pick')"
+				:aria-label="
+					label ? t('builder.panel.color.pickFor', { field: label }) : t('builder.panel.color.pick')
+				"
 				@click="openColorPicker"
 			>
 				<Pipette :size="13" />
@@ -106,17 +115,17 @@ function selectSwatch(color: string) {
 			v-if="brandSwatches.length > 0"
 			class="flex items-center gap-[5px] flex-wrap"
 			role="group"
-			aria-label="Brand colors"
+			:aria-label="t('builder.panel.color.brandColors')"
 			data-testid="brand-swatches"
 		>
 			<span class="text-[10px] font-medium uppercase tracking-wide text-text-tertiary mr-0.5">
-				Brand
+				{{ t('builder.panel.color.brand') }}
 			</span>
 			<ColorSwatch
 				v-for="color in brandSwatches"
 				:key="'b-' + color"
 				:color="color"
-				:label="`Brand color ${color}`"
+				:label="t('builder.panel.color.brandColor', { color })"
 				:selected="(value ?? '').toLowerCase() === color"
 				@click="selectSwatch(color)"
 			/>

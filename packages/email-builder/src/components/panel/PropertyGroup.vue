@@ -6,6 +6,9 @@ import PropertyField from './PropertyField.vue';
 import { ChevronDown } from '@lucide/vue';
 import { resolveGroupIcon } from '../../schema/groupIcons';
 import { getByPath } from '../../utils/propertyPath';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { label } = useBuilderI18n();
 
 const props = defineProps<{
 	group: PropertyGroup;
@@ -61,7 +64,7 @@ function isFieldVisible(field: { showWhen?: { key: string; value: unknown } }): 
 				<span
 					class="text-[10px] font-semibold uppercase tracking-[0.08em]"
 					:class="!isCollapsed && !hideHeader ? 'text-text-secondary' : 'text-text-tertiary'"
-					>{{ group.label }}</span
+					>{{ label(group.label) }}</span
 				>
 			</div>
 			<ChevronDown

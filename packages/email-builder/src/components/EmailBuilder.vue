@@ -92,6 +92,9 @@ import {
 } from './dialogs';
 import SavedBlockPickerMenu from './canvas/SavedBlockPickerMenu.vue';
 import UiConfirmationDialog from '@owlat/ui/components/ui/ConfirmationDialog.vue';
+import { useBuilderI18n } from '../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 // ---------------------------------------------------------------------------
 // Props & Emits (same interface as original EmailBuilder)
@@ -434,15 +437,10 @@ const { isBrandConfigured, insertableBrandBlocks, brandBlocksFor, heldRootCount,
 	});
 const showApplyBrandConfirm = ref(false);
 const applyBrandDescription = computed(() => {
-	const base =
-		'Colors, fonts and button styles across this email change to your brand kit. Text, images and links stay as they are, and you can undo it.';
+	const base = t('builder.brand.applyDescription');
 	const held = heldRootCount.value;
 	if (held === 0) return base;
-	const left =
-		held === 1
-			? 'The block someone else is editing, marked with a lock, stays unchanged'
-			: `The ${held} blocks others are editing, marked with a lock, stay unchanged`;
-	return `${base} ${left}; apply again once they are done.`;
+	return `${base} ${t('builder.brand.heldBlocks', { count: held })}`;
 });
 
 function confirmApplyBrand() {
@@ -1329,10 +1327,10 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 		<!-- Apply brand kit: restyles the whole email, so it asks first -->
 		<UiConfirmationDialog
 			:open="showApplyBrandConfirm"
-			title="Apply brand kit?"
+			:title="t('builder.brand.applyTitle')"
 			:description="applyBrandDescription"
-			confirm-text="Apply brand kit"
-			cancel-text="Cancel"
+			:confirm-text="t('builder.brand.apply')"
+			:cancel-text="t('builder.common.cancel')"
 			@confirm="confirmApplyBrand"
 			@cancel="showApplyBrandConfirm = false"
 			@update:open="!$event && (showApplyBrandConfirm = false)"
@@ -1341,10 +1339,14 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 		<!-- Detach confirmation dialog -->
 		<UiConfirmationDialog
 			:open="showDetachConfirm"
-			title="Detach linked block?"
-			:description="`${pendingDetachBlockName || 'This block'} will no longer receive updates from the saved block library.`"
-			confirm-text="Detach"
-			cancel-text="Cancel"
+			:title="t('builder.detach.title')"
+			:description="
+				t('builder.detach.description', {
+					block: pendingDetachBlockName || t('builder.detach.thisBlock'),
+				})
+			"
+			:confirm-text="t('builder.detach.confirm')"
+			:cancel-text="t('builder.common.cancel')"
 			variant="warning"
 			@confirm="confirmDetach"
 			@cancel="cancelDetach"

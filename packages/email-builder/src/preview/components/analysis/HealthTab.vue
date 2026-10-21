@@ -2,8 +2,11 @@
 import { computed } from 'vue';
 import { Shield, Accessibility, Mail, Monitor } from '@lucide/vue';
 import type { PreviewHealthScore } from '../../types';
-import { scoreColor, scoreLabel } from '../../scoreBands';
+import { scoreBand, scoreColor } from '../../scoreBands';
 import AnalysisEmpty from './AnalysisEmpty.vue';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	healthScore: PreviewHealthScore | null;
@@ -15,17 +18,37 @@ const overallScoreColor = computed(() => {
 });
 
 const overallScoreLabel = computed(() => {
-	if (!props.healthScore) return 'N/A';
-	return scoreLabel(props.healthScore.overall);
+	if (!props.healthScore) return t('builder.analysis.health.notAvailable');
+	return t(`builder.analysis.health.band.${scoreBand(props.healthScore.overall)}`);
 });
 
 const subScores = computed(() => {
 	if (!props.healthScore) return [];
 	return [
-		{ label: 'Compatibility', value: props.healthScore.compatibility, icon: Shield },
-		{ label: 'Accessibility', value: props.healthScore.accessibility, icon: Accessibility },
-		{ label: 'Deliverability', value: props.healthScore.deliverability, icon: Mail },
-		{ label: 'Outlook', value: props.healthScore.outlookSupport, icon: Monitor },
+		{
+			id: 'compatibility',
+			label: t('builder.analysis.health.compatibility'),
+			value: props.healthScore.compatibility,
+			icon: Shield,
+		},
+		{
+			id: 'accessibility',
+			label: t('builder.analysis.health.accessibility'),
+			value: props.healthScore.accessibility,
+			icon: Accessibility,
+		},
+		{
+			id: 'deliverability',
+			label: t('builder.analysis.health.deliverability'),
+			value: props.healthScore.deliverability,
+			icon: Mail,
+		},
+		{
+			id: 'outlook',
+			label: t('builder.analysis.health.outlook'),
+			value: props.healthScore.outlookSupport,
+			icon: Monitor,
+		},
 	];
 });
 
@@ -52,7 +75,7 @@ const scoreBarColor = scoreColor;
 
 		<!-- Sub-scores -->
 		<div class="ep-health-subscores">
-			<div v-for="score in subScores" :key="score.label" class="ep-health-subscore">
+			<div v-for="score in subScores" :key="score.id" class="ep-health-subscore">
 				<div class="ep-health-subscore-header">
 					<component :is="score.icon" class="ep-health-subscore-icon" />
 					<span class="ep-health-subscore-label">{{ score.label }}</span>
@@ -71,19 +94,23 @@ const scoreBarColor = scoreColor;
 
 		<!-- Recommendations -->
 		<div v-if="healthScore.recommendations.length > 0" class="ep-health-recommendations">
-			<div class="ep-health-recommendations-title">Recommendations</div>
+			<div class="ep-health-recommendations-title">
+				{{ t('builder.analysis.health.recommendations') }}
+			</div>
 			<div
 				v-for="(rec, idx) in healthScore.recommendations"
 				:key="idx"
 				class="ep-health-rec"
 				:class="`ep-health-rec-${rec.impact}`"
 			>
-				<span class="ep-health-rec-impact">{{ rec.impact }}</span>
+				<span class="ep-health-rec-impact">{{
+					t(`builder.analysis.health.impact.${rec.impact}`)
+				}}</span>
 				<span class="ep-health-rec-message">{{ rec.message }}</span>
 			</div>
 		</div>
 	</template>
-	<AnalysisEmpty v-else>No health score data available.</AnalysisEmpty>
+	<AnalysisEmpty v-else>{{ t('builder.analysis.health.empty') }}</AnalysisEmpty>
 </template>
 
 <style scoped>
