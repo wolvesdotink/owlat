@@ -1853,6 +1853,9 @@ import type * as mail_arrival_offerable from '../mail/arrival/offerable.js';
 import type * as mail_arrival_coldPitch from '../mail/arrival/coldPitch.js';
 import type * as mail_arrival___eval___coldPitchEval from '../mail/arrival/__eval__/coldPitchEval.js';
 import type * as mail_arrival___eval___coldPitchSample from '../mail/arrival/__eval__/coldPitchSample.js';
+import type * as mail_arrival_coldPitchEvidence from '../mail/arrival/coldPitchEvidence.js';
+import type * as mail_correspondence from '../mail/correspondence.js';
+import type * as mail_ownAddresses from '../mail/ownAddresses.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3702,6 +3705,9 @@ declare const fullApi: ApiFromModules<{
 	'mail/arrival/coldPitch': typeof mail_arrival_coldPitch;
 	'mail/arrival/__eval__/coldPitchEval': typeof mail_arrival___eval___coldPitchEval;
 	'mail/arrival/__eval__/coldPitchSample': typeof mail_arrival___eval___coldPitchSample;
+	'mail/arrival/coldPitchEvidence': typeof mail_arrival_coldPitchEvidence;
+	'mail/correspondence': typeof mail_correspondence;
+	'mail/ownAddresses': typeof mail_ownAddresses;
 }>;
 
 /**

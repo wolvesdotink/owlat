@@ -11,7 +11,13 @@
  *   - a known sender is never asked, and a first-contact message the model
  *     does not call a pitch still lands in Needs you;
  *   - an owner reply clears the verdict, and a stale yes after it cannot
- *     restore it.
+ *     restore it;
+ *   - a heuristic category does not skip the question, and mail the Reply
+ *     Queue screens out is never asked about;
+ *   - relationship evidence that appears later (an acceptance, mail the owner
+ *     wrote from another client, in any thread) clears the sender's verdicts,
+ *     and mail written before it means the sender is never asked;
+ *   - a fenced thread disregards its verdict and takes no late one.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,6 +30,7 @@ import { readDigestCandidates } from '../../digest/select';
 import { noteOwnerReply } from '../learningSignals';
 import { refreshArrivalProjection, senderProfileOf } from '../projection';
 import { isHeldOutAsColdPitch } from '../coldPitch';
+import { fenceThreadInterpretation } from '../../interpret/staleFence';
 import { OWNER, seedPersonalMailbox } from '../../rules/__tests__/rules.testlib';
 import { roleOf } from '../../senders/__tests__/senders.testlib';
 import { learnTest, type T } from './learn.testlib';
@@ -312,5 +319,166 @@ describe('cold sales pitches at arrival (#1381)', () => {
 			isColdPitch: true,
 		});
 		expect((await stateOf(t, messageId)).record?.coldPitchAt).toBeUndefined();
+	});
+});
+
+describe('relationship evidence and the fence (#1381)', () => {
+	async function heldPitch(t: T) {
+		await enableFeatures(t, ['ai', 'postbox', 'postbox.coldPitch']);
+		const seeded = await seedPersonalMailbox(t);
+		const messageId = await deliver(t, PITCH, 'pitch');
+		await drain(t);
+		return { ...seeded, messageId, held: await expectHeldOut(t, messageId) };
+	}
+
+	async function appendSent(t: T, folderId: Id<'mailFolders'>, id: string, subject: string) {
+		const rawStorageId = await t.run(async (ctx) => await ctx.storage.store(new Blob(['raw'])));
+		await t.mutation(internal.mail.imap.append.appendMessage, {
+			folderId,
+			rawStorageId,
+			rawSize: 3,
+			rfc822MessageId: `<${id}@owlat.test>`,
+			fromAddress: OWNER,
+			toAddresses: [PITCHER],
+			ccAddresses: [],
+			bccAddresses: [],
+			subject,
+			textBodyInline: 'Thanks for your help with the project.',
+			flags: ['\\Seen'],
+		});
+		await drain(t);
+	}
+
+	/** The verdict no longer counts anywhere: record, projection, digest, queue veto. */
+	async function expectReleased(t: T, messageId: Id<'mailMessages'>) {
+		const state = await stateOf(t, messageId);
+		expect(state.record?.coldPitchAt).toBeUndefined();
+		expect(state.thread.arrival?.isColdPitch).toBeUndefined();
+		expect(state.candidates).toEqual([]);
+		await t.run(async (ctx) => {
+			expect(await isHeldOutAsColdPitch(ctx, state.message)).toBe(false);
+		});
+		return state;
+	}
+
+	it('asks about a pitch whose category a heuristic settled, with no rule questions', async () => {
+		const t = learnTest();
+		await enableFeatures(t, ['ai', 'postbox', 'postbox.coldPitch']);
+		await seedPersonalMailbox(t);
+		const messageId = await deliver(
+			t,
+			{ ...PITCH, subject: 'Special offer: double organic traffic' },
+			'heuristic'
+		);
+		await drain(t);
+		expect(coldPitchCalls()).toHaveLength(1);
+		const state = await expectHeldOut(t, messageId);
+		expect(state.thread.category).toMatchObject({ label: 'promotion', source: 'heuristic' });
+	});
+
+	it('never asks about mail the Reply Queue screens out (a no-reply sender)', async () => {
+		const t = learnTest();
+		await enableFeatures(t, ['ai', 'postbox', 'postbox.coldPitch']);
+		await seedPersonalMailbox(t);
+		const messageId = await deliver(
+			t,
+			{ ...PITCH, from: 'Growth Leads <noreply@growthleads.example>' },
+			'no-reply'
+		);
+		await drain(t);
+		expect(coldPitchCalls()).toHaveLength(0);
+		expect((await stateOf(t, messageId)).record?.coldPitchAt).toBeUndefined();
+	});
+
+	it('accepting the sender lets the pitch back into the Reply Queue', async () => {
+		const t = learnTest();
+		const { messageId, held } = await heldPitch(t);
+		await t.mutation(api.mail.contacts.acceptSender, {
+			mailboxId: held.message.mailboxId,
+			email: PITCHER,
+		});
+		await expectReleased(t, messageId);
+
+		await t.mutation(internal.mail.needsReply.requeue, { threadId: held.thread._id });
+		await drain(t);
+		const state = await stateOf(t, messageId);
+		expect(state.thread.needsReply?.messageId).toBe(messageId);
+		expect(state.thread.arrival?.placement).toBe('needs_me');
+	});
+
+	it('writing to the sender from another client, in another thread, clears the verdict', async () => {
+		const t = learnTest();
+		const { messageId, held, folders } = await heldPitch(t);
+		await appendSent(t, folders.sent, 'elsewhere', 'Something else entirely');
+
+		const state = await expectReleased(t, messageId);
+		expect(state.thread.arrival?.placement).not.toBe('digest');
+		const contact = await t.run(async (ctx) =>
+			ctx.db
+				.query('mailContacts')
+				.withIndex('by_mailbox_and_email', (q) =>
+					q.eq('mailboxId', held.message.mailboxId).eq('email', PITCHER)
+				)
+				.first()
+		);
+		expect(contact?.useCount).toBe(1);
+	});
+
+	it('never asks about a sender the owner wrote to before from another client', async () => {
+		const t = learnTest();
+		await enableFeatures(t, ['ai', 'postbox', 'postbox.coldPitch']);
+		const { folders } = await seedPersonalMailbox(t);
+		await appendSent(t, folders.sent, 'earlier', 'Earlier discussion with Jordan');
+
+		const messageId = await deliver(t, PITCH, 'pitch');
+		await drain(t);
+		expect(coldPitchCalls()).toHaveLength(0);
+		expect((await stateOf(t, messageId)).record?.coldPitchAt).toBeUndefined();
+	});
+
+	it('a fenced thread disregards its verdict until the fence is lifted', async () => {
+		const t = learnTest();
+		const { messageId, held } = await heldPitch(t);
+		// What `signatureReverify.apply` does when a narrower scope fences the thread.
+		await t.run(async (ctx) => {
+			await fenceThreadInterpretation(ctx, held.thread._id);
+			await refreshArrivalProjection(ctx, held.thread._id);
+		});
+		const fenced = await stateOf(t, messageId);
+		expect(fenced.thread.arrival?.isColdPitch).toBeUndefined();
+		expect(fenced.candidates).toEqual([]);
+		await t.run(async (ctx) => {
+			expect(await isHeldOutAsColdPitch(ctx, held.message)).toBe(false);
+		});
+		const why = await t.query(api.mail.arrival.explain.forThread, { threadId: held.thread._id });
+		expect(why?.decidedBy).not.toBe('cold_pitch');
+
+		await t.mutation(internal.mail.interpret.staleFence.release, { threadId: held.thread._id });
+		await drain(t);
+		expect((await stateOf(t, messageId)).thread.arrival).toMatchObject({
+			placement: 'digest',
+			isColdPitch: true,
+		});
+	});
+
+	it('a late yes for a fenced thread is not committed', async () => {
+		const t = learnTest();
+		await enableFeatures(t, ['ai', 'postbox']);
+		await seedPersonalMailbox(t);
+		const messageId = await deliver(t, PITCH, 'pitch');
+		await drain(t);
+		const before = await stateOf(t, messageId);
+		await t.run(async (ctx) => {
+			await fenceThreadInterpretation(ctx, before.thread._id);
+		});
+		await enableFeatures(t, ['ai', 'postbox', 'postbox.coldPitch']);
+		await t.mutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
+			messageId,
+			answers: [],
+			isColdPitch: true,
+		});
+		const state = await stateOf(t, messageId);
+		expect(state.record?.coldPitchAt).toBeUndefined();
+		expect(state.thread.needsReply?.messageId).toBe(messageId);
 	});
 });

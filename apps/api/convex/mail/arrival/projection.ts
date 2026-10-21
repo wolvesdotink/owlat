@@ -18,7 +18,8 @@
  * (`@owlat/shared/arrivalPlacement`). A shared mailbox has no projection.
  *
  * Bounded: four point reads (thread, mailbox, newest record, its message) and
- * one indexed sender-profile read.
+ * one indexed sender-profile read, plus, only for a record carrying a
+ * cold-pitch verdict, that verdict's evidence (`coldPitchEvidence.ts`).
  *
  * Isolate-safe; not a Convex function.
  */
@@ -29,6 +30,7 @@ import type { ComputePlacementResult, MailCategory } from '@owlat/shared/arrival
 import { computePlacement } from '@owlat/shared/arrivalPlacement';
 import { loadSenderProfile, senderKeyOf } from '../senders/profiles';
 import { isPersonalMailbox } from '../permissions';
+import { loadColdPitchStanding } from './coldPitchEvidence';
 
 type Thread = Doc<'mailThreads'>;
 
@@ -45,43 +47,19 @@ export function isReplyVerdictSettled(
 	return thread.needsReply.source !== 'heuristic' || thread.needsReplyPendingAt === undefined;
 }
 
-/** Whether a sender profile carries a choice the owner made: a status they set or accepted, a placement. Pure. */
-export function hasOwnerSenderChoice(
-	profile: Pick<Doc<'mailSenderProfiles'>, 'statusSource' | 'placementOverride'> | null
-): boolean {
-	if (!profile) return false;
-	return (
-		profile.statusSource === 'user' ||
-		profile.statusSource === 'suggestion' ||
-		profile.placementOverride !== undefined
-	);
-}
-
-/**
- * Whether a record's cold-pitch verdict (#1381, `coldPitch.ts`) still counts:
- * one was committed, and the owner has not since made a choice about the
- * sender (a choice made before is never asked about at all). Pure.
- */
-export function isColdPitchStanding(
-	record: Pick<Doc<'mailArrivalRecords'>, 'coldPitchAt'>,
-	profile: Pick<Doc<'mailSenderProfiles'>, 'statusSource' | 'placementOverride'> | null
-): boolean {
-	return record.coldPitchAt !== undefined && !hasOwnerSenderChoice(profile);
-}
-
 /**
  * `computePlacement` over the stored inputs: the record (its rule placement and
- * category, else the thread's), the thread (override, settled reply verdict)
- * and the sender profile. Shared by the projection and Explain, so "why here"
- * always answers from the same inputs the projection placed it with. Pure.
+ * category, else the thread's), the thread (override, settled reply verdict),
+ * the sender profile and whether the record's cold-pitch verdict stands
+ * (`coldPitchEvidence.ts loadColdPitchStanding`). Shared by the projection and
+ * Explain, so "why here" always answers from the same inputs the projection
+ * placed it with. Pure.
  */
 export function placementOf(
-	record: Pick<
-		Doc<'mailArrivalRecords'>,
-		'rulePlacement' | 'category' | 'categorySource' | 'coldPitchAt'
-	>,
+	record: Pick<Doc<'mailArrivalRecords'>, 'rulePlacement' | 'category' | 'categorySource'>,
 	thread: Pick<Thread, 'category' | 'placementOverride' | 'needsReply' | 'needsReplyPendingAt'>,
-	profile: Pick<Doc<'mailSenderProfiles'>, 'status' | 'statusSource' | 'placementOverride'> | null
+	profile: Pick<Doc<'mailSenderProfiles'>, 'status' | 'placementOverride'> | null,
+	isColdPitch: boolean
 ): ComputePlacementResult {
 	const category: MailCategory | undefined = record.category ?? thread.category?.label;
 	const categorySource = record.categorySource ?? thread.category?.source;
@@ -90,7 +68,7 @@ export function placementOf(
 			...(record.rulePlacement ? { rulePlacement: record.rulePlacement } : {}),
 			...(category ? { category } : {}),
 			...(categorySource ? { categorySource } : {}),
-			...(isColdPitchStanding(record, profile) ? { isColdPitch: true } : {}),
+			...(isColdPitch ? { isColdPitch: true } : {}),
 		},
 		{
 			...(thread.placementOverride
@@ -150,7 +128,8 @@ export async function refreshArrivalProjection(
 	const message = record ? await ctx.db.get(record.messageId) : null;
 	if (!record || !message) return clearProjection(ctx, thread);
 	const profile = await senderProfileOf(ctx, thread.mailboxId, message.fromAddress);
-	const { placement } = placementOf(record, thread, profile);
+	const isColdPitch = await loadColdPitchStanding(ctx, record);
+	const { placement } = placementOf(record, thread, profile, isColdPitch);
 	const now = Date.now();
 	const next = {
 		placement,
@@ -158,7 +137,7 @@ export async function refreshArrivalProjection(
 		messageId: record.messageId,
 		...(record.sourceOrderKey ? { sourceOrderKey: record.sourceOrderKey } : {}),
 		decidedAt: now,
-		...(isColdPitchStanding(record, profile) ? { isColdPitch: true } : {}),
+		...(isColdPitch ? { isColdPitch: true } : {}),
 	};
 	// §6.5: pending for the digest while the placement is digest and the newest
 	// inbound message lies past what the last sent digest consumed.

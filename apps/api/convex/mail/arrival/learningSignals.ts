@@ -39,6 +39,7 @@ import { isOwnMessage } from '../needsReply';
 import { mailboxOwnAddresses } from '../identities';
 import { isPersonalMailbox } from '../permissions';
 import { clearColdPitchOnReply } from './coldPitch';
+import { recordCorrespondents } from '../correspondence';
 import { loadSenderProfile, senderKeyOf } from '../senders/profiles';
 
 type Evidence = NonNullable<Doc<'mailSenderProfiles'>['unreadArchiveEvidence']>;
@@ -58,6 +59,17 @@ const MAX_EVIDENCE_PER_CALL = 100;
 
 /** Recipients of one reply checked for a learned status. */
 const MAX_REPLY_RECIPIENTS = 10;
+
+/** Recipients of one Sent copy from another client recorded as correspondents. */
+const MAX_CORRESPONDENTS = 50;
+
+/** A Sent copy's recipients, deduplicated like an Owlat send's, bounded. Pure. */
+function externalCorrespondentsOf(
+	message: Pick<Doc<'mailMessages'>, 'toAddresses' | 'ccAddresses' | 'bccAddresses'>
+): string[] {
+	const all = [...message.toAddresses, ...message.ccAddresses, ...message.bccAddresses];
+	return [...new Set(all.map((address) => address.toLowerCase()))].slice(0, MAX_CORRESPONDENTS);
+}
 
 /** Live inbound mail nobody opened (see the module doc). Pure. */
 export function isUnreadLiveInbound(
@@ -181,8 +193,10 @@ export async function recordUnreadArchives(
  * Our own reply went out (synced or appended Sent copy, or an Owlat reply its
  * transport accepted): a To recipient whose digest status was LEARNED goes
  * back to the default (SPEC §4.3 reply reversal), as its own operation. A
- * `user` status stays. The thread's cold-pitch verdict is cleared (#1381).
- * Cheap for inbound mail: one folder read.
+ * `user` status stays. The thread's cold-pitch verdict is cleared (#1381). A
+ * Sent copy from another client also records its recipients as people the
+ * owner wrote to, as an Owlat send does on its own path
+ * (`correspondence.ts`). Cheap for inbound mail: one folder read.
  */
 export async function noteOwnerReply(
 	ctx: MutationCtx,
@@ -194,6 +208,8 @@ export async function noteOwnerReply(
 		| 'folderId'
 		| 'fromAddress'
 		| 'toAddresses'
+		| 'ccAddresses'
+		| 'bccAddresses'
 		| 'outbound'
 		| 'flagDraft'
 	>
@@ -206,6 +222,10 @@ export async function noteOwnerReply(
 	if (!isOwnMessage(message, await mailboxOwnAddresses(ctx, mailbox))) return;
 	// A reply clears the thread's cold-pitch verdict (#1381).
 	await clearColdPitchOnReply(ctx, message.threadId);
+	if (message.outbound === undefined) {
+		// Sent from another client: the correspondence an Owlat send records itself.
+		await recordCorrespondents(ctx, mailbox._id, externalCorrespondentsOf(message));
+	}
 	const digests = new Set(
 		message.toAddresses.slice(0, MAX_REPLY_RECIPIENTS).map((a) => senderKeyOf(a).senderDigest)
 	);

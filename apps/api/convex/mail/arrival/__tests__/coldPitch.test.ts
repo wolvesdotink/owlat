@@ -6,12 +6,13 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+	hasOwnerSenderChoice,
 	isColdPitchCandidate,
+	isColdPitchVerdictStanding,
 	isOwnerInThread,
 	isSameCompanyDomain,
 	type ColdPitchEvidence,
-} from '../coldPitch';
-import { hasOwnerSenderChoice, isColdPitchStanding } from '../projection';
+} from '../coldPitchEvidence';
 import { COLD_PITCH_QUESTION, isColdPitchAnswer, r2QuestionsPrompt } from '../r2';
 import { digestKindOf, selectDigest, type DigestCandidate } from '../../digest/select';
 import { digestBlocks } from '../../digest/emailBlocks';
@@ -33,6 +34,8 @@ const stranger: ColdPitchEvidence = {
 	hasOwnerSenderChoice: false,
 	hasCategoryOverride: false,
 	isOwnerInThread: false,
+	isBulkOrNoReply: false,
+	isFenced: false,
 	senderDomain: 'growthleads.example',
 	ownDomains: ['owlat.test'],
 };
@@ -51,6 +54,8 @@ describe('isColdPitchCandidate: cheap evidence first', () => {
 		['a sender status or placement the owner chose', { hasOwnerSenderChoice: true }],
 		['a category override for the sender', { hasCategoryOverride: true }],
 		['the owner took part in the thread', { isOwnerInThread: true }],
+		['the Reply Queue screens it out (list, bulk, no-reply)', { isBulkOrNoReply: true }],
+		['the thread is fenced', { isFenced: true }],
 		['a colleague on the company domain', { senderDomain: 'owlat.test' }],
 	] as const)('skips it when %s', (_, change) => {
 		expect(isColdPitchCandidate({ ...stranger, ...change })).toBe(false);
@@ -75,11 +80,22 @@ describe('isColdPitchCandidate: cheap evidence first', () => {
 		);
 	});
 
-	it('a choice the owner makes about the sender later voids a verdict', () => {
-		expect(isColdPitchStanding({ coldPitchAt: 1 }, null)).toBe(true);
-		expect(isColdPitchStanding({ coldPitchAt: 1 }, { statusSource: 'learned' })).toBe(true);
-		expect(isColdPitchStanding({ coldPitchAt: 1 }, { statusSource: 'user' })).toBe(false);
-		expect(isColdPitchStanding({}, null)).toBe(false);
+	it('a verdict stands only while the message would still be asked about', () => {
+		const verdict = { coldPitchAt: 1 };
+		expect(isColdPitchVerdictStanding(verdict, stranger)).toBe(true);
+		// The flag gates asking only.
+		expect(isColdPitchVerdictStanding(verdict, { ...stranger, isFlagOn: false })).toBe(true);
+		for (const change of [
+			{ isInAddressBook: true },
+			{ hasOwnerSenderChoice: true },
+			{ hasCategoryOverride: true },
+			{ isOwnerInThread: true },
+			{ isFenced: true },
+		]) {
+			expect(isColdPitchVerdictStanding(verdict, { ...stranger, ...change })).toBe(false);
+		}
+		expect(isColdPitchVerdictStanding({}, stranger)).toBe(false);
+		expect(isColdPitchVerdictStanding(verdict, null)).toBe(false);
 	});
 
 	it('reads owner participation from the thread', () => {

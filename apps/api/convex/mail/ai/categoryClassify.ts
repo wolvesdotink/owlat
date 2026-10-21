@@ -146,11 +146,12 @@ async function retryRateLimited(
 }
 
 /**
- * R2 for a category already settled (an override, a heuristic label): only
- * this message's questions, plus the cold-pitch question for a candidate
- * (#1381), which rides on the call and never makes one of its own. The
- * answers are committed through the rules hook; a rate limit retries the
- * whole action, bounded.
+ * R2 for a category already settled (an override, a heuristic label): this
+ * message's questions and the cold-pitch question for a candidate (#1381),
+ * in one call; either alone is enough to make it. A heuristic label does not
+ * keep a pitch out of Needs you (a settled reply verdict outranks it), so a
+ * candidate is asked here too. The answers are committed through the rules
+ * hook; a rate limit retries the whole action, bounded.
  */
 async function answerQuestionsOnly(
 	ctx: ActionCtx,
@@ -159,7 +160,7 @@ async function answerQuestionsOnly(
 	owner: { ownerUserId: string; latestMessageId?: Id<'mailMessages'> | null },
 	isColdPitchAsked: boolean
 ): Promise<void> {
-	if (!args.messageId || questions.length === 0) return;
+	if (!args.messageId || (questions.length === 0 && !isColdPitchAsked)) return;
 	const outcome = await askCategoryQuestions(ctx, {
 		messageId: args.messageId,
 		questions,
@@ -209,6 +210,7 @@ export const classifyThread = internalAction({
 			const isColdPitchAsked = args.messageId
 				? await ctx.runQuery(internal.mail.arrival.coldPitch.isAskable, {
 						messageId: args.messageId,
+						...(args.precedence !== undefined ? { precedence: args.precedence } : {}),
 					})
 				: false;
 

@@ -51,6 +51,7 @@ import { postboxMutation } from '../_helpers';
 import { requireMailboxAccess } from '../permissions';
 import { isMailReadChangedBy } from '../interpret/scope';
 import { fenceThreadInterpretation } from '../interpret/staleFence';
+import { refreshArrivalProjection } from '../arrival/projection';
 
 /** A signed plaintext row whose verdict has no scope, so the reader withholds it. */
 export function needsSignatureReverify(
@@ -164,6 +165,8 @@ export const apply = internalMutation({
 		await ctx.db.patch(args.messageId, { inboundSignatureInfo: args.info, updatedAt: Date.now() });
 		if (args.isReadChanged && (await isInterpreted(ctx, message))) {
 			await fenceThreadInterpretation(ctx, message.threadId);
+			// A fenced thread's model-derived cold-pitch verdict no longer places it (#1381).
+			await refreshArrivalProjection(ctx, message.threadId);
 		}
 		return null;
 	},

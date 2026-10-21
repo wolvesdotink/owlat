@@ -29,6 +29,7 @@ import { enqueueDeliveredInterpretation } from '../interpret/enqueue';
 import { queuesNeedsReplyCheck, type InboundOrigin } from './insert';
 import { writeArrivalRecord, type ArrivalRecordSeed } from '../arrival/records';
 import { refreshArrivalProjection } from '../arrival/projection';
+import { isColdPitchAskable } from '../arrival/coldPitch';
 
 export type { InboundOrigin };
 
@@ -110,13 +111,21 @@ export async function runPostInsertInboundEffects(
 			messageId,
 		});
 	}
-	// R2 also answers this message's pending rule questions (SPEC §6.2): per
-	// message, also when the heuristic settled the category without the model.
-	if (record?.pendingAiFilters?.length && !isCategoryRefining) {
+	// R2 also answers this message's pending rule questions (SPEC §6.2) and
+	// the cold-pitch question (#1381): per message, also when the heuristic
+	// settled the category without the model (a heuristic label does not keep
+	// a pitch out of Needs you).
+	const isColdPitchAsked =
+		isClassifyQueued &&
+		record !== null &&
+		!isCategoryRefining &&
+		(await isColdPitchAskable(ctx, messageId, precedence));
+	if ((record?.pendingAiFilters?.length || isColdPitchAsked) && !isCategoryRefining) {
 		await ctx.scheduler.runAfter(0, internal.mail.ai.categoryClassify.classifyThread, {
 			threadId: delivered.threadId,
 			messageId,
 			baselineApplied: true,
+			...(precedence !== undefined ? { precedence } : {}),
 		});
 	}
 	// Depth-decision work still out (read on arrival, final review F4): the

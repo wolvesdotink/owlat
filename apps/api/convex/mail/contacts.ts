@@ -16,6 +16,8 @@ import { normalizeEmail } from '@owlat/shared';
 import { findLiveContactByEmail } from '../lib/contactHelpers';
 import { contactFrecencyScore, isScreenedOut, senderSignalFromContact } from './ai/priorityScore';
 import { resolveScreenerEnabled } from './ai/needsReplyScoring';
+import { voidColdPitchVerdictsOfSender } from './arrival/coldPitch';
+import { recordCorrespondents } from './correspondence';
 
 // ─── Pure frecency ranking (recency × frequency blend) ───────────────────────
 // Exported for unit tests. The autocomplete ordering blends how *recently* a
@@ -322,6 +324,8 @@ export const upsert = postboxMutation({
 			});
 			return existing._id;
 		}
+		// A new address-book row is relationship evidence (#1381).
+		await voidColdPitchVerdictsOfSender(ctx, args.mailboxId, email);
 		return ctx.db.insert('mailContacts', {
 			mailboxId: args.mailboxId,
 			email,
@@ -370,6 +374,7 @@ export const setVip = postboxMutation({
 			await ctx.db.patch(existing._id, { isVip: args.isVip });
 			return existing._id;
 		}
+		await voidColdPitchVerdictsOfSender(ctx, args.mailboxId, email); // a new row (#1381)
 		// VIP set on someone not yet in the address book — record them so the flag
 		// (and future frecency bumps) have a home. useCount 0: they've never been
 		// mailed, but the VIP flag short-circuits the score regardless.
@@ -409,6 +414,7 @@ export const acceptSender = postboxMutation({
 			await ctx.db.patch(existing._id, { isScreenerAccepted: true });
 			return existing._id;
 		}
+		await voidColdPitchVerdictsOfSender(ctx, args.mailboxId, email); // a new row (#1381)
 		return ctx.db.insert('mailContacts', {
 			mailboxId: args.mailboxId,
 			email,
@@ -420,37 +426,13 @@ export const acceptSender = postboxMutation({
 	},
 });
 
-/** Internal: bulk-record recipients on send. */
+/** Internal: bulk-record recipients on send (`correspondence.ts`). */
 export const internalRecordRecipients = internalMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		emails: v.array(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const now = Date.now();
-		for (const raw of args.emails) {
-			const email = normalizeEmail(raw);
-			if (!email.includes('@')) continue;
-			const existing = await ctx.db
-				.query('mailContacts')
-				.withIndex('by_mailbox_and_email', (q) =>
-					q.eq('mailboxId', args.mailboxId).eq('email', email)
-				)
-				.first();
-			if (existing) {
-				await ctx.db.patch(existing._id, {
-					useCount: existing.useCount + 1,
-					lastUsedAt: now,
-				});
-			} else {
-				await ctx.db.insert('mailContacts', {
-					mailboxId: args.mailboxId,
-					email,
-					useCount: 1,
-					lastUsedAt: now,
-					createdAt: now,
-				});
-			}
-		}
+		await recordCorrespondents(ctx, args.mailboxId, args.emails);
 	},
 });

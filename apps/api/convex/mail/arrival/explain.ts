@@ -30,6 +30,7 @@ import { isFencedThread } from '../interpret/staleFence';
 import { isPersonalMailbox, requireMailboxAccess } from '../permissions';
 import { senderWindowTotals } from '../senders/counters';
 import { placementOf, senderProfileOf } from './projection';
+import { loadColdPitchStanding } from './coldPitchEvidence';
 import { newestArrivalRecord } from './records';
 
 type ArrivalRecord = Doc<'mailArrivalRecords'>;
@@ -153,7 +154,8 @@ export const forThread = postboxQuery({
 		const message = await ctx.db.get(record.messageId);
 		if (!message) return null;
 		const profile = await senderProfileOf(ctx, thread.mailboxId, message.fromAddress);
-		const { placement, decidedBy } = placementOf(record, thread, profile);
+		const isColdPitch = await loadColdPitchStanding(ctx, record);
+		const { placement, decidedBy } = placementOf(record, thread, profile, isColdPitch);
 		const isFenced = isFencedThread(thread);
 		const label = record.category ?? thread.category?.label;
 		const source = record.categorySource ?? thread.category?.source;
