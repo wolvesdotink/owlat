@@ -99,6 +99,15 @@ describe('isTrackingResource', () => {
 		expect(isTrackingPixelTag('<img src="https&colon;&Tab;//click.list-manage.com/o">')).toBe(true);
 	});
 
+	it('reads a reference named after an Object.prototype member as text', () => {
+		// `&constructor;` is no named reference: it reads as its own text, the
+		// same as the escaped `&amp;constructor;`.
+		const size = 'width="600" height="400"';
+		expect(isTrackingPixelTag(`<img src="https://cdn.example&constructor;/a" ${size}>`)).toBe(
+			isTrackingPixelTag(`<img src="https://cdn.example&amp;constructor;/a" ${size}>`)
+		);
+	});
+
 	it('matches a tracker host written with a trailing root dot', () => {
 		const url = 'https://click.list-manage.com./open.gif';
 		expect(remoteResourceHost(url)).toBe('click.list-manage.com');
@@ -308,6 +317,18 @@ describe('stripRemoteImages', () => {
 			expect(out.strippedRemoteImages, element).toBe(1);
 			expect(out.html, element).toBe(`${element}<p>x</p>`);
 		}
+	});
+
+	it('reads a tag named after an Object.prototype member as an ordinary tag', () => {
+		const img = '<img src=https://cdn.example/a>';
+		expect(stripRemoteImages(`<constructor>${img}<p>x</p>`)).toEqual({
+			html: '<constructor><p>x</p>',
+			strippedRemoteImages: 1,
+		});
+		expect(stripRemoteImages(`${img}<p>x</p><Constructor>`)).toEqual({
+			html: '<p>x</p><Constructor>',
+			strippedRemoteImages: 1,
+		});
 	});
 
 	it('still drops what the first-`>` scan sees where the tokenizer model stops', () => {

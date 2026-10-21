@@ -34,19 +34,21 @@ export interface TrackerDetection {
 
 // The named references that can spell a URL's scheme or authority; anything
 // else a URL could hide behind a named reference leaves it unparseable, and an
-// unparseable remote reference is classified conservatively.
-const NAMED_CHAR_REFS: Record<string, string> = {
-	amp: '&',
-	apos: "'",
-	colon: ':',
-	gt: '>',
-	lt: '<',
-	newline: '\n',
-	period: '.',
-	quot: '"',
-	sol: '/',
-	tab: '\t',
-};
+// unparseable remote reference is classified conservatively. A Map, so a
+// reference named after an Object.prototype member (`&constructor;`) is left
+// as it is.
+const NAMED_CHAR_REFS: ReadonlyMap<string, string> = new Map([
+	['amp', '&'],
+	['apos', "'"],
+	['colon', ':'],
+	['gt', '>'],
+	['lt', '<'],
+	['newline', '\n'],
+	['period', '.'],
+	['quot', '"'],
+	['sol', '/'],
+	['tab', '\t'],
+]);
 
 /** Decode character references in a raw attribute value read from a tag string. */
 function decodeCharRefs(value: string): string {
@@ -55,7 +57,7 @@ function decodeCharRefs(value: string): string {
 			const code = Number.parseInt(dec ?? hex, dec ? 10 : 16);
 			return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
 		}
-		return NAMED_CHAR_REFS[String(name).toLowerCase()] ?? ref;
+		return NAMED_CHAR_REFS.get(String(name).toLowerCase()) ?? ref;
 	});
 }
 

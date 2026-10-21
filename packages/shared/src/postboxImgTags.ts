@@ -133,8 +133,9 @@ function tagName(html: string, from: number): string {
 
 // Elements whose content is text up to their own end tag (RAWTEXT and RCDATA
 // in the tokenizer), so an `<img` inside them is not a tag. The end tag is
-// `</name` followed by whitespace, `/` or `>`, in any case.
-const TEXT_CONTENT_END: Readonly<Record<string, RegExp>> = Object.fromEntries(
+// `</name` followed by whitespace, `/` or `>`, in any case. A Map, so a tag
+// named after an Object.prototype member (`<constructor>`) finds nothing.
+const TEXT_CONTENT_END: ReadonlyMap<string, RegExp> = new Map(
 	['iframe', 'noembed', 'noframes', 'script', 'style', 'textarea', 'title', 'xmp'].map((name) => [
 		name,
 		new RegExp(`</${name}[\\t\\n\\f\\r />]`, 'gi'),
@@ -208,7 +209,7 @@ function replaceTokenizedImgTags(
 			}
 			at = close + 1;
 			if (name === 'plaintext') break;
-			const textEnd = TEXT_CONTENT_END[name];
+			const textEnd = TEXT_CONTENT_END.get(name);
 			if (textEnd) {
 				textEnd.lastIndex = at;
 				const end = textEnd.exec(html);
