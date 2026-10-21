@@ -7,63 +7,23 @@
  * as its only neighbour. The VPS template had it on `default` with every other
  * service while the gate only looked at the root file (#1329), so each case
  * breaks one template in a copy and runs the real gate against it.
+ *
+ * The network is one route to the engine; the socket is the other, covered in
+ * check-compose-socket-access.test.ts (#1368).
  */
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+	GATE_TIMEOUT_MS,
+	TEMPLATES,
+	addIntruder,
+	both,
+	readTemplate,
+	removeSandboxes,
+	replaceOnce,
+	runGate,
+} from './composeGate.testlib';
 
-const REPOSITORY_ROOT = resolve(import.meta.dirname, '../..');
-const SCRIPT = join(REPOSITORY_ROOT, 'scripts/check-compose-invariants.sh');
-
-const TEMPLATES = [
-	{ name: 'docker-compose.yml', env: 'COMPOSE_INVARIANTS_ROOT' },
-	{ name: 'infra/templates/docker-compose.vps.yml', env: 'COMPOSE_INVARIANTS_VPS' },
-] as const;
-
-// One gate run is ~0.5s, but it forks a few hundred greps; leave headroom for a
-// contended runner rather than flake at vitest's 5s default.
-const GATE_TIMEOUT_MS = 30_000;
-
-const sandboxes: string[] = [];
-
-afterEach(() => {
-	while (sandboxes.length > 0) {
-		const dir = sandboxes.pop();
-		if (dir) rmSync(dir, { recursive: true, force: true });
-	}
-});
-
-/** Replaces the single occurrence of `from`; a missing anchor fails loudly. */
-function replaceOnce(source: string, from: string, to: string): string {
-	expect(source.split(from), `anchor not found exactly once: ${JSON.stringify(from)}`).toHaveLength(
-		2
-	);
-	return source.replace(from, to);
-}
-
-function runGate(env: string, compose: string): { status: number | null; stderr: string } {
-	const dir = mkdtempSync(join(tmpdir(), 'owlat-compose-invariants-'));
-	sandboxes.push(dir);
-	const file = join(dir, 'docker-compose.yml');
-	writeFileSync(file, compose);
-	// A sync spawn blocks the event loop, so vitest's own timeout cannot stop a
-	// hung gate; the spawn has to time out by itself.
-	const result = spawnSync('bash', [SCRIPT], {
-		encoding: 'utf8',
-		env: { ...process.env, [env]: file },
-		timeout: GATE_TIMEOUT_MS,
-	});
-	expect(result.error).toBeUndefined();
-	return { status: result.status, stderr: result.stderr };
-}
-
-/** Adds a service, written as `body`, ahead of the updater. */
-function addIntruder(body: string): (s: string) => string {
-	return (s) =>
-		replaceOnce(s, '\n  updater:\n', `\n  intruder:\n    image: alpine:3\n${body}\n  updater:\n`);
-}
+afterEach(removeSandboxes);
 
 /** Gives an existing service an explicit `container_name`. */
 function nameContainer(service: string, containerName: string): (s: string) => string {
@@ -80,11 +40,6 @@ function addNetwork(body: string): (s: string) => string {
 			`  docker-proxy:\n    internal: true\n${body}`
 		);
 }
-
-const both =
-	(...steps: ((s: string) => string)[]) =>
-	(s: string) =>
-		steps.reduce((acc, step) => step(acc), s);
 
 const NOT_ONLY_MEMBERS = 'docker-proxy network must hold exactly docker-socket-proxy and updater';
 const SHARES_NAMESPACE = "joins a docker-proxy member's network namespace";
@@ -367,7 +322,7 @@ const MUTATIONS = [
 ] as const;
 
 describe.each(TEMPLATES)('$name keeps the Docker API off the app network', ({ name, env }) => {
-	const original = readFileSync(join(REPOSITORY_ROOT, name), 'utf8');
+	const original = readTemplate(name);
 
 	it(
 		'passes the gate as checked in',
