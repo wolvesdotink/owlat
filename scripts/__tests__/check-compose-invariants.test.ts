@@ -378,6 +378,7 @@ const MUTATIONS = [
 const GIVES_SOCKET = 'gives the Docker socket away';
 const ONLY_PROXY = 'only docker-socket-proxy may reach the Docker engine';
 const UNRESOLVED_SOURCE = 'takes its source from interpolation the gate cannot resolve';
+const THROUGH_PROCFS = 'goes through procfs';
 
 /** An intruder with no network at all, so only the socket can reach the engine. */
 const offline = (body: string) => addIntruder(`    network_mode: none\n${body}`);
@@ -467,6 +468,33 @@ const SOCKET_MUTATIONS = [
 		breaks: 'a relative bind that climbs out of the project directory',
 		apply: offline('    volumes:\n      - ./../../../../var/run:/host-run\n'),
 		expected: 'climbs out of the project directory (./../../../../var/run)',
+	},
+	{
+		breaks: "a bind of the socket directory through init's procfs root",
+		apply: offline('    volumes:\n      - /proc/1/root/run:/host-run:ro\n'),
+		expected: `intruder volume "/proc/1/root/run:/host-run:ro" ${THROUGH_PROCFS} (/proc/1/root/run)`,
+	},
+	{
+		breaks: 'a bind of the host root through procfs (long syntax)',
+		apply: offline(
+			'    volumes:\n      - type: bind\n        source: /proc/self/root/\n        target: /host\n'
+		),
+		expected: `${THROUGH_PROCFS} (/proc/self/root/)`,
+	},
+	{
+		breaks: 'a bind through a /dev link into procfs',
+		apply: offline('    volumes:\n      - /dev/fd/3:/held-dir\n'),
+		expected: `${THROUGH_PROCFS} (/dev/fd/3)`,
+	},
+	{
+		breaks: 'a named volume backed by a procfs path',
+		apply: both(
+			addVolume(
+				'  engine-run:\n    driver_opts:\n      type: none\n      o: bind\n      device: /proc/1/root/var/run\n'
+			),
+			offline('    volumes:\n      - engine-run:/host-run\n')
+		),
+		expected: `uses volume engine-run, whose device ${THROUGH_PROCFS} (/proc/1/root/var/run)`,
 	},
 	{
 		breaks: 'a named volume backed by the socket directory',
@@ -588,6 +616,8 @@ describe.each(TEMPLATES)('$name keeps the Docker API off the app network', ({ na
 							'      - ${OWLAT_DATA_DIR:-./data}:/srv/data:ro',
 							'      - /var/lib/owlat:/var/lib/owlat:ro',
 							'      - /run/owlat:/run/owlat',
+							'      - /procedures:/srv/procedures:ro',
+							'      - /dev/shm:/dev/shm',
 							'      - type: tmpfs',
 							'        target: /tmp',
 							'      - type: ${SCRATCH_MOUNT_TYPE:-tmpfs}',

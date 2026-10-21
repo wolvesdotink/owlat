@@ -17,8 +17,9 @@
  * What the gate cannot resolve from the file fails closed, as in the network
  * check: a variable with no default anywhere in a short-syntax mount (it may
  * supply the whole mount) or in a long-syntax source or type, an unknown mount
- * type, a relative path that climbs out of the project directory, an external
- * volume, `volumes_from` a container instead of a service, and named pipes. A
+ * type, a relative path that climbs out of the project directory, a path
+ * through procfs (`/proc/1/root/run` is the host's /run), an external volume,
+ * `volumes_from` a container instead of a service, and named pipes. A
  * `${VAR:-default}` is checked with its default, which is what a deploy that
  * leaves VAR unset mounts; the variable itself is the operator's choice, not
  * this file's. Every decision is taken on the interpolated value.
@@ -30,6 +31,14 @@ const NO_SOCKET = `only ${PROXY} may reach the Docker engine`;
 
 /** Where the engine listens; /var/run is a symlink to /run on current distros. */
 const SOCKETS = ['/var/run/docker.sock', '/run/docker.sock'];
+
+/**
+ * procfs, and the /dev links into it. Its links lead anywhere on the host:
+ * `/proc/1/root/run` is the host's /run, and `/proc/<pid>/cwd` and the fd links
+ * open whatever directory a process holds. A path through them names nothing
+ * the gate can resolve, so the whole tree fails closed.
+ */
+const PROCFS = ['/proc', '/dev/fd', '/dev/stdin', '/dev/stdout', '/dev/stderr'];
 
 type Service = {
 	use_api_socket?: unknown;
@@ -72,7 +81,9 @@ function interpolate(value: string): string {
 /**
  * Why a host path gives the Docker socket away, or undefined when it does not.
  * Relative paths are resolved against the project directory, which the file
- * does not know, so one that climbs above it is as good as absolute.
+ * does not know, so one that climbs above it is as good as absolute. Every
+ * host path a service can name (bind sources, volume devices, secret and
+ * config files) comes through here.
  */
 function hostPathViolation(path: string): string | undefined {
 	const relative = !path.startsWith('/');
@@ -80,6 +91,12 @@ function hostPathViolation(path: string): string | undefined {
 	if (normalized.length > 1) normalized = normalized.replace(/\/+$/, '');
 	if (relative && (normalized === '..' || normalized.startsWith('../'))) {
 		return `climbs out of the project directory (${path}), which the gate cannot resolve`;
+	}
+	if (
+		!relative &&
+		PROCFS.some((root) => normalized === root || normalized.startsWith(`${root}/`))
+	) {
+		return `goes through procfs (${path}), whose links reach any host path, the Docker socket included; ${NO_SOCKET}`;
 	}
 	const prefix = normalized === '/' ? '/' : `${normalized}/`;
 	const reaches =
