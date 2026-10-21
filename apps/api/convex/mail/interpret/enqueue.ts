@@ -35,6 +35,7 @@ import { markOutstanding } from './outstanding';
 import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import type { OutboundSource } from './sendFailure';
 import { scheduleArrivalRead } from '../arrival/dispatch';
+import { canonicalMessageId } from '../../lib/messageId';
 
 /**
  * The part of eligibility known at delivery: live mail outside spam, trash,
@@ -126,6 +127,14 @@ export async function enqueueSentInterpretation(
 }
 
 /**
+ * A client files its Sent copy right after sending, or once an offline outbox
+ * drains. A copy dated further back is history (a migration, a folder dragged
+ * in, an import into the provider's Sent folder that sync sees as new mail),
+ * which is never read into the brief message by message.
+ */
+export const CLIENT_SENT_COPY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
  * Interpretation of our own mail sent from another client, once its Sent copy
  * lands: synced from the provider's Sent folder, or filed by a desktop client
  * through IMAP APPEND. It is read like an Owlat send, so what the reply
@@ -133,9 +142,16 @@ export async function enqueueSentInterpretation(
  * those items stay open until someone ticks them off by hand.
  *
  * The Sent folder is what makes it ours, as for history
- * (`backfillSources.mailSourceOf`). An Owlat send (`outbound` set) is skipped:
- * its transport lifecycle enqueues it once it went out. Callers pass live
- * copies only, never an auto-reply. Returns whether it was enqueued.
+ * (`backfillSources.mailSourceOf`). Skipped:
+ *   - an Owlat send (`outbound` set): its transport lifecycle enqueues it once
+ *     it went out;
+ *   - a copy older than {@link CLIENT_SENT_COPY_MAX_AGE_MS};
+ *   - a message the mailbox already holds under the same Message-ID (a client
+ *     re-APPENDing, the Sent copy of an Owlat send, our own copy delivered to
+ *     the inbox). Interpretation is keyed by row, so a second row would be
+ *     read again; the first row was read, or deliberately not.
+ * Callers pass live copies only, never an auto-reply. Returns whether it was
+ * enqueued.
  */
 export async function enqueueClientSentInterpretation(
 	ctx: MutationCtx,
@@ -143,16 +159,30 @@ export async function enqueueClientSentInterpretation(
 ): Promise<boolean> {
 	const message = await ctx.db.get(messageId);
 	if (!message || message.flagDraft || message.outbound !== undefined) return false;
+	if (Date.now() - message.receivedAt > CLIENT_SENT_COPY_MAX_AGE_MS) return false;
 	const [folder, thread] = await Promise.all([
 		ctx.db.get(message.folderId),
 		ctx.db.get(message.threadId),
 	]);
 	if (folder?.role !== 'sent' || !thread) return false;
 	if (thread.mutedAt !== undefined || thread.isSelfDeliveredBrief) return false;
+	if (await isHeldElsewhere(ctx, message)) return false;
 	await enqueueSentInterpretation(
 		ctx,
 		{ kind: 'outboundMail', id: message._id },
 		{ kind: 'mail', id: thread._id }
 	);
 	return true;
+}
+
+/** Another non-draft row of the mailbox carries the same Message-ID. */
+async function isHeldElsewhere(ctx: MutationCtx, message: Doc<'mailMessages'>): Promise<boolean> {
+	const rfc822MessageId = canonicalMessageId(message.rfc822MessageId);
+	const rows = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_mailbox_and_rfc822_message_id', (q) =>
+			q.eq('mailboxId', message.mailboxId).eq('rfc822MessageId', rfc822MessageId)
+		)
+		.take(10); // bounded: copies of one message
+	return rows.some((row) => row._id !== message._id && !row.flagDraft);
 }

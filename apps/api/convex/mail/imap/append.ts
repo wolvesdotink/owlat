@@ -35,13 +35,6 @@ import { enqueueClientSentInterpretation } from '../interpret/enqueue';
  */
 const FROM_NOT_AUTHORIZED_ERROR = 'From address not authorized';
 
-/**
- * A client files its Sent copy right after sending, or once an offline outbox
- * drains. A copy dated further back is history being uploaded (a migration, a
- * folder dragged in), which is never read into the brief message by message.
- */
-export const LIVE_SENT_COPY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
 /** Mint an upload URL for APPEND so the IMAP server can store a raw message
  *  in file storage before recording it via `appendMessage`. */
 export const generateRawUploadUrl = internalMutation({
@@ -228,9 +221,7 @@ export const appendMessage = internalMutation({
 		const isAutomated = isAutomatedResponse(antiLoop);
 		await settleOwnerReply(ctx, messageId, { isAutomated });
 		// Read like an Owlat send, so the brief items it answered close.
-		if (!isAutomated && now - internalDate <= LIVE_SENT_COPY_MAX_AGE_MS) {
-			await enqueueClientSentInterpretation(ctx, messageId);
-		}
+		if (!isAutomated) await enqueueClientSentInterpretation(ctx, messageId);
 
 		// E8b: the IMAP server uploads the raw `.eml` straight to storage
 		// (plaintext), so seal it at rest out-of-band — a mutation can't read/re-store

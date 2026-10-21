@@ -2,8 +2,10 @@
  * Our reply sent from another client is interpreted like an Owlat send
  * (`enqueue.ts#enqueueClientSentInterpretation`), so the brief items it
  * answered close and leave the Workbench's To do. Its Sent copy arrives
- * through mail sync or a desktop client's IMAP APPEND; a backfill, an old
- * APPENDed copy, an auto-reply, a draft and a muted thread are not read.
+ * through mail sync or a desktop client's IMAP APPEND. A backfill, an old
+ * copy, a second copy of a message the mailbox already holds (a re-APPEND,
+ * the Sent copy of an Owlat send), an auto-reply, a draft and a muted thread
+ * are not read.
  */
 
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
@@ -18,7 +20,7 @@ import {
 	runPostInsertInboundEffects,
 	type InboundOrigin,
 } from '../../deliveryPipeline/afterInsert';
-import { LIVE_SENT_COPY_MAX_AGE_MS } from '../../imap/append';
+import { CLIENT_SENT_COPY_MAX_AGE_MS } from '../enqueue';
 import { seedFolder, seedMailbox, type SeededFolderRole } from '../../__tests__/helpers.testlib';
 import { modules, type Test } from './interpret.testlib';
 
@@ -51,6 +53,7 @@ async function deliver(
 		to: string;
 		messageId: string;
 		inReplyTo?: string;
+		receivedAt?: number;
 		antiLoopHeaders?: Record<string, string>;
 	}
 ): Promise<Doc<'mailMessages'>> {
@@ -69,7 +72,7 @@ async function deliver(
 		textBodyInline: opts.inReplyTo ? 'Friday works.' : 'Can you confirm Friday works?',
 		messageId: opts.messageId,
 		...(opts.inReplyTo ? { inReplyTo: opts.inReplyTo } : {}),
-		receivedAt: Date.now(),
+		receivedAt: opts.receivedAt ?? Date.now(),
 		attachments: [],
 		inboundOrigin: opts.origin,
 	});
@@ -105,7 +108,11 @@ async function ask(t: Test, mailboxId: Id<'mailboxes'>) {
 async function syncReply(
 	t: Test,
 	mailboxId: Id<'mailboxes'>,
-	opts: { origin?: InboundOrigin; antiLoopHeaders?: Record<string, string> } = {}
+	opts: {
+		origin?: InboundOrigin;
+		receivedAt?: number;
+		antiLoopHeaders?: Record<string, string>;
+	} = {}
 ) {
 	return t.run(async (ctx) =>
 		deliver(ctx, mailboxId, {
@@ -115,6 +122,7 @@ async function syncReply(
 			to: SENDER,
 			messageId: '<reply@owlat.test>',
 			inReplyTo: '<ask@acme.test>',
+			...(opts.receivedAt !== undefined ? { receivedAt: opts.receivedAt } : {}),
 			...(opts.antiLoopHeaders ? { antiLoopHeaders: opts.antiLoopHeaders } : {}),
 		})
 	);
@@ -202,6 +210,17 @@ describe('our reply from another client → interpretation', () => {
 		expect(await outboundRuns(t)).toEqual([]);
 	});
 
+	it("old mail imported into the provider's Sent folder is history, even when synced live", async () => {
+		const t = harness();
+		const mailboxId = await seed(t);
+		await ask(t, mailboxId);
+		await syncReply(t, mailboxId, {
+			receivedAt: Date.now() - CLIENT_SENT_COPY_MAX_AGE_MS - 60_000,
+		});
+
+		expect(await outboundRuns(t)).toEqual([]);
+	});
+
 	it('a vacation auto-reply in Sent answers nothing: nothing is read', async () => {
 		const t = harness();
 		const mailboxId = await seed(t);
@@ -239,8 +258,64 @@ describe('our reply from another client → interpretation', () => {
 		const mailboxId = await seed(t);
 		await ask(t, mailboxId);
 		await appendReply(t, mailboxId, {
-			internalDate: Date.now() - LIVE_SENT_COPY_MAX_AGE_MS - 60_000,
+			internalDate: Date.now() - CLIENT_SENT_COPY_MAX_AGE_MS - 60_000,
 		});
+
+		expect(await outboundRuns(t)).toEqual([]);
+	});
+
+	it('a client APPENDing the same copy again is read once', async () => {
+		const t = harness();
+		const mailboxId = await seed(t);
+		await ask(t, mailboxId);
+		const first = await appendReply(t, mailboxId);
+		const second = await appendReply(t, mailboxId);
+
+		expect(second._id).not.toBe(first._id);
+		expect(await outboundRuns(t)).toEqual([{ kind: 'outboundMail', id: first._id }]);
+	});
+
+	it("the Sent copy of an Owlat send is left to the send's own lifecycle", async () => {
+		const t = harness();
+		const mailboxId = await seed(t);
+		const asked = await ask(t, mailboxId);
+		await t.run(async (ctx) => {
+			const sent = await folderOf(ctx, mailboxId, 'sent');
+			const now = Date.now();
+			await ctx.db.insert('mailMessages', {
+				mailboxId,
+				folderId: sent._id,
+				uid: 99,
+				modseq: 99,
+				rfc822MessageId: 'reply@owlat.test',
+				threadId: asked.threadId,
+				fromAddress: OWNER,
+				toAddresses: [SENDER],
+				ccAddresses: [],
+				bccAddresses: [],
+				subject: 'Re: Friday?',
+				normalizedSubject: 'friday?',
+				snippet: 'Friday works.',
+				rawStorageId: await ctx.storage.store(new Blob(['raw'])),
+				rawSize: 3,
+				attachments: [],
+				hasAttachments: false,
+				flagSeen: true,
+				flagFlagged: false,
+				flagAnswered: false,
+				flagDraft: false,
+				flagDeleted: false,
+				customFlags: [],
+				labelIds: [],
+				receivedAt: now,
+				internalDate: now,
+				sentByUserId: 'user-A',
+				outbound: { state: 'sent', recipients: [] },
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+		await appendReply(t, mailboxId);
 
 		expect(await outboundRuns(t)).toEqual([]);
 	});
