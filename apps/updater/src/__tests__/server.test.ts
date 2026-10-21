@@ -11,6 +11,7 @@ import {
 } from 'node:fs';
 import type * as NodeFs from 'node:fs';
 import type * as OwnerOnlyFile from '@owlat/shared/ownerOnlyFile';
+import type * as Http from '../http.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -36,7 +37,7 @@ vi.mock('../security.js', async (importOriginal) => {
 // The real exec, behind a spy so a case can read the bound a step ran under.
 const { execSpy } = vi.hoisted(() => ({ execSpy: vi.fn() }));
 vi.mock('../http.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../http.js')>();
+	const actual = await importOriginal<typeof Http>();
 	execSpy.mockImplementation(actual.exec);
 	return { ...actual, exec: execSpy };
 });
