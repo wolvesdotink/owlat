@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { createHttpClient } from '../src/utils/fetch';
 import {
 	OwlatError,
@@ -527,6 +527,125 @@ describe('createHttpClient', () => {
 			const http2 = createRetryClient();
 			await http2.delete('/test');
 			expect(delSpy).toHaveBeenCalledTimes(2);
+		});
+
+		describe('with an idempotency key', () => {
+			const KEY = 'order-1001-confirmation';
+
+			// The backoff sleeps run on fake timers: each test settles them with
+			// `runAllTimersAsync` instead of waiting on the real clock.
+			beforeEach(() => {
+				vi.useFakeTimers();
+			});
+			afterEach(() => {
+				vi.useRealTimers();
+			});
+
+			/** Settle `promise`, firing every backoff timer it schedules. */
+			async function settle<R>(promise: Promise<R>): Promise<R> {
+				const outcome = promise.then(
+					(value) => ({ ok: true as const, value }),
+					(error: unknown) => ({ ok: false as const, error })
+				);
+				await vi.runAllTimersAsync();
+				const result = await outcome;
+				if (!result.ok) throw result.error;
+				return result.value;
+			}
+
+			function sentAttempts(spy: ReturnType<typeof mockSequence>) {
+				return spy.mock.calls.map(([, init]) => ({
+					key: ((init?.headers ?? {}) as Record<string, string>)['Idempotency-Key'],
+					body: init?.body,
+				}));
+			}
+
+			it('retries a keyed POST on 5xx with the same key and body', async () => {
+				const spy = mockSequence([
+					{ status: 502, body: { error: { message: 'Bad gateway', category: 'internal' } } },
+					{ status: 503 },
+					{ status: 202, body: { data: 'ok' } },
+				]);
+				const http = createRetryClient();
+
+				const result = await settle(
+					http.post('/test', { b: 2, a: 1 }, undefined, { idempotencyKey: KEY })
+				);
+
+				expect(result.data).toEqual({ data: 'ok' });
+				const attempts = sentAttempts(spy);
+				expect(attempts).toHaveLength(3);
+				expect(new Set(attempts.map((a) => a.key))).toEqual(new Set([KEY]));
+				expect(new Set(attempts.map((a) => a.body))).toEqual(new Set(['{"b":2,"a":1}']));
+			});
+
+			it('retries a keyed POST after a network error', async () => {
+				let call = 0;
+				const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+					if (call++ === 0) throw new TypeError('Failed to fetch');
+					return new Response(JSON.stringify({ data: 'ok' }), { status: 201 });
+				});
+				const http = createRetryClient();
+
+				await settle(http.post('/test', { a: 1 }, undefined, { idempotencyKey: KEY }));
+
+				expect(spy).toHaveBeenCalledTimes(2);
+			});
+
+			it('never retries a 409 (key reused for another request)', async () => {
+				const spy = mockSequence([
+					{
+						status: 409,
+						body: {
+							error: {
+								message: 'reused',
+								category: 'conflict',
+								data: { reason: 'idempotency_conflict' },
+							},
+						},
+					},
+					{ status: 202, body: { data: 'ok' } },
+				]);
+				const http = createRetryClient();
+
+				await expect(
+					settle(http.post('/test', { a: 1 }, undefined, { idempotencyKey: KEY }))
+				).rejects.toBeInstanceOf(ConflictError);
+				expect(spy).toHaveBeenCalledOnce();
+			});
+
+			it('keeps the retry limit for a keyed POST', async () => {
+				const spy = mockSequence([{ status: 500 }]);
+				const http = createRetryClient();
+
+				await expect(
+					settle(http.post('/test', { a: 1 }, undefined, { idempotencyKey: KEY }))
+				).rejects.toThrow(OwlatError);
+				expect(spy).toHaveBeenCalledTimes(3);
+			});
+
+			it('sends no Idempotency-Key header without a key', async () => {
+				const spy = mockSequence([{ status: 202, body: { data: 'ok' } }]);
+				const http = createRetryClient();
+
+				await settle(http.post('/test', { a: 1 }));
+
+				expect(sentAttempts(spy)[0]?.key).toBeUndefined();
+			});
+
+			it.each([
+				['empty', ''],
+				['with a space', 'a b'],
+				['too long', 'k'.repeat(256)],
+			])('rejects a key that is %s before sending', async (_label, key) => {
+				const spy = mockSequence([{ status: 202, body: { data: 'ok' } }]);
+				const http = createRetryClient();
+
+				await expect(
+					settle(http.post('/test', { a: 1 }, undefined, { idempotencyKey: key }))
+				).rejects.toBeInstanceOf(ValidationError);
+				expect(spy).not.toHaveBeenCalled();
+			});
 		});
 
 		it('SHOULD retry POST on 429 (pre-processing rejection, safe to replay)', async () => {

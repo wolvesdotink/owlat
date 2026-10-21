@@ -12,9 +12,15 @@ import { eventReceivedTrigger } from './triggers/event_received';
 import { topicSubscribedTrigger } from './triggers/topic_subscribed';
 import type { FireInputFor, TriggerKind, TriggerModule, TriggerData } from './triggers/types';
 import { isCoreTriggerKind } from './triggers/catalog';
-import { createContact } from '../contacts/creation';
+import { createContactStrict } from '../contacts/contactEdit';
 import { findLiveContactByEmail } from '../lib/contactHelpers';
-import { throwNotFound } from '../_utils/errors';
+import {
+	idempotencyArgValidator,
+	lookupReceipt,
+	storedEventResponse,
+	type IdempotencyRefusalReason,
+	writeReceipt,
+} from '../auth/apiRequestReceipts';
 
 // ============== Module registry ==============
 
@@ -194,10 +200,38 @@ export const fireTopicSubscribedTrigger = internalMutation({
 
 // ============== Event-send mutation (internal) ==============
 
+/** The actor `contact.created` audit rows name for API-key writes. */
+const API_KEY_ACTOR = 'api';
+
+/** A unique id handed to the caller for one accepted event. */
+export function generateEventId(): string {
+	const timestamp = Date.now().toString(36);
+	const random = Math.random().toString(36).substring(2, 10);
+	return `evt_${timestamp}${random}`;
+}
+
+type SendEventOutcome =
+	| {
+			ok: true;
+			eventId: string;
+			contactId: Id<'contacts'>;
+			eventName: string;
+			triggeredAutomations: number;
+			contactCreated: boolean;
+			/** Answered from the Idempotency-Key's receipt: nothing fired this time. */
+			replayed?: true;
+	  }
+	| { ok: false; reason: 'contact_not_found' | IdempotencyRefusalReason };
+
 /**
  * Send an event for a contact (by email). Optionally creates the contact,
- * fires `contact_created` for them, then fires `event_received` for the
+ * which fires `contact_created` for them, then fires `event_received` for the
  * supplied event.
+ *
+ * One transaction owns the whole request: the contact lookup, its creation,
+ * the trigger fanout, the event id and the Idempotency-Key receipt
+ * (`auth/apiRequestReceipts.ts`), so a keyed repeat can never create the
+ * contact or fan out a second time.
  *
  * Internal-only: the sole entry point is the API-key-authenticated REST route
  * `POST /api/v1/events` (`eventsApi.ts`), which calls this via
@@ -211,47 +245,74 @@ export const sendEvent = internalMutation({
 		eventName: v.string(),
 		eventProperties: v.optional(v.record(v.string(), jsonPrimitiveValue)),
 		createContactIfNotExists: v.optional(v.boolean()),
+		idempotency: v.optional(idempotencyArgValidator),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<SendEventOutcome> => {
 		validateStringLength(args.eventName, STRING_LIMITS.EVENT_NAME, 'Event name');
+
+		if (args.idempotency) {
+			const lookup = await lookupReceipt(ctx, 'events', args.idempotency);
+			if (lookup.kind === 'refused') return { ok: false, reason: lookup.reason };
+			if (lookup.kind === 'replay') {
+				return {
+					ok: true,
+					...storedEventResponse(lookup.receipt),
+					eventName: args.eventName,
+					replayed: true,
+				};
+			}
+		}
 
 		// Soft-deleted Contacts are invisible to this API surface (per
 		// CONVENTIONS.md soft-delete contract). When the only `by_email`
 		// match is a gravestone, this lookup returns null — the call then
 		// either creates a fresh Contact (when `createContactIfNotExists`)
-		// or throws "not found." The resolution module guarantees identifier
+		// or reports it missing. The resolution module guarantees identifier
 		// reclaimability on day 1 via the identity cascade.
-		let contact: Doc<'contacts'> | null = await findLiveContactByEmail(ctx, args.email);
-
-		if (!contact && args.createContactIfNotExists) {
-			// Contact creation (module) owns the created trio (count +
-			// contact_created trigger + created activity) — the ad-hoc
-			// fireTrigger('contact_created') this path used to do is now unified,
-			// and the count + activity it used to skip are fixed for free.
-			const { contactId } = await createContact(ctx, {
-				channel: 'email',
-				identifier: args.email,
-				source: 'api',
-				mode: 'upsert',
-			});
-			contact = await ctx.db.get(contactId);
-		}
-
-		if (!contact) {
-			throwNotFound(`Contact with email ${args.email}`);
+		const contact: Doc<'contacts'> | null = await findLiveContactByEmail(ctx, args.email);
+		let contactId: Id<'contacts'>;
+		let contactCreated = false;
+		if (contact) {
+			contactId = contact._id;
+		} else if (args.createContactIfNotExists) {
+			// The strict create the REST contacts API uses: the created trio
+			// (count + contact_created trigger + created activity) plus the
+			// `contact.created` audit row naming the API key as the actor.
+			contactId = await createContactStrict(
+				ctx,
+				{ email: args.email, source: 'api' },
+				{ actorUserId: API_KEY_ACTOR }
+			);
+			contactCreated = true;
+		} else {
+			return { ok: false, reason: 'contact_not_found' };
 		}
 
 		const triggered = await fireTrigger(ctx, 'event_received', {
-			contactId: contact._id,
+			contactId,
 			eventName: args.eventName,
 			eventProperties:
 				args.eventProperties != null ? JSON.stringify(args.eventProperties) : undefined,
 		});
 
+		const eventId = generateEventId();
+		if (args.idempotency) {
+			await writeReceipt(ctx, args.idempotency, {
+				endpoint: 'events',
+				contactId,
+				contactCreated,
+				eventId,
+				triggeredAutomations: triggered.length,
+			});
+		}
+
 		return {
-			contactId: contact._id,
+			ok: true,
+			eventId,
+			contactId,
 			eventName: args.eventName,
 			triggeredAutomations: triggered.length,
+			contactCreated,
 		};
 	},
 });

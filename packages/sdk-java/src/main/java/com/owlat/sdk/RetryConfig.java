@@ -6,10 +6,11 @@ package com.owlat.sdk;
  * (packages/sdk-js src/types/config.ts).
  *
  * <p>A 429 is always retried (it respects {@code Retry-After}). A 5xx or
- * network/timeout failure is only retried for idempotent methods
- * (GET/PUT/DELETE) — non-idempotent {@code POST} sends
- * ({@code transactional.send}, {@code events.send}) are never replayed, since
- * the server has no idempotency key and a retry could duplicate the send.
+ * network/timeout failure is retried for idempotent methods (GET/PUT/DELETE)
+ * and for a {@code POST} send ({@code transactional.send},
+ * {@code events.send}) called with {@link RequestOptions#idempotencyKey(String)},
+ * which the server applies at most once. A send without a key is never
+ * replayed after a 5xx or network failure, since a retry could duplicate it.
  *
  * <p>Use {@link #disabled()} to turn retries off entirely (the equivalent of
  * the JS SDK's {@code retry: false}). The defaults

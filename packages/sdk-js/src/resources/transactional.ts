@@ -1,6 +1,6 @@
 import { BaseResource } from './base';
 import type { SendTransactionalParams, SendTransactionalResponse } from '../types/transactional';
-import type { ApiResponse } from '../types/common';
+import type { ApiResponse, RequestOptions } from '../types/common';
 import { ValidationError } from '../errors';
 
 /**
@@ -14,9 +14,12 @@ export class TransactionalResource extends BaseResource {
 	 * They're ideal for welcome emails, password resets, order confirmations, etc.
 	 *
 	 * @param params - Send parameters
+	 * @param options - Per-call options; `idempotencyKey` makes the send safe to
+	 *   retry (see {@link RequestOptions})
 	 * @returns Response with queue status and contact info
 	 * @throws {ValidationError} If required parameters are missing or invalid
 	 * @throws {NotFoundError} If the transactional email template is not found
+	 * @throws {ConflictError} If `idempotencyKey` was already used for a different request
 	 *
 	 * @example
 	 * ```typescript
@@ -36,9 +39,18 @@ export class TransactionalResource extends BaseResource {
 	 *   transactionalId: 'abc123',
 	 *   language: 'de', // Send German translation
 	 * });
+	 *
+	 * // Safe to retry: the server sends at most once per key
+	 * const result = await owlat.transactional.send(
+	 *   { email: 'user@example.com', slug: 'order-confirmation' },
+	 *   { idempotencyKey: `order-${orderId}-confirmation` }
+	 * );
 	 * ```
 	 */
-	async send(params: SendTransactionalParams): Promise<SendTransactionalResponse> {
+	async send(
+		params: SendTransactionalParams,
+		options?: RequestOptions
+	): Promise<SendTransactionalResponse> {
 		// Validate that either transactionalId or slug is provided
 		if (!params.transactionalId && !params.slug) {
 			throw new ValidationError('Either transactionalId or slug is required', 'invalid_input');
@@ -129,7 +141,9 @@ export class TransactionalResource extends BaseResource {
 
 		const response = await this.http.post<ApiResponse<SendTransactionalResponse>>(
 			'/api/v1/transactional',
-			params
+			params,
+			undefined,
+			options
 		);
 		return response.data.data;
 	}
