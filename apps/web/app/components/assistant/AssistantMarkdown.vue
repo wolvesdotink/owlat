@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import { parseMarkdown } from '~/utils/markdown';
+import { shareStructure } from '~/lib/structuralSharing';
+import { parseMarkdown, type Block } from '~/utils/markdown';
 
 const props = defineProps<{ source: string }>();
-const blocks = computed(() => parseMarkdown(props.source));
+// A streaming answer arrives whole on every flush. Parsing it again yields new
+// arrays for every block, so each settled block's AssistantInline would
+// re-render. Sharing structure with the previous parse keeps unchanged blocks
+// (and their inline arrays) identical, so only the block the new text extends
+// updates.
+const blocks = computed<Block[]>((previous) =>
+	shareStructure(previous, parseMarkdown(props.source))
+);
 
 const headingClass: Record<number, string> = {
 	1: 'text-lg font-semibold mt-1',
