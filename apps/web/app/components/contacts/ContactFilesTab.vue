@@ -8,24 +8,26 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const { data: files, isLoading } = useConvexQuery(
-	api.semanticFiles.listByContact,
-	() => ({ contactId: props.contactId, limit: 50 }),
-);
+const { data: files, isLoading } = useConvexQuery(api.files.cards.listByContact, () => ({
+	contactId: props.contactId,
+	limit: 50,
+}));
 
 const mimeIcon = (mimeType: string): string => {
 	if (mimeType.startsWith('image/')) return 'lucide:image';
 	if (mimeType === 'application/pdf') return 'lucide:file-text';
-	if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv')) return 'lucide:table';
-	if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return 'lucide:presentation';
+	if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv'))
+		return 'lucide:table';
+	if (mimeType.includes('presentation') || mimeType.includes('powerpoint'))
+		return 'lucide:presentation';
 	if (mimeType.includes('word') || mimeType.includes('document')) return 'lucide:file-text';
 	if (mimeType.startsWith('text/')) return 'lucide:file-text';
 	if (mimeType.startsWith('video/')) return 'lucide:video';
 	if (mimeType.startsWith('audio/')) return 'lucide:music';
-	if (mimeType.includes('zip') || mimeType.includes('archive') || mimeType.includes('compressed')) return 'lucide:archive';
+	if (mimeType.includes('zip') || mimeType.includes('archive') || mimeType.includes('compressed'))
+		return 'lucide:archive';
 	return 'lucide:file';
 };
-
 
 const sourceLabel = (sourceType: string): string => {
 	const map: Record<string, string> = {
@@ -54,13 +56,7 @@ const sourceIcon = (sourceType: string): string => {
 				{{ t('components.contacts.contactFilesTab.title') }}
 			</h2>
 			<span v-if="files" class="text-xs text-text-tertiary">
-				{{
-					t(
-						'components.contacts.contactFilesTab.count',
-						{ count: files.length },
-						files.length,
-					)
-				}}
+				{{ t('components.contacts.contactFilesTab.count', { count: files.length }, files.length) }}
 			</span>
 		</div>
 
@@ -79,7 +75,13 @@ const sourceIcon = (sourceType: string): string => {
 			v-else-if="!files || files.length === 0"
 			class="flex flex-col items-center justify-center py-8 text-center"
 		>
-			<UiIconBox icon="lucide:file-search" size="lg" variant="surface" rounded="full" class="mb-3" />
+			<UiIconBox
+				icon="lucide:file-search"
+				size="lg"
+				variant="surface"
+				rounded="full"
+				class="mb-3"
+			/>
 			<p class="text-text-secondary text-sm">
 				{{ t('components.contacts.contactFilesTab.emptyTitle') }}
 			</p>
@@ -107,7 +109,9 @@ const sourceIcon = (sourceType: string): string => {
 						{{ file.title || file.filename }}
 					</p>
 					<div class="flex items-center gap-2 mt-0.5">
-						<span class="text-xs text-text-tertiary">{{ formatCompactFileSize(file.fileSize) }}</span>
+						<span class="text-xs text-text-tertiary">{{
+							formatCompactFileSize(file.fileSize)
+						}}</span>
 						<span class="text-xs text-text-tertiary">·</span>
 						<span class="text-xs text-text-tertiary">{{ formatDate(file.createdAt) }}</span>
 					</div>

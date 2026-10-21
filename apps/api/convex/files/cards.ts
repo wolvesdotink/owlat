@@ -14,6 +14,10 @@
  * to the index that issued it, and the clients already paging `list` /
  * `search` with a `sourceType` keep the post-pagination filter they started
  * with.
+ *
+ * `listByContact` is the same projection over a contact's files (the contact
+ * Files tab and the Team Answer attach menu), selected and capped by
+ * `readableContactFiles` before anything is projected.
  */
 
 import { v } from 'convex/values';
@@ -21,6 +25,8 @@ import { paginationOptsValidator, paginationResultValidator } from 'convex/serve
 import { authedQuery } from '../lib/authedFunctions';
 import { semanticFileSourceTypeValidator } from '../lib/literalValidators';
 import {
+	contactFileCardValidator,
+	listContactFileCards,
 	listFilesBySourcePage,
 	listFilesPage,
 	readableFilesPage,
@@ -96,5 +102,21 @@ export const searchBySource = authedQuery({
 		);
 		const readable = await readableFilesPage(ctx, session, results, args.sourceType);
 		return toSemanticFileCardPage(ctx, readable);
+	},
+});
+
+/**
+ * A contact's files as cards, newest first, at most `limit` (default 20).
+ * `threadId` is set for shared-inbox readers only (lib/semanticFileCards.ts).
+ */
+// authz: listContactFileCards drops every file semanticFileReadGate refuses the caller.
+export const listByContact = authedQuery({
+	args: {
+		contactId: v.id('contacts'),
+		limit: v.optional(v.number()),
+	},
+	returns: v.array(contactFileCardValidator),
+	handler: async (ctx, args, session) => {
+		return listContactFileCards(ctx, session, args.contactId, args.limit);
 	},
 });
