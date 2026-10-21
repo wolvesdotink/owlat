@@ -1,9 +1,11 @@
 /**
- * `bun run perf:bench`: report-only benchmarks of two web hot paths (plan item
- * OW-072, "Evidence before expensive optimization").
+ * `bun run perf:bench`: report-only benchmarks of web hot paths (plan item
+ * OW-072, "Evidence before expensive optimization") and the timing side of the
+ * hostile-input scaling checks.
  *
  *   bun run perf:bench -- --machine "reference laptop" [--runs 5]
- *     [--family structural-sharing|preview-regenerate] [--out dir]
+ *     [--family structural-sharing|preview-regenerate|postbox-strip-scaling|
+ *      postbox-consent-scaling] [--out dir]
  *
  * Families:
  * - structural-sharing: `shareStructure` (apps/web/app/lib/structuralSharing.ts)
@@ -12,6 +14,11 @@
  * - preview-regenerate: the email builder's `usePreview` regenerate and
  *   dark-mode paths (packages/email-builder/src/composables/usePreview.ts) on
  *   canvases built with the editor's own block factory.
+ * - postbox-strip-scaling: `stripRemoteImages` (packages/shared) on each hostile
+ *   body its tests hold to linear counted work, at n and 4n.
+ * - postbox-consent-scaling: `applyPostboxImageConsent` (apps/web) the same way.
+ *   The tests count work and never time it; these two families report the
+ *   wall-clock ratio, which also sees regex backtracking no counter can.
  *
  * Each run is a separate `vitest run` of the family's spec with
  * OWLAT_PERF_BENCH_OUT set, so engine state never carries over between runs and
@@ -30,7 +37,7 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import type { FamilyResult } from './sample';
 import { PERF_BENCH_OUT_ENV } from './sample';
-import { aggregateFamily, renderReport, type ReportContext } from './stats';
+import { aggregateFamily, aggregateScaling, renderReport, type ReportContext } from './stats';
 
 const ROOT = resolve(import.meta.dir, '../..');
 const VITEST = join(ROOT, 'node_modules/.bin/vitest');
@@ -43,6 +50,14 @@ const FAMILIES = {
 	'preview-regenerate': {
 		workspace: 'packages/email-builder',
 		spec: 'src/composables/__tests__/usePreview.perf.test.ts',
+	},
+	'postbox-strip-scaling': {
+		workspace: 'packages/shared',
+		spec: 'src/__tests__/postboxTrackers.perf.test.ts',
+	},
+	'postbox-consent-scaling': {
+		workspace: 'apps/web',
+		spec: 'app/utils/__tests__/postboxRemoteResources.perf.test.ts',
 	},
 } as const;
 type FamilyName = keyof typeof FAMILIES;
@@ -151,6 +166,7 @@ function main(): number {
 			family: familyRuns[0]?.family,
 			dataset: familyRuns[0]?.dataset,
 			tasks: aggregateFamily(familyRuns),
+			scaling: aggregateScaling(familyRuns),
 		})),
 	};
 	writeFileSync(join(outDir, 'report.md'), report);

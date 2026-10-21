@@ -19,6 +19,8 @@
  *
  * Explicitly imported by consumers (never via the path-prefixed auto-import).
  */
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
+
 withDefaults(
 	defineProps<{
 		/** 1-based position of the current card. */
@@ -65,6 +67,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+// useTaskFlow binds Cmd/Ctrl+Z itself, outside the shortcut catalog.
+const { chordLabel } = useShortcutLabels();
 
 // Esc exits from anywhere in the flow (position is preserved by the page).
 function onKeydown(event: KeyboardEvent) {
@@ -140,7 +144,9 @@ const MAX_DOTS = 9;
 						v-if="canUndo"
 						type="button"
 						class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
-						:title="t('components.agentTasks.agentTaskFlow.undoTitle')"
+						:title="
+							t('components.agentTasks.agentTaskFlow.undoTitle', { keys: chordLabel('mod+z') })
+						"
 						@click="emit('undo')"
 					>
 						<Icon name="lucide:undo-2" class="w-3.5 h-3.5" />

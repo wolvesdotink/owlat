@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { logError } from '~/lib/runtimeLog';
 import { useZenMode } from '~/composables/useZenMode';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 /**
  * The sidebar footer, one row: the account menu (Assistant, Zen mode, keyboard
@@ -21,6 +22,13 @@ const { user, signOut, isPending } = useAuth();
 const { isEnabled } = useFeatureFlag();
 const { openHelpModal } = useKeyboardShortcuts();
 const { enterZen } = useZenMode();
+const { ariaFor, chordAria, chordLabel } = useShortcutLabels();
+
+// The layout binds Cmd/Ctrl+J (Assistant) and Cmd/Ctrl+, (Settings) itself;
+// the catalog has no entries for them yet, so their hints spell the fixed
+// chords, still for this machine.
+const ASSISTANT_CHORD = 'mod+j';
+const SETTINGS_CHORD = 'mod+,';
 
 const settingsActive = computed(
 	() => route.path.startsWith('/dashboard/preferences') || route.path.startsWith('/dashboard/admin')
@@ -134,31 +142,34 @@ function startZen() {
 						v-if="showAssistant"
 						to="/dashboard/assistant"
 						role="menuitem"
+						:aria-keyshortcuts="chordAria(ASSISTANT_CHORD)"
 						class="flex items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
 					>
 						<Icon name="lucide:sparkles" class="size-4 text-text-tertiary" />
 						<span class="flex-1">{{ t('components.shell.footer.assistant') }}</span>
-						<kbd class="font-mono text-2xs text-text-tertiary">⌘J</kbd>
+						<UiShortcut :chord="ASSISTANT_CHORD" class="font-mono text-2xs text-text-tertiary" />
 					</NuxtLink>
 					<button
 						type="button"
 						role="menuitem"
 						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
+						:aria-keyshortcuts="ariaFor('global.zen')"
 						@click="startZen"
 					>
 						<Icon name="lucide:maximize-2" class="size-4 text-text-tertiary" />
 						<span class="flex-1 text-left">{{ t('components.shell.zen.enter') }}</span>
-						<kbd class="font-mono text-2xs text-text-tertiary">⌘⇧F</kbd>
+						<UiShortcut id="global.zen" class="font-mono text-2xs text-text-tertiary" />
 					</button>
 					<button
 						type="button"
 						role="menuitem"
 						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
+						:aria-keyshortcuts="ariaFor('global.help')"
 						@click="openShortcuts"
 					>
 						<Icon name="lucide:keyboard" class="size-4 text-text-tertiary" />
 						<span class="flex-1 text-left">{{ t('components.shell.footer.shortcuts') }}</span>
-						<kbd class="font-mono text-2xs text-text-tertiary">?</kbd>
+						<UiShortcut id="global.help" class="font-mono text-2xs text-text-tertiary" />
 					</button>
 					<div class="flex items-center gap-3 px-3 py-2 text-sm text-text-primary">
 						<UiThemeToggle
@@ -185,7 +196,8 @@ function startZen() {
 			to="/dashboard/preferences"
 			:aria-current="settingsActive ? 'page' : undefined"
 			:aria-label="t('components.shell.footer.settings')"
-			:title="`${t('components.shell.footer.settings')} (⌘,)`"
+			:title="`${t('components.shell.footer.settings')} (${chordLabel(SETTINGS_CHORD)})`"
+			:aria-keyshortcuts="chordAria(SETTINGS_CHORD)"
 			class="flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors"
 			:class="
 				settingsActive

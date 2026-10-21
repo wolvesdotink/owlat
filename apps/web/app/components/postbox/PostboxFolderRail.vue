@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { resolveActiveShortcut } from '~/utils/shortcutScope';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
 import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
 
@@ -15,6 +16,9 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const { chordLabel } = useShortcutLabels();
+/** The rail toggle's own chord, bound in `onGlobalKey` below. */
+const RAIL_TOGGLE_CHORD = 'mod+shift+D';
 
 const mailboxIdRef = computed(() => props.mailboxId);
 const { systemFolders, customFolders, unreadByRole } = usePostboxFolders(mailboxIdRef);
@@ -305,8 +309,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			:class="railCollapsed ? 'w-9 h-9' : 'w-full gap-1.5 px-2.5 py-1.5 text-xs'"
 			:title="
 				railCollapsed
-					? t('components.postbox.postboxFolderRail.expandSidebarTitle')
-					: t('components.postbox.postboxFolderRail.collapseSidebarTitle')
+					? t('components.postbox.postboxFolderRail.expandSidebarTitle', {
+							keys: chordLabel(RAIL_TOGGLE_CHORD),
+						})
+					: t('components.postbox.postboxFolderRail.collapseSidebarTitle', {
+							keys: chordLabel(RAIL_TOGGLE_CHORD),
+						})
 			"
 			:aria-label="
 				railCollapsed

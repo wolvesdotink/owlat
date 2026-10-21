@@ -363,6 +363,15 @@ export function buildRequestListener() {
 		// Only the path and query are read; the base just makes the URL absolute.
 		const url = new URL(req.url || '/', 'http://localhost');
 
+		// Liveness for the container healthcheck. Unauthenticated because Docker
+		// runs the probe without the instance secret, so it answers nothing but
+		// that the listener is serving: /health requires the secret, is rate
+		// limited and lists containers through the Docker API on every call.
+		if (req.method === 'GET' && url.pathname === '/livez') {
+			json(res, 200, { status: 'ok' });
+			return;
+		}
+
 		// The four state-changing endpoints run as critical sections: each writes
 		// host files and only then reconciles the running containers, so a
 		// SIGTERM landing between those two halves is what leaves the host's

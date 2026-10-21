@@ -20,6 +20,9 @@
  * `AppErrorBoundary` (and the `UiErrorBoundary` it renders) wraps every page
  * under the shell, the Postbox panes, message bodies and every composer. Real, so a suite mounting
  * one of those hosts renders its content through the boundary the browser has.
+ *
+ * `UiShortcut` is the shortcut hint chip the shell, the palette and the
+ * onboarding tips render; real, so a suite sees the key a person would.
  */
 import { config } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
@@ -32,6 +35,7 @@ import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
 import UiUnsavedChangesDialog from '@owlat/ui/components/ui/UnsavedChangesDialog.vue';
 import UiQueryBoundary from '~/components/ui/QueryBoundary.vue';
 import AppErrorBoundary from '~/components/AppErrorBoundary.vue';
+import UiShortcut from '~/components/ui/Shortcut.vue';
 
 export const IconStub = defineComponent({
 	name: 'Icon',
@@ -66,5 +70,6 @@ export function registerNuxtComponents(): void {
 		AppErrorBoundary,
 		UiSpinner,
 		UiUnsavedChangesDialog,
+		UiShortcut,
 	});
 }

@@ -23,6 +23,7 @@
  */
 import { api } from '@owlat/api';
 import { POSTBOX_NOTIFY_ABOUT_OPTIONS, type PostboxNotifyAbout } from '~/utils/postboxNotify';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 const { t } = useI18n();
 const { user } = useAuth();
@@ -32,6 +33,8 @@ const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const showKnowledgeTip = computed(() => isFeatureEnabled('ai.knowledge'));
 // Keyboard-shortcut tips: hidden where there is no keyboard to press them on.
 const KEYBOARD_ONLY = 'max-sm:hidden pointer-coarse:hidden';
+// A tip is only as true as its key: one nothing fires is not offered.
+const { labelFor } = useShortcutLabels();
 const userId = computed(() => user.value?.id ?? null);
 
 const { currentMailbox, isLoading: mailboxLoading } = usePostboxMailbox();
@@ -359,28 +362,33 @@ function skipToToday() {
 			>
 				<h2 class="mb-3 text-sm font-semibold">{{ t('welcome.freshStart.tipsHeading') }}</h2>
 				<ul class="space-y-3 text-sm text-text-secondary">
-					<li class="flex items-start gap-3" :class="KEYBOARD_ONLY">
+					<li
+						v-if="labelFor('global.compose')"
+						class="flex items-start gap-3"
+						:class="KEYBOARD_ONLY"
+					>
 						<Icon name="lucide:pen-line" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 						<I18nT keypath="welcome.freshStart.tips.compose" tag="span" scope="global">
 							<template #key>
-								<kbd
+								<UiShortcut
+									id="global.compose"
 									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs font-mono"
-									>C</kbd
-								>
+								/>
 							</template>
 						</I18nT>
 					</li>
-					<li class="flex items-start gap-3" :class="KEYBOARD_ONLY">
+					<li
+						v-if="labelFor('global.commandPalette')"
+						class="flex items-start gap-3"
+						:class="KEYBOARD_ONLY"
+					>
 						<Icon name="lucide:command" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 						<I18nT keypath="welcome.freshStart.tips.command" tag="span" scope="global">
 							<template #keys>
-								<kbd
+								<UiShortcut
+									id="global.commandPalette"
 									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs font-mono"
-									>⌘</kbd
-								><kbd
-									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs font-mono"
-									>K</kbd
-								>
+								/>
 							</template>
 						</I18nT>
 					</li>

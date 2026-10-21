@@ -199,4 +199,25 @@ describe('convex function-allowlist proxy (real ConvexHttpClient → proxy → m
 		expect(res.status).toBe(404);
 		expect(captured).toHaveLength(0);
 	});
+
+	it('answers the liveness probe without a token and without reaching upstream', async () => {
+		const res = await fetch(`${proxyUrl}/livez`);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ status: 'ok' });
+		expect(captured).toHaveLength(0);
+	});
+
+	it('forwards nothing that is posted to the liveness path', async () => {
+		const res = await fetch(`${proxyUrl}/livez`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Authorization: `Convex ${WORKER_TOKEN}` },
+			body: JSON.stringify({
+				path: 'codeWorkTasks:claim',
+				format: 'convex_encoded_json',
+				args: [{}],
+			}),
+		});
+		expect(res.status).toBe(404);
+		expect(captured).toHaveLength(0);
+	});
 });

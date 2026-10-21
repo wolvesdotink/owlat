@@ -25,7 +25,10 @@ import { clearThreadFollowUp } from '../followUps';
 import { clearSnoozeUntilReplyForThread } from '../snooze';
 import { shouldExtractLiveMessage } from '../liveKnowledge';
 import { enqueuePush } from '../../push/events';
-import { enqueueDeliveredInterpretation } from '../interpret/enqueue';
+import {
+	enqueueClientSentInterpretation,
+	enqueueDeliveredInterpretation,
+} from '../interpret/enqueue';
 import { queuesNeedsReplyCheck, type InboundOrigin } from './insert';
 import { writeArrivalRecord, type ArrivalRecordSeed } from '../arrival/records';
 import { refreshArrivalProjection } from '../arrival/projection';
@@ -68,6 +71,8 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *   - The owner's own reply settles the thread's Reply Queue row and removes
  *     the AI drafts it made obsolete (`../answeredReply`); an auto-reply
  *     (Auto-Submitted, a list, a bulk or `auto_reply` Precedence) does not.
+ *     Synced live into Sent, it is also interpreted as our send, which closes
+ *     the brief items it answered (`../interpret/enqueue.ts`).
  *   - Web Push to the owner of a personal mailbox, for live unread mail from
  *     someone else that stayed in the inbox (`../../push/`). Whether it
  *     actually notifies — scope, mute, quiet hours — is the sender's call.
@@ -165,5 +170,7 @@ export async function runPostInsertInboundEffects(
 	}
 
 	// A vacation notice or other auto-reply from the owner answers nothing.
-	await settleOwnerReply(ctx, messageId, { isAutomated: isAutomatedResponse(antiLoopHeaders) });
+	const isAutomated = isAutomatedResponse(antiLoopHeaders);
+	await settleOwnerReply(ctx, messageId, { isAutomated });
+	if (isLive && !isAutomated) await enqueueClientSentInterpretation(ctx, messageId);
 }
