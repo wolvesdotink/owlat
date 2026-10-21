@@ -46,14 +46,15 @@ export function isReplyVerdictSettled(
 
 /**
  * `computePlacement` over the stored inputs: the record (its rule placement,
- * exact-wording screen and category, else the thread's), the thread (override, settled reply verdict)
+ * exact-wording screen, arrival time and category, else the thread's), the
+ * thread (override and when it was set, settled reply verdict)
  * and the sender profile. Shared by the projection and Explain, so "why here"
  * always answers from the same inputs the projection placed it with. Pure.
  */
 export function placementOf(
 	record: Pick<
 		Doc<'mailArrivalRecords'>,
-		'rulePlacement' | 'category' | 'categorySource' | 'isExactWordingCandidate'
+		'rulePlacement' | 'category' | 'categorySource' | 'isExactWordingCandidate' | 'createdAt'
 	>,
 	thread: Pick<Thread, 'category' | 'placementOverride' | 'needsReply' | 'needsReplyPendingAt'>,
 	profile: Pick<Doc<'mailSenderProfiles'>, 'status' | 'placementOverride'> | null
@@ -66,10 +67,16 @@ export function placementOf(
 			...(category ? { category } : {}),
 			...(categorySource ? { categorySource } : {}),
 			...(record.isExactWordingCandidate ? { isExactWordingCandidate: true } : {}),
+			arrivedAt: record.createdAt,
 		},
 		{
 			...(thread.placementOverride
-				? { placementOverride: { placement: thread.placementOverride.placement } }
+				? {
+						placementOverride: {
+							placement: thread.placementOverride.placement,
+							setAt: thread.placementOverride.setAt,
+						},
+					}
 				: {}),
 			isReplyNeeded: isReplyVerdictSettled(thread),
 		},

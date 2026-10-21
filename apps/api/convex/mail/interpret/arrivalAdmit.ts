@@ -39,6 +39,7 @@ import { chooseArrivalDepth } from '@owlat/shared/arrivalDepth';
 import { depthValidator } from '../../lib/validators/arrival';
 import { isPersonalMailbox } from '../permissions';
 import { loadArrivalRecord } from '../arrival/records';
+import { loadBriefRow } from './briefRow';
 import {
 	interpretationSourceValidator,
 	type InterpretationSource,
@@ -62,8 +63,11 @@ const OWNER_LIMIT_FALLBACK_MS = 60_000;
 
 export type ArrivalAdmission =
 	| { kind: 'go' }
-	/** Settled as an upgradeable count (display-only over the owner limit). */
-	| { kind: 'settled' }
+	/**
+	 * Settled as an upgradeable count (display-only over the owner limit), at
+	 * the thread's deletion epoch (its exact-wording screen is checked against it).
+	 */
+	| { kind: 'settled'; deletionEpoch: number }
 	| { kind: 'wait'; retryAt: number }
 	| { kind: 'busy'; retryAt: number }
 	| { kind: 'done' };
@@ -161,7 +165,8 @@ export const admitArrivalRun = internalMutation({
 			if (isDisplayOnly) {
 				const choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS.ownerLimit });
 				await settleArrivalSkip(ctx, row, message._id, choice, 'owner_limit');
-				return { kind: 'settled' };
+				const brief = await loadBriefRow(ctx, { kind: 'mail', id: message.threadId });
+				return { kind: 'settled', deletionEpoch: brief?.deletionEpoch ?? 0 };
 			}
 			const retryAt = Date.now() + (limited.retryAfter ?? OWNER_LIMIT_FALLBACK_MS);
 			if (!args.isCallerResuming) {

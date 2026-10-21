@@ -82,7 +82,11 @@ async function runLeased(ctx: ActionCtx, args: InterpretArgs): Promise<Interpret
 		});
 		if (admitted.kind === 'settled') {
 			// Counted over the owner limit unread: its text is still screened (#1384).
-			await screenCountedArrival(ctx, { ...args, source: { kind: 'mail', id: args.source.id } });
+			await screenCountedArrival(
+				ctx,
+				{ ...args, source: { kind: 'mail', id: args.source.id } },
+				admitted.deletionEpoch
+			);
 		}
 		if (admitted.kind !== 'go') return admissionAnswer(admitted);
 	}

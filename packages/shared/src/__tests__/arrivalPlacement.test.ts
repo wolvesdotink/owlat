@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MailCategory } from '../arrival';
-import { computePlacement } from '../arrivalPlacement';
+import { computePlacement, doesThreadOverrideHold } from '../arrivalPlacement';
 
 const noThread = { isReplyNeeded: false };
 
@@ -101,15 +101,18 @@ describe('computePlacement, exact-wording candidates (#1384)', () => {
 		}
 	});
 
-	it('keeps the explicit choices: the thread override, auto-archive and unsubscribe', () => {
+	it('keeps the explicit choices: a thread override made after it arrived, auto-archive and unsubscribe', () => {
 		for (const placement of ['digest', 'updates', 'archived'] as const) {
-			expect(
-				computePlacement(
-					{ ...exact, category: 'newsletter' },
-					{ placementOverride: { placement }, isReplyNeeded: false },
-					null
-				)
-			).toEqual({ placement, decidedBy: 'thread_override' });
+			// Set after it arrived, at the same moment, or with times unknown.
+			for (const setAt of [2_000, 1_000, undefined]) {
+				expect(
+					computePlacement(
+						{ ...exact, category: 'newsletter', arrivedAt: 1_000 },
+						{ placementOverride: { placement, setAt }, isReplyNeeded: false },
+						null
+					)
+				).toEqual({ placement, decidedBy: 'thread_override' });
+			}
 		}
 		for (const status of ['unsubscribed', 'auto_archive'] as const) {
 			expect(computePlacement({ ...exact, category: 'newsletter' }, noThread, { status })).toEqual({
@@ -117,6 +120,61 @@ describe('computePlacement, exact-wording candidates (#1384)', () => {
 				decidedBy: 'sender_status',
 			});
 		}
+	});
+
+	it('a digest or updates thread override set before it arrived does not bury it (Sol r1 F1)', () => {
+		for (const placement of ['digest', 'updates'] as const) {
+			expect(
+				computePlacement(
+					{ ...exact, category: 'person', arrivedAt: 2_000 },
+					{ placementOverride: { placement, setAt: 1_000 }, isReplyNeeded: false },
+					null
+				)
+			).toEqual(today);
+			// The sender's digest status below it is lifted too.
+			expect(
+				computePlacement(
+					{ ...exact, category: 'newsletter', arrivedAt: 2_000 },
+					{ placementOverride: { placement, setAt: 1_000 }, isReplyNeeded: false },
+					{ status: 'digest' }
+				)
+			).toEqual(today);
+		}
+		// A settled needs-reply verdict still places it.
+		expect(
+			computePlacement(
+				{ ...exact, category: 'person', arrivedAt: 2_000 },
+				{ placementOverride: { placement: 'digest', setAt: 1_000 }, isReplyNeeded: true },
+				null
+			)
+		).toEqual({ placement: 'needs_me', decidedBy: 'needs_reply' });
+	});
+
+	it('an older thread override that buries nothing, or a message that is no candidate, keeps it', () => {
+		for (const placement of ['archived', 'needs_me', 'today'] as const) {
+			expect(
+				computePlacement(
+					{ ...exact, category: 'person', arrivedAt: 2_000 },
+					{ placementOverride: { placement, setAt: 1_000 }, isReplyNeeded: false },
+					null
+				)
+			).toEqual({ placement, decidedBy: 'thread_override' });
+		}
+		expect(
+			computePlacement(
+				{ isExactWordingCandidate: false, category: 'person', arrivedAt: 2_000 },
+				{ placementOverride: { placement: 'digest', setAt: 1_000 }, isReplyNeeded: false },
+				null
+			)
+		).toEqual({ placement: 'digest', decidedBy: 'thread_override' });
+	});
+
+	it('doesThreadOverrideHold matches computePlacement', () => {
+		const old = { placement: 'digest' as const, setAt: 1_000 };
+		expect(doesThreadOverrideHold({ ...exact, arrivedAt: 2_000 }, old)).toBe(false);
+		expect(doesThreadOverrideHold({ ...exact, arrivedAt: 1_000 }, old)).toBe(true);
+		expect(doesThreadOverrideHold({ ...exact }, old)).toBe(true);
+		expect(doesThreadOverrideHold({ arrivedAt: 2_000 }, old)).toBe(true);
 	});
 
 	it('never lowers a placement: needs_me stays, today stays decided as before', () => {

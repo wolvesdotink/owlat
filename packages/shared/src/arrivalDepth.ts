@@ -28,7 +28,8 @@
  * exact-wording candidate (changed bank details, a legal notice, an invoice
  * with payment details) is never counted for its category, a digest rule or
  * the sender's digest status (#1384): only the budget and the person's own
- * message-scope digest Fix still count it.
+ * message-scope digest Fix still count it, and only a Fix made after the
+ * candidate arrived (the caller drops an older one: `doesThreadOverrideHold`).
  *
  * A gist or count from rows 6–13 is upgradeable (SPEC §2.3.4): a later source
  * of the thread that needs a full read reads it first. Rows 1, 4 and 5 are terminal
