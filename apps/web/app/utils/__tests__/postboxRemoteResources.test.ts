@@ -9,30 +9,71 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import type * as SharedTrackers from '@owlat/shared/postboxTrackers';
+import type { ScanWork } from '@owlat/shared/postboxTrackers';
 import { applyPostboxImageConsent, type PostboxImageConsent } from '../postboxRemoteResources';
 import {
-	LINEAR_SCALING_BOUND,
-	SCALING_TEST,
-	scalingRatio,
-} from '../../../../../scripts/perf-bench/scalingRatio';
+	MANY_CSS_URLS,
+	NESTED_CSS,
+	SRCSET_COMMAS,
+	type HostileBody,
+} from './postboxRemoteResourcesHostileFixtures';
+
+// Hint derivations, counted whether or not a caller passes the work meter, so
+// a per-URL re-derivation shows even if it drops the meter.
+const hintDerivations = vi.hoisted(() => ({ calls: 0 }));
 
 // The failing-closed tests make the inventory throw on a marked element.
 vi.mock('@owlat/shared/postboxTrackers', async (importOriginal) => {
 	const actual = await importOriginal<typeof SharedTrackers>();
 	return {
 		...actual,
-		elementTrackingHints: (context: Parameters<typeof actual.elementTrackingHints>[0]) => {
-			if (context.width === 'fail-inventory') throw new RangeError('boom');
-			return actual.elementTrackingHints(context);
+		elementTrackingHints: (...args: Parameters<typeof actual.elementTrackingHints>) => {
+			hintDerivations.calls += 1;
+			if (args[0].width === 'fail-inventory') throw new RangeError('boom');
+			return actual.elementTrackingHints(...args);
 		},
 	};
 });
 
 const LABEL = 'Image blocked';
 
-/** The call each scaling check times: consent applied with one fixed setting. */
-const consentWith = (consent: PostboxImageConsent) => (html: string) =>
-	applyPostboxImageConsent(html, consent, LABEL);
+/** Characters read plus steps taken by one metered consent pass. */
+function consentWork(html: string, consent: PostboxImageConsent): number {
+	const work: ScanWork = { chars: 0, steps: 0 };
+	applyPostboxImageConsent(html, consent, LABEL, work);
+	return work.chars + work.steps;
+}
+
+// The parsers read each style or srcset character a bounded number of times:
+// splitting and the blank filter (2), the three hint passes over the style (3),
+// tokenizing (1 or a little more), and each URL once more to classify it. That
+// measured 2 to 6.9 reads per body character. A quadratic rescan multiplies
+// the work by the unit count (thousands here).
+const MAX_WORK_PER_CHAR = 10;
+// Linear work at 4n is 4 times the work at n.
+const MAX_GROWTH_AT_4N = 5;
+
+/**
+ * The guard for hostile input: count the parsers' work instead of timing the
+ * whole call, so a loaded runner cannot fail it. The work must be nonzero,
+ * bounded per input character at n and 4n, grow about fourfold from n to 4n,
+ * and leave the result unchanged next to an unmetered call.
+ */
+function expectLinearConsent(body: HostileBody): void {
+	const [small, large] = [body.n, 4 * body.n].map((n) => {
+		const html = body.build(n);
+		const work = consentWork(html, body.consent);
+		expect(work, `${body.name} at ${n}`).toBeGreaterThan(0);
+		expect(work, `${body.name} at ${n}`).toBeLessThanOrEqual(MAX_WORK_PER_CHAR * html.length);
+		return work;
+	}) as [number, number];
+	expect(large / small, body.name).toBeLessThan(MAX_GROWTH_AT_4N);
+	const html = body.build(body.n);
+	expect(
+		applyPostboxImageConsent(html, body.consent, LABEL, { chars: 0, steps: 0 }),
+		body.name
+	).toEqual(applyPostboxImageConsent(html, body.consent, LABEL));
+}
 
 function render(raw: string, consent: PostboxImageConsent) {
 	return applyPostboxImageConsent(sanitizeHtml(raw, POSTBOX_SANITIZE_CONFIG), consent, LABEL);
@@ -235,27 +276,19 @@ describe('applyPostboxImageConsent — images shown', () => {
 });
 
 describe('applyPostboxImageConsent — hostile input stays linear', () => {
-	it('parses a srcset with 100k commas in linear time', SCALING_TEST, () => {
-		const srcsetWithCommas = (n: number) =>
-			`<img srcset="https://cdn.example/a${','.repeat(n)}b, https://cdn.example/p.png 2x">`;
-		expect(scalingRatio(srcsetWithCommas, 25_000, consentWith('blocked'))).toBeLessThan(
-			LINEAR_SCALING_BOUND
-		);
+	it('parses a srcset with 100k commas in linear work', () => {
+		expectLinearConsent(SRCSET_COMMAS);
 
-		const out = applyPostboxImageConsent(srcsetWithCommas(100_000), 'blocked', LABEL);
+		const out = applyPostboxImageConsent(SRCSET_COMMAS.build(100_000), 'blocked', LABEL);
 		expect(out.hasRemoteResources).toBe(true);
 		expect(out.html).not.toContain('srcset');
 		expect(out.html).toContain(LABEL);
 	});
 
-	it('tokenizes deeply nested and unterminated CSS in linear time', SCALING_TEST, () => {
-		const nestedCss = (n: number) =>
-			`<div style="background:${'f('.repeat(n)}${'url(&quot;'.repeat(n)}">x</div>`;
-		expect(scalingRatio(nestedCss, 5_000, consentWith('blocked'))).toBeLessThan(
-			LINEAR_SCALING_BOUND
-		);
+	it('tokenizes deeply nested and unterminated CSS in linear work', () => {
+		expectLinearConsent(NESTED_CSS);
 
-		const out = applyPostboxImageConsent(nestedCss(20_000), 'blocked', LABEL);
+		const out = applyPostboxImageConsent(NESTED_CSS.build(20_000), 'blocked', LABEL);
 		expect(out.html).toContain('x');
 	});
 });
@@ -319,17 +352,16 @@ describe('applyPostboxImageConsent — large inventories', () => {
 		expect(out.html).toContain('data:image/gif;base64,R149999 2x');
 	});
 
-	it('classifies CSS urls on one element in linear time', SCALING_TEST, () => {
-		// Per-URL style rescans made 4x the URLs cost about 13x.
-		const elementWith = (count: number) => {
-			const urls = Array.from({ length: count }, (_, i) => `url(https://cdn.example/${i}.png)`);
-			return `<div style="width:600px;height:400px;background:${urls.join(',')}">a</div>`;
-		};
-		expect(scalingRatio(elementWith, 8_000, consentWith('images'))).toBeLessThan(
-			LINEAR_SCALING_BOUND
-		);
+	it('classifies CSS urls on one element in linear work', () => {
+		expectLinearConsent(MANY_CSS_URLS);
 
-		const out = applyPostboxImageConsent(elementWith(32_000), 'images', LABEL);
+		// The element's hints are derived once, not once per URL.
+		hintDerivations.calls = 0;
+		const work: ScanWork = { chars: 0, steps: 0 };
+		const out = applyPostboxImageConsent(MANY_CSS_URLS.build(32_000), 'images', LABEL, work);
+		expect(hintDerivations.calls).toBe(1);
+		// One hint derivation and one classification per URL.
+		expect(work.steps).toBe(1 + 32_000);
 		expect(out.hasRemoteResources).toBe(true);
 		expect(out.detection.pixelCount).toBe(0);
 	});

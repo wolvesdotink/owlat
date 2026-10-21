@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FamilyResult } from '../perf-bench/sample';
 import {
 	aggregateFamily,
+	aggregateScaling,
 	formatDuration,
 	quantile,
 	renderReport,
@@ -113,6 +114,32 @@ describe('aggregateFamily', () => {
 	});
 });
 
+describe('aggregateScaling', () => {
+	const sized = (smallMs: number, largeMs: number): FamilyResult => ({
+		...run({ 'x, n': [smallMs], 'x, 4n': [largeMs] }),
+		scaling: [{ name: 'x', small: 'x, n', large: 'x, 4n', factor: 4 }],
+	});
+
+	it('divides the larger median by the smaller over all runs', () => {
+		expect(aggregateScaling([sized(1, 4), sized(2, 9), sized(4, 13)])).toEqual([
+			{ name: 'x', factor: 4, small: 2, large: 9, ratio: 4.5 },
+		]);
+	});
+
+	it('is empty for a family that declares no pairs', () => {
+		expect(aggregateScaling([run({ a: [1] })])).toEqual([]);
+		expect(aggregateScaling([])).toEqual([]);
+	});
+
+	it('refuses a pair that names a task the family did not sample', () => {
+		const broken: FamilyResult = {
+			...run({ 'x, n': [1] }),
+			scaling: [{ name: 'x', small: 'x, n', large: 'x, 4n', factor: 4 }],
+		};
+		expect(() => aggregateScaling([broken])).toThrow(/scaling pair "x"/);
+	});
+});
+
 describe('formatDuration', () => {
 	it('picks a unit that keeps the digits readable', () => {
 		expect(formatDuration(0.0123)).toBe('12.3 µs');
@@ -146,6 +173,17 @@ describe('renderReport', () => {
 		const text = renderReport(context, [{ runs: [mixed, mixed] }]);
 		expect(text).toContain('| small | 4 × 20 |');
 		expect(text).toContain('| large | 2 × 2 |');
+	});
+
+	it('reports the timing ratio of each declared size pair', () => {
+		const sized: FamilyResult = {
+			...run({ 'x, n': [2], 'x, 4n': [9] }),
+			scaling: [{ name: 'flood', small: 'x, n', large: 'x, 4n', factor: 4 }],
+		};
+		const text = renderReport(context, [{ runs: [sized] }]);
+		expect(text).toContain('| input | size factor | smaller | larger | ratio |');
+		expect(text).toContain('| flood | 4 | 2.00 ms | 9.00 ms | 4.50 |');
+		expect(report).not.toContain('| input | size factor |');
 	});
 
 	it('states that nothing is gated', () => {

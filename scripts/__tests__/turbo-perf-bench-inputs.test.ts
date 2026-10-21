@@ -1,6 +1,6 @@
 /**
- * The report-only benchmark specs (plan item OW-072) and the gating scaling
- * checks (#1373) import root files under scripts/perf-bench/, outside the
+ * The report-only benchmark specs (plan item OW-072) and the hostile-input
+ * scaling benchmarks import root files under scripts/perf-bench/, outside the
  * workspace turbo hashes by default. turbo.json adds that directory to the
  * inputs of the generic `test`, `test:coverage` and `typecheck` tasks, so a
  * change to one of those files alone cannot replay a cached result. This reads
@@ -28,8 +28,14 @@ const SPECS = [
 		workspace: '@owlat/api',
 		spec: 'apps/api/convex/mail/__tests__/perfListFixtureContract.test.ts',
 	},
-	{ workspace: '@owlat/shared', spec: 'packages/shared/src/__tests__/postboxTrackers.test.ts' },
-	{ workspace: '@owlat/web', spec: 'apps/web/app/utils/__tests__/postboxRemoteResources.test.ts' },
+	{
+		workspace: '@owlat/shared',
+		spec: 'packages/shared/src/__tests__/postboxTrackers.perf.test.ts',
+	},
+	{
+		workspace: '@owlat/web',
+		spec: 'apps/web/app/utils/__tests__/postboxRemoteResources.perf.test.ts',
+	},
 ] as const;
 
 /** Every task whose result depends on what the specs import. */

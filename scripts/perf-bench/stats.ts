@@ -111,6 +111,40 @@ export function aggregateFamily(runs: readonly FamilyResult[]): TaskAggregate[] 
 	return first.tasks.map((task) => aggregateTask(task.name, runs));
 }
 
+export interface ScalingAggregate {
+	name: string;
+	factor: number;
+	small: number;
+	large: number;
+	/** Median at the larger size over the median at the smaller one. */
+	ratio: number;
+}
+
+/**
+ * The timing ratio of each size pair the family declares, from the medians
+ * over runs. Compared with nothing: a ratio far above the factor on one
+ * machine says where to look, not that a test failed.
+ */
+export function aggregateScaling(runs: readonly FamilyResult[]): ScalingAggregate[] {
+	const first = runs[0];
+	if (!first?.scaling) return [];
+	const medians = new Map(aggregateFamily(runs).map((task) => [task.name, task.median]));
+	return first.scaling.map((pair) => {
+		const small = medians.get(pair.small);
+		const large = medians.get(pair.large);
+		if (small === undefined || large === undefined) {
+			throw new Error(`scaling pair "${pair.name}" names a task the family did not sample`);
+		}
+		return {
+			name: pair.name,
+			factor: pair.factor,
+			small,
+			large,
+			ratio: small > 0 ? large / small : Number.POSITIVE_INFINITY,
+		};
+	});
+}
+
 /** A duration in the unit that keeps three or four significant digits. */
 export function formatDuration(ms: number): string {
 	if (ms >= 1000) return `${(ms / 1000).toFixed(2)} s`;
@@ -182,6 +216,23 @@ export function renderReport(
 			);
 		}
 		lines.push('');
+		const scaling = aggregateScaling(runs);
+		if (scaling.length > 0) {
+			lines.push(
+				'Scaling: the same call at two input sizes, by the medians above. Linear code ' +
+					'measures about the size factor.',
+				'',
+				'| input | size factor | smaller | larger | ratio |',
+				'| --- | ---: | ---: | ---: | ---: |'
+			);
+			for (const pair of scaling) {
+				lines.push(
+					`| ${pair.name} | ${pair.factor} | ${formatDuration(pair.small)} | ` +
+						`${formatDuration(pair.large)} | ${pair.ratio.toFixed(2)} |`
+				);
+			}
+			lines.push('');
+		}
 	}
 	lines.push(
 		'Report-only: no number above is compared against a budget. Compare two commits only on ' +

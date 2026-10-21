@@ -6,19 +6,25 @@
  * Every input here is attacker-controlled mail, so each parser is a single
  * forward pass (no anchored or backtracking regex over the input), and the CSS
  * tokenizer reads escapes, strings and nesting the way the browser does, so
- * what it reports is what the iframe would fetch.
+ * what it reports is what the iframe would fetch. Each takes an optional
+ * `ScanWork` meter and adds the characters its loops visited, so the tests can
+ * hold hostile input to linear work by counting instead of timing.
  */
+
+import type { ScanWork } from '@owlat/shared/postboxTrackers';
 
 /**
  * Split an inline style into declarations on top-level `;`, honouring quotes,
  * parentheses and backslash escapes, so a `;` inside `url("…")` stays put.
  */
-export function splitStyleDeclarations(style: string): string[] {
+export function splitStyleDeclarations(style: string, work?: ScanWork): string[] {
 	const declarations: string[] = [];
 	let depth = 0;
 	let quote: string | null = null;
 	let start = 0;
+	let visits = 0;
 	for (let i = 0; i < style.length; i++) {
+		visits++;
 		const ch = style[i];
 		if (ch === '\\') {
 			i++;
@@ -38,6 +44,8 @@ export function splitStyleDeclarations(style: string): string[] {
 		}
 	}
 	declarations.push(style.slice(start));
+	// The blank-declaration filter reads every declaration once more.
+	if (work) work.chars += visits + style.length;
 	return declarations.filter((declaration) => declaration.trim() !== '');
 }
 
@@ -147,8 +155,11 @@ function readCssIdent(value: string, at: number): { name: string; next: number }
  * `\23 000` is just a colour. Comments are skipped; an unterminated string,
  * comment or function runs to the end.
  */
-export function cssFunctionUnits(value: string): CssFunctionUnit[] {
+export function cssFunctionUnits(value: string, work?: ScanWork): CssFunctionUnit[] {
 	const units: CssFunctionUnit[] = [];
+	// Characters visited: one per main-loop pass plus the span of every
+	// sub-read (comment, string, identifier, url token) from where it started.
+	let visits = 0;
 	const stack: string[] = [];
 	const length = value.length;
 	// The top-level function being read, if any.
@@ -167,12 +178,15 @@ export function cssFunctionUnits(value: string): CssFunctionUnit[] {
 	};
 	let i = 0;
 	while (i < length) {
+		visits++;
 		const ch = value[i]!;
 		if (ch === '/' && value[i + 1] === '*') {
 			const end = value.indexOf('*/', i + 2);
+			visits += (end === -1 ? length : end + 2) - i;
 			i = end === -1 ? length : end + 2;
 		} else if (ch === '"' || ch === "'") {
 			const string = readCssString(value, i);
+			visits += string.next - i;
 			if (current.unit && stack[stack.length - 1] !== 'type') {
 				current.unit.urls.push(string.text.trim());
 			}
@@ -185,6 +199,7 @@ export function cssFunctionUnits(value: string): CssFunctionUnit[] {
 			i++;
 		} else if (isCssIdentChar(ch) || isCssEscape(value, i)) {
 			const ident = readCssIdent(value, i);
+			visits += ident.next - i;
 			if (value[ident.next] !== '(') {
 				i = ident.next;
 				continue;
@@ -195,8 +210,10 @@ export function cssFunctionUnits(value: string): CssFunctionUnit[] {
 			if (name !== 'url') continue;
 			let k = i;
 			while (k < length && isCssWhitespace(value[k])) k++;
+			visits += k - i;
 			if (value[k] === '"' || value[k] === "'") continue;
 			// An unquoted url token runs to the next `)`, escapes decoded.
+			const urlStart = k;
 			let url = '';
 			while (k < length && value[k] !== ')') {
 				if (isCssEscape(value, k)) {
@@ -207,6 +224,7 @@ export function cssFunctionUnits(value: string): CssFunctionUnit[] {
 					url += value[k++];
 				}
 			}
+			visits += k - urlStart;
 			current.unit?.urls.push(url.trim());
 			close(Math.min(k + 1, length));
 			i = k + 1;
@@ -215,6 +233,7 @@ export function cssFunctionUnits(value: string): CssFunctionUnit[] {
 		}
 	}
 	if (current.unit) units.push(current.unit);
+	if (work) work.chars += visits;
 	return units;
 }
 
@@ -223,33 +242,45 @@ export function cssFunctionUnits(value: string): CssFunctionUnit[] {
  * descriptors). A candidate's URL runs to the next whitespace (so a `data:`
  * URL keeps its comma); trailing commas end it.
  */
-export function srcsetCandidates(srcset: string): Array<{ url: string; text: string }> {
+export function srcsetCandidates(
+	srcset: string,
+	work?: ScanWork
+): Array<{ url: string; text: string }> {
 	const candidates: Array<{ url: string; text: string }> = [];
+	// Characters visited by every loop below, the backward comma scan included.
+	let visits = 0;
 	let i = 0;
 	while (i < srcset.length) {
+		const gap = i;
 		while (i < srcset.length && /[\s,]/.test(srcset[i]!)) i++;
+		visits += i - gap + 1;
 		if (i >= srcset.length) break;
 		const start = i;
 		let end = i;
 		while (end < srcset.length && !/\s/.test(srcset[end]!)) end++;
+		visits += end - i;
 		let url = srcset.slice(i, end);
 		i = end;
 		if (url.endsWith(',')) {
 			// A backward scan: `/,+$/` rescans every inner run of commas.
 			let stop = url.length;
 			while (stop > 0 && url[stop - 1] === ',') stop--;
+			visits += url.length - stop + 1;
 			url = url.slice(0, stop);
 			if (url) candidates.push({ url, text: url });
 			continue;
 		}
 		// The descriptors run up to the comma that ends this candidate.
 		let depth = 0;
+		const descriptors = i;
 		while (i < srcset.length && !(srcset[i] === ',' && depth === 0)) {
 			if (srcset[i] === '(') depth++;
 			else if (srcset[i] === ')') depth = Math.max(0, depth - 1);
 			i++;
 		}
+		visits += i - descriptors + 1;
 		if (url) candidates.push({ url, text: srcset.slice(start, i).trim() });
 	}
+	if (work) work.chars += visits;
 	return candidates;
 }

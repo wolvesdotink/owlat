@@ -5,18 +5,57 @@ import {
 	isTrackingPixelTag,
 	remoteResourceHost,
 	stripRemoteImages,
+	type ScanWork,
 } from '../postboxTrackers';
 import {
-	LINEAR_SCALING_BOUND,
-	SCALING_TEST,
-	scalingRatio,
-} from '../../../../scripts/perf-bench/scalingRatio';
+	SKIPPED_CONTEXT_FLOODS,
+	UNTERMINATED_IMG_FLOOD,
+	UNTERMINATED_QUOTE,
+	type HostileShape,
+} from './postboxTrackersHostileFixtures';
 
 const PIXEL_1X1 = '<img src="https://tracker.example.com/open.gif" width="1" height="1" alt="">';
 const HIDDEN_IMG = '<img src="https://tracker.example.net/o.png" style="display:none">';
 const PHOTO =
 	'<img src="https://cdn.example.com/photo.jpg" width="600" height="400" alt="A photo">';
 const KNOWN_HOST = '<img src="https://click.list-manage.com/track/open.php?u=abc" alt="">';
+
+/** Characters read plus steps taken by one metered strip. */
+function strippingWork(html: string): number {
+	const work: ScanWork = { chars: 0, steps: 0 };
+	stripRemoteImages(html, work);
+	return work.chars + work.steps;
+}
+
+// Each strip round runs two passes (the tokenizer and the first-`>` floor) of
+// about two reads per character, and these bodies take two rounds plus the
+// foreign-content check: about 4 to 9.3 reads per character as measured. A
+// quadratic rescan multiplies that by the unit count (12,500 here).
+const MAX_WORK_PER_CHAR = 12;
+// Linear work at 4n is 4 times the work at n.
+const MAX_GROWTH_AT_4N = 5;
+
+/**
+ * The guard for hostile input: count the work instead of timing it, so a
+ * loaded runner cannot fail it. The work must be nonzero, bounded per input
+ * character at n and 4n, grow about fourfold from n to 4n, and leave the
+ * result unchanged next to an unmetered call.
+ */
+function expectLinearStripping(shape: HostileShape): void {
+	const sizes = [shape.n, 4 * shape.n];
+	const [small, large] = sizes.map((n) => {
+		const html = shape.build(n);
+		const work = strippingWork(html);
+		expect(work, `${shape.name} at ${n}`).toBeGreaterThan(0);
+		expect(work, `${shape.name} at ${n}`).toBeLessThanOrEqual(MAX_WORK_PER_CHAR * html.length);
+		return work;
+	}) as [number, number];
+	expect(large / small, shape.name).toBeLessThan(MAX_GROWTH_AT_4N);
+	const html = shape.build(shape.n);
+	expect(stripRemoteImages(html, { chars: 0, steps: 0 }), shape.name).toEqual(
+		stripRemoteImages(html)
+	);
+}
 
 describe('isTrackingResource', () => {
 	const NO_HINTS = elementTrackingHints({ width: null, height: null, style: '' });
@@ -181,12 +220,10 @@ describe('stripRemoteImages', () => {
 		expect(out.html).not.toContain('tracker.example.com');
 	});
 
-	it('stays linear on a flood of unterminated <img tags', SCALING_TEST, () => {
-		// No `>` anywhere: `<img\b[^>]*>` retried every start to the end.
-		const flood = (n: number) => `<img src="https://evil.example/p.gif">${'<img src=x '.repeat(n)}`;
-		expect(scalingRatio(flood, 12_500, stripRemoteImages)).toBeLessThan(LINEAR_SCALING_BOUND);
+	it('stays linear on a flood of unterminated <img tags', () => {
+		expectLinearStripping(UNTERMINATED_IMG_FLOOD);
 
-		const out = stripRemoteImages(flood(50_000));
+		const out = stripRemoteImages(UNTERMINATED_IMG_FLOOD.build(50_000));
 		expect(out.strippedRemoteImages).toBe(1);
 		expect(out.html).toBe('<img src=x '.repeat(50_000));
 	});
@@ -236,16 +273,12 @@ describe('stripRemoteImages', () => {
 		);
 	});
 
-	it('reads an unterminated quote to the end once and stays linear over it', SCALING_TEST, () => {
-		// The open quote swallows the rest of the input, so none of the later
-		// `<img` starts is a tag to the browser; rescanning quote-aware from each
-		// would be quadratic. The first-`>` floor still drops what it reads as a
-		// remote image, the truncated tag that opens the quote included.
-		const flood = (n: number) =>
-			`<img src="https://evil.example/p.gif"><p>x</p><img alt="open ${'<img src=https://evil.example/q.gif>'.repeat(n)}`;
-		expect(scalingRatio(flood, 12_500, stripRemoteImages)).toBeLessThan(LINEAR_SCALING_BOUND);
+	it('reads an unterminated quote to the end once and stays linear over it', () => {
+		expectLinearStripping(UNTERMINATED_QUOTE);
 
-		const out = stripRemoteImages(flood(50_000));
+		// The first-`>` floor still drops what it reads as a remote image, the
+		// truncated tag that opens the quote included.
+		const out = stripRemoteImages(UNTERMINATED_QUOTE.build(50_000));
 		expect(out.strippedRemoteImages).toBe(50_001);
 		expect(out.html).toBe('<p>x</p>');
 	});
@@ -342,18 +375,20 @@ describe('stripRemoteImages', () => {
 		expect(stripRemoteImages(plain).html).toBe(plain);
 	});
 
-	it('stays linear over floods of comments and raw-text elements', SCALING_TEST, () => {
-		for (const unit of [
-			'<!-- <img alt=" -->',
-			'<style><img alt="</style>',
-			'<!--x--x-',
-			'<title>',
-		]) {
-			const flood = (n: number) => `${unit.repeat(n)}<img src="https://cdn.example/a">`;
-			expect(scalingRatio(flood, 12_500, stripRemoteImages), unit).toBeLessThan(
-				LINEAR_SCALING_BOUND
-			);
-		}
+	it('stays linear over floods of comments and raw-text elements', () => {
+		for (const shape of SKIPPED_CONTEXT_FLOODS) expectLinearStripping(shape);
+	});
+
+	it('meters every round and the foreign-content pass', () => {
+		// Two rounds (the second finds nothing left), then the SVG check reads
+		// the whole output, tokenizes it and scans it for `<img` starts. The
+		// second round's two passes and the check's three each read the output.
+		const html = '<svg></svg><img src="https://cdn.example/a"><p>x</p>';
+		const work: ScanWork = { chars: 0, steps: 0 };
+		expect(stripRemoteImages(html, work).strippedRemoteImages).toBe(1);
+		// Two rounds plus the one tag handed to the replacer in the first.
+		expect(work.steps).toBe(3);
+		expect(work.chars).toBeGreaterThanOrEqual(5 * '<svg></svg><p>x</p>'.length);
 	});
 
 	it('fails soft on non-string input', () => {

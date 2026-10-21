@@ -13,6 +13,47 @@
  */
 type ImgTagReplacer = (tag: string, tokenized: boolean) => string;
 
+/**
+ * The work a scan did, for tests that hold hostile input to linear cost by
+ * counting it instead of timing it. `chars` is characters visited by loops and
+ * searches, a failed search's whole span included; `steps` is per-item work
+ * (tags handed to a replacer, rounds, element hints derived). Optional on
+ * every entry point, so production callers pay one branch per search.
+ */
+export interface ScanWork {
+	chars: number;
+	steps: number;
+}
+
+/** `haystack.indexOf(needle, from)`, counting the characters it searched. */
+function countedIndexOf(
+	haystack: string,
+	needle: string,
+	from: number,
+	work: ScanWork | undefined
+): number {
+	const found = haystack.indexOf(needle, from);
+	if (work) work.chars += (found === -1 ? haystack.length : found + needle.length) - from;
+	return found;
+}
+
+/**
+ * `re.exec(input)` for a global or sticky regex, counting the span from its
+ * `lastIndex` to the end of the match (or of the input when there is none).
+ * The span is what a linear regex reads; a backtracking one reads more, which
+ * no counter outside the engine sees.
+ */
+function countedExec(
+	re: RegExp,
+	input: string,
+	work: ScanWork | undefined
+): RegExpExecArray | null {
+	const from = re.lastIndex;
+	const match = re.exec(input);
+	if (work) work.chars += (match ? match.index + match[0].length : input.length) - from;
+	return match;
+}
+
 // The tokenizer states a start tag passes through between its name and `>`
 // (HTML spec 13.2.5.8 onwards; the self-closing and after-quoted-value states
 // behave like before-attribute-name here, so they share it).
@@ -53,7 +94,19 @@ function isAsciiAlpha(c: string): boolean {
 export function scanStartTag(
 	html: string,
 	from: number,
-	onAttr?: (name: string, value: string) => void
+	onAttr?: (name: string, value: string) => void,
+	work?: ScanWork
+): number {
+	const close = scanToTagEnd(html, from, onAttr);
+	// The loop visits every character from `from` through the closing `>`.
+	if (work) work.chars += (close === -1 ? html.length : close + 1) - from;
+	return close;
+}
+
+function scanToTagEnd(
+	html: string,
+	from: number,
+	onAttr: ((name: string, value: string) => void) | undefined
 ): number {
 	let state: TagState = TAG_NAME;
 	let nameStart = 0;
@@ -121,13 +174,14 @@ export function scanStartTag(
 }
 
 /** The lowercased name of the tag whose name begins at `from`. */
-function tagName(html: string, from: number): string {
+function tagName(html: string, from: number, work: ScanWork | undefined): string {
 	let end = from;
 	while (end < html.length) {
 		const c = html.charAt(end);
 		if (isTagWhitespace(c) || c === '/' || c === '>') break;
 		end++;
 	}
+	if (work) work.chars += end - from + 1;
 	return html.slice(from, end).toLowerCase();
 }
 
@@ -147,12 +201,12 @@ const TEXT_CONTENT_END: ReadonlyMap<string, RegExp> = new Map(
  * input's length when the input ends inside it. `<!-->` and `<!--->` close at
  * once; otherwise the first `-->` or `--!>` closes it.
  */
-function afterComment(html: string, from: number): number {
+function afterComment(html: string, from: number, work: ScanWork | undefined): number {
 	if (html.charAt(from) === '>') return from + 1;
 	if (html.startsWith('->', from)) return from + 2;
 	let at = from;
 	for (;;) {
-		const dashes = html.indexOf('--', at);
+		const dashes = countedIndexOf(html, '--', at, work);
 		if (dashes === -1) return html.length;
 		if (html.charAt(dashes + 2) === '>') return dashes + 3;
 		if (html.startsWith('!>', dashes + 2)) return dashes + 4;
@@ -161,8 +215,8 @@ function afterComment(html: string, from: number): number {
 }
 
 /** Index just past a bogus comment (`<!…>`, `<?…>`, `</ …>`): its first `>`. */
-function afterBogusComment(html: string, from: number): number {
-	const close = html.indexOf('>', from);
+function afterBogusComment(html: string, from: number, work: ScanWork | undefined): number {
+	const close = countedIndexOf(html, '>', from, work);
 	return close === -1 ? html.length : close + 1;
 }
 
@@ -184,23 +238,25 @@ function afterBogusComment(html: string, from: number): number {
  */
 function replaceTokenizedImgTags(
 	html: string,
-	replace: ImgTagReplacer
+	replace: ImgTagReplacer,
+	work: ScanWork | undefined
 ): { html: string; keptAt: Set<number> } {
 	const keptAt = new Set<number>();
 	let out = '';
 	let from = 0;
 	let at = 0;
 	while (at < html.length) {
-		const open = html.indexOf('<', at);
+		const open = countedIndexOf(html, '<', at, work);
 		if (open === -1) break;
 		const next = html.charAt(open + 1);
 		if (isAsciiAlpha(next)) {
-			const close = scanStartTag(html, open + 1);
+			const close = scanStartTag(html, open + 1, undefined, work);
 			// The input ends inside the tag: nothing after it is a tag.
 			if (close === -1) break;
-			const name = tagName(html, open + 1);
+			const name = tagName(html, open + 1, work);
 			if (name === 'img') {
 				const tag = html.slice(open, close + 1);
+				if (work) work.steps += 1;
 				const replacement = replace(tag, true);
 				out += html.slice(from, open);
 				if (replacement === tag) keptAt.add(out.length);
@@ -212,27 +268,27 @@ function replaceTokenizedImgTags(
 			const textEnd = TEXT_CONTENT_END.get(name);
 			if (textEnd) {
 				textEnd.lastIndex = at;
-				const end = textEnd.exec(html);
+				const end = countedExec(textEnd, html, work);
 				if (!end) break;
 				at = end.index;
 			}
 		} else if (next === '/') {
 			const after = html.charAt(open + 2);
 			if (isAsciiAlpha(after)) {
-				const close = scanStartTag(html, open + 2);
+				const close = scanStartTag(html, open + 2, undefined, work);
 				if (close === -1) break;
 				at = close + 1;
 			} else if (after === '>') {
 				at = open + 3;
 			} else {
-				at = afterBogusComment(html, open + 2);
+				at = afterBogusComment(html, open + 2, work);
 			}
 		} else if (next === '!') {
 			at = html.startsWith('--', open + 2)
-				? afterComment(html, open + 4)
-				: afterBogusComment(html, open + 2);
+				? afterComment(html, open + 4, work)
+				: afterBogusComment(html, open + 2, work);
 		} else if (next === '?') {
-			at = afterBogusComment(html, open + 1);
+			at = afterBogusComment(html, open + 1, work);
 		} else {
 			// A `<` that starts no tag is text.
 			at = open + 1;
@@ -254,17 +310,19 @@ const IMG_TAG_START_RE = /<img(?![\w])/gi;
 function replaceImgTagsToFirstGt(
 	html: string,
 	keptAt: ReadonlySet<number>,
-	replace: ImgTagReplacer
+	replace: ImgTagReplacer,
+	work: ScanWork | undefined
 ): string {
 	const starts = new RegExp(IMG_TAG_START_RE.source, 'gi');
 	let out = '';
 	let from = 0;
 	let match: RegExpExecArray | null;
-	while ((match = starts.exec(html))) {
-		const close = html.indexOf('>', match.index);
+	while ((match = countedExec(starts, html, work))) {
+		const close = countedIndexOf(html, '>', match.index, work);
 		// No `>` left: no later tag can close either.
 		if (close === -1) break;
 		if (!keptAt.has(match.index)) {
+			if (work) work.steps += 1;
 			out += html.slice(from, match.index) + replace(html.slice(match.index, close + 1), false);
 			from = close + 1;
 		}
@@ -282,9 +340,9 @@ function replaceImgTagsToFirstGt(
  * conditional comments, which Outlook renders) an `<img` the earlier scanner
  * would have handed to `replace` still reaches it, marked as not tokenized.
  */
-export function replaceImgTags(html: string, replace: ImgTagReplacer): string {
-	const tokenized = replaceTokenizedImgTags(html, replace);
-	return replaceImgTagsToFirstGt(tokenized.html, tokenized.keptAt, replace);
+export function replaceImgTags(html: string, replace: ImgTagReplacer, work?: ScanWork): string {
+	const tokenized = replaceTokenizedImgTags(html, replace, work);
+	return replaceImgTagsToFirstGt(tokenized.html, tokenized.keptAt, replace, work);
 }
 
 // An `<svg>` or `<math>` start tag: SVG/MathML foreign content, where the
@@ -299,9 +357,13 @@ const FOREIGN_CONTENT_RE = /<(?:svg|math)[\t\n\f\r />]/i;
  * over into a tag. An `<img` it does read as a tag starts one in any context
  * and keeps its attributes, so those are left as they are.
  */
-export function escapeImgTextInForeignContent(html: string): string {
-	if (!FOREIGN_CONTENT_RE.test(html)) return html;
-	const { keptAt } = replaceTokenizedImgTags(html, (tag) => tag);
+export function escapeImgTextInForeignContent(html: string, work?: ScanWork): string {
+	const foreign = FOREIGN_CONTENT_RE.exec(html);
+	if (work) work.chars += foreign ? foreign.index + foreign[0].length : html.length;
+	if (!foreign) return html;
+	const { keptAt } = replaceTokenizedImgTags(html, (tag) => tag, work);
+	// One more pass over the input to find every `<img` start.
+	if (work) work.chars += html.length;
 	return html.replace(new RegExp(IMG_TAG_START_RE.source, 'gi'), (start, at: number) =>
 		keptAt.has(at) ? start : `&lt;${start.slice(1)}`
 	);
