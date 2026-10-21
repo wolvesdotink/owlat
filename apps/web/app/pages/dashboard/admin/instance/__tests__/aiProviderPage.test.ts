@@ -99,7 +99,7 @@ async function mountPage() {
 				UiSelect: true,
 				UiInput: true,
 				UiButton: { template: '<button><slot /></button>' },
-				UnsavedChangesDialog: true,
+				UiUnsavedChangesDialog: true,
 				SettingsAiKeyField: {
 					props: ['error'],
 					template: '<div data-testid="key-field">{{ error }}</div>',

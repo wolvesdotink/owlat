@@ -257,7 +257,7 @@ function mountForm(Page: Component): VueWrapper {
 			UiInput: InputStub,
 		},
 		stubs: {
-			UnsavedChangesDialog: true,
+			UiUnsavedChangesDialog: true,
 			UiConfirmationDialog: true,
 			UiModal: passthrough,
 			UiPageHeader: true,

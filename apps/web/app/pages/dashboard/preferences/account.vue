@@ -4,7 +4,6 @@ import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import { passwordChangeProblem } from '~/utils/passwordChange';
 import { useLocalized } from '~/composables/useLocalized';
 import { api } from '@owlat/api';
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 import Papa from 'papaparse';
 import { authClient } from '~/lib/auth-client';
 import { writeAccountJsonExport } from '~/utils/accountJsonExport';
@@ -899,7 +898,7 @@ const daysRemaining = computed(() => {
 		</UiModal>
 
 		<!-- Unsaved Changes Dialog -->
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="showUnsavedDialog"
 			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"

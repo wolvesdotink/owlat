@@ -20,7 +20,6 @@
  * route guard already keeps non-admins off the page, so this is the second
  * lock rather than the only one.
  */
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 import DesktopReleaseTable from '~/components/settings/DesktopReleaseTable.vue';
 import { useSettingsForm } from '~/composables/useSettingsForm';
 import { formatDateTime, formatRelativeTime } from '~/utils/formatters';
@@ -426,7 +425,7 @@ async function runCheck() {
 			</div>
 		</UiQueryBoundary>
 
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="unsavedDialog.showDialog"
 			:saving="unsavedDialog.isSavingBeforeLeave"
 			@close="unsavedDialog.cancelNavigation"
