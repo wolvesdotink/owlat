@@ -72,6 +72,9 @@ describe('replay-bound plugin inbound signature verification', () => {
 		expect(result.deliveryDigest).not.toBe(signed(nowSeconds));
 		// The claim outlives the window in which the same request still verifies.
 		expect(result.expiresAtMs).toBeGreaterThan(now + 300_000);
+		// And no longer: the digest covers the timestamp, so nothing but this
+		// request can present it, and the receipt has nothing else to answer for.
+		expect(result.receiptExpiresAtMs).toBeUndefined();
 	});
 
 	it('gives identical bytes the same digest, and anything else a different one', async () => {
@@ -397,12 +400,6 @@ describe('the plugin webhook verifier dispatches on the declared scheme', () => 
 			};
 
 			expect(await digest()).toBe(await digest());
-			expect(await digest()).not.toBe(
-				await digest({
-					'svix-timestamp': String(nowSeconds + 1),
-					'svix-signature': `v1,${svixSigned(nowSeconds + 1)}`,
-				})
-			);
 			// A second batch from the same provider in the same second carries a
 			// different message id, and must be a different delivery — otherwise one
 			// claim would swallow a legitimate sibling.
@@ -412,6 +409,65 @@ describe('the plugin webhook verifier dispatches on the declared scheme', () => 
 					'svix-signature': `v1,${svixSigned(nowSeconds, BODY, SECRET_BASE64, 'msg_plugin_2')}`,
 				})
 			);
+		});
+
+		describe('names the MESSAGE, not the attempt (#1367)', () => {
+			// Svix signs every retry again with the attempt's own timestamp. A retry
+			// after a 2xx we sent and the sender never saw is the same batch, and must
+			// meet the first attempt's receipt.
+			async function verified(timestampSeconds: number, nowMs = timestampSeconds * 1000) {
+				const result = await verifyPluginWebhookDelivery(
+					delivery(
+						{
+							'svix-timestamp': String(timestampSeconds),
+							'svix-signature': `v1,${svixSigned(timestampSeconds)}`,
+						},
+						{ nowMs }
+					)
+				);
+				if (!result.ok) throw new Error(`expected a verified result: ${result.reason}`);
+				return result;
+			}
+
+			it('gives a re-signed retry the first attempt’s digest', async () => {
+				vi.stubEnv(SECRET_ENV, SVIX_SECRET);
+				const first = await verified(nowSeconds);
+				// The last Svix retry, about 27.5 hours later, freshly signed.
+				const retry = await verified(nowSeconds + 99_000);
+				expect(retry.deliveryDigest).toBe(first.deliveryDigest);
+			});
+
+			it('still separates another message id and another body', async () => {
+				vi.stubEnv(SECRET_ENV, SVIX_SECRET);
+				const first = await verified(nowSeconds);
+				const otherBody = '{"event":"deal.lost","id":"43"}';
+				const otherId = await verifyPluginWebhookDelivery(
+					delivery({
+						'svix-id': 'msg_plugin_2',
+						'svix-signature': `v1,${svixSigned(nowSeconds, BODY, SECRET_BASE64, 'msg_plugin_2')}`,
+					})
+				);
+				// A sender reusing an id for different content is a different delivery.
+				const sameIdOtherBody = await verifyPluginWebhookDelivery(
+					delivery(
+						{ 'svix-signature': `v1,${svixSigned(nowSeconds, otherBody)}` },
+						{ rawBody: otherBody }
+					)
+				);
+				if (!otherId.ok || !sameIdOtherBody.ok) throw new Error('expected verified results');
+				expect(otherId.deliveryDigest).not.toBe(first.deliveryDigest);
+				expect(sameIdOtherBody.deliveryDigest).not.toBe(first.deliveryDigest);
+			});
+
+			it('keeps the receipt for the sender’s retry window, past the request’s own', async () => {
+				vi.stubEnv(SECRET_ENV, SVIX_SECRET);
+				const result = await verified(nowSeconds);
+				// The request still stops verifying with its tolerance window…
+				expect(result.expiresAtMs).toBe((nowSeconds + 300 + 1) * 1000);
+				// …but the receipt answers for the message for two days past it, which
+				// covers the whole Svix retry schedule (about 27.5 hours).
+				expect(result.receiptExpiresAtMs).toBe(result.expiresAtMs + 48 * 60 * 60 * 1000);
+			});
 		});
 
 		describe('names a delivery by what was signed, not by how the header spells it (#1328)', () => {

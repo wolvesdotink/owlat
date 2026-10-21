@@ -1396,3 +1396,151 @@ describe('a replay whose window closes during authorization', () => {
 		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
 	});
 });
+
+/**
+ * A SVIX MESSAGE THE SENDER RETRIES, RE-SIGNED (#1367).
+ *
+ * Svix signs every attempt with the attempt's own timestamp. When we apply a
+ * batch and our 2xx is lost (a timeout, a reset connection), the retry is the
+ * same message under a new signature — and it must meet the first attempt's
+ * receipt, not be applied again. Walked against the real claim mutations.
+ */
+describe('a svix message retried after our acknowledgement was lost', () => {
+	const MESSAGE_ID = 'msg_retried';
+	const FIRST_ATTEMPT_MS = 1_770_000_000_000;
+	const HOUR_MS = 60 * 60 * 1000;
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/** An attempt at the message, signed at the current (fake) time. */
+	function attempt(): Request {
+		const timestamp = Math.floor(Date.now() / 1000);
+		const signature = createHmac('sha256', Buffer.from(mocks.svix.secretBase64, 'base64'))
+			.update(`${MESSAGE_ID}.${timestamp}.${BODY}`)
+			.digest('base64');
+		return new Request(`https://example.convex.site/webhooks/plugin/${mocks.svix.pluginId}`, {
+			method: 'POST',
+			body: BODY,
+			headers: {
+				'Content-Type': 'application/json',
+				'svix-id': MESSAGE_ID,
+				'svix-timestamp': String(timestamp),
+				'svix-signature': `v1,${signature}`,
+			},
+		});
+	}
+
+	function realDeliveries() {
+		const t = convexTest(schema, CONVEX_MODULES);
+		const table = internal.webhooks.pluginFeedbackDeliveries;
+		const deliveries = (name: string, args: Record<string, unknown>) => {
+			if (name.endsWith(':claim')) return t.mutation(table.claim, args as never);
+			if (name.endsWith(':complete')) return t.mutation(table.complete, args as never);
+			return t.mutation(table.release, args as never);
+		};
+		return { t, deliveries };
+	}
+
+	it('answers a re-signed retry as a duplicate, applying the batch once', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const { t, deliveries } = realDeliveries();
+
+		vi.setSystemTime(FIRST_ATTEMPT_MS);
+		const first = await handler(fakeContext({ deliveries }).ctx, attempt());
+		expect(first.status).toBe(200);
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+
+		// The sender never saw that 200. Its retries come seconds, minutes and
+		// hours later, every one of them signed afresh — the first well inside the
+		// first attempt's signature window, the last long after it.
+		for (const delayMs of [5_000, 5 * 60_000, 35 * 60_000, 27.5 * HOUR_MS]) {
+			vi.setSystemTime(FIRST_ATTEMPT_MS + delayMs);
+			const retry = await handler(fakeContext({ deliveries }).ctx, attempt());
+			expect(retry.status).toBe(200);
+			expect(await retry.json()).toEqual({ success: true, duplicate: true });
+		}
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+
+		const rows = await t.run((ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+		expect(rows).toEqual([
+			expect.objectContaining({ pluginId: mocks.svix.pluginId, status: 'completed' }),
+		]);
+	});
+
+	it('answers a re-signed retry retryably while the first attempt is still in flight', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const { deliveries } = realDeliveries();
+		let finishFirst: () => void = () => undefined;
+		let reachedDispatch: () => void = () => undefined;
+		const dispatching = new Promise<void>((resolve) => {
+			reachedDispatch = resolve;
+		});
+		mocks.dispatch.mockImplementationOnce(
+			() =>
+				new Promise<void>((resolve) => {
+					finishFirst = resolve;
+					reachedDispatch();
+				})
+		);
+
+		vi.setSystemTime(FIRST_ATTEMPT_MS);
+		const first = handler(fakeContext({ deliveries }).ctx, attempt());
+		await dispatching;
+
+		// The sender timed out on the slow first attempt and retries, re-signed, past
+		// the first attempt's signature window. Nothing has been applied yet, and the
+		// first attempt may still fail, so this copy must not be told 2xx.
+		vi.setSystemTime(FIRST_ATTEMPT_MS + 6 * 60_000);
+		const concurrent = await handler(fakeContext({ deliveries }).ctx, attempt());
+		expect(concurrent.status).toBe(503);
+		expect(concurrent.headers.get('Retry-After')).toBe('30');
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+
+		finishFirst();
+		expect((await first).status).toBe(200);
+
+		// The sender's next retry meets the receipt the first attempt left.
+		vi.setSystemTime(FIRST_ATTEMPT_MS + 36 * 60_000);
+		const next = await handler(fakeContext({ deliveries }).ctx, attempt());
+		expect(next.status).toBe(200);
+		expect(await next.json()).toEqual({ success: true, duplicate: true });
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+	});
+
+	it('applies the message again only once its receipt has expired', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const { t, deliveries } = realDeliveries();
+
+		vi.setSystemTime(FIRST_ATTEMPT_MS);
+		expect((await handler(fakeContext({ deliveries }).ctx, attempt())).status).toBe(200);
+
+		// Two days and more past the sender's retry schedule, the receipt has gone
+		// and the cron takes it; a message re-sent by hand then is a new delivery.
+		vi.setSystemTime(FIRST_ATTEMPT_MS + 49 * HOUR_MS);
+		await expect(
+			t.mutation(internal.webhooks.cleanup.cleanupPluginWebhookDeliveries, {})
+		).resolves.toEqual({ deletedCount: 1 });
+		const resent = await handler(fakeContext({ deliveries }).ctx, attempt());
+		expect(resent.status).toBe(200);
+		expect(await resent.json()).toMatchObject({ success: true, processed: 1 });
+		expect(mocks.dispatch).toHaveBeenCalledTimes(2);
+	});
+
+	it('lets a retry through after the first attempt failed and gave its claim back', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const { deliveries } = realDeliveries();
+		mocks.dispatch.mockRejectedValueOnce(new Error('dispatch unavailable'));
+
+		vi.setSystemTime(FIRST_ATTEMPT_MS);
+		const failed = await handler(fakeContext({ deliveries }).ctx, attempt());
+		expect(failed.status).toBeGreaterThanOrEqual(500);
+
+		vi.setSystemTime(FIRST_ATTEMPT_MS + 5_000);
+		const retry = await handler(fakeContext({ deliveries }).ctx, attempt());
+		expect(retry.status).toBe(200);
+		expect(await retry.json()).toMatchObject({ success: true, processed: 1 });
+		expect(mocks.dispatch).toHaveBeenCalledTimes(2);
+	});
+});
