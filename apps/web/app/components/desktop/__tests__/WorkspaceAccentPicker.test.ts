@@ -11,6 +11,7 @@ import { mount } from '@vue/test-utils';
 import WorkspaceAccentPicker from '../WorkspaceAccentPicker.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { WORKSPACE_ACCENT_OPTIONS } from '~/lib/desktop/workspaceTypes';
+import de from '~~/i18n/locales/de.json';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -18,12 +19,35 @@ beforeAll(() => {
 
 const SWATCH = '[data-testid="workspace-swatch"]';
 
-function render(modelValue = WORKSPACE_ACCENT_OPTIONS[2].value) {
+type Locale = 'en' | 'de';
+
+/**
+ * The shared helper's English catalog, plus the real German one for `de`. No
+ * fallback: a German message that is missing must fail here, not quietly
+ * render the English word.
+ */
+function i18nFor(locale: Locale) {
+	const i18n = createTestI18n();
+	if (locale === 'de') {
+		i18n.global.setLocaleMessage('de', de);
+		i18n.global.locale.value = 'de';
+		i18n.global.fallbackLocale.value = false;
+	}
+	return i18n;
+}
+
+function render(modelValue = WORKSPACE_ACCENT_OPTIONS[2].value, locale: Locale = 'en') {
 	return mount(WorkspaceAccentPicker, {
 		props: { modelValue, options: WORKSPACE_ACCENT_OPTIONS },
-		global: { plugins: [createTestI18n()] },
+		global: { plugins: [i18nFor(locale)] },
 	});
 }
+
+/** The accent names, in palette order, as each catalog spells them. */
+const ACCENT_NAMES: Record<Locale, string[]> = {
+	en: ['Moss', 'Terracotta', 'Slate', 'Plum', 'Gold', 'Graphite'],
+	de: ['Moos', 'Terrakotta', 'Schiefer', 'Pflaume', 'Gold', 'Graphit'],
+};
 
 describe('WorkspaceAccentPicker', () => {
 	it('renders one pressed-state button per curated accent', () => {
@@ -33,6 +57,26 @@ describe('WorkspaceAccentPicker', () => {
 			WORKSPACE_ACCENT_OPTIONS.map((_, i) => String(i === 2))
 		);
 		expect(swatches[0]!.attributes('aria-label')).toBe('Moss accent');
+	});
+
+	it('carries a catalog key for every accent name, present in every locale', () => {
+		const i18n = i18nFor('en');
+		for (const option of WORKSPACE_ACCENT_OPTIONS) {
+			expect(option.label).toMatch(/^desktop\.settings\.workspaces\.accents\.[a-z]+$/);
+			expect(i18n.global.te(option.label, 'en')).toBe(true);
+		}
+		const german = i18nFor('de');
+		for (const option of WORKSPACE_ACCENT_OPTIONS) {
+			expect(german.global.te(option.label, 'de')).toBe(true);
+		}
+	});
+
+	it.each(['en', 'de'] as const)('names every swatch in the %s copy', (locale) => {
+		const swatches = render(WORKSPACE_ACCENT_OPTIONS[0].value, locale).findAll(SWATCH);
+		expect(swatches.map((s) => s.attributes('title'))).toEqual(ACCENT_NAMES[locale]);
+		expect(swatches.map((s) => s.attributes('aria-label'))).toEqual(
+			ACCENT_NAMES[locale].map((name) => (locale === 'de' ? `Akzent ${name}` : `${name} accent`))
+		);
 	});
 
 	it('emits the chosen accent', async () => {

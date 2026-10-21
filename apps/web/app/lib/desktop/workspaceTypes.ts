@@ -36,18 +36,19 @@ export interface WorkspaceConfig {
 }
 
 /**
- * Curated workspace identity accents — value + human label colocated so a
- * palette change can never desync the swatch labels from the hexes. Assigned
- * round-robin as workspaces are added so each connected instance gets a
- * distinct, on-brand frame color.
+ * Curated workspace identity accents — value + name colocated so a palette
+ * change can never desync the swatch names from the hexes. `label` is a
+ * message key (this module has no locale); the picker resolves it with `t()`.
+ * Assigned round-robin as workspaces are added so each connected instance gets
+ * a distinct, on-brand frame color.
  */
 export const WORKSPACE_ACCENT_OPTIONS = [
-	{ value: '#7a8c5a', label: 'Moss' },
-	{ value: '#c4785a', label: 'Terracotta' }, // matches the FF brand hue
-	{ value: '#5a7a9b', label: 'Slate' },
-	{ value: '#8c5a7a', label: 'Plum' },
-	{ value: '#b8935a', label: 'Gold' },
-	{ value: '#3d3d3d', label: 'Graphite' },
+	{ value: '#7a8c5a', label: 'desktop.settings.workspaces.accents.moss' },
+	{ value: '#c4785a', label: 'desktop.settings.workspaces.accents.terracotta' }, // matches the FF brand hue
+	{ value: '#5a7a9b', label: 'desktop.settings.workspaces.accents.slate' },
+	{ value: '#8c5a7a', label: 'desktop.settings.workspaces.accents.plum' },
+	{ value: '#b8935a', label: 'desktop.settings.workspaces.accents.gold' },
+	{ value: '#3d3d3d', label: 'desktop.settings.workspaces.accents.graphite' },
 ] as const;
 
 /** One of the curated workspace accent hexes — derived from the options so a

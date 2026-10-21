@@ -12720,6 +12720,14 @@
 			"workspaces": {
 				"accent": "Akzent",
 				"accentOption": "Akzent {accent}",
+				"accents": {
+					"gold": "Gold",
+					"graphite": "Graphit",
+					"moss": "Moos",
+					"plum": "Pflaume",
+					"slate": "Schiefer",
+					"terracotta": "Terrakotta"
+				},
 				"connect": "Workspace verbinden",
 				"empty": "Noch keine Workspaces verbunden. Workspace-Einstellungen — Mitglieder, Zustellung, API-Schlüssel und mehr — werden verfügbar, sobald du dich mit einem Owlat-Server verbindest.",
 				"heading": "Workspaces",
