@@ -1,16 +1,13 @@
 <script setup lang="ts">
-import { formatChord } from '~/utils/shortcutRegistry';
 import { useZenMode } from '~/composables/useZenMode';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 defineProps<{ isDesktop: boolean; navigationOpen?: boolean; navigationHidden?: boolean }>();
 const emit = defineEmits<{ openNavigation: []; openSearch: [] }>();
 
 const { t } = useI18n();
 const { enterZen } = useZenMode();
-const { platform } = useDesktopContext();
-const zenChord = computed(() =>
-	formatChord('mod+shift+F', import.meta.client && platform.value === 'mac').join('+')
-);
+const { ariaFor, titleWithShortcut } = useShortcutLabels();
 </script>
 
 <template>
@@ -37,8 +34,9 @@ const zenChord = computed(() =>
 				type="button"
 				data-testid="zen-enter"
 				class="flex size-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-				:title="`${t('components.shell.zen.enter')} (${zenChord})`"
+				:title="titleWithShortcut(t('components.shell.zen.enter'), 'global.zen')"
 				:aria-label="t('components.shell.zen.enter')"
+				:aria-keyshortcuts="ariaFor('global.zen')"
 				@click="enterZen"
 			>
 				<Icon name="lucide:maximize-2" class="size-4" />

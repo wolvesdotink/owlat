@@ -4,6 +4,7 @@ import type { QuickQueryAnswer } from '~/composables/useCommandPaletteAsk';
 import type { PalettePrompt } from '~/composables/useCommandPaletteScope';
 import { highlightSegments } from '~/lib/commandPalette';
 import { SEARCH_MIN_QUERY } from '~/lib/commandPaletteCore';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 /**
  * The command palette's result region: the grouped rows, and the three things
@@ -38,6 +39,13 @@ defineEmits<{
 }>();
 
 const { t } = useI18n();
+const { labelFor } = useShortcutLabels();
+
+/** The row's key chip: its catalog shortcut as bound right now, else its literal hint. */
+function hintFor(item: PaletteItem): string | null {
+	if (item.shortcutId) return labelFor(item.shortcutId);
+	return item.hint ?? null;
+}
 </script>
 
 <template>
@@ -96,9 +104,9 @@ const { t } = useI18n();
 					class="w-4 h-4 flex-shrink-0 text-text-tertiary"
 				/>
 				<kbd
-					v-else-if="item.hint"
+					v-else-if="hintFor(item)"
 					class="text-2xs text-text-tertiary border border-border-subtle rounded px-1"
-					>{{ item.hint }}</kbd
+					>{{ hintFor(item) }}</kbd
 				>
 			</button>
 		</div>

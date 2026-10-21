@@ -65,8 +65,19 @@ export interface PaletteItem {
 	label: string;
 	/** One muted line of secondary context (email, subject, "why"). */
 	subtitle?: string;
-	/** Optional keyboard hint chip (e.g. the Postbox single-key shortcut). */
+	/**
+	 * A literal key chip, for a key the palette itself answers (`↵` on the
+	 * "search mail for…" row). An action that has a catalog shortcut names it
+	 * with `shortcutId` instead.
+	 */
 	hint?: string;
+	/**
+	 * The shortcut catalog id that runs the same action. The row's key chip
+	 * shows it as this person has it bound, for this machine, and disappears
+	 * while nothing fires it, so a preset or a remap can never leave a row
+	 * advertising the wrong key. Takes the place of `hint`.
+	 */
+	shortcutId?: string;
 	icon: string;
 	run: () => void;
 	/**

@@ -7,7 +7,8 @@
  *   - LEFT (after the mac traffic-light gutter / before the win+linux window
  *     buttons): a workspace chip — accent swatch + name + chevron — that opens
  *     the switcher menu (see `WorkspaceMenu.vue`).
- *   - CENTER: a "⌘K  Search…" pill that focuses the app command palette. Gated
+ *   - CENTER: a "Search…" pill, with the palette's shortcut for this machine,
+ *     that focuses the app command palette. Gated
  *     on the `show-search` prop: the mounting surface knows whether a palette
  *     exists (the dashboard layout mounts one unconditionally and passes the
  *     prop; /desktop/welcome has none and omits it), so the pill can never
@@ -32,6 +33,7 @@
  */
 import { formatBadgeCount } from '~/lib/desktop/workspaceTypes';
 import DesktopWorkspaceMenu from './WorkspaceMenu.vue';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 /** `showSearch`: the mounting surface has a command palette listening. */
 const props = defineProps<{ showSearch?: boolean }>();
@@ -42,6 +44,7 @@ const { activeId, active } = useDesktopWorkspaces();
 const { badgeFor } = useWorkspaceBadges();
 const { open: openSearch } = useCommandPalette();
 const { themePreference } = useAppTheme();
+const { ariaFor } = useShortcutLabels();
 
 // Mirror the workspace identity + app theme into the native window: the window
 // title feeds Mission Control / the App Switcher / the Dock's window list on
@@ -127,13 +130,14 @@ function openForYou(): void {
 			type="button"
 			class="tb-search absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2"
 			:aria-label="t('common.search')"
+			:aria-keyshortcuts="ariaFor('global.commandPalette')"
 			@click="() => openSearch()"
 		>
 			<Icon name="lucide:search" class="w-3.5 h-3.5 shrink-0" />
 			<span class="hidden min-[560px]:inline text-[13px] leading-none truncate">
 				{{ t('components.desktop.desktopTitlebar.searchPill') }}
 			</span>
-			<kbd class="tb-kbd hidden min-[560px]:inline-flex">⌘K</kbd>
+			<UiShortcut id="global.commandPalette" class="tb-kbd hidden min-[560px]:inline-flex" />
 		</button>
 
 		<!-- RIGHT — notifications affordance + (win/linux) window controls. Always
@@ -230,7 +234,7 @@ function openForYou(): void {
 	outline: 2px solid var(--color-brand);
 	outline-offset: 1px;
 }
-/* ⌘K shortcut chip, pushed to the field's far edge. */
+/* The palette's shortcut chip, pushed to the field's far edge. */
 .tb-kbd {
 	margin-left: auto;
 	align-items: center;

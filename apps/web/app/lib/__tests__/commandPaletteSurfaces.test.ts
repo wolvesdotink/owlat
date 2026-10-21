@@ -174,6 +174,14 @@ describe('buildThreadSurfaceGroups', () => {
 		]);
 	});
 
+	it('names the reader keys the two verbs share, for the row chips', () => {
+		const [group] = threadGroups();
+		expect(group!.items.map((item) => item.shortcutId)).toEqual([
+			'postbox.reply',
+			'postbox.archive',
+		]);
+	});
+
 	it('runs the reader action it was handed, not a broadcast', () => {
 		const onArchive = vi.fn();
 		const [group] = threadGroups('archive', { onArchive });

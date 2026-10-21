@@ -313,7 +313,7 @@
 				},
 				"progress": "{position} of {total}",
 				"undo": "Undo",
-				"undoTitle": "Undo last (⌘Z)"
+				"undoTitle": "Undo last ({keys})"
 			},
 			"clarificationQuestions": {
 				"questionCounter": "Question {index} of {total}"
@@ -4680,14 +4680,14 @@
 			},
 			"postboxEditorToolbar": {
 				"blockquote": "Blockquote",
-				"bold": "Bold (⌘B)",
+				"bold": "Bold ({keys})",
 				"bulletList": "Bullet list",
 				"heading1": "Heading 1",
 				"heading2": "Heading 2",
-				"italic": "Italic (⌘I)",
-				"link": "Link (⌘K)",
+				"italic": "Italic ({keys})",
+				"link": "Link ({keys})",
 				"orderedList": "Ordered list",
-				"underline": "Underline (⌘U)"
+				"underline": "Underline ({keys})"
 			},
 			"postboxEmojiPicker": {
 				"listLabel": "Emoji"
@@ -4767,12 +4767,12 @@
 			"postboxFolderRail": {
 				"collapse": "Collapse",
 				"collapseSidebar": "Collapse sidebar",
-				"collapseSidebarTitle": "Collapse sidebar (Cmd+Shift+D)",
+				"collapseSidebarTitle": "Collapse sidebar ({keys})",
 				"contacts": "Contacts",
 				"deleteFolder": "Delete folder",
 				"deleteFolderDescription": "Delete the folder \"{name}\"? Messages in it are relocated, not deleted.",
 				"expandSidebar": "Expand sidebar",
-				"expandSidebarTitle": "Expand sidebar (Cmd+Shift+D)",
+				"expandSidebarTitle": "Expand sidebar ({keys})",
 				"foldersHeading": "Folders",
 				"labelsHeading": "Labels",
 				"newFolder": "New folder",
@@ -5445,7 +5445,7 @@
 				"emptyFilteredTitle": "You're all caught up",
 				"emptyFolderHint": "Move messages here, or route them automatically with a filter.",
 				"emptyFolderTitle": "This folder is empty",
-				"emptyInboxHint": "Press C to write a message, or ⌘K to search and jump anywhere.",
+				"emptyInboxHint": "Press {compose} to write a message, or {palette} to search and jump anywhere.",
 				"emptyInboxTitle": "All clear",
 				"emptyLabelHint": "Apply it from a message with the label shortcut (l).",
 				"emptyLabelTitle": "No messages with this label",
@@ -6729,7 +6729,7 @@
 				"retry": "Save again",
 				"retryLabel": "Save {field} again",
 				"saveFailed": "Not saved",
-				"saveTitle": "Save (Cmd+Enter)",
+				"saveTitle": "Save ({keys})",
 				"saving": "Saving…",
 				"sourceBadge": "source"
 			},
@@ -15656,6 +15656,7 @@
 				"recategorizeThread": "Recategorize thread"
 			},
 			"usePostboxTriageUndo": {
+				"keyHint": "{keys} to undo",
 				"undo": "Undo"
 			},
 			"usePostboxImageAllowlist": {

@@ -313,7 +313,7 @@
 				},
 				"progress": "{position} von {total}",
 				"undo": "Rückgängig",
-				"undoTitle": "Letzte Aktion rückgängig machen (⌘Z)"
+				"undoTitle": "Letzte Aktion rückgängig machen ({keys})"
 			},
 			"clarificationQuestions": {
 				"questionCounter": "Frage {index} von {total}"
@@ -4680,14 +4680,14 @@
 			},
 			"postboxEditorToolbar": {
 				"blockquote": "Zitat",
-				"bold": "Fett (⌘B)",
+				"bold": "Fett ({keys})",
 				"bulletList": "Aufzählung",
 				"heading1": "Überschrift 1",
 				"heading2": "Überschrift 2",
-				"italic": "Kursiv (⌘I)",
-				"link": "Link (⌘K)",
+				"italic": "Kursiv ({keys})",
+				"link": "Link ({keys})",
 				"orderedList": "Nummerierte Liste",
-				"underline": "Unterstrichen (⌘U)"
+				"underline": "Unterstrichen ({keys})"
 			},
 			"postboxEmojiPicker": {
 				"listLabel": "Emoji"
@@ -4767,12 +4767,12 @@
 			"postboxFolderRail": {
 				"collapse": "Einklappen",
 				"collapseSidebar": "Seitenleiste einklappen",
-				"collapseSidebarTitle": "Seitenleiste einklappen (Cmd+Shift+D)",
+				"collapseSidebarTitle": "Seitenleiste einklappen ({keys})",
 				"contacts": "Kontakte",
 				"deleteFolder": "Ordner löschen",
 				"deleteFolderDescription": "Den Ordner „{name}“ löschen? Nachrichten darin werden verschoben, nicht gelöscht.",
 				"expandSidebar": "Seitenleiste ausklappen",
-				"expandSidebarTitle": "Seitenleiste ausklappen (Cmd+Shift+D)",
+				"expandSidebarTitle": "Seitenleiste ausklappen ({keys})",
 				"foldersHeading": "Ordner",
 				"labelsHeading": "Labels",
 				"newFolder": "Neuer Ordner",
@@ -5445,7 +5445,7 @@
 				"emptyFilteredTitle": "Alles erledigt",
 				"emptyFolderHint": "Verschiebe Nachrichten hierher oder leite sie automatisch mit einem Filter weiter.",
 				"emptyFolderTitle": "Dieser Ordner ist leer",
-				"emptyInboxHint": "Drücke C, um eine Nachricht zu schreiben, oder ⌘K, um zu suchen und überall hinzuspringen.",
+				"emptyInboxHint": "Drücke {compose}, um eine Nachricht zu schreiben, oder {palette}, um zu suchen und überall hinzuspringen.",
 				"emptyInboxTitle": "Alles erledigt",
 				"emptyLabelHint": "Wende es aus einer Nachricht heraus mit dem Label-Kürzel (l) an.",
 				"emptyLabelTitle": "Keine Nachrichten mit diesem Label",
@@ -6729,7 +6729,7 @@
 				"retry": "Erneut speichern",
 				"retryLabel": "{field} erneut speichern",
 				"saveFailed": "Nicht gespeichert",
-				"saveTitle": "Speichern (Cmd+Enter)",
+				"saveTitle": "Speichern ({keys})",
 				"saving": "Wird gespeichert…",
 				"sourceBadge": "Quelle"
 			},
@@ -15656,6 +15656,7 @@
 				"recategorizeThread": "Konversation neu einordnen"
 			},
 			"usePostboxTriageUndo": {
+				"keyHint": "{keys} zum Rückgängigmachen",
 				"undo": "Rückgängig"
 			},
 			"usePostboxImageAllowlist": {

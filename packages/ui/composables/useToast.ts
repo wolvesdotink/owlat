@@ -54,6 +54,11 @@ export interface Toast {
 	 * presses and stays until the outcome is in.
 	 */
 	pending?: boolean;
+	/**
+	 * A keyboard hint after the message ("Ctrl+Z to undo"), already localized
+	 * and spelled for this machine by the caller. Hidden on touch screens.
+	 */
+	shortcutHint?: string;
 }
 
 export interface ToastOptions {
@@ -134,6 +139,22 @@ function isSticky(durationMs: number): boolean {
 function patchToast(id: string, patch: (toast: Toast) => Toast): void {
 	const index = toasts.value.findIndex((t) => t.id === id);
 	if (index > -1) toasts.value[index] = patch(toasts.value[index]!);
+}
+
+/**
+ * Show, change or (with `undefined`) clear a toast's keyboard hint. For a
+ * caller whose key only reaches ONE of several toasts on screen (an undo
+ * stack's newest entry), so the hint can move as that changes. No-op once the
+ * toast is gone.
+ */
+function setToastShortcutHint(id: string, hint: string | undefined): void {
+	patchToast(id, (toast) => {
+		if (toast.shortcutHint === hint) return toast;
+		const next = { ...toast };
+		if (hint) next.shortcutHint = hint;
+		else delete next.shortcutHint;
+		return next;
+	});
 }
 
 /**
@@ -334,6 +355,7 @@ export function useToast() {
 		toasts: readonly(toasts),
 		showToast,
 		removeToast,
+		setToastShortcutHint,
 		dismissAfterAction,
 		clearToasts,
 	};
