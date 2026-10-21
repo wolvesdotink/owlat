@@ -176,6 +176,7 @@ interface AnalysisOptions {
 export function useCompatibilityAnalysis(): {
 	isAnalyzing: Ref<boolean>;
 	report: Ref<CompatibilityReport | null>;
+	error: Ref<Error | null>;
 	issues: ComputedRef<CompatibilityIssue[]>;
 	score: ComputedRef<number>;
 	analyzeHtml: (html: string, options?: AnalysisOptions) => Promise<CompatibilityReport | null>;
@@ -193,6 +194,8 @@ export function useCompatibilityAnalysis(): {
 
 	const isAnalyzing = ref(false);
 	const report = ref<CompatibilityReport | null>(null);
+	// Why the newest analysis failed; cleared when the next one starts.
+	const error = ref<Error | null>(null);
 	// Bumped by every analysis and by cancelAnalysis; only the newest analysis
 	// may publish, so a slow first data load cannot overwrite a later report.
 	let generation = 0;
@@ -295,7 +298,8 @@ export function useCompatibilityAnalysis(): {
 
 	/**
 	 * Analyze HTML for compatibility issues. Resolves to null, without touching
-	 * `report`, when a newer analysis or cancelAnalysis superseded this one.
+	 * `report`, when a newer analysis or cancelAnalysis superseded this one, or
+	 * when the analysis failed (then `error` says why).
 	 */
 	async function analyzeHtml(
 		html: string,
@@ -303,6 +307,7 @@ export function useCompatibilityAnalysis(): {
 	): Promise<CompatibilityReport | null> {
 		const current = ++generation;
 		isAnalyzing.value = true;
+		error.value = null;
 
 		try {
 			// Ensure caniemail data is loaded
@@ -418,6 +423,9 @@ export function useCompatibilityAnalysis(): {
 
 			report.value = newReport;
 			return newReport;
+		} catch (e) {
+			if (current === generation) error.value = e instanceof Error ? e : new Error(String(e));
+			return null;
 		} finally {
 			if (current === generation) isAnalyzing.value = false;
 		}
@@ -426,6 +434,7 @@ export function useCompatibilityAnalysis(): {
 	return {
 		isAnalyzing,
 		report,
+		error,
 		issues,
 		score,
 		analyzeHtml,

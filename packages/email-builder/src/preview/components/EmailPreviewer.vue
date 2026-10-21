@@ -146,7 +146,13 @@ const diffPanelOpen = ref(false);
 const copiedFormat = ref<string | null>(null);
 
 // Compatibility analysis
-const { analyzeHtml, cancelAnalysis, report, isAnalyzing } = useCompatibilityAnalysis();
+const {
+	analyzeHtml,
+	cancelAnalysis,
+	report,
+	isAnalyzing,
+	error: analysisError,
+} = useCompatibilityAnalysis();
 
 // Computed
 const simulationResult = computed<SimulationResult>(() => {
@@ -267,10 +273,14 @@ function refreshPreview() {
 	runAnalysis();
 }
 
-/** No client selected: drop any analysis in flight along with the last report. */
+/**
+ * No client, or a different one: drop any analysis in flight along with the
+ * last report and failure, which belong to the previous client.
+ */
 function clearAnalysis() {
 	cancelAnalysis();
 	report.value = null;
+	analysisError.value = null;
 }
 
 async function runAnalysis() {
@@ -332,13 +342,11 @@ function handleRenderOptionsUpdate(options: Partial<PreviewRenderOptions>) {
 // Watch for HTML and selected client changes
 watch(
 	[() => props.html, selectedClient],
-	() => {
-		// Clearing the client stops a manual (Refresh) analysis too.
-		if (!selectedClient.value) {
-			clearAnalysis();
-		} else if (props.autoAnalyze) {
-			runAnalysis();
-		}
+	([, client], [, previousClient]) => {
+		// Clearing or switching the client stops a manual (Refresh) analysis too,
+		// and the old client's report is never shown as the new client's.
+		if (client?.id !== previousClient?.id) clearAnalysis();
+		if (client && props.autoAnalyze) runAnalysis();
 	},
 	{ immediate: true }
 );
@@ -655,6 +663,8 @@ function handleClickOutside(event: MouseEvent) {
 				:health-score="healthScore ?? null"
 				:validation-issues="validationIssues ?? []"
 				:compatibility-report="report"
+				:compatibility-error="analysisError?.message ?? null"
+				:selected-client-name="selectedClient?.name ?? null"
 				:is-analyzing="isAnalyzing"
 				:expanded="compatibilityExpanded"
 				@toggle="compatibilityExpanded = !compatibilityExpanded"

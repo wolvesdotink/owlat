@@ -2,6 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useCanIEmail } from '../useCanIEmail';
 import type { CanIEmailData, CanIEmailFeature } from '../../types';
 
+// The bundled snapshot is replaced so each test controls what loads and when.
+// useCompatibilityAnalysisSnapshot.test.ts runs against the real snapshot.
+const loadSnapshot = vi.hoisted(() => vi.fn());
+vi.mock('../caniemailSnapshot', () => ({ loadCanIEmailSnapshot: loadSnapshot }));
+
 const flexbox: CanIEmailFeature = {
 	slug: 'flexbox',
 	title: 'Flexbox',
@@ -75,10 +80,8 @@ describe('useCanIEmail data loading + queries', () => {
 	}
 
 	beforeEach(() => {
-		vi.stubGlobal(
-			'fetch',
-			vi.fn().mockResolvedValue({ ok: true, statusText: 'OK', json: async () => fixture })
-		);
+		loadSnapshot.mockReset();
+		loadSnapshot.mockResolvedValue(fixture);
 	});
 
 	afterEach(() => {
@@ -86,7 +89,7 @@ describe('useCanIEmail data loading + queries', () => {
 		vi.restoreAllMocks();
 	});
 
-	it('fetchData populates features from the API', async () => {
+	it('fetchData populates features from the bundled snapshot', async () => {
 		const c = await freshComposable();
 		await c.fetchData();
 		expect(c.features.value.map((f) => f.slug)).toEqual(['flexbox', 'grid']);
@@ -115,22 +118,21 @@ describe('useCanIEmail data loading + queries', () => {
 		expect(c.searchFeatures('nonexistent-token')).toEqual([]);
 	});
 
-	it('serves a second call from the in-memory cache without re-fetching', async () => {
+	it('serves a second call from memory without loading the snapshot again', async () => {
 		const c = await freshComposable();
 		await c.fetchData();
 		await c.fetchData();
-		expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
+		expect(loadSnapshot).toHaveBeenCalledTimes(1);
 	});
 
-	it('concurrent callers share one request and all wait for its data', async () => {
+	it('concurrent callers share one load and all wait for its data', async () => {
 		let respond!: () => void;
-		const fetchMock = vi.fn(
+		loadSnapshot.mockImplementation(
 			() =>
-				new Promise((resolve) => {
-					respond = () => resolve({ ok: true, statusText: 'OK', json: async () => fixture });
+				new Promise<CanIEmailData>((resolve) => {
+					respond = () => resolve(fixture);
 				})
 		);
-		vi.stubGlobal('fetch', fetchMock);
 		const c = await freshComposable();
 
 		const settled: string[] = [];
@@ -138,7 +140,7 @@ describe('useCanIEmail data loading + queries', () => {
 		const second = c.fetchData().then(() => settled.push('second'));
 		await Promise.resolve();
 		// The second caller joins the load instead of returning before the data.
-		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(loadSnapshot).toHaveBeenCalledTimes(1);
 		expect(settled).toEqual([]);
 		expect(c.isLoading.value).toBe(true);
 
@@ -151,35 +153,39 @@ describe('useCanIEmail data loading + queries', () => {
 
 	it('a shared failure settles every caller, and the next call retries', async () => {
 		let fail!: () => void;
-		const fetchMock = vi.fn(
+		loadSnapshot.mockImplementationOnce(
 			() =>
-				new Promise((resolve) => {
-					fail = () => resolve({ ok: false, statusText: 'Server Error' });
+				new Promise<CanIEmailData>((_, reject) => {
+					fail = () => reject(new Error('chunk failed to load'));
 				})
 		);
-		vi.stubGlobal('fetch', fetchMock);
 		const c = await freshComposable();
 
 		const callers = Promise.all([c.fetchData(), c.fetchData()]);
 		fail();
 		await callers;
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-		expect(c.error.value?.message).toContain('Server Error');
+		expect(loadSnapshot).toHaveBeenCalledTimes(1);
+		expect(c.error.value?.message).toContain('chunk failed to load');
 		expect(c.features.value).toEqual([]);
 
-		fetchMock.mockResolvedValueOnce({ ok: true, statusText: 'OK', json: async () => fixture });
 		await c.fetchData();
-		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(loadSnapshot).toHaveBeenCalledTimes(2);
 		expect(c.error.value).toBeNull();
 		expect(c.features.value.map((f) => f.slug)).toEqual(['flexbox', 'grid']);
 	});
 
-	it('records an error (and leaves features empty) when the response is not ok', async () => {
-		vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, statusText: 'Server Error' }));
+	it('never requests caniemail.com, and drops the copy older versions cached', async () => {
+		const fetchMock = vi.fn().mockRejectedValue(new Error('blocked by CSP'));
+		vi.stubGlobal('fetch', fetchMock);
+		const store = new Map([['caniemail-data', '{"data":{},"timestamp":0}']]);
+		vi.stubGlobal('localStorage', {
+			getItem: (key: string) => store.get(key) ?? null,
+			removeItem: (key: string) => store.delete(key),
+		});
 		const c = await freshComposable();
 		await c.fetchData();
-		expect(c.error.value).toBeInstanceOf(Error);
-		expect(c.error.value?.message).toContain('Server Error');
-		expect(c.features.value).toEqual([]);
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(c.features.value.map((f) => f.slug)).toEqual(['flexbox', 'grid']);
+		expect(store.has('caniemail-data')).toBe(false);
 	});
 });
