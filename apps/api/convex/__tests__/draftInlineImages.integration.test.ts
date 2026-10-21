@@ -238,6 +238,26 @@ describe('mail.draftInlineImages.urls', () => {
 		expect(await res.text()).toBe('png-bytes');
 	});
 
+	it('never reports more than an hour left, however far the clock moves while minting (#1370)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
+		const { draftId } = await draftWithParts(t, a.mailboxId);
+
+		// Every clock read lands 5 ms after the previous one, so the read the
+		// lifetime is measured from and the read the expiry is signed with differ.
+		let clock = Date.now();
+		const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 5));
+		try {
+			const urls = await t.action(api.mail.draftInlineImages.urls, { draftId });
+			expect(urls).toHaveLength(1);
+			expect(urls[0]!.expiresInMs).toBeGreaterThanOrEqual(0);
+			expect(urls[0]!.expiresInMs).toBeLessThanOrEqual(HOUR);
+		} finally {
+			now.mockRestore();
+		}
+	});
+
 	it('refuses a URL once its capability has expired', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
