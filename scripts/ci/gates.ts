@@ -13,7 +13,8 @@
  * a trailing `/` is a directory, `*`, `**` and `{a,b}` are globs, anything else
  * an exact path) and, for gates that read the source of a workspace and its
  * dependencies, workspace names that select the gate when turbo reports them as
- * affected. Err wide: a missed input lets a red gate through to CI, an extra
+ * affected. A gate's own scripts count with every script they run and module
+ * they import. Err wide: a missed input lets a red gate through to CI, an extra
  * one costs a few seconds.
  */
 
@@ -222,6 +223,8 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'apps/desktop/src-tauri/',
 			'apps/web/app/',
 			'scripts/check-desktop-invoke-contract.ts',
+			'scripts/desktop-invoke-scan.ts',
+			'scripts/desktop-invoke-vue.ts',
 		],
 	},
 	{
@@ -292,6 +295,8 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'packages/shared/src/',
 			'scripts/check-compose-invariants.sh',
 			'scripts/check-docker-proxy-network.ts',
+			'scripts/compose-schema-keys.ts',
+			'scripts/docker-socket-access.ts',
 			'scripts/gen-release-compose.sh',
 		],
 	},

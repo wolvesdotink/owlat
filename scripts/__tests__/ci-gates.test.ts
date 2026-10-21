@@ -3,14 +3,23 @@
  * scripts/ci-gate.sh runs every entry from it in CI and `ci:verify`, and
  * `bun run check:changed` runs the entries whose inputs a change touches.
  * These cases pin that wiring: a root `lint:*` script missing from the list,
- * a gate whose own script or baseline is not among its inputs, or a ci-gate.sh
- * that stops running the list in order fails here.
+ * a gate whose own scripts (with the scripts they run and the modules they
+ * import) or baseline are not among its inputs, or a ci-gate.sh that stops
+ * running the list in order fails here.
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
@@ -31,6 +40,44 @@ const rootScripts = (JSON.parse(read('package.json')) as { scripts: Record<strin
 const gate = (name: string) => ROOT_GATES.find((entry) => entry.name === name)!;
 const selects = (name: string, changed: string[], affected: string[] = []) =>
 	gateSelected(gate(name), changed, new Set(affected), GATE_GLOBAL_INPUTS);
+const isFile = (path: string) =>
+	existsSync(join(REPOSITORY_ROOT, path)) && statSync(join(REPOSITORY_ROOT, path)).isFile();
+
+/**
+ * Every repo file a `lint:*` command reaches: the scripts it names, the
+ * scripts those shell scripts run (comment lines skipped), and the relative
+ * imports of the TypeScript ones, followed transitively. An edit to any of
+ * them can change the gate's result, so each has to be one of its inputs.
+ */
+function gateScriptClosure(command: string): string[] {
+	const queue = [...command.matchAll(/\bscripts\/[\w./-]+/g)].map((match) => match[0]);
+	const seen = new Set<string>();
+	while (queue.length > 0) {
+		const file = queue.shift()!;
+		if (seen.has(file)) continue;
+		seen.add(file);
+		if (!isFile(file)) continue;
+		const source = read(file);
+		if (file.endsWith('.sh')) {
+			const code = source
+				.split('\n')
+				.filter((line) => !line.trimStart().startsWith('#'))
+				.join('\n');
+			for (const match of code.matchAll(/\bscripts\/[\w./-]+\.(?:sh|ts)\b/g))
+				if (isFile(match[0])) queue.push(match[0]);
+		} else if (file.endsWith('.ts')) {
+			for (const match of source.matchAll(
+				/(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)['"](\.{1,2}\/[^'"]+)['"]/g
+			)) {
+				const base = posix.normalize(posix.join(posix.dirname(file), match[1]!));
+				// Unresolvable specifiers are string literals in scanner fixtures.
+				const resolved = [base, `${base}.ts`, `${base}/index.ts`].find(isFile);
+				if (resolved) queue.push(resolved);
+			}
+		}
+	}
+	return [...seen];
+}
 
 describe('root gate manifest', () => {
 	it('lists every root lint:* gate once, and only real ones', () => {
@@ -43,13 +90,23 @@ describe('root gate manifest', () => {
 		expect([...names].sort()).toEqual(lintScripts);
 	});
 
-	it("counts each gate's own scripts, baselines and allowlists among its inputs", () => {
+	it("counts each gate's own scripts, the scripts they run or import, baselines and allowlists among its inputs", () => {
 		for (const entry of ROOT_GATES) {
 			const script = rootScripts[`lint:${entry.name}`]!;
-			const files = [...script.matchAll(/\bscripts\/[\w./-]+/g)].map((match) => match[0]);
-			for (const file of files)
+			for (const file of gateScriptClosure(script))
 				expect(matchesAny(file, entry.paths), `${entry.name}: ${file}`).toBe(true);
 		}
+		// The helpers the compose and desktop-invoke scanners import.
+		expect(gateScriptClosure(rootScripts['lint:compose']!)).toEqual(
+			expect.arrayContaining(['scripts/compose-schema-keys.ts', 'scripts/docker-socket-access.ts'])
+		);
+		expect(gateScriptClosure(rootScripts['lint:desktop-invoke']!)).toEqual(
+			expect.arrayContaining(['scripts/desktop-invoke-scan.ts', 'scripts/desktop-invoke-vue.ts'])
+		);
+		expect(selects('compose', ['scripts/compose-schema-keys.ts'])).toBe(true);
+		expect(selects('compose', ['scripts/docker-socket-access.ts'])).toBe(true);
+		expect(selects('desktop-invoke', ['scripts/desktop-invoke-scan.ts'])).toBe(true);
+		expect(selects('desktop-invoke', ['scripts/desktop-invoke-vue.ts'])).toBe(true);
 		const dataFiles = readdirSync(join(REPOSITORY_ROOT, 'scripts')).filter((file) =>
 			/baseline|allowlist|collisions/.test(file)
 		);
@@ -66,11 +123,8 @@ describe('root gate manifest', () => {
 		// different change than check:changed's merge base unless it is told.
 		const readsBase = /GITHUB_BASE_REF|origin\/main/;
 		for (const entry of ROOT_GATES) {
-			const sources = [
-				...(rootScripts[`lint:${entry.name}`] ?? '').matchAll(/\bscripts\/[\w./-]+/g),
-			]
-				.map((match) => match[0])
-				.filter((file) => /\.(sh|ts)$/.test(file))
+			const sources = gateScriptClosure(rootScripts[`lint:${entry.name}`] ?? '')
+				.filter((file) => /\.(sh|ts)$/.test(file) && isFile(file))
 				.map(read)
 				.join('\n');
 			if (entry.baseEnv) expect(sources, entry.name).toContain(entry.baseEnv);
