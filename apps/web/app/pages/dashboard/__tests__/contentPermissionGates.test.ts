@@ -96,6 +96,7 @@ function stubNuxt() {
 		sortOrder: ref('desc'),
 		toggleSort: vi.fn(),
 		getSortIcon: () => null,
+		getAriaSort: () => undefined,
 	}));
 	vi.stubGlobal('useClickOutsideSelector', vi.fn());
 	vi.stubGlobal('useDebouncedSearch', () => ({ searchQuery: ref(''), debouncedSearch: ref('') }));

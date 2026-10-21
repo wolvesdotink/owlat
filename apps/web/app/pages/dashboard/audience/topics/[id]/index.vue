@@ -238,6 +238,7 @@ const { showToast } = useToast();
 				}"
 				:is-sortable="contacts.isSortable"
 				:get-sort-icon="contacts.getSortIcon"
+				:get-aria-sort="contacts.getAriaSort"
 				:current-page="contacts.currentPage"
 				:total-pages="contacts.totalPages"
 				:page-numbers="contacts.pageNumbers"

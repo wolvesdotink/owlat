@@ -38,12 +38,20 @@ const isLoading = computed(() => organizationLoading.value || topicsLoading.valu
 // Data table controls (search and sort) — shared contract with the other
 // audience list pages: identical debounced search + sort affordance.
 type SortField = 'name' | 'contactCount' | 'createdAt';
-const { searchQuery, debouncedSearch, clearSearch, sortBy, sortOrder, toggleSort, getSortIcon } =
-	useDataTable<SortField>({
-		defaultSort: 'createdAt',
-		defaultOrder: 'desc',
-		sortableFields: ['name', 'contactCount', 'createdAt'],
-	});
+const {
+	searchQuery,
+	debouncedSearch,
+	clearSearch,
+	sortBy,
+	sortOrder,
+	toggleSort,
+	getSortIcon,
+	getAriaSort,
+} = useDataTable<SortField>({
+	defaultSort: 'createdAt',
+	defaultOrder: 'desc',
+	sortableFields: ['name', 'contactCount', 'createdAt'],
+});
 
 // Filtered and sorted topics (client-side over the fully-loaded set)
 const filteredTopics = computed(() => {
@@ -113,6 +121,7 @@ const listTable = computed(() => ({
 	deleteLabel: t('dashboard.audience.topics.index.actions.delete'),
 	canManage: canManage.value,
 	getSortIcon,
+	getAriaSort,
 	onSort: toggleSort,
 	onEdit: openEditModal,
 	onDelete: openDeleteModal,

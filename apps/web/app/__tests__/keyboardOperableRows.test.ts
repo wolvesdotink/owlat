@@ -235,6 +235,7 @@ describe.each(['table', 'cards'] as const)('audience list %s', (layout) => {
 				deleteLabel: 'Delete topic',
 				canManage: true,
 				getSortIcon: () => null,
+				getAriaSort: () => undefined,
 			},
 			global: { plugins: [createTestI18n()], stubs: rowStubs },
 		});

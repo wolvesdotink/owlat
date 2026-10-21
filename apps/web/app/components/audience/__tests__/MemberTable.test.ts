@@ -52,6 +52,7 @@ const baseProps = {
 	empty: { icon: 'lucide:users', title: 'No contacts in this topic', description: 'Add some.' },
 	isSortable: (field: string) => ['email', 'firstName', 'lastName', 'addedAt'].includes(field),
 	getSortIcon: (field: string) => (field === 'addedAt' ? 'lucide:chevron-down' : null),
+	getAriaSort: (field: string) => (field === 'addedAt' ? ('descending' as const) : undefined),
 	currentPage: 1,
 	totalPages: 3,
 	pageNumbers: [1, 2, 3] as (number | '...')[],
@@ -138,6 +139,18 @@ describe('MemberTable header', () => {
 		const wrapper = render({ isSortable: (field: string) => field !== 'lastName' });
 		expect(wrapper.findAll('thead th button')).toHaveLength(3);
 		expect(wrapper.findAll('thead th')[2]!.text()).toBe('Last name');
+	});
+
+	it('announces the sort with aria-sort on the active header only (#1433)', () => {
+		const sorted = (wrapper: ReturnType<typeof render>) =>
+			wrapper
+				.findAll('thead th')
+				.filter((th) => th.attributes('aria-sort') !== undefined)
+				.map((th) => [th.text(), th.attributes('aria-sort')]);
+
+		expect(sorted(render())).toEqual([['Added', 'descending']]);
+		// A column that offers no sort control never claims one.
+		expect(sorted(render({ isSortable: (field: string) => field !== 'addedAt' }))).toEqual([]);
 	});
 });
 
