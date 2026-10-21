@@ -90,6 +90,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	document.body.innerHTML = '';
+	document.documentElement.removeAttribute('data-mobile-tab-bar');
 });
 
 describe('slots', () => {
@@ -228,6 +229,53 @@ describe('getting out of the way', () => {
 		railDrawerOpen.value = false;
 		await nextTick();
 		expect(bar.find('[data-testid="mobile-tab-bar"]').exists()).toBe(true);
+	});
+});
+
+describe('keeping the toast stack clear of the bar (#1438)', () => {
+	// The bar marks <html> while it is on screen; the component's own style block
+	// turns that mark into --ui-bottom-chrome-height below `lg`, and UiToast sits
+	// above that height. happy-dom does no layout, so what is pinned here is the
+	// mark's lifecycle: a mark that outlives the bar strands toasts mid-screen,
+	// a missing one puts them back over Inbox and More.
+	const marked = () => document.documentElement.hasAttribute('data-mobile-tab-bar');
+
+	it('marks the root while the bar is on screen', () => {
+		mountBar();
+		expect(marked()).toBe(true);
+	});
+
+	it('clears the mark while the bar steps aside, and sets it again when it returns', async () => {
+		const bar = mountBar();
+		const dialog = document.createElement('div');
+		dialog.setAttribute('aria-modal', 'true');
+		document.body.append(dialog);
+		await settle();
+		await nextTick();
+		expect(marked()).toBe(false);
+
+		dialog.remove();
+		await settle();
+		await nextTick();
+		expect(marked()).toBe(true);
+
+		await bar.get('[data-testid="mobile-tab-bar-create"]').trigger('click');
+		expect(marked()).toBe(false);
+	});
+
+	it('is never set while the navigation drawer hides the bar from the start', async () => {
+		const bar = mountBar({ navigationOpen: true });
+		expect(marked()).toBe(false);
+
+		await bar.setProps({ navigationOpen: false });
+		expect(marked()).toBe(true);
+	});
+
+	it('clears the mark when the bar unmounts', () => {
+		const bar = mountBar();
+		expect(marked()).toBe(true);
+		bar.unmount();
+		expect(marked()).toBe(false);
 	});
 });
 

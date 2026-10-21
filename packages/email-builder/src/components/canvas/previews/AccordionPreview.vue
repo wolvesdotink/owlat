@@ -3,6 +3,9 @@ import { computed } from 'vue';
 import type { EditorBlock, EmailTheme, AccordionBlockContent } from '../../../types';
 import { blockBoxStyle } from '../../../utils/blocks';
 import { ChevronDown } from '@lucide/vue';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	block: EditorBlock;
@@ -38,7 +41,7 @@ const wrapperStyles = computed(() => ({
 						fontWeight: '600',
 					}"
 				>
-					<span>{{ section.title || 'Untitled Section' }}</span>
+					<span>{{ section.title || t('builder.canvas.preview.untitledSection') }}</span>
 					<ChevronDown :size="16" :style="{ color: content.iconColor || '#666666' }" />
 				</div>
 				<div
@@ -49,7 +52,9 @@ const wrapperStyles = computed(() => ({
 						color: theme.bodyTextColor || '#333333',
 					}"
 				>
-					<span v-if="section.items.length === 0" class="text-text-tertiary">Content goes here...</span>
+					<span v-if="section.items.length === 0" class="text-text-tertiary">{{
+						t('builder.canvas.preview.sectionPlaceholder')
+					}}</span>
 				</div>
 			</div>
 		</div>

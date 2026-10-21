@@ -30,6 +30,7 @@ import type {
 	BuilderCollabFocus,
 } from '../types';
 import { applyCoeditOps, type CoeditOp } from '@owlat/shared/coeditOps';
+import { normalizeBlockTreeIds } from '@owlat/shared/blockTree';
 import type { ParentContext } from './canvas/types';
 
 // Composables (kept from original)
@@ -92,6 +93,9 @@ import {
 } from './dialogs';
 import SavedBlockPickerMenu from './canvas/SavedBlockPickerMenu.vue';
 import UiConfirmationDialog from '@owlat/ui/components/ui/ConfirmationDialog.vue';
+import { useBuilderI18n } from '../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 // ---------------------------------------------------------------------------
 // Props & Emits (same interface as original EmailBuilder)
@@ -144,17 +148,31 @@ const emailBackgroundColor = ref('#ffffff');
 // Sync props → local
 let lastEmittedBlocks: EditorBlock[] | null = null;
 
+/**
+ * Blocks entering the canvas, with every id present and unique. The canvas
+ * keys Blocks by id, so two with one id (a pasted, imported or hand-edited
+ * document) sent it into a recursive update loop (#1430). The first
+ * occurrence keeps its id; the repair is deterministic, so a host re-pushing
+ * the same stored document still matches what the builder emitted, and the
+ * server can tell which id each copy got and carry its translation overlay
+ * over when the document is saved (`carryRenewedBlockOverlays`).
+ */
+function canvasBlocksOf(blocks: readonly EditorBlock[]): EditorBlock[] {
+	return normalizeBlockTreeIds(blocks, { renewRepeated: true });
+}
+
 watch(
 	() => props.blocks,
 	(v) => {
 		if (v === lastEmittedBlocks) return; // Skip echo from our own emit
+		const next = canvasBlocksOf(v);
 		if (
 			lastEmittedBlocks &&
-			v.length === lastEmittedBlocks.length &&
-			v.every((b, i) => b.id === lastEmittedBlocks![i]!.id)
+			next.length === lastEmittedBlocks.length &&
+			next.every((b, i) => b.id === lastEmittedBlocks![i]!.id)
 		)
 			return;
-		canvasBlocks.value = [...v];
+		canvasBlocks.value = next;
 	},
 	{ immediate: true }
 );
@@ -179,8 +197,9 @@ watch(
  */
 function loadState(state: HistoryState) {
 	commitPendingHistory();
-	if (JSON.stringify(state.blocks) !== JSON.stringify(canvasBlocks.value)) {
-		canvasBlocks.value = [...state.blocks];
+	const blocks = canvasBlocksOf(state.blocks);
+	if (JSON.stringify(blocks) !== JSON.stringify(canvasBlocks.value)) {
+		canvasBlocks.value = blocks;
 	}
 	formName.value = state.name;
 	formSubject.value = state.subject;
@@ -434,15 +453,10 @@ const { isBrandConfigured, insertableBrandBlocks, brandBlocksFor, heldRootCount,
 	});
 const showApplyBrandConfirm = ref(false);
 const applyBrandDescription = computed(() => {
-	const base =
-		'Colors, fonts and button styles across this email change to your brand kit. Text, images and links stay as they are, and you can undo it.';
+	const base = t('builder.brand.applyDescription');
 	const held = heldRootCount.value;
 	if (held === 0) return base;
-	const left =
-		held === 1
-			? 'The block someone else is editing, marked with a lock, stays unchanged'
-			: `The ${held} blocks others are editing, marked with a lock, stay unchanged`;
-	return `${base} ${left}; apply again once they are done.`;
+	return `${base} ${t('builder.brand.heldBlocks', { count: held })}`;
 });
 
 function confirmApplyBrand() {
@@ -1329,10 +1343,10 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 		<!-- Apply brand kit: restyles the whole email, so it asks first -->
 		<UiConfirmationDialog
 			:open="showApplyBrandConfirm"
-			title="Apply brand kit?"
+			:title="t('builder.brand.applyTitle')"
 			:description="applyBrandDescription"
-			confirm-text="Apply brand kit"
-			cancel-text="Cancel"
+			:confirm-text="t('builder.brand.apply')"
+			:cancel-text="t('builder.common.cancel')"
 			@confirm="confirmApplyBrand"
 			@cancel="showApplyBrandConfirm = false"
 			@update:open="!$event && (showApplyBrandConfirm = false)"
@@ -1341,10 +1355,14 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 		<!-- Detach confirmation dialog -->
 		<UiConfirmationDialog
 			:open="showDetachConfirm"
-			title="Detach linked block?"
-			:description="`${pendingDetachBlockName || 'This block'} will no longer receive updates from the saved block library.`"
-			confirm-text="Detach"
-			cancel-text="Cancel"
+			:title="t('builder.detach.title')"
+			:description="
+				t('builder.detach.description', {
+					block: pendingDetachBlockName || t('builder.detach.thisBlock'),
+				})
+			"
+			:confirm-text="t('builder.detach.confirm')"
+			:cancel-text="t('builder.common.cancel')"
 			variant="warning"
 			@confirm="confirmDetach"
 			@cancel="cancelDetach"

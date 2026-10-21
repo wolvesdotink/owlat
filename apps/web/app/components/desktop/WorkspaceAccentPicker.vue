@@ -16,7 +16,10 @@ import type { WorkspaceAccent } from '~/lib/desktop/workspaceTypes';
 defineProps<{
 	/** The workspace's current accent. */
 	modelValue: WorkspaceAccent;
-	/** The accents on offer, in order (the page passes `WORKSPACE_ACCENT_OPTIONS`). */
+	/**
+	 * The accents on offer, in order (the page passes `WORKSPACE_ACCENT_OPTIONS`).
+	 * Each `label` is a message key, resolved here.
+	 */
 	options: readonly { value: WorkspaceAccent; label: string }[];
 }>();
 

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 import type { Condition } from '~/composables/conditions';
 
 const { t, locale } = useI18n();
@@ -66,12 +65,20 @@ const {
 // Shared contract with the other audience list pages: identical debounced
 // search + sort affordance, sortable columns declared in one place.
 type SortField = 'name' | 'cachedCount' | 'createdAt';
-const { searchQuery, debouncedSearch, clearSearch, sortBy, sortOrder, toggleSort, getSortIcon } =
-	useDataTable<SortField>({
-		defaultSort: 'createdAt',
-		defaultOrder: 'desc',
-		sortableFields: ['name', 'cachedCount', 'createdAt'],
-	});
+const {
+	searchQuery,
+	debouncedSearch,
+	clearSearch,
+	sortBy,
+	sortOrder,
+	toggleSort,
+	getSortIcon,
+	getAriaSort,
+} = useDataTable<SortField>({
+	defaultSort: 'createdAt',
+	defaultOrder: 'desc',
+	sortableFields: ['name', 'cachedCount', 'createdAt'],
+});
 
 const filteredSegments = computed(() => {
 	const query = debouncedSearch.value.toLowerCase();
@@ -120,6 +127,7 @@ const listTable = computed(() => ({
 	deleteLabel: t('dashboard.audience.segments.index.actions.delete'),
 	canManage: canManage.value,
 	getSortIcon,
+	getAriaSort,
 	subtitleOf: (segment: SegmentRow) => segment.description || filterSummaryOf(segment),
 	onSort: toggleSort,
 	onEdit: openEditModal,
@@ -473,7 +481,7 @@ onMounted(() => {
 		</UiModal>
 
 		<!-- Unsaved Changes Dialog (builder dismissed with pending edits) -->
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="showSegmentDiscardDialog"
 			@close="showSegmentDiscardDialog = false"
 			@discard="discardSegmentEdits"

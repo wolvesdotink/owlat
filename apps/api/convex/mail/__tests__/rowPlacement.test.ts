@@ -2,11 +2,13 @@
  * Read on arrival (SPEC §3): every Postbox list row carries its thread's
  * Priority placement, so the Priority view groups any page alike.
  *
- * The placement is the thread's own `placementOverride` when there is one,
- * else the arrival projection's placement (§2.8 precedence step 1). A thread
- * without a projection travels without the key, and the view falls back to
- * its category grouping. Nothing new is read: the thread doc is the one the
- * page already loads for its chips.
+ * The placement is the arrival projection's, which is computed with the
+ * thread's `placementOverride` (§2.8 precedence step 1): a Fix re-projects the
+ * thread, so its placement lands in the projection, except an older digest or
+ * updates Fix that an exact-wording candidate overrules (#1384). A thread with
+ * an override but no projection uses the override; one with neither travels
+ * without the key, and the view falls back to its category grouping. Nothing
+ * new is read: the thread doc is the one the page already loads for its chips.
  */
 
 import { convexTest } from 'convex-test';
@@ -85,15 +87,21 @@ async function placementsBySubject(t: T, mailboxId: Id<'mailboxes'>) {
 }
 
 describe('list rows carry the Priority placement (SPEC §3)', () => {
-	it('reads the arrival projection, lets the thread override win, and omits it otherwise', async () => {
+	it('reads the arrival projection (which carries a Fix), falls back to an override, and omits it otherwise', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedInbox(t);
 		await seedRow(t, mailboxId, 'shipping', (messageId) => ({
 			arrival: { placement: 'updates', depth: 'gist', messageId, decidedAt: 1 },
 		}));
+		// An ordinary Fix: the override and the projection it re-computed agree.
 		await seedRow(t, mailboxId, 'quote', (messageId, operationId) => ({
-			arrival: { placement: 'today', depth: 'full', messageId, decidedAt: 1 },
+			arrival: { placement: 'needs_me', depth: 'full', messageId, decidedAt: 2 },
 			placementOverride: { placement: 'needs_me', setAt: 2, operationId },
+		}));
+		// Payment mail after an older digest Fix: the projection lifted it (#1384).
+		await seedRow(t, mailboxId, 'bank details', (messageId, operationId) => ({
+			arrival: { placement: 'today', depth: 'full', messageId, decidedAt: 3 },
+			placementOverride: { placement: 'digest', setAt: 1, operationId },
 		}));
 		await seedRow(t, mailboxId, 'override only', (_messageId, operationId) => ({
 			placementOverride: { placement: 'digest', setAt: 2, operationId },
@@ -103,6 +111,7 @@ describe('list rows carry the Priority placement (SPEC §3)', () => {
 		expect(await placementsBySubject(t, mailboxId)).toEqual({
 			shipping: 'updates',
 			quote: 'needs_me',
+			'bank details': 'today',
 			'override only': 'digest',
 			// Absent, never a present `undefined`: the view's fallback keys off it.
 			legacy: 'absent',

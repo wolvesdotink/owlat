@@ -7,6 +7,12 @@
  * with unsaved edits: it renders nothing, and a published template refuses
  * saves until it is unpublished, so holding it too would leave the edits with
  * no way to be saved.
+ *
+ * A held Publish is `aria-disabled`, not `disabled`. A `disabled` button leaves
+ * the tab order and (through `.btn`'s `pointer-events: none`) never shows its
+ * `title` either, so nobody learned why Publish was held. Focusable +
+ * `aria-describedby` makes the reason arrive with the control; the click
+ * handler is what keeps it inert.
  */
 const props = defineProps<{
 	isPublished: boolean;
@@ -20,7 +26,33 @@ const emit = defineEmits<{ toggle: [] }>();
 
 const { t } = useI18n();
 
-const holdPublish = computed(() => !props.isPublished && props.hasChanges);
+/** Publish is held until the edits are saved and the row has HTML to publish. */
+const holdPublish = computed(
+	() => !props.isPublished && (props.hasChanges || !props.hasStoredHtml)
+);
+
+/** Why Publish does nothing right now, or null when the control is live. */
+const holdReason = computed(() => {
+	if (!holdPublish.value) return null;
+	return props.hasChanges
+		? t('dashboard.send.emails.detail.edit.saveBeforePublishHint')
+		: t('dashboard.send.emails.detail.edit.toasts.saveBeforePublish');
+});
+const holdReasonId = useId();
+
+/**
+ * The held look, with no press/hover feedback. The fill and label fade through
+ * colour alpha, not `opacity`: `opacity` would fade the focus ring with them,
+ * and this control is meant to be reached by keyboard. 50% matches `.btn`'s
+ * `disabled:opacity-50`.
+ */
+const heldClass =
+	'cursor-not-allowed active:scale-100 bg-surface-3/50 hover:bg-surface-3/50 text-text-primary/50';
+
+function onToggle() {
+	if (holdPublish.value) return;
+	emit('toggle');
+}
 </script>
 
 <template>
@@ -28,9 +60,11 @@ const holdPublish = computed(() => !props.isPublished && props.hasChanges);
 		variant="secondary"
 		size="sm"
 		:loading="loading"
-		:disabled="!isPublished && (hasChanges || !hasStoredHtml)"
-		:title="holdPublish ? t('dashboard.send.emails.detail.edit.saveBeforePublishHint') : undefined"
-		@click="emit('toggle')"
+		:aria-disabled="holdPublish ? 'true' : undefined"
+		:aria-describedby="holdPublish ? holdReasonId : undefined"
+		:class="holdPublish ? heldClass : undefined"
+		:title="holdReason ?? undefined"
+		@click="onToggle"
 	>
 		<template #iconLeft>
 			<Icon :name="isPublished ? 'lucide:undo-2' : 'lucide:send'" class="w-4 h-4" />
@@ -41,4 +75,6 @@ const holdPublish = computed(() => !props.isPublished && props.hasChanges);
 				: t('dashboard.send.emails.detail.edit.publish')
 		}}
 	</UiButton>
+	<!-- The held reason, for the control's accessible description. -->
+	<span v-if="holdReason" :id="holdReasonId" class="sr-only">{{ holdReason }}</span>
 </template>

@@ -123,19 +123,23 @@ export type RowThreadState = {
 	category?: Infer<typeof mailCategoryLabelValidator>;
 	briefTop?: BriefTopRow;
 	/**
-	 * Where the Priority view groups the row (SPEC §3): the thread's own
-	 * placement override, else the arrival projection's placement. Absent
-	 * until the thread has an arrival projection; the view then falls back to
+	 * Where the Priority view groups the row (SPEC §3): the arrival
+	 * projection's placement, which already applies the thread's override
+	 * (except an older one an exact-wording candidate overrules, #1384), else
+	 * the override itself. Absent with neither; the view then falls back to
 	 * its category grouping. Read off the thread doc this page already loaded.
 	 */
 	placement?: Placement;
 };
 
-/** The thread's effective Priority placement: the override wins (SPEC §2.8 step 1). */
+/**
+ * The thread's effective Priority placement: the projection, computed with the
+ * override (SPEC §2.8 step 1), else the override of a thread without one.
+ */
 function threadPlacement(
 	thread: Pick<Doc<'mailThreads'>, 'arrival' | 'placementOverride'> | null
 ): Placement | undefined {
-	return thread?.placementOverride?.placement ?? thread?.arrival?.placement;
+	return thread?.arrival?.placement ?? thread?.placementOverride?.placement;
 }
 
 export async function attachThreadState(

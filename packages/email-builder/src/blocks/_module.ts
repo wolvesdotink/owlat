@@ -28,8 +28,13 @@ export type BlockOf<T extends BlockType> = Extract<EditorBlock, { type: T }>;
 export interface NestedChild {
 	id: string;
 	type: string;
+	/** English display label (block labels are translated where shown). */
 	label: string;
 	icon: Component | null;
+	/** 1-based column of a `columns` child; the panel shows "Col n: <type>". */
+	column?: number;
+	/** A `builder.*` message to show instead of `label` (e.g. an untitled entry). */
+	labelKey?: string;
 }
 
 /**

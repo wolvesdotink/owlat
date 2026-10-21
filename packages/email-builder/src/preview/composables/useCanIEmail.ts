@@ -1,24 +1,23 @@
 import { ref, shallowRef, computed, type Ref, type ComputedRef } from 'vue';
 import type { CanIEmailData, CanIEmailFeature, SupportCode } from '../types';
+import { loadCanIEmailSnapshot } from './caniemailSnapshot';
 
-const CANIEMAIL_API_URL = 'https://www.caniemail.com/api/data.json';
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
-
-interface CachedData {
-	data: CanIEmailData;
-	timestamp: number;
-}
+/**
+ * Where earlier versions cached the caniemail.com API response (~1 MB). The
+ * bundled snapshot replaced that request, so the stale copy is dropped on load.
+ */
+const LEGACY_STORAGE_KEY = 'caniemail-data';
 
 // Shared state across all instances
-const cachedData = shallowRef<CachedData | null>(null);
+const loadedData = shallowRef<CanIEmailData | null>(null);
 const isLoading = ref(false);
 const error = ref<Error | null>(null);
-// The network load in flight, shared so concurrent callers wait for the same
-// response instead of returning before the data has arrived.
+// The snapshot load in flight, shared so concurrent callers wait for the same
+// data instead of returning before it has arrived.
 let inFlight: Promise<void> | null = null;
 
 /**
- * Composable for fetching and managing caniemail.com data
+ * Composable for the Can I Email support data (the snapshot bundled with the app)
  */
 export function useCanIEmail(): {
 	data: Ref<CanIEmailData | null>;
@@ -35,71 +34,40 @@ export function useCanIEmail(): {
 	) => SupportCode | null;
 	searchFeatures: (query: string) => CanIEmailFeature[];
 } {
-	const data = computed(() => cachedData.value?.data ?? null);
+	const data = computed(() => loadedData.value);
 	const features = computed(() => data.value?.data ?? []);
 	const nicenames = computed(() => data.value?.nicenames ?? null);
 
 	/**
-	 * Fetch data from caniemail.com API with caching
+	 * Load the bundled snapshot once. A failed load leaves `error` set and is
+	 * retried by the next call.
 	 */
 	async function fetchData(): Promise<void> {
 		if (inFlight) return inFlight;
+		if (loadedData.value) return;
 
 		error.value = null;
-
-		// Check cache validity
-		if (cachedData.value && Date.now() - cachedData.value.timestamp < CACHE_DURATION) {
-			return;
-		}
-
-		// Check localStorage cache
-		try {
-			const stored = localStorage.getItem('caniemail-data');
-			if (stored) {
-				const parsed: CachedData = JSON.parse(stored);
-				if (Date.now() - parsed.timestamp < CACHE_DURATION) {
-					cachedData.value = parsed;
-					return;
-				}
-			}
-		} catch {
-			// Ignore localStorage errors
-		}
-
-		inFlight = loadFromApi().finally(() => {
+		inFlight = loadSnapshot().finally(() => {
 			inFlight = null;
 		});
 		return inFlight;
 	}
 
-	async function loadFromApi(): Promise<void> {
+	async function loadSnapshot(): Promise<void> {
 		isLoading.value = true;
 
 		try {
-			const response = await fetch(CANIEMAIL_API_URL);
-			if (!response.ok) {
-				throw new Error(`Failed to fetch: ${response.statusText}`);
-			}
-
-			const apiData: CanIEmailData = await response.json();
-
-			const cached: CachedData = {
-				data: apiData,
-				timestamp: Date.now(),
-			};
-
-			cachedData.value = cached;
-
-			// Store in localStorage
-			try {
-				localStorage.setItem('caniemail-data', JSON.stringify(cached));
-			} catch {
-				// Ignore storage errors (quota exceeded, etc.)
-			}
+			loadedData.value = await loadCanIEmailSnapshot();
 		} catch (e) {
 			error.value = e instanceof Error ? e : new Error('Unknown error');
 		} finally {
 			isLoading.value = false;
+		}
+
+		try {
+			localStorage.removeItem(LEGACY_STORAGE_KEY);
+		} catch {
+			// Ignore storage errors (no localStorage, blocked storage, etc.)
 		}
 	}
 

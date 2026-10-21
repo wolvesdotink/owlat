@@ -167,7 +167,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'UiSkeleton',
 		'UiSkeletonText',
 		'UiSwitch',
-		'UnsavedChangesDialog',
+		'UiUnsavedChangesDialog',
 		'I18nT',
 	].map((name) => [name, true])
 );

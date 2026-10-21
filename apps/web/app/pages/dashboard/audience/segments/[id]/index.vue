@@ -239,6 +239,7 @@ const handleExport = async () => {
 				}"
 				:is-sortable="members.isSortable"
 				:get-sort-icon="members.getSortIcon"
+				:get-aria-sort="members.getAriaSort"
 				:current-page="members.currentPage"
 				:total-pages="members.totalPages"
 				:page-numbers="members.pageNumbers"

@@ -113,6 +113,16 @@ describe('sort', () => {
 		table.toggleSort('phone');
 		expect(table.sortBy.value).toBe('email');
 	});
+
+	it('reports aria-sort for the active column only (#1433)', () => {
+		const { table } = setup([member(1)]);
+		expect(table.getAriaSort('email')).toBe('ascending');
+		expect(table.getAriaSort('addedAt')).toBeUndefined();
+		table.toggleSort('addedAt');
+		expect(table.getAriaSort('addedAt')).toBe('descending');
+		expect(table.getAriaSort('email')).toBeUndefined();
+		expect(table.getAriaSort('phone')).toBeUndefined();
+	});
 });
 
 describe('paging', () => {

@@ -2,6 +2,9 @@
 import { computed } from 'vue';
 import type { PropertyField } from '../../schema/types';
 import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Maximize2 } from '@lucide/vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	field: PropertyField;
@@ -36,7 +39,7 @@ function handleSelectChange(event: Event) {
 </script>
 
 <template>
-	<div class="flex items-center gap-0.5" role="group" :aria-label="field.label">
+	<div class="flex items-center gap-0.5" role="group" :aria-label="label(field.label)">
 		<!-- Alignment buttons -->
 		<template v-if="field.type === 'align'">
 			<button
@@ -44,8 +47,8 @@ function handleSelectChange(event: Event) {
 				:key="opt"
 				class="flex items-center justify-center w-[26px] h-[26px] border-none bg-transparent rounded text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-black/[0.08]"
 				:class="{ 'bg-black/[0.12] text-brand': value === opt }"
-				:title="opt"
-				:aria-label="`${field.label}: ${opt}`"
+				:title="t(`builder.align.${opt}`)"
+				:aria-label="`${label(field.label)}: ${t(`builder.align.${opt}`)}`"
 				:aria-pressed="value === opt"
 				type="button"
 				@click.stop="emit('update', field.key, opt)"
@@ -56,10 +59,12 @@ function handleSelectChange(event: Event) {
 
 		<!-- Number / Slider inline -->
 		<template v-else-if="field.type === 'number' || field.type === 'slider'">
-			<label class="text-[11px] text-text-tertiary mr-1 whitespace-nowrap">{{ field.label }}</label>
+			<label class="text-[11px] text-text-tertiary mr-1 whitespace-nowrap">{{
+				label(field.label)
+			}}</label>
 			<input
 				type="number"
-				:aria-label="field.label"
+				:aria-label="label(field.label)"
 				class="w-12 h-[26px] text-xs border border-border-default rounded px-1 text-center bg-transparent text-inherit focus:outline-none focus:border-brand"
 				:value="value"
 				:min="field.min"
@@ -74,18 +79,14 @@ function handleSelectChange(event: Event) {
 		<!-- Select -->
 		<template v-else-if="field.type === 'select'">
 			<select
-				:aria-label="field.label"
+				:aria-label="label(field.label)"
 				class="h-[26px] text-xs border border-border-default rounded px-1 bg-transparent text-inherit cursor-pointer focus:outline-none focus:border-brand"
 				:value="String(value)"
 				@change="handleSelectChange"
 				@click.stop
 			>
-				<option
-					v-for="opt in field.options"
-					:key="String(opt.value)"
-					:value="String(opt.value)"
-				>
-					{{ opt.label }}
+				<option v-for="opt in field.options" :key="String(opt.value)" :value="String(opt.value)">
+					{{ label(opt.label) }}
 				</option>
 			</select>
 		</template>

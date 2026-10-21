@@ -6,6 +6,9 @@ import type { ParentContext } from '../types';
 import { VueDraggable } from 'vue-draggable-plus';
 import { ImageIcon } from '@lucide/vue';
 import { gradientCss as buildGradientCss } from '../../../utils/gradient';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 // Lazy import to break circular dependency
 const DocumentBlock = defineAsyncComponent(() => import('../DocumentBlock.vue'));
@@ -109,7 +112,7 @@ function handleChildDoubleClick(item: { id: string; type: string }) {
 		>
 			<div class="flex flex-col items-center gap-1 text-text-tertiary">
 				<ImageIcon :size="32" />
-				<span class="text-xs">Set background image</span>
+				<span class="text-xs">{{ t('builder.canvas.preview.heroImage') }}</span>
 			</div>
 		</div>
 

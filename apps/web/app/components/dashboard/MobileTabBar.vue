@@ -154,6 +154,29 @@ const isVisible = computed(
 		!props.navigationOpen
 );
 
+/**
+ * Tell the toast stack how much of the screen's bottom edge the bar takes.
+ * Both are teleported to `body`, so the bar marks the root element while it is
+ * on screen and the style block below turns that mark into
+ * `--ui-bottom-chrome-height`, which UiToast reads to sit above the bar (#1438).
+ * The breakpoint lives in that CSS, not here, so resizing past `lg` drops the
+ * offset together with the bar; unmounting clears it.
+ */
+const BOTTOM_CHROME_ATTRIBUTE = 'data-mobile-tab-bar';
+
+onMounted(() => {
+	const root = document.documentElement;
+	watch(
+		isVisible,
+		(visible) => {
+			if (visible) root.setAttribute(BOTTOM_CHROME_ATTRIBUTE, '');
+			else root.removeAttribute(BOTTOM_CHROME_ATTRIBUTE);
+		},
+		{ immediate: true }
+	);
+	onUnmounted(() => root.removeAttribute(BOTTOM_CHROME_ATTRIBUTE));
+});
+
 function run(action: (typeof actions.value)[number]): void {
 	isSheetOpen.value = false;
 	action.run();
@@ -297,6 +320,15 @@ function run(action: (typeof actions.value)[number]): void {
 @media (max-width: 1023px) {
 	#main-content {
 		padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+	}
+
+	/*
+	 * While the bar is on screen: its full height from the bottom edge (the 4rem
+	 * row, its 1px top border and the safe-area padding), for overlays that must
+	 * stay clear of it. The toast stack is the consumer (#1438).
+	 */
+	html[data-mobile-tab-bar] {
+		--ui-bottom-chrome-height: calc(4rem + 1px + env(safe-area-inset-bottom, 0px));
 	}
 }
 </style>

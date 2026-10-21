@@ -2,7 +2,9 @@
 //
 // The floating block sidebar follows the canvas: it listens for scroll on the
 // canvas's `.document-canvas__bg` scroll root, for window resize, and for canvas
-// resizes. When the canvas element changes, the listener has to come off the
+// resizes, and once the canvas scrolls past the top of that root it sticks just
+// below the root's top edge (not the viewport's, which would put it over the app
+// header). When the canvas element changes, the listener has to come off the
 // root it was installed on, not the root of the new element, and unmounting has
 // to remove the last one. Geometry is read at most once per animation frame no
 // matter how many scroll/resize events arrive in between.
@@ -34,21 +36,57 @@ interface Root {
 	canvas: HTMLElement;
 	listeners: { count: () => number };
 	reads: () => number;
+	rootReads: () => number;
+	/** Moves the canvas to a new viewport top, as scrolling the root does. */
+	scrollCanvasTo: (top: number) => void;
 }
 
-/** A `.document-canvas__bg` scroll root holding a canvas at the given rect. */
-function makeRoot(left = 200, top = 100): Root {
+/**
+ * A `.document-canvas__bg` scroll root holding a canvas at the given rect. The
+ * root's own top edge defaults to 0 (happy-dom's empty rect); in the app it sits
+ * below the app header and the editor toolbar.
+ */
+function makeRoot(left = 200, top = 100, rootTop = 0): Root {
 	const root = document.createElement('div');
 	root.className = 'document-canvas__bg';
 	const canvas = document.createElement('div');
 	root.appendChild(canvas);
 	document.body.appendChild(root);
 	let reads = 0;
+	let rootReads = 0;
+	let canvasTop = top;
 	canvas.getBoundingClientRect = () => {
 		reads++;
-		return { left, top, right: left + 600, bottom: top + 800, width: 600, height: 800 } as DOMRect;
+		return {
+			left,
+			top: canvasTop,
+			right: left + 600,
+			bottom: canvasTop + 800,
+			width: 600,
+			height: 800,
+		} as DOMRect;
 	};
-	return { root, canvas, listeners: trackScrollListeners(root), reads: () => reads };
+	root.getBoundingClientRect = () => {
+		rootReads++;
+		return {
+			left: 0,
+			top: rootTop,
+			right: 1440,
+			bottom: 900,
+			width: 1440,
+			height: 900 - rootTop,
+		} as DOMRect;
+	};
+	return {
+		root,
+		canvas,
+		listeners: trackScrollListeners(root),
+		reads: () => reads,
+		rootReads: () => rootReads,
+		scrollCanvasTo: (next) => {
+			canvasTop = next;
+		},
+	};
 }
 
 const observers: FakeResizeObserver[] = [];
@@ -242,6 +280,74 @@ describe('FloatingBlockSidebar geometry updates', () => {
 		await nextTick();
 		expect(toolbar().style.left).toBe('248px');
 		// Sticky: stays at the top offset once the canvas scrolls past it.
+		expect(toolbar().style.top).toBe('16px');
+	});
+
+	it('sticks below the scroll root, not the viewport, once the canvas scrolls past it', async () => {
+		// The root starts below 120px of app header and editor toolbar.
+		const a = makeRoot(200, 144, 120);
+		mountSidebar(a.canvas);
+		await nextTick();
+		expect(toolbar().style.top).toBe('160px');
+
+		a.scrollCanvasTo(-456);
+		a.root.dispatchEvent(new Event('scroll'));
+		flushFrame();
+		await nextTick();
+		expect(toolbar().style.top).toBe('136px');
+		expect(toolbar().style.left).toBe('148px');
+	});
+
+	it('reads the scroll root once per frame together with the canvas', async () => {
+		const a = makeRoot(200, 144, 120);
+		mountSidebar(a.canvas);
+		const canvasBefore = a.reads();
+		const rootBefore = a.rootReads();
+		expect(rootBefore).toBe(1);
+
+		for (let i = 0; i < 20; i++) a.root.dispatchEvent(new Event('scroll'));
+		window.dispatchEvent(new Event('resize'));
+		liveObservers()[0]!.fire();
+		expect(a.rootReads()).toBe(rootBefore);
+
+		flushFrame();
+		expect(a.reads()).toBe(canvasBefore + 1);
+		expect(a.rootReads()).toBe(rootBefore + 1);
+	});
+
+	it('clamps to the replacement root after a canvas swap', async () => {
+		const a = makeRoot(200, -456, 120);
+		const b = makeRoot(200, -300, 200);
+		const w = mountSidebar(a.canvas);
+		await nextTick();
+		expect(toolbar().style.top).toBe('136px');
+
+		await w.setProps({ canvasElement: b.canvas });
+		await nextTick();
+		expect(toolbar().style.top).toBe('216px');
+		const aRootReads = a.rootReads();
+
+		b.root.dispatchEvent(new Event('scroll'));
+		flushFrame();
+		await nextTick();
+		expect(toolbar().style.top).toBe('216px');
+		expect(a.rootReads()).toBe(aRootReads);
+	});
+
+	it('keeps the viewport floor when the scroll root starts above the viewport', async () => {
+		const a = makeRoot(200, -456, -80);
+		mountSidebar(a.canvas);
+		await nextTick();
+		expect(toolbar().style.top).toBe('16px');
+	});
+
+	it('keeps the viewport floor when the canvas has no scroll root', async () => {
+		const canvas = document.createElement('div');
+		document.body.appendChild(canvas);
+		canvas.getBoundingClientRect = () =>
+			({ left: 200, top: -456, right: 800, bottom: 344, width: 600, height: 800 }) as DOMRect;
+		mountSidebar(canvas);
+		await nextTick();
 		expect(toolbar().style.top).toBe('16px');
 	});
 

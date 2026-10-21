@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
+
 defineProps<{
 	color: string;
 	selected?: boolean;
@@ -20,7 +24,7 @@ defineEmits<{
 		}"
 		:style="color !== 'transparent' ? { backgroundColor: color } : undefined"
 		:title="label ?? color"
-		:aria-label="label ?? `Color ${color}`"
+		:aria-label="label ?? t('builder.panel.color.swatch', { color })"
 		:aria-pressed="selected === true"
 		type="button"
 		@click="$emit('click')"

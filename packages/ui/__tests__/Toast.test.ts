@@ -11,8 +11,11 @@
  *  - phones: the stack spans the viewport between 1rem gutters plus the
  *    safe-area insets, and a card fills that width with no fixed minimum;
  *  - `sm` and up: back to the bottom-right corner with the 280px minimum;
- *  - the full-width stack lets taps through to what sits under it (the mobile
- *    tab bar), only the cards take pointer events;
+ *  - the stack sits above any fixed bottom chrome the app reports through
+ *    `--ui-bottom-chrome-height` (the mobile tab bar, #1438), and never lower
+ *    than its own inset-aware offset;
+ *  - the full-width stack lets taps through the gaps between cards, only the
+ *    cards take pointer events;
  *  - message and action wrap as a pair, so a long German message or label
  *    breaks onto a new line instead of widening the card.
  */
@@ -55,7 +58,11 @@ describe('Toast stack geometry', () => {
 		const cls = stack.className.split(/\s+/);
 		expect(cls).toContain('left-[calc(1rem+env(safe-area-inset-left,0px))]');
 		expect(cls).toContain('right-[calc(1rem+env(safe-area-inset-right,0px))]');
-		expect(cls).toContain('bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))]');
+		// Never lower than 1.5rem above the inset, and lifted to 0.5rem above any
+		// bottom chrome the app reports (the mobile tab bar, #1438).
+		expect(cls).toContain(
+			'bottom-[max(calc(var(--ui-bottom-chrome-height,0px)+0.5rem),calc(1.5rem+env(safe-area-inset-bottom,0px)))]'
+		);
 		// The old fixed offsets ignored the insets entirely.
 		expect(cls).not.toContain('bottom-6');
 		expect(cls).not.toContain('right-6');

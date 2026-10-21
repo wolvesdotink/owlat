@@ -3,13 +3,18 @@ import { toRaw } from 'vue';
 import { useCompatibilityAnalysis } from '../useCompatibilityAnalysis';
 import type { CanIEmailData, CanIEmailFeature } from '../../types';
 
+// The bundled snapshot is replaced so each test controls what loads and when.
+// useCompatibilityAnalysisSnapshot.test.ts runs against the real snapshot.
+const loadSnapshot = vi.hoisted(() => vi.fn());
+vi.mock('../caniemailSnapshot', () => ({ loadCanIEmailSnapshot: loadSnapshot }));
+
 describe('useCompatibilityAnalysis', () => {
 	beforeEach(() => {
-		// caniemail data unavailable → deterministic heuristic-only path (no network).
-		vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, statusText: 'offline' }));
+		// caniemail data unavailable → deterministic heuristic-only path.
+		loadSnapshot.mockReset();
+		loadSnapshot.mockRejectedValue(new Error('offline'));
 	});
 	afterEach(() => {
-		vi.unstubAllGlobals();
 		vi.restoreAllMocks();
 	});
 
@@ -56,19 +61,17 @@ describe('useCompatibilityAnalysis — overlapping analyses during the first dat
 	};
 
 	let respond!: () => void;
-	let fetchMock: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
-		fetchMock = vi.fn(
+		loadSnapshot.mockReset();
+		loadSnapshot.mockImplementation(
 			() =>
-				new Promise((resolve) => {
-					respond = () => resolve({ ok: true, statusText: 'OK', json: async () => data });
+				new Promise<CanIEmailData>((resolve) => {
+					respond = () => resolve(data);
 				})
 		);
-		vi.stubGlobal('fetch', fetchMock);
 	});
 	afterEach(() => {
-		vi.unstubAllGlobals();
 		vi.restoreAllMocks();
 	});
 
@@ -79,14 +82,14 @@ describe('useCompatibilityAnalysis — overlapping analyses during the first dat
 		return mod.useCompatibilityAnalysis();
 	}
 
-	it('publishes only the newest report, from one shared fetch with the data loaded', async () => {
+	it('publishes only the newest report, from one shared load with the data loaded', async () => {
 		const { analyzeHtml, report, isAnalyzing } = await freshAnalysis();
 		const reports: unknown[] = [];
 
 		const first = analyzeHtml('<div style="display: flex"></div>');
 		const second = analyzeHtml('<div style="display: grid"></div>');
 		await Promise.resolve();
-		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(loadSnapshot).toHaveBeenCalledTimes(1);
 		// Nothing publishes before the shared load resolves.
 		expect(report.value).toBeNull();
 		expect(isAnalyzing.value).toBe(true);
@@ -116,5 +119,39 @@ describe('useCompatibilityAnalysis — overlapping analyses during the first dat
 		expect(await pending).toBeNull();
 		expect(report.value).toBeNull();
 		expect(isAnalyzing.value).toBe(false);
+	});
+});
+
+describe('useCompatibilityAnalysis — a failing analysis', () => {
+	beforeEach(() => {
+		loadSnapshot.mockReset();
+		// A feature without stats makes the support lookup throw mid-analysis.
+		const broken = { slug: 'css-display-grid', title: 'Grid' } as unknown as CanIEmailFeature;
+		loadSnapshot.mockResolvedValue({
+			api_version: '1.0',
+			last_update_date: '2026-06-03',
+			nicenames: { family: {}, platform: {}, support: {}, category: {} },
+			data: [broken],
+		} satisfies CanIEmailData);
+	});
+
+	async function freshAnalysis() {
+		vi.resetModules();
+		const mod = await import('../useCompatibilityAnalysis');
+		return mod.useCompatibilityAnalysis();
+	}
+
+	it('resolves null and records the error, which the next analysis clears', async () => {
+		const { analyzeHtml, report, error, isAnalyzing } = await freshAnalysis();
+
+		expect(await analyzeHtml('<div style="display: grid"></div>')).toBeNull();
+		expect(error.value).toBeInstanceOf(Error);
+		expect(report.value).toBeNull();
+		expect(isAnalyzing.value).toBe(false);
+
+		const next = analyzeHtml('<p>plain</p>');
+		expect(error.value).toBeNull();
+		expect(await next).not.toBeNull();
+		expect(error.value).toBeNull();
 	});
 });

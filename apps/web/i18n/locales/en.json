@@ -4369,6 +4369,35 @@
 					"supports": "Supports"
 				},
 				"removeRelation": "Remove relation"
+			},
+			"shareWithMembers": {
+				"action": "Share with members",
+				"blocked": {
+					"already_shared": "Members can already see this entry.",
+					"mail_capture": "This entry comes from a file captured from mail, which keeps its mailbox's permission. It stays with owners and admins.",
+					"restriction_pending": "This entry is still being restricted. Try again once that has finished.",
+					"source_missing": "Where this entry came from is not known any more, so it stays with owners and admins.",
+					"team_inbox": "This entry comes from the Team Inbox, so it stays with owners and admins."
+				},
+				"changed": "This entry changed after you reviewed it. Review it again.",
+				"changedNotice": "This entry changed while you were reviewing it.",
+				"confirm": "Share with members",
+				"contacts": "Linked contacts",
+				"content": "Content",
+				"deletedContact": "Deleted contact",
+				"intro": "Members can't see this entry. Before it was restricted, it may have taken in text, tags or contact links from private mail. Check everything below, then share it.",
+				"loadFailed": "Couldn't load this entry",
+				"loading": "Loading the entry…",
+				"noContacts": "No linked contacts",
+				"noTags": "No tags",
+				"operation": "Share knowledge entry",
+				"sharedToast": "Members can now see this entry.",
+				"sharing": "Sharing…",
+				"showLatest": "Review the new version",
+				"tags": "Tags",
+				"title": "Share with members?",
+				"titleLabel": "Title",
+				"unavailable": "This entry can't be reviewed any more. It may have been deleted, or you may no longer be allowed to share knowledge."
 			}
 		},
 		"languagePicker": {
@@ -12691,6 +12720,14 @@
 			"workspaces": {
 				"accent": "Accent",
 				"accentOption": "{accent} accent",
+				"accents": {
+					"gold": "Gold",
+					"graphite": "Graphite",
+					"moss": "Moss",
+					"plum": "Plum",
+					"slate": "Slate",
+					"terracotta": "Terracotta"
+				},
 				"connect": "Connect a workspace",
 				"empty": "No workspaces connected yet. Workspace settings — members, delivery, API keys and more — become available once you connect to an Owlat server.",
 				"heading": "Workspaces",
@@ -13236,6 +13273,7 @@
 				"sender_status": "How you handle this sender",
 				"rule": "One of your rules",
 				"category": "Its kind of mail",
+				"exact_wording": "It carries payment or legal wording, so it stays out of your digest and updates",
 				"senderStatus": {
 					"default": "How you handle this sender: {status}",
 					"user": "How you handle this sender: {status}, set by you",

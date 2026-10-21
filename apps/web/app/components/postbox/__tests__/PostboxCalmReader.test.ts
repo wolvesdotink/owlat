@@ -561,6 +561,31 @@ describe('the "Why here?" seam', () => {
 	});
 });
 
+describe('the reader placement follows the projection (#1384)', () => {
+	async function placementFor(thread: Record<string, unknown>) {
+		const open = vi.fn();
+		const w = await mountReader(
+			{ messages: [message('m3')], brief: briefView(), thread },
+			{ [POSTBOX_WHY_HERE_KEY]: { open } }
+		);
+		await w.get('[data-testid="strip-why-here"]').trigger('click');
+		return open.mock.calls[0]?.[0]?.placement;
+	}
+
+	it('an older thread Fix the payment wording overruled reads as the projection says', async () => {
+		expect(
+			await placementFor({
+				arrival: { placement: 'today', messageId: 'm3', decidedAt: 1 },
+				placementOverride: { placement: 'digest' },
+			})
+		).toBe('today');
+	});
+
+	it('a thread without a projection falls back to its Fix', async () => {
+		expect(await placementFor({ placementOverride: { placement: 'digest' } })).toBe('digest');
+	});
+});
+
 describe('a reader opened from the filtered list (read on arrival §3)', () => {
 	it('archives onto the next message with ?placement= kept', async () => {
 		navigateTo.mockClear();

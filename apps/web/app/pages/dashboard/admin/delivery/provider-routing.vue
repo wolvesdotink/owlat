@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { unknownIpPoolWarning } from '~/utils/ipPool';
 import { useProviderRoutingReads } from '~/composables/useProviderRoutingReads';
 import {
@@ -467,7 +466,7 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 		/>
 
 		<!-- Unsaved Changes Dialog -->
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="showUnsavedDialog"
 			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"

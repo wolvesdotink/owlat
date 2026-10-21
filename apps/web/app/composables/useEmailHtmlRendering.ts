@@ -1,9 +1,5 @@
-import {
-	parseStoredBlocks,
-	type EditorBlock,
-	type EmailTheme,
-	type VariableType,
-} from '@owlat/email-builder';
+import type { EditorBlock, EmailTheme, VariableType } from '@owlat/email-builder';
+import { parseStoredBlocks } from '@owlat/email-builder/stored-blocks';
 import { renderEmailHtml, resolvePlainText } from '@owlat/email-renderer';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';

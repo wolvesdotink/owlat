@@ -2,6 +2,9 @@
 import { reactive, watch } from 'vue';
 import { X, Plus, Trash2, ChevronDown } from '@lucide/vue';
 import type { PreviewRenderOptions } from '../types';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	options: Partial<PreviewRenderOptions>;
@@ -90,7 +93,7 @@ watch(
 <template>
 	<div class="ep-settings-panel">
 		<div class="ep-settings-header">
-			<span class="ep-settings-title">Render Options</span>
+			<span class="ep-settings-title">{{ t('builder.preview.renderOptions.title') }}</span>
 			<button class="ep-settings-close" @click="emit('close')">
 				<X class="ep-settings-close-icon" />
 			</button>
@@ -101,7 +104,9 @@ watch(
 			<div class="ep-settings-group">
 				<!-- Base Width -->
 				<div class="ep-settings-field">
-					<label class="ep-settings-label">Base Width (px)</label>
+					<label class="ep-settings-label">{{
+						t('builder.preview.renderOptions.baseWidth')
+					}}</label>
 					<input
 						v-model.number="local.baseWidth"
 						type="number"
@@ -115,7 +120,9 @@ watch(
 
 				<!-- Direction -->
 				<div class="ep-settings-field">
-					<label class="ep-settings-label">Direction</label>
+					<label class="ep-settings-label">{{
+						t('builder.preview.renderOptions.direction')
+					}}</label>
 					<div class="ep-settings-toggle-group">
 						<button
 							class="ep-settings-toggle"
@@ -142,7 +149,7 @@ watch(
 
 				<!-- Minify -->
 				<div class="ep-settings-field ep-settings-field-inline">
-					<label class="ep-settings-label">Minify HTML</label>
+					<label class="ep-settings-label">{{ t('builder.preview.renderOptions.minify') }}</label>
 					<button
 						class="ep-settings-checkbox"
 						:class="{ 'ep-settings-checkbox-active': local.minify }"
@@ -157,7 +164,9 @@ watch(
 
 				<!-- CSS Inlining -->
 				<div class="ep-settings-field ep-settings-field-inline">
-					<label class="ep-settings-label">Inline CSS</label>
+					<label class="ep-settings-label">{{
+						t('builder.preview.renderOptions.inlineCss')
+					}}</label>
 					<button
 						class="ep-settings-checkbox"
 						:class="{ 'ep-settings-checkbox-active': local.inlineCss }"
@@ -177,7 +186,7 @@ watch(
 					class="ep-settings-accordion-header"
 					@click="advancedExpanded.value = !advancedExpanded.value"
 				>
-					<span>Advanced Settings</span>
+					<span>{{ t('builder.preview.renderOptions.advanced') }}</span>
 					<ChevronDown
 						class="ep-settings-accordion-chevron"
 						:class="{ 'ep-settings-accordion-open': advancedExpanded.value }"
@@ -186,7 +195,9 @@ watch(
 				<div v-if="advancedExpanded.value" class="ep-settings-accordion-body">
 					<!-- Breakpoint -->
 					<div class="ep-settings-field">
-						<label class="ep-settings-label">Breakpoint (px)</label>
+						<label class="ep-settings-label">{{
+							t('builder.preview.renderOptions.breakpoint')
+						}}</label>
 						<input
 							v-model.number="local.breakpoint"
 							type="number"
@@ -199,7 +210,9 @@ watch(
 
 					<!-- Language -->
 					<div class="ep-settings-field">
-						<label class="ep-settings-label">Language</label>
+						<label class="ep-settings-label">{{
+							t('builder.preview.renderOptions.language')
+						}}</label>
 						<input
 							v-model="local.lang"
 							type="text"
@@ -211,45 +224,55 @@ watch(
 
 					<!-- Validation Level -->
 					<div class="ep-settings-field">
-						<label class="ep-settings-label">Validation Level</label>
+						<label class="ep-settings-label">{{
+							t('builder.preview.renderOptions.validationLevel')
+						}}</label>
 						<select
 							v-model="local.validationLevel"
 							class="ep-settings-select"
 							@change="emitUpdate()"
 						>
-							<option value="skip">Skip</option>
-							<option value="soft">Soft</option>
-							<option value="strict">Strict</option>
+							<option value="skip">{{ t('builder.preview.renderOptions.validation.skip') }}</option>
+							<option value="soft">{{ t('builder.preview.renderOptions.validation.soft') }}</option>
+							<option value="strict">
+								{{ t('builder.preview.renderOptions.validation.strict') }}
+							</option>
 						</select>
 					</div>
 
 					<!-- Title -->
 					<div class="ep-settings-field">
-						<label class="ep-settings-label">Title</label>
+						<label class="ep-settings-label">{{
+							t('builder.preview.renderOptions.emailTitle')
+						}}</label>
 						<input
 							v-model="local.title"
 							type="text"
 							class="ep-settings-input"
-							placeholder="Email title"
+							:placeholder="t('builder.preview.renderOptions.emailTitlePlaceholder')"
 							@change="emitUpdate()"
 						/>
 					</div>
 
 					<!-- Preheader Text -->
 					<div class="ep-settings-field">
-						<label class="ep-settings-label">Preheader Text</label>
+						<label class="ep-settings-label">{{
+							t('builder.preview.renderOptions.preheader')
+						}}</label>
 						<input
 							v-model="local.preheaderText"
 							type="text"
 							class="ep-settings-input"
-							placeholder="Hidden preview text..."
+							:placeholder="t('builder.preview.renderOptions.preheaderPlaceholder')"
 							@change="emitUpdate()"
 						/>
 					</div>
 
 					<!-- Custom CSS -->
 					<div class="ep-settings-field">
-						<label class="ep-settings-label">Custom CSS</label>
+						<label class="ep-settings-label">{{
+							t('builder.preview.renderOptions.customCss')
+						}}</label>
 						<textarea
 							v-model="local.customCss"
 							class="ep-settings-textarea"
@@ -261,7 +284,9 @@ watch(
 
 					<!-- Font URLs -->
 					<div class="ep-settings-field">
-						<label class="ep-settings-label">Font URLs</label>
+						<label class="ep-settings-label">{{
+							t('builder.preview.renderOptions.fontUrls')
+						}}</label>
 						<div class="ep-settings-list">
 							<div v-for="(url, idx) in local.fontUrls" :key="idx" class="ep-settings-list-item">
 								<input
@@ -277,7 +302,7 @@ watch(
 							</div>
 							<button class="ep-settings-list-add" @click="addFontUrl">
 								<Plus class="ep-settings-list-add-icon" />
-								Add Font URL
+								{{ t('builder.preview.renderOptions.addFontUrl') }}
 							</button>
 						</div>
 					</div>
@@ -291,7 +316,7 @@ watch(
 					@click="variablesExpanded.value = !variablesExpanded.value"
 				>
 					<span>
-						Variable Values
+						{{ t('builder.preview.renderOptions.variables') }}
 						<span v-if="local.variableValues.length > 0" class="ep-settings-accordion-count">
 							{{ local.variableValues.length }}
 						</span>
@@ -311,14 +336,14 @@ watch(
 							v-model="variable.key"
 							type="text"
 							class="ep-settings-input ep-settings-kv-key"
-							placeholder="Variable name"
+							:placeholder="t('builder.preview.renderOptions.variableName')"
 							@change="emitUpdate()"
 						/>
 						<input
 							v-model="variable.value"
 							type="text"
 							class="ep-settings-input ep-settings-kv-value"
-							placeholder="Value"
+							:placeholder="t('builder.preview.renderOptions.variableValue')"
 							@change="emitUpdate()"
 						/>
 						<button class="ep-settings-list-remove" @click="removeVariable(idx)">
@@ -327,7 +352,7 @@ watch(
 					</div>
 					<button class="ep-settings-list-add" @click="addVariable">
 						<Plus class="ep-settings-list-add-icon" />
-						Add Variable
+						{{ t('builder.preview.renderOptions.addVariable') }}
 					</button>
 				</div>
 			</div>

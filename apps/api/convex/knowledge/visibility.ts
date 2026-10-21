@@ -9,7 +9,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { authedMutation, adminMutation, featureGated } from '../lib/authedFunctions';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { getBetterAuthSessionWithRole, hasPermission } from '../lib/sessionOrganization';
 import type { MutationSessionContext } from '../lib/sessionOrganization';
 import { isInboxDerivedKnowledge, isSharedInboxReader } from '../inbox/access';
 
@@ -31,19 +31,25 @@ export const knowledgeAdminMutation = featureGated(adminMutation, 'ai.knowledge'
 export interface KnowledgeViewer {
 	/** Whether entries derived from Team Inbox mail are visible (inbox/access.ts). */
 	canReadInbox: boolean;
+	/** Whether the caller may share a restricted entry with members (knowledge/sharing.ts). */
+	canShareWithMembers: boolean;
 }
 
 /**
  * Resolve the caller of a soft-auth knowledge read. `null` means the caller
  * gets nothing: the `ai.knowledge` flag is off, or the caller is anonymous or
  * not an active member. Otherwise `canReadInbox` applies the shared-inbox
- * reader rule to entries derived from Team Inbox mail.
+ * reader rule to entries derived from Team Inbox mail, and
+ * `canShareWithMembers` is the owner/admin gate of knowledge/sharing.ts.
  */
 export async function resolveKnowledgeViewer(ctx: QueryCtx): Promise<KnowledgeViewer | null> {
 	if (!(await isFeatureEnabled(ctx, 'ai.knowledge'))) return null;
 	const session = await getBetterAuthSessionWithRole(ctx);
 	if (!session?.role) return null;
-	return { canReadInbox: isSharedInboxReader(session) };
+	return {
+		canReadInbox: isSharedInboxReader(session),
+		canShareWithMembers: hasPermission(session.role, 'organization:manage'),
+	};
 }
 
 /** Whether `entry` is visible to a caller whose reader status is `canReadInbox`. */

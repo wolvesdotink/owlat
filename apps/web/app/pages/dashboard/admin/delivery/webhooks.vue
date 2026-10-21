@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 
 const { t } = useI18n();
 
@@ -356,7 +355,7 @@ async function handleGuardSave() {
 		/>
 
 		<!-- Unsaved Changes Dialog -->
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="showUnsavedDialog"
 			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"

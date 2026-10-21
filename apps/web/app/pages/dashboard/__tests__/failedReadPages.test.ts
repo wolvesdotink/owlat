@@ -222,6 +222,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'InboxReadFailureNotice',
 		'KnowledgeEntryForm',
 		'KnowledgeRelationsList',
+		'KnowledgeShareWithMembers',
 		'ShellStatusPill',
 		'UiBadge',
 		'UiConfirmationDialog',

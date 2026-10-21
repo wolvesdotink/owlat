@@ -4,6 +4,9 @@ import { AlertTriangle } from '@lucide/vue';
 import { GMAIL_CLIP_BYTES } from '@owlat/shared/emailLimits';
 import type { PreviewEmailAnalysis } from '../../types';
 import AnalysisEmpty from './AnalysisEmpty.vue';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	emailAnalysis: PreviewEmailAnalysis | null;
@@ -26,37 +29,43 @@ const sizeBreakdownBars = computed(() => {
 	const total = bd.totalBytes || 1;
 	return [
 		{
-			label: 'Styles',
+			id: 'styles',
+			label: t('builder.analysis.size.breakdown.styles'),
 			bytes: bd.styleBlockBytes,
 			pct: (bd.styleBlockBytes / total) * 100,
 			color: 'var(--ep-brand)',
 		},
 		{
-			label: 'VML',
+			id: 'vml',
+			label: t('builder.analysis.size.breakdown.vml'),
 			bytes: bd.msoConditionalBytes,
 			pct: (bd.msoConditionalBytes / total) * 100,
 			color: 'var(--ep-warning)',
 		},
 		{
-			label: 'Images',
+			id: 'images',
+			label: t('builder.analysis.size.breakdown.images'),
 			bytes: bd.imageTagBytes,
 			pct: (bd.imageTagBytes / total) * 100,
 			color: 'var(--ep-success)',
 		},
 		{
-			label: 'Text',
+			id: 'text',
+			label: t('builder.analysis.size.breakdown.text'),
 			bytes: bd.textContentBytes,
 			pct: (bd.textContentBytes / total) * 100,
 			color: 'var(--ep-text-secondary)',
 		},
 		{
-			label: 'Whitespace',
+			id: 'whitespace',
+			label: t('builder.analysis.size.breakdown.whitespace'),
 			bytes: bd.whitespaceBytes,
 			pct: (bd.whitespaceBytes / total) * 100,
 			color: 'var(--ep-text-tertiary)',
 		},
 		{
-			label: 'Markup',
+			id: 'markup',
+			label: t('builder.analysis.size.breakdown.markup'),
 			bytes: bd.markupOverheadBytes,
 			pct: (bd.markupOverheadBytes / total) * 100,
 			color: 'var(--ep-error)',
@@ -75,7 +84,7 @@ function formatBytes(bytes: number): string {
 		<!-- Total size vs Gmail threshold -->
 		<div class="ep-size-total">
 			<div class="ep-size-total-header">
-				<span>Total Size</span>
+				<span>{{ t('builder.analysis.size.total') }}</span>
 				<span :class="{ 'ep-size-danger': emailAnalysis.exceedsGmailClip }">
 					{{ formattedSize }} / 102 KB
 				</span>
@@ -89,14 +98,14 @@ function formatBytes(bytes: number): string {
 			</div>
 			<div v-if="emailAnalysis.exceedsGmailClip" class="ep-size-warning">
 				<AlertTriangle class="ep-size-warning-icon" />
-				Gmail will clip this email.
+				{{ t('builder.analysis.size.gmailClip') }}
 			</div>
 		</div>
 
 		<!-- CSS size warning -->
 		<div v-if="emailAnalysis.exceedsGmailCssLimit" class="ep-size-css-warning">
 			<AlertTriangle class="ep-size-warning-icon" />
-			CSS exceeds 8KB — Gmail may strip styles.
+			{{ t('builder.analysis.size.cssLimit') }}
 			<span v-if="emailAnalysis.styleBlockSizeBytes" class="ep-size-css-value">
 				({{ formatBytes(emailAnalysis.styleBlockSizeBytes) }})
 			</span>
@@ -104,8 +113,8 @@ function formatBytes(bytes: number): string {
 
 		<!-- Breakdown bars -->
 		<div v-if="sizeBreakdownBars.length > 0" class="ep-size-breakdown">
-			<div class="ep-size-breakdown-title">Size Breakdown</div>
-			<div v-for="bar in sizeBreakdownBars" :key="bar.label" class="ep-size-breakdown-item">
+			<div class="ep-size-breakdown-title">{{ t('builder.analysis.size.breakdownTitle') }}</div>
+			<div v-for="bar in sizeBreakdownBars" :key="bar.id" class="ep-size-breakdown-item">
 				<div class="ep-size-breakdown-label">
 					<span>{{ bar.label }}</span>
 					<span class="ep-size-breakdown-value">{{ formatBytes(bar.bytes) }}</span>
@@ -122,26 +131,28 @@ function formatBytes(bytes: number): string {
 		<!-- Quick stats -->
 		<div class="ep-size-stats">
 			<div class="ep-size-stat">
-				<span class="ep-size-stat-label">Images</span>
+				<span class="ep-size-stat-label">{{ t('builder.analysis.size.images') }}</span>
 				<span class="ep-size-stat-value">{{ emailAnalysis.imageCount }}</span>
 			</div>
 			<div class="ep-size-stat">
-				<span class="ep-size-stat-label">Links</span>
+				<span class="ep-size-stat-label">{{ t('builder.analysis.size.links') }}</span>
 				<span class="ep-size-stat-value">{{ emailAnalysis.linkCount }}</span>
 			</div>
 			<div class="ep-size-stat">
-				<span class="ep-size-stat-label">Text:Image</span>
+				<span class="ep-size-stat-label">{{ t('builder.analysis.size.textToImage') }}</span>
 				<span class="ep-size-stat-value">{{ emailAnalysis.textToImageRatio.toFixed(1) }}</span>
 			</div>
 			<div class="ep-size-stat">
-				<span class="ep-size-stat-label">Table Depth</span>
+				<span class="ep-size-stat-label">{{ t('builder.analysis.size.tableDepth') }}</span>
 				<span class="ep-size-stat-value">{{ emailAnalysis.tableNestingDepth }}</span>
 			</div>
 		</div>
 
 		<!-- Optimization suggestions -->
 		<div v-if="emailAnalysis.optimizations?.length" class="ep-size-optimizations">
-			<div class="ep-size-optimizations-title">Optimization Suggestions</div>
+			<div class="ep-size-optimizations-title">
+				{{ t('builder.analysis.size.optimizations') }}
+			</div>
 			<div
 				v-for="(opt, idx) in emailAnalysis.optimizations"
 				:key="idx"
@@ -152,7 +163,7 @@ function formatBytes(bytes: number): string {
 			</div>
 		</div>
 	</template>
-	<AnalysisEmpty v-else>No size analysis data available.</AnalysisEmpty>
+	<AnalysisEmpty v-else>{{ t('builder.analysis.size.empty') }}</AnalysisEmpty>
 </template>
 
 <style scoped>

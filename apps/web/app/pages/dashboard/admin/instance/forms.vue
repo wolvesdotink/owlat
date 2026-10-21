@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { UnsavedChangesDialog } from '@owlat/email-builder';
-
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.instance.forms.pageTitle') });
@@ -736,7 +734,7 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 		</UiConfirmationDialog>
 
 		<!-- Unsaved Changes Dialog -->
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="showUnsavedDialog"
 			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"

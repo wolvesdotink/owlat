@@ -6,9 +6,9 @@
  * mail, not a shared upload. Before the fix any editor could enumerate those
  * captures — with a download URL — through `semanticFiles.list` / `search` /
  * `get` / `getVersionHistory` / `listByContact`, without access to the mailbox
- * they came from. The compact `files.cards.list` / `search` are held to
- * the same rows, and so are the by-source `listBySource` / `searchBySource`
- * over a full walk. These tests drive every one of those reads as:
+ * they came from. The compact `files.cards.list` / `search` /
+ * `listByContact` are held to the same rows, and so are the by-source
+ * `listBySource` / `searchBySource` over a full walk. These tests drive every one of those reads as:
  *
  *   - the mailbox's own user and a shared-mailbox member (allowed),
  *   - an owner (allowed: owners and admins may open every mailbox),
@@ -178,7 +178,11 @@ async function readAll(t: Harness, seeded: Seeded) {
 		paginationOpts: page,
 		query: 'confidential',
 	});
+	const cardByContact = await t.query(api.files.cards.listByContact, {
+		contactId: seeded.contactId,
+	});
 	expect(names(cardList.page)).toEqual(names(list.page));
+	expect(names(cardByContact)).toEqual(names(byContact));
 	expect(names(cardAttachments.page)).toEqual(names(attachments.page));
 	expect(names(cardSearch.page)).toEqual(names(search.page));
 	// The by-source endpoints narrow through their own index first, then run

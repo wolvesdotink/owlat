@@ -98,6 +98,23 @@ describe('PostboxWhyHerePopover', () => {
 		expectFullyLocalized(w);
 	});
 
+	it('says when payment or legal wording kept it out of the digest (#1384)', () => {
+		explanation.value = {
+			...explanation.value,
+			placement: 'today',
+			decidedBy: 'exact_wording',
+			depth: 'full',
+			modelCalls: 1,
+			reasons: [{ key: 'arrival.reason.exactWording' }],
+		};
+		const w = mountPopover();
+		expect(w.text()).toContain('Why this is with everything else');
+		expect(w.get('[data-testid="why-here-decided"]').text()).toBe(
+			'It carries payment or legal wording, so it stays out of your digest and updates'
+		);
+		expectFullyLocalized(w);
+	});
+
 	it('"That\'s wrong" opens Fix for the record\'s message and closes', async () => {
 		const w = mountPopover();
 		await w.get('[data-testid="why-here-wrong"]').trigger('click');

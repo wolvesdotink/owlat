@@ -136,7 +136,7 @@ const emptyStateStub = {
 
 const stubs = {
 	UiPageHeader,
-	UnsavedChangesDialog: true,
+	UiUnsavedChangesDialog: true,
 	UiQueryBoundary: passthroughStub,
 	UiCard: passthroughStub,
 	UiEmptyState: emptyStateStub,

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { isValidEmail } from '@owlat/shared';
 import { openAfterSave, openWithoutSaving } from '~/lib/openAfterSave';
 import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
@@ -976,7 +975,7 @@ const shownCapacityPlan = computed(() => {
 		/>
 
 		<!-- Unsaved Changes Dialog — leaving the page (Back / any navigation) -->
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="showUnsavedChangesDialog"
 			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"
@@ -985,7 +984,7 @@ const shownCapacityPlan = computed(() => {
 		/>
 
 		<!-- Unsaved Changes Dialog — opening the linked email (new tab; same window on desktop) -->
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="showEditEmailPrompt"
 			@close="showEditEmailPrompt = false"
 			@discard="discardAndOpenEmail"

@@ -114,11 +114,23 @@ export interface PlacementRecordInput {
 	rulePlacement?: Placement;
 	category?: MailCategory;
 	categorySource?: CategorySource;
+	/**
+	 * The §2.4 exact-wording detector flagged this message's own text: it is
+	 * never placed in the digest or updates (#1384).
+	 */
+	isExactWordingCandidate?: boolean;
+	/**
+	 * When the message arrived (the record's `createdAt`): a thread override
+	 * set before it cannot bury a candidate (#1384).
+	 */
+	arrivedAt?: number;
 }
 
 /** The thread half: its override and whether a needs-reply verdict is SETTLED. */
 export interface PlacementThreadInput {
-	placementOverride?: Pick<PlacementOverride, 'placement'>;
+	/** `setAt` absent: the override reads as set after the message arrived. */
+	placementOverride?: Pick<PlacementOverride, 'placement'> &
+		Partial<Pick<PlacementOverride, 'setAt'>>;
 	/** `mailThreads.needsReply` is set. A heuristic candidate still pending is false. */
 	isReplyNeeded: boolean;
 }
@@ -136,7 +148,9 @@ export type PlacementDecider =
 	| 'sender_status'
 	| 'sender_override'
 	| 'rule'
-	| 'category';
+	| 'category'
+	/** An exact-wording candidate lifted out of the digest or updates (#1384). */
+	| 'exact_wording';
 
 export interface ComputePlacementResult {
 	placement: Placement;

@@ -525,6 +525,10 @@
 		"./aiRouting": {
 			"types": "./src/aiRouting.ts",
 			"import": "./src/aiRouting.ts"
+		},
+		"./caniemailData": {
+			"types": "./src/caniemailData.d.ts",
+			"import": "./src/generated/caniemail-data.json"
 		}
 	},
 	"scripts": {

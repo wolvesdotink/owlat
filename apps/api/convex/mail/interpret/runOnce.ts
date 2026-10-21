@@ -218,7 +218,7 @@ export async function runOnce(
 			? await decideArrival(
 					ctx,
 					arrivalArgs,
-					{ subject: scoped.subject, segmented },
+					{ subject: scoped.subject, segmented, sourceVersion },
 					loaded.brief.deletionEpoch
 				)
 			: null;

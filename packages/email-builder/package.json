@@ -24,6 +24,10 @@
 		"./focus-mode": {
 			"types": "./src/composables/useFocusMode.ts",
 			"import": "./src/composables/useFocusMode.ts"
+		},
+		"./stored-blocks": {
+			"types": "./src/utils/storedBlocks.ts",
+			"import": "./src/utils/storedBlocks.ts"
 		}
 	},
 	"scripts": {

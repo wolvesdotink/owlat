@@ -91,7 +91,7 @@ async function mountBuilder() {
 				UiSpinner: true,
 				NuxtLink: { template: '<a><slot /></a>' },
 				UiButton: { template: '<button><slot /></button>' },
-				UnsavedChangesDialog: true,
+				UiUnsavedChangesDialog: true,
 				AutomationsStepEditorPanel: true,
 				AutomationsStepSaveStatus: true,
 				AutomationsStepSaveFailedDialog: true,

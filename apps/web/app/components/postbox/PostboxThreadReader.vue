@@ -573,8 +573,11 @@ const calm = usePostboxCalmReader({
 	threadKey,
 	mailboxId: () => props.message.mailboxId,
 	threadId: () => discussionThreadId.value,
+	// The projection already applies the thread's override (#1384: except an
+	// older one an exact-wording candidate overrules); the override alone covers
+	// a thread without one.
 	placement: () =>
-		readerThread.value?.placementOverride?.placement ?? readerThread.value?.arrival?.placement,
+		readerThread.value?.arrival?.placement ?? readerThread.value?.placementOverride?.placement,
 	messages: allMessages,
 	latest: latestMessage,
 	expanded,

@@ -10,7 +10,12 @@
  * the readiness check, and 'failed' on a failed rollout or when the poller
  * times out.
  */
-import { readRolloutProgress, type RolloutStage, type UpdaterHealth } from '~/lib/systemUpdate';
+import {
+	readRolloutProgress,
+	UPDATE_REQUEST_TIMEOUT_MS,
+	type RolloutStage,
+	type UpdaterHealth,
+} from '~/lib/systemUpdate';
 
 interface Step {
 	step: string;
@@ -91,10 +96,9 @@ const elapsedMs = ref(0);
 const TICK_INTERVAL_MS = 1_000;
 const POLL_INTERVAL_MS = 5_000;
 const TIMEOUT_MS = 5 * 60 * 1000;
-// Once the updater reports it is working on this attempt, the wait follows it:
-// pull and deploy, then a readiness check that may take ~11 minutes for a
-// service with a long declared start period (ClamAV).
-const IN_FLIGHT_TIMEOUT_MS = 30 * 60 * 1000;
+// Once the updater reports it is working on this attempt, the wait follows it
+// for as long as the update itself may take.
+const IN_FLIGHT_TIMEOUT_MS = UPDATE_REQUEST_TIMEOUT_MS;
 // Seen the updater working on this attempt; lifts the timeout above.
 const updaterWorking = ref(false);
 // How far /health says the update has got (see `RolloutStage`).

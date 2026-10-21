@@ -24,9 +24,11 @@
  *     registry call.
  *
  * Both bound how long a captured request stays valid; the route pairs either
- * with delivery de-duplication over that same window, which removes what
- * remains. Neither half is sufficient alone, and the claim is the same claim
- * for both arms — it names a BATCH, not a signature scheme.
+ * with delivery de-duplication, which removes what remains. Neither half is
+ * sufficient alone, and the claim is the same claim for both arms — it names a
+ * BATCH, not a signature scheme. The Svix arm's name leaves the timestamp out,
+ * so a sender's re-signed retry is the same batch, and its receipt is kept for
+ * the sender's retry window rather than the signature's (#1367).
  *
  * The ORIGIN-ONLY form the import-provider contract declares lives in
  * `./importProviderSignature.ts` and shares the two primitives below. It is in
@@ -129,14 +131,21 @@ export async function compareSignature(
  * when they carry the same signed content, and no unauthenticated framing of
  * that content (how a header spells it) can mint a fresh one. Each arm decides
  * what that content is — see the two call sites of `deliveryDigestOf`.
- * `expiresAtMs` is when remembering it stops mattering: no earlier than the
- * first instant the timestamp check rejects the same request — see
- * {@link claimExpiresAtMs}.
+ * `expiresAtMs` is when THIS REQUEST stops verifying: no earlier than the first
+ * instant the timestamp check rejects it — see {@link claimExpiresAtMs}.
+ *
+ * `receiptExpiresAtMs` is set only by an arm whose digest OUTLIVES the request,
+ * because it leaves the timestamp out: the Svix arm names a message, and the
+ * sender re-signs every retry of it with a fresh timestamp (#1367). It says how
+ * long a completed receipt must still answer for that message. Absent, the
+ * receipt only has to outlive the request, since nothing else can present the
+ * same digest.
  */
 interface ReplayBoundVerification {
 	readonly ok: true;
 	readonly deliveryDigest: string;
 	readonly expiresAtMs: number;
+	readonly receiptExpiresAtMs?: number;
 }
 
 type ReplayBoundSignatureResult =
@@ -262,41 +271,66 @@ export async function verifyPluginWebhookDelivery(
  *
  * The other arm's digest is named by the contract's own header names, which are
  * what distinguishes two contracts that happen to share a secret. Svix fixes its
- * headers, so there is nothing contract-specific to name — this constant takes
- * their place, and it is deliberately not a header name: no lower-case HTTP
- * header the other arm could declare is the bare word `svix` followed by an id
- * in a namespace (`msg_…`) the header grammar refuses, so no replay-bound
- * delivery can collide with a Svix one.
+ * headers, so there is nothing contract-specific to name — this constant and
+ * {@link SVIX_DIGEST_VERSION} take their place. Both arms pass four parts
+ * (the other arm: signature header, timestamp header, timestamp, signature;
+ * this one: scheme, version, id, body hash), so the version is what keeps them
+ * apart. It contains a `:`, which the lower-case header grammar the other arm's
+ * `timestampHeader` must match refuses, so no replay-bound delivery can collide
+ * with a Svix one, even across a change of a plugin's declared scheme.
  */
 const SVIX_DIGEST_SCHEME = 'svix';
 
 /**
- * v2 names a Svix delivery by its authenticated content (id, timestamp, body)
- * instead of v1's raw `svix-signature` header (#1328). The header is a LIST that
- * verifies when any one candidate matches, so v1 let a captured delivery be
- * re-sent with an extra junk candidate, doubled spaces or reordered candidates
- * — still authentic, but a fresh digest and so a fresh claim.
+ * What the digest covers, by version:
  *
- * Versioned because the change re-names every in-flight delivery: a claim
- * stored under v1 does not match the same delivery's v2 digest, so a delivery
- * applied just before a deploy could be applied once more after it, inside its
- * still-open window. The rollout that closes that gap: disable the plugin that
- * signs with Svix (its route then answers 403), deploy, and wait MORE than twice
- * the contract tolerance plus one second, measured from disabling — at most
- * just over 30 minutes — before re-enabling it. A delivery accepted just before
- * the switch-off may carry a timestamp a tolerance ahead of our clock, and the
- * verifier rounds our clock down to the second (see `claimExpiresAtMs`), so
- * that is when the last of them stops verifying.
+ *  - v1 hashed the raw `svix-signature` header. The header is a LIST that
+ *    verifies when any one candidate matches, so a captured delivery could be
+ *    re-sent with an extra junk candidate, doubled spaces or reordered
+ *    candidates — still authentic, but a fresh digest and so a fresh claim
+ *    (#1328).
+ *  - v2 hashed the authenticated content instead: id, timestamp and body.
+ *  - v3 (`v3:message`) drops the timestamp (#1367). Svix signs every attempt
+ *    again with "the timestamp of the attempt" (docs.svix.com, "Verifying
+ *    Webhooks Manually"),
+ *    so under v2 a retry after a lost 2xx was a new digest and the batch was
+ *    applied twice. The message id is what names the message across its
+ *    retries, and it is inside the signed string (`<id>.<timestamp>.<body>`),
+ *    so it cannot be forged. The body stays in, so a sender reusing an id for
+ *    different content is still a different delivery.
  *
- * The pause is lossless only for a sender whose retries outlast it AND are
- * re-signed: a retry that reuses its original timestamp is refused with 401
- * once the pause runs past the tolerance. The Svix service does both — it
- * sends "the timestamp of the attempt" in `svix-timestamp` and retries any
- * non-2xx for about 27 hours (docs.svix.com, "Verifying Webhooks Manually"
- * and "Retries") — but a plugin can name this scheme for any sender, and a
- * message whose last attempt falls inside the pause must be resent by hand.
+ * Versioned because each change re-names every live delivery: a receipt stored
+ * under v2 does not match the same delivery's v3 digest. For a sender's
+ * re-signed retry that costs nothing new — v2 never matched one anyway. For a
+ * byte-identical replay of a v2-era request it reopens that request's window
+ * for one tolerance after the deploy. The rollout that closes it: disable the
+ * plugin that signs with Svix (its route then answers 403), deploy, and wait
+ * MORE than twice the contract tolerance plus one second, measured from
+ * disabling — at most just over 30 minutes — before re-enabling it. A delivery
+ * accepted just before the switch-off may carry a timestamp a tolerance ahead
+ * of our clock, and the verifier rounds our clock down to the second (see
+ * `claimExpiresAtMs`), so that is when the last of them stops verifying. The
+ * Svix service retries any non-2xx for about 27 hours (docs.svix.com,
+ * "Retries"), re-signed, so the pause loses nothing it sends; a sender that
+ * names this scheme but reuses its original timestamp must resend by hand.
  */
-const SVIX_DIGEST_VERSION = 'v2';
+const SVIX_DIGEST_VERSION = 'v3:message';
+
+/**
+ * How long a completed Svix receipt keeps answering for its message, past the
+ * moment the attempt that applied it stops verifying.
+ *
+ * It has to cover the sender's whole retry schedule, because any attempt in it
+ * may be the retry of a 2xx we sent and the sender never saw. The Svix service
+ * makes up to 8 attempts at a message: immediately, then 5 s, 5 min, 30 min,
+ * 2 h, 5 h, 10 h and 10 h after each failure, about 27.5 hours in all
+ * (docs.svix.com, "Retries"). The receipt is
+ * counted from the attempt that APPLIED the batch, which is never earlier than
+ * the first, so two days covers the schedule with room for the sender's own
+ * queueing delays. A message re-sent by hand after that is applied again, as
+ * every re-sent message was before #1367.
+ */
+const SVIX_RECEIPT_RETENTION_MS = 48 * 60 * 60 * 1000;
 
 /**
  * The Svix arm, in the same fail-closed order the arm above documents:
@@ -356,27 +390,31 @@ async function verifyPluginSvixDelivery(
 	// unauthenticated list around the one candidate that matched, and the
 	// candidate itself depends on which key the sender used — so neither belongs
 	// in the name: the same delivery must keep one name across a reformatted
-	// header and across a key rotation. The body is hashed first so the
-	// digest's input stays newline-free and never holds a payload.
+	// header and across a key rotation. NOR BY THE ATTEMPT: the timestamp is
+	// signed, but the sender re-signs each retry with a new one, and a retry of
+	// a batch we applied is the same batch (#1367). The body is hashed first so
+	// the digest's input stays newline-free and never holds a payload.
 	const bodyDigest = bytesToHex(
 		await crypto.subtle.digest('SHA-256', new TextEncoder().encode(delivery.rawBody))
 	);
+	const expiresAtMs = claimExpiresAtMs(timestamp, toleranceSeconds);
 	return {
 		ok: true,
 		deliveryDigest: await deliveryDigestOf(delivery.pluginId, delivery.transportKind, [
 			SVIX_DIGEST_SCHEME,
 			SVIX_DIGEST_VERSION,
 			id,
-			timestamp,
 			bodyDigest,
 		]),
-		expiresAtMs: claimExpiresAtMs(timestamp, toleranceSeconds),
+		expiresAtMs,
+		receiptExpiresAtMs: expiresAtMs + SVIX_RECEIPT_RETENTION_MS,
 	};
 }
 
 /**
- * When a claim may be forgotten: no earlier than the first instant at which
- * the same signed timestamp can no longer verify, on either arm.
+ * When a request stops verifying, and so when a claim that names only that
+ * request may be forgotten: no earlier than the first instant at which the same
+ * signed timestamp can no longer verify, on either arm.
  *
  * Derived from the SIGNED timestamp, not from when we happened to accept it,
  * because that is what bounds the request's life. And one second past the
@@ -397,7 +435,7 @@ function claimExpiresAtMs(timestamp: string, toleranceSeconds: number): number {
  * PLUGIN, its transport kind, and the scheme-specific parts its caller passes:
  * for the parameterized HMAC, the contract's own header names, the timestamp
  * and the verified signature; for Svix, the scheme tag and digest version, the
- * message id, the timestamp and a hash of the body.
+ * message id and a hash of the body.
  *
  * The plugin id is in there because nothing forbids two bundled plugins from
  * naming the same `secretEnvVar` and the same headers (the manifest validator

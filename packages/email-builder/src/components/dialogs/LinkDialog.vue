@@ -3,6 +3,9 @@ import { ref, onMounted, nextTick } from 'vue';
 import { Link, Unlink } from '@lucide/vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiModal from '@owlat/ui/components/ui/Modal.vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	initialUrl?: string;
@@ -43,9 +46,16 @@ function handleKeydown(event: KeyboardEvent) {
 </script>
 
 <template>
-	<UiModal :open="true" :title="isEditing ? 'Edit Link' : 'Add Link'" size="sm" @update:open="emit('close')">
+	<UiModal
+		:open="true"
+		:title="isEditing ? t('builder.link.editTitle') : t('builder.link.addTitle')"
+		size="sm"
+		@update:open="emit('close')"
+	>
 		<div @keydown="handleKeydown">
-			<label class="block text-xs font-medium text-text-secondary mb-1.5" for="link-url">URL</label>
+			<label class="block text-xs font-medium text-text-secondary mb-1.5" for="link-url">{{
+				t('builder.link.url')
+			}}</label>
 			<input
 				id="link-url"
 				ref="inputEl"
@@ -67,19 +77,14 @@ function handleKeydown(event: KeyboardEvent) {
 				<template #iconLeft>
 					<Unlink class="w-3.5 h-3.5" />
 				</template>
-				Remove link
+				{{ t('builder.link.remove') }}
 			</UiButton>
 			<div class="flex-1" />
 			<UiButton variant="secondary" size="sm" @click="emit('close')">
-				Cancel
+				{{ t('builder.common.cancel') }}
 			</UiButton>
-			<UiButton
-				variant="primary"
-				size="sm"
-				:disabled="!urlInput.trim()"
-				@click="handleApply"
-			>
-				{{ isEditing ? 'Update' : 'Apply' }}
+			<UiButton variant="primary" size="sm" :disabled="!urlInput.trim()" @click="handleApply">
+				{{ isEditing ? t('builder.link.update') : t('builder.link.apply') }}
 			</UiButton>
 		</template>
 	</UiModal>

@@ -3,6 +3,9 @@ import { ref, computed } from 'vue';
 import { ImageUp, ImageIcon } from '@lucide/vue';
 import { useEmailBuilderHandlers } from '../../../composables/useEmailBuilderHandlers';
 import type { ImageUploadResult } from '../../../types';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{ value: string }>();
 
@@ -39,6 +42,10 @@ function openFilePicker() {
 	fileInputRef.value?.click();
 }
 
+const uploadLabel = computed(() =>
+	isUploading.value ? t('builder.panel.image.uploading') : t('builder.panel.image.upload')
+);
+
 async function handleFileSelect(event: Event) {
 	const file = (event.target as HTMLInputElement).files?.[0];
 	if (!file) return;
@@ -48,7 +55,8 @@ async function handleFileSelect(event: Event) {
 		const result = await handlers.uploadImage(file);
 		emit('select', result);
 	} catch (error) {
-		uploadError.value = error instanceof Error ? error.message : 'Upload failed';
+		uploadError.value =
+			error instanceof Error ? error.message : t('builder.panel.image.uploadFailed');
 	} finally {
 		isUploading.value = false;
 	}
@@ -69,18 +77,18 @@ async function handleFileSelect(event: Event) {
 		<div class="flex gap-1">
 			<input
 				type="text"
-				aria-label="Image URL"
+				:aria-label="t('builder.panel.image.url')"
 				class="flex-1 py-2 px-2.5 text-[13px] border border-border-subtle rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring"
 				:value="value"
-				placeholder="Image URL"
+				:placeholder="t('builder.panel.image.url')"
 				@input="handleTextInput"
 			/>
 			<button
 				v-if="hasMediaLibrary"
 				class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-subtle rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap transition-all duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
 				type="button"
-				title="Browse or upload images"
-				aria-label="Browse or upload images"
+				:title="t('builder.panel.image.browse')"
+				:aria-label="t('builder.panel.image.browse')"
 				@click="handleBrowse"
 			>
 				<ImageUp :size="14" />
@@ -89,8 +97,8 @@ async function handleFileSelect(event: Event) {
 				v-else
 				class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-subtle rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap transition-all duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
 				type="button"
-				:title="isUploading ? 'Uploading image…' : 'Upload an image'"
-				:aria-label="isUploading ? 'Uploading image…' : 'Upload an image'"
+				:title="uploadLabel"
+				:aria-label="uploadLabel"
 				:disabled="isUploading"
 				@click="openFilePicker"
 			>
@@ -122,7 +130,7 @@ async function handleFileSelect(event: Event) {
 			class="flex items-center justify-center gap-1.5 p-3 border border-dashed border-border-subtle rounded-lg text-text-disabled text-xs"
 		>
 			<ImageIcon :size="16" />
-			<span>Paste URL or upload</span>
+			<span>{{ t('builder.panel.image.hint') }}</span>
 		</div>
 	</div>
 </template>

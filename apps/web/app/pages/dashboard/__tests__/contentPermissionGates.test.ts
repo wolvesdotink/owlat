@@ -96,6 +96,7 @@ function stubNuxt() {
 		sortOrder: ref('desc'),
 		toggleSort: vi.fn(),
 		getSortIcon: () => null,
+		getAriaSort: () => undefined,
 	}));
 	vi.stubGlobal('useClickOutsideSelector', vi.fn());
 	vi.stubGlobal('useDebouncedSearch', () => ({ searchQuery: ref(''), debouncedSearch: ref('') }));
@@ -129,7 +130,7 @@ const STUBS = {
 	UiQueryBoundary: SLOTTED,
 	UiEmptyState: { template: '<div><slot name="action" /></div>' },
 	DashboardListSkeleton: true,
-	UnsavedChangesDialog: true,
+	UiUnsavedChangesDialog: true,
 	UiTextarea: true,
 	UiConfirmDialog: true,
 	UiDropdownMenu: true,

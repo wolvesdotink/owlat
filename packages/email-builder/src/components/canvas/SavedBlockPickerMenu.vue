@@ -2,6 +2,9 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import type { SavedBlock } from '../../types';
 import { Search, Package, Loader2 } from '@lucide/vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	blocks: SavedBlock[];
@@ -79,23 +82,35 @@ onUnmounted(() => {
 				<input
 					ref="searchEl"
 					v-model="searchQuery"
-					aria-label="Search saved blocks"
+					:aria-label="t('builder.savedBlocks.search')"
 					class="w-full py-1.5 pr-2 pl-7 text-[13px] border border-transparent rounded-md bg-bg-surface outline-none text-text-primary focus:border-brand focus:shadow-[0_0_0_3px_rgba(196,120,90,0.08)] focus:bg-bg-surface-hover"
 					type="text"
-					placeholder="Search saved blocks..."
+					:placeholder="t('builder.savedBlocks.searchPlaceholder')"
 				/>
 			</div>
 
 			<div v-if="isLoading" class="flex items-center gap-2 p-4 text-[13px] text-text-tertiary">
 				<Loader2 :size="16" class="animate-spin motion-reduce:animate-none" />
-				Loading saved blocks...
+				{{ t('builder.savedBlocks.loading') }}
 			</div>
 
-			<div v-else-if="filteredBlocks.length === 0" class="p-4 text-center text-[13px] text-text-tertiary">
-				{{ searchQuery ? `No blocks match "${searchQuery}"` : 'No saved blocks yet' }}
+			<div
+				v-else-if="filteredBlocks.length === 0"
+				class="p-4 text-center text-[13px] text-text-tertiary"
+			>
+				{{
+					searchQuery
+						? t('builder.savedBlocks.noMatches', { query: searchQuery })
+						: t('builder.savedBlocks.empty')
+				}}
 			</div>
 
-			<div v-else role="listbox" aria-label="Saved blocks" class="overflow-y-auto p-1 max-h-[300px]">
+			<div
+				v-else
+				role="listbox"
+				:aria-label="t('builder.savedBlocks.title')"
+				class="overflow-y-auto p-1 max-h-[300px]"
+			>
 				<button
 					v-for="(block, i) in filteredBlocks"
 					:key="block._id"
@@ -113,7 +128,11 @@ onUnmounted(() => {
 						<span v-if="block.description" class="text-[11px] text-text-tertiary whitespace-nowrap overflow-hidden text-ellipsis">{{ block.description }}</span>
 					</div>
 					<div class="shrink-0">
-						<span v-if="block.blockCount" class="text-[10px] text-text-tertiary whitespace-nowrap">{{ block.blockCount }} blocks</span>
+						<span
+							v-if="block.blockCount"
+							class="text-[10px] text-text-tertiary whitespace-nowrap"
+							>{{ t('builder.savedBlocks.blockCount', { count: block.blockCount }) }}</span
+						>
 					</div>
 				</button>
 			</div>
