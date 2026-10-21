@@ -10,7 +10,11 @@ import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import type * as SharedTrackers from '@owlat/shared/postboxTrackers';
 import { applyPostboxImageConsent, type PostboxImageConsent } from '../postboxRemoteResources';
-import { LINEAR_SCALING_BOUND, scalingRatio } from '../../../../../scripts/perf-bench/scalingRatio';
+import {
+	LINEAR_SCALING_BOUND,
+	SCALING_TEST,
+	scalingRatio,
+} from '../../../../../scripts/perf-bench/scalingRatio';
 
 // The failing-closed tests make the inventory throw on a marked element.
 vi.mock('@owlat/shared/postboxTrackers', async (importOriginal) => {
@@ -231,7 +235,7 @@ describe('applyPostboxImageConsent — images shown', () => {
 });
 
 describe('applyPostboxImageConsent — hostile input stays linear', () => {
-	it('parses a srcset with 100k commas in linear time', () => {
+	it('parses a srcset with 100k commas in linear time', SCALING_TEST, () => {
 		const srcsetWithCommas = (n: number) =>
 			`<img srcset="https://cdn.example/a${','.repeat(n)}b, https://cdn.example/p.png 2x">`;
 		expect(scalingRatio(srcsetWithCommas, 25_000, consentWith('blocked'))).toBeLessThan(
@@ -244,7 +248,7 @@ describe('applyPostboxImageConsent — hostile input stays linear', () => {
 		expect(out.html).toContain(LABEL);
 	});
 
-	it('tokenizes deeply nested and unterminated CSS in linear time', () => {
+	it('tokenizes deeply nested and unterminated CSS in linear time', SCALING_TEST, () => {
 		const nestedCss = (n: number) =>
 			`<div style="background:${'f('.repeat(n)}${'url(&quot;'.repeat(n)}">x</div>`;
 		expect(scalingRatio(nestedCss, 5_000, consentWith('blocked'))).toBeLessThan(
@@ -315,7 +319,7 @@ describe('applyPostboxImageConsent — large inventories', () => {
 		expect(out.html).toContain('data:image/gif;base64,R149999 2x');
 	});
 
-	it('classifies CSS urls on one element in linear time', () => {
+	it('classifies CSS urls on one element in linear time', SCALING_TEST, () => {
 		// Per-URL style rescans made 4x the URLs cost about 13x.
 		const elementWith = (count: number) => {
 			const urls = Array.from({ length: count }, (_, i) => `url(https://cdn.example/${i}.png)`);

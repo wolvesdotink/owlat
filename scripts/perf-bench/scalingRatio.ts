@@ -22,6 +22,13 @@
 /** Linear stays near 4; every quadratic regression measured so far was 12 or higher. */
 export const LINEAR_SCALING_BOUND = 8;
 
+/**
+ * Vitest options for a test that measures with `scalingRatio`. The ratio is
+ * the guard; a loaded CI runner takes several times longer than a laptop, so
+ * the default 5 s test timeout must not become a wall-clock budget.
+ */
+export const SCALING_TEST = { timeout: 30_000 };
+
 export interface ScalingOptions {
 	/** Samples per size and attempt, interleaved. */
 	samples?: number;

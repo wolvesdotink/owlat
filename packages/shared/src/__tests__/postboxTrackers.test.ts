@@ -6,14 +6,11 @@ import {
 	remoteResourceHost,
 	stripRemoteImages,
 } from '../postboxTrackers';
-import { LINEAR_SCALING_BOUND, scalingRatio } from '../../../../scripts/perf-bench/scalingRatio';
-
-/**
- * The scaling tests take a few hundred milliseconds locally and several
- * seconds on a loaded CI runner. The ratio is the guard, so the default 5 s
- * test timeout must not turn back into a wall-clock budget.
- */
-const SCALING = { timeout: 30_000 };
+import {
+	LINEAR_SCALING_BOUND,
+	SCALING_TEST,
+	scalingRatio,
+} from '../../../../scripts/perf-bench/scalingRatio';
 
 const PIXEL_1X1 = '<img src="https://tracker.example.com/open.gif" width="1" height="1" alt="">';
 const HIDDEN_IMG = '<img src="https://tracker.example.net/o.png" style="display:none">';
@@ -184,7 +181,7 @@ describe('stripRemoteImages', () => {
 		expect(out.html).not.toContain('tracker.example.com');
 	});
 
-	it('stays linear on a flood of unterminated <img tags', SCALING, () => {
+	it('stays linear on a flood of unterminated <img tags', SCALING_TEST, () => {
 		// No `>` anywhere: `<img\b[^>]*>` retried every start to the end.
 		const flood = (n: number) => `<img src="https://evil.example/p.gif">${'<img src=x '.repeat(n)}`;
 		expect(scalingRatio(flood, 12_500, stripRemoteImages)).toBeLessThan(LINEAR_SCALING_BOUND);
@@ -239,14 +236,14 @@ describe('stripRemoteImages', () => {
 		);
 	});
 
-	it('reads an unterminated quote to the end once and stays linear over it', SCALING, () => {
+	it('reads an unterminated quote to the end once and stays linear over it', SCALING_TEST, () => {
 		// The open quote swallows the rest of the input, so none of the later
 		// `<img` starts is a tag to the browser; rescanning quote-aware from each
 		// would be quadratic. The first-`>` floor still drops what it reads as a
 		// remote image, the truncated tag that opens the quote included.
 		const flood = (n: number) =>
 			`<img src="https://evil.example/p.gif"><p>x</p><img alt="open ${'<img src=https://evil.example/q.gif>'.repeat(n)}`;
-		expect(scalingRatio(flood, 12_500, stripRemoteImages)).toBeLessThan(LINEAR_RATIO);
+		expect(scalingRatio(flood, 12_500, stripRemoteImages)).toBeLessThan(LINEAR_SCALING_BOUND);
 
 		const out = stripRemoteImages(flood(50_000));
 		expect(out.strippedRemoteImages).toBe(50_001);
@@ -345,7 +342,7 @@ describe('stripRemoteImages', () => {
 		expect(stripRemoteImages(plain).html).toBe(plain);
 	});
 
-	it('stays linear over floods of comments and raw-text elements', SCALING, () => {
+	it('stays linear over floods of comments and raw-text elements', SCALING_TEST, () => {
 		for (const unit of [
 			'<!-- <img alt=" -->',
 			'<style><img alt="</style>',
@@ -353,7 +350,9 @@ describe('stripRemoteImages', () => {
 			'<title>',
 		]) {
 			const flood = (n: number) => `${unit.repeat(n)}<img src="https://cdn.example/a">`;
-			expect(scalingRatio(flood, 12_500, stripRemoteImages), unit).toBeLessThan(LINEAR_RATIO);
+			expect(scalingRatio(flood, 12_500, stripRemoteImages), unit).toBeLessThan(
+				LINEAR_SCALING_BOUND
+			);
 		}
 	});
 
