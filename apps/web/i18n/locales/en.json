@@ -13236,6 +13236,7 @@
 				"sender_status": "How you handle this sender",
 				"rule": "One of your rules",
 				"category": "Its kind of mail",
+				"exact_wording": "It carries payment or legal wording, so it stays out of your digest and updates",
 				"senderStatus": {
 					"default": "How you handle this sender: {status}",
 					"user": "How you handle this sender: {status}, set by you",

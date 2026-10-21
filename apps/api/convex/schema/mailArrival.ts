@@ -82,6 +82,10 @@ export const mailArrivalTables = {
 		pendingAiFilters: v.optional(v.array(pendingAiFilterValidator)),
 		// From a matched placement/digest rule action.
 		rulePlacement: v.optional(placementValidator),
+		// The §2.4 exact-wording detector over the message's own scoped text, as
+		// the interpretation run last screened it: true keeps it out of the
+		// digest and updates (#1384). Absent = not screened yet.
+		isExactWordingCandidate: v.optional(v.boolean()),
 		// One persisted resolution of the exclusive actions across both passes (§6.2).
 		exclusiveWinners: v.optional(exclusiveWinnersValidator),
 		// ABA guard for undoing a `recordRulePlacement` change (§4.4).

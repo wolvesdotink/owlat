@@ -13,11 +13,19 @@
  *   5. a rule placement action, from the arrival record
  *   6. the category: newsletter / promotion → digest, notification / receipt
  *      → updates, anything else → today
+ *
+ * An exact-wording candidate (changed bank details, a legal notice, an invoice
+ * with payment details: `exactWordingDetector.ts`) is never buried (#1384):
+ * when steps 3–6 place it in the digest or updates (the sender's digest
+ * status, a sender override, a rule, the category), it reads as `today`
+ * instead. The person's explicit choices still win: the thread's own
+ * override, an unsubscribed or auto-archived sender.
  */
 
 import type {
 	ComputePlacementResult,
 	MailCategory,
+	Placement,
 	PlacementRecordInput,
 	PlacementSenderInput,
 	PlacementThreadInput,
@@ -50,6 +58,24 @@ export function computePlacement(
 	if (status === 'unsubscribed' || status === 'auto_archive') {
 		return { placement: 'archived', decidedBy: 'sender_status' };
 	}
+	const placed = placementBelowStatus(record, status, senderProfile);
+	if (record.isExactWordingCandidate && isBuried(placed.placement)) {
+		return { placement: 'today', decidedBy: 'exact_wording' };
+	}
+	return placed;
+}
+
+/** A placement an exact-wording candidate is lifted out of. */
+function isBuried(placement: Placement): boolean {
+	return placement === 'digest' || placement === 'updates';
+}
+
+/** Steps 3 (digest) to 6 of the precedence. Pure. */
+function placementBelowStatus(
+	record: PlacementRecordInput,
+	status: PlacementSenderInput['status'],
+	senderProfile: PlacementSenderInput | null
+): ComputePlacementResult {
 	if (status === 'digest') return { placement: 'digest', decidedBy: 'sender_status' };
 	if (senderProfile?.placementOverride) {
 		return { placement: senderProfile.placementOverride, decidedBy: 'sender_override' };

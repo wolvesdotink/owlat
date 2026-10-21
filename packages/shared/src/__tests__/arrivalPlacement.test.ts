@@ -77,3 +77,76 @@ describe('computePlacement precedence (§2.8)', () => {
 		}
 	});
 });
+
+describe('computePlacement, exact-wording candidates (#1384)', () => {
+	const exact = { isExactWordingCandidate: true };
+	const today = { placement: 'today', decidedBy: 'exact_wording' };
+
+	it('lifts a digest or updates placement by sender, sender override, rule or category to today', () => {
+		expect(
+			computePlacement({ ...exact, category: 'person' }, noThread, { status: 'digest' })
+		).toEqual(today);
+		expect(
+			computePlacement({ ...exact, category: 'person' }, noThread, {
+				status: 'keep',
+				placementOverride: 'updates',
+			})
+		).toEqual(today);
+		for (const rulePlacement of ['digest', 'updates'] as const) {
+			expect(computePlacement({ ...exact, rulePlacement }, noThread, null)).toEqual(today);
+		}
+		for (const category of ['newsletter', 'promotion', 'notification', 'receipt'] as const) {
+			expect(computePlacement({ ...exact, category }, noThread, { status: 'keep' })).toEqual(today);
+			expect(computePlacement({ ...exact, category }, noThread, null)).toEqual(today);
+		}
+	});
+
+	it('keeps the explicit choices: the thread override, auto-archive and unsubscribe', () => {
+		for (const placement of ['digest', 'updates', 'archived'] as const) {
+			expect(
+				computePlacement(
+					{ ...exact, category: 'newsletter' },
+					{ placementOverride: { placement }, isReplyNeeded: false },
+					null
+				)
+			).toEqual({ placement, decidedBy: 'thread_override' });
+		}
+		for (const status of ['unsubscribed', 'auto_archive'] as const) {
+			expect(computePlacement({ ...exact, category: 'newsletter' }, noThread, { status })).toEqual({
+				placement: 'archived',
+				decidedBy: 'sender_status',
+			});
+		}
+	});
+
+	it('never lowers a placement: needs_me stays, today stays decided as before', () => {
+		expect(
+			computePlacement(
+				{ ...exact, category: 'newsletter' },
+				{ isReplyNeeded: true },
+				{
+					status: 'digest',
+				}
+			)
+		).toEqual({ placement: 'needs_me', decidedBy: 'needs_reply' });
+		expect(
+			computePlacement(
+				{ ...exact, rulePlacement: 'needs_me', category: 'newsletter' },
+				noThread,
+				null
+			)
+		).toEqual({ placement: 'needs_me', decidedBy: 'rule' });
+		expect(computePlacement({ ...exact, category: 'person' }, noThread, null)).toEqual({
+			placement: 'today',
+			decidedBy: 'category',
+		});
+	});
+
+	it('a message that is no candidate is placed as before', () => {
+		expect(
+			computePlacement({ isExactWordingCandidate: false, category: 'newsletter' }, noThread, {
+				status: 'digest',
+			})
+		).toEqual({ placement: 'digest', decidedBy: 'sender_status' });
+	});
+});

@@ -16,7 +16,9 @@ import { internal } from '../../_generated/api';
 import type { SegmentedMessage } from '@owlat/shared/mailSegments';
 import { detectExactWording } from '@owlat/shared/exactWordingDetector';
 import { freshTextOf } from '../arrival/scopedInput';
+import { logWarn } from '../../lib/runtimeLog';
 import { isSecurityMail } from './eligibility';
+import { scopeForInterpretation, segmentScoped } from './scope';
 import type { ArrivalVerdict } from './arrivalDecide';
 import type { ArrivalAdmission } from './arrivalAdmit';
 import type { InterpretArgs, InterpretRunResult } from './runShape';
@@ -53,6 +55,33 @@ export async function decideArrival(
 		isExactWordingCandidate:
 			detectExactWording({ subject: scoped.subject, text: fresh }).length > 0,
 	});
+}
+
+/**
+ * Admission counted a display-only source over the owner limit before
+ * anything of it was read: still screen its own text for exact wording, so a
+ * candidate is never placed in the digest or updates (#1384). No model call;
+ * a fenced thread or a scope that fails screens nothing.
+ */
+export async function screenCountedArrival(
+	ctx: ActionCtx,
+	args: InterpretArgs & { source: { kind: 'mail' } }
+): Promise<void> {
+	const source = { kind: 'mail' as const, id: args.source.id };
+	try {
+		if (await ctx.runQuery(internal.mail.interpret.staleFence.isSourceFenced, { source })) return;
+		const scoped = await scopeForInterpretation(ctx, source);
+		if (!scoped || !scoped.ok) return;
+		const { segmented } = segmentScoped(scoped);
+		const fresh = freshTextOf(segmented);
+		if (detectExactWording({ subject: scoped.subject, text: fresh }).length === 0) return;
+		await ctx.runMutation(internal.mail.interpret.arrivalDecide.noteCountedArrivalScreen, {
+			source,
+			isExactWordingCandidate: true,
+		});
+	} catch (error) {
+		logWarn('[arrival] exact-wording screen of a counted source failed', error);
+	}
 }
 
 /** What a run answers for a source settled without a full read. */

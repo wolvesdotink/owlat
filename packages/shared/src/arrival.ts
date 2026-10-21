@@ -114,6 +114,11 @@ export interface PlacementRecordInput {
 	rulePlacement?: Placement;
 	category?: MailCategory;
 	categorySource?: CategorySource;
+	/**
+	 * The §2.4 exact-wording detector flagged this message's own text: it is
+	 * never placed in the digest or updates (#1384).
+	 */
+	isExactWordingCandidate?: boolean;
 }
 
 /** The thread half: its override and whether a needs-reply verdict is SETTLED. */
@@ -136,7 +141,9 @@ export type PlacementDecider =
 	| 'sender_status'
 	| 'sender_override'
 	| 'rule'
-	| 'category';
+	| 'category'
+	/** An exact-wording candidate lifted out of the digest or updates (#1384). */
+	| 'exact_wording';
 
 export interface ComputePlacementResult {
 	placement: Placement;
