@@ -287,6 +287,9 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    # A green run takes 5-8 minutes; a hung smoke or gate should fail the job
+    # well before GitHub's six-hour default.
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:

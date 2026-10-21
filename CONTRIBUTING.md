@@ -134,6 +134,20 @@ touched. Bare `npx oxfmt` / `bunx oxfmt` ignore `oxfmtrc.json` or fetch a
 different version. `bun run ci:lint` does not typecheck, so run
 `bun run typecheck` (or `bun run ci:typecheck`) as well.
 
+For a quick pre-push pass over just your change, run:
+
+```bash
+bun run check:changed          # against the merge base with origin/main
+bun run check:changed <ref>    # against the merge base with <ref>
+```
+
+It checks the formatting of the changed files and lints them, runs `turbo lint`
+and `turbo typecheck` for the affected workspaces, the root `lint:*` gates whose
+inputs changed (`scripts/ci/gates.ts`), the plugin smokes when the backend or a
+plugin package is affected, and the tests related to the changed files. Its
+summary lists what CI still runs on top. Add `-- --dry-run` to see the plan
+without running it.
+
 Or run everything CI checks at once:
 
 ```bash

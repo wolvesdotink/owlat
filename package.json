@@ -117,6 +117,7 @@
 		"deploy:api": "turbo deploy --filter=@owlat/api",
 		"ox:fmt": "oxfmt --config oxfmtrc.json .",
 		"ox:fmt:check": "oxfmt --config oxfmtrc.json --check .",
+		"check:changed": "bun scripts/check-changed.ts",
 		"ci:report": "bun scripts/ci/report.ts",
 		"ci:lint": "bash scripts/ci-gate.sh lint",
 		"ci:typecheck": "turbo typecheck --filter='!@owlat/desktop' && bun run typecheck:scripts",
