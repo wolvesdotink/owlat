@@ -1,12 +1,12 @@
 /**
- * The report-only benchmark specs (plan item OW-072) import root files under
- * scripts/perf-bench/, outside the workspace turbo hashes by default. turbo.json
- * adds that directory to the inputs of the generic `test`, `test:coverage` and
- * `typecheck` tasks, so a change to one of those files alone cannot replay a
- * cached result. This reads which perf-bench files each spec really imports
- * and checks them against the real `turbo run --dry=json` input lists of the
- * importing workspace, so it fails when the inputs are dropped or narrowed
- * past a file a spec imports.
+ * The report-only benchmark specs (plan item OW-072) and the gating scaling
+ * checks (#1373) import root files under scripts/perf-bench/, outside the
+ * workspace turbo hashes by default. turbo.json adds that directory to the
+ * inputs of the generic `test`, `test:coverage` and `typecheck` tasks, so a
+ * change to one of those files alone cannot replay a cached result. This reads
+ * which perf-bench files each spec really imports and checks them against the
+ * real `turbo run --dry=json` input lists of the importing workspace, so it
+ * fails when the inputs are dropped or narrowed past a file a spec imports.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -28,6 +28,8 @@ const SPECS = [
 		workspace: '@owlat/api',
 		spec: 'apps/api/convex/mail/__tests__/perfListFixtureContract.test.ts',
 	},
+	{ workspace: '@owlat/shared', spec: 'packages/shared/src/__tests__/postboxTrackers.test.ts' },
+	{ workspace: '@owlat/web', spec: 'apps/web/app/utils/__tests__/postboxRemoteResources.test.ts' },
 ] as const;
 
 /** Every task whose result depends on what the specs import. */

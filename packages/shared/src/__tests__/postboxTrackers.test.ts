@@ -6,33 +6,7 @@ import {
 	remoteResourceHost,
 	stripRemoteImages,
 } from '../postboxTrackers';
-
-/**
- * How much longer 4n units of hostile input take than n: per call, the
- * fastest of three samples each, after a warm-up. A sample repeats the call
- * for at least 10 ms so a cheap input is not timed at the clock's resolution.
- * Linear code measures about 4, quadratic about 16. A ratio rather than a
- * wall-clock budget, which a busy CI runner misses.
- */
-function scalingRatio(build: (n: number) => string, n: number, run: (input: string) => unknown) {
-	const perCall = (input: string) => {
-		const started = performance.now();
-		let calls = 0;
-		do {
-			run(input);
-			calls++;
-		} while (performance.now() - started < 10);
-		return (performance.now() - started) / calls;
-	};
-	const fastest = (input: string) => Math.min(perCall(input), perCall(input), perCall(input));
-	const small = build(n);
-	const large = build(4 * n);
-	fastest(small); // warm-up: JIT
-	return fastest(large) / fastest(small);
-}
-
-/** Linear stays near 4x; the quadratic tag regex this guards measures far higher. */
-const LINEAR_RATIO = 8;
+import { LINEAR_SCALING_BOUND, scalingRatio } from '../../../../scripts/perf-bench/scalingRatio';
 
 const PIXEL_1X1 = '<img src="https://tracker.example.com/open.gif" width="1" height="1" alt="">';
 const HIDDEN_IMG = '<img src="https://tracker.example.net/o.png" style="display:none">';
@@ -197,7 +171,7 @@ describe('stripRemoteImages', () => {
 	it('stays linear on a flood of unterminated <img tags', () => {
 		// No `>` anywhere: `<img\b[^>]*>` retried every start to the end.
 		const flood = (n: number) => `<img src="https://evil.example/p.gif">${'<img src=x '.repeat(n)}`;
-		expect(scalingRatio(flood, 12_500, stripRemoteImages)).toBeLessThan(LINEAR_RATIO);
+		expect(scalingRatio(flood, 12_500, stripRemoteImages)).toBeLessThan(LINEAR_SCALING_BOUND);
 
 		const out = stripRemoteImages(flood(50_000));
 		expect(out.strippedRemoteImages).toBe(1);
