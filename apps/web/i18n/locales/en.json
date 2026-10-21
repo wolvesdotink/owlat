@@ -12691,6 +12691,14 @@
 			"workspaces": {
 				"accent": "Accent",
 				"accentOption": "{accent} accent",
+				"accents": {
+					"gold": "Gold",
+					"graphite": "Graphite",
+					"moss": "Moss",
+					"plum": "Plum",
+					"slate": "Slate",
+					"terracotta": "Terracotta"
+				},
 				"connect": "Connect a workspace",
 				"empty": "No workspaces connected yet. Workspace settings — members, delivery, API keys and more — become available once you connect to an Owlat server.",
 				"heading": "Workspaces",

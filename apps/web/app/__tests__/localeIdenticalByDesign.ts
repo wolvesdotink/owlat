@@ -308,6 +308,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'desktop.settings.globalHeading',
 	'desktop.settings.updates.title',
 	'desktop.settings.updates.version',
+	'desktop.settings.workspaces.accents.gold',
 	'desktop.settings.workspaces.heading',
 	'desktop.setup.ai.openai',
 	'desktop.setup.ai.openrouter',
