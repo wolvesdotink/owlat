@@ -50,6 +50,7 @@ vi.mock('../../../lib/sessionOrganization', async (importOriginal) => {
 		...actual,
 		requireOrgMember: vi.fn(async () => session),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getMutationContext: vi.fn(async () => session),
 		getBetterAuthSessionWithRole: vi.fn(async () => session),
 	};
 });
@@ -525,6 +526,43 @@ describe('#1384: explicit choices still win', () => {
 		expect(record).toMatchObject({ depth: 'count', isExactWordingCandidate: true });
 		expect(thread.arrival).toMatchObject({ placement: 'digest' });
 	});
+
+	// Sol r3b: the same destination chosen again renews the overruled Fix.
+	it.each(['digest', 'updates'] as const)(
+		'choosing %s again after an older Fix was overruled files it there, undoably',
+		async (destination) => {
+			const t = setup();
+			const { source, messageId } = await arrive(t, PAYMENT, 'person', {
+				threadOverride: destination,
+				threadOverrideSet: 'before',
+			});
+			await run(t, source);
+			const old = (await snapshot(t, messageId)).thread;
+			expect(old.arrival).toMatchObject({ placement: 'today' });
+			const fixed = await t.mutation(api.mail.arrival.fix.apply, {
+				messageId,
+				destination,
+				scope: 'message',
+			});
+			expect(fixed.operationId).not.toBeNull();
+			const { thread } = await snapshot(t, messageId);
+			expect(thread.arrival).toMatchObject({ placement: destination });
+			expect(thread.placementOverride?.operationId).toBe(fixed.operationId);
+			expect(thread.placementOverride!.setAt).toBeGreaterThan(old.placementOverride!.setAt);
+			// Choosing it once more changes nothing: the renewed Fix holds.
+			const again = await t.mutation(api.mail.arrival.fix.apply, {
+				messageId,
+				destination,
+				scope: 'message',
+			});
+			expect(again.operationId).toBeNull();
+			// Undo restores the older, overruled Fix, and the wording places it again.
+			await t.mutation(api.mail.arrival.operations.undo, { operationId: fixed.operationId! });
+			const undone = (await snapshot(t, messageId)).thread;
+			expect(undone.placementOverride).toEqual(old.placementOverride);
+			expect(undone.arrival).toMatchObject({ placement: 'today' });
+		}
+	);
 
 	it('an auto-archived or unsubscribed sender stays archived, unread', async () => {
 		for (const senderStatus of ['auto_archive', 'unsubscribed'] as const) {
