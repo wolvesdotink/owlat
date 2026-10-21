@@ -109,9 +109,10 @@ export function usePostboxTriageUndo() {
 		const hint = t('shared.postbox.usePostboxTriageUndo.keyHint', {
 			keys: chordLabel(UNDO_CHORD),
 		});
-		entries.value.forEach((entry, index) => {
-			if (entry.toastId) setToastShortcutHint(entry.toastId, index === 0 ? hint : undefined);
-		});
+		const newest = entries.value[0];
+		for (const entry of entries.value) {
+			if (entry.toastId) setToastShortcutHint(entry.toastId, entry === newest ? hint : undefined);
+		}
 	}
 
 	/** Called after every change to the stack: the binding and its hint follow it. */
