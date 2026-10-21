@@ -204,6 +204,64 @@ describe('stripRemoteImages', () => {
 		expect(out.html).toBe('<img src=x '.repeat(50_000));
 	});
 
+	it('strips a remote image with `>` inside a quoted attribute value', () => {
+		for (const tag of [
+			'<img alt=">" src="https://cdn.example/a">',
+			"<img alt='>' src='https://cdn.example/a'>",
+			'<img src="https://cdn.example/a" alt="a > b">',
+			"<img src='https://cdn.example/a' alt='a > b'>",
+		]) {
+			const out = stripRemoteImages(`<p>before</p>${tag}<p>after</p>${INLINE_CID}`);
+			expect(out.strippedRemoteImages, tag).toBe(1);
+			expect(out.html, tag).toBe(`<p>before</p><p>after</p>${INLINE_CID}`);
+		}
+	});
+
+	it('keeps an inline image whose quoted attribute holds a `>`', () => {
+		const html = '<img alt="1 > 0" src="cid:chart@corp"><p>x</p>';
+		const out = stripRemoteImages(html);
+		expect(out.strippedRemoteImages).toBe(0);
+		expect(out.html).toBe(html);
+	});
+
+	it('does not treat an apostrophe inside an unquoted value or a name as a quote', () => {
+		const out = stripRemoteImages(
+			"<img alt=it's src=https://cdn.example/a><p>x</p><img data-o'k src=//cdn.example/b><p>y</p>"
+		);
+		expect(out.strippedRemoteImages).toBe(2);
+		expect(out.html).toBe('<p>x</p><p>y</p>');
+	});
+
+	it('reads src as the browser does, not from inside another attribute', () => {
+		for (const tag of [
+			'<img alt=\'>src="cid:logo@corp"\' src="https://cdn.example/a">',
+			'<img data-src="cid:logo@corp" src="https://cdn.example/a">',
+			'<img src = "https://cdn.example/a" src="cid:logo@corp">',
+		]) {
+			const out = stripRemoteImages(`${tag}<p>x</p>`);
+			expect(out.strippedRemoteImages, tag).toBe(1);
+			expect(out.html, tag).toBe('<p>x</p>');
+		}
+		const inline = '<img alt="src=https://cdn.example/a" src="cid:logo@corp">';
+		expect(stripRemoteImages(inline)).toEqual({ html: inline, strippedRemoteImages: 0 });
+		expect(isTrackingPixelTag('<img alt="1>0" src="https://cdn.example/p.gif" width="1">')).toBe(
+			true
+		);
+	});
+
+	it('keeps the tail of an unterminated quote and stays linear over it', () => {
+		// The open quote swallows the rest of the input, so none of the later
+		// `<img` starts is a tag; rescanning from each would be quadratic.
+		const flood = (n: number) =>
+			`<img src="https://evil.example/p.gif"><p>x</p><img alt="open ${'<img src=https://evil.example/q.gif>'.repeat(n)}`;
+		expect(scalingRatio(flood, 12_500, stripRemoteImages)).toBeLessThan(LINEAR_RATIO);
+
+		const input = flood(50_000);
+		const out = stripRemoteImages(input);
+		expect(out.strippedRemoteImages).toBe(1);
+		expect(out.html).toBe(input.slice('<img src="https://evil.example/p.gif">'.length));
+	});
+
 	it('fails soft on non-string input', () => {
 		const out = stripRemoteImages(undefined as unknown as string);
 		expect(out.strippedRemoteImages).toBe(0);
