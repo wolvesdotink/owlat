@@ -140,11 +140,24 @@ issue_or_renew() {
   publish_cert || true
 }
 
+# The compose healthcheck reads this file's age, so a renewal loop that stops
+# coming round (a lego run that never returns) turns the container unhealthy
+# one interval later. Touched after every attempt, a failed renewal included:
+# whether a valid certificate is being served is the healthcheck's other half,
+# which compares the published pair with lego's copy. The file lives under
+# TMPDIR, outside the volumes, so a restarted container starts without one.
+mark_attempt() {
+  date -u +%Y-%m-%dT%H:%M:%SZ > "${TMPDIR:-/tmp}/owlat-acme-attempt" ||
+    echo "[acme] could not record the renewal attempt for the healthcheck" >&2
+}
+
 # First-time issuance
 issue_or_renew
+mark_attempt
 
 # Periodic renewal loop
 while true; do
   sleep "$((RENEW_INTERVAL_HOURS * 3600))"
   issue_or_renew
+  mark_attempt
 done

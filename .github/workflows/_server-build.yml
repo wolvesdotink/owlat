@@ -731,6 +731,12 @@ jobs:
               | jq -e '.redis == "connected" and .worker.alive == true'
           }
           wait_http "mta worker (redis connected + heartbeat alive)" 600 mta_check
+          # The compose healthchecks of the remaining long-running services in
+          # this profile set: healthy proves each probe command runs in the
+          # published image, not just in the base image it was written for.
+          for svc in web mta updater docker-socket-proxy dns-resolver; do
+            wait_healthy docker-compose.yml "$svc" 300
+          done
           # The app must report the version it IS. nuxt.config.ts is evaluated at
           # image build and Nitro only overlays NUXT_PUBLIC_* env, so a naming slip
           # leaves every install reporting "dev" — which makes the admin page's

@@ -169,10 +169,10 @@ for compose in "$root" "$vps" ${release:+"$release"}; do
 
 	updater=$(service_block "$compose" updater)
 	if grep -qE 'DOCKER_HOST: *tcp://docker-socket-proxy:2375' <<<"$updater" \
-		&& grep -Pzq '\n {4}depends_on:\n {6}- docker-socket-proxy\n' <<<"$updater" \
+		&& grep -Pzq '\n {4}depends_on:\n(?: {6}#[^\n]*\n)* {6}docker-socket-proxy:\n {8}condition: service_healthy\n' <<<"$updater" \
 		&& ! grep -qE '\- */var/run/docker\.sock' <<<"$updater"; then
 		ok "$label updater reaches Docker through the proxy, never the raw socket"
-	else bad "$label updater must set DOCKER_HOST=tcp://docker-socket-proxy:2375, depend on the proxy and mount no socket"; fi
+	else bad "$label updater must set DOCKER_HOST=tcp://docker-socket-proxy:2375, wait for the proxy to be healthy and mount no socket"; fi
 
 	# Network membership is read off the parsed YAML, not grepped: flow lists,
 	# quoted names, comments and `network_mode: service:updater` all attach a

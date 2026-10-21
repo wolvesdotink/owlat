@@ -10,7 +10,8 @@
  * The readiness contract, for every service the rollout started (the active
  * profiles' services, minus the updater and the socket proxy):
  *
- *   - a service with a healthcheck (convex, redis, clamav) is `healthy`;
+ *   - a service with a healthcheck (every long-running service in the shipped
+ *     templates declares one) is `healthy`;
  *   - a service without one is `running`, not `restarting`;
  *   - a one-shot service (`restart: "no"`, e.g. imap-cert-init) has exited 0;
  *   - all of the above still hold one settle interval later, so a container

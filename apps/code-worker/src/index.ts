@@ -4,6 +4,7 @@ import { createCodeTaskPoller } from './taskProcess.js';
 import { pollForPluginTask } from './pluginTaskRunner.js';
 import { log } from './log.js';
 import { readWorkerTimers, type WorkerTimers } from './env.js';
+import { startHeartbeat } from './heartbeat.js';
 
 // Route both crash channels through the worker's own log stream. Node ≥15 ends
 // the process on either one already, so what changes is that the event explaining
@@ -144,6 +145,11 @@ async function main(): Promise<void> {
 	} catch (error) {
 		log(`Failed to reclaim stale plugin jobs: ${error}`);
 	}
+
+	// Healthy from here on: startup (config, Convex client, reclaims) is done.
+	// Started only now so a startup that hangs reads as unhealthy once the
+	// healthcheck's start period is over.
+	startHeartbeat({ log });
 
 	// Poll loop — one worker drains BOTH queues (code-work tasks and the
 	// generalized Tier-3 plugin-task queue) through the shared sandbox seam.

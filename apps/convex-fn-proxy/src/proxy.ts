@@ -1,6 +1,8 @@
 /**
  * The Convex function-allowlist proxy's request handler.
  *
+ * `GET /livez` answers the container healthcheck and is never forwarded.
+ *
  * Flow for every request the code-worker makes:
  *   1. Accept only `POST` to one of the three Convex query/mutation/action
  *      endpoints (`ALLOWED_ENDPOINTS`); anything else is 404.
@@ -42,6 +44,9 @@ export interface ProxyConfig {
  * instead of a request that never ends.
  */
 export const UPSTREAM_TIMEOUT_MS = 30_000;
+
+/** The healthcheck path; not a Convex endpoint, so it can never shadow one. */
+const LIVENESS_PATH = '/livez';
 
 /** Cap the forwarded body so a compromised worker cannot stream an unbounded request. */
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
@@ -88,6 +93,13 @@ export function createProxyHandler(
 
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		const pathname = new URL(req.url ?? '/', 'http://proxy.internal').pathname;
+
+		// Liveness for the container healthcheck. Answered here, before the
+		// token check, because Docker probes without one; it reaches neither
+		// Convex nor the allowlist, so it reveals only that the proxy serves.
+		if (req.method === 'GET' && pathname === LIVENESS_PATH) {
+			return json(res, 200, { status: 'ok' });
+		}
 
 		// 1. Only POST to a known Convex query/mutation/action endpoint.
 		if (req.method !== 'POST' || !isAllowedEndpoint(pathname)) {

@@ -271,6 +271,16 @@ const MUTATIONS = [
 		expected: WITH_INTRUDER,
 	},
 	{
+		breaks: 'an updater that starts before the proxy answers',
+		apply: (s: string) =>
+			replaceOnce(
+				s,
+				'      docker-socket-proxy:\n        condition: service_healthy\n',
+				'      docker-socket-proxy:\n        condition: service_started\n'
+			),
+		expected: 'updater must set DOCKER_HOST=tcp://docker-socket-proxy:2375, wait for the proxy',
+	},
+	{
 		breaks: 'a service extending the proxy',
 		apply: addIntruder('    extends:\n      service: docker-socket-proxy\n'),
 		expected: 'intruder must not use extends (the gate cannot see the merged definition)',
