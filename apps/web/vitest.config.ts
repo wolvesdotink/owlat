@@ -85,6 +85,15 @@ export default defineConfig({
 				replacement: resolve(__dirname, 'app/__tests__/shims/i18nAreas.ts'),
 			},
 			{
+				// The one export that is not a module: the Can I Email snapshot points
+				// straight at the generated JSON (see packages/shared/package.json), so
+				// the stem rule below would land on `src/caniemailData.d.ts`, which
+				// Vite cannot load. `sharedSubpathAliases.test.ts` keeps this table in
+				// step with the package's exports.
+				find: /^@owlat\/shared\/caniemailData$/,
+				replacement: resolve(__dirname, '../../packages/shared/src/generated/caniemail-data.json'),
+			},
+			{
 				// Subpath exports are a mix of `src/<name>.ts` and `src/<name>/index.ts`
 				// (e.g. `@owlat/shared/registry`), so the replacement stops at the
 				// stem and lets Vite's extension/index resolution finish the job.
