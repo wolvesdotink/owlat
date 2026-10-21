@@ -264,7 +264,7 @@ describe('the code-worker heartbeat probe', () => {
 			const at = Date.now() / 1000 - ageSeconds;
 			utimesSync(file, at, at);
 		}
-		const command = probe.replaceAll('/tmp/owlat-code-worker.heartbeat', file);
+		const command = probe.replaceAll('/tmp/owlat-code-worker/heartbeat', file);
 		expect(command).not.toBe(probe);
 		return spawnSync('sh', ['-c', command]).status;
 	}

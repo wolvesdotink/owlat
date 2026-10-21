@@ -1,15 +1,29 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+	HEARTBEAT_DIR,
 	HEARTBEAT_INTERVAL_MS,
 	HEARTBEAT_PATH,
+	prepareHeartbeatDir,
 	startHeartbeat,
 	writeHeartbeatFile,
 } from '../heartbeat.js';
 
 const REPOSITORY_ROOT = join(import.meta.dirname, '../../../..');
+
+const noPrepare = () => {};
 
 describe('startHeartbeat', () => {
 	beforeEach(() => {
@@ -20,9 +34,32 @@ describe('startHeartbeat', () => {
 		vi.useRealTimers();
 	});
 
+	it('prepares the private directory before the first write', () => {
+		const calls: string[] = [];
+		const stop = startHeartbeat({
+			path: '/private/hb',
+			prepare: (dir) => calls.push(`prepare ${dir}`),
+			write: (path) => calls.push(`write ${path}`),
+		});
+
+		expect(calls).toEqual(['prepare /private', 'write /private/hb']);
+		stop();
+	});
+
+	it('refuses to start when the directory cannot be made private', () => {
+		const write = vi.fn();
+		const prepare = () => {
+			throw new Error('not private');
+		};
+
+		expect(() => startHeartbeat({ path: '/private/hb', write, prepare })).toThrow('not private');
+		vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS * 3);
+		expect(write).not.toHaveBeenCalled();
+	});
+
 	it('beats once at start, so a fresh worker is healthy at the first probe', () => {
 		const write = vi.fn();
-		const stop = startHeartbeat({ path: '/hb', write });
+		const stop = startHeartbeat({ path: '/hb', write, prepare: noPrepare });
 
 		expect(write).toHaveBeenCalledTimes(1);
 		expect(write).toHaveBeenCalledWith('/hb', '2026-10-21T12:00:00.000Z\n');
@@ -31,7 +68,7 @@ describe('startHeartbeat', () => {
 
 	it('keeps beating while the worker is idle, with nothing else on the loop', () => {
 		const write = vi.fn();
-		const stop = startHeartbeat({ path: '/hb', write });
+		const stop = startHeartbeat({ path: '/hb', write, prepare: noPrepare });
 
 		vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS * 6);
 
@@ -42,7 +79,7 @@ describe('startHeartbeat', () => {
 
 	it('goes stale once stopped', () => {
 		const write = vi.fn();
-		const stop = startHeartbeat({ path: '/hb', write });
+		const stop = startHeartbeat({ path: '/hb', write, prepare: noPrepare });
 		stop();
 
 		vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS * 20);
@@ -56,7 +93,7 @@ describe('startHeartbeat', () => {
 		const write = vi.fn(() => {
 			if (broken) throw new Error('ENOSPC: no space left on device');
 		});
-		const stop = startHeartbeat({ path: '/hb', write, log });
+		const stop = startHeartbeat({ path: '/hb', write, log, prepare: noPrepare });
 
 		vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS * 3);
 		expect(log).toHaveBeenCalledTimes(1);
@@ -90,6 +127,78 @@ describe('writeHeartbeatFile', () => {
 
 		expect(readFileSync(path, 'utf8')).toBe('second\n');
 		expect(readdirSync(dir)).toEqual(['heartbeat']);
+	});
+});
+
+describe('the heartbeat directory', () => {
+	let shared: string;
+
+	beforeEach(() => {
+		// Stands in for the /tmp a sandboxed task can also write to.
+		shared = mkdtempSync(join(tmpdir(), 'owlat-heartbeat-shared-'));
+	});
+
+	afterEach(() => {
+		rmSync(shared, { recursive: true, force: true });
+	});
+
+	it('keeps the file and its staging name in a directory of their own', () => {
+		expect(HEARTBEAT_PATH.startsWith(`${HEARTBEAT_DIR}/`)).toBe(true);
+		expect(HEARTBEAT_DIR.startsWith('/tmp/')).toBe(true);
+	});
+
+	it('creates the directory with no group or other access', () => {
+		const dir = join(shared, 'owlat-code-worker');
+		prepareHeartbeatDir(dir);
+
+		expect(statSync(dir).isDirectory()).toBe(true);
+		expect(statSync(dir).mode & 0o777).toBe(0o700);
+	});
+
+	it('keeps beating when names in the shared directory are planted', () => {
+		// The names a task could plant when the file lived directly in /tmp.
+		mkdirSync(join(shared, 'owlat-code-worker.heartbeat'));
+		mkdirSync(join(shared, 'owlat-code-worker.heartbeat.tmp'));
+		const log = vi.fn();
+		const path = join(shared, 'owlat-code-worker', 'heartbeat');
+
+		const stop = startHeartbeat({ path, log });
+		stop();
+
+		expect(log).not.toHaveBeenCalled();
+		expect(readFileSync(path, 'utf8')).toMatch(/^\d{4}-\d\d-\d\dT/);
+		expect(readdirSync(join(shared, 'owlat-code-worker'))).toEqual(['heartbeat']);
+	});
+
+	it('refuses a directory others can reach', () => {
+		const dir = join(shared, 'owlat-code-worker');
+		mkdirSync(dir);
+		chmodSync(dir, 0o777);
+
+		expect(() => prepareHeartbeatDir(dir)).toThrow('not a private directory');
+	});
+
+	it('refuses a symlink, even to a private directory', () => {
+		const target = join(shared, 'elsewhere');
+		mkdirSync(target, { mode: 0o700 });
+		const dir = join(shared, 'owlat-code-worker');
+		symlinkSync(target, dir);
+
+		expect(() => prepareHeartbeatDir(dir)).toThrow('not a private directory');
+	});
+
+	it('refuses a file in its place', () => {
+		const dir = join(shared, 'owlat-code-worker');
+		writeFileSync(dir, '');
+
+		expect(() => prepareHeartbeatDir(dir)).toThrow('not a private directory');
+	});
+
+	it('accepts the directory it made on an earlier call', () => {
+		const dir = join(shared, 'owlat-code-worker');
+		prepareHeartbeatDir(dir);
+
+		expect(() => prepareHeartbeatDir(dir)).not.toThrow();
 	});
 });
 

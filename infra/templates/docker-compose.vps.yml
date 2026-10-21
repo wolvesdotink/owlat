@@ -692,7 +692,7 @@ services:
       # write means its event loop has stopped.
       test:
         - CMD-SHELL
-        - test -n "$$(find /tmp/owlat-code-worker.heartbeat -mmin -2 2>/dev/null)"
+        - test -n "$$(find /tmp/owlat-code-worker/heartbeat -mmin -2 2>/dev/null)"
       interval: 30s
       timeout: 5s
       retries: 3
