@@ -8,66 +8,22 @@
  * service while the gate only looked at the root file (#1329), so each case
  * breaks one template in a copy and runs the real gate against it.
  *
- * The network is one route to the engine; the socket is the other. A service
- * with no network at all still drives the full API through a socket mount, and
- * `:ro` does not stop that, so only the proxy may reach it by any route (#1368).
+ * The network is one route to the engine; the socket is the other, covered in
+ * check-compose-socket-access.test.ts (#1368).
  */
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+	GATE_TIMEOUT_MS,
+	TEMPLATES,
+	addIntruder,
+	both,
+	readTemplate,
+	removeSandboxes,
+	replaceOnce,
+	runGate,
+} from './composeGate.testlib';
 
-const REPOSITORY_ROOT = resolve(import.meta.dirname, '../..');
-const SCRIPT = join(REPOSITORY_ROOT, 'scripts/check-compose-invariants.sh');
-
-const TEMPLATES = [
-	{ name: 'docker-compose.yml', env: 'COMPOSE_INVARIANTS_ROOT' },
-	{ name: 'infra/templates/docker-compose.vps.yml', env: 'COMPOSE_INVARIANTS_VPS' },
-] as const;
-
-// One gate run is ~0.5s, but it forks a few hundred greps; leave headroom for a
-// contended runner rather than flake at vitest's 5s default.
-const GATE_TIMEOUT_MS = 30_000;
-
-const sandboxes: string[] = [];
-
-afterEach(() => {
-	while (sandboxes.length > 0) {
-		const dir = sandboxes.pop();
-		if (dir) rmSync(dir, { recursive: true, force: true });
-	}
-});
-
-/** Replaces the single occurrence of `from`; a missing anchor fails loudly. */
-function replaceOnce(source: string, from: string, to: string): string {
-	expect(source.split(from), `anchor not found exactly once: ${JSON.stringify(from)}`).toHaveLength(
-		2
-	);
-	return source.replace(from, to);
-}
-
-function runGate(env: string, compose: string): { status: number | null; stderr: string } {
-	const dir = mkdtempSync(join(tmpdir(), 'owlat-compose-invariants-'));
-	sandboxes.push(dir);
-	const file = join(dir, 'docker-compose.yml');
-	writeFileSync(file, compose);
-	// A sync spawn blocks the event loop, so vitest's own timeout cannot stop a
-	// hung gate; the spawn has to time out by itself.
-	const result = spawnSync('bash', [SCRIPT], {
-		encoding: 'utf8',
-		env: { ...process.env, [env]: file },
-		timeout: GATE_TIMEOUT_MS,
-	});
-	expect(result.error).toBeUndefined();
-	return { status: result.status, stderr: result.stderr };
-}
-
-/** Adds a service, written as `body`, ahead of the updater. */
-function addIntruder(body: string): (s: string) => string {
-	return (s) =>
-		replaceOnce(s, '\n  updater:\n', `\n  intruder:\n    image: alpine:3\n${body}\n  updater:\n`);
-}
+afterEach(removeSandboxes);
 
 /** Gives an existing service an explicit `container_name`. */
 function nameContainer(service: string, containerName: string): (s: string) => string {
@@ -84,16 +40,6 @@ function addNetwork(body: string): (s: string) => string {
 			`  docker-proxy:\n    internal: true\n${body}`
 		);
 }
-
-/** Declares an extra top-level volume next to the shipped ones. */
-function addVolume(body: string): (s: string) => string {
-	return (s) => replaceOnce(s, '\nvolumes:\n', `\nvolumes:\n${body}`);
-}
-
-const both =
-	(...steps: ((s: string) => string)[]) =>
-	(s: string) =>
-		steps.reduce((acc, step) => step(acc), s);
 
 const NOT_ONLY_MEMBERS = 'docker-proxy network must hold exactly docker-socket-proxy and updater';
 const SHARES_NAMESPACE = "joins a docker-proxy member's network namespace";
@@ -375,205 +321,8 @@ const MUTATIONS = [
 	},
 ] as const;
 
-const GIVES_SOCKET = 'gives the Docker socket away';
-const ONLY_PROXY = 'only docker-socket-proxy may reach the Docker engine';
-const UNRESOLVED_SOURCE = 'takes its source from interpolation the gate cannot resolve';
-const THROUGH_PROCFS = 'goes through procfs';
-
-/** An intruder with no network at all, so only the socket can reach the engine. */
-const offline = (body: string) => addIntruder(`    network_mode: none\n${body}`);
-
-const SOCKET_MUTATIONS = [
-	{
-		breaks: 'a direct socket bind (short syntax)',
-		apply: offline('    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock\n'),
-		expected: `intruder volume "/var/run/docker.sock:/var/run/docker.sock" ${GIVES_SOCKET} (/var/run/docker.sock); ${ONLY_PROXY}`,
-	},
-	{
-		breaks: 'a read-only socket bind at another target (short syntax)',
-		apply: offline("    volumes: ['/var/run/docker.sock:/tmp/engine.sock:ro']\n"),
-		expected: `intruder volume "/var/run/docker.sock:/tmp/engine.sock:ro" ${GIVES_SOCKET}`,
-	},
-	{
-		breaks: 'a read-only socket bind (long syntax)',
-		apply: offline(
-			'    volumes:\n      - type: bind\n        source: /run/docker.sock\n        target: /engine.sock\n        read_only: true\n'
-		),
-		expected: `${GIVES_SOCKET} (/run/docker.sock)`,
-	},
-	{
-		breaks: 'a bind of the directory holding the socket',
-		apply: offline('    volumes:\n      - /var/run/:/host-run:ro\n'),
-		expected: `intruder volume "/var/run/:/host-run:ro" ${GIVES_SOCKET} (/var/run/)`,
-	},
-	{
-		breaks: 'a bind of the host root',
-		apply: offline('    volumes:\n      - type: bind\n        source: /\n        target: /host\n'),
-		expected: `${GIVES_SOCKET} (/)`,
-	},
-	{
-		breaks: 'a socket path from an interpolation default',
-		apply: offline('    volumes:\n      - ${ENGINE_SOCKET:-/var/run/docker.sock}:/engine.sock\n'),
-		expected: `${GIVES_SOCKET} (/var/run/docker.sock)`,
-	},
-	{
-		breaks: 'a bind source from a variable with no default',
-		apply: offline('    volumes:\n      - ${ENGINE_SOCKET}:/engine.sock\n'),
-		expected: `intruder volume "\${ENGINE_SOCKET}:/engine.sock" ${UNRESOLVED_SOURCE} (\${ENGINE_SOCKET}:/engine.sock)`,
-	},
-	{
-		breaks: 'a whole mount from a variable with no default',
-		apply: offline('    volumes:\n      - ${ENGINE_MOUNT}\n'),
-		expected: `intruder volume "\${ENGINE_MOUNT}" ${UNRESOLVED_SOURCE} (\${ENGINE_MOUNT})`,
-	},
-	{
-		breaks: 'a socket bind whose type comes from an interpolation default',
-		apply: offline(
-			'    volumes:\n      - type: ${MOUNT_TYPE:-bind}\n        source: /var/run/docker.sock\n        target: /engine.sock\n'
-		),
-		expected: `${GIVES_SOCKET} (/var/run/docker.sock)`,
-	},
-	{
-		breaks: 'a named pipe whose type comes from an interpolation default',
-		apply: offline(
-			'    volumes:\n      - type: ${MOUNT_TYPE:-npipe}\n        source: \\\\.\\pipe\\docker_engine\n        target: \\\\.\\pipe\\docker_engine\n'
-		),
-		expected: `is a named pipe, the Docker engine's transport on Windows; ${ONLY_PROXY}`,
-	},
-	{
-		breaks: 'an external volume whose mount type comes from an interpolation default',
-		apply: both(
-			addVolume('  engine-run:\n    external: true\n'),
-			offline(
-				'    volumes:\n      - type: ${MOUNT_TYPE:-volume}\n        source: engine-run\n        target: /x\n'
-			)
-		),
-		expected: 'uses external volume engine-run, which the gate cannot see into',
-	},
-	{
-		breaks: 'a mount type with no default',
-		apply: offline(
-			'    volumes:\n      - type: ${MOUNT_TYPE}\n        source: /var/run/docker.sock\n        target: /engine.sock\n'
-		),
-		expected: 'has a mount type the gate cannot resolve (${MOUNT_TYPE})',
-	},
-	{
-		breaks: 'a mount type the gate does not know',
-		apply: offline(
-			'    volumes:\n      - type: ${MOUNT_TYPE:-Bind}\n        source: /var/run/docker.sock\n        target: /engine.sock\n'
-		),
-		expected: 'has a mount type the gate does not know (${MOUNT_TYPE:-Bind})',
-	},
-	{
-		breaks: 'a relative bind that climbs out of the project directory',
-		apply: offline('    volumes:\n      - ./../../../../var/run:/host-run\n'),
-		expected: 'climbs out of the project directory (./../../../../var/run)',
-	},
-	{
-		breaks: "a bind of the socket directory through init's procfs root",
-		apply: offline('    volumes:\n      - /proc/1/root/run:/host-run:ro\n'),
-		expected: `intruder volume "/proc/1/root/run:/host-run:ro" ${THROUGH_PROCFS} (/proc/1/root/run)`,
-	},
-	{
-		breaks: 'a bind of the host root through procfs (long syntax)',
-		apply: offline(
-			'    volumes:\n      - type: bind\n        source: /proc/self/root/\n        target: /host\n'
-		),
-		expected: `${THROUGH_PROCFS} (/proc/self/root/)`,
-	},
-	{
-		breaks: 'a bind through a /dev link into procfs',
-		apply: offline('    volumes:\n      - /dev/fd/3:/held-dir\n'),
-		expected: `${THROUGH_PROCFS} (/dev/fd/3)`,
-	},
-	{
-		breaks: 'a named volume backed by a procfs path',
-		apply: both(
-			addVolume(
-				'  engine-run:\n    driver_opts:\n      type: none\n      o: bind\n      device: /proc/1/root/var/run\n'
-			),
-			offline('    volumes:\n      - engine-run:/host-run\n')
-		),
-		expected: `uses volume engine-run, whose device ${THROUGH_PROCFS} (/proc/1/root/var/run)`,
-	},
-	{
-		breaks: 'a named volume backed by the socket directory',
-		apply: both(
-			addVolume(
-				'  engine-run:\n    driver_opts:\n      type: none\n      o: bind\n      device: /var/run\n'
-			),
-			offline('    volumes:\n      - engine-run:/host-run\n')
-		),
-		expected: `intruder volume "engine-run:/host-run" uses volume engine-run, whose device ${GIVES_SOCKET} (/var/run)`,
-	},
-	{
-		breaks: 'an external named volume',
-		apply: both(
-			addVolume('  engine-run:\n    external: true\n'),
-			offline(
-				'    volumes:\n      - type: volume\n        source: engine-run\n        target: /x\n'
-			)
-		),
-		expected: 'uses external volume engine-run, which the gate cannot see into',
-	},
-	{
-		breaks: 'a named-pipe mount',
-		apply: offline(
-			'    volumes:\n      - type: npipe\n        source: \\\\.\\pipe\\docker_engine\n        target: \\\\.\\pipe\\docker_engine\n'
-		),
-		expected: `is a named pipe, the Docker engine's transport on Windows; ${ONLY_PROXY}`,
-	},
-	{
-		breaks: 'a secret read from the socket',
-		apply: both(
-			(s: string) => `secrets:\n  engine:\n    file: /var/run/docker.sock\n${s}`,
-			offline('    secrets: [engine]\n')
-		),
-		expected: `secret engine file ${GIVES_SOCKET} (/var/run/docker.sock)`,
-	},
-	{
-		breaks: 'volumes_from the proxy, read-only',
-		apply: offline('    volumes_from: [docker-socket-proxy:ro]\n'),
-		expected: `intruder inherits Docker socket access from docker-socket-proxy via volumes_from (${ONLY_PROXY})`,
-	},
-	{
-		breaks: 'volumes_from the proxy through another service',
-		apply: offline(
-			'    volumes_from:\n      - hop\n\n  hop:\n    image: alpine:3\n    network_mode: none\n    volumes_from: [docker-socket-proxy]\n'
-		),
-		expected: 'intruder inherits Docker socket access from hop via volumes_from',
-	},
-	{
-		breaks: 'volumes_from a container',
-		apply: offline('    volumes_from: ["container:owlat-docker-socket-proxy-1"]\n'),
-		expected:
-			'intruder volumes_from container:owlat-docker-socket-proxy-1 names a container the gate cannot resolve; use a service name',
-	},
-	{
-		breaks: 'use_api_socket',
-		apply: offline('    use_api_socket: true\n'),
-		expected: `intruder must not set use_api_socket (${ONLY_PROXY})`,
-	},
-	{
-		breaks: 'the updater mounting the socket',
-		apply: (s: string) =>
-			replaceOnce(s, '\n  updater:\n', '\n  updater:\n    volumes_from: [docker-socket-proxy]\n'),
-		expected: 'updater inherits Docker socket access from docker-socket-proxy via volumes_from',
-	},
-	{
-		breaks: 'an unknown top-level key',
-		apply: (s: string) => `unknown_policy: true\n${s}`,
-		expected: 'has unknown top-level key unknown_policy (not in the Compose specification)',
-	},
-	{
-		breaks: 'an unknown service key',
-		apply: offline('    docker_socket: /var/run/docker.sock\n'),
-		expected: 'intruder has unknown service key docker_socket (not in the Compose specification)',
-	},
-] as const;
-
 describe.each(TEMPLATES)('$name keeps the Docker API off the app network', ({ name, env }) => {
-	const original = readFileSync(join(REPOSITORY_ROOT, name), 'utf8');
+	const original = readTemplate(name);
 
 	it(
 		'passes the gate as checked in',
@@ -600,42 +349,7 @@ describe.each(TEMPLATES)('$name keeps the Docker API off the app network', ({ na
 		GATE_TIMEOUT_MS
 	);
 
-	it(
-		'accepts mounts that stay off the socket, and extension keys',
-		() => {
-			const result = runGate(
-				env,
-				both(
-					(s: string) => `x-policy:\n  note: extension keys are free-form\n${s}`,
-					offline(
-						[
-							'    x-owner: ops',
-							'    volumes:',
-							'      - /cache',
-							'      - ./data:/data',
-							'      - ${OWLAT_DATA_DIR:-./data}:/srv/data:ro',
-							'      - /var/lib/owlat:/var/lib/owlat:ro',
-							'      - /run/owlat:/run/owlat',
-							'      - /procedures:/srv/procedures:ro',
-							'      - /dev/shm:/dev/shm',
-							'      - type: tmpfs',
-							'        target: /tmp',
-							'      - type: ${SCRATCH_MOUNT_TYPE:-tmpfs}',
-							'        target: /scratch',
-							'    volumes_from: [web:ro]',
-							'    use_api_socket: false',
-							'',
-						].join('\n')
-					)
-				)(original)
-			);
-			expect(result.stderr).toBe('');
-			expect(result.status).toBe(0);
-		},
-		GATE_TIMEOUT_MS
-	);
-
-	it.each([...MUTATIONS, ...SOCKET_MUTATIONS])(
+	it.each(MUTATIONS)(
 		'rejects $breaks',
 		({ apply, expected }) => {
 			const result = runGate(env, apply(original));

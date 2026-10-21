@@ -17,9 +17,10 @@
  * What the gate cannot resolve from the file fails closed, as in the network
  * check: a variable with no default anywhere in a short-syntax mount (it may
  * supply the whole mount) or in a long-syntax source or type, an unknown mount
- * type, a relative path that climbs out of the project directory, a path
- * through procfs (`/proc/1/root/run` is the host's /run), an external volume,
- * `volumes_from` a container instead of a service, and named pipes. A
+ * type, a host path with a `..` segment (the kernel follows links before it
+ * climbs, so `/var/run/..` is `/`, not `/var`), a path through procfs
+ * (`/proc/1/root/run` is the host's /run), an external volume, `volumes_from`
+ * a container instead of a service, and named pipes. A
  * `${VAR:-default}` is checked with its default, which is what a deploy that
  * leaves VAR unset mounts; the variable itself is the operator's choice, not
  * this file's. Every decision is taken on the interpolated value.
@@ -80,18 +81,25 @@ function interpolate(value: string): string {
 
 /**
  * Why a host path gives the Docker socket away, or undefined when it does not.
- * Relative paths are resolved against the project directory, which the file
- * does not know, so one that climbs above it is as good as absolute. Every
- * host path a service can name (bind sources, volume devices, secret and
+ * Every host path a service can name (bind sources, volume devices, secret and
  * config files) comes through here.
+ *
+ * The check is lexical, so it only accepts paths a lexical reading gets right.
+ * A `..` segment is not one: the kernel follows a link before it climbs, so
+ * `/var/run/../proc/1/root/run` climbs from /run (where /var/run points) to
+ * `/proc`, while a lexical reading lands on `/var/proc/...`. Which components
+ * are links depends on the host, so any `..` fails closed; this also covers a
+ * relative path climbing out of the project directory, which the file does not
+ * know. Without `..`, normalizing only drops `.` segments and repeated slashes,
+ * which mean the same thing to the kernel.
  */
 function hostPathViolation(path: string): string | undefined {
 	const relative = !path.startsWith('/');
+	if (path.split('/').includes('..')) {
+		return `has a .. segment (${path}), which the kernel resolves after following links, so the gate cannot tell where it lands; ${NO_SOCKET}`;
+	}
 	let normalized = posix.normalize(relative ? path.replace(/^~(?=\/|$)/, '.') : path);
 	if (normalized.length > 1) normalized = normalized.replace(/\/+$/, '');
-	if (relative && (normalized === '..' || normalized.startsWith('../'))) {
-		return `climbs out of the project directory (${path}), which the gate cannot resolve`;
-	}
 	if (
 		!relative &&
 		PROCFS.some((root) => normalized === root || normalized.startsWith(`${root}/`))

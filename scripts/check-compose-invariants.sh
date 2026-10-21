@@ -59,8 +59,9 @@ service_block() {
 	' "$1"
 }
 
-# Overridable so scripts/__tests__/check-compose-invariants.test.ts can run the
-# gate against a deliberately broken copy.
+# Overridable so scripts/__tests__/check-compose-invariants.test.ts and
+# check-compose-socket-access.test.ts can run the gate against a deliberately
+# broken copy.
 root=${COMPOSE_INVARIANTS_ROOT:-docker-compose.yml}
 vps=${COMPOSE_INVARIANTS_VPS:-infra/templates/docker-compose.vps.yml}
 
