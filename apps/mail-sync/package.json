@@ -22,6 +22,7 @@
 		"@owlat/mail-message": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
+		"@owlat/worker-protocol": "workspace:*",
 		"convex": "catalog:convex",
 		"hono": "^4.13.1",
 		"imapflow": "^2.0.5",

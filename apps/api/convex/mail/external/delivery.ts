@@ -49,6 +49,13 @@ import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 import { folderRoleValidator } from '../../lib/validators/mail';
 import { ensureMirroredFolder, resolveIngestFolder } from './mirroredFolders';
 import { isSyncStampStale } from './accountShared';
+import {
+	discardStagedRaw as discardStagedRawContract,
+	getSyncState as getSyncStateContract,
+	ingestExternalRaw as ingestExternalRawContract,
+	recordFolderMapping as recordFolderMappingContract,
+	recordForwardIngestFailure as recordForwardIngestFailureContract,
+} from '@owlat/worker-protocol/mailSync';
 
 /**
  * What one ingest did, so the worker can tell the three apart.
@@ -222,7 +229,8 @@ export const ingestExternalMessage = internalMutation({
  * `lastSeenUid + 1` on (re)connect. Internal/admin-key only.
  */
 export const getSyncState = internalQuery({
-	args: { accountId: v.id('externalMailAccounts') },
+	args: getSyncStateContract.args,
+	returns: getSyncStateContract.returns,
 	handler: async (ctx, args) => {
 		const rows = await ctx.db
 			.query('externalMailFolderSync')
@@ -241,12 +249,8 @@ export const getSyncState = internalQuery({
 
 /** Persist one forward-sync miss that the high-water cursor has moved past. */
 export const recordForwardIngestFailure = internalMutation({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		remoteName: v.string(),
-		remoteUidValidity: v.number(),
-		uid: v.number(),
-	},
+	args: recordForwardIngestFailureContract.args,
+	returns: recordForwardIngestFailureContract.returns,
 	handler: async (ctx, args): Promise<{ retry: boolean; attempts: number }> => {
 		const row = await ctx.db
 			.query('externalMailFolderSync')
@@ -296,16 +300,8 @@ export const recordForwardIngestFailure = internalMutation({
  * reset the cursor to the new high-water mark.
  */
 export const recordFolderMapping = internalMutation({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		// A system folder by role, or — full sync — a provider user folder by its
-		// path of names, which gets a local folder of its own (mirroredFolders.ts).
-		folderRole: v.optional(folderRoleValidator),
-		folderPath: v.optional(v.array(v.string())),
-		remoteName: v.string(),
-		remoteUidValidity: v.number(),
-		initialLastSeenUid: v.number(),
-	},
+	args: recordFolderMappingContract.args,
+	returns: recordFolderMappingContract.returns,
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
 		if (!account) return;
@@ -361,7 +357,8 @@ export const recordFolderMapping = internalMutation({
  * take stored mail with it.
  */
 export const discardStagedRaw = internalMutation({
-	args: { rawStorageId: v.id('_storage') },
+	args: discardStagedRawContract.args,
+	returns: discardStagedRawContract.returns,
 	handler: async (ctx, args) => {
 		const referenced = await ctx.db
 			.query('mailMessages')
@@ -389,29 +386,8 @@ export const discardStagedRaw = internalMutation({
  * blob back, which would mean unsealing the whole message to look at its top.
  */
 export const ingestExternalRaw = internalAction({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		folderRole: v.optional(folderRoleValidator),
-		remoteName: v.string(),
-		remoteUid: v.number(),
-		remoteUidValidity: v.number(),
-		/** Sealed raw `.eml`, already stored by `/mail-sync/raw-message`. */
-		rawStorageId: v.id('_storage'),
-		/** Size of the raw message in bytes, as uploaded. */
-		rawSize: v.number(),
-		/** First 64 KiB of the raw message, base64 — the header block. */
-		headerBlockBase64: v.string(),
-		...deliveredEnvelopeFields,
-		textBodyInline: v.optional(v.string()),
-		htmlBodyInline: v.optional(v.string()),
-		receivedAt: v.number(),
-		flagSeen: v.optional(v.boolean()),
-		flagFlagged: v.optional(v.boolean()),
-		// The provider's `\Draft` (an unsent draft outside the Drafts folder).
-		flagDraft: v.optional(v.boolean()),
-		// Forward sync vs historical import; see the file header.
-		origin: v.optional(v.union(v.literal('sync'), v.literal('backfill'))),
-	},
+	args: ingestExternalRawContract.args,
+	returns: ingestExternalRawContract.returns,
 	handler: async (ctx, args): Promise<ExternalIngestOutcome> => {
 		// `base64ToBytes` answers undecodable input with zero bytes rather than
 		// throwing. A real RFC822 message always has a header block, so an empty

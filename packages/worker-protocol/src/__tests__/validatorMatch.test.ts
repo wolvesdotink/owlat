@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { v } from 'convex/values';
-import { matchesValidator } from '../validatorMatch';
+import { matchesValidator, validatorMismatch } from '../validatorMatch';
 
 describe('scalars', () => {
 	it.each([
@@ -105,5 +105,98 @@ describe('containers', () => {
 		const validator = v.object({ outer: v.object({ inner: v.array(v.literal(1)) }) });
 		expect(matchesValidator(validator, { outer: { inner: [1, 1] } })).toBe(true);
 		expect(matchesValidator(validator, { outer: { inner: [1, 2] } })).toBe(false);
+	});
+});
+
+describe('validatorMismatch names the place, never the value', () => {
+	const validator = v.object({
+		kind: v.literal('credentials'),
+		credentials: v.object({ imapPort: v.number(), imapPassword: v.string() }),
+	});
+
+	it('answers null for a match', () => {
+		expect(
+			validatorMismatch(validator, {
+				kind: 'credentials',
+				credentials: { imapPort: 993, imapPassword: 'hunter2' },
+			})
+		).toBeNull();
+	});
+
+	it('walks to the first failing field', () => {
+		const report = validatorMismatch(validator, {
+			kind: 'credentials',
+			credentials: { imapPort: '993', imapPassword: 'hunter2' },
+		});
+		expect(report).toBe('$.credentials.imapPort: expected float64');
+	});
+
+	it('never repeats a value it was handed', () => {
+		// The credential bundle crosses this check; a report is a log line.
+		const secret = 'correct-horse-battery-staple';
+		const reports = [
+			validatorMismatch(validator, { kind: secret }),
+			validatorMismatch(validator, { kind: 'credentials', credentials: { imapPort: secret } }),
+			validatorMismatch(validator, {
+				kind: 'credentials',
+				credentials: { imapPort: 1, imapPassword: 2, [secret]: secret },
+			}),
+			validatorMismatch(v.array(v.number()), [1, secret]),
+			validatorMismatch(v.record(v.string(), v.number()), { a: secret }),
+		];
+		for (const report of reports) {
+			expect(report).not.toBeNull();
+			expect(report).not.toContain(secret);
+		}
+	});
+
+	it('names a missing field, an unexpected field and an unmatched union', () => {
+		expect(validatorMismatch(validator, { kind: 'credentials' })).toBe('$.credentials: missing');
+		expect(
+			validatorMismatch(v.object({ a: v.number() }), { a: 1, b: 2 })
+		).toBe('$: unexpected field');
+		expect(validatorMismatch(v.union(v.null(), v.number()), 'x')).toBe(
+			'$: matches no member of the union'
+		);
+		expect(validatorMismatch(v.array(v.number()), [1, 'x'])).toBe('$[1]: expected float64');
+	});
+
+	it('fails closed on a validator kind it does not know', () => {
+		const future = { kind: 'commitTs', isOptional: 'required' } as unknown as Parameters<
+			typeof validatorMismatch
+		>[0];
+		expect(validatorMismatch(future, 1)).toMatch(/cannot be checked/);
+	});
+});
+
+describe("unknownKeys: 'ignore' — a consumer reading a newer producer", () => {
+	const validator = v.object({ count: v.number(), note: v.optional(v.string()) });
+
+	it('lets a field it never declared through, untouched', () => {
+		const value = { count: 1, addedNextRelease: true };
+		expect(matchesValidator(validator, value, { unknownKeys: 'ignore' })).toBe(true);
+		expect(value).toEqual({ count: 1, addedNextRelease: true });
+		// The default stays Convex's exact rule.
+		expect(matchesValidator(validator, value)).toBe(false);
+	});
+
+	it('still checks every declared field, at every depth', () => {
+		const ignore = { unknownKeys: 'ignore' } as const;
+		expect(matchesValidator(validator, { extra: 1 }, ignore)).toBe(false);
+		expect(matchesValidator(validator, { count: '1', extra: 1 }, ignore)).toBe(false);
+		expect(matchesValidator(validator, { count: 1, note: 2 }, ignore)).toBe(false);
+		const nested = v.object({ rows: v.array(v.object({ uid: v.number() })) });
+		expect(matchesValidator(nested, { rows: [{ uid: 1, more: 'x' }] }, ignore)).toBe(true);
+		expect(matchesValidator(nested, { rows: [{ more: 'x' }] }, ignore)).toBe(false);
+	});
+
+	it('does not let an unknown key decide between union members', () => {
+		const union = v.union(
+			v.object({ kind: v.literal('a'), a: v.string() }),
+			v.object({ kind: v.literal('b'), b: v.number() })
+		);
+		const ignore = { unknownKeys: 'ignore' } as const;
+		expect(matchesValidator(union, { kind: 'a', a: 'x', b: 1 }, ignore)).toBe(true);
+		expect(matchesValidator(union, { kind: 'c', a: 'x' }, ignore)).toBe(false);
 	});
 });

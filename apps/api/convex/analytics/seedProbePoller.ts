@@ -17,7 +17,11 @@ import { v } from 'convex/values';
 import { internalQuery, type DatabaseReader } from '../_generated/server';
 import { CONNECTABLE_ACCOUNT_STATUSES, seedProviderOf } from '../mail/external/accountShared';
 import { getOptional } from '../lib/env';
-import type { SeedProbeWorkItem, SeedProbeWorkPage } from '@owlat/shared/seedPlacement';
+import {
+	listSeedProbeWork as listSeedProbeWorkContract,
+	type SeedProbeWorkItem,
+	type SeedProbeWorkPage,
+} from '@owlat/worker-protocol/mailSync';
 
 /**
  * How long after DISPATCH a probe becomes worth looking for. Filters run on
@@ -116,7 +120,8 @@ async function resolveClickHosts(db: DatabaseReader): Promise<string[]> {
  * (`analytics/seedRotationSweep.ts`).
  */
 export const listSeedProbeWork = internalQuery({
-	args: { now: v.number(), cursor: v.optional(v.union(v.string(), v.null())) },
+	args: listSeedProbeWorkContract.args,
+	returns: listSeedProbeWorkContract.returns,
 	handler: async (ctx, args): Promise<SeedProbeWorkPage> => {
 		const page = await ctx.db
 			.query('externalMailAccounts')

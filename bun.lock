@@ -38,6 +38,7 @@
         "@owlat/provider-kit": "workspace:*",
         "@owlat/shared": "workspace:*",
         "@owlat/smtp-client": "workspace:*",
+        "@owlat/worker-protocol": "workspace:*",
         "ai": "catalog:ai",
         "better-auth": "catalog:convex",
         "cheerio": "^1.2.0",
@@ -140,6 +141,7 @@
       "dependencies": {
         "@owlat/mail-message": "workspace:*",
         "@owlat/shared": "workspace:*",
+        "@owlat/worker-protocol": "workspace:*",
         "convex": "catalog:convex",
         "ioredis": "^6.0.0",
         "pino": "^10.3.1",
@@ -162,6 +164,7 @@
         "@owlat/mail-message": "workspace:*",
         "@owlat/shared": "workspace:*",
         "@owlat/smtp-client": "workspace:*",
+        "@owlat/worker-protocol": "workspace:*",
         "convex": "catalog:convex",
         "hono": "^4.13.1",
         "imapflow": "^2.0.5",
@@ -637,6 +640,20 @@
         "vitest": "catalog:",
         "vue": "catalog:vue",
         "vue-tsc": "catalog:",
+      },
+    },
+    "packages/worker-protocol": {
+      "name": "@owlat/worker-protocol",
+      "version": "0.6.16",
+      "dependencies": {
+        "@owlat/shared": "workspace:*",
+        "convex": "catalog:convex",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
       },
     },
   },
@@ -1263,6 +1280,8 @@
     "@owlat/updater": ["@owlat/updater@workspace:apps/updater"],
 
     "@owlat/web": ["@owlat/web@workspace:apps/web"],
+
+    "@owlat/worker-protocol": ["@owlat/worker-protocol@workspace:packages/worker-protocol"],
 
     "@oxc-parser/binding-android-arm-eabi": ["@oxc-parser/binding-android-arm-eabi@0.137.0", "", { "os": "android", "cpu": "arm" }, "sha512-KDs+0VPdEmasOkpuJHW9V5WCF+cvYdMQv2Jd+aJXt+cxIx12NToRQRbXaRwUEDsZw+/jMk81Ve8ZFbjUkJTOwA=="],
 

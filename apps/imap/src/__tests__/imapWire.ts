@@ -65,13 +65,18 @@ const config: ImapConfig = {
 	authRateLimit: { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 },
 };
 
+/** A folder as a test names it: the counters SELECT and STATUS read are filled in. */
+type FolderSeed = Pick<FolderRow, '_id' | 'name'> & Partial<Omit<FolderRow, 'uidValidity'>>;
+
 /** Give each folder the counters SELECT and STATUS read. */
-export function withCounters(folders: ReadonlyArray<Omit<FolderRow, 'uidValidity'>>): FolderRow[] {
+export function withCounters(folders: ReadonlyArray<FolderSeed>): FolderRow[] {
 	return folders.map((f, i) => ({
 		uidNext: 1,
 		highestModseq: 1,
 		totalCount: 0,
 		unseenCount: i,
+		// What an unset `subscribed` always read as.
+		subscribed: false,
 		...f,
 		uidValidity: 100 + i,
 	}));

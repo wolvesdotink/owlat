@@ -72,6 +72,7 @@
 		"@owlat/provider-kit": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
+		"@owlat/worker-protocol": "workspace:*",
 		"ai": "catalog:ai",
 		"better-auth": "catalog:convex",
 		"cheerio": "^1.2.0",

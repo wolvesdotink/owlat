@@ -19,6 +19,7 @@
 	"dependencies": {
 		"@owlat/mail-message": "workspace:*",
 		"@owlat/shared": "workspace:*",
+		"@owlat/worker-protocol": "workspace:*",
 		"convex": "catalog:convex",
 		"ioredis": "^6.0.0",
 		"pino": "^10.3.1"

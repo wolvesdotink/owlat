@@ -113,7 +113,7 @@ export async function loadCurrentUids(
 			...(cached ? { knownVersion: cached.version } : {}),
 		});
 		if (head === null) return await loadFolderUids(convex, folderId, signal);
-		if (head.unchanged && cached) {
+		if ('unchanged' in head && cached) {
 			remember(folderId, cached);
 			return cached.uids;
 		}
@@ -123,7 +123,9 @@ export async function loadCurrentUids(
 				folderId,
 				knownVersion: head.version,
 			});
-			if (after?.unchanged) remember(folderId, { version: head.version, uids });
+			if (after !== null && 'unchanged' in after) {
+				remember(folderId, { version: head.version, uids });
+			}
 			return uids;
 		}
 		const uids = await readBlocks(convex, folderId, head, signal);
@@ -165,11 +167,11 @@ async function readBlocks(
 	const uids: number[] = [];
 	let page = first;
 	for (let n = 0; n < MAX_MEMBERSHIP_PAGES; n += 1) {
-		for (const block of page.blocks ?? []) {
+		for (const block of 'blocks' in page ? page.blocks : []) {
 			for (const uid of block) uids.push(uid);
 		}
-		const after = page.nextFirstUid;
-		if (after === undefined || after === null) return uids;
+		const after = 'nextFirstUid' in page ? page.nextFirstUid : null;
+		if (after === null) return uids;
 		signal?.throwIfAborted();
 		const next = await convex.query(fn.folderMembershipPage, { folderId, afterFirstUid: after });
 		if (next === null || !next.isReady || next.version !== first.version) return null;

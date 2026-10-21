@@ -36,7 +36,7 @@ function account(size: number, { gmail }: { gmail: boolean }) {
 	if (gmail) boxes[ALL_MAIL] = [...ids];
 	const imap = new FakeImap(boxes);
 	const local = new Map<string, LocalMessageRow>(
-		ids.map((id) => [id, { messageId: id, remoteName: 'INBOX', role: 'inbox', flags: NO_FLAGS }])
+		ids.map((id) => [id, { messageId: id, remoteName: 'INBOX', role: 'inbox', flags: NO_FLAGS, sighting: null }])
 	);
 	const applied: RemoteObservation[] = [];
 	/** Message-IDs searched for in All Mail, per pass. */
@@ -218,7 +218,7 @@ describe('vanished mail beyond the All Mail look-up budget (#1008)', () => {
 		// 600 local messages the provider never had, in no view and not in All Mail.
 		for (let i = 0; i < 600; i++) {
 			const id = `local-only-${i}@x`;
-			acc.local.set(id, { messageId: id, remoteName: 'INBOX', role: 'inbox', flags: NO_FLAGS });
+			acc.local.set(id, { messageId: id, remoteName: 'INBOX', role: 'inbox', flags: NO_FLAGS, sighting: null });
 		}
 		acc.deps.forceFull = true;
 
@@ -234,7 +234,7 @@ describe('vanished mail beyond the All Mail look-up budget (#1008)', () => {
 		const acc = account(20, { gmail: true });
 		for (let i = 0; i < 600; i++) {
 			const id = `local-only-${i}@x`;
-			acc.local.set(id, { messageId: id, remoteName: 'INBOX', role: 'inbox', flags: NO_FLAGS });
+			acc.local.set(id, { messageId: id, remoteName: 'INBOX', role: 'inbox', flags: NO_FLAGS, sighting: null });
 		}
 		// Listed after them, so a pass taking candidates in page order would spend
 		// its whole budget on the never-seen ones first.

@@ -7,311 +7,101 @@
  */
 
 import { createAdminConvexClient } from '@owlat/shared';
+import type { EndpointResult } from '@owlat/worker-protocol';
+import {
+	createCheckedClient,
+	workerReferences,
+	type CheckedConvexClient,
+} from '@owlat/worker-protocol/client';
+import {
+	IMAP_ENDPOINTS,
+	type appendMessage,
+	type copyMessages,
+	type expungeFolder,
+	type fetchChangedEnvelopes,
+	type fetchEnvelopes,
+	type folderMembershipPage,
+	type listFolders,
+	type listFolderUidsPage,
+	type peekFolderModseq,
+	type reportServer,
+	type resolveMessageIdsByUid,
+	type selectFolder,
+	type storeFlags,
+	type verifyAppPassword,
+} from '@owlat/worker-protocol/imap';
 import { ConvexHttpClient } from 'convex/browser';
-import { makeFunctionReference } from 'convex/server';
 import type { ImapConfig } from './config.js';
-import type { FetchEnvelope } from './commands/fetch/format.js';
 
-export type ConvexClient = ConvexHttpClient;
+/**
+ * The client every command calls Convex through: `ConvexHttpClient`'s surface,
+ * with each answer checked against the IMAP wire contract
+ * (`@owlat/worker-protocol/imap`) before any command reads it.
+ */
+export type ConvexClient = CheckedConvexClient;
 
 export function createConvexClient(config: ImapConfig): ConvexClient {
-	return createAdminConvexClient(ConvexHttpClient, config.convexUrl, config.convexAdminKey);
+	return createCheckedClient(
+		createAdminConvexClient(ConvexHttpClient, config.convexUrl, config.convexAdminKey),
+		IMAP_ENDPOINTS
+	);
 }
 
 // ── Wire shapes ─────────────────────────────────────────────────────────────
-// What the `mail/*` functions below answer with. Ids travel as plain strings:
-// this workspace does not import apps/api's generated `_generated/api.d.ts`
-// (that would couple the workspaces), so the shapes are declared here, once,
-// at the call boundary.
+// What the `mail/*` functions below answer with, derived from the contract.
+// Ids travel as plain strings: this workspace does not import apps/api's
+// generated `_generated/api.d.ts` (that would couple the workspaces).
 
 /** A verified app password: the session's identity. */
-export interface VerifyAppPasswordResult {
-	readonly mailboxId: string;
-	readonly appPasswordId: string;
-	readonly userId: string;
-	readonly organizationId: string;
-}
+export type VerifyAppPasswordResult = NonNullable<EndpointResult<typeof verifyAppPassword>>;
 
 /** One LIST row. */
-export interface FolderRow {
-	readonly _id: string;
-	readonly name: string;
-	readonly role?: string;
-	readonly parentId?: string;
-	readonly subscribed?: boolean;
-	readonly uidValidity?: number;
-	readonly uidNext?: number;
-	readonly highestModseq?: number;
-	readonly totalCount?: number;
-	readonly unseenCount?: number;
-}
+export type FolderRow = EndpointResult<typeof listFolders>[number];
 
 /** SELECT / EXAMINE: folder metadata plus the first unseen message. */
-export interface SelectFolderResult {
-	readonly folder: {
-		readonly _id: string;
-		readonly name: string;
-		readonly role?: string;
-		readonly uidValidity: number;
-		readonly uidNext: number;
-		readonly highestModseq: number;
-		readonly totalCount: number;
-		readonly unseenCount: number;
-	};
-	readonly firstUnseenUid?: number;
-}
+export type SelectFolderResult = NonNullable<EndpointResult<typeof selectFolder>>;
 
 /** The counters IDLE polls to notice a change. */
-export interface PeekResult {
-	readonly highestModseq: number;
-	readonly uidNext: number;
-	readonly totalCount: number;
-	readonly unseenCount: number;
-}
+export type PeekResult = NonNullable<EndpointResult<typeof peekFolderModseq>>;
 
 /** One page of a folder's UIDs, ascending; `nextUid` is null once done. */
-export interface UidPage {
-	readonly uids: number[];
-	readonly nextUid: number | null;
-}
+export type UidPage = EndpointResult<typeof listFolderUidsPage>;
 
-/**
- * A folder's membership read (`mail/imap/fetch:folderMembershipPage`): `null`
- * when the folder is not maintained, `isReady: false` while its backfill runs,
- * `unchanged` when `knownVersion` is still current, otherwise one page of UID
- * blocks (each ascending, the blocks in order) and the bound to resume after.
- */
-export type MembershipPage = {
-	readonly version: string;
-	readonly isReady: boolean;
-	readonly unchanged?: true;
-	readonly blocks?: number[][];
-	readonly nextFirstUid?: number | null;
-} | null;
+/** A folder's membership read (`mail/imap/fetch:folderMembershipPage`). */
+export type MembershipPage = EndpointResult<typeof folderMembershipPage>;
 
 /** One page of envelopes inside a UID window. */
-export interface EnvelopePage {
-	readonly rows: FetchEnvelope[];
-	readonly nextUid: number | null;
-}
+export type EnvelopePage = EndpointResult<typeof fetchEnvelopes>;
 
 /** One page of `{ _id, uid, modseq }` inside a UID window. */
-export interface MessageIdPage {
-	readonly rows: Array<{ _id: string; uid: number; modseq: number }>;
-	readonly nextUid: number | null;
-}
+export type MessageIdPage = EndpointResult<typeof resolveMessageIdsByUid>;
 
 /** One cursor page of the rows whose modseq moved past a baseline. */
-export interface ChangedEnvelopePage {
-	readonly page: FetchEnvelope[];
-	readonly isDone: boolean;
-	readonly continueCursor: string | null;
-}
+export type ChangedEnvelopePage = EndpointResult<typeof fetchChangedEnvelopes>;
 
 /** STORE: the rows that changed, and the CONDSTORE rows left alone. */
-export interface StoreFlagsResult {
-	readonly updated: ReadonlyArray<{
-		messageId: string;
-		uid: number;
-		modseq: number;
-		flags: string[];
-	}>;
-	readonly unchanged: ReadonlyArray<{ messageId: string; uid: number }>;
-}
+export type StoreFlagsResult = EndpointResult<typeof storeFlags>;
 
 /** COPY and MOVE: the `COPYUID` pairs. */
-export interface CopyMoveResult {
-	readonly uidValidity: number;
-	readonly pairs: ReadonlyArray<{ sourceUid: number; targetUid: number }>;
-}
+export type CopyMoveResult = EndpointResult<typeof copyMessages>;
 
 /**
  * One committed EXPUNGE page, plus the cursor to the next one. The IMAP server
  * numbers `uids` against its client's sequence view.
  */
-export interface ExpungeResult {
-	/** The expunged messages by UID, highest first. */
-	readonly uids: number[];
-	readonly modseq: number;
-	readonly done?: boolean;
-	readonly beforeUid?: number;
-}
+export type ExpungeResult = EndpointResult<typeof expungeFolder>;
 
 /** The wire-version handshake (`mail/imap/serverRegistry:report`). */
-export interface ImapServerReportResult {
-	readonly backendWireVersion: number;
-	readonly minSupportedWireVersion: number;
-	readonly compatible: boolean;
-	readonly reason?: string;
-}
+export type ImapServerReportResult = EndpointResult<typeof reportServer>;
 
 /** APPEND: what `[APPENDUID …]` reports. */
-export interface AppendResult {
-	readonly messageId: string;
-	readonly uid: number;
-	readonly uidValidity: number;
-	readonly modseq: number;
-}
+export type AppendResult = EndpointResult<typeof appendMessage>;
 
 /**
- * A UID window read: `[uidLow, uidHigh]`, optionally narrowed to ascending,
- * disjoint `ranges` (at most `MAX_UID_RANGES` in apps/api `mail/imap/fetch.ts`).
+ * Typed references to the internal Convex functions the IMAP server calls,
+ * built from the IMAP wire contract: its paths, kinds, argument and result
+ * types all come from `@owlat/worker-protocol/imap`, the same declarations
+ * apps/api registers as each function's `args` and `returns`. The convexRefs
+ * test checks each path and kind against the Convex source.
  */
-type UidWindowArgs = {
-	folderId: string;
-	uidLow: number;
-	uidHigh: number;
-	ranges?: Array<{ low: number; high: number }>;
-	limit?: number;
-};
-
-type FolderRole = 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archive';
-
-type CopyMoveArgs = {
-	sourceFolderId: string;
-	targetFolderId: string;
-	messageIds: string[];
-};
-
-type AppendArgs = {
-	folderId: string;
-	rawStorageId: string;
-	rawSize: number;
-	rfc822MessageId: string;
-	inReplyTo?: string;
-	references?: string[];
-	fromAddress: string;
-	fromName?: string;
-	toAddresses: string[];
-	ccAddresses: string[];
-	bccAddresses: string[];
-	subject: string;
-	htmlBodyInline?: string;
-	textBodyInline?: string;
-	internalDate?: number;
-	flags?: string[];
-	/** The raw header section, for the automation headers. */
-	headerBlock?: string;
-};
-
-/**
- * Typed references to the internal Convex functions the IMAP server calls.
- *
- * Convex addresses functions by their module path (directory + filename,
- * minus the .ts), so functions in convex/mail/imap/session.ts and
- * convex/mail/appPasswords.ts are referenced as `mail/imap/session:fn` /
- * `mail/appPasswords:fn`. The kind, argument and result types are declared by
- * hand because apps/api's generated types are not imported: a wrong argument
- * or a query called as a mutation is a type error at the call site, but the
- * declarations themselves must be kept in step with apps/api. The
- * convexRefs test checks each path and kind against the Convex source.
- *
- * Keep every path a single-quoted literal inside its makeFunctionReference
- * call: apps/api/scripts/check-entry-wiring.ts credits callers by it.
- */
-export const fn = {
-	verifyAppPassword: makeFunctionReference<
-		'action',
-		{
-			address: string;
-			password: string;
-			scope: 'imap' | 'smtp';
-			ip?: string;
-			imapWireVersion?: number;
-		},
-		VerifyAppPasswordResult | null
-	>('mail/appPasswords:verify'),
-	touchAppPassword: makeFunctionReference<
-		'mutation',
-		{ appPasswordId: string; ip?: string; userAgent?: string; imapWireVersion?: number },
-		null
-	>('mail/appPasswords:touch'),
-	reportServer: makeFunctionReference<
-		'mutation',
-		{
-			instanceId: string;
-			hostLabel: string;
-			owlatVersion: string;
-			wireVersion: number;
-			startedAt: number;
-		},
-		ImapServerReportResult
-	>('mail/imap/serverRegistry:report'),
-	listFolders: makeFunctionReference<'query', { mailboxId: string }, FolderRow[]>(
-		'mail/imap/session:listFolders'
-	),
-	selectFolder: makeFunctionReference<'query', { folderId: string }, SelectFolderResult | null>(
-		'mail/imap/session:selectFolder'
-	),
-	fetchEnvelopes: makeFunctionReference<'query', UidWindowArgs, EnvelopePage>(
-		'mail/imap/fetch:fetchEnvelopes'
-	),
-	fetchChangedEnvelopes: makeFunctionReference<
-		'query',
-		{
-			folderId: string;
-			modseqSince: number;
-			paginationOpts: { numItems: number; cursor: string | null };
-		},
-		ChangedEnvelopePage
-	>('mail/imap/fetch:fetchChangedEnvelopes'),
-	listFolderUidsPage: makeFunctionReference<
-		'query',
-		{ folderId: string; afterUid?: number; limit?: number },
-		UidPage
-	>('mail/imap/fetch:listFolderUidsPage'),
-	folderMembershipPage: makeFunctionReference<
-		'query',
-		{ folderId: string; knownVersion?: string; afterFirstUid?: number },
-		MembershipPage
-	>('mail/imap/fetch:folderMembershipPage'),
-	peekFolderModseq: makeFunctionReference<'query', { folderId: string }, PeekResult | null>(
-		'mail/imap/session:peekFolderModseq'
-	),
-	resolveSpecialFolder: makeFunctionReference<
-		'query',
-		{ mailboxId: string; role: FolderRole },
-		{ _id: string; name: string } | null
-	>('mail/imap/session:resolveSpecialFolder'),
-	// P5 — write commands
-	storeFlags: makeFunctionReference<
-		'mutation',
-		{
-			messageIds: string[];
-			flags: string[];
-			mode: 'set' | 'add' | 'remove';
-			unchangedSinceModseq?: number;
-		},
-		StoreFlagsResult
-	>('mail/imap/flags:storeFlags'),
-	copyMessages: makeFunctionReference<'mutation', CopyMoveArgs, CopyMoveResult>(
-		'mail/imap/move:copyMessages'
-	),
-	moveMessages: makeFunctionReference<'mutation', CopyMoveArgs, CopyMoveResult>(
-		'mail/imap/move:moveMessages'
-	),
-	expungeFolder: makeFunctionReference<
-		'mutation',
-		{ folderId: string; uidSet?: number[]; beforeUid?: number; imapWireVersion?: number },
-		ExpungeResult
-	>('mail/imap/move:expungeFolder'),
-	discardCopies: makeFunctionReference<
-		'mutation',
-		{ targetFolderId: string; uids: number[] },
-		{ removed: number }
-	>('mail/imap/move:discardCopies'),
-	appendMessage: makeFunctionReference<'mutation', AppendArgs, AppendResult>(
-		'mail/imap/append:appendMessage'
-	),
-	resolveMessageIdsByUid: makeFunctionReference<'query', UidWindowArgs, MessageIdPage>(
-		'mail/imap/fetch:resolveMessageIdsByUid'
-	),
-	getRawStorageUrls: makeFunctionReference<
-		'action',
-		{ messageIds: string[] },
-		Array<{ messageId: string; url: string | null }>
-	>('mail/imap/fetch:getRawStorageUrls'),
-	generateUploadUrl: makeFunctionReference<'mutation', Record<string, never>, string>(
-		'mail/imap/append:generateRawUploadUrl'
-	),
-};
+export const fn = workerReferences(IMAP_ENDPOINTS);

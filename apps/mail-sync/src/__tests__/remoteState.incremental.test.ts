@@ -43,7 +43,7 @@ function account(sizes: Record<string, number>, options: FakeImapOptions = {}) {
 		for (let i = 0; i < size; i++) {
 			const id = `m${n++}@x`;
 			boxes[folder]!.push(id);
-			local.set(id, { messageId: id, remoteName: folder, role: ROLES[folder]!, flags: NO_FLAGS });
+			local.set(id, { messageId: id, remoteName: folder, role: ROLES[folder]!, flags: NO_FLAGS, sighting: null });
 		}
 	}
 	const imap = new FakeImap(boxes, options);
@@ -243,7 +243,7 @@ describe('incremental reconcile (#928)', () => {
 });
 
 describe('FolderView', () => {
-	const cached = (messageId: string | null) => ({ messageId, flags: NO_FLAGS });
+	const cached = (messageId: string | null) => ({ messageId, flags: NO_FLAGS, sighting: null });
 
 	it('answers which of its UIDs hold a Message-ID as copies come and go', () => {
 		const view = new FolderView();

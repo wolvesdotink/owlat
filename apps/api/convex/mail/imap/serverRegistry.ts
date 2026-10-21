@@ -24,6 +24,7 @@ import {
 	imapWireVerdict,
 	type ImapWireVerdict,
 } from '@owlat/shared/imapWire';
+import { reportServer as reportServerContract } from '@owlat/worker-protocol/imap';
 import { internalQuery, type DatabaseReader, type MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { internalMutation } from '../../lib/writeFence';
@@ -112,13 +113,8 @@ export const noteLegacyLogin = internalMutation({
 });
 
 export const report = internalMutation({
-	args: {
-		instanceId: v.string(),
-		hostLabel: v.string(),
-		owlatVersion: v.string(),
-		wireVersion: v.number(),
-		startedAt: v.number(),
-	},
+	args: reportServerContract.args,
+	returns: reportServerContract.returns,
 	handler: async (ctx, args): Promise<ReportResult> => {
 		const now = Date.now();
 		const hostLabel = clampLabel(args.hostLabel, 'unknown');

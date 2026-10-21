@@ -68,6 +68,10 @@ import { stopExternalAccountSync, prepareAccountPurge } from './accountTeardown'
 import { markOnboardingStep } from '../../auth/userOnboarding';
 import { throwForbidden, throwAlreadyExists, throwNotFound } from '../../_utils/errors';
 import { externalAccountStatusValidator } from '../../schema/mailAccounts';
+import {
+	listConnectableAccounts as listConnectableAccountsContract,
+	setSyncStatus as setSyncStatusContract,
+} from '@owlat/worker-protocol/mailSync';
 
 // ── Public: the connecting user's own account ─────────────────────────────
 
@@ -317,40 +321,38 @@ export const _getRowInternal = internalQuery({
  * `\Seen`. The prober selects its own accounts via `by_purpose`.
  */
 export const listConnectableAccounts = internalQuery({
-	args: {},
+	args: listConnectableAccountsContract.args,
+	returns: listConnectableAccountsContract.returns,
 	handler: async (ctx) => {
 		const groups = await Promise.all(
-			CONNECTABLE_ACCOUNT_STATUSES.map(
-				(status) =>
-					ctx.db
-						.query('externalMailAccounts')
-						.withIndex('by_status', (q) => q.eq('status', status))
-						.collect() // bounded: connectable accounts per single-org deployment (tens)
-			)
+			CONNECTABLE_ACCOUNT_STATUSES.map(async (status) => {
+				const rows = await ctx.db
+					.query('externalMailAccounts')
+					.withIndex('by_status', (q) => q.eq('status', status))
+					.collect(); // bounded: connectable accounts per single-org deployment (tens)
+				// The index range IS the status, so the narrow literal is read from it.
+				return rows.map((account) => ({ account, status }));
+			})
 		);
 		return groups
 			.flat()
-			.filter((a) => a.purpose !== 'seed')
-			.map((a) => ({
+			.filter(({ account }) => account.purpose !== 'seed')
+			.map(({ account: a, status }) => ({
 				accountId: a._id,
 				mailboxId: a.mailboxId,
 				imapHost: a.imapHost,
 				imapPort: a.imapPort,
 				isImapSecure: a.isImapSecure,
 				imapUsername: a.imapUsername,
-				status: a.status,
+				status,
 			}));
 	},
 });
 
 /** Worker writes connection/sync status here. */
 export const setSyncStatus = internalMutation({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		status: externalAccountStatusValidator,
-		lastError: v.optional(v.string()),
-		markSynced: v.optional(v.boolean()),
-	},
+	args: setSyncStatusContract.args,
+	returns: setSyncStatusContract.returns,
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
 		if (!account) return;

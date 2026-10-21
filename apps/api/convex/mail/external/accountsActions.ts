@@ -31,6 +31,9 @@ import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { throwInvalidInput } from '../../_utils/errors';
 import { assertExternalEnabled } from './externalFeature';
 import { refreshGoogleAccessToken } from './googleOAuthTokens';
+import {
+	getCredentialsForWorker as getCredentialsForWorkerContract,
+} from '@owlat/worker-protocol/mailSync';
 
 interface ProtocolTestResult {
 	ok: boolean;
@@ -345,7 +348,8 @@ export const testConnection = authedAction({
  * user must act) from a transient miss (back off and retry).
  */
 export const getCredentialsForWorker = internalAction({
-	args: { accountId: v.id('externalMailAccounts') },
+	args: getCredentialsForWorkerContract.args,
+	returns: getCredentialsForWorkerContract.returns,
 	handler: async (ctx, args): Promise<WorkerCredentialsResult> => {
 		const row = await ctx.runQuery(internal.mail.external.accounts._getRowInternal, {
 			accountId: args.accountId,
