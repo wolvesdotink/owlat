@@ -64,7 +64,7 @@ watch(menuOpen, (open) => {
 		(triggerEl.value?.$el as HTMLElement | undefined)?.focus();
 	}
 });
-const { data: contactFiles } = useConvexQuery(api.semanticFiles.listByContact, () =>
+const { data: contactFiles } = useConvexQuery(api.files.cards.listByContact, () =>
 	menuOpen.value && props.contactId ? { contactId: props.contactId, limit: 20 } : 'skip'
 );
 const attachedSources = computed(

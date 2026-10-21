@@ -48,6 +48,7 @@ import { dropExtractionProgress } from './knowledge/extractionProgress';
 import { walkVersionChain } from './lib/semanticFileVersions';
 import {
 	listFilesPage,
+	readableContactFiles,
 	readableFilesPage,
 	searchFilesPage,
 	type StorageReader,
@@ -276,37 +277,20 @@ export const getVersionHistory = authedQuery({
 });
 
 /**
- * Get files related to a contact, those the caller may read.
+ * Get files related to a contact, those the caller may read: the newest
+ * `limit` (default 20), whole rows with a storage URL. The web reads compact
+ * cards from `files.cards.listByContact`; this shape stays for older clients
+ * and API callers. Both select through `readableContactFiles`.
  */
+// authz: readableContactFiles drops every file semanticFileReadGate refuses the caller.
 export const listByContact = authedQuery({
 	args: {
 		contactId: v.id('contacts'),
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args, session) => {
-		// Query the index-able semanticFileContacts mirror by contact instead of
-		// scanning the newest 200 files and JS-filtering the contactIds array —
-		// complete (no silent truncation past 200) and O(files-for-this-contact).
-		const links = await ctx.db
-			.query('semanticFileContacts')
-			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect(); // bounded: junction rows for one contact (files per person)
-
-		const byId = await batchGet(
-			ctx,
-			links.map((link) => link.fileId)
-		);
-		const canReadSemanticFile = semanticFileReadGate(ctx, session);
-		const readable: Doc<'semanticFiles'>[] = [];
-		for (const link of links) {
-			const file = byId.get(link.fileId);
-			if (file && (await canReadSemanticFile(file))) readable.push(file);
-		}
-		const files = await hydrateFiles(ctx, readable);
-
-		// Newest first, then cap.
-		files.sort((a, b) => b.createdAt - a.createdAt);
-		return files.slice(0, args.limit ?? 20);
+		const files = await readableContactFiles(ctx, session, args.contactId, args.limit);
+		return hydrateFiles(ctx, files);
 	},
 });
 

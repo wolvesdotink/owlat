@@ -15,20 +15,24 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AttachSuggestion from '~/components/inbox/AttachSuggestion.vue';
 import AnswerTeamAttachments from '../AnswerTeamAttachments.vue';
 
+// Each `api.*` access remembers its path, so the test sees which query is read.
 vi.mock('@owlat/api', () => {
-	const anyPath: unknown = new Proxy(function () {}, {
-		get: () => anyPath,
-		apply: () => anyPath,
-	});
-	return { api: anyPath };
+	const at = (path: string[]): unknown =>
+		new Proxy(function () {}, {
+			get: (_target, key) => (key === '__path' ? path.join('.') : at([...path, String(key)])),
+			apply: () => at(path),
+		});
+	return { api: at([]) };
 });
 
 const contactFiles = ref<unknown[]>([]);
 const queryArgs: unknown[] = [];
+const queryPaths: string[] = [];
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
-		useConvexQuery: (_q: unknown, args: () => unknown) => {
+		useConvexQuery: (query: { __path: string }, args: () => unknown) => {
+			queryPaths.push(query.__path);
 			queryArgs.push(args);
 			return { data: contactFiles, isLoading: ref(false) };
 		},
@@ -38,6 +42,7 @@ enableAutoUnmount(afterEach);
 beforeEach(() => {
 	contactFiles.value = [];
 	queryArgs.length = 0;
+	queryPaths.length = 0;
 });
 
 const ready = {
@@ -169,6 +174,8 @@ describe('AnswerTeamAttachments', () => {
 			{ _id: 'sf_3', filename: 'here.pdf', fileSize: 1, threadId: 'ct_1' },
 		];
 		const wrapper = mountFiles({ attachments: [ready] });
+		// Compact cards (#1439), not the whole-row `semanticFiles.listByContact`.
+		expect(queryPaths).toEqual(['files.cards.listByContact']);
 		// Nothing is read until the menu opens.
 		expect((queryArgs[0] as () => unknown)()).toBe('skip');
 		await wrapper.get('[data-testid="answer-team-attach"]').trigger('click');

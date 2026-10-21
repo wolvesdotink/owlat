@@ -14,7 +14,9 @@
  *
  * The page readers and `readableFilesPage` below are shared by both query
  * modules, so the legacy and the compact endpoint cannot drift apart on
- * which rows a caller sees or where a cursor points.
+ * which rows a caller sees or where a cursor points. `readableContactFiles`
+ * does the same for the two contact lists (`semanticFiles.listByContact` and
+ * `files.cards.listByContact`).
  *
  * Each reader owns one index, and each endpoint calls exactly one reader. A
  * pagination cursor belongs to the index that issued it, so an endpoint never
@@ -28,6 +30,8 @@ import type { PaginationOptions, PaginationResult } from 'convex/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import type { MutationSessionContext } from './sessionOrganization';
+import { batchGet } from '../_utils/batchLoader';
+import { isSharedInboxReader } from '../inbox/access';
 import { semanticFileSourceTypeValidator } from './literalValidators';
 import { semanticFileReadGate } from './semanticFileAccess';
 
@@ -117,7 +121,7 @@ export async function readableFilesPage(
  * What a file card or table row shows. `hasBytes` is false once the retention
  * sweep released the blob (the row stays for retrieval); `url` is then null.
  */
-export const semanticFileCardValidator = v.object({
+const semanticFileCardFields = {
 	_id: v.id('semanticFiles'),
 	filename: v.string(),
 	title: v.optional(v.string()),
@@ -132,7 +136,8 @@ export const semanticFileCardValidator = v.object({
 	updatedAt: v.number(),
 	hasBytes: v.boolean(),
 	url: v.union(v.string(), v.null()),
-});
+};
+export const semanticFileCardValidator = v.object(semanticFileCardFields);
 export type SemanticFileCard = Infer<typeof semanticFileCardValidator>;
 
 /** Project a readable row onto its card, resolving the storage URL. */
@@ -167,4 +172,87 @@ export async function toSemanticFileCardPage(
 		...results,
 		page: await Promise.all(results.page.map((file) => toSemanticFileCard(ctx, file))),
 	};
+}
+
+/** How many files a contact list returns when the caller names no limit. */
+export const CONTACT_FILES_DEFAULT_LIMIT = 20;
+
+/**
+ * The newest files linked to a contact that the caller may read, at most
+ * `limit` (a negative or NaN limit reads as 0), newest first.
+ *
+ * Reads the `semanticFileContacts` junction by contact, sorts the linked rows
+ * by `createdAt` (stable, so equal timestamps keep junction order), then runs
+ * the read gate in that order and stops once `limit` rows passed it. Nothing
+ * past the limit is gated, projected or given a storage URL.
+ */
+export async function readableContactFiles(
+	ctx: QueryCtx,
+	session: MutationSessionContext,
+	contactId: Id<'contacts'>,
+	limit: number = CONTACT_FILES_DEFAULT_LIMIT
+): Promise<Doc<'semanticFiles'>[]> {
+	const links = await ctx.db
+		.query('semanticFileContacts')
+		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+		.collect(); // bounded: junction rows for one contact (files per person)
+	const byId = await batchGet(
+		ctx,
+		links.map((link) => link.fileId)
+	);
+	const linked: Doc<'semanticFiles'>[] = [];
+	const seen = new Set<string>();
+	for (const link of links) {
+		const file = byId.get(link.fileId);
+		if (!file || seen.has(file._id)) continue;
+		seen.add(file._id);
+		linked.push(file);
+	}
+	linked.sort((a, b) => b.createdAt - a.createdAt);
+
+	const max = Number.isNaN(limit) ? 0 : Math.max(0, Math.trunc(limit));
+	const canReadSemanticFile = semanticFileReadGate(ctx, session);
+	const readable: Doc<'semanticFiles'>[] = [];
+	for (const file of linked) {
+		if (readable.length >= max) break;
+		if (await canReadSemanticFile(file)) readable.push(file);
+	}
+	return readable;
+}
+
+/**
+ * A contact's file as a card, plus the conversation it came from so the Team
+ * Answer attach menu can list this conversation's files first. `threadId`
+ * follows the shared-inbox reader rule (`semanticFiles.get`): any other member
+ * gets the card without it.
+ */
+export const contactFileCardValidator = v.object({
+	...semanticFileCardFields,
+	threadId: v.optional(v.id('conversationThreads')),
+});
+export type ContactFileCard = Infer<typeof contactFileCardValidator>;
+
+/** Project a readable row onto its contact card; `withThread` for shared-inbox readers only. */
+export async function toContactFileCard(
+	ctx: StorageReader,
+	file: Doc<'semanticFiles'>,
+	withThread: boolean
+): Promise<ContactFileCard> {
+	const card = await toSemanticFileCard(ctx, file);
+	return withThread && file.threadId ? { ...card, threadId: file.threadId } : card;
+}
+
+/**
+ * `files.cards.listByContact`: select with `readableContactFiles`, then project
+ * only the selected rows, so a storage URL is resolved for those and no more.
+ */
+export async function listContactFileCards(
+	ctx: QueryCtx,
+	session: MutationSessionContext,
+	contactId: Id<'contacts'>,
+	limit: number | undefined
+): Promise<ContactFileCard[]> {
+	const files = await readableContactFiles(ctx, session, contactId, limit);
+	const withThread = isSharedInboxReader(session);
+	return Promise.all(files.map((file) => toContactFileCard(ctx, file, withThread)));
 }
