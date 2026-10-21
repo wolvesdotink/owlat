@@ -65,7 +65,7 @@ is retried for idempotent methods (`GET`/`PUT`/`DELETE`) and for a `POST` send
 made with an idempotency key. The server applies a keyed send at most once per
 key for 24 hours and answers a repeat with the first response; a send without a
 key is never replayed, since a retry could duplicate it. Reusing a key for a
-different request throws a `ConflictException` (409). Idempotency keys need an
+different request throws a `ConflictException` (409). A retry whose contact was deleted after the first attempt throws one too, since its response is no longer kept. Idempotency keys need an
 Owlat server released after 0.6.16.
 
 ```java

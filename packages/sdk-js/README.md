@@ -153,7 +153,7 @@ server applies the request at most once per key for 24 hours, answering a
 repeat with the first response. The SDK then also retries the send after a
 `5xx`, network error or timeout; without a key a send is never replayed, since a
 retry could duplicate it. Reusing a key for a different request throws a
-`ConflictError` (409). Needs an Owlat server released after 0.6.16.
+`ConflictError` (409). A retry whose contact was deleted after the first attempt throws one too, since its response is no longer kept. Needs an Owlat server released after 0.6.16.
 
 ```typescript
 await owlat.transactional.send(
