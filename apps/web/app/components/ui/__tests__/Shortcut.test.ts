@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import UiShortcut from '../Shortcut.vue';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import {
 	applyShortcutPreferences,
 	pushShortcutScope,
@@ -92,5 +93,22 @@ describe('UiShortcut', () => {
 	it('renders nothing for an id the catalog does not know', () => {
 		const wrapper = mount(UiShortcut, { props: { id: 'global.nope' } });
 		expect(wrapper.find('kbd').exists()).toBe(false);
+	});
+});
+
+describe('useShortcutLabels().labelParams', () => {
+	it('turns message parameters named by catalog id into key labels', () => {
+		const { labelParams } = useShortcutLabels();
+		expect(labelParams({ compose: 'global.compose', palette: 'global.commandPalette' })).toEqual({
+			compose: 'C',
+			palette: 'Ctrl+K',
+		});
+	});
+
+	it('leaves a key nothing fires empty rather than naming a dead key', () => {
+		applyShortcutPreferences('owlat', [{ id: 'global.compose', keys: [] }]);
+		expect(useShortcutLabels().labelParams({ compose: 'global.compose' })).toEqual({
+			compose: '',
+		});
 	});
 });

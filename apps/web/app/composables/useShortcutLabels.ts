@@ -75,5 +75,15 @@ export function useShortcutLabels() {
 		return label ? `${name} (${label})` : name;
 	}
 
-	return { isMac, labelFor, ariaFor, chordLabel, chordAria, titleWithShortcut };
+	/**
+	 * Message parameters naming keys by catalog id (`{ compose: 'global.compose' }`)
+	 * as their labels. A key nothing fires right now becomes an empty string.
+	 */
+	function labelParams(ids: Readonly<Record<string, string>> = {}): Record<string, string> {
+		return Object.fromEntries(
+			Object.entries(ids).map(([param, id]) => [param, labelFor(id) ?? ''])
+		);
+	}
+
+	return { isMac, labelFor, ariaFor, chordLabel, chordAria, titleWithShortcut, labelParams };
 }

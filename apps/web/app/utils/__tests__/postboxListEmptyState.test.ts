@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { postboxListEmptyState } from '../postboxListEmptyState';
+import { SHORTCUT_CATALOG } from '../shortcutCatalog';
 
 const BASE = { filterActive: false, hasMore: false, folderRole: 'inbox' } as const;
 
@@ -16,6 +17,16 @@ describe('postboxListEmptyState', () => {
 		expect(state.titleKey).toMatch(/emptyInboxTitle$/);
 		expect(state.hintKey).toMatch(/emptyInboxHint$/);
 		expect(state.showFilterAction).toBe(false);
+	});
+
+	it('names the keys its hint teaches by catalog id, so they follow the platform and remaps', () => {
+		const state = postboxListEmptyState({ ...BASE });
+		expect(state.hintShortcuts).toEqual({
+			compose: 'global.compose',
+			palette: 'global.commandPalette',
+		});
+		const known = new Set(SHORTCUT_CATALOG.map((def) => def.id));
+		expect(Object.values(state.hintShortcuts ?? {}).every((id) => known.has(id))).toBe(true);
 	});
 
 	it('says "nothing matches", not "all clear", when a chip is hiding rows', () => {

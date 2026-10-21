@@ -15,6 +15,11 @@ export interface PostboxListEmptyState {
 	readonly icon: string;
 	readonly titleKey: string;
 	readonly hintKey?: string;
+	/**
+	 * The hint's message parameters that name a key, as shortcut catalog ids,
+	 * so the list prints each key as this person has it bound, for this machine.
+	 */
+	readonly hintShortcuts?: Readonly<Record<string, string>>;
 	/** Offer the "set up a filter" link (empty custom folders only). */
 	readonly showFilterAction: boolean;
 }
@@ -57,6 +62,7 @@ export function postboxListEmptyState(args: {
 			// Teach the two moves a new member reaches for first: compose and the
 			// command palette. Quiet enough to stay welcome once the inbox fills.
 			hintKey: `${KEY}.emptyInboxHint`,
+			hintShortcuts: { compose: 'global.compose', palette: 'global.commandPalette' },
 			showFilterAction: false,
 		};
 	}
