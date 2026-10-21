@@ -790,7 +790,8 @@ services:
       convex:
         condition: service_healthy
       # Healthy, not just started: the worker reclaims stale tasks through
-      # the proxy at boot, and a call that finds no listener is lost.
+      # the proxy once at boot and does not retry a call that finds no
+      # listener.
       convex-fn-proxy:
         condition: service_healthy
       code-worker-egress:
