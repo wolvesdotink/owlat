@@ -10,6 +10,11 @@ import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import type * as SharedTrackers from '@owlat/shared/postboxTrackers';
 import { applyPostboxImageConsent, type PostboxImageConsent } from '../postboxRemoteResources';
+import {
+	LINEAR_SCALING_BOUND,
+	SCALING_TEST,
+	scalingRatio,
+} from '../../../../../scripts/perf-bench/scalingRatio';
 
 // The failing-closed tests make the inventory throw on a marked element.
 vi.mock('@owlat/shared/postboxTrackers', async (importOriginal) => {
@@ -25,32 +30,9 @@ vi.mock('@owlat/shared/postboxTrackers', async (importOriginal) => {
 
 const LABEL = 'Image blocked';
 
-/**
- * How much longer 4n units of hostile input take than n: per call, the
- * fastest of three samples each, after a warm-up. A sample repeats the call
- * for at least 10 ms so a cheap input is not timed at the clock's resolution.
- * Linear code measures about 4, quadratic about 16. A ratio rather than a
- * wall-clock budget, which a busy CI runner misses.
- */
-function scalingRatio(build: (n: number) => string, n: number, consent: PostboxImageConsent) {
-	const perCall = (html: string) => {
-		const started = performance.now();
-		let calls = 0;
-		do {
-			applyPostboxImageConsent(html, consent, LABEL);
-			calls++;
-		} while (performance.now() - started < 10);
-		return (performance.now() - started) / calls;
-	};
-	const fastest = (html: string) => Math.min(perCall(html), perCall(html), perCall(html));
-	const small = build(n);
-	const large = build(4 * n);
-	fastest(small); // warm-up: JIT and parser
-	return fastest(large) / fastest(small);
-}
-
-/** Linear stays near 4x; the quadratic regressions these tests guard measure 12x and up. */
-const LINEAR_RATIO = 8;
+/** The call each scaling check times: consent applied with one fixed setting. */
+const consentWith = (consent: PostboxImageConsent) => (html: string) =>
+	applyPostboxImageConsent(html, consent, LABEL);
 
 function render(raw: string, consent: PostboxImageConsent) {
 	return applyPostboxImageConsent(sanitizeHtml(raw, POSTBOX_SANITIZE_CONFIG), consent, LABEL);
@@ -253,10 +235,12 @@ describe('applyPostboxImageConsent — images shown', () => {
 });
 
 describe('applyPostboxImageConsent — hostile input stays linear', () => {
-	it('parses a srcset with 100k commas in linear time', () => {
+	it('parses a srcset with 100k commas in linear time', SCALING_TEST, () => {
 		const srcsetWithCommas = (n: number) =>
 			`<img srcset="https://cdn.example/a${','.repeat(n)}b, https://cdn.example/p.png 2x">`;
-		expect(scalingRatio(srcsetWithCommas, 25_000, 'blocked')).toBeLessThan(LINEAR_RATIO);
+		expect(scalingRatio(srcsetWithCommas, 25_000, consentWith('blocked'))).toBeLessThan(
+			LINEAR_SCALING_BOUND
+		);
 
 		const out = applyPostboxImageConsent(srcsetWithCommas(100_000), 'blocked', LABEL);
 		expect(out.hasRemoteResources).toBe(true);
@@ -264,10 +248,12 @@ describe('applyPostboxImageConsent — hostile input stays linear', () => {
 		expect(out.html).toContain(LABEL);
 	});
 
-	it('tokenizes deeply nested and unterminated CSS in linear time', () => {
+	it('tokenizes deeply nested and unterminated CSS in linear time', SCALING_TEST, () => {
 		const nestedCss = (n: number) =>
 			`<div style="background:${'f('.repeat(n)}${'url(&quot;'.repeat(n)}">x</div>`;
-		expect(scalingRatio(nestedCss, 5_000, 'blocked')).toBeLessThan(LINEAR_RATIO);
+		expect(scalingRatio(nestedCss, 5_000, consentWith('blocked'))).toBeLessThan(
+			LINEAR_SCALING_BOUND
+		);
 
 		const out = applyPostboxImageConsent(nestedCss(20_000), 'blocked', LABEL);
 		expect(out.html).toContain('x');
@@ -333,13 +319,15 @@ describe('applyPostboxImageConsent — large inventories', () => {
 		expect(out.html).toContain('data:image/gif;base64,R149999 2x');
 	});
 
-	it('classifies CSS urls on one element in linear time', () => {
+	it('classifies CSS urls on one element in linear time', SCALING_TEST, () => {
 		// Per-URL style rescans made 4x the URLs cost about 13x.
 		const elementWith = (count: number) => {
 			const urls = Array.from({ length: count }, (_, i) => `url(https://cdn.example/${i}.png)`);
 			return `<div style="width:600px;height:400px;background:${urls.join(',')}">a</div>`;
 		};
-		expect(scalingRatio(elementWith, 8_000, 'images')).toBeLessThan(LINEAR_RATIO);
+		expect(scalingRatio(elementWith, 8_000, consentWith('images'))).toBeLessThan(
+			LINEAR_SCALING_BOUND
+		);
 
 		const out = applyPostboxImageConsent(elementWith(32_000), 'images', LABEL);
 		expect(out.hasRemoteResources).toBe(true);
