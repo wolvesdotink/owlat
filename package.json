@@ -76,7 +76,7 @@
 		"build:marketing": "turbo build --filter=@owlat/marketing",
 		"typecheck": "turbo typecheck && bun run typecheck:scripts",
 		"typecheck:scripts": "tsc -p scripts",
-		"lint": "bun run lint:warnings && turbo lint",
+		"lint": "bun run lint:warnings && bun run lint:owlat && turbo lint",
 		"lint:fix": "turbo lint:fix",
 		"lint:warnings": "bun scripts/check-lint-warnings.ts",
 		"lint:owlat": "bash scripts/check-owlat-lint.sh",
