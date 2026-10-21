@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
 import type { SlashCommand } from '../../types';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+import { slashCommandText } from '../../composables/useSlashCommands';
+
+const i18n = useBuilderI18n();
+const { t } = i18n;
 
 const props = defineProps<{
 	commands: SlashCommand[];
@@ -16,18 +21,22 @@ const listEl = ref<HTMLElement | null>(null);
 
 // Category display order
 const categoryOrder = ['text', 'media', 'layout', 'components', 'brand', 'saved'] as const;
-const categoryLabels: Record<string, string> = {
-	text: 'Text',
-	media: 'Media',
-	layout: 'Layout',
-	components: 'Components',
-	brand: 'Brand kit',
-	saved: 'Saved',
+const categoryLabelKeys: Record<string, string> = {
+	text: 'builder.canvas.categories.text',
+	media: 'builder.canvas.categories.media',
+	layout: 'builder.canvas.categories.layout',
+	components: 'builder.canvas.categories.components',
+	brand: 'builder.canvas.categories.brand',
+	saved: 'builder.canvas.categories.saved',
 };
 
 // Group commands by category
 const groupedCommands = computed(() => {
-	const groups: { category: string; label: string; commands: { command: SlashCommand; globalIndex: number }[] }[] = [];
+	const groups: {
+		category: string;
+		label: string;
+		commands: { command: SlashCommand; text: { name: string; description: string }; globalIndex: number }[];
+	}[] = [];
 	let globalIndex = 0;
 
 	for (const cat of categoryOrder) {
@@ -35,8 +44,8 @@ const groupedCommands = computed(() => {
 		if (cmds.length > 0) {
 			groups.push({
 				category: cat,
-				label: categoryLabels[cat] || cat,
-				commands: cmds.map((cmd) => ({ command: cmd, globalIndex: globalIndex++ })),
+				label: categoryLabelKeys[cat] ? t(categoryLabelKeys[cat]) : cat,
+				commands: cmds.map((cmd) => ({ command: cmd, text: slashCommandText(cmd, i18n), globalIndex: globalIndex++ })),
 			});
 		}
 	}
@@ -47,8 +56,8 @@ const groupedCommands = computed(() => {
 	if (remaining.length > 0) {
 		groups.push({
 			category: 'other',
-			label: 'Other',
-			commands: remaining.map((cmd) => ({ command: cmd, globalIndex: globalIndex++ })),
+			label: t('builder.canvas.categories.other'),
+			commands: remaining.map((cmd) => ({ command: cmd, text: slashCommandText(cmd, i18n), globalIndex: globalIndex++ })),
 		});
 	}
 
@@ -68,7 +77,7 @@ watch(() => props.selectedIndex, () => {
 <template>
 	<div
 		role="listbox"
-		aria-label="Block types"
+		:aria-label="t('builder.canvas.blockTypes')"
 		class="absolute z-[100] w-60 max-h-[280px] overflow-y-auto bg-bg-elevated border border-border-subtle rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.25)] p-1"
 		:style="{
 			top: `${position.top}px`,
@@ -76,13 +85,13 @@ watch(() => props.selectedIndex, () => {
 		}"
 	>
 		<div v-if="commands.length === 0" class="p-3 text-[13px] text-text-tertiary text-center">
-			No matching blocks
+			{{ t('builder.canvas.noMatches') }}
 		</div>
 		<div v-else ref="listEl" class="flex flex-col">
 			<template v-for="group in groupedCommands" :key="group.category">
 				<div class="text-[10px] font-semibold uppercase tracking-[0.04em] text-text-tertiary py-1.5 px-2 mt-0.5 first:mt-0">{{ group.label }}</div>
 				<button
-					v-for="{ command, globalIndex } in group.commands"
+					v-for="{ command, text, globalIndex } in group.commands"
 					:key="command.id"
 					role="option"
 					:aria-selected="globalIndex === selectedIndex"
@@ -100,8 +109,14 @@ watch(() => props.selectedIndex, () => {
 					/>
 					<div v-else class="shrink-0 w-4 h-4 rounded-[3px]" :class="globalIndex === selectedIndex ? 'bg-[rgba(196,120,90,0.2)]' : 'bg-bg-surface'" />
 					<div class="flex flex-col gap-px min-w-0">
-						<span class="text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ command.name }}</span>
-						<span class="text-[11px] text-text-tertiary whitespace-nowrap overflow-hidden text-ellipsis">{{ command.description }}</span>
+						<span
+							class="text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
+							>{{ text.name }}</span
+						>
+						<span
+							class="text-[11px] text-text-tertiary whitespace-nowrap overflow-hidden text-ellipsis"
+							>{{ text.description }}</span
+						>
 					</div>
 				</button>
 			</template>

@@ -4,6 +4,9 @@ import { moduleFor } from '@owlat/email-renderer';
 import type { EditorBlock, EmailTheme, ButtonBlockContent } from '../../../types';
 import { blockBoxStyle } from '../../../utils/blocks';
 import { gradientCss as buildGradientCss } from '../../../utils/gradient';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	block: EditorBlock;
@@ -70,6 +73,6 @@ const buttonStyles = computed(() => {
 
 <template>
 	<div :style="wrapperStyles">
-		<span :style="buttonStyles">{{ content.text || 'Click here' }}</span>
+		<span :style="buttonStyles">{{ content.text || t('builder.canvas.preview.buttonText') }}</span>
 	</div>
 </template>

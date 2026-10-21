@@ -38,14 +38,17 @@ import {
 	Unlink,
 	Bookmark,
 } from '@lucide/vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 // ---------------------------------------------------------------------------
 // Tab categorisation (ported from BlockSettingsPopover)
 // ---------------------------------------------------------------------------
 
 interface TabDef {
+	/** Also the `builder.toolbar.categories.<id>` label key. */
 	id: string;
-	label: string;
 	icon: Component;
 	match: string[];
 }
@@ -53,25 +56,21 @@ interface TabDef {
 const TAB_DEFS: TabDef[] = [
 	{
 		id: 'content',
-		label: 'Content',
 		icon: FileText,
 		match: ['Content', 'Data', 'Items', 'Sections', 'Links', 'Images', 'Labels', 'Behavior'],
 	},
 	{
 		id: 'design',
-		label: 'Design',
 		icon: Palette,
 		match: ['Typography', 'Style', 'Layout', 'Background', 'Retina', 'Button Border'],
 	},
 	{
 		id: 'spacing',
-		label: 'Spacing',
 		icon: Move,
 		match: ['Spacing', 'Border'],
 	},
 	{
 		id: 'more',
-		label: 'More',
 		icon: SlidersHorizontal,
 		match: ['Dark Mode', 'Responsive', 'Advanced', 'Dark', 'Mobile'],
 	},
@@ -165,9 +164,16 @@ const activeGroups = computed(() => {
 });
 
 /** Accessible name of the settings popover, so it is not an anonymous group. */
-const activeCategoryLabel = computed(
-	() => visibleCategories.value.find((tab) => tab.id === activeCategory.value)?.label ?? 'Settings'
-);
+function categoryLabel(id: string): string {
+	return t(`builder.toolbar.categories.${id}`);
+}
+
+const activeCategoryLabel = computed(() => {
+	const tab = visibleCategories.value.find((candidate) => candidate.id === activeCategory.value);
+	return tab
+		? t('builder.toolbar.categorySettings', { category: categoryLabel(tab.id) })
+		: t('builder.toolbar.settings');
+});
 
 // ---------------------------------------------------------------------------
 // Sub-popover state
@@ -267,49 +273,54 @@ onUnmounted(() => {
 		<div
 			ref="toolbarEl"
 			role="toolbar"
-			aria-label="Block formatting"
+			:aria-label="t('builder.toolbar.formatting')"
 			class="light fixed z-(--z-float) flex items-center gap-0.5 py-[5px] px-2 bg-bg-elevated/95 backdrop-blur-sm border border-border-subtle rounded-[10px] shadow-[0_4px_16px_rgba(0,0,0,0.12)] pointer-events-auto animate-eb-toolbar-enter"
 			:style="positionStyles"
 			@mousedown.stop
 		>
 			<!-- ===== Inline editing mode: formatting controls ===== -->
 			<template v-if="isInlineEditing && block.type === 'text'">
-				<IconButton :icon="Bold" title="Bold" aria-label="Bold" @click="emit('format', 'bold')" />
+				<IconButton
+					:icon="Bold"
+					:title="t('builder.toolbar.bold')"
+					:aria-label="t('builder.toolbar.bold')"
+					@click="emit('format', 'bold')"
+				/>
 				<IconButton
 					:icon="Italic"
-					title="Italic"
-					aria-label="Italic"
+					:title="t('builder.toolbar.italic')"
+					:aria-label="t('builder.toolbar.italic')"
 					@click="emit('format', 'italic')"
 				/>
 				<IconButton
 					:icon="Underline"
-					title="Underline"
-					aria-label="Underline"
+					:title="t('builder.toolbar.underline')"
+					:aria-label="t('builder.toolbar.underline')"
 					@click="emit('format', 'underline')"
 				/>
 				<IconButton
 					:icon="Link"
-					title="Link"
-					aria-label="Link"
+					:title="t('builder.toolbar.link')"
+					:aria-label="t('builder.toolbar.link')"
 					@click="emit('format', 'createLink')"
 				/>
 				<ToolbarDivider />
 				<IconButton
 					:icon="AlignLeft"
-					title="Align left"
-					aria-label="Align left"
+					:title="t('builder.toolbar.alignLeft')"
+					:aria-label="t('builder.toolbar.alignLeft')"
 					@click="emit('update', block.id, 'textAlign', 'left')"
 				/>
 				<IconButton
 					:icon="AlignCenter"
-					title="Align center"
-					aria-label="Align center"
+					:title="t('builder.toolbar.alignCenter')"
+					:aria-label="t('builder.toolbar.alignCenter')"
 					@click="emit('update', block.id, 'textAlign', 'center')"
 				/>
 				<IconButton
 					:icon="AlignRight"
-					title="Align right"
-					aria-label="Align right"
+					:title="t('builder.toolbar.alignRight')"
+					:aria-label="t('builder.toolbar.alignRight')"
 					@click="emit('update', block.id, 'textAlign', 'right')"
 				/>
 			</template>
@@ -321,15 +332,20 @@ onUnmounted(() => {
 					<span
 						class="text-[11px] font-medium text-text-secondary whitespace-nowrap max-w-[140px] overflow-hidden text-ellipsis"
 					>
-						{{ linkedBlockName || 'Linked block' }}
+						{{ linkedBlockName || t('builder.toolbar.linkedBlock') }}
 					</span>
 				</div>
 				<ToolbarDivider />
-				<IconButton :icon="Unlink" title="Detach" aria-label="Detach" @click="emit('detach')" />
+				<IconButton
+					:icon="Unlink"
+					:title="t('builder.toolbar.detach')"
+					:aria-label="t('builder.toolbar.detach')"
+					@click="emit('detach')"
+				/>
 				<IconButton
 					:icon="Trash2"
-					title="Delete"
-					aria-label="Delete"
+					:title="t('builder.toolbar.delete')"
+					:aria-label="t('builder.toolbar.delete')"
 					size="sm"
 					variant="destructive"
 					@click="emit('delete')"
@@ -344,8 +360,8 @@ onUnmounted(() => {
 						v-for="cat in visibleCategories"
 						:key="cat.id"
 						:icon="cat.icon"
-						:title="cat.label"
-						:aria-label="cat.label"
+						:title="categoryLabel(cat.id)"
+						:aria-label="categoryLabel(cat.id)"
 						:active="activeCategory === cat.id"
 						aria-haspopup="true"
 						:aria-expanded="activeCategory === cat.id"
@@ -369,22 +385,22 @@ onUnmounted(() => {
 				<IconButton
 					v-if="canSaveAsBlock"
 					:icon="Bookmark"
-					title="Save as reusable block"
-					aria-label="Save as reusable block"
+					:title="t('builder.toolbar.saveAsBlock')"
+					:aria-label="t('builder.toolbar.saveAsBlock')"
 					size="sm"
 					@click="emit('save-block')"
 				/>
 				<IconButton
 					:icon="Copy"
-					title="Duplicate"
-					aria-label="Duplicate"
+					:title="t('builder.toolbar.duplicate')"
+					:aria-label="t('builder.toolbar.duplicate')"
 					size="sm"
 					@click="emit('duplicate')"
 				/>
 				<IconButton
 					:icon="Trash2"
-					title="Delete"
-					aria-label="Delete"
+					:title="t('builder.toolbar.delete')"
+					:aria-label="t('builder.toolbar.delete')"
 					size="sm"
 					variant="destructive"
 					@click="emit('delete')"
@@ -397,7 +413,7 @@ onUnmounted(() => {
 			v-if="activeCategory && !isLinked && !isInlineEditing"
 			ref="subPopoverEl"
 			role="group"
-			:aria-label="`${activeCategoryLabel} settings`"
+			:aria-label="activeCategoryLabel"
 			class="light bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden flex flex-col animate-eb-fade-in"
 			:style="subPopoverStyles"
 			@mousedown.stop

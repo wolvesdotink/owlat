@@ -10,6 +10,9 @@ import {
 	unknownSubjectVariables,
 	type SubjectRange,
 } from '../../utils/subjectVariables';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	name: string;
@@ -148,8 +151,14 @@ const unknownKeys = computed(() =>
 const token = (key: string) => `{{${key}}}`;
 const isSubjectEmpty = computed(() => props.subject.trim() === '');
 
+const nameLabel = computed(() =>
+	props.mode === 'block' ? t('builder.header.blockName') : t('builder.header.templateName')
+);
+
 const subjectPlaceholder = computed(() =>
-	canInsertVariables.value ? 'Add a subject, type {{ to insert a variable' : 'Email subject line'
+	canInsertVariables.value
+		? t('builder.subject.placeholderWithVariables')
+		: t('builder.header.subject')
 );
 </script>
 
@@ -160,15 +169,15 @@ const subjectPlaceholder = computed(() =>
 	>
 		<div class="flex items-center gap-3">
 			<label :for="nameId" class="text-xs font-medium text-text-secondary w-16 shrink-0 text-right">
-				Name
+				{{ t('builder.subject.name') }}
 			</label>
 			<input
 				:id="nameId"
 				:value="name"
 				type="text"
-				:aria-label="mode === 'block' ? 'Block name' : 'Template name'"
+				:aria-label="nameLabel"
 				class="flex-1 min-w-0 rounded-md border border-transparent bg-transparent px-2 py-1 text-text-primary font-medium text-sm focus:outline-none hover:border-border-default focus:border-brand transition-colors"
-				:placeholder="mode === 'block' ? 'Block name' : 'Template name'"
+				:placeholder="nameLabel"
 				@input="emit('update:name', ($event.target as HTMLInputElement).value)"
 			/>
 		</div>
@@ -177,7 +186,7 @@ const subjectPlaceholder = computed(() =>
 				:for="subjectId"
 				class="text-xs font-medium text-text-secondary w-16 shrink-0 text-right pt-[7px]"
 			>
-				Subject
+				{{ t('builder.subject.subject') }}
 			</label>
 			<div class="flex-1 min-w-0">
 				<div class="relative">
@@ -196,7 +205,7 @@ const subjectPlaceholder = computed(() =>
 							:value="subject"
 							type="text"
 							role="combobox"
-							aria-label="Email subject line"
+							:aria-label="t('builder.header.subject')"
 							aria-autocomplete="list"
 							:aria-expanded="pickerVisible"
 							:aria-controls="pickerVisible ? pickerId : undefined"
@@ -214,13 +223,13 @@ const subjectPlaceholder = computed(() =>
 							type="button"
 							data-testid="subject-insert-variable"
 							class="mr-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors"
-							title="Insert a variable into the subject"
-							aria-label="Insert variable into subject"
+							:title="t('builder.subject.insertVariableTitle')"
+							:aria-label="t('builder.subject.insertVariable')"
 							@mousedown.prevent
 							@click="handleInsertButton"
 						>
 							<Braces :size="12" />
-							Variable
+							{{ t('builder.subject.variable') }}
 						</button>
 					</div>
 					<VariablePickerMenu
@@ -240,7 +249,7 @@ const subjectPlaceholder = computed(() =>
 					class="mt-1 flex items-center gap-1 text-xs text-warning"
 				>
 					<TriangleAlert :size="12" class="shrink-0" />
-					No subject yet. Recipients would see an empty subject line.
+					{{ t('builder.subject.empty') }}
 				</p>
 				<div
 					v-else-if="unknownKeys.length"
@@ -253,8 +262,7 @@ const subjectPlaceholder = computed(() =>
 							<span v-if="index > 0">, </span>
 							<code class="font-mono">{{ token(key) }}</code>
 						</template>
-						{{ unknownKeys.length === 1 ? "isn't a variable" : "aren't variables" }} of this email,
-						so {{ unknownKeys.length === 1 ? 'it is' : 'they are' }} sent empty.
+						{{ t('builder.subject.unknownVariables', { count: unknownKeys.length }) }}
 					</span>
 					<button
 						v-for="key in unknownKeys"
@@ -263,7 +271,7 @@ const subjectPlaceholder = computed(() =>
 						class="rounded px-1 font-medium text-text-secondary underline underline-offset-2 hover:text-text-primary"
 						@click="emit('add-variable', key)"
 					>
-						Define {{ key }}
+						{{ t('builder.subject.define', { key }) }}
 					</button>
 				</div>
 			</div>
@@ -273,9 +281,9 @@ const subjectPlaceholder = computed(() =>
 		     data variable. Without it a freshly created transactional email has an
 		     empty schema and the user can reference variables but never add one. -->
 		<div v-if="showDataVariables" class="flex items-baseline gap-3 pt-1">
-			<label class="text-xs font-medium text-text-secondary w-16 shrink-0 text-right"
-				>Variables</label
-			>
+			<label class="text-xs font-medium text-text-secondary w-16 shrink-0 text-right">{{
+				t('builder.variables.title')
+			}}</label>
 			<div class="flex-1 flex flex-wrap items-center gap-1.5">
 				<VariablePlaceholderTag
 					v-for="variable in dataVariables"
@@ -285,11 +293,11 @@ const subjectPlaceholder = computed(() =>
 				<button
 					type="button"
 					class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-dashed border-border-default text-xs text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary hover:border-border-strong transition-colors"
-					title="Define a new data variable for this email"
+					:title="t('builder.subject.newVariableTitle')"
 					@click="emit('add-variable')"
 				>
 					<Plus :size="12" />
-					New variable
+					{{ t('builder.subject.newVariable') }}
 				</button>
 			</div>
 		</div>

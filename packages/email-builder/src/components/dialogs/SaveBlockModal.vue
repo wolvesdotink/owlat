@@ -2,6 +2,9 @@
 import { Bookmark, Loader2 } from '@lucide/vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiModal from '@owlat/ui/components/ui/Modal.vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 withDefaults(
 	defineProps<{
@@ -22,16 +25,18 @@ const emit = defineEmits<{
 </script>
 
 <template>
-	<UiModal :open="show" title="Save as Reusable Block" @update:open="emit('close')">
+	<UiModal :open="show" :title="t('builder.saveBlock.title')" @update:open="emit('close')">
 		<div class="space-y-4">
 			<div>
-				<label class="block text-sm font-medium text-text-secondary mb-2" for="save-block-name">Block Name</label>
+				<label class="block text-sm font-medium text-text-secondary mb-2" for="save-block-name">{{
+					t('builder.saveBlock.name')
+				}}</label>
 				<input
 					id="save-block-name"
 					:value="blockName"
 					type="text"
 					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-(--motion-fast) focus:border-brand focus:ring-1 focus:ring-brand"
-					placeholder="e.g., Company Header"
+					:placeholder="t('builder.saveBlock.namePlaceholder')"
 					@input="emit('update:blockName', ($event.target as HTMLInputElement).value)"
 					@keyup.enter="emit('save')"
 				/>
@@ -40,7 +45,7 @@ const emit = defineEmits<{
 
 		<template #footer>
 			<UiButton variant="secondary" @click="emit('close')">
-				Cancel
+				{{ t('builder.common.cancel') }}
 			</UiButton>
 			<UiButton
 				variant="primary"
@@ -51,7 +56,7 @@ const emit = defineEmits<{
 				<template v-if="!isSaving" #iconLeft>
 					<Bookmark class="w-4 h-4" />
 				</template>
-				Save Block
+				{{ t('builder.saveBlock.save') }}
 			</UiButton>
 		</template>
 	</UiModal>

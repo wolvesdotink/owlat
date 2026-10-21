@@ -3,6 +3,9 @@ import { computed } from 'vue';
 import { sanitizeRawHtml, moduleFor } from '@owlat/email-renderer';
 import type { EditorBlock, EmailTheme, TextBlockContent } from '../../../types';
 import { blockBoxStyle } from '../../../utils/blocks';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const i18n = useBuilderI18n();
 
 const props = defineProps<{
 	block: EditorBlock;
@@ -25,7 +28,8 @@ const content = computed(() => {
 const sanitizedHtml = computed(
 	() =>
 		sanitizeRawHtml(content.value.html || '') ||
-		'<span style="opacity:0.4">Enter your text here...</span>'
+		// Catalog copy carries no markup (localeCatalogs.test.ts), so it is safe in v-html.
+		`<span style="opacity:0.4">${i18n.t('builder.canvas.preview.textPlaceholder')}</span>`
 );
 
 const tag = computed(() => {

@@ -28,8 +28,9 @@ export const columnsEditor: EditorModule<'columns'> = {
 					type: item.type,
 					label: `Col ${colIdx + 1}: ${mod?.label ?? item.type}`,
 					icon: mod?.icon ?? null,
+					column: colIdx + 1,
 				};
-			}),
+			})
 		);
 	},
 

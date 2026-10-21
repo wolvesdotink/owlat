@@ -12,6 +12,7 @@ import ColorField from '../panel/fields/ColorField.vue';
 import { useDraggable } from 'vue-draggable-plus';
 import { Link } from '@lucide/vue';
 import { blockAccessibleLabel } from '../../utils/blockLabel';
+import { getBlock } from '../../registry';
 import { isEditableTarget, nextListboxIndex } from '../../utils/canvasListboxNav';
 import {
 	buildLinkedBlockIndex,
@@ -19,6 +20,9 @@ import {
 	type CanvasDisplayItem,
 	type LinkedBlockIndex,
 } from '../../composables/useLinkedBlocks';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	blocks: EditorBlock[];
@@ -298,8 +302,8 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 					ref="bgColorBubbleRef"
 					type="button"
 					class="absolute -top-3 right-4 z-10 flex items-center gap-1.5 h-6 pl-1 pr-2 rounded-full bg-bg-elevated border border-border-subtle shadow-sm cursor-pointer transition-shadow hover:shadow-md"
-					title="Email background color"
-					aria-label="Email background color"
+					:title="t('builder.canvas.backgroundColor')"
+					:aria-label="t('builder.canvas.backgroundColor')"
 					aria-haspopup="dialog"
 					:aria-expanded="showBgColorPopover"
 					@click="toggleBgColorPopover"
@@ -308,7 +312,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 						class="w-4 h-4 rounded-full border border-border-default shrink-0"
 						:style="{ backgroundColor: backgroundColor || '#ffffff' }"
 					/>
-					<span class="text-[11px] font-medium text-text-secondary leading-none">Background</span>
+					<span class="text-[11px] font-medium text-text-secondary leading-none">{{ t('builder.canvas.background') }}</span>
 				</button>
 
 				<Teleport to="body">
@@ -321,9 +325,9 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 							left: (bgColorBubbleRef?.getBoundingClientRect().right ?? 0) - 240 + 'px',
 						}"
 					>
-						<div class="text-[11px] font-medium text-text-secondary uppercase tracking-wide mb-2">Email Background</div>
+						<div class="text-[11px] font-medium text-text-secondary uppercase tracking-wide mb-2">{{ t('builder.canvas.emailBackground') }}</div>
 						<ColorField
-							label="Email background"
+							:label="t('builder.canvas.emailBackgroundField')"
 							:value="backgroundColor || '#ffffff'"
 							@update="emit('update:backgroundColor', $event)"
 						/>
@@ -346,7 +350,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 					ref="containerRef"
 					class="min-h-[100px]"
 					role="list"
-					aria-label="Email blocks"
+					:aria-label="t('builder.canvas.blocks')"
 					@keydown="handleListKeydown"
 				>
 					<div v-for="item in displayItems" :key="item.id" role="listitem">
@@ -356,7 +360,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 							:ref="(el) => setBlockRef(block.id, el as HTMLElement)"
 							role="group"
 							:aria-current="selectedBlockId === block.id ? 'true' : undefined"
-							:aria-label="blockAccessibleLabel(block)"
+							:aria-label="blockAccessibleLabel(block, { t, label })"
 							:tabindex="blockTabIndex(block.id)"
 							:class="[
 								'relative group/block transition-all duration-(--motion-moderate) rounded-md eb-canvas-block',
@@ -393,7 +397,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 								v-if="selectedBlockId === block.id && inlineEditBlockId !== block.id"
 								class="absolute -top-2.5 left-2 text-[10px] font-semibold py-0.5 px-2 rounded bg-brand text-white uppercase z-[5] shadow-sm animate-eb-slide-up"
 							>
-								{{ block.type }}
+								{{ label(getBlock(block.type)?.label ?? block.type) }}
 							</div>
 
 							<!-- Linked group header -->
@@ -402,12 +406,12 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 								class="absolute -top-[9px] left-3 z-[6] inline-flex items-center gap-1 bg-bg-elevated px-1.5"
 							>
 								<span class="text-[10px] font-semibold text-text-tertiary uppercase whitespace-nowrap tracking-[0.02em]">
-									{{ block.savedBlockRef?.blockName || 'Linked block' }}
+									{{ block.savedBlockRef?.blockName || t('builder.toolbar.linkedBlock') }}
 								</span>
 								<button
 									class="inline-flex items-center justify-center w-[18px] h-[18px] p-0 text-text-tertiary bg-transparent border-none rounded-[3px] cursor-pointer transition-colors duration-(--motion-fast) hover:text-brand hover:bg-brand/10"
-									title="Detach"
-									:aria-label="`Detach ${block.savedBlockRef?.blockName || 'linked block'}`"
+									:title="t('builder.toolbar.detach')"
+									:aria-label="t('builder.canvas.detachBlock', { block: block.savedBlockRef?.blockName || t('builder.canvas.linkedBlock') })"
 									type="button"
 									@click.stop="requestDetachLinkedBlock(block.id)"
 								>
@@ -466,7 +470,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 					v-if="blocks.length === 0"
 					type="button"
 					class="flex flex-col items-center justify-center gap-2 w-full h-60 border-2 border-dashed border-border-subtle rounded-lg my-4 cursor-pointer transition-[border-color,background-color] duration-(--motion-fast) hover:border-brand hover:bg-brand/[0.02]"
-					aria-label="Start building your email — add a text block"
+					:aria-label="t('builder.canvas.emptyAction')"
 					@click="emit('add-text-block')"
 				>
 					<svg class="text-text-tertiary" aria-hidden="true" width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -474,8 +478,8 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 						<line x1="24" y1="16" x2="24" y2="32" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
 						<line x1="16" y1="24" x2="32" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
 					</svg>
-					<span class="block text-sm font-medium text-text-secondary">Start building your email</span>
-					<span class="block text-[13px] text-text-tertiary">Click to start typing or use the toolbar above</span>
+					<span class="block text-sm font-medium text-text-secondary">{{ t('builder.canvas.emptyTitle') }}</span>
+					<span class="block text-[13px] text-text-tertiary">{{ t('builder.canvas.emptyHint') }}</span>
 				</button>
 			</div>
 

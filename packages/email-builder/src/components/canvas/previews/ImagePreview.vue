@@ -3,6 +3,9 @@ import { computed } from 'vue';
 import type { EditorBlock, EmailTheme, ImageBlockContent } from '../../../types';
 import { blockBoxStyle } from '../../../utils/blocks';
 import { ImageIcon } from '@lucide/vue';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	block: EditorBlock;
@@ -39,7 +42,7 @@ const imgStyles = computed(() => ({
 			:style="{ width: content.width ? `${content.width}%` : '100%', height: '120px' }"
 		>
 			<ImageIcon :size="24" />
-			<span class="text-xs">No image selected</span>
+			<span class="text-xs">{{ t('builder.canvas.preview.noImage') }}</span>
 		</div>
 	</div>
 </template>

@@ -3,7 +3,11 @@ import { computed } from 'vue';
 import type { Component } from 'vue';
 import type { EditorBlock, BlockType, EmailTheme } from '../../types';
 import { editorModuleFor } from '../../blocks';
+import type { NestedChild } from '../../blocks/_module';
 import { Trash2, Plus, ChevronRight } from '@lucide/vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	block: EditorBlock;
@@ -24,10 +28,20 @@ const chevronBgImage = "url(\"data:image/svg+xml,%3Csvg width='10' height='6' vi
 // The composite block's Editor module owns both shapes: how to project its
 // children into a flat list (`childrenView`) and which block types can be
 // inserted (`allowedChildTypes`). This component is now a thin dispatcher.
-const children = computed<Array<{ id: string; type: string; label: string; icon: Component | null }>>(() => {
+const children = computed<NestedChild[]>(() => {
 	const mod = editorModuleFor(blockType.value);
 	return mod?.childrenView?.(props.block as never) ?? [];
 });
+
+/** The row's text: block labels are registry copy; entry titles are the author's. */
+function childLabel(child: NestedChild): string {
+	if (child.labelKey) return t(child.labelKey);
+	if (child.column !== undefined) {
+		const typeLabel = label(editorModuleFor(child.type as BlockType)?.label ?? child.type);
+		return t('builder.panel.nested.columnChild', { column: child.column, block: typeLabel });
+	}
+	return childrenAreBlocks.value ? label(child.label) : child.label;
+}
 
 // Selecting and removing a child address a Block by id. Entries that are not
 // Blocks (accordion sections) are edited through the block's own fields.
@@ -38,11 +52,11 @@ const childrenAreBlocks = computed(
 const validChildTypes = computed<{ value: string; label: string; icon: Component | null }[]>(() => {
 	const mod = editorModuleFor(blockType.value);
 	const allowed = mod?.allowedChildTypes?.() ?? [];
-	return allowed.map((t) => {
-		const childMod = editorModuleFor(t as BlockType);
+	return allowed.map((type) => {
+		const childMod = editorModuleFor(type as BlockType);
 		return {
-			value: t,
-			label: childMod?.label ?? t,
+			value: type,
+			label: label(childMod?.label ?? type),
 			icon: childMod?.icon ?? null,
 		};
 	});
@@ -53,7 +67,11 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 	<div class="border-t border-border-subtle py-3 px-4">
 		<div class="flex items-center justify-between mb-2">
 			<span class="text-[10px] font-bold text-text-tertiary uppercase tracking-[0.08em]">
-				{{ blockType === 'accordion' ? 'Sections' : 'Children' }}
+				{{
+					blockType === 'accordion'
+						? t('builder.panel.nested.sections')
+						: t('builder.panel.nested.children')
+				}}
 			</span>
 			<span class="text-[10px] font-medium tabular-nums text-text-disabled">{{ children.length }}</span>
 		</div>
@@ -76,12 +94,16 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 					'group/item transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-border-subtle'
 				"
 			>
-				<span v-if="!childrenAreBlocks" class="flex-1 text-xs text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ child.label }}</span>
+				<span
+					v-if="!childrenAreBlocks"
+					class="flex-1 text-xs text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
+					>{{ childLabel(child) }}</span
+				>
 				<button
 					v-else
 					class="flex flex-1 items-center gap-1.5 min-w-0 border-none bg-transparent p-0 text-left cursor-pointer"
 					type="button"
-					:aria-label="`Edit ${child.label}`"
+					:aria-label="t('builder.panel.nested.edit', { item: childLabel(child) })"
 					@click="emit('select-child', child.id)"
 				>
 					<component
@@ -90,15 +112,21 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 						:size="14"
 						class="text-text-tertiary shrink-0 group-hover/item:text-brand"
 					/>
-					<span class="flex-1 text-xs text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ child.label }}</span>
-					<ChevronRight :size="12" class="text-text-tertiary shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)" />
+					<span
+						class="flex-1 text-xs text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
+						>{{ childLabel(child) }}</span
+					>
+					<ChevronRight
+						:size="12"
+						class="text-text-tertiary shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)"
+					/>
 				</button>
 				<button
 					v-if="childrenAreBlocks"
 					class="flex items-center justify-center w-[22px] h-[22px] border-none rounded bg-none text-text-tertiary cursor-pointer shrink-0 opacity-0 group-hover/item:opacity-100 transition-[opacity,color,background-color] duration-(--motion-fast) hover:text-error hover:bg-error-subtle"
 					type="button"
-					:title="`Remove ${child.label}`"
-					:aria-label="`Remove ${child.label}`"
+					:title="t('builder.panel.nested.remove', { item: childLabel(child) })"
+					:aria-label="t('builder.panel.nested.remove', { item: childLabel(child) })"
 					@click.stop="emit('remove-child', child.id)"
 				>
 					<Trash2 :size="12" />
@@ -106,21 +134,29 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 			</div>
 
 			<div v-if="children.length === 0" class="p-3 text-center text-xs text-text-tertiary">
-				No items yet
+				{{ t('builder.panel.nested.empty') }}
 			</div>
 		</div>
 
 		<!-- Add child -->
 		<div v-if="validChildTypes.length > 0" class="mt-1">
 			<select
-				:aria-label="blockType === 'accordion' ? 'Add section' : 'Add child block'"
+				:aria-label="
+					blockType === 'accordion'
+						? t('builder.panel.nested.addSection')
+						: t('builder.panel.nested.addChild')
+				"
 				class="w-full py-[7px] px-2 text-xs font-medium border border-dashed border-border-strong rounded-lg bg-bg-surface text-text-secondary cursor-pointer outline-none appearance-none bg-no-repeat bg-[right_8px_center] transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-text-tertiary hover:text-text-primary"
 				:style="{ backgroundImage: chevronBgImage }"
 				@change="(e) => { const val = (e.target as HTMLSelectElement).value; if (val) { emit('add-child', val as BlockType); (e.target as HTMLSelectElement).value = ''; } }"
 			>
-				<option value="">+ Add block...</option>
-				<option v-for="t in validChildTypes" :key="t.value" :value="t.value">
-					{{ t.label }}
+				<option value="">{{ t('builder.panel.nested.addBlock') }}</option>
+				<option
+					v-for="childType in validChildTypes"
+					:key="childType.value"
+					:value="childType.value"
+				>
+					{{ childType.label }}
 				</option>
 			</select>
 		</div>

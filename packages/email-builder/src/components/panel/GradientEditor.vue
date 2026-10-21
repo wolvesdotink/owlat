@@ -14,6 +14,9 @@ import {
 import ButtonGroup from '../ui/ButtonGroup.vue';
 import IconButton from '../ui/IconButton.vue';
 import ActionButton from '../ui/ActionButton.vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	modelValue?: GradientBackground;
@@ -25,13 +28,13 @@ const emit = defineEmits<{
 
 const isEnabled = computed(() => !!props.modelValue);
 
-const directionOptions = [
-	{ label: 'Right', value: 'to right', icon: ArrowRight },
-	{ label: 'Left', value: 'to left', icon: ArrowLeft },
-	{ label: 'Down', value: 'to bottom', icon: ArrowDown },
-	{ label: 'Up', value: 'to top', icon: ArrowUp },
+const directionOptions = computed(() => [
+	{ label: t('builder.panel.gradient.right'), value: 'to right', icon: ArrowRight },
+	{ label: t('builder.panel.gradient.left'), value: 'to left', icon: ArrowLeft },
+	{ label: t('builder.panel.gradient.down'), value: 'to bottom', icon: ArrowDown },
+	{ label: t('builder.panel.gradient.up'), value: 'to top', icon: ArrowUp },
 	{ label: '135°', value: '135deg', icon: ArrowDownRight },
-];
+]);
 
 const sortedStops = computed(() => {
 	if (!props.modelValue) return [];
@@ -123,7 +126,7 @@ function openColorPicker(index: number) {
 <template>
 	<div class="flex flex-col gap-1.5">
 		<div v-if="!isEnabled">
-			<ActionButton label="Enable Gradient" class="w-full" @click="enable" />
+			<ActionButton :label="t('builder.panel.gradient.enable')" class="w-full" @click="enable" />
 		</div>
 
 		<template v-else>
@@ -147,7 +150,7 @@ function openColorPicker(index: number) {
 			<!-- Direction -->
 			<div class="flex">
 				<ButtonGroup
-					label="Gradient direction"
+					:label="t('builder.panel.gradient.direction')"
 					:options="directionOptions"
 					:value="modelValue?.direction ?? 'to right'"
 					@update="updateDirection"
@@ -167,7 +170,9 @@ function openColorPicker(index: number) {
 							class="w-[22px] h-[22px] rounded-[5px] border-[1.5px] border-border-subtle cursor-pointer p-0 transition-[transform,box-shadow] duration-(--motion-moderate) hover:scale-[1.12] hover:border-text-tertiary"
 							:style="{ backgroundColor: stop.color }"
 							:title="stop.color"
-							:aria-label="`Stop ${index + 1} color, ${stop.color}`"
+							:aria-label="
+								t('builder.panel.gradient.stopColorValue', { index: index + 1, color: stop.color })
+							"
 							type="button"
 							@click="openColorPicker(index)"
 						/>
@@ -178,7 +183,7 @@ function openColorPicker(index: number) {
 								}
 							"
 							type="color"
-							:aria-label="`Stop ${index + 1} color`"
+							:aria-label="t('builder.panel.gradient.stopColor', { index: index + 1 })"
 							class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
 							:value="stop.color"
 							@input="(e) => updateStopColor(index, (e.target as HTMLInputElement).value)"
@@ -188,7 +193,7 @@ function openColorPicker(index: number) {
 					<!-- Range slider with gradient track -->
 					<input
 						type="range"
-						:aria-label="`Stop ${index + 1} position`"
+						:aria-label="t('builder.panel.gradient.stopPosition', { index: index + 1 })"
 						class="gradient-range flex-1 h-4 cursor-pointer"
 						:style="{ '--gradient-track': gradientTrackStyle }"
 						:value="stop.position"
@@ -203,7 +208,7 @@ function openColorPicker(index: number) {
 					<div class="flex items-center shrink-0">
 						<input
 							type="number"
-							:aria-label="`Stop ${index + 1} position, percent`"
+							:aria-label="t('builder.panel.gradient.stopPercent', { index: index + 1 })"
 							class="w-11 py-[3px] px-0.5 text-xs tabular-nums text-right border-none border-b border-b-transparent bg-transparent text-text-primary outline-none appearance-number-plain transition-[border-color] duration-(--motion-fast) hover:border-b-border-subtle focus:border-b-brand"
 							:value="stop.position"
 							min="0"
@@ -220,8 +225,8 @@ function openColorPicker(index: number) {
 					<IconButton
 						v-if="(modelValue?.stops.length ?? 0) > 2"
 						:icon="Trash2"
-						title="Remove stop"
-						:aria-label="`Remove stop ${index + 1}`"
+						:title="t('builder.panel.gradient.removeStop')"
+						:aria-label="t('builder.panel.gradient.removeStopIndex', { index: index + 1 })"
 						size="sm"
 						variant="destructive"
 						@click="removeStop(index)"
@@ -231,8 +236,18 @@ function openColorPicker(index: number) {
 
 			<!-- Footer actions -->
 			<div class="flex gap-1.5">
-				<ActionButton :icon="Plus" label="Add stop" variant="subtle" @click="addStop" />
-				<ActionButton :icon="X" label="Clear" variant="subtle" @click="clear" />
+				<ActionButton
+					:icon="Plus"
+					:label="t('builder.panel.gradient.addStop')"
+					variant="subtle"
+					@click="addStop"
+				/>
+				<ActionButton
+					:icon="X"
+					:label="t('builder.panel.gradient.clear')"
+					variant="subtle"
+					@click="clear"
+				/>
 			</div>
 		</template>
 	</div>

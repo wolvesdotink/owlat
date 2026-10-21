@@ -3,6 +3,9 @@ import { ref, computed } from 'vue';
 import { AlertCircle, AlertTriangle, Info } from '@lucide/vue';
 import type { PreviewValidationIssue } from '../../types';
 import AnalysisEmpty from './AnalysisEmpty.vue';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	validationIssues: PreviewValidationIssue[];
@@ -43,7 +46,7 @@ function toggleSeverity(severity: string) {
 				@click="toggleSeverity('error')"
 			>
 				<AlertCircle class="ep-filter-icon ep-filter-error" />
-				Errors ({{ issueCounts.error }})
+				{{ t('builder.analysis.validation.errors', { count: issueCounts.error }) }}
 			</button>
 			<button
 				class="ep-validation-filter"
@@ -51,7 +54,7 @@ function toggleSeverity(severity: string) {
 				@click="toggleSeverity('warning')"
 			>
 				<AlertTriangle class="ep-filter-icon ep-filter-warning" />
-				Warnings ({{ issueCounts.warning }})
+				{{ t('builder.analysis.validation.warnings', { count: issueCounts.warning }) }}
 			</button>
 			<button
 				class="ep-validation-filter"
@@ -59,7 +62,7 @@ function toggleSeverity(severity: string) {
 				@click="toggleSeverity('info')"
 			>
 				<Info class="ep-filter-icon ep-filter-info" />
-				Info ({{ issueCounts.info }})
+				{{ t('builder.analysis.validation.info', { count: issueCounts.info }) }}
 			</button>
 		</div>
 
@@ -91,7 +94,7 @@ function toggleSeverity(severity: string) {
 			</div>
 		</div>
 	</template>
-	<AnalysisEmpty v-else success>No validation issues found.</AnalysisEmpty>
+	<AnalysisEmpty v-else success>{{ t('builder.analysis.validation.empty') }}</AnalysisEmpty>
 </template>
 
 <style scoped>

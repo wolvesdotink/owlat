@@ -43,6 +43,9 @@ import {
 	mediaAssetIdentityKeyForImageSource,
 	storageIdentityKeyForImageSource,
 } from '../../utils/imageStorage';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	field: PropertyFieldType;
@@ -130,8 +133,20 @@ const isInlineLayout = computed(() => {
 	return ['toggle', 'number', 'slider'].includes(props.field.type);
 });
 
-const fontFamilyOptions = [
-	{ label: 'Default', value: '' },
+// Schema copy is English registry metadata, translated here where it is shown.
+const fieldLabel = computed(() => label(props.field.label));
+const fieldPlaceholder = computed(() =>
+	props.field.placeholder === undefined ? undefined : label(props.field.placeholder)
+);
+const fieldOptions = computed(() =>
+	(props.field.options ?? []).map((option) => ({ ...option, label: label(option.label) }))
+);
+const operatorOptions = computed(() =>
+	conditionOperatorOptions.map((option) => ({ ...option, label: label(option.label) }))
+);
+
+const fontFamilyOptions = computed(() => [
+	{ label: t('builder.panel.fontDefault'), value: '' },
 	{ label: 'Arial', value: 'Arial, sans-serif' },
 	{ label: 'Helvetica', value: 'Helvetica, Arial, sans-serif' },
 	{ label: 'Georgia', value: 'Georgia, serif' },
@@ -140,7 +155,7 @@ const fontFamilyOptions = [
 	{ label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
 	{ label: 'Trebuchet MS', value: "'Trebuchet MS', sans-serif" },
 	{ label: 'Tahoma', value: 'Tahoma, Geneva, sans-serif' },
-];
+]);
 </script>
 
 <template>
@@ -150,14 +165,14 @@ const fontFamilyOptions = [
 	>
 		<!-- Label: always shown except for toggle (which has its own label) -->
 		<FieldLabel v-if="field.type !== 'toggle'" :class="{ 'shrink-0 min-w-0': isInlineLayout }">
-			{{ field.label }}
+			{{ fieldLabel }}
 		</FieldLabel>
 
 		<!-- Toggle (uses its own inline label) -->
 		<ToggleField
 			v-if="field.type === 'toggle'"
 			:value="booleanValue"
-			:label="field.label"
+			:label="fieldLabel"
 			@update="(val) => emit('update', val)"
 		/>
 
@@ -165,8 +180,8 @@ const fontFamilyOptions = [
 		<TextField
 			v-else-if="field.type === 'text'"
 			:value="stringValue"
-			:label="field.label"
-			:placeholder="field.placeholder"
+			:label="fieldLabel"
+			:placeholder="fieldPlaceholder"
 			@update="(val) => emit('update', val)"
 		/>
 
@@ -175,7 +190,7 @@ const fontFamilyOptions = [
 			v-else-if="field.type === 'altText'"
 			:value="stringValue"
 			:decorative="isDecorative"
-			:placeholder="field.placeholder"
+			:placeholder="fieldPlaceholder"
 			@update="(val) => emit('update', val)"
 			@mark-decorative="emit('update-keyed', 'decorative', true)"
 		/>
@@ -183,10 +198,10 @@ const fontFamilyOptions = [
 		<!-- Textarea -->
 		<textarea
 			v-else-if="field.type === 'textarea'"
-			:aria-label="field.label"
+			:aria-label="fieldLabel"
 			class="w-full py-2 px-2.5 text-xs font-mono border border-border-subtle rounded-lg bg-bg-surface text-text-primary resize-y outline-none eb-input-ring"
 			:value="stringValue"
-			:placeholder="field.placeholder"
+			:placeholder="fieldPlaceholder"
 			rows="6"
 			@input="(e) => emit('update', (e.target as HTMLTextAreaElement).value)"
 		/>
@@ -203,7 +218,7 @@ const fontFamilyOptions = [
 		<NumberField
 			v-else-if="field.type === 'number'"
 			:value="numberValue"
-			:label="field.label"
+			:label="fieldLabel"
 			:min="field.min"
 			:max="field.max"
 			:step="field.step"
@@ -215,7 +230,7 @@ const fontFamilyOptions = [
 		<SliderField
 			v-else-if="field.type === 'slider'"
 			:value="numberValue"
-			:label="field.label"
+			:label="fieldLabel"
 			:min="field.min"
 			:max="field.max"
 			:step="field.step"
@@ -227,8 +242,8 @@ const fontFamilyOptions = [
 		<ColorField
 			v-else-if="field.type === 'color'"
 			:value="stringValue"
-			:label="field.label"
-			:placeholder="field.placeholder"
+			:label="fieldLabel"
+			:placeholder="fieldPlaceholder"
 			@update="(val) => emit('update', val)"
 		/>
 
@@ -236,8 +251,8 @@ const fontFamilyOptions = [
 		<SelectField
 			v-else-if="field.type === 'select'"
 			:value="value"
-			:label="field.label"
-			:options="field.options ?? []"
+			:label="fieldLabel"
+			:options="fieldOptions"
 			@update="(val) => emit('update', val)"
 		/>
 
@@ -245,8 +260,8 @@ const fontFamilyOptions = [
 		<TextField
 			v-else-if="field.type === 'url'"
 			:value="stringValue"
-			:label="field.label"
-			:placeholder="field.placeholder ?? 'https://'"
+			:label="fieldLabel"
+			:placeholder="fieldPlaceholder ?? 'https://'"
 			type="url"
 			@update="(val) => emit('update', val)"
 		/>
@@ -255,7 +270,7 @@ const fontFamilyOptions = [
 		<input
 			v-else-if="field.type === 'date'"
 			type="datetime-local"
-			:aria-label="field.label"
+			:aria-label="fieldLabel"
 			class="w-full py-2 px-2.5 text-[13px] border border-border-subtle rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring"
 			:value="stringValue ? stringValue.slice(0, 16) : ''"
 			@input="(e) => emit('update', new Date((e.target as HTMLInputElement).value).toISOString())"
@@ -313,9 +328,9 @@ const fontFamilyOptions = [
 		<SelectField
 			v-else-if="field.type === 'fontFamily'"
 			:value="stringValue"
-			:label="field.label"
+			:label="fieldLabel"
 			:options="fontFamilyOptions"
-			placeholder="Default"
+			:placeholder="t('builder.panel.fontDefault')"
 			@update="(val) => emit('update', val)"
 		/>
 
@@ -330,22 +345,22 @@ const fontFamilyOptions = [
 		<!-- Condition: show/hide the block based on a variable -->
 		<div v-else-if="field.type === 'condition'" class="flex flex-col gap-[5px]">
 			<TextField
-				label="Condition variable"
+				:label="t('builder.panel.condition.variable')"
 				:value="condition.variable ?? ''"
-				placeholder="Variable name"
+				:placeholder="t('builder.panel.condition.variablePlaceholder')"
 				@update="(v) => updateCondition({ variable: v })"
 			/>
 			<SelectField
-				label="Condition operator"
+				:label="t('builder.panel.condition.operator')"
 				:value="conditionOperator"
-				:options="conditionOperatorOptions"
+				:options="operatorOptions"
 				@update="(v) => updateCondition({ operator: v as ConditionOperator })"
 			/>
 			<TextField
 				v-if="conditionNeedsValue"
-				label="Condition value"
+				:label="t('builder.panel.condition.value')"
 				:value="condition.value ?? ''"
-				placeholder="Value"
+				:placeholder="t('builder.panel.condition.valuePlaceholder')"
 				@update="(v) => updateCondition({ value: v })"
 			/>
 		</div>
@@ -353,37 +368,38 @@ const fontFamilyOptions = [
 		<!-- Repeat: clone this block once per item in an array variable -->
 		<div v-else-if="field.type === 'repeat'" class="flex flex-col gap-2">
 			<div class="flex flex-col gap-[5px]">
-				<FieldLabel>Array variable</FieldLabel>
+				<FieldLabel>{{ t('builder.panel.repeat.arrayVariable') }}</FieldLabel>
 				<TextField
-					label="Repeat over variable"
+					:label="t('builder.panel.repeat.variable')"
 					:value="repeat.variable ?? ''"
-					placeholder="e.g. products"
+					:placeholder="t('builder.panel.repeat.variablePlaceholder')"
 					@update="(v) => updateRepeat({ variable: v })"
 				/>
 			</div>
 			<div class="flex flex-col gap-[5px]">
-				<FieldLabel>Item alias</FieldLabel>
+				<FieldLabel>{{ t('builder.panel.repeat.itemAlias') }}</FieldLabel>
 				<TextField
-					label="Item alias"
+					:label="t('builder.panel.repeat.itemAlias')"
 					:value="repeat.itemAlias ?? ''"
 					:placeholder="DEFAULT_ITEM_ALIAS"
 					@update="(v) => updateRepeat({ itemAlias: v })"
 				/>
 				<p class="text-[11px] leading-[1.4] text-text-tertiary m-0">
-					Reference each item with <code>{{ itemRefExample }}</code
-					>.
+					{{ t('builder.panel.repeat.referenceBefore') }}
+					<code>{{ itemRefExample }}</code
+					>{{ t('builder.panel.repeat.referenceAfter') }}
 				</p>
 			</div>
 			<div class="flex flex-col gap-[5px]">
-				<FieldLabel>Max items</FieldLabel>
+				<FieldLabel>{{ t('builder.panel.repeat.maxItems') }}</FieldLabel>
 				<input
 					type="number"
-					aria-label="Max items"
+					:aria-label="t('builder.panel.repeat.maxItems')"
 					min="1"
 					step="1"
 					class="w-full py-2 px-2.5 text-[13px] border border-border-subtle rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring placeholder:text-text-disabled appearance-number-plain"
 					:value="repeat.maxItems ?? ''"
-					placeholder="Unlimited"
+					:placeholder="t('builder.panel.repeat.unlimited')"
 					@input="(e) => updateRepeatMaxItems((e.target as HTMLInputElement).value)"
 				/>
 			</div>
@@ -391,7 +407,7 @@ const fontFamilyOptions = [
 
 		<!-- Help text -->
 		<p v-if="field.helpText" class="text-[11px] leading-[1.4] text-text-tertiary m-0">
-			{{ field.helpText }}
+			{{ label(field.helpText) }}
 		</p>
 	</div>
 </template>

@@ -4,6 +4,9 @@ import { Sparkles } from '@lucide/vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiModal from '@owlat/ui/components/ui/Modal.vue';
 import VariablePlaceholderTag from '../ui/VariablePlaceholderTag.vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
 
@@ -53,10 +56,12 @@ watch(
 </script>
 
 <template>
-	<UiModal :open="show" title="Add data variable" @update:open="handleClose">
+	<UiModal :open="show" :title="t('builder.variableDialog.title')" @update:open="handleClose">
 		<div class="space-y-4">
 			<div>
-				<label class="block text-sm font-medium text-text-secondary mb-2" for="variable-name">Variable name</label>
+				<label class="block text-sm font-medium text-text-secondary mb-2" for="variable-name">{{
+					t('builder.variableDialog.name')
+				}}</label>
 				<input
 					id="variable-name"
 					v-model="variableKey"
@@ -66,24 +71,26 @@ watch(
 					@keyup.enter="handleCreate"
 				/>
 				<p v-if="normalizedKey && !isValidKey" class="text-xs text-error mt-2">
-					Start with a letter and use only letters, numbers, or underscores.
+					{{ t('builder.variableDialog.invalid') }}
 				</p>
 				<p v-else-if="isDuplicate" class="text-xs text-warning mt-2">
-					A variable with this name already exists.
+					{{ t('builder.variableDialog.duplicate') }}
 				</p>
 			</div>
 
 			<div>
-				<label class="block text-sm font-medium text-text-secondary mb-2" for="variable-type">Type</label>
+				<label class="block text-sm font-medium text-text-secondary mb-2" for="variable-type">{{
+					t('builder.variableDialog.type')
+				}}</label>
 				<select
 					id="variable-type"
 					v-model="variableType"
 					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-(--motion-fast) focus:border-brand"
 				>
-					<option value="string">String</option>
-					<option value="number">Number</option>
-					<option value="boolean">Boolean</option>
-					<option value="date">Date</option>
+					<option value="string">{{ t('builder.variableDialog.types.string') }}</option>
+					<option value="number">{{ t('builder.variableDialog.types.number') }}</option>
+					<option value="boolean">{{ t('builder.variableDialog.types.boolean') }}</option>
+					<option value="date">{{ t('builder.variableDialog.types.date') }}</option>
 				</select>
 			</div>
 
@@ -91,8 +98,8 @@ watch(
 				class="flex items-center justify-between rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2"
 			>
 				<div>
-					<p class="text-xs text-text-tertiary">Preview</p>
-					<p class="text-sm text-text-primary mt-1">Used in the API payload</p>
+					<p class="text-xs text-text-tertiary">{{ t('builder.variableDialog.preview') }}</p>
+					<p class="text-sm text-text-primary mt-1">{{ t('builder.variableDialog.usage') }}</p>
 				</div>
 				<VariablePlaceholderTag :label="normalizedKey || 'variable'" />
 			</div>
@@ -100,13 +107,13 @@ watch(
 
 		<template #footer>
 			<UiButton variant="secondary" @click="handleClose">
-				Cancel
+				{{ t('builder.common.cancel') }}
 			</UiButton>
 			<UiButton variant="primary" :disabled="!canCreate" @click="handleCreate">
 				<template #iconLeft>
 					<Sparkles class="w-4 h-4" />
 				</template>
-				Create variable
+				{{ t('builder.variableDialog.create') }}
 			</UiButton>
 		</template>
 	</UiModal>

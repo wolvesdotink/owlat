@@ -11,6 +11,9 @@ import HealthTab from './analysis/HealthTab.vue';
 import SizeTab from './analysis/SizeTab.vue';
 import ValidationTab from './analysis/ValidationTab.vue';
 import CompatibilityTab from './analysis/CompatibilityTab.vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	emailAnalysis: PreviewEmailAnalysis | null;
@@ -39,12 +42,12 @@ const errorCount = computed(
 // Summary for the collapsed header.
 const headerSummary = computed(() => {
 	if (props.healthScore) {
-		return `Score: ${Math.round(props.healthScore.overall)}/100`;
+		return t('builder.analysis.score', { score: Math.round(props.healthScore.overall) });
 	}
 	if (props.emailAnalysis) {
 		return `${(props.emailAnalysis.htmlSizeBytes / 1024).toFixed(1)} KB`;
 	}
-	return 'Analysis';
+	return t('builder.analysis.title');
 });
 </script>
 
@@ -54,7 +57,7 @@ const headerSummary = computed(() => {
 		<button class="ep-analysis-header" @click="emit('toggle')">
 			<div class="ep-analysis-header-left">
 				<BarChart3 class="ep-analysis-header-icon" />
-				<span class="ep-analysis-header-title">Analysis</span>
+				<span class="ep-analysis-header-title">{{ t('builder.analysis.title') }}</span>
 				<span class="ep-analysis-header-summary">{{ headerSummary }}</span>
 				<Loader2 v-if="isAnalyzing" class="ep-analysis-spinner" />
 			</div>
@@ -70,21 +73,21 @@ const headerSummary = computed(() => {
 					:class="{ 'ep-analysis-tab-active': activeTab === 'health' }"
 					@click="activeTab = 'health'"
 				>
-					Health
+					{{ t('builder.analysis.tabs.health') }}
 				</button>
 				<button
 					class="ep-analysis-tab"
 					:class="{ 'ep-analysis-tab-active': activeTab === 'size' }"
 					@click="activeTab = 'size'"
 				>
-					Size
+					{{ t('builder.analysis.tabs.size') }}
 				</button>
 				<button
 					class="ep-analysis-tab"
 					:class="{ 'ep-analysis-tab-active': activeTab === 'validation' }"
 					@click="activeTab = 'validation'"
 				>
-					Validation
+					{{ t('builder.analysis.tabs.validation') }}
 					<span v-if="errorCount > 0" class="ep-analysis-tab-badge ep-badge-error">{{
 						errorCount
 					}}</span>
@@ -94,7 +97,7 @@ const headerSummary = computed(() => {
 					:class="{ 'ep-analysis-tab-active': activeTab === 'compatibility' }"
 					@click="activeTab = 'compatibility'"
 				>
-					Compatibility
+					{{ t('builder.analysis.tabs.compatibility') }}
 				</button>
 			</div>
 

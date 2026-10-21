@@ -39,6 +39,7 @@ export const accordionEditor: EditorModule<'accordion'> = {
 			type: 'section',
 			label: section.title || 'Untitled Section',
 			icon: null,
+			...(section.title ? {} : { labelKey: 'builder.canvas.preview.untitledSection' }),
 		}));
 	},
 
