@@ -207,17 +207,17 @@ export const appendMessage = internalMutation({
 			// Counters, participants, folder roles and the latest pointers all move
 			// with the new message; re-deriving them is simpler than patching each.
 			await rebuildThreadAggregates(ctx, threadId);
-			// Our reply sent from a desktop client settles the Reply Queue row and
-			// its obsolete drafts, as the same reply synced from a provider's Sent
-			// folder does.
-			const antiLoop = args.headerBlock ? extractAntiLoopHeaders(args.headerBlock) : undefined;
-			await settleOwnerReply(ctx, messageId, { isAutomated: isAutomatedResponse(antiLoop) });
 		} else {
 			// The conversation list links to latestMessageId; set it now that the
 			// appended message exists.
 			// A just-appended message is never snoozed (plan C8).
 			await ctx.db.patch(threadId, { latestMessageId: messageId, latestSnoozedUntil: null });
 		}
+		// Our mail sent from a desktop client settles the Reply Queue row and its
+		// obsolete drafts, and records whom we wrote to (a new conversation too,
+		// #1381), as the same mail synced from a provider's Sent folder does.
+		const antiLoop = args.headerBlock ? extractAntiLoopHeaders(args.headerBlock) : undefined;
+		await settleOwnerReply(ctx, messageId, { isAutomated: isAutomatedResponse(antiLoop) });
 
 		// E8b: the IMAP server uploads the raw `.eml` straight to storage
 		// (plaintext), so seal it at rest out-of-band — a mutation can't read/re-store

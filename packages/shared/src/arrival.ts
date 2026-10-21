@@ -115,6 +115,12 @@ export interface PlacementRecordInput {
 	category?: MailCategory;
 	categorySource?: CategorySource;
 	/**
+	 * The message carries a standing cold-pitch verdict (#1381,
+	 * `mail/arrival/coldPitch.ts`): unsolicited sales mail from a sender the
+	 * owner never corresponded with.
+	 */
+	isColdPitch?: boolean;
+	/**
 	 * The §2.4 exact-wording detector flagged this message's own text: it is
 	 * never placed in the digest or updates (#1384).
 	 */
@@ -148,6 +154,7 @@ export type PlacementDecider =
 	| 'sender_status'
 	| 'sender_override'
 	| 'rule'
+	| 'cold_pitch'
 	| 'category'
 	/** An exact-wording candidate lifted out of the digest or updates (#1384). */
 	| 'exact_wording';
@@ -281,8 +288,8 @@ export type ArrivalOperationChange =
 /** @public Contract type for the read-on-arrival lanes. */
 export type ArrivalOperationChangeKind = ArrivalOperationChange['kind'];
 
-/** Digest groups (§6.5). */
-export const DIGEST_KINDS = ['newsletter', 'updates', 'promotion'] as const;
+/** Digest groups (§6.5). `cold_outreach` holds the cold pitches (#1381). */
+export const DIGEST_KINDS = ['newsletter', 'updates', 'promotion', 'cold_outreach'] as const;
 /** @public Contract type for the read-on-arrival lanes. */
 export type DigestKind = (typeof DIGEST_KINDS)[number];
 

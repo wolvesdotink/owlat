@@ -4,7 +4,9 @@
  * R2's model call when the delivered message has pending rule questions
  * (SPEC §6.2, `mail/arrival/r2.ts`), split out of `categoryClassify.ts` at
  * the size cap. One call answers the questions from this message's scoped
- * text and, when the thread category is still unresolved, the category too.
+ * text, the cold-pitch question when the sender is a candidate (#1381,
+ * `mail/arrival/coldPitch.ts`) and, when the thread category is still
+ * unresolved, the category too.
  *
  * Behind the same gate as the plain refinement (the `ai` flag and the owner's
  * background rate limit, #1380) and metered as `postbox_category`. A budget
@@ -25,7 +27,9 @@ import { rethrowAdmissionRefusal } from '../../analytics/backgroundDeferral';
 import type { ArrivalAiAnswer, PendingAiFilter } from '../arrival/hooks';
 import {
 	answersOf,
+	isColdPitchAnswer,
 	r2AnswersSchema,
+	r2ColdPitchSchema,
 	R2_MESSAGE_CHARS,
 	r2QuestionsPrompt,
 	unansweredOf,
@@ -35,7 +39,17 @@ import { rateLimitRefusalOf } from './gate';
 import type { MailCategory } from '../category';
 
 export type CategoryQuestionsOutcome =
-	| { kind: 'answered'; answers: ArrivalAiAnswer[]; category?: MailCategory }
+	| {
+			kind: 'answered';
+			answers: ArrivalAiAnswer[];
+			category?: MailCategory;
+			/**
+			 * The model said yes to the cold-pitch question (asked only for a
+			 * candidate): the body fingerprint of the text it read, which the
+			 * commit rechecks.
+			 */
+			coldPitchSourceVersion?: string;
+	  }
 	| { kind: 'rateLimited'; retryAfter?: number };
 
 /**
@@ -53,6 +67,8 @@ export async function askCategoryQuestions(
 		category?: { prompt: string; field: z.ZodType<MailCategory> };
 		/** The caller already passed the gate for this call. */
 		isGateChecked?: boolean;
+		/** Also ask the cold-pitch question (#1381); the caller checked the candidate. */
+		isColdPitchAsked?: boolean;
 	}
 ): Promise<CategoryQuestionsOutcome> {
 	try {
@@ -68,10 +84,18 @@ export async function askCategoryQuestions(
 		if (!input && !args.category) {
 			return { kind: 'answered', answers: unansweredOf(args.questions) };
 		}
-		const questionsPart = input ? r2QuestionsPrompt(args.questions, input) : '';
-		const schema = args.category
-			? z.object({ category: args.category.field, answers: r2AnswersSchema })
-			: z.object({ answers: r2AnswersSchema });
+		// The cold-pitch question needs the message's own text, like the rule
+		// questions, and its fingerprint, so a stale yes cannot commit.
+		const coldPitchVersion = args.isColdPitchAsked === true ? input?.sourceVersion : undefined;
+		const isColdPitchAsked = coldPitchVersion !== undefined;
+		const questionsPart = input
+			? r2QuestionsPrompt(args.questions, input, { isColdPitchAsked })
+			: '';
+		const schema = z.object({
+			...(args.category ? { category: args.category.field } : {}),
+			...(args.questions.length > 0 ? { answers: r2AnswersSchema } : {}),
+			...(isColdPitchAsked ? { coldPitch: r2ColdPitchSchema } : {}),
+		});
 		const model = await resolveLanguageModel(ctx, 'mail.classify');
 		const { object } = await meterLlmCall(
 			ctx,
@@ -85,11 +109,18 @@ export async function askCategoryQuestions(
 					temperature: 0,
 				})
 		);
-		const parsed = object as { category?: MailCategory; answers?: z.infer<typeof r2AnswersSchema> };
+		const parsed = object as {
+			category?: MailCategory;
+			answers?: z.infer<typeof r2AnswersSchema>;
+			coldPitch?: z.infer<typeof r2ColdPitchSchema>;
+		};
 		return {
 			kind: 'answered',
 			answers: input ? answersOf(args.questions, parsed.answers) : unansweredOf(args.questions),
 			...(parsed.category ? { category: parsed.category } : {}),
+			...(coldPitchVersion !== undefined && isColdPitchAnswer(parsed.coldPitch)
+				? { coldPitchSourceVersion: coldPitchVersion }
+				: {}),
 		};
 	} catch (error) {
 		rethrowAdmissionRefusal(error);

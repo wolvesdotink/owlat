@@ -4,7 +4,7 @@
  * Read on arrival (SPEC §6.5): generating a digest's lines, from the brief
  * email's Node action.
  *
- * ONE `mail.digest` call over the ≤15 rendered lines: each line's input is
+ * ONE `mail.digest` call over the ≤20 rendered lines: each line's input is
  * the shared scoped-input builder at 800 characters (security mail,
  * exact-wording mail, fenced threads and undecryptable mail give null and are
  * rendered by subject only, with no model input), fenced as data and offered

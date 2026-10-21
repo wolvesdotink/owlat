@@ -51,6 +51,8 @@ import { postboxMutation } from '../_helpers';
 import { requireMailboxAccess } from '../permissions';
 import { isMailReadChangedBy } from '../interpret/scope';
 import { fenceThreadInterpretation } from '../interpret/staleFence';
+import { refreshArrivalProjection } from '../arrival/projection';
+import { clearColdPitchOfMessage } from '../arrival/coldPitch';
 
 /** A signed plaintext row whose verdict has no scope, so the reader withholds it. */
 export function needsSignatureReverify(
@@ -148,7 +150,10 @@ function isSettledVerdict(info: { failure?: string; keySource: string }): boolea
  * that meanwhile got a scoped verdict (a concurrent run) is left alone, and an
  * unscoped verdict is never written. When the new scope changes what
  * interpretation reads (`isReadChanged`) and the message was interpreted, its
- * thread's interpretation is fenced off in the same transaction.
+ * thread's interpretation is fenced off in the same transaction. A changed
+ * read also clears the message's cold-pitch verdict (#1381), which R2 judged
+ * on the old read whether or not a full interpretation exists; an R2 answer
+ * still in flight is refused by the body fingerprint.
  */
 export const apply = internalMutation({
 	args: {
@@ -162,9 +167,12 @@ export const apply = internalMutation({
 		const message = await ctx.db.get(args.messageId);
 		if (!message || !needsSignatureReverify(message)) return null;
 		await ctx.db.patch(args.messageId, { inboundSignatureInfo: args.info, updatedAt: Date.now() });
-		if (args.isReadChanged && (await isInterpreted(ctx, message))) {
-			await fenceThreadInterpretation(ctx, message.threadId);
-		}
+		if (!args.isReadChanged) return null;
+		const isFenced = await isInterpreted(ctx, message);
+		if (isFenced) await fenceThreadInterpretation(ctx, message.threadId);
+		const isPitchCleared = await clearColdPitchOfMessage(ctx, args.messageId);
+		// The arrival projection reads both the fence and the verdict (#1381).
+		if (isFenced || isPitchCleared) await refreshArrivalProjection(ctx, message.threadId);
 		return null;
 	},
 });

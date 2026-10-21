@@ -26,6 +26,7 @@ import type { OutboundAlignmentState } from '@owlat/shared';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
 import { memoizedEmailDomainVerification } from '../domains/domains';
 import { resolveMailboxTransport } from './outboundTransport';
+import { mailboxOwnAddresses } from './ownAddresses';
 
 /**
  * Shared helper for v8 mutations/queries: read the allowed-from set
@@ -40,24 +41,8 @@ export async function resolveAllowedFromAddressesForCtx(
 	return Array.from(await mailboxOwnAddresses(ctx, mailbox));
 }
 
-/**
- * Every address the mailbox itself sends and receives as: its canonical address
- * plus each alias that targets it, normalized. Unlike the From allow-set above it
- * ignores the mailbox's status, so delivery threading (which runs for any
- * mailbox that still receives mail) sees the same identities the composer does.
- */
-export async function mailboxOwnAddresses(
-	ctx: QueryCtx,
-	mailbox: Doc<'mailboxes'>
-): Promise<Set<string>> {
-	const aliases = await ctx.db
-		.query('mailAliases')
-		.withIndex('by_target', (q) => q.eq('targetMailboxId', mailbox._id))
-		.collect(); // bounded: aliases pointing at one target
-	const set = new Set<string>([normalizeEmail(mailbox.address)]);
-	for (const a of aliases) set.add(normalizeEmail(a.alias));
-	return set;
-}
+/** Re-exported: the read lives in `ownAddresses.ts` (see there). */
+export { mailboxOwnAddresses };
 
 /** Internal query for `'use node'` actions / out-of-isolate callers. */
 export const resolveAllowedFromAddresses = internalQuery({

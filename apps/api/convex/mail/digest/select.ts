@@ -9,8 +9,8 @@
  * `sourceOrderKey` at selection, which a sent digest consumes through.
  *
  * RENDERED LINES are chosen before generation: per kind (newsletters,
- * updates, promotions) the newest 5 threads, so at most 15 lines are
- * summarised. Every other visited thread is counted in `overflowByKind`
+ * updates, promotions, cold outreach) the newest 5 threads, so at most 20
+ * lines are summarised. Every other visited thread is counted in `overflowByKind`
  * ("and N more"), exactly when ≤200 were visited, else at least ("200+").
  *
  * Isolate-safe; not a Convex function.
@@ -25,7 +25,12 @@ export const DIGEST_MAX_VISITED = 200;
 /** Rendered lines per kind. */
 export const DIGEST_LINES_PER_KIND = 5;
 /** The kinds in the order the email shows them. */
-export const DIGEST_KIND_ORDER: readonly DigestKind[] = ['newsletter', 'updates', 'promotion'];
+export const DIGEST_KIND_ORDER: readonly DigestKind[] = [
+	'newsletter',
+	'updates',
+	'promotion',
+	'cold_outreach',
+];
 
 type Digest = Doc<'mailDigests'>;
 
@@ -36,11 +41,21 @@ export interface DigestSelection {
 	overflowLabel: Digest['overflowLabel'];
 }
 
-/** The digest kind of a thread, from its category. Pure. */
-export function digestKindOf(category: string | undefined): DigestKind {
+/**
+ * The digest kind of a thread: Cold outreach when its newest inbound message
+ * carries a cold-pitch verdict (#1381, `arrival/coldPitch.ts`), else from its
+ * category. Pure.
+ */
+export function digestKindOf(category: string | undefined, isColdPitch = false): DigestKind {
+	if (isColdPitch) return 'cold_outreach';
 	if (category === 'newsletter') return 'newsletter';
 	if (category === 'promotion') return 'promotion';
 	return 'updates';
+}
+
+/** A zero count per digest kind. Pure. */
+function emptyCounts(): Record<DigestKind, number> {
+	return { newsletter: 0, updates: 0, promotion: 0, cold_outreach: 0 };
 }
 
 /** One candidate thread, newest first. */
@@ -58,8 +73,8 @@ export interface DigestCandidate {
 export function selectDigest(candidates: readonly DigestCandidate[]): DigestSelection {
 	const isTruncated = candidates.length > DIGEST_MAX_VISITED;
 	const visitedCandidates = candidates.slice(0, DIGEST_MAX_VISITED);
-	const perKind: Record<DigestKind, number> = { newsletter: 0, updates: 0, promotion: 0 };
-	const overflowByKind: Record<DigestKind, number> = { newsletter: 0, updates: 0, promotion: 0 };
+	const perKind = emptyCounts();
+	const overflowByKind = emptyCounts();
 	const items: Digest['items'] = [];
 	for (const candidate of visitedCandidates) {
 		if (perKind[candidate.kind] < DIGEST_LINES_PER_KIND) {
@@ -104,7 +119,7 @@ export async function readDigestCandidates(
 			threadId: thread._id,
 			messageId: thread.arrival.messageId,
 			throughSourceOrderKey: thread.arrival.sourceOrderKey ?? '',
-			kind: digestKindOf(thread.category?.label),
+			kind: digestKindOf(thread.category?.label, thread.arrival.isColdPitch === true),
 		});
 	}
 	return candidates;

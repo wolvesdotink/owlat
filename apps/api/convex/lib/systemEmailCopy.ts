@@ -122,7 +122,7 @@ interface DailyBriefEmailCopy {
 	/** Read on arrival's digest section (SPEC §6.5, mail/digest/emailBlocks.ts). */
 	digestSubject: string;
 	digestHeading: string;
-	digestGroups: Record<'newsletter' | 'updates' | 'promotion', string>;
+	digestGroups: Record<'newsletter' | 'updates' | 'promotion' | 'cold_outreach', string>;
 	digestMore: (count: number) => string;
 	digestAtLeastMore: (count: number) => string;
 }
@@ -150,7 +150,12 @@ const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
 		sendersLink: 'Review your senders',
 		digestSubject: 'Your daily brief — your digest',
 		digestHeading: 'Your digest',
-		digestGroups: { newsletter: 'Newsletters', updates: 'Updates', promotion: 'Promotions' },
+		digestGroups: {
+			newsletter: 'Newsletters',
+			updates: 'Updates',
+			promotion: 'Promotions',
+			cold_outreach: 'Cold outreach',
+		},
 		digestMore: (count) => `and ${count} more`,
 		digestAtLeastMore: (count) => `and at least ${count} more`,
 	},
@@ -175,7 +180,12 @@ const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
 		sendersLink: 'Absender ansehen',
 		digestSubject: 'Dein Tagesüberblick — dein Digest',
 		digestHeading: 'Dein Digest',
-		digestGroups: { newsletter: 'Newsletter', updates: 'Updates', promotion: 'Werbung' },
+		digestGroups: {
+			newsletter: 'Newsletter',
+			updates: 'Updates',
+			promotion: 'Werbung',
+			cold_outreach: 'Kaltakquise',
+		},
 		digestMore: (count) => `und ${count} weitere`,
 		digestAtLeastMore: (count) => `und mindestens ${count} weitere`,
 	},

@@ -90,6 +90,14 @@ export const mailArrivalTables = {
 		exclusiveWinners: v.optional(exclusiveWinnersValidator),
 		// ABA guard for undoing a `recordRulePlacement` change (§4.4).
 		lastOperationId: v.optional(v.id('mailArrivalOperations')),
+		// When R2 judged this message a cold sales pitch (#1381,
+		// mail/arrival/coldPitch.ts). Absent: no verdict, a negative one, or one
+		// relationship evidence (a reply, a contact row, an override) cleared.
+		coldPitchAt: v.optional(v.number()),
+		// The sender's digest (like `mailSenderProfiles.senderDigest`), set and
+		// cleared with `coldPitchAt`: finds a sender's verdicts when evidence
+		// about the sender appears.
+		coldPitchSenderDigest: v.optional(v.string()),
 		modelCalls: v.number(),
 		reasonKeys: v.array(reasonKeyValidator),
 		degradedBy: v.optional(degradedByValidator),
@@ -103,6 +111,8 @@ export const mailArrivalTables = {
 		.index('by_thread_source_order', ['threadId', 'sourceOrderKey'])
 		// Mailbox erasure.
 		.index('by_mailbox', ['mailboxId'])
+		// #1381: a sender's standing cold-pitch verdicts (unset on every other record).
+		.index('by_mailbox_cold_pitch_sender', ['mailboxId', 'coldPitchSenderDigest'])
 		.index('by_expires', ['expiresAt']),
 
 	// One row per (mailbox, sender). The sender is keyed by `senderDigest`

@@ -13272,6 +13272,7 @@
 				"needs_reply": "Sie fragt dich etwas und wartet auf deine Antwort",
 				"sender_status": "Wie du mit diesem Absender umgehst",
 				"rule": "Eine deiner Regeln",
+				"cold_pitch": "Ein Verkaufsangebot von jemandem, dem du nie geschrieben hast",
 				"category": "Die Art der Mail",
 				"exact_wording": "Sie enthält Zahlungs- oder Rechtshinweise, deshalb bleibt sie aus deiner Zusammenfassung und den Neuigkeiten heraus",
 				"senderStatus": {
@@ -18050,6 +18051,10 @@
 					"aiDraft": {
 						"description": "Braucht eine persönliche Nachricht eine Antwort, liegt ein Entwurf in der Antwortliste bereit. Du prüfst ihn immer, bevor er gesendet wird.",
 						"label": "Antworten in persönlicher Mail entwerfen"
+					},
+					"coldPitch": {
+						"description": "Prüft, ob Mail von einem Absender, dem du nie geschrieben hast, ein unaufgefordertes Verkaufsangebot ist. Ein solches Angebot wartet in deinem Digest unter Kaltakquise statt in der Antwortliste. Es wird nie als Spam markiert.",
+						"label": "Kaltakquise aus der Antwortliste heraushalten"
 					},
 					"description": "Postfächer pro Benutzer mit Webmail-Oberfläche, IMAP/SMTP für native Clients und MX-basierter Zustellung (Gmail-Äquivalent).",
 					"label": "Persönliche Mail (Postbox)"

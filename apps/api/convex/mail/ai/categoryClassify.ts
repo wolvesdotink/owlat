@@ -146,33 +146,47 @@ async function retryRateLimited(
 }
 
 /**
- * R2 for a category already settled (an override, a heuristic label): only
- * this message's questions. Their answers are committed through the rules
+ * R2 for a category already settled (an override, a heuristic label): this
+ * message's questions and the cold-pitch question for a candidate (#1381),
+ * in one call; either alone is enough to make it. A heuristic label does not
+ * keep a pitch out of Needs you (a settled reply verdict outranks it), so a
+ * candidate is asked here too. The answers are committed through the rules
  * hook; a rate limit retries the whole action, bounded.
  */
 async function answerQuestionsOnly(
 	ctx: ActionCtx,
 	args: ClassifyArgs,
 	questions: readonly PendingAiFilter[],
-	owner: { ownerUserId: string; latestMessageId?: Id<'mailMessages'> | null }
+	owner: { ownerUserId: string; latestMessageId?: Id<'mailMessages'> | null },
+	isColdPitchAsked: boolean
 ): Promise<void> {
-	if (!args.messageId || questions.length === 0) return;
+	if (!args.messageId || (questions.length === 0 && !isColdPitchAsked)) return;
 	const outcome = await askCategoryQuestions(ctx, {
 		messageId: args.messageId,
 		questions,
 		ownerUserId: owner.ownerUserId,
 		root: postboxRoot(args.threadId, args.messageId),
+		isColdPitchAsked,
 	});
 	if (outcome.kind === 'rateLimited') {
 		if (await retryRateLimited(ctx, args, outcome.retryAfter)) return;
 		await commitAnswers(ctx, args.messageId, unansweredOf(questions));
 		return;
 	}
-	await commitAnswers(ctx, args.messageId, outcome.answers);
+	await commitAnswers(ctx, args.messageId, outcome.answers, outcome.coldPitchSourceVersion);
 }
 
-function commitAnswers(ctx: ActionCtx, messageId: Id<'mailMessages'>, answers: ArrivalAiAnswer[]) {
-	return ctx.runMutation(internal.mail.arrival.r2.commitArrivalAiAnswers, { messageId, answers });
+function commitAnswers(
+	ctx: ActionCtx,
+	messageId: Id<'mailMessages'>,
+	answers: ArrivalAiAnswer[],
+	coldPitchSourceVersion?: string
+) {
+	return ctx.runMutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
+		messageId,
+		answers,
+		...(coldPitchSourceVersion !== undefined ? { coldPitchSourceVersion } : {}),
+	});
 }
 
 export const classifyThread = internalAction({
@@ -192,6 +206,13 @@ export const classifyThread = internalAction({
 						messageId: args.messageId,
 					})
 				: [];
+			// #1381: a sender the cheap evidence leaves open also gets the cold-pitch question.
+			const isColdPitchAsked = args.messageId
+				? await ctx.runQuery(internal.mail.arrival.coldPitch.isAskable, {
+						messageId: args.messageId,
+						...(args.precedence !== undefined ? { precedence: args.precedence } : {}),
+					})
+				: false;
 
 			// 1. User override always wins — no heuristic, no LLM.
 			if (context.override) {
@@ -201,7 +222,7 @@ export const classifyThread = internalAction({
 					label: context.override,
 					source: 'user',
 				});
-				await answerQuestionsOnly(ctx, args, questions, context);
+				await answerQuestionsOnly(ctx, args, questions, context, isColdPitchAsked);
 				return;
 			}
 
@@ -222,7 +243,7 @@ export const classifyThread = internalAction({
 					label: resolved.label,
 					source: resolved.source,
 				});
-				await answerQuestionsOnly(ctx, args, questions, context);
+				await answerQuestionsOnly(ctx, args, questions, context, isColdPitchAsked);
 				return;
 			}
 
@@ -253,8 +274,9 @@ export const classifyThread = internalAction({
 
 				const root = postboxRoot(args.threadId, context.latestMessageId ?? undefined);
 				let llm: MailCategory;
-				if (args.messageId && questions.length > 0) {
-					// R2: the category and this message's questions in one call.
+				if (args.messageId && (questions.length > 0 || isColdPitchAsked)) {
+					// R2: the category, this message's questions and the cold-pitch
+					// question in one call.
 					const outcome = await askCategoryQuestions(ctx, {
 						messageId: args.messageId,
 						questions,
@@ -265,6 +287,7 @@ export const classifyThread = internalAction({
 							field: categoryRefinementSchema.shape.category,
 						},
 						isGateChecked: true,
+						isColdPitchAsked,
 					});
 					if (outcome.kind === 'rateLimited') {
 						if (await retryRateLimited(ctx, args, outcome.retryAfter)) return;
@@ -276,6 +299,9 @@ export const classifyThread = internalAction({
 					await ctx.runMutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
 						messageId: args.messageId,
 						answers: outcome.answers,
+						...(outcome.coldPitchSourceVersion !== undefined
+							? { coldPitchSourceVersion: outcome.coldPitchSourceVersion }
+							: {}),
 						...(resolved
 							? {
 									category: {

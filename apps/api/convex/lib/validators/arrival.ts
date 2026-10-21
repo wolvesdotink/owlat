@@ -91,6 +91,9 @@ export const threadArrivalValidator = v.object({
 	messageId: v.id('mailMessages'),
 	sourceOrderKey: v.optional(v.string()),
 	decidedAt: v.number(),
+	// The newest inbound message carries a cold-pitch verdict (#1381): its
+	// digest line goes under Cold outreach.
+	isColdPitch: v.optional(v.boolean()),
 });
 
 /** A thread-scope placement override, set by Fix (§4.2). */
@@ -249,7 +252,7 @@ export const delayedActionCancelReasonValidator = v.union(
 
 // ── Digest ────────────────────────────────────────────────────────────────
 
-/** One rendered digest line (≤5 per kind, ≤15 in all, §6.5). Spans sealed. */
+/** One rendered digest line (≤5 per kind, ≤20 in all, §6.5). Spans sealed. */
 export const digestItemValidator = v.object({
 	threadId: v.id('mailThreads'),
 	messageId: v.id('mailMessages'),
@@ -269,6 +272,8 @@ export const digestOverflowByKindValidator = v.object({
 	newsletter: v.number(),
 	updates: v.number(),
 	promotion: v.number(),
+	// Optional: digests written before the group existed (#1381) lack it.
+	cold_outreach: v.optional(v.number()),
 });
 
 export const digestStateValidator = v.union(

@@ -8,18 +8,21 @@
  *   1. the thread's placement override (a message-scope Fix), unless it is
  *      older than an exact-wording candidate (below)
  *   2. a SETTLED needs-reply verdict → needs_me (a heuristic candidate still
- *      pending is not settled, so it reads as `today` until the verdict lands)
+ *      pending is not settled, so it reads as `today` until the verdict lands),
+ *      unless the record carries a cold-pitch verdict: both are inferred, and
+ *      the cold-pitch one only exists for a sender the owner never wrote to
  *   3. sender status unsubscribed / auto_archive → archived; digest → digest
  *   4. the sender's placement override
  *   5. a rule placement action, from the arrival record
- *   6. the category: newsletter / promotion → digest, notification / receipt
+ *   6. a cold-pitch verdict on the record → digest (#1381)
+ *   7. the category: newsletter / promotion → digest, notification / receipt
  *      → updates, anything else → today
  *
  * An exact-wording candidate (changed bank details, a legal notice, an invoice
  * with payment details: `exactWordingDetector.ts`) is never buried (#1384):
- * when steps 3–6 place it in the digest or updates (the sender's digest
- * status, a sender override, a rule, the category), it reads as `today`
- * instead. A thread override to the digest or updates that was set before
+ * when steps 3–7 place it in the digest or updates (the sender's digest
+ * status, a sender override, a rule, a cold-pitch verdict, the category), it
+ * reads as `today` instead. A thread override to the digest or updates that was set before
  * the candidate arrived is an older choice about the conversation, not about
  * this message, and does not bury it either ({@link doesThreadOverrideHold}).
  * The person's explicit choices still win: a thread override set after the
@@ -61,7 +64,9 @@ export function computePlacement(
 	}
 	// An older override overruled by the wording: Today is the wording's doing.
 	const isOverruled = override !== undefined;
-	if (thread.isReplyNeeded) return { placement: 'needs_me', decidedBy: 'needs_reply' };
+	if (thread.isReplyNeeded && !record.isColdPitch) {
+		return { placement: 'needs_me', decidedBy: 'needs_reply' };
+	}
 	const status = senderProfile?.status ?? 'keep';
 	if (status === 'unsubscribed' || status === 'auto_archive') {
 		return { placement: 'archived', decidedBy: 'sender_status' };
@@ -96,7 +101,7 @@ export function doesThreadOverrideHold(
 	return override.setAt >= record.arrivedAt;
 }
 
-/** Steps 3 (digest) to 6 of the precedence. Pure. */
+/** Steps 3 (digest) to 7 of the precedence. Pure. */
 function placementBelowStatus(
 	record: PlacementRecordInput,
 	status: PlacementSenderInput['status'],
@@ -107,5 +112,6 @@ function placementBelowStatus(
 		return { placement: senderProfile.placementOverride, decidedBy: 'sender_override' };
 	}
 	if (record.rulePlacement) return { placement: record.rulePlacement, decidedBy: 'rule' };
+	if (record.isColdPitch) return { placement: 'digest', decidedBy: 'cold_pitch' };
 	return placementOfCategory(record.category);
 }

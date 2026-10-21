@@ -21,6 +21,7 @@ import {
 	type PriorityUrgency,
 } from './priorityScore';
 import { isHeldOutByScreener, loadSenderContact, senderEvidenceOf } from '../senderEvidence';
+import { isHeldOutAsColdPitch } from '../arrival/coldPitch';
 
 /**
  * The personal address-book row of the sender, the one lookup both the
@@ -56,8 +57,10 @@ export async function resolveScreenerEnabled(
 /**
  * Compute the unified priority score for a needs-reply result and apply the
  * first-time-sender screener. Returns the result with `priorityScore` set, or
- * `null` when the screener held an unknown sender out of the queue. Generic in
- * the result shape so `needsReply.applyResult` keeps its exact validator type.
+ * `null` when the screener held an unknown sender out of the queue, or the
+ * message carries a cold-pitch verdict (#1381, `mail/arrival/coldPitch.ts`).
+ * Generic in the result shape so `needsReply.applyResult` keeps its exact
+ * validator type.
  */
 export async function scoreAndScreenResult<
 	T extends { messageId: Id<'mailMessages'>; urgency: PriorityUrgency },
@@ -71,6 +74,8 @@ export async function scoreAndScreenResult<
 	}
 ): Promise<T | null> {
 	const now = Date.now();
+	// A cold pitch is held out like a screened sender, whatever the classifier says.
+	if (await isHeldOutAsColdPitch(ctx, opts.message)) return null;
 	const contact = await loadSenderRow(ctx, opts.mailbox._id, opts.message.fromAddress);
 	const screenerEnabled = await resolveScreenerEnabled(ctx, opts.mailbox);
 	if (isHeldOutByScreener({ screenerEnabled, sender: senderEvidenceOf(contact) })) {

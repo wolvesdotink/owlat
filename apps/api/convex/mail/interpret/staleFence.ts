@@ -29,6 +29,7 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
+import { internal } from '../../_generated/api';
 import { internalMutation } from '../../lib/writeFence';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { interpretationSourceValidator } from '../../lib/validators/threadBrief';
@@ -131,7 +132,8 @@ export async function fenceThreadInterpretation(
 /**
  * OPERATOR: lift the fence of one thread, once its interpretation as it
  * stands may be used again (see the module doc). Nothing else changes; the
- * list projection fills in again with the thread's next interpretation write.
+ * list projection fills in again with the thread's next interpretation write,
+ * and the arrival projection is recomputed right after.
  *
  *   npx convex run mail/interpret/staleFence:release '{"threadId":"…"}'
  */
@@ -142,6 +144,11 @@ export const release = internalMutation({
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread || !isFencedThread(thread)) return false;
 		await ctx.db.patch(args.threadId, { interpretationStaleSince: undefined });
+		// The arrival projection reads the fence (a cold-pitch verdict, #1381):
+		// re-place the thread. Scheduled, as the projection imports this module.
+		await ctx.scheduler.runAfter(0, internal.mail.senders.resortChain.continueResort, {
+			threadIds: [args.threadId],
+		});
 		return true;
 	},
 });

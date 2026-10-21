@@ -47,6 +47,7 @@ import { invalidateSenderMemoryForCorrection } from '../decision/senderMemory';
 import { recordOwnerCorrection } from '../decision/artifacts';
 import { wakeCategoryDeferredRuns, wakeCategoryDepthWaits } from './interpret/categoryDefer';
 import { noteRecordCategory } from './arrival/records';
+import { voidColdPitchVerdictsOfSender } from './arrival/coldPitch';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
@@ -417,6 +418,8 @@ export const recategorize = postboxMutation({
 				latestInbound.fromAddress
 			);
 			await recordOwnerCorrection(ctx, { mailMessageId: latestInbound._id });
+			// An owner choice about the sender: their cold-pitch verdicts no longer stand (#1381).
+			await voidColdPitchVerdictsOfSender(ctx, thread.mailboxId, latestInbound.fromAddress);
 		}
 
 		const previous = thread.category?.label;

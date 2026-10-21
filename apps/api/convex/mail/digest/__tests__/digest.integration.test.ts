@@ -88,7 +88,12 @@ describe('selectDigest', () => {
 		const selection = selectDigest(candidates);
 		expect(selection.items.filter((item) => item.kind === 'newsletter')).toHaveLength(5);
 		expect(selection.items.filter((item) => item.kind === 'updates')).toHaveLength(3);
-		expect(selection.overflowByKind).toEqual({ newsletter: 7, updates: 0, promotion: 0 });
+		expect(selection.overflowByKind).toEqual({
+			newsletter: 7,
+			updates: 0,
+			promotion: 0,
+			cold_outreach: 0,
+		});
 		expect(selection.overflowLabel).toBe('exact');
 		expect(selection.visited).toHaveLength(15);
 		expect(selection.visited[0]).toEqual({

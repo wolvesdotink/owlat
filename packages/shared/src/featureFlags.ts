@@ -37,6 +37,7 @@ export type CoreFeatureFlagKey =
 	| 'chat'
 	| 'postbox'
 	| 'postbox.aiDraft'
+	| 'postbox.coldPitch'
 	| 'mail.external'
 	| 'calendar.booking'
 	// AI
@@ -248,6 +249,19 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		// honest dependency. resolveFlags forces this OFF whenever `ai` is off or
 		// neither source is on, so a disabled AI stack degrades to today's
 		// behaviour.
+		requires: ['ai'],
+		requiresAny: [['postbox', 'mail.external']],
+	},
+	'postbox.coldPitch': {
+		key: 'postbox.coldPitch',
+		category: 'ai',
+		label: 'Hold cold sales pitches out of the Answer queue',
+		description:
+			'Ask whether mail from a sender you have never written to is an unsolicited sales pitch. A pitch waits in your digest under Cold outreach instead of the Answer queue. It is never marked as spam.',
+		default: false,
+		// Off until the cold-pitch question passes its labelled sample
+		// (`apps/api/scripts/cold-pitch-eval.ts`). Same prerequisites as
+		// draft-on-arrival: the AI master toggle and a personal mailbox source.
 		requires: ['ai'],
 		requiresAny: [['postbox', 'mail.external']],
 	},

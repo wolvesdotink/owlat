@@ -11,13 +11,15 @@
  *   - the needs-reply verdict set or cleared (`mail/needsReply.ts applyResult`,
  *     `clearThreadNeedsReply`, the pending settle)
  *   - Fix, Undo, sender-status changes, overrides (lanes learn and senders)
+ *   - a cold-pitch verdict committed or cleared (`coldPitch.ts`)
  *
  * So there is no generation counter: a stale action result is just an input
  * patch followed by a recompute. Placement itself is `computePlacement`
  * (`@owlat/shared/arrivalPlacement`). A shared mailbox has no projection.
  *
  * Bounded: four point reads (thread, mailbox, newest record, its message) and
- * one indexed sender-profile read.
+ * one indexed sender-profile read, plus, only for a record carrying a
+ * cold-pitch verdict, that verdict's evidence (`coldPitchEvidence.ts`).
  *
  * Isolate-safe; not a Convex function.
  */
@@ -28,6 +30,7 @@ import type { ComputePlacementResult, MailCategory } from '@owlat/shared/arrival
 import { computePlacement } from '@owlat/shared/arrivalPlacement';
 import { loadSenderProfile, senderKeyOf } from '../senders/profiles';
 import { isPersonalMailbox } from '../permissions';
+import { loadColdPitchStanding } from './coldPitchEvidence';
 
 type Thread = Doc<'mailThreads'>;
 
@@ -47,9 +50,11 @@ export function isReplyVerdictSettled(
 /**
  * `computePlacement` over the stored inputs: the record (its rule placement,
  * exact-wording screen, arrival time and category, else the thread's), the
- * thread (override and when it was set, settled reply verdict)
- * and the sender profile. Shared by the projection and Explain, so "why here"
- * always answers from the same inputs the projection placed it with. Pure.
+ * thread (override and when it was set, settled reply verdict), the sender
+ * profile and whether the record's cold-pitch verdict stands
+ * (`coldPitchEvidence.ts loadColdPitchStanding`). Shared by the projection and
+ * Explain, so "why here" always answers from the same inputs the projection
+ * placed it with. Pure.
  */
 export function placementOf(
 	record: Pick<
@@ -57,7 +62,8 @@ export function placementOf(
 		'rulePlacement' | 'category' | 'categorySource' | 'isExactWordingCandidate' | 'createdAt'
 	>,
 	thread: Pick<Thread, 'category' | 'placementOverride' | 'needsReply' | 'needsReplyPendingAt'>,
-	profile: Pick<Doc<'mailSenderProfiles'>, 'status' | 'placementOverride'> | null
+	profile: Pick<Doc<'mailSenderProfiles'>, 'status' | 'placementOverride'> | null,
+	isColdPitch: boolean
 ): ComputePlacementResult {
 	const category: MailCategory | undefined = record.category ?? thread.category?.label;
 	const categorySource = record.categorySource ?? thread.category?.source;
@@ -66,6 +72,7 @@ export function placementOf(
 			...(record.rulePlacement ? { rulePlacement: record.rulePlacement } : {}),
 			...(category ? { category } : {}),
 			...(categorySource ? { categorySource } : {}),
+			...(isColdPitch ? { isColdPitch: true } : {}),
 			...(record.isExactWordingCandidate ? { isExactWordingCandidate: true } : {}),
 			arrivedAt: record.createdAt,
 		},
@@ -104,7 +111,8 @@ function sameArrival(a: Thread['arrival'], b: NonNullable<Thread['arrival']>): b
 		a.placement === b.placement &&
 		a.depth === b.depth &&
 		a.messageId === b.messageId &&
-		a.sourceOrderKey === b.sourceOrderKey
+		a.sourceOrderKey === b.sourceOrderKey &&
+		a.isColdPitch === b.isColdPitch
 	);
 }
 
@@ -131,7 +139,8 @@ export async function refreshArrivalProjection(
 	const message = record ? await ctx.db.get(record.messageId) : null;
 	if (!record || !message) return clearProjection(ctx, thread);
 	const profile = await senderProfileOf(ctx, thread.mailboxId, message.fromAddress);
-	const { placement } = placementOf(record, thread, profile);
+	const isColdPitch = await loadColdPitchStanding(ctx, record);
+	const { placement } = placementOf(record, thread, profile, isColdPitch);
 	const now = Date.now();
 	const next = {
 		placement,
@@ -139,6 +148,7 @@ export async function refreshArrivalProjection(
 		messageId: record.messageId,
 		...(record.sourceOrderKey ? { sourceOrderKey: record.sourceOrderKey } : {}),
 		decidedAt: now,
+		...(isColdPitch ? { isColdPitch: true } : {}),
 	};
 	// §6.5: pending for the digest while the placement is digest and the newest
 	// inbound message lies past what the last sent digest consumed.
