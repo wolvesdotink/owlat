@@ -117,10 +117,22 @@ The web app's `lint` script (`apps/web`) runs gates of its own, including:
 Run these before submitting a PR:
 
 ```bash
-bun run typecheck  # TypeScript checking across all packages
-bun run lint       # Oxlint
-bun run ox:fmt     # Format with Oxfmt
+bun run typecheck    # TypeScript checking across all packages
+bun run lint         # Oxlint
+bun run lint:format  # oxfmt check of the JS/TS files your branch changes
 ```
+
+Format only the files you changed, with the repository's config:
+
+```bash
+./node_modules/.bin/oxfmt --config oxfmtrc.json <paths>
+```
+
+Avoid `bun run ox:fmt` before a commit: the repository predates its formatter
+config, so a whole-tree run rewrites several hundred files the change never
+touched. Bare `npx oxfmt` / `bunx oxfmt` ignore `oxfmtrc.json` or fetch a
+different version. `bun run ci:lint` does not typecheck, so run
+`bun run typecheck` (or `bun run ci:typecheck`) as well.
 
 Or run everything CI checks at once:
 
@@ -203,7 +215,40 @@ Use descriptive branch names with a prefix:
 
 ### Commit Messages
 
-Write clear, concise commit messages. Use imperative mood ("Add feature" not "Added feature"). A short summary on the first line is sufficient for most changes; add a body for complex ones.
+Commit subjects and PR titles use [Conventional Commits](https://www.conventionalcommits.org/)
+with a plain-language summary that says what changes for the reader:
+
+```
+type(scope): plain language
+```
+
+```
+fix(web): show a failed share review instead of loading forever
+feat(api): let a team inbox hold drafts until a gap is answered
+test(mta): await the socket close instead of sleeping
+```
+
+- Types: `fix`, `feat`, `test`, `perf`, `refactor`, `docs`, `chore`,
+  `ci`, `build`, `style`.
+- Scopes name the workspace or area. The ones in use are `api`, `web`,
+  `ui`, `postbox`, `inbox`, `mta`, `imap`, `mail-sync`, `shared`,
+  `email-builder`, `email-renderer`, `mail-message`, `smtp-listener`,
+  `desktop`, `setup-cli`, `updater`, `webhooks`, `ai`, `docs`, `ci`,
+  `scripts`, `deps` and `release`. Pick the narrowest one that fits. A change
+  that spans two areas can name both (`fix(api,web): ...`), but that is rare.
+- Keep the subject in lowercase after the colon and without a trailing period.
+  Add a body for anything the subject cannot carry: the reason, a constraint,
+  what was deliberately left out.
+
+### Pull request description
+
+`.github/PULL_REQUEST_TEMPLATE.md` asks for the problem, the change, the
+**surfaces touched** and the **verification**. For surfaces, walk the
+[Hit every surface](./CLAUDE.md#hit-every-surface) checklist and name what
+applied. For verification, state what you ran, what you saw and what you
+couldn't check; the proof each kind of change needs is described under
+[Verifying](./CLAUDE.md#verifying). A UI change includes before/after
+screenshots.
 
 ### CI checks
 
