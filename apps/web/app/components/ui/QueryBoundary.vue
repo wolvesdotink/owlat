@@ -104,7 +104,7 @@ const displayLoadingLabel = computed(
 	() => props.loadingLabel ?? t('components.ui.queryBoundary.loadingLabel')
 );
 // The raw Convex message ("[CONVEX Q(…)] [Request ID: …] Server Error …") is
-// not user copy: map the failure onto the ADR-0036 vocabulary instead.
+// not user copy: map the failure onto the operation error vocabulary instead.
 const displayMessage = computed(() => {
 	if (props.errorMessage) return props.errorMessage;
 	const copy = queryErrorCopy(props.error, 'components.ui.queryBoundary.errorMessage', {

@@ -309,7 +309,7 @@ describe('plugin LLM accounting', () => {
 	});
 });
 
-describe('plugin LLM calls and the deployment ceiling (ADR-0073, D1)', () => {
+describe('plugin LLM calls and the deployment ceiling', () => {
 	const reconciled = async (t: ReturnType<typeof convexTest>) => {
 		const { reconcileSpend } = await import('../../aiRouting/__tests__/spend.testlib');
 		await reconcileSpend(t);

@@ -12,8 +12,6 @@
  * The compile-time `satisfies` check on the registry catches missing
  * methods. The **Integration import walker** never branches on
  * `provider`.
- *
- * Per ADR-0027.
  */
 
 import { mailchimpProvider } from './mailchimp';

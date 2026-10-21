@@ -28,7 +28,7 @@ export interface BackendOperationOptions {
 	 * redirect) and the telemetry report are both skipped, because the caller has
 	 * taken responsibility for showing the user something better.
 	 *
-	 * This is NOT a general escape hatch from ADR-0036's one policy — it exists
+	 * This is NOT a general escape hatch from the one category policy — it exists
 	 * for the narrow case where a backend refusal is not really a fault but an
 	 * OFFER the caller can render as a normal UI state. The campaign capacity
 	 * gate is the motivating case: `exceeds_sending_capacity` hands back a
@@ -97,8 +97,8 @@ export interface BackendOperationConfig<
  * `=== undefined` silently treats a fine write as a failure. `ok` is the only
  * thing a caller ever has to test: the failure arm carries nothing, because
  * the treatment (toast / inline / redirect / telemetry, or an `onError`
- * claim) has already been applied by the time `run` resolves — ADR-0036's
- * whole point is that deciding what a failure LOOKS like is not the caller's
+ * claim) has already been applied by the time `run` resolves — the whole
+ * point is that deciding what a failure LOOKS like is not the caller's
  * job.
  */
 export type BackendOperationResult<T> = { ok: true; result: T } | { ok: false };
@@ -132,7 +132,7 @@ export interface BackendOperation<M extends FunctionReference<'mutation' | 'acti
 }
 
 /**
- * The **Operation module** for writes (ADR-0036): run a Convex mutation/action,
+ * The **Operation module** for writes: run a Convex mutation/action,
  * normalize any throw into the shared `{ category, message, data? }` vocabulary,
  * and apply the one category → treatment policy (toast vs inline vs redirect,
  * and the single telemetry decision). Callers pass a function reference + a

@@ -1,7 +1,7 @@
 /**
- * Team ingest, the Phase 1c pieces of it (ADR-0073).
+ * Team ingest routing.
  *
- * L5: the MTA's spam verdict reaches the Team Inbox row. Ingest
+ * The MTA's spam verdict reaches the Team Inbox row. Ingest
  * (`inboundIngest.ingestFromWebhook` → `receiveInboundMail` →
  * `receiveMessage`) records `mtaSpamVerdict` and `mtaSpamScore` as the adapter
  * read them off the authenticated delivery; an MTA that sends none stores them
@@ -90,7 +90,7 @@ describe('Team ingest records the MTA spam verdict (L5)', () => {
 });
 
 /**
- * M2 (ADR-0073): outcome sentiment keeps its own consumer policy. A reply that
+ * Outcome sentiment keeps its own consumer policy. A reply that
  * reply generation suppresses (here: automated mail) still schedules the
  * outcome classifier, which re-checks inside that the reply answers an
  * auto-sent message. Reply-generation suppression must not be applied to it.

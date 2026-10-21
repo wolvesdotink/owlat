@@ -7,10 +7,9 @@
  * projection the Inbox processing lifecycle drives, and the response clock
  * (inbox/sla/clock.ts) those edges move. Lifting every write to
  * the table behind one reducer closes the channel/email reopen split, the
- * `messageCount` increment race, and the audit gap on human thread actions
- * (ADR-0032 §1–§5).
+ * `messageCount` increment race, and the audit gap on human thread actions.
  *
- * Shape mirrors the Mail draft lifecycle module (ADR-0028): a typed
+ * Shape mirrors the Mail draft lifecycle module: a typed
  * `TransitionInput`, a per-kind pure reducer returning `{ patch, effects,
  * applied }`, and an effect runner that is the only place touching the DB.
  * Two differences from that module:
@@ -25,8 +24,6 @@
  * mutations, the lifecycle effect runner) already runs in a mutation, so a
  * direct call keeps the write atomic with the caller's own writes without a
  * cross-runtime `ctx.runMutation` hop.
- *
- * See docs/adr/0032-conversation-thread-module.md.
  */
 
 import type { MutationCtx } from '../../_generated/server';
@@ -102,7 +99,7 @@ function reduceInboundActivity(
 	// Reopen any non-open thread on inbound activity. This preserves the email
 	// path's original unconditional `status: 'open'` reopen (resolved/closed/
 	// waiting → open) and extends the same policy to channels, which used to
-	// fork instead (ADR-0032 §1). The reopen audit fires only on an actual
+	// fork instead. The reopen audit fires only on an actual
 	// reopen edge — never on inbound to an already-open thread — to avoid
 	// timeline noise.
 	const reopened = thread.status !== 'open';

@@ -61,7 +61,7 @@ export const todayTables = {
 		// member-erasure sweep.
 		.index('by_user_and_thread', ['userId', 'threadId']),
 
-	// RETIRED (ADR-0072): Today's one-sentence thread summaries. The Workbench
+	// RETIRED: Today's one-sentence thread summaries. The Workbench
 	// shows the thread brief's "Latest update" line instead; nothing writes or
 	// reads these rows. Migration 0067 empties the table and the next release
 	// drops it (mail/legacySummaryRows.ts). Derived from the thread's content,

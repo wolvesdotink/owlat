@@ -62,7 +62,7 @@ export async function runInterpretation(
 	ctx: ActionCtx,
 	args: InterpretArgs
 ): Promise<InterpretRunResult> {
-	anchorActionDeadline(ctx); // one model budget per action, from here (ADR-0073)
+	anchorActionDeadline(ctx); // one model budget per action, from here
 	// One run per source at a time (lease.ts): claimed before anything is read or bought.
 	return withSourceLease(ctx, args.source, args.depth, (leaseToken) =>
 		runLeased(ctx, { ...args, leaseToken })

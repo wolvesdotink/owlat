@@ -148,7 +148,7 @@ export const instanceTables = {
 		// Plaintext SMTP is rejected by default with 550 5.7.10. Owners/admins
 		// may explicitly disable the floor for compatibility with legacy senders.
 		isInboundTlsRequired: v.optional(v.boolean()),
-		// DEEP BODY SEARCH (ADR-0059). When on, delivery writes a ~8KB
+		// DEEP BODY SEARCH. When on, delivery writes a ~8KB
 		// normalized excerpt to `mailMessages.searchBody` and mail search reads the
 		// `search_message_bodies` index instead of the 200-character `snippet` one.
 		// That WIDENS the sealed-at-rest plaintext carve-out, so it is opt-in:
@@ -215,7 +215,7 @@ export const instanceTables = {
 		contactCount: v.optional(v.number()),
 		transactionalSendCount: v.optional(v.number()),
 		// Anti-abuse: organization status for spam/abuse prevention.
-		// Per ADR-0011 the legacy `throttled` literal is dropped — it
+		// The legacy `throttled` literal is dropped — it
 		// never gated anything in the Abuse gate (module), so callers
 		// treated it as `warned`. The MTA circuit breaker's path now
 		// targets `warned` instead.

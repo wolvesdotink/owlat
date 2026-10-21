@@ -1,5 +1,5 @@
 /**
- * The wire-version handshake with the backend (ADR-0063).
+ * The wire-version handshake with the backend.
  *
  * Before it listens, the IMAP server reports its release and wire version to
  * `mail/imap/serverRegistry:report` and serves only once the backend answers

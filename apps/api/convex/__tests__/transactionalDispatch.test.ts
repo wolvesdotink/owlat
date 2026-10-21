@@ -6,7 +6,7 @@ import {
 	mergeAttachments,
 } from '../transactional/dispatch';
 
-// Pre-ADR-0021 the schema arg was a JSON string. The new signature takes the
+// The schema arg used to be a JSON string. The new signature takes the
 // parsed object directly (Convex now validates the schema field as a typed
 // Record). These cases used to pass `{...}`; they now pass
 // the object literal directly.
@@ -26,7 +26,10 @@ describe('validateDataVariables', () => {
 
 	describe('invalid schema JSON', () => {
 		it('should return valid when schema JSON is malformed', () => {
-			const result = validateDataVariables({ foo: 'bar' }, { foo: 'string' } as unknown as Record<string, string>);
+			const result = validateDataVariables({ foo: 'bar' }, { foo: 'string' } as unknown as Record<
+				string,
+				string
+			>);
 			expect(result).toEqual({ valid: true });
 		});
 
@@ -254,10 +257,7 @@ describe('validateDataVariables', () => {
 
 		it('should allow extra variables not in schema', () => {
 			const schema = { name: 'string' };
-			const result = validateDataVariables(
-				{ name: 'John', extraField: 'ignored' },
-				schema
-			);
+			const result = validateDataVariables({ name: 'John', extraField: 'ignored' }, schema);
 			expect(result).toEqual({ valid: true });
 		});
 	});
@@ -292,13 +292,7 @@ describe('resolveLanguage (pure)', () => {
 
 describe('selectContent (pure)', () => {
 	it('returns default content + subject when language matches template default', () => {
-		const out = selectContent(
-			'en',
-			'en',
-			'<p>default</p>',
-			'Default subject',
-			undefined,
-		);
+		const out = selectContent('en', 'en', '<p>default</p>', 'Default subject', undefined);
 		expect(out.html).toBe('<p>default</p>');
 		expect(out.subject).toBe('Default subject');
 		expect(out.resolvedLanguage).toBe('en');
@@ -352,18 +346,14 @@ describe('mergeAttachments (pure)', () => {
 	});
 
 	it('returns only template attachments when request has none', () => {
-		const tpl = JSON.stringify([
-			{ filename: 't.pdf', url: 'https://example.com/t.pdf' },
-		]);
+		const tpl = JSON.stringify([{ filename: 't.pdf', url: 'https://example.com/t.pdf' }]);
 		expect(mergeAttachments(tpl, undefined)).toEqual([
 			{ filename: 't.pdf', contentType: undefined, url: 'https://example.com/t.pdf' },
 		]);
 	});
 
 	it('concatenates template + request with template first', () => {
-		const tpl = JSON.stringify([
-			{ filename: 't.pdf', url: 'https://example.com/t.pdf' },
-		]);
+		const tpl = JSON.stringify([{ filename: 't.pdf', url: 'https://example.com/t.pdf' }]);
 		const reqs = [{ filename: 'r.pdf', url: 'https://example.com/r.pdf' }];
 		const merged = mergeAttachments(tpl, reqs);
 		expect(merged?.map((a) => a.filename)).toEqual(['t.pdf', 'r.pdf']);

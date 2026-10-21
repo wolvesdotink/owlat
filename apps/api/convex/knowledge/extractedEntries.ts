@@ -3,7 +3,7 @@
 /**
  * The extraction's structured output and its persistence: each extracted entry
  * is checked for an existing row (M4), embedded under the extraction's root,
- * stamped with the space its vector is in (ADR-0073) and saved through
+ * stamped with the space its vector is in and saved through
  * `knowledge.graph.saveEntry`. Split out of `knowledge/extraction.ts`, which
  * holds the three extraction actions.
  */

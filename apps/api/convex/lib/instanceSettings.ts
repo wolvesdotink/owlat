@@ -9,7 +9,7 @@
  * `upsertInstanceSettings`; `scripts/check-convex-patterns.sh` fails a raw
  * `insert('instanceSettings'` anywhere else.
  *
- * Column owners (see the `workspaces/settings.ts` header and ADR-0026):
+ * Column owners (see the `workspaces/settings.ts` header):
  *   - Organization settings (`workspaces/settings.ts`): `emailTheme`,
  *     `timezone`, `defaultFromName`, `defaultFromEmail`, `isMigrationMode`,
  *     `isInboundTlsRequired`, `updatedAt`, and the admin-seed latch

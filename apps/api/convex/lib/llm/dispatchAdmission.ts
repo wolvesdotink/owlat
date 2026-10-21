@@ -1,5 +1,5 @@
 /**
- * Spend admission inside the dispatch (ADR-0073, Phase 1b): a call reserves
+ * Spend admission inside the dispatch: a call reserves
  * before EVERY provider request it makes, sized from that request's own
  * provider parameters (`./admissionPort.ts`), so the ceiling bounds what is
  * sent and a hold never has to cover a worst case that rarely happens.

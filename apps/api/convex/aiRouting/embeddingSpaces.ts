@@ -1,5 +1,5 @@
 /**
- * Embedding spaces (ADR-0073, Phase 1a provenance, D8 and the Phase 5 rebuild):
+ * Embedding spaces:
  * the reads the searches and jobs share, and the settings page's overview.
  *
  * The rules live in `lib/aiRouting/embeddingRegistry.ts`. This module exposes

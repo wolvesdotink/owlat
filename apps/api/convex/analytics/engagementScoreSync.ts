@@ -20,7 +20,7 @@
  *  - HOURLY BACKFILL. `backfillEngagementScores` re-projects stale contacts so
  *    a score decays on the clock, not only when the contact does something. It
  *    walks a bounded prefix of the `by_engagement_score_updated_at` range —
- *    never a `.collect()` over the table (ADR-0042).
+ *    never a `.collect()` over the table.
  *
  * THE CURSOR IS THE RANGE. Recomputing a contact stamps
  * `engagementScoreUpdatedAt = now`, which removes it from the stale range, so

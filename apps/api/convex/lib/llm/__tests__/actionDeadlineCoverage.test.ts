@@ -1,6 +1,6 @@
 /**
  * Every action that can reach a model anchors its model budget at handler
- * entry (ADR-0073, `lib/llm/actionDeadline.ts`). Anchoring later (at the first
+ * entry (`lib/llm/actionDeadline.ts`). Anchoring later (at the first
  * model call) would let a slow setup push the deadline past the action's own
  * 600-second limit. "Can reach a model" is the runtime-import closure of the
  * dispatch modules; an action in that closure anchors first thing, or its

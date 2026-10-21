@@ -1,5 +1,5 @@
 /**
- * "Your change to this block was replaced" (docs/adr/0071-email-coediting.md).
+ * "Your change to this block was replaced" notices.
  *
  * `sessions.ts:applyOps` writes a notice when an edit overwrote a block or
  * field another editor tab wrote after the sender last saw it. The notice is

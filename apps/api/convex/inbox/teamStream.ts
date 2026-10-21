@@ -10,7 +10,7 @@
  * prompt may call it (`mail/interpret/__tests__/teamStream.test.ts` guards that,
  * beside `notesStayInternal.test.ts`). The sources are in `teamStreamSources.ts`.
  *
- * Access follows the rest of the shared inbox (ADR-0040): a soft-auth read
+ * Access follows the rest of the shared inbox (owner/admin-only): a soft-auth read
  * that answers null for anyone who is not a Team Inbox reader or when the
  * `inbox` feature is off.
  */

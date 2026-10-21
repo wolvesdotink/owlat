@@ -1,5 +1,5 @@
 /**
- * Space-filtered retrieval (ADR-0073, Phase 1a provenance and D8).
+ * Space-filtered retrieval.
  *
  * Every vector leg searches exactly one space: the space its query vector is
  * in, and only while that space is active. Rows of other spaces and rows with

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Rebuild with another model" (U1, ADR-0073 Phase 5): a staged rebuild fills
+ * "Rebuild with another model": a staged rebuild fills
  * the second vector column with the new model while vector search keeps using
  * the active one, so a model change has no gap. Once the rebuild has walked
  * the corpus, validation samples rows and checks each finds itself in the new

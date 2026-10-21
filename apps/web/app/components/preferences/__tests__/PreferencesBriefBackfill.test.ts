@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * "Prepare briefs for recent mail" (ADR-0072, D5): Prepare starts the
+ * "Prepare briefs for recent mail": Prepare starts the
  * personal mailbox's backfill, a running walk offers Stop, and a paused or
  * stopped one says why and offers Resume.
  */

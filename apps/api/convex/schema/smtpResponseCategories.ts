@@ -14,13 +14,12 @@ import { transportArmValidator } from '../lib/literalValidators';
  * `smtp.classified` webhook and land here, keyed the way the outcomes they sit
  * beside are.
  *
- * SHAPE IS COPIED FROM `transportOutcomes` DELIBERATELY (ADR-0042), and
+ * SHAPE IS COPIED FROM `transportOutcomes` DELIBERATELY, and
  * it is the same shape for the same three reasons:
  *   - Each (org, cell, arm, day) bucket is SHARDED into `shardKey` 0..N-1 rows.
  *     One classified response bumps ONE random shard, so a blast's deferrals
  *     spread across N documents instead of read-modify-writing a single daily
- *     row once per recipient (the Convex OCC write hotspot ADR-0042 was written
- *     about).
+ *     row once per recipient (a Convex OCC write hotspot).
  *   - `analytics/smtpResponseCategories.ts` holds the ONE reader-typed
  *     summarizer, which sums across shards so the split is invisible to readers.
  *   - NO RATE IS STORED. The block RATE is derived on read — and not even here:

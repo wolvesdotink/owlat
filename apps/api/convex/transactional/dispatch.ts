@@ -13,8 +13,6 @@
  * which handles JSON-shape validation and attachment storage upload (the
  * latter requires action context for `ctx.storage.store`). The module's
  * args are typed, well-formed data.
- *
- * See docs/adr/0021-transactional-send-intake-module.md.
  */
 
 import { v } from 'convex/values';
@@ -199,7 +197,7 @@ export const dispatch = internalMutation({
 			};
 		}
 
-		// Per ADR-0023, log (do not gate) when sending against stale HTML — a
+		// Log (do not gate) when sending against stale HTML — a
 		// saved-block edit propagated to the consumer's content JSON but the
 		// rerender pool has not yet caught up. Cached `htmlContent` is used.
 		if (template.htmlRenderState?.stale) {

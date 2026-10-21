@@ -1,7 +1,6 @@
 /**
  * Audience resolution (module) — the single mapping from an Audience to its
- * eligible recipients. See CONTEXT.md "Audience resolution (module)" and
- * docs/adr/0033-audience-resolution-module.md.
+ * eligible recipients. See CONTEXT.md "Audience resolution (module)".
  *
  * One pure per-Contact eligibility predicate (`selectRecipient`) is the shared
  * core; it lives with the candidate stream and the counting core in the domain

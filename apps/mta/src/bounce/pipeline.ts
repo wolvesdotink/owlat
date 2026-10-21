@@ -3,7 +3,7 @@
  * SMTP messages (DSNs, ARF/FBL reports, mailbox deliveries, inbound routes).
  *
  * The compose-and-short-circuit machinery is shared with the dispatch
- * pipeline (ADR-0007) and lives in `apps/mta/src/lib/phasePipeline.ts`; this
+ * pipeline and lives in `apps/mta/src/lib/phasePipeline.ts`; this
  * module binds it to the bounce domain's deps/ctx and its own terminal
  * vocabulary. The Bounce pipeline never `defer`s (the bounce SMTP server
  * doesn't re-queue jobs) — it short-circuits with one of two terminal
@@ -14,7 +14,7 @@
  *   - `bounceTo` — short-circuit with a typed `BounceAttempt` that the
  *     reducer turns into a list of `BounceEffect`s.
  *
- * See ADR-0007 follow-up #4 and CONTEXT.md's MTA dispatch / inbound
+ * See CONTEXT.md's MTA dispatch / inbound
  * intake section.
  */
 

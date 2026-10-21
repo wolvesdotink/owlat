@@ -39,7 +39,7 @@ export async function countIndexRange(
 	return count;
 }
 
-// `paginateArray` was removed with ADR-0037: its stringified-integer offset was
+// `paginateArray` was removed: its stringified-integer offset was
 // not a real Convex cursor. All list pagination now flows through the Listing
 // engine (`lib/listing.ts`), which paginates at the database with a real,
 // opaque Convex cursor on both the search and browse paths.

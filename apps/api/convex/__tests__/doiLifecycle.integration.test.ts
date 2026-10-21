@@ -4,8 +4,6 @@
  * Covers the three-state machine `not_required → pending → confirmed`, the
  * token-keyed entry point, the trigger-fanout + activity effects, expired-
  * token handling, and the refresh-pending-token operation.
- *
- * See docs/adr/0009-doi-lifecycle-module.md.
  */
 
 import { convexTest } from 'convex-test';
@@ -601,14 +599,14 @@ describe('doiLifecycle.refreshPendingToken', () => {
 });
 
 // ============================================================
-// End-to-end form-confirm path (ADR-0009 drift fixes #1, #2, #4)
+// End-to-end form-confirm path
 // ============================================================
 //
 // Wire shape: forms.endpoints.confirmSubmission(token) -- the unified
 // token namespace means the contact's doiConfirmationToken and the form
 // submission's confirmationToken are the same string. The handler must
 // produce the topic-subscribed trigger fanout AND a topic_confirmed
-// activity row -- both of which were silently skipped pre-ADR.
+// activity row -- both of which were silently skipped before the DOI lifecycle module.
 
 describe('forms.endpoints.confirmSubmission — end-to-end', () => {
 	it('fires topic_subscribed trigger and writes topic_confirmed activity', async () => {
@@ -793,7 +791,7 @@ describe('forms.endpoints.confirmSubmission — end-to-end', () => {
 });
 
 // ============================================================
-// admin-attest path (ADR-0019)
+// admin-attest path
 // ============================================================
 
 describe('doiLifecycle.transition — admin_attest', () => {

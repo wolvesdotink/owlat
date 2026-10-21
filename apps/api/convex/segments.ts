@@ -261,7 +261,7 @@ export const remove = authedMutation({
 
 /**
  * List segments (session-auth shell). Paginated { page, … } contract via the
- * Listing engine (ADR-0037).
+ * Listing engine.
  */
 export const list = authedQuery({
 	args: {

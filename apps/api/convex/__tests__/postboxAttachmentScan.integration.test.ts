@@ -12,7 +12,7 @@
  * The scan-call itself is unit-testable in isolation — for now we rely on
  * the wiring in `mail/outbound.ts` and the explicit fail-closed branch.
  *
- * Post-ADR-0028: the inline `markDispatchFailed` mutation moved to the
+ * The inline `markDispatchFailed` mutation moved to the
  * Mail draft lifecycle (module). This test exercises the same revert
  * behaviour through the lifecycle's typed `transition` surface.
  */
@@ -41,28 +41,27 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
-async function seedDraftInPendingSend(
-	t: ReturnType<typeof convexTest>
-): Promise<Id<'mailDrafts'>> {
+async function seedDraftInPendingSend(t: ReturnType<typeof convexTest>): Promise<Id<'mailDrafts'>> {
 	let id!: Id<'mailDrafts'>;
 	await t.run(async (ctx) => {
 		const now = Date.now();

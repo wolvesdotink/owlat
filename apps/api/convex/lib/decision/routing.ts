@@ -1,6 +1,6 @@
 /**
- * When a Phase 2 bundle runs, and on which rung of the routing ladder
- * (ADR-0073 §5, plan "Routing ladder"). Pure and isolate-safe.
+ * When a Phase 2 bundle runs, and on which rung of the routing ladder.
+ * Pure and isolate-safe.
  *
  * Every switch defaults to `off`, and `off` plans nothing: no schedule, no
  * read of the message, no call. That is today's behaviour.

@@ -1,18 +1,15 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { REPO_ROOT } from './repoVocabulary';
 
 /**
- * The two conventions the repo-root `CONTEXT.md` navigates by.
+ * The convention the repo-root `CONTEXT.md` navigates by.
  *
- * `CONTEXT.md` "pins the project-specific language used across architecture
- * decisions", and it is addressed by two greppable spellings that nothing else
- * can validate: `**§ Section name**` to point at one of its own sections, and
- * `ADR-NNNN` to cite a decision record. Both are conventions rather than links,
- * so a rename or a renumber breaks them silently — `lint:adr` guarantees one
- * document per ADR number, but nothing guaranteed that a citation named a
- * number with a document behind it.
+ * `CONTEXT.md` pins the project-specific language used across the codebase, and
+ * its sections point at each other with one greppable spelling that nothing
+ * else can validate: `**§ Section name**`. It is a convention rather than a
+ * link, so renaming a section breaks it silently.
  *
  * What this file no longer does is re-state the file's prose. It used to pin
  * every counted list and every adapter-family table in `CONTEXT.md` against the
@@ -86,19 +83,5 @@ describe('CONTEXT.md: section cross-references resolve', () => {
 			referencesIn(section(name)).includes(name)
 		);
 		expect(selfReferencing).toEqual([]);
-	});
-});
-
-describe('CONTEXT.md: ADR citations resolve', () => {
-	const adrFiles = readdirSync(resolve(REPO_ROOT, 'docs/adr'));
-	const cited = [...new Set([...context.matchAll(/ADR-(\d{4})/g)].map((match) => match[1]!))];
-
-	it('finds the citations it is meant to check', () => {
-		expect(cited.length).toBeGreaterThan(5);
-	});
-
-	it('every cited ADR number has a document', () => {
-		const missing = cited.filter((number) => !adrFiles.some((f) => f.startsWith(`${number}-`)));
-		expect(missing, `no docs/adr/${missing.join('|')}-*.md`).toEqual([]);
 	});
 });

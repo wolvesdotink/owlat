@@ -1,5 +1,5 @@
 /**
- * The live writer of the spend-period aggregate (ADR-0073, `llmSpendPeriods`).
+ * The live writer of the spend-period aggregate (`llmSpendPeriods`).
  *
  * ONE WRITER. `analytics/llmUsage.ts` `insertLlmUsage` is the only code that
  * inserts a ledger row, and it calls {@link addLedgerRowToSpendPeriods} in the

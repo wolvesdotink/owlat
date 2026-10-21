@@ -67,12 +67,12 @@ const EXTRACTION_LLM_DEADLINE_MS = 180_000;
  */
 const INBOUND_EXTRACTION_BODY_CHARS = 100_000;
 
-/** This action, for its own budget deferral (ADR-0073, D1). */
+/** This action, for its own budget deferral. */
 const deferFromMessage = (): DeferrableAction => internal.knowledge.extraction.extractFromMessage;
 
 const extractFromMessageArgs = {
 	inboundMessageId: v.id('inboundMessages'),
-	/** An awaiting caller's root, deadline included (ADR-0073). */
+	/** An awaiting caller's root, deadline included. */
 	root: v.optional(llmRootContextValidator),
 	deferrals: v.optional(v.number()),
 };
@@ -85,7 +85,7 @@ export const extractFromMessage = internalAction({
 	handler: deferredHandler<ObjectType<typeof extractFromMessageArgs>>(
 		deferFromMessage,
 		async (ctx, args) => {
-			// One model budget for this action, from its start (ADR-0073).
+			// One model budget for this action, from its start.
 			anchorActionDeadline(ctx);
 			if (!(await isKnowledgeOn(ctx, '[knowledge.extract]'))) return;
 			const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
@@ -112,11 +112,11 @@ export const extractFromMessage = internalAction({
 			);
 			if (progress.isDone) return; // complete, not merely started (Sol r2 F3)
 
-			// D13 (ADR-0073): a message whose scan skipped the model guard (spam
+			// A message whose scan skipped the model guard (spam
 			// archive, agent off) gets it before its first generative consumer — this
 			// one, which the first-enable backfill reaches for mail that arrived while
 			// the agent was off. A guard that flags the message ends extraction.
-			// On the awaiting caller's clock when it passed one (ADR-0073).
+			// On the awaiting caller's clock when it passed one.
 			const guard = await runGuardBeforeAutonomy(ctx, message, args.root?.deadlineAt);
 			if (!guard.mayProceed) {
 				logInfo('[knowledge.extract] skipped: the late injection guard flagged the message');
@@ -201,12 +201,12 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 	),
 });
 
-/** This action, for its own budget deferral (ADR-0073, D1). */
+/** This action, for its own budget deferral. */
 const deferFromFile = (): DeferrableAction => internal.knowledge.extraction.extractFromFile;
 
 const extractFromFileArgs = {
 	fileId: v.id('semanticFiles'),
-	/** An awaiting caller's root, deadline included (ADR-0073). */
+	/** An awaiting caller's root, deadline included. */
 	root: v.optional(llmRootContextValidator),
 	deferrals: v.optional(v.number()),
 };
@@ -223,7 +223,7 @@ export const extractFromFile = internalAction({
 	handler: deferredHandler<ObjectType<typeof extractFromFileArgs>>(
 		deferFromFile,
 		async (ctx, args) => {
-			// One model budget for this action, from its start (ADR-0073).
+			// One model budget for this action, from its start.
 			anchorActionDeadline(ctx);
 			if (!(await isKnowledgeOn(ctx, '[knowledge.extractFile]'))) return;
 			const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
@@ -309,7 +309,7 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 	),
 });
 
-/** This action, for its own budget deferral (ADR-0073, D1). */
+/** This action, for its own budget deferral. */
 const deferFromMailMessage = (): DeferrableAction =>
 	internal.knowledge.extraction.extractFromMailMessage;
 
@@ -318,7 +318,7 @@ const extractFromMailMessageArgs = {
 	// Sender contact(s) the entries are scoped to (resolved by the indexer).
 	// Empty/undefined ⇒ org-general (visible to every contact's retrieval).
 	contactIds: v.optional(v.array(v.id('contacts'))),
-	/** An awaiting caller's root, deadline included (ADR-0073). */
+	/** An awaiting caller's root, deadline included. */
 	root: v.optional(llmRootContextValidator),
 	deferrals: v.optional(v.number()),
 };
@@ -342,7 +342,7 @@ export const extractFromMailMessage = internalAction({
 	handler: deferredHandler<ObjectType<typeof extractFromMailMessageArgs>>(
 		deferFromMailMessage,
 		async (ctx, args) => {
-			// One model budget for this action, from its start (ADR-0073).
+			// One model budget for this action, from its start.
 			anchorActionDeadline(ctx);
 			if (!(await isKnowledgeOn(ctx, '[knowledge.extractMail]'))) return;
 			const msg = await ctx.runQuery(internal.mail.migrationIndexing.getMessageForExtraction, {

@@ -17,7 +17,7 @@
  * OFF unless an operator turns it on, and turning it off again does not just
  * stop writing: it schedules a sweep that CLEARS every excerpt already stored
  * (`bodySearchBackfill.purgeSearchBodies`). Absent column ⇒ exactly the
- * pre-idea-32 behaviour. See docs/adr/0059-widened-body-search-carve-out.md.
+ * pre-idea-32 behaviour.
  *
  * TWO INDEXES, NOT ONE. `search_messages` (on `snippet`) stays. A single index
  * repointed at `searchBody` would make every message delivered before the field

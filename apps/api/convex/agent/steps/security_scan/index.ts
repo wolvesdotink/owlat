@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * `security_scan` Agent step (module) — see ADR-0014 and ADR-0073.
+ * `security_scan` Agent step (module).
  *
  * Pattern-based prompt-injection + instruction-smuggling + spam-heuristic
  * scan over the inbound email, URL reputation, and a guard-tier LLM

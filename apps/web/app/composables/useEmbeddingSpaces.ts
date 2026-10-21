@@ -1,5 +1,5 @@
 /**
- * The embedding section of the AI provider page (U1, D8, ADR-0073 §9): the
+ * The embedding section of the AI provider page: the
  * admin read `aiRouting.embeddingSpaces.status` and the embed lane's admin
  * controls, each a backend operation with its own busy flag.
  *

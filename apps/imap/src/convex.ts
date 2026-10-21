@@ -137,7 +137,7 @@ export interface ExpungeResult {
 	readonly beforeUid?: number;
 }
 
-/** The wire-version handshake (`mail/imap/serverRegistry:report`, ADR-0063). */
+/** The wire-version handshake (`mail/imap/serverRegistry:report`). */
 export interface ImapServerReportResult {
 	readonly backendWireVersion: number;
 	readonly minSupportedWireVersion: number;

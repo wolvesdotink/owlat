@@ -113,7 +113,7 @@ export type DomainVerificationSupport = 'api' | 'none';
  * never arrives, and claiming re-askability would double-deliver.
  *
  * PREREQUISITES OUTSIDE THE CATALOG — the canonical list; everything else that
- * mentions this constraint (ADR 0055, the provider docs page, the NOTE on
+ * mentions this constraint (the provider docs page, the NOTE on
  * {@link MessageIdSource}) POINTS HERE rather than restating it, so generalizing
  * the three sites below is one edit plus three link targets rather than four
  * prose rewrites. Keep it that way, and when a site is generalized, strike it

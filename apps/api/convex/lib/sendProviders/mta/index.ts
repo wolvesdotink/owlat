@@ -1,7 +1,7 @@
 /**
  * MTA Send provider adapter (module).
  *
- * Per ADR-0020. Single-attempt `sendEmail` — the **Send dispatch (helper)**
+ * Single-attempt `sendEmail` — the **Send dispatch (helper)**
  * owns the retry loop and uses `retryDelays` + `categorizeError`. The MTA's
  * `/send` endpoint accepts the body shape this module produces; failures
  * surface as `{ success: false, errorMessage, errorCode }` with the typed

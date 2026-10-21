@@ -25,8 +25,6 @@
  * carries the `changedProperties` diff so callers can fire the
  * `contact_updated` trigger with the correct watched-property list (the module
  * computes the diff but never fires the trigger itself).
- *
- * See docs/adr/0008-contact-resolution-module.md.
  */
 
 import type { MutationCtx, QueryCtx } from '../_generated/server';
@@ -240,7 +238,7 @@ async function insertContactRow(
 		language,
 		timezone,
 		searchableText,
-		// Initial DOI status — non-optional per ADR-0009. The DOI lifecycle
+		// Initial DOI status — non-optional. The DOI lifecycle
 		// (module) is the only later writer of this field and its companions.
 		doiStatus: 'not_required',
 		createdAt: now,

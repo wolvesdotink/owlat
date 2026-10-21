@@ -11,7 +11,7 @@
  *     Resolved INDEPENDENTLY of the language provider so retrieval works under
  *     any language choice.
  *
- * The registry (`./index.ts`) mirrors `lib/sendProviders` (ADR-0020): a `Kind`
+ * The registry (`./index.ts`) mirrors `lib/sendProviders`: a `Kind`
  * literal union + a mapped-type `satisfies` guard so adding a provider is one
  * adapter file + one registry line, and callers stay dumb. Two registries —
  * `languageProviderFor(kind)` and `embeddingProviderFor(kind)`.

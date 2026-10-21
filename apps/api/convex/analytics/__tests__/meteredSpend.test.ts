@@ -1,6 +1,6 @@
 /**
- * The single owner of a metered call's ledger rows (`analytics/meteredSpend.ts`,
- * ADR-0073): every provider request the dispatch recorded is written once, on
+ * The single owner of a metered call's ledger rows (`analytics/meteredSpend.ts`):
+ * every provider request the dispatch recorded is written once, on
  * success and on failure, and nothing is written for a call that never reached
  * a provider.
  */

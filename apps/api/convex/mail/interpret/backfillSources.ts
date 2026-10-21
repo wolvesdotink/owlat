@@ -1,5 +1,5 @@
 /**
- * Reading a thread's earlier mail (ADR-0072, D5): the 30-day backfill walk
+ * Reading a thread's earlier mail: the 30-day backfill walk
  * (`backfill.ts`) and the first open of an older thread (`lazy.ts`) both hand
  * a thread's history to interpretation through {@link enqueueHistoryPage}.
  *

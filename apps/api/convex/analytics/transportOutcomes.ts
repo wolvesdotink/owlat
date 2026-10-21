@@ -1,5 +1,5 @@
 /**
- * Transport outcomes — per-cell, per-arm rolling counters (ADR-0042).
+ * Transport outcomes — per-cell, per-arm rolling counters.
  *
  * The shipped delivery stack measures ACCEPTANCE: a transport took the message,
  * so the send is a success. A message Gmail accepts and files into Spam is
@@ -14,8 +14,7 @@
  *   - ONE WRITER on the hot path (`recordTransportOutcomeForSend`). It joins the
  *     send to its `sendAssignments` row to learn (cell, arm, isCalibration),
  *     then bumps ONE RANDOM SHARD of the (org, cell, arm, day) bucket. Two
- *     indexed point reads and one patch — no window scan, no `.collect()` (the
- *     ADR-0042 post-mortem).
+ *     indexed point reads and one patch — no window scan, no `.collect()`.
  *   - ONE READER-TYPED SUMMARIZER (`summarizeTransportOutcomes`) that sums
  *     ACROSS shards, so the shard split is invisible to readers, and derives
  *     every rate ON READ through the pure core in `./transportOutcomeSummary`.

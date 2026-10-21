@@ -1,10 +1,10 @@
 /**
- * The Phase 2 mail bundles (ADR-0073): each registered question set with its
+ * The Phase 2 mail bundles: each registered question set with its
  * version, and the host code that turns its answers into labels. Answers are
  * probabilities; labels are what an artifact stores, a display projection shows
  * and a shadow compares with today's classifier.
  *
- * Every threshold names the probability it reads (ADR-0060): a Choice threshold
+ * Every threshold names the probability it reads: a Choice threshold
  * reads its peakedness, a Noul threshold reads its probability as distance from
  * 0.5. The values are provisional starting points, not calibrated: nothing in
  * this release acts on a label, and the block-only auto-send gate refuses any

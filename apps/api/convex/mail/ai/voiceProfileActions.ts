@@ -11,7 +11,7 @@
  * SYSTEM_GUARD used by mail/ai/assist.ts wraps the sample corpus. Fail-soft: any error
  * clears the refreshing flag and leaves the previous profile (or none) intact.
  *
- * Spend admission (ADR-0073, D1, #1333): the call is admitted at its dispatch
+ * Spend admission (#1333): the call is admitted at its dispatch
  * as background work, with a hold settled against the ledger. At the ceiling,
  * or with a spend state that cannot be verified, it is refused before any
  * request; the refresh defers (the flag is released, and the scheduling paths
@@ -51,7 +51,7 @@ function clamp1to5(n: number): number {
 export const refresh = internalAction({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args): Promise<void> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		try {
 			const { samples, sentCount } = await ctx.runQuery(

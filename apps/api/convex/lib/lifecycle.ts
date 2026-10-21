@@ -20,8 +20,7 @@
  * Scope is deliberately the *dispatcher only*. Reducers, effects, DB-reading
  * preconditions, external-key parsing, cross-machine coordination and every
  * module-local outcome literal stay in the module — they genuinely diverge and
- * pushing them behind a generic factor would be lossy. See
- * docs/adr/0058-generic-lifecycle-core.md.
+ * pushing them behind a generic factor would be lossy.
  */
 
 /**

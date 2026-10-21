@@ -1,5 +1,5 @@
 /**
- * The spend ceiling as the gates enforce it (ADR-0073, Phase 1b; D1; #1333).
+ * The spend ceiling as the gates enforce it (#1333).
  *
  * Enforcement reads the complete period totals and outstanding holds
  * (`./admissionState.ts`), never the newest-12,000-row scan the dashboard

@@ -77,7 +77,7 @@ describe('postboxMutation refuses when the instance has no personal mail', () =>
 		).resolves.toBeDefined();
 	});
 
-	it('refuses with the ADR-0036 forbidden payload, naming both flags in data', async () => {
+	it('refuses with the shared forbidden error payload, naming both flags in data', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t, { featuresOff: true });
 

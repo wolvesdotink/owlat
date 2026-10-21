@@ -2,7 +2,7 @@
  * Deliverability measurement screen — presentation only.
  *
  * THE RULE: nothing in this module divides. Every rate on this screen is
- * DERIVED ON READ by the server's one summarizer (ADR-0042), and the screen's
+ * DERIVED ON READ by the server's one summarizer, and the screen's
  * job is to format the number it was handed and to put the right sentence next
  * to it. A percentage here is a unit conversion of a server rate, never a rate
  * computed from two counters — that is precisely how a dashboard and a

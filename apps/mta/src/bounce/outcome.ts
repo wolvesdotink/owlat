@@ -1,13 +1,13 @@
 /**
  * Bounce outcome — pure reducer for the post-classification effect emission.
  *
- * Mirrors `apps/mta/src/dispatch/outcome.ts` (ADR-0007) shape: typed
+ * Mirrors the `apps/mta/src/dispatch/outcome.ts` shape: typed
  * classification + typed effect list + runner. The reducer has no side
  * effects, no Redis dependency, and no HTTP dependency — it consumes the
  * `BounceAttempt` produced by the pipeline + the original `BasePhaseCtx`
  * (parsed mail, raw bytes, rcptTo) and returns a list of `BounceEffect`s.
  *
- * See ADR-0007 follow-up #4 and CONTEXT.md's MTA dispatch section.
+ * See CONTEXT.md's MTA dispatch section.
  */
 
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';

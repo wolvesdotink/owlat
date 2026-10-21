@@ -1,5 +1,5 @@
 /**
- * Reconciling the spend-period aggregate with the ledger (ADR-0073, Phase 1b).
+ * Reconciling the spend-period aggregate with the ledger.
  *
  * `llmSpendPeriods` is derived only from `llmUsageEvents`: the ledger insert
  * adds every new row to its buckets (`analytics/ledgerInsert.ts`), and this

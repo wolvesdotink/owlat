@@ -1,5 +1,5 @@
 /**
- * Send-time optimization against a real database (ADR-0068):
+ * Send-time optimization against a real database:
  *
  *   - a reader open or click folds into the contact's profile and the
  *     organization histogram, through the send lifecycle;

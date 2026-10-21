@@ -43,7 +43,7 @@ export const listFolders = internalQuery({
  *  the removed `skipFirstUnseenSeq`, fails argument validation here instead.
  *  This is a read, so that error changes nothing, and wire 1 is below
  *  `IMAP_WIRE_MIN_SUPPORTED`: its logins are refused and it stops at its next
- *  report (ADR-0063). */
+ *  report. */
 export const selectFolder = internalQuery({
 	args: { folderId: v.id('mailFolders') },
 	handler: async (ctx, args) => {

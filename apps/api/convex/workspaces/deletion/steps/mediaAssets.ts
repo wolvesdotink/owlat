@@ -3,7 +3,7 @@ import { defineStep, DEFAULT_BATCH_SIZE } from './_common';
 /**
  * Storage-bearing step: each `mediaAssets` row references a blob via
  * `storageId`. Purge the blob before the row delete so the org-wipe
- * doesn't orphan billable bytes. Closes drift #3 from ADR-0025.
+ * doesn't orphan billable bytes.
  */
 export const mediaAssetsStep = defineStep({
 	table: 'mediaAssets',

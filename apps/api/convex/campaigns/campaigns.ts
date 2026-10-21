@@ -120,7 +120,7 @@ export const updateBasics = campaignsMutation({
 });
 
 // Mutation to update campaign audience (step 2 of wizard). Speaks the
-// snapshot-free `Audience` (ADR-0033); the `frozenFilters` send-time snapshot
+// snapshot-free `Audience`; the `frozenFilters` send-time snapshot
 // is written by the orchestrator/preflight, not here.
 export const updateAudience = campaignsMutation({
 	args: {
@@ -131,7 +131,7 @@ export const updateAudience = campaignsMutation({
 		// authz: requireDraftCampaign enforces campaigns:manage
 		await requireDraftCampaign(ctx, args.campaignId, 'edit campaign audience');
 
-		// Validate the referenced segment exists (parity with the pre-ADR-0033
+		// Validate the referenced segment exists (parity with the old
 		// behaviour, which loaded the segment to snapshot its filters).
 		if (args.audience.kind === 'segment') {
 			await getOrThrow(ctx, args.audience.segmentId, 'Segment');

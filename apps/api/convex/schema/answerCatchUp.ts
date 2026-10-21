@@ -3,7 +3,7 @@ import { v } from 'convex/values';
 import { catchUpValidator } from '../lib/validators/catchUp';
 
 /**
- * RETIRED (ADR-0072): Answer mode's catch-up card, cached per thread and
+ * RETIRED: Answer mode's catch-up card, cached per thread and
  * interface locale. The thread brief replaced it; nothing writes or serves a
  * row any more. The table stays for one release so its rows still validate,
  * migration 0067 empties it, and the next release drops it

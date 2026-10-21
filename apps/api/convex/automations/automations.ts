@@ -57,7 +57,7 @@ export interface DelayStepConfig {
  * Editor-facing vocabulary for condition step form values.
  *
  * The Vue templates bind `<option value="...">` strings against these
- * unions. Persisted condition shape is canonical `Condition` per ADR-0004
+ * unions. Persisted condition shape is canonical `Condition`
  * (`automations/steps/condition/index.ts`); these editor-side aliases
  * exist only to keep the existing form values stable while the persisted
  * data is canonical underneath.

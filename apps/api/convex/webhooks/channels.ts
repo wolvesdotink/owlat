@@ -72,8 +72,8 @@ export const processInboundChannel = internalMutation({
 		// Find or create thread via the Conversation thread module. The
 		// matcher is status-agnostic — a closed most-recent thread is matched
 		// and reopened (by the shared inbound_activity reducer) rather than
-		// forked, so channels now follow the same reopen policy as email
-		// (ADR-0032 §1). `contactIdentifier` is the channel-neutral thread-list
+		// forked, so channels now follow the same reopen policy as email.
+		// `contactIdentifier` is the channel-neutral thread-list
 		// identifier (the raw phone/handle for SMS/WhatsApp/chat).
 		const { threadId } = await findOrCreateForChannel(ctx, {
 			contactId,

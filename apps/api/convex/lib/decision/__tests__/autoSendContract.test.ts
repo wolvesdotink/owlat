@@ -1,9 +1,9 @@
 /**
- * The auto-send contract for decision verdicts (ADR-0060 §8, ADR-0073 §8,
- * plan Phase 4): a verdict reaches `resolveAutoApproveScore` only as an
- * admitted score, which needs a feeding task, item coverage enforced, the
- * block-only rule's compatible provenance and valid calibration, and a
- * probability; and it can only lower the score. Nothing feeds it today.
+ * The auto-send contract for decision verdicts: a verdict reaches
+ * `resolveAutoApproveScore` only as an admitted score, which needs a feeding
+ * task, item coverage enforced, the block-only rule's compatible provenance
+ * and valid calibration, and a probability; and it can only lower the score.
+ * Nothing feeds it today.
  */
 
 import { describe, expect, it } from 'vitest';

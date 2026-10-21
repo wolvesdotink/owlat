@@ -13,7 +13,7 @@
  * that swallows its error, a transition the lifecycle rejects, and a write that
  * fails after a paid generation all leave the rows already written. Every row
  * of one inbound message's run shares the root request `team:<message id>`
- * (ADR-0073). Pure of 'use node', so the V8 and Node steps share it.
+ *. Pure of 'use node', so the V8 and Node steps share it.
  */
 
 import { meterLlmCall } from '../../analytics/meteredSpend';
@@ -45,7 +45,7 @@ export async function meterAgentCall<R>(
 	feature: AgentSpendFeature,
 	inboundMessageId: Id<'inboundMessages'>,
 	call: (meter: LlmCallMeter) => Promise<R>,
-	/** An awaiting caller's deadline (ADR-0073); the action's own budget bounds it too. */
+	/** An awaiting caller's deadline; the action's own budget bounds it too. */
 	deadlineAt?: number
 ): Promise<R> {
 	const root = teamRoot(inboundMessageId);

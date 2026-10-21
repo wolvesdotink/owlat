@@ -87,7 +87,7 @@ export const getInternal = internalQuery({
 /**
  * List contacts with cursor-based pagination. Thin session-auth shell over the
  * Listing engine — search is relevance-ordered and genuinely multi-page (the
- * `'search'` sentinel is gone), soft-delete rides the index. See ADR-0037.
+ * `'search'` sentinel is gone), soft-delete rides the index.
  */
 export const list = authedQuery({
 	args: {
@@ -294,7 +294,7 @@ export const bulkDelete = authedMutation({
  * Auth + topicAssignments shape + dispatch shell. The composition (resolve,
  * property writes, activity, DOI attest, per-topic subscribe coalescing,
  * count increment) lives in the **Contact import (module)** at
- * `convex/contacts/import.ts`. See ADR-0019.
+ * `convex/contacts/import.ts`.
  */
 export const importBatch = authedMutation({
 	args: {
@@ -321,7 +321,7 @@ export const importBatch = authedMutation({
 		),
 		// Admin-attest: imported contacts arrive already DOI-confirmed at a
 		// source platform. Gated by the same `contacts:manage` permission as
-		// the rest of import on this shell. See ADR-0019.
+		// the rest of import on this shell.
 		doiAttest: v.optional(
 			v.object({
 				attestSource: v.string(),
@@ -485,7 +485,7 @@ export const removeForTeam = internalMutation({
  *
  * Thin shell over the Listing engine: the browse path is created-at-descending,
  * the search path is relevance-ordered, and soft-delete rides the index on both
- * (ADR-0037). The cursor is a real, opaque Convex cursor — no per-page re-read
+ * The cursor is a real, opaque Convex cursor — no per-page re-read
  * and no 10k ceiling — so every contact is reachable. `total` is the
  * denormalized `instanceSettings` counter (bounded-scan fallback).
  */

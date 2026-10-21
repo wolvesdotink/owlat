@@ -1,5 +1,5 @@
 /**
- * A provider batch result (ADR-0073, L14) is kept only if the live extraction
+ * A provider batch result is kept only if the live extraction
  * path would still read its source now (Sol r2 F1): the batch was out for up to
  * a day. Postbox mail moved to Trash or Spam meanwhile, a Team message the
  * guard has since held back, or `ai.knowledge` switched off: the item still

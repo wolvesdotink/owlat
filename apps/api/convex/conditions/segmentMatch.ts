@@ -367,7 +367,7 @@ export async function countMatchingContactsPage(
  * Evaluate a single raw filter condition against one contact. Lenient: an
  * unknown / malformed condition matches nothing. A convenience over the pure
  * core — new code should prefer the batch entries above or the registry
- * directly. ADR-0033 keeps this name stable for the segment-builder surface.
+ * directly. This name stays stable for the segment-builder surface.
  */
 export async function evaluateCondition(
 	ctx: { db: DatabaseReader },

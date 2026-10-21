@@ -11,7 +11,7 @@ import {
 } from '@owlat/shared/coeditOps';
 
 /**
- * Co-editing sync (client half), docs/adr/0071-email-coediting.md.
+ * Co-editing sync (client half).
  *
  * Keeps one editor tab in step with the shared session the server holds. Three
  * states are kept apart, as in a differential sync:

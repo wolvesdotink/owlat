@@ -12,8 +12,6 @@
  *
  * The public `internalMutation`s in `../draftLifecycle.ts` are thin wrappers
  * over `dispatch`.
- *
- * See docs/adr/0028-mail-draft-lifecycle-module.md.
  */
 
 import type { MutationCtx } from '../../_generated/server';

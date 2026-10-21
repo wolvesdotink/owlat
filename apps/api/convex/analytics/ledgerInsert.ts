@@ -1,5 +1,5 @@
 /**
- * The one ledger insert (ADR-0073): every `llmUsageEvents` row is written by
+ * The one ledger insert: every `llmUsageEvents` row is written by
  * {@link insertLlmUsage}, which prices the row, stamps the routing columns,
  * and adds the row to the spend-period aggregate in the same mutation. Split
  * out of `./llmUsage.ts` (which re-exports it) to hold that file under the
@@ -46,7 +46,7 @@ export interface LlmUsageTags {
 	readonly isThrottled?: boolean;
 	/** Ran on the operator's own hardware: priced at zero and labelled `Local`. */
 	readonly isLocalEngine?: boolean;
-	// AI routing columns (ADR-0073); meanings in `lib/llmUsageTags.ts`.
+	// AI routing columns; meanings in `lib/llmUsageTags.ts`.
 	readonly rootRequestId?: string;
 	readonly parentCallId?: string;
 	/** Defaults to the task the feature maps to (`taskForFeature`). */

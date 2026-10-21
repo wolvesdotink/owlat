@@ -108,7 +108,7 @@ export const getAgentConfig = internalQuery({
 // Action / Status mutations
 // ============================================================
 //
-// Per ADR-0010, all writes of `inboundMessages.processingStatus`,
+// All writes of `inboundMessages.processingStatus`,
 // `agentActions`, and `conversationThreads.latestDraftStatus` are owned
 // by `inbox/processingLifecycle.ts`. The helpers that previously lived
 // here (updateMessageStatus / quarantineMessage / archiveMessage /
@@ -429,4 +429,4 @@ export const sendApprovedReply = internalAction({
 });
 
 // Cron-driven retry of failed agentActions — moved to
-// `inbox/processingLifecycle.ts:retryFailedActions` per ADR-0010.
+// `inbox/processingLifecycle.ts:retryFailedActions`.

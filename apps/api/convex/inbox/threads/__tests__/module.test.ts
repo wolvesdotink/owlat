@@ -6,8 +6,6 @@
  * shared `inbound_activity` reopen + count behaviour, the direct
  * status/assignment/draft-status transitions and their audit rows, and the
  * `thread_not_found` outcome.
- *
- * See docs/adr/0032-conversation-thread-module.md.
  */
 
 import { convexTest } from 'convex-test';

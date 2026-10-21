@@ -1,5 +1,5 @@
 /**
- * The wire-version handshake (ADR-0063): the IMAP server serves only a backend
+ * The wire-version handshake: the IMAP server serves only a backend
  * that speaks its contract, refuses to start when the backend no longer serves
  * it, waits for a backend that is older than it, and stops on a later report
  * that says it is no longer served.

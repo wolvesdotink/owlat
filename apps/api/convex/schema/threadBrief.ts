@@ -79,7 +79,7 @@ export const THREAD_BRIEF_TABLES = [
 export type ThreadBriefTable = (typeof THREAD_BRIEF_TABLES)[number];
 
 /**
- * Thread brief (SPEC §2, ADR-0072): per-message interpretation folded into
+ * Thread brief (SPEC §2): per-message interpretation folded into
  * per-thread items, facts and activity by a deterministic reducer
  * (`mail/interpret/reduce.ts`).
  *

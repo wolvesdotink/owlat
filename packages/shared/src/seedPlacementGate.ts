@@ -34,7 +34,7 @@
  *     codes, the aggregator's precedence). It derives NO rate of its own and
  *     declares NO threshold of its own — a second home for the 90 % line is a
  *     second answer to "did the seeds reach the inbox", and the controller and
- *     the dashboard must never be able to disagree about a number (ADR-0042).
+ *     the dashboard must never be able to disagree about a number.
  *
  * Pure: no clock, no I/O, every input a parameter (D15).
  */

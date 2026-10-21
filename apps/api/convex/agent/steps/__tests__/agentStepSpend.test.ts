@@ -4,7 +4,7 @@
  * (interpretation, which replaced the context step's quarantined extraction,
  * is metered in `mail/interpret/run.ts`). A failed call records the usage it carries
  * (`partialUsageOf`); one that carries none is still a request, written with no
- * usage (ADR-0073). The draft step is covered in `draft/__tests__/draftSpend.test.ts`.
+ * usage. The draft step is covered in `draft/__tests__/draftSpend.test.ts`.
  *
  * The LLM dispatch seam and the provider factory are mocked; the mocked dispatch
  * records one request per call on the meter (`meteredDispatch.testlib.ts`) and

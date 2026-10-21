@@ -19,8 +19,6 @@
  *   - Per-page `RetryableProviderError` retries up to MAX_RETRIES, then
  *     fails.
  *   - Non-retryable `Error` fails the import immediately.
- *
- * Per ADR-0027.
  */
 
 import { convexTest } from 'convex-test';

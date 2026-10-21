@@ -1,7 +1,7 @@
 /**
  * The one mapping from the AI SDK's `usage` shape to the ledger's: the
  * `TokenUsage` triple every caller already reads, plus the cache and reasoning
- * counts a ledger row breaks out (ADR-0073). Adding or rotating SDKs touches
+ * counts a ledger row breaks out. Adding or rotating SDKs touches
  * this file.
  *
  * AI SDK field-name history: 4.x had `promptTokens/completionTokens`; 5.x

@@ -1,6 +1,6 @@
 /**
  * Pure-function tests for `classifyStep.route` and the response-disposition
- * rules (ADR-0061) — covers every branch per ADR-0014's drift bug #2.
+ * rules — covers every branch.
  */
 
 import { describe, it, expect } from 'vitest';

@@ -1,6 +1,5 @@
 /**
- * D4, the shadow allowance: which messages a shadowed task may judge
- * (ADR-0073). Pure.
+ * The shadow allowance: which messages a shadowed task may judge. Pure.
  *
  * Two limits apply, and both must allow a shadow call:
  *

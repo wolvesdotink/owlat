@@ -65,8 +65,6 @@ export const getContactPreferences = internalQuery({
  * unsubscribe link uses), then ignores any `topicUpdates` for the call —
  * a one-click "unsubscribe from everything" can't be partially overridden
  * by a stale per-topic toggle in the same payload.
- *
- * See docs/adr/0013-topic-subscription-module.md.
  */
 export const updateContactPreferences = internalMutation({
 	args: {

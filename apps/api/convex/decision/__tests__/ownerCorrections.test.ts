@@ -1,5 +1,5 @@
 /**
- * Owner corrections invalidate decision data (D12, ADR-0073): overruling the
+ * Owner corrections invalidate decision data: overruling the
  * Team classifier ("needs a reply") or recategorizing a Postbox thread leaves
  * no sender-memory entry or artifact about that sender's mail reusable. And a
  * purged Postbox message takes its artifacts with it.
@@ -238,7 +238,7 @@ describe('purging a Postbox message', () => {
 	});
 });
 
-describe('excluding a mailbox from hosted decisions (ADR-0060 §9)', () => {
+describe('excluding a mailbox from hosted decisions', () => {
 	it('sets the Team Inbox and a mailbox apart, audited, and writes nothing when unchanged', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t, { address: 'me@example.com' });

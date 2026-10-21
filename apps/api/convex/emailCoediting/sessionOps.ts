@@ -1,6 +1,6 @@
 /**
- * Email co-editing: applying a batch of editor operations to a session
- * (docs/adr/0071-email-coediting.md). Pure, so the merge rules are tested
+ * Email co-editing: applying a batch of editor operations to a session.
+ * Pure, so the merge rules are tested
  * without Convex.
  *
  * Operations are applied in arrival order; edits to different blocks never

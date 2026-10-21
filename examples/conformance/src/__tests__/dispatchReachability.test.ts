@@ -6,8 +6,8 @@
  * `dispatch` class: `'wired'` means a production host path runs the
  * contribution, `'declared'` means the contract, capability, codegen output and
  * authorization seam all exist but nothing calls them. Both classes are
- * legitimate; silently mixing them is not, because the docs, the ADRs and the
- * reference READMEs all describe buckets as working effects.
+ * legitimate; silently mixing them is not, because the docs and the reference
+ * READMEs all describe buckets as working effects.
  *
  * This suite binds the class to the repository. For each MODULE EXPORT a bucket
  * carries it names the ONE symbol a host path has to reach for that export to

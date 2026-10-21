@@ -10,8 +10,6 @@
  *   - `remove()` clears sibling identity + schedules provider cleanup
  *   - Audit log fires on every transition
  *   - Illegal edges return `{ ok: false, reason: 'illegal_edge' }`
- *
- * Per ADR-0018.
  */
 
 import { convexTest } from 'convex-test';

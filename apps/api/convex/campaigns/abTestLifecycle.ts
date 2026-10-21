@@ -16,8 +16,6 @@
  *
  * Effects:
  *   audit_log(action, ...)      — fires on every transition.
- *
- * See docs/adr/0017-campaign-lifecycle-modules.md.
  */
 
 import { v } from 'convex/values';
@@ -84,7 +82,7 @@ const transitionInputValidator = v.union(
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
 //
 // The graph and the dispatcher preamble that reads it live in the generic
-// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and effects below
+// lifecycle core (`lib/lifecycle.ts`); the reducers and effects below
 // stay here. `reportsTerminalRefusals` is off — every state can still be reset
 // to `none`, and the published outcome union carries only `illegal_edge`.
 

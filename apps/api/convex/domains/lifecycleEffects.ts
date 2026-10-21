@@ -1,5 +1,5 @@
 /**
- * Sending domain lifecycle — the effect runner (ADR-0018).
+ * Sending domain lifecycle — the effect runner.
  *
  * The reducer in `lifecycleReducer.ts` declares effects; this module runs them.
  * Nothing here writes a `domains` row: effects schedule provider work, clear or

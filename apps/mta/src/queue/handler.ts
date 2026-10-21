@@ -19,8 +19,7 @@
  * (`deferBudget.ts`) that catches a ladder advancing faster than the delays it
  * asked for — the age cap alone bounds a ladder in time but not in count.
  *
- * See `docs/adr/0007-mta-dispatch-modules.md` and CONTEXT.md's MTA
- * dispatch section.
+ * See CONTEXT.md's MTA dispatch section.
  */
 
 import type Redis from 'ioredis';

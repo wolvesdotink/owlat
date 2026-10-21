@@ -1,7 +1,7 @@
 /**
  * LLM provider adapter (module) — registries + dispatch.
  *
- * Mirrors `lib/sendProviders/index.ts` (ADR-0020). Two decoupled planes, two
+ * Mirrors `lib/sendProviders/index.ts`. Two decoupled planes, two
  * registries:
  *   • LANGUAGE — all text generation.  `languageProviderFor(kind)`.
  *   • EMBEDDING — knowledge graph / semantic search.  `embeddingProviderFor(kind)`.

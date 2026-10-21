@@ -6,7 +6,7 @@
  * lists them all. A file CAPTURED FROM INBOUND MAIL is not. It is an
  * attachment of a message in a mailbox, and it keeps that mailbox's
  * permission, or else capturing it would publish a private Postbox or the
- * owner/admin-only Team Inbox (ADR-0040) to every member through Files:
+ * owner/admin-only Team Inbox to every member through Files:
  *
  *   - a Postbox capture with its mailbox recorded (`sourceMailboxId`): the
  *     mailbox gate (mail/permissions.ts), so its own user, a member of a

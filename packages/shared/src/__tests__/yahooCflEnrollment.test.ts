@@ -191,7 +191,7 @@ describe('a report is ground truth', () => {
 			enrolledAt: T0,
 			lastReportAt: T0,
 		};
-		// D16 / ADR-0042: every report for a domain lands on the same row, so a
+		// Every report for a domain lands on the same row, so a
 		// sub-window advance carries no information worth a write.
 		for (const advance of [1, 1000, 60_000, YAHOO_CFL_REPORT_COALESCE_MS - 1]) {
 			const result = applyYahooCflEvent(

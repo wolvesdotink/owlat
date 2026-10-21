@@ -1,5 +1,5 @@
 /**
- * A scoped message's body as decision evidence (ADR-0060 §9): segmented by
+ * A scoped message's body as decision evidence: segmented by
  * interpretation's own `segmentScoped` (hidden HTML stripped, the HTML body
  * read as HTML), and marked incomplete whenever scoping or segmentation could
  * not vouch for the whole message: something omitted (text outside a signed

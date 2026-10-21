@@ -1,5 +1,5 @@
 /**
- * Frontend half of the Operation error seam (ADR-0036): turn any throw from a
+ * Frontend half of the Operation error seam: turn any throw from a
  * backend call into the shared `{ category, message, data? }` vocabulary, and
  * map a category to its UI treatment. Pure functions — the Operation module
  * (`useBackendOperation`) layers the Vue/PostHog/toast plumbing on top, and
@@ -36,7 +36,7 @@ export interface CategoryTreatment {
 }
 
 /**
- * The category → treatment table from ADR-0036. The single policy both
+ * The category → treatment table. The single policy both
  * Operation modules consult.
  */
 const TREATMENT: Record<OperationErrorCategory, CategoryTreatment> = {
@@ -194,7 +194,7 @@ export function operationToastCopy(
 const SLOW_READ = /timed out|timeout/i;
 
 /**
- * The copy for a failed READ (the read half of ADR-0036, #721).
+ * The copy for a failed READ (the read half of the Operation error seam, #721).
  *
  * A query failure reaches the page as whatever the Convex client threw, and its
  * raw message is not something to show a user ("[CONVEX Q(topics/topics:list)]

@@ -1,7 +1,7 @@
 /**
  * Golden tests: with every routing switch at its default (`clarifyNecessity`
  * off), clarification on all three surfaces is what it was before the shared
- * service (ADR-0073, plan Phase 3, D5): the same model calls in the same order,
+ * service: the same model calls in the same order,
  * on the same tiers, with the same prompts, temperatures and ledger features,
  * and the same questions out.
  *

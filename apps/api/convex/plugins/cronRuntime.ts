@@ -42,7 +42,7 @@ type FailureReason = 'cron_failed' | 'cron_invalid' | 'cron_timeout';
 export const runPluginCron = internalAction({
 	args: { pluginId: v.string(), cronKind: v.string() },
 	handler: async (ctx, args): Promise<void> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		try {
 			await runPluginCronTick(ctx, args.pluginId, args.cronKind);

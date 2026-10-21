@@ -1,5 +1,5 @@
 /**
- * D1 for background work (ADR-0073, Phase 1b): at the spend ceiling, or with
+ * Background deferral: at the spend ceiling, or with
  * a spend state that cannot be verified, background AI work defers instead of
  * spending. A deferred semantic file keeps its extracted text now and is
  * processed again later, up to {@link MAX_FILE_DEFERRALS} times (a day), so

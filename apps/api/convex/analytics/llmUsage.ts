@@ -11,7 +11,7 @@
  * `agentActions`; that is a per-step reporting view of calls already counted
  * here, not a second money store (#1259).
  *
- * ONE ROW PER PROVIDER REQUEST (ADR-0073). A retried call, a tool loop and a
+ * ONE ROW PER PROVIDER REQUEST. A retried call, a tool loop and a
  * stream write one row per request they made, each with its `attempt` number
  * under the call's `requestId`. The dispatch records the requests on an
  * `LlmCallMeter`; `analytics/meteredSpend.ts` and the decision plane's

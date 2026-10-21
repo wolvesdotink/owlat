@@ -1,5 +1,5 @@
 /**
- * The re-embed job's state (ADR-0073, Phase 1a and Phase 5; #1334): one job row
+ * The re-embed job's state (#1334): one job row
  * walks `knowledgeEntries`, then `semanticFiles`, a page at a time, and writes
  * fresh vectors into its target space's column with `measured` provenance.
  *

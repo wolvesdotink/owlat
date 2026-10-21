@@ -1,5 +1,5 @@
 /**
- * The IMAP server registry (ADR-0063): the handshake upsert and its verdicts,
+ * The IMAP server registry: the handshake upsert and its verdicts,
  * the operator status (window, legacy logins, `safeToRaiseMinTo`), legacy
  * detection through `appPasswords.touch`, the platform-admin read and the
  * daily prune.

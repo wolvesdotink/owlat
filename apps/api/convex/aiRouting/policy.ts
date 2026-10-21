@@ -1,5 +1,5 @@
 /**
- * The AI routing policy (ADR-0073, SPEC §3): read and save.
+ * The AI routing policy: read and save.
  *
  * One stored row (`aiRoutingPolicy`), absent until an admin first saves; a
  * missing row means every default, and every default is today's behaviour.

@@ -9,8 +9,9 @@ them (an earlier standalone copy here had drifted out of sync with the code).
   [`apps/api/convex/CONVENTIONS.md`](./apps/api/convex/CONVENTIONS.md). Read it
   before adding/splitting backend files or touching mutation auth.
 - **Domain vocabulary** (the project's sharpened terms — Block, Send lifecycle,
-  Reputation window, etc.) — [`CONTEXT.md`](./CONTEXT.md), kept in sync with the
-  ADRs in [`docs/adr/`](./docs/adr/).
+  Reputation window, etc.) — [`CONTEXT.md`](./CONTEXT.md).
+- **Design decisions** — there is no ADR series. See "Design decisions" in
+  [`CLAUDE.md`](./CLAUDE.md).
 - **Design tokens** ("Warm Minimal" palette, typography, component classes) live
   in code: [`packages/ui/assets/css/tokens.css`](./packages/ui/assets/css/tokens.css)
   is the single source of truth.

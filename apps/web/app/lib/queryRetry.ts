@@ -32,7 +32,7 @@ const PERMANENT_MESSAGE =
  * Whether a query failure is worth retrying.
  *
  * A `ConvexError` is a decision the backend made on purpose: a permission
- * refusal, a disabled feature, a missing record (the ADR-0036 categories). Those
+ * refusal, a disabled feature, a missing record (the operation error categories). Those
  * are final. Anything else is an uncaught server error: a function timeout, an
  * overloaded deployment, or (in production, where Convex redacts the message to
  * "Server Error") something we cannot tell apart from those. Retrying a genuine

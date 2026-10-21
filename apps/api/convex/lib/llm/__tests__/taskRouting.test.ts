@@ -1,5 +1,5 @@
 /**
- * The task-policy catalog as the model eligibility rule (ADR-0073): the
+ * The task-policy catalog as the model eligibility rule: the
  * resolver takes a task's tier from it, and the dispatch refuses a resolved
  * model whose tier the call's task does not allow, before any request.
  */

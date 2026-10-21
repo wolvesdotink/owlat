@@ -1,5 +1,5 @@
 /**
- * Email co-editing cleanup (docs/adr/0071-email-coediting.md): the sweep of
+ * Email co-editing cleanup: the sweep of
  * expired presence, old notices and idle sessions, and the cascade that runs
  * when an email is deleted.
  */

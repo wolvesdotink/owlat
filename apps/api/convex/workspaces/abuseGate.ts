@@ -13,8 +13,6 @@
  * Replaces the pre-deepening `lib/abuseHelpers.ts` (same two functions
  * lived there). Co-located with `abuseStatus.ts` so the gate semantics
  * sit alongside the legal-edges graph.
- *
- * See docs/adr/0011-abuse-status-modules.md.
  */
 
 import type { MutationCtx } from '../_generated/server';

@@ -1,5 +1,5 @@
 /**
- * The evidence builder for the Phase 2 mail bundles (ADR-0073): the one place
+ * The evidence builder for the Phase 2 mail bundles: the one place
  * that turns a message into the bounded state a decision question is asked
  * about. Production (`decisions/teamBundles.ts`, `decisions/postboxBundle.ts`)
  * and the decision eval (`mail/interpret/__eval__/decisionQuestions.ts`) both
@@ -13,7 +13,7 @@
  * still be waiting for the D13 guard, which would turn a shadow observation
  * into paid guard calls.
  *
- * Redaction follows ADR-0060 §9:
+ * Redaction:
  * - the body is interpretation's scoped, segmented text
  *   ({@link evidenceSegments}): HTML reduced to visible text with the
  *   injection scan's hidden-content strip, a clearsigned message read inside
@@ -32,7 +32,7 @@ import type { DecisionState } from '../decisionProviders/types';
 import { sha256Hex } from '../aiRouting/routeDigest';
 
 /**
- * The redaction budget (ADR-0060 §9). The whole state stays within
+ * The redaction budget. The whole state stays within
  * {@link STATE_MAX_CHARS} of JSON: metadata is capped field by field, and the
  * body gets what is left, at most {@link STATE_BODY_CHARS}, head and tail kept.
  */

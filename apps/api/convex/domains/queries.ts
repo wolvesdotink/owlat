@@ -2,7 +2,7 @@
  * Internal read queries on `domains` used by the **Sending domain lifecycle
  * (module)**'s effect handlers (verifier action, provider register actions).
  *
- * Per ADR-0018: extracted from the deleted `dnsVerificationQueries.ts`. The
+ * Extracted from the deleted `dnsVerificationQueries.ts`. The
  * status-writing mutations from that file collapsed into the lifecycle
  * reducer; only the read paths survive here.
  */

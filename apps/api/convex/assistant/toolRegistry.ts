@@ -82,7 +82,7 @@ export interface HostedAssistantToolModule {
 	readonly isRetrieval: boolean;
 	/**
 	 * `root` is the assistant turn's root request with the turn's call as the
-	 * parent (ADR-0073), so a tool's own model and embedding calls group under
+	 * parent, so a tool's own model and embedding calls group under
 	 * the turn in the ledger.
 	 */
 	build(ctx: ActionCtx, audience: AssistantAudience, root?: LlmRootContext): Tool;
@@ -190,7 +190,7 @@ export const RETRIEVAL_LIMIT_MESSAGE =
 
 /**
  * Wrap a retrieval tool so the host counts its calls against the turn's
- * allowance (ADR-0073, Phase 5). A call past it rejects before the tool runs,
+ * allowance. A call past it rejects before the tool runs,
  * so no search and no query embedding happen; the SDK hands the error to the
  * model as the tool's result, and the turn goes on. The count is taken when
  * the call starts, so parallel calls in one round cannot overshoot it.

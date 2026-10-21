@@ -1,6 +1,6 @@
 /**
  * Resumable backfill (and purge) of `mailMessages.searchBody` over EXISTING
- * mail — the migration half of deep body search (idea 32, ADR-0059).
+ * mail — the migration half of deep body search.
  *
  * The write path only ever sees mail delivered after the instance opt-in was
  * turned on. Without this walk, "search whole bodies" would mean "search whole

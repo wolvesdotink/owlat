@@ -1,5 +1,5 @@
 /**
- * The security scan's pure decisions (ADR-0073, Phase 1c): the outcome
+ * The security scan's pure decisions: the outcome
  * precedence, the D13 skip reasons, L5's switch, and the walker's "guard
  * required" refusal.
  */

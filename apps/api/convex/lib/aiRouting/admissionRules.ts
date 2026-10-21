@@ -1,5 +1,5 @@
 /**
- * Spend admission: the decision rule (ADR-0073, Phase 1b, owner decision D1).
+ * Spend admission: the decision rule.
  *
  * One pure function, {@link evaluateAdmission}, answers "may a call that may
  * cost `microusd` start now?" from the complete settled totals of the current

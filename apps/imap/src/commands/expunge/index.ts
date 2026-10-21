@@ -102,7 +102,7 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 							uidSet,
 							beforeUid,
 							// Lets the backend refuse this page before it deletes anything
-							// once it stops serving this server's contract (ADR-0063).
+							// once it stops serving this server's contract.
 							imapWireVersion: IMAP_WIRE_VERSION,
 						});
 						// Each page has already committed. Publish it before requesting the

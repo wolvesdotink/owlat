@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * `context_retrieval` Agent step (module) — see ADR-0014.
+ * `context_retrieval` Agent step (module).
  *
  * Builds the briefing string the LLM steps consume: contact profile,
  * recent activities, thread history, current message. Token-budgeted
@@ -242,7 +242,7 @@ export async function assembleInboundBriefing(
 			internal.knowledge.graphTraversal.isGraphRetrievalEnabled,
 			{}
 		);
-		// L8 + empty-corpus skip (ADR-0073): one query embedding (and its space)
+		// Empty-corpus skip: one query embedding (and its space)
 		// for both searches, none when neither table holds a vector; the text still
 		// feeds both full-text legs. An embed failure leaves both empty, as before.
 		const query = await embedRetrievalQuery(
@@ -471,8 +471,8 @@ export const contextRetrievalStep: AgentStepModule<
 		const output = await assembleInboundBriefing(ctx, input.inboundMessageId);
 
 		// Record the contextTier + coverage on the inboundMessage (in-state
-		// side effect — see ADR-0010 for why `contextTier` has its own helper
-		// rather than rolling into a transition).
+		// side effect — `inbox/stepOutputs.ts` says why `contextTier` has its own
+		// helper rather than rolling into a transition).
 		await ctx.runMutation(internal.inbox.stepOutputs.recordContextTier, {
 			inboundMessageId: input.inboundMessageId,
 			contextTier: output.tier,

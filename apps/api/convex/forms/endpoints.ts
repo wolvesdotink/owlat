@@ -331,7 +331,7 @@ export const getByConfirmationToken = publicQuery({
 /**
  * Confirm a form submission (double opt-in).
  *
- * Per ADR-0009 + ADR-0015: the form submission's `confirmationToken` is
+ * The form submission's `confirmationToken` is
  * the same string as the contact's `doiConfirmationToken`, and one token is
  * shared by every signup made while the contact was pending. Each module
  * owns its own table — this handler chains the two:

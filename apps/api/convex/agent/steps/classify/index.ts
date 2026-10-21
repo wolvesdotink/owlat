@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * `classify` Agent step (module) — see ADR-0014 and ADR-0061.
+ * `classify` Agent step (module).
  *
  * Classifies an inbound message by category / priority / sentiment / intent /
  * confidence using structured LLM output (generateObject), and — the first

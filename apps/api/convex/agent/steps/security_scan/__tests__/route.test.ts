@@ -1,6 +1,6 @@
 /**
  * Pure-function tests for `securityScanStep.route` — covers the 4
- * branches per ADR-0014's drift bug #2.
+ * branches.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -11,7 +11,14 @@ const messageId = 'msg_test' as Id<'inboundMessages'>;
 const runCtx = { inboundMessageId: messageId, agentConfig: null };
 const input = { inboundMessageId: messageId };
 
-function makeFlags(over: Partial<{ injectionDetected: boolean; confidence: number; spamScore: number; phishingDetected: boolean }> = {}) {
+function makeFlags(
+	over: Partial<{
+		injectionDetected: boolean;
+		confidence: number;
+		spamScore: number;
+		phishingDetected: boolean;
+	}> = {}
+) {
 	return {
 		injectionDetected: over.injectionDetected ?? false,
 		confidence: over.confidence ?? 0,
@@ -33,7 +40,7 @@ describe('securityScanStep.route', () => {
 				agentEnabled: true,
 			},
 			input,
-			runCtx,
+			runCtx
 		);
 		expect(route.kind).toBe('transition');
 		if (route.kind !== 'transition') return;
@@ -51,7 +58,7 @@ describe('securityScanStep.route', () => {
 				agentEnabled: true,
 			},
 			input,
-			runCtx,
+			runCtx
 		);
 		expect(route.kind).toBe('transition');
 		if (route.kind !== 'transition') return;
@@ -69,7 +76,7 @@ describe('securityScanStep.route', () => {
 				agentEnabled: true,
 			},
 			input,
-			runCtx,
+			runCtx
 		);
 		expect(route.kind).toBe('transition');
 		if (route.kind !== 'transition') return;
@@ -87,7 +94,7 @@ describe('securityScanStep.route', () => {
 				agentEnabled: true,
 			},
 			input,
-			runCtx,
+			runCtx
 		);
 		expect(route.kind).toBe('transition');
 		if (route.kind !== 'transition') return;
@@ -107,7 +114,7 @@ describe('securityScanStep.route', () => {
 				agentEnabled: false,
 			},
 			input,
-			runCtx,
+			runCtx
 		);
 		expect(route.kind).toBe('done');
 	});
@@ -123,7 +130,7 @@ describe('securityScanStep.route', () => {
 				agentEnabled: true,
 			},
 			input,
-			runCtx,
+			runCtx
 		);
 		expect(route.kind).toBe('transition');
 		if (route.kind !== 'transition') return;

@@ -264,7 +264,7 @@ async function settleFailure(
 const SETTLEMENT_TRIES = 2;
 
 /**
- * Settle a reservation without losing it to a transient failure (ADR-0073):
+ * Settle a reservation without losing it to a transient failure:
  * the settlement mutation (idempotent per reservation) is tried twice, then
  * `recoverSettlement` is scheduled with the same arguments, metered requests
  * included. True once the settlement is written or durably queued.

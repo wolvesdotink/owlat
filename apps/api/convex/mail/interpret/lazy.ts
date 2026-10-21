@@ -1,5 +1,5 @@
 /**
- * Lazy interpretation on first open (ADR-0072, D5): a thread older than the
+ * Lazy interpretation on first open: a thread older than the
  * 30-day backfill, or one the backfill has not reached, has no brief. When
  * the reader opens it, `brief.get` answers `completeness: 'none'` and the web
  * shows the Conversation and calls {@link ensure}, which starts reading the

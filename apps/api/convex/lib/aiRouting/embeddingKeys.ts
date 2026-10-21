@@ -1,5 +1,5 @@
 /**
- * The two derived keys of embedding provenance (ADR-0073). Pure, so the writer
+ * The two derived keys of embedding provenance. Pure, so the writer
  * that stamps a row, the job that re-embeds it and the retrieval that filters
  * on it all spell them the same way.
  */

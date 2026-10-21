@@ -1,5 +1,5 @@
 /**
- * Which language tier a task's call runs on (ADR-0073, plan Phase 4): the
+ * Which language tier a task's call runs on: the
  * resolver (`lib/llmProvider.ts`) asks this module, and this module asks the
  * task-policy catalog (`./taskPolicy.ts`). A call site names its TASK, never a
  * tier of its own choosing; the tier comes from the task's catalog entry.

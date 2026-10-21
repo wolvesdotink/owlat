@@ -1,6 +1,5 @@
 /**
- * The applied-decision gate (ADR-0073 §8 and its auto-send contract; clarify
- * lane, Sol r3 F3): a Phase 3 decision verdict that DECIDED part of this
+ * The applied-decision gate: a decision verdict that DECIDED part of this
  * message's handling (an enforced claim check applied to its interpretation,
  * an enforced necessity judgment that settled its clarification) may let the
  * message auto-send only if the auto-send contract admits it

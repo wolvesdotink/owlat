@@ -1,5 +1,5 @@
 /**
- * Send-time optimization reads (ADR-0068): the planning context the send
+ * Send-time optimization reads: the planning context the send
  * walker loads once per page, and the predicted distribution the schedule
  * panel shows before the campaign is scheduled.
  */

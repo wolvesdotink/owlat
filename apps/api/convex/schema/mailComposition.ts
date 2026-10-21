@@ -277,7 +277,7 @@ export const mailCompositionTables = {
 	}).index('by_mailbox', ['mailboxId']),
 
 	// The instance-wide sweep that clears every `searchBody` when the operator
-	// turns deep body search off (ADR-0059). Singleton. Unlike the per-mailbox
+	// turns deep body search off. Singleton. Unlike the per-mailbox
 	// walks above it pages the whole `mailMessages` table, so it keeps its own
 	// cursor, generation and lease: a newer opt-out supersedes an older sweep,
 	// and a sweep whose page failed is visible as a dead lease and restartable

@@ -3,7 +3,7 @@ import { PROCESSING_LIFECYCLE, reduce } from '../reducers';
 import type { Doc, Id } from '../../../_generated/dataModel';
 import type { TransitionInput } from '../types';
 
-// Pure unit tests for the `informational` state (ADR-0061) and the
+// Pure unit tests for the `informational` state and the
 // clarification notice effect. The reducers are pure functions of (loaded
 // message, transition input) → { patch, effects }; the effect runner and the
 // dashboard mutations are covered elsewhere.

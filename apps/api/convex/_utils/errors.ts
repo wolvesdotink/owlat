@@ -8,8 +8,6 @@
  * category→HTTP-status map live in `@owlat/shared` (`operationError.ts`) so the
  * HTTP adapter (`lib/httpResponse.ts`) and the `apps/web` Operation modules
  * speak the same vocabulary. This module re-exports them and adds the throwers.
- *
- * See docs/adr/0036-operation-error-taxonomy.md.
  */
 
 import { ConvexError, type Value } from 'convex/values';

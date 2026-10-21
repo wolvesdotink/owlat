@@ -1,6 +1,6 @@
 /**
- * The block-only decision verdict gate in `CORE_FINAL_AUTO_SEND_GATES`
- * (ADR-0060 §8, ADR-0073 §8), against real artifacts. Nothing feeds a verdict
+ * The block-only decision verdict gate in `CORE_FINAL_AUTO_SEND_GATES`,
+ * against real artifacts. Nothing feeds a verdict
  * to auto-send in this release, so the registered gate blocks nothing; a gate
  * built for a task that does feed one blocks every stale or uncalibrated
  * verdict and lets only a current, calibrated one through.

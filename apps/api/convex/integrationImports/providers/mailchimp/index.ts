@@ -9,8 +9,6 @@
  * the cursor is a {@link MailchimpCursor} in JSON. A bare numeric cursor is
  * an `offset` from a run the previous release started, which finishes the
  * way it began. Terminal page returns `nextCursor: null`.
- *
- * Per ADR-0027.
  */
 
 import {

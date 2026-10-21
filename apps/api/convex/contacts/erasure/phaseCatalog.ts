@@ -27,7 +27,7 @@ export const CONTACT_ERASURE_PHASES = [
 	'knowledge',
 	'semanticFiles',
 	'answerAskSessions',
-	// Team Inbox sender memory (ADR-0073, D12).
+	// Team Inbox sender memory.
 	'senderMemory',
 	// Contact-scoped draft strategy overrides (a contact id in a string field).
 	'draftStrategySelections',

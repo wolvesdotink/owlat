@@ -33,7 +33,7 @@ import { internalMutation } from './lib/writeFence';
  *
  * Each organization can configure which email provider — any
  * `SendTransportKind` the catalog declares, core or plugin; the kinds are not
- * re-listed here (ADR-0055) — to use for each message type (campaign,
+ * re-listed here — to use for each message type (campaign,
  * transactional, automation).
  */
 

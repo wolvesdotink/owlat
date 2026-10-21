@@ -2,7 +2,7 @@
  * Files captured from inbound mail keep their mailbox's permission (#1322).
  *
  * Every org member can read Files, but an attachment captured out of a
- * personal Postbox mailbox or the owner/admin-only Team Inbox (ADR-0040) is
+ * personal Postbox mailbox or the owner/admin-only Team Inbox is
  * mail, not a shared upload. Before the fix any editor could enumerate those
  * captures — with a download URL — through `semanticFiles.list` / `search` /
  * `get` / `getVersionHistory` / `listByContact`, without access to the mailbox

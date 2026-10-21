@@ -128,7 +128,7 @@ async function streamAssistantTurn(
 		messages: ModelMessage[];
 		lastUserText: string;
 		feature: string;
-		/** The turn's root request: one per assistant message (ADR-0073). */
+		/** The turn's root request: one per assistant message. */
 		root: LlmRootContext;
 		patch: (text: string, toolCalls: ToolCall[] | undefined) => Promise<{ stop: boolean }>;
 		/** Whether the person stopped the turn (read without writing). */
@@ -259,7 +259,7 @@ function turnError(error: unknown): Pick<FinalizeArgs, 'errorMessage' | 'budgetR
 }
 
 /**
- * A turn's root: one per assistant message (ADR-0073). Someone waits on it, so
+ * A turn's root: one per assistant message. Someone waits on it, so
  * every call under it, the tools' nested searches included, is admitted as
  * interactive work.
  */
@@ -279,7 +279,7 @@ export const run = internalAction({
 		includeInboxDerived: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const runCtx = await ctx.runQuery(internal.assistant.conversations.getRunContext, {
 			conversationId: args.conversationId,
@@ -331,7 +331,7 @@ export const runForChat = internalAction({
 		promptMessageId: v.id('chatMessages'),
 	},
 	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const runCtx = await ctx.runQuery(internal.chat.messages.getAssistantChatContext, {
 			roomId: args.roomId,

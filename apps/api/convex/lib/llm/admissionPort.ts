@@ -1,5 +1,5 @@
 /**
- * Spend admission at the dispatch (ADR-0073, Phase 1b): the refusal error
+ * Spend admission at the dispatch: the refusal error
  * every caller sees, and the estimates a hold is sized with. The dispatch side
  * (`./dispatchAdmission.ts`) reserves before each provider request through the
  * meter's port (`AdmissionPort`, installed by `analytics/meteredSpend.ts`
@@ -106,7 +106,7 @@ export function budgetRefusalMessage(reason: BudgetHoldReason): string {
 }
 
 /**
- * HOLD SIZING (ADR-0073, Phase 1b). A hold must be an upper bound on what the
+ * HOLD SIZING. A hold must be an upper bound on what the
  * request can be billed, or concurrent calls overshoot the ceiling.
  *
  * - INPUT: the UTF-8 byte length of the whole serialized request (system,

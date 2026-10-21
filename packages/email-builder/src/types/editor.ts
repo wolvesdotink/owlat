@@ -106,7 +106,7 @@ export interface EmailBuilderProps {
 
 /**
  * Another person's presence on one root block, drawn as a coloured outline
- * with a name label (co-editing, docs/adr/0071-email-coediting.md). The host
+ * with a name label (co-editing). The host
  * resolves names and builds the label text.
  */
 export interface RemoteBlockMark {

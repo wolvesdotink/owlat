@@ -2,8 +2,6 @@
  * Campaign archive HTTP endpoint — GET /archive/{token}. Returns the
  * snapshotted HTML of a sent campaign with archive enabled. Wrapped by the
  * **Public token endpoint (module)** for the uniform shell shape.
- *
- * See docs/adr/0030-public-token-endpoint-module.md.
  */
 
 import { internal } from '../_generated/api';

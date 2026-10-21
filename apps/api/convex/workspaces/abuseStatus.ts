@@ -12,8 +12,6 @@
  *
  * Audit-log effect fires on every transition (closes drift bug where
  * internal escalations wrote `abuseStatus` without an audit-log row).
- *
- * See docs/adr/0011-abuse-status-modules.md.
  */
 
 import { v } from 'convex/values';
@@ -146,8 +144,8 @@ async function dispatch(
 		await ctx.db.patch(settings._id, result.patch as Partial<Doc<'instanceSettings'>>);
 	}
 
-	// Audit log fires on every transition (including `recorded` no-ops) per
-	// ADR-0011 — observability captures every attempt, even same-state ones
+	// Audit log fires on every transition (including `recorded` no-ops) —
+	// observability captures every attempt, even same-state ones
 	// (e.g., "circuit breaker tripped again while already warned").
 	await recordAuditLog(ctx, {
 		userId: input.changedBy,

@@ -22,8 +22,6 @@
  * Mirrors **Contact resolution (module)**'s shape (intake + `action`
  * discriminator), not the Outbound lifecycle shape — most rows land
  * directly in a terminal state at create time.
- *
- * See docs/adr/0015-form-submission-module.md.
  */
 
 import { v } from 'convex/values';
@@ -362,7 +360,7 @@ export const submit = internalMutation({
 			// its DOI toggle asks an unconfirmed contact to confirm, and a standing
 			// opt-out always needs a fresh confirmation. A confirmed contact
 			// without an opt-out lands `duplicate`; a pending one shares its live
-			// token. See ADR-0015's 2026-10 amendment.
+			// token.
 			const contact = await ctx.db.get(contactId);
 			const doiRequired = form.doubleOptIn === true;
 			if (contact && requiresFreshConfirmation(contact, { source: 'form', doiRequired })) {

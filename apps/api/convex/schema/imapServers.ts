@@ -2,7 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 /**
- * What the IMAP servers report about themselves (ADR-0063): the release and
+ * What the IMAP servers report about themselves: the release and
  * the wire contract version each one runs, so the backend can tell which old
  * IMAP servers are still in use before a compatibility path is removed.
  *

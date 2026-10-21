@@ -1,5 +1,5 @@
 /**
- * Email co-editing: saving the shared draft (docs/adr/0071-email-coediting.md).
+ * Email co-editing: saving the shared draft.
  *
  * The email `update` mutations take an optional `coeditVersion`. When it is
  * given and the email has a live session, the save writes the SESSION, not

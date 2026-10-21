@@ -1,7 +1,7 @@
 /**
  * Campaign send enqueue — the bulk producer.
  *
- * Per ADR-0006, the workpool `onComplete` callback is owned by the Send
+ * The workpool `onComplete` callback is owned by the Send
  * completion (module) at `delivery/sendCompletion.ts`; the enqueue below goes
  * through `enqueueGovernedSend` (`delivery/governedEnqueue.ts`), which wires
  * `internal.delivery.sendCompletion.completeSend` for every producer. The

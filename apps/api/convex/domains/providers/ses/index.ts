@@ -9,8 +9,6 @@
  * Unlike MTA, SES has a provider-side verification call
  * (`getVerificationStatus`) — the lifecycle's reducer combines its boolean
  * verdict with the generic DNS rule to derive `verified | failed | pending`.
- *
- * Per ADR-0018.
  */
 
 import { internal } from '../../../_generated/api';

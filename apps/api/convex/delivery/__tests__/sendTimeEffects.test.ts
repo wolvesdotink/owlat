@@ -10,7 +10,7 @@ import { reduceDeliveryObservation } from '../sendLifecycle/deliveryObservation'
 import { SEND_TIME_ATTRIBUTION_MS, sendTimeStatDelta } from '../sendLifecycle/sendTimeEffects';
 import type { Id } from '../../_generated/dataModel';
 
-// The send-time optimization hooks on the send lifecycle (ADR-0068): which
+// The send-time optimization hooks on the send lifecycle: which
 // engagements teach a contact's profile, and which counters an optimized send
 // bumps for the report's comparison.
 

@@ -1,5 +1,5 @@
 /**
- * The 30-day backfill and the first-open interpretation (ADR-0072, D5):
+ * The 30-day backfill and the first-open interpretation:
  * active threads only, each thread's whole history paged with a durable
  * cursor (partial until read through), sends only once they went out and
  * through the outbound run, bounded per batch and per run, paused by the

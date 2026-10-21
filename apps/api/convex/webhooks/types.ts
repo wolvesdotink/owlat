@@ -1,7 +1,7 @@
 /**
  * Shared types for the inbound webhook pipeline and the outbound webhook
- * event modules. See ADR-0003 + ADR-0005 for the design and CONTEXT.md for
- * the vocabulary (Inbound event, Webhook event module).
+ * event modules. See CONTEXT.md for the vocabulary (Inbound event, Webhook
+ * event module).
  */
 
 import type { Validator } from 'convex/values';

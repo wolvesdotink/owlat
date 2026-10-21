@@ -1,5 +1,5 @@
 /**
- * The per-message verify claim cap (ADR-0073, plan Phase 3), end to end through
+ * The per-message verify claim cap, end to end through
  * `interpretMessage` with a stubbed model:
  *
  * - No cap (the default): every claim is checked, in one call, as today.

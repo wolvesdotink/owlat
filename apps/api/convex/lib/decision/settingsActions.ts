@@ -139,7 +139,7 @@ export async function testDecisionPlane(ctx: ActionCtx): Promise<{ ok: boolean; 
 			maxAttempts: 1,
 			task: 'decision.connection_probe',
 			root,
-			// A paid probe is reserved like any decision (ADR-0073).
+			// A paid probe is reserved like any decision.
 			admission: dispatchAdmissionPort(ctx, { root }, 'decision.connection_probe', root.deadlineAt),
 			breaker: decisionBreakerPort(ctx),
 			rateLimiter: decisionRateLimiterPort(ctx),

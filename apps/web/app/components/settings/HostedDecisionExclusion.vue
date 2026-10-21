@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * The hosted-decision opt-out of one mailbox, or of the Team Inbox (ADR-0060
- * §9): mail that must never reach a decision provider outside the operator's
+ * The hosted-decision opt-out of one mailbox, or of the Team Inbox: mail that must never reach a decision provider outside the operator's
  * own hardware. Excluded mail is judged only by the local decision engine;
  * without one it gets no decision requests at all, which is how it worked
  * before the decision plane. Admin only (the server checks again, and audits

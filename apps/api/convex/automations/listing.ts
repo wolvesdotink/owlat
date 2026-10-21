@@ -1,7 +1,7 @@
 import type { ListingDescriptor } from '../lib/listing';
 
 /**
- * Automation listing descriptor (ADR-0037). Browse-only; status-filtered browse
+ * Automation listing descriptor. Browse-only; status-filtered browse
  * routes through the existing `by_status` index (creation-ordered within the
  * status), and `byStatus` replaces `countByStatus`.
  *

@@ -1,5 +1,5 @@
 /**
- * D12 sender memory (ADR-0073 §5, plan decision 12): what an authenticated
+ * Sender memory: what an authenticated
  * sender's identical message was answered last time, kept ADVISORY ONLY.
  *
  * Nothing reads an entry to route, skip or settle a message. When a bundle

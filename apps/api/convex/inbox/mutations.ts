@@ -24,7 +24,7 @@ import { recordTeamAssigned } from '../mail/interpret/threadEvents';
 /**
  * Approve an agent-generated draft for sending.
  *
- * Per ADR-0010, status + thread latestDraftStatus + send scheduling all
+ * Status + thread latestDraftStatus + send scheduling all
  * happen atomically inside `processingLifecycle.transition`.
  */
 export const approveDraft = adminMutation({
@@ -107,7 +107,7 @@ export const approveDraft = adminMutation({
 /**
  * Reject an agent-generated draft.
  *
- * Per ADR-0010, status + thread latestDraftStatus update atomically
+ * Status + thread latestDraftStatus update atomically
  * inside `processingLifecycle.transition`.
  */
 export const rejectDraft = adminMutation({
@@ -223,7 +223,7 @@ export const editDraft = adminMutation({
  * Assign a thread to a team member (or unassign with no `assignedTo`).
  *
  * Routes through the Conversation thread module so the write is audited
- * (`thread.assigned` / `thread.unassigned`) — see ADR-0032 §3.
+ * (`thread.assigned` / `thread.unassigned`).
  */
 export const assignThread = adminMutation({
 	args: {
@@ -280,7 +280,7 @@ export const assignThread = adminMutation({
  * Close or resolve a thread.
  *
  * Routes through the Conversation thread module so the write is audited
- * (`thread.status_changed`, carrying `from`/`to`) — see ADR-0032 §3.
+ * (`thread.status_changed`, carrying `from`/`to`).
  */
 export const updateThreadStatus = adminMutation({
 	args: {
@@ -306,7 +306,7 @@ export const updateThreadStatus = adminMutation({
 /**
  * Release a quarantined message for agent processing.
  *
- * Per ADR-0010, status reset (and clearing of securityFlags) happens via
+ * Status reset (and clearing of securityFlags) happens via
  * the lifecycle; the re-schedule of the next pipeline step stays here
  * because it's release-specific (jumps straight to context retrieval
  * rather than re-running the security scan).
@@ -335,10 +335,9 @@ export const releaseFromQuarantine = adminMutation({
 
 		// The lifecycle's `schedule_pipeline_start` effect (fired on
 		// `to: 'received'` from `release_quarantine`) re-kicks the Agent
-		// walker from `security_scan`. No explicit reschedule here — see
-		// ADR-0014 for why the pre-deepening direct schedule to
-		// `agentContext.retrieveContext` was broken (illegal-edge:
-		// `received → classifying` was never legal).
+		// walker from `security_scan`. No explicit reschedule here — the old
+		// direct schedule to `agentContext.retrieveContext` was broken
+		// (illegal-edge: `received → classifying` was never legal).
 
 		await recordAuditLog(ctx, {
 			userId,
@@ -389,7 +388,7 @@ export const retryFailedMessage = adminMutation({
 /**
  * Block a sender (add to blocklist) and archive the message.
  *
- * Per ADR-0010, archive transition routes through the lifecycle so the
+ * The archive transition routes through the lifecycle so the
  * star-source `* → archived` legal edge is enforced uniformly.
  */
 export const blockSender = adminMutation({

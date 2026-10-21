@@ -230,7 +230,7 @@ describe('campaign status transitions (data validation)', () => {
 			);
 		});
 
-		// Post-ADR-0017: status transitions go through the lifecycle module.
+		// Status transitions go through the lifecycle module.
 		await t.mutation(internal.campaigns.lifecycle.transition, {
 			campaignId: campaignId!,
 			input: { to: 'sent', at: Date.now() },

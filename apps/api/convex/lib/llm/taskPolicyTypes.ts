@@ -1,5 +1,5 @@
 /**
- * The task-policy catalog's types (ADR-0073), split out of `./taskPolicy.ts`,
+ * The task-policy catalog's types, split out of `./taskPolicy.ts`,
  * which holds the entries and re-exports these. Pure.
  */
 
@@ -55,8 +55,8 @@ export interface TaskPolicyEntry {
 	/** Provider requests per call, the first included. */
 	readonly maxAttempts: number;
 	/**
-	 * Model rounds a tool loop or a tool-calling stream may take (ADR-0073,
-	 * Phase 5): the dispatch stops the loop there, whatever the caller asked
+	 * Model rounds a tool loop or a tool-calling stream may take:
+	 * the dispatch stops the loop there, whatever the caller asked
 	 * for. `null`: the caller's own step limit, as today.
 	 */
 	readonly maxToolRounds: number | null;

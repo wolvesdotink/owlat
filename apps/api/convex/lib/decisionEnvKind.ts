@@ -1,6 +1,6 @@
 /**
  * The decision provider the environment names (`DECISION_PROVIDER`), told
- * apart from no value at all (ADR-0073, D3).
+ * apart from no value at all.
  *
  * An unset or blank variable means the deployment did not choose, and the
  * plane keeps its default. A value that is not a decision provider is an

@@ -2,8 +2,7 @@
  * Block module — the per-block-type vertical that owns rendering, plaintext,
  * AMP, validation, default factory, placement metadata, and compatibility data.
  *
- * See `docs/adr/0001-block-module-deepening.md` and the project glossary at
- * `CONTEXT.md` (Block, Block module, Placement, Allotted width, Walker).
+ * See the project glossary at `CONTEXT.md` (Block, Block module, Placement, Allotted width, Walker).
  *
  * Block authors implement `BlockModule<T>`. The Walker dispatches by `type` and
  * handles placement-specific wrapping; modules return inner HTML only and never

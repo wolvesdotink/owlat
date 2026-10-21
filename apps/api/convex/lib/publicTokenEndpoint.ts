@@ -30,8 +30,6 @@
  *     "200 on invalid token" verify endpoints land here naturally — a
  *     successful verification request that finds an expired token is no
  *     longer mislabelled as an HTTP error.
- *
- * See docs/adr/0030-public-token-endpoint-module.md.
  */
 
 import { readBodyBytes } from './readBody';

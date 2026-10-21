@@ -30,9 +30,7 @@
  * only one `scripts/check-write-fence.ts` allows to do that. Keep it that way:
  * anything a step needs must run inline on the worker's context, never through
  * `ctx.runMutation`, whose callee would be fenced.
- *
- * See docs/adr/0025-organization-deletion-module-family.md, including its
- * "Amendment: durable lifecycle and write fence" (#898).
+
  */
 
 import { v } from 'convex/values';

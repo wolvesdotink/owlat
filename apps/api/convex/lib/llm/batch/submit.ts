@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * The consumer side of the batch path (ADR-0073, L14): a non-interactive
+ * The consumer side of the batch path: a non-interactive
  * structured call asks {@link sendThroughBatch} first, and makes today's
  * real-time call whenever it answers false.
  *

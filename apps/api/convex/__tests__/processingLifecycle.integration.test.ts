@@ -5,8 +5,6 @@
  * latestDraftStatus projection, illegal-edge refusals, terminal-state
  * refusals, the release-from-quarantine and cron-retry reset paths, and
  * the in-state recordStep operations.
- *
- * See docs/adr/0010-inbox-processing-lifecycle-module.md.
  */
 
 import { convexTest } from 'convex-test';
@@ -781,9 +779,9 @@ describe('processingLifecycle.retryFailedActions', () => {
 		});
 	});
 
-	// Closes ADR-0014 drift bug #6: today's cron-retry resets state to
-	// 'received' but no caller re-schedules the pipeline. The lifecycle's
-	// `schedule_pipeline_start` effect (added by ADR-0014) now fires on
+	// Regression: the cron retry resets state to 'received', and no caller
+	// used to re-schedule the pipeline. The lifecycle's
+	// `schedule_pipeline_start` effect now fires on
 	// every `to: 'received'` transition and enqueues the Agent walker.
 	it('schedules the Agent walker after cron retry resets to received', async () => {
 		const t = convexTest(schema, modules);

@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * The model side of the batch path (ADR-0073, L14). A batch request must be the
+ * The model side of the batch path. A batch request must be the
  * request the real-time call would have sent, and its result must be read the
  * way the real-time call reads it. Both go through the real structured-output
  * dispatch (`runLlmObject`) on a model built exactly as the resolver builds it

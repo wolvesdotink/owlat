@@ -1,5 +1,5 @@
 /**
- * The per-mailbox opt-out from hosted decisions (ADR-0060 §9): a mailbox, or
+ * The per-mailbox opt-out from hosted decisions: a mailbox, or
  * the Team Inbox, whose mail must never reach a decision provider outside the
  * operator's own hardware. TypeSafe, the language-backed adapter and any other
  * hosted endpoint (`lib/llm/endpointLocality.ts`) are refused; only the local

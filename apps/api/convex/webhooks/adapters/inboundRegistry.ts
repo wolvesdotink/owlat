@@ -95,7 +95,7 @@ export const inboundEmailMessageValidator = v.object({
 	arcSealerDomain: v.optional(v.string()),
 	arcAttestsOriginalPass: v.optional(v.boolean()),
 	/**
-	 * L5 (ADR-0073): THE MTA'S spam verdict and score, as the authenticated
+	 * THE MTA'S spam verdict and score, as the authenticated
 	 * delivery webhook carried them. Named for their provenance: only the MTA
 	 * adapter sets them, never from a header the sender wrote. Recorded on the
 	 * row always; they end a Team run only behind the `mtaVerdictTerminal`

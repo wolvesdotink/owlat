@@ -1,5 +1,5 @@
 /**
- * Embedding coverage (ADR-0073, D8): how many knowledge entries and files
+ * Embedding coverage: how many knowledge entries and files
  * vector search can find, and how many wait as unknown (written before
  * provenance), inactive (another space only) or unembedded.
  *

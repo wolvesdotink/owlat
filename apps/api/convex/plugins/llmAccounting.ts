@@ -146,7 +146,7 @@ export const reserve = internalMutation({
 		) {
 			throw new Error('Plugin LLM denied');
 		}
-		// The deployment ceiling admits the call too (ADR-0073, D1), in this
+		// The deployment ceiling admits the call too, in this
 		// transaction, under the same id.
 		const isAdmitted = await reserveDeploymentHold(ctx, {
 			reservationId: args.reservationId,
@@ -225,7 +225,7 @@ export const settleFailure = internalMutation({
 });
 
 /**
- * DURABLE RECOVERY of a settlement the action could not write (ADR-0073):
+ * DURABLE RECOVERY of a settlement the action could not write:
  * `plugins/llm.ts` retries `settleSuccess` / `settleFailure`, then schedules
  * this with the same arguments, metered requests included, so neither the
  * plugin budget nor the deployment ledger loses the call. Internal and

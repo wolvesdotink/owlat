@@ -2,13 +2,11 @@
  * Saved block (public surface) — thin shells that delegate row writes
  * to the **Saved block (module)** at `emailBlocks/module.ts`, plus the
  * read queries (`list`, `get`, `getStatsByTeam`) unchanged from the
- * pre-ADR-0023 `emailBlocks.ts`.
+ * former `emailBlocks.ts`.
  *
  * The legacy `incrementUsage` mutation is gone — zero callers, and the
  * canonical writer of `emailBlocks.usageCount` is now the lifecycle's
  * `update_block_usage_counts` effect routed through the module.
- *
- * Per ADR-0023.
  */
 
 import { v } from 'convex/values';
@@ -122,7 +120,7 @@ export const list = authedQuery({
 // ─── Write mutations — thin shells that delegate to the module ──────────────
 
 /**
- * Create a saved block via the module. Replaces the pre-ADR-0023
+ * Create a saved block via the module. Replaces the old
  * direct insert that bypassed the audit log.
  */
 export const create = authedMutation({

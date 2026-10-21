@@ -9,7 +9,7 @@
  * rows, no contention — and a rollup cron sums the shards into `campaigns.stats*`,
  * which stays the read interface (readers are unchanged; stats refresh on the
  * rollup cadence rather than live-per-event). Mirrors the `sendingReputation`
- * shard idiom (ADR-0042).
+ * shard idiom.
  */
 
 import { v } from 'convex/values';

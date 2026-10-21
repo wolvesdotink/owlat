@@ -1,7 +1,7 @@
 /**
  * `workload_split` send route strategy.
  *
- * Per ADR-0020. Weighted random selection across enabled providers,
+ * Weighted random selection across enabled providers,
  * filtering out any that are currently `down`. Weights default to 100 when
  * unset (uniform distribution). If every enabled provider is `down`, falls
  * back to a weighted pick over the full enabled set so a send still leaves

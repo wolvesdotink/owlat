@@ -32,8 +32,6 @@
  *     - record_recipients_in_address_book
  *     - delete_draft_row               — terminal row delete
  *     - audit_log('postbox_draft.sent')
- *
- * See docs/adr/0028-mail-draft-lifecycle-module.md.
  */
 
 import { v } from 'convex/values';

@@ -2,7 +2,7 @@
 // `packages/email-builder/src/blocks/<type>/` exports an `EditorModule<T>`;
 // the barrel registers them with the typed registry. The legacy
 // `BlockDefinition` API exported below is now a thin bridge over that
-// registry — see `blockRegistry.ts` and `docs/adr/0001-block-module-deepening.md`.
+// registry — see `blockRegistry.ts`.
 import '../blocks';
 
 export {

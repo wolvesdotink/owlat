@@ -1,5 +1,5 @@
 /**
- * The vector half of retrieval (ADR-0073): the shared query embedding and the
+ * The vector half of retrieval: the shared query embedding and the
  * space-filtered vector search behind both semantic searches
  * (`knowledge/retrieval.ts`, `semanticFileProcessing.ts`).
  *
@@ -25,7 +25,7 @@ import { rethrowAdmissionRefusal } from '../lib/llm/admissionPort';
 
 /**
  * The retrieval query embedding, made once and only when it can find something
- * (ADR-0073, Phase 1c L8 and the empty-corpus skip).
+ * (the empty-corpus skip).
  *
  * Knowledge search (below) and file search (`semanticFileProcessing.ts`) each
  * embedded the same query text, and Team retrieval called both, so one inbound
@@ -79,7 +79,7 @@ export async function embedRetrievalQuery(
 		// The searches have always embedded the trimmed text; trimmed here once so
 		// every caller's vector matches it.
 		const before = await probeEmbeddingRevision(embedder.target);
-		// One metered request per query (ADR-0073): an embedding row in the ledger.
+		// One metered request per query: an embedding row in the ledger.
 		const feature = tables.includes('knowledgeEntries')
 			? 'embedding_knowledge_search'
 			: 'embedding_file_search';
@@ -99,7 +99,7 @@ export async function embedRetrievalQuery(
 		return { kind: 'failed' };
 	}
 	// The vector is only comparable with its own space, and only an active space
-	// is searched (ADR-0073): a query in any other space has nothing to find.
+	// is searched: a query in any other space has nothing to find.
 	const target = await ctx.runQuery(internal.aiRouting.embeddingSpaces.searchTarget, {
 		identity: measured,
 	});
@@ -113,7 +113,7 @@ type VectorHit<T extends VectorTable> = { _id: Id<T>; _score: number };
 /**
  * The vector leg of a search, filtered to ONE space: the space the query vector
  * is in. Every vector index is filtered by its column's space id, so a search
- * never compares vectors of two spaces (ADR-0073), and unknown rows (no space)
+ * never compares vectors of two spaces, and unknown rows (no space)
  * are never returned. Without a space, or when that space is not active (staged
  * too, for the rebuild's validation), there is nothing to compare: no hits.
  *

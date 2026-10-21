@@ -52,13 +52,13 @@ const commitmentSchema = z.object({
 const MAX_TRANSCRIPT_CHARS = 8000;
 const MAX_DUE_PHRASE_CHARS = 60;
 
-/** This action, for its own budget deferral (ADR-0073, D1). */
+/** This action, for its own budget deferral. */
 const deferThisRun = (): DeferrableAction => internal.mail.ai.commitmentExtract.extractCommitment;
 
 const extractCommitmentArgs = {
 	messageId: v.id('mailMessages'),
 	direction: messageDirectionValidator,
-	/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
+	/** Runs this work deferred at the spend ceiling. */
 	deferrals: v.optional(v.number()),
 };
 
@@ -67,7 +67,7 @@ export const extractCommitment = internalAction({
 	handler: deferredHandler<ObjectType<typeof extractCommitmentArgs>>(
 		deferThisRun,
 		async (ctx, args) => {
-			// One model budget for this action, from its start (ADR-0073).
+			// One model budget for this action, from its start.
 			anchorActionDeadline(ctx);
 			const context = await ctx.runQuery(internal.mail.commitments.getMessageContext, {
 				messageId: args.messageId,

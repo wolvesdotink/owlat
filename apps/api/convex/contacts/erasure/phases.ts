@@ -325,7 +325,7 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 			}
 		),
 	}),
-	// Team Inbox sender memory learned from the person's mail (ADR-0073, D12).
+	// Team Inbox sender memory learned from the person's mail.
 	senderMemory: deleteByIndex(({ ctx, contactId }, n) =>
 		ctx.db
 			.query('senderMemory')

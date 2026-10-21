@@ -45,7 +45,7 @@ function makeCtx(files: unknown[], onSearch?: (args: SearchArgs) => void) {
 
 const CONTACT = 'contact_abc' as Id<'contacts'>;
 
-describe('the attachment searches’ root request (ADR-0073)', () => {
+describe('the attachment searches’ root request', () => {
 	it('hands the caller’s root to the file search, so its embedding groups under it', async () => {
 		const root = { rootRequestId: 'team:msg-1', deadlineAt: 123 };
 		const suggest = makeCtx([fileRow('best', 0.95)]);

@@ -4,7 +4,7 @@
  * of the category union and its HTTP-status mapping; the Convex backend
  * (`_utils/errors.ts`) and the `apps/web` Operation modules both import it.
  *
- * See docs/adr/0036-operation-error-taxonomy.md and CONTEXT.md `## Operation errors`.
+ * See CONTEXT.md `## Operation errors`.
  */
 
 /**

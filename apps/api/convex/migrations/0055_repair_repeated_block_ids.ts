@@ -15,8 +15,8 @@
  * the next `contentRevision` (an editor still open on the old content has its
  * save refused instead of writing the repeated ids back), and
  * `htmlRenderState.stale`. The HTML is rendered in Node, which a mutation
- * cannot do, so the page queues the rows on the saved-block rerender pool
- * (ADR-0023), the same path a saved-block edit takes: the job renders the
+ * cannot do, so the page queues the rows on the saved-block rerender pool,
+ * the same path a saved-block edit takes: the job renders the
  * default and translated HTML from the repaired row and writes it only while
  * the row is still at the repaired revision. Until then, sends use the HTML the
  * row already had, and publishing waits for the render. Rows without a

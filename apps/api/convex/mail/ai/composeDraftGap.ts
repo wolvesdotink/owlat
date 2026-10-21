@@ -237,7 +237,7 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 		? `${input.context}\n\n(The recipient's note on what to answer: ${input.instruction})`
 		: input.context;
 	const items = input.slotItems ?? [];
-	// One "Draft with AI" gap check is one user action (ADR-0073).
+	// One "Draft with AI" gap check is one user action.
 	const root = boundedRoot(ctx, newRootRequest('postbox_action'));
 	const surface = answerClarifySurface(ctx, input.eagerness, root, input.decisionSubject);
 	let slots = await findOpenSlots(ctx, slotContext, surface, items);

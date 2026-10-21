@@ -4,7 +4,7 @@
  * - create/update mutations are debounced autosave targets
  * - send/cancelPendingSend delegate to the Mail draft lifecycle module
  *   which is the sole writer of `mailDrafts.state` and its companion fields
- *   (`scheduledSendAt`, `undoToken`). See ADR-0028.
+ *   (`scheduledSendAt`, `undoToken`).
  *
  * Drafts live in mailDrafts (separate from mailMessages) so autosaves don't
  * pollute the Drafts folder visible to IMAP. On final send the draft row is
@@ -444,7 +444,7 @@ export const listForMailbox = publicQuery({
  * cancel within the window.
  *
  * Body delegates to the Mail draft lifecycle module — sole writer of
- * `mailDrafts.state` and `undoToken`. See ADR-0028.
+ * `mailDrafts.state` and `undoToken`.
  */
 // authz: draftSend.sendHandler enforces mailbox access.
 export const send = postboxMutation({
@@ -460,7 +460,7 @@ export const send = postboxMutation({
 /**
  * Cancel a pending_send draft (undo-send within the window).
  * Returns the draft to `state='draft'`. Body delegates to the Mail
- * draft lifecycle module's token-keyed entry point. See ADR-0028.
+ * draft lifecycle module's token-keyed entry point.
  */
 // authz: draftSend.cancelPendingSendHandler enforces mailbox access.
 export const cancelPendingSend = postboxMutation({
@@ -472,7 +472,7 @@ export const cancelPendingSend = postboxMutation({
  * Cancel a scheduled send and return the draft to `state='draft'` so the
  * user can edit, reschedule, or discard it. Body delegates to the Mail draft
  * lifecycle module's `scheduled → draft` edge (reason `user_cancel`) — the
- * sole writer of `mailDrafts.state`. See ADR-0028.
+ * sole writer of `mailDrafts.state`.
  */
 // authz: draftSend.cancelScheduledSendHandler enforces mailbox access.
 export const cancelScheduledSend = postboxMutation({

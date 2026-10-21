@@ -1,6 +1,6 @@
 /**
  * Per-org spend budget, end-to-end over the `llmUsageEvents` ledger, as the
- * gates enforce it from the reconciled period aggregate (ADR-0073, Phase 1b):
+ * gates enforce it from the reconciled period aggregate:
  *   - under budget → autonomous auto-send + advisory both allowed;
  *   - over budget → autonomous path degrades to draft-only (auto-send withheld)
  *     and advisory (aiGate) is blocked with a clear reason;

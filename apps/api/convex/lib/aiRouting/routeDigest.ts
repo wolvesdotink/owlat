@@ -1,5 +1,5 @@
 /**
- * A synchronous SHA-256 for embedding endpoint identities (ADR-0073).
+ * A synchronous SHA-256 for embedding endpoint identities.
  *
  * The identity of an embedding endpoint includes its base path (two services at
  * `/a/v1` and `/b/v1` on one origin are different spaces), but a path may carry

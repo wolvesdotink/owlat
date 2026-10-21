@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * The hosted-decision opt-out (ADR-0060 §9): an admin turns it on or off for
+ * The hosted-decision opt-out: an admin turns it on or off for
  * the Team Inbox or one mailbox, and the line says excluded mail is judged
  * only by the local engine; a member sees the state, disabled, and who can
  * change it.

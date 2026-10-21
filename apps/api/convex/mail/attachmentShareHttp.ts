@@ -66,7 +66,7 @@ const NO_STORE: Record<string, string> = { 'Cache-Control': 'no-store' };
  * Uniform refusal. One shape for every reason, so none of them is a signal —
  * including the message, which never names which gate closed.
  *
- * In the shared `{ error: { category, message } }` envelope (ADR-0036), the
+ * In the shared `{ error: { category, message } }` envelope, the
  * shape the public-endpoint reference promises for token endpoints; the sibling
  * `mail/sealedBlobHttp.ts` answers the same way.
  */

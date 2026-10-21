@@ -81,7 +81,7 @@
  * org session) and `authedAction` (whose floor runs in another function's
  * context and returns nothing) keep the raw builder types.
  *
- * See docs/adr (operation-error-taxonomy) and CONVENTIONS.md § Permissions.
+ * See CONVENTIONS.md § Permissions.
  */
 
 import { withQueryCacheConfig, withSessionQueryCache } from './sessionQueryCache';

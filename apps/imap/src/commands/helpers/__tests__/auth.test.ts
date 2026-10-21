@@ -177,7 +177,7 @@ describe('LOGIN and AUTHENTICATE share one credential flow', () => {
 		async ({ verb, args }) => {
 			const { deps, rateLimiter, convex, committed } = makeDeps(false);
 			// What `assertImapWireSupported` throws once the backend stops serving
-			// this server's contract (ADR-0063).
+			// this server's contract.
 			convex.action.mockRejectedValueOnce(
 				Object.assign(new Error('Update the IMAP container.'), {
 					data: {

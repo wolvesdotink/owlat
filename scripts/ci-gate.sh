@@ -58,7 +58,7 @@ fi
 # for the gate scripts themselves. It used to be a `vitest run <file>` prefix
 # inside each lint:* entry, which booted vitest once per gate and left the
 # test files without a matching lint:* entry running only in security.yml.
-for gate in warnings scripts script-tests deadcode catalog build-graph convex-orphans convex-globals filesize adr branding format imports providers \
+for gate in warnings scripts script-tests deadcode catalog build-graph convex-orphans convex-globals filesize branding format imports providers \
 	ui-buttons desktop-invoke page-headers tokens member-jargon docker-workspaces deploy-closure installer compose mail-services html-to-text crypto-primitives source-bytes \
 	stored-block-corpus; do
 	step bun run "lint:$gate"

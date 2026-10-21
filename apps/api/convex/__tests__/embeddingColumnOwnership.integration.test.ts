@@ -1,6 +1,6 @@
 /**
- * Column ownership holds however many embedding spaces were ever configured
- * (ADR-0073; Sol r4 F19). A column's owner is the space there with the highest
+ * Column ownership holds however many embedding spaces were ever configured.
+ * A column's owner is the space there with the highest
  * claim, read through the `by_slot_claim` index: a fixed window of the oldest
  * spaces missed the newest one, so space 501 lost its own column, its re-embed
  * batches stopped, and a new claim could repeat an existing one.

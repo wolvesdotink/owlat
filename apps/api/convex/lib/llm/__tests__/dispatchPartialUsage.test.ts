@@ -176,7 +176,7 @@ describe('runLlmStream — usage of finished steps', () => {
 		expect(result.aborted).toBe(true);
 		// The scripted provider sends each step whole, so step 2 had already
 		// finished, and reported its usage, when the reader aborted: both steps
-		// were billed (ADR-0073, provider-level stream metering).
+		// were billed (provider-level stream metering).
 		expect(result.tokenUsage).toEqual({ promptTokens: 20, completionTokens: 10, totalTokens: 30 });
 	});
 });

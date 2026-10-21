@@ -24,7 +24,7 @@
  * result.
  *
  * The registry (`./index.ts`) mirrors `lib/llmProviders/index.ts` and
- * `lib/sendProviders` (ADR-0020): a `Kind` literal union plus a mapped-type
+ * `lib/sendProviders`: a `Kind` literal union plus a mapped-type
  * `satisfies` guard, so each provider supplies an adapter and registers its kind; callers stay generic.
  *
  * This file is pure and isolate-safe: `schema/instance.ts` reaches the decision
@@ -127,7 +127,7 @@ export interface DecisionRequest<Q extends QuestionSet = QuestionSet> {
 	 */
 	readonly modelId?: string;
 	/**
-	 * The decision's meter (ADR-0073). An adapter that makes its provider
+	 * The decision's meter. An adapter that makes its provider
 	 * requests through the language dispatch (the language-backed one) passes it
 	 * on, so each of its inner retries is a ledger row. The native adapters make
 	 * one request per ask and leave it alone: the dispatch records that request.

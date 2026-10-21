@@ -1,7 +1,7 @@
 /**
  * `single` send route strategy.
  *
- * Per ADR-0020. Use the first enabled provider unconditionally; ignore
+ * Use the first enabled provider unconditionally; ignore
  * health. The simplest strategy — equivalent to "no routing, just pick this
  * one."
  */

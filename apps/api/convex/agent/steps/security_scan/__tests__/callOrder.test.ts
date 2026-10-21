@@ -1,5 +1,5 @@
 /**
- * The security scan's call order (ADR-0073, Phase 1c): L1 deterministic
+ * The security scan's call order: L1 deterministic
  * quarantine before the guard, the D13 guard skip and its marker, the L5 MTA
  * verdict (recorded, terminal only behind its switch), and the L4 early
  * handling-rule archive (behind its switch, after every safety outcome).

@@ -32,7 +32,7 @@ const linkClickValidator = v.object({
  */
 export const sendTrackingFields = {
 	// Timestamps for status changes. `sentAt` is optional because rows start
-	// life in `queued` (ADR-0006); it is set when the send transitions to `sent`.
+	// life in `queued`; it is set when the send transitions to `sent`.
 	sentAt: v.optional(v.number()),
 	deliveredAt: v.optional(v.number()),
 	failedAt: v.optional(v.number()),
@@ -92,7 +92,7 @@ export const sendTrackingFields = {
 	// Provider routing metadata (multi-tenant sending platform).
 	// Which provider sent this email: a `SendTransportKind` (`@owlat/shared`),
 	// core or `plugin.<pluginId>.<localId>`, written POST-HOC from the dispatch
-	// result. Stored open per ADR-0055 (D10); the kinds have one declaration,
+	// result. Stored as an open string; the kinds have one declaration,
 	// which is the catalog, so they are deliberately not re-listed here.
 	providerType: v.optional(v.string()),
 	// Correlation ID for end-to-end traceability (API request → send → webhook)

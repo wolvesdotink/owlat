@@ -1,5 +1,5 @@
 /**
- * Email editor presence and edit leases (docs/adr/0071-email-coediting.md).
+ * Email editor presence and edit leases.
  *
  * Every open editor tab heartbeats here with a random `clientId`, the root
  * block it has selected (others see a coloured outline with the name) and,

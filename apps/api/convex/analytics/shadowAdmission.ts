@@ -1,5 +1,5 @@
 /**
- * D4, the shadow allowance, for the decisions lane (ADR-0073): one call
+ * The shadow allowance for the decisions lane: one call
  * answers whether a shadowed task may judge a message now, and hands back
  * what its calls run under.
  *

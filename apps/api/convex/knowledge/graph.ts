@@ -360,7 +360,7 @@ export const createEntry = knowledgeMutation({
 
 		// Mirror contactIds into the index-able junction (powers getByContact).
 		await insertEntryContacts(ctx, entryId, args.contactIds, commitmentFacetsOf(entry));
-		// A new embedding input: a local embedder embeds it now (ADR-0073).
+		// A new embedding input: a local embedder embeds it now.
 		await noteCorpusInsert(ctx, 'knowledgeEntries', entryId);
 
 		return entryId;
@@ -411,7 +411,7 @@ export const updateEntry = knowledgeMutation({
 		};
 		if (args.entryType !== undefined) {
 			patch.entryType = args.entryType;
-			// The space-and-type vector filter key follows the type (ADR-0073).
+			// The space-and-type vector filter key follows the type.
 			Object.assign(patch, entryKeysForType(entry, args.entryType));
 		}
 		if (args.title !== undefined) patch.title = args.title;
@@ -427,7 +427,7 @@ export const updateEntry = knowledgeMutation({
 		const nextContent = args.content ?? entry.content;
 		patch.searchableText = `${nextTitle} ${nextContent}`;
 
-		// Through the one corpus writer (ADR-0073): an edited title or content
+		// Through the one corpus writer: an edited title or content
 		// clears every vector column, and an edit that changes eligibility (an
 		// expired entry revived) marks a staged rebuild; either way a local
 		// embedder re-embeds the entry.
@@ -577,7 +577,7 @@ export const saveEntry = internalMutation({
 			updatedAt: now,
 		};
 		const entryId = await ctx.db.insert('knowledgeEntries', entry);
-		// A new row: a staged rebuild learns it may lack its vector (ADR-0073).
+		// A new row: a staged rebuild learns it may lack its vector.
 		await noteCorpusInsert(ctx, 'knowledgeEntries', entryId);
 
 		// Mirror contactIds into the index-able junction (powers getByContact).
@@ -713,7 +713,7 @@ export const createPolicyEntry = knowledgeAdminMutation({
 		if (args.entryId) {
 			const existing = await ctx.db.get(args.entryId);
 			if (!existing) return null;
-			// Through the one corpus writer (ADR-0073): input and eligibility
+			// Through the one corpus writer: input and eligibility
 			// (expiry) changes clear the stale vectors and mark a staged rebuild.
 			await patchCorpusRow(ctx, 'knowledgeEntries', existing, {
 				entryType,

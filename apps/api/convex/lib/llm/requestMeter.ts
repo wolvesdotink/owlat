@@ -1,5 +1,5 @@
 /**
- * Per-request metering for one logical model call (ADR-0073, Phase 1a).
+ * Per-request metering for one logical model call.
  *
  * A logical call (one `runLlmObject`, one tool loop, one stream, one decision,
  * one embedding) can make several provider requests: retries, tool rounds, a
@@ -35,7 +35,7 @@ export interface LlmRootContext {
 	/** Absolute epoch ms after which no call under this root may still run. */
 	readonly deadlineAt?: number;
 	/**
-	 * Who waits on the whole request (ADR-0073, Phase 5). Every call under the
+	 * Who waits on the whole request. Every call under the
 	 * root is admitted at this priority, whatever its own task's: a nested
 	 * retrieval embedding under an assistant turn is the turn's interactive
 	 * work, not pipeline work that may spend past the advisory reserve. Absent:

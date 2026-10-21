@@ -1,6 +1,6 @@
 /**
- * `startReembed` against a configuration that moves while it runs (ADR-0073;
- * Sol's review of the expected-target guard). The configuration is read once:
+ * `startReembed` against a configuration that moves while it runs (the
+ * expected-target guard). The configuration is read once:
  * the target checked against the confirmation is the one whose credential and
  * endpoint the bootstrap call uses, and its activation is refused in its own
  * transaction when the configuration no longer names the confirmed target.

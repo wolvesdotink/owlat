@@ -2,8 +2,8 @@
 import { api } from '@owlat/api';
 
 /**
- * Deep body search — the instance switch for the widened plaintext carve-out
- * (idea 32, ADR-0059), on Settings → Sealed Mail because that is the decision
+ * Deep body search — the instance switch for the widened plaintext carve-out,
+ * on Settings → Sealed Mail because that is the decision
  * it trades against.
  *
  * Message bodies are sealed at rest, and full-text search can only index

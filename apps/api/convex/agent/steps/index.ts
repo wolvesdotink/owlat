@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Agent step (module) registry — see ADR-0014.
+ * Agent step (module) registry.
  *
  * The single place that maps core kinds to modules and composes generated
  * plugin registrations. Adding a core step means updating the host catalog,

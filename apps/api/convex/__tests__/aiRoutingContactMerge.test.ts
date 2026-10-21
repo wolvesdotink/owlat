@@ -1,5 +1,5 @@
 /**
- * Sender memory follows a contact merge (ADR-0073, D12): the merge repoints the
+ * Sender memory follows a contact merge: the merge repoints the
  * source's Team Inbox entries onto the survivor, so erasing the survivor later
  * deletes them, and none is left pointing at the deleted source.
  */

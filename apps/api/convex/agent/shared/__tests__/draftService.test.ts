@@ -646,7 +646,7 @@ describe('runSharedDraft — the spend of a failed self-check (#1260)', () => {
 	});
 });
 
-describe('runSharedDraft — a draft cut off at its output limit (ADR-0073)', () => {
+describe('runSharedDraft — a draft cut off at its output limit', () => {
 	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
 
 	it('fails the draft instead of returning the cut-off text, and keeps its spend', async () => {

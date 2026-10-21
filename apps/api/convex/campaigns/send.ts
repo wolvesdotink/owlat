@@ -229,7 +229,7 @@ export const startCampaignSend = internalAction({
 			throw new Error('Email template has no HTML content');
 		}
 
-		// Per ADR-0023, log (do not gate) when sending against stale HTML —
+		// Log (do not gate) when sending against stale HTML —
 		// a saved-block edit propagated to the consumer's content JSON but the
 		// rerender pool has not yet caught up. Cached `htmlContent` is used.
 		if (template.htmlRenderState?.stale) {
@@ -334,7 +334,7 @@ export const startCampaignSend = internalAction({
 			throw new Error('Campaign has no audience');
 		}
 
-		// Freeze the segment snapshot at send time (ADR-0033) so this Campaign
+		// Freeze the segment snapshot at send time so this Campaign
 		// reproduces the exact Segment it targeted even if the Segment is later
 		// edited; topic Audiences and already-frozen segments pass through.
 		const audience = await ctx.runMutation(internal.campaigns.sendQueries.freezeCampaignAudience, {
@@ -1031,7 +1031,7 @@ export const sendCampaignWinnerToRemainder = internalAction({
 
 		// Freeze the audience (idempotent — phase 1 already snapshotted any
 		// segment) so the remainder resolves against the SAME selection the test
-		// phase used (ADR-0033). The `testFraction` is re-derived from the
+		// phase used. The `testFraction` is re-derived from the
 		// immutable `splitPercentage`, so the `h >= testFraction` remainder
 		// partition is IDENTICAL to the `h < testFraction` cohort phase 1 sent —
 		// the two phases are provably disjoint and exhaustive.

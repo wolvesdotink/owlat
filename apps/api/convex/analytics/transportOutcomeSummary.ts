@@ -7,7 +7,7 @@
  *   1. WHICH COUNTER an event bumps (including the calibration twin),
  *      and which Send lifecycle transition is a transport outcome at all;
  *   2. HOW A WINDOW OF BUCKETS BECOMES A SUMMARY — the ONE place a rate is
- *      computed. Rates are DERIVED ON READ and never stored (ADR-0042), so the
+ *      computed. Rates are DERIVED ON READ and never stored, so the
  *      ramp controller and the delivery dashboard cannot disagree about a
  *      number; they both end up here.
  *

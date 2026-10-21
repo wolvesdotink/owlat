@@ -79,7 +79,7 @@ export const getConfig = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		const row = await getSingleton(ctx);
-		// D3 (ADR-0073): an invalid DECISION_PROVIDER refuses decisions; the card says why.
+		// An invalid DECISION_PROVIDER refuses decisions; the card says why.
 		const envProblem = decisionEnvProblem();
 		const decisionEnv = envProblem ? { decisionEnvProblem: envProblem } : {};
 		if (!row) return { configured: false as const, ...decisionEnv };

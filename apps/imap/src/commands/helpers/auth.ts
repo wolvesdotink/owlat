@@ -114,7 +114,7 @@ export async function authenticateAppPassword(
 			scope: 'imap',
 			ip: deps.remoteIp,
 			// A backend that no longer serves this server's contract refuses the
-			// login here (ADR-0063).
+			// login here.
 			imapWireVersion: IMAP_WIRE_VERSION,
 		});
 
@@ -134,7 +134,7 @@ export async function authenticateAppPassword(
 				ip: deps.remoteIp,
 				...(state.clientId ? { userAgent: state.clientId } : {}),
 				// Tells the backend this login did not come through an IMAP server
-				// too old to report its version (ADR-0063).
+				// too old to report its version.
 				imapWireVersion: IMAP_WIRE_VERSION,
 			})
 			.catch(() => undefined);
@@ -153,7 +153,7 @@ export async function authenticateAppPassword(
 	} catch (err) {
 		logger.error({ err }, `${verb} error`);
 		// The backend refusing this server's wire version says nothing about the
-		// password, so it does not count against the client (ADR-0063).
+		// password, so it does not count against the client.
 		if (!isWireRefusal(err)) await deps.rateLimiter.recordFailure(deps.remoteIp, address);
 		return 'failed';
 	}

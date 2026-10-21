@@ -206,7 +206,7 @@ async function mergeEntryInto(
 	const mergedContactIds = nonEmpty(unionDistinct(survivor.contactIds, loser.contactIds));
 	const mergedTags = nonEmpty(unionDistinct(survivor.tags, loser.tags));
 	const memberAccess = mergedMemberAccess(survivor, loser);
-	// Through the one corpus writer (ADR-0073): folded-in content makes the
+	// Through the one corpus writer: folded-in content makes the
 	// survivor's vectors stale in every column; a local embedder re-embeds it.
 	await patchCorpusRow(ctx, 'knowledgeEntries', survivor, {
 		content: mergedContent,
@@ -289,8 +289,8 @@ export const dedupeContactEntries = internalMutation({
 		if (links.length < 2) return { merged: 0 };
 
 		const loaded = await Promise.all(links.map((l) => ctx.db.get(l.entryId)));
-		// Only vectors of the active space are compared, never two spaces
-		// (ADR-0073); an entry without one is left alone. So is an entry with no
+		// Only vectors of the active space are compared, never two spaces;
+		// an entry without one is left alone. So is an entry with no
 		// `memberAccess`: written before this release, it may hold private text
 		// an old merge folded in, and until migration 0069 has restricted it a
 		// merge into a newer member-visible survivor would publish that text.

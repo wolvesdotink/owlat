@@ -1,5 +1,5 @@
 /**
- * Provider batch items (ADR-0073, L14; Phase 5): one non-interactive model
+ * Provider batch items: one non-interactive model
  * request sent through a provider's batch API while the routing policy's
  * `batchApi` switch is `enforce`. Off (the default), nothing here runs and
  * every consumer makes today's real-time call.

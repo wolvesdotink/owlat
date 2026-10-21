@@ -1,5 +1,5 @@
 /**
- * One model budget per action (ADR-0073): every call in an action spends from
+ * One model budget per action: every call in an action spends from
  * the same deadline, a nested action inherits the caller's, and scheduled work
  * keeps the root id but gets a fresh clock.
  */

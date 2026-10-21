@@ -2,8 +2,6 @@
  * Unit tests for the pure helpers in
  * `mail/postboxOutboundLifecycle.ts` — `parsePostboxMtaId` and
  * `deriveAggregateState`. No Convex setup; these are pure functions.
- *
- * See docs/adr/0012-postbox-outbound-lifecycle-module.md.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -55,9 +53,7 @@ describe('deriveAggregateState', () => {
 	const r = (state: RecipientState) => ({ state });
 
 	it('all queued → queued', () => {
-		expect(deriveAggregateState([r('queued'), r('queued'), r('queued')])).toBe(
-			'queued'
-		);
+		expect(deriveAggregateState([r('queued'), r('queued'), r('queued')])).toBe('queued');
 	});
 
 	it('all sent → sent', () => {
@@ -81,9 +77,7 @@ describe('deriveAggregateState', () => {
 	});
 
 	it('mix of queued + sent → partial (mid-dispatch)', () => {
-		expect(deriveAggregateState([r('queued'), r('sent'), r('queued')])).toBe(
-			'partial'
-		);
+		expect(deriveAggregateState([r('queued'), r('sent'), r('queued')])).toBe('partial');
 	});
 
 	it('single recipient: state is the aggregate', () => {

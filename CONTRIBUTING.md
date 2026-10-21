@@ -330,6 +330,6 @@ Otherwise, extend an existing package. Most backend logic belongs in `apps/api/c
 
 See the [Developer Guide](https://docs.owlat.app/developer/) for more on patterns and conventions.
 
-## Architectural Decisions
+## Design decisions
 
-Major design decisions are documented as ADRs in [docs/adr/](./docs/adr/). If your contribution involves a significant architectural change, consider adding a new ADR.
+Owlat does not keep architecture decision records. Explain a decision where a maintainer would trip over it: a short comment next to the code it constrains, or a rule in [`apps/api/convex/CONVENTIONS.md`](./apps/api/convex/CONVENTIONS.md) when it spans several modules. The pull request description is the record of why a change was made.

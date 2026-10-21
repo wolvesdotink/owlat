@@ -1,5 +1,5 @@
 /**
- * The admission seam for paid embedding work (ADR-0073, D8 and Phase 1b).
+ * The admission seam for paid embedding work.
  *
  * A re-embed or staged rebuild on a hosted embedder costs money, so it starts
  * only from an admin action and every batch is admitted against the spend
@@ -61,11 +61,11 @@ export interface PaidEmbeddingAdmission {
 }
 
 /**
- * The implementation (ADR-0073). `null` would refuse all paid embedding work,
+ * The implementation. `null` would refuse all paid embedding work,
  * which is how the embed lane shipped before admission existed.
  */
 const seam: { readonly admission: PaidEmbeddingAdmission | null } = {
-	// Spend admission (ADR-0073, Phase 1b): one hold per batch, settled against its rows.
+	// Spend admission: one hold per batch, settled against its rows.
 	admission: { admitBatch: admitEmbeddingBatch },
 };
 

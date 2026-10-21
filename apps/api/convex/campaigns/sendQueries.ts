@@ -57,14 +57,14 @@ export const checkTestSendRateLimit = internalMutation({
 
 // Campaign send/fail counter bumps live on sendLifecycle's effect list
 // (`campaign_stats_sent` on the `sent` reducer, `campaign_stats_failed` on
-// the `failed` reducer) per ADR-0006. The historical
+// the `failed` reducer). The historical
 // `recordEmailSendResult` mutation has been removed — its only caller was
 // the deleted `onEmailComplete`, and its handler silently ignored the
 // `failed` arg, so the effect-based replacement also fixes a previously
 // undercounted statsFailed counter.
 //
 // Campaign status transitions (markCampaignSent, updateCampaignToSending,
-// setCampaignPendingReview, revertCampaignToDraft) lived here pre-ADR-0017.
+// setCampaignPendingReview, revertCampaignToDraft) used to live here.
 // They were deleted — the **Campaign lifecycle (module)** at
 // `convex/campaigns/lifecycle.ts` is now the only writer of `campaigns.status`.
 // Callers (the campaign-send orchestrator) call
@@ -211,13 +211,13 @@ export const getEmailTemplateForLanguage = internalQuery({
 });
 
 // Campaign recipient resolution moved to the Audience resolution (module) at
-// `campaigns/audienceResolution.ts` (ADR-0033) — it owns the single
+// `campaigns/audienceResolution.ts` — it owns the single
 // eligibility predicate (`selectRecipient`) and the `CampaignRecipient` type,
 // shared by the checkpointed send walker (`resolveRecipientPage`) and the wizard
 // count (`countRecipients`).
 
 /**
- * Freeze a segment Audience's filters at send time (ADR-0033). This is the
+ * Freeze a segment Audience's filters at send time. This is the
  * orchestrator-owned write the resolver only ever *reads*: it copies the live
  * Segment's `filters` into `audience.frozenFilters` so an already-sent
  * Campaign reproduces the exact Segment definition it targeted even after the
@@ -272,8 +272,8 @@ export const getDueScheduledCampaigns = internalQuery({
 	},
 });
 
-// `setCampaignPendingReview` and `revertCampaignToDraft` were deleted per
-// ADR-0017. The orchestrator now calls
+// `setCampaignPendingReview` and `revertCampaignToDraft` were deleted.
+// The orchestrator now calls
 // `lifecycle.transition({ to: 'pending_review' })` and
 // `lifecycle.transition({ to: 'draft', contentBlockReason })` respectively.
 
@@ -370,7 +370,7 @@ export const incrementDailySendCountInternal = internalMutation({
 	},
 });
 
-// `updateCampaignToSending` was deleted per ADR-0017. The orchestrator
+// `updateCampaignToSending` was deleted. The orchestrator
 // now calls `lifecycle.transition({ to: 'sending' })`.
 
 // `listSentContactIdsForCampaign` was removed: the A/B winner-remainder send

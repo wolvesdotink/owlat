@@ -95,7 +95,7 @@ export function createTestContact(overrides: Record<string, unknown> = {}) {
 		timezone: faker.location.timeZone(),
 		language: 'en',
 		searchableText: `${email} ${firstName} ${lastName}`,
-		// Per ADR-0009 doiStatus is non-optional on the contacts table.
+		// doiStatus is non-optional on the contacts table.
 		doiStatus: 'not_required' as const,
 		createdAt: now,
 		updatedAt: now,
@@ -121,7 +121,7 @@ export function createTestCampaign(overrides: Record<string, unknown> = {}) {
 		subject: faker.lorem.sentence(),
 		// No `audience` by default — campaigns start unconfigured (matches the
 		// real `create` mutation). Tests that need one pass
-		// `audience: { kind: 'topic', topicId }` (ADR-0033).
+		// `audience: { kind: 'topic', topicId }`.
 		statsSent: 0,
 		statsDelivered: 0,
 		statsOpened: 0,
@@ -254,7 +254,7 @@ export function createTestAutomationStep(overrides: Record<string, unknown> = {}
 	const now = Date.now();
 	const stepType = overrides['stepType'] || 'delay';
 
-	// Canonical condition-step shape per ADR-0004:
+	// Canonical condition-step shape:
 	//   { condition: { kind, ... }, yesBranchStepIndex, noBranchStepIndex }
 	// Typed as `unknown` here so the literal-narrowed validator union accepts
 	// the fixture without per-call casts.

@@ -1,6 +1,5 @@
 /**
- * Pure-function tests for `routeStep.route` — covers the 2 branches per
- * ADR-0014's drift bug #2.
+ * Pure-function tests for `routeStep.route` — covers the 2 branches.
  */
 
 import { describe, it, expect } from 'vitest';

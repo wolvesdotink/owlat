@@ -4,8 +4,6 @@
  * sanctioned-edge escape hatch, and the module-local outcome extension.
  *
  * Pure functions; no Convex setup.
- *
- * See docs/adr/0058-generic-lifecycle-core.md.
  */
 
 import { describe, it, expect } from 'vitest';

@@ -198,7 +198,7 @@ describe('one ledger, one reading', () => {
 
 		// The screen roll-up and the controller sweep are two answers derived from
 		// one read; a sample size that differed would mean the two could disagree
-		// about the same window (ADR-0042).
+		// about the same window.
 		expect(rollup?.sampleSize).toBe(10);
 		expect((own?.inbox ?? 0) + (own?.spam ?? 0)).toBe(10);
 	});

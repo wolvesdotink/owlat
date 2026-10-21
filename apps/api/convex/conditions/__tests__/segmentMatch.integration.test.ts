@@ -187,7 +187,7 @@ describe('countLiveMatches', () => {
 	});
 });
 
-describe('live-Contact streaming across the page boundary (ADR-0033)', () => {
+describe('live-Contact streaming across the page boundary', () => {
 	// CONTACT_PAGE_SIZE is 500; seed > 2 pages of live contacts so the paginated
 	// stream must continue past `isDone === false`. Some matching contacts AND a
 	// soft-deleted one are inserted LAST so they land on the final page — proving

@@ -1,6 +1,5 @@
 /**
- * Lazy interpretation for display-only mail (ADR-0073 D10, AI routing plan gap
- * L12).
+ * Lazy interpretation for display-only mail.
  *
  * Postbox interprets every eligible delivered message, including mail the
  * needs-reply screen already ruled out (notifications, receipts, a known
@@ -192,7 +191,7 @@ export const PREDECESSOR_RETRY_MS = 60_000;
 /**
  * The root a predecessor read runs under: its own message's (`postbox:<id>`),
  * keeping the awaiting caller's deadline when there is one, so reading the
- * thread's earlier mail never outlasts the caller (ADR-0073).
+ * thread's earlier mail never outlasts the caller.
  */
 export function predecessorRoot(
 	source: InterpretationSource,

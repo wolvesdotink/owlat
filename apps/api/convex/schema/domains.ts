@@ -12,11 +12,11 @@ import {
 /**
  * Domain tables — sending domains + per-provider identities + tracking domains.
  * Per-domain reputation now lives in the unified `sendingReputation` table in
- * schema/delivery.ts (ADR-0042).
+ * schema/delivery.ts.
  *
  * Spread into `defineSchema()` from schema.ts via `...domainTables`.
  *
- * Per ADR-0018, provider-specific identity data (DKIM selectors, tokens) lives
+ * Provider-specific identity data (DKIM selectors, tokens) lives
  * in per-provider sibling tables owned by the corresponding **Sending domain
  * provider adapter (module)**, not on the `domains` row itself.
  */
@@ -93,7 +93,7 @@ export const domainTables = {
 		// Provider type that registered this domain: a `SendingDomainProviderKind`
 		// (`domains/providers/types.ts`) — the CLOSED primary union, one adapter per
 		// kind, and no longer the fixed pair this comment used to name.
-		// Stored as an open string per ADR-0055 (D10) for forward-compat
+		// Stored as an open string for forward-compat
 		// only: the union itself stays closed to core kinds on purpose
 		// (`isSendingDomainProviderKind`), so a bundled plugin transport proves a
 		// domain through `sendingDomainRelayIdentities.providerKind`, never here.
@@ -101,7 +101,7 @@ export const domainTables = {
 		// `providers/index.ts:providerFor(kind)` keyed by this field.
 		providerType: v.optional(v.string()),
 		// Last registration failure message (provider-agnostic). Cleared when
-		// the next `registering → pending` succeeds. Replaces pre-ADR-0018
+		// the next `registering → pending` succeeds. Replaces the old
 		// fields `registrationError` and `sesRegistrationError`.
 		lastRegistrationError: v.optional(v.string()),
 		// Last verification attempt timestamp (patched on every
@@ -174,7 +174,7 @@ export const domainTables = {
 		organizationId: v.string(),
 		domainId: v.id('domains'),
 		// Only the three PERSISTED states. `lapsed` is DERIVED on read from
-		// `lastReportAt` + the clock (ADR-0042's derive-on-read rule), so no cron
+		// `lastReportAt` + the clock, so no cron
 		// and no write are needed to keep it current and it can never go stale.
 		state: yahooCflStoredStateValidator,
 		// The DKIM domain as submitted to Yahoo (snapshot of the domain name).
@@ -201,7 +201,7 @@ export const domainTables = {
 	}).index('by_domain', ['domain']),
 
 	// Per-domain reputation was folded into the unified, scope-discriminated
-	// `sendingReputation` table in schema/delivery.ts (ADR-0042) — there is no
+	// `sendingReputation` table in schema/delivery.ts — there is no
 	// separate `domainReputation` table any more.
 
 	// Inbound SMTP TLS Reports (TLS-RPT, RFC 8460) — aggregate reports OTHER

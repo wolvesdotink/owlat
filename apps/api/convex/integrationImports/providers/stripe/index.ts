@@ -8,8 +8,6 @@
  * Cursor convention: empty string is the first-page sentinel; otherwise
  * the cursor is the Stripe customer id passed as `starting_after`.
  * Terminal page returns `nextCursor: null`.
- *
- * Per ADR-0027.
  */
 
 import {

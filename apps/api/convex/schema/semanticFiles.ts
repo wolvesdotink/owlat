@@ -54,7 +54,7 @@ export const semanticFileTables = {
 		embeddingModel: v.optional(v.string()),
 		// When `embedding` was generated; used to schedule re-embedding on stale entries.
 		embeddingGeneratedAt: v.optional(v.number()),
-		// Embedding provenance and the staged-rebuild column (ADR-0073), as on
+		// Embedding provenance and the staged-rebuild column, as on
 		// `knowledgeEntries`: an absent space is unknown and out of vector search.
 		...embeddingProvenanceFields,
 		...embeddingSecondarySlotFields,

@@ -1,5 +1,5 @@
 /**
- * D12 sender memory (ADR-0073): exact matches only, scoped by mailbox or Team
+ * Sender memory: exact matches only, scoped by mailbox or Team
  * Inbox, authenticated sender, task, thread state, policy and model; expiring;
  * invalidated by an owner correction or by mail that fails DMARC. Advisory: it
  * records whether it would have settled a message and what it would have said.

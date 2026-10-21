@@ -1,5 +1,5 @@
 /**
- * Where a provider batch item's work goes once it is over (ADR-0073, L14),
+ * Where a provider batch item's work goes once it is over,
  * split out of `./batchItems.ts`, whose terminal mutations call these in the
  * same transaction: a usable result continues through the paths that already
  * exist (the extraction's `in_progress` marker, file processing re-run with

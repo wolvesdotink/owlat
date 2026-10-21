@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Prepare briefs for recent mail" (ADR-0072, D5): the owner starts the
+ * "Prepare briefs for recent mail": the owner starts the
  * thread brief's backfill of their personal mailbox, the active
  * conversations of the last 30 days, and sees how far it got. A walk the
  * spend budget or the per-run cap paused, or one they stopped, resumes from

@@ -15,9 +15,6 @@
  * the exception to "fail-soft": they store the `guardNotRun` marker and its
  * clearing, which later autonomous paths read, so their callers let a failure
  * surface.
- *
- * See docs/adr/0010-inbox-processing-lifecycle-module.md and
- * docs/adr/0014-agent-step-module.md.
  */
 
 import { v } from 'convex/values';
@@ -230,9 +227,9 @@ async function holdUnconsentedGapDraft(
 }
 
 /**
- * D13 (ADR-0073): persist the scan of a message that arrived while the agent
+ * Persist the scan of a message that arrived while the agent
  * was off. That path ends the run in `security_check` without a transition, so
- * before D13 its scan was never stored; now it carries the `guardNotRun` marker
+ * before this its scan was never stored; now it carries the `guardNotRun` marker
  * every later autonomous consumer checks. Written only while the message is
  * still in `security_check` and nobody has taken it over, so a late write can
  * never overwrite a later scan or a person's reply.

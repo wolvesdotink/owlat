@@ -276,7 +276,7 @@ export const getGuide = authedQuery({
 		const precondition = await preconditionFor(ctx, domain);
 		const now = Date.now();
 		// The re-check, derived on read: `lapsed` is a function of the last observed
-		// report and the clock, so this verdict is always current (ADR-0042).
+		// report and the clock, so this verdict is always current.
 		const { state, silentMs } = deriveYahooCflState(record, now);
 		return {
 			// The DERIVED state (`lapsed` included) is the only state reported. The
@@ -353,7 +353,7 @@ export const resetEnrollment = authedMutation({
  * with no second pass, no cron, and no chance of a stale verdict. The write is
  * COALESCED in the pure core (`YAHOO_CFL_REPORT_COALESCE_MS`): complaints arrive
  * in bursts and all of a domain's reports land on ONE row, so patching per report
- * is the single-document OCC contention ADR-0042 was written about.
+ * would be single-document OCC contention.
  */
 export const observeReport = internalMutation({
 	args: { reportedDomain: v.string(), at: v.number() },

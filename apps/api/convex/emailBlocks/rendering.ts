@@ -10,10 +10,8 @@
  * Per-row failures THROW so the workpool retries the whole job; once
  * retries are exhausted the pool's `onComplete` writes the
  * `htmlRenderState.failureCount` / `lastFailureAt` patch and emits
- * `email_block.rerender_failed`. The pre-ADR-0023 fire-and-forget
+ * `email_block.rerender_failed`. The old fire-and-forget
  * `logError` swallow is gone.
- *
- * Per ADR-0023.
  */
 
 import { v } from 'convex/values';

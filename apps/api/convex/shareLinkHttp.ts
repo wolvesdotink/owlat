@@ -3,8 +3,6 @@
  * HTML preview, subject, etc. for the campaign / template the share link
  * points at. Wrapped by the **Public token endpoint (module)** for the
  * uniform shell shape.
- *
- * See docs/adr/0030-public-token-endpoint-module.md.
  */
 
 import { internal } from './_generated/api';

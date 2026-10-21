@@ -5,10 +5,8 @@
  * summarizer's rolling rate/risk per scope; asserts the org and domain windows
  * accumulate independently; asserts the auto-enforce path (the auto-suspend
  * that is the single most consequential behavior here, and was untested before
- * ADR-0042); and asserts the cleanup cron prunes >60-day buckets across both
+ * this module); and asserts the cleanup cron prunes >60-day buckets across both
  * scopes.
- *
- * See docs/adr/0042-sending-reputation-module.md.
  */
 
 import { convexTest } from 'convex-test';

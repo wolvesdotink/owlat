@@ -15,8 +15,8 @@ import { components } from '../_generated/api';
  * through `delivery/governedEnqueue.ts`, which owns the worker reference and
  * the completion wiring.
  *
- * Retry authority: the **Send dispatch (helper)** (`lib/sendProviders/dispatch.ts`,
- * per ADR-0020) owns the send-side retry loop — it calls each provider's
+ * Retry authority: the **Send dispatch (helper)** (`lib/sendProviders/dispatch.ts`)
+ * owns the send-side retry loop — it calls each provider's
  * single-attempt `sendEmail` up to `1 + retryDelays.length` times, classifying
  * errors via the module's `categorizeError`. The workpool MUST NOT layer its own
  * retry on top: a workpool retry re-runs the WHOLE worker action, multiplying the

@@ -1,6 +1,5 @@
 /**
- * Agent step (module) — see CONTEXT.md "Agent step (module)" and
- * docs/adr/0014-agent-step-module.md.
+ * Agent step (module) — see CONTEXT.md "Agent step (module)".
  *
  * The per-kind compute + routing surface for one stage of the agent
  * pipeline. Two pure functions:
@@ -83,7 +82,7 @@ export type AgentStepResult<Out> = {
 /**
  * The walker dispatches the next step by `kind`; the routing function on
  * the current module constructs the input shape the next module expects.
- * Per ADR-0014's Choice D1: pass-through, no accumulator.
+ * Pass-through, no accumulator.
  */
 export type NextStep = { kind: AgentStepKind; input: unknown };
 
@@ -107,7 +106,7 @@ export interface AgentStepModule<K extends AgentStepKind, In, Out> {
 	readonly kind: K;
 	/** Present iff the step calls an LLM. The walker uses this for
 	 * observability tagging — token-usage extraction itself lives in
-	 * `lib/llm/dispatch.ts` (ADR-0029) and is called by the module's
+	 * `lib/llm/dispatch.ts` and is called by the module's
 	 * `execute`. */
 	readonly llm?: { tier: 'fast' | 'capable' };
 	execute(ctx: ActionCtx, input: In): Promise<AgentStepResult<Out>>;

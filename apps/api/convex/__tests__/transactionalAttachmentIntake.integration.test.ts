@@ -11,8 +11,6 @@
  *   - the documented attachment budget is reachable: a 100 KiB file and the
  *     10 MiB boundary go through, while every other endpoint keeps its
  *     100,000-byte body cap.
- *
- * See docs/adr/0021-transactional-send-intake-module.md (amendment 2026-10-01).
  */
 
 import { convexTest, type TestConvex } from 'convex-test';

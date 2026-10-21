@@ -71,8 +71,7 @@ export const contactTables = {
 		// instant (see `decayState`).
 		engagementScoreUpdatedAt: v.optional(v.number()),
 		// Decayed accumulator behind the score. Cached so the hot path can fold a
-		// new open/click in O(1) instead of re-reading the activity timeline
-		// (ADR-0042's write-amplification lesson).
+		// new open/click in O(1) instead of re-reading the activity timeline.
 		engagementScoreState: v.optional(
 			v.object({
 				raw: v.number(),
@@ -94,7 +93,7 @@ export const contactTables = {
 		// of reader opens and clicks by local hour and weekday, folded in by
 		// `analytics/sendTimeProfileSync.ts` and read by the send-time planner
 		// (`campaigns/sendTimeOptimization.ts`). Absent until the first
-		// engagement; ADR-0068.
+		// engagement.
 		sendTimeProfile: v.optional(sendTimeProfileValidator),
 		// ─── Sunset policy ──────────────────────────
 		// Where this contact sits on the sunset track, owned by
@@ -116,7 +115,7 @@ export const contactTables = {
 		// this contact. Also set by the restore path, so a restored contact is
 		// not immediately re-suppressed by the next sweep.
 		sunsetExemptAt: v.optional(v.number()),
-		// Contact-level double opt-in status. Non-optional per ADR-0009 —
+		// Contact-level double opt-in status. Non-optional —
 		// the Contact resolution (module) writes 'not_required' at create
 		// time so undefined never appears in new rows. The DOI lifecycle
 		// (module) is the only later writer.
@@ -128,7 +127,7 @@ export const contactTables = {
 		// global opt-out ends the episode and increments it; undefined reads as
 		// 0. A form-submission carry records the episode it started in and stops
 		// once the counter moves, so rows queued before an opt-out never follow
-		// a later signup's token. See ADR-0009's 2026-10 amendments.
+		// a later signup's token.
 		doiConsentEpisode: v.optional(v.number()),
 		// Global marketing opt-out. Set when the Contact unsubscribes from ALL
 		// topics at once (the public unsubscribe link / preference-center
@@ -144,7 +143,7 @@ export const contactTables = {
 		// Source label populated when `doiStatus: 'confirmed'` was driven by the
 		// **Contact import (module)** admin-attest path (e.g. 'mailchimp',
 		// 'klaviyo', 'stripe', 'csv_admin'). Undefined on the token-keyed
-		// confirm path. See ADR-0019.
+		// confirm path.
 		doiAttestedSource: v.optional(v.string()),
 		// Soft-delete fields: when set, the row is considered deleted from the user's POV.
 		// All list/lookup queries MUST filter `deletedAt === undefined`. A daily cron
@@ -166,7 +165,7 @@ export const contactTables = {
 		.index('by_created_at', ['createdAt'])
 		.index('by_doi_confirmation_token', ['doiConfirmationToken'])
 		.index('by_deleted_at', ['deletedAt'])
-		// Soft-delete browse index for the Listing engine (ADR-0037): deletedAt
+		// Soft-delete browse index for the Listing engine: deletedAt
 		// leads so `deletedAt === undefined` rides the index range and createdAt
 		// orders within it — the page is never thinned by a post-filter.
 		.index('by_deleted_at_and_created_at', ['deletedAt', 'createdAt'])
@@ -197,7 +196,7 @@ export const contactTables = {
 		.searchIndex('search_contacts', {
 			searchField: 'searchableText',
 			// deletedAt is a filterField so the search path can drop soft-deleted
-			// rows inside the index instead of post-filtering (ADR-0037).
+			// rows inside the index instead of post-filtering.
 			filterFields: ['deletedAt'],
 		}),
 
@@ -209,7 +208,7 @@ export const contactTables = {
 		// True when the row was inserted by the **Contact import (module)**'s
 		// integration-driven property-key policy (Mailchimp `merge_fields`,
 		// Stripe `metadata`). Operators can review + rename + delete these
-		// rows from the contact-properties UI. See ADR-0019.
+		// rows from the contact-properties UI.
 		autoRegistered: v.optional(v.boolean()),
 		autoRegisteredSource: v.optional(v.string()),
 		// Set when a delete was requested (#918). From then on the property is

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * A staged rebuild in progress (U1, ADR-0073 Phase 5): its job, the last
+ * A staged rebuild in progress: its job, the last
  * validation, and the controls that finish or abandon it.
  *
  * Every control that embeds is gated on what the server says it costs: the

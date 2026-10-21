@@ -5,8 +5,6 @@
  * endpoint (module)**: the shell owns CORS, rate-limit, token extract, body
  * parse, and response envelope; the handlers below just decide what each
  * specific token does.
- *
- * See docs/adr/0030-public-token-endpoint-module.md.
  */
 
 import { internal } from '../_generated/api';

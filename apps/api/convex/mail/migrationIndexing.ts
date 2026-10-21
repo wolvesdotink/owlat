@@ -360,7 +360,7 @@ async function indexOneMessage(
 		await ctx.runAction(internal.knowledge.extraction.extractFromMailMessage, {
 			mailMessageId: msg._id,
 			contactIds: [contactId],
-			// Awaited: it spends from this action's clock (ADR-0073).
+			// Awaited: it spends from this action's clock.
 			root: boundedRoot(ctx, rootRequest('postbox', msg._id)),
 		});
 	} catch (err) {
@@ -388,7 +388,7 @@ export const runIndexChunk = internalAction({
 		interChunkDelayMs: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const interChunkDelay = args.interChunkDelayMs ?? INTER_CHUNK_DELAY_MS;
 		try {

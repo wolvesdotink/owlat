@@ -6,7 +6,7 @@
  * draft, and, when the draft was written to a response plan (SPEC §6), reports
  * per item whether the draft addresses it and with which words, every file the
  * draft says is attached and every commitment it makes. Plugins' drafts
- * (ADR-0050) go through the same check: a strategy returns `{draftBody}` and
+ * go through the same check: a strategy returns `{draftBody}` and
  * the host checks it.
  *
  * FAIL-SOFT: any failure resolves to `null` (unknown quality → never

@@ -1,5 +1,5 @@
 /**
- * Tool rounds per the task policy (ADR-0073, Phase 5): a tool loop or a
+ * Tool rounds per the task policy: a tool loop or a
  * tool-calling stream stops at the task's `maxToolRounds`, whatever step limit
  * the caller asked for. A task without one keeps the caller's limit, as today.
  * The real AI SDK runs over a scripted mock model; nothing reaches a provider.

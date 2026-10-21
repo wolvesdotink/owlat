@@ -8,7 +8,7 @@
  * Neither shape carries a RATE. Both are COUNTS plus the instant the newest of
  * them was recorded, because every rate in this subsystem is derived in exactly
  * one place — a second one is a second answer, and the controller and the
- * dashboard must never be able to disagree about a number (ADR-0042).
+ * dashboard must never be able to disagree about a number.
  */
 
 import type { SeedArmPlacementCounts } from '@owlat/shared/seedPlacement';
@@ -77,8 +77,7 @@ export interface SmtpBlockObservation {
  * not the three placements the gate happens to branch on. `category` is REACHED
  * and `deleted` is not, so a producer that had to fold five placements into
  * three on the way in would be writing a second answer to "did this probe reach
- * the inbox" — the question `isSeedPlacementReached` exists to answer once
- * (ADR-0042 applied to the seed ledger).
+ * the inbox" — the question `isSeedPlacementReached` exists to answer once.
  *
  * Omitted placements are zero; the roll-up scrubs negative, fractional and
  * non-finite counts before any of them can become a sample size.

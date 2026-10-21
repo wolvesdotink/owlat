@@ -1,6 +1,6 @@
 /**
- * Focused per-effect tests for the four sendLifecycle effects introduced
- * by ADR-0006: campaign_stats_failed, email.sent customer_webhook,
+ * Focused per-effect tests for four sendLifecycle effects:
+ * campaign_stats_failed, email.sent customer_webhook,
  * email_sent contact_activity, attachment_cleanup.
  *
  * The broader state-machine semantics (legal edges, duplicate detection,

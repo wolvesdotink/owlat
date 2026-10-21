@@ -1,5 +1,5 @@
 /**
- * Reservations (ADR-0073, Phase 1b): concurrent admission stays bounded,
+ * Reservations: concurrent admission stays bounded,
  * reserves are idempotent, holds settle against the ledger (reported usage,
  * a conservative estimate for unknown usage, release when nothing was sent),
  * a crash between dispatch and settlement is settled by the sweep, and an

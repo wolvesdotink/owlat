@@ -24,8 +24,6 @@
  * when a signup was confirmed, and no consent decision reads it. Whether a
  * returning contact must confirm again is `requiresFreshConfirmation`'s call,
  * from the contact row.
- *
- * See docs/adr/0013-topic-subscription-module.md.
  */
 
 import { v } from 'convex/values';
@@ -161,7 +159,7 @@ function defaultUnsubscribeReason(source: UnsubscribeSource): string {
 // Who may complete one on the spot depends on who is asking. A public form
 // takes any address from anyone, so on its own it never lifts an opt-out: the
 // signup waits for a fresh confirmation, and an earlier confirmation does not
-// count because the opt-out ended it. See ADR-0013's 2026-10 amendment.
+// count because the opt-out ended it.
 
 /**
  * Whether a subscribe from `source` may lift a standing global opt-out on its

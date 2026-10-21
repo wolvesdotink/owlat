@@ -1,5 +1,5 @@
 /**
- * The AI routing contract (ADR-0073): every new table and field validates a
+ * The AI routing contract: every new table and field validates a
  * realistic row, every index the later lanes build on exists with the fields
  * they query by, and the pure key helpers spell their keys one way.
  */

@@ -1,8 +1,7 @@
 /**
- * Embedding spaces in the database (ADR-0073, Phase 1a provenance, D8 and the
- * Phase 5 rebuild): the reads, and which vector of a row belongs to which
- * space. The writes (activation, column claims, commits) are in
- * `embeddingActivation.ts`.
+ * Embedding spaces in the database: the reads, and which vector of a row
+ * belongs to which space. The writes (activation, column claims, commits) are
+ * in `embeddingActivation.ts`.
  *
  * The rules every reader and writer shares:
  *

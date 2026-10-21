@@ -127,7 +127,7 @@ async function orderKeyOfSnapshot(
 }
 
 /**
- * D10 (ADR-0073): the source's only consumer is the reader display, so its
+ * The source's only consumer is the reader display, so its
  * interpretation waits until the thread is opened (`lazy.ts`). It stops being
  * outstanding, so the stale sweep (`by_outstanding`) never re-runs it, and it
  * is counted in `threadBriefs.deferredSources` instead of `pendingSources`.

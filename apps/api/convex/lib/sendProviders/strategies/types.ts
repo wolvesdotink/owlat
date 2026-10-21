@@ -1,7 +1,7 @@
 /**
  * Send route strategy (module) — shared types.
  *
- * Per ADR-0020. Each strategy module owns one provider-selection algorithm
+ * Each strategy module owns one provider-selection algorithm
  * against an org's `providerRoutes` row. The thin `resolveRoute` dispatcher
  * (`../routing.ts`) looks up the strategy via `strategyFor(kind)` and calls
  * `select()`.

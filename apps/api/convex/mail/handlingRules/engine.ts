@@ -120,7 +120,7 @@ export function matchHandlingRule(rule: HandlingRuleLike, target: HandlingRuleTa
 }
 
 /**
- * L4 (ADR-0073): a rule that can be decided before classification — one with no
+ * A rule that can be decided before classification — one with no
  * non-empty `categories` facet. Its other facets read only the sender, subject
  * and body, so evaluating it early sees exactly what classify time would.
  */

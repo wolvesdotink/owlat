@@ -3,7 +3,7 @@
 /**
  * Generic SMTP-relay Send provider adapter (module).
  *
- * Per ADR-0020. The long-tail transport: any provider that speaks SMTP
+ * The long-tail transport: any provider that speaks SMTP
  * submission (Mailgun, Postmark, SendGrid, Brevo, or a self-run relay) plugs in
  * here by host/port/TLS/username/password — no per-provider API adapter. The
  * non-secret client config is resolved lazily (once) from the instance-level

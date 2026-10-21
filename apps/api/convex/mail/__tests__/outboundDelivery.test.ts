@@ -1,7 +1,7 @@
 /**
  * Plan idea 1 + 12 — the two PUBLIC reads over `mailMessages.outbound`.
  *
- * `outbound` has been written since ADR-0012 and read by nothing outside the
+ * `outbound` has long been written and read by nothing outside the
  * backend, which is why a hard bounce looked exactly like a delivered mail.
  * These tests lock the two things that makes the difference:
  *

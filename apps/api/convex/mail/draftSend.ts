@@ -6,8 +6,7 @@
  * way `mail/draftQueries.ts` holds the read side.
  *
  * Every state write still goes through the Mail draft lifecycle module — the
- * sole writer of `mailDrafts.state`, `scheduledSendAt` and `undoToken`. See
- * ADR-0028.
+ * sole writer of `mailDrafts.state`, `scheduledSendAt` and `undoToken`.
  */
 
 import type { MutationCtx } from '../_generated/server';

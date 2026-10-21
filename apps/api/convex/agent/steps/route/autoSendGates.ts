@@ -58,7 +58,7 @@ const messageExistsGate: CoreAutoSendGate = Object.freeze({
 	},
 });
 
-// D1 (ADR-0073): the ceiling read from the complete period aggregate; a spend
+// The spend ceiling, read from the complete period aggregate; a spend
 // state that cannot be verified holds the send. A message the ceiling held
 // (`budgetHold`) is never auto-sent, whatever the budget reads now.
 const spendBudgetGate: CoreAutoSendGate = Object.freeze({
@@ -124,7 +124,7 @@ const complaintOrUrgentGate: CoreAutoSendGate = messageGate('complaint_or_urgent
 		: safe();
 });
 
-// D13 (ADR-0073): a scan that skipped the model guard (`guardNotRun`) has no
+// A scan that skipped the model guard (`guardNotRun`) has no
 // semantic injection verdict, so it is held exactly like a guard that failed.
 const inboundGuardGate: CoreAutoSendGate = messageGate('inbound_guard', (message) => {
 	if (message.securityFlags?.guardUnavailable) {
@@ -171,7 +171,7 @@ const draftGapsGate: CoreAutoSendGate = messageGate('draft_gaps', (message) =>
 		: safe()
 );
 
-// D2 (ADR-0073): a draft written cheap-first is a reviewed draft. The fast
+// A draft written cheap-first is a reviewed draft. The fast
 // writer has had no safety evaluation of its own, so the draft goes to a
 // person whatever its quality score says. The flag is written with the draft.
 const cheapFirstDraftGate: CoreAutoSendGate = messageGate('cheap_first_draft', (message) =>
@@ -243,7 +243,7 @@ const itemCoverageGate: CoreAutoSendGate = Object.freeze({
 });
 
 /**
- * ADR-0060 §8, ADR-0073 §8: the block-only gate for decision verdicts. A
+ * The block-only gate for decision verdicts. A
  * verdict of a task in `tasks` that would feed the auto-send path must be a
  * complete, valid, advisory answer from the decision plane configured now,
  * under the current policy, with a calibration stamp that names the checked-in

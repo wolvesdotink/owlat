@@ -44,7 +44,7 @@ export async function runSelectedDraftStrategy(
 	scope: StrategySelectionScope | undefined,
 	source: StrategySource,
 	runDefault: () => Promise<LlmTextResult>,
-	/** The draft's root request, handed to a plugin strategy's model calls (ADR-0073). */
+	/** The draft's root request, handed to a plugin strategy's model calls. */
 	root?: LlmRootContext
 ): Promise<{
 	draftBody: string;

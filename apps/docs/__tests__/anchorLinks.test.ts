@@ -124,8 +124,8 @@ describe('routeOf', () => {
 	it('strips ordering prefixes and maps index to its folder', () => {
 		expect(routeOf('1.guide/27.postbox.md')).toBe('/guide/postbox');
 		expect(routeOf('1.guide/0.index.md')).toBe('/guide');
-		expect(routeOf('3.developer/decisions/13.050-draft-strategy-registry.md')).toBe(
-			'/developer/decisions/050-draft-strategy-registry'
+		expect(routeOf('3.developer/47.plugin-sandboxed-jobs.md')).toBe(
+			'/developer/plugin-sandboxed-jobs'
 		);
 	});
 });

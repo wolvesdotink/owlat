@@ -1,5 +1,5 @@
 /**
- * The interpretation eval's metrics report file (ADR-0072 "Eval gate").
+ * The interpretation eval's metrics report file.
  *
  * `apps/api/scripts/interpret-eval.ts` writes it after every run, oracle or
  * live, so a run leaves a record to compare against the next one: the

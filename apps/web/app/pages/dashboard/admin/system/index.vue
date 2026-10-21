@@ -119,7 +119,7 @@ const {
 		<SystemContainerHealthCard />
 
 		<!-- IMAP servers: which IMAP server releases call this backend, and
-		     whether it still serves them (ADR-0063). Sits under container
+		     whether it still serves them. Sits under container
 		     health: the IMAP container is updated after the backend, and this
 		     is where an operator sees whether it was. -->
 		<SystemImapServersCard />

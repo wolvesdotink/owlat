@@ -1,5 +1,5 @@
 /**
- * Empty what the retired thread summaries left behind (ADR-0072, migration 0067).
+ * Empty what the retired thread summaries left behind.
  *
  *   npx convex run migrations/0067_empty_retired_summaries:run
  *

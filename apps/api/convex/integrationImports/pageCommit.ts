@@ -22,7 +22,7 @@
  * that died, or a schedule that never ran — is the recovery sweep's job
  * (`recovery.ts`).
  *
- * Per ADR-0027 (#996/#999 amendment).
+ * See #996 and #999.
  */
 
 import { v } from 'convex/values';

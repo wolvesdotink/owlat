@@ -154,7 +154,7 @@ describe('a window of refusals reaches gate 2 through both real readers', () => 
 	});
 
 	it('reports the SAME halt on the screen', async () => {
-		// ADR-0042: the screen must report the verdict the controller reaches, not a
+		// The screen must report the verdict the controller reaches, not a
 		// friendlier one. Both build the observation from the same rows through the
 		// same summarizer; the spans differ (24h against 7d) and this window sits
 		// inside both.

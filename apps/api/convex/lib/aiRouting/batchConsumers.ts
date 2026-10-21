@@ -1,5 +1,5 @@
 /**
- * The non-interactive calls the provider batch path carries (ADR-0073, L14),
+ * The non-interactive calls the provider batch path carries,
  * and its clock. Pure and runtime-neutral: the consumers (`knowledge/
  * extraction.ts`, `semanticFileProcessing.ts`), the item mutations
  * (`aiRouting/batchItems.ts`) and the poller (`aiRouting/batchPoller.ts`)

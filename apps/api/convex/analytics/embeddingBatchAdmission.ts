@@ -1,5 +1,5 @@
 /**
- * Admission for a batch of paid embedding calls (ADR-0073, D8 and Phase 1b):
+ * Admission for a batch of paid embedding calls:
  * the implementation behind the embed lane's seam
  * (`lib/aiRouting/embeddingAdmission.ts` `PaidEmbeddingAdmission`), which an
  * admin-started re-embed, rebuild, validation or sample check asks before it

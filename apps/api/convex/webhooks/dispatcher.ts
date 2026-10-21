@@ -186,7 +186,7 @@ const DISPATCH: DispatchTable = {
 			// Postbox does not distinguish hard/soft at the per-recipient level —
 			// the Send lifecycle's `bounceType` is a campaign-side concern (drives
 			// blocklist insert + reputation). Personal mail discards the
-			// classification per ADR-0012.
+			// classification.
 			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId, {
 				rawProviderMessageId: e.providerMessageId,
 				input: {
@@ -272,7 +272,7 @@ const DISPATCH: DispatchTable = {
 	'internal.circuit_breaker_tripped': async (ctx, e) => {
 		logWarn(`[Webhook Dispatcher] Circuit breaker tripped: ${e.message}`);
 		try {
-			// Per ADR-0011 the legacy `throttled` literal was dropped; the
+			// The legacy `throttled` literal was dropped; the
 			// circuit-breaker signal re-targets to `warned` (no operational
 			// behavior change — `throttled` never gated sends in the Abuse
 			// gate; both `warned` and the old `throttled` are advisory).

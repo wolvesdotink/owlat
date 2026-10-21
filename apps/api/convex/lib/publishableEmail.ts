@@ -5,7 +5,7 @@
  * the rules for editing, publishing and duplicating them live here once and
  * each `emails.ts` keeps only its table-specific fields.
  *
- * Status transitions stay in each table's lifecycle module (ADR-0022); this
+ * Status transitions stay in each table's lifecycle module; this
  * module only computes what those transitions and the editor `update`
  * mutations write.
  *

@@ -14,7 +14,7 @@
  * surface a bundled plugin transport also answers is `./relayIdentityTypes.ts`;
  * that file's header says why the two are not one type.
  *
- * Per ADR-0018:
+ * The rules:
  * - Each adapter owns its per-provider sibling identity table
  *   (`sendingDomainMtaIdentities` for MTA, `sendingDomainSesIdentities`
  *   for SES).

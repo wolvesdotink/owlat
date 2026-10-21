@@ -1,6 +1,6 @@
 /**
- * The embedding section's reading of `aiRouting.embeddingSpaces.status` (U1,
- * D8, ADR-0073 §9), as pure functions: which space vector search uses, how
+ * The embedding section's reading of `aiRouting.embeddingSpaces.status`,
+ * as pure functions: which space vector search uses, how
  * much of the corpus it reaches, the job in progress, what a re-embed would
  * cost, and the identity an attestation names. Message keys only; the
  * components translate.

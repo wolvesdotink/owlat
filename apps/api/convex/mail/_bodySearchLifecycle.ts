@@ -1,5 +1,5 @@
 /**
- * The fences around deep body search's background writes (ADR-0059): the
+ * The fences around deep body search's background writes: the
  * generation and lease helpers the per-mailbox index walk uses, and the
  * instance-wide sweep that clears every excerpt when the operator opts out.
  *

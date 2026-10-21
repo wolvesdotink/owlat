@@ -2,8 +2,6 @@
  * Campaign send pre-flight — the one check block every path that moves a
  * campaign towards `sending` runs. The lifecycle reducer trusts its input;
  * callers run this helper *before* `lifecycle.transition`.
- *
- * See docs/adr/0017-campaign-lifecycle-modules.md §Pre-flight helper.
  */
 
 import { v } from 'convex/values';

@@ -1,14 +1,13 @@
 # Owlat Context
 
-This file pins the project-specific language used across architecture decisions
-and grilling sessions. Update inline when terms get sharpened during design
+This file pins the project-specific language used across the codebase and in
+grilling sessions. Update inline when terms get sharpened during design
 conversations.
 
-Two spellings are load-bearing, because a test checks them
+One spelling is load-bearing, because a test checks it
 (`apps/docs/__tests__/contextVocabularyDocs.test.ts`): a cross-reference to
-another section is written `**§ Section name**`, and a decision record is cited
-as `ADR-NNNN`. Both must resolve — to a `## ` heading here, and to a document in
-`docs/adr/`.
+another section is written `**§ Section name**`, and it must resolve to a `## `
+heading here.
 
 ## Email rendering
 
@@ -196,8 +195,8 @@ this module owns _only_ the trio. It is created-effects only: its
 callers run `strict`/`upsert`, which never yield `action: 'updated'`;
 the `merge`/`updated` case belongs to the **Contact import (module)**,
 which is exempt and calls `resolveContact` directly (one batched
-`incrementContactCount(imported)` plus its own per-row composition,
-ADR-0019). Keeping the trio in a layer _above_ the still-effect-free
+`incrementContactCount(imported)` plus its own per-row composition).
+Keeping the trio in a layer _above_ the still-effect-free
 resolution primitive — not inside it — is what lets import's batched
 count and the single-create trio coexist without double-counting.
 Single-create goes through Contact creation; only import calls
@@ -245,8 +244,7 @@ confirm path leaves it undefined. Legal edges:
 - `confirmed → pending` (`reopen` — a new consent episode, only while
   `contacts.unsubscribedAt` is set; refused otherwise. Keeps
   `doiConfirmedAt` until the new confirmation and records
-  `doi.reconfirmation_requested` in the audit log. See the ADR-0009
-  amendment.)
+  `doi.reconfirmation_requested` in the audit log.)
 
 A global opt-out ends the consent episode (`endConsentEpisode`): it withdraws
 any outstanding token, so a link minted before it cannot lift it, and
@@ -649,8 +647,8 @@ path's open string (**§ Send provider catalog**), because an import
 provider is picked by a user in a form rather than resolved from
 deployment configuration. Dispatched by the registry at
 `providers/index.ts` exporting `providerFor(kind)`. Mirrors the
-**Sending domain provider adapter (module)** shape (ADR-0018) and
-**Channel inbound adapter** shape (ADR-0005) — one TypeScript
+**Sending domain provider adapter (module)** shape and
+**Channel inbound adapter** shape — one TypeScript
 interface, N concrete implementations, registry-driven dispatch.
 Exports an `IntegrationImportProviderModule<K>` with:
 
@@ -844,7 +842,7 @@ Subscribe effects:
   (`reopen` for a contact still `confirmed` from an earlier episode). The
   lifecycle's own `fire_topic_subscribed_triggers` effect handles the
   trigger fanout at confirm time — the subscription module does not
-  double-fire. See the ADR-0013 amendment.
+  double-fire.
 
 Unsubscribe effects:
 
@@ -867,7 +865,7 @@ Unsubscribe effects:
 No unsubscribe touches `formSubmissions.confirmedAt`: it records when a
 signup was confirmed and stays as history. Whether a returning Contact must
 confirm again is decided from the contact row alone by
-`requiresFreshConfirmation` (see the ADR-0013 2026-10 amendments).
+`requiresFreshConfirmation`.
 
 Invariants:
 
@@ -1006,7 +1004,7 @@ parse-token / DOI transition / dispatch / respond for confirm.
 
 Closes drift bugs: the open-coded find-or-create that pre-dated
 **Contact resolution (module)** in the form path (3 of 4 sites already
-migrated via ADR-0008; the form path was missed); the silently-dropped
+migrated; the form path was missed); the silently-dropped
 Topic membership for existing-contact-joins-new-topic; the split
 `formSubmissions.status` writer between submit and confirm (today: two
 files patch it; under the module: one writer); the redundant contact
@@ -1181,7 +1179,7 @@ differs from the send path's, where the plugin tier composes in (see
 **§ Send provider catalog**). Discriminated by that `kind`, matching the
 `providerType` field on the **Sending domain** row. Dispatched by the
 registry at `providers/index.ts` exporting `providerFor(kind)`. Mirrors
-the **Channel inbound adapter** shape (ADR-0005) — one TypeScript
+the **Channel inbound adapter** shape — one TypeScript
 interface, N concrete implementations, registry-driven dispatch.
 Exports a `SendingDomainProviderModule<K>` with:
 
@@ -1833,7 +1831,7 @@ Closes drift bugs:
   changes) — deleted outright.
 - Open-coded `updateBlockUsageCounts` calls at
   `emailTemplates/emails.ts:108` and `transactional/emails.ts:252`
-  that bypass the lifecycle effect path ADR-0022 introduced — both
+  that bypass the lifecycle effect path — both
   rewired through the lifecycle.
 - Untyped fire-and-forget re-render at `emailBlocks.ts:213` whose
   failure silently left stale `htmlContent` — replaced by workpool-
@@ -1966,7 +1964,7 @@ Effects:
   `applyUsageCountDelta` helper, the single implementation of
   `emailBlocks.usageCount`. Replaces the open-coded calls at
   `emailTemplates/emails.ts:108` (still bypassing the lifecycle
-  post-ADR-0022) and the pre-ADR-0022 sites at `emailTemplates.ts:102`
+  post-deepening) and the older sites at `emailTemplates.ts:102`
   / `:223`, plus the `lib/linkedBlockPropagation` helper they used
   (deleted with the saved-block deepening).
 
@@ -2158,14 +2156,15 @@ Replaces the open-coded intake in
 Closes drift bugs:
 
 - Open-coded contact upsert with race-retry `try/catch` hack at
-  `transactionalApiHttp.ts:484-512`. The four other pre-ADR-0008 sites
+  `transactionalApiHttp.ts:484-512`. The four other open-coded sites
   already migrated to **Contact resolution (module)**; the transactional
-  path was missed (mirrors the form-path gap that ADR-0015 closed).
+  path was missed (mirrors the form-path gap that the **Form submission
+  (module)** closed).
 - Daily send counter incremented from the HTTP shell _after_ the
   enqueue rather than atomically with the row insert. Any future
   non-HTTP shell (admin replay, batch transactional dispatch, SDK
   trigger) would silently skip the counter.
-- `transactionalSends.create` (the pre-ADR-0006 mutation inserting
+- `transactionalSends.create` (an older mutation inserting
   directly in `sent`) — zero live callers (grep-confirmed). Deleted
   outright with this module.
 - Resolved `language` only on the API response, not on the
@@ -2273,8 +2272,6 @@ reasons through a total `Record<NonCampaignIntakeRejectionReason, …>` —
 step completes without sending; the agent reply archives the inbound
 message as `sender_blocked`), while `no_delivery_provider` and
 `abuse_blocked` are deployment faults that fail and stay re-drivable.
-See the PIECE C2 amendment in
-`docs/adr/0021-transactional-send-intake-module.md`.
 
 The module does _not_ own: the campaign producer (`delivery/enqueue.ts`
 — a bulk fan-out from an already-gated orchestrator, not an intake); the
@@ -2466,7 +2463,7 @@ terminal / kind-mismatched attempts. Two instances today: **Send lifecycle**
 (campaign + transactional `Send`) and **Postbox outbound lifecycle**
 (`mailMessages.outbound`). Both expose `transition` and a webhook-friendly
 `transitionByProviderMessageId`. Replicated by convention everywhere except the
-_dispatcher preamble_, which ADR-0058 factored into the **Lifecycle core**
+_dispatcher preamble_, which was factored into the **Lifecycle core**
 (`convex/lib/lifecycle.ts`) after eleven instances. Reducers, effects and
 module-local outcome literals stay in the module.
 _Avoid_: State machine (generic; doesn't signal the dispatched-to-MTA
@@ -2474,7 +2471,7 @@ boundary), Lifecycle alone (every CRUD module has one).
 
 **Lifecycle core**:
 The one layer every Outbound-lifecycle instance shares verbatim, extracted to
-`convex/lib/lifecycle.ts` (ADR-0058). `defineLifecycle(spec, options)` builds a
+`convex/lib/lifecycle.ts`. `defineLifecycle(spec, options)` builds a
 graph from a declarative edge spec; `graph.classify(from, to)` returns
 `proceed` (with an `isSelfLoop` flag) or `refused` (`illegal_edge`, or
 `terminal` for the five machines that opt in); `LifecycleReason<TExtra>` unions
@@ -2482,7 +2479,7 @@ the core's reasons with a module's own literals; `refuse(verdict, context)`
 builds the shared `ok: false` shape. Its scope is the dispatcher preamble and
 nothing else — no `ctx`, no reducers, no effects, no persistence.
 _Avoid_: Lifecycle framework / generic `Lifecycle<S, E, Eff>` (both name the
-larger factor four ADRs refused), State machine engine.
+larger factor four earlier designs refused), State machine engine.
 
 **Send**:
 A single addressed message dispatch tracked in `emailSends` (campaign) or
@@ -3219,7 +3216,7 @@ parent-side `emailSends` / `transactionalSends` patches (those live on
 the **Send lifecycle (module)**'s effect list).
 _Avoid_: Send runner (vague; doesn't signal the orchestration role),
 Send executor (we deliberately renamed the automation `stepExecutor.ts`
-to `stepWalker.ts` in ADR-0004 for the same reason — "executor" is too
+to `stepWalker.ts` for the same reason — "executor" is too
 generic), Provider dispatcher (collides with **Webhook dispatcher**),
 Send dispatch (module) (the `(module)` suffix signals registry-driven
 dispatch; this is one function, not a registry — hence `(helper)`).
@@ -3323,7 +3320,7 @@ recorded id exist before the network crossing),
 `tagsFeedbackProvenance` (does this transport's inbound feedback carry our own
 provenance tag).
 Every one has a FAIL-CLOSED default when absent — claiming a capability we were
-never granted is the expensive direction in each case. Recorded in ADR-0055; the
+never granted is the expensive direction in each case. The
 rule that no code outside an adapter folder may compare a kind to a literal is
 enforced mechanically by `bun run lint:providers`, whose allowlist only shrinks.
 Distinct from **Capability** under **§ Plugin platform**, which is a
@@ -3580,8 +3577,8 @@ dispatcher.
 
 **Webhook event** (outbound):
 A customer-subscribable event Owlat emits. Identified by its wire literal
-(`email.sent`, `email.bounced`, `contact.created`, etc. — the catalog
-introduced by ADR-0002).
+(`email.sent`, `email.bounced`, `contact.created`, etc. — the webhook
+event catalog).
 _Avoid_: Event alone (overloaded with audit events, contact activities).
 
 **Webhook event module**:
@@ -3594,7 +3591,7 @@ from `ctx`. `schema` is a Convex validator for the `data` payload; the
 fanout path validates against it before scheduling delivery. Schemas
 evolve append-only — non-additive changes require a new event literal
 (e.g. `email.bounced.v2`) registered as a distinct catalog entry. The
-ADR-0002 catalog becomes the registry of these modules.
+webhook event catalog becomes the registry of these modules.
 
 **Webhook event fanout**:
 The internal action that takes a Webhook event literal + caller-resolved
@@ -3758,7 +3755,7 @@ The current state of an inbound message in `inboundMessages.processingStatus`:
 draft_ready | awaiting_clarification | informational | approved | sent |
 rejected | archived | failed`. Thirteen states
 covering the joined agent-pipeline progression, the needs-no-reply parking
-state (ADR-0061) and the human draft-review hand-off. Companion fields written atomically with the status: `errorMessage`
+state and the human draft-review hand-off. Companion fields written atomically with the status: `errorMessage`
 (on `failed`), `processedAt` (on terminals), `securityFlags` (on
 `quarantined` / `archived`), `classification` (when `classify` completes),
 `draftResponse` / `draftSubject` / `confidenceScore` (when `draft` completes),
@@ -3981,8 +3978,8 @@ renamed `stepWalker.ts`: doesn't signal the dispatch role).
 The module at `convex/lib/llm/dispatch.ts` that owns the canonical
 shape for issuing one LLM call plus the one mapping between the AI
 SDK's `usage` shape and the internal `TokenUsage` validator. Lifted
-out of the agent-internal `convex/agent/steps/shared/llm.ts` (see
-ADR-0014) so every LLM caller across the deployment shares the same
+out of the agent-internal `convex/agent/steps/shared/llm.ts`
+so every LLM caller across the deployment shares the same
 dispatch + token-usage extraction surface. Two entry points:
 
 - `runLlmText({ model, messages | { prompt, system? }, temperature? })
@@ -4010,8 +4007,8 @@ stays open-coded at its two callers — knowledge extraction and
 semantic file processing — to honor "minimal lift"), persistence of
 usage (callers write the ledger through `analytics/llmUsage.ts`),
 or prompt construction (each caller still composes its prompt next
-to its model call — preserving the locality principle ADR-0014
-chose deliberately).
+to its model call — keeping prompt and call together on
+purpose).
 _Avoid_: LLM helper (vague — doesn't signal the dispatch role),
 LLM wrapper (collides with the `lib/llmProviders/` factory, which
 is the real wrapper of the AI SDK), AI dispatch (the seam is
@@ -4094,7 +4091,7 @@ single export, the helper is the unit).
 
 **Thread brief**:
 The per-thread state every surface reads instead of summarising the thread
-itself (ADR-0072): the thread's **Items**, **Facts** and **Activity**, kept
+itself: the thread's **Items**, **Facts** and **Activity**, kept
 up to date by interpreting each message once, when it arrives or is sent.
 One `threadBriefs` row per thread carries its revisions, its completeness
 (`complete | partial | pending | none`) and its deletion epoch. In
@@ -4143,8 +4140,8 @@ What one draft does about the thread's items, `draftResponsePlans`: a stance
 per item (`answer | accept | decline | defer | clarify | skip`), the
 drafter's coverage spans, file claims and new promises, bound to the draft
 hash and the item revisions. A draft that covers an item marks it "Addressed
-in draft", never done. The Team Inbox `item_coverage` auto-send gate reads it
-(ADR-0051 amendment), in shadow mode unless an instance enforces it.
+in draft", never done. The Team Inbox `item_coverage` auto-send gate reads it,
+in shadow mode unless an instance enforces it.
 _Avoid_: Reply plan, Coverage (one part of the plan).
 
 **Interpretation mode**:
@@ -4172,7 +4169,7 @@ callback from the **IMAP pump** and the **Connection state**, and they
 return a session that the pump tracks until its `completion` resolves.
 `completion` is a `Promise<void>` and carries no state: a module that
 changes the **Connection state** calls `deps.commit(next)` itself, before
-its tagged OK (ADR-0016, amendment of 2026-10-01). One interface covers
+its tagged OK. One interface covers
 both shapes:
 
 - **One-shot** — `start` writes its response lines via `send` and returns
@@ -4283,7 +4280,7 @@ modules, walker owns lifecycle plumbing.
 _Avoid_: IMAP dispatcher (collides with the Convex-side **Webhook
 dispatcher**), Command router (overloaded), IMAP command executor (we
 deliberately renamed the automation `stepExecutor.ts` to `stepWalker.ts`
-in ADR-0004 for the same reason — "walker" names the dispatch role).
+for the same reason — "walker" names the dispatch role).
 
 ## Sending reputation
 
@@ -4319,8 +4316,8 @@ responsibilities behind one small interface:
   Reader-typed so the public auth-shell read
   (`reputationQueries.getSendingOverview`) and
   the platform-admin reads (`platformAdmin/queries.ts`) all cross the
-  same seam — the shell-vs-engine split the **Listing engine** uses
-  (ADR-0037). Derived rate/risk is computed on read, never stored: the
+  same seam — the shell-vs-engine split the **Listing engine** uses.
+  Derived rate/risk is computed on read, never stored: the
   pre-deepening per-bucket cache (written by the writers, recomputed
   independently by every reader, and read stale off "the latest bucket"
   by platform admin) is removed, and the dead `listByRiskLevel` /
@@ -4329,7 +4326,7 @@ responsibilities behind one small interface:
 
 One producer today: the **Send lifecycle (module)**'s `reputation_update`
 effect (the sole caller). The module is upstream of the **Abuse status
-(module)** — one of that module's three internal writers (ADR-0011) — and
+(module)** — one of that module's three internal writers — and
 never reads or writes `abuseStatus` itself. The hourly cron is now
 cleanup-only: it ages out buckets older than 60 days across _both_
 scopes, closing the pre-deepening asymmetry where org buckets were pruned
@@ -4351,10 +4348,7 @@ per-cell controller with its own measurements; see
 
 ## Ramp controller and measurement plane
 
-The vocabulary of the measured migration onto Owlat's own MTA. The decision
-architecture behind these terms — why one controller drives two actuators, why
-the constants are asymmetric, why thin data holds — is ADR-0054; this section
-names the pieces, that document argues them.
+The vocabulary of the measured migration onto Owlat's own MTA.
 
 **Deliverability cell**:
 The unit every deliverability decision is made in: one
@@ -4398,8 +4392,8 @@ cheap:
   dispatch result and cannot answer "what did we decide, and for whom".
 - `transportOutcomes` — rolling per-`(org, cell, arm, day)` counters, SHARDED on
   write into N rows and SUMMED on read, so a hot cell does not serialize on one
-  document. That sharded-write/summed-read shape is ADR-0042's, reused rather
-  than reinvented.
+  document. That sharded-write/summed-read shape is the **Sending reputation
+  (module)**'s, reused rather than reinvented.
   _Avoid_: Analytics (this is a control input, not a report), Metrics (too
   generic — Owlat has several unrelated metric surfaces), Experiment table (names
   one of the two).
@@ -4960,7 +4954,7 @@ _Avoid_: Org deletion dispatcher (collides with the Convex-side
 **Dispatch pipeline (module)** vocabulary — the walker is a single
 linear flow, not composed of typed `Phase`s with input-typed ctx),
 Org deletion executor (we deliberately renamed the automation
-`stepExecutor.ts` to `stepWalker.ts` in ADR-0004 for the same
+`stepExecutor.ts` to `stepWalker.ts` for the same
 reason — "executor" doesn't signal the dispatch role), Deletion
 runner (vague), Org wipe action (informal).
 
@@ -5114,7 +5108,7 @@ Preconditions enforced inside the `→ active` reducer (returned as
 
 Replaces the open-coded `ctx.db.patch(automation, { status: ... })`
 writes in `automations/automations.ts:333-430` (activate / pause /
-resume). The proposed `revertToDraft` shell was removed under ADR-0020
+resume). The proposed `revertToDraft` shell was removed
 because no product surface called it.
 
 The module does _not_ own: row creation (the `create` mutation and
@@ -5141,7 +5135,7 @@ sequential order within the automation. The condition step also writes
 `yesBranchStepIndex` / `noBranchStepIndex` into its config for non-
 sequential flow.
 _Avoid_: Node (graph terminology — too generic), Action (overloaded with
-audit actions from ADR-0002).
+audit actions).
 
 **Step module**:
 A Step's full surface, physically split into two halves — same rationale as
@@ -5199,7 +5193,7 @@ a run. Replaces the five near-identical fire mutations
 (`fireContactCreatedTrigger`, `fireContactUpdatedTrigger`,
 `fireEventReceivedTrigger`, `fireTopicSubscribedTrigger`) plus the
 sixth inline copy in `sendEvent`. Mirrors the **Webhook event
-fanout** vocabulary from ADR-0003.
+fanout** vocabulary.
 _Avoid_: Trigger handler (too generic — that name still applies to the
 per-source-of-events shell, not the per-kind fanout).
 
@@ -5218,7 +5212,7 @@ One persisted shape across segments (`segments.filters[].condition`) and
 automation condition steps (`automationSteps.config.condition`). Replaces
 the divergent automation schema (`propertyKey`, `greater_than`,
 `is_set`, `emailActivity`) — those names migrated to the canonical
-segment vocabulary in ADR-0004.
+segment vocabulary.
 _Avoid_: Filter (overloaded with UI table filters), Predicate (too
 abstract).
 
@@ -5321,7 +5315,8 @@ composes the pure core so it can log-and-resolve-zero on corrupt filters
 Replaces the five open-coded copies of "preload lookup → per-Contact
 AND/OR combine": `lib/segmentEvaluation.ts:evaluateSegmentCount` and
 `:evaluateMultipleSegments` (now thin wrappers — the names stay because
-ADR-0033 relies on them), `segments.ts:getMatchingContactsByTeam` (the
+the **Audience resolution (module)** relies on them),
+`segments.ts:getMatchingContactsByTeam` (the
 preview — fixing both its soft-deleted-Contact leak and its N×M
 size-one-preload), the segment branch of
 `campaigns/audienceResolution.ts`, and the prior
@@ -5334,8 +5329,8 @@ eligibility predicate (email-present, suppression, DOI — that is the
 **Audience resolution (module)**'s `selectRecipient`), the `segments` CRUD
 or `cachedCount` refresh scheduling (stay in `segments.ts`), or the
 `frozenFilters` snapshot write (the Campaign send orchestrator).
-_Avoid_: Segment evaluation (module) (ADR-0033 parked "Segment
-evaluation" as a name because the **Audience** also covers **Topic
+_Avoid_: Segment evaluation (module) ("Segment
+evaluation" was parked as a name because the **Audience** also covers **Topic
 membership**; this module is the segment/Condition half only, so
 "matching" names the operation without claiming audience resolution),
 Condition matching (module) (it matches a _set_ of Conditions against a
@@ -5461,7 +5456,7 @@ domain intakes, this is the transport-layer shell).
 ## Operation errors
 
 The one vocabulary for "an operation could not complete," shared across the
-thrown (in-app), HTTP, and SDK seams. See ADR-0036.
+thrown (in-app), HTTP, and SDK seams.
 
 **Operation error**:
 The canonical failure shape an operation returns — `{ category, message, data? }`.
@@ -5497,7 +5492,7 @@ modules: where a lifecycle owns how an entity _changes_, listing owns how a
 collection of them is _read_. A thin generic **Listing engine** dispatches
 over per-entity **Listing descriptors**, mirroring the **Walker** /
 **Block module** split — thin dispatcher, per-type data ownership. One
-Convex-native cursor everywhere. See ADR-0037.
+Convex-native cursor everywhere.
 
 **Listing engine**:
 The generic, auth-agnostic reader at `convex/lib/listing.ts` that turns a
@@ -5535,7 +5530,7 @@ runs it without hiding the cost. When the row carries **capability fields**
 (tokens that authorize an action on the row), the descriptor declares them
 once in `redact`: the engine strips them from every page row before
 enrichment, on both paths — a listing read cannot leak them by a caller
-forgetting. See ADR-0037's amendment.
+forgetting.
 _Avoid_: Listing module (collides with the two-half module-family pattern —
 Block module, Step module — listing is single-runtime, has no editor half),
 list config (undersells that it owns enrichment + facets), List schema.
@@ -5671,7 +5666,7 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   yield `action: 'updated'`. The **Contact import (module)** is the sole
   exception: it calls `resolveContact` directly and fires _one_ batched
   `incrementContactCount(imported)` plus its own per-row composition
-  (ADR-0019) — single-create goes through Contact creation, only import
+  — single-create goes through Contact creation, only import
   calls resolution directly (convention, not enforced). Closes the drift
   the scatter produced: `cachedContactCount` was never incremented for
   Contacts born via inbound email / channel webhook / transactional send
@@ -5750,8 +5745,8 @@ success`). The submit HTTP handler at `forms/apiHttp.ts` is the only
   redundant auth shell of `api.topics.topics.addContact` (the form HTTP
   endpoint is its own public auth surface). The `confirmationToken`
   stored on each `pending_confirmation` row is the same string as the
-  Contact's `doiConfirmationToken` under the unified token namespace
-  (ADR-0009), populated from the new `doiToken` field on
+  Contact's `doiConfirmationToken` under the unified token namespace,
+  populated from the new `doiToken` field on
   `subscribe()`'s return shape — no contact re-read. Behavior change
   vs pre-deepening: an existing Contact who fills out a form to join a
   new Topic now actually gets added to that Topic — today's open-coded
@@ -5821,12 +5816,12 @@ resolved/closed`) is independent of inbox processing — driven only by
   discriminated `sendingReputation` table. A single `summarize(reader,
 scope)` is the only summarizer of the window; both the public auth-
   shell reads and the platform-admin reads cross it (the shell-vs-engine
-  split of ADR-0037), and derived rate/risk is computed on read, never
-  stored. One producer today: the **Send lifecycle (module)**'s
+  split of the **Listing engine**), and derived rate/risk is computed on
+  read, never stored. One producer today: the **Send lifecycle (module)**'s
   `reputation_update` effect. The module is upstream of the **Abuse
   status (module)**: when a recorded event pushes the org scope's derived
   risk to `high`/`critical` it calls `abuseStatus.transition` — one of
-  that module's three internal writers (ADR-0011) — and is the only place
+  that module's three internal writers — and is the only place
   that enforce decision lives. The **Send lifecycle** → **Sending
   reputation** → **Abuse status** chain carries the same
   `bounce`/`complaint` vocabulary end to end without translation.
@@ -5964,7 +5959,7 @@ force?)` guard (`lib/publishableEmail.ts`, beside the shared publish,
   `ok | reason`. The **Abuse status (module)** is the same skeleton plus
   an `adminOverride` second entry point. Ten instances of the shape are
   in the codebase. All but Abuse status share one narrow factor, the
-  dispatcher preamble in the **Lifecycle core** (ADR-0058, see below);
+  dispatcher preamble in the **Lifecycle core** (see below);
   each module still owns its reducers, effects and outcome literals.
   Email template +
   Transactional email land as the second sibling-pair on parallel
@@ -5990,9 +5985,9 @@ force?)` guard (`lib/publishableEmail.ts`, beside the shared publish,
   genuinely diverge. The _dispatcher preamble_ — edge graph, transition
   validation, self-loop and terminal classification, the shared
   `ok: false` scaffolding — carries no module vocabulary at all, and
-  ADR-0058 factored exactly that into the **Lifecycle core**
+  exactly that was factored into the **Lifecycle core**
   (`convex/lib/lifecycle.ts`), piloted on Postbox outbound lifecycle.
-  ADR-0058's policy is that the other machines migrate as they are
+  The policy is that the other machines migrate as they are
   touched, not in one sweep; by now all eleven machines it counted
   classify their transitions through the core. The **Abuse status
   (module)** was never among them: it checks a severity ordering
@@ -6112,7 +6107,7 @@ N }` and the pump absorbs N bytes into `onLiteralBytes` before the
 - Error vocabulary was historically three overlapping systems in
   `_utils/errors.ts` — `SCREAMING_SNAKE` `ConvexError` codes, a separate
   lowercase `ErrorCodes` HTTP map, and bare-`Error` creators with colliding
-  names (`createNotFoundError` vs `throwNotFound`). Resolved (ADR-0036): one
+  names (`createNotFoundError` vs `throwNotFound`). Resolved: one
   closed, lowercase **Error category** union serialized three ways; the
   bare-`Error` creators and the `isErrorType` substring matcher are removed.
 

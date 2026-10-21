@@ -6,8 +6,6 @@
  * dispatches effects. Validation that depends on freshly-read DB state (e.g.
  * the from-address allow-set re-check inside `→ sent`) happens in the
  * dispatcher BEFORE the reducer fires.
- *
- * See docs/adr/0028-mail-draft-lifecycle-module.md.
  */
 
 import type { Doc } from '../../_generated/dataModel';
@@ -24,7 +22,7 @@ import {
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
 //
-// The graph lives in the generic lifecycle core (`lib/lifecycle.ts`, ADR-0058);
+// The graph lives in the generic lifecycle core (`lib/lifecycle.ts`);
 // the reducers, preconditions and effects stay in this module family. From-states
 // and to-states are separately parameterized because `sent` is a target only —
 // the row is deleted on arrival, so `sent` is never persisted back as a draft
@@ -33,7 +31,7 @@ import {
 // Unlike every other migrated machine this dispatcher asks the graph
 // `isLegalEdge` rather than `classify`: it has never granted the implicit
 // self-loop pass, and `draft → draft` must keep refusing as `illegal_edge`
-// (ADR-0028 routes the undo double-fire through `transitionByUndoToken`'s
+// (the undo double-fire goes through `transitionByUndoToken`'s
 // `already_draft` / `recorded` path, not through a reducer self-loop).
 // `reportsTerminalRefusals` is therefore moot and stays off — the published
 // outcome union carries `illegal_edge` and no `terminal` arm.

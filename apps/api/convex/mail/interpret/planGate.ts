@@ -1,5 +1,5 @@
 /**
- * The `item_coverage` auto-send gate's reads (SPEC §6, ADR-0051 amendment).
+ * The `item_coverage` auto-send gate's reads (SPEC §6).
  *
  *   - `itemCoverageCheck`: the gate input at route time. The stored plan of
  *     the message's draft against the thread as it is now: the draft hash,

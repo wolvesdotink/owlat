@@ -1,6 +1,6 @@
 /**
  * Send-time engagement profile — the PURE model behind "Optimized per
- * contact" scheduling (ADR-0068). Nothing here reads the database or the
+ * contact" scheduling. Nothing here reads the database or the
  * clock; every instant is a parameter.
  *
  * THE SHAPE. Two marginal histograms rather than one hour-of-week grid: 24

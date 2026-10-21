@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * The provider batch poller (ADR-0073, L14): asks each submitted batch item's
+ * The provider batch poller: asks each submitted batch item's
  * provider whether its batch has ended and, when it has, reads the item's
  * result line and closes the item through `./batchItems.ts`, which writes the
  * ledger row and settles the hold in one mutation. A cron runs it; it takes

@@ -1,6 +1,6 @@
 /**
  * Generic phase pipeline — the ordered, short-circuiting check sequence
- * shared by the dispatch (ADR-0007) and bounce-intake pipelines.
+ * shared by the dispatch and bounce-intake pipelines.
  *
  * A Phase is a typed step `Phase<TIn, TOut>` whose input/output ctx threads
  * forward into the next phase. The runner short-circuits on the first
@@ -59,7 +59,13 @@ export type PipelineResult<TOut, Term extends TerminalOutcome> =
  * A composed pipeline. Carries the input ctx type and the final output ctx
  * type so callers and tests can pass the right initial ctx.
  */
-export interface Pipeline<Deps, Base, TIn extends Base, TOut extends Base, Term extends TerminalOutcome> {
+export interface Pipeline<
+	Deps,
+	Base,
+	TIn extends Base,
+	TOut extends Base,
+	Term extends TerminalOutcome,
+> {
 	readonly phases: ReadonlyArray<Phase<Deps, Base, Base, Term>>;
 	run(deps: Deps, ctx: TIn): Promise<PipelineResult<TOut, Term>>;
 }
@@ -83,7 +89,7 @@ type Compose<Deps, Term extends TerminalOutcome, P> = P extends readonly [infer 
 				Phase<Deps, infer A, infer B, Term>,
 				Phase<Deps, infer C, infer D, Term>,
 				...infer Rest,
-			]
+		  ]
 		? B extends C
 			? Rest extends ReadonlyArray<Phase<Deps, unknown, unknown, Term>>
 				? Compose<Deps, Term, readonly [Phase<Deps, A, D, Term>, ...Rest]>
@@ -151,7 +157,7 @@ export async function runPipeline<
 >(
 	deps: Deps,
 	pipeline: Pipeline<Deps, Base, TIn, TOut, Term>,
-	ctx: TIn,
+	ctx: TIn
 ): Promise<PipelineResult<TOut, Term>> {
 	return pipeline.run(deps, ctx);
 }

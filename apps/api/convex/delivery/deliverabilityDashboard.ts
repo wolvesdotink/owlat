@@ -9,7 +9,7 @@
  *
  * SHAPE. One index read per (cell, arm) over the widest window any sub-view needs
  * (the deciding span, the reported window, the trailing baseline, the daily
- * trend), every number derived from those rows by the ONE summarizer (ADR-0042).
+ * trend), every number derived from those rows by the ONE summarizer.
  *
  * WHAT THE SCREEN AND THE CONTROLLER AGREE ON, PRECISELY: THE VERDICT. One rule
  * over one span. The rule is shared — which evaluator grades the cell, which
@@ -223,7 +223,7 @@ export const getDeliverabilityDashboard = authedQuery({
 		// org-wide and every cell takes its own slice out of the index. A deployment
 		// with no probes gets an empty index and every cell's gate 5 holds, which is
 		// what it should say: the screen reports the verdict the controller would
-		// reach, not a friendlier one (ADR-0042).
+		// reach, not a friendlier one.
 		const seedSweeps = await summarizeSeedPlacementSweeps(ctx.db, organizationId, now);
 		// THE REPORTED WINDOW: the seven UTC days every counter, rate and trend point
 		// on this screen is summarized over. Nothing is GRADED over it.

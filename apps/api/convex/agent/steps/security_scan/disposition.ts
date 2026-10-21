@@ -1,5 +1,5 @@
 /**
- * The `security_scan` step's decisions, pure (ADR-0073, Phase 1c):
+ * The `security_scan` step's decisions, pure:
  *
  *   - L1: a quarantine the deterministic layers already confirm needs no model
  *     guard call.

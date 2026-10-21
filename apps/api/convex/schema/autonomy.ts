@@ -51,7 +51,7 @@ export const agentConfigFields = {
 	// auto-send for real. Zero send-side risk while on. See
 	// agent/steps/route/index.ts.
 	isShadowMode: v.optional(v.boolean()),
-	// ADR-0060 §9: keep the Team Inbox's mail away from every hosted decision
+	// Keep the Team Inbox's mail away from every hosted decision
 	// provider (the Team Inbox's per-mailbox opt-out). Absent ⇒ not excluded.
 	// Set by `decision/exclusion.ts setHostedDecisionExclusion`.
 	isExcludedFromHostedDecisions: v.optional(v.boolean()),
@@ -69,7 +69,7 @@ export const agentConfigFields = {
 	workingHoursStart: v.optional(v.number()),
 	workingHoursEnd: v.optional(v.number()),
 	workingHoursDays: v.optional(v.array(v.number())),
-	// The `item_coverage` auto-send gate (SPEC §6, ADR-0051 amendment): when
+	// The `item_coverage` auto-send gate (SPEC §6): when
 	// true, an auto-approved reply that does not cover the thread's open items
 	// (or claims a missing file, or makes an unauthorised commitment) is held
 	// for human review. Unset/false is SHADOW mode, the default: the gate's

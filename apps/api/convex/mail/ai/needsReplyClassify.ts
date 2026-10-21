@@ -85,7 +85,7 @@ export function isBudgetRefused(run: InterpretRunResult): boolean {
 	return run.errorCode === 'budget' || run.budgetRefusal !== undefined;
 }
 
-/** This action, for its own budget deferral (ADR-0073, D1). */
+/** This action, for its own budget deferral. */
 const deferClassify = (): DeferrableAction => internal.mail.ai.needsReplyClassify.classifyThread;
 
 const classifyThreadArgs = {
@@ -100,7 +100,7 @@ const classifyThreadArgs = {
 	listId: v.optional(v.string()),
 	/** The message delivery just landed (live mail only): interpreted by this run. */
 	interpretMessageId: v.optional(v.id('mailMessages')),
-	/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
+	/** Runs this work deferred at the spend ceiling. */
 	deferrals: v.optional(v.number()),
 	/** Times it looked again for the thread to be fully read before clarifying (read on arrival). */
 	fullReadWaits: v.optional(v.number()),
@@ -111,7 +111,7 @@ export const classifyThread = internalAction({
 	handler: deferredHandler<ObjectType<typeof classifyThreadArgs>>(
 		deferClassify,
 		async (ctx, args) => {
-			// One model budget for this action, from its start (ADR-0073).
+			// One model budget for this action, from its start.
 			anchorActionDeadline(ctx);
 			const context = await ctx.runQuery(internal.mail.needsReply.getThreadContext, {
 				threadId: args.threadId,

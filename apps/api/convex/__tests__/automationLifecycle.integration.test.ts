@@ -488,7 +488,7 @@ describe('Automation lifecycle — effects', () => {
 		});
 	});
 
-	it('paused → draft emits automation.reverted_to_draft audit (new edge per ADR-0024)', async () => {
+	it('paused → draft emits automation.reverted_to_draft audit (new edge)', async () => {
 		const t = convexTest(schema, modules);
 		const automationId = await setupWithSteps(t, 'paused');
 

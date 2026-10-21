@@ -1,6 +1,6 @@
 /**
- * The secret-free execution identity of a resolved language model (ADR-0073;
- * clarify lane, Sol r4 F1, r5 F1, r6 F1): `<provider kind>|<model>|<endpoint>`.
+ * The secret-free execution identity of a resolved language model:
+ * `<provider kind>|<model>|<endpoint>`.
  * Two resolutions answer alike only when this is equal, so a stored decision
  * answer stamped with another is not reused: another provider, model, host
  * or base URL asks again.

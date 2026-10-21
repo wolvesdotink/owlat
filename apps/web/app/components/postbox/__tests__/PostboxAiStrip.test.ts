@@ -4,8 +4,8 @@
  * and Answer mode's menu:
  *   - it opens straight on Ask, focused, and closes on request
  *   - it answers inline and keeps the ephemeral history
- *   - it reads and generates no summary (the thread brief replaced that,
- *     ADR-0072) and never dispatches suggested replies
+ *   - it reads and generates no summary (the thread brief replaced that)
+ *     and never dispatches suggested replies
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';

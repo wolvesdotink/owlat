@@ -5,8 +5,6 @@
  * reasons`, `→ sent`), the typed effect list (audit-log + storage cleanup
  * regression), the `transitionByUndoToken` idempotency invariant, and the
  * `assertStateIs` helper.
- *
- * See docs/adr/0028-mail-draft-lifecycle-module.md.
  */
 
 import { convexTest } from 'convex-test';

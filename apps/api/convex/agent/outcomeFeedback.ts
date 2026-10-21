@@ -71,7 +71,7 @@ const outcomeSchema = z.object({
 });
 
 /**
- * Spend admission for this call (ADR-0073, D1; task `mail.outcome_sentiment`,
+ * Spend admission for this call (task `mail.outcome_sentiment`,
  * background priority, standard budget class). Background work defers at the
  * ceiling: with no headroom, or a spend state that cannot be verified, nothing
  * is called and the action records nothing (`null`), exactly like a failed
@@ -125,7 +125,7 @@ export const classifyReplyOutcome = internalAction({
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const text = clampReply(args.replyText);
 		if (!text) return null; // nothing to classify

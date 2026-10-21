@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Spend admission for decision attempts (ADR-0073, Phase 1b), split out of
+ * Spend admission for decision attempts, split out of
  * `./dispatch.ts` to hold it under the size cap: a native paid attempt's
  * hold, and the settlements an attempt's recorder writes with its rows.
  */

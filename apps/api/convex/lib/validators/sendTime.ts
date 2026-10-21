@@ -1,7 +1,7 @@
 import { v, type Infer } from 'convex/values';
 
 /**
- * Validators for send-time optimization (ADR-0068): the per-contact
+ * Validators for send-time optimization: the per-contact
  * engagement profile cached on the contact row, the organization histogram
  * shards, a campaign's optimization settings and the group an `emailSends` row
  * was planned in. The arithmetic lives in `analytics/sendTimeProfile.ts`; the

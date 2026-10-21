@@ -1,5 +1,5 @@
 /**
- * The action side of spend admission (ADR-0073, Phase 1b): how an action
+ * The action side of spend admission: how an action
  * reserves before it dispatches, and the port `meterFor` puts on every meter
  * it builds (`./meteredSpend.ts`).
  *

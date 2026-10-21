@@ -7,7 +7,7 @@
  * `CommandSession`. The IMAP pump (`connection.ts`) tracks active
  * sessions and routes subsequent input through them.
  *
- * See CONTEXT.md → IMAP section and docs/adr/0016-imap-command-modules.md.
+ * See CONTEXT.md → IMAP section.
  */
 
 import type { ImapConfig } from '../config.js';

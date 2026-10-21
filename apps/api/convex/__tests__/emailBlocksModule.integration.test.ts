@@ -1,7 +1,7 @@
 /**
  * Integration tests for the Saved block (module).
  *
- * Coverage per ADR-0023:
+ * Coverage:
  *   - row writes (create, update, duplicate, remove) fire audit logs
  *   - update classifies content/name/description and fires the right
  *     propagation effects

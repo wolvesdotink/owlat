@@ -13,7 +13,7 @@
  * vector-only when there's no query text or the FTS leg fails.
  *
  * Callers: the agent context-retrieval step (Step 1) and the `recallKnowledge`
- * agent tool (draft step). See ADR-0014 and the Knowledge Graph vision doc.
+ * agent tool (draft step). See the Knowledge Graph vision doc.
  */
 
 import { v } from 'convex/values';
@@ -121,7 +121,7 @@ export const semanticSearch = internalAction({
 		neighborBudget: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<ScoredKnowledgeEntry[]> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const queryText = args.queryText?.trim();
 

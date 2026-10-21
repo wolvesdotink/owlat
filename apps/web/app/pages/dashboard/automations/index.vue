@@ -59,7 +59,7 @@ const list = reactive(
 	})
 );
 
-// Status filter — runs server-side through the Listing engine (ADR-0037).
+// Status filter — runs server-side through the Listing engine.
 type StatusFilter = 'all' | AutomationListItem['status'];
 const selectedStatus = ref<StatusFilter>('all');
 

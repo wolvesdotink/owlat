@@ -74,7 +74,7 @@ export const ask = authedAction({
 		ctx,
 		args
 	): Promise<{ answer: string; sources: QuerySource[]; isTruncated: boolean }> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		validateStringLength(args.question, STRING_LIMITS.QUESTION, 'question');
 
@@ -112,7 +112,7 @@ export const ask = authedAction({
 		// re-embeds from `queryText` itself (or degrades to no vector recall).
 		let embedding: number[] | undefined;
 		// The active space the vector is in; absent ⇒ the seams skip their vector
-		// legs (a vector is only compared within its own space, ADR-0073).
+		// legs (a vector is only compared within its own space).
 		let embeddingSpaceId: Id<'embeddingSpaces'> | undefined;
 		// Resolve OUTSIDE the try so a misconfigured embedder surfaces an actionable
 		// error; only a transient embed() failure falls soft to no-vector recall.

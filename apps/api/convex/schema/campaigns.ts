@@ -13,7 +13,7 @@ import {
 
 /**
  * Campaign send job — the checkpoint row for one large-audience send walk
- * (ADR-mirrored on the **Integration import walker**: opaque cursor + batch
+ * (mirrored on the **Integration import walker**: opaque cursor + batch
  * mutation + self-reschedule). The Campaign send orchestrator inserts one row
  * (`phase: 'resolving'`, `cursor: ''`), then drives `resolveCampaignPage`
  * page-by-page until the audience is exhausted (`phase: 'done'`), so no single
@@ -197,7 +197,7 @@ export const campaignTables = {
 		replyTo: v.optional(v.string()),
 		// Subject line (can override template subject)
 		subject: v.optional(v.string()),
-		// Audience targeting — one discriminated value (ADR-0033). The stored
+		// Audience targeting — one discriminated value. The stored
 		// segment case carries the send-time `frozenFilters` snapshot; illegal
 		// states (topic with a segmentId, segment with neither id nor snapshot)
 		// are unrepresentable. See CONTEXT.md "Audience".
@@ -240,7 +240,7 @@ export const campaignTables = {
 		//   testDuration: number (hours before auto-selecting winner) }
 		abTestConfig: v.optional(abTestConfigValidator),
 		// A/B test status. Lifecycle owned by `campaigns/abTestLifecycle.ts`
-		// (ADR-0017). The pre-deepening `'completed'` literal was dropped —
+		//. The pre-deepening `'completed'` literal was dropped —
 		// no writer ever set it, and the follow-up "send winning variant to
 		// the rest of audience" workflow lands as a new transition kind
 		// when it ships rather than as a placeholder literal.
@@ -280,7 +280,7 @@ export const campaignTables = {
 	})
 		.index('by_status', ['status'])
 		.index('by_updated_at', ['updatedAt'])
-		// Status-filtered browse for the Listing engine (ADR-0037): status leads,
+		// Status-filtered browse for the Listing engine: status leads,
 		// updatedAt orders within it — index-native filtered listing, no scan.
 		.index('by_status_and_updated_at', ['status', 'updatedAt'])
 		.index('by_status_and_scheduled_at', ['status', 'scheduledAt'])
@@ -365,7 +365,7 @@ export const campaignTables = {
 		...campaignShardedStatFields,
 	}).index('by_campaign_and_shard', ['campaignId', 'shardKey']),
 
-	// The organization's send-time histogram (ADR-0068): every reader open and
+	// The organization's send-time histogram: every reader open and
 	// click the contact profiles fold also lands on a RANDOM shard here, so the
 	// writes spread like campaignStatShards'. The planner sums the shards for
 	// contacts without enough history of their own. Aggregate counts only, no

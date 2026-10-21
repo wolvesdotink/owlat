@@ -1,5 +1,5 @@
 /**
- * The settings page's embedding status (U1; ADR-0073): what the page needs to
+ * The settings page's embedding status: what the page needs to
  * gate its actions on the server's own rules instead of guessing.
  *
  *   - `isLocal` on the active, staged and rollback spaces, and per rebuild

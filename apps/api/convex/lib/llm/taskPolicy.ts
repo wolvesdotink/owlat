@@ -1,5 +1,5 @@
 /**
- * The task-policy catalog (ADR-0073): one entry per AI task, saying which plane
+ * The task-policy catalog: one entry per AI task, saying which plane
  * runs it, on which tiers, within which limits, with which retry allowance and
  * fallback, and which ledger `feature` tags its calls record under today.
  *
@@ -226,8 +226,8 @@ const ENTRIES = {
 	}),
 	// The sampled candidate replies of the divergence check, on the same route
 	// as `mail.clarify`. They keep their surface's feature and carry this task
-	// explicitly, so the ledger counts samples and their cost apart (ADR-0073,
-	// Phase 3). No feature maps here.
+	// explicitly, so the ledger counts samples and their cost apart.
+	// No feature maps here.
 	'mail.clarify_sample': language({
 		...MEDIUM_OUTPUT,
 		tiers: ['fast', 'capable'],

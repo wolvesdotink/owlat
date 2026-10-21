@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * Co-editing surfaces (docs/adr/0071-email-coediting.md): the avatar stack of
+ * Co-editing surfaces: the avatar stack of
  * who else is in the editor, and the "your change was replaced" notice with
  * its two ways out. Mounted against the real English catalog, so a missing
  * key fails here instead of rendering its path.

@@ -19,14 +19,12 @@
  *
  * The **Contact import (module)** is the sole exception — it calls
  * `resolveContact` directly and fires one *batched* `incrementContactCount`
- * per page (ADR-0019). Keeping the trio in this layer *above* the still-
+ * per page. Keeping the trio in this layer *above* the still-
  * effect-free resolution primitive — not inside it — is what lets import's
  * batched count and the single-create trio coexist without double-counting.
  *
  * Created-effects only: the callers run `strict`/`upsert`, which never yield
  * `action: 'updated'` (only `merge` does, and only import uses it).
- *
- * See docs/adr/0038-contact-creation-module.md.
  */
 
 import type { MutationCtx } from '../_generated/server';

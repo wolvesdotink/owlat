@@ -5,7 +5,7 @@ import { useRecipientCount } from './useRecipientCount';
 
 export type CampaignAudienceType = 'topic' | 'segment';
 
-/** The selection a campaign stores (ADR-0033); the send-time snapshot is ignored. */
+/** The selection a campaign stores; the send-time snapshot is ignored. */
 export type CampaignAudienceSelection =
 	| { kind: 'topic'; topicId: Id<'topics'> }
 	| { kind: 'segment'; segmentId: Id<'segments'> };

@@ -191,7 +191,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	// one person's arrival burst: one message spends at most three gated calls
 	// (refinement, clarification, draft), so the capacity covers a ~40-message
 	// IMAP catch-up and the rate ~20 such messages a minute after it. Spend is
-	// bounded by the ADR-0073 ceilings, not by this bucket; it only keeps one
+	// bounded by the AI spend ceilings, not by this bucket; it only keeps one
 	// owner's volume from starving another's.
 	postboxAiBackground: {
 		kind: 'token bucket',

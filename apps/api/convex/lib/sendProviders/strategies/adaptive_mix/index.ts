@@ -1,7 +1,7 @@
 /**
  * `adaptive_mix` send route strategy.
  *
- * Per ADR-0020, a FOURTH PEER of the shipped three — not a rewrite of the
+ * A FOURTH PEER of the shipped three — not a rewrite of the
  * strategy layer. What it replaces is the per-page coin flip: `workload_split`
  * draws with `Math.random()` on every call, so the same recipient can land on a
  * different transport at enqueue than at dispatch, and a recorded arm is a

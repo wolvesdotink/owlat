@@ -10,8 +10,6 @@
  * validator, `Effect` shapes) lives in `./types.ts`. Splitting the reducers out
  * keeps the dispatcher file (`../processingLifecycle.ts`) under the size cap and
  * lets the reducers be reasoned about (and unit-tested) without a DB fixture.
- *
- * See docs/adr/0010-inbox-processing-lifecycle-module.md.
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -32,12 +30,12 @@ import type {
 //
 // Block-sender / pipeline errors / quarantine-release / cron-retry use a
 // star-source pattern handled at the dispatcher. The `planning` state
-// and `plan` action type were dropped pre-prod with ADR-0014 — they were
+// and `plan` action type were dropped pre-prod — they were
 // vestigial (the classifier never transitioned to `planning`; the drafter
 // wrote a `plan` row whose payload was JSON literal construction).
 //
-// The graph itself lives in the generic lifecycle core (`lib/lifecycle.ts`,
-// ADR-0058); the reducers below and the effect runner in `./effects.ts` stay
+// The graph itself lives in the generic lifecycle core (`lib/lifecycle.ts`);
+// the reducers below and the effect runner in `./effects.ts` stay
 // where they are. `sent` declares no outgoing edges, which is what makes it
 // terminal. `rejected` and `archived` are CLOSED rather than terminal: their
 // one outgoing edge is a person reopening the message to write the reply
@@ -393,8 +391,7 @@ function reduceReceived(
 ): TransitionParts {
 	// Reset path: clear the failure / quarantine fields so the next pipeline pass
 	// starts clean, and re-kick the Agent walker from `security_scan`. The
-	// schedule_pipeline_start effect closes the latent bug (ADR-0014 drift bug
-	// #6) where the release-from-quarantine and cron-retry paths reset state but
+	// schedule_pipeline_start effect closes the latent bug where the release-from-quarantine and cron-retry paths reset state but
 	// no caller re-scheduled the pipeline.
 	// A fresh pipeline run owns the message again, so a past takeover no longer
 	// holds its writes back.

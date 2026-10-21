@@ -1,5 +1,5 @@
 /**
- * The measured half of an embedding space's identity (ADR-0073, Phase 1a; #1334).
+ * The measured half of an embedding space's identity (#1334).
  *
  * The configuration names a target (`lib/embeddingSpace.ts`): provider,
  * endpoint, model, requested width. Two facts only the provider knows complete

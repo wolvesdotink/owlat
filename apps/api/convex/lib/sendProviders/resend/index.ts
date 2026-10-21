@@ -1,7 +1,7 @@
 /**
  * Resend Send provider adapter (module).
  *
- * Per ADR-0020. Single-attempt `sendEmail` via the Resend SDK; failures are
+ * Single-attempt `sendEmail` via the Resend SDK; failures are
  * classified by the response's `error.name` / `error.statusCode` first, then
  * fall back to substring matching.
  */

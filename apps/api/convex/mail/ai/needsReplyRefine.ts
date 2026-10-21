@@ -71,7 +71,7 @@ export async function refineClarification(
 		transcript: string;
 		fromAddress: string;
 		items?: readonly SlotItem<Id<'threadItems'>>[];
-		/** The message the clarification is for (ADR-0073). */
+		/** The message the clarification is for. */
 		root?: LlmRootContext;
 		/** The same message as the necessity judgment's subject (D5). */
 		subject?: BundleSubject;

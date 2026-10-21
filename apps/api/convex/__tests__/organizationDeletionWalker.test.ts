@@ -1,7 +1,7 @@
 /**
  * Organization deletion module-family — unit + integration tests.
  *
- * Covers (per ADR-0025 §Tests):
+ * Covers:
  *   1. Per-step modules — convex-test-driven, seeded rows, asserts
  *      deletion + `hasMore` semantics.
  *   2. Storage purge — for each storage-bearing step, asserts the blob
@@ -16,8 +16,6 @@
  *   5. Ordered list invariants — meta-test asserting `STEPS` contains
  *      every `OrganizationDeletionTable` literal exactly once.
  *   6. Integration — drives `organizationSettings.remove` end-to-end.
- *
- * Per ADR-0025.
  */
 
 import { convexTest } from 'convex-test';

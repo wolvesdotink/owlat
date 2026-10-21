@@ -1,5 +1,5 @@
 /**
- * The deployment-ledger side of plugin LLM settlement (ADR-0073): the metered
+ * The deployment-ledger side of plugin LLM settlement: the metered
  * provider requests a settlement carries, and the rows it writes for them.
  * Split from `./llmAccounting.ts` for size; called only from its settlement
  * mutations, in the same transaction as the plugin budget.
@@ -19,7 +19,7 @@ import { taskPolicy } from '../lib/llm/taskPolicy';
 import { reserveInMutation } from '../aiRouting/admission';
 import { reconcileLateRow, settleReservation } from '../aiRouting/settlement';
 
-/** The provider requests of one plugin call, as the dispatch metered them (ADR-0073). */
+/** The provider requests of one plugin call, as the dispatch metered them. */
 export const meteredCallArgs = {
 	requestId: v.optional(v.string()),
 	/** The host's root request and calling call, so the rows join the message's other spend. */
@@ -29,7 +29,7 @@ export const meteredCallArgs = {
 };
 
 /**
- * One ledger row per provider request of a plugin call (ADR-0073), written in
+ * One ledger row per provider request of a plugin call, written in
  * the settlement mutation so the plugin budget and the deployment ledger move
  * together. A row is priced at the model the provider reported, else the
  * reserved one; a request with no valid reported usage writes a zero-cost row,
@@ -89,7 +89,7 @@ export async function insertPluginRequestRows(
 const PLUGIN_HOLD_TTL_MS = 30 * 60 * 1000;
 
 /**
- * The deployment-wide spend hold of a plugin call (ADR-0073, Phase 1b), taken
+ * The deployment-wide spend hold of a plugin call, taken
  * in the plugin's reservation mutation under the same id, so a plugin call is
  * admitted against the deployment ceiling as well as its manifest budget.
  * False: refused (the ceiling, or a spend state that cannot be verified).

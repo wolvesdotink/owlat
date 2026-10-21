@@ -1,5 +1,5 @@
 /**
- * The late guard runs on the awaiting caller's clock (ADR-0073). Knowledge
+ * The late guard runs on the awaiting caller's clock. Knowledge
  * extraction and interpretation are actions another action awaits with a
  * bounded root; the guard they run before their first model call must spend
  * from that root's deadline, not from a fresh budget of its own.

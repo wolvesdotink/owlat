@@ -341,7 +341,7 @@ describe('report observation keeps the enrollment live', () => {
 		expect(rows[0]?.lastReportAt).toBe(T0 + 10 * DAY);
 	});
 
-	it('COALESCES a burst of complaints into a single row patch (D16 / ADR-0042)', async () => {
+	it('COALESCES a burst of complaints into a single row patch', async () => {
 		const t = convexTest(schema, modules);
 		await seedSubmittedDomain(t, 'mail.burst.test');
 		// First report creates the row.
@@ -354,7 +354,7 @@ describe('report observation keeps the enrollment live', () => {
 
 		// A realistic burst: 50 complaints for the same domain inside one minute.
 		// Every report for a domain lands on THIS row, so a per-report patch is the
-		// single-document OCC contention ADR-0042 was written about.
+		// single-document OCC contention the coalescing avoids.
 		for (let i = 1; i <= 50; i++) {
 			expect(
 				await t.mutation(internal.domains.yahooCfl.observeReport, {

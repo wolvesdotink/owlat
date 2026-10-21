@@ -93,7 +93,7 @@ export function decisionUsageRecorder(
 			// attempt, keeps its own flags. A local engine is tagged from the
 			// adapter that ran, not the model id it reported.
 			requests: record.requests.map(({ outcome: _outcome, ...request }) => request),
-			// Admission holds the attempt closed settle with its rows (ADR-0073).
+			// Admission holds the attempt closed settle with its rows.
 			...(record.settlements?.length ? { settlements: [...record.settlements] } : {}),
 		});
 	};

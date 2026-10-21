@@ -6,8 +6,6 @@
  * Storage writes are action-only, so they happen here, before the dispatch
  * transaction decides. The pending-upload handoff in `pendingUploads.ts` is
  * what keeps a refused or interrupted request from leaving its bytes behind.
- *
- * See docs/adr/0021-transactional-send-intake-module.md (amendment 2026-10-01).
  */
 
 import { internal } from '../_generated/api';

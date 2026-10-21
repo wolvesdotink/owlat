@@ -17,7 +17,7 @@
  *   the current handler's `await suppressionList.suppress(...)` after the
  *   Promise.all + fire-and-forget log/notify in the hard-bounce branch.
  *
- * See ADR-0007 and CONTEXT.md's MTA dispatch section.
+ * See CONTEXT.md's MTA dispatch section.
  */
 
 import * as circuitBreaker from '../intelligence/circuitBreaker.js';

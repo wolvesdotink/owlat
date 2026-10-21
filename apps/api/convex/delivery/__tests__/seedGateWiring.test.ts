@@ -364,7 +364,7 @@ describe('absence stays absent — the gate holds and says why', () => {
 	});
 });
 
-describe('the screen reports the verdict the controller reached (ADR-0042)', () => {
+describe('the screen reports the verdict the controller reached', () => {
 	it('renders the seeded PASS rather than a hardcoded hold', async () => {
 		const t = convexTest(schema, modules);
 		await standaloneCell(t);
@@ -429,7 +429,7 @@ describe('the screen reports the verdict the controller reached (ADR-0042)', () 
  * the last case in this describe pins the own one rather than leaving the gap to
  * be discovered.
  */
-describe('the screen picks the evaluator the controller picked (ADR-0042)', () => {
+describe('the screen picks the evaluator the controller picked', () => {
 	/**
 	 * Own 90% inbox against a spotless reference arm: gate 5's SECOND clause.
 	 *

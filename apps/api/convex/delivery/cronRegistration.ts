@@ -65,7 +65,7 @@ export function registerDeliveryCrons(crons: Crons): void {
 	);
 
 	// Clean up sending-reputation buckets older than 60 days every hour (both
-	// scopes). Risk is derived on read (ADR-0042), so no periodic recalculation.
+	// scopes). Risk is derived on read, so no periodic recalculation.
 	crons.interval(
 		'cleanup sending reputation',
 		{ hours: 1 },

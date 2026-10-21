@@ -1,5 +1,5 @@
 /**
- * The deadline every model call in one Convex action shares (ADR-0073).
+ * The deadline every model call in one Convex action shares.
  *
  * A Convex action is killed at 10 minutes, and a killed action writes no
  * ledger row for the requests it had in flight. So each action gets one model

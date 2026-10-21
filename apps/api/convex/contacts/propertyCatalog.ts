@@ -1,6 +1,6 @@
 /**
  * The contact-property catalog the **Contact import (module)** resolves row
- * keys against, and its integration-driven auto-registration (ADR-0019).
+ * keys against, and its integration-driven auto-registration.
  *
  * A property being deleted (#918) is not in `byKey`: its key is listed in
  * `pendingDeletion` instead, so an import neither writes values into the

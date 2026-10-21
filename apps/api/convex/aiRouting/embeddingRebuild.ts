@@ -1,5 +1,5 @@
 /**
- * The staged embedding rebuild's admin actions (ADR-0073, Phase 5): start,
+ * The staged embedding rebuild's admin actions: start,
  * validate, activate. The transactions are in `embeddingRebuildState.ts`.
  *
  * A rebuild targets a local embedder, or another model of the stored hosted
@@ -43,7 +43,7 @@ export const startRebuild = authedAction({
 		embeddingModel: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'embeddingSpaces'>> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		await ctx.runQuery(internal.aiRouting.embeddingSpaces.assertAdmin, {});
 		const { storedEmbeddingKind } = await ctx.runQuery(
@@ -179,7 +179,7 @@ export const validateStaged = authedAction({
 export const activateStaged = authedAction({
 	args: { expectedSpaceId: v.optional(v.id('embeddingSpaces')) },
 	handler: async (ctx, args): Promise<RebuildValidation> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const validation = await validateStagedSpace(ctx, args.expectedSpaceId);
 		if (!validation.isPassing) {

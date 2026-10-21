@@ -184,7 +184,7 @@ export const getMessageDetails = publicQuery({
  * Per-recipient OUTBOUND delivery state for every sent message in a thread —
  * the read behind the reader's delivery strip (plan idea 1).
  *
- * `mailMessages.outbound` has existed since ADR-0012 (the Postbox outbound
+ * `mailMessages.outbound` has long existed (the Postbox outbound
  * lifecycle module is its sole writer) but nothing PUBLIC ever exposed it, so a
  * hard bounce looked exactly like a delivered mail. This adds the read and
  * nothing else: no new state, no new writer, no change to the lifecycle.

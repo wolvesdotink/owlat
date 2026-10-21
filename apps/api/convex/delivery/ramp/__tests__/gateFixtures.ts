@@ -167,7 +167,7 @@ function bucket(counts: ArmCounts): TransportOutcomeBucket {
 }
 
 /**
- * Build an arm summary from counts through the REAL summarizer (ADR-0042).
+ * Build an arm summary from counts through the REAL summarizer.
  *
  * ONE builder for every suite, including the gate-4 ones: an arm can carry BOTH
  * a stratified (general) engagement story and a calibration-slice one, so a

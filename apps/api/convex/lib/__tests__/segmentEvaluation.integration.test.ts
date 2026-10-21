@@ -5,7 +5,7 @@ import { evaluateCondition, evaluateSegmentCount } from '../../conditions';
 import { recordContactActivity } from '../../contactActivities/writer';
 
 /**
- * Canonical condition shape per ADR-0004. The `kind` discriminator selects
+ * Canonical condition shape. The `kind` discriminator selects
  * the per-kind module that owns evaluation and the operator vocabulary.
  * `subscription` is reserved but not currently evaluated.
  */
@@ -720,7 +720,7 @@ describe('evaluateSegmentCount', () => {
 		});
 	});
 
-	it('excludes soft-deleted contacts from the count (ADR-0033)', async () => {
+	it('excludes soft-deleted contacts from the count', async () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {

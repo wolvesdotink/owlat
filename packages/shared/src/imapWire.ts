@@ -1,5 +1,5 @@
 /**
- * The backend↔IMAP-server wire contract version (ADR-0063).
+ * The backend↔IMAP-server wire contract version.
  *
  * The IMAP server (apps/imap) calls backend functions directly with an admin
  * key (`fn` in apps/imap/src/convex.ts). Their arguments and results are a

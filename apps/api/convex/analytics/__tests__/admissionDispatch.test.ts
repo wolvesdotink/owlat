@@ -1,5 +1,5 @@
 /**
- * Admission at the dispatch, end to end (ADR-0073, Phase 1b): a metered call
+ * Admission at the dispatch, end to end: a metered call
  * reserves before its first provider request, its rows carry the hold, and
  * the meter's writer settles the hold in the same mutation as the rows. The
  * SDK is mocked; the meter, the dispatch, the admission and ledger mutations

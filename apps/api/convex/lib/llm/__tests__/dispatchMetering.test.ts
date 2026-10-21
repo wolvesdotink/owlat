@@ -1,6 +1,6 @@
 /**
- * Per-request metering and the task limits in every dispatch mode (ADR-0073,
- * Phase 1a): each provider request, retries, tool rounds and stream steps
+ * Per-request metering and the task limits in every dispatch mode:
+ * each provider request, retries, tool rounds and stream steps
  * included, is one record on the call's meter with its own usage, and the
  * meter's task sets the output ceiling, the attempt allowance and the deadline.
  */

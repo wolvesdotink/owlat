@@ -17,7 +17,7 @@ crons.interval(
 	{}
 );
 
-// Spend admission (ADR-0073, Phase 1b): settle holds whose action died, and
+// Spend admission: settle holds whose action died, and
 // keep the spend-period aggregate reconciled with the ledger.
 crons.interval(
 	'settle expired spend holds',
@@ -26,7 +26,7 @@ crons.interval(
 	{}
 );
 
-// Provider batch items (ADR-0073, L14): read the results of batches that
+// Provider batch items: read the results of batches that
 // ended. Starts the poller only when an item is due.
 crons.interval(
 	'poll provider batch items',
@@ -260,7 +260,7 @@ crons.interval(
 	{}
 );
 
-// Embedding provenance (ADR-0073): measure the configured local embedder, keep
+// Embedding provenance: measure the configured local embedder, keep
 // its space active, resume a stalled re-embed and run the daily local re-embed
 // pass; refresh the coverage count. A hosted embedder only gets the count.
 crons.interval(

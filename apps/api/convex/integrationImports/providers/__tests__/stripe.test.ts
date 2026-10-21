@@ -13,8 +13,6 @@
  *   - Non-OK with non-JSON body → `Error` with status-only message.
  *   - `has_more: false` → `nextCursor: null`; `has_more: true` →
  *     `nextCursor` is the last customer id.
- *
- * Per ADR-0027.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';

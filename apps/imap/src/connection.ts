@@ -4,8 +4,7 @@
  * verbs; that lives in `commands/<verb>/index.ts` dispatched through
  * `commands/walker.ts`.
  *
- * Read CONTEXT.md → IMAP section and docs/adr/0016-imap-command-modules.md
- * before changing this file.
+ * Read CONTEXT.md → IMAP section before changing this file.
  *
  * The pump buffers raw OCTETS in a `Buffer` (the socket is left in its
  * default binary mode — no `setEncoding`). Literal absorption (RFC 3501

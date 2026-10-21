@@ -1,5 +1,5 @@
 /**
- * The decision plane's identity and locality (ADR-0060 §8 and §9).
+ * The decision plane's identity and locality.
  *
  * IDENTITY is derived from the RESOLVED plane (`lib/decisionProvider.ts`
  * `resolveDecisionConfig`), never re-derived from stored columns: the

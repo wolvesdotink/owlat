@@ -1,6 +1,5 @@
 /**
- * Calibration stamps and the block-only verdict rule (ADR-0060 §8, ADR-0073
- * §8, plan Phase 4). Pure and isolate-safe.
+ * Calibration stamps and the block-only verdict rule. Pure and isolate-safe.
  *
  * A decision verdict may feed the auto-send path only with compatible adapter
  * provenance and a valid task/language calibration stamp. "Valid" means the

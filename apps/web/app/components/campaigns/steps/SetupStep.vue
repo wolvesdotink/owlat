@@ -55,7 +55,7 @@ const { data: campaignDetails } = useConvexQuery(api.campaigns.campaigns.getWith
 const senderPickerRef = ref<SenderPickerHandle | null>(null);
 
 // --- Audience ---------------------------------------------------------------
-// The picker's three models, the derived Audience (ADR-0033), the list
+// The picker's three models, the derived Audience, the list
 // subscriptions with their load-failure state and the recipient count.
 const {
 	audienceType,

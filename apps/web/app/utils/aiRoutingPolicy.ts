@@ -1,5 +1,5 @@
 /**
- * The AI routing policy panel's rules (ADR-0073, SPEC §3), as pure functions.
+ * The AI routing policy panel's rules, as pure functions.
  *
  * The stored policy is `@owlat/shared/aiRouting`'s `ResolvedRoutingPolicy`. The
  * panel edits it as text fields (percentages, whole numbers, dollars) and a

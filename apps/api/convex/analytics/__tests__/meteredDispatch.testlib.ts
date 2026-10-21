@@ -1,5 +1,5 @@
 /**
- * Test helpers for code that dispatches model calls under a meter (ADR-0073).
+ * Test helpers for code that dispatches model calls under a meter.
  *
  * A test that mocks `lib/llm/dispatch` replaces the code that records provider
  * requests, so {@link metered} wraps a mocked dispatch function to record ONE

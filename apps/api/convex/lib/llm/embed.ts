@@ -1,5 +1,5 @@
 /**
- * The embedding dispatch (ADR-0073): every `embed()` call in the deployment
+ * The embedding dispatch: every `embed()` call in the deployment
  * goes through {@link runEmbedding}, so each provider request is metered like
  * a language request and lands in the ledger as an `embedding` row. Embedding
  * calls wrote no ledger row before; a paid re-embed (D8) needs them to.
@@ -49,7 +49,7 @@ export async function runEmbedding(opts: EmbeddingOptions): Promise<EmbeddingRes
 		...(opts.meter ? { meter: opts.meter } : {}),
 		...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
 	});
-	// Spend admission before the first request (ADR-0073, Phase 1b).
+	// Spend admission before the first request.
 	const hold = await admitDispatch(opts.meter, call, {
 		plane: 'embedding',
 		hasOutput: false,

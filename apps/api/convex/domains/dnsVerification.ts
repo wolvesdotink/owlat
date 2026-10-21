@@ -6,7 +6,7 @@
  * provider exposes one), and calls the **Sending domain lifecycle (module)**'s
  * `recordVerification` to land the resulting status transition.
  *
- * Per ADR-0018: the lifecycle owns the "what counts as verified" decision
+ * The lifecycle owns the "what counts as verified" decision
  * (the reducer combines the generic DNS rule with the provider's boolean);
  * this action only collects raw data and calls the lifecycle.
  *

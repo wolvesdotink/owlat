@@ -30,9 +30,6 @@
  *                                              `context_retrieval`, `route` —
  *                                              the status changes happen at
  *                                              neighbouring step boundaries).
- *
- * See docs/adr/0010-inbox-processing-lifecycle-module.md and
- * docs/adr/0014-agent-step-module.md.
  */
 
 import { v } from 'convex/values';

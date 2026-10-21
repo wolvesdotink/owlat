@@ -28,7 +28,7 @@ const action = <L extends string>(literal: L) => literal;
 
 export const AUDIT_ACTION_LITERALS = [
 	// Campaign — lifecycle transitions all fire from
-	// `campaigns/lifecycle.ts`. See ADR-0017.
+	// `campaigns/lifecycle.ts`.
 	action('campaign.created'),
 	action('campaign.updated'),
 	action('campaign.deleted'),
@@ -42,7 +42,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('campaign.review_approved'),
 	action('campaign.review_rejected'),
 	// AB test — sibling lifecycle, transitions fire from
-	// `campaigns/abTestLifecycle.ts`. See ADR-0017.
+	// `campaigns/abTestLifecycle.ts`.
 	action('ab_test.enabled'),
 	action('ab_test.testing_started'),
 	action('ab_test.winner_declared'),
@@ -77,18 +77,18 @@ export const AUDIT_ACTION_LITERALS = [
 	// The machine cannot tell "the clock jumped" from "nobody ran this for two
 	// months", so a person says which it was — on the record.
 	action('contact.sunset_clock_confirmed'),
-	// DOI lifecycle admin-attest. See ADR-0019.
+	// DOI lifecycle admin-attest.
 	action('doi.admin_attested'),
 	// DOI lifecycle: a new consent episode opened over an earlier confirmation
 	// that a global opt-out ended. Keeps the superseded confirmation on the
-	// record. See ADR-0009.
+	// record.
 	action('doi.reconfirmation_requested'),
 	// Topic
 	action('topic.created'),
 	action('topic.updated'),
 	action('topic.deleted'),
 	// Email template — lifecycle transitions all fire from
-	// `emailTemplates/lifecycle.ts`. See ADR-0022.
+	// `emailTemplates/lifecycle.ts`.
 	action('email_template.created'),
 	action('email_template.updated'),
 	action('email_template.deleted'),
@@ -96,7 +96,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('email_template.unpublished'),
 	action('email_template.duplicated'),
 	// Transactional email — sibling lifecycle, transitions fire from
-	// `transactional/lifecycle.ts`. See ADR-0022.
+	// `transactional/lifecycle.ts`.
 	action('transactional_email.created'),
 	action('transactional_email.updated'),
 	action('transactional_email.published'),
@@ -107,15 +107,14 @@ export const AUDIT_ACTION_LITERALS = [
 	action('transactional_email.duplicated'),
 	action('transactional_email.deleted'),
 	// Saved block — row writes from `emailBlocks/module.ts`, plus the
-	// terminal-failure callback from the saved-block rerender pool. See
-	// ADR-0023.
+	// terminal-failure callback from the saved-block rerender pool.
 	action('email_block.created'),
 	action('email_block.updated'),
 	action('email_block.duplicated'),
 	action('email_block.deleted'),
 	action('email_block.rerender_failed'),
 	// Automation — lifecycle transitions all fire from
-	// `automations/lifecycle.ts`. See ADR-0024.
+	// `automations/lifecycle.ts`.
 	action('automation.created'),
 	action('automation.updated'),
 	action('automation.deleted'),
@@ -135,12 +134,12 @@ export const AUDIT_ACTION_LITERALS = [
 	action('ai_provider_config.updated'),
 	// The admin removed the stored config and its keys; AI falls back to the env.
 	action('ai_provider_config.removed'),
-	// AI routing policy saved (aiRouting/policy.ts `update`, ADR-0073).
+	// AI routing policy saved (aiRouting/policy.ts `update`).
 	action('ai_routing_policy.updated'),
 	// A mailbox or the Team Inbox excluded from (or readmitted to) hosted
-	// decision providers (decision/exclusion.ts, ADR-0060 §9).
+	// decision providers (decision/exclusion.ts).
 	action('ai_decision_exclusion.updated'),
-	// Embedding provenance (ADR-0073, Phase 1a and Phase 5): a legacy cohort
+	// Embedding provenance: a legacy cohort
 	// recorded or revoked (aiRouting/embeddingAttestations.ts), the re-embed
 	// job's admin controls (aiRouting/embeddingReembedJobs.ts) and
 	// the staged rebuild (aiRouting/embeddingRebuildState.ts).
@@ -169,7 +168,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('webhook.secret_rotated'),
 	action('webhook.deleted'),
 	// Sending domain — lifecycle transitions all fire from
-	// `domains/lifecycle.ts`. See ADR-0018.
+	// `domains/lifecycle.ts`.
 	action('sending_domain.created'),
 	action('sending_domain.registered'),
 	action('sending_domain.registration_failed'),
@@ -221,7 +220,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('segment.updated'),
 	action('segment.deleted'),
 	// Abuse-status changes (any source — admin override, MTA circuit breaker,
-	// reputation auto-enforcement). See ADR-0011.
+	// reputation auto-enforcement).
 	action('abuse_status_changed'),
 	// Deliverability ramp — the AIMD controller applied a decision that CHANGED a
 	// cell's durable ramp state: the own-MTA share moved, or a gate breach imposed
@@ -264,10 +263,10 @@ export const AUDIT_ACTION_LITERALS = [
 	action('deliverability_ramp.cell_enrolled'),
 	action('deliverability_ramp.phase_promoted'),
 	// Postbox outbound state transitions (per recipient). Fired by the
-	// Postbox outbound lifecycle module on every transition. See ADR-0012.
+	// Postbox outbound lifecycle module on every transition.
 	action('postbox_outbound_transition'),
 	// Postbox draft lifecycle — fired by the Mail draft lifecycle module
-	// on every transition of `mailDrafts.state`. See ADR-0028.
+	// on every transition of `mailDrafts.state`.
 	action('postbox_draft.send_initiated'),
 	action('postbox_draft.sent'),
 	action('postbox_draft.cancelled'),
@@ -288,7 +287,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('platform_admin.bootstrap_granted'),
 	// Conversation thread lifecycle — fired by the Conversation thread
 	// module on inbound-driven reopen + human status/assignment changes +
-	// the draft-status projection. See ADR-0032.
+	// the draft-status projection.
 	action('thread.reopened_by_inbound'),
 	action('thread.status_changed'),
 	action('thread.assigned'),

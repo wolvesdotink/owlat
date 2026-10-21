@@ -43,7 +43,7 @@ export const interpretSourceTables = {
 		isUnread: v.optional(v.boolean()),
 		// A run waiting for the category refinement (mail/interpret/categoryDefer.ts).
 		categoryDeferredUntil: v.optional(v.number()),
-		// D10 (ADR-0073): deferred until the thread is opened, because the reader
+		// Deferred until the thread is opened, because the reader
 		// display is the only consumer left. NOT outstanding: the stale sweep and
 		// the backfill skip it, and the brief counts it in
 		// `threadBriefs.deferredSources` instead of `pendingSources`. Opening the

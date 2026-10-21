@@ -13,8 +13,6 @@ import { readInstanceCounter } from '../../lib/instanceCounters';
  * and the permission-unification regression for `update`: any-org-member
  * writes are refused with the `settings:manage` error, owner/admin writes
  * succeed.
- *
- * See docs/adr/0026-organization-settings-modules.md.
  */
 
 let mockRole: OrganizationRole = 'owner';

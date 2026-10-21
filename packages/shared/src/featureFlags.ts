@@ -339,7 +339,7 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		default: false,
 		requires: ['ai', 'ai.agent'],
 	},
-	// The kill switch for the decision plane (docs/adr/0060). OFF is not a
+	// The kill switch for the decision plane. OFF is not a
 	// degraded mode: every decision falls back to the language model the
 	// operator already configured, which is byte-for-byte today's behaviour, so
 	// an operator can flip this off mid-incident and lose nothing but latency.

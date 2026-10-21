@@ -1,6 +1,6 @@
 /**
- * Contact erasure policy for the AI routing records (ADR-0073,
- * schema/aiRouting.ts), spread into `CONTACT_RELATIONS` and
+ * Contact erasure policy for the AI routing records
+ * (schema/aiRouting.ts), spread into `CONTACT_RELATIONS` and
  * `DESCENDANT_RELATIONS` (relations.ts):
  *
  *  - a Team Inbox sender-memory entry names the sender's contact and goes with

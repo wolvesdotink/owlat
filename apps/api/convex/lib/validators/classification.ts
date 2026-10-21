@@ -1,7 +1,6 @@
 /**
  * The classifier's persisted verdict (`inboundMessages.classification`, also
- * spread into `agentActions`). See ADR-0061 for the fields the
- * response-disposition rework added.
+ * spread into `agentActions`).
  */
 
 import { v } from 'convex/values';
@@ -55,7 +54,7 @@ export const classificationValidator = v.object({
 	// dashboard; never gates a send.
 	importance: v.optional(v.number()),
 	// LEGACY: one-sentence summary per interface locale (`APP_LOCALES`). The
-	// classify step stopped writing it (D7, thread brief; ADR-0061 amendment)
+	// classify step stopped writing it
 	// and nothing renders it; kept optional so rows written before still load.
 	summary: v.optional(v.record(v.string(), v.string())),
 });

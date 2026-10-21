@@ -97,7 +97,7 @@ export const sweepPluginLlmAccounting = internalMutation({
 });
 
 /**
- * AI routing records (ADR-0073): decision artifacts and sender memory past their
+ * AI routing records: decision artifacts and sender memory past their
  * own `expiresAt` (every row carries one), and admission reservations that
  * reached a terminal state more than the audit window ago. A `held` reservation
  * is never swept here; the admission expiry sweep settles it first. The D4

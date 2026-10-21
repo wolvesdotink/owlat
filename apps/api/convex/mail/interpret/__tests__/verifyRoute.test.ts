@@ -1,5 +1,5 @@
 /**
- * Claim checks as decision questions (ADR-0073, plan Phase 3): which path
+ * Claim checks as decision questions: which path
  * verifies an interpretation's claims under `claimVerification`. The language
  * verifier and the decisions lane's runner are mocked; the runner's own claim
  * and admission are tested in `decision/__tests__/phase3Bundles.test.ts`.

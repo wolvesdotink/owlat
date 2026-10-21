@@ -21,7 +21,7 @@ import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 export const interpretSent = internalAction({
 	args: { source: interpretationSourceValidator },
 	handler: async (ctx, args): Promise<InterpretRunResult> => {
-		// One model budget for this action, from its start (ADR-0073).
+		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		const result = await runInterpretation(ctx, { source: args.source });
 		if (result.status === 'complete' || result.status === 'partial') {

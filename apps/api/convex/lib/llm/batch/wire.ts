@@ -1,5 +1,5 @@
 /**
- * Provider batch APIs on the wire (ADR-0073, L14): the batch request a provider
+ * Provider batch APIs on the wire: the batch request a provider
  * takes for one captured model request, the batch states Owlat reads back, and
  * the result line of that one request. Pure and runtime-neutral; the HTTP is in
  * `./transport.ts`.

@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Which claims an interpretation verifies, and how (ADR-0073, plan Phase 3),
+ * Which claims an interpretation verifies, and how,
  * by two routing-policy settings, both off by default:
  *
  * - `verifyClaimCapPerMessage` (default `null`, no cap): at most this many

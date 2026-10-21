@@ -6,7 +6,7 @@ import { coeditBlockKey, type CoeditDocument, type CoeditOp } from '@owlat/share
 import { CoeditSync, type CoeditOutgoing, type CoeditServerState } from '~/lib/coeditSync';
 
 /**
- * Live co-editing of one email (docs/adr/0071-email-coediting.md): keeps this
+ * Live co-editing of one email: keeps this
  * tab's editor in step with the shared session everyone editing the email
  * works on. The sync rules live in `lib/coeditSync.ts`; this wires them to
  * Convex and to the editor bridge.

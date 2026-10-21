@@ -1,7 +1,7 @@
 /**
  * Send provider health (module).
  *
- * Per ADR-0020. Renamed from `lib/emailProviders/healthTracker.ts`; identical
+ * Renamed from `lib/emailProviders/healthTracker.ts`; identical
  * content, moved alongside its consumers (the **Send dispatch (helper)** is
  * now the only writer; `resolveRoute` is the only reader of the all-providers
  * snapshot).

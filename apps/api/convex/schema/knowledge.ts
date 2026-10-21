@@ -182,7 +182,7 @@ export const knowledgeEntriesFields = {
 	embeddingModel: v.optional(v.string()),
 	// When `embedding` was generated; used to schedule re-embedding on stale entries.
 	embeddingGeneratedAt: v.optional(v.number()),
-	// Embedding provenance (ADR-0073): the space `embedding` lives in and where
+	// Embedding provenance: the space `embedding` lives in and where
 	// that assignment came from. Absent space ⇒ unknown: vector search excludes
 	// the entry until the re-embed job stamps it; full-text search still finds it.
 	...embeddingProvenanceFields,

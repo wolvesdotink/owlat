@@ -153,7 +153,7 @@ export const remove = authedMutation({
 export const evaluateForMessage = internalQuery({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
-		// L4 (ADR-0073, `earlyRuleArchive`): before classification only the rules
+		// `earlyRuleArchive`: before classification only the rules
 		// with no category facet are evaluated, and with no category, so a
 		// classification left on the row by an earlier run cannot match.
 		isPreClassify: v.optional(v.boolean()),

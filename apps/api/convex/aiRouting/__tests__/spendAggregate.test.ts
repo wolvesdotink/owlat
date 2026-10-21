@@ -1,5 +1,5 @@
 /**
- * The spend-period aggregate and its reconcile (ADR-0073, Phase 1b): complete
+ * The spend-period aggregate and its reconcile: complete
  * totals however many ledger rows a period holds, every row counted once
  * whether the rebuild or the live writer saw it, and admission refusing while
  * the totals are incomplete.

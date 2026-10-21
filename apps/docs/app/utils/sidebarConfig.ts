@@ -290,53 +290,6 @@ export const sidebarConfig: SidebarGroup[] = [
 			{ label: 'Platform Operations', to: '/developer/platform-operations' },
 		],
 	},
-	{
-		label: 'Decisions',
-		section: 'developer',
-		items: [
-			{ label: 'Overview', to: '/developer/decisions' },
-			{
-				label: 'ADR-001: Custom Email Renderer',
-				to: '/developer/decisions/001-custom-email-renderer',
-			},
-			{
-				label: 'ADR-002: Convex Backend',
-				to: '/developer/decisions/002-convex-backend',
-			},
-			{
-				label: 'ADR-003: Notion-like Builder',
-				to: '/developer/decisions/003-notion-like-builder',
-			},
-			{
-				label: 'ADR-004: Monorepo & Bun',
-				to: '/developer/decisions/004-monorepo-bun-workspaces',
-			},
-			{
-				label: 'ADR-005: Custom MTA',
-				to: '/developer/decisions/005-custom-mta',
-			},
-			{
-				label: 'ADR-006: Self-Hosted Convex',
-				to: '/developer/decisions/006-self-hosted-convex',
-			},
-			{
-				label: 'ADR-007: Pluggable LLM',
-				to: '/developer/decisions/007-pluggable-llm',
-			},
-			{
-				label: 'ADR-008: Process Architecture',
-				to: '/developer/decisions/008-process-architecture',
-			},
-			{
-				label: 'ADR-009: Model Routing',
-				to: '/developer/decisions/009-model-routing',
-			},
-			{
-				label: 'ADR-010: Listing Engine',
-				to: '/developer/decisions/010-listing-engine',
-			},
-		],
-	},
 	// Examples
 	{
 		label: 'Examples',

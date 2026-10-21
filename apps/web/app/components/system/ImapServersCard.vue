@@ -2,7 +2,7 @@
 /**
  * IMAP servers (Settings → System & updates): the IMAP server releases that
  * reported to this backend in the last 7 days, and whether the backend still
- * serves their wire contract (ADR-0063). An operator checks it after an
+ * serves their wire contract. An operator checks it after an
  * update, to see that the IMAP container followed the backend.
  */
 import { api } from '@owlat/api';

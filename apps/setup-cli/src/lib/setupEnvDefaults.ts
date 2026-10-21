@@ -83,7 +83,7 @@ export function applySetupDefaults(
 	if (flags?.['mail.external']) {
 		defaults['MAIL_SYNC_API_URL'] = 'http://mail-sync:3200';
 	}
-	// Decision plane (the third AI plane, ADR-0060). Resolution consults
+	// Decision plane (the third AI plane). Resolution consults
 	// DECISION_PROVIDER only when the stored config names no adapter, and an
 	// unset value means the language-backed one — so a deployment carrying a
 	// TypeSafe key and nothing naming the adapter holds a credential it never

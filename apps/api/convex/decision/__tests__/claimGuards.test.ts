@@ -1,6 +1,6 @@
 /**
- * What the claim and completion mutations check atomically (ADR-0073, D12,
- * ADR-0060 §9): a deleted message or mailbox is never claimed or completed, a
+ * What the claim and completion mutations check atomically: a deleted
+ * message or mailbox is never claimed or completed, a
  * corrected message is never judged or learned from, and an excluded mailbox
  * never reaches a hosted endpoint. Plus the ingestion-time DMARC check that
  * invalidates sender memory whatever the bundles' switches say.

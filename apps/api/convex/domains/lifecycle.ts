@@ -1,5 +1,5 @@
 /**
- * Sending domain lifecycle (module) — single writer of `domains` rows (ADR-0018).
+ * Sending domain lifecycle (module) — single writer of `domains` rows.
  *
  * Owns `domains.status` and its companion fields (`dnsRecords`,
  * `verificationResults`, `verifiedAt`, `lastVerifiedAt`,
@@ -50,7 +50,7 @@
  * (`providers/index.ts`). The return-path family is the exception; its kind
  * branches are confined to `returnPathProviders.ts`.
  *
- * Deviation from ADR-0018: there is no `requestVerification` entry point. The
+ * There is no `requestVerification` entry point. The
  * FE calls the DNS verifier (`dnsVerification.verifyDomain`) directly for
  * synchronous feedback, and it lands the result through `recordVerification`.
  */

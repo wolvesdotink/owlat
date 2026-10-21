@@ -1,5 +1,5 @@
 /**
- * Email co-editing: the email a session belongs to (docs/adr/0071-email-coediting.md).
+ * Email co-editing: the email a session belongs to.
  *
  * Two editors co-edit: email templates (also the content of every campaign)
  * and transactional emails. A target names one of them; these helpers load
