@@ -22,6 +22,7 @@ import { deleteAutomationRun } from '../../automations/runDeletion';
 import { internal } from '../../_generated/api';
 import { deleteCompletionFailurePayload } from '../../delivery/sendCompletionFailures';
 import { CONTACT_CLEANUP_BATCH_SIZE } from '../../delivery/sendCompletionFailureAdmin';
+import { erasedReceipt } from '../../auth/apiRequestReceipts';
 import type { ErasureBudget } from './budget';
 import { CONTACT_ERASURE_PHASES, type ContactErasurePhase } from './phaseCatalog';
 import {
@@ -340,12 +341,19 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 			.withIndex('by_scope', (q) => q.eq('scopeType', 'contact').eq('scopeId', contactId))
 			.take(n)
 	),
-	apiRequestReceipts: deleteByIndex(({ ctx, contactId }, n) =>
-		ctx.db
-			.query('apiRequestReceipts')
-			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-			.take(n)
-	),
+	// Unlinked, not deleted: the tombstone refuses a retry of the erased request
+	// until it expires, where a deleted receipt would let the retry send again.
+	apiRequestReceipts: async ({ ctx, contactId, budget }) => ({
+		isDone: await drainEach(
+			budget,
+			(n) =>
+				ctx.db
+					.query('apiRequestReceipts')
+					.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+					.take(n),
+			(receipt) => ctx.db.replace(receipt._id, erasedReceipt(receipt))
+		),
+	}),
 };
 
 export const FIRST_ERASURE_PHASE: ContactErasurePhase = CONTACT_ERASURE_PHASES[0];

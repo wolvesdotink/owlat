@@ -11,17 +11,25 @@ export const apiRequestReceiptTables = {
 	// repeat of the request is answered from it instead of sending again.
 	//
 	// Only the response fields the request cannot reproduce are kept: ids, flags
-	// and the resolved language. The address, template variables, attachment
-	// bytes and signed URLs never land here; a replay rebuilds the request echoes
-	// from the repeated request, which `requestHash` proves identical.
+	// and the resolved language. The key, address, template variables,
+	// attachment bytes and signed URLs never land here; a replay rebuilds the
+	// request echoes from the repeated request, which `requestHash` proves
+	// identical.
+	//
+	// Contact erasure strips a receipt to a tombstone (`isErased`): the two
+	// hashes and the timestamps stay until expiry, so the erased request is
+	// refused rather than run again; every response field goes.
 	apiRequestReceipts: defineTable({
 		organizationId: v.string(),
-		idempotencyKey: v.string(),
+		// SHA-256 (hex) of the caller's Idempotency-Key.
+		keyHash: v.string(),
 		endpoint: receiptEndpointValidator,
-		// SHA-256 (hex) of the canonical endpoint + validated request.
+		// SHA-256 (hex) of the canonical key + endpoint + validated request.
 		requestHash: v.string(),
-		contactId: v.id('contacts'),
-		isContactCreated: v.boolean(),
+		// Absent only on an erased receipt.
+		contactId: v.optional(v.id('contacts')),
+		isContactCreated: v.optional(v.boolean()),
+		isErased: v.optional(v.boolean()),
 		// `transactional`: the queued Send and the language it went out in.
 		sendId: v.optional(v.id('transactionalSends')),
 		language: v.optional(v.string()),
@@ -32,8 +40,8 @@ export const apiRequestReceiptTables = {
 		// Lookups ignore a row past this; the sweep only reclaims the space.
 		expiresAt: v.number(),
 	})
-		.index('by_org_key', ['organizationId', 'idempotencyKey'])
+		.index('by_org_key', ['organizationId', 'keyHash'])
 		.index('by_expiry', ['expiresAt'])
-		// Contact erasure deletes a person's receipts, and a merge moves them.
+		// Contact erasure tombstones a person's receipts, and a merge moves them.
 		.index('by_contact', ['contactId']),
 };

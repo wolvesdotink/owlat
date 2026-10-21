@@ -13,7 +13,7 @@ import {
 	type JsonPrimitiveValue,
 } from './lib/inputGuards';
 import {
-	idempotencyConflictResponse,
+	idempotencyRefusalResponse,
 	readIdempotencyKey,
 	replayHeaders,
 	resolveIdempotency,
@@ -140,7 +140,7 @@ export const sendEvent = createAuthenticatedHandler(
 		}
 
 		if (!result.ok) {
-			if (result.reason === 'idempotency_conflict') return idempotencyConflictResponse();
+			if (result.reason !== 'contact_not_found') return idempotencyRefusalResponse(result.reason);
 			return errorResponse(
 				'not_found',
 				`Contact with email "${body.email}" not found. Set createContactIfNotExists: true to create the contact automatically.`

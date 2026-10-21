@@ -11,6 +11,8 @@
  *   - a request that fails before commit leaves no receipt, so its retry sends;
  *   - a receipt stops answering after its TTL, before or without the sweep;
  *   - a repeat's own attachment uploads are released, the original Send's kept;
+ *   - erasing the contact a receipt names leaves a tombstone of hashes that
+ *     refuses (409) the erased request until expiry instead of sending again;
  *   - requests without a key behave exactly as before.
  */
 
@@ -80,7 +82,7 @@ vi.mock('../auth/apiRequestReceipts', async (importOriginal) => {
 					.withIndex('by_org_key', (q) =>
 						q
 							.eq('organizationId', args.idempotency.organizationId)
-							.eq('idempotencyKey', args.idempotency.key)
+							.eq('keyHash', args.idempotency.keyHash)
 					)
 					.first();
 				return actual.classifyReceipt(
@@ -157,7 +159,7 @@ async function seedKey(t: T): Promise<void> {
 			keyHash,
 			keyPrefix: 'lm_live_',
 			isActive: true,
-			scopes: ['transactional:send', 'events:write'],
+			scopes: ['transactional:send', 'events:write', 'contacts:write'],
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
 		});
@@ -217,6 +219,19 @@ const templateSendCount = (t: T) =>
 
 const KEY = 'order-1001-confirmation';
 
+async function sha256Hex(text: string): Promise<string> {
+	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+	return Buffer.from(digest).toString('hex');
+}
+
+/** `DELETE /api/v1/contacts/{id}`: the API-key hard delete, which erases the contact. */
+async function deleteContact(t: T, contactId: string): Promise<Response> {
+	return await t.fetch(`/api/v1/contacts/${contactId}`, {
+		method: 'DELETE',
+		headers: { Authorization: `Bearer ${API_KEY}` },
+	});
+}
+
 describe('Idempotency-Key on POST /api/v1/transactional', () => {
 	it('replays a repeated request without a second send, counter or enqueue', async () => {
 		const t = setupTest();
@@ -240,8 +255,9 @@ describe('Idempotency-Key on POST /api/v1/transactional', () => {
 		expect(await templateSendCount(t)).toBe(1);
 		expect(enqueue.calls).toBe(1);
 		const [receipt] = await receiptRows(t);
-		expect(receipt).toMatchObject({ organizationId: 'org-a', idempotencyKey: KEY });
-		// The receipt keeps ids and flags, never the address or the variables.
+		expect(receipt).toMatchObject({ organizationId: 'org-a', keyHash: await sha256Hex(KEY) });
+		// The receipt keeps ids and flags, never the key, the address or the variables.
+		expect(JSON.stringify(receipt)).not.toContain(KEY);
 		expect(JSON.stringify(receipt)).not.toContain('to@example.com');
 		expect(JSON.stringify(receipt)).not.toContain('A-1');
 	});
@@ -430,7 +446,7 @@ describe('Idempotency-Key on POST /api/v1/transactional', () => {
 		const swept = await t.mutation(internal.auth.apiRequestReceipts.sweepExpired, {});
 
 		expect(swept).toBe(1);
-		expect((await receiptRows(t)).map((r) => r.idempotencyKey)).toEqual(['new-key']);
+		expect((await receiptRows(t)).map((r) => r.keyHash)).toEqual([await sha256Hex('new-key')]);
 	});
 });
 
@@ -643,5 +659,81 @@ describe('Idempotency-Key on POST /api/v1/events', () => {
 
 		expect((await first.json()).data.eventId).not.toBe((await second.json()).data.eventId);
 		expect(await runs(t)).toHaveLength(2);
+	});
+});
+
+describe('Idempotency-Key after the contact is erased', () => {
+	it('refuses a transactional retry instead of sending again, until the receipt expires', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const t = setupTest();
+		const slug = await seedSendable(t);
+		const request = { slug, email: 'to@example.com', dataVariables: { orderNumber: 'A-1' } };
+
+		const first = await post(t, '/api/v1/transactional', request, KEY);
+		expect(first.status).toBe(202);
+		const erased = await deleteContact(t, (await first.json()).data.contactId);
+		expect(erased.status).toBe(200);
+
+		const retry = await post(t, '/api/v1/transactional', request, KEY);
+
+		expect(retry.status).toBe(409);
+		expect((await retry.json()).error.data.reason).toBe('idempotency_erased');
+		expect(await sendRows(t)).toHaveLength(1);
+		expect(enqueue.calls).toBe(1);
+		// The tombstone keeps hashes and timestamps only.
+		const [tombstone] = await receiptRows(t);
+		expect(tombstone).toMatchObject({ keyHash: await sha256Hex(KEY), isErased: true });
+		expect(tombstone).not.toHaveProperty('contactId');
+		expect(tombstone).not.toHaveProperty('sendId');
+		expect(tombstone).not.toHaveProperty('isContactCreated');
+		expect(JSON.stringify(tombstone)).not.toContain(KEY);
+		expect(JSON.stringify(tombstone)).not.toContain('to@example.com');
+
+		// Another request under the key is still a plain conflict.
+		const other = await post(t, '/api/v1/transactional', { slug, email: 'b@example.com' }, KEY);
+		expect((await other.json()).error.data.reason).toBe('idempotency_conflict');
+
+		vi.setSystemTime(Date.now() + RECEIPT_TTL_MS + 1);
+		const afterExpiry = await post(t, '/api/v1/transactional', request, KEY);
+		expect(afterExpiry.status).toBe(202);
+		expect(enqueue.calls).toBe(2);
+	});
+
+	it('refuses an events retry instead of recreating the contact or firing again', async () => {
+		const t = setupTest();
+		await seedKey(t);
+		await t.run(async (ctx) => {
+			const automationId = await ctx.db.insert(
+				'automations',
+				createTestAutomation({
+					status: 'active',
+					triggerType: 'event_received',
+					triggerConfig: { eventName: 'purchase' },
+				})
+			);
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId, stepIndex: 0 })
+			);
+		});
+		const request = {
+			email: 'buyer@example.com',
+			eventName: 'purchase',
+			createContactIfNotExists: true,
+		};
+
+		const first = await post(t, '/api/v1/events', request, KEY);
+		expect(first.status).toBe(201);
+		expect((await deleteContact(t, (await first.json()).data.contactId)).status).toBe(200);
+
+		const retry = await post(t, '/api/v1/events', request, KEY);
+
+		expect(retry.status).toBe(409);
+		expect((await retry.json()).error.data.reason).toBe('idempotency_erased');
+		const live = await t.run(async (ctx) =>
+			(await ctx.db.query('contacts').collect()).filter((c) => c.deletedAt === undefined)
+		);
+		expect(live).toHaveLength(0);
+		expect(await t.run((ctx) => ctx.db.query('automationRuns').collect())).toHaveLength(0);
 	});
 });

@@ -47,8 +47,8 @@ import {
 	type PreparedAttachment,
 } from './attachmentIntake';
 import {
-	IDEMPOTENCY_CONFLICT_MESSAGE,
-	idempotencyConflictResponse,
+	IDEMPOTENCY_REFUSAL_MESSAGES,
+	idempotencyRefusalResponse,
 	readIdempotencyKey,
 	replayHeaders,
 	resolveIdempotency,
@@ -231,7 +231,11 @@ const REJECTION_RESPONSE_MAP: Record<
 	},
 	idempotency_conflict: {
 		category: 'conflict',
-		defaultMessage: IDEMPOTENCY_CONFLICT_MESSAGE,
+		defaultMessage: IDEMPOTENCY_REFUSAL_MESSAGES.idempotency_conflict,
+	},
+	idempotency_erased: {
+		category: 'conflict',
+		defaultMessage: IDEMPOTENCY_REFUSAL_MESSAGES.idempotency_erased,
 	},
 };
 
@@ -330,7 +334,7 @@ export const sendTransactional = createAuthenticatedHandler(
 				endpoint: 'transactional',
 				idempotency,
 			});
-			if (lookup.kind === 'conflict') return idempotencyConflictResponse();
+			if (lookup.kind === 'refused') return idempotencyRefusalResponse(lookup.reason);
 			if (lookup.kind === 'replay') {
 				return queuedResponse(body, storedTransactionalResponse(lookup.receipt), true);
 			}

@@ -18,6 +18,7 @@ import {
 	idempotencyArgValidator,
 	lookupReceipt,
 	storedEventResponse,
+	type IdempotencyRefusalReason,
 	writeReceipt,
 } from '../auth/apiRequestReceipts';
 
@@ -220,7 +221,7 @@ type SendEventOutcome =
 			/** Answered from the Idempotency-Key's receipt: nothing fired this time. */
 			replayed?: true;
 	  }
-	| { ok: false; reason: 'contact_not_found' | 'idempotency_conflict' };
+	| { ok: false; reason: 'contact_not_found' | IdempotencyRefusalReason };
 
 /**
  * Send an event for a contact (by email). Optionally creates the contact,
@@ -251,7 +252,7 @@ export const sendEvent = internalMutation({
 
 		if (args.idempotency) {
 			const lookup = await lookupReceipt(ctx, 'events', args.idempotency);
-			if (lookup.kind === 'conflict') return { ok: false, reason: 'idempotency_conflict' };
+			if (lookup.kind === 'refused') return { ok: false, reason: lookup.reason };
 			if (lookup.kind === 'replay') {
 				return {
 					ok: true,

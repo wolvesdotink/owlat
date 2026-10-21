@@ -126,8 +126,8 @@ export const CONTACT_RELATIONS: readonly ErasureRelation[] = [
 	{
 		table: 'apiRequestReceipts',
 		field: 'contactId',
-		action: 'delete',
-		why: 'An Idempotency-Key receipt names the person, and its caller-chosen key can carry their details. It only answers a repeat of the request for 24 hours.',
+		action: 'unlink',
+		why: 'An Idempotency-Key receipt keeps only hashes once the response fields naming the person are dropped. The tombstone refuses a retry of the erased request until it expires 24 hours after the send, so the erasure cannot make a send run twice.',
 	},
 	{
 		table: 'sendCompletionFailures',

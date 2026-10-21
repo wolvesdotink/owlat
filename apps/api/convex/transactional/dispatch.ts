@@ -35,7 +35,8 @@ import { logWarn } from '../lib/runtimeLog';
 import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featureFlags';
 import { claimPendingUploads } from './pendingUploads';
 import {
-	IDEMPOTENCY_CONFLICT_MESSAGE,
+	IDEMPOTENCY_REFUSAL_MESSAGES,
+	type IdempotencyRefusalReason,
 	idempotencyArgValidator,
 	lookupReceipt,
 	storedTransactionalResponse,
@@ -69,7 +70,7 @@ export type DispatchRejectionReason =
 	| 'template_no_content'
 	| 'domain_unverified'
 	| 'invalid_variables'
-	| 'idempotency_conflict';
+	| IdempotencyRefusalReason;
 
 export type DispatchOutcome =
 	| {
@@ -132,11 +133,11 @@ export const dispatch = internalMutation({
 		//    The request's own uploads stay pending for the shell to release.
 		if (args.idempotency) {
 			const lookup = await lookupReceipt(ctx, 'transactional', args.idempotency);
-			if (lookup.kind === 'conflict') {
+			if (lookup.kind === 'refused') {
 				return {
 					ok: false,
-					reason: 'idempotency_conflict',
-					detail: IDEMPOTENCY_CONFLICT_MESSAGE,
+					reason: lookup.reason,
+					detail: IDEMPOTENCY_REFUSAL_MESSAGES[lookup.reason],
 				};
 			}
 			if (lookup.kind === 'replay') {

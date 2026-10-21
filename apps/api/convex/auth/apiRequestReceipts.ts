@@ -12,15 +12,23 @@
  *   - a receipt for the same endpoint and request: it returns the stored
  *     response without touching anything else.
  *   - a receipt for a different request: it refuses with `conflict` (409).
+ *   - an erased receipt for the same request: it refuses with `conflict` (409)
+ *     too. Contact erasure turns the person's receipts into tombstones that
+ *     keep only hashes, so the request cannot run a second time, but the
+ *     response that named the person is gone and cannot be replayed.
  *
  * Concurrent requests with one key are serialized by the mutation's read of the
  * key's index range: the loser of the race re-runs and finds the winner's row.
  *
- * Keys are scoped to the organization. The fingerprint covers the endpoint and
- * the validated request, attachment bytes included (as their digests), and is
- * computed before any upload exists, so storage ids and signed URLs never feed
- * it. Receipts expire after {@link RECEIPT_TTL_MS}; a lookup ignores an expired
- * row whatever the sweep has done, and a request under that key starts afresh.
+ * Keys are scoped to the organization and stored only as their SHA-256, since a
+ * caller-chosen key can carry personal details. The fingerprint covers the key,
+ * the endpoint and the validated request, attachment bytes included (as their
+ * digests), and is computed before any upload exists, so storage ids and signed
+ * URLs never feed it. With the key inside it, a stored fingerprint cannot be
+ * matched against a guessed request by anyone who lacks the key.
+ *
+ * Receipts expire after {@link RECEIPT_TTL_MS}; a lookup ignores an expired row
+ * whatever the sweep has done, and a request under that key starts afresh.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -56,15 +64,13 @@ const KEY_PATTERN = /^[\x21-\x7e]+$/;
 
 const SWEEP_BATCH = 200;
 
-export const IDEMPOTENCY_CONFLICT_MESSAGE =
-	'This Idempotency-Key was already used for a different request. Use a new key for a new request.';
-
 type ReceiptEndpoint = Infer<typeof receiptEndpointValidator>;
 
 /** What a send mutation needs to honour a key. */
 export const idempotencyArgValidator = v.object({
 	organizationId: v.string(),
-	key: v.string(),
+	// SHA-256 (hex) of the caller's key; the raw key never reaches the database.
+	keyHash: v.string(),
 	requestHash: v.string(),
 });
 export type IdempotencyArg = Infer<typeof idempotencyArgValidator>;
@@ -94,16 +100,21 @@ export async function sha256HexOfBytes(bytes: Uint8Array): Promise<string> {
 	return bytesToHex(digest);
 }
 
+function sha256HexOfText(text: string): Promise<string> {
+	return sha256HexOfBytes(new TextEncoder().encode(text));
+}
+
 /**
- * Fingerprint of one request: the endpoint plus the validated request in
- * canonical JSON (keys sorted), so key order and whitespace in the body do not
- * make the same request look different.
+ * Fingerprint of one request: the Idempotency-Key, the endpoint and the
+ * validated request in canonical JSON (keys sorted), so key order and
+ * whitespace in the body do not make the same request look different.
  */
 export async function requestFingerprint(
+	key: string,
 	endpoint: ReceiptEndpoint,
 	request: unknown
 ): Promise<string> {
-	return sha256HexOfBytes(new TextEncoder().encode(canonicalJson({ endpoint, request })));
+	return sha256HexOfText(canonicalJson({ key, endpoint, request }));
 }
 
 /**
@@ -118,16 +129,24 @@ export async function resolveIdempotency(
 	fingerprintInput: () => unknown
 ): Promise<IdempotencyArg | undefined> {
 	if (key === null) return undefined;
-	const requestHash = await requestFingerprint(endpoint, await fingerprintInput());
+	const requestHash = await requestFingerprint(key, endpoint, await fingerprintInput());
 	const organizationId = await getSingletonOrganizationId(ctx);
-	return { organizationId, key, requestHash };
+	return { organizationId, keyHash: await sha256HexOfText(key), requestHash };
 }
 
-/** The 409 for a key reused with a different request. */
-export function idempotencyConflictResponse(): Response {
-	return errorResponse('conflict', IDEMPOTENCY_CONFLICT_MESSAGE, {
-		data: { reason: 'idempotency_conflict' },
-	});
+/** Why a lookup refused the request: the key named another request, or its receipt was erased. */
+export type IdempotencyRefusalReason = 'idempotency_conflict' | 'idempotency_erased';
+
+export const IDEMPOTENCY_REFUSAL_MESSAGES: Record<IdempotencyRefusalReason, string> = {
+	idempotency_conflict:
+		'This Idempotency-Key was already used for a different request. Use a new key for a new request.',
+	idempotency_erased:
+		'This request already ran under this Idempotency-Key, but the contact it named has since been deleted, so its response is no longer available. Use a new key only if you mean to send again.',
+};
+
+/** The 409 for a refused lookup. */
+export function idempotencyRefusalResponse(reason: IdempotencyRefusalReason): Response {
+	return errorResponse('conflict', IDEMPOTENCY_REFUSAL_MESSAGES[reason], { data: { reason } });
 }
 
 /** Headers marking a response that was answered from a receipt. */
@@ -142,9 +161,13 @@ export function replayHeaders(replayed: boolean | undefined): Record<string, str
 export type ReceiptLookup =
 	| { kind: 'absent' }
 	| { kind: 'replay'; receipt: Doc<'apiRequestReceipts'> }
-	| { kind: 'conflict' };
+	| { kind: 'refused'; reason: IdempotencyRefusalReason };
 
-/** Classify a stored row against the incoming request. Expired rows count as absent. */
+/**
+ * Classify a stored row against the incoming request. Expired rows count as
+ * absent. An erased row still blocks its request until it expires, but has no
+ * response left to replay.
+ */
 export function classifyReceipt(
 	receipt: Doc<'apiRequestReceipts'> | null,
 	endpoint: ReceiptEndpoint,
@@ -152,10 +175,11 @@ export function classifyReceipt(
 	now: number
 ): ReceiptLookup {
 	if (!receipt || receipt.expiresAt <= now) return { kind: 'absent' };
-	if (receipt.endpoint === endpoint && receipt.requestHash === requestHash) {
-		return { kind: 'replay', receipt };
+	if (receipt.endpoint !== endpoint || receipt.requestHash !== requestHash) {
+		return { kind: 'refused', reason: 'idempotency_conflict' };
 	}
-	return { kind: 'conflict' };
+	if (receipt.isErased) return { kind: 'refused', reason: 'idempotency_erased' };
+	return { kind: 'replay', receipt };
 }
 
 async function findReceipt(
@@ -165,7 +189,7 @@ async function findReceipt(
 	return await db
 		.query('apiRequestReceipts')
 		.withIndex('by_org_key', (q) =>
-			q.eq('organizationId', idempotency.organizationId).eq('idempotencyKey', idempotency.key)
+			q.eq('organizationId', idempotency.organizationId).eq('keyHash', idempotency.keyHash)
 		)
 		.first();
 }
@@ -186,21 +210,43 @@ export async function lookupReceipt(
 }
 
 /** The response fields a receipt keeps, per endpoint. */
+type ReceiptContactId = NonNullable<Doc<'apiRequestReceipts'>['contactId']>;
+
 type ReceiptResponse =
 	| {
 			endpoint: 'transactional';
-			contactId: Doc<'apiRequestReceipts'>['contactId'];
+			contactId: ReceiptContactId;
 			contactCreated: boolean;
 			sendId: NonNullable<Doc<'apiRequestReceipts'>['sendId']>;
 			language: string;
 	  }
 	| {
 			endpoint: 'events';
-			contactId: Doc<'apiRequestReceipts'>['contactId'];
+			contactId: ReceiptContactId;
 			contactCreated: boolean;
 			eventId: string;
 			triggeredAutomations: number;
 	  };
+
+/**
+ * What contact erasure leaves of a receipt until it expires: the key hash and
+ * the request fingerprint (both hashes bound to the caller's key), with every
+ * response field that named the person dropped. It keeps a retry of the erased
+ * request from running again, and refuses it instead of replaying.
+ */
+export function erasedReceipt(
+	receipt: Doc<'apiRequestReceipts'>
+): Omit<Doc<'apiRequestReceipts'>, '_id' | '_creationTime'> {
+	return {
+		organizationId: receipt.organizationId,
+		keyHash: receipt.keyHash,
+		endpoint: receipt.endpoint,
+		requestHash: receipt.requestHash,
+		isErased: true,
+		createdAt: receipt.createdAt,
+		expiresAt: receipt.expiresAt,
+	};
+}
 
 /** Record the response, in the transaction that produced its effects. */
 export async function writeReceipt(
@@ -212,7 +258,7 @@ export async function writeReceipt(
 	const { contactCreated, ...fields } = response;
 	await ctx.db.insert('apiRequestReceipts', {
 		organizationId: idempotency.organizationId,
-		idempotencyKey: idempotency.key,
+		keyHash: idempotency.keyHash,
 		requestHash: idempotency.requestHash,
 		...fields,
 		isContactCreated: contactCreated,
@@ -230,7 +276,12 @@ type StoredResponse<E extends ReceiptEndpoint> = Omit<
 export function storedTransactionalResponse(
 	receipt: Doc<'apiRequestReceipts'>
 ): StoredResponse<'transactional'> {
-	if (receipt.sendId === undefined || receipt.language === undefined) {
+	if (
+		receipt.contactId === undefined ||
+		receipt.isContactCreated === undefined ||
+		receipt.sendId === undefined ||
+		receipt.language === undefined
+	) {
 		throw new Error(`Idempotency receipt ${receipt._id} is missing its send`);
 	}
 	return {
@@ -243,7 +294,12 @@ export function storedTransactionalResponse(
 
 /** An events receipt's response; a row missing its event is corrupt. */
 export function storedEventResponse(receipt: Doc<'apiRequestReceipts'>): StoredResponse<'events'> {
-	if (receipt.eventId === undefined || receipt.triggeredAutomations === undefined) {
+	if (
+		receipt.contactId === undefined ||
+		receipt.isContactCreated === undefined ||
+		receipt.eventId === undefined ||
+		receipt.triggeredAutomations === undefined
+	) {
 		throw new Error(`Idempotency receipt ${receipt._id} is missing its event`);
 	}
 	return {

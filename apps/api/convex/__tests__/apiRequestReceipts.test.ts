@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
 	classifyReceipt,
+	erasedReceipt,
 	readIdempotencyKey,
 	requestFingerprint,
 	RECEIPT_TTL_MS,
@@ -44,15 +45,22 @@ describe('readIdempotencyKey', () => {
 
 describe('requestFingerprint', () => {
 	it('ignores key order and separates endpoints and values', async () => {
-		const a = await requestFingerprint('events', { email: 'a@example.com', eventName: 'x' });
-		const b = await requestFingerprint('events', { eventName: 'x', email: 'a@example.com' });
+		const a = await requestFingerprint('k', 'events', { email: 'a@example.com', eventName: 'x' });
+		const b = await requestFingerprint('k', 'events', { eventName: 'x', email: 'a@example.com' });
 		expect(a).toBe(b);
 		expect(a).toMatch(/^[0-9a-f]{64}$/);
 		expect(
-			await requestFingerprint('transactional', { email: 'a@example.com', eventName: 'x' })
+			await requestFingerprint('k', 'transactional', { email: 'a@example.com', eventName: 'x' })
 		).not.toBe(a);
-		expect(await requestFingerprint('events', { email: 'a@example.com', eventName: 'y' })).not.toBe(
-			a
+		expect(
+			await requestFingerprint('k', 'events', { email: 'a@example.com', eventName: 'y' })
+		).not.toBe(a);
+	});
+
+	it('binds the fingerprint to the Idempotency-Key', async () => {
+		const request = { email: 'a@example.com', eventName: 'x' };
+		expect(await requestFingerprint('k1', 'events', request)).not.toBe(
+			await requestFingerprint('k2', 'events', request)
 		);
 	});
 });
@@ -63,7 +71,7 @@ describe('classifyReceipt', () => {
 		_id: 'r1' as Id<'apiRequestReceipts'>,
 		_creationTime: now,
 		organizationId: 'org-a',
-		idempotencyKey: 'k',
+		keyHash: 'kh',
 		endpoint: 'events',
 		requestHash: 'h1',
 		contactId: 'c1' as Id<'contacts'>,
@@ -73,20 +81,49 @@ describe('classifyReceipt', () => {
 		createdAt: now,
 		expiresAt: now + RECEIPT_TTL_MS,
 	} satisfies Doc<'apiRequestReceipts'>;
+	const tombstone = {
+		_id: receipt._id,
+		_creationTime: now,
+		...erasedReceipt(receipt),
+	} satisfies Doc<'apiRequestReceipts'>;
+	const conflict = { kind: 'refused', reason: 'idempotency_conflict' };
 
 	it('replays the same endpoint and request', () => {
 		expect(classifyReceipt(receipt, 'events', 'h1', now)).toEqual({ kind: 'replay', receipt });
 	});
 
 	it('conflicts on another request or endpoint', () => {
-		expect(classifyReceipt(receipt, 'events', 'h2', now)).toEqual({ kind: 'conflict' });
-		expect(classifyReceipt(receipt, 'transactional', 'h1', now)).toEqual({ kind: 'conflict' });
+		expect(classifyReceipt(receipt, 'events', 'h2', now)).toEqual(conflict);
+		expect(classifyReceipt(receipt, 'transactional', 'h1', now)).toEqual(conflict);
 	});
 
 	it('treats a missing or expired receipt as absent', () => {
 		expect(classifyReceipt(null, 'events', 'h1', now)).toEqual({ kind: 'absent' });
 		expect(classifyReceipt(receipt, 'events', 'h1', receipt.expiresAt)).toEqual({ kind: 'absent' });
 		expect(classifyReceipt(receipt, 'events', 'h2', receipt.expiresAt + 1)).toEqual({
+			kind: 'absent',
+		});
+	});
+
+	it('keeps only hashes and timestamps in an erased receipt', () => {
+		expect(erasedReceipt(receipt)).toEqual({
+			organizationId: 'org-a',
+			keyHash: 'kh',
+			endpoint: 'events',
+			requestHash: 'h1',
+			isErased: true,
+			createdAt: now,
+			expiresAt: now + RECEIPT_TTL_MS,
+		});
+	});
+
+	it('refuses the erased request until expiry, and conflicts on any other', () => {
+		expect(classifyReceipt(tombstone, 'events', 'h1', now)).toEqual({
+			kind: 'refused',
+			reason: 'idempotency_erased',
+		});
+		expect(classifyReceipt(tombstone, 'events', 'h2', now)).toEqual(conflict);
+		expect(classifyReceipt(tombstone, 'events', 'h1', tombstone.expiresAt)).toEqual({
 			kind: 'absent',
 		});
 	});
