@@ -17,6 +17,8 @@
  *   - {@link enqueueSentInterpretation}: a send we made reached its recipient
  *     (Postbox transport `sent`, team Send finalized). Once per send: the
  *     caller only enqueues when its `reply_sent` activity was new.
+ *   - {@link enqueueClientSentInterpretation}: our reply sent from another
+ *     client, once its Sent copy is synced or APPENDed.
  *
  * The mode is the run's to derive (`resolveThreadMode`: shared-scope
  * mailboxes and Team Inbox threads run in `actions` mode), so none is passed.
@@ -121,4 +123,36 @@ export async function enqueueSentInterpretation(
 	}
 	await ctx.scheduler.runAfter(0, internal.mail.interpret.outboundRun.interpretSent, { source });
 	await markBriefPending(ctx, ref);
+}
+
+/**
+ * Interpretation of our own mail sent from another client, once its Sent copy
+ * lands: synced from the provider's Sent folder, or filed by a desktop client
+ * through IMAP APPEND. It is read like an Owlat send, so what the reply
+ * answered closes on the brief and leaves the Workbench's To do. Without it
+ * those items stay open until someone ticks them off by hand.
+ *
+ * The Sent folder is what makes it ours, as for history
+ * (`backfillSources.mailSourceOf`). An Owlat send (`outbound` set) is skipped:
+ * its transport lifecycle enqueues it once it went out. Callers pass live
+ * copies only, never an auto-reply. Returns whether it was enqueued.
+ */
+export async function enqueueClientSentInterpretation(
+	ctx: MutationCtx,
+	messageId: Id<'mailMessages'>
+): Promise<boolean> {
+	const message = await ctx.db.get(messageId);
+	if (!message || message.flagDraft || message.outbound !== undefined) return false;
+	const [folder, thread] = await Promise.all([
+		ctx.db.get(message.folderId),
+		ctx.db.get(message.threadId),
+	]);
+	if (folder?.role !== 'sent' || !thread) return false;
+	if (thread.mutedAt !== undefined || thread.isSelfDeliveredBrief) return false;
+	await enqueueSentInterpretation(
+		ctx,
+		{ kind: 'outboundMail', id: message._id },
+		{ kind: 'mail', id: thread._id }
+	);
+	return true;
 }

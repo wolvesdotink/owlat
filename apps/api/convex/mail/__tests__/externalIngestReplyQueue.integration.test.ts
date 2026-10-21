@@ -8,7 +8,8 @@
  * exactly like the hosted webhook path (mail/delivery.ts). Everything else —
  * a historical import ('backfill'), a worker one release behind that sends no
  * origin at all, a non-inbox folder, or a MUTED thread whose delivery was
- * re-routed into Archive inside the insert — must schedule nothing.
+ * re-routed into Archive inside the insert — must schedule no classifier. (Our
+ * own mail synced into Sent is still read as our send, like an Owlat send.)
  *
  * The last case also covers the anti-loop headers: `ingestExternalRaw` parses
  * `Precedence:` out of the raw message and hands it down, so bulk mail reaches
@@ -221,14 +222,18 @@ describe('external IMAP ingest → Reply Queue enqueue', () => {
 		});
 	});
 
-	it('forward sync into a NON-inbox folder (Sent) schedules nothing', async () => {
+	it('forward sync into a NON-inbox folder (Sent) queues no Reply Queue work', async () => {
 		const t = liveMailTest();
 		const seeded = await seedExternalAccount(t);
 
 		await withHeldScheduler(async () => {
-			await ingest(t, seeded, { origin: 'sync', folderRole: 'sent' });
+			await ingest(t, seeded, { origin: 'sync', folderRole: 'sent', from: OWNER_ADDRESS });
 
-			expect(await scheduled(t)).toEqual([]);
+			// Only our send's interpretation, which closes the brief items it
+			// answered (mail/interpret/enqueue.ts); no classifier runs.
+			const jobs = await scheduled(t);
+			expect(jobs.map((job) => job.name)).toEqual(['mail/interpret/outboundRun:interpretSent']);
+			expect(jobs[0]!.args['source']).toMatchObject({ kind: 'outboundMail' });
 		});
 	});
 
