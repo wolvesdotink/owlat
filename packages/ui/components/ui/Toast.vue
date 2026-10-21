@@ -34,7 +34,7 @@ const politeToasts = computed(() => toasts.value.filter((t) => t.type !== 'error
 						v-for="toast in errorToasts"
 						:key="toast.id"
 						:toast="toast"
-						@dismiss="dismissAfterAction(toast.id)"
+						@action="dismissAfterAction(toast.id)"
 						@close="removeToast(toast.id)"
 					/>
 				</TransitionGroup>
@@ -47,7 +47,7 @@ const politeToasts = computed(() => toasts.value.filter((t) => t.type !== 'error
 						v-for="toast in politeToasts"
 						:key="toast.id"
 						:toast="toast"
-						@dismiss="dismissAfterAction(toast.id)"
+						@action="dismissAfterAction(toast.id)"
 						@close="removeToast(toast.id)"
 					/>
 				</TransitionGroup>

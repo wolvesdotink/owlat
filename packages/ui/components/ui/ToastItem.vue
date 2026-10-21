@@ -12,8 +12,11 @@ import { useToastReadingTimeHolds } from '../../composables/useToastReadingTime'
 const props = defineProps<{ toast: Toast }>();
 
 const emit = defineEmits<{
-	/** The inline action was pressed; the stack decides whether the toast goes. */
-	dismiss: [];
+	/**
+	 * The inline action was pressed. Not a dismissal: the stack decides whether
+	 * the toast goes (an observed action keeps it up while it runs).
+	 */
+	action: [];
 	/** The close button: the toast goes, whatever its action is doing. */
 	close: [];
 }>();
@@ -174,7 +177,7 @@ watch(
 				]"
 				@click="
 					toast.action.onAction();
-					emit('dismiss');
+					emit('action');
 				"
 			>
 				{{ toast.action.label }}
