@@ -62,6 +62,16 @@ ruleTester.run('owlat/no-test-in-loop', rule, {
 			code: `${imports}const make = () => it;\nfor (const n of ['a']) make()(n, () => {});`,
 		},
 		{
+			name: 'a factory call alone, which declares nothing until its result is called',
+			filename,
+			code: `${imports}for (const n of [1]) it.each([n]);`,
+		},
+		{
+			name: 'a tagged template whose tag is not a vitest factory',
+			filename,
+			code: `${imports}declare const html: (s: TemplateStringsArray) => (t: string) => void;\nfor (const n of ['a']) html\`<p>\`(n);`,
+		},
+		{
 			name: 'node:test, which is not vitest',
 			filename,
 			code: "import { test } from 'node:test';\nfor (const n of [1]) test(String(n), () => {});",
@@ -126,6 +136,36 @@ ruleTester.run('owlat/no-test-in-loop', rule, {
 			name: 'an extended test function called inside a loop',
 			filename,
 			code: `${imports}for (const n of ['a']) test.extend({})(n, () => {});`,
+			errors: [{ message: /Do not declare test\(…\)/ }],
+		},
+		{
+			name: 'a tagged-template it.each table inside a loop',
+			filename,
+			code: `${imports}for (const mode of ['a']) {\n\tit.each\`\n\t\ta | b\n\t\t\${1} | \${2}\n\t\`(mode + ' $a', () => {});\n}`,
+			errors: [{ message: /Do not declare it\(…\) inside a loop/ }],
+		},
+		{
+			name: 'a tagged-template describe.each table with a modifier inside a while loop',
+			filename,
+			code: `${imports}let i = 0;\nwhile (i++ < 2) describe.skip.each\`a\n\${1}\`('s', () => {});`,
+			errors: [{ message: /Do not declare describe\(…\)/ }],
+		},
+		{
+			name: 'a tagged-template test.for table inside a loop',
+			filename,
+			code: `${imports}for (const n of [1]) test.for\`a\n\${n}\`('t', () => {});`,
+			errors: 1,
+		},
+		{
+			name: 'a factory chained onto another factory',
+			filename,
+			code: `${imports}for (const n of [1]) it.skipIf(n > 1).each([n])('t %s', () => {});`,
+			errors: 1,
+		},
+		{
+			name: 'a modifier on an extended test function',
+			filename,
+			code: `${imports}for (const n of ['a']) test.extend({}).only(n, () => {});`,
 			errors: [{ message: /Do not declare test\(…\)/ }],
 		},
 		{

@@ -16,11 +16,15 @@ import type { Rule } from '../types.ts';
  * workspace with the same config, and its own `overrides` globs resolve against
  * whichever directory that is.
  *
- * A pragma only counts when it opens a comment line, the way vitest reads it;
- * prose that mentions the pragma mid-sentence is not one.
+ * The rule matches the source text exactly the way vitest does: vitest runs
+ * this pattern over a test file's raw text and takes the first match, whether
+ * it sits at the start of a comment, mid-sentence in prose or inside a string.
+ * Every match is reported, since removing an earlier one promotes the next.
+ * Prose that names the pragma has to break the pattern, for example by
+ * quoting it as `@vitest-environment` without a following word.
  */
 
-const PRAGMA = /^[\s*]*@(?:vitest|jest)-environment[ \t]+([^\s*]+)/mu;
+const PRAGMA = /@(?:vitest|jest)-environment\s+([\w-]+)\b/gu;
 
 interface Allowance {
 	environment: string;
@@ -95,11 +99,15 @@ const rule: Rule = {
 		);
 		return {
 			Program() {
-				for (const comment of context.sourceCode.getAllComments()) {
-					const environment = PRAGMA.exec(comment.value)?.[1];
-					if (environment === undefined || allowed.has(environment)) continue;
+				const { sourceCode } = context;
+				for (const match of sourceCode.text.matchAll(PRAGMA)) {
+					const environment = match[1] as string;
+					if (allowed.has(environment)) continue;
 					context.report({
-						loc: comment.loc,
+						loc: {
+							start: sourceCode.getLocFromIndex(match.index),
+							end: sourceCode.getLocFromIndex(match.index + match[0].length),
+						},
 						message: `Drop this \`@vitest-environment ${environment}\` pragma: the package's vitest config selects the test environment. A deliberate exception is listed under owlat/no-test-environment-pragma "allow" in oxlintrc.json.`,
 					});
 				}

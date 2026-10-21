@@ -2,15 +2,15 @@ import type { AstNode, Context, Rule, Scope } from '../types.ts';
 
 /**
  * Tests and suites are declared with `.each`, never inside a loop. A loop hides
- * the case list inside control flow, so vitest cannot report or filter the
- * cases as a table, and a title built in the loop body drifts silently when
- * the loop changes. `it.each(cases)(title, fn)` keeps every case named and
- * selectable with `-t`.
+ * the case list inside control flow and builds each title in the loop body,
+ * where it drifts silently when the loop changes. `it.each(cases)(title, fn)`
+ * keeps the cases as data under one title template, the form the rest of the
+ * suites already use.
  *
  * Only calls that resolve to vitest's own `it` / `test` / `describe` / `suite`
- * import count (with their `.only` / `.skip` / `.concurrent` / … modifiers and
- * the curried `.each(…)(…)` / `.for(…)(…)` / `.skipIf(…)(…)` / `.extend(…)(…)`
- * forms), so an
+ * import count (with their `.only` / `.skip` / `.concurrent` / … modifiers, the
+ * curried `.each(…)(…)` / `.for(…)(…)` / `.skipIf(…)(…)` / `.extend(…)(…)`
+ * forms and tagged-template `.each` tables, chained in any order), so an
  * unrelated function that happens to be called `test` is never flagged. A loop
  * inside a test body is fine: a function boundary between the call and the loop
  * ends the search.
@@ -85,32 +85,43 @@ const vitestImport = (context: Context, identifier: Node): string | undefined =>
 	return undefined;
 };
 
-/** `it`, `it.only`, `it.skip.concurrent`, `vitest.it`: the test function a chain names. */
-const testFunction = (context: Context, node: Node): string | undefined => {
-	let current = unwrap(node);
-	while (current?.type === 'MemberExpression') {
-		const name = propertyName(current);
-		if (name === undefined) return undefined;
-		if (TEST_FUNCTIONS.has(name) && vitestImport(context, unwrap(current.object)) === 'namespace') {
-			return name;
-		}
-		if (!MODIFIERS.has(name)) return undefined;
-		current = unwrap(current.object);
-	}
-	const imported = vitestImport(context, current);
-	return imported !== undefined && TEST_FUNCTIONS.has(imported) ? imported : undefined;
-};
-
-/** The test function a call declares through, if the call declares a test or suite. */
+/**
+ * The test function a declaration callee is built from, if it declares a test
+ * or suite. The callee is peeled from the outside in: modifiers (`.only`,
+ * `.skip.concurrent`), factory calls (`.each(cases)`, `.skipIf(cond)`,
+ * `.extend(fixtures)`) and tagged-template tables (`.each`/`.for` with a
+ * template table) in any order, down to the vitest import itself (`it`,
+ * `vitest.it`).
+ */
 const declaredThrough = (context: Context, callee: Node): string | undefined => {
-	const target = unwrap(callee);
-	if (target?.type !== 'CallExpression') return testFunction(context, target);
-	const factory = unwrap(target.callee);
-	const name = propertyName(factory);
-	if (factory?.type !== 'MemberExpression' || name === undefined || !CURRIED.has(name)) {
-		return undefined;
+	let current = unwrap(callee);
+	// `it.each(cases)` only builds the declaring function; the call it returns declares.
+	const outer = propertyName(current);
+	if (outer !== undefined && CURRIED.has(outer)) return undefined;
+	for (;;) {
+		if (current?.type === 'CallExpression' || current?.type === 'TaggedTemplateExpression') {
+			const factory = unwrap(current.type === 'CallExpression' ? current.callee : current.tag);
+			const name = propertyName(factory);
+			if (factory?.type !== 'MemberExpression' || name === undefined || !CURRIED.has(name)) {
+				return undefined;
+			}
+			current = unwrap(factory.object);
+		} else if (current?.type === 'MemberExpression') {
+			const name = propertyName(current);
+			if (name === undefined) return undefined;
+			if (
+				TEST_FUNCTIONS.has(name) &&
+				vitestImport(context, unwrap(current.object)) === 'namespace'
+			) {
+				return name;
+			}
+			if (!MODIFIERS.has(name)) return undefined;
+			current = unwrap(current.object);
+		} else {
+			const imported = vitestImport(context, current);
+			return imported !== undefined && TEST_FUNCTIONS.has(imported) ? imported : undefined;
+		}
 	}
-	return testFunction(context, factory.object);
 };
 
 const insideLoop = (node: AstNode): boolean => {

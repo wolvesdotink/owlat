@@ -24,10 +24,10 @@ describe('owlat lint ratchet lines', () => {
 	});
 
 	it('fold a multi-line span onto one line and bound its length', () => {
-		const source = Buffer.from(`/**\n * @vitest-environment node\n${'x'.repeat(400)} */`);
+		const source = Buffer.from(`/**\n * folded onto one line\n${'x'.repeat(400)} */`);
 		const line = findingLine(finding(0, source.length), source);
 		expect(line.split('\n')).toHaveLength(1);
-		expect(line.split('\t')[2]).toMatch(/^\/\*\* \* @vitest-environment node x+$/);
+		expect(line.split('\t')[2]).toMatch(/^\/\*\* \* folded onto one line x+$/);
 		expect(line.split('\t')[2]!.length).toBe(160);
 	});
 });

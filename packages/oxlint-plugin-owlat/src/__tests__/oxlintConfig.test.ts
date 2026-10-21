@@ -6,27 +6,15 @@
  * suite proves the config loads the plugin in both places, turns the rules on
  * as errors and makes a stale suppression fail.
  */
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../../../vitest.timeouts';
+import { type Diagnostic, lintFixtures } from './runOxlint.ts';
 
-const REPOSITORY_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
-const OXLINT_BIN = join(
-	dirname(createRequire(import.meta.url).resolve('oxlint/package.json')),
-	'bin/oxlint'
-);
-
-interface Diagnostic {
-	filename: string;
-	code?: string;
-	message: string;
-	severity: string;
-}
+// Vitest reads a pragma anywhere in this file's text, so the fixture builds it.
+const PRAGMA_TAG = '@vitest-environment';
 
 const FIXTURES: Record<string, string> = {
 	'clean.test.ts': [
@@ -48,7 +36,7 @@ const FIXTURES: Record<string, string> = {
 		'',
 	].join('\n'),
 	'pragma.test.ts': [
-		'// @vitest-environment node',
+		`// ${PRAGMA_TAG} node`,
 		"import { it } from 'vitest';",
 		"it('a', () => {});",
 		'',
@@ -82,27 +70,6 @@ afterAll(() => {
 	rmSync(fixtureDirectory, { recursive: true, force: true });
 });
 
-/** Lint the fixtures with the repository config, run from `cwd` (repo-relative). */
-function lintFrom(cwd: string): Map<string, Diagnostic[]> {
-	const directory = join(REPOSITORY_ROOT, cwd);
-	const config = relative(directory, join(REPOSITORY_ROOT, 'oxlintrc.json'));
-	const run = spawnSync(
-		process.execPath,
-		[OXLINT_BIN, '--config', config, '--format', 'json', fixtureDirectory],
-		{ cwd: directory, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
-	);
-	if (run.status !== 0 && run.status !== 1) {
-		throw new Error(`oxlint exited ${String(run.status)}: ${run.stderr}`);
-	}
-	const { diagnostics } = JSON.parse(run.stdout) as { diagnostics: Diagnostic[] };
-	const byFile = new Map<string, Diagnostic[]>();
-	for (const diagnostic of diagnostics) {
-		const name = diagnostic.filename.split(/[\\/]/).at(-1)!;
-		byFile.set(name, [...(byFile.get(name) ?? []), diagnostic]);
-	}
-	return byFile;
-}
-
 const errorCodes = (diagnostics: Diagnostic[] | undefined) =>
 	(diagnostics ?? []).filter((d) => d.severity === 'error').map((d) => d.code ?? d.message);
 
@@ -112,7 +79,7 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 	// One real oxlint process per directory, loading the plugin from source: a
 	// fixed start-up cost that grows with machine load, hence the shared budget.
 	beforeAll(() => {
-		byFile = lintFrom(cwd);
+		byFile = lintFixtures(fixtureDirectory, cwd);
 	}, PARALLEL_GATE_TIMEOUT_MS);
 
 	it('loads the plugin and reports a test declared in a loop', () => {
