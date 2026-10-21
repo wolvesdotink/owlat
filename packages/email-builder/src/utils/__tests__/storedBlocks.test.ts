@@ -92,6 +92,14 @@ describe('parseStoredBlocks', () => {
 		expect(nested?.id).toBe('block-2');
 	});
 
+	it('reads a Block whose type names an Object.prototype member as a leaf', () => {
+		const content = JSON.stringify([
+			{ type: 'text', content: { html: 'valid' } },
+			{ id: 'unknown', type: 'constructor', content: {} },
+		]);
+		expect(parseStoredBlocks(content).map((block) => block.id)).toEqual(['block-1', 'unknown']);
+	});
+
 	it('keeps repeated ids for the editor to renew when it loads them', () => {
 		const content = JSON.stringify([text('b1', 'one'), text('b1', 'two')]);
 		expect(parseStoredBlocks(content).map((b) => b.id)).toEqual(['b1', 'b1']);

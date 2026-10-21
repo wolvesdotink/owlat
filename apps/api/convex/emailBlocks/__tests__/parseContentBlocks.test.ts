@@ -67,6 +67,14 @@ describe('parseContentBlocks', () => {
 		expect(parseContentBlocks(content).map((block) => block.id)).toEqual(['b1', 'b1']);
 	});
 
+	it('keeps valid siblings of a Block whose type names an Object.prototype member', () => {
+		const content = JSON.stringify([
+			text('<p>valid</p>'),
+			{ id: 'unknown', type: 'constructor', content: {} },
+		]);
+		expect(parseContentBlocks(content).map((block) => block.id)).toEqual(['block-1', 'unknown']);
+	});
+
 	it('still reads anything else as no Blocks', () => {
 		expect(parseContentBlocks('not json')).toEqual([]);
 		expect(parseContentBlocks('{}')).toEqual([]);

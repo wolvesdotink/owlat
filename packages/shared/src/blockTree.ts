@@ -76,8 +76,16 @@ const CHILD_SLOTS: Readonly<Record<string, ChildSlot>> = {
 const isNode = (value: unknown): value is BlockTreeNode =>
 	isRecord(value) && typeof value['id'] === 'string' && typeof value['type'] === 'string';
 
+/**
+ * The child slot of a Block type; undefined for a leaf. Only the table's own
+ * keys count: a stored `type` such as `constructor` must not find an inherited
+ * `Object.prototype` member and be walked as a composite.
+ */
+const slotFor = (type: string): ChildSlot | undefined =>
+	Object.prototype.hasOwnProperty.call(CHILD_SLOTS, type) ? CHILD_SLOTS[type] : undefined;
+
 const slotOf = (node: BlockTreeNode): { slot: ChildSlot; content: Content } | null => {
-	const slot = CHILD_SLOTS[node.type];
+	const slot = slotFor(node.type);
 	return slot && isRecord(node.content) ? { slot, content: node.content } : null;
 };
 
@@ -167,7 +175,7 @@ function forEachTreeEntry(
 	for (const entry of entries) {
 		if (!isRecord(entry) || typeof entry['type'] !== 'string') continue;
 		onBlock(entry);
-		const slot = CHILD_SLOTS[entry['type']];
+		const slot = slotFor(entry['type']);
 		const content = entry['content'];
 		if (!slot || !isRecord(content)) continue;
 		for (const section of slot.entries?.(content) ?? []) onSection(section);
@@ -181,7 +189,12 @@ function forEachTreeEntry(
  * a second, so a Block without an id gets the same id whether or not repeated
  * ids are renewed (the editor and the server render then agree on it).
  */
-function repairTreeIds(roots: readonly unknown[], renewRepeated: boolean, write: boolean): boolean {
+function repairTreeIds(
+	roots: readonly unknown[],
+	renewRepeated: boolean,
+	write: boolean,
+	onRenewBlock?: (from: string, to: string) => void
+): boolean {
 	const taken = new Set<string>();
 	const collect = (entry: Content): void => {
 		if (usableId(entry['id'])) taken.add(entry['id']);
@@ -207,18 +220,22 @@ function repairTreeIds(roots: readonly unknown[], renewRepeated: boolean, write:
 	forEachTreeEntry(roots, fill('block'), fill('section'));
 	if (!renewRepeated || (repaired && !write)) return repaired;
 
-	const renew = (prefix: string) => {
+	const renew = (prefix: string, onRenew?: (from: string, to: string) => void) => {
 		const seen = new Set<string>();
 		return (entry: Content): void => {
 			const id = entry['id'];
 			if (usableId(id) && seen.has(id)) {
 				repaired = true;
-				if (write) entry['id'] = freshId(prefix);
+				if (write) {
+					const renewed = freshId(prefix);
+					entry['id'] = renewed;
+					onRenew?.(id, renewed);
+				}
 			}
 			if (usableId(entry['id'])) seen.add(entry['id']);
 		};
 	};
-	forEachTreeEntry(roots, renew('block'), renew('section'));
+	forEachTreeEntry(roots, renew('block', onRenewBlock), renew('section'));
 	return repaired;
 }
 
@@ -247,4 +264,24 @@ export function normalizeBlockTreeIds<T>(
 	const copy = JSON.parse(JSON.stringify(roots)) as T[];
 	repairTreeIds(copy, renewRepeated, true);
 	return copy;
+}
+
+/** A Block id `normalizeBlockTreeIds` renews: the repeat of `from` now has `to`. */
+export interface BlockIdRenewal {
+	from: string;
+	to: string;
+}
+
+/**
+ * The Block ids `normalizeBlockTreeIds(roots, { renewRepeated: true })` renews,
+ * in document order. The renewal is deterministic, so the server can tell from
+ * the stored document which ids the editor gave the repeats of an id, and copy
+ * each copy's translation overlay to its new id when the editor saves.
+ * Accordion section ids are not translation keys and are not listed.
+ */
+export function repeatedBlockIdRenewals(roots: readonly unknown[]): BlockIdRenewal[] {
+	const renewals: BlockIdRenewal[] = [];
+	const copy = JSON.parse(JSON.stringify(roots)) as unknown[];
+	repairTreeIds(copy, true, true, (from, to) => renewals.push({ from, to }));
+	return renewals;
 }

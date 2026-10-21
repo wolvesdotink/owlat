@@ -150,7 +150,9 @@ let lastEmittedBlocks: EditorBlock[] | null = null;
  * keys Blocks by id, so two with one id (a pasted, imported or hand-edited
  * document) sent it into a recursive update loop (#1430). The first
  * occurrence keeps its id; the repair is deterministic, so a host re-pushing
- * the same stored document still matches what the builder emitted.
+ * the same stored document still matches what the builder emitted, and the
+ * server can tell which id each copy got and carry its translation overlay
+ * over when the document is saved (`carryRenewedBlockOverlays`).
  */
 function canvasBlocksOf(blocks: readonly EditorBlock[]): EditorBlock[] {
 	return normalizeBlockTreeIds(blocks, { renewRepeated: true });

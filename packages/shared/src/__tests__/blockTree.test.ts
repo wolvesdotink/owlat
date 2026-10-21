@@ -7,6 +7,7 @@ import {
 	normalizeBlockTreeIds,
 	ownedEntries,
 	renewBlockTreeIds,
+	repeatedBlockIdRenewals,
 	type BlockTreeNode,
 } from '../blockTree';
 
@@ -302,5 +303,59 @@ describe('normalizeBlockTreeIds', () => {
 		const result = normalizeBlockTreeIds(roots);
 		expect(result.slice(0, 3)).toEqual([null, 'text', { id: 'no-type' }]);
 		expect((result[3] as Raw)['id']).toBe('block-1');
+	});
+
+	it('treats a type named like an Object.prototype member as a leaf', () => {
+		// `constructor` must not resolve to an inherited member and be walked as
+		// a composite: the walk threw, and a reader dropped every valid sibling.
+		const roots = [
+			text(),
+			raw('constructor', {}, 'unknown'),
+			raw('toString', { items: [text()] }),
+			raw('__proto__', {}, 'odd'),
+		];
+		const result = normalizeBlockTreeIds(roots) as Raw[];
+		expect(result.map((entry) => entry['id'])).toEqual(['block-1', 'unknown', 'block-2', 'odd']);
+		expect(childBlockLists(raw('constructor', {}, 'x') as unknown as BlockTreeNode)).toEqual([]);
+		expect(ownedEntries(raw('constructor', {}, 'x') as unknown as BlockTreeNode)).toEqual([]);
+	});
+});
+
+describe('repeatedBlockIdRenewals', () => {
+	const text = (id?: string) =>
+		id === undefined ? { type: 'text', content: {} } : { id, type: 'text', content: {} };
+
+	it('names the ids normalizeBlockTreeIds gives each repeated Block', () => {
+		const roots = [
+			text('a'),
+			{ id: 'box', type: 'container', content: { items: [text('a'), text()] } },
+			text('a'),
+			{
+				id: 'acc',
+				type: 'accordion',
+				content: {
+					sections: [
+						{ id: 's', items: [] },
+						{ id: 's', items: [] },
+					],
+				},
+			},
+		];
+		const renewals = repeatedBlockIdRenewals(roots);
+		const normalized = normalizeBlockTreeIds(roots, { renewRepeated: true }) as Array<
+			Record<string, unknown>
+		>;
+		const items = (normalized[1]!['content'] as { items: Array<{ id: string }> }).items;
+		// Section ids are not translation keys and are not listed.
+		expect(renewals).toEqual([
+			{ from: 'a', to: items[0]!.id },
+			{ from: 'a', to: normalized[2]!['id'] },
+		]);
+		expect(new Set(renewals.map((renewal) => renewal.to)).size).toBe(2);
+		expect(roots[0]).toEqual(text('a'));
+	});
+
+	it('is empty when no Block id repeats', () => {
+		expect(repeatedBlockIdRenewals([text('a'), text(), text('b')])).toEqual([]);
 	});
 });
