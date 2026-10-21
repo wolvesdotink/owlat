@@ -17,6 +17,8 @@
  *   - {@link enqueueSentInterpretation}: a send we made reached its recipient
  *     (Postbox transport `sent`, team Send finalized). Once per send: the
  *     caller only enqueues when its `reply_sent` activity was new.
+ *   - {@link enqueueClientSentInterpretation}: our reply sent from another
+ *     client, once its Sent copy is synced or APPENDed.
  *
  * The mode is the run's to derive (`resolveThreadMode`: shared-scope
  * mailboxes and Team Inbox threads run in `actions` mode), so none is passed.
@@ -33,6 +35,7 @@ import { markOutstanding } from './outstanding';
 import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import type { OutboundSource } from './sendFailure';
 import { scheduleArrivalRead } from '../arrival/dispatch';
+import { canonicalMessageId } from '../../lib/messageId';
 
 /**
  * The part of eligibility known at delivery: live mail outside spam, trash,
@@ -121,4 +124,79 @@ export async function enqueueSentInterpretation(
 	}
 	await ctx.scheduler.runAfter(0, internal.mail.interpret.outboundRun.interpretSent, { source });
 	await markBriefPending(ctx, ref);
+}
+
+/**
+ * A client files its Sent copy right after sending, or once an offline outbox
+ * drains. A copy dated further back is history (a migration, a folder dragged
+ * in, an import into the provider's Sent folder that sync sees as new mail),
+ * which is never read into the brief message by message.
+ */
+export const CLIENT_SENT_COPY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Interpretation of our own mail sent from another client, once its Sent copy
+ * lands: synced from the provider's Sent folder, or filed by a desktop client
+ * through IMAP APPEND. It is read like an Owlat send, so what the reply
+ * answered closes on the brief and leaves the Workbench's To do. Without it
+ * those items stay open until someone ticks them off by hand.
+ *
+ * The Sent folder is what makes it ours, as for history
+ * (`backfillSources.mailSourceOf`). Skipped:
+ *   - an Owlat send (`outbound` set): its transport lifecycle enqueues it once
+ *     it went out;
+ *   - a copy older than {@link CLIENT_SENT_COPY_MAX_AGE_MS};
+ *   - a message the mailbox already holds under the same Message-ID (a client
+ *     re-APPENDing, the Sent copy of an Owlat send, our own copy delivered to
+ *     the inbox). Interpretation is keyed by row, so a second row would be
+ *     read again; the first row was read, or deliberately not.
+ * Callers pass live copies only, never an auto-reply. Returns whether it was
+ * enqueued.
+ */
+export async function enqueueClientSentInterpretation(
+	ctx: MutationCtx,
+	messageId: Id<'mailMessages'>
+): Promise<boolean> {
+	const message = await ctx.db.get(messageId);
+	if (!message || message.flagDraft || message.outbound !== undefined) return false;
+	if (Date.now() - message.receivedAt > CLIENT_SENT_COPY_MAX_AGE_MS) return false;
+	const [folder, thread] = await Promise.all([
+		ctx.db.get(message.folderId),
+		ctx.db.get(message.threadId),
+	]);
+	if (folder?.role !== 'sent' || !thread) return false;
+	if (thread.mutedAt !== undefined || thread.isSelfDeliveredBrief) return false;
+	if (await isHeldElsewhere(ctx, message)) return false;
+	await enqueueSentInterpretation(
+		ctx,
+		{ kind: 'outboundMail', id: message._id },
+		{ kind: 'mail', id: thread._id }
+	);
+	return true;
+}
+
+/**
+ * Rows sharing one Message-ID read before giving up. Clients re-APPEND a draft
+ * on every autosave, and a draft may keep the Message-ID the sent copy gets.
+ */
+const SAME_MESSAGE_ID_SCAN = 100;
+
+/**
+ * Another non-draft row of the mailbox carries the same Message-ID. Drafts are
+ * skipped while reading, so retained autosaves cannot hide an earlier copy.
+ * Past {@link SAME_MESSAGE_ID_SCAN} rows it answers yes: not reading a copy
+ * costs one brief update, reading it twice costs a model call.
+ */
+async function isHeldElsewhere(ctx: MutationCtx, message: Doc<'mailMessages'>): Promise<boolean> {
+	const rfc822MessageId = canonicalMessageId(message.rfc822MessageId);
+	let read = 0;
+	for await (const row of ctx.db
+		.query('mailMessages')
+		.withIndex('by_mailbox_and_rfc822_message_id', (q) =>
+			q.eq('mailboxId', message.mailboxId).eq('rfc822MessageId', rfc822MessageId)
+		)) {
+		if (++read > SAME_MESSAGE_ID_SCAN) return true;
+		if (row._id !== message._id && !row.flagDraft) return true;
+	}
+	return false;
 }

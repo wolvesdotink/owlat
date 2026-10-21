@@ -25,6 +25,7 @@ import { buildSnippet } from '../deliveryPipeline/insert';
 import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { recordMessageCounters } from '../messageCounters';
 import { recordFolderMembership } from '../folderMembership';
+import { enqueueClientSentInterpretation } from '../interpret/enqueue';
 
 /**
  * Error string used by APPEND to signal a from-address violation. The
@@ -217,7 +218,10 @@ export const appendMessage = internalMutation({
 		// obsolete drafts, and records whom we wrote to (a new conversation too,
 		// #1381), as the same mail synced from a provider's Sent folder does.
 		const antiLoop = args.headerBlock ? extractAntiLoopHeaders(args.headerBlock) : undefined;
-		await settleOwnerReply(ctx, messageId, { isAutomated: isAutomatedResponse(antiLoop) });
+		const isAutomated = isAutomatedResponse(antiLoop);
+		await settleOwnerReply(ctx, messageId, { isAutomated });
+		// Read like an Owlat send, so the brief items it answered close.
+		if (!isAutomated) await enqueueClientSentInterpretation(ctx, messageId);
 
 		// E8b: the IMAP server uploads the raw `.eml` straight to storage
 		// (plaintext), so seal it at rest out-of-band — a mutation can't read/re-store
