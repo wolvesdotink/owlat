@@ -3,6 +3,7 @@ package com.owlat.sdk.internal;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.owlat.sdk.RequestOptions;
 import com.owlat.sdk.RetryConfig;
 import com.owlat.sdk.exception.*;
 import com.owlat.sdk.model.RateLimitInfo;
@@ -26,8 +27,9 @@ public class HttpClient {
     /**
      * HTTP methods safe to auto-retry on a transient 5xx or network failure.
      * Excludes {@code POST}: a transactional/event {@code POST} the server
-     * processed but whose response was lost must not be replayed (no
-     * server-side idempotency key), or the send would be duplicated. A 429 is
+     * processed but whose response was lost must not be replayed without an
+     * idempotency key, or the send would be duplicated. A keyed {@code POST} is
+     * replay-safe, since the server applies it at most once per key. A 429 is
      * retried regardless of method — it is a pre-processing rejection, so
      * replaying it cannot duplicate work.
      */
@@ -75,24 +77,47 @@ public class HttpClient {
     }
 
     public <T> T get(String path, TypeReference<T> typeRef) {
-        return request(HttpMethod.GET, path, null, typeRef);
+        return request(HttpMethod.GET, path, null, typeRef, null);
     }
 
     public <T> T post(String path, Object body, TypeReference<T> typeRef) {
-        return request(HttpMethod.POST, path, body, typeRef);
+        return request(HttpMethod.POST, path, body, typeRef, null);
+    }
+
+    /**
+     * A {@code POST} with per-call options. With an idempotency key the request
+     * carries an {@code Idempotency-Key} header and is retried like an
+     * idempotent method.
+     */
+    public <T> T post(String path, Object body, TypeReference<T> typeRef, RequestOptions options) {
+        return request(HttpMethod.POST, path, body, typeRef,
+                options != null ? options.getIdempotencyKey() : null);
     }
 
     public <T> T put(String path, Object body, TypeReference<T> typeRef) {
-        return request(HttpMethod.PUT, path, body, typeRef);
+        return request(HttpMethod.PUT, path, body, typeRef, null);
     }
 
     public <T> T delete(String path, TypeReference<T> typeRef) {
-        return request(HttpMethod.DELETE, path, null, typeRef);
+        return request(HttpMethod.DELETE, path, null, typeRef, null);
     }
 
-    private <T> T request(HttpMethod method, String path, Object body, TypeReference<T> typeRef) {
+    private <T> T request(HttpMethod method, String path, Object body, TypeReference<T> typeRef,
+                          String idempotencyKey) {
         String url = baseUrl + path;
         OwlatException lastError = null;
+        boolean replaySafe = IDEMPOTENT_METHODS.contains(method) || idempotencyKey != null;
+
+        // Serialized once: every attempt under one key must carry the same
+        // bytes, or the server would see a different request and refuse it.
+        String json;
+        try {
+            json = body != null ? mapper.writeValueAsString(body) : null;
+        } catch (IOException e) {
+            throw new OwlatException(
+                    "Failed to serialize request body: " + e.getMessage(),
+                    "invalid_input", 0, null, e);
+        }
 
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             try {
@@ -101,9 +126,11 @@ public class HttpClient {
                         .timeout(defaultTimeout)
                         .header("Authorization", "Bearer " + apiKey)
                         .header("Content-Type", "application/json");
+                if (idempotencyKey != null) {
+                    requestBuilder.header("Idempotency-Key", idempotencyKey);
+                }
 
-                if (body != null) {
-                    String json = mapper.writeValueAsString(body);
+                if (json != null) {
                     requestBuilder.method(method.name(), HttpRequest.BodyPublishers.ofString(json));
                 } else {
                     requestBuilder.method(method.name(), HttpRequest.BodyPublishers.noBody());
@@ -124,10 +151,11 @@ public class HttpClient {
                 if (response.statusCode() >= 400) {
                     int status = response.statusCode();
                     // 429 is a pre-processing rejection — always retryable, and
-                    // we honor Retry-After. 5xx is only replayed for idempotent
-                    // methods so a POST the server may have already applied is
-                    // never duplicated.
-                    if (attempt < maxRetries && isRetryable(method, status)) {
+                    // we honor Retry-After. 5xx is only replayed for replay-safe
+                    // requests so a POST the server may have already applied is
+                    // never duplicated without an idempotency key. A 409 is
+                    // never retried.
+                    if (attempt < maxRetries && isRetryable(replaySafe, status)) {
                         long delayMs;
                         if (status == 429) {
                             // Retry-After is in seconds; fall back to backoff.
@@ -173,10 +201,10 @@ public class HttpClient {
                 );
             }
 
-            // Network error / timeout: retry only for idempotent methods. A
-            // POST that timed out may have been processed server-side, so
-            // replaying it would duplicate the send.
-            if (attempt < maxRetries && IDEMPOTENT_METHODS.contains(method)) {
+            // Network error / timeout: retry only replay-safe requests. A POST
+            // that timed out may have been processed server-side, so replaying
+            // it without an idempotency key would duplicate the send.
+            if (attempt < maxRetries && replaySafe) {
                 sleep(backoffDelayMs(attempt));
                 continue;
             }
@@ -190,13 +218,13 @@ public class HttpClient {
                 : new OwlatException("Max retries exceeded", "retry_exhausted", 0, null);
     }
 
-    /** Whether a failed request may be retried for the given method + status. */
-    private boolean isRetryable(HttpMethod method, int status) {
+    /** Whether a failed request may be retried, given whether it is replay-safe. */
+    private boolean isRetryable(boolean replaySafe, int status) {
         if (status == 429) {
             return true;
         }
         if (status == 500 || status == 502 || status == 503 || status == 504) {
-            return IDEMPOTENT_METHODS.contains(method);
+            return replaySafe;
         }
         return false;
     }

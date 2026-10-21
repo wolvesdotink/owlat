@@ -61,10 +61,20 @@ Owlat owlat = new Owlat(
 
 Transient failures are retried automatically with exponential backoff. A `429`
 is always retried (honoring `Retry-After`); a `5xx`, network error, or timeout
-is only retried for idempotent methods (`GET`/`PUT`/`DELETE`) — a non-idempotent
-`POST` send is never replayed, since the server has no idempotency key and a
-retry could duplicate the send. Disable retries entirely with
-`RetryConfig.disabled()`:
+is retried for idempotent methods (`GET`/`PUT`/`DELETE`) and for a `POST` send
+made with an idempotency key. The server applies a keyed send at most once per
+key for 24 hours and answers a repeat with the first response; a send without a
+key is never replayed, since a retry could duplicate it. Reusing a key for a
+different request throws a `ConflictException` (409). Idempotency keys need an
+Owlat server released after 0.6.16.
+
+```java
+owlat.transactional().send(
+    SendTransactionalParams.builder("user@example.com").slug("order-confirmation").build(),
+    RequestOptions.idempotencyKey("order-" + orderId + "-confirmation"));
+```
+
+Disable retries entirely with `RetryConfig.disabled()`:
 
 ```java
 OwlatConfig.builder("lm_live_xxxxxxxx")
