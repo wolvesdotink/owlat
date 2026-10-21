@@ -4,9 +4,17 @@ import type { Comment, Rule } from '../types.ts';
  * Every lint or type-checker suppression says why, so a reader can tell a
  * deliberate exception from a silenced bug, and a stale one can be judged when
  * the code around it changes. The reason is either the ESLint-style `-- reason`
- * tail of a lint directive, text after a TypeScript directive, or an ordinary
- * comment directly above the directive (other directives and empty comment
- * lines in between are skipped, a blank source line is not).
+ * tail of a lint directive, text after a TypeScript directive (or, in a block
+ * comment, on its earlier lines), or an ordinary comment directly above the
+ * directive (other directives and empty comment lines in between are skipped,
+ * a blank source line is not).
+ *
+ * A TypeScript directive is recognized in exactly the comment forms the
+ * compiler honours, so no form TypeScript obeys can carry a silent
+ * suppression: `@ts-expect-error` / `@ts-ignore` at the start of a `//` or
+ * `///` comment or of a block comment's last line (after any `/` and `*`), even
+ * with letters glued to the name, and `@ts-nocheck` as a `//` or `///` pragma
+ * in any letter case.
  *
  * Generated files are exempt: their directives come from the generator, and the
  * fix belongs there. A file counts as generated when a comment in its header
@@ -16,7 +24,12 @@ import type { Comment, Rule } from '../types.ts';
  */
 
 const LINT_DIRECTIVE = /^[\s*]*(?:oxlint|eslint)-(?:disable|enable)(?:-next-line|-line)?(?![\w-])/u;
-const TS_DIRECTIVE = /^[\s*]*@ts-(?:expect-error|ignore|nocheck)(?![\w-])(.*)$/su;
+// The compiler's own patterns, applied to the comment value (TypeScript sees
+// the `//` or the block comment's last line, `/*` included).
+const TS_SUPPRESSION_LINE = /^\/?\s*@ts-(?:expect-error|ignore)(.*)$/su;
+const TS_SUPPRESSION_BLOCK_LAST_LINE = /^[/*]*\s*@ts-(?:expect-error|ignore)(.*)$/su;
+const TS_NOCHECK_LINE = /^\/?\s*@ts-nocheck((?:[^\S\r\n]|:).*)?$/iu;
+const LINE_BREAK = /\r\n|[\n\r\u2028\u2029]/u;
 const EMPTY_COMMENT = /^[\s*]*$/u;
 const GENERATED_MARKER =
 	/@generated\b|\bauto(?:matically)?[- ]generated\b|\bgenerated\b[^\n]*\bdo not (?:edit|modify)\b|\bdo not (?:edit|modify)\b[^\n]*\bgenerated\b/iu;
@@ -26,8 +39,30 @@ const LINT_MESSAGE =
 const TS_MESSAGE =
 	'Say why this TypeScript directive is needed: write the reason after it or in a comment on the line above.';
 
+/** Strips the separators a reason may open with, plus letters glued to the directive name. */
+const reasonText = (text: string, afterName: boolean) =>
+	(afterName ? text.replace(/^[\w-]*/u, '') : text).replace(/^[\s*:-]+/u, '').trim();
+
+/**
+ * The reason a TypeScript directive comment carries ('' for none), or
+ * undefined when TypeScript would not read the comment as a directive.
+ */
+function typeScriptDirectiveReason(comment: Comment): string | undefined {
+	if (comment.type === 'Line') {
+		const pragma = TS_NOCHECK_LINE.exec(comment.value);
+		if (pragma) return reasonText(pragma[1] ?? '', false);
+		const tail = TS_SUPPRESSION_LINE.exec(comment.value)?.[1];
+		return tail === undefined ? undefined : reasonText(tail, true);
+	}
+	const lines = comment.value.split(LINE_BREAK);
+	const tail = TS_SUPPRESSION_BLOCK_LAST_LINE.exec(lines.pop()!.trimStart())?.[1];
+	if (tail === undefined) return undefined;
+	const earlier = lines.map((line) => reasonText(line, false)).filter(Boolean);
+	return [...earlier, reasonText(tail, true)].join(' ').trim();
+}
+
 const isDirective = (comment: Comment) =>
-	LINT_DIRECTIVE.test(comment.value) || TS_DIRECTIVE.test(comment.value);
+	LINT_DIRECTIVE.test(comment.value) || typeScriptDirectiveReason(comment) !== undefined;
 
 const rule: Rule = {
 	meta: {
@@ -39,7 +74,7 @@ const rule: Rule = {
 	create(context) {
 		const { sourceCode } = context;
 		// Most files carry no directive at all; skip them before touching comments.
-		if (!/(?:lint-disable|@ts-(?:expect-error|ignore|nocheck))/u.test(sourceCode.text)) return {};
+		if (!/lint-disable|@ts-(?:expect-error|ignore|nocheck)/iu.test(sourceCode.text)) return {};
 		return {
 			Program() {
 				const comments = sourceCode.getAllComments();
@@ -72,9 +107,8 @@ const rule: Rule = {
 				}
 
 				for (const comment of comments) {
-					const tail = TS_DIRECTIVE.exec(comment.value)?.[1];
-					if (tail === undefined) continue;
-					if (tail.replace(/^[\s:-]+/u, '').trim()) continue;
+					const reason = typeScriptDirectiveReason(comment);
+					if (reason === undefined || reason) continue;
 					if (explainedAbove(comment)) continue;
 					context.report({ loc: comment.loc, message: TS_MESSAGE });
 				}

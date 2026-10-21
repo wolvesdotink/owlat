@@ -76,6 +76,19 @@ const FIXTURES: Record<string, string> = {
 		"\t'one';",
 		'',
 	].join('\n'),
+	// TypeScript obeys a `///` directive too, so the rule must see it there.
+	'tsTripleSlashUnexplained.ts': [
+		'export const count: number =',
+		'\t/// @ts-expect-error',
+		"\t'one';",
+		'',
+	].join('\n'),
+	'tsTripleSlashReason.ts': [
+		'export const count: number =',
+		'\t/// @ts-expect-error the string is the deliberate type error under test',
+		"\t'one';",
+		'',
+	].join('\n'),
 	'tsIgnore.ts': [
 		'// a reason does not make @ts-ignore acceptable',
 		'// @ts-ignore',
@@ -130,6 +143,13 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(errorCodes(byFile.get('tsUnexplained.ts'))).toEqual([
 			'owlat(require-suppression-reason)',
 		]);
+	});
+
+	it('reports an unexplained triple-slash TypeScript directive and accepts an explained one', () => {
+		expect(errorCodes(byFile.get('tsTripleSlashUnexplained.ts'))).toEqual([
+			'owlat(require-suppression-reason)',
+		]);
+		expect(byFile.get('tsTripleSlashReason.ts')).toBeUndefined();
 	});
 
 	it('keeps @ts-ignore banned even with a reason', () => {

@@ -30,6 +30,34 @@ ruleTester.run('owlat/require-suppression-reason', rule, {
 			name: 'a TypeScript directive whose reason follows a colon',
 			code: '// @ts-ignore: the vendored typings miss this overload\nconst count: number = "text";',
 		},
+		{
+			name: 'a triple-slash TypeScript directive followed by its reason',
+			code: '/// @ts-expect-error the fixture passes a string on purpose\nconst count: number = "text";',
+		},
+		{
+			name: 'a block-comment directive on its last line, explained on an earlier line',
+			code: '/**\n * The fixture passes a string on purpose.\n * @ts-expect-error */\nconst count: number = "text";',
+		},
+		{
+			name: 'a directive word TypeScript ignores: four slashes',
+			code: '//// @ts-expect-error\nconst count: number = "text";',
+		},
+		{
+			name: 'a directive word TypeScript ignores: not on the last line of a block comment',
+			code: '/* @ts-expect-error\n */\nconst count: number = "text";',
+		},
+		{
+			name: 'a directive word TypeScript ignores: behind a star in a line comment',
+			code: '// * @ts-ignore\nconst count: number = "text";',
+		},
+		{
+			name: 'a directive word TypeScript ignores: @ts-nocheck in a block comment',
+			code: '/* @ts-nocheck */\nexport const a = 1;',
+		},
+		{
+			name: 'a directive word TypeScript ignores: @ts-nocheck with letters glued on',
+			code: '// @ts-nocheckout\nexport const a = 1;',
+		},
 		{ name: 'enable directives', code: '/* oxlint-enable no-console */' },
 		{
 			name: 'prose that mentions a directive mid-sentence',
@@ -66,8 +94,43 @@ ruleTester.run('owlat/require-suppression-reason', rule, {
 			errors: [{ message: TS }],
 		},
 		{
-			name: 'a @ts-nocheck block comment without a reason',
-			code: '/* @ts-nocheck */\nexport const a = 1;',
+			name: 'a triple-slash TypeScript directive without a reason',
+			code: '/// @ts-expect-error\nconst count: number = "text";',
+			errors: [{ message: TS }],
+		},
+		{
+			name: 'a triple-slash directive with no space before the tag',
+			code: '///@ts-ignore\nconst count: number = "text";',
+			errors: [{ message: TS }],
+		},
+		{
+			name: 'a directive name with letters glued on (TypeScript still obeys it)',
+			code: '// @ts-expect-errors\nconst count: number = "text";',
+			errors: [{ message: TS }],
+		},
+		{
+			name: 'a JSDoc-style block directive without a reason',
+			code: '/** @ts-expect-error **/\nconst count: number = "text";',
+			errors: [{ message: TS }],
+		},
+		{
+			name: 'a block-comment directive on its last line with only stars above',
+			code: '/*\n *\n * @ts-ignore */\nconst count: number = "text";',
+			errors: [{ message: TS }],
+		},
+		{
+			name: 'a @ts-nocheck pragma without a reason',
+			code: '// @ts-nocheck\nexport const a = 1;',
+			errors: [{ message: TS }],
+		},
+		{
+			name: 'a triple-slash @ts-nocheck pragma in upper case',
+			code: '/// @TS-NOCHECK\nexport const a = 1;',
+			errors: [{ message: TS }],
+		},
+		{
+			name: 'a @ts-nocheck pragma with only a colon after it',
+			code: '// @ts-nocheck:\nexport const a = 1;',
 			errors: [{ message: TS }],
 		},
 		{
