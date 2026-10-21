@@ -50,7 +50,19 @@
 			}
 		],
 		"@typescript-eslint/no-explicit-any": "error",
-		"@typescript-eslint/ban-ts-comment": "error",
+		// @ts-ignore and @ts-nocheck stay banned outright. @ts-expect-error is allowed
+		// here because owlat/require-suppression-reason checks its reason, which may
+		// sit after the directive or in a comment on the line above; the built-in
+		// rule only accepts the inline form.
+		"@typescript-eslint/ban-ts-comment": [
+			"error",
+			{
+				"ts-expect-error": false,
+				"ts-ignore": true,
+				"ts-nocheck": true,
+				"ts-check": false
+			}
+		],
 		"@typescript-eslint/no-non-null-asserted-optional-chain": "error",
 		"@typescript-eslint/prefer-optional-chain": "error",
 		"no-unsafe-optional-chaining": "error",

@@ -55,6 +55,33 @@ const FIXTURES: Record<string, string> = {
 		'}',
 		'',
 	].join('\n'),
+	// The reason may sit on the line above a TypeScript directive, so the
+	// built-in ban-ts-comment must not insist on an inline description too.
+	'tsReasonAbove.ts': [
+		'export const count: number =',
+		'\t// the string is the deliberate type error under test',
+		'\t// @ts-expect-error',
+		"\t'one';",
+		'',
+	].join('\n'),
+	'tsReasonInline.ts': [
+		'export const count: number =',
+		'\t// @ts-expect-error the string is the deliberate type error under test',
+		"\t'one';",
+		'',
+	].join('\n'),
+	'tsUnexplained.ts': [
+		'export const count: number =',
+		'\t// @ts-expect-error',
+		"\t'one';",
+		'',
+	].join('\n'),
+	'tsIgnore.ts': [
+		'// a reason does not make @ts-ignore acceptable',
+		'// @ts-ignore',
+		"export const count: number = 'one';",
+		'',
+	].join('\n'),
 };
 
 let fixtureDirectory: string;
@@ -92,6 +119,21 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 
 	it('reports a suppression that does not say why', () => {
 		expect(errorCodes(byFile.get('unexplained.ts'))).toEqual(['owlat(require-suppression-reason)']);
+	});
+
+	it('accepts a TypeScript directive explained above it or inline', () => {
+		expect(byFile.get('tsReasonAbove.ts')).toBeUndefined();
+		expect(byFile.get('tsReasonInline.ts')).toBeUndefined();
+	});
+
+	it('reports an unexplained TypeScript directive once, through the owlat rule', () => {
+		expect(errorCodes(byFile.get('tsUnexplained.ts'))).toEqual([
+			'owlat(require-suppression-reason)',
+		]);
+	});
+
+	it('keeps @ts-ignore banned even with a reason', () => {
+		expect(errorCodes(byFile.get('tsIgnore.ts'))).toEqual(['typescript(ban-ts-comment)']);
 	});
 
 	it('fails a suppression that no longer suppresses anything', () => {
