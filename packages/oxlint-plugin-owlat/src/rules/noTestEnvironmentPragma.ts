@@ -31,6 +31,7 @@ interface Options {
 	allow?: Allowance[];
 }
 
+const REGEXP_SYNTAX = /[.+^${}()|[\]\\]/gu;
 const compiled = new Map<string, RegExp>();
 
 const globToRegExp = (glob: string): RegExp => {
@@ -48,7 +49,7 @@ const globToRegExp = (glob: string): RegExp => {
 		} else if (char === '?') {
 			pattern += '[^/]';
 		} else {
-			pattern += char.replace(/[.+^${}()|[\]\\]/gu, '\\$&');
+			pattern += char.replace(REGEXP_SYNTAX, '\\$&');
 		}
 	}
 	const regExp = new RegExp(`(?:^|/)${pattern}$`, 'u');
