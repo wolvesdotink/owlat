@@ -4,6 +4,7 @@ import { useSectionNavigation } from '~/composables/useSectionNavigation';
 import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
 import { shellPageBoundaryKey } from '~/lib/pageBoundary';
+import AppErrorBoundary from '~/components/AppErrorBoundary.vue';
 import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
 import { useMountOnFirst } from '~/composables/useMountOnFirst';
 import { usePerfMark } from '~/composables/usePerfMark';
@@ -68,7 +69,9 @@ function onToggleCollapse() {
 const showSectionNavigation = computed(() => !!activeSection.value && !showAppNavigation.value);
 const sectionNavigationTarget = ref<HTMLElement | null>(null);
 provide('section-navigation-target', sectionNavigationTarget);
-provide(shellPageBoundaryKey, true);
+// Handed down from this lazy layout chunk to keep the boundary out of the
+// entry bundle (see shellPageBoundaryKey).
+provide(shellPageBoundaryKey, AppErrorBoundary);
 
 // Settings' Back returns to the last page of real work, however many settings
 // pages were visited in between.

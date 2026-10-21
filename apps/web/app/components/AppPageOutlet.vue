@@ -14,15 +14,16 @@ import { shellPageBoundaryKey } from '~/lib/pageBoundary';
 
 defineOptions({ inheritAttrs: false });
 
-const inShell = inject(shellPageBoundaryKey, false);
+// Under the dashboard shell only; see shellPageBoundaryKey for why it is injected.
+const boundary = inject(shellPageBoundaryKey, null);
 </script>
 
 <template>
 	<NuxtPage v-bind="$attrs">
 		<template #default="{ Component }">
-			<AppErrorBoundary v-if="inShell" surface="page">
+			<component :is="boundary" v-if="boundary" surface="page">
 				<component :is="Component" />
-			</AppErrorBoundary>
+			</component>
 			<component :is="Component" v-else />
 		</template>
 	</NuxtPage>
