@@ -40,7 +40,21 @@ import { utf8Bytes } from '../lib/bytes';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
 import type { DispatchRejectionReason } from './dispatch';
-import { prepareAttachments, uploadAndDispatch, type AttachmentInput } from './attachmentIntake';
+import {
+	prepareAttachments,
+	uploadAndDispatch,
+	type AttachmentInput,
+	type PreparedAttachment,
+} from './attachmentIntake';
+import {
+	IDEMPOTENCY_CONFLICT_MESSAGE,
+	idempotencyConflictResponse,
+	readIdempotencyKey,
+	replayHeaders,
+	resolveIdempotency,
+	sha256HexOfBytes,
+	storedTransactionalResponse,
+} from '../auth/apiRequestReceipts';
 
 // ============================================================
 // HTTP request / response types
@@ -215,7 +229,58 @@ const REJECTION_RESPONSE_MAP: Record<
 		category: 'invalid_input',
 		defaultMessage: 'Invalid data variables',
 	},
+	idempotency_conflict: {
+		category: 'conflict',
+		defaultMessage: IDEMPOTENCY_CONFLICT_MESSAGE,
+	},
 };
+
+// ============================================================
+// Idempotency
+// ============================================================
+
+/**
+ * The request as an Idempotency-Key fingerprint sees it: every field that
+ * shapes the send, absent and `null` alike, with attachment bytes as their
+ * digest (the base64 spelling of the same bytes does not matter).
+ */
+async function fingerprintInput(
+	body: SendTransactionalBody,
+	attachments: readonly PreparedAttachment[]
+): Promise<unknown> {
+	return {
+		transactionalId: body.transactionalId ?? null,
+		slug: body.slug ?? null,
+		email: body.email,
+		dataVariables: body.dataVariables ?? null,
+		language: body.language ?? null,
+		attachments: await Promise.all(
+			attachments.map(async (att) => ({
+				filename: att.filename,
+				contentType: att.contentType ?? null,
+				...('url' in att ? { url: att.url } : { sha256: await sha256HexOfBytes(att.bytes) }),
+			}))
+		),
+	};
+}
+
+/** The 202 body. Request echoes come from the request, which a replay repeats exactly. */
+function queuedResponse(
+	body: SendTransactionalBody,
+	outcome: { sendId: string; contactId: string; contactCreated: boolean; language: string },
+	replayed: boolean | undefined
+): Response {
+	const response: SendTransactionalResponse = {
+		status: 'queued',
+		email: body.email,
+		transactionalEmailId: outcome.sendId,
+		slug: body.slug ?? '',
+		contactId: outcome.contactId,
+		contactCreated: outcome.contactCreated,
+		language: outcome.language,
+	};
+	return jsonResponse({ data: response }, 202, replayHeaders(replayed));
+}
 
 // ============================================================
 // HTTP route handler
@@ -236,6 +301,8 @@ export const sendTransactional = createAuthenticatedHandler(
 				data: { reason: 'feature_disabled' },
 			});
 		}
+		const idempotencyKey = readIdempotencyKey(request);
+		if (!idempotencyKey.ok) return errorResponse('invalid_input', idempotencyKey.message);
 		// Parse body.
 		let body: SendTransactionalBody;
 		try {
@@ -251,6 +318,23 @@ export const sendTransactional = createAuthenticatedHandler(
 		// Every attachment is checked and decoded before any byte is stored.
 		const preparedAttachments = prepareAttachments(body.attachments);
 		if (!preparedAttachments.ok) return preparedAttachments.response;
+		const prepared = preparedAttachments.prepared;
+
+		const idempotency = await resolveIdempotency(ctx, idempotencyKey.key, 'transactional', () =>
+			fingerprintInput(body, prepared)
+		);
+		// A repeat is answered before its attachments are stored again; dispatch
+		// repeats this lookup in its own transaction and has the last word.
+		if (idempotency) {
+			const lookup = await ctx.runQuery(internal.auth.apiRequestReceipts.peekReceipt, {
+				endpoint: 'transactional',
+				idempotency,
+			});
+			if (lookup.kind === 'conflict') return idempotencyConflictResponse();
+			if (lookup.kind === 'replay') {
+				return queuedResponse(body, storedTransactionalResponse(lookup.receipt), true);
+			}
+		}
 
 		// Build the templateLookup discriminator.
 		const templateLookup = body.transactionalId
@@ -260,11 +344,12 @@ export const sendTransactional = createAuthenticatedHandler(
 				}
 			: { kind: 'slug' as const, slug: body.slug! };
 
-		const intake = await uploadAndDispatch(ctx, preparedAttachments.prepared, {
+		const intake = await uploadAndDispatch(ctx, prepared, {
 			templateLookup,
 			email: normalizeEmail(body.email),
 			dataVariables: body.dataVariables,
 			language: body.language,
+			...(idempotency ? { idempotency } : {}),
 		});
 		if (!intake.ok) return intake.response;
 		const outcome = intake.outcome;
@@ -275,16 +360,7 @@ export const sendTransactional = createAuthenticatedHandler(
 			});
 		}
 
-		const response: SendTransactionalResponse = {
-			status: 'queued',
-			email: body.email,
-			transactionalEmailId: outcome.sendId,
-			slug: body.slug ?? '',
-			contactId: outcome.contactId,
-			contactCreated: outcome.contactCreated,
-			language: outcome.language,
-		};
-		return jsonResponse({ data: response }, 202);
+		return queuedResponse(body, outcome, outcome.replayed);
 	},
 	{ maxBodyBytes: TRANSACTIONAL_MAX_BODY_BYTES }
 );

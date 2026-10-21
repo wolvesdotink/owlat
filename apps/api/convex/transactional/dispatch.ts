@@ -34,6 +34,13 @@ import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
 import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featureFlags';
 import { claimPendingUploads } from './pendingUploads';
+import {
+	IDEMPOTENCY_CONFLICT_MESSAGE,
+	idempotencyArgValidator,
+	lookupReceipt,
+	storedTransactionalResponse,
+	writeReceipt,
+} from '../auth/apiRequestReceipts';
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 import {
 	validateDataVariables,
@@ -61,7 +68,8 @@ export type DispatchRejectionReason =
 	| 'template_not_published'
 	| 'template_no_content'
 	| 'domain_unverified'
-	| 'invalid_variables';
+	| 'invalid_variables'
+	| 'idempotency_conflict';
 
 export type DispatchOutcome =
 	| {
@@ -71,6 +79,8 @@ export type DispatchOutcome =
 			contactCreated: boolean;
 			language: string;
 			queued: true;
+			/** Answered from the Idempotency-Key's receipt: nothing was sent this time. */
+			replayed?: true;
 	  }
 	| {
 			ok: false;
@@ -112,8 +122,33 @@ export const dispatch = internalMutation({
 		// Every `storageId` must be a pending upload the caller registered
 		// (`transactional/pendingUploads.ts`); this transaction always claims it.
 		attachmentRefs: v.optional(v.array(attachmentRefValidator)),
+		// The caller's Idempotency-Key (`auth/apiRequestReceipts.ts`): a repeat
+		// of a committed request returns its outcome and sends nothing.
+		idempotency: v.optional(idempotencyArgValidator),
 	},
 	handler: async (ctx, args): Promise<DispatchOutcome> => {
+		// 0. Idempotency, before any gate: a request that already committed is
+		//    answered from its receipt, and that answer names its original Send.
+		//    The request's own uploads stay pending for the shell to release.
+		if (args.idempotency) {
+			const lookup = await lookupReceipt(ctx, 'transactional', args.idempotency);
+			if (lookup.kind === 'conflict') {
+				return {
+					ok: false,
+					reason: 'idempotency_conflict',
+					detail: IDEMPOTENCY_CONFLICT_MESSAGE,
+				};
+			}
+			if (lookup.kind === 'replay') {
+				return {
+					ok: true,
+					...storedTransactionalResponse(lookup.receipt),
+					queued: true,
+					replayed: true,
+				};
+			}
+		}
+
 		// 1. The shared pre-row gate sequence: abuse → provider-ready →
 		//    suppression, owned by `delivery/sendIntakeGates.ts` (pre-deepening
 		//    the abuse check lived as `isSendingAllowed` on the HTTP shell against
@@ -416,11 +451,22 @@ export const dispatch = internalMutation({
 			}
 		);
 
+		const contactCreated = resolved.action === 'created';
+		if (args.idempotency) {
+			await writeReceipt(ctx, args.idempotency, {
+				endpoint: 'transactional',
+				contactId: resolved.contactId,
+				contactCreated,
+				sendId,
+				language: resolvedLanguage,
+			});
+		}
+
 		return {
 			ok: true,
 			sendId,
 			contactId: resolved.contactId,
-			contactCreated: resolved.action === 'created',
+			contactCreated,
 			language: resolvedLanguage,
 			queued: true,
 		};

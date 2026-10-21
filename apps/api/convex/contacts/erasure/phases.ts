@@ -340,6 +340,12 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 			.withIndex('by_scope', (q) => q.eq('scopeType', 'contact').eq('scopeId', contactId))
 			.take(n)
 	),
+	apiRequestReceipts: deleteByIndex(({ ctx, contactId }, n) =>
+		ctx.db
+			.query('apiRequestReceipts')
+			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+			.take(n)
+	),
 };
 
 export const FIRST_ERASURE_PHASE: ContactErasurePhase = CONTACT_ERASURE_PHASES[0];

@@ -124,6 +124,12 @@ export const CONTACT_RELATIONS: readonly ErasureRelation[] = [
 		why: 'Kept for delivery statistics, but soft-deleted and scrubbed of the address and the request-supplied template variables.',
 	},
 	{
+		table: 'apiRequestReceipts',
+		field: 'contactId',
+		action: 'delete',
+		why: 'An Idempotency-Key receipt names the person, and its caller-chosen key can carry their details. It only answers a repeat of the request for 24 hours.',
+	},
+	{
 		table: 'sendCompletionFailures',
 		field: 'contactId',
 		action: 'delete',
