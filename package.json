@@ -181,7 +181,6 @@
 		"groupmq@1.1.0": "patches/groupmq@1.1.0.patch"
 	},
 	"trustedDependencies": [
-		"@owlat/ui",
-		"better-sqlite3"
+		"@owlat/ui"
 	]
 }
