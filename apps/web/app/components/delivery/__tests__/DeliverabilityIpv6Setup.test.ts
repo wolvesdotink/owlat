@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DeliverabilityIpv6Setup from '../DeliverabilityIpv6Setup.vue';

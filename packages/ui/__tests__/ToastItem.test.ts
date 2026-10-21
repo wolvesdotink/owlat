@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE CARD NAMES WHAT WAS PRESSED, NOT WHAT HAPPENS NEXT (#1442).
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Credentials go through the SEALED path and never come back out (P2-4, D4).
  *

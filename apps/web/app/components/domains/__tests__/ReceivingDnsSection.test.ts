@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * ReceivingDnsSection — the inbound (MX) guidance panel on the Sending Domains
  * page. Verifies the section renders the MX record guidance in BOTH the

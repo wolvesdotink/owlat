@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * DashboardCardSkeleton / DashboardCardPlaceholder — the content-shaped first
  * load that replaced the dashboard's spinner-collapse (UX piece T9).

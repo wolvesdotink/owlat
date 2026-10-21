@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Windowing a list against a scroller it does not own (the Today column, the
  * page itself): the offset of the list inside that scroller, the scroller

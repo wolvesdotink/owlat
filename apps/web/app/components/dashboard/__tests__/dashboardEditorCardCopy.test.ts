@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE DASHBOARD EDITOR NAMES CARDS FROM THE CATALOG, NOT FROM THE WIRE.
  *

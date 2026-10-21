@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The add-contact modal's language picker.
  *

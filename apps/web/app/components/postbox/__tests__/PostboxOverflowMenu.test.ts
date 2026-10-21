@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxOverflowMenu behavior:
  *   - the trigger is an aria-labeled button that reports its expanded state

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxScheduleDialog (plan idea 9) — the rendering half of the timezone-aware
  * presets. The preset MATH is covered by `postboxSchedulePresets.test.ts`; what

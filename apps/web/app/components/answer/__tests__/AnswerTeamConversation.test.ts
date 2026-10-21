@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Answer mode's Team inbox conversation column, for a message whose body is
  * too large for its row (#912): the query hands back only its excerpt and the

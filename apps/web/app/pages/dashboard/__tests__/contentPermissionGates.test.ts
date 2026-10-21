@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The content domains are admin-only WRITES over member-readable lists.
  *

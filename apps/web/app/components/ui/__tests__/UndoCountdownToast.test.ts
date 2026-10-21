@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The countdown toast behind every undo window (mail send, campaign send,
  * review approve). It owns the parts the three toasts used to copy and let

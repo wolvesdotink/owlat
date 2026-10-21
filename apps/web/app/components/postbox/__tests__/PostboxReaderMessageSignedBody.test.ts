@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A clearsigned text body shows its signed block alone, and the signature
  * verdict stands only beside that block (issue #1311):

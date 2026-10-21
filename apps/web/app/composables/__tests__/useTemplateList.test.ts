@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `useTemplateList` is what the marketing and transactional pages share on top
  * of `useListPage`: the query is built from the list's search and sort, a row

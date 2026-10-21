@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * /welcome stamps `welcomedAt` on mount. Once that has committed it also
  * remembers the member as welcomed on this device, through the same cache the

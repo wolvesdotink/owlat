@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Guided empty state for the All-activity feed:
  *   - always renders the "channel connected" explanation (every role)

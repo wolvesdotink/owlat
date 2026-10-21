@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * An assistant answer that stopped at its output ceiling finishes with status
  * `error` and keeps its text (ledger lane). It reads as the answer with a

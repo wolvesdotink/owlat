@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * RecordRow identity + MAIL FROM label — piece B1 of the DNS Setup Revamp.
  *

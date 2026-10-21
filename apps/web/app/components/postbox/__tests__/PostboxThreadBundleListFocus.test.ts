@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The bundled feed's focus ring: the keyboard walks every visible message (a
  * plain row, or a row inside an expanded bundle) as one flat list, and exactly

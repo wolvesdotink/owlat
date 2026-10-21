@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The contact page's channel timeline and a large Team Inbox email (#900):
  * such a message is mirrored as its excerpt, so the row says it is shortened

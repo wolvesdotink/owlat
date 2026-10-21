@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * One banner slot, priority-ordered.
  *

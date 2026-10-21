@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The workspace-removal dialog on Preferences → This device, when the removal
  * rejects part-way (the offline cache, keychain access or the store save).

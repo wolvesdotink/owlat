@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Answer mode's frame: the top bar, the three layouts, the phone tabs and the
  * reply sheet.

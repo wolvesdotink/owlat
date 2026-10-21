@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Hard test gate for piece X2 — the tracking-domain guided picker.
  *

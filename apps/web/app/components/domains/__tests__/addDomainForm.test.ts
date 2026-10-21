@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Guided Add-Domain form — piece C2 of the DNS Setup Revamp.
  *

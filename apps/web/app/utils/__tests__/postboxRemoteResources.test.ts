@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Remote-resource consent over the real sanitizer output. Each bypass from
  * issue #1327 (CSS backgrounds, a srcset with no src, a data: src with a remote

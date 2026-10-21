@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import DmarcReadinessPanel from '../DmarcReadinessPanel.vue';

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The list's side of Answer mode:
  *   - r / a / f on a row open Answer mode on that row's message (no kind for

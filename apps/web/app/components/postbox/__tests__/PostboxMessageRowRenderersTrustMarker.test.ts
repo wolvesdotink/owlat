@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Every inbox renderer that lists MESSAGES marks an impersonating sender.
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Yahoo CFL guided-enrollment panel (P4-6) — real mounts.
  *

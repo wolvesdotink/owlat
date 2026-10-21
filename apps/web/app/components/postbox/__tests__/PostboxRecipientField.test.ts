@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxRecipientField behavior:
  *   - Backspace on an empty field pops the LAST chip back into the input as

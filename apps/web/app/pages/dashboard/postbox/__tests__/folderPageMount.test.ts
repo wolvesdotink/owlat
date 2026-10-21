@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The folder list and the open message are one page with one constant key, so
  * PostboxLayout (rail, list, reader, their subscriptions, loaded pages, scroll

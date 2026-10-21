@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE TRANSPORT EDITOR'S ONE DANGEROUS CHANGE.
  *

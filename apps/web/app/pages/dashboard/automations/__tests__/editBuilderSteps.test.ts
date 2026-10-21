@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The automation builder has to show the steps it is building.
  *

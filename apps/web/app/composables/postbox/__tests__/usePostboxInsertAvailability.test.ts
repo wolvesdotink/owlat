@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Insert availability" (composables/postbox/usePostboxInsertAvailability):
  *   - inserts the open times and the booking link after what was written,

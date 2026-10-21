@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Undo toasts (read on arrival §4.4): the toast says what happened and offers
  * Undo; the result says honestly what did not come back (a reply reminder an

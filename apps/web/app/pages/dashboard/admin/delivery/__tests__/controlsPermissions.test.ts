@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * WHO GETS A HAND ON THE RAMP — and where that is decided.
  *

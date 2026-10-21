@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The offline app shell service worker (apps/web/service-worker/sw.js).
  *

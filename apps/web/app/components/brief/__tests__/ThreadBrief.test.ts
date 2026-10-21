@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The thread brief (SPEC §7, plan §4.1, §5, §8):
  *   - the blocks in order, every line with a source marker that names whose

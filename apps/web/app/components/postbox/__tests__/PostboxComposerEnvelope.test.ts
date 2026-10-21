@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The composer's From-picker grouping AND its live authenticity surface:
  *   - a single mailbox with only aliases (no personal send-as) renders FLAT

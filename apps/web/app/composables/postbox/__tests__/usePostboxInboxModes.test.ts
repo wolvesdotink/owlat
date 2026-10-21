@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The inbox's Today ↔ Browse mode keys, driven by real window events.
  *

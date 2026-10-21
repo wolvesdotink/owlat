@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * UiModal is the shared dialog primitive that hand-rolled `fixed inset-0`
  * overlays are being consolidated onto (e.g. FileUploadModal, which previously

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * ⌘J opens the Assistant for every member — but only while the feature is on.
  * The chord used to navigate unconditionally, so on an instance without the

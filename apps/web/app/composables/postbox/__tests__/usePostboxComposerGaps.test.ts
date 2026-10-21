@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * An AI draft's `[[...]]` gaps (composables/postbox/usePostboxComposerGaps):
  *   - counted in what was written only (a quoted `[[...]]` is someone else's);

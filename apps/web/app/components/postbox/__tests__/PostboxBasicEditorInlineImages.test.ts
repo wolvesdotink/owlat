@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * #1285: an image pasted into a draft's body, once the draft is reopened.
  *

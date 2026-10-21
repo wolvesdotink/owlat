@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Send-only sending domains — "keep my current provider for receiving".
  *

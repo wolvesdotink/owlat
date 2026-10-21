@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Draft with AI" on a team thread needs the `ai` flag and the team inbox,
  * nothing else: a team-only instance (no Postbox, no external mail) has it.

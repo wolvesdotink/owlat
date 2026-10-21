@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Files page pages on for as long as the read says there is more.
  *

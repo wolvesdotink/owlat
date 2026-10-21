@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Plan 3.3: a long conversation reads in pages. The newest messages come with
  * their bodies, older ones render as collapsed envelopes that load their body

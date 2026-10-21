@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxMessageDetails — the disclosure that makes the sender badge falsifiable
  * (UX plan idea 52), mounted against the REAL message catalog.

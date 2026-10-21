@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * ACCESSIBILITY PASS ACROSS THE FOUR SURFACES POSTBOX IS MADE OF.
  *

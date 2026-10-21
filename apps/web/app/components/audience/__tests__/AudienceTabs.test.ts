@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Audience is one section with tabs (#787): the old overview's stat tiles
  * became the tab counts, and topics/segments stay admin-only as in the sidebar.

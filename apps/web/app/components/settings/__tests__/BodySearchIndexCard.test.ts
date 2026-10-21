@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The deep body search card's progress strip for existing mail.
  *

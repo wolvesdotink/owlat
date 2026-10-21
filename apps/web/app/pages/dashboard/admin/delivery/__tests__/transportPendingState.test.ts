@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE TRANSPORT PAGE'S THREE PENDING STATES (UX plan item 55 / admin-delivery-06).
  *

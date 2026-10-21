@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The sidebar's inbox groups re-key their thread query on every collapse,
  * expand and per-inbox count change. They keep the rows and the status dot on

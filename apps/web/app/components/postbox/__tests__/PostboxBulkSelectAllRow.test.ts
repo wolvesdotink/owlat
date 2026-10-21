@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The whole-folder select-all escape hatch, now in the bulk bar.
  *

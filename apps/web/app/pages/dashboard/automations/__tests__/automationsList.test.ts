@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The automations list runs on the shared list scaffold (`ListPageShell` +
  * `useListPage`). Mounted with the real shell, segmented control, confirmation

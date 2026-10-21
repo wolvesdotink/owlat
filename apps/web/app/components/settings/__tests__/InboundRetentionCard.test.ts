@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The admin card that sets how long the shared inbox keeps a received
  * message's files.

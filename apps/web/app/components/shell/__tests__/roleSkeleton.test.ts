@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Pages render before the member role is known (only the `admin` guard waits
  * for it), so the sidebar's admin-only parts hold their place with a skeleton

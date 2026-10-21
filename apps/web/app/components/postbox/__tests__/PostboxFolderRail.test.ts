@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The mailbox folder rail after the UX review of 2026-09-23.
  *

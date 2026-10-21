@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The recipient pages' failure and "already done" states (#865).
  *

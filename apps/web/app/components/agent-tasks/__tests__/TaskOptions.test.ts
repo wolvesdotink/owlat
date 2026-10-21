@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * TaskOptions — the shared single-select chips + free-text input of an agent
  * task card.

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Today's inbox picker: the trigger says how many inboxes feed Today, each
  * row is a checkbox that reports its state, and a click asks for the opposite

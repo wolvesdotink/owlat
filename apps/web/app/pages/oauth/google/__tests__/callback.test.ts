@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The page Google redirects back to after the consent screen.
  *

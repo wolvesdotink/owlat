@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The transport page has ONE "Change provider" door (the editor). The guided
  * wizard is mounted there in checks-only mode: the provider is already

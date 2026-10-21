@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Draft to Jonas saved · Resume": the reply left in Answer mode, offered back
  * on the list. Resume reopens Answer mode on that draft; × drops the offer

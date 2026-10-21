@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * What the Delete workspace confirmation promises (#906).
  *

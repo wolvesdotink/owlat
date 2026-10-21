@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The reader half of the per-sender remote-image allowlist.
  *

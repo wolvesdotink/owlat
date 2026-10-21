@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Plan 2.5: the reader no longer holds a skeleton until `listThreadMessages`
  * answers. Opened on a list row (which carries no body since plan 2.3), it

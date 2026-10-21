@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Prepare briefs for recent mail": Prepare starts the
  * personal mailbox's backfill, a running walk offers Stop, and a paused or

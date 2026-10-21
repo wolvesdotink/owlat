@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Accessibility pass on the deliverability measurement screen.
  *

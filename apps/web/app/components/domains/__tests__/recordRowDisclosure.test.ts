@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The domain row's header: one disclosure button beside its operation buttons.
  *

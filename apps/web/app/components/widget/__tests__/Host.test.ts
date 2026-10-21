@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * WidgetHost is the isolation boundary every panel/widget contribution renders
  * through. These tests pin the guarantees the whole registry leans on:

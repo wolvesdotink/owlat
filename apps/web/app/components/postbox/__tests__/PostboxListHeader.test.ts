@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The list header after the Display menu took the preferences: what is left is
  * the folder title, the drawer handle, the page select-all checkbox, the

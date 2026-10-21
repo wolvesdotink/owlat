@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Publishing a transactional email renders its HTML from the canvas, so with
  * unsaved edits it would put content live that the saved email does not hold.

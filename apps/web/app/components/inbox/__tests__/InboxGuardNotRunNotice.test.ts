@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "AI safety check not run" (D13, U4): the reason the model guard was skipped,
  * for each recorded reason, and that it runs before the agent acts.

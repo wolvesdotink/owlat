@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The composer footer's follow-up ("remind me if no reply") chip sits on the
  * footer row, and the picker dialog it opens is rendered by the footer itself,

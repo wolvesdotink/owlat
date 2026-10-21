@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "With Jonas elsewhere" (plan §4.3): one section per person, each open item
  * linking to the thread it lives in (the Postbox reader by message, the Team

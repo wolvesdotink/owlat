@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Reorders made while an earlier one is still being saved.
  *

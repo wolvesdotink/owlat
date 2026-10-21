@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * What Answer mode opens its composer with, from the URL alone:
  *   - `?draft=` resumes the draft (no guard: it was answered when it began);

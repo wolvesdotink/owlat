@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Leaving the open step never drops its edits silently (#1044).
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The shell header's create button (UX piece T6).
  *

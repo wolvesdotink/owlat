@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 //
 // The leave dialog every page with unsaved edits shows: its copy follows the
 // app's locale, and while a Save runs, Save shows progress and cannot be

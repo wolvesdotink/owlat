@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Settings landing page — the "Plugins" nav entry must stay reachable when a
  * removed plugin left residual settings behind, even though this deployment now

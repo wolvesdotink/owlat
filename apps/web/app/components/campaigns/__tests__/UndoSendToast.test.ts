@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The campaign undo-send toast: the 60 seconds in which the one irreversible
  * action in the product is still reversible (UX plan T3).

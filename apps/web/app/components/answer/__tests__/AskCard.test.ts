@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "N things before I write this" (plan §05):
  *   - the header counts the questions and says no draft is written yet;

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE UNSAVED-CHANGES GUARD ON THE LONG SETTINGS FORMS (UX plan item 16).
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The contacts table announces its sort (plan OW-038). The Created header's
  * chevron was the only cue to whether the loaded audience is newest- or

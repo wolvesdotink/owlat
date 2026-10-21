@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Lifecycle semantics for the reactive command-palette registration wrapper.
  *
