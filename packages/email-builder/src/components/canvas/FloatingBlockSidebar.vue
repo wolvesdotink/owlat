@@ -80,9 +80,13 @@ function updatePosition() {
 	isVisible.value = true;
 	posLeft.value = newLeft;
 
-	// Align to top of canvas, sticky (stays at canvas top even when scrolled)
+	// Align to top of canvas, sticky once the canvas scrolls past the top of its
+	// scroll root. The sidebar is teleported to <body>, so the root's clipping
+	// does not apply: clamp to the root's top edge, not the viewport's, or it
+	// slides over whatever sits above the canvas (app header, editor toolbar).
 	const topOffset = 16;
-	posTop.value = Math.max(rect.top + topOffset, topOffset);
+	const floor = Math.max(scrollRoot?.getBoundingClientRect().top ?? 0, 0);
+	posTop.value = Math.max(rect.top, floor) + topOffset;
 }
 
 // Scroll/resize bursts fire many events per frame; read geometry once per frame.
@@ -98,15 +102,18 @@ function scheduleUpdate() {
 // Everything installed for one canvas element, torn down against the exact
 // targets it was installed on (the canvas prop has already moved on by then).
 let teardown: (() => void) | null = null;
+// The scroll root of the current canvas; its top edge is the sidebar's ceiling.
+let scrollRoot: Element | null = null;
 
 function setupObservers(canvas: HTMLElement) {
+	// The canvas background parent scrolls; listen there and clamp to its top.
+	const scrollParent = canvas.closest('.document-canvas__bg');
+	scrollRoot = scrollParent;
 	updatePosition();
 
 	const resizeObserver = new ResizeObserver(scheduleUpdate);
 	resizeObserver.observe(canvas);
 
-	// Listen for scroll on the canvas background parent
-	const scrollParent = canvas.closest('.document-canvas__bg');
 	scrollParent?.addEventListener('scroll', scheduleUpdate, { passive: true });
 	window.addEventListener('resize', scheduleUpdate, { passive: true });
 
@@ -120,6 +127,7 @@ function setupObservers(canvas: HTMLElement) {
 function cleanupObservers() {
 	teardown?.();
 	teardown = null;
+	scrollRoot = null;
 	if (frameId !== null) {
 		cancelAnimationFrame(frameId);
 		frameId = null;
