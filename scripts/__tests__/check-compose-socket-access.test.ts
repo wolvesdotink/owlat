@@ -32,6 +32,14 @@ const CLIMBS = 'has a .. segment';
 /** An intruder with no network at all, so only the socket can reach the engine. */
 const offline = (body: string) => addIntruder(`    network_mode: none\n${body}`);
 
+/** Adds a mount to docker-socket-proxy, next to its socket bind. */
+const proxyMount = (mount: string) => (s: string) =>
+	replaceOnce(
+		s,
+		'      - /var/run/docker.sock:/var/run/docker.sock:ro\n',
+		`      - /var/run/docker.sock:/var/run/docker.sock:ro\n      - ${mount}\n`
+	);
+
 const SOCKET_MUTATIONS = [
 	{
 		breaks: 'a direct socket bind (short syntax)',
@@ -182,6 +190,53 @@ const SOCKET_MUTATIONS = [
 		expected: `intruder volume "engine-run:/host-run" uses volume engine-run, whose device ${GIVES_SOCKET} (/var/run)`,
 	},
 	{
+		// Sol r4: one Docker volume behind two keys. The proxy mounts the
+		// socket-backed key, the intruder the plain one.
+		breaks: 'a volume that shares its explicit name with a socket-backed one',
+		apply: both(
+			addVolume(
+				'  proxy-run:\n    name: shared-engine-run\n    driver_opts:\n      type: none\n      o: bind\n      device: /var/run\n  alias-run:\n    name: shared-engine-run\n'
+			),
+			proxyMount('proxy-run:/host-run:ro'),
+			offline('    volumes:\n      - alias-run:/host-run\n')
+		),
+		expected: `intruder volume "alias-run:/host-run" uses volume alias-run, which is the same Docker volume as proxy-run (shared-engine-run), so it also uses volume proxy-run, whose device ${GIVES_SOCKET} (/var/run)`,
+	},
+	{
+		breaks: 'a volume named after the project-prefixed name of a socket-backed one',
+		apply: both(
+			addVolume(
+				'  proxy-run:\n    driver_opts:\n      type: none\n      o: bind\n      device: /var/run\n  alias-run:\n    name: ${ALIAS_VOLUME:-owlat_proxy-run}\n'
+			),
+			offline(
+				'    volumes:\n      - type: volume\n        source: alias-run\n        target: /host-run\n'
+			)
+		),
+		expected:
+			'uses volume alias-run, which may be the same Docker volume as proxy-run (owlat_proxy-run and <project>_proxy-run), so it also uses volume proxy-run',
+	},
+	{
+		breaks: 'a volume whose name the gate cannot resolve, next to a socket-backed one',
+		apply: both(
+			addVolume(
+				'  proxy-run:\n    name: shared-engine-run\n    driver_opts:\n      type: none\n      o: bind\n      device: /run\n  alias-run:\n    name: ${ENGINE_VOLUME}\n'
+			),
+			offline('    volumes:\n      - alias-run:/host-run\n')
+		),
+		expected:
+			'uses volume alias-run, which may be the same Docker volume as proxy-run (${ENGINE_VOLUME} and shared-engine-run), so it also uses volume proxy-run',
+	},
+	{
+		// An external volume without `name` is the Docker volume named like its key.
+		breaks: 'a volume named like an external one',
+		apply: both(
+			addVolume('  host-engine:\n    external: true\n  alias-run:\n    name: host-engine\n'),
+			offline('    volumes:\n      - alias-run:/host-run\n')
+		),
+		expected:
+			'uses volume alias-run, which is the same Docker volume as host-engine (host-engine), so it also uses external volume host-engine, which the gate cannot see into',
+	},
+	{
 		breaks: 'an external named volume',
 		apply: both(
 			addVolume('  engine-run:\n    external: true\n'),
@@ -257,6 +312,11 @@ describe.each(TEMPLATES)('$name keeps the Docker socket to the proxy', ({ name, 
 				env,
 				both(
 					(s: string) => `x-policy:\n  note: extension keys are free-form\n${s}`,
+					// Named volumes that cannot alias each other or a socket-backed one.
+					addVolume(
+						'  proxy-run:\n    driver_opts:\n      type: none\n      o: bind\n      device: /var/run\n  scratch:\n    name: ${SCRATCH_VOLUME:-owlat-scratch}\n  run:\n    name: owlat_proxy-run-cache\n'
+					),
+					proxyMount('proxy-run:/host-run:ro'),
 					offline(
 						[
 							'    x-owner: ops',
@@ -269,6 +329,8 @@ describe.each(TEMPLATES)('$name keeps the Docker socket to the proxy', ({ name, 
 							'      - /procedures:/srv/procedures:ro',
 							'      - /dev/shm:/dev/shm',
 							'      - /srv/./owlat//cache/:/srv/cache',
+							'      - scratch:/scratch-volume',
+							'      - run:/run-cache',
 							'      - type: tmpfs',
 							'        target: /tmp',
 							'      - type: ${SCRATCH_MOUNT_TYPE:-tmpfs}',

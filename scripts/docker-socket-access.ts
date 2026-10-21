@@ -10,7 +10,9 @@
  *
  * - a bind mount of the socket or of a directory above it (`/var/run`, `/`),
  *   in short or long syntax, whatever the target and mode;
- * - a named volume, secret or config backed by such a host path;
+ * - a named volume, secret or config backed by such a host path, or a named
+ *   volume that Compose may create as the same Docker volume as one of those
+ *   (two keys with one `name`, or a `name` of `<project>_<key>`);
  * - `volumes_from` a service that has the socket, followed through chains;
  * - `use_api_socket: true`, which mounts the engine socket by itself.
  *
@@ -132,21 +134,93 @@ const SOCKET_FREE_TYPES = new Set(['tmpfs', 'image']);
 /** Compose reads a short-syntax source as a host path when it looks like one. */
 const isHostPath = (source: string): boolean => /^[./~]/.test(source);
 
-/** Why a top-level volume is unsafe to mount, or undefined. */
-function namedVolumeViolation(name: string, compose: Compose): string | undefined {
-	const volume = compose.volumes?.[name];
+/** Why a top-level volume's own definition is unsafe to mount, or undefined. */
+function ownVolumeViolation(key: string, compose: Compose): string | undefined {
+	const volume = compose.volumes?.[key];
 	if (!volume || typeof volume !== 'object') return undefined;
 	const { external, driver_opts: options } = volume as {
 		external?: unknown;
 		driver_opts?: unknown;
 	};
 	if (external !== undefined && external !== false) {
-		return `uses external volume ${name}, which the gate cannot see into`;
+		return `uses external volume ${key}, which the gate cannot see into`;
 	}
 	const device = (options as { device?: unknown } | null | undefined)?.device;
 	if (device === undefined) return undefined;
 	const violation = sourceViolation(device, hostPathViolation);
-	return violation && `uses volume ${name}, whose device ${violation}`;
+	return violation && `uses volume ${key}, whose device ${violation}`;
+}
+
+/**
+ * The Docker volume a top-level volume key becomes. Compose names it after the
+ * key's `name` when there is one, else after the key itself for an external
+ * volume and `<project>_<key>` for any other. The project name comes from `-p`,
+ * COMPOSE_PROJECT_NAME, the top-level `name` or the directory, so the file
+ * cannot pin it down.
+ */
+type DockerVolume =
+	| { kind: 'named'; name: string }
+	| { kind: 'project'; key: string }
+	| { kind: 'unresolved'; raw: string };
+
+function dockerVolume(key: string, compose: Compose): DockerVolume {
+	const { name: raw, external } = (compose.volumes?.[key] ?? {}) as {
+		name?: unknown;
+		external?: unknown;
+	};
+	if (raw === undefined || raw === null) {
+		const isExternal = external !== undefined && external !== false;
+		return isExternal ? { kind: 'named', name: key } : { kind: 'project', key };
+	}
+	const name = interpolate(String(raw));
+	return name.includes(UNSET) ? { kind: 'unresolved', raw: String(raw) } : { kind: 'named', name };
+}
+
+const describeDockerVolume = (volume: DockerVolume): string =>
+	volume.kind === 'named'
+		? volume.name
+		: volume.kind === 'project'
+			? `<project>_${volume.key}`
+			: volume.raw;
+
+/**
+ * Whether two different volume keys can end up as one Docker volume: 'is' when
+ * they always do, 'may be' when it depends on the project name or on a variable,
+ * undefined when they never do. Two keys without `name` never collide (both get
+ * the same project prefix), a `name` collides with an equal one, and with a
+ * `name`-less key K when it is some `<project>_K`; an unresolved name may be
+ * anything.
+ */
+function sharedDockerVolume(a: DockerVolume, b: DockerVolume): 'is' | 'may be' | undefined {
+	if (a.kind === 'unresolved' || b.kind === 'unresolved') return 'may be';
+	if (a.kind === 'named' && b.kind === 'named') return a.name === b.name ? 'is' : undefined;
+	if (a.kind === 'project' && b.kind === 'project') return undefined;
+	const name = a.kind === 'named' ? a.name : (b as { name: string }).name;
+	const key = a.kind === 'project' ? a.key : (b as { key: string }).key;
+	return name.length > key.length + 1 && name.endsWith(`_${key}`) ? 'may be' : undefined;
+}
+
+/**
+ * Why a top-level volume is unsafe to mount, or undefined. Mounting a key mounts
+ * its Docker volume, so a key that names the same Docker volume as an unsafe one
+ * (a socket-backed device, an external volume) is just as unsafe, whatever its
+ * own definition says.
+ */
+function namedVolumeViolation(key: string, compose: Compose): string | undefined {
+	const own = ownVolumeViolation(key, compose);
+	if (own) return own;
+	const volume = dockerVolume(key, compose);
+	for (const other of Object.keys(compose.volumes ?? {})) {
+		if (other === key) continue;
+		const otherVolume = dockerVolume(other, compose);
+		const shared = sharedDockerVolume(volume, otherVolume);
+		if (!shared) continue;
+		const violation = ownVolumeViolation(other, compose);
+		if (!violation) continue;
+		const names = [...new Set([volume, otherVolume].map(describeDockerVolume))].join(' and ');
+		return `uses volume ${key}, which ${shared} the same Docker volume as ${other} (${names}), so it also ${violation}`;
+	}
+	return undefined;
 }
 
 /** The problem with one `volumes` entry, or undefined when it cannot reach the socket. */
