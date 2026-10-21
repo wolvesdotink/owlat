@@ -184,18 +184,20 @@ function toggleMuteRow(m: PostboxThreadRowMessage) {
 // label and an empty custom folder each say something different. The choice is
 // a pure derivation (utils/postboxListEmptyState.ts); this is the render
 // boundary that resolves its catalog keys.
-const { labelParams } = useShortcutLabels();
+const { labelFor, labelParams } = useShortcutLabels();
 const emptyState = computed(() => {
 	const state = postboxListEmptyState({
 		filterActive: props.filterActive === true,
 		hasMore: props.hasMore === true,
 		emptyContext: props.emptyContext,
 		folderRole: props.folderRole,
+		isShortcutLive: (id) => labelFor(id) !== null,
 	});
+	const hintParams = labelParams(state.hintShortcuts);
 	return {
 		icon: state.icon,
 		title: t(state.titleKey),
-		hint: state.hintKey ? t(state.hintKey, labelParams(state.hintShortcuts)) : undefined,
+		hint: state.hintKey && hintParams ? t(state.hintKey, hintParams) : undefined,
 		showFilterAction: state.showFilterAction,
 	};
 });

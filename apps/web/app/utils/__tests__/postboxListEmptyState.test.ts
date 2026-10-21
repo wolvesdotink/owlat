@@ -9,7 +9,18 @@ import { describe, expect, it } from 'vitest';
 import { postboxListEmptyState } from '../postboxListEmptyState';
 import { SHORTCUT_CATALOG } from '../shortcutCatalog';
 
-const BASE = { filterActive: false, hasMore: false, folderRole: 'inbox' } as const;
+const ALL_LIVE = () => true;
+const BASE = {
+	filterActive: false,
+	hasMore: false,
+	folderRole: 'inbox',
+	isShortcutLive: ALL_LIVE,
+} as const;
+
+/** Every id fires except the ones listed. */
+function liveExcept(...dead: string[]) {
+	return (id: string) => !dead.includes(id);
+}
 
 describe('postboxListEmptyState', () => {
 	it('offers inbox zero its own moment', () => {
@@ -27,6 +38,43 @@ describe('postboxListEmptyState', () => {
 		});
 		const known = new Set(SHORTCUT_CATALOG.map((def) => def.id));
 		expect(Object.values(state.hintShortcuts ?? {}).every((id) => known.has(id))).toBe(true);
+	});
+
+	it('teaches only the keys that fire, and nothing when neither does', () => {
+		const noCompose = postboxListEmptyState({
+			...BASE,
+			isShortcutLive: liveExcept('global.compose'),
+		});
+		expect(noCompose.hintKey).toMatch(/emptyInboxPaletteHint$/);
+		expect(noCompose.hintShortcuts).toEqual({ palette: 'global.commandPalette' });
+
+		const noPalette = postboxListEmptyState({
+			...BASE,
+			isShortcutLive: liveExcept('global.commandPalette'),
+		});
+		expect(noPalette.hintKey).toMatch(/emptyInboxComposeHint$/);
+		expect(noPalette.hintShortcuts).toEqual({ compose: 'global.compose' });
+
+		const neither = postboxListEmptyState({
+			...BASE,
+			isShortcutLive: liveExcept('global.compose', 'global.commandPalette'),
+		});
+		expect(neither.hintKey).toBeUndefined();
+		expect(neither.hintShortcuts).toBeUndefined();
+	});
+
+	it('names the label key while it fires and drops it from the hint when it does not', () => {
+		const live = postboxListEmptyState({ ...BASE, emptyContext: 'label' });
+		expect(live.hintKey).toMatch(/emptyLabelHint$/);
+		expect(live.hintShortcuts).toEqual({ keys: 'postbox.label' });
+
+		const dead = postboxListEmptyState({
+			...BASE,
+			emptyContext: 'label',
+			isShortcutLive: liveExcept('postbox.label'),
+		});
+		expect(dead.hintKey).toMatch(/emptyLabelNoKeyHint$/);
+		expect(dead.hintShortcuts).toBeUndefined();
 	});
 
 	it('says "nothing matches", not "all clear", when a chip is hiding rows', () => {

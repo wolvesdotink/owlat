@@ -105,10 +105,16 @@ describe('useShortcutLabels().labelParams', () => {
 		});
 	});
 
-	it('leaves a key nothing fires empty rather than naming a dead key', () => {
+	it('gives no parameters when any named key fires nothing, so no copy prints a blank', () => {
 		applyShortcutPreferences('owlat', [{ id: 'global.compose', keys: [] }]);
-		expect(useShortcutLabels().labelParams({ compose: 'global.compose' })).toEqual({
-			compose: '',
+		expect(
+			useShortcutLabels().labelParams({
+				compose: 'global.compose',
+				palette: 'global.commandPalette',
+			})
+		).toBeNull();
+		expect(useShortcutLabels().labelParams({ palette: 'global.commandPalette' })).toEqual({
+			palette: 'Ctrl+K',
 		});
 	});
 });

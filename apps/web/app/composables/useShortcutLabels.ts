@@ -77,12 +77,18 @@ export function useShortcutLabels() {
 
 	/**
 	 * Message parameters naming keys by catalog id (`{ compose: 'global.compose' }`)
-	 * as their labels. A key nothing fires right now becomes an empty string.
+	 * as their labels. Null when any of them fires nothing right now: a sentence
+	 * with a blank where the key belongs is worse than no sentence, so the caller
+	 * drops the copy (or picks a variant without that key).
 	 */
-	function labelParams(ids: Readonly<Record<string, string>> = {}): Record<string, string> {
-		return Object.fromEntries(
-			Object.entries(ids).map(([param, id]) => [param, labelFor(id) ?? ''])
-		);
+	function labelParams(ids: Readonly<Record<string, string>> = {}): Record<string, string> | null {
+		const params: Record<string, string> = {};
+		for (const [param, id] of Object.entries(ids)) {
+			const label = labelFor(id);
+			if (!label) return null;
+			params[param] = label;
+		}
+		return params;
 	}
 
 	return { isMac, labelFor, ariaFor, chordLabel, chordAria, titleWithShortcut, labelParams };
