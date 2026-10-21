@@ -1,5 +1,5 @@
 /**
- * `@owlat/mta-protocol` — the Convex <-> MTA wire contract (D7).
+ * `@owlat/mta-protocol` — the Convex <-> MTA wire contract.
  *
  * Five conversations, each declared exactly once here and imported by BOTH
  * ends: the send intake (`send.ts`), the last-mile routing decision
