@@ -2,7 +2,8 @@
 //
 // The leave dialog every page with unsaved edits shows: its copy follows the
 // app's locale, and while a Save runs, Save shows progress and cannot be
-// clicked again, Discard waits for it, and Cancel stays available.
+// clicked again, Discard waits for it, and Cancel stays available. Through the
+// real modal, its explanation is the dialog's accessible description (#1429).
 import { afterEach, describe, expect, it } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
@@ -96,5 +97,57 @@ describe('UnsavedChangesDialog', () => {
 		expect(wrapper.emitted('save')).toBeUndefined();
 		expect(wrapper.emitted('discard')).toBeUndefined();
 		expect(wrapper.emitted('close')).toHaveLength(1);
+	});
+});
+
+describe('UnsavedChangesDialog accessible description', () => {
+	/** Two prompts open at once in one app, through the real UiModal. */
+	function renderTwo(locale: UiLocale = 'en') {
+		const Host = defineComponent({
+			setup: () => () => [
+				h(UnsavedChangesDialog, { show: true }),
+				h(UnsavedChangesDialog, { show: true }),
+			],
+		});
+		wrappers.push(
+			mount(Host, {
+				attachTo: document.body,
+				global: { plugins: [createUiI18n(locale)], components: { Icon: IconStub } },
+			})
+		);
+		return [...document.querySelectorAll<HTMLElement>('[role="dialog"]')];
+	}
+
+	function description(dialog: HTMLElement): string | undefined {
+		const id = dialog.getAttribute('aria-describedby');
+		return id ? document.getElementById(id)?.textContent?.trim() : undefined;
+	}
+
+	it('points aria-describedby at its explanation', () => {
+		const [dialog] = renderTwo();
+		expect(dialog!.getAttribute('aria-labelledby')).toBeTruthy();
+		expect(description(dialog!)).toBe(
+			'You have unsaved changes. Do you want to save them before leaving?'
+		);
+	});
+
+	it('describes itself in the active locale', () => {
+		const [dialog] = renderTwo('de');
+		expect(description(dialog!)).toBe(
+			'Du hast ungespeicherte Änderungen. Möchtest du sie speichern, bevor du gehst?'
+		);
+	});
+
+	it('gives each open prompt its own description id', () => {
+		const dialogs = renderTwo();
+		expect(dialogs).toHaveLength(2);
+		const ids = dialogs.map((d) => d.getAttribute('aria-describedby'));
+		expect(ids[0]).toBeTruthy();
+		expect(ids[0]).not.toBe(ids[1]);
+		for (const dialog of dialogs) {
+			const id = dialog.getAttribute('aria-describedby')!;
+			// The description lives inside its own dialog, not the other one.
+			expect(dialog.querySelector(`[id="${id}"]`)).not.toBeNull();
+		}
 	});
 });
