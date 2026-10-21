@@ -40,8 +40,12 @@
 		// too. The transit dependency folds each dependency package's file hash
 		// into the lint hash, as it does for `test`. Package overrides below must
 		// repeat it: a `pkg#task` entry replaces this one rather than merging.
+		// Every lint task also runs the rules in packages/oxlint-plugin-owlat, which
+		// oxlintrc.json loads by path rather than as a package dependency, so a rule
+		// edit must move every lint hash. The overrides below repeat these inputs.
 		"lint": {
-			"dependsOn": ["transit"]
+			"dependsOn": ["transit"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/packages/oxlint-plugin-owlat/src/**"]
 		},
 		// A lint task that reads files outside its own package needs an override
 		// listing them: turbo hashes only the package directory by default, so an
@@ -68,6 +72,8 @@
 				"$TURBO_ROOT$/apps/docs/content/en/3.developer/6.email-system.md",
 				// the baseline checks exec the shared ratchet runner
 				"$TURBO_ROOT$/scripts/ratchet.sh",
+				// the oxlint rules, as for the generic lint task above
+				"$TURBO_ROOT$/packages/oxlint-plugin-owlat/src/**",
 				// Root globs bypass .gitignore, so drop generated output by hand:
 				// node_modules and .nuxt anywhere, and build, dist, .output, coverage
 				// and .turbo (turbo's own log, rewritten by every run) only at a
@@ -90,6 +96,8 @@
 				"$TURBO_ROOT$/packages/ui/**",
 				// check-localized-text.sh execs the shared ratchet runner
 				"$TURBO_ROOT$/scripts/ratchet.sh",
+				// the oxlint rules, as for the generic lint task above
+				"$TURBO_ROOT$/packages/oxlint-plugin-owlat/src/**",
 				// generated output, as for @owlat/api#lint above; both scanners skip
 				// the same paths (apps/web/scripts/lib/output-roots.sh)
 				"!**/node_modules/**",
@@ -104,7 +112,9 @@
 				"$TURBO_DEFAULT$",
 				// check-env-keys-sync.sh compares these two lists
 				"$TURBO_ROOT$/apps/api/convex/lib/env.ts",
-				"$TURBO_ROOT$/packages/shared/src/convexRuntimeEnv.ts"
+				"$TURBO_ROOT$/packages/shared/src/convexRuntimeEnv.ts",
+				// the oxlint rules, as for the generic lint task above
+				"$TURBO_ROOT$/packages/oxlint-plugin-owlat/src/**"
 			]
 		},
 		"lint:fix": {},

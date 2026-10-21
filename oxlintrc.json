@@ -1,6 +1,15 @@
 {
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
 	"plugins": ["import", "typescript", "unicorn"],
+	// Owlat's own rules (packages/oxlint-plugin-owlat). oxlint resolves the path
+	// against this file, so every workspace's `--config ../../oxlintrc.json` run
+	// loads the same plugin source.
+	"jsPlugins": ["./packages/oxlint-plugin-owlat/src/index.ts"],
+	// A suppression that no longer suppresses anything fails the run, so a stale
+	// directive is deleted instead of silently outliving the code it excused.
+	"options": {
+		"reportUnusedDisableDirectives": "error"
+	},
 	"categories": {
 		"suspicious": "warn"
 	},
@@ -55,11 +64,60 @@
 		"unicorn/consistent-function-scoping": "off",
 		"no-shadow": "off",
 		"import/no-named-as-default-member": "off",
-		"import/no-unassigned-import": "off"
+		"import/no-unassigned-import": "off",
+		"owlat/require-suppression-reason": "error",
+		"owlat/no-test-in-loop": "error",
+		"owlat/no-test-environment-pragma": [
+			"error",
+			{
+				// Paths are repository-relative and match whichever directory oxlint
+				// runs from. Every other test file takes its package's vitest config.
+				"allow": [
+					{
+						// email-builder's vitest config runs in node; its DOM-mounting
+						// specs opt into happy-dom one file at a time.
+						"environment": "happy-dom",
+						"files": ["packages/email-builder/**"]
+					},
+					{
+						// apps/web runs in happy-dom; these specs read the filesystem,
+						// spawn processes or time pure code and need node instead.
+						"environment": "node",
+						"files": [
+							"apps/web/app/components/postbox/__tests__/PostboxReaderMotion.test.ts",
+							"apps/web/app/components/postbox/__tests__/PostboxReaderSecondaryActions.test.ts",
+							"apps/web/app/components/postbox/__tests__/PostboxReadingPaneGeometry.test.ts",
+							"apps/web/app/lib/__tests__/welcomeStampTiming.test.ts",
+							"apps/web/app/__tests__/areaRuntime.test.ts",
+							"apps/web/app/__tests__/assetDelivery.test.ts",
+							"apps/web/app/__tests__/catalogAreas.test.ts",
+							"apps/web/app/__tests__/completeCatalogs.test.ts",
+							"apps/web/app/__tests__/contentSecurityPolicy.test.ts",
+							"apps/web/app/__tests__/emailBuilderBarrelConsumers.test.ts",
+							"apps/web/app/__tests__/sharedSubpathAliases.test.ts",
+							"apps/web/app/__tests__/testCodeOutOfBuild.test.ts",
+							"apps/web/app/utils/__tests__/labelPalette.test.ts",
+							"apps/web/app/utils/__tests__/postboxTrustChip.test.ts",
+							"apps/web/e2e/__tests__/e2eWorkflow.test.ts",
+							"apps/web/e2e/__tests__/reportCredentials.test.ts",
+							"apps/web/e2e/__tests__/reportRedaction.test.ts",
+							"apps/web/e2e/__tests__/resetDeployment.test.ts",
+							"apps/web/e2e/__tests__/scanReportSecrets.test.ts",
+							"apps/web/e2e/__tests__/seedAdmin.test.ts",
+							"apps/web/e2e/__tests__/zipArchive.test.ts",
+							"apps/web/server/api/auth/__tests__/proxy.test.ts",
+							"apps/web/server/api/storage/__tests__/uploadConfig.test.ts",
+							"apps/web/server/api/storage/__tests__/upload.test.ts",
+							"apps/web/server/utils/__tests__/updater.test.ts"
+						]
+					}
+				]
+			}
+		]
 	},
 	"overrides": [
 		{
-			"files": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts", "**/_generated/**"],
+			"files": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
 			"rules": {
 				"@typescript-eslint/no-explicit-any": "off",
 				"no-unused-vars": "off"
@@ -89,5 +147,7 @@
 			}
 		}
 	],
-	"ignorePatterns": ["node_modules", ".nuxt", ".output", "dist", "*.min.js"]
+	// Convex codegen output carries a blanket `/* eslint-disable */` that would
+	// trip the unused-directive report; generated code is fixed in its generator.
+	"ignorePatterns": ["node_modules", ".nuxt", ".output", "dist", "*.min.js", "**/_generated/**"]
 }
