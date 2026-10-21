@@ -46,10 +46,14 @@ const getDarkModeVars = (block: EditorBlock): string => {
 };
 
 /**
- * Get data attributes for per-block responsive font sizing.
+ * Get data attributes for per-block responsive font sizing. A Block without a
+ * string id (stored data from a direct caller is not trusted, #1432) renders
+ * without the attribute instead of failing the whole render.
  */
 const getBlockDataAttrs = (block: EditorBlock): string => {
-	const safeId = block.id.replace(/"/g, '&quot;');
+	const id: unknown = block.id;
+	if (typeof id !== 'string') return '';
+	const safeId = id.replace(/"/g, '&quot;');
 	return ` data-block-id="${safeId}"`;
 };
 

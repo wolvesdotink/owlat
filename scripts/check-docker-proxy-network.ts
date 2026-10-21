@@ -29,10 +29,18 @@
  * `service:` naming a non-member. `host` reaches internal-network container
  * IPs on Linux; `container:` can name a container by id.
  *
+ * The same run checks the other route to the engine, the socket itself
+ * (docker-socket-access.ts: only the proxy may mount it, inherit it or ask for
+ * it), and holds every top-level and service key to the Compose specification
+ * (compose-schema-keys.ts), so a key none of these checks reads cannot slip by.
+ *
  * Usage: bun scripts/check-docker-proxy-network.ts <compose-file>
  * Prints one violation per line and exits 1 when there are any; exits 2 when
  * the file cannot be read as a compose file.
  */
+
+import { unknownKeyViolations } from './compose-schema-keys';
+import { socketAccessViolations } from './docker-socket-access';
 
 const NETWORK = 'docker-proxy';
 const PROXY = 'docker-socket-proxy';
@@ -279,7 +287,11 @@ if (import.meta.main) {
 		console.error(`${file}: no services map`);
 		process.exit(2);
 	}
-	const violations = dockerProxyViolations(compose);
+	const violations = [
+		...unknownKeyViolations(compose),
+		...dockerProxyViolations(compose),
+		...socketAccessViolations(compose),
+	];
 	for (const violation of violations) process.stdout.write(`${violation}\n`);
 	process.exit(violations.length > 0 ? 1 : 0);
 }

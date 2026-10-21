@@ -2,6 +2,9 @@
 import { computed } from 'vue';
 import type { EditorBlock, EmailTheme, SocialBlockContent } from '../../../types';
 import { blockBoxStyle } from '../../../utils/blocks';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	block: EditorBlock;
@@ -57,13 +60,13 @@ const platformLabels: Record<string, string> = {
 					backgroundColor: content.iconColor || '#374151',
 					opacity: link.url ? undefined : 0.35,
 				}"
-				:title="link.url ? link.url : 'No URL yet — this icon will not appear in the sent email'"
+				:title="link.url ? link.url : t('builder.canvas.preview.socialNoUrl')"
 			>
 				{{ platformLabels[link.platform] || link.platform.slice(0, 2).toUpperCase() }}
 			</div>
 		</div>
 		<div v-if="hasUnlinkedIcons" class="mt-1.5 text-[11px] text-text-tertiary">
-			Dimmed icons have no URL and won't appear in the sent email
+			{{ t('builder.canvas.preview.socialDimmed') }}
 		</div>
 	</div>
 </template>

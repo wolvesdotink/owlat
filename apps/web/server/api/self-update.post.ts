@@ -1,7 +1,7 @@
 import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { requireInstanceSecret, callUpdater } from '~~/server/utils/updater';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
-import { isStartedRollout } from '~/lib/systemUpdate';
+import { isStartedRollout, UPDATE_REQUEST_TIMEOUT_MS } from '~/lib/systemUpdate';
 
 /**
  * Self-update proxy endpoint.
@@ -45,9 +45,7 @@ export default defineEventHandler(async (event) => {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ composeTemplate }),
-		// Pull + recreate + convex-deploy, then the updater's readiness wait,
-		// which follows the healthcheck cadence services declare.
-		signal: AbortSignal.timeout(30 * 60 * 1000),
+		signal: AbortSignal.timeout(UPDATE_REQUEST_TIMEOUT_MS),
 	});
 
 	const result = await response.json();

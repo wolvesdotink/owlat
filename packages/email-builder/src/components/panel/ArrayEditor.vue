@@ -7,6 +7,9 @@ import { VueDraggable } from 'vue-draggable-plus';
 import IconButton from '../ui/IconButton.vue';
 import ActionButton from '../ui/ActionButton.vue';
 import FieldLabel from '../ui/FieldLabel.vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	field: PropertyField;
@@ -87,7 +90,7 @@ function handleReorder(newItems: unknown[]) {
 					<template v-if="isStringArray">
 						<input
 							type="text"
-							:aria-label="`Item ${index + 1}`"
+							:aria-label="t('builder.panel.array.item', { index: index + 1 })"
 							class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 							:value="item as string"
 							@input="(e) => updateItem(index, (e.target as HTMLInputElement).value)"
@@ -101,7 +104,7 @@ function handleReorder(newItems: unknown[]) {
 								v-for="(cell, cellIndex) in (item as string[])"
 								:key="cellIndex"
 								type="text"
-								:aria-label="`Row ${index + 1}, cell ${cellIndex + 1}`"
+								:aria-label="t('builder.panel.array.cell', { row: index + 1, cell: cellIndex + 1 })"
 								class="min-w-0 flex-1 py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="cell"
 								@input="(e) => updateCell(index, cellIndex, (e.target as HTMLInputElement).value)"
@@ -116,16 +119,23 @@ function handleReorder(newItems: unknown[]) {
 							:key="subField.key"
 							class="flex flex-col gap-0.5"
 						>
-							<FieldLabel size="sm">{{ subField.label }}</FieldLabel>
+							<FieldLabel size="sm">{{ label(subField.label) }}</FieldLabel>
 							<!-- Simple text/url sub-fields -->
 							<input
 								v-if="subField.type === 'text' || subField.type === 'url'"
 								:type="subField.type === 'url' ? 'url' : 'text'"
-								:aria-label="`${subField.label}, item ${index + 1}`"
+								:aria-label="
+									t('builder.panel.array.fieldOfItem', {
+										field: label(subField.label),
+										index: index + 1,
+									})
+								"
 								class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="(item as Record<string, unknown>)[subField.key] ?? ''"
-								:placeholder="subField.placeholder"
-								@input="(e) => updateItemField(index, subField.key, (e.target as HTMLInputElement).value)"
+								:placeholder="subField.placeholder && label(subField.placeholder)"
+								@input="
+									(e) => updateItemField(index, subField.key, (e.target as HTMLInputElement).value)
+								"
 							/>
 							<!-- Toggle sub-field -->
 							<button
@@ -134,7 +144,7 @@ function handleReorder(newItems: unknown[]) {
 								:class="(item as Record<string, unknown>)[subField.key] ? 'bg-brand' : 'bg-border-default'"
 								type="button"
 								role="switch"
-								:aria-label="subField.label"
+								:aria-label="label(subField.label)"
 								:aria-checked="!!(item as Record<string, unknown>)[subField.key]"
 								@click="updateItemField(index, subField.key, !(item as Record<string, unknown>)[subField.key])"
 							>
@@ -146,17 +156,13 @@ function handleReorder(newItems: unknown[]) {
 							<!-- Select sub-field -->
 							<select
 								v-else-if="subField.type === 'select'"
-								:aria-label="subField.label"
+								:aria-label="label(subField.label)"
 								class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="(item as Record<string, unknown>)[subField.key] ?? ''"
 								@change="(e) => updateItemField(index, subField.key, (e.target as HTMLSelectElement).value)"
 							>
-								<option
-									v-for="opt in subField.options"
-									:key="String(opt.value)"
-									:value="opt.value"
-								>
-									{{ opt.label }}
+								<option v-for="opt in subField.options" :key="String(opt.value)" :value="opt.value">
+									{{ label(opt.label) }}
 								</option>
 							</select>
 						</div>
@@ -165,8 +171,8 @@ function handleReorder(newItems: unknown[]) {
 
 				<IconButton
 					:icon="Trash2"
-					title="Remove"
-					:aria-label="`Remove item ${index + 1}`"
+					:title="t('builder.panel.array.remove')"
+					:aria-label="t('builder.panel.array.removeItem', { index: index + 1 })"
 					size="sm"
 					variant="destructive"
 					class="shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)"
@@ -175,6 +181,6 @@ function handleReorder(newItems: unknown[]) {
 			</div>
 		</VueDraggable>
 
-		<ActionButton :icon="Plus" label="Add item" @click="addItem" />
+		<ActionButton :icon="Plus" :label="t('builder.panel.array.add')" @click="addItem" />
 	</div>
 </template>

@@ -15,6 +15,9 @@ import {
 	Stamp,
 	PanelBottom,
 } from '@lucide/vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	canvasElement: HTMLElement | null;
@@ -165,14 +168,14 @@ function handlePickerSelect(type: BlockType) {
 			:style="{ top: `${posTop}px`, left: `${posLeft}px`, width: '40px' }"
 			role="toolbar"
 			aria-orientation="vertical"
-			aria-label="Insert block"
+			:aria-label="t('builder.canvas.insertBlock')"
 		>
 			<button
 				v-for="block in quickBlocks"
 				:key="block.type"
 				class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary active:scale-[0.92]"
-				:title="block.label"
-				:aria-label="`Add ${block.label} block`"
+				:title="label(block.label)"
+				:aria-label="t('builder.canvas.addBlock', { block: label(block.label) })"
 				type="button"
 				@click="emit('add-block', block.type)"
 			>
@@ -185,8 +188,10 @@ function handlePickerSelect(type: BlockType) {
 					v-for="kind in brandBlocks"
 					:key="kind"
 					class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-brand cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover active:scale-[0.92]"
-					:title="BRAND_BUTTONS[kind].label"
-					:aria-label="`Add ${BRAND_BUTTONS[kind].label}`"
+					:title="label(BRAND_BUTTONS[kind].label)"
+					:aria-label="
+						t('builder.canvas.addBrandBlock', { block: label(BRAND_BUTTONS[kind].label) })
+					"
 					:data-testid="`add-brand-${kind}`"
 					type="button"
 					@click="emit('add-brand-block', kind)"
@@ -200,8 +205,8 @@ function handlePickerSelect(type: BlockType) {
 			<button
 				ref="moreButtonRef"
 				class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong active:scale-[0.92]"
-				title="More blocks..."
-				aria-label="More blocks"
+				:title="t('builder.canvas.moreBlocksTitle')"
+				:aria-label="t('builder.canvas.moreBlocks')"
 				aria-haspopup="menu"
 				:aria-expanded="showPicker"
 				type="button"

@@ -7,7 +7,6 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 import {
 	BRAND_BASE_WIDTH_RANGE,
 	BRAND_BUTTON_PADDING_X_RANGE,
@@ -383,7 +382,7 @@ const buttonFields = [
 
 		<BrandKitImportDialog v-model:open="isImportOpen" @apply="applyImport" />
 
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="unsavedDialog.showDialog"
 			:saving="unsavedDialog.isSavingBeforeLeave"
 			@close="unsavedDialog.cancelNavigation"

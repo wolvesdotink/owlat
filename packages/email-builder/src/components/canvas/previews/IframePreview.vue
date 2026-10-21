@@ -4,6 +4,9 @@ import { FileCode2 } from '@lucide/vue';
 import type { EditorBlock, EmailTheme } from '../../../types';
 import { useBlockRenderer } from '../../../composables/useBlockRenderer';
 import { getBlock } from '../../../registry';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	block: EditorBlock;
@@ -36,7 +39,7 @@ const isEmpty = computed(() => {
 	return stripped === '';
 });
 
-const blockLabel = computed(() => getBlock(props.block.type)?.label ?? props.block.type);
+const blockLabel = computed(() => label(getBlock(props.block.type)?.label ?? props.block.type));
 
 const srcdoc = computed(() => {
 	return `<!DOCTYPE html>
@@ -84,7 +87,9 @@ onMounted(() => {
 			class="flex flex-col items-center justify-center gap-2 h-[120px] m-2 bg-bg-surface border-2 border-dashed border-border-subtle rounded-lg text-text-tertiary"
 		>
 			<FileCode2 :size="24" />
-			<span class="text-xs">{{ blockLabel }} — select to configure</span>
+			<span class="text-xs">{{
+				t('builder.canvas.preview.configure', { block: blockLabel })
+			}}</span>
 		</div>
 		<iframe
 			v-else

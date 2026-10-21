@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useId } from 'vue';
 import { useUiI18n } from '../../composables/useUiI18n';
 import UiButton from './Button.vue';
 import UiModal from './Modal.vue';
@@ -24,15 +25,23 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useUiI18n();
+// The paragraph says why the prompt opened and what the buttons do; linked as
+// the dialog's description so a screen reader reads it with the title.
+const descriptionId = useId();
 </script>
 
 <template>
-	<UiModal :open="show" :title="t('ui.unsavedChanges.title')" @update:open="emit('close')">
+	<UiModal
+		:open="show"
+		:title="t('ui.unsavedChanges.title')"
+		:described-by="descriptionId"
+		@update:open="emit('close')"
+	>
 		<div class="flex items-center gap-3 mb-4">
 			<div class="p-2 rounded-full bg-warning/10">
 				<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning" />
 			</div>
-			<p class="text-text-secondary">
+			<p :id="descriptionId" class="text-text-secondary">
 				{{ t('ui.unsavedChanges.description') }}
 			</p>
 		</div>

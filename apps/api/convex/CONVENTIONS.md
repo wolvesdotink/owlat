@@ -935,8 +935,12 @@ while the downgrade window is open, restore the backup after it closes.
 
 **The guard.** `convex/__tests__/schemaCompat/compat.test.ts` builds rows from
 the previous release's table validators (`previousRelease.json`) and fails when
-the current schema rejects any of them: a field made required, a type changed, a
-union narrowed, a field or table dropped. Refresh the snapshot at each release
+the current schema rejects any of them, and it proves from the two validators'
+structure (`containment.ts`, as for function arguments below) that each current
+table validator accepts every row the previous one did. It fails on a field made
+required, a type changed or narrowed (a string made an id or a literal), a union
+narrowed or split so that a combination of members is lost, a field or table
+dropped. Refresh the snapshot at each release
 (`release:cut` puts the refreshed snapshot in the release commit; see
 `docs/RELEASING.md`), never to make a failure go away. A deliberately retired
 table goes in the test's `RETIRED_TABLES` in the contract PR, and a retired

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { VueDraggable } from 'vue-draggable-plus';
 import { api } from '@owlat/api';
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 import type { Id } from '@owlat/api/dataModel';
 import { computed } from 'vue';
 import { provideConditionEditorContext } from '~/composables/conditions';
@@ -1205,7 +1204,7 @@ onUnmounted(() => {
 		</Teleport>
 
 		<!-- Unsaved Changes Dialog — leaving the page with unsaved step edits -->
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="showLeaveDialog"
 			:saving="isSavingBeforeLeave"
 			@close="cancelLeave"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { parseStoredBlocks, UnsavedChangesDialog } from '@owlat/email-builder';
+import { parseStoredBlocks } from '@owlat/email-builder/stored-blocks';
 import { api } from '@owlat/api';
 import { languageOptions } from '~/data/languageOptions';
 import { translationBlockRows } from '~/utils/translationRows';
@@ -651,7 +651,7 @@ const handleBack = () => {
 			/>
 		</div>
 
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="showUnsavedDialog"
 			:saving="isSavingBeforeLeave"
 			@close="cancelNavigation"

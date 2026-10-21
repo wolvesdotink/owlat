@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick } from 'vue';
+import { computed, ref, watch, onMounted, nextTick } from 'vue';
 import { useRichText } from '@owlat/ui/composables/useRichText';
 import { sanitizeEditorHtml } from '@owlat/email-renderer';
 import type { Variable } from '../../types';
 import { insertVariableChip, useVariableTrigger } from '../../composables/useVariableTrigger';
 import { Bold, Italic, Underline, Link, Code, Variable as VariableIcon } from '@lucide/vue';
 import VariablePickerMenu from '../canvas/VariablePickerMenu.vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	value: string;
@@ -34,7 +37,8 @@ const variablePicker = useVariableTrigger({
 });
 
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent);
-const modKey = isMac ? '⌘' : 'Ctrl';
+const modKey = computed(() => (isMac ? '⌘' : label('Ctrl')));
+const shortcutTitle = (key: string, letter: string) => `${t(key)} (${modKey.value}+${letter})`;
 
 // Sync content from prop to editor. Stored HTML is sanitized before it enters
 // the live contenteditable, on mount and on every prop change.
@@ -120,13 +124,13 @@ function handleSourceInput(event: Event) {
 		<div
 			class="flex items-center gap-px p-1 border-b border-border-subtle rounded-t-lg bg-bg-surface"
 			role="toolbar"
-			aria-label="Text formatting"
+			:aria-label="t('builder.richText.formatting')"
 		>
 			<button
 				type="button"
 				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
-				:title="`Bold (${modKey}+B)`"
-				aria-label="Bold"
+				:title="shortcutTitle('builder.toolbar.bold', 'B')"
+				:aria-label="t('builder.toolbar.bold')"
 				@click="applyFormat(richText.toggleBold)"
 			>
 				<Bold :size="14" />
@@ -134,8 +138,8 @@ function handleSourceInput(event: Event) {
 			<button
 				type="button"
 				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
-				:title="`Italic (${modKey}+I)`"
-				aria-label="Italic"
+				:title="shortcutTitle('builder.toolbar.italic', 'I')"
+				:aria-label="t('builder.toolbar.italic')"
 				@click="applyFormat(richText.toggleItalic)"
 			>
 				<Italic :size="14" />
@@ -143,8 +147,8 @@ function handleSourceInput(event: Event) {
 			<button
 				type="button"
 				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
-				:title="`Underline (${modKey}+U)`"
-				aria-label="Underline"
+				:title="shortcutTitle('builder.toolbar.underline', 'U')"
+				:aria-label="t('builder.toolbar.underline')"
 				@click="applyFormat(richText.toggleUnderline)"
 			>
 				<Underline :size="14" />
@@ -152,8 +156,8 @@ function handleSourceInput(event: Event) {
 			<button
 				type="button"
 				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
-				:title="`Link (${modKey}+K)`"
-				aria-label="Link"
+				:title="shortcutTitle('builder.toolbar.link', 'K')"
+				:aria-label="t('builder.toolbar.link')"
 				@click="applyFormat(richText.setLink)"
 			>
 				<Link :size="14" />
@@ -163,8 +167,8 @@ function handleSourceInput(event: Event) {
 				<button
 					type="button"
 					class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
-					title="Insert variable"
-					aria-label="Insert variable"
+					:title="t('builder.richText.insertVariable')"
+					:aria-label="t('builder.richText.insertVariable')"
 					aria-haspopup="menu"
 					:aria-expanded="showVariableMenu"
 					@click="showVariableMenu = !showVariableMenu"
@@ -174,7 +178,7 @@ function handleSourceInput(event: Event) {
 				<div
 					v-if="showVariableMenu"
 					role="menu"
-					aria-label="Variables"
+					:aria-label="t('builder.variables.title')"
 					class="absolute top-full left-0 z-10 min-w-40 p-1 bg-bg-elevated border border-border-subtle rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.25),0_1px_3px_rgba(0,0,0,0.15)]"
 				>
 					<button
@@ -194,8 +198,8 @@ function handleSourceInput(event: Event) {
 				type="button"
 				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 				:class="{ 'bg-brand text-white': isSourceMode }"
-				title="Source mode"
-				aria-label="Source mode"
+				:title="t('builder.richText.sourceMode')"
+				:aria-label="t('builder.richText.sourceMode')"
 				:aria-pressed="isSourceMode"
 				@click="toggleSourceMode"
 			>
@@ -211,7 +215,7 @@ function handleSourceInput(event: Event) {
 			contenteditable="true"
 			role="textbox"
 			aria-multiline="true"
-			aria-label="Rich text content"
+			:aria-label="t('builder.richText.content')"
 			@input="handleInput"
 			@keydown="handleKeydown"
 			@blur="variablePicker.close"
@@ -221,7 +225,7 @@ function handleSourceInput(event: Event) {
 		<textarea
 			v-else
 			class="w-full min-h-20 p-2 text-xs font-mono border-none rounded-b-lg resize-y outline-none text-text-primary bg-bg-surface"
-			aria-label="HTML source"
+			:aria-label="t('builder.richText.source')"
 			:value="sourceValue"
 			rows="6"
 			@input="handleSourceInput"

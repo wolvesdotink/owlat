@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { AlertCircle, AlertTriangle, Info, Loader2 } from '@lucide/vue';
-import type { CompatibilityReport } from '../../types';
+import type { CompatibilityIssue, CompatibilityReport } from '../../types';
 import { scoreColor } from '../../scoreBands';
 import AnalysisEmpty from './AnalysisEmpty.vue';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	compatibilityReport: CompatibilityReport | null;
@@ -24,6 +27,11 @@ const compatibilityIssues = computed(() => {
 	};
 });
 
+/** Builder-written messages follow the locale; anything else is shown as written. */
+function issueMessage(issue: CompatibilityIssue): string {
+	return issue.messageKey ? t(issue.messageKey, issue.messageParams) : issue.message;
+}
+
 const compatibilityScore = computed(() => {
 	return props.compatibilityReport?.score ?? null;
 });
@@ -36,11 +44,11 @@ const compatibilityScoreColor = computed(() => {
 
 <template>
 	<AnalysisEmpty v-if="!selectedClientName">
-		Select a client above to analyze compatibility.
+		{{ t('builder.analysis.compatibility.selectClient') }}
 	</AnalysisEmpty>
 	<AnalysisEmpty v-else-if="isAnalyzing" class="ep-compat-pending" role="status">
 		<Loader2 class="ep-compat-spinner" aria-hidden="true" />
-		Checking compatibility with {{ selectedClientName }}…
+		{{ t('builder.analysis.compatibility.checking', { client: selectedClientName }) }}
 	</AnalysisEmpty>
 	<AnalysisEmpty
 		v-else-if="compatibilityError"
@@ -49,7 +57,7 @@ const compatibilityScoreColor = computed(() => {
 		:title="compatibilityError"
 	>
 		<AlertCircle class="ep-compat-failed-icon" aria-hidden="true" />
-		Could not check compatibility with {{ selectedClientName }}. Refresh the preview to try again.
+		{{ t('builder.analysis.compatibility.failed', { client: selectedClientName }) }}
 	</AnalysisEmpty>
 	<template v-else-if="compatibilityReport">
 		<!-- Score -->
@@ -57,7 +65,9 @@ const compatibilityScoreColor = computed(() => {
 			<span class="ep-compat-score-value" :style="{ color: compatibilityScoreColor }">
 				{{ compatibilityScore }}%
 			</span>
-			<span class="ep-compat-score-label">compatible</span>
+			<span class="ep-compat-score-label">{{
+				t('builder.analysis.compatibility.compatible')
+			}}</span>
 			<span class="ep-compat-clients">
 				{{ compatibilityReport.testedClients.join(', ') }}
 			</span>
@@ -67,8 +77,10 @@ const compatibilityScoreColor = computed(() => {
 		<div v-if="compatibilityIssues.errors.length > 0" class="ep-compat-group">
 			<div class="ep-compat-group-title ep-compat-errors">
 				<AlertCircle class="ep-compat-group-icon" />
-				{{ compatibilityIssues.errors.length }} Error{{
-					compatibilityIssues.errors.length === 1 ? '' : 's'
+				{{
+					t('builder.analysis.compatibility.errors', {
+						count: compatibilityIssues.errors.length,
+					})
 				}}
 			</div>
 			<div
@@ -77,14 +89,16 @@ const compatibilityScoreColor = computed(() => {
 				class="ep-compat-issue"
 			>
 				<span class="ep-compat-feature">{{ issue.feature }}</span>
-				<span class="ep-compat-message">{{ issue.message }}</span>
+				<span class="ep-compat-message">{{ issueMessage(issue) }}</span>
 			</div>
 		</div>
 		<div v-if="compatibilityIssues.warnings.length > 0" class="ep-compat-group">
 			<div class="ep-compat-group-title ep-compat-warnings">
 				<AlertTriangle class="ep-compat-group-icon" />
-				{{ compatibilityIssues.warnings.length }} Warning{{
-					compatibilityIssues.warnings.length === 1 ? '' : 's'
+				{{
+					t('builder.analysis.compatibility.warnings', {
+						count: compatibilityIssues.warnings.length,
+					})
 				}}
 			</div>
 			<div
@@ -93,14 +107,16 @@ const compatibilityScoreColor = computed(() => {
 				class="ep-compat-issue"
 			>
 				<span class="ep-compat-feature">{{ issue.feature }}</span>
-				<span class="ep-compat-message">{{ issue.message }}</span>
+				<span class="ep-compat-message">{{ issueMessage(issue) }}</span>
 			</div>
 		</div>
 		<div v-if="compatibilityIssues.info.length > 0" class="ep-compat-group">
 			<div class="ep-compat-group-title ep-compat-info">
 				<Info class="ep-compat-group-icon" />
-				{{ compatibilityIssues.info.length }} Note{{
-					compatibilityIssues.info.length === 1 ? '' : 's'
+				{{
+					t('builder.analysis.compatibility.notes', {
+						count: compatibilityIssues.info.length,
+					})
 				}}
 			</div>
 			<div
@@ -109,7 +125,7 @@ const compatibilityScoreColor = computed(() => {
 				class="ep-compat-issue"
 			>
 				<span class="ep-compat-feature">{{ issue.feature }}</span>
-				<span class="ep-compat-message">{{ issue.message }}</span>
+				<span class="ep-compat-message">{{ issueMessage(issue) }}</span>
 			</div>
 		</div>
 		<AnalysisEmpty
@@ -120,11 +136,11 @@ const compatibilityScoreColor = computed(() => {
 			"
 			success
 		>
-			No compatibility issues found.
+			{{ t('builder.analysis.compatibility.noIssues') }}
 		</AnalysisEmpty>
 	</template>
 	<AnalysisEmpty v-else>
-		Refresh the preview to check compatibility with {{ selectedClientName }}.
+		{{ t('builder.analysis.compatibility.refresh', { client: selectedClientName }) }}
 	</AnalysisEmpty>
 </template>
 

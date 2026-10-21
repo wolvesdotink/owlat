@@ -1,5 +1,5 @@
+import { normalizeBlockTreeIds } from '@owlat/shared/blockTree';
 import type { EditorBlock } from '../types';
-import { generateId } from './id';
 
 /**
  * Stored block bodies — the one reader for the block JSON the backend keeps on
@@ -13,8 +13,11 @@ import { generateId } from './id';
  *
  * Tolerant by construction: invalid JSON or any other shape reads as `[]`, and
  * entries that are not an object with a string `type` are dropped so a
- * partially corrupt body keeps what it can. An entry without a string `id`
- * (legacy content never had one) gets a fresh one.
+ * partially corrupt body keeps what it can. A Block or accordion section at
+ * any depth without a string `id` (legacy content never had one) gets one;
+ * the fill is deterministic (`normalizeBlockTreeIds`), so every read of one
+ * row, here and in the server's `parseContentBlocks`, gives it the same id.
+ * Repeated ids are kept: the editor renews them when it loads the Blocks.
  */
 export function parseStoredBlocks(content: string | null | undefined): EditorBlock[] {
 	let parsed: unknown;
@@ -23,7 +26,9 @@ export function parseStoredBlocks(content: string | null | undefined): EditorBlo
 	} catch {
 		return [];
 	}
-	return storedEntries(parsed).filter(isBlockEntry).map(withId);
+	return normalizeBlockTreeIds(
+		storedEntries(parsed).filter(isBlockEntry)
+	) as unknown as EditorBlock[];
 }
 
 /** The fields the reader inspects on a parsed JSON object. */
@@ -51,9 +56,4 @@ function storedEntries(parsed: unknown): unknown[] {
 	if (Array.isArray(parsed.blocks)) return parsed.blocks;
 	if (typeof parsed.type === 'string' && isObject(parsed.content)) return [parsed];
 	return [];
-}
-
-function withId(entry: BlockEntry): EditorBlock {
-	const block = typeof entry.id === 'string' ? entry : { ...entry, id: generateId('block') };
-	return block as unknown as EditorBlock;
 }

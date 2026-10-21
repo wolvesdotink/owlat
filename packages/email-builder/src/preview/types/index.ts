@@ -19,7 +19,14 @@ export type {
 export interface CompatibilityIssue {
 	severity: 'error' | 'warning' | 'info';
 	feature: string;
+	/** The message in English (the builder's source language). */
 	message: string;
+	/**
+	 * The `builder.*` message `message` was written from, translated where the
+	 * issue is displayed so a locale switch re-renders it.
+	 */
+	messageKey?: string;
+	messageParams?: Record<string, string | number>;
 	clients: string[];
 	cssProperty?: string;
 	htmlElement?: string;

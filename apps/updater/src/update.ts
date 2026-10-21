@@ -51,7 +51,7 @@ import {
 	parseReleaseVersionFromTemplate,
 	validateComposeTemplate,
 } from './security.js';
-import { exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
+import { exec, json, OWLAT_DIR, readBody, requireAuth, UPDATE_STEP_BOUNDS } from './http.js';
 import { shutdownSignal } from './lifecycle.js';
 import {
 	composeArgv,
@@ -301,7 +301,10 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 
 	// Step 4: Pull latest images (against the staged template, so a pull
 	// failure leaves the running stack and its compose file untouched).
-	const pull = await exec('docker', [...composeArgs, 'pull'], OWLAT_DIR, { signal: stopping });
+	const pull = await exec('docker', [...composeArgs, 'pull'], OWLAT_DIR, {
+		signal: stopping,
+		timeoutMs: UPDATE_STEP_BOUNDS.pullMs,
+	});
 	steps.push({ step: 'pull', ...pull });
 	if (stopping.aborted) return backOut();
 
@@ -335,17 +338,18 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		'docker',
 		[...deployArgs, '--profile', 'deploy', 'run', '--rm', ...noDeps, 'convex-deploy'],
 		OWLAT_DIR,
-		{ signal: stopping }
+		{ signal: stopping, timeoutMs: UPDATE_STEP_BOUNDS.convexDeployMs }
 	);
 	steps.push({ step: 'convex-deploy', ...deploy });
 	if (stopping.aborted) return backOut();
 
 	if (!deploy.ok) {
 		await discardStaged();
-		return answer(500, {
-			error: 'convex-deploy failed — update aborted, running stack untouched',
-			steps,
-		});
+		// A deploy cut off by its bound may still finish inside Convex.
+		const error = deploy.stderr.includes('timed out after')
+			? 'convex-deploy timed out — update aborted before any container was replaced, but the new functions may still go live; run the update again to bring the rest of the stack to the same release'
+			: 'convex-deploy failed — update aborted, running stack untouched';
+		return answer(500, { error, steps });
 	}
 
 	// The line a SIGTERM no longer backs out across: from here the rollout

@@ -13266,6 +13266,7 @@
 				"rule": "Eine deiner Regeln",
 				"cold_pitch": "Ein Verkaufsangebot von jemandem, dem du nie geschrieben hast",
 				"category": "Die Art der Mail",
+				"exact_wording": "Sie enthält Zahlungs- oder Rechtshinweise, deshalb bleibt sie aus deiner Zusammenfassung und den Neuigkeiten heraus",
 				"senderStatus": {
 					"default": "Wie du mit diesem Absender umgehst: {status}",
 					"user": "Wie du mit diesem Absender umgehst: {status}, von dir festgelegt",

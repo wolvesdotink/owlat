@@ -37,6 +37,9 @@ import { formatHtml } from '../formatHtml';
 import ClientSelector from './ClientSelector.vue';
 import DeviceFrame from './DeviceFrame.vue';
 import { AnalysisPanel, RenderOptionsPanel, DiffPanel } from './lazyPanels';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = withDefaults(
 	defineProps<{
@@ -190,6 +193,17 @@ const hasSimulationAdjustments = computed(
 		simulationResult.value.strippedAttributes > 0 ||
 		simulationResult.value.blockedImages > 0
 );
+const simulationSummary = computed(() => {
+	const result = simulationResult.value;
+	return t('builder.preview.client.adjustments', {
+		declarations: t('builder.preview.client.declarations', {
+			count: result.removedCssDeclarations,
+		}),
+		elements: t('builder.preview.client.elements', { count: result.removedElements }),
+		attributes: t('builder.preview.client.attributes', { count: result.strippedAttributes }),
+		images: t('builder.preview.client.images', { count: result.blockedImages }),
+	});
+});
 
 const hasAnalysisData = computed(
 	() => props.emailAnalysis || props.healthScore || props.validationIssues?.length
@@ -218,10 +232,10 @@ watch(isPlainTextOverridden, (overridden) => {
 
 /** The one-line explanation of what recipients on a text-only client will get. */
 const plainTextStatus = computed(() => {
-	if (!isEditingPlainText.value) return 'Generated from your blocks';
+	if (!isEditingPlainText.value) return t('builder.preview.plainText.generated');
 	return isPlainTextOverridden.value
-		? 'Custom text — sent instead of the generated version'
-		: 'Empty — the generated text will be sent';
+		? t('builder.preview.plainText.custom')
+		: t('builder.preview.plainText.empty');
 });
 
 /** What the Text view shows: the author's body when set, else the generated one. */
@@ -373,7 +387,7 @@ function handleClickOutside(event: MouseEvent) {
 						@click="viewMode = 'preview'"
 					>
 						<Eye class="ep-view-icon" />
-						Preview
+						{{ t('builder.preview.views.preview') }}
 					</button>
 					<button
 						class="ep-view-btn"
@@ -389,7 +403,7 @@ function handleClickOutside(event: MouseEvent) {
 						@click="viewMode = 'plaintext'"
 					>
 						<FileText class="ep-view-icon" />
-						Text
+						{{ t('builder.preview.views.text') }}
 					</button>
 					<button
 						v-if="ampHtml || ampAvailable"
@@ -416,7 +430,7 @@ function handleClickOutside(event: MouseEvent) {
 					v-if="hasWarnings"
 					class="ep-warning-badge"
 					:class="{ 'ep-warning-badge-active': warningsExpanded }"
-					title="Render warnings"
+					:title="t('builder.preview.toolbar.renderWarnings')"
 					@click="warningsExpanded = !warningsExpanded"
 				>
 					<AlertTriangle class="ep-warning-badge-icon" />
@@ -428,7 +442,7 @@ function handleClickOutside(event: MouseEvent) {
 					v-if="hasDiff"
 					class="ep-control-btn"
 					:class="{ 'ep-control-btn-active': diffPanelOpen }"
-					title="Compare changes"
+					:title="t('builder.preview.toolbar.compare')"
 					@click="diffPanelOpen = !diffPanelOpen"
 				>
 					<GitCompare class="ep-control-icon" />
@@ -438,7 +452,11 @@ function handleClickOutside(event: MouseEvent) {
 				<button
 					class="ep-control-btn"
 					:class="{ 'ep-control-btn-active': darkMode }"
-					:title="darkMode ? 'Switch to light mode' : 'Switch to dark mode'"
+					:title="
+						darkMode
+							? t('builder.preview.toolbar.lightMode')
+							: t('builder.preview.toolbar.darkMode')
+					"
 					@click="emit('update:dark-mode', !darkMode)"
 				>
 					<Moon v-if="!darkMode" class="ep-control-icon" />
@@ -450,7 +468,7 @@ function handleClickOutside(event: MouseEvent) {
 					v-if="showRenderOptions"
 					class="ep-control-btn"
 					:class="{ 'ep-control-btn-active': settingsPanelOpen }"
-					title="Render options"
+					:title="t('builder.preview.toolbar.renderOptions')"
 					@click="settingsPanelOpen = !settingsPanelOpen"
 				>
 					<Settings class="ep-control-icon" />
@@ -460,7 +478,7 @@ function handleClickOutside(event: MouseEvent) {
 				<div class="ep-export-wrapper">
 					<button
 						class="ep-control-btn"
-						title="Export"
+						:title="t('builder.preview.toolbar.export')"
 						@click.stop="exportMenuOpen = !exportMenuOpen"
 					>
 						<Download class="ep-control-icon" />
@@ -468,7 +486,7 @@ function handleClickOutside(event: MouseEvent) {
 					<div v-if="exportMenuOpen" class="ep-export-menu">
 						<button class="ep-export-item" @click="copyToClipboard(html, 'html')">
 							<Copy class="ep-export-item-icon" />
-							<span>Copy HTML</span>
+							<span>{{ t('builder.preview.export.copyHtml') }}</span>
 							<Check v-if="copiedFormat === 'html'" class="ep-export-check" />
 						</button>
 						<button
@@ -477,13 +495,13 @@ function handleClickOutside(event: MouseEvent) {
 							@click="copyToClipboard(displayPlainText, 'text')"
 						>
 							<Copy class="ep-export-item-icon" />
-							<span>Copy Plain Text</span>
+							<span>{{ t('builder.preview.export.copyText') }}</span>
 							<Check v-if="copiedFormat === 'text'" class="ep-export-check" />
 						</button>
 						<div class="ep-export-divider"></div>
 						<button class="ep-export-item" @click="downloadFile(html, 'email.html', 'text/html')">
 							<Download class="ep-export-item-icon" />
-							<span>Download .html</span>
+							<span>{{ t('builder.preview.export.download', { file: '.html' }) }}</span>
 						</button>
 						<button
 							v-if="displayPlainText"
@@ -491,7 +509,7 @@ function handleClickOutside(event: MouseEvent) {
 							@click="downloadFile(displayPlainText, 'email.txt', 'text/plain')"
 						>
 							<Download class="ep-export-item-icon" />
-							<span>Download .txt</span>
+							<span>{{ t('builder.preview.export.download', { file: '.txt' }) }}</span>
 						</button>
 						<button
 							v-if="ampHtml"
@@ -499,7 +517,7 @@ function handleClickOutside(event: MouseEvent) {
 							@click="downloadFile(ampHtml, 'email.amp.html', 'text/html')"
 						>
 							<Download class="ep-export-item-icon" />
-							<span>Download .amp.html</span>
+							<span>{{ t('builder.preview.export.download', { file: '.amp.html' }) }}</span>
 						</button>
 					</div>
 				</div>
@@ -509,17 +527,21 @@ function handleClickOutside(event: MouseEvent) {
 				<button
 					v-if="showSendTest"
 					class="ep-action-btn ep-action-primary"
-					title="Send test email"
+					:title="t('builder.preview.toolbar.sendTestTitle')"
 					@click="emit('send-test')"
 				>
 					<Send class="ep-action-icon" />
-					<span>Send Test</span>
+					<span>{{ t('builder.preview.toolbar.sendTest') }}</span>
 				</button>
 
 				<div class="ep-toolbar-divider"></div>
 
 				<!-- Refresh -->
-				<button class="ep-control-btn" title="Refresh preview" @click="refreshPreview">
+				<button
+					class="ep-control-btn"
+					:title="t('builder.preview.toolbar.refresh')"
+					@click="refreshPreview"
+				>
 					<RefreshCw class="ep-control-icon" />
 				</button>
 			</div>
@@ -530,7 +552,7 @@ function handleClickOutside(event: MouseEvent) {
 			<div class="ep-warnings-header">
 				<span class="ep-warnings-title">
 					<AlertTriangle class="ep-warnings-title-icon" />
-					{{ renderWarnings!.length }} Render Warning{{ renderWarnings!.length === 1 ? '' : 's' }}
+					{{ t('builder.preview.warnings.title', { count: renderWarnings!.length }) }}
 				</span>
 				<button class="ep-warnings-close" @click="warningsExpanded = false">
 					<X class="ep-warnings-close-icon" />
@@ -569,7 +591,7 @@ function handleClickOutside(event: MouseEvent) {
 							:srcdoc="displayHtml"
 							class="ep-preview-iframe"
 							sandbox="allow-same-origin"
-							title="Email preview"
+							:title="t('builder.preview.frame.email')"
 						></iframe>
 					</DeviceFrame>
 				</div>
@@ -577,31 +599,27 @@ function handleClickOutside(event: MouseEvent) {
 				<!-- Client Info Banner -->
 				<div v-if="selectedClient" class="ep-client-banner">
 					<span class="ep-client-banner-text">
-						Previewing as <strong>{{ selectedClient.name }}</strong>
+						{{ t('builder.preview.client.previewingAs') }}
+						<strong>{{ selectedClient.name }}</strong>
 						<template v-if="selectedClient.renderingEngine">
-							({{ selectedClient.renderingEngine }} engine)
+							{{ t('builder.preview.client.engine', { engine: selectedClient.renderingEngine }) }}
 						</template>
 					</span>
 					<div class="ep-simulation-note">
 						<AlertTriangle class="ep-simulation-icon" />
 						<span>
-							Simulated rendering only. This preview may not be 100% accurate in real inboxes.
+							{{ t('builder.preview.client.simulated') }}
 							<template v-if="hasSimulationAdjustments">
-								Removed {{ simulationResult.removedCssDeclarations }} style declaration{{
-									simulationResult.removedCssDeclarations === 1 ? '' : 's'
-								}}
-								and {{ simulationResult.removedElements }} unsupported element{{
-									simulationResult.removedElements === 1 ? '' : 's'
-								}}, stripped {{ simulationResult.strippedAttributes }} class/id attribute{{
-									simulationResult.strippedAttributes === 1 ? '' : 's'
-								}}, blocked {{ simulationResult.blockedImages }} remote image{{
-									simulationResult.blockedImages === 1 ? '' : 's'
-								}}.
+								{{ simulationSummary }}
 							</template>
 						</span>
 					</div>
 					<span v-if="selectedClient.quirks?.length" class="ep-client-quirks">
-						Known quirks: {{ selectedClient.quirks.join(', ') }}
+						{{
+							t('builder.preview.client.quirks', {
+								quirks: selectedClient.quirks.map((quirk) => label(quirk)).join(', '),
+							})
+						}}
 					</span>
 				</div>
 			</div>
@@ -622,10 +640,10 @@ function handleClickOutside(event: MouseEvent) {
 						class="ep-plaintext-action"
 						@click="startPlainTextOverride"
 					>
-						Edit text
+						{{ t('builder.preview.plainText.edit') }}
 					</button>
 					<button v-else class="ep-plaintext-action" @click="resetPlainTextOverride">
-						Use generated
+						{{ t('builder.preview.plainText.useGenerated') }}
 					</button>
 				</div>
 				<textarea
@@ -633,11 +651,11 @@ function handleClickOutside(event: MouseEvent) {
 					:value="plainTextDraft"
 					class="ep-code-block ep-plaintext-block ep-plaintext-editor"
 					spellcheck="false"
-					aria-label="Plain text body"
+					:aria-label="t('builder.preview.plainText.body')"
 					@input="updatePlainTextOverride(($event.target as HTMLTextAreaElement).value)"
 				></textarea>
 				<pre v-else class="ep-code-block ep-plaintext-block">{{
-					displayPlainText || 'No plain text generated.'
+					displayPlainText || t('builder.preview.plainText.none')
 				}}</pre>
 			</div>
 
@@ -650,7 +668,7 @@ function handleClickOutside(event: MouseEvent) {
 							:srcdoc="ampHtml"
 							class="ep-preview-iframe"
 							sandbox="allow-same-origin"
-							title="AMP email preview"
+							:title="t('builder.preview.frame.amp')"
 						></iframe>
 					</DeviceFrame>
 				</div>
@@ -674,11 +692,11 @@ function handleClickOutside(event: MouseEvent) {
 		<!-- Subject/Preheader Preview -->
 		<div v-if="subject || preheader" class="ep-meta-preview">
 			<div v-if="subject" class="ep-meta-item">
-				<span class="ep-meta-label">Subject</span>
+				<span class="ep-meta-label">{{ t('builder.preview.meta.subject') }}</span>
 				<span class="ep-meta-value">{{ subject }}</span>
 			</div>
 			<div v-if="preheader" class="ep-meta-item">
-				<span class="ep-meta-label">Preheader</span>
+				<span class="ep-meta-label">{{ t('builder.preview.meta.preheader') }}</span>
 				<span class="ep-meta-value ep-meta-preheader">{{ preheader }}</span>
 			</div>
 		</div>

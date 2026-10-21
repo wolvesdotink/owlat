@@ -21,7 +21,12 @@
  * Pure: no Convex-runtime imports, so the migration and its tests share it.
  */
 
-import { childBlockLists, ownedEntries, type BlockTreeNode } from '@owlat/shared/blockTree';
+import {
+	childBlockLists,
+	ownedEntries,
+	repeatedBlockIdRenewals,
+	type BlockTreeNode,
+} from '@owlat/shared/blockTree';
 import type { Translation } from './emailTranslations';
 
 /** How many ids one document repair renewed. Both zero: nothing was touched. */
@@ -114,14 +119,14 @@ function parseDocument(content: string): { document: unknown; roots: BlockTreeNo
 	} catch {
 		return null;
 	}
-	const list = Array.isArray(document)
-		? document
-		: isRecord(document) && Array.isArray(document['blocks'])
-			? document['blocks']
-			: isNode(document)
-				? [document]
-				: [];
-	return { document, roots: list.filter(isNode) };
+	return { document, roots: rootEntries(document).filter(isNode) };
+}
+
+/** The root entry list of a parsed `content` document, unfiltered. */
+function rootEntries(document: unknown): unknown[] {
+	if (Array.isArray(document)) return document;
+	if (isRecord(document) && Array.isArray(document['blocks'])) return document['blocks'];
+	return isRecord(document) && typeof document['type'] === 'string' ? [document] : [];
 }
 
 /** The row's overlays: `{}` when it has none, null when the stored JSON is not an object. */
@@ -165,4 +170,62 @@ export function repairRowRepeatedIds(
 		...(row.translations !== undefined && { translations: JSON.stringify(translations) }),
 		counts,
 	};
+}
+
+/** Every Block id in a stored `content` document, at any depth. */
+function blockIdsOf(content: string): Set<string> {
+	const ids = new Set<string>();
+	const parsed = parseDocument(content);
+	const visit = (node: BlockTreeNode): void => {
+		ids.add(node.id);
+		for (const list of childBlockLists(node)) for (const child of list) visit(child);
+	};
+	for (const root of parsed?.roots ?? []) visit(root);
+	return ids;
+}
+
+/**
+ * The row's `translations` with the overlays carried to the ids the editor
+ * gave repeated Blocks; null when nothing changes.
+ *
+ * The editor renews every repeat of a Block id when it loads a document
+ * (#1430), with the deterministic `normalizeBlockTreeIds`. Saving that
+ * document would otherwise leave each renewed copy without the translation it
+ * shared until then. `repeatedBlockIdRenewals` of the stored `previousContent`
+ * names the ids the editor chose; each one present in `nextContent` gets, in
+ * every language, a copy of the overlay entry of the id it renews (as
+ * `repairRepeatedBlockIds` does), or loses a stale entry under that id when
+ * the original had none. A renewed id is never in `previousContent`, so a
+ * Block that already existed is never touched.
+ */
+export function carryRenewedBlockOverlays(
+	previousContent: string,
+	nextContent: string,
+	translationsBlob: string | undefined
+): string | null {
+	let previous: unknown;
+	try {
+		previous = JSON.parse(previousContent);
+	} catch {
+		return null;
+	}
+	const renewals = repeatedBlockIdRenewals(rootEntries(previous));
+	if (renewals.length === 0) return null;
+	const translations = parseOverlays(translationsBlob);
+	if (!translations) return null;
+
+	const kept = blockIdsOf(nextContent);
+	let changed = false;
+	for (const { from, to } of renewals) {
+		if (!kept.has(to)) continue;
+		for (const translation of Object.values(translations)) {
+			if (!isRecord(translation?.blocks)) continue;
+			const blocks = translation.blocks;
+			if (Object.prototype.hasOwnProperty.call(blocks, from)) blocks[to] = { ...blocks[from] };
+			else if (Object.prototype.hasOwnProperty.call(blocks, to)) delete blocks[to];
+			else continue;
+			changed = true;
+		}
+	}
+	return changed ? JSON.stringify(translations) : null;
 }

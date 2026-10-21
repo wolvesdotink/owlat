@@ -89,7 +89,7 @@ function mountPage() {
 	return mountDashboardPage(AiRepliesPage, {
 		components: { UiPageHeader },
 		stubs: {
-			UnsavedChangesDialog: true,
+			UiUnsavedChangesDialog: true,
 			UiErrorAlert: true,
 			UiSkeleton: true,
 			UiSkeletonText: true,

@@ -4,6 +4,9 @@ import type { EditorBlock, EmailTheme, ColumnsBlockContent, Variable, SlashComma
 import type { ParentContext } from '../types';
 import { blockBoxStyle, getColumnWidths } from '../../../utils/blocks';
 import { VueDraggable } from 'vue-draggable-plus';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 // Lazy import to break circular dependency (DocumentBlock imports this component)
 const DocumentBlock = defineAsyncComponent(() => import('../DocumentBlock.vue'));
@@ -145,8 +148,11 @@ function handleChildDoubleClick(item: { id: string; type: string }) {
 						/>
 					</div>
 				</VueDraggable>
-				<div v-if="col.length === 0" class="flex items-center justify-center h-[60px] border-2 border-dashed border-border-subtle rounded text-[11px] text-text-tertiary bg-bg-surface">
-					Drop here
+				<div
+					v-if="col.length === 0"
+					class="flex items-center justify-center h-[60px] border-2 border-dashed border-border-subtle rounded text-[11px] text-text-tertiary bg-bg-surface"
+				>
+					{{ t('builder.canvas.preview.dropHere') }}
 				</div>
 			</div>
 		</div>

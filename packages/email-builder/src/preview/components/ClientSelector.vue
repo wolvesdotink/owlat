@@ -3,6 +3,9 @@ import { ref, computed } from 'vue';
 import { Monitor, Smartphone, Tablet, Globe, Shield, ChevronDown, Check, X } from '@lucide/vue';
 import type { EmailClient, EmailClientGroup, DevicePreset } from '../types';
 import { emailClientGroups, devicePresets, popularClients } from '../data/clients';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 const props = defineProps<{
 	selectedClient: EmailClient | null;
@@ -84,7 +87,7 @@ function closeDropdowns() {
 					class="ep-selector-icon"
 				/>
 				<span class="ep-selector-label">
-					{{ selectedClient?.name || 'All Clients' }}
+					{{ selectedClient?.name || t('builder.preview.clients.all') }}
 				</span>
 				<ChevronDown class="ep-selector-chevron" :class="{ 'ep-chevron-up': showClientDropdown }" />
 			</button>
@@ -93,16 +96,16 @@ function closeDropdowns() {
 			<Transition name="ep-dropdown">
 				<div v-if="showClientDropdown" class="ep-dropdown ep-dropdown-clients">
 					<div class="ep-dropdown-header">
-						<span>Email Client</span>
+						<span>{{ t('builder.preview.clients.title') }}</span>
 						<button v-if="selectedClient" class="ep-clear-button" @click="selectClient(null)">
 							<X class="ep-clear-icon" />
-							Clear
+							{{ t('builder.preview.clients.clear') }}
 						</button>
 					</div>
 
 					<!-- Popular Clients -->
 					<div class="ep-dropdown-section">
-						<div class="ep-dropdown-section-title">Popular</div>
+						<div class="ep-dropdown-section-title">{{ t('builder.preview.clients.popular') }}</div>
 						<div class="ep-client-grid">
 							<button
 								v-for="client in popularClientsList"
@@ -119,7 +122,9 @@ function closeDropdowns() {
 
 					<!-- All Clients -->
 					<div class="ep-dropdown-section">
-						<div class="ep-dropdown-section-title">All Clients</div>
+						<div class="ep-dropdown-section-title">
+							{{ t('builder.preview.clients.all') }}
+						</div>
 						<div v-for="group in emailClientGroups" :key="group.family" class="ep-client-group">
 							<div class="ep-client-group-name">
 								<component :is="getIcon(group.icon)" class="ep-client-group-icon" />
@@ -158,20 +163,20 @@ function closeDropdowns() {
 				"
 			>
 				<component :is="getIcon(selectedDevice.icon)" class="ep-selector-icon" />
-				<span class="ep-selector-label">{{ selectedDevice.name }}</span>
+				<span class="ep-selector-label">{{ label(selectedDevice.name) }}</span>
 				<ChevronDown class="ep-selector-chevron" :class="{ 'ep-chevron-up': showDeviceDropdown }" />
 			</button>
 
 			<!-- Device Dropdown -->
 			<Transition name="ep-dropdown">
 				<div v-if="showDeviceDropdown" class="ep-dropdown ep-dropdown-devices">
-					<div class="ep-dropdown-header">Device Size</div>
+					<div class="ep-dropdown-header">{{ t('builder.preview.devices.title') }}</div>
 
 					<!-- Desktop -->
 					<div class="ep-dropdown-section">
 						<div class="ep-dropdown-section-title">
 							<Monitor class="ep-section-icon" />
-							Desktop
+							{{ t('builder.preview.devices.desktop') }}
 						</div>
 						<div class="ep-device-list">
 							<button
@@ -181,7 +186,7 @@ function closeDropdowns() {
 								:class="{ 'ep-device-selected': selectedDevice.id === device.id }"
 								@click="selectDevice(device)"
 							>
-								<span class="ep-device-name">{{ device.name }}</span>
+								<span class="ep-device-name">{{ label(device.name) }}</span>
 								<span class="ep-device-size">{{ device.width }} × {{ device.height }}</span>
 								<Check v-if="selectedDevice.id === device.id" class="ep-device-check" />
 							</button>
@@ -192,7 +197,7 @@ function closeDropdowns() {
 					<div class="ep-dropdown-section">
 						<div class="ep-dropdown-section-title">
 							<Tablet class="ep-section-icon" />
-							Tablet
+							{{ t('builder.preview.devices.tablet') }}
 						</div>
 						<div class="ep-device-list">
 							<button
@@ -202,7 +207,7 @@ function closeDropdowns() {
 								:class="{ 'ep-device-selected': selectedDevice.id === device.id }"
 								@click="selectDevice(device)"
 							>
-								<span class="ep-device-name">{{ device.name }}</span>
+								<span class="ep-device-name">{{ label(device.name) }}</span>
 								<span class="ep-device-size">{{ device.width }} × {{ device.height }}</span>
 								<Check v-if="selectedDevice.id === device.id" class="ep-device-check" />
 							</button>
@@ -213,7 +218,7 @@ function closeDropdowns() {
 					<div class="ep-dropdown-section">
 						<div class="ep-dropdown-section-title">
 							<Smartphone class="ep-section-icon" />
-							Mobile
+							{{ t('builder.preview.devices.mobile') }}
 						</div>
 						<div class="ep-device-list">
 							<button
@@ -223,7 +228,7 @@ function closeDropdowns() {
 								:class="{ 'ep-device-selected': selectedDevice.id === device.id }"
 								@click="selectDevice(device)"
 							>
-								<span class="ep-device-name">{{ device.name }}</span>
+								<span class="ep-device-name">{{ label(device.name) }}</span>
 								<span class="ep-device-size">{{ device.width }} × {{ device.height }}</span>
 								<Check v-if="selectedDevice.id === device.id" class="ep-device-check" />
 							</button>

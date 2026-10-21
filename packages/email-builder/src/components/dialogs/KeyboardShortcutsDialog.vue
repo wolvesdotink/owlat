@@ -7,6 +7,9 @@ import {
 	formatShortcutKeys,
 	useApplePlatform,
 } from '../../composables/editorShortcuts';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t, label } = useBuilderI18n();
 
 defineProps<{
 	show: boolean;
@@ -23,29 +26,32 @@ const isApplePlatform = useApplePlatform();
 const sections = computed(() =>
 	EDITOR_SHORTCUT_GROUPS.map((group) => ({
 		group,
-		shortcuts: EDITOR_SHORTCUTS.filter((shortcut) => shortcut.group === group).map(
-			(shortcut) => ({
-				...shortcut,
-				keys: formatShortcutKeys(shortcut.keys, isApplePlatform.value),
-			})
-		),
+		shortcuts: EDITOR_SHORTCUTS.filter((shortcut) => shortcut.group === group).map((shortcut) => ({
+			...shortcut,
+			keys: formatShortcutKeys(shortcut.keys, isApplePlatform.value).map((key) => label(key)),
+		})),
 	})).filter((section) => section.shortcuts.length > 0)
 );
 </script>
 
 <template>
-	<UiModal :open="show" title="Keyboard Shortcuts" size="lg" @update:open="emit('close')">
+	<UiModal
+		:open="show"
+		:title="t('builder.shortcuts.title')"
+		size="lg"
+		@update:open="emit('close')"
+	>
 		<div class="flex flex-col gap-5">
 			<section v-for="section in sections" :key="section.group" class="flex flex-col gap-2">
 				<h3 class="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-tertiary m-0">
-					{{ section.group }}
+					{{ label(section.group) }}
 				</h3>
 				<div
 					v-for="shortcut in section.shortcuts"
 					:key="shortcut.description"
 					class="flex items-center justify-between gap-4"
 				>
-					<span class="text-[13px] text-text-secondary">{{ shortcut.description }}</span>
+					<span class="text-[13px] text-text-secondary">{{ label(shortcut.description) }}</span>
 					<span class="flex items-center gap-1 shrink-0">
 						<kbd
 							v-for="key in shortcut.keys"

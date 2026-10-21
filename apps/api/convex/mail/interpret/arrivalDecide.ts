@@ -11,6 +11,12 @@
  *       terminal skips with no model call (`outstanding.settleArrivalSource`);
  *       a display-only read the background budget refuses counts too.
  *
+ * The exact-wording screen is stored on the arrival record first, whatever
+ * the depth (#1384): a candidate never reads as digest or updates. Admission
+ * lets a source its text-blind decision counts go on uncharged; when the
+ * screen lifts it to a read here, the read takes its owner token here, and
+ * over the owner limit it is counted instead (`arrivalAdmit.ts`).
+ *
  * Only display-only sources are ever read less than in full: anything else
  * keeps today's eager full read untouched (`full`), the `ai` flag included,
  * whose refusal the run's own gate records as today. A source settled short
@@ -40,14 +46,24 @@ import {
 	chooseArrivalDepth,
 	type ArrivalDepthChoice,
 } from '@owlat/shared/arrivalDepth';
+import { doesThreadOverrideHold } from '@owlat/shared/arrivalPlacement';
 import { isPersonalMailbox } from '../permissions';
 import { senderProfileOf } from '../arrival/projection';
-import { loadArrivalRecord, noteArrivalRun } from '../arrival/records';
+import { loadArrivalRecord, noteArrivalRun, noteExactWordingScreen } from '../arrival/records';
+import { rateLimiter } from '../../lib/rateLimiter';
 import { isDisplayOnlyInterpretation } from './defer';
 import { leaseLostAt } from './lease';
 import { settleArrivalSource } from './outstanding';
 import { isReadOnArrivalOn } from './preferences';
 import { loadInterpretSource } from './sources';
+import { sourceVersionOf } from './sourceVersion';
+
+/**
+ * How long one owner-token charge covers a source's read job (`arrivalAdmit.ts`):
+ * its predecessor loop's continuations, a classifier's continuations, a retry
+ * after a lost lease.
+ */
+export const ARRIVAL_ADMISSION_TTL_MS = 30 * 60 * 1000;
 
 /** How long a display-only arrival read waits for this message's category (§2.3.3b). */
 export const CATEGORY_DEPTH_WAIT_MS = 2 * 60 * 1000;
@@ -74,7 +90,9 @@ export type ArrivalVerdict =
 	| { kind: 'busy'; retryAt: number }
 	/** Already terminal, or gone. */
 	| { kind: 'done' }
-	| { kind: 'gone' };
+	| { kind: 'gone' }
+	/** The body (or its signed scope) changed since the run scoped it: start over. */
+	| { kind: 'sourceChanged' };
 
 const mailSourceValidator = v.object({ kind: v.literal('mail'), id: v.id('mailMessages') });
 
@@ -125,6 +143,25 @@ export async function isSettlementCurrent(
 	return (brief?.deletionEpoch ?? 0) === deletionEpoch;
 }
 
+/**
+ * Take the owner's `arrivalReadPerOwner` token for a read job that has no live
+ * charge yet, and stamp it (`arrivalAdmit.ts` does the same at admission).
+ * False when the owner is over the limit. A source admission already charged
+ * rides on its stamp.
+ */
+export async function chargeOwnerRead(
+	ctx: MutationCtx,
+	row: Doc<'interpretSources'>,
+	userId: string
+): Promise<boolean> {
+	const now = Date.now();
+	if (row.arrivalAdmittedUntil !== undefined && row.arrivalAdmittedUntil > now) return true;
+	const limited = await rateLimiter.limit(ctx, 'arrivalReadPerOwner', { key: userId });
+	if (!limited.ok) return false;
+	await ctx.db.patch(row._id, { arrivalAdmittedUntil: now + ARRIVAL_ADMISSION_TTL_MS });
+	return true;
+}
+
 /** The decision table's inputs for a display-only message (§2.2), screens from the caller. */
 export async function arrivalInputs(
 	ctx: MutationCtx,
@@ -134,7 +171,19 @@ export async function arrivalInputs(
 	const thread = await ctx.db.get(message.threadId);
 	const profile = await senderProfileOf(ctx, message.mailboxId, message.fromAddress);
 	const record = await loadArrivalRecord(ctx, message._id);
-	const placementOverride = thread?.placementOverride?.placement ?? profile?.placementOverride;
+	// A thread override older than an exact-wording candidate does not count it (#1384).
+	const threadOverride =
+		thread?.placementOverride &&
+		doesThreadOverrideHold(
+			{
+				isExactWordingCandidate: screens.isExactWordingCandidate,
+				...(record ? { arrivedAt: record.createdAt } : {}),
+			},
+			thread.placementOverride
+		)
+			? thread.placementOverride.placement
+			: undefined;
+	const placementOverride = threadOverride ?? profile?.placementOverride;
 	return {
 		isReadOnArrival: true,
 		isAiOn: await isFeatureEnabled(ctx, 'ai'),
@@ -156,6 +205,8 @@ export const decideArrivalDepth = internalMutation({
 		leaseToken: v.optional(v.string()),
 		/** The brief's deletion epoch at the run's load. */
 		deletionEpoch: v.number(),
+		/** The fingerprint of the body the screens read (`sourceVersion.ts`). */
+		sourceVersion: v.optional(v.string()),
 		isSecurityMail: v.boolean(),
 		isExactWordingCandidate: v.boolean(),
 	},
@@ -170,6 +221,19 @@ export const decideArrivalDepth = internalMutation({
 		const mailbox = await ctx.db.get(message.mailboxId);
 		if (!mailbox || !isPersonalMailbox(mailbox) || message.outbound !== undefined) {
 			return { kind: 'full', isDisplayOnly: false };
+		}
+		// The screens are of the body the run scoped: a newer body or signed
+		// scope (a re-verified signature) restarts the run with it.
+		if (
+			args.sourceVersion !== undefined &&
+			(await sourceVersionOf(ctx, args.source)) !== args.sourceVersion
+		) {
+			return { kind: 'sourceChanged' };
+		}
+		// The screen lands whatever the depth: open work is placed too (#1384).
+		// A purge or scope conversion since the run's load writes none of it.
+		if (await isSettlementCurrent(ctx, message, args.deletionEpoch)) {
+			await noteExactWordingScreen(ctx, message._id, args.isExactWordingCandidate);
 		}
 		// A terminal exclusion stays one, eager demand or not (Sol r2 F3).
 		if (row.readOutcome !== undefined && row.isUpgradeable === false) return { kind: 'done' };
@@ -201,9 +265,13 @@ export const decideArrivalDepth = internalMutation({
 		if (first.depth === 'deferred') return { kind: 'full', isDisplayOnly: false };
 		let choice: ArrivalDepthChoice & { depth: Depth } = { ...first, depth: first.depth };
 		let degradedBy: DegradedBy | undefined;
-		// The owner bucket was taken at admission; the budget is display-only's own.
+		// The owner bucket was taken at admission, unless admission's text-blind
+		// decision counted the source (#1384); the budget is display-only's own.
 		if (choice.depth === 'full' || choice.depth === 'gist') {
-			if (!(await budgetHeadroom(ctx, { priority: 'background' })).isAdmitted) {
+			if (!(await chargeOwnerRead(ctx, row, mailbox.userId))) {
+				choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS.ownerLimit });
+				degradedBy = 'owner_limit';
+			} else if (!(await budgetHeadroom(ctx, { priority: 'background' })).isAdmitted) {
 				choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS.budget });
 				degradedBy = 'budget';
 			}
@@ -229,6 +297,33 @@ export const decideArrivalDepth = internalMutation({
 			modelCalls: 1,
 		});
 		return decided.depth === 'gist' ? { kind: 'gist' } : { kind: 'full', isDisplayOnly: true };
+	},
+});
+
+/**
+ * The exact-wording screen of a source admission counted over the owner limit
+ * before it was scoped (`arrivalRun.screenCountedArrival`, #1384): stored on
+ * its arrival record, so a candidate reads as `today`. The screen is a pure
+ * function of the message's own scoped text, so it is written only when that
+ * text is still the one screened (`sourceChanged`: the caller screens again)
+ * and nothing purged or converted the thread's mailbox since admission
+ * (`gone`).
+ */
+export const noteCountedArrivalScreen = internalMutation({
+	args: {
+		source: mailSourceValidator,
+		isExactWordingCandidate: v.boolean(),
+		/** The brief's deletion epoch at admission. */
+		deletionEpoch: v.number(),
+		/** The fingerprint of the body the screen read (`sourceVersion.ts`). */
+		sourceVersion: v.string(),
+	},
+	handler: async (ctx, args): Promise<'noted' | 'sourceChanged' | 'gone'> => {
+		const message = await ctx.db.get(args.source.id);
+		if (!message || !(await isSettlementCurrent(ctx, message, args.deletionEpoch))) return 'gone';
+		if ((await sourceVersionOf(ctx, args.source)) !== args.sourceVersion) return 'sourceChanged';
+		await noteExactWordingScreen(ctx, message._id, args.isExactWordingCandidate);
+		return 'noted';
 	},
 });
 

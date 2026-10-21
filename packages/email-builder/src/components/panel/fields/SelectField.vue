@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { ChevronDown, Check } from '@lucide/vue';
+import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	value: unknown;
@@ -31,7 +34,7 @@ const selectedLabel = computed(() => {
 });
 
 const displayText = computed(() => {
-	return selectedLabel.value ?? props.placeholder ?? 'Choose...';
+	return selectedLabel.value ?? props.placeholder ?? t('builder.panel.select.placeholder');
 });
 
 const hasSelection = computed(() => !!selectedOption.value);

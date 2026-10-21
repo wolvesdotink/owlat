@@ -3,6 +3,9 @@ import { ref, shallowRef } from 'vue';
 import type { BlockType } from '../../types';
 import { Plus } from '@lucide/vue';
 import BlockPickerPopover from './BlockPickerPopover.vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 defineProps<{
 	afterBlockId: string;
@@ -63,7 +66,7 @@ function handleSelect(type: BlockType, afterBlockId: string) {
 			]"
 			type="button"
 			tabindex="-1"
-			title="Insert block here"
+			:title="t('builder.canvas.insertHere')"
 			@click.stop="showPicker = !showPicker"
 		>
 			<Plus :size="12" :stroke-width="2.5" />

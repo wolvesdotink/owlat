@@ -30,6 +30,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vite
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
+import { UPDATE_REQUEST_TIMEOUT_MS } from '~/lib/systemUpdate';
 import UpdateProgress from '../UpdateProgress.vue';
 
 const TARGET = '0.4.17';
@@ -405,6 +406,23 @@ describe('UpdateProgress — the updater verdict', () => {
 
 		expect(wrapper.emitted('failed')).toBeUndefined();
 		expect(wrapper.find('[role="status"]').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
+	/**
+	 * The updater's pull and Convex deploy may take 25 minutes between them on a
+	 * large instance, before `up` and the readiness wait; a page that gave up at
+	 * 30 minutes reported updates that went on to succeed as failed.
+	 */
+	it('waits as long as the update itself may take, and no longer', async () => {
+		health = withRecord({ phase: 'verifying' });
+		const wrapper = mountAttempt();
+
+		await vi.advanceTimersByTimeAsync(45 * 60 * 1000);
+		expect(wrapper.emitted('failed')).toBeUndefined();
+
+		await vi.advanceTimersByTimeAsync(UPDATE_REQUEST_TIMEOUT_MS - 45 * 60 * 1000);
+		expect(wrapper.emitted('failed')).toHaveLength(1);
 		wrapper.unmount();
 	});
 });

@@ -48,15 +48,19 @@ export function isReplyVerdictSettled(
 }
 
 /**
- * `computePlacement` over the stored inputs: the record (its rule placement and
- * category, else the thread's), the thread (override, settled reply verdict),
- * the sender profile and whether the record's cold-pitch verdict stands
+ * `computePlacement` over the stored inputs: the record (its rule placement,
+ * exact-wording screen, arrival time and category, else the thread's), the
+ * thread (override and when it was set, settled reply verdict), the sender
+ * profile and whether the record's cold-pitch verdict stands
  * (`coldPitchEvidence.ts loadColdPitchStanding`). Shared by the projection and
  * Explain, so "why here" always answers from the same inputs the projection
  * placed it with. Pure.
  */
 export function placementOf(
-	record: Pick<Doc<'mailArrivalRecords'>, 'rulePlacement' | 'category' | 'categorySource'>,
+	record: Pick<
+		Doc<'mailArrivalRecords'>,
+		'rulePlacement' | 'category' | 'categorySource' | 'isExactWordingCandidate' | 'createdAt'
+	>,
 	thread: Pick<Thread, 'category' | 'placementOverride' | 'needsReply' | 'needsReplyPendingAt'>,
 	profile: Pick<Doc<'mailSenderProfiles'>, 'status' | 'placementOverride'> | null,
 	isColdPitch: boolean
@@ -69,10 +73,17 @@ export function placementOf(
 			...(category ? { category } : {}),
 			...(categorySource ? { categorySource } : {}),
 			...(isColdPitch ? { isColdPitch: true } : {}),
+			...(record.isExactWordingCandidate ? { isExactWordingCandidate: true } : {}),
+			arrivedAt: record.createdAt,
 		},
 		{
 			...(thread.placementOverride
-				? { placementOverride: { placement: thread.placementOverride.placement } }
+				? {
+						placementOverride: {
+							placement: thread.placementOverride.placement,
+							setAt: thread.placementOverride.setAt,
+						},
+					}
 				: {}),
 			isReplyNeeded: isReplyVerdictSettled(thread),
 		},

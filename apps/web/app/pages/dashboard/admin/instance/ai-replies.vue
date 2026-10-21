@@ -11,7 +11,6 @@
  * `ai.autonomy` feature flag, whose state is shown here with a link to Features.
  */
 import { api } from '@owlat/api';
-import { UnsavedChangesDialog } from '@owlat/email-builder';
 import AiReplyModeControl from '~/components/settings/AiReplyModeControl.vue';
 import AiReplyCategoryRules from '~/components/autonomy/CategoryRulesSection.vue';
 import { useSettingsForm } from '~/composables/useSettingsForm';
@@ -463,7 +462,7 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 			</div>
 		</UiQueryBoundary>
 
-		<UnsavedChangesDialog
+		<UiUnsavedChangesDialog
 			:show="unsavedDialog.showDialog"
 			:saving="unsavedDialog.isSavingBeforeLeave"
 			@close="unsavedDialog.cancelNavigation"

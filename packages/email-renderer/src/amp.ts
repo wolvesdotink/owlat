@@ -10,7 +10,7 @@ import type { EditorBlock } from '@owlat/shared';
 import type { RenderOptions } from './types';
 import { escapeHtml, escapeAttr } from './sanitize';
 import { moduleFor } from './blocks/_registry';
-import { DEFAULT_BASE_WIDTH } from './renderer';
+import { DEFAULT_BASE_WIDTH, withBlockIds } from './renderer';
 import { px } from './helpers/padding';
 // Side-effect: ensure built-in modules are registered when AMP rendering runs
 // even if `blocks/index.ts` was never imported by the caller.
@@ -26,7 +26,8 @@ import './blocks/_builtin-modules';
  * an AMP equivalent is `rawHtml` (AMP forbids arbitrary HTML), which emits a
  * skipped-block comment so the output stays valid AMP4Email.
  */
-export const renderAmpEmail = (blocks: EditorBlock[], options?: RenderOptions): string => {
+export const renderAmpEmail = (input: EditorBlock[], options?: RenderOptions): string => {
+	const blocks = withBlockIds(input);
 	const lang = escapeAttr(options?.lang ?? 'en');
 	const title = escapeHtml(options?.title ?? '');
 

@@ -1,6 +1,7 @@
 import { v, type JSONValue, type Validator, type ValidatorJSON } from 'convex/values';
 import { describe, expect, it } from 'vitest';
 import schema from '../../schema';
+import { containmentGap, ownEntry, withoutValidatorField } from './containment';
 import { rowsForTable } from './rows';
 import { readSnapshot } from './snapshot';
 import { schemaMismatch } from './validate';
@@ -10,7 +11,12 @@ import { schemaMismatch } from './validate';
  * previous release wrote, and the deploy refuses a schema those rows do not
  * validate against. So every row shape the previous release's schema allowed
  * must still validate against the current one. This builds those rows from the
- * snapshot in `previousRelease.json` and checks each one.
+ * snapshot in `previousRelease.json` and checks each one, then proves from the
+ * two validators' structure (`containment.ts`) that each current table
+ * validator accepts every row the previous one did. The rows give readable
+ * diagnostics; the structural proof catches what one sample per path misses,
+ * such as a `v.string()` made a `v.id()` or a literal, or a union split that
+ * loses one combination of members.
  *
  * A failure here means the PR makes an existing optional field required,
  * changes a field's type, narrows a union, drops a field or drops a table
@@ -84,10 +90,14 @@ function incompatibilities(
 			if (!retired.has(table)) problems.push(`${table}: table is no longer in the schema`);
 			continue;
 		}
+		const retiredPaths = ownEntry(retiredFields, table) ?? [];
 		for (const [index, row] of rowsForTable(validator).entries()) {
-			const problem = schemaMismatch(next, withoutRetiredFields(row, retiredFields[table]));
+			const problem = schemaMismatch(next, withoutRetiredFields(row, retiredPaths));
 			if (problem) problems.push(`${table} row ${index}: ${problem}`);
 		}
+		const stored = retiredPaths.reduce(withoutValidatorField, validator);
+		const gap = containmentGap(next, stored, '(row)');
+		if (gap) problems.push(`${table}: ${gap}`);
 	}
 	return problems;
 }
@@ -314,6 +324,88 @@ describe('the compatibility check itself', () => {
 				}
 			).join('\n')
 		).toContain('x: expected one of object | object, got {"k":"b","m":"p"}');
+	});
+
+	it('rejects a stored string made an id or a literal, which every sample row passes', () => {
+		// The sampled rows hold `"fixture"` for a string, which an id check and a
+		// `"fixture"` literal both take; only the structural proof sees the gap.
+		const before = { t: table({ x: v.string(), at: v.number() }) };
+		expect(
+			incompatibilities(before, { t: table({ x: v.id('contacts'), at: v.number() }) })
+		).toEqual(['t: x: accepted string, now only id of contacts']);
+		expect(
+			incompatibilities(before, { t: table({ x: v.literal('fixture'), at: v.number() }) })
+		).toEqual(['t: x: accepted string, now only "fixture"']);
+	});
+
+	it('rejects a union split that loses one combination of members', () => {
+		const ab = v.union(v.literal('a'), v.literal('b'));
+		const xy = v.union(v.literal('x'), v.literal('y'));
+		expect(
+			incompatibilities(
+				{ t: table({ s: v.object({ a: ab, b: xy }) }) },
+				{
+					t: table({
+						s: v.union(
+							v.object({ a: v.literal('a'), b: xy }),
+							v.object({ a: v.literal('b'), b: v.literal('x') })
+						),
+					}),
+				}
+			)
+		).toEqual([
+			't: s: accepted {a: "b", b: "y"}, now only {a: "a", b: "x" | "y"} | {a: "b", b: "x"}',
+		]);
+	});
+
+	it('accepts widened stored types: an id or a literal made a string, a split covering every case', () => {
+		expect(
+			incompatibilities(
+				{ t: table({ x: v.id('contacts'), y: v.literal('fixture') }) },
+				{ t: table({ x: v.string(), y: v.string() }) }
+			)
+		).toEqual([]);
+		const ab = v.union(v.literal('a'), v.literal('b'));
+		const xy = v.union(v.literal('x'), v.literal('y'));
+		expect(
+			incompatibilities(
+				{ t: table({ s: v.object({ a: ab, b: xy }) }) },
+				{
+					t: table({
+						s: v.union(
+							v.object({ a: v.literal('a'), b: xy }),
+							v.object({ a: v.literal('b'), b: xy })
+						),
+					}),
+				}
+			)
+		).toEqual([]);
+	});
+
+	it('still proves the rest of a row with a retired field, not just its samples', () => {
+		const before = {
+			t: table({
+				items: v.array(v.object({ id: v.string(), legacy: v.string() })),
+				at: v.number(),
+			}),
+		};
+		const retired = { t: ['items[].legacy'] };
+		expect(
+			incompatibilities(
+				before,
+				{ t: table({ items: v.array(v.object({ id: v.string() })), at: v.number() }) },
+				new Set(),
+				retired
+			)
+		).toEqual([]);
+		expect(
+			incompatibilities(
+				before,
+				{ t: table({ items: v.array(v.object({ id: v.id('contacts') })), at: v.number() }) },
+				new Set(),
+				retired
+			)
+		).toEqual(['t: items[].id: accepted string, now only id of contacts']);
 	});
 
 	it('keeps the row count per table small enough to check every release', () => {
