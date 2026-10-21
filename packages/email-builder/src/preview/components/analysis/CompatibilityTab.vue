@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { AlertCircle, AlertTriangle, Info } from '@lucide/vue';
+import { AlertCircle, AlertTriangle, Info, Loader2 } from '@lucide/vue';
 import type { CompatibilityReport } from '../../types';
 import { scoreColor } from '../../scoreBands';
 import AnalysisEmpty from './AnalysisEmpty.vue';
 
 const props = defineProps<{
 	compatibilityReport: CompatibilityReport | null;
+	/** Why the analysis for the selected client failed, if it did. */
+	compatibilityError: string | null;
+	/** The client being analyzed; null when none is picked yet. */
+	selectedClientName: string | null;
+	isAnalyzing: boolean;
 }>();
 
 const compatibilityIssues = computed(() => {
@@ -30,7 +35,23 @@ const compatibilityScoreColor = computed(() => {
 </script>
 
 <template>
-	<template v-if="compatibilityReport">
+	<AnalysisEmpty v-if="!selectedClientName">
+		Select a client above to analyze compatibility.
+	</AnalysisEmpty>
+	<AnalysisEmpty v-else-if="isAnalyzing" class="ep-compat-pending" role="status">
+		<Loader2 class="ep-compat-spinner" aria-hidden="true" />
+		Checking compatibility with {{ selectedClientName }}…
+	</AnalysisEmpty>
+	<AnalysisEmpty
+		v-else-if="compatibilityError"
+		class="ep-compat-failed"
+		role="alert"
+		:title="compatibilityError"
+	>
+		<AlertCircle class="ep-compat-failed-icon" aria-hidden="true" />
+		Could not check compatibility with {{ selectedClientName }}. Refresh the preview to try again.
+	</AnalysisEmpty>
+	<template v-else-if="compatibilityReport">
 		<!-- Score -->
 		<div class="ep-compat-score">
 			<span class="ep-compat-score-value" :style="{ color: compatibilityScoreColor }">
@@ -102,7 +123,9 @@ const compatibilityScoreColor = computed(() => {
 			No compatibility issues found.
 		</AnalysisEmpty>
 	</template>
-	<AnalysisEmpty v-else>Select a client above to analyze compatibility.</AnalysisEmpty>
+	<AnalysisEmpty v-else>
+		Refresh the preview to check compatibility with {{ selectedClientName }}.
+	</AnalysisEmpty>
 </template>
 
 <style scoped>
@@ -178,5 +201,29 @@ const compatibilityScoreColor = computed(() => {
 .ep-compat-message {
 	font-size: 11px;
 	color: var(--ep-text-tertiary);
+}
+
+.ep-compat-spinner,
+.ep-compat-failed-icon {
+	flex-shrink: 0;
+	width: 14px;
+	height: 14px;
+}
+
+.ep-compat-spinner {
+	animation: ep-compat-spin 1s linear infinite;
+}
+
+.ep-compat-failed-icon {
+	color: var(--ep-error);
+}
+
+@keyframes ep-compat-spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 </style>

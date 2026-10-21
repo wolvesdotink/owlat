@@ -17,6 +17,10 @@ const props = defineProps<{
 	healthScore: PreviewHealthScore | null;
 	validationIssues: PreviewValidationIssue[];
 	compatibilityReport: CompatibilityReport | null;
+	/** Why the compatibility analysis failed, if it did. */
+	compatibilityError?: string | null;
+	/** The client the compatibility analysis is for; null when none is picked. */
+	selectedClientName?: string | null;
 	isAnalyzing?: boolean;
 	expanded?: boolean;
 }>();
@@ -103,7 +107,13 @@ const headerSummary = computed(() => {
 						v-else-if="activeTab === 'validation'"
 						:validation-issues="validationIssues"
 					/>
-					<CompatibilityTab v-else :compatibility-report="compatibilityReport" />
+					<CompatibilityTab
+						v-else
+						:compatibility-report="compatibilityReport"
+						:compatibility-error="compatibilityError ?? null"
+						:selected-client-name="selectedClientName ?? null"
+						:is-analyzing="isAnalyzing ?? false"
+					/>
 				</div>
 			</div>
 		</div>

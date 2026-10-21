@@ -5,39 +5,35 @@ import type { CompatibilityReport } from '../../types';
 
 /**
  * The previewer re-runs compatibility analysis on every html/client change.
- * While the first caniemail load is slow, only the newest analysis may reach
+ * While the first Can I Email data load is slow, only the newest analysis may reach
  * the host, and nothing may arrive after the previewer is gone.
  */
 let wrapper: VueWrapper | null = null;
 let respond!: () => void;
 
+// The bundled Can I Email snapshot is held until `respond()`, standing in for a
+// slow first load of its chunk.
+const loadSnapshot = vi.hoisted(() => vi.fn());
+vi.mock('../../composables/caniemailSnapshot', () => ({ loadCanIEmailSnapshot: loadSnapshot }));
+
 beforeEach(() => {
-	// The composable also caches the data in localStorage; start every test cold.
-	localStorage.clear();
-	vi.stubGlobal(
-		'fetch',
-		vi.fn(
-			() =>
-				new Promise((resolve) => {
-					respond = () =>
-						resolve({
-							ok: true,
-							statusText: 'OK',
-							json: async () => ({
-								api_version: '1.0',
-								last_update_date: '2026-06-03',
-								nicenames: { family: {}, platform: {}, support: {}, category: {} },
-								data: [],
-							}),
-						});
-				})
-		)
+	loadSnapshot.mockReset();
+	loadSnapshot.mockImplementation(
+		() =>
+			new Promise((resolve) => {
+				respond = () =>
+					resolve({
+						api_version: '1.0',
+						last_update_date: '2026-06-03',
+						nicenames: { family: {}, platform: {}, support: {}, category: {} },
+						data: [],
+					});
+			})
 	);
 });
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	vi.unstubAllGlobals();
 });
 
 // A fresh module graph per test: the caniemail cache is module-level.
