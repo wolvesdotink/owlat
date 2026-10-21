@@ -13,6 +13,7 @@ import { htmlToPlainText } from '@owlat/shared/html';
 import type { EditorSnippet } from '~/composables/postbox/usePostboxSnippetPicker';
 import { SAVED_REPLIES_CHORD } from '~/composables/useComposerSavedReplyPicker';
 import { useChordKeys } from '~/composables/useChordKeys';
+import { isImeComposing } from '~/utils/imeComposition';
 import { rankSnippets } from '~/utils/postboxSnippets';
 
 const props = defineProps<{
@@ -54,6 +55,8 @@ function pick(reply: EditorSnippet | undefined) {
 }
 
 function onKeydown(event: KeyboardEvent) {
+	// The Enter that confirms an IME candidate (typing 「返信」, say) is the IME's.
+	if (isImeComposing(event)) return;
 	const count = items.value.length;
 	if (event.key === 'ArrowDown' && count > 0) {
 		event.preventDefault();
