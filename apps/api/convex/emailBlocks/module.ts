@@ -29,6 +29,7 @@
  */
 
 import { v } from 'convex/values';
+import { normalizeBlockTreeIds } from '@owlat/shared/blockTree';
 import type { SavedBlockRef } from '@owlat/shared/types';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -108,25 +109,36 @@ type Effect =
  * `{ blocks: [...] }`, legacy bare array, and single-block
  * `{ type, content }`.
  *
+ * A Block or accordion section without an id (legacy content never had one)
+ * gets one, the same deterministic id the editor's `parseStoredBlocks`
+ * gives it, so the renderer never meets an id-less Block (#1432) and a
+ * translation overlay keyed by that id applies here too. Repeated ids are
+ * kept: renewing one on read would detach the copy from the overlay it
+ * shares without anything being written.
+ *
  * Exported so the `'use node'` rerender action in `rendering.ts` can
  * reuse the canonical implementation rather than re-declare it.
  */
 export function parseContentBlocks(contentJson: string): EditorBlock[] {
 	try {
-		const parsed = JSON.parse(contentJson);
-		if (parsed?.blocks && Array.isArray(parsed.blocks)) {
-			return parsed.blocks;
-		}
-		if (Array.isArray(parsed)) {
-			return parsed;
-		}
-		if (parsed?.type && parsed?.content) {
-			return [parsed];
-		}
-		return [];
+		return normalizeBlockTreeIds(contentEntries(JSON.parse(contentJson)));
 	} catch {
 		return [];
 	}
+}
+
+/** The stored entry list for whichever content shape `parsed` is. */
+function contentEntries(parsed: { blocks?: unknown; type?: unknown; content?: unknown } | null) {
+	if (parsed?.blocks && Array.isArray(parsed.blocks)) {
+		return parsed.blocks as EditorBlock[];
+	}
+	if (Array.isArray(parsed)) {
+		return parsed as EditorBlock[];
+	}
+	if (parsed?.type && parsed?.content) {
+		return [parsed as EditorBlock];
+	}
+	return [];
 }
 
 function serializeContentBlocks(blocks: EditorBlock[]): string {

@@ -138,3 +138,113 @@ export function renewBlockTreeIds(node: BlockTreeNode, newId: () => string): voi
 		for (const child of list) renewBlockTreeIds(child, newId);
 	}
 }
+
+/** How `normalizeBlockTreeIds` treats an id that an earlier Block or section already uses. */
+export interface NormalizeBlockTreeIdsOptions {
+	/**
+	 * Also give a repeated id a fresh one, keeping the first occurrence in
+	 * document order. The editor needs this: its canvas keys Blocks by id, and
+	 * two Blocks with one id send it into a recursive update loop (#1430).
+	 * Readers that only render leave repeated ids alone (the default), so a
+	 * read never detaches a copy from the translation overlay it shares.
+	 */
+	renewRepeated?: boolean;
+}
+
+const usableId = (id: unknown): id is string => typeof id === 'string' && id !== '';
+
+/**
+ * Visit every Block-shaped entry in `entries` and below, in document order:
+ * the Block, then the sections it owns, then its children. Unlike
+ * `childBlockLists` this reaches entries without a usable id, so they can be
+ * given one. Entries that are not an object with a string `type` are skipped.
+ */
+function forEachTreeEntry(
+	entries: readonly unknown[],
+	onBlock: (block: Content) => void,
+	onSection: (section: Content) => void
+): void {
+	for (const entry of entries) {
+		if (!isRecord(entry) || typeof entry['type'] !== 'string') continue;
+		onBlock(entry);
+		const slot = CHILD_SLOTS[entry['type']];
+		const content = entry['content'];
+		if (!slot || !isRecord(content)) continue;
+		for (const section of slot.entries?.(content) ?? []) onSection(section);
+		for (const list of slot.lists(content)) forEachTreeEntry(list, onBlock, onSection);
+	}
+}
+
+/**
+ * Walk the tree and report whether any id needs repair; with `write`, repair it
+ * in place. Missing ids are filled in a first pass and repeated ids renewed in
+ * a second, so a Block without an id gets the same id whether or not repeated
+ * ids are renewed (the editor and the server render then agree on it).
+ */
+function repairTreeIds(roots: readonly unknown[], renewRepeated: boolean, write: boolean): boolean {
+	const taken = new Set<string>();
+	const collect = (entry: Content): void => {
+		if (usableId(entry['id'])) taken.add(entry['id']);
+	};
+	forEachTreeEntry(roots, collect, collect);
+
+	let counter = 0;
+	let repaired = false;
+	const freshId = (prefix: string): string => {
+		let id: string;
+		do id = `${prefix}-${++counter}`;
+		while (taken.has(id));
+		taken.add(id);
+		return id;
+	};
+	const fill =
+		(prefix: string) =>
+		(entry: Content): void => {
+			if (usableId(entry['id'])) return;
+			repaired = true;
+			if (write) entry['id'] = freshId(prefix);
+		};
+	forEachTreeEntry(roots, fill('block'), fill('section'));
+	if (!renewRepeated || (repaired && !write)) return repaired;
+
+	const renew = (prefix: string) => {
+		const seen = new Set<string>();
+		return (entry: Content): void => {
+			const id = entry['id'];
+			if (usableId(id) && seen.has(id)) {
+				repaired = true;
+				if (write) entry['id'] = freshId(prefix);
+			}
+			if (usableId(entry['id'])) seen.add(entry['id']);
+		};
+	};
+	forEachTreeEntry(roots, renew('block'), renew('section'));
+	return repaired;
+}
+
+/**
+ * `roots` with every Block and accordion section, at any depth, holding a
+ * non-empty string id: a missing or non-string one gets a fresh id, and with
+ * `renewRepeated` so does every repeat of an id used earlier in the document.
+ * Ids that are already usable are kept.
+ *
+ * Deterministic: the same input always gets the same fresh ids (`block-<n>`,
+ * `section-<n>`, skipping every id in use), so repeated reads of one stored
+ * document agree and the editor's echo guard recognises its own document.
+ *
+ * Nothing the caller owns is mutated. A tree that needs no repair comes back
+ * as a new array holding the same entries; otherwise the entries are copies.
+ * Entries that are not Block-shaped are left where they are.
+ */
+export function normalizeBlockTreeIds<T>(
+	roots: readonly T[],
+	options: NormalizeBlockTreeIdsOptions = {}
+): T[] {
+	const renewRepeated = options.renewRepeated ?? false;
+	if (!repairTreeIds(roots, renewRepeated, false)) return [...roots];
+	// Stored Blocks are plain JSON, so a JSON round trip is a faithful deep copy
+	// (and, unlike structuredClone, accepts a reactive proxy).
+	const copy = JSON.parse(JSON.stringify(roots)) as T[];
+	repairTreeIds(copy, renewRepeated, true);
+	return copy;
+}

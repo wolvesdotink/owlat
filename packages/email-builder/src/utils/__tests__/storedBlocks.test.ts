@@ -75,4 +75,25 @@ describe('parseStoredBlocks', () => {
 		expect(blocks[2]?.id).toBe('kept');
 		expect(blocks[0]?.content).toEqual({ html: 'no id' });
 	});
+
+	it('fills the same ids on every read, so the editor and the server render agree', () => {
+		const content = JSON.stringify([
+			{ type: 'text', content: { html: 'no id' } },
+			{
+				id: 'box',
+				type: 'container',
+				content: { items: [{ type: 'text', content: { html: 'nested' } }] },
+			},
+		]);
+		const first = parseStoredBlocks(content);
+		expect(parseStoredBlocks(content)).toEqual(first);
+		expect(first[0]?.id).toBe('block-1');
+		const [nested] = (first[1]!.content as { items: Array<{ id?: unknown }> }).items;
+		expect(nested?.id).toBe('block-2');
+	});
+
+	it('keeps repeated ids for the editor to renew when it loads them', () => {
+		const content = JSON.stringify([text('b1', 'one'), text('b1', 'two')]);
+		expect(parseStoredBlocks(content).map((b) => b.id)).toEqual(['b1', 'b1']);
+	});
 });
