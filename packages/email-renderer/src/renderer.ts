@@ -4,6 +4,7 @@ import type {
 	BlockRepeat,
 	CommonBlockProperties,
 } from '@owlat/shared';
+import { normalizeBlockTreeIds } from '@owlat/shared/blockTree';
 import { DEFAULT_EMAIL_BASE_WIDTH, DEFAULT_EMAIL_THEME } from '@owlat/shared/emailDefaults';
 import type { RenderOptions, RenderContext } from './types';
 import { wrapDocument } from './boilerplate';
@@ -270,10 +271,20 @@ const applyThemeDefaults = (block: EditorBlock, ctx: RenderContext): EditorBlock
 };
 
 /**
+ * `blocks` with an id on every Block and accordion section, at any depth. The
+ * block modules key attributes, CSS selectors, link tracking and accordion
+ * toggles by id, and a caller's stored data is not trusted to carry one
+ * (#1432). The fill is the readers' deterministic one, so a Block the server
+ * or editor already gave an id keeps it.
+ */
+export const withBlockIds = (blocks: EditorBlock[]): EditorBlock[] => normalizeBlockTreeIds(blocks);
+
+/**
  * Render an array of EditorBlocks to a complete HTML email document.
  */
-export const renderEmailHtml = (blocks: EditorBlock[], options?: RenderOptions): string => {
+export const renderEmailHtml = (input: EditorBlock[], options?: RenderOptions): string => {
 	const ctx = createContext(options);
+	const blocks = withBlockIds(input);
 
 	// Validate block content at the render boundary. The block-module
 	// `validate?` methods cover shape + semantic + Outlook rules; we surface
@@ -342,7 +353,7 @@ export const renderEmailHtml = (blocks: EditorBlock[], options?: RenderOptions):
  */
 export const renderBlockFragment = (block: EditorBlock, options?: RenderOptions): string => {
 	const ctx = createContext(options);
-	const themedBlock = applyThemeDefaults(block, ctx);
+	const themedBlock = applyThemeDefaults(withBlockIds([block])[0]!, ctx);
 	return renderBlock(themedBlock, ctx);
 };
 

@@ -23,6 +23,7 @@ import { applyUsageCountDelta } from '../emailBlocks/module';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from './constants';
 import { nextContentRevision } from './contentRevision';
 import { parseTranslations } from './emailTranslations';
+import { carryRenewedBlockOverlays } from './repeatedBlockIds';
 import { buildSearchableText } from './queryHelpers';
 import { sanitizeStoredBlocksJson, sanitizeTranslationsJson } from './emailContentSanitize';
 import {
@@ -284,6 +285,11 @@ export async function buildEditablePatch(
 	if (args.supportedLanguages !== undefined) patch.supportedLanguages = args.supportedLanguages;
 	if (args.translations !== undefined) {
 		patch.translations = sanitizeTranslationsJson(args.translations);
+	} else if (patch.content !== undefined) {
+		// The editor renewed repeated Block ids (#1430): each renewed copy keeps
+		// the translation it shared with the original.
+		const carried = carryRenewedBlockOverlays(row.content, patch.content, row.translations);
+		if (carried !== null) patch.translations = carried;
 	}
 
 	// The HTML is rendered here from the blocks being stored, never taken from

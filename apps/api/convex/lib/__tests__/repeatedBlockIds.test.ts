@@ -10,7 +10,11 @@
 
 import { describe, expect, it } from 'vitest';
 import { childBlockLists, ownedEntries, type BlockTreeNode } from '@owlat/shared/blockTree';
-import { repairRepeatedBlockIds, repairRowRepeatedIds } from '../repeatedBlockIds';
+import {
+	carryRenewedBlockOverlays,
+	repairRepeatedBlockIds,
+	repairRowRepeatedIds,
+} from '../repeatedBlockIds';
 import { TEMPLATE_TRANSLATABLE_FIELDS, updateTranslationPatch } from '../emailTranslations';
 import { rerenderRow } from '../../emailBlocks/rendering';
 
@@ -259,5 +263,56 @@ describe('repaired rows render correctly', () => {
 		expect(count(german, 'Hallo Welt')).toBe(1);
 		expect(count(german, 'Servus')).toBe(1);
 		expect(german.indexOf('Hallo Welt')).toBeLessThan(german.indexOf('Servus'));
+	});
+});
+
+describe('carryRenewedBlockOverlays', () => {
+	// The editor renews the nested repeat of `a` to the first free `block-<n>`.
+	const stored = JSON.stringify([text('a'), container('box', [text('a')])]);
+	const saved = JSON.stringify([text('a'), container('box', [text('block-1')])]);
+	const overlays = (blocks: Record<string, { html?: string }>) =>
+		JSON.stringify({ de: { subject: 'Hallo', blocks }, fr: { subject: 'Salut', blocks: {} } });
+
+	it('copies the overlay of the repeated id to the id the editor gave the copy', () => {
+		const carried = carryRenewedBlockOverlays(
+			stored,
+			saved,
+			overlays({ a: { html: '<p>Hallo</p>' } })
+		);
+		const result = JSON.parse(carried!) as Overlays;
+		expect(result['de']!.blocks).toEqual({
+			a: { html: '<p>Hallo</p>' },
+			'block-1': { html: '<p>Hallo</p>' },
+		});
+		// A language without an entry for the repeated id gets none for the copy.
+		expect(result['fr']!.blocks).toEqual({});
+	});
+
+	it('drops a stale entry under the renewed id when the original had no overlay', () => {
+		const carried = carryRenewedBlockOverlays(
+			stored,
+			saved,
+			overlays({ 'block-1': { html: 'old' } })
+		);
+		expect((JSON.parse(carried!) as Overlays)['de']!.blocks).toEqual({});
+	});
+
+	it('changes nothing when the copy is gone, ids do not repeat, or a blob is unreadable', () => {
+		const translations = overlays({ a: { html: '<p>Hallo</p>' } });
+		const withoutCopy = JSON.stringify([text('a'), container('box', [])]);
+		expect(carryRenewedBlockOverlays(stored, withoutCopy, translations)).toBeNull();
+		expect(carryRenewedBlockOverlays(saved, saved, translations)).toBeNull();
+		expect(carryRenewedBlockOverlays(stored, saved, undefined)).toBeNull();
+		expect(carryRenewedBlockOverlays(stored, saved, 'not json')).toBeNull();
+		expect(carryRenewedBlockOverlays('not json', saved, translations)).toBeNull();
+	});
+
+	it('names the same ids the editor gives, in every stored shape', () => {
+		const translations = overlays({ a: { html: '<p>Hallo</p>' } });
+		const envelope = JSON.stringify({ blocks: JSON.parse(stored) as unknown });
+		const carried = carryRenewedBlockOverlays(envelope, saved, translations);
+		expect((JSON.parse(carried!) as Overlays)['de']!.blocks['block-1']).toEqual({
+			html: '<p>Hallo</p>',
+		});
 	});
 });

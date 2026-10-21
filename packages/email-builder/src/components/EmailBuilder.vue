@@ -30,6 +30,7 @@ import type {
 	BuilderCollabFocus,
 } from '../types';
 import { applyCoeditOps, type CoeditOp } from '@owlat/shared/coeditOps';
+import { normalizeBlockTreeIds } from '@owlat/shared/blockTree';
 import type { ParentContext } from './canvas/types';
 
 // Composables (kept from original)
@@ -144,17 +145,31 @@ const emailBackgroundColor = ref('#ffffff');
 // Sync props → local
 let lastEmittedBlocks: EditorBlock[] | null = null;
 
+/**
+ * Blocks entering the canvas, with every id present and unique. The canvas
+ * keys Blocks by id, so two with one id (a pasted, imported or hand-edited
+ * document) sent it into a recursive update loop (#1430). The first
+ * occurrence keeps its id; the repair is deterministic, so a host re-pushing
+ * the same stored document still matches what the builder emitted, and the
+ * server can tell which id each copy got and carry its translation overlay
+ * over when the document is saved (`carryRenewedBlockOverlays`).
+ */
+function canvasBlocksOf(blocks: readonly EditorBlock[]): EditorBlock[] {
+	return normalizeBlockTreeIds(blocks, { renewRepeated: true });
+}
+
 watch(
 	() => props.blocks,
 	(v) => {
 		if (v === lastEmittedBlocks) return; // Skip echo from our own emit
+		const next = canvasBlocksOf(v);
 		if (
 			lastEmittedBlocks &&
-			v.length === lastEmittedBlocks.length &&
-			v.every((b, i) => b.id === lastEmittedBlocks![i]!.id)
+			next.length === lastEmittedBlocks.length &&
+			next.every((b, i) => b.id === lastEmittedBlocks![i]!.id)
 		)
 			return;
-		canvasBlocks.value = [...v];
+		canvasBlocks.value = next;
 	},
 	{ immediate: true }
 );
@@ -179,8 +194,9 @@ watch(
  */
 function loadState(state: HistoryState) {
 	commitPendingHistory();
-	if (JSON.stringify(state.blocks) !== JSON.stringify(canvasBlocks.value)) {
-		canvasBlocks.value = [...state.blocks];
+	const blocks = canvasBlocksOf(state.blocks);
+	if (JSON.stringify(blocks) !== JSON.stringify(canvasBlocks.value)) {
+		canvasBlocks.value = blocks;
 	}
 	formName.value = state.name;
 	formSubject.value = state.subject;
