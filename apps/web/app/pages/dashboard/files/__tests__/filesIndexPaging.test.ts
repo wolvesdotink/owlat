@@ -69,10 +69,11 @@ const loadMoreButton = (wrapper: Awaited<ReturnType<typeof mountPage>>['wrapper'
 	wrapper.findAll('button').find((b) => b.text() === 'Load more');
 
 describe('Files page — paging past a page with nothing to show', () => {
-	for (const searchQuery of ['', 'invoice']) {
-		const mode = searchQuery ? 'search' : 'list';
-
-		it(`offers Load more, and no empty state, while a ${mode} has more to load`, async () => {
+	it.each(
+		['', 'invoice'].map((searchQuery) => [searchQuery ? 'search' : 'list', searchQuery] as const)
+	)(
+		'offers Load more, and no empty state, while a %s has more to load',
+		async (mode, searchQuery) => {
 			const { wrapper, loadMore } = await mountPage({
 				files: [],
 				status: 'CanLoadMore',
@@ -85,15 +86,17 @@ describe('Files page — paging past a page with nothing to show', () => {
 			expect(button).toBeDefined();
 			await button!.trigger('click');
 			expect(loadMore).toHaveBeenCalledTimes(1);
-		});
+		}
+	);
 
-		it(`shows the empty state once the ${mode} is exhausted`, async () => {
-			const { wrapper } = await mountPage({ files: [], status: 'Exhausted', searchQuery });
+	it.each(
+		['', 'invoice'].map((searchQuery) => [searchQuery ? 'search' : 'list', searchQuery] as const)
+	)('shows the empty state once the %s is exhausted', async (mode, searchQuery) => {
+		const { wrapper } = await mountPage({ files: [], status: 'Exhausted', searchQuery });
 
-			expect(wrapper.text()).toContain(searchQuery ? 'No files match your search' : 'No files yet');
-			expect(loadMoreButton(wrapper)).toBeUndefined();
-		});
-	}
+		expect(wrapper.text()).toContain(searchQuery ? 'No files match your search' : 'No files yet');
+		expect(loadMoreButton(wrapper)).toBeUndefined();
+	});
 
 	it('keeps Load more beside the files while there are more', async () => {
 		const { wrapper } = await mountPage({ files: [card], status: 'CanLoadMore' });

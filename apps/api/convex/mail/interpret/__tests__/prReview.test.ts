@@ -331,8 +331,9 @@ describe('Sol re-review of the follow-ups', () => {
 		return { inside: match?.[1] ?? '', outside: prompt.replace(match?.[0] ?? '', '') };
 	};
 
-	for (const [name, prompt] of Object.entries(prompts)) {
-		it(`F2/F3 ${name}: the current terms are inside the fence, and no mail-derived string outside`, () => {
+	it.each(Object.entries(prompts))(
+		'F2/F3 %s: the current terms are inside the fence, and no mail-derived string outside',
+		(name, prompt) => {
 			const { inside, outside } = fence(prompt);
 			const data = JSON.parse(inside) as Record<string, unknown>;
 			expect(data).toMatchObject({
@@ -346,6 +347,6 @@ describe('Sol re-review of the follow-ups', () => {
 			expect(outside).not.toContain('120 EUR');
 			expect(outside).not.toContain('2026-10-12');
 			expect(outside).not.toContain('Pay EUR 100');
-		});
-	}
+		}
+	);
 });

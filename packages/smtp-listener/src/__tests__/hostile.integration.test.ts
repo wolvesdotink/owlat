@@ -218,8 +218,9 @@ describe('early disconnect at each state', () => {
 		},
 	];
 
-	for (const state of states) {
-		it(`survives a FIN ${state.name} with no delivery`, async () => {
+	it.each(states.map((state) => [state.name, state] as const))(
+		'survives a FIN %s with no delivery',
+		async (_name, state) => {
 			const { port, messages } = await start();
 			const c = await Client.connect(port);
 			await state.drive(c);
@@ -229,8 +230,8 @@ describe('early disconnect at each state', () => {
 			expect(messages).toHaveLength(0);
 			// The listener is unharmed and serves the next connection.
 			await expectStillServes(port);
-		});
-	}
+		}
+	);
 });
 
 // ---------------------------------------------------------------------------

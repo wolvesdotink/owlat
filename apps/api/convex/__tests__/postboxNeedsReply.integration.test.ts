@@ -525,33 +525,33 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
 	});
 
-	for (const run of [
-		{ status: 'skipped', createdItemIds: [], errorCode: 'bulk_stranger' },
-		{ status: 'gone' },
-		// A failed run that still carried a projection is not a verdict either.
-		{
-			status: 'failed',
-			createdItemIds: [],
-			errorCode: 'stale',
-			projection: { replyIntent: 'direct_question', urgency: 'high', isOnlyTheirs: false },
-		},
-	]) {
-		it(`keeps the baseline when the interpretation is ${run.status}`, async () => {
-			const t = convexTest(schema, modules);
-			rateLimiterTest.register(t);
-			const seeded = await seedMailbox(t);
-			const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
-				needsReplyPendingAt: Date.now(),
-			});
-			runInterpretationMock.mockResolvedValueOnce(run);
-
-			await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
-
-			const thread = await getThread(t, threadId);
-			expect(thread?.needsReply).toMatchObject({ messageId, source: 'heuristic' });
-			expect(thread?.needsReplyPendingAt).toBeUndefined();
+	it.each(
+		[
+			{ status: 'skipped', createdItemIds: [], errorCode: 'bulk_stranger' },
+			{ status: 'gone' },
+			// A failed run that still carried a projection is not a verdict either.
+			{
+				status: 'failed',
+				createdItemIds: [],
+				errorCode: 'stale',
+				projection: { replyIntent: 'direct_question', urgency: 'high', isOnlyTheirs: false },
+			},
+		].map((run) => [run.status, run] as const)
+	)('keeps the baseline when the interpretation is %s', async (_status, run) => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now(),
 		});
-	}
+		runInterpretationMock.mockResolvedValueOnce(run);
+
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
+
+		const thread = await getThread(t, threadId);
+		expect(thread?.needsReply).toMatchObject({ messageId, source: 'heuristic' });
+		expect(thread?.needsReplyPendingAt).toBeUndefined();
+	});
 
 	it('keeps the deterministic candidate when interpretation is refused (`ai` off)', async () => {
 		const t = convexTest(schema, modules);

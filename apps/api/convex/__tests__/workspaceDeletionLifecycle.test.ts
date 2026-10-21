@@ -431,8 +431,9 @@ describe('workspace deletion — the scheduler survivor list', () => {
 
 	// A renamed or moved survivor would otherwise be cancelled silently by
 	// every deletion; this pins each entry to a real Convex function.
-	for (const entry of SURVIVING_SCHEDULED_FUNCTIONS) {
-		it(`${entry} names an existing scheduled function`, async () => {
+	it.each(SURVIVING_SCHEDULED_FUNCTIONS)(
+		'%s names an existing scheduled function',
+		async (entry) => {
 			if (entry.endsWith('/')) {
 				const keys = Object.keys(modules).filter(
 					(key) => key.startsWith(`../${entry}`) && !key.includes('__tests__')
@@ -446,8 +447,8 @@ describe('workspace deletion — the scheduler survivor list', () => {
 			const mod = await exportsOf(`../${modulePath}.ts`);
 			expect(isRegistered(mod[exportName!])).toBe(true);
 			expect(isSurvivingScheduledFunction(`${modulePath}.js:${exportName}`)).toBe(true);
-		});
-	}
+		}
+	);
 
 	it('keeps the deletion chain itself', () => {
 		expect(isSurvivingScheduledFunction('workspaces/deletion/walker:drive')).toBe(true);

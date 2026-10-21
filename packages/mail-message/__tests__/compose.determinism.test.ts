@@ -11,13 +11,14 @@ import { composeMessage } from '../src/index';
 import { CORPUS, toComposeInput } from './fixtures/corpus';
 
 describe('composeMessage determinism (seeded date + boundary)', () => {
-	for (const testCase of CORPUS) {
-		it(`is byte-identical across two seeded calls: ${testCase.name}`, () => {
+	it.each(CORPUS.map((testCase) => [testCase.name, testCase] as const))(
+		'is byte-identical across two seeded calls: %s',
+		(_name, testCase) => {
 			const a = composeMessage(toComposeInput(testCase)).raw;
 			const b = composeMessage(toComposeInput(testCase)).raw;
 			expect(a.equals(b)).toBe(true);
-		});
-	}
+		}
+	);
 
 	it('differs when the boundary seed differs (proving the seed drives the boundaries)', () => {
 		const base = toComposeInput(CORPUS.find((c) => c.attachments && c.attachments.length > 0)!);

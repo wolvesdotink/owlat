@@ -142,8 +142,9 @@ function ampBody(raw: Buffer): string {
 }
 
 describe('composeMessage differential parity vs nodemailer MailComposer', () => {
-	for (const testCase of CORPUS) {
-		it(`matches nodemailer semantically: ${testCase.name}`, async () => {
+	it.each(CORPUS.map((testCase) => [testCase.name, testCase] as const))(
+		'matches nodemailer semantically: %s',
+		async (_name, testCase) => {
 			const ours = composeMessage(toComposeInput(testCase)).raw;
 			const theirs = await buildWithNodemailer(toNodemailerOptions(testCase));
 
@@ -160,8 +161,8 @@ describe('composeMessage differential parity vs nodemailer MailComposer', () => 
 			// Same decoded AMP body (mailparser flattens the alternative, so this is
 			// compared structurally).
 			expect(ampBody(ours)).toEqual(ampBody(theirs));
-		});
-	}
+		}
+	);
 
 	it('covers a corpus of at least 40 structured inputs', () => {
 		expect(CORPUS.length).toBeGreaterThanOrEqual(40);

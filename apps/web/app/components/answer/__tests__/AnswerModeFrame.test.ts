@@ -384,18 +384,16 @@ describe('AnswerModeFrame and the on-screen keyboard', () => {
 });
 
 describe('AnswerModeFrame accessibility', () => {
-	for (const width of [390, 1000, 1440]) {
-		it(`has no axe violations at ${width}px`, async () => {
-			setWidth(width);
-			const violations = await auditA11y(AnswerModeFrame, {
-				props: { backLabel: 'Inbox', subject: 'September invoice', messageCount: 5 },
-				slots: {
-					conversation: '<p>the thread</p>',
-					composer: '<label>Reply <textarea></textarea></label>',
-				},
-				global: { plugins: [createTestI18n()] },
-			});
-			expect(violations).toEqual([]);
+	it.each([390, 1000, 1440])('has no axe violations at %spx', async (width) => {
+		setWidth(width);
+		const violations = await auditA11y(AnswerModeFrame, {
+			props: { backLabel: 'Inbox', subject: 'September invoice', messageCount: 5 },
+			slots: {
+				conversation: '<p>the thread</p>',
+				composer: '<label>Reply <textarea></textarea></label>',
+			},
+			global: { plugins: [createTestI18n()] },
 		});
-	}
+		expect(violations).toEqual([]);
+	});
 });

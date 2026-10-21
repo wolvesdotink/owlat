@@ -289,24 +289,29 @@ describe('DropdownMenu keyboard', () => {
 	});
 
 	describe('Tab when the trigger cannot take focus', () => {
-		for (const state of ['disabled', 'gone'] as const) {
-			for (const [shiftKey, lands] of [
-				[false, 'after'],
-				[true, 'before'],
-			] as const) {
-				it(`${shiftKey ? 'Shift+Tab' : 'Tab'} with the trigger ${state} moves to the control ${lands} it`, async () => {
-					const triggerState = ref<TriggerState>('enabled');
-					const open = mountMenu(actions, { triggerState });
-					await openByClick();
-					triggerState.value = state;
-					await nextTick();
-					const tab = press(focused(), 'Tab', { shiftKey });
-					expect(tab.defaultPrevented).toBe(true);
-					expect(focused()).toBe(document.getElementById(lands));
-					expect(open.value).toBe(false);
-				});
-			}
-		}
+		// Tab lands after the trigger, Shift+Tab before it.
+		const TAB_DIRECTIONS = [
+			[false, 'after'],
+			[true, 'before'],
+		] as const;
+
+		it.each(
+			(['disabled', 'gone'] as const).flatMap((state) =>
+				TAB_DIRECTIONS.map(
+					([shiftKey, lands]) => [shiftKey ? 'Shift+Tab' : 'Tab', state, lands, shiftKey] as const
+				)
+			)
+		)('%s with the trigger %s moves to the control %s it', async (_key, state, lands, shiftKey) => {
+			const triggerState = ref<TriggerState>('enabled');
+			const open = mountMenu(actions, { triggerState });
+			await openByClick();
+			triggerState.value = state;
+			await nextTick();
+			const tab = press(focused(), 'Tab', { shiftKey });
+			expect(tab.defaultPrevented).toBe(true);
+			expect(focused()).toBe(document.getElementById(lands));
+			expect(open.value).toBe(false);
+		});
 
 		it('stays inside a surrounding dialog', async () => {
 			const triggerState = ref<TriggerState>('enabled');
@@ -335,25 +340,31 @@ describe('DropdownMenu keyboard', () => {
 				el.focus = () => {};
 		}
 
-		for (const inModal of [false, true]) {
-			for (const [shiftKey, lands] of [
-				[false, 'after'],
-				[true, 'before'],
-			] as const) {
-				it(`${shiftKey ? 'Shift+Tab' : 'Tab'} skips controls that refuse focus${inModal ? ' inside a dialog' : ''}`, async () => {
-					const triggerState = ref<TriggerState>('enabled');
-					const open = mountMenu(actions, { inModal, triggerState, around: refusing });
-					await nextTick();
-					refuseFocus();
-					await openByClick();
-					triggerState.value = 'disabled';
-					await nextTick();
-					expect(press(focused(), 'Tab', { shiftKey }).defaultPrevented).toBe(true);
-					expect(focused()).toBe(document.getElementById(lands));
-					expect(open.value).toBe(false);
-				});
-			}
-		}
+		it.each(
+			[false, true].flatMap((inModal) =>
+				TAB_DIRECTIONS.map(
+					([shiftKey, lands]) =>
+						[
+							shiftKey ? 'Shift+Tab' : 'Tab',
+							inModal ? ' inside a dialog' : '',
+							inModal,
+							shiftKey,
+							lands,
+						] as const
+				)
+			)
+		)('%s skips controls that refuse focus%s', async (_key, _where, inModal, shiftKey, lands) => {
+			const triggerState = ref<TriggerState>('enabled');
+			const open = mountMenu(actions, { inModal, triggerState, around: refusing });
+			await nextTick();
+			refuseFocus();
+			await openByClick();
+			triggerState.value = 'disabled';
+			await nextTick();
+			expect(press(focused(), 'Tab', { shiftKey }).defaultPrevented).toBe(true);
+			expect(focused()).toBe(document.getElementById(lands));
+			expect(open.value).toBe(false);
+		});
 
 		it('leaves Tab to the browser when nothing takes focus', async () => {
 			const triggerState = ref<TriggerState>('enabled');

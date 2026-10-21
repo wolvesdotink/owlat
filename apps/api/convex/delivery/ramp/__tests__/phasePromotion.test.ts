@@ -179,8 +179,9 @@ describe('the standalone route needs all four conditions', () => {
 		},
 	];
 
-	for (const failure of failures) {
-		it(`refuses when ${failure.name}`, () => {
+	it.each(failures.map((failure) => [failure.name, failure] as const))(
+		'refuses when %s',
+		(_name, failure) => {
 			const decision = evaluatePhasePromotion({
 				targetCeiling: 0.8,
 				provider: 'apple',
@@ -192,8 +193,8 @@ describe('the standalone route needs all four conditions', () => {
 				route.outstanding.map((entry) => entry.condition)
 			);
 			expect(outstanding).toContain(failure.condition);
-		});
-	}
+		}
+	);
 
 	it('reports an unmeasurable condition as unknown, never as met', () => {
 		const conditions = derivePromotionConditions(
@@ -312,29 +313,33 @@ describe('the DNSBL streak must be a reading of the PRESENT', () => {
  * not tell" is the one answer that must never be spelled `allowed: true`.
  */
 describe('degenerate inputs never open the gate', () => {
-	for (const targetCeiling of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
-		it(`refuses a target ceiling of ${String(targetCeiling)}`, () => {
-			const decision = evaluatePhasePromotion({
-				targetCeiling,
-				provider: 'gmail',
-				// Every condition met: only the unreadable target may stop this.
-				evidence: standaloneEvidence({ googleCompliancePassAt: NOW - DAY_MS }),
-				now: NOW,
-			});
-			expect(decision.allowed).toBe(false);
-			expect(decision.viaRoute).toBeNull();
-			expect(decision.evidenceRequired).toBe(true);
-			// The routes still travel back, so a screen can say what it looked at.
-			expect(decision.routes.length).toBeGreaterThan(0);
+	it.each(
+		[Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY].map(
+			(targetCeiling) => [String(targetCeiling), targetCeiling] as const
+		)
+	)('refuses a target ceiling of %s', (_label, targetCeiling) => {
+		const decision = evaluatePhasePromotion({
+			targetCeiling,
+			provider: 'gmail',
+			// Every condition met: only the unreadable target may stop this.
+			evidence: standaloneEvidence({ googleCompliancePassAt: NOW - DAY_MS }),
+			now: NOW,
 		});
-	}
+		expect(decision.allowed).toBe(false);
+		expect(decision.viaRoute).toBeNull();
+		expect(decision.evidenceRequired).toBe(true);
+		// The routes still travel back, so a screen can say what it looked at.
+		expect(decision.routes.length).toBeGreaterThan(0);
+	});
 
-	for (const requiredDwellMs of [Number.NaN, Number.POSITIVE_INFINITY]) {
-		it(`reports the dwell as unknown for a required dwell of ${String(requiredDwellMs)}`, () => {
-			const conditions = derivePromotionConditions(standaloneEvidence({ requiredDwellMs }), NOW);
-			expect(conditions.dwell_multiple_served).toBe('unknown');
-		});
-	}
+	it.each(
+		[Number.NaN, Number.POSITIVE_INFINITY].map(
+			(requiredDwellMs) => [String(requiredDwellMs), requiredDwellMs] as const
+		)
+	)('reports the dwell as unknown for a required dwell of %s', (_label, requiredDwellMs) => {
+		const conditions = derivePromotionConditions(standaloneEvidence({ requiredDwellMs }), NOW);
+		expect(conditions.dwell_multiple_served).toBe('unknown');
+	});
 
 	it('reports the dwell as unknown for a degenerate held duration', () => {
 		expect(

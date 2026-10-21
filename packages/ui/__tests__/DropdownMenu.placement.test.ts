@@ -159,22 +159,25 @@ const corners: Record<string, Box> = {
 };
 
 describe('DropdownMenu placement', () => {
-	for (const [corner, box] of Object.entries(corners)) {
-		for (const position of ['left', 'right'] as const) {
-			for (const height of [120, 300, 1000]) {
-				it(`stays inside the window: ${corner}, position ${position}, ${height} px menu`, async () => {
-					trigger = box;
-					menuHeight = height;
-					const { wrapper, menu } = await openMenu(position);
-					try {
-						expectInsideWindow(layout(menu));
-					} finally {
-						wrapper.unmount();
-					}
-				});
+	it.each(
+		Object.entries(corners).flatMap(([corner, box]) =>
+			(['left', 'right'] as const).flatMap((position) =>
+				[120, 300, 1000].map((height) => [corner, position, height, box] as const)
+			)
+		)
+	)(
+		'stays inside the window: %s, position %s, %s px menu',
+		async (_corner, position, height, box) => {
+			trigger = box;
+			menuHeight = height;
+			const { wrapper, menu } = await openMenu(position);
+			try {
+				expectInsideWindow(layout(menu));
+			} finally {
+				wrapper.unmount();
 			}
 		}
-	}
+	);
 
 	it('opens under the trigger, lined up with its right edge, when it fits', async () => {
 		trigger = { top: 100, left: 600 };

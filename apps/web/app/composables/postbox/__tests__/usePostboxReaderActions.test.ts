@@ -177,8 +177,9 @@ const VERBS: Array<{
 ];
 
 describe('usePostboxReaderActions — triage moves first', () => {
-	for (const verb of VERBS) {
-		it(`${verb.name}: advances and hides the row before the mutation settles`, async () => {
+	it.each(VERBS.map((verb) => [verb.name, verb] as const))(
+		'%s: advances and hides the row before the mutation settles',
+		async (_name, verb) => {
 			const { actions, list, scope } = await setup({ thread: verb.thread });
 			verb.start(actions);
 
@@ -195,9 +196,12 @@ describe('usePostboxReaderActions — triage moves first', () => {
 			expect(navigateTo).toHaveBeenCalledTimes(1);
 			expect(visibleIds(list)).toEqual(['m1', 'm3']);
 			scope.stop();
-		});
+		}
+	);
 
-		it(`${verb.name}: a failure restores the row and returns to the message`, async () => {
+	it.each(VERBS.map((verb) => [verb.name, verb] as const))(
+		'%s: a failure restores the row and returns to the message',
+		async (_name, verb) => {
 			const { actions, list, scope } = await setup({ thread: verb.thread });
 			verb.start(actions);
 			expect(visibleIds(list)).toEqual(['m1', 'm3']);
@@ -209,8 +213,8 @@ describe('usePostboxReaderActions — triage moves first', () => {
 				replace: true,
 			});
 			scope.stop();
-		});
-	}
+		}
+	);
 
 	it('runs the mutation against the message it left, not the one it opened', async () => {
 		const { actions, scope } = await setup();

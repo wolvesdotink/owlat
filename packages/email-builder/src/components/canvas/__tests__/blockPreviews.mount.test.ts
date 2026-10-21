@@ -53,28 +53,26 @@ describe('every registered block type renders on the canvas', () => {
 		expect(types.length).toBeGreaterThanOrEqual(17);
 	});
 
-	for (const type of getRegisteredTypes()) {
-		it(`renders a default ${type} block without errors`, async () => {
-			const block = createBlock(type as BlockType, defaultTheme);
-			const { host, errors } = mountBlock(block);
-			expect(errors).toEqual([]);
-			if (IFRAME_TYPES.has(type)) {
-				// Wait out the debounced renderBlockFragment call so the iframe /
-				// empty-placeholder decision has settled.
-				await new Promise((r) => setTimeout(r, 250));
-				// A content-less default (video without URL, carousel without
-				// images, comment-only rawHtml) must show the labelled
-				// placeholder — never a zero-height invisible sliver.
-				const iframe = host.querySelector('iframe');
-				const placeholder = host.textContent?.includes('select to configure');
-				expect(iframe || placeholder).toBeTruthy();
-			} else {
-				// Something visible must come out — an empty shell means the
-				// canvas silently swallowed the block.
-				expect(host.innerHTML.length).toBeGreaterThan(20);
-			}
-		});
-	}
+	it.each(getRegisteredTypes())('renders a default %s block without errors', async (type) => {
+		const block = createBlock(type as BlockType, defaultTheme);
+		const { host, errors } = mountBlock(block);
+		expect(errors).toEqual([]);
+		if (IFRAME_TYPES.has(type)) {
+			// Wait out the debounced renderBlockFragment call so the iframe /
+			// empty-placeholder decision has settled.
+			await new Promise((r) => setTimeout(r, 250));
+			// A content-less default (video without URL, carousel without
+			// images, comment-only rawHtml) must show the labelled
+			// placeholder — never a zero-height invisible sliver.
+			const iframe = host.querySelector('iframe');
+			const placeholder = host.textContent?.includes('select to configure');
+			expect(iframe || placeholder).toBeTruthy();
+		} else {
+			// Something visible must come out — an empty shell means the
+			// canvas silently swallowed the block.
+			expect(host.innerHTML.length).toBeGreaterThan(20);
+		}
+	});
 
 	it('shows the empty placeholder for a content-less video block, and a real iframe for a table', async () => {
 		const video = createBlock('video', defaultTheme);
@@ -263,8 +261,9 @@ describe('canvas previews fall back to the shared block box defaults', () => {
 		'container',
 	];
 
-	for (const type of BLOCK_BOX_TYPES) {
-		it(`paints a legacy ${type} block with the shared padding and margin`, () => {
+	it.each(BLOCK_BOX_TYPES)(
+		'paints a legacy %s block with the shared padding and margin',
+		(type) => {
 			const { host, errors } = mountBlock(legacyBlock(type));
 			expect(errors).toEqual([]);
 			const box = boxOf(host);
@@ -274,8 +273,8 @@ describe('canvas previews fall back to the shared block box defaults', () => {
 			expect(box?.paddingLeft).toBe(`${DEFAULT_BLOCK_PADDING.paddingLeft}px`);
 			expect(box?.marginTop).toBe(`${DEFAULT_BLOCK_MARGIN.marginTop}px`);
 			expect(box?.marginLeft).toBe(`${DEFAULT_BLOCK_MARGIN.marginLeft}px`);
-		});
-	}
+		}
+	);
 
 	it('keeps the hero block its own 40px vertical padding default, as the renderer does', () => {
 		const { host, errors } = mountBlock(legacyBlock('hero'));

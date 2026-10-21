@@ -379,8 +379,9 @@ describe('sharing a restricted knowledge entry with members', () => {
 			],
 		];
 
-		for (const [name, fields, blocker] of cases) {
-			it(`${name}: ${blocker}`, async () => {
+		it.each(cases.map(([name, fields, blocker]) => [name, blocker, fields] as const))(
+			'%s: %s',
+			async (_name, blocker, fields) => {
 				const t = await setup();
 				const entryId = await seedEntry(t, { ...(await fields(t)), memberAccess: 'restricted' });
 				const shown = await review(t, entryId);
@@ -393,8 +394,8 @@ describe('sharing a restricted knowledge entry with members', () => {
 				).rejects.toThrow();
 				expect((await read(t, entryId)).memberAccess).toBe('restricted');
 				expect(await auditRows(t)).toEqual([]);
-			});
-		}
+			}
+		);
 	});
 
 	describe('a curated answer keeps the source it was made from', () => {

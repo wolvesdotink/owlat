@@ -291,8 +291,9 @@ describe('keyboard previews and the reorder queue', () => {
 		return { ...harness, wrapper };
 	};
 
-	for (const key of ['Escape', 'Tab']) {
-		it(`a queued save leaves out an undropped move cancelled with ${key}`, async () => {
+	it.each(['Escape', 'Tab'])(
+		'a queued save leaves out an undropped move cancelled with %s',
+		async (key) => {
 			const { wrapper, saves, settle } = await queueThenPreview();
 
 			await settle();
@@ -311,8 +312,8 @@ describe('keyboard previews and the reorder queue', () => {
 			expect(saves).toHaveLength(2);
 			expect(order(wrapper)).toEqual(['st_2', 'st_3', 'st_1']);
 			wrapper.unmount();
-		});
-	}
+		}
+	);
 
 	it('a drop after a queued move saves the dropped order', async () => {
 		const { wrapper, saves, settle } = await queueThenPreview();
