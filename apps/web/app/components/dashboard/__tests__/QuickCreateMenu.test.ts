@@ -97,7 +97,7 @@ describe('the split button', () => {
 		const items = menu.findAll('[role="menuitem"]');
 		expect(items.map((item) => item.find('span').text())).toEqual(['Compose email', 'Contact']);
 		// Compose advertises its chord; a verb the catalog has no key for shows none.
-		expect(items.map((item) => item.findAll('kbd').map((key) => key.text()))).toEqual([['c'], []]);
+		expect(items.map((item) => item.findAll('kbd').map((key) => key.text()))).toEqual([['C'], []]);
 
 		await items[1]!.trigger('click');
 		expect(actions[1]!.run).toHaveBeenCalledTimes(1);

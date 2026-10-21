@@ -105,6 +105,13 @@ services:
       - '127.0.0.1:${DASHBOARD_PORT:-6791}:6791'
     environment:
       CONVEX_URL: http://convex:3210
+    healthcheck:
+      # The upstream image ships curl but no wget.
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', '--max-time', '4', 'http://127.0.0.1:6791/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       convex:
         condition: service_healthy
@@ -164,6 +171,21 @@ services:
       OWLAT_BUILD_DATE: ${OWLAT_BUILD_DATE:-unknown}
       # Shared secret for calling the updater sidecar
       INSTANCE_SECRET: ${INSTANCE_SECRET}
+    healthcheck:
+      # The release image (node-caged, Debian slim) has neither wget nor curl,
+      # so the probe is Node's own fetch. /api/instance-info is public, reads
+      # only runtime config and answers once Nitro serves requests.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/instance-info', { signal: AbortSignal.timeout(4000) }).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     depends_on:
       convex:
         condition: service_healthy
@@ -250,6 +272,15 @@ services:
       TLS_CERT_DIR: /opt/owlat/certs
     volumes:
       - mail-certs:/opt/owlat/certs:ro
+    healthcheck:
+      # /livez, not /health: /health resolves DNS, probes outbound SMTP and
+      # reads Redis on every call, so a slow resolver would mark a working MTA
+      # unhealthy.
+      test: ['CMD', 'wget', '-q', '-T', '4', '-O', '/dev/null', 'http://127.0.0.1:3100/livez']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       # Self-signs the pair on first boot so STARTTLS is offered from the start.
       imap-cert-init:
@@ -482,6 +513,14 @@ services:
       SWARM: 0
       SYSTEM: 0
       TASKS: 0
+    healthcheck:
+      # /_ping is on the proxy's default allowlist and reaches the daemon, so
+      # healthy means the updater's path to Docker works end to end.
+      test: ['CMD', 'wget', '-q', '-T', '4', '-O', '/dev/null', 'http://127.0.0.1:2375/_ping']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     security_opt:
       - no-new-privileges:true
     # Isolated on an internal-only network so ONLY the updater can reach the
@@ -523,8 +562,19 @@ services:
       # Install directory — updater writes the new compose template here. The
       # raw docker.sock mount is gone; Docker is reached via docker-socket-proxy.
       - ${OWLAT_INSTALL_DIR:-./}:/owlat
+    healthcheck:
+      # /livez answers without the instance secret; /health needs the secret
+      # and lists every container through the Docker API.
+      test: ['CMD', 'wget', '-q', '-T', '4', '-O', '/dev/null', 'http://127.0.0.1:3200/livez']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
-      - docker-socket-proxy
+      # Healthy, not just started: the updater's first rollout must be able
+      # to reach the Docker API through it.
+      docker-socket-proxy:
+        condition: service_healthy
     cap_drop:
       - ALL
     security_opt:
@@ -557,6 +607,14 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+    healthcheck:
+      # Caddy's admin API, on localhost inside the container unless the
+      # Caddyfile turns it off.
+      test: ['CMD', 'wget', '-q', '-T', '4', '-O', '/dev/null', 'http://127.0.0.1:2019/config/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       web:
         condition: service_started
@@ -717,13 +775,27 @@ services:
     # poll) cuts all lateral movement into the mail/infra tier.
     networks:
       - code-worker
+    healthcheck:
+      # The worker has no listener. Once startup is done it rewrites this file
+      # every 10 s (apps/code-worker/src/heartbeat.ts); two minutes without a
+      # write means its event loop has stopped.
+      test:
+        - CMD-SHELL
+        - test -n "$$(find /tmp/owlat-code-worker/heartbeat -mmin -2 2>/dev/null)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
     depends_on:
       convex:
         condition: service_healthy
+      # Healthy, not just started: the worker reclaims stale tasks through
+      # the proxy once at boot and does not retry a call that finds no
+      # listener.
       convex-fn-proxy:
-        condition: service_started
+        condition: service_healthy
       code-worker-egress:
-        condition: service_started
+        condition: service_healthy
     profiles:
       # Coding-agent tasks (inbox.codeTasks) and the dormant Tier-3 worker
       # protocol. No shipped host path enqueues plugin jobs; `plugin-tasks`
@@ -765,6 +837,13 @@ services:
       - no-new-privileges:true
     networks:
       - code-worker
+    healthcheck:
+      # /livez is answered before the token check and never forwarded.
+      test: ['CMD', 'wget', '-q', '-T', '4', '-O', '/dev/null', 'http://127.0.0.1:3220/livez']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       convex:
         condition: service_healthy
@@ -792,6 +871,20 @@ services:
     volumes:
       - ./infra/code-worker/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
       - ./infra/code-worker/tinyproxy.filter:/etc/tinyproxy/filter:ro
+    healthcheck:
+      # Checks that the listener on 8888 (0x22B8) is bound, from /proc rather
+      # than by connecting: tinyproxy logs every connection, plus an ERROR for
+      # a client that hangs up, and a connect proves no more (the kernel
+      # completes the handshake from the listen backlog either way).
+      test:
+        - CMD-SHELL
+        - >-
+          cat /proc/net/tcp /proc/net/tcp6 2>/dev/null
+          | awk '$$2 ~ /:22B8$$/ && $$4 == "0A" { up = 1 } END { exit !up }'
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     cap_drop:
       - ALL
     security_opt:
@@ -823,6 +916,13 @@ services:
       - ollama-data:/root/.ollama
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
+    healthcheck:
+      # The image has no HTTP client; the CLI asks the server beside it.
+      test: ['CMD', 'ollama', 'list']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     cap_drop:
       - ALL
     security_opt:
@@ -901,6 +1001,8 @@ services:
       DECISION_LOCAL_MAX_WAIT_SECONDS: ${DECISION_LOCAL_MAX_WAIT_SECONDS:-}
     volumes:
       - decision-local-models:/models
+    # Healthcheck: declared by the image (apps/decision-local/Dockerfile), with
+    # a start period long enough for the first checkpoint download.
     read_only: true
     tmpfs:
       - /tmp
@@ -1035,6 +1137,14 @@ services:
       NODE_ENV: production
     volumes:
       - mail-certs:/opt/owlat/certs:ro
+    healthcheck:
+      # A TCP connect to the IMAPS listener: proves it is bound, not that a
+      # login would succeed (that needs Convex and a mailbox).
+      test: ['CMD', 'nc', '-z', '-w', '4', '127.0.0.1', '993']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       convex:
         condition: service_healthy
@@ -1085,6 +1195,13 @@ services:
       MAIL_SYNC_API_KEY: ${MAIL_SYNC_API_KEY}
       LOG_LEVEL: ${MAIL_SYNC_LOG_LEVEL:-info}
       NODE_ENV: production
+    healthcheck:
+      # /health answers from the HTTP loop alone, without Convex or a mailbox.
+      test: ['CMD', 'wget', '-q', '-T', '4', '-O', '/dev/null', 'http://127.0.0.1:3200/health']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       convex:
         condition: service_healthy

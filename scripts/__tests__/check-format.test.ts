@@ -75,6 +75,7 @@ describe('check-format changed-file ratchet', () => {
 				'--config',
 				'oxfmtrc.json',
 				'--check',
+				'--',
 				'baseline.ts',
 				'committed.ts',
 				'staged.ts',
@@ -83,6 +84,51 @@ describe('check-format changed-file ratchet', () => {
 			expect(output).not.toContain('_generated');
 			expect(output).not.toContain('deleted.ts');
 			expect(output).not.toContain('notes.md');
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it('passes paths Git would quote to oxfmt unchanged', () => {
+		const root = mkdtempSync(join(tmpdir(), 'owlat-format-names-'));
+		try {
+			mkdirSync(join(root, 'scripts'), { recursive: true });
+			mkdirSync(join(root, 'node_modules/.bin'), { recursive: true });
+			copyFileSync(SCRIPT, join(root, 'scripts/check-format.sh'));
+			// One argument per NUL-terminated record, so a newline in a name shows.
+			writeFileSync(
+				join(root, 'node_modules/.bin/oxfmt'),
+				'#!/usr/bin/env bash\nprintf "%s\\0" "$@"\n',
+				{ mode: 0o755 }
+			);
+
+			git(root, ['init', '--quiet']);
+			git(root, ['config', 'user.email', 'test@example.com']);
+			git(root, ['config', 'user.name', 'Format Test']);
+			git(root, ['config', 'core.quotePath', 'true']);
+			write(root, 'baseline.ts');
+			git(root, ['add', '.']);
+			git(root, ['commit', '--quiet', '-m', 'baseline']);
+			const base = git(root, ['rev-parse', 'HEAD']);
+
+			const names = ['-dash.ts', 'quote".ts', 'space name.ts', 'tab\tname.ts', 'unformatted ü.ts'];
+			for (const name of names.slice(0, 3)) write(root, name);
+			git(root, ['add', '.']);
+			git(root, ['commit', '--quiet', '-m', 'odd names']);
+			write(root, names[3]!);
+			git(root, ['add', '.']);
+			write(root, names[4]!);
+
+			const output = execFileSync('bash', ['scripts/check-format.sh'], {
+				cwd: root,
+				encoding: 'utf8',
+				env: formatEnv({ OXFMT_BASE: base }),
+			});
+			const [header, ...rest] = output.split('\n');
+			const formatterArgs = rest.join('\n').split('\0').slice(0, -1);
+
+			expect(header).toBe(`check-format: checking ${names.length} changed file(s) with oxfmt...`);
+			expect(formatterArgs).toEqual(['--config', 'oxfmtrc.json', '--check', '--', ...names]);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
@@ -133,6 +179,7 @@ describe('check-format changed-file ratchet', () => {
 				'--config',
 				'oxfmtrc.json',
 				'--check',
+				'--',
 				'feature.ts',
 			]);
 		} finally {

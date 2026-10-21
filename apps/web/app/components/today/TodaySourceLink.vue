@@ -98,8 +98,9 @@ function when(at: number): string {
 						first.snippet
 					}}</span>
 					<span class="mt-2 flex items-center gap-2 text-2xs text-text-tertiary">
-						<kbd class="font-mono">⏎</kbd> {{ t('components.today.source.open') }}
-						<kbd class="ml-2 font-mono">⌘⏎</kbd> {{ t('components.today.source.fullThread') }}
+						<UiShortcut chord="Enter" class="font-mono" /> {{ t('components.today.source.open') }}
+						<UiShortcut chord="mod+Enter" class="ml-2 font-mono" />
+						{{ t('components.today.source.fullThread') }}
 					</span>
 				</template>
 				<template v-else>

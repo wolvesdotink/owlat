@@ -42,18 +42,21 @@ pathspecs=(
 	'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs'
 	':(exclude)**/_generated/**'
 )
-while IFS= read -r f; do
+# NUL-delimited end to end: without -z, Git quotes a path holding a tab,
+# quote or non-ASCII byte, the quoted name fails the -f test, and the file is
+# silently left unchecked.
+while IFS= read -r -d '' f; do
 	[ -n "$f" ] && [ -f "$f" ] && files+=("$f")
 done < <(
 	{
 		# Committed branch changes, plus every pre-commit worktree state. Keep
 		# these separate: a path can appear in more than one state, so sort once
 		# after collecting them all.
-		git diff --name-only --diff-filter=ACMR "$mergebase"...HEAD -- "${pathspecs[@]}"
-		git diff --cached --name-only --diff-filter=ACMR -- "${pathspecs[@]}"
-		git diff --name-only --diff-filter=ACMR -- "${pathspecs[@]}"
-		git ls-files --others --exclude-standard -- "${pathspecs[@]}"
-	} | LC_ALL=C sort -u
+		git diff -z --name-only --diff-filter=ACMR "$mergebase"...HEAD -- "${pathspecs[@]}"
+		git diff -z --cached --name-only --diff-filter=ACMR -- "${pathspecs[@]}"
+		git diff -z --name-only --diff-filter=ACMR -- "${pathspecs[@]}"
+		git ls-files -z --others --exclude-standard -- "${pathspecs[@]}"
+	} | LC_ALL=C sort -zu
 )
 
 if [ "${#files[@]}" -eq 0 ]; then
@@ -62,4 +65,5 @@ if [ "${#files[@]}" -eq 0 ]; then
 fi
 
 echo "check-format: checking ${#files[@]} changed file(s) with oxfmt..."
-exec ./node_modules/.bin/oxfmt --config oxfmtrc.json --check "${files[@]}"
+# `--` keeps a file named like an option (`-x.ts`) a file.
+exec ./node_modules/.bin/oxfmt --config oxfmtrc.json --check -- "${files[@]}"

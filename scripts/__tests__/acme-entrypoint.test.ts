@@ -13,14 +13,28 @@
  */
 
 import { execFile } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import {
+	chmod,
+	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	rm,
+	stat,
+	utimes,
+	writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 
 const SCRIPT = fileURLToPath(new URL('../../infra/templates/acme-entrypoint.sh', import.meta.url));
+const VPS_COMPOSE = fileURLToPath(
+	new URL('../../infra/templates/docker-compose.vps.yml', import.meta.url)
+);
 const DOMAIN = 'mail.example.test';
 const run = promisify(execFile);
 const roots: string[] = [];
@@ -53,16 +67,39 @@ async function makeSidecar(options: { chownExit?: number } = {}) {
 	await stub(stubDir, 'chown', `echo "chown $*" >> "$STUB_LOG"\nexit ${options.chownExit ?? 0}`);
 	await stub(stubDir, 'mv', `echo "mv $*" >> "$STUB_LOG"\nexec ${realMv} "$@"`);
 
+	const env = {
+		TLS_CERT_DIR: certDir,
+		LEGO_PATH: legoPath,
+		ACME_DOMAIN: DOMAIN,
+		// The renewal-attempt marker goes under TMPDIR; keep it in the sandbox.
+		TMPDIR: root,
+	};
+
 	return {
 		certDir,
+		marker: join(root, 'owlat-acme-attempt'),
+		/** Exit status of the VPS template's acme healthcheck against this sandbox. */
+		async healthcheck() {
+			const service = (
+				parse(await readFile(VPS_COMPOSE, 'utf8')) as {
+					services: { acme: { healthcheck: { test: string[] } } };
+				}
+			).services.acme;
+			const [kind, command] = service.healthcheck.test;
+			expect(kind).toBe('CMD-SHELL');
+			return run('sh', ['-c', command!.replaceAll('$$', '$')], {
+				env: { PATH: process.env['PATH'] ?? '', ...env },
+			}).then(
+				() => 0,
+				(error: { code?: number }) => error.code ?? 1
+			);
+		},
 		async publish() {
 			// The stub `sleep` ends the renewal loop with a non-zero exit.
 			await run('sh', [SCRIPT], {
 				env: {
 					PATH: `${stubDir}:${process.env['PATH'] ?? ''}`,
-					TLS_CERT_DIR: certDir,
-					LEGO_PATH: legoPath,
-					ACME_DOMAIN: DOMAIN,
+					...env,
 					ACME_CONTACT_EMAIL: 'ops@owlat.example',
 					LEGO_PROVIDER: 'hetzner',
 					IMAP_RUNTIME_USER: '1000:1000',
@@ -118,5 +155,38 @@ describe('acme-entrypoint.sh publish', () => {
 		expect(await readFile(join(sidecar.certDir, 'default.crt'), 'utf8')).toBe('OLD CERT\n');
 		expect(await readFile(join(sidecar.certDir, 'default.key'), 'utf8')).toBe('OLD KEY\n');
 		expect((await readdir(sidecar.certDir)).sort()).toEqual(['default.crt', 'default.key']);
+	});
+});
+
+describe('acme healthcheck (docker-compose.vps.yml)', () => {
+	it('passes once the loop has published what lego holds', async () => {
+		const sidecar = await makeSidecar();
+		await sidecar.publish();
+
+		expect(await sidecar.healthcheck()).toBe(0);
+	});
+
+	it('fails before the first attempt has finished', async () => {
+		const sidecar = await makeSidecar();
+
+		expect(await sidecar.healthcheck()).not.toBe(0);
+	});
+
+	it('fails when the published certificate is not the one lego holds', async () => {
+		const sidecar = await makeSidecar({ chownExit: 1 });
+		await writeFile(join(sidecar.certDir, 'default.crt'), 'OLD CERT\n');
+		await writeFile(join(sidecar.certDir, 'default.key'), 'OLD KEY\n');
+		await sidecar.publish();
+
+		expect(await sidecar.healthcheck()).not.toBe(0);
+	});
+
+	it('fails once the renewal loop has not come round for a whole interval', async () => {
+		const sidecar = await makeSidecar();
+		await sidecar.publish();
+		const dayAndTwoHoursAgo = Date.now() / 1000 - 26 * 3600;
+		await utimes(sidecar.marker, dayAndTwoHoursAgo, dayAndTwoHoursAgo);
+
+		expect(await sidecar.healthcheck()).not.toBe(0);
 	});
 });

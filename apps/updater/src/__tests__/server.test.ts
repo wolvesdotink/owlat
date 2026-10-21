@@ -1422,6 +1422,24 @@ describe('POST /rotate-env', () => {
 	});
 });
 
+describe('GET /livez', () => {
+	it('answers without the secret, a rate-limit slot or a Docker call', async () => {
+		commandMock.mockClear();
+		rateLimitedMock.mockClear();
+
+		const res = await fetch(`${base}/livez`);
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ status: 'ok' });
+		expect(commandMock).not.toHaveBeenCalled();
+		expect(rateLimitedMock).not.toHaveBeenCalled();
+	});
+
+	it('is GET only', async () => {
+		expect((await post('/livez', undefined, {})).status).toBe(404);
+	});
+});
+
 describe('GET /health', () => {
 	it('requires auth (no container enumeration)', async () => {
 		const res = await fetch(`${base}/health`);

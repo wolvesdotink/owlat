@@ -85,6 +85,26 @@ describe('useToast', () => {
 		expect(toasts.value).toHaveLength(0);
 	});
 
+	it('sets, moves and clears a keyboard hint on one toast', () => {
+		const { showToast, setToastShortcutHint, toasts } = useToast();
+		const first = showToast('Archived');
+		const second = showToast('Moved to Trash');
+		setToastShortcutHint(first, 'Ctrl+Z to undo');
+		expect(toasts.value.map((t) => t.shortcutHint)).toEqual(['Ctrl+Z to undo', undefined]);
+		setToastShortcutHint(first, undefined);
+		setToastShortcutHint(second, 'Ctrl+Z to undo');
+		expect(toasts.value.map((t) => t.shortcutHint)).toEqual([undefined, 'Ctrl+Z to undo']);
+		expect('shortcutHint' in toasts.value[0]!).toBe(false);
+	});
+
+	it('ignores a hint for a toast that is already gone', () => {
+		const { showToast, removeToast, setToastShortcutHint, toasts } = useToast();
+		const id = showToast('one');
+		removeToast(id);
+		expect(() => setToastShortcutHint(id, 'Ctrl+Z to undo')).not.toThrow();
+		expect(toasts.value).toHaveLength(0);
+	});
+
 	it('tolerates removing an already-dismissed toast', () => {
 		const { showToast, removeToast, toasts } = useToast();
 		showToast('one');

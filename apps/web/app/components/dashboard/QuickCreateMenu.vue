@@ -14,25 +14,12 @@
  * than silently swallowed on an instance with no mailbox. A surface that claims
  * `c` in its own scope still wins the press (utils/shortcutScope.ts).
  */
-import { formatChord } from '~/utils/shortcutRegistry';
-import { shortcutBindings } from '~/utils/shortcutScope';
-import type { QuickCreateAction } from '~/composables/useQuickCreateMenu';
 
 const { t } = useI18n();
 const { actions, defaultAction, composeAction } = useQuickCreateMenu();
 const { registerShortcut, unregisterShortcut } = useKeyboardShortcuts();
-const { platform } = useDesktopContext();
 
 const isOpen = ref(false);
-
-const isMac = computed(() => import.meta.client && platform.value === 'mac');
-
-/** The chord printed beside a verb, when the catalog gives it one. */
-function chordKeys(action: QuickCreateAction): string[] {
-	if (!action.shortcutId) return [];
-	const chord = shortcutBindings.value.byId.get(action.shortcutId)?.[0];
-	return chord ? formatChord(chord, isMac.value) : [];
-}
 
 onMounted(() => {
 	watch(
@@ -94,12 +81,11 @@ onUnmounted(() => unregisterShortcut('global.compose'));
 				@click="action.run()"
 			>
 				<span class="flex-1 text-left">{{ action.label }}</span>
-				<kbd
-					v-for="key in chordKeys(action)"
-					:key="key"
+				<UiShortcut
+					v-if="action.shortcutId"
+					:id="action.shortcutId"
 					class="px-1.5 py-0.5 text-2xs font-medium text-text-tertiary bg-bg-surface border border-border-subtle rounded"
-					>{{ key }}</kbd
-				>
+				/>
 			</UiDropdownMenuItem>
 		</UiDropdownMenu>
 	</div>

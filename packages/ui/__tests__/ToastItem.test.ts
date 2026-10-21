@@ -65,3 +65,23 @@ describe('ToastItem events', () => {
 		expect(onToastAction).not.toHaveBeenCalled();
 	});
 });
+
+describe('ToastItem keyboard hint', () => {
+	it('follows the message with the hint, hidden on touch screens', () => {
+		renderCard({
+			id: 'toast-3',
+			message: 'Archived',
+			type: 'success',
+			shortcutHint: 'Ctrl+Z to undo',
+			action: { label: 'Undo', onAction: vi.fn() },
+		});
+		const message = mounted!.el.querySelector('p')!;
+		expect(message.textContent?.replace(/\s+/g, ' ').trim()).toBe('Archived · Ctrl+Z to undo');
+		expect(message.querySelector('span')?.className).toContain('pointer-coarse:hidden');
+	});
+
+	it('shows the message alone without one', () => {
+		renderCard({ id: 'toast-4', message: 'Archived', type: 'success' });
+		expect(mounted!.el.querySelector('p')!.textContent?.trim()).toBe('Archived');
+	});
+});

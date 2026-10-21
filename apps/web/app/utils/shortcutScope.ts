@@ -37,8 +37,12 @@ import {
  * hand the scope back while the second still holds it.
  */
 const depth = new Map<ShortcutScope, number>();
-/** Push order, so the innermost claim is searched first. */
-let order: ShortcutScope[] = [];
+/**
+ * Push order, so the innermost claim is searched first. A `shallowRef` (always
+ * replaced, never mutated) so a shortcut hint that depends on which surface
+ * owns a key re-renders when a surface mounts or unmounts.
+ */
+const order = shallowRef<readonly ShortcutScope[]>([]);
 
 /**
  * Claim the keyboard for a scope while a surface is mounted. Returns the
@@ -47,7 +51,7 @@ let order: ShortcutScope[] = [];
  */
 export function pushShortcutScope(scope: ShortcutScope): () => void {
 	depth.set(scope, (depth.get(scope) ?? 0) + 1);
-	if (!order.includes(scope)) order.push(scope);
+	if (!order.value.includes(scope)) order.value = [...order.value, scope];
 	let released = false;
 	return () => {
 		if (released) return;
@@ -58,7 +62,7 @@ export function pushShortcutScope(scope: ShortcutScope): () => void {
 			return;
 		}
 		depth.delete(scope);
-		order = order.filter((s) => s !== scope);
+		order.value = order.value.filter((s) => s !== scope);
 	};
 }
 
@@ -68,13 +72,13 @@ export function pushShortcutScope(scope: ShortcutScope): () => void {
  * app-wide map never disappears.
  */
 export function activeShortcutScopes(): ShortcutScope[] {
-	return [...[...order].reverse(), 'global'];
+	return [...[...order.value].reverse(), 'global'];
 }
 
 /** Test seam — drops every claim. */
 export function resetShortcutScopes(): void {
 	depth.clear();
-	order = [];
+	order.value = [];
 	clearPendingChord();
 }
 

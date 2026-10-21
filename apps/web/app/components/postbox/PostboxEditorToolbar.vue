@@ -12,8 +12,11 @@
 
 import { computed } from 'vue';
 import type { ActiveMarks } from '@owlat/ui/composables/useRichText';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 const { t } = useI18n();
+// The editor's own Cmd/Ctrl-B/I/U/K (useRichText's handleFormatKeydown).
+const { chordLabel } = useShortcutLabels();
 
 const props = withDefaults(
 	defineProps<{
@@ -25,13 +28,13 @@ const props = withDefaults(
 		 */
 		variant?: 'persistent' | 'floating';
 	}>(),
-	{ variant: 'persistent' },
+	{ variant: 'persistent' }
 );
 
 const containerClass = computed(() =>
 	props.variant === 'floating'
 		? 'flex items-center gap-0.5'
-		: 'flex items-center gap-0.5 px-1 py-1 border-b border-border-subtle bg-bg-surface',
+		: 'flex items-center gap-0.5 px-1 py-1 border-b border-border-subtle bg-bg-surface'
 );
 
 const emit = defineEmits<{
@@ -51,7 +54,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.bold }"
-			:title="t('components.postbox.postboxEditorToolbar.bold')"
+			:title="t('components.postbox.postboxEditorToolbar.bold', { keys: chordLabel('mod+b') })"
 			@mousedown.prevent
 			@click="emit('bold')"
 		>
@@ -61,7 +64,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.italic }"
-			:title="t('components.postbox.postboxEditorToolbar.italic')"
+			:title="t('components.postbox.postboxEditorToolbar.italic', { keys: chordLabel('mod+i') })"
 			@mousedown.prevent
 			@click="emit('italic')"
 		>
@@ -71,7 +74,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.underline }"
-			:title="t('components.postbox.postboxEditorToolbar.underline')"
+			:title="t('components.postbox.postboxEditorToolbar.underline', { keys: chordLabel('mod+u') })"
 			@mousedown.prevent
 			@click="emit('underline')"
 		>
@@ -134,7 +137,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.link }"
-			:title="t('components.postbox.postboxEditorToolbar.link')"
+			:title="t('components.postbox.postboxEditorToolbar.link', { keys: chordLabel('mod+k') })"
 			@mousedown.prevent
 			@click="emit('link')"
 		>

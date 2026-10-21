@@ -9,6 +9,7 @@ interface StubToast {
 	message: string;
 	type: string;
 	action?: { label: string; onAction: () => void };
+	shortcutHint?: string;
 }
 
 const toasts: StubToast[] = [];
@@ -35,7 +36,13 @@ vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	if (!stateBuckets.has(key)) stateBuckets.set(key, ref(init()));
 	return stateBuckets.get(key);
 });
-vi.stubGlobal('useToast', () => ({ showToast, removeToast }));
+const setToastShortcutHint = (id: string, hint: string | undefined) => {
+	const toast = toasts.find((t) => t.id === id);
+	if (!toast) return;
+	if (hint) toast.shortcutHint = hint;
+	else delete toast.shortcutHint;
+};
+vi.stubGlobal('useToast', () => ({ showToast, removeToast, setToastShortcutHint }));
 
 // The undo action's own label is a translated string, so the real catalog sits
 // behind the `useI18n` auto-import and the toast carries the English a user reads.
@@ -242,6 +249,49 @@ describe('usePostboxTriageUndo', () => {
 
 		expect(await undoState.undo()).toBe(true);
 		expect(calls).toEqual(['before', 'move:inbox:2', 'move:newsletters:1']);
+	});
+
+	it('hints the undo chord on the newest toast only, and moves the hint as the stack shrinks', async () => {
+		const undoState = usePostboxTriageUndo();
+		undoState.register({ label: 'Archived', inverse: vi.fn() });
+		expect(toasts.map((t) => t.shortcutHint)).toEqual(['Ctrl+Z to undo']);
+
+		// The keyboard takes the newest entry, so the older toast stops offering it.
+		undoState.register({ label: 'Moved to Trash', inverse: vi.fn() });
+		expect(toasts.map((t) => [t.message, t.shortcutHint])).toEqual([
+			['Archived', undefined],
+			['Moved to Trash', 'Ctrl+Z to undo'],
+		]);
+
+		// Undone by keyboard: the remaining toast is the newest again.
+		await undoState.undo();
+		expect(toasts.map((t) => [t.message, t.shortcutHint])).toEqual([
+			['Archived', 'Ctrl+Z to undo'],
+		]);
+	});
+
+	it('moves the hint when the newest entry is taken by its own button', async () => {
+		const undoState = usePostboxTriageUndo();
+		undoState.register({ label: 'Archived', inverse: vi.fn() });
+		undoState.register({ label: 'Moved to Trash', inverse: vi.fn() });
+		toasts[1]!.action!.onAction();
+		await Promise.resolve();
+		expect(toasts.map((t) => [t.message, t.shortcutHint])).toEqual([
+			['Archived', 'Ctrl+Z to undo'],
+		]);
+	});
+
+	it('names ⌘Z on a Mac', () => {
+		Object.defineProperty(window.navigator, 'userAgent', {
+			value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+			configurable: true,
+		});
+		try {
+			usePostboxTriageUndo().register({ label: 'Archived', inverse: vi.fn() });
+			expect(toasts[0]?.shortcutHint).toBe('⌘Z to undo');
+		} finally {
+			delete (window.navigator as { userAgent?: string }).userAgent;
+		}
 	});
 
 	it('registerMoveBack with an empty moved list registers nothing', () => {

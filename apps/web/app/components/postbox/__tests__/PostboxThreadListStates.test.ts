@@ -10,7 +10,7 @@
  * global with an inert implementation so the presentational states can be
  * asserted in isolation.
  */
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref, computed, nextTick, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
@@ -26,6 +26,12 @@ import {
 	usePostboxMessageDrag,
 } from '../../../composables/postbox/usePostboxMessageDrag';
 import { nextUnreadIndex } from '../../../utils/postboxShortcuts';
+import {
+	applyShortcutPreferences,
+	pushShortcutScope,
+	resetShortcutPreferences,
+	resetShortcutScopes,
+} from '../../../utils/shortcutScope';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
 import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
@@ -199,6 +205,36 @@ describe('PostboxThreadList states', () => {
 		const w = mountList({ loading: false, folderRole: 'inbox' });
 		expect(w.find(EMPTY).exists()).toBe(true);
 		expect(w.text()).toContain('All clear');
+	});
+
+	describe('empty-state key hints', () => {
+		afterEach(() => {
+			resetShortcutPreferences();
+			resetShortcutScopes();
+		});
+
+		it('names both keys while both fire', () => {
+			const w = mountList({ loading: false, folderRole: 'inbox' });
+			expect(w.text()).toContain('Press C to write a message, or Ctrl+K to search');
+		});
+
+		it('drops the compose clause when a Postbox remap shadows its key', () => {
+			pushShortcutScope('postbox');
+			applyShortcutPreferences('owlat', [{ id: 'postbox.archive', keys: ['c'] }]);
+			const w = mountList({ loading: false, folderRole: 'inbox' });
+			expect(w.text()).toContain('Press Ctrl+K to search and jump anywhere.');
+			expect(w.text()).not.toContain('write a message');
+			expect(w.text()).not.toMatch(/Press\s+(to|,)/);
+		});
+
+		it('names the label key in the label view and drops it once nothing fires it', () => {
+			const live = mountList({ loading: false, folderRole: 'inbox', emptyContext: 'label' });
+			expect(live.text()).toContain('with the label shortcut (L).');
+			applyShortcutPreferences('owlat', [{ id: 'postbox.label', keys: [] }]);
+			const dead = mountList({ loading: false, folderRole: 'inbox', emptyContext: 'label' });
+			expect(dead.text()).toContain('Apply it to a message from the reader.');
+			expect(dead.text()).not.toContain('()');
+		});
 	});
 
 	it('shows a hint + filter action for an empty custom folder', () => {

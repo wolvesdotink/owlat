@@ -39,6 +39,18 @@ export interface TaskSamples {
 	samplesMs: number[];
 }
 
+/**
+ * Two tasks that time the same call on the same input shape at two sizes, the
+ * larger `factor` times the smaller. The report states the ratio of their
+ * medians: near `factor` for linear code.
+ */
+export interface ScalingPair {
+	name: string;
+	small: string;
+	large: string;
+	factor: number;
+}
+
 /** What one measurement process writes for one benchmark family. */
 export interface FamilyResult {
 	family: string;
@@ -47,6 +59,8 @@ export interface FamilyResult {
 	dataset: Record<string, string | number>;
 	runtime: { node: string; v8: string };
 	tasks: TaskSamples[];
+	/** Size pairs among `tasks` whose timing ratio the report shows. */
+	scaling?: ScalingPair[];
 }
 
 // Every result lands here, so the engine cannot prove a call useless and drop it.

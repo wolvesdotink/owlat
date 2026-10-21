@@ -36,6 +36,7 @@ import {
 	isTrackingResource,
 	remoteResourceHost,
 	stripRemoteImages,
+	type ScanWork,
 	type TrackerDetection,
 	type TrackingHints,
 } from '@owlat/shared/postboxTrackers';
@@ -89,11 +90,12 @@ function gateDeclaration(
 	declaration: string,
 	classifyUrl: (url: string) => ResourceRef,
 	withheld: (ref: ResourceRef) => boolean,
-	refs: ResourceRef[]
+	refs: ResourceRef[],
+	work: ScanWork | undefined
 ): string {
 	let kept = '';
 	let last = 0;
-	for (const fn of cssFunctionUnits(declaration)) {
+	for (const fn of cssFunctionUnits(declaration, work)) {
 		let withholdFn = false;
 		for (const url of fn.urls) {
 			const ref = classifyUrl(url);
@@ -122,19 +124,22 @@ function blockedPlaceholder(doc: Document, url: string, label: string): HTMLElem
  * Inventory the body's remote resources and withhold the ones the current
  * consent does not cover. `blockedLabel` is the text of the stand-in shown for
  * a withheld image; null drops the image without a stand-in (a quote, whose
- * stand-in would otherwise go out in the reply).
+ * stand-in would otherwise go out in the reply). `work`, when given,
+ * accumulates what the string parsers read and every reference classified
+ * (the DOM parse itself is the browser's and is not counted).
  */
 export function applyPostboxImageConsent(
 	html: string,
 	consent: PostboxImageConsent,
-	blockedLabel: string | null
+	blockedLabel: string | null,
+	work?: ScanWork
 ): PostboxRemoteResourceResult {
 	try {
-		return gateResources(html, consent, blockedLabel);
+		return gateResources(html, consent, blockedLabel, work);
 	} catch {
 		// Fail closed: with no inventory, keep no remote <img> and tell the
 		// reader to render with no network at all, whatever the consent.
-		const stripped = stripRemoteImages(html);
+		const stripped = stripRemoteImages(html, work);
 		return {
 			html: consent === 'everything' ? html : stripped.html,
 			hasRemoteResources: true,
@@ -154,16 +159,26 @@ interface ElementOutcome {
 function gateElement(
 	el: Element,
 	consent: PostboxImageConsent,
-	withheld: (ref: ResourceRef) => boolean
+	withheld: (ref: ResourceRef) => boolean,
+	work: ScanWork | undefined
 ): ElementOutcome {
 	const style = el.getAttribute('style') ?? '';
 	// Read once per element: every reference on it shares these hints.
-	const hints = elementTrackingHints({
-		width: el.getAttribute('width'),
-		height: el.getAttribute('height'),
-		style,
-	});
-	const classifyUrl = (url: string) => classify(url, hints);
+	const hints = elementTrackingHints(
+		{
+			width: el.getAttribute('width'),
+			height: el.getAttribute('height'),
+			style,
+		},
+		work
+	);
+	const classifyUrl = (url: string) => {
+		if (work) {
+			work.steps += 1;
+			work.chars += url.length;
+		}
+		return classify(url, hints);
+	};
 	const refs: ResourceRef[] = [];
 	const outcome: ElementOutcome = { refs, replacement: 'none', blockedUrl: '' };
 
@@ -171,9 +186,9 @@ function gateElement(
 	if (style) {
 		let changed = false;
 		const kept: string[] = [];
-		for (const declaration of splitStyleDeclarations(style)) {
+		for (const declaration of splitStyleDeclarations(style, work)) {
 			const original = declaration.trim();
-			const gated = gateDeclaration(original, classifyUrl, withheld, refs);
+			const gated = gateDeclaration(original, classifyUrl, withheld, refs, work);
 			if (gated !== original) changed = true;
 			kept.push(gated);
 		}
@@ -198,7 +213,7 @@ function gateElement(
 	// the approved sources (and their descriptors) with it.
 	const keptCandidates: string[] = [];
 	let withheldCandidate: string | null = null;
-	for (const candidate of srcsetCandidates(el.getAttribute('srcset') ?? '')) {
+	for (const candidate of srcsetCandidates(el.getAttribute('srcset') ?? '', work)) {
 		const ref = classifyUrl(candidate.url);
 		refs.push(ref);
 		if (!withheld(ref)) keptCandidates.push(candidate.text);
@@ -244,7 +259,8 @@ function failElementClosed(el: Element, consent: PostboxImageConsent): ElementOu
 function gateResources(
 	html: string,
 	consent: PostboxImageConsent,
-	blockedLabel: string | null
+	blockedLabel: string | null,
+	work: ScanWork | undefined
 ): PostboxRemoteResourceResult {
 	const template = document.createElement('template');
 	template.innerHTML = html;
@@ -259,7 +275,7 @@ function gateResources(
 	for (const el of Array.from(template.content.querySelectorAll('*'))) {
 		let outcome: ElementOutcome;
 		try {
-			outcome = gateElement(el, consent, withheld);
+			outcome = gateElement(el, consent, withheld, work);
 		} catch {
 			outcome = failElementClosed(el, consent);
 		}

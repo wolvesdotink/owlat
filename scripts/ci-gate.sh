@@ -7,13 +7,15 @@
 #   bash scripts/ci-gate.sh verify   the same, with turbo typecheck, the scripts/
 #                                    typecheck and test
 #
-# The plugin smokes are ordered so provider-kit and plugin-kit are built ONCE.
-# The first smoke deletes packages/plugin-kit/dist and proves the API tests do
-# not rebuild it; `plugins:test-clean` then deletes it again and runs
-# `plugins:check`, whose `plugins:prepare` is the single build of the run. The
-# smokes after that need the dist, so they call their scripts directly instead
-# of the package.json entries, which each prepend another `plugins:prepare` so
-# they also work standalone.
+# The plugin smokes and the root gates, and their order, live in
+# scripts/ci/gates.ts; `bun run check:changed` reads the same list to pick the
+# ones a change can affect. The smokes are ordered so provider-kit and
+# plugin-kit are built ONCE. The first smoke deletes packages/plugin-kit/dist
+# and proves the API tests do not rebuild it; `plugins:test-clean` then deletes
+# it again and runs `plugins:check`, whose `plugins:prepare` is the single build
+# of the run. The smokes after that need the dist, so they call their scripts
+# directly instead of the package.json entries, which each prepend another
+# `plugins:prepare` so they also work standalone.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -41,11 +43,20 @@ step() {
 	"$@"
 }
 
-step bun run plugins:test-api-graph
-step bun run plugins:test-deploy-graph
-step bun run plugins:test-clean
-step node packages/plugin-codegen/scripts/convexBundleSmoke.ts
-step bun packages/plugin-codegen/scripts/convexFunctionGraphSmoke.ts
+# Each manifest line is one command of plain words. The list is read from fd 3
+# so no step can consume the rest of it from stdin (and without mapfile, which
+# the Bash 3.2 that macOS ships lacks).
+run_manifest() {
+	local commands line argv
+	commands=$(bun scripts/ci/gates.ts "$1")
+	[[ -n "$commands" ]] || { echo "ci-gate: empty $1 list" >&2; exit 1; }
+	while IFS= read -r line <&3; do
+		read -ra argv <<<"$line"
+		step "${argv[@]}"
+	done 3<<<"$commands"
+}
+
+run_manifest smokes
 
 step bunx turbo "${turbo_tasks[@]}" "${turbo_concurrency_args[@]}" --filter='!@owlat/desktop'
 # scripts/ is not a workspace, so turbo typecheck never reaches it; the root
@@ -54,14 +65,10 @@ if [[ "$1" == verify ]]; then
 	step bun run typecheck:scripts
 fi
 
-# script-tests is the single vitest boot for scripts/__tests__ — the unit tests
-# for the gate scripts themselves. It used to be a `vitest run <file>` prefix
-# inside each lint:* entry, which booted vitest once per gate and left the
-# test files without a matching lint:* entry running only in security.yml.
-for gate in warnings owlat scripts script-tests deadcode catalog build-graph convex-orphans convex-globals filesize branding format imports providers \
-	ui-buttons desktop-invoke page-headers tokens member-jargon docker-workspaces deploy-closure installer compose mail-services html-to-text crypto-primitives source-bytes \
-	stored-block-corpus; do
-	step bun run "lint:$gate"
-done
-# lint:plugin-imports without its plugins:prepare prefix (see above).
-step bun packages/plugin-codegen/src/cli.ts --boundaries-only
+# The root gates, ending with lint:plugin-imports without its plugins:prepare
+# prefix (see above). script-tests is the single vitest boot for
+# scripts/__tests__, the unit tests for the gate scripts themselves. It used to
+# be a `vitest run <file>` prefix inside each lint:* entry, which booted vitest
+# once per gate and left the test files without a matching lint:* entry running
+# only in security.yml.
+run_manifest gates
