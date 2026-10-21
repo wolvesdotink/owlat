@@ -49,7 +49,9 @@ describe('mail-sync → Convex function references', () => {
 		const paths = Object.values(MAIL_SYNC_ENDPOINTS).map((endpoint) => endpoint.path);
 		expect(new Set(paths).size).toBe(paths.length);
 		for (const [key, ref] of Object.entries(fn)) {
-			expect(getFunctionName(ref)).toBe(MAIL_SYNC_ENDPOINTS[key as keyof typeof MAIL_SYNC_ENDPOINTS].path);
+			expect(getFunctionName(ref)).toBe(
+				MAIL_SYNC_ENDPOINTS[key as keyof typeof MAIL_SYNC_ENDPOINTS].path
+			);
 		}
 	});
 

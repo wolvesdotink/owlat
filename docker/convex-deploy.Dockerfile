@@ -86,6 +86,7 @@ COPY packages/mail-message/ packages/mail-message/
 COPY packages/mail-canon/ packages/mail-canon/
 COPY packages/smtp-client/ packages/smtp-client/
 COPY packages/mta-protocol/ packages/mta-protocol/
+COPY packages/worker-protocol/ packages/worker-protocol/
 COPY packages/email-renderer/ packages/email-renderer/
 COPY packages/email-scanner/ packages/email-scanner/
 COPY packages/plugin-host/ packages/plugin-host/
@@ -98,7 +99,7 @@ COPY packages/plugin-codegen/scripts/convexFunctionGraphSmoke.ts packages/plugin
 
 # Fail the image build if either package export points at an artifact that was
 # not copied into the final deploy image.
-RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/provider-kit', '@owlat/plugin-kit', '@owlat/mta-protocol', '@owlat/shared', '@owlat/mail-message', '@owlat/mail-canon', '@owlat/smtp-client'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
+RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/provider-kit', '@owlat/plugin-kit', '@owlat/mta-protocol', '@owlat/worker-protocol', '@owlat/shared', '@owlat/mail-message', '@owlat/mail-canon', '@owlat/smtp-client'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
 RUN OWLAT_CONVEX_BUNDLE_PRODUCTION_ONLY=1 node packages/plugin-codegen/scripts/convexBundleSmoke.ts
 # Bundle the full function graph with Convex's isolate/node runtime split
 # against exactly what this image ships — catches both a workspace package

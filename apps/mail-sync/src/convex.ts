@@ -14,6 +14,7 @@ import {
 	createCheckedClient,
 	workerReferences,
 	type CheckedConvexClient,
+	type ConvexTransport,
 } from '@owlat/worker-protocol/client';
 import {
 	MAIL_SYNC_ENDPOINTS,
@@ -38,10 +39,14 @@ import type { MailSyncConfig } from './config.js';
 export type ConvexClient = CheckedConvexClient;
 
 export function createConvexClient(config: MailSyncConfig): ConvexClient {
-	return createCheckedClient(
-		createAdminConvexClient(ConvexHttpClient, config.convexUrl, config.convexAdminKey),
-		MAIL_SYNC_ENDPOINTS
+	return checkedConvexClient(
+		createAdminConvexClient(ConvexHttpClient, config.convexUrl, config.convexAdminKey)
 	);
+}
+
+/** The mail-sync contract's checks over any transport: what `createConvexClient` ships. */
+export function checkedConvexClient(transport: ConvexTransport): ConvexClient {
+	return createCheckedClient(transport, MAIL_SYNC_ENDPOINTS);
 }
 
 /**

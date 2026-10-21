@@ -142,6 +142,7 @@ export function createCheckedClient(
 		query: async (ref, args) => (await call('query', ref, args)) as FunctionReturnType<typeof ref>,
 		mutation: async (ref, args) =>
 			(await call('mutation', ref, args)) as FunctionReturnType<typeof ref>,
-		action: async (ref, args) => (await call('action', ref, args)) as FunctionReturnType<typeof ref>,
+		action: async (ref, args) =>
+			(await call('action', ref, args)) as FunctionReturnType<typeof ref>,
 	};
 }

@@ -43,7 +43,13 @@ function account(sizes: Record<string, number>, options: FakeImapOptions = {}) {
 		for (let i = 0; i < size; i++) {
 			const id = `m${n++}@x`;
 			boxes[folder]!.push(id);
-			local.set(id, { messageId: id, remoteName: folder, role: ROLES[folder]!, flags: NO_FLAGS, sighting: null });
+			local.set(id, {
+				messageId: id,
+				remoteName: folder,
+				role: ROLES[folder]!,
+				flags: NO_FLAGS,
+				sighting: null,
+			});
 		}
 	}
 	const imap = new FakeImap(boxes, options);

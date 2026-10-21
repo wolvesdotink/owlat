@@ -12,6 +12,7 @@ import {
 	createCheckedClient,
 	workerReferences,
 	type CheckedConvexClient,
+	type ConvexTransport,
 } from '@owlat/worker-protocol/client';
 import {
 	IMAP_ENDPOINTS,
@@ -41,10 +42,14 @@ import type { ImapConfig } from './config.js';
 export type ConvexClient = CheckedConvexClient;
 
 export function createConvexClient(config: ImapConfig): ConvexClient {
-	return createCheckedClient(
-		createAdminConvexClient(ConvexHttpClient, config.convexUrl, config.convexAdminKey),
-		IMAP_ENDPOINTS
+	return checkedConvexClient(
+		createAdminConvexClient(ConvexHttpClient, config.convexUrl, config.convexAdminKey)
 	);
+}
+
+/** The IMAP contract's checks over any transport: what `createConvexClient` ships. */
+export function checkedConvexClient(transport: ConvexTransport): ConvexClient {
+	return createCheckedClient(transport, IMAP_ENDPOINTS);
 }
 
 // ── Wire shapes ─────────────────────────────────────────────────────────────

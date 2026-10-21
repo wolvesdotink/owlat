@@ -31,9 +31,7 @@ import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { throwInvalidInput } from '../../_utils/errors';
 import { assertExternalEnabled } from './externalFeature';
 import { refreshGoogleAccessToken } from './googleOAuthTokens';
-import {
-	getCredentialsForWorker as getCredentialsForWorkerContract,
-} from '@owlat/worker-protocol/mailSync';
+import { getCredentialsForWorker as getCredentialsForWorkerContract } from '@owlat/worker-protocol/mailSync';
 
 interface ProtocolTestResult {
 	ok: boolean;

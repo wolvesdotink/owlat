@@ -152,9 +152,9 @@ describe('validatorMismatch names the place, never the value', () => {
 
 	it('names a missing field, an unexpected field and an unmatched union', () => {
 		expect(validatorMismatch(validator, { kind: 'credentials' })).toBe('$.credentials: missing');
-		expect(
-			validatorMismatch(v.object({ a: v.number() }), { a: 1, b: 2 })
-		).toBe('$: unexpected field');
+		expect(validatorMismatch(v.object({ a: v.number() }), { a: 1, b: 2 })).toBe(
+			'$: unexpected field'
+		);
 		expect(validatorMismatch(v.union(v.null(), v.number()), 'x')).toBe(
 			'$: matches no member of the union'
 		);

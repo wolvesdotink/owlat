@@ -94,7 +94,9 @@ function mismatchAt(
 		case 'bytes':
 			return value instanceof ArrayBuffer ? null : expected('bytes');
 		case 'literal':
-			return value === validator.value ? null : expected(`literal ${JSON.stringify(validator.value)}`);
+			return value === validator.value
+				? null
+				: expected(`literal ${JSON.stringify(validator.value)}`);
 		case 'array': {
 			if (!Array.isArray(value)) return expected('array');
 			for (let i = 0; i < value.length; i += 1) {
