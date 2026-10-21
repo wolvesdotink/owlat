@@ -157,7 +157,7 @@ describe.each(TEMPLATES)('%s', (file) => {
 		'%s is probed on the port it listens on',
 		(name, variable) => {
 			const port = String(all[name]?.environment?.[variable]);
-			const test = (all[name]?.healthcheck?.test as string[]).join(' ');
+			const test = [all[name]?.healthcheck?.test ?? []].flat().join(' ');
 			expect(test).toMatch(new RegExp(`127\\.0\\.0\\.1[: ]${port}\\b`));
 		}
 	);
