@@ -61,6 +61,23 @@ const MenuStub = defineComponent({
 			h('div', { 'data-testid': 'menu' }, slots.default?.({ close: () => {} })),
 });
 
+/**
+ * The keydown an IME sends with the Enter that confirms a candidate: flagged
+ * `isComposing`, or (Safari, after `compositionend`) carrying keyCode 229.
+ */
+const IME_ENTERS = [{ isComposing: true }, { keyCode: 229 }] as const;
+async function imeEnter(el: Element, init: KeyboardEventInit) {
+	const event = new KeyboardEvent('keydown', {
+		key: 'Enter',
+		bubbles: true,
+		cancelable: true,
+		...init,
+	});
+	el.dispatchEvent(event);
+	await nextTick();
+	return event;
+}
+
 function mountComposer(props: Record<string, unknown> = {}, slots: Record<string, string> = {}) {
 	return mount(ThreadComposer, {
 		props: {
@@ -220,6 +237,27 @@ describe('InboxThreadComposer in Answer mode', () => {
 		await body.setValue('Done.');
 		await body.trigger('keydown', { key: 'Enter', ctrlKey: true });
 		expect(wrapper.emitted('send')?.[0]).toEqual(['Done.', false, '', false]);
+	});
+
+	it('leaves the Cmd/Ctrl+Enter that confirms an IME candidate to the IME, in the editor and the subject (#1428)', async () => {
+		const wrapper = mountComposer({ subject: 'Re: 請求書' });
+		const body = wrapper.get('[data-testid="thread-composer-body"]');
+		await body.setValue('お疲れ様です');
+		await wrapper.get('[data-testid="thread-composer-envelope"]').trigger('click');
+		const subject = wrapper.get('[data-testid="thread-composer-subject"]');
+		for (const el of [body.element, subject.element]) {
+			for (const init of IME_ENTERS) {
+				for (const chord of [{ ctrlKey: true }, { metaKey: true }]) {
+					const event = await imeEnter(el, { ...init, ...chord });
+					expect(event.defaultPrevented).toBe(false);
+				}
+			}
+		}
+		expect(wrapper.emitted('send')).toBeUndefined();
+
+		// Once the composition is done, the chord sends, from the subject too.
+		await subject.trigger('keydown', { key: 'Enter', ctrlKey: true });
+		expect(wrapper.emitted('send')).toEqual([['お疲れ様です', false, 'Re: 請求書', false]]);
 	});
 
 	it('holds Send while a teammate is replying, and says who on the button', async () => {
@@ -512,6 +550,45 @@ describe('InboxThreadComposer and saved replies', () => {
 		expect(body(wrapper).element.value).toBe(
 			'Thanks!Order [[order number]] for [[Recipient’s last name]] ships today.'
 		);
+	});
+
+	it('leaves the picker’s Enter to an IME confirming a candidate in the search (#1428)', async () => {
+		savedReplies.value = [order, refund];
+		const wrapper = mountComposer({ recipient: { firstName: 'Ana' } });
+		await type(wrapper, 'Thanks!');
+		await body(wrapper).trigger('keydown', { key: ';', ctrlKey: true });
+		const search = wrapper.get('[data-testid="saved-reply-picker"] input');
+		await search.setValue('ordr');
+		for (const init of IME_ENTERS) {
+			const event = await imeEnter(search.element, init);
+			expect(event.defaultPrevented).toBe(false);
+		}
+		expect(wrapper.find('[data-testid="saved-reply-picker"]').exists()).toBe(true);
+		expect(body(wrapper).element.value).toBe('Thanks!');
+		expect(recordUse).not.toHaveBeenCalled();
+
+		// After the composition, Enter inserts the highlighted reply.
+		await search.trigger('keydown', { key: 'Enter' });
+		expect(wrapper.find('[data-testid="saved-reply-picker"]').exists()).toBe(false);
+		expect(body(wrapper).element.value).toBe(
+			'Thanks!Order [[order number]] for [[Recipient’s last name]] ships today.'
+		);
+	});
+
+	it('leaves the ";" dropdown’s Enter to an IME confirming a candidate in the editor (#1428)', async () => {
+		savedReplies.value = [refund];
+		const wrapper = mountComposer({ recipient: { firstName: 'Ana' } });
+		await type(wrapper, 'Hi ;ref');
+		for (const init of IME_ENTERS) {
+			const event = await imeEnter(body(wrapper).element, init);
+			expect(event.defaultPrevented).toBe(false);
+		}
+		expect(body(wrapper).element.value).toBe('Hi ;ref');
+		expect(wrapper.findAll('[role="option"]').map((o) => o.text())).toEqual(['Refund;refund']);
+		expect(recordUse).not.toHaveBeenCalled();
+
+		await body(wrapper).trigger('keydown', { key: 'Enter' });
+		expect(body(wrapper).element.value).toBe('Hi Hi Ana,\n\nyour refund is on its way. Mira');
 	});
 
 	it('replaces the ";token" at the caret, also after the caret moved without typing', async () => {

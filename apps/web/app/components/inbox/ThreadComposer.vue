@@ -47,6 +47,7 @@ import {
 	type SavedReplyRecipient,
 } from '~/composables/useTeamComposerSavedReplies';
 import { useChordKeys } from '~/composables/useChordKeys';
+import { isImeComposing } from '~/utils/imeComposition';
 import {
 	REPLY_BLOCKER_KEYS,
 	REPLY_NOTICE_KEYS,
@@ -209,6 +210,7 @@ function restoreDraft() {
 }
 
 function onKeydown(event: KeyboardEvent) {
+	if (isImeComposing(event)) return;
 	if (savedReplies.handleKeydown(event)) return;
 	if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
 		event.preventDefault();
