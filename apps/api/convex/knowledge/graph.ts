@@ -721,6 +721,11 @@ export const createPolicyEntry = knowledgeAdminMutation({
 				title: args.title,
 				content: args.content,
 				sourceType: 'curated',
+				// Where it came from, for sharing it with members later
+				// (knowledge/sharing.ts). Re-saving a curated answer keeps what
+				// it recorded; one written before the field stays unknown.
+				curatedFromSourceType:
+					existing.sourceType === 'curated' ? existing.curatedFromSourceType : existing.sourceType,
 				isAuthoritative: true,
 				tags: args.tags,
 				expiresAt: args.expiresAt,
@@ -743,6 +748,7 @@ export const createPolicyEntry = knowledgeAdminMutation({
 			title: args.title,
 			content: args.content,
 			sourceType: 'curated',
+			curatedFromSourceType: 'curated',
 			isAuthoritative: true,
 			// Stamped on every write of this release (knowledge/entryDedupe.ts).
 			memberAccess: 'members',

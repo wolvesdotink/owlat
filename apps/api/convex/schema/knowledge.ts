@@ -155,6 +155,13 @@ export const knowledgeEntriesFields = {
 	// Source attribution
 	sourceType: sourceTypeValidator,
 	sourceId: v.optional(v.string()), // ID of the source message/file
+	// The source type a curated answer was made from: `curated` when it was
+	// authored as one, else the `sourceType` the entry had before
+	// `knowledge.graph.createPolicyEntry` rewrote it to `curated` (kept through
+	// later edits). Absent on a curated answer written before this field: its
+	// earlier source is unknown, so it cannot be shared with members
+	// (knowledge/sharing.ts). Never set by a client.
+	curatedFromSourceType: v.optional(sourceTypeValidator),
 	// Entity links
 	contactIds: v.optional(v.array(v.id('contacts'))),
 	threadId: v.optional(v.id('conversationThreads')),

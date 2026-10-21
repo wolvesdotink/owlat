@@ -175,12 +175,23 @@ describe('sharing a restricted knowledge entry with members', () => {
 			await ctx.db.delete(id);
 			return id;
 		});
+		const softDeletedContactId = await t.run((ctx) =>
+			ctx.db.insert(
+				'contacts',
+				createTestContact({
+					firstName: 'Mara',
+					lastName: 'Lind',
+					email: 'mara@example.com',
+					deletedAt: 1,
+				}) as Doc<'contacts'>
+			)
+		);
 		const entryId = await t.mutation(api.knowledge.graph.createEntry, {
 			entryType: 'fact',
 			title: 'Jonas prefers a call',
 			content: 'Call Jonas before any sharedtoken scope change.',
 			sourceType: 'manual',
-			contactIds: [contactId, goneContactId],
+			contactIds: [contactId, goneContactId, softDeletedContactId],
 			tags: ['harborline'],
 		});
 		await runMigration(t);
@@ -205,6 +216,7 @@ describe('sharing a restricted knowledge entry with members', () => {
 			contacts: [
 				{ contactId, name: 'Jonas Weber', email: 'jonas@example.com' },
 				{ contactId: goneContactId, name: null, email: null },
+				{ contactId: softDeletedContactId, name: null, email: null },
 			],
 		});
 		expect(await share(t, entryId)).toBe(entryId);
@@ -342,6 +354,29 @@ describe('sharing a restricted knowledge entry with members', () => {
 				async () => ({ sourceType: 'file', sourceId: 'not-an-id' }),
 				'source_missing',
 			],
+			[
+				'a curated answer made from a file entry with no recorded source',
+				async () => ({
+					sourceType: 'curated',
+					curatedFromSourceType: 'file',
+					isAuthoritative: true,
+				}),
+				'source_missing',
+			],
+			[
+				'a curated answer made from Team Inbox extraction with no recorded source',
+				async () => ({
+					sourceType: 'curated',
+					curatedFromSourceType: 'agent_extracted',
+					isAuthoritative: true,
+				}),
+				'team_inbox',
+			],
+			[
+				'a curated answer written before its earlier source was recorded',
+				async () => ({ sourceType: 'curated', isAuthoritative: true }),
+				'source_missing',
+			],
 		];
 
 		for (const [name, fields, blocker] of cases) {
@@ -360,6 +395,86 @@ describe('sharing a restricted knowledge entry with members', () => {
 				expect(await auditRows(t)).toEqual([]);
 			});
 		}
+	});
+
+	describe('a curated answer keeps the source it was made from', () => {
+		const promote = (t: T, entryId: Id<'knowledgeEntries'>, title = 'Promoted') =>
+			t.mutation(api.knowledge.graph.createPolicyEntry, {
+				entryId,
+				title,
+				content: 'The answer',
+			});
+
+		it('a file entry with no recorded source stays unshareable', async () => {
+			const t = await setup();
+			const entryId = await seedEntry(t, { sourceType: 'file', memberAccess: 'restricted' });
+			expect((await review(t, entryId)).blocker).toBe('source_missing');
+
+			await promote(t, entryId);
+			// Re-saving the answer keeps the record.
+			await promote(t, entryId, 'Edited again');
+			expect(await read(t, entryId)).toMatchObject({
+				sourceType: 'curated',
+				curatedFromSourceType: 'file',
+				memberAccess: 'restricted',
+			});
+			const shown = await review(t, entryId);
+			expect(shown.blocker).toBe('source_missing');
+			await expect(
+				t.mutation(api.knowledge.sharing.shareWithMembers, {
+					entryId,
+					fingerprint: shown.fingerprint,
+				})
+			).rejects.toThrow();
+			expect((await read(t, entryId)).memberAccess).toBe('restricted');
+			expect(await auditRows(t)).toEqual([]);
+		});
+
+		it('Team Inbox extraction with no message or thread stays unshareable', async () => {
+			const t = await setup();
+			const entryId = await seedEntry(t, {
+				sourceType: 'agent_extracted',
+				memberAccess: 'restricted',
+			});
+			await promote(t, entryId);
+			expect((await read(t, entryId)).curatedFromSourceType).toBe('agent_extracted');
+			expect((await review(t, entryId)).blocker).toBe('team_inbox');
+		});
+
+		it('a legacy curated answer stays unknown when re-saved', async () => {
+			const t = await setup();
+			const entryId = await seedEntry(t, {
+				sourceType: 'curated',
+				isAuthoritative: true,
+				memberAccess: 'restricted',
+			});
+			await promote(t, entryId);
+			expect((await read(t, entryId)).curatedFromSourceType).toBeUndefined();
+			expect((await review(t, entryId)).blocker).toBe('source_missing');
+		});
+
+		it('a manual entry made into a curated answer can be shared', async () => {
+			const t = await setup();
+			const entryId = await seedEntry(t, { sourceType: 'manual', memberAccess: 'restricted' });
+			await promote(t, entryId);
+			expect((await read(t, entryId)).curatedFromSourceType).toBe('manual');
+			await share(t, entryId);
+			expect((await read(t, entryId)).memberAccess).toBe('members');
+		});
+
+		it('a curated answer authored as one can be shared after 0069 restricted it', async () => {
+			const t = await setup();
+			const entryId = await t.mutation(api.knowledge.graph.createPolicyEntry, {
+				title: 'Returns',
+				content: 'Thirty days.',
+			});
+			if (!entryId) throw new Error('no entry');
+			expect((await read(t, entryId)).curatedFromSourceType).toBe('curated');
+			await runMigration(t);
+			expect((await read(t, entryId)).memberAccess).toBe('restricted');
+			await share(t, entryId);
+			expect((await read(t, entryId)).memberAccess).toBe('members');
+		});
 	});
 
 	it('refuses an entry members can already see', async () => {

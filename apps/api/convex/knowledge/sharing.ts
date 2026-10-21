@@ -19,10 +19,17 @@
  *   - knowledge from a file captured from inbound mail, which keeps its
  *     mailbox's permission for good (lib/semanticFileAccess.ts);
  *   - knowledge whose source file is gone, or a file entry whose source is not
- *     recorded: nothing proves it was an upload, so it fails closed.
- * The source is read from `sourceId`, not only `sourceType`: turning an entry
- * into a curated answer (`knowledge.graph.createPolicyEntry`) rewrites
- * `sourceType` to `curated` and keeps `sourceId`.
+ *     recorded: nothing proves it was an upload, so it fails closed;
+ *   - a curated answer whose earlier source is not recorded: it may have been
+ *     made from any of the above, so it fails closed too.
+ * Turning an entry into a curated answer (`knowledge.graph.createPolicyEntry`)
+ * rewrites `sourceType` to `curated`, keeps `sourceId` and `threadId`, and
+ * records the earlier source type in `curatedFromSourceType`, so the rule
+ * reads the source from those, never from `sourceType` alone. A curated answer
+ * written before that field existed has no record: an answer authored as one
+ * looks the same as one made from a file entry without a `sourceId`, so both
+ * are refused. An owner or admin can still write it again as a new curated
+ * answer, which members see.
  *
  * STALE REVIEWS. The review carries a fingerprint of what it showed (title,
  * content, tags, contact links). Sharing refuses when the entry no longer
@@ -67,7 +74,8 @@ export const RESTRICTION_MIGRATION = '0069_restrict_captured_file_knowledge';
  *     predates the stamp and the migration has not restricted it yet;
  *   - `team_inbox`: it came from Team Inbox mail or links a Team Inbox thread;
  *   - `mail_capture`: it came from a file captured from inbound mail;
- *   - `source_missing`: its source file is gone or not recorded.
+ *   - `source_missing`: its source file is gone or not recorded, or it is a
+ *     curated answer whose earlier source is not recorded.
  */
 export type ShareBlocker =
 	| 'already_shared'
@@ -102,7 +110,12 @@ const BLOCKER_COPY: Record<ShareBlocker, { message: string; messageKey: string }
 
 type ShareFields = Pick<
 	Doc<'knowledgeEntries'>,
-	'_creationTime' | 'sourceType' | 'sourceId' | 'threadId' | 'memberAccess'
+	| '_creationTime'
+	| 'sourceType'
+	| 'curatedFromSourceType'
+	| 'sourceId'
+	| 'threadId'
+	| 'memberAccess'
 >;
 
 /**
@@ -122,16 +135,20 @@ export async function shareBlocker(
 		return 'restriction_pending';
 	}
 
-	if (entry.threadId !== undefined || entry.sourceType === 'agent_extracted') return 'team_inbox';
-	const fileId = entry.sourceId ? ctx.db.normalizeId('semanticFiles', entry.sourceId) : null;
-	if (fileId) {
-		const file = await ctx.db.get(fileId);
-		if (!file) return 'source_missing';
-		return isMailCapture(file) ? 'mail_capture' : null;
+	// A curated answer: the source it was made from; undefined when not recorded.
+	const source = entry.sourceType === 'curated' ? entry.curatedFromSourceType : entry.sourceType;
+	if (entry.threadId !== undefined || source === 'agent_extracted') return 'team_inbox';
+	if (entry.sourceId) {
+		const fileId = ctx.db.normalizeId('semanticFiles', entry.sourceId);
+		if (fileId) {
+			const file = await ctx.db.get(fileId);
+			if (!file) return 'source_missing';
+			return isMailCapture(file) ? 'mail_capture' : null;
+		}
+		// A curated answer made from Team Inbox knowledge keeps its source message.
+		if (ctx.db.normalizeId('inboundMessages', entry.sourceId)) return 'team_inbox';
 	}
-	if (entry.sourceType === 'file') return 'source_missing';
-	// A curated answer made from Team Inbox knowledge keeps its source message.
-	if (entry.sourceId && ctx.db.normalizeId('inboundMessages', entry.sourceId)) return 'team_inbox';
+	if (source === 'file' || source === undefined) return 'source_missing';
 	return null;
 }
 
@@ -147,7 +164,10 @@ export function reviewFingerprint(
 	);
 }
 
-/** One contact link as the review shows it; both null when the contact is gone. */
+/**
+ * One contact link as the review shows it; name and email are both null when
+ * the contact is gone, deleted or soft-deleted.
+ */
 export interface ShareReviewContact {
 	contactId: Id<'contacts'>;
 	name: string | null;
@@ -185,7 +205,9 @@ export const getShareReview = publicQuery({
 		const contactIds = [...new Set(entry.contactIds ?? [])];
 		const docs = await batchGet(ctx, contactIds);
 		const contacts = contactIds.map((contactId): ShareReviewContact => {
-			const contact = docs.get(contactId);
+			const found = docs.get(contactId);
+			// A soft-deleted contact counts as gone (schema/contacts.ts `deletedAt`).
+			const contact = found?.deletedAt === undefined ? found : undefined;
 			const name = [contact?.firstName, contact?.lastName].filter(Boolean).join(' ').trim();
 			return { contactId, name: name || null, email: contact?.email ?? null };
 		});
