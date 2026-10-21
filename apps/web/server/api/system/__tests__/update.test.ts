@@ -38,6 +38,7 @@ vi.mock('~~/server/utils/requireAdmin', () => ({
 vi.mock('~~/server/utils/updater', () => ({
 	getInstanceSecret: getInstanceSecretMock,
 	callUpdater: callUpdaterMock,
+	UPDATE_REQUEST_TIMEOUT_MS: 60 * 60 * 1000,
 }));
 vi.mock('~~/server/utils/composeUpdate', () => ({
 	resolveVerifiedComposeTemplate: resolveComposeMock,

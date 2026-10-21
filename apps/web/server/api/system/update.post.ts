@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
-import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
+import { getInstanceSecret, callUpdater, UPDATE_REQUEST_TIMEOUT_MS } from '~~/server/utils/updater';
 import {
 	MIGRATIONS_PENDING_STATUS,
 	MIGRATIONS_UNVERIFIED_STATUS,
@@ -12,12 +12,6 @@ import {
 	isUpdateAttemptId,
 	isUpdaterRefusal,
 } from '~/lib/systemUpdate';
-
-/**
- * Pull + convex-deploy + recreate, then the updater's readiness wait, which
- * follows the healthcheck cadence services declare (ClamAV: up to ~11 min).
- */
-const UPDATER_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * Self-hosted in-app update entry point.
@@ -140,7 +134,7 @@ export default defineEventHandler(async (event) => {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ composeTemplate, ...(attempt ? { attempt } : {}) }),
-			signal: AbortSignal.timeout(UPDATER_TIMEOUT_MS),
+			signal: AbortSignal.timeout(UPDATE_REQUEST_TIMEOUT_MS),
 		});
 
 		updaterResult = (await updaterResp.json()) as typeof updaterResult;

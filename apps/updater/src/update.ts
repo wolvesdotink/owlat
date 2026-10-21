@@ -51,7 +51,7 @@ import {
 	parseReleaseVersionFromTemplate,
 	validateComposeTemplate,
 } from './security.js';
-import { exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
+import { exec, json, OWLAT_DIR, readBody, requireAuth, UPDATE_STEP_BOUNDS } from './http.js';
 import { shutdownSignal } from './lifecycle.js';
 import {
 	composeArgv,
@@ -88,23 +88,6 @@ const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
  * behind that the next manual `docker compose up` would silently complete.
  */
 const STAGED_FILE = join(OWLAT_DIR, 'docker-compose.next.yml');
-
-/**
- * How long the pull and the Convex deploy may take, instead of `exec`'s
- * five-minute default. Both run before the line the rollout cannot back out
- * across, so the running stack keeps serving while they work, and cutting
- * either short only throws away work that was going to succeed.
- *
- * The deploy needs the room most: it first pulls the convex-deploy image
- * (about 2 GB, not part of the pull step), then waits for Convex to backfill
- * every index the release adds, which grows with the instance's data. One
- * instance timed out at 300 s with an index 759 of 774 rows built, and the
- * deploy finished on its own moments after the update had been reported
- * failed. Together with `up` and readiness both stay inside the 30 minutes the
- * web app waits for an answer (apps/web/server/api/system/update.post.ts).
- */
-export const PULL_TIMEOUT_MS = 10 * 60_000;
-export const CONVEX_DEPLOY_TIMEOUT_MS = 15 * 60_000;
 
 /** The answer to a rollout that backed out because the updater is stopping. */
 const BACKED_OUT =
@@ -320,7 +303,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// failure leaves the running stack and its compose file untouched).
 	const pull = await exec('docker', [...composeArgs, 'pull'], OWLAT_DIR, {
 		signal: stopping,
-		timeoutMs: PULL_TIMEOUT_MS,
+		timeoutMs: UPDATE_STEP_BOUNDS.pullMs,
 	});
 	steps.push({ step: 'pull', ...pull });
 	if (stopping.aborted) return backOut();
@@ -355,17 +338,18 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		'docker',
 		[...deployArgs, '--profile', 'deploy', 'run', '--rm', ...noDeps, 'convex-deploy'],
 		OWLAT_DIR,
-		{ signal: stopping, timeoutMs: CONVEX_DEPLOY_TIMEOUT_MS }
+		{ signal: stopping, timeoutMs: UPDATE_STEP_BOUNDS.convexDeployMs }
 	);
 	steps.push({ step: 'convex-deploy', ...deploy });
 	if (stopping.aborted) return backOut();
 
 	if (!deploy.ok) {
 		await discardStaged();
-		return answer(500, {
-			error: 'convex-deploy failed — update aborted, running stack untouched',
-			steps,
-		});
+		// A deploy cut off by its bound may still finish inside Convex.
+		const error = deploy.stderr.includes('timed out after')
+			? 'convex-deploy timed out — update aborted before any container was replaced, but the new functions may still go live; run the update again to bring the rest of the stack to the same release'
+			: 'convex-deploy failed — update aborted, running stack untouched';
+		return answer(500, { error, steps });
 	}
 
 	// The line a SIGTERM no longer backs out across: from here the rollout

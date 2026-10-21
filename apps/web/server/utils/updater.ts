@@ -20,6 +20,16 @@ import type { H3Event } from 'h3';
 const UPDATER_BASE_URL = 'http://updater:3200';
 
 /**
+ * How long a route waits for the updater's answer to `POST /update`. It has
+ * to outlast the whole rollout, or a slow update that goes on to succeed is
+ * reported as failed: image reclaim, the pull (10 min) and the Convex deploy
+ * (15 min, UPDATE_STEP_BOUNDS in apps/updater/src/http.ts), `up` (5 min) and
+ * the readiness wait, which follows the healthcheck cadence services declare
+ * (ClamAV: up to ~11 min, capped at 12).
+ */
+export const UPDATE_REQUEST_TIMEOUT_MS = 60 * 60 * 1000;
+
+/**
  * Read `INSTANCE_SECRET` from the environment, throwing a 503 with the given
  * message when it is not configured. The message is route-specific so the
  * client can tell which capability is unavailable.

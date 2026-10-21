@@ -56,7 +56,7 @@ process.env['OWLAT_DIR'] = OWLAT_DIR;
 // Dynamic import AFTER env is staged — server.ts reads env at module load.
 const { buildRequestListener, readListenPort } = await import('../server.js');
 const { fastReadiness } = await import('./readinessStubs.js');
-const { PULL_TIMEOUT_MS, CONVEX_DEPLOY_TIMEOUT_MS } = await import('../update.js');
+const { UPDATE_STEP_BOUNDS } = await import('../http.js');
 
 let server: Server;
 let base: string;
@@ -737,12 +737,25 @@ describe('POST /update', () => {
 		const boundOf = (match: (args: string[]) => boolean) =>
 			execSpy.mock.calls.find(([file, args]) => file === 'docker' && match(args as string[]))?.[3]
 				?.timeoutMs;
-		expect(boundOf((args) => args.at(-1) === 'pull')).toBe(PULL_TIMEOUT_MS);
-		expect(boundOf((args) => args.at(-1) === 'convex-deploy')).toBe(CONVEX_DEPLOY_TIMEOUT_MS);
-		expect(PULL_TIMEOUT_MS).toBeGreaterThan(300_000);
-		expect(CONVEX_DEPLOY_TIMEOUT_MS).toBeGreaterThan(300_000);
-		// Both, plus `up` and readiness, inside the 30 minutes the web app waits.
-		expect(PULL_TIMEOUT_MS + CONVEX_DEPLOY_TIMEOUT_MS).toBeLessThan(30 * 60_000);
+		expect(boundOf((args) => args.at(-1) === 'pull')).toBe(UPDATE_STEP_BOUNDS.pullMs);
+		expect(boundOf((args) => args.at(-1) === 'convex-deploy')).toBe(
+			UPDATE_STEP_BOUNDS.convexDeployMs
+		);
+		expect(UPDATE_STEP_BOUNDS.pullMs).toBeGreaterThan(300_000);
+		expect(UPDATE_STEP_BOUNDS.convexDeployMs).toBeGreaterThan(300_000);
+	});
+
+	it('does not claim the stack is untouched when the deploy was cut off by its bound', async () => {
+		commandMock.mockImplementation(
+			dockerFailing((cmd) => cmd.includes('convex-deploy'), 'docker timed out after 900s')
+		);
+		const res = await post('/update');
+		expect(res.status).toBe(500);
+		const { error } = (await res.json()) as { error: string };
+		expect(error).toMatch(/^convex-deploy timed out/);
+		expect(error).toContain('may still go live');
+		expect(error).not.toContain('untouched');
+		expect(composeCommands().some((cmd) => cmd.includes(' up -d'))).toBe(false);
 	});
 
 	it('stops before docker compose up when convex-deploy fails', async () => {
