@@ -142,7 +142,10 @@ export const webhookTables = {
 	//
 	// The signature contract's timestamp tolerance is what makes this table small:
 	// a captured request stops verifying once it falls outside the tolerance, so a
-	// claim only has to outlive that window (`expiresAt`). The claim mutation ages
+	// claim only has to outlive that window (`expiresAt`). The exception is a
+	// Svix receipt (#1367), which names the message rather than the attempt and
+	// is kept for the sender's retry window (about two days, `receiptExpiresAt`);
+	// even those are bounded by delivery volume. The claim mutation ages
 	// expired rows out in bounded batches on its own hot path; because that only
 	// runs while deliveries arrive, a daily cron
 	// (`webhooks/cleanup.cleanupPluginWebhookDeliveries`) empties what an idle or
@@ -156,16 +159,24 @@ export const webhookTables = {
 		// SHA-256 hex naming one delivery, domain-separated by plugin and transport
 		// kind (`plugins/inboundSignature.ts`, `deliveryDigestOf`). The
 		// parameterized-HMAC arm hashes the verified signature, never storing it,
-		// since it is a live MAC under a shared secret. The Svix arm (`v2`) hashes
-		// the message id, timestamp and a hash of the body instead, so a re-spelled
-		// signature header or a rotated key keeps one name (#1328). That digest
-		// covers no secret and can be predicted, which is harmless: it is only
-		// claimed after its delivery verified. Rows written under Svix `v1` no
-		// longer match; that matters for at most twice the tolerance plus a second
-		// (about 30 minutes) after the deploy — see the rollout note there.
+		// since it is a live MAC under a shared secret. The Svix arm (`v3:message`)
+		// hashes the message id and a hash of the body instead, so a re-spelled
+		// signature header, a rotated key (#1328) or a re-signed retry (#1367)
+		// keeps one name. That digest covers no secret and can be predicted, which
+		// is harmless: it is only claimed after its delivery verified. Rows written
+		// under an earlier Svix version no longer match; that matters for at most
+		// twice the tolerance plus a second (about 30 minutes) after the deploy —
+		// see the rollout note there.
 		deliveryDigest: v.string(),
 		claimedAt: v.number(),
+		// When the row stops guarding anything and may be swept: the request's
+		// window, or for a claim with `receiptExpiresAt` an in-flight lease and,
+		// once completed, the receipt's end.
 		expiresAt: v.number(),
+		// Only on a claim whose digest outlives the request (Svix, #1367): how long
+		// the receipt must answer for the message once the batch is applied.
+		// `complete` moves `expiresAt` to it.
+		receiptExpiresAt: v.optional(v.number()),
 		// WHETHER THE CLAIMED DELIVERY WAS EVER APPLIED. The claim is taken BEFORE
 		// dispatch, so "a row exists" alone cannot tell a batch that has landed from
 		// one still in flight — and the two must be answered differently. A second
@@ -211,9 +222,9 @@ export const webhookTables = {
 	//
 	// WHY IT IS NOT `pluginWebhookDeliveries`: those rows are replay claims and
 	// expire inside the signature contract's tolerance window (at most fifteen
-	// minutes), swept by the claim hot path and the cleanup cron. Feedback health
-	// is graded over SEVEN DAYS (`PROVIDER_FEEDBACK_STALE_AFTER_MS`), so a claim
-	// row can never be the signal.
+	// minutes, or about two days for a Svix receipt), swept by the claim hot path
+	// and the cleanup cron. Feedback health is graded over SEVEN DAYS
+	// (`PROVIDER_FEEDBACK_STALE_AFTER_MS`), so a claim row can never be the signal.
 	//
 	// WHY IT IS NOT `webhookPayloads`: that table is raw retention, which a plugin
 	// adapter must opt into (`storeRawPayload`, default off). Reading health from

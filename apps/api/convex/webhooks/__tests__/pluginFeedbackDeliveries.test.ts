@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PluginWebhookSignatureContract } from '@owlat/plugin-kit';
 import { internal } from '../../_generated/api';
 import { verifyPluginWebhookDelivery } from '../../plugins/inboundSignature';
+import { IN_FLIGHT_LEASE_MS } from '../inboundEventClaims';
 import schema from '../../schema';
 
 // Two globs merged, because Vite's `import.meta.glob` omits the directory chain
@@ -433,4 +434,110 @@ describe('a claim and the signature it records', () => {
 			await expect(verify(lastAcceptedMs + 1)).resolves.toMatchObject({ ok: false, status: 401 });
 		}
 	);
+});
+
+/**
+ * A claim whose digest names a MESSAGE rather than one signed request (#1367).
+ *
+ * The Svix arm leaves the timestamp out of the digest, because the sender
+ * re-signs every retry with a new one. So the same digest keeps arriving, each
+ * time with a fresh request window, for as long as the sender retries: the
+ * receipt has to outlive the request it was taken for, and an in-flight claim
+ * has to outlive the first attempt's window too.
+ */
+describe('a claim on a message digest', () => {
+	const CLAIMED_AT = 1_770_000_000_000;
+	const WINDOW_MS = 301_000;
+	const RECEIPT_MS = 48 * 60 * 60 * 1000;
+
+	/** A re-signed attempt arriving at `nowMs`: its own window, the message's receipt. */
+	function messageClaim(digest: string, nowMs: number) {
+		return {
+			...claimArgs(digest, nowMs + WINDOW_MS),
+			receiptExpiresAt: CLAIMED_AT + WINDOW_MS + RECEIPT_MS,
+		};
+	}
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function at(nowMs: number) {
+		vi.setSystemTime(nowMs);
+		return nowMs;
+	}
+
+	it('holds an in-flight claim for the lease, not for the first attempt’s window', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const t = convexTest(schema, modules);
+		const { claim } = internal.webhooks.pluginFeedbackDeliveries;
+
+		await expect(t.mutation(claim, messageClaim('msg', at(CLAIMED_AT)))).resolves.toBe('claimed');
+		// The first attempt's window has closed but it may still be dispatching: a
+		// retry must not take the claim over and apply the batch alongside it.
+		const later = at(CLAIMED_AT + WINDOW_MS + 60_000);
+		await expect(t.mutation(claim, messageClaim('msg', later))).resolves.toBe(
+			'duplicate_in_flight'
+		);
+		const lastHeld = at(CLAIMED_AT + IN_FLIGHT_LEASE_MS - 1);
+		await expect(t.mutation(claim, messageClaim('msg', lastHeld))).resolves.toBe(
+			'duplicate_in_flight'
+		);
+
+		// No action outlives the lease, so a claim still in flight after it was
+		// abandoned by a run that died: the next retry takes it over rather than
+		// being refused until the receipt's two days are up.
+		const leaseOver = at(CLAIMED_AT + IN_FLIGHT_LEASE_MS);
+		await expect(t.mutation(claim, messageClaim('msg', leaseOver))).resolves.toBe('claimed');
+		const rows = await t.run((ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+		expect(rows).toEqual([expect.objectContaining({ claimedAt: leaseOver, status: 'in_flight' })]);
+	});
+
+	it('keeps a completed receipt for the sender’s retry window, then lets it go', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const t = convexTest(schema, modules);
+		const { claim, complete } = internal.webhooks.pluginFeedbackDeliveries;
+		const receiptEnds = CLAIMED_AT + WINDOW_MS + RECEIPT_MS;
+
+		await t.mutation(claim, messageClaim('msg', at(CLAIMED_AT)));
+		await t.mutation(complete, completeArgs('msg'));
+		const [receipt] = await t.run((ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+		expect(receipt).toMatchObject({ status: 'completed', expiresAt: receiptEnds });
+
+		// The last Svix retry, about 27.5 hours on and freshly signed, is the
+		// lost-acknowledgement case: answered as a duplicate, applied nothing.
+		const lastRetry = at(CLAIMED_AT + 27.5 * 60 * 60 * 1000);
+		await expect(t.mutation(claim, messageClaim('msg', lastRetry))).resolves.toBe(
+			'duplicate_completed'
+		);
+		at(receiptEnds - 1);
+		await expect(
+			t.mutation(internal.webhooks.cleanup.cleanupPluginWebhookDeliveries, {})
+		).resolves.toEqual({ deletedCount: 0 });
+
+		// Past the receipt the table forgets the message, and the cron takes the row.
+		at(receiptEnds + 1);
+		await expect(
+			t.mutation(internal.webhooks.cleanup.cleanupPluginWebhookDeliveries, {})
+		).resolves.toEqual({ deletedCount: 1 });
+	});
+
+	it('records the receipt’s end on the row, and nothing else new', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const t = convexTest(schema, modules);
+		await t.mutation(
+			internal.webhooks.pluginFeedbackDeliveries.claim,
+			messageClaim('msg', at(CLAIMED_AT))
+		);
+
+		const rows = await t.run((ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+		expect(rows).toEqual([
+			expect.objectContaining({
+				claimedAt: CLAIMED_AT,
+				expiresAt: CLAIMED_AT + IN_FLIGHT_LEASE_MS,
+				receiptExpiresAt: CLAIMED_AT + WINDOW_MS + RECEIPT_MS,
+				status: 'in_flight',
+			}),
+		]);
+	});
 });

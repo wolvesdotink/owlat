@@ -240,6 +240,9 @@ async function deliver(
 		transportKind: definition.kind,
 		deliveryDigest: verification.deliveryDigest,
 		expiresAt: verification.expiresAtMs,
+		...(verification.receiptExpiresAtMs === undefined
+			? {}
+			: { receiptExpiresAt: verification.receiptExpiresAtMs }),
 	});
 	// A request that stopped verifying while it waited for authorization is
 	// refused like any stale request: claiming it could reuse the slot of a
@@ -402,9 +405,10 @@ async function applyDelivery(
  * failure is handled: NEVER by throwing. A rejection here would land in
  * `deliver`'s catch, which releases the replay claim and answers a non-2xx — so
  * the provider would redeliver bytes we had applied, against a claim we had just
- * given back. The claim then simply expires with the signature tolerance window,
- * which is the same outcome as before this marking existed, and a redelivery
- * inside that window is answered retryably rather than acknowledged. The failure
+ * given back. The claim then simply expires while still in flight — with the
+ * signature tolerance window, or for a Svix message with its in-flight lease —
+ * and a redelivery before that is answered retryably rather than acknowledged;
+ * one after it is applied again, the at-least-once fallback. The failure
  * is logged because the other half of this write is what the Delivery page grades
  * a plugin feedback channel by: a deployment whose stamps are silently not
  * landing sees a healthy channel report `awaiting_event`.
@@ -462,6 +466,7 @@ async function releaseClaim(ctx: ActionCtx, deliveryDigest: string): Promise<voi
 	try {
 		await ctx.runMutation(internal.webhooks.pluginFeedbackDeliveries.release, { deliveryDigest });
 	} catch {
-		// A claim we cannot release simply expires with its tolerance window.
+		// A claim we cannot release simply expires while in flight: with its
+		// tolerance window, or for a Svix message with its in-flight lease.
 	}
 }

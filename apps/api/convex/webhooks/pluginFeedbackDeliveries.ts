@@ -24,16 +24,27 @@
  * `claim` distinguishes the two cases and the route answers them differently:
  * only a COMPLETED delivery earns the duplicate 200; an in-flight one is answered
  * retryably, so the provider comes back after A has resolved either way.
+ *
+ * HOW LONG A ROW LIVES depends on what its digest names. A digest that covers
+ * the signed timestamp (the parameterized HMAC) names one request, which stops
+ * verifying with its tolerance window; the row lives exactly that long, in
+ * flight or completed. A Svix digest names a MESSAGE (#1367): the sender
+ * re-signs every retry with a new timestamp, so the same name keeps arriving
+ * for as long as the sender retries. Its claim carries `receiptExpiresAt`, and
+ * then the row's `expiresAt` is a lease while in flight and the receipt's end
+ * once completed — see `claim` and `complete`.
  */
 
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
+import { IN_FLIGHT_LEASE_MS } from './inboundEventClaims';
 
 /**
  * Expired rows removed per claim. Bounded so the hot path stays O(1)-ish, and
  * enough to hold the table at steady state under traffic: every claim can retire
- * more than one predecessor, and every row expires within the contract's
- * tolerance (at most fifteen minutes).
+ * more than one predecessor, and every row expires — within the contract's
+ * tolerance (at most fifteen minutes), or for a Svix receipt within about two
+ * days.
  *
  * OPPORTUNISTIC, not complete. This sweep only runs when a delivery is
  * authorized, so a plugin that is disabled — or a provider that simply stops
@@ -71,14 +82,22 @@ export const claim = internalMutation({
 		pluginId: v.string(),
 		transportKind: v.string(),
 		deliveryDigest: v.string(),
+		/** When THIS request stops verifying; a claim at or after it is `expired`. */
 		expiresAt: v.number(),
+		/**
+		 * Set when the digest outlives the request (the Svix arm names a message,
+		 * not an attempt): how long a COMPLETED receipt must keep answering for it.
+		 */
+		receiptExpiresAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<PluginFeedbackClaimResult> => {
 		const now = Date.now();
 		// FIRST, before any receipt is read or swept: is the request still alive?
 		// `expiresAt` is no earlier than the first instant its signed timestamp
 		// stops verifying (`claimExpiresAtMs` in `plugins/inboundSignature.ts`),
-		// and every copy of one delivery carries the same one. The route verifies
+		// and every byte-identical copy of one request carries the same one. A
+		// re-signed retry of a Svix message carries its own, later one, and finds a
+		// receipt that outlives every attempt's window. The route verifies
 		// and then awaits authorization before it gets here, so a replay can verify
 		// in the last moment of its window and arrive after it — exactly when its
 		// original's receipt has aged out. Refusing it here, in the same
@@ -96,10 +115,12 @@ export const claim = internalMutation({
 			.query('pluginWebhookDeliveries')
 			.withIndex('by_delivery_digest', (q) => q.eq('deliveryDigest', args.deliveryDigest))
 			.first();
-		// A row that survived the bounded sweep but is already expired is not a
-		// replay: the same digest cannot verify again once its timestamp is outside
-		// tolerance, so the only way to see one here is the sweep's limit. Treat it
-		// as absent and reuse the row.
+		// A row that survived the bounded sweep but is already expired guards
+		// nothing any more, so treat it as absent and reuse the slot. For a digest
+		// bound to its timestamp, the same request can no longer verify. For a
+		// message digest, either the receipt has outlived the sender's retry
+		// window, or an in-flight claim outlived its lease — and no action runs
+		// that long, so the run that took it has died without releasing it.
 		if (existing && existing.expiresAt > now) {
 			// A row from before this column existed is read as in-flight: that answer
 			// costs at worst one redelivery of an already-applied batch (every lane
@@ -114,12 +135,35 @@ export const claim = internalMutation({
 			transportKind: args.transportKind,
 			deliveryDigest: args.deliveryDigest,
 			claimedAt: now,
-			expiresAt: args.expiresAt,
+			expiresAt: inFlightExpiresAt(args, now),
+			...(args.receiptExpiresAt === undefined ? {} : { receiptExpiresAt: args.receiptExpiresAt }),
 			status: 'in_flight',
 		});
 		return 'claimed';
 	},
 });
+
+/**
+ * How long an in-flight claim blocks other copies of its delivery.
+ *
+ * For a digest bound to its timestamp, the request's own window: no other
+ * request can present that digest after it, so a longer hold buys nothing.
+ *
+ * For a message digest, the window is not enough. A re-signed retry carries the
+ * same digest with a fresh window, so a claim that lapsed with the FIRST
+ * attempt's window could be taken over while that attempt is still
+ * dispatching, and the batch applied twice. So it is held for
+ * {@link IN_FLIGHT_LEASE_MS}, which outlasts any HTTP action. That is also the
+ * most a claim abandoned by a crashed run can cost: a few retries are answered
+ * retryably, and the next one after the lease takes the claim over.
+ */
+function inFlightExpiresAt(
+	args: { readonly expiresAt: number; readonly receiptExpiresAt?: number },
+	now: number
+): number {
+	if (args.receiptExpiresAt === undefined) return args.expiresAt;
+	return Math.max(args.expiresAt, now + IN_FLIGHT_LEASE_MS);
+}
 
 /**
  * Mark a claimed delivery applied, and stamp the channel as alive.
@@ -128,9 +172,13 @@ export const claim = internalMutation({
  * transport's feedback reached us and was dispatched — and neither is worth
  * having without the other.
  *
- * The claim row keeps its `expiresAt`: a completed claim still ages out with the
- * signature tolerance window, because past that window the same bytes can no
- * longer verify and remembering them buys nothing.
+ * A completed claim on a digest bound to its timestamp keeps its `expiresAt`:
+ * past the signature tolerance window the same bytes can no longer verify, and
+ * remembering them buys nothing. A claim that carries `receiptExpiresAt` (a Svix
+ * message, #1367) is extended to it here: from now on a re-signed retry of the
+ * message is the lost-acknowledgement case, answered 200 and applied nothing.
+ * Only the receipt is kept that long, never the in-flight hold, so a run that
+ * dies before reaching here blocks the message for one lease, not two days.
  *
  * The activity row does NOT expire. It is what
  * `delivery.status.getProviderFeedbackStatus` grades a plugin feedback channel
@@ -153,7 +201,16 @@ export const complete = internalMutation({
 			.query('pluginWebhookDeliveries')
 			.withIndex('by_delivery_digest', (q) => q.eq('deliveryDigest', args.deliveryDigest))
 			.first();
-		if (existing) await ctx.db.patch(existing._id, { status: 'completed', completedAt: now });
+		if (existing) {
+			const { receiptExpiresAt } = existing;
+			await ctx.db.patch(existing._id, {
+				status: 'completed',
+				completedAt: now,
+				...(receiptExpiresAt !== undefined && receiptExpiresAt > existing.expiresAt
+					? { expiresAt: receiptExpiresAt }
+					: {}),
+			});
+		}
 
 		const activity = await ctx.db
 			.query('pluginWebhookFeedbackActivity')
