@@ -15,11 +15,13 @@
  * - `use_api_socket: true`, which mounts the engine socket by itself.
  *
  * What the gate cannot resolve from the file fails closed, as in the network
- * check: a mount source from a variable with no default, a relative path that
- * climbs out of the project directory, an external volume, `volumes_from` a
- * container instead of a service, and named pipes. A `${VAR:-default}` source
- * is checked with its default, which is what a deploy that leaves VAR unset
- * mounts; the variable itself is the operator's choice, not this file's.
+ * check: a variable with no default anywhere in a short-syntax mount (it may
+ * supply the whole mount) or in a long-syntax source or type, an unknown mount
+ * type, a relative path that climbs out of the project directory, an external
+ * volume, `volumes_from` a container instead of a service, and named pipes. A
+ * `${VAR:-default}` is checked with its default, which is what a deploy that
+ * leaves VAR unset mounts; the variable itself is the operator's choice, not
+ * this file's. Every decision is taken on the interpolated value.
  */
 import { posix } from 'node:path';
 
@@ -99,6 +101,9 @@ function sourceViolation(
 	return source.includes(UNSET) ? unresolvedSource(raw) : check(source);
 }
 
+/** Long-syntax mount types that never take a host path or a named volume. */
+const SOCKET_FREE_TYPES = new Set(['tmpfs', 'image']);
+
 /** Compose reads a short-syntax source as a host path when it looks like one. */
 const isHostPath = (source: string): boolean => /^[./~]/.test(source);
 
@@ -123,23 +128,31 @@ function namedVolumeViolation(name: string, compose: Compose): string | undefine
 function mountViolation(entry: unknown, compose: Compose): string | undefined {
 	const named = (name: string) => namedVolumeViolation(name, compose);
 	if (typeof entry === 'string') {
-		// Compose interpolates before it splits on ':', so a default may hold one.
-		const [source = '', ...rest] = interpolate(entry).split(':');
+		// Compose interpolates before it splits on ':', so a value may hold one: an
+		// unresolved variable anywhere may supply the whole mount (`${MOUNT}`), and
+		// what looks like an anonymous volume is only one when nothing is unresolved.
+		const resolved = interpolate(entry);
+		if (resolved.includes(UNSET)) return unresolvedSource(entry);
+		const [source = '', ...rest] = resolved.split(':');
 		if (rest.length === 0) return undefined; // an anonymous volume: target only
-		if (source.includes(UNSET)) return unresolvedSource(entry);
 		return isHostPath(source) ? hostPathViolation(source) : named(source);
 	}
 	if (!entry || typeof entry !== 'object') return 'is neither a string nor a mapping';
-	const { type, source } = entry as { type?: unknown; source?: unknown };
-	if (typeof type !== 'string' || interpolate(type).includes(UNSET)) {
-		return `has a mount type the gate cannot resolve (${String(type)})`;
+	const { type: rawType, source } = entry as { type?: unknown; source?: unknown };
+	// Branch on the type Compose ends up with, not on how the file spells it.
+	const type = typeof rawType === 'string' ? interpolate(rawType) : UNSET;
+	if (type.includes(UNSET)) {
+		return `has a mount type the gate cannot resolve (${String(rawType)})`;
 	}
 	if (type === 'npipe') {
 		return `is a named pipe, the Docker engine's transport on Windows; ${NO_SOCKET}`;
 	}
 	if (type === 'bind') return sourceViolation(source, hostPathViolation);
-	if (type === 'volume' && source !== undefined) return sourceViolation(source, named);
-	return undefined;
+	if (type === 'volume' || type === 'cluster') {
+		return source === undefined ? undefined : sourceViolation(source, named);
+	}
+	if (SOCKET_FREE_TYPES.has(type)) return undefined;
+	return `has a mount type the gate does not know (${String(rawType)})`;
 }
 
 /** The service a `volumes_from` entry names, or why it cannot be resolved. */

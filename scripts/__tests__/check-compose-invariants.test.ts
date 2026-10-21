@@ -421,6 +421,49 @@ const SOCKET_MUTATIONS = [
 		expected: `intruder volume "\${ENGINE_SOCKET}:/engine.sock" ${UNRESOLVED_SOURCE} (\${ENGINE_SOCKET}:/engine.sock)`,
 	},
 	{
+		breaks: 'a whole mount from a variable with no default',
+		apply: offline('    volumes:\n      - ${ENGINE_MOUNT}\n'),
+		expected: `intruder volume "\${ENGINE_MOUNT}" ${UNRESOLVED_SOURCE} (\${ENGINE_MOUNT})`,
+	},
+	{
+		breaks: 'a socket bind whose type comes from an interpolation default',
+		apply: offline(
+			'    volumes:\n      - type: ${MOUNT_TYPE:-bind}\n        source: /var/run/docker.sock\n        target: /engine.sock\n'
+		),
+		expected: `${GIVES_SOCKET} (/var/run/docker.sock)`,
+	},
+	{
+		breaks: 'a named pipe whose type comes from an interpolation default',
+		apply: offline(
+			'    volumes:\n      - type: ${MOUNT_TYPE:-npipe}\n        source: \\\\.\\pipe\\docker_engine\n        target: \\\\.\\pipe\\docker_engine\n'
+		),
+		expected: `is a named pipe, the Docker engine's transport on Windows; ${ONLY_PROXY}`,
+	},
+	{
+		breaks: 'an external volume whose mount type comes from an interpolation default',
+		apply: both(
+			addVolume('  engine-run:\n    external: true\n'),
+			offline(
+				'    volumes:\n      - type: ${MOUNT_TYPE:-volume}\n        source: engine-run\n        target: /x\n'
+			)
+		),
+		expected: 'uses external volume engine-run, which the gate cannot see into',
+	},
+	{
+		breaks: 'a mount type with no default',
+		apply: offline(
+			'    volumes:\n      - type: ${MOUNT_TYPE}\n        source: /var/run/docker.sock\n        target: /engine.sock\n'
+		),
+		expected: 'has a mount type the gate cannot resolve (${MOUNT_TYPE})',
+	},
+	{
+		breaks: 'a mount type the gate does not know',
+		apply: offline(
+			'    volumes:\n      - type: ${MOUNT_TYPE:-Bind}\n        source: /var/run/docker.sock\n        target: /engine.sock\n'
+		),
+		expected: 'has a mount type the gate does not know (${MOUNT_TYPE:-Bind})',
+	},
+	{
 		breaks: 'a relative bind that climbs out of the project directory',
 		apply: offline('    volumes:\n      - ./../../../../var/run:/host-run\n'),
 		expected: 'climbs out of the project directory (./../../../../var/run)',
@@ -547,6 +590,8 @@ describe.each(TEMPLATES)('$name keeps the Docker API off the app network', ({ na
 							'      - /run/owlat:/run/owlat',
 							'      - type: tmpfs',
 							'        target: /tmp',
+							'      - type: ${SCRATCH_MOUNT_TYPE:-tmpfs}',
+							'        target: /scratch',
 							'    volumes_from: [web:ro]',
 							'    use_api_socket: false',
 							'',
