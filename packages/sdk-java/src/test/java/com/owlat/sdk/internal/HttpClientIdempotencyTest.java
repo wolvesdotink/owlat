@@ -1,13 +1,13 @@
 package com.owlat.sdk.internal;
 
-import com.owlat.sdk.Owlat;
-import com.owlat.sdk.OwlatConfig;
 import com.owlat.sdk.RequestOptions;
 import com.owlat.sdk.RetryConfig;
 import com.owlat.sdk.exception.ConflictException;
 import com.owlat.sdk.exception.OwlatException;
 import com.owlat.sdk.model.event.SendEventParams;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
+import com.owlat.sdk.resource.EventsResource;
+import com.owlat.sdk.resource.TransactionalResource;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -29,7 +30,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * (key reused for another request) is never retried.
  *
  * A throwaway in-process HttpServer answers with a queue of statuses and
- * records each attempt's key header and body.
+ * records each attempt's key header and body. The backoff never sleeps: the
+ * client gets a sleeper that records each delay instead.
  */
 class HttpClientIdempotencyTest {
 
@@ -39,12 +41,14 @@ class HttpClientIdempotencyTest {
     private String baseUrl;
     private final List<String> keys = new CopyOnWriteArrayList<>();
     private final List<String> bodies = new CopyOnWriteArrayList<>();
+    private final List<Long> delays = new CopyOnWriteArrayList<>();
     private volatile int[] statuses = {202};
 
     @BeforeEach
     void start() throws IOException {
         keys.clear();
         bodies.clear();
+        delays.clear();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", this::handle);
         server.start();
@@ -72,12 +76,18 @@ class HttpClientIdempotencyTest {
         exchange.close();
     }
 
-    private Owlat client() {
-        // maxRetries=2 (3 total attempts) with ~0ms backoff for a fast test.
-        return new Owlat(OwlatConfig.builder("sk_test_123")
-                .baseUrl(baseUrl)
-                .retry(RetryConfig.builder().maxRetries(2).initialDelayMs(1).build())
-                .build());
+    /** maxRetries=2 (3 total attempts) with the default backoff, recorded instead of slept. */
+    private HttpClient http() {
+        return new HttpClient("sk_test_123", baseUrl, Duration.ofSeconds(10),
+                RetryConfig.builder().maxRetries(2).build(), delays::add);
+    }
+
+    private TransactionalResource transactionalResource() {
+        return new TransactionalResource(http());
+    }
+
+    private EventsResource eventsResource() {
+        return new EventsResource(http());
     }
 
     private static SendTransactionalParams transactional() {
@@ -88,22 +98,24 @@ class HttpClientIdempotencyTest {
     void keyedTransactionalSendRetries5xxWithTheSameKeyAndBody() {
         statuses = new int[]{502, 503, 202};
 
-        client().transactional().send(transactional(), RequestOptions.idempotencyKey(KEY));
+        transactionalResource().send(transactional(), RequestOptions.idempotencyKey(KEY));
 
         assertEquals(List.of(KEY, KEY, KEY), keys);
         assertEquals(3, bodies.size());
         assertEquals(1, bodies.stream().distinct().count());
+        assertEquals(List.of(500L, 1000L), delays);
     }
 
     @Test
     void keyedEventSendRetries5xx() {
         statuses = new int[]{500, 201};
 
-        client().events().send(
+        eventsResource().send(
                 SendEventParams.builder("to@example.com", "signed_up").build(),
                 RequestOptions.idempotencyKey(KEY));
 
         assertEquals(List.of(KEY, KEY), keys);
+        assertEquals(List.of(500L), delays);
     }
 
     @Test
@@ -111,10 +123,11 @@ class HttpClientIdempotencyTest {
         statuses = new int[]{502, 202};
 
         OwlatException ex = assertThrows(OwlatException.class,
-                () -> client().transactional().send(transactional()));
+                () -> transactionalResource().send(transactional()));
 
         assertEquals(502, ex.getStatusCode());
         assertEquals(List.of("null"), keys);
+        assertEquals(List.of(), delays);
     }
 
     @Test
@@ -122,9 +135,10 @@ class HttpClientIdempotencyTest {
         statuses = new int[]{409, 202};
 
         assertThrows(ConflictException.class,
-                () -> client().transactional().send(transactional(), RequestOptions.idempotencyKey(KEY)));
+                () -> transactionalResource().send(transactional(), RequestOptions.idempotencyKey(KEY)));
 
         assertEquals(1, keys.size());
+        assertEquals(List.of(), delays);
     }
 
     @Test
@@ -132,9 +146,10 @@ class HttpClientIdempotencyTest {
         statuses = new int[]{503};
 
         assertThrows(OwlatException.class,
-                () -> client().transactional().send(transactional(), RequestOptions.idempotencyKey(KEY)));
+                () -> transactionalResource().send(transactional(), RequestOptions.idempotencyKey(KEY)));
 
         assertEquals(3, keys.size());
+        assertEquals(List.of(500L, 1000L), delays);
     }
 
     @Test

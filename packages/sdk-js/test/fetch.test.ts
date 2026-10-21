@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { createHttpClient } from '../src/utils/fetch';
 import {
 	OwlatError,
@@ -532,6 +532,27 @@ describe('createHttpClient', () => {
 		describe('with an idempotency key', () => {
 			const KEY = 'order-1001-confirmation';
 
+			// The backoff sleeps run on fake timers: each test settles them with
+			// `runAllTimersAsync` instead of waiting on the real clock.
+			beforeEach(() => {
+				vi.useFakeTimers();
+			});
+			afterEach(() => {
+				vi.useRealTimers();
+			});
+
+			/** Settle `promise`, firing every backoff timer it schedules. */
+			async function settle<R>(promise: Promise<R>): Promise<R> {
+				const outcome = promise.then(
+					(value) => ({ ok: true as const, value }),
+					(error: unknown) => ({ ok: false as const, error })
+				);
+				await vi.runAllTimersAsync();
+				const result = await outcome;
+				if (!result.ok) throw result.error;
+				return result.value;
+			}
+
 			function sentAttempts(spy: ReturnType<typeof mockSequence>) {
 				return spy.mock.calls.map(([, init]) => ({
 					key: ((init?.headers ?? {}) as Record<string, string>)['Idempotency-Key'],
@@ -547,9 +568,9 @@ describe('createHttpClient', () => {
 				]);
 				const http = createRetryClient();
 
-				const result = await http.post('/test', { b: 2, a: 1 }, undefined, {
-					idempotencyKey: KEY,
-				});
+				const result = await settle(
+					http.post('/test', { b: 2, a: 1 }, undefined, { idempotencyKey: KEY })
+				);
 
 				expect(result.data).toEqual({ data: 'ok' });
 				const attempts = sentAttempts(spy);
@@ -566,7 +587,7 @@ describe('createHttpClient', () => {
 				});
 				const http = createRetryClient();
 
-				await http.post('/test', { a: 1 }, undefined, { idempotencyKey: KEY });
+				await settle(http.post('/test', { a: 1 }, undefined, { idempotencyKey: KEY }));
 
 				expect(spy).toHaveBeenCalledTimes(2);
 			});
@@ -588,7 +609,7 @@ describe('createHttpClient', () => {
 				const http = createRetryClient();
 
 				await expect(
-					http.post('/test', { a: 1 }, undefined, { idempotencyKey: KEY })
+					settle(http.post('/test', { a: 1 }, undefined, { idempotencyKey: KEY }))
 				).rejects.toBeInstanceOf(ConflictError);
 				expect(spy).toHaveBeenCalledOnce();
 			});
@@ -598,7 +619,7 @@ describe('createHttpClient', () => {
 				const http = createRetryClient();
 
 				await expect(
-					http.post('/test', { a: 1 }, undefined, { idempotencyKey: KEY })
+					settle(http.post('/test', { a: 1 }, undefined, { idempotencyKey: KEY }))
 				).rejects.toThrow(OwlatError);
 				expect(spy).toHaveBeenCalledTimes(3);
 			});
@@ -607,7 +628,7 @@ describe('createHttpClient', () => {
 				const spy = mockSequence([{ status: 202, body: { data: 'ok' } }]);
 				const http = createRetryClient();
 
-				await http.post('/test', { a: 1 });
+				await settle(http.post('/test', { a: 1 }));
 
 				expect(sentAttempts(spy)[0]?.key).toBeUndefined();
 			});
@@ -621,7 +642,7 @@ describe('createHttpClient', () => {
 				const http = createRetryClient();
 
 				await expect(
-					http.post('/test', { a: 1 }, undefined, { idempotencyKey: key })
+					settle(http.post('/test', { a: 1 }, undefined, { idempotencyKey: key }))
 				).rejects.toBeInstanceOf(ValidationError);
 				expect(spy).not.toHaveBeenCalled();
 			});

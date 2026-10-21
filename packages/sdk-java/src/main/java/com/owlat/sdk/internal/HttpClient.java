@@ -54,6 +54,14 @@ public class HttpClient {
     /** Backoff multiplier for exponential backoff. Tunable via {@link RetryConfig}. */
     private final int backoffMultiplier;
 
+    /** Waits out a retry delay. Tests pass one that records the delay instead of sleeping. */
+    @FunctionalInterface
+    interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
+    }
+
+    private final Sleeper sleeper;
+
     /**
      * Constructs a client with the default retry configuration
      * ({@link RetryConfig#defaults()}).
@@ -63,6 +71,10 @@ public class HttpClient {
     }
 
     public HttpClient(String apiKey, String baseUrl, Duration defaultTimeout, RetryConfig retry) {
+        this(apiKey, baseUrl, defaultTimeout, retry, Thread::sleep);
+    }
+
+    HttpClient(String apiKey, String baseUrl, Duration defaultTimeout, RetryConfig retry, Sleeper sleeper) {
         this.apiKey = apiKey;
         this.baseUrl = baseUrl;
         this.defaultTimeout = defaultTimeout;
@@ -70,6 +82,7 @@ public class HttpClient {
         this.maxRetries = effectiveRetry.getMaxRetries();
         this.initialDelayMs = effectiveRetry.getInitialDelayMs();
         this.backoffMultiplier = effectiveRetry.getBackoffMultiplier();
+        this.sleeper = sleeper;
         this.client = java.net.http.HttpClient.newBuilder()
                 .connectTimeout(defaultTimeout)
                 .build();
@@ -236,7 +249,7 @@ public class HttpClient {
 
     private void sleep(long millis) {
         try {
-            Thread.sleep(millis);
+            sleeper.sleep(millis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new OwlatException(
