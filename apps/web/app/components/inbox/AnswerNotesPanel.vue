@@ -51,11 +51,13 @@ watch(
 			</UiQueryBoundary>
 		</div>
 		<div class="shrink-0 border-t border-border-subtle p-3">
-			<InboxNoteComposer
-				ref="composer"
-				:submit="notes.post"
-				:candidates-for="notes.candidatesFor"
-			/>
+			<AppErrorBoundary surface="composer">
+				<InboxNoteComposer
+					ref="composer"
+					:submit="notes.post"
+					:candidates-for="notes.candidatesFor"
+				/>
+			</AppErrorBoundary>
 		</div>
 	</div>
 </template>

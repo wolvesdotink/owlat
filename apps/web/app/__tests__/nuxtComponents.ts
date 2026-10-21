@@ -17,8 +17,8 @@
  * editor page renders by its auto-registered name (#1441); it stays closed
  * until a suite opens it.
  *
- * `AppErrorBoundary` (and the `UiErrorBoundary` it renders) wraps the shell's
- * page slot, the Postbox panes and every composer. Real, so a suite mounting
+ * `AppErrorBoundary` (and the `UiErrorBoundary` it renders) wraps every page
+ * under the shell, the Postbox panes, message bodies and every composer. Real, so a suite mounting
  * one of those hosts renders its content through the boundary the browser has.
  */
 import { config } from '@vue/test-utils';

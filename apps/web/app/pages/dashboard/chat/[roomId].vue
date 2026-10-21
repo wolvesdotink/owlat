@@ -173,7 +173,9 @@ const handleLeave = async () => {
 						@delete="(id) => deleteMessage(id)"
 					/>
 					<ChatRoomSkeleton v-else :header="false" />
-					<ChatInput v-if="room.isMember" :send="sendMessage" />
+					<AppErrorBoundary v-if="room.isMember" surface="composer" :reset-keys="[room._id]">
+						<ChatInput :send="sendMessage" />
+					</AppErrorBoundary>
 				</div>
 
 				<!-- Member panel (right column) -->

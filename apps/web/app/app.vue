@@ -53,7 +53,7 @@ useHead(() => ({ htmlAttrs: localeHead.value.htmlAttrs }));
 		<PostHogIdentity v-if="identityTracking" />
 
 		<NuxtLayout>
-			<NuxtPage />
+			<AppPageOutlet />
 		</NuxtLayout>
 
 		<!-- Global toast notifications (client-only to avoid SSR hydration mismatch) -->

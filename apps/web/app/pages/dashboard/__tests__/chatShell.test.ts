@@ -70,7 +70,7 @@ let wrapper: VueWrapper | null = null;
 function mountShell(child: Component) {
 	wrapper = mountDashboardPage(ChatShellPage, {
 		components: {
-			NuxtPage: child,
+			AppPageOutlet: child,
 			UiRailDrawer: railDrawerStub,
 			ChatSidebar: marker('ChatSidebar'),
 			ChatNewChannelDialog: marker('ChatNewChannelDialog', ['close', 'created']),

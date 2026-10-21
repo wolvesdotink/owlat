@@ -3,6 +3,7 @@ import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce'
 import { useSectionNavigation } from '~/composables/useSectionNavigation';
 import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
+import { shellPageBoundaryKey } from '~/lib/pageBoundary';
 import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
 import { useMountOnFirst } from '~/composables/useMountOnFirst';
 import { usePerfMark } from '~/composables/usePerfMark';
@@ -67,6 +68,7 @@ function onToggleCollapse() {
 const showSectionNavigation = computed(() => !!activeSection.value && !showAppNavigation.value);
 const sectionNavigationTarget = ref<HTMLElement | null>(null);
 provide('section-navigation-target', sectionNavigationTarget);
+provide(shellPageBoundaryKey, true);
 
 // Settings' Back returns to the last page of real work, however many settings
 // pages were visited in between.
@@ -644,11 +646,10 @@ const sidebarDesktopClass = computed(() => {
 						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem-2.25rem-1px)] lg:min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]'
 				"
 			>
-				<!-- A page that fails to render falls back here, inside the shell:
-				     the rail, the header and the palette stay usable. -->
-				<AppErrorBoundary surface="page">
-					<slot />
-				</AppErrorBoundary>
+				<!-- A page that fails to render falls back in here, inside the shell
+				     (AppPageOutlet reads shellPageBoundaryKey): the rail, the header
+				     and the palette stay usable. -->
+				<slot />
 			</main>
 		</div>
 

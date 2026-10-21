@@ -99,7 +99,7 @@ provideChatShell({
 		</UiRailDrawer>
 
 		<!-- Main column: the child page's root is the `flex-1 flex flex-col` column. -->
-		<NuxtPage />
+		<AppPageOutlet />
 
 		<ChatNewChannelDialog
 			v-if="showCreateChannel"

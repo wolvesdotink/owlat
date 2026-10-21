@@ -385,7 +385,9 @@ const cancelRename = () => {
 				</div>
 			</div>
 
-			<AppErrorBoundary surface="composer">
+			<!-- The open chat is not in the route: switching chats or starting one
+			     has to clear a failed composer too. -->
+			<AppErrorBoundary surface="composer" :reset-keys="[activeId]">
 				<AssistantComposer
 					ref="composerRef"
 					:send="sendQuestion"

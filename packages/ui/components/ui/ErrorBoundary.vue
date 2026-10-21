@@ -15,12 +15,34 @@
  *   fresh `[id]` literal on every render must not clear a failure.
  * - `capture`: which captured errors this boundary contains. Declined errors
  *   keep propagating to outer boundaries and the app's error handler.
- * - `#fallback="{ error, retry }"` replaces the default fallback markup.
+ * - `#fallback="{ error, retry }"` replaces the default fallback markup, and
+ *   with it the focus handling below: a custom fallback places focus itself.
+ * - The default Retry button unmounts with the fallback it sits in, so after a
+ *   Retry focus is placed deliberately instead of falling to <body>: on the
+ *   first focusable element of the recovered content, else on the nearest
+ *   focusable container around the boundary; after a re-failure, on the new
+ *   Retry button. Focus the recovered content took itself (autofocus) stays.
  *
  * The boundary must sit around the component that may fail: a component cannot
  * catch its own setup or render failure.
+ *
+ * Single-node content is rendered as the boundary's own root, not inside a
+ * fragment, so a boundary can be the root of a page under NuxtPage's
+ * transition: the transition reaches the page's root element through it,
+ * where a fragment root cannot be animated and breaks the page swap.
  */
-import { computed, onErrorCaptured, ref, watch } from 'vue';
+import {
+	Fragment,
+	computed,
+	getCurrentInstance,
+	h,
+	nextTick,
+	onErrorCaptured,
+	ref,
+	watch,
+	type FunctionalComponent,
+	type VNode,
+} from 'vue';
 import { useUiI18n } from '../../composables/useUiI18n';
 
 // `fallbackMessage` has no default: prop defaults are evaluated outside the
@@ -55,10 +77,41 @@ const emit = defineEmits<{
 	captured: [error: unknown, info: string];
 }>();
 
-defineSlots<{
+const slots = defineSlots<{
 	default?: () => unknown;
 	fallback?: (scope: { error: unknown; retry: () => void }) => unknown;
 }>();
+
+// Vue's patch flags for a v-for fragment (keyed or not). Its length follows
+// the data, so unwrapping it would swap the root's shape, and remount the
+// content, whenever the list grows from one entry to two. Negative flags are
+// special markers (a slot outlet with dynamic content carries BAIL, -2), never
+// a bit set.
+const LIST_FRAGMENT = 128 | 256;
+
+/**
+ * Renders slot content as a single root when it is one node, looking through
+ * the fragments `<slot>` outlets wrap content in (the way `<Transition>` reads
+ * its child). Content of several nodes keeps its fragment. A compiled slot
+ * returns the same number of nodes on every render, so the root's shape stays
+ * stable and the content is never remounted by this.
+ */
+const SlotRoot: FunctionalComponent<{ nodes?: unknown }> = (rootProps) => {
+	// A compiled slot returns an array; a hand-written one may return one node.
+	const raw = rootProps.nodes;
+	let nodes = (Array.isArray(raw) ? raw : raw == null ? [] : [raw]) as VNode[];
+	while (nodes.length === 1) {
+		const only = nodes[0]!;
+		const isOutlet =
+			only.type === Fragment &&
+			Array.isArray(only.children) &&
+			!(only.patchFlag > 0 && only.patchFlag & LIST_FRAGMENT);
+		if (!isOutlet) return only;
+		nodes = only.children as VNode[];
+	}
+	return h(Fragment, nodes);
+};
+SlotRoot.props = ['nodes'];
 
 const { t } = useUiI18n();
 
@@ -84,9 +137,11 @@ function sameKeys(a: readonly unknown[] | undefined, b: readonly unknown[] | und
 }
 
 // Runs before the boundary re-renders, so content that fails again under the
-// new keys is caught by that render rather than cleared by this watcher.
+// new keys is caught by that render rather than cleared by this watcher. The
+// getter copies the entries: reading each one tracks it, so a key replaced in
+// place inside a reactive array resets the boundary as a new array would.
 watch(
-	() => props.resetKeys,
+	() => (props.resetKeys ? [...props.resetKeys] : undefined),
 	(next, previous) => {
 		if (failure.value && !sameKeys(previous, next)) failure.value = null;
 	}
@@ -95,25 +150,75 @@ watch(
 function retry() {
 	failure.value = null;
 }
+
+// Called from the template, inside the boundary's render, as `<slot>` would be.
+const content = () => slots.default?.();
+const fallbackContent = (error: unknown) => slots.fallback?.({ error, retry });
+
+const instance = getCurrentInstance();
+const retryButton = ref<HTMLButtonElement | null>(null);
+
+const FOCUSABLE = [
+	'a[href]',
+	'button:not([disabled])',
+	'input:not([disabled]):not([type="hidden"])',
+	'select:not([disabled])',
+	'textarea:not([disabled])',
+	'[contenteditable="true"]',
+	'[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+/** The top-level elements a rendered vnode put in the DOM. */
+function elementsOf(vnode: VNode | null | undefined): Element[] {
+	if (!vnode) return [];
+	if (vnode.component) return elementsOf(vnode.component.subTree);
+	if (vnode.type !== Fragment) return vnode.el instanceof Element ? [vnode.el] : [];
+	const out: Element[] = [];
+	for (let node = vnode.el as Node | null; node; node = node.nextSibling) {
+		if (node instanceof Element) out.push(node);
+		if (node === vnode.anchor) break;
+	}
+	return out;
+}
+
+function focusTargetAfterRetry(): HTMLElement | null {
+	if (failure.value) return retryButton.value;
+	const roots = elementsOf(instance?.subTree);
+	for (const root of roots) {
+		const target = root.matches(FOCUSABLE) ? root : root.querySelector(FOCUSABLE);
+		if (target instanceof HTMLElement) return target;
+	}
+	const container = roots[0]?.parentElement?.closest('[tabindex]');
+	return container instanceof HTMLElement ? container : null;
+}
+
+function retryFromButton() {
+	retry();
+	void nextTick(() => {
+		const active = document.activeElement;
+		if (active && active !== document.body) return;
+		focusTargetAfterRetry()?.focus();
+	});
+}
 </script>
 
 <template>
-	<slot v-if="!failure" />
-	<slot v-else name="fallback" :error="failure.error" :retry="retry">
-		<div role="alert" class="p-6 border border-error/20 bg-error/5 rounded-lg text-center">
-			<div class="flex flex-col items-center gap-3">
-				<Icon name="lucide:alert-circle" class="w-8 h-8 text-error" />
-				<p class="text-sm text-text-secondary">{{ message }}</p>
-				<p v-if="fallbackDetail" class="text-xs text-text-tertiary">{{ fallbackDetail }}</p>
-				<button
-					v-if="showRetry"
-					type="button"
-					class="px-4 py-1.5 text-sm font-medium bg-bg-elevated border border-border-default rounded-md hover:bg-bg-base transition-colors"
-					@click="retry"
-				>
-					{{ t('ui.actions.retry') }}
-				</button>
-			</div>
+	<SlotRoot v-if="!failure" :nodes="content()" />
+	<SlotRoot v-else-if="slots.fallback" :nodes="fallbackContent(failure.error)" />
+	<div v-else role="alert" class="p-6 border border-error/20 bg-error/5 rounded-lg text-center">
+		<div class="flex flex-col items-center gap-3">
+			<Icon name="lucide:alert-circle" class="w-8 h-8 text-error" />
+			<p class="text-sm text-text-secondary">{{ message }}</p>
+			<p v-if="fallbackDetail" class="text-xs text-text-tertiary">{{ fallbackDetail }}</p>
+			<button
+				v-if="showRetry"
+				ref="retryButton"
+				type="button"
+				class="px-4 py-1.5 text-sm font-medium bg-bg-elevated border border-border-default rounded-md hover:bg-bg-base transition-colors"
+				@click="retryFromButton"
+			>
+				{{ t('ui.actions.retry') }}
+			</button>
 		</div>
-	</slot>
+	</div>
 </template>
