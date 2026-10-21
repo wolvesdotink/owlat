@@ -12,4 +12,5 @@ declare const caniemailData: {
 	readonly data: unknown;
 };
 
+/** @public Types the JSON module behind the `./caniemailData` package export. */
 export default caniemailData;
