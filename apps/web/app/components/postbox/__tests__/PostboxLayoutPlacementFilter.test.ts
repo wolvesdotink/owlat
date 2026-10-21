@@ -14,6 +14,7 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useClickOutside } from '~/composables/useClickOutside';
 import { useLocalStorage } from '~/composables/useLocalStorage';
 import PostboxLayout from '../PostboxLayout.vue';
+import PostboxReaderPane from '../PostboxReaderPane.vue';
 
 function autoImportedHelpers(): Record<string, unknown> {
 	const modules = {
@@ -125,6 +126,7 @@ async function mountLayout() {
 			mocks: autoImportedHelpers(),
 			components: {
 				...INERT,
+				PostboxReaderPane,
 				PostboxQuickActionsBar: probe('PostboxQuickActionsBar', [
 					'pageIds',
 					'selectAllScopeMatchesList',

@@ -644,7 +644,11 @@ const sidebarDesktopClass = computed(() => {
 						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem-2.25rem-1px)] lg:min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]'
 				"
 			>
-				<slot />
+				<!-- A page that fails to render falls back here, inside the shell:
+				     the rail, the header and the palette stay usable. -->
+				<AppErrorBoundary surface="page">
+					<slot />
+				</AppErrorBoundary>
 			</main>
 		</div>
 

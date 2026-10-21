@@ -7,11 +7,12 @@
  * it once the window runs out, and takes back the draft an Undo recovers.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, nextTick, ref } from 'vue';
+import { defineComponent, h, nextTick, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 
 import ComposePage from '../compose.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import en from '../../../i18n/locales/en.json';
 
 const closeComposeWindow = vi.fn(async () => {});
 vi.mock('@owlat/desktop/src/compose', () => ({ closeComposeWindow }));
@@ -115,6 +116,38 @@ describe('desktop compose window', () => {
 		mountPage().getComponent(ComposerStub).vm.$emit('discarded');
 		await flushPromises();
 		expect(closeComposeWindow).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps the window usable when the composer fails to render', async () => {
+		const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const broken = ref(true);
+		const FlakyComposer = defineComponent({
+			name: 'PostboxComposer',
+			props: { seed: { type: Object, required: true } },
+			setup: () => () => {
+				if (broken.value) throw new Error('composer could not render');
+				return h('div', { 'data-testid': 'composer' });
+			},
+		});
+		const wrapper = mount(ComposePage, {
+			global: {
+				plugins: [createTestI18n()],
+				components: { PostboxComposer: FlakyComposer, PostboxUndoSendToast: ToastStub },
+			},
+		});
+		await nextTick();
+
+		expect(wrapper.get('[role="alert"]').text()).toContain(en.shell.paneError.composer);
+		expect(wrapper.find('[data-testid="toast"]').exists()).toBe(true);
+
+		// A draft handed back by Undo remounts the composer, and so clears the failure.
+		broken.value = false;
+		const reopen = wrapper.getComponent(ToastStub).props('reopen') as (spec: unknown) => void;
+		reopen({ mailboxId: 'mbx-1', draftId: 'draft-9' });
+		await nextTick();
+		expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="composer"]').exists()).toBe(true);
+		quiet.mockRestore();
 	});
 
 	it('ignores an expiry while the composer is open', async () => {

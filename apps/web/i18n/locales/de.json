@@ -18269,7 +18269,16 @@
 			"pageTitleGeneric": "Fehler — Owlat",
 			"pageTitleNotFound": "Seite nicht gefunden — Owlat",
 			"serverError": "Auf unserer Seite ist etwas schiefgelaufen. Bitte versuche es später erneut.",
+			"toast": "Etwas ist schiefgelaufen. Lade die Seite neu und versuche es noch einmal.",
 			"unexpected": "Ein unerwarteter Fehler ist aufgetreten."
+		},
+		"paneError": {
+			"page": "Diese Seite konnte nicht angezeigt werden.",
+			"reader": "Diese Unterhaltung konnte nicht angezeigt werden.",
+			"messageBody": "Diese Nachricht konnte nicht angezeigt werden.",
+			"list": "Die Nachrichtenliste konnte nicht angezeigt werden.",
+			"composer": "Der Editor konnte nicht angezeigt werden.",
+			"detail": "Alles andere funktioniert weiter. Versuch es noch einmal oder öffne etwas anderes."
 		},
 		"preferences": {
 			"title": "Einstellungen",

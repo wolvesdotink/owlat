@@ -18269,7 +18269,16 @@
 			"pageTitleGeneric": "Error — Owlat",
 			"pageTitleNotFound": "Page not found — Owlat",
 			"serverError": "Something went wrong on our end. Please try again later.",
+			"toast": "Something went wrong. Please refresh and try again.",
 			"unexpected": "An unexpected error occurred."
+		},
+		"paneError": {
+			"page": "This page couldn't be displayed.",
+			"reader": "This conversation couldn't be displayed.",
+			"messageBody": "This message couldn't be displayed.",
+			"list": "The message list couldn't be displayed.",
+			"composer": "The composer couldn't be displayed.",
+			"detail": "Everything else still works. Try again, or open something else."
 		},
 		"preferences": {
 			"title": "Preferences",

@@ -385,12 +385,14 @@ const cancelRename = () => {
 				</div>
 			</div>
 
-			<AssistantComposer
-				ref="composerRef"
-				:send="sendQuestion"
-				:streaming="streaming"
-				@stop="stop"
-			/>
+			<AppErrorBoundary surface="composer">
+				<AssistantComposer
+					ref="composerRef"
+					:send="sendQuestion"
+					:streaming="streaming"
+					@stop="stop"
+				/>
+			</AppErrorBoundary>
 		</section>
 
 		<!-- Delete confirmation — a removed chat and its messages cannot be recovered -->

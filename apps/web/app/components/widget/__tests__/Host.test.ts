@@ -226,6 +226,32 @@ describe('WidgetHost — isolation (error boundary)', () => {
 	});
 });
 
+describe('WidgetHost — a different module after a failure', () => {
+	it('drops the fallback and renders the new module without a retry', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const Boom = defineComponent({
+			setup() {
+				throw new Error('boom');
+			},
+			template: '<div />',
+		});
+		const Fine = defineComponent({ template: '<div data-testid="fine">fine</div>' });
+
+		const wrapper = mount(WidgetHost, {
+			...mountOpts,
+			props: { module: moduleFor(Boom, { kind: 'broken' }) },
+		});
+		await flushPromises();
+		expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+
+		await wrapper.setProps({ module: moduleFor(Fine, { kind: 'fine' }) });
+		await flushPromises();
+
+		expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="fine"]').exists()).toBe(true);
+	});
+});
+
 describe('WidgetHost — focus management on retry', () => {
 	it('keeps focus inside the region after a successful retry', async () => {
 		vi.spyOn(console, 'error').mockImplementation(() => {});
