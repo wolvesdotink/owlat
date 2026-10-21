@@ -22,6 +22,7 @@
  * `data:`/`cid:` resources are never flagged — they cannot phone home.
  */
 
+import { escapeImgTextInForeignContent, replaceImgTags, scanStartTag } from './postboxImgTags';
 import { TRACKER_HOST_PATTERNS } from './postboxTrackerHosts';
 
 export interface TrackerDetection {
@@ -31,42 +32,23 @@ export interface TrackerDetection {
 	trackerHosts: readonly string[];
 }
 
-// The start of an `<img` tag. The tag's end is found with indexOf rather than
-// `<img\b[^>]*>`, which backtracks quadratically over unterminated tags.
-const IMG_TAG_START_RE = /<img(?![\w])/gi;
-
-/** Replace every `<img …>` tag in one linear pass. */
-function replaceImgTags(html: string, replace: (tag: string) => string): string {
-	const starts = new RegExp(IMG_TAG_START_RE.source, 'gi');
-	let out = '';
-	let from = 0;
-	let match: RegExpExecArray | null;
-	while ((match = starts.exec(html))) {
-		const close = html.indexOf('>', match.index);
-		// No `>` left: no later tag can close either.
-		if (close === -1) break;
-		out += html.slice(from, match.index) + replace(html.slice(match.index, close + 1));
-		from = close + 1;
-		starts.lastIndex = from;
-	}
-	return out + html.slice(from);
-}
-
 // The named references that can spell a URL's scheme or authority; anything
 // else a URL could hide behind a named reference leaves it unparseable, and an
-// unparseable remote reference is classified conservatively.
-const NAMED_CHAR_REFS: Record<string, string> = {
-	amp: '&',
-	apos: "'",
-	colon: ':',
-	gt: '>',
-	lt: '<',
-	newline: '\n',
-	period: '.',
-	quot: '"',
-	sol: '/',
-	tab: '\t',
-};
+// unparseable remote reference is classified conservatively. A Map, so a
+// reference named after an Object.prototype member (`&constructor;`) is left
+// as it is.
+const NAMED_CHAR_REFS: ReadonlyMap<string, string> = new Map([
+	['amp', '&'],
+	['apos', "'"],
+	['colon', ':'],
+	['gt', '>'],
+	['lt', '<'],
+	['newline', '\n'],
+	['period', '.'],
+	['quot', '"'],
+	['sol', '/'],
+	['tab', '\t'],
+]);
 
 /** Decode character references in a raw attribute value read from a tag string. */
 function decodeCharRefs(value: string): string {
@@ -75,16 +57,33 @@ function decodeCharRefs(value: string): string {
 			const code = Number.parseInt(dec ?? hex, dec ? 10 : 16);
 			return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
 		}
-		return NAMED_CHAR_REFS[String(name).toLowerCase()] ?? ref;
+		return NAMED_CHAR_REFS.get(String(name).toLowerCase()) ?? ref;
 	});
 }
 
-/** Extract an attribute value from a single tag string (quoted or bare), decoded. */
+/**
+ * Extract an attribute value from a single tag string, decoded. Read with the
+ * tag tokenizer, so text inside another attribute's quoted value (or a
+ * `data-src`) is never mistaken for it; the first of duplicates wins, as in
+ * the browser.
+ */
 function attrValue(tag: string, name: string): string | null {
-	const re = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i');
-	const m = tag.match(re);
-	if (!m) return null;
-	const raw = m[1] ?? m[2] ?? m[3];
+	let raw: string | null = null;
+	scanStartTag(tag, 1, (attr, value) => {
+		if (raw === null && attr === name) raw = value;
+	});
+	return raw === null ? null : decodeCharRefs(raw);
+}
+
+/**
+ * The first `src=` anywhere in a tag's text, quoted or bare, decoded: how the
+ * scanner read tags before it tokenized them. Only for an `<img` the tokenizer
+ * did not read as a tag (see `replaceImgTags`), where the browser's reading is
+ * not known, so any `src=` in the text may be the one that loads.
+ */
+function looseSrcValue(tag: string): string | null {
+	const m = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+	const raw = m ? (m[1] ?? m[2] ?? m[3]) : undefined;
 	return raw == null ? null : decodeCharRefs(raw);
 }
 
@@ -218,14 +217,29 @@ export function isTrackingPixelTag(tag: string): boolean {
 	);
 }
 
-/** True when an <img ...> tag string has a src that is not an inline `data:`/`cid:` part. */
-function isRemoteImgTag(tag: string): boolean {
-	const src = attrValue(tag, 'src');
+/** True for a src that is set and is not an inline `data:`/`cid:` part. */
+function isRemoteSrc(src: string | null): boolean {
 	if (!src || normalizeResourceUrl(src) === '') return false;
 	// Only inline parts are known not to phone home; anything else, however it
 	// is spelled (`https:&#9;//…`, `//host/…`), is stripped.
 	return !isEmbeddedResourceUrl(src);
 }
+
+/**
+ * True when an <img ...> tag string has a remote src. A tag that was not
+ * tokenized (see `replaceImgTags`) also counts when any `src=` in its text is
+ * remote, as the earlier scanner read it.
+ */
+function isRemoteImgTag(tag: string, tokenized: boolean): boolean {
+	return isRemoteSrc(attrValue(tag, 'src')) || (!tokenized && isRemoteSrc(looseSrcValue(tag)));
+}
+
+// A removal can join the text around it into a new tag (`<<img …>img …>`) or
+// pair a quote differently, so an `<img` that sat inside a value becomes a
+// tag; each round re-reads the previous round's output. Crafted input that
+// keeps doing so past the last round has every `<img` left turned into text.
+const MAX_STRIP_ROUNDS = 4;
+const IMG_TAG_OPEN_RE = /<(?=img(?![\w]))/gi;
 
 export interface RemoteImageStripResult {
 	/** HTML with every remote-src <img> tag removed. */
@@ -254,13 +268,21 @@ export interface RemoteImageStripResult {
  */
 export function stripRemoteImages(html: string): RemoteImageStripResult {
 	try {
+		let out = html;
 		let strippedRemoteImages = 0;
-		const out = replaceImgTags(html, (tag) => {
-			if (!isRemoteImgTag(tag)) return tag;
-			strippedRemoteImages += 1;
-			return '';
-		});
-		return { html: out, strippedRemoteImages };
+		for (let round = 0; round < MAX_STRIP_ROUNDS; round++) {
+			let removed = 0;
+			out = replaceImgTags(out, (tag, tokenized) => {
+				if (!isRemoteImgTag(tag, tokenized)) return tag;
+				removed += 1;
+				return '';
+			});
+			strippedRemoteImages += removed;
+			if (removed === 0) {
+				return { html: escapeImgTextInForeignContent(out), strippedRemoteImages };
+			}
+		}
+		return { html: out.replace(IMG_TAG_OPEN_RE, '&lt;'), strippedRemoteImages };
 	} catch {
 		return { html, strippedRemoteImages: 0 };
 	}
