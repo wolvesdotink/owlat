@@ -17,7 +17,10 @@
  *   - relationship evidence that appears later (an acceptance, mail the owner
  *     wrote from another client, in any thread) clears the sender's verdicts,
  *     and mail written before it means the sender is never asked;
- *   - a fenced thread disregards its verdict and takes no late one.
+ *   - a fenced thread disregards its verdict and takes no late one;
+ *   - a sender with more verdicts than one batch has them all cleared, and a
+ *     re-verified signature that changes the read clears the verdict and
+ *     refuses a yes read before it.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -29,11 +32,12 @@ import { briefModelSchema } from '../../interpret/schema';
 import { readDigestCandidates } from '../../digest/select';
 import { noteOwnerReply } from '../learningSignals';
 import { refreshArrivalProjection, senderProfileOf } from '../projection';
-import { isHeldOutAsColdPitch } from '../coldPitch';
+import { commitColdPitchVerdict, isHeldOutAsColdPitch, SENDER_CLEARS_RECORDS } from '../coldPitch';
 import { fenceThreadInterpretation } from '../../interpret/staleFence';
+import { sourceVersionOf } from '../../interpret/sourceVersion';
 import { OWNER, seedPersonalMailbox } from '../../rules/__tests__/rules.testlib';
 import { roleOf } from '../../senders/__tests__/senders.testlib';
-import { learnTest, type T } from './learn.testlib';
+import { learnTest, seedSenderThreads, type T } from './learn.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../../lib/sessionOrganization');
@@ -149,6 +153,13 @@ async function stateOf(t: T, messageId: Id<'mailMessages'>) {
 
 const drain = (t: T) => t.finishAllScheduledFunctions(vi.runAllTimers);
 
+/** The body fingerprint R2 reads a message with, and passes along with a yes. */
+async function versionOf(t: T, id: Id<'mailMessages'>): Promise<string> {
+	const version = await t.run(async (ctx) => sourceVersionOf(ctx, { kind: 'mail', id }));
+	if (version === null) throw new Error('message is gone');
+	return version;
+}
+
 /** The state #1381 asks for: digest, Cold outreach, no queue entry, still in the Inbox. */
 async function expectHeldOut(t: T, messageId: Id<'mailMessages'>) {
 	const state = await stateOf(t, messageId);
@@ -208,7 +219,7 @@ describe('cold sales pitches at arrival (#1381)', () => {
 		await t.mutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
 			messageId,
 			answers: [],
-			isColdPitch: true,
+			coldPitchSourceVersion: await versionOf(t, messageId),
 		});
 		const state = await expectHeldOut(t, messageId);
 
@@ -316,7 +327,7 @@ describe('cold sales pitches at arrival (#1381)', () => {
 		await t.mutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
 			messageId,
 			answers: [],
-			isColdPitch: true,
+			coldPitchSourceVersion: await versionOf(t, messageId),
 		});
 		expect((await stateOf(t, messageId)).record?.coldPitchAt).toBeUndefined();
 	});
@@ -475,10 +486,108 @@ describe('relationship evidence and the fence (#1381)', () => {
 		await t.mutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
 			messageId,
 			answers: [],
-			isColdPitch: true,
+			coldPitchSourceVersion: await versionOf(t, messageId),
 		});
 		const state = await stateOf(t, messageId);
 		expect(state.record?.coldPitchAt).toBeUndefined();
 		expect(state.thread.needsReply?.messageId).toBe(messageId);
+	});
+
+	it('accepting a sender clears every verdict, past one batch', async () => {
+		const t = learnTest();
+		await enableFeatures(t, ['ai', 'postbox', 'postbox.coldPitch']);
+		const { mailboxId, folders } = await seedPersonalMailbox(t);
+		const count = SENDER_CLEARS_RECORDS + 1;
+		const seeded = await seedSenderThreads(t, mailboxId, folders.inbox, count, PITCHER);
+		for (const id of seeded.messageIds) {
+			const version = await versionOf(t, id);
+			await t.run(async (ctx) => {
+				expect(await commitColdPitchVerdict(ctx, id, version)).toBe(true);
+			});
+		}
+		const digest = () => t.run(async (ctx) => readDigestCandidates(ctx, mailboxId));
+		expect(await digest()).toHaveLength(count);
+
+		await t.mutation(api.mail.contacts.acceptSender, { mailboxId, email: PITCHER });
+		await drain(t);
+		expect(await digest()).toEqual([]);
+		const pitched = await t.run(async (ctx) =>
+			ctx.db
+				.query('mailArrivalRecords')
+				.filter((q) => q.neq(q.field('coldPitchAt'), undefined))
+				.collect()
+		);
+		expect(pitched).toEqual([]);
+	});
+});
+
+describe('a re-verified signature that changes the read (#1381)', () => {
+	/** A verdict the reader withholds (signed, no scope), as `signatureReverify` finds it. */
+	const UNSCOPED = {
+		isSigned: true as const,
+		isSignatureValid: true,
+		keySource: 'pinned' as const,
+	};
+
+	async function reverifyClearsigned(t: T, messageId: Id<'mailMessages'>) {
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, { inboundSignatureInfo: UNSCOPED });
+		});
+		await t.mutation(internal.mail.mailbox.signatureReverify.apply, {
+			messageId,
+			isReadChanged: true,
+			info: { ...UNSCOPED, scope: 'clearsigned' },
+		});
+	}
+
+	it('clears the verdict before any full interpretation of the message', async () => {
+		const t = learnTest();
+		await enableFeatures(t, ['ai', 'postbox', 'postbox.coldPitch']);
+		await seedPersonalMailbox(t);
+		const messageId = await deliver(t, PITCH, 'pitch');
+		await t.mutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
+			messageId,
+			answers: [],
+			coldPitchSourceVersion: await versionOf(t, messageId),
+		});
+		expect((await stateOf(t, messageId)).thread.arrival?.isColdPitch).toBe(true);
+
+		await reverifyClearsigned(t, messageId);
+		const state = await stateOf(t, messageId);
+		expect(state.thread.interpretationStaleSince).toBeUndefined();
+		expect(state.record?.coldPitchAt).toBeUndefined();
+		expect(state.thread.arrival?.isColdPitch).toBeUndefined();
+		expect(state.candidates).toEqual([]);
+		await t.run(async (ctx) => {
+			expect(await isHeldOutAsColdPitch(ctx, state.message)).toBe(false);
+		});
+		await drain(t);
+	});
+
+	it('refuses a yes read before the signature narrowed the body', async () => {
+		const t = learnTest();
+		await enableFeatures(t, ['ai', 'postbox', 'postbox.coldPitch']);
+		await seedPersonalMailbox(t);
+		const messageId = await deliver(t, PITCH, 'pitch');
+		const readBefore = await versionOf(t, messageId);
+
+		await reverifyClearsigned(t, messageId);
+		const readAfter = await versionOf(t, messageId);
+		expect(readAfter).not.toBe(readBefore);
+		await t.mutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
+			messageId,
+			answers: [],
+			coldPitchSourceVersion: readBefore,
+		});
+		expect((await stateOf(t, messageId)).record?.coldPitchAt).toBeUndefined();
+
+		// The same yes, read from the body as it reads now, commits.
+		await t.mutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
+			messageId,
+			answers: [],
+			coldPitchSourceVersion: readAfter,
+		});
+		expect((await stateOf(t, messageId)).record?.coldPitchAt).toBeDefined();
+		await drain(t);
 	});
 });

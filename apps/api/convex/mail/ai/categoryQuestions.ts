@@ -43,8 +43,12 @@ export type CategoryQuestionsOutcome =
 			kind: 'answered';
 			answers: ArrivalAiAnswer[];
 			category?: MailCategory;
-			/** The model said yes to the cold-pitch question (asked only for a candidate). */
-			isColdPitch?: boolean;
+			/**
+			 * The model said yes to the cold-pitch question (asked only for a
+			 * candidate): the body fingerprint of the text it read, which the
+			 * commit rechecks.
+			 */
+			coldPitchSourceVersion?: string;
 	  }
 	| { kind: 'rateLimited'; retryAfter?: number };
 
@@ -80,8 +84,10 @@ export async function askCategoryQuestions(
 		if (!input && !args.category) {
 			return { kind: 'answered', answers: unansweredOf(args.questions) };
 		}
-		// The cold-pitch question needs the message's own text, like the rule questions.
-		const isColdPitchAsked = args.isColdPitchAsked === true && input !== null;
+		// The cold-pitch question needs the message's own text, like the rule
+		// questions, and its fingerprint, so a stale yes cannot commit.
+		const coldPitchVersion = args.isColdPitchAsked === true ? input?.sourceVersion : undefined;
+		const isColdPitchAsked = coldPitchVersion !== undefined;
 		const questionsPart = input
 			? r2QuestionsPrompt(args.questions, input, { isColdPitchAsked })
 			: '';
@@ -112,7 +118,9 @@ export async function askCategoryQuestions(
 			kind: 'answered',
 			answers: input ? answersOf(args.questions, parsed.answers) : unansweredOf(args.questions),
 			...(parsed.category ? { category: parsed.category } : {}),
-			...(isColdPitchAsked && isColdPitchAnswer(parsed.coldPitch) ? { isColdPitch: true } : {}),
+			...(coldPitchVersion !== undefined && isColdPitchAnswer(parsed.coldPitch)
+				? { coldPitchSourceVersion: coldPitchVersion }
+				: {}),
 		};
 	} catch (error) {
 		rethrowAdmissionRefusal(error);

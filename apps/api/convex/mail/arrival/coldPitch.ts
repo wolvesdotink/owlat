@@ -20,7 +20,9 @@
  * (`deliveryPipeline/afterInsert.ts`, {@link isColdPitchAskable}).
  *
  * WHAT A VERDICT DOES. A yes is committed in R2's own mutation
- * ({@link commitColdPitchVerdict}), with the evidence checked again, onto the
+ * ({@link commitColdPitchVerdict}), with the evidence checked again and only
+ * while the message still reads as the model read it (the body fingerprint,
+ * `interpret/sourceVersion.ts`), onto the
  * message's arrival record (`coldPitchAt`, and the sender's digest in
  * `coldPitchSenderDigest` so the sender's verdicts can be found). Then:
  *   - the Reply Queue holds the message out ({@link isHeldOutAsColdPitch},
@@ -42,7 +44,11 @@
  *   - a contact row written for the sender (a send from Owlat, a Sent copy
  *     from another client, an acceptance, a VIP mark, an address-book entry)
  *     or a category override clears the sender's verdicts in the mailbox
- *     ({@link voidColdPitchVerdictsOfSender}).
+ *     ({@link voidColdPitchVerdictsOfSender}, in bounded batches until none
+ *     is left);
+ *   - a re-verified signature that changes what the message reads as clears
+ *     its verdict, judged on the old read ({@link clearColdPitchOfMessage},
+ *     from `mailbox/signatureReverify.ts`).
  * A status or placement the owner sets re-sorts the sender's threads anyway
  * (`senders/operations.ts`), fencing re-places its thread
  * (`mailbox/signatureReverify.ts`), and a Fix of the thread outranks it.
@@ -53,7 +59,10 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
+import { internal } from '../../_generated/api';
+import { internalMutation } from '../../lib/writeFence';
 import { isFeatureEnabled } from '../../lib/featureFlags';
+import { sourceVersionOf } from '../interpret/sourceVersion';
 import { senderKeyOf } from '../senders/profiles';
 import { refreshThreadsBounded } from '../senders/resortBatch';
 import { refreshArrivalProjection } from './projection';
@@ -91,19 +100,26 @@ export const isAskable = internalQuery({
 });
 
 /**
- * Commit a yes, inside R2's commit mutation. The evidence is read again: a
- * contact, an acceptance, an owner choice, an owner reply or a fence that
- * landed while the model ran makes the answer moot. Clears a needs-reply flag
- * the classifier already set for this message (the run keeps its pending
- * marker, and its later verdict is held out by {@link isHeldOutAsColdPitch}),
- * then re-projects. True when the verdict stands.
+ * Commit a yes, inside R2's commit mutation. `sourceVersion` is the body
+ * fingerprint of the text the model read (`interpret/sourceVersion.ts`): a
+ * read that changed since (a re-verified clearsigned signature narrows it)
+ * makes the answer stale. The evidence is read again too: a contact, an
+ * acceptance, an owner choice, an owner reply or a fence that landed while
+ * the model ran makes the answer moot. Clears a needs-reply flag the
+ * classifier already set for this message (the run keeps its pending marker,
+ * and its later verdict is held out by {@link isHeldOutAsColdPitch}), then
+ * re-projects. True when the verdict stands.
  */
 export async function commitColdPitchVerdict(
 	ctx: MutationCtx,
-	messageId: Id<'mailMessages'>
+	messageId: Id<'mailMessages'>,
+	sourceVersion: string
 ): Promise<boolean> {
 	const evidence = await loadColdPitchEvidence(ctx, messageId);
 	if (!evidence || !isColdPitchCandidate(evidence)) return false;
+	if ((await sourceVersionOf(ctx, { kind: 'mail', id: messageId })) !== sourceVersion) {
+		return false;
+	}
 	const record = await loadArrivalRecord(ctx, messageId);
 	const message = await ctx.db.get(messageId);
 	if (!record || !message) return false;
@@ -162,11 +178,25 @@ export async function clearColdPitchOnReply(
 }
 
 /**
- * How many of a sender's verdicts one write clears. A verdict past the bound
- * no longer stands anyway (the evidence is read where it counts); only its
- * thread's stored placement waits for that thread's next write.
+ * The message's read changed (a re-verified signature narrowed it, see
+ * `mailbox/signatureReverify.ts`): its verdict was judged on the old read, so
+ * it is cleared. True when there was one; the caller re-projects the thread.
  */
-const SENDER_CLEARS_RECORDS = 50;
+export async function clearColdPitchOfMessage(
+	ctx: MutationCtx,
+	messageId: Id<'mailMessages'>
+): Promise<boolean> {
+	const record = await loadArrivalRecord(ctx, messageId);
+	if (!record || record.coldPitchAt === undefined) return false;
+	await ctx.db.patch(record._id, { ...CLEARED, updatedAt: Date.now() });
+	return true;
+}
+
+/**
+ * How many of a sender's verdicts one mutation clears. More are cleared by a
+ * chain of {@link continueVoidSenderVerdicts} batches until none is left.
+ */
+export const SENDER_CLEARS_RECORDS = 50;
 
 /**
  * Relationship evidence about `address` appeared in the mailbox (a contact
@@ -178,16 +208,44 @@ export async function voidColdPitchVerdictsOfSender(
 	mailboxId: Id<'mailboxes'>,
 	address: string
 ): Promise<void> {
+	await voidSenderVerdictsBatch(ctx, mailboxId, senderKeyOf(address).senderDigest);
+}
+
+/**
+ * Clear one batch of the sender's verdicts and re-place their threads
+ * (`refreshThreadsBounded` chains its own rest). A cleared record leaves the
+ * index, so when more are left the next batch reads the same range again.
+ */
+async function voidSenderVerdictsBatch(
+	ctx: MutationCtx,
+	mailboxId: Id<'mailboxes'>,
+	senderDigest: string
+): Promise<void> {
 	const records = await ctx.db
 		.query('mailArrivalRecords')
 		.withIndex('by_mailbox_cold_pitch_sender', (q) =>
-			q.eq('mailboxId', mailboxId).eq('coldPitchSenderDigest', senderKeyOf(address).senderDigest)
+			q.eq('mailboxId', mailboxId).eq('coldPitchSenderDigest', senderDigest)
 		)
-		.take(SENDER_CLEARS_RECORDS);
+		.take(SENDER_CLEARS_RECORDS + 1);
 	if (records.length === 0) return;
+	const batch = records.slice(0, SENDER_CLEARS_RECORDS);
 	const now = Date.now();
-	for (const record of records) {
+	for (const record of batch) {
 		await ctx.db.patch(record._id, { ...CLEARED, updatedAt: now });
 	}
-	await refreshThreadsBounded(ctx, [...new Set(records.map((record) => record.threadId))]);
+	await refreshThreadsBounded(ctx, [...new Set(batch.map((record) => record.threadId))]);
+	if (records.length > SENDER_CLEARS_RECORDS) {
+		await ctx.scheduler.runAfter(0, internal.mail.arrival.coldPitch.continueVoidSenderVerdicts, {
+			mailboxId,
+			senderDigest,
+		});
+	}
 }
+
+/** The next batch of {@link voidColdPitchVerdictsOfSender}, while verdicts are left. */
+export const continueVoidSenderVerdicts = internalMutation({
+	args: { mailboxId: v.id('mailboxes'), senderDigest: v.string() },
+	handler: async (ctx, args): Promise<void> => {
+		await voidSenderVerdictsBatch(ctx, args.mailboxId, args.senderDigest);
+	},
+});

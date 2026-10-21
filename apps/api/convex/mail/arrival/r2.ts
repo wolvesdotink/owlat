@@ -65,8 +65,12 @@ export const commitArrivalAiAnswers = internalMutation({
 		answers: v.array(answerValidator),
 		category: v.optional(v.object(applyCategoryArgs)),
 		isReleasing: v.optional(v.boolean()),
-		/** The model judged this message a cold pitch (#1381); committed only if still a candidate. */
-		isColdPitch: v.optional(v.boolean()),
+		/**
+		 * The model judged this message a cold pitch (#1381), reading the body
+		 * with this fingerprint (`interpret/sourceVersion.ts`); committed only
+		 * if it still reads so and is still a candidate.
+		 */
+		coldPitchSourceVersion: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<void> => {
 		// A stale category (a newer message arrived) is not this message's to
@@ -75,7 +79,9 @@ export const commitArrivalAiAnswers = internalMutation({
 		const isCategoryIn = args.category ? await applyCategoryIfCurrent(ctx, args.category) : true;
 		// In the same commit as the category, so the reply classification that
 		// waits for the category already sees the verdict.
-		if (args.isColdPitch === true) await commitColdPitchVerdict(ctx, args.messageId);
+		if (args.coldPitchSourceVersion !== undefined) {
+			await commitColdPitchVerdict(ctx, args.messageId, args.coldPitchSourceVersion);
+		}
 		if (args.answers.length === 0) return;
 		await applyArrivalAiAnswers(ctx, { messageId: args.messageId, answers: args.answers });
 		// The answers are in: a display-only read waiting on them runs now (final review F4).

@@ -173,19 +173,19 @@ async function answerQuestionsOnly(
 		await commitAnswers(ctx, args.messageId, unansweredOf(questions));
 		return;
 	}
-	await commitAnswers(ctx, args.messageId, outcome.answers, outcome.isColdPitch === true);
+	await commitAnswers(ctx, args.messageId, outcome.answers, outcome.coldPitchSourceVersion);
 }
 
 function commitAnswers(
 	ctx: ActionCtx,
 	messageId: Id<'mailMessages'>,
 	answers: ArrivalAiAnswer[],
-	isColdPitch = false
+	coldPitchSourceVersion?: string
 ) {
 	return ctx.runMutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
 		messageId,
 		answers,
-		...(isColdPitch ? { isColdPitch } : {}),
+		...(coldPitchSourceVersion !== undefined ? { coldPitchSourceVersion } : {}),
 	});
 }
 
@@ -299,7 +299,9 @@ export const classifyThread = internalAction({
 					await ctx.runMutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
 						messageId: args.messageId,
 						answers: outcome.answers,
-						...(outcome.isColdPitch === true ? { isColdPitch: true } : {}),
+						...(outcome.coldPitchSourceVersion !== undefined
+							? { coldPitchSourceVersion: outcome.coldPitchSourceVersion }
+							: {}),
 						...(resolved
 							? {
 									category: {
