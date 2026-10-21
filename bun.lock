@@ -641,7 +641,6 @@
     },
   },
   "trustedDependencies": [
-    "better-sqlite3",
     "@owlat/ui",
   ],
   "patchedDependencies": {
