@@ -91,6 +91,11 @@ export function createApp(
 	app.post('/send/system', createSendHandler(queue, redis, 'system'));
 	app.post('/send/decision', createRoutingDecisionHandler(redis, config));
 	app.get('/send/receipt/:workAttemptId', createSendReceiptHandler(redis));
+	// Liveness for the container healthcheck: answers from the HTTP loop alone.
+	// /health is the operator's diagnostic and looks up DNS, probes outbound
+	// SMTP and reads Redis on every call, so as a Docker probe it would time out
+	// (and mark a running MTA unhealthy) whenever one of those is slow.
+	app.get('/livez', (c) => c.json({ status: 'ok' }));
 	app.get('/health', createHealthHandler(redis, config, queue, currentSmtpTlsCert));
 	app.get('/metrics', createMetricsHandler(queue));
 
@@ -151,7 +156,7 @@ export function createApp(
 		c.json({
 			service: 'owlat-mta',
 			version: '0.6.16', // x-release-version (kept in sync by scripts/release.ts)
-			docs: 'POST /send, GET /health, GET /metrics, /credentials, /org-limits, /suppression, /dkim, /outbound-tls, /pool-rules, /identity, /inbound/routes, /delivery-logs, /queue, /dlq, /isp-profiles, /ip-reputation, /scan',
+			docs: 'POST /send, GET /livez, GET /health, GET /metrics, /credentials, /org-limits, /suppression, /dkim, /outbound-tls, /pool-rules, /identity, /inbound/routes, /delivery-logs, /queue, /dlq, /isp-profiles, /ip-reputation, /scan',
 		})
 	);
 
