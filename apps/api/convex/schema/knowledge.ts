@@ -165,7 +165,8 @@ export const knowledgeEntriesFields = {
 	// entryDedupe.ts `resolveMemberAccess`), so ABSENT means a row written before
 	// this release: the dedup leaves those alone (knowledge/maintenance.ts) until
 	// migration 0069 restricts them, and never reopens one. A merge never widens
-	// it. Never set by a client.
+	// it. Never set by a client, except an owner or admin sharing a reviewed
+	// entry with members (knowledge/sharing.ts).
 	memberAccess: v.optional(v.union(v.literal('members'), v.literal('restricted'))),
 	// Vector embedding for semantic search (1536 dimensions for text-embedding-3-small)
 	embedding: v.array(v.float64()),

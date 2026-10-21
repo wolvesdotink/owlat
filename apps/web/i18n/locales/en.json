@@ -4369,6 +4369,33 @@
 					"supports": "Supports"
 				},
 				"removeRelation": "Remove relation"
+			},
+			"shareWithMembers": {
+				"action": "Share with members",
+				"blocked": {
+					"already_shared": "Members can already see this entry.",
+					"mail_capture": "This entry comes from a file captured from mail, which keeps its mailbox's permission. It stays with owners and admins.",
+					"restriction_pending": "This entry is still being restricted. Try again once that has finished.",
+					"source_missing": "Where this entry came from is not known any more, so it stays with owners and admins.",
+					"team_inbox": "This entry comes from the Team Inbox, so it stays with owners and admins."
+				},
+				"changed": "This entry changed after you reviewed it. Review it again.",
+				"changedNotice": "This entry changed while you were reviewing it.",
+				"confirm": "Share with members",
+				"contacts": "Linked contacts",
+				"content": "Content",
+				"deletedContact": "Deleted contact",
+				"intro": "Members can't see this entry. Before it was restricted, it may have taken in text, tags or contact links from private mail. Check everything below, then share it.",
+				"loading": "Loading the entry…",
+				"noContacts": "No linked contacts",
+				"noTags": "No tags",
+				"operation": "Share knowledge entry",
+				"sharedToast": "Members can now see this entry.",
+				"sharing": "Sharing…",
+				"showLatest": "Review the new version",
+				"tags": "Tags",
+				"title": "Share with members?",
+				"titleLabel": "Title"
 			}
 		},
 		"languagePicker": {

@@ -327,6 +327,9 @@ export const AUDIT_ACTION_LITERALS = [
 	// false→true toggle of `ai.knowledge.autoLink`. See knowledge/edgeBackfill.ts.
 	action('knowledge.edge_backfill_started'),
 	action('knowledge.edge_backfill_cancelled'),
+	// An owner/admin shared a restricted knowledge entry with members after
+	// reviewing it (knowledge/sharing.ts, #1372).
+	action('knowledge.entry_shared'),
 	// Hosted plugin operations. The row's dedicated pluginId and organizationId
 	// columns provide attribution; details remain a redacted scalar summary.
 	action('plugin.action_completed'),
@@ -399,6 +402,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'agent_config',
 	'autonomy_rule',
 	'knowledge_config',
+	'knowledge_entry',
 	'mail_message',
 	'conversation_thread',
 	'plugin',

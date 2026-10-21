@@ -4369,6 +4369,33 @@
 					"supports": "Unterstützt"
 				},
 				"removeRelation": "Beziehung entfernen"
+			},
+			"shareWithMembers": {
+				"action": "Mit Mitgliedern teilen",
+				"blocked": {
+					"already_shared": "Mitglieder sehen diesen Eintrag bereits.",
+					"mail_capture": "Dieser Eintrag stammt aus einer Datei, die aus einer Mail übernommen wurde, und behält die Berechtigung ihres Postfachs. Er bleibt bei Inhabern und Administratoren.",
+					"restriction_pending": "Dieser Eintrag wird gerade noch eingeschränkt. Versuch es erneut, wenn das abgeschlossen ist.",
+					"source_missing": "Woher dieser Eintrag stammt, ist nicht mehr bekannt. Er bleibt deshalb bei Inhabern und Administratoren.",
+					"team_inbox": "Dieser Eintrag stammt aus dem Team-Postfach und bleibt deshalb bei Inhabern und Administratoren."
+				},
+				"changed": "Dieser Eintrag hat sich nach deiner Prüfung geändert. Prüf ihn erneut.",
+				"changedNotice": "Dieser Eintrag hat sich geändert, während du ihn geprüft hast.",
+				"confirm": "Mit Mitgliedern teilen",
+				"contacts": "Verknüpfte Kontakte",
+				"content": "Inhalt",
+				"deletedContact": "Gelöschter Kontakt",
+				"intro": "Mitglieder sehen diesen Eintrag nicht. Bevor er eingeschränkt wurde, kann er Text, Tags oder Kontaktverknüpfungen aus privater Mail aufgenommen haben. Prüf alles unten und teile ihn dann.",
+				"loading": "Eintrag wird geladen …",
+				"noContacts": "Keine verknüpften Kontakte",
+				"noTags": "Keine Tags",
+				"operation": "Wissenseintrag teilen",
+				"sharedToast": "Mitglieder sehen diesen Eintrag jetzt.",
+				"sharing": "Wird geteilt …",
+				"showLatest": "Neue Version prüfen",
+				"tags": "Tags",
+				"title": "Mit Mitgliedern teilen?",
+				"titleLabel": "Titel"
 			}
 		},
 		"languagePicker": {

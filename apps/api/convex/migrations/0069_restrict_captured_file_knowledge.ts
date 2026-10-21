@@ -40,7 +40,8 @@
  * Team Inbox agent still reads them: its retrieval includes what is kept from
  * members (`includeInboxDerived: true`). Entries written after the walk started
  * follow the write-time rules. An owner or admin who wants members to see one
- * again re-creates it.
+ * again shares it after reviewing it (knowledge/sharing.ts, #1372), unless its
+ * source keeps it from members. A `restart` restricts shared entries again.
  *
  * ONE SWEEP, BOUNDED: `knowledgeEntries` in creation order up to the time the
  * walk started, the ledger row's `startedAt`, written before the first page is
