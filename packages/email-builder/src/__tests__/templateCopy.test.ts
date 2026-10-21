@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parse } from 'vue/compiler-sfc';
+import { babelParse, parse } from 'vue/compiler-sfc';
 
 /**
  * No builder template may carry English copy of its own.
@@ -18,10 +18,13 @@ import { parse } from 'vue/compiler-sfc';
  *  - string literals inside bound copy attributes and `{{ }}` interpolations;
  *  - text nodes.
  *
- * "Copy" is anything with two letters in a row. Not copy: catalog keys
- * (`builder.…`, the UI layer's `ui.…`), a bare lower-case identifier (`'mode'`,
- * `blockType === 'accordion'` — an argument or a value, never a sentence), units,
- * and the technical examples below (a URL, a CSS snippet).
+ * "Copy" is anything with two letters in a row, lower-case words included
+ * (`title="delete"` is shown as much as `title="Delete"`). Not copy: catalog
+ * keys (`builder.…`, the UI layer's `ui.…`), units, the technical examples
+ * below (a URL, a CSS snippet), and a bare lower-case identifier the code only
+ * tests or passes (`blockType === 'accordion'`, `fn('mode')`), which an
+ * expression never displays. Literals are read off the expression's syntax
+ * tree, so `kind === 'accordion' ? … : 'delete'` still flags `'delete'`.
  */
 
 const SRC = join(__dirname, '..');
@@ -84,45 +87,112 @@ function vueFiles(dir: string): string[] {
 	});
 }
 
-/** Remove `${ … }` from a template literal body, nested braces included. */
-function stripSubstitutions(body: string): string {
-	let out = '';
-	let depth = 0;
-	for (let i = 0; i < body.length; i++) {
-		if (depth === 0 && body[i] === '$' && body[i + 1] === '{') {
-			depth = 1;
-			i++;
-			continue;
-		}
-		if (depth > 0) {
-			if (body[i] === '{') depth++;
-			else if (body[i] === '}') depth--;
-			continue;
-		}
-		out += body[i];
-	}
-	return out;
+/** Comparisons: their operands are values the code tests, never shown. */
+const COMPARISONS = new Set(['===', '!==', '==', '!=', 'in', 'instanceof']);
+
+interface ExpressionNode {
+	type: string;
+	[field: string]: unknown;
 }
 
-/** The string literals an expression spells out (quotes and template literals). */
-function stringLiterals(expression: string): string[] {
-	const literals: string[] = [];
-	const pattern =
-		/'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`((?:[^`\\]|\\.|\$\{(?:[^{}]|\{[^{}]*\})*\})*)`/g;
-	for (const match of expression.matchAll(pattern)) {
-		const [, single, double, template] = match;
-		if (template !== undefined) literals.push(stripSubstitutions(template));
-		else literals.push(single ?? double ?? '');
-	}
+function isNode(value: unknown): value is ExpressionNode {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		typeof (value as ExpressionNode).type === 'string'
+	);
+}
+
+function childNodes(node: ExpressionNode, field: string): ExpressionNode[] {
+	const value = node[field];
+	if (Array.isArray(value)) return value.filter(isNode);
+	return isNode(value) ? [value] : [];
+}
+
+/**
+ * The string literals an expression spells out, each marked `shown` when the
+ * expression's value can be that very string (`open ? 'Close' : 'Open'`,
+ * `a || 'Untitled'`, a template literal) and not `shown` when the code only
+ * tests or passes it (`kind === 'accordion'`, `fn('mode')`, the test of a
+ * ternary, the left side of `&&`, an object key). `label(source)` displays
+ * its argument, so that argument stays `shown`.
+ */
+function stringLiterals(expression: string): { value: string; shown: boolean }[] {
+	const literals: { value: string; shown: boolean }[] = [];
+	const program = babelParse(`(${expression})`, { plugins: ['typescript'] }).program;
+	const statement = program.body[0] as unknown as ExpressionNode;
+
+	const visit = (node: ExpressionNode, shown: boolean): void => {
+		const each = (field: string, childShown: boolean) => {
+			for (const child of childNodes(node, field)) visit(child, childShown);
+		};
+		switch (node.type) {
+			case 'StringLiteral':
+				literals.push({ value: node['value'] as string, shown });
+				return;
+			case 'TemplateLiteral': {
+				// The text around `${ }` is one string (`builder.align.${opt}` → `builder.align.`).
+				const quasis = node['quasis'] as { value: { cooked: string | null } }[];
+				literals.push({ value: quasis.map((quasi) => quasi.value.cooked ?? '').join(''), shown });
+				each('expressions', shown);
+				return;
+			}
+			case 'ConditionalExpression':
+				each('test', false);
+				each('consequent', shown);
+				each('alternate', shown);
+				return;
+			case 'LogicalExpression':
+				each('left', node['operator'] === '&&' ? false : shown);
+				each('right', shown);
+				return;
+			case 'BinaryExpression': {
+				const operandsShown = COMPARISONS.has(node['operator'] as string) ? false : shown;
+				each('left', operandsShown);
+				each('right', operandsShown);
+				return;
+			}
+			case 'CallExpression':
+			case 'OptionalCallExpression':
+			case 'NewExpression': {
+				// `label(source)` shows its argument, translated; other calls only use theirs.
+				const callee = node['callee'] as ExpressionNode;
+				each('callee', false);
+				each('arguments', shown && callee.type === 'Identifier' && callee['name'] === 'label');
+				return;
+			}
+			case 'MemberExpression':
+			case 'OptionalMemberExpression':
+				each('object', false);
+				each('property', false);
+				return;
+			case 'ObjectProperty':
+				each('key', false);
+				each('value', shown);
+				return;
+			default:
+				for (const field of Object.keys(node)) {
+					if (field === 'loc' || field.endsWith('Comments')) continue;
+					each(field, shown);
+				}
+		}
+	};
+	visit(statement, true);
 	return literals;
 }
 
-function isCopy(file: string, value: string): boolean {
+/**
+ * Whether `value` is English copy. A `shown` value (a text node, a static
+ * attribute, a literal the expression can evaluate to) is copy whatever its
+ * case; a value the code only tests or passes may be a bare lower-case
+ * identifier (`'mode'`, `kind === 'accordion'`).
+ */
+function isCopy(file: string, value: string, shown = true): boolean {
 	const trimmed = value.trim();
 	if (!COPY.test(trimmed)) return false;
 	// A catalog key or key prefix (`builder.align.` once `${opt}` is stripped).
 	if (/^(builder|ui)\.[\w.]*$/.test(trimmed)) return false;
-	if (/^[a-z][a-zA-Z0-9]*$/.test(trimmed)) return false;
+	if (!shown && /^[a-z][a-zA-Z0-9]*$/.test(trimmed)) return false;
 	if (UNITS.has(trimmed)) return false;
 	return !(NOT_COPY[file] ?? []).includes(trimmed);
 }
@@ -164,8 +234,8 @@ function findCopy(file: string, source: string): string[] {
 		}
 		if (node.type === INTERPOLATION) {
 			const expression = (node.content as { content?: string } | undefined)?.content ?? '';
-			for (const literal of stringLiterals(expression)) {
-				if (isCopy(file, literal)) report(node.loc.start.line, literal);
+			for (const { value, shown } of stringLiterals(expression)) {
+				if (isCopy(file, value, shown)) report(node.loc.start.line, value);
 			}
 		}
 		if (node.type === ELEMENT) {
@@ -179,9 +249,9 @@ function findCopy(file: string, source: string): string[] {
 					prop.name === 'bind' &&
 					COPY_ATTRIBUTES.has(prop.arg?.content ?? '')
 				) {
-					for (const literal of stringLiterals(prop.exp?.content ?? '')) {
-						if (isCopy(file, literal)) {
-							report(prop.loc.start.line, `:${prop.arg?.content} '${literal}'`);
+					for (const { value, shown } of stringLiterals(prop.exp?.content ?? '')) {
+						if (isCopy(file, value, shown)) {
+							report(prop.loc.start.line, `:${prop.arg?.content} '${value}'`);
 						}
 					}
 				}
@@ -225,5 +295,33 @@ describe('builder templates', () => {
 			"fixture.vue:7 :title 'Add Block'",
 			'fixture.vue:7 Empty',
 		]);
+	});
+
+	it('catches lower-case copy wherever it is shown', () => {
+		const source = `<template>
+	<button title="delete" aria-label="search" />
+	<p>loading</p>
+	<i :title="mode === 'edit' ? 'close' : t('builder.x')" />
+	<b :aria-label="name || 'untitled'">{{ busy && 'saving' }}</b>
+	<s :title="\`remove \${name}\`" />
+</template>`;
+		expect(findCopy('fixture.vue', source)).toEqual([
+			'fixture.vue:2 title="delete"',
+			'fixture.vue:2 aria-label="search"',
+			'fixture.vue:3 loading',
+			"fixture.vue:4 :title 'close'",
+			"fixture.vue:5 :aria-label 'untitled'",
+			'fixture.vue:5 saving',
+			"fixture.vue:6 :title 'remove '",
+		]);
+	});
+
+	it('lets a lower-case identifier through only where the code tests or passes it', () => {
+		const source = `<template>
+	<i :title="kind === 'accordion' ? t('builder.a') : t('builder.b')" />
+	<b :aria-label="label(getBlock('mode')?.label ?? 'text')">{{ items['count'] }}</b>
+	<u :title="state !== 'idle' && t('builder.c')" />
+</template>`;
+		expect(findCopy('fixture.vue', source)).toEqual(["fixture.vue:3 :aria-label 'text'"]);
 	});
 });

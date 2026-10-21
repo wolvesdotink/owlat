@@ -6,10 +6,12 @@
 // read back as a user (visible text) and a screen reader (accessible names)
 // meet it.
 import { afterEach, describe, expect, it } from 'vitest';
-import { nextTick } from 'vue';
+import { defineComponent, nextTick } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import EditorHeader from '../../components/EditorHeader.vue';
 import KeyboardShortcutsDialog from '../../components/dialogs/KeyboardShortcutsDialog.vue';
+import SlashCommandMenu from '../../components/canvas/SlashCommandMenu.vue';
+import { useSlashCommands } from '../../composables/useSlashCommands';
 import PropertyField from '../../components/panel/PropertyField.vue';
 import CompatibilityTab from '../../preview/components/analysis/CompatibilityTab.vue';
 import HealthTab from '../../preview/components/analysis/HealthTab.vue';
@@ -22,7 +24,7 @@ import type {
 	PreviewHealthScore,
 } from '../../preview/types';
 import { textSchema } from '../../schema/definitions/text';
-import type { TextBlockContent } from '../../types';
+import type { SavedBlock, SlashCommand, TextBlockContent } from '../../types';
 import { defaultTheme } from '../../defaults';
 import { createBlock } from '../../utils/blocks';
 import { blockAccessibleLabel } from '../../utils/blockLabel';
@@ -131,6 +133,65 @@ describe('property panel', () => {
 		// The registry entry keeps its English source and value.
 		expect(typeField.label).toBe('Type');
 		expect(typeField.options?.[0]).toEqual({ label: 'Paragraph', value: 'paragraph' });
+	});
+});
+
+describe('slash menu', () => {
+	// User-authored names that happen to be registry copy, and one without a description.
+	const saved: SavedBlock[] = [
+		{ _id: 'sb1', name: 'Image', description: 'Large heading', content: '{}', usageCount: 0 },
+		{ _id: 'sb2', name: 'Footer', content: '{}', usageCount: 0 },
+	];
+
+	function slashCommands(): SlashCommand[] {
+		const slash = useSlashCommands();
+		slash.setSavedBlocks(saved);
+		const commands = slash.filteredCommands.value;
+		slash.setSavedBlocks([]);
+		return commands;
+	}
+
+	it('translates builder commands but shows saved blocks as the user wrote them', () => {
+		const commands = slashCommands().filter(
+			(command) => command.id === 'h1' || command.category === 'saved'
+		);
+		const { w } = mountIn(SlashCommandMenu, {
+			commands,
+			selectedIndex: 0,
+			position: { top: 0, left: 0 },
+		});
+		const rows = w
+			.findAll('[role="option"]')
+			.map((row) => row.findAll('span').map((span) => span.text()));
+		expect(rows).toEqual([
+			['Überschrift 1', 'Große Überschrift'],
+			['Image', 'Large heading'],
+			['Footer', 'Gespeicherter Block'],
+		]);
+	});
+
+	it('matches saved blocks by what the menu shows them as', () => {
+		let slash: ReturnType<typeof useSlashCommands> | null = null;
+		mountIn(
+			defineComponent({
+				setup() {
+					slash = useSlashCommands();
+					return () => null;
+				},
+			}),
+			{}
+		);
+		const matches = (query: string) => {
+			slash!.updateQuery(query);
+			return slash!.filteredCommands.value
+				.filter((command) => command.category === 'saved')
+				.map((command) => command.id);
+		};
+		slash!.setSavedBlocks(saved);
+		expect(matches('bild')).toEqual([]);
+		expect(matches('image')).toEqual(['saved:sb1']);
+		expect(matches('gespeichert')).toEqual(['saved:sb2']);
+		slash!.setSavedBlocks([]);
 	});
 });
 

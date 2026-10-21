@@ -2,7 +2,7 @@ import { reactive, computed, ref, type ComputedRef } from 'vue';
 import { PanelBottom, Stamp } from '@lucide/vue';
 import type { SlashCommand, SlashMenuState, SavedBlock, BlockType, BrandBlockKind } from '../types';
 import { getSlashCommands } from '../registry';
-import { useBuilderI18n } from '../i18n/useBuilderI18n';
+import { useBuilderI18n, type BuilderI18n } from '../i18n/useBuilderI18n';
 
 export interface UseSlashCommandsReturn {
 	state: SlashMenuState;
@@ -93,11 +93,32 @@ const savedBlockCommands = computed<SlashCommand[]>(() => {
 });
 
 /**
+ * The name and description a slash command shows (and matches) in the UI
+ * language. Builder-owned copy is translated; a saved block's name and
+ * description are the user's own words and are shown as written. Only the
+ * builder's fallback for a saved block without a description is translated.
+ */
+export function slashCommandText(
+	command: SlashCommand,
+	{ label }: Pick<BuilderI18n, 'label'>
+): { name: string; description: string } {
+	if (command.savedBlock) {
+		return {
+			name: command.name,
+			description: command.savedBlock.description
+				? command.description
+				: label(command.description),
+		};
+	}
+	return { name: label(command.name), description: label(command.description) };
+}
+
+/**
  * Composable for slash command menu state and navigation.
  */
 export function useSlashCommands(): UseSlashCommandsReturn {
 	// Names and descriptions are displayed translated, so they also match as typed.
-	const { label } = useBuilderI18n();
+	const i18n = useBuilderI18n();
 	const state = reactive<SlashMenuState>({
 		isOpen: false,
 		position: { top: 0, left: 0 },
@@ -138,8 +159,9 @@ export function useSlashCommands(): UseSlashCommandsReturn {
 		return allCommands.value.filter((cmd) => {
 			if (cmd.name.toLowerCase().includes(q)) return true;
 			if (cmd.description.toLowerCase().includes(q)) return true;
-			if (label(cmd.name).toLowerCase().includes(q)) return true;
-			if (label(cmd.description).toLowerCase().includes(q)) return true;
+			const shown = slashCommandText(cmd, i18n);
+			if (shown.name.toLowerCase().includes(q)) return true;
+			if (shown.description.toLowerCase().includes(q)) return true;
 			if (cmd.aliases?.some((a) => a.toLowerCase().includes(q))) return true;
 			return false;
 		});
