@@ -89,6 +89,7 @@ describe('convex plugin: shared subscription cache and identity', () => {
 
 	it('hands the client it built to the connection indicator, once', async () => {
 		await bootPlugin();
+		await vi.dynamicImportSettled();
 
 		expect(attachConnection).toHaveBeenCalledOnce();
 		expect(attachConnection.mock.calls[0]![0]).toHaveProperty('setAuth');

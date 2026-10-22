@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The connection dot in the sidebar footer and the desktop titlebar: nothing
  * while connected, a labelled dot once a drop outlasts the grace period, and
