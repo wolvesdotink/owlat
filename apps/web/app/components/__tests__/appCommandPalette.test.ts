@@ -138,7 +138,6 @@ let wrapper: VueWrapper | null = null;
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 /** Mount the palette and open it the way every affordance in the app does. */

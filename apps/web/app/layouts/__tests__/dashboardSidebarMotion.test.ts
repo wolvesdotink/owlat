@@ -44,7 +44,6 @@ let wrapper: VueWrapper | null = null;
 beforeEach(() => {
 	collapsed.value = false;
 	toggleCollapsed.mockClear();
-	document.body.innerHTML = '';
 	const shell = dashboardShellStubs();
 	const sidebarState = (shell.useSidebarState as () => Record<string, unknown>)();
 	installNuxtStubs({
@@ -64,7 +63,6 @@ beforeEach(() => {
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 function mountLayout(): VueWrapper {

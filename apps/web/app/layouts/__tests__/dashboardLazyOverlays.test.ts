@@ -57,7 +57,6 @@ beforeEach(() => {
 	paletteLoads = 0;
 	isHelpModalOpen.value = false;
 	localStorage.clear();
-	document.body.innerHTML = '';
 	installNuxtStubs({
 		...i18nStubs,
 		...dashboardShellStubs(),
@@ -90,7 +89,6 @@ let wrapper: VueWrapper | null = null;
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 function mountLayout(): VueWrapper {

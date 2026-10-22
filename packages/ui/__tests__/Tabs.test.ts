@@ -20,7 +20,6 @@ const mounted: VueWrapper[] = [];
 
 afterEach(() => {
 	while (mounted.length) mounted.pop()!.unmount();
-	document.body.innerHTML = '';
 });
 
 /** UiTabs alone, wired as `v-model` so the selection follows each emit. */

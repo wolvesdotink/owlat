@@ -35,7 +35,6 @@ beforeEach(() => {
 	assistantOn = true;
 	route.meta = {};
 	navigateTo = vi.fn();
-	document.body.innerHTML = '';
 	installNuxtStubs({
 		...i18nStubs,
 		...dashboardShellStubs(),

@@ -4,7 +4,7 @@
  * lookup, event binding, and the window + focus-follow math through
  * usePostboxVirtualList's `listEl` mode.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { defineComponent, h, nextTick, ref, shallowRef, type Ref } from 'vue';
 import {
@@ -42,7 +42,6 @@ function fakeList(scroller: HTMLElement, hostTop: number, offset: number) {
 }
 
 afterEach(() => {
-	document.body.innerHTML = '';
 	vi.restoreAllMocks();
 });
 
@@ -73,12 +72,14 @@ describe('findScrollParent', () => {
 		middle.append(list);
 		outer.append(middle);
 		document.body.append(outer);
+		onTestFinished(() => outer.remove());
 		expect(findScrollParent(list)).toBe(outer);
 	});
 
 	it('falls back to the document scroller when nothing in between scrolls', () => {
 		const list = document.createElement('ul');
 		document.body.append(list);
+		onTestFinished(() => list.remove());
 		expect(findScrollParent(list)).toBe(document.scrollingElement);
 	});
 });
@@ -193,6 +194,7 @@ describe('usePostboxHostedVirtualList', () => {
 		const scroller = fakeScroller({ top: 0, clientHeight: 200 });
 		scroller.style.overflowY = 'auto';
 		document.body.append(scroller);
+		onTestFinished(() => scroller.remove());
 		let api!: ReturnType<typeof usePostboxHostedVirtualList>;
 		const listEl = shallowRef<HTMLElement | null>(null);
 		mount(
