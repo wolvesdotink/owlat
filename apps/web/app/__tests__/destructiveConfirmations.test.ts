@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Irreversible one-click destructive actions must not fire immediately. Deleting
  * a chat (assistant) and blocking a sender (quarantine) now go through the shared

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * DashboardDetailSkeleton replaced the centred `py-16` spinner on the dashboard
  * detail pages (plan 2.8). What it must keep true:

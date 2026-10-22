@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A saved-block card offers its writes twice, on the hover overlay and in the
  * overflow menu. Both must follow `canManage`, and both must hand the block

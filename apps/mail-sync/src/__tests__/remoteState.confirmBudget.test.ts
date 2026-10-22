@@ -105,8 +105,9 @@ function account(size: number, { gmail }: { gmail: boolean }) {
 }
 
 describe('vanished mail beyond the All Mail look-up budget (#1008)', () => {
-	for (const removed of [501, 1001]) {
-		it(`settles ${removed} deletions in one pass when there is no All Mail to search`, async () => {
+	it.each([501, 1001])(
+		'settles %s deletions in one pass when there is no All Mail to search',
+		async (removed) => {
 			const acc = account(removed + 20, { gmail: false });
 			await acc.pass();
 			for (const id of acc.ids.slice(0, removed)) acc.imap.remove('INBOX', id);
@@ -117,9 +118,12 @@ describe('vanished mail beyond the All Mail look-up budget (#1008)', () => {
 			expect(pass.applied.filter((o) => o.isGone)).toHaveLength(removed);
 			expect(acc.local.size).toBe(20);
 			expect(acc.deps.pending).toEqual(noPendingChanges());
-		});
+		}
+	);
 
-		it(`deletes ${removed} Gmail messages over passes, within the budget each time`, async () => {
+	it.each([501, 1001])(
+		'deletes %s Gmail messages over passes, within the budget each time',
+		async (removed) => {
 			const acc = account(removed + 20, { gmail: true });
 			await acc.pass();
 			for (const id of acc.ids.slice(0, removed)) {
@@ -140,9 +144,12 @@ describe('vanished mail beyond the All Mail look-up budget (#1008)', () => {
 			expect(acc.local.size).toBe(20);
 			expect(acc.deps.pending).toEqual(noPendingChanges());
 			expect((await acc.pass()).applied).toEqual([]);
-		});
+		}
+	);
 
-		it(`moves ${removed} archived Gmail messages to All Mail over passes`, async () => {
+	it.each([501, 1001])(
+		'moves %s archived Gmail messages to All Mail over passes',
+		async (removed) => {
 			const acc = account(removed + 20, { gmail: true });
 			await acc.pass();
 			for (const id of acc.ids.slice(0, removed)) acc.imap.remove('INBOX', id);
@@ -156,8 +163,8 @@ describe('vanished mail beyond the All Mail look-up budget (#1008)', () => {
 			expect(acc.inInbox()).toEqual(acc.ids.slice(removed));
 			expect(acc.local.size).toBe(removed + 20);
 			expect(acc.deps.pending).toEqual(noPendingChanges());
-		});
-	}
+		}
+	);
 
 	it('keeps the deferred messages through a full reconcile that follows', async () => {
 		const acc = account(1021, { gmail: true });

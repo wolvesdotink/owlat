@@ -140,8 +140,9 @@ describe('the other failure variants carry only what they mean', () => {
 	// and `?ip4:…` match the same senders and cost the same lookup, but they are the
 	// OPPOSITE of an authorization — a record that names both arms negatively
 	// SPF-FAILS both of them, so it must never read as covering them.
-	for (const qualifier of ['-', '~', '?'] as const) {
-		it(`treats a ${qualifier}-qualified mechanism as absent, not as authorization`, () => {
+	it.each(['-', '~', '?'] as const)(
+		'treats a %s-qualified mechanism as absent, not as authorization',
+		(qualifier) => {
 			const result = evaluateSpfCoexistence({
 				publishedTxtRecords: [published(`${qualifier}${OWN}`, `${qualifier}${RELAY}`)],
 				requiredMechanisms: [OWN, RELAY],
@@ -149,8 +150,8 @@ describe('the other failure variants carry only what they mean', () => {
 			expect(result.kind).toBe('missing_mechanism');
 			if (result.kind !== 'missing_mechanism') throw new Error('expected missing_mechanism');
 			expect(result.missingMechanisms).toEqual([OWN, RELAY]);
-		});
-	}
+		}
+	);
 
 	it('still COSTS a negatively-qualified include its DNS lookup', () => {
 		// Ten negative includes plus the relay's own: over the limit, even though not

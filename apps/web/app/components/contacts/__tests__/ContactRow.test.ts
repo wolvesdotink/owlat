@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * ContactsContactRow: one row of the audience contacts table (plan 3.7).
  *   - renders the contact's cells, with a checkbox only for managers

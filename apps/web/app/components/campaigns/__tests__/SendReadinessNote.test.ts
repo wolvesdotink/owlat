@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The readiness line that sits beside the send/schedule buttons. The copy rules
  * are audited in `~/lib/__tests__/sendReadiness`; this suite covers the two

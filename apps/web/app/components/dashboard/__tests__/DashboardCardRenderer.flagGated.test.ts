@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Pins the renderer's flag-gated omit branch, which the core-card suite cannot
  * reach (core cards carry no flag). A flag-off widget must be omitted entirely —

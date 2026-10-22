@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A list row with a brief shows its top item instead of the snippet, and the
  * due date is set apart from the item's text ("Approve the quote by Fri",

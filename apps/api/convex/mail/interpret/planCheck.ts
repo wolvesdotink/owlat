@@ -68,7 +68,7 @@ export function toPromptItems<Id extends string>(
 }
 
 function flat(text: string, max: number): string {
-	// eslint-disable-next-line no-control-regex
+	// eslint-disable-next-line no-control-regex -- flattens C0 control characters before the text reaches the model
 	const clean = defuseDelimiters(text.replace(/[\u0000-\u001f\u007f]/g, ' '))
 		.replace(/\s+/g, ' ')
 		.trim();

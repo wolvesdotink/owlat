@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The booking page settings form (components/booking/BookingProfileForm): it
  * keeps what the member is typing when the settings query re-runs with the

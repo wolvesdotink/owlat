@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * D2 — THE ADDITIVE-ONLY THIRD-PARTY RULE, as a test.
  *

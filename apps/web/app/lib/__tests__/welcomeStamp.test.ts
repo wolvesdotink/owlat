@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The welcome stamp (#1203): a failed `markWelcomed` is retried with the
  * first-login middleware's bounded backoff, never sent while the Convex client

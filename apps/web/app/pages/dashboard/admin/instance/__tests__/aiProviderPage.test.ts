@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The AI provider page, mounted with its real form composable:
  *   - "Save and leave" stays on the page when the routing card's save was

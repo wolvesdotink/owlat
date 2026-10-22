@@ -66,20 +66,18 @@ describe('a crafted snapshot cannot bypass a hard stop', () => {
 		['unreadable freeze', { mix: mixState({ share: 0.4, frozenUntil: NOW + 10_000 * DAY }) }],
 	];
 
-	for (const [name, overrides] of attacks) {
-		it(`never increases past the ${name}`, () => {
-			const decision = nextShare(
-				controllerInput({
-					mix: mixState({ share: 0.4, cleanStreak: Number.MAX_SAFE_INTEGER }),
-					evaluation: forgedPerfection(),
-					capacity: { kind: 'projected', warmingCapRemaining: 1e9, projectedVolume: 1 },
-					...overrides,
-				})
-			);
-			expect(decision.direction).not.toBe('increase');
-			expect(decision.share).toBeLessThanOrEqual(0.4);
-		});
-	}
+	it.each(attacks)('never increases past the %s', (name, overrides) => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({ share: 0.4, cleanStreak: Number.MAX_SAFE_INTEGER }),
+				evaluation: forgedPerfection(),
+				capacity: { kind: 'projected', warmingCapRemaining: 1e9, projectedVolume: 1 },
+				...overrides,
+			})
+		);
+		expect(decision.direction).not.toBe('increase');
+		expect(decision.share).toBeLessThanOrEqual(0.4);
+	});
 });
 
 describe('a forged snapshot cannot buy more than one step', () => {
@@ -519,11 +517,13 @@ describe('the window anchor, read directly', () => {
 		['a week ago', NOW - 7 * DAY, true],
 	];
 
-	for (const [name, anchor, expected] of cases) {
-		it(`${name} reads as ${expected ? 'elapsed' : 'open'}`, () => {
-			expect(isEvaluationWindowElapsed(anchor, NOW)).toBe(expected);
-		});
-	}
+	it.each(
+		cases.map(
+			([name, anchor, expected]) => [name, expected ? 'elapsed' : 'open', anchor, expected] as const
+		)
+	)('%s reads as %s', (_name, _reading, anchor, expected) => {
+		expect(isEvaluationWindowElapsed(anchor, NOW)).toBe(expected);
+	});
 
 	it('an anchor stamped in the future holds the cell instead of unlocking a step', () => {
 		const decision = nextShare(

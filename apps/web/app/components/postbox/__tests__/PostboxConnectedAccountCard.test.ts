@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The connected-mailbox card — the screen that finally lets someone end a
  * connection, rather than the wizard branch where the buttons used to live.

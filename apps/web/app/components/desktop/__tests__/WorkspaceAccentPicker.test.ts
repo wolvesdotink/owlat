@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The workspace accent swatches (plan item OW-010): with a mouse each button
  * is the 20px dot it always was; on a coarse pointer the button grows to the

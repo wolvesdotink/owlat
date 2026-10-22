@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * #768 / #769 — the auth screens share one password rule and one door.
  *

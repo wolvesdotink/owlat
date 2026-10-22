@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxContactKeyPanel — what Owlat knows about one correspondent's sealing
  * key, and what a HUMAN knows about it (plan idea 54).

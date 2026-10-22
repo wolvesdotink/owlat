@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Answer mode's session state: the way back (Esc returns to exactly the page
  * the reply started from), the list's place across the round trip, the draft

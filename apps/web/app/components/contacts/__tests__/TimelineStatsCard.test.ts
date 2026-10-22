@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The contact's Communication card. `contacts.timeline.getStats` returns each
  * channel's count as `{ inbound, outbound }`, and the card once printed that

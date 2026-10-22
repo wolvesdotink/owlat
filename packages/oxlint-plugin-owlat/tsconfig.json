@@ -1,0 +1,15 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"types": ["node"],
+		"lib": ["ESNext"],
+		"noEmit": true,
+		// oxlint imports the plugin straight from source through Node's type
+		// stripping, so only erasable syntax and explicit `.ts` specifiers work.
+		"allowImportingTsExtensions": true,
+		"erasableSyntaxOnly": true,
+		"verbatimModuleSyntax": true
+	},
+	"include": ["src/**/*.ts", "vitest.config.ts"],
+	"exclude": ["node_modules"]
+}

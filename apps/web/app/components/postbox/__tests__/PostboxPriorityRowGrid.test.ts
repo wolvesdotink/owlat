@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Priority view's groups share one row grid (read on arrival §3): the
  * "Needs you" queue rows (PostboxPriorityQueueList) put the avatar, the sender

@@ -64,8 +64,9 @@ const GOLDEN_PROJECT_OPTIONS: ProjectOptions = {
 };
 
 describe('parseMessage differential parity vs mailparser on the compose-side golden corpus', () => {
-	for (const testCase of GOLDEN_CASES) {
-		it(`matches mailparser on every consumed field: golden ${testCase.name}`, async () => {
+	it.each(GOLDEN_CASES.map((testCase) => [testCase.name, testCase] as const))(
+		'matches mailparser on every consumed field: golden %s',
+		async (_name, testCase) => {
 			const raw = readGolden(testCase);
 			const theirs = await simpleParser(raw);
 			const ours = parseMessage(raw);
@@ -95,8 +96,8 @@ describe('parseMessage differential parity vs mailparser on the compose-side gol
 			}
 
 			expect(ourProjection).toEqual(theirProjection);
-		});
-	}
+		}
+	);
 
 	it('covers the full golden corpus (>= 40 signed inputs)', () => {
 		expect(GOLDEN_CASES.length).toBeGreaterThanOrEqual(40);

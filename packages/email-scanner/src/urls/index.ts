@@ -126,7 +126,6 @@ async function checkUrlReputationBatch(
 		// Safe Browsing API failure — log but don't block
 		// The content scanner's regex-based checks still apply
 		const message = error instanceof Error ? error.message : String(error);
-		// eslint-disable-next-line no-console
 		console.warn(`[url-reputation] Safe Browsing API check failed: ${message}`);
 	}
 

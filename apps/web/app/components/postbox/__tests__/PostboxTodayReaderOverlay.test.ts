@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxTodayReaderOverlay — the Today view's centered reader pane:
  *   - j/k (and arrows) emit `open` for the adjacent row WITHOUT closing

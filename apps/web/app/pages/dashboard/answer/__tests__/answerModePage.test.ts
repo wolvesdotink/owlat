@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * /dashboard/answer/m/<messageId>: the URL is the state.
  *

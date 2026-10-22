@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Workbench's own pieces, mounted against the real `en` catalog:
  *   - the tab row is an ARIA tablist; ←/→ select the neighbour, and a tab

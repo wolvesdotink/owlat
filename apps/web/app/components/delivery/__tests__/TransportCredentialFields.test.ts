@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE ONE CREDENTIAL FORM, mounted for every kind the catalog declares.
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A SECONDARY READ THAT FAILED IS NOT AN EMPTY RESULT.
  *

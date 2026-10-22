@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Images a received body can carry that used to render broken even for a
  * trusted sender:

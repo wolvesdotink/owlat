@@ -92,12 +92,13 @@ describe('createDefaultColumnItemContent — contract for every column-eligible 
 		},
 	];
 
-	for (const { type, assertContent } of cases) {
-		it(`${type}: returns column-shaped content`, () => {
+	it.each(cases.map(({ type, assertContent }) => [type, assertContent] as const))(
+		'%s: returns column-shaped content',
+		(type, assertContent) => {
 			const content = createDefaultColumnItemContent(type as never);
 			assertContent(content);
-		});
-	}
+		}
+	);
 });
 
 // =============================================================================

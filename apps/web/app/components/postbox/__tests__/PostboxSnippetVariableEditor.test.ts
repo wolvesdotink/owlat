@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The snippet variable editor renders one row per token found in the body.
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Send button must never wrap. It used to carry the identity inside it
  * ("Send as Ada"), which broke onto two lines in the narrow floating composer.

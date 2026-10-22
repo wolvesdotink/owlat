@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * EVERY CONFIRMATION DIALOG HAS A NAME AND A DESCRIPTION.
  *

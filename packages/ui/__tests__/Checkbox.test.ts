@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * UiCheckbox's state and name live on the native input, where assistive tech
  * reads them: `indeterminate` is the DOM property browsers expose as

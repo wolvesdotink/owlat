@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The DNS propagation note — a real mount of the block extracted out of
  * `RecordRow.vue`.

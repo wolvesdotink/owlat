@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Blocklist lookups card: it names why the last check failed, saves a DQS
  * key write-only (only the hint ever comes back), and words a rejected key

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * usePostboxComposePageRequest: the compose page's side of its request record.
  * Leaving never drops the only copy of unsaved text (G4): every unfinished

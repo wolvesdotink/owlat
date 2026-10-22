@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The transport connection wizard's four steps, their pass/fail states, and
  * step-to-step navigation INCLUDING going back (P2-4).

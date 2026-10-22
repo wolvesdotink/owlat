@@ -94,7 +94,6 @@ export const recordUpdateStart = platformAdminMutation({
 				// have worked. What is true is that nobody is left to report it.
 				error: supersededNote(args.versionTo),
 			});
-			// eslint-disable-next-line no-console
 			console.info(
 				JSON.stringify({
 					event: 'update_superseded',
@@ -120,7 +119,6 @@ export const recordUpdateStart = platformAdminMutation({
 		// trivially scraped by Loki/DataDog/Vector — gives us a time-
 		// correlated record of every update attempt without coupling to a
 		// specific provider.
-		// eslint-disable-next-line no-console
 		console.info(
 			JSON.stringify({
 				event: 'update_start',
@@ -179,7 +177,6 @@ export const recordUpdateFinish = platformAdminMutation({
 		// needed). Read from the pre-patch document — the patch touches none
 		// of these fields, so re-reading the row would only cost a second read.
 		const durationMs = existing.startedAt ? finishedAt - existing.startedAt : undefined;
-		// eslint-disable-next-line no-console
 		console.info(
 			JSON.stringify({
 				event: 'update_finish',

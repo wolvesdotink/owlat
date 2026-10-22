@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Assignee picker rows + selection:
  *   - "Me" is the first row and carries the `I` shortcut hint

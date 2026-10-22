@@ -148,19 +148,17 @@ describe('gate 1 — hard bounce against the cell’s own trailing rate', () => 
 		},
 	];
 
-	for (const testCase of cases) {
-		it(testCase.name, () => {
-			const result = evaluateTrailingHardBounceGate(
-				input({
-					own: arm({ sent: testCase.ownSent, hardBounced: testCase.ownHardBounced }),
-					ownTrailingBaseline: testCase.trailing ? arm(testCase.trailing) : null,
-				})
-			);
-			expect(result.status).toBe(testCase.status);
-			expect(result.reason).toBe(testCase.reason);
-			expect(result.confidence).toBe('high');
-		});
-	}
+	it.each(cases.map((testCase) => [testCase.name, testCase] as const))('%s', (_name, testCase) => {
+		const result = evaluateTrailingHardBounceGate(
+			input({
+				own: arm({ sent: testCase.ownSent, hardBounced: testCase.ownHardBounced }),
+				ownTrailingBaseline: testCase.trailing ? arm(testCase.trailing) : null,
+			})
+		);
+		expect(result.status).toBe(testCase.status);
+		expect(result.reason).toBe(testCase.reason);
+		expect(result.confidence).toBe('high');
+	});
 
 	it('reports the 1.5x multiple as a ratio CEILING, never as a percentage-point tolerance', () => {
 		const result = evaluateTrailingHardBounceGate(standaloneInput());

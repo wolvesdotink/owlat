@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { useComposerDrafts } from '~/composables/useComposerDrafts';
+import DraftMarker from '~/components/shell/DraftMarker.vue';
 
 interface RoomItem {
 	_id: Id<'chatRooms'>;
@@ -30,6 +32,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const { t } = useI18n();
+const drafts = useComposerDrafts();
 
 const showArchived = ref(false);
 
@@ -160,6 +163,7 @@ const matchesQuery = (name: string) => {
 						<span class="flex-1 truncate text-sm">
 							{{ channel.displayName }}
 						</span>
+						<DraftMarker v-if="drafts.has('chat', channel._id)" />
 						<span
 							v-if="channel.unread.hasMention"
 							class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
@@ -247,6 +251,7 @@ const matchesQuery = (name: string) => {
 						<span class="flex-1 truncate text-sm">
 							{{ dm.displayName }}
 						</span>
+						<DraftMarker v-if="drafts.has('chat', dm._id)" />
 						<span
 							v-if="dm.unread.unreadCount > 0"
 							class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-text-primary text-text-inverse"

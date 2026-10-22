@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The item coverage gate's setting (AutonomyItemCoverage): it shows the stored
  * state, writes `isItemCoverageEnforced` when switched, and says so.

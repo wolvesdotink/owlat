@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * ClarificationQuestions — the question list both clarification surfaces share.
  *

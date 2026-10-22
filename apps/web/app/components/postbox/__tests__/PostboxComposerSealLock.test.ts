@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxComposerSealLock — the composer's honest seal-lock (Sealed Mail E5).
  *

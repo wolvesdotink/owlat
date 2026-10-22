@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Setup mounts fresh against a campaign that already exists whenever the
  * wizard's <KeepAlive> cache is gone: a refresh, or the return from the email

@@ -31,63 +31,72 @@ afterEach(async () => {
 
 const ALL_STATUSES: AutomationStatus[] = ['draft', 'active', 'paused'];
 
+// Triggers whose activation needs a triggerConfig.
+const CONFIG_TRIGGERS = ['contact_updated', 'event_received', 'topic_subscribed'] as const;
+
 describe('Automation lifecycle — edge legality matrix', () => {
-	for (const from of ALL_STATUSES) {
-		for (const to of ALL_STATUSES) {
+	const EDGES = ALL_STATUSES.flatMap((from) =>
+		ALL_STATUSES.map((to) => {
 			const isLegal = AUTOMATION_LIFECYCLE.isLegalEdge(from, to);
 			const isSelfLoop = from === to;
+			const kind = isSelfLoop
+				? '(self-loop, recorded)'
+				: isLegal
+					? '(legal, transitioned)'
+					: '(illegal_edge)';
+			return [`${from} → ${to} ${kind}`, from, to, isLegal, isSelfLoop] as const;
+		})
+	);
 
-			it(`${from} → ${to} ${isSelfLoop ? '(self-loop, recorded)' : isLegal ? '(legal, transitioned)' : '(illegal_edge)'}`, async () => {
-				const t = convexTest(schema, modules);
-				let automationId: Id<'automations'>;
-				await t.run(async (ctx) => {
-					automationId = await ctx.db.insert(
-						'automations',
-						createTestAutomation({
-							status: from,
-							triggerType: 'contact_created',
-							activatedAt: from !== 'draft' ? Date.now() - 10_000 : undefined,
-							pausedAt: from === 'paused' ? Date.now() - 5_000 : undefined,
-						})
-					);
-					if (to === 'active' && !isSelfLoop) {
-						// Activate edge requires ≥1 step.
-						await ctx.db.insert(
-							'automationSteps',
-							createTestAutomationStep({
-								automationId,
-								stepIndex: 0,
-								stepType: 'delay',
-								config: { duration: 1, unit: 'hours' },
-							})
-						);
-					}
-				});
+	it.each(EDGES)('%s', async (_title, from, to, isLegal, isSelfLoop) => {
+		const t = convexTest(schema, modules);
+		let automationId: Id<'automations'>;
+		await t.run(async (ctx) => {
+			automationId = await ctx.db.insert(
+				'automations',
+				createTestAutomation({
+					status: from,
+					triggerType: 'contact_created',
+					activatedAt: from !== 'draft' ? Date.now() - 10_000 : undefined,
+					pausedAt: from === 'paused' ? Date.now() - 5_000 : undefined,
+				})
+			);
+			if (to === 'active' && !isSelfLoop) {
+				// Activate edge requires ≥1 step.
+				await ctx.db.insert(
+					'automationSteps',
+					createTestAutomationStep({
+						automationId,
+						stepIndex: 0,
+						stepType: 'delay',
+						config: { duration: 1, unit: 'hours' },
+					})
+				);
+			}
+		});
 
-				const outcome = await t.mutation(internal.automations.lifecycle.transition, {
-					automationId: automationId!,
-					input: { to, at: Date.now() },
-					userId: 'user_test',
-				});
+		const outcome = await t.mutation(internal.automations.lifecycle.transition, {
+			automationId: automationId!,
+			input: { to, at: Date.now() },
+			userId: 'user_test',
+		});
 
-				if (isSelfLoop) {
-					expect(outcome.ok).toBe(true);
-					if (!outcome.ok) return;
-					expect(outcome.applied).toBe('recorded');
-				} else if (isLegal) {
-					expect(outcome.ok).toBe(true);
-					if (!outcome.ok) return;
-					expect(outcome.applied).toBe('transitioned');
-					expect(outcome.from).toBe(from);
-					expect(outcome.to).toBe(to);
-				} else {
-					expect(outcome.ok).toBe(false);
-					if (outcome.ok) return;
-					expect(outcome.reason).toBe('illegal_edge');
-				}
-			});
+		if (isSelfLoop) {
+			expect(outcome.ok).toBe(true);
+			if (!outcome.ok) return;
+			expect(outcome.applied).toBe('recorded');
+		} else if (isLegal) {
+			expect(outcome.ok).toBe(true);
+			if (!outcome.ok) return;
+			expect(outcome.applied).toBe('transitioned');
+			expect(outcome.from).toBe(from);
+			expect(outcome.to).toBe(to);
+		} else {
+			expect(outcome.ok).toBe(false);
+			if (outcome.ok) return;
+			expect(outcome.reason).toBe('illegal_edge');
 		}
-	}
+	});
 });
 
 // ============================================================================
@@ -295,8 +304,9 @@ describe('Automation lifecycle — → active preconditions', () => {
 		expect(outcome.reason).toBe('no_steps');
 	});
 
-	for (const triggerType of ['contact_updated', 'event_received', 'topic_subscribed'] as const) {
-		it(`returns invalid_trigger_config for ${triggerType} without config (draft → active)`, async () => {
+	it.each(CONFIG_TRIGGERS)(
+		'returns invalid_trigger_config for %s without config (draft → active)',
+		async (triggerType) => {
 			const t = convexTest(schema, modules);
 			let automationId: Id<'automations'>;
 			await t.run(async (ctx) => {
@@ -328,9 +338,12 @@ describe('Automation lifecycle — → active preconditions', () => {
 			expect(outcome.ok).toBe(false);
 			if (outcome.ok) return;
 			expect(outcome.reason).toBe('invalid_trigger_config');
-		});
+		}
+	);
 
-		it(`returns invalid_trigger_config for ${triggerType} without config (paused → active, closes drift #3)`, async () => {
+	it.each(CONFIG_TRIGGERS)(
+		'returns invalid_trigger_config for %s without config (paused → active, closes drift #3)',
+		async (triggerType) => {
 			const t = convexTest(schema, modules);
 			let automationId: Id<'automations'>;
 			await t.run(async (ctx) => {
@@ -364,8 +377,8 @@ describe('Automation lifecycle — → active preconditions', () => {
 			expect(outcome.ok).toBe(false);
 			if (outcome.ok) return;
 			expect(outcome.reason).toBe('invalid_trigger_config');
-		});
-	}
+		}
+	);
 
 	it('contact_created trigger needs no triggerConfig to activate', async () => {
 		const t = convexTest(schema, modules);

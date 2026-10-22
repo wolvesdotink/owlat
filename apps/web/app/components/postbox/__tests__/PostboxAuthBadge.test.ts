@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxAuthBadge — the honest sender-authentication badge (Sealed Mail A3,
  * flag `senderAuthBadges`).

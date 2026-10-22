@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * DesktopDnsRecordList (DNS setup revamp piece E2) — the copy-friendly DNS
  * record table the server-setup wizard renders its instructions through (the

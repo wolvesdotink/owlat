@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * One banner slot, priority-ordered.
  *
@@ -30,7 +29,6 @@ beforeAll(() => {
 	vi.stubGlobal('usePostboxReplyQueueCount', () => ({ count: replyQueueCount }));
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let stateBuckets: Map<string, any>;
 beforeEach(() => {
 	stateBuckets = new Map();

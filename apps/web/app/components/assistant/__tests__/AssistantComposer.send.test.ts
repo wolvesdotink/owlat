@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Assistant composer keeps the question until the send is accepted (#1049).
  *

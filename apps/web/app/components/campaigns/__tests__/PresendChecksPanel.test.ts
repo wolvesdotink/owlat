@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The pre-send checks panel: what needs a look comes first and passes fold
  * away, every finding with a Block offers "Show me", and the review control

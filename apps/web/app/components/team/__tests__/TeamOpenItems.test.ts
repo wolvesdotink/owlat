@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Open for the team" (plan §4.3): each action names its owner or says
  * Unassigned; an unassigned one offers Claim, an owned one its reaction;

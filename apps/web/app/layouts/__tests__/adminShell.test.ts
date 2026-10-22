@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE ADMIN SHELL: WHAT THE RAIL SHOWS, AND WHAT ⌘K LEARNS FROM IT.
  *

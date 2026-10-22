@@ -71,7 +71,7 @@ export function corsHeaders(
 	return {
 		'Access-Control-Allow-Origin': resolveOrigin(requestOrigin ?? null),
 		'Access-Control-Allow-Methods': methods,
-		'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+		'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key',
 		'Access-Control-Allow-Credentials': 'true',
 		Vary: 'Origin',
 	};

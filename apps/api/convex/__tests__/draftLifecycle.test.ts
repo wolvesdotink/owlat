@@ -428,8 +428,9 @@ describe('draftLifecycle.transition — to: draft (revert)', () => {
 		},
 	];
 
-	for (const { reason, auditAction } of REASONS) {
-		it(`reverts pending_send → draft and emits ${auditAction} (reason: ${reason})`, async () => {
+	it.each(REASONS.map(({ reason, auditAction }) => [auditAction, reason] as const))(
+		'reverts pending_send → draft and emits %s (reason: %s)',
+		async (auditAction, reason) => {
 			const t = convexTest(schema, modules);
 			const { mailboxId } = await seedMailboxAndSent(t);
 			const draftId = await seedDraft(t, mailboxId, {
@@ -457,8 +458,8 @@ describe('draftLifecycle.transition — to: draft (revert)', () => {
 				expect(logs.length).toBe(1);
 				expect(logs[0]!.resourceId).toBe(draftId);
 			});
-		});
-	}
+		}
+	);
 
 	it('refuses to revert from draft → draft (illegal_edge)', async () => {
 		const t = convexTest(schema, modules);

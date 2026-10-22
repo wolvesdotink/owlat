@@ -182,25 +182,23 @@ function draftFromPeek() {
 	void assist.ask.start('');
 }
 
-// Text typed and not sent stays with the thread for the session, so leaving
-// and coming back never throws it away (the team reply has no autosave row).
+// Text typed and not sent stays with the thread on this device, so leaving,
+// coming back or reloading never throws it away (the team reply has no autosave row).
 const keptReply = useKeptTeamComposer(() => threadId.value, composerRef);
 
 const answerNav = useAnswerModeNav({ currentPath: () => route.path });
 const queueSession = useAnswerQueueSession();
 const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value)));
-// However the page is left (Esc, a link, the queue moving on), keep the text.
-onBeforeUnmount(keptReply.keep);
 
 function leave() {
 	answerNav.leave();
 }
 
 async function onSend(body: string, fromDraft: boolean, subject: string, gapGuarded: boolean) {
+	const settle = keptReply.sending({ body, subject });
 	const sent = await reply.send({ body, subject, gapGuarded }, fromDraft);
 	if (!sent) return;
-	composerRef.value?.reset();
-	keptReply.clear();
+	settle();
 	if (queueSession?.handleSent('sent')) return;
 	answerNav.leave();
 }
@@ -369,6 +367,7 @@ onBeforeUnmount(() => {
 					v-if="isAdmin"
 					:active="composeMode === 'note'"
 					:notes="threadNotes"
+					:thread-id="threadId"
 					:is-admin="isAdmin"
 				/>
 				<!-- v-show, not v-if: switching tabs keeps the reply (and the note) as typed. -->

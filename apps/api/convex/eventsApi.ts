@@ -1,5 +1,4 @@
 import { internal } from './_generated/api';
-import type { Id } from './_generated/dataModel';
 import type { ActionCtx } from './_generated/server';
 import {
 	createAuthenticatedHandler,
@@ -13,6 +12,12 @@ import {
 	normalizeEmail,
 	type JsonPrimitiveValue,
 } from './lib/inputGuards';
+import {
+	idempotencyRefusalResponse,
+	readIdempotencyKey,
+	replayHeaders,
+	resolveIdempotency,
+} from './auth/apiRequestReceipts';
 
 // Request body type for sending events
 interface SendEventBody {
@@ -32,15 +37,6 @@ interface SendEventResponse {
 }
 
 /**
- * Generate a unique event ID
- */
-export function generateEventId(): string {
-	const timestamp = Date.now().toString(36);
-	const random = Math.random().toString(36).substring(2, 10);
-	return `evt_${timestamp}${random}`;
-}
-
-/**
  * POST /api/v1/events - Send an event to trigger automations
  *
  * Request body:
@@ -55,11 +51,17 @@ export function generateEventId(): string {
  * - eventName: Name of the event that was sent
  * - triggeredAutomations: Number of automations triggered
  * - contactCreated: Whether a new contact was created
+ *
+ * An `Idempotency-Key` header makes a repeat of the same request return the
+ * first response (with `Idempotent-Replayed: true`) without firing again
+ * (`auth/apiRequestReceipts.ts`).
  */
 export const sendEvent = createAuthenticatedHandler(
 	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'events:write', request.headers.get('Origin'));
 		if (denied) return denied;
+		const idempotencyKey = readIdempotencyKey(request);
+		if (!idempotencyKey.ok) return errorResponse('invalid_input', idempotencyKey.message);
 		// Parse request body
 		let body: SendEventBody;
 		try {
@@ -113,60 +115,45 @@ export const sendEvent = createAuthenticatedHandler(
 			return errorResponse('invalid_input', 'createContactIfNotExists must be a boolean');
 		}
 
-		// Check if contact exists
-		const existingContact = await ctx.runQuery(internal.contacts.contacts.getByEmailForTeam, {
-			email: normalizeEmail(body.email),
-		});
+		const createContactIfNotExists = body.createContactIfNotExists ?? false;
+		const idempotency = await resolveIdempotency(ctx, idempotencyKey.key, 'events', () => ({
+			email: body.email,
+			eventName: body.eventName,
+			eventProperties: body.eventProperties ?? null,
+			createContactIfNotExists,
+		}));
 
-		let contactCreated = false;
-		let contactId: Id<'contacts'>;
-
-		if (!existingContact) {
-			if (!body.createContactIfNotExists) {
-				return errorResponse(
-					'not_found',
-					`Contact with email "${body.email}" not found. Set createContactIfNotExists: true to create the contact automatically.`
-				);
-			}
-
-			// Create the contact
-			contactId = await ctx.runMutation(internal.contacts.contacts.createForTeam, {
-				email: body.email,
-				source: 'api' as const,
-			});
-			contactCreated = true;
-		} else {
-			contactId = existingContact._id;
-		}
-
-		// Call the sendEvent mutation to fire automation triggers
+		// One mutation resolves (or creates) the contact, fires the triggers and
+		// records the receipt, so a keyed repeat cannot do any of it twice.
+		let result;
 		try {
-			const result = await ctx.runMutation(internal.automations.triggers.sendEvent, {
+			result = await ctx.runMutation(internal.automations.triggers.sendEvent, {
 				email: normalizeEmail(body.email),
 				eventName: body.eventName,
 				eventProperties: body.eventProperties,
-				createContactIfNotExists: false, // We already handled contact creation above
+				createContactIfNotExists,
+				...(idempotency ? { idempotency } : {}),
 			});
-
-			const eventId = generateEventId();
-
-			const response: SendEventResponse = {
-				eventId,
-				contactId: contactId,
-				eventName: body.eventName,
-				triggeredAutomations: result.triggeredAutomations,
-				contactCreated,
-			};
-
-			return jsonResponse(
-				{
-					data: response,
-				},
-				201
-			);
 		} catch {
 			// Locked error envelope — do not echo the raw internal error message.
 			return errorResponse('invalid_input', 'Failed to send event');
 		}
+
+		if (!result.ok) {
+			if (result.reason !== 'contact_not_found') return idempotencyRefusalResponse(result.reason);
+			return errorResponse(
+				'not_found',
+				`Contact with email "${body.email}" not found. Set createContactIfNotExists: true to create the contact automatically.`
+			);
+		}
+
+		const response: SendEventResponse = {
+			eventId: result.eventId,
+			contactId: result.contactId,
+			eventName: body.eventName,
+			triggeredAutomations: result.triggeredAutomations,
+			contactCreated: result.contactCreated,
+		};
+		return jsonResponse({ data: response }, 201, replayHeaders(result.replayed));
 	}
 );

@@ -6925,6 +6925,9 @@
 				"waiting": "Wartet auf Antwort"
 			},
 			"noSubject": "(kein Betreff)",
+			"draftMarker": {
+				"label": "Nicht gesendeter Entwurf"
+			},
 			"teamInbox": "Team-Postfach",
 			"inboxGroup": {
 				"expand": "Unterhaltungen in {name} anzeigen",

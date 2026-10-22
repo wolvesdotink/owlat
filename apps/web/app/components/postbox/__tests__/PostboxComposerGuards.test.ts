@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxComposerGuards — the two pre-send warning dialogs, rendered.
  *

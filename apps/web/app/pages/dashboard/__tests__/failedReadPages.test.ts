@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A failed read on a top-level list or detail page is not an empty list and
  * not a missing record (#721). Each page below is mounted with every query it

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Answer mode for a message that is gone (#1100): deleted, moved by another
  * client, purged from Trash, or in a mailbox no longer shared. `getMessage`

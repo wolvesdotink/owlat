@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The lazy body-fetch skeleton in PostboxMessageBody must SETTLE for every
  * action outcome — including `getMessageBodyBlobUrls` resolving to `null`

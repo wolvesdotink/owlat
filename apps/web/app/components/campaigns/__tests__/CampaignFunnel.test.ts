@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The report funnel: steps in order, each with its count, its rate against a
  * named base ("of delivered", never "of previous" — #784), and the exact

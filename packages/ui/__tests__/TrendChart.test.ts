@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Axis labels must never be scaled (#783).
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A failed read is not the default value (#1097). The controls and dashboards
  * below write only the one value the operator picks, so a failed read

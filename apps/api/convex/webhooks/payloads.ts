@@ -114,7 +114,6 @@ export const cleanupOldPayloads = internalAction({
 		}
 
 		if (totalDeleted > 0) {
-			// eslint-disable-next-line no-console
 			console.info(`[Webhook Payloads] Cleaned up ${totalDeleted} payloads older than 90 days`);
 		}
 		return null;

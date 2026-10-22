@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Knowledge and the Assistant are for every member while their features are
  * on. Onboarding promises both to everyone and the routes are member-level,

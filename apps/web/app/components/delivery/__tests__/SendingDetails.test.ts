@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The outbound-IP panel on the sending-domains page: the quarantine reason an
  * operator needs to remediate, and one runbook link per active blocklist.

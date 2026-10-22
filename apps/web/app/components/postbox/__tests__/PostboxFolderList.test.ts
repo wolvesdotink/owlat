@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxFolderList in both rail states:
  *   - expanded renders labelled rows with an inline unread count

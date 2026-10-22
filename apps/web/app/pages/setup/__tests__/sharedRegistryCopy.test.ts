@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE WIZARD RENDERS THE SHARED REGISTRIES' COPY AS WORDS.
  *

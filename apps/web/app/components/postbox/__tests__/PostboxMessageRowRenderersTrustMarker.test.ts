@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Every inbox renderer that lists MESSAGES marks an impersonating sender.
  *
@@ -180,26 +179,27 @@ describe('sender-trust marker across the message renderers', () => {
 		);
 	});
 
-	for (const [mode, renderer] of Object.entries(RENDERERS)) {
-		if (typeof renderer !== 'function') continue;
+	// The modes that render rows; a mode that lists threads has no message row to mark.
+	const ROW_RENDERERS = Object.entries(RENDERERS).flatMap(([mode, renderer]) =>
+		typeof renderer === 'function' ? [[mode, renderer] as const] : []
+	);
 
-		it(`${mode}: marks the spoofed sender, and only that row`, () => {
-			flagOn = true;
-			const w = renderer();
-			const markers = w.findAll(MARKER);
-			expect(markers).toHaveLength(1);
-			expect(markers[0]!.text()).toBe('Failed sender check');
-			expect(w.findAll('.pbx-row-danger')).toHaveLength(1);
-		});
+	it.each(ROW_RENDERERS)('%s: marks the spoofed sender, and only that row', (_mode, renderer) => {
+		flagOn = true;
+		const w = renderer();
+		const markers = w.findAll(MARKER);
+		expect(markers).toHaveLength(1);
+		expect(markers[0]!.text()).toBe('Failed sender check');
+		expect(w.findAll('.pbx-row-danger')).toHaveLength(1);
+	});
 
-		it(`${mode}: stays silent when the flag is off`, () => {
-			flagOn = false;
-			const w = renderer();
-			expect(w.find(MARKER).exists()).toBe(false);
-			expect(w.find('.pbx-row-danger').exists()).toBe(false);
-			flagOn = true;
-		});
-	}
+	it.each(ROW_RENDERERS)('%s: stays silent when the flag is off', (_mode, renderer) => {
+		flagOn = false;
+		const w = renderer();
+		expect(w.find(MARKER).exists()).toBe(false);
+		expect(w.find('.pbx-row-danger').exists()).toBe(false);
+		flagOn = true;
+	});
 
 	it('bundled: marks a spoofed sender inside an expanded bundle', () => {
 		flagOn = true;

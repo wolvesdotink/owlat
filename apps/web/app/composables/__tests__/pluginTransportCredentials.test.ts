@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The web half of plugin send-provider parity (seams-plan A4).
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Plain-language rules (read on arrival, SPEC §6.1, §6.2): a rule reads as a
  * line of chips with its folder and label names resolved, and the dry run

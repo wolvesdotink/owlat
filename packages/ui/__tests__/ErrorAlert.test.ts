@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Please try again" with nothing to click was the dead end in #818: the alert
  * now takes an optional action, so the surface that shows it can hand the user

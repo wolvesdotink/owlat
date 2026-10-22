@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Plugin settings index page (index.vue) — the overview is an adminQuery, and the
  * page's `middleware: ['auth', 'admin']` is what keeps a non-admin away from it:

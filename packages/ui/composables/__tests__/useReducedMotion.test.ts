@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The shared reduced-motion read, which four hand-rolled `matchMedia` calls
  * used to do four slightly different ways.

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The new-contacts bars label each day from the series' UTC day key, in the
  * reader's language. The server still sends an English `label` for older

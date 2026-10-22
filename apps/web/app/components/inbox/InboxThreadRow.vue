@@ -42,6 +42,7 @@ export interface InboxThreadRowThread {
  */
 import { INBOX_WAITING_TIER_CLASS, inboxWaitingChip } from '~/utils/inboxWaiting';
 import { INBOX_SLA_TIER_CLASS, inboxSlaChip } from '~/utils/inboxSla';
+import DraftMarker from '~/components/shell/DraftMarker.vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -72,8 +73,10 @@ const props = withDefaults(
 		 * the presence ring (useInboxNoteCounts); 0 hides the chip.
 		 */
 		noteCount?: number;
+		/** The viewer keeps unsent text on this thread, on this device (the pencil). */
+		hasDraft?: boolean;
 	}>(),
-	{ canManage: true, noteCount: 0 }
+	{ canManage: true, noteCount: 0, hasDraft: false }
 );
 
 const emit = defineEmits<{
@@ -180,6 +183,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 							<Icon name="lucide:message-circle" class="w-3 h-3" />
 							{{ channelLabel }}
 						</span>
+						<DraftMarker v-if="hasDraft" />
 						<!-- Internal notes the team left on the thread. -->
 						<span
 							v-if="noteCount > 0"

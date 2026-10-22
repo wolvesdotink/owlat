@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxMailboxConnectForm submit dispatch — the (mode × shared) fan-out in
  * handleSubmit. The failure mode a wrong branch would cause is exactly the one

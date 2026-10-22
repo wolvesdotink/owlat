@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The share-link revocation list (idea 10).
  *

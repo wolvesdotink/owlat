@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxThreadRow — the danger-only sender-trust marker (UX plan idea 51).
  *

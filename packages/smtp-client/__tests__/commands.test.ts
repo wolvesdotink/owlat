@@ -49,21 +49,28 @@ describe('command serializers', () => {
 describe('CRLF injection guards throw before serialization', () => {
 	const injections = ['\r\n', '\n', '\r', '\r\nRCPT TO:<victim@evil.test>'];
 
-	for (const payload of injections) {
-		it(`MAIL FROM rejects injected ${JSON.stringify(payload)}`, () => {
+	it.each(injections.map((payload) => [JSON.stringify(payload), payload] as const))(
+		'MAIL FROM rejects injected %s',
+		(_quoted, payload) => {
 			expect(() => serializeMailFrom(`a@b.com${payload}`)).toThrow(SmtpCommandInjectionError);
-		});
+		}
+	);
 
-		it(`RCPT TO rejects injected ${JSON.stringify(payload)}`, () => {
+	it.each(injections.map((payload) => [JSON.stringify(payload), payload] as const))(
+		'RCPT TO rejects injected %s',
+		(_quoted, payload) => {
 			expect(() => serializeRcptTo(`a@b.com${payload}`)).toThrow(SmtpCommandInjectionError);
-		});
+		}
+	);
 
-		it(`MAIL FROM param rejects injected ${JSON.stringify(payload)}`, () => {
+	it.each(injections.map((payload) => [JSON.stringify(payload), payload] as const))(
+		'MAIL FROM param rejects injected %s',
+		(_quoted, payload) => {
 			expect(() => serializeMailFrom('a@b.com', [`SIZE=1${payload}`])).toThrow(
 				SmtpCommandInjectionError
 			);
-		});
-	}
+		}
+	);
 
 	it('EHLO domain rejects a smuggled newline', () => {
 		expect(() => serializeEhlo('mta.local\r\nMAIL FROM:<x@y>')).toThrow(SmtpCommandInjectionError);

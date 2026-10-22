@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The three rules behind the app's live region. All of them are about what a
  * screen reader SAYS, so none of them is visible in a screenshot or catchable

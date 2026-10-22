@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The wizard's step 3 — SPF/DKIM/DMARC alignment against LIVE DNS fixtures.
  *

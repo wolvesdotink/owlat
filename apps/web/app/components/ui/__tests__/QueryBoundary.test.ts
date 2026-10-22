@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * UiQueryBoundary is the shared loading / error / empty state machine that the
  * list and detail pages now route their reads through. The regression it guards

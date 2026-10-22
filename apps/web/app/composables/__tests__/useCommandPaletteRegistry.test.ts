@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Lifecycle semantics for the reactive command-palette registration wrapper.
  *
@@ -19,7 +18,6 @@ import type { CommandPaletteProvider } from '~/lib/commandPaletteRegistry';
 
 // `useState` (Nuxt auto-import) gets per-key buckets so each test starts from an
 // empty registry; the Vue lifecycle hooks and `toRaw` come from the shared setup.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let stateBuckets: Map<string, any>;
 vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	if (!stateBuckets.has(key)) stateBuckets.set(key, ref(init()));

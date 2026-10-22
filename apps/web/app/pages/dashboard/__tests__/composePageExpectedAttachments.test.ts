@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * #1257: a file the open asked for (an RSVP's generated `reply.ics`, a
  * forward's attachments) that is not on the draft yet when the page reloads,

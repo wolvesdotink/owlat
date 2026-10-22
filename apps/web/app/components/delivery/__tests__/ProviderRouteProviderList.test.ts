@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A transport that is registered but not connected offers its setup where the
  * operator is choosing it: the `.env` lines and `owlat` commands for what it

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The shared template picker (#1047).
  *

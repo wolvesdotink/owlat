@@ -65,12 +65,10 @@ const ADVERSARIAL: Array<[string, Buffer]> = [
 ];
 
 describe('dot-stuffing round trip', () => {
-	for (const [name, body] of ADVERSARIAL) {
-		it(`round-trips: ${name}`, () => {
-			const encoded = dotStuffMessage(body);
-			expect(referenceUnstuff(encoded)).toEqual(toWireBody(body));
-		});
-	}
+	it.each(ADVERSARIAL)('round-trips: %s', (name, body) => {
+		const encoded = dotStuffMessage(body);
+		expect(referenceUnstuff(encoded)).toEqual(toWireBody(body));
+	});
 
 	it('produces byte-identical output regardless of chunk boundaries', () => {
 		for (const [, body] of ADVERSARIAL) {

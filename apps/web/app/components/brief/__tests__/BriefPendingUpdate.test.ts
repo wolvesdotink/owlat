@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A held change under a personal brief item (interpret round 6): a later
  * message may have settled the item. It says so, keeps its source marker,

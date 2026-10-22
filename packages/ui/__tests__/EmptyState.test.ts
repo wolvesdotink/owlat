@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The empty state is the landing ladder or it is nothing.
  *

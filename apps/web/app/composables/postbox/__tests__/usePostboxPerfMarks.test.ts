@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Postbox's two plan-0.2 timings: an open until the opened message's body
  * is on screen, and back-to-list until the list shows its rows. Each case runs

@@ -279,48 +279,46 @@ function prng(seed: number) {
 }
 
 describe('incremental reconcile converges with a full census every cycle', () => {
-	for (const seed of [1, 2, 3, 4, 5]) {
-		it(`random provider changes, seed ${seed}`, async () => {
-			const sizes = { INBOX: 40, Work: 20, Archive: 60, Trash: 10 };
-			const incremental = account(sizes);
-			const reference = account(sizes);
-			reference.deps.forceFull = true;
-			await incremental.pass();
-			await reference.pass();
-			const rand = prng(seed);
-			const pick = <T>(xs: T[]): T | undefined => xs[Math.floor(rand() * xs.length)];
-			let fresh = 0;
+	it.each([1, 2, 3, 4, 5])('random provider changes, seed %s', async (seed) => {
+		const sizes = { INBOX: 40, Work: 20, Archive: 60, Trash: 10 };
+		const incremental = account(sizes);
+		const reference = account(sizes);
+		reference.deps.forceFull = true;
+		await incremental.pass();
+		await reference.pass();
+		const rand = prng(seed);
+		const pick = <T>(xs: T[]): T | undefined => xs[Math.floor(rand() * xs.length)];
+		let fresh = 0;
 
-			for (let step = 0; step < 40; step++) {
-				for (let k = 0, ops = 1 + Math.floor(rand() * 3); k < ops; k++) {
-					const from = pick(FOLDERS)!;
-					const to = pick(FOLDERS.filter((f) => f !== from))!;
-					const ids = incremental.imap.boxes.get(from)!.messages.map((m) => m.messageId);
-					const id = pick(ids);
-					const op = rand();
-					const flag = pick(['\\Seen', '\\Flagged'])!;
-					const on = rand() < 0.5;
-					for (const acc of [incremental, reference]) {
-						if (op < 0.1) acc.imap.add(from, `new${fresh}@x`);
-						else if (!id) continue;
-						else if (op < 0.35) acc.imap.move(from, to, id);
-						else if (op < 0.5) acc.imap.remove(from, id);
-						else if (op < 0.55) acc.imap.add(to, id); // a copy
-						else if (op < 0.6) acc.imap.boxes.get(from)!.uidValidity += 1n;
-						else acc.imap.setFlag(from, id, flag, on);
-					}
-					if (op < 0.1) fresh++;
-				}
+		for (let step = 0; step < 40; step++) {
+			for (let k = 0, ops = 1 + Math.floor(rand() * 3); k < ops; k++) {
+				const from = pick(FOLDERS)!;
+				const to = pick(FOLDERS.filter((f) => f !== from))!;
+				const ids = incremental.imap.boxes.get(from)!.messages.map((m) => m.messageId);
+				const id = pick(ids);
+				const op = rand();
+				const flag = pick(['\\Seen', '\\Flagged'])!;
+				const on = rand() < 0.5;
 				for (const acc of [incremental, reference]) {
-					acc.advance(60_000);
-					await acc.pass();
+					if (op < 0.1) acc.imap.add(from, `new${fresh}@x`);
+					else if (!id) continue;
+					else if (op < 0.35) acc.imap.move(from, to, id);
+					else if (op < 0.5) acc.imap.remove(from, id);
+					else if (op < 0.55) acc.imap.add(to, id); // a copy
+					else if (op < 0.6) acc.imap.boxes.get(from)!.uidValidity += 1n;
+					else acc.imap.setFlag(from, id, flag, on);
 				}
-				// Sightings may lag a pulled move until the next full pass; they are
-				// evidence for the next restart, not part of the mirrored state.
-				const mirrored = (acc: typeof incremental) =>
-					[...acc.local.values()].map(({ sighting: _, ...row }) => row);
-				expect(mirrored(incremental)).toEqual(mirrored(reference));
+				if (op < 0.1) fresh++;
 			}
-		});
-	}
+			for (const acc of [incremental, reference]) {
+				acc.advance(60_000);
+				await acc.pass();
+			}
+			// Sightings may lag a pulled move until the next full pass; they are
+			// evidence for the next restart, not part of the mirrored state.
+			const mirrored = (acc: typeof incremental) =>
+				[...acc.local.values()].map(({ sighting: _, ...row }) => row);
+			expect(mirrored(incremental)).toEqual(mirrored(reference));
+		}
+	});
 });

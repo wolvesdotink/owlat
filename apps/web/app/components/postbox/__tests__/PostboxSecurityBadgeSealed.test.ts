@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxSecurityBadge — the Sealed-Mail driver (E5). When the `sealed` prop
  * (the inbound encryption record) is present it wins over the structural badge

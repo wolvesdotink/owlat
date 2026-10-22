@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The two-way sync switch on a connected mailbox. Pinned: flipping it saves
  * the mode through the right mutation — the member's own for their mailbox, the

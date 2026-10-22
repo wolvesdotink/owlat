@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Inline-image paste/drop/reconcile behavior for the basic editor. These are the
  * spec behaviors: an image paste/drop embeds a <img data-inline-cid> at the caret

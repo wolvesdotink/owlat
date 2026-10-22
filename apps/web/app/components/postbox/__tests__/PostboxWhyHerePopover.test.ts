@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Why here?" (read on arrival §4.1): the popover answers from the arrival
  * record in plain copy (sender counters, what decided it, kind, read depth and

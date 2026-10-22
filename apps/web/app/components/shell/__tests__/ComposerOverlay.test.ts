@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The shell's undo-send host: a send leaves the page it was written on (the
  * compose page, Answer mode), so the countdown that can still take it back is

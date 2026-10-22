@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The body is where a timed Postbox open ends (plan 0.2): the first measured
  * frame document of the real body tells the perf marks the opened message is on

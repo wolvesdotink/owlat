@@ -1,6 +1,7 @@
 import { listOrganizations } from '~/lib/auth-client';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { logError } from '~/lib/runtimeLog';
+import { followComposerDraftsUser } from '~/composables/useComposerDrafts';
 
 /**
  * Auth middleware for protecting routes.
@@ -29,6 +30,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
 	}
 
 	const { isAuthenticated, user, activeOrganizationId, waitUntilReady } = useAuth();
+	// Unsent composer text is kept per signed-in person; this follows who that is.
+	followComposerDraftsUser(() => user.value?.id);
 	await waitUntilReady();
 
 	// If not authenticated and trying to access protected route

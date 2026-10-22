@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The campaign wizard wraps its steps in <KeepAlive> so a step's component
  * instance survives navigation to a sibling step and back. KeepAlive only

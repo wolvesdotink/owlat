@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The migration flow page: the runbook's order, and the gating that makes that
  * order mean something.
