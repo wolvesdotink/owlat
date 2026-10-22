@@ -156,6 +156,39 @@ describe('ChatInput drafts', () => {
 		expect(reload.input('room1').get('textarea').element.value).toBe('');
 	});
 
+	it('leaves the newer text another tab saved when this one sends its text and files', async () => {
+		const tabA = await openPage();
+		const a = tabA.input('room1');
+		await a.get('textarea').setValue('launch copy is ready');
+		await attach(a, 'brief.pdf');
+		await tabA.book.idle();
+
+		// Tab B loads the same draft and saves newer text over it.
+		const tabB = await openPage();
+		await tabB.input('room1').get('textarea').setValue('launch copy, take two');
+		await tabB.book.idle();
+		const key = composerDraftKey('u1', 'chat', 'room1');
+		const driver = device.driver as { map: Map<string, unknown> };
+		const newer = driver.map.get(key);
+		expect(newer).toMatchObject({ fields: { text: 'launch copy, take two' } });
+
+		// Tab A sends its older text and the file, and the send is accepted.
+		await a.get('textarea').trigger('keydown', { key: 'Enter' });
+		await flushPromises();
+		await tabA.book.idle();
+
+		expect(tabA.send).toHaveBeenCalledWith('launch copy is ready', ['asset_1']);
+		expect(a.get('textarea').element.value).toBe('');
+		expect(chips(a)).toEqual([]);
+		// B's copy is untouched: neither rewritten without the file nor deleted.
+		expect(driver.map.get(key)).toEqual(newer);
+
+		const reload = await openPage();
+		const again = reload.input('room1');
+		expect(again.get('textarea').element.value).toBe('launch copy, take two');
+		expect(chips(again)).toEqual(['Remove attachment brief.pdf']);
+	});
+
 	it('puts an upload and a send that finish after another person signs in on the first person’s draft', async () => {
 		const first = await openPage('u1');
 		const w = first.input('room1');

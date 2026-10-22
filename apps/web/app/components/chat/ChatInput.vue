@@ -46,10 +46,21 @@ function pinAttachments() {
 		{ owned: settle.owned }
 	);
 }
-function pinText() {
+// A send acknowledges its text and its files in one update. Two would not be
+// safe against another tab: the text settle rewrites the stored draft (over a
+// newer copy that tab saved) and the file settle then finds its own write and
+// deletes it. One update that empties the draft deletes it only while the
+// stored copy is still the one this page knows.
+function pinSent(submittedIds: Id<'mediaAssets'>[]) {
 	const settle = pin();
 	return (update: (current: string) => string) =>
-		settle((now) => ({ ...now, text: update(now.text) }));
+		settle((now) => ({
+			...now,
+			text: update(now.text),
+			attachments: (now.attachments as PendingAttachment[]).filter(
+				(a) => !submittedIds.includes(a.id)
+			),
+		}));
 }
 
 const { uploadFile, isUploading } = useChatAttachments();
@@ -64,7 +75,7 @@ const { candidates: mentionCandidates } = useChatMentionSearch(
 
 // `isSending` is true while a send is waiting for the backend; it blocks a
 // second send of the same draft.
-const { isSending, submit } = useAcknowledgedDraft(text, pinText);
+const { isSending, submit } = useAcknowledgedDraft(text);
 
 const canSend = computed(
 	() =>
@@ -194,15 +205,14 @@ const handleSend = async () => {
 	// The text snapshot is the composable's; the attachment selection is frozen
 	// here the same way, and only these ids go once the send is accepted.
 	const submittedIds = pendingAttachments.value.map((a) => a.id);
-	const settleAttachments = pinAttachments();
 	mentionQuery.value = null;
 	mentionStart.value = -1;
-	const outcome = await submit((snapshot) =>
-		props.send(snapshot.trim(), submittedIds.length > 0 ? submittedIds : undefined)
+	const outcome = await submit(
+		(snapshot) => props.send(snapshot.trim(), submittedIds.length > 0 ? submittedIds : undefined),
+		() => pinSent(submittedIds)
 	);
 	// Refused or failed: the operation has toasted it, the draft is kept.
 	if (!outcome?.ok) return;
-	settleAttachments((now) => now.filter((a) => !submittedIds.includes(a.id)));
 	nextTick(fitTextarea);
 };
 </script>
