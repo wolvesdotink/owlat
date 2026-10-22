@@ -442,6 +442,7 @@ describe('buildPlan', () => {
 			'lint:script-tests',
 			'lint:branding',
 			'lint:source-bytes',
+			'lint:no-pr-assets',
 		]);
 		const q = plan([{ path: 'scripts/ci/gates.ts', deleted: false }], []);
 		expect(names(q)).toContain('typecheck scripts/');
