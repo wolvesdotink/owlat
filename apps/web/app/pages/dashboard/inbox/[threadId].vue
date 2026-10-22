@@ -11,6 +11,7 @@ import { useTeamThread } from '~/composables/team/useTeamThread';
 import { useZenMode } from '~/composables/useZenMode';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
+import { teamNoteDraftKey } from '~/composables/useComposerDrafts';
 import { inboxRetryToast } from '~/utils/inboxRetry';
 import {
 	TEAM_THREAD_PRIORITY_CHIP_KEYS,
@@ -306,12 +307,14 @@ async function undoFollowUp(entry: ReplyEntry) {
 	const followUpId = entry.followUpId;
 	if (!followUpId || undoingFollowUpId.value) return;
 	undoingFollowUpId.value = followUpId;
+	const handBack = keptReply.pin(threadId.value);
 	try {
 		const result = await cancelFollowUp(followUpId);
 		if (!result.ok || !result.result.cancelled) return;
 		// Hand the text back so nothing typed is lost: it waits in the reply,
 		// which opens in Answer mode.
-		keptReply.set(threadId.value, { body: result.result.body, subject: result.result.subject });
+		const { body, subject } = result.result;
+		handBack(() => ({ body, subject }));
 		showToast(t('dashboard.inbox.detail.followUpUndoneToast'));
 		openReply();
 	} finally {
@@ -578,7 +581,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						v-if="isAdmin"
 						ref="composer"
 						v-model:reply-draft="replyDraft"
-						:draft-key="`team:${threadId}`"
+						:draft-key="teamNoteDraftKey(threadId)"
 						:reply-name="replyTarget ? replySenderLabel : null"
 						:items="team.items.value"
 						:candidates-for="team.candidatesFor"

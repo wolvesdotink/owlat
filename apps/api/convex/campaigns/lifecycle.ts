@@ -34,6 +34,7 @@ import { rollupCampaignStatsRow } from './statShards';
 import { trackEvent } from '../lib/posthogHelpers';
 import { recordListingCounter } from '../lib/listingCounters';
 import { throwInvalidState } from '../_utils/errors';
+import { getLive } from '../lib/softDelete';
 import {
 	sendTimeOptimizationValidator,
 	type SendTimeOptimizationSettings,
@@ -533,7 +534,9 @@ export const transition = internalMutation({
 		userId: v.string(),
 	},
 	handler: async (ctx, args): Promise<CampaignTransitionOutcome> => {
-		const campaign = await ctx.db.get(args.campaignId);
+		// A campaign in Recently deleted keeps its status (a scheduled one was
+		// unscheduled on the way in), so nothing can send it until it is restored.
+		const campaign = await getLive(ctx, args.campaignId);
 		if (!campaign) return { ok: false, reason: 'campaign_not_found' };
 		return await dispatch(ctx, campaign, args.input, args.userId);
 	},

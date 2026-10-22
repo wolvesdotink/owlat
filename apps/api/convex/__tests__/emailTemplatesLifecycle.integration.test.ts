@@ -342,7 +342,7 @@ describe('Email template lifecycle — duplicate', () => {
 // ============================================================================
 
 describe('Email template lifecycle — remove', () => {
-	it('deletes the row and emits email_template.deleted audit', async () => {
+	it('moves the row to Recently deleted and emits email_template.deleted audit', async () => {
 		const t = convexTest(schema, modules);
 		let templateId: Id<'emailTemplates'>;
 		await t.run(async (ctx) => {
@@ -361,7 +361,8 @@ describe('Email template lifecycle — remove', () => {
 
 		await t.run(async (ctx) => {
 			const template = await ctx.db.get(templateId!);
-			expect(template).toBeNull();
+			expect(template?.deletedAt).toEqual(expect.any(Number));
+			expect(template?.deletedBy).toBe('user_rm');
 
 			const audit = await ctx.db
 				.query('auditLogs')

@@ -66,7 +66,9 @@ export const campaignStats = internalQuery({
 		if (q.length < 2) return { campaigns: [] };
 		const matches = await ctx.db
 			.query('campaigns')
-			.withSearchIndex('search_campaigns', (s) => s.search('searchableText', q))
+			.withSearchIndex('search_campaigns', (s) =>
+				s.search('searchableText', q).eq('deletedAt', undefined)
+			)
 			.take(limit);
 		return { campaigns: matches.map(campaignSnapshot) };
 	},

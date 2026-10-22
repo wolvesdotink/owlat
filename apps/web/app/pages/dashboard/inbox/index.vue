@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
 import { useOrganization } from '~/composables/useOrganization';
+import { teamThreadHasDraft, useComposerDrafts } from '~/composables/useComposerDrafts';
 import {
 	DEFAULT_INBOX_ASSIGNEE,
 	DEFAULT_INBOX_FILTER,
@@ -65,6 +66,8 @@ const {
 
 // ── Row triage mutations (shared with the thread detail view) ──
 const { user } = useAuth();
+// The pencil on rows where the viewer left unsent text (this device).
+const drafts = useComposerDrafts();
 const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
 	label: () => t('dashboard.inbox.index.assignThreadOperation'),
 });
@@ -381,6 +384,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 							:now="now"
 							:assignee-present="isAssigneePresent(thread._id)"
 							:note-count="noteCountOf(thread._id)"
+							:has-draft="teamThreadHasDraft(drafts, thread._id)"
 							@assign="assignTo(thread, $event)"
 							@resolve="resolveThread(thread)"
 							@snooze="openSnooze(thread)"

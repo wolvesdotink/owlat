@@ -1,5 +1,5 @@
 import de from '~~/i18n/locales/de.json';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref } from 'vue';
 import { ConvexError } from 'convex/values';
 import { useI18n } from 'vue-i18n';
@@ -7,6 +7,13 @@ import { useAnnounce } from '../useAnnounce';
 import { useBackendOperation } from '../useBackendOperation';
 import { createTestI18n } from '~/__tests__/i18n';
 import { withSetup } from '~/__tests__/withSetup';
+import {
+	EPISODE_QUIET_MS,
+	onSlowEpisodeEnd,
+	resetPendingOperations,
+	slowOperations,
+	SLOW_OPERATION_MS,
+} from '~/lib/pendingOperations';
 
 /** The real catalog behind the `useI18n` auto-import the composable calls. */
 const i18n = createTestI18n();
@@ -373,6 +380,245 @@ describe('useBackendOperation', () => {
 
 			expect(result).toEqual({ ok: false });
 			expect(showToast).toHaveBeenCalledWith('Something went wrong. Please try again.', 'error');
+		});
+	});
+	/**
+	 * Every mutation run is registered app-wide, so the shell can say when
+	 * saving is slow and confirm when it landed (lib/pendingOperations.ts).
+	 */
+	describe('pending-operation tracking', () => {
+		afterEach(() => {
+			resetPendingOperations();
+			vi.useRealTimers();
+		});
+
+		/** A promise the test settles by hand, so nothing waits on the real clock. */
+		function deferred<T>() {
+			let resolve!: (value: T) => void;
+			let reject!: (error: unknown) => void;
+			const promise = new Promise<T>((res, rej) => {
+				resolve = res;
+				reject = rej;
+			});
+			return { promise, resolve, reject };
+		}
+
+		it('lists a mutation still pending after the threshold, under its current label', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			let label = 'Archive';
+			const { run } = build(fakeOp, { label: () => label });
+
+			const result = run({});
+			label = 'Archivieren';
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			expect(slowOperations.value.map((op) => op.label)).toEqual(['Archivieren']);
+
+			pending.resolve({ ok: 1 });
+			await result;
+			expect(slowOperations.value).toEqual([]);
+		});
+
+		it('settles overlapping runs of one operation independently', async () => {
+			vi.useFakeTimers();
+			const first = deferred<unknown>();
+			const second = deferred<unknown>();
+			mutation.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run, isLoading } = build(fakeOp, { label: 'save' });
+
+			const a = run({});
+			const b = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			expect(slowOperations.value).toHaveLength(2);
+
+			first.resolve(1);
+			await a;
+			// The shared loading flag already reads false; the registry still knows b.
+			expect(isLoading.value).toBe(false);
+			expect(slowOperations.value).toHaveLength(1);
+			expect(outcomes).toEqual([]);
+
+			second.resolve(2);
+			await b;
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['saved']);
+			stop();
+		});
+
+		it('records a rejected mutation as failed, after its error treatment', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, { label: 'save' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			pending.reject(new ConvexError({ category: 'forbidden', message: 'No' }));
+
+			expect(await result).toEqual({ ok: false });
+			expect(showToast).toHaveBeenCalledWith(expect.any(String), 'error');
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['failed']);
+			stop();
+		});
+
+		/**
+		 * The Team inbox follow-up's collision answer: the write resolves, but
+		 * the reply was not sent, so the slow episode must not end in "saved".
+		 */
+		it('records a refusal returned as a value as not saved, and still hands it back', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, { label: 'send follow-up' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			const refusal = { success: false, reason: 'reply_in_progress', heldByName: 'Jordan' };
+			pending.resolve(refusal);
+
+			expect(await result).toEqual({ ok: true, result: refusal });
+			expect(showToast).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['failed']);
+			stop();
+		});
+
+		it.each([
+			['an `ok: false` answer', { ok: false, refusal: 'invalid-address' }],
+			['a non-null `refusal` field', { applied: false, refusal: 'ramp_paused' }],
+		])('reads %s as a refusal by default', async (_name, answer) => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, { label: 'save' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			pending.resolve(answer);
+			expect(await result).toEqual({ ok: true, result: answer });
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['failed']);
+			stop();
+		});
+
+		it.each([
+			['`success: true`', { success: true }],
+			['a null `refusal`', { applied: false, refusal: null, phaseCeiling: 3 }],
+			['a bare value', false],
+		])('confirms a result with %s as saved', async (_name, answer) => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, { label: 'save' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			pending.resolve(answer);
+			await result;
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['saved']);
+			stop();
+		});
+
+		it('lets the caller classify its own refusal shape instead of the default', async () => {
+			vi.useFakeTimers();
+			const first = deferred<unknown>();
+			const second = deferred<unknown>();
+			mutation.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, {
+				label: 'resend',
+				isRefusal: (answer) => (answer as { sent?: boolean }).sent === false,
+			});
+
+			// The default would read `success: false` as a refusal; this caller says
+			// it is not one.
+			const a = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			first.resolve({ success: false, sent: true });
+			await a;
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['saved']);
+
+			const b = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			second.resolve({ sent: false });
+			expect(await b).toEqual({ ok: true, result: { sent: false } });
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['saved', 'failed']);
+			stop();
+		});
+
+		it('withholds "saved" without changing the envelope when the classifier throws', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, {
+				label: 'save',
+				isRefusal: () => {
+					throw new Error('unexpected shape');
+				},
+			});
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			pending.resolve({ id: 'x' });
+			expect(await result).toEqual({ ok: true, result: { id: 'x' } });
+			expect(showToast).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['failed']);
+			stop();
+		});
+
+		it('leaves upload-URL mints out: minting saves nothing, so it confirms nothing', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const mint = 'storage:generateUploadUrl' as unknown as Parameters<
+				typeof useBackendOperation
+			>[0];
+			const { run } = build(mint, { label: 'get upload URL' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS * 2);
+			expect(slowOperations.value).toEqual([]);
+
+			pending.resolve('https://upload.owlat.example/1');
+			await result;
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual([]);
+			stop();
+		});
+
+		it('leaves actions out: a long AI or provider call is not slow saving', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			action.mockReturnValue(pending.promise);
+			const { run } = build(fakeOp, { label: 'draft', type: 'action' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS * 3);
+			expect(slowOperations.value).toEqual([]);
+
+			pending.resolve('done');
+			await result;
 		});
 	});
 });

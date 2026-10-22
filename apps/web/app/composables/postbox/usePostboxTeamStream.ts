@@ -13,6 +13,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { TeamStreamEntry } from '../../../../api/convex/mail/interpret/briefShape';
 import { useTeamThread } from '~/composables/team/useTeamThread';
 import { placeStreamExtras } from '~/utils/teamStream';
+import { useComposerDraft } from '~/composables/useComposerDrafts';
 
 interface ReaderMessageLike {
 	_id: string;
@@ -26,8 +27,12 @@ export function usePostboxTeamStream(opts: {
 	isShared: () => boolean;
 	threadId: () => string | null | undefined;
 	messages: () => readonly ReaderMessageLike[];
-	/** Open Answer mode on the thread (behind the reply guard). */
-	reply: (text: string) => void;
+	/**
+	 * Open Answer mode on the thread (behind the reply guard). `handed` runs
+	 * once the text is on a saved draft (a reload keeps it there); a guard
+	 * turned down, or a draft that could not be saved, never calls it.
+	 */
+	reply: (text: string, handed?: () => void) => void;
 }) {
 	const { t } = useI18n();
 	const { isEnabled } = useFeatureFlag();
@@ -125,17 +130,17 @@ export function usePostboxTeamStream(opts: {
 		{ immediate: true }
 	);
 
-	// The reply's unsent text, per thread for the session.
-	const replyDrafts = useState<Record<string, string>>('postbox:team-reply-drafts', () => ({}));
+	// The reply's unsent text, per thread on this device. It goes only once a
+	// saved draft holds it: a reply guard the person turns down, a reload while
+	// the draft is being created, or a draft that failed to save keeps it here.
+	const { draft, pin } = useComposerDraft('mail-reply', opts.threadId, { text: '' });
 	const replyDraft = computed({
-		get: () => replyDrafts.value[opts.threadId() ?? ''] ?? '',
-		set: (text: string) => {
-			replyDrafts.value = { ...replyDrafts.value, [opts.threadId() ?? '']: text };
-		},
+		get: () => draft.value.text,
+		set: (text: string) => (draft.value = { text }),
 	});
 	function continueReply(text: string) {
-		opts.reply(text);
-		replyDraft.value = '';
+		const settle = pin();
+		opts.reply(text, () => settle((now) => (now.text === text ? { text: '' } : now)));
 	}
 
 	return {

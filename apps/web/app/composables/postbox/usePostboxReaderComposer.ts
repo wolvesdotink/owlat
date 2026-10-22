@@ -100,8 +100,13 @@ export function usePostboxReaderComposer(opts: {
 	 * opens on it (`?draft=`), so a reload keeps the suggestion. Should the row
 	 * not be created, Answer mode still opens and takes the text from session
 	 * state instead: the suggestion is never lost to a failed round trip.
+	 * Resolves true only when the text is on a saved draft row, the one copy a
+	 * reload keeps (a caller may let go of its own copy then, not before).
 	 */
-	async function openReplyWithBody(replyTarget: ReplyForwardSource, bodyText: string) {
+	async function openReplyWithBody(
+		replyTarget: ReplyForwardSource,
+		bodyText: string
+	): Promise<boolean> {
 		const mailboxId = getMessage().mailboxId as Id<'mailboxes'>;
 		await imagePolicySettled();
 		const seed = await buildReplyComposeSeed('reply', replyTarget, {
@@ -127,11 +132,12 @@ export function usePostboxReaderComposer(opts: {
 			});
 			if (saved.ok) {
 				void answerNav.open(replyTarget._id, { kind: 'reply', draftId });
-				return;
+				return true;
 			}
 		}
 		pendingLead.set(replyTarget._id, bodyText);
 		openAnswer(replyTarget, 'reply');
+		return false;
 	}
 
 	/**

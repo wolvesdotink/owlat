@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { AutomationListItem } from '~/components/automations/ListTable.vue';
 import { useListPage } from '~/composables/useListPage';
+import { useMarketingDeleteUndo } from '~/composables/useMarketingDeleteUndo';
 
 const { t } = useI18n();
 
@@ -32,6 +33,10 @@ const { run: duplicateAutomation } = useBackendOperation(api.automations.automat
 const { run: deleteAutomation } = useBackendOperation(api.automations.automations.remove, {
 	label: () => t('dashboard.automations.index.operations.delete'),
 });
+const { run: restoreAutomation } = useBackendOperation(api.automations.automations.restore, {
+	label: () => t('dashboard.automations.index.operations.restore'),
+});
+const { deleteWithUndo } = useMarketingDeleteUndo();
 const { run: pauseAutomation } = useBackendOperation(api.automations.automations.pause, {
 	label: () => t('dashboard.automations.index.operations.pause'),
 });
@@ -45,15 +50,20 @@ const handleNewAutomation = () => router.push('/dashboard/automations/new');
 const rowLayouts = ['table', 'cards'] as const;
 
 // The list filter (debounced, client-side over the loaded rows), the delete
-// dialog and the `n` / Escape shortcuts. No sort menu: the status tabs narrow
-// this list. `reactive` unwraps the refs, so the template reads `list.*`.
+// and the `n` / Escape shortcuts. No sort menu: the status tabs narrow this
+// list. A delete runs at once (the automation goes to Recently deleted) and the
+// toast offers Undo; the row menu offers it only for one that is not running,
+// and the server refuses one that was activated meanwhile.
+// `reactive` unwraps the refs, so the template reads `list.*`.
 const list = reactive(
 	useListPage<AutomationListItem>({
-		onDelete: async (automation) => {
-			const result = await deleteAutomation({ automationId: automation._id });
-			if (result.ok) showToast(t('dashboard.automations.index.toasts.deleted'));
-			return result.ok;
-		},
+		confirmDelete: false,
+		onDelete: (automation) =>
+			deleteWithUndo({
+				name: automation.name,
+				remove: async () => (await deleteAutomation({ automationId: automation._id })).ok,
+				restore: () => restoreAutomation({ automationId: automation._id }),
+			}),
 		onNew: handleNewAutomation,
 		canCreate: canManage,
 	})
@@ -111,15 +121,6 @@ const filteredAutomations = computed<AutomationListItem[]>(() => {
 const showSkeleton = computed(
 	() => (teamLoading.value || automationsLoading.value) && automations.value.length === 0
 );
-
-// Delete is offered only for an automation that is not running, but the row is
-// live: one activated while the dialog is open is refused, not deleted.
-const deleteBlocked = computed(() => {
-	const target = list.deleteTarget;
-	if (!target) return false;
-	const live = automations.value.find((automation) => automation._id === target._id);
-	return (live ?? target).status === 'active';
-});
 
 // --- Row actions ------------------------------------------------------------
 
@@ -188,20 +189,8 @@ const handleViewDetails = (automation: AutomationListItem) =>
 				query: list.debouncedSearch.trim(),
 			}),
 		}"
-		:delete-copy="{
-			title: t('dashboard.automations.index.deleteDialog.title'),
-			confirmKeypath: 'dashboard.automations.index.deleteDialog.body',
-			description: t('dashboard.automations.index.deleteDialog.note'),
-			confirmText: t('dashboard.automations.index.deleteDialog.title'),
-		}"
-		:delete-open="list.isDeleteOpen"
-		:delete-name="list.deleteTarget?.name"
-		:is-deleting="list.isDeleting"
-		:delete-blocked="deleteBlocked"
 		@retry="refetchAutomations"
 		@clear-search="list.clearSearch"
-		@confirm-delete="list.confirmDelete"
-		@cancel-delete="list.closeDelete"
 	>
 		<template #actions>
 			<UiButton v-if="canManage" size="sm" @click="handleNewAutomation">
@@ -261,16 +250,6 @@ const handleViewDetails = (automation: AutomationListItem) =>
 					/>
 				</template>
 			</AutomationsListTable>
-		</template>
-
-		<template #delete-extra>
-			<p
-				v-if="deleteBlocked"
-				class="text-sm text-warning mt-2 flex items-center justify-center gap-1.5"
-			>
-				<Icon name="lucide:alert-circle" class="w-4 h-4" />
-				{{ t('dashboard.automations.index.deleteDialog.activeWarning') }}
-			</p>
 		</template>
 	</ListPageShell>
 </template>

@@ -7,6 +7,7 @@ import {
 	type ConversationStatus,
 } from '~/utils/conversationStatus';
 import type { SidebarThreadSort } from '~/composables/useShellSidebarPrefs';
+import { teamThreadHasDraft, useComposerDrafts } from '~/composables/useComposerDrafts';
 
 /**
  * The team inbox (the agent's shared inbound) as one more group in the
@@ -17,6 +18,7 @@ const props = defineProps<{ limit: number; sort: SidebarThreadSort; collapsed: b
 const emit = defineEmits<{ toggle: [] }>();
 const { t } = useI18n();
 const route = useRoute();
+const drafts = useComposerDrafts();
 
 // keepPreviousData: collapsing or changing the count keeps the rows and the
 // status dot until the new list lands, like the per-inbox groups.
@@ -105,6 +107,7 @@ const activeThreadId = computed(
 				:status="row.status"
 				:is-unread="row.unread"
 				:is-active="activeThreadId === row.id"
+				:has-draft="teamThreadHasDraft(drafts, row.id)"
 				indented
 			/>
 			<NuxtLink

@@ -6,6 +6,7 @@ import {
 	workspaceLogoFileProblem,
 	type WorkspaceLogoVariant,
 } from '@owlat/shared/workspaceLogo';
+import { holdPendingWork } from '~/lib/pendingOperations';
 import { uploadFileToStorage } from '~/utils/storageUpload';
 
 /**
@@ -86,6 +87,10 @@ async function onFileChosen(variant: WorkspaceLogoVariant, event: Event) {
 	}
 
 	busy[variant] = true;
+	// Upload and setting the logo are one save: hold any slow-save episode open
+	// until the logo is set.
+	const release = holdPendingWork();
+	let saved = false;
 	try {
 		const upload = await uploadFileToStorage(file, () => generateUploadUrl({}));
 		if (!upload.ok) {
@@ -96,9 +101,11 @@ async function onFileChosen(variant: WorkspaceLogoVariant, event: Event) {
 			return;
 		}
 		// The upload's Content-Type is the file type the server checks.
-		const saved = await setLogo({ storageId: upload.storageId, variant });
-		if (saved.ok) showToast(t('components.settings.workspaceLogoCard.savedToast'));
+		const set = await setLogo({ storageId: upload.storageId, variant });
+		saved = set.ok;
+		if (set.ok) showToast(t('components.settings.workspaceLogoCard.savedToast'));
 	} finally {
+		release(saved);
 		busy[variant] = false;
 	}
 }

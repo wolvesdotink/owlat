@@ -1,8 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import MediaPickerModal from '../MediaPickerModal.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import {
+	EPISODE_QUIET_MS,
+	onSlowEpisodeEnd,
+	resetPendingOperations,
+	SLOW_OPERATION_MS,
+	trackPendingOperation,
+	type SlowEpisodeOutcome,
+} from '~/lib/pendingOperations';
 
 const generateUploadUrl = vi.fn();
 const createMediaAsset = vi.fn();
@@ -81,5 +89,59 @@ describe('MediaPickerModal upload provenance', () => {
 			mediaAssetId: 'media-uploaded',
 			filename: 'terms.pdf',
 		});
+	});
+});
+
+describe('MediaPickerModal and the slow-save episode', () => {
+	afterEach(() => {
+		resetPendingOperations();
+		vi.useRealTimers();
+	});
+
+	it('confirms nothing until the picked file is registered and handed over', async () => {
+		vi.useFakeTimers();
+		const outcomes: SlowEpisodeOutcome[] = [];
+		const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+		let resolveUrl!: (url: string) => void;
+		getStorageUrl.mockReset().mockReturnValue(new Promise((resolve) => (resolveUrl = resolve)));
+		const wrapper = mount(MediaPickerModal, {
+			props: { open: true, allowAllFiles: true },
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					Icon: true,
+					UiInput: true,
+					UiSpinner: true,
+					UiModal: { template: '<div><slot /></div>' },
+					UiButton: { template: '<button><slot /></button>' },
+				},
+			},
+		});
+		await wrapper
+			.findAll('button')
+			.find((button) => button.text() === 'Upload')!
+			.trigger('click');
+
+		const slowWrite = trackPendingOperation(() => 'Archive');
+		vi.advanceTimersByTime(SLOW_OPERATION_MS);
+		const input = wrapper.get('input[type="file"]');
+		Object.defineProperty(input.element, 'files', {
+			configurable: true,
+			value: [new File(['document'], 'terms.pdf', { type: 'application/pdf' })],
+		});
+		await input.trigger('change');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(getStorageUrl).toHaveBeenCalled();
+
+		slowWrite(true);
+		await vi.advanceTimersByTimeAsync(EPISODE_QUIET_MS * 3);
+		expect(outcomes).toEqual([]);
+
+		resolveUrl('https://files.example/uploaded');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(wrapper.emitted('select')).toHaveLength(1);
+		await vi.advanceTimersByTimeAsync(EPISODE_QUIET_MS);
+		expect(outcomes).toEqual(['saved']);
+		stop();
 	});
 });

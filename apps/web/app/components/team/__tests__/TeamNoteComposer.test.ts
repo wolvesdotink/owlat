@@ -6,11 +6,12 @@
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import TeamNoteComposer from '../TeamNoteComposer.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { teamView } from '~/utils/__tests__/teamStreamFixtures';
 import { linkableItems } from '~/utils/teamStream';
+import { useComposerDrafts } from '~/composables/useComposerDrafts';
 
 const states = new Map<string, ReturnType<typeof ref>>();
 beforeAll(() => {
@@ -22,7 +23,11 @@ beforeAll(() => {
 		},
 	});
 });
-beforeEach(() => states.clear());
+beforeEach(() => {
+	states.clear();
+	// Note drafts live in the page-wide draft book: each case starts with none.
+	useComposerDrafts().bindUser(null);
+});
 
 const Button = defineComponent({
 	props: { disabled: Boolean },
@@ -120,6 +125,45 @@ describe('TeamNoteComposer', () => {
 		const { w } = mountComposer({ mode: 'reply', replyDraft: 'Hi Ana, sorry' });
 		await w.find('[data-testid="team-composer-continue"]').trigger('click');
 		expect(w.emitted('reply')).toEqual([['Hi Ana, sorry']]);
+	});
+
+	it('keeps the note and its linked action for the thread when the composer comes back', async () => {
+		const { w } = mountComposer();
+		const box = w.find('[data-testid="team-composer-note-input"]');
+		const el = box.element as HTMLTextAreaElement;
+		await box.setValue('ask finance #refu');
+		el.setSelectionRange(el.value.length, el.value.length);
+		await box.trigger('input');
+		await w.find('[data-testid="team-composer-item-picker"] [role="option"]').trigger('click');
+		w.unmount();
+
+		const again = mountComposer().w;
+		expect(
+			(again.find('[data-testid="team-composer-note-input"]').element as HTMLTextAreaElement).value
+		).toBe('ask finance ');
+		expect(again.find('[data-testid="team-composer-linked-item"]').text()).toContain('Refund');
+		expect(useComposerDrafts().has('team-note', 'team:th1')).toBe(true);
+		const other = mountComposer({ draftKey: 'team:th2' }).w;
+		expect(
+			(other.find('[data-testid="team-composer-note-input"]').element as HTMLTextAreaElement).value
+		).toBe('');
+	});
+
+	it('clears only the note that was saved', async () => {
+		let resolveSave: (saved: boolean) => void = () => {};
+		const submitNote = vi.fn(() => new Promise<boolean>((resolve) => (resolveSave = resolve)));
+		const { w } = mountComposer({ submitNote });
+		await w.find('[data-testid="team-composer-note-input"]').setValue('first');
+		await w.find('[data-testid="team-composer-post"]').trigger('click');
+		useComposerDrafts().set('team-note', 'team:th1', { body: 'first, and more', itemId: null });
+		resolveSave(true);
+		await flushPromises();
+		expect(useComposerDrafts().get('team-note', 'team:th1')?.body).toBe('first, and more');
+
+		await w.find('[data-testid="team-composer-post"]').trigger('click');
+		resolveSave(true);
+		await flushPromises();
+		expect(useComposerDrafts().get('team-note', 'team:th1')).toBeNull();
 	});
 
 	it('offers only the reply when notes are off (chat off on a shared mailbox)', () => {

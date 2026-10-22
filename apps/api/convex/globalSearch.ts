@@ -122,7 +122,10 @@ async function runGlobalSearch(
 			.take(limit),
 		ctx.db
 			.query('emailTemplates')
-			.withSearchIndex('search_templates', (q) => q.search('searchableText', searchQuery))
+			// Recently deleted templates and campaigns are not found until restored.
+			.withSearchIndex('search_templates', (q) =>
+				q.search('searchableText', searchQuery).eq('deletedAt', undefined)
+			)
 			.take(limit),
 		ctx.db
 			.query('transactionalEmails')
@@ -130,7 +133,9 @@ async function runGlobalSearch(
 			.take(limit),
 		ctx.db
 			.query('campaigns')
-			.withSearchIndex('search_campaigns', (q) => q.search('searchableText', searchQuery))
+			.withSearchIndex('search_campaigns', (q) =>
+				q.search('searchableText', searchQuery).eq('deletedAt', undefined)
+			)
 			.take(limit),
 	]);
 

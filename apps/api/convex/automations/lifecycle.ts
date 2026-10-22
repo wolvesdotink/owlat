@@ -30,6 +30,7 @@ import { logWarn } from '../lib/runtimeLog';
 import { trackEvent } from '../lib/posthogHelpers';
 import { recordListingCounter } from '../lib/listingCounters';
 import { loadOrderedSteps } from './steps';
+import { getLive } from '../lib/softDelete';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -347,7 +348,9 @@ export const transition = internalMutation({
 		userId: v.string(),
 	},
 	handler: async (ctx, args): Promise<AutomationTransitionOutcome> => {
-		const automation = await ctx.db.get(args.automationId);
+		// An automation in Recently deleted keeps the status it was deleted with
+		// (never `active`), so nothing can switch it back on until it is restored.
+		const automation = await getLive(ctx, args.automationId);
 		if (!automation) return { ok: false, reason: 'automation_not_found' };
 		return await dispatch(ctx, automation, args.input, args.userId);
 	},

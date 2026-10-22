@@ -437,8 +437,14 @@ export const getContactInTopicDetails = authedQuery({
 
 		// Fetch campaigns that target this specific topic. The audience is a
 		// discriminated value whose topic id lives inside the union,
-		// so filter in JS after a bounded scan.
-		const scanned = await ctx.db.query('campaigns').take(1000); // bounded: topic-detail lookup
+		// so filter in JS after a bounded scan. The scan rides the live-only
+		// index, newest first, so campaigns in Recently deleted never show up
+		// and never take up the scan limit.
+		const scanned = await ctx.db
+			.query('campaigns')
+			.withIndex('by_deleted_at_and_updated_at', (q) => q.eq('deletedAt', undefined))
+			.order('desc')
+			.take(1000); // bounded: topic-detail lookup
 		const campaigns = scanned.filter(
 			(c) => c.audience?.kind === 'topic' && c.audience.topicId === args.topicId
 		);

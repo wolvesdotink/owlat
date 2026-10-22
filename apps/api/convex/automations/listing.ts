@@ -1,9 +1,10 @@
 import type { ListingDescriptor } from '../lib/listing';
 
 /**
- * Automation listing descriptor. Browse-only; status-filtered browse
- * routes through the existing `by_status` index (creation-ordered within the
- * status), and `byStatus` replaces `countByStatus`.
+ * Automation listing descriptor. Browse-only, in creation order: the default
+ * browse rides `by_deleted_at` (creation-ordered within the live range) and
+ * status-filtered browse `by_deleted_at_and_status`, and `byStatus` replaces
+ * `countByStatus`. An automation in Recently deleted is in none of them.
  *
  * No per-row enrichment: the list UI renders only the automation's own columns
  * (name/trigger/status/contacts-in-flow/created), so no step scan is warranted.
@@ -11,17 +12,18 @@ import type { ListingDescriptor } from '../lib/listing';
 export const automationListing: ListingDescriptor<'automations'> = {
 	table: 'automations',
 	browse: {
-		index: 'by_creation_time',
+		index: 'by_deleted_at',
 		order: 'asc',
-		filterIndexes: { status: 'by_status' },
+		filterIndexes: { status: 'by_deleted_at_and_status' },
 	},
 	filters: ['status'],
+	softDelete: true,
 	facets: {
 		byStatus: {
 			kind: 'groupBy',
 			field: 'status',
 			buckets: ['draft', 'active', 'paused'],
-			index: 'by_status',
+			index: 'by_deleted_at_and_status',
 			counter: 'automationStatus',
 		},
 	},

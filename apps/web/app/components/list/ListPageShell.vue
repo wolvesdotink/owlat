@@ -12,8 +12,9 @@
  * skeleton in place of the default spinner. `#delete-extra` adds a line under
  * the delete dialog's description (the blocks list warns how many emails use
  * the block). `deleteBlocked` refuses the delete outright — the confirm button
- * stays disabled, and `#delete-extra` says why (an active automation must be
- * paused first).
+ * stays disabled, and `#delete-extra` says why. A page whose delete is undoable
+ * (it goes to Recently deleted and the toast offers Undo) deletes at once and
+ * leaves `deleteCopy` out: there is no dialog to render.
  *
  * `layout="grid"` is for a list with no table view (saved blocks): `#grid`
  * always renders and there is no grid/list toggle.
@@ -82,11 +83,12 @@ const props = withDefaults(
 		emptyNoOrg: EmptyCopy;
 		empty: EmptyCopy;
 		noResults: { title: string; description: string };
-		deleteCopy: DeleteCopy;
-		deleteOpen: boolean;
+		/** The delete confirmation's copy; leave out for a page that deletes at once. */
+		deleteCopy?: DeleteCopy;
+		deleteOpen?: boolean;
 		/** Name of the item the delete dialog is about. */
 		deleteName?: string;
-		isDeleting: boolean;
+		isDeleting?: boolean;
 		/** The item cannot be deleted as it stands: confirm stays disabled. */
 		deleteBlocked?: boolean;
 	}>(),
@@ -99,7 +101,10 @@ const props = withDefaults(
 		sortListboxId: undefined,
 		viewMode: undefined,
 		layout: 'table',
+		deleteCopy: undefined,
+		deleteOpen: false,
 		deleteName: '',
+		isDeleting: false,
 		deleteBlocked: false,
 	}
 );
@@ -243,6 +248,7 @@ const onDeleteOpenChange = (open: boolean) => {
 		<slot />
 
 		<UiConfirmationDialog
+			v-if="deleteCopy"
 			:open="deleteOpen"
 			variant="danger"
 			:title="deleteCopy.title"

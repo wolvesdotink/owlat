@@ -7,7 +7,8 @@
  *   - every update to `emailBlocks.usageCount` (called from both consumer
  *     lifecycles' `update_block_usage_counts` effect — the canonical path)
  *   - the propagation walker that touches consumer rows in
- *     `emailTemplates` + `transactionalEmails` after a saved-block content
+ *     `emailTemplates` (live ones; `reconcileRestoredLinks` catches up a
+ *     restored one) + `transactionalEmails` after a saved-block content
  *     change (replaces nested blocks atomically with `htmlRenderState.stale:
  *     true`), name change (renames the embedded `savedBlockRef.blockName`),
  *     or delete (strips the `savedBlockRef` + `linkedBlockIds` entry).
@@ -172,6 +173,9 @@ async function walkConsumers(
 	// `emailBlockConsumers` sidecar is a possible follow-up.
 	const templates = await ctx.db.query('emailTemplates').collect(); // bounded: email templates (org-scale library)
 	for (const template of templates) {
+		// A template in Recently deleted keeps the content it was deleted with;
+		// `reconcileRestoredLinks` catches it up when it is restored.
+		if (template.deletedAt !== undefined) continue;
 		const linkedBlockIds = template.linkedBlockIds ?? [];
 		if (!linkedBlockIds.includes(blockId)) continue;
 
@@ -568,6 +572,53 @@ export const remove = internalMutation({
 		return { ok: true };
 	},
 });
+
+/**
+ * The link changes a template restored from Recently deleted missed while the
+ * walker passed it by: references to saved blocks deleted meanwhile are
+ * detached (`savedBlockRef` and `linkedBlockIds` entry, as `detach_all` does)
+ * and renamed blocks' names updated. Content edits to a block are not applied:
+ * the template comes back as it was deleted, and the next edit of the block
+ * reaches it like any other consumer. Returns the patch, or undefined when
+ * nothing changed. The caller applies the usage counts of the kept links.
+ */
+export async function reconcileRestoredLinks(
+	ctx: MutationCtx,
+	template: Doc<'emailTemplates'>
+): Promise<
+	| Pick<Doc<'emailTemplates'>, 'content' | 'linkedBlockIds' | 'contentRevision' | 'updatedAt'>
+	| undefined
+> {
+	const linkedBlockIds = template.linkedBlockIds ?? [];
+	if (linkedBlockIds.length === 0) return undefined;
+	const names = new Map<string, string | null>();
+	for (const blockId of linkedBlockIds) {
+		names.set(blockId, (await ctx.db.get(blockId as Id<'emailBlocks'>))?.name ?? null);
+	}
+
+	const blocks = parseContentBlocks(template.content);
+	let changed = false;
+	for (const block of blocks) {
+		const ref = block.savedBlockRef;
+		if (!ref || !names.has(ref.blockId)) continue;
+		const name = names.get(ref.blockId);
+		if (name === null) {
+			delete block.savedBlockRef;
+			changed = true;
+		} else if (name !== undefined && name !== ref.blockName) {
+			ref.blockName = name;
+			changed = true;
+		}
+	}
+	const kept = linkedBlockIds.filter((id) => names.get(id) !== null);
+	if (!changed && kept.length === linkedBlockIds.length) return undefined;
+	return {
+		content: changed ? serializeContentBlocks(blocks) : template.content,
+		linkedBlockIds: kept,
+		contentRevision: changed ? nextContentRevision(template) : template.contentRevision,
+		updatedAt: Date.now(),
+	};
+}
 
 /**
  * Cross-cutting helper for the **Email template lifecycle (module)** and

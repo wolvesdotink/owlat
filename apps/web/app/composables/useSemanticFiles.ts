@@ -1,6 +1,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
+import { holdPendingWork } from '~/lib/pendingOperations';
 
 type SourceType = 'upload' | 'email_attachment' | 'agent_generated';
 
@@ -104,6 +105,10 @@ export function useSemanticFiles() {
 			return undefined;
 		}
 		isUploading.value = true;
+		// Upload and registering the file are one save: hold any slow-save
+		// episode open until the file is registered.
+		const release = holdPendingWork();
+		let created = false;
 		try {
 			const upload = await uploadFileToStorage(file, () => generateUploadUrl({}));
 			if (!upload.ok) {
@@ -127,9 +132,11 @@ export function useSemanticFiles() {
 			});
 			if (!fileId.ok) return undefined;
 
+			created = true;
 			showToast(t('shared.useSemanticFiles.uploaded'));
 			return fileId.result;
 		} finally {
+			release(created);
 			isUploading.value = false;
 		}
 	};

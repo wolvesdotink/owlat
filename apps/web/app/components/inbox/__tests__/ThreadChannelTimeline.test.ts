@@ -14,9 +14,10 @@
  * `app/composables/__tests__/useChannelOutbound.test.ts`.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { useComposerDrafts } from '~/composables/useComposerDrafts';
 
 const send = vi.fn().mockResolvedValue(true);
 const canSendOn = vi.fn((channel: string) => channel === 'sms' || channel === 'chat');
@@ -82,6 +83,7 @@ function replyButtons(wrapper: ReturnType<typeof mount>) {
 describe('ThreadChannelTimeline per-message reply', () => {
 	beforeEach(() => {
 		send.mockClear();
+		useComposerDrafts().bindUser(null);
 		timelineRows.value = [];
 	});
 
@@ -142,6 +144,39 @@ describe('ThreadChannelTimeline per-message reply', () => {
 
 		expect(wrapper.find('textarea').exists()).toBe(false);
 		expect(replyButtons(wrapper)).toHaveLength(1);
+	});
+
+	it('reopens an unsent reply where it was left, and Cancel lets it go', async () => {
+		timelineRows.value = [message()];
+		const first = mount(ThreadChannelTimeline, mountOpts);
+		await replyButtons(first)[0]!.trigger('click');
+		await first.find('textarea').setValue('checking with the courier');
+		first.unmount();
+
+		const again = mount(ThreadChannelTimeline, mountOpts);
+		expect((again.find('textarea').element as HTMLTextAreaElement).value).toBe(
+			'checking with the courier'
+		);
+		await again
+			.findAll('button')
+			.find((b) => b.text().includes('Cancel'))!
+			.trigger('click');
+		expect(again.find('textarea').exists()).toBe(false);
+		expect(useComposerDrafts().get('channel-reply', THREAD_ID)).toBeNull();
+	});
+
+	it('keeps the reply when the send fails', async () => {
+		send.mockResolvedValueOnce(false);
+		timelineRows.value = [message()];
+		const wrapper = mount(ThreadChannelTimeline, mountOpts);
+		await replyButtons(wrapper)[0]!.trigger('click');
+		await wrapper.find('textarea').setValue('try again later');
+		await wrapper
+			.findAll('button')
+			.find((b) => b.text().includes('Send'))!
+			.trigger('click');
+		await flushPromises();
+		expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('try again later');
 	});
 
 	it('says a large email mirrored as its excerpt is shortened (#900)', () => {

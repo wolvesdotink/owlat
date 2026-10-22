@@ -17,6 +17,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { getOrThrow } from '../_utils/errors';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import type { CoeditField, CoeditTarget } from '../lib/validators/coediting';
+import { getLiveOrThrow } from '../lib/softDelete';
 
 /** Shape version of a session's `fields` JSON (and of notice values). */
 export const COEDIT_FIELDS_VERSION = 1;
@@ -64,7 +65,9 @@ export function rowTarget(row: {
 
 /**
  * Load the email, or throw `not_found`. A transactional target also needs
- * the `transactional` feature, like every function of that editor.
+ * the `transactional` feature, like every function of that editor. A template
+ * in Recently deleted reads as missing, so a stale editor cannot reopen a
+ * session on it.
  */
 export async function loadTarget(
 	ctx: QueryCtx | MutationCtx,
@@ -74,7 +77,7 @@ export async function loadTarget(
 		await assertFeatureEnabled(ctx, 'transactional');
 		return await getOrThrow(ctx, target.id, 'Transactional email');
 	}
-	return await getOrThrow(ctx, target.id, 'Email template');
+	return await getLiveOrThrow(ctx, target.id, 'Email template');
 }
 
 /** The email's live session, if one is open. */

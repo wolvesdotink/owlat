@@ -7,7 +7,7 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { campaignsQuery } from './_helpers';
-import { getOrThrow, throwInvalidInput } from '../_utils/errors';
+import { throwInvalidInput } from '../_utils/errors';
 import { COUNT_PAGE_SIZE, resolveRecipientPageImpl } from './audienceResolution';
 import {
 	evidenceAt,
@@ -23,6 +23,7 @@ import {
 	sendTimeSettingsError,
 	type SendTimeSource,
 } from './sendTimeOptimization';
+import { getLiveOrThrow } from '../lib/softDelete';
 
 /** What the walker needs besides the page itself. */
 export const getPlanningContext = internalQuery({
@@ -84,7 +85,7 @@ export const previewSendTimes = campaignsQuery({
 			args.scheduledMinute >= 0 &&
 			args.scheduledMinute <= 59;
 
-		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
+		const campaign = await getLiveOrThrow(ctx, args.campaignId, 'Campaign');
 		const window = resolveSendTimeWindow({
 			sentAt: args.startAt,
 			windowHours: args.windowHours,

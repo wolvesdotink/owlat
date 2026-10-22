@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import { useChannelOutbound } from '~/composables/useChannelOutbound';
 import type { SendableChannel } from '~/composables/useChannelOutbound';
+import { useComposerDraft } from '~/composables/useComposerDrafts';
 
 const props = defineProps<{
 	contactId: Id<'contacts'>;
@@ -54,7 +55,7 @@ function statusName(status: string): string {
 
 const sendableChannels = computed<Array<{ value: SendableChannel; label: string }>>(() => {
 	const list: Array<{ value: SendableChannel; label: string }> = enabledProviderChannels.value.map(
-		(channel) => ({ value: channel, label: channelName(channel) }),
+		(channel) => ({ value: channel, label: channelName(channel) })
 	);
 	if (latestThreadId.value !== null) {
 		list.push({ value: 'chat', label: channelName('chat') });
@@ -63,7 +64,12 @@ const sendableChannels = computed<Array<{ value: SendableChannel; label: string 
 });
 
 const composeChannel = ref<SendableChannel | null>(null);
-const composeText = ref('');
+// What is typed is kept per contact on this device until it is sent.
+const { draft, pin } = useComposerDraft('contact-message', () => props.contactId, { text: '' });
+const composeText = computed({
+	get: () => draft.value.text,
+	set: (text: string) => (draft.value = { text }),
+});
 
 // Default the selected channel to the first sendable one once configs load.
 watch(sendableChannels, (list) => {
@@ -71,20 +77,27 @@ watch(sendableChannels, (list) => {
 });
 
 const canSend = computed(
-	() => isAdmin.value && composeChannel.value !== null && composeText.value.trim().length > 0 && !isSending.value,
+	() =>
+		isAdmin.value &&
+		composeChannel.value !== null &&
+		composeText.value.trim().length > 0 &&
+		!isSending.value
 );
 
 async function send() {
 	if (!canSend.value || composeChannel.value === null) return;
 	// Chat posts onto the contact's most recent thread; a provider channel lets
 	// the backend resolve (or open) the thread for that channel.
+	const text = composeText.value;
+	const settle = pin();
 	const sent = await sendOnChannel({
 		channel: composeChannel.value,
-		text: composeText.value,
+		text,
 		contactId: props.contactId,
 		...(composeChannel.value === 'chat' ? { threadId: latestThreadId.value } : {}),
 	});
-	if (sent) composeText.value = '';
+	// Only the message that was sent goes: text changed meanwhile stays.
+	if (sent) settle((now) => (now.text === text ? { text: '' } : now));
 }
 </script>
 
@@ -92,7 +105,9 @@ async function send() {
 	<div class="card">
 		<div class="flex items-center justify-between mb-4">
 			<div>
-				<h2 class="text-lg font-medium text-text-primary">{{ t('components.contacts.unifiedTimelineTab.title') }}</h2>
+				<h2 class="text-lg font-medium text-text-primary">
+					{{ t('components.contacts.unifiedTimelineTab.title') }}
+				</h2>
 				<p class="text-text-tertiary text-sm mt-0.5">
 					{{ t('components.contacts.unifiedTimelineTab.subtitle') }}
 				</p>
@@ -135,7 +150,9 @@ async function send() {
 		>
 			<div class="flex items-center gap-2 mb-2">
 				<Icon name="lucide:send" class="w-4 h-4 text-text-tertiary" />
-				<p class="text-sm font-medium text-text-primary">{{ t('components.contacts.unifiedTimelineTab.sendTitle') }}</p>
+				<p class="text-sm font-medium text-text-primary">
+					{{ t('components.contacts.unifiedTimelineTab.sendTitle') }}
+				</p>
 			</div>
 			<div class="flex flex-col sm:flex-row gap-2">
 				<div class="sm:w-44 shrink-0">
@@ -168,7 +185,9 @@ async function send() {
 		<div v-if="isLoading && !filteredTimeline.length" class="flex items-center justify-center py-8">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner size="md" />
-				<p class="text-text-tertiary text-sm">{{ t('components.contacts.unifiedTimelineTab.loading') }}</p>
+				<p class="text-text-tertiary text-sm">
+					{{ t('components.contacts.unifiedTimelineTab.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -177,7 +196,13 @@ async function send() {
 			v-else-if="filteredTimeline.length === 0"
 			class="flex flex-col items-center justify-center py-8 text-center"
 		>
-			<UiIconBox icon="lucide:message-square" size="lg" variant="surface" rounded="full" class="mb-3" />
+			<UiIconBox
+				icon="lucide:message-square"
+				size="lg"
+				variant="surface"
+				rounded="full"
+				class="mb-3"
+			/>
 			<p class="text-text-secondary text-sm">
 				{{
 					channelFilter
@@ -194,11 +219,7 @@ async function send() {
 
 		<!-- Timeline list -->
 		<div v-else class="space-y-1">
-			<div
-				v-for="(item, index) in filteredTimeline"
-				:key="item._id"
-				class="relative"
-			>
+			<div v-for="(item, index) in filteredTimeline" :key="item._id" class="relative">
 				<!-- Timeline connector -->
 				<div
 					v-if="index < filteredTimeline.length - 1"
@@ -211,7 +232,11 @@ async function send() {
 					<div
 						class="flex-shrink-0 w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center"
 					>
-						<Icon :name="channelIcon(item.channel)" class="w-5 h-5" :class="channelColor(item.channel)" />
+						<Icon
+							:name="channelIcon(item.channel)"
+							class="w-5 h-5"
+							:class="channelColor(item.channel)"
+						/>
 					</div>
 
 					<!-- Content -->
@@ -238,7 +263,13 @@ async function send() {
 							<!-- Status -->
 							<UiBadge
 								v-if="item.status && item.status !== 'received' && item.status !== 'sent'"
-								:variant="item.status === 'delivered' || item.status === 'read' ? 'success' : item.status === 'failed' ? 'error' : 'neutral'"
+								:variant="
+									item.status === 'delivered' || item.status === 'read'
+										? 'success'
+										: item.status === 'failed'
+											? 'error'
+											: 'neutral'
+								"
 								size="sm"
 							>
 								{{ statusName(item.status) }}
@@ -246,10 +277,7 @@ async function send() {
 						</div>
 
 						<!-- Subject (for email) -->
-						<p
-							v-if="item.content.subject"
-							class="text-text-primary text-sm font-medium"
-						>
+						<p v-if="item.content.subject" class="text-text-primary text-sm font-medium">
 							{{ item.content.subject }}
 						</p>
 
@@ -261,7 +289,10 @@ async function send() {
 						     message is read in the Team Inbox. -->
 						<p v-if="item.content.isBodyTruncated" class="text-text-tertiary text-xs mt-0.5">
 							{{ t('components.contacts.unifiedTimelineTab.longMessage') }}
-							<NuxtLink :to="`/dashboard/inbox/${item.threadId}`" class="text-brand hover:underline">
+							<NuxtLink
+								:to="`/dashboard/inbox/${item.threadId}`"
+								class="text-brand hover:underline"
+							>
 								{{ t('components.contacts.unifiedTimelineTab.openFullMessage') }}
 							</NuxtLink>
 						</p>

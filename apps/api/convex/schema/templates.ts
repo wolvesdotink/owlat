@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { softDeleteFields } from '../lib/validators/softDelete';
 import {
 	dataVariablesSchemaValidator,
 	jsonPrimitiveRecord,
@@ -14,8 +15,9 @@ import { htmlRenderStateValidator } from '../lib/validators/templates';
  * reusable blocks, version snapshots, share links, and per-recipient
  * transactional sends.
  *
- * Cascade: deleting an `emailTemplates` row deletes its `emailTemplateVersions`
- * rows (`emailTemplates/lifecycle.ts:remove`, the single delete site).
+ * Cascade: a deleted `emailTemplates` row sits in Recently deleted with its
+ * `emailTemplateVersions` rows for 30 days; the purge deletes both
+ * (`emailTemplates/deletion.ts`, the single delete site).
  *
  * Spread into `defineSchema()` from schema.ts via `...templateTables`.
  */
@@ -93,28 +95,31 @@ export const templateTables = {
 		htmlRenderState: v.optional(htmlRenderStateValidator),
 		// Marks rows inserted by /seed/demo so they can be wiped on reset.
 		seedTag: v.optional(v.string()),
+		// Recently deleted (lib/softDelete.ts): a deleted template keeps its row
+		// and version history until the 30-day purge (emailTemplates/deletion.ts).
+		...softDeleteFields,
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
-		.index('by_type', ['type'])
 		.index('by_status', ['status'])
-		// Browse indexes for the Listing engine: updatedAt is the
-		// default browse order; the compound serves type-filtered browse
-		// index-natively (type leads, updatedAt orders within it) instead of
-		// `.collect()`-ing the whole table.
-		.index('by_updated_at', ['updatedAt'])
-		.index('by_type_and_updated_at', ['type', 'updatedAt'])
+		// Browse indexes for the Listing engine. `deletedAt` leads so a live read
+		// pins it to undefined inside the range (Recently deleted rows are never
+		// read), and the Recently deleted list and purge read `[0, cutoff)` from
+		// the same index. updatedAt is the default browse order; the compound
+		// serves type-filtered browse and the per-type counts index-natively.
+		.index('by_deleted_at_and_updated_at', ['deletedAt', 'updatedAt'])
+		.index('by_deleted_at_and_type_and_updated_at', ['deletedAt', 'type', 'updatedAt'])
 		.searchIndex('search_templates', {
 			searchField: 'searchableText',
-			filterFields: ['type', 'status'],
+			filterFields: ['type', 'status', 'deletedAt'],
 		}),
 
 	// Email Template Versions - persisted snapshot history for one template.
 	// The editor's undo stack is session-scoped (packages/email-builder
 	// `useHistory`); these rows survive the tab. Written only by
 	// `emailTemplates/versions.ts`, capped at VERSION_HISTORY_LIMIT per
-	// template (oldest evicted), and cascade-deleted with the template by
-	// `emailTemplates/lifecycle.ts:remove`.
+	// template (oldest evicted), kept while the template is in Recently deleted
+	// and purged with it by `emailTemplates/deletion.ts`.
 	emailTemplateVersions: defineTable({
 		templateId: v.id('emailTemplates'),
 		// What produced the snapshot: an editor save, a publish, a campaign

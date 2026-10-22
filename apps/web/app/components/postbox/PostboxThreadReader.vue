@@ -550,9 +550,14 @@ const team = usePostboxTeamStream({
 	isShared: () => rb.isShared.value,
 	threadId: () => discussionThreadId.value,
 	messages: () => allMessages.value,
-	reply: (text) =>
+	reply: (text, handed) =>
 		text.trim() && latestMessage.value
-			? guardLatestReply(() => void openReplyWithBody(latestMessage.value!, text))
+			? guardLatestReply(() => {
+					// The reader's copy goes only once the reply's draft row is saved.
+					void openReplyWithBody(latestMessage.value!, text).then((saved) => {
+						if (saved) handed?.();
+					});
+				})
 			: runReaderAction('reply'),
 });
 

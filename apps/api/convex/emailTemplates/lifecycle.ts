@@ -2,7 +2,8 @@
  * Email template lifecycle (module) — single writer of
  * `emailTemplates.status` and its companion fields (`publishedAt`,
  * `htmlContent`, `htmlTranslations`), plus the only place that inserts
- * and deletes `emailTemplates` rows.
+ * `emailTemplates` rows. Deletion (Recently deleted, restore and the purge)
+ * belongs to `./deletion.ts`; `remove` here delegates to it.
  *
  * Two states: `draft | published`. No content-scan gate (marketing
  * templates are scanned at send time by the Campaign send orchestrator;
@@ -13,9 +14,9 @@
  *
  * Effects:
  *   audit_log                    — fires on every transition + create +
- *                                  duplicate + remove.
- *   update_block_usage_counts    — fires on create/duplicate/remove and on
- *                                  any transition that swaps content.
+ *                                  duplicate.
+ *   update_block_usage_counts    — fires on create/duplicate and on any
+ *                                  transition that swaps content.
  */
 
 import { v } from 'convex/values';
@@ -26,8 +27,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
-import { deleteTemplateVersions } from './versions';
-import { deleteCoeditState } from '../emailCoediting/sweep';
+import { softDeleteTemplate } from './deletion';
+import { getLive } from '../lib/softDelete';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { recordListingCounter } from '../lib/listingCounters';
 import { duplicateEmailFields } from '../lib/publishableEmail';
@@ -340,7 +341,8 @@ export const transition = internalMutation({
 		userId: v.string(),
 	},
 	handler: async (ctx, args): Promise<EmailTemplateTransitionOutcome> => {
-		const template = await ctx.db.get(args.templateId);
+		// A template in Recently deleted cannot be published or unpublished.
+		const template = await getLive(ctx, args.templateId);
 		if (!template) return { ok: false, reason: 'template_not_found' };
 		return await dispatch(ctx, template, args.input, args.userId);
 	},
@@ -358,7 +360,7 @@ export const duplicate = internalMutation({
 		userId: v.string(),
 	},
 	handler: async (ctx, args): Promise<EmailTemplateDuplicateOutcome> => {
-		const template = await ctx.db.get(args.templateId);
+		const template = await getLive(ctx, args.templateId);
 		if (!template) return { ok: false, reason: 'template_not_found' };
 
 		const now = Date.now();
@@ -405,10 +407,9 @@ export const duplicate = internalMutation({
 });
 
 /**
- * Delete an email template. Emits an audit log, cascades to the template's
- * version snapshots, and decrements the usage counts of any saved blocks the
- * template linked, so the block library's "X uses" count stays accurate after
- * a delete.
+ * Delete an email template: it moves to Recently deleted, restorable for 30
+ * days (`emailTemplates/deletion.ts` owns the stamp, the block usage counts,
+ * the co-editing cleanup and the purge). Deleting one already there is a no-op.
  */
 export const remove = internalMutation({
 	args: {
@@ -418,35 +419,7 @@ export const remove = internalMutation({
 	handler: async (ctx, args): Promise<EmailTemplateRemoveOutcome> => {
 		const template = await ctx.db.get(args.templateId);
 		if (!template) return { ok: false, reason: 'template_not_found' };
-
-		const name = template.name;
-		await ctx.db.delete(args.templateId);
-		await recordListingCounter(ctx, 'templateType', template, null);
-		// Cascade: version snapshots are owned by the template row.
-		await deleteTemplateVersions(ctx, args.templateId);
-		await deleteCoeditState(ctx, { type: 'emailTemplate', id: args.templateId });
-
-		const effects: Effect[] = [
-			{
-				kind: 'audit_log',
-				action: 'email_template.deleted',
-				templateId: args.templateId,
-				userId: args.userId,
-				details: {
-					name,
-					applied: 'transitioned',
-				},
-			},
-		];
-		if (template.linkedBlockIds && template.linkedBlockIds.length > 0) {
-			effects.push({
-				kind: 'update_block_usage_counts',
-				previousIds: template.linkedBlockIds,
-				nextIds: [],
-			});
-		}
-		await applyEffects(ctx, effects);
-
+		await softDeleteTemplate(ctx, template, args.userId);
 		return { ok: true };
 	},
 });

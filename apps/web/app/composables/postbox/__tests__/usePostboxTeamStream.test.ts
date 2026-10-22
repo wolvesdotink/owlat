@@ -24,6 +24,7 @@ vi.mock('~/composables/team/useTeamThread', () => ({
 }));
 
 import { usePostboxTeamStream } from '../usePostboxTeamStream';
+import { useComposerDrafts } from '~/composables/useComposerDrafts';
 
 const note = (at: number, source: 'chatMessage' | 'threadNote' = 'chatMessage') => ({
 	kind: 'note',
@@ -33,7 +34,10 @@ const note = (at: number, source: 'chatMessage' | 'threadNote' = 'chatMessage') 
 	noteSource: source,
 });
 
-function host(messages: { _id: string; receivedAt: number }[]) {
+function host(
+	messages: { _id: string; receivedAt: number }[],
+	reply: (text: string, handed?: () => void) => void = () => {}
+) {
 	let state!: ReturnType<typeof usePostboxTeamStream>;
 	mount(
 		defineComponent({
@@ -42,7 +46,7 @@ function host(messages: { _id: string; receivedAt: number }[]) {
 					isShared: () => true,
 					threadId: () => 'mt_1',
 					messages: () => messages,
-					reply: () => {},
+					reply,
 				});
 				return () => h('div');
 			},
@@ -55,6 +59,7 @@ function host(messages: { _id: string; receivedAt: number }[]) {
 enableAutoUnmount(afterEach);
 beforeEach(() => {
 	entries.value = [];
+	useComposerDrafts().bindUser(null);
 	isLoadingEarlier.value = false;
 	hasEarlier.value = true;
 	loadEarlier.mockReset();
@@ -69,6 +74,19 @@ beforeEach(() => {
 });
 
 describe('usePostboxTeamStream', () => {
+	it('keeps the reply text until a saved draft has it', () => {
+		let handOver: (() => void) | undefined;
+		const state = host([], (_text, handed) => (handOver = handed));
+		state().replyDraft.value = 'Hi Ana';
+		state().continueReply('Hi Ana');
+		// The reply guard is still asking, or the draft row is still being
+		// saved: nothing is lost to a refusal or a reload.
+		expect(state().replyDraft.value).toBe('Hi Ana');
+		expect(useComposerDrafts().has('mail-reply', 'mt_1')).toBe(true);
+		handOver?.();
+		expect(state().replyDraft.value).toBe('');
+	});
+
 	it('walks back a bounded number of pages, then says the rest is not loaded and offers it', async () => {
 		entries.value = [note(500)];
 		// Each page loads, but brings nothing older: the walk stays behind the oldest message.
