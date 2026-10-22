@@ -65,6 +65,7 @@ export function createTestConfig(overrides?: Partial<MtaConfig>): MtaConfig {
 		bounceSocketTimeoutMs: 60_000,
 		inboundSpfEnabled: false,
 		rspamdRejectThreshold: 15,
+		clamav: { host: 'clamav', port: 3310 },
 		smtpPoolGlobalMaxPerHost: 10,
 		maxMessageAgeMs: 432_000_000,
 		submissionImplicitTlsEnabled: false,

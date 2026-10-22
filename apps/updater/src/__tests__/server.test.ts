@@ -54,7 +54,8 @@ process.env['INSTANCE_SECRET'] = 'test-instance-secret-0123456789';
 process.env['OWLAT_DIR'] = OWLAT_DIR;
 
 // Dynamic import AFTER env is staged — server.ts reads env at module load.
-const { buildRequestListener, readListenPort } = await import('../server.js');
+const { buildRequestListener } = await import('../server.js');
+const { readListenPort } = await import('../config.js');
 const { fastReadiness } = await import('./readinessStubs.js');
 const { UPDATE_STEP_BOUNDS } = await import('../http.js');
 

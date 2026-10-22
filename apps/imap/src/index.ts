@@ -25,7 +25,7 @@ export async function main() {
 
 	// Report this server's release and wire version, and serve only once the
 	// backend speaks its contract.
-	const owlatVersion = process.env['OWLAT_VERSION'] || 'dev';
+	const { owlatVersion } = config;
 	const identity = {
 		instanceId: randomUUID(),
 		hostLabel: hostname(),
