@@ -96,7 +96,7 @@ export const vitestExport = (context: Context, node: Node): string | undefined =
 	return imported === 'namespace' ? undefined : imported;
 };
 
-export interface Declaration {
+interface Declaration {
 	/** The vitest function the chain starts from: `it`, `test`, `describe` or `suite`. */
 	readonly root: string;
 	/** The modifier accesses on the way (`.skip`, `.only`, …), outermost first. */

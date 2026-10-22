@@ -1,12 +1,12 @@
 import type { AstNode, Context, Rule } from '../types.ts';
 import {
+	declarationOf,
 	importedName,
 	type Node,
 	propertyName,
 	resolveVariable,
 	unwrap,
 	vitestExport,
-	declarationOf,
 } from '../vitestApi.ts';
 
 /**
@@ -22,8 +22,9 @@ import {
  *   inventing its own budget is how a release gate ends up failing on machine
  *   load.
  * - Retries: a `retry` option on a test, suite or `vi.setConfig`, and any
- *   `retry` key in a vitest config file, is reported whatever its value. A retried flake still fails at its own rate on every
- *   run that does not retry it, and the retry hides that rate.
+ *   `retry` key in a vitest config file, is reported whatever its value. A
+ *   retried flake still fails at its own rate on every run that does not
+ *   retry it, and the retry hides that rate.
  * - Skips: `.skip` / `.todo` (as a modifier or a `{ skip: true }` option) and a
  *   `skipIf` / `runIf` whose condition is a literal need a tracking issue in
  *   the comment directly above the statement: `// quarantine: #1234 <why>`.
@@ -32,6 +33,9 @@ import {
  *
  * Only calls bound to vitest's own imports count, so `vi.waitFor(fn, { timeout })`,
  * a subprocess `timeout` and an unrelated `test()` helper are never reported.
+ * The rule runs on every linted file, so a call is resolved against scope only
+ * when the name its callee chain starts from was imported from vitest as a
+ * test, suite, hook or `vi`; everything else is dismissed by that name alone.
  */
 
 const HOOKS = new Set([
@@ -42,6 +46,9 @@ const HOOKS = new Set([
 	'aroundAll',
 	'aroundEach',
 ]);
+const VI = new Set(['vi', 'vitest']);
+/** The vitest exports a call this rule checks can start from. */
+const CHAIN_ROOTS = new Set(['it', 'test', 'describe', 'suite', ...HOOKS, ...VI, 'namespace']);
 const SET_CONFIG_TIMEOUTS = new Set(['testTimeout', 'hookTimeout']);
 const SKIP_MODIFIERS = new Set(['skip', 'todo']);
 const VITEST_CONFIG_FILE =
@@ -84,6 +91,18 @@ const isSharedBudget = (context: Context, value: Node, depth = 0): boolean => {
 		return false;
 	}
 	return isSharedBudget(context, definition.node.init, depth + 1);
+};
+
+/** The identifier a callee chain (`it.skip.each(cases)`, `vitest.it`) starts from. */
+const chainRoot = (node: Node): string | undefined => {
+	let current = unwrap(node);
+	for (;;) {
+		if (current?.type === 'Identifier') return current.name;
+		if (current?.type === 'MemberExpression') current = unwrap(current.object);
+		else if (current?.type === 'CallExpression') current = unwrap(current.callee);
+		else if (current?.type === 'TaggedTemplateExpression') current = unwrap(current.tag);
+		else return undefined;
+	}
 };
 
 /** The statement a call sits in, which a quarantine comment must precede. */
@@ -130,6 +149,9 @@ const rule: Rule = {
 	create(context) {
 		if (!context.sourceCode.text.includes('vitest')) return {};
 
+		/** Local names bound by `import … from 'vitest'`, to what they import. */
+		const vitestLocals = new Map<string, string>();
+
 		const checkTimeout = (value: Node) => {
 			if (value && !isSharedBudget(context, value)) {
 				context.report({ node: value, message: TIMEOUT_MESSAGE });
@@ -162,8 +184,24 @@ const rule: Rule = {
 					}
 				},
 			}),
+			ImportDeclaration(node) {
+				if (node.source.value !== 'vitest') return;
+				for (const specifier of node.specifiers) {
+					const imported =
+						specifier.type === 'ImportSpecifier'
+							? specifier.imported.type === 'Identifier'
+								? specifier.imported.name
+								: String(specifier.imported.value)
+							: specifier.type === 'ImportNamespaceSpecifier'
+								? 'namespace'
+								: 'default';
+					vitestLocals.set(specifier.local.name, imported);
+				}
+			},
 			CallExpression(node) {
 				const callee = unwrap(node.callee);
+				const root = chainRoot(callee);
+				if (root === undefined || !CHAIN_ROOTS.has(vitestLocals.get(root) ?? '')) return;
 				const args = node.arguments as AstNode[];
 
 				const calleeName = vitestExport(context, callee);
@@ -175,7 +213,7 @@ const rule: Rule = {
 				if (
 					propertyName(callee) === 'setConfig' &&
 					callee?.type === 'MemberExpression' &&
-					['vi', 'vitest'].includes(vitestExport(context, callee.object) ?? '')
+					VI.has(vitestExport(context, callee.object) ?? '')
 				) {
 					for (const { key, property, value } of objectProperties(args[0])) {
 						if (SET_CONFIG_TIMEOUTS.has(key)) checkTimeout(value);
