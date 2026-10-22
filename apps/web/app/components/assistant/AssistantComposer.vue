@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
+import { useComposerDraft } from '~/composables/useComposerDrafts';
 import { isImeComposing } from '~/utils/imeComposition';
 
 const props = defineProps<{
@@ -11,19 +12,29 @@ const props = defineProps<{
 	send: (text: string) => Promise<{ ok: boolean }>;
 	streaming?: boolean;
 	disabled?: boolean;
+	/** Keeps the unsent question on this device under this name. */
+	draftTarget?: string | null;
 }>();
 const emit = defineEmits<{ stop: [] }>();
 
 const { t } = useI18n();
 
-const text = ref('');
+const { draft, pin } = useComposerDraft('assistant', () => props.draftTarget, { text: '' });
+const text = computed({
+	get: () => draft.value.text,
+	set: (next: string) => (draft.value = { text: next }),
+});
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 // The placeholder disappears once the member types, so the field carries its
 // own name, and the Enter / Shift+Enter hint is wired to it as its description.
 const fieldId = useId();
 const hintId = useId();
 
-const { isSending, submit } = useAcknowledgedDraft(text);
+// A send settles the question it started from, even after an account switch.
+const { isSending, submit } = useAcknowledgedDraft(text, () => {
+	const settle = pin();
+	return (update) => settle((now) => ({ text: update(now.text) }));
+});
 // The last send was refused or failed. The operation has toasted it; this
 // keeps the way back (Retry) next to the question it is about.
 const failed = ref(false);

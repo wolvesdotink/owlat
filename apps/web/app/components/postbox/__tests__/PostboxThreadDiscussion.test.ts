@@ -18,6 +18,7 @@ import {
 	usePostboxThreadDiscussionPanel,
 } from '~/composables/postbox/usePostboxThreadDiscussion';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { useComposerDrafts } from '~/composables/useComposerDrafts';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -81,6 +82,7 @@ function computedData(args: () => unknown) {
 
 beforeEach(() => {
 	state.clear();
+	useComposerDrafts().bindUser(null);
 	chatEnabled.value = true;
 	discussionData.value = { roomId: null, messages: [], count: 0 };
 	postRun.mockClear();
@@ -174,6 +176,23 @@ describe('PostboxThreadDiscussion', () => {
 			body: '@ada can you send them the merged record?',
 		});
 		expect((input.element as HTMLTextAreaElement).value).toBe('');
+	});
+
+	it('keeps each thread’s unsent message, across a switch and a remount', async () => {
+		state.set('postbox-thread-discussion-open', ref(true));
+		const wrapper = mountPanel();
+		await wrapper.find('[data-testid="thread-discussion-input"]').setValue('ask Ben first');
+		await wrapper.setProps({ threadId: 'thread-2' });
+		const input = () =>
+			wrapper.find('[data-testid="thread-discussion-input"]').element as HTMLTextAreaElement;
+		expect(input().value).toBe('');
+		await wrapper.setProps({ threadId: 'thread-1' });
+		expect(input().value).toBe('ask Ben first');
+		wrapper.unmount();
+		expect(
+			(mountPanel().find('[data-testid="thread-discussion-input"]').element as HTMLTextAreaElement)
+				.value
+		).toBe('ask Ben first');
 	});
 
 	it('does not post an empty message', async () => {

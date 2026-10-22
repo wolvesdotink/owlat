@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useComposerDrafts } from '~/composables/useComposerDrafts';
 /**
  * Chat in the Conversations sidebar: the channels and direct messages with
  * something new, most recent first, plus a link to all of chat. A mention
@@ -10,6 +11,7 @@ const { t } = useI18n();
 const route = useRoute();
 
 const { channels, dms } = useChatRooms();
+const drafts = useComposerDrafts();
 
 const MAX_ROWS = 4;
 const rows = computed(() => {
@@ -76,6 +78,7 @@ const activeRoomId = computed(() => /^\/dashboard\/chat\/([^/?#]+)/.exec(route.p
 				:status="row.unread.hasMention ? 'mentioned' : null"
 				:is-unread="row.unread.unreadCount > 0"
 				:is-active="activeRoomId === row.id"
+				:has-draft="drafts.has('chat', row.id)"
 			/>
 			<p v-if="rows.length === 0" class="px-3 py-1 text-2xs text-text-tertiary">
 				{{ t('components.shell.chat.empty') }}

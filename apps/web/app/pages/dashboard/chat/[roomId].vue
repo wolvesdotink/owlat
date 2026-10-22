@@ -173,7 +173,13 @@ const handleLeave = async () => {
 						@delete="(id) => deleteMessage(id)"
 					/>
 					<ChatRoomSkeleton v-else :header="false" />
-					<ChatInput v-if="room.isMember" :send="sendMessage" />
+					<!-- Keyed by room: a send that resolves after a switch settles its own room's draft. -->
+					<ChatInput
+						v-if="room.isMember"
+						:key="room._id"
+						:send="sendMessage"
+						:draft-target="room._id"
+					/>
 				</div>
 
 				<!-- Member panel (right column) -->

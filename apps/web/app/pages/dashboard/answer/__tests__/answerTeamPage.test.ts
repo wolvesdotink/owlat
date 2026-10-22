@@ -26,6 +26,7 @@ import ThreadComposer from '~/components/inbox/ThreadComposer.vue';
 import ComposeModeTabs from '~/components/inbox/ComposeModeTabs.vue';
 import TeamPage from '../t/[threadId].vue';
 import { useReviewApproveUndo } from '~/composables/useReviewApproveUndo';
+import { useComposerDrafts } from '~/composables/useComposerDrafts';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -188,6 +189,8 @@ let queryCount = 0;
 enableAutoUnmount(afterEach);
 beforeEach(() => {
 	state = new Map();
+	// Kept replies live in the page-wide draft book: each case starts with none.
+	useComposerDrafts().bindUser(null);
 	queryCount = 0;
 	activeQueueSession = null;
 	route.query = {};
