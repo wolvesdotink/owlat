@@ -11,6 +11,9 @@ TypeScript with explicit `.ts` import specifiers.
 | `owlat/require-suppression-reason` | Every `oxlint-disable` / `eslint-disable` / `@ts-*` directive says why: a `-- reason` tail or a comment on the line above. TypeScript directives are recognized in every comment form the compiler obeys (`///` and block comments included, checked against the real compiler). Generated files are exempt. The root config keeps `@ts-ignore` / `@ts-nocheck` banned through `ban-ts-comment` and leaves the `@ts-expect-error` reason to this rule. |
 | `owlat/no-test-environment-pragma` | No per-file `@vitest-environment` pragma; the package's vitest config selects the environment. Matched with vitest's own pattern over the whole file text (comments, prose and strings alike). Deliberate exceptions are listed under the rule's `allow` option in `oxlintrc.json`.                                                                                                                                                                    |
 | `owlat/no-test-in-loop`            | No vitest `it` / `test` / `describe` declared inside a loop, including modifier chains, curried factories and tagged-template `.each` tables; use `.each`.                                                                                                                                                                                                                                                                                             |
+| `owlat/no-real-time-wait-in-tests` | No real-clock sleep in a test file (`*.test.*`, `*.spec.*`, `__tests__/`): a `new Promise` resolved by a timer with a delay, a `node:timers/promises` timer, a `sleep` / `delay` helper, `Bun.sleep`, Playwright's `waitForTimeout`. Await the event or drained queue, or drive fake timers; a sleep the same test advances with `vi.advanceTimers*` / `vi.run*Timers` is allowed. Warning, debt in the owlat lint baseline.                           |
+| `owlat/no-wall-clock-in-tests`     | No elapsed wall-clock measurement in a test file: every `performance.now()` / `process.hrtime()`, and a subtraction or comparison between two `Date.now()` readings (stopwatches, deadline loops, clock spins). Single fixture timestamps such as `createdAt: Date.now()` stay allowed, and so do readings in a test that pins `vi.setSystemTime`. Warning, debt in the owlat lint baseline.                                                           |
+| `owlat/no-polling-loop-in-tests`   | No polling loop in a test file: a `for` / `while` / `do…while` whose body awaits a sleep or tick (timer promise, `Promise.resolve()`, `flushPromises`, `nextTick`, or a local helper wrapping one) while a predicate decides when it stops. A fixed number of flushes is fine. Warning, debt in the owlat lint baseline.                                                                                                                               |
 
 ## Adding a rule
 
@@ -24,4 +27,7 @@ TypeScript with explicit `.ts` import specifiers.
 
 Keep the visitor cheap: the rules run on every linted file, so skip a file by
 a plain text check in `create` when it cannot match, before asking for
-comments or scope.
+comments or scope. Shared helpers live next to the rules: `src/ast.ts` (scope
+resolution, imports, the test-file pattern), `src/waits.ts` (what counts as a
+sleep or tick) and `src/fakeClock.ts` (whether vitest's fake timers drive a
+piece of test code).

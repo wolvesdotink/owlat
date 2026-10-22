@@ -1,4 +1,5 @@
-import type { AstNode, Context, Rule, Scope } from '../types.ts';
+import { FUNCTIONS, type Node, propertyName, unwrap, vitestImport } from '../ast.ts';
+import type { AstNode, Context, Rule } from '../types.ts';
 
 /**
  * Tests and suites are declared with `.each`, never inside a loop. A loop hides
@@ -30,60 +31,6 @@ const LOOPS = new Set([
 	'WhileStatement',
 	'DoWhileStatement',
 ]);
-const FUNCTIONS = new Set(['ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration']);
-const WRAPPERS = new Set([
-	'ChainExpression',
-	'ParenthesizedExpression',
-	'TSNonNullExpression',
-	'TSAsExpression',
-	'TSSatisfiesExpression',
-	'TSTypeAssertion',
-]);
-
-type Node = AstNode | null | undefined;
-
-const unwrap = (node: Node): Node => {
-	let current = node;
-	while (current && WRAPPERS.has(current.type) && 'expression' in current) {
-		current = current.expression as Node;
-	}
-	return current;
-};
-
-const propertyName = (node: Node): string | undefined => {
-	if (node?.type !== 'MemberExpression') return undefined;
-	const { property } = node;
-	if (!node.computed && property.type === 'Identifier') return property.name;
-	if (property.type === 'Literal' && typeof property.value === 'string') return property.value;
-	return undefined;
-};
-
-/** The vitest export an identifier is bound to, or `namespace` for `import * as`. */
-const vitestImport = (context: Context, identifier: Node): string | undefined => {
-	if (identifier?.type !== 'Identifier') return undefined;
-	let scope: Scope | null = context.sourceCode.getScope(identifier);
-	while (scope) {
-		const variable = scope.set.get(identifier.name);
-		if (variable) {
-			const definition = variable.defs[0];
-			const declaration = definition?.parent;
-			if (
-				definition?.type !== 'ImportBinding' ||
-				declaration?.type !== 'ImportDeclaration' ||
-				declaration.source.value !== 'vitest'
-			) {
-				return undefined;
-			}
-			const specifier = definition.node;
-			if (specifier.type === 'ImportNamespaceSpecifier') return 'namespace';
-			if (specifier.type !== 'ImportSpecifier') return undefined;
-			const { imported } = specifier;
-			return imported.type === 'Identifier' ? imported.name : String(imported.value);
-		}
-		scope = scope.upper;
-	}
-	return undefined;
-};
 
 /**
  * The test function a declaration callee is built from, if it declares a test

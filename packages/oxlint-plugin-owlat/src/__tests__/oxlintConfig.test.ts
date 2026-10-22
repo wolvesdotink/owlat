@@ -4,7 +4,8 @@
  * gates) and from a workspace with `--config ../../oxlintrc.json` (every
  * workspace `lint` script). The rule suites prove what each rule reports; this
  * suite proves the config loads the plugin in both places, turns the rules on
- * as errors and makes a stale suppression fail.
+ * (as errors, or as warnings for the rules whose debt the owlat lint ratchet
+ * holds) and makes a stale suppression fail.
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -39,6 +40,22 @@ const FIXTURES: Record<string, string> = {
 		`// ${PRAGMA_TAG} node`,
 		"import { it } from 'vitest';",
 		"it('a', () => {});",
+		'',
+	].join('\n'),
+	// The test-timing rules: one real-clock sleep inside one polling loop, and
+	// one stopwatch subtraction.
+	'timing.test.ts': [
+		"import { it } from 'vitest';",
+		'',
+		"it('waits', async () => {",
+		'\tconst started = Date.now();',
+		'\twhile (!ready()) {',
+		'\t\tawait new Promise((resolve) => setTimeout(resolve, 10));',
+		'\t}',
+		'\texpect(Date.now() - started).toBeLessThan(1000);',
+		'});',
+		'',
+		'declare function ready(): boolean;',
 		'',
 	].join('\n'),
 	'unexplained.ts': [
@@ -113,6 +130,12 @@ afterAll(() => {
 const errorCodes = (diagnostics: Diagnostic[] | undefined) =>
 	(diagnostics ?? []).filter((d) => d.severity === 'error').map((d) => d.code ?? d.message);
 
+const warningCodes = (diagnostics: Diagnostic[] | undefined) =>
+	(diagnostics ?? [])
+		.filter((d) => d.severity === 'warning')
+		.map((d) => d.code ?? d.message)
+		.sort();
+
 describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd) => {
 	let byFile: Map<string, Diagnostic[]>;
 
@@ -124,6 +147,15 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 
 	it('loads the plugin and reports a test declared in a loop', () => {
 		expect(errorCodes(byFile.get('loop.test.ts'))).toEqual(['owlat(no-test-in-loop)']);
+	});
+
+	it('warns about a real-clock sleep, a polling loop and an elapsed-time check', () => {
+		expect(errorCodes(byFile.get('timing.test.ts'))).toEqual([]);
+		expect(warningCodes(byFile.get('timing.test.ts'))).toEqual([
+			'owlat(no-polling-loop-in-tests)',
+			'owlat(no-real-time-wait-in-tests)',
+			'owlat(no-wall-clock-in-tests)',
+		]);
 	});
 
 	it('reports a per-file test environment pragma', () => {
