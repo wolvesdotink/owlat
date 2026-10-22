@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * UiTabs draws the tabs; the caller renders the panel. The contract between the
  * two (utils/tabs.ts) must never leave an `aria-controls` pointing at a missing

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `aria-disabled` on UiButton. Links have no native `disabled`, so the button
  * derives it from `disabled`/`loading`. A native button keeps a caller's own

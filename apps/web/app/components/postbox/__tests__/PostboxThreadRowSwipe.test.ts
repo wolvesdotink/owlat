@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxThreadRow — swipe to triage (UX plan idea 21).
  *

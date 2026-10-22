@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The shared Select is a select-only combobox: focus stays on the trigger, the
  * list is a `listbox` whose current option is named by `aria-activedescendant`,

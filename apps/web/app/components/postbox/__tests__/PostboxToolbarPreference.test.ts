@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Toolbar preference semantics (the state the composer's "Aa" toggle drives).
  * The preference defaults to the minimal floating bar and flips reactively when

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `usePostboxCidImages` — the body's inline `cid:` images, loaded from the
  * message's own parts as `data:` URLs.

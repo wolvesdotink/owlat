@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The folder rail's cold-start bridge (plan idea 49).
  *

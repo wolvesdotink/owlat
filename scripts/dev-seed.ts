@@ -1,15 +1,19 @@
 /**
  * `bun run dev:seed` — opt-in dummy accounts + demo data for the LOCAL dev stack.
  *
- * Seeding never happens automatically; a developer who wants a populated
- * instance runs this once after `bun run dev` (or `bun run dev:api`) is up.
- * A developer who wants a blank instance simply never runs it.
+ * `bun run dev:stack` runs it after its first push (`--no-seed` skips that);
+ * against any other local backend it runs only when asked, once
+ * `bun run dev:api` is up. Re-running it is safe: it is idempotent.
+ *
+ * The target is one deployment for both the CLI and the HTTP calls
+ * (scripts/dev-stack/convexTarget.ts): this checkout's `bun run dev:stack`
+ * backend when it has one, otherwise whatever `apps/api` selects.
  *
  * What it does, in order:
  *   1. Refuses to target anything but a localhost Convex site URL.
  *   2. Ensures `INSTANCE_SECRET` and `OWLAT_DEV_MODE=true` are set on the
- *      local deployment (via `bunx convex env` in apps/api), generating a
- *      random secret on first run.
+ *      local deployment (via `bunx convex env`), generating a random secret
+ *      on first run.
  *   3. `POST /seed/admin` — owner account dev@example.com / devpassword12345
  *      (one-shot; a 409 means an owner already exists and is left untouched).
  *   4. `POST /seed/demo` — demo content (topics, contacts, campaigns, …), the
@@ -29,12 +33,12 @@
 
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { hashPassword } from '@owlat/shared/passwordHash';
+import { resolveConvexTarget } from './dev-stack/convexTarget';
 
 const ROOT = join(import.meta.dir, '..');
-const API_DIR = join(ROOT, 'apps', 'api');
+const target = resolveConvexTarget(ROOT, process.env);
 
 const ADMIN = { email: 'dev@example.com', name: 'Dev Admin', password: 'devpassword12345' };
 // Mirrors apps/api/convex/seedDemo/fixtures/accounts.json.
@@ -48,18 +52,12 @@ function fail(message: string): never {
 	process.exit(1);
 }
 
-function parseEnvFile(path: string): Record<string, string> {
-	if (!existsSync(path)) return {};
-	const out: Record<string, string> = {};
-	for (const line of readFileSync(path, 'utf8').split('\n')) {
-		const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
-		if (match) out[match[1]!] = match[2]!.replace(/^['"]|['"]$/g, '');
-	}
-	return out;
-}
-
 function convexCli(args: string[]): { status: number | null; stdout: string; stderr: string } {
-	const result = spawnSync('bunx', ['convex', ...args], { cwd: API_DIR, encoding: 'utf8' });
+	const result = spawnSync('bunx', ['convex', ...args], {
+		cwd: target.apiDir,
+		env: target.cliEnv,
+		encoding: 'utf8',
+	});
 	return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
 
@@ -113,24 +111,21 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	const apiEnv = parseEnvFile(join(API_DIR, '.env.local'));
-	const siteUrl = (
-		process.env['CONVEX_SITE_URL'] ??
-		apiEnv['CONVEX_SITE_URL'] ??
-		'http://127.0.0.1:3211'
-	).replace(/\/$/, '');
+	const siteUrl = target.siteUrl;
 
 	const host = new URL(siteUrl).hostname;
 	if (!['127.0.0.1', 'localhost', '::1'].includes(host)) {
 		fail(`This script only seeds the LOCAL dev stack, but CONVEX_SITE_URL points at ${host}.`);
 	}
 
-	console.log(`Seeding local dev stack at ${siteUrl}\n`);
+	console.log(`Seeding local dev stack at ${siteUrl} (deployment from ${target.source})\n`);
 
 	try {
 		await fetch(siteUrl);
 	} catch {
-		fail(`Local Convex backend is not reachable at ${siteUrl}.\n  Start it first: bun run dev:api`);
+		fail(
+			`Local Convex backend is not reachable at ${siteUrl}.\n  Start it first: bun run dev:stack (or bun run dev:api)`
+		);
 	}
 
 	// 1. Deployment env: instance secret + dev-mode opt-in for /seed and /dev routes.

@@ -13,8 +13,9 @@ import { CORPUS, toComposeInput } from './fixtures/corpus';
 const MAX_LINE_OCTETS = 998;
 
 describe('composeMessage output line-length lint (RFC 5322 §2.1.1)', () => {
-	for (const testCase of CORPUS) {
-		it(`keeps every line <= 998 octets: ${testCase.name}`, () => {
+	it.each(CORPUS.map((testCase) => [testCase.name, testCase] as const))(
+		'keeps every line <= 998 octets: %s',
+		(_name, testCase) => {
 			const { raw } = composeMessage(toComposeInput(testCase));
 			const eml = raw.toString('utf-8');
 			// The wire must be CRLF-framed with no bare CR or LF; splitting on CRLF
@@ -25,6 +26,6 @@ describe('composeMessage output line-length lint (RFC 5322 §2.1.1)', () => {
 			for (const line of lines) {
 				expect(Buffer.byteLength(line, 'utf-8')).toBeLessThanOrEqual(MAX_LINE_OCTETS);
 			}
-		});
-	}
+		}
+	);
 });

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A clearsigned text body shows its signed block alone, and the signature
  * verdict stands only beside that block (issue #1311):
@@ -588,9 +587,11 @@ const INVITE = {
 const withInvite = { attachments: [INVITE], hasAttachments: true };
 
 describe('PostboxReaderMessage · nothing body-derived renders beside a clearsigned verdict', () => {
-	for (const reduced of [false, true]) {
-		const mode = reduced ? 'Answer mode' : 'the reader';
-		it(`${mode}: an unsigned invite is listed, never rendered, and the note says so`, async () => {
+	it.each(
+		[false, true].map((reduced) => [reduced ? 'Answer mode' : 'the reader', reduced] as const)
+	)(
+		'%s: an unsigned invite is listed, never rendered, and the note says so',
+		async (_mode, reduced) => {
 			const w = mountCard(
 				{ textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: VERIFIED, ...withInvite },
 				{ secureClass: 'pgp-clearsigned', hideBody: true, hasInvite: true, reduced }
@@ -603,8 +604,8 @@ describe('PostboxReaderMessage · nothing body-derived renders beside a clearsig
 				'false'
 			);
 			expect(w.get('[data-testid="signature-badge-summary"]').text()).toBe('Signed · verified');
-		});
-	}
+		}
+	);
 
 	it('a stored clearsigned body keeps the invite back while loading and after', async () => {
 		let resolve!: (v: unknown) => void;
@@ -693,24 +694,23 @@ const SIGNED_PDF = {
 };
 
 describe('PostboxReaderMessage · a MIME signature part is not a signed attachment', () => {
-	for (const reduced of [false, true]) {
-		const mode = reduced ? 'Answer mode' : 'the reader';
-		it(`${mode}: the renamed signature part is not listed, the signed one is`, async () => {
-			const w = mountCard(
-				{
-					inboundSignatureInfo: VERIFIED_MIME,
-					attachments: [SIGNED_PDF, SIGNATURE_PART],
-					hasAttachments: true,
-				},
-				{ secureClass: 'pgp-signed', reduced }
-			);
-			await flushPromises();
+	it.each(
+		[false, true].map((reduced) => [reduced ? 'Answer mode' : 'the reader', reduced] as const)
+	)('%s: the renamed signature part is not listed, the signed one is', async (_mode, reduced) => {
+		const w = mountCard(
+			{
+				inboundSignatureInfo: VERIFIED_MIME,
+				attachments: [SIGNED_PDF, SIGNATURE_PART],
+				hasAttachments: true,
+			},
+			{ secureClass: 'pgp-signed', reduced }
+		);
+		await flushPromises();
 
-			const rows = w.get('[data-testid="PostboxMessageAttachments"]').text();
-			expect(rows).toBe('contract.pdf');
-			expect(chip(w).attributes('data-signature')).toBe('present');
-		});
-	}
+		const rows = w.get('[data-testid="PostboxMessageAttachments"]').text();
+		expect(rows).toBe('contract.pdf');
+		expect(chip(w).attributes('data-signature')).toBe('present');
+	});
 
 	it('a signature part named like an invite raises no invite card', async () => {
 		const w = mountCard(

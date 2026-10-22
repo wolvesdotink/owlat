@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Body parts are split for storage one by one, so a newsletter's HTML part
  * (over the inline threshold) sits in a blob while its short text alternative

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The account menu's key hints are spelled for the machine: a Windows or
  * Linux user used to be told ⌘J and ⌘⇧F, keys their keyboard does not have.

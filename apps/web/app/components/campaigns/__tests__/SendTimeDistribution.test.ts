@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The predicted sends per hour under "Optimized per contact": every state the
  * panel can be in, and that the bars and the source lines read the preview.

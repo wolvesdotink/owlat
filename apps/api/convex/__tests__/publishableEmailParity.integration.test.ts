@@ -234,7 +234,10 @@ describe.each(drivers)('publishable email parity — $table', (driver) => {
 
 		await driver.remove(t, id);
 
-		expect(await getRow(t, id)).toBeNull();
+		// A marketing template goes to Recently deleted, a transactional email
+		// is removed; neither is live any more.
+		const row = await getRow(t, id);
+		expect(row === null || ('deletedAt' in row && row.deletedAt !== undefined)).toBe(true);
 		expect((await t.run((ctx) => ctx.db.get(blockId)))?.usageCount).toBe(1);
 	});
 

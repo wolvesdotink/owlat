@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Loading / loaded / empty presentation of PostboxThreadList:
  *   - first load (loading, no rows yet) renders the layout-matching skeleton

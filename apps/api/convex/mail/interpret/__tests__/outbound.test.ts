@@ -586,10 +586,6 @@ describe('Team send finalization → thread brief', () => {
 		expect((await t.run(async (ctx) => ctx.db.get(itemId)))?.disposition).toBe('failed');
 	});
 
-	it.todo(
-		'a dispatched follow-up stores its text snapshot (needs sources.threadOfSource to follow followUpId)'
-	);
-
 	it('a failed team reply fails the dispositions it answered', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, inboundId } = await seedTeamThread(t);

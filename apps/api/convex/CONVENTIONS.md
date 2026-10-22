@@ -647,6 +647,20 @@ This codebase tracks the official Convex AI/cursor rules
   structurally typed on `db.get`, so both `QueryCtx` and `MutationCtx` satisfy
   it. Keep hand-rolling `throwNotFound` only where the guard is not a plain
   `get(id)` null check (e.g. `query().unique()` or outcome-based results).
+- **Classify failures by type, never by wording.** A failure one backend
+  module raises for another to branch on is an `InternalFailure` from
+  `_utils/errors.ts`: a kind from the closed per-domain list there, a
+  `retryable` flag and a few bounded attributes. The caller switches on
+  `internalFailureOf(error)?.kind`, which also reads the failure after the
+  runtime rebuilds it on its way out of a nested `ctx.run*` call (a plain
+  `Error` subclass loses its class there). An Operation error is read by
+  `extractOperationError(error)?.category`. Never put an address, a message
+  body or a raw cause into the attributes; `retryable` describes the failure
+  and does not replace the retry policy that owns the decision.
+  `scripts/check-error-classifiers.sh` (in `bun run lint`) flags
+  `message.includes(…)`-style classifiers; only text this codebase does not
+  write (platform errors with no code, external provider replies) is listed in
+  its baseline.
 - **One UTC day.** Day starts, day keys and zero-filled daily series come
   from `lib/clock.ts` (`utcDayStart`, `nextUtcDayStart`, `utcDayKey`,
   `denseDailySeries`, `resolveNow`), which imports nothing. A writer and a
@@ -1035,6 +1049,7 @@ booleans, and are exempt.
 Tables with `deletedAt: v.optional(v.number())`:
 
 - `contacts`, `userProfiles`, `emailSends`, `transactionalSends`
+- `campaigns`, `automations`, `emailTemplates` (Recently deleted, below)
 
 Rules:
 
@@ -1057,6 +1072,41 @@ Rules:
   steps inline for callers that already batch (organization wipe, sample
   data). Never `.collect()` a contact's children in one transaction on a new
   erasure path — add a phase.
+
+Marketing items (`campaigns`, `automations`, `emailTemplates`) carry the same
+stamp plus `deletedBy` (`lib/validators/softDelete.ts`) and appear in the
+dashboard's Recently deleted page:
+
+- Delete, restore and the purge belong to each domain's `deletion.ts`
+  (`campaigns/`, `automations/`, `emailTemplates/`). A user delete stamps the
+  row and keeps its children; restore needs the permission the delete needed,
+  whoever deleted it. Both are idempotent: a repeated delete keeps the first
+  stamp and moves no counter.
+- Every read that serves a user, an API key or the send path treats a deleted
+  row as missing: `getLive` / `getLiveOrThrow` / `isLive` from
+  `lib/softDelete.ts` for lookups by id, the `by_deleted_at*` indexes (pinned to
+  `deletedAt === undefined`) for scans, so a deleted row never uses up a
+  `take`/`first` limit that a live row should fill, and `softDelete: true` on
+  the listing descriptor, whose filter and facet indexes then lead with
+  `deletedAt`. The listing counters count live rows only
+  (`lib/listingCounters.ts`), so a delete and a restore move a row out of and
+  back into its bucket.
+- The lifecycles refuse every transition of a deleted row, and a delete never
+  leaves one on the send path: a scheduled campaign is unscheduled first, a
+  sending one and an active automation are refused.
+- A deleted row is frozen: nothing rewrites it while it waits (saved-block
+  propagation passes a deleted template by; restore catches up its links), and
+  what hangs off it is not readable either: a public query keyed by the row or
+  by one of its children (a template's history, a campaign's report and sends,
+  an automation's runs and step analytics) checks the parent with `getLive`
+  first and answers as for an unknown id. The source guard in
+  `__tests__/marketingSoftDeleteReads.integration.test.ts` lists every such
+  query and fails when a new one has no probe.
+- The daily `marketing/recentlyDeleted.ts:purgeExpired` removes rows deleted
+  more than 30 days ago through each domain's purge, within one row and byte
+  budget per transaction shared by all three kinds, and reschedules itself
+  while a backlog remains. A row whose children outrun the budget gets
+  `purgeStartedAt` and is resumed next time; restore refuses such a row.
 
 ### Polymorphic foreign keys
 

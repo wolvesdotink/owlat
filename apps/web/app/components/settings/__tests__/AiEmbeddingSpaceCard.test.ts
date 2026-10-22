@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The embedding search section (U1): the search state and coverage, a
  * re-embed that is free and direct for a local embedder, paid and confirmed

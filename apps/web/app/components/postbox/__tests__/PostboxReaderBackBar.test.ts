@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The bar over an open conversation. Below lg it is the drill-in back; in Zen,
  * where the reader is the whole screen, it also steps to the previous and next

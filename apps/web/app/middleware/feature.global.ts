@@ -31,7 +31,8 @@ declare module '#app' {
 		/**
 		 * Opt a route OUT of the path-derived feature gate below. Set on the
 		 * rare page under a gated path prefix that must stay reachable even when
-		 * the feature is off (none today — present for completeness).
+		 * the feature is off and gates its own content instead (Recently
+		 * deleted, whose templates tab needs no flag).
 		 */
 		publicFeature?: boolean;
 	}

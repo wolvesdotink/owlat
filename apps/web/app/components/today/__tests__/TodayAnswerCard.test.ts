@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Today's answer card (#774): the line under the big number splits it by
  * source and ADDS UP to it; drafts ready and the time estimate sit on their

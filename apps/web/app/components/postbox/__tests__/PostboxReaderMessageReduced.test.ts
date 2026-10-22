@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The message card's reduced cut, for Answer mode (plan §09):
  *   - no Star / Reply / Reply all / Forward / ⋯ row (you are already replying);

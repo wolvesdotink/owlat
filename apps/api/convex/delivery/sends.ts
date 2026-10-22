@@ -4,7 +4,7 @@ import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
-import { getOrThrow } from '../_utils/errors';
+import { getLive, getLiveOrThrow } from '../lib/softDelete';
 import { abVariantValidator } from '../lib/literalValidators';
 import { sendTimeGroupValidator } from '../lib/validators/sendTime';
 import { hasClicked, hasOpened, hasReachedDelivered } from './sendEngagement';
@@ -17,7 +17,9 @@ const CAMPAIGN_REPORT_SEND_SCAN_LIMIT = 10_000;
 
 /**
  * Shared prologue of the campaign report queries: require the campaign to
- * exist, then load its first CAMPAIGN_REPORT_SEND_SCAN_LIMIT `emailSends` rows.
+ * exist and not be in Recently deleted (its sends stay as delivery history,
+ * but the report reads as missing like the campaign does), then load its
+ * first CAMPAIGN_REPORT_SEND_SCAN_LIMIT `emailSends` rows.
  * The caller's session is already checked by the `authedQuery` floor
  * (`requireOrgMember`), so it is not resolved a second time here.
  */
@@ -25,7 +27,7 @@ async function loadCampaignSendsForReport(
 	ctx: QueryCtx,
 	campaignId: Id<'campaigns'>
 ): Promise<Doc<'emailSends'>[]> {
-	await getOrThrow(ctx, campaignId, 'Campaign');
+	await getLiveOrThrow(ctx, campaignId, 'Campaign');
 
 	return await ctx.db
 		.query('emailSends')
@@ -41,8 +43,9 @@ export const get = authedQuery({
 		const send = await ctx.db.get(args.id);
 		if (!send) return null;
 
-		// Campaign still needs lookup (could be denormalized in future if needed)
-		const campaign = await ctx.db.get(send.campaignId);
+		// A campaign in Recently deleted reads as missing, the same as a purged
+		// one: the send stays as delivery history without its name or subject.
+		const campaign = await getLive(ctx, send.campaignId);
 
 		return {
 			...send,

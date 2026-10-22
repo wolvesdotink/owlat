@@ -2,16 +2,13 @@
  * Pure group builders for the CONTEXTUAL palette providers a mounted surface
  * registers ("on this page" verbs).
  *
- * The provider registry (`./commandPaletteRegistry`) has always supported this;
- * until now the Postbox layout was its only registrant, so nothing proved that a
- * second and third surface could contribute without stepping on each other.
- * These two — the campaigns command center and the open mail conversation — are
- * the pattern-setters: composition lives here as pure functions (ids,
- * priorities, group keys/orders/caps, route gates), and the composables beside
- * them (`useCampaignCommandSurface`, `usePostboxThreadCommandSurface`) inject
- * the reactive reads, the translator and the `run` closures. Same split as
+ * Composition lives here as pure functions (ids, priorities, group
+ * keys/orders/caps, route gates), and the composables beside them
+ * (`useCampaignCommandSurface`, `useComposerSavedReplyPicker`) inject the
+ * reactive reads, the translator and the `run` closures. Same split as
  * `commandPaletteCore.ts`, same reason: the composition is unit-testable without
- * mounting a page.
+ * mounting a page. The open conversation's verbs have their own module,
+ * `commandPaletteThreadSurfaces.ts`.
  *
  * Two item ids are deliberately SHARED with core providers rather than made
  * unique. `collectProviderGroups` consults core first and drops an id it has
@@ -79,6 +76,7 @@ export function buildCampaignSurfaceGroups(
 			// that reaches the search index shows one row, not two — and an idle
 			// palette (search needs two characters) still lists what is on screen.
 			id: `search:${row.id}`,
+			objectId: row.id,
 			label: row.name,
 			subtitle: deps.t(
 				row.opensReport
@@ -102,70 +100,6 @@ export function buildCampaignSurfaceGroups(
 	];
 }
 
-// ── Open mail conversation ──────────────────────────────────────────────────
-
-/**
- * Registry id PREFIX of the thread provider. Two readers can be mounted at once
- * (the folder reader and the Today overlay), so each instance claims its own id
- * — first-claimant-wins would otherwise let the survivor of a pair be the one
- * whose registration was ignored, leaving the palette with no thread verbs at
- * all. The shared GROUP key below collapses the duplicate contributions instead.
- */
-export const POSTBOX_THREAD_COMMAND_PROVIDER_ID_PREFIX = 'surface:postbox-thread';
-
-/** Consulted before the Postbox layout's provider (15) within the external tier. */
-export const POSTBOX_THREAD_COMMAND_PROVIDER_PRIORITY = 5;
-
-/** Group key of the open-conversation block (dedupes two mounted readers). */
-export const POSTBOX_THREAD_COMMAND_GROUP_KEY = 'postbox-thread';
-
-export interface ThreadSurfaceDeps {
-	/** Subject of the open message, shown as the muted "what this acts on" line. */
-	subject: () => string;
-	t: (key: string) => string;
-	onArchive: () => void;
-	onReply: () => void;
-}
-
-/**
- * The open conversation's contextual group. Archive and Reply are the two verbs
- * the reader's own toolbar leads with, and neither was reachable from ⌘K: the
- * Postbox layout's provider only carries the actions its overflow menu hides
- * (reply-all, forward, spam, …). Pure.
- */
-export function buildThreadSurfaceGroups(deps: ThreadSurfaceDeps, query: string): PaletteGroup[] {
-	const subject = deps.subject().trim();
-	const items: PaletteItem[] = [
-		{
-			id: 'postbox:thread-reply',
-			label: deps.t('shared.commandPaletteSurfaces.thread.reply'),
-			...(subject ? { subtitle: subject } : {}),
-			icon: 'lucide:reply',
-			shortcutId: 'postbox.reply',
-			run: deps.onReply,
-		},
-		{
-			id: 'postbox:thread-archive',
-			label: deps.t('shared.commandPaletteSurfaces.thread.archive'),
-			...(subject ? { subtitle: subject } : {}),
-			icon: 'lucide:archive',
-			shortcutId: 'postbox.archive',
-			run: deps.onArchive,
-		},
-	];
-	return [
-		{
-			key: POSTBOX_THREAD_COMMAND_GROUP_KEY,
-			heading: deps.t('shared.commandPaletteSurfaces.thread.heading'),
-			// Same tier as the Postbox layout's mailbox actions (0); the lower
-			// provider priority puts the open conversation first.
-			order: 0,
-			mode: 'commands',
-			items: filterItems(items, query),
-		},
-	];
-}
-
 // ── Saved replies of the focused composer ───────────────────────────────────
 
 /**
@@ -178,7 +112,7 @@ export const SAVED_REPLY_COMMAND_PROVIDER_ID_PREFIX = 'surface:saved-replies';
 /** Consulted before the open conversation's verbs: the composer has the focus. */
 export const SAVED_REPLY_COMMAND_PROVIDER_PRIORITY = 1;
 
-/** How many replies the group lists; the composer's own picker has them all. */
+/** How many rows the group lists; the submenu (and the composer's picker) has them all. */
 const SAVED_REPLY_GROUP_CAP = 8;
 
 export interface SavedReplySurfaceDeps {
@@ -189,21 +123,47 @@ export interface SavedReplySurfaceDeps {
 	onSaveCurrent: () => void;
 }
 
-/** "Insert saved reply" rows for the focused composer, plus "Save as reply". Pure. */
+/**
+ * The focused composer's saved replies: "Insert saved reply…" (a submenu of every
+ * reply, most used first) and "Save as reply". Once something is typed the
+ * matching replies also show directly, so a reply found by its name or `;`
+ * shortcut is one Enter away, not two. Pure.
+ */
 export function buildSavedReplyGroups(deps: SavedReplySurfaceDeps, query: string): PaletteGroup[] {
-	const items: PaletteItem[] = deps.replies().map((reply) => ({
+	const replyItems: PaletteItem[] = deps.replies().map((reply) => ({
 		id: `saved-reply:${reply._id}`,
 		label: reply.name,
 		...(reply.shortcut ? { subtitle: `;${reply.shortcut}` } : {}),
 		icon: 'lucide:message-square-quote',
 		run: () => deps.onInsert(reply._id),
 	}));
+	const items: PaletteItem[] = [];
+	if (replyItems.length > 0) {
+		items.push({
+			id: 'saved-reply:insert',
+			label: deps.t('shared.savedReplies.insertSubmenu'),
+			icon: 'lucide:message-square-quote',
+			run: () => {},
+			argument: {
+				promptKey: 'shared.savedReplies.paletteHeading',
+				headingKey: 'shared.savedReplies.paletteHeading',
+				icon: 'lucide:message-square-quote',
+				options: replyItems.map((item) => ({
+					id: item.id,
+					label: item.label,
+					...(item.subtitle ? { subtitle: item.subtitle } : {}),
+					run: item.run,
+				})),
+			},
+		});
+	}
 	items.push({
 		id: 'saved-reply:save-current',
 		label: deps.t('shared.savedReplies.saveCurrent'),
 		icon: 'lucide:bookmark-plus',
 		run: deps.onSaveCurrent,
 	});
+	const typed = query.trim() !== '';
 	return [
 		{
 			key: 'saved-replies',
@@ -211,7 +171,7 @@ export function buildSavedReplyGroups(deps: SavedReplySurfaceDeps, query: string
 			order: 0,
 			cap: SAVED_REPLY_GROUP_CAP,
 			mode: 'commands',
-			items: filterItems(items, query),
+			items: filterItems(typed ? [...items, ...replyItems] : items, query),
 		},
 	];
 }

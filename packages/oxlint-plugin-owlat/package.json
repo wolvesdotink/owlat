@@ -1,0 +1,33 @@
+{
+	"name": "@owlat/oxlint-plugin-owlat",
+	"version": "0.6.16",
+	"private": true,
+	"description": "Owlat's own oxlint rules, loaded through `jsPlugins` in the root oxlintrc.json. Each rule encodes a repository invariant that needs the AST (or the comment list) rather than a text grep.",
+	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
+	"type": "module",
+	"sideEffects": false,
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts"
+		}
+	},
+	"scripts": {
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"oxlint": "^1.69.0",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

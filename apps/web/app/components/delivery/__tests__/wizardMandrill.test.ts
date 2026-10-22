@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Mailchimp Transactional on the connect-a-provider wizard.
  *

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { nextTick } from 'vue';
 import { getFunctionName } from 'convex/server';
 import { createFetchError } from 'ofetch';
 import { createI18n } from 'vue-i18n';
@@ -25,6 +26,7 @@ vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
 vi.stubGlobal('useConvex', () => ({ query: queryMock, mutation: mutationMock }));
 
 const { useSystemUpdateRun } = await import('../useSystemUpdateRun');
+const { ROLLOUT_HEARTBEAT_MS } = await import('~/lib/backendConnection');
 
 beforeEach(() => {
 	apiFetchMock.mockReset();
@@ -220,6 +222,55 @@ describe('useSystemUpdateRun', () => {
 			runId: 'run-1',
 			status: 'success',
 			error: 'Not ready after 665s: still starting: clamav.',
+		});
+	});
+
+	describe('rollout heartbeat', () => {
+		const beats = () =>
+			mutationMock.mock.calls.filter(
+				([ref]) =>
+					getFunctionName(ref as Parameters<typeof getFunctionName>[0]) ===
+					'systemUpdates:recordUpdateActivity'
+			).length;
+
+		/** Confirm an update whose request stays out, as a real rollout's does. */
+		async function following() {
+			apiFetchMock.mockReturnValue(new Promise(() => {}));
+			const run = startedRun();
+			void run.confirmUpdate();
+			await nextTick();
+			return run;
+		}
+
+		it('confirms the rollout every heartbeat while it follows one, and stops on a verdict', async () => {
+			vi.useFakeTimers();
+			try {
+				const run = await following();
+				expect(beats()).toBe(0);
+
+				await vi.advanceTimersByTimeAsync(ROLLOUT_HEARTBEAT_MS * 2);
+				expect(beats()).toBe(2);
+
+				run.onUpdateFailed('Timed out');
+				await nextTick();
+				await vi.advanceTimersByTimeAsync(ROLLOUT_HEARTBEAT_MS * 3);
+				expect(beats()).toBe(2);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it('sends one beat at a time, so beats queued while the backend restarts cannot pile up', async () => {
+			vi.useFakeTimers();
+			try {
+				mutationMock.mockImplementation(() => new Promise(() => {}));
+				await following();
+
+				await vi.advanceTimersByTimeAsync(ROLLOUT_HEARTBEAT_MS * 3);
+				expect(beats()).toBe(1);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 });

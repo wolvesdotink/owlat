@@ -148,7 +148,8 @@ describe('usePostboxReaderComposer', () => {
 
 	it('saves an AI-suggested body into a draft before opening it in Answer mode', async () => {
 		const { openReplyWithBody } = makeComposer((run) => run());
-		await openReplyWithBody(message, 'Tuesday works');
+		// True: the text is on a saved draft, the caller may let go of its copy.
+		expect(await openReplyWithBody(message, 'Tuesday works')).toBe(true);
 		await flush();
 
 		expect(mutations.map((m) => m.op)).toEqual(['create', 'update']);
@@ -165,7 +166,8 @@ describe('usePostboxReaderComposer', () => {
 	it('keeps the suggestion for Answer mode when the draft cannot be created', async () => {
 		createResult = { ok: false };
 		const { openReplyWithBody } = makeComposer((run) => run());
-		await openReplyWithBody(message, 'Tuesday works');
+		// False: only session state holds it, the caller keeps its own copy.
+		expect(await openReplyWithBody(message, 'Tuesday works')).toBe(false);
 
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/answer/m/msg_1?kind=reply');
 		expect(useAnswerPendingLead().take('msg_1')).toBe('Tuesday works');

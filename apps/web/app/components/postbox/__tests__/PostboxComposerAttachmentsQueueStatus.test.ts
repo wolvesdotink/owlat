@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Postbox attachment row tells a screen reader about its upload queue
  * (plan item OW-067): a polite status region that is mounted before any file

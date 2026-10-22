@@ -22,6 +22,12 @@ const getConvexAuthToken = vi.hoisted(() => vi.fn(async () => 'jwt'));
 
 vi.mock('convex/browser', () => ({
 	ConvexClient: class {
+		connectionState() {
+			return { isWebSocketConnected: true, hasEverConnected: true };
+		}
+		subscribeToConnectionState() {
+			return () => {};
+		}
 		constructor() {
 			convex.constructed++;
 		}

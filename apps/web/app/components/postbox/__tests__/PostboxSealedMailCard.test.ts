@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxSealedMailCard — "your mail is sealed" in Preferences (plan idea 55).
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Deliverability measurement screen — every state (plan D2, D5, D10, D14).
  *

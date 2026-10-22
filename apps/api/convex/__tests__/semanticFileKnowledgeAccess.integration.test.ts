@@ -63,7 +63,8 @@ beforeEach(() => {
 		embedding: [0.1, 0.2, 0.3],
 		usage: { tokens: 1 },
 	}));
-	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+	// The clock is fake too, so a test moves it past the rows it wrote.
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async () => new Response('not found', { status: 404 }))
@@ -187,10 +188,8 @@ describe('knowledge extracted from a captured file', () => {
 				updatedAt: 1,
 			})
 		);
-		const until = Date.now() + 3;
-		while (Date.now() < until) {
-			// let the walk start after the entry was written
-		}
+		// The walk starts after the entry was written.
+		vi.setSystemTime(Date.now() + 1_000);
 		await t.mutation(internal.migrations[MIGRATION].run, {});
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 

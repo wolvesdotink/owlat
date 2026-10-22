@@ -1,6 +1,9 @@
-const MAX_RETRY_DELAY_MS = 60 * 60 * 1000;
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
+
+/** One minute at count zero, doubling per failed replay, capped at an hour. */
+const WEBHOOK_DLQ_RETRY: RetryPolicy = { baseMs: 60_000, capMs: 60 * 60 * 1000 };
 
 /** The one retry policy used by production and tests. */
 export function webhookDlqRetryDelayMs(attempts: number): number {
-	return Math.min(60_000 * 2 ** Math.max(0, attempts), MAX_RETRY_DELAY_MS);
+	return nextDelay(WEBHOOK_DLQ_RETRY, attempts);
 }

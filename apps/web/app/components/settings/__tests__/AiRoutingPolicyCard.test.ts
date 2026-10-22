@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The AI routing policy card (U2): every switch with its one-line
  * explanation and its default named, the shadow allowance in dollars as the

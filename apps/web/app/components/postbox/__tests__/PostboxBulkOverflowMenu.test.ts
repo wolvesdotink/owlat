@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The bulk bar's ⋯ overflow — the five demoted verbs and their contextual
  * swaps.

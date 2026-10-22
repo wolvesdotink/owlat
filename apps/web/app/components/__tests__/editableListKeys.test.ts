@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Editable lists keyed by row, not by index.
  *

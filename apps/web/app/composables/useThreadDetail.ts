@@ -4,6 +4,7 @@ import type { OperationError } from '@owlat/shared/operationError';
 import { findDraftGaps } from '@owlat/shared/answerMode';
 import { splitQuotedText } from '@owlat/shared/quotedText';
 import type { TeamThreadReply } from '~/utils/teamThreadReply';
+import type { TeamThreadPriority } from '~/utils/teamThreadPriority';
 import { isDraftGapsRefusal } from '~/utils/answerDraft';
 
 export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
@@ -79,6 +80,9 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	});
 	const { run: cancelFollowUpOperation } = useBackendOperation(api.inbox.followUps.cancelFollowUp, {
 		label: () => t('shared.useThreadDetail.cancelFollowUp'),
+	});
+	const { run: setThreadPriority } = useBackendOperation(api.inbox.priority.setThreadPriority, {
+		label: () => t('shared.useThreadDetail.setPriority'),
 	});
 
 	// Actions
@@ -162,6 +166,11 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		return await unsnoozeThread({ threadId: threadId.value });
 	};
 
+	// Mark the thread urgent / normal / low (normal clears it server-side).
+	const handleSetPriority = async (priority: TeamThreadPriority) => {
+		return await setThreadPriority({ threadId: threadId.value, priority });
+	};
+
 	return {
 		// Data
 		thread,
@@ -184,5 +193,6 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		handleStatusChange,
 		handleSnooze,
 		handleUnsnooze,
+		handleSetPriority,
 	};
 }

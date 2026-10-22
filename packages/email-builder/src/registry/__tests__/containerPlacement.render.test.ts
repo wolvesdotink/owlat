@@ -58,15 +58,13 @@ describe('canBeInContainer blocks are accepted at the renderer container placeme
 	// Class-wide invariant: a block the builder allows in a container must not be
 	// dropped by placement. If its default content renders at root, it must also
 	// contribute markup when nested in a container.
-	for (const type of containerTypes) {
-		it(`does not drop "${type}" at the container placement`, () => {
-			const child = { id: generateId(), type, content: createDefaultContent(type as BlockType) };
-			const rootRendersSomething = renderBlockFragment(child as EditorBlock).trim().length > 0;
-			if (rootRendersSomething) {
-				expect(containerContribution(child)).toBeGreaterThan(0);
-			}
-		});
-	}
+	it.each(containerTypes)('does not drop "%s" at the container placement', (type) => {
+		const child = { id: generateId(), type, content: createDefaultContent(type as BlockType) };
+		const rootRendersSomething = renderBlockFragment(child as EditorBlock).trim().length > 0;
+		if (rootRendersSomething) {
+			expect(containerContribution(child)).toBeGreaterThan(0);
+		}
+	});
 
 	// Concrete regression: a social block with real links used to vanish from the
 	// sent email when nested in a container. It must now render its icons.

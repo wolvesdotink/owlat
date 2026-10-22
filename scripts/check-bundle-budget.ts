@@ -32,8 +32,15 @@ import { kb, measure, readWebBuild, staticClosure } from './bundle-closure';
  * (242). Raised on 2026-10-03 the same way, from 241.8 KB plus about 5%: the
  * entry had grown to within 0.2 KB of the old budget as features landed, so
  * the next eager addition would have failed.
+ *
+ * Raised to 256 on 2026-10-22 from 254.1 KB: every icon the app names is
+ * bundled into this closure on purpose (nuxt.config.ts `icon.clientBundle`, so
+ * an offline desktop never fetches one), and each new lazy chunk adds an entry
+ * to the entry's preload map, so features that add icons or pages grow it by a
+ * few hundred bytes with nothing turning eager. 2 KB of headroom covers that
+ * drift while a feature imported eagerly (several KB at least) still fails.
  */
-const GZIP_BUDGET_KB = 254;
+const GZIP_BUDGET_KB = 256;
 
 const { publicDir, entry } = readWebBuild('check-bundle-budget', process.argv[2]);
 

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE INDEPENDENCE SCREEN, and the arithmetic behind the numbers on it.
  *

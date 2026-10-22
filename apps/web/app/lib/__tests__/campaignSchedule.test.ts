@@ -36,11 +36,14 @@ describe('parseScheduledStart', () => {
 		{ name: 'a garbage pair', date: '2026-13-45', time: '25:61', expected: null },
 	];
 
-	for (const { name, date, time, expected } of cases) {
-		it(`returns ${expected === null ? 'null' : 'the instant'} for ${name}`, () => {
-			expect(parseScheduledStart(date, time, now)).toBe(expected);
-		});
-	}
+	it.each(
+		cases.map(
+			({ name, date, time, expected }) =>
+				[expected === null ? 'null' : 'the instant', name, date, time, expected] as const
+		)
+	)('returns %s for %s', (_result, _name, date, time, expected) => {
+		expect(parseScheduledStart(date, time, now)).toBe(expected);
+	});
 
 	it('judges the past against the injected clock, never the real one', () => {
 		// Same inputs, two clocks: the only thing that decides is the parameter.

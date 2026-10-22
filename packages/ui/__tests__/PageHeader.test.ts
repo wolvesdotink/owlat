@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The header primitive exists to stop the ladder drifting, so the ladder is
  * what this suite pins.

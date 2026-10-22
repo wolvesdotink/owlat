@@ -64,8 +64,9 @@ describe('contentRules — registry lifecycle', () => {
 describe('contentRules — every installed rule satisfies the ContentScanRule contract', () => {
 	const emptyInput: ScanInput = { subject: '', html: '', text: '', urls: [] };
 
-	for (const rule of contentRules.values()) {
-		describe(`rule "${rule.id}"`, () => {
+	describe.each([...contentRules.values()].map((rule) => [rule.id, rule] as const))(
+		'rule "%s"',
+		(_id, rule) => {
 			it('returns an array of ContentFlag objects', () => {
 				const result = rule.scan(emptyInput);
 				expect(Array.isArray(result)).toBe(true);
@@ -81,8 +82,8 @@ describe('contentRules — every installed rule satisfies the ContentScanRule co
 				const second = rule.scan(emptyInput);
 				expect(first).toEqual(second);
 			});
-		});
-	}
+		}
+	);
 });
 
 // =============================================================================

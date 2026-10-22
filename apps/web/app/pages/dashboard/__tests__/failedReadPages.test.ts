@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A failed read on a top-level list or detail page is not an empty list and
  * not a missing record (#721). Each page below is mounted with every query it
@@ -147,6 +146,11 @@ const PAGES: PageCase[] = [
 		name: 'operator console',
 		load: () => import('../admin/operator/index.vue'),
 		absent: ['dashboard.admin.operator.index.abuse.empty'],
+	},
+	{
+		name: 'recently deleted',
+		load: () => import('../marketing/deleted.vue'),
+		absent: ['dashboard.marketing.deleted.empty.title'],
 	},
 	{
 		name: 'form endpoints list',

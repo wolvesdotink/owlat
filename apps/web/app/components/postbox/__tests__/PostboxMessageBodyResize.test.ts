@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Regression: the body iframe must be measurable so it auto-sizes to its
  * content instead of staying clipped at the 200px min-height.

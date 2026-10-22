@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Answer mode on a phone opens with the message being answered in view: when
  * the column fills in and that message (`data-answer-anchor`) lands below the

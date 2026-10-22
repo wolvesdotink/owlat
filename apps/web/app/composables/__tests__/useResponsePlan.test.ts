@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Answer mode's response plan (composables/useResponsePlan, SPEC §6):
  *   - stances come from the server's plan, with the person's choices on top;

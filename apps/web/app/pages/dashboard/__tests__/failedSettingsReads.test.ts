@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A failed settings read is not the defaults (#1097). Each form below saves
  * its whole draft or record, so a form that rendered from its defaults after a

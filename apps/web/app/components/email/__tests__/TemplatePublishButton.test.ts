@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The template editor's Publish / Unpublish button. Publish puts the stored
  * HTML live, so it waits for unsaved edits to be saved. Unpublish must not:

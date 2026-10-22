@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The composer's draft notice (#895, #896): one sentence per state, a retry
  * only where retrying can help, and one row in the narrow popup. The sentence

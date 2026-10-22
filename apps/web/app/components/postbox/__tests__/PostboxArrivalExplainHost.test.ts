@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Read on arrival §4.1 wiring: the layout's host answers the web-reader seam
  * (`POSTBOX_WHY_HERE_KEY`), and a Priority row's hover bar opens "Why here?"

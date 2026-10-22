@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The content domains are admin-only WRITES over member-readable lists.
  *
@@ -79,6 +78,7 @@ function stubNuxt() {
 	vi.stubGlobal('useRoute', () => ({ query: {}, params: {} }));
 	vi.stubGlobal('useRouter', () => ({ push: vi.fn(), replace: vi.fn() }));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useState', <T>(_key: string, init?: () => T) => ref(init?.()));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
 	vi.stubGlobal('useOrganizationQuery', () => queryResult(null));
 	vi.stubGlobal('useConvexQuery', () => queryResult(null));

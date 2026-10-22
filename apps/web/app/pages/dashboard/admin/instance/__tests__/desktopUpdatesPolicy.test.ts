@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick, ref, useSlots } from 'vue';

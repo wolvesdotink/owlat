@@ -100,11 +100,12 @@ async function firstPageCost(
 }
 
 describe('resolveRecipientPage — one page reads only what the page needs', () => {
-	for (const [name, audience] of [
+	it.each([
 		['segment (property AND topic)', PRO_AND_NEWS],
 		['topic', NEWS_TOPIC],
-	] as const) {
-		it(`${name}: page reads do not grow with unrelated contacts, values, memberships or suppressions`, async () => {
+	] as const)(
+		'%s: page reads do not grow with unrelated contacts, values, memberships or suppressions',
+		async (name, audience) => {
 			const small = await firstPageCost({ contacts: 200, suppressions: 0 }, audience, 100);
 			const large = await firstPageCost({ contacts: 4_000, suppressions: 4_000 }, audience, 100);
 
@@ -117,8 +118,8 @@ describe('resolveRecipientPage — one page reads only what the page needs', () 
 			// The whole-column preload read ≥ 4,000 values + 4,000 memberships +
 			// 4,000 blocklist rows per page; a page-scoped page reads a few per contact.
 			expect(large.cost.documents).toBeLessThanOrEqual(100 * 4);
-		});
-	}
+		}
+	);
 
 	it('segment: shrinks the page when condition fan-out would exceed the per-page query budget', async () => {
 		const reader = createInstrumentedReader(seedPopulation(2_000, 0));

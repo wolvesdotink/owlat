@@ -26,15 +26,16 @@ import {
 import { alignedDns, alignedInput, CHECKED_AT, found, ownArm, relayArm } from './alignmentFixtures';
 
 describe('DNS that could not answer is UNKNOWN, never aligned', () => {
-	for (const failure of ['timeout', 'servfail', 'refused', 'error'] as const) {
-		it(`holds on a ${failure} at the From domain`, () => {
+	it.each(['timeout', 'servfail', 'refused', 'error'] as const)(
+		'holds on a %s at the From domain',
+		(failure) => {
 			const result = evaluateAlignmentPreflight(
 				alignedInput({ dns: alignedDns({ fromDomainTxt: { state: 'unknown', failure } }) })
 			);
 			expect(result.verdict).toBe('unknown');
 			expect(result.nextCheckDueAt).toBe(CHECKED_AT + ALIGNMENT_UNKNOWN_RETRY_MS);
-		});
-	}
+		}
+	);
 
 	it('treats a MISSING DKIM observation as unknown, not as an absent record', () => {
 		const result = evaluateAlignmentPreflight(alignedInput({ dns: alignedDns({ dkimTxt: {} }) }));

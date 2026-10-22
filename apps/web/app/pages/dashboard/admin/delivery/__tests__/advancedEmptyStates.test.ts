@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Delivery → Advanced before the ramp has started: the cell grid and the
  * controls say what fills them and point at Migrate from Mailchimp, instead of

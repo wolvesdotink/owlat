@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxUnsubscribeChip. Every click goes through the ONE unsubscribe path
  * (review r1, F6: `api.mail.senders.unsubscribeActions.unsubscribe`, local

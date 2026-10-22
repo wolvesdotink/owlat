@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Read on arrival (§3): a row under the Priority view is one line (sender,
  * the brief's lead or ask, else the gist, else the subject, and one state);

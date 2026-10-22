@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * TeamInboxCard — one team inbox's row on the admin roster page.
  *

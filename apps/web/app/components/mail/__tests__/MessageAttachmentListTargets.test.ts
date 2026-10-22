@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Touch targets of the attachment row's icon controls (plan item OW-010).
  *

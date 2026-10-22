@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * REMOVING THE REFERENCE TRANSPORT BELOW GRADUATION.
  *

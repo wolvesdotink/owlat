@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The wizard's Review step — the one screen in the product where a click sends
  * mail to thousands of strangers (UX plan T3).

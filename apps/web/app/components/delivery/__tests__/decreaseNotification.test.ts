@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * AN AUTOMATIC DECREASE PRODUCES AN ADMIN NOTIFICATION NAMING THE GATE AND THE
  * REMEDY (plan D12).

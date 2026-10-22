@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The "linked email" badge names a Team Inbox conversation. The server returns
  * the linked-thread view only to shared-inbox readers, so the header shows the

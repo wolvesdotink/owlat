@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * /dashboard/audience keeps working after the overview went away (#787): it
  * forwards to the contact list and carries the query, so the old

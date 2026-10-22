@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE STEP LIVES IN THE URL, SO THE BACK BUTTON CANNOT LIE.
  *

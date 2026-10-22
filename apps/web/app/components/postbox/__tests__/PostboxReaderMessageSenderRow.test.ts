@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The message card's sender row at phone widths (plan §10): the trust chip ran
  * off the card's right edge at 390px, because the row never wrapped and the

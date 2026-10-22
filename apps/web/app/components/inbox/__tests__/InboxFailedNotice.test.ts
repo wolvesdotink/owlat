@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The failed-message notice says what Retry will do (#1220): a failed send of
  * a reply a person approved is sent again and shows the text that goes out, a

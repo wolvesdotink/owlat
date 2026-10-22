@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Postbox composer renders inside the shared frame (`PostboxComposerShell`,
  * #812), so its root element is the frame's. `bindRoot` is the function ref

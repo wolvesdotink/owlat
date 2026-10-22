@@ -111,32 +111,30 @@ describe('nextShare — hard stops, in precedence order', () => {
 		['a blocklist freeze', 'dnsbl'],
 		['an unattributed legacy freeze', undefined],
 	];
-	for (const [label, origin] of FOREIGN_FREEZES) {
-		it(`still halves on a newly-open breaker under ${label}`, () => {
-			const decision = nextShare(
-				controllerInput({
-					mix: mixState({
-						share: 0.4,
-						frozenUntil: NOW + RAMP_AIMD.cooldownMaxMs,
-						freezeReason: origin,
-					}),
-					signals: {
-						isSendingAllowed: true,
-						isCircuitBreakerOpen: true,
-						isPoolBlocklisted: false,
-					},
-				})
-			);
-			expect(decision.share).toBe(0.2);
-			expect(decision.reason).toBe('breaker');
-			// And the retreat re-stamps the freeze as the BREAKER'S, so the next tick
-			// holds rather than halving a second time for the same incident. The
-			// EXPIRY is the later of the two: the breaker's 6h does not cut the 48h
-			// the cell was already serving, because a freeze is only ever lengthened.
-			expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.cooldownMaxMs);
-			expect(decision.freeze?.origin).toBe('breaker');
-		});
-	}
+	it.each(FOREIGN_FREEZES)('still halves on a newly-open breaker under %s', (label, origin) => {
+		const decision = nextShare(
+			controllerInput({
+				mix: mixState({
+					share: 0.4,
+					frozenUntil: NOW + RAMP_AIMD.cooldownMaxMs,
+					freezeReason: origin,
+				}),
+				signals: {
+					isSendingAllowed: true,
+					isCircuitBreakerOpen: true,
+					isPoolBlocklisted: false,
+				},
+			})
+		);
+		expect(decision.share).toBe(0.2);
+		expect(decision.reason).toBe('breaker');
+		// And the retreat re-stamps the freeze as the BREAKER'S, so the next tick
+		// holds rather than halving a second time for the same incident. The
+		// EXPIRY is the later of the two: the breaker's 6h does not cut the 48h
+		// the cell was already serving, because a freeze is only ever lengthened.
+		expect(decision.freeze?.until).toBe(NOW + RAMP_AIMD.cooldownMaxMs);
+		expect(decision.freeze?.origin).toBe('breaker');
+	});
 
 	it('lengthens rather than replaces when the new freeze outlasts the running one', () => {
 		const decision = nextShare(

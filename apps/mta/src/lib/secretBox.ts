@@ -18,14 +18,11 @@
  */
 
 import { createSecretBox as createSharedSecretBox, type SecretBox } from '@owlat/shared/secretBox';
+import { readMtaSecretEnv } from '../config.js';
+import { assertMtaSecretStrength } from './mtaSecretStrength.js';
 
 export type { SecretBox } from '@owlat/shared/secretBox';
-
-/**
- * The minimum MTA_SECRET length. A 32-byte key is the floor for AES-256-derived
- * material; a shorter secret is refused at boot so we never seal under a weak key.
- */
-export const MTA_SECRET_MIN_BYTES = 32;
+export { assertMtaSecretStrength, MTA_SECRET_MIN_BYTES } from './mtaSecretStrength.js';
 
 /**
  * The HKDF domain-separation context for the MTA transport-secret box. Changing
@@ -59,26 +56,6 @@ export function createSecretBox(secret: string, context: SecretBoxContext): Secr
 	return createSharedSecretBox(secret, { ...context, prefix: SEALED_PREFIX });
 }
 
-/**
- * Assert an MTA_SECRET is present and strong enough (>= 32 bytes). Called at
- * config load so a weak/absent secret fails the boot fast rather than sealing
- * transport secrets under a guessable key.
- *
- * @throws Error when the secret is missing or shorter than {@link MTA_SECRET_MIN_BYTES}.
- */
-export function assertMtaSecretStrength(secret: string | undefined): asserts secret is string {
-	if (!secret) {
-		throw new Error(
-			'MTA_SECRET is required — it seals DKIM keys and transport credentials at rest.'
-		);
-	}
-	if (Buffer.byteLength(secret, 'utf8') < MTA_SECRET_MIN_BYTES) {
-		throw new Error(
-			`MTA_SECRET must be at least ${MTA_SECRET_MIN_BYTES} bytes; got ${Buffer.byteLength(secret, 'utf8')}.`
-		);
-	}
-}
-
 let cachedBox: SecretBox | null = null;
 
 /**
@@ -105,7 +82,7 @@ export function initMtaSecretBox(secret: string): void {
  */
 export function getMtaSecretBox(): SecretBox {
 	if (cachedBox) return cachedBox;
-	const secret = process.env['MTA_SECRET'];
+	const secret = readMtaSecretEnv();
 	assertMtaSecretStrength(secret);
 	cachedBox = createSecretBox(secret, { salt: MTA_SECRET_SALT, info: MTA_SECRET_INFO });
 	return cachedBox;

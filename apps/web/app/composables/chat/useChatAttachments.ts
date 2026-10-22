@@ -1,5 +1,6 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { holdPendingWork } from '~/lib/pendingOperations';
 
 /**
  * Upload a file as a chat attachment.
@@ -24,6 +25,10 @@ export function useChatAttachments() {
 
 	const uploadFile = async (file: File): Promise<Id<'mediaAssets'> | null> => {
 		isUploading.value = true;
+		// The three steps are one save: hold any slow-save episode open until the
+		// attachment is registered (see lib/pendingOperations.ts).
+		const release = holdPendingWork();
+		let registered = false;
 		try {
 			// Raw blob POST — not a backend operation, so it isn't covered by the
 			// operation module. A transport failure here just aborts this upload.
@@ -58,8 +63,10 @@ export function useChatAttachments() {
 				width,
 				height,
 			});
+			registered = assetId.ok;
 			return assetId.ok ? assetId.result : null;
 		} finally {
+			release(registered);
 			isUploading.value = false;
 		}
 	};

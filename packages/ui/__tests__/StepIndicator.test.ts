@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A WIZARD RAIL SPENDS ONE ACCENT, NOT SIX.
  *

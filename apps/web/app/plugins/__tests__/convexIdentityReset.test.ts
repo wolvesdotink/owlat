@@ -14,9 +14,20 @@ const auth = vi.hoisted(() => ({
 	onChange: null as ((isAuthenticated: boolean) => void) | null,
 }));
 
+const pendingReset = vi.hoisted(() => vi.fn());
+const attachConnection = vi.hoisted(() => vi.fn());
+
 vi.mock('~/lib/sharedConvexSubscriptions', () => ({ resetSharedConvexSubscriptions: reset }));
+vi.mock('~/lib/pendingOperations', () => ({ resetPendingOperations: pendingReset }));
+vi.mock('~/lib/backendConnection', () => ({ attachBackendConnection: attachConnection }));
 vi.mock('convex/browser', () => ({
 	ConvexClient: class {
+		connectionState() {
+			return { isWebSocketConnected: true, hasEverConnected: true };
+		}
+		subscribeToConnectionState() {
+			return () => {};
+		}
 		setAuth(_fetchToken: unknown, onChange: (isAuthenticated: boolean) => void) {
 			auth.onChange = onChange;
 		}
@@ -54,6 +65,8 @@ async function bootPlugin() {
 describe('convex plugin: shared subscription cache and identity', () => {
 	beforeEach(() => {
 		reset.mockClear();
+		pendingReset.mockClear();
+		attachConnection.mockClear();
 		auth.listeners = [];
 		auth.onChange = null;
 	});
@@ -64,6 +77,22 @@ describe('convex plugin: shared subscription cache and identity', () => {
 
 		auth.listeners[0]!();
 		expect(reset).toHaveBeenCalledOnce();
+	});
+
+	it("forgets the previous identity's unanswered writes on every session signal", async () => {
+		await bootPlugin();
+		expect(pendingReset).not.toHaveBeenCalled();
+
+		auth.listeners[0]!();
+		expect(pendingReset).toHaveBeenCalledOnce();
+	});
+
+	it('hands the client it built to the connection indicator, once', async () => {
+		await bootPlugin();
+		await vi.dynamicImportSettled();
+
+		expect(attachConnection).toHaveBeenCalledOnce();
+		expect(attachConnection.mock.calls[0]![0]).toHaveProperty('setAuth');
 	});
 
 	it('drops the cache when Convex loses authentication, not when it gains it', async () => {

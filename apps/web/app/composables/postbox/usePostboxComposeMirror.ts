@@ -26,6 +26,7 @@
  */
 
 import { computed, reactive, ref, shallowRef, watch, onScopeDispose, type Ref } from 'vue';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import {
 	applyMirrorFields,
 	isBlankMirrorFields,
@@ -62,7 +63,7 @@ export type { ComposeMirrorSources, MirrorOffer, RestoreOutcome };
 export const DRAFT_MIRROR_DEBOUNCE_MS = 400;
 
 /** A failed migration is tried again after 5 s, doubling, this many times. */
-const MIGRATION_RETRY_MS = 5_000;
+const MIGRATION_RETRY: RetryPolicy = { baseMs: 5_000 };
 const MIGRATION_RETRIES = 8;
 /** How long Restore waits for a row it just created to be observed. */
 const ROW_OBSERVE_TIMEOUT_MS = 10_000;
@@ -448,7 +449,7 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 					retryTimer = null;
 					void enqueue(migrate);
 				},
-				MIGRATION_RETRY_MS * 2 ** retries++
+				nextDelay(MIGRATION_RETRY, retries++)
 			);
 		}
 	}

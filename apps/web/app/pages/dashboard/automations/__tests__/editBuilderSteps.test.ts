@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The automation builder has to show the steps it is building.
  *
@@ -43,6 +42,8 @@ function stubPage(automation: typeof AUTOMATION) {
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useRouter', () => ({ push: vi.fn(), replace: vi.fn() }));
 	vi.stubGlobal('useRouteId', () => ref('au_1'));
+	vi.stubGlobal('useRoute', () => ({ path: '/dashboard/automations/au_1/edit' }));
+	vi.stubGlobal('useAuth', () => ({ user: ref(null), activeOrganizationId: ref(null) }));
 	vi.stubGlobal('useConvexQuery', () => ({ ...queryResult(null), data }));
 	vi.stubGlobal('usePaginatedQuery', () => paginatedResult([]));
 	vi.stubGlobal('useOrganizationQuery', () => queryResult([]));

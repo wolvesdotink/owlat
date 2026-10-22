@@ -4,10 +4,12 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { getLive, getLiveOrThrow } from '../lib/softDelete';
+import { restoreTemplate } from './deletion';
 import { listResources } from '../lib/listing';
 import { emailTemplateListing } from './listing';
-import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
+import { throwNotFound, throwInvalidState } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
 import { recordListingCounter } from '../lib/listingCounters';
 import {
@@ -22,12 +24,12 @@ import { assertContentRevision } from '../lib/contentRevision';
 import { rendererVersionArg } from '../lib/rendererVersion';
 import { loadCoeditSave, markCoeditSaved } from '../emailCoediting/save';
 
-// Query to get a single email template by ID
+// Query to get a single email template by ID; null once it is in Recently
+// deleted, so an open editor shows it as gone.
 export const get = authedQuery({
 	args: { templateId: v.id('emailTemplates') },
 	handler: async (ctx, args) => {
-		const template = await ctx.db.get(args.templateId);
-		return template;
+		return await getLive(ctx, args.templateId);
 	},
 });
 
@@ -84,7 +86,7 @@ export const update = authedMutation({
 		);
 		const args = coedit ? { ...rawArgs, ...coedit.overrides } : rawArgs;
 
-		const template = await getOrThrow(ctx, args.templateId, 'Email template');
+		const template = await getLiveOrThrow(ctx, args.templateId, 'Email template');
 
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 		assertContentRevision(template, args.expectedContentRevision);
@@ -154,8 +156,7 @@ export const publish = authedMutation({
 			'Only owners and admins can publish email templates'
 		);
 
-		const template = await ctx.db.get(args.templateId);
-		if (!template) throwNotFound('Email template');
+		const template = await getLiveOrThrow(ctx, args.templateId, 'Email template');
 		assertContentRevision(template, args.expectedContentRevision, 'publish');
 		const html = publishedHtml(template, {
 			variableType: 'personalization',
@@ -241,7 +242,8 @@ export const duplicate = authedMutation({
 	},
 });
 
-// Mutation to delete an email template
+// Mutation to delete an email template: it moves to Recently deleted,
+// restorable for 30 days (emailTemplates/deletion.ts).
 export const remove = authedMutation({
 	args: { templateId: v.id('emailTemplates') },
 	handler: async (ctx, args) => {
@@ -262,6 +264,19 @@ export const remove = authedMutation({
 	},
 });
 
+// Bring a template back from Recently deleted. The permission a delete needs,
+// whoever deleted it. Restoring a live template is a no-op.
+export const restore = authedMutation({
+	args: { templateId: v.id('emailTemplates') },
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
+			'Only owners and admins can restore email templates'
+		);
+		await restoreTemplate(ctx, args.templateId, session.userId);
+	},
+});
+
 // Mutation to change template type
 export const changeType = authedMutation({
 	args: {
@@ -276,7 +291,7 @@ export const changeType = authedMutation({
 			'Only owners and admins can change template type'
 		);
 
-		const template = await getOrThrow(ctx, args.templateId, 'Email template');
+		const template = await getLiveOrThrow(ctx, args.templateId, 'Email template');
 
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 

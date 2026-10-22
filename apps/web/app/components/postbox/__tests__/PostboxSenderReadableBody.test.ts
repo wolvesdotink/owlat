@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Senders open counting (SPEC §5, review r3): a reader card counts its
  * message's first open from ONE signal, the readable body element its

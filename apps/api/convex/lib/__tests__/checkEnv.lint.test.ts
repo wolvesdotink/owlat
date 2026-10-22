@@ -1,6 +1,7 @@
 /**
- * Self-test for the `scripts/check-env.sh` lint rule: every `process.env` read
- * in convex/ must go through lib/env.ts. It guards the guard — the rule is one
+ * Self-test for the `scripts/check-env.sh` lint rule: a workspace reads the
+ * process environment only in its config module (lib/env.ts for convex/, the
+ * Node services' config.ts and logger). It guards the guard — the rule is one
  * grep, and a grep that stops matching is indistinguishable from a codebase
  * that stopped violating it.
  *
@@ -26,10 +27,13 @@ const scriptPath = join(
 	'check-env.sh'
 );
 
-/** Run the lint against `root`. Returns the process exit code (0 = pass). */
-function runLint(root: string): number {
+/**
+ * Run the lint with `args` from `cwd`. Returns the process exit code (0 = pass,
+ * 1 = a read outside the allowed files, 2 = a usage error).
+ */
+function runScript(args: string[], cwd?: string): number {
 	try {
-		execFileSync('bash', [scriptPath, root], { encoding: 'utf8', stdio: 'pipe' });
+		execFileSync('bash', [scriptPath, ...args], { encoding: 'utf8', stdio: 'pipe', cwd });
 		return 0;
 	} catch (err) {
 		const status = (err as { status?: number }).status;
@@ -37,17 +41,27 @@ function runLint(root: string): number {
 	}
 }
 
+/** Run the lint against `root` with convex/'s allowlist. */
+function runLint(root: string): number {
+	return runScript([root, 'lib/env.ts']);
+}
+
 let workDir: string;
 
-/** Write `contents` to `<workDir>/<name>/<relPath>` and lint that tree. */
-function lintTree(name: string, files: Record<string, string>): number {
+/** Write `files` under `<workDir>/<name>` and return that root. */
+function writeTree(name: string, files: Record<string, string>): string {
 	const root = join(workDir, name);
 	for (const [relPath, contents] of Object.entries(files)) {
 		const file = join(root, relPath);
 		mkdirSync(dirname(file), { recursive: true });
 		writeFileSync(file, contents);
 	}
-	return runLint(root);
+	return root;
+}
+
+/** Write `files` under `<workDir>/<name>` and lint that tree. */
+function lintTree(name: string, files: Record<string, string>): number {
+	return runLint(writeTree(name, files));
 }
 
 beforeAll(() => {
@@ -117,6 +131,74 @@ describe('check-env.sh', () => {
 		).toBe(1);
 	});
 
+	it.each([
+		['bracket on process', "const env = process['env'];\n"],
+		['destructured from process', 'const { env } = process;\n'],
+		['renamed in a destructuring', 'const { argv, env: e } = globalThis.process;\n'],
+		['imported from node:process', "import { env } from 'node:process';\n"],
+	])('fails the environment object taken another way: %s', (name, line) => {
+		expect(lintTree(`object-${name.replace(/\W+/g, '-')}`, { 'delivery/poller.ts': line })).toBe(1);
+	});
+
+	it.each([
+		['an import', "import {\n\tenv,\n\targv,\n} from 'node:process';\n"],
+		['a destructuring', 'const {\n\tenv,\n\targv,\n} = process;\n'],
+		['a renamed destructuring', 'const {\n\targv,\n\tenv: e,\n} = globalThis\n\t.process;\n'],
+		['a dotted read', 'const url = process\n\t.env.SNDS_DATA_FEED_URLS;\n'],
+		['a bracket read', "const all = process[\n\t'env'\n];\n"],
+	])('fails the environment object taken across lines: %s', (name, source) => {
+		// A line-based scan sees neither half of these as a read.
+		expect(
+			lintTree(`multiline-${name.replace(/\W+/g, '-')}`, {
+				'delivery/poller.ts': `const before = 1;\n${source}`,
+			})
+		).toBe(1);
+	});
+
+	it.each([
+		['a default', 'const { env = {} } = process;\n'],
+		['a nested pattern', 'const { argv, env: { FOO } } = process;\n'],
+	])('fails a destructuring of env with %s inside it', (name, line) => {
+		expect(lintTree(`nested-${name.replace(/\W+/g, '-')}`, { 'delivery/poller.ts': line })).toBe(1);
+	});
+
+	it('reports a multiline read at the line it starts on', () => {
+		const root = writeTree('multiline-line', {
+			'delivery/poller.ts': "const before = 1;\n\nimport {\n\tenv,\n} from 'node:process';\n",
+		});
+		let output = '';
+		try {
+			execFileSync('bash', [scriptPath, root, 'lib/env.ts'], { encoding: 'utf8', stdio: 'pipe' });
+		} catch (err) {
+			output = String((err as { stdout?: string }).stdout);
+		}
+		expect(output).toContain('delivery/poller.ts:3:import {');
+	});
+
+	it('passes multiline code that only mentions process or an env-like name', () => {
+		expect(
+			lintTree('multiline-near-misses', {
+				'delivery/poller.ts':
+					'const {\n\targv,\n} = process;\n' +
+					"import {\n\targv,\n} from 'node:process';\n" +
+					'const {\n\tenv,\n} = processor;\n' +
+					'function f() {\n\tconst environment = 1;\n\treturn { env: environment };\n}\n',
+			})
+		).toBe(0);
+	});
+
+	it('passes code that only mentions process or an env-like name', () => {
+		expect(
+			lintTree('near-misses', {
+				'delivery/poller.ts':
+					'const { argv } = process;\n' +
+					'const entry = process.argv[1];\n' +
+					'const environment = 1;\n' +
+					'const { env } = processor;\n',
+			})
+		).toBe(0);
+	});
+
 	it('exempts lib/env.ts itself in every access form (it is the one reader)', () => {
 		expect(
 			lintTree('env-module', {
@@ -133,7 +215,67 @@ describe('check-env.sh', () => {
 				'delivery/__tests__/fixtures.ts':
 					"const mode = process.env['OWLAT_RAMP_GATE_MATRIX_MODE'];\n",
 				'delivery/poller.test.ts': 'const flag = process.env.CI;\n',
+				'delivery/poller.spec.ts': 'const flag = process.env.CI;\n',
 			})
 		).toBe(0);
+	});
+});
+
+describe('check-env.sh for a Node service', () => {
+	const service = {
+		'config.ts': "export const port = process.env['PORT'];\n",
+		'monitoring/logger.ts': "export const level = process.env['LOG_LEVEL'] ?? 'info';\n",
+		'server.ts': "import { port } from './config.js';\n",
+	};
+	const allowed = ['config.ts', 'monitoring/logger.ts'];
+
+	it('passes reads in exactly the allowed files', () => {
+		const root = writeTree('service-clean', service);
+		expect(runScript([root, ...allowed])).toBe(0);
+	});
+
+	it('fails a read anywhere else', () => {
+		const root = writeTree('service-stray', {
+			...service,
+			'routes/scan.ts': "const host = process.env['CLAMAV_HOST'];\n",
+		});
+		expect(runScript([root, ...allowed])).toBe(1);
+	});
+
+	it('matches allowed paths exactly, not by name or prefix', () => {
+		// Same basename in another directory, a longer name, a lookalike prefix.
+		for (const stray of [
+			'routes/config.ts',
+			'logger.ts',
+			'config.tsx.ts',
+			'monitoring/logger.ts.ts',
+		]) {
+			const root = writeTree(`service-lookalike-${stray.replace(/\W+/g, '-')}`, {
+				...service,
+				[stray]: 'const x = process.env.X;\n',
+			});
+			expect(runScript([root, ...allowed]), stray).toBe(1);
+		}
+	});
+
+	it('resolves a relative root from the directory it runs in', () => {
+		writeTree('relative/src', { ...service, 'stray.ts': 'const x = process.env.X;\n' });
+		const cwd = join(workDir, 'relative');
+		expect(runScript(['src', ...allowed], cwd)).toBe(1);
+		expect(runScript(['./src/', 'config.ts', 'monitoring/logger.ts', 'stray.ts'], cwd)).toBe(0);
+	});
+
+	it('refuses a root that does not exist, rather than scanning nothing', () => {
+		expect(runScript([join(workDir, 'no-such-root'), 'config.ts'])).toBe(2);
+	});
+
+	it('refuses a root with no allowed file named', () => {
+		expect(runScript([writeTree('service-no-allow', service)])).toBe(2);
+	});
+});
+
+describe('check-env.sh with no arguments', () => {
+	it('checks convex/ against lib/env.ts, and it is clean', () => {
+		expect(runScript([])).toBe(0);
 	});
 });

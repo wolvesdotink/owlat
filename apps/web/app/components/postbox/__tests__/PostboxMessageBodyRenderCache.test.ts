@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The session render cache must let PostboxMessageBody skip the whole
  * sanitize/transform pipeline when the same message is re-opened with the same

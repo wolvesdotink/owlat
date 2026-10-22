@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * CampaignAbComparison — the A/B fold-in inside the campaign report (UX piece
  * c3b). Verifies the block renders correctly per test state: in-progress, a

@@ -60,8 +60,9 @@ function refsList(refs: string | string[] | undefined): string[] {
 }
 
 describe('composeMessage -> parseMessage round-trips the consumed-field contract', () => {
-	for (const testCase of CORPUS) {
-		it(`round-trips: ${testCase.name}`, () => {
+	it.each(CORPUS.map((testCase) => [testCase.name, testCase] as const))(
+		'round-trips: %s',
+		(_name, testCase) => {
 			const composed = composeMessage(toComposeInput(testCase));
 			const parsed = parseMessage(composed.raw);
 
@@ -107,8 +108,8 @@ describe('composeMessage -> parseMessage round-trips the consumed-field contract
 					if (match.cid !== undefined) expect(att.contentId).toBe(match.cid);
 				}
 			}
-		});
-	}
+		}
+	);
 
 	it('covers the full M2 corpus', () => {
 		expect(CORPUS.length).toBeGreaterThanOrEqual(40);

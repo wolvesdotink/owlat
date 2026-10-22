@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * AnswerMailCard is the follow-up reminder card: the only Postbox row the
  * Answer queue shows as a card. Every other row opens in Answer mode, so the

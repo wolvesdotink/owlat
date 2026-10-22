@@ -124,8 +124,9 @@ describe('the org-scoped builders thread their floor’s session', () => {
 		{ name: 'ownerMutation', build: ownerMutation, floor: 'requireOwnerContext', session: OWNER },
 	] as const;
 
-	for (const { name, build, floor, session } of cases) {
-		it(`${name} hands the handler the session ${floor} resolved, once`, async () => {
+	it.each(cases.map(({ name, build, floor, session }) => [name, floor, build, session] as const))(
+		'%s hands the handler the session %s resolved, once',
+		async (name, floor, build, session) => {
 			const handler = vi.fn(echo);
 			const fn = (build as unknown as LooseBuilder)({
 				args: {},
@@ -154,8 +155,8 @@ describe('the org-scoped builders thread their floor’s session', () => {
 			expect(result.args).toEqual({ page: 2 });
 			expect(vi.mocked(sessionOrganization[floor])).toHaveBeenCalledTimes(1);
 			expect(handler).toHaveBeenCalledTimes(1);
-		});
-	}
+		}
+	);
 
 	it('runs adminQuery’s floor as the organization:manage permission gate', async () => {
 		await invoke(adminQuery({ args: {}, handler: echo }));
@@ -355,16 +356,17 @@ describe('every public write builder bounds nested input before handler side eff
 		ownerMutation,
 		gated: featureGated(authedMutation, 'chat'),
 	};
-	for (const [name, build] of Object.entries(builders)) {
-		it(`${name} rejects an oversized nested string with invalid_input`, async () => {
+	it.each(Object.entries(builders))(
+		'%s rejects an oversized nested string with invalid_input',
+		async (name, build) => {
 			const handler = vi.fn(async () => null);
 			const fn = (build as unknown as LooseBuilder)({ args: {}, handler });
 			await expect(
 				invoke(fn, { payload: [{ text: 'x'.repeat(PUBLIC_STRING_MAX_CHARS + 1) }] })
 			).rejects.toMatchObject({ data: { category: 'invalid_input' } });
 			expect(handler).not.toHaveBeenCalled();
-		});
-	}
+		}
+	);
 	it('preserves the authentication floor before input validation', async () => {
 		vi.mocked(sessionOrganization.getMutationContext).mockRejectedValueOnce(
 			new Error('Authentication required')

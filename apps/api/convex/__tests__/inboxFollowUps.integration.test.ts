@@ -10,6 +10,7 @@ import {
 	createTestInboundMessage,
 } from './factories';
 import { FOLLOW_UP_LIFECYCLE, followUpRefusal } from '../inbox/followUps';
+import { interpretationSourceKey } from '../lib/validators/threadBrief';
 
 // The follow-up enqueues a `team_reply` Send on the transactional workpool.
 // Stub the pool so nothing is dispatched and the envelope can be inspected.
@@ -199,6 +200,32 @@ describe('inbox follow-ups', () => {
 		const done = await t.run((ctx) => ctx.db.get(result.followUpId));
 		expect(done?.status).toBe('sent');
 		expect(done?.sentAt).toBeTypeOf('number');
+	});
+
+	it('stores the text a dispatched follow-up sent, for the thread brief to read', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId } = await seed(t);
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.followUps.sendFollowUp, { threadId, body: 'Both.', subject: '' });
+		if (!result.success) throw new Error('expected a scheduled follow-up');
+
+		await t.mutation(internal.inbox.followUps.dispatch, { followUpId: result.followUpId });
+
+		// The follow-up has no inbound message of its own: the snapshot finds
+		// the thread through the follow-up row.
+		const sendId = (await t.run((ctx) => ctx.db.get(result.followUpId)))!.sendId!;
+		const source = { kind: 'teamReply' as const, id: sendId };
+		const row = await t.run((ctx) =>
+			ctx.db
+				.query('interpretSources')
+				.withIndex('by_source_key', (q) => q.eq('sourceKey', interpretationSourceKey(source)))
+				.first()
+		);
+		expect(row).toMatchObject({ threadKind: 'team', conversationThreadId: threadId, source });
+		expect(
+			await t.query(internal.mail.interpret.scope.loadSourceForScope, { source })
+		).toMatchObject({ kind: 'teamReply', subject: 'Re: CSV export', sealedText: 'Both.' });
 	});
 
 	it('undoes inside the window and hands the text back; the dispatch then does nothing', async () => {

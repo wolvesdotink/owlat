@@ -65,19 +65,21 @@ const migration = internal.migrations[MIGRATION];
 
 beforeEach(() => {
 	sessionMock.role = 'owner';
-	// Only the scheduler's timers: creation times and the walk's start time are real.
-	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+	// The scheduler's timers and the clock are fake: creation times and the
+	// walk's start time move only when a test calls tick().
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
 });
 afterEach(() => {
 	vi.useRealTimers();
 });
 
-/** Let the wall clock move past every row written so far. */
+/**
+ * Move the clock past every row written so far. convex-test stamps rows written
+ * within one millisecond 0.001 ms apart, so a full second clears any row count
+ * a test writes.
+ */
 function tick(): void {
-	const until = Date.now() + 3;
-	while (Date.now() < until) {
-		// spin
-	}
+	vi.setSystemTime(Date.now() + 1_000);
 }
 
 async function setup(): Promise<T> {
@@ -379,8 +381,9 @@ describe('sharing a restricted knowledge entry with members', () => {
 			],
 		];
 
-		for (const [name, fields, blocker] of cases) {
-			it(`${name}: ${blocker}`, async () => {
+		it.each(cases.map(([name, fields, blocker]) => [name, blocker, fields] as const))(
+			'%s: %s',
+			async (_name, blocker, fields) => {
 				const t = await setup();
 				const entryId = await seedEntry(t, { ...(await fields(t)), memberAccess: 'restricted' });
 				const shown = await review(t, entryId);
@@ -393,8 +396,8 @@ describe('sharing a restricted knowledge entry with members', () => {
 				).rejects.toThrow();
 				expect((await read(t, entryId)).memberAccess).toBe('restricted');
 				expect(await auditRows(t)).toEqual([]);
-			});
-		}
+			}
+		);
 	});
 
 	describe('a curated answer keeps the source it was made from', () => {

@@ -1,6 +1,7 @@
 import { getCurrentScope, onScopeDispose, ref, watch } from 'vue';
 import { api } from '@owlat/api';
 import type { FunctionArgs, FunctionReturnType } from 'convex/server';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 
 type CountAudience = NonNullable<
 	FunctionArgs<typeof api.campaigns.audienceResolution.countRecipients>['audience']
@@ -51,18 +52,24 @@ export function wantsExactCount(count: RecipientCount, now: number): boolean {
 /** Longest single wait for a `retryAfter` re-check (setTimeout's own ceiling is ~24.8 days). */
 const MAX_RECHECK_MS = 60 * 60_000;
 
-/** First wait after a rejected count request; doubles per consecutive failure. */
-const RETRY_BASE_MS = 5_000;
-/** Ceiling of that backoff: a request that keeps failing is tried about 12 times an hour. */
-const RETRY_MAX_MS = 5 * 60_000;
+/**
+ * 5 s after a rejected count request, doubling per consecutive failure. The
+ * ceiling (5 min) means a request that keeps failing is tried about 12 times an
+ * hour.
+ */
+const COUNT_REQUEST_RETRY: RetryPolicy = {
+	baseMs: 5_000,
+	capMs: 5 * 60_000,
+	jitter: { kind: 'spread', ratio: 0.2 },
+	round: true,
+};
 
 /**
  * The wait before retry number `failures` (1-based): 5 s, 10 s, 20 s, ... capped
  * at 5 min, spread by ±20% so wizards that failed together do not retry together.
  */
 export function countRequestRetryDelay(failures: number, random: () => number = Math.random) {
-	const base = Math.min(RETRY_BASE_MS * 2 ** Math.max(0, failures - 1), RETRY_MAX_MS);
-	return Math.round(base * (0.8 + 0.4 * random()));
+	return nextDelay(COUNT_REQUEST_RETRY, failures - 1, undefined, random);
 }
 
 /**

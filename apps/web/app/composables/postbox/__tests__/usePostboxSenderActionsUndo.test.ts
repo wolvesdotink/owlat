@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Sender actions offer Undo for the operation they recorded (read on arrival
  * §4.4), on every path that recorded one: a status change, and an unsubscribe

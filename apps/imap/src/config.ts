@@ -45,6 +45,13 @@ export interface ImapConfig {
 	 */
 	tlsHandshakeTimeoutMs?: number;
 	authRateLimit: { failuresPerWindow: number; windowMs: number; tarpitMs: number };
+	/**
+	 * `NODE_ENV=production`. Production refuses to serve plaintext IMAP or LOGIN
+	 * without the brute-force limiter; outside it both fall back for `bun dev`.
+	 */
+	production: boolean;
+	/** The release this server reports (`OWLAT_VERSION`, `dev` when unset or empty). */
+	owlatVersion: string;
 }
 
 /**
@@ -65,6 +72,7 @@ export function loadConfig(): ImapConfig {
 	const convexUrl = process.env['CONVEX_URL'] ?? '';
 	const convexAdminKey = process.env['CONVEX_ADMIN_KEY'] ?? '';
 	const redisUrl = process.env['REDIS_URL'] ?? null;
+	const production = process.env['NODE_ENV'] === 'production';
 
 	if (!convexUrl) throw new Error('CONVEX_URL is required');
 	if (!convexAdminKey) throw new Error('CONVEX_ADMIN_KEY is required');
@@ -83,7 +91,7 @@ export function loadConfig(): ImapConfig {
 	// fail-open (see AuthRateLimiter). This guard is only about never again
 	// running an internet-facing auth port with no limiter configured at all.
 	// An operator who really wants that must opt out in so many words.
-	if (!redisUrl && !allowsUnthrottledAuth() && process.env['NODE_ENV'] === 'production') {
+	if (!redisUrl && !allowsUnthrottledAuth() && production) {
 		throw new Error(
 			'IMAP refusing to start in production without REDIS_URL: it backs the LOGIN ' +
 				'brute-force limiter, and port 993 is internet-facing. Set REDIS_URL ' +
@@ -137,5 +145,7 @@ export function loadConfig(): ImapConfig {
 			windowMs: MAIL_AUTH_FAILURE_WINDOW_MS,
 			tarpitMs: 15 * 60 * 1000,
 		},
+		production,
+		owlatVersion: process.env['OWLAT_VERSION'] || 'dev',
 	};
 }

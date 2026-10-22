@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * WHERE FOCUS LANDS WHEN A DIALOG OPENS, AND WHERE IT GOES WHEN IT CLOSES.
  *

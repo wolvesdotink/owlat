@@ -66,6 +66,9 @@ const ROUTES = [
 	{ path: '/webhooks/mta-verify-credential', windowSeconds: 60, body: {} },
 ] as const;
 
+// The routes that read their raw body before verifying the signature.
+const RAW_ROUTES = ['/webhooks/mta-inbound', '/webhooks/mta-mailbox'] as const;
+
 type TimestampCase = {
 	label: string;
 	timestamp: (nowSeconds: number) => string;
@@ -103,26 +106,29 @@ async function send(path: string, timestamp: string, body: string): Promise<numb
 }
 
 describe('MTA-signed routes share one timestamp rule', () => {
-	for (const route of ROUTES) {
-		describe(`${route.path} (${route.windowSeconds}s window)`, () => {
-			for (const tc of TIMESTAMPS) {
-				const accepted =
-					tc.acceptedFromWindow !== null && route.windowSeconds >= tc.acceptedFromWindow;
-				it(`${accepted ? 'accepts' : 'rejects'} a timestamp of ${tc.label}`, async () => {
-					const status = await send(
-						route.path,
-						tc.timestamp(Math.floor(Date.now() / 1000)),
-						JSON.stringify(route.body)
-					);
-					if (accepted) {
-						expect(status).not.toBe(401);
-					} else {
-						expect(status).toBe(401);
-					}
-				});
-			}
-		});
-	}
+	describe.each(ROUTES.map((route) => [route.path, route.windowSeconds, route] as const))(
+		'%s (%ss window)',
+		(_path, _window, route) => {
+			it.each(
+				TIMESTAMPS.map((tc) => {
+					const accepted =
+						tc.acceptedFromWindow !== null && route.windowSeconds >= tc.acceptedFromWindow;
+					return [accepted ? 'accepts' : 'rejects', tc.label, tc, accepted] as const;
+				})
+			)('%s a timestamp of %s', async (_verdict, _label, tc, accepted) => {
+				const status = await send(
+					route.path,
+					tc.timestamp(Math.floor(Date.now() / 1000)),
+					JSON.stringify(route.body)
+				);
+				if (accepted) {
+					expect(status).not.toBe(401);
+				} else {
+					expect(status).toBe(401);
+				}
+			});
+		}
+	);
 });
 
 describe('MTA-signed routes check the signature before spending the ingestion bucket', () => {
@@ -132,8 +138,9 @@ describe('MTA-signed routes check the signature before spending the ingestion bu
 		{ path: '/webhooks/mta-verify-credential', body: {} },
 	] as const;
 
-	for (const route of RATE_LIMITED_ROUTES) {
-		it(`${route.path} answers a signed request after an unsigned burst`, async () => {
+	it.each(RATE_LIMITED_ROUTES.map((route) => [route.path, route] as const))(
+		'%s answers a signed request after an unsigned burst',
+		async (_path, route) => {
 			const t = convexTest(schema, modules);
 			rateLimiterTest.register(t);
 			const body = JSON.stringify(route.body);
@@ -162,13 +169,14 @@ describe('MTA-signed routes check the signature before spending the ingestion bu
 				body,
 			});
 			expect([401, 429]).not.toContain(signed.status);
-		});
-	}
+		}
+	);
 });
 
 describe('MTA raw routes keep a separate bucket for bodies read before verification', () => {
-	for (const path of ['/webhooks/mta-inbound', '/webhooks/mta-mailbox'] as const) {
-		it(`${path} answers a small signed request after a burst of undeclared-length requests`, async () => {
+	it.each(RAW_ROUTES)(
+		'%s answers a small signed request after a burst of undeclared-length requests',
+		async (path) => {
 			// Hold the clock still so the bucket cannot refill between the burst and
 			// the signed request.
 			vi.useFakeTimers({ toFake: ['Date'] });
@@ -206,13 +214,14 @@ describe('MTA raw routes keep a separate bucket for bodies read before verificat
 				body,
 			});
 			expect([401, 429]).not.toContain(signed.status);
-		});
-	}
+		}
+	);
 });
 
 describe('MTA raw routes keep large signed deliveries off the unverified key', () => {
-	for (const path of ['/webhooks/mta-inbound', '/webhooks/mta-mailbox'] as const) {
-		it(`${path} answers a large signed request after the unverified key is exhausted`, async () => {
+	it.each(RAW_ROUTES)(
+		'%s answers a large signed request after the unverified key is exhausted',
+		async (path) => {
 			vi.useFakeTimers({ toFake: ['Date'] });
 			const t = convexTest(schema, modules);
 			rateLimiterTest.register(t);
@@ -257,9 +266,12 @@ describe('MTA raw routes keep large signed deliveries off the unverified key', (
 
 			const signed = await large(signedHeaders);
 			expect([401, 429]).not.toContain(signed.status);
-		});
+		}
+	);
 
-		it(`${path} charges the unverified key when a length-signed body does not verify`, async () => {
+	it.each(RAW_ROUTES)(
+		'%s charges the unverified key when a length-signed body does not verify',
+		async (path) => {
 			vi.useFakeTimers({ toFake: ['Date'] });
 			const t = convexTest(schema, modules);
 			rateLimiterTest.register(t);
@@ -291,9 +303,12 @@ describe('MTA raw routes keep large signed deliveries off the unverified key', (
 				body: junk,
 			});
 			expect(unverified.status).toBe(429);
-		});
+		}
+	);
 
-		it(`${path} refuses a length-signed request whose body does not verify`, async () => {
+	it.each(RAW_ROUTES)(
+		'%s refuses a length-signed request whose body does not verify',
+		async (path) => {
 			const t = convexTest(schema, modules);
 			rateLimiterTest.register(t);
 			const body = JSON.stringify({ event: 'unsupported.kind', padding: 'x'.repeat(300 * 1024) });
@@ -308,8 +323,8 @@ describe('MTA raw routes keep large signed deliveries off the unverified key', (
 				body: other,
 			});
 			expect(res.status).toBe(401);
-		});
-	}
+		}
+	);
 });
 
 describe('the credential-check route keys its ingestion bucket on the signed client IP', () => {

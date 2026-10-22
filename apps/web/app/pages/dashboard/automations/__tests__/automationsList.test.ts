@@ -1,19 +1,17 @@
-// @vitest-environment happy-dom
 /**
  * The automations list runs on the shared list scaffold (`ListPageShell` +
- * `useListPage`). Mounted with the real shell, segmented control, confirmation
- * dialog, rows and row actions, so the assertions are about what a user and a
- * screen reader get:
+ * `useListPage`). Mounted with the real shell, segmented control, rows and row
+ * actions, so the assertions are about what a user and a screen reader get:
  *   - the status tabs expose the selected one (`aria-selected`), carry their
  *     counts, and the selected tab reaches the server-side status filter;
  *   - the list reads through the organization-gated paginated query;
  *   - below `md` the rows are a card list whose names are links;
- *   - delete goes through `UiConfirmationDialog`, and an automation that turned
- *     active while the dialog was open is refused: confirm is disabled and the
- *     dialog says why.
+ *   - delete is offered only for an automation that is not running, runs at
+ *     once (the automation goes to Recently deleted) and its toast names it and
+ *     offers Undo, which restores it.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, h, nextTick, ref, useSlots } from 'vue';
+import { defineComponent, h, ref, useSlots } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { installNuxtStubs, paginatedResult, queryResult } from '~/__tests__/a11y';
@@ -62,6 +60,10 @@ const DRAFT = {
 const rows = ref<Record<string, unknown>[]>([]);
 const tableFits = ref(true);
 const removeAutomation = vi.fn(async (_args: unknown) => ({ ok: true, result: null }));
+const restoreAutomation = vi.fn(async (_args: unknown) => ({ ok: true, result: null }));
+const showToast = vi.fn(
+	(_message: string, _type?: string, _options?: { action?: { onAction: () => void } }) => 'toast-1'
+);
 let listArgs: () => Record<string, unknown> | undefined = () => undefined;
 
 // The modal chrome (teleport, focus trap) is not under test: render it inline.
@@ -108,6 +110,8 @@ beforeEach(() => {
 	rows.value = [WELCOME, REENGAGE, DRAFT];
 	tableFits.value = true;
 	removeAutomation.mockClear();
+	restoreAutomation.mockClear();
+	showToast.mockClear();
 	listArgs = () => undefined;
 	installNuxtStubs({
 		...i18nStubs,
@@ -127,10 +131,15 @@ beforeEach(() => {
 				? queryResult({ total: 3, active: 1, paused: 1, draft: 1 })
 				: queryResult(null),
 		useBackendOperation: (op: unknown) => ({
-			run: nameOf(op).endsWith(':remove') ? removeAutomation : vi.fn(),
+			run: nameOf(op).endsWith(':remove')
+				? removeAutomation
+				: nameOf(op).endsWith(':restore')
+					? restoreAutomation
+					: vi.fn(),
 			isLoading: ref(false),
 			error: ref(null),
 		}),
+		useToast: () => ({ showToast, removeToast: vi.fn(), setToastShortcutHint: vi.fn() }),
 	});
 });
 
@@ -172,17 +181,13 @@ type Wrapper = Awaited<ReturnType<typeof mountList>>;
 const rowOf = (wrapper: Wrapper, name: string) =>
 	wrapper.findAll('tbody tr, ul > li').find((row) => row.text().includes(name))!;
 
-async function openDeleteFor(wrapper: Wrapper, name: string) {
+async function deleteFromMenu(wrapper: Wrapper, name: string) {
 	const item = rowOf(wrapper, name)
 		.findAll('[role="menuitem"]')
 		.find((b) => b.text() === 'Delete');
 	await item!.trigger('click');
-	await nextTick();
-	return wrapper.get('[role="dialog"]');
+	await flushPromises();
 }
-
-const confirmButton = (dialog: ReturnType<Wrapper['get']>) =>
-	dialog.findAll('button').find((b) => b.text() === 'Delete automation')!;
 
 describe('automations list — status tabs', () => {
 	it('exposes the selected tab to assistive technology, with the counts', async () => {
@@ -253,36 +258,18 @@ describe('automations list — delete', () => {
 		expect(items).not.toContain('Delete');
 	});
 
-	it('confirms through UiConfirmationDialog and deletes on confirm', async () => {
+	it('deletes at once and offers Undo, which restores the automation', async () => {
 		const wrapper = await mountList();
-		const dialogComponent = wrapper.findComponent(UiConfirmationDialog);
-		expect(dialogComponent.props('open')).toBe(false);
+		expect(wrapper.findComponent(UiConfirmationDialog).exists()).toBe(false);
 
-		const dialog = await openDeleteFor(wrapper, 'Re-engagement: 90 days quiet');
-		expect(dialogComponent.props('variant')).toBe('danger');
-		expect(dialog.text()).toContain('"Re-engagement: 90 days quiet"');
-		expect(dialog.text()).not.toContain('must be paused');
-
-		await confirmButton(dialog).trigger('click');
-		await flushPromises();
+		await deleteFromMenu(wrapper, 'Re-engagement: 90 days quiet');
 		expect(removeAutomation).toHaveBeenCalledWith({ automationId: 'au_reengage' });
-		expect(dialogComponent.props('open')).toBe(false);
-	});
+		expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
 
-	it('refuses an automation that turned active while the dialog was open', async () => {
-		const wrapper = await mountList();
-		const dialog = await openDeleteFor(wrapper, 'Re-engagement: 90 days quiet');
-		expect(confirmButton(dialog).attributes('disabled')).toBeUndefined();
-
-		// The row is live: someone activates it from another tab.
-		rows.value = [WELCOME, { ...REENGAGE, status: 'active' }, DRAFT];
-		await nextTick();
-
-		const blocked = wrapper.get('[role="dialog"]');
-		expect(blocked.text()).toContain('Active automations must be paused before deletion.');
-		expect(confirmButton(blocked).attributes('disabled')).toBeDefined();
-		await confirmButton(blocked).trigger('click');
+		const [message, , options] = showToast.mock.calls.at(-1)!;
+		expect(message).toBe('Deleted Re-engagement: 90 days quiet');
+		options!.action!.onAction();
 		await flushPromises();
-		expect(removeAutomation).not.toHaveBeenCalled();
+		expect(restoreAutomation).toHaveBeenCalledWith({ automationId: 'au_reengage' });
 	});
 });

@@ -1,10 +1,21 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { uploadFileToStorage } from '../storageUpload';
+import {
+	EPISODE_QUIET_MS,
+	onSlowEpisodeEnd,
+	resetPendingOperations,
+	SLOW_OPERATION_MS,
+	trackPendingOperation,
+	type SlowEpisodeOutcome,
+} from '~/lib/pendingOperations';
 
 const file = new File(['data'], 'x.png', { type: 'image/png' });
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	// Failed transfers mark the registry's open burst as failed; a burst left
+	// over from one test must not decide the next test's outcome.
+	resetPendingOperations();
 });
 
 describe('uploadFileToStorage', () => {
@@ -79,5 +90,64 @@ describe('uploadFileToStorage', () => {
 		await expect(
 			uploadFileToStorage(file, async () => ({ ok: true, result: 'https://upload' }) as const)
 		).rejects.toThrow('network');
+	});
+});
+
+describe('uploadFileToStorage and the slow-save episode', () => {
+	afterEach(() => {
+		resetPendingOperations();
+		vi.useRealTimers();
+	});
+
+	it('a slow write landing mid-transfer confirms nothing until the file is through', async () => {
+		vi.useFakeTimers();
+		const outcomes: SlowEpisodeOutcome[] = [];
+		const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+		let respond!: (response: Response) => void;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(() => new Promise<Response>((resolve) => (respond = resolve)))
+		);
+
+		const slowWrite = trackPendingOperation(() => 'Archive');
+		vi.advanceTimersByTime(SLOW_OPERATION_MS);
+		const upload = uploadFileToStorage(
+			file,
+			async () => ({ ok: true, result: 'https://upload.owlat.example' }) as const
+		);
+		await vi.advanceTimersByTimeAsync(0);
+
+		slowWrite(true);
+		await vi.advanceTimersByTimeAsync(EPISODE_QUIET_MS * 3);
+		expect(outcomes).toEqual([]);
+
+		respond(new Response(JSON.stringify({ storageId: 'st_1' }), { status: 200 }));
+		expect(await upload).toEqual({ ok: true, storageId: 'st_1' });
+		await vi.advanceTimersByTimeAsync(EPISODE_QUIET_MS);
+		expect(outcomes).toEqual(['saved']);
+		stop();
+	});
+
+	it('a failed transfer ends the episode as failed', async () => {
+		vi.useFakeTimers();
+		const outcomes: SlowEpisodeOutcome[] = [];
+		const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response('nope', { status: 500 }))
+		);
+
+		const slowWrite = trackPendingOperation(() => 'Archive');
+		vi.advanceTimersByTime(SLOW_OPERATION_MS);
+		const upload = uploadFileToStorage(
+			file,
+			async () => ({ ok: true, result: 'https://upload.owlat.example' }) as const
+		);
+		slowWrite(true);
+		expect(await upload).toEqual({ ok: false, reason: 'upload-failed' });
+		await vi.advanceTimersByTimeAsync(EPISODE_QUIET_MS);
+
+		expect(outcomes).toEqual(['failed']);
+		stop();
 	});
 });

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Postbox undo-send toast. Its reversal used to await `cancelPendingSend`
  * before closing, with no busy guard and no `:disabled`, so a double click

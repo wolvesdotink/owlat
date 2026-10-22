@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Postbox's list and reader skeletons wait 150 ms before they paint (plan
  * 2.8), keeping their box meanwhile: a folder or a body that arrives inside that

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Files, Subscriptions and the folder page (both its list route and its
  * message route) mount the real `PostboxMailboxGuard`, so a member without a

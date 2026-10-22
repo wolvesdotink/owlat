@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE CARD NAMES WHAT WAS PRESSED, NOT WHAT HAPPENS NEXT (#1442).
  *
@@ -84,5 +83,20 @@ describe('ToastItem keyboard hint', () => {
 	it('shows the message alone without one', () => {
 		renderCard({ id: 'toast-4', message: 'Archived', type: 'success' });
 		expect(mounted!.el.querySelector('p')!.textContent?.trim()).toBe('Archived');
+	});
+});
+
+describe('ToastItem lookup', () => {
+	it('carries its toast id, and its first button is the action', () => {
+		renderCard({
+			id: 'toast-5',
+			message: 'Saving is taking longer than usual',
+			type: 'warning',
+			action: { label: 'Details', onAction: vi.fn() },
+		});
+		// A caller hands focus back to its own toast's action by these two facts.
+		const card = mounted!.el.querySelector<HTMLElement>('[data-toast-id]')!;
+		expect(card.dataset['toastId']).toBe('toast-5');
+		expect(card.querySelector('button')?.textContent?.trim()).toBe('Details');
 	});
 });

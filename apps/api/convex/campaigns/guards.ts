@@ -14,7 +14,8 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireOrgPermission, type MutationSessionContext } from '../lib/sessionOrganization';
-import { getOrThrow, throwInvalidState } from '../_utils/errors';
+import { throwInvalidState } from '../_utils/errors';
+import { getLiveOrThrow } from '../lib/softDelete';
 
 /**
  * Require that the caller may manage campaigns and that the target campaign
@@ -39,7 +40,8 @@ export async function requireDraftCampaign(
 		`You do not have permission to ${action}`
 	);
 
-	const campaign = await getOrThrow(ctx, campaignId, 'Campaign');
+	// A campaign in Recently deleted reads as missing: a stale tab cannot edit it.
+	const campaign = await getLiveOrThrow(ctx, campaignId, 'Campaign');
 	if (campaign.status !== 'draft') {
 		throwInvalidState(notDraftMessage);
 	}

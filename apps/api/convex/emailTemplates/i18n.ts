@@ -1,7 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { getOrThrow } from '../_utils/errors';
 import {
 	assertEditableForPublishableChange,
 	withRenderedTranslations,
@@ -16,6 +15,7 @@ import {
 	TEMPLATE_TRANSLATABLE_FIELDS,
 	updateTranslationPatch,
 } from '../lib/emailTranslations';
+import { getLive, getLiveOrThrow } from '../lib/softDelete';
 
 // Query to get email template content for a specific language
 // Returns the content for the requested language, falling back to default language if not available
@@ -26,7 +26,7 @@ export const getForLanguage = authedQuery({
 		language: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const template = await ctx.db.get(args.templateId);
+		const template = await getLive(ctx, args.templateId);
 		if (!template) {
 			return null;
 		}
@@ -61,7 +61,7 @@ export const addTranslation = authedMutation({
 			'templates:manage',
 			'Only owners and admins can manage template translations'
 		);
-		const template = await getOrThrow(ctx, args.templateId, 'Email template');
+		const template = await getLiveOrThrow(ctx, args.templateId, 'Email template');
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 		assertContentRevision(template, args.expectedContentRevision);
 
@@ -104,7 +104,7 @@ export const updateTranslation = authedMutation({
 			'templates:manage',
 			'Only owners and admins can manage template translations'
 		);
-		const template = await getOrThrow(ctx, args.templateId, 'Email template');
+		const template = await getLiveOrThrow(ctx, args.templateId, 'Email template');
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 		assertContentRevision(template, args.expectedContentRevision);
 
@@ -136,7 +136,7 @@ export const removeTranslation = authedMutation({
 			'templates:manage',
 			'Only owners and admins can manage template translations'
 		);
-		const template = await getOrThrow(ctx, args.templateId, 'Email template');
+		const template = await getLiveOrThrow(ctx, args.templateId, 'Email template');
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 		assertContentRevision(template, args.expectedContentRevision);
 
@@ -177,7 +177,7 @@ export const setDefaultLanguage = authedMutation({
 			'templates:manage',
 			'Only owners and admins can manage template translations'
 		);
-		const template = await getOrThrow(ctx, args.templateId, 'Email template');
+		const template = await getLiveOrThrow(ctx, args.templateId, 'Email template');
 		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 		assertContentRevision(template, args.expectedContentRevision);
 

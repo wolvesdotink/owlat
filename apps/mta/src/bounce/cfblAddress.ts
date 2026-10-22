@@ -43,7 +43,7 @@
  * Beyond that a token is EXPIRED, which is reported as its own reason so an
  * operator can tell "stale" apart from "forged".
  *
- * Every function here is PURE apart from the optional `process.env` key lookup
+ * Every function here is PURE apart from the optional environment key lookup
  * that mirrors `verp.ts`: no clock reads that aren't injectable, no I/O, no
  * throwing. A rejection is a returned reason the caller COUNTS.
  */
@@ -427,6 +427,5 @@ function decodeMessageId(encodedId: string): string | null {
 		return null;
 	}
 	if (decoded.length === 0 || decoded.length > MAX_MESSAGE_ID_LENGTH) return null;
-	// eslint-disable-next-line no-control-regex
 	return /^[\x21-\x7E]+$/.test(decoded) ? decoded : null;
 }

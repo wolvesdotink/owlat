@@ -179,8 +179,9 @@ describe('sendToMx outcome classification', () => {
 	});
 
 	describe('ambiguous post-DATA failure is never auto-retried (W8 AMBIGUOUS_TIMEOUT)', () => {
-		for (const phase of ['data', 'data-final'] as const) {
-			it(`phase '${phase}' with no server reply → non-retryable, no next-MX attempt`, async () => {
+		it.each(['data', 'data-final'] as const)(
+			"phase '%s' with no server reply → non-retryable, no next-MX attempt",
+			async (phase) => {
 				// The body (and possibly the terminating dot) was already written, so the
 				// receiver MAY have accepted the message. Retrying risks a double delivery.
 				sendEnvelopeMock.mockRejectedValue(
@@ -201,8 +202,8 @@ describe('sendToMx outcome classification', () => {
 				// Attempted on exactly ONE MX — the loop never advanced to the second.
 				expect(sendEnvelopeMock).toHaveBeenCalledTimes(1);
 				expect(connectMock).toHaveBeenCalledTimes(1);
-			});
-		}
+			}
+		);
 
 		it('a data-final failure WITH a reply code is classified by the code (deferred), not ambiguous', async () => {
 			// A real 4xx at DATA-final is a DEFINITIVE deferral (retryable), proving the

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Read on arrival's switch in the Reading card (SPEC §2.1): it says plainly
  * that the AI provider reads mail when it arrives, including mail that is

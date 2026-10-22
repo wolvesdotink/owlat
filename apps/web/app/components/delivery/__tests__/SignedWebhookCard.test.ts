@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The webhook setup card's job is to be COPYABLE and COMPLETE: the exact URL,
  * the exact events, and the one variable that is not part of sending. The

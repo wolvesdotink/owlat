@@ -27,7 +27,7 @@
  * them.
  */
 import type { NavigationEnvironment } from './dashboardNavigationCore';
-import { minRole } from './dashboardNavigationCore';
+import { minRole, recentlyDeletedGate } from './dashboardNavigationCore';
 import { routeConfigs } from './breadcrumbRoutes';
 import {
 	ADMIN_AREAS,
@@ -65,6 +65,7 @@ const SUBTREE_GATES: ReadonlyArray<readonly [string, (env: NavigationEnvironment
 	['/dashboard/audience', adminOnly],
 	['/dashboard/campaigns', (env) => env.isFeatureEnabled('campaigns')],
 	['/dashboard/automations', (env) => adminOnly(env) && env.isFeatureEnabled('automations')],
+	['/dashboard/marketing/deleted', recentlyDeletedGate],
 	// Owned by the settings registry (see the module doc).
 	['/dashboard/preferences', never],
 ];

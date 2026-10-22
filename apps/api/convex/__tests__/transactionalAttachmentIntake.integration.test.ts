@@ -546,11 +546,15 @@ describe('transactional pending uploads — a failed blob deletion keeps its own
 		const stuck = await registerBlob(t);
 		vi.setSystemTime(Date.now() + PENDING_UPLOAD_TTL_MS + 1);
 
+		// The wait after each failed deletion: 15 minutes, doubling.
+		const waits = [15, 30, 60, 120, 240, 480, 960].map((minutes) => minutes * 60_000);
 		for (let attempt = 1; attempt <= MAX_DELETE_ATTEMPTS; attempt++) {
+			const failedAt = Date.now();
 			await runWithFailingDeletes(t, sweepExpired, {}, [stuck]);
 			const rows = await pendingRows(t);
 			if (attempt < MAX_DELETE_ATTEMPTS) {
 				expect(rows.map((row) => row.deleteAttempts)).toEqual([attempt]);
+				expect((rows[0]?.expiresAt ?? 0) - failedAt).toBe(waits[attempt - 1]);
 				vi.setSystemTime((rows[0]?.expiresAt ?? 0) + 1);
 			} else {
 				expect(rows).toEqual([]);

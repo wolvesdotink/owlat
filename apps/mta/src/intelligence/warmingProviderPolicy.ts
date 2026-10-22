@@ -15,6 +15,7 @@
  * exhaustively unit-tested against fixtures.
  */
 
+import { nextDelay } from '@owlat/shared/retryPolicy';
 import { ADAPTIVE_WARMING_POLICY } from '@owlat/shared/warming';
 import type { SmtpFailureCategory } from './smtpClassifier.js';
 
@@ -265,6 +266,9 @@ export function pressureAdjustedDelayMs(baseDelayMs: number, pressureEvents: num
 	const base = Number.isFinite(baseDelayMs) && baseDelayMs > 0 ? baseDelayMs : 0;
 	const events = sanitizeCount(pressureEvents);
 	if (base === 0 || events === 0) return base;
-	const factor = Math.min(2 ** events, PROVIDER_WARMING_POLICY.maximumBackoffFactor);
-	return Math.min(Math.round(base * factor), PROVIDER_WARMING_POLICY.maximumPressureRetryDelayMs);
+	const lengthened = nextDelay(
+		{ baseMs: base, capMs: base * PROVIDER_WARMING_POLICY.maximumBackoffFactor },
+		events
+	);
+	return Math.min(Math.round(lengthened), PROVIDER_WARMING_POLICY.maximumPressureRetryDelayMs);
 }

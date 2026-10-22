@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A blob-stored body the reader has shown before (saved by the offline read
  * cache) appears at once while the live body loads, online too: no skeleton,

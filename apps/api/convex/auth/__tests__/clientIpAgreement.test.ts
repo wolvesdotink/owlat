@@ -92,73 +92,92 @@ describe('public and sign-in limiters agree on forwarded-header trust', () => {
 		xforwarded: XFF_IP,
 	};
 
-	for (const mode of modes) {
-		for (const configured of configuredSecrets) {
-			for (const presented of presentedSecrets) {
-				it(`mode=${mode ?? 'unset'} secret=${configured ? 'set' : 'unset'} presented=${presented ?? 'none'}`, async () => {
-					vi.stubEnv('RATE_LIMIT_TRUSTED_PROXY', mode ?? '');
-					vi.stubEnv('RATE_LIMIT_PROXY_SECRET', configured ?? '');
-					const headers: Record<string, string> = {
-						'CF-Connecting-IP': CF_IP,
-						'X-Real-IP': REAL_IP,
-						'X-Forwarded-For': XFF_IP,
-						...(presented ? { 'X-Owlat-Proxy-Secret': presented } : {}),
-					};
+	const TRUST_CASES = modes.flatMap((mode) =>
+		configuredSecrets.flatMap((configured) =>
+			presentedSecrets.map(
+				(presented) =>
+					[
+						`mode=${mode ?? 'unset'} secret=${configured ? 'set' : 'unset'} presented=${presented ?? 'none'}`,
+						mode,
+						configured,
+						presented,
+					] as const
+			)
+		)
+	);
+	it.each(TRUST_CASES)('%s', async (_title, mode, configured, presented) => {
+		vi.stubEnv('RATE_LIMIT_TRUSTED_PROXY', mode ?? '');
+		vi.stubEnv('RATE_LIMIT_PROXY_SECRET', configured ?? '');
+		const headers: Record<string, string> = {
+			'CF-Connecting-IP': CF_IP,
+			'X-Real-IP': REAL_IP,
+			'X-Forwarded-For': XFF_IP,
+			...(presented ? { 'X-Owlat-Proxy-Secret': presented } : {}),
+		};
 
-					const publicIp = getClientIp(
-						new Request('https://deployment.convex.site/forms/abc', { headers })
-					);
-					const route = authRoute();
-					await route.handler(signIn(headers));
-					const loginIp = keyIp(route.keys[0]);
+		const publicIp = getClientIp(
+			new Request('https://deployment.convex.site/forms/abc', { headers })
+		);
+		const route = authRoute();
+		await route.handler(signIn(headers));
+		const loginIp = keyIp(route.keys[0]);
 
-					const publicTrusted = publicIp !== 'unknown';
-					const loginTrusted = loginIp !== SHARED_BUCKET;
-					expect(loginTrusted).toBe(publicTrusted);
-					if (publicTrusted) {
-						expect(publicIp).toBe(expectedIp[mode!]);
-						expect(loginIp).toBe(publicIp);
-					}
-					const verified = configured !== undefined && presented === configured;
-					const shouldTrust =
-						mode === 'xforwarded' || ((mode === 'cloudflare' || mode === 'xrealip') && verified);
-					expect(publicTrusted).toBe(shouldTrust);
-				});
-			}
+		const publicTrusted = publicIp !== 'unknown';
+		const loginTrusted = loginIp !== SHARED_BUCKET;
+		expect(loginTrusted).toBe(publicTrusted);
+		if (publicTrusted) {
+			expect(publicIp).toBe(expectedIp[mode!]);
+			expect(loginIp).toBe(publicIp);
 		}
-	}
+		const verified = configured !== undefined && presented === configured;
+		const shouldTrust =
+			mode === 'xforwarded' || ((mode === 'cloudflare' || mode === 'xrealip') && verified);
+		expect(publicTrusted).toBe(shouldTrust);
+	});
 });
 
+const THROTTLED_MODES = ['cloudflare', 'xrealip'] as const;
+const headerFor = (mode: (typeof THROTTLED_MODES)[number]) =>
+	mode === 'cloudflare' ? 'CF-Connecting-IP' : 'X-Real-IP';
+const PROXY_SECRET_CASES = [
+	['no proxy secret configured', undefined, undefined],
+	['proxy secret not presented', SECRET, undefined],
+	['wrong proxy secret presented', SECRET, 'not-the-secret'],
+] as const;
+
 describe('sign-in and reset throttle with an unverified forwarded header', () => {
-	for (const mode of ['cloudflare', 'xrealip'] as const) {
-		const header = mode === 'cloudflare' ? 'CF-Connecting-IP' : 'X-Real-IP';
-
-		for (const [label, configured, presented] of [
-			['no proxy secret configured', undefined, undefined],
-			['proxy secret not presented', SECRET, undefined],
-			['wrong proxy secret presented', SECRET, 'not-the-secret'],
-		] as const) {
-			it(`${mode}, ${label}: a new ${header} per attempt still hits the limiter`, async () => {
-				vi.stubEnv('RATE_LIMIT_TRUSTED_PROXY', mode);
-				vi.stubEnv('RATE_LIMIT_PROXY_SECRET', configured ?? '');
-				const route = authRoute();
-				const statuses: number[] = [];
-				for (let attempt = 1; attempt <= 4; attempt += 1) {
-					const response = await route.handler(
-						signIn({
-							[header]: `198.51.100.${attempt}`,
-							...(presented ? { 'X-Owlat-Proxy-Secret': presented } : {}),
-						})
-					);
-					statuses.push(response.status);
-				}
-				expect(new Set(route.keys).size).toBe(1);
-				expect(statuses.slice(0, 3)).not.toContain(429);
-				expect(statuses[3]).toBe(429);
-			});
+	it.each(
+		THROTTLED_MODES.flatMap((mode) =>
+			PROXY_SECRET_CASES.map(
+				([label, configured, presented]) =>
+					[mode, label, headerFor(mode), configured, presented] as const
+			)
+		)
+	)(
+		'%s, %s: a new %s per attempt still hits the limiter',
+		async (mode, _label, header, configured, presented) => {
+			vi.stubEnv('RATE_LIMIT_TRUSTED_PROXY', mode);
+			vi.stubEnv('RATE_LIMIT_PROXY_SECRET', configured ?? '');
+			const route = authRoute();
+			const statuses: number[] = [];
+			for (let attempt = 1; attempt <= 4; attempt += 1) {
+				const response = await route.handler(
+					signIn({
+						[header]: `198.51.100.${attempt}`,
+						...(presented ? { 'X-Owlat-Proxy-Secret': presented } : {}),
+					})
+				);
+				statuses.push(response.status);
+			}
+			expect(new Set(route.keys).size).toBe(1);
+			expect(statuses.slice(0, 3)).not.toContain(429);
+			expect(statuses[3]).toBe(429);
 		}
+	);
 
-		it(`${mode}: password-reset requests share one bucket without the proxy secret`, async () => {
+	it.each(THROTTLED_MODES.map((mode) => [mode, headerFor(mode)] as const))(
+		'%s: password-reset requests share one bucket without the proxy secret',
+		async (mode, header) => {
 			vi.stubEnv('RATE_LIMIT_TRUSTED_PROXY', mode);
 			vi.stubEnv('RATE_LIMIT_PROXY_SECRET', SECRET);
 			const route = authRoute();
@@ -176,9 +195,12 @@ describe('sign-in and reset throttle with an unverified forwarded header', () =>
 			expect(new Set(route.keys).size).toBe(1);
 			expect(statuses.slice(0, 3)).not.toContain(429);
 			expect(statuses[3]).toBe(429);
-		});
+		}
+	);
 
-		it(`${mode}: a verified proxy secret keeps per-client buckets`, async () => {
+	it.each(THROTTLED_MODES.map((mode) => [mode, headerFor(mode)] as const))(
+		'%s: a verified proxy secret keeps per-client buckets',
+		async (mode, header) => {
 			vi.stubEnv('RATE_LIMIT_TRUSTED_PROXY', mode);
 			vi.stubEnv('RATE_LIMIT_PROXY_SECRET', SECRET);
 			const route = authRoute();
@@ -196,8 +218,8 @@ describe('sign-in and reset throttle with an unverified forwarded header', () =>
 				'198.51.100.4',
 			]);
 			expect(statuses).not.toContain(429);
-		});
-	}
+		}
+	);
 });
 
 describe('advisory when an unverified header is removed', () => {

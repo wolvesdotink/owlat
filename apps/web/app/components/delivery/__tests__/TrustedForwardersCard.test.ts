@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Trusted forwarders card keeps a draft of the list against the live
  * instance settings row. That row re-emits on any write to any of its fields

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `useMimePartDownload` — the shared "fetch the raw .eml, extract one part,
  * hand the browser a Blob" half of both mail readers.

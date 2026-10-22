@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Web Push in the service worker (apps/web/service-worker/sw.js).
  *

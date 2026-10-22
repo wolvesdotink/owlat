@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Regression: files picked with the paperclip were never attached in Chrome.
  * The footer emitted the file input's live `FileList` and then reset the

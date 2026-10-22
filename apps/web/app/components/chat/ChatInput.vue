@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import { isMentionHandlePrefix } from '@owlat/shared/chatMentions';
 import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
+import { useComposerDraft } from '~/composables/useComposerDrafts';
 import { isImeComposing } from '~/utils/imeComposition';
 
 const props = defineProps<{
@@ -11,15 +12,56 @@ const props = defineProps<{
 	 * resolves `ok`, so a refused or failed send is still there to retry.
 	 */
 	send: (text: string, attachmentIds?: Id<'mediaAssets'>[]) => Promise<{ ok: boolean }>;
+	/** The room, which keeps the unsent text and files on this device. */
+	draftTarget?: string | null;
 }>();
 
 const { t } = useI18n();
 
-const text = ref('');
+type PendingAttachment = { id: Id<'mediaAssets'>; filename: string; mimeType: string };
+
+// The draft (text and the files already uploaded for it) belongs to the room.
+const { draft, pin } = useComposerDraft('chat', () => props.draftTarget, {
+	text: '',
+	attachments: [],
+});
+const text = computed({
+	get: () => draft.value.text,
+	set: (next: string) => (draft.value = { ...draft.value, text: next }),
+});
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
-const pendingAttachments = ref<{ id: Id<'mediaAssets'>; filename: string; mimeType: string }[]>([]);
+const pendingAttachments = computed({
+	get: () => draft.value.attachments as PendingAttachment[],
+	set: (next: PendingAttachment[]) => (draft.value = { ...draft.value, attachments: next }),
+});
+// Uploads and sends resolve later: they settle the draft they started from
+// (this room, this account), whatever is on screen by then.
+function pinAttachments() {
+	const settle = pin();
+	return Object.assign(
+		(update: (current: PendingAttachment[]) => PendingAttachment[]) =>
+			settle((now) => ({ ...now, attachments: update(now.attachments as PendingAttachment[]) })),
+		{ owned: settle.owned }
+	);
+}
+// A send acknowledges its text and its files in one update. Two would not be
+// safe against another tab: the text settle rewrites the stored draft (over a
+// newer copy that tab saved) and the file settle then finds its own write and
+// deletes it. One update that empties the draft deletes it only while the
+// stored copy is still the one this page knows.
+function pinSent(submittedIds: Id<'mediaAssets'>[]) {
+	const settle = pin();
+	return (update: (current: string) => string) =>
+		settle((now) => ({
+			...now,
+			text: update(now.text),
+			attachments: (now.attachments as PendingAttachment[]).filter(
+				(a) => !submittedIds.includes(a.id)
+			),
+		}));
+}
 
 const { uploadFile, isUploading } = useChatAttachments();
 
@@ -117,24 +159,33 @@ const handlePickMention = (handle: string) => {
 	});
 };
 
-const handleFilePick = async (event: Event) => {
-	const input = event.target as HTMLInputElement;
-	const files = Array.from(input.files ?? []);
+// One pin for the whole selection: every file joins the draft of the room and
+// account it was chosen in. Once another account is signed in (or this one
+// signed out and back in), the files not yet uploaded are dropped rather than
+// uploaded under that session.
+async function uploadAll(files: File[], unnamed?: string) {
+	const attach = pinAttachments();
 	for (const file of files) {
+		if (!attach.owned()) return;
 		try {
 			const id = await uploadFile(file);
 			if (id) {
-				pendingAttachments.value.push({
-					id,
-					filename: file.name,
-					mimeType: file.type || 'application/octet-stream',
-				});
+				const filename = file.name || (unnamed ?? '');
+				attach((now) => [
+					...now,
+					{ id, filename, mimeType: file.type || 'application/octet-stream' },
+				]);
 			}
 		} catch {
-			// Surfacing the error via the composable's `error` ref would also work;
-			// here we silently skip the file (the UI shows isUploading).
+			// A failed file is skipped (the UI shows isUploading); the rest go on.
 		}
 	}
+}
+
+const handleFilePick = async (event: Event) => {
+	const input = event.target as HTMLInputElement;
+	const files = Array.from(input.files ?? []);
+	await uploadAll(files);
 	input.value = '';
 };
 
@@ -142,20 +193,7 @@ const handlePaste = async (event: ClipboardEvent) => {
 	const files = Array.from(event.clipboardData?.files ?? []);
 	if (files.length === 0) return;
 	event.preventDefault();
-	for (const file of files) {
-		try {
-			const id = await uploadFile(file);
-			if (id) {
-				pendingAttachments.value.push({
-					id,
-					filename: file.name || 'pasted-file',
-					mimeType: file.type || 'application/octet-stream',
-				});
-			}
-		} catch {
-			// no-op
-		}
-	}
+	await uploadAll(files, 'pasted-file');
 };
 
 const removeAttachment = (id: Id<'mediaAssets'>) => {
@@ -169,12 +207,12 @@ const handleSend = async () => {
 	const submittedIds = pendingAttachments.value.map((a) => a.id);
 	mentionQuery.value = null;
 	mentionStart.value = -1;
-	const outcome = await submit((snapshot) =>
-		props.send(snapshot.trim(), submittedIds.length > 0 ? submittedIds : undefined)
+	const outcome = await submit(
+		(snapshot) => props.send(snapshot.trim(), submittedIds.length > 0 ? submittedIds : undefined),
+		() => pinSent(submittedIds)
 	);
 	// Refused or failed: the operation has toasted it, the draft is kept.
 	if (!outcome?.ok) return;
-	pendingAttachments.value = pendingAttachments.value.filter((a) => !submittedIds.includes(a.id));
 	nextTick(fitTextarea);
 };
 </script>

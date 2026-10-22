@@ -67,17 +67,21 @@ function mailboxes(header: string): Mailbox[] {
 }
 
 describe('address model round-trip (U5)', () => {
-	for (const testCase of CASES) {
-		it(`recovers the structured mailboxes for ${testCase.label}`, () => {
+	it.each(CASES.map((testCase) => [testCase.label, testCase] as const))(
+		'recovers the structured mailboxes for %s',
+		(_label, testCase) => {
 			const header = encodeAddressHeader(testCase.input);
 			expect(mailboxes(header)).toEqual(testCase.expected);
-		});
+		}
+	);
 
-		it(`re-parses the canonical text idempotently for ${testCase.label}`, () => {
+	it.each(CASES.map((testCase) => [testCase.label, testCase] as const))(
+		're-parses the canonical text idempotently for %s',
+		(_label, testCase) => {
 			const header = encodeAddressHeader(testCase.input);
 			const canonical = parseAddressObject(header).text;
 			// The canonical reconstruction must itself round-trip to the same value.
 			expect(mailboxes(canonical)).toEqual(testCase.expected);
-		});
-	}
+		}
+	);
 });

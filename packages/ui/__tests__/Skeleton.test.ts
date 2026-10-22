@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The skeleton primitive and its two composites.
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxOfflineBanners — the list pane's connectivity strip, extracted from
  * PostboxLayout.vue.

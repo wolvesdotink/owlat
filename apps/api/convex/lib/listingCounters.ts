@@ -10,8 +10,8 @@
  * backfill walks the table in creation order, so a row's position is its
  * `_creationTime`.
  *
- * Every insert, delete and write of the field on these tables calls
- * {@link recordListingCounter} in the same mutation.
+ * Every insert, delete, soft delete, restore and write of the field on these
+ * tables calls {@link recordListingCounter} in the same mutation.
  */
 
 import type { MutationCtx } from '../_generated/server';
@@ -27,12 +27,21 @@ export const LISTING_COUNTER_FIELDS = {
 export type ListingCounterKind = keyof typeof LISTING_COUNTER_FIELDS;
 
 /** A row of a counted table — any shape carrying the facet field. */
-type CountedRow = { _creationTime?: number } & Partial<Record<'status' | 'type', unknown>>;
+type CountedRow = { _creationTime?: number; deletedAt?: number } & Partial<
+	Record<'status' | 'type', unknown>
+>;
 
+/**
+ * The bucket a row counts in. A row in Recently deleted (`deletedAt` set)
+ * counts in none, exactly like the live-only index range the facet walk falls
+ * back to, so a delete is the move "out of its bucket" and a restore the move
+ * back, and the backfill never counts a deleted row.
+ */
 export function listingCounterBuckets(
 	kind: ListingCounterKind,
 	row: CountedRow
 ): readonly string[] {
+	if (row.deletedAt !== undefined) return [];
 	const value = row[LISTING_COUNTER_FIELDS[kind]];
 	return typeof value === 'string' ? [value] : [];
 }

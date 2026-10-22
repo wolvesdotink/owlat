@@ -112,7 +112,9 @@ export const listThreadMessages = publicQuery({
  *
  * The `Return-Path` line is served as the envelope sender DOMAIN
  * (`envelopeFromDomain`), which is what SPF actually authenticated and what we
- * persist; the full envelope address is not stored (see docs/ux-plan/DEFERRALS).
+ * persist; the full envelope address is not stored at ingest, so it exists only
+ * in the raw `.eml`, and the panel labels the row as a domain rather than
+ * presenting it as the address.
  *
  * Recipient-scoped: `loadReadableMessage` is the same owner/admin + active
  * mailbox gate every other by-id read in this file uses, so a message id from

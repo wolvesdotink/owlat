@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Connected-apps settings page (index.vue). listByTeam is owner/admin-gated, so
  * an editor must see the "Admins only" gate and the query must be skipped for

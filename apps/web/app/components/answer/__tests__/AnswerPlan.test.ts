@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Answer mode's response plan on screen (plan §6):
  *   - `m/`: the brief's selected items show a stance picker (Accept / Decline /

@@ -90,6 +90,7 @@ export function useCommandPaletteInboxScope(options: CommandPaletteInboxScopeOpt
 	const threadItems = computed<PaletteItem[]>(() =>
 		(data.value?.threads ?? []).map((thread) => ({
 			id: `inbox-thread:${thread._id}`,
+			objectId: thread._id,
 			label: thread.subject?.trim() || t('components.appCommandPalette.noSubject'),
 			subtitle: thread.contactIdentifier,
 			icon: 'lucide:message-square',

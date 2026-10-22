@@ -17,7 +17,10 @@ export const getComparableSentCampaigns = campaignsQuery({
 	handler: async (ctx) => {
 		const sentCampaigns = await ctx.db
 			.query('campaigns')
-			.withIndex('by_status_sent_at', (q) => q.eq('status', 'sent'))
+			// Live only, inside the range, so a deleted send never uses up the window.
+			.withIndex('by_deleted_at_and_status_and_sent_at', (q) =>
+				q.eq('deletedAt', undefined).eq('status', 'sent')
+			)
 			.order('desc')
 			.take(COMPARABLE_SENDS_LIMIT);
 

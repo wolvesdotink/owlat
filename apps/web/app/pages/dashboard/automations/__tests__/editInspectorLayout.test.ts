@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The inspector takes space only while a step is open (#1046). With nothing
  * selected the canvas has the full width; below `lg` the open inspector is a

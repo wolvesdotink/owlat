@@ -779,6 +779,39 @@ describe('Google Postmaster v2 collection', () => {
 		expect(domainAttempts).toBe(4); // initial request + three bounded retries
 	});
 
+	it('waits 1, 2 and 4 s between transient retries, plus up to 250 ms on an error response', async () => {
+		vi.restoreAllMocks();
+		vi.useFakeTimers();
+		vi.setSystemTime(FROZEN_NOW);
+		const timeout = vi.spyOn(globalThis, 'setTimeout');
+		const waits = () =>
+			timeout.mock.calls.map(([, ms]) => ms as number).filter((ms) => ms >= 1_000 && ms < 30_000);
+		vi.spyOn(Math, 'random').mockReturnValue(0.5);
+		let failures: 'response' | 'network' = 'response';
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string | URL | Request) => {
+				if (String(input).includes('/token')) {
+					return response({ access_token: 'token', expires_in: 3600 });
+				}
+				if (failures === 'network') throw new TypeError('fetch failed');
+				return response(null, 503);
+			})
+		);
+
+		const errors = fetchPostmasterData(new Redis(), config);
+		await vi.runAllTimersAsync();
+		await errors;
+		expect(waits()).toEqual([1_125, 2_125, 4_125]);
+
+		timeout.mockClear();
+		failures = 'network';
+		const dropped = fetchPostmasterData(new Redis(), config);
+		await vi.runAllTimersAsync();
+		await dropped;
+		expect(waits()).toEqual([1_000, 2_000, 4_000]);
+	});
+
 	it('stops issuing work when the absolute collection budget is exhausted', async () => {
 		const redis = new Redis();
 		let now = 0;

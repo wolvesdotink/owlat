@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The one second-factor form behind both password sign-ins (web and desktop
  * connect). The desktop copy used to be a weaker duplicate: no autofocus, no

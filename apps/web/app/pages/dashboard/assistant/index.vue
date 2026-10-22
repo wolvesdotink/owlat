@@ -385,9 +385,11 @@ const cancelRename = () => {
 				</div>
 			</div>
 
+			<!-- One question box for every chat, so one kept question. -->
 			<AssistantComposer
 				ref="composerRef"
 				:send="sendQuestion"
+				draft-target="assistant"
 				:streaming="streaming"
 				@stop="stop"
 			/>

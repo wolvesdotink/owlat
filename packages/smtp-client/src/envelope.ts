@@ -149,7 +149,7 @@ function prepareEnvelope(
 	return { body, mailParams, rcptParams: options.rcptParams ?? [] };
 }
 
-// eslint-disable-next-line no-control-regex
+// eslint-disable-next-line no-control-regex -- the ASCII range starts at NUL
 const NON_ASCII = /[^\x00-\x7F]/;
 
 /**

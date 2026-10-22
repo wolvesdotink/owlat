@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Where a caller's attributes land on `UiInput`.
  *

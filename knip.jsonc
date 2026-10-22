@@ -20,6 +20,8 @@
 				"scripts/list-shared-production-exports.ts",
 				// Spawned by scripts/check-compose-invariants.sh.
 				"scripts/check-docker-proxy-network.ts",
+				// Spawned by scripts/check-owlat-lint.sh.
+				"scripts/owlat-lint-findings.ts",
 				"scripts/read-feature-flags.mjs",
 				// Spawned by the shell selector; knip cannot follow that edge.
 				"scripts/ci/select.ts",
@@ -313,6 +315,12 @@
 		"packages/channels": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-renderer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
+		// Loaded by oxlintrc.json `jsPlugins` (a path, not an import): oxlint reads
+		// the entry's default export, which no module imports by design.
+		"packages/oxlint-plugin-owlat": {
+			"entry": ["src/index.ts", "src/**/__tests__/**/*.ts"],
+			"includeEntryExports": false,
+		},
 		"packages/email-scanner": {
 			"entry": [
 				"src/index.ts",

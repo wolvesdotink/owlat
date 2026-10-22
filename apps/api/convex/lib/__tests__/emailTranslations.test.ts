@@ -263,33 +263,31 @@ describe('Hero descendants', () => {
 		expect(box.content.items[0].content.columns[0][0].content.html).toBe('<p>Tief</p>');
 	});
 
-	for (const [kind, fields] of [
+	it.each([
 		['template', TEMPLATE_TRANSLATABLE_FIELDS],
 		['transactional email', TRANSACTIONAL_TRANSLATABLE_FIELDS],
-	] as const) {
-		it(`seeds and resolves a language through the hero for a ${kind}`, () => {
-			const entity = templateEntity({ content: HERO_CONTENT });
-			const seeded = parseTranslations(addLanguage(entity, 'de', fields).translations);
-			expect(Object.keys(seeded['de']!.blocks).sort()).toEqual([
-				'h-btn',
-				'h-deep',
-				'h-img',
-				'h-text',
-			]);
+	] as const)('seeds and resolves a language through the hero for a %s', (kind, fields) => {
+		const entity = templateEntity({ content: HERO_CONTENT });
+		const seeded = parseTranslations(addLanguage(entity, 'de', fields).translations);
+		expect(Object.keys(seeded['de']!.blocks).sort()).toEqual([
+			'h-btn',
+			'h-deep',
+			'h-img',
+			'h-text',
+		]);
 
-			const translated = templateEntity({
-				content: HERO_CONTENT,
-				supportedLanguages: ['en', 'de'],
-				translations: serializeTranslations({ de: { subject: 'Hallo', blocks: GERMAN } }),
-			});
-			const resolved = resolveForLanguage(translated, 'de', fields);
-			const items = JSON.parse(resolved.content)[0].content.items;
-			expect(items[0].content.html).toBe('<p>Willkommen</p>');
-			expect(items[1].content.text).toBe('Jetzt kaufen');
-			expect(items[2].content.alt).toBe('Firmenlogo');
-			expect(items[3].content.items[0].content.columns[0][0].content.html).toBe('<p>Tief</p>');
+		const translated = templateEntity({
+			content: HERO_CONTENT,
+			supportedLanguages: ['en', 'de'],
+			translations: serializeTranslations({ de: { subject: 'Hallo', blocks: GERMAN } }),
 		});
-	}
+		const resolved = resolveForLanguage(translated, 'de', fields);
+		const items = JSON.parse(resolved.content)[0].content.items;
+		expect(items[0].content.html).toBe('<p>Willkommen</p>');
+		expect(items[1].content.text).toBe('Jetzt kaufen');
+		expect(items[2].content.alt).toBe('Firmenlogo');
+		expect(items[3].content.items[0].content.columns[0][0].content.html).toBe('<p>Tief</p>');
+	});
 
 	it('translates two copies with distinct child ids independently', () => {
 		const copy = (rootId: string, childId: string) => ({

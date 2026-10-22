@@ -26,6 +26,7 @@
  */
 
 import { v, type Infer } from 'convex/values';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import {
 	internalAction,
 	internalQuery,
@@ -368,9 +369,11 @@ export function workerOp(r: Doc<'externalMailRemoteOps'>) {
 	};
 }
 
+const REMOTE_OP_RETRY: RetryPolicy = { baseMs: 60_000, capMs: 60 * 60_000 };
+
 /** Backoff after the `attempts`-th failure: 1, 2, 4 … minutes, capped at an hour. */
 export function remoteOpRetryDelayMs(attempts: number): number {
-	return Math.min(60 * 60_000, 60_000 * 2 ** Math.max(0, attempts - 1));
+	return nextDelay(REMOTE_OP_RETRY, attempts - 1);
 }
 
 /**

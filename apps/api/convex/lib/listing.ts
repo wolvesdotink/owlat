@@ -56,7 +56,9 @@ interface ListingBrowse {
 	/**
 	 * For a single equality filter the engine can serve index-natively, the
 	 * compound index whose PREFIX is that filter field and whose next field is
-	 * the browse sort key (e.g. `status` → `by_status_and_updated_at`). A filter
+	 * the browse sort key (e.g. `status` → `by_status_and_updated_at`). For a
+	 * soft-deletable entity the index leads with `deletedAt` and the filter
+	 * field follows it (`by_deleted_at_and_status_and_updated_at`). A filter
 	 * with no entry here falls back to a post-index `.filter()` (the page can
 	 * thin, which is fine for an ordinary filter — only `deletedAt` is barred
 	 * from that fate).
@@ -72,12 +74,19 @@ interface ListingBrowse {
  * write a plain query outside the seam instead.
  */
 export type Facet<T extends TableNames> =
+	/**
+	 * Rows in `index`. On a soft-deletable entity the index must lead with
+	 * `deletedAt`: the count is pinned to live rows inside the index range.
+	 */
 	| { kind: 'indexCount'; index?: string }
 	| {
 			kind: 'groupBy';
 			field: keyof Doc<T> & string;
 			buckets: readonly string[];
-			/** Index keyed on `field`, used to count each bucket without a scan. */
+			/**
+			 * Index keyed on `field`, used to count each bucket without a scan. On a
+			 * soft-deletable entity it leads with `deletedAt`, then `field`.
+			 */
 			index: string;
 			/**
 			 * Maintained per-bucket counter (plan 3.1, `lib/listingCounters.ts`).
@@ -234,7 +243,9 @@ async function browsePage<
 		if (idx) {
 			const q = db.query(descriptor.table as never) as unknown as AnyQuery;
 			const result = await q
-				.withIndex(idx, (b) => b.eq(only.field, only.value))
+				.withIndex(idx, (b) =>
+					(descriptor.softDelete ? b.eq('deletedAt', undefined) : b).eq(only.field, only.value)
+				)
 				.order(order)
 				.paginate(args.paginationOpts);
 			return result as unknown as PaginationResult<Doc<T>>;
@@ -315,6 +326,11 @@ export async function listResources<
 	return { ...result, page: await enrichPage(db, descriptor, result.page) };
 }
 
+/** The live rows of an index that leads with `deletedAt`. */
+function liveRange(q: unknown): AnyBuilder {
+	return (q as AnyBuilder).eq('deletedAt', undefined);
+}
+
 /** A `groupBy` facet's per-bucket counts plus their sum. */
 export type GroupedCount = Record<string, number> & { total: number };
 
@@ -346,7 +362,9 @@ export async function countFacet<
 	}
 
 	if (facet.kind === 'indexCount') {
-		return countIndexRange(db, descriptor.table, facet.index ?? 'by_creation_time');
+		return descriptor.softDelete
+			? countIndexRange(db, descriptor.table, facet.index, (q) => liveRange(q) as never)
+			: countIndexRange(db, descriptor.table, facet.index ?? 'by_creation_time');
 	}
 
 	const counts: GroupedCount = { total: 0 } as GroupedCount;
@@ -364,12 +382,10 @@ export async function countFacet<
 	// groupBy: one bounded index count per bucket, summed — never a whole-table
 	// `.collect()` then group in memory.
 	for (const bucket of facet.buckets) {
-		const c = await countIndexRange(
-			db,
-			descriptor.table,
-			facet.index,
-			(q) => (q as unknown as AnyBuilder).eq(facet.field, bucket) as never
-		);
+		const c = await countIndexRange(db, descriptor.table, facet.index, (q) => {
+			const range = descriptor.softDelete ? liveRange(q) : (q as unknown as AnyBuilder);
+			return range.eq(facet.field, bucket) as never;
+		});
 		counts[bucket] = c;
 		counts.total += c;
 	}

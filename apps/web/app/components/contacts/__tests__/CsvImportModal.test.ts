@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * CSV import — the two ways the wizard used to lose work (UX plan T4).
  *

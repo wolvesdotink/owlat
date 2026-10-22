@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The calm reader as one page (read on arrival §3, plan §6 rule 2): at most
  * three elements above the first body on every fixture — the header line,
@@ -201,6 +200,7 @@ const CHROME = [
 	'UiAvatar',
 	'PostboxThreadCiteNote',
 	'PostboxAiStrip',
+	'PostboxReaderTranslation',
 	'PostboxBriefSheet',
 	'PostboxReaderDetails',
 	'PostboxAnswerDraftBar',

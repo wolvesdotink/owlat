@@ -53,6 +53,8 @@ interface UseTemplateListOptions<T extends TemplateListItem> {
 	editPath: (item: T) => string;
 	/** Resolve `false` when the delete failed, so the dialog stays open. */
 	onDelete: (item: T) => Promise<boolean>;
+	/** `false` when the delete can be undone: no dialog, it runs at once. */
+	confirmDelete?: boolean;
 	onDuplicate: (item: T) => Promise<void>;
 	/** The `n` shortcut's target — the page's create flow. */
 	onNew: () => void;
@@ -75,6 +77,7 @@ export function useTemplateList<T extends TemplateListItem>(options: UseTemplate
 	const list = useListPage<TemplateSortOption, T>({
 		sortOptions: options.sortOptions ?? TEMPLATE_SORT_OPTIONS,
 		onDelete: options.onDelete,
+		confirmDelete: options.confirmDelete,
 		onNew: options.onNew,
 		canCreate: options.canCreate,
 		isBusy: options.isBusy,

@@ -1,5 +1,6 @@
 /**
- * How the built app is delivered: asset precompression and route prefetching.
+ * How the built app is delivered: asset precompression, route prefetching and
+ * web fonts.
  * Kept out of nuxt.config.ts, which is near the file-size cap.
  */
 
@@ -30,3 +31,20 @@ export function publicAssetCompression(isDesktopBuild: boolean) {
 export const NUXT_LINK_DEFAULTS = {
 	prefetchOn: { visibility: false, interaction: true },
 } as const;
+
+/**
+ * `fonts` (@nuxt/fonts). Figtree needs the variable wght axis: the design
+ * system's weight-based emphasis uses intermediate instances (450/550) that a
+ * static 400/500/600/700 subset would snap to the nearest hundred.
+ *
+ * No font preloads. nuxt-security hashes `/_fonts` while @nuxt/fonts has only
+ * written empty placeholders (the bytes are downloaded after prerendering), so
+ * a preload carries the hash of an empty file. Google and Bunny faces have a
+ * unicode-range and are never preloaded; when both are unreachable the
+ * fallback providers serve faces without one, and the desktop SPA ships
+ * preloads that fail their integrity check.
+ */
+export const FONT_OPTIONS = {
+	families: [{ name: 'Figtree', weights: ['300 900'] }],
+	defaults: { preload: false },
+};

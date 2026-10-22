@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The contact page's labels (#804).
  *

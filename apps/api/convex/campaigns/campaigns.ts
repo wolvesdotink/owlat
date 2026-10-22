@@ -1,7 +1,9 @@
 import { v } from 'convex/values';
 import { campaignsQuery, campaignsMutation } from './_helpers';
 import { paginationOptsValidator } from 'convex/server';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { getLive, getLiveOrThrow } from '../lib/softDelete';
+import { restoreCampaign, softDeleteCampaign } from './deletion';
 import { listResources } from '../lib/listing';
 import { campaignListing } from './listing';
 import { buildSearchableText } from '../lib/queryHelpers';
@@ -9,7 +11,7 @@ import { validateStringLength, STRING_LIMITS, sanitizeEmailHeaderValue } from '.
 import { trackEvent } from '../lib/posthogHelpers';
 import { recordAuditLog } from '../lib/auditLog';
 import { recordListingCounter } from '../lib/listingCounters';
-import { getOrThrow, throwInvalidState, throwForbidden } from '../_utils/errors';
+import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { campaignStatusValidator } from '../lib/convexValidators';
 import { audienceValidator } from './audience';
 import {
@@ -23,7 +25,7 @@ import { requireDraftCampaign } from './guards';
 export const getWithRelations = campaignsQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
-		const campaign = await ctx.db.get(args.campaignId);
+		const campaign = await getLive(ctx, args.campaignId);
 		if (!campaign) return null;
 
 		// Derive the targeted topic/segment id from the discriminated audience.
@@ -33,7 +35,8 @@ export const getWithRelations = campaignsQuery({
 
 		// Get related entities in parallel
 		const [emailTemplate, topic, segment] = await Promise.all([
-			campaign.emailTemplateId ? ctx.db.get(campaign.emailTemplateId) : null,
+			// A template in Recently deleted reads as none: the send would refuse it.
+			campaign.emailTemplateId ? getLive(ctx, campaign.emailTemplateId) : null,
 			topicId ? ctx.db.get(topicId) : null,
 			segmentId ? ctx.db.get(segmentId) : null,
 		]);
@@ -160,8 +163,8 @@ export const updateContent = campaignsMutation({
 		// authz: requireDraftCampaign enforces campaigns:manage
 		const { campaign } = await requireDraftCampaign(ctx, args.campaignId, 'edit campaign content');
 
-		// Verify template exists
-		await getOrThrow(ctx, args.emailTemplateId, 'Email template');
+		// Verify template exists (and is not in Recently deleted)
+		await getLiveOrThrow(ctx, args.emailTemplateId, 'Email template');
 
 		// Update searchableText if subject changed
 		const newSubject = args.subject?.trim() ?? campaign.subject ?? '';
@@ -188,7 +191,7 @@ export const duplicate = campaignsMutation({
 			'You do not have permission to duplicate campaigns'
 		);
 
-		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
+		const campaign = await getLiveOrThrow(ctx, args.campaignId, 'Campaign');
 
 		const now = Date.now();
 		const newName = `Copy of ${campaign.name}`;
@@ -214,7 +217,8 @@ export const duplicate = campaignsMutation({
 	},
 });
 
-// Mutation to delete a campaign
+// Mutation to delete a campaign: it moves to Recently deleted, restorable for
+// 30 days (campaigns/deletion.ts). Deleting one already there is a no-op.
 export const remove = campaignsMutation({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
@@ -225,22 +229,20 @@ export const remove = campaignsMutation({
 		);
 
 		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
+		await softDeleteCampaign(ctx, campaign, session.userId);
+	},
+});
 
-		// Cannot delete campaigns that are sending
-		if (campaign.status === 'sending') {
-			throwInvalidState('Cannot delete a campaign that is currently sending');
-		}
-
-		await ctx.db.delete(args.campaignId);
-		await recordListingCounter(ctx, 'campaignStatus', campaign, null);
-
-		await recordAuditLog(ctx, {
-			userId: session.userId,
-			action: 'campaign.deleted',
-			resource: 'campaign',
-			resourceId: args.campaignId,
-			details: { name: campaign.name },
-		});
+// Bring a campaign back from Recently deleted. The permission a delete needs,
+// whoever deleted it. Restoring a live campaign is a no-op.
+export const restore = campaignsMutation({
+	args: { campaignId: v.id('campaigns') },
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'campaigns:manage'),
+			'You do not have permission to restore campaigns'
+		);
+		await restoreCampaign(ctx, args.campaignId, session.userId);
 	},
 });
 

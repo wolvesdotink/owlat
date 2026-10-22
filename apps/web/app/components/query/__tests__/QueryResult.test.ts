@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The quick-query answer says when it stopped at its length limit
  * (`quickQuery.ask` `isTruncated`), and says nothing otherwise.

@@ -86,6 +86,8 @@ async function startServer(
 		idleTimeoutMs: 60_000,
 		tlsHandshakeTimeoutMs: handshakeMs,
 		authRateLimit: { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 },
+		production: false,
+		owlatVersion: 'dev',
 	};
 	const handle = startImapServer(
 		config,

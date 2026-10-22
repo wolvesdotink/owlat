@@ -1,6 +1,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { getImageDimensions } from '~/utils/getImageDimensions';
+import { withPendingHold } from '~/lib/pendingOperations';
 
 export function useMediaLibrary() {
 	const { t } = useI18n();
@@ -95,36 +96,42 @@ export function useMediaLibrary() {
 
 	// Upload files
 	const isUploading = ref(false);
+
+	/** Upload, measure and register one file; throws on any failure. */
+	const uploadOne = async (file: File) => {
+		const upload = await uploadFileToStorage(file, () => generateUploadUrl({}));
+		if (!upload.ok) {
+			// Diagnostic only — `allSettled` below counts the rejections and
+			// the toast reports the count; these strings never reach the UI.
+			throw new Error(
+				upload.reason === 'no-url'
+					? 'Failed to get upload URL'
+					: upload.reason === 'upload-failed'
+						? 'Upload failed'
+						: 'Upload did not return a storage id'
+			);
+		}
+		const storageId = upload.storageId;
+		const dimensions = await getImageDimensions(file);
+
+		const created = await createMediaAsset({
+			storageId,
+			filename: file.name,
+			mimeType: file.type,
+			fileSize: file.size,
+			width: dimensions?.width,
+			height: dimensions?.height,
+		});
+		if (!created.ok) throw new Error('Failed to save media asset');
+	};
+
 	const uploadFiles = async (files: File[]) => {
 		isUploading.value = true;
 		try {
+			// Each file's upload, measuring and registering is one save: hold any
+			// slow-save episode open until it is done (see lib/pendingOperations.ts).
 			const results = await Promise.allSettled(
-				files.map(async (file) => {
-					const upload = await uploadFileToStorage(file, () => generateUploadUrl({}));
-					if (!upload.ok) {
-						// Diagnostic only — `allSettled` below counts the rejections and
-						// the toast reports the count; these strings never reach the UI.
-						throw new Error(
-							upload.reason === 'no-url'
-								? 'Failed to get upload URL'
-								: upload.reason === 'upload-failed'
-									? 'Upload failed'
-									: 'Upload did not return a storage id'
-						);
-					}
-					const storageId = upload.storageId;
-					const dimensions = await getImageDimensions(file);
-
-					const created = await createMediaAsset({
-						storageId,
-						filename: file.name,
-						mimeType: file.type,
-						fileSize: file.size,
-						width: dimensions?.width,
-						height: dimensions?.height,
-					});
-					if (!created.ok) throw new Error('Failed to save media asset');
-				})
+				files.map((file) => withPendingHold(() => uploadOne(file)))
 			);
 			const failed = results.filter((r) => r.status === 'rejected').length;
 			if (failed > 0) {

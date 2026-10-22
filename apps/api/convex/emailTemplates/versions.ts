@@ -21,7 +21,9 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import { authedQuery } from '../lib/authedFunctions';
-import { getOrThrow } from '../_utils/errors';
+import { getOrThrow, throwNotFound } from '../_utils/errors';
+import { getLive } from '../lib/softDelete';
+import type { ErasureBudget } from '../contacts/erasure/budget';
 import {
 	VERSION_HISTORY_LIMIT,
 	VERSION_PRUNE_BATCH,
@@ -100,21 +102,28 @@ export async function captureTemplateVersion(
 }
 
 /**
- * Drop a template's whole history. Called from the template lifecycle's
- * `remove` so a deleted template leaves no orphaned snapshots behind.
+ * Drop a template's history, as much of it as `budget` allows. True when none
+ * is left. Called by the purge (`./deletion.ts`), which resumes a template
+ * whose history outran one transaction.
  */
 export async function deleteTemplateVersions(
 	ctx: MutationCtx,
-	templateId: Id<'emailTemplates'>
-): Promise<number> {
-	const versions = await ctx.db
-		.query('emailTemplateVersions')
-		.withIndex('by_template_and_created_at', (q) => q.eq('templateId', templateId))
-		.take(VERSION_HISTORY_LIMIT + VERSION_PRUNE_BATCH);
-	for (const version of versions) {
-		await ctx.db.delete(version._id);
+	templateId: Id<'emailTemplates'>,
+	budget: ErasureBudget
+): Promise<boolean> {
+	while (!budget.isExhausted) {
+		const chunk = budget.chunk();
+		const versions = await ctx.db
+			.query('emailTemplateVersions')
+			.withIndex('by_template_and_created_at', (q) => q.eq('templateId', templateId))
+			.take(chunk);
+		for (const version of versions) {
+			budget.charge(version);
+			await ctx.db.delete(version._id);
+		}
+		if (versions.length < chunk) return true;
 	}
-	return versions.length;
+	return false;
 }
 
 /**
@@ -144,9 +153,11 @@ export const captureForSend = internalMutation({
  */
 // all-members: version history is exactly the template body every org member
 // can already read via emails.get; the restore write is gated separately.
+// A template in Recently deleted has no readable history, like its body.
 export const list = authedQuery({
 	args: { templateId: v.id('emailTemplates') },
 	handler: async (ctx, args) => {
+		if (!(await getLive(ctx, args.templateId))) return [];
 		const versions = await ctx.db
 			.query('emailTemplateVersions')
 			.withIndex('by_template_and_created_at', (q) => q.eq('templateId', args.templateId))
@@ -165,11 +176,16 @@ export const list = authedQuery({
 	},
 });
 
-/** One snapshot with its content, for preview and restore. */
+/**
+ * One snapshot with its content, for preview and restore. A snapshot of a
+ * template in Recently deleted reads as missing, like the template.
+ */
 // all-members: same body as emails.get, scoped to one snapshot.
 export const get = authedQuery({
 	args: { versionId: v.id('emailTemplateVersions') },
 	handler: async (ctx, args) => {
-		return await getOrThrow(ctx, args.versionId, 'Template version');
+		const version = await getOrThrow(ctx, args.versionId, 'Template version');
+		if (!(await getLive(ctx, version.templateId))) throwNotFound('Template version');
+		return version;
 	},
 });

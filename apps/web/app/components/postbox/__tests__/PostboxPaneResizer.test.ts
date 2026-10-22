@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The pane divider applies a drag at most once per animation frame: a pointer
  * reports far more often than the screen paints, and every live update

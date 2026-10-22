@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The features step's delivery-provider note waits for a choice.
  *

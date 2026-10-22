@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The campaigns list runs on the shared list scaffold (`ListPageShell` +
  * `useListPage`). Mounted through a real vue-router, with the real shell,
@@ -8,7 +7,8 @@
  *     counts, and keep `?status=` in step both ways;
  *   - the list reads through the organization-gated paginated query, and the
  *     selected tab reaches its server-side status filter;
- *   - delete goes through `UiConfirmationDialog`, not a hand-built modal;
+ *   - delete runs at once (the campaign goes to Recently deleted) and its
+ *     toast names it and offers Undo, which restores it;
  *   - an empty "Needs attention" is an all-clear with no create action, an
  *     empty browse tab offers "New campaign".
  */
@@ -49,6 +49,10 @@ const DRAFT = {
 
 const rows = ref<unknown[]>([]);
 const removeCampaign = vi.fn(async (_args: unknown) => ({ ok: true, result: null }));
+const restoreCampaign = vi.fn(async (_args: unknown) => ({ ok: true, result: null }));
+const showToast = vi.fn(
+	(_message: string, _type?: string, _options?: { action?: { onAction: () => void } }) => 'toast-1'
+);
 let listArgs: () => Record<string, unknown> | undefined = () => undefined;
 
 // The modal chrome (teleport, focus trap) is not under test: render it inline.
@@ -83,6 +87,8 @@ function nameOf(fn: unknown) {
 beforeEach(() => {
 	rows.value = [];
 	removeCampaign.mockClear();
+	restoreCampaign.mockClear();
+	showToast.mockClear();
 	listArgs = () => undefined;
 	installNuxtStubs({
 		...i18nStubs,
@@ -103,10 +109,15 @@ beforeEach(() => {
 				? queryResult({ total: 3, draft: 2, scheduled: 0, sent: 1 })
 				: queryResult([]),
 		useBackendOperation: (op: unknown) => ({
-			run: nameOf(op).endsWith(':remove') ? removeCampaign : vi.fn(),
+			run: nameOf(op).endsWith(':remove')
+				? removeCampaign
+				: nameOf(op).endsWith(':restore')
+					? restoreCampaign
+					: vi.fn(),
 			isLoading: ref(false),
 			error: ref(null),
 		}),
+		useToast: () => ({ showToast, removeToast: vi.fn(), setToastShortcutHint: vi.fn() }),
 	});
 });
 
@@ -210,25 +221,21 @@ describe('campaigns list — empty states', () => {
 });
 
 describe('campaigns list — delete', () => {
-	it('confirms through UiConfirmationDialog and deletes on confirm', async () => {
+	it('deletes at once and offers Undo, which restores the campaign', async () => {
 		rows.value = [DRAFT];
 		const { wrapper } = await mountList('/dashboard/campaigns?status=draft');
 		expect(wrapper.find('.campaign-row').text()).toContain('Black Friday teaser');
-
-		const dialog = wrapper.findComponent(UiConfirmationDialog);
-		expect(dialog.exists()).toBe(true);
-		expect(dialog.props('open')).toBe(false);
+		expect(wrapper.findComponent(UiConfirmationDialog).exists()).toBe(false);
 
 		await wrapper.get('.row-delete').trigger('click');
-		expect(dialog.props('open')).toBe(true);
-		expect(dialog.props('variant')).toBe('danger');
-		const shown = wrapper.get('[role="dialog"]');
-		expect(shown.text()).toContain('"Black Friday teaser"');
-
-		const confirm = shown.findAll('button').find((b) => b.text() === 'Delete campaign');
-		await confirm!.trigger('click');
 		await flushPromises();
 		expect(removeCampaign).toHaveBeenCalledWith({ campaignId: 'cmp_draft' });
-		expect(dialog.props('open')).toBe(false);
+		expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+
+		const [message, , options] = showToast.mock.calls.at(-1)!;
+		expect(message).toBe('Deleted Black Friday teaser');
+		options!.action!.onAction();
+		await flushPromises();
+		expect(restoreCampaign).toHaveBeenCalledWith({ campaignId: 'cmp_draft' });
 	});
 });
