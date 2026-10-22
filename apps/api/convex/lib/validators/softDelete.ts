@@ -12,4 +12,10 @@ export const softDeleteFields = {
 	deletedAt: v.optional(v.number()),
 	/** Who deleted it (BetterAuth user id). */
 	deletedBy: v.optional(v.string()),
+	/**
+	 * Set when a purge stopped partway through removing what hangs off the row
+	 * (the rest follows in the next transaction). From then on the row can no
+	 * longer be restored: part of it is already gone.
+	 */
+	purgeStartedAt: v.optional(v.number()),
 };

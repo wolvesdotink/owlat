@@ -27,7 +27,15 @@ import { assertTransitioned } from './lifecycle';
 import { recordAuditLog } from '../lib/auditLog';
 import { recordListingCounter } from '../lib/listingCounters';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
-import { purgeAt, RETENTION_PURGE_USER, type DeletionOutcome } from '../lib/softDelete';
+import {
+	assertRestorable,
+	drainExpiredRows,
+	purgeAt,
+	RETENTION_PURGE_USER,
+	type DeletionOutcome,
+	type PurgeProgress,
+} from '../lib/softDelete';
+import type { ErasureBudget } from '../contacts/erasure/budget';
 import { throwInvalidState, throwNotFound } from '../_utils/errors';
 
 /**
@@ -81,6 +89,7 @@ export async function restoreCampaign(
 	// Gone for good: the purge got to it first.
 	if (!campaign) throwNotFound('Campaign');
 	if (campaign.deletedAt === undefined) return 'unchanged';
+	assertRestorable(campaign);
 
 	await ctx.db.patch(campaignId, { deletedAt: undefined, deletedBy: undefined });
 	await recordListingCounter(ctx, 'campaignStatus', campaign, {
@@ -99,29 +108,38 @@ export async function restoreCampaign(
 
 /**
  * Permanently remove up to `limit` campaigns deleted before `cutoff`, oldest
- * first. `hasMore` tells the purge to come back for the rest.
+ * first, within the purge transaction's shared `budget`. `hasMore` tells the
+ * purge to come back for the rest.
  */
 export async function purgeExpiredCampaigns(
 	ctx: MutationCtx,
 	cutoff: number,
-	limit: number
-): Promise<{ purged: number; hasMore: boolean }> {
-	const expired = await ctx.db
-		.query('campaigns')
-		.withIndex('by_deleted_at_and_updated_at', (q) => q.gte('deletedAt', 0).lt('deletedAt', cutoff))
-		.take(limit + 1);
-	const batch = expired.slice(0, limit);
-	for (const campaign of batch) {
-		await ctx.db.delete(campaign._id);
-		await recordAuditLog(ctx, {
-			userId: RETENTION_PURGE_USER,
-			action: 'campaign.purged',
-			resource: 'campaign',
-			resourceId: campaign._id,
-			details: { name: campaign.name },
-		});
-	}
-	return { purged: batch.length, hasMore: expired.length > limit };
+	limit: number,
+	budget: ErasureBudget
+): Promise<PurgeProgress> {
+	return await drainExpiredRows(
+		budget,
+		limit,
+		() =>
+			ctx.db
+				.query('campaigns')
+				.withIndex('by_deleted_at_and_updated_at', (q) =>
+					q.gte('deletedAt', 0).lt('deletedAt', cutoff)
+				)
+				.first(),
+		async (campaign) => {
+			budget.charge(campaign);
+			await ctx.db.delete(campaign._id);
+			await recordAuditLog(ctx, {
+				userId: RETENTION_PURGE_USER,
+				action: 'campaign.purged',
+				resource: 'campaign',
+				resourceId: campaign._id,
+				details: { name: campaign.name },
+			});
+			return true;
+		}
+	);
 }
 
 /**

@@ -24,7 +24,6 @@ import { getCachedContactCount } from './lib/contactCountHelpers';
 import { readDailyStats } from './lib/sendDailyStats';
 import { utcDayKey } from './lib/clock';
 import { budgetRefusalValidator } from './lib/validators/aiRouting';
-import { isLive } from './lib/softDelete';
 
 // ============================================================
 // Live-data allowlist
@@ -358,18 +357,22 @@ export const dataContactGrowth = internalQuery({
 
 /**
  * Performance of the most recently sent campaigns (up to 20). Reads via the
- * `by_status_sent_at` index so it stays a bounded, ordered slice.
+ * `by_deleted_at_and_status_and_sent_at` index so it stays a bounded, ordered
+ * slice of live sends.
  */
 export const dataCampaignPerformance = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const sent = await ctx.db
 			.query('campaigns')
-			.withIndex('by_status_sent_at', (q) => q.eq('status', 'sent'))
+			// Live only, inside the range, so deleted sends never use up the 20.
+			.withIndex('by_deleted_at_and_status_and_sent_at', (q) =>
+				q.eq('deletedAt', undefined).eq('status', 'sent')
+			)
 			.order('desc')
 			.take(20);
 
-		return sent.filter(isLive).map((c) => ({
+		return sent.map((c) => ({
 			name: c.name,
 			sentAt: c.sentAt ?? null,
 			sent: c.statsSent ?? 0,

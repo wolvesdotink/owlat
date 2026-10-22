@@ -292,6 +292,9 @@ export const campaignTables = {
 		.index('by_deleted_at_and_status_and_updated_at', ['deletedAt', 'status', 'updatedAt'])
 		.index('by_status_and_scheduled_at', ['status', 'scheduledAt'])
 		.index('by_status_sent_at', ['status', 'sentAt'])
+		// Live sends newest first (overview, comparisons, assistant stats): the
+		// range skips Recently deleted rows before any limit is applied.
+		.index('by_deleted_at_and_status_and_sent_at', ['deletedAt', 'status', 'sentAt'])
 		.index('by_archive_token', ['archiveToken'])
 		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` indexes campaign
 		// METADATA (name, subject), not a sealed 1:1 message body — campaigns are the

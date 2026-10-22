@@ -1071,16 +1071,24 @@ dashboard's Recently deleted page:
 - Every read that serves a user, an API key or the send path treats a deleted
   row as missing: `getLive` / `getLiveOrThrow` / `isLive` from
   `lib/softDelete.ts` for lookups by id, the `by_deleted_at*` indexes (pinned to
-  `deletedAt === undefined`) for scans, and `softDelete: true` on the listing
-  descriptor, whose filter and facet indexes then lead with `deletedAt`. The
-  listing counters count live rows only (`lib/listingCounters.ts`), so a delete
-  and a restore move a row out of and back into its bucket.
+  `deletedAt === undefined`) for scans, so a deleted row never uses up a
+  `take`/`first` limit that a live row should fill, and `softDelete: true` on
+  the listing descriptor, whose filter and facet indexes then lead with
+  `deletedAt`. The listing counters count live rows only
+  (`lib/listingCounters.ts`), so a delete and a restore move a row out of and
+  back into its bucket.
 - The lifecycles refuse every transition of a deleted row, and a delete never
   leaves one on the send path: a scheduled campaign is unscheduled first, a
   sending one and an active automation are refused.
+- A deleted row is frozen: nothing rewrites it while it waits (saved-block
+  propagation passes a deleted template by; restore catches up its links), and
+  what hangs off it is not readable either (a deleted template's history reads
+  as missing).
 - The daily `marketing/recentlyDeleted.ts:purgeExpired` removes rows deleted
-  more than 30 days ago in bounded batches through each domain's purge, and
-  reschedules itself while a backlog remains.
+  more than 30 days ago through each domain's purge, within one row and byte
+  budget per transaction shared by all three kinds, and reschedules itself
+  while a backlog remains. A row whose children outrun the budget gets
+  `purgeStartedAt` and is resumed next time; restore refuses such a row.
 
 ### Polymorphic foreign keys
 

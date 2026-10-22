@@ -1,6 +1,5 @@
 import type { Doc } from '../_generated/dataModel';
 import { campaignsQuery } from './_helpers';
-import { isLive } from '../lib/softDelete';
 
 /** Safety cap on the comparable-send window (index-ordered take, no scan). */
 const COMPARABLE_SENDS_LIMIT = 100;
@@ -18,14 +17,15 @@ export const getComparableSentCampaigns = campaignsQuery({
 	handler: async (ctx) => {
 		const sentCampaigns = await ctx.db
 			.query('campaigns')
-			.withIndex('by_status_sent_at', (q) => q.eq('status', 'sent'))
+			// Live only, inside the range, so a deleted send never uses up the window.
+			.withIndex('by_deleted_at_and_status_and_sent_at', (q) =>
+				q.eq('deletedAt', undefined).eq('status', 'sent')
+			)
 			.order('desc')
 			.take(COMPARABLE_SENDS_LIMIT);
 
 		return sentCampaigns
-			.filter(
-				(c): c is Doc<'campaigns'> & { sentAt: number } => isLive(c) && c.sentAt !== undefined
-			)
+			.filter((c): c is Doc<'campaigns'> & { sentAt: number } => c.sentAt !== undefined)
 			.map((c) => ({
 				id: c._id,
 				name: c.name,

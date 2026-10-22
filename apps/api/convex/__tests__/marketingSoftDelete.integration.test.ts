@@ -7,8 +7,9 @@
  * of every ordinary read (get, list, filtered list, search, counts); restore
  * brings back the same id with the same content; a stale tab cannot write to a
  * deleted row; the permission a delete needs is the one a restore needs; the
- * purge removes a row only once its 30 days are up, in bounded batches, and a
- * restore that comes first wins.
+ * purge removes a row only once its 30 days are up, in bounded batches that
+ * resume a row whose children outrun one transaction, and a restore that comes
+ * first wins while one that comes after the purge started is refused.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -27,6 +28,8 @@ import {
 } from './factories';
 import { SOFT_DELETE_RETENTION_MS } from '../lib/softDelete';
 import { PURGE_BATCH } from '../marketing/recentlyDeleted';
+import { ErasureBudget } from '../contacts/erasure/budget';
+import { purgeExpiredAutomations } from '../automations/deletion';
 
 const sessionMock = vi.hoisted(() => ({
 	user: { id: 'user-alice', role: 'owner' as 'owner' | 'admin' | 'editor' },
@@ -426,8 +429,20 @@ describe('email templates', () => {
 		const counts = await t.query(api.emailTemplates.organization.countByTypeByOrganization, {});
 		expect(counts['marketing']).toBe(0);
 		expect((await t.run(async (ctx) => ctx.db.get(blockId)))?.usageCount).toBe(0);
-		const versions = await t.query(api.emailTemplates.versions.list, { templateId });
-		expect(versions.length).toBeGreaterThan(0);
+		// The history is kept for a restore, but nobody can read it meanwhile.
+		const kept = await t.run(async (ctx) =>
+			ctx.db
+				.query('emailTemplateVersions')
+				.withIndex('by_template_and_created_at', (q) => q.eq('templateId', templateId))
+				.collect()
+		);
+		expect(kept.length).toBeGreaterThan(0);
+		setUser('user-eve', 'editor');
+		expect(await t.query(api.emailTemplates.versions.list, { templateId })).toEqual([]);
+		await expect(
+			t.query(api.emailTemplates.versions.get, { versionId: kept[0]!._id })
+		).rejects.toThrow(/not found/i);
+		setUser('user-alice', 'owner');
 		await expect(
 			t.mutation(api.emailTemplates.emails.update, { templateId, name: 'Stale tab' })
 		).rejects.toThrow(/not found/i);
@@ -450,6 +465,9 @@ describe('email templates', () => {
 			'Autumn header'
 		);
 		expect((await t.run(async (ctx) => ctx.db.get(blockId)))?.usageCount).toBe(1);
+		expect(await t.query(api.emailTemplates.versions.list, { templateId })).toHaveLength(
+			kept.length
+		);
 		const recounted = await t.query(api.emailTemplates.organization.countByTypeByOrganization, {});
 		expect(recounted['marketing']).toBe(1);
 	});
@@ -554,5 +572,233 @@ describe('the 30-day purge', () => {
 		const second = await purgeAt(t, now);
 		expect(second).toEqual(expect.objectContaining({ campaigns: 3, hasMore: false }));
 		expect(await t.run(async (ctx) => ctx.db.query('campaigns').collect())).toEqual([]);
+	});
+});
+
+describe('the purge resumes what outruns one transaction', () => {
+	const MIB = 1024 * 1024;
+	const expired = (now: number) => now + SOFT_DELETE_RETENTION_MS + 1;
+
+	it('a partly purged automation can no longer be restored, and the next pass finishes it', async () => {
+		const t = await freshT();
+		const automationId = await seedAutomation(t, { deletedAt: 1_000, deletedBy: 'user-alice' });
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 12; i++) {
+				await ctx.db.insert(
+					'automationSteps',
+					createTestAutomationStep({ automationId, stepType: 'delay', stepIndex: i }) as never
+				);
+			}
+		});
+
+		// A budget of five rows stops the purge partway through the steps.
+		const partial = await t.run(async (ctx) =>
+			purgeExpiredAutomations(ctx, expired(1_000), PURGE_BATCH, new ErasureBudget(5, 4 * MIB))
+		);
+		expect(partial).toEqual({ purged: 0, hasMore: true });
+		const left = await t.run(async (ctx) => ({
+			row: await ctx.db.get(automationId),
+			steps: await ctx.db
+				.query('automationSteps')
+				.withIndex('by_automation', (q) => q.eq('automationId', automationId))
+				.collect(),
+		}));
+		expect(left.row?.purgeStartedAt).toBeDefined();
+		expect(left.steps).toHaveLength(7);
+
+		await expect(t.mutation(api.automations.automations.restore, { automationId })).rejects.toThrow(
+			/can no longer be restored/
+		);
+		expect(
+			(await t.query(api.automations.deletion.listDeleted, { paginationOpts: PAGE })).page
+		).toEqual([]);
+
+		expect(await purgeAt(t, expired(1_000))).toEqual(
+			expect.objectContaining({ automations: 1, hasMore: false })
+		);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(automationId)).toBeNull();
+			expect(await ctx.db.query('automationSteps').collect()).toEqual([]);
+		});
+	});
+
+	it('large version histories drain over several passes within the byte budget', async () => {
+		const t = await freshT();
+		const body = 'x'.repeat(900 * 1024);
+		const templateIds: Id<'emailTemplates'>[] = [];
+		for (const deletedAt of [1_000, 1_001]) {
+			const templateId = await seedTemplate(t, { deletedAt, deletedBy: 'user-alice' });
+			templateIds.push(templateId);
+			await t.run(async (ctx) => {
+				for (let i = 0; i < 6; i++) {
+					await ctx.db.insert('emailTemplateVersions', {
+						templateId,
+						trigger: 'save',
+						content: body,
+						name: 'Snapshot',
+						subject: 'Snapshot',
+						contentBytes: body.length,
+						contentHash: `hash-${i}`,
+						createdBy: 'user-alice',
+						createdAt: i,
+					});
+				}
+			});
+		}
+		const versionsLeft = () =>
+			t.run(async (ctx) => (await ctx.db.query('emailTemplateVersions').collect()).length);
+
+		// About 10.5 MiB of history against a 4 MiB allowance: each pass removes
+		// part of it, the first template is marked, and nothing is restorable.
+		const first = await purgeAt(t, expired(1_001));
+		expect(first).toEqual(expect.objectContaining({ templates: 0, hasMore: true }));
+		const afterFirst = await versionsLeft();
+		expect(afterFirst).toBeGreaterThan(0);
+		expect(afterFirst).toBeLessThan(12);
+		expect(12 - afterFirst).toBeLessThanOrEqual(4);
+		expect((await t.run(async (ctx) => ctx.db.get(templateIds[0]!)))?.purgeStartedAt).toBeDefined();
+		await expect(
+			t.mutation(api.emailTemplates.emails.restore, { templateId: templateIds[0]! })
+		).rejects.toThrow(/can no longer be restored/);
+
+		let passes = 1;
+		let purged = 0;
+		for (let more = true; more && passes < 10; passes++) {
+			const pass = await purgeAt(t, expired(1_001));
+			purged += pass.templates;
+			more = pass.hasMore;
+		}
+		expect(purged).toBe(2);
+		expect(passes).toBeGreaterThan(2);
+		expect(await versionsLeft()).toBe(0);
+		await t.run(async (ctx) => {
+			for (const templateId of templateIds) expect(await ctx.db.get(templateId)).toBeNull();
+		});
+	});
+});
+
+describe('saved blocks and deleted templates', () => {
+	const linkedContent = (blockId: Id<'emailBlocks'>, text: string) =>
+		JSON.stringify({
+			blocks: [
+				{
+					id: 'block1',
+					type: 'text',
+					content: { text },
+					savedBlockRef: { blockId, groupId: 'g1', blockName: 'Footer' },
+				},
+			],
+		});
+	const seedBlock = (t: T, name = 'Footer') =>
+		t.run(async (ctx) =>
+			ctx.db.insert('emailBlocks', {
+				name,
+				content: '[]',
+				usageCount: 1,
+				createdAt: 1,
+				updatedAt: 1,
+			})
+		);
+	const firstBlock = async (t: T, templateId: Id<'emailTemplates'>) => {
+		const row = await t.run(async (ctx) => ctx.db.get(templateId));
+		const parsed = JSON.parse(row!.content);
+		return { row: row!, block: (parsed.blocks ?? parsed)[0] };
+	};
+
+	it('a block edit passes a deleted template by, which comes back as it was deleted', async () => {
+		const t = await freshT();
+		const blockId = await seedBlock(t);
+		const templateId = await seedTemplate(t, {
+			content: linkedContent(blockId, 'original'),
+			linkedBlockIds: [blockId],
+		});
+		await t.mutation(api.emailTemplates.emails.remove, { templateId });
+		const before = await t.run(async (ctx) => ctx.db.get(templateId));
+
+		await t.mutation(internal.emailBlocks.module.update, {
+			blockId,
+			patch: {
+				content: JSON.stringify({
+					blocks: [{ id: 'new', type: 'text', content: { text: 'replacement' } }],
+				}),
+			},
+			userId: 'user-alice',
+		});
+		expect((await t.run(async (ctx) => ctx.db.get(templateId)))?.content).toBe(before!.content);
+
+		await t.mutation(api.emailTemplates.emails.restore, { templateId });
+		const { row, block } = await firstBlock(t, templateId);
+		expect(block.content.text).toBe('original');
+		expect(block.savedBlockRef.blockId).toBe(blockId);
+		expect(row.linkedBlockIds).toEqual([blockId]);
+		expect((await t.run(async (ctx) => ctx.db.get(blockId)))?.usageCount).toBe(1);
+	});
+
+	it('restore detaches blocks deleted meanwhile and takes up renames', async () => {
+		const t = await freshT();
+		const goneId = await seedBlock(t, 'Gone');
+		const renamedId = await seedBlock(t, 'Footer');
+		const content = JSON.stringify({
+			blocks: [
+				{
+					id: 'a',
+					type: 'text',
+					content: { text: 'kept text' },
+					savedBlockRef: { blockId: goneId, groupId: 'g1', blockName: 'Gone' },
+				},
+				{
+					id: 'b',
+					type: 'text',
+					content: { text: 'footer' },
+					savedBlockRef: { blockId: renamedId, groupId: 'g2', blockName: 'Footer' },
+				},
+			],
+		});
+		const templateId = await seedTemplate(t, { content, linkedBlockIds: [goneId, renamedId] });
+		await t.mutation(api.emailTemplates.emails.remove, { templateId });
+
+		await t.mutation(internal.emailBlocks.module.remove, { blockId: goneId, userId: 'user-alice' });
+		await t.mutation(internal.emailBlocks.module.update, {
+			blockId: renamedId,
+			patch: { name: 'Footer v2' },
+			userId: 'user-alice',
+		});
+		// Neither reached the deleted template.
+		expect((await t.run(async (ctx) => ctx.db.get(templateId)))?.content).toBe(content);
+
+		await t.mutation(api.emailTemplates.emails.restore, { templateId });
+		const row = (await t.run(async (ctx) => ctx.db.get(templateId)))!;
+		const blocks = JSON.parse(row.content);
+		const list = blocks.blocks ?? blocks;
+		expect(list[0].content.text).toBe('kept text');
+		expect(list[0].savedBlockRef).toBeUndefined();
+		expect(list[1].savedBlockRef).toEqual({
+			blockId: renamedId,
+			groupId: 'g2',
+			blockName: 'Footer v2',
+		});
+		expect(row.linkedBlockIds).toEqual([renamedId]);
+		expect((await t.run(async (ctx) => ctx.db.get(renamedId)))?.usageCount).toBe(1);
+	});
+});
+
+describe('newest-first reads skip deleted campaigns before their limit', () => {
+	it('the overview and the comparison window reach past deleted newer sends', async () => {
+		const t = await freshT();
+		const now = Date.now();
+		const keep = await seedCampaign(t, {
+			name: 'Live previous',
+			status: 'sent',
+			sentAt: now - 4_000,
+		});
+		for (let i = 0; i < 3; i++) {
+			const campaignId = await seedCampaign(t, { status: 'sent', sentAt: now - i * 1_000 });
+			await t.mutation(api.campaigns.campaigns.remove, { campaignId });
+		}
+
+		const overview = await t.query(api.analytics.marketingOverview.get, {});
+		expect(overview.latest.map((c) => c.id)).toEqual([keep]);
+		const comparable = await t.query(api.campaigns.analytics.getComparableSentCampaigns, {});
+		expect(comparable.map((c) => c.id)).toEqual([keep]);
 	});
 });
