@@ -33,7 +33,7 @@ const MEMBER: MutationSessionContext = {
 };
 
 vi.mock('../sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../sessionOrganization')>();
+	const actual = await importOriginal<typeof sessionOrganization>();
 	return {
 		...actual,
 		requireOrgMember: vi.fn(async () => MEMBER),
@@ -42,7 +42,7 @@ vi.mock('../sessionOrganization', async (importOriginal) => {
 });
 
 vi.mock('../featureFlags', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../featureFlags')>();
+	const actual = await importOriginal<typeof featureFlags>();
 	return { ...actual, assertFeatureEnabled: vi.fn(async () => undefined) };
 });
 
