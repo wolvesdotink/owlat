@@ -160,14 +160,29 @@ export function reportRolloutActivity(activeAt: number | null): void {
 	const previous = lastActivity;
 	lastActivity = activeAt;
 	if (activeAt === null) {
-		if (activitySeenAt === null && !dropIsUpdate) return;
-		activitySeenAt = null;
-		dropIsUpdate = false;
-		recompute();
+		clearRolloutEvidence();
 		return;
 	}
 	if (previous === undefined || previous === activeAt) return;
 	activitySeenAt = Date.now();
+}
+
+/**
+ * The caller may not see rollout activity (signed out, or not a member of an
+ * active organization). That is no answer rather than "no run open": the next
+ * visible answer is a fresh baseline, so gaining visibility of a row orphaned
+ * long ago is not taken for a run opening while this tab watched.
+ */
+export function forgetRolloutActivity(): void {
+	lastActivity = undefined;
+	clearRolloutEvidence();
+}
+
+function clearRolloutEvidence(): void {
+	if (activitySeenAt === null && !dropIsUpdate) return;
+	activitySeenAt = null;
+	dropIsUpdate = false;
+	recompute();
 }
 
 /** Forget everything observed. For a detach and for tests. */

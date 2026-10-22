@@ -315,7 +315,9 @@ export const recordUpdateActivity = platformAdminMutation({
 });
 
 /**
- * The open update run's last confirmed activity, or `null` when no run is open.
+ * The open update run's last confirmed activity: `{ activeAt: null }` when no
+ * run is open, and `null` when the caller may not see it (anonymous, or not an
+ * active member).
  *
  * The app shell reads this while connected so that, when the rollout restarts
  * the backend and the socket drops, it can say "update in progress" instead of
@@ -323,7 +325,10 @@ export const recordUpdateActivity = platformAdminMutation({
  * or the start for a run that has none yet. The shell trusts it only while it
  * sees it advance: an orphaned `running` row answers here too, but its value
  * never changes again. Only that timestamp leaves here: versions, the
- * initiating admin and step logs stay platform-admin only.
+ * initiating admin and step logs stay platform-admin only. The two empty
+ * answers differ because the activity is instance-wide: the shell must take the
+ * first answer after gaining visibility (signing in, joining an organization)
+ * as a baseline, not as a run that just opened.
  */
 // public: the app shell subscribes before it knows the caller is a member; an anonymous or non-member caller gets null instead of an error.
 export const getRolloutActivity = publicQuery({
@@ -335,10 +340,8 @@ export const getRolloutActivity = publicQuery({
 			.withIndex('by_kind_and_startedAt', (q) => q.eq('kind', 'updateRun'))
 			.order('desc')
 			.take(1);
-		if (!newest || newest.status !== 'running') return null;
-		const activeAt = newest.lastActivityAt ?? newest.startedAt;
-		if (activeAt === undefined) return null;
-		return { activeAt };
+		if (!newest || newest.status !== 'running') return { activeAt: null };
+		return { activeAt: newest.lastActivityAt ?? newest.startedAt ?? null };
 	},
 });
 

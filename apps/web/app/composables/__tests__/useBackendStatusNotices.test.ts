@@ -22,7 +22,7 @@ import {
 const i18n = createTestI18n();
 const en = (key: string) => i18n.global.t(key);
 
-let rollout: ReturnType<typeof shallowRef<{ activeAt: number } | null | undefined>>;
+let rollout: ReturnType<typeof shallowRef<{ activeAt: number | null } | null | undefined>>;
 
 function socket() {
 	let state = { isWebSocketConnected: true, hasEverConnected: true };
@@ -339,7 +339,7 @@ describe('connection announcements and rollout evidence', () => {
 	it('feeds live rollout activity into the indicator, and keeps it while the query resets', async () => {
 		const setConnected = socket();
 		const { result } = mountNotices();
-		rollout.value = null;
+		rollout.value = { activeAt: null };
 		await nextTick();
 		// The run opens while this tab watches: activity seen live.
 		rollout.value = { activeAt: Date.now() };
@@ -370,14 +370,33 @@ describe('connection announcements and rollout evidence', () => {
 		expect(result.phase.value).toBe('reconnecting');
 	});
 
+	it('signing in takes the first visible answer as a baseline, not a run opening', async () => {
+		const setConnected = socket();
+		const { result } = mountNotices();
+		// On the login page the anonymous caller may not see rollouts.
+		rollout.value = null;
+		await nextTick();
+		// Signing in resets the subscription, then reveals a row orphaned a day ago.
+		rollout.value = undefined;
+		await nextTick();
+		rollout.value = { activeAt: Date.now() - 24 * 60 * 60_000 };
+		await nextTick();
+
+		setConnected(false);
+		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
+		await nextTick();
+
+		expect(result.phase.value).toBe('reconnecting');
+	});
+
 	it('a closed run clears the evidence', async () => {
 		const setConnected = socket();
 		const { result } = mountNotices();
-		rollout.value = null;
+		rollout.value = { activeAt: null };
 		await nextTick();
 		rollout.value = { activeAt: Date.now() };
 		await nextTick();
-		rollout.value = null;
+		rollout.value = { activeAt: null };
 		await nextTick();
 
 		setConnected(false);

@@ -316,6 +316,18 @@ describe('systemUpdates.getRolloutActivity', () => {
 		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toBeNull();
 	});
 
+	it('tells a caller who may not see rollouts apart from a member with no open run', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+
+		vi.mocked(isActiveOrgMember).mockResolvedValueOnce(false);
+		const hidden = await t.query(api.systemUpdates.getRolloutActivity, {});
+		const member = await t.query(api.systemUpdates.getRolloutActivity, {});
+
+		expect(hidden).toBeNull();
+		expect(member).toEqual({ activeAt: null });
+	});
+
 	it('gives an ordinary member only the running update’s start time before any heartbeat', async () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
@@ -337,7 +349,7 @@ describe('systemUpdates.getRolloutActivity', () => {
 		});
 	});
 
-	it('answers null once the newest run has a verdict', async () => {
+	it('answers no open run once the newest run has a verdict', async () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
 		const runId = await t.mutation(api.systemUpdates.recordUpdateStart, {
@@ -346,10 +358,10 @@ describe('systemUpdates.getRolloutActivity', () => {
 		});
 		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId, status: 'success' });
 
-		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toBeNull();
+		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toEqual({ activeAt: null });
 	});
 
-	it('answers null with no update history and ignores the release-check singleton', async () => {
+	it('answers no open run with no update history and ignores the release-check singleton', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) =>
 			ctx.db.insert('systemUpdates', {
@@ -359,7 +371,7 @@ describe('systemUpdates.getRolloutActivity', () => {
 			})
 		);
 
-		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toBeNull();
+		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toEqual({ activeAt: null });
 	});
 });
 
@@ -410,7 +422,7 @@ describe('systemUpdates.recordUpdateActivity', () => {
 		const row = await t.run(async (ctx) => ctx.db.get(runId));
 		expect(row?.lastActivityAt).toBeUndefined();
 		expect(row?.status).toBe('success');
-		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toBeNull();
+		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toEqual({ activeAt: null });
 	});
 
 	it('does nothing without update history', async () => {

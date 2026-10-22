@@ -3,6 +3,7 @@ import {
 	attachBackendConnection,
 	backendConnectionPhase,
 	CONNECTION_GRACE_MS,
+	forgetRolloutActivity,
 	reportRolloutActivity,
 	resetBackendConnection,
 	ROLLOUT_ACTIVITY_FRESH_MS,
@@ -246,6 +247,46 @@ describe('update in progress', () => {
 		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
 
 		reportRolloutActivity(null);
+
+		expect(backendConnectionPhase.value).toBe('reconnecting');
+	});
+
+	it('takes the first answer after gaining visibility as a baseline, not a run opening', () => {
+		const socket = fakeSource(CONNECTED);
+		attachBackendConnection(socket.source);
+		// Signed out: the query hides rollouts. Signing in reveals a row orphaned
+		// a day ago, which this tab never saw advance.
+		forgetRolloutActivity();
+		reportRolloutActivity(Date.now() - 24 * 60 * 60_000);
+
+		socket.set({ isWebSocketConnected: false });
+		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
+
+		expect(backendConnectionPhase.value).toBe('reconnecting');
+	});
+
+	it('counts a heartbeat seen after visibility was gained', () => {
+		const socket = fakeSource(CONNECTED);
+		attachBackendConnection(socket.source);
+		forgetRolloutActivity();
+		reportRolloutActivity(Date.now() - 10_000);
+		reportRolloutActivity(Date.now());
+
+		socket.set({ isWebSocketConnected: false });
+		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
+
+		expect(backendConnectionPhase.value).toBe('updating');
+	});
+
+	it('losing visibility forgets live evidence and the next answer is a baseline again', () => {
+		const socket = fakeSource(CONNECTED);
+		attachBackendConnection(socket.source);
+		liveRollout();
+		forgetRolloutActivity();
+		reportRolloutActivity(Date.now() - 1_000);
+
+		socket.set({ isWebSocketConnected: false });
+		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
 
 		expect(backendConnectionPhase.value).toBe('reconnecting');
 	});

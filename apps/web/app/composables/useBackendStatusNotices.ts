@@ -1,6 +1,6 @@
 import { api } from '@owlat/api';
 import { nextTick } from 'vue';
-import { reportRolloutActivity } from '~/lib/backendConnection';
+import { forgetRolloutActivity, reportRolloutActivity } from '~/lib/backendConnection';
 import { onSlowEpisodeEnd, type SlowOperation } from '~/lib/pendingOperations';
 import { useBackendStatus } from './useBackendStatus';
 
@@ -143,12 +143,16 @@ export function useBackendStatusNotices() {
 	});
 
 	// `undefined` is "no answer yet" (or the subscription was reset for a new
-	// identity): keep the last evidence rather than forget it mid-drop.
+	// identity): keep the last evidence rather than forget it mid-drop. `null`
+	// is a caller who may not see rollouts, whose next visible answer must be a
+	// baseline rather than news.
 	const { data: rollout } = useConvexQuery(api.systemUpdates.getRolloutActivity, {});
 	watch(
 		rollout,
 		(value) => {
-			if (value !== undefined) reportRolloutActivity(value?.activeAt ?? null);
+			if (value === undefined) return;
+			if (value === null) forgetRolloutActivity();
+			else reportRolloutActivity(value.activeAt);
 		},
 		{ immediate: true }
 	);
