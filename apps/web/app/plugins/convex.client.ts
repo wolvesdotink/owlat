@@ -13,6 +13,7 @@ import { logWarn } from '~/lib/runtimeLog';
 import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
 import { resetSharedConvexSubscriptions } from '~/lib/sharedConvexSubscriptions';
 import { isPublicPath } from '~/utils/publicRoutes';
+import { resetPendingOperations } from '~/lib/pendingOperations';
 
 let authListenerRegistered = false;
 
@@ -56,6 +57,13 @@ export default defineNuxtPlugin((nuxtApp) => {
 
 	const client = new ConvexClient(convexUrl);
 	const router = useRouter();
+	// The shell's connection indicator watches this client's socket; the client
+	// stays the only owner of reconnecting. Loaded lazily so it stays out of the
+	// entry bundle every page boots with; attaching reads the socket's current
+	// state, so a late attach misses nothing.
+	void import('~/lib/backendConnection')
+		.then(({ attachBackendConnection }) => attachBackendConnection(client))
+		.catch((error: unknown) => logWarn('Backend connection indicator failed to load', error));
 
 	/**
 	 * Install the token fetcher and the session listener on this client. Runs
@@ -222,6 +230,9 @@ export default defineNuxtPlugin((nuxtApp) => {
 			authClient.$store.listen('$sessionSignal', () => {
 				resetSharedConvexSubscriptions();
 				resetConvexAuthTokenCache();
+				// The previous identity's unanswered writes must not end in a
+				// "saved" notice for the next one.
+				resetPendingOperations();
 				// A new identity gets a fresh retry budget, no stale reinstall, and no
 				// answer from a session check made for the previous one.
 				generation++;

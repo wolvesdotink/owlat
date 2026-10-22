@@ -195,8 +195,9 @@ The hosted-cloud control plane (Stripe billing, multi-tenancy, VPS auto-provisio
 ```bash
 git clone https://github.com/wolvesdotink/owlat.git
 cd owlat
-bun install
-cp .env.example .env   # for local dev against hosted Convex
+bun run setup:worktree   # frozen install + the workspace builds the web app needs
+bun run dev:stack        # local Convex + Redis per checkout, seeded, with Nuxt
+                         # (runbook: docs/operations/development.md)
 # — or, full self-host stack (generates secrets, deploys backend functions,
 # pushes the Convex runtime env vars, creates the admin account — plain
 # `docker compose up` alone boots an empty backend with no functions, no
@@ -213,16 +214,17 @@ scripts/owlat quickstart      # the blessed flow (legacy bash fallback: bash scr
 ### Commands
 
 ```bash
-bun run dev           # web + api in parallel (localhost:3000)
+bun run dev:stack     # local backend + Nuxt for this checkout (ports per
+                      # worktree; `ports`, `status`, `logs`, `down [--volumes]`)
+bun run dev           # web + api in parallel against the deployment .env selects
 bun run dev:web       # Nuxt frontend only
 bun run dev:api       # Convex backend only
-bun run dev:seed      # OPTIONAL: seed the local stack with dummy accounts +
-                      # demo data (contacts, topics, campaigns, …). Every
-                      # account gets a hosted mailbox on demo.localhost (plus
-                      # a shared team@ inbox) so the Postbox works out of the
-                      # box. Never runs automatically — skip it for a blank
-                      # instance. Prints the sign-in credentials
-                      # (dev@example.com etc.).
+bun run dev:seed      # seed the local stack with dummy accounts + demo data
+                      # (contacts, topics, campaigns, …). Every account gets a
+                      # hosted mailbox on demo.localhost (plus a shared team@
+                      # inbox) so the Postbox works out of the box. dev:stack
+                      # runs it on start (--no-seed skips that). Prints the
+                      # sign-in credentials (dev@example.com etc.).
                       # --reset reseeds demo rows, --wipe starts from blank.
 bun run dev:docs      # docs site
 bun run dev:marketing # marketing site

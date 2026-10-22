@@ -29,6 +29,7 @@
  * the state machine is unit-testable with a mocked transport and never imports
  * Convex or Nuxt-toast context directly.
  */
+import { holdPendingWork } from '~/lib/pendingOperations';
 
 /** A committed attachment, matching the parent composable's `attachments` shape. */
 export interface CommittedAttachment {
@@ -191,10 +192,16 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 		controllers.set(id, controller);
 		patch(id, { status: 'uploading', progress: 0, indeterminate: true });
 		const cancelled = () => controller.signal.aborted;
+		// Mint, transfer and attach are one save: a slow write elsewhere that
+		// lands meanwhile must not confirm "all changes saved" while this file is
+		// still on its way. A cancel is not a failure.
+		const release = holdPendingWork();
+		let failed = false;
 		try {
 			const url = await deps.generateUploadUrl();
 			if (cancelled()) return;
 			if (!url) {
+				failed = true;
 				patch(id, { status: 'failed', indeterminate: false });
 				return;
 			}
@@ -224,6 +231,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 				return;
 			}
 			if (!ok) {
+				failed = true;
 				patch(id, { status: 'failed', indeterminate: false });
 				return;
 			}
@@ -241,8 +249,10 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 				forget(id);
 				return;
 			}
+			failed = true;
 			patch(id, { status: 'failed', indeterminate: false });
 		} finally {
+			release(!failed);
 			controllers.delete(id);
 			attaching.delete(id);
 			if (settling.delete(id)) settlingCount.value = settling.size;

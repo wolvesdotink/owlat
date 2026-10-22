@@ -14,6 +14,7 @@ import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/a
 import { downscaleImageFile } from './postboxInlineImage';
 import { attachmentMeter } from './postboxAttachmentMeter';
 import { createAttachmentUploads, xhrPutFile } from './postboxAttachmentUploads';
+import { holdPendingWork } from '~/lib/pendingOperations';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 import {
 	usePostboxComposeExpected,
@@ -250,6 +251,10 @@ export function usePostboxComposeAttachments(opts: {
 		}
 
 		uploadingCount.value += 1;
+		// Mint, transfer and attach are one save: hold any slow-save episode
+		// open until the image is on the draft (see lib/pendingOperations.ts).
+		const release = holdPendingWork();
+		let attached = false;
 		try {
 			const url = await generateUploadUrl.run({});
 			if (!url.ok) return null;
@@ -281,9 +286,12 @@ export function usePostboxComposeAttachments(opts: {
 				contentId,
 			});
 			if (!result.ok || !result.result.ok) return null;
+			attached = true;
 			inlineParts.value = [...inlineParts.value, { contentId, storageId }];
 			return { contentId, previewUrl: URL.createObjectURL(scaled) };
 		} finally {
+			// A composer closed meanwhile bound nothing on purpose: not a failure.
+			release(attached || tornDown);
 			uploadingCount.value -= 1;
 		}
 	}

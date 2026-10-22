@@ -2,12 +2,15 @@
 import { logError } from '~/lib/runtimeLog';
 import { useZenMode } from '~/composables/useZenMode';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import ShellConnectionIndicator from './ConnectionIndicator.vue';
 
 /**
  * The sidebar footer, one row: the account menu (Assistant, Zen mode, keyboard
  * shortcuts, theme, sign out), then Settings as a quiet gear (settings are
  * visited rarely, so they get one door rather than two top-level sections),
- * then the collapse toggle. Collapsed to the icon rail, the three stack.
+ * then the collapse toggle. Collapsed to the icon rail, the three stack. While
+ * the backend connection is down, its indicator gets a line above the row (a
+ * dot between the gear and the avatar on the rail).
  */
 const props = defineProps<{
 	collapsed: boolean;
@@ -92,7 +95,9 @@ function startZen() {
 <template>
 	<div
 		class="flex border-t border-border-subtle px-2 py-2"
-		:class="props.collapsed ? 'flex-col-reverse items-center gap-1' : 'items-center gap-0.5'"
+		:class="
+			props.collapsed ? 'flex-col-reverse items-center gap-1' : 'flex-wrap items-center gap-0.5'
+		"
 	>
 		<div ref="menuRef" class="relative min-w-0" :class="props.collapsed ? '' : 'flex-1'">
 			<button
@@ -192,6 +197,11 @@ function startZen() {
 			</Transition>
 		</div>
 
+		<!-- Expanded, its own line above the row, so the name keeps its width. -->
+		<ShellConnectionIndicator
+			:compact="props.collapsed"
+			:class="props.collapsed ? 'px-1' : 'order-first basis-full px-2 pb-1'"
+		/>
 		<NuxtLink
 			to="/dashboard/preferences"
 			:aria-current="settingsActive ? 'page' : undefined"

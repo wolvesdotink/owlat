@@ -4,14 +4,21 @@ Thanks for your interest in contributing to Owlat! This guide covers the essenti
 
 ## Development Setup
 
-See the [Developer Guide](https://docs.owlat.app/developer/) for full setup instructions. The short version:
+You need Bun and Docker (Compose v2). From a fresh checkout or worktree:
 
 ```bash
-bun install
-cp .env.example .env   # local dev against a hosted Convex deployment
-bun run dev:api        # Convex backend — the first run provisions the deployment
-bun run dev            # Nuxt frontend
+bun run setup:worktree   # frozen install, env links, builds the web app's workspace deps
+bun run dev:stack        # local Convex + Redis, push, demo seed, Convex watcher + Nuxt
 ```
+
+`dev:stack` gives every checkout its own containers, data and ports, prints
+the URL to open, and seeds `dev@example.com` / `devpassword12345`. Stop it with
+Ctrl-C, then `bun run dev:stack down` (add `--volumes` to delete its data).
+[`docs/operations/development.md`](./docs/operations/development.md) is the
+runbook: ports and `OWLAT_PORT_OFFSET`, state, seeding, stopping what you
+started. [`docs/operations/observability.md`](./docs/operations/observability.md)
+covers logs, metrics and following a send. The
+[Developer Guide](https://docs.owlat.app/developer/) explains the architecture.
 
 ### Developing on Windows
 
@@ -28,6 +35,27 @@ desktop app from the same WSL2 or Git Bash shell too: the Tauri hooks in
 `apps/desktop/src-tauri/tauri.conf.json` (and the `generate:desktop` script they
 call) prefix commands with POSIX-style env vars like `OWLAT_DESKTOP=true …`,
 which native PowerShell/cmd cannot parse. macOS and Linux need no special setup.
+
+### Format on commit
+
+CI's format gate (`bun run lint:format`) fails when a changed JS/TS file is not
+oxfmt-clean. To fix that before it reaches CI, install the pre-commit hook once
+per clone:
+
+```bash
+bun run hooks:install     # every worktree of this clone shares the hook
+bun run hooks:uninstall   # remove it again
+```
+
+On each commit the hook runs oxfmt (`oxfmtrc.json`) over the staged `.ts`,
+`.tsx`, `.js`, `.jsx`, `.mjs` and `.cjs` files, the set the CI gate checks, and
+stages the result. Only the staged content is formatted: unstaged edits and
+untracked files are left as they are, and a partially staged file keeps its
+unstaged changes. If oxfmt cannot parse a staged file, the commit stops and
+nothing is changed. `git commit --no-verify` skips the hook, and
+`bun run format:staged` runs the same formatter by hand. The installer leaves an
+existing pre-commit hook, or a `core.hooksPath` setup, alone; call
+`bun scripts/format-staged.ts` from that hook instead.
 
 ## Testing
 

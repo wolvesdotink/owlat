@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, nextTick } from 'vue';
+import { effectScope, ref, nextTick } from 'vue';
 import { useAutomationStepConfig } from '../useAutomationStepConfig';
 import { createTestI18n } from '~/__tests__/i18n';
+import {
+	EPISODE_QUIET_MS,
+	onSlowEpisodeEnd,
+	resetPendingOperations,
+	SLOW_OPERATION_MS,
+	trackPendingOperation,
+	type SlowEpisodeOutcome,
+} from '~/lib/pendingOperations';
 
 const i18n = createTestI18n();
 
@@ -232,6 +240,42 @@ describe('useAutomationStepConfig autosave', () => {
 		// Autosave does not write over the other copy until the member chooses.
 		expect(await requestSave()).toBe(false);
 		expect(calls).toHaveLength(1);
+	});
+
+	it('edits held for a conflict veto the app-wide "All changes saved" until resolved', async () => {
+		vi.useFakeTimers();
+		const outcomes: SlowEpisodeOutcome[] = [];
+		const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+		const scope = effectScope();
+		const { automation, edit, takeRemoteConfig } = scope.run(() => setup())!;
+		const slowEpisodeElsewhere = () => {
+			const other = trackPendingOperation(() => 'Archive');
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			other(true);
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+		};
+		try {
+			edit(5);
+			withServerConfig(automation, 's1', { duration: 4, unit: 'hours' });
+			await nextTick();
+			slowEpisodeElsewhere();
+			expect(outcomes).toEqual(['unconfirmed']);
+
+			takeRemoteConfig();
+			slowEpisodeElsewhere();
+			expect(outcomes).toEqual(['unconfirmed', 'saved']);
+
+			// Gone with its editor: an unmounted step editor vetoes nothing.
+			edit(6);
+			scope.stop();
+			slowEpisodeElsewhere();
+			expect(outcomes).toEqual(['unconfirmed', 'saved', 'saved']);
+		} finally {
+			stop();
+			scope.stop();
+			resetPendingOperations();
+			vi.useRealTimers();
+		}
 	});
 
 	it('Use theirs takes the copy saved elsewhere', async () => {

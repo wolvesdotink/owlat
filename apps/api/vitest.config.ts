@@ -25,10 +25,6 @@ export default defineConfig({
 		// enough headroom for that environmental cost.
 		testTimeout: 10000,
 		hookTimeout: 10000,
-		// A retry that passes cannot hide a scheduled function that threw in the
-		// attempt before it: the scheduled-failure gate reports it again in
-		// `afterAll`, which is not retried (convex/__tests__/helpers/scheduledFailures.ts).
-		retry: 1,
 		projects: [
 			{
 				extends: true,
@@ -68,7 +64,7 @@ export default defineConfig({
 			exclude: ['convex/_generated/**', 'convex/betterAuth/**'],
 			// Ratchet baseline: the suite covers ~69% of lines (3300+ tests). Set a
 			// few points below actual so the threshold guards real regressions
-			// without flaking on run-to-run async/retry variance. Raise as coverage
+			// without flaking on run-to-run async variance. Raise as coverage
 			// climbs; never lower it without justification.
 			//
 			// CI shards this suite ×4. OWLAT_COVERAGE_COLLECT_ONLY drops all

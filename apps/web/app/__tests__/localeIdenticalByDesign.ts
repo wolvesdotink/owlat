@@ -339,6 +339,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.aiProviders.providers.openai.label',
 	'shared.aiProviders.providers.openrouter.label',
 	'shared.automations.steps.email.templateName',
+	'shared.backendStatus.details',
 	'shared.breadcrumbPatterns.pages.label',
 	'shared.breadcrumbPatterns.subsections.plugins',
 	'shared.breadcrumbRoutes.pages.api',

@@ -313,6 +313,11 @@ export const instanceTables = {
 				v.literal('superseded')
 			)
 		),
+		// Last time the admin tab following this rollout confirmed it was still
+		// under way (`recordUpdateActivity`). Members' shells only read a drop as
+		// "update in progress" while this keeps advancing, because a `running`
+		// row on its own may be an orphan whose rollout ended long ago.
+		lastActivityAt: v.optional(v.number()),
 		// Per-step result blob returned by the updater sidecar.
 		steps: v.optional(updateStepResultValidator),
 		// User who initiated the update (auth user ID)

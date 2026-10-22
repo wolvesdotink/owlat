@@ -213,25 +213,29 @@ describe('scheduled failure gate', () => {
 		};
 
 		// A test whose own assertions pass fails when its scheduled function
-		// throws, also with console.error mocked.
+		// throws, also with console.error mocked, and the file names both
+		// failures again with the test that scheduled each one.
 		const perTest = file('perTest');
 		expect(Object.values(perTest.tests)).toEqual(['failed', 'failed']);
 		expect(perTest.failures).toContain('scheduled function(s) threw during this test');
 		expect(perTest.failures).toContain(THROWING_FUNCTION);
+		expect(perTest.status).toBe('failed');
+		expect(perTest.message).toContain('2 scheduled function(s) threw in this file');
+		expect(perTest.message).toMatch(
+			/scheduled by "passes its assertions while a scheduled function throws", ran during "passes its assertions while a scheduled function throws"/
+		);
 
-		// Every test passes and the file still fails: the retry hid nothing, the
-		// leak failed no innocent test, and the job the last test left behind
-		// was seen before the file ended.
+		// Every test passes and the file still fails: the leak failed no
+		// innocent test, and the job the last test left behind was seen before
+		// the file ended.
 		const fileLevel = file('fileLevel');
 		expect(fileLevel.tests).toEqual({
-			flaky: 'passed',
 			leaky: 'passed',
 			innocent: 'passed',
 			last: 'passed',
 		});
 		expect(fileLevel.status).toBe('failed');
-		expect(fileLevel.message).toContain('3 scheduled function(s) threw in this file');
-		expect(fileLevel.message).toMatch(/scheduled by "flaky: [^"]*", ran during "flaky: /);
+		expect(fileLevel.message).toContain('2 scheduled function(s) threw in this file');
 		expect(fileLevel.message).toMatch(/scheduled by "leaky: [^"]*", ran during "innocent: /);
 		expect(fileLevel.message).toMatch(/scheduled by "last: [^"]*", ran outside any test/);
 

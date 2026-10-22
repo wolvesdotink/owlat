@@ -15,7 +15,7 @@
  * one line per finding, so two identical findings in a file count twice.
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isOwlatWarning, type LintDiagnostic } from './check-lint-warnings';
@@ -37,8 +37,26 @@ export function findingLine(diagnostic: LintDiagnostic, source: Buffer): string 
 	return [diagnostic.filename, diagnostic.code ?? '', snippet].join('\t');
 }
 
+const LINTED_DIRECTORIES = ['apps', 'packages', 'scripts', 'examples'];
+const ROOT_SOURCE_FILE = /\.[cm]?[jt]s$/;
+
+/**
+ * What the generator hands oxlint: the workspace trees plus every script at the
+ * repository root. The root holds `vitest.shared.ts`, which every workspace
+ * config builds on, so a `retry` or timeout added there must be seen too.
+ */
+export function lintTargets(rootEntries: readonly string[]): string[] {
+	return [
+		...LINTED_DIRECTORIES,
+		...rootEntries.filter((name) => ROOT_SOURCE_FILE.test(name)).sort(),
+	];
+}
+
 function main(): number {
 	const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
+	const rootFiles = readdirSync(root, { withFileTypes: true })
+		.filter((entry) => entry.isFile())
+		.map((entry) => entry.name);
 	const run = spawnSync(
 		'bunx',
 		[
@@ -48,10 +66,7 @@ function main(): number {
 			'oxlintrc.json',
 			'--format',
 			'json',
-			'apps',
-			'packages',
-			'scripts',
-			'examples',
+			...lintTargets(rootFiles),
 		],
 		{ cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }
 	);

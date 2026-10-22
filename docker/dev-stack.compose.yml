@@ -1,0 +1,93 @@
+# Local development backend for `bun run dev:stack` (scripts/dev-stack.ts).
+#
+# Not a deployment: no TLS, no workers, ports on loopback only. The runner
+# picks a Compose project per checkout (owlat-dev-<name>-<hash>), which scopes
+# the containers and the named volumes below, and writes every interpolated
+# value into that checkout's .owlat-dev/compose.env. Run it through the runner
+# rather than `docker compose` directly; `bun run dev:stack down` stops it.
+
+services:
+  convex:
+    # Same first-party wrapper and local `dev` tag as docker-compose.yml, so the
+    # backend under development is the one a release pins.
+    image: ghcr.io/wolvesdotink/convex-backend:dev
+    build:
+      context: .
+      dockerfile: convex-backend.Dockerfile
+    # Built on every start: the build is one cached FROM line, it follows a pin
+    # bump in the Dockerfile, and it skips a doomed registry pull (no `dev` tag
+    # is ever published).
+    pull_policy: build
+    # The backend listens on the same port numbers inside the container as on
+    # the host. Actions call back into the backend through CONVEX_CLOUD_ORIGIN,
+    # so that URL has to work from inside the container as well as from the
+    # browser; with a remapped port it would point at nothing in there. The
+    # upstream run_backend.sh hard-codes 3210/3211 and the binary rejects a
+    # repeated --port, so the entrypoint rewrites those two flags and refuses
+    # to start if the script no longer contains them.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - >-
+        sed -e "s/--port 3210 /--port $$PORT /"
+        -e "s/--site-proxy-port 3211 /--site-proxy-port $$SITE_PROXY_PORT /"
+        run_backend.sh > /tmp/run_backend.sh
+        && grep -q -- "--port $$PORT " /tmp/run_backend.sh
+        && grep -q -- "--site-proxy-port $$SITE_PROXY_PORT " /tmp/run_backend.sh
+        && exec bash /tmp/run_backend.sh
+    ports:
+      - '127.0.0.1:${OWLAT_DEV_CONVEX_PORT:?run bun run dev:stack}:${OWLAT_DEV_CONVEX_PORT}'
+      - '127.0.0.1:${OWLAT_DEV_CONVEX_SITE_PORT:?run bun run dev:stack}:${OWLAT_DEV_CONVEX_SITE_PORT}'
+    volumes:
+      - convex-data:/convex/data
+    environment:
+      PORT: ${OWLAT_DEV_CONVEX_PORT}
+      SITE_PROXY_PORT: ${OWLAT_DEV_CONVEX_SITE_PORT}
+      INSTANCE_SECRET: ${OWLAT_DEV_INSTANCE_SECRET:?run bun run dev:stack}
+      CONVEX_CLOUD_ORIGIN: ${OWLAT_DEV_CONVEX_URL:?run bun run dev:stack}
+      CONVEX_SITE_ORIGIN: ${OWLAT_DEV_CONVEX_SITE_URL:?run bun run dev:stack}
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:${OWLAT_DEV_CONVEX_PORT}/version']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 45s
+
+  # For the MTA and the IMAP server when a developer runs them by hand next to
+  # the stack; `bun run dev:stack ports` prints the URL.
+  redis:
+    image: redis:${REDIS_VERSION:-7.4-alpine}
+    user: '999:1000'
+    command: >-
+      redis-server --appendonly yes
+      --requirepass ${OWLAT_DEV_REDIS_PASSWORD:?run bun run dev:stack}
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+    ports:
+      - '127.0.0.1:${OWLAT_DEV_REDIS_PORT:?run bun run dev:stack}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'redis-cli',
+          '-a',
+          '${OWLAT_DEV_REDIS_PASSWORD:?run bun run dev:stack}',
+          '--no-auth-warning',
+          'ping',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  convex-data:
+  redis-data:

@@ -7,6 +7,7 @@ import noPollingLoopInTests from './rules/noPollingLoopInTests.ts';
 import noRealTimeWaitInTests from './rules/noRealTimeWaitInTests.ts';
 import noTestEnvironmentPragma from './rules/noTestEnvironmentPragma.ts';
 import noTestInLoop from './rules/noTestInLoop.ts';
+import noTestTimeoutOrUnreasonedSkip from './rules/noTestTimeoutOrUnreasonedSkip.ts';
 import noWallClockInTests from './rules/noWallClockInTests.ts';
 import requireSuppressionReason from './rules/requireSuppressionReason.ts';
 
@@ -17,6 +18,7 @@ export default {
 		'no-real-time-wait-in-tests': noRealTimeWaitInTests,
 		'no-test-environment-pragma': noTestEnvironmentPragma,
 		'no-test-in-loop': noTestInLoop,
+		'no-test-timeout-or-unreasoned-skip': noTestTimeoutOrUnreasonedSkip,
 		'no-wall-clock-in-tests': noWallClockInTests,
 		'require-suppression-reason': requireSuppressionReason,
 	},
