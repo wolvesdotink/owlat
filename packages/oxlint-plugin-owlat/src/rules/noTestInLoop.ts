@@ -1,5 +1,6 @@
+import { FUNCTIONS, type Node } from '../ast.ts';
 import type { AstNode, Rule } from '../types.ts';
-import { declarationOf, type Node } from '../vitestApi.ts';
+import { declarationOf } from '../vitestApi.ts';
 
 /**
  * Tests and suites are declared with `.each`, never inside a loop. A loop hides
@@ -28,7 +29,6 @@ const LOOPS = new Set([
 	'WhileStatement',
 	'DoWhileStatement',
 ]);
-const FUNCTIONS = new Set(['ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration']);
 
 const insideLoop = (node: AstNode): boolean => {
 	let current: Node = node.parent;

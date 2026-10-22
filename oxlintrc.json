@@ -80,6 +80,12 @@
 		"owlat/require-suppression-reason": "error",
 		"owlat/no-test-in-loop": "error",
 		"owlat/no-test-timeout-or-unreasoned-skip": "warn",
+		// Test timing: no real-clock sleeps, no elapsed wall-clock measurements, no
+		// polling loops. Warnings while existing tests still break them; every
+		// remaining finding is frozen in scripts/owlat-lint-baseline.txt.
+		"owlat/no-real-time-wait-in-tests": "warn",
+		"owlat/no-wall-clock-in-tests": "warn",
+		"owlat/no-polling-loop-in-tests": "warn",
 		"owlat/no-test-environment-pragma": [
 			"error",
 			{

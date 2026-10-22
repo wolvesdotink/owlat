@@ -1,3 +1,4 @@
+import { type Node, propertyName, unwrap } from './ast.ts';
 import type { AstNode, Context, Scope } from './types.ts';
 
 /**
@@ -8,36 +9,9 @@ import type { AstNode, Context, Scope } from './types.ts';
  * `beforeAll` is never flagged.
  */
 
-export type Node = AstNode | null | undefined;
-
 const TEST_FUNCTIONS = new Set(['it', 'test', 'describe', 'suite']);
 const MODIFIERS = new Set(['only', 'skip', 'todo', 'concurrent', 'sequential', 'fails', 'shuffle']);
 const CURRIED = new Set(['each', 'for', 'skipIf', 'runIf', 'extend']);
-const WRAPPERS = new Set([
-	'ChainExpression',
-	'ParenthesizedExpression',
-	'TSNonNullExpression',
-	'TSAsExpression',
-	'TSSatisfiesExpression',
-	'TSTypeAssertion',
-]);
-
-export const unwrap = (node: Node): Node => {
-	let current = node;
-	while (current && WRAPPERS.has(current.type) && 'expression' in current) {
-		current = current.expression as Node;
-	}
-	return current;
-};
-
-/** The name of a static property access (`a.b` or `a['b']`). */
-export const propertyName = (node: Node): string | undefined => {
-	if (node?.type !== 'MemberExpression') return undefined;
-	const { property } = node;
-	if (!node.computed && property.type === 'Identifier') return property.name;
-	if (property.type === 'Literal' && typeof property.value === 'string') return property.value;
-	return undefined;
-};
 
 /** The variable an identifier refers to, searched from its own scope outwards. */
 export const resolveVariable = (context: Context, identifier: Node) => {

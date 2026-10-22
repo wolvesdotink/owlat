@@ -30,19 +30,21 @@ const migration = internal.migrations[MIGRATION];
 type T = TestConvex<typeof schema>;
 
 beforeEach(() => {
-	// Only the scheduler's timers: creation times and the walk's start time are real.
-	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+	// The scheduler's timers and the clock are fake: creation times and the
+	// walk's start time move only when a test calls tick().
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
 });
 afterEach(() => {
 	vi.useRealTimers();
 });
 
-/** Let the wall clock move past every row written so far. */
+/**
+ * Move the clock past every row written so far. convex-test stamps rows written
+ * within one millisecond 0.001 ms apart, so a full second clears any row count
+ * a test writes.
+ */
 function tick(): void {
-	const until = Date.now() + 3;
-	while (Date.now() < until) {
-		// spin
-	}
+	vi.setSystemTime(Date.now() + 1_000);
 }
 
 const file = (t: T, fields: Partial<Doc<'semanticFiles'>>) =>
