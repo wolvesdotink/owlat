@@ -230,7 +230,7 @@ async function main(): Promise<void> {
 						resolveStep({ code: code ?? 1, output });
 					});
 				}),
-			log: (line) => console.log(`[setup-worktree] ${line}`),
+			log: (line) => console.info(`[setup-worktree] ${line}`),
 		},
 		() => cancelSignal
 	);

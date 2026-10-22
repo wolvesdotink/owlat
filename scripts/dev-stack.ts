@@ -131,7 +131,7 @@ async function up(seed: boolean): Promise<number> {
 	writeComposeEnv();
 	let adminKey = '';
 	const ops: StackOps = {
-		log: (line) => console.log(line),
+		log: (line) => console.info(line),
 		runningServices: async () => runningServices(),
 		portInUse,
 		composeUp: () => run('docker', composeArgs('up', '--detach', '--wait')),
@@ -169,7 +169,7 @@ async function up(seed: boolean): Promise<number> {
 			const stopWatching = watchStage(paths.apiDir, paths.stageApi, (result) => {
 				if (result instanceof Error) console.error(`[stage] sync failed: ${result.message}`);
 				else if (result.copied + result.removed > 0) {
-					console.log(`[stage] ${result.copied} copied, ${result.removed} removed`);
+					console.info(`[stage] ${result.copied} copied, ${result.removed} removed`);
 				}
 			});
 			return supervise(
@@ -199,7 +199,7 @@ async function up(seed: boolean): Promise<number> {
 async function down(volumes: boolean): Promise<number> {
 	writeComposeEnv();
 	await run('docker', composeArgs('down', ...(volumes ? ['--volumes'] : [])));
-	console.log(
+	console.info(
 		volumes
 			? "Stopped and deleted this checkout's stack data."
 			: 'Stopped. Data kept; `bun run dev:stack` resumes it.'
@@ -208,7 +208,7 @@ async function down(volumes: boolean): Promise<number> {
 }
 
 async function status(): Promise<number> {
-	console.log(describePorts(config));
+	console.info(describePorts(config));
 	writeComposeEnv();
 	await run('docker', composeArgs('ps'));
 	return 0;
@@ -248,7 +248,7 @@ async function main(argv: string[]): Promise<number> {
 			? rest.length > 1 || (rest[0] !== undefined && !SERVICES.includes(rest[0]))
 			: rest.length > 0;
 	if (flags.has('--help') || flags.has('-h') || !allowed || badArgs || unknown.length > 0) {
-		console.log(USAGE);
+		console.info(USAGE);
 		return flags.has('--help') || flags.has('-h') ? 0 : 2;
 	}
 	switch (command) {
@@ -257,7 +257,7 @@ async function main(argv: string[]): Promise<number> {
 		case 'status':
 			return status();
 		case 'ports':
-			console.log(describePorts(config));
+			console.info(describePorts(config));
 			return 0;
 		case 'logs':
 			return logs(rest[0], flags.has('--follow'));
