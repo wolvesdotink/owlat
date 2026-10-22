@@ -1,6 +1,6 @@
 import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
-import { type PaletteGroup, filterItems } from '~/lib/commandPalette';
+import { type PaletteGroup, type PaletteItem, filterItems } from '~/lib/commandPalette';
 import { routePrefixMatcher } from '~/lib/commandPaletteRegistry';
 
 /** Stable registry id (and dedup key) of the Postbox surface provider. */
@@ -36,6 +36,10 @@ export const matchPostboxRoute = routePrefixMatcher('/dashboard/postbox');
  * team-inbox entries still appear the instant a shared inbox's membership
  * resolves — no explicit watch needed.
  *
+ * Forward, Move and "Label as…" share their ids with the open conversation's
+ * provider (`usePostboxThreadCommandSurface`), which is consulted first: while a
+ * conversation is open its direct verbs win and these broadcast twins drop out.
+ *
  * Extracted from PostboxLayout.vue to keep the layout under the file-size cap;
  * mirrors how the sidebar nav was pulled into `useDashboardNavigation`.
  */
@@ -57,7 +61,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 		);
 	}
 
-	function buildSurfaceGroups(): PaletteGroup[] {
+	function buildSurfaceGroups(query: string): PaletteGroup[] {
 		const groups: PaletteGroup[] = [
 			{
 				key: 'postbox-actions',
@@ -167,10 +171,11 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 			},
 		];
 
-		// "Switch mailbox" — personal mailboxes (only when there's a real choice)
-		// plus every shared team inbox. Both blocks share one descriptor list (icon
-		// + message key are the only differences). Empty for a lone personal
-		// mailbox, so the palette is unchanged for single-mailbox users.
+		// "Switch mailbox ›" — personal mailboxes (only when there's a real choice)
+		// plus every shared team inbox, as ONE row with a submenu. Both blocks
+		// share one descriptor list (icon + message key are the only differences).
+		// Empty for a lone personal mailbox, so the palette is unchanged for
+		// single-mailbox users.
 		const { personal, team } = sections.value;
 		const switchGroups = [
 			{
@@ -193,12 +198,32 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 			}))
 		);
 		if (switchItems.length > 0) {
+			const submenu: PaletteItem = {
+				id: 'postbox:switch-mailbox',
+				label: t('shared.postbox.usePostboxCommandSurface.items.switchMailbox'),
+				icon: 'lucide:arrow-left-right',
+				run: () => {},
+				argument: {
+					promptKey: 'shared.postbox.usePostboxCommandSurface.argument.switchPrompt',
+					headingKey: 'shared.postbox.usePostboxCommandSurface.groups.switchMailbox',
+					icon: 'lucide:mail',
+					options: switchGroups.flatMap((group) =>
+						group.items.map((mb) => ({
+							id: `switch-${mb.mailboxId}`,
+							label: mb.label,
+							icon: group.icon,
+							run: () => switchToMailbox(mb.mailboxId),
+						}))
+					),
+				},
+			};
 			groups.push({
 				key: 'postbox-switch-mailbox',
 				heading: t('shared.postbox.usePostboxCommandSurface.groups.switchMailbox'),
 				order: 24,
 				mode: 'commands',
-				items: switchItems,
+				// Typed, a mailbox's own row is one Enter away ("Switch to Support").
+				items: query.trim() ? [submenu, ...switchItems] : [submenu],
 			});
 		}
 
@@ -236,7 +261,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 		priority: POSTBOX_COMMAND_PROVIDER_PRIORITY,
 		matchRoute: matchPostboxRoute,
 		build: ({ query }) =>
-			buildSurfaceGroups().map((group) => ({
+			buildSurfaceGroups(query).map((group) => ({
 				...group,
 				items: filterItems(group.items, query),
 			})),

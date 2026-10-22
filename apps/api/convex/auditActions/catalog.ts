@@ -295,6 +295,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('thread.draft_status_changed'),
 	action('thread.snoozed'),
 	action('thread.unsnoozed'),
+	action('thread.priority_changed'),
 	// Inbound + agent
 	action('inbound.received'),
 	action('inbound.quarantined'),

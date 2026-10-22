@@ -405,7 +405,8 @@
 			"searching": "Wird gesucht…",
 			"select": "Auswählen",
 			"scopeLabel": "Suchbereich",
-			"scopeHint": "Bereich"
+			"scopeHint": "Bereich",
+			"filterPlaceholder": "Tippe, um die Liste einzugrenzen…"
 		},
 		"assistant": {
 			"assistantComposer": {
@@ -5389,7 +5390,8 @@
 				"scopeLabel": "Was geschlummert wird",
 				"title": "Zurückstellen bis",
 				"untilReply": "Bis eine Antwort kommt",
-				"untilReplySub": "Oder in 1 Woche"
+				"untilReplySub": "Oder in 1 Woche",
+				"pickTime": "Datum und Uhrzeit wählen…"
 			},
 			"postboxStaleReplyDialog": {
 				"cancel": "Weiter bearbeiten",
@@ -11214,7 +11216,17 @@
 					"notice": "Auch für diese Nachricht wartet ein Antwortentwurf.",
 					"answer": "Diese Nachricht beantworten"
 				},
-				"answerInReply": "In der Antwort beantworten"
+				"answerInReply": "In der Antwort beantworten",
+				"priority": {
+					"urgent": "Dringend",
+					"normal": "Normal",
+					"low": "Niedrig"
+				},
+				"priorityChip": {
+					"urgent": "Dringend",
+					"low": "Niedrige Priorität"
+				},
+				"priorityToast": "Priorität geändert"
 			},
 			"failed": {
 				"emptyBody": "Jede eingehende Nachricht wurde erfolgreich verarbeitet.",
@@ -13185,6 +13197,15 @@
 			},
 			"cite": {
 				"clear": "Markierung entfernen"
+			},
+			"translation": {
+				"heading": "Übersetzung ({language})",
+				"loading": "Wird übersetzt…",
+				"retry": "Erneut versuchen",
+				"empty": "Diese Nachricht hat keinen Text zum Übersetzen.",
+				"failed": "Die Übersetzung hat nicht geklappt. Versuch es gleich noch einmal.",
+				"note": "Maschinelle Übersetzung. Das Original steht darunter.",
+				"truncatedNote": "Maschinelle Übersetzung vom Anfang einer langen Nachricht. Das Original steht darunter."
 			}
 		},
 		"priority": {
@@ -14222,7 +14243,8 @@
 				"settings": "Einstellungen",
 				"templates": "Vorlagen",
 				"refine": "Verfeinern",
-				"inboxThreads": "Team-Postfach"
+				"inboxThreads": "Team-Postfach",
+				"jumpBack": "Zuletzt geöffnet"
 			}
 		},
 		"conditions": {
@@ -15547,7 +15569,8 @@
 			},
 			"usePostboxCommandSurface": {
 				"argument": {
-					"labelPrompt": "Label vergeben"
+					"labelPrompt": "Label vergeben",
+					"switchPrompt": "Wechseln zu"
 				},
 				"groups": {
 					"labels": "Labels",
@@ -15569,7 +15592,8 @@
 					"search": "E-Mails durchsuchen",
 					"snoozed": "Zurückgestellt",
 					"switchToMailbox": "Zu {mailbox} wechseln",
-					"switchToTeamInbox": "Zu {mailbox} wechseln (Team-Postfach)"
+					"switchToTeamInbox": "Zu {mailbox} wechseln (Team-Postfach)",
+					"switchMailbox": "Postfach wechseln…"
 				}
 			},
 			"usePostboxCompose": {
@@ -16076,7 +16100,8 @@
 				"personal": "Nur ich",
 				"shared": "Das ganze Team"
 			},
-			"sharedBadge": "Team"
+			"sharedBadge": "Team",
+			"insertSubmenu": "Gespeicherte Antwort einfügen…"
 		},
 		"sendReadiness": {
 			"audienceFits": "Deine Zielgruppe von {audience} passt in die heutige Kapazität.",
@@ -17406,7 +17431,8 @@
 			"sendFollowUp": "Nachfassnachricht senden",
 			"snoozeThread": "Konversation zurückstellen",
 			"unsnoozeThread": "Zurückstellung aufheben",
-			"updateThreadStatus": "Konversationsstatus aktualisieren"
+			"updateThreadStatus": "Konversationsstatus aktualisieren",
+			"setPriority": "Priorität setzen"
 		},
 		"useWebhookActions": {
 			"copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
@@ -17699,7 +17725,44 @@
 			"thread": {
 				"archive": "Unterhaltung archivieren",
 				"heading": "Diese Unterhaltung",
-				"reply": "Antworten"
+				"reply": "Antworten",
+				"snooze": "Zurückstellen…",
+				"snoozePrompt": "Zurückstellen bis",
+				"forward": "Weiterleiten",
+				"markUnread": "Als ungelesen markieren",
+				"mute": "Unterhaltung stummschalten",
+				"unmute": "Stummschaltung aufheben",
+				"notifyOnReply": "Benachrichtigen, wenn eine Antwort kommt",
+				"stopNotifyOnReply": "Nicht mehr bei Antwort benachrichtigen",
+				"label": "Label vergeben…",
+				"labelPrompt": "Label vergeben",
+				"move": "Verschieben nach…",
+				"movePrompt": "Verschieben nach",
+				"followUp": "Erinnern, falls keine Antwort kommt…",
+				"followUpPrompt": "Erinnern",
+				"cancelFollowUp": "Antwort-Erinnerung abbrechen",
+				"translate": "Übersetzen",
+				"showOriginal": "Original herunterladen (.eml)",
+				"copyLink": "Link kopieren",
+				"linkCopied": "Link kopiert",
+				"linkCopyFailed": "Der Link konnte nicht kopiert werden"
+			},
+			"teamThread": {
+				"heading": "Diese Unterhaltung",
+				"reply": "Antworten",
+				"assign": "Zuweisen an…",
+				"assignPrompt": "Zuweisen an",
+				"unassign": "Zuweisung aufheben",
+				"claim": "Mir zuweisen",
+				"close": "Als erledigt markieren",
+				"reopen": "Unterhaltung wieder öffnen",
+				"snooze": "Zurückstellen…",
+				"snoozePrompt": "Zurückstellen bis",
+				"unsnooze": "Zurückstellung aufheben",
+				"addNote": "Interne Notiz hinzufügen",
+				"priority": "Priorität setzen…",
+				"priorityPrompt": "Priorität",
+				"current": "Aktuell"
 			}
 		},
 		"inboxSla": {
@@ -17736,6 +17799,16 @@
 				"spendUnverifiable": "Die KI-Ausgaben lassen sich gerade nicht prüfen, deshalb läuft kein kostenpflichtiger KI-Aufruf. Versuch es in ein paar Minuten erneut."
 			},
 			"title": "KI-Budget erreicht."
+		},
+		"commandPaletteObjectRecents": {
+			"kinds": {
+				"conversation": "Unterhaltung",
+				"teamThread": "Unterhaltung im Team-Postfach",
+				"campaign": "Kampagne",
+				"contact": "Kontakt",
+				"automation": "Automatisierung",
+				"template": "Vorlage"
+			}
 		}
 	},
 	"sharedPkg": {

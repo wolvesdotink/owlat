@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import {
-	type PaletteArgumentSpec,
 	type PaletteGroup,
 	type PaletteItem,
+	applyRecencyTieBreak,
 	buildArgumentGroups,
 	flattenGroups,
 	groupsForMode,
@@ -97,6 +97,8 @@ const { scope, prompt, effectiveMode, isAskAvailable, resetScope, cycleScope } =
 const { recentSearches, loadRecent, saveRecent, clearRecent } = useCommandPaletteRecents(() =>
 	prompt.value === 'ask' ? 'ask' : scope.value
 );
+// ── The records opened last ("Jump back"), and how recently, for tie-breaks.
+const objectRecents = useCommandPaletteObjectRecents();
 
 // ── Object search (contacts / templates / campaigns / mail) via the shared index.
 // Skipped outside the Everything-style palette: Mail and Ask have their own
@@ -173,6 +175,7 @@ const isSearching = computed(() => {
 // suite; here we only inject the reactive reads and item `run` closures. Each
 // getter is read inside `build`, so the assembling computed re-tracks them.
 const coreProviders = buildCorePaletteProviders({
+	jumpBackItems: () => objectRecents.jumpBackItems.value,
 	recentSearches: () => recentSearches.value,
 	verbItems: () => verbItems.value,
 	contextItems: () => contextItems.value,
@@ -191,9 +194,16 @@ const coreProviders = buildCorePaletteProviders({
 	inboxThreadItems: () => inboxScope.threadItems.value,
 });
 
-// ── Argument step. While an item's argument is pending the palette shows only
-// that item's options; the query box filters them and Escape backs out.
-const pendingArgument = ref<{ item: PaletteItem; spec: PaletteArgumentSpec } | null>(null);
+// ── Submenus. While an item's argument is pending the palette shows only that
+// item's options; the box filters them, and Back restores the parent's query.
+const argument = useCommandPaletteArgument({
+	query: searchQuery,
+	setQuery: (value) => setImmediate(value),
+	activeIndex,
+	focus: () => inputEl.value?.focus(),
+	indexOf: (id) => flatIndexById.value.get(id),
+});
+const pendingArgument = argument.pending;
 
 // ── Assemble the ordered, capped group list: gate + order + dedup providers,
 // keep the groups the scope and the typed mode admit, then sort/drop-empties/cap.
@@ -215,8 +225,9 @@ const groups = computed<PaletteGroup[]>(() => {
 	if (prompt.value === 'ask') {
 		return mergeGroups(resolved.filter((group) => group.key === 'recent'));
 	}
-	const scoped = groupsForScope(resolved, scope.value, effectiveMode.value);
-	return mergeGroups(groupsForMode(scoped, effectiveMode.value));
+	const scoped = groupsForScope(resolved, scope.value, effectiveMode.value, searchTerm.value);
+	const ranked = applyRecencyTieBreak(scoped, searchTerm.value, objectRecents.recencyOf);
+	return mergeGroups(groupsForMode(ranked, effectiveMode.value));
 });
 
 // What the rows highlight against: the argument step filters on the raw box,
@@ -237,18 +248,21 @@ const hasAnyResults = computed(() => flatItems.value.length > 0);
 /**
  * Where the highlight sits when the rows change.
  *
- * Mail scope opens with NOTHING selected, the way the search bar it replaced
- * did: a search box's primary action is that Enter runs what you typed, and
- * pre-selecting a row would make Enter open somebody's message instead of the
- * results page. An arrow key hands the keyboard over to the list.
+ * Once something is typed, Mail scope selects NOTHING: Enter runs what you
+ * typed, not somebody's message, until an arrow key hands over to the list.
+ * With nothing typed there is no search to run, so the first row (the record you
+ * were on before this one) is selected, like everywhere else.
  */
-const restingIndex = computed(() => (prompt.value === 'mailSearch' ? -1 : 0));
+const restingIndex = computed(() =>
+	prompt.value === 'mailSearch' && searchTerm.value.trim() ? -1 : 0
+);
 watch(flatItems, () => {
 	activeIndex.value = restingIndex.value;
 });
 
 const scopeLabel = computed(() => t(PALETTE_SCOPE_LABEL_KEYS[scope.value]));
 const placeholder = computed(() => {
+	if (pendingArgument.value) return t('components.appCommandPalette.filterPlaceholder');
 	if (prompt.value === 'ask') return t('components.query.quickQueryPanel.placeholder');
 	if (scope.value === 'mail') return t('components.postbox.postboxSearchBar.placeholder');
 	return t('components.appCommandPalette.searchPlaceholder');
@@ -263,15 +277,16 @@ async function openPalette(detail?: CommandPaletteOpenDetail) {
 	const initialQuery = detail?.query ?? '';
 	open.value = true;
 	setImmediate(initialQuery);
-	activeIndex.value = 0;
+	activeIndex.value = restingIndex.value;
 	caret.value = initialQuery.length;
-	pendingArgument.value = null;
+	argument.reset();
 	resetScope(detail?.scope);
 	resetGlobalSearch();
 	mailScope.resetQuery(initialQuery);
 	inboxScope.resetQuery();
 	askScope.reset();
 	loadRecent();
+	objectRecents.load();
 	await nextTick();
 	inputEl.value?.focus();
 	inputEl.value?.setSelectionRange(initialQuery.length, initialQuery.length);
@@ -281,31 +296,17 @@ function close() {
 	open.value = false;
 	searchQuery.value = '';
 	activeIndex.value = 0;
-	pendingArgument.value = null;
+	argument.reset();
 	mailScope.resetQuery();
 	inboxScope.resetQuery();
 	askScope.reset();
 }
 
-/** Leave the argument step, back to the palette that opened it. */
-function cancelArgument() {
-	pendingArgument.value = null;
-	searchQuery.value = '';
-	activeIndex.value = 0;
-	void nextTick(() => inputEl.value?.focus());
-}
-
 function runItem(item: PaletteItem | undefined) {
 	if (!item) return;
-	if (item.argument) {
-		// Two-step: ask for the argument instead of running. `run` never fires for
-		// an item that has one, so a provider can leave it as a no-op.
-		pendingArgument.value = { item, spec: item.argument };
-		searchQuery.value = '';
-		activeIndex.value = 0;
-		void nextTick(() => inputEl.value?.focus());
-		return;
-	}
+	// Two-step: ask for the argument instead of running. `run` never fires for an
+	// item that has one, so a provider can leave it as a no-op.
+	if (argument.enter(item)) return;
 	if (item.keepOpen) {
 		item.run();
 		void nextTick(() => inputEl.value?.focus());
@@ -335,16 +336,15 @@ function onInputKeydown(event: KeyboardEvent) {
 	if (isImeComposing(event)) return;
 	if (event.key === 'Escape') {
 		event.preventDefault();
-		// Escape unwinds one level at a time: out of the argument step first.
-		if (pendingArgument.value) cancelArgument();
-		else close();
+		// Escape unwinds one level at a time: out of the submenu first.
+		if (!argument.back()) close();
 		return;
 	}
-	// Backspacing past the start of an empty argument query also backs out, the
+	// Backspacing past the start of an empty submenu query also backs out, the
 	// way a deleted chip behaves everywhere else in the app.
 	if (event.key === 'Backspace' && pendingArgument.value && searchQuery.value === '') {
 		event.preventDefault();
-		cancelArgument();
+		argument.back();
 		return;
 	}
 	// Tab cycles the SCOPE rather than moving focus: the overlay is one input, and

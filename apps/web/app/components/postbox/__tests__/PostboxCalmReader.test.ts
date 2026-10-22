@@ -200,6 +200,7 @@ const CHROME = [
 	'UiAvatar',
 	'PostboxThreadCiteNote',
 	'PostboxAiStrip',
+	'PostboxReaderTranslation',
 	'PostboxBriefSheet',
 	'PostboxReaderDetails',
 	'PostboxAnswerDraftBar',

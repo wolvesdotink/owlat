@@ -858,6 +858,7 @@ import type * as inbox_noteMentions from '../inbox/noteMentions.js';
 import type * as inbox_noteRules from '../inbox/noteRules.js';
 import type * as inbox_notes from '../inbox/notes.js';
 import type * as inbox_presence from '../inbox/presence.js';
+import type * as inbox_priority from '../inbox/priority.js';
 import type * as inbox_processingLifecycle from '../inbox/processingLifecycle.js';
 import type * as inbox_processingLifecycle_autoSendCancel from '../inbox/processingLifecycle/autoSendCancel.js';
 import type * as inbox_processingLifecycle_draftFields from '../inbox/processingLifecycle/draftFields.js';
@@ -1203,6 +1204,7 @@ import type * as lib_validators_senderHeuristics from '../lib/validators/senderH
 import type * as lib_validators_send from '../lib/validators/send.js';
 import type * as lib_validators_sendTime from '../lib/validators/sendTime.js';
 import type * as lib_validators_teamReplyAttachment from '../lib/validators/teamReplyAttachment.js';
+import type * as lib_validators_teamThreadPriority from '../lib/validators/teamThreadPriority.js';
 import type * as lib_validators_templates from '../lib/validators/templates.js';
 import type * as lib_validators_threadBrief from '../lib/validators/threadBrief.js';
 import type * as lib_validators_threadRef from '../lib/validators/threadRef.js';
@@ -2712,6 +2714,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/noteRules': typeof inbox_noteRules;
 	'inbox/notes': typeof inbox_notes;
 	'inbox/presence': typeof inbox_presence;
+	'inbox/priority': typeof inbox_priority;
 	'inbox/processingLifecycle': typeof inbox_processingLifecycle;
 	'inbox/processingLifecycle/autoSendCancel': typeof inbox_processingLifecycle_autoSendCancel;
 	'inbox/processingLifecycle/draftFields': typeof inbox_processingLifecycle_draftFields;
@@ -3057,6 +3060,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/send': typeof lib_validators_send;
 	'lib/validators/sendTime': typeof lib_validators_sendTime;
 	'lib/validators/teamReplyAttachment': typeof lib_validators_teamReplyAttachment;
+	'lib/validators/teamThreadPriority': typeof lib_validators_teamThreadPriority;
 	'lib/validators/templates': typeof lib_validators_templates;
 	'lib/validators/threadBrief': typeof lib_validators_threadBrief;
 	'lib/validators/threadRef': typeof lib_validators_threadRef;

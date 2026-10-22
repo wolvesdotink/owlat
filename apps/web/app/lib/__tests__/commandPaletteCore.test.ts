@@ -38,6 +38,10 @@ const EMPTY_RESULTS: SearchResults = { contacts: [], emails: [], campaigns: [], 
 /** Deps with sensible non-empty defaults; each test overrides what it needs. */
 function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePaletteProviderDeps {
 	return {
+		jumpBackItems: () => [
+			{ ...paletteItem('jump:campaign:c1'), label: 'Spring launch' },
+			{ ...paletteItem('jump:contact:k1'), label: 'Ada Lovelace' },
+		],
 		recentSearches: () => ['acme', 'globex'],
 		verbItems: () => [paletteItem('verb:new-contact')],
 		contextItems: () => [paletteItem('context:inbox')],
@@ -74,9 +78,10 @@ function groupByKey(groups: PaletteGroup[], key: string): PaletteGroup | undefin
 }
 
 describe('buildCorePaletteProviders — provider set', () => {
-	it('is exactly the ten core providers, in priority order, at fixed priorities', () => {
+	it('is exactly the eleven core providers, in priority order, at fixed priorities', () => {
 		const providers = buildCorePaletteProviders(makeDeps());
 		expect(providers.map((p) => p.id)).toEqual([
+			'core:jump-back',
 			'core:recent',
 			'core:mail-suggest',
 			'core:mail-hits',
@@ -88,7 +93,7 @@ describe('buildCorePaletteProviders — provider set', () => {
 			'core:mail',
 			'core:navigation',
 		]);
-		expect(providers.map((p) => p.priority)).toEqual([10, 12, 13, 15, 20, 30, 35, 40, 45, 50]);
+		expect(providers.map((p) => p.priority)).toEqual([5, 10, 12, 13, 15, 20, 30, 35, 40, 45, 50]);
 	});
 
 	it('gates ONLY the Team Inbox threads, and gates them on both the flag and the route', () => {
@@ -106,6 +111,26 @@ describe('buildCorePaletteProviders — provider set', () => {
 		expect(threads.matchRoute!('/dashboard/inbox/j57abc')).toBe(true);
 		expect(threads.matchRoute!('/dashboard/inbox-archive')).toBe(false);
 		expect(threads.matchRoute!('/dashboard/postbox/inbox')).toBe(false);
+	});
+});
+
+describe('core:jump-back', () => {
+	it('lists the records opened last above the recent searches, idle only', () => {
+		const jump = groupByKey(build('core:jump-back', ''), 'jump-back');
+		expect(jump?.order).toBe(-2);
+		expect(jump?.cap).toBe(10);
+		expect(jump?.mode).toBeUndefined();
+		expect(t(jump?.heading ?? '')).toBe('Jump back');
+		expect(jump?.items.map((i) => i.id)).toEqual(['jump:campaign:c1', 'jump:contact:k1']);
+		const recent = groupByKey(build('core:recent', ''), 'recent');
+		expect(jump!.order).toBeLessThan(recent!.order);
+	});
+
+	it('narrows on a first typed character and steps aside for object search', () => {
+		expect(groupByKey(build('core:jump-back', 'o'), 'jump-back')?.items.map((i) => i.id)).toEqual([
+			'jump:contact:k1',
+		]);
+		expect(build('core:jump-back', 'ad')).toEqual([]);
 	});
 });
 

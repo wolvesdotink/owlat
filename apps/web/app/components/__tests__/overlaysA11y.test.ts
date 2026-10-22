@@ -17,6 +17,8 @@ import { useCommandPaletteScope } from '~/composables/useCommandPaletteScope';
 import { useCommandPaletteMailScope } from '~/composables/useCommandPaletteMailScope';
 import { useCommandPaletteInboxScope } from '~/composables/useCommandPaletteInboxScope';
 import { useCommandPaletteObjectItems } from '~/composables/useCommandPaletteObjectItems';
+import { useCommandPaletteObjectRecents } from '~/composables/useCommandPaletteObjectRecents';
+import { useCommandPaletteArgument } from '~/composables/useCommandPaletteArgument';
 import { useCommandPaletteAsk } from '~/composables/useCommandPaletteAsk';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
@@ -92,6 +94,8 @@ beforeEach(() => {
 		useCommandPaletteMailScope,
 		useCommandPaletteInboxScope,
 		useCommandPaletteObjectItems,
+		useCommandPaletteObjectRecents,
+		useCommandPaletteArgument,
 		useCommandPaletteAsk,
 		useDebouncedSearch,
 		useBreadcrumbs: () => ({

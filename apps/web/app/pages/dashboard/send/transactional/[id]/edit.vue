@@ -9,6 +9,7 @@ import {
 import { api } from '@owlat/api';
 import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import type { StoredAttachment } from '~/components/AttachmentPanel.vue';
+import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 
 const { t } = useI18n();
 
@@ -34,6 +35,9 @@ const {
 	error: emailError,
 	refetch: refetchEmail,
 } = useConvexQuery(api.transactional.emails.get, () => ({ id: emailId.value }));
+useRecordPaletteObjectOpen(() =>
+	email.value?.name ? { kind: 'template', id: emailId.value, title: email.value.name } : null
+);
 
 // Mutations. The save rejects on failure (StaleDraftError for a stale
 // revision, which the bridge turns into the conflict dialog).
