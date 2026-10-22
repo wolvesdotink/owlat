@@ -9,8 +9,7 @@
  *
  * All mutations are ownership-checked server-side (mail/followUps.ts).
  */
-import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
+import { usePostboxFollowUp } from '~/composables/postbox/usePostboxFollowUp';
 
 const props = defineProps<{
 	thread: {
@@ -31,40 +30,19 @@ const { t } = useI18n();
 const followUp = computed(() => props.thread.followUp);
 const isDue = computed(() => followUp.value?.dueAt !== undefined);
 
-const armOp = useBackendOperation(api.mail.followUps.arm, {
-	label: () => t('components.postbox.postboxFollowUpChip.armOperation'),
-});
-const cancelOp = useBackendOperation(api.mail.followUps.cancel, {
-	label: () => t('components.postbox.postboxFollowUpChip.cancelOperation'),
-});
-
+const { busy, arm, cancel } = usePostboxFollowUp();
 const dialogOpen = ref(false);
-const busy = ref(false);
 
-async function armAt(remindAt: number) {
+function armAt(remindAt: number) {
 	const messageId = props.latestOutboundId;
-	if (!messageId || busy.value) return;
-	busy.value = true;
-	try {
-		await armOp.run({ messageId: messageId as Id<'mailMessages'>, remindAt });
-	} finally {
-		busy.value = false;
-	}
+	if (messageId) void arm(messageId, remindAt);
 }
 
-async function cancelWatch() {
-	if (busy.value) return;
-	busy.value = true;
-	try {
-		await cancelOp.run({ threadId: props.thread._id as Id<'mailThreads'> });
-	} finally {
-		busy.value = false;
-	}
+function cancelWatch() {
+	void cancel(props.thread._id);
 }
 
-const remindLabel = computed(() =>
-	followUp.value ? formatDateTime(followUp.value.remindAt) : ''
-);
+const remindLabel = computed(() => (followUp.value ? formatDateTime(followUp.value.remindAt) : ''));
 
 const dueLabel = computed(() => {
 	const waitingOn = followUp.value?.waitingOn;
@@ -98,9 +76,7 @@ const dueLabel = computed(() => {
 		<span
 			v-else-if="followUp"
 			class="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full bg-brand/10 text-brand text-xs font-medium"
-			:title="
-				t('components.postbox.postboxFollowUpChip.armedTitle', { date: remindLabel })
-			"
+			:title="t('components.postbox.postboxFollowUpChip.armedTitle', { date: remindLabel })"
 		>
 			<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" />
 			{{ t('components.postbox.postboxFollowUpChip.armedChip', { date: remindLabel }) }}
@@ -128,10 +104,6 @@ const dueLabel = computed(() => {
 			{{ t('components.postbox.postboxFollowUpChip.remindMe') }}
 		</button>
 
-		<PostboxFollowUpDialog
-			:open="dialogOpen"
-			@update:open="dialogOpen = $event"
-			@confirm="armAt"
-		/>
+		<PostboxFollowUpDialog :open="dialogOpen" @update:open="dialogOpen = $event" @confirm="armAt" />
 	</div>
 </template>

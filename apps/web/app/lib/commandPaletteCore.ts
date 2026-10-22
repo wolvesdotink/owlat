@@ -24,6 +24,7 @@
  * never re-implements the prefix grammar.
  */
 import { type PaletteGroup, type PaletteItem, filterItems } from './commandPalette';
+import { MAX_OBJECT_RECENTS } from './commandPaletteObjectRecents';
 import { type CommandPaletteProvider, routePrefixMatcher } from './commandPaletteRegistry';
 import { filterByKeywords } from './settingsRegistry';
 
@@ -69,6 +70,11 @@ export const SEARCH_MIN_QUERY = 2;
  * item `run` closures (navigation, save-recent) it injects here.
  */
 export interface CorePaletteProviderDeps {
+	/**
+	 * The records opened last (conversations, campaigns, contacts…), newest
+	 * first, minus the one on screen — so ⌘K then Enter goes back to it.
+	 */
+	jumpBackItems: () => PaletteItem[];
 	/** Recent object-search terms, newest first. */
 	recentSearches: () => readonly string[];
 	/** Verb/utility items (New campaign, Compose, …). */
@@ -121,11 +127,30 @@ export interface CorePaletteProviderDeps {
 
 /**
  * Build the ordered core provider set. Priorities fix the consult/dedup order
- * (10/12/13/15/20/30/35/40/45/50); each provider's group `order` still drives the final
+ * (5/10/12/13/15/20/30/35/40/45/50); each provider's group `order` still drives the final
  * render sort in `mergeGroups`. Pure.
  */
 export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): CommandPaletteProvider[] {
 	return [
+		{
+			// Jump back — the records opened last, above the recent searches, so the
+			// idle palette's first row (and Enter) reopens what you were just on.
+			// Narrowed by a first typed character, gone once object search takes over.
+			id: 'core:jump-back',
+			priority: 5,
+			build: ({ query }): PaletteGroup[] => {
+				if (query.trim().length >= SEARCH_MIN_QUERY) return [];
+				return [
+					{
+						key: 'jump-back',
+						heading: 'shared.commandPaletteCore.groups.jumpBack',
+						order: -2,
+						cap: MAX_OBJECT_RECENTS,
+						items: filterItems(deps.jumpBackItems(), query),
+					},
+				];
+			},
+		},
 		{
 			// Recent searches — only in the idle state, above everything.
 			id: 'core:recent',

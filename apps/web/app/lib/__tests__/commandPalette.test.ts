@@ -11,6 +11,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
 	type PaletteGroup,
 	type PaletteItem,
+	applyRecencyTieBreak,
 	buildArgumentGroups,
 	filterItems,
 	flattenGroups,
@@ -242,6 +243,58 @@ describe('buildArgumentGroups', () => {
 		}));
 		const [built] = buildArgumentGroups({ ...spec, options: many }, '');
 		expect(mergeGroups(built ? [built] : [])[0]?.items).toHaveLength(40);
+	});
+});
+
+describe('applyRecencyTieBreak', () => {
+	function record(id: string, label: string, objectId?: string): PaletteItem {
+		return { ...item(id, label), ...(objectId ? { objectId } : {}) };
+	}
+	const openedAt: Record<string, number> = { old: 100, recent: 900 };
+	const recencyOf = (objectId: string) => openedAt[objectId];
+
+	it('puts the more recently opened of two equal matches first', () => {
+		// "Ada Marlow" and "Ada Lovelace" are equal prefix hits for "ada".
+		const ranked = filterItems(
+			[record('a', 'Ada Lovelace', 'old'), record('b', 'Ada Marlow', 'recent')],
+			'ada'
+		);
+		const [out] = applyRecencyTieBreak([group('contacts', 0, ranked)], 'ada', recencyOf);
+		expect(out?.items.map((i) => i.id)).toEqual(['b', 'a']);
+	});
+
+	it('never lifts a recent record above a better match', () => {
+		const ranked = filterItems(
+			[record('weak', 'Planning with Ada', 'recent'), record('strong', 'Ada Lovelace', 'old')],
+			'ada'
+		);
+		expect(ranked.map((i) => i.id)).toEqual(['strong', 'weak']);
+		const [out] = applyRecencyTieBreak([group('contacts', 0, ranked)], 'ada', recencyOf);
+		expect(out?.items.map((i) => i.id)).toEqual(['strong', 'weak']);
+	});
+
+	it('keeps the provider order of ties it knows nothing about', () => {
+		const rows = [
+			record('x', 'Ada one'),
+			record('y', 'Ada two'),
+			record('z', 'Ada three', 'recent'),
+		];
+		const [out] = applyRecencyTieBreak([group('contacts', 0, rows)], 'ada', recencyOf);
+		expect(out?.items.map((i) => i.id)).toEqual(['z', 'x', 'y']);
+	});
+
+	it('does nothing to the idle palette or to groups without opened records', () => {
+		const rows = [record('a', 'Ada', 'old'), record('b', 'Ada', 'recent')];
+		const groups = [group('g', 0, rows)];
+		expect(applyRecencyTieBreak(groups, '  ', recencyOf)).toBe(groups);
+		const plain = [group('nav', 0, [item('n1', 'Ada'), item('n2', 'Ada')])];
+		expect(applyRecencyTieBreak(plain, 'ada', recencyOf)[0]).toBe(plain[0]);
+	});
+
+	it('re-orders before the cap, so a recent tie survives truncation', () => {
+		const rows = [record('a', 'Ada a'), record('b', 'Ada b'), record('c', 'Ada c', 'recent')];
+		const merged = mergeGroups(applyRecencyTieBreak([group('g', 0, rows, 2)], 'ada', recencyOf));
+		expect(merged[0]?.items.map((i) => i.id)).toEqual(['c', 'a']);
 	});
 });
 
