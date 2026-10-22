@@ -116,6 +116,7 @@ apps/web/server/api/delivery/__tests__/apply-transport.test.ts	owlat(no-test-tim
 examples/plugins/deliverability-lab/src/__tests__/html.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
 packages/email-builder/src/composables/__tests__/usePreview.perf.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	600_000
 packages/mail-message/src/__tests__/fuzz.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
+packages/shared/src/__tests__/mailSegmentsHostile.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 packages/shared/src/__tests__/postboxTrackers.perf.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	300_000
 packages/shared/src/__tests__/tlsCertReloader.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30000
 packages/smtp-listener/src/__tests__/admission.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20000

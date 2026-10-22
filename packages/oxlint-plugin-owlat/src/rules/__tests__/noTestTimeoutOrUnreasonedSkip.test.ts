@@ -92,6 +92,26 @@ ruleTester.run('owlat/no-test-timeout-or-unreasoned-skip', rule, {
 			code: `${imports}const run = () => {};\nit('x', { concurrent: true }, run);`,
 		},
 		{
+			name: 'options kept in a const and a named test function, declared or const',
+			filename,
+			code: `${imports}${shared}const opts = { concurrent: true, timeout: PARALLEL_GATE_TIMEOUT_MS };\nfunction run() {}\nconst runArrow = () => {};\nit('x', opts, run);\nit('y', opts, runArrow);`,
+		},
+		{
+			name: 'a named test function followed by a shared budget',
+			filename,
+			code: `${imports}${shared}function run() {}\nit('x', run, PARALLEL_GATE_TIMEOUT_MS);`,
+		},
+		{
+			name: 'a quarantine comment continued on the lines below it',
+			filename,
+			code: `${imports}// quarantine: #5 the relay drops the second hello\n// under load, until the queue rewrite lands\nit.skip('relays twice', () => {});`,
+		},
+		{
+			name: 'an import-free vitest config without retry',
+			filename: 'vitest.config.ts',
+			code: 'export default { test: { testTimeout: 10_000 } };',
+		},
+		{
 			name: 'retry outside a vitest config is a different retry',
 			filename: 'client.ts',
 			code: 'export const client = { retry: 3 };',
@@ -168,6 +188,42 @@ ruleTester.run('owlat/no-test-timeout-or-unreasoned-skip', rule, {
 			filename: 'apps/api/vitest.config.ts',
 			code: "import { defineConfig } from 'vitest/config';\nexport default defineConfig({ test: { retry: 1, projects: [{ test: { 'retry': 2 } }] } });",
 			errors: [{ message: RETRY }, { message: RETRY }],
+		},
+		{
+			name: 'retry in an import-free vitest config',
+			filename: 'vitest.shared.ts',
+			code: 'export default { test: { retry: 1 } };',
+			errors: [{ message: RETRY }],
+		},
+		{
+			name: 'options kept in a const, followed by an inline or named test function',
+			filename,
+			code: `${imports}const opts = { retry: 1 };\nfunction run() {}\nit('a', opts, () => {});\nit('b', opts, run);`,
+			errors: [{ message: RETRY }, { message: RETRY }],
+		},
+		{
+			name: 'options through an alias chain and a spread',
+			filename,
+			code: `${imports}const base = { skip: true };\nconst alias = base;\nit('a', alias, () => {});\nit('b', { ...{ timeout: 5000 }, concurrent: true }, () => {});\nconst shared = { retry: 2 };\ndescribe('c', { ...shared }, () => {});`,
+			errors: [{ message: SKIP }, { message: TIMEOUT }, { message: RETRY }],
+		},
+		{
+			name: 'old-style options in a const after a named test function',
+			filename,
+			code: `${imports}const run = () => {};\nconst opts = { timeout: 5000 };\nit('a', run, opts);`,
+			errors: [{ message: TIMEOUT }],
+		},
+		{
+			name: 'vi.setConfig options kept in a const',
+			filename,
+			code: `${imports}const config = { retry: 1, testTimeout: 1000 };\nvi.setConfig(config);`,
+			errors: [{ message: RETRY }, { message: TIMEOUT }],
+		},
+		{
+			name: 'a quarantine comment cut off from the skip by a blank line or another comment block',
+			filename,
+			code: `${imports}// quarantine: #1 the relay drops the second hello\n\nit.skip('a', () => {});\n// quarantine: #2 the fixture moved\n\n// an unrelated note\n\nit.skip('b', () => {});\n// quarantine: #3 the parser chokes\n\n// an unrelated note right above\nit.skip('c', () => {});`,
+			errors: [{ message: SKIP }, { message: SKIP }, { message: SKIP }],
 		},
 		{
 			name: 'a skip and a todo with no comment',

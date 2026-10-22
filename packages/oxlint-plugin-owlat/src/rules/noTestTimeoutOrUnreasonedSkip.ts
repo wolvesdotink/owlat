@@ -22,14 +22,21 @@ import {
  *   inventing its own budget is how a release gate ends up failing on machine
  *   load.
  * - Retries: a `retry` option on a test, suite or `vi.setConfig`, and any
- *   `retry` key in a vitest config file, is reported whatever its value. A
- *   retried flake still fails at its own rate on every run that does not
- *   retry it, and the retry hides that rate.
+ *   `retry` key in a vitest config file (imported from vitest or not), is
+ *   reported whatever its value. A retried flake still fails at its own rate
+ *   on every run that does not retry it, and the retry hides that rate.
  * - Skips: `.skip` / `.todo` (as a modifier or a `{ skip: true }` option) and a
  *   `skipIf` / `runIf` whose condition is a literal need a tracking issue in
- *   the comment directly above the statement: `// quarantine: #1234 <why>`.
- *   `skipIf` / `runIf` (and `{ skip: <expression> }`) with a real condition are
- *   environment gates and stay allowed.
+ *   the comment block directly above the statement, with no blank line in
+ *   between: `// quarantine: #1234 <why>`. `skipIf` / `runIf` (and
+ *   `{ skip: <expression> }`) with a real condition are environment gates and
+ *   stay allowed.
+ *
+ * Options and timeouts are read through `const` aliases and object spreads, so
+ * `const opts = { retry: 1 }; it(name, opts, fn)` counts like inline options.
+ * A third argument that is not an options object or a function is taken as a
+ * timeout, so an imported test function after imported options is reported;
+ * pass the function inline or declare it in the file.
  *
  * Only calls bound to vitest's own imports count, so `vi.waitFor(fn, { timeout })`,
  * a subprocess `timeout` and an unrelated `test()` helper are never reported.
@@ -56,7 +63,7 @@ const VITEST_CONFIG_FILE =
 const SHARED_TIMEOUTS_MODULE = /(?:^|\/)vitest\.timeouts(?:\.[cm]?[jt]s)?$/;
 const QUARANTINE = /^\s*quarantine:\s*#\d+\s+\S/;
 const MAX_ALIAS_DEPTH = 4;
-const FUNCTION_EXPRESSIONS = new Set(['ArrowFunctionExpression', 'FunctionExpression']);
+const FUNCTIONS = new Set(['ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration']);
 
 const TIMEOUT_MESSAGE =
 	'Use a shared budget from vitest.timeouts.ts (or the project testTimeout) instead of a local timeout. A slow test awaits its milestone; it does not get its own number.';
@@ -66,6 +73,41 @@ const SKIP_MESSAGE =
 	'A skipped or todo test needs its tracking issue in the comment directly above: `// quarantine: #<issue> <why>`. Gate on the environment with skipIf/runIf instead.';
 
 const isSharedTimeoutsModule = (specifier: string) => SHARED_TIMEOUTS_MODULE.test(specifier);
+
+/**
+ * What an identifier is bound to when that binding cannot change: the
+ * initializer of a plain `const name = …`, or a function declaration. Anything
+ * else (a `let`, a parameter, an import, a destructured name) is undefined.
+ */
+const constBinding = (context: Context, identifier: Node): Node => {
+	const definition = resolveVariable(context, identifier)?.defs[0];
+	if (definition?.type === 'FunctionName') return definition.node as AstNode;
+	if (
+		definition?.type !== 'Variable' ||
+		definition.parent?.type !== 'VariableDeclaration' ||
+		definition.parent.kind !== 'const' ||
+		definition.node.type !== 'VariableDeclarator' ||
+		definition.node.id.type !== 'Identifier'
+	) {
+		return undefined;
+	}
+	return definition.node.init;
+};
+
+/**
+ * The value an argument stands for, following `const` aliases
+ * (`const opts = { retry: 1 }; it(name, opts, fn)`) to their initializer. An
+ * identifier that resolves no further is returned as is.
+ */
+const resolveValue = (context: Context, value: Node): Node => {
+	let node = unwrap(value);
+	for (let depth = 0; depth < MAX_ALIAS_DEPTH && node?.type === 'Identifier'; depth += 1) {
+		const bound = unwrap(constBinding(context, node));
+		if (!bound) break;
+		node = bound;
+	}
+	return node;
+};
 
 /** Whether a timeout value is a constant from `vitest.timeouts.ts`, or a `const` alias of one. */
 const isSharedBudget = (context: Context, value: Node, depth = 0): boolean => {
@@ -80,17 +122,7 @@ const isSharedBudget = (context: Context, value: Node, depth = 0): boolean => {
 	const imported = importedName(context, node, isSharedTimeoutsModule);
 	if (imported !== undefined) return imported !== 'namespace';
 	if (depth >= MAX_ALIAS_DEPTH) return false;
-	const definition = resolveVariable(context, node)?.defs[0];
-	if (
-		definition?.type !== 'Variable' ||
-		definition.parent?.type !== 'VariableDeclaration' ||
-		definition.parent.kind !== 'const' ||
-		definition.node.type !== 'VariableDeclarator' ||
-		definition.node.id.type !== 'Identifier'
-	) {
-		return false;
-	}
-	return isSharedBudget(context, definition.node.init, depth + 1);
+	return isSharedBudget(context, constBinding(context, node), depth + 1);
 };
 
 /** The identifier a callee chain (`it.skip.each(cases)`, `vitest.it`) starts from. */
@@ -105,7 +137,7 @@ const chainRoot = (node: Node): string | undefined => {
 	}
 };
 
-/** The statement a call sits in, which a quarantine comment must precede. */
+/** The statement a call sits in, whose comment block must hold the quarantine. */
 const enclosingStatement = (node: AstNode): AstNode => {
 	let current: AstNode = node;
 	while (current.parent && !/(?:Statement|Declaration)$/.test(current.type)) {
@@ -122,10 +154,24 @@ const propertyKey = (property: AstNode): string | undefined => {
 	return key.type === 'Literal' && typeof key.value === 'string' ? key.value : undefined;
 };
 
-const objectProperties = (node: Node) => {
-	const object = unwrap(node);
-	if (object?.type !== 'ObjectExpression') return [];
-	return object.properties.flatMap((property) => {
+interface OptionProperty {
+	readonly key: string;
+	readonly property: AstNode;
+	readonly value: Node;
+}
+
+/**
+ * The statically keyed properties of an options object, through `const`
+ * aliases and spreads of them (`{ ...base, timeout }`), so options kept in a
+ * variable are checked like options written inline.
+ */
+const objectProperties = (context: Context, node: Node, depth = 0): OptionProperty[] => {
+	const object = resolveValue(context, node);
+	if (object?.type !== 'ObjectExpression' || depth > MAX_ALIAS_DEPTH) return [];
+	return object.properties.flatMap((property): OptionProperty[] => {
+		if (property.type === 'SpreadElement') {
+			return objectProperties(context, property.argument, depth + 1);
+		}
 		const key = propertyKey(property);
 		return key === undefined || property.type !== 'Property'
 			? []
@@ -147,7 +193,11 @@ const rule: Rule = {
 		},
 	},
 	create(context) {
-		if (!context.sourceCode.text.includes('vitest')) return {};
+		// A vitest config file is checked whatever it imports: a plain
+		// `export default { test: { retry: 1 } }` configures vitest too. Any
+		// other file can only reach vitest's API through an import naming it.
+		const isConfigFile = VITEST_CONFIG_FILE.test(context.filename);
+		if (!isConfigFile && !context.sourceCode.text.includes('vitest')) return {};
 
 		/** Local names bound by `import … from 'vitest'`, to what they import. */
 		const vitestLocals = new Map<string, string>();
@@ -158,15 +208,34 @@ const rule: Rule = {
 			}
 		};
 
+		/**
+		 * The comment block directly above a statement: the comments before it
+		 * that each end on the line before the next one starts, the last on the
+		 * line before the statement. A blank line or code ends the block, so a
+		 * quarantine note further up belongs to something else.
+		 */
+		const adjacentComments = (statement: AstNode) => {
+			const comments = context.sourceCode.getCommentsBefore(statement);
+			const block = [];
+			let nextLine = statement.loc.start.line;
+			for (let index = comments.length - 1; index >= 0; index -= 1) {
+				const comment = comments[index]!;
+				if (comment.loc.end.line !== nextLine - 1) break;
+				block.push(comment);
+				nextLine = comment.loc.start.line;
+			}
+			return block;
+		};
+
 		const reportUnlessQuarantined = (call: AstNode, node: AstNode) => {
-			const comments = context.sourceCode.getCommentsBefore(enclosingStatement(call));
+			const comments = adjacentComments(enclosingStatement(call));
 			if (comments.some((comment) => QUARANTINE.test(comment.value))) return;
 			context.report({ node, message: SKIP_MESSAGE });
 		};
 
 		/** A test or suite options object: its timeout, retry and literal skip/todo. */
 		const checkOptions = (call: AstNode, options: Node) => {
-			for (const { key, property, value } of objectProperties(options)) {
+			for (const { key, property, value } of objectProperties(context, options)) {
 				if (key === 'timeout') checkTimeout(value);
 				else if (key === 'retry') context.report({ node: property, message: RETRY_MESSAGE });
 				else if (SKIP_MODIFIERS.has(key) && isLiteral(value, (v) => v === true)) {
@@ -177,7 +246,7 @@ const rule: Rule = {
 
 		return {
 			// In a vitest config file a `retry` key means nothing but test retries.
-			...(VITEST_CONFIG_FILE.test(context.filename) && {
+			...(isConfigFile && {
 				Property(node: AstNode) {
 					if (node.parent?.type === 'ObjectExpression' && propertyKey(node) === 'retry') {
 						context.report({ node, message: RETRY_MESSAGE });
@@ -215,7 +284,7 @@ const rule: Rule = {
 					callee?.type === 'MemberExpression' &&
 					VI.has(vitestExport(context, callee.object) ?? '')
 				) {
-					for (const { key, property, value } of objectProperties(args[0])) {
+					for (const { key, property, value } of objectProperties(context, args[0])) {
 						if (SET_CONFIG_TIMEOUTS.has(key)) checkTimeout(value);
 						else if (key === 'retry') context.report({ node: property, message: RETRY_MESSAGE });
 					}
@@ -237,13 +306,15 @@ const rule: Rule = {
 				}
 
 				// `it(name, options, fn)`, or `it(name, fn, timeout)` and the older
-				// `it(name, fn, options)`.
+				// `it(name, fn, options)`. Arguments are read through `const`
+				// aliases, so a third argument that is the test function itself
+				// (inline or named) is never taken for a timeout.
 				const [, second, third] = args;
-				if (unwrap(second)?.type === 'ObjectExpression') checkOptions(node, second);
-				else if (unwrap(third)?.type === 'ObjectExpression') checkOptions(node, third);
-				else if (third && !FUNCTION_EXPRESSIONS.has(unwrap(third)?.type ?? '')) {
-					checkTimeout(third);
-				}
+				const secondValue = resolveValue(context, second);
+				const thirdValue = resolveValue(context, third);
+				if (secondValue?.type === 'ObjectExpression') checkOptions(node, second);
+				else if (thirdValue?.type === 'ObjectExpression') checkOptions(node, third);
+				else if (third && !FUNCTIONS.has(thirdValue?.type ?? '')) checkTimeout(third);
 			},
 		};
 	},
