@@ -26,7 +26,7 @@ import type { InboundParser } from '../pipeline';
 import type { InboundEvent } from '../types';
 import { isMtaWebhookEvent, type ValidatedMtaWebhookEvent } from '@owlat/mta-protocol/webhookEvent';
 import { isRecord } from '@owlat/shared';
-import { logWarn } from '../../lib/runtimeLog';
+import { logEvent } from '../../lib/runtimeLog';
 import { MTA_EVENT_PARSERS } from './mtaEventParsers';
 
 function isSensitiveInternalPayload(rawBody: string): boolean {
@@ -88,11 +88,26 @@ export const mtaAdapter: InboundParser<'mta'> = {
 				isRecord(parsed) && typeof parsed['event'] === 'string'
 					? parsed['event'].slice(0, 64)
 					: '(missing)';
-			logWarn(
-				`[mta Webhook] Ingress guard rejected event "${kind}"; acknowledging without dispatch`
+			logEvent(
+				'mta.webhook.rejected',
+				{ outcome: 'acknowledged_without_dispatch', detail: { eventKind: kind } },
+				'warn'
 			);
 			return null;
 		}
+		// The receiving end of the correlation chain: the id the job was accepted
+		// under, echoed by the MTA, joins this line to the dispatch that caused it.
+		logEvent(
+			'mta.webhook.received',
+			{
+				orgId: parsed.organizationId,
+				messageId: parsed.messageId,
+				workAttemptId: parsed.workAttemptId,
+				correlationId: parsed.correlationId,
+				outcome: parsed.event,
+			},
+			'debug'
+		);
 		// Same lookup-cast shape as `../dispatcher.ts` DISPATCH: the table is
 		// total over the union, so the cast only erases the per-key correlation.
 		const parse = MTA_EVENT_PARSERS[parsed.event] as (

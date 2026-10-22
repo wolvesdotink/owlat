@@ -67,6 +67,10 @@ export const envelopeInputValidator = v.union(
 		providerType: v.optional(v.string()),
 		ipPool: v.optional(v.string()),
 		sendId: v.optional(v.id('transactionalSends')),
+		// The Send row's `correlationId`, carried to the MTA as the
+		// `x-owlat-correlation` header (`@owlat/shared/correlation`). Log-only:
+		// it feeds no idempotency key, work identity or digest decision.
+		correlationId: v.optional(v.string()),
 		template: v.object({
 			subject: v.string(),
 			htmlContent: v.string(),

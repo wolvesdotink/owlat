@@ -29,6 +29,8 @@ import {
 import type { SendWorkerOutcome } from './workerOutcome';
 import type { Id } from '../_generated/dataModel';
 import { recordSendResponseRefusal } from '../webhooks/providerSuppression';
+import { mintCorrelationId } from '@owlat/shared/correlation';
+import { logEvent } from '../lib/runtimeLog';
 
 /**
  * The durable reference this dispatch is bound to.
@@ -167,6 +169,13 @@ export async function dispatchGovernedEmail(
 		throw new Error('Delivery safety decision requires an organization identity.');
 	if (!request.sendRef) throw new Error('Governed MTA delivery requires a durable Send reference.');
 	const workAttemptId = retryState.workAttemptId ?? crypto.randomUUID();
+	// The Send's own correlation id when the producer stamped one (the
+	// transactional API), else a fresh one for this attempt, so the MTA's lines
+	// for it still join this action's. Log-only: nothing below keys on it.
+	const correlationId =
+		(request.envelopeInput.kind === 'transactional'
+			? request.envelopeInput.correlationId
+			: undefined) ?? mintCorrelationId('dsp');
 	const snapshot = await ctx.runMutation(internal.delivery.routingReentry.issueSnapshot, {
 		sendRef: request.sendRef,
 		organizationId,
@@ -191,6 +200,7 @@ export async function dispatchGovernedEmail(
 		// The recorded experiment row is keyed by this id: dispatching on the
 		// arm it names is what keeps the measured denominators honest.
 		sendId: request.sendRef.id,
+		correlationId,
 	});
 	if (routing.kind === 'defer') {
 		if (retryState.acceptanceReconciliation) {
@@ -275,6 +285,7 @@ export async function dispatchGovernedEmail(
 		warmupOverflowEnabled: route?.warmupOverflowEnabled,
 		engagementScore,
 		relayReturnPathHost,
+		correlationId,
 	});
 	const dispatched = await sendProviderDispatch(
 		ctx,
@@ -287,6 +298,23 @@ export async function dispatchGovernedEmail(
 			...request.message,
 		},
 		extras
+	);
+	logEvent(
+		'delivery.dispatch.completed',
+		{
+			orgId: organizationId,
+			sendId: request.sendRef.id,
+			workAttemptId,
+			messageId: idempotencyKey,
+			correlationId,
+			durationMs: dispatched.latencyMs,
+			outcome: dispatched.result.success ? 'accepted' : 'refused',
+			detail: {
+				providerType: dispatched.providerType,
+				errorCode: dispatched.result.success ? undefined : dispatched.result.errorCode,
+			},
+		},
+		dispatched.result.success ? 'info' : 'warn'
 	);
 
 	if (dispatched.result.success) {

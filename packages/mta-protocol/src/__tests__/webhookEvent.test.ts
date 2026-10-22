@@ -87,6 +87,15 @@ describe('MTA webhook event runtime contract', () => {
 		expect(isMtaWebhookEvent(event)).toBe(false);
 	});
 
+	it('accepts the echoed correlation id, optional, and refuses a malformed one', () => {
+		const sent = { event: 'sent', messageId: 'message-1', timestamp: 1 };
+		expect(isMtaWebhookEvent({ ...sent, correlationId: 'txn_V1StGXR8_Z5jdHi6' })).toBe(true);
+		// Legacy MTAs and queued pre-upgrade events carry none.
+		expect(isMtaWebhookEvent(sent)).toBe(true);
+		expect(isMtaWebhookEvent({ ...sent, correlationId: 'txn abc' })).toBe(false);
+		expect(isMtaWebhookEvent({ ...sent, correlationId: 'a'.repeat(129) })).toBe(false);
+	});
+
 	it('rejects non-finite timestamps and ratios', () => {
 		expect(isMtaWebhookEvent({ event: 'sent', messageId: 'message-1', timestamp: NaN })).toBe(
 			false

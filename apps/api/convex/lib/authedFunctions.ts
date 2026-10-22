@@ -55,31 +55,29 @@
  * these wrappers replace.
  *
  * SESSION THREADING. Every org-scoped floor above resolves a full
- * `MutationSessionContext` (`userId`, `role`, `activeOrganizationId`) in order to
- * decide whether the caller may proceed. The wrapper used to throw that result
- * away, so a handler needing the caller's org id or role called the very same
- * helper AGAIN — a second BetterAuth session read plus a second `member`
- * component query on every execution, purely to re-derive what the floor had
- * just decided. Instead the resolved session is passed to the handler as its
- * THIRD argument:
+ * `MutationSessionContext` (`userId`, `role`, `activeOrganizationId`) to decide
+ * whether the caller may proceed, and passes it to the handler as its THIRD
+ * argument, so a handler needing the org id or role does not pay a second
+ * BetterAuth session read and `member` query to re-derive it:
  *
  *   export const getThing = adminQuery({
  *     args: {},
  *     handler: async (ctx, _args, session) => read(ctx, session.activeOrganizationId),
  *   });
  *
- * `ctx` and `args` are untouched — nothing is spread into or bolted onto the
- * Convex context — and a handler that ignores the third parameter (which is
- * almost all of them) is unchanged in every way, because a shorter function is
- * assignable to a longer signature. The builders' types therefore stay
- * structurally identical to `typeof query` / `typeof mutation` for the `args` /
- * `returns` / return-value inference the generated `api` surface and `apps/web`
- * consumers read; only the handler gains the extra optional-to-declare
- * parameter. The platform-admin builders pass the resolved
+ * `ctx` and `args` are untouched, and a handler that ignores the third
+ * parameter is unchanged, because a shorter function is assignable to a longer
+ * signature; the builders' `args` / `returns` inference stays that of `typeof
+ * query` / `typeof mutation`. The platform-admin builders pass the resolved
  * `PlatformAdminContext` (`authUserId`, `email`, `role`) there instead of the
  * org session. `authedIdentityMutation` (whose floor resolves an identity, not an
  * org session) and `authedAction` (whose floor runs in another function's
  * context and returns nothing) keep the raw builder types.
+ *
+ * FAILURE LOGGING. Every builder here wraps its handler (floor included) in
+ * `logFailures` (`./functionLogging`): a throw is logged once as
+ * `function.<kind>.failed` with its category and the floor's org, then
+ * rethrown unchanged. The composed builders inherit it from the base builder.
  *
  * See CONVENTIONS.md § Permissions.
  */
@@ -87,15 +85,11 @@
 import { withQueryCacheConfig, withSessionQueryCache } from './sessionQueryCache';
 import { validatePublicInputStrings } from './publicInput';
 import { fenceMutationBuilder } from './writeFence';
+import { logFailures, type InstrumentedFunctionKind } from './functionLogging';
 import { query, mutation as rawMutation, action } from '../_generated/server';
 import type { QueryCtx, MutationCtx, ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { GenericValidator, ObjectType, PropertyValidators } from 'convex/values';
-import type {
-	RegisteredMutation,
-	RegisteredQuery,
-	ReturnValueForOptionalValidator,
-} from 'convex/server';
+import type { SessionMutationBuilder, SessionQueryBuilder } from './sessionBuilderTypes';
 import {
 	getMutationContext,
 	requireOrgMember,
@@ -147,48 +141,22 @@ type SessionThreadedHandler<Ctx> = (
 ) => unknown;
 
 /**
- * The config object a session-threaded builder accepts — `args` / `returns` /
- * `handler` exactly as the raw builders take them, with the floor's resolved
- * session appended to the handler's parameter list.
- *
- * `args` is a required `PropertyValidators` record (`args: {}` for the zero-arg
- * case), which is both the shape every function in this backend declares and the
- * shape `bun run lint:patterns` enforces.
+ * The handler an org-floored builder registers: resolve `floor`, attribute the
+ * invocation to the org it resolved (so a later failure is logged against a
+ * trusted org, see `./functionLogging`), check public input strings for writes,
+ * then call the handler with the session.
  */
-interface SessionFunctionConfig<
-	Ctx,
-	ArgsValidator extends PropertyValidators,
-	ReturnsValidator,
-	ReturnValue,
-	Floor,
-> {
-	args: ArgsValidator;
-	returns?: ReturnsValidator;
-	handler: (ctx: Ctx, args: ObjectType<ArgsValidator>, session: Floor) => ReturnValue;
-}
-
-/** `typeof query`, with the floor's session (or other resolved `Floor`) threaded to the handler. */
-interface SessionQueryBuilder<Floor = MutationSessionContext> {
-	<
-		ArgsValidator extends PropertyValidators,
-		ReturnsValidator extends PropertyValidators | GenericValidator | void = void,
-		ReturnValue extends ReturnValueForOptionalValidator<ReturnsValidator> =
-			ReturnValueForOptionalValidator<ReturnsValidator>,
-	>(
-		fn: SessionFunctionConfig<QueryCtx, ArgsValidator, ReturnsValidator, ReturnValue, Floor>
-	): RegisteredQuery<'public', ObjectType<ArgsValidator>, ReturnValue>;
-}
-
-/** `typeof mutation`, with the floor's session (or other resolved `Floor`) threaded to the handler. */
-interface SessionMutationBuilder<Floor = MutationSessionContext> {
-	<
-		ArgsValidator extends PropertyValidators,
-		ReturnsValidator extends PropertyValidators | GenericValidator | void = void,
-		ReturnValue extends ReturnValueForOptionalValidator<ReturnsValidator> =
-			ReturnValueForOptionalValidator<ReturnsValidator>,
-	>(
-		fn: SessionFunctionConfig<MutationCtx, ArgsValidator, ReturnsValidator, ReturnValue, Floor>
-	): RegisteredMutation<'public', ObjectType<ArgsValidator>, ReturnValue>;
+function sessionHandler<Ctx>(
+	kind: InstrumentedFunctionKind,
+	floor: (ctx: Ctx) => Promise<MutationSessionContext>,
+	fn: FunctionConfig
+) {
+	return logFailures(kind, async (ctx: Ctx, args: unknown, scope) => {
+		const session = await floor(ctx);
+		scope.orgId = session.activeOrganizationId;
+		if (kind !== 'query') validatePublicInputStrings(args);
+		return (fn.handler as unknown as SessionThreadedHandler<Ctx>)(ctx, args, session);
+	});
 }
 
 /**
@@ -210,10 +178,7 @@ export const authedQuery = ((fn: FunctionConfig) =>
 	query({
 		args: fn.args,
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
-		handler: withSessionQueryCache(async (ctx: QueryCtx, args: unknown) => {
-			const session = await requireOrgMember(ctx);
-			return (fn.handler as unknown as SessionThreadedHandler<QueryCtx>)(ctx, args, session);
-		}),
+		handler: withSessionQueryCache(sessionHandler<QueryCtx>('query', requireOrgMember, fn)),
 	} as Parameters<RawQuery>[0])) as unknown as SessionQueryBuilder;
 
 /**
@@ -228,11 +193,7 @@ export const authedMutation = ((fn: FunctionConfig) =>
 	mutation({
 		args: fn.args,
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
-		handler: async (ctx: MutationCtx, args: unknown) => {
-			const session = await getMutationContext(ctx);
-			validatePublicInputStrings(args);
-			return (fn.handler as unknown as SessionThreadedHandler<MutationCtx>)(ctx, args, session);
-		},
+		handler: sessionHandler<MutationCtx>('mutation', getMutationContext, fn),
 	} as Parameters<RawMutation>[0])) as unknown as SessionMutationBuilder;
 
 /**
@@ -250,11 +211,11 @@ export const authedIdentityMutation = ((fn: FunctionConfig) =>
 	mutation({
 		args: fn.args,
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
-		handler: async (ctx: MutationCtx, args: unknown) => {
+		handler: logFailures('mutation', async (ctx: MutationCtx, args: unknown) => {
 			await requireAuthenticatedIdentity(ctx);
 			validatePublicInputStrings(args);
 			return (fn.handler as unknown as (c: MutationCtx, a: unknown) => unknown)(ctx, args);
-		},
+		}),
 	} as Parameters<RawMutation>[0])) as unknown as RawMutation;
 
 /**
@@ -271,11 +232,15 @@ export const authedAction = ((fn: FunctionConfig) =>
 	action({
 		args: fn.args,
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
-		handler: async (ctx: ActionCtx, args: unknown) => {
-			await ctx.runQuery(internal.auth.membership.assertOrgMember, {});
+		handler: logFailures('action', async (ctx: ActionCtx, args: unknown, scope) => {
+			const member: { organizationId: string } | null = await ctx.runQuery(
+				internal.auth.membership.assertOrgMember,
+				{}
+			);
+			scope.orgId = member?.organizationId;
 			validatePublicInputStrings(args);
 			return (fn.handler as unknown as (c: ActionCtx, a: unknown) => unknown)(ctx, args);
-		},
+		}),
 	} as Parameters<RawAction>[0])) as unknown as RawAction;
 
 /**
@@ -291,11 +256,7 @@ export const adminMutation = ((fn: FunctionConfig) =>
 	mutation({
 		args: fn.args,
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
-		handler: async (ctx: MutationCtx, args: unknown) => {
-			const session = await requireAdminContext(ctx);
-			validatePublicInputStrings(args);
-			return (fn.handler as unknown as SessionThreadedHandler<MutationCtx>)(ctx, args, session);
-		},
+		handler: sessionHandler<MutationCtx>('mutation', requireAdminContext, fn),
 	} as Parameters<RawMutation>[0])) as unknown as SessionMutationBuilder;
 
 /**
@@ -315,11 +276,7 @@ export const ownerMutation = ((fn: FunctionConfig) =>
 	mutation({
 		args: fn.args,
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
-		handler: async (ctx: MutationCtx, args: unknown) => {
-			const session = await requireOwnerContext(ctx);
-			validatePublicInputStrings(args);
-			return (fn.handler as unknown as SessionThreadedHandler<MutationCtx>)(ctx, args, session);
-		},
+		handler: sessionHandler<MutationCtx>('mutation', requireOwnerContext, fn),
 	} as Parameters<RawMutation>[0])) as unknown as SessionMutationBuilder;
 
 /**
@@ -338,10 +295,13 @@ export const adminQuery = ((fn: FunctionConfig) =>
 	query({
 		args: fn.args,
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
-		handler: withSessionQueryCache(async (ctx: QueryCtx, args: unknown) => {
-			const session = await requireOrgPermission(ctx, 'organization:manage');
-			return (fn.handler as unknown as SessionThreadedHandler<QueryCtx>)(ctx, args, session);
-		}),
+		handler: withSessionQueryCache(
+			sessionHandler<QueryCtx>(
+				'query',
+				(ctx) => requireOrgPermission(ctx, 'organization:manage'),
+				fn
+			)
+		),
 	} as Parameters<RawQuery>[0])) as unknown as SessionQueryBuilder;
 
 /**
@@ -480,21 +440,28 @@ export function featureGatedAny<
  * Every use MUST carry a `// public: <reason>` comment at the call site.
  */
 export const publicQuery = ((fn: FunctionConfig) =>
-	query(withQueryCacheConfig(fn) as Parameters<RawQuery>[0])) as unknown as RawQuery;
+	query(
+		withQueryCacheConfig({
+			...fn,
+			handler: logFailures('query', (ctx: QueryCtx, args: unknown) =>
+				(fn.handler as unknown as (c: QueryCtx, a: unknown) => unknown)(ctx, args)
+			),
+		}) as unknown as Parameters<RawQuery>[0]
+	)) as unknown as RawQuery;
 export const publicMutation = ((fn: FunctionConfig) =>
 	mutation({
 		...fn,
-		handler: (ctx: MutationCtx, args: unknown) => {
+		handler: logFailures('mutation', (ctx: MutationCtx, args: unknown) => {
 			validatePublicInputStrings(args);
 			return (fn.handler as unknown as (c: MutationCtx, a: unknown) => unknown)(ctx, args);
-		},
+		}),
 	} as Parameters<RawMutation>[0])) as unknown as RawMutation;
 
 export const publicAction = ((fn: FunctionConfig) =>
 	action({
 		...fn,
-		handler: (ctx: ActionCtx, args: unknown) => {
+		handler: logFailures('action', (ctx: ActionCtx, args: unknown) => {
 			validatePublicInputStrings(args);
 			return (fn.handler as unknown as (c: ActionCtx, a: unknown) => unknown)(ctx, args);
-		},
+		}),
 	} as Parameters<RawAction>[0])) as unknown as RawAction;

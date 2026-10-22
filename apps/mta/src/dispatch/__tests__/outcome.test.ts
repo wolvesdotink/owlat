@@ -225,6 +225,19 @@ describe('reduce(delivered)', () => {
 		expect(record).toEqual({ kind: 'campaign_delivery_record', campaignId });
 	});
 
+	it('echoes the job correlation id on every webhook it reduces to, and none when absent', () => {
+		const job = makeJob({ correlationId: 'txn_V1StGXR8_Z5jdHi6' });
+		const correlated = reduce(outcome, makeCtx({ job })).effects;
+		const plain = reduce(outcome, makeCtx()).effects;
+
+		for (const effect of correlated.filter((e) => e.kind === 'notify_convex')) {
+			expect(effect).toMatchObject({ event: { correlationId: 'txn_V1StGXR8_Z5jdHi6' } });
+		}
+		for (const effect of plain.filter((e) => e.kind === 'notify_convex')) {
+			if (effect.kind === 'notify_convex') expect(effect.event).not.toHaveProperty('correlationId');
+		}
+	});
+
 	it('does NOT emit campaign_delivery_record for a txn Feedback-ID', () => {
 		const job = makeJob({ headers: { 'Feedback-ID': 'txn:none:none:ab12cd' } });
 		const { effects } = reduce(outcome, makeCtx({ job }));

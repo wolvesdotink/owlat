@@ -75,9 +75,11 @@ vi.mock('../../monitoring/collector.js', () => ({
 vi.mock('../../monitoring/deliveryLogger.js', () => ({
 	logDeliveryEvent: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock('../../monitoring/logger.js', () => ({
-	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
+const loggerMock = vi.hoisted(() => {
+	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+	return { logger, jobLogger: vi.fn((_job: unknown) => logger) };
+});
+vi.mock('../../monitoring/logger.js', () => loggerMock);
 
 import { handleEmailJob } from '../handler.js';
 import type { EmailJob } from '../../types.js';
@@ -1056,6 +1058,35 @@ describe('handleEmailJob', () => {
 			config,
 			redis
 		);
+	});
+
+	it('echoes the intake correlation id on the webhook and binds it to the job log', async () => {
+		const { isSuppressed } = await import('../../intelligence/suppressionList.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(isSuppressed).mockResolvedValue(true);
+
+		await run(createJob({ correlationId: 'txn_V1StGXR8_Z5jdHi6' }));
+
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({ event: 'failed', correlationId: 'txn_V1StGXR8_Z5jdHi6' }),
+			config,
+			redis
+		);
+		expect(loggerMock.jobLogger).toHaveBeenCalledWith(
+			expect.objectContaining({ messageId: 'msg-001', correlationId: 'txn_V1StGXR8_Z5jdHi6' })
+		);
+	});
+
+	it('sends no correlation id for a job that was accepted without one', async () => {
+		const { isSuppressed } = await import('../../intelligence/suppressionList.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(isSuppressed).mockResolvedValue(true);
+
+		await run(createJob());
+
+		const event = vi.mocked(notifyConvex).mock.calls[0]?.[0];
+		expect(event).toBeDefined();
+		expect(event).not.toHaveProperty('correlationId');
 	});
 
 	it('handles hard bounce — suppresses recipient and notifies Convex', async () => {

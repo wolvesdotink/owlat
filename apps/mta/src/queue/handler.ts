@@ -30,7 +30,7 @@ import type { MtaConfig } from '../config.js';
 import { extractDomain, buildGroupKey } from './groups.js';
 import { extractDomainOrNull } from '@owlat/shared';
 import { recordWorkerHeartbeat } from '../routes/health.js';
-import { logger } from '../monitoring/logger.js';
+import { jobLogger, logger } from '../monitoring/logger.js';
 import { fireAndForget } from '../lib/fireAndForget.js';
 import { runPipeline } from '../dispatch/pipeline.js';
 import { mainPipeline } from '../dispatch/phases/index.js';
@@ -75,6 +75,7 @@ export async function handleEmailJob(
 ): Promise<void> {
 	const data = job.data;
 	const deps = { redis, config };
+	const log = jobLogger(data);
 	// This durable CAS closes the route-side queue.add/receipt gap before the
 	// worker can perform SMTP or reach a GroupMQ-completable terminal path.
 	await promoteIntakeReceipt(redis, data);
@@ -110,10 +111,7 @@ export async function handleEmailJob(
 	// the trailing `>`); undefined when no address is present.
 	const fromDomain = extractDomainOrNull(data.from) ?? undefined;
 
-	logger.debug(
-		{ messageId: data.messageId, to: data.to, domain, pool: data.ipPool },
-		'Processing email job'
-	);
+	log.debug({ to: data.to, domain, pool: data.ipPool }, 'Processing email job');
 
 	void fireAndForget(recordWorkerHeartbeat(redis, config.serverId), logger, 'worker_heartbeat');
 
@@ -184,10 +182,7 @@ export async function handleEmailJob(
 	try {
 		await recordFeedbackProvenance(redis, data);
 	} catch (err) {
-		logger.warn(
-			{ err, messageId: data.messageId },
-			'Delayed-feedback provenance unavailable — deferring before SMTP'
-		);
+		log.warn({ err }, 'Delayed-feedback provenance unavailable — deferring before SMTP');
 		await disposeDefer(
 			job,
 			queue,
@@ -331,9 +326,8 @@ async function disposeDefer(
 		delay
 	);
 
-	logger.info(
+	jobLogger(data).info(
 		{
-			messageId: data.messageId,
 			to: data.to,
 			domain,
 			kind,
@@ -348,19 +342,27 @@ async function disposeDefer(
 	);
 }
 
+/**
+ * One `mta.delivery.outcome` line per SMTP attempt, on the job's child logger
+ * (`orgId` / `messageId` / `workAttemptId` / `correlationId` bound) with the
+ * shared `outcome` and `durationMs` keys, so it joins the Convex dispatch line.
+ */
 function logOutcome(outcome: DispatchOutcome, job: EmailJob, ctx: AttemptCtx): void {
+	const log = jobLogger(job);
+	const base = {
+		event: 'mta.delivery.outcome',
+		outcome: outcome.kind,
+		durationMs: ctx.durationMs,
+		to: job.to,
+	};
 	switch (outcome.kind) {
 		case 'delivered':
-			logger.info(
-				{ messageId: job.messageId, to: job.to, ip: ctx.ip, durationMs: ctx.durationMs },
-				'Email delivered'
-			);
+			log.info({ ...base, ip: ctx.ip }, 'Email delivered');
 			return;
 		case 'hard_bounce':
-			logger.warn(
+			log.warn(
 				{
-					messageId: job.messageId,
-					to: job.to,
+					...base,
 					error: outcome.error,
 					smtpCode: outcome.smtpCode,
 				},
@@ -368,10 +370,9 @@ function logOutcome(outcome: DispatchOutcome, job: EmailJob, ctx: AttemptCtx): v
 			);
 			return;
 		case 'deferred':
-			logger.info(
+			log.info(
 				{
-					messageId: job.messageId,
-					to: job.to,
+					...base,
 					error: outcome.error,
 					smtpCode: outcome.smtpCode,
 					category: outcome.classification.category,
@@ -384,14 +385,11 @@ function logOutcome(outcome: DispatchOutcome, job: EmailJob, ctx: AttemptCtx): v
 			);
 			return;
 		case 'soft_bounce':
-			logger.warn(
-				{ messageId: job.messageId, to: job.to, error: outcome.error },
-				'Soft bounce — connection failure'
-			);
+			log.warn({ ...base, error: outcome.error }, 'Soft bounce — connection failure');
 			return;
 		case 'ambiguous':
-			logger.warn(
-				{ messageId: job.messageId, to: job.to, error: outcome.error },
+			log.warn(
+				{ ...base, error: outcome.error },
 				'Ambiguous post-DATA outcome — terminal, not suppressed (message may have been delivered)'
 			);
 			return;

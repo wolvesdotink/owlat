@@ -510,6 +510,14 @@
 			"types": "./src/logRedaction.ts",
 			"import": "./src/logRedaction.ts"
 		},
+		"./logEvent": {
+			"types": "./src/logEvent.ts",
+			"import": "./src/logEvent.ts"
+		},
+		"./correlation": {
+			"types": "./src/correlation.ts",
+			"import": "./src/correlation.ts"
+		},
 		"./threadStatus": {
 			"types": "./src/threadStatus.ts",
 			"import": "./src/threadStatus.ts"

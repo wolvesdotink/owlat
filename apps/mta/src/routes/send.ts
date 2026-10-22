@@ -20,7 +20,8 @@ import {
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
 import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPriority.js';
 import { checkSystemHealth } from '../scaling/degradation.js';
-import { logger } from '../monitoring/logger.js';
+import { jobLogger } from '../monitoring/logger.js';
+import { CORRELATION_HEADER, readCorrelationId } from '@owlat/shared/correlation';
 import { revalidateRoutingLease } from './sendRoutingLease.js';
 import {
 	INTAKE_RESERVATION_LEASE_MS,
@@ -82,6 +83,16 @@ export function createSendHandler(
 		} catch {
 			return refuse(c, { error: 'Invalid JSON body' }, 400);
 		}
+
+		// Log-only: a malformed header is dropped, never refused (see
+		// `@owlat/shared/correlation`).
+		const correlationId = readCorrelationId(c.req.header(CORRELATION_HEADER));
+		const log = jobLogger({
+			organizationId: body.organizationId,
+			messageId: body.messageId,
+			workAttemptId: body.workAttemptId,
+			correlationId,
+		});
 
 		if (!body.messageId || !body.to || !body.from || !body.subject || !body.html) {
 			return refuse(
@@ -205,8 +216,8 @@ export function createSendHandler(
 			const fromLower = parsedFrom.address;
 			const ok = body.allowedFromAddresses?.some((allowed) => allowed.toLowerCase() === fromLower);
 			if (!ok) {
-				logger.warn(
-					{ messageId: body.messageId, from: body.from, allowed: body.allowedFromAddresses },
+				log.warn(
+					{ from: body.from, allowed: body.allowedFromAddresses },
 					'Postbox /send rejected — From address not in allowed set'
 				);
 				return refuse(c, { error: 'From address not authorized for this mailbox' }, 403);
@@ -312,10 +323,7 @@ export function createSendHandler(
 			const rawExisting = await redis.get(dedupKey);
 			const existing = parseIntakeReceipt(rawExisting);
 			if (existing?.state === 'accepted' && existing.messageId === body.messageId) {
-				logger.info(
-					{ messageId: body.messageId, workAttemptId: queueIdentity },
-					'Duplicate work attempt — skipping'
-				);
+				log.info({ jobId: queueIdentity }, 'Duplicate work attempt — skipping');
 				return accepted(c, { success: true, id: body.messageId, deduplicated: true });
 			}
 			const queued = typeof queue.getJob === 'function' ? await queue.getJob(queueIdentity) : null;
@@ -324,10 +332,7 @@ export function createSendHandler(
 			}
 			const receipt = parseIntakeReceipt(await redis.get(dedupKey));
 			if (receipt?.state === 'accepted' && receipt.messageId === body.messageId) {
-				logger.info(
-					{ messageId: body.messageId, workAttemptId: queueIdentity },
-					'Duplicate work attempt — skipping'
-				);
+				log.info({ jobId: queueIdentity }, 'Duplicate work attempt — skipping');
 				return accepted(c, { success: true, id: body.messageId, deduplicated: true });
 			}
 			const stale =
@@ -372,6 +377,7 @@ export function createSendHandler(
 			messageId: body.messageId,
 			intakeReceiptId: queueIdentity,
 			workAttemptId: body.workAttemptId,
+			...(correlationId ? { correlationId } : {}),
 			to: body.to,
 			from: body.from,
 			subject: body.subject,
@@ -419,10 +425,7 @@ export function createSendHandler(
 			// lost, Convex can prove acceptance without starting a fresh route.
 			await redis.set(dedupKey, acceptedReceipt, 'PX', GOVERNED_MTA_MAX_MESSAGE_AGE_MS);
 
-			logger.debug(
-				{ messageId: body.messageId, groupId, priority, jobId: result.id },
-				'Email queued'
-			);
+			log.debug({ groupId, priority, jobId: result.id }, 'Email queued');
 
 			return accepted(c, { success: true, id: body.messageId, workAttemptId: result.id });
 		} catch (err) {
@@ -444,7 +447,7 @@ export function createSendHandler(
 				dedupKey,
 				reservedReceipt
 			);
-			logger.error({ err, messageId: body.messageId }, 'Failed to enqueue email');
+			log.error({ err }, 'Failed to enqueue email');
 			return refuse(c, { error: 'Failed to queue email' }, 500);
 		}
 	};

@@ -127,6 +127,8 @@ describe('dispatchGovernedEmail', () => {
 			// adaptive_mix cell dispatches on the arm the enqueue transaction
 			// recorded for this recipient.
 			sendId: 'send-row-1',
+			// A campaign send has no stored correlation id; the attempt mints one.
+			correlationId: expect.stringMatching(/^dsp_[0-9a-f]{32}$/),
 		});
 		expect(sendProviderDispatch).not.toHaveBeenCalled();
 		expect(result).toMatchObject({
@@ -176,6 +178,7 @@ describe('dispatchGovernedEmail', () => {
 				routingLease: 'lease-1',
 				allowWarmupOverflow: false,
 				ipPool: 'campaign',
+				correlationId: expect.stringMatching(/^dsp_[0-9a-f]{32}$/),
 				routingReentry: {
 					envelopeInput,
 					retryState: {
@@ -1123,6 +1126,97 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 				sendLatencyMs: 9,
 				isCustodyHandoff: false,
 			});
+		});
+	});
+});
+
+describe('dispatchGovernedEmail correlation id', () => {
+	beforeEach(() => {
+		resolveLastMileRouting.mockReset();
+		sendProviderDispatch.mockReset();
+		runMutation.mockClear();
+		runMutation
+			.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() })
+			.mockResolvedValueOnce({ ok: true });
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'ready',
+			providerKind: 'mta',
+			route: { ipPool: 'transactional' },
+			organizationId: 'org-1',
+			routingLease: 'lease-1',
+		});
+		sendProviderDispatch.mockResolvedValue({
+			result: { success: true, id: 'mta-1' },
+			providerType: 'mta',
+			latencyMs: 7,
+			attempts: 1,
+		});
+	});
+
+	afterEach(() => vi.restoreAllMocks());
+
+	const transactionalEnvelope: WorkerEnvelopeInput = {
+		kind: 'transactional',
+		emailPurpose: 'transactional',
+		to: 'recipient@example.com',
+		from: 'sender@example.com',
+		sendId: 'txn-row-1' as Id<'transactionalSends'>,
+		correlationId: 'txn_V1StGXR8_Z5jdHi6',
+		template: { subject: 'Subject', htmlContent: '<p>Body</p>' },
+		organizationId: 'org-1',
+	};
+
+	it('carries the Send correlation id to routing and the extras, and logs the attempt once', async () => {
+		const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+		await dispatchGovernedEmail(ctx, {
+			...baseRequest,
+			envelopeInput: transactionalEnvelope,
+			messageType: 'transactional',
+			sendRef: { kind: 'transactional', id: 'txn-row-1' as never },
+		});
+
+		expect(resolveLastMileRouting.mock.calls[0]?.[1]).toMatchObject({
+			correlationId: 'txn_V1StGXR8_Z5jdHi6',
+		});
+		expect(sendProviderDispatch.mock.calls[0]?.[3]).toMatchObject({
+			correlationId: 'txn_V1StGXR8_Z5jdHi6',
+		});
+		// The id is a log key only: the idempotency key and the re-entry digest
+		// material are what they were without it.
+		expect(sendProviderDispatch.mock.calls[0]?.[3]).toMatchObject({
+			messageId: 'send_txn-row-1',
+			routingReentry: { retryState: { idempotencyKey: 'send_txn-row-1' } },
+		});
+		const events = log.mock.calls
+			.map((call) => call[0])
+			.filter((line): line is string => typeof line === 'string' && line.startsWith('{'))
+			.map((line) => JSON.parse(line) as Record<string, unknown>);
+		expect(events).toEqual([
+			{
+				event: 'delivery.dispatch.completed',
+				level: 'info',
+				orgId: 'org-1',
+				sendId: 'txn-row-1',
+				workAttemptId: expect.any(String),
+				messageId: 'send_txn-row-1',
+				correlationId: 'txn_V1StGXR8_Z5jdHi6',
+				durationMs: 7,
+				outcome: 'accepted',
+				detail: { providerType: 'mta' },
+			},
+		]);
+	});
+
+	it('mints a per-attempt id for a send that carries none', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+		await dispatchGovernedEmail(ctx, baseRequest);
+
+		const routed = resolveLastMileRouting.mock.calls[0]?.[1] as { correlationId?: string };
+		expect(routed.correlationId).toMatch(/^dsp_[0-9a-f]{32}$/);
+		expect(sendProviderDispatch.mock.calls[0]?.[3]).toMatchObject({
+			correlationId: routed.correlationId,
 		});
 	});
 });

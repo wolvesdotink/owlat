@@ -15,6 +15,12 @@ export interface EmailJob {
 	intakeReceiptId?: string;
 	/** Unique bounded work identity; provider correlation remains messageId. */
 	workAttemptId?: string;
+	/**
+	 * The intake's `x-owlat-correlation` header, validated. Echoed on every
+	 * webhook this job emits and bound to its log lines; it keys nothing else.
+	 * Absent on jobs whose producer sent none and on retained legacy jobs.
+	 */
+	correlationId?: string;
 	/** Durable predecessor→successor handoff promoted when a deferred job starts. */
 	deferHandoffId?: string;
 	/**

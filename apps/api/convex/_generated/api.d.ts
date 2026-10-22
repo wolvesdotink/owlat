@@ -1021,6 +1021,7 @@ import type * as lib_featureFlagSettings from '../lib/featureFlagSettings.js';
 import type * as lib_fetchWithTimeout from '../lib/fetchWithTimeout.js';
 import type * as lib_fileExtraction from '../lib/fileExtraction.js';
 import type * as lib_fileSearchText from '../lib/fileSearchText.js';
+import type * as lib_functionLogging from '../lib/functionLogging.js';
 import type * as lib_graphAnalyticsCompute from '../lib/graphAnalyticsCompute.js';
 import type * as lib_graphRank from '../lib/graphRank.js';
 import type * as lib_heldGapDraft from '../lib/heldGapDraft.js';
@@ -1163,6 +1164,7 @@ import type * as lib_sendProviders_transports from '../lib/sendProviders/transpo
 import type * as lib_sendProviders_types from '../lib/sendProviders/types.js';
 import type * as lib_sendProviders_warmingCapGate from '../lib/sendProviders/warmingCapGate.js';
 import type * as lib_sendingLimits from '../lib/sendingLimits.js';
+import type * as lib_sessionBuilderTypes from '../lib/sessionBuilderTypes.js';
 import type * as lib_sessionOrganization from '../lib/sessionOrganization.js';
 import type * as lib_sessionQueryCache from '../lib/sessionQueryCache.js';
 import type * as lib_ssrfGuard from '../lib/ssrfGuard.js';
@@ -2883,6 +2885,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/fetchWithTimeout': typeof lib_fetchWithTimeout;
 	'lib/fileExtraction': typeof lib_fileExtraction;
 	'lib/fileSearchText': typeof lib_fileSearchText;
+	'lib/functionLogging': typeof lib_functionLogging;
 	'lib/graphAnalyticsCompute': typeof lib_graphAnalyticsCompute;
 	'lib/graphRank': typeof lib_graphRank;
 	'lib/heldGapDraft': typeof lib_heldGapDraft;
@@ -3025,6 +3028,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/types': typeof lib_sendProviders_types;
 	'lib/sendProviders/warmingCapGate': typeof lib_sendProviders_warmingCapGate;
 	'lib/sendingLimits': typeof lib_sendingLimits;
+	'lib/sessionBuilderTypes': typeof lib_sessionBuilderTypes;
 	'lib/sessionOrganization': typeof lib_sessionOrganization;
 	'lib/sessionQueryCache': typeof lib_sessionQueryCache;
 	'lib/ssrfGuard': typeof lib_ssrfGuard;
