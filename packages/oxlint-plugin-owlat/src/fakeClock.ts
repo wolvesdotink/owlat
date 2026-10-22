@@ -7,8 +7,19 @@
  * Only what is actually faked counts. `vi.useFakeTimers({ toFake })` replaces
  * the listed globals and leaves the rest real, so advancing timers says nothing
  * about a `setTimeout` it does not list, and a pin says nothing about `Date`
- * when `Date` is not listed (or `shouldAdvanceTime` lets it follow the real
- * clock). A config the rules cannot read is taken to fake nothing.
+ * when `Date` is not listed. `shouldAdvanceTime` moves the fake clock with the
+ * real one, so a timer awaited there still waits real milliseconds and `Date`
+ * still drifts: the rules treat such a config, and any config they cannot
+ * read, as faking nothing.
+ *
+ * Only calls are evidence. `const pin = vi.setSystemTime` pins nothing until
+ * `pin()` runs, and the rules cannot see when that is, so a pin counts only as
+ * a call. Two uncalled forms are handed to code that calls them: a timer
+ * driver passed as an argument (`t.finishAllScheduledFunctions(vi.runAllTimers)`)
+ * and fake timers passed to a setup hook (`beforeEach(vi.useFakeTimers)`).
+ * A stored driver or fake-timer switch counts for nothing, and any uncalled
+ * `vi.useRealTimers` reference is taken as a switch-off where it appears, so
+ * no reference widens an exemption.
  *
  * The evidence has to sit in the function that owns the code (the test body or
  * helper around it, looking through `new Promise` executors), not anywhere in
@@ -20,7 +31,15 @@
  * own before the code, a function runs under whatever its hooks set up, so
  * every `vi.useFakeTimers` config elsewhere in the file has to fake the API.
  */
-import { enclosingFunction, type Node, propertyName, unwrap, viMethod } from './ast.ts';
+import {
+	enclosingFunction,
+	isGlobal,
+	type Node,
+	propertyName,
+	unwrap,
+	viMethod,
+	vitestImport,
+} from './ast.ts';
 import type { AstNode, Context } from './types.ts';
 import { isPromiseExecutor } from './waits.ts';
 
@@ -38,10 +57,13 @@ const DRIVERS = new Set([
 ]);
 const PIN = 'setSystemTime';
 const TOGGLES = new Set(['useFakeTimers', 'useRealTimers']);
+/** Hooks that run before the tests they guard, so a switch handed to them is on in those tests. */
+const SETUP_HOOKS = new Set(['beforeEach', 'beforeAll']);
 /** What vitest leaves real when `toFake` is not given. */
 const NOT_FAKED_BY_DEFAULT = new Set(['nextTick', 'queueMicrotask']);
 
 type Faked = (api: string) => boolean;
+type Call = Extract<AstNode, { type: 'CallExpression' }>;
 
 const byDefault: Faked = (api) => !NOT_FAKED_BY_DEFAULT.has(api);
 const nothing: Faked = () => false;
@@ -62,10 +84,16 @@ interface Toggle extends Mark, State {}
 
 const REAL: State = { on: false, faked: nothing };
 
-/** The call a `vi.*` member is the callee of, or the member itself. */
-const callOf = (member: AstNode): AstNode => {
+/** `node` is passed straight to a call, which is trusted to call it. */
+const isArgument = (node: AstNode): boolean => {
+	const parent = node.parent;
+	return parent?.type === 'CallExpression' && parent.arguments.some((arg) => arg === node);
+};
+
+/** The call a `vi.*` member is the callee of, if it is called right there. */
+const callOf = (member: AstNode): Call | undefined => {
 	const parent = member.parent;
-	return parent?.type === 'CallExpression' && parent.callee === member ? parent : member;
+	return parent?.type === 'CallExpression' && parent.callee === member ? parent : undefined;
 };
 
 const keyName = (property: AstNode): string | undefined => {
@@ -90,13 +118,12 @@ const stringList = (node: Node): Set<string> | undefined => {
 
 /**
  * What a `vi.useFakeTimers(config)` call fakes: its literal `toFake` list or
- * vitest's default, minus `Date` under `shouldAdvanceTime` (the fake clock then
- * follows the real one). A non-literal config fakes nothing as far as the
- * rules can tell. An uncalled reference (`beforeEach(vi.useFakeTimers)`) uses
- * the default.
+ * vitest's default. Under `shouldAdvanceTime` (unless literally `false`) the
+ * fake clock follows the real one, so nothing counts as faked; neither does
+ * anything under a non-literal config. A hook reference
+ * (`beforeEach(vi.useFakeTimers)`) uses the default.
  */
-const fakedBy = (call: AstNode): Faked => {
-	if (call.type !== 'CallExpression') return byDefault;
+const fakedBy = (call: Call): Faked => {
 	const config = unwrap(call.arguments[0]);
 	if (config === undefined || config === null) return byDefault;
 	if (config.type !== 'ObjectExpression') return nothing;
@@ -115,7 +142,7 @@ const fakedBy = (call: AstNode): Faked => {
 			followsRealClock = !(value?.type === 'Literal' && value.value === false);
 		}
 	}
-	return followsRealClock ? (api) => api !== 'Date' && faked(api) : faked;
+	return followsRealClock ? nothing : faked;
 };
 
 export interface FakeClock {
@@ -149,6 +176,15 @@ export const fakeClock = (context: Context): FakeClock => {
 		return fn;
 	};
 
+	/** `node` is an argument of `beforeEach(...)` / `beforeAll(...)` (vitest import or global). */
+	const isSetupHookArgument = (node: AstNode): boolean => {
+		const parent = node.parent;
+		if (parent?.type !== 'CallExpression' || !isArgument(node)) return false;
+		const { callee } = parent;
+		const hook = vitestImport(context, unwrap(callee));
+		return (hook !== undefined && SETUP_HOOKS.has(hook)) || isGlobal(context, callee, SETUP_HOOKS);
+	};
+
 	/** Whether fake timers are on just before `position` in `scope`, and what they fake. */
 	const stateAt = (scope: AstNode, position: number): State => {
 		const own = toggles.filter((toggle) => toggle.owner === scope);
@@ -167,6 +203,14 @@ export const fakeClock = (context: Context): FakeClock => {
 			}
 			if (viMethod(context, node) !== name) return;
 			const call = callOf(node);
+			if (call === undefined) {
+				const mark = { node, owner: owner(node) };
+				if (name === 'useRealTimers') toggles.push({ ...mark, ...REAL });
+				else if (name === 'useFakeTimers') {
+					if (isSetupHookArgument(node)) toggles.push({ ...mark, on: true, faked: byDefault });
+				} else if (name !== PIN && isArgument(node)) advances.push(mark);
+				return;
+			}
 			const mark = { node: call, owner: owner(call) };
 			if (name === 'useFakeTimers') toggles.push({ ...mark, on: true, faked: fakedBy(call) });
 			else if (name === 'useRealTimers') toggles.push({ ...mark, ...REAL });

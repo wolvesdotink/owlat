@@ -131,6 +131,12 @@ ruleTester.run('owlat/no-wall-clock-in-tests', rule, {
 			errors: 3,
 		},
 		{
+			name: 'a pin stored or handed along before the readings and called after them',
+			filename,
+			code: `${vitest}it('a', () => { const setClock = vi.setSystemTime; const start = Date.now(); expect(Date.now() - start).toBe(0); setClock(0); });\nit('b', () => { pinWith(vi.setSystemTime); const start = Date.now(); expect(Date.now() - start).toBe(0); });`,
+			errors: 2,
+		},
+		{
 			name: 'a pin in a nested function, or a reading in a callback the pin does not own',
 			filename,
 			code: `${vitest}it('a', () => { function later() { vi.setSystemTime(0); } const start = Date.now(); expect(Date.now() - start).toBe(0); });\nit('b', () => { vi.setSystemTime(0); const start = Date.now(); items.forEach(() => expect(Date.now() - start).toBe(0)); });`,

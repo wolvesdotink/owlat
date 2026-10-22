@@ -78,6 +78,11 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			code: `${vitest}beforeEach(vi.useFakeTimers);\nit('b', async () => { const p = new Promise((r) => setInterval(r, 10)); vi.runOnlyPendingTimers(); await p; });`,
 		},
 		{
+			name: 'fake timers passed to a beforeAll hook imported from vitest',
+			filename,
+			code: "import { beforeAll, it, vi } from 'vitest';\nbeforeAll(vi.useFakeTimers);\nit('b', async () => { const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });",
+		},
+		{
 			name: 'a config without toFake fakes the default timers',
 			filename,
 			code: `${vitest}it('x', async () => { vi.useFakeTimers({ now: 0, 'shouldAdvanceTime': false }); const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });`,
@@ -247,6 +252,24 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			filename,
 			code: `${vitest}beforeEach(() => { vi.useFakeTimers({ toFake: ['Date', 'setInterval'] }); });\nit('x', async () => { const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });`,
 			errors: 1,
+		},
+		{
+			name: 'fake timers that advance on their own, even with an explicit drive',
+			filename,
+			code: `${vitest}it('a', async () => { vi.useFakeTimers({ shouldAdvanceTime: true }); await new Promise((r) => setTimeout(r, 200)); vi.runAllTimers(); });\nit('b', async () => { vi.useFakeTimers({ toFake: ['setTimeout'], shouldAdvanceTime: flag }); const p = new Promise((r) => setTimeout(r, 200)); await vi.advanceTimersByTimeAsync(200); await p; });\nbeforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); });\nit('c', async () => { const p = new Promise((r) => setTimeout(r, 200)); vi.runAllTimers(); await p; });`,
+			errors: 3,
+		},
+		{
+			name: 'a stored timer drive, and a stored switch-off',
+			filename,
+			code: `${vitest}it('a', async () => { vi.useFakeTimers(); const run = vi.runAllTimers; const p = new Promise((r) => setTimeout(r, 10)); await p; });\nit('b', async () => { vi.useFakeTimers(); vi.runAllTimers(); const real = vi.useRealTimers; const p = new Promise((r) => setTimeout(r, 10)); await p; });`,
+			errors: 2,
+		},
+		{
+			name: 'fake timers stored, or handed to a call that is not a setup hook',
+			filename,
+			code: `${vitest}beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); });\nit('a', async () => { const fake = vi.useFakeTimers; vi.runAllTimers(); const p = new Promise((r) => setTimeout(r, 10)); await p; });\nit('b', async () => { setup(vi.useFakeTimers); vi.runAllTimers(); const p = new Promise((r) => setTimeout(r, 10)); await p; });\nafterEach(vi.useFakeTimers);\nit('c', async () => { vi.runAllTimers(); const p = new Promise((r) => setTimeout(r, 10)); await p; });`,
+			errors: 3,
 		},
 		{
 			name: 'fake timer configs the rule cannot read',
