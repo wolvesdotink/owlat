@@ -42,30 +42,13 @@ interface ConnectionTestResult {
 	smtp: ProtocolTestResult;
 }
 
-/** Plaintext credential bundle handed to the mail-sync worker. */
-export interface WorkerCredentials {
-	imapHost: string;
-	imapPort: number;
-	isImapSecure: boolean;
-	smtpHost: string;
-	smtpPort: number;
-	isSmtpSecure: boolean;
-	imapUsername: string;
-	smtpUsername: string;
-	imapPassword: string;
-	smtpPassword: string;
-	/**
-	 * SASL XOAUTH2 bearer tokens, present INSTEAD of the passwords on an `oauth2`
-	 * account (Google sign-in). Short-lived and minted per request from the stored
-	 * refresh token — they are never persisted, so the worker always receives a
-	 * live one and the two password fields are empty strings on that path.
-	 */
-	imapAccessToken?: string;
-	smtpAccessToken?: string;
-}
-
 /**
- * What a worker credential fetch produced.
+ * What a worker credential fetch produced (the worker wire contract's
+ * `getCredentialsForWorker.returns`). On an `oauth2` account (Google sign-in)
+ * the bundle carries SASL XOAUTH2 bearer tokens INSTEAD of the passwords:
+ * short-lived and minted per request from the stored refresh token, never
+ * persisted, so the worker always receives a live one and the two password
+ * fields are empty strings on that path.
  *
  * `auth_revoked` is its own outcome rather than one more flavour of "no
  * credentials": the account has ALREADY been marked `auth_error` here, with the
@@ -77,12 +60,7 @@ export interface WorkerCredentials {
  * `missing` covers a deleted row and an undecryptable envelope; `refresh_failed`
  * a transient refusal from Google's token endpoint. Both are worth retrying.
  */
-export type WorkerCredentialsResult =
-	| { kind: 'credentials'; credentials: WorkerCredentials }
-	| {
-			kind: 'unavailable';
-			reason: 'missing' | 'disconnected' | 'auth_revoked' | 'refresh_failed';
-	  };
+type WorkerCredentialsResult = Infer<typeof getCredentialsForWorkerContract.returns>;
 
 const credentialArgs = {
 	emailAddress: v.string(),

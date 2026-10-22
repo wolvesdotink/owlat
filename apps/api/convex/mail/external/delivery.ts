@@ -23,12 +23,11 @@
  * message would only leave a gap in the local copy.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { mailUnsubscribeValidator } from '../../lib/validators/mailContent';
 import { internalAction, internalQuery } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
-import type { Id } from '../../_generated/dataModel';
 import {
 	buildSnippet,
 	dropStagedBlobs,
@@ -68,9 +67,7 @@ import {
  * Collapsing the two into one `{skipped: true}`, as this returned before, let a
  * walk that stored nothing at all report a complete import.
  */
-export type ExternalIngestOutcome =
-	| { messageId: Id<'mailMessages'> }
-	| { skipped: 'duplicate' | 'no_target' };
+export type ExternalIngestOutcome = Infer<typeof ingestExternalRawContract.returns>;
 
 /**
  * Ingest one synced message into its mapped local folder, dedup on Message-ID,
