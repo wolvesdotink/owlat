@@ -8,11 +8,13 @@
  * id, not by an operation's loading flag, so overlapping runs of the same
  * operation settle independently.
  *
- * A slow episode starts when the first run turns slow and ends once nothing at
- * all has been pending for {@link EPISODE_QUIET_MS}. Its outcome is `saved`
- * only if every run and hold settled in that time succeeded and no other queue
- * still holds unsaved work; a failure has its own error surface already, so
- * the episode then ends without a success message.
+ * Work is judged as a burst: everything registered from the moment the
+ * registry stops being idle until nothing at all has been pending for
+ * {@link EPISODE_QUIET_MS}. A burst in which some run turned slow is a slow
+ * episode. Its outcome is `saved` only if every run and hold settled in the
+ * whole burst succeeded (a failure before the first run turned slow counts
+ * too) and no other queue still holds unsaved work; a failure has its own
+ * error surface already, so the episode then ends without a success message.
  *
  * Bulk actions and parallel uploads register many runs at once, so nothing
  * here costs more than O(1) per registration, settle or threshold crossing:
@@ -68,7 +70,12 @@ const waiting = new Set<Entry>();
 let slowTimer: ReturnType<typeof setTimeout> | undefined;
 let quietTimer: ReturnType<typeof setTimeout> | undefined;
 let nextId = 1;
-let episode: { failed: boolean } | null = null;
+/**
+ * The overlapping work since the registry was last idle for
+ * {@link EPISODE_QUIET_MS}: whether any of it failed, and whether any run in
+ * it turned slow (which makes it a slow episode with an outcome to report).
+ */
+let burst: { failed: boolean; slow: boolean } | null = null;
 const episodeListeners = new Set<(outcome: SlowEpisodeOutcome) => void>();
 const unsavedWorkProbes = new Set<() => boolean>();
 
@@ -120,20 +127,22 @@ function markDueRuns(): void {
 		marked += 1;
 	}
 	if (marked > 0) {
-		episode ??= { failed: false };
+		if (burst) burst.slow = true;
 		slowCount.value += marked;
 		slowVersion.value += 1;
 	}
 	scheduleSlowTimer();
 }
 
-function endEpisodeWhenQuiet(): void {
-	if (!episode || entries.size > 0 || quietTimer !== undefined) return;
+function endBurstWhenQuiet(): void {
+	if (!burst || entries.size > 0 || quietTimer !== undefined) return;
 	quietTimer = setTimeout(() => {
 		quietTimer = undefined;
-		if (!episode || entries.size > 0) return;
-		const { failed } = episode;
-		episode = null;
+		if (!burst || entries.size > 0) return;
+		const { failed, slow } = burst;
+		burst = null;
+		// Nothing turned slow, so no notice was shown and none is ended.
+		if (!slow) return;
 		let outcome: SlowEpisodeOutcome = failed ? 'failed' : 'saved';
 		if (outcome === 'saved' && [...unsavedWorkProbes].some((probe) => probe())) {
 			outcome = 'unconfirmed';
@@ -151,7 +160,8 @@ function register(label: (() => string) | null): (ok: boolean) => void {
 		slow: false,
 	};
 	entries.set(entry.id, entry);
-	// The next step of a save arrived in time: the episode goes on.
+	burst ??= { failed: false, slow: false };
+	// The next step of a save arrived in time: the burst goes on.
 	clearTimeout(quietTimer);
 	quietTimer = undefined;
 	if (label) {
@@ -166,12 +176,14 @@ function register(label: (() => string) | null): (ok: boolean) => void {
 			clearTimeout(slowTimer);
 			slowTimer = undefined;
 		}
-		if (!ok && episode) episode.failed = true;
+		// Kept for the whole burst, so a failure that lands before another run
+		// turns slow still vetoes the "saved" that run's success would claim.
+		if (!ok && burst) burst.failed = true;
 		if (entry.slow) {
 			slowCount.value -= 1;
 			slowVersion.value += 1;
 		}
-		endEpisodeWhenQuiet();
+		endBurstWhenQuiet();
 	};
 }
 
@@ -185,12 +197,17 @@ export function trackPendingOperation(label: () => string): (ok: boolean) => voi
 }
 
 /**
- * Keep the current slow episode open while work the registry cannot see is
- * under way: a file transfer, or the steps of a save that runs several calls in
- * a row. A hold never makes anything slow and is never listed; it only stops
- * "all changes saved" from being claimed before that work is done, and a hold
- * released with `false` ends the episode as failed. Returns the release, which
- * works like a run's settle.
+ * Keep the current burst (and any slow episode in it) open while work the
+ * registry cannot see is under way: a file transfer, or the steps of a save
+ * that runs several calls in a row. A hold never makes anything slow and is
+ * never listed; it only stops "all changes saved" from being claimed before
+ * that work is done, and a hold released with `false` marks the burst as
+ * failed. Returns the release, which works like a run's settle.
+ *
+ * An upload flow holds from its first network step until it has handed its
+ * result on (registered the file, resolved its URL, emitted it to the
+ * caller): any await in between is a gap in which a slow write elsewhere could
+ * otherwise end the episode as `saved`.
  */
 export function holdPendingWork(): (ok: boolean) => void {
 	return register(null);
@@ -241,7 +258,7 @@ export function resetPendingOperations(): void {
 	quietTimer = undefined;
 	entries.clear();
 	waiting.clear();
-	episode = null;
+	burst = null;
 	slowCount.value = 0;
 	slowVersion.value += 1;
 	emit('discarded');

@@ -21,6 +21,9 @@ export type StorageUploadResult =
  * The transfer holds any slow-save episode open (`holdPendingWork`): neither
  * the mint nor the POST is a tracked write, and a write that lands meanwhile
  * must not confirm "all changes saved" while this file is still on its way.
+ * This hold ends with the transfer; a caller whose save goes on afterwards
+ * (measuring, registering, resolving a URL, handing the result over) holds
+ * its whole flow itself.
  */
 export async function uploadFileToStorage(
 	file: File,

@@ -100,6 +100,57 @@ describe('pending operations', () => {
 		expect(outcomes).toEqual(['failed']);
 	});
 
+	it('a failure before the other run turned slow still vetoes "saved"', () => {
+		const failing = trackPendingOperation(() => 'Rename');
+		const slow = trackPendingOperation(() => 'Save');
+		vi.advanceTimersByTime(SLOW_OPERATION_MS - 1);
+		failing(false);
+
+		vi.advanceTimersByTime(1);
+		expect(labels()).toEqual(['Save']);
+		slow(true);
+		quiet();
+
+		expect(outcomes).toEqual(['failed']);
+	});
+
+	it('a failure followed within the quiet period by a slow write still vetoes "saved"', () => {
+		const failing = trackPendingOperation(() => 'Rename');
+		failing(false);
+		vi.advanceTimersByTime(EPISODE_QUIET_MS - 1);
+		const slow = trackPendingOperation(() => 'Save');
+		vi.advanceTimersByTime(SLOW_OPERATION_MS);
+		slow(true);
+		quiet();
+
+		expect(outcomes).toEqual(['failed']);
+	});
+
+	it('a failure is forgotten once the registry has been idle for the quiet period', () => {
+		const failing = trackPendingOperation(() => 'Rename');
+		failing(false);
+		quiet();
+		expect(outcomes).toEqual([]);
+
+		const slow = trackPendingOperation(() => 'Save');
+		vi.advanceTimersByTime(SLOW_OPERATION_MS);
+		slow(true);
+		quiet();
+
+		expect(outcomes).toEqual(['saved']);
+	});
+
+	it('a failed hold before anything turned slow vetoes "saved"', () => {
+		const slow = trackPendingOperation(() => 'Save');
+		const release = holdPendingWork();
+		release(false);
+		vi.advanceTimersByTime(SLOW_OPERATION_MS);
+		slow(true);
+		quiet();
+
+		expect(outcomes).toEqual(['failed']);
+	});
+
 	it('another queue holding unsent work vetoes "saved"', () => {
 		let queued = true;
 		const unregister = registerUnsavedWorkProbe(() => queued);

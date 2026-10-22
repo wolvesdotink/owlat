@@ -13,6 +13,9 @@ const file = new File(['data'], 'x.png', { type: 'image/png' });
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	// Failed transfers mark the registry's open burst as failed; a burst left
+	// over from one test must not decide the next test's outcome.
+	resetPendingOperations();
 });
 
 describe('uploadFileToStorage', () => {
