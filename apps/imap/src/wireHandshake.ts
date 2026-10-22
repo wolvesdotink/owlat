@@ -21,6 +21,7 @@
 
 import { getFunctionName } from 'convex/server';
 import { IMAP_WIRE_VERSION, imapWireVerdict } from '@owlat/shared/imapWire';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import { fn, type ImapServerReportResult } from './convex.js';
 
 /** How often a running server reports. */
@@ -29,6 +30,7 @@ export const WIRE_REPORT_INTERVAL_MS = 5 * 60_000;
 /** Startup retry backoff: doubles from the first delay up to the cap. */
 export const WIRE_RETRY_FIRST_MS = 1_000;
 export const WIRE_RETRY_MAX_MS = 60_000;
+const WIRE_RETRY: RetryPolicy = { baseMs: WIRE_RETRY_FIRST_MS, capMs: WIRE_RETRY_MAX_MS };
 
 /** What one report means for this server. */
 export type WireReportOutcome =
@@ -152,14 +154,14 @@ function logBackendOlder(
  */
 export async function awaitWireCompatibility(deps: WireHandshakeDeps): Promise<'serve' | 'refuse'> {
 	const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
-	let delay = WIRE_RETRY_FIRST_MS;
-	for (;;) {
+	for (let retries = 0; ; retries++) {
 		const outcome = await reportOnce(deps);
 		if (outcome.kind === 'compatible') return 'serve';
 		if (outcome.kind === 'tooOld') {
 			logRefusal(deps, outcome, 'Refusing to start.');
 			return 'refuse';
 		}
+		const delay = nextDelay(WIRE_RETRY, retries);
 		const retry = `Not serving IMAP yet; retrying in ${Math.round(delay / 1000)} s.`;
 		if (outcome.kind === 'backendOlder') logBackendOlder(deps, outcome, retry);
 		else {
@@ -169,7 +171,6 @@ export async function awaitWireCompatibility(deps: WireHandshakeDeps): Promise<'
 			);
 		}
 		await sleep(delay);
-		delay = Math.min(delay * 2, WIRE_RETRY_MAX_MS);
 	}
 }
 

@@ -6,6 +6,7 @@
 import convexErrorTaxonomy from './rules/convexErrorTaxonomy.ts';
 import featureFloorInBuilder from './rules/featureFloorInBuilder.ts';
 import noCryptoPrimitives from './rules/noCryptoPrimitives.ts';
+import noInlineBackoff from './rules/noInlineBackoff.ts';
 import noLogPii from './rules/noLogPii.ts';
 import noPollingLoopInTests from './rules/noPollingLoopInTests.ts';
 import noProcessEnv from './rules/noProcessEnv.ts';
@@ -24,6 +25,7 @@ export default {
 		'convex-error-taxonomy': convexErrorTaxonomy,
 		'feature-floor-in-builder': featureFloorInBuilder,
 		'no-crypto-primitives': noCryptoPrimitives,
+		'no-inline-backoff': noInlineBackoff,
 		'no-log-pii': noLogPii,
 		'no-polling-loop-in-tests': noPollingLoopInTests,
 		'no-process-env': noProcessEnv,

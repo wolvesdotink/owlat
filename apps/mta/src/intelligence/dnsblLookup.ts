@@ -16,6 +16,7 @@ import { sleep as sharedSleep } from '@owlat/shared';
 import type { DnsblListId, DnsblUnknownReason } from '@owlat/shared/dnsbl';
 import type { IpAuditZoneId } from '@owlat/shared/ipAudit';
 import { reverseIpAddressForDns } from '@owlat/shared/ipAddress';
+import { canRetry, nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import { logger } from '../monitoring/logger.js';
 
 const LOOKUP_TIMEOUT_MS = 5000;
@@ -29,6 +30,11 @@ const LOOKUP_TIMEOUT_MS = 5000;
 export const LOOKUP_MAX_ATTEMPTS = 3;
 export const LOOKUP_RETRY_BASE_DELAY_MS = 200;
 export const LOOKUP_TOTAL_BUDGET_MS = 12_000;
+
+const LOOKUP_RETRY: RetryPolicy = {
+	baseMs: LOOKUP_RETRY_BASE_DELAY_MS,
+	maxAttempts: LOOKUP_MAX_ATTEMPTS,
+};
 
 const CLEAN_DNS_ERROR_CODES = new Set(['ENOTFOUND', 'ENODATA']);
 const SAFE_DNS_ERROR_CODES = new Set([
@@ -254,8 +260,8 @@ export async function checkDnsblDetailed(
 		attempts = attempt;
 		outcome = await lookupDnsblZone(ip, listId, zone, attemptDeps);
 		if (!outcome.retryable) break;
-		if (attempt === LOOKUP_MAX_ATTEMPTS) break;
-		const delay = LOOKUP_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+		if (!canRetry(LOOKUP_RETRY, attempt)) break;
+		const delay = nextDelay(LOOKUP_RETRY, attempt - 1);
 		const elapsed = now() - startedAt;
 		// The budget bounds the WHOLE conversation, so the next attempt's own
 		// timeout counts against it — otherwise a hanging resolver overruns the

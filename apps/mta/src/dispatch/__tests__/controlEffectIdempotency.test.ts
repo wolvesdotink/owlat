@@ -135,7 +135,7 @@ describe('replay-sensitive dispatch controls', () => {
 
 	it('does not advance domain backoff twice after response loss', async () => {
 		const identity = durableEffectIdentity('smtp-attempt:backoff', '3:domain_failure_record');
-		loseFirstEvalResponse(redis, '2 ^ (count - 1)');
+		loseFirstEvalResponse(redis, '^ (count - 1)');
 
 		await expect(recordDomainFailure(redis, 'example.com', identity)).rejects.toThrow(
 			'lost Redis response'

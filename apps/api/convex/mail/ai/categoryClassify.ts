@@ -23,6 +23,7 @@
 
 import { v, type ObjectType } from 'convex/values';
 import { z } from 'zod';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
@@ -81,8 +82,8 @@ const deferThisRun = (): DeferrableAction => internal.mail.ai.categoryClassify.c
 
 /** How often a rate-limited refinement is tried again before the baseline stands. */
 export const MAX_RATE_LIMIT_RETRIES = 3;
-/** The first retry's wait; each later one doubles it. */
-const RATE_LIMIT_RETRY_BASE_MS = 30_000;
+/** The first retry's wait; each later one doubles it (uncapped: the cap below applies after `retryAfter`). */
+const RATE_LIMIT_RETRY_CURVE: RetryPolicy = { baseMs: 30_000 };
 /** No single wait is longer, whatever the limiter asks for. */
 const RATE_LIMIT_RETRY_MAX_MS = 4 * 60_000;
 
@@ -99,7 +100,7 @@ export function rateLimitRetryDelayMs(
 	retryAfter: number | undefined,
 	random: () => number = Math.random
 ): number {
-	const base = RATE_LIMIT_RETRY_BASE_MS * 2 ** attempt;
+	const base = nextDelay(RATE_LIMIT_RETRY_CURVE, attempt);
 	const wait = Math.min(Math.max(base, retryAfter ?? 0), RATE_LIMIT_RETRY_MAX_MS);
 	return wait + Math.floor(random() * (base / 2));
 }

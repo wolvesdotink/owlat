@@ -26,6 +26,7 @@
  * never the request headers or the deployment URL.
  */
 
+import { nextDelay } from '@owlat/shared/retryPolicy';
 import { unreachableError } from './reportRedaction';
 
 export interface ResetResult {
@@ -156,8 +157,9 @@ export async function resetDeployment(options: ResetOptions): Promise<ResetResul
 		if (number >= attempts) {
 			throw new Error(`${failure.message} Gave up after ${number} attempts.`);
 		}
-		const wait = Math.max(
-			Math.min(backoffMs * 2 ** (number - 1), MAX_BACKOFF_MS),
+		const wait = nextDelay(
+			{ baseMs: backoffMs, capMs: MAX_BACKOFF_MS },
+			number - 1,
 			failure.retryAfterMs
 		);
 		if (now() + wait >= deadline) {

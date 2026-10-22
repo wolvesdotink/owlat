@@ -4,6 +4,7 @@
  * dispatch under the size cap. Runtime-neutral.
  */
 
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import { errorStatus, isRetriableLlmError } from '../llm/retryPolicy';
 import { admissionRefusalOf } from '../llm/admissionPort';
 import { DecisionWireError } from '../decisionProviders/wire';
@@ -24,6 +25,13 @@ export const DECISION_BACKOFF_BASE_MS = 250;
 export const MAX_DECISION_BACKOFF_MS = 4_000;
 export const RETRY_AFTER_JITTER_MS = 1_000;
 export const MAX_HONOURED_RETRY_AFTER_MS = 20_000;
+
+const DECISION_BACKOFF: RetryPolicy = {
+	baseMs: DECISION_BACKOFF_BASE_MS,
+	capMs: MAX_DECISION_BACKOFF_MS,
+	jitter: { kind: 'equal' },
+	round: true,
+};
 
 /**
  * Statuses that must never produce a fallback hop. A wrong or expired key
@@ -147,8 +155,7 @@ export function backoffDelayMs(
 		if (retryAfterMs > MAX_HONOURED_RETRY_AFTER_MS) return undefined;
 		return Math.round(retryAfterMs + random() * RETRY_AFTER_JITTER_MS);
 	}
-	const curve = Math.min(DECISION_BACKOFF_BASE_MS * 2 ** attemptIndex, MAX_DECISION_BACKOFF_MS);
-	return Math.round(curve / 2 + random() * (curve / 2));
+	return nextDelay(DECISION_BACKOFF, attemptIndex, undefined, random);
 }
 
 /** The backoff wait, cancellable: a caller who gives up does not wait it out. */
