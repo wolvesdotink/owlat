@@ -11,6 +11,7 @@ const options = [
 	},
 ];
 const raw = (name: string) => ({ message: new RegExp(`^\`${name}\` is a raw Convex builder`) });
+const escape = { message: /^This hands the Convex server module on/ };
 
 ruleTester.run('owlat/no-raw-convex-builder', rule, {
 	valid: [
@@ -46,6 +47,25 @@ ruleTester.run('owlat/no-raw-convex-builder', rule, {
 			filename,
 			options,
 			code: "import * as server from '../_generated/server';\nexport const sync = server.internalQuery({ args: {}, handler: async () => null });",
+		},
+		{
+			name: 'a namespace destructured into safe names, and a type query',
+			filename,
+			options,
+			code: [
+				"import * as server from '../_generated/server';",
+				'const { internalQuery, httpAction: http } = server;',
+				'type Server = typeof server;',
+				'type Sync = typeof server.internalQuery;',
+				'export const sync = internalQuery({ args: {}, handler: async () => null });',
+				'export const hook = http(async () => new Response());',
+			].join('\n'),
+		},
+		{
+			name: 'dynamic loads of unrelated modules',
+			filename,
+			options,
+			code: "const helpers = await import('./helpers');\nconst fs = require('node:fs');",
 		},
 		{
 			name: 'test files',
@@ -86,6 +106,48 @@ ruleTester.run('owlat/no-raw-convex-builder', rule, {
 			options,
 			code: "import * as server from '../_generated/server.js';\nexport const run = server.action({ args: {}, handler: async () => null });",
 			errors: [raw('action')],
+		},
+		{
+			name: 'a raw builder destructured from the namespace, by declaration or assignment',
+			filename,
+			options,
+			code: [
+				"import * as server from '../_generated/server';",
+				'const { mutation: write } = server;',
+				'export const save = write({ args: {}, handler: async () => null });',
+				'let read;',
+				'({ query: read } = server);',
+			].join('\n'),
+			errors: [raw('mutation'), raw('query')],
+		},
+		{
+			name: 'a namespace handed on where its members cannot be traced',
+			filename,
+			options,
+			code: [
+				"import * as server from '../_generated/server';",
+				'const s = server;',
+				'export const list = s.query({ args: {}, handler: async () => null });',
+				'export const pick = (server as any)[kind];',
+				'const { internalQuery, ...rest } = server;',
+				'register(server);',
+				'export { server };',
+			].join('\n'),
+			errors: [escape, escape, escape, escape, escape],
+		},
+		{
+			name: 'dynamic loads of a builder module',
+			filename,
+			options,
+			code: "const server = await import('../_generated/server');\nconst generic = require('convex/server');",
+			errors: [escape, escape],
+		},
+		{
+			name: 'a raw builder named in a type position',
+			filename,
+			options,
+			code: "import * as server from '../_generated/server';\ntype List = typeof server.query;",
+			errors: [raw('query')],
 		},
 		{
 			name: 'the generic originals from convex/server',

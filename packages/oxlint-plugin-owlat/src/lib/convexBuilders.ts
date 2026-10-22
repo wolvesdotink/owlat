@@ -23,7 +23,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import type { AstNode, Context } from '../types.ts';
-import { bindingOf, importedThrough, unwrap, type Node } from './ast.ts';
+import { bindingOf, declaratorOf, importedThrough, unwrap, type Node } from './ast.ts';
 
 export type BuilderKind = 'query' | 'mutation' | 'action';
 /** `raw` is a bare Convex builder: no floor at all, and not a wrapper. */
@@ -63,6 +63,10 @@ export const rawBuilderKind = (source: string, imported: string): BuilderKind | 
 	if (source === 'convex/server' && imported.endsWith('Generic')) return RAW_KINDS[imported];
 	return undefined;
 };
+
+/** `true` for a module that exports raw builders (`_generated/server`, `convex/server`). */
+export const isRawBuilderSource = (source: string): boolean =>
+	GENERATED_SERVER.test(source) || source === 'convex/server';
 
 /** The `apps/api` directory a file under `…/convex/` belongs to. */
 export const convexApiRoot = (filename: string): string | undefined => {
@@ -245,13 +249,13 @@ const resolveBuilder = (
 	// is followed to what it aliases. A parameter or an unbound name is not a
 	// builder.
 	if (current?.type !== 'Identifier') return undefined;
-	const binding = bindingOf(context, current);
-	if (binding.type !== 'local' || binding.declaration?.type !== 'VariableDeclarator') {
-		return undefined;
-	}
+	const local = declaratorOf(bindingOf(context, current));
+	if (!local) return undefined;
 	const own = table.get(current.name);
 	if (own) return own;
-	const init = unwrap(binding.declaration.init as AstNode);
+	// Destructured imports were resolved above; any other pattern is not a builder.
+	if (!local.alias) return undefined;
+	const init = unwrap(local.declarator.init as AstNode);
 	if (depth < 8 && (init?.type === 'Identifier' || init?.type === 'MemberExpression')) {
 		return resolveBuilder(context, table, init, depth + 1);
 	}

@@ -64,7 +64,8 @@ export const calleeName = (callee: Node): string | undefined => {
 type Binding =
 	/** `imported` is the exported name, `default`, or `*` for a namespace import. */
 	| { type: 'import'; source: string; imported: string }
-	| { type: 'local'; declaration: Node }
+	/** `name` is the declared identifier, inside `declaration` (a pattern for destructuring). */
+	| { type: 'local'; declaration: Node; name: Node }
 	| { type: 'global' };
 
 /** What an identifier refers to, resolved through scope. */
@@ -89,7 +90,7 @@ export const bindingOf = (context: Context, identifier: AstNode): Binding => {
 				}
 				return { type: 'import', source: String(declaration.source.value), imported };
 			}
-			return { type: 'local', declaration: definition.node };
+			return { type: 'local', declaration: definition.node, name: definition.name as AstNode };
 		}
 		scope = scope.upper;
 	}
@@ -101,38 +102,102 @@ interface Imported {
 	name: string;
 }
 
+/** Bound on alias chains (`const a = b; const b = c; …`), so a cycle cannot loop. */
+const MAX_ALIAS_DEPTH = 8;
+
+const sameNode = (a: Node, b: Node): boolean =>
+	!!a && !!b && a.type === b.type && a.start === b.start && a.end === b.end;
+
+/** The static key `{ key: name }`, `{ name }` or `{ key: name = fallback }` binds `name` under. */
+export const destructuredKey = (pattern: Node, name: Node): string | undefined => {
+	if (pattern?.type !== 'ObjectPattern') return undefined;
+	for (const property of pattern.properties) {
+		if (property.type !== 'Property') continue;
+		let value = property.value as Node;
+		if (value?.type === 'AssignmentPattern') value = value.left as Node;
+		if (sameNode(value, name)) return keyName(property);
+	}
+	return undefined;
+};
+
 /**
- * The module export an expression names: an imported binding (`x`, or `y as x`)
- * or a member of a namespace import (`ns.x`, `ns['x']`).
+ * The `VariableDeclarator` a local binding comes from, with the identifier it
+ * declares; `alias` when the declarator binds that identifier alone
+ * (`const x = <init>`, not a destructuring pattern).
  */
-export const importedThrough = (context: Context, node: Node): Imported | undefined => {
+export const declaratorOf = (binding: Binding) =>
+	binding.type === 'local' && binding.declaration?.type === 'VariableDeclarator'
+		? {
+				declarator: binding.declaration,
+				name: binding.name,
+				alias: binding.declaration.id.type === 'Identifier',
+			}
+		: undefined;
+
+/**
+ * The module a namespace import comes from, when `node` names one: the
+ * namespace itself (`ns`) or a local alias of it (`const s = ns`).
+ */
+const namespaceSource = (context: Context, node: Node, depth = 0): string | undefined => {
+	const current = unwrap(node);
+	if (current?.type !== 'Identifier') return undefined;
+	const binding = bindingOf(context, current);
+	if (binding.type === 'import') return binding.imported === '*' ? binding.source : undefined;
+	const local = declaratorOf(binding);
+	if (!local?.alias || depth >= MAX_ALIAS_DEPTH) {
+		return undefined;
+	}
+	return namespaceSource(context, local.declarator.init as AstNode, depth + 1);
+};
+
+/**
+ * The module export an expression names: an imported binding (`x`, or `y as x`),
+ * a member of a namespace import (`ns.x`, `ns['x']`), or a local alias of either
+ * (`const z = x`, `const z = ns.x`, `const { x: z } = ns`, also through an alias
+ * of the namespace).
+ */
+export const importedThrough = (context: Context, node: Node, depth = 0): Imported | undefined => {
 	const current = unwrap(node);
 	if (current?.type === 'Identifier') {
 		const binding = bindingOf(context, current);
-		return binding.type === 'import' && binding.imported !== '*'
-			? { source: binding.source, name: binding.imported }
-			: undefined;
+		if (binding.type === 'import') {
+			return binding.imported !== '*'
+				? { source: binding.source, name: binding.imported }
+				: undefined;
+		}
+		const local = declaratorOf(binding);
+		if (!local || depth >= MAX_ALIAS_DEPTH) return undefined;
+		const { id, init } = local.declarator;
+		if (local.alias) {
+			return importedThrough(context, init as AstNode, depth + 1);
+		}
+		const key = destructuredKey(id as AstNode, local.name);
+		const source =
+			key === undefined ? undefined : namespaceSource(context, init as AstNode, depth + 1);
+		return source === undefined || key === undefined ? undefined : { source, name: key };
 	}
 	const name = memberName(current);
 	if (current?.type !== 'MemberExpression' || name === undefined) return undefined;
-	const object = unwrap(current.object as AstNode);
-	if (object?.type !== 'Identifier') return undefined;
-	const binding = bindingOf(context, object);
-	return binding.type === 'import' && binding.imported === '*'
-		? { source: binding.source, name }
-		: undefined;
+	const source = namespaceSource(context, current.object as AstNode, depth);
+	return source === undefined ? undefined : { source, name };
 };
 
 /**
  * The name a call resolves to for name-keyed checks: the imported name through
  * any alias or namespace, otherwise the identifier as written (a local
- * declaration or a global).
+ * declaration or a global), followed through a local alias (`const f = g`).
  */
-export const resolvedName = (context: Context, callee: Node): string | undefined => {
+export const resolvedName = (context: Context, callee: Node, depth = 0): string | undefined => {
 	const imported = importedThrough(context, callee);
 	if (imported) return imported.name;
 	const current = unwrap(callee);
-	return current?.type === 'Identifier' ? current.name : undefined;
+	if (current?.type !== 'Identifier') return undefined;
+	const local = declaratorOf(bindingOf(context, current));
+	const init = unwrap(local?.declarator.init as Node);
+	if (local?.alias && depth < MAX_ALIAS_DEPTH && init?.type === 'Identifier') {
+		return resolvedName(context, init, depth + 1);
+	}
+	return current.name;
 };
 
 /**

@@ -1,6 +1,6 @@
 import { inScope, SCOPE_SCHEMA, slashed } from '../lib/paths.ts';
 import type { ScopeOptions } from '../lib/paths.ts';
-import { optedOut, resolvedName, unwrap, walk } from '../lib/ast.ts';
+import { optedOut, resolvedName, walk } from '../lib/ast.ts';
 import { builderTableFor, registeredFunctions } from '../lib/convexBuilders.ts';
 import type { BuilderFloor, BuilderKind } from '../lib/convexBuilders.ts';
 import type { AstNode, Rule } from '../types.ts';
@@ -78,8 +78,9 @@ const rule: Rule = {
 					walk(context, definition.call, (node) => {
 						if (helper !== undefined) return false;
 						if (node.type !== 'CallExpression') return;
-						// A method of the same name on some object (`x.requireOrgMember()`) is not the helper.
-						if (unwrap(node.callee as AstNode)?.type !== 'Identifier') return;
+						// Resolved by binding: an aliased import or a namespace member
+						// (`sessions.getMutationContext`) is the helper; a method of the same
+						// name on some other object (`x.requireOrgMember()`) resolves to nothing.
 						const name = resolvedName(context, node.callee as AstNode);
 						if (name !== undefined && helpers.has(name)) helper = name;
 					});

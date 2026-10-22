@@ -1,6 +1,17 @@
 import { inScope, SCOPE_SCHEMA, slashed } from '../lib/paths.ts';
 import type { ScopeOptions } from '../lib/paths.ts';
-import { calleeName, keyName, optedOut, unwrap, walk } from '../lib/ast.ts';
+import {
+	bindingOf,
+	declaratorOf,
+	destructuredKey,
+	importedThrough,
+	keyName,
+	memberName,
+	optedOut,
+	staticString,
+	unwrap,
+	walk,
+} from '../lib/ast.ts';
 import type { AstNode, Context, Rule } from '../types.ts';
 
 /**
@@ -11,12 +22,17 @@ import type { AstNode, Context, Rule } from '../types.ts';
  * stable digest, so lines about the same correspondent still correlate.
  *
  * Inside the arguments of a `logInfo` / `logWarn` / `logError` / `logDebug` /
- * `console.{log,info,warn,error,debug}` call, every object property keyed
+ * `console.{log,info,warn,error,debug}` call (recognized through import
+ * aliases, namespaces and local aliases), every object property keyed
  * `from | to | subject | email | recipient | rcptTo | mailFrom | address |
  * sender` (plain, quoted or shorthand) must take its value through
  * `redactEmailAddress` / `redactEmailAddresses` / `redactSubject` /
- * `redactionDigest`. Each property is judged on its own value, so a redacted
- * neighbour does not excuse it. Qualified names (`fromDomain`, `toCount`,
+ * `redactionDigest` (likewise under any alias). Each property is judged on its
+ * own value, and the value is judged by what it evaluates to: a redactor call,
+ * `list.map(<redactor>)`, `<redacted>.join(…)`, an array or template of
+ * redacted parts, or a conditional / logical expression whose every outcome
+ * is redacted or `null` / `undefined`. A redactor appearing somewhere inside
+ * an otherwise raw value does not count, nor does a redacted neighbour. Qualified names (`fromDomain`, `toCount`,
  * `senderId`) are a domain, a count or an id and are out of scope, as are
  * template-literal holes.
  *
@@ -39,6 +55,7 @@ const SENSITIVE_KEYS = new Set([
 	'address',
 	'sender',
 ]);
+/** The `@owlat/shared/logRedaction` helpers, matched by imported name through any alias. */
 const REDACTORS = new Set([
 	'redactEmailAddress',
 	'redactEmailAddresses',
@@ -46,26 +63,129 @@ const REDACTORS = new Set([
 	'redactionDigest',
 ]);
 
-const isLogCall = (node: AstNode): boolean => {
-	if (node.type !== 'CallExpression') return false;
-	const callee = unwrap(node.callee as AstNode);
-	const name = calleeName(callee);
-	if (name === undefined) return false;
-	if (LOG_FUNCTIONS.has(name)) return true;
-	if (callee?.type !== 'MemberExpression' || !CONSOLE_METHODS.has(name)) return false;
-	const object = unwrap(callee.object as AstNode);
-	return object?.type === 'Identifier' && object.name === 'console';
+/** Bound on alias chains and nested value shapes. */
+const MAX_DEPTH = 8;
+
+/**
+ * The function a callee stands for, by binding rather than spelling: an
+ * imported name through any alias or namespace, a member (`x.logInfo`,
+ * `console.warn`), and a local alias of either (`const info = logInfo`,
+ * `const warn = console.warn`, `const { warn } = console`). Without `members`,
+ * a member of anything but a namespace import resolves to nothing.
+ */
+const callTarget = (
+	context: Context,
+	callee: AstNode,
+	members: boolean,
+	depth = 0
+): { name: string; onConsole: boolean } | undefined => {
+	const current = unwrap(callee);
+	const imported = importedThrough(context, current);
+	if (imported) return { name: imported.name, onConsole: false };
+	if (current?.type === 'MemberExpression') {
+		if (!members) return undefined;
+		const name = memberName(current);
+		const object = unwrap(current.object as AstNode);
+		const onConsole = object?.type === 'Identifier' && object.name === 'console';
+		return name === undefined ? undefined : { name, onConsole };
+	}
+	if (current?.type !== 'Identifier') return undefined;
+	const local = declaratorOf(bindingOf(context, current));
+	if (local && depth < MAX_DEPTH) {
+		const init = unwrap(local.declarator.init as AstNode);
+		if (local.alias && (init?.type === 'Identifier' || init?.type === 'MemberExpression')) {
+			return (
+				callTarget(context, init, members, depth + 1) ?? { name: current.name, onConsole: false }
+			);
+		}
+		const key = destructuredKey(local.declarator.id as AstNode, local.name);
+		if (members && key !== undefined && init?.type === 'Identifier') {
+			return { name: key, onConsole: init.name === 'console' };
+		}
+	}
+	return { name: current.name, onConsole: false };
 };
 
-const redacted = (context: Context, value: AstNode): boolean => {
-	let found = false;
-	walk(context, value, (node) => {
-		if (found) return false;
-		if (node.type === 'Identifier' && REDACTORS.has(node.name)) found = true;
-		return !found;
-	});
-	return found;
+const isLogCall = (context: Context, node: AstNode): boolean => {
+	if (node.type !== 'CallExpression') return false;
+	const target = callTarget(context, node.callee as AstNode, true);
+	if (target === undefined) return false;
+	return LOG_FUNCTIONS.has(target.name) || (target.onConsole && CONSOLE_METHODS.has(target.name));
 };
+
+/** A redactor is resolved by binding only: `util.redactEmailAddress` is some other function. */
+const isRedactor = (context: Context, node: AstNode): boolean => {
+	const target = callTarget(context, node, false);
+	return target !== undefined && REDACTORS.has(target.name);
+};
+
+/**
+ * Whether every value `node` can evaluate to went through a redactor. The
+ * expression itself is judged, not whether a redactor appears somewhere in it,
+ * so `cond ? redactEmailAddress(to) : to` is not redacted.
+ */
+const redacted = (context: Context, node: AstNode, depth = 0): boolean => {
+	const current = unwrap(node);
+	if (!current || depth > MAX_DEPTH) return false;
+	switch (current.type) {
+		case 'CallExpression': {
+			if (isRedactor(context, current.callee as AstNode)) return true;
+			const callee = unwrap(current.callee as AstNode);
+			if (callee?.type !== 'MemberExpression') return false;
+			const method = memberName(callee);
+			const [first, ...rest] = current.arguments as AstNode[];
+			// `list.map(redactEmailAddress)` / `list.map((a) => redactEmailAddress(a))`
+			if (method === 'map' && first && rest.length === 0) {
+				const mapper = unwrap(first);
+				if (
+					(mapper?.type === 'ArrowFunctionExpression' || mapper?.type === 'FunctionExpression') &&
+					mapper.body?.type !== 'BlockStatement'
+				) {
+					return redacted(context, mapper.body as AstNode, depth + 1);
+				}
+				return mapper !== undefined && mapper !== null && isRedactor(context, mapper);
+			}
+			// `redactEmailAddresses(list).join(', ')`
+			if (method === 'join' && (current.arguments as AstNode[]).every(isStatic)) {
+				return redacted(context, callee.object as AstNode, depth + 1);
+			}
+			return false;
+		}
+		case 'ConditionalExpression':
+			return (
+				redacted(context, current.consequent as AstNode, depth + 1) &&
+				redacted(context, current.alternate as AstNode, depth + 1)
+			);
+		case 'LogicalExpression':
+			// `a && b` yields `a` only when it is falsy (no address), else `b`.
+			return (
+				(current.operator === '&&' || redacted(context, current.left as AstNode, depth + 1)) &&
+				redacted(context, current.right as AstNode, depth + 1)
+			);
+		case 'ArrayExpression':
+			return current.elements.every(
+				(element) =>
+					element !== null &&
+					element.type !== 'SpreadElement' &&
+					redacted(context, element as AstNode, depth + 1)
+			);
+		case 'TemplateLiteral':
+			return current.expressions.every((expression) =>
+				redacted(context, expression as AstNode, depth + 1)
+			);
+		default:
+			return isNullish(context, current);
+	}
+};
+
+/** `null` / `undefined`: an absent value carries no address. */
+const isNullish = (context: Context, node: AstNode): boolean =>
+	(node.type === 'Literal' && node.value === null && !('regex' in node && node.regex)) ||
+	(node.type === 'Identifier' &&
+		node.name === 'undefined' &&
+		bindingOf(context, node).type === 'global');
+
+const isStatic = (node: AstNode): boolean => staticString(node) !== undefined;
 
 const MESSAGE = (key: string) =>
 	`\`${key}\` puts a correspondent address or subject into the process log, which is shipped off-box and read without a mail-content grant. Redact the value (redactEmailAddress / redactSubject from @owlat/shared/logRedaction) instead of dropping the field, or, if it is not an address or subject, say so with \`// log-pii-safe: <reason>\`.`;
@@ -85,7 +205,7 @@ const rule: Rule = {
 		const reported = new Set<AstNode>();
 		return {
 			CallExpression(node) {
-				if (!isLogCall(node)) return;
+				if (!isLogCall(context, node)) return;
 				let excused: boolean | undefined;
 				for (const argument of node.arguments as AstNode[]) {
 					// Callbacks included: `rs.map((r) => ({ to: r.address }))` builds the

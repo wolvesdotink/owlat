@@ -1,7 +1,7 @@
 import { ALLOW_SCHEMA, allowed, inScope, SCOPE_SCHEMA, slashed } from '../lib/paths.ts';
 import type { Allowance, ScopeOptions } from '../lib/paths.ts';
-import { memberName, unwrap } from '../lib/ast.ts';
-import { rawBuilderKind } from '../lib/convexBuilders.ts';
+import { bindingOf, keyName, memberName, staticString, unwrap } from '../lib/ast.ts';
+import { isRawBuilderSource, rawBuilderKind } from '../lib/convexBuilders.ts';
 import type { AstNode, Rule } from '../types.ts';
 
 /**
@@ -14,10 +14,15 @@ import type { AstNode, Rule } from '../types.ts';
  *
  * The raw builders are recognized by where they come from, not by their
  * spelling: `query` / `mutation` / `action` imported from a `_generated/server`
- * module (under any local name, or as a namespace member) and their
- * `queryGeneric` / `mutationGeneric` / `actionGeneric` originals from
- * `convex/server`. Every use is reported, a call, an alias (`const q = query`)
- * or a re-export alike; an import nothing uses is reported on the import.
+ * module (under any local name, as a namespace member, or destructured from
+ * the namespace) and their `queryGeneric` / `mutationGeneric` /
+ * `actionGeneric` originals from `convex/server`. Every use is reported, a
+ * call, an alias (`const q = query`) or a re-export alike; an import nothing
+ * uses is reported on the import. A namespace import of either module may only
+ * be read by static member name or destructured into static names: any other
+ * use (aliasing it, passing it along, a computed member, a rest element) and a
+ * dynamic `import()` / `require()` of it hide which builder ends up called,
+ * so they are reported as well.
  * `internal*` builders and `httpAction` are unaffected; `ctx.db.query(…)` is not
  * a builder.
  */
@@ -28,6 +33,9 @@ interface Options extends ScopeOptions {
 
 const MESSAGE = (name: string) =>
 	`\`${name}\` is a raw Convex builder: anything built with it is reachable by anonymous callers. Use the secure-by-default builders from convex/lib/authedFunctions.ts: authedQuery / authedMutation / authedAction (require auth), publicQuery / publicMutation / publicAction (intentional, with a '// public:' note), or internalQuery / internalMutation / internalAction (server-only).`;
+
+const ESCAPE =
+	'This hands the Convex server module on where its raw query/mutation/action builders can no longer be traced. Import the builders you need by name: the secure-by-default ones from convex/lib/authedFunctions.ts, internal* / httpAction from _generated/server.';
 
 const importedName = (node: AstNode): string =>
 	node.type === 'Identifier' ? node.name : String((node as { value?: unknown }).value);
@@ -54,7 +62,84 @@ const rule: Rule = {
 		if (!text.includes('_generated/server') && !text.includes('convex/server')) return {};
 		const { sourceCode } = context;
 
+		/** Raw or unverifiable keys of a pattern destructuring the server module. */
+		const checkPattern = (source: string, pattern: AstNode) => {
+			if (pattern.type !== 'ObjectPattern') {
+				context.report({ node: pattern, message: ESCAPE });
+				return;
+			}
+			for (const property of pattern.properties) {
+				const name = property.type === 'Property' ? keyName(property) : undefined;
+				if (name === undefined) context.report({ node: property, message: ESCAPE });
+				else if (rawBuilderKind(source, name)) {
+					context.report({ node: property, message: MESSAGE(name) });
+				}
+			}
+		};
+
+		/**
+		 * One reference to a namespace import of a builder module. Reading a safe
+		 * member by name (`server.internalQuery`) or destructuring safe names is
+		 * fine; a raw member is reported; any other use (a computed member, a
+		 * rest element, an alias, an argument, a re-export) hands the module on
+		 * where its raw members can no longer be traced, and is reported too.
+		 */
+		const checkNamespaceUse = (source: string, identifier: AstNode) => {
+			let outer = identifier;
+			while (outer.parent && unwrap(outer.parent as AstNode) === identifier) {
+				outer = outer.parent as AstNode;
+			}
+			const parent = outer.parent as AstNode | null;
+			if (parent?.type === 'MemberExpression' && parent.object === outer) {
+				const name = memberName(parent);
+				if (name === undefined) context.report({ node: parent, message: ESCAPE });
+				else if (rawBuilderKind(source, name))
+					context.report({ node: parent, message: MESSAGE(name) });
+				return;
+			}
+			if (parent?.type === 'VariableDeclarator' && parent.init === outer) {
+				checkPattern(source, parent.id as AstNode);
+				return;
+			}
+			if (parent?.type === 'AssignmentExpression' && parent.right === outer) {
+				checkPattern(source, parent.left as AstNode);
+				return;
+			}
+			// Type positions: `typeof server` names no value; `server.query` as a
+			// qualified name does.
+			if (parent?.type === 'TSTypeQuery') return;
+			if (parent?.type === 'TSQualifiedName' && parent.left === outer) {
+				const name = parent.right.type === 'Identifier' ? parent.right.name : undefined;
+				if (name !== undefined && rawBuilderKind(source, name)) {
+					context.report({ node: parent, message: MESSAGE(name) });
+				}
+				return;
+			}
+			context.report({ node: identifier, message: ESCAPE });
+		};
+
+		/** `import('…/_generated/server')` / `require(…)`: the module object, untraceable. */
+		const checkDynamicLoad = (node: AstNode, specifier: AstNode | undefined) => {
+			const source = staticString(specifier);
+			if (source !== undefined && isRawBuilderSource(source)) {
+				context.report({ node, message: ESCAPE });
+			}
+		};
+
 		return {
+			ImportExpression(node) {
+				checkDynamicLoad(node, node.source as AstNode);
+			},
+			CallExpression(node) {
+				const callee = unwrap(node.callee as AstNode);
+				if (
+					callee?.type === 'Identifier' &&
+					callee.name === 'require' &&
+					bindingOf(context, callee).type === 'global'
+				) {
+					checkDynamicLoad(node, node.arguments[0] as AstNode | undefined);
+				}
+			},
 			ImportDeclaration(node) {
 				const source = String(node.source.value);
 				for (const specifier of node.specifiers) {
@@ -67,17 +152,9 @@ const rule: Rule = {
 					const [variable] = sourceCode.getDeclaredVariables(specifier as AstNode);
 					const references = variable?.references ?? [];
 					if (imported === '*') {
-						// `server.query(…)`: only the raw members of the namespace count.
-						for (const { identifier } of references) {
-							const member = identifier.parent;
-							const name = memberName(member as AstNode);
-							if (
-								member?.type === 'MemberExpression' &&
-								unwrap(member.object as AstNode) === identifier &&
-								name !== undefined &&
-								rawBuilderKind(source, name)
-							) {
-								context.report({ node: member, message: MESSAGE(name) });
+						if (isRawBuilderSource(source)) {
+							for (const { identifier } of references) {
+								checkNamespaceUse(source, identifier as AstNode);
 							}
 						}
 						continue;
