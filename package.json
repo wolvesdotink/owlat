@@ -70,6 +70,8 @@
 		"dev:docs": "bun --env-file=.env --env-file=.env.local run turbo dev --filter=@owlat/docs",
 		"dev:marketing": "bun --env-file=.env --env-file=.env.local run turbo dev --filter=@owlat/marketing",
 		"dev:seed": "bun scripts/dev-seed.ts",
+		"dev:stack": "bun scripts/dev-stack.ts",
+		"setup:worktree": "bun scripts/setup-worktree.ts",
 		"build": "turbo build",
 		"build:web": "turbo build --filter=@owlat/web",
 		"build:docs": "turbo build --filter=@owlat/docs",
