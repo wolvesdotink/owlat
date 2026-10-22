@@ -105,13 +105,15 @@ describe('classifySeedFolder — provider-specific folder naming', () => {
 		{ provider: 'other', folder: '迷惑メール', placement: 'spam' },
 	];
 
-	for (const testCase of cases) {
-		it(`${testCase.provider}: "${testCase.folder}" → ${testCase.placement}`, () => {
-			expect(classifySeedFolder(testCase.folder, testCase.provider).placement).toBe(
-				testCase.placement
-			);
-		});
-	}
+	it.each(
+		cases.map(
+			(testCase) => [testCase.provider, testCase.folder, testCase.placement, testCase] as const
+		)
+	)('%s: "%s" → %s', (_provider, _folder, _placement, testCase) => {
+		expect(classifySeedFolder(testCase.folder, testCase.provider).placement).toBe(
+			testCase.placement
+		);
+	});
 
 	it('treats Gmail tab labels as tabs only for gmail seeds', () => {
 		expect(classifySeedFolder('Promotions', 'gmail')).toEqual({

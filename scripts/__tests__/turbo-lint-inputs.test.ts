@@ -256,6 +256,16 @@ describe('workspace lint task inputs', () => {
 		).toEqual([]);
 	});
 
+	it('hash the oxlint plugin rules every lint task loads through oxlintrc.json', () => {
+		// oxlintrc.json names the plugin by path, so no package depends on it and
+		// the transit chain cannot carry its hash; each lint task lists it instead.
+		const rules = walk('packages/oxlint-plugin-owlat/src');
+		expect(rules).toContain('packages/oxlint-plugin-owlat/src/index.ts');
+		for (const [packageName, { files }] of lintTasks) {
+			expect(missingFrom(files, rules), packageName).toEqual([]);
+		}
+	});
+
 	it('depend on the transit chain, so a dependency package edit reaches oxlint', () => {
 		// import/no-cycle follows imports into dependency packages; the transit
 		// task folds their file hashes into the lint hash.

@@ -89,54 +89,52 @@ describe('inline marks (bold/italic/underline)', () => {
 		['underline', 'toggleUnderline', 'u'],
 	];
 
-	for (const [label, method, tag] of cases) {
-		it(`${label}: wraps an inline selection and notifies`, () => {
-			const editor = mountEditor('<p>hello world foo</p>');
-			const api = rt(editor);
-			selectInline(editor, 'world');
-			(api[method] as () => void)();
-			expect(editor.querySelector(tag)?.textContent).toBe('world');
-			expect(editor.textContent).toBe('hello world foo');
-			expect(api.onChange).toHaveBeenCalledTimes(1);
-		});
+	it.each(cases)('%s: wraps an inline selection and notifies', (label, method, tag) => {
+		const editor = mountEditor('<p>hello world foo</p>');
+		const api = rt(editor);
+		selectInline(editor, 'world');
+		(api[method] as () => void)();
+		expect(editor.querySelector(tag)?.textContent).toBe('world');
+		expect(editor.textContent).toBe('hello world foo');
+		expect(api.onChange).toHaveBeenCalledTimes(1);
+	});
 
-		it(`${label}: toggles OFF when the selection is already wrapped`, () => {
-			const editor = mountEditor(`<p>hello <${tag}>world</${tag}> foo</p>`);
-			const api = rt(editor);
-			selectInline(editor, 'world');
-			(api[method] as () => void)();
-			expect(editor.querySelector(tag)).toBeNull();
-			expect(editor.textContent).toBe('hello world foo');
-		});
+	it.each(cases)('%s: toggles OFF when the selection is already wrapped', (label, method, tag) => {
+		const editor = mountEditor(`<p>hello <${tag}>world</${tag}> foo</p>`);
+		const api = rt(editor);
+		selectInline(editor, 'world');
+		(api[method] as () => void)();
+		expect(editor.querySelector(tag)).toBeNull();
+		expect(editor.textContent).toBe('hello world foo');
+	});
 
-		it(`${label}: caret with no wrapper is a no-op`, () => {
-			const editor = mountEditor('<p>hello world</p>');
-			const before = editor.innerHTML;
-			const api = rt(editor);
-			placeCaretIn(editor, 'world');
-			(api[method] as () => void)();
-			expect(editor.innerHTML).toBe(before);
-			expect(api.onChange).not.toHaveBeenCalled();
-		});
+	it.each(cases)('%s: caret with no wrapper is a no-op', (label, method, tag) => {
+		const editor = mountEditor('<p>hello world</p>');
+		const before = editor.innerHTML;
+		const api = rt(editor);
+		placeCaretIn(editor, 'world');
+		(api[method] as () => void)();
+		expect(editor.innerHTML).toBe(before);
+		expect(api.onChange).not.toHaveBeenCalled();
+	});
 
-		it(`${label}: caret inside an existing wrapper removes it`, () => {
-			const editor = mountEditor(`<p>hello <${tag}>world</${tag}></p>`);
-			const api = rt(editor);
-			placeCaretIn(editor, 'world');
-			(api[method] as () => void)();
-			expect(editor.querySelector(tag)).toBeNull();
-			expect(editor.textContent).toBe('hello world');
-		});
+	it.each(cases)('%s: caret inside an existing wrapper removes it', (label, method, tag) => {
+		const editor = mountEditor(`<p>hello <${tag}>world</${tag}></p>`);
+		const api = rt(editor);
+		placeCaretIn(editor, 'world');
+		(api[method] as () => void)();
+		expect(editor.querySelector(tag)).toBeNull();
+		expect(editor.textContent).toBe('hello world');
+	});
 
-		it(`${label}: cross-block selection does not throw`, () => {
-			const editor = mountEditor('<p>alpha</p><p>bravo</p>');
-			const api = rt(editor);
-			selectAcrossBlocks(editor, 'alpha', 'bravo');
-			expect(() => (api[method] as () => void)()).not.toThrow();
-			expect(editor.textContent).toContain('alpha');
-			expect(editor.textContent).toContain('bravo');
-		});
-	}
+	it.each(cases)('%s: cross-block selection does not throw', (label, method, tag) => {
+		const editor = mountEditor('<p>alpha</p><p>bravo</p>');
+		const api = rt(editor);
+		selectAcrossBlocks(editor, 'alpha', 'bravo');
+		expect(() => (api[method] as () => void)()).not.toThrow();
+		expect(editor.textContent).toContain('alpha');
+		expect(editor.textContent).toContain('bravo');
+	});
 
 	it('nested combo: bold applied inside italic reports both marks active', () => {
 		const editor = mountEditor('<p>hello world</p>');
@@ -267,9 +265,7 @@ describe('link', () => {
 
 describe('readActiveMarks', () => {
 	it('reports every active mark for the caret position', () => {
-		const editor = mountEditor(
-			'<blockquote><strong><em><u>x</u></em></strong></blockquote>',
-		);
+		const editor = mountEditor('<blockquote><strong><em><u>x</u></em></strong></blockquote>');
 		const api = rt(editor);
 		placeCaretIn(editor, 'x');
 		const marks = api.readActiveMarks();

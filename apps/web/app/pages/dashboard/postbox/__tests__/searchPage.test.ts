@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The mail search results page (/dashboard/postbox/search), after #777.
  *

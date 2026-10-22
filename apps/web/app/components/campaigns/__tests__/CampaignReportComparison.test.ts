@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The report's single comparison row (#784): open and click rate with their
  * change in points against the previous campaign, and nothing about counts.

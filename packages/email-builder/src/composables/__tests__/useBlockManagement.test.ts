@@ -528,20 +528,18 @@ describe('useBlockManagement', () => {
 				content: { items: [{ ...makeColumnsBlock(`${id}-cols`) }] },
 			}) as unknown as EditorBlock;
 
-		for (const [name, make] of [
+		it.each([
 			['columns', makeColumnsBlock],
 			['container', makeContainerBlock],
 			['nested container and columns', containerWithColumns],
 			['hero', hero],
-		] as const) {
-			it(`renews every id when a ${name} root is duplicated`, () => {
-				const ctx = setup([make('root')]);
-				ctx.handleDuplicateBlock('root');
-				expect(ctx.canvasBlocks.value).toHaveLength(2);
-				expectUnique(ctx.canvasBlocks.value);
-				expect(ids([ctx.canvasBlocks.value[1]!])).toHaveLength(ids([make('root')]).length);
-			});
-		}
+		] as const)('renews every id when a %s root is duplicated', (name, make) => {
+			const ctx = setup([make('root')]);
+			ctx.handleDuplicateBlock('root');
+			expect(ctx.canvasBlocks.value).toHaveLength(2);
+			expectUnique(ctx.canvasBlocks.value);
+			expect(ids([ctx.canvasBlocks.value[1]!])).toHaveLength(ids([make('root')]).length);
+		});
 
 		it('leaves the original alone when a child of the copy changes', () => {
 			const ctx = setup([makeColumnsBlock('cols')]);

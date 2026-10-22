@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE TOAST CARD WAITS FOR AN OBSERVED ACTION.
  *

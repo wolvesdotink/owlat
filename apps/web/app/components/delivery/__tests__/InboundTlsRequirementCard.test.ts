@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Require TLS for incoming mail" moved from the Sealed mail page to Delivery
  * provider → Incoming mail. Same setting, same write; what it must keep doing

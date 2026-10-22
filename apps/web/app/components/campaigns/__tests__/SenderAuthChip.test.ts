@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * SenderAuthChip renders the honest From-identity authenticity chip:
  *   - a verified, aligned identity shows the plain "Sender verified" chip and no

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
 import { beforeAll, describe, expect, it } from 'vitest';
 import DomainTable from '../DomainTable.vue';

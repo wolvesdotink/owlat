@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxContactVerifyPanel — the "verify this contact" comparison surface
  * (plan idea 54).

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import type { Id } from '@owlat/api/dataModel';
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

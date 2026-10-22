@@ -24,22 +24,16 @@ const DEFAULT_CHUNK_SIZE = 8192;
 type LogFn = NonNullable<ClamClientOptions['logger']>;
 
 const defaultLogger: LogFn = (level, message, meta) => {
-	// eslint-disable-next-line no-console
 	if (level === 'error') console.error(`[clamav] ${message}`, meta ?? '');
-	// eslint-disable-next-line no-console
 	else if (level === 'warn') console.warn(`[clamav] ${message}`, meta ?? '');
-	// eslint-disable-next-line no-console
+	// eslint-disable-next-line no-console -- the default logger writes info-level events to stdout when none is injected
 	else console.log(`[clamav] ${message}`, meta ?? '');
 };
 
 /**
  * Create a TCP connection to clamd.
  */
-function createConnection(
-	host: string,
-	port: number,
-	connectTimeout: number,
-): Promise<Socket> {
+function createConnection(host: string, port: number, connectTimeout: number): Promise<Socket> {
 	return new Promise((resolve, reject) => {
 		const socket = new Socket();
 		const timer = setTimeout(() => {
@@ -62,11 +56,7 @@ function createConnection(
 /**
  * Send INSTREAM command and stream data to clamd, then read the verdict.
  */
-function instreamScan(
-	socket: Socket,
-	data: Buffer,
-	scanTimeout: number,
-): Promise<string> {
+function instreamScan(socket: Socket, data: Buffer, scanTimeout: number): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const timer = setTimeout(() => {
 			socket.destroy();
@@ -162,7 +152,7 @@ export function parseResponse(response: string): ClamScanResult {
  */
 export async function scanBufferDirect(
 	data: Buffer,
-	options?: Partial<ClamClientOptions>,
+	options?: Partial<ClamClientOptions>
 ): Promise<ClamScanResult> {
 	const host = options?.host ?? DEFAULT_HOST;
 	const port = options?.port ?? DEFAULT_PORT;
@@ -200,7 +190,7 @@ export async function scanBufferDirect(
 export async function ping(
 	host: string = DEFAULT_HOST,
 	port: number = DEFAULT_PORT,
-	timeout: number = DEFAULT_CONNECT_TIMEOUT,
+	timeout: number = DEFAULT_CONNECT_TIMEOUT
 ): Promise<boolean> {
 	let socket: Socket | null = null;
 	try {
@@ -231,7 +221,7 @@ export async function ping(
 			socket!.write('zPING\0');
 		});
 
-		// eslint-disable-next-line no-control-regex
+		// eslint-disable-next-line no-control-regex -- clamd terminates every reply with NUL
 		return response.replace(/\0/g, '').trim() === 'PONG';
 	} catch {
 		return false;

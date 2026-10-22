@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * TeamInboxConvertDialog — sharing one of the admin's own mailboxes as a team
  * inbox, from the admin Team inboxes page.

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The delivery-time choice on the schedule panels: the three modes, the
  * optimizer's window and comparison group, and the A/B test guard.

@@ -4,7 +4,6 @@
  * nudge from the Answer queue) goes to the people it went to, never back to
  * us; its Cc stays the reply-all hint.
  */
-// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import { buildReplyComposeSeed } from '../postboxReplySpec';
 

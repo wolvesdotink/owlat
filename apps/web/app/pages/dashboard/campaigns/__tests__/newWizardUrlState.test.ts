@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE CAMPAIGN WIZARD'S STATE IS THE URL.
  *

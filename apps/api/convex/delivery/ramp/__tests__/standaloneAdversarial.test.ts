@@ -156,31 +156,32 @@ describe('standalone — degenerate volumes', () => {
 });
 
 describe('standalone — poisoned rates', () => {
-	for (const [label, rates] of POISONS) {
-		it(`${label} rates on the OWN arm hold and never pass`, () => {
-			expectNoPassAndNoIncrease(
-				bare({
-					own: arm(AMPLE, rates),
-					ownTrailingBaseline: arm(AMPLE_BASELINE),
-				})
-			);
-		});
+	it.each(POISONS)('%s rates on the OWN arm hold and never pass', (label, rates) => {
+		expectNoPassAndNoIncrease(
+			bare({
+				own: arm(AMPLE, rates),
+				ownTrailingBaseline: arm(AMPLE_BASELINE),
+			})
+		);
+	});
 
-		it(`${label} rates on the TRAILING BASELINE hold the gates that read it`, () => {
+	it.each(POISONS)(
+		'%s rates on the TRAILING BASELINE hold the gates that read it',
+		(label, rates) => {
 			// The own arm is ample, fresh and healthy here, so a hold can only be
 			// explained by the baseline — which is the coupling this file exists to
 			// pin: the standalone gates are the only ones that read it.
 			expectBaselineDependentGatesHold(
 				bare({ own: arm(AMPLE), ownTrailingBaseline: arm(AMPLE_BASELINE, rates) })
 			);
-		});
+		}
+	);
 
-		it(`${label} rates on BOTH arms hold and never pass`, () => {
-			expectNoPassAndNoIncrease(
-				bare({ own: arm(AMPLE, rates), ownTrailingBaseline: arm(AMPLE_BASELINE, rates) })
-			);
-		});
-	}
+	it.each(POISONS)('%s rates on BOTH arms hold and never pass', (label, rates) => {
+		expectNoPassAndNoIncrease(
+			bare({ own: arm(AMPLE, rates), ownTrailingBaseline: arm(AMPLE_BASELINE, rates) })
+		);
+	});
 
 	it('a poisoned OWN rate is reported as unmeasurable, not as a thin window', () => {
 		// The reason code is what the audit row and the admin notification render
@@ -278,19 +279,17 @@ describe('standalone — gate 4 under attack', () => {
 		['above 1', 4],
 	];
 
-	for (const [label, value] of engagementPoisons) {
-		it(`holds on ${label} recent engagement`, () => {
-			const result = trailingEngagement({ calibrationOpenRate: value });
-			expect(result.status).toBe('insufficient_data');
-			expect(result.mayJustifyIncrease).toBe(false);
-		});
+	it.each(engagementPoisons)('holds on %s recent engagement', (label, value) => {
+		const result = trailingEngagement({ calibrationOpenRate: value });
+		expect(result.status).toBe('insufficient_data');
+		expect(result.mayJustifyIncrease).toBe(false);
+	});
 
-		it(`holds on ${label} baseline engagement`, () => {
-			const result = trailingEngagement({}, { calibrationOpenRate: value });
-			expect(result.status).toBe('insufficient_data');
-			expect(result.mayJustifyIncrease).toBe(false);
-		});
-	}
+	it.each(engagementPoisons)('holds on %s baseline engagement', (label, value) => {
+		const result = trailingEngagement({}, { calibrationOpenRate: value });
+		expect(result.status).toBe('insufficient_data');
+		expect(result.mayJustifyIncrease).toBe(false);
+	});
 
 	it('holds on a zero-volume engagement window', () => {
 		const result = trailingEngagement({ sent: 0, calibrationSent: 0, calibrationOpenRate: 0 });

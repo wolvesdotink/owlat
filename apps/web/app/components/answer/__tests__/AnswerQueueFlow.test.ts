@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Answer queue page's body: an empty queue is good news ("Nothing needs an
  * answer"), but a queue that is empty because a source failed to load is not

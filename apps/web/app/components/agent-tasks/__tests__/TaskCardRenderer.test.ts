@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The task-card dispatcher's safety contract: a registered, enabled plugin kind
  * mounts its lazy card; a disabled or unknown kind degrades to the graceful

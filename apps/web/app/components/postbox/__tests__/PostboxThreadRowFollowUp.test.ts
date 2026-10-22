@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The follow-up chip is a cancel button only where the list wires the cancel
  * (the flat list). The Sections and Bundled rows render it as a plain

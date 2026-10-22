@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The grouped renderers (conversation view, smart-inbox categories) window their
  * rows with fixed-height arithmetic: rows are positioned by

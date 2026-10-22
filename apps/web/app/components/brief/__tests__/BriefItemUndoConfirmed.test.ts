@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A confirmed change can be taken back (review round 3, F3): a personal item
  * closed by confirming a held transition offers Undo, and so does an open item

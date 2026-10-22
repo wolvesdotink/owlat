@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxSealedMailNudge — the one-time pointer that turns a lock glyph into an
  * explanation (plan idea 55).

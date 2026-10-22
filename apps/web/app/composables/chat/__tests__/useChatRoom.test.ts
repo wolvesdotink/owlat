@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `useChatRoom` against a fake subscription transport that behaves like the
  * backend: `markRead` moves the member's `lastReadAt` forward, and `getRoom`

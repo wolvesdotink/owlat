@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Draft with AI" from the composer's side (composables/useAnswerAskSession):
  *   - `start` makes sure the draft row exists and sends the instruction;

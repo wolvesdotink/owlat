@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The team thread stream (plan §4.3): every internal note says "Internal"; a
  * team reply shows who sent it to whom and keeps a queued or failed state;

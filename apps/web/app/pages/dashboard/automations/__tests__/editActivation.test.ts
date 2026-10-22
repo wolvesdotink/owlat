@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Activation, Resume and Save draft act on what the inspector shows (#1043).
  *

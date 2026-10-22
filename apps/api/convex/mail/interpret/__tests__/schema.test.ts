@@ -246,8 +246,9 @@ function strictViolations(node: JsonSchemaNode | undefined, path: string, out: s
 }
 
 describe('provider-facing JSON Schema', () => {
-	for (const mode of ['brief', 'actions'] as const) {
-		it(`lists every property as required at every level (${mode})`, async () => {
+	it.each(['brief', 'actions'] as const)(
+		'lists every property as required at every level (%s)',
+		async (mode) => {
 			const json = (await zodSchema(interpretOutputSchemaFor(mode) as z.ZodType)
 				.jsonSchema) as JsonSchemaNode;
 			expect(json.type).toBe('object');
@@ -257,8 +258,8 @@ describe('provider-facing JSON Schema', () => {
 			// Sanity: the walk reached the item level.
 			const items = json.properties?.['items']?.items as JsonSchemaNode;
 			expect(items.required).toContain('consequences');
-		});
-	}
+		}
+	);
 
 	it('catches an optional property (the walk is not vacuous)', async () => {
 		const json = (await zodSchema(interpretOutputSchema as z.ZodType).jsonSchema) as JsonSchemaNode;

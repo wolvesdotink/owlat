@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The tri-state feature switch is a checkbox to assistive tech, so a partial
  * pack is announced as mixed rather than as off. Clicking only emits `toggle`:

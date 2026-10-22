@@ -203,8 +203,9 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 ];
 
 describe('dashboardConfidence', () => {
-	for (const testCase of CONFIDENCE_CASES) {
-		it(testCase.name, () => {
+	it.each(CONFIDENCE_CASES.map((testCase) => [testCase.name, testCase] as const))(
+		'%s',
+		(_name, testCase) => {
 			const result = dashboardConfidence({
 				ownSent: testCase.ownSent,
 				hasReferenceArm: testCase.hasReferenceArm,
@@ -214,8 +215,8 @@ describe('dashboardConfidence', () => {
 			});
 			expect(result.level).toBe(testCase.level);
 			expect([...result.improvements].sort()).toEqual([...testCase.improvements].sort());
-		});
-	}
+		}
+	);
 
 	it('reaches every level it declares', () => {
 		const reached = new Set(CONFIDENCE_CASES.map((testCase) => testCase.level));
@@ -365,24 +366,22 @@ describe('buildDashboardTrend', () => {
 		expect(points).toHaveLength(DASHBOARD_MAX_TREND_DAYS);
 	});
 
-	for (const [name, bounds] of [
+	it.each([
 		['an inverted window', { sinceDay: day + DAY_MS, untilDay: day }],
 		['a zero-width window', { sinceDay: day, untilDay: day }],
 		['a NaN start', { sinceDay: Number.NaN, untilDay: day }],
 		['a NaN end', { sinceDay: day, untilDay: Number.NaN }],
 		['an infinite start', { sinceDay: -Infinity, untilDay: day }],
 		['an infinite end', { sinceDay: day, untilDay: Infinity }],
-	] as const) {
-		it(`returns an empty series for ${name} rather than an unbounded one`, () => {
-			expect(
-				buildDashboardTrend({
-					ownBuckets: [bucket(day, { sent: 10 })],
-					referenceBuckets: null,
-					...bounds,
-				})
-			).toEqual([]);
-		});
-	}
+	] as const)('returns an empty series for %s rather than an unbounded one', (name, bounds) => {
+		expect(
+			buildDashboardTrend({
+				ownBuckets: [bucket(day, { sent: 10 })],
+				referenceBuckets: null,
+				...bounds,
+			})
+		).toEqual([]);
+	});
 
 	it('ignores a row whose bucket day is not a finite number', () => {
 		const points = buildDashboardTrend({

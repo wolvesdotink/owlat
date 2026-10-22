@@ -60,7 +60,6 @@ async function submit(e: Event) {
 	// If no endpoint configured (e.g. during static generation), show optimistic success.
 	// Real deployment sets NUXT_PUBLIC_WAITLIST_ENDPOINT to the nest-api HTTP route.
 	if (!waitlistEndpoint) {
-		// eslint-disable-next-line no-console
 		console.info('[waitlist] No endpoint configured; would submit:', payload);
 		state.value = 'success';
 		return;

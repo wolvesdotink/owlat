@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The snooze dialog's PRESET COPY, rendered through the real catalog.
  *

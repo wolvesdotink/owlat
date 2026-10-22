@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A streaming answer arrives as the whole text so far, once per flush. Blocks
  * that settled earlier must keep their parsed inlines between flushes so their

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The shared "this needs an environment variable" block: the exact `.env`
  * lines, the exact `owlat` commands, a poll while the server has not seen them,

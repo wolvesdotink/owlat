@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * /dashboard/answer/t/<threadId>: Answer mode for a Team inbox thread (plan §07).
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The visualization frame reports its own height; content sized against the
  * frame (vh, %) grows with every report, so the host ignores sub-pixel changes

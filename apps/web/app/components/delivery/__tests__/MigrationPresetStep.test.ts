@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The one-click preset: six writes, in order, with the D8 warning beside them.
  *

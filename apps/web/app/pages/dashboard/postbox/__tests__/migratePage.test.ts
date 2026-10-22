@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The migrate wizard's "returning from Google sign-in" hand-off.
  *

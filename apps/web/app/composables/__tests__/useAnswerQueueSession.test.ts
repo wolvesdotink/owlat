@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Answer queue on Answer mode (plan §07):
  *

@@ -50,9 +50,7 @@ export async function aggregateTotals(
 export function actionCtxOver(t: T) {
 	const scheduled: unknown[] = [];
 	const ctx = {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- a generic bridge
 		runMutation: (ref: any, args: any) => t.mutation(ref, args),
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- a generic bridge
 		runQuery: (ref: any, args: any) => t.query(ref, args),
 		scheduler: {
 			runAfter: vi.fn(async (_delay: number, ref: unknown, args: unknown) => {

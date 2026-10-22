@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A workspace with no campaign senders must not dead-end the wizard (#785).
  *

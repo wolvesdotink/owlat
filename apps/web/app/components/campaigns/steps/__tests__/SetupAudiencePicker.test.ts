@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The recipient readout is no longer one number — a bounded count reports HOW
  * complete it is, and the picker renders that as a `+` suffix ("at least this

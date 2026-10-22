@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * DashboardListSkeleton — the content-shaped first-load placeholder that
  * replaces the centered spinner on the major dashboard list/table surfaces

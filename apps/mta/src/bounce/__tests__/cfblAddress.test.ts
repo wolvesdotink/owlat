@@ -111,12 +111,13 @@ describe('P2-7 (b) — CFBL signature', () => {
 			},
 		];
 
-		for (const { name, address, reason } of cases) {
-			it(`rejects ${name} with reason "${reason}"`, () => {
+		it.each(cases.map(({ name, address, reason }) => [name, reason, address] as const))(
+			'rejects %s with reason "%s"',
+			(_name, reason, address) => {
 				expect(() => parseCfblAddress(address, KEY, NOW)).not.toThrow();
 				expect(parseCfblAddress(address, KEY, NOW)).toEqual({ ok: false, reason });
-			});
-		}
+			}
+		);
 
 		it('rejects a TAMPERED payload — the MAC covers the encoded id', () => {
 			const address = buildCfblAddress('send_abc123', HOST, KEY, NOW)!;

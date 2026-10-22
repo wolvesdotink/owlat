@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Postbox attachment rows say what the assistant did with the files when
  * the delivery recorded it (`mailMessages.attachmentIndexing`), with the Team

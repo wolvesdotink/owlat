@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * useWorkspaceBadges — the per-workspace unread counts behind the desktop
  * titlebar pill and the switcher rail.

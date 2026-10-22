@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The data migrations card on System & updates (#1345): each manifest
  * migration with its state and progress, the run action, and a run that only

@@ -200,7 +200,6 @@ const STRUCTURAL_HEADERS: ReadonlySet<string> = new Set([
  * header line.
  */
 function sanitizeHeaderName(name: string): string {
-	// eslint-disable-next-line no-control-regex
 	return name.replace(/[^\x21-\x39\x3B-\x7E]/g, '');
 }
 
@@ -250,7 +249,7 @@ function stripCrlf(value: string): string {
 	return value.replace(/[\r\n]/g, '');
 }
 
-// eslint-disable-next-line no-control-regex
+// eslint-disable-next-line no-control-regex -- the ASCII range starts at NUL
 const NON_ASCII = /[^\x00-\x7F]/;
 
 /**

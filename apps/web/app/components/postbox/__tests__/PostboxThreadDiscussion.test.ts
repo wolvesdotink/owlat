@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The reader's Team discussion panel (chat.mailDiscussion):
  *   - renders the thread's messages under a "Team discussion · internal · N" head

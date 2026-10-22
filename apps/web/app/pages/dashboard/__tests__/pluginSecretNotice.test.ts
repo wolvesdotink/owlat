@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The plugin settings page lists each required secret whose deployment variable
  * is unset as "<env var> — <label>", with a space between the variable name and

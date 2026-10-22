@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * AI replies — one page, one top control over drafting and automatic sending.
  *

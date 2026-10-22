@@ -244,26 +244,28 @@ describe('#1384: the text really is a candidate', () => {
 });
 
 describe('#1384: an exact-wording candidate is read in full and placed in Today', () => {
-	for (const [what, text] of CANDIDATES) {
-		it.each(BURIALS)(`${what} despite %s`, async (_name, category, burial) => {
-			const t = setup();
-			const { source, messageId, mailboxId } = await arrive(t, text, category, burial);
-			await run(t, source);
-			expect(extractions()).toBe(1);
-			expect(gistCalls()).toBe(0);
-			const { source: row, record, thread } = await snapshot(t, messageId);
-			expect(record).toMatchObject({ depth: 'full', isExactWordingCandidate: true });
-			expect(record?.reasonKeys.map((r) => r.key)).toContain('arrival.reason.exactWording');
-			expect(thread.arrival).toMatchObject({ placement: 'today', depth: 'full' });
-			expect(thread.digestPendingSince).toBeUndefined();
-			expect(row?.readOutcome).toBeUndefined();
-			// The read took one owner token (at admission or, when the text-blind
-			// admission counted it, at the depth decision).
-			const left = await ownerTokens(t, mailboxId);
-			expect(left).toBeLessThan(59.5);
-			expect(left).toBeGreaterThan(58.5);
-		});
-	}
+	it.each(
+		CANDIDATES.flatMap(([what, text]) =>
+			BURIALS.map(([name, category, burial]) => [what, name, text, category, burial] as const)
+		)
+	)('%s despite %s', async (_what, _name, text, category, burial) => {
+		const t = setup();
+		const { source, messageId, mailboxId } = await arrive(t, text, category, burial);
+		await run(t, source);
+		expect(extractions()).toBe(1);
+		expect(gistCalls()).toBe(0);
+		const { source: row, record, thread } = await snapshot(t, messageId);
+		expect(record).toMatchObject({ depth: 'full', isExactWordingCandidate: true });
+		expect(record?.reasonKeys.map((r) => r.key)).toContain('arrival.reason.exactWording');
+		expect(thread.arrival).toMatchObject({ placement: 'today', depth: 'full' });
+		expect(thread.digestPendingSince).toBeUndefined();
+		expect(row?.readOutcome).toBeUndefined();
+		// The read took one owner token (at admission or, when the text-blind
+		// admission counted it, at the depth decision).
+		const left = await ownerTokens(t, mailboxId);
+		expect(left).toBeLessThan(59.5);
+		expect(left).toBeGreaterThan(58.5);
+	});
 
 	it('the same mail without the wording is still counted into the digest', async () => {
 		const t = setup();

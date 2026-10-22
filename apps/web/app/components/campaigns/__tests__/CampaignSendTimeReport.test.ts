@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The report's send-time card: the comparison is shown only when it is
  * honest, and a difference is only called when it is beyond chance.

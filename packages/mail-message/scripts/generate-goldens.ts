@@ -41,7 +41,7 @@ function main(): void {
 		}
 	}
 
-	// eslint-disable-next-line no-console
+	// eslint-disable-next-line no-console -- the script reports what it wrote
 	console.log(
 		`goldens: wrote ${expected.size.toString()} .eml file(s)` +
 			(removed > 0 ? `, removed ${removed.toString()} orphan(s)` : '') +

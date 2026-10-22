@@ -87,8 +87,9 @@ describe('deferral-aware retry', () => {
 	});
 
 	describe('classifier verdicts that mean "volume pressure"', () => {
-		for (const fixture of PRESSURE_FIXTURES) {
-			it(`recognises ${fixture.name} as per-ISP volume pressure`, () => {
+		it.each(PRESSURE_FIXTURES.map((fixture) => [fixture.name, fixture] as const))(
+			'recognises %s as per-ISP volume pressure',
+			(_name, fixture) => {
 				const classification = classifySmtpResponse(
 					fixture.smtpCode,
 					fixture.response,
@@ -98,8 +99,8 @@ describe('deferral-aware retry', () => {
 				expect(classification.category).toBe(fixture.category);
 				expect(classification.retryable).toBe(true);
 				expect(isVolumePressureCategory(classification.category)).toBe(true);
-			});
-		}
+			}
+		);
 
 		it('does NOT treat greylisting or a full mailbox as volume pressure', () => {
 			expect(

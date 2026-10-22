@@ -151,15 +151,19 @@ describe('byte-identity vs mailauth body canonicalization (differential)', () =>
 		{ name: 'mixed CRLF and bare LF', body: 'one\r\ntwo\nthree\n' },
 	];
 
-	for (const { name, body } of bodies) {
-		it(`relaxed body hash matches mailauth: ${name}`, () => {
+	it.each(bodies.map(({ name, body }) => [name, body] as const))(
+		'relaxed body hash matches mailauth: %s',
+		(name, body) => {
 			const buf = Buffer.from(body, 'latin1');
 			expect(sha256(canonicalizeBodyRelaxed(buf))).toBe(mailauthBodyHash('relaxed', buf));
-		});
+		}
+	);
 
-		it(`simple body hash matches mailauth: ${name}`, () => {
+	it.each(bodies.map(({ name, body }) => [name, body] as const))(
+		'simple body hash matches mailauth: %s',
+		(name, body) => {
 			const buf = Buffer.from(body, 'latin1');
 			expect(sha256(canonicalizeBodySimple(buf))).toBe(mailauthBodyHash('simple', buf));
-		});
-	}
+		}
+	);
 });

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * What clicking a pack does from each state, end to end on the setup step.
  *

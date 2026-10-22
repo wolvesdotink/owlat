@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * TemplateHistoryPanel — restoring a snapshot from the preview.
  *

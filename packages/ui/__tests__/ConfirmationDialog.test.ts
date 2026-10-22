@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE CONFIRM BUTTON IS A BUTTON, NOT A HAND-COPIED RECIPE.
  *

@@ -208,13 +208,14 @@ describe('per-(IP x mailbox provider) warming caps', () => {
 			},
 		];
 
-		for (const testCase of cases) {
-			it(testCase.name, () => {
+		it.each(cases.map((testCase) => [testCase.name, testCase] as const))(
+			'%s',
+			(_name, testCase) => {
 				expect(effectiveProviderCap(testCase.dailyCap, testCase.multiplier)).toBe(
 					testCase.expected
 				);
-			});
-		}
+			}
+		);
 	});
 
 	it('clamps a hostile or corrupt persisted multiplier into the policy domain', () => {
@@ -408,8 +409,9 @@ describe('per-(IP x mailbox provider) warming caps', () => {
 			},
 		];
 
-		for (const testCase of cases) {
-			it(testCase.name, () => {
+		it.each(cases.map((testCase) => [testCase.name, testCase] as const))(
+			'%s',
+			(_name, testCase) => {
 				const decision = nextProviderCapMultiplier(
 					testCase.current,
 					testCase.window,
@@ -418,8 +420,8 @@ describe('per-(IP x mailbox provider) warming caps', () => {
 				expect(decision.verdict).toBe(testCase.verdict);
 				expect(decision.capMultiplier).toBe(testCase.capMultiplier);
 				expect(decision.cleanStreak).toBe(testCase.nextStreak);
-			});
-		}
+			}
+		);
 
 		it('reports the sample it had and the sample it needed on insufficient data', () => {
 			expect(nextProviderCapMultiplier(0.5, clean(7))).toEqual({

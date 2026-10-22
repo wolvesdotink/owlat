@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Copy missing records" from the sending section: when the domain already
  * publishes a foreign `v=spf1`, the copied text carries the MERGED record — and

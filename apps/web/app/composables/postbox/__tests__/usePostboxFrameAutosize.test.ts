@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref, type EffectScope } from 'vue';
 import { usePostboxFrameAutosize } from '../usePostboxFrameAutosize';

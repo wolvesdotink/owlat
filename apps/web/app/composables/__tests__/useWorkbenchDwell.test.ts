@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Workbench marks a tab seen when the viewer leaves it after half a minute
  * with its summary on screen. Only on-screen time counts, and the watermark

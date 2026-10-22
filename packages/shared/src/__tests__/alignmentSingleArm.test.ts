@@ -27,8 +27,9 @@ import { ALIGNMENT_FAILURE_TABLE, alignedInput, CHECKED_AT } from './alignmentFi
 const NO_REFERENCE = { kind: 'none' } as const;
 
 describe('the standalone matrix: the whole four-check table with no reference arm', () => {
-	for (const testCase of ALIGNMENT_FAILURE_TABLE) {
-		it(`passes as single arm even though ${testCase.name}`, () => {
+	it.each(ALIGNMENT_FAILURE_TABLE.map((testCase) => [testCase.name, testCase] as const))(
+		'passes as single arm even though %s',
+		(_name, testCase) => {
 			const result = evaluateAlignmentPreflight({
 				...testCase.mutate(alignedInput()),
 				reference: NO_REFERENCE,
@@ -46,8 +47,8 @@ describe('the standalone matrix: the whole four-check table with no reference ar
 			expect(result.measurementDegradedReason).toBeNull();
 			// And the ordinary daily cadence, not the unknown retry.
 			expect(result.nextCheckDueAt).toBe(CHECKED_AT + ALIGNMENT_RECHECK_INTERVAL_MS);
-		});
-	}
+		}
+	);
 });
 
 describe('the gate opens for a standalone deployment regardless of stored state', () => {

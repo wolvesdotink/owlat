@@ -487,6 +487,17 @@
         "vitest": "catalog:",
       },
     },
+    "packages/oxlint-plugin-owlat": {
+      "name": "@owlat/oxlint-plugin-owlat",
+      "version": "0.6.16",
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "oxlint": "^1.69.0",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/plugin-cli": {
       "name": "@owlat/plugin-cli",
       "version": "0.6.16",
@@ -1235,6 +1246,8 @@
     "@owlat/mta": ["@owlat/mta@workspace:apps/mta"],
 
     "@owlat/mta-protocol": ["@owlat/mta-protocol@workspace:packages/mta-protocol"],
+
+    "@owlat/oxlint-plugin-owlat": ["@owlat/oxlint-plugin-owlat@workspace:packages/oxlint-plugin-owlat"],
 
     "@owlat/plugin-cli": ["@owlat/plugin-cli@workspace:packages/plugin-cli"],
 

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The contact Files tab reads compact cards (`files.cards.listByContact`, #1439),
  * not `semanticFiles.listByContact`, which returns every row whole: embedding

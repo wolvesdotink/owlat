@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The reader header's Reply and Archive run the same reader action as `r` and
  * `e`, so their tooltip and `aria-keyshortcuts` name the key as this person

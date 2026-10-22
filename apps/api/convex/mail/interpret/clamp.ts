@@ -15,7 +15,7 @@ import {
 /** Strip control characters, collapse whitespace, cut at a word. */
 export function clampText(value: string, max: number): string {
 	const flat = value
-		// eslint-disable-next-line no-control-regex
+		// eslint-disable-next-line no-control-regex -- flattens C0 control characters to spaces
 		.replace(/[\u0000-\u001f\u007f]/g, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();

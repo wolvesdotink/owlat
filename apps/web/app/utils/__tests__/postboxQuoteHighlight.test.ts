@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A cited quote marked in a rendered body (plan §4.2):
  *   - found in the visible text across inline markup and typographic quotes;

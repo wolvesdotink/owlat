@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Accessibility pass on the multi-step form (P2-4).
  *

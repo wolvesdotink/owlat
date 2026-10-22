@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The guest's time picker (components/booking/BookingSlotPicker): only days
  * with open times can be picked, the first such day opens on its own, its times

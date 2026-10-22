@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * #772 — the email step says what it does, hints only while nothing is picked,
  * marks the chosen provider as selected, and no longer asks for hand-written

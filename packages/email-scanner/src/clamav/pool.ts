@@ -18,11 +18,9 @@ import { scanBufferDirect, ping } from './client.js';
 type LogFn = NonNullable<ClamClientOptions['logger']>;
 
 const defaultLogger: LogFn = (level, message, meta) => {
-	// eslint-disable-next-line no-console
 	if (level === 'error') console.error(`[clamav-pool] ${message}`, meta ?? '');
-	// eslint-disable-next-line no-console
 	else if (level === 'warn') console.warn(`[clamav-pool] ${message}`, meta ?? '');
-	// eslint-disable-next-line no-console
+	// eslint-disable-next-line no-console -- the default logger writes info-level events to stdout when none is injected
 	else console.log(`[clamav-pool] ${message}`, meta ?? '');
 };
 

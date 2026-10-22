@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The step inspector's placements (#1046): a column at `lg`, a sheet below.
  * As a sheet it follows UiRailDrawer: Escape and the scrim close it (through

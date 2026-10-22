@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The carry-over step: two imports, strictly in order, judged on the RUN'S ID.
  *

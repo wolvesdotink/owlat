@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The contenteditable <-> `modelValue` mirror, and specifically which incoming
  * values are allowed to rewrite the DOM.

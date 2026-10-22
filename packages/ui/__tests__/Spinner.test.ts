@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * UiSpinner's opt-in `delay`: a spinner for a wait that ends quickly should
  * never paint. The ring keeps its box while hidden (`invisible`, not unmounted)

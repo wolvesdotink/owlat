@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The team-inbox attachment list:
  *   - one row per attachment parsed off the message's `attachmentMeta`, each

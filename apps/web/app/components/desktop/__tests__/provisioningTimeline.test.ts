@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * DesktopProvisioningTimeline — the live log pane the "set up a new server"
  * wizard streams the installer into.

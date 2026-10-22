@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Behaviour of the app-wide command palette that only exists once it is MOUNTED.
  *

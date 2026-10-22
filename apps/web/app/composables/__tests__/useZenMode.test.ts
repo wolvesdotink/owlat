@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The state is module-level (one Zen for the whole app), so each case loads a

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "What should the reply say?" (plan §04):
  *   - Enter or the button drafts, with the optional instruction;

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * AiKeyField — a password input for a provider API key plus the masked
  * "saved key" hint.

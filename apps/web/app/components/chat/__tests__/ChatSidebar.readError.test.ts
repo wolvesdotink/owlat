@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The chat rail is the room list: a failed read of it is not "No channels
  * yet" (#721). With nothing to list and a read error, the rail shows the error

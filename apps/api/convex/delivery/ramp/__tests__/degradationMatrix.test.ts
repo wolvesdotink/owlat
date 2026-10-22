@@ -246,8 +246,9 @@ describe('the degradation matrix substitutes exactly what the plan says', () => 
 		expect(RAMP_DEGRADATION_BY_INTEGRATION.size).toBe(RAMP_INTEGRATION_IDS.length);
 	});
 
-	for (const testCase of CASES) {
-		describe(`${testCase.integration} absent`, () => {
+	describe.each(CASES.map((testCase) => [testCase.integration, testCase] as const))(
+		'%s absent',
+		(_integration, testCase) => {
 			const degradation = resolveRampDegradation({
 				presence: absent(testCase.integration),
 				provider: testCase.provider,
@@ -302,8 +303,8 @@ describe('the degradation matrix substitutes exactly what the plan says', () => 
 					expect(elsewhere.substitutes).toHaveLength(0);
 				});
 			}
-		});
-	}
+		}
+	);
 });
 
 describe('the fully-equipped deployment is the identity', () => {

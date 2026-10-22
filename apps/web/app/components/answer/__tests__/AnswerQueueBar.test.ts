@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Answer queue in Answer mode's top bar: "2 of 3 ‹ ›", `[` / `]` browse
  * without finishing anything, `e` archives a Postbox item and `h` snoozes it

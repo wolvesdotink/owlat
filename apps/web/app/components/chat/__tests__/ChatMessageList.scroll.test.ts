@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Scroll behaviour of the chat message list (plan 1.16): opening a room jumps
  * to the newest message instead of smooth-scrolling through the history, and a

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Workbench peek answers in Answer mode (plan §07): Reply on a Postbox
  * email opens `m/<messageId>`, Reply on a team message opens `t/<threadId>` on

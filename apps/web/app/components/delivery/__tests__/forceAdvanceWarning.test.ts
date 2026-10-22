@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * FORCE-ADVANCE CANNOT FIRE FROM A SINGLE CLICK.
  *

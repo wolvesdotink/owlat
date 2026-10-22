@@ -40,8 +40,9 @@ async function upload(t: Harness, size: number) {
 }
 
 describe('authoritative upload size admission', () => {
-	for (const kind of ['chat', 'media', 'semantic'] as const) {
-		it(`${kind} rejects underreported oversize/empty blobs and persists actual allowed sizes`, async () => {
+	it.each(['chat', 'media', 'semantic'] as const)(
+		'%s rejects underreported oversize/empty blobs and persists actual allowed sizes',
+		async (kind) => {
 			const t = convexTest(schema, modules);
 			await enableFeatures(t, ['chat']);
 			const bind = (storageId: Id<'_storage'>, fileSize = 1) => {
@@ -57,8 +58,8 @@ describe('authoritative upload size admission', () => {
 			const missing = await upload(t, 4);
 			await t.run((ctx) => ctx.storage.delete(missing));
 			await expect(bind(missing)).rejects.toThrow(/missing/);
-		});
-	}
+		}
+	);
 
 	it('counts real inline and legacy attachment bytes, preserves the receipt after rejection, and caps count', async () => {
 		const t = convexTest(schema, modules);

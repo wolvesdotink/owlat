@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The shared-mailbox reader's team stream (usePostboxTeamStream): the walk
  * back to the reader's oldest message is bounded per walk, and where it stops

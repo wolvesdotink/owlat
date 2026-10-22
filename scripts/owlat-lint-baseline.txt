@@ -1,0 +1,4 @@
+# Frozen debt for the owlat/* oxlint rules configured as warnings in
+# oxlintrc.json (see scripts/check-owlat-lint.sh). One line per finding:
+# <file> TAB <rule> TAB <source text of the reported span>.
+# Lines only ever get deleted; a rule with no line left here moves to "error".

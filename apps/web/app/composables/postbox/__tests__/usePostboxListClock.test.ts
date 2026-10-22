@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Postbox list clock: one minute timer per list, injected by every row, so
  * row timestamps move while the list sits still and the list pays for a single

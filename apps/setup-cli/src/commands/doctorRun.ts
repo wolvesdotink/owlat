@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+/* eslint-disable no-console -- a CLI command reports to the terminal */
 /**
  * `owlat-setup doctor [--json]` — diagnose a broken install.
  *

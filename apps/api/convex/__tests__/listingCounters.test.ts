@@ -279,8 +279,9 @@ describe('facet and growth counters equal a full scan (plan 3.1)', () => {
 		vi.useRealTimers();
 	});
 
-	for (const seed of [3, 17, 256, 1024, 4096]) {
-		it(`stays exact through random writes and a racing backfill (seed ${seed})`, async () => {
+	it.each([3, 17, 256, 1024, 4096])(
+		'stays exact through random writes and a racing backfill (seed %s)',
+		async (seed) => {
 			const r = rng(seed);
 			const t = await freshT();
 			for (let i = 0; i < 30; i++) await randomOp(t, r);
@@ -342,6 +343,6 @@ describe('facet and growth counters equal a full scan (plan 3.1)', () => {
 				}
 				expect(growth).toEqual(scan);
 			});
-		});
-	}
+		}
+	);
 });

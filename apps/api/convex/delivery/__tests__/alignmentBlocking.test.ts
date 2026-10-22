@@ -253,8 +253,9 @@ describe('what counts as a second arm comes from the transport surface', () => {
 		expect(target.ownArm.spfMechanisms).toEqual([`ip4:${POOL_IP}`]);
 	});
 
-	for (const kind of ['resend', 'smtp', 'plugin.acme.relay'] as const) {
-		it(`records a ${kind} relay as UNKNOWN — never single_arm`, async () => {
+	it.each(['resend', 'smtp', 'plugin.acme.relay'] as const)(
+		'records a %s relay as UNKNOWN — never single_arm',
+		async (kind) => {
 			stubTransportEnv();
 			const t = convexTest(schema, modules);
 			// A non-SES relay is enabled on the route, and there is no signing
@@ -267,8 +268,8 @@ describe('what counts as a second arm comes from the transport surface', () => {
 			);
 			const target = page.targets[0];
 			expect(target?.reference.kind).toBe('unknown');
-		});
-	}
+		}
+	);
 
 	it('treats EMAIL_PROVIDER on its own as a configured relay', async () => {
 		stubTransportEnv();
@@ -301,23 +302,25 @@ describe('what counts as a second arm comes from the transport surface', () => {
 	});
 
 	// ...and a domain that IS stored is not turned into that case by its spelling.
-	for (const spelling of ['ACME.com', 'acme.com.', '  acme.com  ']) {
-		it(`normalizes ${JSON.stringify(spelling)} to the stored domain`, async () => {
-			stubTransportEnv();
-			const t = convexTest(schema, modules);
-			await seedDomain(t, { relay: 'ses' });
-			await record(t, {
-				verdict: 'aligned',
-				checks: PASSING_CHECKS,
-				checkedAt: NOW,
-				nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
-			});
-			const state = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {
-				domain: spelling,
-			});
-			expect(state[0]?.verdict).toBe('aligned');
+	it.each(
+		['ACME.com', 'acme.com.', '  acme.com  '].map(
+			(spelling) => [JSON.stringify(spelling), spelling] as const
+		)
+	)('normalizes %s to the stored domain', async (_quoted, spelling) => {
+		stubTransportEnv();
+		const t = convexTest(schema, modules);
+		await seedDomain(t, { relay: 'ses' });
+		await record(t, {
+			verdict: 'aligned',
+			checks: PASSING_CHECKS,
+			checkedAt: NOW,
+			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 		});
-	}
+		const state = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {
+			domain: spelling,
+		});
+		expect(state[0]?.verdict).toBe('aligned');
+	});
 
 	it('reports MORE THAN ONE relay with its own reason, not "verify an identity"', async () => {
 		stubTransportEnv();

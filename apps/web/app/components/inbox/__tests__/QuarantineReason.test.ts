@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * InboxQuarantineReason — the plain-language quarantine card (UX plan idea 53).
  *

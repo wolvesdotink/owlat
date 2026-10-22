@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Team Inbox thread row (UX piece b2a) — renders the Postbox row DNA for a
  * team thread from a fixture:

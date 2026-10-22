@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Co-editing surfaces: the avatar stack of
  * who else is in the editor, and the "your change was replaced" notice with

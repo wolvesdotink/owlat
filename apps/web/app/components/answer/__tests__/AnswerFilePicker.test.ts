@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Pick from Files" reads Files as compact cards (`files.cards`), not
  * whole rows, and does not offer a file whose bytes the retention sweep

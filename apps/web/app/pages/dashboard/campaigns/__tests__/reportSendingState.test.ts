@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The campaign report BEFORE there is anything to report.
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The sliding highlight has to land ON the selected segment and nowhere else.
  *
