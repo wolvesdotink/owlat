@@ -105,6 +105,15 @@ const FIXTURES: Record<string, string> = {
 		'});',
 		'',
 	].join('\n'),
+	// Removing a node found inside each child leaves the body in place.
+	'apps/web/app/__tests__/bodyOwnedRemoval.test.ts': [
+		"import { afterEach } from 'vitest';",
+		'',
+		'afterEach(() => {',
+		"\tfor (const child of document.body.children) child.querySelector('[data-owned]')?.remove();",
+		'});',
+		'',
+	].join('\n'),
 	'packages/email-builder/src/__tests__/bodyResetElsewhere.test.ts': [
 		"import { afterEach } from 'vitest';",
 		'',
@@ -186,6 +195,10 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 	it('reports a whole-body reset in a web test, and only in the configured workspaces', () => {
 		expect(errorCodes(byFile.get('bodyReset.test.ts'))).toEqual(['owlat(no-document-body-reset)']);
 		expect(byFile.get('bodyResetElsewhere.test.ts')).toBeUndefined();
+	});
+
+	it('accepts a loop over the body that removes only nodes found inside its children', () => {
+		expect(byFile.get('bodyOwnedRemoval.test.ts')).toBeUndefined();
 	});
 
 	it('leaves a clean test file alone', () => {

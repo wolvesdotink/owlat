@@ -68,6 +68,31 @@ ruleTester.run('owlat/no-document-body-reset', rule, {
 			code: "declare const key: 'body';\nconst { [key]: target } = document;\ntarget.innerHTML = '';",
 		},
 		{
+			name: 'a for...of over the children that removes a node found inside each child',
+			filename,
+			code: "for (const child of document.body.children) child.querySelector('[data-owned]')?.remove();\nfor (const child of [...document.body.children]) child.firstChild?.remove();",
+		},
+		{
+			name: 'a forEach over the children that removes a descendant or an owned node',
+			filename,
+			code: "declare const owned: HTMLElement;\nArray.from(document.body.children).forEach((child) => child.querySelector('.toast')?.remove());\n[...document.body.children].forEach(() => owned.remove());\nArray.from(document.body.childNodes).forEach((node) => document.body.removeChild(owned));",
+		},
+		{
+			name: 'a for...of over the children that removes an unrelated node or calls remove(index)',
+			filename,
+			code: "declare const fixtures: HTMLElement[];\nfor (const child of document.body.children) fixtures.pop()?.remove();\nfor (const select of document.body.querySelectorAll('*')) (select as HTMLSelectElement).remove(0);",
+		},
+		{
+			name: 'a forEach over the children with a callback the rule cannot see into',
+			filename,
+			code: 'declare const detach: (node: Element) => void;\nArray.from(document.body.children).forEach(detach);',
+		},
+		{
+			name: 'a loop on the child count that removes owned nodes, not the root children',
+			filename,
+			code: "declare const owned: HTMLElement[];\nwhile (document.body.childElementCount > 1) owned.pop()?.remove();\nwhile (document.body.firstChild) document.body.firstChild.querySelector('[data-owned]')?.remove();",
+		},
+		{
 			name: 'a file outside the configured globs',
 			filename: 'packages/email-builder/src/__tests__/cases.test.ts',
 			options: scoped,
@@ -179,6 +204,12 @@ ruleTester.run('owlat/no-document-body-reset', rule, {
 			errors: 2,
 		},
 		{
+			name: 'a draining loop that indexes the children or reads them through a variable',
+			filename,
+			code: 'while (document.body.children.length) document.body.children[0].remove();\nwhile (document.body.childNodes.length > 0) document.body.removeChild(document.body.childNodes.item(0));\nwhile (document.body.lastChild) { const last = document.body.lastChild; last.parentNode?.removeChild(last); }\nlet node: ChildNode | null;\nwhile ((node = document.body.firstChild)) node.remove();',
+			errors: 4,
+		},
+		{
 			name: 'a for...of over the children that removes them',
 			filename,
 			code: 'for (const child of [...document.body.children]) child.remove();\nfor (const node of Array.from(document.body.childNodes)) document.body.removeChild(node);',
@@ -189,6 +220,12 @@ ruleTester.run('owlat/no-document-body-reset', rule, {
 			filename,
 			code: "for (const el of document.body.querySelectorAll('*')) el.remove();",
 			errors,
+		},
+		{
+			name: 'a for...of that removes the visited node through an alias, its parent or a function callback',
+			filename,
+			code: 'for (const child of [...document.body.children]) { const el = child as HTMLElement; el.remove(); }\nfor (const child of [...document.body.children]) child.parentElement!.removeChild(child);\nlet visited: Element;\nfor (visited of [...document.body.children]) visited.remove();\nArray.from(document.body.children).forEach(function (child) { document.body.removeChild(child); });',
+			errors: 4,
 		},
 		{
 			name: 'a forEach over the children that removes them',

@@ -15,9 +15,13 @@ import type { AstNode, Context, Rule, Scope } from '../types.ts';
  *  - assigning `innerHTML` / `outerHTML` / `textContent` / `innerText`, with
  *    any operator and through a computed key (`body['innerHTML'] = ''`);
  *  - calling `replaceChildren`, `replaceWith`, `setHTML` or `setHTMLUnsafe`;
- *  - a loop that drains it (`while (document.body.firstChild) …remove…`), and
- *    a `for…of` or `.forEach` over its children (or its `'*'` descendants)
- *    that removes them.
+ *  - a loop that drains it (`while (document.body.firstChild)` removing
+ *    `document.body.firstChild`), and a `for…of` or `.forEach` over its
+ *    children (or its `'*'` descendants) that removes the node it is visiting.
+ * A loop only counts when it removes the root's own children: `.remove()` on
+ * them or `.removeChild(…)` with them as the argument. Removing a node found
+ * inside a child, or some unrelated node, leaves the rest of the document in
+ * place and stays allowed.
  * The body is recognized as `document.body` / `document.documentElement`
  * (also through `window.`, `globalThis.` or `self.`, computed keys and
  * TypeScript non-null or `as` wrappers) and through a local variable that is
@@ -52,7 +56,8 @@ const CHILD_PROBES = new Set([
 const CHILD_COLLECTIONS = new Set(['childNodes', 'children']);
 /** Queries that list every descendant when asked for `'*'`. */
 const WILDCARD_QUERIES = new Set(['querySelectorAll', 'getElementsByTagName']);
-const REMOVING_METHODS = new Set(['remove', 'removeChild']);
+/** Reads of one child of the root, which a draining loop removes. */
+const CHILD_READS = new Set(['firstChild', 'lastChild', 'firstElementChild', 'lastElementChild']);
 const WRAPPERS = new Set([
 	'ChainExpression',
 	'ParenthesizedExpression',
@@ -219,12 +224,97 @@ const createMatcher = (context: Context) => {
 		);
 	};
 
-	const removesNodes = (node: Node) =>
+	type Variable = NonNullable<ReturnType<typeof localVariable>>;
+
+	/** Whether `node` is `variable`, directly or through never-reassigned aliases. */
+	const isVariable = (node: Node, variable: Variable, depth = 0): boolean => {
+		const current = unwrap(node);
+		if (current?.type !== 'Identifier' || depth > 8) return false;
+		if (localVariable(current) === variable) return true;
+		const alias = aliasOf(current);
+		return alias !== undefined && 'value' in alias && isVariable(alias.value, variable, depth + 1);
+	};
+
+	/**
+	 * One child of the root: `<root>.firstChild` and kin, `<root>.children[i]`,
+	 * `<root>.childNodes.item(i)`, or a never-reassigned alias of one.
+	 */
+	const isRootChild = (node: Node, depth = 0): boolean => {
+		const current = unwrap(node);
+		if (!current || depth > 8) return false;
+		if (current.type === 'Identifier') {
+			const alias = aliasOf(current);
+			return alias !== undefined && 'value' in alias && isRootChild(alias.value, depth + 1);
+		}
+		if (current.type === 'MemberExpression') {
+			if (isRootMember(current, CHILD_READS)) return true;
+			const collection = unwrap(current.object);
+			return (
+				current.computed &&
+				propertyName(current) === undefined &&
+				collection !== undefined &&
+				collection !== null &&
+				isRootMember(collection, CHILD_COLLECTIONS)
+			);
+		}
+		if (current.type !== 'CallExpression') return false;
+		const callee = unwrap(current.callee);
+		const collection = callee?.type === 'MemberExpression' ? unwrap(callee.object) : undefined;
+		return (
+			propertyName(callee) === 'item' &&
+			collection !== undefined &&
+			collection !== null &&
+			isRootMember(collection, CHILD_COLLECTIONS)
+		);
+	};
+
+	/**
+	 * Whether `node` removes a node `isTarget` accepts: `target.remove()` or
+	 * `parent.removeChild(target)`. A removal of anything else (a node queried
+	 * inside the target, an owned fixture) does not count.
+	 */
+	const removes = (node: Node, isTarget: (candidate: Node) => boolean) =>
 		containsNode(node, (candidate) => {
 			if (candidate.type !== 'CallExpression') return false;
-			const name = propertyName(unwrap(candidate.callee));
-			return name !== undefined && REMOVING_METHODS.has(name);
+			const callee = unwrap(candidate.callee);
+			if (callee?.type !== 'MemberExpression') return false;
+			const name = propertyName(callee);
+			// `remove(index)` is HTMLSelectElement's option removal, not the node's own.
+			if (name === 'remove') return candidate.arguments.length === 0 && isTarget(callee.object);
+			return name === 'removeChild' && isTarget(candidate.arguments[0]);
 		});
+
+	/** Whether `body` removes the node a loop binds to `binding` on each pass. */
+	const removesVisited = (body: Node, binding: Node) => {
+		const variable = binding?.type === 'Identifier' ? localVariable(binding) : undefined;
+		return variable !== undefined && removes(body, (candidate) => isVariable(candidate, variable));
+	};
+
+	/**
+	 * Whether a loop with this `test` and `body` removes the root's children:
+	 * one read straight off the root, or a variable the test assigns one to
+	 * (`while ((node = document.body.firstChild)) node.remove()`).
+	 */
+	const removesRootChildren = (test: Node, body: Node) => {
+		const assigned: Variable[] = [];
+		containsNode(test, (candidate) => {
+			if (
+				candidate.type === 'AssignmentExpression' &&
+				candidate.operator === '=' &&
+				candidate.left.type === 'Identifier' &&
+				isRootChild(candidate.right)
+			) {
+				const variable = localVariable(candidate.left);
+				if (variable) assigned.push(variable);
+			}
+			return false;
+		});
+		return removes(
+			body,
+			(candidate) =>
+				isRootChild(candidate) || assigned.some((variable) => isVariable(candidate, variable))
+		);
+	};
 
 	const walksRootChildren = (node: Node) =>
 		containsNode(node, (candidate) => {
@@ -241,7 +331,7 @@ const createMatcher = (context: Context) => {
 			);
 		});
 
-	return { isRootElement, isRootMember, removesNodes, walksRootChildren };
+	return { isRootElement, isRootMember, removesRootChildren, removesVisited, walksRootChildren };
 };
 
 const rule: Rule = {
@@ -265,7 +355,8 @@ const rule: Rule = {
 		const files = (context.options[0] as Options | undefined)?.files;
 		if (files && !matchesAnyGlob(context.filename, files)) return {};
 		if (!context.sourceCode.text.includes('document')) return {};
-		const { isRootElement, isRootMember, removesNodes, walksRootChildren } = createMatcher(context);
+		const { isRootElement, isRootMember, removesRootChildren, removesVisited, walksRootChildren } =
+			createMatcher(context);
 		const report = (node: AstNode) => context.report({ node, message: MESSAGE });
 
 		/** A loop that keeps removing nodes while the body still has children. */
@@ -274,7 +365,7 @@ const rule: Rule = {
 			const probesChildren = containsNode(node.test as Node, (candidate) =>
 				isRootMember(candidate, CHILD_PROBES)
 			);
-			if (probesChildren && removesNodes(node.body as Node)) report(node);
+			if (probesChildren && removesRootChildren(node.test as Node, node.body as Node)) report(node);
 		};
 
 		return {
@@ -296,17 +387,23 @@ const rule: Rule = {
 					report(node);
 					return;
 				}
+				const [callback] = node.arguments;
 				if (
 					propertyName(callee) === 'forEach' &&
 					callee?.type === 'MemberExpression' &&
+					(callback?.type === 'ArrowFunctionExpression' ||
+						callback?.type === 'FunctionExpression') &&
 					walksRootChildren(callee.object) &&
-					removesNodes(node.arguments[0])
+					removesVisited(callback.body, callback.params[0])
 				) {
 					report(node);
 				}
 			},
 			ForOfStatement(node) {
-				if (walksRootChildren(node.right) && removesNodes(node.body)) report(node);
+				const { left } = node;
+				const binding =
+					left.type === 'VariableDeclaration' ? left.declarations[0]?.id : unwrap(left);
+				if (walksRootChildren(node.right) && removesVisited(node.body, binding)) report(node);
 			},
 			WhileStatement: checkDrainingLoop,
 			DoWhileStatement: checkDrainingLoop,
