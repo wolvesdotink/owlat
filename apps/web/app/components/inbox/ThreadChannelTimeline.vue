@@ -12,6 +12,7 @@ import {
 } from '~/composables/useUnifiedContactTimeline';
 import { useChannelOutbound } from '~/composables/useChannelOutbound';
 import type { SendableChannel } from '~/composables/useChannelOutbound';
+import { useComposerDraft } from '~/composables/useComposerDrafts';
 
 const props = defineProps<{
 	threadId: Id<'conversationThreads'>;
@@ -65,27 +66,37 @@ function canReplyTo(item: TimelineMessage): boolean {
 	return canSendOn(item.channel);
 }
 
-const replyToId = ref<Id<'unifiedMessages'> | null>(null);
-const replyText = ref('');
+// The open reply (which message, what is typed) is kept per thread on this
+// device until it is sent or cancelled, so a reload reopens it as it was.
+const NO_REPLY = { text: '', replyToId: '' };
+const { draft: reply, pin } = useComposerDraft('channel-reply', () => props.threadId, NO_REPLY);
+const replyToId = computed(() => reply.value.replyToId || null);
+const replyText = computed({
+	get: () => reply.value.text,
+	set: (text: string) => (reply.value = { ...reply.value, text }),
+});
 
 function openReply(item: TimelineMessage) {
-	replyToId.value = item._id;
-	replyText.value = '';
+	if (reply.value.replyToId !== item._id) reply.value = { text: '', replyToId: item._id };
 }
 
 function cancelReply() {
-	replyToId.value = null;
-	replyText.value = '';
+	reply.value = NO_REPLY;
 }
 
 async function submitReply(item: TimelineMessage) {
+	const text = replyText.value;
+	const settle = pin();
 	const sent = await send({
 		channel: item.channel as SendableChannel,
-		text: replyText.value,
+		text,
 		contactId: item.contactId ?? null,
 		threadId: props.threadId,
 	});
-	if (sent) cancelReply();
+	// Only the reply that was sent goes: text changed meanwhile stays.
+	if (sent) {
+		settle((now) => (now.replyToId === item._id && now.text === text ? NO_REPLY : now));
+	}
 }
 </script>
 

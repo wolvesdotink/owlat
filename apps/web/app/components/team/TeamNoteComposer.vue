@@ -23,6 +23,7 @@ import {
 } from '~/utils/threadNotes';
 import { activeItemQuery, matchItems, removeItemQuery } from '~/utils/teamStream';
 import TeamItemPicker from './TeamItemPicker.vue';
+import { useComposerDraft } from '~/composables/useComposerDrafts';
 import { useId } from 'vue';
 
 export type TeamComposeMode = 'note' | 'reply';
@@ -52,20 +53,13 @@ const emit = defineEmits<{ reply: [text: string] }>();
 
 const { t } = useI18n();
 
-// One unsent note per thread for the session, kept across mode switches and navigation.
-const noteDrafts = useState<Record<string, { body: string; itemId: string | null }>>(
-	'team:note-drafts',
-	() => ({})
+// One unsent note per thread on this device, kept across mode switches,
+// navigation and reloads.
+const { draft: noteDraft, pin: pinNoteDraft } = useComposerDraft(
+	'team-note',
+	() => props.draftKey,
+	{ body: '', itemId: null }
 );
-const noteDraft = computed({
-	get: () => noteDrafts.value[props.draftKey] ?? { body: '', itemId: null },
-	set: (draft) => {
-		const next = { ...noteDrafts.value };
-		if (draft.body || draft.itemId) next[props.draftKey] = draft;
-		else delete next[props.draftKey];
-		noteDrafts.value = next;
-	},
-});
 const noteBody = computed({
 	get: () => noteDraft.value.body,
 	set: (body: string) => (noteDraft.value = { ...noteDraft.value, body }),
@@ -156,9 +150,14 @@ function pickItem(item: BriefItemView) {
 async function post() {
 	if (!canPost.value) return;
 	saving.value = true;
+	const sent = { ...noteDraft.value };
+	const settle = pinNoteDraft();
 	try {
-		if (await props.submitNote(noteBody.value.trim(), noteDraft.value.itemId)) {
-			noteDraft.value = { body: '', itemId: null };
+		if (await props.submitNote(sent.body.trim(), sent.itemId)) {
+			// Only the note that was saved goes: text changed meanwhile stays.
+			settle((now) =>
+				now.body === sent.body && now.itemId === sent.itemId ? { body: '', itemId: null } : now
+			);
 			mention.value = itemQuery.value = null;
 		}
 	} finally {

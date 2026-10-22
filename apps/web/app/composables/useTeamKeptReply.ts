@@ -1,11 +1,13 @@
 /**
- * Text written for a Team inbox reply and not sent, kept per thread for the
- * session. The team reply has no autosaved draft row (its draft is the
- * message's own working draft, saved only on purpose), so leaving Answer mode
- * or undoing a follow-up would otherwise throw the text away. Answer mode puts
- * it back into the editor the next time the thread is answered.
+ * Text written for a Team inbox reply and not sent, kept per thread on this
+ * device (`useComposerDrafts`). The team reply has no autosaved draft row (its
+ * draft is the message's own working draft, saved only on purpose), so leaving
+ * Answer mode, undoing a follow-up or reloading the page would otherwise throw
+ * the text away. Answer mode puts it back into the editor the next time the
+ * thread is answered.
  */
 import type { Ref } from 'vue';
+import { useComposerDrafts } from '~/composables/useComposerDrafts';
 
 export interface TeamKeptReply {
 	body: string;
@@ -15,15 +17,21 @@ export interface TeamKeptReply {
 }
 
 export function useTeamKeptReply() {
-	const kept = useState<Record<string, TeamKeptReply>>('answer:team-kept', () => ({}));
+	const drafts = useComposerDrafts();
 	return {
-		get: (threadId: string): TeamKeptReply | null => kept.value[threadId] ?? null,
+		get: (threadId: string): TeamKeptReply | null => drafts.get('team-reply', threadId),
 		set(threadId: string, reply: TeamKeptReply | null) {
-			const next = { ...kept.value };
-			if (reply && reply.body.trim()) {
-				next[threadId] = { body: reply.body, subject: reply.subject, gapGuarded: reply.gapGuarded };
-			} else delete next[threadId];
-			kept.value = next;
+			drafts.set(
+				'team-reply',
+				threadId,
+				reply
+					? {
+							body: reply.body,
+							subject: reply.subject,
+							...(reply.gapGuarded ? { gapGuarded: true } : {}),
+						}
+					: null
+			);
 		},
 	};
 }
@@ -35,24 +43,36 @@ interface KeepingComposer {
 }
 
 /**
- * Answer mode's side of the kept text: it goes back into `composer` when the
- * editor appears, `keep()` stores what the person typed (nothing when they did
- * not type), and `clear()` forgets it once the reply is sent.
+ * Answer mode's side of the kept text. It goes back into `composer` when the
+ * editor appears, or when the device copy arrives after it (a reload), unless
+ * the person has already typed. What they type is kept as they type it; an
+ * editor that goes back to untouched (reset after a send, the agent's draft
+ * restored) drops it, and `clear()` forgets it once the reply is sent.
  */
 export function useKeptTeamComposer(
 	threadId: () => string,
 	composer: Readonly<Ref<KeepingComposer | null>>
 ) {
 	const kept = useTeamKeptReply();
-	watch(composer, (editor) => {
-		const reply = kept.get(threadId());
-		if (editor && reply) editor.fill(reply.body, reply.subject, reply.gapGuarded);
+	watch([composer, () => kept.get(threadId())], ([editor, reply]) => {
+		if (editor && reply && !editor.snapshot().touched) {
+			editor.fill(reply.body, reply.subject, reply.gapGuarded);
+		}
 	});
-	return {
-		keep() {
-			const typed = composer.value?.snapshot();
-			kept.set(threadId(), typed?.touched ? typed : null);
-		},
-		clear: () => kept.set(threadId(), null),
-	};
+	// Untouched after touched counts only within one editor: a new editor
+	// (another message to answer) starts untouched and must not drop the text.
+	let lastEditor: KeepingComposer | null = null;
+	let wasTouched = false;
+	watch(
+		() => composer.value?.snapshot(),
+		(typed) => {
+			const editor = composer.value;
+			if (!typed || !editor) return;
+			if (typed.touched) kept.set(threadId(), typed);
+			else if (editor === lastEditor && wasTouched) kept.set(threadId(), null);
+			lastEditor = editor;
+			wasTouched = typed.touched;
+		}
+	);
+	return { clear: () => kept.set(threadId(), null) };
 }

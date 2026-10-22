@@ -6925,6 +6925,9 @@
 				"waiting": "Waiting on them"
 			},
 			"noSubject": "(no subject)",
+			"draftMarker": {
+				"label": "Unsent draft"
+			},
 			"teamInbox": "Team inbox",
 			"inboxGroup": {
 				"expand": "Show conversations in {name}",

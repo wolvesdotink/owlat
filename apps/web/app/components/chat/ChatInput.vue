@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import { isMentionHandlePrefix } from '@owlat/shared/chatMentions';
 import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
+import { useComposerDraft } from '~/composables/useComposerDrafts';
 import { isImeComposing } from '~/utils/imeComposition';
 
 const props = defineProps<{
@@ -11,15 +12,30 @@ const props = defineProps<{
 	 * resolves `ok`, so a refused or failed send is still there to retry.
 	 */
 	send: (text: string, attachmentIds?: Id<'mediaAssets'>[]) => Promise<{ ok: boolean }>;
+	/** The room, which keeps the unsent text and files on this device. */
+	draftTarget?: string | null;
 }>();
 
 const { t } = useI18n();
 
-const text = ref('');
+type PendingAttachment = { id: Id<'mediaAssets'>; filename: string; mimeType: string };
+
+// The draft (text and the files already uploaded for it) belongs to the room.
+const { draft } = useComposerDraft('chat', () => props.draftTarget, { text: '', attachments: [] });
+const text = computed({
+	get: () => draft.value.text,
+	set: (next: string) => (draft.value = { ...draft.value, text: next }),
+});
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
-const pendingAttachments = ref<{ id: Id<'mediaAssets'>; filename: string; mimeType: string }[]>([]);
+const pendingAttachments = computed({
+	get: () => draft.value.attachments as PendingAttachment[],
+	set: (next: PendingAttachment[]) => (draft.value = { ...draft.value, attachments: next }),
+});
+function addAttachment(attachment: PendingAttachment) {
+	pendingAttachments.value = [...pendingAttachments.value, attachment];
+}
 
 const { uploadFile, isUploading } = useChatAttachments();
 
@@ -124,7 +140,7 @@ const handleFilePick = async (event: Event) => {
 		try {
 			const id = await uploadFile(file);
 			if (id) {
-				pendingAttachments.value.push({
+				addAttachment({
 					id,
 					filename: file.name,
 					mimeType: file.type || 'application/octet-stream',
@@ -146,7 +162,7 @@ const handlePaste = async (event: ClipboardEvent) => {
 		try {
 			const id = await uploadFile(file);
 			if (id) {
-				pendingAttachments.value.push({
+				addAttachment({
 					id,
 					filename: file.name || 'pasted-file',
 					mimeType: file.type || 'application/octet-stream',

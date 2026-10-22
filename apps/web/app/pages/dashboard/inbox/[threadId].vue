@@ -11,6 +11,7 @@ import { useTeamThread } from '~/composables/team/useTeamThread';
 import { useZenMode } from '~/composables/useZenMode';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
+import { teamNoteDraftKey } from '~/composables/useComposerDrafts';
 import { inboxRetryToast } from '~/utils/inboxRetry';
 
 const { t, locale } = useI18n();
@@ -513,7 +514,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						v-if="isAdmin"
 						ref="composer"
 						v-model:reply-draft="replyDraft"
-						:draft-key="`team:${threadId}`"
+						:draft-key="teamNoteDraftKey(threadId)"
 						:reply-name="replyTarget ? replySenderLabel : null"
 						:items="team.items.value"
 						:candidates-for="team.candidatesFor"

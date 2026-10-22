@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ConversationStatus } from '~/utils/conversationStatus';
 import { SIDEBAR_JUMP_HINTS } from '~/composables/useSidebarJumpHints';
+import DraftMarker from '~/components/shell/DraftMarker.vue';
 
 /**
  * One conversation in the sidebar: title, age, and at most one status pill.
@@ -18,6 +19,8 @@ const props = defineProps<{
 	/** Indent under a group header (inbox rows) or sit flush (chat rows). */
 	indented?: boolean;
 	icon?: string;
+	/** The viewer keeps unsent text here, on this device (the pencil). */
+	hasDraft?: boolean;
 }>();
 
 const hints = inject(SIDEBAR_JUMP_HINTS, null);
@@ -46,6 +49,7 @@ const jumpNumber = computed(() =>
 				:class="isUnread || isActive ? 'font-medium text-text-primary' : ''"
 				>{{ title }}</span
 			>
+			<DraftMarker v-if="hasDraft" />
 		</span>
 		<span class="flex items-center justify-end">
 			<kbd

@@ -3,6 +3,7 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import NoteComposer from '../NoteComposer.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { useComposerDrafts } from '~/composables/useComposerDrafts';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -28,10 +29,10 @@ const PickerStub = {
 		'<div data-testid="picker"><button v-for="c in candidates" :key="c.memberId" @mousedown.prevent="$emit(\'pick\', c.handle)">{{ c.handle }}</button></div>',
 };
 
-function mountComposer(submit = vi.fn(async () => true)) {
+function mountComposer(submit = vi.fn(async () => true), extra: Record<string, unknown> = {}) {
 	const candidatesFor = vi.fn((q: string) => ('ben'.startsWith(q) ? [BEN] : []));
 	const wrapper = mount(NoteComposer, {
-		props: { submit, candidatesFor },
+		props: { submit, candidatesFor, ...extra },
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
@@ -50,6 +51,39 @@ async function type(wrapper: ReturnType<typeof mountComposer>['wrapper'], text: 
 }
 
 describe('NoteComposer', () => {
+	it('keeps a new note for its thread until it is saved, but never an edit', async () => {
+		useComposerDrafts().bindUser(null);
+		const first = mountComposer(
+			vi.fn(async () => true),
+			{ draftTarget: 'th1' }
+		);
+		await type(first.wrapper, 'check the refund');
+		// A second box on the thread stands in for the page coming back.
+		const again = mountComposer(
+			vi.fn(async () => true),
+			{ draftTarget: 'th1' }
+		);
+		const box = again.wrapper.get<HTMLTextAreaElement>('[data-testid="note-composer-input"]');
+		expect(box.element.value).toBe('check the refund');
+		expect(useComposerDrafts().has('answer-note', 'th1')).toBe(true);
+
+		await again.wrapper.get('[data-testid="note-composer-save"]').trigger('click');
+		await flushPromises();
+		expect(box.element.value).toBe('');
+		expect(useComposerDrafts().get('answer-note', 'th1')).toBeNull();
+
+		const edit = mountComposer(
+			vi.fn(async () => true),
+			{
+				draftTarget: 'th1',
+				editing: true,
+				initialBody: 'saved note',
+			}
+		);
+		await type(edit.wrapper, 'saved note, edited');
+		expect(useComposerDrafts().get('answer-note', 'th1')).toBeNull();
+	});
+
 	it('says only the team sees the note', () => {
 		const { wrapper } = mountComposer();
 		expect(wrapper.text()).toContain('only your team sees this');

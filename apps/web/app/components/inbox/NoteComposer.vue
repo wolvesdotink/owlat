@@ -11,7 +11,9 @@
  * shows is whoever gets notified.
  *
  * Presentation only: the caller saves. `submit` hands over the text and waits
- * for the answer: the text stays until the save succeeds.
+ * for the answer: the text stays until the save succeeds. A new note with a
+ * `draftTarget` is kept on this device until then (`useComposerDrafts`); an
+ * edit of a saved note is not, Cancel means let go.
  */
 import {
 	NOTE_BODY_MAX_LENGTH,
@@ -20,6 +22,7 @@ import {
 	type NoteMentionCandidate,
 } from '~/utils/threadNotes';
 import { isImeComposing } from '~/utils/imeComposition';
+import { useComposerDraft } from '~/composables/useComposerDrafts';
 
 const props = withDefaults(
 	defineProps<{
@@ -33,15 +36,25 @@ const props = withDefaults(
 		editing?: boolean;
 		/** Focus the box when it mounts. */
 		autofocus?: boolean;
+		/** Keeps a new note's unsent text on this device, per thread. */
+		draftTarget?: string | null;
 	}>(),
-	{ initialBody: '', editing: false, autofocus: false }
+	{ initialBody: '', editing: false, autofocus: false, draftTarget: null }
 );
 
 const emit = defineEmits<{ (e: 'cancel'): void; (e: 'saved'): void }>();
 
 const { t } = useI18n();
 
-const body = ref(props.initialBody);
+const { draft, pin } = useComposerDraft(
+	'answer-note',
+	() => (props.editing ? null : props.draftTarget),
+	{ body: props.initialBody }
+);
+const body = computed({
+	get: () => draft.value.body,
+	set: (next: string) => (draft.value = { body: next }),
+});
 const textarea = ref<HTMLTextAreaElement | null>(null);
 const saving = ref(false);
 const mention = ref<{ start: number; fragment: string } | null>(null);
@@ -96,9 +109,12 @@ function pick(handle: string) {
 async function save() {
 	if (!canSave.value) return;
 	saving.value = true;
+	const sent = body.value;
+	const settle = pin();
 	try {
-		if (await props.submit(body.value)) {
-			if (!props.editing) body.value = '';
+		if (await props.submit(sent)) {
+			// Only the note that was saved goes: text changed meanwhile stays.
+			if (!props.editing) settle((now) => (now.body === sent ? { body: '' } : now));
 			mention.value = null;
 			void nextTick(fit);
 			emit('saved');

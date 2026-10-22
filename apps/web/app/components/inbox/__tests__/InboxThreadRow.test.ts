@@ -154,6 +154,13 @@ describe('InboxThreadRow', () => {
 		expect(chip.text()).toContain('3 internal notes');
 		expect(mountRow({}, undefined, { noteCount: 100 }).text()).toContain('99+');
 	});
+
+	it('marks a thread holding the viewer’s unsent draft with a named pencil', () => {
+		expect(mountRow({}).find('[data-testid="draft-marker"]').exists()).toBe(false);
+		const marker = mountRow({}, undefined, { hasDraft: true }).get('[data-testid="draft-marker"]');
+		expect(marker.attributes('title')).toBe('Unsent draft');
+		expect(marker.text()).toContain('Unsent draft');
+	});
 });
 
 describe('InboxThreadRow response-target chip', () => {

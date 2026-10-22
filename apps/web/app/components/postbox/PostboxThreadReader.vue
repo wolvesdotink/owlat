@@ -550,9 +550,12 @@ const team = usePostboxTeamStream({
 	isShared: () => rb.isShared.value,
 	threadId: () => discussionThreadId.value,
 	messages: () => allMessages.value,
-	reply: (text) =>
+	reply: (text, handed) =>
 		text.trim() && latestMessage.value
-			? guardLatestReply(() => void openReplyWithBody(latestMessage.value!, text))
+			? guardLatestReply(() => {
+					handed?.();
+					void openReplyWithBody(latestMessage.value!, text);
+				})
 			: runReaderAction('reply'),
 });
 
