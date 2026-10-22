@@ -16,20 +16,11 @@ import {
 } from '@owlat/worker-protocol/client';
 import {
 	IMAP_ENDPOINTS,
-	type appendMessage,
-	type copyMessages,
-	type expungeFolder,
 	type fetchChangedEnvelopes,
-	type fetchEnvelopes,
 	type folderMembershipPage,
 	type listFolders,
-	type listFolderUidsPage,
-	type peekFolderModseq,
 	type reportServer,
 	type resolveMessageIdsByUid,
-	type selectFolder,
-	type storeFlags,
-	type verifyAppPassword,
 } from '@owlat/worker-protocol/imap';
 import { ConvexHttpClient } from 'convex/browser';
 import type { ImapConfig } from './config.js';
@@ -57,26 +48,11 @@ export function checkedConvexClient(transport: ConvexTransport): ConvexClient {
 // Ids travel as plain strings: this workspace does not import apps/api's
 // generated `_generated/api.d.ts` (that would couple the workspaces).
 
-/** A verified app password: the session's identity. */
-export type VerifyAppPasswordResult = NonNullable<EndpointResult<typeof verifyAppPassword>>;
-
 /** One LIST row. */
 export type FolderRow = EndpointResult<typeof listFolders>[number];
 
-/** SELECT / EXAMINE: folder metadata plus the first unseen message. */
-export type SelectFolderResult = NonNullable<EndpointResult<typeof selectFolder>>;
-
-/** The counters IDLE polls to notice a change. */
-export type PeekResult = NonNullable<EndpointResult<typeof peekFolderModseq>>;
-
-/** One page of a folder's UIDs, ascending; `nextUid` is null once done. */
-export type UidPage = EndpointResult<typeof listFolderUidsPage>;
-
 /** A folder's membership read (`mail/imap/fetch:folderMembershipPage`). */
 export type MembershipPage = EndpointResult<typeof folderMembershipPage>;
-
-/** One page of envelopes inside a UID window. */
-export type EnvelopePage = EndpointResult<typeof fetchEnvelopes>;
 
 /** One page of `{ _id, uid, modseq }` inside a UID window. */
 export type MessageIdPage = EndpointResult<typeof resolveMessageIdsByUid>;
@@ -84,23 +60,8 @@ export type MessageIdPage = EndpointResult<typeof resolveMessageIdsByUid>;
 /** One cursor page of the rows whose modseq moved past a baseline. */
 export type ChangedEnvelopePage = EndpointResult<typeof fetchChangedEnvelopes>;
 
-/** STORE: the rows that changed, and the CONDSTORE rows left alone. */
-export type StoreFlagsResult = EndpointResult<typeof storeFlags>;
-
-/** COPY and MOVE: the `COPYUID` pairs. */
-export type CopyMoveResult = EndpointResult<typeof copyMessages>;
-
-/**
- * One committed EXPUNGE page, plus the cursor to the next one. The IMAP server
- * numbers `uids` against its client's sequence view.
- */
-export type ExpungeResult = EndpointResult<typeof expungeFolder>;
-
 /** The wire-version handshake (`mail/imap/serverRegistry:report`). */
 export type ImapServerReportResult = EndpointResult<typeof reportServer>;
-
-/** APPEND: what `[APPENDUID …]` reports. */
-export type AppendResult = EndpointResult<typeof appendMessage>;
 
 /**
  * Typed references to the internal Convex functions the IMAP server calls,

@@ -21,7 +21,6 @@ import {
 	type credentialsUnavailableReasonValidator,
 	type getBackfillWork,
 	type getCredentialsForWorker,
-	type getSyncState,
 	type ingestExternalRaw,
 	type listConnectableAccounts,
 	type workerCredentialsValidator,
@@ -127,9 +126,6 @@ export function isMissingFunction(
 
 /** Summary row from listConnectableAccounts. */
 export type ConnectableAccount = EndpointResult<typeof listConnectableAccounts>[number];
-
-/** Folder resume cursor from getSyncState. */
-export type FolderCursor = EndpointResult<typeof getSyncState>[number];
 
 /**
  * Backfill work for an account from getBackfillWork: `migrationId` is the
