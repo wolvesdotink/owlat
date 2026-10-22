@@ -60,8 +60,9 @@ useHead(() => ({ htmlAttrs: localeHead.value.htmlAttrs }));
 		<ClientOnly>
 			<UiToast />
 			<!-- Slow-save notice, its Details dialog and the connection
-			     announcements; app pages only, like identity tracking. -->
-			<ShellBackendStatusHost v-if="identityTracking" />
+			     announcements; app pages only, like identity tracking. Lazy, so
+			     the entry bundle every page boots with stays out of it. -->
+			<LazyShellBackendStatusHost v-if="identityTracking" />
 			<PostboxArrivalUndoHost v-if="hasPendingArrivalUndo" />
 		</ClientOnly>
 	</div>
