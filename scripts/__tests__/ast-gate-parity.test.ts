@@ -207,7 +207,13 @@ const CASES: readonly ParityCase[] = [
 				'\t// log-pii-safe: the provider routing label, not a mailbox',
 				'\tfrom: payload.queueName,',
 				'});',
-				"await ctx.runMutation(internal.inbox.transition, { to: 'archived', from: args.from });"
+				"await ctx.runMutation(internal.inbox.transition, { to: 'archived', from: args.from });",
+				"logInfo('literal', { to: `ops@example.com` });"
+			),
+			// Both: a namespace import spelled `console` reads like the global.
+			'apps/api/convex/inbound/stdout.ts': lines(
+				"import * as console from 'node:console';",
+				"console.warn('sent', { to: address });"
 			),
 			// Only the rule: forms the line-based awk cannot see.
 			'apps/api/convex/inbound/missed.ts': lines(
@@ -217,7 +223,11 @@ const CASES: readonly ParityCase[] = [
 				"logInfo('long', {",
 				...Array.from({ length: 22 }, (_, index) => `\tfield${index}: ${index},`),
 				'\tsender: args.sender,',
-				'});'
+				'});',
+				"import { warn } from 'node:console';",
+				"import * as out from 'node:console';",
+				"warn('imported', { from: address });",
+				"out.error('namespace', { subject: s });"
 			),
 		},
 		onlyOld: [],
@@ -226,6 +236,8 @@ const CASES: readonly ParityCase[] = [
 			'apps/api/convex/inbound/missed.ts:2',
 			'apps/api/convex/inbound/missed.ts:3',
 			'apps/api/convex/inbound/missed.ts:27',
+			'apps/api/convex/inbound/missed.ts:31',
+			'apps/api/convex/inbound/missed.ts:32',
 		],
 	},
 	{

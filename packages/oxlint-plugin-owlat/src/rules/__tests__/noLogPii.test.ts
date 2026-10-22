@@ -101,6 +101,17 @@ ruleTester.run('owlat/no-log-pii', rule, {
 			code: 'console.table({ from: args.from });',
 		},
 		{
+			name: 'a method named like a console method from another module',
+			filename,
+			options,
+			code: [
+				"import { warn } from './sink';",
+				"import * as sink from './sink';",
+				"warn('x', { to: args.to });",
+				"sink.error('x', { from: args.from });",
+			].join('\n'),
+		},
+		{
 			name: 'a computed call',
 			filename,
 			options,
@@ -216,6 +227,52 @@ ruleTester.run('owlat/no-log-pii', rule, {
 			errors: ['to', 'from', 'subject', 'rcptTo', 'recipient', 'sender', 'address', 'email'].map(
 				reported
 			),
+		},
+		{
+			name: 'console methods through a namespace import spelled console',
+			filename,
+			options,
+			code: [
+				"import * as console from 'node:console';",
+				"console.warn('sent', { to: address });",
+			].join('\n'),
+			errors: [reported('to')],
+		},
+		{
+			name: 'console methods imported from the console module',
+			filename,
+			options,
+			code: [
+				"import { warn as w, error } from 'node:console';",
+				"import * as out from 'node:console';",
+				"import stdout from 'console';",
+				'const { log } = out;',
+				'const { info } = globalThis.console;',
+				'const alias = stdout;',
+				"w('sent', { to: address });",
+				"error('failed', { from: address });",
+				"out.debug('trace', { subject: s });",
+				"stdout.info('sent', { sender: s });",
+				"log('sent', { recipient: r });",
+				"info('sent', { email: e });",
+				"globalThis.console.error('x', { rcptTo: r });",
+				"alias.warn('x', { mailFrom: m });",
+			].join('\n'),
+			errors: ['to', 'from', 'subject', 'sender', 'recipient', 'email', 'rcptTo', 'mailFrom'].map(
+				reported
+			),
+		},
+		{
+			name: 'template literals without a redacted hole',
+			filename,
+			options,
+			code: [
+				"logInfo('sent', {",
+				'\tto: `ops@example.com`,',
+				'\tfrom: `${args.from}`,',
+				'});',
+			].join('\n'),
+			errors: [reported('to'), reported('from')],
 		},
 		{
 			name: 'log helpers under an import alias, a namespace or a local alias',

@@ -23,7 +23,8 @@ import type { AstNode, Context, Rule } from '../types.ts';
  *
  * Inside the arguments of a `logInfo` / `logWarn` / `logError` / `logDebug` /
  * `console.{log,info,warn,error,debug}` call (recognized through import
- * aliases, namespaces and local aliases), every object property keyed
+ * aliases, namespaces and local aliases, including the methods imported from
+ * `node:console`), every object property keyed
  * `from | to | subject | email | recipient | rcptTo | mailFrom | address |
  * sender` (plain, quoted or shorthand) must take its value through
  * `redactEmailAddress` / `redactEmailAddresses` / `redactSubject` /
@@ -66,6 +67,43 @@ const REDACTORS = new Set([
 /** Bound on alias chains and nested value shapes. */
 const MAX_DEPTH = 8;
 
+/** Modules whose exports are the console methods (`import { warn } from 'node:console'`). */
+const CONSOLE_MODULES = new Set(['console', 'node:console']);
+
+/**
+ * Whether `node` names the console object: any identifier spelled `console`
+ * (the global, or a namespace / default import of a console module under that
+ * name), `globalThis.console`, a namespace or default import of a console
+ * module under another name, or a local alias of any of these.
+ */
+const isConsoleObject = (context: Context, node: AstNode, depth = 0): boolean => {
+	const current = unwrap(node);
+	if (current?.type === 'MemberExpression') {
+		const object = unwrap(current.object as AstNode);
+		return (
+			memberName(current) === 'console' &&
+			object?.type === 'Identifier' &&
+			object.name === 'globalThis'
+		);
+	}
+	if (current?.type !== 'Identifier') return false;
+	if (current.name === 'console') return true;
+	const binding = bindingOf(context, current);
+	if (binding.type === 'import') {
+		return (
+			CONSOLE_MODULES.has(binding.source) &&
+			(binding.imported === '*' || binding.imported === 'default')
+		);
+	}
+	const local = declaratorOf(binding);
+	return (
+		local !== undefined &&
+		local.alias &&
+		depth < MAX_DEPTH &&
+		isConsoleObject(context, local.declarator.init as AstNode, depth + 1)
+	);
+};
+
 /**
  * The function a callee stands for, by binding rather than spelling: an
  * imported name through any alias or namespace, a member (`x.logInfo`,
@@ -81,12 +119,11 @@ const callTarget = (
 ): { name: string; onConsole: boolean } | undefined => {
 	const current = unwrap(callee);
 	const imported = importedThrough(context, current);
-	if (imported) return { name: imported.name, onConsole: false };
+	if (imported) return { name: imported.name, onConsole: CONSOLE_MODULES.has(imported.source) };
 	if (current?.type === 'MemberExpression') {
 		if (!members) return undefined;
 		const name = memberName(current);
-		const object = unwrap(current.object as AstNode);
-		const onConsole = object?.type === 'Identifier' && object.name === 'console';
+		const onConsole = isConsoleObject(context, current.object as AstNode);
 		return name === undefined ? undefined : { name, onConsole };
 	}
 	if (current?.type !== 'Identifier') return undefined;
@@ -99,8 +136,8 @@ const callTarget = (
 			);
 		}
 		const key = destructuredKey(local.declarator.id as AstNode, local.name);
-		if (members && key !== undefined && init?.type === 'Identifier') {
-			return { name: key, onConsole: init.name === 'console' };
+		if (members && key !== undefined && init) {
+			return { name: key, onConsole: isConsoleObject(context, init) };
 		}
 	}
 	return { name: current.name, onConsole: false };
@@ -170,8 +207,13 @@ const redacted = (context: Context, node: AstNode, depth = 0): boolean => {
 					redacted(context, element as AstNode, depth + 1)
 			);
 		case 'TemplateLiteral':
-			return current.expressions.every((expression) =>
-				redacted(context, expression as AstNode, depth + 1)
+			// A template without holes is a string literal and is judged like one;
+			// with holes, every hole must be redacted (the text between is source).
+			return (
+				current.expressions.length > 0 &&
+				current.expressions.every((expression) =>
+					redacted(context, expression as AstNode, depth + 1)
+				)
 			);
 		default:
 			return isNullish(context, current);
