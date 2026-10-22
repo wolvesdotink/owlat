@@ -70,5 +70,5 @@ if (import.meta.main) {
 		);
 		process.exit(1);
 	}
-	console.log('lint:no-pr-assets: no plans, PR evidence or harness files are tracked.');
+	process.stdout.write('lint:no-pr-assets: no plans, PR evidence or harness files are tracked.\n');
 }
