@@ -14,6 +14,7 @@
 
 import { v, type Infer } from 'convex/values';
 import { mergeExternalReceivingSpf } from '@owlat/shared/externalReceiving';
+import { canRetry, nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -192,7 +193,10 @@ export const run = internalAction({
 // rides out a transient provider outage; exhausting it is a permanent failure
 // that is surfaced (audit + `returnPathHostSyncError` marker), never swallowed.
 const RETURN_PATH_REFLECT_MAX_ATTEMPTS = 5;
-const RETURN_PATH_REFLECT_BASE_DELAY_MS = 30_000;
+const RETURN_PATH_REFLECT_RETRY: RetryPolicy = {
+	baseMs: 30_000,
+	maxAttempts: RETURN_PATH_REFLECT_MAX_ATTEMPTS,
+};
 const LIFECYCLE_USER_RETURN_PATH_PUSH = 'system:return_path_push';
 const LIFECYCLE_USER_SES_MAILFROM_REFLECT = 'system:ses_mailfrom_reflect';
 
@@ -307,8 +311,8 @@ async function runReturnPathReflection(
 	} catch (error) {
 		const message = error instanceof Error ? error.message : `Unknown ${tag} error`;
 		const nextAttempt = attempt + 1;
-		if (nextAttempt < RETURN_PATH_REFLECT_MAX_ATTEMPTS) {
-			const delayMs = RETURN_PATH_REFLECT_BASE_DELAY_MS * 2 ** attempt;
+		if (canRetry(RETURN_PATH_REFLECT_RETRY, nextAttempt)) {
+			const delayMs = nextDelay(RETURN_PATH_REFLECT_RETRY, attempt);
 			logError(
 				`[${tag}] Failed to reflect return-path host ${args.returnPathHost} for ${domain.domain} (attempt ${nextAttempt}/${RETURN_PATH_REFLECT_MAX_ATTEMPTS}), retrying in ${delayMs}ms:`,
 				message

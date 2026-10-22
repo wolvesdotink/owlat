@@ -6,6 +6,7 @@ import {
 	recordDomainFailure,
 	clearDomainFailure,
 } from '../degradation.js';
+import { durableEffectIdentity } from '../../lib/effectCheckpoint.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -128,6 +129,25 @@ describe('degradation', () => {
 				// equals the delay exactly.
 				expect(result.retryAfter).toBe(expected[i]);
 			}
+		});
+
+		it('the idempotent Lua path follows the same schedule as the TypeScript one', async () => {
+			const scheduleOf = async (domain: string, record: (n: number) => Promise<void>) => {
+				const delays: Array<number | undefined> = [];
+				for (let n = 0; n < 7; n++) {
+					await record(n);
+					delays.push((await shouldBackoffDomain(redis, domain)).retryAfter);
+				}
+				return delays;
+			};
+			const viaTypeScript = await scheduleOf('plain.com', () =>
+				recordDomainFailure(redis, 'plain.com')
+			);
+			const viaLua = await scheduleOf('lua.com', (n) =>
+				recordDomainFailure(redis, 'lua.com', durableEffectIdentity('smtp-attempt:parity', `${n}`))
+			);
+			expect(viaLua).toEqual(viaTypeScript);
+			expect(viaLua).toEqual([30_000, 60_000, 120_000, 240_000, 480_000, 600_000, 600_000]);
 		});
 
 		it('first failure backs off exactly 30s (the base)', async () => {

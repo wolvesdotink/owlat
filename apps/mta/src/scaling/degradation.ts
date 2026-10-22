@@ -11,20 +11,29 @@ import type { EmailJob } from '../types.js';
 import { isRedisHealthy } from '../redis.js';
 import { logger } from '../monitoring/logger.js';
 import { createHash } from 'crypto';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import {
 	DURABLE_EFFECT_IDEMPOTENCY_TTL_MS,
 	type DurableEffectIdentity,
 } from '../lib/effectCheckpoint.js';
 
 const BACKPRESSURE_QUEUE_THRESHOLD = 10_000;
-const DOMAIN_FAILURE_BASE_MS = 30_000;
-const DOMAIN_FAILURE_MAX_MS = 600_000;
+/** 30 s after the first failure, doubling per failure, capped at 10 min. */
+const DOMAIN_FAILURE_BACKOFF = {
+	baseMs: 30_000,
+	factor: 2,
+	capMs: 600_000,
+} as const satisfies RetryPolicy;
 const DOMAIN_FAILURE_PREFIX = 'mta:domain-fail:';
 
+// The idempotent path counts and schedules in one script, so the increment, the
+// receipt and the retry time stay atomic. It cannot call nextDelay; it takes
+// the same policy's numbers as arguments and evaluates the same curve
+// (base * factor ^ (count - 1), capped), which the parity test pins.
 const RECORD_DOMAIN_FAILURE_ONCE_LUA = `
 if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
 local count = redis.call('HINCRBY', KEYS[1], 'count', 1)
-local delay = math.min(tonumber(ARGV[2]) * (2 ^ (count - 1)), tonumber(ARGV[3]))
+local delay = math.min(tonumber(ARGV[2]) * (tonumber(ARGV[5]) ^ (count - 1)), tonumber(ARGV[3]))
 redis.call('HSET', KEYS[1], 'retryAt', tostring(tonumber(ARGV[1]) + delay))
 redis.call('PEXPIRE', KEYS[1], math.max(3600000, delay))
 redis.call('SET', KEYS[2], 'recorded', 'PX', ARGV[4])
@@ -126,9 +135,10 @@ export async function recordDomainFailure(
 			key,
 			domainFailureReceiptKey(domain, idempotencyIdentity),
 			String(Date.now()),
-			String(DOMAIN_FAILURE_BASE_MS),
-			String(DOMAIN_FAILURE_MAX_MS),
-			String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS)
+			String(DOMAIN_FAILURE_BACKOFF.baseMs),
+			String(DOMAIN_FAILURE_BACKOFF.capMs),
+			String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS),
+			String(DOMAIN_FAILURE_BACKOFF.factor)
 		)) as [number, number] | number;
 		if (!Array.isArray(result)) return;
 		logger.warn(
@@ -140,7 +150,7 @@ export async function recordDomainFailure(
 
 	const count = await redis.hincrby(key, 'count', 1);
 
-	const delay = Math.min(DOMAIN_FAILURE_BASE_MS * Math.pow(2, count - 1), DOMAIN_FAILURE_MAX_MS);
+	const delay = nextDelay(DOMAIN_FAILURE_BACKOFF, count - 1);
 	const retryAt = Date.now() + delay;
 
 	await redis.hset(key, 'retryAt', String(retryAt));
