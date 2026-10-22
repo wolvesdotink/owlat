@@ -15,7 +15,9 @@ import {
 	MAIL_SYNC_FIXTURE_CREDENTIALS,
 	MAIL_SYNC_LEGACY_WIRE_FIXTURES,
 	MAIL_SYNC_WIRE_FIXTURES,
+	type WireFixtureCase,
 } from '@owlat/worker-protocol/wireFixtures';
+import type { EndpointReturns } from '@owlat/worker-protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { checkedConvexClient, fetchWorkerCredentials, fn } from '../convex.js';
 import { decide } from '../remoteState.js';
@@ -40,10 +42,15 @@ async function readThroughClient(key: Endpoint, value: unknown): Promise<unknown
 			: await client.action(ref, {} as never);
 }
 
-function fixture<K extends Endpoint>(key: K, name: string) {
-	const found = MAIL_SYNC_WIRE_FIXTURES[key].find((c) => c.name === name);
+/** The value of one named fixture case, typed as what the endpoint returns. */
+function fixture<K extends Endpoint>(
+	key: K,
+	name: string
+): EndpointReturns<(typeof MAIL_SYNC_ENDPOINTS)[K]> {
+	const cases: readonly WireFixtureCase<unknown>[] = MAIL_SYNC_WIRE_FIXTURES[key];
+	const found = cases.find((c) => c.name === name);
 	if (!found) throw new Error(`no ${key} fixture named ${name}`);
-	return found.value;
+	return found.value as EndpointReturns<(typeof MAIL_SYNC_ENDPOINTS)[K]>;
 }
 
 describe('every mail-sync wire fixture reads back through the shipped client', () => {

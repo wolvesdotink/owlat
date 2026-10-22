@@ -16,7 +16,13 @@ import type { AnyWorkerEndpoint } from '@owlat/worker-protocol';
 import { v } from 'convex/values';
 import { describe, expect, it } from 'vitest';
 
-const sources = import.meta.glob(['../mail/**/*.ts', '../analytics/*.ts', '!**/__tests__/**']);
+const sources = {
+	...import.meta.glob('../mail/**/*.ts'),
+	...import.meta.glob('../analytics/*.ts'),
+};
+
+/** A validator's JSON form, what `exportArgs` / `exportReturns` serialize. */
+const jsonOf = (validator: unknown): unknown => (validator as { json: unknown }).json;
 
 interface RegisteredFunction {
 	isQuery?: boolean;
@@ -62,8 +68,8 @@ describe('worker-called functions use the wire contract', () => {
 							? 'action'
 							: null;
 				expect(kind).toBe(endpoint.kind);
-				expect(JSON.parse(fn.exportArgs())).toEqual(v.object(endpoint.args).json);
-				expect(JSON.parse(fn.exportReturns())).toEqual(endpoint.returns.json);
+				expect(JSON.parse(fn.exportArgs())).toEqual(jsonOf(v.object(endpoint.args)));
+				expect(JSON.parse(fn.exportReturns())).toEqual(jsonOf(endpoint.returns));
 			});
 		}
 	}

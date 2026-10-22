@@ -13,7 +13,6 @@
  * the worker's sweep is a no-op. Absence is a supported configuration.
  */
 
-import { v } from 'convex/values';
 import { internalQuery, type DatabaseReader } from '../_generated/server';
 import { CONNECTABLE_ACCOUNT_STATUSES, seedProviderOf } from '../mail/external/accountShared';
 import { getOptional } from '../lib/env';

@@ -17,7 +17,9 @@ import {
 	IMAP_FIXTURE_ENVELOPE_1,
 	IMAP_FIXTURE_ENVELOPE_2,
 	IMAP_WIRE_FIXTURES,
+	type WireFixtureCase,
 } from '@owlat/worker-protocol/wireFixtures';
+import type { EndpointReturns } from '@owlat/worker-protocol';
 import { getFunctionName } from 'convex/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { checkedConvexClient, fn, type ConvexClient } from '../convex.js';
@@ -45,11 +47,16 @@ async function readThroughClient(key: Endpoint, value: unknown): Promise<unknown
 			: await client.action(ref, {} as never);
 }
 
-const fixture = <K extends Endpoint>(key: K, name: string) => {
-	const found = IMAP_WIRE_FIXTURES[key].find((c) => c.name === name);
+/** The value of one named fixture case, typed as what the endpoint returns. */
+function fixture<K extends Endpoint>(
+	key: K,
+	name: string
+): EndpointReturns<(typeof IMAP_ENDPOINTS)[K]> {
+	const cases: readonly WireFixtureCase<unknown>[] = IMAP_WIRE_FIXTURES[key];
+	const found = cases.find((c) => c.name === name);
 	if (!found) throw new Error(`no ${key} fixture named ${name}`);
-	return found.value;
-};
+	return found.value as EndpointReturns<(typeof IMAP_ENDPOINTS)[K]>;
+}
 
 describe('every IMAP wire fixture reads back through the shipped client', () => {
 	for (const key of Object.keys(IMAP_ENDPOINTS) as Endpoint[]) {

@@ -3,7 +3,7 @@
  * shape, with document ids as the plain strings they are on the wire.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
 	defineEndpoint,
@@ -13,7 +13,7 @@ import {
 	type Wire,
 } from '../contract';
 import { getCredentialsForWorker } from '../mailSync/accounts';
-import { fetchEnvelopes } from '../imap/fetch';
+import type { fetchEnvelopes } from '../imap/fetch';
 
 describe('defineEndpoint', () => {
 	it('accepts what it returns unless told otherwise', () => {
@@ -41,7 +41,7 @@ describe('Wire', () => {
 			v.null(),
 			v.object({ ids: v.array(v.id('mailMessages')), one: v.optional(v.id('mailFolders')) })
 		);
-		expectTypeOf<Wire<import('convex/values').Infer<typeof validator>>>().toEqualTypeOf<null | {
+		expectTypeOf<Wire<Infer<typeof validator>>>().toEqualTypeOf<null | {
 			ids: string[];
 			one?: string;
 		}>();

@@ -67,7 +67,6 @@ import { claimExternalAddress, provisionExternalMailbox } from './connectMailbox
 import { stopExternalAccountSync, prepareAccountPurge } from './accountTeardown';
 import { markOnboardingStep } from '../../auth/userOnboarding';
 import { throwForbidden, throwAlreadyExists, throwNotFound } from '../../_utils/errors';
-import { externalAccountStatusValidator } from '../../schema/mailAccounts';
 import {
 	listConnectableAccounts as listConnectableAccountsContract,
 	setSyncStatus as setSyncStatusContract,

@@ -19,7 +19,6 @@
  * Split out of `mail/migration.ts` under CONVENTIONS.md's ~500-LOC ceiling.
  */
 
-import { v } from 'convex/values';
 import {
 	completeBackfillImport as completeBackfillImportContract,
 	findKnownMessageIds as findKnownMessageIdsContract,

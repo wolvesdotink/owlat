@@ -43,7 +43,9 @@ function rawMessage(messageId: string): { bytes: Buffer; base64: string } {
 
 async function ingest(w: MailSyncWireWorld, messageId: string, accountId = w.accountId) {
 	const raw = rawMessage(messageId);
-	const rawStorageId = await w.t.run((ctx) => ctx.storage.store(new Blob([raw.bytes])));
+	const rawStorageId = await w.t.run((ctx) =>
+		ctx.storage.store(new Blob([new Uint8Array(raw.bytes)]))
+	);
 	return await w.t.action(internal.mail.external.delivery.ingestExternalRaw, {
 		accountId,
 		folderRole: 'inbox',
