@@ -12,6 +12,7 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
+import type * as SessionOrganization from '../lib/sessionOrganization';
 
 const sessionMock = vi.hoisted(() => ({
 	user: { id: 'user-owner', role: 'owner' as 'owner' | 'admin' | 'editor' },
@@ -23,9 +24,7 @@ const setUser = (id: string, role: 'owner' | 'admin' | 'editor' = 'owner') => {
 };
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<typeof SessionOrganization>('../lib/sessionOrganization');
 	return {
 		...actual,
 		requireOrgMember: vi.fn().mockImplementation(async () => ({
