@@ -30,6 +30,7 @@
  * rollout's doing: it is reported as a warning and does not hold the verdict.
  */
 import { parseComposePs, type ComposeService } from '@owlat/shared/containerHealth';
+import { nextDelay } from '@owlat/shared/retryPolicy';
 import { exec, OWLAT_DIR } from './http.js';
 import { shutdownSignal } from './lifecycle.js';
 import { parseHealthCadence, type HealthCadence } from './healthCadence.js';
@@ -255,7 +256,9 @@ export async function waitForReadiness(
 	const cadence = (await probe.cadence?.()) ?? new Map<string, HealthCadence>();
 	const started = clock.now();
 	let deadline = started + clock.timeoutMs;
-	let delay = clock.firstPollMs;
+	const pollBackoff = { baseMs: clock.firstPollMs, capMs: clock.maxPollMs };
+	// Unsettled polls so far: each one doubles the next unsettled wait.
+	let polls = 0;
 	let settled = false;
 	let lastProblem = 'not checked';
 	let lastVerdicts: ServiceVerdict[] = [];
@@ -322,10 +325,10 @@ export async function waitForReadiness(
 			}
 		}
 
-		const wait = settled ? clock.settleMs : delay;
+		const wait = settled ? clock.settleMs : nextDelay(pollBackoff, polls);
 		if (clock.now() + wait > deadline) break;
 		await sleepUnlessAborted(clock, wait, context.signal);
-		if (!settled) delay = Math.min(delay * 2, clock.maxPollMs);
+		if (!settled) polls++;
 	}
 
 	const seconds = Math.round((clock.now() - started) / 1000);

@@ -82,6 +82,10 @@
 			"types": "./src/inboxRetry.ts",
 			"import": "./src/inboxRetry.ts"
 		},
+		"./retryPolicy": {
+			"types": "./src/retryPolicy.ts",
+			"import": "./src/retryPolicy.ts"
+		},
 		"./sunsetPolicy": {
 			"types": "./src/sunsetPolicy.ts",
 			"import": "./src/sunsetPolicy.ts"
