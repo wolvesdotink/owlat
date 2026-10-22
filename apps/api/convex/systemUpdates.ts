@@ -10,7 +10,9 @@
  *      `recordUpdateStart` / `recordUpdateFinish` mutations below.
  *   3. UI calls `listUpdateHistory` to render the history table.
  *
- * Gating: every function here is platform-admin only.
+ * Gating: every function here is platform-admin only, except
+ * `getRolloutActivity`, which tells any member no more than when the running
+ * update started.
  *
  * WHY THE TWO RECORD MUTATIONS ARE PUBLIC, NOT INTERNAL
  * -----------------------------------------------------
@@ -29,7 +31,8 @@
  * accepted as an argument.
  */
 import { v } from 'convex/values';
-import { platformAdminMutation, platformAdminQuery } from './lib/authedFunctions';
+import { platformAdminMutation, platformAdminQuery, publicQuery } from './lib/authedFunctions';
+import { isActiveOrgMember } from './lib/sessionOrganization';
 import { updateStepResultValidator } from './lib/convexValidators';
 import { throwNotFound } from './_utils/errors';
 import { successOrFailedValidator } from './lib/literalValidators';
@@ -283,6 +286,31 @@ export const getUnfinishedUpdate = platformAdminQuery({
 			.take(1);
 		if (!newest || newest.status !== 'running') return null;
 		return { runId: newest._id, versionTo: newest.versionTo ?? null };
+	},
+});
+
+/**
+ * When the update that is rolling out right now started, or `null`.
+ *
+ * The app shell reads this while connected so that, when the rollout restarts
+ * the backend and the socket drops, it can say "update in progress" instead of
+ * "connection lost". Only the start time leaves here: versions, the initiating
+ * admin and step logs stay platform-admin only. The client ages the answer out
+ * (an orphaned `running` row outlives its rollout, see `getUnfinishedUpdate`),
+ * because a query cannot depend on the clock.
+ */
+// public: the app shell subscribes before it knows the caller is a member; an anonymous or non-member caller gets null instead of an error.
+export const getRolloutActivity = publicQuery({
+	args: {},
+	handler: async (ctx) => {
+		if (!(await isActiveOrgMember(ctx))) return null;
+		const [newest] = await ctx.db
+			.query('systemUpdates')
+			.withIndex('by_kind_and_startedAt', (q) => q.eq('kind', 'updateRun'))
+			.order('desc')
+			.take(1);
+		if (!newest || newest.status !== 'running' || newest.startedAt === undefined) return null;
+		return { startedAt: newest.startedAt };
 	},
 });
 

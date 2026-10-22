@@ -678,6 +678,41 @@ describe('drain on reconnect', () => {
 	});
 });
 
+describe('app-wide saved notice', () => {
+	/** One slow write, settled: how the app-wide episode ends with the outbox as it is. */
+	async function slowEpisodeOutcome(): Promise<string[]> {
+		const { onSlowEpisodeEnd, trackPendingOperation, SLOW_OPERATION_MS } =
+			await import('~/lib/pendingOperations');
+		const outcomes: string[] = [];
+		const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			const settle = trackPendingOperation(() => 'Archive');
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			settle(true);
+		} finally {
+			vi.useRealTimers();
+			stop();
+		}
+		return outcomes;
+	}
+
+	it('a queued send vetoes "all changes saved" until the drain has sent it', async () => {
+		const composer = await makeComposer({ subject: 'Queued' });
+		goOffline();
+		await composer.send();
+
+		expect(await slowEpisodeOutcome()).toEqual(['unconfirmed']);
+
+		const outbox = await makeOutbox();
+		goOnline();
+		await outbox.drain();
+		expect(outbox.queuedCount.value).toBe(0);
+
+		expect(await slowEpisodeOutcome()).toEqual(['saved']);
+	});
+});
+
 describe('online path', () => {
 	it('is byte-identical to today: same mutations, same args, outbox untouched', async () => {
 		const composer = await makeComposer({ subject: 'Plain online send' });

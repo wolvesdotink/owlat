@@ -17548,6 +17548,23 @@
 			"lost": "Your data stopped loading. Reload the page to reconnect.",
 			"reload": "Reload"
 		},
+		"backendStatus": {
+			"connecting": "Connecting…",
+			"reconnecting": "Reconnecting…",
+			"updating": "Update in progress",
+			"connectingHint": "Owlat is connecting to the server. Changes you make are sent once it is connected.",
+			"reconnectingHint": "The connection to the server dropped. Owlat keeps trying; changes you make are sent once it is back.",
+			"updatingHint": "Owlat is installing an update and reconnects by itself when it is done. Changes you make are sent then.",
+			"reconnected": "Connected again",
+			"slowSave": "Saving is taking longer than usual",
+			"details": "Details",
+			"detailsTitle": "Waiting for the server",
+			"detailsIntro": "The server has not confirmed these changes yet. They are sent as soon as it answers; keep this page open until then.",
+			"waitingSince": "Waiting since {time}",
+			"changeCount": "{count} change | {count} changes",
+			"nothingWaiting": "Nothing is waiting to be saved.",
+			"allSaved": "All changes saved"
+		},
 		"format": {
 			"never": "Never",
 			"invalidDate": "Invalid date",

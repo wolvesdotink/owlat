@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { isActiveOrgMember } from '../lib/sessionOrganization';
 
 const sessionMock = vi.hoisted(() => ({ subject: 'admin-user' }));
 
@@ -293,6 +294,71 @@ describe('systemUpdates.getUnfinishedUpdate', () => {
 		);
 
 		expect(await t.query(api.systemUpdates.getUnfinishedUpdate, {})).toBeNull();
+	});
+});
+
+/**
+ * The member-facing projection the app shell reads so a socket drop during an
+ * update can say "update in progress". Members are not platform admins, so the
+ * gate is org membership and the answer carries nothing but a start time.
+ */
+describe('systemUpdates.getRolloutActivity', () => {
+	it('answers null, not an error, to a caller who is not an active member', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.2',
+			versionTo: '0.5.3',
+		});
+		vi.mocked(isActiveOrgMember).mockResolvedValueOnce(false);
+
+		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toBeNull();
+	});
+
+	it('gives an ordinary member only the running update’s start time', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.2',
+			versionTo: '0.5.3',
+		});
+		const run = await t.run(async (ctx) =>
+			ctx.db
+				.query('systemUpdates')
+				.withIndex('by_kind_and_status', (q) => q.eq('kind', 'updateRun').eq('status', 'running'))
+				.first()
+		);
+		// No platformAdmins row for this caller: the query must not need one.
+		setCaller('member-user');
+
+		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toEqual({
+			startedAt: run?.startedAt,
+		});
+	});
+
+	it('answers null once the newest run has a verdict', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const runId = await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.2',
+			versionTo: '0.5.3',
+		});
+		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId, status: 'success' });
+
+		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toBeNull();
+	});
+
+	it('answers null with no update history and ignores the release-check singleton', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) =>
+			ctx.db.insert('systemUpdates', {
+				kind: 'latestCheck',
+				latestVersion: '0.5.3',
+				checkedAt: Date.now(),
+			})
+		);
+
+		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toBeNull();
 	});
 });
 

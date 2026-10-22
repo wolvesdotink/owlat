@@ -3,6 +3,7 @@ import type { MutationOptions, OptimisticUpdate } from 'convex/browser';
 import type { Ref } from 'vue';
 import type { OperationError } from '@owlat/shared/operationError';
 import { normalizeToOperationError, categoryTreatment, operationCopy } from '~/lib/operationError';
+import { trackPendingOperation } from '~/lib/pendingOperations';
 
 export interface BackendOperationOptions {
 	/**
@@ -250,8 +251,20 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		}
 
 		isLoading.value = true;
+		// Writes only: an action can legitimately run for a long time (an AI
+		// draft, an external API), and calling that "saving is slow" would be
+		// wrong. A mutation that has not answered in seconds is waiting on the
+		// connection, and the app-wide notice says so (lib/pendingOperations.ts).
+		const settle =
+			opts.type === 'action'
+				? undefined
+				: trackPendingOperation(() =>
+						typeof opts.label === 'function' ? opts.label() : opts.label
+					);
+		let succeeded = false;
 		try {
 			const result = await send(client, args, runOpts);
+			succeeded = true;
 			// The one place every successful write in the app passes through, which
 			// is why the announcement lives here rather than at several hundred
 			// call sites that would each have to remember it. The label is the same
@@ -267,6 +280,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 			return { ok: false };
 		} finally {
 			isLoading.value = false;
+			settle?.(succeeded);
 		}
 	};
 

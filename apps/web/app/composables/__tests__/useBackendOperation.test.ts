@@ -1,5 +1,5 @@
 import de from '~~/i18n/locales/de.json';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref } from 'vue';
 import { ConvexError } from 'convex/values';
 import { useI18n } from 'vue-i18n';
@@ -7,6 +7,12 @@ import { useAnnounce } from '../useAnnounce';
 import { useBackendOperation } from '../useBackendOperation';
 import { createTestI18n } from '~/__tests__/i18n';
 import { withSetup } from '~/__tests__/withSetup';
+import {
+	onSlowEpisodeEnd,
+	resetPendingOperations,
+	slowOperations,
+	SLOW_OPERATION_MS,
+} from '~/lib/pendingOperations';
 
 /** The real catalog behind the `useI18n` auto-import the composable calls. */
 const i18n = createTestI18n();
@@ -373,6 +379,103 @@ describe('useBackendOperation', () => {
 
 			expect(result).toEqual({ ok: false });
 			expect(showToast).toHaveBeenCalledWith('Something went wrong. Please try again.', 'error');
+		});
+	});
+	/**
+	 * Every mutation run is registered app-wide, so the shell can say when
+	 * saving is slow and confirm when it landed (lib/pendingOperations.ts).
+	 */
+	describe('pending-operation tracking', () => {
+		afterEach(() => {
+			resetPendingOperations();
+			vi.useRealTimers();
+		});
+
+		/** A promise the test settles by hand, so nothing waits on the real clock. */
+		function deferred<T>() {
+			let resolve!: (value: T) => void;
+			let reject!: (error: unknown) => void;
+			const promise = new Promise<T>((res, rej) => {
+				resolve = res;
+				reject = rej;
+			});
+			return { promise, resolve, reject };
+		}
+
+		it('lists a mutation still pending after the threshold, under its current label', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			let label = 'Archive';
+			const { run } = build(fakeOp, { label: () => label });
+
+			const result = run({});
+			label = 'Archivieren';
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			expect(slowOperations.value.map((op) => op.label)).toEqual(['Archivieren']);
+
+			pending.resolve({ ok: 1 });
+			await result;
+			expect(slowOperations.value).toEqual([]);
+		});
+
+		it('settles overlapping runs of one operation independently', async () => {
+			vi.useFakeTimers();
+			const first = deferred<unknown>();
+			const second = deferred<unknown>();
+			mutation.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run, isLoading } = build(fakeOp, { label: 'save' });
+
+			const a = run({});
+			const b = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			expect(slowOperations.value).toHaveLength(2);
+
+			first.resolve(1);
+			await a;
+			// The shared loading flag already reads false; the registry still knows b.
+			expect(isLoading.value).toBe(false);
+			expect(slowOperations.value).toHaveLength(1);
+			expect(outcomes).toEqual([]);
+
+			second.resolve(2);
+			await b;
+			expect(outcomes).toEqual(['saved']);
+			stop();
+		});
+
+		it('records a rejected mutation as failed, after its error treatment', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, { label: 'save' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			pending.reject(new ConvexError({ category: 'forbidden', message: 'No' }));
+
+			expect(await result).toEqual({ ok: false });
+			expect(showToast).toHaveBeenCalledWith(expect.any(String), 'error');
+			expect(outcomes).toEqual(['failed']);
+			stop();
+		});
+
+		it('leaves actions out: a long AI or provider call is not slow saving', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			action.mockReturnValue(pending.promise);
+			const { run } = build(fakeOp, { label: 'draft', type: 'action' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS * 3);
+			expect(slowOperations.value).toEqual([]);
+
+			pending.resolve('done');
+			await result;
 		});
 	});
 });

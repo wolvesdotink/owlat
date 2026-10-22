@@ -14,7 +14,9 @@
  *     prop; /desktop/welcome has none and omits it), so the pill can never
  *     dispatch into the void. It collapses to a bare icon on narrow windows so
  *     the drag region survives.
- *   - RIGHT: the Postbox notifications affordance — always present while a
+ *   - RIGHT: the backend connection indicator while the connection is down
+ *     (`ShellConnectionIndicator`, nothing while connected), then the Postbox
+ *     notifications affordance — always present while a
  *     workspace is active (quiet inbox icon at zero; brand count pill when
  *     something awaits), deep-linking to the Postbox Today view's "For you"
  *     section. On win/linux the custom minimize / maximize / close controls sit
@@ -33,6 +35,7 @@
  */
 import { formatBadgeCount } from '~/lib/desktop/workspaceTypes';
 import DesktopWorkspaceMenu from './WorkspaceMenu.vue';
+import ShellConnectionIndicator from '~/components/shell/ConnectionIndicator.vue';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 /** `showSearch`: the mounting surface has a command palette listening. */
@@ -144,7 +147,8 @@ function openForYou(): void {
 		     present while a workspace is active: a quiet inbox icon when nothing
 		     awaits, the brand count pill when something does. -->
 		<div class="ml-auto flex items-stretch self-stretch" data-tauri-drag-region>
-			<div class="flex items-center pr-1" data-tauri-drag-region>
+			<div class="flex items-center gap-2 pr-1" data-tauri-drag-region>
+				<ShellConnectionIndicator drag-region />
 				<NuxtLink
 					v-if="active"
 					to="/dashboard/postbox/inbox#postbox-for-you"
