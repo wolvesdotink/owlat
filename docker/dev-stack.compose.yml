@@ -14,8 +14,9 @@ services:
     build:
       context: .
       dockerfile: convex-backend.Dockerfile
-    # The build is one cached FROM line; building skips a doomed registry pull
-    # (no `dev` tag is ever published).
+    # Built on every start: the build is one cached FROM line, it follows a pin
+    # bump in the Dockerfile, and it skips a doomed registry pull (no `dev` tag
+    # is ever published).
     pull_policy: build
     # The backend listens on the same port numbers inside the container as on
     # the host. Actions call back into the backend through CONVEX_CLOUD_ORIGIN,

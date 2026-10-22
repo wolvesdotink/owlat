@@ -5,6 +5,7 @@
  *   bun run dev:stack down [--volumes]   stop this checkout's containers
  *   bun run dev:stack status             ports and container state
  *   bun run dev:stack ports              the resolved ports only
+ *   bun run dev:stack logs [convex|redis] [--follow]   container logs
  *
  * `up` starts the Convex backend and Redis in a Compose project of their own,
  * pushes the functions, seeds demo data, then runs the Convex watcher and
@@ -213,6 +214,18 @@ async function status(): Promise<number> {
 	return 0;
 }
 
+const SERVICES = ['convex', 'redis'];
+
+async function logs(service: string | undefined, follow: boolean): Promise<number> {
+	writeComposeEnv();
+	const args = ['logs', '--tail', '200', ...(follow ? ['--follow'] : [])];
+	await run('docker', composeArgs(...args, ...(service ? [service] : [])));
+	return 0;
+}
+
+const USAGE =
+	'Usage: bun run dev:stack [up [--no-seed] | down [--volumes] | status | ports | logs [convex|redis] [--follow]]';
+
 async function main(argv: string[]): Promise<number> {
 	config = resolveDevStackConfig({
 		explicit: process.env['OWLAT_PORT_OFFSET'],
@@ -226,11 +239,16 @@ async function main(argv: string[]): Promise<number> {
 		down: ['--volumes'],
 		status: [],
 		ports: [],
+		logs: ['--follow'],
 	};
 	const allowed = known[command];
 	const unknown = [...flags].filter((flag) => !allowed?.includes(flag));
-	if (flags.has('--help') || flags.has('-h') || !allowed || rest.length > 0 || unknown.length > 0) {
-		console.log('Usage: bun run dev:stack [up [--no-seed] | down [--volumes] | status | ports]');
+	const badArgs =
+		command === 'logs'
+			? rest.length > 1 || (rest[0] !== undefined && !SERVICES.includes(rest[0]))
+			: rest.length > 0;
+	if (flags.has('--help') || flags.has('-h') || !allowed || badArgs || unknown.length > 0) {
+		console.log(USAGE);
 		return flags.has('--help') || flags.has('-h') ? 0 : 2;
 	}
 	switch (command) {
@@ -241,6 +259,8 @@ async function main(argv: string[]): Promise<number> {
 		case 'ports':
 			console.log(describePorts(config));
 			return 0;
+		case 'logs':
+			return logs(rest[0], flags.has('--follow'));
 		default:
 			return up(!flags.has('--no-seed'));
 	}
