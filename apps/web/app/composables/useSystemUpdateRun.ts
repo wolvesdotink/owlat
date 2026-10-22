@@ -1,5 +1,7 @@
+import { getCurrentScope, onScopeDispose, watch } from 'vue';
 import { api } from '@owlat/api';
 import { apiFetch } from '~/lib/csrfFetch';
+import { ROLLOUT_HEARTBEAT_MS } from '~/lib/backendConnection';
 import {
 	isStartedRollout,
 	isUpdaterRefusal,
@@ -87,6 +89,37 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 
 	// A run is in flight until the progress card or the route reaches a verdict.
 	const updateInProgress = computed(() => updateState.value === 'running');
+
+	/*
+	 * While this tab follows a rollout, it tells the backend so every member's
+	 * shell can name the coming restart "update in progress" (see
+	 * `systemUpdates.recordUpdateActivity`). The open run row alone cannot say
+	 * that: it outlives its rollout. Best-effort and single-flight, so the beats
+	 * the client queues while the backend restarts do not pile up.
+	 */
+	let heartbeat: ReturnType<typeof setInterval> | undefined;
+	let beatInFlight = false;
+	async function beat() {
+		if (!convex || beatInFlight) return;
+		beatInFlight = true;
+		try {
+			await convex.mutation(api.systemUpdates.recordUpdateActivity, {});
+		} catch {
+			// Evidence for a status line, not part of the update: a missed beat
+			// only means a drop may read "reconnecting" instead.
+		} finally {
+			beatInFlight = false;
+		}
+	}
+	function stopHeartbeat() {
+		clearInterval(heartbeat);
+		heartbeat = undefined;
+	}
+	watch(updateInProgress, (running) => {
+		stopHeartbeat();
+		if (running) heartbeat = setInterval(() => void beat(), ROLLOUT_HEARTBEAT_MS);
+	});
+	if (getCurrentScope()) onScopeDispose(stopHeartbeat);
 
 	function startUpdate() {
 		// Starting over mid-run would swap the progress card for a confirm, and

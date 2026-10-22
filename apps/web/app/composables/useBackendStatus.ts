@@ -1,5 +1,5 @@
 import { backendConnectionPhase, type BackendConnectionPhase } from '~/lib/backendConnection';
-import { slowOperations } from '~/lib/pendingOperations';
+import { slowOperationCount, slowOperations } from '~/lib/pendingOperations';
 
 const LABEL_KEYS: Record<NonNullable<BackendConnectionPhase>, string> = {
 	connecting: 'shared.backendStatus.connecting',
@@ -26,5 +26,5 @@ export function useBackendStatus() {
 	const label = computed(() => (phase.value ? t(LABEL_KEYS[phase.value]) : ''));
 	/** The sentence behind it: what is happening and what happens to changes. */
 	const hint = computed(() => (phase.value ? t(HINT_KEYS[phase.value]) : ''));
-	return { phase, label, hint, slowOperations };
+	return { phase, label, hint, slowOperationCount, slowOperations };
 }

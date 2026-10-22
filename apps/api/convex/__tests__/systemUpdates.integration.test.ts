@@ -300,7 +300,8 @@ describe('systemUpdates.getUnfinishedUpdate', () => {
 /**
  * The member-facing projection the app shell reads so a socket drop during an
  * update can say "update in progress". Members are not platform admins, so the
- * gate is org membership and the answer carries nothing but a start time.
+ * gate is org membership and the answer carries nothing but one timestamp: the
+ * last heartbeat, or the start before the first one.
  */
 describe('systemUpdates.getRolloutActivity', () => {
 	it('answers null, not an error, to a caller who is not an active member', async () => {
@@ -315,7 +316,7 @@ describe('systemUpdates.getRolloutActivity', () => {
 		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toBeNull();
 	});
 
-	it('gives an ordinary member only the running update’s start time', async () => {
+	it('gives an ordinary member only the running update’s start time before any heartbeat', async () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
 		await t.mutation(api.systemUpdates.recordUpdateStart, {
@@ -332,7 +333,7 @@ describe('systemUpdates.getRolloutActivity', () => {
 		setCaller('member-user');
 
 		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toEqual({
-			startedAt: run?.startedAt,
+			activeAt: run?.startedAt,
 		});
 	});
 
@@ -359,6 +360,75 @@ describe('systemUpdates.getRolloutActivity', () => {
 		);
 
 		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toBeNull();
+	});
+});
+
+/**
+ * The heartbeat of the admin tab that follows a rollout. It is what makes the
+ * members' "update in progress" honest: an open run row alone may be an orphan
+ * whose rollout ended long ago, a heartbeat that keeps moving is not.
+ */
+describe('systemUpdates.recordUpdateActivity', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function openRun(t: ReturnType<typeof convexTest>) {
+		return await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.2',
+			versionTo: '0.5.3',
+		});
+	}
+
+	it('moves the open run’s activity on, which is all members see', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-10-22T09:00:00Z'));
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const runId = await openRun(t);
+		const started = await t.query(api.systemUpdates.getRolloutActivity, {});
+
+		vi.setSystemTime(new Date('2026-10-22T09:00:30Z'));
+		await t.mutation(api.systemUpdates.recordUpdateActivity, {});
+
+		const after = await t.query(api.systemUpdates.getRolloutActivity, {});
+		expect(after).toEqual({ activeAt: Date.parse('2026-10-22T09:00:30Z') });
+		expect(after).not.toEqual(started);
+		const row = await t.run(async (ctx) => ctx.db.get(runId));
+		expect(row?.lastActivityAt).toBe(Date.parse('2026-10-22T09:00:30Z'));
+		expect(row?.status).toBe('running');
+	});
+
+	it('leaves a run with a verdict alone, so a late beat cannot reopen it', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const runId = await openRun(t);
+		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId, status: 'success' });
+
+		await t.mutation(api.systemUpdates.recordUpdateActivity, {});
+
+		const row = await t.run(async (ctx) => ctx.db.get(runId));
+		expect(row?.lastActivityAt).toBeUndefined();
+		expect(row?.status).toBe('success');
+		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toBeNull();
+	});
+
+	it('does nothing without update history', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+
+		await expect(t.mutation(api.systemUpdates.recordUpdateActivity, {})).resolves.toBeNull();
+	});
+
+	it('refuses a caller who is not a platform admin', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const runId = await openRun(t);
+		setCaller('member-user');
+
+		await expect(t.mutation(api.systemUpdates.recordUpdateActivity, {})).rejects.toThrow();
+		const row = await t.run(async (ctx) => ctx.db.get(runId));
+		expect(row?.lastActivityAt).toBeUndefined();
 	});
 });
 

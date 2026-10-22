@@ -83,6 +83,8 @@ describe('ConnectionIndicator', () => {
 	});
 
 	it('says an update is in progress when the drop comes during one', async () => {
+		// The run opened while this tab watched (no run, then one).
+		reportRolloutActivity(null);
 		reportRolloutActivity(Date.now());
 		const wrapper = render();
 		await dropFor(CONNECTION_GRACE_MS);

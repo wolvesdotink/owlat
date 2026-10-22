@@ -12,7 +12,7 @@
  *
  * Gating: every function here is platform-admin only, except
  * `getRolloutActivity`, which tells any member no more than when the running
- * update started.
+ * update last showed activity.
  *
  * WHY THE TWO RECORD MUTATIONS ARE PUBLIC, NOT INTERNAL
  * -----------------------------------------------------
@@ -290,14 +290,40 @@ export const getUnfinishedUpdate = platformAdminQuery({
 });
 
 /**
- * When the update that is rolling out right now started, or `null`.
+ * Mark the open update run as still rolling out.
+ *
+ * The admin tab following a rollout calls this every
+ * `ROLLOUT_HEARTBEAT_MS` until it has the updater's verdict. It is the only
+ * live evidence there is: the row's `running` status is not, because the
+ * happy path orphans it (see `getUnfinishedUpdate`) and a closed tab leaves it
+ * open for good. A run that already has a verdict, or was superseded, is left
+ * alone, so a heartbeat queued while the socket was down cannot reopen it.
+ *
+ * Platform-admin only, and public because the admin's browser calls it.
+ */
+export const recordUpdateActivity = platformAdminMutation({
+	args: {},
+	handler: async (ctx) => {
+		const [newest] = await ctx.db
+			.query('systemUpdates')
+			.withIndex('by_kind_and_startedAt', (q) => q.eq('kind', 'updateRun'))
+			.order('desc')
+			.take(1);
+		if (!newest || newest.status !== 'running') return;
+		await ctx.db.patch(newest._id, { lastActivityAt: Date.now() });
+	},
+});
+
+/**
+ * The open update run's last confirmed activity, or `null` when no run is open.
  *
  * The app shell reads this while connected so that, when the rollout restarts
  * the backend and the socket drops, it can say "update in progress" instead of
- * "connection lost". Only the start time leaves here: versions, the initiating
- * admin and step logs stay platform-admin only. The client ages the answer out
- * (an orphaned `running` row outlives its rollout, see `getUnfinishedUpdate`),
- * because a query cannot depend on the clock.
+ * "connection lost". `activeAt` is the last heartbeat (`recordUpdateActivity`),
+ * or the start for a run that has none yet. The shell trusts it only while it
+ * sees it advance: an orphaned `running` row answers here too, but its value
+ * never changes again. Only that timestamp leaves here: versions, the
+ * initiating admin and step logs stay platform-admin only.
  */
 // public: the app shell subscribes before it knows the caller is a member; an anonymous or non-member caller gets null instead of an error.
 export const getRolloutActivity = publicQuery({
@@ -309,8 +335,10 @@ export const getRolloutActivity = publicQuery({
 			.withIndex('by_kind_and_startedAt', (q) => q.eq('kind', 'updateRun'))
 			.order('desc')
 			.take(1);
-		if (!newest || newest.status !== 'running' || newest.startedAt === undefined) return null;
-		return { startedAt: newest.startedAt };
+		if (!newest || newest.status !== 'running') return null;
+		const activeAt = newest.lastActivityAt ?? newest.startedAt;
+		if (activeAt === undefined) return null;
+		return { activeAt };
 	},
 });
 

@@ -142,11 +142,14 @@ watch(
 <template>
 	<div
 		ref="card"
+		:data-toast-id="toast.id"
 		:class="[
 			'pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border w-full min-w-0 max-w-md sm:min-w-[280px]',
 			style.container,
 		]"
 	>
+		<!-- data-toast-id lets a caller find its own toast's action, e.g. to hand
+		     focus back to it after a dialog the action opened has closed. -->
 		<!-- Icon -->
 		<div
 			:class="[

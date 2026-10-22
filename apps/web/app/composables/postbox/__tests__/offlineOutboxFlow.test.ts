@@ -681,15 +681,23 @@ describe('drain on reconnect', () => {
 describe('app-wide saved notice', () => {
 	/** One slow write, settled: how the app-wide episode ends with the outbox as it is. */
 	async function slowEpisodeOutcome(): Promise<string[]> {
-		const { onSlowEpisodeEnd, trackPendingOperation, SLOW_OPERATION_MS } =
-			await import('~/lib/pendingOperations');
+		const {
+			onSlowEpisodeEnd,
+			resetPendingOperations,
+			trackPendingOperation,
+			SLOW_OPERATION_MS,
+			EPISODE_QUIET_MS,
+		} = await import('~/lib/pendingOperations');
+		// Writes earlier cases left unanswered would keep the episode open.
+		resetPendingOperations();
 		const outcomes: string[] = [];
 		const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
-		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
 		try {
 			const settle = trackPendingOperation(() => 'Archive');
 			vi.advanceTimersByTime(SLOW_OPERATION_MS);
 			settle(true);
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
 		} finally {
 			vi.useRealTimers();
 			stop();

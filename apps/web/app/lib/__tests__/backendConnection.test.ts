@@ -5,7 +5,9 @@ import {
 	CONNECTION_GRACE_MS,
 	reportRolloutActivity,
 	resetBackendConnection,
+	ROLLOUT_ACTIVITY_FRESH_MS,
 	ROLLOUT_EVIDENCE_MAX_AGE_MS,
+	ROLLOUT_HEARTBEAT_MS,
 	type ConnectionSource,
 } from '../backendConnection';
 
@@ -127,11 +129,27 @@ describe('backend connection phase', () => {
 	});
 });
 
+/**
+ * The rollout as this tab sees it while connected: the run opens (no run, then
+ * a value) and each heartbeat moves the value on.
+ */
+function liveRollout() {
+	let activeAt = Date.now();
+	reportRolloutActivity(null);
+	reportRolloutActivity(activeAt);
+	return {
+		beat() {
+			activeAt += ROLLOUT_HEARTBEAT_MS;
+			reportRolloutActivity(activeAt);
+		},
+	};
+}
+
 describe('update in progress', () => {
-	it('names a drop during a recent update run', () => {
+	it('names a drop during a rollout this tab saw active', () => {
 		const socket = fakeSource(CONNECTED);
 		attachBackendConnection(socket.source);
-		reportRolloutActivity(Date.now() - 60_000);
+		liveRollout();
 		expect(backendConnectionPhase.value).toBeNull();
 
 		socket.set({ isWebSocketConnected: false });
@@ -140,10 +158,49 @@ describe('update in progress', () => {
 		expect(backendConnectionPhase.value).toBe('updating');
 	});
 
-	it('keeps the evidence it had when the socket dropped', () => {
+	it('counts a heartbeat seen after load, not the first answer', () => {
 		const socket = fakeSource(CONNECTED);
 		attachBackendConnection(socket.source);
+		// A page loaded mid-rollout: the first answer proves nothing yet.
+		reportRolloutActivity(Date.now() - 10_000);
 		reportRolloutActivity(Date.now());
+
+		socket.set({ isWebSocketConnected: false });
+		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
+
+		expect(backendConnectionPhase.value).toBe('updating');
+	});
+
+	it('ignores an open run whose activity never moves (an orphaned row)', () => {
+		const socket = fakeSource(CONNECTED);
+		attachBackendConnection(socket.source);
+		// Recent by its own timestamp, but this tab never saw it advance.
+		reportRolloutActivity(Date.now() - 1_000);
+		reportRolloutActivity(Date.now() - 1_000);
+
+		socket.set({ isWebSocketConnected: false });
+		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
+
+		expect(backendConnectionPhase.value).toBe('reconnecting');
+	});
+
+	it('stops trusting a rollout whose heartbeats stopped (its tab closed)', () => {
+		const socket = fakeSource(CONNECTED);
+		attachBackendConnection(socket.source);
+		const rollout = liveRollout();
+		rollout.beat();
+		vi.advanceTimersByTime(ROLLOUT_ACTIVITY_FRESH_MS + 1);
+
+		socket.set({ isWebSocketConnected: false });
+		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
+
+		expect(backendConnectionPhase.value).toBe('reconnecting');
+	});
+
+	it('keeps the claim for the whole drop it was made for', () => {
+		const socket = fakeSource(CONNECTED);
+		attachBackendConnection(socket.source);
+		liveRollout();
 		socket.set({ isWebSocketConnected: false });
 		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
 		vi.advanceTimersByTime(5 * 60_000);
@@ -151,10 +208,10 @@ describe('update in progress', () => {
 		expect(backendConnectionPhase.value).toBe('updating');
 	});
 
-	it('ages stale evidence out to plain reconnecting, even mid-drop', () => {
+	it('ages the claim out to plain reconnecting, even mid-drop', () => {
 		const socket = fakeSource(CONNECTED);
 		attachBackendConnection(socket.source);
-		reportRolloutActivity(Date.now());
+		liveRollout();
 		socket.set({ isWebSocketConnected: false });
 		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
 		expect(backendConnectionPhase.value).toBe('updating');
@@ -164,11 +221,17 @@ describe('update in progress', () => {
 		expect(backendConnectionPhase.value).toBe('reconnecting');
 	});
 
-	it('ignores an orphaned run that is already older than the bound', () => {
+	it('a later drop without fresh activity is not the update', () => {
 		const socket = fakeSource(CONNECTED);
 		attachBackendConnection(socket.source);
-		reportRolloutActivity(Date.now() - ROLLOUT_EVIDENCE_MAX_AGE_MS - 1);
+		liveRollout();
+		socket.set({ isWebSocketConnected: false });
+		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
+		socket.set({ isWebSocketConnected: true });
+		expect(backendConnectionPhase.value).toBeNull();
 
+		// The row stays open (nobody closed it) and no heartbeat comes.
+		vi.advanceTimersByTime(ROLLOUT_ACTIVITY_FRESH_MS + 1);
 		socket.set({ isWebSocketConnected: false });
 		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
 
@@ -178,7 +241,7 @@ describe('update in progress', () => {
 	it('drops the update claim once the run is reported closed', () => {
 		const socket = fakeSource(CONNECTED);
 		attachBackendConnection(socket.source);
-		reportRolloutActivity(Date.now());
+		liveRollout();
 		socket.set({ isWebSocketConnected: false });
 		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
 
@@ -190,7 +253,7 @@ describe('update in progress', () => {
 	it('never claims an update for a socket that has not connected yet', () => {
 		const socket = fakeSource({ isWebSocketConnected: false, hasEverConnected: false });
 		attachBackendConnection(socket.source);
-		reportRolloutActivity(Date.now());
+		liveRollout();
 		vi.advanceTimersByTime(CONNECTION_GRACE_MS);
 
 		expect(backendConnectionPhase.value).toBe('connecting');

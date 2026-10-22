@@ -8,6 +8,7 @@ import { useBackendOperation } from '../useBackendOperation';
 import { createTestI18n } from '~/__tests__/i18n';
 import { withSetup } from '~/__tests__/withSetup';
 import {
+	EPISODE_QUIET_MS,
 	onSlowEpisodeEnd,
 	resetPendingOperations,
 	slowOperations,
@@ -442,6 +443,7 @@ describe('useBackendOperation', () => {
 
 			second.resolve(2);
 			await b;
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
 			expect(outcomes).toEqual(['saved']);
 			stop();
 		});
@@ -460,7 +462,30 @@ describe('useBackendOperation', () => {
 
 			expect(await result).toEqual({ ok: false });
 			expect(showToast).toHaveBeenCalledWith(expect.any(String), 'error');
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
 			expect(outcomes).toEqual(['failed']);
+			stop();
+		});
+
+		it('leaves upload-URL mints out: minting saves nothing, so it confirms nothing', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const mint = 'storage:generateUploadUrl' as unknown as Parameters<
+				typeof useBackendOperation
+			>[0];
+			const { run } = build(mint, { label: 'get upload URL' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS * 2);
+			expect(slowOperations.value).toEqual([]);
+
+			pending.resolve('https://upload.owlat.example/1');
+			await result;
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual([]);
 			stop();
 		});
 

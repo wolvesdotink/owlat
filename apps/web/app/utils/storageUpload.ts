@@ -1,4 +1,5 @@
 import type { Id } from '@owlat/api/dataModel';
+import { holdPendingWork } from '~/lib/pendingOperations';
 
 export type StorageUploadResult =
 	| { ok: true; storageId: Id<'_storage'> }
@@ -16,11 +17,30 @@ export type StorageUploadResult =
  * operation module, so it lands here as the `no-url` reason and nothing else.
  * The POST itself may still throw on a transport error — callers that swallow
  * that wrap this call in try/catch.
+ *
+ * The transfer holds any slow-save episode open (`holdPendingWork`): neither
+ * the mint nor the POST is a tracked write, and a write that lands meanwhile
+ * must not confirm "all changes saved" while this file is still on its way.
  */
 export async function uploadFileToStorage(
 	file: File,
 	generateUploadUrl: () => Promise<BackendOperationResult<string>>,
 	contentType: string = file.type
+): Promise<StorageUploadResult> {
+	const release = holdPendingWork();
+	let result: StorageUploadResult = { ok: false, reason: 'upload-failed' };
+	try {
+		result = await transfer(file, generateUploadUrl, contentType);
+		return result;
+	} finally {
+		release(result.ok);
+	}
+}
+
+async function transfer(
+	file: File,
+	generateUploadUrl: () => Promise<BackendOperationResult<string>>,
+	contentType: string
 ): Promise<StorageUploadResult> {
 	const minted = await generateUploadUrl();
 	if (!minted.ok) return { ok: false, reason: 'no-url' };

@@ -1,4 +1,9 @@
-import type { FunctionReference, FunctionArgs, FunctionReturnType } from 'convex/server';
+import {
+	getFunctionName,
+	type FunctionReference,
+	type FunctionArgs,
+	type FunctionReturnType,
+} from 'convex/server';
 import type { MutationOptions, OptimisticUpdate } from 'convex/browser';
 import type { Ref } from 'vue';
 import type { OperationError } from '@owlat/shared/operationError';
@@ -167,6 +172,21 @@ function operationTranslator() {
 	};
 }
 
+/**
+ * An upload-URL mint (`<module>:generateUploadUrl`) saves nothing: it only
+ * prepares a transfer, and the save is the call that registers the uploaded
+ * file afterwards. Its success must not confirm "all changes saved", so it is
+ * not tracked as a pending write; the upload helpers hold the episode open
+ * across the transfer instead (`holdPendingWork`).
+ */
+function isUploadUrlMint(operation: FunctionReference<'mutation' | 'action'>): boolean {
+	try {
+		return getFunctionName(operation).endsWith(':generateUploadUrl');
+	} catch {
+		return false;
+	}
+}
+
 export function useBackendOperation<M extends FunctionReference<'mutation' | 'action'>>(
 	operation: M,
 	opts: BackendOperationConfig<M>
@@ -179,6 +199,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 
 	const isLoading = ref(false);
 	const wantsInline = opts.inlineTarget !== undefined;
+	const mintsUploadUrl = isUploadUrlMint(operation);
 	const inlineError: Ref<string | null> = opts.inlineTarget ?? ref<string | null>(null);
 
 	function applyTreatment(e: unknown): void {
@@ -256,7 +277,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		// wrong. A mutation that has not answered in seconds is waiting on the
 		// connection, and the app-wide notice says so (lib/pendingOperations.ts).
 		const settle =
-			opts.type === 'action'
+			opts.type === 'action' || mintsUploadUrl
 				? undefined
 				: trackPendingOperation(() =>
 						typeof opts.label === 'function' ? opts.label() : opts.label
