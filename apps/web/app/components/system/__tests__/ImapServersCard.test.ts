@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The IMAP servers card on System & updates: the servers that
  * reported in the last 7 days with their verdicts, a warning when a server the

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The fresh-start setup — the default welcome branch.
  *

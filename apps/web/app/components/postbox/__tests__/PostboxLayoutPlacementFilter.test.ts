@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * All mail filtered to the digest placement (read on arrival §3), at the
  * layout: `?placement=digest` alone decides the surface, so a reload lands on

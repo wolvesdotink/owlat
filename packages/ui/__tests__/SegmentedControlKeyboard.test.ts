@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Arrow/Home/End roving in UiSegmentedControl skips disabled segments: it never
  * focuses or selects one, wraps past them, and does nothing when no segment is

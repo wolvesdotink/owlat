@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The DMARC reports panel under a domain's DMARC record: what it says in each
  * reporting mode, the "ask for reports" update (same policy and knobs), and the

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The per-stream subdomain wizard panel (P4-7, gap G-14) — real mounts.
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The phone's bottom bar (UX piece T6).
  *

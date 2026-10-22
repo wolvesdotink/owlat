@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The desktop compose window (pages/compose.vue) after a send (issue #864,
  * finding 6). It used to close on `@sent`, so a mailto: message had no undo

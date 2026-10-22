@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The graceful placeholder for a task-flow card that can't be rendered. It must
  * never leave the user stuck: an unknown or disabled kind is always skippable

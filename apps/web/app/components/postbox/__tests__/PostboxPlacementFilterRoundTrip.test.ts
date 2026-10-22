@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The digest filter survives a round trip (read on arrival §3, review F11):
  * opening a row of the filtered list (its link and the keyboard), the reader

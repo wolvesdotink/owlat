@@ -5,6 +5,7 @@
  * {@link MAX_LLM_ATTEMPTS} too.
  */
 
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import { LlmPartialUsageError } from './partialUsage';
 import { LlmTruncatedError } from './truncation';
 
@@ -47,7 +48,8 @@ export function interactiveLlmPolicy(surface: InteractiveLlmSurface): {
 	};
 }
 
-const LLM_BACKOFF_BASE_MS = 500;
+/** 500 ms, then 1 s, doubling and uncapped (the attempt budget bounds it). */
+const LLM_BACKOFF: RetryPolicy = { baseMs: 500 };
 /** Ceiling on a provider-requested `retry-after` wait between attempts. */
 const MAX_RETRY_AFTER_MS = 10_000;
 
@@ -183,8 +185,7 @@ export async function withLlmRetry<T>(
 			assertNotAborted(abortSignal);
 			lastError = error;
 			if (!isRetriableLlmError(error) || attempt === budget - 1) throw error;
-			const backoff = LLM_BACKOFF_BASE_MS * 2 ** attempt;
-			await sleep(Math.max(backoff, retryAfterMs(error) ?? 0), abortSignal);
+			await sleep(nextDelay(LLM_BACKOFF, attempt, retryAfterMs(error)), abortSignal);
 		}
 	}
 	throw lastError;

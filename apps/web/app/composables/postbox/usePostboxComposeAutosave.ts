@@ -56,6 +56,7 @@ import type { InitialHydrationState } from './usePostboxComposeHydration';
 import type { ComposeTouched } from './usePostboxComposeTouched';
 import type { ExpectedAttachmentRequest } from './usePostboxComposeExpected';
 import { aiWrittenOf } from '~/utils/postboxAiWrittenText';
+import { registerUnsavedWorkProbe, scheduledWriteHold } from '~/lib/pendingOperations';
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 /** Writes `settlePendingSave` makes before giving up on fields that keep changing. */
@@ -247,7 +248,18 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 			scheduledWhilePaused = false;
 			schedulePersist();
 		}
+		syncHold();
 	}
+
+	// "All changes saved" (lib/pendingOperations.ts) is not claimed while an edit
+	// waits for its write (a hold, while scheduled or paused) or its write
+	// failed and nothing has written it since (a probe, until acknowledged).
+	const hold = scheduledWriteHold();
+	function syncHold() {
+		hold.set(saveTimer !== null || scheduledWhilePaused);
+	}
+	let writeFailed = false;
+	const stopProbe = registerUnsavedWorkProbe(() => writeFailed && draftState.value === 'draft');
 
 	function schedulePersist() {
 		// A scheduled (or pending_send) row is read-only until unscheduled —
@@ -258,13 +270,19 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		if (initialHydration.value !== 'ready') return;
 		if (paused) {
 			scheduledWhilePaused = true;
+			syncHold();
 			return;
 		}
 		clearTimer();
 		saveTimer = setTimeout(() => {
 			saveTimer = null;
-			persist();
+			const release = hold.take();
+			persist().then(
+				(saved) => release(saved.ok),
+				() => release(false)
+			);
 		}, AUTOSAVE_DEBOUNCE_MS);
+		syncHold();
 	}
 
 	function persist(): Promise<BackendOperationResult<Id<'mailDrafts'>>> {
@@ -283,7 +301,10 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		// the user why; kept so no path can ever write unloaded defaults.
 		if (initialHydration.value !== 'ready') return { ok: false };
 		const id = await ensureDraft();
-		if (!id) return { ok: false };
+		if (!id) {
+			writeFailed = !gone;
+			return { ok: false };
+		}
 		// Creating the row may have reopened an existing one: wait for its merge.
 		if (initialHydration.value !== 'ready') return { ok: false };
 		const fields = take();
@@ -301,6 +322,7 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 				// The offered reply it copies, with whichever write lands first.
 				...(ai?.offerKey ? { offerKey: ai.offerKey } : {}),
 			});
+			writeFailed = !result.ok;
 			if (!result.ok) return { ok: false };
 			acknowledged = { id, key };
 			lastSavedAt.value = (result.result.savedAt as number) ?? Date.now();
@@ -354,6 +376,8 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 	): Promise<SettleOutcome<Id<'mailDrafts'>>> {
 		for (let writes = 0; ; writes += 1) {
 			clearTimer();
+			// The writes below (or the acknowledgement) stand in for the timer's.
+			syncHold();
 			await drain();
 			const id = draftId.value;
 			// Read-only rows (scheduled / pending send) cannot be written; there is
@@ -384,6 +408,7 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		// just report the id without persisting.
 		if (draftState.value !== 'draft') {
 			clearTimer();
+			syncHold();
 			return { ok: true, result: draftId.value };
 		}
 		return settlePendingSave();
@@ -436,14 +461,29 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		);
 	}
 	onScopeDispose(() => {
-		if (!saveTimer) return;
+		stopProbe();
+		if (!saveTimer) {
+			hold.set(false);
+			return;
+		}
 		clearTimer();
-		if (draftId.value || holdsAnEdit()) pendingSave = persist();
+		const release = hold.take();
+		if (!draftId.value && !holdsAnEdit()) {
+			release(true);
+			return;
+		}
+		pendingSave = persist();
+		pendingSave.then(
+			(saved) => release(saved.ok),
+			() => release(false)
+		);
 	});
 
 	/** Drop a debounced write on the floor — the row is going away or is stale. */
 	function cancelAutosave(): void {
 		clearTimer();
+		syncHold();
+		writeFailed = false;
 	}
 
 	return {

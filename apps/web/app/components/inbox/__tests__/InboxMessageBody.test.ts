@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * One team-inbox message's text in the thread view (#900):
  *   - a message whose text fit on its row renders it and calls nothing;

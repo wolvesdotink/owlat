@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The desktop connect handshake validates its credentials like the sign-in
  * page: per field, with the same messages. It used to accept any non-empty

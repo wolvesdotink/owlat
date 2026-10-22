@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The stale-revision choice in the email editors: both answers are offered in
  * the user's language, each emits its own event, and a choice in progress

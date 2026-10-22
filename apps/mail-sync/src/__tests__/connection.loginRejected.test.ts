@@ -229,4 +229,27 @@ describe('a connect that fails', () => {
 
 		await conn.stop();
 	});
+
+	it('waits 5 s after the first failure, doubling, plus up to a second of jitter', async () => {
+		vi.spyOn(Math, 'random').mockReturnValue(0.5);
+		imap.connectError = () => Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' });
+		const { conn } = newConnection();
+
+		void conn.start();
+		await vi.advanceTimersByTimeAsync(0);
+		const connectsAfter = async (ms: number) => {
+			await vi.advanceTimersByTimeAsync(ms);
+			return imap.clients.length;
+		};
+		// 5.5 s, then 10.5 s, then 20.5 s between connects.
+		expect(await connectsAfter(5_499)).toBe(1);
+		expect(await connectsAfter(1)).toBe(2);
+		expect(await connectsAfter(10_499)).toBe(2);
+		expect(await connectsAfter(1)).toBe(3);
+		expect(await connectsAfter(20_499)).toBe(3);
+		expect(await connectsAfter(1)).toBe(4);
+
+		await conn.stop();
+		vi.restoreAllMocks();
+	});
 });

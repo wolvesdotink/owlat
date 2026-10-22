@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The composer's Answer mode API (composables/postbox/usePostboxComposerAnswerApi):
  *   - an AI draft replaces only what was written (quote and signature stay),

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * useRememberedScroll puts the thread list back at its remembered offset on
  * mount and when the reader closes. The Postbox page no longer remounts the

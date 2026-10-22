@@ -1,8 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, nextTick, ref } from 'vue';
 import AttachmentPanel from '../AttachmentPanel.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import {
+	EPISODE_QUIET_MS,
+	onSlowEpisodeEnd,
+	resetPendingOperations,
+	SLOW_OPERATION_MS,
+	trackPendingOperation,
+	type SlowEpisodeOutcome,
+} from '~/lib/pendingOperations';
 
 const generateUploadUrl = vi.fn();
 const createMediaAsset = vi.fn();
@@ -107,5 +115,65 @@ describe('AttachmentPanel storage provenance', () => {
 				url: 'https://files.example/library',
 			}),
 		]);
+	});
+});
+
+describe('AttachmentPanel and the slow-save episode', () => {
+	afterEach(() => {
+		resetPendingOperations();
+		vi.useRealTimers();
+	});
+
+	async function startUpload(wrapper: ReturnType<typeof mountPanel>) {
+		const input = wrapper.get('input[type="file"]');
+		Object.defineProperty(input.element, 'files', {
+			configurable: true,
+			value: [new File(['attachment'], 'invoice.pdf', { type: 'application/pdf' })],
+		});
+		await input.trigger('change');
+		await vi.advanceTimersByTimeAsync(0);
+	}
+
+	it('confirms nothing until the attachment URL is resolved and handed over', async () => {
+		vi.useFakeTimers();
+		const outcomes: SlowEpisodeOutcome[] = [];
+		const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+		let resolveUrl!: (url: string) => void;
+		getStorageUrl.mockReset().mockReturnValue(new Promise((resolve) => (resolveUrl = resolve)));
+		const wrapper = mountPanel();
+
+		const slowWrite = trackPendingOperation(() => 'Save');
+		vi.advanceTimersByTime(SLOW_OPERATION_MS);
+		await startUpload(wrapper);
+		expect(getStorageUrl).toHaveBeenCalled();
+
+		slowWrite(true);
+		await vi.advanceTimersByTimeAsync(EPISODE_QUIET_MS * 3);
+		expect(outcomes).toEqual([]);
+
+		resolveUrl('https://files.example/uploaded');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(wrapper.emitted('update:attachments')).toHaveLength(1);
+		await vi.advanceTimersByTimeAsync(EPISODE_QUIET_MS);
+		expect(outcomes).toEqual(['saved']);
+		stop();
+	});
+
+	it('an attachment whose URL cannot be resolved ends the episode as failed', async () => {
+		vi.useFakeTimers();
+		const outcomes: SlowEpisodeOutcome[] = [];
+		const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+		getStorageUrl.mockReset().mockResolvedValue(null);
+		const wrapper = mountPanel();
+
+		const slowWrite = trackPendingOperation(() => 'Save');
+		vi.advanceTimersByTime(SLOW_OPERATION_MS);
+		await startUpload(wrapper);
+		slowWrite(true);
+		await vi.advanceTimersByTimeAsync(EPISODE_QUIET_MS);
+
+		expect(wrapper.emitted('update:attachments')).toBeUndefined();
+		expect(outcomes).toEqual(['failed']);
+		stop();
 	});
 });

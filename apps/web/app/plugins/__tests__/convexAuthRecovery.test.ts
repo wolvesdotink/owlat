@@ -35,6 +35,12 @@ vi.mock('@owlat/ui/composables/useToast', () => ({
 }));
 vi.mock('convex/browser', () => ({
 	ConvexClient: class {
+		connectionState() {
+			return { isWebSocketConnected: true, hasEverConnected: true };
+		}
+		subscribeToConnectionState() {
+			return () => {};
+		}
 		setAuth(fetchToken: FetchToken, onChange: (isAuthenticated: boolean) => void) {
 			convex.installs++;
 			const version = ++convex.version;

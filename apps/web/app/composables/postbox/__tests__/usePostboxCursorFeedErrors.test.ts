@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * usePostboxCursorFeed — failed reads (#721).
  *

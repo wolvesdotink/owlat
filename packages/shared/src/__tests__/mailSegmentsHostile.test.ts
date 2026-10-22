@@ -34,18 +34,16 @@ const SHAPES: Record<string, (k: number) => string> = {
 const SCALING = { timeout: 30_000 };
 
 describe('segmentMessage: linear work on hostile HTML', () => {
-	for (const [name, shape] of Object.entries(SHAPES)) {
-		it(name, SCALING, () => {
-			for (const k of [4_000, 8_000, 16_000]) {
-				const html = shape(k);
-				// A bounded number of reads per input character.
-				expect(workFor(html), `${name} at ${k}`).toBeLessThanOrEqual(6 * html.length);
-			}
-			const small = workFor(shape(4_000));
-			const large = workFor(shape(16_000));
-			expect(large / small).toBeLessThan(5);
-		});
-	}
+	it.each(Object.entries(SHAPES))('%s', SCALING, (name, shape) => {
+		for (const k of [4_000, 8_000, 16_000]) {
+			const html = shape(k);
+			// A bounded number of reads per input character.
+			expect(workFor(html), `${name} at ${k}`).toBeLessThanOrEqual(6 * html.length);
+		}
+		const small = workFor(shape(4_000));
+		const large = workFor(shape(16_000));
+		expect(large / small).toBeLessThan(5);
+	});
 });
 
 describe('segmentMessage: linear work on hostile plain text', () => {

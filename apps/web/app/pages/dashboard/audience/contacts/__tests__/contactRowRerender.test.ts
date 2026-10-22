@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Selecting one contact re-renders one table row (plan 3.7).
  *

@@ -357,14 +357,18 @@ export const dataContactGrowth = internalQuery({
 
 /**
  * Performance of the most recently sent campaigns (up to 20). Reads via the
- * `by_status_sent_at` index so it stays a bounded, ordered slice.
+ * `by_deleted_at_and_status_and_sent_at` index so it stays a bounded, ordered
+ * slice of live sends.
  */
 export const dataCampaignPerformance = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const sent = await ctx.db
 			.query('campaigns')
-			.withIndex('by_status_sent_at', (q) => q.eq('status', 'sent'))
+			// Live only, inside the range, so deleted sends never use up the 20.
+			.withIndex('by_deleted_at_and_status_and_sent_at', (q) =>
+				q.eq('deletedAt', undefined).eq('status', 'sent')
+			)
 			.order('desc')
 			.take(20);
 

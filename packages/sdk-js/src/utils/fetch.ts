@@ -1,4 +1,4 @@
-import type { RateLimitInfo, ApiErrorResponse } from '../types/common';
+import type { RateLimitInfo, ApiErrorResponse, RequestOptions } from '../types/common';
 import {
 	OwlatError,
 	AuthenticationError,
@@ -23,6 +23,31 @@ export interface FetchOptions {
 	method: HttpMethod;
 	body?: unknown;
 	timeout?: number;
+	/**
+	 * Sent as the `Idempotency-Key` header. The server then applies the request
+	 * at most once per key, which makes a POST safe to replay.
+	 */
+	idempotencyKey?: string;
+}
+
+/** Longest key the API accepts. */
+const MAX_IDEMPOTENCY_KEY_LENGTH = 255;
+
+/** The API's key rule: printable ASCII without spaces. */
+const IDEMPOTENCY_KEY_PATTERN = /^[\x21-\x7e]+$/;
+
+function assertIdempotencyKey(key: string): void {
+	if (
+		typeof key !== 'string' ||
+		key.length === 0 ||
+		key.length > MAX_IDEMPOTENCY_KEY_LENGTH ||
+		!IDEMPOTENCY_KEY_PATTERN.test(key)
+	) {
+		throw new ValidationError(
+			`idempotencyKey must be 1 to ${MAX_IDEMPOTENCY_KEY_LENGTH} printable ASCII characters without spaces`,
+			'invalid_input'
+		);
+	}
 }
 
 /**
@@ -94,23 +119,33 @@ const MAX_RETRY_AFTER_MS = 30_000;
 /**
  * HTTP methods safe to auto-retry on 5xx / network failure. Excludes `POST`:
  * a `POST /api/v1/transactional` or `/api/v1/events` the server processed but
- * whose response was lost (502/timeout) must NOT be replayed — there is no
- * server-side idempotency key, so a retry would duplicate the send. GET, PUT
- * and DELETE are idempotent by HTTP semantics and safe to repeat.
+ * whose response was lost (502/timeout) must NOT be replayed without an
+ * idempotency key, since a retry would duplicate the send. GET, PUT and DELETE
+ * are idempotent by HTTP semantics and safe to repeat.
  *
  * A 429 (rate-limited) is always retryable regardless of method — it means the
  * request was rejected before processing, so replaying it cannot duplicate work.
  */
 const IDEMPOTENT_METHODS = new Set<HttpMethod>(['GET', 'PUT', 'DELETE']);
 
-/** Whether a failed request may be retried for the given method + status. */
-function isRetryable(method: HttpMethod, status: number): boolean {
+/**
+ * Whether a repeat of the request cannot apply it twice: an idempotent method,
+ * or a request carrying an `Idempotency-Key`, which the server answers from its
+ * receipt instead of sending again.
+ */
+function isReplaySafe(options: FetchOptions): boolean {
+	return IDEMPOTENT_METHODS.has(options.method) || options.idempotencyKey !== undefined;
+}
+
+/** Whether a failed request may be retried, given whether it is replay-safe. */
+function isRetryable(replaySafe: boolean, status: number): boolean {
 	if (!RETRYABLE_STATUS_CODES.has(status)) return false;
 	// 429 is pre-processing rejection — safe to retry for any method.
 	if (status === 429) return true;
-	// 5xx may mean the server already applied a non-idempotent POST; only
-	// replay methods that are safe to repeat.
-	return IDEMPOTENT_METHODS.has(method);
+	// 5xx may mean the server already applied the request; only replay one the
+	// server cannot apply twice. A 409 (key reused for another request) is not
+	// in the set and is never retried.
+	return replaySafe;
 }
 
 /**
@@ -241,6 +276,11 @@ export function createHttpClient(
 	async function request<T>(path: string, options: FetchOptions): Promise<FetchResponse<T>> {
 		const url = `${baseUrl}${path}`;
 		const timeout = options.timeout ?? defaultTimeout;
+		if (options.idempotencyKey !== undefined) assertIdempotencyKey(options.idempotencyKey);
+		const replaySafe = isReplaySafe(options);
+		// Serialized once: every attempt under one key must carry the same bytes,
+		// or the server would see a different request and refuse it.
+		const requestBody = options.body !== undefined ? JSON.stringify(options.body) : undefined;
 
 		let lastError: OwlatError | undefined;
 
@@ -252,6 +292,9 @@ export function createHttpClient(
 				Authorization: `Bearer ${apiKey}`,
 				'Content-Type': 'application/json',
 			};
+			if (options.idempotencyKey !== undefined) {
+				headers['Idempotency-Key'] = options.idempotencyKey;
+			}
 
 			const fetchOptions: RequestInit = {
 				method: options.method,
@@ -259,8 +302,8 @@ export function createHttpClient(
 				signal: controller.signal,
 			};
 
-			if (options.body !== undefined) {
-				fetchOptions.body = JSON.stringify(options.body);
+			if (requestBody !== undefined) {
+				fetchOptions.body = requestBody;
 			}
 
 			// The deadline covers the whole exchange: headers AND body. `fetch()`
@@ -276,17 +319,19 @@ export function createHttpClient(
 				rawBody = await readBodyBeforeDeadline(response, controller.signal);
 			} catch (error) {
 				lastError = transportError(error, controller.signal, timeout);
-				// Retry on network errors and timeouts — but only for idempotent
-				// methods. A POST that timed out may have been processed
-				// server-side (a stalled body means it certainly reached the
-				// server); replaying it would duplicate the send.
+				// Retry on network errors and timeouts — but only when a replay
+				// cannot apply the request twice. A POST that timed out may have
+				// been processed server-side (a stalled body means it certainly
+				// reached the server); without an idempotency key, replaying it
+				// would duplicate the send.
 				//
 				// The status is not consulted here, on purpose: a GET whose
 				// headers said 4xx but whose body then stalled is retried as a
 				// timeout, although a 4xx with a body would not be. Without the
 				// body there is no error envelope to act on, and repeating an
 				// idempotent GET is harmless.
-				if (attempt < maxRetries && IDEMPOTENT_METHODS.has(options.method)) {
+				if (attempt < maxRetries && replaySafe) {
+					// oxlint-disable-next-line owlat/no-inline-backoff -- the published SDK cannot depend on the private @owlat/shared
 					await sleep(initialDelayMs * Math.pow(backoffMultiplier, attempt));
 					continue;
 				}
@@ -326,13 +371,14 @@ export function createHttpClient(
 				lastError = createError(message, category, response.status, rateLimit, retryAfter, data);
 
 				// Retry on transient errors (429 respects Retry-After, 5xx) — but
-				// 5xx only for idempotent methods, so a non-idempotent POST the
-				// server may have already applied is never replayed.
-				if (isRetryable(options.method, response.status) && attempt < maxRetries) {
+				// 5xx only for replay-safe requests, so a POST the server may have
+				// already applied is never replayed without an idempotency key.
+				if (isRetryable(replaySafe, response.status) && attempt < maxRetries) {
 					const delay =
 						response.status === 429 && retryAfter
 							? Math.min(retryAfter * 1000, MAX_RETRY_AFTER_MS)
-							: initialDelayMs * Math.pow(backoffMultiplier, attempt);
+							: // oxlint-disable-next-line owlat/no-inline-backoff -- the published SDK cannot depend on the private @owlat/shared
+								initialDelayMs * Math.pow(backoffMultiplier, attempt);
 					await sleep(delay);
 					continue;
 				}
@@ -388,8 +434,15 @@ export function createHttpClient(
 	return {
 		get: <T>(path: string, timeout?: number) => request<T>(path, { method: 'GET', timeout }),
 
-		post: <T>(path: string, body?: unknown, timeout?: number) =>
-			request<T>(path, { method: 'POST', body, timeout }),
+		post: <T>(path: string, body?: unknown, timeout?: number, requestOptions?: RequestOptions) =>
+			request<T>(path, {
+				method: 'POST',
+				body,
+				timeout,
+				...(requestOptions?.idempotencyKey !== undefined
+					? { idempotencyKey: requestOptions.idempotencyKey }
+					: {}),
+			}),
 
 		put: <T>(path: string, body?: unknown, timeout?: number) =>
 			request<T>(path, { method: 'PUT', body, timeout }),

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Each mail setting lives where an admin looks for it (#796):
  *   - the Sealed mail page is about sealing only (policy, recovery kits,

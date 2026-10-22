@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Answer queue's team card, which only ever shows a team item with no
  * thread: one with a thread opens in Answer mode instead (#1226). So every

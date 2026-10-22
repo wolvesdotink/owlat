@@ -178,13 +178,13 @@ const SITUATIONS: ReadonlyArray<{ name: string; input: DispatchExtrasInput }> = 
 ];
 
 describe('buildDispatchExtras — differential against the pre-refactor ternary', () => {
-	for (const kind of LEGACY_KINDS) {
-		for (const situation of SITUATIONS) {
-			it(`${kind}: ${situation.name}`, () => {
-				expectMatchesLegacy(kind, situation.input);
-			});
-		}
-	}
+	it.each(
+		LEGACY_KINDS.flatMap((kind) =>
+			SITUATIONS.map((situation) => [kind, situation.name, situation] as const)
+		)
+	)('%s: %s', (kind, _name, situation) => {
+		expectMatchesLegacy(kind, situation.input);
+	});
 });
 
 describe('mta extras', () => {

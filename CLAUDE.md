@@ -48,6 +48,23 @@ one git object store. Each of these has cost a run before:
    at once is the limit. Pass `--maxWorkers` to full vitest runs, and judge a
    command by its exit code, never through `| tail`, which masks it.
 
+## Worktrees and the local stack
+
+A new worktree is set up by `bun run setup:worktree` (T3 Code starts it
+through `t3.json`). Check `.owlat-dev/` before installing or building
+anything: while `setup-running` exists (it starts with the PID), setup is still
+installing, so wait for `setup-done`. On `setup-failed`, read the file, fix
+the cause and run `bun run setup:worktree` again. Never start your own
+`bun install` while setup runs.
+
+`bun run dev:stack` boots a complete local Owlat for this checkout: Convex and
+Redis in containers, the functions pushed, demo data seeded, Nuxt and the
+Convex watcher in the foreground. Ports derive from the worktree path, so
+parallel checkouts do not collide; `bun run dev:stack ports` prints them.
+Stop only your own stack: Ctrl-C, then `bun run dev:stack down`.
+[`docs/operations/development.md`](docs/operations/development.md) has the
+details.
+
 ## Testing
 
 All packages use **vitest**, not bun's built-in test runner. Always run tests with:
@@ -198,6 +215,54 @@ PR description records why the change was made. Don't add a numbered decision
 record or a new decisions folder. To read a removed record, use
 `git log --diff-filter=D --name-only -- docs/adr` and `git show <sha>^:<path>`.
 
+## Documentation
+
+Most changes need no documentation change. The code, its types and its tests
+already record what it does. [`docs/README.md`](docs/README.md) lists the docs
+that exist and says what each kind holds.
+
+Before adding a paragraph anywhere, ask what a maintainer would get wrong
+without it. If reading the code answers the question, leave it out.
+
+- **Code comments** hold the local explanation: why this code is shaped this
+  way, and the trap in it.
+- **`apps/api/convex/CONVENTIONS.md`** holds rules that span Convex modules.
+- **Internal docs under `docs/`** hold constraints and traps that cross
+  services or packages and that the source does not show. Link to the code
+  instead of copying it. A new page needs a reason that will still hold in a
+  year, and an entry in `docs/README.md`.
+- **`CONTEXT.md`** is the glossary. It defines shared vocabulary, one term at a
+  time. It is not a feature index, so don't list fields, functions, files or
+  counts in it, and don't narrate control flow. When you edit a term, move any
+  implementation detail it carries into a code comment or `CONVENTIONS.md` and
+  keep the definition. Cross-references keep the `**§ Section name**` spelling,
+  which `apps/docs/__tests__/contextVocabularyDocs.test.ts` checks.
+- **The docs site** (`apps/docs/content/en` and `de`) helps users and operators
+  do a task: what a feature does, how to start, and what is surprising about
+  it. It leaves out implementation details and contributor tooling. A new
+  control does not need its own page, and a UI tweak needs no entry.
+- **Maintainer procedures** (releasing, the local stack, observability) live in
+  `docs/RELEASING.md` and `docs/operations/`.
+
+When a documented rule or behaviour changes, rewrite or delete the text that
+describes it. Don't append a dated note about the new behaviour or a PR
+summary. The PR and `CHANGELOG.md` hold the history.
+
+## Plans and work artifacts
+
+Don't commit implementation plans, research notes, review reports or agent
+scratch files. Keep them outside the worktree. The GitHub issue that owns the
+work tracks it, and the merged PR records what was built. PR evidence
+(screenshots, recordings) goes into the PR description, never into the tree.
+
+`bun run lint:no-pr-assets` (part of `ci:lint`) fails when the index holds a
+file under `docs/plans/`, `docs/ux-plan/`, `docs/ui-polish/`,
+`docs/screenshots/`, `scripts/uiaudit/` or `apps/web/app/lib/uiMock/`, an image
+or recording anywhere under `docs/`, or a `*_PLAN_*` or `*-plan.html` file at the
+repository root. `.gitignore` lists the same directories. The gate cannot see the
+harness's mock branch inside `apps/web/app/plugins/convex.client.ts`, so revert
+that file yourself before committing.
+
 ## Pull requests
 
 Titles and commit subjects are conventional and in plain language:
@@ -215,8 +280,8 @@ a layout, a token or a palette class. Post one pair per affected surface — the
 same page/viewport/theme in both shots, so the diff is the change and nothing
 else.
 
-The backend cannot be booted locally (Convex bundling fails on this tree), so
-captures come from a dev-only screenshot harness that renders the real
+Captures come from either a real local backend (`bun run dev:stack`, seeded
+with demo data) or a dev-only screenshot harness that renders the real
 authenticated UI against a mocked Convex client and mocked better-auth
 endpoints. The harness is intentionally kept out of the repository — it is
 scaffolding, not product — so none of it may ever be committed.

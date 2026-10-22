@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 export interface LintDiagnostic {
 	filename: string;
-	code: string;
+	/** Absent on oxlint's own reports, such as an unused disable directive. */
+	code?: string;
 	message: string;
 	severity: string;
 	labels?: { span: { offset: number; length: number } }[];
@@ -19,6 +20,20 @@ export function warningKey(diagnostic: LintDiagnostic, source: Buffer): string {
 		: '';
 	return JSON.stringify([diagnostic.filename, diagnostic.code, diagnostic.message, token]);
 }
+
+/**
+ * A warning from an `owlat/*` rule. Those are ratcheted by
+ * scripts/check-owlat-lint.sh against their own baseline, so this gate skips
+ * them rather than freezing the same findings twice.
+ */
+export const isOwlatWarning = (diagnostic: Pick<LintDiagnostic, 'code' | 'severity'>): boolean =>
+	diagnostic.severity === 'warning' && (diagnostic.code ?? '').startsWith('owlat(');
+
+/** The warnings this gate freezes: every warning except the owlat ones. */
+export const ratchetedWarnings = (diagnostics: LintDiagnostic[]): LintDiagnostic[] =>
+	diagnostics.filter(
+		(diagnostic) => diagnostic.severity === 'warning' && !isOwlatWarning(diagnostic)
+	);
 
 export function excessWarnings(
 	actual: Record<string, number>,
@@ -56,8 +71,7 @@ function main(): number {
 	if (!Array.isArray(report.diagnostics)) throw new Error('Missing oxlint diagnostics');
 	const counts: Record<string, number> = {};
 	const errors = report.diagnostics.filter((d) => d.severity === 'error');
-	for (const diagnostic of report.diagnostics) {
-		if (diagnostic.severity !== 'warning') continue;
+	for (const diagnostic of ratchetedWarnings(report.diagnostics)) {
 		const filename = resolve(root, diagnostic.filename);
 		const normalized = { ...diagnostic, filename: relative(root, filename) };
 		const key = warningKey(normalized, readFileSync(filename));

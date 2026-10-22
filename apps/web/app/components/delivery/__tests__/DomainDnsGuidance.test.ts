@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Per-transport DNS guidance. The Mandrill entry is the one with a third step
  * beyond SPF and DKIM — ownership — and getting that wrong leaves an operator

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxSchedulingChip behavior:
  *   - clicking the chip calls suggestReplies with focus 'scheduling' and the

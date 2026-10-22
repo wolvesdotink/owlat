@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Assistant page's conversation list, question field and feed wiring.
  *

@@ -70,6 +70,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailMessageParts: mailMessagePartsStep,
 	mailDraftRequestNonces: makeSweepStep('mailDraftRequestNonces'),
 	mailDrafts: mailDraftsStep,
+	apiRequestReceipts: makeSweepStep('apiRequestReceipts'),
 	transactionalPendingUploads: transactionalPendingUploadsStep,
 	// A payload is at most 32 KiB, read twice by its delete: 50 per transaction
 	// is 3.2 MiB (read budget in delivery/sendCompletionFailureAdmin.ts).

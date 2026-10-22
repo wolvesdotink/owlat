@@ -303,20 +303,23 @@ describe('typesafeDecisionAdapter.ask() — HTTP failures', () => {
 		{ status: 529, retriable: true, says: /unavailable or overloaded/ },
 	] as const;
 
-	for (const { status, retriable, says } of cases) {
-		it(`maps HTTP ${status} to a ${retriable ? 'retriable' : 'terminal'} error`, async () => {
-			const fetchImpl = respondWith(jsonResponse('{"error":"nope"}', status));
+	it.each(
+		cases.map(
+			({ status, retriable, says }) =>
+				[status, retriable ? 'retriable' : 'terminal', retriable, says] as const
+		)
+	)('maps HTTP %s to a %s error', async (status, _kind, retriable, says) => {
+		const fetchImpl = respondWith(jsonResponse('{"error":"nope"}', status));
 
-			const error = await askFailing(fetchImpl);
+		const error = await askFailing(fetchImpl);
 
-			expect(error.status).toBe(status);
-			expect(error.message).toMatch(says);
-			expect(error.retriable).toBe(retriable);
-			// The classification is the repo's one classifier, not a second copy.
-			expect(isRetriableLlmError(error)).toBe(retriable);
-			expectNoKeyLeak(error);
-		});
-	}
+		expect(error.status).toBe(status);
+		expect(error.message).toMatch(says);
+		expect(error.retriable).toBe(retriable);
+		// The classification is the repo's one classifier, not a second copy.
+		expect(isRetriableLlmError(error)).toBe(retriable);
+		expectNoKeyLeak(error);
+	});
 
 	it('treats 529 as retriable through the shared >= 500 branch', async () => {
 		const error = await askFailing(respondWith(jsonResponse('overloaded', 529)));

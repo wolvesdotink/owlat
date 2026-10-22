@@ -45,21 +45,19 @@ describe('clientSimulators — registry lifecycle', () => {
 // Bucket 2 — Contract: every simulator returns a string for any HTML input
 // =============================================================================
 describe('clientSimulators — every installed simulator satisfies the ClientSimulator contract', () => {
-	for (const [client, simulator] of clientSimulators.entries()) {
-		describe(`simulator "${client}"`, () => {
-			it('returns a string for any HTML input', () => {
-				expect(typeof simulator('')).toBe('string');
-				expect(typeof simulator('<html><body>x</body></html>')).toBe('string');
-				expect(typeof simulator('<input/>')).toBe('string');
-			});
-
-			it('is pure: same input → same output', () => {
-				const a = simulator('<p>same</p>');
-				const b = simulator('<p>same</p>');
-				expect(a).toBe(b);
-			});
+	describe.each([...clientSimulators.entries()])('simulator "%s"', (client, simulator) => {
+		it('returns a string for any HTML input', () => {
+			expect(typeof simulator('')).toBe('string');
+			expect(typeof simulator('<html><body>x</body></html>')).toBe('string');
+			expect(typeof simulator('<input/>')).toBe('string');
 		});
-	}
+
+		it('is pure: same input → same output', () => {
+			const a = simulator('<p>same</p>');
+			const b = simulator('<p>same</p>');
+			expect(a).toBe(b);
+		});
+	});
 });
 
 // =============================================================================

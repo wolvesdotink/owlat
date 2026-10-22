@@ -84,6 +84,14 @@ export function registerRetentionCrons(crons: ReturnType<typeof cronJobs>): void
 		internal.maintenance.retention.sweepInboundFiles,
 		{}
 	);
+	// Recently deleted (marketing/recentlyDeleted.ts): campaigns, automations
+	// and email templates deleted more than 30 days ago are removed for good.
+	crons.interval(
+		'retention: recently deleted marketing items',
+		{ hours: 24 },
+		internal.marketing.recentlyDeleted.purgeExpired,
+		{}
+	);
 	// IMAP server reports (mail/imap/serverRegistry.ts): rows no server has
 	// refreshed for 30 days, the longest window the status command reads.
 	crons.interval(

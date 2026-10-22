@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Sidebar options" against the real UiDropdownMenu. Tab closes a menu, so
  * every control in it has to be reachable with the arrows: the per-inbox

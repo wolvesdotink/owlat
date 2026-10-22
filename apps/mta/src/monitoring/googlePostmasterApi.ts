@@ -2,6 +2,7 @@
 
 import type Redis from 'ioredis';
 import { isRecord } from '@owlat/shared';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import type { MtaConfig } from '../config.js';
 import {
 	POSTMASTER_MAX_COMPLIANCE_CHECKS,
@@ -14,6 +15,8 @@ const TOKEN_KEY = 'mta:postmaster:oauth-access-token';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const MAX_TRANSIENT_RETRIES = 3;
 const MAX_RETRY_DELAY_MS = 60_000;
+/** 1 s, doubling, capped at a minute; the rate-limit path adds up to 250 ms of jitter before the cap. */
+const TRANSIENT_RETRY: RetryPolicy = { baseMs: 1_000, capMs: MAX_RETRY_DELAY_MS };
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export const GOOGLE_POSTMASTER_API_BASE = 'https://gmailpostmastertools.googleapis.com/v2';
@@ -215,8 +218,7 @@ function retryAfterMs(response: Response, retryIndex: number): number {
 			return Math.max(0, date - Date.now()) + jitterMs;
 		}
 	}
-	const exponentialMs = 1_000 * 2 ** retryIndex;
-	return Math.min(MAX_RETRY_DELAY_MS, exponentialMs + jitterMs);
+	return Math.min(MAX_RETRY_DELAY_MS, nextDelay(TRANSIENT_RETRY, retryIndex) + jitterMs);
 }
 
 async function wait(ms: number): Promise<void> {
@@ -281,7 +283,7 @@ async function fetchWithTransientRetries(
 			if (retryIndex >= MAX_TRANSIENT_RETRIES) {
 				throw new GoogleApiError(operation, 0, 'transient');
 			}
-			const delayMs = Math.min(MAX_RETRY_DELAY_MS, 1_000 * 2 ** retryIndex);
+			const delayMs = nextDelay(TRANSIENT_RETRY, retryIndex);
 			assertRunBudget(deadline, operation, delayMs);
 			await wait(delayMs);
 			continue;

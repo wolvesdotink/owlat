@@ -85,7 +85,6 @@ export const encryptAndPersistConfig = internalAction({
 			});
 		} catch (error) {
 			// Never throw out of the scheduled job — leave the prior config intact.
-			// eslint-disable-next-line no-console
 			console.error(
 				`[channels] failed to encrypt config for ${args.channel}: ${error instanceof Error ? error.message : String(error)}`
 			);
@@ -108,7 +107,6 @@ function parseSuppliedCreds(plaintextConfig: string): ChannelCreds {
 		parsed = null;
 	}
 	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-		// eslint-disable-next-line no-console
 		console.warn('[channels] channel config payload was not a JSON object; nothing merged');
 		return {};
 	}
@@ -171,7 +169,6 @@ export const dispatchOutbound = internalAction({
 					...(error ? { metadata: JSON.stringify({ error }) } : {}),
 				});
 			} else {
-				// eslint-disable-next-line no-console
 				console.warn(
 					`[channels] dispatchOutbound(${args.channel}) had no threadId; outbound row not recorded`
 				);

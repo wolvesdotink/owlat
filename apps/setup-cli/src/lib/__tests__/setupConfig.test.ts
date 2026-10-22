@@ -106,13 +106,11 @@ describe('parseSetupConfig — rejections (field-named errors)', () => {
 		['non-boolean seedDemo', (c) => (c['seedDemo'] = 'true')],
 	];
 
-	for (const [name, mutate] of cases) {
-		it(`rejects: ${name}`, () => {
-			const c = base();
-			mutate(c);
-			expect(() => parseSetupConfig(c)).toThrow(SetupConfigError);
-		});
-	}
+	it.each(cases)('rejects: %s', (name, mutate) => {
+		const c = base();
+		mutate(c);
+		expect(() => parseSetupConfig(c)).toThrow(SetupConfigError);
+	});
 
 	it('rejects a non-object root', () => {
 		expect(() => parseSetupConfig(null)).toThrow(SetupConfigError);
@@ -332,17 +330,15 @@ describe('catalog credential values round-trip through the setup config', () => 
 		);
 	});
 
-	for (const [kind, values] of Object.entries(cases) as [
-		SetupSendingKind,
-		Record<string, string>,
-	][]) {
-		it(`${kind}: values → config → env patch`, () => {
+	it.each(Object.entries(cases) as [SetupSendingKind, Record<string, string>][])(
+		'%s: values → config → env patch',
+		(kind, values) => {
 			const result = sendingConfigFromCredentials(kind, (k) => values[k]);
 			if (!result.ok) throw new Error(`mapper refused ${kind}: ${result.problem.reason}`);
 			const config = parseSetupConfig({ ...base(), sending: result.config });
 			expect(buildEnvPatchFromConfig(config)).toEqual({ EMAIL_PROVIDER: kind, ...values });
-		});
-	}
+		}
+	);
 });
 
 describe('buildSetupFromConfig', () => {

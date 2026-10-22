@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * ACCESSIBILITY PASS ACROSS EVERY PREFERENCES SCREEN.
  *

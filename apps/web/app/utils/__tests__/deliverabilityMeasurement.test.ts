@@ -393,17 +393,15 @@ describe('gateExplanation — a hold is never rendered as a fault', () => {
 		'evidence_absent',
 	];
 
-	for (const reason of HOLD_REASONS) {
-		it(`${reason} renders a sentence, never an error`, () => {
-			const sentence = explain(held(reason));
-			expect(sentence.length).toBeGreaterThan(0);
-			expect(sentence).not.toContain('undefined');
-			const lower = sentence.toLowerCase();
-			for (const word of ['error', 'failed', 'incomplete', 'required']) {
-				expect(lower).not.toContain(word);
-			}
-		});
-	}
+	it.each(HOLD_REASONS)('%s renders a sentence, never an error', (reason) => {
+		const sentence = explain(held(reason));
+		expect(sentence.length).toBeGreaterThan(0);
+		expect(sentence).not.toContain('undefined');
+		const lower = sentence.toLowerCase();
+		for (const word of ['error', 'failed', 'incomplete', 'required']) {
+			expect(lower).not.toContain(word);
+		}
+	});
 
 	it('says an uninstrumented deferral counter is unmeasured, not a zero rate', () => {
 		// The hold exists because "0% deferrals" and "nothing counts deferrals here"

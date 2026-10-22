@@ -24,6 +24,7 @@ const config = {
 	contentScreeningEnabled: true,
 	contentMaxSizeKb: 500,
 	rspamdRejectThreshold: 15,
+	clamav: { host: 'clamav', port: 3310 },
 } as MtaConfig;
 const redis = new Redis() as unknown as RealRedis;
 

@@ -12,7 +12,10 @@ import { automationsQuery, automationsMutation } from './_helpers';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { throwInvalidState } from '../_utils/errors';
+import { getOrThrow, throwInvalidState } from '../_utils/errors';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
+import { getLive } from '../lib/softDelete';
+import { restoreAutomation, softDeleteAutomation } from './deletion';
 import { trackEvent } from '../lib/posthogHelpers';
 import { triggerConfigValidator } from '../lib/convexValidators';
 import { listResources, countFacet } from '../lib/listing';
@@ -73,12 +76,15 @@ export type ConditionOperator =
 
 // ============== Queries ==============
 
-/** One automation plus its steps in walk order, or null when it does not exist. */
+/**
+ * One automation plus its steps in walk order, or null when it does not exist
+ * or is in Recently deleted.
+ */
 async function loadAutomationWithSteps(
 	ctx: Pick<QueryCtx, 'db'>,
 	automationId: Id<'automations'>
 ): Promise<{ automation: Doc<'automations'>; steps: Doc<'automationSteps'>[] } | null> {
-	const automation = await ctx.db.get(automationId);
+	const automation = await getLive(ctx, automationId);
 	if (!automation) return null;
 	return { automation, steps: await loadOrderedSteps(ctx.db, automation._id) };
 }
@@ -355,29 +361,31 @@ export const duplicate = automationsMutation({
 	},
 });
 
-// Delete an automation and its steps
+// Delete an automation: it moves to Recently deleted with its steps, restorable
+// for 30 days (automations/deletion.ts). Deleting one already there is a no-op.
 export const remove = automationsMutation({
 	args: {
 		automationId: v.id('automations'),
 	},
 	handler: async (ctx, args) => {
-		// authz: requireAutomation enforces automations:manage
-		const { automation } = await requireAutomation(ctx, args.automationId, 'delete automations');
+		// authz: requireAutomationManage enforces automations:manage
+		const session = await requireAutomationManage(ctx, 'delete automations');
+		const automation = await getOrThrow(ctx, args.automationId, 'Automation');
+		await softDeleteAutomation(ctx, automation, session.userId);
+	},
+});
 
-		// Cannot delete active automations
-		if (automation.status === 'active') {
-			throwInvalidState('Cannot delete active automations. Please pause first.');
-		}
-
-		// Delete all steps
-		const steps = await loadOrderedSteps(ctx.db, args.automationId);
-
-		for (const step of steps) {
-			await ctx.db.delete(step._id);
-		}
-
-		// Delete the automation
-		await ctx.db.delete(args.automationId);
-		await recordListingCounter(ctx, 'automationStatus', automation, null);
+// Bring an automation back from Recently deleted. The permission a delete
+// needs, whoever deleted it. Restoring a live automation is a no-op.
+export const restore = automationsMutation({
+	args: {
+		automationId: v.id('automations'),
+	},
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'automations:manage'),
+			'Only owners and admins can restore automations'
+		);
+		await restoreAutomation(ctx, args.automationId, session.userId);
 	},
 });

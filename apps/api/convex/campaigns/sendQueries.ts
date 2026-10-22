@@ -10,6 +10,7 @@ import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounte
 import { requireOrgMember } from '../lib/sessionOrganization';
 import { rateLimiter } from '../lib/rateLimiter';
 import { readDefaultTimezone } from '../analytics/sendTimeProfileSync';
+import { getLive, isLive } from '../lib/softDelete';
 
 /**
  * The set of email addresses a test/preview send may target: the org's own
@@ -118,13 +119,14 @@ export const getSingletonOrganizationId = internalQuery({
 	},
 });
 
-// Internal query to get email template
+// Internal query to get email template; one in Recently deleted reads as gone,
+// so a send never goes out with a deleted template.
 export const getEmailTemplate = internalQuery({
 	args: {
 		templateId: v.id('emailTemplates'),
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db.get(args.templateId);
+		return await getLive(ctx, args.templateId);
 	},
 });
 
@@ -154,7 +156,7 @@ export const getEmailTemplateForLanguage = internalQuery({
 		plainTextContent?: string;
 		resolvedLanguage: string;
 	} | null> => {
-		const template = await ctx.db.get(args.templateId);
+		const template = await getLive(ctx, args.templateId);
 		if (!template) {
 			return null;
 		}
@@ -268,7 +270,7 @@ export const getDueScheduledCampaigns = internalQuery({
 			)
 			.collect(); // bounded: scheduled campaigns due this tick (drained each cron run)
 
-		return campaigns;
+		return campaigns.filter((campaign) => isLive(campaign));
 	},
 });
 

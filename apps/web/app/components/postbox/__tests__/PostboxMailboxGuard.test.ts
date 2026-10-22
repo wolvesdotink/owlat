@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxMailboxGuard — the honest no-mailbox empty state.
  *

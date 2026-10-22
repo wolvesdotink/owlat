@@ -1,8 +1,14 @@
-import type { FunctionReference, FunctionArgs, FunctionReturnType } from 'convex/server';
+import {
+	getFunctionName,
+	type FunctionReference,
+	type FunctionArgs,
+	type FunctionReturnType,
+} from 'convex/server';
 import type { MutationOptions, OptimisticUpdate } from 'convex/browser';
 import type { Ref } from 'vue';
 import type { OperationError } from '@owlat/shared/operationError';
 import { normalizeToOperationError, categoryTreatment, operationCopy } from '~/lib/operationError';
+import { trackPendingOperation } from '~/lib/pendingOperations';
 
 export interface BackendOperationOptions {
 	/**
@@ -84,6 +90,32 @@ export interface BackendOperationConfig<
 	 * {@link BackendOptimisticUpdate}.
 	 */
 	optimisticUpdate?: BackendOptimisticUpdate<M>;
+	/**
+	 * Whether a mutation's RESOLVED result is a refusal: the server answered,
+	 * but did not do what was asked (a teammate is already replying, the item
+	 * was handled elsewhere). The run still resolves `{ ok: true, result }` and
+	 * the caller still renders the refusal; this only stops the app-wide
+	 * pending-write registry from counting the run as a landed save, so a slow
+	 * episode it belongs to never ends in "all changes saved".
+	 *
+	 * Replaces {@link isValueShapedRefusal}, the default. Pass it for a result
+	 * that refuses in another shape, or to declare that a default-matching
+	 * shape is not a refusal for this operation.
+	 */
+	isRefusal?: (result: FunctionReturnType<M>) => boolean;
+}
+
+/**
+ * The refusal shapes this backend's mutations return instead of throwing:
+ * `{ success: false, ... }`, `{ ok: false, ... }`, or a non-null `refusal`
+ * field. A run that resolves with one of them did not save what was asked,
+ * so it must not confirm a save; the default for
+ * {@link BackendOperationConfig.isRefusal}.
+ */
+function isValueShapedRefusal(result: unknown): boolean {
+	if (typeof result !== 'object' || result === null) return false;
+	const shape = result as { success?: unknown; ok?: unknown; refusal?: unknown };
+	return shape.success === false || shape.ok === false || shape.refusal != null;
 }
 
 /**
@@ -166,6 +198,21 @@ function operationTranslator() {
 	};
 }
 
+/**
+ * An upload-URL mint (`<module>:generateUploadUrl`) saves nothing: it only
+ * prepares a transfer, and the save is the call that registers the uploaded
+ * file afterwards. Its success must not confirm "all changes saved", so it is
+ * not tracked as a pending write; the upload helpers hold the episode open
+ * across the transfer instead (`holdPendingWork`).
+ */
+function isUploadUrlMint(operation: FunctionReference<'mutation' | 'action'>): boolean {
+	try {
+		return getFunctionName(operation).endsWith(':generateUploadUrl');
+	} catch {
+		return false;
+	}
+}
+
 export function useBackendOperation<M extends FunctionReference<'mutation' | 'action'>>(
 	operation: M,
 	opts: BackendOperationConfig<M>
@@ -178,6 +225,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 
 	const isLoading = ref(false);
 	const wantsInline = opts.inlineTarget !== undefined;
+	const mintsUploadUrl = isUploadUrlMint(operation);
 	const inlineError: Ref<string | null> = opts.inlineTarget ?? ref<string | null>(null);
 
 	function applyTreatment(e: unknown): void {
@@ -238,6 +286,19 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		return convex.mutation(mutation, args, options);
 	}
 
+	/**
+	 * Classify a resolved result for the pending-write registry only. A
+	 * predicate that throws counts as a refusal: withholding "all changes
+	 * saved" is the safe side, and the caller's envelope must not change.
+	 */
+	function isRefused(result: FunctionReturnType<M>): boolean {
+		try {
+			return (opts.isRefusal ?? isValueShapedRefusal)(result);
+		} catch {
+			return true;
+		}
+	}
+
 	const run = async (
 		args: FunctionArgs<M>,
 		runOpts?: BackendRunOptions<M>
@@ -250,8 +311,22 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		}
 
 		isLoading.value = true;
+		// Writes only: an action can legitimately run for a long time (an AI
+		// draft, an external API), and calling that "saving is slow" would be
+		// wrong. A mutation that has not answered in seconds is waiting on the
+		// connection, and the app-wide notice says so (lib/pendingOperations.ts).
+		const settle =
+			opts.type === 'action' || mintsUploadUrl
+				? undefined
+				: trackPendingOperation(() =>
+						typeof opts.label === 'function' ? opts.label() : opts.label
+					);
+		let landed = false;
 		try {
 			const result = await send(client, args, runOpts);
+			// A refusal returned as a value is not a landed save; the result still
+			// goes back to the caller, who renders it.
+			landed = settle !== undefined && !isRefused(result as FunctionReturnType<M>);
 			// The one place every successful write in the app passes through, which
 			// is why the announcement lives here rather than at several hundred
 			// call sites that would each have to remember it. The label is the same
@@ -267,6 +342,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 			return { ok: false };
 		} finally {
 			isLoading.value = false;
+			settle?.(landed);
 		}
 	};
 

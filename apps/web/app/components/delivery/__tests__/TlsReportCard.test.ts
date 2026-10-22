@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * DeliveryTlsReportCard — the Delivery-page card for inbound TLS-RPT (RFC 8460).
  *

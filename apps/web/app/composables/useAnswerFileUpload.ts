@@ -9,6 +9,7 @@
 import { api } from '@owlat/api';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { xhrPutFile } from '~/composables/postbox/postboxAttachmentUploads';
+import { holdPendingWork } from '~/lib/pendingOperations';
 
 export interface AnswerUpload {
 	storageId: string;
@@ -40,6 +41,10 @@ export function useAnswerFileUpload() {
 		}
 		uploading.value = true;
 		progress.value = 0;
+		// The upload URL mint is not a tracked write and the transfer is not a
+		// write at all: hold any slow-save episode open until the file is up.
+		const release = holdPendingWork();
+		let uploaded = false;
 		try {
 			const minted = await generateUploadUrl.run({});
 			if (!minted.ok) return null;
@@ -48,11 +53,13 @@ export function useAnswerFileUpload() {
 				onProgress: (fraction) => (progress.value = fraction),
 				signal: new AbortController().signal,
 			});
+			uploaded = true;
 			return { storageId, filename: file.name, contentType, size: file.size };
 		} catch {
 			showToast(t('components.answer.fileAsk.uploadFailed', { filename: file.name }), 'error');
 			return null;
 		} finally {
+			release(uploaded);
 			uploading.value = false;
 		}
 	}

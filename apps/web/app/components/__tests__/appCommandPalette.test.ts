@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Behaviour of the app-wide command palette that only exists once it is MOUNTED.
  *
@@ -20,6 +19,8 @@ import { useCommandPaletteScope } from '~/composables/useCommandPaletteScope';
 import { useCommandPaletteMailScope } from '~/composables/useCommandPaletteMailScope';
 import { useCommandPaletteInboxScope } from '~/composables/useCommandPaletteInboxScope';
 import { useCommandPaletteObjectItems } from '~/composables/useCommandPaletteObjectItems';
+import { useCommandPaletteObjectRecents } from '~/composables/useCommandPaletteObjectRecents';
+import { useCommandPaletteArgument } from '~/composables/useCommandPaletteArgument';
 import { useCommandPaletteAsk } from '~/composables/useCommandPaletteAsk';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
@@ -113,6 +114,8 @@ function installStubs(path: string, overrides: Record<string, unknown> = {}) {
 		useCommandPaletteMailScope,
 		useCommandPaletteInboxScope,
 		useCommandPaletteObjectItems,
+		useCommandPaletteObjectRecents,
+		useCommandPaletteArgument,
 		useCommandPaletteAsk,
 		useDebouncedSearch,
 		useModalFocus: vi.fn(),
@@ -278,6 +281,136 @@ describe('AppCommandPalette — argument mode', () => {
 
 		expect(document.body.querySelector('input')).not.toBeNull();
 		expect(rows().length).toBeGreaterThan(1);
+	});
+
+	it('restores the query and the highlight the submenu was opened from', async () => {
+		await openPalette();
+		await type('>label');
+		const parentRows = rows().length;
+		await press('Enter');
+		expect(rows()).toHaveLength(1);
+		expect(document.body.querySelector('input')?.value).toBe('');
+
+		// Backspace in the empty submenu box goes back, not just Escape.
+		await press('Backspace');
+		await nextTick();
+		expect(document.body.querySelector('input')?.value).toBe('>label');
+		expect(rows()).toHaveLength(parentRows);
+		expect(rowLabelled('Label as').getAttribute('aria-selected')).toBe('true');
+		expect(runParentItem).not.toHaveBeenCalled();
+	});
+
+	it('edits a non-empty submenu query normally on Backspace', async () => {
+		await openPalette();
+		await type('>label');
+		await press('Enter');
+		await type('wor');
+		await press('Backspace');
+		// Still inside the submenu: the keystroke belonged to the box.
+		expect(rows()).toHaveLength(1);
+		expect(document.body.textContent).toContain('Work label');
+	});
+
+	it('runs the filtered option on Enter in Mail scope instead of searching mail', async () => {
+		installStubs('/dashboard/postbox/inbox');
+		await openPalette();
+		await type('>label');
+		await press('Enter');
+		await type('wor');
+		// Mail scope selects nothing once something is typed; a submenu is not
+		// Mail scope, so its first match stays selected and Enter applies it.
+		expect(rowLabelled('Work label').getAttribute('aria-selected')).toBe('true');
+		await press('Enter');
+		expect(runLabelOption).toHaveBeenCalledOnce();
+		expect(navigateTo).not.toHaveBeenCalled();
+	});
+
+	it('treats a typed ? inside a submenu as filter text, not a question', async () => {
+		const ask = vi.fn();
+		installStubs('/dashboard/postbox/inbox', {
+			useBackendOperation: () => ({ run: ask, isLoading: ref(false), error: ref(null) }),
+		});
+		await openPalette();
+		await type('>label');
+		await press('Enter');
+		await type('?why');
+		await press('Enter');
+		expect(ask).not.toHaveBeenCalled();
+		expect(runLabelOption).not.toHaveBeenCalled();
+		expect(navigateTo).not.toHaveBeenCalled();
+		expect(document.body.querySelector('input')?.value).toBe('?why');
+	});
+});
+
+describe('AppCommandPalette — jump back', () => {
+	const KEY = 'owlat_recent_objects:user-1:org-1';
+	const opened = [
+		{
+			kind: 'conversation',
+			id: 'thread-1',
+			messageId: 'message-9',
+			mailboxId: 'mailbox-team',
+			title: 'Quarterly numbers',
+			href: '/dashboard/postbox/inbox/message-9',
+			openedAt: 300,
+		},
+		{
+			kind: 'campaign',
+			id: 'campaign-1',
+			title: 'Spring launch',
+			href: '/dashboard/campaigns/campaign-1/edit',
+			openedAt: 200,
+		},
+	];
+
+	beforeEach(() => {
+		localStorage.setItem(KEY, JSON.stringify(opened));
+		localStorage.setItem('owlat_recent_searches', JSON.stringify({ everything: ['acme'] }));
+	});
+
+	/** Signed in as user-1 in org-1, on a page that registers no surface verbs. */
+	function authStub() {
+		return {
+			useAuth: () => ({
+				user: ref({ id: 'user-1' }),
+				activeOrganizationId: ref('org-1'),
+			}),
+			useCommandPaletteRegistry: () => ref([]),
+		};
+	}
+
+	it('lists the records opened last above the recent searches', async () => {
+		installStubs('/dashboard/campaigns', authStub());
+		await openPalette();
+		const labels = rows().map((row) => row.textContent ?? '');
+		expect(labels[0]).toContain('Quarterly numbers');
+		expect(labels[1]).toContain('Spring launch');
+		const recent = labels.findIndex((label) => label.includes('acme'));
+		expect(recent).toBeGreaterThan(1);
+	});
+
+	it('reopens the last one on ⌘K then Enter, in its own mailbox', async () => {
+		installStubs('/dashboard/campaigns', authStub());
+		await openPalette();
+		await press('Enter');
+		expect(setActiveMailboxId).toHaveBeenCalledWith('mailbox-team');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox/message-9');
+	});
+
+	it('selects the newest record in Mail scope too, where a typed query selects nothing', async () => {
+		installStubs('/dashboard/postbox/inbox', authStub());
+		await openPalette();
+		expect(rowLabelled('Quarterly numbers').getAttribute('aria-selected')).toBe('true');
+		await type('invoice');
+		expect(rows().some((row) => row.getAttribute('aria-selected') === 'true')).toBe(false);
+	});
+
+	it('keeps one person’s records out of another person’s palette', async () => {
+		installStubs('/dashboard/campaigns', {
+			useAuth: () => ({ user: ref({ id: 'user-2' }), activeOrganizationId: ref('org-1') }),
+		});
+		await openPalette();
+		expect(document.body.textContent).not.toContain('Quarterly numbers');
 	});
 });
 

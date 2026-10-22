@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Coach panel's suggestion rows: a category label and its message read as
  * one sentence with a single space between them, and a suggestion with no

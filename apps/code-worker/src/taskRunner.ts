@@ -10,6 +10,14 @@ import {
 	isGitDirRootOwned,
 } from './sandbox.js';
 import { log } from './log.js';
+import {
+	configuredOpencodeBin,
+	readRepositorySettings,
+	sandboxParentEnv,
+	trustedGitEnv,
+	workspaceRoot,
+	type RepositorySettings,
+} from './config.js';
 
 // Re-export the sandbox-execution seam so existing importers (and the uid /
 // process-isolation tests) keep resolving these symbols through taskRunner.
@@ -21,8 +29,6 @@ export {
 	reapSandboxProcesses,
 	type DetachedRunResult,
 } from './sandbox.js';
-
-const WORKSPACE_ROOT = process.env['WORKSPACE_ROOT'] ?? '/workspace';
 
 /** Where a task's repository lives and where it is published. */
 export interface TaskRunnerConfig {
@@ -36,19 +42,21 @@ export interface TaskRunnerConfig {
 }
 
 /**
- * Read the task configuration from the environment. The credential in
+ * The task configuration from the repository settings. The credential in
  * GIT_REPO_URL is NEVER written into the workspace .git/config (see
  * parseRepoUrl), and a malformed credential URL throws here.
  */
-export function taskRunnerConfigFromEnv(env: NodeJS.ProcessEnv = process.env): TaskRunnerConfig {
-	const { cleanUrl, authEnv } = parseRepoUrl(env['GIT_REPO_URL'] ?? '');
+export function loadTaskRunnerConfig(
+	settings: RepositorySettings = readRepositorySettings()
+): TaskRunnerConfig {
+	const { cleanUrl, authEnv } = parseRepoUrl(settings.gitRepoUrl);
 	return {
-		workspaceRoot: env['WORKSPACE_ROOT'] ?? '/workspace',
+		workspaceRoot: settings.workspaceRoot,
 		repoUrl: cleanUrl,
 		gitAuthEnv: authEnv,
-		baseBranch: env['GIT_BASE_BRANCH'] ?? 'main',
-		githubOwner: env['GITHUB_OWNER'] ?? '',
-		githubRepo: env['GITHUB_REPO'] ?? '',
+		baseBranch: settings.baseBranch,
+		githubOwner: settings.githubOwner,
+		githubRepo: settings.githubRepo,
 	};
 }
 
@@ -178,7 +186,7 @@ export function buildCommitMessage(description: string): string {
  * The OpenCode agent writes arbitrary files from an attacker-controlled
  * prompt, and `npx vitest run` then executes whatever it wrote (vitest
  * configs and test files run arbitrary Node at collection time). Neither
- * child may inherit the worker's secrets: with `...process.env` a
+ * child may inherit the worker's secrets: with the worker's whole environment a
  * prompt-injected agent (or the code it wrote) could read GITHUB_TOKEN /
  * CONVEX_* / INTERNAL_* straight from its environment and exfiltrate them.
  *
@@ -196,7 +204,7 @@ export function buildCommitMessage(description: string): string {
  */
 export function buildAgentEnv(
 	homeDir: string,
-	parentEnv: NodeJS.ProcessEnv = process.env
+	parentEnv: NodeJS.ProcessEnv = sandboxParentEnv()
 ): NodeJS.ProcessEnv {
 	return {
 		PATH: parentEnv['PATH'],
@@ -208,7 +216,7 @@ export function buildAgentEnv(
 
 export function buildTestEnv(
 	homeDir: string,
-	parentEnv: NodeJS.ProcessEnv = process.env
+	parentEnv: NodeJS.ProcessEnv = sandboxParentEnv()
 ): NodeJS.ProcessEnv {
 	return {
 		PATH: parentEnv['PATH'],
@@ -235,7 +243,7 @@ export function removeWorkspace(workDir: string): void {
  * clone into its own dir; before this they leaked forever across restarts, so a
  * fresh boot begins from a clean workspace root.
  */
-export function pruneStaleWorkspaces(root: string = WORKSPACE_ROOT): void {
+export function pruneStaleWorkspaces(root: string = workspaceRoot()): void {
 	if (!existsSync(root)) return;
 	for (const entry of readdirSync(root)) {
 		removeWorkspace(path.join(root, entry));
@@ -311,7 +319,7 @@ export function setupWorkspace(
 		// credential is persisted into workDir/.git/config for the untrusted agent.
 		ops.git(buildCloneArgs(config.repoUrl, config.baseBranch, workDir), {
 			stdio: 'inherit',
-			env: { ...process.env, ...config.gitAuthEnv },
+			env: trustedGitEnv(config.gitAuthEnv),
 		});
 	} else {
 		// Scrub any credential a prior (older) run may have left in origin, then pull.
@@ -319,7 +327,7 @@ export function setupWorkspace(
 		log(`Pulling latest into ${workDir}`);
 		ops.git(buildPullArgs(workDir, config.baseBranch), {
 			stdio: 'inherit',
-			env: { ...process.env, ...config.gitAuthEnv },
+			env: trustedGitEnv(config.gitAuthEnv),
 		});
 	}
 
@@ -355,7 +363,7 @@ export async function runCodingAgent(
 	reap?: () => void | Promise<void>,
 	sandbox: SandboxTaskOptions = {}
 ): Promise<{ success: boolean; output: string }> {
-	const opencodeBin = process.env['OPENCODE_BIN'] ?? 'opencode';
+	const opencodeBin = configuredOpencodeBin() ?? 'opencode';
 
 	try {
 		// UNTRUSTED: argv array + shell:false means the attacker-controlled

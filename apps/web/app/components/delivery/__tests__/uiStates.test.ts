@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE STATES ARE THE FEATURE (plan D2, D10, D14).
  *

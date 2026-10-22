@@ -13,11 +13,23 @@ import {
 	nextPaletteScope,
 } from '~/lib/commandPaletteScope';
 import type { PaletteMode } from '~/lib/commandPalette';
+import { type MaybeRefOrGetter, toValue } from 'vue';
 
-/** What the overlay is doing with what you type right now. */
-export type PalettePrompt = 'ask' | 'mailSearch' | 'palette';
+/**
+ * What the overlay is doing with what you type right now. `argument` is an open
+ * submenu: the box only filters that item's options, whatever the scope chip
+ * said before it opened, so no scope's Enter or backend applies to it.
+ */
+export type PalettePrompt = 'argument' | 'ask' | 'mailSearch' | 'palette';
 
-export function useCommandPaletteScope(mode: () => PaletteMode) {
+/**
+ * @param mode The typed prefix's mode.
+ * @param submenu The open submenu, if any (anything truthy means one is open).
+ */
+export function useCommandPaletteScope(
+	mode: () => PaletteMode,
+	submenu: MaybeRefOrGetter<unknown>
+) {
 	const route = useRoute();
 	const { isEnabled: isFlagEnabled } = useFeatureFlag();
 
@@ -58,6 +70,7 @@ export function useCommandPaletteScope(mode: () => PaletteMode) {
 	);
 
 	const prompt = computed<PalettePrompt>(() => {
+		if (toValue(submenu)) return 'argument';
 		if (isAsking.value) return 'ask';
 		if (scope.value === 'mail' && mode() === 'all') return 'mailSearch';
 		return 'palette';

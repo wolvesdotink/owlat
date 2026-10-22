@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The cancellation link's token leaves the URL once read, and the page still
  * works across a reload: a failed attempt can be retried from the cleaned URL,

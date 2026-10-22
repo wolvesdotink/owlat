@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * ONE PANEL, EVERY RELAY — the component's own wiring.
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `useListPage` is the state half of the list-page scaffold: search, sort (for
  * the lists that have a sort menu), the delete-confirmation dialog and the
@@ -164,6 +163,34 @@ describe('delete confirmation', () => {
 		await result.confirmDelete();
 		expect(result.isDeleteOpen.value).toBe(true);
 		expect(result.isDeleting.value).toBe(false);
+	});
+});
+
+describe('immediate delete (confirmDelete: false)', () => {
+	const item: Item = { id: 't1', name: 'Welcome' };
+
+	it('deletes at once, with no dialog', async () => {
+		const { result, onDelete } = setup({ confirmDelete: false });
+		await result.openDelete(item);
+		expect(onDelete).toHaveBeenCalledWith(item);
+		expect(result.isDeleteOpen.value).toBe(false);
+		expect(result.deleteTarget.value).toBeNull();
+	});
+
+	it('ignores a second press on the same row while its delete runs', async () => {
+		let resolve!: (ok: boolean) => void;
+		const onDelete = vi.fn(() => new Promise<boolean>((r) => (resolve = r)));
+		const { result } = setup({ confirmDelete: false, onDelete });
+		const first = result.openDelete(item);
+		await result.openDelete(item);
+		expect(onDelete).toHaveBeenCalledTimes(1);
+		resolve(true);
+		await first;
+		// Done: the row can be deleted again (a restored item, say).
+		const again = result.openDelete(item);
+		expect(onDelete).toHaveBeenCalledTimes(2);
+		resolve(true);
+		await again;
 	});
 });
 

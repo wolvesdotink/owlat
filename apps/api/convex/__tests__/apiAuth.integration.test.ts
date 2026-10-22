@@ -82,7 +82,7 @@ describe('jsonResponse', () => {
 		expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
 		expect(response.headers.get('Vary')).toBe('Origin');
 		expect(response.headers.get('Access-Control-Allow-Headers')).toBe(
-			'Content-Type, Authorization'
+			'Content-Type, Authorization, Idempotency-Key'
 		);
 		expect(response.headers.get('Access-Control-Allow-Methods')).toBe(
 			'GET, POST, PUT, DELETE, OPTIONS'

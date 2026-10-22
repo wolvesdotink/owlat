@@ -46,15 +46,16 @@ const RATE_GATES: readonly RampGate[] = [
 	evaluateComplaintGate,
 ];
 
+function expectNoGatePasses(built: RampGateEvaluationInput): void {
+	for (const gate of GATES) {
+		const result = gate(built);
+		expect(result.status).not.toBe('pass');
+	}
+	expect(evaluate(built).verdict).not.toBe('pass');
+}
+
 function everyGate(name: string, build: () => RampGateEvaluationInput): void {
-	it(`${name}: no gate throws and no gate passes`, () => {
-		const built = build();
-		for (const gate of GATES) {
-			const result = gate(built);
-			expect(result.status).not.toBe('pass');
-		}
-		expect(evaluate(built).verdict).not.toBe('pass');
-	});
+	it(`${name}: no gate throws and no gate passes`, () => expectNoGatePasses(build()));
 }
 
 describeEquipped('degenerate volumes', () => {
@@ -108,13 +109,16 @@ describeEquipped('poisoned rates', () => {
 		),
 	];
 
-	for (const [name, build] of poisonedOwnArm) {
-		everyGate(name, build);
+	it.each(poisonedOwnArm)('%s: no gate throws and no gate passes', (_name, build) => {
+		expectNoGatePasses(build());
+	});
 
-		// A poisoned bucket is NOT a thin window, and the reason code is what the
-		// admin notification renders from (plan D12): reporting an unusable rate as
-		// `own_sample_below_floor` sends the operator to the wrong remediation.
-		it(`${name}: every rate gate holds with own_rate_unmeasurable`, () => {
+	// A poisoned bucket is NOT a thin window, and the reason code is what the
+	// admin notification renders from (plan D12): reporting an unusable rate as
+	// `own_sample_below_floor` sends the operator to the wrong remediation.
+	it.each(poisonedOwnArm)(
+		'%s: every rate gate holds with own_rate_unmeasurable',
+		(_name, build) => {
 			const built = build();
 			for (const gate of RATE_GATES) {
 				expect(gate(built)).toMatchObject({
@@ -122,8 +126,8 @@ describeEquipped('poisoned rates', () => {
 					reason: 'own_rate_unmeasurable',
 				});
 			}
-		});
-	}
+		}
+	);
 
 	// The own-arm guard returns first, so a poisoned own arm can never exercise
 	// the reference-arm guard. This is the fixture that does: own arm ample,
@@ -145,21 +149,24 @@ describeEquipped('poisoned rates', () => {
 		},
 	];
 
-	for (const { field, gate, poison } of poisonedReferenceArm) {
-		for (const [label, value] of POISON_RATE_VALUES) {
-			it(`a ${label} ${field} on the REFERENCE arm holds with reference_rate_unmeasurable`, () => {
-				const built = input({
-					own: arm({ sent: 10_000, hardBounced: 10, complained: 5 }),
-					reference: arm({ sent: 10_000, hardBounced: 10, complained: 5 }, poison(value)),
-				});
-				expect(gate(built)).toMatchObject({
-					status: 'insufficient_data',
-					reason: 'reference_rate_unmeasurable',
-				});
-				expect(evaluate(built).verdict).not.toBe('pass');
+	it.each(
+		poisonedReferenceArm.flatMap(({ field, gate, poison }) =>
+			POISON_RATE_VALUES.map(([label, value]) => [label, field, gate, poison, value] as const)
+		)
+	)(
+		'a %s %s on the REFERENCE arm holds with reference_rate_unmeasurable',
+		(_label, _field, gate, poison, value) => {
+			const built = input({
+				own: arm({ sent: 10_000, hardBounced: 10, complained: 5 }),
+				reference: arm({ sent: 10_000, hardBounced: 10, complained: 5 }, poison(value)),
 			});
+			expect(gate(built)).toMatchObject({
+				status: 'insufficient_data',
+				reason: 'reference_rate_unmeasurable',
+			});
+			expect(evaluate(built).verdict).not.toBe('pass');
 		}
-	}
+	);
 
 	it('counts that exceed `sent` clamp to 1 and FAIL rather than being dropped', () => {
 		const built = input({

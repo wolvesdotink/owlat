@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Return-path (bounce) UI — piece D3 of the DNS Setup Revamp. Real mounts.
  *

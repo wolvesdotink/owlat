@@ -49,7 +49,7 @@ export const idModule: ImapCommandModule<string | null> = {
 		if (args) {
 			deps.commit({ ...state, clientId: args });
 		}
-		send(`* ID ("name" "owlat-imap" "version" "${process.env['OWLAT_VERSION'] ?? 'dev'}")`);
+		send(`* ID ("name" "owlat-imap" "version" "${deps.config.owlatVersion}")`);
 		send(`${tag} OK ID completed`);
 		return syncSession();
 	},

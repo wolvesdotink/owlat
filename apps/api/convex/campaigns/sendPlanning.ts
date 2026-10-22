@@ -21,6 +21,7 @@ import { nextUtcDayStart } from '../lib/clock';
 export interface StartSendGuardInput {
 	readonly status: string;
 	readonly scheduledAt?: number;
+	readonly deletedAt?: number;
 }
 
 /**
@@ -38,6 +39,8 @@ export function classifyStartSendSkip(
 	campaign: StartSendGuardInput,
 	now: number
 ): string | undefined {
+	// A delete unschedules first, but a hop already in flight still arrives.
+	if (campaign.deletedAt !== undefined) return 'Campaign was deleted';
 	// The scheduler tick may fire after the campaign was cancelled or
 	// unscheduled back to draft.
 	if (campaign.status === 'cancelled') return 'Campaign was cancelled';

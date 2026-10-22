@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
 import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
-import { readIntEnv } from '@owlat/shared/nodeEnv';
 import { hasVersionDrift, parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
 import { applyEnvUpdates, isRateLimited, isValidIPv4 } from './security.js';
+import { readBuildInfo } from './config.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
 import {
 	composeArgv,
@@ -26,15 +26,6 @@ import {
 	rolloutInProgress,
 	type RolloutKind,
 } from './rolloutState.js';
-
-/**
- * The port the sidecar listens on. Through `readIntEnv`, so a blank, partial or
- * out-of-range PORT stops the boot with the key named, instead of `parseInt`
- * handing `listen()` a NaN.
- */
-export function readListenPort(env: Readonly<Record<string, string | undefined>>): number {
-	return readIntEnv(env, 'PORT', { default: 3200, min: 1, max: 65535 });
-}
 
 // ── Endpoint handlers ──
 
@@ -72,14 +63,15 @@ async function handleHealth(req: IncomingMessage, res: ServerResponse) {
 		// still answer with the container facts it does have.
 	}
 
+	const build = readBuildInfo();
 	json(res, 200, {
 		status: 'ok',
 		timestamp: Date.now(),
-		version: process.env['OWLAT_VERSION'] || 'dev',
+		version: build.version,
 		configuredVersion: configuredVersion ?? null,
 		versionDrift: configuredVersion ? hasVersionDrift(containers, configuredVersion) : null,
-		gitSha: process.env['OWLAT_GIT_SHA'] || 'unknown',
-		buildDate: process.env['OWLAT_BUILD_DATE'] || 'unknown',
+		gitSha: build.gitSha,
+		buildDate: build.buildDate,
 		containers: containers.length > 0 ? containers : raw,
 		// The update verdict outlives the web container that asked for it (and
 		// this container, which the rollout replaces last): the browser reads it

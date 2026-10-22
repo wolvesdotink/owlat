@@ -4,8 +4,9 @@
  * to them. Performance only — what's scheduled or waiting on a decision comes
  * from the existing campaign list queries the page already uses.
  *
- * Every read is an index-ordered, capped `take` on `campaigns.by_status_sent_at`
- * plus the bounded daily roll-up and reputation reads; no `emailSends` row is
+ * Every read is an index-ordered, capped `take` of live campaigns on
+ * `campaigns.by_deleted_at_and_status_and_sent_at` plus the bounded daily
+ * roll-up and reputation reads; no `emailSends` row is
  * touched, so the subscription stays cheap however large the sends get. The
  * math lives in `marketingOverviewMath.ts` and is tested there.
  */
@@ -68,9 +69,12 @@ async function readByStatus(
 ): Promise<DatedCampaign[]> {
 	const rows = await ctx.db
 		.query('campaigns')
-		.withIndex('by_status_sent_at', (q) =>
-			since === undefined ? q.eq('status', status) : q.eq('status', status).gte('sentAt', since)
-		)
+		// Live only, inside the range: a campaign in Recently deleted is out of the
+		// overview until it is restored, and never takes a live one's place.
+		.withIndex('by_deleted_at_and_status_and_sent_at', (q) => {
+			const live = q.eq('deletedAt', undefined).eq('status', status);
+			return since === undefined ? live : live.gte('sentAt', since);
+		})
 		.order('desc')
 		.take(limit);
 	return rows.filter(hasSentAt);

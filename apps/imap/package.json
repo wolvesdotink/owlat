@@ -11,7 +11,7 @@
 		"build": "tsc",
 		"start": "node dist/index.js",
 		"typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
-		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint": "oxlint --config ../../oxlintrc.json src && bash ../api/scripts/check-env.sh src config.ts logger.ts",
 		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
 		"test": "vitest run",
 		"test:coverage": "vitest run --coverage"

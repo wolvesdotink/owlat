@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * usePostboxTriageFilters — counting, filtering, and the honesty of the badge.
  *

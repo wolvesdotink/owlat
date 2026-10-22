@@ -86,6 +86,28 @@ describe('auth rate limiter configuration', () => {
 	});
 });
 
+// server.ts and the ID command take these from the config instead of reading
+// the environment themselves, so the config is where their defaults live.
+describe('runtime mode and release', () => {
+	it('is production only for NODE_ENV=production', () => {
+		process.env['REDIS_URL'] = 'redis://redis:6379';
+		expect(loadConfig().production).toBe(false);
+		process.env['NODE_ENV'] = 'development';
+		expect(loadConfig().production).toBe(false);
+		process.env['NODE_ENV'] = 'production';
+		expect(loadConfig().production).toBe(true);
+	});
+
+	it.each([
+		[undefined, 'dev'],
+		['', 'dev'],
+		['0.6.16', '0.6.16'],
+	])('reports OWLAT_VERSION=%j as %j', (value, expected) => {
+		if (value !== undefined) process.env['OWLAT_VERSION'] = value;
+		expect(loadConfig().owlatVersion).toBe(expected);
+	});
+});
+
 describe('numeric limits', () => {
 	it('applies the defaults when unset or blank', () => {
 		process.env['IMAP_MAX_CONN_PER_IP'] = '';

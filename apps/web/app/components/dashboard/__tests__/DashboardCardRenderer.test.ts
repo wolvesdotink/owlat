@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * DashboardCardRenderer routes each dashboard card through the widget registry.
  * These tests pin the behaviour the dashboard grid relied on before the move to

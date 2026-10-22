@@ -22,10 +22,10 @@
  *     fires between tests, does not fail the innocent test that happens to be
  *     running. It fails the file in `afterAll`, naming the test that
  *     scheduled it.
- *   - Every unexcused failure is also reported again in `afterAll`. The api
- *     suite retries a failed test once (`retry: 1`), and `afterAll` is not
- *     retried, so a retry that passes cannot hide the failure of the attempt
- *     before it.
+ *   - Every unexcused failure is also reported again in `afterAll`, naming
+ *     the test that scheduled it and the one it ran during. `afterAll` runs
+ *     once per file, so a test run with `--retry` cannot hide a failure behind
+ *     an attempt that passed.
  *
  * Before the file ends, `afterAll` also waits for jobs that were due within
  * {@link DRAIN_WINDOW_MS} on real timers (typically `runAfter(0, ...)` from
@@ -264,8 +264,8 @@ export function installScheduledFailureGate(): void {
 		if (failures.length === 0) return;
 		throw new Error(
 			`${failures.length} scheduled function(s) threw in this file. Each is reported here ` +
-				`even if a retry of its test passed, and a job that outlived the test that ` +
-				`scheduled it is reported only here. ${OPT_OUT_HINT}:\n` +
+				`with where it came from, and a job that outlived the test that scheduled it ` +
+				`is reported only here. ${OPT_OUT_HINT}:\n` +
 				describeFailures(failures, true)
 		);
 	});

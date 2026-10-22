@@ -21,6 +21,7 @@ import { audienceValidator } from './audience';
 import { countAudience } from './audienceCandidates';
 import { totalPlannableCapacity } from './capacityPlan';
 import { campaignSendPlanProgress, type CampaignSendPlanProgress } from './sendPlanProgress';
+import { getLive } from '../lib/softDelete';
 
 /**
  * Documents the plan's audience count may read. Deliberately SMALLER than the
@@ -152,6 +153,7 @@ export const getSendPlanCapacity = internalQuery({
 export const getCampaignSendPlan = campaignsQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args): Promise<CampaignSendPlanProgress | null> => {
+		if (!(await getLive(ctx, args.campaignId))) return null;
 		const job = await ctx.db
 			.query('campaignSendJobs')
 			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))

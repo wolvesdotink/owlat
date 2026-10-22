@@ -46,7 +46,7 @@ describe('checkDnsbl — bounded retry with backoff', () => {
 
 		expect(await checkDnsbl('10.0.0.1', 'spamhaus', 'zen.spamhaus.org', deps)).toBe('unknown');
 		expect(resolve4).toHaveBeenCalledTimes(LOOKUP_MAX_ATTEMPTS);
-		expect(delays).toEqual([LOOKUP_RETRY_BASE_DELAY_MS, LOOKUP_RETRY_BASE_DELAY_MS * 2]);
+		expect(delays).toEqual([200, 400]);
 		expect(delays.reduce((total, delay) => total + delay, 0)).toBeLessThan(LOOKUP_TOTAL_BUDGET_MS);
 	});
 

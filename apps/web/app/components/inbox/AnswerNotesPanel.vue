@@ -12,6 +12,8 @@ const props = defineProps<{
 	isAdmin: boolean;
 	/** The Note tab is showing. Hidden, not unmounted, so a half-written note survives Reply. */
 	active: boolean;
+	/** The thread, which keeps the unsent note on this device. */
+	threadId?: string | null;
 }>();
 
 const { t } = useI18n();
@@ -56,6 +58,7 @@ watch(
 					ref="composer"
 					:submit="notes.post"
 					:candidates-for="notes.candidatesFor"
+					:draft-target="threadId"
 				/>
 			</AppErrorBoundary>
 		</div>

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * ContactsSuppressionNotice (UX piece c5) — the inline "why isn't this contact
  * getting mail?" answer shown at the top of a suppressed contact's profile.

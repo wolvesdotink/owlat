@@ -26,8 +26,9 @@ import { RAW_FIXTURES, HOSTILE_FIXTURES } from './fixtures/rawCorpus';
 import { addrList, project } from './helpers/projection';
 
 describe('parseMessage differential parity vs mailparser simpleParser', () => {
-	for (const fixture of RAW_FIXTURES) {
-		it(`matches mailparser on every consumed field: ${fixture.name}`, async () => {
+	it.each(RAW_FIXTURES.map((fixture) => [fixture.name, fixture] as const))(
+		'matches mailparser on every consumed field: %s',
+		async (_name, fixture) => {
 			const raw = Buffer.from(fixture.raw, 'binary');
 			const theirs = await simpleParser(raw);
 			const ours = parseMessage(raw);
@@ -38,8 +39,8 @@ describe('parseMessage differential parity vs mailparser simpleParser', () => {
 			);
 
 			expect(ourProjection).toEqual(theirProjection);
-		});
-	}
+		}
+	);
 
 	it('covers a broad corpus of raw fixtures', () => {
 		expect(RAW_FIXTURES.length).toBeGreaterThanOrEqual(20);
@@ -55,8 +56,9 @@ describe('parseMessage differential parity vs mailparser simpleParser', () => {
  * on every consumed field — the same equality bar as the well-formed corpus.
  */
 describe('parseMessage differential parity vs mailparser on the P2 hostile corpus', () => {
-	for (const fixture of HOSTILE_FIXTURES) {
-		it(`matches mailparser on every consumed field: ${fixture.name}`, async () => {
+	it.each(HOSTILE_FIXTURES.map((fixture) => [fixture.name, fixture] as const))(
+		'matches mailparser on every consumed field: %s',
+		async (_name, fixture) => {
 			const raw = Buffer.from(fixture.raw, 'binary');
 			const theirs = await simpleParser(raw);
 			const ours = parseMessage(raw);
@@ -67,8 +69,8 @@ describe('parseMessage differential parity vs mailparser on the P2 hostile corpu
 			);
 
 			expect(ourProjection).toEqual(theirProjection);
-		});
-	}
+		}
+	);
 });
 
 /**

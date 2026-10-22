@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The feature picker shared by Settings → Features and the setup wizard.
  *

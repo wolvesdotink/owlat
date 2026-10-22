@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Source markers on a team surface (review round 3, F2): the marker names who
  * sent the cited email and when (from the stream), and a click brings that

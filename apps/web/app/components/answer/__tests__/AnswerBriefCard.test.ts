@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Answer mode's view of the thread (SPEC §7):
  *   - a personal thread: the brief with selectable items, all open ones selected;

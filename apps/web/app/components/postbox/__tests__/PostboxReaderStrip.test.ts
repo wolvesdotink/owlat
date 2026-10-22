@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The calm reader's strip (read on arrival §3), one case per state: the brief
  * strip (lead, the item you owe with Reply and Done, the item you wait on, the

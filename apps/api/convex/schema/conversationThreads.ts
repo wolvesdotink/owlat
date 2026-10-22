@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { teamReplyAttachmentsValidator } from '../lib/validators/teamReplyAttachment';
 import { conversationThreadSlaFields } from '../lib/validators/inboxSla';
+import { teamThreadPriorityValidator } from '../lib/validators/teamThreadPriority';
 
 /**
  * The Team Inbox conversation thread table.
@@ -63,6 +64,10 @@ export const conversationThreadTables = {
 		// thread row so a resurfaced thread is visibly distinct from a never-snoozed
 		// one. Never gates any query; purely a read-side hint.
 		snoozeReturnedAt: v.optional(v.number()),
+		// Priority a teammate set (inbox/priority.ts). Absent = normal; `normal`
+		// is never written, so old rows need no backfill. A display hint: it
+		// gates no query and orders no list.
+		priority: v.optional(teamThreadPriorityValidator),
 		replyAttachments: v.optional(teamReplyAttachmentsValidator), // the composer's, see validator
 		// Response targets (SLA) clock + reply metrics, see lib/validators/inboxSla.ts.
 		...conversationThreadSlaFields,

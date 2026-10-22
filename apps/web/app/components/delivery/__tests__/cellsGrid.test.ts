@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE CELL GRID AND ITS DRILL-DOWN.
  *

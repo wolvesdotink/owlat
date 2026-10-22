@@ -363,6 +363,27 @@ describe('agent.outcomeFeedback.classifyReplyOutcome — scan and guard first (f
 		expect(mocks.runLlmObject).not.toHaveBeenCalled();
 	});
 
+	it('re-checks for the scan after 1, 2, 4, 8 and 16 minutes', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date('2026-03-22T12:00:00Z'));
+		try {
+			const t = convexTest(schema, modules);
+			const { threadId } = await seedAutoSentOnThread(t);
+			const replyId = await seedReply(t, threadId, {});
+			for (let scanRechecks = 0; scanRechecks < MAX_SCAN_RECHECKS; scanRechecks++) {
+				await t.action(internal.agent.outcomeFeedback.classifyReplyOutcome, {
+					replyMessageId: replyId,
+					replyText: 'Furious!',
+					scanRechecks,
+				});
+			}
+			const waits = (await scheduled(t)).map((job) => job.scheduledTime - Date.now());
+			expect(waits).toEqual([60_000, 120_000, 240_000, 480_000, 960_000]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('never reads a reply the scan rejected', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId } = await seedAutoSentOnThread(t);

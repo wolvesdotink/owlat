@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The auto-send banner on a team-inbox message: it counts the held reply down
  * on its own clock, hides once the window has run out, and hands Undo to the

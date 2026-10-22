@@ -267,8 +267,9 @@ async function checkedOp(w: World, r: Rng, label: string): Promise<void> {
 }
 
 describe('folder membership equals the folder (#927)', () => {
-	for (const seed of [3, 11, 58, 927]) {
-		it(`stays exact through random writes and a racing backfill (seed ${seed})`, async () => {
+	it.each([3, 11, 58, 927])(
+		'stays exact through random writes and a racing backfill (seed %s)',
+		async (seed) => {
 			const r = rng(seed);
 			const w = await setup();
 
@@ -299,8 +300,8 @@ describe('folder membership equals the folder (#927)', () => {
 			expect(states.map((s) => s?.isReady)).toEqual([true, true, true]);
 
 			for (let i = 0; i < 40; i++) await checkedOp(w, r, `after ready, op ${i}`);
-		});
-	}
+		}
+	);
 
 	it('a folder that starts empty is ready at once and kept exact from its first message', async () => {
 		const w = await setup();

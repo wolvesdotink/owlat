@@ -3,8 +3,6 @@ import { api } from '@owlat/api';
 import { fakeLocalStore } from './fakeLocalStore';
 import { optimisticReorderLabels, optimisticUpdateLabel } from '../labelUpdaters';
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- fixtures cast loose ids into branded types */
-
 const MB = 'mb1';
 const list = api.mail.labels.list;
 const thread = api.mail.mailbox.messages.listThreadMessages;

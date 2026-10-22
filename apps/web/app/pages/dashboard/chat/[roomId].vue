@@ -173,8 +173,9 @@ const handleLeave = async () => {
 						@delete="(id) => deleteMessage(id)"
 					/>
 					<ChatRoomSkeleton v-else :header="false" />
+					<!-- Keyed by room: a send that resolves after a switch settles its own room's draft. -->
 					<AppErrorBoundary v-if="room.isMember" surface="composer" :reset-keys="[room._id]">
-						<ChatInput :send="sendMessage" />
+						<ChatInput :key="room._id" :send="sendMessage" :draft-target="room._id" />
 					</AppErrorBoundary>
 				</div>
 

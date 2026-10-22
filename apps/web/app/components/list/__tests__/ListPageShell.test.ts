@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `ListPageShell` is the frame the dashboard list pages share. Mounted with the
  * real UI layer (header, empty states, segmented control, confirmation dialog)
@@ -94,7 +93,7 @@ const baseProps = {
 	noResults: { title: 'No results found', description: 'Nothing matches.' },
 	deleteCopy: {
 		title: 'Delete template',
-		confirmKeypath: 'dashboard.send.marketing.index.delete.confirm',
+		confirmKeypath: 'dashboard.send.transactional.index.delete.confirm',
 		description: 'This cannot be undone.',
 		confirmText: 'Delete template',
 	},
@@ -266,6 +265,12 @@ describe('ListPageShell', () => {
 	describe('delete dialog', () => {
 		it('stays closed until asked', () => {
 			expect(render().find('[role="dialog"]').exists()).toBe(false);
+		});
+
+		it('is not rendered at all for a page that deletes at once', () => {
+			const wrapper = render({ deleteCopy: undefined, deleteOpen: true, deleteName: 'Welcome' });
+			expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+			expect(wrapper.findComponent(UiConfirmationDialog).exists()).toBe(false);
 		});
 
 		it('names the item in bold and emits confirm', async () => {

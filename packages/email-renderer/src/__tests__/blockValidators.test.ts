@@ -62,46 +62,55 @@ describe('blockValidators — registry lifecycle', () => {
 // Bucket 2 — Contract: every installed validator honours BlockValidator
 // =============================================================================
 describe('blockValidators — every installed validator satisfies the contract', () => {
-	for (const validator of blockValidators.values()) {
-		describe(`validator "${validator.type}"`, () => {
-			it('has a string type and a function validate', () => {
-				expect(typeof validator.type).toBe('string');
-				expect(typeof validator.validate).toBe('function');
-			});
-
-			it('writes only to the supplied ctx (no global mutation)', () => {
-				// Build a minimally well-formed block per type to avoid intentional
-				// "schema violation throws" while exercising the dispatch path.
-				const wellFormedContent: Record<string, unknown> = {
-					text: { html: 'x', blockType: 'paragraph', fontSize: 16, textColor: '#000' },
-					image: { src: 'https://x', alt: 'x', width: 100, align: 'center' },
-					button: { text: 'x', url: 'https://x', backgroundColor: '#000', textColor: '#fff', align: 'center', borderRadius: 0, paddingX: 0, paddingY: 0 },
-					divider: { color: '#000', thickness: 1, width: 100, style: 'solid' },
-					spacer: { height: 16 },
-					table: { headers: [], rows: [], cells: [] },
-					video: { thumbnailUrl: 'https://x', videoUrl: 'https://x' },
-					hero: { backgroundImage: 'https://x', items: [] },
-					columns: { columnCount: 1, ratio: 'equal', mobileStacking: true, columns: [[]] },
-					container: { items: [], maxWidth: 100 },
-					accordion: { sections: [] },
-					carousel: { images: [{ src: 'https://x', alt: 'x' }] },
-					list: { items: ['x'], listType: 'bullet' },
-					progressBar: { value: 50, maxValue: 100 },
-					menu: { items: [] },
-				};
-				const content = wellFormedContent[validator.type] ?? {};
-				const block = { id: 'b', type: validator.type, content } as unknown as EditorBlock;
-				const before: ValidatorContext = {
-					issues: [],
-					options: undefined,
-					depth: 0,
-					state: { hasTextBlock: false, headingLevels: [] },
-					recurse: () => {},
-				};
-				expect(() => validator.validate(block, before)).not.toThrow();
-			});
+	describe.each(
+		[...blockValidators.values()].map((validator) => [validator.type, validator] as const)
+	)('validator "%s"', (_type, validator) => {
+		it('has a string type and a function validate', () => {
+			expect(typeof validator.type).toBe('string');
+			expect(typeof validator.validate).toBe('function');
 		});
-	}
+
+		it('writes only to the supplied ctx (no global mutation)', () => {
+			// Build a minimally well-formed block per type to avoid intentional
+			// "schema violation throws" while exercising the dispatch path.
+			const wellFormedContent: Record<string, unknown> = {
+				text: { html: 'x', blockType: 'paragraph', fontSize: 16, textColor: '#000' },
+				image: { src: 'https://x', alt: 'x', width: 100, align: 'center' },
+				button: {
+					text: 'x',
+					url: 'https://x',
+					backgroundColor: '#000',
+					textColor: '#fff',
+					align: 'center',
+					borderRadius: 0,
+					paddingX: 0,
+					paddingY: 0,
+				},
+				divider: { color: '#000', thickness: 1, width: 100, style: 'solid' },
+				spacer: { height: 16 },
+				table: { headers: [], rows: [], cells: [] },
+				video: { thumbnailUrl: 'https://x', videoUrl: 'https://x' },
+				hero: { backgroundImage: 'https://x', items: [] },
+				columns: { columnCount: 1, ratio: 'equal', mobileStacking: true, columns: [[]] },
+				container: { items: [], maxWidth: 100 },
+				accordion: { sections: [] },
+				carousel: { images: [{ src: 'https://x', alt: 'x' }] },
+				list: { items: ['x'], listType: 'bullet' },
+				progressBar: { value: 50, maxValue: 100 },
+				menu: { items: [] },
+			};
+			const content = wellFormedContent[validator.type] ?? {};
+			const block = { id: 'b', type: validator.type, content } as unknown as EditorBlock;
+			const before: ValidatorContext = {
+				issues: [],
+				options: undefined,
+				depth: 0,
+				state: { hasTextBlock: false, headingLevels: [] },
+				recurse: () => {},
+			};
+			expect(() => validator.validate(block, before)).not.toThrow();
+		});
+	});
 });
 
 // =============================================================================
@@ -117,7 +126,11 @@ describe('blockValidators — every installed validator satisfies the contract',
 describe('blockValidators — registry-driven validateBlocks parity', () => {
 	it('an image without src still raises IMAGE_NO_SRC', () => {
 		const result = validateBlocks([
-			{ id: 'i', type: 'image', content: { src: '', alt: 'x', width: 100, align: 'center' } } as EditorBlock,
+			{
+				id: 'i',
+				type: 'image',
+				content: { src: '', alt: 'x', width: 100, align: 'center' },
+			} as EditorBlock,
 		]);
 		expect(result.issues.some((i) => i.code === 'IMAGE_NO_SRC')).toBe(true);
 	});
@@ -127,7 +140,16 @@ describe('blockValidators — registry-driven validateBlocks parity', () => {
 			{
 				id: 'b',
 				type: 'button',
-				content: { text: 'go', url: '#', backgroundColor: '#000', textColor: '#fff', align: 'center', borderRadius: 0, paddingX: 0, paddingY: 0 },
+				content: {
+					text: 'go',
+					url: '#',
+					backgroundColor: '#000',
+					textColor: '#fff',
+					align: 'center',
+					borderRadius: 0,
+					paddingX: 0,
+					paddingY: 0,
+				},
 			} as EditorBlock,
 		]);
 		expect(result.issues.some((i) => i.code === 'BUTTON_NO_URL')).toBe(true);
@@ -195,7 +217,11 @@ describe('blockValidators — extension proof', () => {
 		});
 		try {
 			const result = validateBlocks([
-				{ id: 'i', type: 'image', content: { src: '', alt: 'x', width: 100, align: 'center' } } as EditorBlock,
+				{
+					id: 'i',
+					type: 'image',
+					content: { src: '', alt: 'x', width: 100, align: 'center' },
+				} as EditorBlock,
 			]);
 			expect(result.issues.some((i) => i.code === 'OVERRIDE')).toBe(true);
 			expect(result.issues.some((i) => i.code === 'IMAGE_NO_SRC')).toBe(false);

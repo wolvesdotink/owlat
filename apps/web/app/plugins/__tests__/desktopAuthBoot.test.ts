@@ -51,6 +51,12 @@ const convexClients: Array<{
 }> = [];
 vi.mock('convex/browser', () => ({
 	ConvexClient: class {
+		connectionState() {
+			return { isWebSocketConnected: true, hasEverConnected: true };
+		}
+		subscribeToConnectionState() {
+			return () => {};
+		}
 		entry: (typeof convexClients)[number];
 		constructor(url: string) {
 			this.entry = { url, fetchToken: null };

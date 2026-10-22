@@ -142,7 +142,10 @@ export const listRecentAbuse = platformAdminQuery({
 		// Get pending review campaigns
 		const pendingCampaigns = await ctx.db
 			.query('campaigns')
-			.withIndex('by_status', (q) => q.eq('status', 'pending_review'))
+			// Live only: a deleted campaign leaves the review queue until restored.
+			.withIndex('by_deleted_at_and_status_and_updated_at', (q) =>
+				q.eq('deletedAt', undefined).eq('status', 'pending_review')
+			)
 			.collect(); // bounded: review queue only
 
 		return {
@@ -337,7 +340,10 @@ export const getContentReviewQueue = platformAdminQuery({
 		// Get pending review campaigns
 		const pendingCampaigns = await ctx.db
 			.query('campaigns')
-			.withIndex('by_status', (q) => q.eq('status', 'pending_review'))
+			// Live only: a deleted campaign leaves the review queue until restored.
+			.withIndex('by_deleted_at_and_status_and_updated_at', (q) =>
+				q.eq('deletedAt', undefined).eq('status', 'pending_review')
+			)
 			.collect(); // bounded: review queue only
 
 		// Get pending review transactional emails — indexed lookup, no scan.

@@ -64,11 +64,9 @@ const SHIPPED_CEILING_SPECS: ReadonlyArray<readonly [string, CeilingGateSpec]> =
 ];
 
 describe('every shipped ceiling spec is decidable', () => {
-	for (const [name, spec] of SHIPPED_CEILING_SPECS) {
-		it(`${name} can fail something`, () => {
-			expect(ceilingGateSpecIsDecidable(spec, RAMP_GATE_THRESHOLDS)).toBe(true);
-		});
-	}
+	it.each(SHIPPED_CEILING_SPECS)('%s can fail something', (name, spec) => {
+		expect(ceilingGateSpecIsDecidable(spec, RAMP_GATE_THRESHOLDS)).toBe(true);
+	});
 
 	it('a spec with neither an absolute ceiling nor a second series is NOT decidable', () => {
 		// The shape the assertion above exists to catch, stated once so the
@@ -97,15 +95,15 @@ describe('every shipped ceiling spec is decidable', () => {
  * reason that matches its arm.
  */
 describe('every shipped ceiling spec names its own arm when it breaches', () => {
-	for (const [name, spec] of SHIPPED_CEILING_SPECS) {
-		const series = spec.secondSeries;
-		if (series === null) continue;
-		it(`${name} reports the ${series.arm} vocabulary`, () => {
-			expect(series.comparison.failReason).toBe(
-				series.arm === 'reference' ? 'reference_tolerance_breached' : 'trailing_baseline_breached'
-			);
-		});
-	}
+	it.each(
+		SHIPPED_CEILING_SPECS.flatMap(([name, spec]) =>
+			spec.secondSeries === null ? [] : [[name, spec.secondSeries.arm, spec.secondSeries] as const]
+		)
+	)('%s reports the %s vocabulary', (_name, _arm, series) => {
+		expect(series.comparison.failReason).toBe(
+			series.arm === 'reference' ? 'reference_tolerance_breached' : 'trailing_baseline_breached'
+		);
+	});
 });
 
 const STREAM_CONFIGS = DELIVERABILITY_STREAM_KEYS.map((stream) => RAMP_STREAM_CONFIGS[stream]);

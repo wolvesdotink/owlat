@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The answer to a file question (plan §06):
  *   - "choose a file" opens the OS picker and uploads; the answer names the

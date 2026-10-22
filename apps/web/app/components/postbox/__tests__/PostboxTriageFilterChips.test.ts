@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The triage chips, and the handover they now offer.
  *

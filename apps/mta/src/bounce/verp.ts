@@ -34,6 +34,7 @@ import {
 	normalizeVerpKey,
 	parseVerpAddress as parseVerpAddressWithKey,
 } from '@owlat/shared/verp';
+import { readBounceVerpKeyEnv } from '../config.js';
 
 /**
  * Resolve the VERP signing key. Reading the env here (rather than threading it
@@ -48,7 +49,7 @@ function resolveVerpKey(explicit?: string): string | undefined {
 	// trailing newline or surrounding quotes-stripped whitespace resolves to the
 	// SAME HMAC key on both sides. Without this, every relay-stamped token would
 	// fail verification here — safely, but invisibly.
-	return normalizeVerpKey(explicit ?? process.env['BOUNCE_VERP_KEY']);
+	return normalizeVerpKey(explicit ?? readBounceVerpKeyEnv());
 }
 
 /**

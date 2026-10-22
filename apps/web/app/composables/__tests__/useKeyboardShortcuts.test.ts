@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE APP-WIDE DISPATCHER, DRIVEN BY REAL KEY EVENTS.
  *

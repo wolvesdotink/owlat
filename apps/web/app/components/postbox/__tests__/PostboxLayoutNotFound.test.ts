@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Postbox reader pane for a message that is gone (#1100). A link (a
  * notification, a bookmark, the Answer queue) can name a message that was

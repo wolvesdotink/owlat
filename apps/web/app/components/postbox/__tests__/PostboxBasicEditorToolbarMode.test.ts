@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxBasicEditor toolbar-mode behavior:
  *   - default (persistentToolbar = false, the Apple-minimal mode): the classic

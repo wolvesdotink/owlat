@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Zen mode's keys: Cmd/Ctrl+Shift+F toggles it unless a surface claimed the
  * chord, and Esc leaves it BEFORE the page sees the press, so one press is one

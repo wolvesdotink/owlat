@@ -1,7 +1,8 @@
-import { ref, computed, watch, type Ref } from 'vue';
+import { ref, computed, getCurrentScope, onScopeDispose, watch, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id, Doc } from '@owlat/api/dataModel';
 import { stepEditorModuleFor, type StepConfigByKind, type StepKind } from './automations/steps';
+import { registerUnsavedWorkProbe } from '~/lib/pendingOperations';
 
 interface AutomationWithSteps {
 	steps?: Doc<'automationSteps'>[];
@@ -103,6 +104,12 @@ export function useAutomationStepConfig(
 		if (!currentConfig.value || persistedConfigJson.value === null) return false;
 		return stableJson(currentConfig.value.config) !== persistedConfigJson.value;
 	});
+
+	// Edits the server does not hold (a failed save, or one held for a conflict)
+	// veto the app-wide "All changes saved" (lib/pendingOperations.ts).
+	if (getCurrentScope()) {
+		onScopeDispose(registerUnsavedWorkProbe(() => isCurrentConfigDirty.value));
+	}
 
 	const seed = (parsed: NonNullable<StepCurrentConfig> | null) => {
 		currentConfig.value = parsed;

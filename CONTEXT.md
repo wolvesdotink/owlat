@@ -4,6 +4,12 @@ This file pins the project-specific language used across the codebase and in
 grilling sessions. Update inline when terms get sharpened during design
 conversations.
 
+It defines vocabulary; it is not a feature index. When you edit a term, keep
+its definition and move the implementation detail it carries (fields, function
+names, counts, control flow) into a comment beside the code or into
+`apps/api/convex/CONVENTIONS.md`. The rules are under "Documentation" in
+`CLAUDE.md`.
+
 One spelling is load-bearing, because a test checks it
 (`apps/docs/__tests__/contextVocabularyDocs.test.ts`): a cross-reference to
 another section is written `**§ Section name**`, and it must resolve to a `## `

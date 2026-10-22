@@ -1035,6 +1035,7 @@ booleans, and are exempt.
 Tables with `deletedAt: v.optional(v.number())`:
 
 - `contacts`, `userProfiles`, `emailSends`, `transactionalSends`
+- `campaigns`, `automations`, `emailTemplates` (Recently deleted, below)
 
 Rules:
 
@@ -1057,6 +1058,41 @@ Rules:
   steps inline for callers that already batch (organization wipe, sample
   data). Never `.collect()` a contact's children in one transaction on a new
   erasure path — add a phase.
+
+Marketing items (`campaigns`, `automations`, `emailTemplates`) carry the same
+stamp plus `deletedBy` (`lib/validators/softDelete.ts`) and appear in the
+dashboard's Recently deleted page:
+
+- Delete, restore and the purge belong to each domain's `deletion.ts`
+  (`campaigns/`, `automations/`, `emailTemplates/`). A user delete stamps the
+  row and keeps its children; restore needs the permission the delete needed,
+  whoever deleted it. Both are idempotent: a repeated delete keeps the first
+  stamp and moves no counter.
+- Every read that serves a user, an API key or the send path treats a deleted
+  row as missing: `getLive` / `getLiveOrThrow` / `isLive` from
+  `lib/softDelete.ts` for lookups by id, the `by_deleted_at*` indexes (pinned to
+  `deletedAt === undefined`) for scans, so a deleted row never uses up a
+  `take`/`first` limit that a live row should fill, and `softDelete: true` on
+  the listing descriptor, whose filter and facet indexes then lead with
+  `deletedAt`. The listing counters count live rows only
+  (`lib/listingCounters.ts`), so a delete and a restore move a row out of and
+  back into its bucket.
+- The lifecycles refuse every transition of a deleted row, and a delete never
+  leaves one on the send path: a scheduled campaign is unscheduled first, a
+  sending one and an active automation are refused.
+- A deleted row is frozen: nothing rewrites it while it waits (saved-block
+  propagation passes a deleted template by; restore catches up its links), and
+  what hangs off it is not readable either: a public query keyed by the row or
+  by one of its children (a template's history, a campaign's report and sends,
+  an automation's runs and step analytics) checks the parent with `getLive`
+  first and answers as for an unknown id. The source guard in
+  `__tests__/marketingSoftDeleteReads.integration.test.ts` lists every such
+  query and fails when a new one has no probe.
+- The daily `marketing/recentlyDeleted.ts:purgeExpired` removes rows deleted
+  more than 30 days ago through each domain's purge, within one row and byte
+  budget per transaction shared by all three kinds, and reschedules itself
+  while a backlog remains. A row whose children outrun the budget gets
+  `purgeStartedAt` and is resumed next time; restore refuses such a row.
 
 ### Polymorphic foreign keys
 

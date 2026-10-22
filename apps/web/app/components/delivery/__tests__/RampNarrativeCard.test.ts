@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE RAMP NARRATIVE CARD — rendered, not linted.
  *

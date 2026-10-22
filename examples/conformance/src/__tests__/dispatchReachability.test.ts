@@ -263,27 +263,27 @@ describe('contribution dispatch reachability', () => {
 		}
 	});
 
-	for (const moduleExport of DISPATCHED) {
-		const key = seamKey(moduleExport);
-		it(`${key} is reachable from a production host path`, () => {
+	it.each(DISPATCHED.map((moduleExport) => seamKey(moduleExport)))(
+		'%s is reachable from a production host path',
+		(key) => {
 			const seam = SEAMS[key]!;
 			const consumers = consumersOf(seam);
 			expect(
 				consumers.length,
 				`${key} is declared 'wired' but nothing references ${seam.symbol} — ${seam.because}`
 			).toBeGreaterThan(0);
-		});
-	}
+		}
+	);
 
-	for (const moduleExport of UNDISPATCHED) {
-		const key = seamKey(moduleExport);
-		it(`${key} is honestly declared as not dispatched`, () => {
+	it.each(UNDISPATCHED.map((moduleExport) => seamKey(moduleExport)))(
+		'%s is honestly declared as not dispatched',
+		(key) => {
 			const seam = SEAMS[key]!;
 			const consumers = consumersOf(seam);
 			expect(
 				consumers,
 				`${key} now has a consumer (${consumers.join(', ')}): move its row in CONTRIBUTION_CAPABILITY_REQUIREMENTS to dispatch: 'wired' and update the contribution reference`
 			).toEqual([]);
-		});
-	}
+		}
+	);
 });

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE END OF THE FIRST-RUN WIZARD.
  *

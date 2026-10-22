@@ -205,23 +205,21 @@ describe('sunset defaults — a deployment-wide opt-out reaches topic members to
 		});
 	}
 
-	for (const [label, topicRow] of [
+	it.each([
 		['no row of its own', null],
 		['a row that inherits', {}],
 		['a row that explicitly turns the engine ON', { isEnabled: true }],
-	] as const) {
-		it(`stays disabled for a topic member with ${label}`, async () => {
-			const t = harness();
-			const contactId = await seedTopicMember(t, topicRow);
+	] as const)('stays disabled for a topic member with %s', async (label, topicRow) => {
+		const t = harness();
+		const contactId = await seedTopicMember(t, topicRow);
 
-			const policy = await t.run(async (ctx) => {
-				const rows = await loadSunsetPolicyRows(ctx);
-				return await resolveSunsetPolicyForContact(ctx, contactId, rows);
-			});
-
-			expect(policy.isEnabled).toBe(false);
+		const policy = await t.run(async (ctx) => {
+			const rows = await loadSunsetPolicyRows(ctx);
+			return await resolveSunsetPolicyForContact(ctx, contactId, rows);
 		});
-	}
+
+		expect(policy.isEnabled).toBe(false);
+	});
 
 	it('a topic opting out still disables the engine while the global row says ON', async () => {
 		const t = harness();

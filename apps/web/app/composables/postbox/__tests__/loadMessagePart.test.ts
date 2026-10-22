@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `createMessagePartLoader` — one attachment of a Postbox message, fetched on
  * its own instead of inside the whole raw `.eml` (plan 3.5).

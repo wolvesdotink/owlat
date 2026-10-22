@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * All inboxes merges one thread read per inbox. When one of them fails and
  * the others loaded, the loaded rows stay and a notice names the inbox that is

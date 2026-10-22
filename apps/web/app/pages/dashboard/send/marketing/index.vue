@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import { sortTemplateRows } from '~/utils/templateListSort';
+import { useMarketingDeleteUndo } from '~/composables/useMarketingDeleteUndo';
 
 type TemplateRow = FunctionReturnType<typeof api.emailTemplates.emails.list>['page'][number];
 
@@ -30,6 +31,10 @@ const { run: duplicateTemplate } = useBackendOperation(api.emailTemplates.emails
 const { run: deleteTemplate } = useBackendOperation(api.emailTemplates.emails.remove, {
 	label: () => t('dashboard.send.marketing.index.operations.delete'),
 });
+const { run: restoreTemplate } = useBackendOperation(api.emailTemplates.emails.restore, {
+	label: () => t('dashboard.send.marketing.index.operations.restore'),
+});
+const { deleteWithUndo } = useMarketingDeleteUndo();
 const { run: createTemplate } = useBackendOperation(api.emailTemplates.emails.create, {
 	label: () => t('dashboard.send.marketing.index.operations.create'),
 });
@@ -80,11 +85,15 @@ const list = reactive(
 			const result = await duplicateTemplate({ templateId: template._id });
 			if (result.ok) showToast(t('dashboard.send.marketing.index.toasts.duplicated'));
 		},
-		onDelete: async (template) => {
-			const result = await deleteTemplate({ templateId: template._id });
-			if (result.ok) showToast(t('dashboard.send.marketing.index.toasts.deleted'));
-			return result.ok;
-		},
+		// A delete runs at once (the template goes to Recently deleted) and the
+		// toast offers Undo.
+		confirmDelete: false,
+		onDelete: (template) =>
+			deleteWithUndo({
+				name: template.name,
+				remove: async () => (await deleteTemplate({ templateId: template._id })).ok,
+				restore: () => restoreTemplate({ templateId: template._id }),
+			}),
 		onNew: () => (isTemplateLibraryOpen.value = true),
 		canCreate: () => canManage.value,
 		isBusy: () => isTemplateLibraryOpen.value,
@@ -143,20 +152,9 @@ const handleCreateSubmit = async () => {
 				query: list.debouncedSearch,
 			}),
 		}"
-		:delete-copy="{
-			title: t('dashboard.send.marketing.index.delete.title'),
-			confirmKeypath: 'dashboard.send.marketing.index.delete.confirm',
-			description: t('dashboard.send.marketing.index.delete.description'),
-			confirmText: t('dashboard.send.marketing.index.delete.confirmButton'),
-		}"
-		:delete-open="list.isDeleteOpen"
-		:delete-name="list.deleteTarget?.name"
-		:is-deleting="list.isDeleting"
 		@update:sort="list.selectSort"
 		@retry="list.refetch"
 		@clear-search="list.clearSearch"
-		@confirm-delete="list.confirmDelete"
-		@cancel-delete="list.closeDelete"
 	>
 		<template #actions>
 			<UiButton v-if="canManage" size="sm" @click="isTemplateLibraryOpen = true">

@@ -2,6 +2,10 @@ import { v } from 'convex/values';
 import { automationsQuery } from './_helpers';
 import { PAGE_SIZE_DEFAULT } from '../lib/constants';
 import { loadOrderedSteps } from './steps';
+import { getLive } from '../lib/softDelete';
+
+// Runs, steps and counters of a deleted automation stay until the purge, but
+// it reads as missing: every query here answers as for an unknown id.
 
 // Get automation runs for analytics with contact details.
 // Pagination is index-ordered (desc by creation time); the previous shape
@@ -18,6 +22,8 @@ export const getAutomationRuns = automationsQuery({
 		offset: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		if (!(await getLive(ctx, args.automationId))) return { runs: [], hasMore: false };
+
 		const limit = args.limit ?? PAGE_SIZE_DEFAULT;
 		const offset = args.offset ?? 0;
 		const takeCount = offset + limit + 1;
@@ -69,6 +75,7 @@ export const getStepAnalytics = automationsQuery({
 		automationId: v.id('automations'),
 	},
 	handler: async (ctx, args) => {
+		if (!(await getLive(ctx, args.automationId))) return [];
 		const steps = await loadOrderedSteps(ctx.db, args.automationId);
 
 		// Read the funnel counts off each step's denormalized per-status counters
@@ -104,7 +111,7 @@ export const getAutomationStats = automationsQuery({
 		automationId: v.id('automations'),
 	},
 	handler: async (ctx, args) => {
-		const automation = await ctx.db.get(args.automationId);
+		const automation = await getLive(ctx, args.automationId);
 		if (!automation) return null;
 
 		// Run-level counts from the automation's denormalized stats (maintained by

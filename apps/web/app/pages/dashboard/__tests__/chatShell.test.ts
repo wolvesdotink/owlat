@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The chat parent route (`pages/dashboard/chat.vue`) owns the rail and the
  * dialogs both chat pages reach. Before it existed, the empty state and the

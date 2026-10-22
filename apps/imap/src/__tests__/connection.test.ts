@@ -82,6 +82,8 @@ const config: ImapConfig = {
 	maxClients: 500,
 	idleTimeoutMs: 30 * 60 * 1000,
 	authRateLimit: { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 },
+	production: false,
+	owlatVersion: 'dev',
 };
 
 interface MockConvex {
@@ -272,6 +274,12 @@ describe('ImapConnection — unauthenticated commands', () => {
 		const lines = mocks.socket.lines();
 		expect(lines[0]).toMatch(/^\* ID \("name" "owlat-imap"/);
 		expect(lines[1]).toBe('a001 OK ID completed');
+	});
+
+	it('ID reports the release from the config', async () => {
+		const versioned = makeMocks(true, { owlatVersion: '0.6.16' });
+		await exec(versioned.socket, 'a001 ID NIL');
+		expect(versioned.socket.lines()).toContain('* ID ("name" "owlat-imap" "version" "0.6.16")');
 	});
 
 	it('NAMESPACE returns the personal namespace', async () => {

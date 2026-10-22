@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The footer's pre-send chip (plan idea 6): the findings arrive as catalog keys
  * with params, and this is the render boundary that resolves them. It also has

@@ -279,7 +279,6 @@ export const runChunk = internalAction({
 					}
 				} catch (err) {
 					deltaError++;
-					// eslint-disable-next-line no-console
 					console.error('[messageBackfill] extraction error', err);
 				}
 
@@ -314,7 +313,6 @@ export const runChunk = internalAction({
 			}
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
-			// eslint-disable-next-line no-console
 			console.error('[messageBackfill] runChunk failed', err);
 			try {
 				await ctx.runMutation(internal.knowledge.messageBackfill.finalizeJob, {

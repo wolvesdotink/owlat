@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { computed, watch } from 'vue';

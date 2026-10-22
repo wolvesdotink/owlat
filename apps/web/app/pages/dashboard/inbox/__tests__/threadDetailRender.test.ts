@@ -50,4 +50,16 @@ describe('Team Inbox thread page rendering', () => {
 		expect(template).not.toContain('<UiSpinner');
 		expect(page).toContain('teamThreadPreview(threadId.value)');
 	});
+
+	it('shows a priority that is not normal beside the message count', () => {
+		expect(template).toMatch(/<template v-if="priority !== 'normal'">/);
+		expect(template).toContain('data-testid="thread-priority"');
+		expect(page).toContain('teamThreadPriorityOf(thread.value)');
+	});
+
+	it('offers its verbs to ⌘K and joins the Jump back list', () => {
+		expect(page).toContain('useTeamThreadCommandSurface({');
+		expect(page).toMatch(/canAct: \(\) => isAdmin\.value/);
+		expect(page).toMatch(/kind: 'teamThread'/);
+	});
 });

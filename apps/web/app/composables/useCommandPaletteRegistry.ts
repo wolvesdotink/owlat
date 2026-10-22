@@ -1,18 +1,25 @@
+import { markRaw, shallowRef, type ShallowRef } from 'vue';
 import type { CommandPaletteProvider } from '~/lib/commandPaletteRegistry';
 
 /**
- * Reactive backing store for command-palette providers contributed by mounted
- * surfaces (and, later, plugins). Replaces the single `cmdk:surface-groups`
- * bucket: any number of surfaces can register independently instead of one
- * overwriting another.
+ * The providers contributed by mounted surfaces (and, later, plugins). Any
+ * number of surfaces can register independently instead of one overwriting
+ * another.
  *
- * Providers carry `build`/`run` closures, so registration only ever happens on
- * the client (`onMounted`). SSR keeps the empty default and never tries to
- * serialize a function — the palette is a client-opened modal, so this matches
- * how the old surface bucket behaved.
+ * Module state in a shallow ref rather than `useState`: a provider is a bag of
+ * `build`/`run` closures, and `useState` would wrap every one of them in a deep
+ * reactive proxy (and hand back proxies, not the registered objects). The app is
+ * SPA-only, so a per-request store buys nothing. Each provider is `markRaw`ed and
+ * the array is replaced on every change, so the palette's computed re-runs on
+ * registration and removal and never on anything inside a provider.
  */
-export function useCommandPaletteRegistry(): Ref<CommandPaletteProvider[]> {
-	return useState<CommandPaletteProvider[]>('cmdk:providers', () => []);
+const providers: ShallowRef<readonly CommandPaletteProvider[]> = shallowRef([]);
+
+/** The live registry, newest registration last. Read-only: register through the helper. */
+export function useCommandPaletteRegistry(): Readonly<
+	ShallowRef<readonly CommandPaletteProvider[]>
+> {
+	return providers;
 }
 
 /**
@@ -28,16 +35,10 @@ export function useCommandPaletteRegistry(): Ref<CommandPaletteProvider[]> {
  * than by id: the old object is gone before the remount's fresh descriptor
  * claims the id, and a stale same-id unmount can never delete a different,
  * still-mounted survivor's registration.
- *
- * Identity is compared through `toRaw` because `useState` deep-reactive-wraps
- * the stored array, so the entry read back is a proxy of `provider`, not
- * `provider` itself — a bare `entry !== provider` would never match and would
- * leak every registration.
  */
 export function registerCommandPaletteProvider(provider: CommandPaletteProvider): void {
-	const registry = useCommandPaletteRegistry();
 	onMounted(() => {
-		if (registry.value.some((entry) => entry.id === provider.id)) {
+		if (providers.value.some((entry) => entry.id === provider.id)) {
 			if (import.meta.dev) {
 				console.warn(
 					`[command-palette] provider id "${provider.id}" is already registered; ignoring the duplicate (first registrant wins).`
@@ -45,9 +46,9 @@ export function registerCommandPaletteProvider(provider: CommandPaletteProvider)
 			}
 			return;
 		}
-		registry.value = [...registry.value, provider];
+		providers.value = [...providers.value, markRaw(provider)];
 	});
 	onBeforeUnmount(() => {
-		registry.value = registry.value.filter((entry) => toRaw(entry) !== provider);
+		providers.value = providers.value.filter((entry) => entry !== provider);
 	});
 }

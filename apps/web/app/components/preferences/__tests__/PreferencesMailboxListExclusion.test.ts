@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The hosted-decision opt-out on the admin mailbox list. Only this list reaches every mailbox in the organization, a teammate's
  * personal one included, so an admin manages each one here; a member's list

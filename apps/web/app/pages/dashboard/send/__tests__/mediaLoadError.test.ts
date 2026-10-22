@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A failed media read is not an empty library (#721): the page shows the
  * error with a working Try again, never "No media yet".

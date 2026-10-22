@@ -14,6 +14,7 @@
  */
 
 import { api } from '@owlat/api';
+import { holdPendingWork } from '~/lib/pendingOperations';
 import { uploadFileToStorage } from '~/utils/storageUpload';
 import { parseGmailFiltersXml, type UntranslatedFilter } from '~/utils/gmailFilterImport';
 import {
@@ -71,6 +72,10 @@ export function useArchiveImport() {
 		if (!format) return false;
 
 		isUploading.value = true;
+		// Upload and starting the import are one save: hold any slow-save episode
+		// open until the job is started (or refused).
+		const release = holdPendingWork();
+		let started = false;
 		try {
 			const uploaded = await uploadFileToStorage(
 				file,
@@ -85,26 +90,28 @@ export function useArchiveImport() {
 				}
 				return false;
 			}
-			const started = await startOp.run({
+			const start = await startOp.run({
 				mailboxId: id,
 				storageId: uploaded.storageId,
 				filename: file.name,
 				format,
 				totalBytes: file.size,
 			});
-			if (!started.ok) return false;
+			if (!start.ok) return false;
 			// A refusal is a normal answer here, not an error: the mutation returns
 			// it so it can delete the upload in the same transaction.
-			if (!started.result.ok) {
-				showToast(t(archiveImportRefusalKey(started.result.reason)), 'error');
+			if (!start.result.ok) {
+				showToast(t(archiveImportRefusalKey(start.result.reason)), 'error');
 				return false;
 			}
+			started = true;
 			showToast(t('shared.postbox.useArchiveImport.started'), 'success');
 			return true;
 		} catch {
 			showToast(t('shared.postbox.useArchiveImport.uploadFailed'), 'error');
 			return false;
 		} finally {
+			release(started);
 			isUploading.value = false;
 		}
 	}

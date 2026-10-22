@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The member-readable sending-health card (plan idea 12), mounted against the
  * REAL message catalog.

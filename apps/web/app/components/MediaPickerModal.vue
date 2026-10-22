@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { holdPendingWork } from '~/lib/pendingOperations';
 import { getImageDimensions } from '~/utils/getImageDimensions';
 import {
 	registerUploadedMediaReference,
@@ -114,6 +115,10 @@ const selectAsset = (asset: (typeof assets.value)[0]) => {
 const handleUploadAndSelect = async (files: File[]) => {
 	if (files.length === 0) return;
 	isUploading.value = true;
+	// Upload, measure, register, resolve the URL and hand it over are one save:
+	// hold any slow-save episode open until the picked file is emitted.
+	const release = holdPendingWork();
+	let handedOver = false;
 	try {
 		const file = files[0]!;
 		const upload = await uploadFileToStorage(file, () => generateUploadUrl({}));
@@ -153,8 +158,10 @@ const handleUploadAndSelect = async (files: File[]) => {
 				fileSize: file.size,
 			});
 			emit('update:open', false);
+			handedOver = true;
 		}
 	} finally {
+		release(handedOver);
 		isUploading.value = false;
 	}
 };

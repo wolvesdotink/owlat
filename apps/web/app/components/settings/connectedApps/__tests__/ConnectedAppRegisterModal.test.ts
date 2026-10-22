@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Connected-app registration wizard. Progressive disclosure gates capabilities
  * behind valid details; the risk disclosure is always shown before granting;

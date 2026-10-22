@@ -94,14 +94,15 @@ describe('evaluateSunset — the threshold table', () => {
 });
 
 describe('evaluateSunset — the operator override at every stage', () => {
-	for (const stage of ['engaged', 'reengagement', 'suppressed'] as const) {
-		it(`holds an exempt contact in stage ${stage}`, () => {
+	it.each(['engaged', 'reengagement', 'suppressed'] as const)(
+		'holds an exempt contact in stage %s',
+		(stage) => {
 			const v = verdict({ stage, isExempt: true, lastEngagementAt: daysAgo(999) });
 			expect(v.action).toBe('hold');
 			expect(v.reason).toBe('operator_override');
 			expect(v.stage).toBe(stage);
-		});
-	}
+		}
+	);
 
 	it('holds every stage when the policy is disabled', () => {
 		const v = verdict({ lastEngagementAt: daysAgo(999) }, policy({ isEnabled: false }));

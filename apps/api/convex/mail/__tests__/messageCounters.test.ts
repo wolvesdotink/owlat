@@ -283,8 +283,9 @@ async function isReady(w: World): Promise<boolean> {
 }
 
 describe('Postbox counters equal a full scan (plan 3.1)', () => {
-	for (const seed of [1, 7, 42, 99, 2026]) {
-		it(`stays exact through a random write sequence and a racing backfill (seed ${seed})`, async () => {
+	it.each([1, 7, 42, 99, 2026])(
+		'stays exact through a random write sequence and a racing backfill (seed %s)',
+		async (seed) => {
 			const r = rng(seed);
 			const w = await setup();
 
@@ -322,8 +323,8 @@ describe('Postbox counters equal a full scan (plan 3.1)', () => {
 				await randomOp(w, r);
 				await expectCountersMatchScan(w, `after ready, op ${i}`);
 			}
-		});
-	}
+		}
+	);
 });
 
 describe('Postbox readers on the counters (plan 3.1)', () => {

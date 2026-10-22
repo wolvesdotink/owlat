@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { isImeComposing } from '~/utils/imeComposition';
+import { useComposerDraft } from '~/composables/useComposerDrafts';
 
 /**
  * The reader's "Team discussion": an internal chat thread bound to this email
@@ -42,7 +43,17 @@ const { run: markReadRun } = useBackendOperation(api.chat.mailDiscussion.markRea
 const isVisible = computed(() => isOpen.value && discussion.value !== null);
 const messages = computed(() => discussion.value?.messages ?? []);
 
-const draft = ref('');
+// A draft belongs to the thread (and mailbox) it was written under, and is
+// kept on this device until it is posted.
+const { draft: kept, pin } = useComposerDraft(
+	'mail-discussion',
+	() => `${props.mailboxId}:${props.threadId}`,
+	{ text: '' }
+);
+const draft = computed({
+	get: () => kept.value.text,
+	set: (text: string) => (kept.value = { text }),
+});
 const canSend = computed(() => draft.value.trim().length > 0 && !isPosting.value);
 
 const placeholder = computed(() =>
@@ -54,10 +65,13 @@ const placeholder = computed(() =>
 );
 
 async function send() {
-	const body = draft.value.trim();
+	const sent = draft.value;
+	const body = sent.trim();
 	if (!body || isPosting.value) return;
+	const settle = pin();
 	const outcome = await postRun({ threadId: props.threadId as Id<'mailThreads'>, body });
-	if (outcome.ok) draft.value = '';
+	// Only the message that was posted goes: text changed meanwhile stays.
+	if (outcome.ok) settle((now) => (now.text === sent ? { text: '' } : now));
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -77,14 +91,6 @@ watch(
 		void markReadRun({ threadId: threadId as Id<'mailThreads'> });
 	},
 	{ immediate: true }
-);
-
-// A draft belongs to the thread (and mailbox) it was written under.
-watch(
-	() => `${props.mailboxId}:${props.threadId}`,
-	() => {
-		draft.value = '';
-	}
 );
 
 const listEl = ref<HTMLElement | null>(null);

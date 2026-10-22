@@ -26,15 +26,13 @@ describe('sidebarGroupsForSection', () => {
 		vision: ['Vision'],
 	};
 
-	for (const [section, groupLabels] of Object.entries(expectedSections)) {
-		it(`yields the ${section} groups`, () => {
-			const groups = sidebarGroupsForSection(section);
-			expect(groups.map((group) => group.label)).toEqual(groupLabels);
-			for (const group of groups) {
-				expect(group.items.length).toBeGreaterThan(0);
-			}
-		});
-	}
+	it.each(Object.entries(expectedSections))('yields the %s groups', (section, groupLabels) => {
+		const groups = sidebarGroupsForSection(section);
+		expect(groups.map((group) => group.label)).toEqual(groupLabels);
+		for (const group of groups) {
+			expect(group.items.length).toBeGreaterThan(0);
+		}
+	});
 
 	it('yields nothing for unknown sections', () => {
 		expect(sidebarGroupsForSection('nonexistent')).toEqual([]);

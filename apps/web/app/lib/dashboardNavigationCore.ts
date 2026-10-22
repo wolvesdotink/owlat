@@ -56,6 +56,12 @@ export const minRole =
 const adminOnly = minRole('admin');
 export const editorOnly: Gate = (env) => env.role === 'editor';
 
+/**
+ * Recently deleted holds what the viewer could restore: campaigns (every role
+ * manages them, behind their flag) or templates and automations (admins).
+ */
+export const recentlyDeletedGate: Gate = (env) => flag('campaigns')(env) || adminOnly(env);
+
 interface CoreItem extends NavigationItem {
 	readonly gate?: Gate;
 }
@@ -232,6 +238,12 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				href: '/dashboard/send',
 				icon: 'lucide:layout-grid',
 				gate: adminOnly,
+			},
+			{
+				name: 'shared.dashboardNavigation.items.send.recentlyDeleted',
+				href: '/dashboard/marketing/deleted',
+				icon: 'lucide:trash-2',
+				gate: recentlyDeletedGate,
 			},
 		],
 	},

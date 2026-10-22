@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The personal address book (/dashboard/postbox/contacts).
  *

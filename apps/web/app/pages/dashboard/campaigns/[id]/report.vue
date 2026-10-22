@@ -10,6 +10,7 @@ import CampaignReportComparison from '~/components/campaigns/CampaignReportCompa
 import CampaignSendTimeReport from '~/components/campaigns/CampaignSendTimeReport.vue';
 import { selectPreviousComparable } from '~/utils/campaignReport';
 import { formatNumber } from '~/utils/formatters';
+import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 
 const { t } = useI18n();
 
@@ -56,6 +57,12 @@ const {
 } = useConvexQuery(api.campaigns.campaigns.getWithRelations, () => ({
 	campaignId: campaignId.value,
 }));
+// ⌘K's "Jump back" list remembers the campaign once it has a name.
+useRecordPaletteObjectOpen(() =>
+	campaign.value?.name
+		? { kind: 'campaign', id: campaignId.value, title: campaign.value.name }
+		: null
+);
 
 // Fetch email send statistics
 const { data: stats, isLoading: statsLoading } = useConvexQuery(

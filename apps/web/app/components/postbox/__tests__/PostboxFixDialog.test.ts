@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Fix (read on arrival §4.2): the dialog starts where the mail sits, for this
  * conversation; saving sends the destination, the scope and the optional why,

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * ShareWithMembers — an owner or admin shares a knowledge entry that migration
  * 0069 restricted with members again (#1372).

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * DecisionRationale read-only surfacing:
  *   - renders the "Sent because… / Held because…" line from agentDecision

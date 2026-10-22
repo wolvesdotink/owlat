@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The thread header's actions are described once and rendered twice (a row of
  * buttons on wide screens, one ⋯ menu below `sm`). Both renderings must offer

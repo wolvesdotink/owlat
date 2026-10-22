@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Esc in the composer minimizes the popup (Answer mode: lets go of the
  * editor), unless something inside the composer owns the press. A popover

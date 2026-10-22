@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxSecurityBadge — the signature-verdict driver (F2, D9). When the
  * `signature` prop (the inbound signature verdict persisted by F1) is present

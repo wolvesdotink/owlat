@@ -10,7 +10,9 @@
  *      `recordUpdateStart` / `recordUpdateFinish` mutations below.
  *   3. UI calls `listUpdateHistory` to render the history table.
  *
- * Gating: every function here is platform-admin only.
+ * Gating: every function here is platform-admin only, except
+ * `getRolloutActivity`, which tells any member no more than when the running
+ * update last showed activity.
  *
  * WHY THE TWO RECORD MUTATIONS ARE PUBLIC, NOT INTERNAL
  * -----------------------------------------------------
@@ -29,7 +31,8 @@
  * accepted as an argument.
  */
 import { v } from 'convex/values';
-import { platformAdminMutation, platformAdminQuery } from './lib/authedFunctions';
+import { platformAdminMutation, platformAdminQuery, publicQuery } from './lib/authedFunctions';
+import { isActiveOrgMember } from './lib/sessionOrganization';
 import { updateStepResultValidator } from './lib/convexValidators';
 import { throwNotFound } from './_utils/errors';
 import { successOrFailedValidator } from './lib/literalValidators';
@@ -91,7 +94,6 @@ export const recordUpdateStart = platformAdminMutation({
 				// have worked. What is true is that nobody is left to report it.
 				error: supersededNote(args.versionTo),
 			});
-			// eslint-disable-next-line no-console
 			console.info(
 				JSON.stringify({
 					event: 'update_superseded',
@@ -117,7 +119,6 @@ export const recordUpdateStart = platformAdminMutation({
 		// trivially scraped by Loki/DataDog/Vector — gives us a time-
 		// correlated record of every update attempt without coupling to a
 		// specific provider.
-		// eslint-disable-next-line no-console
 		console.info(
 			JSON.stringify({
 				event: 'update_start',
@@ -176,7 +177,6 @@ export const recordUpdateFinish = platformAdminMutation({
 		// needed). Read from the pre-patch document — the patch touches none
 		// of these fields, so re-reading the row would only cost a second read.
 		const durationMs = existing.startedAt ? finishedAt - existing.startedAt : undefined;
-		// eslint-disable-next-line no-console
 		console.info(
 			JSON.stringify({
 				event: 'update_finish',
@@ -283,6 +283,62 @@ export const getUnfinishedUpdate = platformAdminQuery({
 			.take(1);
 		if (!newest || newest.status !== 'running') return null;
 		return { runId: newest._id, versionTo: newest.versionTo ?? null };
+	},
+});
+
+/**
+ * Mark the open update run as still rolling out.
+ *
+ * The admin tab following a rollout calls this every
+ * `ROLLOUT_HEARTBEAT_MS` until it has the updater's verdict. It is the only
+ * live evidence there is: the row's `running` status is not, because the
+ * happy path orphans it (see `getUnfinishedUpdate`) and a closed tab leaves it
+ * open for good. A run that already has a verdict, or was superseded, is left
+ * alone, so a heartbeat queued while the socket was down cannot reopen it.
+ *
+ * Platform-admin only, and public because the admin's browser calls it.
+ */
+export const recordUpdateActivity = platformAdminMutation({
+	args: {},
+	handler: async (ctx) => {
+		const [newest] = await ctx.db
+			.query('systemUpdates')
+			.withIndex('by_kind_and_startedAt', (q) => q.eq('kind', 'updateRun'))
+			.order('desc')
+			.take(1);
+		if (!newest || newest.status !== 'running') return;
+		await ctx.db.patch(newest._id, { lastActivityAt: Date.now() });
+	},
+});
+
+/**
+ * The open update run's last confirmed activity: `{ activeAt: null }` when no
+ * run is open, and `null` when the caller may not see it (anonymous, or not an
+ * active member).
+ *
+ * The app shell reads this while connected so that, when the rollout restarts
+ * the backend and the socket drops, it can say "update in progress" instead of
+ * "connection lost". `activeAt` is the last heartbeat (`recordUpdateActivity`),
+ * or the start for a run that has none yet. The shell trusts it only while it
+ * sees it advance: an orphaned `running` row answers here too, but its value
+ * never changes again. Only that timestamp leaves here: versions, the
+ * initiating admin and step logs stay platform-admin only. The two empty
+ * answers differ because the activity is instance-wide: the shell must take the
+ * first answer after gaining visibility (signing in, joining an organization)
+ * as a baseline, not as a run that just opened.
+ */
+// public: the app shell subscribes before it knows the caller is a member; an anonymous or non-member caller gets null instead of an error.
+export const getRolloutActivity = publicQuery({
+	args: {},
+	handler: async (ctx) => {
+		if (!(await isActiveOrgMember(ctx))) return null;
+		const [newest] = await ctx.db
+			.query('systemUpdates')
+			.withIndex('by_kind_and_startedAt', (q) => q.eq('kind', 'updateRun'))
+			.order('desc')
+			.take(1);
+		if (!newest || newest.status !== 'running') return { activeAt: null };
+		return { activeAt: newest.lastActivityAt ?? newest.startedAt ?? null };
 	},
 });
 

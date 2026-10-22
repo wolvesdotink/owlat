@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxReplyGuard — one-time-per-thread confirm before replying to a sender in
  * one of the shapes a reply walks into (Sealed Mail A3, widened by UX plan idea

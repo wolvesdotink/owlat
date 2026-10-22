@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The full-page composer (pages/dashboard/compose.vue), which replaced the
  * floating popup in the corner. Every composer it mounts belongs to a compose

@@ -617,10 +617,8 @@ describe('tlsRpt', () => {
 			['handshake', 'validation-failure'],
 		];
 
-		for (const [cause, expected] of cases) {
-			it(`${cause} -> ${expected}`, () => {
-				expect(classifyTlsFailure(cause)).toBe(expected);
-			});
-		}
+		it.each(cases)('%s -> %s', (cause, expected) => {
+			expect(classifyTlsFailure(cause)).toBe(expected);
+		});
 	});
 });

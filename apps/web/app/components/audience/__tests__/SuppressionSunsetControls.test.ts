@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The sunset policy's day fields carry their minimums on the number inputs
  * themselves: the re-engagement window starts at `SUNSET_MIN_WINDOW_DAYS`, the

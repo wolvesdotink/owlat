@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The in-flight update log (Settings → System & Updates → Update now).
  *

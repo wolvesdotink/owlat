@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Contacts without an email keep a nonempty identity on the list page
  * (plan OW-037), in both the table and the card list below `md`.

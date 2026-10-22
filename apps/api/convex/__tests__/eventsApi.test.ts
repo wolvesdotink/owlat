@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateEventId } from '../eventsApi';
+import { generateEventId } from '../automations/triggers';
 
 describe('generateEventId', () => {
 	it('should start with evt_ prefix', () => {

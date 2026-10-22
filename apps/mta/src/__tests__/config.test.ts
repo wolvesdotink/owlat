@@ -246,9 +246,20 @@ describe('loadConfig', () => {
 		['SUBMISSION_PORT', '0', 'SUBMISSION_PORT must be an integer between 1 and 65535'],
 		['BOUNCE_TARPIT_DELAY_MS', '-1', 'BOUNCE_TARPIT_DELAY_MS must be an integer between 0 and'],
 		['BOUNCE_SOCKET_TIMEOUT_MS', '3000000000', 'BOUNCE_SOCKET_TIMEOUT_MS must be an integer'],
+		['CLAMAV_PORT', '3310x', 'CLAMAV_PORT must be an integer between 1 and 65535'],
 	])('refuses to boot on %s=%j', (key, value, message) => {
 		process.env[key] = value;
 		expect(() => loadConfig()).toThrow(message);
+	});
+
+	// The scan route takes the ClamAV address from here rather than reading it.
+	it('defaults the ClamAV address to the compose sidecar and reads overrides', () => {
+		delete process.env['CLAMAV_HOST'];
+		delete process.env['CLAMAV_PORT'];
+		expect(loadConfig().clamav).toEqual({ host: 'clamav', port: 3310 });
+		process.env['CLAMAV_HOST'] = 'scanner.internal';
+		process.env['CLAMAV_PORT'] = '3311';
+		expect(loadConfig().clamav).toEqual({ host: 'scanner.internal', port: 3311 });
 	});
 
 	it('accepts a zero tarpit delay', () => {

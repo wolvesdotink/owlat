@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A stored budget refusal (D1) on an assistant answer, an @assistant reply or a
  * visualization carries the stable code and reason, never a sentence; the

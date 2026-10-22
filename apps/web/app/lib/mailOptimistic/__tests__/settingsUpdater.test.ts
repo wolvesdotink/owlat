@@ -3,8 +3,6 @@ import { api } from '@owlat/api';
 import { fakeLocalStore } from './fakeLocalStore';
 import { optimisticUpdateSettings } from '../settingsUpdater';
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- the updater's args are loosely built here */
-
 const get = api.mail.settings.get;
 const run = (fake: ReturnType<typeof fakeLocalStore>, args: any) =>
 	optimisticUpdateSettings(fake.store, args);

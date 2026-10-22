@@ -88,6 +88,14 @@ export function registerDeliveryCrons(crons: Crons): void {
 		internal.transactional.pendingUploads.sweepExpired,
 		{}
 	);
+	// Idempotency-Key receipts of the send API live 24 hours. Lookups already
+	// ignore an expired one; this only reclaims the space.
+	crons.interval(
+		'sweep expired api request receipts',
+		{ hours: 1 },
+		internal.auth.apiRequestReceipts.sweepExpired,
+		{}
+	);
 	// Send assignments are one row per recipient per send (the experiment
 	// record), so their retention sweep is not optional. 90 days, deleted in
 	// bounded indexed batches that resume via self-scheduling while a tick

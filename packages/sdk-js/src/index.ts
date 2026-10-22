@@ -11,6 +11,7 @@ export type {
 	RateLimitInfo,
 	ApiResponse,
 	PaginatedResponse,
+	RequestOptions,
 	// Contacts
 	Contact,
 	CreateContactParams,

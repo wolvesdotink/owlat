@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Recipient pages name the sender, not Owlat (#798). Someone unsubscribing
  * from Northwind Studio's newsletter has never heard of Owlat; a page headed

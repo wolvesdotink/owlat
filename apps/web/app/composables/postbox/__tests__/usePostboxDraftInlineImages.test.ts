@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * #1285: the composer asks for a draft's inline image URLs once Convex auth is
  * confirmed and it has a draft row whose body holds inline images, hands the

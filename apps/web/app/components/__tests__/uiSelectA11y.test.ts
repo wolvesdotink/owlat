@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * ACCESSIBILITY PASS ON THE SHARED SELECT, OPEN AND CLOSED.
  *

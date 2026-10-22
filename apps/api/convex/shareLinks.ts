@@ -5,6 +5,7 @@ import { getOptional } from './lib/env';
 import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from './_utils/errors';
 import { UNSTAMPED_RENDERER_VERSION } from './lib/rendererVersion';
+import { getLive, getLiveOrThrow } from './lib/softDelete';
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
@@ -39,7 +40,7 @@ export const createShareLink = authedMutation({
 		let previewText: string | undefined;
 
 		if (args.emailTemplateId) {
-			const template = await getOrThrow(ctx, args.emailTemplateId, 'Email template');
+			const template = await getLiveOrThrow(ctx, args.emailTemplateId, 'Email template');
 			if (!template.htmlContent) {
 				throwInvalidState('Template must be saved at least once before sharing');
 			}
@@ -126,7 +127,7 @@ export const listShareLinks = authedQuery({
 		);
 		let links;
 		if (args.emailTemplateId) {
-			const template = await ctx.db.get(args.emailTemplateId);
+			const template = await getLive(ctx, args.emailTemplateId);
 			if (!template) return [];
 
 			links = await ctx.db

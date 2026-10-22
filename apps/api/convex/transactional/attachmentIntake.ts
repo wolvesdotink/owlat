@@ -17,6 +17,7 @@ import { validateOutboundUrl } from '../lib/outboundUrlValidation';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { AttachmentRef, DispatchOutcome } from './dispatch';
 import { discardStoredUploads, type StoredUpload } from './pendingUploads';
+import type { IdempotencyArg } from '../auth/apiRequestReceipts';
 
 export interface AttachmentInput {
 	filename: string;
@@ -180,6 +181,7 @@ interface DispatchRequest {
 	email: string;
 	dataVariables?: Record<string, JsonPrimitiveValue>;
 	language?: string;
+	idempotency?: IdempotencyArg;
 }
 
 /**
@@ -187,6 +189,8 @@ interface DispatchRequest {
  * dispatch claims it with the Send; every refusal (a storage failure, a
  * rejection, a thrown dispatch) releases what is still pending, and a request
  * that dies in between leaves it to the expiry sweep (`pendingUploads.ts`).
+ * A replay of an Idempotency-Key claims nothing: the original Send owns its
+ * own blobs, so this request's copies are released like a refusal's.
  */
 export async function uploadAndDispatch(
 	ctx: Pick<ActionCtx, 'storage' | 'runMutation'>,
@@ -211,6 +215,6 @@ export async function uploadAndDispatch(
 		await discardStoredUploads(ctx, stored);
 		throw err;
 	}
-	if (!outcome.ok) await discardStoredUploads(ctx, stored);
+	if (!outcome.ok || outcome.replayed) await discardStoredUploads(ctx, stored);
 	return { ok: true, outcome };
 }

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Reply Queue's clarification of a thread, above the editor:
  *  - it shows as the ask card while it asks, answered through the Reply

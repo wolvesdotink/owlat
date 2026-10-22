@@ -5,6 +5,7 @@ import { stepEditorModuleFor, type StepKind } from '~/composables/automations/st
 import { formatNumber } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
 import type { LocalizedText } from '~/utils/localizedText';
+import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 
 const { t } = useI18n();
 
@@ -33,6 +34,12 @@ const {
 } = useConvexQuery(api.automations.automations.getWithRelations, () => ({
 	automationId: automationId.value,
 }));
+// ⌘K's "Jump back" list remembers the automation once it has a name.
+useRecordPaletteObjectOpen(() =>
+	automation.value?.name
+		? { kind: 'automation', id: automationId.value, title: automation.value.name }
+		: null
+);
 
 // Fetch automation stats
 const { data: stats, isLoading: statsLoading } = useConvexQuery(

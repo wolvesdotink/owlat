@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Plugin settings detail page ([id].vue) — page-level behaviour the pure form
  * helpers cannot cover:

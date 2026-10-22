@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `MemberTable` is the contact table both audience detail pages render
  * (segments and topics). Mounted with the real UI layer so the assertions are

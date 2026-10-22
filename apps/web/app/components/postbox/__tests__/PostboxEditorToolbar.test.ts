@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxEditorToolbar behavior:
  *   - `persistent` variant (default) carries the full-width border/background

@@ -113,6 +113,19 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'scripts/lint-warning-baseline.json',
 		],
 	},
+	{
+		// Lints the same tree as `warnings` with the owlat rules, whose source
+		// (packages/oxlint-plugin-owlat) the code glob already covers.
+		name: 'owlat',
+		paths: [
+			`{apps,packages,scripts,examples}/**/${CODE}`,
+			'oxlintrc.json',
+			'**/.oxlintrc.json',
+			'scripts/check-owlat-lint.sh',
+			'scripts/owlat-lint-baseline.txt',
+			RATCHET,
+		],
+	},
 	{ name: 'scripts', paths: [`scripts/**/${CODE}`, 'oxlintrc.json'] },
 	{
 		// The gate scripts' own unit tests, plus the ones that read real repo
@@ -329,6 +342,8 @@ export const ROOT_GATES: readonly RootGate[] = [
 	},
 	// Scans every tracked source, config and doc file.
 	{ name: 'source-bytes', paths: [ANYWHERE] },
+	// Lists every tracked path, so any added file can trip it.
+	{ name: 'no-pr-assets', paths: [ANYWHERE] },
 	{
 		name: 'stored-block-corpus',
 		paths: ['packages/email-renderer/src/', 'scripts/check-stored-block-corpus.ts'],

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * TeamInboxImportCard — pulling a team inbox's existing mail in, from the admin
  * roster page.

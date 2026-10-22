@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { softDeleteFields } from '../lib/validators/softDelete';
 import {
 	triggerConfigValidator,
 	stepConfigValidator,
@@ -41,11 +42,18 @@ export const automationTables = {
 		pausedAt: v.optional(v.number()),
 		// Marks rows inserted by /seed/demo so they can be wiped on reset.
 		seedTag: v.optional(v.string()),
+		// Recently deleted (lib/softDelete.ts): a deleted automation keeps its
+		// row, steps and runs until the 30-day purge (automations/deletion.ts).
+		...softDeleteFields,
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
 		.index('by_status', ['status'])
-		.index('by_status_trigger', ['status', 'triggerType']),
+		.index('by_status_trigger', ['status', 'triggerType'])
+		// Live-only browse (creation order) and counts for the Listing engine,
+		// and the Recently deleted list and purge range.
+		.index('by_deleted_at', ['deletedAt'])
+		.index('by_deleted_at_and_status', ['deletedAt', 'status']),
 
 	// Automation Steps - workflow steps within an automation
 	automationSteps: defineTable({

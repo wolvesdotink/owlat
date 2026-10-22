@@ -11,7 +11,16 @@ import { useTeamThread } from '~/composables/team/useTeamThread';
 import { useZenMode } from '~/composables/useZenMode';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
+import { teamNoteDraftKey } from '~/composables/useComposerDrafts';
 import { inboxRetryToast } from '~/utils/inboxRetry';
+import {
+	TEAM_THREAD_PRIORITY_CHIP_KEYS,
+	TEAM_THREAD_PRIORITY_KEYS,
+	type TeamThreadPriority,
+	teamThreadPriorityOf,
+} from '~/utils/teamThreadPriority';
+import { useTeamThreadCommandSurface } from '~/composables/team/useTeamThreadCommandSurface';
+import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 
 const { t, locale } = useI18n();
 // Zen: the conversation and the reply only; the side cards wait outside.
@@ -43,6 +52,7 @@ const {
 	handleSnooze,
 	handleUnsnooze,
 	handleAssign,
+	handleSetPriority,
 } = useThreadDetail(threadId);
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const answerNav = useAnswerModeNav();
@@ -247,17 +257,64 @@ const replyDraft = computed({
 // "Compose email" (top bar, palette, shortcut) on a thread answers the thread.
 watch(useThreadReplyRequest(), () => openReply());
 
+// Priority: shown beside the message count when it is not normal, set from ⌘K.
+const priority = computed(() => teamThreadPriorityOf(thread.value));
+async function onSetPriority(next: TeamThreadPriority) {
+	const result = await handleSetPriority(next);
+	if (result.ok && result.result.changed) {
+		showToast(
+			t('dashboard.inbox.detail.priorityToast', { priority: t(TEAM_THREAD_PRIORITY_KEYS[next]) })
+		);
+	}
+}
+
+// ⌘K on this thread: every verb the page has (`~/lib/commandPaletteThreadSurfaces`),
+// and the thread joins the palette's "Jump back" list.
+useTeamThreadCommandSurface({
+	subject: () => thread.value?.subject ?? '',
+	canAct: () => isAdmin.value && !!thread.value,
+	isMine: () => !!user.value?.id && thread.value?.assignedTo === user.value.id,
+	isResolved: () => currentStatus.value === 'resolved',
+	isSnoozed: () => isSnoozed.value,
+	priority: () => priority.value,
+	assignedTo: () => thread.value?.assignedTo ?? null,
+	members: () => assignMembers.value,
+	onReply: () => openReply(),
+	onAssign,
+	onClaim: assignToMe,
+	onStatus: (status) => void handleStatusChange(status),
+	onSnooze: (until) => void onSnoozeConfirm(until),
+	onSnoozeUntilReply: (cap) => void onSnoozeUntilReply(cap),
+	onPickSnooze: () => (showSnoozeDialog.value = true),
+	onUnsnooze: () => void onUnsnooze(),
+	// After the palette has closed and handed focus back.
+	onAddNote: () => window.setTimeout(() => composer.value?.focus('note'), 0),
+	onSetPriority: (next) => void onSetPriority(next),
+});
+useRecordPaletteObjectOpen(() =>
+	thread.value
+		? {
+				kind: 'teamThread',
+				id: threadId.value,
+				title: thread.value.subject || t('dashboard.inbox.detail.noSubject'),
+				href: `/dashboard/inbox/${threadId.value}`,
+			}
+		: null
+);
+
 const undoingFollowUpId = ref<Id<'inboxFollowUps'> | null>(null);
 async function undoFollowUp(entry: ReplyEntry) {
 	const followUpId = entry.followUpId;
 	if (!followUpId || undoingFollowUpId.value) return;
 	undoingFollowUpId.value = followUpId;
+	const handBack = keptReply.pin(threadId.value);
 	try {
 		const result = await cancelFollowUp(followUpId);
 		if (!result.ok || !result.result.cancelled) return;
 		// Hand the text back so nothing typed is lost: it waits in the reply,
 		// which opens in Answer mode.
-		keptReply.set(threadId.value, { body: result.result.body, subject: result.result.subject });
+		const { body, subject } = result.result;
+		handBack(() => ({ body, subject }));
 		showToast(t('dashboard.inbox.detail.followUpUndoneToast'));
 		openReply();
 	} finally {
@@ -400,6 +457,17 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								)
 							}}
 						</span>
+						<template v-if="priority !== 'normal'">
+							<span aria-hidden="true">·</span>
+							<span
+								class="inline-flex items-center gap-1"
+								:class="priority === 'urgent' ? 'font-medium text-error' : ''"
+								data-testid="thread-priority"
+							>
+								<Icon name="lucide:flag" class="w-3.5 h-3.5" aria-hidden="true" />
+								{{ t(TEAM_THREAD_PRIORITY_CHIP_KEYS[priority]) }}
+							</span>
+						</template>
 						<template v-if="isSnoozed && thread.snoozedUntil">
 							<span aria-hidden="true">·</span>
 							<span class="inline-flex items-center gap-1">
@@ -513,7 +581,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						<TeamNoteComposer
 							ref="composer"
 							v-model:reply-draft="replyDraft"
-							:draft-key="`team:${threadId}`"
+							:draft-key="teamNoteDraftKey(threadId)"
 							:reply-name="replyTarget ? replySenderLabel : null"
 							:items="team.items.value"
 							:candidates-for="team.candidatesFor"

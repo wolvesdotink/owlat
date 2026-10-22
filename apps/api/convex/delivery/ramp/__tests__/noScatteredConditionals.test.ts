@@ -28,8 +28,9 @@ describe('every table entry is exercised', () => {
 		);
 	});
 
-	for (const entry of RAMP_DEGRADATION_MATRIX) {
-		it(`${entry.integration} governs at least one real cell`, () => {
+	it.each(RAMP_DEGRADATION_MATRIX.map((entry) => [entry.integration, entry] as const))(
+		'%s governs at least one real cell',
+		(_integration, entry) => {
 			const providers = DESTINATION_PROVIDER_KEYS.filter((provider) =>
 				entryAppliesToProvider(entry, provider)
 			);
@@ -41,8 +42,8 @@ describe('every table entry is exercised', () => {
 				});
 				expect(degradation.absent.map((row) => row.integration)).toContain(entry.integration);
 			}
-		});
-	}
+		}
+	);
 
 	it('every declared substitution source is reachable from some absence', () => {
 		const reachable = new Set(RAMP_DEGRADATION_MATRIX.flatMap((entry) => [...entry.substitutes]));

@@ -124,6 +124,12 @@ export const CONTACT_RELATIONS: readonly ErasureRelation[] = [
 		why: 'Kept for delivery statistics, but soft-deleted and scrubbed of the address and the request-supplied template variables.',
 	},
 	{
+		table: 'apiRequestReceipts',
+		field: 'contactId',
+		action: 'unlink',
+		why: 'An Idempotency-Key receipt keeps only hashes once the response fields naming the person are dropped. The tombstone refuses a retry of the erased request until it expires 24 hours after the send, so the erasure cannot make a send run twice.',
+	},
+	{
 		table: 'sendCompletionFailures',
 		field: 'contactId',
 		action: 'delete',
