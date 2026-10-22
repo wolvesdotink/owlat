@@ -4,14 +4,21 @@ Thanks for your interest in contributing to Owlat! This guide covers the essenti
 
 ## Development Setup
 
-See the [Developer Guide](https://docs.owlat.app/developer/) for full setup instructions. The short version:
+You need Bun and Docker (Compose v2). From a fresh checkout or worktree:
 
 ```bash
-bun install
-cp .env.example .env   # local dev against a hosted Convex deployment
-bun run dev:api        # Convex backend — the first run provisions the deployment
-bun run dev            # Nuxt frontend
+bun run setup:worktree   # frozen install, env links, builds the web app's workspace deps
+bun run dev:stack        # local Convex + Redis, push, demo seed, Convex watcher + Nuxt
 ```
+
+`dev:stack` gives every checkout its own containers, data and ports, prints
+the URL to open, and seeds `dev@example.com` / `devpassword12345`. Stop it with
+Ctrl-C, then `bun run dev:stack down` (add `--volumes` to delete its data).
+[`docs/operations/development.md`](./docs/operations/development.md) is the
+runbook: ports and `OWLAT_PORT_OFFSET`, state, seeding, stopping what you
+started. [`docs/operations/observability.md`](./docs/operations/observability.md)
+covers logs, metrics and following a send. The
+[Developer Guide](https://docs.owlat.app/developer/) explains the architecture.
 
 ### Developing on Windows
 

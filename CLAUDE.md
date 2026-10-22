@@ -48,6 +48,23 @@ one git object store. Each of these has cost a run before:
    at once is the limit. Pass `--maxWorkers` to full vitest runs, and judge a
    command by its exit code, never through `| tail`, which masks it.
 
+## Worktrees and the local stack
+
+A new worktree is set up by `bun run setup:worktree` (T3 Code starts it
+through `t3.json`). Check `.owlat-dev/` before installing or building
+anything: while `setup-running` exists (it starts with the PID), setup is still
+installing, so wait for `setup-done`. On `setup-failed`, read the file, fix
+the cause and run `bun run setup:worktree` again. Never start your own
+`bun install` while setup runs.
+
+`bun run dev:stack` boots a complete local Owlat for this checkout: Convex and
+Redis in containers, the functions pushed, demo data seeded, Nuxt and the
+Convex watcher in the foreground. Ports derive from the worktree path, so
+parallel checkouts do not collide; `bun run dev:stack ports` prints them.
+Stop only your own stack: Ctrl-C, then `bun run dev:stack down`.
+[`docs/operations/development.md`](docs/operations/development.md) has the
+details.
+
 ## Testing
 
 All packages use **vitest**, not bun's built-in test runner. Always run tests with:
@@ -215,8 +232,8 @@ a layout, a token or a palette class. Post one pair per affected surface — the
 same page/viewport/theme in both shots, so the diff is the change and nothing
 else.
 
-The backend cannot be booted locally (Convex bundling fails on this tree), so
-captures come from a dev-only screenshot harness that renders the real
+Captures come from either a real local backend (`bun run dev:stack`, seeded
+with demo data) or a dev-only screenshot harness that renders the real
 authenticated UI against a mocked Convex client and mocked better-auth
 endpoints. The harness is intentionally kept out of the repository — it is
 scaffolding, not product — so none of it may ever be committed.
