@@ -13,7 +13,7 @@
  * {@link EPISODE_QUIET_MS}. A burst in which some run turned slow is a slow
  * episode. Its outcome is `saved` only if every run and hold settled in the
  * whole burst succeeded (a failure before the first run turned slow counts
- * too) and no other queue still holds unsaved work; a failure has its own
+ * too) and nothing on screen still waits to be saved; a failure has its own
  * error surface already, so the episode then ends without a success message.
  *
  * Bulk actions and parallel uploads register many runs at once, so nothing
@@ -47,8 +47,9 @@ export interface SlowOperation {
  * - `saved`: every write in the episode landed.
  * - `failed`: at least one did not, or the server refused it (a refusal
  *   returned as a value); its own error surface says so.
- * - `unconfirmed`: they landed, but another queue still holds work it has not
- *   sent (Postbox's offline outbox), so "all saved" would not be true.
+ * - `unconfirmed`: they landed, but something else still holds work the server
+ *   has not acknowledged (Postbox's offline outbox, an edit whose save failed
+ *   or waits on a conflict), so "all saved" would not be true.
  * - `discarded`: the registry was reset for an identity change; whatever was
  *   waiting belongs to the previous session and is not reported.
  */
@@ -230,6 +231,41 @@ export async function withPendingHold<T>(work: () => Promise<T>): Promise<T> {
 	}
 }
 
+/**
+ * The hold of a debounced write (an autosave): an edit waiting for its timer
+ * is work the server has not seen, so it keeps any slow episode open from the
+ * moment the timer is armed until the write it starts has settled. Without it,
+ * a slow save landing while a newer edit waits out its debounce would end the
+ * episode as `saved` with that edit still only on screen.
+ *
+ * `set(true)` takes the hold (once, however often the timer is re-armed);
+ * `set(false)` releases it as landed, for a schedule that was dropped or
+ * handed elsewhere. When the timer fires, `take()` hands the hold to the write
+ * it starts, which settles it with its own outcome; a later edit takes a new one.
+ */
+export function scheduledWriteHold(): {
+	set: (scheduled: boolean) => void;
+	take: () => (ok: boolean) => void;
+} {
+	let release: ((ok: boolean) => void) | null = null;
+	return {
+		set(scheduled) {
+			if (scheduled) {
+				release ??= holdPendingWork();
+			} else if (release) {
+				const done = release;
+				release = null;
+				done(true);
+			}
+		},
+		take() {
+			const taken = release ?? holdPendingWork();
+			release = null;
+			return taken;
+		},
+	};
+}
+
 /** Hear how each slow episode ended. Returns the unsubscribe. */
 export function onSlowEpisodeEnd(listener: (outcome: SlowEpisodeOutcome) => void): () => void {
 	episodeListeners.add(listener);
@@ -237,9 +273,11 @@ export function onSlowEpisodeEnd(listener: (outcome: SlowEpisodeOutcome) => void
 }
 
 /**
- * Let a queue that bypasses `useBackendOperation` veto "all changes saved"
- * while it still holds work: `probe` answers whether it does. Returns the
- * unregister.
+ * Let work that no pending run stands for veto "all changes saved" while the
+ * server has not acknowledged it: a queue that bypasses `useBackendOperation`
+ * (the offline outbox), or an edit whose save failed or is held back. `probe`
+ * answers whether such work exists; it is asked once, when a slow episode
+ * ends. Returns the unregister.
  */
 export function registerUnsavedWorkProbe(probe: () => boolean): () => void {
 	unsavedWorkProbes.add(probe);

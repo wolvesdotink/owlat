@@ -6,6 +6,7 @@ import {
 	onSlowEpisodeEnd,
 	registerUnsavedWorkProbe,
 	resetPendingOperations,
+	scheduledWriteHold,
 	slowOperationCount,
 	slowOperations,
 	SLOW_OPERATION_MS,
@@ -271,6 +272,47 @@ describe('pending operations', () => {
 		quiet();
 
 		expect(outcomes).toEqual(['failed']);
+	});
+
+	it('a scheduled write holds the episode open from arming until its write settles', () => {
+		const slow = trackPendingOperation(() => 'Save draft');
+		vi.advanceTimersByTime(SLOW_OPERATION_MS);
+		const hold = scheduledWriteHold();
+		// Re-arming the debounce on every keystroke takes the hold once.
+		hold.set(true);
+		hold.set(true);
+
+		slow(true);
+		quiet();
+		expect(outcomes).toEqual([]);
+
+		// The timer fires: its write takes the hold over and settles it.
+		const release = hold.take();
+		hold.set(false);
+		const write = trackPendingOperation(() => 'Save draft');
+		write(true);
+		release(true);
+		quiet();
+		expect(outcomes).toEqual(['saved']);
+	});
+
+	it('a scheduled write that fails vetoes "saved"; a dropped schedule does not', () => {
+		const hold = scheduledWriteHold();
+		const slow = trackPendingOperation(() => 'Save draft');
+		vi.advanceTimersByTime(SLOW_OPERATION_MS);
+		hold.set(true);
+		slow(true);
+		hold.take()(false);
+		quiet();
+		expect(outcomes).toEqual(['failed']);
+
+		const again = trackPendingOperation(() => 'Save draft');
+		vi.advanceTimersByTime(SLOW_OPERATION_MS);
+		hold.set(true);
+		again(true);
+		hold.set(false);
+		quiet();
+		expect(outcomes).toEqual(['failed', 'saved']);
 	});
 
 	it('a reset forgets every run and says so: late settles are ignored', () => {
