@@ -23,10 +23,16 @@ export const SHORTCUT_SCOPE_ORDER: readonly ShortcutScope[] = [
 	'postbox',
 	'composer',
 	'inbox',
+	'inboxList',
 	'review',
 	'workbench',
 	'peek',
 	'answer',
+	'answerQueue',
+	'askCard',
+	'mailCard',
+	'teamCard',
+	'mentionCard',
 	'workspace',
 ];
 
@@ -40,10 +46,20 @@ export function isShortcutScopeAvailable(scope: ShortcutScope, env: SettingsEnvi
 			return hasMail(env);
 		case 'composer':
 		case 'answer':
+		case 'askCard':
 			return hasMail(env) || env.isFeatureEnabled('inbox');
+		// The Answer queue gathers mail, Team inbox drafts and chat mentions.
+		case 'answerQueue':
+			return hasMail(env) || env.isFeatureEnabled('inbox') || env.isFeatureEnabled('chat');
+		case 'mailCard':
+			return hasMail(env);
 		case 'inbox':
+		case 'inboxList':
 		case 'review':
+		case 'teamCard':
 			return env.isFeatureEnabled('inbox');
+		case 'mentionCard':
+			return env.isFeatureEnabled('chat');
 		case 'workspace':
 			return env.isDesktop;
 		default:
@@ -54,6 +70,7 @@ export function isShortcutScopeAvailable(scope: ShortcutScope, env: SettingsEnvi
 /** Entries whose own feature can be off while their scope is on. */
 const ENTRY_GATES: Readonly<Record<string, (env: SettingsEnvironment) => boolean>> = {
 	'global.assistant': (env) => env.isFeatureEnabled('ai.assistant'),
+	'global.ask': (env) => env.isFeatureEnabled('ai.knowledge'),
 };
 
 /**

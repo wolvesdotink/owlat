@@ -14,7 +14,10 @@ const env = (flags: string[], isDesktop = false): SettingsEnvironment => ({
 	isFeatureEnabled: (flag) => flags.includes(flag),
 	isDesktop,
 });
-const EVERYTHING = env(['postbox', 'mail.external', 'inbox', 'ai.assistant'], true);
+const EVERYTHING = env(
+	['postbox', 'mail.external', 'inbox', 'chat', 'ai.assistant', 'ai.knowledge'],
+	true
+);
 const NO_MAIL = env(['inbox']);
 
 function sections(environment: SettingsEnvironment, query = '', overridden: string[] = []) {
@@ -33,10 +36,16 @@ describe('shortcut page sections', () => {
 			'postbox',
 			'composer',
 			'inbox',
+			'inboxList',
 			'review',
 			'workbench',
 			'peek',
 			'answer',
+			'answerQueue',
+			'askCard',
+			'mailCard',
+			'teamCard',
+			'mentionCard',
 			'workspace',
 		]);
 	});
@@ -54,6 +63,16 @@ describe('shortcut page sections', () => {
 		expect(scopes).toContain('inbox');
 	});
 
+	it('shows each Answer queue card where its source exists', () => {
+		const scopes = (flags: string[]) => sections(env(flags)).map((section) => section.scope);
+		expect(scopes(['inbox'])).toEqual(expect.arrayContaining(['teamCard', 'inboxList']));
+		expect(scopes(['inbox'])).not.toContain('mailCard');
+		expect(scopes(['inbox'])).not.toContain('mentionCard');
+		expect(scopes(['postbox'])).toContain('mailCard');
+		expect(scopes(['chat'])).toEqual(expect.arrayContaining(['answerQueue', 'mentionCard']));
+		expect(scopes(['chat'])).not.toContain('askCard');
+	});
+
 	it('hides the Assistant chord while the Assistant is off', () => {
 		expect(isShortcutEntryAvailable({ id: 'global.assistant', scope: 'global' }, NO_MAIL)).toBe(
 			false
@@ -62,6 +81,13 @@ describe('shortcut page sections', () => {
 			true
 		);
 		expect(isShortcutScopeAvailable('answer', env([]))).toBe(false);
+	});
+
+	it('hides the Ask chord while knowledge is off', () => {
+		expect(isShortcutEntryAvailable({ id: 'global.ask', scope: 'global' }, NO_MAIL)).toBe(false);
+		expect(
+			isShortcutEntryAvailable({ id: 'global.ask', scope: 'global' }, env(['ai.knowledge']))
+		).toBe(true);
 	});
 
 	it('marks fixed and changed rows', () => {

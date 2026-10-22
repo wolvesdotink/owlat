@@ -4819,7 +4819,7 @@
 				"all": "Alle E-Mails",
 				"label": "Posteingangsansicht",
 				"priority": "Priorität",
-				"title": "Wichtige E-Mails oder alle E-Mails (B)"
+				"title": "Wichtige E-Mails oder alle E-Mails"
 			},
 			"postboxInsertAvailability": {
 				"intro": "Hier ein paar Zeiten, die bei mir passen ({zone}):",
@@ -6105,7 +6105,8 @@
 				"fixedReasons": {
 					"convention": "Funktioniert wie in jeder anderen App.",
 					"layout": "Richtet sich nach der Position der Taste und funktioniert so mit jeder Tastaturbelegung.",
-					"surface": "Diese Ansicht reagiert selbst auf die Taste, deshalb lässt sie sich noch nicht ändern."
+					"surface": "Diese Ansicht reagiert selbst auf die Taste, deshalb lässt sie sich noch nicht ändern.",
+					"numbered": "Die Zahl wählt die Option an dieser Stelle, deshalb bleibt sie."
 				},
 				"refused": {
 					"modifier": "Dieses Tastenkürzel ist eine Einzeltaste – drücke eine Taste ohne Strg, Cmd oder Alt.",
@@ -6128,7 +6129,13 @@
 					"workbench": "Werkbank",
 					"peek": "Bereich der Werkbank",
 					"answer": "Antwortmodus",
-					"workspace": "Desktop-Workspaces"
+					"workspace": "Desktop-Workspaces",
+					"inboxList": "Liste im Team-Postfach",
+					"answerQueue": "Antwortliste",
+					"askCard": "Fragen der KI",
+					"mailCard": "Antwortliste: Nachfassen",
+					"teamCard": "Antwortliste: Entwürfe aus dem Team-Postfach",
+					"mentionCard": "Antwortliste: Erwähnungen"
 				}
 			},
 			"preferencesYourData": {
@@ -16538,7 +16545,18 @@
 				"nextPeekEmail": "Nächste E-Mail im Bereich",
 				"previousPeekEmail": "Vorherige E-Mail im Bereich",
 				"closePeek": "Bereich schließen",
-				"undoQueueStep": "Letzten Schritt in der Antwortliste rückgängig machen"
+				"undoQueueStep": "Letzten Schritt in der Antwortliste rückgängig machen",
+				"askKnowledge": "Wissen fragen",
+				"dismissUpdate": "Update als erledigt markieren",
+				"markFollowUpDone": "Nachfassen als erledigt markieren",
+				"previousCard": "Vorherige Karte",
+				"nextCard": "Nächste Karte",
+				"sendOrApprove": "Antwort senden oder den Entwurf freigeben",
+				"approveDraft": "Entwurf prüfen & senden",
+				"rejectDraft": "Entwurf ablehnen",
+				"openMention": "Erwähnung öffnen, um zu antworten",
+				"markMentionRead": "Erwähnung als gelesen markieren",
+				"skipCard": "Vorerst überspringen"
 			}
 		},
 		"signatureBadge": {

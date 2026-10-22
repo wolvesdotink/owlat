@@ -274,8 +274,10 @@ describe('useKeyboardShortcuts — help + escape', () => {
 			instance.registerSaveShortcut(vi.fn());
 		});
 
+		// The "?" sheet is always bound: the dispatcher owns it.
 		expect(api.getRegisteredShortcuts()).toEqual([
 			{ id: 'global.save', keys: ['s'], description: 'shared.shortcuts.labels.save' },
+			{ id: 'global.help', keys: ['?'], description: 'shared.shortcuts.labels.showShortcuts' },
 		]);
 	});
 });

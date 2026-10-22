@@ -4,13 +4,15 @@
  * workspaces. Spread into `SHORTCUT_CATALOG` after the Postbox, in this order,
  * which is the order their groups appear on the shortcuts page.
  *
- * The Team inbox, Workbench and peek entries are bound through the app-wide
- * dispatcher (`useKeyboardShortcuts`) by the surface that claims the scope, so
- * they can be remapped. Answer mode still answers its keys in its own
- * handlers; its entries document them and stay fixed.
+ * The Team inbox thread, Workbench and peek entries are bound through the
+ * app-wide dispatcher (`useKeyboardShortcuts`) by the surface that claims the
+ * scope; the Team inbox list and the Updates page resolve theirs on the focused
+ * list (`usePostboxListKeyboard`). Either way a remap moves them. Answer mode
+ * and its queue cards live in `shortcutCatalogAnswer.ts`.
  */
 
 import type { ShortcutDefinition } from './shortcutRegistry';
+import { ANSWER_SHORTCUTS } from './shortcutCatalogAnswer';
 import {
 	FIXED_CONVENTION as CONVENTION,
 	FIXED_LAYOUT as LAYOUT,
@@ -78,9 +80,54 @@ export const SURFACE_SHORTCUTS: readonly ShortcutDefinition[] = [
 		groupKey: G.review,
 		...CONVENTION,
 	},
+	{
+		id: 'review.dismiss',
+		scope: 'review',
+		keys: ['d'],
+		labelKey: L('dismissUpdate'),
+		groupKey: G.review,
+	},
+	{
+		id: 'review.requestReply',
+		scope: 'review',
+		keys: ['r'],
+		labelKey: L('replyToUpdate'),
+		groupKey: G.review,
+	},
 
-	// --- Team inbox threads (claimed by the thread page; `i` also works on a
-	// focused row of the list) --------------------------------------------------
+	// --- Team inbox list (the focused row of /dashboard/inbox). Its own scope,
+	// so moving a row and assigning one can never share a key. -----------------
+	{
+		id: 'inboxList.next',
+		scope: 'inboxList',
+		keys: ['j', 'ArrowDown'],
+		labelKey: L('next'),
+		groupKey: G.teamInbox,
+	},
+	{
+		id: 'inboxList.previous',
+		scope: 'inboxList',
+		keys: ['k', 'ArrowUp'],
+		labelKey: L('previous'),
+		groupKey: G.teamInbox,
+	},
+	{
+		id: 'inboxList.open',
+		scope: 'inboxList',
+		keys: ['Enter'],
+		labelKey: L('openThread'),
+		groupKey: G.teamInbox,
+		...CONVENTION,
+	},
+	{
+		id: 'inboxList.assignToMe',
+		scope: 'inboxList',
+		keys: ['i'],
+		labelKey: L('assignToMe'),
+		groupKey: G.teamInbox,
+	},
+
+	// --- Team inbox threads (claimed by the thread page) -----------------------
 	{
 		id: 'inbox.assignToMe',
 		scope: 'inbox',
@@ -164,90 +211,7 @@ export const SURFACE_SHORTCUTS: readonly ShortcutDefinition[] = [
 		...CONVENTION,
 	},
 
-	// --- Answer mode (claimed by AnswerModeFrame; the pages, the queue bar and
-	// the ask card bind these keys themselves, so the entries document them for
-	// the "?" sheet and none can be remapped) ------------------------------------
-	{
-		id: 'answer.leave',
-		scope: 'answer',
-		keys: ['Escape'],
-		labelKey: L('leaveAnswerMode'),
-		groupKey: G.answer,
-		...CONVENTION,
-	},
-	{
-		id: 'answer.toggleView',
-		scope: 'answer',
-		keys: ['t'],
-		labelKey: L('toggleAnswerView'),
-		groupKey: G.answer,
-		...SURFACE,
-	},
-	{
-		id: 'answer.writeNote',
-		scope: 'answer',
-		keys: ['n'],
-		labelKey: L('writeNote'),
-		groupKey: G.answer,
-		...SURFACE,
-	},
-	{
-		id: 'answer.draftWithAi',
-		scope: 'answer',
-		keys: ['mod+j'],
-		labelKey: L('draftWithAi'),
-		groupKey: G.answer,
-		...SURFACE,
-	},
-	{
-		id: 'answer.pickAskOption',
-		scope: 'answer',
-		keys: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
-		displayKeys: '1–9',
-		labelKey: L('pickAskOption'),
-		groupKey: G.answer,
-		...SURFACE,
-	},
-	{
-		id: 'answer.previousItem',
-		scope: 'answer',
-		keys: ['['],
-		labelKey: L('previousQueueItem'),
-		groupKey: G.answer,
-		...SURFACE,
-	},
-	{
-		id: 'answer.nextItem',
-		scope: 'answer',
-		keys: [']'],
-		labelKey: L('nextQueueItem'),
-		groupKey: G.answer,
-		...SURFACE,
-	},
-	{
-		id: 'answer.archive',
-		scope: 'answer',
-		keys: ['e'],
-		labelKey: L('archive'),
-		groupKey: G.answer,
-		...SURFACE,
-	},
-	{
-		id: 'answer.snooze',
-		scope: 'answer',
-		keys: ['h'],
-		labelKey: L('snooze'),
-		groupKey: G.answer,
-		...SURFACE,
-	},
-	{
-		id: 'answer.undo',
-		scope: 'answer',
-		keys: ['mod+z'],
-		labelKey: L('undoQueueStep'),
-		groupKey: G.answer,
-		...CONVENTION,
-	},
+	...ANSWER_SHORTCUTS,
 
 	// --- Desktop workspaces ---------------------------------------------------
 	{

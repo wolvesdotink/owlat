@@ -83,10 +83,15 @@ describe('PreferencesShortcuts', () => {
 			'postbox',
 			'composer',
 			'inbox',
+			'inboxList',
 			'review',
 			'workbench',
 			'peek',
 			'answer',
+			'answerQueue',
+			'askCard',
+			'mailCard',
+			'teamCard',
 		]);
 	});
 
@@ -147,6 +152,23 @@ describe('PreferencesShortcuts', () => {
 		expect(row(wrapper, 'global.settings').text()).toContain(
 			'Send (in composer) already uses that key.'
 		);
+	});
+
+	it("refuses the palette's Ask chord for Settings", async () => {
+		flags = [...flags, 'ai.knowledge'];
+		const wrapper = mountPage();
+		await capture(wrapper, 'global.settings', { key: 'K', ctrlKey: true, shiftKey: true });
+		expect(save).not.toHaveBeenCalled();
+		expect(row(wrapper, 'global.settings').text()).toContain(
+			'Ask knowledge already uses that key.'
+		);
+	});
+
+	it("refuses an assign key that would take the Team inbox list's navigation", async () => {
+		const wrapper = mountPage();
+		await capture(wrapper, 'inboxList.assignToMe', { key: 'j' });
+		expect(save).not.toHaveBeenCalled();
+		expect(row(wrapper, 'inboxList.assignToMe').text()).toContain('Next already uses that key.');
 	});
 
 	it('refuses a key that would start a `g` chord', async () => {

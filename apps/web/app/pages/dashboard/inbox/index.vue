@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
 import { useOrganization } from '~/composables/useOrganization';
 import { resolveActiveChord } from '~/utils/shortcutScope';
+import { useShortcutScope } from '~/composables/useShortcutScope';
 import { teamThreadHasDraft, useComposerDrafts } from '~/composables/useComposerDrafts';
 import {
 	DEFAULT_INBOX_ASSIGNEE,
@@ -187,16 +188,19 @@ async function onSnoozeConfirm(timestamp: number) {
 
 // ── List keyboard: j/k move, Enter opens, i assigns-to-me. Shares the Postbox
 // listbox composable so the conventions match. Reset focus on filter/sort.
-// Assign-to-me is the thread page's `inbox.assignToMe`, resolved in that scope
-// alone, so a remap moves it on both. ──
+// Every key of the list lives in ONE scope (`inboxList`), so a remap that
+// would put "assign" on the key that moves the list is refused, and claiming
+// it puts the list's keys on the "?" sheet. ──
+useShortcutScope('inboxList');
 const listKey = computed(() => `${filter.value}:${assignee.value}:${sort.value}:${mentions.value}`);
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>({
 	items: visibleThreads,
 	resetKey: listKey,
 	rowDomId: (thread) => `inbox-row-${thread._id}`,
+	scope: 'inboxList',
 	onActivate: (thread) => navigateTo(`/dashboard/inbox/${thread._id}`),
 	onAction: (key, thread) => {
-		if (resolveActiveChord(key, ['inbox']) === 'inbox.assignToMe' && isAdmin.value) {
+		if (resolveActiveChord(key, ['inboxList']) === 'inboxList.assignToMe' && isAdmin.value) {
 			void assignToMe(thread);
 		}
 	},

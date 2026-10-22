@@ -1,6 +1,6 @@
 /**
  * Assignee picker rows + selection:
- *   - "Me" is the first row and carries the `I` shortcut hint
+ *   - "Me" is the first row and carries the assign-to-me key, as bound
  *   - activating a row (the keyboard Enter / click path on a menuitem) emits the
  *     chosen assignee — the viewer's id for "Me", the member id for a teammate
  *   - Unassign is offered only when the thread is currently assigned, and emits
@@ -10,11 +10,12 @@
  * to render its default slot so we can assert the row set + emit contract that a
  * keyboard selection resolves to.
  */
-import { beforeAll, describe, it, expect } from 'vitest';
+import { afterEach, beforeAll, describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import AssignPopover from '../AssignPopover.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 
 const members = [
 	{ userId: 'me-1', name: 'Ada Lovelace', email: 'ada@example.com', image: null },
@@ -27,6 +28,7 @@ const members = [
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
+afterEach(() => resetShortcutPreferences());
 
 const mountOpts = {
 	global: {
@@ -46,6 +48,28 @@ const mountOpts = {
 };
 
 describe('AssignPopover', () => {
+	it("hints the surface's own assign key, and follows a remap", () => {
+		applyShortcutPreferences('owlat', [
+			{ id: 'inbox.assignToMe', keys: ['m'] },
+			{ id: 'inboxList.assignToMe', keys: ['y'] },
+		]);
+		const kbd = (props: Record<string, unknown>) =>
+			mount(AssignPopover, { ...mountOpts, props: { members, currentUserId: 'me-1', ...props } })
+				.find('kbd')
+				.text();
+		expect(kbd({})).toBe('M');
+		expect(kbd({ assignShortcutId: 'inboxList.assignToMe' })).toBe('Y');
+	});
+
+	it('shows no hint when the key is unbound', () => {
+		applyShortcutPreferences('owlat', [{ id: 'inbox.assignToMe', keys: [] }]);
+		const wrapper = mount(AssignPopover, {
+			...mountOpts,
+			props: { members, currentUserId: 'me-1' },
+		});
+		expect(wrapper.find('kbd').exists()).toBe(false);
+	});
+
 	it('lists Me first with the I shortcut hint, then the other members', () => {
 		const wrapper = mount(AssignPopover, {
 			...mountOpts,

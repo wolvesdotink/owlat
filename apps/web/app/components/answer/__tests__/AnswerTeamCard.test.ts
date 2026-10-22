@@ -364,7 +364,7 @@ describe('AnswerTeamCard with an agent draft that has gaps', () => {
 		);
 
 		await primary(wrapper).trigger('click');
-		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
 		await flushPromises();
 		expect(sent).toEqual([]);
 		expect(controls.complete).not.toHaveBeenCalled();

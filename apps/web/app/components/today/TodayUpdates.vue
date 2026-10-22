@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ImportantReason, TodayLine, TodayModel } from '~/utils/todayDigest';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 /**
  * "Updates": everything in this inbox that needs no reply, as a short digest.
@@ -7,9 +8,10 @@ import type { ImportantReason, TodayLine, TodayModel } from '~/utils/todayDigest
  * ("Important"), routine mail after ("Also arrived"). Newsletters and the
  * like never show up here; `TodayFiledAway` counts them below.
  *
- * Keyboard (as on the old Updates page): j/k move between lines, Enter opens
- * the first source, d marks a line done, r asks for a reply after all
- * (team-inbox lines, which then go to the Answer queue).
+ * Keyboard (the Workbench's `workbench.*` keys, as the person has them bound):
+ * j/k move between lines, Enter opens the first source, d marks a line done,
+ * r asks for a reply after all (team-inbox lines, which then go to the Answer
+ * queue). The legend in the heading reads the same bindings.
  */
 const props = withDefaults(defineProps<{ model: TodayModel; moreHref?: string }>(), {
 	moreHref: '/dashboard/inboxes',
@@ -32,6 +34,15 @@ const REASON_LABEL: Partial<Record<ImportantReason, { key: string; icon: string;
 		},
 	};
 
+const { keyHints } = useShortcutLabels();
+const keyLegend = computed(() =>
+	keyHints([
+		{ id: ['workbench.next', 'workbench.previous'], label: t('components.today.updates.keysMove') },
+		{ id: 'workbench.done', label: t('components.today.line.done') },
+		{ id: 'workbench.reply', label: t('components.today.line.replyAnyway') },
+	])
+);
+
 const isEmpty = computed(() => props.model.worth.length === 0 && props.model.also.length === 0);
 </script>
 
@@ -48,10 +59,12 @@ const isEmpty = computed(() => props.model.worth.length === 0 && props.model.als
 			<span
 				class="ml-auto hidden normal-case tracking-normal opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 md:inline"
 			>
-				<kbd class="font-mono">j</kbd> <kbd class="font-mono">k</kbd>
-				{{ t('components.today.updates.keysMove') }} · <kbd class="font-mono">d</kbd>
-				{{ t('components.today.line.done') }} · <kbd class="font-mono">r</kbd>
-				{{ t('components.today.line.replyAnyway') }}
+				<template v-for="(hint, index) in keyLegend" :key="hint.label"
+					><template v-if="index > 0"> · </template
+					><template v-for="key in hint.keys" :key="key"
+						><kbd class="font-mono">{{ key }}</kbd> </template
+					>{{ hint.label }}</template
+				>
 			</span>
 		</h3>
 

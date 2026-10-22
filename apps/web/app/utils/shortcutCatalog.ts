@@ -124,6 +124,17 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		...CONVENTION,
 	},
 	{
+		// The palette opens on Ask (useCommandPalette), only while knowledge is
+		// on. Ahead of the remappable chords below so that, if a stored remap
+		// ever lands on it, the palette keeps the press rather than both firing.
+		id: 'global.ask',
+		scope: 'global',
+		keys: ['mod+K'],
+		labelKey: L('askKnowledge'),
+		groupKey: G.actions,
+		...SURFACE,
+	},
+	{
 		// The dashboard layout binds these three through the dispatcher, which
 		// lets them fire while a text field has focus, as modifier chords may.
 		id: 'global.toggleSidebar',

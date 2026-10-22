@@ -18,6 +18,7 @@ import {
 	resetShortcutPreferences,
 	resetShortcutScopes,
 } from '~/utils/shortcutScope';
+import { claimHelpOverlay } from '~/utils/helpOverlayOwnership';
 
 const mounted: VueWrapper[] = [];
 
@@ -190,5 +191,77 @@ describe('availability (`when`)', () => {
 		press('j');
 		expect(panel).toHaveBeenCalledTimes(1);
 		expect(page).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('the "?" sheet, the Ask chord and Escape go through the registry', () => {
+	it('opens the sheet on a remapped key, and no longer on "?"', () => {
+		let api!: ReturnType<typeof useKeyboardShortcuts>;
+		mountHost((instance) => (api = instance));
+		applyShortcutPreferences('owlat', [{ id: 'global.help', keys: ['y'] }]);
+		expect(press('?', { shiftKey: true }).defaultPrevented).toBe(false);
+		expect(api.isHelpModalOpen.value).toBe(false);
+		press('y');
+		expect(api.isHelpModalOpen.value).toBe(true);
+		press('Escape');
+		expect(api.isHelpModalOpen.value).toBe(false);
+	});
+
+	it('stands down while a surface with its own sheet owns it', () => {
+		let api!: ReturnType<typeof useKeyboardShortcuts>;
+		mountHost((instance) => (api = instance));
+		const release = claimHelpOverlay();
+		expect(press('?', { shiftKey: true }).defaultPrevented).toBe(false);
+		expect(api.isHelpModalOpen.value).toBe(false);
+		release();
+		press('?', { shiftKey: true });
+		expect(api.isHelpModalOpen.value).toBe(true);
+		api.closeHelpModal();
+	});
+
+	it("keeps a stored remap onto the palette's Ask chord from firing too", () => {
+		// Written before Ask was catalogued: the palette keeps ⌘⇧K, one action per press.
+		const settings = vi.fn();
+		mountHost((api) => api.registerShortcut({ id: 'global.settings', handler: settings }));
+		applyShortcutPreferences('owlat', [{ id: 'global.settings', keys: ['mod+K'] }]);
+		expect(press('K', { metaKey: true, shiftKey: true }).defaultPrevented).toBe(false);
+		expect(settings).not.toHaveBeenCalled();
+	});
+
+	it("gives Escape to the nearest scope's handler, and to the app-wide close otherwise", () => {
+		const leave = vi.fn();
+		const close = vi.fn();
+		let open = true;
+		mountHost((api) => {
+			api.registerEscapeHandler(close);
+			api.registerShortcut({ id: 'answer.leave', handler: leave, when: () => open });
+		});
+		const release = pushShortcutScope('answer');
+		press('Escape');
+		expect(leave).toHaveBeenCalledTimes(1);
+		expect(close).not.toHaveBeenCalled();
+		open = false;
+		press('Escape');
+		expect(close).toHaveBeenCalledTimes(1);
+		release();
+		open = true;
+		press('Escape');
+		expect(leave).toHaveBeenCalledTimes(1);
+		expect(close).toHaveBeenCalledTimes(2);
+	});
+
+	it('hands the press to a handler that needs to know which key it was', () => {
+		const picked: string[] = [];
+		mountHost((api) =>
+			api.registerShortcut({
+				id: 'askCard.pickOption',
+				handler: (event) => picked.push(event.key),
+				when: (event) => event.key !== '9',
+			})
+		);
+		pushShortcutScope('askCard');
+		press('2');
+		expect(press('9').defaultPrevented).toBe(false);
+		expect(picked).toEqual(['2']);
 	});
 });

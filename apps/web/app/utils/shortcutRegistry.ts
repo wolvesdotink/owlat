@@ -34,12 +34,18 @@ export type ShortcutScope =
 	| 'global'
 	| 'postbox'
 	| 'inbox'
+	| 'inboxList'
 	| 'workbench'
 	| 'peek'
 	| 'review'
 	| 'composer'
 	| 'workspace'
-	| 'answer';
+	| 'answer'
+	| 'answerQueue'
+	| 'askCard'
+	| 'mailCard'
+	| 'teamCard'
+	| 'mentionCard';
 
 /**
  * Why a chord cannot be moved, as the shortcuts page explains it:
@@ -48,8 +54,10 @@ export type ShortcutScope =
  *     every keyboard layout; a captured character could not be matched that way.
  *   - `surface` — the screen it works on answers it with its own handler,
  *     outside the dispatcher, so a stored remap would never reach it.
+ *   - `numbered` — the digit IS the choice (the third option is 3), so moving
+ *     it would break the numbering on screen.
  */
-export type ShortcutFixedReason = 'convention' | 'layout' | 'surface';
+export type ShortcutFixedReason = 'convention' | 'layout' | 'surface' | 'numbered';
 
 export interface ShortcutDefinition {
 	/** Stable id, `scope.verb` (e.g. `postbox.archive`). Never shown to a user. */

@@ -39,7 +39,11 @@ import {
 } from '~/utils/shortcutScope';
 import { SHORTCUT_CATALOG } from '~/utils/shortcutCatalog';
 
-type ShortcutHandler = () => void;
+/**
+ * Gets the press, for the few commands one id covers several keys of (1 to 9
+ * pick the option with that number).
+ */
+type ShortcutHandler = (event: KeyboardEvent) => void;
 
 interface ShortcutConfig {
 	/** A catalog id (`utils/shortcutCatalog.ts`), never a raw key. */
@@ -56,7 +60,7 @@ interface ShortcutConfig {
 	 * gets a look — a panel open over a page can take `j` for as long as it is
 	 * open, without unregistering the page's own handler.
 	 */
-	when?: () => boolean;
+	when?: (event: KeyboardEvent) => boolean;
 }
 
 // Each composable owns its registrations. The newest live owner wins; releasing
@@ -64,27 +68,42 @@ interface ShortcutConfig {
 const shortcuts = new Map<string, { owner: symbol; config: ShortcutConfig }[]>();
 const isHelpModalOpen = ref(false);
 
+// The app-wide "?" sheet is a catalog id like any other, so a remap of
+// `global.help` moves it. A surface with its own cheat sheet (the Postbox)
+// claims the overlay while it is mounted, and this one stands down: otherwise
+// both would open on the same press (utils/helpOverlayOwnership.ts).
+shortcuts.set('global.help', [
+	{
+		owner: Symbol('app-wide cheat sheet'),
+		config: {
+			id: 'global.help',
+			handler: () => {
+				isHelpModalOpen.value = !isHelpModalOpen.value;
+			},
+			when: () => !isHelpOverlayClaimed(),
+		},
+	},
+]);
+
 // Track whether the composable has been initialized
 let isInitialized = false;
 
+function isEditable(el: EventTarget | null): boolean {
+	if (!(el instanceof Element)) return false;
+	const tagName = el.tagName.toLowerCase();
+	if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return true;
+	return (
+		(el as HTMLElement).isContentEditable === true || el.getAttribute('contenteditable') === 'true'
+	);
+}
+
 /**
- * Check if the current focus is on an input element
+ * True while a text field, editor or select has the keyboard: the focused
+ * element, or the element the press was aimed at (a key sent to a field that
+ * has not taken focus yet still belongs to it).
  */
-function isInputFocused(): boolean {
-	const activeElement = document.activeElement;
-	if (!activeElement) return false;
-
-	const tagName = activeElement.tagName.toLowerCase();
-	if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
-		return true;
-	}
-
-	// Check for contenteditable
-	if (activeElement.getAttribute('contenteditable') === 'true') {
-		return true;
-	}
-
-	return false;
+function isInputFocused(event?: KeyboardEvent): boolean {
+	return isEditable(document.activeElement) || isEditable(event?.target ?? null);
 }
 
 /**
@@ -96,10 +115,10 @@ function dispatch(id: string | null, event: KeyboardEvent): boolean {
 	const entries = shortcuts.get(id) ?? [];
 	for (let index = entries.length - 1; index >= 0; index -= 1) {
 		const config = (entries[index] as { config: ShortcutConfig }).config;
-		if (config.when && !config.when()) continue;
-		if (config.ignoreInputs && isInputFocused()) return false;
+		if (config.when && !config.when(event)) continue;
+		if (config.ignoreInputs && isInputFocused(event)) return false;
 		event.preventDefault();
-		config.handler();
+		config.handler(event);
 		return true;
 	}
 	return false;
@@ -119,37 +138,30 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 		return;
 	}
 
-	const key = event.key.toLowerCase();
+	const scopes = activeShortcutScopes();
 
-	// Handle ? for help modal (needs shift). A surface with its own cheat sheet
-	// (Postbox) claims the key while it is mounted — otherwise both overlays open
-	// on the same press. See utils/helpOverlayOwnership.ts.
-	if (event.shiftKey && key === '?') {
-		if (!isInputFocused() && !isHelpOverlayClaimed()) {
-			event.preventDefault();
-			isHelpModalOpen.value = !isHelpModalOpen.value;
-			return;
-		}
-	}
-
-	// Handle Escape - always process for closing modals
-	if (key === 'escape') {
+	// Escape is processed even from a text field: closing things is its job,
+	// and a surface's own Escape (Answer mode lets go of the editor first)
+	// decides what that means there. The nearest scope's Escape goes first; when
+	// nothing there takes it, the app-wide close does.
+	if (event.key === 'Escape') {
 		clearPendingChord();
 		if (isHelpModalOpen.value) {
 			event.preventDefault();
 			isHelpModalOpen.value = false;
 			return;
 		}
+		const scoped = resolveActiveChord('Escape', scopes);
+		if (scoped !== 'global.close' && dispatch(scoped, event)) return;
 		dispatch('global.close', event);
 		return;
 	}
 
-	// Skip if input is focused (for most shortcuts)
-	if (isInputFocused()) {
+	// Single keys never fire while a field has the keyboard.
+	if (isInputFocused(event)) {
 		return;
 	}
 
-	const scopes = activeShortcutScopes();
 	const step = chordFromEvent(event);
 
 	// Second half of a sequence chord (`g` then …). Always consumes the key,
@@ -190,7 +202,6 @@ function initializeKeyboardShortcuts() {
 }
 
 export function useKeyboardShortcuts() {
-	const router = useRouter();
 	const owner = Symbol('shortcut owner');
 	const ownedIds = new Set<string>();
 	let disposed = false;
@@ -230,6 +241,7 @@ export function useKeyboardShortcuts() {
 	 * Register default navigation shortcuts
 	 */
 	function registerNavigationShortcuts() {
+		const router = useRouter();
 		const routes: Record<string, string> = {
 			'global.goToDashboard': '/dashboard',
 			'global.goToAnswer': '/dashboard/answer',

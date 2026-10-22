@@ -109,17 +109,7 @@ apps/mta/src/webhooks/__tests__/dlq.test.ts	owlat(no-test-timeout-or-unreasoned-
 apps/mta/src/webhooks/__tests__/dlq.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	LARGE_BATCH_TEST_TIMEOUT_MS
 apps/updater/src/__tests__/exec.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	STOP_TEST_TIMEOUT_MS
 apps/updater/src/__tests__/exec.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	STOP_TEST_TIMEOUT_MS
-apps/web/app/components/answer/AnswerMailCard.vue	owlat(no-raw-keydown-listener)	window.addEventListener('keydown', onKeydown)
-apps/web/app/components/answer/AnswerMentionCard.vue	owlat(no-raw-keydown-listener)	window.addEventListener('keydown', onKeydown)
-apps/web/app/components/answer/AnswerQueueBar.vue	owlat(no-raw-keydown-listener)	window.addEventListener('keydown', onKeydown)
-apps/web/app/components/answer/AnswerTeamCard.vue	owlat(no-raw-keydown-listener)	window.addEventListener('keydown', onKeydown)
-apps/web/app/components/answer/AskCard.vue	owlat(no-raw-keydown-listener)	window.addEventListener('keydown', onKeydown)
-apps/web/app/composables/useAnswerQueueSession.ts	owlat(no-raw-keydown-listener)	window.addEventListener('keydown', onWindowKeydown)
 apps/web/app/lib/__tests__/structuralSharing.perf.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	300_000
-apps/web/app/pages/dashboard/answer/m/[messageId].vue	owlat(no-raw-keydown-listener)	window.addEventListener('keydown', onChordCapture, true)
-apps/web/app/pages/dashboard/answer/m/[messageId].vue	owlat(no-raw-keydown-listener)	window.addEventListener('keydown', onKeydown)
-apps/web/app/pages/dashboard/answer/t/[threadId].vue	owlat(no-raw-keydown-listener)	window.addEventListener('keydown', onChordCapture, true)
-apps/web/app/pages/dashboard/answer/t/[threadId].vue	owlat(no-raw-keydown-listener)	window.addEventListener('keydown', onKeydown)
 apps/web/app/utils/__tests__/postboxRemoteResources.perf.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	300_000
 apps/web/server/api/delivery/__tests__/apply-transport-relay-removal.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 apps/web/server/api/delivery/__tests__/apply-transport.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000

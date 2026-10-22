@@ -4819,7 +4819,7 @@
 				"all": "All mail",
 				"label": "Inbox view",
 				"priority": "Priority",
-				"title": "Priority mail or all mail (B)"
+				"title": "Priority mail or all mail"
 			},
 			"postboxInsertAvailability": {
 				"intro": "Here are a few times that work for me ({zone}):",
@@ -6105,7 +6105,8 @@
 				"fixedReasons": {
 					"convention": "Works the same as in every other app.",
 					"layout": "Follows the key's position, so it works on every keyboard layout.",
-					"surface": "Its screen answers this key itself, so it can't be changed yet."
+					"surface": "Its screen answers this key itself, so it can't be changed yet.",
+					"numbered": "The number picks the option in that place, so it stays."
 				},
 				"refused": {
 					"modifier": "This shortcut is a single key — press a key without Ctrl, Cmd or Alt.",
@@ -6128,7 +6129,13 @@
 					"workbench": "Workbench",
 					"peek": "Workbench panel",
 					"answer": "Answer mode",
-					"workspace": "Desktop workspaces"
+					"workspace": "Desktop workspaces",
+					"inboxList": "Team inbox list",
+					"answerQueue": "Answer queue",
+					"askCard": "The AI’s questions",
+					"mailCard": "Answer queue: follow-ups",
+					"teamCard": "Answer queue: Team inbox drafts",
+					"mentionCard": "Answer queue: mentions"
 				}
 			},
 			"preferencesYourData": {
@@ -16538,7 +16545,18 @@
 				"nextPeekEmail": "Next email in the panel",
 				"previousPeekEmail": "Previous email in the panel",
 				"closePeek": "Close the panel",
-				"undoQueueStep": "Undo the last step in the Answer queue"
+				"undoQueueStep": "Undo the last step in the Answer queue",
+				"askKnowledge": "Ask knowledge",
+				"dismissUpdate": "Mark the update done",
+				"markFollowUpDone": "Mark the follow-up done",
+				"previousCard": "Previous card",
+				"nextCard": "Next card",
+				"sendOrApprove": "Send the reply, or approve the draft",
+				"approveDraft": "Review & send the draft",
+				"rejectDraft": "Reject the draft",
+				"openMention": "Open the mention to reply",
+				"markMentionRead": "Mark the mention read",
+				"skipCard": "Skip for now"
 			}
 		},
 		"signatureBadge": {

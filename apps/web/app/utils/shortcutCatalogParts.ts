@@ -33,3 +33,5 @@ export const FIXED_CONVENTION = fixed('convention');
 export const FIXED_LAYOUT = fixed('layout');
 /** Answered by its screen's own handler, which a stored remap never reaches. */
 export const FIXED_SURFACE = fixed('surface');
+/** The digit is the number of the option it picks. */
+export const FIXED_NUMBERED = fixed('numbered');
