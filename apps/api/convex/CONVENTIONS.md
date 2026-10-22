@@ -180,7 +180,9 @@ these builders is a SECOND BetterAuth session read plus a second `member`
 component query, on every execution of a function the dashboard may
 live-subscribe. `scripts/check-session-threading.sh` ratchets this (frozen
 baseline in `scripts/session-threading-baseline.txt`, both directions strict;
-`// session: <reason>` opts a handler out when the re-resolution is deliberate). `ctx` and `args` are untouched, and a handler declaring only
+`// session: <reason>` opts a handler out when the re-resolution is deliberate).
+The `owlat/use-threaded-session` oxlint rule checks the same thing on the AST,
+with its debt in `scripts/owlat-lint-baseline.txt`. `ctx` and `args` are untouched, and a handler declaring only
 `(ctx)` or `(ctx, args)` is unaffected — the parameter is there when you want it.
 `authedIdentityMutation` (identity, not an org session) and `authedAction`
 (enforced in another function's context) have nothing to thread and keep the raw
@@ -196,7 +198,9 @@ API-key/no-session context must call an `internal*` sibling (see
 `contacts.contacts.getInternal`, `topics.topics.addContactInternal`).
 
 `scripts/check-public-functions.sh` (wired into `bun run lint`) bans the bare
-builders outside `lib/authedFunctions.ts` — a forgotten gate fails CI.
+builders outside `lib/authedFunctions.ts` — a forgotten gate fails CI. The
+`owlat/no-raw-convex-builder` oxlint rule enforces the same ban by import
+rather than by spelling, so an aliased import or a namespace member fails too.
 
 ### The workspace write fence
 
@@ -290,6 +294,9 @@ bare `authedQuery` / `authedMutation` export under `convex/mail/`.
 `scripts/feature-floor-baseline.txt` lists only the justified sites (the
 soft-auth reads and the modules `mail/_helpers.ts` exempts), each group with its
 reason. A new entry means a handler skipped its gated builder: use the builder.
+The `owlat/feature-floor-in-builder` oxlint rule enforces the same thing on the
+AST; its families and justified sites are listed under that rule in the root
+`oxlintrc.json`, so a new family or site goes there as well as here.
 When you give another folder gated builders, add its `<flag> <path prefix>` pair
 to `FAMILIES` and the builder names to `EXPECTED_BUILDERS` in
 `check-entry-wiring.ts`.
@@ -300,7 +307,9 @@ edits for a composition: they read their builder families from source through
 `scripts/lib/convex-builders.sh`: every `(export )?const X = featureGated(Any)(<base>, …)`
 under `convex/` inherits its base's kind and auth floor. A new **base** builder
 exported from `lib/authedFunctions.ts` must be classified in that helper's
-`CONVEX_BASE_BUILDERS` table; until it is, every one of those gates fails.
+`CONVEX_BASE_BUILDERS` table; until it is, every one of those gates fails. The
+Convex oxlint rules (`owlat/convex-error-taxonomy`, `owlat/use-threaded-session`,
+`owlat/feature-floor-in-builder`) derive the same table from the same inputs.
 
 ## Permissions
 
@@ -393,7 +402,10 @@ through a redaction helper. Qualified names — `fromDomain`, `toCount`,
 `senderId`, `recipientHash` — are out of scope by construction; a domain, a
 count, an id or a digest is not the address. A value that is genuinely not a
 correspondent address opts out with `// log-pii-safe: <reason>` inside the call
-or in the comment block directly above it.
+or in the comment block directly above it. The `owlat/no-log-pii` oxlint rule
+checks each payload property on the AST: shorthand and quoted keys count, a
+redacted neighbour on the same line does not excuse a raw value, and a long call
+has no line cap.
 
 This is about **process logs only**. `auditLogs`, delivery-log rows and anything
 else persisted on purpose and read back by the UI keep the addresses they need;

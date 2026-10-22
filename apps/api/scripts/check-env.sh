@@ -12,6 +12,11 @@
 #
 # Optional first arg overrides the scan root (default `convex`) so the self-test
 # can point it at a fixture tree.
+#
+# The oxlint rule owlat/no-process-env (packages/oxlint-plugin-owlat) enforces
+# this on the AST and runs beside this script until scripts/ast-gate-parity.ts
+# (`bun run lint:ast-gate-parity`) shows the two agree; a change to what this
+# script reports needs the same change in the rule, or that gate fails.
 
 set -euo pipefail
 

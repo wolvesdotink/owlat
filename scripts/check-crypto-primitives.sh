@@ -46,6 +46,12 @@
 #
 #   bash scripts/check-crypto-primitives.sh              check, exit 1 on a hit
 #   bash scripts/check-crypto-primitives.sh --generate   print hits, exit 0
+#
+# The oxlint rule owlat/no-crypto-primitives (packages/oxlint-plugin-owlat)
+# enforces this on the AST and runs beside this script until
+# scripts/ast-gate-parity.ts (`bun run lint:ast-gate-parity`) shows the two
+# agree; a change to what this script reports needs the same change in the
+# rule, or that gate fails.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -54,6 +60,7 @@ declare -A ALLOWED=(
 	['apps/api/convex/lib/crypto.ts']='the Convex compare and HMAC'
 	['packages/shared/src/constantTimeEqual.ts']='the Node compare'
 	['apps/convex-fn-proxy/src/allowlist.ts']='hash-then-compare copy; the proxy has no workspace dependencies'
+	['packages/oxlint-plugin-owlat/src/rules/noCryptoPrimitives.ts']='the AST rule that replaces this gate names the spellings it reports'
 )
 
 ROOTS=()
