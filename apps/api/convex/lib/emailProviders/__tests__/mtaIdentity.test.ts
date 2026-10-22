@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MtaIdentityManager } from '../mtaIdentity';
+import { internalFailureOf } from '../../../_utils/errors';
 
 const BASE = 'https://mta.example.test';
 const KEY = 'master-key';
@@ -79,12 +80,35 @@ describe('MtaIdentityManager', () => {
 			expect(init.body).toBeUndefined();
 		});
 
-		it('throws (surfacing the 409) on a cross-org conflict', async () => {
+		it('throws the typed ownership conflict on a cross-org 409', async () => {
 			fetchMock.mockResolvedValue(
 				new Response('already registered to a different organization', { status: 409 })
 			);
 
-			await expect(mgr().registerDomain('acme.com', undefined, 'org-2')).rejects.toThrow(/409/);
+			const error = await mgr()
+				.registerDomain('acme.com', undefined, 'org-2')
+				.catch((thrown: unknown) => thrown);
+			expect(internalFailureOf(error)).toEqual({
+				kind: 'mta.dkim_ownership_conflict',
+				retryable: false,
+				attrs: { status: 409 },
+			});
+			// The MTA's text stays the message the domain's failure record shows,
+			// and stays out of the serialized payload.
+			expect((error as Error).message).toBe(
+				'MTA DKIM registration failed (409): already registered to a different organization'
+			);
+			expect(JSON.stringify((error as { data: unknown }).data)).not.toContain('already registered');
+		});
+
+		it('throws a plain error for any other refusal, whatever its text', async () => {
+			fetchMock.mockResolvedValue(new Response('conflict (409) upstream', { status: 500 }));
+
+			const error = await mgr()
+				.registerDomain('acme.com', undefined, 'org-2')
+				.catch((thrown: unknown) => thrown);
+			expect(internalFailureOf(error)).toBeNull();
+			expect((error as Error).message).toContain('(500)');
 		});
 	});
 
