@@ -1,10 +1,10 @@
 /**
  * "Translate" in the reader: the text it sends (text part first, HTML reduced to
  * text, long mail clipped), the language it asks for, and what the panel shows
- * for a translation, a budget refusal and a stale answer.
+ * for a translation, a budget refusal, a stale answer and a change of message.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, nextTick, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -17,6 +17,9 @@ import {
 } from '../usePostboxReaderTranslation';
 
 const action = vi.fn();
+// Only the body-loading race needs it: every other case carries its body inline.
+const consumeBody = vi.hoisted(() => vi.fn());
+vi.mock('../postboxBodyResolver', () => ({ consumeResolvedPostboxMessageBody: consumeBody }));
 
 beforeEach(() => {
 	action.mockReset();
@@ -24,12 +27,13 @@ beforeEach(() => {
 	vi.stubGlobal('requireConvex', () => ({ action }));
 });
 
-function setup(message: TranslatableMessage | undefined) {
+function setup(message: TranslatableMessage | undefined | (() => TranslatableMessage | undefined)) {
 	let translation!: ReturnType<typeof usePostboxReaderTranslation>;
+	const target = typeof message === 'function' ? message : () => message;
 	mount(
 		defineComponent({
 			setup() {
-				translation = usePostboxReaderTranslation(() => message);
+				translation = usePostboxReaderTranslation(target);
 				return () => h('div');
 			},
 		}),
@@ -112,6 +116,47 @@ describe('usePostboxReaderTranslation', () => {
 		translation.close();
 		resolve({ translations: [{ id: 'm1', translatedText: 'Hello' }] });
 		await pending;
+		expect(translation.state.value).toEqual({ status: 'idle' });
+	});
+
+	it('drops the panel when the reader moves to another message', async () => {
+		action.mockResolvedValue({ translations: [{ id: 'm1', translatedText: 'Hello' }] });
+		const current = ref<TranslatableMessage>({ _id: 'm1', textBodyInline: 'Hallo' });
+		const translation = setup(() => current.value);
+		await translation.translate();
+		expect(translation.state.value.status).toBe('done');
+
+		current.value = { _id: 'm2', textBodyInline: 'Bonjour' };
+		await nextTick();
+		expect(translation.state.value).toEqual({ status: 'idle' });
+	});
+
+	it('never lets an answer for the previous message fill the next one’s panel', async () => {
+		let resolve!: (value: unknown) => void;
+		action.mockReturnValue(new Promise((r) => (resolve = r)));
+		const current = ref<TranslatableMessage>({ _id: 'm1', textBodyInline: 'Hallo' });
+		const translation = setup(() => current.value);
+		const pending = translation.translate();
+
+		current.value = { _id: 'm2', textBodyInline: 'Bonjour' };
+		await nextTick();
+		resolve({ translations: [{ id: 'm1', translatedText: 'Hello' }] });
+		await pending;
+		expect(translation.state.value).toEqual({ status: 'idle' });
+	});
+
+	it('spends nothing when the message changes while its body is still loading', async () => {
+		let resolveBody!: (value: unknown) => void;
+		consumeBody.mockReturnValue(new Promise((r) => (resolveBody = r)));
+		const current = ref<TranslatableMessage>({ _id: 'm1' });
+		const translation = setup(() => current.value);
+		const pending = translation.translate();
+
+		current.value = { _id: 'm2', textBodyInline: 'Bonjour' };
+		await nextTick();
+		resolveBody({ html: null, text: 'Hallo' });
+		await pending;
+		expect(action).not.toHaveBeenCalled();
 		expect(translation.state.value).toEqual({ status: 'idle' });
 	});
 });

@@ -3,7 +3,8 @@
  *   - an admin sets urgent / low, and `normal` clears the stored field, so an
  *     old row without the field and a row set back to normal read the same;
  *   - each real change is audited with its from/to, a repeat is a no-op;
- *   - a member who is not an admin cannot set it.
+ *   - a member who is not an admin cannot set it;
+ *   - with the Team Inbox switched off, nobody can.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -151,5 +152,16 @@ describe('inbox thread priority', () => {
 			t.mutation(api.inbox.priority.setThreadPriority, { threadId: id, priority: 'urgent' })
 		).rejects.toThrow();
 		expect((await getThread(t, id))?.priority).toBeUndefined();
+	});
+
+	it('refuses every write while the Team Inbox is switched off', async () => {
+		const t = convexTest(schema, modules);
+		const id = await seedThread(t);
+
+		await expect(
+			t.mutation(api.inbox.priority.setThreadPriority, { threadId: id, priority: 'urgent' })
+		).rejects.toThrow(/inbox\W+ is disabled/);
+		expect((await getThread(t, id))?.priority).toBeUndefined();
+		expect(await priorityAudits(t)).toEqual([]);
 	});
 });

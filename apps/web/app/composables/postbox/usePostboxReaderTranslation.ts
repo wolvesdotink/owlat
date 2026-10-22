@@ -64,6 +64,11 @@ export function usePostboxReaderTranslation(message: () => TranslatableMessage |
 	/** What the panel heading names: the language in its own words. */
 	const targetLanguage = computed(() => languageName(locale.value));
 
+	// A translation belongs to one message in one language. The reader keeps this
+	// composable across previews, so a new target (another conversation, a newer
+	// message, a language switch) drops the panel and any answer still in flight.
+	watch([() => message()?._id, locale], () => close());
+
 	async function bodyOf(msg: TranslatableMessage) {
 		if (msg.textBodyInline?.trim() || msg.htmlBodyInline?.trim()) {
 			return { html: msg.htmlBodyInline ?? null, text: msg.textBodyInline ?? null };
@@ -78,11 +83,11 @@ export function usePostboxReaderTranslation(message: () => TranslatableMessage |
 		state.value = { status: 'loading' };
 		try {
 			const body = await bodyOf(msg);
+			// Superseded while the body loaded: spend nothing on a stale target.
+			if (current !== request) return;
 			const source = translationSource(body ?? { html: null, text: null });
 			if (!source.text) {
-				if (current === request) {
-					state.value = { status: 'error', messageKey: 'postbox.reader.translation.empty' };
-				}
+				state.value = { status: 'error', messageKey: 'postbox.reader.translation.empty' };
 				return;
 			}
 			const result = await requireConvex().action(api.translate.translateBatch, {

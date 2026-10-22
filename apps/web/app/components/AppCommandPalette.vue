@@ -87,9 +87,20 @@ const parsedQuery = computed(() => parsePaletteQuery(searchQuery.value));
 const searchTerm = computed(() => parsedQuery.value.term);
 const debouncedTerm = computed(() => parsePaletteQuery(debouncedSearch.value).term);
 
-// ── Scope: which corpus this overlay is searching right now.
+// ── Submenus. While an item's argument is pending the palette shows only that
+// item's options; the box filters them, and Back restores the parent's query.
+const argument = useCommandPaletteArgument({
+	query: searchQuery,
+	setQuery: (value) => setImmediate(value),
+	activeIndex,
+	focus: () => inputEl.value?.focus(),
+	indexOf: (id) => flatIndexById.value.get(id),
+});
+const pendingArgument = argument.pending;
+
+// ── Scope: which corpus this overlay is searching right now (none in a submenu).
 const { scope, prompt, effectiveMode, isAskAvailable, resetScope, cycleScope } =
-	useCommandPaletteScope(() => parsedQuery.value.mode);
+	useCommandPaletteScope(() => parsedQuery.value.mode, pendingArgument);
 
 // ── Recent terms, tagged with the scope they were typed in (localStorage).
 // Tagged by what the box is DOING, not by the chip: a `?` question asked from
@@ -193,17 +204,6 @@ const coreProviders = buildCorePaletteProviders({
 	mailHitItems: () => mailScope.hitItems.value,
 	inboxThreadItems: () => inboxScope.threadItems.value,
 });
-
-// ── Submenus. While an item's argument is pending the palette shows only that
-// item's options; the box filters them, and Back restores the parent's query.
-const argument = useCommandPaletteArgument({
-	query: searchQuery,
-	setQuery: (value) => setImmediate(value),
-	activeIndex,
-	focus: () => inputEl.value?.focus(),
-	indexOf: (id) => flatIndexById.value.get(id),
-});
-const pendingArgument = argument.pending;
 
 // ── Assemble the ordered, capped group list: gate + order + dedup providers,
 // keep the groups the scope and the typed mode admit, then sort/drop-empties/cap.

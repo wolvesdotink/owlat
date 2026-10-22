@@ -310,6 +310,36 @@ describe('AppCommandPalette — argument mode', () => {
 		expect(rows()).toHaveLength(1);
 		expect(document.body.textContent).toContain('Work label');
 	});
+
+	it('runs the filtered option on Enter in Mail scope instead of searching mail', async () => {
+		installStubs('/dashboard/postbox/inbox');
+		await openPalette();
+		await type('>label');
+		await press('Enter');
+		await type('wor');
+		// Mail scope selects nothing once something is typed; a submenu is not
+		// Mail scope, so its first match stays selected and Enter applies it.
+		expect(rowLabelled('Work label').getAttribute('aria-selected')).toBe('true');
+		await press('Enter');
+		expect(runLabelOption).toHaveBeenCalledOnce();
+		expect(navigateTo).not.toHaveBeenCalled();
+	});
+
+	it('treats a typed ? inside a submenu as filter text, not a question', async () => {
+		const ask = vi.fn();
+		installStubs('/dashboard/postbox/inbox', {
+			useBackendOperation: () => ({ run: ask, isLoading: ref(false), error: ref(null) }),
+		});
+		await openPalette();
+		await type('>label');
+		await press('Enter');
+		await type('?why');
+		await press('Enter');
+		expect(ask).not.toHaveBeenCalled();
+		expect(runLabelOption).not.toHaveBeenCalled();
+		expect(navigateTo).not.toHaveBeenCalled();
+		expect(document.body.querySelector('input')?.value).toBe('?why');
+	});
 });
 
 describe('AppCommandPalette — jump back', () => {
