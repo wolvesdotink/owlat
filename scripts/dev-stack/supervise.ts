@@ -6,7 +6,7 @@
  * groups started here is touched.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
 
 export interface ChildSpec {
 	readonly name: string;
@@ -16,7 +16,12 @@ export interface ChildSpec {
 	readonly env: NodeJS.ProcessEnv;
 }
 
+/** How long a group gets between SIGTERM and SIGKILL. */
 const STOP_GRACE_MS = 10_000;
+/** How often the groups are checked for leftovers once every leader is gone. */
+const GROUP_POLL_MS = 100;
+/** How long SIGKILLed groups get to disappear before supervise gives up on them. */
+const KILL_SETTLE_MS = 2_000;
 
 function pipeLines(stream: NodeJS.ReadableStream | null, prefix: string, out: NodeJS.WriteStream) {
 	if (!stream) return;
@@ -33,13 +38,30 @@ function pipeLines(stream: NodeJS.ReadableStream | null, prefix: string, out: No
 	});
 }
 
-function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
-	if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+/**
+ * A group is addressed by its leader's PID, which stays valid after the
+ * leader exits for as long as any member is left: the kernel does not hand a
+ * PID out again while a process group still uses it. So a launcher that exits
+ * early does not take its descendants out of reach.
+ */
+function signalGroup(pgid: number, signal: NodeJS.Signals | 0): boolean {
 	try {
-		process.kill(-child.pid, signal);
-	} catch {
-		child.kill(signal);
+		process.kill(-pgid, signal);
+		return true;
+	} catch (error) {
+		// EPERM means the group exists but is not ours to signal.
+		return (error as NodeJS.ErrnoException).code === 'EPERM';
 	}
+}
+
+function groupExists(pgid: number): boolean {
+	return signalGroup(pgid, 0);
+}
+
+interface SuperviseTimings {
+	readonly graceMs?: number;
+	readonly pollMs?: number;
+	readonly killSettleMs?: number;
 }
 
 /**
@@ -48,8 +70,14 @@ function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
  */
 export function supervise(
 	specs: readonly ChildSpec[],
-	onStop: () => void = () => {}
+	onStop: () => void = () => {},
+	timings: SuperviseTimings = {}
 ): Promise<number> {
+	const {
+		graceMs = STOP_GRACE_MS,
+		pollMs = GROUP_POLL_MS,
+		killSettleMs = KILL_SETTLE_MS,
+	} = timings;
 	const width = Math.max(...specs.map((spec) => spec.name.length));
 	const children = specs.map((spec) => {
 		const child = spawn(spec.command, [...spec.args], {
@@ -64,21 +92,61 @@ export function supervise(
 		return { spec, child };
 	});
 
+	// Every group started here, kept after its leader exits: a launcher can
+	// exit while what it spawned keeps running and holding ports.
+	const groups = children.flatMap(({ child }) => (child.pid === undefined ? [] : [child.pid]));
+
 	return new Promise((resolve) => {
 		let stopping = false;
 		let exitCode = 0;
 		let remaining = children.length;
+		let killedAt: number | undefined;
 		let killTimer: ReturnType<typeof setTimeout> | undefined;
+		let pollTimer: ReturnType<typeof setTimeout> | undefined;
+
+		const signalAll = (signal: NodeJS.Signals) => {
+			for (const pgid of groups) signalGroup(pgid, signal);
+		};
+
+		const finish = () => {
+			if (killTimer) clearTimeout(killTimer);
+			if (pollTimer) clearTimeout(pollTimer);
+			for (const signal of signals) process.off(signal, onSignal);
+			resolve(exitCode);
+		};
+
+		// Polls from the start of the stop: a group nobody is left in is dropped
+		// at once, so its number is never signalled after the kernel could
+		// reuse it. Resolves only when every leader has exited and no group
+		// started here has a member left, and keeps the SIGKILL escalation
+		// armed until then.
+		const poll = () => {
+			if (pollTimer) clearTimeout(pollTimer);
+			pollTimer = undefined;
+			for (let i = groups.length - 1; i >= 0; i -= 1) {
+				if (!groupExists(groups[i]!)) groups.splice(i, 1);
+			}
+			if (remaining === 0 && groups.length === 0) return finish();
+			if (remaining === 0 && killedAt !== undefined && Date.now() - killedAt >= killSettleMs) {
+				process.stderr.write(
+					`[dev:stack] process groups ${groups.join(', ')} did not exit after SIGKILL\n`
+				);
+				return finish();
+			}
+			pollTimer = setTimeout(poll, pollMs);
+		};
 
 		const stopAll = (reason: string) => {
 			if (stopping) return;
 			stopping = true;
 			process.stderr.write(`\n[dev:stack] stopping (${reason})...\n`);
 			onStop();
-			for (const { child } of children) signalGroup(child, 'SIGTERM');
+			signalAll('SIGTERM');
 			killTimer = setTimeout(() => {
-				for (const { child } of children) signalGroup(child, 'SIGKILL');
-			}, STOP_GRACE_MS);
+				killedAt = Date.now();
+				signalAll('SIGKILL');
+			}, graceMs);
+			poll();
 		};
 
 		const onSignal = (signal: NodeJS.Signals) => stopAll(signal);
@@ -95,11 +163,7 @@ export function supervise(
 					stopAll(`${spec.name} exited with ${signal ?? `code ${code}`}`);
 				}
 				remaining -= 1;
-				if (remaining === 0) {
-					if (killTimer) clearTimeout(killTimer);
-					for (const signal of signals) process.off(signal, onSignal);
-					resolve(exitCode);
-				}
+				if (remaining === 0) poll();
 			};
 			child.once('exit', settle);
 			child.once('error', (error) => {

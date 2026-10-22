@@ -32,15 +32,18 @@ bun run setup:worktree
 T3 Code runs it when it creates a worktree (`t3.json`). Progress is visible in
 `.owlat-dev/`:
 
-| Marker          | Meaning                                                        |
-| --------------- | -------------------------------------------------------------- |
-| `setup-running` | Setup is working. Holds its PID. Do not run `bun install`.     |
-| `setup-done`    | Finished.                                                      |
-| `setup-failed`  | Failed or cancelled; the file says why (with the output tail). |
+| Marker          | Meaning                                                             |
+| --------------- | ------------------------------------------------------------------- |
+| `setup-running` | Setup is working. Holds `<pid>-<run id>`. Do not run `bun install`. |
+| `setup-done`    | Finished.                                                           |
+| `setup-failed`  | Failed or cancelled; the file says why (with the output tail).      |
 
-A second run while one is in progress prints
-`setup is already running (pid …)` and leaves it alone. A marker left by a
-process that died is taken over by the next run.
+A second run while one is in progress prints `setup is already running (…)`
+and leaves it alone. A marker left by a process that died is taken over by the
+next run; when several runs find the same dead marker, one takes it over and
+the others stand down. A run removes `setup-running` only while it still holds
+its own run id. If a run was killed in the middle of a takeover, the next one
+stops and names a `setup-takeover-*` file to delete.
 
 ## The local stack
 
@@ -180,16 +183,17 @@ whatever `apps/api` selects. It refuses any site URL that is not localhost.
 
 ## Stopping what you started
 
-| You want to                                | Run                                |
-| ------------------------------------------ | ---------------------------------- |
-| Stop Nuxt and the watcher                  | Ctrl-C in the `dev:stack` terminal |
-| Stop this checkout's containers, keep data | `bun run dev:stack down`           |
-| Delete this checkout's data as well        | `bun run dev:stack down --volumes` |
-| See what is running                        | `bun run dev:stack status`         |
-| Read the container logs                    | `bun run dev:stack logs [convex    | redis] [--follow]` |
+| You want to                                | Run                                                   |
+| ------------------------------------------ | ----------------------------------------------------- |
+| Stop Nuxt and the watcher                  | Ctrl-C in the `dev:stack` terminal                    |
+| Stop this checkout's containers, keep data | `bun run dev:stack down`                              |
+| Delete this checkout's data as well        | `bun run dev:stack down --volumes`                    |
+| See what is running                        | `bun run dev:stack status`                            |
+| Read the container logs                    | `bun run dev:stack logs [convex \| redis] [--follow]` |
 
 Ctrl-C stops only the processes `dev:stack` started (each runs in its own
-process group). The containers keep running so the next start skips the cold
+process group) and returns once those groups are empty, including anything a
+process left behind when it exited. The containers keep running so the next start skips the cold
 boot; `down` stops them. Every command acts on this checkout's Compose project
 only. Never stop another checkout's stack by name pattern, and never
 `docker system|volume prune` on a shared machine.

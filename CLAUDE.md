@@ -52,7 +52,7 @@ one git object store. Each of these has cost a run before:
 
 A new worktree is set up by `bun run setup:worktree` (T3 Code starts it
 through `t3.json`). Check `.owlat-dev/` before installing or building
-anything: while `setup-running` exists (it holds the PID), setup is still
+anything: while `setup-running` exists (it starts with the PID), setup is still
 installing, so wait for `setup-done`. On `setup-failed`, read the file, fix
 the cause and run `bun run setup:worktree` again. Never start your own
 `bun install` while setup runs.

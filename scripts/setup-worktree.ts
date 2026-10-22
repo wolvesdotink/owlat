@@ -11,18 +11,21 @@
  *      without which `nuxt dev` and the typechecks fail.
  *
  * Progress is visible to agents through markers in `.owlat-dev/`:
- * `setup-running` (holds the PID) while it works, then `setup-done` or
+ * `setup-running` (holds `<pid>-<run id>`) while it works, then `setup-done` or
  * `setup-failed` (with the reason). A second run while one is in progress
  * leaves it alone. Uses Node built-ins only: it runs before dependencies exist.
  */
 
 import { spawn, spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import {
 	existsSync,
+	linkSync,
 	lstatSync,
 	mkdirSync,
 	readFileSync,
 	realpathSync,
+	renameSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
@@ -61,6 +64,11 @@ export interface SetupDeps {
 	/** Main checkout to link env files from; null when there is none. */
 	readonly mainCheckout: string | null;
 	readonly pid: number;
+	/**
+	 * Unique to this run, `<pid>-<random>`: what the marker holds, so a run
+	 * only ever replaces or removes a marker it can name.
+	 */
+	readonly token: string;
 	isAlive(pid: number): boolean;
 	runStep(step: Step, cwd: string): Promise<StepResult>;
 	log(line: string): void;
@@ -104,27 +112,110 @@ export function linkEnvFiles(
 	}
 }
 
-/**
- * Takes the `setup-running` marker. Returns false when another live setup
- * holds it; a marker left by a process that no longer exists is taken over.
- */
-function acquire(deps: SetupDeps, running: string): boolean {
-	try {
-		writeFileSync(running, `${deps.pid}\n`, { flag: 'wx' });
-		return true;
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-	}
-	const holder = Number.parseInt(readFileSync(running, 'utf8'), 10);
-	if (Number.isInteger(holder) && holder !== deps.pid && deps.isAlive(holder)) {
-		deps.log(`setup is already running (pid ${holder}); wait for .owlat-dev/setup-done`);
-		return false;
-	}
-	writeFileSync(running, `${deps.pid}\n`);
-	return true;
+function newRunToken(pid: number): string {
+	return `${pid}-${randomBytes(6).toString('hex')}`;
 }
 
-export type SetupOutcome = 'done' | 'failed' | 'already-running';
+function readMarker(path: string): string | null {
+	try {
+		return readFileSync(path, 'utf8').trim();
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+		throw error;
+	}
+}
+
+/**
+ * Creates `path` holding `content` only if it does not exist. The content is
+ * written first and linked into place, so a reader never sees a half-written
+ * marker.
+ */
+function createExclusive(path: string, content: string, token: string): boolean {
+	const temp = `${path}.${token}.tmp`;
+	writeFileSync(temp, `${content}\n`);
+	try {
+		linkSync(temp, path);
+		return true;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+		throw error;
+	} finally {
+		rmSync(temp, { force: true });
+	}
+}
+
+function holderIsAlive(deps: SetupDeps, content: string): boolean {
+	const pid = Number.parseInt(content, 10);
+	return Number.isInteger(pid) && pid !== deps.pid && deps.isAlive(pid);
+}
+
+type Acquired = 'acquired' | 'already-running' | 'blocked';
+
+const ACQUIRE_ATTEMPTS = 5;
+
+/**
+ * Takes the `setup-running` marker. Another live setup holding it wins. A
+ * marker left by a process that no longer exists is taken over, and the
+ * takeover of one particular stale marker is serialized by a claim file named
+ * after its content: of several runs that saw the same dead holder, only the
+ * one that creates the claim and still finds that same content replaces it.
+ * The others find a live holder on their next look and stand down.
+ */
+function acquire(deps: SetupDeps, dir: string, running: string): Acquired {
+	for (let attempt = 0; attempt < ACQUIRE_ATTEMPTS; attempt += 1) {
+		if (createExclusive(running, deps.token, deps.token)) return 'acquired';
+		const seen = readMarker(running);
+		if (seen === null) continue;
+		if (holderIsAlive(deps, seen)) {
+			deps.log(`setup is already running (${seen}); wait for .owlat-dev/setup-done`);
+			return 'already-running';
+		}
+		const claimId = seen.replace(/[^A-Za-z0-9-]/g, '_').slice(0, 64) || 'empty';
+		const claim = join(dir, `setup-takeover-${claimId}`);
+		if (!createExclusive(claim, deps.token, deps.token)) {
+			const claimer = readMarker(claim);
+			if (claimer === null) continue;
+			if (holderIsAlive(deps, claimer)) {
+				deps.log(`another setup (${claimer}) is taking over; wait for .owlat-dev/setup-done`);
+				return 'already-running';
+			}
+			// The claim is held only across a few synchronous file operations,
+			// so a dead claimer means a crash right there; nothing can tell
+			// whether its takeover finished, so a person decides.
+			deps.log(`a setup died while taking over; delete ${claim} and run again`);
+			return 'blocked';
+		}
+		try {
+			if (readMarker(running) !== seen) continue;
+			const temp = `${running}.${deps.token}.tmp`;
+			writeFileSync(temp, `${deps.token}\n`);
+			renameSync(temp, running);
+			return 'acquired';
+		} finally {
+			rmSync(claim, { force: true });
+		}
+	}
+	deps.log('the setup marker kept changing; run setup again');
+	return 'blocked';
+}
+
+/** Removes `setup-running` only while it still names this run. */
+function releaseMarker(running: string, token: string): void {
+	if (readMarker(running) === token) rmSync(running, { force: true });
+}
+
+/**
+ * Ends a run that is interrupted between steps: records why and frees the
+ * marker, but only when this run holds it.
+ */
+function abandonRun(worktree: string, token: string, reason: string): void {
+	const markers = markerPaths(worktree);
+	if (readMarker(markers.running) !== token) return;
+	writeFileSync(markers.failed, `${reason}\n`);
+	releaseMarker(markers.running, token);
+}
+
+export type SetupOutcome = 'done' | 'failed' | 'already-running' | 'blocked';
 
 export async function runSetup(
 	deps: SetupDeps,
@@ -132,7 +223,8 @@ export async function runSetup(
 ): Promise<SetupOutcome> {
 	const markers = markerPaths(deps.worktree);
 	mkdirSync(markers.dir, { recursive: true });
-	if (!acquire(deps, markers.running)) return 'already-running';
+	const acquired = acquire(deps, markers.dir, markers.running);
+	if (acquired !== 'acquired') return acquired;
 	rmSync(markers.done, { force: true });
 	rmSync(markers.failed, { force: true });
 
@@ -159,7 +251,7 @@ export async function runSetup(
 
 	if (failure === null) writeFileSync(markers.done, '');
 	else writeFileSync(markers.failed, `${failure}\n`);
-	rmSync(markers.running, { force: true });
+	releaseMarker(markers.running, deps.token);
 	return failure === null ? 'done' : 'failed';
 }
 
@@ -179,6 +271,7 @@ export function findMainCheckout(worktree: string, env: NodeJS.ProcessEnv): stri
 
 async function main(): Promise<void> {
 	const worktree = realpathSync(join(dirname(fileURLToPath(import.meta.url)), '..'));
+	const token = newRunToken(process.pid);
 	let cancelSignal: string | null = null;
 	let active: ReturnType<typeof spawn> | undefined;
 	for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
@@ -188,9 +281,7 @@ async function main(): Promise<void> {
 			// running there is nothing to wait for.
 			if (active) active.kill(signal);
 			else {
-				const markers = markerPaths(worktree);
-				writeFileSync(markers.failed, `Cancelled by ${signal}.\n`);
-				rmSync(markers.running, { force: true });
+				abandonRun(worktree, token, `Cancelled by ${signal}.`);
 				process.exit(1);
 			}
 		});
@@ -200,6 +291,7 @@ async function main(): Promise<void> {
 			worktree,
 			mainCheckout: findMainCheckout(worktree, process.env),
 			pid: process.pid,
+			token,
 			isAlive: (pid) => {
 				try {
 					process.kill(pid, 0);
@@ -236,6 +328,8 @@ async function main(): Promise<void> {
 	);
 	if (outcome === 'failed') {
 		console.error(`[setup-worktree] failed; see ${markerPaths(worktree).failed}`);
+		process.exitCode = 1;
+	} else if (outcome === 'blocked') {
 		process.exitCode = 1;
 	}
 }
