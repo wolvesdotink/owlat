@@ -17,10 +17,12 @@ import type { AstNode, Context, Rule, Scope } from '../types.ts';
  *  - calling `replaceChildren`, `replaceWith`, `setHTML` or `setHTMLUnsafe`;
  *  - a loop that drains it (`while (document.body.firstChild)` removing
  *    `document.body.firstChild`), and a `for…of` or `.forEach` over its
- *    children (or its `'*'` descendants) that removes the node it is visiting.
+ *    children (or its `'*'` descendants, or a plain copy of either) that
+ *    removes the node it is visiting.
  * A loop only counts when it removes the root's own children: `.remove()` on
  * them or `.removeChild(…)` with them as the argument. Removing a node found
- * inside a child, or some unrelated node, leaves the rest of the document in
+ * inside a child, some unrelated node, or the members of a filtered or mapped
+ * copy or of one child's own children, leaves the rest of the document in
  * place and stays allowed.
  * The body is recognized as `document.body` / `document.documentElement`
  * (also through `window.`, `globalThis.` or `self.`, computed keys and
@@ -316,20 +318,55 @@ const createMatcher = (context: Context) => {
 		);
 	};
 
-	const walksRootChildren = (node: Node) =>
-		containsNode(node, (candidate) => {
-			if (isRootMember(candidate, CHILD_COLLECTIONS)) return true;
-			if (candidate.type !== 'CallExpression') return false;
-			const callee = unwrap(candidate.callee);
-			const [selector] = candidate.arguments;
-			return (
-				callee !== undefined &&
-				callee !== null &&
-				isRootMember(callee, WILDCARD_QUERIES) &&
-				selector?.type === 'Literal' &&
-				selector.value === '*'
-			);
-		});
+	/** Whether `node` is the global `Array`, not a local binding of that name. */
+	const isGlobalArray = (node: Node) => {
+		const current = unwrap(node);
+		return current?.type === 'Identifier' && current.name === 'Array' && !localVariable(current);
+	};
+
+	/**
+	 * Whether iterating `node` visits every child of the root: `<root>.children`
+	 * or `.childNodes`, `<root>.querySelectorAll('*')` / `getElementsByTagName('*')`,
+	 * or a plain copy of one (`[...x]`, also with extra elements, `Array.from(x)`
+	 * without a mapper, `x.slice()`), directly or through a never-reassigned
+	 * alias. Only the iterable's own value counts: a collection read off one
+	 * child (`<root>.children[0].children`), a filtered or mapped copy, or any
+	 * other expression that merely mentions the root's children visits a subset
+	 * or other nodes and leaves the document in place.
+	 */
+	const walksRootChildren = (node: Node, depth = 0): boolean => {
+		const current = unwrap(node);
+		if (!current || depth > 8) return false;
+		switch (current.type) {
+			case 'Identifier': {
+				const alias = aliasOf(current);
+				return alias !== undefined && 'value' in alias && walksRootChildren(alias.value, depth + 1);
+			}
+			case 'MemberExpression':
+				return isRootMember(current, CHILD_COLLECTIONS);
+			case 'ArrayExpression':
+				return current.elements.some(
+					(element) =>
+						element?.type === 'SpreadElement' && walksRootChildren(element.argument, depth + 1)
+				);
+			case 'CallExpression': {
+				const callee = unwrap(current.callee);
+				if (callee?.type !== 'MemberExpression') return false;
+				const name = propertyName(callee);
+				const args = current.arguments;
+				if (isRootMember(callee, WILDCARD_QUERIES)) {
+					const [selector] = args;
+					return selector?.type === 'Literal' && selector.value === '*';
+				}
+				if (name === 'from' && isGlobalArray(callee.object)) {
+					return args.length === 1 && walksRootChildren(args[0], depth + 1);
+				}
+				return name === 'slice' && args.length === 0 && walksRootChildren(callee.object, depth + 1);
+			}
+			default:
+				return false;
+		}
+	};
 
 	return { isRootElement, isRootMember, removesRootChildren, removesVisited, walksRootChildren };
 };

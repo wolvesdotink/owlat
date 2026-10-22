@@ -105,12 +105,15 @@ const FIXTURES: Record<string, string> = {
 		'});',
 		'',
 	].join('\n'),
-	// Removing a node found inside each child leaves the body in place.
+	// Removing a node found inside each child, one child's own children or a
+	// filtered subset of the children leaves the body in place.
 	'apps/web/app/__tests__/bodyOwnedRemoval.test.ts': [
 		"import { afterEach } from 'vitest';",
 		'',
 		'afterEach(() => {',
 		"\tfor (const child of document.body.children) child.querySelector('[data-owned]')?.remove();",
+		'\tfor (const node of document.body.children[0].children) node.remove();',
+		"\tfor (const node of [...document.body.children].filter((el) => el.matches('.toast'))) node.remove();",
 		'});',
 		'',
 	].join('\n'),
@@ -197,7 +200,7 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(byFile.get('bodyResetElsewhere.test.ts')).toBeUndefined();
 	});
 
-	it('accepts a loop over the body that removes only nodes found inside its children', () => {
+	it('accepts a loop over the body that removes only some of its nodes', () => {
 		expect(byFile.get('bodyOwnedRemoval.test.ts')).toBeUndefined();
 	});
 

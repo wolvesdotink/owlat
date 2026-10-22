@@ -88,6 +88,21 @@ ruleTester.run('owlat/no-document-body-reset', rule, {
 			code: 'declare const detach: (node: Element) => void;\nArray.from(document.body.children).forEach(detach);',
 		},
 		{
+			name: "a loop over one child's own children, which leaves every root child in place",
+			filename,
+			code: "for (const node of document.body.children[0].children) node.remove();\nfor (const node of document.body.firstElementChild!.childNodes) node.remove();\nArray.from(document.body.children[0].children).forEach((node) => node.remove());\nfor (const node of document.body.querySelector('main')!.querySelectorAll('*')) node.remove();",
+		},
+		{
+			name: 'a loop over a filtered or mapped copy of the children',
+			filename,
+			code: "for (const node of [...document.body.children].filter((el) => el.hasAttribute('data-owned'))) node.remove();\nfor (const node of Array.from(document.body.children, (el) => el.firstElementChild!)) node.remove();\nfor (const node of [...document.body.children].map((el) => el.lastChild!)) node.remove();\n[...document.body.childNodes].slice(1).forEach((node) => node.remove());\nconst owned = [...document.body.children].filter((el) => el.matches('.toast'));\nfor (const node of owned) node.remove();",
+		},
+		{
+			name: 'a loop over an expression that only mentions the children, or a local Array',
+			filename,
+			code: 'declare const pick: (nodes: HTMLCollection) => Element[];\nfor (const node of pick(document.body.children)) node.remove();\nfor (const node of document.body.children.length ? [] : [document.body]) node.remove();\nconst Array = { from: (nodes: HTMLCollection) => [nodes[0]] };\nfor (const node of Array.from(document.body.children)) node.remove();',
+		},
+		{
 			name: 'a loop on the child count that removes owned nodes, not the root children',
 			filename,
 			code: "declare const owned: HTMLElement[];\nwhile (document.body.childElementCount > 1) owned.pop()?.remove();\nwhile (document.body.firstChild) document.body.firstChild.querySelector('[data-owned]')?.remove();",
@@ -214,6 +229,12 @@ ruleTester.run('owlat/no-document-body-reset', rule, {
 			filename,
 			code: 'for (const child of [...document.body.children]) child.remove();\nfor (const node of Array.from(document.body.childNodes)) document.body.removeChild(node);',
 			errors: 2,
+		},
+		{
+			name: 'a for...of over the live collection, a sliced or extended copy, or an alias of one',
+			filename,
+			code: "declare const extra: HTMLElement;\nfor (const child of document.body.children) child.remove();\nfor (const child of [...document.body.children].slice()) child.remove();\nfor (const child of [...document.body.childNodes, extra]) child.remove();\nconst kids = Array.from(document.body.children);\nfor (const child of kids) child.remove();\nconst all = document.documentElement.querySelectorAll('*');\nall.forEach((el) => el.remove());",
+			errors: 5,
 		},
 		{
 			name: "a for...of over every descendant ('*') that removes them",
