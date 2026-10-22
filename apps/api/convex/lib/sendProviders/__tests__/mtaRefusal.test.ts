@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROUTING_LEASE_UNREADABLE_CODE } from '@owlat/shared';
 import { mtaSendProvider } from '../mta';
-import { decodeMtaRefusal, mtaRoutingRefusalOf } from '../mta/refusal';
+import { decodeMtaRefusal, mtaConflictOf } from '../mta/refusal';
 import { resolveSendTransport } from '../transports';
 import { EmailErrorCode } from '../types';
 
@@ -30,7 +30,7 @@ describe('decodeMtaRefusal', () => {
 	});
 });
 
-describe('mtaRoutingRefusalOf', () => {
+describe('mtaConflictOf', () => {
 	it.each([
 		'ROUTING_DECISION_EXPIRED',
 		'ROUTING_DECISION_CHANGED',
@@ -38,55 +38,59 @@ describe('mtaRoutingRefusalOf', () => {
 		// A code a newer MTA build answers and this reader has never seen.
 		'ROUTING_DECISION_POOL_DRAINED',
 	])('reads %s as a deferral that resolves a fresh decision', (code) => {
-		expect(mtaRoutingRefusalOf(refusal({ error: 'resolve again', code }))).toBe(
-			'decision_deferred'
-		);
+		expect(mtaConflictOf(refusal({ error: 'resolve again', code }))).toBe('decision_deferred');
 	});
 
 	it('keeps an unreadable lease apart from a governed deferral', () => {
 		expect(
-			mtaRoutingRefusalOf(refusal({ error: 'resolve again', code: ROUTING_LEASE_UNREADABLE_CODE }))
+			mtaConflictOf(refusal({ error: 'resolve again', code: ROUTING_LEASE_UNREADABLE_CODE }))
 		).toBe('lease_unreadable');
 	});
 
 	it('reads the code, not the prose beside it', () => {
 		// The person-readable text quotes a routing code; the code says otherwise.
 		expect(
-			mtaRoutingRefusalOf(
+			mtaConflictOf(
 				refusal({
 					error: 'ROUTING_DECISION_EXPIRED earlier; lease now required',
 					code: 'ROUTING_LEASE_REQUIRED',
 				})
 			)
-		).toBeUndefined();
+		).toBe('refused');
 		expect(
-			mtaRoutingRefusalOf(
+			mtaConflictOf(
 				refusal({
 					error: `not ${ROUTING_LEASE_UNREADABLE_CODE}`,
 					code: 'ROUTING_DECISION_CHANGED',
 				})
 			)
 		).toBe('decision_deferred');
-		expect(
-			mtaRoutingRefusalOf(refusal({ error: 'GLOBAL_SAFETY_DEFER', code: 'INTAKE_PENDING' }))
-		).toBeUndefined();
+		expect(mtaConflictOf(refusal({ error: 'GLOBAL_SAFETY_DEFER', code: 'INTAKE_PENDING' }))).toBe(
+			'intake_pending'
+		);
+	});
+
+	it('answers every decoded code, known or not', () => {
+		expect(mtaConflictOf(refusal({ code: 'ROUTING_LEASE_REQUIRED' }))).toBe('refused');
+		// A code a newer MTA build answers that is not a routing refusal.
+		expect(mtaConflictOf(refusal({ error: 'Duplicate request', code: 'INTAKE_DUPLICATE' }))).toBe(
+			'refused'
+		);
 	});
 
 	it('still defers a body that carries no code but names one', () => {
-		expect(mtaRoutingRefusalOf('ROUTING_DECISION_EXPIRED')).toBe('decision_deferred');
-		expect(mtaRoutingRefusalOf(refusal({ error: 'GLOBAL_SAFETY_DEFER' }))).toBe(
-			'decision_deferred'
-		);
+		expect(mtaConflictOf('ROUTING_DECISION_EXPIRED')).toBe('decision_deferred');
+		expect(mtaConflictOf(refusal({ error: 'GLOBAL_SAFETY_DEFER' }))).toBe('decision_deferred');
 		expect(
-			mtaRoutingRefusalOf(
+			mtaConflictOf(
 				`${ROUTING_LEASE_UNREADABLE_CODE} while ROUTING_DECISION_EXPIRED was being checked`
 			)
 		).toBe('lease_unreadable');
 	});
 
 	it('finds nothing in a body with neither code nor token', () => {
-		expect(mtaRoutingRefusalOf('Conflict')).toBeUndefined();
-		expect(mtaRoutingRefusalOf(refusal({ error: 'Duplicate request' }))).toBeUndefined();
+		expect(mtaConflictOf('Conflict')).toBeUndefined();
+		expect(mtaConflictOf(refusal({ error: 'Duplicate request' }))).toBeUndefined();
 	});
 });
 
@@ -107,6 +111,36 @@ describe('mtaSendProvider.categorizeError on a 409', () => {
 				409
 			)
 		).toBe(EmailErrorCode.UNKNOWN);
+	});
+
+	it.each([
+		['the MTA wording', 'A current routing lease is required'],
+		['a timeout', 'timeout while waiting for the lease'],
+		['an invalid sender', 'DKIM domain not verified for sender'],
+		['rate limiting', 'too many requests, rate limited'],
+		['a routing token', 'ROUTING_DECISION_EXPIRED'],
+		['a pending intake', 'INTAKE_PENDING'],
+		['nothing', undefined],
+	])('classifies a coded refusal by its code whatever the prose says (%s)', (_label, error) => {
+		expect(
+			mtaSendProvider.categorizeError(refusal({ error, code: 'ROUTING_LEASE_REQUIRED' }), 409)
+		).toBe(EmailErrorCode.UNKNOWN);
+		expect(
+			mtaSendProvider.categorizeError(refusal({ error, code: 'ROUTING_DECISION_CHANGED' }), 409)
+		).toBe(EmailErrorCode.ROUTING_DEFERRED);
+		expect(
+			mtaSendProvider.categorizeError(refusal({ error, code: ROUTING_LEASE_UNREADABLE_CODE }), 409)
+		).toBe(EmailErrorCode.ROUTING_LEASE_UNREADABLE);
+		expect(mtaSendProvider.categorizeError(refusal({ error, code: 'INTAKE_PENDING' }), 409)).toBe(
+			EmailErrorCode.SERVER_ERROR
+		);
+	});
+
+	it('reads the prose of a codeless 409 as it always has', () => {
+		expect(mtaSendProvider.categorizeError(refusal({ error: 'Request timeout' }), 409)).toBe(
+			EmailErrorCode.SERVER_ERROR
+		);
+		expect(mtaSendProvider.categorizeError('Conflict', 409)).toBe(EmailErrorCode.UNKNOWN);
 	});
 
 	it('reads routing codes only on a 409', () => {

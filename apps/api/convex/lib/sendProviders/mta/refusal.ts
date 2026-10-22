@@ -8,6 +8,7 @@
  */
 
 import { ROUTING_LEASE_UNREADABLE_CODE } from '@owlat/shared';
+import { isMtaSendErrorCode } from '@owlat/mta-protocol/send';
 
 /** A refusal code as the MTA spells them: upper-case words joined by `_`. */
 const REFUSAL_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
@@ -36,12 +37,14 @@ export function decodeMtaRefusal(body: string): MtaRefusal {
 }
 
 /**
- * The two kinds of routing refusal. `lease_unreadable` is the MTA's own lease
- * store failing, kept apart from `decision_deferred` (a stale or changed
- * decision, a safety pause) because only the latter is evidence about the
- * sending identity.
+ * How a 409 refusal reads. `lease_unreadable` is the MTA's own lease store
+ * failing, kept apart from `decision_deferred` (a stale or changed decision, a
+ * safety pause) because only the latter is evidence about the sending
+ * identity. `intake_pending` means the MTA may still accept the message.
+ * `refused` is any other decoded code (a missing lease, or a code this build
+ * does not know): the code is the answer, so the prose beside it is never read.
  */
-export type MtaRoutingRefusal = 'lease_unreadable' | 'decision_deferred';
+export type MtaConflict = 'lease_unreadable' | 'decision_deferred' | 'intake_pending' | 'refused';
 
 /**
  * A body that carries no code: the codes as bare tokens anywhere in it, the
@@ -52,14 +55,17 @@ const UNCODED_LEASE_UNREADABLE = new RegExp(`\\b${ROUTING_LEASE_UNREADABLE_CODE}
 const UNCODED_DECISION_DEFERRED = /\b(?:ROUTING_DECISION_[A-Z0-9_]+|GLOBAL_SAFETY_DEFER)\b/;
 
 /**
- * The routing refusal a 409 body carries, if any.
+ * Read a 409 body. A decoded code always yields an answer, whatever the prose
+ * says. `undefined` only for a body with no code and no routing token, which
+ * the caller classifies like any other unexplained failure.
  *
- * Any `ROUTING_DECISION_*` code counts, including one a newer MTA build knows
- * and this reader does not: an unrecognised routing refusal must go back to
- * the worker for a fresh decision, not down the generic 409 path. That is why
- * this reads a prefix rather than the `MTA_SEND_ERROR_CODES` accept-list.
+ * Any `ROUTING_DECISION_*` code counts as a deferral, including one a newer
+ * MTA build knows and this reader does not: an unrecognised routing refusal
+ * must go back to the worker for a fresh decision, not down the generic 409
+ * path. That is why this reads a prefix rather than the `MTA_SEND_ERROR_CODES`
+ * accept-list.
  */
-export function mtaRoutingRefusalOf(body: string): MtaRoutingRefusal | undefined {
+export function mtaConflictOf(body: string): MtaConflict | undefined {
 	const { code } = decodeMtaRefusal(body);
 	if (code === undefined) {
 		if (UNCODED_LEASE_UNREADABLE.test(body)) return 'lease_unreadable';
@@ -70,5 +76,8 @@ export function mtaRoutingRefusalOf(body: string): MtaRoutingRefusal | undefined
 	if (code.startsWith('ROUTING_DECISION_') || code === 'GLOBAL_SAFETY_DEFER') {
 		return 'decision_deferred';
 	}
-	return undefined;
+	// Narrowed through the package's accept-list so that dropping the code from
+	// `MTA_SEND_ERROR_CODES` stops this comparison compiling.
+	if (isMtaSendErrorCode(code) && code === 'INTAKE_PENDING') return 'intake_pending';
+	return 'refused';
 }

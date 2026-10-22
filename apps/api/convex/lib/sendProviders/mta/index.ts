@@ -34,7 +34,7 @@ import {
 	type SystemMailExtrasInput,
 } from '../types';
 import { clampRetryAfterMs, LOCAL_DEFER_MS } from '../errors';
-import { decodeMtaRefusal, mtaRoutingRefusalOf } from './refusal';
+import { decodeMtaRefusal, mtaConflictOf } from './refusal';
 import { bytesToBase64 } from '../../bytes';
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional } from '../transportEnv';
@@ -367,22 +367,35 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 	/**
 	 * Classify an MTA error response into a typed `EmailErrorCode`.
 	 *
-	 * MTA returns standard HTTP status codes plus a refusal body. A 409 is
-	 * classified by the body's decoded `code` (`./refusal`); otherwise map by
-	 * status code (cheapest, most reliable), then fall back to substring
-	 * matching on the text for answers that carry no status or code (a thrown
-	 * transport error, a 200 with `success: false`).
+	 * MTA returns standard HTTP status codes plus a refusal body. A 409 that
+	 * carries a decodable `code` (`./refusal`) is classified by that code alone,
+	 * so rewording its prose cannot change the answer or its retry behaviour.
+	 * Otherwise map by status code (cheapest, most reliable), then fall back to
+	 * substring matching on the text for answers that carry no status or code
+	 * (a thrown transport error, a 200 with `success: false`, a codeless 409).
 	 */
 	categorizeError(message: string, httpStatus?: number): EmailErrorCode {
 		if (httpStatus === 409) {
-			const routing = mtaRoutingRefusalOf(message);
-			// The unreadable code is a narrower routing deferral whose origin must not
-			// be folded into the receiver-governance bucket counted by gate 2.
-			if (routing === 'lease_unreadable') return EmailErrorCode.ROUTING_LEASE_UNREADABLE;
-			// The MTA revalidates the authoritative lease immediately before
-			// enqueue. A breaker/IP-generation race must return to the worker so a
-			// fresh decision is resolved; it is not a permanent content failure.
-			if (routing === 'decision_deferred') return EmailErrorCode.ROUTING_DEFERRED;
+			switch (mtaConflictOf(message)) {
+				// The unreadable code is a narrower routing deferral whose origin must
+				// not be folded into the receiver-governance bucket counted by gate 2.
+				case 'lease_unreadable':
+					return EmailErrorCode.ROUTING_LEASE_UNREADABLE;
+				// The MTA revalidates the authoritative lease immediately before
+				// enqueue. A breaker/IP-generation race must return to the worker so a
+				// fresh decision is resolved; it is not a permanent content failure.
+				case 'decision_deferred':
+					return EmailErrorCode.ROUTING_DEFERRED;
+				// The same reading `sendEmail` gives it: the MTA may still accept it.
+				case 'intake_pending':
+					return EmailErrorCode.SERVER_ERROR;
+				// A coded refusal with no retry meaning (a missing lease, a code this
+				// build does not know) is terminal.
+				case 'refused':
+					return EmailErrorCode.UNKNOWN;
+				case undefined:
+					break;
+			}
 		}
 		if (httpStatus !== undefined) {
 			const byStatus = httpStatusToErrorCode(httpStatus);
