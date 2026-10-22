@@ -13,7 +13,7 @@ vi.mock('@owlat/mail-auth', () => ({
 // The named exports stay real: the bounce signers resolve their key through
 // config.ts, whose blocklist resolver imports them at load.
 vi.mock('node:dns/promises', async (importOriginal) => ({
-	...(await importOriginal<typeof import('node:dns/promises')>()),
+	...(await importOriginal<typeof DnsPromises>()),
 	default: {
 		reverse: vi.fn(async () => ['mail.example.test']),
 		resolve4: vi.fn(async () => ['203.0.113.10']),
@@ -31,6 +31,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+import type * as DnsPromises from 'node:dns/promises';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../../config.js';
 import { queueConvexWebhook } from '../../webhooks/convexNotifier.js';

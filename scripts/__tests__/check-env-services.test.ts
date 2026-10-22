@@ -55,7 +55,7 @@ describe.each(SERVICES)('apps/%s', (service) => {
 		const [, ...allowed] = gateArguments(service);
 		expect(allowed).toContain('config.ts');
 		expect(
-			allowed.filter((path) => path !== 'config.ts').every((path) => /logger\.ts$/.test(path))
+			allowed.filter((path) => path !== 'config.ts').every((path) => path.endsWith('logger.ts'))
 		).toBe(true);
 	});
 
