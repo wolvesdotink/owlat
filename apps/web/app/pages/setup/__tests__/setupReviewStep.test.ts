@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * #773 — the review step names features by label under their pack, says in
  * one sentence what happens to secrets, and names every launch blocker next to

@@ -89,13 +89,14 @@ describe('sunset safety — a bad clock never fires', () => {
 		{ label: 'negative firstMessagedAt', overrides: { firstMessagedAt: -5 } },
 	];
 
-	for (const { label, overrides } of hostile) {
-		it(`holds on ${label}`, () => {
+	it.each(hostile.map(({ label, overrides }) => [label, overrides] as const))(
+		'holds on %s',
+		(label, overrides) => {
 			const v = evaluateSunset(facts(overrides), policy());
 			expect(v.action).toBe('hold');
 			expect(v.reason).toBe('clock_skew');
-		});
-	}
+		}
+	);
 
 	it('holds on a hostile policy crafted to force an immediate suppression', () => {
 		const v = evaluateSunset(facts({ lastEngagementAt: daysAgo(1) }), {
@@ -276,8 +277,9 @@ describe('sunset safety — a backfilled activity history never fakes disengagem
 		});
 	}
 
-	for (const backfillCount of [1, 3, 7, 25]) {
-		it(`holds when ${backfillCount} historical open(s) are written after a recent one`, async () => {
+	it.each([1, 3, 7, 25])(
+		'holds when %s historical open(s) are written after a recent one',
+		async (backfillCount) => {
 			const t = harness();
 			const contactId = await seedBackfilledContact(t, backfillCount);
 
@@ -300,8 +302,8 @@ describe('sunset safety — a backfilled activity history never fakes disengagem
 				const blocked = await ctx.db.query('blockedEmails').collect();
 				expect(blocked).toHaveLength(0);
 			});
-		});
-	}
+		}
+	);
 
 	it('measures the first send from the oldest occurredAt, not the first row written', async () => {
 		const t = harness();
@@ -390,21 +392,17 @@ describe('sunset safety — an explicit act by the contact resets the quiet cloc
 		});
 	}
 
-	for (const activityType of [
-		'topic_subscribed',
-		'topic_confirmed',
-		'doi_attested',
-		'inbound_received',
-	] as const) {
-		it(`holds a 300-day-quiet contact who did ${activityType} two days ago`, async () => {
+	it.each(['topic_subscribed', 'topic_confirmed', 'doi_attested', 'inbound_received'] as const)(
+		'holds a 300-day-quiet contact who did %s two days ago',
+		async (activityType) => {
 			const applied = await evaluateWithNewestActivity(activityType, daysAgo(2));
 			// Without this the contact is suppressed within the hour — and the
 			// confirmation mail they are owed is then blocked as well.
 			expect(applied.verdict.action).toBe('hold');
 			expect(applied.verdict.reason).toBe('engaged_recently');
 			expect(applied.applied).toBe(false);
-		});
-	}
+		}
+	);
 
 	it('still suppresses when the consent act is itself older than the window', async () => {
 		const applied = await evaluateWithNewestActivity('topic_confirmed', daysAgo(400));

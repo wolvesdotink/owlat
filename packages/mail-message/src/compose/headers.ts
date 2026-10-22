@@ -145,7 +145,7 @@ export function encodeHeaderValue(
 	eai = false
 ): string {
 	const stripped = escapeHeader(value);
-	// eslint-disable-next-line no-control-regex
+	// eslint-disable-next-line no-control-regex -- the ASCII range starts at NUL
 	if (/^[\x00-\x7F]*$/.test(stripped)) {
 		// ASCII stays verbatim unless the rendered `Name: value` line would blow the
 		// 998-octet hard line limit; then fold it via encoded-words.
@@ -277,7 +277,7 @@ function eaiPhrase(phrase: string): string {
 
 function encodePhrase(phrase: string, reservedOctets: number, eai: boolean): string {
 	if (phrase.length === 0) return '';
-	// eslint-disable-next-line no-control-regex
+	// eslint-disable-next-line no-control-regex -- the ASCII range starts at NUL
 	const isAscii = /^[\x00-\x7F]*$/.test(phrase);
 	if (isAscii && phrase.length + reservedOctets <= MAX_HEADER_LINE_OCTETS) {
 		// Short ASCII phrase: keep readable. (Surrounding quotes, if any, are
@@ -314,6 +314,6 @@ function unquotePhrase(phrase: string): string {
 
 /** Filenames in `Content-Disposition: …; filename="…"` — strip CRLF, quotes, control chars. */
 export function safeAttachmentFilename(name: string): string {
-	// eslint-disable-next-line no-control-regex
+	// eslint-disable-next-line no-control-regex -- control characters must never reach a MIME filename
 	return name.replace(/[\r\n\x00-\x1F\x7F"]/g, '_');
 }

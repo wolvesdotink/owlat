@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Per-message reply in the Team Inbox's cross-channel timeline:
  *   - a channel message the instance can send on offers a Reply button, and

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Try again re-reads the failed query instead of reloading the app (#1098).
  *

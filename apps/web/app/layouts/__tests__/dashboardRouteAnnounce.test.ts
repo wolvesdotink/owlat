@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * WHAT HAPPENS WHEN THE DASHBOARD NAVIGATES, FOR SOMEONE WHO CANNOT SEE IT.
  *

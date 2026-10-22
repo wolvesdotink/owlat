@@ -150,18 +150,16 @@ describe('contentScreening', () => {
 					},
 				];
 
-				for (const c of cases) {
-					it(c.name, async () => {
-						const job = createTestEmailJob({ from: c.from, dkimDomain: c.dkimDomain });
-						const result = await screenContent(redis, job, config);
-						expect(result.allowed).toBe(c.allowed);
-						if (c.reason) {
-							expect(result.reason).toBe(c.reason);
-						} else {
-							expect(result.reason).toBeUndefined();
-						}
-					});
-				}
+				it.each(cases.map((c) => [c.name, c] as const))('%s', async (_name, c) => {
+					const job = createTestEmailJob({ from: c.from, dkimDomain: c.dkimDomain });
+					const result = await screenContent(redis, job, config);
+					expect(result.allowed).toBe(c.allowed);
+					if (c.reason) {
+						expect(result.reason).toBe(c.reason);
+					} else {
+						expect(result.reason).toBeUndefined();
+					}
+				});
 			});
 		});
 

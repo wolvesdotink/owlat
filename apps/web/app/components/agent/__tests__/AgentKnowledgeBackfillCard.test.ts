@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The knowledge backfill card reports how many messages the run left partly
  * read at the AI spend budget (D1). The count only grows, so the copy reads it

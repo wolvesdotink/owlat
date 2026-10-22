@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The campaigns list runs on the shared list scaffold (`ListPageShell` +
  * `useListPage`). Mounted through a real vue-router, with the real shell,

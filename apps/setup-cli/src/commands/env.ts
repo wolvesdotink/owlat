@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+/* eslint-disable no-console -- a CLI command reports to the terminal */
 /**
  * `owlat-setup env` — inspect or set the install's `.env` file.
  *

@@ -17,7 +17,6 @@ vi.mock('@owlat/api', () => {
 	return { api: anyPath };
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let stateBuckets: Map<string, any>;
 
 beforeEach(() => {

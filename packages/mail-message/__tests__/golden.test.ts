@@ -67,19 +67,21 @@ describe('golden .eml corpus — byte-for-byte + mailauth re-verification', () =
 		expect(GOLDEN_CASES.length).toBeGreaterThanOrEqual(40);
 	});
 
-	for (const testCase of GOLDEN_CASES) {
-		it(`matches the committed bytes exactly: ${testCase.name}`, () => {
+	it.each(GOLDEN_CASES.map((testCase) => [testCase.name, testCase] as const))(
+		'matches the committed bytes exactly: %s',
+		(_name, testCase) => {
 			const regenerated = buildGolden(testCase);
 			const committed = readGolden(testCase);
 			// Compare as base64 first for a compact, readable diff on mismatch, then
 			// assert raw-buffer equality so nothing (length, trailing bytes) slips.
 			expect(regenerated.toString('base64')).toBe(committed.toString('base64'));
 			expect(regenerated.equals(committed)).toBe(true);
-		});
-	}
+		}
+	);
 
-	for (const testCase of GOLDEN_CASES) {
-		it(`re-verifies DKIM pass under mailauth: ${testCase.name}`, async () => {
+	it.each(GOLDEN_CASES.map((testCase) => [testCase.name, testCase] as const))(
+		're-verifies DKIM pass under mailauth: %s',
+		async (_name, testCase) => {
 			const committed = readGolden(testCase);
 			const result = (await dkimVerify(committed.toString('binary'), {
 				resolver: goldenResolver,
@@ -89,8 +91,8 @@ describe('golden .eml corpus — byte-for-byte + mailauth re-verification', () =
 			expect(first?.status.result, `mailauth verdict for ${testCase.name}`).toBe('pass');
 			expect(first?.signingDomain).toBe('owlat.test');
 			expect(first?.selector).toBe('golden2026');
-		});
-	}
+		}
+	);
 });
 
 describe('golden regeneration is deterministic', () => {

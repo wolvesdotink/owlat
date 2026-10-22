@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Display menu — the one place four persisted list preferences now live.
  *

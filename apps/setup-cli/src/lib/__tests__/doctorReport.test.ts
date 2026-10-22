@@ -8,7 +8,7 @@ import {
 } from '../doctorReport';
 import { doctorText, trusted } from '../doctorText';
 
-// eslint-disable-next-line no-control-regex
+// eslint-disable-next-line no-control-regex -- ANSI colour escapes start with ESC
 const stripAnsi = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, '');
 
 describe('doctor report — stable ids', () => {

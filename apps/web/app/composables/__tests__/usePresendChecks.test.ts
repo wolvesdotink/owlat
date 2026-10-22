@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The pre-send checks as reactive state (composables/usePresendChecks):
  *   - nothing goes to the server until `run()`;

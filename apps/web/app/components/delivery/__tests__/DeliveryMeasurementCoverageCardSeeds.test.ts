@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Retiring a deliverability seed from the delivery hub.
  *

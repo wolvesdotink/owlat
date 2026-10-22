@@ -241,7 +241,6 @@ export function removeLanguage(
 	}
 
 	// Remove the overlay by creating a new object without the key.
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const { [language]: _removed, ...remainingTranslations } = translations;
 
 	const supportedLanguages = (entity.supportedLanguages ?? [defaultLanguage]).filter(
@@ -393,7 +392,6 @@ export function setDefaultLanguagePatch(
 	};
 
 	// Drop the promoted language's overlay; demote the old default to one.
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const { [language]: _, ...otherTranslations } = translations;
 	const updatedTranslations: Record<string, Translation> = {
 		...otherTranslations,

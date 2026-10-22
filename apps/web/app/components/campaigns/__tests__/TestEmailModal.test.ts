@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The test-send modal's language picker.
  *

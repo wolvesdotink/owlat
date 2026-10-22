@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The calm reader's notice slot (read on arrival §3): it renders the one
  * banner it is given. Danger is said here at thread level; the key change

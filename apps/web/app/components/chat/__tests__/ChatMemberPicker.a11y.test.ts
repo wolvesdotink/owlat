@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Regression guard for the mislabeled-icon-button fix: a blind auto-fixer had
  * stamped generic aria-label="Close" on the per-member remove buttons, which

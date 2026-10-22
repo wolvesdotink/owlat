@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Assistant feed follows a streaming answer only while the reader is at
  * the end (#1050). Scrolling up to reread is respected across text and

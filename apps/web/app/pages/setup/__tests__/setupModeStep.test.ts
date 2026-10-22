@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * #770 — the mode step asks what the team wants to do, recommends "Both", and
  * keeps the eight operator presets behind an "Advanced" disclosure.

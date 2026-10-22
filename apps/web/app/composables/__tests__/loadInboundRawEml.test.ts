@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `loadInboundRawEml` — fetching a team-inbox message's raw `.eml` so the
  * reader can extract an attachment out of it client-side.

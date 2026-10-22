@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Drafts: a reply draft is continued in Answer mode on the message it answers
  * (every reply is written there); a new email reopens on the compose page.

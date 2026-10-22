@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxSenderControls and PostboxSenderProfile both read the sender's VIP and
  * screener state from `usePostboxSenderState` and render the same answer: an

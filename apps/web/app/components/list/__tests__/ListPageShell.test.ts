@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `ListPageShell` is the frame the dashboard list pages share. Mounted with the
  * real UI layer (header, empty states, segmented control, confirmation dialog)

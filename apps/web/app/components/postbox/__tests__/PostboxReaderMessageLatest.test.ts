@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A collapsed message in a personal thread reads its own "Latest update"
  * sentence instead of the raw snippet (SPEC §7, plan §4.2), under the same

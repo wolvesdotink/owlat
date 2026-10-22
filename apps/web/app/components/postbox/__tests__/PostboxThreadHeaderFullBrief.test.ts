@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Full brief" from the header's ⋯ menu by keyboard (read on arrival §3): the
  * menu item unmounts as the sheet opens, so the sheet must remember the ⋯

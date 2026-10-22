@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The measurement PAGE, mounted.
  *

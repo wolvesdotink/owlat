@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Answer mode's wiring around the composer (composables/useAnswerModeAssist):
  *   - the opening view comes from the thread brief: Summary with a brief, the

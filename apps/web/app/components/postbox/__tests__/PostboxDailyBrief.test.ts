@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxDailyBrief — the Today-view greeting card:
  *   - renders the serif greeting + template sentences with every concrete

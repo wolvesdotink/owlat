@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Cold-start behavior: a component driven by usePostboxOfflineThreads must
  * render the device-cached inbox rows IMMEDIATELY while the live query is still

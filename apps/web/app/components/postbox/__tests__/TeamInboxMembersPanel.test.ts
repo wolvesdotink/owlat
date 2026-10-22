@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The team inbox roster's failed read gets the shared error state with a Try
  * again that re-reads the roster (#1099). It used to be a line of text with no

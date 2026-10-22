@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import ThreadNote, { type ThreadNoteView } from '../ThreadNote.vue';

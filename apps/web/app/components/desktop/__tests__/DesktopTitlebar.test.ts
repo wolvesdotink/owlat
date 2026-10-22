@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * DesktopTitlebar (UX piece d3) — the titlebar that earns its 38px:
  *   - the whole bar is a drag region; interactive controls (chip, search pill,

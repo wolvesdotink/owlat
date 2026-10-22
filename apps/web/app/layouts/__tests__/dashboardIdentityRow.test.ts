@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE SIDEBAR'S TWO QUIETEST PROMISES: HONEST PENDING, AND ONE ACCENT.
  *

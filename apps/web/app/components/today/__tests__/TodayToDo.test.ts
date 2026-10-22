@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "To do, no reply needed": one row per thread with its first item, and when
  * the band could not list everything it says so instead of dropping rows.

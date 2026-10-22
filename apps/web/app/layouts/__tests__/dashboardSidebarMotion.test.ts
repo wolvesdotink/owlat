@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Collapsing the sidebar must not relay the app out on every frame.
  *

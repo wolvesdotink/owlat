@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Create and design email" (#1048): a new template has no body, so the step
  * creates and attaches it and then hands it to the editor (`compose`) instead

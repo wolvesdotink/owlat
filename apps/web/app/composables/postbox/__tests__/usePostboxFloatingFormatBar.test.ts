@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Placement math for the composer's floating format bar. These are the behaviors
  * the spec is about — appear above a non-empty in-editor selection, flip below

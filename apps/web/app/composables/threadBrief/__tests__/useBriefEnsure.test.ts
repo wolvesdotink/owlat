@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * First-open interpretation (D5): a thread whose brief reads `none` is handed
  * to `lazy.ensure`, for a personal and a team thread alike. Only a request

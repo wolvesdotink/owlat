@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The composer's two frames (plan §04). The same composer, the same draft;
  * only what shows by default differs:

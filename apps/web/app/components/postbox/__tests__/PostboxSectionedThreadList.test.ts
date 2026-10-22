@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The sectioned list shell behind the categories view and the split inbox.
  *

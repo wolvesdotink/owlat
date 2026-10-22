@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * usePostboxComposeNav: every "open a composer" call becomes its own compose
  * request (`?c=`). The request record (nonce, seed, row, parked text, owning

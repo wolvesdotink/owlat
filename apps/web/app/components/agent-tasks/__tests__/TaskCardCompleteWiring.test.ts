@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The flow-level wiring both focused flows use for a plugin card: the card's
  * `complete` emit is bound to `flow.complete(current.id, { outcome })`, so a

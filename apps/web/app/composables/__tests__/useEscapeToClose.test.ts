@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Esc on an open popover closes it and ends the press there, so the page's own
  * Esc (Answer mode leaving for the list, the reader closing its conversation,

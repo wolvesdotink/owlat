@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Topics and Segments lists and the member table on a topic's and a
  * segment's detail page announce their sort (#1433). The chevron used to be

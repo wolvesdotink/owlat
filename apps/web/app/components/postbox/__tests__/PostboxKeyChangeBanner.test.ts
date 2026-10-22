@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxKeyChangeBanner — the Signal-style key-change banner (Sealed Mail E5).
  *

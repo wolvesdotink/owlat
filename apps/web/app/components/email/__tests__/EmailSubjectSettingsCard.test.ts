@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The email settings card's default-language picker.
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Autonomy trust-control components render + emit the right actions.
  *

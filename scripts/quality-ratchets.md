@@ -15,6 +15,17 @@ ratchet. Remove a file's exception when its last cycle is fixed. Patterns are
 relative to either the repository or workspace lint directory; the baseline
 retains exact repository paths.
 
+Owlat's own oxlint rules live in `packages/oxlint-plugin-owlat` and load through
+`jsPlugins` in `oxlintrc.json`, so every workspace lint runs them. A rule with no
+remaining offenders is an error there. A rule that lands with debt is a warning
+instead, and `bun run lint:owlat` (`scripts/check-owlat-lint.sh`) owns it: the
+findings are compared through `scripts/ratchet.sh` against
+`scripts/owlat-lint-baseline.txt`, so a new finding fails and a fixed one must be
+deleted from the baseline. The lint warning ratchet above skips owlat warnings,
+so each finding has one baseline. `oxlintrc.json` also reports unused disable
+directives as errors, and `owlat/require-suppression-reason` asks every
+suppression to say why (`-- reason` or a comment on the line above).
+
 Coverage thresholds live in each workspace's Vitest configuration, built with
 `packageCoverage` (or `nodePackageConfig` for a plain node package) from the root
 `vitest.shared.ts`, so a config states only its floor and its exclusions. The September

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * /desktop/welcome is not only the first-run screen: the packaged desktop has
  * no in-app login form, so middleware/auth.ts bounces an expired or

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Ask about this thread" (PostboxAiStrip), opened from the reader's Overview
  * and Answer mode's menu:

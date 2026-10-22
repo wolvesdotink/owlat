@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxTodayView smoke — the focused inbox landing surface (the Priority view):
  *   - renders the sections in order (header → Needs you → Everything else →

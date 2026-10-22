@@ -348,8 +348,9 @@ describe('a stored share that is not a share', () => {
 		{ label: 'above one', stored: 1.5, held: 1 },
 	];
 
-	for (const { label, stored, held } of cases) {
-		it(`holds a ${label} share at the clamped value and never steps it up`, async () => {
+	it.each(cases.map(({ label, stored, held }) => [label, stored, held] as const))(
+		'holds a %s share at the clamped value and never steps it up',
+		async (label, stored, held) => {
 			const t = convexTest(schema, modules);
 			await seed(t, { ownShare: stored });
 
@@ -367,8 +368,8 @@ describe('a stored share that is not a share', () => {
 			expect(rows).toHaveLength(1);
 			expect(rows[0]?.reason).toBe('share_unreadable');
 			expect(rows[0]?.direction).toBe('hold');
-		});
-	}
+		}
+	);
 });
 
 /**

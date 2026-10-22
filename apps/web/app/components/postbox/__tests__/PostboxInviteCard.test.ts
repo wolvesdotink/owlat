@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxInviteCard — where the invite's iCalendar text comes from (plan 3.5).
  *

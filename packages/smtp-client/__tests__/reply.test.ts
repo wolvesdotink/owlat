@@ -31,14 +31,12 @@ describe('greeting fixtures (real transcripts)', () => {
 		['exim', 'exim-greeting.txt'],
 	];
 
-	for (const [name, file] of greetings) {
-		it(`parses the ${name} greeting as a single-line 220`, () => {
-			const reply = parseReply(fixture(file));
-			expect(reply.code).toBe(220);
-			expect(reply.lines).toHaveLength(1);
-			expect(reply.enhancedCode).toBeUndefined();
-		});
-	}
+	it.each(greetings)('parses the %s greeting as a single-line 220', (name, file) => {
+		const reply = parseReply(fixture(file));
+		expect(reply.code).toBe(220);
+		expect(reply.lines).toHaveLength(1);
+		expect(reply.enhancedCode).toBeUndefined();
+	});
 });
 
 describe('multiline EHLO fixtures (real transcripts)', () => {
@@ -49,13 +47,11 @@ describe('multiline EHLO fixtures (real transcripts)', () => {
 		['exim', 'exim-ehlo.txt', 7],
 	];
 
-	for (const [name, file, lineCount] of cases) {
-		it(`parses the ${name} EHLO continuation into a 250 reply`, () => {
-			const reply = parseReply(asWire(file));
-			expect(reply.code).toBe(250);
-			expect(reply.lines).toHaveLength(lineCount);
-		});
-	}
+	it.each(cases)('parses the %s EHLO continuation into a 250 reply', (name, file, lineCount) => {
+		const reply = parseReply(asWire(file));
+		expect(reply.code).toBe(250);
+		expect(reply.lines).toHaveLength(lineCount);
+	});
 });
 
 describe('enhanced status code extraction (RFC 3463)', () => {

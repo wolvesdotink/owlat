@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Preferences → This device → Push notifications.
  *

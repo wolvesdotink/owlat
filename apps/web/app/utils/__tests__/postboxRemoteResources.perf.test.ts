@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Report-only timing of `applyPostboxImageConsent` on the hostile bodies its
  * tests hold to linear work (postboxRemoteResourcesHostileFixtures.ts), each

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { describe, it, expect, vi } from 'vitest';
 import { buildQuotedReply, buildForwardedBody, resolveBodyFields } from '../usePostboxQuotedText';
 import { resolvePostboxMessageBody } from '../postboxBodyResolver';

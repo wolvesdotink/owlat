@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The files on a Team inbox reply in Answer mode:
  *  - the agent's matched file (`AttachSuggestion`, computed and stored for

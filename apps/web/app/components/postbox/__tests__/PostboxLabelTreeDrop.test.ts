@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Dropping dragged messages on a label in the folder rail applies the label.
  *

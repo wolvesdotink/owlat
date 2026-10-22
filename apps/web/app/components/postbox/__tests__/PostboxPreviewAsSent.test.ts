@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * "Preview as sent" shows a pasted image from the URL the editor has for the
  * draft's part (#1301). The body keeps such an image as `<img data-inline-cid>`

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Answer mode's conversation column (plan §03, v1):
  *   - the thread newest last, every card in its reduced cut;

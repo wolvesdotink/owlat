@@ -200,15 +200,16 @@ describe('e2ee/discovery SSRF negatives', () => {
 		).rejects.toBeInstanceOf(SsrfRejection);
 	});
 
-	for (const location of ['http://10.0.0.1/', 'https://169.254.169.254/', 'http://localhost/']) {
-		it(`rejects a redirect (to ${location})`, async () => {
+	it.each(['http://10.0.0.1/', 'https://169.254.169.254/', 'http://localhost/'])(
+		'rejects a redirect (to %s)',
+		async (location) => {
 			const deps: DiscoveryDeps = {
 				lookup: async () => PUBLIC_IP,
 				fetch: async () => new Response(null, { status: 302, headers: { location } }),
 			};
 			await expect(guardedFetchBytes(manifestUrl, deps)).rejects.toBeInstanceOf(SsrfRejection);
-		});
-	}
+		}
+	);
 
 	it('rejects a host that resolves to a private address', async () => {
 		const deps: DiscoveryDeps = {

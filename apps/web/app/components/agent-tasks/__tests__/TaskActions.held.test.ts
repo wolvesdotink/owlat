@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * TaskActions collision soft-hold (UX piece b3b).
  *

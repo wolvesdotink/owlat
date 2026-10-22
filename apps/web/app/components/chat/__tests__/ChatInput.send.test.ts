@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The chat composer keeps its draft until the send is acknowledged (#945).
  *

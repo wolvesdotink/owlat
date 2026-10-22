@@ -91,22 +91,20 @@ describeEquipped('gate 1 — hard bounce (own <= 2% AND <= reference + 0.5pp)', 
 		},
 	];
 
-	for (const testCase of cases) {
-		it(testCase.name, () => {
-			const result = testCase.result();
-			expect(result.gate).toBe('hard_bounce');
-			expect(result.status).toBe(testCase.status);
-			expect(result.reason).toBe(testCase.reason);
-			expect(OPTIONAL_RAMP_GATES.has(result.gate)).toBe(false);
-			expect(result.measurement.ownRate).toBeCloseTo(testCase.ownRate, 10);
-			expect(result.measurement.referenceRate).toBeCloseTo(testCase.referenceRate ?? 0, 10);
-			expect(result.measurement.thresholdRate).toBe(0.02);
-			expect(result.measurement.toleranceValuePp).toBe(0.5);
-			expect(result.measurement.ownSample).toBe(10_000);
-			expect(result.measurement.referenceSample).toBe(10_000);
-			expect(result.measurement.minSample).toBe(200);
-		});
-	}
+	it.each(cases.map((testCase) => [testCase.name, testCase] as const))('%s', (_name, testCase) => {
+		const result = testCase.result();
+		expect(result.gate).toBe('hard_bounce');
+		expect(result.status).toBe(testCase.status);
+		expect(result.reason).toBe(testCase.reason);
+		expect(OPTIONAL_RAMP_GATES.has(result.gate)).toBe(false);
+		expect(result.measurement.ownRate).toBeCloseTo(testCase.ownRate, 10);
+		expect(result.measurement.referenceRate).toBeCloseTo(testCase.referenceRate ?? 0, 10);
+		expect(result.measurement.thresholdRate).toBe(0.02);
+		expect(result.measurement.toleranceValuePp).toBe(0.5);
+		expect(result.measurement.ownSample).toBe(10_000);
+		expect(result.measurement.referenceSample).toBe(10_000);
+		expect(result.measurement.minSample).toBe(200);
+	});
 });
 
 describe('gate 2 — deferral (own <= 10%, >= 25% halts)', () => {
@@ -124,8 +122,9 @@ describe('gate 2 — deferral (own <= 10%, >= 25% halts)', () => {
 		{ deferred: 2501, status: 'halt', reason: 'halt_threshold_breached', ownRate: 0.2501 },
 	];
 
-	for (const testCase of cases) {
-		it(`${testCase.deferred} deferrals in 10000 -> ${testCase.status}`, () => {
+	it.each(cases.map((testCase) => [testCase.deferred, testCase.status, testCase] as const))(
+		'%s deferrals in 10000 -> %s',
+		(_deferred, _status, testCase) => {
 			const result = evaluateDeferralGate(
 				input({ own: arm({ sent: 10_000, deferred: testCase.deferred }) })
 			);
@@ -140,8 +139,8 @@ describe('gate 2 — deferral (own <= 10%, >= 25% halts)', () => {
 			expect(result.measurement.referenceSample).toBeNull();
 			expect(result.measurement.toleranceValuePp).toBeNull();
 			expect(result.measurement.minSample).toBe(200);
-		});
-	}
+		}
+	);
 
 	it('halts with no reference arm configured at all (plan D2)', () => {
 		const result = evaluateDeferralGate(
@@ -203,19 +202,17 @@ describeEquipped('gate 3 — complaint (own <= 0.1% AND <= reference + 0.05pp)',
 		},
 	];
 
-	for (const testCase of cases) {
-		it(testCase.name, () => {
-			const result = testCase.result();
-			expect(result.gate).toBe('complaint');
-			expect(result.status).toBe(testCase.status);
-			expect(result.reason).toBe(testCase.reason);
-			expect(result.measurement.ownRate).toBeCloseTo(testCase.ownRate, 12);
-			expect(result.measurement.referenceRate).toBeCloseTo(testCase.referenceRate ?? 0, 12);
-			expect(result.measurement.thresholdRate).toBe(0.001);
-			expect(result.measurement.toleranceValuePp).toBe(0.05);
-			expect(result.measurement.minSample).toBe(1000);
-		});
-	}
+	it.each(cases.map((testCase) => [testCase.name, testCase] as const))('%s', (_name, testCase) => {
+		const result = testCase.result();
+		expect(result.gate).toBe('complaint');
+		expect(result.status).toBe(testCase.status);
+		expect(result.reason).toBe(testCase.reason);
+		expect(result.measurement.ownRate).toBeCloseTo(testCase.ownRate, 12);
+		expect(result.measurement.referenceRate).toBeCloseTo(testCase.referenceRate ?? 0, 12);
+		expect(result.measurement.thresholdRate).toBe(0.001);
+		expect(result.measurement.toleranceValuePp).toBe(0.05);
+		expect(result.measurement.minSample).toBe(1000);
+	});
 });
 
 describeEquipped('gate 5 — seed placement (inbox >= 90% AND >= reference - 5pp)', () => {

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * PostboxFloatingFormatBar behavior:
  *   - renders nothing while `barStyle` is null (no/collapsed selection)

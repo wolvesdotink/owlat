@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * AttachSuggestion review-gate chip:
  *   - a single confident suggestion renders one "Attach <file>" button and emits

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `useListPage` is the state half of the list-page scaffold: search, sort (for
  * the lists that have a sort menu), the delete-confirmation dialog and the

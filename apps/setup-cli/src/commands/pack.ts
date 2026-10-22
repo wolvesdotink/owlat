@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+/* eslint-disable no-console -- a CLI command reports to the terminal */
 /**
  * `owlat-setup pack <key> <on|off>` — toggle every flag in a feature pack and
  * regenerate docker-compose.override.yml.

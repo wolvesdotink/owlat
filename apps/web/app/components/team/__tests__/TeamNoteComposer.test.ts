@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The team composer (plan §4.3): "Internal note" and "Reply to <name>" are
  * explicit modes, each with its own unsent text; `#` links a note to an

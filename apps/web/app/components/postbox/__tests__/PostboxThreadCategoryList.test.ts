@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The categories view renders the shared conversation row, so a conversation
  * with unread mail carries the same unread-aware accessible name the

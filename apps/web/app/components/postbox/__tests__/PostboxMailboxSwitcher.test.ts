@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The mailbox switcher, now an identity chip.
  *

@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Opening and reordering steps without a pointer (#1045).
  *

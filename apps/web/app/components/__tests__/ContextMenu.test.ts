@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The shared right-click primitive (packages/ui ContextMenu.vue):
  *   - opens on a `contextmenu` event (mouse right-click)

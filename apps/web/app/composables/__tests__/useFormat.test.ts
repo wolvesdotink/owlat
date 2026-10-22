@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE POINT OF `useFormat()`: the same value, in the reader's language.
  *

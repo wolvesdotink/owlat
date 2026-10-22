@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The file library's own "the bytes are gone" state.
  *

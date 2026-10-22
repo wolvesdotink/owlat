@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The split inbox over the shared sectioned shell: its header badge is the
  * server's unread count (the capped "N+" copy when the count is a floor), and

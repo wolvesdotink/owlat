@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * Which mailboxes the Preferences mailbox list shows.
  *

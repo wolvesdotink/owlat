@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The "What's new" part of the update card: the summary, the changes grouped
  * by kind with long groups and minor kinds folded away, and one toggle that

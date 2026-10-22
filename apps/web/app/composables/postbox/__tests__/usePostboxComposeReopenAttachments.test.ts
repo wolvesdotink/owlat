@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * #1272: a reopened draft's own attachments, when the person attaches a file
  * before `drafts.get` has answered.

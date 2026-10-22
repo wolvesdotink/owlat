@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE DAY-OF-N LINE (deliverability plan D14, P3-7).
  *

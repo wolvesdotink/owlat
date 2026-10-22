@@ -38,7 +38,6 @@ export function fakeLocalStore() {
 				value
 			);
 		},
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tests read loose shapes
 		get(query: unknown, args: Record<string, unknown>): any {
 			return results.get(key(nameOf(query), args as Record<string, Value>))?.value;
 		},

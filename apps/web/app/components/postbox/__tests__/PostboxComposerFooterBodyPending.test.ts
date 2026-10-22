@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * While a reopened draft's body has not loaded, the footer's body controls are
  * disabled, not just ignored (#896). The mode decides which body goes out and a

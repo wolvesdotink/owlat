@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The plugin settings page's save path.
  *

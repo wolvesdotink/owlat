@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The version list's "Show older versions" control: offered only while older
  * versions wait behind the last one shown, and it says so when a read failed.

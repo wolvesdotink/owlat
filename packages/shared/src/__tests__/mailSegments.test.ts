@@ -10,8 +10,9 @@ describe('segmentMessage: fixture table', () => {
 		expect(SEGMENT_CASES.length).toBeGreaterThanOrEqual(40);
 	});
 
-	for (const fixture of SEGMENT_CASES) {
-		it(fixture.name, () => {
+	it.each(SEGMENT_CASES.map((fixture) => [fixture.name, fixture] as const))(
+		'%s',
+		(_name, fixture) => {
 			const result = segmentMessage({ text: fixture.text, html: fixture.html });
 			const shown = result.segments.map((s) => [
 				s.kind,
@@ -35,8 +36,8 @@ describe('segmentMessage: fixture table', () => {
 			for (const absent of fixture.absent ?? []) {
 				expect(result.canonicalText).not.toContain(absent);
 			}
-		});
-	}
+		}
+	);
 });
 
 describe('segmentMessage: invariants over every fixture', () => {

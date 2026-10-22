@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The capacity refusal panel. Deliverability plan D14: a multi-day send is a
  * NORMAL, visible state for a warming deployment — never an error and never a

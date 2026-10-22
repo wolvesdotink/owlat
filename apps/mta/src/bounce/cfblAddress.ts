@@ -427,6 +427,5 @@ function decodeMessageId(encodedId: string): string | null {
 		return null;
 	}
 	if (decoded.length === 0 || decoded.length > MAX_MESSAGE_ID_LENGTH) return null;
-	// eslint-disable-next-line no-control-regex
 	return /^[\x21-\x7E]+$/.test(decoded) ? decoded : null;
 }

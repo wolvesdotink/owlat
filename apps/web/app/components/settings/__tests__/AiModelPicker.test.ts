@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * AiModelPicker — a curated-model dropdown with a free-text override.
  *

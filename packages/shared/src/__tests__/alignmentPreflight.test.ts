@@ -45,16 +45,16 @@ describe('the aligned baseline', () => {
 });
 
 describe('each check fails independently, with its own remedy', () => {
-	for (const testCase of ALIGNMENT_FAILURE_TABLE) {
-		it(`${testCase.check}: ${testCase.name}`, () => {
-			const result = evaluateAlignmentPreflight(testCase.mutate(alignedInput()));
-			const entry = check(result, testCase.check);
-			expect(entry.status).toBe(testCase.expected);
-			expect(entry.detail).toContain(testCase.detail);
-			expect(entry.remedy).toContain(testCase.remedy);
-			expect(result.verdict).toBe(testCase.expected === 'fail' ? 'blocked' : 'unknown');
-		});
-	}
+	it.each(
+		ALIGNMENT_FAILURE_TABLE.map((testCase) => [testCase.check, testCase.name, testCase] as const)
+	)('%s: %s', (_check, _name, testCase) => {
+		const result = evaluateAlignmentPreflight(testCase.mutate(alignedInput()));
+		const entry = check(result, testCase.check);
+		expect(entry.status).toBe(testCase.expected);
+		expect(entry.detail).toContain(testCase.detail);
+		expect(entry.remedy).toContain(testCase.remedy);
+		expect(result.verdict).toBe(testCase.expected === 'fail' ? 'blocked' : 'unknown');
+	});
 
 	it('covers all four checks with at least one failing row each', () => {
 		const covered = new Set(ALIGNMENT_FAILURE_TABLE.map((testCase) => testCase.check));

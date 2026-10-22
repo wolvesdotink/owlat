@@ -100,7 +100,7 @@ export function encodeTextBody(body: string): {
 	encoded: string;
 } {
 	const normalized = body.replace(/\r\n|\r|\n/g, '\r\n');
-	// eslint-disable-next-line no-control-regex
+	// eslint-disable-next-line no-control-regex -- the ASCII range starts at NUL
 	const isAscii = /^[\x00-\x7F]*$/.test(normalized);
 	const lineSafe = normalized
 		.split('\r\n')

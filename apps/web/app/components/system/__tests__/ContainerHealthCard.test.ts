@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The container health card, moved out of the System & updates page: it reads
  * the updater's /health once on mount and names each outcome.

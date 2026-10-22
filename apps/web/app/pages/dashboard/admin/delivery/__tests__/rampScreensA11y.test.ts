@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * THE ACCESSIBILITY PASS ACROSS ALL THREE SCREENS.
  *

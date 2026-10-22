@@ -173,8 +173,9 @@ describe('DKIM end-to-end signing + verification (outbound cutover)', () => {
 			{ name: 'no trailing newline', text: 'body with no terminating newline' },
 		];
 
-		for (const variant of bodyVariants) {
-			it(`verifies pass for ${variant.name}`, async () => {
+		it.each(bodyVariants.map((variant) => [variant.name, variant] as const))(
+			'verifies pass for %s',
+			async (_name, variant) => {
 				const { resolver } = await seedKeyAndResolver(redis);
 
 				const rfc822 = await signStructured(redis, {
@@ -188,8 +189,8 @@ describe('DKIM end-to-end signing + verification (outbound cutover)', () => {
 				const result = await dkimVerify(rfc822, { resolver });
 				expect(result.results.length).toBeGreaterThan(0);
 				expect(result.results[0]!.status.result).toBe('pass');
-			});
-		}
+			}
+		);
 	});
 
 	describe('oversigning From/Subject/To + t= timestamp', () => {
@@ -284,8 +285,9 @@ describe('DKIM end-to-end signing + verification (outbound cutover)', () => {
 			{ name: 'spaces then a newline', text: '   \n' },
 		];
 
-		for (const variant of whitespaceOnlyVariants) {
-			it(`signs and verifies pass for ${variant.name}`, async () => {
+		it.each(whitespaceOnlyVariants.map((variant) => [variant.name, variant] as const))(
+			'signs and verifies pass for %s',
+			async (_name, variant) => {
 				const { resolver } = await seedKeyAndResolver(redis);
 
 				const rfc822 = await signStructured(redis, {
@@ -300,8 +302,8 @@ describe('DKIM end-to-end signing + verification (outbound cutover)', () => {
 				const result = await dkimVerify(rfc822, { resolver });
 				expect(result.results.length).toBeGreaterThan(0);
 				expect(result.results[0]!.status.result).toBe('pass');
-			});
-		}
+			}
+		);
 	});
 
 	describe('signing invariants (RFC 6376 / 8301 / 8058)', () => {

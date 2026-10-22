@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The viewer's "Show the brief above conversations" reaches every message row
  * (usePostboxBriefLines): a row injects it, so every list that renders rows

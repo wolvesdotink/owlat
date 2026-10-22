@@ -139,7 +139,7 @@ describe('encodeAddressHeader (RFC 5322 §3.4, RFC 2047 §5)', () => {
 		);
 		const headers = headerBlock(raw);
 		const fromLine = headers.split('\r\n').find((l) => l.startsWith('From: '))!;
-		// eslint-disable-next-line no-control-regex
+		// eslint-disable-next-line no-control-regex -- the ASCII range starts at NUL
 		expect(/^[\x00-\x7F]*$/.test(fromLine)).toBe(true);
 		expect(fromLine).toContain('=?UTF-8?');
 		expect(fromLine).toContain('<m@x.test>');

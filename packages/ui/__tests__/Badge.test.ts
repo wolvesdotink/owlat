@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * `pill` is the one shape switch the badge has: the status pills in the app
  * (send status, code-task status) are fully rounded, every other badge keeps

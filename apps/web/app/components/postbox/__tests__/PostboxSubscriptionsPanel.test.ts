@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The subscriptions panel's selection contract.
  *
