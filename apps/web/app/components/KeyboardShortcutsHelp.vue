@@ -20,6 +20,7 @@ import { buildShortcutSheet, shortcutSheetKeys } from '~/utils/shortcutRegistry'
 import { SHORTCUT_CATALOG } from '~/utils/shortcutCatalog';
 import { activeShortcutScopes, shortcutBindings } from '~/utils/shortcutScope';
 import { isShortcutEntryAvailable } from '~/utils/shortcutSettingsRows';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 const { t } = useI18n();
 const { isHelpModalOpen, closeHelpModal } = useKeyboardShortcuts();
@@ -28,6 +29,10 @@ const { isHelpModalOpen, closeHelpModal } = useKeyboardShortcuts();
 const { platform, isDesktop } = useDesktopContext();
 const isMac = computed(() => import.meta.client && platform.value === 'mac');
 const { isEnabled } = useFeatureFlag();
+// The footer names the key that opens this sheet as the person has it bound,
+// and says nothing when they unbound it.
+const { labelFor } = useShortcutLabels();
+const helpKey = computed(() => labelFor('global.help'));
 
 // Recomputed while open: the scope chain changes with the route, and the
 // bindings change when the user picks a preset or remaps a key. Entries whose
@@ -80,13 +85,13 @@ const groups = computed(() => {
 			</section>
 		</div>
 
-		<template #footer>
+		<template v-if="helpKey" #footer>
 			<p class="w-full text-xs text-text-tertiary text-center">
 				<I18nT keypath="components.keyboardShortcutsHelp.footer" tag="span" scope="global">
 					<template #key>
 						<kbd
 							class="px-1.5 py-0.5 text-[10px] font-medium bg-bg-elevated border border-border-subtle rounded mx-1"
-							>?</kbd
+							>{{ helpKey }}</kbd
 						>
 					</template>
 				</I18nT>

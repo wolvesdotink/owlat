@@ -26,13 +26,17 @@ function legend(): string[] {
 		},
 	});
 	const keys = wrapper.findAll('h3 kbd').map((kbd) => kbd.text());
+	text = wrapper.findAll('h3 > span').at(-1)!.element.textContent!.replace(/\s+/g, ' ').trim();
 	wrapper.unmount();
 	return keys;
 }
+/** The legend as read, from the last `legend()` call. */
+let text = '';
 
 describe('TodayUpdates key legend', () => {
 	it('shows the shipped keys', () => {
 		expect(legend()).toEqual(['J', 'K', 'D', 'R']);
+		expect(text).toBe('J K move · D Done · R Reply anyway');
 	});
 
 	it('follows a remap and leaves out an unbound key', () => {
@@ -41,5 +45,6 @@ describe('TodayUpdates key legend', () => {
 			{ id: 'workbench.reply', keys: [] },
 		]);
 		expect(legend()).toEqual(['J', 'K', 'X']);
+		expect(text).toBe('J K move · X Done');
 	});
 });

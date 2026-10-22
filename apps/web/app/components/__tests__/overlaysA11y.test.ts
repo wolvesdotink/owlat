@@ -24,6 +24,7 @@ import type { SearchResults } from '~/lib/commandPaletteCore';
 import AppCommandPalette from '../AppCommandPalette.vue';
 import AppCommandPaletteResults from '../AppCommandPaletteResults.vue';
 import KeyboardShortcutsHelp from '../KeyboardShortcutsHelp.vue';
+import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 import Breadcrumbs from '../Breadcrumbs.vue';
 
 /** One hit per list, so every object-search group in the palette has markup. */
@@ -191,6 +192,21 @@ describe('keyboard shortcuts help — accessibility', () => {
 			prepare: () => expect(document.body.textContent).toContain('Go to dashboard'),
 		});
 		expect(violations).toEqual([]);
+	});
+
+	it('names the key that opens it as the person has it bound', async () => {
+		applyShortcutPreferences('owlat', [{ id: 'global.help', keys: ['y'] }]);
+		try {
+			await auditA11y(KeyboardShortcutsHelp, {
+				global: { plugins: [createTestI18n()] },
+				prepare: () => {
+					expect(document.body.textContent).toContain('Press Y anytime to show this help');
+					expect(document.body.textContent).not.toContain('Press ? anytime');
+				},
+			});
+		} finally {
+			resetShortcutPreferences();
+		}
 	});
 });
 

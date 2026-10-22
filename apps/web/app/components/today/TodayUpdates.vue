@@ -59,12 +59,16 @@ const isEmpty = computed(() => props.model.worth.length === 0 && props.model.als
 			<span
 				class="ml-auto hidden normal-case tracking-normal opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 md:inline"
 			>
-				<template v-for="(hint, index) in keyLegend" :key="hint.label"
-					><template v-if="index > 0"> · </template
-					><template v-for="key in hint.keys" :key="key"
-						><kbd class="font-mono">{{ key }}</kbd> </template
-					>{{ hint.label }}</template
-				>
+				<!-- Separators as interpolations: Vue drops whitespace-only text at the
+				     edge of a template. -->
+				<template v-for="(hint, index) in keyLegend" :key="hint.label">
+					{{ index > 0 ? ' · ' : '' }}
+					<template v-for="key in hint.keys" :key="key">
+						<kbd class="font-mono">{{ key }}</kbd
+						>{{ ' ' }}
+					</template>
+					{{ hint.label }}
+				</template>
 			</span>
 		</h3>
 
