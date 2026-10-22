@@ -1,5 +1,6 @@
 import { ConvexError, getConvexSize, type Infer, type Value } from 'convex/values';
-import { isTransactionLimitError } from '../lib/convexLimitErrors';
+import { internalFailureOf, type InternalFailureKind } from '../_utils/errors';
+import { isConvexValidationError, isTransactionLimitError } from '../lib/convexLimitErrors';
 import type { workpoolRunResultValidator } from '../schema/sendCompletionFailures';
 import type { WorkerEnvelopeInput } from './workerEnvelope';
 import { isSendWorkerOutcome } from './workerOutcome';
@@ -86,13 +87,38 @@ export function payloadBytes(result: RunResult): number {
 }
 
 /**
+ * The diagnostic code stored for an internal failure. The codes predate the
+ * kinds and are what stored records and operator queries already hold, so the
+ * mapping keeps them; a kind with no completion meaning of its own falls back
+ * to one generic code.
+ */
+function internalFailureCode(kind: InternalFailureKind): string {
+	switch (kind) {
+		case 'delivery.send_identity_conflict':
+			return 'MTA_IDENTITY_CONFLICT';
+		case 'delivery.unhandled_worker_outcome':
+			return 'UNHANDLED_WORKER_OUTCOME';
+		case 'delivery.envelope_not_stored':
+			return 'ENVELOPE_NOT_STORED';
+		default:
+			return 'INTERNAL_FAILURE';
+	}
+}
+
+/**
  * The diagnostic code stored for an error, never its text. A Convex validation
  * error quotes the whole document it refused, and the first line alone can
  * carry a name or a subject. An operator who needs the message runs
  * `applyRecordedCompletion` by hand: the CLI shows the error and nothing is
  * written.
+ *
+ * Failures this module raises itself are read by kind (`InternalFailure`), so
+ * no wording can be mistaken for one. Only the platform's own errors, which
+ * carry no code, are read from their text (`lib/convexLimitErrors`).
  */
 export function completionErrorCode(error: unknown): string {
+	const failure = internalFailureOf(error);
+	if (failure) return internalFailureCode(failure.kind);
 	if (error instanceof ConvexError) {
 		const data: unknown = error.data;
 		const code =
@@ -102,15 +128,8 @@ export function completionErrorCode(error: unknown): string {
 			: 'CONVEX_ERROR';
 	}
 	const message = error instanceof Error ? error.message : String(error);
-	if (/does not match the schema|validator|ValidationError/i.test(message)) {
-		return 'CONVEX_VALIDATION';
-	}
+	if (isConvexValidationError(message)) return 'CONVEX_VALIDATION';
 	if (isTransactionLimitError(message)) return 'TRANSACTION_LIMIT';
-	if (message.includes('conflicts with the Send provider identity')) {
-		return 'MTA_IDENTITY_CONFLICT';
-	}
-	if (message.startsWith('Unhandled send worker outcome')) return 'UNHANDLED_WORKER_OUTCOME';
-	if (message === 'ENVELOPE_NOT_STORED') return 'ENVELOPE_NOT_STORED';
 	if (error instanceof TypeError) return 'TYPE_ERROR';
 	if (error instanceof RangeError) return 'RANGE_ERROR';
 	return 'UNKNOWN';

@@ -18,3 +18,12 @@ export function isTransactionLimitError(message: string): boolean {
 		message
 	);
 }
+
+/**
+ * Whether a failure is Convex refusing a value against a validator or the
+ * schema. The platform raises these as plain errors with no code, so this reads
+ * the wording; like the limit check above, it is the one place that does.
+ */
+export function isConvexValidationError(message: string): boolean {
+	return /does not match the schema|validator|ValidationError/i.test(message);
+}

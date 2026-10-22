@@ -136,8 +136,8 @@ export type MtaSendRequestDraft = Omit<MtaSendRequest, 'organizationId'> & {
  * not answer through the typed `refuse()` helper, and wrote raw instead. It is
  * IMPORTED from `@owlat/shared/routingDispatch` rather than re-typed, because
  * the string is already shared for the reason that matters most here: Convex
- * matches it by SUBSTRING on the 409 body, so a second spelling of it would not
- * throw anywhere — the deferral would just quietly land in the `governed`
+ * compares the 409 body's code against it by value, not through this list, so a
+ * second spelling of it would not throw anywhere — the deferral would just quietly land in the `governed`
  * bucket that halts a cell at 25%.
  */
 export const MTA_SEND_ERROR_CODES = [

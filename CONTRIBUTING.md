@@ -110,6 +110,10 @@ of `bun run lint` and will fail CI, including:
   `convex/lib/clock.ts`, never a hand-rolled `setUTCHours(0, 0, 0, 0)`,
   `toISOString().slice(0, 10)` or `.split('T')[0]`
   (`apps/api/scripts/check-utc-day.sh`).
+- `lint:error-classifiers` — a backend failure is classified by its type
+  (`InternalFailure` kind, Operation error category), never by matching its
+  message text; only platform and external-provider wording is listed in the
+  baseline (`apps/api/scripts/check-error-classifiers.sh`).
 - `lint:html-to-text` (root, in `ci:lint`) — HTML-to-text for snippets,
   previews, prompts, search excerpts, scans and text/plain parts goes through
   `htmlToPlainText` from `@owlat/shared/html`, never a private

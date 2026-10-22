@@ -8,11 +8,7 @@
  * code derived from the HTTP response.
  */
 
-import {
-	extractDomainOrNull,
-	ROUTING_LEASE_TOKEN_MAX_LENGTH,
-	ROUTING_LEASE_UNREADABLE_CODE,
-} from '@owlat/shared';
+import { extractDomainOrNull, ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
 import {
 	MTA_RELAY_ALLOWED_REASON,
 	isMtaRelayDecisionReason,
@@ -38,6 +34,7 @@ import {
 	type SystemMailExtrasInput,
 } from '../types';
 import { clampRetryAfterMs, LOCAL_DEFER_MS } from '../errors';
+import { decodeMtaRefusal, mtaRoutingRefusalOf } from './refusal';
 import { bytesToBase64 } from '../../bytes';
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional } from '../transportEnv';
@@ -309,19 +306,17 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 				let retryAfterMs: number | undefined;
 				let intakePending = false;
 				if (response.status === 409) {
-					try {
-						const parsed = JSON.parse(errorText) as Record<string, unknown>;
-						// Narrowed through the package's accept-list, not compared against
-						// a copy of one of its strings: drop `INTAKE_PENDING` from
-						// `MTA_SEND_ERROR_CODES` and this comparison stops compiling
-						// rather than silently never matching again.
-						const code = isMtaSendErrorCode(parsed['code']) ? parsed['code'] : undefined;
-						intakePending = code === 'INTAKE_PENDING';
-						if (typeof parsed['retryAfterMs'] === 'number') {
-							retryAfterMs = clampRetryAfterMs(parsed['retryAfterMs'], LOCAL_DEFER_MS);
-						}
-					} catch {
-						// The categorizer still handles a non-JSON 409 conservatively.
+					// A non-JSON 409 decodes to an empty refusal; the categorizer still
+					// handles it conservatively.
+					const refusal = decodeMtaRefusal(errorText);
+					// Narrowed through the package's accept-list, not compared against
+					// a copy of one of its strings: drop `INTAKE_PENDING` from
+					// `MTA_SEND_ERROR_CODES` and this comparison stops compiling
+					// rather than silently never matching again.
+					const code = isMtaSendErrorCode(refusal.code) ? refusal.code : undefined;
+					intakePending = code === 'INTAKE_PENDING';
+					if (refusal.retryAfterMs !== undefined) {
+						retryAfterMs = clampRetryAfterMs(refusal.retryAfterMs, LOCAL_DEFER_MS);
 					}
 				}
 				return {
@@ -372,33 +367,22 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 	/**
 	 * Classify an MTA error response into a typed `EmailErrorCode`.
 	 *
-	 * MTA returns standard HTTP status codes plus a free-text body. Map by
-	 * status code first (cheapest, most reliable), then fall back to
-	 * substring matching on the body for the cases the MTA returns 200/4xx
-	 * with a typed JSON `error` field.
+	 * MTA returns standard HTTP status codes plus a refusal body. A 409 is
+	 * classified by the body's decoded `code` (`./refusal`); otherwise map by
+	 * status code (cheapest, most reliable), then fall back to substring
+	 * matching on the text for answers that carry no status or code (a thrown
+	 * transport error, a 200 with `success: false`).
 	 */
 	categorizeError(message: string, httpStatus?: number): EmailErrorCode {
-		// The unreadable code is a narrower routing deferral whose origin must not be
-		// folded into the receiver-governance bucket counted by gate 2 (issue #505).
-		if (httpStatus === 409 && message.includes(ROUTING_LEASE_UNREADABLE_CODE)) {
-			return EmailErrorCode.ROUTING_LEASE_UNREADABLE;
-		}
-
-		// Substring-matched on the free-text 409 body on purpose, and NOT compared
-		// against `MTA_SEND_ERROR_CODES`: this must classify any `ROUTING_DECISION_*`
-		// refusal, including one a newer MTA build knows and this reader does not.
-		// An accept-list here would send an unrecognised routing refusal down the
-		// generic 409 path instead of back to the worker for a fresh decision. The
-		// codes ARE derived from the package where a miss is safe — the
-		// `INTAKE_PENDING` read above.
-		if (
-			httpStatus === 409 &&
-			(message.includes('ROUTING_DECISION_') || message.includes('GLOBAL_SAFETY_DEFER'))
-		) {
+		if (httpStatus === 409) {
+			const routing = mtaRoutingRefusalOf(message);
+			// The unreadable code is a narrower routing deferral whose origin must not
+			// be folded into the receiver-governance bucket counted by gate 2.
+			if (routing === 'lease_unreadable') return EmailErrorCode.ROUTING_LEASE_UNREADABLE;
 			// The MTA revalidates the authoritative lease immediately before
 			// enqueue. A breaker/IP-generation race must return to the worker so a
 			// fresh decision is resolved; it is not a permanent content failure.
-			return EmailErrorCode.ROUTING_DEFERRED;
+			if (routing === 'decision_deferred') return EmailErrorCode.ROUTING_DEFERRED;
 		}
 		if (httpStatus !== undefined) {
 			const byStatus = httpStatusToErrorCode(httpStatus);
