@@ -79,6 +79,15 @@
 		"import/no-unassigned-import": "off",
 		"owlat/require-suppression-reason": "error",
 		"owlat/no-test-in-loop": "error",
+		// The vitest setups of these workspaces unmount every component a test
+		// mounted, so a test never wipes the document to clean up. email-builder
+		// has no shared setup that does this; its suites still clear the body.
+		"owlat/no-document-body-reset": [
+			"error",
+			{
+				"files": ["apps/web/**/__tests__/**", "packages/ui/**/__tests__/**"]
+			}
+		],
 		"owlat/no-test-environment-pragma": [
 			"error",
 			{
