@@ -27,7 +27,12 @@
  *     a `null` position has not been scanned past its newest row yet;
  *   - a mailbox whose scan reported completion WITHOUT a keyset position is
  *     exhausted after one page — that is the free-text branch, whose relevance
- *     order has no position to resume from (see `docs/ux-plan/DEFERRALS.md`).
+ *     order has no position to resume from. Convex allows one `.paginate()` per
+ *     execution and the search index exposes no orderable key, so a fan-out
+ *     text search returns each mailbox's top page and drops the hits the page
+ *     `limit` cut off rather than resuming into the same relevance page and
+ *     repeating them; the single-mailbox path paginates natively and reaches
+ *     every match.
  */
 
 /**

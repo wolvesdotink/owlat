@@ -238,10 +238,12 @@ describe('postbox thread list — accessibility', () => {
 			},
 		});
 		// Everything except the two composite-row gaps, which are a listbox
-		// keyboard-model question rather than a missing attribute — see
-		// docs/ux-plan/DEFERRALS.md. Pinned by COUNT as well as by rule, so
-		// closing them fails here and forces this expectation to be retired
-		// rather than quietly widening the exemption.
+		// keyboard-model question rather than a missing attribute: a row holds a
+		// checkbox and quick actions, and `option` admits no controls. Closing
+		// them means moving the list to the grid pattern (row + gridcell, 2-D
+		// arrow keys), a keyboard change of its own. Pinned by COUNT as well as
+		// by rule, so closing them fails here and forces this expectation to be
+		// retired rather than quietly widening the exemption.
 		expect(
 			violations.filter((v) => !KNOWN_COMPOSITE_ROW_GAPS.some((r) => v.startsWith(r)))
 		).toEqual([]);
