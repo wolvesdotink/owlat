@@ -79,6 +79,7 @@
 		"import/no-unassigned-import": "off",
 		"owlat/require-suppression-reason": "error",
 		"owlat/no-test-in-loop": "error",
+		"owlat/no-test-timeout-or-unreasoned-skip": "warn",
 		"owlat/no-test-environment-pragma": [
 			"error",
 			{

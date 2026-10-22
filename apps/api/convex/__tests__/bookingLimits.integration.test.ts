@@ -454,8 +454,7 @@ describe('invite mail order', () => {
 
 describe('queued mail', { shuffle: false }, () => {
 	// The two tests run in this order: the first leaves mail queued when it
-	// returns, the second checks that all of it ran before it started. No retry,
-	// so a second attempt cannot pass once the stray mail has gone out.
+	// returns, the second checks that all of it ran before it started.
 	let previous: TestConvex<typeof schema> | undefined;
 
 	it('returns with invite mail still queued', async () => {
@@ -466,7 +465,7 @@ describe('queued mail', { shuffle: false }, () => {
 		await t.mutation(api.booking.hostBookings.cancel, { bookingId: booking!._id });
 	});
 
-	it('finds the previous test’s mail sent before it starts', { retry: 0 }, async () => {
+	it('finds the previous test’s mail sent before it starts', async () => {
 		expect(previous).toBeDefined();
 		const jobs = await previous!.run((ctx) =>
 			ctx.db.system.query('_scheduled_functions').collect()

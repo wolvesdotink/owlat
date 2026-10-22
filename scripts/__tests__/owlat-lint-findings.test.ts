@@ -1,6 +1,8 @@
+import { readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { isOwlatWarning, ratchetedWarnings } from '../check-lint-warnings';
-import { findingLine } from '../owlat-lint-findings';
+import { findingLine, lintTargets } from '../owlat-lint-findings';
 
 const finding = (offset: number, length: number) => ({
 	filename: 'apps/web/app/x.test.ts',
@@ -44,5 +46,18 @@ describe('owlat warnings have one owner', () => {
 		const other = { ...finding(0, 1), code: 'import(no-cycle)' };
 		const enforced = { ...finding(0, 1), severity: 'error' };
 		expect(ratchetedWarnings([finding(0, 1), other, enforced])).toEqual([other]);
+	});
+});
+
+describe('owlat lint ratchet targets', () => {
+	it('lint the workspace trees and the scripts at the repository root', () => {
+		expect(
+			lintTargets(['vitest.shared.ts', 'README.md', 'plugins.config.ts', 'oxlintrc.json'])
+		).toEqual(['apps', 'packages', 'scripts', 'examples', 'plugins.config.ts', 'vitest.shared.ts']);
+	});
+
+	it('include the shared vitest config every workspace config builds on', () => {
+		const root = fileURLToPath(new URL('../..', import.meta.url));
+		expect(lintTargets(readdirSync(root))).toContain('vitest.shared.ts');
 	});
 });
