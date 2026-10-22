@@ -1,5 +1,5 @@
 import {
-	CHILD_COLLECTIONS,
+	type ChildKind,
 	containsNode,
 	type Node,
 	propertyName,
@@ -15,9 +15,9 @@ import {
  * every child, so a loop that may leave some in place is not matched.
  */
 
-/** Counts of the root's children a draining loop tests. */
-const CHILD_COUNTS = new Set(['childElementCount']);
-/** The call that tells a draining loop whether the root still has children. */
+/** Counts of the root's children a draining loop tests, of the kind each counts. */
+const CHILD_COUNTS = new Map<string, ChildKind>([['childElementCount', 'element']]);
+/** The call that tells a draining loop whether the root still has child nodes. */
 const HAS_CHILDREN = new Set(['hasChildNodes']);
 const NOT_EQUAL = new Set(['!==', '!=']);
 /** The operator that keeps a comparison's meaning with its operands swapped. */
@@ -33,11 +33,12 @@ const EARLY_EXITS = new Set([
 const WILDCARD_QUERIES = new Set(['querySelectorAll', 'getElementsByTagName']);
 
 export const createLoopMatcher = ({
-	isRootChild,
+	endChildKind,
 	isRootMember,
 	isVariable,
 	localVariable,
 	aliasOf,
+	rootCollectionKind,
 }: RootMatcher) => {
 	/** Whether `node` is `target.remove()` or `parent.removeChild(target)` for a target `isTarget` accepts. */
 	const isRemovalOf = (node: Node, isTarget: (candidate: Node) => boolean) => {
@@ -90,18 +91,16 @@ export const createLoopMatcher = ({
 		);
 	};
 
-	/** `<root>.childElementCount`, `<root>.children.length` or `<root>.childNodes.length`. */
-	const isChildCount = (node: Node) => {
+	/**
+	 * The kind of child `node` counts if it is `<root>.childElementCount`,
+	 * `<root>.children.length` or `<root>.childNodes.length`.
+	 */
+	const childCountKind = (node: Node): ChildKind | undefined => {
 		const current = unwrap(node);
-		if (current?.type !== 'MemberExpression') return false;
-		if (isRootMember(current, CHILD_COUNTS)) return true;
-		const collection = unwrap(current.object);
-		return (
-			propertyName(current) === 'length' &&
-			collection !== undefined &&
-			collection !== null &&
-			isRootMember(collection, CHILD_COLLECTIONS)
-		);
+		if (current?.type !== 'MemberExpression') return undefined;
+		const name = propertyName(current);
+		if (name !== undefined && isRootMember(current, CHILD_COUNTS)) return CHILD_COUNTS.get(name);
+		return name === 'length' ? rootCollectionKind(current.object) : undefined;
 	};
 
 	const isLiteral = (node: Node, value: unknown) => {
@@ -116,89 +115,96 @@ export const createLoopMatcher = ({
 	};
 
 	/**
-	 * Whether a loop `test` holds exactly while the root has any child, so the
-	 * loop runs until the root is empty: a child read (`<root>.firstChild`,
+	 * The kind of child a loop `test` probes if it holds exactly while the root
+	 * has any child of that kind, so the loop runs until none are left: an end
+	 * child read (`<root>.firstChild`, `<root>.children[0]`,
 	 * `(node = <root>.firstChild)`), `<root>.hasChildNodes()`, a child count, or
 	 * one of those compared against "none" (`count > 0`, `count !== 0`,
-	 * `count >= 1`, `child !== null`). Any other bound (`count > 1`) or a
-	 * compound test may stop with children left, so it does not count. A
-	 * variable the test assigns a child to is collected into `assigned`.
+	 * `count >= 1`, `child !== null`). Any other bound (`count > 1`), a read of a
+	 * later child (`children[1]`), a snapshot held in a variable, or a compound
+	 * test may stop with children left, so it does not count. A variable the
+	 * test assigns a child to is collected into `assigned`.
 	 */
-	const testsNonEmpty = (node: Node, assigned: Variable[]): boolean => {
+	const nonEmptyKind = (node: Node, assigned: Variable[]): ChildKind | undefined => {
 		const current = unwrap(node);
-		if (!current) return false;
-		if (isRootChild(current) || isChildCount(current)) return true;
+		if (!current) return undefined;
+		const probed = endChildKind(current) ?? childCountKind(current);
+		if (probed) return probed;
 		switch (current.type) {
 			case 'AssignmentExpression': {
 				const variable =
 					current.operator === '=' && current.left.type === 'Identifier'
 						? localVariable(current.left)
 						: undefined;
-				if (!variable || !isRootChild(current.right)) return false;
-				assigned.push(variable);
-				return true;
+				const kind = variable ? endChildKind(current.right) : undefined;
+				if (variable && kind) assigned.push(variable);
+				return kind;
 			}
 			case 'CallExpression': {
 				const callee = unwrap(current.callee);
-				return (
-					current.arguments.length === 0 &&
+				return current.arguments.length === 0 &&
 					callee !== undefined &&
 					callee !== null &&
 					isRootMember(callee, HAS_CHILDREN)
-				);
+					? 'node'
+					: undefined;
 			}
 			case 'UnaryExpression': {
 				const inner = unwrap(current.argument);
-				return (
-					current.operator === '!' &&
+				return current.operator === '!' &&
 					inner?.type === 'UnaryExpression' &&
-					inner.operator === '!' &&
-					testsNonEmpty(inner.argument, assigned)
-				);
+					inner.operator === '!'
+					? nonEmptyKind(inner.argument, assigned)
+					: undefined;
 			}
 			case 'BinaryExpression': {
 				const { left, right } = current;
-				if (left.type === 'PrivateIdentifier') return false;
+				if (left.type === 'PrivateIdentifier') return undefined;
 				const mirrored = MIRRORED_OPERATORS[current.operator] ?? current.operator;
 				for (const [subject, bound, operator] of [
 					[left, right, current.operator],
 					[right, left, mirrored],
 				] as const) {
-					if (isChildCount(subject)) {
-						if (NOT_EQUAL.has(operator) || operator === '>') {
-							if (isLiteral(bound, 0)) return true;
-						} else if (operator === '>=' && isLiteral(bound, 1)) return true;
+					const counted = childCountKind(subject);
+					if (counted) {
+						if ((NOT_EQUAL.has(operator) || operator === '>') && isLiteral(bound, 0))
+							return counted;
+						if (operator === '>=' && isLiteral(bound, 1)) return counted;
 					} else if (
 						NOT_EQUAL.has(operator) &&
 						(isLiteral(bound, null) || (operator === '!==' && isLiteral(bound, undefined))) &&
-						(isRootChild(subject) || unwrap(subject)?.type === 'AssignmentExpression') &&
-						testsNonEmpty(subject, assigned)
+						(endChildKind(subject) || unwrap(subject)?.type === 'AssignmentExpression')
 					) {
-						return true;
+						const kind = nonEmptyKind(subject, assigned);
+						if (kind) return kind;
 					}
 				}
-				return false;
+				return undefined;
 			}
 			default:
-				return false;
+				return undefined;
 		}
 	};
 
 	/**
 	 * Whether a `while` / `do` / `for` loop drains the root: its test holds
-	 * until the root is empty and every pass removes one of the root's children,
-	 * read straight off the root or through a variable the test assigns one to
-	 * (`while ((node = document.body.firstChild)) node.remove()`).
+	 * until the root has no child of the probed kind, and every pass removes one
+	 * of the root's end children, read straight off the root, through a
+	 * variable declared in the body, or through a variable the test assigns one
+	 * to (`while ((node = document.body.firstChild)) node.remove()`). A loop that
+	 * probes child nodes but removes elements stops (throws) once only text is
+	 * left, so the removal must cover the probed kind.
 	 */
 	const drainsRoot = (test: Node, body: Node) => {
 		const assigned: Variable[] = [];
-		if (!testsNonEmpty(test, assigned)) return false;
+		const probed = nonEmptyKind(test, assigned);
+		if (!probed) return false;
 		if (assigned.some((variable) => rewrites(body, variable))) return false;
-		return removesEveryPass(
-			body,
-			(candidate) =>
-				isRootChild(candidate) || assigned.some((variable) => isVariable(candidate, variable))
-		);
+		return removesEveryPass(body, (candidate) => {
+			if (assigned.some((variable) => isVariable(candidate, variable))) return true;
+			const removed = endChildKind(candidate, body);
+			return removed === 'node' || removed === probed;
+		});
 	};
 
 	/** Whether `node` is the global `Array`, not a local binding of that name. */
@@ -226,7 +232,7 @@ export const createLoopMatcher = ({
 				return alias !== undefined && 'value' in alias && walksRootChildren(alias.value, depth + 1);
 			}
 			case 'MemberExpression':
-				return isRootMember(current, CHILD_COLLECTIONS);
+				return rootCollectionKind(current) !== undefined;
 			case 'ArrayExpression':
 				return current.elements.some(
 					(element) =>

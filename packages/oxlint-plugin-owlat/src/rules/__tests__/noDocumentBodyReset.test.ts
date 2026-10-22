@@ -133,6 +133,21 @@ ruleTester.run('owlat/no-document-body-reset', rule, {
 			code: "declare const owned: Element;\ndeclare let more: boolean;\nwhile (document.body.firstChild && more) document.body.firstChild.remove();\nwhile (document.body.lastChild !== owned) document.body.lastChild!.remove();\nwhile (document.body.hasChildNodes()) { if (document.body.firstElementChild?.id === 'app') break; document.body.firstChild!.remove(); }\nwhile (document.body.firstElementChild) { if (more) document.body.firstElementChild.remove(); }\nfor (;;) document.body.firstChild?.remove();",
 		},
 		{
+			name: 'a draining loop that probes or removes a later child, which keeps the earlier ones',
+			filename,
+			code: 'while (document.body.children[1]) document.body.children[1].remove();\nwhile (document.body.childNodes.item(1)) document.body.childNodes.item(1)!.remove();\nwhile (document.body.firstChild) document.body.children[1].remove();\ndeclare const i: number;\nwhile (document.body.children[i]) document.body.children[i].remove();\nwhile (document.body.children[1] !== undefined) document.body.firstChild!.remove();\nlet node: Element | undefined;\nwhile ((node = document.body.children[1])) node.remove();',
+		},
+		{
+			name: 'a draining loop that tests or removes a snapshot of a child',
+			filename,
+			code: 'const first = document.body.firstChild;\nwhile (first) first.remove();\nwhile (document.body.firstChild) first!.remove();\nconst last = document.body.lastElementChild;\nwhile (document.body.childElementCount > 0) document.body.removeChild(last!);',
+		},
+		{
+			name: 'a draining loop that probes child nodes but removes only elements',
+			filename,
+			code: 'while (document.body.hasChildNodes()) document.body.firstElementChild!.remove();\nwhile (document.body.firstChild) document.body.children[0].remove();\nwhile (document.body.childNodes.length > 0) document.body.lastElementChild!.remove();',
+		},
+		{
 			name: 'a file outside the configured globs',
 			filename: 'packages/email-builder/src/__tests__/cases.test.ts',
 			options: scoped,
@@ -254,6 +269,12 @@ ruleTester.run('owlat/no-document-body-reset', rule, {
 			filename,
 			code: 'while (document.body.childElementCount !== 0) document.body.firstChild!.remove();\nwhile (0 < document.body.children.length) document.body.children[0].remove();\nwhile (document.body.childNodes.length >= 1) document.body.firstChild!.remove();\nwhile (1 <= document.body.childElementCount) document.body.lastElementChild!.remove();\nwhile (document.body.firstChild !== null) document.body.firstChild.remove();\nwhile (document.body.lastChild != null) document.body.lastChild.remove();\nwhile (undefined !== document.body.firstElementChild) document.body.firstElementChild!.remove();\nwhile (!!document.body.firstChild) document.body.firstChild.remove();\nlet node: ChildNode | null;\nwhile ((node = document.body.firstChild) !== null) { node.remove(); }',
 			errors: 9,
+		},
+		{
+			name: 'a draining loop that probes elements and removes any node, or reads the body through an alias',
+			filename,
+			code: 'while (document.body.firstElementChild) document.body.firstChild!.remove();\nwhile (document.body.children[0] !== undefined) document.body.lastChild!.remove();\nconst body = document.body;\nwhile (body.childNodes[0]) body.removeChild(body.childNodes[0]);',
+			errors: 3,
 		},
 		{
 			name: 'a loop whose every pass removes the visited node next to other statements',

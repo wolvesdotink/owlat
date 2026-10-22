@@ -10,10 +10,20 @@ import type { AstNode, Context, Scope } from './types.ts';
 
 const ROOT_ELEMENTS = new Set(['body', 'documentElement']);
 const GLOBAL_OBJECTS = new Set(['window', 'globalThis', 'self']);
-/** Collections of the root's children. */
-export const CHILD_COLLECTIONS = new Set(['childNodes', 'children']);
-/** Reads of one child of the root, which a draining loop removes. */
-const CHILD_READS = new Set(['firstChild', 'lastChild', 'firstElementChild', 'lastElementChild']);
+/** Which children a read or count covers: every child node, or elements only. */
+export type ChildKind = 'node' | 'element';
+/** Reads of the root's first or last child, of the kind each covers. */
+const END_CHILD_READS = new Map<string, ChildKind>([
+	['firstChild', 'node'],
+	['lastChild', 'node'],
+	['firstElementChild', 'element'],
+	['lastElementChild', 'element'],
+]);
+/** The kind of child each collection of the root's children holds. */
+const COLLECTION_KINDS = new Map<string, ChildKind>([
+	['childNodes', 'node'],
+	['children', 'element'],
+]);
 /** A binding the scope manager resolved. */
 export type Variable = NonNullable<ReturnType<Scope['set']['get']>>;
 
@@ -74,6 +84,16 @@ export const containsNode = (node: Node, test: (candidate: AstNode) => boolean):
 		for (const child of childNodes(current)) stack.push(child);
 	}
 	return false;
+};
+
+/** Whether `node` lies inside `container`'s source range. */
+const within = (node: AstNode, container: AstNode) =>
+	node.range[0] >= container.range[0] && node.range[1] <= container.range[1];
+
+/** The number literal `0`. */
+const isZero = (node: Node) => {
+	const current = unwrap(node);
+	return current?.type === 'Literal' && current.value === 0;
 };
 
 export const createRootMatcher = (context: Context) => {
@@ -170,7 +190,7 @@ export const createRootMatcher = (context: Context) => {
 	};
 
 	/** A member read `<root>.<name>` with `name` in `names`. */
-	const isRootMember = (node: AstNode, names: Set<string>): boolean => {
+	const isRootMember = (node: AstNode, names: Pick<ReadonlySet<string>, 'has'>): boolean => {
 		const name = propertyName(node);
 		return (
 			name !== undefined &&
@@ -189,40 +209,64 @@ export const createRootMatcher = (context: Context) => {
 		return alias !== undefined && 'value' in alias && isVariable(alias.value, variable, depth + 1);
 	};
 
-	/**
-	 * One child of the root: `<root>.firstChild` and kin, `<root>.children[i]`,
-	 * `<root>.childNodes.item(i)`, or a never-reassigned alias of one.
-	 */
-	const isRootChild = (node: Node, depth = 0): boolean => {
+	/** The kind of child `<root>.childNodes` / `<root>.children` holds, if `node` is one. */
+	const rootCollectionKind = (node: Node): ChildKind | undefined => {
 		const current = unwrap(node);
-		if (!current || depth > 8) return false;
-		if (current.type === 'Identifier') {
-			const alias = aliasOf(current);
-			return alias !== undefined && 'value' in alias && isRootChild(alias.value, depth + 1);
-		}
-		if (current.type === 'MemberExpression') {
-			if (isRootMember(current, CHILD_READS)) return true;
-			const collection = unwrap(current.object);
-			return (
-				current.computed &&
-				propertyName(current) === undefined &&
-				collection !== undefined &&
-				collection !== null &&
-				isRootMember(collection, CHILD_COLLECTIONS)
-			);
-		}
-		if (current.type !== 'CallExpression') return false;
-		const callee = unwrap(current.callee);
-		const collection = callee?.type === 'MemberExpression' ? unwrap(callee.object) : undefined;
-		return (
-			propertyName(callee) === 'item' &&
-			collection !== undefined &&
-			collection !== null &&
-			isRootMember(collection, CHILD_COLLECTIONS)
-		);
+		const name = propertyName(current);
+		return current && name !== undefined && isRootMember(current, COLLECTION_KINDS)
+			? COLLECTION_KINDS.get(name)
+			: undefined;
 	};
 
-	return { aliasOf, isRootChild, isRootElement, isRootMember, isVariable, localVariable };
+	/**
+	 * The kind of child `node` reads if it is the root's first or last child,
+	 * which exists exactly while the root has a child of that kind:
+	 * `<root>.firstChild` and kin, `<root>.children[0]`,
+	 * `<root>.childNodes.item(0)`. Any other index (`children[1]`) may be empty
+	 * while earlier children remain, so it is not an end child. A local alias
+	 * holds a snapshot that stays set after its node is removed, so it only
+	 * counts when it is declared inside `freshIn` (a loop body, which reads it
+	 * again on every pass).
+	 */
+	const endChildKind = (node: Node, freshIn?: Node, depth = 0): ChildKind | undefined => {
+		const current = unwrap(node);
+		if (!current || depth > 8) return undefined;
+		if (current.type === 'Identifier') {
+			const declared = localVariable(current)?.defs[0]?.node;
+			if (!freshIn || !declared || !within(declared, freshIn)) return undefined;
+			const alias = aliasOf(current);
+			return alias !== undefined && 'value' in alias
+				? endChildKind(alias.value, freshIn, depth + 1)
+				: undefined;
+		}
+		if (current.type === 'MemberExpression') {
+			const name = propertyName(current);
+			if (name !== undefined && isRootMember(current, END_CHILD_READS)) {
+				return END_CHILD_READS.get(name);
+			}
+			return current.computed && isZero(current.property)
+				? rootCollectionKind(current.object)
+				: undefined;
+		}
+		if (current.type !== 'CallExpression') return undefined;
+		const callee = unwrap(current.callee);
+		return callee?.type === 'MemberExpression' &&
+			propertyName(callee) === 'item' &&
+			current.arguments.length === 1 &&
+			isZero(current.arguments[0])
+			? rootCollectionKind(callee.object)
+			: undefined;
+	};
+
+	return {
+		aliasOf,
+		endChildKind,
+		isRootElement,
+		isRootMember,
+		isVariable,
+		localVariable,
+		rootCollectionKind,
+	};
 };
 
 export type RootMatcher = ReturnType<typeof createRootMatcher>;

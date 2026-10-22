@@ -25,11 +25,12 @@ import type { AstNode, Rule } from '../types.ts';
  * each pass removes them (`.remove()` on them or `.removeChild(…)` with them
  * as the argument) as one of the loop body's own statements, nothing in the
  * body can end a pass early, and a draining loop runs until the root is empty
- * (`count > 0`, not `count > 1`). Removing a node found inside a child, some
- * unrelated node, the members of a filtered or mapped copy or of one child's
- * own children, only the children a condition picks, or children down to a
- * bound above zero, leaves the rest of the document in place and stays
- * allowed.
+ * (`count > 0`, not `count > 1`; `children[0]`, not `children[1]`), removing
+ * its first or last child each pass. Removing a node found inside a child,
+ * some unrelated node, a later child or a snapshot of one, the members of a
+ * filtered or mapped copy or of one child's own children, only the children a
+ * condition picks, or children down to a bound above zero, leaves the rest of
+ * the document in place and stays allowed.
  * The body is recognized as `document.body` / `document.documentElement`
  * (also through `window.`, `globalThis.` or `self.`, computed keys and
  * TypeScript non-null or `as` wrappers) and through a local variable that is
