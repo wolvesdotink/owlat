@@ -33,7 +33,8 @@ and SDKs, personal and team mailboxes, AI agent tools, reverse states.
 - For a logic, data, state or protocol bug: the test that failed before the
   fix (see "Verifying" in CLAUDE.md).
 - For a UI change: before/after screenshots of the same page, viewport and
-  theme. Add a short video when motion or timing matters.
+  theme. Add a short video when motion or timing matters. Upload them here;
+  never commit them.
 - What you could not check, and why (no local backend, no desktop build on
   this OS, a secret only CI has). -->
 
