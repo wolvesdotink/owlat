@@ -1082,8 +1082,12 @@ dashboard's Recently deleted page:
   sending one and an active automation are refused.
 - A deleted row is frozen: nothing rewrites it while it waits (saved-block
   propagation passes a deleted template by; restore catches up its links), and
-  what hangs off it is not readable either (a deleted template's history reads
-  as missing).
+  what hangs off it is not readable either: a public query keyed by the row or
+  by one of its children (a template's history, a campaign's report and sends,
+  an automation's runs and step analytics) checks the parent with `getLive`
+  first and answers as for an unknown id. The source guard in
+  `__tests__/marketingSoftDeleteReads.integration.test.ts` lists every such
+  query and fails when a new one has no probe.
 - The daily `marketing/recentlyDeleted.ts:purgeExpired` removes rows deleted
   more than 30 days ago through each domain's purge, within one row and byte
   budget per transaction shared by all three kinds, and reschedules itself
