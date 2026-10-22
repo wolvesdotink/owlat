@@ -192,6 +192,23 @@ describe('format-staged pre-commit hook', { timeout: 60_000 }, () => {
 		expect(git(root, ['status', '--porcelain'])).toBe('');
 	});
 
+	it('formats files committed by path in the commit, the index and the working tree', () => {
+		const { root } = repository();
+		installHook(root);
+		write(root, 'a.ts', FORMATTED);
+		write(root, 'b.ts', FORMATTED);
+		baseline(root);
+		write(root, 'a.ts', 'const a = "path"\n');
+		write(root, 'b.ts', UNFORMATTED.replace('x', 'left out'));
+
+		commitOk(root, ['--', 'a.ts']);
+
+		expect(git(root, ['show', 'HEAD:a.ts'])).toBe("const a = 'path';\n");
+		expect(git(root, ['show', ':a.ts'])).toBe("const a = 'path';\n");
+		expect(read(root, 'a.ts')).toBe("const a = 'path';\n");
+		expect(git(root, ['status', '--porcelain'])).toBe(' M b.ts\n');
+	});
+
 	it('refuses the commit and changes nothing when oxfmt rejects a staged file', () => {
 		const { root } = repository();
 		installHook(root);

@@ -20,7 +20,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 export const FORMAT_PATHSPECS = [
 	'*.ts',
@@ -47,8 +47,13 @@ interface FormattedFile extends StagedFile {
 	formatted: Buffer;
 }
 
-function git(cwd: string, args: string[], input?: Buffer | string): Buffer {
-	const result = spawnSync('git', args, { cwd, input, maxBuffer: 1024 * 1024 * 1024 });
+function git(
+	cwd: string,
+	args: string[],
+	input?: Buffer | string,
+	env: NodeJS.ProcessEnv = process.env
+): Buffer {
+	const result = spawnSync('git', args, { cwd, input, env, maxBuffer: 1024 * 1024 * 1024 });
 	if (result.error) throw result.error;
 	if (result.status !== 0) {
 		throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString().trim()}`);
@@ -158,6 +163,21 @@ async function formatAll(
 	return { formatted, failures };
 }
 
+/**
+ * `git commit <paths>` builds the commit from a temporary `next-index-*.lock`
+ * (the hook's GIT_INDEX_FILE) and, in parallel, holds the real index as
+ * `index.lock` with the same paths added; git renames that lock into place
+ * after the commit. Formatting only the temporary index would leave the real
+ * index staging the unformatted content back over the new commit, so the
+ * locked real index gets the same update.
+ */
+function pathCommitIndex(root: string): string | undefined {
+	const hookIndex = process.env['GIT_INDEX_FILE'];
+	if (!hookIndex || !basename(hookIndex).startsWith('next-index-')) return undefined;
+	const lock = join(gitText(root, ['rev-parse', '--absolute-git-dir']), 'index.lock');
+	return existsSync(lock) ? lock : undefined;
+}
+
 /** Rewrites the working-tree file only when it holds exactly the staged bytes. */
 function worktreeMatchesStaged(root: string, file: FormattedFile): boolean {
 	const absolute = join(root, file.path);
@@ -207,6 +227,13 @@ async function formatStaged(root: string): Promise<number> {
 		return `${file.mode} ${blob}\t${file.path}\0`;
 	});
 	git(root, ['update-index', '-z', '--index-info'], records.join(''));
+	const realIndex = pathCommitIndex(root);
+	if (realIndex) {
+		git(root, ['update-index', '-z', '--index-info'], records.join(''), {
+			...process.env,
+			GIT_INDEX_FILE: realIndex,
+		});
+	}
 
 	for (const file of rewriteWorktree) writeFileSync(join(root, file.path), file.formatted);
 
