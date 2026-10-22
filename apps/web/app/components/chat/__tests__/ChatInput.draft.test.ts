@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * A chat room's unsent message survives a reload, and the sidebar marks the
  * room with a pencil while it waits.
