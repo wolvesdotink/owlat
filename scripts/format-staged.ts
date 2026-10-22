@@ -16,10 +16,27 @@
  *     lists equal.
  *   - A merge commit is left alone: its staged set holds the other branch's
  *     changes, and reformatting those would hide edits inside the merge.
+ *   - Content reaches a child process's stdin from a file descriptor, never a
+ *     pipe written by this process: a pipe payload that gets lost arrives as
+ *     empty input, and an empty formatter result or an empty blob staged in
+ *     its place would erase the file from the commit. The results are checked
+ *     too: empty oxfmt output for non-blank input, a blob id that does not hash
+ *     the formatted bytes, or an index entry that did not take all refuse the
+ *     commit.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
-import { availableParallelism } from 'node:os';
+import { createHash } from 'node:crypto';
+import {
+	closeSync,
+	existsSync,
+	lstatSync,
+	mkdtempSync,
+	openSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs';
+import { availableParallelism, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
 export const FORMAT_PATHSPECS = [
@@ -47,18 +64,48 @@ interface FormattedFile extends StagedFile {
 	formatted: Buffer;
 }
 
+interface StagedBlob extends FormattedFile {
+	formattedBlob: string;
+}
+
+let scratchDirectory: string | undefined;
+let scratchFiles = 0;
+
+/** A read-only descriptor over a scratch file holding `input`, for a child's stdin. */
+function inputDescriptor(input: Buffer | string): number {
+	scratchDirectory ??= mkdtempSync(join(tmpdir(), 'owlat-format-staged-'));
+	const path = join(scratchDirectory, String(scratchFiles++));
+	writeFileSync(path, input);
+	return openSync(path, 'r');
+}
+
+function removeScratch(): void {
+	if (scratchDirectory) rmSync(scratchDirectory, { recursive: true, force: true });
+	scratchDirectory = undefined;
+}
+
 function git(
 	cwd: string,
 	args: string[],
 	input?: Buffer | string,
 	env: NodeJS.ProcessEnv = process.env
 ): Buffer {
-	const result = spawnSync('git', args, { cwd, input, env, maxBuffer: 1024 * 1024 * 1024 });
-	if (result.error) throw result.error;
-	if (result.status !== 0) {
-		throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString().trim()}`);
+	const stdin = input === undefined ? 'ignore' : inputDescriptor(input);
+	try {
+		const result = spawnSync('git', args, {
+			cwd,
+			env,
+			stdio: [stdin, 'pipe', 'pipe'],
+			maxBuffer: 1024 * 1024 * 1024,
+		});
+		if (result.error) throw result.error;
+		if (result.status !== 0) {
+			throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString().trim()}`);
+		}
+		return result.stdout;
+	} finally {
+		if (typeof stdin === 'number') closeSync(stdin);
 	}
-	return result.stdout;
 }
 
 function gitText(cwd: string, args: string[]): string {
@@ -112,27 +159,38 @@ function formatBlob(
 	file: StagedFile,
 	original: Buffer
 ): Promise<Buffer> {
-	return new Promise((resolve, reject) => {
+	const stdin = inputDescriptor(original);
+	const formatted = new Promise<Buffer>((resolve, reject) => {
 		// Run from the repository root with the real path, so oxfmt resolves the
 		// parser and any nested config exactly as the CI gate does for that file.
 		const child = spawn(oxfmt, ['--config', 'oxfmtrc.json', `--stdin-filepath=${file.path}`], {
 			cwd: root,
-			stdio: ['pipe', 'pipe', 'pipe'],
+			stdio: [stdin, 'pipe', 'pipe'],
 		});
 		const stdout: Buffer[] = [];
 		const stderr: Buffer[] = [];
-		child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
-		child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+		child.stdout!.on('data', (chunk: Buffer) => stdout.push(chunk));
+		child.stderr!.on('data', (chunk: Buffer) => stderr.push(chunk));
+		child.stdout!.on('error', reject);
+		child.stderr!.on('error', reject);
 		child.on('error', reject);
 		child.on('close', (code) => {
-			if (code === 0) return resolve(Buffer.concat(stdout));
-			const message = Buffer.concat([...stderr, ...stdout])
-				.toString('utf8')
-				.trim();
-			reject(new Error(message || `oxfmt exited with code ${code}`));
+			const output = Buffer.concat(stdout);
+			if (code !== 0) {
+				const message = Buffer.concat([...stderr, output])
+					.toString('utf8')
+					.trim();
+				return reject(new Error(message || `oxfmt exited with code ${code}`));
+			}
+			// Formatting never empties a file that holds code; empty output means
+			// the input never arrived, and staging it would delete the file's content.
+			if (output.length === 0 && original.toString('utf8').trim() !== '') {
+				return reject(new Error('oxfmt returned no output for a non-empty file'));
+			}
+			resolve(output);
 		});
-		child.stdin.end(original);
 	});
+	return formatted.finally(() => closeSync(stdin));
 }
 
 async function formatAll(
@@ -178,7 +236,54 @@ function pathCommitIndex(root: string): string | undefined {
 	return existsSync(lock) ? lock : undefined;
 }
 
-/** Rewrites the working-tree file only when it holds exactly the staged bytes. */
+/** The object id git assigns to a blob with these bytes, in the repository's hash. */
+function blobId(objectFormat: string, contents: Buffer): string {
+	return createHash(objectFormat)
+		.update(`blob ${contents.length}\0`)
+		.update(contents)
+		.digest('hex');
+}
+
+/** Index entries (`<mode> <blob>`) for the given paths, keyed by path. */
+function indexEntries(root: string, paths: string[], env: NodeJS.ProcessEnv): Map<string, string> {
+	const raw = git(
+		root,
+		['--literal-pathspecs', 'ls-files', '-s', '-z', '--', ...paths],
+		undefined,
+		env
+	);
+	const entries = new Map<string, string>();
+	for (const record of raw.toString('utf8').split('\0')) {
+		const tab = record.indexOf('\t');
+		if (tab < 0) continue;
+		const [mode, blob] = record.slice(0, tab).split(' ');
+		entries.set(record.slice(tab + 1), `${mode} ${blob}`);
+	}
+	return entries;
+}
+
+/** Stages the formatted blobs in one index, then confirms every entry took. */
+function updateIndex(root: string, changed: StagedBlob[], env: NodeJS.ProcessEnv): void {
+	// `--index-info -z` takes NUL-terminated `<mode> <blob>\t<path>` records, so
+	// any path survives unquoted.
+	const records = changed.map((file) => `${file.mode} ${file.formattedBlob}\t${file.path}\0`);
+	git(root, ['update-index', '-z', '--index-info'], records.join(''), env);
+	const entries = indexEntries(
+		root,
+		changed.map((file) => file.path),
+		env
+	);
+	const missing = changed.filter(
+		(file) => entries.get(file.path) !== `${file.mode} ${file.formattedBlob}`
+	);
+	if (missing.length > 0) {
+		throw new Error(
+			`the index did not take the formatted version of ${missing.map((file) => file.path).join(', ')}`
+		);
+	}
+}
+
+/** The working-tree file still holds exactly the staged (unformatted) bytes. */
 function worktreeMatchesStaged(root: string, file: FormattedFile): boolean {
 	const absolute = join(root, file.path);
 	try {
@@ -215,34 +320,50 @@ async function formatStaged(root: string): Promise<number> {
 		.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 	if (changed.length === 0) return 0;
 
-	// Decide which working-tree files to rewrite before the index changes.
-	const rewriteWorktree = changed.filter((file) => worktreeMatchesStaged(root, file));
-
-	// One index update for every file. `--index-info -z` takes NUL-terminated
-	// `<mode> <blob>\t<path>` records, so any path survives unquoted.
-	const records = changed.map((file) => {
-		const blob = git(root, ['hash-object', '-w', '--stdin'], file.formatted)
+	const objectFormat = gitText(root, ['rev-parse', '--show-object-format']);
+	const blobs: StagedBlob[] = changed.map((file) => {
+		const formattedBlob = git(root, ['hash-object', '-w', '--stdin'], file.formatted)
 			.toString('utf8')
 			.trim();
-		return `${file.mode} ${blob}\t${file.path}\0`;
+		if (formattedBlob !== blobId(objectFormat, file.formatted)) {
+			throw new Error(`git stored different bytes than oxfmt produced for ${file.path}`);
+		}
+		return { ...file, formattedBlob };
 	});
-	git(root, ['update-index', '-z', '--index-info'], records.join(''));
+	updateIndex(root, blobs, process.env);
 	const realIndex = pathCommitIndex(root);
-	if (realIndex) {
-		git(root, ['update-index', '-z', '--index-info'], records.join(''), {
-			...process.env,
-			GIT_INDEX_FILE: realIndex,
-		});
-	}
+	if (realIndex) updateIndex(root, blobs, { ...process.env, GIT_INDEX_FILE: realIndex });
 
-	for (const file of rewriteWorktree) writeFileSync(join(root, file.path), file.formatted);
+	// Each file is compared right before it is rewritten, so an edit saved while
+	// the index was being updated is kept rather than overwritten.
+	const keptEdits: string[] = [];
+	for (const file of blobs) {
+		if (worktreeMatchesStaged(root, file)) writeFileSync(join(root, file.path), file.formatted);
+		else keptEdits.push(file.path);
+	}
 
 	console.info(`format-staged: formatted ${changed.length} staged file(s):`);
 	for (const file of changed) console.info(`  ${file.path}`);
+	if (keptEdits.length > 0) {
+		console.info('Unstaged edits kept; these working-tree files were not reformatted:');
+		for (const path of keptEdits) console.info(`  ${path}`);
+	}
 	return 0;
 }
 
+async function main(): Promise<number> {
+	try {
+		const root = gitText(process.cwd(), ['rev-parse', '--show-toplevel']);
+		return await formatStaged(root);
+	} catch (error) {
+		console.error(`format-staged: ${(error as Error).message}`);
+		console.error('The commit was refused. Check `git diff --cached` before committing again.');
+		return 1;
+	} finally {
+		removeScratch();
+	}
+}
+
 if (import.meta.main) {
-	const root = gitText(process.cwd(), ['rev-parse', '--show-toplevel']);
-	process.exit(await formatStaged(root));
+	process.exit(await main());
 }

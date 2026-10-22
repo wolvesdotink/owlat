@@ -19,6 +19,7 @@ import {
 import { devNull, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 import { FORMAT_PATHSPECS } from '../format-staged';
 
 const REPOSITORY_ROOT = resolve(import.meta.dirname, '../..');
@@ -44,8 +45,13 @@ function gitEnv(): NodeJS.ProcessEnv {
 	return { ...env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1' };
 }
 
-function run(cwd: string, command: string, args: string[]): SpawnSyncReturns<string> {
-	return spawnSync(command, args, { cwd, encoding: 'utf8', env: gitEnv() });
+function run(
+	cwd: string,
+	command: string,
+	args: string[],
+	env: NodeJS.ProcessEnv = gitEnv()
+): SpawnSyncReturns<string> {
+	return spawnSync(command, args, { cwd, encoding: 'utf8', env });
 }
 
 function git(cwd: string, args: string[]): string {
@@ -67,6 +73,12 @@ function read(root: string, path: string): string {
 function linkOxfmt(root: string): void {
 	mkdirSync(join(root, 'node_modules/.bin'), { recursive: true });
 	symlinkSync(OXFMT, join(root, 'node_modules/.bin/oxfmt'));
+}
+
+function executable(path: string, contents: string): void {
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, contents);
+	chmodSync(path, 0o755);
 }
 
 function copyScripts(root: string): void {
@@ -112,7 +124,7 @@ function baseline(root: string): void {
 	commitOk(root);
 }
 
-describe('format-staged pre-commit hook', { timeout: 60_000 }, () => {
+describe('format-staged pre-commit hook', { timeout: PARALLEL_GATE_TIMEOUT_MS }, () => {
 	it('formats the staged files of the first commit and the working tree with them', () => {
 		const { root } = repository();
 		installHook(root);
@@ -229,6 +241,52 @@ describe('format-staged pre-commit hook', { timeout: 60_000 }, () => {
 		expect(read(root, 'a.ts')).toBe(UNFORMATTED);
 	});
 
+	it('refuses the commit when oxfmt returns nothing for a non-empty file', () => {
+		const { root } = repository();
+		installHook(root);
+		baseline(root);
+		const head = git(root, ['rev-parse', 'HEAD']);
+		// A formatter whose input never arrived: it reads nothing and exits 0.
+		rmSync(join(root, 'node_modules/.bin/oxfmt'));
+		executable(join(root, 'node_modules/.bin/oxfmt'), '#!/bin/sh\ncat >/dev/null\nexit 0\n');
+		write(root, 'a.ts', UNFORMATTED);
+		write(root, 'empty.ts', '\n');
+		git(root, ['add', '.']);
+		const index = git(root, ['ls-files', '-s']);
+
+		const result = commit(root);
+
+		expect(result.status).not.toBe(0);
+		expect(result.stderr).toContain('a.ts: oxfmt returned no output for a non-empty file');
+		expect(result.stderr).not.toContain('empty.ts');
+		expect(git(root, ['rev-parse', 'HEAD'])).toBe(head);
+		expect(git(root, ['ls-files', '-s'])).toBe(index);
+		expect(read(root, 'a.ts')).toBe(UNFORMATTED);
+	});
+
+	it('keeps an edit saved while the index is being updated', () => {
+		const { parent, root } = repository();
+		baseline(root);
+		write(root, 'a.ts', UNFORMATTED);
+		git(root, ['add', 'a.ts']);
+		// A git on PATH that saves a.ts the moment the formatter stages its blobs,
+		// the way an editor saving mid-commit would.
+		const realGit = run(root, 'sh', ['-c', 'command -v git']).stdout.trim();
+		const saved = 'const saved = "editor"\n';
+		executable(
+			join(parent, 'bin/git'),
+			`#!/bin/sh\nif [ "$1" = update-index ]; then printf '%s' '${saved}' > a.ts; fi\nexec '${realGit}' "$@"\n`
+		);
+		const env = { ...gitEnv(), PATH: `${join(parent, 'bin')}:${process.env['PATH']}` };
+
+		const result = run(root, 'bun', ['scripts/format-staged.ts'], env);
+
+		expect(result.status, result.stderr).toBe(0);
+		expect(result.stdout).toContain('Unstaged edits kept');
+		expect(git(root, ['show', ':a.ts'])).toBe(FORMATTED);
+		expect(read(root, 'a.ts')).toBe(saved);
+	});
+
 	it('leaves a merge commit as the merge produced it', () => {
 		const { root } = repository();
 		installHook(root);
@@ -275,7 +333,7 @@ describe('format-staged pre-commit hook', { timeout: 60_000 }, () => {
 	});
 });
 
-describe('install-git-hooks', { timeout: 60_000 }, () => {
+describe('install-git-hooks', { timeout: PARALLEL_GATE_TIMEOUT_MS }, () => {
 	const hookFile = (root: string) => join(root, '.git/hooks/pre-commit');
 
 	it('installs idempotently and uninstalls its own hook', () => {
