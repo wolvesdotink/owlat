@@ -201,7 +201,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 			const submenu: PaletteItem = {
 				id: 'postbox:switch-mailbox',
 				label: t('shared.postbox.usePostboxCommandSurface.items.switchMailbox'),
-				icon: 'lucide:arrow-left-right',
+				icon: 'lucide:arrow-right-left',
 				run: () => {},
 				argument: {
 					promptKey: 'shared.postbox.usePostboxCommandSurface.argument.switchPrompt',

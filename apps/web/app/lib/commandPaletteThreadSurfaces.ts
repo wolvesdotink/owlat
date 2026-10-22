@@ -177,7 +177,7 @@ export function buildThreadSurfaceGroups(
 		{
 			id: 'postbox:thread-alert',
 			label: t(deps.isAlerted() ? `${P}.stopNotifyOnReply` : `${P}.notifyOnReply`),
-			icon: 'lucide:bell-ring',
+			icon: 'lucide:bell',
 			run: deps.onToggleAlert,
 		},
 	];
@@ -305,7 +305,7 @@ export function buildTeamThreadSurfaceGroups(
 		items.push({
 			id: 'inbox:thread-claim',
 			label: t(`${T}.claim`),
-			icon: 'lucide:hand',
+			icon: 'lucide:user-plus',
 			run: deps.onClaim,
 		});
 	}
