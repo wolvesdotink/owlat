@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
 import { I18N_MODULES, I18N_OPTIONS } from './i18n/catalogModule';
-import { NUXT_LINK_DEFAULTS, publicAssetCompression } from './scripts/deliveryTuning';
+import { FONT_OPTIONS, NUXT_LINK_DEFAULTS, publicAssetCompression } from './scripts/deliveryTuning';
 import { uiLayerIconNames } from './scripts/uiLayerIcons';
 
 // Local default endpoints, single-sourced so the CSP connect-src and the
@@ -75,19 +75,8 @@ export default defineNuxtConfig({
 	// Locales, URL strategy and detection: i18n/catalogModule.ts.
 	i18n: I18N_OPTIONS,
 
-	fonts: {
-		// Variable wght axis required: the design system's weight-based emphasis
-		// uses intermediate instances (450/550) that a static 400/500/600/700
-		// subset would snap to the nearest hundred.
-		families: [{ name: 'Figtree', weights: ['300 900'] }],
-		// No font preloads. nuxt-security hashes /_fonts while @nuxt/fonts has only
-		// written empty placeholders (the bytes are downloaded after prerendering),
-		// so a preload carries the hash of an empty file. Google and Bunny faces
-		// have a unicode-range and are never preloaded; when both are unreachable
-		// the fallback providers serve faces without one, and the desktop SPA ships
-		// preloads that fail their integrity check.
-		defaults: { preload: false },
-	},
+	// Font families and the no-preload rule, see scripts/deliveryTuning.ts.
+	fonts: FONT_OPTIONS,
 
 	security: {
 		headers: {
