@@ -4,8 +4,9 @@
  * to them. Performance only — what's scheduled or waiting on a decision comes
  * from the existing campaign list queries the page already uses.
  *
- * Every read is an index-ordered, capped `take` on `campaigns.by_deleted_at_and_status_and_sent_at`
- * plus the bounded daily roll-up and reputation reads; no `emailSends` row is
+ * Every read is an index-ordered, capped `take` of live campaigns on
+ * `campaigns.by_deleted_at_and_status_and_sent_at` plus the bounded daily
+ * roll-up and reputation reads; no `emailSends` row is
  * touched, so the subscription stays cheap however large the sends get. The
  * math lives in `marketingOverviewMath.ts` and is tested there.
  */
