@@ -252,14 +252,20 @@ const rule: Rule = {
 				for (const argument of node.arguments as AstNode[]) {
 					// Callbacks included: `rs.map((r) => ({ to: r.address }))` builds the
 					// logged payload as surely as a literal does.
+					// Only object literals build a payload: an `ObjectPattern` property such
+					// as a callback's `({ email }) =>` parameter binds a name, logs nothing.
 					walk(context, argument, (child) => {
-						const key = child.type === 'Property' ? keyName(child) : undefined;
-						if (key === undefined || !SENSITIVE_KEYS.has(key) || reported.has(child)) return;
-						if (child.type !== 'Property' || redacted(context, child.value as AstNode)) return;
-						excused ??= optedOut(context, node, 'log-pii-safe');
-						if (excused) return;
-						reported.add(child);
-						context.report({ node: child, message: MESSAGE(key) });
+						if (child.type !== 'ObjectExpression') return;
+						for (const property of child.properties as AstNode[]) {
+							if (property.type !== 'Property') continue;
+							const key = keyName(property);
+							if (key === undefined || !SENSITIVE_KEYS.has(key) || reported.has(property)) continue;
+							if (redacted(context, property.value as AstNode)) continue;
+							excused ??= optedOut(context, node, 'log-pii-safe');
+							if (excused) return;
+							reported.add(property);
+							context.report({ node: property, message: MESSAGE(key) });
+						}
 					});
 				}
 			},

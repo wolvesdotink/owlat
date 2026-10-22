@@ -129,6 +129,17 @@ ruleTester.run('owlat/no-log-pii', rule, {
 			options,
 			code: 'export const envelope = { from: args.from };',
 		},
+		{
+			name: 'a destructured callback parameter named like an address field',
+			filename,
+			options,
+			code: [
+				"logInfo('mapped', {",
+				'\tto: recipients.map(({ email }) => redactEmailAddress(email)),',
+				'\tfrom: senders.map(({ address: from = fallback }) => redactEmailAddress(from)),',
+				'});',
+			].join('\n'),
+		},
 	],
 	invalid: [
 		{
@@ -207,6 +218,13 @@ ruleTester.run('owlat/no-log-pii', rule, {
 			options,
 			code: "logInfo('mapped', { recipients: items.map((item) => ({ to: item.to })) });",
 			errors: [reported('to')],
+		},
+		{
+			name: 'a destructured parameter logged raw from the callback body',
+			filename,
+			options,
+			code: "logInfo('mapped', { recipients: items.map(({ email }) => ({ email })) });",
+			errors: [reported('email')],
 		},
 		{
 			name: 'a value where a redactor appears but some outcome stays raw',
