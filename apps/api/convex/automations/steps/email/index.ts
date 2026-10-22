@@ -9,6 +9,7 @@ import type {
 import { formatFromAddress } from '../../../lib/emailProviders/domainVerification';
 import { getOptional } from '../../../lib/env';
 import type { StepExecuteArgs, StepModule, StepOutcome } from '../../types';
+import { getLive } from '../../../lib/softDelete';
 
 export interface EmailStepConfig {
 	emailTemplateId: string;
@@ -75,7 +76,7 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 	},
 	async enrichForQuery(ctx, config) {
 		if (!config.emailTemplateId) return {};
-		const template = await ctx.db.get(config.emailTemplateId as Id<'emailTemplates'>);
+		const template = await getLive(ctx, config.emailTemplateId as Id<'emailTemplates'>);
 		return { emailTemplate: template };
 	},
 	async execute(ctx: ActionCtx, args: StepExecuteArgs<EmailStepConfig>): Promise<StepOutcome> {

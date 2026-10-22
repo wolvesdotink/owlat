@@ -399,7 +399,7 @@ describe('emailTemplates publish/unpublish/duplicate/remove — public wrappers'
 		expect(copy?.status).toBe('draft');
 	});
 
-	it('remove deletes the row', async () => {
+	it('remove moves the row to Recently deleted', async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t);
 
@@ -407,7 +407,9 @@ describe('emailTemplates publish/unpublish/duplicate/remove — public wrappers'
 		await t.mutation(api.emailTemplates.emails.remove, { templateId });
 
 		const row = await t.run(async (ctx) => ctx.db.get(templateId));
-		expect(row).toBeNull();
+		expect(row?.deletedAt).toEqual(expect.any(Number));
+		expect(row?.deletedBy).toBe('user-olive');
+		expect(await t.query(api.emailTemplates.emails.get, { templateId })).toBeNull();
 	});
 
 	it('publish on a missing template throws not-found', async () => {

@@ -97,20 +97,16 @@ export const listAttentionCandidates = campaignsQuery({
 	handler: async (ctx) => {
 		const out: AttentionCandidate[] = [];
 		const cancelledSince = Date.now() - CANCELLED_ATTENTION_WINDOW_MS;
+		// Live campaigns only: one in Recently deleted needs nobody.
 		for (const status of ATTENTION_CANDIDATE_STATUSES) {
-			const batch =
-				status === 'cancelled'
-					? await ctx.db
-							.query('campaigns')
-							.withIndex('by_status_and_updated_at', (q) =>
-								q.eq('status', status).gte('updatedAt', cancelledSince)
-							)
-							.order('desc')
-							.take(ATTENTION_CANDIDATE_CAP)
-					: await ctx.db
-							.query('campaigns')
-							.withIndex('by_status', (q) => q.eq('status', status))
-							.take(ATTENTION_CANDIDATE_CAP);
+			const batch = await ctx.db
+				.query('campaigns')
+				.withIndex('by_deleted_at_and_status_and_updated_at', (q) => {
+					const live = q.eq('deletedAt', undefined).eq('status', status);
+					return status === 'cancelled' ? live.gte('updatedAt', cancelledSince) : live;
+				})
+				.order('desc')
+				.take(ATTENTION_CANDIDATE_CAP);
 			out.push(...batch.map(projectCandidate));
 		}
 		return out;

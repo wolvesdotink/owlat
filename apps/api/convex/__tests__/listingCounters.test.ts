@@ -1,9 +1,9 @@
 /**
  * The facet and growth counters (plan 3.1) against a full scan.
  *
- * Property: after any sequence of the writes that create, delete or move a
- * campaign's status, a template's type, an automation's status or a contact's
- * liveness — through the real mutations and lifecycles — every bucket equals
+ * Property: after any sequence of the writes that create, delete, restore or
+ * move a campaign's status, a template's type, an automation's status or a
+ * contact's liveness — through the real mutations and lifecycles — every bucket equals
  * what a scan of the table says. That holds before the scope exists, while its
  * backfill walk is part-way (the rows at or before the watermark), and once it
  * is ready. The readers (`countFacet`, the growth series) then answer from the
@@ -145,10 +145,16 @@ async function randomOp(t: Test, r: Rng): Promise<void> {
 	if (roll === 0 || (roll <= 3 && campaigns.length === 0)) {
 		await t.mutation(api.campaigns.campaigns.create, { name: `c${r.int(1000)}` });
 	} else if (roll === 1) {
-		await t.mutation(api.campaigns.campaigns.duplicate, { campaignId: r.pick(campaigns) });
-	} else if (roll === 2) {
+		// Refused for a campaign in Recently deleted.
 		await swallow(() =>
-			t.mutation(api.campaigns.campaigns.remove, { campaignId: r.pick(campaigns) })
+			t.mutation(api.campaigns.campaigns.duplicate, { campaignId: r.pick(campaigns) })
+		);
+	} else if (roll === 2) {
+		const campaignId = r.pick(campaigns);
+		await swallow(() =>
+			r.chance(0.6)
+				? t.mutation(api.campaigns.campaigns.remove, { campaignId })
+				: t.mutation(api.campaigns.campaigns.restore, { campaignId })
 		);
 	} else if (roll === 3) {
 		const to = r.pick([
@@ -171,17 +177,25 @@ async function randomOp(t: Test, r: Rng): Promise<void> {
 			userId: SYSTEM,
 		});
 	} else if (roll === 5) {
-		await t.mutation(
-			r.chance(0.5)
-				? internal.emailTemplates.lifecycle.duplicate
-				: internal.emailTemplates.lifecycle.remove,
-			{ templateId: r.pick(templates), userId: SYSTEM }
-		);
+		const templateId = r.pick(templates);
+		if (r.chance(0.25)) {
+			await t.mutation(api.emailTemplates.emails.restore, { templateId });
+		} else {
+			await t.mutation(
+				r.chance(0.5)
+					? internal.emailTemplates.lifecycle.duplicate
+					: internal.emailTemplates.lifecycle.remove,
+				{ templateId, userId: SYSTEM }
+			);
+		}
 	} else if (roll === 6) {
-		await t.mutation(api.emailTemplates.emails.changeType, {
-			templateId: r.pick(templates),
-			type: r.pick(['marketing', 'transactional'] as const),
-		});
+		// Refused for a template in Recently deleted.
+		await swallow(() =>
+			t.mutation(api.emailTemplates.emails.changeType, {
+				templateId: r.pick(templates),
+				type: r.pick(['marketing', 'transactional'] as const),
+			})
+		);
 	} else if (roll === 7 || (roll <= 9 && automations.length === 0)) {
 		const id = await t.mutation(api.automations.automations.create, {
 			name: `a${r.int(1000)}`,
@@ -198,8 +212,13 @@ async function randomOp(t: Test, r: Rng): Promise<void> {
 		}
 	} else if (roll === 8) {
 		const automationId = r.pick(automations);
-		if (r.chance(0.5)) await t.mutation(api.automations.automations.duplicate, { automationId });
-		else await swallow(() => t.mutation(api.automations.automations.remove, { automationId }));
+		const op = r.int(3);
+		// Duplicate is refused for an automation in Recently deleted.
+		if (op === 0)
+			await swallow(() => t.mutation(api.automations.automations.duplicate, { automationId }));
+		else if (op === 1)
+			await swallow(() => t.mutation(api.automations.automations.remove, { automationId }));
+		else await t.mutation(api.automations.automations.restore, { automationId });
 	} else if (roll === 9) {
 		await t.mutation(internal.automations.lifecycle.transition, {
 			automationId: r.pick(automations),

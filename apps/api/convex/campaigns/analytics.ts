@@ -1,5 +1,6 @@
 import type { Doc } from '../_generated/dataModel';
 import { campaignsQuery } from './_helpers';
+import { isLive } from '../lib/softDelete';
 
 /** Safety cap on the comparable-send window (index-ordered take, no scan). */
 const COMPARABLE_SENDS_LIMIT = 100;
@@ -22,7 +23,9 @@ export const getComparableSentCampaigns = campaignsQuery({
 			.take(COMPARABLE_SENDS_LIMIT);
 
 		return sentCampaigns
-			.filter((c): c is Doc<'campaigns'> & { sentAt: number } => c.sentAt !== undefined)
+			.filter(
+				(c): c is Doc<'campaigns'> & { sentAt: number } => isLive(c) && c.sentAt !== undefined
+			)
 			.map((c) => ({
 				id: c._id,
 				name: c.name,

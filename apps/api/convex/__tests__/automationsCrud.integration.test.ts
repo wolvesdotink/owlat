@@ -269,7 +269,7 @@ describe('automations mutations — automations:manage role gate', () => {
 		expect(copiedSteps).toHaveLength(1);
 	});
 
-	it('remove: editor is rejected, admin can delete a draft (and its steps)', async () => {
+	it('remove: editor is rejected, admin moves a draft to Recently deleted with its steps', async () => {
 		const t = await freshT();
 		const id = await seedAutomation(t, { status: 'draft' });
 		const stepId = await seedStep(t, id, { stepIndex: 0 });
@@ -281,10 +281,13 @@ describe('automations mutations — automations:manage role gate', () => {
 
 		setUser('user-alice', 'admin');
 		await t.mutation(api.automations.automations.remove, { automationId: id });
-		const gone = await t.run(async (ctx) => ctx.db.get(id));
-		expect(gone).toBeNull();
-		const stepGone = await t.run(async (ctx) => ctx.db.get(stepId));
-		expect(stepGone).toBeNull();
+		const deleted = await t.run(async (ctx) => ctx.db.get(id));
+		expect(deleted?.deletedAt).toEqual(expect.any(Number));
+		expect(deleted?.deletedBy).toBe('user-alice');
+		// The steps stay for a restore; the purge removes them.
+		const step = await t.run(async (ctx) => ctx.db.get(stepId));
+		expect(step).not.toBeNull();
+		expect(await t.query(api.automations.automations.get, { automationId: id })).toBeNull();
 	});
 
 	it('remove: refuses to delete an active automation (pause first)', async () => {

@@ -27,6 +27,7 @@ import {
 	weightedAverageRates,
 	type DatedCampaignCounts,
 } from './marketingOverviewMath';
+import { isLive } from '../lib/softDelete';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PERIOD_DAYS = 30;
@@ -73,7 +74,8 @@ async function readByStatus(
 		)
 		.order('desc')
 		.take(limit);
-	return rows.filter(hasSentAt);
+	// A campaign in Recently deleted is out of the overview until it is restored.
+	return rows.filter(isLive).filter(hasSentAt);
 }
 
 /** Live progress for a campaign still sending, from its send walk if one exists. */

@@ -24,6 +24,7 @@ import { getCachedContactCount } from './lib/contactCountHelpers';
 import { readDailyStats } from './lib/sendDailyStats';
 import { utcDayKey } from './lib/clock';
 import { budgetRefusalValidator } from './lib/validators/aiRouting';
+import { isLive } from './lib/softDelete';
 
 // ============================================================
 // Live-data allowlist
@@ -368,7 +369,7 @@ export const dataCampaignPerformance = internalQuery({
 			.order('desc')
 			.take(20);
 
-		return sent.map((c) => ({
+		return sent.filter(isLive).map((c) => ({
 			name: c.name,
 			sentAt: c.sentAt ?? null,
 			sent: c.statsSent ?? 0,
