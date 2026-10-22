@@ -96,7 +96,7 @@ function mismatchAt(
 		case 'literal':
 			return value === validator.value
 				? null
-				: expected(`literal ${JSON.stringify(validator.value)}`);
+				: expected(`literal ${formatLiteral(validator.value)}`);
 		case 'array': {
 			if (!Array.isArray(value)) return expected('array');
 			for (let i = 0; i < value.length; i += 1) {
@@ -157,6 +157,15 @@ function objectMismatch(
 		if (inner !== null) return inner;
 	}
 	return null;
+}
+
+/**
+ * A literal validator's value as it reads in a report. `JSON.stringify` throws
+ * on a bigint, and a union tries its arms in turn, so an `int64` literal arm
+ * that misses must still format rather than abort the arms after it.
+ */
+function formatLiteral(literal: string | number | boolean | bigint): string {
+	return typeof literal === 'bigint' ? `${literal}n` : JSON.stringify(literal);
 }
 
 /**

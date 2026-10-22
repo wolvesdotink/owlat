@@ -39,6 +39,20 @@ describe('scalars', () => {
 		expect(matchesValidator(v.literal('accepted'), 'accepted')).toBe(true);
 		expect(matchesValidator(v.literal('accepted'), 'deferred')).toBe(false);
 	});
+
+	it('checks every literal type a union can try, bigint included', () => {
+		// A missed arm is formatted before the next arm is tried, so formatting a
+		// literal must never throw (JSON.stringify does on a bigint).
+		const int64s = v.union(v.literal(1n), v.literal(2n));
+		expect(matchesValidator(int64s, 2n)).toBe(true);
+		expect(matchesValidator(int64s, 3n)).toBe(false);
+		expect(matchesValidator(int64s, 2)).toBe(false);
+		const mixed = v.union(v.literal(1n), v.literal(false), v.literal(0), v.literal('x'));
+		for (const value of [1n, false, 0, 'x']) {
+			expect(matchesValidator(mixed, value), String(value)).toBe(true);
+		}
+		expect(matchesValidator(mixed, 0n)).toBe(false);
+	});
 });
 
 describe('objects are EXACT, exactly as v.object is', () => {
@@ -159,6 +173,14 @@ describe('validatorMismatch names the place, never the value', () => {
 			'$: matches no member of the union'
 		);
 		expect(validatorMismatch(v.array(v.number()), [1, 'x'])).toBe('$[1]: expected float64');
+	});
+
+	it('names a missed literal by the validator, bigint included', () => {
+		expect(validatorMismatch(v.literal(7n), 8n)).toBe('$: expected literal 7n');
+		expect(validatorMismatch(v.literal('a'), 'b')).toBe('$: expected literal "a"');
+		expect(validatorMismatch(v.object({ n: v.literal(1n) }), { n: 'x' })).toBe(
+			'$.n: expected literal 1n'
+		);
 	});
 
 	it('fails closed on a validator kind it does not know', () => {

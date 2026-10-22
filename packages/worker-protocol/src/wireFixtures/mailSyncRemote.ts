@@ -117,6 +117,14 @@ export const MAIL_SYNC_REMOTE_WIRE_FIXTURES = {
 				continueCursor: M.localCursor,
 			},
 		},
+		{
+			name: 'more to come',
+			value: {
+				page: [LOCAL_ROW_1, LOCAL_ROW_2],
+				isDone: false,
+				continueCursor: M.localPartialCursor,
+			},
+		},
 		{ name: 'not writing back', value: { page: [], isDone: true, continueCursor: '' } },
 	],
 	lookupLocalMessages: [{ name: 'found', value: [LOCAL_ROW_2] }],

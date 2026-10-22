@@ -74,6 +74,14 @@ export const MAIL_SYNC_REMOTE_DRIVES = {
 			bindMinted(w, M.localCursor, page.continueCursor);
 			return page;
 		},
+		'more to come': async (w) => {
+			const page = await w.t.query(internal.mail.external.remoteState.listLocalMessages, {
+				accountId: w.accountId,
+				paginationOpts: { numItems: 2, cursor: null },
+			});
+			bindMinted(w, M.localPartialCursor, page.continueCursor);
+			return page;
+		},
 		'not writing back': (w) =>
 			w.t.query(internal.mail.external.remoteState.listLocalMessages, {
 				accountId: w.oauthAccountId,

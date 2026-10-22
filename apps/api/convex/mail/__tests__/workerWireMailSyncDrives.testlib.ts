@@ -81,9 +81,9 @@ const pause = (w: MailSyncWireWorld) =>
 		reason: 'Account exceeded command or bandwidth limits.',
 	});
 
-const classify = (w: MailSyncWireWorld, probeId: string) =>
+const classify = (w: MailSyncWireWorld, probeId: string, organizationId = 'org-fixture') =>
 	w.t.mutation(internal.analytics.seedPlacement.recordSeedProbeClassification, {
-		organizationId: 'org-fixture',
+		organizationId,
 		probeId,
 		folderName: 'INBOX',
 		now: WIRE_FIXTURE_NOW,
@@ -191,6 +191,19 @@ export const MAIL_SYNC_DRIVES = {
 	recordSeedProbeClassification: {
 		recorded: (w) => classify(w, 'probe-settled'),
 		'unknown probe': (w) => classify(w, 'probe-unknown'),
+		'not this organization': (w) => classify(w, 'probe-settled', 'org-elsewhere'),
+		'never dispatched': async (w) => {
+			// A probe queued but never handed to a transport.
+			await w.t.run(async (ctx) => {
+				const probe = await ctx.db
+					.query('seedPlacementProbes')
+					.withIndex('by_probe_id', (q) => q.eq('probeId', 'probe-settled'))
+					.unique();
+				if (!probe) throw new Error('the seeded probe is missing');
+				await ctx.db.patch(probe._id, { dispatchedAt: undefined });
+			});
+			return await classify(w, 'probe-settled');
+		},
 		'already classified': async (w) => {
 			await classify(w, 'probe-settled');
 			return await classify(w, 'probe-settled');

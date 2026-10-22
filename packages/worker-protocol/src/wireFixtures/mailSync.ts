@@ -149,6 +149,8 @@ export const MAIL_SYNC_WIRE_FIXTURES = {
 			value: { recorded: true, placement: 'inbox', hygiene: { markRead: true, click: false } },
 		},
 		{ name: 'unknown probe', value: { recorded: false, reason: 'unknown_probe' } },
+		{ name: 'not this organization', value: { recorded: false, reason: 'foreign_organization' } },
+		{ name: 'never dispatched', value: { recorded: false, reason: 'never_dispatched' } },
 		{ name: 'already classified', value: { recorded: false, reason: 'already_classified' } },
 	],
 	getBackfillWork: [
