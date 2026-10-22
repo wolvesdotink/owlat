@@ -1,3 +1,4 @@
+import { globToRegExp } from '../fileGlobs.ts';
 import type { Rule } from '../types.ts';
 
 /**
@@ -34,32 +35,6 @@ interface Allowance {
 interface Options {
 	allow?: Allowance[];
 }
-
-const REGEXP_SYNTAX = /[.+^${}()|[\]\\]/gu;
-const compiled = new Map<string, RegExp>();
-
-const globToRegExp = (glob: string): RegExp => {
-	const cached = compiled.get(glob);
-	if (cached) return cached;
-	let pattern = '';
-	for (let index = 0; index < glob.length; index++) {
-		const char = glob[index] as string;
-		if (char === '*' && glob[index + 1] === '*') {
-			const slash = glob[index + 2] === '/';
-			pattern += slash ? '(?:.*/)?' : '.*';
-			index += slash ? 2 : 1;
-		} else if (char === '*') {
-			pattern += '[^/]*';
-		} else if (char === '?') {
-			pattern += '[^/]';
-		} else {
-			pattern += char.replace(REGEXP_SYNTAX, '\\$&');
-		}
-	}
-	const regExp = new RegExp(`(?:^|/)${pattern}$`, 'u');
-	compiled.set(glob, regExp);
-	return regExp;
-};
 
 const rule: Rule = {
 	meta: {

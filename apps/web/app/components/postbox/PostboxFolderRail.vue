@@ -153,6 +153,7 @@ function onGlobalKey(event: KeyboardEvent) {
 }
 
 onMounted(() => {
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- resolves postbox.search through the registry; the chord is postbox.toggleRail
 	window.addEventListener('keydown', onGlobalKey);
 });
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));

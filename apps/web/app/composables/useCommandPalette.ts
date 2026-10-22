@@ -83,6 +83,7 @@ export function listenForCommandPaletteTriggers(
 	const onAsk = () => {
 		if (isAskAvailable()) triggers.ask();
 	};
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- global.commandPalette, shared by the palette and its pre-mount stand-in
 	window.addEventListener('keydown', onKeydown);
 	window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpen);
 	window.addEventListener(COMMAND_PALETTE_ASK_EVENT, onAsk);

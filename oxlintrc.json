@@ -80,6 +80,13 @@
 		"owlat/require-suppression-reason": "error",
 		"owlat/no-test-in-loop": "error",
 		"owlat/no-test-timeout-or-unreasoned-skip": "warn",
+		// Shortcuts in the web app go through the shortcut registry. Scoped by the
+		// rule's own path-suffix `files`, not an override, so the root gates and
+		// apps/web's own lint agree. A warning: the listeners Answer mode still
+		// binds itself are frozen in scripts/owlat-lint-baseline.txt, and every
+		// other raw keydown listener carries a suppression saying why it is not a
+		// shortcut.
+		"owlat/no-raw-keydown-listener": ["warn", { "files": ["apps/web/app/**"] }],
 		"owlat/no-test-environment-pragma": [
 			"error",
 			{

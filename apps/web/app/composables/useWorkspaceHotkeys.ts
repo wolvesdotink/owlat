@@ -35,6 +35,7 @@ export function useWorkspaceHotkeys() {
 
 	onMounted(() => {
 		if (!isDesktop.value) return;
+		// oxlint-disable-next-line owlat/no-raw-keydown-listener -- workspace.switch, matched by event.code so it works on every layout
 		window.addEventListener('keydown', onKeydown);
 	});
 

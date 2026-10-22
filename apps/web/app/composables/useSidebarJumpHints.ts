@@ -66,6 +66,7 @@ export function useSidebarJumpHints(root: Ref<HTMLElement | null>): SidebarJumpH
 	};
 
 	onMounted(() => {
+		// oxlint-disable-next-line owlat/no-raw-keydown-listener -- global.jumpToSidebarItem: Alt shows the hints, Alt+1-9 matched by event.code
 		window.addEventListener('keydown', onKeydown);
 		window.addEventListener('keyup', onKeyup);
 		window.addEventListener('blur', hide);

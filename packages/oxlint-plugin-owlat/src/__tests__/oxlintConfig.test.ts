@@ -109,6 +109,8 @@ const FIXTURES: Record<string, string> = {
 		"\t'one';",
 		'',
 	].join('\n'),
+	// owlat/no-raw-keydown-listener is configured for apps/web/app only.
+	'keydownListener.ts': ["window.addEventListener('keydown', () => {});", ''].join('\n'),
 	'tsIgnore.ts': [
 		'// a reason does not make @ts-ignore acceptable',
 		'// @ts-ignore',
@@ -186,6 +188,10 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 			'owlat(require-suppression-reason)',
 		]);
 		expect(byFile.get('tsTripleSlashReason.ts')).toBeUndefined();
+	});
+
+	it('leaves keydown listeners outside the web app alone', () => {
+		expect(byFile.get('keydownListener.ts')).toBeUndefined();
 	});
 
 	it('keeps @ts-ignore banned even with a reason', () => {

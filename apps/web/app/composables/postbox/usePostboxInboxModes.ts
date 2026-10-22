@@ -185,6 +185,7 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 			openCommandPalette({ scope: 'mail' });
 		}
 	}
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- resolves postbox.toggleBrowse and postbox.search through the registry
 	onMounted(() => window.addEventListener('keydown', onModeKeydown));
 	onBeforeUnmount(() => window.removeEventListener('keydown', onModeKeydown));
 

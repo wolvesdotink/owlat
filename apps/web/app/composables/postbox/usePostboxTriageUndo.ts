@@ -122,6 +122,7 @@ export function usePostboxTriageUndo() {
 		const wanted = entries.value.length > 0;
 		if (wanted && !boundHotkey) {
 			boundHotkey = onWindowKeydown;
+			// oxlint-disable-next-line owlat/no-raw-keydown-listener -- postbox.undoChord, bound only while an undo is pending
 			window.addEventListener('keydown', boundHotkey);
 		} else if (!wanted && boundHotkey) {
 			window.removeEventListener('keydown', boundHotkey);

@@ -213,6 +213,7 @@ function onPageHide() {
 }
 
 onMounted(() => {
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape on the full-page composer: blurs the field, then leaves
 	window.addEventListener('keydown', onKeydown);
 	window.addEventListener('pagehide', onPageHide);
 });
@@ -291,7 +292,11 @@ const frameStyle = computed(() => ({
 						{{ t('compose.startNew') }}
 					</UiButton>
 				</div>
-				<div v-else-if="isLoading || (!requestKey && currentMailbox)" class="flex-1 space-y-3 p-4" aria-hidden="true">
+				<div
+					v-else-if="isLoading || (!requestKey && currentMailbox)"
+					class="flex-1 space-y-3 p-4"
+					aria-hidden="true"
+				>
 					<UiSkeleton class="h-4 w-2/3" />
 					<UiSkeleton class="h-32 w-full" />
 				</div>
