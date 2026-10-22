@@ -172,12 +172,20 @@ interface ComposerDraftRecord {
 	fields: Record<string, unknown>;
 }
 
+/**
+ * A draft as it sits on the device, exactly as read or written. A caller keeps
+ * it to delete the draft later only if nobody (another tab) rewrote it since.
+ */
+export type StoredComposerDraft = Readonly<ComposerDraftRecord>;
+
 /** A draft loaded from the device. */
 export interface LoadedComposerDraft {
 	kind: ComposerDraftKind;
 	target: string;
 	savedAt: number;
 	fields: ComposerDraftFields;
+	/** The stored value it was read from. */
+	stored: StoredComposerDraft;
 }
 
 /** The storage key of one person's draft in one composer. */
@@ -226,25 +234,65 @@ export class ComposerDraftStore {
 		return this.driver.persistent !== false;
 	}
 
-	/** Store one draft. True only when its transaction committed on a real store. */
-	async write(key: string, fields: ComposerDraftFields, savedAt: number): Promise<boolean> {
-		if (!this.persistent) return false;
+	/**
+	 * Store one draft. The stored value only when its transaction committed on
+	 * a real store, else null.
+	 */
+	async write(
+		key: string,
+		fields: ComposerDraftFields,
+		savedAt: number
+	): Promise<StoredComposerDraft | null> {
+		if (!this.persistent) return null;
 		const record: ComposerDraftRecord = { v: 1, savedAt, fields: { ...fields } };
 		try {
 			await this.driver.set(key, record);
+			return record;
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * Delete one draft (it was sent, cleared or discarded). With `expected`,
+	 * only while the device still holds that value: a draft another tab saved
+	 * since is newer text, not the one being let go, and stays. True when the
+	 * key is gone.
+	 */
+	async remove(key: string, expected?: StoredComposerDraft): Promise<boolean> {
+		if (expected !== undefined) return this.removeIfUnchanged(key, expected);
+		try {
+			await this.driver.delete(key);
 			return true;
 		} catch {
 			return false;
 		}
 	}
 
-	/** Delete one draft (it was sent, cleared or discarded). */
-	async remove(key: string): Promise<boolean> {
+	/**
+	 * Read one draft, apply `update` and store the result (nothing left: the
+	 * draft goes, only if it was not rewritten since the read). For a draft no
+	 * page holds in memory, such as one person's after another signed in.
+	 */
+	async update<K extends ComposerDraftKind>(
+		key: string,
+		kind: K,
+		update: (current: ComposerDraftFields<K> | null) => ComposerDraftFields<K> | null,
+		savedAt: number
+	): Promise<void> {
+		let raw: unknown;
 		try {
-			await this.driver.delete(key);
-			return true;
+			raw = await this.driver.get<unknown>(key);
 		} catch {
-			return false;
+			return;
+		}
+		const current =
+			raw === undefined ? null : (parseRecord(kind, raw) as ComposerDraftFields<K> | null);
+		const next = update(current);
+		if (next && !KINDS[kind].isEmpty(next)) {
+			if (!current || !sameStoredValue(next, current)) await this.write(key, next, savedAt);
+		} else if (raw !== undefined) {
+			await this.removeIfUnchanged(key, raw);
 		}
 	}
 
@@ -268,7 +316,7 @@ export class ComposerDraftStore {
 		} catch {
 			return [];
 		}
-		const drafts: Array<LoadedComposerDraft & { key: string; raw: unknown }> = [];
+		const drafts: Array<LoadedComposerDraft & { key: string }> = [];
 		for (const key of keys) {
 			const located = parseKey(key, userPrefix);
 			if (!located || skip(located.kind, located.target)) continue;
@@ -283,15 +331,15 @@ export class ComposerDraftStore {
 				await this.removeIfUnchanged(key, raw);
 				continue;
 			}
-			const savedAt = (raw as ComposerDraftRecord).savedAt;
-			drafts.push({ ...located, key, raw, savedAt, fields });
+			const stored = raw as ComposerDraftRecord;
+			drafts.push({ ...located, key, stored, savedAt: stored.savedAt, fields });
 		}
 		drafts.sort((a, b) => b.savedAt - a.savedAt);
 		const kept: LoadedComposerDraft[] = [];
 		for (const draft of drafts) {
 			const expired = now - draft.savedAt > COMPOSER_DRAFT_RETENTION_MS;
 			if (expired || kept.length >= COMPOSER_DRAFT_CAP) {
-				await this.removeIfUnchanged(draft.key, draft.raw);
+				await this.removeIfUnchanged(draft.key, draft.stored);
 				continue;
 			}
 			kept.push({
@@ -299,21 +347,23 @@ export class ComposerDraftStore {
 				target: draft.target,
 				savedAt: draft.savedAt,
 				fields: draft.fields,
+				stored: draft.stored,
 			});
 		}
 		return kept;
 	}
 
-	private async removeIfUnchanged(key: string, expected: unknown): Promise<void> {
+	private async removeIfUnchanged(key: string, expected: unknown): Promise<boolean> {
 		const unchanged = (current: unknown) => sameStoredValue(current, expected);
 		try {
-			if (this.driver.deleteIf) {
-				await this.driver.deleteIf(key, unchanged);
-				return;
-			}
-			if (unchanged(await this.driver.get<unknown>(key))) await this.driver.delete(key);
+			if (this.driver.deleteIf) return await this.driver.deleteIf(key, unchanged);
+			if (!unchanged(await this.driver.get<unknown>(key))) return false;
+			await this.driver.delete(key);
+			return true;
 		} catch {
-			// Retention is best effort: the next load tries again.
+			// Best effort: retention runs again on the next load, and a draft
+			// that could not be deleted is kept, never lost.
+			return false;
 		}
 	}
 }

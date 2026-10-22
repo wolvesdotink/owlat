@@ -253,12 +253,14 @@ async function undoFollowUp(entry: ReplyEntry) {
 	const followUpId = entry.followUpId;
 	if (!followUpId || undoingFollowUpId.value) return;
 	undoingFollowUpId.value = followUpId;
+	const handBack = keptReply.pin(threadId.value);
 	try {
 		const result = await cancelFollowUp(followUpId);
 		if (!result.ok || !result.result.cancelled) return;
 		// Hand the text back so nothing typed is lost: it waits in the reply,
 		// which opens in Answer mode.
-		keptReply.set(threadId.value, { body: result.result.body, subject: result.result.subject });
+		const { body, subject } = result.result;
+		handBack(() => ({ body, subject }));
 		showToast(t('dashboard.inbox.detail.followUpUndoneToast'));
 		openReply();
 	} finally {

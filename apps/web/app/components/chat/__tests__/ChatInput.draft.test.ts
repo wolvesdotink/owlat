@@ -18,13 +18,19 @@ const device = vi.hoisted(() => ({ driver: null as unknown }));
 vi.mock('~/utils/postboxOfflineKvDriver', () => ({ getOfflineKvDriver: () => device.driver }));
 
 let nextUploadId = 0;
+/** When set, uploads wait for it (an upload still in flight). */
+let uploadGate: Promise<void> | null = null;
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
 		useChatMentionSearch: () => ({ candidates: ref([]) }),
 		useChatAttachments: () => ({
 			isUploading: ref(false),
-			uploadFile: async () => `asset_${++nextUploadId}`,
+			uploadFile: async () => {
+				const id = `asset_${++nextUploadId}`;
+				if (uploadGate) await uploadGate;
+				return id;
+			},
 		}),
 	});
 });
@@ -33,6 +39,7 @@ beforeEach(async () => {
 	const { composerDraftTestDriver } = await import('~/utils/__tests__/composerDraftTestDriver');
 	device.driver = composerDraftTestDriver();
 	nextUploadId = 0;
+	uploadGate = null;
 });
 
 /** A fresh page: new modules, a new book, the same device store. */
@@ -147,5 +154,36 @@ describe('ChatInput drafts', () => {
 
 		const reload = await openPage();
 		expect(reload.input('room1').get('textarea').element.value).toBe('');
+	});
+
+	it('puts an upload and a send that finish after another person signs in on the first person’s draft', async () => {
+		const first = await openPage('u1');
+		const w = first.input('room1');
+		await w.get('textarea').setValue('from u1');
+		await first.book.idle();
+		let finishUpload!: () => void;
+		uploadGate = new Promise((resolve) => (finishUpload = resolve));
+		let acceptSend!: (outcome: { ok: boolean }) => void;
+		first.send.mockReturnValueOnce(new Promise((resolve) => (acceptSend = resolve)));
+		await attach(w, 'u1-only.pdf');
+		await w.get('textarea').trigger('keydown', { key: 'Enter' });
+
+		first.book.bindUser('u2');
+		await first.book.idle();
+		await w.get('textarea').setValue('from u2');
+		finishUpload();
+		acceptSend({ ok: true });
+		await flushPromises();
+		await first.book.idle();
+
+		expect(first.book.get('chat', 'room1')).toEqual({ text: 'from u2', attachments: [] });
+		const driver = device.driver as { map: Map<string, unknown> };
+		expect(driver.map.get(composerDraftKey('u2', 'chat', 'room1'))).toMatchObject({
+			fields: { text: 'from u2', attachments: [] },
+		});
+		// u1's sent text went from u1's own copy; the file it was uploading stayed with it.
+		expect(driver.map.get(composerDraftKey('u1', 'chat', 'room1'))).toMatchObject({
+			fields: { text: '', attachments: [{ id: 'asset_1', filename: 'u1-only.pdf' }] },
+		});
 	});
 });

@@ -21,7 +21,10 @@ const { t } = useI18n();
 type PendingAttachment = { id: Id<'mediaAssets'>; filename: string; mimeType: string };
 
 // The draft (text and the files already uploaded for it) belongs to the room.
-const { draft } = useComposerDraft('chat', () => props.draftTarget, { text: '', attachments: [] });
+const { draft, pin } = useComposerDraft('chat', () => props.draftTarget, {
+	text: '',
+	attachments: [],
+});
 const text = computed({
 	get: () => draft.value.text,
 	set: (next: string) => (draft.value = { ...draft.value, text: next }),
@@ -33,8 +36,17 @@ const pendingAttachments = computed({
 	get: () => draft.value.attachments as PendingAttachment[],
 	set: (next: PendingAttachment[]) => (draft.value = { ...draft.value, attachments: next }),
 });
-function addAttachment(attachment: PendingAttachment) {
-	pendingAttachments.value = [...pendingAttachments.value, attachment];
+// Uploads and sends resolve later: they settle the draft they started from
+// (this room, this account), whatever is on screen by then.
+function pinAttachments() {
+	const settle = pin();
+	return (update: (current: PendingAttachment[]) => PendingAttachment[]) =>
+		settle((now) => ({ ...now, attachments: update(now.attachments as PendingAttachment[]) }));
+}
+function pinText() {
+	const settle = pin();
+	return (update: (current: string) => string) =>
+		settle((now) => ({ ...now, text: update(now.text) }));
 }
 
 const { uploadFile, isUploading } = useChatAttachments();
@@ -49,7 +61,7 @@ const { candidates: mentionCandidates } = useChatMentionSearch(
 
 // `isSending` is true while a send is waiting for the backend; it blocks a
 // second send of the same draft.
-const { isSending, submit } = useAcknowledgedDraft(text);
+const { isSending, submit } = useAcknowledgedDraft(text, pinText);
 
 const canSend = computed(
 	() =>
@@ -138,13 +150,14 @@ const handleFilePick = async (event: Event) => {
 	const files = Array.from(input.files ?? []);
 	for (const file of files) {
 		try {
+			const attach = pinAttachments();
 			const id = await uploadFile(file);
 			if (id) {
-				addAttachment({
-					id,
-					filename: file.name,
-					mimeType: file.type || 'application/octet-stream',
-				});
+				const filename = file.name;
+				attach((now) => [
+					...now,
+					{ id, filename, mimeType: file.type || 'application/octet-stream' },
+				]);
 			}
 		} catch {
 			// Surfacing the error via the composable's `error` ref would also work;
@@ -160,13 +173,14 @@ const handlePaste = async (event: ClipboardEvent) => {
 	event.preventDefault();
 	for (const file of files) {
 		try {
+			const attach = pinAttachments();
 			const id = await uploadFile(file);
 			if (id) {
-				addAttachment({
-					id,
-					filename: file.name || 'pasted-file',
-					mimeType: file.type || 'application/octet-stream',
-				});
+				const filename = file.name || 'pasted-file';
+				attach((now) => [
+					...now,
+					{ id, filename, mimeType: file.type || 'application/octet-stream' },
+				]);
 			}
 		} catch {
 			// no-op
@@ -183,6 +197,7 @@ const handleSend = async () => {
 	// The text snapshot is the composable's; the attachment selection is frozen
 	// here the same way, and only these ids go once the send is accepted.
 	const submittedIds = pendingAttachments.value.map((a) => a.id);
+	const settleAttachments = pinAttachments();
 	mentionQuery.value = null;
 	mentionStart.value = -1;
 	const outcome = await submit((snapshot) =>
@@ -190,7 +205,7 @@ const handleSend = async () => {
 	);
 	// Refused or failed: the operation has toasted it, the draft is kept.
 	if (!outcome?.ok) return;
-	pendingAttachments.value = pendingAttachments.value.filter((a) => !submittedIds.includes(a.id));
+	settleAttachments((now) => now.filter((a) => !submittedIds.includes(a.id)));
 	nextTick(fitTextarea);
 };
 </script>

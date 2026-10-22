@@ -29,7 +29,8 @@ export function usePostboxTeamStream(opts: {
 	messages: () => readonly ReaderMessageLike[];
 	/**
 	 * Open Answer mode on the thread (behind the reply guard). `handed` runs
-	 * once the text is in the composer; a guard turned down never calls it.
+	 * once the text is on a saved draft (a reload keeps it there); a guard
+	 * turned down, or a draft that could not be saved, never calls it.
 	 */
 	reply: (text: string, handed?: () => void) => void;
 }) {
@@ -129,8 +130,9 @@ export function usePostboxTeamStream(opts: {
 		{ immediate: true }
 	);
 
-	// The reply's unsent text, per thread on this device. It goes only once the
-	// composer has it: a reply guard the person turns down keeps it here.
+	// The reply's unsent text, per thread on this device. It goes only once a
+	// saved draft holds it: a reply guard the person turns down, a reload while
+	// the draft is being created, or a draft that failed to save keeps it here.
 	const { draft, pin } = useComposerDraft('mail-reply', opts.threadId, { text: '' });
 	const replyDraft = computed({
 		get: () => draft.value.text,

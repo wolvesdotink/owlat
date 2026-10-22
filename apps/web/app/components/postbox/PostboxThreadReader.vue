@@ -553,8 +553,10 @@ const team = usePostboxTeamStream({
 	reply: (text, handed) =>
 		text.trim() && latestMessage.value
 			? guardLatestReply(() => {
-					handed?.();
-					void openReplyWithBody(latestMessage.value!, text);
+					// The reader's copy goes only once the reply's draft row is saved.
+					void openReplyWithBody(latestMessage.value!, text).then((saved) => {
+						if (saved) handed?.();
+					});
 				})
 			: runReaderAction('reply'),
 });

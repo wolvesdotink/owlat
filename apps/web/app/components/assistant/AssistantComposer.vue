@@ -19,7 +19,7 @@ const emit = defineEmits<{ stop: [] }>();
 
 const { t } = useI18n();
 
-const { draft } = useComposerDraft('assistant', () => props.draftTarget, { text: '' });
+const { draft, pin } = useComposerDraft('assistant', () => props.draftTarget, { text: '' });
 const text = computed({
 	get: () => draft.value.text,
 	set: (next: string) => (draft.value = { text: next }),
@@ -30,7 +30,11 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fieldId = useId();
 const hintId = useId();
 
-const { isSending, submit } = useAcknowledgedDraft(text);
+// A send settles the question it started from, even after an account switch.
+const { isSending, submit } = useAcknowledgedDraft(text, () => {
+	const settle = pin();
+	return (update) => settle((now) => ({ text: update(now.text) }));
+});
 // The last send was refused or failed. The operation has toasted it; this
 // keeps the way back (Retry) next to the question it is about.
 const failed = ref(false);

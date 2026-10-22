@@ -75,12 +75,13 @@ beforeEach(() => {
 });
 
 describe('usePostboxTeamStream', () => {
-	it('keeps the reply text until the composer has it', () => {
+	it('keeps the reply text until a saved draft has it', () => {
 		let handOver: (() => void) | undefined;
 		const state = host([], (_text, handed) => (handOver = handed));
 		state().replyDraft.value = 'Hi Ana';
 		state().continueReply('Hi Ana');
-		// The reply guard is still asking: nothing is lost if it is turned down.
+		// The reply guard is still asking, or the draft row is still being
+		// saved: nothing is lost to a refusal or a reload.
 		expect(state().replyDraft.value).toBe('Hi Ana');
 		expect(useComposerDrafts().has('mail-reply', 'mt_1')).toBe(true);
 		handOver?.();

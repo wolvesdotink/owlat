@@ -16,22 +16,32 @@ export interface TeamKeptReply {
 	gapGuarded?: boolean;
 }
 
+function stored(reply: TeamKeptReply | null): TeamKeptReply | null {
+	return reply
+		? {
+				body: reply.body,
+				subject: reply.subject,
+				...(reply.gapGuarded ? { gapGuarded: true } : {}),
+			}
+		: null;
+}
+
 export function useTeamKeptReply() {
 	const drafts = useComposerDrafts();
 	return {
 		get: (threadId: string): TeamKeptReply | null => drafts.get('team-reply', threadId),
 		set(threadId: string, reply: TeamKeptReply | null) {
-			drafts.set(
-				'team-reply',
-				threadId,
-				reply
-					? {
-							body: reply.body,
-							subject: reply.subject,
-							...(reply.gapGuarded ? { gapGuarded: true } : {}),
-						}
-					: null
-			);
+			drafts.set('team-reply', threadId, stored(reply));
+		},
+		/**
+		 * An updater for the thread's kept text as it belongs to whoever is
+		 * signed in now: what resolves after an await (a send, an undone
+		 * follow-up) goes through it, never through `set`.
+		 */
+		pin(threadId: string) {
+			const settle = drafts.pin('team-reply', threadId);
+			return (update: (current: TeamKeptReply | null) => TeamKeptReply | null) =>
+				settle((current) => stored(update(current)));
 		},
 	};
 }
@@ -39,6 +49,7 @@ export function useTeamKeptReply() {
 /** The slice of the Team inbox composer (`InboxThreadComposer`) the kept text needs. */
 interface KeepingComposer {
 	fill: (body: string, subject: string, gapGuarded?: boolean) => void;
+	reset: () => void;
 	snapshot: () => TeamKeptReply & { touched: boolean };
 }
 
@@ -46,8 +57,11 @@ interface KeepingComposer {
  * Answer mode's side of the kept text. It goes back into `composer` when the
  * editor appears, or when the device copy arrives after it (a reload), unless
  * the person has already typed. What they type is kept as they type it; an
- * editor that goes back to untouched (reset after a send, the agent's draft
- * restored) drops it, and `clear()` forgets it once the reply is sent.
+ * editor that goes back to untouched (the agent's draft restored) drops it.
+ * A send goes through `sending()`: once the reply is accepted, only the text
+ * that was sent is forgotten, and the editor is reset only if it still holds
+ * exactly that. Text typed while the send was in flight stays, in the editor
+ * and on the device.
  */
 export function useKeptTeamComposer(
 	threadId: () => string,
@@ -74,5 +88,23 @@ export function useKeptTeamComposer(
 			wasTouched = typed.touched;
 		}
 	);
-	return { clear: () => kept.set(threadId(), null) };
+	return {
+		/**
+		 * Call when Send is pressed, with what was sent; call the result once
+		 * the reply is accepted.
+		 */
+		sending(sent: { body: string; subject: string }) {
+			const editor = composer.value;
+			const settle = kept.pin(threadId());
+			const isSent = (reply: { body: string; subject: string } | null | undefined) =>
+				!!reply && reply.body === sent.body && reply.subject === sent.subject;
+			return () => {
+				settle((now) => (now === null || isSent(now) ? null : now));
+				if (composer.value !== editor || !editor || !isSent(editor.snapshot())) return;
+				// This reset is the send finishing, not the person dropping their text.
+				wasTouched = false;
+				editor.reset();
+			};
+		},
+	};
 }

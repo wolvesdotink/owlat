@@ -34,7 +34,7 @@ describe('ComposerDraftStore', () => {
 				{ body: 'hi', itemId: 'i1' },
 				NOW
 			)
-		).toBe(true);
+		).toEqual({ v: 1, savedAt: NOW, fields: { body: 'hi', itemId: 'i1' } });
 		await store.write(
 			composerDraftKey('u1', 'chat', 'room1'),
 			{
@@ -49,7 +49,10 @@ describe('ComposerDraftStore', () => {
 			NOW
 		);
 
-		const mine = await store.load('u1', NOW, never);
+		const mine = (await store.load('u1', NOW, never)).map(({ stored, ...draft }) => {
+			expect(stored).toEqual({ v: 1, savedAt: draft.savedAt, fields: draft.fields });
+			return draft;
+		});
 		expect(mine).toEqual([
 			{ kind: 'team-note', target: 'team:th1', savedAt: NOW, fields: { body: 'hi', itemId: 'i1' } },
 			{
@@ -78,11 +81,11 @@ describe('ComposerDraftStore', () => {
 		const noop = new ComposerDraftStore(composerDraftTestDriver({ persistent: false }));
 		expect(
 			await noop.write(composerDraftKey('u1', 'assistant', 'assistant'), { text: 'x' }, NOW)
-		).toBe(false);
+		).toBeNull();
 		const failing = new ComposerDraftStore(composerDraftTestDriver({ failWrites: true }));
 		expect(
 			await failing.write(composerDraftKey('u1', 'assistant', 'assistant'), { text: 'x' }, NOW)
-		).toBe(false);
+		).toBeNull();
 	});
 
 	it('deletes malformed records and records of unknown kinds are left alone', async () => {
@@ -128,6 +131,36 @@ describe('ComposerDraftStore', () => {
 		await store.write(key, { text: 'old' }, NOW - COMPOSER_DRAFT_RETENTION_MS - 1);
 		expect(await store.load('u1', NOW, (kind) => kind === 'assistant')).toEqual([]);
 		expect(driver.map.has(key)).toBe(true);
+	});
+
+	it('deletes a draft only while it still holds the value expected', async () => {
+		const driver = composerDraftTestDriver();
+		const store = new ComposerDraftStore(driver);
+		const key = composerDraftKey('u1', 'assistant', 'assistant');
+		const read = (await store.write(key, { text: 'old' }, NOW))!;
+		// Another tab saved newer text since this one read it.
+		const newer = (await store.write(key, { text: 'newer' }, NOW + 1))!;
+		expect(await store.remove(key, read)).toBe(false);
+		expect(driver.map.get(key)).toEqual(newer);
+		expect(await store.remove(key, newer)).toBe(true);
+		expect(driver.map.has(key)).toBe(false);
+	});
+
+	it('updates a draft no page holds, and deletes it when nothing is left', async () => {
+		const driver = composerDraftTestDriver();
+		const store = new ComposerDraftStore(driver);
+		const key = composerDraftKey('u1', 'chat', 'room1');
+		const file = { id: 'a1', filename: 'a.pdf', mimeType: 'application/pdf' };
+		await store.update(key, 'chat', (now) => ({ text: now?.text ?? '', attachments: [file] }), NOW);
+		expect(driver.map.get(key)).toEqual({
+			v: 1,
+			savedAt: NOW,
+			fields: { text: '', attachments: [file] },
+		});
+		await store.update(key, 'chat', (now) => ({ ...now!, attachments: [] }), NOW + 1);
+		expect(driver.map.has(key)).toBe(false);
+		await store.update(key, 'chat', () => null, NOW + 2);
+		expect(driver.log).toEqual([`set ${key}`, `delete ${key}`]);
 	});
 
 	it('keeps a draft rewritten between the read and the expiry', async () => {

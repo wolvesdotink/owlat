@@ -195,10 +195,10 @@ function leave() {
 }
 
 async function onSend(body: string, fromDraft: boolean, subject: string, gapGuarded: boolean) {
+	const settle = keptReply.sending({ body, subject });
 	const sent = await reply.send({ body, subject, gapGuarded }, fromDraft);
 	if (!sent) return;
-	composerRef.value?.reset();
-	keptReply.clear();
+	settle();
 	if (queueSession?.handleSent('sent')) return;
 	answerNav.leave();
 }
