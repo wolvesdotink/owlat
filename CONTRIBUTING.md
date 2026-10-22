@@ -36,6 +36,27 @@ desktop app from the same WSL2 or Git Bash shell too: the Tauri hooks in
 call) prefix commands with POSIX-style env vars like `OWLAT_DESKTOP=true …`,
 which native PowerShell/cmd cannot parse. macOS and Linux need no special setup.
 
+### Format on commit
+
+CI's format gate (`bun run lint:format`) fails when a changed JS/TS file is not
+oxfmt-clean. To fix that before it reaches CI, install the pre-commit hook once
+per clone:
+
+```bash
+bun run hooks:install     # every worktree of this clone shares the hook
+bun run hooks:uninstall   # remove it again
+```
+
+On each commit the hook runs oxfmt (`oxfmtrc.json`) over the staged `.ts`,
+`.tsx`, `.js`, `.jsx`, `.mjs` and `.cjs` files, the set the CI gate checks, and
+stages the result. Only the staged content is formatted: unstaged edits and
+untracked files are left as they are, and a partially staged file keeps its
+unstaged changes. If oxfmt cannot parse a staged file, the commit stops and
+nothing is changed. `git commit --no-verify` skips the hook, and
+`bun run format:staged` runs the same formatter by hand. The installer leaves an
+existing pre-commit hook, or a `core.hooksPath` setup, alone; call
+`bun scripts/format-staged.ts` from that hook instead.
+
 ## Testing
 
 All packages use **vitest**. Never use `bun test` — it skips the vitest setup file that polyfills Nuxt auto-imports and will produce false failures.
