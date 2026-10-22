@@ -348,7 +348,7 @@ export const listDeliverabilityAlertRecipientStates = internalQuery({
 });
 
 /**
- * The PRE-RUN manifest's row counts (idea 67).
+ * The PRE-RUN manifest's row counts.
  *
  * "Export my data" used to be one button and a spinner: nothing said what was
  * about to be written or how much of it there was, so a fifteen-minute export
@@ -358,8 +358,11 @@ export const listDeliverabilityAlertRecipientStates = internalQuery({
  * PERSONAL resources only. Every org resource is scoped through a membership
  * check per organization, and counting them would mean re-walking the same rows
  * the export is about to stream — i.e. paying for the export twice to describe
- * it. The org half of the manifest is therefore counted AS it streams; see
- * docs/ux-plan/DEFERRALS.md.
+ * it. The org half of the manifest is therefore counted AS it streams, and the
+ * progress bar's denominator is the personal half only: a real run overshoots
+ * it, so `accountExportPercent` caps at 99 until the export reports completion.
+ * Exact org counts would need per-organization row-count rollups (the pattern
+ * `reconcileAllContactCounts` uses for contacts) read here.
  *
  * Mail messages come from the per-folder `totalCount` aggregates, which the
  * delivery path already maintains, so the biggest number in the manifest costs

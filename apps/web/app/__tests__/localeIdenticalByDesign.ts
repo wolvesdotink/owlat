@@ -260,6 +260,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.inbox.activity.channels.whatsapp',
 	'dashboard.inbox.detail.details',
 	'dashboard.inbox.detail.priorities.normal',
+	'dashboard.inbox.detail.priority.normal',
 	'dashboard.inbox.detail.sentiments.neutral',
 	'dashboard.inbox.updates.tabs.spam',
 	'dashboard.index.pageTitle',

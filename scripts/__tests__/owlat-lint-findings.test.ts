@@ -1,6 +1,8 @@
+import { readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { isOwlatWarning, ratchetedWarnings } from '../check-lint-warnings';
-import { findingLine } from '../owlat-lint-findings';
+import { findingLine, lintTargets } from '../owlat-lint-findings';
 
 const finding = (offset: number, length: number) => ({
 	filename: 'apps/web/app/x.test.ts',
@@ -30,6 +32,12 @@ describe('owlat lint ratchet lines', () => {
 		expect(line.split('\t')[2]).toMatch(/^\/\*\* \* folded onto one line x+$/);
 		expect(line.split('\t')[2]!.length).toBe(160);
 	});
+
+	it('trim a snippet whose cut lands on whitespace, so no line ends in a space', () => {
+		const source = Buffer.from(`  ${'x'.repeat(159)} tail`);
+		const snippet = findingLine(finding(0, source.length), source).split('\t')[2]!;
+		expect(snippet).toBe('x'.repeat(159));
+	});
 });
 
 describe('owlat warnings have one owner', () => {
@@ -44,5 +52,18 @@ describe('owlat warnings have one owner', () => {
 		const other = { ...finding(0, 1), code: 'import(no-cycle)' };
 		const enforced = { ...finding(0, 1), severity: 'error' };
 		expect(ratchetedWarnings([finding(0, 1), other, enforced])).toEqual([other]);
+	});
+});
+
+describe('owlat lint ratchet targets', () => {
+	it('lint the workspace trees and the scripts at the repository root', () => {
+		expect(
+			lintTargets(['vitest.shared.ts', 'README.md', 'plugins.config.ts', 'oxlintrc.json'])
+		).toEqual(['apps', 'packages', 'scripts', 'examples', 'plugins.config.ts', 'vitest.shared.ts']);
+	});
+
+	it('include the shared vitest config every workspace config builds on', () => {
+		const root = fileURLToPath(new URL('../..', import.meta.url));
+		expect(lintTargets(readdirSync(root))).toContain('vitest.shared.ts');
 	});
 });

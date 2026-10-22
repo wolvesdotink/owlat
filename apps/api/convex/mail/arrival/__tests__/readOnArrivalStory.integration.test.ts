@@ -221,6 +221,14 @@ describe('read on arrival, the main story', () => {
 		const newsletterId = await deliver(t, NEWSLETTER, 'newsletter');
 		const noticeId = await deliver(t, NOTICE, 'notice');
 		const questionId = await deliver(t, QUESTION, 'question');
+		// Delivery schedules the notice's reply check and, through its category
+		// and R2 answers, its run at the same instant. A run that decides its
+		// depth while the reply check is still pending reads in full (open work,
+		// interpret/defer.ts), so which job convex-test starts first would pick
+		// the depth. Settle the check first: it finds no reply to give.
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, {
+			threadId: (await stateOf(t, noticeId)).thread._id,
+		});
 		await drain(t);
 
 		// 1. Depth and placement per kind of mail.

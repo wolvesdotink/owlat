@@ -111,6 +111,25 @@ describe('groupsForScope', () => {
 		);
 	});
 
+	it('keeps the jump-back list, and the open conversation while nothing is typed', () => {
+		const withJump = [group('jump-back'), group('postbox-thread'), ...groups];
+		expect(groupsForScope(withJump, 'mail', 'all').map((g) => g.key)).toEqual([
+			'jump-back',
+			'postbox-thread',
+			'recent',
+			'mail-hits',
+		]);
+		expect(groupsForScope(withJump, 'mail', 'all', '  ').map((g) => g.key)).toContain(
+			'postbox-thread'
+		);
+		// Typed, the box is a mail search again: the verbs step aside.
+		expect(groupsForScope(withJump, 'mail', 'all', 'from:ines').map((g) => g.key)).toEqual([
+			'jump-back',
+			'recent',
+			'mail-hits',
+		]);
+	});
+
 	it('leaves the other scopes alone', () => {
 		expect(groupsForScope(groups, 'everything', 'all')).toHaveLength(groups.length);
 		expect(groupsForScope(groups, 'ask', 'all')).toHaveLength(groups.length);

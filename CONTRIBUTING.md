@@ -295,7 +295,8 @@ test(mta): await the socket close instead of sleeping
 applied. For verification, state what you ran, what you saw and what you
 couldn't check; the proof each kind of change needs is described under
 [Verifying](./CLAUDE.md#verifying). A UI change includes before/after
-screenshots.
+screenshots, uploaded to the PR description rather than committed
+(`lint:no-pr-assets` fails on captures under `docs/`).
 
 ### CI checks
 

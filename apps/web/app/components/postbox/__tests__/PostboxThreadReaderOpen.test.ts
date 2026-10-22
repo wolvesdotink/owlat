@@ -124,6 +124,7 @@ const CHROME = [
 	'PostboxReaderStrip',
 	'PostboxReaderNotice',
 	'PostboxAiStrip',
+	'PostboxReaderTranslation',
 	'PostboxBriefSheet',
 	'PostboxReaderDetails',
 	'PostboxAttachmentLightbox',

@@ -215,6 +215,54 @@ PR description records why the change was made. Don't add a numbered decision
 record or a new decisions folder. To read a removed record, use
 `git log --diff-filter=D --name-only -- docs/adr` and `git show <sha>^:<path>`.
 
+## Documentation
+
+Most changes need no documentation change. The code, its types and its tests
+already record what it does. [`docs/README.md`](docs/README.md) lists the docs
+that exist and says what each kind holds.
+
+Before adding a paragraph anywhere, ask what a maintainer would get wrong
+without it. If reading the code answers the question, leave it out.
+
+- **Code comments** hold the local explanation: why this code is shaped this
+  way, and the trap in it.
+- **`apps/api/convex/CONVENTIONS.md`** holds rules that span Convex modules.
+- **Internal docs under `docs/`** hold constraints and traps that cross
+  services or packages and that the source does not show. Link to the code
+  instead of copying it. A new page needs a reason that will still hold in a
+  year, and an entry in `docs/README.md`.
+- **`CONTEXT.md`** is the glossary. It defines shared vocabulary, one term at a
+  time. It is not a feature index, so don't list fields, functions, files or
+  counts in it, and don't narrate control flow. When you edit a term, move any
+  implementation detail it carries into a code comment or `CONVENTIONS.md` and
+  keep the definition. Cross-references keep the `**§ Section name**` spelling,
+  which `apps/docs/__tests__/contextVocabularyDocs.test.ts` checks.
+- **The docs site** (`apps/docs/content/en` and `de`) helps users and operators
+  do a task: what a feature does, how to start, and what is surprising about
+  it. It leaves out implementation details and contributor tooling. A new
+  control does not need its own page, and a UI tweak needs no entry.
+- **Maintainer procedures** (releasing, the local stack, observability) live in
+  `docs/RELEASING.md` and `docs/operations/`.
+
+When a documented rule or behaviour changes, rewrite or delete the text that
+describes it. Don't append a dated note about the new behaviour or a PR
+summary. The PR and `CHANGELOG.md` hold the history.
+
+## Plans and work artifacts
+
+Don't commit implementation plans, research notes, review reports or agent
+scratch files. Keep them outside the worktree. The GitHub issue that owns the
+work tracks it, and the merged PR records what was built. PR evidence
+(screenshots, recordings) goes into the PR description, never into the tree.
+
+`bun run lint:no-pr-assets` (part of `ci:lint`) fails when the index holds a
+file under `docs/plans/`, `docs/ux-plan/`, `docs/ui-polish/`,
+`docs/screenshots/`, `scripts/uiaudit/` or `apps/web/app/lib/uiMock/`, an image
+or recording anywhere under `docs/`, or a `*_PLAN_*` or `*-plan.html` file at the
+repository root. `.gitignore` lists the same directories. The gate cannot see the
+harness's mock branch inside `apps/web/app/plugins/convex.client.ts`, so revert
+that file yourself before committing.
+
 ## Pull requests
 
 Titles and commit subjects are conventional and in plain language:

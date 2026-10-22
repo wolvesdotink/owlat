@@ -4,7 +4,8 @@
  * gates) and from a workspace with `--config ../../oxlintrc.json` (every
  * workspace `lint` script). The rule suites prove what each rule reports; this
  * suite proves the config loads the plugin in both places, turns the rules on
- * as errors and makes a stale suppression fail.
+ * (as errors, or as warnings for the rules whose debt the owlat lint ratchet
+ * holds) and makes a stale suppression fail.
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -39,6 +40,41 @@ const FIXTURES: Record<string, string> = {
 		`// ${PRAGMA_TAG} node`,
 		"import { it } from 'vitest';",
 		"it('a', () => {});",
+		'',
+	].join('\n'),
+	// The test-timing rules: one real-clock sleep inside one polling loop, and
+	// one stopwatch subtraction.
+	'timing.test.ts': [
+		"import { it } from 'vitest';",
+		'',
+		"it('waits', async () => {",
+		'\tconst started = Date.now();',
+		'\twhile (!ready()) {',
+		'\t\tawait new Promise((resolve) => setTimeout(resolve, 10));',
+		'\t}',
+		'\texpect(Date.now() - started).toBeLessThan(1000);',
+		'});',
+		'',
+		'declare function ready(): boolean;',
+		'',
+	].join('\n'),
+	'timeout.test.ts': [
+		"import { it } from 'vitest';",
+		'',
+		"it('slow', async () => {}, 30_000);",
+		'',
+	].join('\n'),
+	'quarantined.test.ts': [
+		"import { it } from 'vitest';",
+		'',
+		'// quarantine: #1234 the relay drops the second hello under load',
+		"it.skip('relays twice', () => {});",
+		'',
+	].join('\n'),
+	'vitest.config.ts': [
+		"import { defineConfig } from 'vitest/config';",
+		'',
+		'export default defineConfig({ test: { retry: 1 } });',
 		'',
 	].join('\n'),
 	'unexplained.ts': [
@@ -110,8 +146,13 @@ afterAll(() => {
 	rmSync(fixtureDirectory, { recursive: true, force: true });
 });
 
-const errorCodes = (diagnostics: Diagnostic[] | undefined) =>
-	(diagnostics ?? []).filter((d) => d.severity === 'error').map((d) => d.code ?? d.message);
+const codesWith = (severity: string) => (diagnostics: Diagnostic[] | undefined) =>
+	(diagnostics ?? []).filter((d) => d.severity === severity).map((d) => d.code ?? d.message);
+const errorCodes = codesWith('error');
+// A rule that lands with debt is a warning; scripts/check-owlat-lint.sh ratchets it.
+// Sorted: one fixture can trip several warning rules, reported in source order.
+const warningCodes = (diagnostics: Diagnostic[] | undefined) =>
+	codesWith('warning')(diagnostics).sort();
 
 describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd) => {
 	let byFile: Map<string, Diagnostic[]>;
@@ -126,8 +167,30 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(errorCodes(byFile.get('loop.test.ts'))).toEqual(['owlat(no-test-in-loop)']);
 	});
 
+	it('warns about a real-clock sleep, a polling loop and an elapsed-time check', () => {
+		expect(errorCodes(byFile.get('timing.test.ts'))).toEqual([]);
+		expect(warningCodes(byFile.get('timing.test.ts'))).toEqual([
+			'owlat(no-polling-loop-in-tests)',
+			'owlat(no-real-time-wait-in-tests)',
+			'owlat(no-wall-clock-in-tests)',
+		]);
+	});
+
 	it('reports a per-file test environment pragma', () => {
 		expect(errorCodes(byFile.get('pragma.test.ts'))).toEqual(['owlat(no-test-environment-pragma)']);
+	});
+
+	it('reports a local test timeout and a retry in a vitest config for the ratchet', () => {
+		expect(warningCodes(byFile.get('timeout.test.ts'))).toEqual([
+			'owlat(no-test-timeout-or-unreasoned-skip)',
+		]);
+		expect(warningCodes(byFile.get('vitest.config.ts'))).toEqual([
+			'owlat(no-test-timeout-or-unreasoned-skip)',
+		]);
+	});
+
+	it('accepts a skip that names its tracking issue', () => {
+		expect(byFile.get('quarantined.test.ts')).toBeUndefined();
 	});
 
 	it('reports a suppression that does not say why', () => {

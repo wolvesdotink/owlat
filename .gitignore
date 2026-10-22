@@ -92,9 +92,19 @@ previews/
 /*_PLAN_*.md
 /*_PLAN_*.html
 # Scratch plans written during a session; never product content.
-/docs/plans/
 /*-plan.html
 /*-pipeline.html
+
+# Plans and PR evidence belong in the issue or PR that owns them, and the
+# mock-Convex screenshot harness is local scaffolding. `lint:no-pr-assets`
+# (scripts/check-no-pr-assets.ts) fails on tracked files under these paths, so
+# a force-add does not get past this list either.
+/docs/plans/
+/docs/ui-polish/
+/docs/ux-plan/
+/docs/screenshots/
+/scripts/uiaudit/
+/apps/web/app/lib/uiMock/
 
 # Playwright MCP session artifacts (distinct from playwright-report/ above)
 .playwright-mcp/

@@ -17,6 +17,7 @@
  */
 import type { PaletteGroup, PaletteMode } from './commandPalette';
 import { routePrefixMatcher } from './commandPaletteRegistry';
+import { POSTBOX_THREAD_COMMAND_GROUP_KEY } from './commandPaletteThreadSurfaces';
 
 /** Which corpus the overlay searches. */
 export type PaletteScope = 'mail' | 'ask' | 'everything';
@@ -77,12 +78,13 @@ export function nextPaletteScope(
 }
 
 /**
- * The groups Mail scope renders in its own (unprefixed) palette: its recents,
- * its autocomplete, its live hits, and the row that hands off to the deep search
- * page. Everything else — navigation, verbs, contacts, campaigns — stays one
- * `>`/`@`/`#` prefix or one Tab away.
+ * The groups Mail scope renders in its own (unprefixed) palette: the records
+ * opened last, its recents, its autocomplete, its live hits, and the row that
+ * hands off to the deep search page. Everything else — navigation, verbs,
+ * contacts, campaigns — stays one `>`/`@`/`#` prefix or one Tab away.
  */
 export const MAIL_SCOPE_GROUP_KEYS: ReadonlySet<string> = new Set([
+	'jump-back',
 	'recent',
 	'mail-suggest',
 	'mail-hits',
@@ -90,17 +92,31 @@ export const MAIL_SCOPE_GROUP_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * What Mail scope adds while nothing is typed: the open conversation's verbs.
+ * ⌘K on a conversation is most often "do something to this one"; the moment a
+ * character is typed the box is a mail search again and they step aside (`>`
+ * still lists them).
+ */
+const MAIL_SCOPE_IDLE_GROUP_KEYS: ReadonlySet<string> = new Set([POSTBOX_THREAD_COMMAND_GROUP_KEY]);
+
+/**
  * Keep only the groups the active scope admits.
  *
  * Only Mail narrows, and only while unprefixed: a typed `>` means the user asked
  * for commands and must get them wherever they are. Everything and Ask never
- * narrow here (Ask renders its answer instead of groups). Pure.
+ * narrow here (Ask renders its answer instead of groups). `term` is the
+ * prefix-stripped query; an empty one also admits the idle-only groups. Pure.
  */
 export function groupsForScope(
 	groups: PaletteGroup[],
 	scope: PaletteScope,
-	mode: PaletteMode
+	mode: PaletteMode,
+	term = ''
 ): PaletteGroup[] {
 	if (scope !== 'mail' || mode !== 'all') return groups.slice();
-	return groups.filter((group) => MAIL_SCOPE_GROUP_KEYS.has(group.key));
+	const idle = term.trim() === '';
+	return groups.filter(
+		(group) =>
+			MAIL_SCOPE_GROUP_KEYS.has(group.key) || (idle && MAIL_SCOPE_IDLE_GROUP_KEYS.has(group.key))
+	);
 }

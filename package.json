@@ -108,6 +108,7 @@
 		"lint:ast-gate-parity": "bun scripts/ast-gate-parity.ts",
 		"lint:mail-services": "bash scripts/check-mail-service-guards.sh",
 		"lint:source-bytes": "bash scripts/check-source-nul-bytes.sh",
+		"lint:no-pr-assets": "bun scripts/check-no-pr-assets.ts",
 		"lint:stored-block-corpus": "bun scripts/check-stored-block-corpus.ts",
 		"lint:plugin-imports": "bun run plugins:prepare && bun packages/plugin-codegen/src/cli.ts --boundaries-only",
 		"plugins:prepare": "bun run --cwd packages/provider-kit build && bun run --cwd packages/plugin-kit build",

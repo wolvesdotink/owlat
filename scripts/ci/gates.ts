@@ -357,6 +357,8 @@ export const ROOT_GATES: readonly RootGate[] = [
 	},
 	// Scans every tracked source, config and doc file.
 	{ name: 'source-bytes', paths: [ANYWHERE] },
+	// Lists every tracked path, so any added file can trip it.
+	{ name: 'no-pr-assets', paths: [ANYWHERE] },
 	{
 		name: 'stored-block-corpus',
 		paths: ['packages/email-renderer/src/', 'scripts/check-stored-block-corpus.ts'],
