@@ -15,7 +15,8 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireOrgPermission, type MutationSessionContext } from '../lib/sessionOrganization';
-import { getOrThrow, throwInvalidState } from '../_utils/errors';
+import { throwInvalidState } from '../_utils/errors';
+import { getLiveOrThrow } from '../lib/softDelete';
 
 /**
  * Require that the caller may manage automations. Lifecycle-style mutations
@@ -36,8 +37,9 @@ export async function requireAutomationManage(
 }
 
 /**
- * Require manage permission AND that the target automation exists. Returns
- * both so the handler doesn't re-query either.
+ * Require manage permission AND that the target automation exists and is not
+ * in Recently deleted (a stale tab cannot edit, duplicate or activate it).
+ * Returns both so the handler doesn't re-query either.
  */
 export async function requireAutomation(
 	ctx: MutationCtx,
@@ -45,7 +47,7 @@ export async function requireAutomation(
 	action: string
 ): Promise<{ session: MutationSessionContext; automation: Doc<'automations'> }> {
 	const session = await requireAutomationManage(ctx, action);
-	const automation = await getOrThrow(ctx, automationId, 'Automation');
+	const automation = await getLiveOrThrow(ctx, automationId, 'Automation');
 	return { session, automation };
 }
 

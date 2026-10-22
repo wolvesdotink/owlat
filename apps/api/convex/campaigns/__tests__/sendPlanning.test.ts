@@ -41,6 +41,15 @@ describe('classifyStartSendSkip', () => {
 		expect(classifyStartSendSkip({ status: 'sent' }, NOW)).toBe('Campaign was already sent');
 	});
 
+	it('no-ops a hop for a campaign in Recently deleted, whatever its status', () => {
+		expect(classifyStartSendSkip({ status: 'scheduled', deletedAt: NOW - 1 }, NOW)).toBe(
+			'Campaign was deleted'
+		);
+		expect(classifyStartSendSkip({ status: 'sending', deletedAt: NOW - 1 }, NOW)).toBe(
+			'Campaign was deleted'
+		);
+	});
+
 	it('lets a `sending` campaign through — the lifecycle owns that race', () => {
 		expect(classifyStartSendSkip({ status: 'sending' }, NOW)).toBeUndefined();
 		// Even with a stale future scheduledAt still on the row: the lifecycle

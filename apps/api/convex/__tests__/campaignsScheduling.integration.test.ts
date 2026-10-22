@@ -693,14 +693,15 @@ describe('campaigns.create (campaign.created audit)', () => {
 });
 
 describe('campaigns.remove (campaign.deleted audit)', () => {
-	it('deletes a draft campaign and writes a campaign.deleted audit row', async () => {
+	it('moves a draft campaign to Recently deleted and writes a campaign.deleted audit row', async () => {
 		const t = setupTest();
 		const campaignId = await seedCampaign(t, { status: 'draft', name: 'Doomed' });
 
 		await t.mutation(api.campaigns.campaigns.remove, { campaignId });
 
-		const gone = await t.run(async (ctx) => ctx.db.get(campaignId));
-		expect(gone).toBeNull();
+		const deleted = await t.run(async (ctx) => ctx.db.get(campaignId));
+		expect(deleted?.deletedAt).toEqual(expect.any(Number));
+		expect(deleted?.deletedBy).toBe('test-user');
 
 		const audits = await t.run(async (ctx) =>
 			ctx.db
@@ -731,7 +732,7 @@ describe('campaigns.remove (campaign.deleted audit)', () => {
 		setUser('editor-user', 'editor');
 		await t.mutation(api.campaigns.campaigns.remove, { campaignId });
 
-		const gone = await t.run(async (ctx) => ctx.db.get(campaignId));
-		expect(gone).toBeNull();
+		const deleted = await t.run(async (ctx) => ctx.db.get(campaignId));
+		expect(deleted?.deletedBy).toBe('editor-user');
 	});
 });

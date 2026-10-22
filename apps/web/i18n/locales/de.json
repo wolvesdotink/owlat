@@ -6968,6 +6968,7 @@
 				"automations": "Automatisierungen",
 				"allAutomations": "Alle Automatisierungen",
 				"audience": "Zielgruppe",
+				"recentlyDeleted": "Zuletzt gelöscht",
 				"templates": "Vorlagen",
 				"draft": "Entwurf",
 				"deliveryHealthy": "Zustellung in Ordnung",
@@ -10516,12 +10517,6 @@
 					"viewDetails": "Details ansehen"
 				},
 				"adminsOnly": "Nur Inhaber und Administratoren können Automationen erstellen oder bearbeiten.",
-				"deleteDialog": {
-					"activeWarning": "Aktive Automationen müssen vor dem Löschen pausiert werden.",
-					"body": "Möchtest du {name} wirklich löschen?",
-					"note": "Diese Aktion kann nicht rückgängig gemacht werden. Die Automation und alle ihre Schritte werden endgültig gelöscht.",
-					"title": "Automation löschen"
-				},
 				"empty": {
 					"action": "Automation erstellen",
 					"description": "Erstelle deine erste Automation, um automatisch E-Mails zu senden, wenn sich ein Kontakt registriert, etwas abonniert oder ein Ereignis auslöst.",
@@ -10541,6 +10536,7 @@
 					"delete": "Automation löschen",
 					"duplicate": "Automation duplizieren",
 					"pause": "Automation pausieren",
+					"restore": "Automation wiederherstellen",
 					"resume": "Automation fortsetzen"
 				},
 				"pageTitle": "Automationen — Owlat",
@@ -10558,7 +10554,6 @@
 				"title": "Automationen",
 				"toasts": {
 					"activated": "„{name}“ ist jetzt aktiv",
-					"deleted": "Automation wurde gelöscht",
 					"draftNotToggleable": "Bitte vervollständige und aktiviere diese Automation im Builder",
 					"duplicated": "Automation wurde dupliziert",
 					"paused": "„{name}“ wurde pausiert"
@@ -10790,12 +10785,6 @@
 					"eyebrow": "Alles erledigt",
 					"title": "Nichts wartet auf dich."
 				},
-				"deleteDialog": {
-					"confirm": "Kampagne löschen",
-					"confirmQuestion": "Möchtest du {name} wirklich löschen?",
-					"description": "Diese Aktion kann nicht rückgängig gemacht werden. Die Kampagne und ihre Daten werden dauerhaft gelöscht.",
-					"title": "Kampagne löschen"
-				},
 				"deleteOperation": "Kampagne löschen",
 				"duplicateOperation": "Kampagne duplizieren",
 				"errorTitle": "Kampagnen konnten nicht geladen werden",
@@ -10816,6 +10805,7 @@
 					"scheduled": "Geplant",
 					"sent": "Versendet"
 				},
+				"restoreOperation": "Kampagne wiederherstellen",
 				"searchEmpty": {
 					"description": "Keine Kampagne passt zu \"{query}\". Versuche einen anderen Suchbegriff.",
 					"title": "Keine Ergebnisse gefunden"
@@ -10825,7 +10815,6 @@
 				"subtitle": "Alles, was du versendet hast, und alles, was auf dich wartet – an einem Ort.",
 				"title": "Kampagnen",
 				"toasts": {
-					"deleted": "Kampagne gelöscht",
 					"duplicated": "Kampagne dupliziert"
 				}
 			},
@@ -11569,6 +11558,33 @@
 			}
 		},
 		"marketing": {
+			"deleted": {
+				"campaignsNote": "Eine geplante Kampagne kommt als Entwurf zurück, damit sie nie unerwartet versendet wird.",
+				"empty": {
+					"title": "Nichts gelöscht",
+					"description": "Was du hier löschst, kannst du 30 Tage lang wiederherstellen."
+				},
+				"errorTitle": "Zuletzt gelöschte Elemente konnten nicht geladen werden",
+				"loadMore": "Mehr laden",
+				"meta": "Gelöscht {deleted} · wird {purge} endgültig entfernt",
+				"pageTitle": "Zuletzt gelöscht",
+				"restore": "Wiederherstellen",
+				"restoreNamed": "{name} wiederherstellen",
+				"restoreOperation": "Wiederherstellen",
+				"restored": "{name} wiederhergestellt",
+				"subtitle": "Gelöschte Kampagnen, Automationen und Vorlagen bleiben 30 Tage hier. Stell eine wieder her, um sie an ihren alten Platz zurückzuholen.",
+				"tabs": {
+					"campaigns": "Kampagnen",
+					"automations": "Automationen",
+					"templates": "Vorlagen"
+				},
+				"tabsLabel": "Was gelöscht wurde",
+				"title": "Zuletzt gelöscht",
+				"unavailable": {
+					"title": "Nichts wiederherzustellen",
+					"description": "Nur wer Kampagnen, Automationen oder Vorlagen löschen kann, kann sie auch wiederherstellen."
+				}
+			},
 			"errorMessage": "Beim Laden deiner Kampagnenzahlen ist etwas schiefgelaufen. Versuche es gleich noch einmal.",
 			"errorTitle": "Übersicht konnte nicht geladen werden",
 			"firstRun": {
@@ -12371,12 +12387,6 @@
 					},
 					"createAndEdit": "Erstellen & bearbeiten",
 					"creating": "Wird erstellt...",
-					"delete": {
-						"confirm": "Möchtest du {name} wirklich löschen?",
-						"confirmButton": "Vorlage löschen",
-						"description": "Diese Aktion kann nicht rückgängig gemacht werden. Die Vorlage wird endgültig gelöscht.",
-						"title": "Vorlage löschen"
-					},
 					"empty": {
 						"action": "Marketing-Vorlage erstellen",
 						"description": "Erstelle deine erste Marketing-Vorlage, um Kampagnen und Newsletter zu versenden.",
@@ -12396,7 +12406,8 @@
 					"operations": {
 						"create": "Vorlage erstellen",
 						"delete": "Vorlage löschen",
-						"duplicate": "Vorlage duplizieren"
+						"duplicate": "Vorlage duplizieren",
+						"restore": "Vorlage wiederherstellen"
 					},
 					"pageTitle": "Marketing-E-Mails — Owlat",
 					"searchPlaceholder": "Vorlagen suchen...",
@@ -12405,7 +12416,6 @@
 					"templateCount": "{count} Marketing-Vorlage | {count} Marketing-Vorlagen",
 					"title": "Marketing-Vorlagen",
 					"toasts": {
-						"deleted": "Vorlage erfolgreich gelöscht",
 						"duplicated": "Vorlage erfolgreich dupliziert"
 					}
 				}
@@ -14093,6 +14103,7 @@
 				"overview": "Übersicht",
 				"plugins": "Plugins",
 				"providerRouting": "Anbieter-Routing",
+				"recentlyDeleted": "Zuletzt gelöscht",
 				"sealedMail": "Versiegelte Mail",
 				"quarantine": "Quarantäne",
 				"savedReplies": "Gespeicherte Antworten",
@@ -14447,6 +14458,7 @@
 				"send": {
 					"automations": "Automationen",
 					"campaigns": "Kampagnen",
+					"recentlyDeleted": "Zuletzt gelöscht",
 					"templates": "Vorlagen",
 					"transactional": "Transaktional",
 					"overview": "Marketing-Übersicht"
@@ -15325,6 +15337,9 @@
 				"ownership": "Domain-Inhaberschaft",
 				"spf": "SPF"
 			}
+		},
+		"marketingDeleteUndo": {
+			"deleted": "{name} gelöscht"
 		},
 		"memberTable": {
 			"added": "Hinzugefügt",

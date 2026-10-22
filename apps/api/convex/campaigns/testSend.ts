@@ -19,6 +19,7 @@ import {
 	throwForbidden,
 	throwRateLimited,
 } from '../_utils/errors';
+import { isLive } from '../lib/softDelete';
 
 /**
  * Guard the test/preview send actions: per-user rate limit + restrict
@@ -114,7 +115,7 @@ export const sendTestEmail = authedAction({
 			campaignId: args.campaignId,
 		});
 
-		if (!campaign) {
+		if (!isLive(campaign)) {
 			throwNotFound('Campaign');
 		}
 

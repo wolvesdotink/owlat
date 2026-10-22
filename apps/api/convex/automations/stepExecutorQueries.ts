@@ -17,16 +17,18 @@ import {
 	recordSkippedSteps,
 	transitionStepRun,
 } from './stepRunTransitions';
+import { getLive } from '../lib/softDelete';
 
 // ============== Internal Queries ==============
 
-// Get email template for step execution
+// Get email template for step execution; one in Recently deleted reads as
+// gone, so the step fails instead of sending it.
 export const getEmailTemplateForStep = internalQuery({
 	args: {
 		templateId: v.id('emailTemplates'),
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db.get(args.templateId);
+		return await getLive(ctx, args.templateId);
 	},
 });
 

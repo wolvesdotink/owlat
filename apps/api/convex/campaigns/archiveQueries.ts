@@ -3,10 +3,11 @@ import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { resolveStoredFeatureFlags } from '../lib/featureFlags';
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
+import { isLive } from '../lib/softDelete';
 
 /**
  * Get campaign archive data by archive token.
- * Only returns data for sent campaigns with archiveEnabled: true, and only
+ * Only returns data for live (not deleted) sent campaigns with archiveEnabled: true, and only
  * while the `campaigns` feature is on. `campaigns.archive` is not checked
  * here: send.ts reads it as the default for campaigns that leave
  * archiveEnabled unset, and a campaign's own setting overrides it.
@@ -19,7 +20,8 @@ export const getCampaignByArchiveToken = internalQuery({
 			.withIndex('by_archive_token', (q) => q.eq('archiveToken', args.archiveToken))
 			.first();
 
-		if (!campaign) return null;
+		// A deleted campaign's public archive goes with it (and comes back on restore).
+		if (!isLive(campaign)) return null;
 		if (campaign.status !== 'sent') return null;
 		if (!campaign.archiveEnabled) return null;
 		if (!campaign.archiveHtmlContent) return null;

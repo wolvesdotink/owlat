@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { softDeleteFields } from '../lib/validators/softDelete';
 import { abTestConfigValidator, campaignStatusValidator } from '../lib/convexValidators';
 import { audienceValidator } from '../campaigns/audience';
 import { sendStatusValidator, abVariantValidator } from '../lib/literalValidators';
@@ -274,17 +275,26 @@ export const campaignTables = {
 		cancelledAt: v.optional(v.number()),
 		// Marks rows inserted by /seed/demo so they can be wiped on reset.
 		seedTag: v.optional(v.string()),
+		// Recently deleted (lib/softDelete.ts): a deleted campaign keeps its row,
+		// Sends and stats until the 30-day purge (campaigns/deletion.ts).
+		...softDeleteFields,
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
 		.index('by_status', ['status'])
-		.index('by_updated_at', ['updatedAt'])
-		// Status-filtered browse for the Listing engine: status leads,
-		// updatedAt orders within it — index-native filtered listing, no scan.
-		.index('by_status_and_updated_at', ['status', 'updatedAt'])
+		// Browse indexes for the Listing engine. `deletedAt` leads so a live read
+		// pins it to undefined inside the range (Recently deleted rows are never
+		// read), and the Recently deleted list and purge read `[0, cutoff)` from
+		// the same index. Status-filtered browse: status follows, updatedAt
+		// orders within it — index-native filtered listing, no scan.
+		.index('by_deleted_at_and_updated_at', ['deletedAt', 'updatedAt'])
+		.index('by_deleted_at_and_status_and_updated_at', ['deletedAt', 'status', 'updatedAt'])
 		.index('by_status_and_scheduled_at', ['status', 'scheduledAt'])
 		.index('by_status_sent_at', ['status', 'sentAt'])
+		// Live sends newest first (overview, comparisons, assistant stats): the
+		// range skips Recently deleted rows before any limit is applied.
+		.index('by_deleted_at_and_status_and_sent_at', ['deletedAt', 'status', 'sentAt'])
 		.index('by_archive_token', ['archiveToken'])
 		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` indexes campaign
 		// METADATA (name, subject), not a sealed 1:1 message body — campaigns are the
@@ -292,7 +302,7 @@ export const campaignTables = {
 		// See lib/atRestBodies.ts and apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_campaigns', {
 			searchField: 'searchableText',
-			filterFields: ['status'],
+			filterFields: ['status', 'deletedAt'],
 		}),
 
 	// Email Sends - tracks individual email sends for campaigns

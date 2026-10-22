@@ -23,6 +23,7 @@ import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestEmailTemplate } from './factories';
 import { VERSION_HISTORY_LIMIT } from '../emailTemplates/versionSnapshot';
+import { SOFT_DELETE_RETENTION_MS } from '../lib/softDelete';
 
 const sessionMock = vi.hoisted(() => ({
 	user: { id: 'user-alice', role: 'owner' as 'owner' | 'admin' | 'editor' },
@@ -255,7 +256,7 @@ describe('read surface', () => {
 });
 
 describe('cascade', () => {
-	it('deletes the history with the template', async () => {
+	it('keeps the history while the template is in Recently deleted and purges it with the template', async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t);
 		const survivorId = await seedTemplate(t);
@@ -267,7 +268,13 @@ describe('cascade', () => {
 		});
 
 		await t.mutation(api.emailTemplates.emails.remove, { templateId });
+		expect(await versionRows(t, templateId)).toHaveLength(1);
 
+		await t.mutation(internal.marketing.recentlyDeleted.purgeExpired, {
+			now: Date.now() + SOFT_DELETE_RETENTION_MS + 1,
+		});
+
+		expect(await t.run(async (ctx) => ctx.db.get(templateId))).toBeNull();
 		expect(await versionRows(t, templateId)).toHaveLength(0);
 		expect(await versionRows(t, survivorId)).toHaveLength(1);
 	});

@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useCampaignCommandRows } from '~/composables/useCampaignCommandRows';
 import { useListPage } from '~/composables/useListPage';
+import { useMarketingDeleteUndo } from '~/composables/useMarketingDeleteUndo';
 import type { CampaignStatus } from '~/composables/useCampaignStatusBadge';
 import type { CampaignRowFields, DecoratedRow } from '~/utils/campaignCommandRow';
 
@@ -66,17 +67,24 @@ const { run: duplicateCampaign } = useBackendOperation(api.campaigns.campaigns.d
 const { run: deleteCampaign } = useBackendOperation(api.campaigns.campaigns.remove, {
 	label: () => t('dashboard.campaigns.index.deleteOperation'),
 });
+const { run: restoreCampaign } = useBackendOperation(api.campaigns.campaigns.restore, {
+	label: () => t('dashboard.campaigns.index.restoreOperation'),
+});
+const { deleteWithUndo } = useMarketingDeleteUndo();
 
-// Search (debounced, server-side), the delete dialog and the `n` / Escape
-// shortcuts. No sort menu: the status tabs are how this list narrows down.
+// Search (debounced, server-side), the delete and the `n` / Escape shortcuts.
+// No sort menu: the status tabs are how this list narrows down. A delete runs
+// at once (the campaign goes to Recently deleted) and the toast offers Undo.
 // `reactive` unwraps the refs, so the template reads `list.searchQuery`.
 const list = reactive(
 	useListPage<CampaignRowFields>({
-		onDelete: async (campaign) => {
-			const result = await deleteCampaign({ campaignId: campaign._id });
-			if (result.ok) showToast(t('dashboard.campaigns.index.toasts.deleted'));
-			return result.ok;
-		},
+		confirmDelete: false,
+		onDelete: (campaign) =>
+			deleteWithUndo({
+				name: campaign.name,
+				remove: async () => (await deleteCampaign({ campaignId: campaign._id })).ok,
+				restore: () => restoreCampaign({ campaignId: campaign._id }),
+			}),
 		onNew: () => handleNewCampaign(),
 	})
 );
@@ -285,19 +293,8 @@ async function handleDuplicate(id: Id<'campaigns'>) {
 				query: debouncedSearch,
 			}),
 		}"
-		:delete-copy="{
-			title: t('dashboard.campaigns.index.deleteDialog.title'),
-			confirmKeypath: 'dashboard.campaigns.index.deleteDialog.confirmQuestion',
-			description: t('dashboard.campaigns.index.deleteDialog.description'),
-			confirmText: t('dashboard.campaigns.index.deleteDialog.confirm'),
-		}"
-		:delete-open="list.isDeleteOpen"
-		:delete-name="list.deleteTarget?.name"
-		:is-deleting="list.isDeleting"
 		@retry="retryActive"
 		@clear-search="list.clearSearch"
-		@confirm-delete="list.confirmDelete"
-		@cancel-delete="list.closeDelete"
 	>
 		<!-- On desktop the top bar's primary is already New campaign in the
 		     Marketing workspace; the header copy is for phones, whose top bar

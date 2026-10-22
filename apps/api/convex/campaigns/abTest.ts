@@ -6,9 +6,10 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { requireDraftCampaign } from './guards';
-import { getOrThrow, throwInvalidState, throwInvalidInput } from '../_utils/errors';
+import { throwInvalidState, throwInvalidInput } from '../_utils/errors';
 import { abVariantValidator } from '../lib/literalValidators';
 import { hasClicked, hasOpened, hasReachedDelivered } from '../delivery/sendEngagement';
+import { getLiveOrThrow } from '../lib/softDelete';
 
 /**
  * Per-variant A/B stats from a variant's `emailSends` rows. delivered, opened
@@ -123,7 +124,7 @@ export const enableABTest = campaignsMutation({
 
 		// If content test, verify template exists
 		if (args.testType === 'content' && args.variantBTemplateId) {
-			await getOrThrow(ctx, args.variantBTemplateId, 'Variant B template');
+			await getLiveOrThrow(ctx, args.variantBTemplateId, 'Variant B template');
 		}
 
 		const abTestConfig: {
@@ -205,7 +206,7 @@ export const declareABTestWinner = campaignsMutation({
 			'Only owners and admins can declare A/B test winners'
 		);
 
-		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
+		const campaign = await getLiveOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (!campaign.isABTest) {
 			throwInvalidState('Campaign is not an A/B test');
@@ -290,7 +291,7 @@ export const getABTestStats = campaignsQuery({
 	},
 	handler: async (ctx, args) => {
 		await getUserIdFromSession(ctx);
-		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
+		const campaign = await getLiveOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (!campaign.isABTest) {
 			return null;

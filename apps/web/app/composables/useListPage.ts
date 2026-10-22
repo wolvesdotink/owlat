@@ -18,6 +18,12 @@ interface ListPageOptions<TItem> {
 	 * so the user can retry or cancel.
 	 */
 	onDelete: (item: TItem) => Promise<boolean | void>;
+	/**
+	 * `false` for a delete that can be undone (the item goes to Recently
+	 * deleted and `onDelete` offers Undo): `openDelete` then runs `onDelete`
+	 * at once instead of asking first. Defaults to asking.
+	 */
+	confirmDelete?: boolean;
 	/** What the `n` shortcut does — usually opens the page's create flow. */
 	onNew?: () => void;
 	/** Whether `n` may fire at all (the same permission the New button carries). */
@@ -45,7 +51,8 @@ export interface UseListPageOptions<
 
 /**
  * The state every dashboard list page repeats: a debounced search, the current
- * sort, the delete-confirmation dialog, and the `n` / Escape shortcuts.
+ * sort, the delete (behind a confirmation dialog, or at once when it can be
+ * undone), and the `n` / Escape shortcuts.
  *
  * `ListPageShell` renders it; this owns it. Search clears through the debounced
  * composable's own `clear()` — writing `debouncedSearch` from a page hits a
@@ -99,7 +106,23 @@ function useListPageState<TItem>(options: ListPageOptions<TItem>) {
 	const isDeleteOpen = computed(() => deleteModal.isOpen.value);
 	const isDeleting = computed(() => deleteModal.isLoading.value);
 
-	const openDelete = (item: TItem) => deleteModal.open(item);
+	// Items whose immediate delete is in flight: a second press on the same row
+	// must not delete (and offer Undo for) it twice.
+	const deletingNow = new Set<TItem>();
+
+	const openDelete = async (item: TItem) => {
+		if (options.confirmDelete !== false) {
+			deleteModal.open(item);
+			return;
+		}
+		if (deletingNow.has(item)) return;
+		deletingNow.add(item);
+		try {
+			await options.onDelete(item);
+		} finally {
+			deletingNow.delete(item);
+		}
+	};
 
 	const dismissDelete = () => {
 		deleteModal.close();

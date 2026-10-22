@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { campaignsMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { preflightErrorData, validateReadyToSend } from './preflight';
 import { seedDefaultSenderIfNeeded } from './senders';
 import { assertTransitioned } from './lifecycle';
@@ -14,6 +14,7 @@ import {
 	type SendTimeOptimizationSettings,
 } from '../lib/validators/sendTime';
 import { sendTimeSettingsError } from './sendTimeOptimization';
+import { getLiveOrThrow } from '../lib/softDelete';
 
 /**
  * The pre-flight every path that puts a campaign on the clock runs: `schedule`
@@ -105,7 +106,7 @@ export const cancel = campaignsMutation({
 			'You do not have permission to cancel campaigns'
 		);
 
-		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
+		const campaign = await getLiveOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'scheduled') {
 			throwInvalidState('Only scheduled campaigns can be cancelled');
@@ -144,7 +145,7 @@ export const reschedule = campaignsMutation({
 			'You do not have permission to reschedule campaigns'
 		);
 
-		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
+		const campaign = await getLiveOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'scheduled') {
 			throwInvalidState('Only scheduled campaigns can be rescheduled');
@@ -212,7 +213,7 @@ export const unschedule = campaignsMutation({
 			'You do not have permission to unschedule campaigns'
 		);
 
-		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
+		const campaign = await getLiveOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'scheduled') {
 			throwInvalidState('Only scheduled campaigns can be unscheduled');
@@ -250,7 +251,7 @@ export const schedule = campaignsMutation({
 			'You do not have permission to schedule campaigns'
 		);
 
-		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
+		const campaign = await getLiveOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'draft') {
 			throwInvalidState('Only draft campaigns can be scheduled');

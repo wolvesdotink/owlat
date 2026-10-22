@@ -7,6 +7,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { recordListingCounter } from '../lib/listingCounters';
 import { findPlatformAdmin } from '../lib/platformAdminAccess';
 import { abuseStatusValidator } from '../workspaces/abuseStatus';
+import { getLiveOrThrow } from '../lib/softDelete';
 
 // Authorization model: every mutation here is a `platformAdminMutation`
 // (org-member floor, then FORBIDDEN unless the caller is in the `platformAdmins`
@@ -88,7 +89,7 @@ export const approveCampaign = platformAdminMutation({
 		notes: v.optional(v.string()),
 	},
 	handler: async (ctx, args, admin) => {
-		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
+		const campaign = await getLiveOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'pending_review') {
 			throwInvalidInput('Campaign is not pending review');
@@ -174,7 +175,7 @@ export const rejectContent = platformAdminMutation({
 		const now = Date.now();
 
 		if (args.resourceType === 'campaign') {
-			const campaign = await getOrThrow(ctx, args.resourceId as Id<'campaigns'>, 'Campaign');
+			const campaign = await getLiveOrThrow(ctx, args.resourceId as Id<'campaigns'>, 'Campaign');
 
 			if (campaign.status !== 'pending_review') {
 				throwInvalidInput('Campaign is not pending review');

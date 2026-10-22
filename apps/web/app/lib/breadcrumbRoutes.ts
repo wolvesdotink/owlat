@@ -206,6 +206,11 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: MARKETING_HREF,
 		page: 'shared.breadcrumbRoutes.pages.overview',
 	},
+	'/dashboard/marketing/deleted': {
+		section: MARKETING,
+		sectionHref: MARKETING_HREF,
+		page: 'shared.breadcrumbRoutes.pages.recentlyDeleted',
+	},
 	'/dashboard/campaigns': {
 		section: MARKETING,
 		sectionHref: MARKETING_HREF,

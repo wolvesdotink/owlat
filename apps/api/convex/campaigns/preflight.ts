@@ -12,6 +12,7 @@ import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isCampaignSenderAllowed, senderNotAllowedMessage } from './senders';
 import { assessCampaignCapacity } from './capacityPreflight';
 import { MAX_PLAN_DAYS, type CampaignCapacitySchedule } from './capacityPlan';
+import { getLive } from '../lib/softDelete';
 
 export type PreflightResult =
 	| { ok: true }
@@ -139,6 +140,15 @@ export async function validateReadyToSend(
 			ok: false,
 			reason: 'no_template',
 			message: 'Campaign must have an email template selected',
+		};
+	}
+	// A template in Recently deleted cannot be sent; restoring it, or picking
+	// another, clears this.
+	if (!(await getLive(ctx, campaign.emailTemplateId))) {
+		return {
+			ok: false,
+			reason: 'no_template',
+			message: "The campaign's email template was deleted",
 		};
 	}
 
@@ -272,7 +282,7 @@ export async function validateReadyToSend(
 export const validateReadyToSendQuery = internalQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args): Promise<PreflightResult> => {
-		const campaign = await ctx.db.get(args.campaignId);
+		const campaign = await getLive(ctx, args.campaignId);
 		if (!campaign) {
 			return {
 				ok: false,
