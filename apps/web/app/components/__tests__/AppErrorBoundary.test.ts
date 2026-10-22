@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The app's pane boundary. On top of the shared UiErrorBoundary it has to:
  *   - name the pane that failed, in the reader's language;

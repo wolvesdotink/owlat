@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The page outlet puts the page boundary inside NuxtPage, around the page
  * component, and only under the dashboard shell: a standalone page keeps

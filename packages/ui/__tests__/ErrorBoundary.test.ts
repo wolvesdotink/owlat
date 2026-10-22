@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The boundary every pane failure lands in. What it has to guarantee:
  *   - a failing child is replaced by an alert with Retry, and its siblings and

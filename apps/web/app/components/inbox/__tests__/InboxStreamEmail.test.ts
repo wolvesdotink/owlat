@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * One customer email in the Team Inbox stream. A body that fails to render
  * (the mail itself is untrusted) is contained to that email: its header, its

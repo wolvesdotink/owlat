@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 /**
  * The Postbox panes fail one at a time. The reader renders mail from strangers
  * and the list renders their subjects and snippets, so either can hit a render
