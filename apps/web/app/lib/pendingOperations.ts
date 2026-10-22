@@ -45,7 +45,8 @@ export interface SlowOperation {
 
 /**
  * - `saved`: every write in the episode landed.
- * - `failed`: at least one did not; its own error toast says so.
+ * - `failed`: at least one did not, or the server refused it (a refusal
+ *   returned as a value); its own error surface says so.
  * - `unconfirmed`: they landed, but another queue still holds work it has not
  *   sent (Postbox's offline outbox), so "all saved" would not be true.
  * - `discarded`: the registry was reset for an identity change; whatever was

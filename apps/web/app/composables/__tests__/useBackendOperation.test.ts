@@ -467,6 +467,124 @@ describe('useBackendOperation', () => {
 			stop();
 		});
 
+		/**
+		 * The Team inbox follow-up's collision answer: the write resolves, but
+		 * the reply was not sent, so the slow episode must not end in "saved".
+		 */
+		it('records a refusal returned as a value as not saved, and still hands it back', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, { label: 'send follow-up' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			const refusal = { success: false, reason: 'reply_in_progress', heldByName: 'Jordan' };
+			pending.resolve(refusal);
+
+			expect(await result).toEqual({ ok: true, result: refusal });
+			expect(showToast).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['failed']);
+			stop();
+		});
+
+		it.each([
+			['an `ok: false` answer', { ok: false, refusal: 'invalid-address' }],
+			['a non-null `refusal` field', { applied: false, refusal: 'ramp_paused' }],
+		])('reads %s as a refusal by default', async (_name, answer) => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, { label: 'save' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			pending.resolve(answer);
+			expect(await result).toEqual({ ok: true, result: answer });
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['failed']);
+			stop();
+		});
+
+		it.each([
+			['`success: true`', { success: true }],
+			['a null `refusal`', { applied: false, refusal: null, phaseCeiling: 3 }],
+			['a bare value', false],
+		])('confirms a result with %s as saved', async (_name, answer) => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, { label: 'save' });
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			pending.resolve(answer);
+			await result;
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['saved']);
+			stop();
+		});
+
+		it('lets the caller classify its own refusal shape instead of the default', async () => {
+			vi.useFakeTimers();
+			const first = deferred<unknown>();
+			const second = deferred<unknown>();
+			mutation.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, {
+				label: 'resend',
+				isRefusal: (answer) => (answer as { sent?: boolean }).sent === false,
+			});
+
+			// The default would read `success: false` as a refusal; this caller says
+			// it is not one.
+			const a = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			first.resolve({ success: false, sent: true });
+			await a;
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['saved']);
+
+			const b = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			second.resolve({ sent: false });
+			expect(await b).toEqual({ ok: true, result: { sent: false } });
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['saved', 'failed']);
+			stop();
+		});
+
+		it('withholds "saved" without changing the envelope when the classifier throws', async () => {
+			vi.useFakeTimers();
+			const pending = deferred<unknown>();
+			mutation.mockReturnValue(pending.promise);
+			const outcomes: string[] = [];
+			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
+			const { run } = build(fakeOp, {
+				label: 'save',
+				isRefusal: () => {
+					throw new Error('unexpected shape');
+				},
+			});
+
+			const result = run({});
+			vi.advanceTimersByTime(SLOW_OPERATION_MS);
+			pending.resolve({ id: 'x' });
+			expect(await result).toEqual({ ok: true, result: { id: 'x' } });
+			expect(showToast).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(EPISODE_QUIET_MS);
+			expect(outcomes).toEqual(['failed']);
+			stop();
+		});
+
 		it('leaves upload-URL mints out: minting saves nothing, so it confirms nothing', async () => {
 			vi.useFakeTimers();
 			const pending = deferred<unknown>();
