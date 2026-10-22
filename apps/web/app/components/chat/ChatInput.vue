@@ -40,8 +40,11 @@ const pendingAttachments = computed({
 // (this room, this account), whatever is on screen by then.
 function pinAttachments() {
 	const settle = pin();
-	return (update: (current: PendingAttachment[]) => PendingAttachment[]) =>
-		settle((now) => ({ ...now, attachments: update(now.attachments as PendingAttachment[]) }));
+	return Object.assign(
+		(update: (current: PendingAttachment[]) => PendingAttachment[]) =>
+			settle((now) => ({ ...now, attachments: update(now.attachments as PendingAttachment[]) })),
+		{ owned: settle.owned }
+	);
 }
 function pinText() {
 	const settle = pin();
@@ -145,25 +148,33 @@ const handlePickMention = (handle: string) => {
 	});
 };
 
-const handleFilePick = async (event: Event) => {
-	const input = event.target as HTMLInputElement;
-	const files = Array.from(input.files ?? []);
+// One pin for the whole selection: every file joins the draft of the room and
+// account it was chosen in. Once another account is signed in (or this one
+// signed out and back in), the files not yet uploaded are dropped rather than
+// uploaded under that session.
+async function uploadAll(files: File[], unnamed?: string) {
+	const attach = pinAttachments();
 	for (const file of files) {
+		if (!attach.owned()) return;
 		try {
-			const attach = pinAttachments();
 			const id = await uploadFile(file);
 			if (id) {
-				const filename = file.name;
+				const filename = file.name || (unnamed ?? '');
 				attach((now) => [
 					...now,
 					{ id, filename, mimeType: file.type || 'application/octet-stream' },
 				]);
 			}
 		} catch {
-			// Surfacing the error via the composable's `error` ref would also work;
-			// here we silently skip the file (the UI shows isUploading).
+			// A failed file is skipped (the UI shows isUploading); the rest go on.
 		}
 	}
+}
+
+const handleFilePick = async (event: Event) => {
+	const input = event.target as HTMLInputElement;
+	const files = Array.from(input.files ?? []);
+	await uploadAll(files);
 	input.value = '';
 };
 
@@ -171,21 +182,7 @@ const handlePaste = async (event: ClipboardEvent) => {
 	const files = Array.from(event.clipboardData?.files ?? []);
 	if (files.length === 0) return;
 	event.preventDefault();
-	for (const file of files) {
-		try {
-			const attach = pinAttachments();
-			const id = await uploadFile(file);
-			if (id) {
-				const filename = file.name || 'pasted-file';
-				attach((now) => [
-					...now,
-					{ id, filename, mimeType: file.type || 'application/octet-stream' },
-				]);
-			}
-		} catch {
-			// no-op
-		}
-	}
+	await uploadAll(files, 'pasted-file');
 };
 
 const removeAttachment = (id: Id<'mediaAssets'>) => {

@@ -15,6 +15,9 @@
  *     and never touches anyone else's.
  *   - NEWER ELSEWHERE. A delete takes only the stored copy this page read or
  *     wrote; newer text another tab saved stays on the device.
+ *   - SWITCHING. Changes still on their way when the account switches land
+ *     for the person who made them, and that person's copy loads again only
+ *     after they have.
  */
 import { describe, expect, it } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
@@ -238,6 +241,72 @@ describe('createComposerDraftBook', () => {
 		expect(book.get('answer-note', 'th1')).toBeNull();
 		expect(book.get('answer-note', 'th2')).toBeNull();
 		expect(driver.map.size).toBe(0);
+	});
+
+	it('still deletes a cleared draft when another person signs in before the delete lands', async () => {
+		const first = page();
+		first.book.bindUser('u1');
+		first.book.set('assistant', 'assistant', { text: 'kept from before' });
+		await first.book.idle();
+		const { driver, book } = page(first.driver);
+		book.bindUser('u1');
+		await book.idle();
+
+		const release = driver.hold();
+		book.set('assistant', 'assistant', null);
+		book.bindUser('u2');
+		release();
+		await book.idle();
+		expect(driver.map.has(composerDraftKey('u1', 'assistant', 'assistant'))).toBe(false);
+
+		const reload = page(driver);
+		reload.book.bindUser('u1');
+		await reload.book.idle();
+		expect(reload.book.get('assistant', 'assistant')).toBeNull();
+	});
+
+	it('loads a returning person’s copy only after their pending changes have landed', async () => {
+		const { driver, book } = page();
+		book.bindUser('u1');
+		book.set('chat', 'room1', { text: 'sent by u1', attachments: [] });
+		book.set('mail-reply', 'th1', { text: 'cleared by u1' });
+		await book.idle();
+		const sent = book.pin('chat', 'room1');
+
+		// Deletes stay in flight until released; reads go through.
+		let releaseDeletes!: () => void;
+		const deletesHeld = new Promise<void>((resolve) => (releaseDeletes = resolve));
+		const deleteIf = driver.deleteIf!.bind(driver);
+		driver.deleteIf = async (key, predicate) => {
+			await deletesHeld;
+			return deleteIf(key, predicate);
+		};
+		book.set('mail-reply', 'th1', null);
+		book.bindUser('u2');
+		// u1's send settles while u2 is signed in, then u1 comes back at once.
+		sent((now) => (now?.text === 'sent by u1' ? null : now));
+		book.bindUser('u1');
+		await flushPromises();
+		expect(book.ready.value).toBe(false);
+		releaseDeletes();
+		await book.idle();
+
+		expect(book.get('chat', 'room1')).toBeNull();
+		expect(book.get('mail-reply', 'th1')).toBeNull();
+		expect(driver.map.size).toBe(0);
+	});
+
+	it('tells pinned work whether the person it started for is still signed in', async () => {
+		const { book } = page();
+		book.bindUser('u1');
+		await book.idle();
+		const settle = book.pin('chat', 'room1');
+		expect(settle.owned()).toBe(true);
+		book.bindUser('u2');
+		expect(settle.owned()).toBe(false);
+		book.bindUser('u1');
+		// Back, but after a switch: work under the old session does not resume.
+		expect(settle.owned()).toBe(false);
 	});
 
 	it('marks a Team inbox thread for any of its drafts with text', () => {

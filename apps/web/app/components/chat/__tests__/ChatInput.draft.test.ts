@@ -85,12 +85,12 @@ async function openPage(userId = 'u1') {
 	return { book, send, input, sidebar };
 }
 
-async function attach(w: VueWrapper, name: string) {
+const files = (...names: string[]) =>
+	names.map((name) => new File(['x'], name, { type: 'text/plain' }));
+
+async function attach(w: VueWrapper, ...names: string[]) {
 	const field = w.get('input[type="file"]');
-	Object.defineProperty(field.element, 'files', {
-		configurable: true,
-		value: [new File(['x'], name, { type: 'text/plain' })],
-	});
+	Object.defineProperty(field.element, 'files', { configurable: true, value: files(...names) });
 	await field.trigger('change');
 	await flushPromises();
 }
@@ -186,4 +186,42 @@ describe('ChatInput drafts', () => {
 			fields: { text: '', attachments: [{ id: 'asset_1', filename: 'u1-only.pdf' }] },
 		});
 	});
+
+	it.each([
+		['picked', (w: VueWrapper) => attach(w, 'one.pdf', 'two.pdf')],
+		[
+			'pasted',
+			async (w: VueWrapper) => {
+				await w
+					.get('textarea')
+					.trigger('paste', { clipboardData: { files: files('one.pdf', 'two.pdf') } });
+				await flushPromises();
+			},
+		],
+	])(
+		'stops uploading %s files once another person signs in, and keeps the finished one with the first',
+		async (_how, add) => {
+			const first = await openPage('u1');
+			const w = first.input('room1');
+			let finishUpload!: () => void;
+			uploadGate = new Promise((resolve) => (finishUpload = resolve));
+			await add(w);
+
+			first.book.bindUser('u2');
+			await first.book.idle();
+			uploadGate = null;
+			finishUpload();
+			await flushPromises();
+			await first.book.idle();
+
+			// The second file was never uploaded under u2's session.
+			expect(nextUploadId).toBe(1);
+			expect(first.book.get('chat', 'room1')).toBeNull();
+			const driver = device.driver as { map: Map<string, unknown> };
+			expect(driver.map.has(composerDraftKey('u2', 'chat', 'room1'))).toBe(false);
+			expect(driver.map.get(composerDraftKey('u1', 'chat', 'room1'))).toMatchObject({
+				fields: { text: '', attachments: [{ id: 'asset_1', filename: 'one.pdf' }] },
+			});
+		}
+	);
 });

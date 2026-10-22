@@ -190,7 +190,16 @@ export interface LoadedComposerDraft {
 
 /** The storage key of one person's draft in one composer. */
 export function composerDraftKey(userId: string, kind: ComposerDraftKind, target: string): string {
-	return `${PREFIX}${encodeURIComponent(userId)}:${kind}:${encodeURIComponent(target)}`;
+	return `${userKeyPrefix(userId)}${kind}:${encodeURIComponent(target)}`;
+}
+
+/** Whether a storage key holds one of this person's drafts. */
+export function isComposerDraftKeyOf(key: string, userId: string): boolean {
+	return key.startsWith(userKeyPrefix(userId));
+}
+
+function userKeyPrefix(userId: string): string {
+	return `${PREFIX}${encodeURIComponent(userId)}:`;
 }
 
 function parseKey(
@@ -309,7 +318,7 @@ export class ComposerDraftStore {
 		now: number,
 		skip: (kind: ComposerDraftKind, target: string) => boolean
 	): Promise<LoadedComposerDraft[]> {
-		const userPrefix = `${PREFIX}${encodeURIComponent(userId)}:`;
+		const userPrefix = userKeyPrefix(userId);
 		let keys: string[];
 		try {
 			keys = await this.driver.keys();

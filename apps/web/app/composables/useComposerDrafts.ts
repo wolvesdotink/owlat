@@ -14,7 +14,9 @@
  *  - The device copy loads once per signed-in person, after the page has
  *    started. Anything typed (or cleared) before it arrives wins over it.
  *  - Signing out, or another person signing in, empties the book; their
- *    drafts stay on the device under their own key.
+ *    drafts stay on the device under their own key. Changes of theirs still
+ *    on the way to the device land there, and when they sign in again their
+ *    copy loads only after those have.
  */
 import { shallowRef, watch, effectScope, computed, type WritableComputedRef } from 'vue';
 import {
@@ -22,6 +24,7 @@ import {
 	composerDraftKey,
 	getComposerDraftStore,
 	isComposerDraftEmpty,
+	isComposerDraftKeyOf,
 	type ComposerDraftFields,
 	type ComposerDraftKind,
 	type ComposerDraftStore,
@@ -33,6 +36,16 @@ const bookKey = (kind: ComposerDraftKind, target: string) => `${kind}\u0000${tar
 type DraftUpdate<K extends ComposerDraftKind> = (
 	current: ComposerDraftFields<K> | null
 ) => ComposerDraftFields<K> | null;
+
+/** An updater for one draft, pinned to the person and target it started from. */
+export type PinnedDraftUpdate<U> = ((update: U) => void) & {
+	/**
+	 * The person it was pinned for is still the one signed in, without a
+	 * sign-out in between. Work done under the signed-in session (another
+	 * upload) stops once this turns false.
+	 */
+	readonly owned: () => boolean;
+};
 
 /** One pending change to one stored draft. */
 type DeviceOp =
@@ -53,8 +66,12 @@ export function createComposerDraftBook(
 	/** Drafts changed since this person's device copy started loading. */
 	let changed = new Set<string>();
 	let hydration: Promise<void> = Promise.resolve();
-	/** By storage key: the value this page last read or wrote there. */
-	let known = new Map<string, StoredComposerDraft>();
+	/**
+	 * By storage key: the value this page last read or wrote there. Kept across
+	 * account switches (the key names the person): a delete still queued for
+	 * someone who left needs it to take their copy.
+	 */
+	const known = new Map<string, StoredComposerDraft>();
 	const queued = new Map<string, DeviceOp[]>();
 	const writing = new Map<string, Promise<void>>();
 
@@ -105,6 +122,12 @@ export function createComposerDraftBook(
 	}
 
 	async function hydrate(forUser: string, forGeneration: number): Promise<void> {
+		// What this person sent, cleared or typed before they left (or a settle
+		// for them while someone else was signed in) lands first: reading their
+		// copy earlier would bring back text that is already gone.
+		const pending = [...writing].filter(([key]) => isComposerDraftKeyOf(key, forUser));
+		await Promise.all(pending.map(([, run]) => run));
+		if (forGeneration !== generation) return;
 		const loaded = await store().load(forUser, now(), (kind, target) =>
 			changed.has(bookKey(kind, target))
 		);
@@ -155,7 +178,10 @@ export function createComposerDraftBook(
 	 * never touches the new person's book; with nobody signed in when it
 	 * started, there is nothing left to settle.
 	 */
-	function pin<K extends ComposerDraftKind>(kind: K, target: string) {
+	function pin<K extends ComposerDraftKind>(
+		kind: K,
+		target: string
+	): PinnedDraftUpdate<DraftUpdate<K>> {
 		const owner = userId;
 		const ownGeneration = generation;
 		const settle = (update: DraftUpdate<K>): void => {
@@ -169,7 +195,7 @@ export function createComposerDraftBook(
 				enqueue(key, { offBook: () => store().update(key, kind, update, now()) });
 			}
 		};
-		return settle;
+		return Object.assign(settle, { owned: () => ownGeneration === generation });
 	}
 
 	return {
@@ -193,7 +219,6 @@ export function createComposerDraftBook(
 			userId = next;
 			drafts.value = {};
 			changed = new Set();
-			known = new Map();
 			ready.value = next === null;
 			if (next) hydration = hydrate(next, generation);
 		},
@@ -243,7 +268,8 @@ export function followComposerDraftsUser(userId: () => string | null | undefined
  * returns an updater for that draft, so a send or upload that resolves after
  * the person moved on (another thread, another account) settles the draft it
  * started from, not the one now on screen. Anything that writes after an
- * await must go through it.
+ * await must go through it, and work that runs under the signed-in session
+ * (an upload) checks `owned()` before each step.
  */
 export function useComposerDraft<K extends ComposerDraftKind>(
 	kind: K,
@@ -251,7 +277,7 @@ export function useComposerDraft<K extends ComposerDraftKind>(
 	blank: ComposerDraftFields<K>
 ): {
 	draft: WritableComputedRef<ComposerDraftFields<K>>;
-	pin: () => (update: (current: ComposerDraftFields<K>) => ComposerDraftFields<K>) => void;
+	pin: () => PinnedDraftUpdate<(current: ComposerDraftFields<K>) => ComposerDraftFields<K>>;
 } {
 	const drafts = useComposerDrafts();
 	const local = shallowRef<ComposerDraftFields<K>>(blank);
@@ -268,9 +294,19 @@ export function useComposerDraft<K extends ComposerDraftKind>(
 		draft,
 		pin() {
 			const at = target() ?? null;
-			if (at === null) return (update) => (local.value = update(local.value));
+			if (at === null) {
+				return Object.assign(
+					(update: (current: ComposerDraftFields<K>) => ComposerDraftFields<K>) =>
+						void (local.value = update(local.value)),
+					{ owned: () => true }
+				);
+			}
 			const settle = drafts.pin(kind, at);
-			return (update) => settle((current) => update(current ?? blank));
+			return Object.assign(
+				(update: (current: ComposerDraftFields<K>) => ComposerDraftFields<K>) =>
+					settle((current) => update(current ?? blank)),
+				{ owned: settle.owned }
+			);
 		},
 	};
 }
