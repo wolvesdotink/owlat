@@ -5,6 +5,7 @@
  */
 import noTestEnvironmentPragma from './rules/noTestEnvironmentPragma.ts';
 import noTestInLoop from './rules/noTestInLoop.ts';
+import noTestTimeoutOrUnreasonedSkip from './rules/noTestTimeoutOrUnreasonedSkip.ts';
 import requireSuppressionReason from './rules/requireSuppressionReason.ts';
 
 export default {
@@ -12,6 +13,7 @@ export default {
 	rules: {
 		'no-test-environment-pragma': noTestEnvironmentPragma,
 		'no-test-in-loop': noTestInLoop,
+		'no-test-timeout-or-unreasoned-skip': noTestTimeoutOrUnreasonedSkip,
 		'require-suppression-reason': requireSuppressionReason,
 	},
 };
