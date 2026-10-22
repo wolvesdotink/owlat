@@ -21,6 +21,12 @@ vi.mock('~/composables/postbox/usePostboxOfflineCache', () => ({
 }));
 vi.mock('convex/browser', () => ({
 	ConvexClient: class {
+		connectionState() {
+			return { isWebSocketConnected: true, hasEverConnected: true };
+		}
+		subscribeToConnectionState() {
+			return () => {};
+		}
 		setAuth(_fetchToken: unknown, onChange: (isAuthenticated: boolean) => void) {
 			auth.onChange = onChange;
 		}

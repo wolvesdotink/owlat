@@ -37,6 +37,7 @@ import {
 } from '~/utils/postboxOfflineStore';
 import { POSTBOX_UNDO_SEND_DEFAULT_SECONDS } from '~/utils/postboxUndoSendWindow';
 import { usePostboxOfflineCache } from './usePostboxOfflineCache';
+import { registerUnsavedWorkProbe } from '~/lib/pendingOperations';
 
 const QUEUED_TOKEN_PREFIX = 'outbox:';
 
@@ -76,6 +77,17 @@ interface OutboxCounts {
 let countsRef: Ref<Record<string, OutboxCounts>> | null = null;
 /** Single-flight drain locks, one per namespace — no double-send on flaps. */
 const drainInFlight = new Map<string, Promise<void>>();
+let unsavedProbeRegistered = false;
+
+/**
+ * Queued and failed sends are unsaved work the app-wide "all changes saved"
+ * notice cannot see (the drain bypasses useBackendOperation), so they veto it.
+ */
+function holdsUnsavedWork(): boolean {
+	const counts = countsRef?.value;
+	if (!counts) return false;
+	return Object.values(counts).some((c) => c.queued > 0 || c.failed > 0);
+}
 
 /** Test-only: reset the shared module state between cases. */
 export function __resetPostboxOfflineOutboxState() {
@@ -123,6 +135,10 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 	});
 
 	if (!countsRef) countsRef = ref<Record<string, OutboxCounts>>({});
+	if (IS_CLIENT && !unsavedProbeRegistered) {
+		unsavedProbeRegistered = true;
+		registerUnsavedWorkProbe(holdsUnsavedWork);
+	}
 	const counts = countsRef;
 
 	const queuedCount = computed(() => {

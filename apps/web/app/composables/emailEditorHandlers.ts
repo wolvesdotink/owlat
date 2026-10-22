@@ -9,6 +9,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { getImageDimensions } from '~/utils/getImageDimensions';
 import { SurfacedOperationError } from '~/lib/operationError';
+import { withPendingHold } from '~/lib/pendingOperations';
 import type { BackendOperationResult } from './useBackendOperation';
 import {
 	registerUploadedMediaReference,
@@ -35,54 +36,57 @@ export interface UploadImageDeps extends MediaAssetReferenceDeps {
  * Build the `uploadImage` handler the EmailBuilder injects:
  * `generateUploadUrl` → POST the file → measure dimensions → `mediaAssets.create`
  * → `storage.getUrl`. Every uploaded image is auto-registered to the media
- * library (the easy-to-miss side effect).
+ * library (the easy-to-miss side effect). The whole pipeline is one save, so it
+ * holds any slow-save episode open until the image is registered.
  */
 export function createUploadImageHandler(
 	deps: UploadImageDeps
 ): (file: File) => Promise<ImageUploadResult> {
-	return async (file: File): Promise<ImageUploadResult> => {
-		const uploadUrl = await deps.generateUploadUrl();
-		if (!uploadUrl) {
-			throw new Error('Failed to get upload URL');
-		}
+	return (file: File) => withPendingHold(() => uploadImage(deps, file));
+}
 
-		const response = await fetch(uploadUrl, {
-			method: 'POST',
-			headers: { 'Content-Type': file.type },
-			body: file,
-		});
+async function uploadImage(deps: UploadImageDeps, file: File): Promise<ImageUploadResult> {
+	const uploadUrl = await deps.generateUploadUrl();
+	if (!uploadUrl) {
+		throw new Error('Failed to get upload URL');
+	}
 
-		if (!response.ok) {
-			throw new Error('Failed to upload image');
-		}
+	const response = await fetch(uploadUrl, {
+		method: 'POST',
+		headers: { 'Content-Type': file.type },
+		body: file,
+	});
 
-		const uploadResult = (await response.json()) as { storageId?: unknown };
-		if (typeof uploadResult.storageId !== 'string' || uploadResult.storageId.length === 0) {
-			throw new Error('Image upload did not return a storage ID');
-		}
-		const storageId = uploadResult.storageId as Id<'_storage'>;
+	if (!response.ok) {
+		throw new Error('Failed to upload image');
+	}
 
-		// Auto-save to media library FIRST: `storage.getUrl` only resolves blobs
-		// backed by a `mediaAssets` row (cross-resource IDOR guard), so the asset
-		// must exist before we can mint its URL.
-		const dimensions = await deps.getImageDimensions(file);
-		const registered = await registerUploadedMediaReference(deps, {
-			storageId,
-			filename: file.name,
-			mimeType: file.type,
-			fileSize: file.size,
-			width: dimensions?.width,
-			height: dimensions?.height,
-		});
-		if (!registered.ok && registered.reason === 'media-registration-failed') {
-			throw new Error('Image upload did not create a media asset');
-		}
-		if (!registered.ok) {
-			throw new Error('Failed to get image URL');
-		}
+	const uploadResult = (await response.json()) as { storageId?: unknown };
+	if (typeof uploadResult.storageId !== 'string' || uploadResult.storageId.length === 0) {
+		throw new Error('Image upload did not return a storage ID');
+	}
+	const storageId = uploadResult.storageId as Id<'_storage'>;
 
-		return registered.reference;
-	};
+	// Auto-save to media library FIRST: `storage.getUrl` only resolves blobs
+	// backed by a `mediaAssets` row (cross-resource IDOR guard), so the asset
+	// must exist before we can mint its URL.
+	const dimensions = await deps.getImageDimensions(file);
+	const registered = await registerUploadedMediaReference(deps, {
+		storageId,
+		filename: file.name,
+		mimeType: file.type,
+		fileSize: file.size,
+		width: dimensions?.width,
+		height: dimensions?.height,
+	});
+	if (!registered.ok && registered.reason === 'media-registration-failed') {
+		throw new Error('Image upload did not create a media asset');
+	}
+	if (!registered.ok) {
+		throw new Error('Failed to get image URL');
+	}
+
+	return registered.reference;
 }
 
 /**

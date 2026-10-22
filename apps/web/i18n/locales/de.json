@@ -17566,6 +17566,23 @@
 			"lost": "Deine Daten werden nicht mehr geladen. Lade die Seite neu, um die Verbindung wiederherzustellen.",
 			"reload": "Neu laden"
 		},
+		"backendStatus": {
+			"connecting": "Verbinde…",
+			"reconnecting": "Verbinde neu…",
+			"updating": "Update läuft",
+			"connectingHint": "Owlat verbindet sich mit dem Server. Deine Änderungen werden gesendet, sobald die Verbindung steht.",
+			"reconnectingHint": "Die Verbindung zum Server ist abgerissen. Owlat versucht es weiter; deine Änderungen werden gesendet, sobald sie wieder steht.",
+			"updatingHint": "Owlat installiert ein Update und verbindet sich danach von selbst neu. Deine Änderungen werden dann gesendet.",
+			"reconnected": "Wieder verbunden",
+			"slowSave": "Speichern dauert länger als sonst",
+			"details": "Details",
+			"detailsTitle": "Warten auf den Server",
+			"detailsIntro": "Der Server hat diese Änderungen noch nicht bestätigt. Sie werden gesendet, sobald er antwortet; lass diese Seite bis dahin geöffnet.",
+			"waitingSince": "Wartet seit {time}",
+			"changeCount": "{count} Änderung | {count} Änderungen",
+			"nothingWaiting": "Nichts wartet mehr aufs Speichern.",
+			"allSaved": "Alle Änderungen gespeichert"
+		},
 		"format": {
 			"never": "Nie",
 			"invalidDate": "Ungültiges Datum",

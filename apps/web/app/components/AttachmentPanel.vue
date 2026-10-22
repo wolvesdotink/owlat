@@ -9,6 +9,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
+import { holdPendingWork } from '~/lib/pendingOperations';
 import {
 	registerUploadedMediaReference,
 	type StoredMediaReference,
@@ -108,6 +109,11 @@ async function handleFileUpload(fileArray: File[]) {
 	let currentTotal = totalSize.value;
 
 	isUploading.value = true;
+	// Every file's upload, registration and URL, and the hand-over of the list,
+	// are one save: hold any slow-save episode open until the parent has them.
+	const release = holdPendingWork();
+	let failed = false;
+	let handedOver = false;
 	try {
 		const newAttachments: StoredAttachment[] = [];
 
@@ -128,6 +134,7 @@ async function handleFileUpload(fileArray: File[]) {
 				file.type || 'application/octet-stream'
 			);
 			if (!upload.ok) {
+				failed = true;
 				if (upload.reason === 'upload-failed')
 					showToast(t('components.attachmentPanel.uploadFailed', { filename: file.name }), 'error');
 				break;
@@ -157,7 +164,10 @@ async function handleFileUpload(fileArray: File[]) {
 			if (!registered.ok && registered.reason === 'url-unavailable') {
 				showToast(t('components.attachmentPanel.fileUrlFailed'), 'error');
 			}
-			if (!registered.ok) break;
+			if (!registered.ok) {
+				failed = true;
+				break;
+			}
 
 			newAttachments.push({
 				id: generateAttachmentId(),
@@ -173,7 +183,9 @@ async function handleFileUpload(fileArray: File[]) {
 		if (newAttachments.length > 0) {
 			emit('update:attachments', [...props.attachments, ...newAttachments]);
 		}
+		handedOver = !failed;
 	} finally {
+		release(handedOver);
 		isUploading.value = false;
 	}
 }
@@ -299,7 +311,11 @@ function handleFileInput(event: Event) {
 				:class="attachments.length > 0 ? 'pb-3 pt-1' : 'py-5'"
 				@click="fileInputRef?.click()"
 			>
-				<Icon v-if="isUploading" name="lucide:loader-2" class="w-4 h-4 text-brand animate-spin motion-reduce:animate-none" />
+				<Icon
+					v-if="isUploading"
+					name="lucide:loader-2"
+					class="w-4 h-4 text-brand animate-spin motion-reduce:animate-none"
+				/>
 				<template v-else>
 					<Icon name="lucide:paperclip" class="w-4 h-4 text-text-tertiary" />
 					<span class="text-sm text-text-secondary">
