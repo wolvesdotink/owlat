@@ -98,6 +98,42 @@ export const importOf = (context: Context, identifier: Node): ImportedBinding | 
 	return { source, imported: imported.type === 'Identifier' ? imported.name : imported.value };
 };
 
+const isNamespace = (binding: ImportedBinding): boolean =>
+	binding.imported === '*' || binding.imported === 'default';
+
+/**
+ * The export of a built-in module (`modules` lists its specifiers, such as
+ * `timers` and `node:timers`) that `node` names: a named import of it, aliases
+ * included, or a member of a namespace or default import (`timers.setTimeout`).
+ */
+export const builtinExport = (
+	context: Context,
+	node: Node,
+	modules: ReadonlySet<string>
+): string | undefined => {
+	const value = unwrap(node);
+	if (value?.type === 'Identifier') {
+		const binding = importOf(context, value);
+		return binding && modules.has(binding.source) && !isNamespace(binding)
+			? binding.imported
+			: undefined;
+	}
+	const name = propertyName(value);
+	if (name === undefined || value?.type !== 'MemberExpression') return undefined;
+	const binding = importOf(context, unwrap(value.object));
+	return binding && modules.has(binding.source) && isNamespace(binding) ? name : undefined;
+};
+
+/** The global `process`, or a namespace or default import of `node:process`. */
+export const PROCESS_MODULES: ReadonlySet<string> = new Set(['process', 'node:process']);
+const PROCESS = new Set(['process']);
+
+export const isProcess = (context: Context, node: Node): boolean => {
+	if (isGlobal(context, node, PROCESS)) return true;
+	const binding = importOf(context, unwrap(node));
+	return binding !== undefined && PROCESS_MODULES.has(binding.source) && isNamespace(binding);
+};
+
 /** The vitest export an identifier is bound to, or `namespace` for `import * as`. */
 export const vitestImport = (context: Context, identifier: Node): string | undefined => {
 	const binding = importOf(context, identifier);
@@ -131,10 +167,6 @@ export const enclosingFunction = (node: AstNode): AstNode => {
 	}
 	return current;
 };
-
-/** Whether `inner` lies inside `outer`'s source range. */
-export const contains = (outer: AstNode, inner: AstNode): boolean =>
-	outer.start <= inner.start && inner.end <= outer.end;
 
 export type VisitorKeys = Context['sourceCode']['visitorKeys'];
 

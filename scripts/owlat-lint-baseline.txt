@@ -22,6 +22,7 @@ apps/api/convex/lib/llm/__tests__/toolMarkup.test.ts	owlat(no-wall-clock-in-test
 apps/api/convex/lib/llm/__tests__/toolMarkup.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/api/convex/mail/__tests__/aiGateParallel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
 apps/api/convex/mail/__tests__/draftProvenance.integration.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
+apps/api/convex/mail/__tests__/outboundDispatchConcurrency.test.ts	owlat(no-polling-loop-in-tests)	while (answered < recipients.length) { await flush(); const open = held.pending.slice(answered); expect(open.length).toBeGreaterThan(0); for (const p of open) p
 apps/api/convex/mail/interpret/__tests__/arrivalRead.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 10)
 apps/api/convex/mail/interpret/__tests__/sourceLease.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
 apps/api/convex/mail/interpret/__tests__/verifyParallel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, delayMs)
@@ -37,7 +38,7 @@ apps/imap/src/commands/__tests__/messageSets.test.ts	owlat(no-wall-clock-in-test
 apps/imap/src/commands/__tests__/messageSets.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/imap/src/commands/__tests__/sequenceView.test.ts	owlat(no-polling-loop-in-tests)	for (let i = 0; i < 200; i++) { const done = lines(); if (tags.every((tag) => done.some((l) => l.startsWith(`${tag} `)))) return; await new Promise((resolve) =>
 apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-polling-loop-in-tests)	for (;;) { const text = Buffer.concat(chunks.slice(-2)).toString('latin1'); if (text.includes(`\r\n${tag} `) && text.endsWith('\r\n')) return; await new Promise
-apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-polling-loop-in-tests)	for (let i = 0; i < 100 && b.counts.downloads !== last; i++) { last = b.counts.downloads; await new Promise((resolve) => setTimeout(resolve, 50)); peakQueued = 
+apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-polling-loop-in-tests)	for (let i = 0; i < 100 && b.counts.downloads !== last; i++) { last = b.counts.downloads; await new Promise((resolve) => setTimeout(resolve, 50)); peakQueued =
 apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 1)
 apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 30)
 apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)

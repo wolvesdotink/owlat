@@ -30,6 +30,12 @@ describe('owlat lint ratchet lines', () => {
 		expect(line.split('\t')[2]).toMatch(/^\/\*\* \* folded onto one line x+$/);
 		expect(line.split('\t')[2]!.length).toBe(160);
 	});
+
+	it('trim a snippet whose cut lands on whitespace, so no line ends in a space', () => {
+		const source = Buffer.from(`  ${'x'.repeat(159)} tail`);
+		const snippet = findingLine(finding(0, source.length), source).split('\t')[2]!;
+		expect(snippet).toBe('x'.repeat(159));
+	});
 });
 
 describe('owlat warnings have one owner', () => {

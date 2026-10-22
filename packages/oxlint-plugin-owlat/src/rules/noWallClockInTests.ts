@@ -1,4 +1,14 @@
-import { isGlobal, isTestFile, type Node, propertyName, unwrap, variableOf } from '../ast.ts';
+import {
+	builtinExport,
+	isGlobal,
+	isProcess,
+	isTestFile,
+	type Node,
+	PROCESS_MODULES,
+	propertyName,
+	unwrap,
+	variableOf,
+} from '../ast.ts';
 import { fakeClock } from '../fakeClock.ts';
 import type { AstNode, Context, Rule } from '../types.ts';
 
@@ -13,16 +23,17 @@ type CallExpression = Extract<AstNode, { type: 'CallExpression' }>;
  *
  * Reported in test files (`*.test.*`, `*.spec.*`, anything under `__tests__/`):
  *
- * - every `performance.now()` and `process.hrtime()` call: they exist only to
- *   time the machine;
+ * - every `performance.now()` and `process.hrtime()` call, including the
+ *   `node:perf_hooks` and `node:process` imports: they exist only to time the
+ *   machine;
  * - a subtraction or comparison between two wall-clock readings, where a
  *   reading is `Date.now()` / `new Date().getTime()` (optionally plus or minus
  *   an offset, as deadlines are built) or a variable assigned one.
  *
  * A single reading is fine: fixture timestamps such as `createdAt: Date.now()`
- * or `Date.now() - DAY_MS` compare nothing with the clock. Readings in a
- * function that pins vitest's fake clock with `vi.setSystemTime` are
- * deterministic and allowed.
+ * or `Date.now() - DAY_MS` compare nothing with the clock. Readings taken after
+ * the same function pins a faked `Date` with `vi.setSystemTime` are
+ * deterministic and allowed (see fakeClock.ts).
  */
 
 const ELAPSED_MESSAGE =
@@ -34,7 +45,8 @@ const COMPARISONS = new Set(['-', '<', '<=', '>', '>=', '===', '!==', '==', '!='
 const OFFSETS = new Set(['+', '-']);
 const DATE = new Set(['Date']);
 const PERFORMANCE = new Set(['performance']);
-const PROCESS = new Set(['process']);
+const PERF_HOOKS = new Set(['perf_hooks', 'node:perf_hooks']);
+const GLOBAL_OBJECTS = new Set(['globalThis', 'global', 'window']);
 
 /** `Date.now()`, `new Date().getTime()` or `new Date().valueOf()`. */
 const isDateCall = (context: Context, node: Node): boolean => {
@@ -53,20 +65,37 @@ const isDateCall = (context: Context, node: Node): boolean => {
 	);
 };
 
+/** The global `performance` (also through `globalThis`), or `node:perf_hooks`' export. */
+const isPerformance = (context: Context, node: Node): boolean => {
+	const value = unwrap(node);
+	if (isGlobal(context, value, PERFORMANCE)) return true;
+	if (builtinExport(context, value, PERF_HOOKS) === 'performance') return true;
+	return (
+		propertyName(value) === 'performance' &&
+		value?.type === 'MemberExpression' &&
+		isGlobal(context, value.object, GLOBAL_OBJECTS)
+	);
+};
+
+/** `process.hrtime`, on the global or an import of `node:process`, or its named import. */
+const isHrtime = (context: Context, node: Node): boolean => {
+	const value = unwrap(node);
+	if (builtinExport(context, value, PROCESS_MODULES) === 'hrtime') return true;
+	return (
+		propertyName(value) === 'hrtime' &&
+		value?.type === 'MemberExpression' &&
+		isProcess(context, value.object)
+	);
+};
+
 /** `performance.now()`, `process.hrtime()` or `process.hrtime.bigint()`. */
 const isStopwatchCall = (context: Context, node: CallExpression): boolean => {
 	const callee = unwrap(node.callee);
+	if (isHrtime(context, callee)) return true;
 	const name = propertyName(callee);
 	if (callee?.type !== 'MemberExpression') return false;
-	if (name === 'now') return isGlobal(context, callee.object, PERFORMANCE);
-	if (name === 'hrtime') return isGlobal(context, callee.object, PROCESS);
-	const inner = unwrap(callee.object);
-	return (
-		name === 'bigint' &&
-		propertyName(inner) === 'hrtime' &&
-		inner?.type === 'MemberExpression' &&
-		isGlobal(context, inner.object, PROCESS)
-	);
+	if (name === 'now') return isPerformance(context, callee.object);
+	return name === 'bigint' && isHrtime(context, callee.object);
 };
 
 /** A clock reading taken here: `Date.now()`, or `Date.now() ± offset`. */
@@ -78,15 +107,16 @@ const isStamp = (context: Context, node: Node): boolean => {
 	return isDateCall(context, value);
 };
 
-/** A clock reading: a stamp, or a variable some assignment stores a stamp in. */
-const isReading = (context: Context, node: Node): boolean => {
+/**
+ * Where the clock is read for `node`: the stamp itself, or every stamp
+ * assignment to the variable it names. Empty when `node` is no reading.
+ */
+const readings = (context: Context, node: Node): AstNode[] => {
 	const value = unwrap(node);
-	if (value?.type !== 'Identifier') return isStamp(context, value);
-	const variable = variableOf(context, value);
-	return (
-		variable?.references.some(
-			(reference) => reference.writeExpr !== null && isStamp(context, reference.writeExpr)
-		) ?? false
+	if (value?.type !== 'Identifier') return value && isStamp(context, value) ? [value] : [];
+	const references = variableOf(context, value)?.references ?? [];
+	return references.flatMap(({ writeExpr }) =>
+		writeExpr && isStamp(context, writeExpr) ? [writeExpr] : []
 	);
 };
 
@@ -105,7 +135,7 @@ const rule: Rule = {
 		const dates = text.includes('Date');
 		if (!stopwatches && !dates) return {};
 		const clock = fakeClock(context);
-		const elapsed: AstNode[] = [];
+		const elapsed: { node: AstNode; readings: AstNode[] }[] = [];
 		return {
 			MemberExpression: clock.MemberExpression,
 			CallExpression(node) {
@@ -115,11 +145,14 @@ const rule: Rule = {
 			},
 			BinaryExpression(node) {
 				if (!dates || !COMPARISONS.has(node.operator)) return;
-				if (isReading(context, node.left) && isReading(context, node.right)) elapsed.push(node);
+				const left = readings(context, node.left);
+				if (left.length === 0) return;
+				const right = readings(context, node.right);
+				if (right.length > 0) elapsed.push({ node, readings: [...left, ...right] });
 			},
 			'Program:exit'() {
-				for (const node of elapsed) {
-					if (!clock.drives(node, 'clock')) {
+				for (const { node, readings: taken } of elapsed) {
+					if (!taken.every((reading) => clock.pinned(reading))) {
 						context.report({ node, message: ELAPSED_MESSAGE });
 					}
 				}

@@ -63,9 +63,29 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			code: `${vitest}it('fires', async () => { vi.useFakeTimers(); const done = new Promise((r) => setTimeout(r, 1000)); await vi.advanceTimersByTimeAsync(1000); await done; });`,
 		},
 		{
-			name: 'a sleep helper called in a test that runs all timers, with fake timers from beforeEach',
+			name: 'a local sleep helper called in a test that runs all timers, with fake timers from beforeEach',
 			filename,
-			code: `${vitest}import { sleep } from './sleep';\nit('fires', async () => { const done = sleep(50); vi.runAllTimers(); await done; vi.useRealTimers(); });`,
+			code: `${vitest}const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));\nbeforeEach(() => { vi.useFakeTimers(); });\nit('fires', async () => { const done = sleep(50); vi.runAllTimers(); await done; vi.useRealTimers(); });`,
+		},
+		{
+			name: 'a toFake list that names the timer',
+			filename,
+			code: `${vitest}it('a', async () => { vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] }); const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });`,
+		},
+		{
+			name: 'fake timers passed to a hook uncalled',
+			filename,
+			code: `${vitest}beforeEach(vi.useFakeTimers);\nit('b', async () => { const p = new Promise((r) => setInterval(r, 10)); vi.runOnlyPendingTimers(); await p; });`,
+		},
+		{
+			name: 'a config without toFake fakes the default timers',
+			filename,
+			code: `${vitest}it('x', async () => { vi.useFakeTimers({ now: 0, 'shouldAdvanceTime': false }); const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });`,
+		},
+		{
+			name: 'a timer driven from inside the executor of the promise it resolves',
+			filename,
+			code: `${vitest}it('x', async () => { vi.useFakeTimers(); await new Promise((r) => { setTimeout(r, 10); vi.advanceTimersByTime(10); }); });`,
 		},
 		{
 			name: 'a test that passes vi.runAllTimers along drives fake timers too',
@@ -95,7 +115,12 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 		{
 			name: 'a timers/promises export that is not a timer, and a member of an unrelated import',
 			filename,
-			code: "import { promises } from 'node:timers';\nimport { scheduler } from 'node:timers/promises';\nimport * as other from './other';\nscheduler.unknown(); other.setTimeout(10); promises.setTimeout(10);",
+			code: "import { promises } from 'node:timers';\nimport { scheduler } from 'node:timers/promises';\nimport * as other from './other';\nscheduler.unknown(); other.setTimeout(10); promises.unknown(10);",
+		},
+		{
+			name: 'locals named like the timer modules are not imports of them',
+			filename,
+			code: 'const timers = { setTimeout: (fn: () => void, ms: number) => fn() };\nconst promises = { setTimeout: async (ms: number) => ms };\nawait new Promise<void>((r) => timers.setTimeout(r, 10)); await promises.setTimeout(10);',
 		},
 		{
 			name: 'a computed member the rule cannot name, and a call of a call',
@@ -138,6 +163,12 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			filename,
 			code: "import { setTimeout as wait, setInterval, scheduler } from 'node:timers/promises';\nimport * as timers from 'timers/promises';\nimport timersDefault from 'node:timers/promises';\nawait wait(10); for await (const _ of setInterval(10)) break; await scheduler.wait(10); await timers.setTimeout(10); await timersDefault.setTimeout(5); await timers.scheduler.wait(5);",
 			errors: 6,
+		},
+		{
+			name: 'node:timers imports in every form, aliases included',
+			filename,
+			code: "import { setTimeout as later, promises } from 'node:timers';\nimport timers from 'timers';\nimport * as t from 'node:timers';\nawait new Promise((r) => later(r, 10)); await new Promise((r) => timers.setTimeout(r, 10)); await new Promise((r) => t.setInterval(r, 10)); await promises.setTimeout(10); await t.promises.setTimeout(10); await promises.scheduler.wait(10); await t.promises.scheduler.wait(10);",
+			errors: 7,
 		},
 		{
 			name: 'a timers/promises export imported by its string name',
@@ -198,6 +229,36 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			filename,
 			code: `${vitest}await new Promise((r) => setTimeout(r, 10));\nit('x', () => { vi.runAllTimers(); });`,
 			errors: 1,
+		},
+		{
+			name: 'fake timers switched on and advanced only in a nested function',
+			filename,
+			code: `${vitest}it('x', async () => { function unused() { vi.useFakeTimers(); vi.runAllTimers(); } await new Promise((r) => setTimeout(r, 10)); });`,
+			errors: 1,
+		},
+		{
+			name: 'advancing fake timers that do not fake the timer the sleep uses',
+			filename,
+			code: `${vitest}it('a', async () => { vi.useFakeTimers({ toFake: ['Date'] }); const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });\nit('b', async () => { vi.useFakeTimers({ toFake: ['setTimeout'] }); const p = new Promise((r) => setInterval(r, 10)); vi.runAllTimers(); await p; });`,
+			errors: 2,
+		},
+		{
+			name: 'a hook whose fake timers leave the timer real',
+			filename,
+			code: `${vitest}beforeEach(() => { vi.useFakeTimers({ toFake: ['Date', 'setInterval'] }); });\nit('x', async () => { const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });`,
+			errors: 1,
+		},
+		{
+			name: 'fake timer configs the rule cannot read',
+			filename,
+			code: `${vitest}it('a', async () => { vi.useFakeTimers(config); const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });\nit('b', async () => { vi.useFakeTimers({ ...base }); const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });\nit('c', async () => { vi.useFakeTimers({ toFake: list }); const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });\nit('d', async () => { vi.useFakeTimers({ toFake: ['setTimeout', ...more] }); const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });\nit('e', async () => { vi.useFakeTimers({ [key]: [] }); const p = new Promise((r) => setTimeout(r, 10)); vi.runAllTimers(); await p; });`,
+			errors: 5,
+		},
+		{
+			name: 'waits fake timers never drive: imported helpers, timer modules, Bun and Playwright',
+			filename,
+			code: `${vitest}import { sleep } from './sleep';\nimport { setTimeout as wait } from 'node:timers/promises';\nimport { setTimeout as later } from 'node:timers';\nit('x', async () => { vi.useFakeTimers(); const a = sleep(10); const b = wait(10); const c = new Promise((r) => later(r, 10)); const d = Bun.sleep(10); const e = page.waitForTimeout(10); await vi.runAllTimersAsync(); await Promise.all([a, b, c, d, e]); });`,
+			errors: 5,
 		},
 		{
 			name: 'a vi that is not vitest does not drive anything',

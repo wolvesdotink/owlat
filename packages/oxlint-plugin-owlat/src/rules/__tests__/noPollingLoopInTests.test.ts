@@ -25,7 +25,7 @@ ruleTester.run('owlat/no-polling-loop-in-tests', rule, {
 		{
 			name: 'a fixed number of flushes',
 			filename,
-			code: "import { flushPromises } from '@vue/test-utils';\nfor (let i = 0; i < 3; i++) await flushPromises();\nfor (let i = 0; i < MAX * 3 + 1; i += 1) await Promise.resolve();\nlet n = 0;\nwhile (n++ < 3) await Promise.resolve();\nlet k = 5;\ndo { await Promise.resolve(); k -= 1; } while (k > 0);\nfor (let j = 0; items.length > j; j++) await Promise.resolve();",
+			code: "import { flushPromises } from '@vue/test-utils';\nfor (let i = 0; i < 3; i++) await flushPromises();\nfor (let i = 0; i < MAX * 3 + 1; i += 1) await Promise.resolve();\nlet n = 0;\nwhile (n++ < 3) await Promise.resolve();\nlet k = 5;\ndo { await Promise.resolve(); k -= 1; } while (k > 0);\nfor (let j = 0; items.length > j; j++) await Promise.resolve();\nfor (let s = 9; s > 0; s += -3) await Promise.resolve();\nlet m = 0;\nwhile (m++ < 4) { await Promise.resolve(); m++; }",
 		},
 		{
 			name: 'an endless loop without a conditional exit',
@@ -95,6 +95,24 @@ ruleTester.run('owlat/no-polling-loop-in-tests', rule, {
 			filename,
 			code: 'let i = 0;\nwhile (i < 3) { await Promise.resolve(); }',
 			errors: 1,
+		},
+		{
+			name: 'a counter moved by a step that varies, or by zero',
+			filename,
+			code: "import { nextTick } from 'vue';\nwhile (pending > 0) { await nextTick(); pending -= completedSinceLastTick(); }\nfor (let i = 0; i < 10; i += step()) await Promise.resolve();\nfor (let i = 0; i < 10; i += 0) await Promise.resolve();",
+			errors: 3,
+		},
+		{
+			name: 'a counter the loop also writes some other way',
+			filename,
+			code: 'for (let i = 0; i < 10; i++) { await Promise.resolve(); if (stale()) i = 0; }\nlet n = 0;\nwhile (n++ < 3) { await Promise.resolve(); n = progress(); }',
+			errors: 2,
+		},
+		{
+			name: 'ticks through node:process and node:timers imports',
+			filename,
+			code: "import { nextTick } from 'node:process';\nimport proc from 'node:process';\nimport { setImmediate as soon } from 'node:timers';\nwhile (!a()) await new Promise((r) => nextTick(r));\nwhile (!b()) await new Promise((r) => proc.nextTick(r));\nwhile (!c()) await new Promise((r) => soon(r));\nwhile (!d()) await new Promise(soon);",
+			errors: 4,
 		},
 		{
 			name: 'a counter whose bound is not fixed',

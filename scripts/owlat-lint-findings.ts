@@ -32,6 +32,7 @@ export function findingLine(diagnostic: LintDiagnostic, source: Buffer): string 
 				.replace(/\s+/g, ' ')
 				.trim()
 				.slice(0, SNIPPET_LIMIT)
+				.trimEnd()
 		: '';
 	return [diagnostic.filename, diagnostic.code ?? '', snippet].join('\t');
 }

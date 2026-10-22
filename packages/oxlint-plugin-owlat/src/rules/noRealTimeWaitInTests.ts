@@ -15,8 +15,10 @@ import { callWait, insideSleepHelper, promiseWait, type Wait } from '../waits.ts
  * helper named `sleep` / `delay`, Bun's `sleep` and Playwright's
  * `waitForTimeout`. A zero-delay timer only yields a tick and is left to
  * owlat/no-polling-loop-in-tests. A `sleep` helper's own body is not
- * reported, its calls are. A wait in a function that also advances vitest's
- * fake timers runs on fake time and is allowed (see fakeClock.ts).
+ * reported, its calls are. A sleep on a global timer in a function that also
+ * advances vitest's fake timers, with that timer faked, runs on fake time and
+ * is allowed (see fakeClock.ts); `node:timers` imports, Bun's `sleep` and
+ * Playwright's `waitForTimeout` stay real whatever vitest fakes.
  */
 
 const MESSAGE =
@@ -51,8 +53,10 @@ const rule: Rule = {
 				collect(callWait(context, node, { sleepsOnly: true }));
 			},
 			'Program:exit'() {
-				for (const { node } of sleeps) {
-					if (!clock.drives(node, 'timers')) context.report({ node, message: MESSAGE });
+				for (const { node, timer } of sleeps) {
+					if (timer === undefined || !clock.drivesTimer(node, timer)) {
+						context.report({ node, message: MESSAGE });
+					}
 				}
 			},
 		};

@@ -39,6 +39,16 @@ ruleTester.run('owlat/no-wall-clock-in-tests', rule, {
 			code: `${vitest}it('advances', () => { vi.setSystemTime(0); const start = Date.now(); vi.advanceTimersByTime(100); expect(Date.now() - start).toBe(100); });`,
 		},
 		{
+			name: 'readings after a pin with Date faked, or with fake timers off (the pin mocks Date)',
+			filename,
+			code: `${vitest}it('a', () => { vi.useFakeTimers({ toFake: ['Date'], shouldAdvanceTime: false }); vi.setSystemTime(0); const start = Date.now(); expect(Date.now() - start).toBe(0); });\nit('b', () => { vi.useRealTimers(); vi.setSystemTime(0); const start = Date.now(); expect(Date.now() - start).toBe(0); });\nit('c', () => { vi.setSystemTime(0); const start = Date.now(); expect(Date.now() - start).toBe(0); vi.useFakeTimers(); });`,
+		},
+		{
+			name: 'locals named like the stopwatch modules are not imports of them',
+			filename,
+			code: `${vitest}it('x', () => { const perf = { now: () => 1 }; const hooks = { performance: perf }; const hrtime = () => 2; perf.now(); hooks.performance.now(); hrtime(); globalThis.other.now(); });`,
+		},
+		{
 			name: 'a shadowed Date, performance or process',
 			filename,
 			code: `${vitest}it('fakes', () => { const Date = { now: () => 1 }; const performance = { now: () => 2 }; const process = { hrtime: () => 3 }; const a = Date.now(); expect(Date.now() - a).toBe(0); performance.now(); process.hrtime(); });`,
@@ -101,6 +111,30 @@ ruleTester.run('owlat/no-wall-clock-in-tests', rule, {
 			filename,
 			code: `${vitest}it('x', () => { vi.setSystemTime(0); vi.useRealTimers(); const start = Date.now(); expect(Date.now() - start).toBe(0); });`,
 			errors: 1,
+		},
+		{
+			name: 'stopwatches imported from node:perf_hooks and node:process, aliases included',
+			filename,
+			code: `${vitest}import { performance as perf } from 'node:perf_hooks';\nimport * as hooks from 'perf_hooks';\nimport { hrtime } from 'node:process';\nimport proc from 'process';\nit('x', () => { perf.now(); hooks.performance.now(); hrtime(); hrtime.bigint(); proc.hrtime(); proc.hrtime.bigint(); globalThis.performance.now(); });`,
+			errors: 7,
+		},
+		{
+			name: 'a pin that comes after the readings, or between them',
+			filename,
+			code: `${vitest}it('a', () => { const start = Date.now(); expect(Date.now() - start).toBe(0); vi.setSystemTime(0); });\nit('b', () => { const start = Date.now(); vi.setSystemTime(0); expect(Date.now() - start).toBe(0); });\nit('c', () => { vi.setSystemTime(Date.now() - 5 < Date.now() ? 0 : 1); });`,
+			errors: 3,
+		},
+		{
+			name: 'a pin that leaves Date real: toFake without Date, shouldAdvanceTime, an unreadable config',
+			filename,
+			code: `${vitest}it('a', () => { vi.useFakeTimers({ toFake: ['setTimeout'] }); vi.setSystemTime(0); const start = Date.now(); expect(Date.now() - start).toBe(0); });\nit('b', () => { vi.useFakeTimers({ shouldAdvanceTime: true }); vi.setSystemTime(0); const start = Date.now(); expect(Date.now() - start).toBe(0); });\nit('c', () => { vi.useFakeTimers(config); vi.setSystemTime(0); const start = Date.now(); expect(Date.now() - start).toBe(0); });`,
+			errors: 3,
+		},
+		{
+			name: 'a pin in a nested function, or a reading in a callback the pin does not own',
+			filename,
+			code: `${vitest}it('a', () => { function later() { vi.setSystemTime(0); } const start = Date.now(); expect(Date.now() - start).toBe(0); });\nit('b', () => { vi.setSystemTime(0); const start = Date.now(); items.forEach(() => expect(Date.now() - start).toBe(0)); });`,
+			errors: 2,
 		},
 		{
 			name: 'a file under __tests__ that is not named .test',
