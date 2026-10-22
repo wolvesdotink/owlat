@@ -17,6 +17,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type * as SessionOrganization from '../lib/sessionOrganization';
 import {
 	createTestAutomation,
 	createTestAutomationStep,
@@ -32,9 +33,7 @@ const sessionMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<typeof SessionOrganization>('../lib/sessionOrganization');
 	const { realPermissionGate } = await import('./helpers/permissionGateMock');
 	const gate = realPermissionGate(actual, () => sessionMock.user.role);
 	const session = async () => ({
@@ -384,7 +383,7 @@ describe('automations', () => {
 			const settings = await ctx.db.query('instanceSettings').first();
 			if (settings) {
 				await ctx.db.patch(settings._id, {
-					featureFlags: { ...(settings.featureFlags ?? {}), automations: false },
+					featureFlags: { ...settings.featureFlags, automations: false },
 				});
 			}
 		});
