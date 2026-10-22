@@ -9,9 +9,9 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { errorMessage } from '@owlat/shared';
 import { parseComposePs, type ComposeService } from '@owlat/shared/containerHealth';
 import { secretMatches } from '@owlat/shared/constantTimeEqual';
+import { INSTANCE_SECRET, inheritedChildEnv, OWLAT_DIR } from './config.js';
 
-const INSTANCE_SECRET = process.env['INSTANCE_SECRET'];
-export const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';
+export { OWLAT_DIR };
 
 export function json(res: ServerResponse, status: number, body: unknown) {
 	res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -75,14 +75,14 @@ export const COMPOSE_SHADOWED_VARS = [
 ] as const;
 
 /**
- * `process.env` minus the variables compose would let shadow `--env-file`.
+ * The updater's environment minus the variables compose would let shadow `--env-file`.
  *
  * Unconditional rather than per-call-site: no command this sidecar runs needs
  * its own `OWLAT_*` to reach a child, and a conditional version is a rule every
  * future compose call site has to remember — which is how the shadowing got in.
  */
 function childEnv(): NodeJS.ProcessEnv {
-	const env = { ...process.env };
+	const env = inheritedChildEnv();
 	for (const name of COMPOSE_SHADOWED_VARS) delete env[name];
 	return env;
 }

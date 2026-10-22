@@ -167,12 +167,17 @@ const CASES: readonly ParityCase[] = [
 			),
 			'apps/api/convex/delivery/__tests__/fixtures.ts': "export const m = process.env['MODE'];\n",
 			'apps/api/convex/delivery/poller.test.ts': 'export const flag = process.env.CI;\n',
-			// Only the rule: the object reached without the `process.env` text.
+			// Both: the object reached without the `process.env` text.
 			'apps/api/convex/delivery/forms.ts': lines(
 				"import { env } from 'node:process';",
 				"export const e = process['env'].FOO;",
 				'export const { env: whole } = process;',
 				'export const f = env.FOO;'
+			),
+			// Only the rule: `process` bound under another name.
+			'apps/api/convex/delivery/renamed.ts': lines(
+				"import * as host from 'node:process';",
+				'export const r = host.env.FOO;'
 			),
 			// Only the gate: prose and strings that name it.
 			'apps/api/convex/delivery/prose.ts': lines(
@@ -181,11 +186,7 @@ const CASES: readonly ParityCase[] = [
 			),
 		},
 		onlyOld: ['apps/api/convex/delivery/prose.ts:1', 'apps/api/convex/delivery/prose.ts:2'],
-		onlyNew: [
-			'apps/api/convex/delivery/forms.ts:1',
-			'apps/api/convex/delivery/forms.ts:2',
-			'apps/api/convex/delivery/forms.ts:3',
-		],
+		onlyNew: ['apps/api/convex/delivery/renamed.ts:2'],
 	},
 	{
 		gate: 'log-pii',

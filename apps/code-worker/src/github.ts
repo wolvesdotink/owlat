@@ -1,10 +1,11 @@
 import { Octokit } from '@octokit/rest';
+import { githubToken } from './config.js';
 
 let octokit: Octokit | null = null;
 
 function getOctokit(): Octokit {
 	if (!octokit) {
-		const token = process.env['GITHUB_TOKEN'];
+		const token = githubToken();
 		if (!token) {
 			throw new Error('GITHUB_TOKEN environment variable is required');
 		}

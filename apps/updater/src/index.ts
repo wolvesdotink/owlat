@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { installCrashHandlers, installShutdown } from '@owlat/shared/nodeShutdown';
-import { buildRequestListener, readListenPort } from './server.js';
+import { buildRequestListener } from './server.js';
+import { readListenPort } from './config.js';
 import {
 	beginShutdown,
 	exitAfterStoppingChildren,
@@ -17,7 +18,7 @@ const log = (message: string, detail?: unknown) => {
 installCrashHandlers({ log });
 
 // Read before anything else runs, so a bad PORT ends the boot with its name.
-const port = readListenPort(process.env);
+const port = readListenPort();
 
 // A rollout the previous process never finished is settled before anything
 // else is served: its record says so in words, and a template it had only

@@ -51,6 +51,8 @@ interface Gate {
 	readonly args: readonly string[];
 	/** The old gate prints `path:function` sites rather than `path:line`. */
 	readonly perFunction: boolean;
+	/** The directory, repository-relative, that the old gate's paths are relative to. */
+	readonly base: string;
 }
 
 export const GATES: readonly Gate[] = [
@@ -59,6 +61,7 @@ export const GATES: readonly Gate[] = [
 		rule: 'no-crypto-primitives',
 		script: 'scripts/check-crypto-primitives.sh',
 		args: ['--generate'],
+		base: '',
 		perFunction: false,
 	},
 	{
@@ -66,6 +69,7 @@ export const GATES: readonly Gate[] = [
 		rule: 'no-process-env',
 		script: 'apps/api/scripts/check-env.sh',
 		args: [],
+		base: 'apps/api/convex/',
 		perFunction: false,
 	},
 	{
@@ -73,6 +77,7 @@ export const GATES: readonly Gate[] = [
 		rule: 'no-log-pii',
 		script: 'apps/api/scripts/check-log-pii.sh',
 		args: [],
+		base: 'apps/api/',
 		perFunction: false,
 	},
 	{
@@ -80,6 +85,7 @@ export const GATES: readonly Gate[] = [
 		rule: 'convex-error-taxonomy',
 		script: 'apps/api/scripts/check-errors.sh',
 		args: [],
+		base: 'apps/api/',
 		perFunction: false,
 	},
 	{
@@ -87,6 +93,7 @@ export const GATES: readonly Gate[] = [
 		rule: 'no-raw-convex-builder',
 		script: 'apps/api/scripts/check-public-functions.sh',
 		args: [],
+		base: 'apps/api/',
 		perFunction: false,
 	},
 	{
@@ -94,6 +101,7 @@ export const GATES: readonly Gate[] = [
 		rule: 'use-threaded-session',
 		script: 'apps/api/scripts/check-session-threading.sh',
 		args: ['--generate'],
+		base: 'apps/api/',
 		perFunction: true,
 	},
 	{
@@ -101,6 +109,7 @@ export const GATES: readonly Gate[] = [
 		rule: 'feature-floor-in-builder',
 		script: 'apps/api/scripts/check-feature-floors.sh',
 		args: ['--generate'],
+		base: 'apps/api/',
 		perFunction: true,
 	},
 ];
@@ -148,14 +157,12 @@ export function oldFindings(root: string, gate: Gate): string[] {
 	if (run.error || (run.status !== 0 && run.status !== 1)) {
 		throw new Error(`${gate.script} exited ${String(run.status)}: ${run.stderr}`);
 	}
-	// The apps/api gates print paths relative to apps/api.
-	const prefix = gate.script.startsWith('apps/api/') ? 'apps/api/' : '';
 	const sites: string[] = [];
 	for (const line of run.stdout.split('\n')) {
 		const match = gate.perFunction
 			? /^(\S+\.ts):([A-Za-z0-9_$<>]+)$/.exec(line.trim())
 			: /^\s*(\S+?\.[a-z]+):(\d+):/.exec(line);
-		if (match) sites.push(`${prefix}${match[1]}:${match[2]}`);
+		if (match) sites.push(`${gate.base}${match[1]}:${match[2]}`);
 	}
 	if (gate.name === 'crypto') {
 		// `--generate` lists the sanctioned modules' own hits too; the gate skips them.

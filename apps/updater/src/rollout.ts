@@ -15,6 +15,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
 import { COMPOSE_SHADOWED_VARS, exec, OWLAT_DIR } from './http.js';
+import { dockerHost as configuredDockerHost } from './config.js';
 import { verifyReadiness } from './readiness.js';
 import { shutdownSignal } from './lifecycle.js';
 
@@ -377,7 +378,7 @@ async function scheduleUpdaterRecreate(): Promise<RolloutStep> {
 		};
 	}
 
-	const dockerHost = process.env['DOCKER_HOST'];
+	const dockerHost = configuredDockerHost();
 	if (dockerHost && !SAFE_ARG.test(dockerHost)) {
 		return { step, ok: false, stdout: '', stderr: 'Refusing to pass on an unsafe DOCKER_HOST' };
 	}

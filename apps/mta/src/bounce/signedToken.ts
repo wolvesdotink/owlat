@@ -15,7 +15,7 @@
  * complaint token (or vice versa) because the label is part of the signed input,
  * and there is exactly one place where that input is built.
  *
- * Everything here is pure apart from the optional `process.env` key lookup: the
+ * Everything here is pure apart from the optional environment key lookup: the
  * clock is a parameter, nothing throws, and a verification failure is a returned
  * value the caller classifies and counts.
  */
@@ -26,6 +26,7 @@ import {
 	signedTokenMacsEqual as sharedSignedTokenMacsEqual,
 	VERP_WINDOW_MS,
 } from '@owlat/shared/verp';
+import { readBounceVerpKeyEnv } from '../config.js';
 
 /** Window granularity: one bucket per UTC day. */
 export const SIGNED_TOKEN_WINDOW_MS = VERP_WINDOW_MS;
@@ -47,7 +48,7 @@ export function resolveSignedTokenKey(explicit?: string): string | undefined {
 	// surrounding whitespace must resolve to the SAME HMAC key on both sides.
 	// Without it every relay-stamped token would fail verification here: safely,
 	// but invisibly, which reads downstream as "that arm produced no bounces".
-	return normalizeVerpKey(explicit ?? process.env['BOUNCE_VERP_KEY']);
+	return normalizeVerpKey(explicit ?? readBounceVerpKeyEnv());
 }
 
 /**
