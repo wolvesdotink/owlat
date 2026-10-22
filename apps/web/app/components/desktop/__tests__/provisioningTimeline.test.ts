@@ -14,15 +14,13 @@
  * happy-dom gives every element a zero layout box, so the suite defines the
  * scroll geometry (`scrollHeight`/`clientHeight`) the pane reads.
  */
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { mount } from '@vue/test-utils';
 
 import ProvisioningTimeline from '../ProvisioningTimeline.vue';
 import { createTestI18n, i18nStubs, expectFullyLocalized } from '~/__tests__/i18n';
 import { createTimeline } from '~/lib/desktop/provisioning';
 import type { LogLine } from '~/composables/useServerProvisioning';
-
-enableAutoUnmount(afterEach);
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });

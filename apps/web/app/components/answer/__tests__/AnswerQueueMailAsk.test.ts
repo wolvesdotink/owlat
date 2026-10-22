@@ -8,8 +8,8 @@
  *  - the starter reply that lands while the page is open goes to the editor,
  *    once; a reply drafted before the page opened is left to the prepared draft.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AnswerQueueMailAsk from '../AnswerQueueMailAsk.vue';
@@ -58,7 +58,6 @@ beforeAll(() => {
 		}),
 	});
 });
-enableAutoUnmount(afterEach);
 beforeEach(() => {
 	run.mockClear();
 	preparedArgs.mockClear();

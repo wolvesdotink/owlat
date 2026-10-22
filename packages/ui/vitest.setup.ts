@@ -2,7 +2,7 @@
  * Nuxt-layer auto-import polyfills for vitest (mirrors apps/web's setup —
  * see CLAUDE.md: never run these with `bun test`, it skips this file).
  */
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import {
 	ref,
 	computed,
@@ -23,7 +23,8 @@ import {
 	provide,
 	inject,
 } from 'vue';
-import { createUiI18n } from './__tests__/i18n';
+import { enableAutoUnmountOnce } from './__tests__/autoUnmount';
+import { createUiI18n, unmountAllUi } from './__tests__/i18n';
 
 vi.stubGlobal('ref', ref);
 vi.stubGlobal('computed', computed);
@@ -66,3 +67,14 @@ vi.stubGlobal('useColorMode', () => reactive({ preference: 'system', value: 'lig
  */
 const sharedI18n = createUiI18n('en');
 vi.stubGlobal('useI18n', () => sharedI18n.global);
+
+/**
+ * Every component a test mounts is unmounted after that test, also when an
+ * assertion or a wait in it failed, so no component, listener or teleported
+ * node outlives the test that made it. `enableAutoUnmountOnce` covers
+ * @vue/test-utils wrappers (and is the suite's only registration: the library
+ * throws on a second one); `unmountAllUi` covers the plain `createApp` mounts
+ * that `mountUi()` makes.
+ */
+enableAutoUnmountOnce(afterEach);
+afterEach(unmountAllUi);

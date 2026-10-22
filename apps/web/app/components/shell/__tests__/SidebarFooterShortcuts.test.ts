@@ -3,7 +3,7 @@
  * Linux user used to be told ⌘J and ⌘⇧F, keys their keyboard does not have.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import SidebarFooter from '../SidebarFooter.vue';
@@ -24,7 +24,6 @@ beforeEach(() => {
 		useKeyboardShortcuts: () => ({ openHelpModal: vi.fn() }),
 	});
 });
-enableAutoUnmount(afterEach);
 afterEach(() => {
 	delete (window.navigator as { userAgent?: string }).userAgent;
 });
