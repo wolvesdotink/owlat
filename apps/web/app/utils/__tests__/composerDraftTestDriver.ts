@@ -20,7 +20,7 @@ export function composerDraftTestDriver(
 	const log: string[] = [];
 	let gate: Promise<void> | null = null;
 	const pass = async () => {
-		while (gate) await gate;
+		if (gate) await gate;
 	};
 	const clone = <T>(value: T): T => (value === undefined ? value : structuredClone(value));
 	return {

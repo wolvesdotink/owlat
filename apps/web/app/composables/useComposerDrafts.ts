@@ -46,7 +46,7 @@ export function createComposerDraftBook(
 
 	async function drain(key: string): Promise<void> {
 		// Yield first, so `writing` holds this run before anything is awaited.
-		await null;
+		await Promise.resolve();
 		try {
 			while (queued.has(key)) {
 				const next = queued.get(key) ?? null;
