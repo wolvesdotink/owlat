@@ -1,5 +1,7 @@
+import { createRootMatcher, type Node, propertyName, unwrap } from '../documentRoot.ts';
+import { createLoopMatcher } from '../documentRootLoops.ts';
 import { matchesAnyGlob } from '../fileGlobs.ts';
-import type { AstNode, Context, Rule, Scope } from '../types.ts';
+import type { AstNode, Rule } from '../types.ts';
 
 /**
  * A test never wipes the whole document to clean up after itself. Clearing
@@ -19,11 +21,15 @@ import type { AstNode, Context, Rule, Scope } from '../types.ts';
  *    `document.body.firstChild`), and a `for…of` or `.forEach` over its
  *    children (or its `'*'` descendants, or a plain copy of either) that
  *    removes the node it is visiting.
- * A loop only counts when it removes the root's own children: `.remove()` on
- * them or `.removeChild(…)` with them as the argument. Removing a node found
- * inside a child, some unrelated node, or the members of a filtered or mapped
- * copy or of one child's own children, leaves the rest of the document in
- * place and stays allowed.
+ * A loop only counts when it removes every one of the root's own children:
+ * each pass removes them (`.remove()` on them or `.removeChild(…)` with them
+ * as the argument) as one of the loop body's own statements, nothing in the
+ * body can end a pass early, and a draining loop runs until the root is empty
+ * (`count > 0`, not `count > 1`). Removing a node found inside a child, some
+ * unrelated node, the members of a filtered or mapped copy or of one child's
+ * own children, only the children a condition picks, or children down to a
+ * bound above zero, leaves the rest of the document in place and stays
+ * allowed.
  * The body is recognized as `document.body` / `document.documentElement`
  * (also through `window.`, `globalThis.` or `self.`, computed keys and
  * TypeScript non-null or `as` wrappers) and through a local variable that is
@@ -39,337 +45,11 @@ interface Options {
 	files?: string[];
 }
 
-const ROOT_ELEMENTS = new Set(['body', 'documentElement']);
-const GLOBAL_OBJECTS = new Set(['window', 'globalThis', 'self']);
 const CONTENT_PROPERTIES = new Set(['innerHTML', 'outerHTML', 'textContent', 'innerText']);
 const REPLACING_METHODS = new Set(['replaceChildren', 'replaceWith', 'setHTML', 'setHTMLUnsafe']);
-/** Reads that tell a loop whether the body still has children. */
-const CHILD_PROBES = new Set([
-	'firstChild',
-	'lastChild',
-	'firstElementChild',
-	'lastElementChild',
-	'childElementCount',
-	'childNodes',
-	'children',
-	'hasChildNodes',
-]);
-/** Collections of the body's children a loop can walk. */
-const CHILD_COLLECTIONS = new Set(['childNodes', 'children']);
-/** Queries that list every descendant when asked for `'*'`. */
-const WILDCARD_QUERIES = new Set(['querySelectorAll', 'getElementsByTagName']);
-/** Reads of one child of the root, which a draining loop removes. */
-const CHILD_READS = new Set(['firstChild', 'lastChild', 'firstElementChild', 'lastElementChild']);
-const WRAPPERS = new Set([
-	'ChainExpression',
-	'ParenthesizedExpression',
-	'TSNonNullExpression',
-	'TSAsExpression',
-	'TSSatisfiesExpression',
-	'TSTypeAssertion',
-]);
 
 const MESSAGE =
 	'Do not reset the whole document in a test: it hides components a test left mounted. The shared vitest setup unmounts every mount after each test; append hand-built DOM to a node you own and remove that node.';
-
-type Node = AstNode | null | undefined;
-
-const unwrap = (node: Node): Node => {
-	let current = node;
-	while (current && WRAPPERS.has(current.type) && 'expression' in current) {
-		current = current.expression as Node;
-	}
-	return current;
-};
-
-const propertyName = (node: Node): string | undefined => {
-	if (node?.type !== 'MemberExpression') return undefined;
-	const { property } = node;
-	if (!node.computed && property.type === 'Identifier') return property.name;
-	if (property.type === 'Literal' && typeof property.value === 'string') return property.value;
-	if (
-		property.type === 'TemplateLiteral' &&
-		property.expressions.length === 0 &&
-		property.quasis.length === 1
-	) {
-		return property.quasis[0]?.value.cooked ?? undefined;
-	}
-	return undefined;
-};
-
-/** Every child node of `node`, in no particular order. */
-function* childNodes(node: AstNode): Generator<AstNode> {
-	for (const [key, value] of Object.entries(node)) {
-		if (key === 'parent') continue;
-		const items: unknown[] = Array.isArray(value) ? value : [value];
-		for (const item of items) {
-			if (item && typeof item === 'object' && typeof (item as AstNode).type === 'string') {
-				yield item as AstNode;
-			}
-		}
-	}
-}
-
-/** Whether `node` or anything inside it (nested functions included) satisfies `test`. */
-const containsNode = (node: Node, test: (candidate: AstNode) => boolean): boolean => {
-	if (!node) return false;
-	const stack: AstNode[] = [node];
-	while (stack.length > 0) {
-		const current = stack.pop() as AstNode;
-		if (test(current)) return true;
-		for (const child of childNodes(current)) stack.push(child);
-	}
-	return false;
-};
-
-const createMatcher = (context: Context) => {
-	/**
-	 * The binding `identifier` resolves to, if the file declares it. Globals the
-	 * config provides (`document`, `window` under the browser env) sit in the
-	 * global scope with no definition and count as undeclared.
-	 */
-	const localVariable = (identifier: AstNode) => {
-		if (identifier.type !== 'Identifier') return undefined;
-		let scope: Scope | null = context.sourceCode.getScope(identifier);
-		while (scope) {
-			const variable = scope.set.get(identifier.name);
-			if (variable) return variable.defs.length > 0 ? variable : undefined;
-			scope = scope.upper;
-		}
-		return undefined;
-	};
-
-	/**
-	 * What a never-reassigned local variable holds: its initializer, or for a
-	 * `const { body } = document` binding the object and key it was taken from.
-	 */
-	const aliasOf = (identifier: AstNode) => {
-		const variable = localVariable(identifier);
-		const definition = variable?.defs[0];
-		if (!variable || variable.defs.length !== 1 || definition?.type !== 'Variable') {
-			return undefined;
-		}
-		if (variable.references.some((reference) => reference.isWrite() && !reference.init)) {
-			return undefined;
-		}
-		const declarator = definition.node;
-		if (declarator.type !== 'VariableDeclarator' || !declarator.init) return undefined;
-		if (declarator.id === definition.name) return { value: declarator.init };
-		const property = definition.name.parent;
-		if (
-			property?.type === 'Property' &&
-			property.value === definition.name &&
-			property.parent === declarator.id &&
-			declarator.id.type === 'ObjectPattern'
-		) {
-			const key =
-				!property.computed && property.key.type === 'Identifier'
-					? property.key.name
-					: property.key.type === 'Literal' && typeof property.key.value === 'string'
-						? property.key.value
-						: undefined;
-			if (key !== undefined) return { object: declarator.init, key };
-		}
-		return undefined;
-	};
-
-	const isDocument = (node: Node, depth = 0): boolean => {
-		const current = unwrap(node);
-		if (!current || depth > 8) return false;
-		if (current.type === 'Identifier') {
-			if (current.name === 'document' && !localVariable(current)) return true;
-			const alias = aliasOf(current);
-			if (alias && 'value' in alias) return isDocument(alias.value, depth + 1);
-			if (alias?.key === 'document') return isGlobalObject(alias.object);
-			return false;
-		}
-		return (
-			current.type === 'MemberExpression' &&
-			propertyName(current) === 'document' &&
-			isGlobalObject(current.object)
-		);
-	};
-
-	const isGlobalObject = (node: Node): boolean => {
-		const current = unwrap(node);
-		return (
-			current?.type === 'Identifier' && GLOBAL_OBJECTS.has(current.name) && !localVariable(current)
-		);
-	};
-
-	/** `document.body` / `document.documentElement`, however it is spelled. */
-	const isRootElement = (node: Node, depth = 0): boolean => {
-		const current = unwrap(node);
-		if (!current || depth > 8) return false;
-		if (current.type === 'Identifier') {
-			const alias = aliasOf(current);
-			if (alias && 'value' in alias) return isRootElement(alias.value, depth + 1);
-			return alias !== undefined && ROOT_ELEMENTS.has(alias.key) && isDocument(alias.object);
-		}
-		const name = propertyName(current);
-		return (
-			current.type === 'MemberExpression' &&
-			name !== undefined &&
-			ROOT_ELEMENTS.has(name) &&
-			isDocument(current.object)
-		);
-	};
-
-	/** A member read `<root>.<name>` with `name` in `names`. */
-	const isRootMember = (node: AstNode, names: Set<string>): boolean => {
-		const name = propertyName(node);
-		return (
-			name !== undefined &&
-			names.has(name) &&
-			node.type === 'MemberExpression' &&
-			isRootElement(node.object)
-		);
-	};
-
-	type Variable = NonNullable<ReturnType<typeof localVariable>>;
-
-	/** Whether `node` is `variable`, directly or through never-reassigned aliases. */
-	const isVariable = (node: Node, variable: Variable, depth = 0): boolean => {
-		const current = unwrap(node);
-		if (current?.type !== 'Identifier' || depth > 8) return false;
-		if (localVariable(current) === variable) return true;
-		const alias = aliasOf(current);
-		return alias !== undefined && 'value' in alias && isVariable(alias.value, variable, depth + 1);
-	};
-
-	/**
-	 * One child of the root: `<root>.firstChild` and kin, `<root>.children[i]`,
-	 * `<root>.childNodes.item(i)`, or a never-reassigned alias of one.
-	 */
-	const isRootChild = (node: Node, depth = 0): boolean => {
-		const current = unwrap(node);
-		if (!current || depth > 8) return false;
-		if (current.type === 'Identifier') {
-			const alias = aliasOf(current);
-			return alias !== undefined && 'value' in alias && isRootChild(alias.value, depth + 1);
-		}
-		if (current.type === 'MemberExpression') {
-			if (isRootMember(current, CHILD_READS)) return true;
-			const collection = unwrap(current.object);
-			return (
-				current.computed &&
-				propertyName(current) === undefined &&
-				collection !== undefined &&
-				collection !== null &&
-				isRootMember(collection, CHILD_COLLECTIONS)
-			);
-		}
-		if (current.type !== 'CallExpression') return false;
-		const callee = unwrap(current.callee);
-		const collection = callee?.type === 'MemberExpression' ? unwrap(callee.object) : undefined;
-		return (
-			propertyName(callee) === 'item' &&
-			collection !== undefined &&
-			collection !== null &&
-			isRootMember(collection, CHILD_COLLECTIONS)
-		);
-	};
-
-	/**
-	 * Whether `node` removes a node `isTarget` accepts: `target.remove()` or
-	 * `parent.removeChild(target)`. A removal of anything else (a node queried
-	 * inside the target, an owned fixture) does not count.
-	 */
-	const removes = (node: Node, isTarget: (candidate: Node) => boolean) =>
-		containsNode(node, (candidate) => {
-			if (candidate.type !== 'CallExpression') return false;
-			const callee = unwrap(candidate.callee);
-			if (callee?.type !== 'MemberExpression') return false;
-			const name = propertyName(callee);
-			// `remove(index)` is HTMLSelectElement's option removal, not the node's own.
-			if (name === 'remove') return candidate.arguments.length === 0 && isTarget(callee.object);
-			return name === 'removeChild' && isTarget(candidate.arguments[0]);
-		});
-
-	/** Whether `body` removes the node a loop binds to `binding` on each pass. */
-	const removesVisited = (body: Node, binding: Node) => {
-		const variable = binding?.type === 'Identifier' ? localVariable(binding) : undefined;
-		return variable !== undefined && removes(body, (candidate) => isVariable(candidate, variable));
-	};
-
-	/**
-	 * Whether a loop with this `test` and `body` removes the root's children:
-	 * one read straight off the root, or a variable the test assigns one to
-	 * (`while ((node = document.body.firstChild)) node.remove()`).
-	 */
-	const removesRootChildren = (test: Node, body: Node) => {
-		const assigned: Variable[] = [];
-		containsNode(test, (candidate) => {
-			if (
-				candidate.type === 'AssignmentExpression' &&
-				candidate.operator === '=' &&
-				candidate.left.type === 'Identifier' &&
-				isRootChild(candidate.right)
-			) {
-				const variable = localVariable(candidate.left);
-				if (variable) assigned.push(variable);
-			}
-			return false;
-		});
-		return removes(
-			body,
-			(candidate) =>
-				isRootChild(candidate) || assigned.some((variable) => isVariable(candidate, variable))
-		);
-	};
-
-	/** Whether `node` is the global `Array`, not a local binding of that name. */
-	const isGlobalArray = (node: Node) => {
-		const current = unwrap(node);
-		return current?.type === 'Identifier' && current.name === 'Array' && !localVariable(current);
-	};
-
-	/**
-	 * Whether iterating `node` visits every child of the root: `<root>.children`
-	 * or `.childNodes`, `<root>.querySelectorAll('*')` / `getElementsByTagName('*')`,
-	 * or a plain copy of one (`[...x]`, also with extra elements, `Array.from(x)`
-	 * without a mapper, `x.slice()`), directly or through a never-reassigned
-	 * alias. Only the iterable's own value counts: a collection read off one
-	 * child (`<root>.children[0].children`), a filtered or mapped copy, or any
-	 * other expression that merely mentions the root's children visits a subset
-	 * or other nodes and leaves the document in place.
-	 */
-	const walksRootChildren = (node: Node, depth = 0): boolean => {
-		const current = unwrap(node);
-		if (!current || depth > 8) return false;
-		switch (current.type) {
-			case 'Identifier': {
-				const alias = aliasOf(current);
-				return alias !== undefined && 'value' in alias && walksRootChildren(alias.value, depth + 1);
-			}
-			case 'MemberExpression':
-				return isRootMember(current, CHILD_COLLECTIONS);
-			case 'ArrayExpression':
-				return current.elements.some(
-					(element) =>
-						element?.type === 'SpreadElement' && walksRootChildren(element.argument, depth + 1)
-				);
-			case 'CallExpression': {
-				const callee = unwrap(current.callee);
-				if (callee?.type !== 'MemberExpression') return false;
-				const name = propertyName(callee);
-				const args = current.arguments;
-				if (isRootMember(callee, WILDCARD_QUERIES)) {
-					const [selector] = args;
-					return selector?.type === 'Literal' && selector.value === '*';
-				}
-				if (name === 'from' && isGlobalArray(callee.object)) {
-					return args.length === 1 && walksRootChildren(args[0], depth + 1);
-				}
-				return name === 'slice' && args.length === 0 && walksRootChildren(callee.object, depth + 1);
-			}
-			default:
-				return false;
-		}
-	};
-
-	return { isRootElement, isRootMember, removesRootChildren, removesVisited, walksRootChildren };
-};
 
 const rule: Rule = {
 	meta: {
@@ -392,17 +72,15 @@ const rule: Rule = {
 		const files = (context.options[0] as Options | undefined)?.files;
 		if (files && !matchesAnyGlob(context.filename, files)) return {};
 		if (!context.sourceCode.text.includes('document')) return {};
-		const { isRootElement, isRootMember, removesRootChildren, removesVisited, walksRootChildren } =
-			createMatcher(context);
+		const root = createRootMatcher(context);
+		const { isRootElement, isRootMember } = root;
+		const { drainsRoot, removesVisited, walksRootChildren } = createLoopMatcher(root);
 		const report = (node: AstNode) => context.report({ node, message: MESSAGE });
 
-		/** A loop that keeps removing nodes while the body still has children. */
+		/** A loop that keeps removing the body's children until it has none. */
 		const checkDrainingLoop = (node: AstNode) => {
 			if (!('test' in node) || !('body' in node)) return;
-			const probesChildren = containsNode(node.test as Node, (candidate) =>
-				isRootMember(candidate, CHILD_PROBES)
-			);
-			if (probesChildren && removesRootChildren(node.test as Node, node.body as Node)) report(node);
+			if (drainsRoot(node.test as Node, node.body as Node)) report(node);
 		};
 
 		return {

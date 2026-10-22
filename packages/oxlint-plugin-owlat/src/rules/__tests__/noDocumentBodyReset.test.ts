@@ -108,6 +108,31 @@ ruleTester.run('owlat/no-document-body-reset', rule, {
 			code: "declare const owned: HTMLElement[];\nwhile (document.body.childElementCount > 1) owned.pop()?.remove();\nwhile (document.body.firstChild) document.body.firstChild.querySelector('[data-owned]')?.remove();",
 		},
 		{
+			name: 'a loop over the children that removes only some of them',
+			filename,
+			code: "declare const keep: (node: Element) => boolean;\nfor (const child of document.body.children) { if (child.hasAttribute('data-owned')) child.remove(); }\nfor (const child of [...document.body.children]) keep(child) || child.remove();\nfor (const child of [...document.body.children]) (keep(child) ? null : child.remove());\nfor (const child of [...document.body.children]) { try { child.remove(); } catch {} }\nArray.from(document.body.children).forEach((child) => child.matches('.toast') && child.remove());\nArray.from(document.body.children).forEach((child) => { if (keep(child)) return; child.remove(); });",
+		},
+		{
+			name: 'a loop over the children that leaves a pass early or stops',
+			filename,
+			code: "declare const keep: (node: Element) => boolean;\nfor (const child of [...document.body.children]) { if (keep(child)) continue; child.remove(); }\nfor (const child of [...document.body.children]) { child.remove(); break; }\nfor (const child of [...document.body.children]) { if (keep(child)) throw new Error('kept'); child.remove(); }",
+		},
+		{
+			name: 'a loop that rebinds the visited node before removing it',
+			filename,
+			code: 'declare const owned: Element;\nfor (let child of [...document.body.children]) { child = owned; child.remove(); }\nlet node: ChildNode | null;\nwhile ((node = document.body.firstChild)) { node = node.nextSibling; node?.remove(); }',
+		},
+		{
+			name: 'a draining loop bounded to keep some children',
+			filename,
+			code: 'while (document.body.childElementCount > 1) document.body.lastElementChild!.remove();\nwhile (document.body.children.length > 2) document.body.children[0].remove();\nwhile (1 < document.body.childNodes.length) document.body.firstChild!.remove();\nwhile (document.body.childElementCount >= 2) document.body.firstElementChild!.remove();\nwhile (document.body.childElementCount !== 1) document.body.lastElementChild!.remove();',
+		},
+		{
+			name: 'a draining loop whose test or body may stop with children left',
+			filename,
+			code: "declare const owned: Element;\ndeclare let more: boolean;\nwhile (document.body.firstChild && more) document.body.firstChild.remove();\nwhile (document.body.lastChild !== owned) document.body.lastChild!.remove();\nwhile (document.body.hasChildNodes()) { if (document.body.firstElementChild?.id === 'app') break; document.body.firstChild!.remove(); }\nwhile (document.body.firstElementChild) { if (more) document.body.firstElementChild.remove(); }\nfor (;;) document.body.firstChild?.remove();",
+		},
+		{
 			name: 'a file outside the configured globs',
 			filename: 'packages/email-builder/src/__tests__/cases.test.ts',
 			options: scoped,
@@ -223,6 +248,18 @@ ruleTester.run('owlat/no-document-body-reset', rule, {
 			filename,
 			code: 'while (document.body.children.length) document.body.children[0].remove();\nwhile (document.body.childNodes.length > 0) document.body.removeChild(document.body.childNodes.item(0));\nwhile (document.body.lastChild) { const last = document.body.lastChild; last.parentNode?.removeChild(last); }\nlet node: ChildNode | null;\nwhile ((node = document.body.firstChild)) node.remove();',
 			errors: 4,
+		},
+		{
+			name: 'a draining loop that compares the children against none',
+			filename,
+			code: 'while (document.body.childElementCount !== 0) document.body.firstChild!.remove();\nwhile (0 < document.body.children.length) document.body.children[0].remove();\nwhile (document.body.childNodes.length >= 1) document.body.firstChild!.remove();\nwhile (1 <= document.body.childElementCount) document.body.lastElementChild!.remove();\nwhile (document.body.firstChild !== null) document.body.firstChild.remove();\nwhile (document.body.lastChild != null) document.body.lastChild.remove();\nwhile (undefined !== document.body.firstElementChild) document.body.firstElementChild!.remove();\nwhile (!!document.body.firstChild) document.body.firstChild.remove();\nlet node: ChildNode | null;\nwhile ((node = document.body.firstChild) !== null) { node.remove(); }',
+			errors: 9,
+		},
+		{
+			name: 'a loop whose every pass removes the visited node next to other statements',
+			filename,
+			code: 'declare const seen: Element[];\nfor (const child of [...document.body.children]) { seen.push(child); child.remove(); }\nArray.from(document.body.children).forEach((child) => { if (child.id) seen.push(child); child.remove(); });',
+			errors: 2,
 		},
 		{
 			name: 'a for...of over the children that removes them',

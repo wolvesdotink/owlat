@@ -105,8 +105,9 @@ const FIXTURES: Record<string, string> = {
 		'});',
 		'',
 	].join('\n'),
-	// Removing a node found inside each child, one child's own children or a
-	// filtered subset of the children leaves the body in place.
+	// Removing a node found inside each child, one child's own children, a
+	// filtered subset of the children, only the children a condition picks, or
+	// children down to a bound above zero leaves the body in place.
 	'apps/web/app/__tests__/bodyOwnedRemoval.test.ts': [
 		"import { afterEach } from 'vitest';",
 		'',
@@ -114,6 +115,8 @@ const FIXTURES: Record<string, string> = {
 		"\tfor (const child of document.body.children) child.querySelector('[data-owned]')?.remove();",
 		'\tfor (const node of document.body.children[0].children) node.remove();',
 		"\tfor (const node of [...document.body.children].filter((el) => el.matches('.toast'))) node.remove();",
+		"\tfor (const child of document.body.children) { if (child.hasAttribute('data-owned')) child.remove(); }",
+		'\twhile (document.body.childElementCount > 1) document.body.lastElementChild!.remove();',
 		'});',
 		'',
 	].join('\n'),
