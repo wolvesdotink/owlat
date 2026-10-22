@@ -3,6 +3,7 @@
  * re-enqueue themselves with their own delay; this curve only governs throws.
  */
 import { describe, expect, it, vi } from 'vitest';
+import type IORedis from 'ioredis';
 import Redis from 'ioredis-mock';
 
 // groupmq's Worker opens real Redis machinery on construction; the options it
@@ -30,7 +31,7 @@ describe('unexpected handler error backoff', () => {
 	});
 
 	it('is the backoff the worker is created with', () => {
-		const redis = new Redis() as unknown as import('ioredis').default;
+		const redis = new Redis() as unknown as IORedis;
 		const config = { workerConcurrency: 1, serverId: 'mta-1' } as never;
 		const { worker, stopHeartbeat } = createEmailWorker({} as never, redis, config);
 		stopHeartbeat();
