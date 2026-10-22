@@ -7,8 +7,8 @@ import { createTestI18n } from '~/__tests__/i18n';
 /**
  * Answer mode's keys are bound by its pages, but the "?" sheet only knows the
  * catalog: with the `answer` scope claimed (AnswerModeFrame), the sheet lists
- * Esc, t, Cmd/Ctrl+J, 1 to 9, [ and ], and the app-wide Esc and Cmd/Ctrl+J
- * they take over drop out of it.
+ * Esc, t, n, Cmd/Ctrl+J, 1 to 9, [ and ], e, h and Cmd/Ctrl+Z, and the
+ * app-wide Esc and Cmd/Ctrl+J (the Assistant) they take over drop out of it.
  */
 afterEach(() => resetShortcutScopes());
 
@@ -34,9 +34,13 @@ describe('answer scope', () => {
 			'answer.pickAskOption',
 			'answer.previousItem',
 			'answer.nextItem',
+			'answer.archive',
+			'answer.snooze',
+			'answer.undo',
 		]);
 		const ids = groups.flatMap((g) => g.items.map((i) => i.id));
 		expect(ids).not.toContain('global.close');
+		expect(ids).not.toContain('global.assistant');
 	});
 
 	it('says where the note key works, since personal mail has no notes', () => {

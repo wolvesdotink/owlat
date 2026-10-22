@@ -30,7 +30,26 @@
  * is no per-surface parsing to get subtly wrong.
  */
 
-export type ShortcutScope = 'global' | 'postbox' | 'review' | 'composer' | 'workspace' | 'answer';
+export type ShortcutScope =
+	| 'global'
+	| 'postbox'
+	| 'inbox'
+	| 'workbench'
+	| 'peek'
+	| 'review'
+	| 'composer'
+	| 'workspace'
+	| 'answer';
+
+/**
+ * Why a chord cannot be moved, as the shortcuts page explains it:
+ *   - `convention` — a key people expect from every app (Esc, ⌘Enter, ⌘Z).
+ *   - `layout` — matched by the key's position (`event.code`), so it works on
+ *     every keyboard layout; a captured character could not be matched that way.
+ *   - `surface` — the screen it works on answers it with its own handler,
+ *     outside the dispatcher, so a stored remap would never reach it.
+ */
+export type ShortcutFixedReason = 'convention' | 'layout' | 'surface';
 
 export interface ShortcutDefinition {
 	/** Stable id, `scope.verb` (e.g. `postbox.archive`). Never shown to a user. */
@@ -52,8 +71,10 @@ export interface ShortcutDefinition {
 	/**
 	 * False for chords the user may not move: platform conventions (Esc,
 	 * Cmd+Enter) and keys whose handler is not routed through the registry.
+	 * Every such entry names its reason in `fixedReason`.
 	 */
 	remappable?: boolean;
+	fixedReason?: ShortcutFixedReason;
 }
 
 /** Modifiers, in the canonical order a normalized step writes them. */
@@ -90,7 +111,14 @@ function normalizeStep(step: string): string | null {
 		if (!mod) return null;
 		mods.add(mod);
 	}
-	return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key].join('+');
+	// A letter carries Shift in its case (`chordFromEvent`), so `mod+shift+f`
+	// and `mod+F` are one chord, written the second way.
+	let letter = key;
+	if (mods.has('shift') && /^[a-z]$/i.test(key)) {
+		mods.delete('shift');
+		letter = key.toUpperCase();
+	}
+	return [...MODIFIER_ORDER.filter((m) => mods.has(m)), letter].join('+');
 }
 
 /** The steps of a chord, already normalized. Empty for a malformed chord. */
@@ -130,14 +158,28 @@ export interface ChordEventLike {
  * only named for keys that are not a single printable character — for those the
  * character itself already carries it (`Shift+u` arrives as `'U'`), and naming
  * it too would make `U` and `shift+U` two different chords for one keypress.
+ *
+ * With Cmd/Ctrl/Alt held, a letter's case is taken from the Shift key rather
+ * than from `event.key`: Caps Lock turns ⌘J into `J`, and some browsers report
+ * ⌘⇧F as `f`, so the character alone would make one chord two. `mod+J` is
+ * therefore always ⌘⇧J, whoever produced it.
  */
 export function chordFromEvent(event: ChordEventLike): string {
 	const mods: Modifier[] = [];
 	if (event.metaKey || event.ctrlKey) mods.push('mod');
 	if (event.altKey) mods.push('alt');
 	if (event.shiftKey && event.key.length > 1) mods.push('shift');
-	const key = event.key === ' ' ? 'Space' : event.key;
+	let key = event.key === ' ' ? 'Space' : event.key;
+	if (mods.length > 0 && /^[a-z]$/i.test(key)) {
+		key = event.shiftKey ? key.toUpperCase() : key.toLowerCase();
+	}
 	return [...MODIFIER_ORDER.filter((m) => mods.includes(m)), key].join('+');
+}
+
+/** True when a chord's first step holds Cmd/Ctrl or Alt. */
+export function isModifierChord(chord: string): boolean {
+	const first = chordSteps(chord)[0];
+	return first !== undefined && /^(?:mod|alt)\+./.test(first);
 }
 
 /** Display glyphs for keys whose `KeyboardEvent.key` name is not what to print. */
@@ -161,6 +203,9 @@ export function formatChord(chord: string, isMac: boolean): string[] {
 	for (const step of chordSteps(chord)) {
 		const parts = step === '+' ? ['+'] : step.split('+');
 		const key = parts.pop() as string;
+		// Next to a modifier a capital letter means Shift (`chordFromEvent`), and a
+		// keycap row cannot show case, so it is printed.
+		if (parts.length > 0 && !parts.includes('shift') && /^[A-Z]$/.test(key)) parts.push('shift');
 		for (const mod of parts) {
 			if (mod === 'mod') tokens.push(isMac ? '⌘' : 'Ctrl');
 			else if (mod === 'alt') tokens.push(isMac ? '⌥' : 'Alt');
@@ -171,12 +216,18 @@ export function formatChord(chord: string, isMac: boolean): string[] {
 	return tokens;
 }
 
-/** Two definitions in one scope claiming the same chord. */
+/**
+ * Two definitions in one scope that cannot both fire: the same chord, or a
+ * chord that is the first step of another (`g` bound on its own would fire
+ * before `g d` could ever be completed).
+ */
 export interface ShortcutConflict {
 	scope: ShortcutScope;
 	chord: string;
 	/** The winning id first, then everyone it shadowed. */
 	ids: string[];
+	/** `prefix` when `chord` is the start of a longer chord another id owns. */
+	kind?: 'prefix';
 }
 
 export interface ShortcutBindings {
@@ -233,9 +284,24 @@ export function buildShortcutBindings(
 				continue;
 			}
 			if (owner === def.id) continue;
-			const existing = conflicts.find((c) => c.scope === def.scope && c.chord === chord);
+			const existing = conflicts.find(
+				(c) => c.scope === def.scope && c.chord === chord && c.kind === undefined
+			);
 			if (existing) existing.ids.push(def.id);
 			else conflicts.push({ scope: def.scope, chord, ids: [owner, def.id] });
+		}
+	}
+
+	for (const [scope, scoped] of byScope) {
+		for (const [chord, id] of scoped) {
+			const steps = chord.split(' ');
+			for (let length = 1; length < steps.length; length += 1) {
+				const prefix = steps.slice(0, length).join(' ');
+				const owner = scoped.get(prefix);
+				if (owner !== undefined && owner !== id) {
+					conflicts.push({ scope, chord: prefix, ids: [owner, id], kind: 'prefix' });
+				}
+			}
 		}
 	}
 

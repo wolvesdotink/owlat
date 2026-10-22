@@ -19,24 +19,29 @@
 import { buildShortcutSheet, shortcutSheetKeys } from '~/utils/shortcutRegistry';
 import { SHORTCUT_CATALOG } from '~/utils/shortcutCatalog';
 import { activeShortcutScopes, shortcutBindings } from '~/utils/shortcutScope';
+import { isShortcutEntryAvailable } from '~/utils/shortcutSettingsRows';
 
 const { t } = useI18n();
 const { isHelpModalOpen, closeHelpModal } = useKeyboardShortcuts();
 
 // A browser on a Mac wants the ⌘ hint even though it is not the desktop app.
-const { platform } = useDesktopContext();
+const { platform, isDesktop } = useDesktopContext();
 const isMac = computed(() => import.meta.client && platform.value === 'mac');
+const { isEnabled } = useFeatureFlag();
 
 // Recomputed while open: the scope chain changes with the route, and the
-// bindings change when the user picks a preset or remaps a key.
-const groups = computed(() =>
-	isHelpModalOpen.value
-		? buildShortcutSheet(SHORTCUT_CATALOG, shortcutBindings.value, {
-				scopes: activeShortcutScopes(),
-				isMac: isMac.value,
-			})
-		: []
-);
+// bindings change when the user picks a preset or remaps a key. Entries whose
+// feature is off here (the Assistant's ⌘J) are left out, as on the
+// shortcuts page.
+const groups = computed(() => {
+	if (!isHelpModalOpen.value) return [];
+	const env = { isFeatureEnabled: isEnabled, isDesktop: isDesktop.value };
+	return buildShortcutSheet(
+		SHORTCUT_CATALOG.filter((def) => isShortcutEntryAvailable(def, env)),
+		shortcutBindings.value,
+		{ scopes: activeShortcutScopes(), isMac: isMac.value }
+	);
+});
 </script>
 
 <template>

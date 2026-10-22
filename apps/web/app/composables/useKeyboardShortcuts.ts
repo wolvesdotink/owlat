@@ -12,10 +12,21 @@
  *
  * Sequence chords (`g` then a letter) are generic — a new one is a catalog line,
  * not a change here.
+ *
+ * Input policy follows the chord, not the command: a single key never fires
+ * while a text field, editor or IME composition has the keyboard, and a
+ * Cmd/Ctrl/Alt chord does unless its registration opts out with
+ * `ignoreInputs`. The remapping rules keep that true for remaps too: a
+ * single-key command can only be given another single key, a chord command
+ * only another chord (`utils/shortcutCapture.ts`).
+ *
+ * A new window or document `keydown` listener in apps/web is a lint warning
+ * (`owlat/no-raw-keydown-listener`): bind a catalog id here instead.
  */
 
 import { onScopeDispose } from 'vue';
 import { isHelpOverlayClaimed } from '~/utils/helpOverlayOwnership';
+import { isImeComposing } from '~/utils/imeComposition';
 import { chordFromEvent } from '~/utils/shortcutRegistry';
 import {
 	activeShortcutScopes,
@@ -34,8 +45,18 @@ interface ShortcutConfig {
 	/** A catalog id (`utils/shortcutCatalog.ts`), never a raw key. */
 	id: string;
 	handler: ShortcutHandler;
-	/** If true, only triggers when no input/textarea is focused */
+	/**
+	 * If true, only triggers when no input/textarea is focused. Single keys
+	 * never fire in a field anyway; this matters for Cmd/Ctrl/Alt chords.
+	 */
 	ignoreInputs?: boolean;
+	/**
+	 * Whether the command can run right now. While it says no the press is not
+	 * claimed (no preventDefault) and the next older registration of the same id
+	 * gets a look — a panel open over a page can take `j` for as long as it is
+	 * open, without unregistering the page's own handler.
+	 */
+	when?: () => boolean;
 }
 
 // Each composable owns its registrations. The newest live owner wins; releasing
@@ -66,26 +87,35 @@ function isInputFocused(): boolean {
 	return false;
 }
 
-/** Fire the handler bound to `id`, if any. Reports whether anything ran. */
+/**
+ * Fire the newest live registration of `id` whose `when` allows it. Reports
+ * whether anything ran.
+ */
 function dispatch(id: string | null, event: KeyboardEvent): boolean {
 	if (!id) return false;
-	const config = shortcuts.get(id)?.at(-1)?.config;
-	if (!config) return false;
-	if (config.ignoreInputs && isInputFocused()) return false;
-	event.preventDefault();
-	config.handler();
-	return true;
+	const entries = shortcuts.get(id) ?? [];
+	for (let index = entries.length - 1; index >= 0; index -= 1) {
+		const config = (entries[index] as { config: ShortcutConfig }).config;
+		if (config.when && !config.when()) continue;
+		if (config.ignoreInputs && isInputFocused()) return false;
+		event.preventDefault();
+		config.handler();
+		return true;
+	}
+	return false;
 }
 
 /**
  * Handle global keydown events
  */
 function handleGlobalKeydown(event: KeyboardEvent) {
-	if (event.defaultPrevented) return;
-	// Modifier chords belong to the browser, the OS, and the surfaces that bind
-	// their own listeners (⌘K palette, ⌘1–9 workspaces, the composer's ⌘Enter).
-	// This dispatcher deliberately never claims one.
+	if (event.defaultPrevented || isImeComposing(event)) return;
+	// A Cmd/Ctrl/Alt chord is claimed only when a live handler is bound to the
+	// id it resolves to. The rest stay with the browser, the OS and the surfaces
+	// that answer their own (⌘K palette, ⌘1–9 workspaces, the composer's
+	// ⌘Enter), and a half-typed sequence chord is left alone.
 	if (event.ctrlKey || event.metaKey || event.altKey) {
+		dispatch(resolveActiveChord(chordFromEvent(event), activeShortcutScopes()), event);
 		return;
 	}
 
@@ -154,6 +184,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 function initializeKeyboardShortcuts() {
 	if (isInitialized || import.meta.server) return;
 
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- the app-wide dispatcher every catalog shortcut goes through
 	document.addEventListener('keydown', handleGlobalKeydown);
 	isInitialized = true;
 }

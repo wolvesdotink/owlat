@@ -402,9 +402,9 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.postbox.usePostboxThreadCategories.options.newsletter',
 	'shared.postbox.usePostboxThreadCategories.options.person',
 	// Product names, identical in every locale.
-	'components.postbox.postboxShortcutSettings.presets.gmail',
-	'components.postbox.postboxShortcutSettings.presets.outlook',
-	'components.postbox.postboxShortcutSettings.presets.superhuman',
+	'components.preferences.preferencesShortcuts.presets.gmail',
+	'components.preferences.preferencesShortcuts.presets.outlook',
+	'components.preferences.preferencesShortcuts.presets.superhuman',
 	'shared.shortcuts.groups.navigation',
 	'shared.shortcuts.groups.triage',
 	'shared.postbox.usePostboxThreadCategories.options.spam',

@@ -13,31 +13,28 @@
  * owns the keyboard; `n` is "new item" on a list page and "next unread" in the
  * mailbox. `shortcutScope.ts` decides which chain is live.
  *
- * `remappable: false` marks the chords the remapping UI refuses to move —
- * platform conventions (Esc, ⌘Enter) and the handful whose handler still lives
- * outside the registry's dispatcher (⌘1–9 needs `event.code` to survive a
- * non-US layout, ⌘⇧F is matched leniently for browsers that drop the Shift).
+ * `remappable: false` marks the chords the remapping UI refuses to move, each
+ * with its reason (`CONVENTION`, `LAYOUT`, `SURFACE` in `shortcutCatalogParts`):
+ * platform conventions (Esc, ⌘Enter), keys matched by position (⌘1–9 and
+ * Alt+1–9 read `event.code` to survive a non-US layout) and the handful whose
+ * handler still lives outside the registry's dispatcher (⌘⇧F is matched
+ * leniently for browsers that drop the Shift). Every other key a surface
+ * answers is listed here too, so the shortcuts page can show all of them.
  *
  * The named maps that DISAGREE with this list — Gmail's `b` for snooze, and the
  * user's own remaps — live next door in `shortcutPresets.ts`.
  */
 
 import type { ShortcutDefinition } from './shortcutRegistry';
+import {
+	FIXED_CONVENTION as CONVENTION,
+	FIXED_LAYOUT as LAYOUT,
+	FIXED_SURFACE as SURFACE,
+	SHORTCUT_GROUPS as G,
+	shortcutLabelKey as L,
+} from './shortcutCatalogParts';
 import { SENDER_SHORTCUTS } from './shortcutCatalogSenders';
-
-const G = {
-	navigation: 'shared.shortcuts.groups.navigation',
-	actions: 'shared.shortcuts.groups.actions',
-	general: 'shared.shortcuts.groups.general',
-	triage: 'shared.shortcuts.groups.triage',
-	organize: 'shared.shortcuts.groups.organize',
-	compose: 'shared.shortcuts.groups.compose',
-	review: 'shared.shortcuts.groups.review',
-	workspace: 'shared.shortcuts.groups.workspace',
-	answer: 'shared.shortcuts.groups.answer',
-} as const;
-
-const L = (name: string) => `shared.shortcuts.labels.${name}`;
+import { SURFACE_SHORTCUTS } from './shortcutCatalogSurfaces';
 
 export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 	// --- App-wide navigation (the `g` chords) ---------------------------------
@@ -124,25 +121,51 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		keys: ['mod+k'],
 		labelKey: L('openSearch'),
 		groupKey: G.actions,
-		remappable: false,
+		...CONVENTION,
 	},
 	{
+		// The dashboard layout binds these three through the dispatcher, which
+		// lets them fire while a text field has focus, as modifier chords may.
 		id: 'global.toggleSidebar',
 		scope: 'global',
 		keys: ['mod+\\'],
 		labelKey: L('toggleSidebar'),
 		groupKey: G.actions,
-		remappable: false,
+	},
+	{
+		id: 'global.settings',
+		scope: 'global',
+		keys: ['mod+,'],
+		labelKey: L('openSettings'),
+		groupKey: G.actions,
+	},
+	{
+		// Inside Answer mode the same chord drafts with AI (`answer.draftWithAi`).
+		id: 'global.assistant',
+		scope: 'global',
+		keys: ['mod+j'],
+		labelKey: L('openAssistant'),
+		groupKey: G.actions,
 	},
 	{
 		// The same chord the email builder has always used for its focus mode;
-		// handled by ShellZenExit, outside the dispatcher, like ⌘\.
+		// handled by ShellZenExit, outside the dispatcher.
 		id: 'global.zen',
 		scope: 'global',
 		keys: ['mod+shift+F'],
 		labelKey: L('zenMode'),
 		groupKey: G.actions,
-		remappable: false,
+		...SURFACE,
+	},
+	{
+		// useSidebarJumpHints: hold Alt to see the numbers.
+		id: 'global.jumpToSidebarItem',
+		scope: 'global',
+		keys: ['alt+1', 'alt+2', 'alt+3', 'alt+4', 'alt+5', 'alt+6', 'alt+7', 'alt+8', 'alt+9'],
+		displayKeys: 'alt+1–9',
+		labelKey: L('jumpToSidebarItem'),
+		groupKey: G.actions,
+		...LAYOUT,
 	},
 
 	// --- App-wide general -----------------------------------------------------
@@ -159,7 +182,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		keys: ['Escape'],
 		labelKey: L('closeCancel'),
 		groupKey: G.general,
-		remappable: false,
+		...CONVENTION,
 	},
 
 	// --- Postbox navigation ---------------------------------------------------
@@ -197,7 +220,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		keys: ['Enter'],
 		labelKey: L('openMessage'),
 		groupKey: G.navigation,
-		remappable: false,
+		...CONVENTION,
 	},
 	{
 		id: 'postbox.search',
@@ -212,6 +235,24 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		keys: ['b'],
 		labelKey: L('toggleTodayBrowse'),
 		groupKey: G.navigation,
+	},
+	{
+		// usePostboxInboxModes: works from anywhere in the inbox, unlike `b`.
+		id: 'postbox.toggleBrowseChord',
+		scope: 'postbox',
+		keys: ['mod+b'],
+		labelKey: L('toggleTodayBrowse'),
+		groupKey: G.navigation,
+		...SURFACE,
+	},
+	{
+		// PostboxFolderRail: works whatever has focus.
+		id: 'postbox.toggleRail',
+		scope: 'postbox',
+		keys: ['mod+shift+D'],
+		labelKey: L('toggleFolderRail'),
+		groupKey: G.navigation,
+		...SURFACE,
 	},
 	{
 		id: 'postbox.goInbox',
@@ -247,7 +288,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		keys: ['Escape'],
 		labelKey: L('closeConversation'),
 		groupKey: G.navigation,
-		remappable: false,
+		...CONVENTION,
 	},
 
 	// --- Postbox triage -------------------------------------------------------
@@ -301,7 +342,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		displayKeys: 'shift+j/k',
 		labelKey: L('extendSelection'),
 		groupKey: G.triage,
-		remappable: false,
+		...SURFACE,
 	},
 	{
 		id: 'postbox.undo',
@@ -309,6 +350,15 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		keys: ['z'],
 		labelKey: L('undoTriage'),
 		groupKey: G.triage,
+	},
+	{
+		// usePostboxTriageUndo: the toast's own undo, inert while typing.
+		id: 'postbox.undoChord',
+		scope: 'postbox',
+		keys: ['mod+z'],
+		labelKey: L('undoTriage'),
+		groupKey: G.triage,
+		...CONVENTION,
 	},
 
 	// --- Postbox organize -----------------------------------------------------
@@ -364,135 +414,5 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		labelKey: L('toggleCheatSheet'),
 		groupKey: G.general,
 	},
-
-	// --- Composer (bound on the composer root, not the window) ----------------
-	{
-		id: 'composer.send',
-		scope: 'composer',
-		keys: ['mod+Enter'],
-		labelKey: L('send'),
-		groupKey: G.compose,
-		remappable: false,
-	},
-	{
-		id: 'composer.schedule',
-		scope: 'composer',
-		keys: ['mod+shift+Enter'],
-		labelKey: L('scheduleSend'),
-		groupKey: G.compose,
-		remappable: false,
-	},
-	{
-		id: 'composer.minimize',
-		scope: 'composer',
-		keys: ['Escape'],
-		labelKey: L('minimizeComposer'),
-		groupKey: G.compose,
-		remappable: false,
-	},
-	{
-		// Both composers bind it themselves (useComposerSavedReplyPicker).
-		id: 'composer.savedReplies',
-		scope: 'composer',
-		keys: ['mod+;'],
-		labelKey: L('savedReplies'),
-		groupKey: G.compose,
-		remappable: false,
-	},
-
-	// --- Review lists (the Team inbox Updates page) --------------------------
-	{
-		id: 'review.next',
-		scope: 'review',
-		keys: ['j', 'ArrowDown'],
-		labelKey: L('next'),
-		groupKey: G.review,
-	},
-	{
-		id: 'review.previous',
-		scope: 'review',
-		keys: ['k', 'ArrowUp'],
-		labelKey: L('previous'),
-		groupKey: G.review,
-	},
-	{
-		id: 'review.open',
-		scope: 'review',
-		keys: ['Enter'],
-		labelKey: L('openThread'),
-		groupKey: G.review,
-		remappable: false,
-	},
-
-	// --- Answer mode (claimed by AnswerModeFrame; the pages bind these keys
-	// themselves, so the entries document them for the "?" sheet and none can
-	// be remapped) ---------------------------------------------------------------
-	{
-		id: 'answer.leave',
-		scope: 'answer',
-		keys: ['Escape'],
-		labelKey: L('leaveAnswerMode'),
-		groupKey: G.answer,
-		remappable: false,
-	},
-	{
-		id: 'answer.toggleView',
-		scope: 'answer',
-		keys: ['t'],
-		labelKey: L('toggleAnswerView'),
-		groupKey: G.answer,
-		remappable: false,
-	},
-	{
-		id: 'answer.writeNote',
-		scope: 'answer',
-		keys: ['n'],
-		labelKey: L('writeNote'),
-		groupKey: G.answer,
-		remappable: false,
-	},
-	{
-		id: 'answer.draftWithAi',
-		scope: 'answer',
-		keys: ['mod+j'],
-		labelKey: L('draftWithAi'),
-		groupKey: G.answer,
-		remappable: false,
-	},
-	{
-		id: 'answer.pickAskOption',
-		scope: 'answer',
-		keys: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
-		displayKeys: '1–9',
-		labelKey: L('pickAskOption'),
-		groupKey: G.answer,
-		remappable: false,
-	},
-	{
-		id: 'answer.previousItem',
-		scope: 'answer',
-		keys: ['['],
-		labelKey: L('previousQueueItem'),
-		groupKey: G.answer,
-		remappable: false,
-	},
-	{
-		id: 'answer.nextItem',
-		scope: 'answer',
-		keys: [']'],
-		labelKey: L('nextQueueItem'),
-		groupKey: G.answer,
-		remappable: false,
-	},
-
-	// --- Desktop workspaces ---------------------------------------------------
-	{
-		id: 'workspace.switch',
-		scope: 'workspace',
-		keys: ['mod+1', 'mod+2', 'mod+3', 'mod+4', 'mod+5', 'mod+6', 'mod+7', 'mod+8', 'mod+9'],
-		displayKeys: 'mod+1–9',
-		labelKey: L('switchWorkspace'),
-		groupKey: G.workspace,
-		remappable: false,
-	},
+	...SURFACE_SHORTCUTS,
 ];

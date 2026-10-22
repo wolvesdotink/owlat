@@ -108,8 +108,8 @@ describe('useKeyboardShortcuts — sequence chords', () => {
 		input.remove();
 	});
 
-	it('never claims a Cmd/Ctrl/Alt chord — those belong to the browser', () => {
-		press('g', { metaKey: true });
+	it('never claims a Cmd/Ctrl/Alt chord nothing is bound to — those belong to the browser', () => {
+		expect(press('g', { metaKey: true }).defaultPrevented).toBe(false);
 		press('d');
 		expect(push).not.toHaveBeenCalled();
 	});

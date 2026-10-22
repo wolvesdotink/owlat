@@ -8,14 +8,23 @@
  * Absent settings resolve to the shipped map, so the keyboard is correct from
  * the first frame and simply sharpens when the query lands.
  *
- * A remap is REFUSED rather than merged when it would make two shortcuts in one
- * scope answer the same chord. `buildShortcutBindings` survives a conflict (a
- * broken shortcut must not take the rest of the keyboard down), but there is no
- * reason to persist one: the picker can tell the user which shortcut is in the
- * way before anything is written.
+ * The row is read through the soft-auth `mail.settings.get` and written
+ * through `preferences.shortcuts.update`, which carries no personal-mail
+ * floor: the shortcuts cover every surface, so an instance without mail can
+ * remap them too.
+ *
+ * A remap is REFUSED rather than merged when it would make two shortcuts that
+ * can be live together answer the same press: the same chord, or a chord that
+ * starts another, in one scope — and a Cmd/Ctrl chord a fixed shortcut of any
+ * scope already answers in its own handler, which would swallow it.
+ * `buildShortcutBindings` survives a conflict (a broken shortcut must not take
+ * the rest of the keyboard down), but there is no reason to persist one: the
+ * picker can tell the user which shortcut is in the way before anything is
+ * written.
  */
 
-import { buildShortcutBindings, normalizeChord } from '~/utils/shortcutRegistry';
+import { api } from '@owlat/api';
+import { buildShortcutBindings, isModifierChord, normalizeChord } from '~/utils/shortcutRegistry';
 import type { ShortcutConflict } from '~/utils/shortcutRegistry';
 import { SHORTCUT_CATALOG } from '~/utils/shortcutCatalog';
 import type { ShortcutPreset, StoredShortcutOverride } from '~/utils/shortcutPresets';
@@ -25,6 +34,8 @@ import {
 	shortcutOverridesToOverlay,
 } from '~/utils/shortcutPresets';
 import { applyShortcutPreferences, shortcutBindings } from '~/utils/shortcutScope';
+import { optimisticUpdateShortcutSettings } from '~/lib/mailOptimistic/settingsUpdater';
+import { usePostboxSettings } from '~/composables/postbox/usePostboxSettings';
 
 export interface RemapResult {
 	ok: boolean;
@@ -32,8 +43,44 @@ export interface RemapResult {
 	conflicts: ShortcutConflict[];
 }
 
+const conflictKey = (c: ShortcutConflict) => `${c.scope}\0${c.chord}\0${c.kind ?? ''}`;
+
+/**
+ * Fixed Cmd/Ctrl chords of OTHER scopes that `chords` would collide with. Those
+ * are answered by their own listeners whatever scope is claimed (⌘K, ⌘1–9,
+ * ⌘Enter, ⌘⇧F), so a remap onto one would either never fire or steal it. A
+ * chord the id already ships with is exempt: ⌘J is the Assistant everywhere
+ * and "Draft with AI" in Answer mode by design.
+ */
+function fixedChordConflicts(
+	id: string,
+	chords: readonly string[],
+	shipped: readonly string[]
+): ShortcutConflict[] {
+	const def = SHORTCUT_CATALOG.find((entry) => entry.id === id);
+	if (!def) return [];
+	const found: ShortcutConflict[] = [];
+	for (const chord of chords) {
+		if (!isModifierChord(chord) || shipped.includes(chord)) continue;
+		const owner = SHORTCUT_CATALOG.find(
+			(other) =>
+				other.id !== id &&
+				other.scope !== def.scope &&
+				other.remappable === false &&
+				other.keys.some((key) => normalizeChord(key) === chord)
+		);
+		if (owner) found.push({ scope: owner.scope, chord, ids: [owner.id, id] });
+	}
+	return found;
+}
+
 export function useShortcutPreferences() {
 	const settings = usePostboxSettings();
+	const { t } = useI18n();
+	const saveOp = useBackendOperation(api.preferences.shortcuts.update, {
+		label: () => t('components.preferences.preferencesShortcuts.saveOperation'),
+		optimisticUpdate: optimisticUpdateShortcutSettings,
+	});
 
 	watch(
 		[settings.shortcutPreset, settings.shortcutOverrides],
@@ -60,12 +107,17 @@ export function useShortcutPreferences() {
 	 * fault, and blaming it here would make the picker impossible to use).
 	 */
 	function conflictsFor(id: string, keys: string[]): ShortcutConflict[] {
+		const preset = SHORTCUT_PRESETS[settings.shortcutPreset.value];
 		const candidate = buildShortcutBindings(SHORTCUT_CATALOG, [
-			SHORTCUT_PRESETS[settings.shortcutPreset.value],
+			preset,
 			shortcutOverridesToOverlay(candidateOverrides(id, keys)),
 		]);
-		const known = new Set(shortcutBindings.value.conflicts.map((c) => `${c.scope}\0${c.chord}`));
-		return candidate.conflicts.filter((c) => !known.has(`${c.scope}\0${c.chord}`));
+		const known = new Set(shortcutBindings.value.conflicts.map(conflictKey));
+		const shipped = buildShortcutBindings(SHORTCUT_CATALOG, [preset]).byId.get(id) ?? [];
+		return [
+			...candidate.conflicts.filter((c) => !known.has(conflictKey(c))),
+			...fixedChordConflicts(id, keys, shipped),
+		];
 	}
 
 	/**
@@ -82,24 +134,24 @@ export function useShortcutPreferences() {
 		}
 		const conflicts = conflictsFor(id, normalized);
 		if (conflicts.length > 0) return { ok: false, conflicts };
-		await settings.setShortcutOverrides(candidateOverrides(id, normalized));
+		await saveOp.run({ shortcutOverrides: candidateOverrides(id, normalized) });
 		return { ok: true, conflicts: [] };
 	}
 
 	/** Drop one remap, handing the shortcut back to the preset. */
 	async function clearShortcutOverride(id: string) {
-		await settings.setShortcutOverrides(
-			settings.shortcutOverrides.value.filter((row) => row.id !== id)
-		);
+		await saveOp.run({
+			shortcutOverrides: settings.shortcutOverrides.value.filter((row) => row.id !== id),
+		});
 	}
 
 	/** Drop every remap. The preset itself is untouched. */
 	async function clearAllShortcutOverrides() {
-		await settings.setShortcutOverrides([]);
+		await saveOp.run({ shortcutOverrides: [] });
 	}
 
 	async function setPreset(preset: ShortcutPreset) {
-		await settings.setShortcutPreset(preset);
+		await saveOp.run({ shortcutPreset: preset });
 	}
 
 	return {
@@ -107,7 +159,7 @@ export function useShortcutPreferences() {
 		overridesById,
 		bindings: shortcutBindings,
 		conflicts: computed(() => shortcutBindings.value.conflicts),
-		isSaving: settings.isSaving,
+		isSaving: saveOp.isLoading,
 		setPreset,
 		remapShortcut,
 		conflictsFor,
