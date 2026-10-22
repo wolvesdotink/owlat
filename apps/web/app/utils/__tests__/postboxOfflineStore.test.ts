@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
 	PostboxOfflineStore,
 	reconcileThreadRows,
@@ -7,7 +7,10 @@ import {
 	OFFLINE_BODY_MAX_BYTES,
 	type OfflineKvDriver,
 } from '../postboxOfflineStore';
+import { ComposerDraftStore, composerDraftKey } from '../composerDraftStore';
 import { createTestI18n } from '~/__tests__/i18n';
+
+const NOW = Date.parse('2026-10-22T09:00:00Z');
 
 // The store never translates (it is a pure data layer): the reason writes were
 // disabled is a message key the surface showing it runs through `t()`.
@@ -153,6 +156,62 @@ describe('PostboxOfflineStore', () => {
 		expect(await store.loadThreads('mbxA', 'inbox')).toEqual([]);
 		expect(await store.loadThreads('mbxB', 'inbox')).toEqual([]);
 		expect(await store.loadBody('mbxA', 'a')).toBeNull();
+	});
+
+	it('clear() keeps composer drafts, which are unsent text and not cache', async () => {
+		const driver = memoryDriver();
+		const wholeStoreClear = vi.spyOn(driver, 'clear');
+		const store = new PostboxOfflineStore(driver);
+		const drafts = new ComposerDraftStore(driver);
+		const key = composerDraftKey('u1', 'team-reply', 'th1');
+		await drafts.write(key, { body: 'unsent', subject: 'Re: hi' }, NOW);
+		await store.saveThreads(MBX, 'inbox', [row('a')]);
+		await store.saveBody(MBX, 'a', 'x');
+
+		await store.clear();
+
+		expect(wholeStoreClear).not.toHaveBeenCalled();
+		expect([...driver.map.keys()]).toEqual([key]);
+		expect((await drafts.load('u1', NOW, () => false)).map((d) => d.fields)).toEqual([
+			{ body: 'unsent', subject: 'Re: hi' },
+		]);
+	});
+
+	it('clear() deletes nothing when it cannot tell the drafts apart', async () => {
+		const driver = memoryDriver();
+		const store = new PostboxOfflineStore(driver);
+		await store.saveThreads(MBX, 'inbox', [row('a')]);
+		await new ComposerDraftStore(driver).write(
+			composerDraftKey('u1', 'chat', 'room1'),
+			{ text: 'unsent', attachments: [] },
+			NOW
+		);
+		const before = [...driver.map.keys()];
+		driver.keys = async () => {
+			throw new Error('IndexedDB unavailable');
+		};
+
+		await store.clear();
+
+		expect([...driver.map.keys()]).toEqual(before);
+	});
+
+	it('clear() deletes what it can when one delete fails, and keeps the drafts', async () => {
+		const driver = memoryDriver();
+		const store = new PostboxOfflineStore(driver);
+		const key = composerDraftKey('u1', 'chat', 'room1');
+		await new ComposerDraftStore(driver).write(key, { text: 'unsent', attachments: [] }, NOW);
+		await store.saveThreads(MBX, 'inbox', [row('a')]);
+		await store.saveBody(MBX, 'a', 'x');
+		const deleteOne = driver.delete.bind(driver);
+		driver.delete = async (k) => {
+			if (k.startsWith('threads:')) throw new Error('transaction aborted');
+			await deleteOne(k);
+		};
+
+		await store.clear();
+
+		expect([...driver.map.keys()].sort()).toEqual([key, `threads:${MBX}:inbox`].sort());
 	});
 
 	it('disables writes on a quota error without throwing', async () => {

@@ -81,6 +81,7 @@ import {
 export { OUTBOX_CLAIM_TTL_MS, isOutboxClaimLive };
 export type { OfflineComposeAttachmentRef, OfflineComposePayload, OfflineOutboxItem };
 
+import { isComposerDraftKey } from './composerDraftStore';
 import { getOfflineKvDriver, type OfflineKvDriver } from './postboxOfflineKvDriver';
 
 // The driver lives in postboxOfflineKvDriver.ts (file-size ratchet); these
@@ -357,21 +358,27 @@ export class PostboxOfflineStore {
 	 * Wipe every cached row and body (all mailboxes) from this device. Also
 	 * drops queued outbox items — callers gate this behind an explicit user
 	 * action and warn when sends are still queued.
+	 *
+	 * Composer drafts (`composerDraftStore.ts`) live in the same object store
+	 * and are kept: they are unsent text with no other copy, not cache. So this
+	 * deletes key by key and never calls the driver's whole-store `clear()`,
+	 * which would also take a draft saved while the wipe runs. When the keys
+	 * cannot be listed nothing is deleted: there is no way to spare the drafts.
 	 */
 	async clear(): Promise<void> {
+		let keys: string[];
 		try {
-			await this.driver.clear();
-			// A successful clear proves the backend works again — re-enable writes.
+			keys = await this.driver.keys();
+		} catch {
+			return;
+		}
+		const results = await Promise.allSettled(
+			keys.filter((key) => !isComposerDraftKey(key)).map((key) => this.driver.delete(key))
+		);
+		// Every delete landed, so the backend works again — re-enable writes.
+		if (results.every((result) => result.status === 'fulfilled')) {
 			this.disabled = false;
 			this.disabledReason = null;
-		} catch {
-			// Fall back to targeted deletes; if even those throw, leave as-is.
-			try {
-				const keys = await this.driver.keys();
-				await Promise.all(keys.map((k) => this.driver.delete(k).catch(() => {})));
-			} catch {
-				// Nothing more we can safely do.
-			}
 		}
 	}
 }

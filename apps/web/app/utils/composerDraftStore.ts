@@ -193,6 +193,15 @@ export function composerDraftKey(userId: string, kind: ComposerDraftKind, target
 	return `${userKeyPrefix(userId)}${kind}:${encodeURIComponent(target)}`;
 }
 
+/**
+ * Whether a storage key holds a composer draft (anyone's). Clearing the mail
+ * cache must skip these: they share its object store but are not cache, and
+ * they have no other copy.
+ */
+export function isComposerDraftKey(key: string): boolean {
+	return key.startsWith(PREFIX);
+}
+
 /** Whether a storage key holds one of this person's drafts. */
 export function isComposerDraftKeyOf(key: string, userId: string): boolean {
 	return key.startsWith(userKeyPrefix(userId));
