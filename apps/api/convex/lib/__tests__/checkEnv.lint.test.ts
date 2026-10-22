@@ -140,6 +140,53 @@ describe('check-env.sh', () => {
 		expect(lintTree(`object-${name.replace(/\W+/g, '-')}`, { 'delivery/poller.ts': line })).toBe(1);
 	});
 
+	it.each([
+		['an import', "import {\n\tenv,\n\targv,\n} from 'node:process';\n"],
+		['a destructuring', 'const {\n\tenv,\n\targv,\n} = process;\n'],
+		['a renamed destructuring', 'const {\n\targv,\n\tenv: e,\n} = globalThis\n\t.process;\n'],
+		['a dotted read', 'const url = process\n\t.env.SNDS_DATA_FEED_URLS;\n'],
+		['a bracket read', "const all = process[\n\t'env'\n];\n"],
+	])('fails the environment object taken across lines: %s', (name, source) => {
+		// A line-based scan sees neither half of these as a read.
+		expect(
+			lintTree(`multiline-${name.replace(/\W+/g, '-')}`, {
+				'delivery/poller.ts': `const before = 1;\n${source}`,
+			})
+		).toBe(1);
+	});
+
+	it.each([
+		['a default', 'const { env = {} } = process;\n'],
+		['a nested pattern', 'const { argv, env: { FOO } } = process;\n'],
+	])('fails a destructuring of env with %s inside it', (name, line) => {
+		expect(lintTree(`nested-${name.replace(/\W+/g, '-')}`, { 'delivery/poller.ts': line })).toBe(1);
+	});
+
+	it('reports a multiline read at the line it starts on', () => {
+		const root = writeTree('multiline-line', {
+			'delivery/poller.ts': "const before = 1;\n\nimport {\n\tenv,\n} from 'node:process';\n",
+		});
+		let output = '';
+		try {
+			execFileSync('bash', [scriptPath, root, 'lib/env.ts'], { encoding: 'utf8', stdio: 'pipe' });
+		} catch (err) {
+			output = String((err as { stdout?: string }).stdout);
+		}
+		expect(output).toContain('delivery/poller.ts:3:import {');
+	});
+
+	it('passes multiline code that only mentions process or an env-like name', () => {
+		expect(
+			lintTree('multiline-near-misses', {
+				'delivery/poller.ts':
+					'const {\n\targv,\n} = process;\n' +
+					"import {\n\targv,\n} from 'node:process';\n" +
+					'const {\n\tenv,\n} = processor;\n' +
+					'function f() {\n\tconst environment = 1;\n\treturn { env: environment };\n}\n',
+			})
+		).toBe(0);
+	});
+
 	it('passes code that only mentions process or an env-like name', () => {
 		expect(
 			lintTree('near-misses', {

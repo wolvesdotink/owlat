@@ -50,12 +50,25 @@ if [[ ! -d "$root" ]]; then
 fi
 root="${root%/}"
 
-# POSIX classes only, so BSD grep on macOS reads the pattern the same way.
+# Each file is matched as one string, not line by line: a statement split over
+# lines (`import {\n\tenv,\n} from 'node:process'`) is the same read as the
+# one-line form, and a line-based grep never sees its two halves together. So
+# grep reads the file with newlines turned into spaces, which keeps every byte
+# offset, and a hit is reported at the line holding its first byte.
+#
+# POSIX classes and bracket expressions only (no backslash escapes), so BSD grep
+# on macOS reads the pattern the same way. Not awk: mawk, the default awk on
+# Debian and Ubuntu, misses the leftmost match of an alternation like this one.
 ident='[:alnum:]_$'
-pattern="process(\\?)?\\.env"
-pattern+="|process[[:space:]]*\\[[[:space:]]*['\"\\\`]env"
-pattern+="|\\{([^}]*[^${ident}])?env([^${ident}][^}]*)?\\}[[:space:]]*=[[:space:]]*(globalThis\\.)?process([^${ident}.]|$)"
-pattern+="|import[[:space:]]*\\{([^}]*[^${ident}])?env([^${ident}][^}]*)?\\}[[:space:]]*from[[:space:]]*['\"](node:)?process['\"]"
+ws='[[:space:]]*'
+quote="['\"\`]"
+# The body of a destructuring pattern, one nesting level deep, so a default
+# (`{ env = {} }`) or a nested pattern (`{ env: { FOO } }`) does not end it early.
+body="([^{}]|[{][^{}]*[}])*"
+pattern="process${ws}[?]?${ws}[.]${ws}env"
+pattern+="|process${ws}[[]${ws}${quote}env"
+pattern+="|[{](${body}[^${ident}{}])?env([^${ident}{}]${body})?[}]${ws}=${ws}(globalThis${ws}[.]${ws})?process([^${ident}.]|$)"
+pattern+="|import${ws}[{](${body}[^${ident}{}])?env([^${ident}{}]${body})?[}]${ws}from${ws}${quote}(node:)?process${quote}"
 
 matches=""
 while IFS= read -r -d '' file; do
@@ -68,14 +81,19 @@ while IFS= read -r -d '' file; do
 	done
 	# grep exits 1 when nothing matches, which is the pass; 2 is an error.
 	status=0
-	hits=$(grep -nE "$pattern" "$file") || status=$?
+	offsets=$(tr '\n' ' ' <"$file" | LC_ALL=C grep -obE "$pattern") || status=$?
 	if [[ $status -gt 1 ]]; then
 		echo "check-env: grep failed on ${file}" >&2
 		exit 2
 	fi
-	if [[ -n "$hits" ]]; then
-		matches+="$(awk -v path="$relative" '{ print path ":" $0 }' <<<"$hits")"$'\n'
-	fi
+	[[ -z "$offsets" ]] && continue
+	reported=" "
+	while IFS=: read -r offset _; do
+		line=$(($(head -c "$offset" "$file" | wc -l) + 1))
+		[[ "$reported" == *" ${line} "* ]] && continue
+		reported+="${line} "
+		matches+="${relative}:${line}:$(sed -n "${line}p" "$file")"$'\n'
+	done <<<"$offsets"
 done < <(find "$root" -type d -name node_modules -prune -o -type f -name '*.ts' -print0 | sort -z)
 
 if [[ -n "$matches" ]]; then
