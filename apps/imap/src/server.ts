@@ -127,7 +127,7 @@ export function startImapServer(
 	}
 
 	// Dev fallback — bind a plain TCP server. NOT for production.
-	if (process.env['NODE_ENV'] === 'production') {
+	if (config.production) {
 		throw new Error(
 			'IMAP refusing to start in production without TLS cert/key. ' +
 				'Set IMAP_TLS_CERT/IMAP_TLS_KEY or mount certs at /opt/owlat/certs.'

@@ -482,6 +482,8 @@ function connection(b: ReturnType<typeof backend>) {
 		maxClients: 500,
 		idleTimeoutMs: 60_000,
 		authRateLimit: { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 },
+		production: false,
+		owlatVersion: 'dev',
 	};
 	const written: string[] = [];
 	const socket = Object.assign(new EventEmitter(), {

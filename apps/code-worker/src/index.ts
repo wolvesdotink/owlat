@@ -3,7 +3,8 @@ import { pruneStaleWorkspaces } from './taskRunner.js';
 import { createCodeTaskPoller } from './taskProcess.js';
 import { pollForPluginTask } from './pluginTaskRunner.js';
 import { log } from './log.js';
-import { readWorkerTimers, type WorkerTimers } from './env.js';
+import type { WorkerTimers } from './env.js';
+import { configuredOpencodeBin, convexUrl, loadWorkerTimers } from './config.js';
 import { startHeartbeat } from './heartbeat.js';
 
 // Route both crash channels through the worker's own log stream. Node ≥15 ends
@@ -84,15 +85,15 @@ async function main(): Promise<void> {
 	// the variable's name instead of polling Convex in a tight loop.
 	let timers: WorkerTimers;
 	try {
-		timers = readWorkerTimers(process.env);
+		timers = loadWorkerTimers();
 	} catch (error) {
 		log(`Invalid configuration: ${error instanceof Error ? error.message : String(error)}`);
 		process.exit(1);
 	}
 	log(`Poll interval: ${timers.pollIntervalMs}ms`);
 	log(`Plugin job heartbeat: ${timers.pluginJobHeartbeatMs}ms`);
-	log(`Convex URL: ${process.env['CONVEX_URL'] ?? '(not set)'}`);
-	log(`OpenCode binary: ${process.env['OPENCODE_BIN'] ?? 'opencode (default)'}`);
+	log(`Convex URL: ${convexUrl() ?? '(not set)'}`);
+	log(`OpenCode binary: ${configuredOpencodeBin() ?? 'opencode (default)'}`);
 
 	// Verify connectivity — constructing the client throws if misconfigured.
 	try {

@@ -49,7 +49,7 @@ function parsePool(
 
 export function loadOutboundIpConfig(
 	requiredEnv: (key: string) => string,
-	env: NodeJS.ProcessEnv = process.env
+	env: NodeJS.ProcessEnv
 ): OutboundIpConfig {
 	const ipv6Enabled = parseIpv6Enabled(env['MTA_IPV6_ENABLED']);
 	const transactional = parsePool(

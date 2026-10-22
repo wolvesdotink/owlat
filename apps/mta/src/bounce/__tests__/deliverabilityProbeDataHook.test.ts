@@ -10,7 +10,10 @@ vi.mock('@owlat/mail-auth', () => ({
 	})),
 	evaluateDmarc: vi.fn(async () => ({ result: 'pass', policy: 'reject' })),
 }));
-vi.mock('node:dns/promises', () => ({
+// The named exports stay real: the bounce signers resolve their key through
+// config.ts, whose blocklist resolver imports them at load.
+vi.mock('node:dns/promises', async (importOriginal) => ({
+	...(await importOriginal<typeof import('node:dns/promises')>()),
 	default: {
 		reverse: vi.fn(async () => ['mail.example.test']),
 		resolve4: vi.fn(async () => ['203.0.113.10']),
