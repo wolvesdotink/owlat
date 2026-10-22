@@ -6,7 +6,7 @@ import type { NavigationItem } from '~/lib/dashboardNavigationCore';
 /**
  * The Marketing workspace's sidebar: Overview first, then the campaigns and
  * automations themselves as rows with one status each (the same pattern as the
- * Conversations sidebar), then Audience and Templates. One quiet delivery line
+ * Conversations sidebar), then Audience, Templates and Recently deleted. One quiet delivery line
  * at the bottom replaces the old Administration health dot.
  */
 const props = defineProps<{
@@ -17,7 +17,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const route = useRoute();
 const { isEnabled } = useFeatureFlag();
-const { isAdmin, isRoleLoading } = usePermissions();
+const { can, isAdmin, isRoleLoading } = usePermissions();
 const { isCollapsed, toggleGroup } = useShellSidebarPrefs();
 
 const campaignsOn = computed(() => isEnabled('campaigns'));
@@ -107,6 +107,16 @@ const links = computed(() =>
 			icon: 'lucide:layout-template',
 			label: t('components.shell.marketing.templates'),
 			show: isAdmin.value,
+		},
+		{
+			// Shown to whoever could restore something there (the page's own tabs).
+			to: '/dashboard/marketing/deleted',
+			icon: 'lucide:trash-2',
+			label: t('components.shell.marketing.recentlyDeleted'),
+			show:
+				(campaignsOn.value && can('campaigns:manage')) ||
+				(automationsOn.value && can('automations:manage')) ||
+				can('templates:manage'),
 		},
 	].filter((l) => l.show)
 );

@@ -27,7 +27,7 @@ beforeEach(() => {
 		useI18n: i18nStubs.useI18n,
 		useRoute: () => ({ path: '/dashboard' }),
 		useFeatureFlag: () => ({ isEnabled: (flag: string) => flags.has(flag) }),
-		usePermissions: () => ({ isAdmin, isRoleLoading }),
+		usePermissions: () => ({ isAdmin, isRoleLoading, can: () => isAdmin.value === true }),
 		useInboxes: () => ({ inboxes: ref([]), hasPersonalMail: ref(true) }),
 		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useShellSidebarPrefs: () => ({

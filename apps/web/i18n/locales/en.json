@@ -6965,6 +6965,7 @@
 				"automations": "Automations",
 				"allAutomations": "All automations",
 				"audience": "Audience",
+				"recentlyDeleted": "Recently deleted",
 				"templates": "Templates",
 				"draft": "Draft",
 				"deliveryHealthy": "Delivery healthy",
@@ -10513,12 +10514,6 @@
 					"viewDetails": "View details"
 				},
 				"adminsOnly": "Only owners and admins can create or edit automations.",
-				"deleteDialog": {
-					"activeWarning": "Active automations must be paused before deletion.",
-					"body": "Are you sure you want to delete {name}?",
-					"note": "This action cannot be undone. The automation and all its steps will be permanently deleted.",
-					"title": "Delete automation"
-				},
 				"empty": {
 					"action": "Create automation",
 					"description": "Create your first automation to send emails automatically when a contact signs up, subscribes, or triggers an event.",
@@ -10538,6 +10533,7 @@
 					"delete": "Delete automation",
 					"duplicate": "Duplicate automation",
 					"pause": "Pause automation",
+					"restore": "Restore automation",
 					"resume": "Resume automation"
 				},
 				"pageTitle": "Automations — Owlat",
@@ -10555,7 +10551,6 @@
 				"title": "Automations",
 				"toasts": {
 					"activated": "\"{name}\" is now active",
-					"deleted": "Automation deleted successfully",
 					"draftNotToggleable": "Please complete and activate this automation from the builder",
 					"duplicated": "Automation duplicated successfully",
 					"paused": "\"{name}\" has been paused"
@@ -10787,12 +10782,6 @@
 					"eyebrow": "All clear",
 					"title": "Nothing needs you."
 				},
-				"deleteDialog": {
-					"confirm": "Delete campaign",
-					"confirmQuestion": "Are you sure you want to delete {name}?",
-					"description": "This action cannot be undone. The campaign and its data will be permanently deleted.",
-					"title": "Delete campaign"
-				},
 				"deleteOperation": "Delete campaign",
 				"duplicateOperation": "Duplicate campaign",
 				"errorTitle": "Couldn't load campaigns",
@@ -10813,6 +10802,7 @@
 					"scheduled": "Scheduled",
 					"sent": "Sent"
 				},
+				"restoreOperation": "Restore campaign",
 				"searchEmpty": {
 					"description": "No campaigns match \"{query}\". Try a different search term.",
 					"title": "No results found"
@@ -10822,7 +10812,6 @@
 				"subtitle": "Everything you've sent and everything waiting on you, in one place.",
 				"title": "Campaigns",
 				"toasts": {
-					"deleted": "Campaign deleted",
 					"duplicated": "Campaign duplicated"
 				}
 			},
@@ -11566,6 +11555,33 @@
 			}
 		},
 		"marketing": {
+			"deleted": {
+				"campaignsNote": "A campaign that was scheduled comes back as a draft, so it never sends by surprise.",
+				"empty": {
+					"title": "Nothing deleted",
+					"description": "What you delete here stays restorable for 30 days."
+				},
+				"errorTitle": "Couldn't load recently deleted items",
+				"loadMore": "Load more",
+				"meta": "Deleted {deleted} · removed for good {purge}",
+				"pageTitle": "Recently deleted",
+				"restore": "Restore",
+				"restoreNamed": "Restore {name}",
+				"restoreOperation": "Restore",
+				"restored": "Restored {name}",
+				"subtitle": "Deleted campaigns, automations and templates stay here for 30 days. Restore one to put it back where it was.",
+				"tabs": {
+					"campaigns": "Campaigns",
+					"automations": "Automations",
+					"templates": "Templates"
+				},
+				"tabsLabel": "What was deleted",
+				"title": "Recently deleted",
+				"unavailable": {
+					"title": "Nothing to restore",
+					"description": "Only people who can delete campaigns, automations or templates can restore them."
+				}
+			},
 			"errorMessage": "Something went wrong loading your campaign numbers. Try again in a moment.",
 			"errorTitle": "Couldn't load the overview",
 			"firstRun": {
@@ -12368,12 +12384,6 @@
 					},
 					"createAndEdit": "Create & edit",
 					"creating": "Creating...",
-					"delete": {
-						"confirm": "Are you sure you want to delete {name}?",
-						"confirmButton": "Delete template",
-						"description": "This action cannot be undone. The template will be permanently deleted.",
-						"title": "Delete template"
-					},
 					"empty": {
 						"action": "Create marketing template",
 						"description": "Create your first marketing template to start sending campaigns and newsletters.",
@@ -12393,7 +12403,8 @@
 					"operations": {
 						"create": "Create template",
 						"delete": "Delete template",
-						"duplicate": "Duplicate template"
+						"duplicate": "Duplicate template",
+						"restore": "Restore template"
 					},
 					"pageTitle": "Marketing emails — Owlat",
 					"searchPlaceholder": "Search templates...",
@@ -12402,7 +12413,6 @@
 					"templateCount": "{count} marketing template | {count} marketing templates",
 					"title": "Marketing templates",
 					"toasts": {
-						"deleted": "Template deleted successfully",
 						"duplicated": "Template duplicated successfully"
 					}
 				}
@@ -14090,6 +14100,7 @@
 				"overview": "Overview",
 				"plugins": "Plugins",
 				"providerRouting": "Provider routing",
+				"recentlyDeleted": "Recently deleted",
 				"sealedMail": "Sealed mail",
 				"quarantine": "Quarantine",
 				"savedReplies": "Saved replies",
@@ -14444,6 +14455,7 @@
 				"send": {
 					"automations": "Automations",
 					"campaigns": "Campaigns",
+					"recentlyDeleted": "Recently deleted",
 					"templates": "Templates",
 					"transactional": "Transactional",
 					"overview": "Marketing overview"
@@ -15322,6 +15334,9 @@
 				"ownership": "domain ownership",
 				"spf": "SPF"
 			}
+		},
+		"marketingDeleteUndo": {
+			"deleted": "Deleted {name}"
 		},
 		"memberTable": {
 			"added": "Added",

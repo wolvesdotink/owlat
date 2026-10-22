@@ -148,6 +148,11 @@ const PAGES: PageCase[] = [
 		absent: ['dashboard.admin.operator.index.abuse.empty'],
 	},
 	{
+		name: 'recently deleted',
+		load: () => import('../marketing/deleted.vue'),
+		absent: ['dashboard.marketing.deleted.empty.title'],
+	},
+	{
 		name: 'form endpoints list',
 		load: () => import('../admin/instance/forms.vue'),
 		absent: ['dashboard.admin.instance.forms.emptyTitle'],
