@@ -138,8 +138,14 @@ function notice(id: string, createdAt: number) {
 	};
 }
 
-beforeEach(() => {
+beforeEach(async () => {
 	vi.resetModules();
+	// The watchers reach the desktop module through a dynamic import. Load it
+	// here, after the reset, so their import resolves from the module cache
+	// within one `flushPromises`. Left cold, a slow first load outlives the
+	// case that started it: its toast lands in a later case, and the next
+	// reset can hand it the real Tauri module instead of the mock.
+	await import('@owlat/desktop/src/notifications');
 	stubNuxt();
 	unread.value = undefined;
 	inboundStats.value = undefined;
