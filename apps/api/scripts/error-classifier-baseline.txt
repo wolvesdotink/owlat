@@ -1,0 +1,30 @@
+# Justified exceptions to scripts/check-error-classifiers.sh — one
+# `path:<spelling>` per occurrence, each with its reason. Only text this
+# codebase does not write may be listed: a platform error that carries no code,
+# or an external provider's reply. A failure the backend raises for itself is
+# typed (`InternalFailure` in convex/_utils/errors.ts), never listed here.
+
+# node:dns lookup rejections (ENOTFOUND / ENODATA / SERVFAIL), read from the
+# resolver's message.
+convex/domains/dnsVerification.ts:errorMessage.includes
+convex/domains/dnsVerification.ts:errorMessage.includes
+convex/domains/dnsVerification.ts:errorMessage.includes
+
+# Convex validation errors carry no code; this module is the one place their
+# wording is read (the transaction-limit wording sits beside it).
+convex/lib/convexLimitErrors.ts:.test(message)
+
+# Mandrill's free-text rejection reasons (quota, rate limit, backlog).
+convex/lib/sendProviders/mandrill/errors.ts:lowerMessage.includes
+convex/lib/sendProviders/mandrill/errors.ts:lowerMessage.includes
+convex/lib/sendProviders/mandrill/errors.ts:lowerMessage.includes
+convex/lib/sendProviders/mandrill/errors.ts:lowerMessage.includes
+convex/lib/sendProviders/mandrill/errors.ts:lowerMessage.includes
+convex/lib/sendProviders/mandrill/errors.ts:lowerMessage.includes
+convex/lib/sendProviders/mandrill/errors.ts:lowerMessage.includes
+
+# SMTP server replies naming a rate limit or throttle.
+convex/lib/sendProviders/smtp/index.ts:lowerMessage.includes
+convex/lib/sendProviders/smtp/index.ts:lowerMessage.includes
+convex/lib/sendProviders/smtp/index.ts:lowerMessage.includes
+convex/lib/sendProviders/smtp/index.ts:lowerMessage.includes

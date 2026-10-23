@@ -77,6 +77,12 @@ const FIXTURES: Record<string, string> = {
 		'export default defineConfig({ test: { retry: 1 } });',
 		'',
 	].join('\n'),
+	'backoff.ts': [
+		'export function retryDelayMs(attempt: number): number {',
+		'\treturn Math.min(1_000 * 2 ** attempt, 60_000);',
+		'}',
+		'',
+	].join('\n'),
 	'unexplained.ts': [
 		'export function log(value: string): void {',
 		'\t// oxlint-disable-next-line no-console',
@@ -191,6 +197,10 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 
 	it('accepts a skip that names its tracking issue', () => {
 		expect(byFile.get('quarantined.test.ts')).toBeUndefined();
+	});
+
+	it('reports exponential backoff computed outside the retry policy module', () => {
+		expect(errorCodes(byFile.get('backoff.ts'))).toEqual(['owlat(no-inline-backoff)']);
 	});
 
 	it('reports a suppression that does not say why', () => {

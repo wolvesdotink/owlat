@@ -15,6 +15,8 @@
  * Kept free of Nuxt and Convex imports so it runs under vitest as-is.
  */
 
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
+
 export type ConvexAuthFailure =
 	/** The token request got no usable answer (network, timeout, 5xx). */
 	| 'unreachable'
@@ -63,8 +65,12 @@ export const CONVEX_AUTH_RETRY_MAX_DELAY_MS = 30_000;
 
 export function createConvexAuthRecovery(options: ConvexAuthRecoveryOptions): ConvexAuthRecovery {
 	const maxAttempts = options.maxAttempts ?? CONVEX_AUTH_RETRY_MAX_ATTEMPTS;
-	const baseDelayMs = options.baseDelayMs ?? CONVEX_AUTH_RETRY_BASE_DELAY_MS;
-	const maxDelayMs = options.maxDelayMs ?? CONVEX_AUTH_RETRY_MAX_DELAY_MS;
+	// Up to half the delay again on top: tabs that failed together spread out.
+	const backoff: RetryPolicy = {
+		baseMs: options.baseDelayMs ?? CONVEX_AUTH_RETRY_BASE_DELAY_MS,
+		capMs: options.maxDelayMs ?? CONVEX_AUTH_RETRY_MAX_DELAY_MS,
+		jitter: { kind: 'upTo', ratio: 0.5 },
+	};
 	const random = options.random ?? Math.random;
 
 	let attempts = 0;
@@ -98,16 +104,12 @@ export function createConvexAuthRecovery(options: ConvexAuthRecoveryOptions): Co
 				}
 				return false;
 			}
-			const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** attempts);
+			const delay = nextDelay(backoff, attempts, undefined, random);
 			attempts++;
-			// Up to half the delay again: tabs that failed together spread out.
-			timer = setTimeout(
-				() => {
-					timer = null;
-					options.reinstall();
-				},
-				delay + Math.floor(random() * (delay / 2))
-			);
+			timer = setTimeout(() => {
+				timer = null;
+				options.reinstall();
+			}, delay);
 			return true;
 		},
 		reset,

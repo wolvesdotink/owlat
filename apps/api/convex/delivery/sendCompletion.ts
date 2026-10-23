@@ -5,6 +5,7 @@ import { internal } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { logError } from '../lib/runtimeLog';
+import { InternalFailure } from '../_utils/errors';
 import { enqueueGovernedSend } from './governedEnqueue';
 import { recordDeferralOutcome } from './deferralOutcome';
 import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
@@ -103,8 +104,14 @@ export const completeSend = internalMutation({
 	},
 });
 
-/** Thrown when a replay would re-enter a Send whose envelope was not stored. */
-export const ENVELOPE_NOT_STORED = 'ENVELOPE_NOT_STORED';
+/**
+ * Thrown when a replay would re-enter a Send whose envelope was not stored. Not
+ * retryable: the stored record never gains the envelope, so the same replay
+ * refuses again.
+ */
+function envelopeNotStored(): InternalFailure {
+	return new InternalFailure('delivery.envelope_not_stored', { retryable: false });
+}
 
 /**
  * Translate one worker outcome into the Send's lifecycle. Called by
@@ -227,7 +234,7 @@ export const applyCompletion = internalMutation({
 				if (!send || send.status !== 'queued') return;
 				const retryDelayMs = governedRetryDelayMs(outcome, now);
 				if (retryDelayMs !== null) {
-					if (isEnvelopeStripped === true) throw new Error(ENVELOPE_NOT_STORED);
+					if (isEnvelopeStripped === true) throw envelopeNotStored();
 					await ctx.scheduler.runAfter(retryDelayMs, internal.delivery.sendCompletion.retrySend, {
 						sendRef,
 						envelopeInput: outcome.envelopeInput,
@@ -271,7 +278,7 @@ export const applyCompletion = internalMutation({
 				// Both bounds, attempts and deadline (`./sendRetryPlan`).
 				const retryDelayMs = governedRetryDelayMs(outcome, now);
 				if (retryDelayMs !== null) {
-					if (isEnvelopeStripped === true) throw new Error(ENVELOPE_NOT_STORED);
+					if (isEnvelopeStripped === true) throw envelopeNotStored();
 					await ctx.scheduler.runAfter(retryDelayMs, internal.delivery.sendCompletion.retrySend, {
 						sendRef,
 						envelopeInput: outcome.envelopeInput,
@@ -295,7 +302,9 @@ export const applyCompletion = internalMutation({
 					const send = await ctx.db.get(sendRef.id);
 					if (send?.status === 'queued') {
 						if (send.providerMessageId && send.providerMessageId !== outcome.providerMessageId) {
-							throw new Error('MTA acceptance conflicts with the Send provider identity.');
+							throw new InternalFailure('delivery.send_identity_conflict', {
+								retryable: false,
+							});
 						}
 						await ctx.db.patch(sendRef.id, {
 							providerMessageId: outcome.providerMessageId,
@@ -332,7 +341,10 @@ export const applyCompletion = internalMutation({
 				// `sendWorkerOutcomeValidator` fails to compile here rather than
 				// falling through to a terminal claim about a send nobody read.
 				const unhandled: never = outcome;
-				throw new Error(`Unhandled send worker outcome: ${JSON.stringify(unhandled)}`);
+				throw new InternalFailure('delivery.unhandled_worker_outcome', {
+					retryable: false,
+					attrs: { outcomeKind: String((unhandled as { kind?: unknown }).kind) },
+				});
 			}
 		}
 

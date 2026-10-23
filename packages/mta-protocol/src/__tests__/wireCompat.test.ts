@@ -103,7 +103,7 @@ describe('send intake wire', () => {
 	// refusal, and `ROUTING_LEASE_UNREADABLE` was missing from it while being on
 	// the wire — which is exactly the gap that let one 409 be answered outside the
 	// typed helper. Pinned against the SHARED constant, not a literal: that string
-	// is matched by substring on the Convex side, where a second spelling of it
+	// is compared by value on the Convex side, where a second spelling of it
 	// fails silently.
 	it('declares the lease-unreadable code the MTA actually answers', () => {
 		expect(MTA_SEND_ERROR_CODES).toContain(ROUTING_LEASE_UNREADABLE_CODE);

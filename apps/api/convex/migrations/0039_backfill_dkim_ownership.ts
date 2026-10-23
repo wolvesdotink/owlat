@@ -27,6 +27,7 @@ import { internal } from '../_generated/api';
 import { createMtaIdentityManager } from '../lib/emailProviders/mtaIdentity';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { logError, logInfo } from '../lib/runtimeLog';
+import { internalFailureOf } from '../_utils/errors';
 
 /** Rows per page. Small enough to stay well inside a query's limits. */
 const PAGE_SIZE = 100;
@@ -105,11 +106,13 @@ export const run = internalAction({
 						owned++;
 					}
 				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					if (message.includes('(409)')) {
+					if (internalFailureOf(error)?.kind === 'mta.dkim_ownership_conflict') {
 						// A key already owned by a DIFFERENT org — never move it silently.
 						conflicts++;
-						logError(`[0039] DKIM ownership conflict for ${domain}, skipping:`, message);
+						logError(
+							`[0039] DKIM ownership conflict for ${domain}, skipping:`,
+							error instanceof Error ? error.message : String(error)
+						);
 						continue;
 					}
 					// A non-conflict failure (e.g. the MTA is unreachable) is not

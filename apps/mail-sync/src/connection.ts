@@ -19,6 +19,7 @@
 
 import { ImapFlow } from 'imapflow';
 import { sleep } from '@owlat/shared';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import type { BackfillWork, ConnectableAccount, ConvexClient, IngestOutcome } from './convex.js';
 import {
 	CredentialsUnavailableError,
@@ -97,8 +98,12 @@ const EVENT_CYCLE_DEBOUNCE_MS = 2000;
 
 type CycleKind = 'drain' | 'full';
 
-const INITIAL_BACKOFF_MS = 5000;
-const MAX_BACKOFF_MS = 5 * 60 * 1000;
+/** 5 s, doubling to 5 min, plus up to a second of jitter. */
+const RECONNECT_BACKOFF: RetryPolicy = {
+	baseMs: 5000,
+	capMs: 5 * 60 * 1000,
+	jitter: { kind: 'fixed', maxMs: 1000 },
+};
 
 /**
  * UIDs per `UID FETCH` in the backfill's body phase. The phase-1 range is
@@ -119,7 +124,8 @@ const BACKFILL_INBOX_POLL_MIN_MS = 10_000;
 export class AccountConnection {
 	private client: ImapFlow | null = null;
 	private stopped = false;
-	private backoffMs = INITIAL_BACKOFF_MS;
+	// Connect attempts that failed since the last session opened.
+	private reconnectFailures = 0;
 	// One reconnect loop per account, ever (see connectLoop).
 	private isConnectLoopRunning = false;
 	// When the current run of back-to-back login rejections began. Reset by a
@@ -278,8 +284,7 @@ export class AccountConnection {
 					logger.warn({ accountId: this.account.accountId, err }, 'connect failed; backing off');
 				}
 				await this.setStatus('error', message);
-				await sleep(this.backoffMs + Math.floor(Math.random() * 1000));
-				this.backoffMs = Math.min(this.backoffMs * 2, MAX_BACKOFF_MS);
+				await sleep(nextDelay(RECONNECT_BACKOFF, this.reconnectFailures++));
 			}
 		}
 	}
@@ -345,7 +350,7 @@ export class AccountConnection {
 		await client.connect();
 		this.authRejectedSince = null;
 		this.client = client;
-		this.backoffMs = INITIAL_BACKOFF_MS;
+		this.reconnectFailures = 0;
 		// Whatever left a folder while the connection was down was never reported
 		// to us: every folder's first refresh compares its whole UID list.
 		for (const view of this.views.values()) view.censusDue = true;
