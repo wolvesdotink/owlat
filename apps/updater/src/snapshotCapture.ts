@@ -25,6 +25,7 @@ import {
 	helperPlumbing,
 	helperRun,
 	markSnapshot,
+	OPTIONAL_SNAPSHOT_FILES,
 	readSnapshot,
 	sha256File,
 	SNAPSHOT_DIR,
@@ -114,13 +115,13 @@ export async function captureSnapshot(options: CaptureOptions): Promise<CaptureR
 		};
 	}
 
+	// An unfinished rollback is refused before any update work (server.ts), so
+	// the previous snapshot here is one this capture may replace.
 	const previous = readSnapshot();
-	if (previous?.state === 'restoring') {
-		return refuse(
-			409,
-			'A rollback to the snapshot from before an earlier update did not finish, so the stack may be ' +
-				'running on half-restored data. Nothing was changed. Run `owlat rollback` on the host to finish it, then update again.'
-		);
+
+	const config = await readConfiguration();
+	if ('error' in config) {
+		return refuse(500, `Cannot take the snapshot: ${config.error}. Nothing was changed.`);
 	}
 
 	const plumbing = await helperPlumbing();
@@ -170,22 +171,16 @@ export async function captureSnapshot(options: CaptureOptions): Promise<CaptureR
 		targetVersion: options.targetVersion,
 		paused: found.filter((c) => c.running).map((c) => c.id),
 		mounts,
-		files: [],
+		files: [...config.present.keys()],
+		absent: config.absent,
 	};
 
 	try {
 		mkdirSync(join(SNAPSHOT_DIR, 'config'), { recursive: true, mode: 0o700 });
 		mkdirSync(join(SNAPSHOT_DIR, 'data'), { recursive: true, mode: 0o700 });
 		writeSnapshot(snapshot);
-		for (const file of SNAPSHOT_FILES) {
-			let content: string;
-			try {
-				content = await readFile(join(OWLAT_DIR, file), 'utf-8');
-			} catch {
-				continue;
-			}
+		for (const [file, content] of config.present) {
 			await writeOwnerOnlyFile(join(SNAPSHOT_DIR, 'config', file), content);
-			snapshot.files.push(file);
 		}
 	} catch (err) {
 		await discardSnapshot();
@@ -225,6 +220,34 @@ export async function captureSnapshot(options: CaptureOptions): Promise<CaptureR
 			stderr: '',
 		},
 	};
+}
+
+/**
+ * The configuration files as they are now. Only an optional file may be
+ * missing, and only a file that does not exist counts as missing: any other
+ * read error refuses the snapshot, since a restore would then remove a file
+ * that was there.
+ */
+async function readConfiguration(): Promise<
+	{ present: Map<string, string>; absent: string[] } | { error: string }
+> {
+	const present = new Map<string, string>();
+	const absent: string[] = [];
+	for (const file of SNAPSHOT_FILES) {
+		try {
+			present.set(file, await readFile(join(OWLAT_DIR, file), 'utf-8'));
+		} catch (err) {
+			const missing = (err as NodeJS.ErrnoException).code === 'ENOENT';
+			if (missing && OPTIONAL_SNAPSHOT_FILES.includes(file)) {
+				absent.push(file);
+				continue;
+			}
+			return {
+				error: missing ? `${file} does not exist` : `cannot read ${file} (${errorMessage(err)})`,
+			};
+		}
+	}
+	return { present, absent };
 }
 
 /**

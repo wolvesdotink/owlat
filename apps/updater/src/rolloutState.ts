@@ -97,6 +97,11 @@ export interface LastRollout {
 	 * configuration names the new release and the containers may lag behind.
 	 */
 	committed?: boolean;
+	/**
+	 * Set before `convex-deploy` runs. From then on the backend may run the new
+	 * release's functions even if the update stops before it commits.
+	 */
+	deployStarted?: boolean;
 	outcome?: RolloutOutcome;
 	summary?: string;
 	warnings?: string[];
@@ -153,8 +158,12 @@ export function interruptedVerdict(record: LastRollout): LastRollout {
 					? 'The updater stopped after the release was promoted, before it confirmed the ' +
 						'containers were recreated. Run the update again, or `docker compose up -d` in the ' +
 						'install directory on the host, to finish it.'
-					: 'The updater stopped before the release was applied. The running stack was not ' +
-						'changed; run the update again.',
+					: record.deployStarted
+						? 'The updater stopped after convex-deploy started, before the release was promoted: ' +
+							'the new Convex functions may be live while the other containers still run the ' +
+							'previous release. Run the update again to bring the rest of the stack to the same release.'
+						: 'The updater stopped before the release was applied. The running stack was not ' +
+							'changed; run the update again.',
 	};
 }
 

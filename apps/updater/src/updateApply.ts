@@ -36,6 +36,10 @@ export type Answer = (
 
 type Step = { step: string; ok?: boolean; stdout: string; stderr: string };
 
+/** What an interrupted rollout says when the snapshot is kept for the operator. */
+export const SNAPSHOT_KEPT =
+	' The snapshot taken before the update is kept: `owlat rollback` on the host restores it.';
+
 export const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
 
 /**
@@ -225,10 +229,10 @@ export async function applyRelease(
 		);
 	}
 
-	// Confirmed ready: from here nothing rolls back on its own (see the header).
-	// Recorded before the updater hands itself over, so its replacement never
-	// mistakes a confirmed release for one still on trial.
-	if (readiness.ready && snapshot) {
+	// Confirmed ready, or no longer being checked: from here nothing rolls back
+	// on its own (see the header). Recorded before the updater hands itself
+	// over, so its replacement never mistakes the release for one on trial.
+	if ((readiness.ready || readiness.interrupted) && snapshot) {
 		try {
 			snapshot = markSnapshot(snapshot, 'kept');
 		} catch (err) {
@@ -244,9 +248,7 @@ export async function applyRelease(
 	steps.push(await scheduleUpdaterRecreateSafely());
 
 	if (readiness.interrupted) {
-		const kept = snapshot
-			? ' The snapshot taken before the update is kept: `owlat rollback` on the host restores it.'
-			: '';
+		const kept = snapshot ? SNAPSHOT_KEPT : '';
 		return answer(
 			503,
 			{

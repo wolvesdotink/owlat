@@ -33,11 +33,14 @@
  * written to the install directory for /health (rolloutState.ts), since the
  * web container that asked is normally recreated before the answer.
  *
- * A SIGTERM splits the handler at the promote. Before it, the rollout backs
- * out: the Docker command in flight is stopped, the staged file and the
- * snapshot removed, and the verdict is `interrupted` with the running stack
- * unchanged. From the promote on it finishes `up` (the shutdown waits for it,
- * see lifecycle.ts), stops waiting for readiness, and says the release was
+ * A SIGTERM splits the handler at the promote. Before the deploy starts, the
+ * rollout backs out: the Docker command in flight is stopped, the staged file
+ * and the snapshot removed, and the verdict is `interrupted` with the running
+ * stack unchanged. Once the deploy has started the backend may already run
+ * the new functions, so a SIGTERM up to the promote stops without claiming
+ * that: the staged file goes, the snapshot is kept for `owlat rollback`. From
+ * the promote on it finishes `up` (the shutdown waits for it, see
+ * lifecycle.ts), stops waiting for readiness, and says the release was
  * started but not confirmed. A process killed anyway leaves a record that is
  * still in flight, which the next start turns into an `interrupted` verdict
  * (`reconcileInterruptedUpdate`).
@@ -61,12 +64,13 @@ import {
 import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
 import { failingBeforeRollout } from './readiness.js';
 import { deployTarget } from './deployTarget.js';
-import { discardSnapshot, readSnapshot, type Snapshot } from './snapshot.js';
+import { discardSnapshot, markSnapshot, readSnapshot, type Snapshot } from './snapshot.js';
 import { captureSnapshot, recoverInterruptedCapture } from './snapshotCapture.js';
 import {
 	applyRelease,
 	COMPOSE_FILE,
 	rollingBack,
+	SNAPSHOT_KEPT,
 	STAGED_FILE,
 	type Answer,
 } from './updateApply.js';
@@ -82,6 +86,12 @@ import {
 const BACKED_OUT =
 	'The updater is shutting down, so the update stopped before the release was applied. ' +
 	'The running stack was not changed; run the update again once the updater is back.';
+
+/** The answer to a rollout the shutdown stopped after its deploy began. */
+const STOPPED_AFTER_DEPLOY =
+	'The updater is shutting down, and stopped the update after convex-deploy had started: the ' +
+	'new Convex functions may be live while the other containers still run the previous release. ' +
+	'Run the update again once the updater is back to bring the rest of the stack to the same release.';
 
 /**
  * Settle an update the previous process never finished. Run once at startup,
@@ -100,18 +110,31 @@ export async function reconcileInterruptedUpdate(): Promise<LastRollout | null> 
 	const record = readRecord();
 	if (!record || record.phase === 'done') return null;
 
-	// A snapshot taken by an update that never got past the deploy describes
-	// the stack as it still is; one taken by an update that went further is
-	// what `owlat rollback` restores.
-	const snapshot = readSnapshot();
-	const ours = snapshot !== null && snapshot.takenAt >= record.startedAt;
-	if (ours && !record.committed && snapshot.state === 'armed') await discardSnapshot();
-	const note =
-		ours && record.committed && snapshot.state === 'armed'
-			? ' The snapshot taken before the update is kept: `owlat rollback` on the host restores it.'
-			: '';
+	// A snapshot taken by an update that never started its deploy describes
+	// the stack as it still is. One whose deploy started (the journal records
+	// it before the deploy runs, whatever the rollout record managed to say)
+	// is what `owlat rollback` restores, and nothing rolls back to it on its
+	// own any more.
+	let note = '';
+	const found = readSnapshot();
+	const snapshot = found && found.takenAt >= record.startedAt ? found : null;
+	if (snapshot?.state === 'armed' && !snapshot.deployStarted && !record.committed) {
+		await discardSnapshot();
+	} else if (snapshot?.state === 'armed' || snapshot?.state === 'kept') {
+		if (snapshot.state === 'armed') {
+			try {
+				markSnapshot(snapshot, 'kept');
+			} catch (err) {
+				console.error('[update] could not record the snapshot as kept:', err);
+			}
+		}
+		note = SNAPSHOT_KEPT;
+	}
 
-	const interrupted = interruptedVerdict(record);
+	const interrupted = interruptedVerdict({
+		...record,
+		deployStarted: record.deployStarted || snapshot?.deployStarted,
+	});
 	const verdict = {
 		...interrupted,
 		summary: `${interrupted.summary}${note}`,
@@ -204,11 +227,26 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 			// best-effort cleanup
 		}
 	};
-	// Every step up to the promote backs out on a SIGTERM (see the header).
+	// Every step before the deploy backs out on a SIGTERM (see the header).
 	const backOut = async () => {
 		await discardStaged();
 		console.error('[update] stopped before the release was applied: the updater is shutting down');
 		return answer(503, { error: BACKED_OUT, rollout: 'interrupted', steps });
+	};
+	// From the deploy to the promote it stops, but keeps the snapshot.
+	const stopAfterDeploy = async () => {
+		if (composeTemplate) await rm(STAGED_FILE, { force: true }).catch(() => {});
+		let error = STOPPED_AFTER_DEPLOY;
+		if (snapshot) {
+			try {
+				snapshot = markSnapshot(snapshot, 'kept');
+			} catch (err) {
+				console.error('[update] could not record the snapshot as kept:', err);
+			}
+			error += SNAPSHOT_KEPT;
+		}
+		console.error('[update] stopped after convex-deploy started: the updater is shutting down');
+		return answer(503, { error, rollout: 'interrupted', steps });
 	};
 
 	// Step 2: Prove the Docker API will let this rollout finish before anything
@@ -304,8 +342,6 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		return answer(captured.status, { error: captured.step.stderr, steps });
 	}
 
-	const rollBackOr = rollingBack({ record, steps, answer, snapshot, preExisting });
-
 	// Step 5: deploy Convex functions BEFORE restarting app containers. If the
 	// new schema is incompatible with the deploy, we bail out here — the
 	// running Web/MTA containers keep serving the old (still compatible) code
@@ -324,6 +360,24 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		return answer(500, { error, steps });
 	}
 	const noDeps = backend.kind === 'serving' ? ['--no-deps'] : [];
+
+	// From here the backend may run the new functions before anything else
+	// changes, so a snapshot of this update is never discarded as describing an
+	// untouched stack. The journal is fsynced first; the rollout record is
+	// best-effort.
+	if (snapshot) {
+		try {
+			snapshot = markSnapshot(snapshot, 'armed', { deployStarted: true });
+		} catch (err) {
+			await discardStaged();
+			const error = `Cannot record the snapshot before convex-deploy: ${errorMessage(err)}. Nothing was changed.`;
+			return answer(500, { error, steps });
+		}
+	}
+	record.deployStarted = true;
+	writeLastRollout(record);
+	const rollBackOr = rollingBack({ record, steps, answer, snapshot, preExisting });
+
 	const deploy = await exec(
 		'docker',
 		[...deployArgs, '--profile', 'deploy', 'run', '--rm', ...noDeps, 'convex-deploy'],
@@ -331,7 +385,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		{ signal: stopping, timeoutMs: UPDATE_STEP_BOUNDS.convexDeployMs }
 	);
 	steps.push({ step: 'convex-deploy', ...deploy });
-	if (stopping.aborted) return backOut();
+	if (stopping.aborted) return stopAfterDeploy();
 
 	if (!deploy.ok) {
 		// A rejected push changes nothing in Convex; one cut off by its bound may

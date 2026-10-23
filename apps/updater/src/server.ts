@@ -16,7 +16,7 @@ import {
 	servicesToRecreate,
 } from './rollout.js';
 import { handleUpdate } from './update.js';
-import { handleRollback, handleSnapshotInfo } from './rollback.js';
+import { handleRollback, handleSnapshotInfo, unfinishedRollback } from './rollback.js';
 import { handleApplyProfiles } from './applyProfiles.js';
 import { critical } from './lifecycle.js';
 import { handlePortChecks } from './portChecks.js';
@@ -384,6 +384,14 @@ export function buildRequestListener() {
 			// process, and until now it did so on a timer, answer or no answer.
 			await critical(() =>
 				exclusively(rollout.kind, res, async () => {
+					// Checked before any of the handler's work, and whatever `.env`
+					// says about snapshots: only a rollback may run over one that
+					// stopped partway.
+					const unfinished = rollout.kind === 'rollback' ? null : unfinishedRollback();
+					if (unfinished) {
+						json(res, 409, { error: unfinished, steps: [] });
+						return;
+					}
 					try {
 						await rollout.handle(req, res);
 					} finally {

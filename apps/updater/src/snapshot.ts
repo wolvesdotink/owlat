@@ -17,11 +17,22 @@
  *     starts the containers the capture paused and discards it.
  *   - `armed`: the update is on trial. A failure before the new release is
  *     confirmed ready rolls back to it (rollback.ts).
- *   - `kept`: the release was confirmed ready. Nothing rolls back to it
- *     automatically any more; `owlat rollback` still can.
+ *   - `kept`: nothing rolls back to it automatically any more, because the
+ *     release was confirmed ready or the update stopped after its deploy
+ *     began; `owlat rollback` still can.
  *   - `restoring`: a rollback has begun overwriting the stack. The data may be
- *     half-written, so no update may start until a rollback finishes it.
- *   - `restored`: the stack runs on the snapshot again.
+ *     half-written, so nothing but a rollback may change the stack until one
+ *     finishes it.
+ *   - `starting`: the data and configuration are back, but the release they
+ *     belong to has not been confirmed serving. A rollback from here only
+ *     starts it again: copying the data back a second time would discard
+ *     what that release has written since.
+ *   - `restored`: the stack runs on the snapshot again, confirmed ready.
+ *
+ * `deployStarted` is recorded before `convex-deploy` runs. From then on the
+ * backend may hold the new release's functions while the containers are still
+ * the old ones, so a snapshot of an update that stopped there is kept, never
+ * discarded as describing a stack the update did not touch.
  *
  * One snapshot is kept: the next update replaces it. It lives in the install
  * directory, where the updater sees it and its helper containers reach it
@@ -49,7 +60,7 @@ export interface SnapshotStep {
 	stderr: string;
 }
 
-type SnapshotState = 'capturing' | 'armed' | 'kept' | 'restoring' | 'restored';
+type SnapshotState = 'capturing' | 'armed' | 'kept' | 'restoring' | 'starting' | 'restored';
 
 /** One read-write mount of a stateful service, and the payload holding its copy. */
 export interface SnapshotMount {
@@ -75,6 +86,13 @@ export interface Snapshot {
 	mounts: SnapshotMount[];
 	/** Install-directory files copied under `config/`. */
 	files: string[];
+	/**
+	 * Optional files that did not exist when the snapshot was taken; a restore
+	 * removes them, so a file created since does not outlive the rollback.
+	 */
+	absent: string[];
+	/** `convex-deploy` was started after the snapshot was taken. */
+	deployStarted?: boolean;
 }
 
 /** The services whose data a release migrates. */
@@ -82,6 +100,15 @@ const STATEFUL_SERVICES = new Set(['convex', 'redis']);
 
 /** The files a rollback puts back; `.env` holds every deployment secret. */
 export const SNAPSHOT_FILES = ['docker-compose.yml', 'docker-compose.override.yml', '.env'];
+
+/**
+ * The ones an install may lack. Every other file must be read for the
+ * snapshot to be taken, so a restore always knows what each one was.
+ */
+export const OPTIONAL_SNAPSHOT_FILES = ['docker-compose.override.yml'];
+
+/** The rollback started by an earlier request has not finished. */
+export const UNFINISHED_STATES: ReadonlySet<string> = new Set(['restoring', 'starting']);
 
 export const SNAPSHOT_DIR = join(OWLAT_DIR, '.owlat-update-snapshot');
 const JOURNAL = join(SNAPSHOT_DIR, 'snapshot.json');
@@ -101,25 +128,31 @@ export function isSnapshotId(value: unknown): value is string {
 	return typeof value === 'string' && SNAPSHOT_ID.test(value);
 }
 
-const STATES = new Set<string>(['capturing', 'armed', 'kept', 'restoring', 'restored']);
+const STATES = new Set<string>(['capturing', 'armed', 'kept', 'restoring', 'starting', 'restored']);
 
 /**
  * The journal's names end up in paths and `docker` arguments, so a journal
  * naming anything the capture would not have written is not read at all.
  */
 function isSafeJournal(record: Partial<Snapshot>): boolean {
+	const { mounts, files, absent, paused, deployStarted } = record;
 	return (
-		Array.isArray(record.mounts) &&
-		record.mounts.every(
+		Array.isArray(mounts) &&
+		mounts.every(
 			(mount) =>
 				(mount.kind === 'volume' || mount.kind === 'bind') &&
 				SAFE_SOURCE.test(mount.source) &&
 				/^m\d+\.tar$/.test(mount.payload)
 		) &&
-		Array.isArray(record.files) &&
-		record.files.every((file) => SNAPSHOT_FILES.includes(file)) &&
-		Array.isArray(record.paused) &&
-		record.paused.every((id) => /^[0-9a-f]{6,64}$/.test(id))
+		Array.isArray(files) &&
+		files.every((file) => SNAPSHOT_FILES.includes(file)) &&
+		Array.isArray(absent) &&
+		absent.every((file) => OPTIONAL_SNAPSHOT_FILES.includes(file)) &&
+		// Each file is either copied or known to have been absent, never neither.
+		SNAPSHOT_FILES.every((file) => files.includes(file) !== absent.includes(file)) &&
+		Array.isArray(paused) &&
+		paused.every((id) => /^[0-9a-f]{6,64}$/.test(id)) &&
+		(deployStarted === undefined || typeof deployStarted === 'boolean')
 	);
 }
 
@@ -171,8 +204,12 @@ export function writeSnapshot(snapshot: Snapshot): void {
 }
 
 /** Move the snapshot on to `state`, keeping the rest of its record. */
-export function markSnapshot(snapshot: Snapshot, state: SnapshotState): Snapshot {
-	const next = { ...snapshot, state };
+export function markSnapshot(
+	snapshot: Snapshot,
+	state: SnapshotState,
+	changes: Pick<Partial<Snapshot>, 'deployStarted'> = {}
+): Snapshot {
+	const next = { ...snapshot, ...changes, state };
 	writeSnapshot(next);
 	return next;
 }

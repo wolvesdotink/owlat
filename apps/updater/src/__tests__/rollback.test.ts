@@ -43,11 +43,13 @@ process.env['OWLAT_DIR'] = OWLAT_DIR;
 
 const { buildRequestListener } = await import('../server.js');
 const { reconcileInterruptedUpdate } = await import('../update.js');
+const { beginShutdown, setShutdownHandle } = await import('../lifecycle.js');
 const { fastReadiness } = await import('./readinessStubs.js');
 
 const SNAPSHOT_DIR = join(OWLAT_DIR, '.owlat-update-snapshot');
 const JOURNAL = join(SNAPSHOT_DIR, 'snapshot.json');
 const RECORD = join(OWLAT_DIR, '.owlat-last-rollout.json');
+const OVERRIDE = join(OWLAT_DIR, 'docker-compose.override.yml');
 const HOST_INSTALL_DIR = '/srv/owlat';
 const AUTH = { 'x-instance-secret': 'test-instance-secret-0123456789' };
 
@@ -101,6 +103,7 @@ beforeEach(() => {
 	});
 	rmSync(SNAPSHOT_DIR, { recursive: true, force: true });
 	rmSync(RECORD, { force: true });
+	rmSync(OVERRIDE, { recursive: true, force: true });
 	writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), OLD_COMPOSE);
 	writeFileSync(join(OWLAT_DIR, '.env'), OLD_ENV, { mode: 0o600 });
 });
@@ -371,6 +374,18 @@ describe('the automatic rollback', () => {
 		expect(next.status).toBe(409);
 		expect(next.json.error).toContain('did not finish');
 		expect(next.json.steps.map((s) => s.step)).not.toContain('convex-deploy');
+
+		// Turning snapshots off does not turn the refusal off, and nothing else
+		// that recreates containers runs over the half-restored data either.
+		writeFileSync(join(OWLAT_DIR, '.env'), `${OLD_ENV}OWLAT_UPDATE_SNAPSHOT=off\n`);
+		const before = commandMock.mock.calls.length;
+		const optedOut = await update();
+		expect(optedOut.status).toBe(409);
+		expect(optedOut.json.error).toContain('did not finish');
+		const profiles = await post('/apply-profiles', { flags: {} });
+		expect(profiles.status).toBe(409);
+		// Refused before any Docker command ran.
+		expect(commandMock.mock.calls.length).toBe(before);
 	});
 
 	it('restores nothing from a snapshot whose copy has changed since it was taken', async () => {
@@ -469,7 +484,8 @@ describe('after an updater that stopped mid-rollout', () => {
 				targetVersion: '0.4.17',
 				paused: [],
 				mounts: [],
-				files: [],
+				files: ['docker-compose.yml', '.env'],
+				absent: ['docker-compose.override.yml'],
 				...extra,
 			})
 		);
@@ -524,5 +540,173 @@ describe('after an updater that stopped mid-rollout', () => {
 		expect(verdict?.summary).toContain('while rolling a failed release back');
 		expect(verdict?.summary).toContain('owlat rollback');
 		expect(journal()).toMatchObject({ state: 'restoring' });
+	});
+});
+
+describe('a shutdown after the deploy has started', () => {
+	it('keeps the snapshot, and does not claim the stack is unchanged', async () => {
+		try {
+			overrides.push((cmd) => {
+				if (isDeploy(cmd)) beginShutdown();
+				return isDeploy(cmd) ? '' : undefined;
+			});
+			const { status, json } = await update();
+
+			expect(status).toBe(503);
+			expect(json.rollout).toBe('interrupted');
+			expect(json.error).toContain('convex-deploy had started');
+			expect(json.error).toContain('`owlat rollback` on the host restores it');
+			expect(json.error).not.toContain('was not changed');
+			expect(journal()).toMatchObject({ state: 'kept', deployStarted: true });
+			expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
+			expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe(OLD_COMPOSE);
+			expect(commandLines().some(isRestore)).toBe(false);
+		} finally {
+			setShutdownHandle(undefined);
+		}
+	});
+
+	it('records that the deploy started before running it', async () => {
+		let atDeploy: Record<string, unknown> = {};
+		let recordAtDeploy: Record<string, unknown> = {};
+		overrides.push((cmd) => {
+			if (!isDeploy(cmd)) return undefined;
+			atDeploy = journal();
+			recordAtDeploy = JSON.parse(readFileSync(RECORD, 'utf-8'));
+			return '';
+		});
+		await update();
+		expect(atDeploy).toMatchObject({ state: 'armed', deployStarted: true });
+		expect(recordAtDeploy).toMatchObject({ phase: 'applying', deployStarted: true });
+	});
+});
+
+describe('after an updater killed between the deploy and the promote', () => {
+	it('keeps the snapshot and says the backend may run the new release', async () => {
+		mkdirSync(join(SNAPSHOT_DIR, 'data'), { recursive: true });
+		writeFileSync(
+			JOURNAL,
+			JSON.stringify({
+				id: 'snap-abc-0123abcd',
+				takenAt: 2_000,
+				state: 'armed',
+				fromVersion: '0.4.16',
+				targetVersion: '0.4.17',
+				paused: [],
+				mounts: [],
+				files: ['docker-compose.yml', '.env'],
+				absent: ['docker-compose.override.yml'],
+				deployStarted: true,
+			})
+		);
+		// The rollout record never got its own `deployStarted` written.
+		writeFileSync(
+			RECORD,
+			JSON.stringify({ targetVersion: '0.4.17', startedAt: 1_000, phase: 'applying' })
+		);
+		const verdict = await reconcileInterruptedUpdate();
+
+		expect(verdict?.summary).toContain('after convex-deploy started');
+		expect(verdict?.summary).toContain('`owlat rollback` on the host restores it');
+		expect(verdict?.summary).not.toContain('was not changed');
+		expect(journal()).toMatchObject({ state: 'kept' });
+	});
+});
+
+describe('a rollback that restored the data but did not start the release', () => {
+	it('resumes at the start, without copying the data back again', async () => {
+		await update();
+		const snapshot = journal()['id'];
+		let failUp = true;
+		overrides.push((cmd) =>
+			failUp && cmd.includes(' up -d --remove-orphans')
+				? fail('error during connect: EOF')
+				: undefined
+		);
+
+		const first = await post('/rollback', { snapshot });
+		const firstJson = (await first.json()) as Answer;
+		expect(first.status).toBe(500);
+		expect(firstJson.description).toContain(
+			'starts that release again without copying the data back'
+		);
+		expect(journal()).toMatchObject({ state: 'starting' });
+		expect(commandLines().filter(isRestore)).toHaveLength(2);
+
+		// Nothing but the rollback may run until it is finished.
+		expect((await update()).status).toBe(409);
+		const info = (await (await fetch(`${base}/snapshot`, { headers: AUTH })).json()) as {
+			description: string;
+		};
+		expect(info.description).toContain('the data is not copied back a second time');
+
+		failUp = false;
+		const second = await post('/rollback', { snapshot });
+		const secondJson = (await second.json()) as Answer;
+		expect(second.status).toBe(200);
+		expect(secondJson.rollout).toBe('rolled-back');
+		expect(commandLines().filter(isRestore)).toHaveLength(2);
+		expect(journal()).toMatchObject({ state: 'restored' });
+		expect((await post('/rollback', { snapshot })).status).toBe(409);
+	});
+
+	it('stays resumable when the restored release fails its readiness check', async () => {
+		await update();
+		const snapshot = journal()['id'];
+		readiness.webStatus(503);
+		expect((await post('/rollback', { snapshot })).status).toBe(500);
+		expect(journal()).toMatchObject({ state: 'starting' });
+
+		readiness.webStatus(200);
+		expect((await post('/rollback', { snapshot })).status).toBe(200);
+		expect(journal()).toMatchObject({ state: 'restored' });
+	});
+});
+
+describe('configuration files the snapshot did not have', () => {
+	it('removes an override created after the snapshot', async () => {
+		await update();
+		expect(journal()).toMatchObject({
+			files: ['docker-compose.yml', '.env'],
+			absent: ['docker-compose.override.yml'],
+		});
+		const snapshot = journal()['id'];
+		writeFileSync(OVERRIDE, 'services:\n  web:\n    environment:\n      ADDED_LATER: "1"\n');
+
+		const res = await post('/rollback', { snapshot });
+		const json = (await res.json()) as Answer;
+		expect(res.status).toBe(200);
+		expect(existsSync(OVERRIDE)).toBe(false);
+		expect(json.steps.find((s) => s.step === 'rollback-restore')?.stdout).toContain(
+			'removed docker-compose.override.yml'
+		);
+	});
+
+	it('puts back an override the snapshot had', async () => {
+		writeFileSync(OVERRIDE, 'services: {} # before\n');
+		await update();
+		writeFileSync(OVERRIDE, 'services: {} # after\n');
+		await post('/rollback', { snapshot: journal()['id'] });
+		expect(readFileSync(OVERRIDE, 'utf-8')).toBe('services: {} # before\n');
+	});
+
+	it('refuses the snapshot when a file cannot be read, rather than calling it absent', async () => {
+		mkdirSync(OVERRIDE);
+		const { status, json } = await update();
+
+		expect(status).toBe(500);
+		expect(json.error).toContain('cannot read docker-compose.override.yml');
+		expect(json.error).toContain('Nothing was changed');
+		expect(indexOf((c) => c.startsWith('docker stop'))).toBe(-1);
+		expect(indexOf(isDeploy)).toBe(-1);
+	});
+
+	it('refuses the snapshot when a required file is missing', async () => {
+		rmSync(join(OWLAT_DIR, 'docker-compose.yml'));
+		const { status, json } = await update();
+
+		expect(status).toBe(500);
+		expect(json.error).toContain('docker-compose.yml does not exist');
+		expect(indexOf(isDeploy)).toBe(-1);
 	});
 });

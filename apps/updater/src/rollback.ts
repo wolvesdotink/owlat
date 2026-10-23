@@ -14,7 +14,7 @@
  * has been confirmed ready without the operator naming the snapshot.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { errorMessage } from '@owlat/shared';
@@ -37,6 +37,7 @@ import {
 	sha256File,
 	SNAPSHOT_DIR,
 	statefulContainers,
+	UNFINISHED_STATES,
 	type Snapshot,
 	type SnapshotStep,
 } from './snapshot.js';
@@ -44,7 +45,11 @@ import {
 interface RollbackResult {
 	/** The previous release is back and passed the readiness check. */
 	ok: boolean;
-	/** How far it got: nothing overwritten yet, data partly overwritten, or all of it back. */
+	/**
+	 * How far it got: nothing overwritten yet, data partly overwritten, or all
+	 * of it back (the journal then says `starting` until the release it
+	 * belongs to passes the readiness check, and `restored` once it has).
+	 */
 	reached: 'untouched' | 'partial' | 'restored';
 	steps: SnapshotStep[];
 	/** One sentence on what happened, for the answer. */
@@ -103,6 +108,9 @@ async function writersOf(snapshot: Snapshot): Promise<string[] | { error: string
  * The journal moves to `restoring` before the first container is stopped, so
  * an updater killed partway leaves a record that refuses further updates
  * until a rollback finishes, rather than an update over half-restored data.
+ * Once the data and configuration are back it says `starting`, and a rollback
+ * resumed from there only starts the release and checks it again: the data
+ * is not copied back over what that release may have written since.
  *
  * Never throws: both callers are answering a request about a failure, and a
  * throw would leave it unanswered. A journal that cannot be written is
@@ -135,6 +143,16 @@ async function restoreAndStart(
 	): RollbackResult => ({ ok, reached, steps, summary, warnings });
 	const fail = (step: string, reason: string) =>
 		steps.push({ step, ok: false, stdout: '', stderr: reason });
+
+	if (snapshot.state === 'starting') {
+		steps.push({
+			step: 'rollback-restore',
+			ok: true,
+			stdout: `The data and configuration of snapshot ${snapshot.id} were already restored; starting the release they belong to again.`,
+			stderr: '',
+		});
+		return startRestored(snapshot, preExisting, steps);
+	}
 
 	const damaged = await damagedPayload(snapshot);
 	const plumbing = damaged ? null : await helperPlumbing();
@@ -204,17 +222,42 @@ async function restoreAndStart(
 			if (file === '.env') await writeOwnerOnlyFile(target, content);
 			else await writeFile(target, content, 'utf-8');
 		}
+		// A file the snapshot did not have (an override a feature change added
+		// since) would otherwise keep configuring the restored release.
+		for (const file of current.absent) await rm(join(OWLAT_DIR, file), { force: true });
 	} catch (err) {
 		const reason = `restoring the configuration failed: ${errorMessage(err)}`;
 		fail('rollback-restore', reason);
 		return result('partial', `${reason}. The data is restored; convex and redis are stopped.`);
 	}
-	current = markSnapshot(current, 'restored');
+	current = markSnapshot(current, 'starting');
+	const removed = current.absent.map((file) => `removed ${file}, which it did not have`);
 	steps.push({
 		step: 'rollback-restore',
 		ok: true,
-		stdout: `Restored ${[...current.mounts.map((m) => m.source), ...current.files].join(', ')} from snapshot ${current.id}`,
+		stdout:
+			`Restored ${[...current.mounts.map((m) => m.source), ...current.files].join(', ')} from snapshot ${current.id}` +
+			(removed.length > 0 ? `; ${removed.join(', ')}` : ''),
 		stderr: '',
+	});
+	return startRestored(current, preExisting, steps);
+}
+
+/**
+ * Start the release the restored data and configuration belong to, and only
+ * once it passes the readiness check call the rollback finished.
+ */
+async function startRestored(
+	snapshot: Snapshot,
+	preExisting: Map<string, string>,
+	steps: SnapshotStep[]
+): Promise<RollbackResult> {
+	const result = (summary: string, ok = false, warnings: string[] = []): RollbackResult => ({
+		ok,
+		reached: 'restored',
+		steps,
+		summary,
+		warnings,
 	});
 
 	const plan = await servicesToRecreate();
@@ -228,7 +271,7 @@ async function restoreAndStart(
 			);
 	steps.push({ step: 'rollback-up', ...up });
 	if (!up.ok) {
-		return result('restored', `starting the previous release failed: ${oneLine(up.stderr)}.`);
+		return result(`starting the previous release failed: ${oneLine(up.stderr)}.`);
 	}
 
 	const readiness = await verifyReadiness(plan.services, compose, { preExisting });
@@ -240,13 +283,22 @@ async function restoreAndStart(
 	});
 	if (!readiness.ready) {
 		return result(
-			'restored',
 			`the previous release did not pass the readiness check. ${readiness.summary}`,
 			false,
 			readiness.warnings
 		);
 	}
-	return result('restored', readiness.summary, true, readiness.warnings);
+	const warnings = [...readiness.warnings];
+	try {
+		markSnapshot(snapshot, 'restored');
+	} catch (err) {
+		// The rollback did finish; the journal still saying `starting` only costs
+		// a later `owlat rollback` that starts the release and checks it again.
+		warnings.push(
+			`The rollback finished, but recording it failed (${errorMessage(err)}): run \`owlat rollback\` once more before the next update.`
+		);
+	}
+	return result(readiness.summary, true, warnings);
 }
 
 const when = (snapshot: Snapshot) => new Date(snapshot.takenAt).toISOString();
@@ -256,11 +308,42 @@ function describeSnapshot(snapshot: Snapshot): string {
 	const update = snapshot.targetVersion
 		? `the update from ${snapshot.fromVersion ?? 'an unknown release'} to ${snapshot.targetVersion}`
 		: 'an update';
+	const taken = `Snapshot ${snapshot.id}, taken ${when(snapshot)} before ${update} (${snapshot.state}).`;
+	if (snapshot.state === 'starting') {
+		return (
+			`${taken} A rollback to it restored the data and configuration but did not confirm the ` +
+			'release they belong to is serving. Rolling back again starts that release and checks it; ' +
+			'the data is not copied back a second time.'
+		);
+	}
+	const unfinished =
+		snapshot.state === 'restoring'
+			? ' A rollback to it stopped partway, so the data may be half-restored; rolling back again finishes it.'
+			: '';
 	return (
-		`Snapshot ${snapshot.id}, taken ${when(snapshot)} before ${update} (${snapshot.state}). ` +
+		`${taken}${unfinished} ` +
 		`Restoring it puts back the data of ${[...new Set(snapshot.mounts.map((m) => m.service))].join(' and ') || 'no service'}` +
-		` and ${snapshot.files.join(', ') || 'no configuration file'} as they were then. ` +
-		'Everything written to the instance since is lost.'
+		` and ${snapshot.files.join(', ') || 'no configuration file'} as they were then` +
+		(snapshot.absent.length > 0
+			? `, and removes ${snapshot.absent.join(', ')}, which it did not have`
+			: '') +
+		'. Everything written to the instance since is lost.'
+	);
+}
+
+/**
+ * Why nothing but a rollback may change the stack, or null when something
+ * may. A rollback that stopped partway left data that is half-restored, or
+ * restored for a release that is not confirmed running; an update, a feature
+ * change or a secret rotation run over it would start the stack on that.
+ */
+export function unfinishedRollback(): string | null {
+	const snapshot = readSnapshot();
+	if (!snapshot || !UNFINISHED_STATES.has(snapshot.state)) return null;
+	return (
+		`A rollback to snapshot ${snapshot.id}, taken before an earlier update, did not finish, so the ` +
+		'stack may be running on half-restored data. Nothing was changed. Run `owlat rollback` on the ' +
+		'host to finish it, then try again.'
 	);
 }
 
@@ -291,7 +374,8 @@ export function rollbackAnswer(
 	}
 	return (
 		`${failure} The data and configuration were restored from the snapshot taken ${when(snapshot)} ` +
-		`(${snapshot.id}), but ${rollback.summary} Check \`docker compose ps\` on the host.`
+		`(${snapshot.id}), but ${rollback.summary} Check \`docker compose ps\` on the host; ` +
+		'`owlat rollback` starts that release again without copying the data back. No update can start until it has.'
 	);
 }
 
@@ -343,7 +427,11 @@ export async function handleRollback(req: IncomingMessage, res: ServerResponse) 
 		});
 	}
 
-	console.error(`[rollback] restoring snapshot ${snapshot.id} on the operator's request`);
+	console.error(
+		snapshot.state === 'starting'
+			? `[rollback] starting the release restored from snapshot ${snapshot.id} on the operator's request`
+			: `[rollback] restoring snapshot ${snapshot.id} on the operator's request`
+	);
 	const rollback = await rollBack(snapshot);
 	const steps = [...rollback.steps];
 	// The updater itself follows the release it restored, like after an update.

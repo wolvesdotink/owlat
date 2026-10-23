@@ -78,6 +78,8 @@ beforeEach(() => {
 		return '';
 	});
 	writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nCOMPOSE_PROFILES=\n');
+	// The snapshot an update takes before its deploy needs the compose file.
+	writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'services: {}\n');
 });
 
 afterEach(() => setShutdownHandle(undefined));

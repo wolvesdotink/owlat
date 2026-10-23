@@ -98,6 +98,8 @@ beforeEach(() => {
 	}
 	writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.16\n');
 	writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), OLD_COMPOSE);
+	// Each case starts without the snapshot an earlier case's update left.
+	rmSync(join(OWLAT_DIR, '.owlat-update-snapshot'), { recursive: true, force: true });
 	exit = vi.fn<(code: number) => void>();
 	// Signals are delivered by the test (`handle.shutdown`), never by the OS,
 	// and the server is the test's own: the shutdown must not close it.

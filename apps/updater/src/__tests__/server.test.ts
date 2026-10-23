@@ -88,6 +88,8 @@ beforeEach(() => {
 		'FOO=bar\nIP_POOLS_CAMPAIGN=1.1.1.1\nINSTANCE_SECRET=old\n'
 	);
 	rmSync(join(OWLAT_DIR, '.owlat-update-snapshot'), { recursive: true, force: true });
+	// The snapshot an update takes before its deploy needs the compose file.
+	writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'services: {}\n');
 });
 
 /**
