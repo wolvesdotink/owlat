@@ -116,7 +116,8 @@ describe('the send intake', () => {
 		expect(
 			mtaSendProvider.buildDispatchExtras!({ ...facts, correlationId: 'txn_abc' })
 		).toMatchObject({ correlationId: 'txn_abc' });
-		expect('correlationId' in mtaSendProvider.buildDispatchExtras!(facts)).toBe(false);
+		const plain = mtaSendProvider.buildDispatchExtras!(facts) ?? {};
+		expect('correlationId' in plain).toBe(false);
 	});
 });
 
