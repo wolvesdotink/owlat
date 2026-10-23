@@ -12,8 +12,15 @@
  * swapping its copy in place: reopening restores focus to the opener and
  * puts it back on Cancel, so the Enter that confirmed the first question can
  * never confirm the second.
+ *
+ * The host itself is eager (a question asked before a lazy host arrived would
+ * find none and answer no), but the dialog it renders is imported on the first
+ * question: app.vue boots every page, and the dialog with its modal would
+ * otherwise sit in the entry bundle for pages that never ask anything. A
+ * question asked while the import is in flight waits in the queue; if the
+ * import fails, that question is answered no instead of waiting forever.
  */
-import { nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { nextTick, onBeforeUnmount, ref, shallowRef, watch, type Component } from 'vue';
 import {
 	pendingConfirms,
 	registerConfirmHost,
@@ -23,6 +30,20 @@ import {
 
 const unregister = registerConfirmHost();
 onBeforeUnmount(unregister);
+
+const dialog = shallowRef<Component | null>(null);
+let loading: Promise<Component> | null = null;
+function loadDialog(): Promise<Component> {
+	loading ??= import('@owlat/ui/components/ui/ConfirmationDialog.vue').then(
+		(module) => (dialog.value = module.default),
+		(error: unknown) => {
+			// Forget the failure so the next question tries the import again.
+			loading = null;
+			throw error;
+		}
+	);
+	return loading;
+}
 
 const open = ref(false);
 // Kept after the answer so the leave transition still shows the copy it closes on.
@@ -39,6 +60,15 @@ watch(
 			if (current !== generation) return;
 		}
 		if (!next) return;
+		if (!dialog.value) {
+			try {
+				await loadDialog();
+			} catch {
+				respondToConfirm(next.id, false);
+				return;
+			}
+			if (current !== generation) return;
+		}
 		shown.value = next;
 		open.value = true;
 	},
@@ -51,7 +81,9 @@ function answer(confirmed: boolean) {
 </script>
 
 <template>
-	<UiConfirmationDialog
+	<component
+		:is="dialog"
+		v-if="dialog"
 		:open="open"
 		:title="shown?.title"
 		:confirm-text="shown?.confirmText"
@@ -66,5 +98,5 @@ function answer(confirmed: boolean) {
 		<template #description>
 			<p class="text-text-secondary whitespace-pre-line">{{ shown?.body }}</p>
 		</template>
-	</UiConfirmationDialog>
+	</component>
 </template>

@@ -1,7 +1,8 @@
 /**
- * The one dialog behind `useConfirm()`, mounted for real: UiConfirmationDialog,
- * UiModal and UiButton, so focus, Escape and the backdrop behave as they do in
- * the app.
+ * The one dialog behind `useConfirm()`, mounted for real: the host imports
+ * UiConfirmationDialog itself on the first question, and UiModal and UiButton
+ * are the real ones, so focus, Escape and the backdrop behave as they do in the
+ * app.
  *
  * What it has to guarantee: the caller's copy is what the person reads; only
  * the confirm button resolves yes; every other way out resolves no; queued
@@ -13,13 +14,15 @@ import { defineComponent, h, ref } from 'vue';
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import UiModal from '@owlat/ui/components/ui/Modal.vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
-import UiConfirmationDialog from '@owlat/ui/components/ui/ConfirmationDialog.vue';
+// Loaded up front so the host's own import() of it resolves from the module
+// cache within one flushPromises, as a chunk already fetched would in the app.
+import '@owlat/ui/components/ui/ConfirmationDialog.vue';
 import { createTestI18n } from '~/__tests__/i18n';
 import { useConfirm, type ConfirmOptions } from '~/composables/useConfirm';
 import ConfirmDialogHost from '../ConfirmDialogHost.vue';
 
 const global = {
-	components: { UiModal, UiButton, UiConfirmationDialog },
+	components: { UiModal, UiButton },
 	plugins: [createTestI18n()],
 	stubs: { Icon: true, teleport: true },
 };
