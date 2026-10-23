@@ -6593,6 +6593,7 @@
 			"updateProgress": {
 				"heading": "Update auf v{version} läuft",
 				"restartNotice": "Die Web-App startet während des Updates möglicherweise neu. Diese Seite verbindet sich automatisch wieder.",
+				"rollingBackNotice": "Das Update ist fehlgeschlagen und wird auf den Snapshot von davor zurückgesetzt. Das kann einige Minuten dauern.",
 				"stepFailed": "Fehlgeschlagen",
 				"steps": {
 					"convexDeploy": "Backend-Funktionen bereitstellen",

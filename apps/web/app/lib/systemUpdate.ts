@@ -154,8 +154,10 @@ export interface UpdaterHealth {
  * - `recreating`: the web container already runs the target version, so the
  *   pull, deploy and compose steps are behind it and `up` is under way.
  * - `verifying`: the updater reports `up` done and is checking the stack.
+ * - `rolling-back`: the release failed and the updater is restoring the
+ *   snapshot it took before the deploy.
  */
-export type RolloutStage = 'applying' | 'recreating' | 'verifying';
+export type RolloutStage = 'applying' | 'recreating' | 'verifying' | 'rolling-back';
 
 export type RolloutReading =
 	/** Nothing says the update is over yet. */
@@ -199,8 +201,8 @@ export function readRolloutProgress(
 
 	const record = health.lastRollout;
 	if (record && attempt && record.attempt === attempt) {
-		// A rollback is the tail of a failed check, not a step forward.
-		if (record.phase !== 'done') return inFlight(record.phase !== 'applying');
+		if (record.phase === 'rolling-back') return { kind: 'in-flight', stage: 'rolling-back' };
+		if (record.phase !== 'done') return inFlight(record.phase === 'verifying');
 		const summary = record.summary ?? '';
 		if (record.outcome === 'healthy') return { kind: 'complete' };
 		if (record.outcome === 'started') return { kind: 'started', summary };

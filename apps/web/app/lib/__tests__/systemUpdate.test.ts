@@ -169,7 +169,7 @@ describe('readRolloutProgress', () => {
 		};
 		expect(readRolloutProgress(health({ lastRollout: rollingBack }), '0.4.17', ATTEMPT)).toEqual({
 			kind: 'in-flight',
-			stage: 'verifying',
+			stage: 'rolling-back',
 		});
 		// Web is back on the previous release: the verdict ends the wait without
 		// waiting for the target version, and does not read as a success.
