@@ -2,9 +2,10 @@
  * The worker versions card on System & updates: per worker service, the
  * builds that reported in the last 7 days with their verdicts, warnings from
  * the per-service summary (not the capped list), the version skew, a named
- * empty state, and the read error.
+ * empty state, the read error, and rows that age past the live window while
+ * no new report arrives.
  */
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
@@ -18,6 +19,15 @@ type Service = 'imap' | 'mail-sync' | 'mta' | 'code-worker';
 type Verdict = 'current' | 'supported' | 'unsupported' | 'ahead';
 
 const T0 = Date.UTC(2026, 9, 1, 12);
+
+// The card ages rows on its own clock; the fixtures were reported at T0.
+beforeEach(() => {
+	vi.useFakeTimers();
+	vi.setSystemTime(T0);
+});
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 const server = (hostLabel: string, wireVersion: number, verdict: Verdict, isLive = true) => ({
 	instanceId: `proc-${hostLabel}`,
@@ -194,6 +204,20 @@ describe('WorkerVersionsCard', () => {
 			'An IMAP server from 0.6.7 or older handled a login'
 		);
 		expect(imap.text()).toContain('Nothing reported in the last 7 days.');
+	});
+
+	it('marks a row stopped once the live window passes without a new report', async () => {
+		const { wrapper } = mountCard(
+			status({ mta: service('mta', { servers: [server('mta-1', 1, 'current')] }) })
+		);
+		const row = () => section(wrapper, 'mta').find('tbody tr');
+		expect(row().text()).not.toContain('stopped reporting');
+
+		await vi.advanceTimersByTimeAsync(14 * 60_000);
+		expect(row().text()).not.toContain('stopped reporting');
+
+		await vi.advanceTimersByTimeAsync(90_000);
+		expect(row().text()).toContain('stopped reporting');
 	});
 
 	it('shows the read error instead of the empty state', () => {

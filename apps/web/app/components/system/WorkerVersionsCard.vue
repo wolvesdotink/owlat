@@ -11,6 +11,7 @@ import { api } from '@owlat/api';
 import { formatDateTime } from '~/utils/formatters';
 import type { WorkerService } from '@owlat/shared/workerWire';
 import { workerServiceKey } from '~/utils/workerServices';
+import { useNow } from '~/composables/useNow';
 
 const { t } = useI18n();
 
@@ -24,6 +25,18 @@ type Verdict = 'current' | 'supported' | 'unsupported' | 'ahead';
 
 const services = computed(() => status.value?.services ?? []);
 type ServiceStatus = (typeof services.value)[number];
+type Server = ServiceStatus['servers'][number];
+
+// The query only re-runs when a report arrives, so once every worker stops
+// reporting its `isLive` would stay true forever: age the rows on a local
+// clock against the backend's window. The backend's verdict still counts,
+// so a row it already called stale never turns live again.
+const now = useNow({ intervalMs: 30_000 });
+function isLive(server: Server): boolean {
+	const liveWindowMs = status.value?.liveWindowMs;
+	if (!server.isLive || liveWindowMs === undefined) return server.isLive;
+	return server.lastSeenAt >= now.value - liveWindowMs;
+}
 
 function serviceName(service: WorkerService): string {
 	return t(`components.system.workerVersionsCard.services.${workerServiceKey(service)}`);
@@ -189,7 +202,7 @@ const VERDICT_CLASS: Record<Verdict, { pill: string; dot: string }> = {
 								</td>
 								<td class="py-2 pr-4 text-text-secondary">
 									{{ formatDateTime(server.lastSeenAt) }}
-									<span v-if="!server.isLive" class="text-text-tertiary">
+									<span v-if="!isLive(server)" class="text-text-tertiary">
 										· {{ t('components.system.workerVersionsCard.notLive') }}
 									</span>
 								</td>
