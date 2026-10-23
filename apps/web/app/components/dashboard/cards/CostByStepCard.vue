@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { formatNumber } from '~/utils/formatters';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 const { t, locale } = useI18n();
 
@@ -108,8 +109,8 @@ function formatTokens(n: number): string {
 							"
 						>
 							<div
-								class="h-full bg-brand rounded-full transition-all duration-(--motion-slow)"
-								:style="{ width: `${(item.totalTokens / maxTokens) * 100}%` }"
+								class="ui-meter-fill h-full bg-brand rounded-full transition-transform duration-(--motion-slow)"
+								:style="meterFillStyle((item.totalTokens / maxTokens) * 100)"
 							/>
 						</div>
 						<p class="text-xs text-text-tertiary mt-0.5">

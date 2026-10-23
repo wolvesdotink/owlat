@@ -15,6 +15,7 @@
  * the file-size ratchet and this is the one section with moving parts.
  */
 import { restartToUpdate } from '~/lib/desktop/updater.client';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 const { t, locale } = useI18n();
 const { settings, isReady, setGlobal } = useDesktopAppSettings();
@@ -122,9 +123,9 @@ async function restart() {
 				:aria-label="t('desktop.settings.updates.downloading', { version: version ?? '' })"
 			>
 				<div
-					class="h-full bg-brand transition-[width] duration-300 motion-reduce:transition-none"
+					class="ui-meter-fill h-full bg-brand transition-transform duration-300 motion-reduce:transition-none"
 					:class="percent === null ? 'animate-pulse motion-reduce:animate-none' : ''"
-					:style="{ width: percent === null ? '100%' : `${percent}%` }"
+					:style="meterFillStyle(percent ?? 100)"
 				/>
 			</div>
 			<p class="text-xs text-text-tertiary" aria-live="polite">

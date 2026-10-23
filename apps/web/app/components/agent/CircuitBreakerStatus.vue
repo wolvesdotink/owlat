@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+
 interface Props {
 	breakerType: string;
 	state: 'closed' | 'open' | 'half_open';
@@ -105,11 +107,11 @@ const progressPercent = computed(() => {
 				</div>
 				<div class="w-full h-2 bg-bg-surface rounded-full overflow-hidden">
 					<div
-						class="h-full rounded-full transition-all duration-(--motion-slow)"
+						class="ui-meter-fill h-full rounded-full transition-transform duration-(--motion-slow)"
 						:class="
 							state === 'closed' ? 'bg-success' : state === 'open' ? 'bg-error' : 'bg-warning'
 						"
-						:style="{ width: `${progressPercent}%` }"
+						:style="meterFillStyle(progressPercent)"
 					/>
 				</div>
 			</div>

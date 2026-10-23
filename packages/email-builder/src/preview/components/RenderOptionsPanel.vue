@@ -503,7 +503,9 @@ watch(
 	font-size: 12px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition-property: color, background-color, box-shadow;
+	transition-duration: var(--motion-fast, 80ms);
+	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-settings-toggle-active {

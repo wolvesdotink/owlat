@@ -4,6 +4,7 @@ import { Shield, Accessibility, Mail, Monitor } from '@lucide/vue';
 import type { PreviewHealthScore } from '../../types';
 import { scoreBand, scoreColor } from '../../scoreBands';
 import AnalysisEmpty from './AnalysisEmpty.vue';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();
@@ -68,7 +69,7 @@ const scoreBarColor = scoreColor;
 			<div class="ep-health-bar-track">
 				<div
 					class="ep-health-bar-fill"
-					:style="{ width: `${healthScore.overall}%`, background: overallScoreColor }"
+					:style="[meterFillStyle(healthScore.overall), { background: overallScoreColor }]"
 				></div>
 			</div>
 		</div>
@@ -86,7 +87,7 @@ const scoreBarColor = scoreColor;
 				<div class="ep-health-subscore-track">
 					<div
 						class="ep-health-subscore-fill"
-						:style="{ width: `${score.value}%`, background: scoreBarColor(score.value) }"
+						:style="[meterFillStyle(score.value), { background: scoreBarColor(score.value) }]"
 					></div>
 				</div>
 			</div>
@@ -136,12 +137,19 @@ const scoreBarColor = scoreColor;
 	background: var(--ep-bg-overlay);
 	border-radius: 2px;
 	margin-top: 8px;
+	overflow: hidden;
 }
 
-.ep-health-bar-fill {
+/* Full-width fill slid in from the left (the `.ui-meter-fill` recipe): a score
+ * change moves a composited layer instead of re-laying-out the panel. */
+.ep-health-bar-fill,
+.ep-health-subscore-fill {
 	height: 100%;
+	width: 100%;
 	border-radius: 2px;
-	transition: width var(--motion-moderate, 160ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transform: translateX(calc(var(--ui-meter-value, 0) * 1% - 100%));
+	transition: transform var(--motion-moderate, 160ms)
+		var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-health-subscores {
@@ -178,12 +186,7 @@ const scoreBarColor = scoreColor;
 	height: 3px;
 	background: var(--ep-bg-overlay);
 	border-radius: 2px;
-}
-
-.ep-health-subscore-fill {
-	height: 100%;
-	border-radius: 2px;
-	transition: width var(--motion-moderate, 160ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	overflow: hidden;
 }
 
 .ep-health-recommendations {
