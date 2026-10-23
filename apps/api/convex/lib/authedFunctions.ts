@@ -71,8 +71,9 @@
  * query` / `typeof mutation`. The platform-admin builders pass the resolved
  * `PlatformAdminContext` (`authUserId`, `email`, `role`) there instead of the
  * org session. `authedIdentityMutation` (whose floor resolves an identity, not an
- * org session) and `authedAction` (whose floor runs in another function's
- * context and returns nothing) keep the raw builder types.
+ * org session) and `authedAction` keep the raw builder types. `authedAction`'s
+ * floor runs in another function's context and returns only the member's
+ * `organizationId`, which tags its failure log; the handler gets no session.
  *
  * FAILURE LOGGING. Every builder here wraps its handler (floor included) in
  * `logFailures` (`./functionLogging`): a throw is logged once as

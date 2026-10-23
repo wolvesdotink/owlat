@@ -14,7 +14,7 @@ export function logInfo(message?: unknown, ...optionalParams: unknown[]): void {
 
 const CONSOLE_METHOD = {
 	debug: 'debug',
-	info: 'log',
+	info: 'info',
 	warn: 'warn',
 	error: 'error',
 } as const satisfies Record<LogEventSeverity, keyof Console>;

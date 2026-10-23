@@ -8,7 +8,7 @@ afterEach(() => {
 describe('logEvent', () => {
 	it.each([
 		['debug', 'debug'],
-		['info', 'log'],
+		['info', 'info'],
 		['warn', 'warn'],
 		['error', 'error'],
 	] as const)('writes a %s event as one JSON line through console.%s', (severity, method) => {
@@ -33,7 +33,7 @@ describe('logEvent', () => {
 	});
 
 	it('defaults to info with no fields', () => {
-		const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const spy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
 
 		logEvent('postbox.forward.sent');
 

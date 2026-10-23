@@ -70,7 +70,7 @@ async function invoke(registered: unknown): Promise<unknown> {
 
 /** Every `function.*` event the console received, parsed. */
 function failureEvents(): Array<Record<string, unknown>> {
-	const lines = [consoleSpies.warn, consoleSpies.error, consoleSpies.log, consoleSpies.debug]
+	const lines = [consoleSpies.warn, consoleSpies.error, consoleSpies.info, consoleSpies.debug]
 		.flatMap((spy) => spy.mock.calls)
 		.map((call) => call[0])
 		.filter((line): line is string => typeof line === 'string' && line.startsWith('{'));
@@ -79,14 +79,14 @@ function failureEvents(): Array<Record<string, unknown>> {
 		.filter((record) => String(record['event']).startsWith('function.'));
 }
 
-let consoleSpies: Record<'warn' | 'error' | 'log' | 'debug', ReturnType<typeof vi.spyOn>>;
+let consoleSpies: Record<'warn' | 'error' | 'info' | 'debug', ReturnType<typeof vi.spyOn>>;
 
 beforeEach(() => {
 	vi.clearAllMocks();
 	consoleSpies = {
 		warn: vi.spyOn(console, 'warn').mockImplementation(() => undefined),
 		error: vi.spyOn(console, 'error').mockImplementation(() => undefined),
-		log: vi.spyOn(console, 'log').mockImplementation(() => undefined),
+		info: vi.spyOn(console, 'info').mockImplementation(() => undefined),
 		debug: vi.spyOn(console, 'debug').mockImplementation(() => undefined),
 	};
 });

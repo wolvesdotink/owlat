@@ -1166,7 +1166,7 @@ describe('dispatchGovernedEmail correlation id', () => {
 	};
 
 	it('carries the Send correlation id to routing and the extras, and logs the attempt once', async () => {
-		const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const log = vi.spyOn(console, 'info').mockImplementation(() => undefined);
 		// The snapshot mutation reads the Send row and hands its stored id back
 		// beside the token.
 		runMutation
@@ -1226,7 +1226,7 @@ describe('dispatchGovernedEmail correlation id', () => {
 	});
 
 	it('mints a per-attempt id for a send that carries none', async () => {
-		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		vi.spyOn(console, 'info').mockImplementation(() => undefined);
 
 		await dispatchGovernedEmail(ctx, baseRequest);
 
