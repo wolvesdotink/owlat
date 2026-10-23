@@ -36,10 +36,13 @@ function dismiss(): void {
 </script>
 
 <template>
-	<!-- Always rendered, so screen readers hear the notice when it appears. -->
+	<!-- Always rendered, so screen readers hear the notice when it appears.
+	     Bottom centre: the sidebar and the undo toasts hold the bottom-left
+	     corner, the toast stack the bottom-right. Under the sidebar and every
+	     dialog (--z-float), so an open drawer or modal is never covered. -->
 	<div
 		aria-live="polite"
-		class="pointer-events-none fixed bottom-[max(calc(var(--ui-bottom-chrome-height,0px)+0.5rem),calc(1.5rem+env(safe-area-inset-bottom,0px)))] left-[calc(1rem+env(safe-area-inset-left,0px))] right-[calc(1rem+env(safe-area-inset-right,0px))] z-(--z-float) flex sm:left-[calc(1.5rem+env(safe-area-inset-left,0px))] sm:right-auto"
+		class="pointer-events-none fixed bottom-[max(calc(var(--ui-bottom-chrome-height,0px)+0.5rem),calc(1.5rem+env(safe-area-inset-bottom,0px)))] left-[calc(1rem+env(safe-area-inset-left,0px))] right-[calc(1rem+env(safe-area-inset-right,0px))] z-(--z-float) flex justify-center"
 	>
 		<section
 			v-if="update && !dismissed"
