@@ -394,6 +394,8 @@ import type * as campaigns_guards from '../campaigns/guards.js';
 import type * as campaigns_lifecycle from '../campaigns/lifecycle.js';
 import type * as campaigns_listing from '../campaigns/listing.js';
 import type * as campaigns_deletion from '../campaigns/deletion.js';
+import type * as campaigns_draftFields from '../campaigns/draftFields.js';
+import type * as campaigns_drafts from '../campaigns/drafts.js';
 import type * as campaigns_multiDaySendPlan from '../campaigns/multiDaySendPlan.js';
 import type * as campaigns_organization from '../campaigns/organization.js';
 import type * as campaigns_preflight from '../campaigns/preflight.js';
@@ -2257,6 +2259,8 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/lifecycle': typeof campaigns_lifecycle;
 	'campaigns/listing': typeof campaigns_listing;
 	'campaigns/deletion': typeof campaigns_deletion;
+	'campaigns/draftFields': typeof campaigns_draftFields;
+	'campaigns/drafts': typeof campaigns_drafts;
 	'campaigns/multiDaySendPlan': typeof campaigns_multiDaySendPlan;
 	'campaigns/organization': typeof campaigns_organization;
 	'campaigns/preflight': typeof campaigns_preflight;

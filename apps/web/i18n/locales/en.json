@@ -15116,6 +15116,25 @@
 				}
 			}
 		},
+		"draftAutosave": {
+			"editing": "Editing…",
+			"saving": "Saving…",
+			"saved": "Saved",
+			"savedAgo": "Saved · {when}",
+			"offlineOnDevice": "Offline, kept on this device",
+			"offlineNotSaved": "Offline, not saved yet",
+			"notSaved": "Not saved",
+			"failed": "Your changes could not be saved.",
+			"retry": "Retry",
+			"notSavedYet": "Your latest changes are not saved yet. Try again in a moment.",
+			"restored": "Restored the changes this device kept",
+			"recovery": {
+				"title": "Unsaved changes on this device.",
+				"description": "Changes from {when} were not applied, because this was changed elsewhere since.",
+				"restore": "Restore them",
+				"discard": "Discard"
+			}
+		},
 		"dualArmAlignment": {
 			"actionLabel": "Review records",
 			"aligned": "Your own server and your relay look identical to mailboxes, so the gradual switchover can measure them fairly.",
@@ -17103,9 +17122,7 @@
 				"zh": "Chinese"
 			},
 			"operations": {
-				"updateAudience": "Update campaign audience",
-				"updateBasics": "Update campaign basics",
-				"updateContent": "Update campaign content"
+				"saveDraft": "Save campaign draft"
 			}
 		},
 		"useChannelInbox": {

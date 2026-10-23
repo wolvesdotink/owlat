@@ -3,7 +3,9 @@
  * cascade-deleter of `emailTemplateVersions`.
  *
  * Capture sites (all of them):
- *   `emails.update`            → trigger `save`
+ *   `emails.update`            → trigger `save` (an autosave replaces the
+ *                                same person's save row from the same window,
+ *                                `replacesAutosaveVersion`)
  *   `emails.publish`           → trigger `publish`
  *   `campaigns/send.ts` PREP   → trigger `send` (via `captureForSend`)
  *   `emailCoediting/sessions.ts` → trigger `conflict` (a co-editor's change replaced)
@@ -28,6 +30,7 @@ import {
 	VERSION_HISTORY_LIMIT,
 	VERSION_PRUNE_BATCH,
 	fingerprintSnapshot,
+	replacesAutosaveVersion,
 	selectVersionsToEvict,
 	shouldCaptureVersion,
 	type TemplateVersionTrigger,
@@ -47,8 +50,13 @@ async function latestVersion(
 
 /**
  * Snapshot a template, unless the previous snapshot already records the same
- * content under the same trigger. Returns the new row id, or null when the
- * capture was deduplicated away.
+ * content under the same trigger. Returns the new row id (null when the
+ * capture was deduplicated away).
+ *
+ * With `autosave`, a save that follows the same person's save from the same
+ * window continues that burst (`continuesBurst`): its row takes the earlier
+ * one's place (deleted, then the new one inserted; a stored snapshot is never
+ * rewritten).
  *
  * Runs in the caller's transaction: a save that rolls back must not leave a
  * version row claiming content that was never stored.
@@ -59,8 +67,9 @@ export async function captureTemplateVersion(
 		template: Doc<'emailTemplates'>;
 		trigger: TemplateVersionTrigger;
 		userId: string;
+		autosave?: boolean;
 	}
-): Promise<Id<'emailTemplateVersions'> | null> {
+): Promise<{ versionId: Id<'emailTemplateVersions'> | null; continuesBurst: boolean }> {
 	const { template, trigger, userId } = args;
 	const fingerprint = fingerprintSnapshot({
 		name: template.name,
@@ -69,9 +78,15 @@ export async function captureTemplateVersion(
 	});
 
 	const previous = await latestVersion(ctx, template._id);
+	const now = Date.now();
+	const continuesBurst =
+		args.autosave === true &&
+		trigger === 'save' &&
+		replacesAutosaveVersion(previous, { userId, now });
 	if (!shouldCaptureVersion(previous, { contentHash: fingerprint.contentHash, trigger })) {
-		return null;
+		return { versionId: null, continuesBurst };
 	}
+	if (continuesBurst && previous) await ctx.db.delete(previous._id);
 
 	const versionId = await ctx.db.insert('emailTemplateVersions', {
 		templateId: template._id,
@@ -84,7 +99,7 @@ export async function captureTemplateVersion(
 		contentBytes: fingerprint.contentBytes,
 		contentHash: fingerprint.contentHash,
 		createdBy: userId,
-		createdAt: Date.now(),
+		createdAt: now,
 	});
 
 	// Enforce retention. Steady state evicts one row; the read is bounded by
@@ -98,7 +113,7 @@ export async function captureTemplateVersion(
 		await ctx.db.delete(stale._id);
 	}
 
-	return versionId;
+	return { versionId, continuesBurst };
 }
 
 /**

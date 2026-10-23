@@ -17,7 +17,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -135,6 +135,100 @@ describe('version capture on save', () => {
 
 		const rows = await versionRows(t, templateId);
 		expect(rows.map((r) => r.content)).toEqual([CONTENT_B, CONTENT_A]);
+	});
+});
+
+describe('version capture on autosave', () => {
+	const CONTENT_C = JSON.stringify([{ id: 'b1', type: 'text', content: { html: 'Three' } }]);
+	const audits = (t: TestConvex<typeof schema>) =>
+		t.run(async (ctx) =>
+			(await ctx.db.query('auditLogs').collect()).filter(
+				(row) => row.action === 'email_template.updated'
+			)
+		);
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('keeps one row and one audit entry per person and window', async () => {
+		vi.useFakeTimers({ now: Date.UTC(2026, 9, 24, 10, 0, 0), toFake: ['Date'] });
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+
+		await t.mutation(api.emailTemplates.emails.update, {
+			templateId,
+			content: CONTENT_B,
+			autosave: true,
+		});
+		vi.setSystemTime(Date.UTC(2026, 9, 24, 10, 4, 0));
+		await t.mutation(api.emailTemplates.emails.update, {
+			templateId,
+			content: CONTENT_C,
+			autosave: true,
+		});
+
+		let rows = await versionRows(t, templateId);
+		expect(rows.map((r) => r.content)).toEqual([CONTENT_C]);
+		expect(await audits(t)).toHaveLength(1);
+
+		// A new window starts a new row (and the burst is recorded again).
+		vi.setSystemTime(Date.UTC(2026, 9, 24, 10, 12, 0));
+		await t.mutation(api.emailTemplates.emails.update, {
+			templateId,
+			content: CONTENT_A,
+			autosave: true,
+		});
+		rows = await versionRows(t, templateId);
+		expect(rows.map((r) => r.content)).toEqual([CONTENT_C, CONTENT_A]);
+		expect(await audits(t)).toHaveLength(2);
+	});
+
+	it("never replaces another person's row or a publish", async () => {
+		vi.useFakeTimers({ now: Date.UTC(2026, 9, 24, 10, 0, 0), toFake: ['Date'] });
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+
+		await t.mutation(api.emailTemplates.emails.update, {
+			templateId,
+			content: CONTENT_B,
+			autosave: true,
+		});
+		sessionMock.user = { id: 'user-bob', role: 'owner' };
+		await t.mutation(api.emailTemplates.emails.update, {
+			templateId,
+			content: CONTENT_C,
+			autosave: true,
+		});
+		await t.mutation(api.emailTemplates.emails.publish, { templateId });
+		await t.mutation(api.emailTemplates.emails.unpublish, { templateId });
+		await t.mutation(api.emailTemplates.emails.update, {
+			templateId,
+			content: CONTENT_A,
+			autosave: true,
+		});
+
+		const rows = await versionRows(t, templateId);
+		expect(rows.map((r) => [r.trigger, r.createdBy])).toEqual([
+			['save', 'user-alice'],
+			['save', 'user-bob'],
+			['publish', 'user-bob'],
+			['save', 'user-bob'],
+		]);
+	});
+
+	it('leaves a save without the flag as its own row', async () => {
+		vi.useFakeTimers({ now: Date.UTC(2026, 9, 24, 10, 0, 0), toFake: ['Date'] });
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+
+		await t.mutation(api.emailTemplates.emails.update, { templateId, content: CONTENT_B });
+		await t.mutation(api.emailTemplates.emails.update, { templateId, content: CONTENT_C });
+
+		expect((await versionRows(t, templateId)).map((r) => r.content)).toEqual([
+			CONTENT_B,
+			CONTENT_C,
+		]);
 	});
 });
 

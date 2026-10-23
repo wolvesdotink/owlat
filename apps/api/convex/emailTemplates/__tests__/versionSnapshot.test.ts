@@ -9,8 +9,10 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+	AUTOSAVE_VERSION_WINDOW_MS,
 	VERSION_HISTORY_LIMIT,
 	fingerprintSnapshot,
+	replacesAutosaveVersion,
 	selectVersionsToEvict,
 	shouldCaptureVersion,
 	snapshotByteLength,
@@ -103,5 +105,31 @@ describe('selectVersionsToEvict', () => {
 
 	it('honours an explicit lower limit', () => {
 		expect(selectVersionsToEvict(['a', 'b', 'c'], 1)).toEqual(['b', 'c']);
+	});
+});
+
+describe('replacesAutosaveVersion', () => {
+	const W = AUTOSAVE_VERSION_WINDOW_MS;
+	const save = (createdAt: number, createdBy = 'alice') =>
+		({ trigger: 'save', createdBy, createdAt }) as const;
+
+	it("replaces the same person's save from the same window", () => {
+		expect(replacesAutosaveVersion(save(W * 3 + 10), { userId: 'alice', now: W * 3 + W - 1 })).toBe(
+			true
+		);
+	});
+
+	it('keeps a row from an earlier window, another person or another event', () => {
+		expect(replacesAutosaveVersion(save(W * 3 - 1), { userId: 'alice', now: W * 3 })).toBe(false);
+		expect(replacesAutosaveVersion(save(W * 3), { userId: 'bob', now: W * 3 + 5 })).toBe(false);
+		for (const trigger of ['publish', 'send', 'conflict'] as const) {
+			expect(
+				replacesAutosaveVersion(
+					{ trigger, createdBy: 'alice', createdAt: W * 3 },
+					{ userId: 'alice', now: W * 3 + 5 }
+				)
+			).toBe(false);
+		}
+		expect(replacesAutosaveVersion(null, { userId: 'alice', now: 0 })).toBe(false);
 	});
 });

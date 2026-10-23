@@ -72,6 +72,10 @@ export const update = authedMutation({
 		// template has a live session, the session's draft is saved instead of
 		// the payload's blocks and shared fields (emailCoediting/save.ts).
 		coeditVersion: v.optional(v.number()),
+		// The editor's background save of a draft. Its version-history row takes
+		// the place of the same person's row from the last few minutes, and that
+		// replacement writes no second audit entry (emailTemplates/versions.ts).
+		autosave: v.optional(v.boolean()),
 	},
 	handler: async (ctx, rawArgs) => {
 		const session = await requireOrgPermission(
@@ -107,24 +111,29 @@ export const update = authedMutation({
 		// Snapshot the POST-patch row, in this transaction, so a rolled-back save
 		// leaves no version claiming content that was never stored. Identical
 		// consecutive saves dedupe inside `captureTemplateVersion`.
-		await captureTemplateVersion(ctx, {
+		const capture = await captureTemplateVersion(ctx, {
 			template: { ...template, ...updates },
 			trigger: 'save',
 			userId: session.userId,
+			autosave: args.autosave,
 		});
 
 		// Audit the content/metadata edit — the documented email_template.updated
 		// action was never emitted from this handler.
-		const changedFields = Object.keys(updates).filter(
-			(k) => k !== 'updatedAt' && k !== 'contentRevision'
-		);
-		await recordAuditLog(ctx, {
-			userId: session.userId,
-			action: 'email_template.updated',
-			resource: 'email_template',
-			resourceId: args.templateId,
-			details: { changedFields: changedFields.join(', ') },
-		});
+		// An autosave that continues this person's editing burst (see the
+		// history row above) was already recorded when the burst began.
+		if (!capture.continuesBurst) {
+			const changedFields = Object.keys(updates).filter(
+				(k) => k !== 'updatedAt' && k !== 'contentRevision'
+			);
+			await recordAuditLog(ctx, {
+				userId: session.userId,
+				action: 'email_template.updated',
+				resource: 'email_template',
+				resourceId: args.templateId,
+				details: { changedFields: changedFields.join(', ') },
+			});
+		}
 
 		// The revision this write stored; the editor builds its next save on it.
 		return { templateId: args.templateId, contentRevision: updates.contentRevision };

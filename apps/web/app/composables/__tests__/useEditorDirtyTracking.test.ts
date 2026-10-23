@@ -579,3 +579,57 @@ describe('useEditorDirtyTracking change signals', () => {
 		expect(editor.hasChanges.value).toBe(false);
 	});
 });
+
+describe('useEditorDirtyTracking keepOwnEcho', () => {
+	function setupKeeping(keep: boolean) {
+		const source = ref<Row | null>({ _id: 't1', name: 'Original', contentRevision: 3 });
+		const name = ref('');
+		const initialize = vi.fn((row: Row) => {
+			name.value = row.name;
+		});
+		const tracker = useEditorDirtyTracking({
+			source,
+			initialize,
+			watchSources: [() => name.value],
+			revision: (row) => row.contentRevision ?? 0,
+			keepOwnEcho: () => keep,
+		});
+		return { source, name, initialize, ...tracker };
+	}
+
+	it('keeps the text as typed when its own save comes back normalized', async () => {
+		const editor = setupKeeping(true);
+		await settle();
+		editor.name.value = 'Hello ';
+		await nextTick();
+		const submission = editor.beginSubmit();
+		// The server trims what it stores; the echo arrives before the save resolves.
+		editor.source.value = { _id: 't1', name: 'Hello', contentRevision: 4 };
+		await settle();
+		editor.acknowledge(submission, 4);
+		await settle();
+
+		expect(editor.name.value).toBe('Hello ');
+		expect(editor.hasChanges.value).toBe(false);
+		expect(editor.initialize).toHaveBeenCalledOnce();
+		expect(editor.beginSubmit().revision).toBe(4);
+
+		// Someone else's later write still replaces the clean draft.
+		editor.source.value = { _id: 't1', name: 'Theirs', contentRevision: 5 };
+		await settle();
+		expect(editor.name.value).toBe('Theirs');
+	});
+
+	it('hydrates the echo as before without the option', async () => {
+		const editor = setupKeeping(false);
+		await settle();
+		editor.name.value = 'Hello ';
+		await nextTick();
+		const submission = editor.beginSubmit();
+		editor.source.value = { _id: 't1', name: 'Hello', contentRevision: 4 };
+		await settle();
+		editor.acknowledge(submission, 4);
+		await settle();
+		expect(editor.name.value).toBe('Hello');
+	});
+});

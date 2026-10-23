@@ -589,7 +589,15 @@ function applyRemoteOps(ops: readonly CoeditOp<EditorBlock>[]) {
 // `isInlineEditing` tells a host that text may be typed which the blocks do not
 // hold yet (the inline editor commits when it closes), so replacing the canvas
 // now would leave that text to be committed on top of whatever replaced it.
-defineExpose({ loadState, applyRemoteOps, isInlineEditing, selectBlock });
+// `commitInlineEdit` closes that editor, so a host about to save (or leave)
+// can have the text in the blocks first.
+defineExpose({
+	loadState,
+	applyRemoteOps,
+	isInlineEditing,
+	selectBlock,
+	commitInlineEdit: exitInlineEdit,
+});
 
 // Co-editing focus: which root is selected and which is open in the inline
 // editor, for the host's presence outline and edit lease.
@@ -1167,6 +1175,9 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 			>
 				<template v-if="$slots['toolbar-actions']" #toolbar-actions>
 					<slot name="toolbar-actions" />
+				</template>
+				<template v-if="$slots['save-status']" #save-status>
+					<slot name="save-status" />
 				</template>
 			</EditorHeader>
 		</div>

@@ -98,6 +98,35 @@ export function shouldCaptureVersion(
 }
 
 /**
+ * How long one person's autosaves of a template share a single history row.
+ * The editor saves a draft a moment after every pause in typing, so one row
+ * per save would push every older version out of the history within minutes.
+ */
+export const AUTOSAVE_VERSION_WINDOW_MS = 10 * 60 * 1000;
+
+interface TemplateVersionAuthor {
+	trigger: TemplateVersionTrigger;
+	createdBy: string;
+	createdAt: number;
+}
+
+/**
+ * Whether an autosave by `userId` at `now` replaces `latest` instead of adding
+ * a row: the newest row is a save by the same person in the same window (the
+ * windows are fixed slices of the clock, so a burst of edits keeps at most one
+ * row per slice). Publish, send and conflict rows are records of events and
+ * are never replaced.
+ */
+export function replacesAutosaveVersion(
+	latest: TemplateVersionAuthor | null,
+	next: { userId: string; now: number },
+	windowMs = AUTOSAVE_VERSION_WINDOW_MS
+): boolean {
+	if (!latest || latest.trigger !== 'save' || latest.createdBy !== next.userId) return false;
+	return Math.floor(latest.createdAt / windowMs) === Math.floor(next.now / windowMs);
+}
+
+/**
  * The rows past the cap in a NEWEST-FIRST list — i.e. the oldest ones, which
  * retention evicts. Callers read at most
  * `VERSION_HISTORY_LIMIT + VERSION_PRUNE_BATCH` rows, so the result is bounded.

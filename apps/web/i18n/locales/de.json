@@ -15116,6 +15116,25 @@
 				}
 			}
 		},
+		"draftAutosave": {
+			"editing": "Wird bearbeitet…",
+			"saving": "Wird gespeichert…",
+			"saved": "Gespeichert",
+			"savedAgo": "Gespeichert · {when}",
+			"offlineOnDevice": "Offline, auf diesem Gerät gesichert",
+			"offlineNotSaved": "Offline, noch nicht gespeichert",
+			"notSaved": "Nicht gespeichert",
+			"failed": "Deine Änderungen konnten nicht gespeichert werden.",
+			"retry": "Erneut versuchen",
+			"notSavedYet": "Deine letzten Änderungen sind noch nicht gespeichert. Versuche es gleich noch einmal.",
+			"restored": "Die auf diesem Gerät gesicherten Änderungen wurden wiederhergestellt",
+			"recovery": {
+				"title": "Nicht gespeicherte Änderungen auf diesem Gerät.",
+				"description": "Änderungen von {when} wurden nicht übernommen, weil inzwischen anderswo etwas geändert wurde.",
+				"restore": "Wiederherstellen",
+				"discard": "Verwerfen"
+			}
+		},
 		"dualArmAlignment": {
 			"actionLabel": "Einträge prüfen",
 			"aligned": "Dein eigener Server und dein Relay sehen für Mailboxen identisch aus, deshalb kann die schrittweise Umstellung sie fair messen.",
@@ -17103,9 +17122,7 @@
 				"zh": "Chinesisch"
 			},
 			"operations": {
-				"updateAudience": "Kampagnen-Zielgruppe aktualisieren",
-				"updateBasics": "Kampagnen-Basisdaten aktualisieren",
-				"updateContent": "Kampagneninhalt aktualisieren"
+				"saveDraft": "Kampagnenentwurf speichern"
 			}
 		},
 		"useChannelInbox": {

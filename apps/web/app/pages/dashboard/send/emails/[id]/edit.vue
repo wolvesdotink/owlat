@@ -55,6 +55,7 @@ const { run: unpublishTemplate, isLoading: isUnpublishing } = useBackendOperatio
 );
 const { showToast } = useToast();
 const isPublished = computed(() => template.value?.status === 'published');
+const isDraft = computed(() => template.value?.status === 'draft');
 const isChangingPublication = computed(() => isPublishing.value || isUnpublishing.value);
 
 // Organization email theme (incl. baseWidth) from the shared source.
@@ -96,6 +97,7 @@ const {
 	coediting,
 	isConnecting,
 	onCollabFocus,
+	autosave: drafts,
 } = useEmailEditorBridge({
 	source: template,
 	revision: (row) => row.contentRevision ?? 0,
@@ -106,6 +108,12 @@ const {
 		fields: { plainTextOverride },
 	},
 	canKeepDraft: sameDefaultLanguage,
+	// A draft saves itself; a published one keeps Save (it refuses edits until unpublished).
+	autosave: {
+		enabled: () => isDraft.value,
+		kind: 'emailTemplate',
+		id: () => templateId.value,
+	},
 	initialize: (t, ctx) => {
 		ctx.name.value = t.name;
 		ctx.subject.value = t.subject;
@@ -131,8 +139,17 @@ const {
 			},
 			renderOptions: { theme: emailTheme.value, variableType: 'personalization' },
 			commit: async (payload) =>
-				(await commitTemplate({ templateId: id, ...payload, coeditVersion: base.coeditVersion }))
-					.contentRevision,
+				(
+					await commitTemplate(
+						{
+							templateId: id,
+							...payload,
+							coeditVersion: base.coeditVersion,
+							autosave: base.autosave,
+						},
+						{ quiet: base.autosave }
+					)
+				).contentRevision,
 		});
 	},
 });
@@ -227,9 +244,17 @@ async function handlePublicationToggle() {
 		if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.unpublished'));
 		return;
 	}
-	// Publish puts the stored HTML live, which unsaved edits are not part of.
-	// The button holds Publish while dirty; this covers any other caller.
-	if (hasChanges.value) return;
+	// Publish puts the stored HTML live, which unsaved edits are not part of:
+	// a draft saves them first, and publishes only once they landed.
+	if (isDraft.value && drafts) {
+		if (!(await drafts.autosave.flush())) {
+			showToast(t('shared.draftAutosave.notSavedYet'), 'error');
+			return;
+		}
+	} else if (hasChanges.value) {
+		// The button holds Publish while dirty; this covers any other caller.
+		return;
+	}
 	const row = template.value;
 	if (!row?.htmlContent) {
 		showToast(t('dashboard.send.emails.detail.edit.toasts.saveBeforePublish'), 'error');
@@ -274,6 +299,13 @@ async function handlePublicationToggle() {
 			</UiButton>
 		</div>
 
+		<!-- Edits this device kept that the server has moved past: the person chooses. -->
+		<DraftRecoveryNotice
+			v-if="drafts?.recovery.pending.value"
+			:saved-at="drafts.recovery.pending.value.savedAt"
+			@restore="drafts.recovery.restore"
+			@discard="drafts.recovery.discard"
+		/>
 		<div class="min-h-0 flex-1">
 			<UiQueryBoundary
 				:loading="templateLoading || isConnecting"
@@ -344,6 +376,10 @@ async function handlePublicationToggle() {
 						@settings="handleSettings"
 						@send-test="handleSendTest"
 					>
+						<!-- A draft saves itself: its save state stands where Save was. -->
+						<template v-if="isDraft && drafts" #save-status>
+							<DraftSaveStatus :autosave="drafts.autosave" />
+						</template>
 						<!-- Toolbar actions -->
 						<template #toolbar-actions>
 							<EmailEditorPresence
@@ -353,7 +389,7 @@ async function handlePublicationToggle() {
 							/>
 							<EmailTemplatePublishButton
 								:is-published="isPublished"
-								:has-changes="hasChanges"
+								:has-changes="isDraft && drafts ? false : hasChanges"
 								:has-stored-html="Boolean(template?.htmlContent)"
 								:loading="isChangingPublication"
 								@toggle="handlePublicationToggle"

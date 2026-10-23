@@ -68,6 +68,15 @@ export interface UseEditorDirtyTrackingOptions<S> {
 	 * the draft's text belongs to another language on the latest row).
 	 */
 	canRebase?: (base: NonNullable<S>, latest: NonNullable<S>) => boolean;
+	/**
+	 * Keep the draft as typed when the row comes back from this editor's own
+	 * save (the row at the revision `acknowledge` was told landed). The server
+	 * normalizes what it stores (trims the name and subject), and an editor
+	 * that saves in the background would otherwise have that echo replace text
+	 * the person is in the middle of typing. A row at any later revision is
+	 * someone else's write and hydrates as usual.
+	 */
+	keepOwnEcho?: () => boolean;
 }
 
 /** A save in flight: the draft as submitted and the server state it was built on. */
@@ -129,6 +138,8 @@ export function useEditorDirtyTracking<S>(
 	let base: NonNullable<S> | null = null;
 	let baseRevision: number | undefined;
 	let hydratedIdentity: unknown;
+	// The revision this editor's last acknowledged save stored.
+	let ownRevision: number | undefined;
 	// What the server holds for each tracked source of the draft's base: set
 	// when a row is hydrated and when a save of the draft lands.
 	let baseFields: readonly string[] | null = null;
@@ -146,6 +157,19 @@ export function useEditorDirtyTracking<S>(
 	const serializeFields = () => opts.watchSources.map((source) => JSON.stringify(read(source)));
 	const serializeDraft = () => JSON.stringify(serializeFields());
 	const held = () => opts.holdHydration?.() === true;
+
+	const isOwnEcho = (row: NonNullable<S>) =>
+		opts.keepOwnEcho?.() === true &&
+		ownRevision !== undefined &&
+		opts.revision?.(row) === ownRevision &&
+		identityOf(row) === hydratedIdentity;
+
+	// The echo of this editor's own save: build on it, keep the draft's values.
+	const adoptEcho = (row: NonNullable<S>) => {
+		hydratedFrom = row;
+		base = row;
+		setDirty(false);
+	};
 
 	const hydrate = (row: NonNullable<S>) => {
 		hydrating = true;
@@ -175,7 +199,8 @@ export function useEditorDirtyTracking<S>(
 			}
 			if (!hasChanges.value && !held()) {
 				// Nothing unsaved: follow the server.
-				hydrate(row);
+				if (isOwnEcho(row)) adoptEcho(row);
+				else hydrate(row);
 				return;
 			}
 			// Unsaved draft (or work not committed to it yet): keep it. A row at the draft's revision (a send
@@ -222,7 +247,8 @@ export function useEditorDirtyTracking<S>(
 			identityOf(latest) === hydratedIdentity &&
 			!predatesBase(latest)
 		) {
-			hydrate(latest);
+			if (isOwnEcho(latest)) adoptEcho(latest);
+			else hydrate(latest);
 		} else {
 			setDirty(false);
 		}
@@ -237,6 +263,7 @@ export function useEditorDirtyTracking<S>(
 			// The draft now builds on our write. Prefer the revision the server
 			// says it stored over assuming the next one.
 			baseRevision = landedRevision ?? (submission.revision as number) + 1;
+			ownRevision = landedRevision;
 			if (latest !== null && opts.revision?.(latest) === baseRevision) base = latest;
 		} else if (opts.revision === undefined && latest !== null) {
 			base = latest;

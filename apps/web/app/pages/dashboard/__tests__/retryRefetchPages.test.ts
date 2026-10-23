@@ -122,6 +122,8 @@ const FEATURE_STUBS = Object.fromEntries(
 		'DeliveryRampNarrativeCard',
 		'DeliveryRampPresetPicker',
 		'DeliveryReferenceRelayNotice',
+		'DraftRecoveryNotice',
+		'DraftSaveStatus',
 		'InboxActivityEmptyState',
 		'InboxFilterPills',
 		'InboxQuarantineReason',

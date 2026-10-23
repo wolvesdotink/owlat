@@ -60,6 +60,10 @@ const {
 	isSaving,
 	saveError,
 
+	// Autosave (drafts)
+	drafts,
+	senderPickerKey,
+
 	// Unsaved-changes guard
 	showUnsavedChangesDialog,
 	isSavingBeforeLeave,
@@ -117,7 +121,10 @@ const scheduledAtDisplay = computed(() => {
 const showEditEmailPrompt = ref(false);
 const pendingEmailUrl = ref('');
 const onEditEmailClick = (event: MouseEvent, url: string) => {
-	if (!hasUnsavedChanges.value) return; // no edits — let it open the new tab
+	// A draft keeps its edits (saved, or on this device): save what is pending
+	// now and let the editor open.
+	if (isDraft.value) void drafts.autosave.flush();
+	if (!hasUnsavedChanges.value) return; // nothing at risk — let it open the new tab
 	event.preventDefault();
 	pendingEmailUrl.value = url;
 	showEditEmailPrompt.value = true;
@@ -278,8 +285,9 @@ const shownCapacityPlan = computed(() => {
 							</p>
 						</div>
 					</div>
-					<!-- Status Badge -->
-					<div v-if="campaignData">
+					<!-- Status Badge, and a draft's save state beside it -->
+					<div v-if="campaignData" class="flex items-center gap-3">
+						<DraftSaveStatus v-if="isDraft" :autosave="drafts.autosave" />
 						<span
 							v-if="isScheduled"
 							class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-brand/10 text-brand"
@@ -378,6 +386,14 @@ const shownCapacityPlan = computed(() => {
 			<!-- Edit Form -->
 			<div v-else class="max-w-4xl mx-auto px-6 py-8">
 				<div class="space-y-6">
+					<!-- Edits this device kept that the server has moved past -->
+					<DraftRecoveryNotice
+						v-if="drafts.recovery.pending.value"
+						class="rounded-lg border"
+						:saved-at="drafts.recovery.pending.value.savedAt"
+						@restore="drafts.recovery.restore"
+						@discard="drafts.recovery.discard"
+					/>
 					<!-- Content Block Reason Alert (shown when campaign was blocked and reverted to draft) -->
 					<div
 						v-if="campaignData.contentBlockReason"
@@ -482,6 +498,7 @@ const shownCapacityPlan = computed(() => {
 							<!-- From: the wizard's curated sender picker (the server refuses
 							     any address off that list) -->
 							<CampaignsStepsSetupSenderPicker
+								:key="senderPickerKey"
 								ref="senderPickerRef"
 								v-model:from-name="fromName"
 								v-model:from-email="fromEmail"
@@ -903,22 +920,6 @@ const shownCapacityPlan = computed(() => {
 							{{ t('common.cancel') }}
 						</UiButton>
 						<div class="flex flex-wrap items-center justify-end gap-3 ml-auto">
-							<!-- Save button for draft campaigns -->
-							<UiButton
-								variant="secondary"
-								v-if="isDraft"
-								class="gap-2"
-								:disabled="isSaving"
-								@click="handleSave"
-							>
-								<Icon
-									v-if="isSaving"
-									name="lucide:loader-2"
-									class="w-4 h-4 animate-spin motion-reduce:animate-none"
-								/>
-								{{ t('dashboard.campaigns.detail.edit.actions.saveDraft') }}
-							</UiButton>
-
 							<!-- Schedule button -->
 							<UiButton
 								variant="secondary"
