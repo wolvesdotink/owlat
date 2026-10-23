@@ -1151,6 +1151,13 @@
 			}
 		},
 		"campaigns": {
+			"cancelIntentDialog": {
+				"title": "Diese geplante Kampagne abbrechen?",
+				"description": "{name} wird am {date} versendet. Ein Abbruch stoppt sie endgültig: Eine abgebrochene Kampagne lässt sich nicht erneut planen.",
+				"confirm": "Kampagne abbrechen",
+				"keep": "Geplant lassen",
+				"notScheduled": "Diese Kampagne ist nicht mehr geplant, es gibt nichts abzubrechen."
+			},
 			"abTestConfig": {
 				"contentOption": "E-Mail-Inhalt",
 				"contentOptionDescription": "Verschiedene E-Mail-Vorlagen testen",
@@ -6114,6 +6121,31 @@
 				"title": "Deine Daten",
 				"trashPurgeHelp": "Gezählt ab dem Tag, an dem du etwas wegwirfst. Standardmäßig aus.",
 				"trashPurgeLabel": "Papierkorb automatisch leeren"
+			},
+			"marketingNotifications": {
+				"heading": "Marketing-Benachrichtigungen",
+				"intro": "Zu Kampagnen, Automationen und dem Versand. Sie erreichen dich in der App, in der Desktop-App und per Push auf jedem Gerät, auf dem Push an ist.",
+				"campaignFinished": {
+					"label": "Kampagne abgeschlossen",
+					"hint": "Wenn eine Kampagne fertig versendet ist, mit dem Anteil, der zugestellt wurde."
+				},
+				"campaignReminder": {
+					"label": "Geplante Kampagne startet gleich",
+					"hint": "15 Minuten bevor eine geplante Kampagne startet, mit der Möglichkeit, sie abzubrechen."
+				},
+				"deliveryHold": {
+					"label": "Versand pausiert",
+					"hint": "Wenn der Versand an einen Mail-Anbieter nach vielen Bounces oder Beschwerden pausiert wird."
+				},
+				"automationProblems": {
+					"label": "Probleme mit Automationen",
+					"hint": "Wenn Kontakte in einer Automation hängen bleiben oder eine Automation sich nach fehlgeschlagenen Läufen pausiert."
+				},
+				"domainDns": {
+					"label": "DNS der Versanddomain fehlerhaft",
+					"hint": "Wenn ein DNS-Eintrag einer Versanddomain seine Prüfung nicht mehr besteht."
+				},
+				"saveOperation": "Benachrichtigungseinstellung speichern"
 			},
 			"webPush": {
 				"heading": "Push-Benachrichtigungen",
@@ -16408,6 +16440,10 @@
 					"keywords": "trennen, entfernen, löschen, verbundenes Postfach, externes Konto, gmail, outlook, fastmail",
 					"title": "Verbundenes Postfach trennen"
 				},
+				"marketingNotifications": {
+					"title": "Marketing-Benachrichtigungen",
+					"keywords": "kampagne abgeschlossen, erinnerung, geplante kampagne, bounce-spitze, versand pausiert, automation hängt, dns fehlerhaft, warnungen"
+				},
 				"pushNotifications": {
 					"title": "Push-Benachrichtigungen",
 					"keywords": "web push, browser-benachrichtigungen, handy, smartphone, pwa, benachrichtigen, geräte"
@@ -17207,6 +17243,42 @@
 				"lastName": "Nachname"
 			},
 			"pickerTitle": "CSV-Datei auswählen"
+		},
+		"marketingNotices": {
+			"toast": "{title}: {body}",
+			"campaignFinished": {
+				"title": "Kampagne abgeschlossen",
+				"body": "{name} · {percent} % zugestellt",
+				"bodyNoPercent": "{name} ist fertig versendet"
+			},
+			"campaignReminder": {
+				"title": "Geplante Kampagne startet in {minutes} Min.",
+				"body": "{name}"
+			},
+			"deliveryHold": {
+				"title": "Versand pausiert: Bounce-Spitze",
+				"body": "Owlat hat den Versand an {provider} nach vielen Bounces oder Beschwerden pausiert"
+			},
+			"providers": {
+				"gmail": "Gmail",
+				"microsoft": "Microsoft",
+				"yahoo": "Yahoo",
+				"apple": "Apple",
+				"other": "andere Anbieter"
+			},
+			"automationStalled": {
+				"title": "Automation hängt",
+				"body": "{name}: {count} hängender Kontakt | {name}: {count} hängende Kontakte"
+			},
+			"automationPaused": {
+				"title": "Automation pausiert",
+				"body": "{name} hat sich nach wiederholt fehlgeschlagenen Läufen pausiert"
+			},
+			"domainDns": {
+				"title": "DNS der Versanddomain fehlerhaft",
+				"body": "{domain}: Prüfung „{check}“ fehlgeschlagen",
+				"bodyNoCheck": "{domain}: eine DNS-Prüfung ist fehlgeschlagen"
+			}
 		},
 		"useDesktopNotifications": {
 			"draftsReady": {

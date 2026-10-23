@@ -1151,6 +1151,13 @@
 			}
 		},
 		"campaigns": {
+			"cancelIntentDialog": {
+				"title": "Cancel this scheduled campaign?",
+				"description": "{name} is scheduled to send on {date}. Cancelling stops it for good: a cancelled campaign cannot be scheduled again.",
+				"confirm": "Cancel campaign",
+				"keep": "Keep it scheduled",
+				"notScheduled": "This campaign is no longer scheduled, so there is nothing to cancel."
+			},
 			"abTestConfig": {
 				"contentOption": "Email content",
 				"contentOptionDescription": "Test different email templates",
@@ -6114,6 +6121,31 @@
 				"title": "Your data",
 				"trashPurgeHelp": "Counted from the day you bin a message. Off unless you turn it on.",
 				"trashPurgeLabel": "Empty the trash automatically"
+			},
+			"marketingNotifications": {
+				"heading": "Marketing notifications",
+				"intro": "About campaigns, automations and sending. They reach you in the app, in the desktop app and by push on every device where push is on.",
+				"campaignFinished": {
+					"label": "Campaign finished",
+					"hint": "When a campaign has finished sending, with the share that was delivered."
+				},
+				"campaignReminder": {
+					"label": "Scheduled campaign about to send",
+					"hint": "15 minutes before a scheduled campaign starts, with a way to cancel it."
+				},
+				"deliveryHold": {
+					"label": "Sending paused",
+					"hint": "When sending to a mail provider is paused after a spike in bounces or complaints."
+				},
+				"automationProblems": {
+					"label": "Automation problems",
+					"hint": "When contacts stall in an automation, or an automation pauses itself after failed runs."
+				},
+				"domainDns": {
+					"label": "Sending domain DNS broken",
+					"hint": "When a DNS record of a sending domain stops passing its check."
+				},
+				"saveOperation": "Save notification setting"
 			},
 			"webPush": {
 				"heading": "Push notifications",
@@ -16408,6 +16440,10 @@
 					"keywords": "disconnect, remove, delete, unlink, connected mailbox, external account, gmail, outlook, fastmail",
 					"title": "Disconnect a connected mailbox"
 				},
+				"marketingNotifications": {
+					"title": "Marketing notifications",
+					"keywords": "campaign finished, scheduled campaign reminder, bounce spike, sending paused, automation stalled, dns broken, alerts"
+				},
 				"pushNotifications": {
 					"title": "Push notifications",
 					"keywords": "web push, browser notifications, phone, mobile, pwa, notify, devices"
@@ -17207,6 +17243,42 @@
 				"lastName": "Last name"
 			},
 			"pickerTitle": "Choose a CSV file"
+		},
+		"marketingNotices": {
+			"toast": "{title}: {body}",
+			"campaignFinished": {
+				"title": "Campaign finished",
+				"body": "{name} · {percent}% delivered",
+				"bodyNoPercent": "{name} has finished sending"
+			},
+			"campaignReminder": {
+				"title": "Scheduled campaign sends in {minutes} min",
+				"body": "{name}"
+			},
+			"deliveryHold": {
+				"title": "Sending paused: bounce spike",
+				"body": "Owlat paused sending to {provider} after a spike in bounces or complaints"
+			},
+			"providers": {
+				"gmail": "Gmail",
+				"microsoft": "Microsoft",
+				"yahoo": "Yahoo",
+				"apple": "Apple",
+				"other": "other providers"
+			},
+			"automationStalled": {
+				"title": "Automation stalled",
+				"body": "{name}: {count} stalled contact | {name}: {count} stalled contacts"
+			},
+			"automationPaused": {
+				"title": "Automation paused",
+				"body": "{name} paused itself after repeated failed runs"
+			},
+			"domainDns": {
+				"title": "Sending domain DNS broken",
+				"body": "{domain}: {check} check failed",
+				"bodyNoCheck": "{domain}: a DNS check failed"
+			}
 		},
 		"useDesktopNotifications": {
 			"draftsReady": {

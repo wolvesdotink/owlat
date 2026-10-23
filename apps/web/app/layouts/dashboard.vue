@@ -395,6 +395,10 @@ const { open: openCommandPalette } = useCommandPalette();
 // Initialize desktop notifications (no-op in browser)
 useDesktopNotifications();
 
+// Campaign, delivery, automation and sending-domain notices: in-app toast
+// everywhere, native notification on the desktop app.
+useMarketingNotices();
+
 // "You can send now" — one in-app toast for a member whose onboarding first-send
 // step was blocked while the instance had no outbound transport.
 useSendReadyNotice();

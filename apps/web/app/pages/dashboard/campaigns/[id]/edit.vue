@@ -997,5 +997,15 @@ const shownCapacityPlan = computed(() => {
 			@discard="discardAndOpenEmail"
 			@save="saveAndOpenEmail"
 		/>
+
+		<!-- "Cancel send" from the scheduled-campaign reminder: asks first -->
+		<CampaignsCampaignCancelIntentDialog
+			:is-loaded="!!campaignData"
+			:is-scheduled="isScheduled"
+			:name="campaignData?.name ?? ''"
+			:scheduled-at-display="scheduledAtDisplay"
+			:is-loading="isSaving"
+			@confirm="handleCancel"
+		/>
 	</div>
 </template>
