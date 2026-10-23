@@ -14,9 +14,12 @@
  *   behaviour is pinned here together with the encoding socks relies on, so an
  *   upgrade that breaks IPv4/IPv6 proxy connects fails here first.
  * - `dompurify` as reached from apps/web → posthog-js. PostHog only sanitizes
- *   product-tour HTML strings with it (no IN_PLACE, no hooks). The repository
- *   has no DOM that DOMPurify runs correctly under (happy-dom's node getters
- *   defeat it), so the floor is asserted on the resolved version.
+ *   product-tour HTML strings with it (no IN_PLACE, no hooks, no
+ *   SAFE_FOR_TEMPLATES). The repository has no DOM that DOMPurify runs
+ *   correctly under (happy-dom's node getters defeat it), so the floor is
+ *   asserted on the resolved version. The gate also blocks on two of the
+ *   advisories this floor clears (GHSA-cg2g-xh64-v4q7, critical;
+ *   GHSA-mrv2-3pqr-j5jr, high).
  *
  * The audit gate does block on the dev-server pair below (GHSA-587h-7wmj-h5pm,
  * high), but only in the networked Security workflow. The floors are asserted
@@ -28,13 +31,26 @@
  *   fix ships in vite itself (8.3.3 on the 8.3 line).
  * - `launch-editor` as reached from apps/web → nuxt → @nuxt/devtools, which
  *   opens component source files from the devtools panel.
+ *
+ * The gate blocks on the zod advisory too (GHSA-mrhx-c7xc-m3w5, high), but
+ * acknowledges it: @nuxt/content keeps a zod 3 copy that has no fixed release
+ * (see check-security-audit.ts). An acknowledgement matches the advisory for
+ * every copy, so the 4.6.6 floor apps/api declares is asserted here instead:
+ *
+ * - every other zod copy in bun.lock is 4.6.6 or later;
+ * - the copy apps/api imports rejects an oversized capped array before it
+ *   parses a single element, which is the fix;
+ * - @nuxt/content still requires zod 3. When it moves to zod 4 this fails, and
+ *   the acknowledgement goes.
  */
 
+import { readFileSync } from 'node:fs';
 import { createServer, type AddressInfo, type Server, type Socket } from 'node:net';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import type * as IpAddress from 'ip-address';
 import type * as Socks from 'socks';
+import type * as Zod from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -51,6 +67,11 @@ const posthogRequire = createRequire(webRequire.resolve('posthog-js/package.json
 const nuxtRequire = createRequire(webRequire.resolve('nuxt/package.json'));
 const viteBuilderRequire = createRequire(nuxtRequire.resolve('@nuxt/vite-builder/package.json'));
 const devtoolsRequire = createRequire(nuxtRequire.resolve('@nuxt/devtools/package.json'));
+
+const apiRequire = createRequire(`${REPOSITORY_ROOT}apps/api/package.json`);
+const { z } = apiRequire('zod') as typeof Zod;
+
+const LOCKFILE = readFileSync(`${REPOSITORY_ROOT}bun.lock`, 'utf8');
 
 function atLeast(version: string, floor: string): boolean {
 	const have = version.split('.').map(Number);
@@ -167,9 +188,9 @@ describe('socks proxy connects keep their address encoding', () => {
 });
 
 describe('dompurify on the web analytics path', () => {
-	it('resolves the release that neutralizes hook-detached IN_PLACE subtrees', () => {
+	it('resolves the release that neutralizes hook-detached IN_PLACE subtrees and scrubs shadow roots', () => {
 		const { version } = posthogRequire('dompurify') as { version: string };
-		expect(atLeast(version, '3.4.16'), `dompurify ${version}`).toBe(true);
+		expect(atLeast(version, '3.4.17'), `dompurify ${version}`).toBe(true);
 	});
 });
 
@@ -182,5 +203,53 @@ describe('dev-server editor launching (GHSA-587h-7wmj-h5pm)', () => {
 	it('resolves the launch-editor release that rejects Windows existence-check bypasses', () => {
 		const { version } = devtoolsRequire('launch-editor/package.json') as { version: string };
 		expect(atLeast(version, '2.14.2'), `launch-editor ${version}`).toBe(true);
+	});
+});
+
+describe('zod (GHSA-mrhx-c7xc-m3w5)', () => {
+	/** Every zod copy in bun.lock, keyed by install path (`zod`, `better-auth/zod`, ...). */
+	function lockedZodCopies(): Map<string, string> {
+		const copies = new Map<string, string>();
+		for (const [, path, version] of LOCKFILE.matchAll(
+			/^\s*"((?:[^"]+\/)?zod)": \["zod@([^"]+)"/gm
+		)) {
+			copies.set(path!, version!);
+		}
+		return copies;
+	}
+
+	it('locks every zod copy except the acknowledged @nuxt/content one at 4.6.6 or later', () => {
+		const copies = lockedZodCopies();
+		expect(copies.get('zod')).toBeDefined();
+		const vulnerable = [...copies]
+			.filter(([path, version]) => path !== '@nuxt/content/zod' && !atLeast(version, '4.6.6'))
+			.map(([path, version]) => `${path}@${version}`);
+		expect(vulnerable).toEqual([]);
+	});
+
+	it('rejects an oversized capped array before parsing any element', () => {
+		let parsed = 0;
+		const counted = z.string().refine(() => ++parsed > 0);
+		const capped = z
+			.array(counted)
+			.max(2)
+			.safeParse(Array.from({ length: 10_000 }, () => 'x'));
+		expect(capped.error?.issues).toMatchObject([{ code: 'too_big', path: [] }]);
+		expect(parsed).toBe(0);
+
+		const invalid = z
+			.array(z.number())
+			.max(2)
+			.safeParse(Array.from({ length: 10_000 }, () => 'x'));
+		expect(invalid.error?.issues).toHaveLength(1);
+	});
+
+	it('keeps the acknowledgement only while @nuxt/content requires zod 3', () => {
+		const entry = LOCKFILE.split('\n').find((line) =>
+			line.trimStart().startsWith('"@nuxt/content": [')
+		);
+		const range = entry?.match(/"zod": "([^"]+)"/)?.[1];
+		expect(range, 'drop GHSA-MRHX-C7XC-M3W5 from check-security-audit.ts').toMatch(/^\^3\./);
+		expect(lockedZodCopies().get('@nuxt/content/zod')).toMatch(/^3\./);
 	});
 });
