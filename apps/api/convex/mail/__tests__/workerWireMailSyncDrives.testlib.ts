@@ -94,7 +94,7 @@ export const MAIL_SYNC_DRIVES = {
 	getCredentialsForWorker: {
 		'password account': (w) => credentials(w),
 		'oauth account': (w) => {
-			stubGoogleToken({ access_token: 'ya29.fixture-access', expires_in: 3599 });
+			stubGoogleToken({ access_token: 'google-fixture-access', expires_in: 3599 });
 			return credentials(w, w.oauthAccountId);
 		},
 		missing: (w) => credentials(w, w.goneAccountId),

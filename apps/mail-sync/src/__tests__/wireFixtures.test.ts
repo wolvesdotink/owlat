@@ -53,22 +53,26 @@ function fixture<K extends Endpoint>(
 	return found.value as EndpointReturns<(typeof MAIL_SYNC_ENDPOINTS)[K]>;
 }
 
-describe('every mail-sync wire fixture reads back through the shipped client', () => {
-	for (const key of Object.keys(MAIL_SYNC_ENDPOINTS) as Endpoint[]) {
-		for (const { name, value } of MAIL_SYNC_WIRE_FIXTURES[key]) {
-			it(`${key}: ${name}`, async () => {
-				await expect(readThroughClient(key, value)).resolves.toEqual(value);
-			});
-		}
-	}
+const currentCases = (Object.keys(MAIL_SYNC_ENDPOINTS) as Endpoint[]).flatMap((key) =>
+	MAIL_SYNC_WIRE_FIXTURES[key].map(({ name, value }) => ({ title: `${key}: ${name}`, key, value }))
+);
 
-	for (const [key, cases] of Object.entries(MAIL_SYNC_LEGACY_WIRE_FIXTURES)) {
-		for (const { name, value } of cases) {
-			it(`${key}: ${name} (an older backend)`, async () => {
-				await expect(readThroughClient(key as Endpoint, value)).resolves.toEqual(value);
-			});
-		}
-	}
+const legacyCases = Object.entries(MAIL_SYNC_LEGACY_WIRE_FIXTURES).flatMap(([key, cases]) =>
+	cases.map(({ name, value }) => ({
+		title: `${key}: ${name} (an older backend)`,
+		key: key as Endpoint,
+		value,
+	}))
+);
+
+describe('every mail-sync wire fixture reads back through the shipped client', () => {
+	it.each(currentCases)('$title', async ({ key, value }) => {
+		await expect(readThroughClient(key, value)).resolves.toEqual(value);
+	});
+
+	it.each(legacyCases)('$title', async ({ key, value }) => {
+		await expect(readThroughClient(key, value)).resolves.toEqual(value);
+	});
 
 	it('refuses an ingest outcome it cannot tell apart', async () => {
 		await expect(

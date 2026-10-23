@@ -43,8 +43,9 @@ export const MAIL_SYNC_FIXTURE_OAUTH_CREDENTIALS = {
 	smtpUsername: 'oauth@gmail.example',
 	imapPassword: '',
 	smtpPassword: '',
-	imapAccessToken: 'ya29.fixture-access',
-	smtpAccessToken: 'ya29.fixture-access',
+	// Not `ya29.`-prefixed: SAST flags real Google token shapes outside test dirs.
+	imapAccessToken: 'google-fixture-access',
+	smtpAccessToken: 'google-fixture-access',
 };
 
 export const MAIL_SYNC_WIRE_FIXTURES = {

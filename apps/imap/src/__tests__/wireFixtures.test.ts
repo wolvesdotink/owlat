@@ -58,14 +58,14 @@ function fixture<K extends Endpoint>(
 	return found.value as EndpointReturns<(typeof IMAP_ENDPOINTS)[K]>;
 }
 
+const fixtureCases = (Object.keys(IMAP_ENDPOINTS) as Endpoint[]).flatMap((key) =>
+	IMAP_WIRE_FIXTURES[key].map(({ name, value }) => ({ title: `${key}: ${name}`, key, value }))
+);
+
 describe('every IMAP wire fixture reads back through the shipped client', () => {
-	for (const key of Object.keys(IMAP_ENDPOINTS) as Endpoint[]) {
-		for (const { name, value } of IMAP_WIRE_FIXTURES[key]) {
-			it(`${key}: ${name}`, async () => {
-				await expect(readThroughClient(key, value)).resolves.toEqual(value);
-			});
-		}
-	}
+	it.each(fixtureCases)('$title', async ({ key, value }) => {
+		await expect(readThroughClient(key, value)).resolves.toEqual(value);
+	});
 
 	it('refuses an envelope page missing a field the formatter reads', async () => {
 		const { uid: _dropped, ...withoutUid } = IMAP_FIXTURE_ENVELOPE_1;
