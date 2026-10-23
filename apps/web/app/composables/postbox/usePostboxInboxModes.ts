@@ -167,8 +167,9 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 		if (event.defaultPrevented) return;
 		if (isDialogOpen()) return;
 		const chord = chordFromEvent(event);
-		// Cmd/Ctrl-B is kept as its own case: the registry deliberately owns no
-		// modifier chords, and this one has to keep working from anywhere.
+		// Cmd/Ctrl-B (`postbox.toggleBrowseChord`) is fixed, not remappable, so
+		// it is matched literally: it still toggles when a preset or a remap has
+		// taken `b` away from `postbox.toggleBrowse`.
 		const id = resolveActiveChord(chord, MODE_SCOPES);
 		if (chord === 'mod+b' || id === 'postbox.toggleBrowse') {
 			event.preventDefault();

@@ -3,10 +3,11 @@ import { workspaceSwitchSlot } from '~/utils/fixedShortcutPresses';
 /**
  * ⌘1–⌘9 (Ctrl+1–9 on Windows/Linux) → switch to the Nth connected workspace.
  *
- * A dedicated keydown listener is required because useKeyboardShortcuts bails out
- * the moment a modifier is held. Matches on `event.code` (Digit1…Digit9) so it's
- * keyboard-layout independent and sidesteps the shift/number ambiguity
- * (`workspaceSwitchSlot`, which the remap check reads too). No-op on web, while
+ * This stays a dedicated listener because it matches the key's position, not its
+ * character: the dispatcher resolves chords from `event.key`, while this reads
+ * `event.code` (Digit1…Digit9), so it works on every keyboard layout (AZERTY's
+ * 1 key types `&`) and with Shift held (`workspaceSwitchSlot`, which the remap
+ * check reads too). That is why the catalog lists it as fixed. No-op on web, while
  * typing in a field and for a press the dispatcher already claimed (a remapped
  * shortcut on the same keys). switchTo() reloads the webview, so there is no
  * in-memory state to preserve.
