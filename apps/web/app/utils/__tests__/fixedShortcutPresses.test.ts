@@ -4,13 +4,8 @@
  * like ⌘⌥K or ⌘⇧1 cannot pass as free while a fixed listener answers it.
  */
 import { describe, expect, it } from 'vitest';
-import {
-	commandPalettePress,
-	fixedShortcutListenerFor,
-	shortcutPressesForChord,
-	sidebarJumpSlot,
-	workspaceSwitchSlot,
-} from '../fixedShortcutPresses';
+import { fixedShortcutListenerFor, shortcutPressesForChord } from '../fixedShortcutConflicts';
+import { commandPalettePress, sidebarJumpSlot, workspaceSwitchSlot } from '../fixedShortcutPresses';
 
 describe('the listeners’ own predicates', () => {
 	it('lets the palette take Cmd/Ctrl+K with Alt held too', () => {

@@ -36,7 +36,7 @@ import {
 import type { ShortcutConflict } from '~/utils/shortcutRegistry';
 import { SHORTCUT_CATALOG } from '~/utils/shortcutCatalog';
 import type { ShortcutPressLike } from '~/utils/fixedShortcutPresses';
-import { fixedShortcutListenerFor, shortcutPressesForChord } from '~/utils/fixedShortcutPresses';
+import { fixedShortcutListenerFor, shortcutPressesForChord } from '~/utils/fixedShortcutConflicts';
 import type { ShortcutPreset, StoredShortcutOverride } from '~/utils/shortcutPresets';
 import {
 	SHORTCUT_PRESETS,

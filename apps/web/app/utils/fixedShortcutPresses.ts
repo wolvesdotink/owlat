@@ -1,6 +1,7 @@
 /**
  * The presses the shortcuts answered OUTSIDE the dispatcher accept, written
- * once and shared by their listeners and by the remap check.
+ * once and shared by their listeners and by the remap check
+ * (`fixedShortcutConflicts.ts`).
  *
  * A catalog chord is exact, but these listeners are not: the palette takes
  * Cmd/Ctrl+K with or without Alt, and the workspace and sidebar jumps read the
@@ -8,11 +9,15 @@
  * keyboard) switches workspace too. A remap is checked against these
  * predicates rather than the catalog strings; otherwise a chord the check
  * calls free would fire a fixed shortcut on the same press.
+ *
+ * The command palette's listener is on the boot path (a client plugin attaches
+ * it), so everything this module imports lands in the entry bundle, which has
+ * a gzip budget (scripts/check-bundle-budget.ts). Keep it free of runtime
+ * imports; anything that needs the registry or the catalog belongs in
+ * `fixedShortcutConflicts.ts`.
  */
 
-import { isZenChord } from './zenMode';
 import type { ChordEventLike } from './shortcutRegistry';
-import { chordSteps } from './shortcutRegistry';
 
 /** A keydown as these listeners read it: the chord fields plus the key position. */
 export interface ShortcutPressLike extends ChordEventLike {
@@ -56,67 +61,4 @@ export function isFolderRailPress(press: ShortcutPressLike): boolean {
 /** Cmd/Ctrl+Z with nothing else held, the Postbox triage undo. */
 export function isTriageUndoPress(press: ShortcutPressLike): boolean {
 	return hasMod(press) && !press.altKey && !press.shiftKey && press.key.toLowerCase() === 'z';
-}
-
-/**
- * Catalog id → the presses its own listener answers. The composers' send key
- * is answered on the editor element, before the dispatcher sees the press;
- * the loosest of them takes Cmd/Ctrl+Enter with any other modifier.
- */
-const FIXED_SHORTCUT_LISTENERS: ReadonlyArray<{
-	id: string;
-	matches: (press: ShortcutPressLike) => boolean;
-}> = [
-	{ id: 'global.commandPalette', matches: (press) => commandPalettePress(press) === 'toggle' },
-	{ id: 'global.ask', matches: (press) => commandPalettePress(press) === 'ask' },
-	{ id: 'global.zen', matches: isZenChord },
-	{ id: 'global.jumpToSidebarItem', matches: (press) => sidebarJumpSlot(press) !== null },
-	{ id: 'workspace.switch', matches: (press) => workspaceSwitchSlot(press) !== null },
-	{ id: 'postbox.toggleRail', matches: isFolderRailPress },
-	{ id: 'postbox.undoChord', matches: isTriageUndoPress },
-	{ id: 'composer.send', matches: (press) => hasMod(press) && press.key === 'Enter' },
-];
-
-/** The characters Shift+1…Shift+9 type on a US keyboard. */
-const US_SHIFTED_DIGITS = '!@#$%^&*(';
-
-/**
- * The presses that produce a chord's first step. A chord does not say which
- * key position typed it, nor whether Shift was held for a symbol (`!` is
- * Shift+1), so a digit or a US-shifted digit gets its digit-row position and
- * a symbol is tried with and without Shift. The shortcuts page also passes
- * the real press it captured, which carries the position on any layout.
- */
-export function shortcutPressesForChord(chord: string): ShortcutPressLike[] {
-	const first = chordSteps(chord)[0];
-	if (!first) return [];
-	const parts = first === '+' ? ['+'] : first.split('+');
-	const key = parts.pop() as string;
-	const shiftedDigit = US_SHIFTED_DIGITS.indexOf(key);
-	const code = /^[1-9]$/.test(key)
-		? `Digit${key}`
-		: shiftedDigit >= 0
-			? `Digit${shiftedDigit + 1}`
-			: undefined;
-	const base = { key, ctrlKey: parts.includes('mod'), altKey: parts.includes('alt'), code };
-	if (/^[a-z]$/i.test(key)) return [{ ...base, shiftKey: key !== key.toLowerCase() }];
-	if (key.length > 1) return [{ ...base, shiftKey: parts.includes('shift') }];
-	return [
-		{ ...base, shiftKey: false },
-		{ ...base, shiftKey: true },
-	];
-}
-
-/**
- * The catalog id whose own listener would answer any of `presses`, other
- * than `exceptId`. Null when none would.
- */
-export function fixedShortcutListenerFor(
-	presses: readonly ShortcutPressLike[],
-	exceptId?: string
-): string | null {
-	for (const listener of FIXED_SHORTCUT_LISTENERS) {
-		if (listener.id !== exceptId && presses.some(listener.matches)) return listener.id;
-	}
-	return null;
 }
