@@ -1309,6 +1309,7 @@ import type * as mail_draftLifecycle from '../mail/draftLifecycle.js';
 import type * as mail_draftLifecycle_effects from '../mail/draftLifecycle/effects.js';
 import type * as mail_draftLifecycle_reducers from '../mail/draftLifecycle/reducers.js';
 import type * as mail_draftLifecycle_types from '../mail/draftLifecycle/types.js';
+import type * as mail_draftLifecycle_undoToken from '../mail/draftLifecycle/undoToken.js';
 import type * as mail_draftProvenance from '../mail/draftProvenance.js';
 import type * as mail_draftQueries from '../mail/draftQueries.js';
 import type * as mail_draftRequestNonces from '../mail/draftRequestNonces.js';
@@ -3172,6 +3173,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/draftLifecycle/effects': typeof mail_draftLifecycle_effects;
 	'mail/draftLifecycle/reducers': typeof mail_draftLifecycle_reducers;
 	'mail/draftLifecycle/types': typeof mail_draftLifecycle_types;
+	'mail/draftLifecycle/undoToken': typeof mail_draftLifecycle_undoToken;
 	'mail/draftProvenance': typeof mail_draftProvenance;
 	'mail/draftQueries': typeof mail_draftQueries;
 	'mail/draftRequestNonces': typeof mail_draftRequestNonces;
