@@ -164,6 +164,37 @@ describe('PreferencesShortcuts', () => {
 		);
 	});
 
+	it('refuses the palette chord with Alt held, which the palette answers too', async () => {
+		const wrapper = mountPage();
+		await capture(wrapper, 'global.settings', { key: 'k', ctrlKey: true, altKey: true });
+		expect(save).not.toHaveBeenCalled();
+		expect(row(wrapper, 'global.settings').text()).toContain('Open search already uses that key.');
+	});
+
+	it('refuses a digit-row key with Shift, which switches workspace by position', async () => {
+		const wrapper = mountPage();
+		await capture(wrapper, 'global.settings', {
+			key: '!',
+			code: 'Digit1',
+			ctrlKey: true,
+			shiftKey: true,
+		});
+		expect(save).not.toHaveBeenCalled();
+		expect(row(wrapper, 'global.settings').text()).toContain(
+			'Switch workspace already uses that key.'
+		);
+	});
+
+	it('refuses the ⌘1 key on a layout where it types another character', async () => {
+		// AZERTY: the 1 key types `&`, and the workspace switch reads the position.
+		const wrapper = mountPage();
+		await capture(wrapper, 'global.settings', { key: '&', code: 'Digit1', ctrlKey: true });
+		expect(save).not.toHaveBeenCalled();
+		expect(row(wrapper, 'global.settings').text()).toContain(
+			'Switch workspace already uses that key.'
+		);
+	});
+
 	it("refuses an assign key that would take the Team inbox list's navigation", async () => {
 		const wrapper = mountPage();
 		await capture(wrapper, 'inboxList.assignToMe', { key: 'j' });

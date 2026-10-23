@@ -20,8 +20,9 @@
  * single-key command can only be given another single key, a chord command
  * only another chord (`utils/shortcutCapture.ts`).
  *
- * A new window or document `keydown` listener in apps/web is a lint warning
- * (`owlat/no-raw-keydown-listener`): bind a catalog id here instead.
+ * A new window or document `keydown` listener in apps/web is a lint error
+ * (`owlat/no-raw-keydown-listener`): bind a catalog id here instead, or give
+ * the listener a suppression that says why it cannot be.
  */
 
 import { onScopeDispose } from 'vue';

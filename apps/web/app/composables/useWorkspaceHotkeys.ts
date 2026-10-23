@@ -1,11 +1,15 @@
+import { workspaceSwitchSlot } from '~/utils/fixedShortcutPresses';
+
 /**
  * ⌘1–⌘9 (Ctrl+1–9 on Windows/Linux) → switch to the Nth connected workspace.
  *
  * A dedicated keydown listener is required because useKeyboardShortcuts bails out
  * the moment a modifier is held. Matches on `event.code` (Digit1…Digit9) so it's
- * keyboard-layout independent and sidesteps the shift/number ambiguity. No-op on
- * web and while typing in a field. switchTo() reloads the webview, so there is no
- * in-memory state to preserve — the keydown just needs to fire first.
+ * keyboard-layout independent and sidesteps the shift/number ambiguity
+ * (`workspaceSwitchSlot`, which the remap check reads too). No-op on web, while
+ * typing in a field and for a press the dispatcher already claimed (a remapped
+ * shortcut on the same keys). switchTo() reloads the webview, so there is no
+ * in-memory state to preserve.
  */
 export function useWorkspaceHotkeys() {
 	const { isDesktop } = useDesktopContext();
@@ -24,10 +28,10 @@ export function useWorkspaceHotkeys() {
 	}
 
 	function onKeydown(e: KeyboardEvent) {
-		if (e.altKey || !(e.metaKey || e.ctrlKey)) return;
-		if (!/^Digit[1-9]$/.test(e.code)) return;
-		if (isEditable()) return;
-		const ws = workspaces.value[Number(e.code.slice(5)) - 1];
+		if (e.defaultPrevented) return;
+		const slot = workspaceSwitchSlot(e);
+		if (slot === null || isEditable()) return;
+		const ws = workspaces.value[slot - 1];
 		if (!ws) return;
 		e.preventDefault();
 		void switchTo(ws.id);

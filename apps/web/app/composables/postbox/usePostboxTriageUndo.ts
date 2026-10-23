@@ -28,6 +28,7 @@
  */
 
 import type { Id } from '@owlat/api/dataModel';
+import { isTriageUndoPress } from '~/utils/fixedShortcutPresses';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import {
 	popUndoEntry,
@@ -255,8 +256,7 @@ export function usePostboxTriageUndo() {
 	 * there — and when nothing is pending, so the browser default is untouched.
 	 */
 	function onWindowKeydown(event: KeyboardEvent) {
-		if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
-		if (event.key.toLowerCase() !== 'z') return;
+		if (event.defaultPrevented || !isTriageUndoPress(event)) return;
 		if (isEditableTarget(event.target)) return;
 		prune();
 		if (entries.value.length === 0) return;

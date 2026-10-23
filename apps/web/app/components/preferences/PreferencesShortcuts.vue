@@ -106,7 +106,7 @@ async function onCaptureKey(def: ShortcutDefinition, event: KeyboardEvent) {
 		refused.value = { id: def.id, refusal: { reason: capture.reason } };
 		return;
 	}
-	const result = await remapShortcut(def.id, [capture.chord]);
+	const result = await remapShortcut(def.id, [capture.chord], event);
 	if (result.ok) {
 		capturing.value = null;
 		refused.value = null;

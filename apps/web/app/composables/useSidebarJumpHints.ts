@@ -1,4 +1,5 @@
 import type { InjectionKey, Ref } from 'vue';
+import { sidebarJumpSlot } from '~/utils/fixedShortcutPresses';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 
 /**
@@ -52,10 +53,10 @@ export function useSidebarJumpHints(root: Ref<HTMLElement | null>): SidebarJumpH
 			}, HINT_DELAY_MS);
 			return;
 		}
-		if (!event.altKey || event.metaKey || event.ctrlKey) return;
-		const match = /^Digit([1-9])$/.exec(event.code);
-		if (!match || isEditableTarget(event.target)) return;
-		const target = jumpTargets(root.value)[Number(match[1]) - 1];
+		if (event.defaultPrevented) return;
+		const slot = sidebarJumpSlot(event);
+		if (slot === null || isEditableTarget(event.target)) return;
+		const target = jumpTargets(root.value)[slot - 1];
 		if (!target) return;
 		event.preventDefault();
 		hide();

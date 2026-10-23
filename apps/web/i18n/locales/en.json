@@ -12193,7 +12193,8 @@
 				}
 			},
 			"shortcuts": {
-				"intro": "Every key the app answers, in one place. Pick a set you already know from another mail app, change single keys, or search for one. Press ? anywhere to see the keys that work there.",
+				"intro": "Every key the app answers, in one place. Pick a set you already know from another mail app, change single keys, or search for one.",
+				"introHelp": "Press {key} anywhere to see the keys that work there.",
 				"pageTitle": "Keyboard shortcuts — Owlat"
 			},
 			"signatures": {

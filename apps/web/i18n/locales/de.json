@@ -12193,7 +12193,8 @@
 				}
 			},
 			"shortcuts": {
-				"intro": "Alle Tasten der App an einem Ort. Wähle eine Belegung, die du aus einer anderen Mail-App kennst, ändere einzelne Tasten oder suche danach. Drücke überall ?, um die Tasten zu sehen, die dort funktionieren.",
+				"intro": "Alle Tasten der App an einem Ort. Wähle eine Belegung, die du aus einer anderen Mail-App kennst, ändere einzelne Tasten oder suche danach.",
+				"introHelp": "Drücke überall {key}, um die Tasten zu sehen, die dort funktionieren.",
 				"pageTitle": "Tastenkürzel — Owlat"
 			},
 			"signatures": {
