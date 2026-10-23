@@ -32,6 +32,8 @@ interface LastMileInput {
 	 * instead of a second, independently-taken decision.
 	 */
 	sendId?: string;
+	/** Log-only `x-owlat-correlation` id for the MTA decision call. */
+	correlationId?: string;
 }
 
 interface LastMileRoutingReady {
@@ -198,23 +200,27 @@ export async function resolveLastMileRouting(
 		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 	}
 
-	const decision = await resolveMtaRoutingDecision(mtaTransport, {
-		messageId: input.idempotencyKey,
-		workAttemptId: input.workAttemptId,
-		routingReentryToken: input.routingReentryToken,
-		startedAt: input.startedAt,
-		deliveryDomain: input.deliveryDomain,
-		messageType: input.messageType,
-		organizationId,
-		recipient: input.to,
-		from: input.from,
-		candidateProvider: baseProviderKind === OWN_ARM_TRANSPORT_KIND ? 'mta' : 'relay',
-		ipPool: (plan.baseRoute?.ipPool ?? input.ipPool) as MtaIpPool | undefined,
-		allowWarmupOverflow: Boolean(
-			input.messageType === 'campaign' && plan.baseRoute?.warmupOverflowEnabled
-		),
-		requireProviderProbe: route?.deliverabilityReason === 'breaker_open',
-	});
+	const decision = await resolveMtaRoutingDecision(
+		mtaTransport,
+		{
+			messageId: input.idempotencyKey,
+			workAttemptId: input.workAttemptId,
+			routingReentryToken: input.routingReentryToken,
+			startedAt: input.startedAt,
+			deliveryDomain: input.deliveryDomain,
+			messageType: input.messageType,
+			organizationId,
+			recipient: input.to,
+			from: input.from,
+			candidateProvider: baseProviderKind === OWN_ARM_TRANSPORT_KIND ? 'mta' : 'relay',
+			ipPool: (plan.baseRoute?.ipPool ?? input.ipPool) as MtaIpPool | undefined,
+			allowWarmupOverflow: Boolean(
+				input.messageType === 'campaign' && plan.baseRoute?.warmupOverflowEnabled
+			),
+			requireProviderProbe: route?.deliverabilityReason === 'breaker_open',
+		},
+		input.correlationId
+	);
 	if (decision.kind === 'defer') {
 		// CARRIED, never re-derived, because three cases arrive here looking
 		// identical and only the adapter can tell them apart: the MTA answered
