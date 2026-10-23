@@ -3,7 +3,8 @@
  * silent, every later new row becomes one toast with Open, and the desktop app
  * also shows a native notification unless its device switches say no. The
  * native one opens the notice's page in its workspace, keeps names off the
- * lock screen with private notifications on, and waits out quiet hours.
+ * lock screen with private notifications on, waits out quiet hours, and waits
+ * for those settings to load before deciding.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, effectScope, nextTick, ref, watch, type EffectScope } from 'vue';
@@ -35,6 +36,7 @@ const NIGHTS: PostboxQuietHours = {
 	days: [0, 1, 2, 3, 4, 5, 6],
 };
 const quietHours = ref<PostboxQuietHours>(QUIET_OFF);
+const preferencesResolved = ref(true);
 const showToast = vi.fn();
 const navigateTo = vi.fn();
 /** The quiet-hours poll the composable starts on mount, run by hand. */
@@ -61,6 +63,7 @@ beforeEach(() => {
 	notificationsEnabled.value = true;
 	hidePreview.value = false;
 	quietHours.value = QUIET_OFF;
+	preferencesResolved.value = true;
 	pollQuietHours = null;
 	setActiveWorkspace({ id: 'ws-a' } as never);
 	vi.stubGlobal('onMounted', (hook: () => void) => hook());
@@ -70,7 +73,11 @@ beforeEach(() => {
 		return 1;
 	});
 	vi.stubGlobal('clearInterval', () => {});
-	vi.stubGlobal('usePostboxSettings', () => ({ quietHours, hidePreview }));
+	vi.stubGlobal('usePostboxSettings', () => ({
+		quietHours,
+		hidePreview,
+		isResolved: preferencesResolved,
+	}));
 	vi.stubGlobal('computed', computed);
 	vi.stubGlobal('watch', watch);
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop }));
@@ -183,6 +190,86 @@ describe('useMarketingNotices', () => {
 		expect(url).toBe('/dashboard/campaigns/c/report');
 		// The toast is in front of the person already and keeps the name.
 		expect(showToast.mock.calls[0]![0]).toContain('Campaign c');
+	});
+
+	it('waits for the notification settings to load before deciding on the native notification', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date(2026, 9, 22, 12, 0));
+		isDesktop.value = true;
+		// Still loading: the values read are the defaults, previews on.
+		preferencesResolved.value = false;
+		start();
+		rows.value = [];
+		await settle();
+		rows.value = [finished('c', 3), finished('d', 2)];
+		await settle();
+		// The toast is in the app already; the OS waits.
+		expect(showToast).toHaveBeenCalledTimes(2);
+		await vi.dynamicImportSettled();
+		expect(sendLinkNotification).not.toHaveBeenCalled();
+
+		// The reader drops d before the settings arrive; they say private.
+		rows.value = [finished('c', 3)];
+		await settle();
+		hidePreview.value = true;
+		preferencesResolved.value = true;
+		await settle();
+		await vi.waitFor(() => expect(sendLinkNotification).toHaveBeenCalledTimes(1));
+		const [, body, url] = sendLinkNotification.mock.calls[0]!;
+		expect(body).toContain('shared.marketingNotices.campaignFinished.private');
+		expect(body).not.toContain('Campaign c');
+		expect(url).toBe('/dashboard/campaigns/c/report');
+	});
+
+	it('holds a notice that waited for the settings when they bring quiet hours', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date(2026, 9, 22, 23, 30));
+		isDesktop.value = true;
+		preferencesResolved.value = false;
+		start();
+		rows.value = [];
+		await settle();
+		rows.value = [finished('c', 3)];
+		await settle();
+
+		quietHours.value = NIGHTS;
+		preferencesResolved.value = true;
+		await settle();
+		await vi.dynamicImportSettled();
+		expect(sendLinkNotification).not.toHaveBeenCalled();
+
+		vi.setSystemTime(new Date(2026, 9, 23, 7, 5));
+		pollQuietHours!();
+		await vi.waitFor(() => expect(sendLinkNotification).toHaveBeenCalledTimes(1));
+		expect(sendLinkNotification.mock.calls[0]![2]).toBe('/dashboard/campaigns/c/report');
+	});
+
+	it('drops a notice that waited for the settings past its liveUntil', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date(2026, 9, 22, 6, 30));
+		isDesktop.value = true;
+		preferencesResolved.value = false;
+		start();
+		rows.value = [];
+		await settle();
+		rows.value = [
+			{
+				id: 'h',
+				kind: 'delivery_hold',
+				createdAt: 1,
+				url: '/dashboard/deliverability',
+				name: 'gmail',
+				liveUntil: new Date(2026, 9, 22, 6, 40).getTime(),
+			},
+		];
+		await settle();
+
+		vi.setSystemTime(new Date(2026, 9, 22, 6, 41));
+		preferencesResolved.value = true;
+		await settle();
+		await vi.dynamicImportSettled();
+		expect(sendLinkNotification).not.toHaveBeenCalled();
+		expect(sendDesktopNotification).not.toHaveBeenCalled();
 	});
 
 	it('holds the native notification through quiet hours and sends what still holds after', async () => {

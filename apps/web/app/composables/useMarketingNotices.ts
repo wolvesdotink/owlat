@@ -29,8 +29,10 @@ import { resolveLocalized } from '~/utils/localizedText';
  * The native notification follows the person's notification settings like
  * Web Push does: private notifications keep names off it, and quiet hours hold
  * it back. What the window held goes out when it ends, if it still holds then
- * (see `planQuietRelease`). Clicking it opens the notice's page in the
- * workspace that sent it, through the desktop notification router.
+ * (see `planQuietRelease`). Until those settings have loaded it waits too: the
+ * defaults (previews on, no quiet hours) are the permissive side, and an OS
+ * notification cannot be taken back. Clicking it opens the notice's page in
+ * the workspace that sent it, through the desktop notification router.
  *
  * The toast offers Open. A scheduled campaign's reminder opens the campaign,
  * where Cancel lives: cancelling is final, so it is never one click from a
@@ -52,7 +54,7 @@ export function useMarketingNotices() {
 	const { canSend } = useDesktopNotificationPermission();
 	const { settings: appSettings, workspaceLocal } = useDesktopAppSettings();
 	const { activeId } = useDesktopWorkspaces();
-	const { quietHours, hidePreview } = usePostboxSettings();
+	const { quietHours, hidePreview, isResolved: preferencesResolved } = usePostboxSettings();
 
 	const nativeAllowed = computed(
 		() =>
@@ -114,11 +116,18 @@ export function useMarketingNotices() {
 
 	/** Notices whose OS notification quiet hours held back. */
 	let held = new Set<string>();
+	/** Notices that arrived before the notification settings had loaded. */
+	let awaitingPreferences = new Set<string>();
+
+	/** The reader's current answer: the notices it still says hold. */
+	function currentNotices(): MarketingNoticeView[] {
+		return (data.value ?? []) as MarketingNoticeView[];
+	}
 
 	/** Once the window has closed, send what was held and still holds. */
 	function releaseHeld(now: number): void {
-		if (held.size === 0 || isQuietAt(now)) return;
-		const plan = planQuietRelease(held, (data.value ?? []) as MarketingNoticeView[], now);
+		if (held.size === 0 || !preferencesResolved.value || isQuietAt(now)) return;
+		const plan = planQuietRelease(held, currentNotices(), now);
 		held = new Set();
 		if (!nativeAllowed.value) return;
 		if (plan.kind === 'single') void notifyNative(plan.notice, now);
@@ -136,9 +145,29 @@ export function useMarketingNotices() {
 				onAction: () => void navigateTo(presentation.href),
 			},
 		});
+		deliverNative(notice, now);
+	}
+
+	/** The OS side of a new notice: now, after quiet hours, or not at all. */
+	function deliverNative(notice: MarketingNoticeView, now: number): void {
 		if (!nativeAllowed.value || !isNativeNoticeCurrent(notice, now)) return;
-		if (isQuietAt(now)) held.add(notice.id);
+		if (!preferencesResolved.value) awaitingPreferences.add(notice.id);
+		else if (isQuietAt(now)) held.add(notice.id);
 		else void notifyNative(notice, now);
+	}
+
+	/**
+	 * The settings have loaded: decide each waiting notice again against them,
+	 * from the reader's current answer, so one that stopped holding meanwhile
+	 * is dropped and a stale `liveUntil` is caught.
+	 */
+	function releaseAwaitingPreferences(now: number): void {
+		if (awaitingPreferences.size === 0) return;
+		const waiting = awaitingPreferences;
+		awaitingPreferences = new Set();
+		for (const notice of currentNotices()) {
+			if (waiting.has(notice.id)) deliverNative(notice, now);
+		}
 	}
 
 	const { data } = useConvexQuery(api.marketing.notifications.listRecent, () => ({}));
@@ -154,12 +183,23 @@ export function useMarketingNotices() {
 			loadedOnce = true;
 			if (seen.size + notices.length > MAX_SEEN) seen.clear();
 			for (const notice of notices) seen.add(notice.id);
+			// A notice the reader no longer returns no longer holds; dropping it
+			// here keeps the waiting set bounded if the settings never load.
+			if (awaitingPreferences.size > 0) {
+				awaitingPreferences = new Set(
+					notices.filter((notice) => awaitingPreferences.has(notice.id)).map((notice) => notice.id)
+				);
+			}
 			const now = Date.now();
 			releaseHeld(now);
 			for (const notice of fresh) surface(notice, now);
 		},
 		{ immediate: true }
 	);
+
+	watch(preferencesResolved, (resolved) => {
+		if (resolved) releaseAwaitingPreferences(Date.now());
+	});
 
 	// The window has to be noticed closing when nothing new arrives, so the
 	// clock is polled while something is held. Client-only: onMounted never
