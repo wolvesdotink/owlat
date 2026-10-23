@@ -431,7 +431,6 @@ export const dispatch = internalMutation({
 					...(resolvedRoute ? { providerType: resolvedRoute.providerType } : {}),
 					...(resolvedRoute?.ipPool ? { ipPool: resolvedRoute.ipPool } : {}),
 					sendId,
-					correlationId,
 					template: {
 						subject: subjectToSend,
 						htmlContent: htmlContentToSend,

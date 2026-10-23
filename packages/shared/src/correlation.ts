@@ -4,13 +4,15 @@
  * the log lines of all three hops can be joined on one key (`correlationId`,
  * see `./logEvent`).
  *
- * It is carried in the `x-owlat-correlation` HTTP header on every Convex → MTA
- * call and echoed as the `correlationId` field of the webhook events the MTA
- * reports for that message.
+ * It is carried in the `x-owlat-correlation` HTTP header on the Convex → MTA
+ * send-path requests (and every `mtaFetch` call) and echoed as the
+ * `correlationId` field of the webhook events the MTA reports for that message.
+ * That field sits inside the signed webhook body like any other; the signing
+ * scheme itself does not change.
  *
  * It is a LOG key and nothing else: it never feeds an idempotency key, a work
- * identity, a routing digest, a signature or a MIME header. A missing or
- * malformed id therefore costs a join in a log query, never a send.
+ * identity, a routing digest or a MIME header. A missing or malformed id
+ * therefore costs a join in a log query, never a send.
  */
 
 /** HTTP header name. Lowercase because Hono and `Headers` normalize to it. */

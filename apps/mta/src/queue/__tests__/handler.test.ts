@@ -1089,6 +1089,40 @@ describe('handleEmailJob', () => {
 		expect(event).not.toHaveProperty('correlationId');
 	});
 
+	it('logs a deferred SMTP attempt with the shared keys on top and the specifics under detail', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 451,
+			error: '451 4.7.1 slow down — too many messages',
+		});
+
+		await run(createJob(), { attempts: 4 });
+
+		const line = loggerMock.logger.info.mock.calls
+			.map((call) => call[0] as Record<string, unknown>)
+			.find((fields) => fields?.['event'] === 'mta.delivery.outcome');
+		expect(line).toMatchObject({
+			event: 'mta.delivery.outcome',
+			outcome: 'deferred',
+			category: expect.any(String),
+			detail: {
+				to: 'user@example.com',
+				smtpCode: 451,
+				error: '451 4.7.1 slow down — too many messages',
+				suggestedDelay: expect.any(Number),
+			},
+		});
+		for (const key of ['smtpCode', 'error', 'suggestedDelay', 'annotation', 'to']) {
+			expect(line).not.toHaveProperty(key);
+		}
+		const detail = (line?.['detail'] ?? {}) as Record<string, unknown>;
+		for (const value of Object.values(detail)) {
+			expect(['string', 'number', 'boolean']).toContain(typeof value);
+		}
+	});
+
 	it('handles hard bounce — suppresses recipient and notifies Convex', async () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { suppress } = await import('../../intelligence/suppressionList.js');

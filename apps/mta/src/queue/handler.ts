@@ -30,6 +30,7 @@ import type { MtaConfig } from '../config.js';
 import { extractDomain, buildGroupKey } from './groups.js';
 import { extractDomainOrNull } from '@owlat/shared';
 import { recordWorkerHeartbeat } from '../routes/health.js';
+import { logEventBindings, type LogEventFields } from '@owlat/shared/logEvent';
 import { jobLogger, logger } from '../monitoring/logger.js';
 import { fireAndForget } from '../lib/fireAndForget.js';
 import { runPipeline } from '../dispatch/pipeline.js';
@@ -344,52 +345,58 @@ async function disposeDefer(
 
 /**
  * One `mta.delivery.outcome` line per SMTP attempt, on the job's child logger
- * (`orgId` / `messageId` / `workAttemptId` / `correlationId` bound) with the
- * shared `outcome` and `durationMs` keys, so it joins the Convex dispatch line.
+ * (`orgId` / `messageId` / `workAttemptId` / `correlationId` bound). The record
+ * goes through `logEventBindings`, so only the shared keys (`outcome`,
+ * `durationMs`, `category`) sit at the top level and every attempt-specific
+ * fact is a primitive under `detail`. `detail.to` is still de-identified: the
+ * logger's `*.to` redact path covers it.
  */
 function logOutcome(outcome: DispatchOutcome, job: EmailJob, ctx: AttemptCtx): void {
 	const log = jobLogger(job);
-	const base = {
+	const record = (fields: Omit<LogEventFields, 'outcome' | 'durationMs'>) => ({
 		event: 'mta.delivery.outcome',
-		outcome: outcome.kind,
-		durationMs: ctx.durationMs,
-		to: job.to,
-	};
+		...logEventBindings({
+			...fields,
+			outcome: outcome.kind,
+			durationMs: ctx.durationMs,
+			detail: { to: job.to, ...fields.detail },
+		}),
+	});
 	switch (outcome.kind) {
 		case 'delivered':
-			log.info({ ...base, ip: ctx.ip }, 'Email delivered');
+			log.info(record({ detail: { ip: ctx.ip } }), 'Email delivered');
 			return;
 		case 'hard_bounce':
 			log.warn(
-				{
-					...base,
-					error: outcome.error,
-					smtpCode: outcome.smtpCode,
-				},
+				record({
+					category: outcome.classification.category,
+					detail: { error: outcome.error, smtpCode: outcome.smtpCode },
+				}),
 				'Hard bounce — permanent failure'
 			);
 			return;
 		case 'deferred':
 			log.info(
-				{
-					...base,
-					error: outcome.error,
-					smtpCode: outcome.smtpCode,
+				record({
 					category: outcome.classification.category,
-					suggestedDelay: outcome.classification.suggestedDelayMs,
-					// Carries the clamp note when the receiver dictated a retry
-					// interval we refused to honour in full.
-					annotation: outcome.classification.annotation,
-				},
+					detail: {
+						error: outcome.error,
+						smtpCode: outcome.smtpCode,
+						suggestedDelay: outcome.classification.suggestedDelayMs,
+						// Carries the clamp note when the receiver dictated a retry
+						// interval we refused to honour in full.
+						annotation: outcome.classification.annotation,
+					},
+				}),
 				`Deferred (${outcome.classification.category}) — will retry`
 			);
 			return;
 		case 'soft_bounce':
-			log.warn({ ...base, error: outcome.error }, 'Soft bounce — connection failure');
+			log.warn(record({ detail: { error: outcome.error } }), 'Soft bounce — connection failure');
 			return;
 		case 'ambiguous':
 			log.warn(
-				{ ...base, error: outcome.error },
+				record({ detail: { error: outcome.error } }),
 				'Ambiguous post-DATA outcome — terminal, not suppressed (message may have been delivered)'
 			);
 			return;

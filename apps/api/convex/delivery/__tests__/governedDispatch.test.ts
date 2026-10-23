@@ -1161,13 +1161,23 @@ describe('dispatchGovernedEmail correlation id', () => {
 		to: 'recipient@example.com',
 		from: 'sender@example.com',
 		sendId: 'txn-row-1' as Id<'transactionalSends'>,
-		correlationId: 'txn_V1StGXR8_Z5jdHi6',
 		template: { subject: 'Subject', htmlContent: '<p>Body</p>' },
 		organizationId: 'org-1',
 	};
 
 	it('carries the Send correlation id to routing and the extras, and logs the attempt once', async () => {
 		const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		// The snapshot mutation reads the Send row and hands its stored id back
+		// beside the token.
+		runMutation
+			.mockReset()
+			.mockResolvedValue({ token: 'reentry-token', expiresAt: Date.now() })
+			.mockResolvedValueOnce({
+				token: 'reentry-token',
+				expiresAt: Date.now(),
+				correlationId: 'txn_V1StGXR8_Z5jdHi6',
+			})
+			.mockResolvedValueOnce({ ok: true });
 
 		await dispatchGovernedEmail(ctx, {
 			...baseRequest,
@@ -1183,11 +1193,18 @@ describe('dispatchGovernedEmail correlation id', () => {
 			correlationId: 'txn_V1StGXR8_Z5jdHi6',
 		});
 		// The id is a log key only: the idempotency key and the re-entry digest
-		// material are what they were without it.
-		expect(sendProviderDispatch.mock.calls[0]?.[3]).toMatchObject({
-			messageId: 'send_txn-row-1',
-			routingReentry: { retryState: { idempotencyKey: 'send_txn-row-1' } },
-		});
+		// material (the snapshot's envelope and the body's `routingReentry`) are
+		// the envelope exactly as the producer queued it, without the id.
+		const snapshotArgs = runMutation.mock.calls[0]?.[1] as { envelopeInput: unknown };
+		expect(snapshotArgs.envelopeInput).toStrictEqual(transactionalEnvelope);
+		const extras = sendProviderDispatch.mock.calls[0]?.[3] as {
+			messageId: string;
+			routingReentry: { envelopeInput: unknown; retryState: { idempotencyKey: string } };
+		};
+		expect(extras.messageId).toBe('send_txn-row-1');
+		expect(extras.routingReentry.retryState.idempotencyKey).toBe('send_txn-row-1');
+		expect(extras.routingReentry.envelopeInput).toStrictEqual(transactionalEnvelope);
+		expect(JSON.stringify(extras.routingReentry)).not.toContain('txn_V1StGXR8_Z5jdHi6');
 		const events = log.mock.calls
 			.map((call) => call[0])
 			.filter((line): line is string => typeof line === 'string' && line.startsWith('{'))

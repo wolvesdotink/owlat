@@ -369,6 +369,12 @@ export interface BounceClassification {
 	/** Unknown/mixed provenance is explicitly non-destructive. */
 	feedbackProvenance?: import('@owlat/shared').DeliveryDomain | 'unknown';
 	/**
+	 * The original job's correlation id, read from the server-persisted send
+	 * record (never from the report) and echoed on the delayed-feedback webhook.
+	 * Log-only; absent for records written before it was persisted.
+	 */
+	correlationId?: string;
+	/**
 	 * The complained/bounced recipient address, extracted from the ARF
 	 * feedback-report part (RFC 5965 §3.2 `Original-Rcpt-To` /
 	 * `Removed-Recipient` / `Original-Recipient`). Used to suppress the

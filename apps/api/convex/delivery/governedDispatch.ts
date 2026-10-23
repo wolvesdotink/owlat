@@ -169,13 +169,6 @@ export async function dispatchGovernedEmail(
 		throw new Error('Delivery safety decision requires an organization identity.');
 	if (!request.sendRef) throw new Error('Governed MTA delivery requires a durable Send reference.');
 	const workAttemptId = retryState.workAttemptId ?? crypto.randomUUID();
-	// The Send's own correlation id when the producer stamped one (the
-	// transactional API), else a fresh one for this attempt, so the MTA's lines
-	// for it still join this action's. Log-only: nothing below keys on it.
-	const correlationId =
-		(request.envelopeInput.kind === 'transactional'
-			? request.envelopeInput.correlationId
-			: undefined) ?? mintCorrelationId('dsp');
 	const snapshot = await ctx.runMutation(internal.delivery.routingReentry.issueSnapshot, {
 		sendRef: request.sendRef,
 		organizationId,
@@ -184,6 +177,11 @@ export async function dispatchGovernedEmail(
 		envelopeInput: request.envelopeInput,
 		retryState: reentryRetryState(retryState),
 	});
+	// The Send row's own correlation id when the producer stored one (the
+	// transactional API), else a fresh one for this attempt, so the MTA's lines
+	// for it still join this action's. Log-only: it rides beside the envelope,
+	// never inside it, so the re-entry digest and every key below ignore it.
+	const correlationId = snapshot.correlationId ?? mintCorrelationId('dsp');
 	const routing = await resolveLastMileRouting(ctx, {
 		messageType: request.messageType,
 		to: request.to,

@@ -104,13 +104,28 @@ in Convex's own line.
 
 ### The correlation id
 
-Every Convex → MTA send request carries an `x-owlat-correlation` header. A
-transactional send uses the `correlationId` stored on its `transactionalSends`
-row (`txn_…`); other sends get a fresh id per attempt (`dsp_…`, `pbx_…` for
-Postbox, `fwd_…`/`vac_…` for forwards and auto-replies). The MTA binds it to
-the job's log lines, keeps it on the queued job across deferrals, and echoes it
-as `correlationId` on the webhook events it reports for that message, which
-Convex logs on receipt. A malformed header is dropped, never refused.
+Convex → MTA send-path requests carry an `x-owlat-correlation` header: the
+intake (`POST /send`), the routing decision, Postbox outbound, and forwards and
+auto-replies. Every call made through `mtaFetch` carries one too. Direct
+operational calls that bypass `mtaFetch` (DKIM key registration, suppression
+mirroring, DNSBL and health checks) do not; they are not about one message.
+
+A transactional send uses the `correlationId` stored on its
+`transactionalSends` row (`txn_…`); other sends get a fresh id per attempt
+(`dsp_…`, `pbx_…` for Postbox, `fwd_…`/`vac_…` for forwards and auto-replies).
+The id is read from the Send row at dispatch and is never part of the queued
+envelope, so it does not enter the routing re-entry token's digest. The MTA
+binds it to the job's log lines, keeps it on the queued job across deferrals,
+stores it in the delayed-feedback record, and echoes it as `correlationId` on
+the webhook events it reports for that message, including a later DSN or
+complaint attributed to it. Convex logs it on receipt. A malformed header is
+dropped, never refused.
+
+The MTA's `mta.delivery.outcome` line follows the same shape: `outcome`,
+`durationMs` and (for SMTP replies) `category` at the top level, the job's
+bound `orgId`/`messageId`/`workAttemptId`/`correlationId`, and the attempt's
+specifics (`to`, `ip`, `error`, `smtpCode`, `suggestedDelay`, `annotation`)
+under `detail`. `detail.to` is de-identified like any other address.
 
 To follow one transactional API call end to end:
 

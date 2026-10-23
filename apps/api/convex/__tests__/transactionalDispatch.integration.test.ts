@@ -172,6 +172,29 @@ describe('transactional.dispatch.dispatch — happy path', () => {
 		expect(settings?.dailySendCount).toBe(0);
 	});
 
+	it('stores the correlation id on the Send row and keeps it out of the queued envelope', async () => {
+		const t = convexTest(schema, modules);
+		const { templateId } = await seedBaseline(t);
+		const enqueue = vi.mocked(transactionalEmailPool.enqueueAction);
+		enqueue.mockClear();
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+		});
+
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}`);
+		const send = await t.run(async (ctx) => await ctx.db.get(outcome.sendId));
+		expect(send?.correlationId).toMatch(/^txn_/);
+		// The queued envelope is the routing re-entry token's digest material, so a
+		// log-only id stays on the row and the dispatch boundary reads it there.
+		expect(enqueue).toHaveBeenCalledOnce();
+		const queued = enqueue.mock.calls[0]?.[2] as { envelopeInput: Record<string, unknown> };
+		expect(queued.envelopeInput['sendId']).toBe(outcome.sendId);
+		expect('correlationId' in queued.envelopeInput).toBe(false);
+		expect(JSON.stringify(queued)).not.toContain(send!.correlationId!);
+	});
+
 	it('resolves an existing contact via Contact resolution (upsert mode)', async () => {
 		const t = convexTest(schema, modules);
 		const { templateId } = await seedBaseline(t);
