@@ -14,9 +14,12 @@
  *   behaviour is pinned here together with the encoding socks relies on, so an
  *   upgrade that breaks IPv4/IPv6 proxy connects fails here first.
  * - `dompurify` as reached from apps/web → posthog-js. PostHog only sanitizes
- *   product-tour HTML strings with it (no IN_PLACE, no hooks). The repository
- *   has no DOM that DOMPurify runs correctly under (happy-dom's node getters
- *   defeat it), so the floor is asserted on the resolved version.
+ *   product-tour HTML strings with it (no IN_PLACE, no hooks, no
+ *   SAFE_FOR_TEMPLATES). The repository has no DOM that DOMPurify runs
+ *   correctly under (happy-dom's node getters defeat it), so the floor is
+ *   asserted on the resolved version. The gate also blocks on two of the
+ *   advisories this floor clears (GHSA-cg2g-xh64-v4q7, critical;
+ *   GHSA-mrv2-3pqr-j5jr, high).
  *
  * The audit gate does block on the dev-server pair below (GHSA-587h-7wmj-h5pm,
  * high), but only in the networked Security workflow. The floors are asserted
@@ -167,9 +170,9 @@ describe('socks proxy connects keep their address encoding', () => {
 });
 
 describe('dompurify on the web analytics path', () => {
-	it('resolves the release that neutralizes hook-detached IN_PLACE subtrees', () => {
+	it('resolves the release that neutralizes hook-detached IN_PLACE subtrees and scrubs shadow roots', () => {
 		const { version } = posthogRequire('dompurify') as { version: string };
-		expect(atLeast(version, '3.4.16'), `dompurify ${version}`).toBe(true);
+		expect(atLeast(version, '3.4.17'), `dompurify ${version}`).toBe(true);
 	});
 });
 
