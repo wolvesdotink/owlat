@@ -193,13 +193,18 @@ export function useDesktopNotifications(unread: UnreadBadge) {
 	const seenAssignmentIds = new Set<string>();
 	let loadedAssignmentsOnce = false;
 
-	type DesktopNotif = typeof import('@owlat/desktop/src/notifications');
+	// A plain dynamic import keeps Tauri out of the browser bundle and lets the
+	// dead-code check see every export of the module as used.
+	function importDesktopNotifications() {
+		return import('@owlat/desktop/src/notifications');
+	}
+	type DesktopNotif = Awaited<ReturnType<typeof importDesktopNotifications>>;
 	// One pending import shared by every caller: a delivery wakes the badge and
 	// the toast paths in the same tick, and both should wait on the same module
 	// load. A failed load is forgotten so the next call can try again.
 	let desktopNotif: Promise<DesktopNotif> | null = null;
 	function loadDesktopNotifications(): Promise<DesktopNotif> {
-		desktopNotif ??= import('@owlat/desktop/src/notifications').catch((error: unknown) => {
+		desktopNotif ??= importDesktopNotifications().catch((error: unknown) => {
 			desktopNotif = null;
 			throw error;
 		});
