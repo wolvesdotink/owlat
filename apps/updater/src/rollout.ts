@@ -50,7 +50,7 @@ const SAFE_SERVICE = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
 const SAFE_ARG = /^[A-Za-z0-9_/][A-Za-z0-9_.:@/=-]*$/;
 
 /** Docker's 403 body is HTML across several lines; make it fit one log line. */
-function oneLine(text: string, max = 300): string {
+export function oneLine(text: string, max = 300): string {
 	const collapsed = text.replace(/\s+/g, ' ').trim();
 	return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed;
 }
@@ -69,10 +69,10 @@ const STACK_DOWN_REMEDIATION =
 /**
  * Start whatever a failed `up` left stopped.
  *
- * `up` is the one step of a rollout with nothing to roll back to — by the time
- * it runs, the images are pulled, the schema is deployed and the compose file
- * is promoted — and it is also the only step that can take the instance
- * offline. Compose recreate is "create new → stop old → start new", so a
+ * Without a snapshot (`OWLAT_UPDATE_SNAPSHOT=off`, see snapshot.ts) `up` has
+ * nothing to roll back to — the images are pulled, the schema is deployed and
+ * the compose file is promoted — and it is the only step that can take the
+ * instance offline. Compose recreate is "create new → stop old → start new", so a
  * command that dies in the middle leaves old containers stopped and new ones
  * created-but-never-started: every service in the plan is down, and until now
  * the operator got a bare "docker compose up failed" for it and a dark
@@ -307,7 +307,7 @@ interface SelfContainer {
 }
 
 /** What this very container was created with — the plumbing a helper must clone. */
-async function inspectSelf(): Promise<SelfContainer | null> {
+export async function inspectSelf(): Promise<SelfContainer | null> {
 	const format =
 		'{{.Config.Image}}{{"\\n"}}{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}:{{.Destination}}:{{if .RW}}rw{{else}}ro{{end}} {{end}}{{end}}{{"\\n"}}{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}';
 	const result = await exec('docker', ['inspect', hostname(), '--format', format], OWLAT_DIR);

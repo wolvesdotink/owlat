@@ -129,8 +129,10 @@ export function isUpdateAttemptId(value: unknown): value is string {
 interface LastRollout {
 	attempt?: string;
 	targetVersion?: string | null;
-	phase?: 'applying' | 'verifying' | 'done';
-	outcome?: 'healthy' | 'started' | 'partially-applied' | 'failed' | 'interrupted';
+	/** `rolling-back`: the release failed and the snapshot taken before it is being restored. */
+	phase?: 'applying' | 'verifying' | 'rolling-back' | 'done';
+	/** `rolled-back`: the release failed and the stack runs the previous one again. */
+	outcome?: 'healthy' | 'started' | 'partially-applied' | 'failed' | 'interrupted' | 'rolled-back';
 	summary?: string;
 }
 
@@ -197,10 +199,13 @@ export function readRolloutProgress(
 
 	const record = health.lastRollout;
 	if (record && attempt && record.attempt === attempt) {
-		if (record.phase !== 'done') return inFlight(record.phase === 'verifying');
+		// A rollback is the tail of a failed check, not a step forward.
+		if (record.phase !== 'done') return inFlight(record.phase !== 'applying');
 		const summary = record.summary ?? '';
 		if (record.outcome === 'healthy') return { kind: 'complete' };
 		if (record.outcome === 'started') return { kind: 'started', summary };
+		// Everything else, `rolled-back` included, is an update that did not land;
+		// the summary says what the instance runs now.
 		return { kind: 'failed', summary };
 	}
 	if (health.rolloutInProgress === 'update') return inFlight(false);

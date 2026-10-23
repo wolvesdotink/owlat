@@ -16,6 +16,7 @@ import {
 	servicesToRecreate,
 } from './rollout.js';
 import { handleUpdate } from './update.js';
+import { handleRollback, handleSnapshotInfo } from './rollback.js';
 import { handleApplyProfiles } from './applyProfiles.js';
 import { critical } from './lifecycle.js';
 import { handlePortChecks } from './portChecks.js';
@@ -344,6 +345,7 @@ const ROLLOUTS = new Map<string, { kind: RolloutKind; handle: RolloutHandler }>(
 	['/apply-profiles', { kind: 'apply-profiles', handle: handleApplyProfiles }],
 	['/rotate-env', { kind: 'rotate-env', handle: handleRotateEnv }],
 	['/configure-ip', { kind: 'configure-ip', handle: handleConfigureIp }],
+	['/rollback', { kind: 'rollback', handle: handleRollback }],
 ]);
 
 /**
@@ -364,11 +366,11 @@ export function buildRequestListener() {
 			return;
 		}
 
-		// The four state-changing endpoints run as critical sections: each writes
+		// The state-changing endpoints run as critical sections: each writes
 		// host files and only then reconciles the running containers, so a
 		// SIGTERM landing between those two halves is what leaves the host's
 		// configuration and its running state describing different deployments.
-		// All four recreate containers and read-modify-write `.env`, so they
+		// All of them recreate containers and rewrite `.env`, so they
 		// also take the rollout lock: one cannot run `up` (or rewrite `.env`)
 		// while another is still recreating or waiting for readiness.
 		const rollout = req.method === 'POST' ? ROLLOUTS.get(url.pathname) : undefined;
@@ -395,6 +397,8 @@ export function buildRequestListener() {
 			await handleProfileState(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/health') {
 			await handleHealth(req, res);
+		} else if (req.method === 'GET' && url.pathname === '/snapshot') {
+			if (requireAuth(req, res)) handleSnapshotInfo(res);
 		} else {
 			json(res, 404, { error: 'Not found' });
 		}

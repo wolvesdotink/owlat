@@ -161,6 +161,37 @@ describe('readRolloutProgress', () => {
 		expect(reading).toEqual({ kind: 'in-flight', stage: 'verifying' });
 	});
 
+	it('keeps waiting while the updater rolls this attempt back, and ends on the rollback', () => {
+		const rollingBack = {
+			attempt: ATTEMPT,
+			targetVersion: '0.4.17',
+			phase: 'rolling-back' as const,
+		};
+		expect(readRolloutProgress(health({ lastRollout: rollingBack }), '0.4.17', ATTEMPT)).toEqual({
+			kind: 'in-flight',
+			stage: 'verifying',
+		});
+		// Web is back on the previous release: the verdict ends the wait without
+		// waiting for the target version, and does not read as a success.
+		const rolledBack = readRolloutProgress(
+			health({
+				containers: webOn('0.4.16'),
+				lastRollout: {
+					...rollingBack,
+					phase: 'done',
+					outcome: 'rolled-back',
+					summary: 'The update was rolled back to the snapshot.',
+				},
+			}),
+			'0.4.17',
+			ATTEMPT
+		);
+		expect(rolledBack).toEqual({
+			kind: 'failed',
+			summary: 'The update was rolled back to the snapshot.',
+		});
+	});
+
 	it('says the recreate is under way once web runs the target while the updater applies', () => {
 		const applying = { attempt: ATTEMPT, targetVersion: '0.4.17', phase: 'applying' as const };
 		expect(readRolloutProgress(health({ lastRollout: applying }), '0.4.17', ATTEMPT)).toEqual({
@@ -181,6 +212,7 @@ describe('readRolloutProgress', () => {
 		['started', { kind: 'started', summary: 'still starting: clamav' }],
 		['partially-applied', { kind: 'failed', summary: 'still starting: clamav' }],
 		['interrupted', { kind: 'failed', summary: 'still starting: clamav' }],
+		['rolled-back', { kind: 'failed', summary: 'still starting: clamav' }],
 	] as const)('reads a %s verdict for this attempt', (outcome, expected) => {
 		const reading = readRolloutProgress(
 			health({

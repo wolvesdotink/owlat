@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import {
+	appendFileSync,
 	chmodSync,
 	mkdtempSync,
 	writeFileSync,
@@ -86,7 +87,17 @@ beforeEach(() => {
 		join(OWLAT_DIR, '.env'),
 		'FOO=bar\nIP_POOLS_CAMPAIGN=1.1.1.1\nINSTANCE_SECRET=old\n'
 	);
+	rmSync(join(OWLAT_DIR, '.owlat-update-snapshot'), { recursive: true, force: true });
 });
+
+/**
+ * Turn the pre-deploy snapshot off in `.env`. The cases that use it are about
+ * what an update does with nothing to roll back to; rollback.test.ts covers
+ * the snapshot and the rollback.
+ */
+function withoutSnapshot(): void {
+	appendFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_UPDATE_SNAPSHOT=off\n');
+}
 
 const AUTH = { 'x-instance-secret': 'test-instance-secret-0123456789' };
 
@@ -258,15 +269,19 @@ describe('POST /update', () => {
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as { success: boolean };
 		expect(json.success).toBe(true);
-		const cmds = composeCommands();
-		expect(cmds[0]).toBe(`${COMPOSE} pull`);
-		// A serving convex is deployed to as it is, never recreated by `run`.
-		expect(cmds[1]).toBe(`${COMPOSE} ps --format json convex`);
-		expect(cmds[2]).toBe(`${COMPOSE} --profile deploy run --rm --no-deps convex-deploy`);
-		expect(cmds[3]).toBe(`${COMPOSE} config --services`);
-		// What was already failing before the release touched anything.
-		expect(cmds[4]).toBe(`${COMPOSE} ps --all --format json`);
-		expect(cmds[5]).toBe(`${COMPOSE} up -d --remove-orphans web convex mta`);
+		expect(composeCommands().slice(0, 8)).toEqual([
+			`${COMPOSE} pull`,
+			// What was already failing before the release touched anything.
+			`${COMPOSE} config --services`,
+			`${COMPOSE} ps --all --format json`,
+			// The containers whose data the snapshot copies.
+			`${COMPOSE} ps --all --quiet`,
+			// A serving convex is deployed to as it is, never recreated by `run`.
+			`${COMPOSE} ps --format json convex`,
+			`${COMPOSE} --profile deploy run --rm --no-deps convex-deploy`,
+			`${COMPOSE} config --services`,
+			`${COMPOSE} up -d --remove-orphans web convex mta`,
+		]);
 	});
 
 	/**
@@ -413,6 +428,7 @@ describe('POST /update', () => {
 			'disk-space-preflight',
 			'stage-compose',
 			'pull',
+			'snapshot',
 			'convex-deploy',
 			'write-compose',
 			'pin-version',
@@ -483,7 +499,8 @@ describe('POST /update', () => {
 				'',
 			].join('\n');
 			await post('/update', { composeTemplate: template });
-			const [pull, , deploy] = composeCommands();
+			const [pull] = composeCommands();
+			const deploy = composeCommands().find((cmd) => cmd.includes('convex-deploy'));
 			const staged = `-f ${join(OWLAT_DIR, 'docker-compose.next.yml')}`;
 			// An override may pin a locally built image: pulling it would fail.
 			expect(pull).toContain(staged);
@@ -529,6 +546,7 @@ describe('POST /update', () => {
 			'disk-space-preflight',
 			'stage-compose',
 			'pull',
+			'snapshot',
 			'convex-deploy',
 			'write-compose',
 			'pin-version',
@@ -747,6 +765,7 @@ describe('POST /update', () => {
 	});
 
 	it('does not claim the stack is untouched when the deploy was cut off by its bound', async () => {
+		withoutSnapshot();
 		commandMock.mockImplementation(
 			dockerFailing((cmd) => cmd.includes('convex-deploy'), 'docker timed out after 900s')
 		);
@@ -786,6 +805,8 @@ describe('POST /update', () => {
 	});
 
 	it('falls back to a bare compose command when the host path cannot be read', async () => {
+		// Without the host path there is nowhere to put a snapshot either.
+		withoutSnapshot();
 		commandMock.mockImplementation(
 			dockerFailing((cmd) => cmd.startsWith('docker inspect'), 'permission denied')
 		);
@@ -803,6 +824,7 @@ describe('POST /update', () => {
 	 * failed" — the operator's next signal was a site that no longer loaded.
 	 */
 	it('restarts the stack when the recreate fails, and says the instance is serving', async () => {
+		withoutSnapshot();
 		commandMock.mockImplementation((file: string, args: string[]) => {
 			const cmd = [file, ...args].join(' ');
 			if (cmd.includes(' up -d --remove-orphans')) {
@@ -836,6 +858,7 @@ describe('POST /update', () => {
 	});
 
 	it('names the services still down, and the host command that starts them', async () => {
+		withoutSnapshot();
 		commandMock.mockImplementation((file: string, args: string[]) => {
 			const cmd = [file, ...args].join(' ');
 			if (cmd.includes(' up -d')) {
@@ -874,6 +897,7 @@ describe('POST /update', () => {
 	 * as one.
 	 */
 	it('reports an unreadable container list as unknown, not as a dead stack', async () => {
+		withoutSnapshot();
 		const failing = dockerFailing((cmd) => cmd.includes(' up -d'), 'error during connect: EOF');
 		commandMock.mockImplementation((file: unknown, args: unknown) =>
 			[String(file), ...((args as string[]) ?? [])].join(' ').includes(' ps ')
@@ -942,6 +966,7 @@ describe('POST /update — readiness after the recreate', () => {
 	});
 
 	it('does not report success while a running service fails its healthcheck', async () => {
+		withoutSnapshot();
 		psSequence([
 			composePs([
 				{ Service: 'web', State: 'running' },
@@ -975,6 +1000,7 @@ describe('POST /update — readiness after the recreate', () => {
 	});
 
 	it('does not report success when a service crashes right after starting', async () => {
+		withoutSnapshot();
 		psSequence([
 			composePs(RUNNING),
 			composePs([
@@ -992,6 +1018,7 @@ describe('POST /update — readiness after the recreate', () => {
 	});
 
 	it('does not report success while the web app does not answer', async () => {
+		withoutSnapshot();
 		readiness.webStatus(503);
 
 		const res = await post('/update');
@@ -1001,7 +1028,8 @@ describe('POST /update — readiness after the recreate', () => {
 		expect(json.error).toContain('web answered HTTP 503');
 	});
 
-	it('reports a failed recreate as partially applied, and never as a rollback', async () => {
+	it('without a snapshot, reports a failed recreate as partially applied, and never as a rollback', async () => {
+		withoutSnapshot();
 		commandMock.mockImplementation((file: string, args: string[]) => {
 			if ([file, ...args].join(' ').includes(' up -d --remove-orphans')) {
 				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'error during connect: EOF' });
@@ -1014,10 +1042,11 @@ describe('POST /update — readiness after the recreate', () => {
 		const json = (await res.json()) as UpdateAnswer;
 		expect(json.rollout).toBe('partially-applied');
 		expect(json.steps.map((s) => s.step)).not.toContain('readiness');
-		expect(`${json.error} ${JSON.stringify(json.steps)}`).not.toMatch(/roll(ed)?[ -]?back/i);
+		expect(json.error).not.toMatch(/roll(ed)?[ -]?back/i);
 	});
 
 	it('does not call a recovered stack serving while a service in it is unhealthy', async () => {
+		withoutSnapshot();
 		commandMock.mockImplementation((file: string, args: string[]) => {
 			const cmd = [file, ...args].join(' ');
 			if (cmd.includes(' up -d --remove-orphans')) {
@@ -1067,6 +1096,7 @@ describe('POST /update — failures that were there before', () => {
 	});
 
 	it('still fails a service the update broke', async () => {
+		withoutSnapshot();
 		let calls = 0;
 		commandMock.mockImplementation((file: string, args: string[]) =>
 			[file, ...args].join(' ').includes(' ps --all --format json')
@@ -1137,6 +1167,7 @@ describe('the last rollout, on /health', () => {
 	});
 
 	it('records a rollout that started but did not become healthy as started', async () => {
+		withoutSnapshot();
 		readiness.webStatus(503);
 
 		await post('/update', { composeTemplate: TEMPLATE });

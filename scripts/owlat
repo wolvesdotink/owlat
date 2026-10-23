@@ -34,6 +34,8 @@
 #   owlat backup [path]       — bash scripts/backup.sh [path]
 #   owlat backup-schedule [enable|disable|status] — daily automatic backups (systemd timer / cron)
 #   owlat restore <file>      — bash scripts/restore.sh <file>
+#   owlat rollback [--yes]    — restore the snapshot the updater took before the
+#                               last in-app update (data, compose file, .env)
 #   owlat shell <service>     — docker compose exec <service> sh
 #   owlat version             — print stack version
 #   owlat install-cli         — (re)link this script into /usr/local/bin
@@ -446,6 +448,45 @@ sync_flag_mirror() {
 	printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Wrote $mirror from the backend's feature flags."
 }
 
+# ── Updater requests ──────────────────────────────────────────────────────────
+# Sends one request to the updater sidecar from inside its own container: the
+# instance secret is already in its environment, and the updater is the one
+# container a rollback never recreates, so the answer outlives the restore.
+# Node's http client rather than fetch(), which gives up on a response that
+# takes more than five minutes to start (a restore waits for readiness). Prints
+# the answer's `description` (or `error`), then `snapshot-id: <id>` when the
+# answer names a snapshot; exits non-zero on a non-2xx answer.
+UPDATER_REQUEST_JS='
+const http = require("node:http");
+const [method, path, body] = process.argv.slice(1);
+const req = http.request(
+	{
+		host: "127.0.0.1",
+		port: Number(process.env.PORT) || 3200,
+		method,
+		path,
+		headers: { "x-instance-secret": process.env.INSTANCE_SECRET || "", "content-type": "application/json" },
+	},
+	(res) => {
+		let text = "";
+		res.setEncoding("utf8");
+		res.on("data", (chunk) => (text += chunk));
+		res.on("end", () => {
+			let answer = {};
+			try { answer = JSON.parse(text); } catch {}
+			console.log(answer.description || answer.error || text);
+			if (answer.snapshot && answer.snapshot.id) console.log("snapshot-id: " + answer.snapshot.id);
+			process.exit(res.statusCode >= 200 && res.statusCode < 300 ? 0 : 1);
+		});
+	}
+);
+req.on("error", (err) => { console.error("Cannot reach the updater: " + err.message); process.exit(2); });
+req.end(body || undefined);
+'
+updater_request() {
+	docker compose exec -T updater node -e "$UPDATER_REQUEST_JS" "$@"
+}
+
 # ── Subcommands ───────────────────────────────────────────────────────────────
 cmd="${1:-help}"
 shift || true
@@ -823,6 +864,42 @@ case "$cmd" in
 		;;
 	restore)
 		exec bash scripts/restore.sh "$@"
+		;;
+	rollback)
+		# Put the stack back on the snapshot the updater took before the last
+		# in-app update. The updater does the restore, with the same code an
+		# automatic rollback runs; this only shows what it would restore and
+		# asks first, since everything written since the snapshot is lost.
+		assume_yes=0
+		for arg in "$@"; do
+			case "$arg" in
+				--yes | -y) assume_yes=1 ;;
+				*)
+					echo "Unknown rollback flag: $arg" >&2
+					exit 2
+					;;
+			esac
+		done
+		info=$(updater_request GET /snapshot) || {
+			printf '%s\n' "$info" >&2
+			echo "Error: could not ask the updater for its snapshot. Is it running? (owlat status)" >&2
+			exit 1
+		}
+		snapshot_id=$(printf '%s\n' "$info" | sed -n 's/^snapshot-id: //p')
+		printf '%s\n' "$info" | grep -v '^snapshot-id: ' || true
+		[[ -n "$snapshot_id" ]] || exit 1
+		if [[ "$assume_yes" != "1" ]]; then
+			read -r -p "Type 'yes' to restore it: " answer
+			[[ "$answer" == "yes" ]] || { echo "Aborted — nothing was changed."; exit 1; }
+		fi
+		printf '%b\n' "${CYAN}${BOLD}[info]${RESET} Restoring ${snapshot_id} (this stops convex and redis while the data is copied back)…"
+		status=0
+		updater_request POST /rollback "{\"snapshot\":\"${snapshot_id}\"}" || status=$?
+		if [[ "$status" -ne 0 ]]; then
+			printf '%b\n' "${RED}${BOLD}[err ]${RESET} The rollback did not complete (see above)." >&2
+			exit "$status"
+		fi
+		printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Rolled back."
 		;;
 	version)
 		# Read version from the running web container env, or fall back to local .env / package.json

@@ -226,7 +226,7 @@ async function reclaimThirdPartyImages(signal?: AbortSignal): Promise<Omit<Stora
  * Docker's data root to another volume gets a check on the wrong disk, and the
  * pull-failure message below is the fallback for that case.
  */
-function freeBytes(): number | null {
+export function freeBytes(): number | null {
 	try {
 		const stats = statfsSync(OWLAT_DIR);
 		return Number(stats.bavail) * Number(stats.bsize);
