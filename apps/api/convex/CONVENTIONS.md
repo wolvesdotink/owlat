@@ -659,6 +659,20 @@ This codebase tracks the official Convex AI/cursor rules
   structurally typed on `db.get`, so both `QueryCtx` and `MutationCtx` satisfy
   it. Keep hand-rolling `throwNotFound` only where the guard is not a plain
   `get(id)` null check (e.g. `query().unique()` or outcome-based results).
+- **Classify failures by type, never by wording.** A failure one backend
+  module raises for another to branch on is an `InternalFailure` from
+  `_utils/errors.ts`: a kind from the closed per-domain list there, a
+  `retryable` flag and a few bounded attributes. The caller switches on
+  `internalFailureOf(error)?.kind`, which also reads the failure after the
+  runtime rebuilds it on its way out of a nested `ctx.run*` call (a plain
+  `Error` subclass loses its class there). An Operation error is read by
+  `extractOperationError(error)?.category`. Never put an address, a message
+  body or a raw cause into the attributes; `retryable` describes the failure
+  and does not replace the retry policy that owns the decision.
+  `scripts/check-error-classifiers.sh` (in `bun run lint`) flags
+  `message.includes(…)`-style classifiers; only text this codebase does not
+  write (platform errors with no code, external provider replies) is listed in
+  its baseline.
 - **One UTC day.** Day starts, day keys and zero-filled daily series come
   from `lib/clock.ts` (`utcDayStart`, `nextUtcDayStart`, `utcDayKey`,
   `denseDailySeries`, `resolveNow`), which imports nothing. A writer and a
