@@ -8,7 +8,7 @@
  * no longer holds or was already announced, and writes one `marketingNotices`
  * row per member whose role may act on it (`noticePolicy.ts`) and whose switch
  * is on. Each row then goes out by Web Push (`push/dispatch.ts`, which asks
- * `isNoticeDeliverable` again at send time) and to every open app, which reads
+ * `noticeDeliverability` again at send time) and to every open app, which reads
  * `listRecent` and shows new rows as a toast and, on the desktop app, a native
  * notification.
  *
@@ -165,15 +165,19 @@ async function noticeGate(
 			: null;
 }
 
-/** {@link noticeGate} for one notice: what the push sender asks at send time. */
-export async function isNoticeDeliverable(
+/**
+ * {@link noticeGate} for one notice: what the push sender asks at send time.
+ * The liveness comes back whole so the sender can keep a push from outliving
+ * the notice on the push service.
+ */
+export async function noticeDeliverability(
 	ctx: QueryCtx | MutationCtx,
 	notice: Doc<'marketingNotices'>,
 	userId: string,
 	role: OrganizationRole | null,
 	now: number
-): Promise<boolean> {
-	return (await (await noticeGate(ctx, userId, role))(notice, now)) !== null;
+): Promise<NoticeLiveness | null> {
+	return (await noticeGate(ctx, userId, role))(notice, now);
 }
 
 /**

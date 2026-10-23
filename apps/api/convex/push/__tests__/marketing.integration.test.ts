@@ -3,12 +3,14 @@
  * is re-checked at send time against the person's current role, switch and
  * the occurrence itself, quiet hours hold it like mail, a reminder lives on the
  * push service only until its campaign starts and carries Open and Cancel
- * buttons, and private notifications name nothing.
+ * buttons, a delivery hold only while its breaker snapshot is trusted, and
+ * private notifications name nothing.
  */
 
 import type { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../../_generated/api';
+import { getSingletonOrganizationId } from '../../lib/sessionOrganization';
 import type { Doc, Id } from '../../_generated/dataModel';
 import {
 	createTestAutomation,
@@ -137,6 +139,46 @@ describe('push.dispatch marketing', () => {
 		// Cancelled before the push went out: nothing to remind about.
 		await t.run((ctx) => ctx.db.patch(campaignId, { status: 'cancelled' }));
 		expect(await prepare(t, noticeId)).toEqual([]);
+	});
+
+	it('keeps a delivery hold on the push service no longer than the router trusts its snapshot', async () => {
+		const t = await setup();
+		const now = Date.now();
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(now);
+		try {
+			// The MTA reported the open breaker four minutes ago and then went quiet:
+			// the router trusts that snapshot for six more minutes.
+			const organizationId = await t.run((ctx) => getSingletonOrganizationId(ctx));
+			const reportedAt = now - 4 * 60_000;
+			await t.mutation(internal.delivery.deliverabilityRouting.applySnapshot, {
+				organizationId,
+				generatedAt: reportedAt,
+				appliedAt: reportedAt,
+				signals: [
+					{
+						provider: 'gmail',
+						source: 'breaker_open',
+						severity: 'critical',
+						observedAt: reportedAt,
+					},
+				],
+			});
+			const noticeId = await seedNotice(t, {
+				kind: 'delivery_hold',
+				name: 'gmail',
+				subjectKey: 'delivery_hold:gmail',
+				url: '/dashboard/settings/deliverability',
+			});
+			const [delivery] = await prepare(t, noticeId);
+			expect(delivery?.ttlSeconds).toBe(6 * 60);
+
+			// Past the snapshot's trust limit there is nothing left to push.
+			vi.setSystemTime(now + 6 * 60_000 + 1);
+			expect(await prepare(t, noticeId)).toEqual([]);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('sends nothing once the person turned the switch off or lost the role', async () => {
