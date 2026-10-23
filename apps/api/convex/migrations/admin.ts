@@ -22,9 +22,12 @@
  * every {@link TICK_MS} until every migration has completed (`finished`) or
  * one has failed or stopped moving (`stopped`; the admin resumes it with the
  * next run). A contract step that declares `requiresWorkers` waits the same
- * way until every worker has reported the wire versions it needs. Both run in one serializable transaction over the ledger rows and
- * the runner row, so two admins clicking at once cannot start a migration
- * twice: the second sees the first's ledger rows, and an active runner.
+ * way until every worker has reported the wire versions it needs; its `run`
+ * refuses to start before then too (`beginMigrationRun`), so the CLI and a
+ * cron cannot start it early either. Both run in one serializable transaction
+ * over the ledger rows and the runner row, so two admins clicking at once
+ * cannot start a migration twice: the second sees the first's ledger rows, and
+ * an active runner.
  *
  * Gating: platform admins only, like the rest of System & updates. `advance`
  * is internal.

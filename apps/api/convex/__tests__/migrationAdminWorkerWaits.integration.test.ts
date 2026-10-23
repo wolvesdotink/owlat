@@ -5,6 +5,9 @@
  * started, by the admin's run or by the runner's ticks, until every live worker
  * of that service reports the version it needs.
  *
+ * Its own `run` refuses the same way (lib/migrationLedger.ts), so the CLI, a
+ * cron or a resume cannot start it under a lagging worker either.
+ *
  * The shipped manifest has no such step yet, so 0053 is made one here: it
  * needs MTA wire 2.
  */
@@ -186,5 +189,87 @@ describe('a contract step that needs the workers to move', () => {
 		} finally {
 			if (saved !== undefined) process.env['MTA_API_URL'] = saved;
 		}
+	});
+});
+
+describe('a contract step started without the runner', () => {
+	const runContract = (t: T, args: { restart?: boolean } = {}) =>
+		t.mutation(internal.migrations['0053_project_open_commitments'].run, args);
+
+	async function seedContractRun(t: T, status: 'running' | 'completed') {
+		await t.run((ctx) =>
+			ctx.db.insert('migrationRuns', {
+				migration: CONTRACT,
+				introducedIn: '0.6.6',
+				status,
+				generation: 3,
+				cursor: 'page-2',
+				pageCount: 2,
+				scannedCount: 10,
+				changedCount: 4,
+				startedAt: T0 - 60 * 60_000,
+				updatedAt: T0 - 30 * 60_000,
+				...(status === 'completed' ? { completedAt: T0 - 30 * 60_000 } : {}),
+			})
+		);
+	}
+
+	it('refuses a direct start while an MTA still runs the old contract', async () => {
+		const t = convexTest(schema, modules);
+		await reportMta(t, 'mta-new', 2);
+		await reportMta(t, 'mta-old', 1);
+
+		await expect(runContract(t)).rejects.toThrow(/waits for workers to move: mta/);
+		expect(await ledgerRow(t, CONTRACT)).toBeNull();
+
+		// Once the old MTA has left the live window, the same call starts the pass.
+		vi.setSystemTime(T0 + WORKER_LIVE_WINDOW_MS + 1);
+		await reportMta(t, 'mta-new', 2);
+		expect(await runContract(t)).toMatchObject({ started: true });
+		expect(await ledgerRow(t, CONTRACT)).toMatchObject({ status: 'running', generation: 1 });
+	});
+
+	it('refuses a direct start while a configured MTA has not reported the version', async () => {
+		const t = convexTest(schema, modules);
+		const saved = process.env['MTA_API_URL'];
+		process.env['MTA_API_URL'] = 'http://mta.owlat.example:3100';
+		try {
+			await expect(runContract(t)).rejects.toThrow(/no live worker reports wire 2/);
+			expect(await ledgerRow(t, CONTRACT)).toBeNull();
+		} finally {
+			if (saved === undefined) delete process.env['MTA_API_URL'];
+			else process.env['MTA_API_URL'] = saved;
+		}
+	});
+
+	it('refuses to resume an interrupted pass, leaving its row as it was', async () => {
+		const t = convexTest(schema, modules);
+		await seedContractRun(t, 'running');
+		await reportMta(t, 'mta-old', 1);
+
+		await expect(runContract(t)).rejects.toThrow(/waits for workers to move/);
+		expect(await ledgerRow(t, CONTRACT)).toMatchObject({
+			status: 'running',
+			generation: 3,
+			cursor: 'page-2',
+			updatedAt: T0 - 30 * 60_000,
+		});
+
+		await reportMta(t, 'mta-old', 2);
+		vi.setSystemTime(T0 + WORKER_LIVE_WINDOW_MS + 1);
+		await reportMta(t, 'mta-old', 2);
+		expect(await runContract(t)).toMatchObject({ started: true, generation: 4 });
+		expect(await ledgerRow(t, CONTRACT)).toMatchObject({ generation: 4, cursor: 'page-2' });
+	});
+
+	it('refuses a restart of a completed pass, and leaves a plain run of one alone', async () => {
+		const t = convexTest(schema, modules);
+		await seedContractRun(t, 'completed');
+		await reportMta(t, 'mta-old', 1);
+
+		// Nothing to start: the completed pass is not touched, so nothing is refused.
+		expect(await runContract(t)).toMatchObject({ started: false });
+		await expect(runContract(t, { restart: true })).rejects.toThrow(/waits for workers to move/);
+		expect(await ledgerRow(t, CONTRACT)).toMatchObject({ status: 'completed', generation: 3 });
 	});
 });

@@ -82,10 +82,14 @@ const VERDICT_CLASS: Record<Verdict, { pill: string; dot: string }> = {
 					<h4 class="text-sm font-medium text-text-primary">{{ serviceName(entry.service) }}</h4>
 					<p class="text-caption text-text-tertiary">
 						{{
-							t('components.system.workerVersionsCard.contract', {
-								current: entry.backendWireVersion,
-								min: entry.minSupportedWireVersion,
-							})
+							entry.minSupportedWireVersion < entry.backendWireVersion
+								? t('components.system.workerVersionsCard.contract', {
+										current: entry.backendWireVersion,
+										min: entry.minSupportedWireVersion,
+									})
+								: t('components.system.workerVersionsCard.contractSingle', {
+										current: entry.backendWireVersion,
+									})
 						}}
 					</p>
 				</div>

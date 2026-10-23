@@ -118,7 +118,7 @@ describe('WorkerVersionsCard', () => {
 			'Code worker',
 		]);
 		const imap = section(wrapper, 'imap');
-		expect(imap.text()).toContain('Backend speaks wire version 3, serves 2 and newer');
+		expect(imap.text()).toContain('Backend speaks wire version 3, serves versions 2 to 3');
 		expect(imap.text()).toContain('(wire version 3)');
 
 		const rows = section(wrapper, 'mta').findAll('tbody tr');
@@ -165,6 +165,8 @@ describe('WorkerVersionsCard', () => {
 		);
 
 		const mailSync = section(wrapper, 'mail-sync');
+		// A window of one version is not a range.
+		expect(mailSync.text()).toContain('Backend speaks and serves wire version 1 only');
 		expect(mailSync.find('[role="status"]').text()).toContain(
 			'A worker older than this backend supports reported in the last 7 days.'
 		);

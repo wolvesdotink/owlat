@@ -50,9 +50,10 @@ export interface MigrationManifestEntry {
 	requiredBefore?: string;
 	/**
 	 * A contract step: it removes or rewrites what workers below these wire
-	 * versions still read or write. The runner does not start it until every
+	 * versions still read or write. Nothing starts or resumes it until every
 	 * worker of each service has moved (`readWorkerWaits` in
-	 * `maintenance/workerRegistry.ts`).
+	 * `maintenance/workerRegistry.ts`): the runner holds it, and its `run`
+	 * throws (`beginMigrationRun` in `lib/migrationLedger.ts`).
 	 */
 	requiresWorkers?: WorkerRequirement;
 	/** A cron starts and resumes it without an operator; the runner only starts it sooner. */

@@ -922,10 +922,12 @@ updates show, per service, which builds reported and the version skew.
   package; a test keeps the two equal).
 - A migration that removes or rewrites what a worker below some version still
   reads or writes is a contract step: its manifest entry declares
-  `requiresWorkers: { <service>: <version> }`. The runner does not start it
-  while a worker of that service reported a lower version within the last 15
-  minutes, or while the service runs here (it is configured, or reported this
-  week) and no live worker has reported the version yet (`readWorkerWaits`).
+  `requiresWorkers: { <service>: <version> }`. Nothing starts or resumes it
+  (the runner holds it; `beginMigrationRun` throws for the CLI, a cron or any
+  other caller of its `run`) while a worker of that service reported a lower
+  version within the last 15 minutes, or while the service runs here (it is
+  configured, or reported this week) and no live worker has reported the
+  version yet (`readWorkerWaits`).
   Workers from before reporting are invisible to this check, so it does not
   replace the N-1 window: it only adds this deployment's own evidence.
 
