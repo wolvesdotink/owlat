@@ -428,6 +428,28 @@ describe('owlat rollback (GET /snapshot, POST /rollback)', () => {
 		expect((await post('/rollback', { snapshot: 'snap-abc-0123abcd' })).status).toBe(404);
 	});
 
+	it('ignores a journal that names a path the capture would never write', async () => {
+		mkdirSync(join(SNAPSHOT_DIR, 'data'), { recursive: true });
+		writeFileSync(
+			JOURNAL,
+			JSON.stringify({
+				id: 'snap-abc-0123abcd',
+				takenAt: 1,
+				state: 'kept',
+				fromVersion: null,
+				targetVersion: null,
+				paused: [],
+				mounts: [{ service: 'convex', kind: 'volume', source: 'v', payload: '../../x.tar' }],
+				files: ['../etc/passwd'],
+			})
+		);
+		const info = (await (await fetch(`${base}/snapshot`, { headers: AUTH })).json()) as {
+			snapshot: unknown;
+		};
+		expect(info.snapshot).toBeNull();
+		expect((await post('/rollback', { snapshot: 'snap-abc-0123abcd' })).status).toBe(404);
+	});
+
 	it('requires the instance secret', async () => {
 		expect((await fetch(`${base}/snapshot`)).status).toBe(401);
 		expect((await fetch(`${base}/rollback`, { method: 'POST' })).status).toBe(401);

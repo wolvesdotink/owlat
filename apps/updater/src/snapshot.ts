@@ -103,6 +103,26 @@ export function isSnapshotId(value: unknown): value is string {
 
 const STATES = new Set<string>(['capturing', 'armed', 'kept', 'restoring', 'restored']);
 
+/**
+ * The journal's names end up in paths and `docker` arguments, so a journal
+ * naming anything the capture would not have written is not read at all.
+ */
+function isSafeJournal(record: Partial<Snapshot>): boolean {
+	return (
+		Array.isArray(record.mounts) &&
+		record.mounts.every(
+			(mount) =>
+				(mount.kind === 'volume' || mount.kind === 'bind') &&
+				SAFE_SOURCE.test(mount.source) &&
+				/^m\d+\.tar$/.test(mount.payload)
+		) &&
+		Array.isArray(record.files) &&
+		record.files.every((file) => SNAPSHOT_FILES.includes(file)) &&
+		Array.isArray(record.paused) &&
+		record.paused.every((id) => /^[0-9a-f]{6,64}$/.test(id))
+	);
+}
+
 /** The journal, or null when there is no snapshot worth reading. */
 export function readSnapshot(): Snapshot | null {
 	let value: unknown;
@@ -116,9 +136,7 @@ export function readSnapshot(): Snapshot | null {
 		!record ||
 		!isSnapshotId(record.id) ||
 		!STATES.has(record.state as string) ||
-		!Array.isArray(record.mounts) ||
-		!Array.isArray(record.files) ||
-		!Array.isArray(record.paused)
+		!isSafeJournal(record)
 	) {
 		return null;
 	}
