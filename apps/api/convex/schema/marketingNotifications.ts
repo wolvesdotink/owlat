@@ -20,6 +20,14 @@ import { marketingNoticeKindValidator } from '../lib/validators/marketingNotific
  *
  * Spread into `defineSchema()` from schema.ts via `...marketingNotificationTables`.
  */
+/** Both tables, in the order the organization wipe deletes them. */
+export const MARKETING_NOTIFICATION_TABLES = [
+	'marketingNotices',
+	'marketingNotificationSettings',
+] as const;
+
+export type MarketingNotificationTable = (typeof MARKETING_NOTIFICATION_TABLES)[number];
+
 export const marketingNotificationTables = {
 	marketingNotices: defineTable({
 		// BetterAuth user id of the person the notice is for.

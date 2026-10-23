@@ -6,6 +6,7 @@
 
 import type { OrganizationDeletionTable } from './_common';
 import { THREAD_BRIEF_TABLES } from '../../../schema/threadBrief';
+import { MARKETING_NOTIFICATION_TABLES } from '../../../schema/marketingNotifications';
 import { MAIL_ARRIVAL_TABLES } from '../../../schema/mailArrival';
 
 /**
@@ -184,8 +185,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 
 	// Marketing notices point at automations, campaigns, domains and
 	// deliverability alerts: gone before any of them.
-	'marketingNotices',
-	'marketingNotificationSettings',
+	...MARKETING_NOTIFICATION_TABLES,
 
 	// Automation children before parents
 	'automationStepRuns',

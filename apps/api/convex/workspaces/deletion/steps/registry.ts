@@ -10,6 +10,7 @@
  */
 
 import type { OrganizationDeletionStepModule, OrganizationDeletionTable } from './_common';
+import type { TENANT_TABLES } from '../../../lib/tenantTables';
 
 // Distinct steps with per-row side effects the generic sweep can't express:
 // storage-blob purges (mediaAssets / semanticFiles / mailMessages / inboundMessages /
@@ -45,6 +46,17 @@ export { STEPS };
 type TableMissingFromSteps = Exclude<OrganizationDeletionTable, (typeof STEPS)[number]>;
 type AssertStepsExhaustive<_T extends never> = true;
 export type _StepsCoverEveryTable = AssertStepsExhaustive<TableMissingFromSteps>;
+
+/**
+ * Compile-time guard: every TENANT_TABLES entry MUST have a deletion step (41
+ * once survived 'Delete organization'); a missing one is a compile error.
+ */
+type TenantTableMissingFromWipe = Exclude<
+	(typeof TENANT_TABLES)[number],
+	OrganizationDeletionTable
+>;
+type AssertWipeCoversTenantData<_T extends never> = true;
+export type _WipeCoversAllTenantTables = AssertWipeCoversTenantData<TenantTableMissingFromWipe>;
 
 /**
  * Typed dispatch registry — one module per `OrganizationDeletionTable`.
