@@ -5,8 +5,10 @@
  * own `scripts/purity-roots.txt`, and pin what it refuses: a clock, a random
  * source, an environment read, a timer, a network call, a database handle or
  * a Convex wrapper in a guarded module (nested ones included), a value import
- * from a shell that the manifest does not allow, and a manifest whose roots,
- * shells or allowed names no longer match the tree. The last block reads the
+ * from a shell that the manifest does not allow (specifiers resolved the way
+ * TypeScript resolves them), a side-effect, dynamic or `require` load of a
+ * shell, and a manifest whose roots, shells or allowed names no longer match
+ * the tree. The last block reads the
  * real manifest and pins which modules it guards.
  */
 
@@ -170,6 +172,65 @@ describe('the shell boundary', () => {
 		]);
 	});
 
+	it('resolves specifiers the way TypeScript does', async () => {
+		const result = await gate(
+			'convex/core\n!convex/core/runner.ts\n!convex/core/shell/index.ts\n',
+			{
+				'convex/core/runner.ts': SHELL,
+				'convex/core/shell/index.ts': SHELL,
+				'convex/core/a.ts': "import { load } from './runner.js';\n",
+				'convex/core/b.ts': "import { load } from './runner.ts';\n",
+				'convex/core/c.ts': "import { load } from './shell';\n",
+				'convex/core/d.ts': "import { load } from './shell/';\n",
+			}
+		);
+		expect(failures(result).map((line) => line.split(' — ')[0])).toEqual([
+			'convex/core/a.ts imports load from the shell convex/core/runner.ts',
+			'convex/core/b.ts imports load from the shell convex/core/runner.ts',
+			'convex/core/c.ts imports load from the shell convex/core/shell/index.ts',
+			'convex/core/d.ts imports load from the shell convex/core/shell/index.ts',
+		]);
+	});
+
+	it('refuses loading a shell without a name, even one whose names are allowed', async () => {
+		const result = await gate('convex/core\n!convex/core/runner.ts pureName\n', {
+			'convex/core/runner.ts': SHELL,
+			'convex/core/a.ts': "import { pureName } from './runner';\nimport './runner';\n",
+			'convex/core/b.ts': "import './runner.js'\nexport const twice = (n: number) => n * 2;\n",
+			'convex/core/c.ts': "import {} from './runner';\n",
+			'convex/core/d.ts': "export const later = () => import('./runner');\n",
+			'convex/core/e.ts':
+				'export const later = async () =>\n\t(await import(\n\t\t"./runner.js"\n\t)).load;\n',
+			'convex/core/f.ts': "export type Load = typeof import('./runner').load;\n",
+			'convex/core/g.ts': 'const runner = require(`./runner`);\n',
+		});
+		expect(failures(result).map((line) => line.split(' — ')[0])).toEqual([
+			'convex/core/a.ts loads the shell convex/core/runner.ts with <side-effect import>',
+			'convex/core/b.ts loads the shell convex/core/runner.ts with <side-effect import>',
+			'convex/core/c.ts loads the shell convex/core/runner.ts with <side-effect import>',
+			'convex/core/d.ts loads the shell convex/core/runner.ts with <import()>',
+			'convex/core/e.ts loads the shell convex/core/runner.ts with <import()>',
+			'convex/core/f.ts loads the shell convex/core/runner.ts with <import()>',
+			'convex/core/g.ts loads the shell convex/core/runner.ts with <require()>',
+		]);
+	});
+
+	it('ignores runtime loads of guarded modules and packages', async () => {
+		const result = await gate('convex/core\n!convex/core/runner.ts\n', {
+			'convex/core/runner.ts': SHELL,
+			'convex/core/other.ts': CLEAN,
+			'convex/core/a.ts': [
+				"import './other';",
+				"import 'some-package';",
+				"export const later = () => import('./other.js');",
+				"export const pkg = () => import('some-package');",
+				'',
+			].join('\n'),
+		});
+		expect(failures(result)).toEqual([]);
+		expect(result.code).toBe(0);
+	});
+
 	it('allows type imports and the names listed after the shell', async () => {
 		const result = await gate('convex/core\n!convex/core/runner.ts pureName\n', {
 			'convex/core/runner.ts': SHELL,
@@ -223,6 +284,18 @@ describe('the manifest', () => {
 			'root convex/moved missing — the decision core moved',
 			'root convex/empty holds no production module — the decision core moved',
 			'root convex/core/__tests__/x.test.ts is not a production TypeScript module',
+		]);
+	});
+
+	it('fails on a directory root left holding only its shells', async () => {
+		const result = await gate('convex/core\n!convex/core/runner.ts\nconvex/other\n', {
+			'convex/core/runner.ts': 'export const at = Date.now();\n',
+			'convex/core/__tests__/runner.test.ts': CLEAN,
+			'convex/other/decide.ts': CLEAN,
+		});
+		expect(result.code).toBe(1);
+		expect(failures(result)).toEqual([
+			'root convex/core holds only shells — the decision core moved',
 		]);
 	});
 

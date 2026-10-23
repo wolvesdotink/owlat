@@ -17,7 +17,10 @@
 #                       (tests, `__tests__/` and `_generated/` are skipped)
 #   !<path> [name...]   a shell inside a guarded directory: not checked, and a
 #                       guarded module may value-import from it only the names
-#                       listed after it (pure helpers that live with the shell)
+#                       listed after it (pure helpers that live with the shell);
+#                       loading it without a name (`import './x'`, `import()`,
+#                       `require()`) is refused. A directory root must keep at
+#                       least one module that is not a shell.
 #
 # `--list` prints the guarded modules after validating the manifest.
 #
@@ -114,12 +117,16 @@ for root in "${roots[@]}"; do
 			fail "root $root holds no production module — the decision core moved"
 			continue
 		fi
+		cores=0
 		while IFS= read -r file; do
 			[ -n "${is_shell[$file]:-}" ] && continue
+			cores=$((cores + 1))
 			[ -n "${is_guarded[$file]:-}" ] && continue
 			is_guarded[$file]=1
 			guarded+=("$file")
 		done <<<"$found"
+		# Shells are not checked, so a root left holding only shells guards nothing.
+		[ "$cores" -eq 0 ] && fail "root $root holds only shells — the decision core moved"
 	elif [ -f "$root" ]; then
 		if ! is_production_file "$root"; then
 			fail "root $root is not a production TypeScript module"
@@ -195,12 +202,21 @@ rules=(
 
 # `spec<TAB>name` for every value a module imports or re-exports from a
 # relative path; `import type` / `export type` and `type` members are erased at
-# compile time and skipped. A default import is `default`, a namespace `*`.
+# compile time and skipped. A default import is `default`, a namespace `*`. A
+# statement that loads a module without binding a name (`import './x'`,
+# `import {} from './x'`) is `<side-effect import>`: it runs the module's
+# top-level code, which is what the shell boundary exists to keep out.
 value_imports() {
 	awk '
 		function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
-		function flush(stmt,   spec, clause, inner, rest, parts, n, i, name) {
+		function flush(stmt,   spec, clause, inner, rest, parts, n, i, name, braces) {
 			if (stmt ~ /^(import|export)[ \t]+type[ \t{]/) return
+			if (match(stmt, /^import[ \t]*["\047][^"\047]+["\047]/)) {
+				spec = substr(stmt, RSTART, RLENGTH)
+				sub(/^import[ \t]*["\047]/, "", spec); sub(/["\047]$/, "", spec)
+				if (spec ~ /^\./) print spec "\t<side-effect import>"
+				return
+			}
 			if (!match(stmt, /from[ \t]*["\047][^"\047]+["\047]/)) return
 			spec = substr(stmt, RSTART, RLENGTH)
 			sub(/^from[ \t]*["\047]/, "", spec); sub(/["\047]$/, "", spec)
@@ -208,38 +224,64 @@ value_imports() {
 			clause = substr(stmt, 1, RSTART - 1)
 			sub(/^(import|export)[ \t]*/, "", clause)
 			rest = clause
+			braces = 0
 			if (match(clause, /\{[^}]*\}/)) {
 				inner = substr(clause, RSTART + 1, RLENGTH - 2)
 				rest = substr(clause, 1, RSTART - 1) substr(clause, RSTART + RLENGTH)
 				n = split(inner, parts, ",")
 				for (i = 1; i <= n; i++) {
 					name = trim(parts[i])
-					if (name == "" || name ~ /^type[ \t]/) continue
+					if (name == "") continue
+					braces = 1
+					if (name ~ /^type[ \t]/) continue
 					sub(/[ \t]+as[ \t].*$/, "", name)
 					print spec "\t" name
 				}
 			}
 			if (rest ~ /\*/) print spec "\t*"
 			gsub(/\*[ \t]*as[ \t]+[A-Za-z_$][A-Za-z0-9_$]*/, "", rest)
-			gsub(/[ \t,]/, "", rest)
+			gsub(/[ \t,*]/, "", rest)
 			if (rest != "") print spec "\tdefault"
+			else if (!braces && clause !~ /\*/) print spec "\t<side-effect import>"
 		}
 		{
 			if (!collecting) {
-				if ($0 !~ /^[ \t]*import[ \t{*]/ && $0 !~ /^[ \t]*export[ \t]*(type[ \t]*)?[{*]/) next
+				if ($0 !~ /^[ \t]*import[ \t{*"\047]/ && $0 !~ /^[ \t]*export[ \t]*(type[ \t]*)?[{*]/) next
 				collecting = 1; stmt = ""
 			}
 			stmt = stmt " " $0
-			if (stmt ~ /from[ \t]*["\047][^"\047]+["\047]/ || stmt ~ /;[ \t]*$/) {
+			if (stmt ~ /from[ \t]*["\047][^"\047]+["\047]/ || stmt ~ /;[ \t]*$/ || trim(stmt) ~ /^import[ \t]*["\047][^"\047]+["\047]/) {
 				flush(trim(stmt)); collecting = 0
 			}
 		}'
 }
 
+# `spec<TAB><kind>` for every `import(...)` or `require(...)` of a string
+# literal, wherever it sits (a call may span lines, so the module is read as
+# one line). Type queries such as `import('./x').T` are reported too: a
+# guarded module names a shell's types with `import type`.
+runtime_loads() {
+	tr '\n' ' ' | { grep -oE "(^|[^A-Za-z0-9_$.])(import|require)[[:space:]]*\([[:space:]]*[\"'\`][^\"'\`]+[\"'\`]" || true; } |
+		sed -E "s/^[^a-z]*(import|require)[[:space:]]*\([[:space:]]*[\"'\`]([^\"'\`]+)[\"'\`]$/\2	<\1()>/" |
+		{ grep -E '^\.' || true; }
+}
+
+# The module a relative specifier resolves to, the way TypeScript's bundler
+# resolution finds it: `./x.js` names `x.ts`, `./x` tries `x.ts` then
+# `x/index.ts`.
 resolve_import() {
-	local target candidate
+	local target stem candidate candidates=()
 	target=$(normalize "${1%/*}/$2")
-	for candidate in "$target.ts" "$target" "$target/index.ts"; do
+	stem=${target%.*}
+	case $2 in
+	*/) candidates=("$target/index.ts" "$target/index.tsx" "$target/index.d.ts") ;;
+	*.js | *.jsx) candidates=("$stem.ts" "$stem.tsx" "$stem.d.ts" "$target") ;;
+	*.mjs) candidates=("$stem.mts" "$stem.d.mts" "$target") ;;
+	*.cjs) candidates=("$stem.cts" "$stem.d.cts" "$target") ;;
+	*.ts | *.tsx | *.mts | *.cts) candidates=("$target") ;;
+	*) candidates=("$target.ts" "$target.tsx" "$target.d.ts" "$target/index.ts" "$target/index.tsx" "$target/index.d.ts") ;;
+	esac
+	for candidate in "${candidates[@]}"; do
 		if [ -f "$candidate" ]; then
 			echo "$candidate"
 			return
@@ -265,12 +307,18 @@ for file in "${guarded[@]}"; do
 		target=$(resolve_import "$file" "$spec")
 		[ -z "$target" ] && continue
 		[ -z "${is_shell[$target]:-}" ] && continue
-		if [[ ${shell_names[$target]} == *" $imported "* ]]; then
+		if [[ $imported == '<'* ]]; then
+			# The allowlist names bindings; a load that binds none is never allowed.
+			fail "$file loads the shell $target with $imported — import the pure names it needs, or name its types with import type"
+		elif [[ ${shell_names[$target]} == *" $imported "* ]]; then
 			shell_name_used["$target $imported"]=1
 		else
 			fail "$file imports $imported from the shell $target — move it into a guarded module, or list it after the shell in $manifest if it is pure"
 		fi
-	done < <(value_imports <<<"$code")
+	done < <(
+		value_imports <<<"$code"
+		runtime_loads <<<"$code"
+	)
 done
 
 for shell in "${shells[@]}"; do
