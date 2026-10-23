@@ -117,7 +117,7 @@ export async function sendActionableNotification(
 
 /**
  * Send a notification about something with a page of its own (a campaign, an
- * automation, a sending domain). Clicking it (macOS/Linux) emits the
+ * automation, a sending domain). Clicking it (macOS, Linux, Windows) emits the
  * `notification-action` event with `action: 'navigate'`, the in-app `url` and
  * `workspaceId` back unchanged, so the app can open that page in the
  * workspace that sent it. No buttons; other targets show a plain notification.

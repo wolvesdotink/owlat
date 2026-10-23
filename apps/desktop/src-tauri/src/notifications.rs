@@ -270,12 +270,14 @@ pub fn send_actionable_notification(
 // A notice about something with a page of its own (a campaign, an automation,
 // a sending domain) has no message to triage, only a place to go. Clicking it
 // emits `notification-action` with `action: "navigate"` and the in-app path,
-// through the same native crates as the actionable notifications above, so the
-// webview opens that page in the workspace that sent it. No buttons.
+// so the webview opens that page in the workspace that sent it. No buttons.
+// macOS and Linux go through the same native crates as the actionable
+// notifications above; Windows registers a toast activation handler, which
+// needs no buttons and so works where actions do not.
 
 /// What a link notification opens, echoed back in its click event.
 #[cfg_attr(
-    not(any(target_os = "macos", target_os = "linux", test)),
+    not(any(target_os = "macos", target_os = "linux", windows, test)),
     allow(dead_code)
 )]
 struct LinkTarget {
@@ -296,7 +298,7 @@ impl LinkTarget {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows, test))]
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LinkActionEvent {
@@ -308,7 +310,7 @@ struct LinkActionEvent {
     notification_id: u64,
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows, test))]
 impl LinkActionEvent {
     fn clicked(target: &LinkTarget) -> Self {
         Self {
@@ -320,7 +322,7 @@ impl LinkActionEvent {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn emit_link_click(app: &AppHandle, target: &LinkTarget) {
     use tauri::Emitter;
     let _ = app.emit("notification-action", LinkActionEvent::clicked(target));
@@ -364,7 +366,50 @@ fn notify_with_link(app: &AppHandle, title: String, body: String, target: LinkTa
     });
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(windows)]
+fn notify_with_link(app: &AppHandle, title: String, body: String, target: LinkTarget) {
+    use tauri_winrt_notification::Toast;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let app_id = windows_toast_app_id(&app);
+        let clicked = app.clone();
+        // The activation handler runs on a system thread when the toast (or
+        // its Action Center entry, while the app is running) is clicked; the
+        // webview's router focuses the window and opens the page.
+        let _ = Toast::new(&app_id)
+            .title(&title)
+            .text1(&body)
+            .on_activated(move |_| {
+                emit_link_click(&clicked, &target);
+                Ok(())
+            })
+            .show();
+    });
+}
+
+/// The AppUserModelID toasts are sent under, chosen the way the notification
+/// plugin chooses it so link toasts group with the app's other notifications:
+/// the bundle identifier for an installed app, PowerShell's id for a binary
+/// run from a cargo target directory, which Windows has no registration for.
+#[cfg(windows)]
+fn windows_toast_app_id(app: &AppHandle) -> String {
+    use std::path::MAIN_SEPARATOR as SEP;
+    use tauri_winrt_notification::Toast;
+    let from_target_dir = tauri::utils::platform::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.display().to_string()))
+        .is_some_and(|dir| {
+            dir.ends_with(&format!("{SEP}target{SEP}debug"))
+                || dir.ends_with(&format!("{SEP}target{SEP}release"))
+        });
+    if from_target_dir {
+        Toast::POWERSHELL_APP_ID.to_string()
+    } else {
+        app.config().identifier.clone()
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 fn notify_with_link(app: &AppHandle, title: String, body: String, _target: LinkTarget) {
     // No click events on this target: a plain notification, which still
     // focuses the app when clicked.
@@ -378,8 +423,8 @@ fn notify_with_link(app: &AppHandle, title: String, body: String, _target: LinkT
 }
 
 /// Tauri command: send a notification that opens an in-app page when clicked
-/// (macOS/Linux), via a `notification-action` event with `action: "navigate"`,
-/// the `url` and `workspace_id` back unchanged.
+/// (macOS, Linux and Windows), via a `notification-action` event with
+/// `action: "navigate"`, the `url` and `workspace_id` back unchanged.
 #[command]
 pub fn send_link_notification(
     app: AppHandle,
