@@ -115,14 +115,15 @@ export function useCampaignForm(
 
 	// The whole validated form in one write, before Send and Schedule. Returns
 	// whether it landed so useCampaignActions can abort the rest of the
-	// sequence; `run` self-toasts its categorized error. The A/B test is left
-	// to useCampaignActions, which enables or disables it next.
+	// sequence; `run` self-toasts its categorized error. A complete A/B test
+	// goes with it (the per-section enable that follows cannot change the
+	// setup of a test that is already on).
 	const handleSaveFields = async (): Promise<boolean> => {
 		if (!audience.value) {
 			errors.value.audience = t('shared.useCampaignForm.errors.audienceRequired');
 			return false;
 		}
-		const { abTest: _abTest, ...fields } = drafts.payload();
+		const fields = drafts.payload();
 		const result = await saveDraft({ campaignId: campaignId.value, ...fields });
 		if (result.ok) drafts.markSent(fields);
 		return result.ok;
