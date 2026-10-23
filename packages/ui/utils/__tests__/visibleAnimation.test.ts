@@ -32,7 +32,7 @@ function installReducedMotion(initial: boolean) {
 		listeners,
 		set(value: boolean) {
 			state.matches = value;
-			for (const listener of [...listeners]) listener();
+			for (const listener of listeners) listener();
 		},
 	};
 }
