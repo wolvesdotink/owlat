@@ -9,6 +9,7 @@ import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
+import { scheduleMarketingNotice } from '../marketing/noticeEvents';
 import { contactEmailOf, loadSend, resolveProviderMessageId } from './sendLifecycle/lookups';
 import {
 	deliverabilitySignalValidator,
@@ -115,9 +116,30 @@ export const applySnapshot = internalMutation({
 			};
 			if (existing) await ctx.db.patch(existing._id, fields);
 			else await ctx.db.insert('deliverabilityRouteStates', fields);
+
+			// The MTA's breaker for this provider just opened (a bounce or
+			// complaint spike): sending there is held. Only the edge notifies;
+			// while hysteresis keeps the signal, every later snapshot is the
+			// same hold. A row last written longer ago than a signal stays
+			// fresh says nothing about now, so it counts as closed.
+			const wasOpen =
+				existing !== null &&
+				args.appliedAt - existing.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
+				hasBreakerSignal(existing.signals);
+			if (provider !== 'all' && hasBreakerSignal(persistedSignals) && !wasOpen) {
+				await scheduleMarketingNotice(ctx, {
+					kind: 'delivery_hold',
+					provider,
+					openedAt: args.appliedAt,
+				});
+			}
 		}
 	},
 });
+
+function hasBreakerSignal(signals: ReadonlyArray<{ source: string }>): boolean {
+	return signals.some((signal) => signal.source === 'breaker_open');
+}
 
 /**
  * Cache the MTA's MX-derived provider identity after a successful delivery.

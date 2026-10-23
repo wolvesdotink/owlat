@@ -56,6 +56,10 @@ export const TENANT_TABLES = [
 	'contactPropertyDeletionJobs',
 	'contactProperties',
 
+	// ── Marketing notifications (point at automations, campaigns, domains) ──
+	'marketingNotices',
+	'marketingNotificationSettings',
+
 	// ── Automations (children first) ──
 	'automationStepRuns',
 	'automationRuns',

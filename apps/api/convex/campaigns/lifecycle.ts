@@ -15,6 +15,9 @@
  *                                          system-source transitions).
  *   start_ab_test_if_enabled             — cross-machine; fires on
  *                                          → sending when isABTest.
+ *   notify_marketing                     — fires on → scheduled (the
+ *                                          15-minute reminder) and → sent
+ *                                          (the "finished" notice).
  *
  * `userId` discriminates user-driven vs system-source:
  *   - user mutations pass session.userId.
@@ -39,6 +42,12 @@ import {
 	sendTimeOptimizationValidator,
 	type SendTimeOptimizationSettings,
 } from '../lib/validators/sendTime';
+import type { MarketingNoticeEvent } from '../lib/validators/marketingNotifications';
+import {
+	CAMPAIGN_FINISHED_SETTLE_MS,
+	campaignReminderDelayMs,
+	scheduleMarketingNotice,
+} from '../marketing/noticeEvents';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -177,6 +186,13 @@ type Effect =
 			userId: string;
 	  }
 	| {
+			// Marketing notifications: "finished" a few minutes after → sent, and
+			// the "sends in 15 min" reminder on → scheduled.
+			kind: 'notify_marketing';
+			event: MarketingNoticeEvent;
+			delayMs: number;
+	  }
+	| {
 			kind: 'start_ab_test_if_enabled';
 			campaignId: Id<'campaigns'>;
 			/** Sub-tag prefixed with `system:` — the AB test lifecycle records
@@ -247,6 +263,24 @@ function reduce(
 			kind: 'schedule_campaign_send_orchestrator',
 			campaignId: campaign._id,
 			delayMs,
+		});
+		const reminderDelayMs = campaignReminderDelayMs(input.scheduledAt, input.at);
+		if (reminderDelayMs !== null) {
+			effects.push({
+				kind: 'notify_marketing',
+				event: {
+					kind: 'campaign_reminder',
+					campaignId: campaign._id,
+					scheduledAt: input.scheduledAt,
+				},
+				delayMs: reminderDelayMs,
+			});
+		}
+	} else if (input.to === 'sent') {
+		effects.push({
+			kind: 'notify_marketing',
+			event: { kind: 'campaign_finished', campaignId: campaign._id },
+			delayMs: CAMPAIGN_FINISHED_SETTLE_MS,
 		});
 	} else if (input.to === 'sending') {
 		effects.push({
@@ -455,6 +489,10 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 				await trackEvent(ctx, { userId: effect.userId }, effect.event, {
 					campaignId: effect.campaignId,
 				});
+				break;
+			}
+			case 'notify_marketing': {
+				await scheduleMarketingNotice(ctx, effect.event, effect.delayMs);
 				break;
 			}
 			case 'start_ab_test_if_enabled': {

@@ -50,6 +50,7 @@ import { answerCatchUpTables } from './schema/answerCatchUp';
 import { migrationRunTables } from './schema/migrationRuns';
 import { bookingTables } from './schema/booking';
 import { pushSubscriptionTables } from './schema/pushSubscriptions';
+import { marketingNotificationTables } from './schema/marketingNotifications';
 import { emailCoeditingTables } from './schema/emailCoediting';
 import { imapServerTables } from './schema/imapServers';
 import { threadBriefTables } from './schema/threadBrief';
@@ -113,6 +114,7 @@ export default defineSchema({
 	...migrationRunTables,
 	...bookingTables,
 	...pushSubscriptionTables,
+	...marketingNotificationTables,
 	...emailCoeditingTables,
 	...imapServerTables,
 	...threadBriefTables,

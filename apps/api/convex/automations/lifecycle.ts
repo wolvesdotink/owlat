@@ -31,6 +31,7 @@ import { trackEvent } from '../lib/posthogHelpers';
 import { recordListingCounter } from '../lib/listingCounters';
 import { loadOrderedSteps } from './steps';
 import { getLive } from '../lib/softDelete';
+import { scheduleMarketingNotice } from '../marketing/noticeEvents';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -392,7 +393,11 @@ export async function recordAutomationRunFailure(
 		});
 		// `automation.status` is still 'active' (the counter patch above doesn't
 		// touch it), so dispatch sees the correct from-state.
-		await dispatch(ctx, automation, { to: 'paused', at: Date.now() }, BREAKER_ACTOR);
+		const pausedAt = Date.now();
+		const outcome = await dispatch(ctx, automation, { to: 'paused', at: pausedAt }, BREAKER_ACTOR);
+		if (outcome.ok) {
+			await scheduleMarketingNotice(ctx, { kind: 'automation_paused', automationId, pausedAt });
+		}
 	}
 }
 

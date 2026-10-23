@@ -288,6 +288,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	visualizations: makeSweepStep('visualizations'),
 	dashboardLayouts: makeSweepStep('dashboardLayouts'),
 	pushSubscriptions: makeSweepStep('pushSubscriptions'),
+	marketingNotices: makeSweepStep('marketingNotices'),
+	marketingNotificationSettings: makeSweepStep('marketingNotificationSettings'),
 	connectedApps: makeSweepStep('connectedApps'),
 	pluginStorageEntries: makeSweepStep('pluginStorageEntries'),
 	pluginStorageUsage: makeSweepStep('pluginStorageUsage'),

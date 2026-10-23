@@ -182,6 +182,11 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'formSubmissions',
 	'formEndpoints',
 
+	// Marketing notices point at automations, campaigns, domains and
+	// deliverability alerts: gone before any of them.
+	'marketingNotices',
+	'marketingNotificationSettings',
+
 	// Automation children before parents
 	'automationStepRuns',
 	'automationRuns',
