@@ -9,7 +9,8 @@
  *     visible and when the person comes back, never twice within a minute.
  *   - SAFE RELOAD. A change of page reloads the tab at its destination only
  *     when nothing would be lost at that moment; otherwise it navigates as
- *     usual. The decision never waits, so no other navigation can overtake it.
+ *     usual. The decision never waits, and a navigation another request
+ *     replaced while an earlier guard waited never reloads.
  *   - NO LOOPS. A reload that landed on the old build again does not reload
  *     by itself a second time.
  */
@@ -108,6 +109,7 @@ function testRouter(): Router {
 			{ path: '/inbox', component: Page },
 			{ path: '/inbox/:id', component: Page },
 			{ path: '/settings', component: Page },
+			{ path: '/old-settings', redirect: '/settings' },
 		],
 	});
 }
@@ -127,9 +129,14 @@ interface Harness {
 
 const stops: Array<() => void> = [];
 
-async function harness(options: Partial<AppVersionWatchDeps> = {}): Promise<Harness> {
+async function harness(
+	options: Partial<AppVersionWatchDeps> = {},
+	/** Guards registered before the watch's own, as Nuxt's route middleware is. */
+	earlierGuards: (router: Router) => void = () => {}
+): Promise<Harness> {
 	const router = testRouter();
 	await router.push('/inbox');
+	earlierGuards(router);
 	const visible = { value: true };
 	const deps = {
 		bootBuildId: BOOT,
@@ -324,6 +331,57 @@ describe('createAppVersionWatch: reloading on navigation', () => {
 		await h.router.push('/inbox/42');
 		expect(h.assign).toHaveBeenCalledTimes(1);
 		expect(h.assign).toHaveBeenCalledWith('/inbox/42');
+	});
+
+	it('reloads at the destination of a redirect', async () => {
+		const h = await harness();
+		await h.watch.check();
+		await h.router.push('/old-settings');
+		expect(h.assign).toHaveBeenCalledWith('/settings');
+	});
+
+	it('never reloads into a navigation a newer request replaced while an earlier guard waited', async () => {
+		let hold = false;
+		const waiting = new Map<string, () => void>();
+		const h = await harness({}, (router) =>
+			router.beforeEach((to) =>
+				hold ? new Promise<void>((resume) => void waiting.set(to.fullPath, resume)) : undefined
+			)
+		);
+		await h.router.push('/settings');
+		await h.watch.check();
+		hold = true;
+
+		// Asking for the page already shown runs no guard, yet replaces the wait.
+		const toInbox = h.router.push('/inbox');
+		await tick();
+		await h.router.push('/settings');
+		waiting.get('/inbox')?.();
+		await toInbox;
+		expect(h.assign).not.toHaveBeenCalled();
+		expect(h.router.currentRoute.value.path).toBe('/settings');
+
+		// Back in the history while another navigation waits: only the back reloads.
+		const toArticle = h.router.push('/inbox/42');
+		await tick();
+		h.router.back();
+		await tick();
+		waiting.get('/inbox/42')?.();
+		await toArticle;
+		expect(h.assign).not.toHaveBeenCalled();
+		waiting.get('/inbox')?.();
+		await tick();
+		expect(h.assign).toHaveBeenCalledTimes(1);
+		expect(h.assign).toHaveBeenCalledWith('/inbox');
+	});
+
+	it('gives the router back its push and replace once stopped', async () => {
+		const router = testRouter();
+		const { push, replace } = router;
+		const h = await harness({ router });
+		h.stop();
+		expect(router.push).toBe(push);
+		expect(router.replace).toBe(replace);
 	});
 
 	it('does not reload by itself again after a reload landed on the old build', async () => {

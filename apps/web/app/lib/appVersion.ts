@@ -10,10 +10,10 @@
  *  - `update` holds the deployed build, and the banner offers Reload and the
  *    release's notes;
  *  - the next change of page reloads the tab instead, at its destination,
- *    when nothing would be lost at that moment (`reloadSafety.ts`). The
- *    decision is taken without waiting, so no newer navigation can overtake
- *    it; a draft still on its way to the device leaves the reload to a later
- *    change of page.
+ *    when nothing would be lost at that moment (`reloadSafety.ts`) and the
+ *    destination is still the one last asked for (`navigationRequests.ts`).
+ *    The decision never waits; a draft still on its way to the device leaves
+ *    the reload to a later change of page.
  *
  * A reload the server answered with the old build again (a cache, a deploy
  * still rolling out) is remembered for the session, so the tab never loops on
@@ -27,6 +27,7 @@
 import { shallowRef, type ShallowRef } from 'vue';
 import type { Router } from 'vue-router';
 import { OWLAT_REPO_URL } from '~/utils/releaseNotes';
+import { trackNavigationRequests } from './navigationRequests';
 
 export const CHECK_INTERVAL_MS = 10 * 60_000;
 export const MIN_CHECK_GAP_MS = 60_000;
@@ -93,7 +94,7 @@ export interface AppVersionWatchDeps {
 	bootBuildId: string;
 	/** The deployed build's answer: the parsed JSON body, or anything when it failed. */
 	fetchDeployed: () => Promise<unknown>;
-	router: Pick<Router, 'beforeEach' | 'resolve'>;
+	router: Pick<Router, 'beforeEach' | 'resolve' | 'push' | 'replace' | 'options'>;
 	/** Let pending device writes land, then answer whether a reload loses nothing. */
 	settleForReload: () => Promise<boolean>;
 	/** Whether a reload right now loses nothing, without waiting for anything. */
@@ -191,15 +192,19 @@ export function createAppVersionWatch(deps: AppVersionWatchDeps): AppVersionWatc
 		// A global before-guard: the leave guards of the page being left have
 		// already run (a page with unsaved edits has asked about them), and the
 		// destination's code has not been fetched yet, which after a deploy may
-		// be a chunk the server no longer has. It must not await: the router
-		// lets a newer navigation (a duplicate one included, which never reaches
-		// this guard) replace one whose guard is still waiting, and a reload
-		// decided after that would load a page the person moved away from.
+		// be a chunk the server no longer has. The router lets a newer request
+		// replace a navigation still in its guards and notices only after all
+		// global guards ran, while an earlier one (Nuxt's route middleware) may
+		// have awaited. So the reload goes only to the destination last asked
+		// for, and the guard itself never awaits, leaving no gap for a request
+		// between that check and the reload.
+		const requests = trackNavigationRequests(deps.router);
 		const removeGuard = deps.router.beforeEach((to, from) => {
 			const deployed = update.value;
 			if (!deployed || reloading || deployed.buildId === missedBuildId) return;
 			// Query and hash changes (a filter, a tab within the page) stay in place.
 			if (to.path === from.path) return;
+			if (!requests.isLatest(to)) return;
 			if (!deps.canReloadNow()) return;
 			leave(deps.router.resolve(to).href);
 			return false;
@@ -210,6 +215,7 @@ export function createAppVersionWatch(deps: AppVersionWatchDeps): AppVersionWatc
 			document.removeEventListener('visibilitychange', onReturn);
 			window.removeEventListener('online', onReturn);
 			removeGuard();
+			requests.stop();
 		};
 	}
 
