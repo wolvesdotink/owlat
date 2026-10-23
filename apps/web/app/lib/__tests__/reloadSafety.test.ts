@@ -25,7 +25,8 @@ import {
 	resetPendingOperations,
 	trackPendingOperation,
 } from '../pendingOperations';
-import { DRAFT_SETTLE_TIMEOUT_MS, registerReloadBlocker, settleForReload } from '../reloadSafety';
+import { registerReloadBlocker } from '../reloadBlockers';
+import { DRAFT_SETTLE_TIMEOUT_MS, canReloadNow, settleForReload } from '../reloadSafety';
 
 function deferred() {
 	let resolve!: () => void;
@@ -117,5 +118,26 @@ describe('settleForReload', () => {
 		const answer = settleForReload();
 		await vi.advanceTimersByTimeAsync(DRAFT_SETTLE_TIMEOUT_MS);
 		expect(await answer).toBe(false);
+	});
+});
+
+describe('canReloadNow', () => {
+	it('answers at once, counting a draft still on its way to the device as lost', () => {
+		expect(canReloadNow()).toBe(true);
+
+		book.unstored = true;
+		book.idle = () => new Promise<void>(() => {});
+		expect(canReloadNow()).toBe(false);
+		book.unstored = false;
+
+		const unregister = registerReloadBlocker(() => true);
+		expect(canReloadNow()).toBe(false);
+		unregister();
+
+		const release = holdPendingWork();
+		expect(canReloadNow()).toBe(false);
+		release(true);
+
+		expect(canReloadNow()).toBe(true);
 	});
 });

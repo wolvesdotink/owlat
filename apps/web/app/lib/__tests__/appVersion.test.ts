@@ -6,9 +6,10 @@
  *   - ONE ANSWER. A different deployed build raises one update; the same
  *     build, a malformed answer or a failed request raise none.
  *   - CHEAP CHECKS. The server is asked on an interval while the tab is
- *     visible and when the person comes back, never more than once a minute.
+ *     visible and when the person comes back, never twice within a minute.
  *   - SAFE RELOAD. A change of page reloads the tab at its destination only
- *     when nothing would be lost; otherwise it navigates as usual.
+ *     when nothing would be lost at that moment; otherwise it navigates as
+ *     usual. The decision never waits, so no other navigation can overtake it.
  *   - NO LOOPS. A reload that landed on the old build again does not reload
  *     by itself a second time.
  */
@@ -116,6 +117,7 @@ interface Harness {
 	router: Router;
 	fetchDeployed: ReturnType<typeof vi.fn>;
 	settleForReload: ReturnType<typeof vi.fn>;
+	canReloadNow: ReturnType<typeof vi.fn>;
 	assign: ReturnType<typeof vi.fn>;
 	reload: ReturnType<typeof vi.fn>;
 	storage: Storage;
@@ -134,6 +136,7 @@ async function harness(options: Partial<AppVersionWatchDeps> = {}): Promise<Harn
 		fetchDeployed: vi.fn(async () => NEXT),
 		router,
 		settleForReload: vi.fn(async () => true),
+		canReloadNow: vi.fn(() => true),
 		assign: vi.fn(),
 		reload: vi.fn(),
 		storage: memoryStorage(),
@@ -148,6 +151,7 @@ async function harness(options: Partial<AppVersionWatchDeps> = {}): Promise<Harn
 		router,
 		fetchDeployed: deps.fetchDeployed as ReturnType<typeof vi.fn>,
 		settleForReload: deps.settleForReload as ReturnType<typeof vi.fn>,
+		canReloadNow: deps.canReloadNow as ReturnType<typeof vi.fn>,
 		assign: deps.assign as ReturnType<typeof vi.fn>,
 		reload: deps.reload as ReturnType<typeof vi.fn>,
 		storage: deps.storage,
@@ -220,6 +224,22 @@ describe('createAppVersionWatch: checking', () => {
 		expect(h.fetchDeployed).toHaveBeenCalledTimes(2);
 	});
 
+	it('keeps the interval check a minute clear of a check the person caused', async () => {
+		const h = await harness({ fetchDeployed: vi.fn(async () => ({ buildId: BOOT })) });
+		await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS - 1_000);
+		window.dispatchEvent(new Event('online'));
+		expect(h.fetchDeployed).toHaveBeenCalledTimes(1);
+
+		// The interval comes due a second later: too soon to ask again.
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(h.fetchDeployed).toHaveBeenCalledTimes(1);
+		await h.watch.check();
+		expect(h.fetchDeployed).toHaveBeenCalledTimes(1);
+
+		await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+		expect(h.fetchDeployed).toHaveBeenCalledTimes(2);
+	});
+
 	it('runs one check at a time', async () => {
 		let answer!: (value: unknown) => void;
 		const h = await harness({
@@ -247,7 +267,7 @@ describe('createAppVersionWatch: reloading on navigation', () => {
 		const h = await harness();
 		await h.router.push('/settings');
 		expect(h.router.currentRoute.value.path).toBe('/settings');
-		expect(h.settleForReload).not.toHaveBeenCalled();
+		expect(h.canReloadNow).not.toHaveBeenCalled();
 	});
 
 	it('reloads once at the destination when nothing would be lost', async () => {
@@ -265,7 +285,7 @@ describe('createAppVersionWatch: reloading on navigation', () => {
 	});
 
 	it('navigates without reloading when something would be lost', async () => {
-		const h = await harness({ settleForReload: vi.fn(async () => false) });
+		const h = await harness({ canReloadNow: vi.fn(() => false) });
 		await h.watch.check();
 		await h.router.push('/settings');
 		expect(h.router.currentRoute.value.path).toBe('/settings');
@@ -277,23 +297,31 @@ describe('createAppVersionWatch: reloading on navigation', () => {
 		await h.watch.check();
 		await h.router.push('/inbox?filter=unread');
 		expect(h.router.currentRoute.value.fullPath).toBe('/inbox?filter=unread');
-		expect(h.settleForReload).not.toHaveBeenCalled();
+		expect(h.canReloadNow).not.toHaveBeenCalled();
 		expect(h.assign).not.toHaveBeenCalled();
 	});
 
-	it('does not reload for a navigation a newer one replaced while it waited', async () => {
-		const waits: Array<(ok: boolean) => void> = [];
-		const h = await harness({
-			settleForReload: vi.fn(() => new Promise<boolean>((resolve) => waits.push(resolve))),
-		});
+	it('decides at once, so no later navigation can be overtaken by a reload', async () => {
+		// A draft is still on its way to the device as the person leaves.
+		let safe = false;
+		const h = await harness({ canReloadNow: vi.fn(() => safe) });
 		await h.watch.check();
-		const first = h.router.push('/settings');
+		void h.router.push('/settings');
 		await tick();
-		const second = h.router.push('/inbox/42');
-		await tick();
-		waits[0]!(true);
-		waits[1]!(true);
-		await Promise.all([first, second]);
+		// Nothing waits: the navigation has already landed, with no reload pending.
+		expect(h.canReloadNow).toHaveBeenCalledTimes(1);
+		expect(h.router.currentRoute.value.path).toBe('/settings');
+
+		// A duplicate navigation never reaches the guard; the draft lands meanwhile.
+		await h.router.push('/settings');
+		safe = true;
+		await vi.runOnlyPendingTimersAsync();
+		expect(h.assign).not.toHaveBeenCalled();
+		// Waiting for drafts is the Reload button's business, never a navigation's.
+		expect(h.settleForReload).not.toHaveBeenCalled();
+
+		// The next change of page, with the draft stored, reloads at its destination.
+		await h.router.push('/inbox/42');
 		expect(h.assign).toHaveBeenCalledTimes(1);
 		expect(h.assign).toHaveBeenCalledWith('/inbox/42');
 	});

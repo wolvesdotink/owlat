@@ -10,16 +10,19 @@
  *  - `update` holds the deployed build, and the banner offers Reload and the
  *    release's notes;
  *  - the next change of page reloads the tab instead, at its destination,
- *    when nothing would be lost (`reloadSafety.ts`).
+ *    when nothing would be lost at that moment (`reloadSafety.ts`). The
+ *    decision is taken without waiting, so no newer navigation can overtake
+ *    it; a draft still on its way to the device leaves the reload to a later
+ *    change of page.
  *
  * A reload the server answered with the old build again (a cache, a deploy
  * still rolling out) is remembered for the session, so the tab never loops on
  * it; the banner stays and a Reload press still works.
  *
  * Checks run every {@link CHECK_INTERVAL_MS} while the tab is visible, and
- * when the person comes back to it or the network returns, at most once per
- * {@link MIN_CHECK_GAP_MS}. A failed, malformed or matching answer changes
- * nothing.
+ * when the person comes back to it or the network returns; whatever asks,
+ * two requests are at least {@link MIN_CHECK_GAP_MS} apart. A failed,
+ * malformed or matching answer changes nothing.
  */
 import { shallowRef, type ShallowRef } from 'vue';
 import type { Router } from 'vue-router';
@@ -93,6 +96,8 @@ export interface AppVersionWatchDeps {
 	router: Pick<Router, 'beforeEach' | 'resolve'>;
 	/** Let pending device writes land, then answer whether a reload loses nothing. */
 	settleForReload: () => Promise<boolean>;
+	/** Whether a reload right now loses nothing, without waiting for anything. */
+	canReloadNow: () => boolean;
 	/** Load `href` as a new document. */
 	assign: (href: string) => void;
 	/** Reload the current document. */
@@ -108,7 +113,10 @@ export type ReloadOutcome = 'reloading' | 'blocked' | 'idle';
 export interface AppVersionWatch {
 	/** The deployed build, once it differs from the one this tab runs. */
 	update: Readonly<ShallowRef<DeployedBuild | null>>;
-	/** Ask the server now (unless a check is running or an update is known). */
+	/**
+	 * Ask the server now, unless a check is running, an update is known or
+	 * the last check started less than {@link MIN_CHECK_GAP_MS} ago.
+	 */
 	check: () => Promise<void>;
 	/** Start the checks and the reload-on-navigation guard. Returns the stop. */
 	start: () => () => void;
@@ -134,7 +142,7 @@ export function createAppVersionWatch(deps: AppVersionWatchDeps): AppVersionWatc
 	if (mark === deps.bootBuildId) writeMark(deps.storage, null);
 
 	async function check(): Promise<void> {
-		if (inFlight || update.value) return;
+		if (inFlight || update.value || now() - lastCheckAt < MIN_CHECK_GAP_MS) return;
 		inFlight = true;
 		lastCheckAt = now();
 		try {
@@ -174,28 +182,25 @@ export function createAppVersionWatch(deps: AppVersionWatchDeps): AppVersionWatc
 			}, CHECK_INTERVAL_MS);
 		};
 		const onReturn = () => {
-			if (!deps.isVisible() || now() - lastCheckAt < MIN_CHECK_GAP_MS) return;
-			void check();
+			if (deps.isVisible()) void check();
 		};
 		schedule();
 		document.addEventListener('visibilitychange', onReturn);
 		window.addEventListener('online', onReturn);
 
-		// Bumped as each navigation reaches this guard, so one still waiting can
-		// tell that a newer navigation has replaced its own.
-		let navigation = 0;
 		// A global before-guard: the leave guards of the page being left have
 		// already run (a page with unsaved edits has asked about them), and the
 		// destination's code has not been fetched yet, which after a deploy may
-		// be a chunk the server no longer has.
-		const removeGuard = deps.router.beforeEach(async (to, from) => {
-			const own = ++navigation;
+		// be a chunk the server no longer has. It must not await: the router
+		// lets a newer navigation (a duplicate one included, which never reaches
+		// this guard) replace one whose guard is still waiting, and a reload
+		// decided after that would load a page the person moved away from.
+		const removeGuard = deps.router.beforeEach((to, from) => {
 			const deployed = update.value;
 			if (!deployed || reloading || deployed.buildId === missedBuildId) return;
 			// Query and hash changes (a filter, a tab within the page) stay in place.
 			if (to.path === from.path) return;
-			if (!(await deps.settleForReload())) return;
-			if (own !== navigation || reloading) return;
+			if (!deps.canReloadNow()) return;
 			leave(deps.router.resolve(to).href);
 			return false;
 		});

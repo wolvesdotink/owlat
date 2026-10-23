@@ -1,6 +1,6 @@
-import { nextTick, readonly, ref, onMounted, onUnmounted, type Ref } from 'vue';
+import { nextTick, readonly, ref, onUnmounted, type Ref } from 'vue';
 import { onBeforeRouteLeave, useRouter, type RouteLocationRaw } from 'vue-router';
-import { registerReloadBlocker } from '~/lib/reloadSafety';
+import { usePageExitGuard } from '~/composables/usePageExitGuard';
 
 export interface UseUnsavedChangesReturn {
 	showDialog: Ref<boolean>;
@@ -46,26 +46,10 @@ export function useUnsavedChanges(options: UseUnsavedChangesOptions = {}): UseUn
 		pendingRoute.value = null;
 	};
 
-	// Handle browser/tab close warning
-	const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-		if (hasUnsavedChanges.value) {
-			e.preventDefault();
-			e.returnValue = '';
-			return '';
-		}
-	};
-
-	// The same edits keep an app update from reloading the page on its own.
-	let unregisterReloadBlocker: (() => void) | undefined;
-
-	onMounted(() => {
-		window.addEventListener('beforeunload', handleBeforeUnload);
-		unregisterReloadBlocker = registerReloadBlocker(() => hasUnsavedChanges.value);
-	});
+	// The browser asks before the tab closes, and an app update does not reload over the edits.
+	usePageExitGuard(() => hasUnsavedChanges.value);
 
 	onUnmounted(() => {
-		window.removeEventListener('beforeunload', handleBeforeUnload);
-		unregisterReloadBlocker?.();
 		decision += 1;
 	});
 

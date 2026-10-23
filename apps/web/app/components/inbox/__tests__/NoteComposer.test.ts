@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import NoteComposer from '../NoteComposer.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useComposerDrafts } from '~/composables/useComposerDrafts';
+import { settleForReload } from '~/lib/reloadSafety';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -81,6 +82,22 @@ describe('NoteComposer', () => {
 		);
 		await type(edit.wrapper, 'saved note, edited');
 		expect(useComposerDrafts().get('answer-note', 'th1')).toBeNull();
+	});
+
+	it('keeps an app update from reloading over an unsaved edit of a saved note', async () => {
+		useComposerDrafts().bindUser(null);
+		const edit = mountComposer(
+			vi.fn(async () => true),
+			{ draftTarget: 'th1', editing: true, initialBody: 'saved note' }
+		);
+		expect(await settleForReload()).toBe(true);
+
+		await type(edit.wrapper, 'saved note, edited');
+		expect(await settleForReload()).toBe(false);
+
+		// Back to the saved text: nothing to lose.
+		await type(edit.wrapper, 'saved note');
+		expect(await settleForReload()).toBe(true);
 	});
 
 	it('says only the team sees the note', () => {

@@ -21,7 +21,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
-import { ref } from 'vue';
+import { effectScope, ref } from 'vue';
+import { hasReloadBlocker } from '~/lib/reloadBlockers';
 import {
 	createComposerDraftBook,
 	teamThreadHasDraft,
@@ -382,5 +383,30 @@ describe('useComposerDraft', () => {
 		draft.value = { body: 'edited' };
 		expect(draft.value.body).toBe('edited');
 		expect(useComposerDrafts().get('answer-note', '')).toBeNull();
+	});
+
+	it('keeps an update from reloading over text only the box holds, while its owner lives', () => {
+		useComposerDrafts().bindUser(null);
+		const target = ref<string | null>(null);
+		const scope = effectScope();
+		const { draft } = scope.run(() =>
+			useComposerDraft('answer-note', () => target.value, { body: 'saved note' })
+		)!;
+		expect(hasReloadBlocker()).toBe(false);
+
+		draft.value = { body: 'edited' };
+		expect(hasReloadBlocker()).toBe(true);
+		draft.value = { body: 'saved note' };
+		expect(hasReloadBlocker()).toBe(false);
+
+		// With a target the book holds the text and answers for it.
+		draft.value = { body: 'edited' };
+		target.value = 'th1';
+		expect(hasReloadBlocker()).toBe(false);
+
+		target.value = null;
+		expect(hasReloadBlocker()).toBe(true);
+		scope.stop();
+		expect(hasReloadBlocker()).toBe(false);
 	});
 });

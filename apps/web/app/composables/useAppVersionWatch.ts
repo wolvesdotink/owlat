@@ -7,7 +7,7 @@
 import { useRouter } from 'vue-router';
 import { createAppVersionWatch, isComparableBuildId, type AppVersionWatch } from '~/lib/appVersion';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
-import { settleForReload } from '~/lib/reloadSafety';
+import { canReloadNow, settleForReload } from '~/lib/reloadSafety';
 
 /** A check the server has not answered by then counts as failed. */
 const FETCH_TIMEOUT_MS = 10_000;
@@ -41,6 +41,7 @@ export function useAppVersionWatch(): AppVersionWatch | null {
 		},
 		router: useRouter(),
 		settleForReload,
+		canReloadNow,
 		assign: (href) => window.location.assign(href),
 		reload: () => window.location.reload(),
 		storage: sessionStore(),

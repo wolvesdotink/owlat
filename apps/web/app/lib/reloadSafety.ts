@@ -7,9 +7,10 @@
  *  - `pendingOperations`: writes the server has not acknowledged yet, the
  *    holds of uploads and debounced saves, and its unsaved-work probes (a
  *    failed autosave, the offline outbox);
- *  - the blockers registered here: a page whose edits are not saved
- *    (`useUnsavedChanges` registers its dirty flag for as long as it is
- *    mounted);
+ *  - the reload blockers (`reloadBlockers.ts`): edits that live only in a
+ *    mounted component, such as a page whose form is not saved
+ *    (`usePageExitGuard`) or an editor of a note already saved (a
+ *    component-local composer draft);
  *  - the composer-draft book: unsent text whose device copy has not committed.
  *
  * The book is the only owner that settles by itself, so it is the only one a
@@ -17,29 +18,28 @@
  */
 import { useComposerDrafts } from '~/composables/useComposerDrafts';
 import { hasPendingWork } from '~/lib/pendingOperations';
+import { hasReloadBlocker } from '~/lib/reloadBlockers';
 
 /** How long a reload waits for composer drafts to reach the device before giving up. */
 export const DRAFT_SETTLE_TIMEOUT_MS = 3_000;
 
-const blockers = new Set<() => boolean>();
-
-/**
- * Keep the page from reloading while `probe` answers true. Returns the
- * unregister.
- */
-export function registerReloadBlocker(probe: () => boolean): () => void {
-	blockers.add(probe);
-	return () => blockers.delete(probe);
-}
-
 /** Something other than composer drafts would be lost by a reload. */
 function blockedOutsideDrafts(): boolean {
-	return hasPendingWork() || [...blockers].some((probe) => probe());
+	return hasPendingWork() || hasReloadBlocker();
 }
 
 /** A reload now would lose something. */
 function reloadBlocked(): boolean {
 	return blockedOutsideDrafts() || useComposerDrafts().hasUnstoredDrafts();
+}
+
+/**
+ * Whether the page may reload right now, without waiting for anything. For a
+ * decision that cannot wait, such as one taken inside a navigation guard: a
+ * draft still on its way to the device counts as lost.
+ */
+export function canReloadNow(): boolean {
+	return !reloadBlocked();
 }
 
 /**

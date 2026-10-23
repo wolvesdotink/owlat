@@ -18,7 +18,16 @@
  *    on the way to the device land there, and when they sign in again their
  *    copy loads only after those have.
  */
-import { shallowRef, watch, effectScope, computed, type WritableComputedRef } from 'vue';
+import {
+	shallowRef,
+	watch,
+	effectScope,
+	computed,
+	getCurrentScope,
+	onScopeDispose,
+	type WritableComputedRef,
+} from 'vue';
+import { registerReloadBlocker } from '~/lib/reloadBlockers';
 import {
 	composerDraftHasContent,
 	composerDraftKey,
@@ -286,7 +295,9 @@ export function followComposerDraftsUser(userId: () => string | null | undefined
 /**
  * One composer's draft as a ref. `target` names the thread or room; while it
  * is null (no target known, or a box that must not be kept, such as an edit
- * of something already saved) the value lives in the component alone.
+ * of something already saved) the value lives in the component alone, and
+ * while it differs from `blank` it keeps an app update from reloading the
+ * page over it (`reloadBlockers.ts`), for as long as the caller's scope lives.
  *
  * `pin()` remembers the target, and who is signed in, as they are now and
  * returns an updater for that draft, so a send or upload that resolves after
@@ -314,6 +325,14 @@ export function useComposerDraft<K extends ComposerDraftKind>(
 		get: () => read(target() ?? null),
 		set: (fields) => write(target() ?? null, fields),
 	});
+	if (getCurrentScope()) {
+		const blankJson = JSON.stringify(blank);
+		onScopeDispose(
+			registerReloadBlocker(
+				() => (target() ?? null) === null && JSON.stringify(local.value) !== blankJson
+			)
+		);
+	}
 	return {
 		draft,
 		pin() {
