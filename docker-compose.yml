@@ -679,6 +679,10 @@ services:
     build:
       context: .
       dockerfile: apps/code-worker/Dockerfile
+      # The release this worker reports with its wire version; without it a
+      # source build reports `dev` whatever the image tag says.
+      args:
+        OWLAT_VERSION: ${OWLAT_VERSION:-dev}
     volumes:
       - code-workspace:/workspace
     environment:
@@ -1095,6 +1099,10 @@ services:
     build:
       context: .
       dockerfile: apps/imap/Dockerfile
+      # The release this worker reports with its wire version; without it a
+      # source build reports `dev` whatever the image tag says.
+      args:
+        OWLAT_VERSION: ${OWLAT_VERSION:-dev}
     ports:
       - '${IMAP_PORT:-993}:993'
     environment:
@@ -1178,6 +1186,10 @@ services:
     build:
       context: .
       dockerfile: apps/mail-sync/Dockerfile
+      # The release this worker reports with its wire version; without it a
+      # source build reports `dev` whatever the image tag says.
+      args:
+        OWLAT_VERSION: ${OWLAT_VERSION:-dev}
     environment:
       MAIL_SYNC_PORT: '3200'
       CONVEX_URL: http://convex:3210
