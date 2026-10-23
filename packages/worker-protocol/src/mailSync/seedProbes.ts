@@ -8,11 +8,7 @@ import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
 import { SEED_PLACEMENTS } from '@owlat/shared/seedPlacement';
 import { v, type Infer } from 'convex/values';
 import { defineEndpoint } from '../contract';
-
-function literals<const T extends string>(values: readonly [T, ...T[]]) {
-	const [first, ...rest] = values;
-	return v.union(v.literal(first), ...rest.map((value) => v.literal(value)));
-}
+import { literalUnion } from '../literalUnion';
 
 /**
  * One seed mailbox's outstanding probe work. Carries no credential and nothing
@@ -23,7 +19,7 @@ export const seedProbeWorkItemValidator = v.object({
 	organizationId: v.string(),
 	accountId: v.id('externalMailAccounts'),
 	address: v.string(),
-	provider: literals(DESTINATION_PROVIDER_KEYS),
+	provider: literalUnion(DESTINATION_PROVIDER_KEYS),
 	/** Probes dispatched, settled, and still unclassified. */
 	probeIds: v.array(v.string()),
 	/** Probes past the give-up horizon — report MISSING without searching. */
@@ -92,7 +88,7 @@ export const recordSeedProbeClassification = defineEndpoint({
 		}),
 		v.object({
 			recorded: v.literal(true),
-			placement: literals(SEED_PLACEMENTS),
+			placement: literalUnion(SEED_PLACEMENTS),
 			hygiene: v.object({ markRead: v.boolean(), click: v.boolean() }),
 		})
 	),

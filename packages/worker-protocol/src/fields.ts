@@ -10,6 +10,7 @@
  */
 
 import { v, type Infer } from 'convex/values';
+import { literalUnion } from './literalUnion';
 
 /**
  * The six folders every mailbox is provisioned with. Also the accepted
@@ -19,14 +20,7 @@ import { v, type Infer } from 'convex/values';
 export const SYSTEM_FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive'] as const;
 export type FolderRole = (typeof SYSTEM_FOLDER_ROLES)[number];
 /** The same six roles as a Convex validator, for `mailFolders.role` and the folder-scoped args. */
-export const folderRoleValidator = v.union(
-	v.literal('inbox'),
-	v.literal('sent'),
-	v.literal('drafts'),
-	v.literal('trash'),
-	v.literal('spam'),
-	v.literal('archive')
-);
+export const folderRoleValidator = literalUnion(SYSTEM_FOLDER_ROLES);
 
 /** Which protocol an app password signs in to. */
 export const mailAppPasswordScopeValidator = v.union(v.literal('imap'), v.literal('smtp'));
@@ -102,7 +96,7 @@ export type RemoteSighting = Infer<typeof remoteSightingValidator>;
 /** 'full' — two-way sync; 'incoming' — only new mail comes in. */
 export const EXTERNAL_SYNC_MODES = ['full', 'incoming'] as const;
 export type ExternalSyncMode = (typeof EXTERNAL_SYNC_MODES)[number];
-export const externalSyncModeValidator = v.union(v.literal('full'), v.literal('incoming'));
+export const externalSyncModeValidator = literalUnion(EXTERNAL_SYNC_MODES);
 
 /** What one queued write-back (`externalMailRemoteOps`) does. */
 export const remoteOpKindValidator = v.union(
