@@ -1,6 +1,7 @@
 /**
- * Conformance pins for the two CONTEXTUAL palette providers (campaigns list,
- * open mail conversation).
+ * Conformance pins for the CONTEXTUAL palette providers built here (campaigns
+ * list, the focused composer's saved replies). The open conversation's verbs
+ * are pinned in `commandPaletteThreadSurfaces.test.ts`.
  *
  * They are the pattern-setters for the provider registry, so what is pinned here
  * is the seam rather than the copy: which group key and order a surface claims,
@@ -18,14 +19,10 @@ import {
 	CAMPAIGN_COMMAND_GROUP_KEY,
 	CAMPAIGN_COMMAND_PROVIDER_ID,
 	CAMPAIGN_COMMAND_PROVIDER_PRIORITY,
-	POSTBOX_THREAD_COMMAND_GROUP_KEY,
-	POSTBOX_THREAD_COMMAND_PROVIDER_PRIORITY,
 	type CampaignSurfaceRow,
 	buildCampaignSurfaceGroups,
 	buildSavedReplyGroups,
-	buildThreadSurfaceGroups,
 } from '../commandPaletteSurfaces';
-import { POSTBOX_COMMAND_PROVIDER_PRIORITY } from '~/composables/postbox/usePostboxCommandSurface';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;
@@ -44,19 +41,6 @@ function campaignGroups(query = '', rows: CampaignSurfaceRow[] = ROWS, overrides
 			t: translate,
 			onNewCampaign: () => {},
 			onOpenCampaign: () => {},
-			...overrides,
-		},
-		query
-	);
-}
-
-function threadGroups(query = '', overrides = {}) {
-	return buildThreadSurfaceGroups(
-		{
-			subject: () => 'Invoice #12',
-			t: translate,
-			onArchive: () => {},
-			onReply: () => {},
 			...overrides,
 		},
 		query
@@ -164,44 +148,6 @@ describe('the campaigns provider inside the shell', () => {
 	});
 });
 
-describe('buildThreadSurfaceGroups', () => {
-	it('offers reply and archive against the open conversation', () => {
-		const [group] = threadGroups();
-		expect(group).toMatchObject({ key: POSTBOX_THREAD_COMMAND_GROUP_KEY, order: 0 });
-		expect(group!.items.map((item) => [item.id, item.label, item.subtitle])).toEqual([
-			['postbox:thread-reply', 'Reply', 'Invoice #12'],
-			['postbox:thread-archive', 'Archive conversation', 'Invoice #12'],
-		]);
-	});
-
-	it('names the reader keys the two verbs share, for the row chips', () => {
-		const [group] = threadGroups();
-		expect(group!.items.map((item) => item.shortcutId)).toEqual([
-			'postbox.reply',
-			'postbox.archive',
-		]);
-	});
-
-	it('runs the reader action it was handed, not a broadcast', () => {
-		const onArchive = vi.fn();
-		const [group] = threadGroups('archive', { onArchive });
-		expect(group!.items).toHaveLength(1);
-		group!.items[0]?.run();
-		expect(onArchive).toHaveBeenCalledTimes(1);
-	});
-
-	it('drops the subject line when the message has no subject', () => {
-		const [group] = threadGroups('', { subject: () => '   ' });
-		expect(group!.items.every((item) => item.subtitle === undefined)).toBe(true);
-	});
-
-	it('is consulted before the Postbox layout provider within the external tier', () => {
-		expect(POSTBOX_THREAD_COMMAND_PROVIDER_PRIORITY).toBeLessThan(
-			POSTBOX_COMMAND_PROVIDER_PRIORITY
-		);
-	});
-});
-
 describe('the focused composer’s saved replies', () => {
 	const replies = [
 		{ _id: 'sn_1', name: 'Refund policy', shortcut: 'refund' },
@@ -217,26 +163,44 @@ describe('the focused composer’s saved replies', () => {
 		return { built, onInsert, onSaveCurrent };
 	}
 
-	it('lists the replies, with their shortcut, and "Save as reply" last', () => {
+	it('offers one "Insert saved reply…" submenu and "Save as reply" while nothing is typed', () => {
 		const [group] = groups().built;
 		expect(group?.heading).toBe('Saved replies');
 		expect(group?.mode).toBe('commands');
-		expect(group?.items.map((item) => [item.label, item.subtitle])).toEqual([
+		expect(group?.items.map((item) => item.label)).toEqual([
+			'Insert saved reply…',
+			'Save as reply',
+		]);
+		const submenu = group!.items[0]!;
+		expect(submenu.argument?.options.map((option) => [option.label, option.subtitle])).toEqual([
 			['Refund policy', ';refund'],
 			['Opening hours', undefined],
-			['Save as reply', undefined],
 		]);
 	});
 
-	it('filters by the palette query, the shortcut included', () => {
+	it('also lists the matching replies directly once something is typed, shortcut included', () => {
 		expect(groups('refund').built[0]?.items.map((item) => item.label)).toEqual(['Refund policy']);
+		expect(groups('insert').built[0]?.items.map((item) => item.label)).toEqual([
+			'Insert saved reply…',
+		]);
 	});
 
-	it('inserts the chosen reply, or opens "Save as reply"', () => {
+	it('inserts the chosen reply from the submenu or a direct row, or opens "Save as reply"', () => {
 		const { built, onInsert, onSaveCurrent } = groups();
-		built[0]?.items[1]?.run();
+		built[0]?.items[0]?.argument?.options[1]?.run();
 		expect(onInsert).toHaveBeenCalledWith('sn_2');
-		built[0]?.items[2]?.run();
+		built[0]?.items[1]?.run();
 		expect(onSaveCurrent).toHaveBeenCalled();
+		const typed = groups('opening');
+		typed.built[0]?.items[0]?.run();
+		expect(typed.onInsert).toHaveBeenCalledWith('sn_2');
+	});
+
+	it('offers only "Save as reply" when there are no replies yet', () => {
+		const built = buildSavedReplyGroups(
+			{ replies: () => [], t: translate, onInsert: vi.fn(), onSaveCurrent: vi.fn() },
+			''
+		);
+		expect(built[0]?.items.map((item) => item.id)).toEqual(['saved-reply:save-current']);
 	});
 });

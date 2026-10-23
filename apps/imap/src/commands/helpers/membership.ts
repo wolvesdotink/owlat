@@ -42,6 +42,7 @@
  * memberships.
  */
 
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import { fn, type ConvexClient, type MembershipPage } from '../../convex.js';
 import { loadFolderUids } from './folderPaging.js';
 
@@ -60,6 +61,7 @@ const MAX_ATTEMPTS = 6;
  * down by up to half, so sessions torn by the same write do not retry in step.
  */
 const RETRY_BASE_MS = 50;
+const WALK_RETRY: RetryPolicy = { baseMs: RETRY_BASE_MS, jitter: { kind: 'equal' } };
 
 /**
  * The folder changed between the pages of every walk {@link loadCurrentUids}
@@ -135,10 +137,14 @@ export async function loadCurrentUids(
 	throw new MembershipUnsettledError(folderId);
 }
 
+/** The wait before walk `attempt` (1-based retry count). */
+export function walkRetryDelayMs(attempt: number, random: () => number = Math.random): number {
+	return nextDelay(WALK_RETRY, attempt - 1, undefined, random);
+}
+
 /** Sleep before walk `attempt` (1-based retry count), or throw once `signal` aborts. */
 function backoff(attempt: number, signal?: AbortSignal): Promise<void> {
-	const full = RETRY_BASE_MS * 2 ** (attempt - 1);
-	const ms = full / 2 + Math.random() * (full / 2);
+	const ms = walkRetryDelayMs(attempt);
 	return new Promise((resolve, reject) => {
 		const onAbort = () => {
 			clearTimeout(timer);

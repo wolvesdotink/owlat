@@ -43,7 +43,7 @@
  * Beyond that a token is EXPIRED, which is reported as its own reason so an
  * operator can tell "stale" apart from "forged".
  *
- * Every function here is PURE apart from the optional `process.env` key lookup
+ * Every function here is PURE apart from the optional environment key lookup
  * that mirrors `verp.ts`: no clock reads that aren't injectable, no I/O, no
  * throwing. A rejection is a returned reason the caller COUNTS.
  */

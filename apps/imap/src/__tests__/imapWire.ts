@@ -63,6 +63,8 @@ const config: ImapConfig = {
 	maxClients: 500,
 	idleTimeoutMs: 30 * 60 * 1000,
 	authRateLimit: { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 },
+	production: false,
+	owlatVersion: 'dev',
 };
 
 /** Give each folder the counters SELECT and STATUS read. */

@@ -239,7 +239,7 @@ export function createSendHandler(
 				// Through `refuse()` like every other answer: the code union now carries
 				// `ROUTING_LEASE_UNREADABLE`, so a rejection code this wire has not
 				// declared stops compiling here instead of reaching Convex — which
-				// matches these by substring and therefore cannot report a miss. The
+				// reads these by value and prefix and therefore cannot report a miss. The
 				// bytes are the same two keys in the same order.
 				return refuse(c, { error: revalidated.error, code: revalidated.code }, 409);
 			}

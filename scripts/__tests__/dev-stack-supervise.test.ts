@@ -4,6 +4,7 @@
  * launcher spawned is stopped too, even after the launcher itself is gone.
  */
 
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -52,11 +53,14 @@ const fast = { graceMs: 300, pollMs: 10, killSettleMs: 2_000 };
 describe('supervise', () => {
 	it('stops what a launcher left behind after the launcher exited', async () => {
 		const dir = tempDir();
+		// The launcher's exit stops everything, so it waits on this FIFO until the
+		// other child has written its pid; otherwise the stop can land first.
+		execFileSync('mkfifo', [join(dir, 'other-ready')]);
 		const stops: number[] = [];
 		const code = await supervise(
 			[
-				shell('launcher', 'sleep 60 & echo $! > child.pid; exit 0', dir),
-				shell('other', 'echo $$ > other.pid; exec sleep 60', dir),
+				shell('launcher', 'sleep 60 & echo $! > child.pid; read _ < other-ready; exit 0', dir),
+				shell('other', 'echo $$ > other.pid; echo > other-ready; exec sleep 60', dir),
 			],
 			() => stops.push(1),
 			fast

@@ -331,6 +331,7 @@ export function createHttpClient(
 				// body there is no error envelope to act on, and repeating an
 				// idempotent GET is harmless.
 				if (attempt < maxRetries && replaySafe) {
+					// oxlint-disable-next-line owlat/no-inline-backoff -- the published SDK cannot depend on the private @owlat/shared
 					await sleep(initialDelayMs * Math.pow(backoffMultiplier, attempt));
 					continue;
 				}
@@ -376,7 +377,8 @@ export function createHttpClient(
 					const delay =
 						response.status === 429 && retryAfter
 							? Math.min(retryAfter * 1000, MAX_RETRY_AFTER_MS)
-							: initialDelayMs * Math.pow(backoffMultiplier, attempt);
+							: // oxlint-disable-next-line owlat/no-inline-backoff -- the published SDK cannot depend on the private @owlat/shared
+								initialDelayMs * Math.pow(backoffMultiplier, attempt);
 					await sleep(delay);
 					continue;
 				}

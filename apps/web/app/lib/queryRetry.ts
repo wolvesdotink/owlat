@@ -14,12 +14,17 @@
  */
 import { ConvexError } from 'convex/values';
 import { extractOperationError } from '@owlat/shared/operationError';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 
 /** How many times a transient failure is retried before it is shown. */
 export const TRANSIENT_RETRY_LIMIT = 3;
 
-const BASE_DELAY_MS = 1_000;
-const MAX_DELAY_MS = 8_000;
+const TRANSIENT_RETRY: RetryPolicy = {
+	baseMs: 1_000,
+	capMs: 8_000,
+	jitter: { kind: 'spread', ratio: 0.2 },
+	round: true,
+};
 
 /**
  * Failures that are the request's own fault. Retrying them gives the same
@@ -52,9 +57,7 @@ export function isTransientQueryError(error: unknown): boolean {
  * struggling deployment in the same instant.
  */
 export function transientRetryDelay(attempt: number, random: () => number = Math.random): number {
-	const base = Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
-	const spread = 0.8 + random() * 0.4;
-	return Math.round(base * spread);
+	return nextDelay(TRANSIENT_RETRY, attempt, undefined, random);
 }
 
 export interface TransientRetry {

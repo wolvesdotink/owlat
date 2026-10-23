@@ -34,6 +34,8 @@ export interface PaletteArgumentOption {
 	id: string;
 	label: string;
 	subtitle?: string;
+	/** Overrides the spec's shared icon for an odd one out ("Pick a time…"). */
+	icon?: string;
 	run: () => void;
 }
 
@@ -87,6 +89,12 @@ export interface PaletteItem {
 	 * show for "camp".
 	 */
 	href?: string;
+	/**
+	 * The id of the record this row opens (a conversation, a contact, a
+	 * campaign…). When two rows match a query equally well, the one whose record
+	 * was opened more recently ranks first — see {@link applyRecencyTieBreak}.
+	 */
+	objectId?: string;
 	/** When true the palette stays open after `run` (e.g. "recent" items that
 	 * only refill the query rather than navigate). Defaults to close-on-run. */
 	keepOpen?: boolean;
@@ -181,7 +189,7 @@ export function buildArgumentGroups(spec: PaletteArgumentSpec, query: string): P
 					id: `argument:${option.id}`,
 					label: option.label,
 					subtitle: option.subtitle,
-					icon: spec.icon,
+					icon: option.icon ?? spec.icon,
 					run: option.run,
 				})),
 				query
@@ -354,6 +362,61 @@ export function filterItems<T extends { label: string; subtitle?: string }>(
 	rawQuery: string
 ): T[] {
 	return scoreItems(items, rawQuery).map((entry) => entry.item);
+}
+
+/** Label matches outrank subtitle matches; a row matched on neither sorts last. */
+function matchRank(item: PaletteItem, query: string): { rank: number; score: number } {
+	const onLabel = fuzzyMatch(item.label, query);
+	if (onLabel) return { rank: 0, score: onLabel.score };
+	const onSubtitle = item.subtitle ? fuzzyMatch(item.subtitle, query) : null;
+	if (onSubtitle) return { rank: 1, score: onSubtitle.score };
+	return { rank: 2, score: 0 };
+}
+
+/**
+ * Break ranking TIES by recency: inside each group, a run of consecutive rows
+ * that match the query equally well (same field, same score) is re-ordered so
+ * the row whose record was opened most recently comes first. Rows outside a tie
+ * never move, so a better match always stays above a more recent one, and a
+ * provider's own order (a server-ranked hit list) survives wherever the scorer
+ * cannot tell rows apart from it.
+ *
+ * Only runs on a typed query: with nothing typed every row "ties", and the idle
+ * palette has its own recency list. Runs before {@link mergeGroups} caps, so a
+ * recent record cannot be cut by the cap in favour of an equal stranger. Pure.
+ */
+export function applyRecencyTieBreak(
+	groups: PaletteGroup[],
+	rawQuery: string,
+	recencyOf: (objectId: string) => number | undefined
+): PaletteGroup[] {
+	const query = rawQuery.trim();
+	if (!query) return groups;
+	const recency = (item: PaletteItem) =>
+		(item.objectId !== undefined ? recencyOf(item.objectId) : undefined) ?? 0;
+	return groups.map((group) => {
+		if (!group.items.some((item) => recency(item) > 0)) return group;
+		const keyed = group.items.map((item, index) => ({ item, index, ...matchRank(item, query) }));
+		const items: PaletteItem[] = [];
+		let start = 0;
+		while (start < keyed.length) {
+			let end = start + 1;
+			const head = keyed[start]!;
+			while (
+				end < keyed.length &&
+				keyed[end]!.rank === head.rank &&
+				keyed[end]!.score === head.score
+			) {
+				end += 1;
+			}
+			const run = keyed
+				.slice(start, end)
+				.sort((a, b) => recency(b.item) - recency(a.item) || a.index - b.index);
+			for (const entry of run) items.push(entry.item);
+			start = end;
+		}
+		return { ...group, items };
+	});
 }
 
 /** A run of text, flagged as matched or not, for rendering highlights. */

@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { tabPanelAttrs } from '@owlat/ui/utils/tabs';
 import { formatContactPropertyValue } from '~/utils/contactPropertyValue';
 import { formatDate } from '~/utils/formatters';
+import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 
 const { t } = useI18n();
 
@@ -90,6 +91,10 @@ const contactTitle = computed(() => {
 	const name = `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim();
 	return name || c.email || '';
 });
+// ⌘K's "Jump back" list remembers the contact once it has loaded.
+useRecordPaletteObjectOpen(() =>
+	contactTitle.value ? { kind: 'contact', id: contactId.value, title: contactTitle.value } : null
+);
 
 // Stored values are strings whatever the type: show Yes/No and a dated value
 // in the reader's locale instead of `true` and `2026-11-09`.

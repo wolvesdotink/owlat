@@ -9,6 +9,7 @@ import {
 import { api } from '@owlat/api';
 import { campaignReturnTarget } from '~/lib/campaignCompose';
 import type { PresendSource } from '~/composables/usePresendChecks';
+import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 
 const { t } = useI18n();
 
@@ -33,6 +34,11 @@ const {
 	error: templateError,
 	refetch: refetchTemplate,
 } = useConvexQuery(api.emailTemplates.emails.get, () => ({ templateId: templateId.value }));
+useRecordPaletteObjectOpen(() =>
+	template.value?.name
+		? { kind: 'template', id: templateId.value, title: template.value.name }
+		: null
+);
 
 // Mutations. The save rejects on failure (StaleDraftError for a stale
 // revision, which the bridge turns into the conflict dialog).

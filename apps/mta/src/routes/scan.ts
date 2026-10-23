@@ -27,7 +27,6 @@
 
 import { Hono } from 'hono';
 import type Redis from 'ioredis';
-import { readIntEnv, TCP_PORT_RANGE } from '@owlat/shared/nodeEnv';
 import { isRecord } from '@owlat/shared/utils/guards';
 import {
 	CONTENT_SCREENING_MAX_HTML_BYTES,
@@ -103,10 +102,9 @@ export function createScanRoutes(config: MtaConfig, redis: Redis): Hono {
 	// All scan routes require the master key (constant-time compare)
 	app.use('*', masterKeyAuth(config));
 
-	// The address is validated when the routes are built (boot); the client
-	// itself is lazy and starts health checks on the first request.
-	const clamHost = process.env['CLAMAV_HOST'] ?? 'clamav';
-	const clamPort = readIntEnv(process.env, 'CLAMAV_PORT', { default: 3310, ...TCP_PORT_RANGE });
+	// The address is validated at config load (boot); the client itself is lazy
+	// and starts health checks on the first request.
+	const { host: clamHost, port: clamPort } = config.clamav;
 	let clamClient: ClamClient | null = null;
 
 	function getClamClient(): ClamClient {

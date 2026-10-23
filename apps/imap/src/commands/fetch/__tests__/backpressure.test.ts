@@ -317,6 +317,8 @@ describe('FETCH over a real TCP socket to a client that stops reading', () => {
 		maxClients: 500,
 		idleTimeoutMs: 60_000,
 		authRateLimit: { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 },
+		production: false,
+		owlatVersion: 'dev',
 	};
 	const COUNT = 300;
 	const SIZE = 256 * 1024;

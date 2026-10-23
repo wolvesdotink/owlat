@@ -11,6 +11,7 @@ import {
 	forgetCachedMemberships,
 	loadCurrentUids,
 	MembershipUnsettledError,
+	walkRetryDelayMs,
 } from '../membership.js';
 import { membershipDelta } from '../sequenceView.js';
 
@@ -243,5 +244,18 @@ describe('membershipDelta', () => {
 		expect(membershipDelta([1, 2], [1, 2])).toEqual({ expunged: [], hasArrivals: false });
 		expect(membershipDelta([], [])).toEqual({ expunged: [], hasArrivals: false });
 		expect(membershipDelta([1, 2], [])).toEqual({ expunged: [2, 1], hasArrivals: false });
+	});
+});
+
+describe('walkRetryDelayMs', () => {
+	it('waits 50 ms before the second walk, doubling, jittered down by up to half', () => {
+		const full = () => 0.999_999;
+		expect([1, 2, 3, 4, 5].map((attempt) => walkRetryDelayMs(attempt, () => 0))).toEqual([
+			25, 50, 100, 200, 400,
+		]);
+		expect([1, 2, 3, 4, 5].map((attempt) => Math.round(walkRetryDelayMs(attempt, full)))).toEqual([
+			50, 100, 200, 400, 800,
+		]);
+		expect(walkRetryDelayMs(3, () => 0.5)).toBe(150);
 	});
 });

@@ -13,8 +13,15 @@
  * touch the picker.
  *
  * The account-deletion mail and the daily-brief digest are translated. The six
- * generators in `systemEmails.ts` still ship English; see
- * `docs/ux-plan/DEFERRALS.md`.
+ * generators in `systemEmails.ts` still ship English because no recipient
+ * locale reaches them when the mail is sent. The invitation hooks know only the
+ * invitee's address, which may not belong to an account yet (and the inviter's
+ * language is the wrong one). BetterAuth's reset and verification hooks hand
+ * over the user, but nothing looks up that user's `userProfiles.locale`, so a
+ * user who picked German still gets English. The double-opt-in mail goes to a
+ * contact, which has no interface language. Translating them needs a locale on
+ * the invitation record, a profile-locale lookup in the BetterAuth hooks, and an
+ * organization default for contacts; the copy tables then extend this module.
  */
 
 import { APP_LOCALE_BCP47, isAppLocale, type AppLocale } from '@owlat/shared/appLocales';

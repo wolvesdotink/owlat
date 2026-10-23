@@ -200,6 +200,7 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 	const hitItems = computed<PaletteItem[]>(() =>
 		(searchData.value?.messages ?? []).map((message) => ({
 			id: `mail-hit:${message._id}`,
+			objectId: message._id,
 			label: message.subject?.trim() || t('components.appCommandPalette.noSubject'),
 			subtitle: `${message.fromName || message.fromAddress} · ${message.snippet}`.trim(),
 			icon: 'lucide:mail',

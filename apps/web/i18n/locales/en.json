@@ -405,7 +405,8 @@
 			"searching": "Searching…",
 			"select": "Select",
 			"scopeLabel": "Search scope",
-			"scopeHint": "Scope"
+			"scopeHint": "Scope",
+			"filterPlaceholder": "Type to narrow the list…"
 		},
 		"assistant": {
 			"assistantComposer": {
@@ -5389,7 +5390,8 @@
 				"scopeLabel": "What to snooze",
 				"title": "Snooze until",
 				"untilReply": "Until they reply",
-				"untilReplySub": "Or in 1 week"
+				"untilReplySub": "Or in 1 week",
+				"pickTime": "Pick a date and time…"
 			},
 			"postboxStaleReplyDialog": {
 				"cancel": "Keep editing",
@@ -11206,7 +11208,17 @@
 					"notice": "A draft reply to this message is also waiting.",
 					"answer": "Answer this message"
 				},
-				"answerInReply": "Answer in the reply"
+				"answerInReply": "Answer in the reply",
+				"priority": {
+					"urgent": "Urgent",
+					"normal": "Normal",
+					"low": "Low"
+				},
+				"priorityChip": {
+					"urgent": "Urgent",
+					"low": "Low priority"
+				},
+				"priorityToast": "Priority updated"
 			},
 			"failed": {
 				"emptyBody": "Every inbound message processed successfully.",
@@ -13198,6 +13210,15 @@
 			},
 			"cite": {
 				"clear": "clear the mark"
+			},
+			"translation": {
+				"heading": "Translated to {language}",
+				"loading": "Translating…",
+				"retry": "Try again",
+				"empty": "This message has no text to translate.",
+				"failed": "The translation did not come through. Try again in a moment.",
+				"note": "Machine translation. The original is below.",
+				"truncatedNote": "Machine translation of the beginning of a long message. The original is below."
 			}
 		},
 		"priority": {
@@ -14236,7 +14257,8 @@
 				"settings": "Settings",
 				"templates": "Templates",
 				"refine": "Refine",
-				"inboxThreads": "Team inbox"
+				"inboxThreads": "Team inbox",
+				"jumpBack": "Jump back"
 			}
 		},
 		"conditions": {
@@ -15565,7 +15587,8 @@
 			},
 			"usePostboxCommandSurface": {
 				"argument": {
-					"labelPrompt": "Label as"
+					"labelPrompt": "Label as",
+					"switchPrompt": "Switch to"
 				},
 				"groups": {
 					"labels": "Labels",
@@ -15587,7 +15610,8 @@
 					"search": "Search mail",
 					"snoozed": "Snoozed",
 					"switchToMailbox": "Go to {mailbox}",
-					"switchToTeamInbox": "Go to {mailbox} (team inbox)"
+					"switchToTeamInbox": "Go to {mailbox} (team inbox)",
+					"switchMailbox": "Switch mailbox…"
 				}
 			},
 			"usePostboxCompose": {
@@ -16094,7 +16118,8 @@
 				"personal": "Only me",
 				"shared": "Everyone in the team"
 			},
-			"sharedBadge": "Shared"
+			"sharedBadge": "Shared",
+			"insertSubmenu": "Insert saved reply…"
 		},
 		"sendReadiness": {
 			"audienceFits": "Your audience of {audience} fits in today's capacity.",
@@ -17424,7 +17449,8 @@
 			"sendFollowUp": "Send follow-up",
 			"snoozeThread": "Snooze thread",
 			"unsnoozeThread": "Unsnooze thread",
-			"updateThreadStatus": "Update thread status"
+			"updateThreadStatus": "Update thread status",
+			"setPriority": "Set priority"
 		},
 		"useWebhookActions": {
 			"copyFailed": "Failed to copy to clipboard",
@@ -17734,7 +17760,44 @@
 			"thread": {
 				"archive": "Archive conversation",
 				"heading": "This conversation",
-				"reply": "Reply"
+				"reply": "Reply",
+				"snooze": "Snooze…",
+				"snoozePrompt": "Snooze until",
+				"forward": "Forward",
+				"markUnread": "Mark as unread",
+				"mute": "Mute conversation",
+				"unmute": "Unmute conversation",
+				"notifyOnReply": "Notify me when they reply",
+				"stopNotifyOnReply": "Stop notifying me on reply",
+				"label": "Label as…",
+				"labelPrompt": "Label as",
+				"move": "Move to…",
+				"movePrompt": "Move to",
+				"followUp": "Remind me if no reply…",
+				"followUpPrompt": "Remind me",
+				"cancelFollowUp": "Cancel reply reminder",
+				"translate": "Translate",
+				"showOriginal": "Download original (.eml)",
+				"copyLink": "Copy link",
+				"linkCopied": "Link copied",
+				"linkCopyFailed": "Could not copy the link"
+			},
+			"teamThread": {
+				"heading": "This conversation",
+				"reply": "Reply",
+				"assign": "Assign to…",
+				"assignPrompt": "Assign to",
+				"unassign": "Unassign",
+				"claim": "Assign to me",
+				"close": "Mark as resolved",
+				"reopen": "Reopen conversation",
+				"snooze": "Snooze…",
+				"snoozePrompt": "Snooze until",
+				"unsnooze": "Unsnooze",
+				"addNote": "Add internal note",
+				"priority": "Set priority…",
+				"priorityPrompt": "Priority",
+				"current": "Current"
 			}
 		},
 		"inboxSla": {
@@ -17771,6 +17834,16 @@
 				"spendUnverifiable": "AI spend can't be checked right now, so no paid AI call is made. Try again in a few minutes."
 			},
 			"title": "AI budget reached."
+		},
+		"commandPaletteObjectRecents": {
+			"kinds": {
+				"conversation": "Conversation",
+				"teamThread": "Team inbox conversation",
+				"campaign": "Campaign",
+				"contact": "Contact",
+				"automation": "Automation",
+				"template": "Template"
+			}
 		}
 	},
 	"sharedPkg": {

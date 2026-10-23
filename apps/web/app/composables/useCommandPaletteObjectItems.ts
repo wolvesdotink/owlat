@@ -39,6 +39,7 @@ export function useCommandPaletteObjectItems(options: CommandPaletteObjectItemsO
 	function buildResultItems(results: SearchResult[]): PaletteItem[] {
 		return results.map((result) => ({
 			id: `search:${result.id}`,
+			objectId: result.id,
 			label: result.title,
 			subtitle: result.subtitle,
 			icon: iconForType(result.type),
@@ -52,6 +53,7 @@ export function useCommandPaletteObjectItems(options: CommandPaletteObjectItemsO
 	function buildMailItems(results: SearchResult[]): PaletteItem[] {
 		return results.map((result) => ({
 			id: `mail:${result.id}`,
+			objectId: result.id,
 			label: result.title.trim() || t('components.appCommandPalette.noSubject'),
 			subtitle: result.subtitle,
 			icon: 'lucide:mail',

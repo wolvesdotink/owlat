@@ -40,6 +40,7 @@
  */
 
 import { computed, onScopeDispose, shallowRef, watch, type Ref } from 'vue';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import type { InlineImageSources } from './usePostboxInlineImages';
 import { composeRandomId } from './usePostboxComposeNav';
 import { api } from '@owlat/api';
@@ -54,6 +55,7 @@ const MAX_RENEW_MS = 50 * 60_000;
 const RETRY_MS = 15_000;
 /** Retries back off up to this. */
 const MAX_RETRY_MS = 5 * 60_000;
+const RETRY: RetryPolicy = { baseMs: RETRY_MS, capMs: MAX_RETRY_MS };
 /** How long one request waits for Convex auth before it counts as failed. */
 const AUTH_WAIT_MS = 30_000;
 
@@ -74,7 +76,7 @@ function inlineContentIds(html: string): string[] {
 
 /** The wait after the `failures`-th failure in a row: 15 s, doubling, at most 5 min. */
 function backoff(failures: number): number {
-	return Math.min(RETRY_MS * 2 ** Math.max(0, failures - 1), MAX_RETRY_MS);
+	return nextDelay(RETRY, failures - 1);
 }
 
 export function usePostboxDraftInlineImages(

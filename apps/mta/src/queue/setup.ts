@@ -7,12 +7,25 @@
 
 import { Queue, Worker } from 'groupmq';
 import type Redis from 'ioredis';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import type { EmailJob } from '../types.js';
 import { handleEmailJob } from './handler.js';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { recordWorkerHeartbeat, WORKER_HEARTBEAT_INTERVAL_MS } from '../routes/health.js';
 import { QUEUE_NAMESPACE } from './namespace.js';
+
+/** 30 s · 4ⁿ, capped at 2 h, for a handler error the handler did not expect. */
+const UNEXPECTED_ERROR_BACKOFF: RetryPolicy = { baseMs: 30_000, factor: 4, capMs: 7_200_000 };
+
+/**
+ * The worker's wait before re-running a job whose handler threw. groupmq passes
+ * the number of runs that have failed so far (1 after the first), so the first
+ * retry waits 2 min, then 8 min, 32 min, and 2 h from then on.
+ */
+export function unexpectedErrorBackoffMs(attempt: number): number {
+	return nextDelay(UNEXPECTED_ERROR_BACKOFF, attempt);
+}
 
 /**
  * Create the email queue
@@ -74,8 +87,7 @@ export function createEmailWorker(
 		},
 		// Exponential backoff for *unexpected* handler errors only (transient
 		// deferrals re-enqueue themselves with their own computed delay).
-		// 30s → 2min → 8min → 30min → 2h.
-		backoff: (attempt: number) => Math.min(30_000 * Math.pow(4, attempt), 7_200_000),
+		backoff: unexpectedErrorBackoffMs,
 	});
 
 	worker.on('error', (err) => {

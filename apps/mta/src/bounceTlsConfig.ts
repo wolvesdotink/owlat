@@ -60,7 +60,7 @@ const SOURCES = {
  * or the watched `TLS_CERT_DIR` paths plus `unavailable` when the shared pair
  * is not readable yet.
  */
-export function loadBounceTlsMaterial(env: Env = process.env): BounceTlsMaterial {
+export function loadBounceTlsMaterial(env: Env): BounceTlsMaterial {
 	const configured = loadTlsMaterial({ ...SOURCES, env, certDir: undefined });
 	if (configured) return configured;
 

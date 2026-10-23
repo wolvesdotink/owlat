@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import { coeditBlockKey, type CoeditDocument, type CoeditOp } from '@owlat/shared/coeditOps';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import { CoeditSync, type CoeditOutgoing, type CoeditServerState } from '~/lib/coeditSync';
 
 /**
@@ -52,8 +53,7 @@ type CoeditFieldName = 'name' | 'subject' | 'plainTextOverride' | 'attachments' 
 /** How long local edits gather before they are sent. */
 const SEND_DELAY_MS = 250;
 /** Retry delay after a send failed (doubles up to the cap). */
-const RETRY_MS = 2000;
-const RETRY_CAP_MS = 15_000;
+const SEND_RETRY: RetryPolicy = { baseMs: 2000, capMs: 15_000 };
 /** How long `flushNow` waits for the server to catch up on each round. */
 const CATCH_UP_MS = 3000;
 
@@ -178,7 +178,8 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 
 	// ── Sending ─────────────────────────────────────────────────────────
 	let sendTimer: ReturnType<typeof setTimeout> | null = null;
-	let retryMs = RETRY_MS;
+	// Sends that failed in a row since the last one the server took.
+	let sendFailures = 0;
 	const refreshUnsent = () => {
 		hasUnsent.value = sync.hasUnsent(opts.read());
 	};
@@ -204,7 +205,7 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 			const settled = owner === sync ? owner.settle(opts.read()) : [];
 			if (settled.length > 0) opts.applyRemote(settled);
 			isOffline.value = false;
-			retryMs = RETRY_MS;
+			sendFailures = 0;
 			return true;
 		} catch (error) {
 			owner.failed();
@@ -212,8 +213,7 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 				void open();
 			} else {
 				isOffline.value = true;
-				scheduleSend(retryMs);
-				retryMs = Math.min(retryMs * 2, RETRY_CAP_MS);
+				scheduleSend(nextDelay(SEND_RETRY, sendFailures++));
 			}
 			return false;
 		} finally {
