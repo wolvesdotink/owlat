@@ -5,6 +5,7 @@ import {
 	type MarketingNoticeView,
 	type NoticeText,
 } from '~/lib/marketing/marketingNoticeRules';
+import { resolveLocalized } from '~/utils/localizedText';
 
 /**
  * Marketing notices in the foreground: a campaign that finished or is about to
@@ -34,7 +35,7 @@ const MAX_SEEN = 500;
 export function useMarketingNotices() {
 	const { isDesktop } = useDesktopContext();
 	const { showToast } = useToast();
-	const { t } = useI18n();
+	const { t, te } = useI18n();
 	const { canSend } = useDesktopNotificationPermission();
 	const { settings: appSettings, workspaceLocal } = useDesktopAppSettings();
 	const { activeId } = useDesktopWorkspaces();
@@ -47,14 +48,22 @@ export function useMarketingNotices() {
 			!(activeId.value ? workspaceLocal(activeId.value).muteNotifications : false)
 	);
 
-	/** Resolve a catalog key; a `count` value also picks the plural form. */
+	/**
+	 * Resolve a notice's copy. A value given as `{ key }` (a provider name) is
+	 * itself looked up; a `count` value also picks the plural form, which the
+	 * shared resolver has no argument for.
+	 */
 	function resolve(text: NoticeText): string {
 		const params: Record<string, string | number> = {};
-		for (const [name, value] of Object.entries(text.params ?? {})) {
-			params[name] = typeof value === 'object' ? t(value.key) : value;
+		if (text.params) {
+			for (const [name, value] of Object.entries(text.params)) {
+				params[name] = typeof value === 'object' ? resolveLocalized({ t, te }, value) : value;
+			}
 		}
 		const count = params['count'];
-		return typeof count === 'number' ? t(text.key, params, count) : t(text.key, params);
+		return typeof count === 'number'
+			? t(text.key, params, count)
+			: resolveLocalized({ t, te }, { key: text.key, params });
 	}
 
 	async function notifyNative(title: string, body: string): Promise<void> {

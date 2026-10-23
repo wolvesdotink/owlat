@@ -551,6 +551,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 		// route, and the shell announces its last crumb on every navigation.
 		useBreadcrumbs,
 		useSendReadyNotice: () => ({ isSendPathReady: ref(true) }),
+		useMarketingNotices: () => undefined,
 	};
 }
 

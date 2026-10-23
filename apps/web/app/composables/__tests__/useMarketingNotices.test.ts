@@ -43,6 +43,7 @@ beforeEach(() => {
 	vi.stubGlobal('useI18n', () => ({
 		t: (key: string, params?: Record<string, unknown>) =>
 			params ? `${key} ${JSON.stringify(params)}` : key,
+		te: () => true,
 	}));
 	vi.stubGlobal('useDesktopNotificationPermission', () => ({ canSend: ref(true) }));
 	vi.stubGlobal('useDesktopAppSettings', () => ({
