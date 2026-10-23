@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
+import { InternalFailure } from '../../_utils/errors';
 
 // Resolve the domain owner without a real BetterAuth org (this is an action).
 vi.mock('../../lib/sessionOrganization', async (importActual) => {
@@ -81,10 +82,12 @@ describe('0039 — DKIM ownership backfill', () => {
 
 		registerDomainMock.mockImplementation(async (domain: string) => {
 			if (domain === 'conflict.com') {
-				throw new Error(
-					'MTA DKIM registration failed (409): already registered to a different organization'
-				);
+				throw new InternalFailure('mta.dkim_ownership_conflict', {
+					retryable: false,
+					attrs: { status: 409 },
+				});
 			}
+
 			if (domain === 'already.com') {
 				return { selector: 's1', dnsRecord: 'v=DKIM1; p=K', ownership: 'unchanged' };
 			}
@@ -102,6 +105,18 @@ describe('0039 — DKIM ownership backfill', () => {
 			expect(call[1]).toBeUndefined(); // returnPathHost omitted → existing override preserved
 			expect(call[2]).toBe('org-1'); // organizationId
 		}
+	});
+
+	it('aborts on a failure that only quotes a 409 in its text', async () => {
+		const t = convexTest(schema, modules);
+		await seedDomain(t, 'quoted.com', 'verified', 'mta');
+		registerDomainMock.mockRejectedValue(
+			new Error('MTA DKIM registration failed (500): upstream said (409)')
+		);
+
+		await expect(
+			t.action(internal.migrations['0039_backfill_dkim_ownership'].run, {})
+		).rejects.toThrow('(500)');
 	});
 
 	it('is a no-op on an instance with no domains', async () => {

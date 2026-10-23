@@ -11,6 +11,7 @@
  */
 
 import { convexTest } from 'convex-test';
+import { ConvexError } from 'convex/values';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkId } from '@convex-dev/workpool';
 import schema from '../schema';
@@ -28,6 +29,7 @@ import {
 } from './helpers/sendCompletionFailures';
 import { REPLAY_MAX_ATTEMPTS } from '../delivery/sendCompletionFailures';
 import { completionErrorCode } from '../delivery/sendCompletionPayload';
+import { InternalFailure } from '../_utils/errors';
 import { PURGE_BATCH_SIZE } from '../delivery/sendCompletionFailureAdmin';
 import { permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
 import type * as EffectsModule from '../delivery/sendLifecycle/effects';
@@ -177,10 +179,24 @@ describe('completeSend when the lifecycle throws', () => {
 			status: 'queued',
 			providerMessageId: 'mta-bound',
 		});
-		expect((await failureRows(t))[0]).toMatchObject({
+		const [row] = await failureRows(t);
+		expect(row).toMatchObject({
 			status: 'open',
 			providerMessageId: 'mta-other',
 			lastError: 'MTA_IDENTITY_CONFLICT',
+		});
+
+		// The replay crosses a second nested mutation and meets the same conflict:
+		// still recorded by kind, the Send still untouched.
+		expect(
+			await t.mutation(internal.delivery.sendCompletionFailures.replayCompletionFailure, {
+				failureId: row!._id,
+			})
+		).toBe('failed');
+		expect((await failureRows(t))[0]?.lastError).toBe('MTA_IDENTITY_CONFLICT');
+		expect(await t.run((ctx) => ctx.db.get(sendId))).toMatchObject({
+			status: 'queued',
+			providerMessageId: 'mta-bound',
 		});
 	});
 
@@ -420,5 +436,32 @@ describe('stored error code', () => {
 			)
 		).toBe('UNKNOWN');
 		expect(completionErrorCode(new TypeError('x of Private name'))).toBe('TYPE_ERROR');
+	});
+
+	it('reads its own failures by kind, also once the runtime has rebuilt them', () => {
+		const cases = [
+			['delivery.send_identity_conflict', 'MTA_IDENTITY_CONFLICT'],
+			['delivery.unhandled_worker_outcome', 'UNHANDLED_WORKER_OUTCOME'],
+			['delivery.envelope_not_stored', 'ENVELOPE_NOT_STORED'],
+			['mta.dkim_ownership_conflict', 'INTERNAL_FAILURE'],
+		] as const;
+		for (const [kind, code] of cases) {
+			const failure = new InternalFailure(kind, { retryable: false });
+			// A nested call hands back a fresh ConvexError holding only the data.
+			const rebuilt = new ConvexError(failure.message);
+			(rebuilt as { data: unknown }).data = JSON.parse(JSON.stringify(failure.data));
+			expect(completionErrorCode(failure)).toBe(code);
+			expect(completionErrorCode(rebuilt)).toBe(code);
+		}
+	});
+
+	it('never takes a plain error for one of its own failures by its wording', () => {
+		for (const message of [
+			'MTA acceptance conflicts with the Send provider identity.',
+			'Unhandled send worker outcome: {"kind":"mystery"}',
+			'ENVELOPE_NOT_STORED',
+		]) {
+			expect(completionErrorCode(new Error(message))).toBe('UNKNOWN');
+		}
 	});
 });

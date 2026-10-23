@@ -1132,6 +1132,7 @@ import type * as lib_sendProviders_mandrill_errors from '../lib/sendProviders/ma
 import type * as lib_sendProviders_mandrill_index from '../lib/sendProviders/mandrill/index.js';
 import type * as lib_sendProviders_mandrill_subaccounts from '../lib/sendProviders/mandrill/subaccounts.js';
 import type * as lib_sendProviders_mta_index from '../lib/sendProviders/mta/index.js';
+import type * as lib_sendProviders_mta_refusal from '../lib/sendProviders/mta/refusal.js';
 import type * as lib_sendProviders_pluginEnvNamespace from '../lib/sendProviders/pluginEnvNamespace.js';
 import type * as lib_sendProviders_pluginProvider from '../lib/sendProviders/pluginProvider.js';
 import type * as lib_sendProviders_pluginTransportConfig from '../lib/sendProviders/pluginTransportConfig.js';
@@ -3003,6 +3004,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/mandrill/index': typeof lib_sendProviders_mandrill_index;
 	'lib/sendProviders/mandrill/subaccounts': typeof lib_sendProviders_mandrill_subaccounts;
 	'lib/sendProviders/mta/index': typeof lib_sendProviders_mta_index;
+	'lib/sendProviders/mta/refusal': typeof lib_sendProviders_mta_refusal;
 	'lib/sendProviders/pluginEnvNamespace': typeof lib_sendProviders_pluginEnvNamespace;
 	'lib/sendProviders/pluginProvider': typeof lib_sendProviders_pluginProvider;
 	'lib/sendProviders/pluginTransportConfig': typeof lib_sendProviders_pluginTransportConfig;

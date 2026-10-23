@@ -1,4 +1,5 @@
 import { getRequired } from '../env';
+import { InternalFailure } from '../../_utils/errors';
 /**
  * MTA Identity Management Service
  *
@@ -64,8 +65,8 @@ export class MtaIdentityManager {
 	 *
 	 * `organizationId` binds the domain's DKIM key to its owning tenant (H2). New
 	 * keys are born owned; an existing unowned key is backfilled; a cross-org clash
-	 * surfaces as the MTA's 409 (thrown here). Absent ⇒ no org is sent (the historic
-	 * call, unchanged).
+	 * surfaces as the MTA's 409, thrown here as the `mta.dkim_ownership_conflict`
+	 * internal failure. Absent ⇒ no org is sent (the historic call, unchanged).
 	 */
 	async registerDomain(
 		domain: string,
@@ -91,7 +92,18 @@ export class MtaIdentityManager {
 
 		if (!response.ok) {
 			const body = await response.text().catch(() => 'Unknown error');
-			throw new Error(`MTA DKIM registration failed (${response.status}): ${body}`);
+			const message = `MTA DKIM registration failed (${response.status}): ${body}`;
+			// The one refusal a caller branches on: the key is bound to another
+			// organization. Typed so the caller never reads the status out of the
+			// text; the text stays the message the domain's failure record shows.
+			if (response.status === 409) {
+				throw new InternalFailure('mta.dkim_ownership_conflict', {
+					retryable: false,
+					attrs: { status: 409 },
+					message,
+				});
+			}
+			throw new Error(message);
 		}
 
 		const result = (await response.json()) as {

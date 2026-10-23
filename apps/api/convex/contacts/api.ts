@@ -1,6 +1,7 @@
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
+import { extractOperationError } from '@owlat/shared/operationError';
 import {
 	createAuthenticatedHandler,
 	requireScope,
@@ -14,6 +15,16 @@ import {
 } from '../auth/apiResponses';
 import { isValidEmail, isValidConvexId, STRING_LIMITS } from '../lib/inputGuards';
 import type { ContactSource } from '../lib/validators/contacts';
+
+/**
+ * A create or edit refused because the email belongs to another contact. The
+ * contact writers raise that as an `already_exists` Operation error
+ * (`contacts/resolution.ts`); its message names the address, so only the
+ * category is read.
+ */
+function isDuplicateContact(error: unknown): boolean {
+	return extractOperationError(error)?.category === 'already_exists';
+}
 
 // Request body types
 interface CreateContactBody {
@@ -226,11 +237,9 @@ export const createContact = createAuthenticatedHandler(
 				201
 			);
 		} catch (error) {
-			// Locked error envelope: classify the internal error but never echo the
-			// raw `error.message` back to the caller — only fixed strings ship.
-			const message = error instanceof Error ? error.message : '';
-			// Handle duplicate email error from mutation
-			if (message.includes('already exists')) {
+			// Locked error envelope: classify by the thrown category, never by the
+			// wording, and never echo the raw message back — only fixed strings ship.
+			if (isDuplicateContact(error)) {
 				return errorResponse('already_exists', 'A contact with this email already exists');
 			}
 			return errorResponse('invalid_input', 'Failed to create contact');
@@ -319,10 +328,8 @@ export const updateContact = createAuthenticatedHandler(
 				data: formatContactResponse(updatedContact),
 			});
 		} catch (error) {
-			// Locked error envelope — classify internally, never echo the raw message.
-			const message = error instanceof Error ? error.message : '';
-			// Check for duplicate email error
-			if (message.includes('already exists')) {
+			// Locked error envelope — classify by category, never echo the raw message.
+			if (isDuplicateContact(error)) {
 				return errorResponse('already_exists', 'A contact with this email already exists');
 			}
 			return errorResponse('invalid_input', 'Failed to update contact');
