@@ -13,9 +13,10 @@
  * Every section self-hides (the pattern `PostboxOfflineSettings` already used):
  * a browser sees push notifications, the marketing notification switches and
  * the offline cache, the desktop app sees the lot, and the page itself is gated
- * out of the registry when none applies. The marketing switches are the one
- * server-side card here: they decide what push and the desktop notify about,
- * so they sit with the notification settings. The section
+ * out of the registry when none applies. The marketing switches belong to the
+ * account, not the device: they decide what push and the desktop notify about,
+ * so they sit with the notification settings, and the card (like the page
+ * intro) says that they apply on every device. The section
  * `id`s are the settings registry's control anchors, so a palette deep link
  * ("notify me about", "launch at login") lands on the right card.
  */

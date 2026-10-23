@@ -6124,7 +6124,8 @@
 			},
 			"marketingNotifications": {
 				"heading": "Marketing-Benachrichtigungen",
-				"intro": "Zu Kampagnen, Automationen und dem Versand. Sie erreichen dich in der App, in der Desktop-App und per Push auf jedem Gerät, auf dem Push an ist.",
+				"intro": "Zu Kampagnen, Automationen und dem Versand. Diese Schalter gehören zu deinem Konto: Schaltest du einen aus, kommt diese Benachrichtigung auf keinem Gerät mehr, weder in der App noch in der Desktop-App noch per Push.",
+				"scopeBadge": "Alle deine Geräte",
 				"campaignFinished": {
 					"label": "Kampagne abgeschlossen",
 					"hint": "Wenn eine Kampagne fertig versendet ist, mit dem Anteil, der zugestellt wurde."
@@ -6134,8 +6135,8 @@
 					"hint": "15 Minuten bevor eine geplante Kampagne startet, mit der Möglichkeit, sie abzubrechen."
 				},
 				"deliveryHold": {
-					"label": "Versand pausiert",
-					"hint": "Wenn der Versand an einen Mail-Anbieter nach vielen Bounces oder Beschwerden pausiert wird."
+					"label": "Versandschutz bei Bounces",
+					"hint": "Wenn Owlat nach vielen Bounces oder Beschwerden Mails an einen Mail-Anbieter zurückhält oder über dein Relay umleitet."
 				},
 				"automationProblems": {
 					"label": "Probleme mit Automationen",
@@ -11994,7 +11995,7 @@
 				"pageTitle": "Buchungsseite"
 			},
 			"device": {
-				"intro": "Einstellungen, die nur auf diesem Gerät gespeichert werden — sie wandern nie auf einen anderen Computer oder Browser.",
+				"intro": "Benachrichtigungen und Einstellungen für dieses Gerät. Die meisten werden nur hier gespeichert und wandern nie auf einen anderen Computer oder Browser; eine Einstellung, die zu deinem Konto gehört, sagt das dazu.",
 				"nothingHere": "Auf dieser Instanz speichert nichts etwas auf diesem Gerät."
 			},
 			"filters": {
@@ -16442,7 +16443,7 @@
 				},
 				"marketingNotifications": {
 					"title": "Marketing-Benachrichtigungen",
-					"keywords": "kampagne abgeschlossen, erinnerung, geplante kampagne, bounce-spitze, versand pausiert, automation hängt, dns fehlerhaft, warnungen"
+					"keywords": "kampagne abgeschlossen, erinnerung, geplante kampagne, bounce-spitze, versandschutz, versand pausiert, automation hängt, dns fehlerhaft, warnungen"
 				},
 				"pushNotifications": {
 					"title": "Push-Benachrichtigungen",
@@ -17246,18 +17247,24 @@
 		},
 		"marketingNotices": {
 			"toast": "{title}: {body}",
+			"quietSummary": {
+				"title": "Während du weg warst",
+				"body": "1 Hinweis zu Kampagnen oder Versand ist während der Ruhezeiten eingegangen | {count} Hinweise zu Kampagnen und Versand sind während der Ruhezeiten eingegangen"
+			},
 			"campaignFinished": {
 				"title": "Kampagne abgeschlossen",
 				"body": "{name} · {percent} % zugestellt",
-				"bodyNoPercent": "{name} ist fertig versendet"
+				"bodyNoPercent": "{name} ist fertig versendet",
+				"private": "Eine Kampagne ist fertig versendet"
 			},
 			"campaignReminder": {
 				"title": "Geplante Kampagne startet in {minutes} Min.",
-				"body": "{name}"
+				"body": "{name}",
+				"private": "Öffne sie, um den Versand zu prüfen oder abzubrechen"
 			},
 			"deliveryHold": {
-				"title": "Versand pausiert: Bounce-Spitze",
-				"body": "Owlat hat den Versand an {provider} nach vielen Bounces oder Beschwerden pausiert"
+				"title": "Bounce-Spitze: Versandschutz aktiv",
+				"body": "Owlat hält Mails an {provider} nach vielen Bounces oder Beschwerden zurück oder leitet sie über dein Relay um"
 			},
 			"providers": {
 				"gmail": "Gmail",
@@ -17268,16 +17275,19 @@
 			},
 			"automationStalled": {
 				"title": "Automation hängt",
-				"body": "{name}: {count} hängender Kontakt | {name}: {count} hängende Kontakte"
+				"body": "{name}: {count} hängender Kontakt | {name}: {count} hängende Kontakte",
+				"private": "Kontakte hängen in einer Automation"
 			},
 			"automationPaused": {
 				"title": "Automation pausiert",
-				"body": "{name} hat sich nach wiederholt fehlgeschlagenen Läufen pausiert"
+				"body": "{name} hat sich nach wiederholt fehlgeschlagenen Läufen pausiert",
+				"private": "Eine Automation hat sich nach wiederholt fehlgeschlagenen Läufen pausiert"
 			},
 			"domainDns": {
 				"title": "DNS der Versanddomain fehlerhaft",
 				"body": "{domain}: Prüfung „{check}“ fehlgeschlagen",
-				"bodyNoCheck": "{domain}: eine DNS-Prüfung ist fehlgeschlagen"
+				"bodyNoCheck": "{domain}: eine DNS-Prüfung ist fehlgeschlagen",
+				"private": "Eine DNS-Prüfung einer Versanddomain ist fehlgeschlagen"
 			}
 		},
 		"useDesktopNotifications": {

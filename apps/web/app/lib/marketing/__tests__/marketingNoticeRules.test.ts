@@ -6,7 +6,10 @@ import { describe, expect, it } from 'vitest';
 import { createTestI18n } from '~/__tests__/i18n';
 import {
 	freshMarketingNotices,
+	isNativeNoticeCurrent,
+	planQuietRelease,
 	presentMarketingNotice,
+	presentNativeMarketingNotice,
 	type MarketingNoticeView,
 	type NoticeText,
 } from '../marketingNoticeRules';
@@ -60,7 +63,7 @@ describe('presentMarketingNotice', () => {
 
 	it('names the provider of a hold and pluralises stalled contacts', () => {
 		expect(render({ kind: 'delivery_hold', name: 'microsoft' }).body).toBe(
-			'Owlat paused sending to Microsoft after a spike in bounces or complaints'
+			'Owlat is holding back mail to Microsoft, or rerouting it through your relay, after a spike in bounces or complaints'
 		);
 		expect(render({ kind: 'delivery_hold', name: 'unknown' }).body).toContain('other providers');
 		expect(render({ kind: 'automation_stalled', name: 'Welcome', count: 1 }).body).toBe(
@@ -90,5 +93,78 @@ describe('freshMarketingNotices', () => {
 			{ id: 'a', kind: 'campaign_finished', createdAt: 1, url: '/' },
 		];
 		expect(freshMarketingNotices(notices, new Set(['b'])).map((n) => n.id)).toEqual(['a', 'c']);
+	});
+});
+
+const view = (notice: Partial<MarketingNoticeView> & Pick<MarketingNoticeView, 'kind'>) => ({
+	id: 'n1',
+	createdAt: 0,
+	url: '/dashboard/x',
+	...notice,
+});
+
+describe('presentNativeMarketingNotice', () => {
+	it('is the in-app copy with its link while notifications are not private', () => {
+		const notice = view({
+			kind: 'automation_paused',
+			name: 'Welcome',
+			url: '/dashboard/automations/a1',
+		});
+		const native = presentNativeMarketingNotice(notice, 0, false);
+		expect(resolve(native.body)).toBe(render(notice).body);
+		expect(native.href).toBe('/dashboard/automations/a1');
+	});
+
+	it.each([
+		['campaign_finished', 'Secret launch', 'A campaign has finished sending'],
+		['campaign_reminder', 'Secret launch', 'Open it to review or cancel the send'],
+		['automation_stalled', 'Secret flow', 'Contacts stalled in an automation'],
+		['automation_paused', 'Secret flow', 'An automation paused itself after repeated failed runs'],
+		['domain_dns', 'secret.example.com', 'A DNS check of a sending domain failed'],
+	] as const)('names no %s on the lock screen when private', (kind, name, body) => {
+		const native = presentNativeMarketingNotice(
+			view({ kind, name, count: 3, scheduledAt: 15 * 60_000, detail: 'SPF' }),
+			0,
+			true
+		);
+		expect(resolve(native.title)).not.toContain(name);
+		expect(resolve(native.body)).toBe(body);
+		expect(native.href).toBe('/dashboard/x');
+	});
+
+	it('keeps the provider of a delivery hold, which is not private', () => {
+		const native = presentNativeMarketingNotice(
+			view({ kind: 'delivery_hold', name: 'gmail' }),
+			0,
+			true
+		);
+		expect(resolve(native.body)).toContain('Gmail');
+	});
+});
+
+describe('quiet hours release', () => {
+	const reminder = view({ id: 'r', kind: 'campaign_reminder', scheduledAt: 1_000 });
+
+	it('treats a reminder past its start as stale, anything else as current', () => {
+		expect(isNativeNoticeCurrent(reminder, 999)).toBe(true);
+		expect(isNativeNoticeCurrent(reminder, 1_000)).toBe(false);
+		expect(isNativeNoticeCurrent(view({ kind: 'domain_dns' }), 1_000_000)).toBe(true);
+	});
+
+	it('sends nothing, one notice as itself, or several as one summary', () => {
+		const a = view({ id: 'a', kind: 'campaign_finished' });
+		const b = view({ id: 'b', kind: 'domain_dns' });
+		expect(planQuietRelease(new Set(), [a, b], 0)).toEqual({ kind: 'none' });
+		expect(planQuietRelease(new Set(['a']), [a, b], 0)).toEqual({ kind: 'single', notice: a });
+		expect(planQuietRelease(new Set(['a', 'b']), [a, b], 0)).toEqual({ kind: 'summary', count: 2 });
+	});
+
+	it('leaves out what the reader no longer returns and reminders that went stale', () => {
+		const a = view({ id: 'a', kind: 'campaign_finished' });
+		expect(planQuietRelease(new Set(['gone', 'r', 'a']), [reminder, a], 2_000)).toEqual({
+			kind: 'single',
+			notice: a,
+		});
+		expect(planQuietRelease(new Set(['gone', 'r']), [reminder], 2_000)).toEqual({ kind: 'none' });
 	});
 });

@@ -1,6 +1,7 @@
 /**
  * Preferences → This device → Marketing notifications: one switch per kind
- * the server says can fire for this person, real copy, and a write per toggle.
+ * the server says can fire for this person, real copy, a write per toggle,
+ * and a label saying the switches apply on every device.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -26,6 +27,7 @@ function mountCard() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
+				UiBadge: { template: '<span class="badge"><slot /></span>' },
 				UiSwitch: {
 					props: ['modelValue', 'id'],
 					emits: ['update:modelValue'],
@@ -68,6 +70,13 @@ describe('PreferencesMarketingNotifications', () => {
 		);
 		expect(w.find('#marketing-notify-domainDns').exists()).toBe(false);
 		expectFullyLocalized(w);
+	});
+
+	it('says the switches belong to the account, on a page about this device', () => {
+		data.value = { kinds: ['campaignFinished'], enabled: ALL_ON };
+		const w = mountCard();
+		expect(w.get('.badge').text()).toBe('All your devices');
+		expect(w.text()).toContain('on every device');
 	});
 
 	it('saves a toggle for that switch only', async () => {

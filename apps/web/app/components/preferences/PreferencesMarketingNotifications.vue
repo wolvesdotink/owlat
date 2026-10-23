@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Marketing notifications: one switch per kind (campaign finished, scheduled
- * campaign about to send, sending paused, automation problems, sending domain
+ * campaign about to send, bounce protection, automation problems, sending domain
  * DNS broken). The switches are the person's own and live on the server, so
  * they hold for the app, the desktop app and Web Push on every device alike.
  *
@@ -69,9 +69,16 @@ async function toggle(preference: Preference, enabled: boolean): Promise<void> {
 		class="card !p-0 mb-6 scroll-mt-6 overflow-hidden"
 	>
 		<header class="px-5 py-3 border-b border-border-subtle">
-			<h2 class="font-semibold">
-				{{ t('components.preferences.marketingNotifications.heading') }}
-			</h2>
+			<div class="flex items-center justify-between gap-3">
+				<h2 class="font-semibold">
+					{{ t('components.preferences.marketingNotifications.heading') }}
+				</h2>
+				<!-- The page around this card is about this device; these switches
+				     are not, so the card says where they are kept. -->
+				<UiBadge variant="neutral">
+					{{ t('components.preferences.marketingNotifications.scopeBadge') }}
+				</UiBadge>
+			</div>
 			<p class="text-xs text-text-tertiary mt-0.5">
 				{{ t('components.preferences.marketingNotifications.intro') }}
 			</p>
