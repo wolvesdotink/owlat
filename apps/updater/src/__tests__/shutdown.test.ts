@@ -49,6 +49,8 @@ case "$*" in
 	*" pull"*) hold pull ;;
 	*"up -d"*) hold up ;;
 	"run -d"*) echo helper-container-id ;;
+	*"ps --all --quiet"*) printf 'c0ffee000001\\nc0ffee000002\\n' ;;
+	"inspect --format {{.Id}}"*) printf 'c0ffee000001|true|convex|\\nc0ffee000002|true|redis|\\n' ;;
 	inspect*org.opencontainers*) ;;
 	inspect*) printf 'ghcr.io/wolvesdotink/updater:0.5.0\\n/srv/owlat:%s:rw \\nowlat_default \\n' "$OWLAT_DIR" ;;
 esac

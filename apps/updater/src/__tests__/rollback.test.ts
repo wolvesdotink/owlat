@@ -124,6 +124,8 @@ function docker(cmd: string, args: string[]): string {
 			`${CONTAINERS.web}|true|web|`,
 		].join('\n');
 	}
+	// A deploy whose run failed: its container exited on its own, rejecting the push.
+	if (cmd.startsWith('docker inspect --type container')) return 'exited|1|false\n';
 	if (cmd.startsWith('docker inspect')) {
 		return [
 			'ghcr.io/wolvesdotink/updater:0.4.16',
@@ -358,6 +360,99 @@ describe('the automatic rollback', () => {
 		expect(existsSync(SNAPSHOT_DIR)).toBe(false);
 	});
 
+	const isDeployInspect = (cmd: string) => cmd.startsWith('docker inspect --type container');
+	const isDeployRemoval = (cmd: string) => cmd.startsWith('docker rm --force owlat-update-deploy-');
+
+	it.each([
+		['its container never got created', () => fail('Error: No such container: x')],
+		['its container exited on its own with a failure', () => 'exited|1|false\n'],
+	])('drops the snapshot of a failed run when %s', async (_label, inspect) => {
+		overrides.push((cmd) => {
+			if (isDeploy(cmd)) fail('error waiting for container: unexpected EOF');
+			return isDeployInspect(cmd) ? inspect() : undefined;
+		});
+		const { json } = await update();
+
+		expect(json.error).toContain('running stack untouched');
+		expect(existsSync(SNAPSHOT_DIR)).toBe(false);
+	});
+
+	it.each([
+		['still running', 'running|0|false\n'],
+		['exited 0 after the client gave up', 'exited|0|false\n'],
+		['killed for memory', 'exited|137|true\n'],
+	])(
+		'keeps the snapshot and rolls back when the client lost a deploy that is %s',
+		async (_label, state) => {
+			overrides.push((cmd) => {
+				if (isDeploy(cmd)) fail('error waiting for container: unexpected EOF');
+				return isDeployInspect(cmd) ? state : undefined;
+			});
+			const { status, json } = await update();
+
+			expect(status).toBe(500);
+			expect(json.rollout).toBe('rolled-back');
+			expect(json.error).toMatch(/^convex-deploy failed without showing whether it changed Convex/);
+			expect(json.error).not.toContain('untouched');
+			// The deploy, named after the snapshot, is stopped before a byte is restored.
+			const { id } = journal() as { id: string };
+			const removal = indexOf((c) => c === `docker rm --force owlat-update-deploy-${id}`);
+			expect(removal).toBeGreaterThan(-1);
+			expect(removal).toBeLessThan(indexOf(isRestore));
+			expect(journal()).toMatchObject({ state: 'restored', deployStarted: true });
+		}
+	);
+
+	it('restores nothing under a deploy it cannot stop, and keeps the snapshot', async () => {
+		overrides.push((cmd) => {
+			if (isDeploy(cmd)) fail('error waiting for container: unexpected EOF');
+			if (isDeployInspect(cmd) || isDeployRemoval(cmd)) {
+				fail('Cannot connect to the Docker daemon at unix:///var/run/docker.sock');
+			}
+			return undefined;
+		});
+		const { json } = await update();
+
+		expect(json.rollout).toBe('failed');
+		expect(json.error).toContain("could not stop the update's convex-deploy");
+		expect(json.error).toContain('Nothing was restored');
+		expect(commandLines().some(isRestore)).toBe(false);
+		expect(journal()).toMatchObject({ state: 'armed', deployStarted: true });
+	});
+
+	it('stops a deploy cut off by its bound before it restores', async () => {
+		overrides.push((cmd) => (isDeploy(cmd) ? fail('docker timed out after 900s') : undefined));
+		await update();
+
+		// Cut off by the updater itself: its state is not read as proof of anything.
+		expect(commandLines().some(isDeployInspect)).toBe(false);
+		expect(indexOf(isDeployRemoval)).toBeGreaterThan(-1);
+		expect(indexOf(isDeployRemoval)).toBeLessThan(indexOf(isRestore));
+	});
+
+	it('refuses an update before deploying when a store has no container', async () => {
+		// redis was removed; its volume (and the data in it) may well remain.
+		overrides.push((cmd) => {
+			if (cmd.endsWith(' ps --all --quiet')) return `${CONTAINERS.convex}\n${CONTAINERS.web}\n`;
+			if (cmd.startsWith('docker inspect --format {{.Id}}')) {
+				return [
+					`${CONTAINERS.convex}|true|convex|volume=owlat_convex-data `,
+					`${CONTAINERS.web}|true|web|`,
+				].join('\n');
+			}
+			return undefined;
+		});
+		const { status, json } = await update();
+
+		expect(status).toBe(500);
+		expect(json.error).toContain('redis has no container');
+		expect(json.error).toContain('Nothing was changed');
+		expect(commandLines().some(isDeploy)).toBe(false);
+		expect(commandLines().some((c) => c.startsWith('docker stop'))).toBe(false);
+		expect(existsSync(SNAPSHOT_DIR)).toBe(false);
+		expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
+	});
+
 	it('says so, and refuses the next update, when the restore fails partway', async () => {
 		newReleaseNotReady();
 		overrides.push((cmd) =>
@@ -564,6 +659,51 @@ describe('a shutdown after the deploy has started', () => {
 		} finally {
 			setShutdownHandle(undefined);
 		}
+	});
+
+	/** An update a shutdown stopped once its deploy had started; its snapshot's id. */
+	async function interruptedAfterDeploy(): Promise<string> {
+		const shutdown = (cmd: string) => {
+			if (isDeploy(cmd)) beginShutdown();
+			return isDeploy(cmd) ? '' : undefined;
+		};
+		overrides.push(shutdown);
+		try {
+			await update();
+		} finally {
+			setShutdownHandle(undefined);
+			overrides.splice(overrides.indexOf(shutdown), 1);
+		}
+		return (journal() as { id: string }).id;
+	}
+
+	it('stops the deploy it may have left running before `owlat rollback` restores', async () => {
+		const id = await interruptedAfterDeploy();
+		const res = await post('/rollback', { snapshot: id });
+		expect(res.status).toBe(200);
+
+		const removal = indexOf((c) => c === `docker rm --force owlat-update-deploy-${id}`);
+		expect(removal).toBeGreaterThan(-1);
+		expect(removal).toBeLessThan(indexOf(isRestore));
+	});
+
+	it('stops that deploy before the next update deploys again, or refuses', async () => {
+		const id = await interruptedAfterDeploy();
+		const previousDeploy = (c: string) => c === `docker rm --force owlat-update-deploy-${id}`;
+		overrides.push((cmd) => (previousDeploy(cmd) ? fail('error during connect: EOF') : undefined));
+		const before = commandLines().length;
+		const refused = await update();
+
+		expect(refused.status).toBe(500);
+		expect(refused.json.error).toContain('Cannot stop the convex-deploy an earlier update started');
+		expect(commandLines().slice(before).some(isDeploy)).toBe(false);
+		// The earlier snapshot is still the one `owlat rollback` restores.
+		expect(journal()).toMatchObject({ id, state: 'kept' });
+
+		overrides.pop();
+		const next = await update();
+		expect(next.status).toBe(200);
+		expect(lastIndexOf(previousDeploy)).toBeLessThan(lastIndexOf(isDeploy));
 	});
 
 	it('records that the deploy started before running it', async () => {

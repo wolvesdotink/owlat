@@ -8,11 +8,12 @@
  * recreate the containers.
  *
  * The snapshot (snapshot.ts) is what makes the rest reversible. Until the new
- * release is confirmed ready, a deploy that timed out, a promote or recreate
- * that failed, or a release that does not pass the readiness check puts the
- * stack back on it (rollback.ts) and answers `rolled-back`. Once the release
- * is confirmed ready the snapshot is kept, and only the operator can restore
- * it (`owlat rollback`). Restoring discards what was written after the
+ * release is confirmed ready, a deploy that failed without proof that it
+ * changed nothing (deployRun.ts), a promote or recreate that failed, or a
+ * release that does not pass the readiness check puts the stack back on it
+ * (rollback.ts) and answers `rolled-back`. Once the release is confirmed
+ * ready the snapshot is kept, and only the operator can restore it
+ * (`owlat rollback`). Restoring discards what was written after the
  * snapshot, which is why it is never automatic after that point.
  *
  * A recreate that exits 0 has only STARTED the release. Success is reported
@@ -64,6 +65,12 @@ import {
 import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
 import { failingBeforeRollout } from './readiness.js';
 import { deployTarget } from './deployTarget.js';
+import {
+	deployContainerName,
+	deployRunArgs,
+	failedDeploy,
+	removeDeployContainer,
+} from './deployRun.js';
 import { discardSnapshot, markSnapshot, readSnapshot, type Snapshot } from './snapshot.js';
 import { captureSnapshot, recoverInterruptedCapture } from './snapshotCapture.js';
 import {
@@ -359,7 +366,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		const error = `convex is not serving — ${backend.detail}; update aborted, running stack untouched. Check \`docker compose logs convex\`, bring it back up, then retry.`;
 		return answer(500, { error, steps });
 	}
-	const noDeps = backend.kind === 'serving' ? ['--no-deps'] : [];
+	const noDeps = backend.kind === 'serving';
 
 	// From here the backend may run the new functions before anything else
 	// changes, so a snapshot of this update is never discarded as describing an
@@ -378,35 +385,60 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	writeLastRollout(record);
 	const rollBackOr = rollingBack({ record, steps, answer, snapshot, preExisting });
 
+	// Named after the snapshot, so a rollback to it can stop this deploy
+	// (deployRun.ts).
+	const deployName = deployContainerName(snapshot?.id);
 	const deploy = await exec(
 		'docker',
-		[...deployArgs, '--profile', 'deploy', 'run', '--rm', ...noDeps, 'convex-deploy'],
+		[...deployArgs, ...deployRunArgs(deployName, noDeps)],
 		OWLAT_DIR,
-		{ signal: stopping, timeoutMs: UPDATE_STEP_BOUNDS.convexDeployMs }
+		{
+			signal: stopping,
+			timeoutMs: UPDATE_STEP_BOUNDS.convexDeployMs,
+		}
 	);
 	steps.push({ step: 'convex-deploy', ...deploy });
+	// The deploy may still be running; `owlat rollback` stops it first.
 	if (stopping.aborted) return stopAfterDeploy();
 
 	if (!deploy.ok) {
-		// A rejected push changes nothing in Convex; one cut off by its bound may
-		// still finish there, against containers that stay on the old release.
-		if (deploy.stderr.includes('timed out after')) {
-			const failure =
-				'convex-deploy timed out, and the new functions might still have gone live behind the old containers.';
-			// Only the staged template goes: the snapshot is what the rollback restores.
-			if (composeTemplate) await rm(STAGED_FILE, { force: true }).catch(() => {});
-			return rollBackOr(failure, async () => {
-				await discardStaged();
-				const error =
-					'convex-deploy timed out — update aborted before any container was replaced, but the new functions may still go live; run the update again to bring the rest of the stack to the same release';
-				return answer(500, { error, steps });
+		// A rejected push changes nothing in Convex. Anything else (a run cut
+		// off by its bound, a client that lost the daemon) may still have
+		// gone live, against containers that stay on the old release.
+		const timedOut = deploy.stderr.includes('timed out after');
+		const outcome = await failedDeploy(deployName, timedOut);
+		if (outcome.rejected) {
+			await removeDeployContainer(deployName);
+			await discardStaged();
+			return answer(500, {
+				error: 'convex-deploy failed — update aborted, running stack untouched',
+				steps,
 			});
 		}
-		await discardStaged();
-		return answer(500, {
-			error: 'convex-deploy failed — update aborted, running stack untouched',
-			steps,
+		const failure = timedOut
+			? 'convex-deploy timed out, and the new functions might have gone live behind the old containers.'
+			: `convex-deploy failed without showing whether it changed Convex (${outcome.detail}), and the new functions might have gone live behind the old containers.`;
+		// Only the staged template goes: the snapshot is what the rollback
+		// restores, and the rollback stops the deploy before it does.
+		if (composeTemplate) await rm(STAGED_FILE, { force: true }).catch(() => {});
+		return rollBackOr(failure, async () => {
+			const stopped = await removeDeployContainer(deployName);
+			const error =
+				(timedOut ? 'convex-deploy timed out' : `convex-deploy failed (${outcome.detail})`) +
+				' — update aborted before any container was replaced, but the new functions may have gone live; ' +
+				'run the update again to bring the rest of the stack to the same release' +
+				(stopped.ok
+					? ''
+					: `. The deploy could not be stopped (${stopped.reason}): \`docker rm --force ${deployName}\` on the host stops it`);
+			return answer(500, { error, steps });
 		});
+	}
+	const cleaned = await removeDeployContainer(deployName);
+	if (!cleaned.ok) {
+		console.error(
+			`[update] could not remove the finished deploy container ${deployName}:`,
+			cleaned.reason
+		);
 	}
 
 	return applyRelease({ record, steps, answer, composeTemplate, snapshot, preExisting });

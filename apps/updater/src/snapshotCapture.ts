@@ -19,6 +19,7 @@ import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { exec, OWLAT_DIR } from './http.js';
 import { oneLine } from './rollout.js';
 import { freeBytes } from './storage.js';
+import { deployContainerName, removeDeployContainer } from './deployRun.js';
 import {
 	COPY_TIMEOUT_MS,
 	discardSnapshot,
@@ -30,6 +31,7 @@ import {
 	sha256File,
 	SNAPSHOT_DIR,
 	SNAPSHOT_FILES,
+	STATEFUL_SERVICES,
 	statefulContainers,
 	writeSnapshot,
 	type Plumbing,
@@ -137,6 +139,22 @@ export async function captureSnapshot(options: CaptureOptions): Promise<CaptureR
 		return refuse(500, `Cannot take the snapshot: ${found.error}. Nothing was changed.`);
 	}
 
+	// A store whose container is gone may still have its volume, which the
+	// release then starts on without a copy to roll back to. Its mounts can only
+	// be read off a container, so the update waits until it has one.
+	const missing = [...STATEFUL_SERVICES].filter(
+		(service) => !found.some((c) => c.service === service)
+	);
+	if (missing.length > 0) {
+		return refuse(
+			500,
+			`Cannot take the snapshot: ${missing.join(' and ')} ${missing.length > 1 ? 'have' : 'has'} no container, ` +
+				'so the data it keeps cannot be copied. Nothing was changed. On the host, `docker compose up -d ' +
+				'convex redis` starts the stores; then retry the update, or set OWLAT_UPDATE_SNAPSHOT=off in .env to ' +
+				'update without a snapshot.'
+		);
+	}
+
 	const mounts: SnapshotMount[] = [];
 	for (const container of found) {
 		for (const mount of container.mounts) {
@@ -160,6 +178,19 @@ export async function captureSnapshot(options: CaptureOptions): Promise<CaptureR
 				`${gib(FREE_SPACE_MARGIN_BYTES)} to spare, and ${gib(free)} is free. Nothing was changed. Free ` +
 				'some space, or set OWLAT_UPDATE_SNAPSHOT=off in .env to update without a snapshot.'
 		);
+	}
+	// The update that took the previous snapshot may have left its deploy
+	// running (a shutdown, a client that lost the daemon); two deploys must
+	// never push at once.
+	if (previous?.deployStarted) {
+		const name = deployContainerName(previous.id);
+		const stopped = await removeDeployContainer(name);
+		if (!stopped.ok) {
+			return refuse(
+				500,
+				`Cannot stop the convex-deploy an earlier update started (${name}): ${stopped.reason}. Nothing was changed.`
+			);
+		}
 	}
 	await discardSnapshot();
 

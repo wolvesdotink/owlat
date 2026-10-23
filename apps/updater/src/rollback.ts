@@ -26,6 +26,7 @@ import {
 	servicesToRecreate,
 } from './rollout.js';
 import { verifyReadiness } from './readiness.js';
+import { deployContainerName, removeDeployContainer } from './deployRun.js';
 import { isRateLimited } from './security.js';
 import {
 	COPY_TIMEOUT_MS,
@@ -162,6 +163,20 @@ async function restoreAndStart(
 			: 'cannot read the install directory this updater is mounted from';
 		fail('rollback-restore', reason);
 		return result('untouched', `${reason}. Nothing was restored.`);
+	}
+
+	// A deploy of the update that took the snapshot may still be running (cut
+	// off by its bound, or orphaned by a client that lost the daemon). It is
+	// stopped and waited for first, or it could go on writing to the backend
+	// the data is restored under.
+	if (snapshot.deployStarted) {
+		const name = deployContainerName(snapshot.id);
+		const stopped = await removeDeployContainer(name);
+		if (!stopped.ok) {
+			const reason = `could not stop the update's convex-deploy (${name}): ${stopped.reason}`;
+			fail('rollback-restore', reason);
+			return result('untouched', `${reason}. Nothing was restored.`);
+		}
 	}
 
 	const previousState = snapshot.state;

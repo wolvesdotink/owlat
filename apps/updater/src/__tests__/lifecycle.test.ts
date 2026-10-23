@@ -63,6 +63,11 @@ beforeEach(() => {
 	commandMock.mockReset().mockImplementation((file: unknown, args: unknown) => {
 		const cmd = [String(file), ...((args as string[]) ?? [])].join(' ');
 		if (cmd.includes('config --services')) return 'web\nupdater\n';
+		// convex and redis, without volumes: the snapshot finds both, copies nothing.
+		if (cmd.endsWith(' ps --all --quiet')) return 'c0ffee000001\nc0ffee000002\n';
+		if (cmd.startsWith('docker inspect --format {{.Id}}')) {
+			return 'c0ffee000001|true|convex|\nc0ffee000002|true|redis|';
+		}
 		if (cmd.startsWith('docker inspect')) {
 			return [
 				'ghcr.io/wolvesdotink/updater:0.5.0',

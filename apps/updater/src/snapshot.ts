@@ -95,8 +95,11 @@ export interface Snapshot {
 	deployStarted?: boolean;
 }
 
-/** The services whose data a release migrates. */
-const STATEFUL_SERVICES = new Set(['convex', 'redis']);
+/**
+ * The services whose data a release migrates. Every one of them is part of
+ * every install, so a snapshot without one of them is refused, never taken.
+ */
+export const STATEFUL_SERVICES: ReadonlySet<string> = new Set(['convex', 'redis']);
 
 /** The files a rollback puts back; `.env` holds every deployment secret. */
 export const SNAPSHOT_FILES = ['docker-compose.yml', 'docker-compose.override.yml', '.env'];

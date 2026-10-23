@@ -136,6 +136,13 @@ function dockerFixture(file: unknown, args: unknown): string {
 		err.stderr = 'conflict: unable to remove repository reference (must force)';
 		throw err;
 	}
+	// convex and redis, which the snapshot before the deploy needs to find.
+	if (cmd.endsWith(' ps --all --quiet')) return `${STORES.map(([id]) => id).join('\n')}\n`;
+	if (cmd.startsWith('docker inspect --format {{.Id}}')) {
+		return STORES.map(([id, service]) => `${id}|true|${service}|`).join('\n');
+	}
+	// A deploy that failed: its container exited on its own, rejecting the push.
+	if (cmd.startsWith('docker inspect --type container')) return 'exited|1|false\n';
 	if (cmd.startsWith('docker inspect')) {
 		return [
 			'ghcr.io/wolvesdotink/updater:0.5.0',
@@ -170,6 +177,12 @@ const IMAGE_LIST = [
 	'',
 ].join('\n');
 const IMAGES_IN_USE = ['ollama/ollama:0.34.4', 'redis:7.4-alpine'];
+
+/** The stack's stateful containers, kept without volumes so no payload is copied. */
+const STORES = [
+	['c0ffee000001', 'convex'],
+	['c0ffee000002', 'redis'],
+] as const;
 
 /** The OCI source label every published Owlat image carries. */
 const OWLAT_SOURCE = 'https://github.com/wolvesdotink/owlat';
@@ -220,6 +233,12 @@ const HOST_INSTALL_DIR = '/srv/owlat';
 const COMPOSE = `docker compose --project-directory ${HOST_INSTALL_DIR} --env-file ${join(OWLAT_DIR, '.env')} -f ${join(OWLAT_DIR, 'docker-compose.yml')}`;
 
 const composeCommands = () => commandLines().filter((c) => c.startsWith('docker compose'));
+
+/** The deploy's command line: a named run, kept until its state is read (deployRun.ts). */
+const deployLine = (tail: string) =>
+	new RegExp(
+		`^${(COMPOSE + ' --profile deploy run --name ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}owlat-update-deploy-snap-[a-z0-9]+-[0-9a-f]{8} ${tail}$`
+	);
 
 function post(path: string, body?: unknown, headers: Record<string, string> = AUTH) {
 	return fetch(`${base}${path}`, {
@@ -280,7 +299,7 @@ describe('POST /update', () => {
 			`${COMPOSE} ps --all --quiet`,
 			// A serving convex is deployed to as it is, never recreated by `run`.
 			`${COMPOSE} ps --format json convex`,
-			`${COMPOSE} --profile deploy run --rm --no-deps convex-deploy`,
+			expect.stringMatching(deployLine('--no-deps convex-deploy')),
 			`${COMPOSE} config --services`,
 			`${COMPOSE} up -d --remove-orphans web convex mta`,
 		]);
@@ -458,7 +477,7 @@ describe('POST /update', () => {
 	it('leaves a convex that does not exist yet to depends_on to start', async () => {
 		convexBeforeDeploy(() => '');
 		await post('/update');
-		expect(deployCommand()).toBe(`${COMPOSE} --profile deploy run --rm convex-deploy`);
+		expect(deployCommand()).toMatch(deployLine('convex-deploy'));
 	});
 
 	it('waits for a convex that is still booting, then deploys to it as it is', async () => {
@@ -467,7 +486,7 @@ describe('POST /update', () => {
 		);
 		const res = await post('/update');
 		expect(res.status).toBe(200);
-		expect(deployCommand()).toBe(`${COMPOSE} --profile deploy run --rm --no-deps convex-deploy`);
+		expect(deployCommand()).toMatch(deployLine('--no-deps convex-deploy'));
 	});
 
 	it.each([
@@ -775,8 +794,31 @@ describe('POST /update', () => {
 		expect(res.status).toBe(500);
 		const { error } = (await res.json()) as { error: string };
 		expect(error).toMatch(/^convex-deploy timed out/);
-		expect(error).toContain('may still go live');
+		expect(error).toContain('may have gone live');
 		expect(error).not.toContain('untouched');
+		expect(composeCommands().some((cmd) => cmd.includes(' up -d'))).toBe(false);
+	});
+
+	it('does not claim the stack is untouched when the client lost a deploy still running', async () => {
+		withoutSnapshot();
+		commandMock.mockImplementation((file: unknown, args: unknown) => {
+			const cmd = [String(file), ...((args as string[]) ?? [])].join(' ');
+			if (cmd.startsWith('docker inspect --type container')) return 'running|0|false\n';
+			return dockerFailing(
+				(c) => c.includes('convex-deploy'),
+				'error waiting for container: unexpected EOF'
+			)(file, args);
+		});
+		const res = await post('/update');
+		expect(res.status).toBe(500);
+		const { error } = (await res.json()) as { error: string };
+		expect(error).toMatch(/^convex-deploy failed \(its container is running\)/);
+		expect(error).toContain('may have gone live');
+		expect(error).not.toContain('untouched');
+		// Stopped, so it is not still pushing when the operator retries.
+		expect(commandLines().some((c) => c.startsWith('docker rm --force owlat-update-deploy-'))).toBe(
+			true
+		);
 		expect(composeCommands().some((cmd) => cmd.includes(' up -d'))).toBe(false);
 	});
 
