@@ -1,7 +1,7 @@
 /**
- * Marketing notifications: "Autumn launch finished · 98% delivered", "Sending
- * paused: bounce spike", "Webinar sends in 15 min", "Welcome series: 12 runs
- * stalled", "mail.example.com: DNS check failed".
+ * Marketing notifications: "Autumn launch finished · 98% delivered", "Bounce
+ * spike: sending protection on", "Webinar sends in 15 min", "Welcome series: 12
+ * runs stalled", "mail.example.com: DNS check failed".
  *
  * Producers (see `noticeEvents.ts`) schedule `fanOut` with one occurrence. The
  * fan-out re-reads the source (`noticeResolvers.ts`), drops an occurrence that

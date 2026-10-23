@@ -15,6 +15,7 @@ import { DELIVERABILITY_CHECKLIST } from '@owlat/shared';
 import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../delivery/deliverabilityRouting';
 import { loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { getLive } from '../lib/softDelete';
@@ -127,20 +128,30 @@ function isReminderCurrent(
 	);
 }
 
-/** The provider slice still carries the breaker signal the hold notice is about. */
-async function isBreakerStillOpen(ctx: Reader, provider: string): Promise<boolean> {
+/**
+ * The provider slice still carries the breaker signal the hold notice is
+ * about, on a snapshot the router still trusts: routing ignores a row older
+ * than the signal freshness limit, so a breaker the MTA stopped reporting is
+ * no longer protecting anything and no longer news.
+ */
+async function isBreakerStillOpen(ctx: Reader, provider: string, now: number): Promise<boolean> {
 	const key = DESTINATION_PROVIDER_KEYS.find((candidate) => candidate === provider);
 	if (!key) return false;
 	const organizationId = await getSingletonOrganizationId(ctx);
 	const state = await loadStreamlessRouteState(ctx, organizationId, key);
-	return state?.signals.some((signal) => signal.source === 'breaker_open') === true;
+	return (
+		state !== null &&
+		now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
+		state.signals.some((signal) => signal.source === 'breaker_open')
+	);
 }
 
 async function draftDeliveryHold(
 	ctx: MutationCtx,
-	event: Extract<MarketingNoticeEvent, { kind: 'delivery_hold' }>
+	event: Extract<MarketingNoticeEvent, { kind: 'delivery_hold' }>,
+	now: number
 ): Promise<NoticeDraft | null> {
-	if (!(await isBreakerStillOpen(ctx, event.provider))) return null;
+	if (!(await isBreakerStillOpen(ctx, event.provider, now))) return null;
 	return {
 		kind: 'delivery_hold',
 		eventKey: `delivery_hold:${event.provider}:${event.openedAt}`,
@@ -217,7 +228,7 @@ export async function draftNotice(
 		case 'campaign_reminder':
 			return draftCampaignReminder(ctx, event, now);
 		case 'delivery_hold':
-			return draftDeliveryHold(ctx, event);
+			return draftDeliveryHold(ctx, event, now);
 		case 'automation_stalled':
 			return draftAutomationStalled(ctx, event);
 		case 'automation_paused':
@@ -231,8 +242,8 @@ export async function draftNotice(
  * Whether a stored notice is still true enough to interrupt someone with. A
  * finished campaign stays finished, but one deleted since is gone; a reminder
  * is stale the moment its campaign is rescheduled, cancelled, deleted or
- * started; a hold, a pause or a DNS failure that has already cleared is no
- * longer news.
+ * started; a hold, a pause or a DNS failure that has already cleared (or whose
+ * domain was removed) is no longer news.
  */
 export async function isNoticeLive(
 	ctx: Reader,
@@ -248,7 +259,7 @@ export async function isNoticeLive(
 			return isReminderCurrent(campaign, notice.scheduledAt, now);
 		}
 		case 'delivery_hold':
-			return notice.name !== undefined && (await isBreakerStillOpen(ctx, notice.name));
+			return notice.name !== undefined && (await isBreakerStillOpen(ctx, notice.name, now));
 		case 'automation_stalled':
 			return (
 				notice.automationId !== undefined && (await getLive(ctx, notice.automationId)) !== null
@@ -259,9 +270,13 @@ export async function isNoticeLive(
 			return automation?.status === 'paused';
 		}
 		case 'domain_dns': {
-			if (notice.alertId === undefined) return false;
+			// The domain is checked as well as the alert: removing a sending
+			// domain leaves its regression alert behind, and a notice about a
+			// domain that no longer exists links nowhere.
+			if (notice.alertId === undefined || notice.domainId === undefined) return false;
 			const alert = await ctx.db.get(notice.alertId);
-			return alert !== null && alert.resolvedAt === undefined;
+			if (alert === null || alert.resolvedAt !== undefined) return false;
+			return (await ctx.db.get(notice.domainId)) !== null;
 		}
 	}
 }

@@ -118,7 +118,8 @@ export const applySnapshot = internalMutation({
 			else await ctx.db.insert('deliverabilityRouteStates', fields);
 
 			// The MTA's breaker for this provider just opened (a bounce or
-			// complaint spike): sending there is held. Only the edge notifies;
+			// complaint spike): mail there is held back, or rerouted through the
+			// relay when one is set up and verified. Only the edge notifies;
 			// while hysteresis keeps the signal, every later snapshot is the
 			// same hold. A row last written longer ago than a signal stays
 			// fresh says nothing about now, so it counts as closed.

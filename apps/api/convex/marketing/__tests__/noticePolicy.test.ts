@@ -145,11 +145,13 @@ describe('marketing push copy', () => {
 	it('names the provider of a delivery hold and falls back for an unknown one', () => {
 		expect(
 			marketingPayload(notice({ kind: 'delivery_hold', name: 'gmail' }), 'en', false, 0).body
-		).toBe('Owlat paused sending to Gmail after a spike in bounces or complaints');
+		).toBe(
+			'Owlat is holding back mail to Gmail, or rerouting it through your relay, after a spike in bounces or complaints'
+		);
 		expect(
 			marketingPayload(notice({ kind: 'delivery_hold', name: 'nope' }), 'de', false, 0).body
 		).toBe(
-			'Owlat hat den Versand an andere Anbieter nach vielen Bounces oder Beschwerden pausiert'
+			'Owlat hält Mails an andere Anbieter nach vielen Bounces oder Beschwerden zurück oder leitet sie über dein Relay um'
 		);
 	});
 

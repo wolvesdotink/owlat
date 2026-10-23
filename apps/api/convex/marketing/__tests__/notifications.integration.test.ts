@@ -27,6 +27,7 @@ import {
 	AUTOMATION_FAILURE_BREAKER_THRESHOLD,
 	recordAutomationRunFailure,
 } from '../../automations/lifecycle';
+import { removeSendingDomain } from '../../domains/lifecycle';
 import type { MarketingNoticeEvent } from '../../lib/validators/marketingNotifications';
 import { CAMPAIGN_FINISHED_SETTLE_MS, CAMPAIGN_REMINDER_LEAD_MS } from '../noticeEvents';
 
@@ -324,6 +325,24 @@ describe('delivery hold', () => {
 			written: 0,
 		});
 	});
+
+	it('treats a breaker snapshot older than the router trusts as closed', async () => {
+		const t = await harness(['transactional']);
+		// The MTA last reported the open breaker 11 minutes ago and then went quiet.
+		await applySnapshot(t, NOW - 11 * MINUTE, true);
+		expect(
+			await fanOut(t, { kind: 'delivery_hold', provider: 'gmail', openedAt: NOW - 11 * MINUTE })
+		).toEqual({ written: 0 });
+
+		// A notice written while the snapshot was fresh drops out once it ages.
+		await applySnapshot(t, NOW, true);
+		expect(await fanOut(t, { kind: 'delivery_hold', provider: 'gmail', openedAt: NOW })).toEqual({
+			written: 2,
+		});
+		expect(await t.query(api.marketing.notifications.listRecent, {})).toHaveLength(1);
+		vi.setSystemTime(NOW + 11 * MINUTE);
+		expect(await t.query(api.marketing.notifications.listRecent, {})).toEqual([]);
+	});
 });
 
 describe('automation problems', () => {
@@ -451,6 +470,27 @@ describe('sending domain DNS', () => {
 		session.role = 'owner';
 
 		await record(t, domainId, 'recovered', 'pass', NOW + MINUTE);
+		expect(await t.query(api.marketing.notifications.listRecent, {})).toEqual([]);
+	});
+
+	it('drops the notice once its sending domain is removed, though the alert stays open', async () => {
+		const t = await harness(['campaigns']);
+		const domainId = await t.run((ctx) =>
+			ctx.db.insert('domains', createTestDomain({ domain: 'mail.example.com' }) as never)
+		);
+		await record(t, domainId, 'pass', 'pass', NOW - HOUR);
+		await record(t, domainId, 'fail', 'fail', NOW);
+		const [queued] = await queuedFanOuts(t);
+		expect(await fanOut(t, queued!.event)).toEqual({ written: 2 });
+		expect(await t.query(api.marketing.notifications.listRecent, {})).toHaveLength(1);
+
+		await t.run((ctx) => removeSendingDomain.handler(ctx, { domainId, userId: 'admin-1' }));
+		const openAlerts = await t.run(async (ctx) =>
+			(await ctx.db.query('deliverabilityRegressionAlerts').collect()).filter(
+				(alert) => alert.resolvedAt === undefined
+			)
+		);
+		expect(openAlerts).toHaveLength(1);
 		expect(await t.query(api.marketing.notifications.listRecent, {})).toEqual([]);
 	});
 });

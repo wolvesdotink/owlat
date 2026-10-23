@@ -48,9 +48,9 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 		finishedPrivate: 'A campaign has finished sending',
 		reminderTitle: (minutes) => `Scheduled campaign sends in ${minutes} min`,
 		reminderPrivate: 'Open it to review or cancel the send',
-		holdTitle: 'Sending paused: bounce spike',
+		holdTitle: 'Bounce spike: sending protection on',
 		holdBody: (provider) =>
-			`Owlat paused sending to ${provider} after a spike in bounces or complaints`,
+			`Owlat is holding back mail to ${provider}, or rerouting it through your relay, after a spike in bounces or complaints`,
 		providers: {
 			gmail: 'Gmail',
 			microsoft: 'Microsoft',
@@ -79,9 +79,9 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 		finishedPrivate: 'Eine Kampagne ist fertig versendet',
 		reminderTitle: (minutes) => `Geplante Kampagne startet in ${minutes} Min.`,
 		reminderPrivate: 'Öffne sie, um den Versand zu prüfen oder abzubrechen',
-		holdTitle: 'Versand pausiert: Bounce-Spitze',
+		holdTitle: 'Bounce-Spitze: Versandschutz aktiv',
 		holdBody: (provider) =>
-			`Owlat hat den Versand an ${provider} nach vielen Bounces oder Beschwerden pausiert`,
+			`Owlat hält Mails an ${provider} nach vielen Bounces oder Beschwerden zurück oder leitet sie über dein Relay um`,
 		providers: {
 			gmail: 'Gmail',
 			microsoft: 'Microsoft',
