@@ -192,9 +192,14 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		clear();
 	}
 
-	async function purgeSelected() {
-		if (ids.value.length === 0) return;
-		const result = await purge.run({ messageIds: ids.value });
+	/**
+	 * `messageIds` is the selection as it stood when the person confirmed; a
+	 * caller that asked first passes it so the purge cannot reach rows selected
+	 * while the question was open.
+	 */
+	async function purgeSelected(messageIds: Id<'mailMessages'>[] = ids.value) {
+		if (messageIds.length === 0) return;
+		const result = await purge.run({ messageIds });
 		if (!result.ok) return;
 		clear();
 	}
