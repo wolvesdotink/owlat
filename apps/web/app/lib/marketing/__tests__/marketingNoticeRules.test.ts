@@ -151,6 +151,12 @@ describe('quiet hours release', () => {
 		expect(isNativeNoticeCurrent(view({ kind: 'domain_dns' }), 1_000_000)).toBe(true);
 	});
 
+	it('treats any notice past its liveUntil as stale, the deadline itself included as live', () => {
+		const hold = view({ kind: 'delivery_hold', name: 'gmail', liveUntil: 600_000 });
+		expect(isNativeNoticeCurrent(hold, 600_000)).toBe(true);
+		expect(isNativeNoticeCurrent(hold, 600_001)).toBe(false);
+	});
+
 	it('sends nothing, one notice as itself, or several as one summary', () => {
 		const a = view({ id: 'a', kind: 'campaign_finished' });
 		const b = view({ id: 'b', kind: 'domain_dns' });
@@ -166,5 +172,18 @@ describe('quiet hours release', () => {
 			notice: a,
 		});
 		expect(planQuietRelease(new Set(['gone', 'r']), [reminder], 2_000)).toEqual({ kind: 'none' });
+	});
+
+	it('leaves out a hold whose breaker snapshot went stale while the answer was kept', () => {
+		const a = view({ id: 'a', kind: 'campaign_finished' });
+		const hold = view({ id: 'h', kind: 'delivery_hold', name: 'gmail', liveUntil: 1_000 });
+		expect(planQuietRelease(new Set(['a', 'h']), [hold, a], 1_000)).toEqual({
+			kind: 'summary',
+			count: 2,
+		});
+		expect(planQuietRelease(new Set(['a', 'h']), [hold, a], 1_001)).toEqual({
+			kind: 'single',
+			notice: a,
+		});
 	});
 });

@@ -240,4 +240,32 @@ describe('useMarketingNotices', () => {
 		expect(body).toContain('"count":2');
 		expect(sendLinkNotification).not.toHaveBeenCalled();
 	});
+
+	it('drops a held delivery hold whose breaker snapshot went stale before the window closed', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date(2026, 9, 22, 6, 30));
+		isDesktop.value = true;
+		quietHours.value = NIGHTS;
+		start();
+		rows.value = [];
+		await settle();
+		// The reader answered at 06:30 and, with no new snapshot, never again:
+		// the kept answer still lists the hold, trusted only until 06:40.
+		const hold: MarketingNoticeView = {
+			id: 'h',
+			kind: 'delivery_hold',
+			createdAt: 1,
+			url: '/dashboard/deliverability',
+			name: 'gmail',
+			liveUntil: new Date(2026, 9, 22, 6, 40).getTime(),
+		};
+		rows.value = [hold, finished('a', 2)];
+		await settle();
+
+		vi.setSystemTime(new Date(2026, 9, 22, 7, 1));
+		pollQuietHours!();
+		await vi.waitFor(() => expect(sendLinkNotification).toHaveBeenCalledTimes(1));
+		expect(sendLinkNotification.mock.calls[0]![2]).toBe('/dashboard/campaigns/a/report');
+		expect(sendDesktopNotification).not.toHaveBeenCalled();
+	});
 });

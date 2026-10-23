@@ -31,6 +31,13 @@ export interface MarketingNoticeView {
 	count?: number;
 	detail?: string;
 	scheduledAt?: number;
+	/**
+	 * The last instant the notice holds by the clock alone (a reminder until
+	 * its start, a delivery hold while its breaker snapshot is trusted). The
+	 * subscription is not re-run as time passes, so a kept answer can carry a
+	 * notice that has expired since.
+	 */
+	liveUntil?: number;
 }
 
 /** A catalog key with its values; a value given as `{ key }` is itself looked up. */
@@ -175,11 +182,14 @@ export function presentNativeMarketingNotice(
 }
 
 /**
- * Whether a notice is still worth an OS notification now. The reader already
- * dropped notices that no longer hold; a reminder can still turn stale on
- * this side of it, once its campaign's start has passed.
+ * Whether a notice is still worth an OS notification now. The reader dropped
+ * the notices that no longer held when it answered; one that expires by the
+ * clock alone (`liveUntil`) can still turn stale on this side of it while the
+ * answer is kept, and a reminder always does once its campaign's start has
+ * passed.
  */
 export function isNativeNoticeCurrent(notice: MarketingNoticeView, now: number): boolean {
+	if (notice.liveUntil !== undefined && now > notice.liveUntil) return false;
 	return notice.kind !== 'campaign_reminder' || (notice.scheduledAt ?? 0) > now;
 }
 
@@ -191,8 +201,10 @@ export type QuietRelease =
 /**
  * What to send once quiet hours end, for the notices whose OS notification the
  * window held back. Only the ones the reader still returns count (a reminder
- * whose campaign started meanwhile, or a hold that cleared, is gone from it),
- * minus reminders past their start. One goes out as itself, with its link;
+ * whose campaign was cancelled meanwhile, or a hold that cleared, is gone from
+ * it), minus the ones past their `liveUntil`: the answer may be hours old, and a
+ * reminder whose start passed or a hold whose breaker snapshot went stale
+ * changes no row the reader depends on. One goes out as itself, with its link;
  * several as one summary, so the morning does not open with a stack.
  */
 export function planQuietRelease(
