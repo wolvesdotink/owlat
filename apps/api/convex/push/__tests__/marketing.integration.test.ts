@@ -224,7 +224,7 @@ describe('push.dispatch marketing', () => {
 		);
 		expect(await prepare(t, noticeId)).toEqual([]);
 		const device = await t.run((ctx) => ctx.db.query('pushSubscriptions').first());
-		expect(device?.quietDeferredCount).toBe(1);
+		expect(device?.quietDeferredMarketingCount).toBe(1);
 
 		await t.run(async (ctx) => {
 			const row = await ctx.db.query('mailUserSettings').first();
@@ -236,5 +236,69 @@ describe('push.dispatch marketing', () => {
 		const [delivery] = await prepare(t, noticeId);
 		expect(delivery?.payload.body).toBe('A campaign has finished sending');
 		expect(JSON.stringify(delivery?.payload)).not.toContain('Autumn launch');
+	});
+
+	it('keeps a held notice in the summary when "Notify me about" is Nothing', async () => {
+		const t = await setup();
+		const noticeId = await seedFinished(t);
+		const now = Date.now();
+		await t.run((ctx) =>
+			ctx.db.insert('mailUserSettings', {
+				userId: USER,
+				autoAdvance: 'next',
+				notifyAbout: 'nothing',
+				quietHours: quietWindowAroundNow(),
+				createdAt: now,
+				updatedAt: now,
+			})
+		);
+		expect(await prepare(t, noticeId)).toEqual([]);
+		const device = await t.run((ctx) => ctx.db.query('pushSubscriptions').first());
+		expect(device?.quietDeferredMarketingCount).toBe(1);
+		expect(device?.quietDeferredCount).toBeUndefined();
+		// Mail held in the same window, which "Nothing" keeps out of the summary.
+		await t.run((ctx) => ctx.db.patch(device!._id, { quietDeferredCount: 2 }));
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('mailUserSettings').first();
+			await ctx.db.patch(row!._id, { quietHours: { ...quietWindowAroundNow(), enabled: false } });
+		});
+		const summary = await t.mutation(internal.push.dispatch.takeQuietSummary, {
+			subscriptionId: device!._id,
+		});
+		expect(JSON.parse(summary!.payload)).toMatchObject({
+			title: 'While you were away',
+			body: '1 notification arrived during quiet hours',
+		});
+		const cleared = await t.run((ctx) => ctx.db.get(device!._id));
+		expect(cleared?.quietDeferredCount).toBeUndefined();
+		expect(cleared?.quietDeferredMarketingCount).toBeUndefined();
+		expect(cleared?.quietSummaryAt).toBeUndefined();
+	});
+
+	it('adds held notices to held mail in the summary when mail is in scope', async () => {
+		const t = await setup();
+		const noticeId = await seedFinished(t);
+		const now = Date.now();
+		await t.run((ctx) =>
+			ctx.db.insert('mailUserSettings', {
+				userId: USER,
+				autoAdvance: 'next',
+				quietHours: quietWindowAroundNow(),
+				createdAt: now,
+				updatedAt: now,
+			})
+		);
+		expect(await prepare(t, noticeId)).toEqual([]);
+		const device = await t.run((ctx) => ctx.db.query('pushSubscriptions').first());
+		await t.run((ctx) => ctx.db.patch(device!._id, { quietDeferredCount: 2 }));
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('mailUserSettings').first();
+			await ctx.db.patch(row!._id, { quietHours: { ...quietWindowAroundNow(), enabled: false } });
+		});
+		const summary = await t.mutation(internal.push.dispatch.takeQuietSummary, {
+			subscriptionId: device!._id,
+		});
+		expect(JSON.parse(summary!.payload).body).toBe('3 notifications arrived during quiet hours');
 	});
 });
