@@ -6,21 +6,37 @@
  * - HTTP server exposes /send + /test for Convex (outbound relay + cred check),
  *   /reconcile so a freshly connected mailbox starts syncing at once, and
  *   /remote-ops, the nudge to replay changes made in Owlat on the provider.
+ * - Reports its wire version to `maintenance/workerRegistry:report`.
  */
 
 import { loadConfig } from './config.js';
-import { createConvexClient } from './convex.js';
+import { createConvexClient, fn } from './convex.js';
 import { AccountManager } from './accountManager.js';
 import { startServer } from './server.js';
 import { drainSentCopies } from './send.js';
 import { startSeedProbeSweeper } from './seedProbeRunner.js';
 import { logger } from './logger.js';
 import { installCrashHandlers, installShutdown, pinoShutdownLog } from '@owlat/shared/nodeShutdown';
+import { workerWireWindow } from '@owlat/shared/workerWire';
+import { startWorkerWireReports, workerReportIdentity } from '@owlat/shared/workerWireReporter';
 import { pathToFileURL } from 'node:url';
 
 export async function main(): Promise<void> {
 	const config = loadConfig();
 	const convex = createConvexClient(config);
+
+	// Report this worker's release and wire version, so the backend can show
+	// version skew and hold contract steps until every worker has moved.
+	const identity = workerReportIdentity();
+	const wireVersion = workerWireWindow('mail-sync').current;
+	const wireReports = startWorkerWireReports({
+		service: 'mail-sync',
+		wireVersion,
+		owlatVersion: identity.owlatVersion,
+		report: () =>
+			convex.mutation(fn.reportWorker, { service: 'mail-sync', ...identity, wireVersion }),
+		log: logger,
+	});
 
 	const manager = new AccountManager(convex, config);
 	await manager.start();
@@ -42,6 +58,7 @@ export async function main(): Promise<void> {
 	installShutdown({
 		server,
 		drain: async () => {
+			wireReports.stop();
 			stopSeedSweeper();
 			await Promise.all([manager.stop(), drainSentCopies()]);
 		},

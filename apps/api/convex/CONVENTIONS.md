@@ -905,6 +905,30 @@ calls it for every IMAP login.
   notes tell operators to run it and update the IMAP container before
   updating the backend.
 
+**Worker wire versions.** Every separately deployed worker (the IMAP server,
+mail-sync, the MTA, the code-worker) has its own wire version, independent of
+the others, in `@owlat/shared/workerWire` (the IMAP entry reads
+`@owlat/shared/imapWire`). Each worker reports it at startup and every 5
+minutes to `maintenance/workerRegistry`: mail-sync through `:report`, the
+code-worker through `:reportCodeWorker` (its proxy allows nothing that could
+record another service), the MTA over the signed `/webhooks/mta-worker-report`
+route, and the IMAP server's `mail/imap/serverRegistry:report` records there
+too. `npx convex run maintenance/workerRegistry:status` and Settings → System &
+updates show, per service, which builds reported and the version skew.
+
+- Bump a worker's `current` in the PR that changes its contract, under the same
+  rules as the IMAP wire version; the code-worker also keeps its number in
+  `apps/code-worker/src/wireVersion.ts` (its image does not ship the shared
+  package; a test keeps the two equal).
+- A migration that removes or rewrites what a worker below some version still
+  reads or writes is a contract step: its manifest entry declares
+  `requiresWorkers: { <service>: <version> }`. The runner does not start it
+  while a worker of that service reported a lower version within the last 15
+  minutes, or while the service runs here (it is configured, or reported this
+  week) and no live worker has reported the version yet (`readWorkerWaits`).
+  Workers from before reporting are invisible to this check, so it does not
+  replace the N-1 window: it only adds this deployment's own evidence.
+
 **Migration manifest.** A release that needs data work ships a manifest listing,
 per migration: its module (`migrations/NNNN_name:run`), whether it must finish
 before users are let back in or may run in the background, whether a later
@@ -915,7 +939,8 @@ chat-media migration. Every ledger-backed migration is also listed in
 stepping stone (`__tests__/manifest.test.ts` fails on one that is missing).
 Settings → System & updates reads that list with the ledger to show what is
 pending and runs it through each migration's own `run` (`migrations/admin.ts`);
-the in-app update refuses to start while a stepping stone is unfinished. When a
+the in-app update refuses to start while a stepping stone is unfinished, and a
+contract step with `requiresWorkers` waits there until the workers have moved. When a
 later release has made a migration moot (its contract removed what the
 migration converts), move it to `RETIRED_MIGRATIONS` in that release.
 

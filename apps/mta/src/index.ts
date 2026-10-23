@@ -42,6 +42,7 @@ import { generateAndSendReports as sendTlsReports } from './smtp/tlsRpt.js';
 import { notifyConvex } from './webhooks/convexNotifier.js';
 import { sweepWebhookDlq } from './webhooks/dlqSweeper.js';
 import { logger } from './monitoring/logger.js';
+import { startMtaWireReports } from './monitoring/wireReport.js';
 import { stopIntake } from './lib/stopIntake.js';
 import { fireAndForget } from './lib/fireAndForget.js';
 import { installCrashHandlers, installShutdown, pinoShutdownLog } from '@owlat/shared/nodeShutdown';
@@ -364,6 +365,9 @@ export async function main() {
 	await worker.run();
 	logger.info('GroupMQ worker started');
 
+	// ── 16. Report this replica's wire version (every replica, not only the leader) ──
+	const wireReports = startMtaWireReports(config);
+
 	// ── Graceful shutdown ──
 	//
 	// installShutdown stops the HTTP server, ignores a duplicate signal and holds
@@ -391,7 +395,7 @@ export async function main() {
 					suppressionSweepInterval,
 				],
 				// Stop claiming liveness the moment we start draining.
-				stops: [() => bounceTlsReload.stop(), stopHeartbeat],
+				stops: [() => bounceTlsReload.stop(), stopHeartbeat, wireReports.stop],
 				listeners: [
 					[bounceServer, 'Bounce server close failed'],
 					[submissionServer, 'Submission server close failed'],

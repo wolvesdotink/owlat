@@ -8,6 +8,8 @@
  */
 
 import { createAdminConvexClient } from '@owlat/shared';
+import type { WorkerWireReportResult } from '@owlat/shared/workerWire';
+import type { WorkerReportIdentity } from '@owlat/shared/workerWireReporter';
 import { ConvexHttpClient } from 'convex/browser';
 import { getFunctionName, makeFunctionReference, type FunctionReference } from 'convex/server';
 import type { MailSyncConfig } from './config.js';
@@ -411,4 +413,12 @@ export const fn = {
 		{ accountId: string; listed: string[]; retired?: string[] },
 		{ forgotten: number }
 	>('mail/external/remoteState:forgetRemoteFolders'),
+
+	// ── Wire version ──
+	// This worker's release and wire version, at startup and every 5 minutes.
+	reportWorker: makeFunctionReference<
+		'mutation',
+		{ service: 'mail-sync' } & WorkerReportIdentity & { wireVersion: number },
+		WorkerWireReportResult
+	>('maintenance/workerRegistry:report'),
 };

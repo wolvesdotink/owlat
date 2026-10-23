@@ -28,6 +28,7 @@
 
 import type { FunctionReference } from 'convex/server';
 import { internal } from '../_generated/api';
+import type { WorkerRequirement } from '../maintenance/workerRegistry';
 
 export interface MigrationManifestEntry {
 	/** The module under `migrations/`, and its ledger row's `migration`. */
@@ -47,6 +48,13 @@ export interface MigrationManifestEntry {
 	 * any release after `introducedIn`.
 	 */
 	requiredBefore?: string;
+	/**
+	 * A contract step: it removes or rewrites what workers below these wire
+	 * versions still read or write. The runner does not start it until every
+	 * worker of each service has moved (`readWorkerWaits` in
+	 * `maintenance/workerRegistry.ts`).
+	 */
+	requiresWorkers?: WorkerRequirement;
 	/** A cron starts and resumes it without an operator; the runner only starts it sooner. */
 	startsItself?: boolean;
 	/**

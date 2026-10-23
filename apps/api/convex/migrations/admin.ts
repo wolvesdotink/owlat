@@ -21,7 +21,8 @@
  * (`migrationDriver`) and schedules {@link advance}, which repeats that step
  * every {@link TICK_MS} until every migration has completed (`finished`) or
  * one has failed or stopped moving (`stopped`; the admin resumes it with the
- * next run). Both run in one serializable transaction over the ledger rows and
+ * next run). A contract step that declares `requiresWorkers` waits the same
+ * way until every worker has reported the wire versions it needs. Both run in one serializable transaction over the ledger rows and
  * the runner row, so two admins clicking at once cannot start a migration
  * twice: the second sees the first's ledger rows, and an active runner.
  *
@@ -36,6 +37,7 @@ import type { Doc } from '../_generated/dataModel';
 import { platformAdminMutation, platformAdminQuery } from '../lib/authedFunctions';
 import { internalMutation } from '../lib/writeFence';
 import { readMigrationRun, type MigrationRun } from '../lib/migrationLedger';
+import { readWorkerWaits, type WorkerWait } from '../maintenance/workerRegistry';
 import {
 	deriveMigrationState,
 	firstStoppedMigration,
@@ -91,6 +93,17 @@ async function readManifestStates(ctx: Ctx, now: number): Promise<Map<string, Ma
 		});
 	}
 	return states;
+}
+
+/** Per contract step, the workers it still waits on; steps nothing holds are absent. */
+async function readManifestWorkerWaits(ctx: Ctx, now: number): Promise<Map<string, WorkerWait[]>> {
+	const waits = new Map<string, WorkerWait[]>();
+	for (const entry of MIGRATION_MANIFEST) {
+		if (!entry.requiresWorkers) continue;
+		const held = await readWorkerWaits(ctx.db, entry.requiresWorkers, now);
+		if (held.length > 0) waits.set(entry.migration, held);
+	}
+	return waits;
 }
 
 function stateMap(states: Map<string, ManifestState>): Map<string, MigrationState> {
@@ -162,6 +175,7 @@ export const list = platformAdminQuery({
 		const now = Date.now();
 		const states = await readManifestStates(ctx, now);
 		const byMigration = stateMap(states);
+		const workerWaits = await readManifestWorkerWaits(ctx, now);
 		const runner = await readRunner(ctx);
 		return {
 			migrations: MIGRATION_MANIFEST.map((entry) => {
@@ -171,6 +185,11 @@ export const list = platformAdminQuery({
 					introducedIn: entry.introducedIn,
 					dependsOn: [...entry.dependsOn],
 					waitingFor: unfinishedDependencies(entry, byMigration),
+					// Only while it has not started: a running pass is past the gate.
+					waitingForWorkers:
+						derived.state === 'running' || derived.state === 'completed'
+							? []
+							: (workerWaits.get(entry.migration) ?? []),
 					isSteppingStone: entry.isSteppingStone,
 					requiredBefore: entry.requiredBefore ?? null,
 					startsItself: entry.startsItself === true,
@@ -252,8 +271,10 @@ export const runPending = platformAdminMutation({
 		}
 
 		const states = await readManifestStates(ctx, now);
+		const workerWaits = await readManifestWorkerWaits(ctx, now);
 		const plan = planMigrationStarts(MIGRATION_MANIFEST, stateMap(states), {
 			resumeStopped: true,
+			heldByWorkers: new Set(workerWaits.keys()),
 		});
 		if (plan.start.length === 0 && plan.waiting.length === 0) {
 			return { outcome: 'nothingToRun' as const, started: [], waiting: [] };
@@ -322,7 +343,11 @@ export const advance = internalMutation({
 			return { outcome: 'stopped' as const };
 		}
 
-		const plan = planMigrationStarts(MIGRATION_MANIFEST, byMigration, { resumeStopped: false });
+		const workerWaits = await readManifestWorkerWaits(ctx, now);
+		const plan = planMigrationStarts(MIGRATION_MANIFEST, byMigration, {
+			resumeStopped: false,
+			heldByWorkers: new Set(workerWaits.keys()),
+		});
 		const { started, failure } = await startMigrations(ctx, plan.start);
 		if (failure) {
 			await stopRunner(ctx, runner, failure, now);
