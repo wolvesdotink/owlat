@@ -10,6 +10,7 @@ import { useLocalized } from '~/composables/useLocalized';
 import { useKeyboardReorder } from '~/composables/automations/useKeyboardReorder';
 import { useStepOrderSync } from '~/composables/automations/useStepOrderSync';
 import type { LocalizedText } from '~/utils/localizedText';
+import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 
 const { t } = useI18n();
 
@@ -33,6 +34,11 @@ const {
 } = useConvexQuery(api.automations.automations.getWithRelations, () => ({
 	automationId: automationId.value,
 }));
+useRecordPaletteObjectOpen(() =>
+	automation.value?.name
+		? { kind: 'automation', id: automationId.value, title: automation.value.name }
+		: null
+);
 
 // Fetch email templates for email step selection (marketing templates can be used in automations)
 const { results: emailTemplates } = usePaginatedQuery(

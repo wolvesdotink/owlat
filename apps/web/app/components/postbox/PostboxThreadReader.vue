@@ -698,13 +698,45 @@ const {
 	},
 });
 
-// ⌘K, while a conversation is open, offers the two verbs this reader leads with
-// (the mailbox provider only carries what the overflow menu hides). Runs the
+// "Translate" (⌘K): the newest message someone else wrote (your own reply needs
+// no translating), in the app's language, above the thread.
+const translationTarget = computed(
+	() =>
+		[...allMessages.value]
+			.reverse()
+			.find((msg) => !ownAddresses.value.has(extractEmailAddress(msg.fromAddress))) ??
+		latestMessage.value
+);
+const translation = usePostboxReaderTranslation(() => translationTarget.value);
+
+// ⌘K, while a conversation is open, offers every verb this reader has. Runs the
 // actions directly, so it acts on THIS conversation.
 usePostboxThreadCommandSurface({
 	subject: () => props.message.subject,
-	onArchive: () => runReaderAction('archive'),
-	onReply: () => runReaderAction('reply'),
+	messageId: () => props.message._id,
+	threadId: () => readerThread.value?._id ?? props.message.threadId,
+	mailboxId: () => props.message.mailboxId,
+	href: () => `/dashboard/postbox/${props.folderRole ?? 'inbox'}/${props.message._id}`,
+	hintText: () => snoozeHintText.value,
+	isMuted: () => readerThread.value?.mutedAt != null,
+	isAlerted: () => readerThread.value?.notifyOnReplyAt != null,
+	followUp: () => {
+		if (readerThread.value?.followUp) return { state: 'armed' };
+		const outboundId = latestOutboundId.value;
+		return outboundId ? { state: 'armable', outboundId } : { state: 'none' };
+	},
+	canTranslate: () =>
+		isFeatureEnabled('ai') && !!translationTarget.value && !hideRawBody(translationTarget.value),
+	labels: () => readerLabels.value,
+	folders: () => readerMovableFolders.value,
+	runAction: runReaderAction,
+	snooze: (until) => snoozeOpenMessage(until, 'thread'),
+	snoozeUntilReply: snoozeOpenMessageUntilReply,
+	applyLabel: (labelId) => void applyLabelToOpenMessage(labelId),
+	moveTo: (folderId) => void moveOpenMessageTo(folderId),
+	toggleMute: toggleOpenThreadMute,
+	toggleAlert: toggleOpenThreadAlert,
+	translate: () => void translation.translate(),
 });
 
 // Single-key shortcuts while reading and the Cmd-K palette bridge, both
@@ -830,6 +862,14 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			class="mb-3"
 			:message-id="latestMessage._id"
 			@close="calm.asking.value = false"
+		/>
+		<PostboxReaderTranslation
+			v-if="translation.state.value.status !== 'idle'"
+			class="mb-3"
+			:state="translation.state.value"
+			:language="translation.targetLanguage.value"
+			@close="translation.close"
+			@retry="translation.translate"
 		/>
 
 		<!-- No skeleton while the thread loads: the opened row renders with its

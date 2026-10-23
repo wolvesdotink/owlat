@@ -2,7 +2,7 @@ import { execFileSync, spawn, type ExecFileSyncOptions } from 'node:child_proces
 import { chmodSync, chownSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import { readIntEnv } from './env.js';
+import { readSandboxIds } from './config.js';
 
 /**
  * Sandbox-execution seam for the code-worker.
@@ -28,8 +28,7 @@ import { readIntEnv } from './env.js';
  * tests / non-default images. A malformed or non-positive override throws at
  * import, so the worker stops at boot instead of on its first task.
  */
-export const SANDBOX_UID = readIntEnv(process.env, 'CODE_SANDBOX_UID', { default: 10001, min: 1 });
-export const SANDBOX_GID = readIntEnv(process.env, 'CODE_SANDBOX_GID', { default: 10001, min: 1 });
+export const { uid: SANDBOX_UID, gid: SANDBOX_GID } = readSandboxIds();
 
 /**
  * Reap every process using the dedicated sandbox uid, including setsid children.

@@ -145,6 +145,8 @@ const baseConfig: ImapConfig = {
 	maxClients: 3,
 	idleTimeoutMs: 30 * 60 * 1000,
 	authRateLimit: { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 },
+	production: false,
+	owlatVersion: 'dev',
 };
 
 const convex = {} as unknown as ConvexClient;
@@ -183,7 +185,6 @@ beforeEach(() => {
 	capture.listen.mockReset();
 	capture.server = null;
 	connectionCtor.mockReset();
-	delete process.env['NODE_ENV'];
 });
 
 afterEach(() => {
@@ -216,16 +217,14 @@ describe('startImapServer — server flavor selection', () => {
 	});
 
 	it('binds the plain TCP server outside production when tls is null', () => {
-		process.env['NODE_ENV'] = 'development';
 		start({ tls: null });
 		expect(capture.flavor).toBe('tcp');
 	});
 
 	it('refuses to start in production without TLS', () => {
-		process.env['NODE_ENV'] = 'production';
-		expect(() => startImapServer({ ...baseConfig, tls: null }, convex, limiter)).toThrow(
-			/refusing to start in production without TLS/
-		);
+		expect(() =>
+			startImapServer({ ...baseConfig, tls: null, production: true }, convex, limiter)
+		).toThrow(/refusing to start in production without TLS/);
 	});
 
 	it('listens on the configured port and address', () => {
@@ -283,21 +282,21 @@ describe('startImapServer — TLS bootstrap posture (PR-62 / RFC 8314)', () => {
 	});
 
 	it('in production with tls:null throws AND never creates any listener', () => {
-		process.env['NODE_ENV'] = 'production';
 		// The whole point of the production guard is fail-CLOSED: not only does it
 		// throw, it must short-circuit before either createServer is invoked, so
 		// no plaintext (or half-built) socket is ever bound.
 		vi.mocked(tlsCreateServer).mockClear();
 		vi.mocked(netCreateServer).mockClear();
-		expect(() => startImapServer({ ...baseConfig, tls: null }, convex, limiter)).toThrow();
+		expect(() =>
+			startImapServer({ ...baseConfig, tls: null, production: true }, convex, limiter)
+		).toThrow();
 		expect(capture.handler).toBeNull();
 		expect(tlsCreateServer).not.toHaveBeenCalled();
 		expect(netCreateServer).not.toHaveBeenCalled();
 	});
 
 	it('with a TLS cert succeeds and installs an accepting connection handler', () => {
-		process.env['NODE_ENV'] = 'production';
-		const { handler } = start({ tls: { cert: 'c', key: 'k' } });
+		const { handler } = start({ tls: { cert: 'c', key: 'k' }, production: true });
 		expect(typeof handler).toBe('function');
 		// And it actually accepts: the captured handler spins up a connection.
 		connect(handler, '10.0.0.9');
@@ -313,7 +312,6 @@ describe('startImapServer — TLS bootstrap posture (PR-62 / RFC 8314)', () => {
 	});
 
 	it('passes tls=false to ImapConnection on the plaintext dev fallback', () => {
-		process.env['NODE_ENV'] = 'development';
 		const { handler } = start({ tls: null });
 		connect(handler, '10.0.0.1');
 		const args = connectionCtor.mock.calls[0]!;
@@ -497,10 +495,6 @@ describe('startImapServer — socket close decrements counters', () => {
 });
 
 describe('startImapServer — plaintext dev listener refusals', () => {
-	beforeEach(() => {
-		process.env['NODE_ENV'] = 'development';
-	});
-
 	it('answers a per-IP refusal with BYE, since no TLS stands in the way', () => {
 		const { handler } = start({ tls: null, maxConnectionsPerIp: 1, maxClients: 99 });
 		connect(handler, '10.0.0.1');

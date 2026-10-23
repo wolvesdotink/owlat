@@ -480,6 +480,29 @@ describe('pushReturnPathHost — MTA reflection with bounded retry', () => {
 		});
 	});
 
+	it('waits 30 s before the second attempt, doubling for each one after it', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date('2026-03-22T12:00:00Z'));
+		try {
+			const t = convexTest(schema, modules);
+			const domainId = await seedMtaDomain(t, { returnPathHost: 'bounce.acme.com' });
+			registerDomainMock.mockRejectedValue(new Error('MTA 503'));
+			for (const attempt of [0, 1, 2, 3]) {
+				await t.action(internal.domains.providers.registerAction.pushReturnPathHost, {
+					domainId,
+					returnPathHost: 'bounce.acme.com',
+					attempt,
+				});
+			}
+			const pushes = await scheduledPushes(t);
+			expect(pushes.map((job) => job.scheduledTime - Date.now())).toEqual([
+				30_000, 60_000, 120_000, 240_000,
+			]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('on the final attempt sets the sync-failure marker and audits the give-up (no further retry)', async () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedMtaDomain(t, { returnPathHost: 'bounce.acme.com' });

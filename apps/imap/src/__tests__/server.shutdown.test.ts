@@ -33,6 +33,8 @@ const config: ImapConfig = {
 	maxClients: 5,
 	idleTimeoutMs: 60_000,
 	authRateLimit: { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 },
+	production: false,
+	owlatVersion: 'dev',
 };
 
 let imap: ImapServerHandle | null = null;

@@ -8,6 +8,7 @@ import { chownDirToSandbox, runUntrusted, SANDBOX_OUTPUT_LIMITS } from './sandbo
 import { removeWorkspace } from './taskRunner.js';
 import { log } from './log.js';
 import { PLUGIN_JOB_HEARTBEAT_DEFAULT_MS } from './env.js';
+import { sandboxParentEnv, workspaceRoot } from './config.js';
 
 /**
  * Tier-3 plugin-job runner — the generalized half of the code-worker.
@@ -25,8 +26,6 @@ import { PLUGIN_JOB_HEARTBEAT_DEFAULT_MS } from './env.js';
  * a job cannot escape it); the terminal `fail`/`complete` mutations own the
  * retry ceiling and the cancelled-is-never-retried rule.
  */
-
-const WORKSPACE_ROOT = process.env['WORKSPACE_ROOT'] ?? '/workspace';
 
 /** A host-controlled command a job kind maps to. Never built from the payload. */
 export interface JobCommandSpec {
@@ -97,11 +96,11 @@ export function resolveJobCommand(
  * The environment a sandboxed plugin job runs with. It contains NO ambient
  * credentials of any kind — only PATH and a writable HOME inside the job's own
  * workspace. Exported so the no-secret invariant is unit-testable: even if a
- * hostile job reads its entire `process.env`, there is nothing to steal.
+ * hostile job reads its entire environment, there is nothing to steal.
  */
 export function buildJobEnv(
 	workDir: string,
-	parentEnv: NodeJS.ProcessEnv = process.env
+	parentEnv: NodeJS.ProcessEnv = sandboxParentEnv()
 ): NodeJS.ProcessEnv {
 	return {
 		PATH: parentEnv['PATH'],
@@ -182,7 +181,7 @@ export async function runPluginJob(task: PluginTask, deps: RunPluginJobDeps = {}
 	const heartbeatIntervalMs = deps.heartbeatIntervalMs ?? PLUGIN_JOB_HEARTBEAT_DEFAULT_MS;
 	const prepareDir = deps.prepareDir ?? defaultPrepareDir;
 	const cleanupDir = deps.cleanupDir ?? removeWorkspace;
-	const workDir = path.join(WORKSPACE_ROOT, `plugin-${task.taskId}`);
+	const workDir = path.join(workspaceRoot(), `plugin-${task.taskId}`);
 
 	const spec = resolveJobCommand(task.jobKind, task.payload);
 	if (!spec) {

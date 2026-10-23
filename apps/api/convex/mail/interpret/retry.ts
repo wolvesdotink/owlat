@@ -16,8 +16,12 @@
  *     verifier whole, which a new extraction would clip again) are not retried.
  */
 
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
+
 export const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 5 * 60 * 1000;
+/** 5 min, 20 min, 80 min: each repair waits four times longer. */
+const REPAIR_BACKOFF: RetryPolicy = { baseMs: BASE_BACKOFF_MS, factor: 4 };
 
 const BACKOFF_CODES: ReadonlySet<string> = new Set([
 	'verify',
@@ -31,16 +35,16 @@ const GATE_CODES: ReadonlySet<string> = new Set(['ai_off', 'budget']);
 
 /** Hold refusals of one revision before it waits for a new trigger. */
 export const MAX_BUDGET_DEFERRALS = 24;
-const BUDGET_BACKOFF_MAX_MS = 6 * 60 * 60 * 1000;
+const BUDGET_BACKOFF: RetryPolicy = { baseMs: BASE_BACKOFF_MS, capMs: 6 * 60 * 60 * 1000 };
 
 /** Backoff before the run that follows deferral `deferrals` (1-based). */
 export function budgetBackoffMs(deferrals: number): number {
-	return Math.min(BUDGET_BACKOFF_MAX_MS, BASE_BACKOFF_MS * 2 ** Math.max(0, deferrals - 1));
+	return nextDelay(BUDGET_BACKOFF, deferrals - 1);
 }
 
 /** Backoff before attempt `retryCount + 1`. */
 export function backoffMs(retryCount: number): number {
-	return BASE_BACKOFF_MS * 4 ** Math.max(0, retryCount);
+	return nextDelay(REPAIR_BACKOFF, retryCount);
 }
 
 /** When the next attempt is due, or undefined when none will be made. */

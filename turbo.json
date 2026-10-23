@@ -43,9 +43,15 @@
 		// Every lint task also runs the rules in packages/oxlint-plugin-owlat, which
 		// oxlintrc.json loads by path rather than as a package dependency, so a rule
 		// edit must move every lint hash. The overrides below repeat these inputs.
+		// The Node services' lint scripts exec the env gate from apps/api/scripts,
+		// so an edit to it must move their hashes too.
 		"lint": {
 			"dependsOn": ["transit"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/packages/oxlint-plugin-owlat/src/**"]
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/packages/oxlint-plugin-owlat/src/**",
+				"$TURBO_ROOT$/apps/api/scripts/check-env.sh"
+			]
 		},
 		// A lint task that reads files outside its own package needs an override
 		// listing them: turbo hashes only the package directory by default, so an

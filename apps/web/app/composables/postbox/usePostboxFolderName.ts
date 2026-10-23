@@ -13,6 +13,19 @@ import type { Id } from '@owlat/api/dataModel';
 /** Roles with a translated display name in the catalog. */
 const NAMED_FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive', 'snoozed'];
 
+/**
+ * A folder as a picker lists it: a system folder by its translated name, a
+ * custom one by the name its owner gave it. Pure (the translator is passed in).
+ */
+export function postboxFolderLabel(
+	t: (key: string) => string,
+	folder: { name: string; role?: string | null }
+): string {
+	return folder.role && NAMED_FOLDER_ROLES.includes(folder.role)
+		? t(`components.postbox.postboxLayout.folderRoles.${folder.role}`)
+		: folder.name;
+}
+
 export function usePostboxFolderName(args: {
 	folderRole: Ref<string>;
 	folderId: Ref<Id<'mailFolders'> | undefined>;

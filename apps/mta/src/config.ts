@@ -15,7 +15,7 @@ import {
 	type IntEnvOptions,
 } from '@owlat/shared/nodeEnv';
 import type { IpPoolConfig, DkimKeyConfig } from './types.js';
-import { assertMtaSecretStrength } from './lib/secretBox.js';
+import { assertMtaSecretStrength } from './lib/mtaSecretStrength.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
 import { assertValidEhloHostname } from './ehloConfig.js';
 import {
@@ -158,6 +158,8 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	inboundDmarcEnabled: boolean;
 	/** Enable ARC chain verification (RFC 8617) for inbound email (Sealed Mail A5) */
 	inboundArcEnabled: boolean;
+	/** ClamAV daemon the attachment scan route connects to (`CLAMAV_HOST`/`CLAMAV_PORT`). */
+	clamav: { host: string; port: number };
 	/** Optional rspamd HTTP URL for content spam scoring */
 	rspamdUrl?: string;
 	/** Rspamd reject threshold (score above this rejects the email) */
@@ -259,6 +261,20 @@ const AT_LEAST_ONE: IntRange = { min: 1 };
 const TARPIT_DELAY_MS_RANGE: IntRange = { ...TIMER_DELAY_MS_RANGE, min: 0 };
 
 /**
+ * Two secrets are resolved lazily, on demand, rather than taken from the loaded
+ * config: the VERP/CFBL signing key when a signer is called without one, and
+ * MTA_SECRET when the secret box is used before `initMtaSecretBox` bound it
+ * (unit tests). `loadConfig` validates both at boot; these return the raw value.
+ */
+export function readBounceVerpKeyEnv(): string | undefined {
+	return process.env['BOUNCE_VERP_KEY'];
+}
+
+export function readMtaSecretEnv(): string | undefined {
+	return process.env['MTA_SECRET'];
+}
+
+/**
  * Load and validate configuration from environment variables
  */
 export function loadConfig(): MtaConfig {
@@ -306,8 +322,8 @@ export function loadConfig(): MtaConfig {
 		throw new Error('SMTP_POOL_COORDINATION_PROTOCOL must be legacy-v0 or leases-v1');
 	}
 
-	const outboundIp = loadOutboundIpConfig(requiredEnv);
-	const bounceTls = loadBounceTlsMaterial();
+	const outboundIp = loadOutboundIpConfig(requiredEnv, process.env);
+	const bounceTls = loadBounceTlsMaterial(process.env);
 
 	// MTA_SECRET seals DKIM keys + relay credentials at rest. Fail the boot fast
 	// if it is absent or too weak rather than sealing under a guessable key.
@@ -454,6 +470,10 @@ export function loadConfig(): MtaConfig {
 		inboundDkimEnabled: optionalEnv('INBOUND_DKIM_ENABLED', 'true') === 'true',
 		inboundDmarcEnabled: optionalEnv('INBOUND_DMARC_ENABLED', 'true') === 'true',
 		inboundArcEnabled: optionalEnv('INBOUND_ARC_ENABLED', 'true') === 'true',
+		clamav: {
+			host: optionalEnv('CLAMAV_HOST', 'clamav'),
+			port: intEnv('CLAMAV_PORT', 3310, TCP_PORT_RANGE),
+		},
 		rspamdUrl: process.env['RSPAMD_URL'],
 		rspamdRejectThreshold: parseFloat(optionalEnv('RSPAMD_REJECT_THRESHOLD', '15')),
 		googlePostmaster: googlePostmasterConfigured

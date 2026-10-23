@@ -1,6 +1,6 @@
 {
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
-	"plugins": ["import", "typescript", "unicorn"],
+	"plugins": ["import", "typescript", "unicorn", "vue"],
 	// Owlat's own rules (packages/oxlint-plugin-owlat). oxlint resolves the path
 	// against this file, so every workspace's `--config ../../oxlintrc.json` run
 	// loads the same plugin source.
@@ -11,7 +11,8 @@
 		"reportUnusedDisableDirectives": "error"
 	},
 	"categories": {
-		"suspicious": "warn"
+		"suspicious": "warn",
+		"perf": "warn"
 	},
 	"env": {
 		"browser": true,
@@ -71,6 +72,10 @@
 		"unicorn/no-array-for-each": "warn",
 		"import/no-cycle": "error",
 		"no-underscore-dangle": "off",
+		// Sequential awaits are deliberate across the codebase: ordered Convex
+		// writes, rate-limited provider calls, IMAP/SMTP command sequences and
+		// paginated reads. The perf category would otherwise flag thousands of them.
+		"no-await-in-loop": "off",
 		"unicorn/no-array-sort": "off",
 		"unicorn/no-array-reverse": "off",
 		"unicorn/consistent-function-scoping": "off",
@@ -79,7 +84,15 @@
 		"import/no-unassigned-import": "off",
 		"owlat/require-suppression-reason": "error",
 		"owlat/no-test-in-loop": "error",
+		// Exponential backoff goes through @owlat/shared/retryPolicy (nextDelay).
+		"owlat/no-inline-backoff": "error",
 		"owlat/no-test-timeout-or-unreasoned-skip": "warn",
+		// Test timing: no real-clock sleeps, no elapsed wall-clock measurements, no
+		// polling loops. Warnings while existing tests still break them; every
+		// remaining finding is frozen in scripts/owlat-lint-baseline.txt.
+		"owlat/no-real-time-wait-in-tests": "warn",
+		"owlat/no-wall-clock-in-tests": "warn",
+		"owlat/no-polling-loop-in-tests": "warn",
 		// Shortcuts in the web app go through the shortcut registry. Scoped by the
 		// rule's own path-suffix `files`, not an override, so the root gates and
 		// apps/web's own lint agree. Every raw keydown listener left carries a

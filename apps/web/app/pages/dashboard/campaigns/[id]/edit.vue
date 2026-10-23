@@ -5,6 +5,7 @@ import { openAfterSave, openWithoutSaving } from '~/lib/openAfterSave';
 import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
 import { formatNumber } from '~/utils/formatters';
 import { exactEligibleCount, isLowerBoundCount } from '~/composables/useRecipientCount';
+import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 
 const { t, locale } = useI18n();
 
@@ -83,6 +84,12 @@ const {
 	getMinScheduleDate,
 	getLanguageLabel,
 } = useCampaignForm(campaignId, abTest, senderPickerRef);
+// ⌘K's "Jump back" list remembers the campaign once it has a name.
+useRecordPaletteObjectOpen(() =>
+	campaignData.value?.name
+		? { kind: 'campaign', id: campaignId.value, title: campaignData.value.name }
+		: null
+);
 
 // The wizard's recipients control, fed by the same composable as the wizard.
 const {

@@ -25,6 +25,7 @@
  */
 
 import { v } from 'convex/values';
+import { canRetry, nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { ActionCtx, MutationCtx } from '../_generated/server';
@@ -51,6 +52,11 @@ export const DELETE_RETRY_BASE_MS = 15 * 60 * 1000;
  * dropped, so the table and the sweep do not carry it for ever.
  */
 export const MAX_DELETE_ATTEMPTS = 8;
+
+const DELETE_RETRY: RetryPolicy = {
+	baseMs: DELETE_RETRY_BASE_MS,
+	maxAttempts: MAX_DELETE_ATTEMPTS,
+};
 
 async function findPending(ctx: MutationCtx, storageId: Id<'_storage'>) {
 	return await ctx.db
@@ -82,12 +88,12 @@ async function freePendingBlob(
 	} catch (err) {
 		const attempts = (pending.deleteAttempts ?? 0) + 1;
 		const context = { storageId: pending.storageId, attempts, err };
-		if (attempts >= MAX_DELETE_ATTEMPTS) {
+		if (!canRetry(DELETE_RETRY, attempts)) {
 			logError(`${logTag} blob delete failed; giving up and leaving the blob orphaned`, context);
 			await ctx.db.delete(pending._id);
 			return 'abandoned';
 		}
-		const retryInMs = DELETE_RETRY_BASE_MS * 2 ** (attempts - 1);
+		const retryInMs = nextDelay(DELETE_RETRY, attempts - 1);
 		logError(`${logTag} blob delete failed; kept for the sweep to retry`, {
 			...context,
 			retryInMs,

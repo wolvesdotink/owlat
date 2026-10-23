@@ -21,3 +21,6 @@ them (an earlier standalone copy here had drifted out of sync with the code).
   is the single source of truth.
 - **Product / API / developer docs** — the Nuxt Content site under
   [`apps/docs/content/`](./apps/docs/content/).
+- **Where every other doc lives**, and what belongs in each:
+  [`docs/README.md`](./docs/README.md), with the rules under "Documentation" and
+  "Plans and work artifacts" in [`CLAUDE.md`](./CLAUDE.md).

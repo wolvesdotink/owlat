@@ -7,6 +7,7 @@ import {
 	type CodeTaskWorkerVerdict,
 } from './convexClient.js';
 import { createPullRequest, findPullRequest } from './github.js';
+import { trustedGitEnv } from './config.js';
 import {
 	buildAddArgs,
 	buildBranchName,
@@ -21,7 +22,7 @@ import {
 	runCodingAgent,
 	runTests,
 	setupWorkspace,
-	taskRunnerConfigFromEnv,
+	loadTaskRunnerConfig,
 	taskWorkspacePaths,
 	type SandboxTaskOptions,
 	type TaskRunnerConfig,
@@ -227,7 +228,7 @@ export async function processTask(
 	deps: ProcessTaskDeps = {}
 ): Promise<ProcessTaskOutcome> {
 	const client = deps.client ?? getConvexClient();
-	const config = deps.config ?? taskRunnerConfigFromEnv();
+	const config = deps.config ?? loadTaskRunnerConfig();
 	const ops = deps.workspaceOps ?? defaultWorkspaceOps;
 	const runAgent =
 		deps.runAgent ??
@@ -324,7 +325,7 @@ export async function processTask(
 					parseRemoteBranchSha(
 						ops.git(buildRemoteBranchArgs(config.repoUrl, branchName), {
 							encoding: 'utf-8',
-							env: { ...process.env, ...config.gitAuthEnv },
+							env: trustedGitEnv(config.gitAuthEnv),
 						}) as string
 					),
 				pullRequests,
@@ -409,7 +410,7 @@ export async function processTask(
 		log(`Pushing branch ${branchName}`);
 		ops.git(buildPushArgs(workDir, branchName), {
 			stdio: 'inherit',
-			env: { ...process.env, ...config.gitAuthEnv },
+			env: trustedGitEnv(config.gitAuthEnv),
 		});
 
 		// 9. Create (or find) the PR, then acknowledge it.
@@ -446,7 +447,7 @@ export async function processTask(
  * whatever the lost run published.
  */
 export function createCodeTaskPoller(deps: ProcessTaskDeps = {}): () => Promise<void> {
-	const resolved: ProcessTaskDeps = { ...deps, config: deps.config ?? taskRunnerConfigFromEnv() };
+	const resolved: ProcessTaskDeps = { ...deps, config: deps.config ?? loadTaskRunnerConfig() };
 	let reclaimOwed = false;
 	return async () => {
 		const client = resolved.client ?? getConvexClient();

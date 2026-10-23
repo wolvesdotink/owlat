@@ -1,13 +1,6 @@
+import { type Node, propertyName, unwrap } from '../ast.ts';
 import type { AstNode, Context, Rule } from '../types.ts';
-import {
-	declarationOf,
-	importedName,
-	type Node,
-	propertyName,
-	resolveVariable,
-	unwrap,
-	vitestExport,
-} from '../vitestApi.ts';
+import { declarationOf, importedName, resolveVariable, vitestExport } from '../vitestApi.ts';
 
 /**
  * A test gets its time budget from its package's vitest config, or from a

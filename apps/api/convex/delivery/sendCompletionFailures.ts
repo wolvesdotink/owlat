@@ -1,5 +1,6 @@
 import { type Infer, v } from 'convex/values';
 import type { WorkId } from '@convex-dev/workpool';
+import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -61,13 +62,14 @@ export interface CompletionArgs {
 
 /** Cron replays per record before it waits for an operator. */
 export const REPLAY_MAX_ATTEMPTS = 10;
-const REPLAY_BASE_DELAY_MS = 10 * 60 * 1000;
-const REPLAY_MAX_DELAY_MS = 6 * 60 * 60 * 1000;
 const REPLAY_BATCH_SIZE = 25;
 
 /** 10 min, 20, 40 … capped at 6 h: about a day and a half over the whole cap. */
-function replayDelayMs(attempts: number): number {
-	return Math.min(REPLAY_BASE_DELAY_MS * 2 ** attempts, REPLAY_MAX_DELAY_MS);
+const REPLAY_BACKOFF: RetryPolicy = { baseMs: 10 * 60 * 1000, capMs: 6 * 60 * 60 * 1000 };
+
+/** The wait before the replay that follows `attempts` replays already made. */
+export function replayDelayMs(attempts: number): number {
+	return nextDelay(REPLAY_BACKOFF, attempts);
 }
 
 /**

@@ -25,9 +25,10 @@ import { join } from 'node:path';
  *    --color-error-strong note in tokens.css).
  *  - `--color-bg-deep` — the substrate the content ladder sits ON (page wells),
  *    not a text surface.
- * `--color-brand` is text on links and misses the floor at 3.83:1; raising it
- * is an identity change, tracked in docs/ux-plan/DEFERRALS.md rather than
- * waived silently here.
+ * `--color-brand` is text on links and misses the floor at 3.83:1 in light
+ * mode; raising it is an identity change, so it is left out here rather than
+ * waived silently. The fix is a separate `--color-brand-text` token for the
+ * text-only call sites, added to `TEXT_TOKENS` once they are migrated.
  */
 
 const workspace = join(import.meta.dirname, '..');

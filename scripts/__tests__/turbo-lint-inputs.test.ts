@@ -256,6 +256,28 @@ describe('workspace lint task inputs', () => {
 		).toEqual([]);
 	});
 
+	it('hash every script outside the package that a lint chain runs', () => {
+		// The Node services run the env gate from apps/api/scripts; a script that
+		// lives outside the package is in no default input set.
+		const outside: string[] = [];
+		const missing: string[] = [];
+		for (const [packageName, { directory, files }] of lintTasks) {
+			const manifest = JSON.parse(
+				readFileSync(join(REPOSITORY_ROOT, directory, 'package.json'), 'utf8')
+			) as { scripts?: Record<string, string> };
+			const lint = manifest.scripts?.['lint'] ?? '';
+			for (const match of lint.matchAll(/\b(?:bash|bun) ((?:\.\.\/)+[\w./-]+\.(?:sh|ts))/g)) {
+				const script = normalize(join(directory, match[1]!));
+				outside.push(`${packageName}: ${script}`);
+				if (!files.has(script)) missing.push(`${packageName}: ${script}`);
+			}
+		}
+		for (const service of ['mta', 'imap', 'code-worker', 'updater', 'mail-sync']) {
+			expect(outside).toContain(`@owlat/${service}: apps/api/scripts/check-env.sh`);
+		}
+		expect(missing).toEqual([]);
+	});
+
 	it('hash the oxlint plugin rules every lint task loads through oxlintrc.json', () => {
 		// oxlintrc.json names the plugin by path, so no package depends on it and
 		// the transit chain cannot carry its hash; each lint task lists it instead.
