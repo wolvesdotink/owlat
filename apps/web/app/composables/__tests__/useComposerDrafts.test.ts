@@ -138,6 +138,39 @@ describe('createComposerDraftBook', () => {
 		expect(driver.map.size).toBe(0);
 	});
 
+	it('reports text that exists only in this page until its write commits', async () => {
+		const { driver, book } = page();
+		book.bindUser('u1');
+		await book.idle();
+		const release = driver.hold();
+		book.set('chat', 'room1', { text: 'on its way', attachments: [] });
+		expect(book.hasUnstoredDrafts()).toBe(true);
+		release();
+		await book.idle();
+		expect(book.hasUnstoredDrafts()).toBe(false);
+	});
+
+	it('keeps reporting a draft whose write failed, until it is cleared or stored', async () => {
+		const failing = page(composerDraftTestDriver({ failWrites: true }));
+		failing.book.bindUser('u1');
+		failing.book.set('team-reply', 'th1', { body: 'not on the device', subject: '' });
+		await failing.book.idle();
+		expect(failing.book.hasUnstoredDrafts()).toBe(true);
+		failing.book.set('team-reply', 'th1', null);
+		await failing.book.idle();
+		expect(failing.book.hasUnstoredDrafts()).toBe(false);
+
+		const memoryOnly = page(composerDraftTestDriver({ persistent: false }));
+		memoryOnly.book.bindUser('u1');
+		memoryOnly.book.set('contact-message', 'c1', { text: 'kept for now' });
+		await memoryOnly.book.idle();
+		expect(memoryOnly.book.hasUnstoredDrafts()).toBe(true);
+		// Another person's book holds none of it: their reload loses nothing.
+		memoryOnly.book.bindUser('u2');
+		await memoryOnly.book.idle();
+		expect(memoryOnly.book.hasUnstoredDrafts()).toBe(false);
+	});
+
 	it('keeps text in memory before anyone is signed in, and writes nothing', async () => {
 		const { driver, book } = page();
 		book.set('assistant', 'assistant', { text: 'early' });

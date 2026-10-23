@@ -74,14 +74,27 @@ export function createComposerDraftBook(
 	const known = new Map<string, StoredComposerDraft>();
 	const queued = new Map<string, DeviceOp[]>();
 	const writing = new Map<string, Promise<void>>();
+	/**
+	 * By storage key: text the book holds whose newest value did not commit on
+	 * the device (a failed write, or a device without IndexedDB). A reload
+	 * would lose it.
+	 */
+	const unstored = new Set<string>();
 
 	async function apply(key: string, op: DeviceOp): Promise<void> {
 		if ('offBook' in op) {
 			await op.offBook();
 		} else if (op.put) {
+			// Marked first, so a write that throws still counts as not stored.
+			unstored.add(key);
 			const stored = await store().write(key, op.put, now());
-			if (stored) known.set(key, stored);
+			if (stored) {
+				known.set(key, stored);
+				unstored.delete(key);
+			}
 		} else {
+			// A cleared draft leaves nothing for a reload to lose.
+			unstored.delete(key);
 			// Only what this page saw there goes. A device copy it never read
 			// was saved by another tab (or after this one loaded) and stays;
 			// before the load, the person's clear wins over a copy not yet shown.
@@ -221,6 +234,17 @@ export function createComposerDraftBook(
 			changed = new Set();
 			ready.value = next === null;
 			if (next) hydration = hydrate(next, generation);
+		},
+		/**
+		 * Text of the signed-in person that exists only in this page: a write
+		 * still on its way to the device, or one that did not commit there.
+		 */
+		hasUnstoredDrafts(): boolean {
+			if (writing.size > 0) return true;
+			for (const key of unstored) {
+				if (userId !== null && isComposerDraftKeyOf(key, userId)) return true;
+			}
+			return false;
 		},
 		/** Resolves once the device copy has loaded and every write has settled. */
 		async idle(): Promise<void> {

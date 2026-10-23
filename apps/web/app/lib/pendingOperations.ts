@@ -285,6 +285,15 @@ export function registerUnsavedWorkProbe(probe: () => boolean): () => void {
 }
 
 /**
+ * Whether the server has yet to acknowledge anything: a run or hold still
+ * pending, or a probe reporting unsaved work. For a decision that would throw
+ * that work away, such as reloading the page.
+ */
+export function hasPendingWork(): boolean {
+	return entries.size > 0 || [...unsavedWorkProbes].some((probe) => probe());
+}
+
+/**
  * Forget every pending run and hold. For an identity change: the previous
  * session's writes must not produce a notice in the next one. Listeners hear
  * `discarded`, so whatever they kept for the old session (a dismissed warning,

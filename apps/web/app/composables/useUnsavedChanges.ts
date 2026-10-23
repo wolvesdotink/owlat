@@ -1,5 +1,6 @@
 import { nextTick, readonly, ref, onMounted, onUnmounted, type Ref } from 'vue';
 import { onBeforeRouteLeave, useRouter, type RouteLocationRaw } from 'vue-router';
+import { registerReloadBlocker } from '~/lib/reloadSafety';
 
 export interface UseUnsavedChangesReturn {
 	showDialog: Ref<boolean>;
@@ -54,12 +55,17 @@ export function useUnsavedChanges(options: UseUnsavedChangesOptions = {}): UseUn
 		}
 	};
 
+	// The same edits keep an app update from reloading the page on its own.
+	let unregisterReloadBlocker: (() => void) | undefined;
+
 	onMounted(() => {
 		window.addEventListener('beforeunload', handleBeforeUnload);
+		unregisterReloadBlocker = registerReloadBlocker(() => hasUnsavedChanges.value);
 	});
 
 	onUnmounted(() => {
 		window.removeEventListener('beforeunload', handleBeforeUnload);
+		unregisterReloadBlocker?.();
 		decision += 1;
 	});
 

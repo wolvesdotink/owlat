@@ -64,6 +64,9 @@ useHead(() => ({ htmlAttrs: localeHead.value.htmlAttrs }));
 			     the entry bundle every page boots with stays out of it. -->
 			<LazyShellBackendStatusHost v-if="identityTracking" />
 			<PostboxArrivalUndoHost v-if="hasPendingArrivalUndo" />
+			<!-- "Owlat was updated" for a tab older than the server's build; app
+			     pages only. Lazy for the same reason as the status host. -->
+			<LazySystemAppUpdatedBanner v-if="identityTracking" />
 		</ClientOnly>
 	</div>
 </template>
