@@ -47,6 +47,12 @@ const REGISTRIES: ReadonlyArray<[string, Record<string, AnyWorkerEndpoint>]> = [
 	['mail-sync', MAIL_SYNC_ENDPOINTS],
 ];
 
+const ENDPOINT_CASES = REGISTRIES.flatMap(([worker, registry]) =>
+	Object.entries(registry).map(
+		([key, endpoint]) => [`${worker} ${key} (${endpoint.path})`, endpoint] as const
+	)
+);
+
 describe('worker-called functions use the wire contract', () => {
 	it('no function is claimed by two contracts', () => {
 		const paths = REGISTRIES.flatMap(([, registry]) =>
@@ -55,22 +61,12 @@ describe('worker-called functions use the wire contract', () => {
 		expect(new Set(paths).size).toBe(paths.length);
 	});
 
-	for (const [worker, registry] of REGISTRIES) {
-		for (const [key, endpoint] of Object.entries(registry)) {
-			it(`${worker} ${key} (${endpoint.path})`, async () => {
-				const fn = await registered(endpoint.path);
-				expect(fn.isInternal, 'workers call internal functions with the admin key').toBe(true);
-				const kind = fn.isQuery
-					? 'query'
-					: fn.isMutation
-						? 'mutation'
-						: fn.isAction
-							? 'action'
-							: null;
-				expect(kind).toBe(endpoint.kind);
-				expect(JSON.parse(fn.exportArgs())).toEqual(jsonOf(v.object(endpoint.args)));
-				expect(JSON.parse(fn.exportReturns())).toEqual(jsonOf(endpoint.returns));
-			});
-		}
-	}
+	it.each(ENDPOINT_CASES)('%s', async (_title, endpoint) => {
+		const fn = await registered(endpoint.path);
+		expect(fn.isInternal, 'workers call internal functions with the admin key').toBe(true);
+		const kind = fn.isQuery ? 'query' : fn.isMutation ? 'mutation' : fn.isAction ? 'action' : null;
+		expect(kind).toBe(endpoint.kind);
+		expect(JSON.parse(fn.exportArgs())).toEqual(jsonOf(v.object(endpoint.args)));
+		expect(JSON.parse(fn.exportReturns())).toEqual(jsonOf(endpoint.returns));
+	});
 });

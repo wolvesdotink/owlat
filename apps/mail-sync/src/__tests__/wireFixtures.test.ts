@@ -53,24 +53,24 @@ function fixture<K extends Endpoint>(
 	return found.value as EndpointReturns<(typeof MAIL_SYNC_ENDPOINTS)[K]>;
 }
 
+// Tuples titled through '%s': a '$title' template quotes the title and truncates
+// long ones, so two cases of one endpoint could print the same title.
 const currentCases = (Object.keys(MAIL_SYNC_ENDPOINTS) as Endpoint[]).flatMap((key) =>
-	MAIL_SYNC_WIRE_FIXTURES[key].map(({ name, value }) => ({ title: `${key}: ${name}`, key, value }))
+	MAIL_SYNC_WIRE_FIXTURES[key].map(({ name, value }) => [`${key}: ${name}`, key, value] as const)
 );
 
 const legacyCases = Object.entries(MAIL_SYNC_LEGACY_WIRE_FIXTURES).flatMap(([key, cases]) =>
-	cases.map(({ name, value }) => ({
-		title: `${key}: ${name} (an older backend)`,
-		key: key as Endpoint,
-		value,
-	}))
+	cases.map(
+		({ name, value }) => [`${key}: ${name} (an older backend)`, key as Endpoint, value] as const
+	)
 );
 
 describe('every mail-sync wire fixture reads back through the shipped client', () => {
-	it.each(currentCases)('$title', async ({ key, value }) => {
+	it.each(currentCases)('%s', async (_title, key, value) => {
 		await expect(readThroughClient(key, value)).resolves.toEqual(value);
 	});
 
-	it.each(legacyCases)('$title', async ({ key, value }) => {
+	it.each(legacyCases)('%s', async (_title, key, value) => {
 		await expect(readThroughClient(key, value)).resolves.toEqual(value);
 	});
 

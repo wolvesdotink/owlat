@@ -263,6 +263,10 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+const FIXTURE_CASES = (Object.keys(IMAP_ENDPOINTS) as Endpoint[]).flatMap((key) =>
+	IMAP_WIRE_FIXTURES[key].map((fixture) => [`${key}: ${fixture.name}`, key, fixture] as const)
+);
+
 describe('IMAP wire fixtures are what the handlers answer', () => {
 	it('drives every fixture case, and only those', () => {
 		for (const key of Object.keys(IMAP_ENDPOINTS) as Endpoint[]) {
@@ -272,13 +276,9 @@ describe('IMAP wire fixtures are what the handlers answer', () => {
 		}
 	});
 
-	for (const key of Object.keys(IMAP_ENDPOINTS) as Endpoint[]) {
-		for (const fixture of IMAP_WIRE_FIXTURES[key]) {
-			it(`${key}: ${fixture.name}`, async () => {
-				const w = await seedImapWireWorld();
-				const answer = await DRIVES[key][fixture.name]!(w);
-				expect(answer).toEqual(bindWirePlaceholders(fixture.value, w.ids));
-			});
-		}
-	}
+	it.each(FIXTURE_CASES)('%s', async (_title, key, fixture) => {
+		const w = await seedImapWireWorld();
+		const answer = await DRIVES[key][fixture.name]!(w);
+		expect(answer).toEqual(bindWirePlaceholders(fixture.value, w.ids));
+	});
 });

@@ -58,12 +58,14 @@ function fixture<K extends Endpoint>(
 	return found.value as EndpointReturns<(typeof IMAP_ENDPOINTS)[K]>;
 }
 
+// Tuples titled through '%s': a '$title' template quotes the title and truncates
+// long ones, so two cases of one endpoint could print the same title.
 const fixtureCases = (Object.keys(IMAP_ENDPOINTS) as Endpoint[]).flatMap((key) =>
-	IMAP_WIRE_FIXTURES[key].map(({ name, value }) => ({ title: `${key}: ${name}`, key, value }))
+	IMAP_WIRE_FIXTURES[key].map(({ name, value }) => [`${key}: ${name}`, key, value] as const)
 );
 
 describe('every IMAP wire fixture reads back through the shipped client', () => {
-	it.each(fixtureCases)('$title', async ({ key, value }) => {
+	it.each(fixtureCases)('%s', async (_title, key, value) => {
 		await expect(readThroughClient(key, value)).resolves.toEqual(value);
 	});
 
