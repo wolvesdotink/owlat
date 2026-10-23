@@ -141,8 +141,8 @@ function dockerFixture(file: unknown, args: unknown): string {
 	if (cmd.startsWith('docker inspect --format {{.Id}}')) {
 		return STORES.map(([id, service]) => `${id}|true|${service}|`).join('\n');
 	}
-	// A deploy that failed: its container exited on its own, rejecting the push.
-	if (cmd.startsWith('docker inspect --type container')) return 'exited|1|false\n';
+	// A deploy that failed: its container exited with an error.
+	if (cmd.startsWith('docker inspect --type container')) return 'exited|1\n';
 	if (cmd.startsWith('docker inspect')) {
 		return [
 			'ghcr.io/wolvesdotink/updater:0.5.0',
@@ -803,7 +803,7 @@ describe('POST /update', () => {
 		withoutSnapshot();
 		commandMock.mockImplementation((file: unknown, args: unknown) => {
 			const cmd = [String(file), ...((args as string[]) ?? [])].join(' ');
-			if (cmd.startsWith('docker inspect --type container')) return 'running|0|false\n';
+			if (cmd.startsWith('docker inspect --type container')) return 'running|0\n';
 			return dockerFailing(
 				(c) => c.includes('convex-deploy'),
 				'error waiting for container: unexpected EOF'
@@ -823,11 +823,17 @@ describe('POST /update', () => {
 	});
 
 	it('stops before docker compose up when convex-deploy fails', async () => {
+		// With a snapshot the failure rolls back instead (rollback.test.ts).
+		withoutSnapshot();
 		commandMock.mockImplementation(
 			dockerFailing((cmd) => cmd.includes('convex-deploy'), 'Error: schema validation failed')
 		);
 		const res = await post('/update');
 		expect(res.status).toBe(500);
+		const { error } = (await res.json()) as { error: string };
+		// Its exit 1 cannot show whether Convex refused the push or committed it.
+		expect(error).toMatch(/^convex-deploy failed \(its container exited with code 1\)/);
+		expect(error).toContain('may have gone live');
 		expect(composeCommands().some((cmd) => cmd.includes(' up -d'))).toBe(false);
 	});
 

@@ -8,10 +8,11 @@
  * recreate the containers.
  *
  * The snapshot (snapshot.ts) is what makes the rest reversible. Until the new
- * release is confirmed ready, a deploy that failed without proof that it
- * changed nothing (deployRun.ts), a promote or recreate that failed, or a
- * release that does not pass the readiness check puts the stack back on it
- * (rollback.ts) and answers `rolled-back`. Once the release is confirmed
+ * release is confirmed ready, a deploy that failed once its container had
+ * started (which cannot show that Convex rejected it, deployRun.ts), a
+ * promote or recreate that failed, or a release that does not pass the
+ * readiness check puts the stack back on it (rollback.ts) and answers
+ * `rolled-back`. Once the release is confirmed
  * ready the snapshot is kept, and only the operator can restore it
  * (`owlat rollback`). Restoring discards what was written after the
  * snapshot, which is why it is never automatic after that point.
@@ -70,6 +71,7 @@ import {
 	deployRunArgs,
 	failedDeploy,
 	removeDeployContainer,
+	removeEarlierDeploys,
 } from './deployRun.js';
 import { discardSnapshot, markSnapshot, readSnapshot, type Snapshot } from './snapshot.js';
 import { captureSnapshot, recoverInterruptedCapture } from './snapshotCapture.js';
@@ -336,7 +338,23 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		? new Map<string, string>()
 		: await failingBeforeRollout(baseline.services, await composeArgv());
 
-	// Step 4c: snapshot the data and configuration the rest of the rollout
+	// Step 4c: no deploy an earlier update left behind (a shutdown, a client
+	// that lost the daemon) may keep pushing alongside this one, whether or not
+	// that update took a snapshot, so it is stopped before anything else
+	// changes, and the update is refused when it cannot be.
+	const previous = readSnapshot();
+	const earlier = await removeEarlierDeploys(
+		previous?.deployStarted ? [deployContainerName(previous.id)] : []
+	);
+	if (!earlier.ok) {
+		await discardStaged();
+		const error = `Cannot stop the convex-deploy an earlier update started (${earlier.reason}). Nothing was changed.`;
+		steps.push({ step: 'earlier-deploy', ok: false, stdout: '', stderr: error });
+		console.error('[update] refused before deploying:', error);
+		return answer(500, { error, steps });
+	}
+
+	// Step 4d: snapshot the data and configuration the rest of the rollout
 	// changes (snapshot.ts). No snapshot, no update: without one a failed
 	// release cannot be rolled back, unless `.env` opts out.
 	const captured = await captureSnapshot({ targetVersion: record.targetVersion, signal: stopping });
@@ -352,7 +370,9 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// Step 5: deploy Convex functions BEFORE restarting app containers. If the
 	// new schema is incompatible with the deploy, we bail out here — the
 	// running Web/MTA containers keep serving the old (still compatible) code
-	// rather than being restarted against a half-deployed backend.
+	// rather than being restarted against a half-deployed backend. With a
+	// snapshot the data is also put back, since a failed deploy cannot show
+	// that Convex refused it (below).
 	//
 	// It deploys to the convex that is already serving, as it is — never one
 	// `run` recreated first (deployTarget.ts).
@@ -402,16 +422,18 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	if (stopping.aborted) return stopAfterDeploy();
 
 	if (!deploy.ok) {
-		// A rejected push changes nothing in Convex. Anything else (a run cut
-		// off by its bound, a client that lost the daemon) may still have
-		// gone live, against containers that stay on the old release.
+		// Only a deploy that never started provably changed nothing in Convex.
+		// Anything else (a push Convex refused, one it committed while the CLI
+		// lost the answer, a run cut off by its bound, a client that lost the
+		// daemon) may have gone live, against containers on the old release.
 		const timedOut = deploy.stderr.includes('timed out after');
 		const outcome = await failedDeploy(deployName, timedOut);
-		if (outcome.rejected) {
+		if (outcome.unchanged) {
 			await removeDeployContainer(deployName);
 			await discardStaged();
 			return answer(500, {
-				error: 'convex-deploy failed — update aborted, running stack untouched',
+				error:
+					'convex-deploy failed before its container started — update aborted, running stack untouched',
 				steps,
 			});
 		}

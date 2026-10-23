@@ -19,7 +19,6 @@ import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { exec, OWLAT_DIR } from './http.js';
 import { oneLine } from './rollout.js';
 import { freeBytes } from './storage.js';
-import { deployContainerName, removeDeployContainer } from './deployRun.js';
 import {
 	COPY_TIMEOUT_MS,
 	discardSnapshot,
@@ -179,19 +178,8 @@ export async function captureSnapshot(options: CaptureOptions): Promise<CaptureR
 				'some space, or set OWLAT_UPDATE_SNAPSHOT=off in .env to update without a snapshot.'
 		);
 	}
-	// The update that took the previous snapshot may have left its deploy
-	// running (a shutdown, a client that lost the daemon); two deploys must
-	// never push at once.
-	if (previous?.deployStarted) {
-		const name = deployContainerName(previous.id);
-		const stopped = await removeDeployContainer(name);
-		if (!stopped.ok) {
-			return refuse(
-				500,
-				`Cannot stop the convex-deploy an earlier update started (${name}): ${stopped.reason}. Nothing was changed.`
-			);
-		}
-	}
+	// A deploy the previous snapshot's update may have left running was
+	// stopped before this capture (update.ts).
 	await discardSnapshot();
 
 	let snapshot: Snapshot = {
