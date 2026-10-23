@@ -41,7 +41,7 @@ import {
 	isPreferenceOn,
 	type ResolvedFlags,
 } from './noticePolicy';
-import { draftNotice, isNoticeLive } from './noticeResolvers';
+import { draftNotice, noticeLiveness, type NoticeLiveness } from './noticeResolvers';
 import { campaignCancelUrl } from './noticeUrls';
 
 /** Most members one occurrence is written for. */
@@ -141,13 +141,13 @@ export const fanOut = internalMutation({
 	},
 });
 
-type NoticeGate = (notice: Doc<'marketingNotices'>, now: number) => Promise<boolean>;
+type NoticeGate = (notice: Doc<'marketingNotices'>, now: number) => Promise<NoticeLiveness | null>;
 
 /**
- * Whether a stored notice may still reach this person now: it is theirs, their
- * current role may act on it, its feature is on, their switch is on, and the
- * occurrence still holds. Flags and switches are read once per gate, so a
- * reader checking a page of notices pays for them once.
+ * Whether a stored notice may still reach this person now (null when not): it
+ * is theirs, their current role may act on it, its feature is on, their switch
+ * is on, and the occurrence still holds. Flags and switches are read once per
+ * gate, so a reader checking a page of notices pays for them once.
  */
 async function noticeGate(
 	ctx: QueryCtx | MutationCtx,
@@ -160,8 +160,9 @@ async function noticeGate(
 		notice.userId === userId &&
 		isNoticeRoleAllowed(notice.kind, role) &&
 		isNoticeFeatureOn(notice.kind, flags) &&
-		isPreferenceOn(switches, MARKETING_NOTICE_POLICY[notice.kind].preference) &&
-		(await isNoticeLive(ctx, notice, now));
+		isPreferenceOn(switches, MARKETING_NOTICE_POLICY[notice.kind].preference)
+			? await noticeLiveness(ctx, notice, now)
+			: null;
 }
 
 /** {@link noticeGate} for one notice: what the push sender asks at send time. */
@@ -172,15 +173,15 @@ export async function isNoticeDeliverable(
 	role: OrganizationRole | null,
 	now: number
 ): Promise<boolean> {
-	return await (
-		await noticeGate(ctx, userId, role)
-	)(notice, now);
+	return (await (await noticeGate(ctx, userId, role))(notice, now)) !== null;
 }
 
 /**
  * The caller's newest notices that still hold, for the app to show the ones it
  * has not seen yet. The app seeds its "seen" set from the first answer, so a
- * backlog never replays as a burst of toasts.
+ * backlog never replays as a burst of toasts. `liveUntil` rides along for a
+ * notice that expires by the clock alone: the answer is not re-evaluated as
+ * time passes, so the app checks it before acting on an answer it kept.
  */
 // all-members: self-scoped — returns only notices addressed to session.userId.
 export const listRecent = authedQuery({
@@ -192,10 +193,11 @@ export const listRecent = authedQuery({
 			.order('desc')
 			.take(RECENT_LIMIT);
 		const now = Date.now();
-		const isDeliverable = await noticeGate(ctx, session.userId, session.role);
+		const deliverable = await noticeGate(ctx, session.userId, session.role);
 		const visible = [];
 		for (const row of rows) {
-			if (!(await isDeliverable(row, now))) continue;
+			const liveness = await deliverable(row, now);
+			if (liveness === null) continue;
 			visible.push({
 				id: row._id,
 				kind: row.kind,
@@ -209,6 +211,7 @@ export const listRecent = authedQuery({
 				...(row.count !== undefined ? { count: row.count } : {}),
 				...(row.detail !== undefined ? { detail: row.detail } : {}),
 				...(row.scheduledAt !== undefined ? { scheduledAt: row.scheduledAt } : {}),
+				...(liveness.liveUntil !== undefined ? { liveUntil: liveness.liveUntil } : {}),
 			});
 		}
 		return visible;

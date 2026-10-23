@@ -264,6 +264,8 @@ describe('scheduled campaign reminder', () => {
 				kind: 'campaign_reminder',
 				name: 'Autumn launch',
 				scheduledAt: start,
+				// It holds until the start, so a kept answer can expire it.
+				liveUntil: start - 1,
 				url: `/dashboard/campaigns/${campaignId}/edit`,
 				cancelUrl: `/dashboard/campaigns/${campaignId}/edit?intent=cancel`,
 			}),
@@ -339,7 +341,11 @@ describe('delivery hold', () => {
 		expect(await fanOut(t, { kind: 'delivery_hold', provider: 'gmail', openedAt: NOW })).toEqual({
 			written: 2,
 		});
-		expect(await t.query(api.marketing.notifications.listRecent, {})).toHaveLength(1);
+		// The reader carries the snapshot's trust deadline: an app that keeps
+		// this answer through quiet hours sees the hold expire without a re-run.
+		expect(await t.query(api.marketing.notifications.listRecent, {})).toEqual([
+			expect.objectContaining({ kind: 'delivery_hold', liveUntil: NOW + 10 * MINUTE }),
+		]);
 		vi.setSystemTime(NOW + 11 * MINUTE);
 		expect(await t.query(api.marketing.notifications.listRecent, {})).toEqual([]);
 	});

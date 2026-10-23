@@ -5,7 +5,7 @@
  * `draftNotice` re-reads the source rows when the fan-out runs, so an
  * occurrence that no longer holds (a campaign deleted, a reminder whose
  * campaign was rescheduled or cancelled, an alert already resolved) produces
- * nothing, and the copy carries current names. `isNoticeLive` asks the same
+ * nothing, and the copy carries current names. `noticeLiveness` asks the same
  * question of a stored notice before it is pushed or shown in the app.
  *
  * Not a Convex function module.
@@ -132,18 +132,23 @@ function isReminderCurrent(
  * The provider slice still carries the breaker signal the hold notice is
  * about, on a snapshot the router still trusts: routing ignores a row older
  * than the signal freshness limit, so a breaker the MTA stopped reporting is
- * no longer protecting anything and no longer news.
+ * no longer protecting anything and no longer news. Returns the last instant
+ * the snapshot is trusted, or null when the breaker is not open now.
  */
-async function isBreakerStillOpen(ctx: Reader, provider: string, now: number): Promise<boolean> {
+async function breakerOpenUntil(
+	ctx: Reader,
+	provider: string,
+	now: number
+): Promise<number | null> {
 	const key = DESTINATION_PROVIDER_KEYS.find((candidate) => candidate === provider);
-	if (!key) return false;
+	if (!key) return null;
 	const organizationId = await getSingletonOrganizationId(ctx);
 	const state = await loadStreamlessRouteState(ctx, organizationId, key);
-	return (
-		state !== null &&
-		now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
-		state.signals.some((signal) => signal.source === 'breaker_open')
-	);
+	if (state === null || !state.signals.some((signal) => signal.source === 'breaker_open')) {
+		return null;
+	}
+	const trustedUntil = state.updatedAt + DELIVERABILITY_SIGNAL_MAX_AGE_MS;
+	return now <= trustedUntil ? trustedUntil : null;
 }
 
 async function draftDeliveryHold(
@@ -151,7 +156,7 @@ async function draftDeliveryHold(
 	event: Extract<MarketingNoticeEvent, { kind: 'delivery_hold' }>,
 	now: number
 ): Promise<NoticeDraft | null> {
-	if (!(await isBreakerStillOpen(ctx, event.provider, now))) return null;
+	if ((await breakerOpenUntil(ctx, event.provider, now)) === null) return null;
 	return {
 		kind: 'delivery_hold',
 		eventKey: `delivery_hold:${event.provider}:${event.openedAt}`,
@@ -239,44 +244,63 @@ export async function draftNotice(
 }
 
 /**
- * Whether a stored notice is still true enough to interrupt someone with. A
+ * A stored notice that still holds. `liveUntil` is the last instant it holds
+ * by the clock alone, for notices that expire without any write: a reminder at
+ * its campaign's start, a hold when its breaker snapshot goes stale. A client
+ * that keeps an answer around (quiet hours hold an OS notification back) has
+ * to enforce it itself, because a query is not re-run as time passes.
+ */
+export type NoticeLiveness = { liveUntil?: number };
+
+const LIVE: NoticeLiveness = {};
+
+/**
+ * Whether a stored notice is still true enough to interrupt someone with, and
+ * until when (see {@link NoticeLiveness}); null when it no longer holds. A
  * finished campaign stays finished, but one deleted since is gone; a reminder
  * is stale the moment its campaign is rescheduled, cancelled, deleted or
  * started; a hold, a pause or a DNS failure that has already cleared (or whose
  * domain was removed) is no longer news.
  */
-export async function isNoticeLive(
+export async function noticeLiveness(
 	ctx: Reader,
 	notice: Doc<'marketingNotices'>,
 	now: number
-): Promise<boolean> {
+): Promise<NoticeLiveness | null> {
 	switch (notice.kind) {
 		case 'campaign_finished':
-			return notice.campaignId !== undefined && (await getLive(ctx, notice.campaignId)) !== null;
+			return notice.campaignId !== undefined && (await getLive(ctx, notice.campaignId)) !== null
+				? LIVE
+				: null;
 		case 'campaign_reminder': {
-			if (notice.campaignId === undefined) return false;
-			const campaign = await getLive(ctx, notice.campaignId);
-			return isReminderCurrent(campaign, notice.scheduledAt, now);
+			const { campaignId, scheduledAt } = notice;
+			if (campaignId === undefined || scheduledAt === undefined) return null;
+			const campaign = await getLive(ctx, campaignId);
+			// It holds while now < scheduledAt.
+			return isReminderCurrent(campaign, scheduledAt, now) ? { liveUntil: scheduledAt - 1 } : null;
 		}
-		case 'delivery_hold':
-			return notice.name !== undefined && (await isBreakerStillOpen(ctx, notice.name, now));
+		case 'delivery_hold': {
+			if (notice.name === undefined) return null;
+			const liveUntil = await breakerOpenUntil(ctx, notice.name, now);
+			return liveUntil === null ? null : { liveUntil };
+		}
 		case 'automation_stalled':
-			return (
-				notice.automationId !== undefined && (await getLive(ctx, notice.automationId)) !== null
-			);
+			return notice.automationId !== undefined && (await getLive(ctx, notice.automationId)) !== null
+				? LIVE
+				: null;
 		case 'automation_paused': {
-			if (notice.automationId === undefined) return false;
+			if (notice.automationId === undefined) return null;
 			const automation = await getLive(ctx, notice.automationId);
-			return automation?.status === 'paused';
+			return automation?.status === 'paused' ? LIVE : null;
 		}
 		case 'domain_dns': {
 			// The domain is checked as well as the alert: removing a sending
 			// domain leaves its regression alert behind, and a notice about a
 			// domain that no longer exists links nowhere.
-			if (notice.alertId === undefined || notice.domainId === undefined) return false;
+			if (notice.alertId === undefined || notice.domainId === undefined) return null;
 			const alert = await ctx.db.get(notice.alertId);
-			if (alert === null || alert.resolvedAt !== undefined) return false;
-			return (await ctx.db.get(notice.domainId)) !== null;
+			if (alert === null || alert.resolvedAt !== undefined) return null;
+			return (await ctx.db.get(notice.domainId)) !== null ? LIVE : null;
 		}
 	}
 }
