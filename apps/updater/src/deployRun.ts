@@ -14,38 +14,57 @@
  * Every other failure is treated as a deploy that may have gone live. A deploy
  * that may still be running is stopped, and waited for, before a rollback
  * copies data back under it (rollback.ts), and before the next update deploys
- * again (`removeEarlierDeploys`).
+ * again (`removeUpdateContainers`).
  */
 import { randomBytes } from 'node:crypto';
 import { exec, OWLAT_DIR } from './http.js';
-import { oneLine } from './rollout.js';
-
-/** Every deploy container an update runs is named with this prefix. */
-const DEPLOY_PREFIX = 'owlat-update-deploy-';
+import { hostInstallDir, oneLine } from './rollout.js';
 
 /**
- * The name of the deploy container of the update that took `snapshotId`, so
- * a rollback to that snapshot (in this process or after a restart) can find
- * the deploy and stop it. Without a snapshot the name only has to be unique.
+ * Labels every container an update or a rollback starts (the deploy and the
+ * snapshot's copy helpers) with the installation it works for. Several
+ * installations can share a Docker daemon, each with its own rollout lock, so
+ * a container left behind is found by this label and never by a name pattern
+ * another installation's containers match too.
  */
-export function deployContainerName(snapshotId?: string): string {
-	return `${DEPLOY_PREFIX}${snapshotId ?? randomBytes(6).toString('hex')}`;
+export const UPDATE_INSTALL_LABEL = 'ink.wolves.owlat.update-install';
+
+/**
+ * Which installation this updater works for: its install directory as the
+ * host sees it, which no two installations on one daemon share. An updater
+ * outside a container sees the host path itself, and one whose install bind
+ * cannot be read falls back to it the same way `composeArgv` does.
+ */
+export async function installationId(): Promise<string> {
+	return (await hostInstallDir()) ?? OWLAT_DIR;
 }
 
-/** The `compose` argv suffix that runs the deploy under `name`. */
-export function deployRunArgs(name: string, noDeps: boolean): string[] {
+/**
+ * The name of a deploy container, after the snapshot its update took when
+ * there is one, so the operator can tell which update ran it.
+ */
+export function deployContainerName(snapshotId?: string): string {
+	return `owlat-update-deploy-${snapshotId ?? randomBytes(6).toString('hex')}`;
+}
+
+/** The `compose` argv suffix that runs the deploy under `name` for `installation`. */
+export function deployRunArgs(name: string, noDeps: boolean, installation: string): string[] {
 	return [
 		'--profile',
 		'deploy',
 		'run',
 		'--name',
 		name,
+		'--label',
+		`${UPDATE_INSTALL_LABEL}=${installation}`,
 		...(noDeps ? ['--no-deps'] : []),
 		'convex-deploy',
 	];
 }
 
 const NO_SUCH_CONTAINER = /no such (container|object)/i;
+/** Another `rm` (or a helper's own `--rm`) is already removing it. */
+const REMOVAL_IN_PROGRESS = /removal of container .* is already in progress/i;
 
 /**
  * Whether a deploy whose run failed provably changed nothing: its container
@@ -80,45 +99,65 @@ export async function failedDeploy(
 }
 
 /**
- * Stop the deploy if it still runs, wait for it, and remove its container. A
- * container that is already gone counts as removed.
+ * Stop the container if it still runs, wait for it, and remove it. A
+ * container that is already gone counts as removed; one something else is
+ * already removing is waited for until it has stopped.
  */
-export async function removeDeployContainer(
+export async function removeContainer(
 	name: string
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
 	const removed = await exec('docker', ['rm', '--force', name], OWLAT_DIR);
 	if (removed.ok || NO_SUCH_CONTAINER.test(removed.stderr)) return { ok: true };
+	if (REMOVAL_IN_PROGRESS.test(removed.stderr)) {
+		const waited = await exec('docker', ['wait', name], OWLAT_DIR);
+		if (waited.ok || NO_SUCH_CONTAINER.test(waited.stderr)) return { ok: true };
+		return { ok: false, reason: oneLine(waited.stderr) };
+	}
 	return { ok: false, reason: oneLine(removed.stderr) };
 }
 
 /**
- * Stop and remove every deploy container an earlier update left behind: one a
- * shutdown or a lost client left running would otherwise push alongside the
- * next deploy, outside the rollout lock. Docker is asked rather than the
- * snapshot journal, since an update that took no snapshot
- * (`OWLAT_UPDATE_SNAPSHOT=off`) leaves no record of its deploy; `recorded`
- * names one the journal does know of, removed whatever the list says. Run
- * inside the lock, before the update's own deploy, so every container it finds
- * is stale.
+ * Stop and remove every container an earlier update or rollback of this
+ * installation left behind: a deploy a shutdown or a lost client left running
+ * would push alongside the next deploy, and a copy helper would go on writing
+ * under the next restore, both outside the rollout lock. Docker is asked by
+ * label rather than the snapshot journal, since an update that took no
+ * snapshot (`OWLAT_UPDATE_SNAPSHOT=off`) leaves no record of its deploy. Run
+ * inside the lock, before anything starts a container of its own, so every
+ * one it finds is stale. The updater's own replacement helper carries no such
+ * label, so it is never among them.
  */
-export async function removeEarlierDeploys(
-	recorded: string[]
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+export async function removeUpdateContainers(): Promise<
+	{ ok: true } | { ok: false; reason: string }
+> {
+	const installation = await installationId();
 	const listed = await exec(
 		'docker',
-		['ps', '--all', '--filter', `name=${DEPLOY_PREFIX}`, '--format', '{{.Names}}'],
+		[
+			'ps',
+			'--all',
+			'--filter',
+			`label=${UPDATE_INSTALL_LABEL}=${installation}`,
+			'--format',
+			'{{.Names}}',
+		],
 		OWLAT_DIR
 	);
 	if (!listed.ok) {
-		return { ok: false, reason: `cannot list deploy containers: ${oneLine(listed.stderr)}` };
+		return {
+			ok: false,
+			reason: `cannot list the update's containers: ${oneLine(listed.stderr)}`,
+		};
 	}
-	// The name filter matches anywhere in the name; only ours start with the prefix.
 	const names = listed.stdout
 		.split('\n')
 		.map((line) => line.trim())
-		.filter((name) => name.startsWith(DEPLOY_PREFIX));
-	for (const name of new Set([...recorded, ...names])) {
-		const removed = await removeDeployContainer(name);
+		.filter(Boolean);
+	for (const name of names) {
+		if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(name)) {
+			return { ok: false, reason: `the container list holds a name that is not one (${name})` };
+		}
+		const removed = await removeContainer(name);
 		if (!removed.ok) return { ok: false, reason: `${name}: ${removed.reason}` };
 	}
 	return { ok: true };

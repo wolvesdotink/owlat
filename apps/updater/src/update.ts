@@ -70,8 +70,9 @@ import {
 	deployContainerName,
 	deployRunArgs,
 	failedDeploy,
-	removeDeployContainer,
-	removeEarlierDeploys,
+	installationId,
+	removeContainer,
+	removeUpdateContainers,
 } from './deployRun.js';
 import { discardSnapshot, markSnapshot, readSnapshot, type Snapshot } from './snapshot.js';
 import { captureSnapshot, recoverInterruptedCapture } from './snapshotCapture.js';
@@ -338,17 +339,15 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		? new Map<string, string>()
 		: await failingBeforeRollout(baseline.services, await composeArgv());
 
-	// Step 4c: no deploy an earlier update left behind (a shutdown, a client
-	// that lost the daemon) may keep pushing alongside this one, whether or not
-	// that update took a snapshot, so it is stopped before anything else
-	// changes, and the update is refused when it cannot be.
-	const previous = readSnapshot();
-	const earlier = await removeEarlierDeploys(
-		previous?.deployStarted ? [deployContainerName(previous.id)] : []
-	);
+	// Step 4c: no deploy or copy helper an earlier update or rollback of this
+	// installation left behind (a shutdown, a client that lost the daemon) may
+	// keep running alongside this one, whether or not that update took a
+	// snapshot, so it is stopped before anything else changes, and the update
+	// is refused when it cannot be.
+	const earlier = await removeUpdateContainers();
 	if (!earlier.ok) {
 		await discardStaged();
-		const error = `Cannot stop the convex-deploy an earlier update started (${earlier.reason}). Nothing was changed.`;
+		const error = `Cannot stop a container an earlier update started (${earlier.reason}). Nothing was changed.`;
 		steps.push({ step: 'earlier-deploy', ok: false, stdout: '', stderr: error });
 		console.error('[update] refused before deploying:', error);
 		return answer(500, { error, steps });
@@ -405,12 +404,12 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	writeLastRollout(record);
 	const rollBackOr = rollingBack({ record, steps, answer, snapshot, preExisting });
 
-	// Named after the snapshot, so a rollback to it can stop this deploy
-	// (deployRun.ts).
+	// Labelled with this installation, so a rollback or the next update can
+	// find and stop this deploy if it outlives this request (deployRun.ts).
 	const deployName = deployContainerName(snapshot?.id);
 	const deploy = await exec(
 		'docker',
-		[...deployArgs, ...deployRunArgs(deployName, noDeps)],
+		[...deployArgs, ...deployRunArgs(deployName, noDeps, await installationId())],
 		OWLAT_DIR,
 		{
 			signal: stopping,
@@ -429,7 +428,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		const timedOut = deploy.stderr.includes('timed out after');
 		const outcome = await failedDeploy(deployName, timedOut);
 		if (outcome.unchanged) {
-			await removeDeployContainer(deployName);
+			await removeContainer(deployName);
 			await discardStaged();
 			return answer(500, {
 				error:
@@ -444,7 +443,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		// restores, and the rollback stops the deploy before it does.
 		if (composeTemplate) await rm(STAGED_FILE, { force: true }).catch(() => {});
 		return rollBackOr(failure, async () => {
-			const stopped = await removeDeployContainer(deployName);
+			const stopped = await removeContainer(deployName);
 			const error =
 				(timedOut ? 'convex-deploy timed out' : `convex-deploy failed (${outcome.detail})`) +
 				' — update aborted before any container was replaced, but the new functions may have gone live; ' +
@@ -455,7 +454,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 			return answer(500, { error, steps });
 		});
 	}
-	const cleaned = await removeDeployContainer(deployName);
+	const cleaned = await removeContainer(deployName);
 	if (!cleaned.ok) {
 		console.error(
 			`[update] could not remove the finished deploy container ${deployName}:`,

@@ -88,18 +88,69 @@ afterAll(() => {
 
 /** What each scripted command line does, for one case. */
 let overrides: Array<(cmd: string) => string | undefined>;
-/** The deploy containers that exist: run by an update, not removed yet. */
-let deployContainers: Set<string>;
+/** The label every container an update starts carries, and this install's value of it. */
+const INSTALL_LABEL = `ink.wolves.owlat.update-install=${HOST_INSTALL_DIR}`;
+/** The deploy containers that exist (run by an update, not removed yet), and their install label. */
+let deployContainers: Map<string, string>;
+
+type Mount = { Type: string; Name?: string; Source: string; Destination: string; RW: boolean };
+const volume = (name: string, destination: string): Mount => ({
+	Type: 'volume',
+	Name: name,
+	Source: `/var/lib/docker/volumes/${name}/_data`,
+	Destination: destination,
+	RW: true,
+});
+const bind = (source: string, destination: string): Mount => ({
+	Type: 'bind',
+	Source: source,
+	Destination: destination,
+	RW: true,
+});
+
+interface FakeContainer {
+	id: string;
+	name: string;
+	service: string;
+	mounts: Mount[];
+	/** Its install label, for a container an update started. */
+	install?: string;
+}
+/** The stack's containers, as `compose ps` lists them; all running. */
+let stack: FakeContainer[];
+/** Running containers outside the stack: a copy helper a lost client left, another tool's. */
+let strays: FakeContainer[];
+
+const defaultStack = (): FakeContainer[] => [
+	{
+		id: CONTAINERS.convex,
+		name: 'owlat-convex-1',
+		service: 'convex',
+		mounts: [volume('owlat_convex-data', '/convex/data')],
+	},
+	{
+		id: CONTAINERS.redis,
+		name: 'owlat-redis-1',
+		service: 'redis',
+		mounts: [volume('owlat_redis-data', '/data')],
+	},
+	{ id: CONTAINERS.web, name: 'owlat-web-1', service: 'web', mounts: [] },
+];
 
 beforeEach(() => {
 	readiness.webStatus(200);
 	freeBytesMock.mockReset().mockReturnValue(50 * 1024 ** 3);
 	overrides = [];
-	deployContainers = new Set();
+	deployContainers = new Map();
+	stack = defaultStack();
+	strays = [];
 	commandMock.mockReset().mockImplementation((file: string, args: string[]) => {
 		const cmd = [file, ...args].join(' ');
 		// The run creates its container before it can fail.
-		if (cmd.includes('convex-deploy')) deployContainers.add(args[args.indexOf('--name') + 1] ?? '');
+		if (cmd.includes('convex-deploy')) {
+			const label = args[args.indexOf('--label') + 1] ?? '';
+			deployContainers.set(args[args.indexOf('--name') + 1] ?? '', label);
+		}
 		for (const override of overrides) {
 			const answer = override(cmd);
 			if (answer !== undefined) return answer;
@@ -117,31 +168,61 @@ function fail(stderr: string): never {
 	throw Object.assign(new Error('boom'), { stdout: '', stderr });
 }
 
+/** `docker container inspect` of `ids`: one JSON object per container, as its template prints. */
+function inspectJson(ids: string[]): string {
+	return ids
+		.map((id) => [...stack, ...strays].find((c) => c.id === id))
+		.filter((c): c is FakeContainer => c !== undefined)
+		.map((c) => JSON.stringify({ Id: c.id, Running: true, Service: c.service, Mounts: c.mounts }))
+		.join('\n');
+}
+
+/** What Docker's `volume` filter matches: a volume name, a bind source, or a destination. */
+const usesPath = (c: FakeContainer, value: string) =>
+	c.mounts.some(
+		(m) => m.Name === value || (!m.Name && m.Source === value) || m.Destination === value
+	);
+
 /** A healthy Docker host with a convex and a redis that keep their data in volumes. */
 function docker(cmd: string, args: string[]): string {
 	if (cmd.includes('config --services'))
 		return 'web\nconvex\nredis\nupdater\ndocker-socket-proxy\n';
-	if (cmd.endsWith(' ps --all --quiet')) return `${Object.values(CONTAINERS).join('\n')}\n`;
-	if (cmd.startsWith('docker inspect --format {{.Id}}')) {
-		return [
-			`${CONTAINERS.convex}|true|convex|volume=owlat_convex-data `,
-			`${CONTAINERS.redis}|true|redis|volume=owlat_redis-data `,
-			`${CONTAINERS.web}|true|web|`,
-		].join('\n');
-	}
+	if (cmd.endsWith(' ps --all --quiet')) return stack.map((c) => `${c.id}\n`).join('');
+	if (cmd.startsWith('docker container inspect --format ')) return inspectJson(args.slice(4));
 	// A deploy whose run failed: its container exited with an error.
 	if (cmd.startsWith('docker inspect --type container')) return 'exited|1\n';
-	if (cmd.startsWith('docker ps --all --filter name=owlat-update-deploy-')) {
-		return [...deployContainers].map((name) => `${name}\n`).join('');
+	if (cmd.startsWith('docker ps --all --filter label=')) {
+		const label = args[args.indexOf('--filter') + 1]?.replace(/^label=/, '');
+		return [
+			...[...deployContainers].filter(([, l]) => l === label).map(([name]) => name),
+			...strays.filter((c) => c.install && INSTALL_LABEL === label).map((c) => c.name),
+		]
+			.map((name) => `${name}\n`)
+			.join('');
 	}
 	if (cmd.startsWith('docker rm --force ')) {
-		deployContainers.delete(args.at(-1) ?? '');
+		const name = args.at(-1) ?? '';
+		deployContainers.delete(name);
+		strays = strays.filter((c) => c.name !== name);
 		return '';
 	}
+	if (cmd.startsWith('docker stop ')) {
+		// A stray copy helper runs with --rm: once stopped it is gone.
+		strays = strays.filter((c) => !args.includes(c.id));
+		return '';
+	}
+	if (cmd.startsWith('docker ps --quiet --no-trunc --filter volume=')) {
+		const value = (args.at(-1) ?? '').replace(/^volume=/, '');
+		return [...stack, ...strays]
+			.filter((c) => usesPath(c, value))
+			.map((c) => `${c.id}\n`)
+			.join('');
+	}
 	if (cmd.startsWith('docker inspect')) {
+		const self = [{ Type: 'bind', Source: HOST_INSTALL_DIR, Destination: OWLAT_DIR, RW: true }];
 		return [
 			'ghcr.io/wolvesdotink/updater:0.4.16',
-			`${HOST_INSTALL_DIR}:${OWLAT_DIR}:rw `,
+			JSON.stringify(self),
 			'owlat_default owlat_docker-proxy ',
 		].join('\n');
 	}
@@ -156,7 +237,6 @@ function docker(cmd: string, args: string[]): string {
 	}
 	if (cmd.startsWith('docker run') && cmd.includes(':/target')) return '';
 	if (cmd.startsWith('docker run')) return 'helper-container-id\n';
-	if (cmd.startsWith('docker ps --quiet --no-trunc --filter volume=')) return '';
 	if (cmd.endsWith(' ps --format json convex')) return composePs(RUNNING);
 	if (cmd.includes(' ps --all --format json')) return composePs(RUNNING);
 	return '';
@@ -434,7 +514,9 @@ describe('the automatic rollback', () => {
 		const { json } = await update();
 
 		expect(json.rollout).toBe('failed');
-		expect(json.error).toContain("could not stop the update's convex-deploy");
+		expect(json.error).toContain(
+			'could not stop a container an update or rollback of this install'
+		);
 		expect(json.error).toContain('Nothing was restored');
 		expect(commandLines().some(isRestore)).toBe(false);
 		expect(journal()).toMatchObject({ state: 'armed', deployStarted: true });
@@ -452,16 +534,7 @@ describe('the automatic rollback', () => {
 
 	it('refuses an update before deploying when a store has no container', async () => {
 		// redis was removed; its volume (and the data in it) may well remain.
-		overrides.push((cmd) => {
-			if (cmd.endsWith(' ps --all --quiet')) return `${CONTAINERS.convex}\n${CONTAINERS.web}\n`;
-			if (cmd.startsWith('docker inspect --format {{.Id}}')) {
-				return [
-					`${CONTAINERS.convex}|true|convex|volume=owlat_convex-data `,
-					`${CONTAINERS.web}|true|web|`,
-				].join('\n');
-			}
-			return undefined;
-		});
+		stack = stack.filter((c) => c.service !== 'redis');
 		const { status, json } = await update();
 
 		expect(status).toBe(500);
@@ -715,7 +788,7 @@ describe('a shutdown after the deploy has started', () => {
 		const refused = await update();
 
 		expect(refused.status).toBe(500);
-		expect(refused.json.error).toContain('Cannot stop the convex-deploy an earlier update started');
+		expect(refused.json.error).toContain('Cannot stop a container an earlier update started');
 		expect(commandLines().slice(before).some(isDeploy)).toBe(false);
 		// The earlier snapshot is still the one `owlat rollback` restores.
 		expect(journal()).toMatchObject({ id, state: 'kept' });
@@ -735,7 +808,7 @@ describe('a shutdown after the deploy has started', () => {
 		const refused = await update();
 
 		expect(refused.status).toBe(500);
-		expect(refused.json.error).toContain('Cannot stop the convex-deploy an earlier update started');
+		expect(refused.json.error).toContain('Cannot stop a container an earlier update started');
 		expect(commandLines().slice(before).some(isDeploy)).toBe(false);
 		expect(journal()).toMatchObject({ id, state: 'kept' });
 
@@ -749,7 +822,7 @@ describe('a shutdown after the deploy has started', () => {
 	it('stops a deploy an update without a snapshot left running before the next one deploys', async () => {
 		writeFileSync(join(OWLAT_DIR, '.env'), `${OLD_ENV}OWLAT_UPDATE_SNAPSHOT=off\n`);
 		await interruptedAfterDeploy();
-		const [left] = [...deployContainers];
+		const [left] = [...deployContainers.keys()];
 		expect(left).toMatch(/^owlat-update-deploy-[0-9a-f]{12}$/);
 
 		const next = await update();
@@ -901,5 +974,211 @@ describe('configuration files the snapshot did not have', () => {
 		expect(status).toBe(500);
 		expect(json.error).toContain('docker-compose.yml does not exist');
 		expect(indexOf(isDeploy)).toBe(-1);
+	});
+});
+
+describe('what else may write while a rollback restores', () => {
+	/** An update a shutdown stopped once its deploy had started. */
+	async function interruptedAfterDeploy(): Promise<void> {
+		const shutdown = (cmd: string) => {
+			if (isDeploy(cmd)) beginShutdown();
+			return isDeploy(cmd) ? '' : undefined;
+		};
+		overrides.push(shutdown);
+		try {
+			expect((await update()).status).toBe(503);
+		} finally {
+			setShutdownHandle(undefined);
+			overrides.splice(overrides.indexOf(shutdown), 1);
+		}
+	}
+
+	it('stops the deploy of a later update that took no snapshot before restoring the kept one', async () => {
+		await update();
+		const snapshot = journal()['id'];
+		writeFileSync(join(OWLAT_DIR, '.env'), `${OLD_ENV}OWLAT_UPDATE_SNAPSHOT=off\n`);
+		await interruptedAfterDeploy();
+		const [left] = [...deployContainers.keys()];
+		expect(left).toMatch(/^owlat-update-deploy-[0-9a-f]{12}$/);
+
+		const runningAtRestore: string[] = [];
+		overrides.push((cmd) => {
+			if (isRestore(cmd)) runningAtRestore.push(...deployContainers.keys());
+			return undefined;
+		});
+		const res = await post('/rollback', { snapshot });
+		expect(res.status).toBe(200);
+		expect(runningAtRestore).toEqual([]);
+		expect(indexOf((c) => c === `docker rm --force ${left}`)).toBeLessThan(indexOf(isRestore));
+	});
+
+	it('restores nothing while a deploy of this install cannot be stopped', async () => {
+		await update();
+		const snapshot = journal()['id'];
+		writeFileSync(join(OWLAT_DIR, '.env'), `${OLD_ENV}OWLAT_UPDATE_SNAPSHOT=off\n`);
+		await interruptedAfterDeploy();
+		overrides.push((cmd) =>
+			cmd.startsWith('docker rm --force owlat-update-deploy-')
+				? fail('error during connect: EOF')
+				: undefined
+		);
+
+		const res = await post('/rollback', { snapshot });
+		const json = (await res.json()) as Answer;
+		expect(res.status).toBe(500);
+		expect(json.error).toContain(
+			'could not stop a container an update or rollback of this install'
+		);
+		expect(commandLines().some(isRestore)).toBe(false);
+		expect(journal()).toMatchObject({ state: 'kept' });
+	});
+
+	it('leaves the deploy containers of another installation on the same daemon alone', async () => {
+		const foreign = 'owlat-update-deploy-snap-foreign-0123abcd';
+		deployContainers.set(foreign, 'ink.wolves.owlat.update-install=/srv/other-owlat');
+		expect((await update()).status).toBe(200);
+		expect(await (await post('/rollback', { snapshot: journal()['id'] })).status).toBe(200);
+
+		expect(deployContainers.has(foreign)).toBe(true);
+		expect(commandLines().some((c) => c.includes(foreign))).toBe(false);
+		// Everything the update and the rollback started carries this install's label.
+		const started = commandLines().filter((c) => isDeploy(c) || c.startsWith('docker run --rm'));
+		expect(started.length).toBeGreaterThan(0);
+		for (const cmd of started) expect(cmd).toContain(`--label ${INSTALL_LABEL}`);
+	});
+
+	it('waits for a leftover container that another removal is already stopping', async () => {
+		await update();
+		const helper = 'owlat-copy-helper';
+		strays.push({
+			id: 'deadbeef0004',
+			name: helper,
+			service: '',
+			install: INSTALL_LABEL,
+			mounts: [],
+		});
+		overrides.push((cmd) => {
+			if (cmd === `docker rm --force ${helper}`) {
+				fail(`Error response from daemon: removal of container ${helper} is already in progress`);
+			}
+			if (cmd === `docker wait ${helper}`) strays = strays.filter((c) => c.name !== helper);
+			return undefined;
+		});
+
+		expect((await post('/rollback', { snapshot: journal()['id'] })).status).toBe(200);
+		const waited = indexOf((c) => c === `docker wait ${helper}`);
+		expect(waited).toBeGreaterThan(-1);
+		expect(waited).toBeLessThan(indexOf(isRestore));
+	});
+
+	describe('with convex data in a bind mount', () => {
+		const DATA = '/srv/owlat-data/convex';
+		beforeEach(() => {
+			stack[0] = { ...stack[0]!, mounts: [bind(DATA, '/convex/data')] };
+		});
+
+		/** The first restore loses its client; the helper it started goes on extracting. */
+		function lostRestoreHelper(helper: FakeContainer): void {
+			let first = true;
+			overrides.push((cmd) => {
+				if (!isRestore(cmd) || !first) return undefined;
+				first = false;
+				strays.push(helper);
+				return fail('error waiting for container: unexpected EOF');
+			});
+		}
+
+		async function retriedRollback(): Promise<string[]> {
+			await update();
+			const snapshot = journal()['id'];
+			expect((await post('/rollback', { snapshot })).status).toBe(500);
+			expect(journal()).toMatchObject({ state: 'restoring' });
+
+			const runningAtRestore: string[] = [];
+			overrides.push((cmd) => {
+				if (isRestore(cmd)) runningAtRestore.push(...strays.map((c) => c.id));
+				return undefined;
+			});
+			expect((await post('/rollback', { snapshot })).status).toBe(200);
+			expect(journal()).toMatchObject({ state: 'restored' });
+			return runningAtRestore;
+		}
+
+		it('snapshots and restores the bind', async () => {
+			await update();
+			expect(journal()['mounts']).toEqual([
+				expect.objectContaining({ kind: 'bind', source: DATA }),
+				expect.objectContaining({ kind: 'volume', source: 'owlat_redis-data' }),
+			]);
+		});
+
+		it('stops a copy helper an interrupted restore left running before restoring again', async () => {
+			lostRestoreHelper({
+				id: 'deadbeef0001',
+				name: 'owlat-restore-helper',
+				service: '',
+				install: INSTALL_LABEL,
+				mounts: [bind(DATA, '/target')],
+			});
+			expect(await retriedRollback()).toEqual([]);
+			expect(lastIndexOf((c) => c === 'docker rm --force owlat-restore-helper')).toBeLessThan(
+				lastIndexOf(isRestore)
+			);
+		});
+
+		it('stops any other container writing to the bind, found by its mounts', async () => {
+			// Started without the install label (by hand, or by another tool).
+			lostRestoreHelper({
+				id: 'deadbeef0002',
+				name: 'by-hand',
+				service: '',
+				mounts: [bind(DATA, '/target')],
+			});
+			// Mounts something else AT that path: Docker's filter lists it, but it writes elsewhere.
+			strays.push({
+				id: 'deadbeef0003',
+				name: 'unrelated',
+				service: '',
+				mounts: [volume('other-data', DATA)],
+			});
+			const running = await retriedRollback();
+
+			expect([...new Set(running)]).toEqual(['deadbeef0003']);
+			const stop = commandLines().findLast((c) => c.startsWith('docker stop'));
+			expect(stop).toContain('deadbeef0002');
+			expect(stop).not.toContain('deadbeef0003');
+		});
+	});
+});
+
+describe('mount paths the snapshot cannot pass to Docker', () => {
+	it('refuses a bind whose path holds a space, before pausing or deploying anything', async () => {
+		stack[0] = { ...stack[0]!, mounts: [bind('/srv/Owlat Data/convex', '/convex/data')] };
+		const { status, json } = await update();
+
+		expect(status).toBe(500);
+		expect(json.error).toContain('"/srv/Owlat Data/convex", which the snapshot cannot copy');
+		expect(json.error).toContain('Nothing was changed');
+		expect(commandLines().some(isDeploy)).toBe(false);
+		expect(commandLines().some((c) => c.startsWith('docker stop'))).toBe(false);
+		expect(existsSync(SNAPSHOT_DIR)).toBe(false);
+	});
+
+	it('refuses the snapshot when the install directory holds a space, rather than cutting it there', async () => {
+		overrides.push((cmd) =>
+			cmd.startsWith('docker inspect ') && cmd.includes('{{json .Mounts}}')
+				? [
+						'ghcr.io/wolvesdotink/updater:0.4.16',
+						JSON.stringify([bind('/srv/Owlat Data', OWLAT_DIR)]),
+						'owlat_default ',
+					].join('\n')
+				: undefined
+		);
+		const { status, json } = await update();
+
+		expect(status).toBe(500);
+		expect(json.error).toContain('Cannot read the install directory');
+		expect(commandLines().some(isDeploy)).toBe(false);
+		expect(commandLines().some((c) => c.includes('/srv/Owlat'))).toBe(false);
 	});
 });

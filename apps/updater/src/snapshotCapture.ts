@@ -54,14 +54,14 @@ function snapshotsDisabled(envText: string): boolean {
 
 /** Bytes each source holds, measured by a helper (the updater cannot see into volumes). */
 async function measure(
-	image: string,
+	plumbing: Plumbing,
 	mounts: SnapshotMount[]
 ): Promise<number | { error: string }> {
 	if (mounts.length === 0) return 0;
 	const binds = mounts.map((mount, i) => `${mount.source}:/m${i}:ro`);
 	const du = await exec(
 		'docker',
-		helperRun(image, binds, 'du', ['-sk', ...mounts.map((_, i) => `/m${i}`)]),
+		helperRun(plumbing, binds, 'du', ['-sk', ...mounts.map((_, i) => `/m${i}`)]),
 		OWLAT_DIR
 	);
 	if (!du.ok) return { error: `cannot measure the data to copy: ${oneLine(du.stderr)}` };
@@ -162,7 +162,7 @@ export async function captureSnapshot(options: CaptureOptions): Promise<CaptureR
 		}
 	}
 
-	const size = await measure(plumbing.image, mounts);
+	const size = await measure(plumbing, mounts);
 	if (typeof size !== 'number') {
 		return refuse(500, `Cannot take the snapshot: ${size.error}. Nothing was changed.`);
 	}
@@ -178,8 +178,8 @@ export async function captureSnapshot(options: CaptureOptions): Promise<CaptureR
 				'some space, or set OWLAT_UPDATE_SNAPSHOT=off in .env to update without a snapshot.'
 		);
 	}
-	// A deploy the previous snapshot's update may have left running was
-	// stopped before this capture (update.ts).
+	// A deploy or copy helper an earlier update left running was stopped
+	// before this capture (update.ts).
 	await discardSnapshot();
 
 	let snapshot: Snapshot = {
@@ -309,7 +309,7 @@ async function copyMounts(
 		const copy = await exec(
 			'docker',
 			helperRun(
-				plumbing.image,
+				plumbing,
 				[`${mount.source}:/source:ro`, `${plumbing.hostSnapshotDir}:/snapshot`],
 				'tar',
 				['-cf', `/snapshot/data/${mount.payload}`, '-C', '/source', '.']

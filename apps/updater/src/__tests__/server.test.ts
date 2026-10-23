@@ -138,15 +138,19 @@ function dockerFixture(file: unknown, args: unknown): string {
 	}
 	// convex and redis, which the snapshot before the deploy needs to find.
 	if (cmd.endsWith(' ps --all --quiet')) return `${STORES.map(([id]) => id).join('\n')}\n`;
-	if (cmd.startsWith('docker inspect --format {{.Id}}')) {
-		return STORES.map(([id, service]) => `${id}|true|${service}|`).join('\n');
+	if (cmd.startsWith('docker container inspect')) {
+		return STORES.map(([Id, Service]) =>
+			JSON.stringify({ Id, Running: true, Service, Mounts: [] })
+		).join('\n');
 	}
 	// A deploy that failed: its container exited with an error.
 	if (cmd.startsWith('docker inspect --type container')) return 'exited|1\n';
 	if (cmd.startsWith('docker inspect')) {
 		return [
 			'ghcr.io/wolvesdotink/updater:0.5.0',
-			`${HOST_INSTALL_DIR}:${OWLAT_DIR}:rw `,
+			JSON.stringify([
+				{ Type: 'bind', Source: HOST_INSTALL_DIR, Destination: OWLAT_DIR, RW: true },
+			]),
 			'owlat_default owlat_docker-proxy ',
 		].join('\n');
 	}
@@ -234,10 +238,13 @@ const COMPOSE = `docker compose --project-directory ${HOST_INSTALL_DIR} --env-fi
 
 const composeCommands = () => commandLines().filter((c) => c.startsWith('docker compose'));
 
-/** The deploy's command line: a named run, kept until its state is read (deployRun.ts). */
+/**
+ * The deploy's command line: a named run, kept until its state is read, and
+ * labelled with this installation (deployRun.ts).
+ */
 const deployLine = (tail: string) =>
 	new RegExp(
-		`^${(COMPOSE + ' --profile deploy run --name ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}owlat-update-deploy-snap-[a-z0-9]+-[0-9a-f]{8} ${tail}$`
+		`^${(COMPOSE + ' --profile deploy run --name ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}owlat-update-deploy-snap-[a-z0-9]+-[0-9a-f]{8} --label ink\\.wolves\\.owlat\\.update-install=/srv/owlat ${tail}$`
 	);
 
 function post(path: string, body?: unknown, headers: Record<string, string> = AUTH) {
@@ -703,7 +710,11 @@ describe('POST /update', () => {
 			});
 			const res = await post('/update');
 			expect(res.status).toBe(200);
-			expect(commandLines().some((c) => c.includes('--filter label='))).toBe(false);
+			expect(
+				commandLines().some(
+					(c) => c.startsWith('docker image prune') && c.includes('--filter label=')
+				)
+			).toBe(false);
 		});
 
 		it('still updates when the prune fails — the free-space check decides', async () => {

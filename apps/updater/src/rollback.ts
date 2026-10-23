@@ -26,14 +26,16 @@ import {
 	servicesToRecreate,
 } from './rollout.js';
 import { verifyReadiness } from './readiness.js';
-import { deployContainerName, removeDeployContainer } from './deployRun.js';
+import { removeUpdateContainers } from './deployRun.js';
 import { isRateLimited } from './security.js';
 import {
 	COPY_TIMEOUT_MS,
 	helperPlumbing,
 	helperRun,
+	inspectContainers,
 	isSnapshotId,
 	markSnapshot,
+	mountsSource,
 	readSnapshot,
 	sha256File,
 	SNAPSHOT_DIR,
@@ -82,14 +84,18 @@ async function damagedPayload(snapshot: Snapshot): Promise<string | null> {
 
 /**
  * Every running container that writes to what is about to be overwritten:
- * the stateful services, and anything else that mounts one of the volumes.
+ * the stateful services, and anything else that mounts one of the volumes or
+ * binds, a copy helper of an earlier restore included. Docker's `volume`
+ * filter also matches a container that only mounts something else AT that
+ * path, so each one it lists is inspected and kept only when it mounts the
+ * source itself.
  */
 async function writersOf(snapshot: Snapshot): Promise<string[] | { error: string }> {
 	const found = await statefulContainers();
 	if ('error' in found) return found;
 	const ids = new Set(found.filter((c) => c.running).map((c) => c.id));
+	const listed = new Set<string>();
 	for (const mount of snapshot.mounts) {
-		if (mount.kind !== 'volume') continue;
 		const users = await exec(
 			'docker',
 			['ps', '--quiet', '--no-trunc', '--filter', `volume=${mount.source}`],
@@ -98,7 +104,13 @@ async function writersOf(snapshot: Snapshot): Promise<string[] | { error: string
 		if (!users.ok) {
 			return { error: `cannot list what uses ${mount.source}: ${oneLine(users.stderr)}` };
 		}
-		for (const line of users.stdout.split('\n')) if (line.trim()) ids.add(line.trim());
+		for (const line of users.stdout.split('\n')) if (line.trim()) listed.add(line.trim());
+	}
+	const users = await inspectContainers([...listed].filter((id) => !ids.has(id)));
+	if ('error' in users) return { error: `cannot inspect what uses the data: ${users.error}` };
+	for (const user of users) {
+		const writes = user.mounts.some((m) => snapshot.mounts.some((s) => mountsSource(m, s)));
+		if (user.running && writes) ids.add(user.id);
 	}
 	return [...ids];
 }
@@ -165,18 +177,17 @@ async function restoreAndStart(
 		return result('untouched', `${reason}. Nothing was restored.`);
 	}
 
-	// A deploy of the update that took the snapshot may still be running (cut
-	// off by its bound, or orphaned by a client that lost the daemon). It is
-	// stopped and waited for first, or it could go on writing to the backend
-	// the data is restored under.
-	if (snapshot.deployStarted) {
-		const name = deployContainerName(snapshot.id);
-		const stopped = await removeDeployContainer(name);
-		if (!stopped.ok) {
-			const reason = `could not stop the update's convex-deploy (${name}): ${stopped.reason}`;
-			fail('rollback-restore', reason);
-			return result('untouched', `${reason}. Nothing was restored.`);
-		}
+	// A deploy of this installation may still be running: the one of the
+	// update that took the snapshot, or of a later update that took none (cut
+	// off by its bound, or orphaned by a client that lost the daemon), and so
+	// may a copy helper of a restore an earlier rollback lost. Each is stopped
+	// and waited for first, or it could go on writing to the backend or the
+	// data restored under it.
+	const settled = await removeUpdateContainers();
+	if (!settled.ok) {
+		const reason = `could not stop a container an update or rollback of this install started (${settled.reason})`;
+		fail('rollback-restore', reason);
+		return result('untouched', `${reason}. Nothing was restored.`);
 	}
 
 	const previousState = snapshot.state;
@@ -205,7 +216,7 @@ async function restoreAndStart(
 		const restored = await exec(
 			'docker',
 			helperRun(
-				plumbing.image,
+				plumbing,
 				[`${mount.source}:/target`, `${plumbing.hostSnapshotDir}:/snapshot:ro`],
 				'sh',
 				[

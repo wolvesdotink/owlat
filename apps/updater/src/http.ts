@@ -401,3 +401,58 @@ export async function composePsServices(): Promise<{ containers: ComposeService[
 	// the image tag without mistaking a registry port for one.
 	return { containers: parseComposePs(result.stdout), raw: result.stdout };
 }
+
+/** One entry of a container's `.Mounts`, as `docker inspect` reports it. */
+export interface DockerMount {
+	type: string;
+	/** The volume name; empty for a bind. */
+	name: string;
+	/** The host path. */
+	source: string;
+	destination: string;
+	rw: boolean;
+}
+
+/**
+ * A container's `.Mounts`, read from its JSON (`{{json .Mounts}}`). A host
+ * path may hold a space or a colon, so mounts are never read from a list
+ * joined with one: the path would be cut there, and the cut-off prefix taken
+ * for the path. Null when the value is not a mount list.
+ */
+export function parseMounts(value: unknown): DockerMount[] | null {
+	if (!Array.isArray(value)) return null;
+	const mounts: DockerMount[] = [];
+	for (const entry of value as Array<Record<string, unknown> | null>) {
+		const { Type, Name = '', Source, Destination, RW } = entry ?? {};
+		if (
+			typeof Type !== 'string' ||
+			typeof Name !== 'string' ||
+			typeof Source !== 'string' ||
+			typeof Destination !== 'string' ||
+			typeof RW !== 'boolean'
+		) {
+			return null;
+		}
+		mounts.push({ type: Type, name: Name, source: Source, destination: Destination, rw: RW });
+	}
+	return mounts;
+}
+
+/**
+ * The binds of a container's `{{json .Mounts}}` as `-v` arguments
+ * (`source:destination:rw`), or null when one cannot be written as one: `-v`
+ * splits on the colon.
+ */
+export function bindArgs(mountsJson: string): string[] | null {
+	let mounts: DockerMount[] | null;
+	try {
+		mounts = parseMounts(JSON.parse(mountsJson));
+	} catch {
+		return null;
+	}
+	const binds = mounts?.filter((mount) => mount.type === 'bind');
+	if (!binds || binds.some((m) => m.source.includes(':') || m.destination.includes(':'))) {
+		return null;
+	}
+	return binds.map((m) => `${m.source}:${m.destination}:${m.rw ? 'rw' : 'ro'}`);
+}

@@ -50,9 +50,9 @@ case "$*" in
 	*"up -d"*) hold up ;;
 	"run -d"*) echo helper-container-id ;;
 	*"ps --all --quiet"*) printf 'c0ffee000001\\nc0ffee000002\\n' ;;
-	"inspect --format {{.Id}}"*) printf 'c0ffee000001|true|convex|\\nc0ffee000002|true|redis|\\n' ;;
+	"container inspect"*) printf '{"Id":"c0ffee000001","Running":true,"Service":"convex","Mounts":[]}\\n{"Id":"c0ffee000002","Running":true,"Service":"redis","Mounts":[]}\\n' ;;
 	inspect*org.opencontainers*) ;;
-	inspect*) printf 'ghcr.io/wolvesdotink/updater:0.5.0\\n/srv/owlat:%s:rw \\nowlat_default \\n' "$OWLAT_DIR" ;;
+	inspect*) printf 'ghcr.io/wolvesdotink/updater:0.5.0\\n[{"Type":"bind","Source":"/srv/owlat","Destination":"%s","RW":true}]\\nowlat_default \\n' "$OWLAT_DIR" ;;
 esac
 exit 0
 `

@@ -50,8 +50,9 @@ import {
 } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { exec, OWLAT_DIR } from './http.js';
+import { exec, OWLAT_DIR, parseMounts, type DockerMount } from './http.js';
 import { composeArgv, inspectSelf, oneLine } from './rollout.js';
+import { UPDATE_INSTALL_LABEL } from './deployRun.js';
 
 export interface SnapshotStep {
 	step: string;
@@ -225,6 +226,8 @@ export interface Plumbing {
 	image: string;
 	/** The snapshot directory as the HOST sees it, for a helper's `-v`. */
 	hostSnapshotDir: string;
+	/** The install directory as the host sees it: which installation a helper works for. */
+	installation: string;
 }
 
 /** What a copy helper is started from: this container's own image and install bind. */
@@ -233,20 +236,33 @@ export async function helperPlumbing(): Promise<Plumbing | null> {
 	const bind = self?.binds.find((mount) => mount.split(':')[1] === OWLAT_DIR);
 	const hostDir = bind?.split(':')[0];
 	if (!self || !hostDir) return null;
-	return { image: self.image, hostSnapshotDir: join(hostDir, '.owlat-update-snapshot') };
+	return {
+		image: self.image,
+		hostSnapshotDir: join(hostDir, '.owlat-update-snapshot'),
+		installation: hostDir,
+	};
 }
 
 /**
  * `docker run` for a helper that only copies files: no network, no Docker
  * access, removed when it exits. It runs the updater's own image (already on
- * the host), whose busybox has `tar`, `du` and `find`.
+ * the host), whose busybox has `tar`, `du` and `find`. It carries this
+ * installation's label, so one a lost client left running is found and
+ * stopped before the next update or rollback (deployRun.ts).
  */
-export function helperRun(image: string, mounts: string[], entrypoint: string, args: string[]) {
+export function helperRun(
+	plumbing: Plumbing,
+	mounts: string[],
+	entrypoint: string,
+	args: string[]
+) {
 	return [
 		'run',
 		'--rm',
 		'--label',
 		HELPER_LABEL,
+		'--label',
+		`${UPDATE_INSTALL_LABEL}=${plumbing.installation}`,
 		'--network',
 		'none',
 		'--security-opt',
@@ -254,7 +270,7 @@ export function helperRun(image: string, mounts: string[], entrypoint: string, a
 		...mounts.flatMap((mount) => ['-v', mount]),
 		'--entrypoint',
 		entrypoint,
-		image,
+		plumbing.image,
 		...args,
 	];
 }
@@ -266,10 +282,68 @@ interface StatefulContainer {
 	mounts: Array<{ kind: 'volume' | 'bind'; source: string }>;
 }
 
+/** What a rollout needs to know of a container, read off the container itself. */
+interface InspectedContainer {
+	id: string;
+	running: boolean;
+	/** Its compose service, empty for a container compose did not create. */
+	service: string;
+	mounts: DockerMount[];
+}
+
+const NO_SUCH_CONTAINER = /no such (container|object)/i;
+
+/**
+ * Inspect `ids`, one JSON object per container. A container removed since it
+ * was listed is left out; any other failure is an error.
+ */
+export async function inspectContainers(
+	ids: string[]
+): Promise<InspectedContainer[] | { error: string }> {
+	if (ids.length === 0) return [];
+	const format =
+		'{"Id":{{json .Id}},"Running":{{json .State.Running}},' +
+		'"Service":{{json (index .Config.Labels "com.docker.compose.service")}},"Mounts":{{json .Mounts}}}';
+	const inspected = await exec(
+		'docker',
+		['container', 'inspect', '--format', format, ...ids],
+		OWLAT_DIR
+	);
+	const gone = inspected.stderr
+		.split('\n')
+		.filter((line) => line.trim())
+		.every((line) => NO_SUCH_CONTAINER.test(line));
+	if (!inspected.ok && !gone) return { error: oneLine(inspected.stderr) };
+
+	const containers: InspectedContainer[] = [];
+	for (const line of inspected.stdout.split('\n')) {
+		if (!line.trim()) continue;
+		let entry: { Id?: unknown; Running?: unknown; Service?: unknown; Mounts?: unknown };
+		try {
+			entry = JSON.parse(line) as typeof entry;
+		} catch {
+			return { error: 'docker inspect answered something that is not JSON' };
+		}
+		const mounts = parseMounts(entry.Mounts);
+		if (typeof entry.Id !== 'string' || !mounts) {
+			return { error: 'docker inspect answered a container without an id or mounts' };
+		}
+		containers.push({
+			id: entry.Id,
+			running: entry.Running === true,
+			service: typeof entry.Service === 'string' ? entry.Service : '',
+			mounts,
+		});
+	}
+	return containers;
+}
+
 /**
  * The containers of the stateful services and their read-write mounts, read
  * off the containers themselves, so a renamed volume or a bind an override
- * added is copied too.
+ * added is copied too. A source is checked whole before it can reach a `-v`
+ * argument: one that cannot be passed safely refuses the snapshot, never
+ * shortened to a path that would be.
  */
 export async function statefulContainers(): Promise<StatefulContainer[] | { error: string }> {
 	const listed = await exec(
@@ -282,34 +356,44 @@ export async function statefulContainers(): Promise<StatefulContainer[] | { erro
 		.split('\n')
 		.map((id) => id.trim())
 		.filter(Boolean);
-	if (ids.length === 0) return [];
 	if (ids.some((id) => !/^[0-9a-f]{6,64}$/.test(id))) {
 		return { error: 'the container list holds an id that is not one' };
 	}
-
-	const format =
-		'{{.Id}}|{{.State.Running}}|{{index .Config.Labels "com.docker.compose.service"}}|' +
-		'{{range .Mounts}}{{if .RW}}{{.Type}}={{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}} {{end}}{{end}}';
-	const inspected = await exec('docker', ['inspect', '--format', format, ...ids], OWLAT_DIR);
-	if (!inspected.ok)
-		return { error: `cannot inspect the stack's containers: ${oneLine(inspected.stderr)}` };
+	const inspected = await inspectContainers(ids);
+	if ('error' in inspected) {
+		return { error: `cannot inspect the stack's containers: ${inspected.error}` };
+	}
 
 	const containers: StatefulContainer[] = [];
-	for (const line of inspected.stdout.split('\n')) {
-		const [id = '', running = '', service = '', mounts = ''] = line.trim().split('|');
-		if (!id || !STATEFUL_SERVICES.has(service)) continue;
-		const parsed: StatefulContainer['mounts'] = [];
-		for (const entry of mounts.split(' ').filter(Boolean)) {
-			const [kind, source = ''] = entry.split('=');
-			if (kind !== 'volume' && kind !== 'bind') continue;
+	for (const container of inspected) {
+		if (!STATEFUL_SERVICES.has(container.service)) continue;
+		const mounts: StatefulContainer['mounts'] = [];
+		for (const mount of container.mounts) {
+			const kind = mount.type === 'volume' || mount.type === 'bind' ? mount.type : null;
+			if (!mount.rw || !kind) continue;
+			const source = kind === 'volume' ? mount.name : mount.source;
 			if (!SAFE_SOURCE.test(source)) {
-				return { error: `${service} mounts ${kind} "${source}", which cannot be copied safely` };
+				return {
+					error:
+						`${container.service} mounts the ${mount.type} "${source}", which the snapshot cannot ` +
+						'copy: a source may hold only letters, digits and _ . / @ -',
+				};
 			}
-			parsed.push({ kind, source });
+			mounts.push({ kind, source });
 		}
-		containers.push({ id, running: running === 'true', service, mounts: parsed });
+		containers.push({ ...container, mounts });
 	}
 	return containers;
+}
+
+/** Whether `mount` is the volume or bind `source` names. */
+export function mountsSource(
+	mount: DockerMount,
+	source: Pick<SnapshotMount, 'kind' | 'source'>
+): boolean {
+	return source.kind === 'volume'
+		? mount.type === 'volume' && mount.name === source.source
+		: mount.type === 'bind' && mount.source === source.source;
 }
 
 /** SHA-256 of a payload, streamed: a database copy does not fit in memory. */
