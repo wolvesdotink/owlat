@@ -4,7 +4,8 @@
  * The cases run the REAL script against throwaway `apps/api` trees with their
  * own `scripts/purity-roots.txt`, and pin what it refuses: a clock, a random
  * source, an environment read, a timer, a network call, a database handle or
- * a Convex wrapper in a guarded module (nested ones included), a value import
+ * a Convex wrapper in a guarded module (nested ones included), any load of
+ * the environment module however its specifier is spelled, a value import
  * from a shell that the manifest does not allow (specifiers resolved the way
  * TypeScript resolves them), a side-effect, dynamic or `require` load of a
  * shell, and a manifest whose roots, shells or allowed names no longer match
@@ -39,12 +40,18 @@ interface GateRun {
 	stderr: string;
 }
 
+/** The environment module every tree holds unless a case removes it with `null`. */
+const ENV_MODULE = 'convex/lib/env.ts';
+const ENV =
+	"export const getOptional = (key: string): string | undefined => undefined;\nexport type EnvKey = 'KEY';\n";
+
 /** Runs the gate over a throwaway `apps/api` holding `manifest` and `files`. */
 async function gate(
 	manifest: string | null,
-	files: Record<string, string>,
+	treeFiles: Record<string, string | null>,
 	args: string[] = []
 ): Promise<GateRun> {
+	const files = { [ENV_MODULE]: ENV, ...treeFiles };
 	const root = await mkdtemp(join(tmpdir(), 'owlat-purity-gate-'));
 	roots.push(root);
 	const api = join(root, 'apps/api');
@@ -52,6 +59,7 @@ async function gate(
 	await copyFile(join(REPOSITORY_ROOT, GATE), join(root, GATE));
 	if (manifest !== null) await writeFile(join(api, 'scripts/purity-roots.txt'), manifest, 'utf8');
 	for (const [path, contents] of Object.entries(files)) {
+		if (contents === null) continue;
 		const target = join(api, path);
 		await mkdir(dirname(target), { recursive: true });
 		await writeFile(target, contents, 'utf8');
@@ -83,8 +91,8 @@ describe('per-module rules', () => {
 		['randomness', 'export const roll = Math.random();'],
 		['randomness', 'export const id = crypto.randomUUID();'],
 		['an environment read', 'export const key = process.env.KEY;'],
-		['an environment read', "import { getOptional } from '../../lib/env';"],
-		['an environment read', "import { getOptional } from '../env';"],
+		['an environment read', "import { getOptional } from '../lib/env';"],
+		['an environment read', "import { getOptional } from '../lib/env.js';"],
 		['a timer', 'setTimeout(() => {}, 10);'],
 		['a timer', 'export const tick = setInterval(() => {}, 10);'],
 		['a network call', "export const res = fetch('https://owlat.example');"],
@@ -133,6 +141,62 @@ describe('per-module rules', () => {
 		expect(failures(result)).toEqual([]);
 		expect(result.code).toBe(0);
 		expect(result.stdout).toBe('check-purity: OK (1 modules)\n');
+	});
+});
+
+describe('the environment module', () => {
+	it('refuses every way of loading it, resolved the way TypeScript does', async () => {
+		const result = await gate('convex/lib/decision\nconvex/core\n', {
+			'convex/lib/decision/a.ts': "import { getOptional } from '../env.js';\n",
+			'convex/lib/decision/b.ts':
+				"export const provider = async () =>\n\t(await import('../env')).getOptional('KEY');\n",
+			'convex/lib/decision/c.ts': "const env = require('../env.ts');\n",
+			'convex/lib/decision/d.ts': "import '../env';\n",
+			'convex/lib/decision/e.ts': "export * from '../env';\n",
+			'convex/lib/decision/f.ts': "import * as env from '../env.js';\n",
+			'convex/core/g.ts': "export { getOptional as read } from '../lib/env';\n",
+		});
+		expect(failures(result).map((line) => line.split(' — ')[0])).toEqual([
+			'convex/lib/decision/a.ts contains an environment read (../env.js resolves to convex/lib/env.ts)',
+			'convex/lib/decision/b.ts contains an environment read (../env resolves to convex/lib/env.ts)',
+			'convex/lib/decision/c.ts contains an environment read (../env.ts resolves to convex/lib/env.ts)',
+			'convex/lib/decision/d.ts contains an environment read (../env resolves to convex/lib/env.ts)',
+			'convex/lib/decision/e.ts contains an environment read (../env resolves to convex/lib/env.ts)',
+			'convex/lib/decision/f.ts contains an environment read (../env.js resolves to convex/lib/env.ts)',
+			'convex/core/g.ts contains an environment read (../lib/env resolves to convex/lib/env.ts)',
+		]);
+	});
+
+	it('reports a module once, and allows type imports and other modules named env', async () => {
+		const result = await gate('convex/core\n', {
+			'convex/core/a.ts': [
+				"import { getOptional } from '../lib/env';",
+				"import { type EnvKey, getOptional as read } from '../lib/env.js';",
+				'',
+			].join('\n'),
+			'convex/core/b.ts': [
+				"import type { EnvKey } from '../lib/env';",
+				"export type { EnvKey as Key } from '../lib/env.js';",
+				"import { region } from './env';",
+				'export const label = (key: EnvKey) => `${region}:${key}`;',
+				'',
+			].join('\n'),
+			'convex/core/env.ts': "export const region = 'eu';\n",
+		});
+		expect(failures(result).map((line) => line.split(' — ')[0])).toEqual([
+			'convex/core/a.ts contains an environment read (../lib/env resolves to convex/lib/env.ts)',
+		]);
+	});
+
+	it('fails when the environment module moved', async () => {
+		const result = await gate('convex/core\n', {
+			[ENV_MODULE]: null,
+			'convex/core/decide.ts': CLEAN,
+		});
+		expect(result.code).toBe(1);
+		expect(failures(result)).toEqual([
+			'environment module convex/lib/env.ts missing — point check-purity.sh at its new path',
+		]);
 	});
 });
 

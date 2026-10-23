@@ -6,11 +6,13 @@
 # calls and writes. The cores are listed in scripts/purity-roots.txt: the ramp
 # and its signal sources, the decision plane's contracts and rules, and the
 # lifecycle reducers. No guarded module may contain a clock, a random source,
-# an environment read, a timer, a network call, a database handle or a Convex
-# function wrapper; whatever it needs of those is injected by its caller. A
-# source grep rather than a mock, because a mock only proves the paths a test
-# walked. The behavioural halves (identical input, identical output) live with
-# each core's tests, e.g. convex/delivery/ramp/__tests__/gates.purity.test.ts.
+# an environment read (`process.env`, or any value import, re-export or
+# runtime load of lib/env.ts), a timer, a network call, a database handle or a
+# Convex function wrapper; whatever it needs of those is injected by its
+# caller. A source grep rather than a mock, because a mock only proves the
+# paths a test walked. The behavioural halves (identical input, identical
+# output) live with each core's tests, e.g.
+# convex/delivery/ramp/__tests__/gates.purity.test.ts.
 #
 # Manifest lines (paths relative to apps/api, `#` starts a comment):
 #   <path>              a guarded file, or a directory guarded recursively
@@ -153,6 +155,12 @@ for shell in "${shells[@]}"; do
 	[ -z "$inside" ] && fail "shell $shell is not inside a guarded directory — delete its line from $manifest"
 done
 
+# Environment reads go through this module everywhere else (check-env.sh), so
+# loading it is the environment read a guarded module could still make. The
+# check compares resolved imports with it, so a moved module must move here too.
+env_module=convex/lib/env.ts
+[ -f "$env_module" ] || fail "environment module $env_module missing — point check-purity.sh at its new path"
+
 if [ "$mode" = "--list" ]; then
 	printf '%s\n' "${guarded[@]}"
 	exit "$status"
@@ -188,12 +196,10 @@ strip_comments() {
 		}' "$1"
 }
 
-# Environment reads go through lib/env.ts everywhere else, so importing it is
-# the environment read a guarded module could still make.
 rules=(
 	"a clock|Date\.now|new Date\b|performance\.now"
 	"randomness|Math\.random|crypto\."
-	"an environment read|process\.env|from ['\"](\./|(\.\./)+)(lib/)?env['\"]"
+	"an environment read|process\.env"
 	"a timer|\b(setTimeout|setInterval|setImmediate)\("
 	"a network call|\bfetch\("
 	"a database handle|\bctx\b|\bdb\."
@@ -292,6 +298,7 @@ resolve_import() {
 declare -A shell_name_used=()
 for file in "${guarded[@]}"; do
 	code=$(strip_comments "$file")
+	env_loaded=""
 	for rule in "${rules[@]}"; do
 		name=${rule%%|*}
 		pattern=${rule#*|}
@@ -306,6 +313,12 @@ for file in "${guarded[@]}"; do
 		[ -z "$spec" ] && continue
 		target=$(resolve_import "$file" "$spec")
 		[ -z "$target" ] && continue
+		if [ "$target" = "$env_module" ]; then
+			# One report per module, however many names it takes from env.ts.
+			[ -z "$env_loaded" ] && fail "$file contains an environment read ($spec resolves to $env_module) — the decision core is pure; inject it"
+			env_loaded=1
+			continue
+		fi
 		[ -z "${is_shell[$target]:-}" ] && continue
 		if [[ $imported == '<'* ]]; then
 			# The allowlist names bindings; a load that binds none is never allowed.
