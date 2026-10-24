@@ -76,10 +76,11 @@ Only counters that held across repeated runs and do not depend on the machine
 carry a budget. Layout and style-recalc counts follow Chrome's frame
 scheduling; Chrome's own node count at mount follows its internals (the
 page-side `elements rendered` is budgeted instead); the scroll height and
-scroll frames of variable-height rows follow the installed fonts; the windowed
-Postbox list's own re-renders while scrolling vary by a few with when its
-scroll handler's animation frame lands (its rows re-rendering is budgeted, at
-0). Those stay report-only.
+scroll frames of variable-height rows follow the installed fonts, and so does
+everything the windowed chat list mounts and re-renders (its rows, its window
+moves); the windowed Postbox list's own re-renders while scrolling vary by a
+few with when its scroll handler's animation frame lands (its rows
+re-rendering is budgeted, at 0). Those stay report-only.
 
 A change that moves a budgeted counter on purpose (a new element per row, a
 row that now re-renders for a reason) updates the budget in the same change
