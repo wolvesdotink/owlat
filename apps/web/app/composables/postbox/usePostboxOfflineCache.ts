@@ -34,7 +34,7 @@ import { scheduleIdle } from '~/lib/scheduleIdle';
 
 const STORAGE_KEY = 'owlat:postbox:offline-cache-enabled';
 
-/** "Store recent mail on this device" on a device that never chose (plan Q2). */
+/** "Store recent mail on this device" on a device that never chose. */
 export const POSTBOX_OFFLINE_CACHE_DEFAULT = true;
 
 /**

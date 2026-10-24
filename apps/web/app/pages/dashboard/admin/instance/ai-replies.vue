@@ -21,6 +21,7 @@ import {
 	type AiReplySettings,
 } from '~/utils/aiReplyMode';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+import { ITEM_COVERAGE_ENFORCED_DEFAULT, WORKING_HOURS_DEFAULTS } from '~/utils/autonomyDefaults';
 
 definePageMeta({
 	layout: 'admin',
@@ -348,17 +349,17 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 
 				<AutonomyWorkingHours
 					v-if="mode === 'auto'"
-					:enabled="config?.isWorkingHoursEnabled ?? false"
+					:enabled="config?.isWorkingHoursEnabled ?? WORKING_HOURS_DEFAULTS.enabled"
 					:timezone="config?.workingHoursTimezone ?? ''"
-					:start="config?.workingHoursStart ?? 540"
-					:end="config?.workingHoursEnd ?? 1020"
-					:days="config?.workingHoursDays ?? [1, 2, 3, 4, 5]"
+					:start="config?.workingHoursStart ?? WORKING_HOURS_DEFAULTS.start"
+					:end="config?.workingHoursEnd ?? WORKING_HOURS_DEFAULTS.end"
+					:days="config?.workingHoursDays ?? [...WORKING_HOURS_DEFAULTS.days]"
 					:busy="workingHoursBusy"
 					@save="handleSaveWorkingHours"
 				/>
 				<AutonomyItemCoverage
 					v-if="mode === 'auto'"
-					:enforced="config?.isItemCoverageEnforced ?? false"
+					:enforced="config?.isItemCoverageEnforced ?? ITEM_COVERAGE_ENFORCED_DEFAULT"
 				/>
 
 				<!-- Rules: per type of message, and in plain words -->

@@ -43,6 +43,13 @@ describe('RampPresetPicker: reset to default', () => {
 		expect(wrapper.emitted('change')).toEqual([[null]]);
 	});
 
+	it('keeps the reset out of the group name', () => {
+		const wrapper = mountPicker('conservative');
+		const legend = wrapper.get('legend');
+		expect(legend.text()).toBe('Campaign mail');
+		expect(legend.find('button').exists()).toBe(false);
+	});
+
 	it('holds the reset while a pace is being written', () => {
 		const wrapper = mountPicker('conservative', true);
 		expect(

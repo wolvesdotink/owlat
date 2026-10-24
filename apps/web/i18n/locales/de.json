@@ -746,7 +746,8 @@
 					"thu": "Do",
 					"tue": "Di",
 					"wed": "Mi"
-				}
+				},
+				"windowLabel": "Arbeitszeitfenster"
 			},
 			"feedbackStatsCard": {
 				"approved": "Freigegeben",

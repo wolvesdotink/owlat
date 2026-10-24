@@ -59,6 +59,9 @@ const defaultLabel = computed(() => {
 	return option ? localized(option.label) : '';
 });
 const isStandalone = computed(() => !props.hasReferenceArm);
+const groupLabel = computed(() =>
+	t('components.delivery.rampPresetPicker.legend', { stream: localized(streamLabel(props.stream)) })
+);
 
 /** The DOM value for "no stored row" — `null` is not an attribute value. */
 const DEFAULT_VALUE = 'default';
@@ -115,25 +118,23 @@ function choose(preset: RampPreset | null): void {
 
 <template>
 	<fieldset ref="group" class="space-y-2" :data-testid="`ramp-preset-${stream}`">
-		<legend
-			class="flex w-full items-center justify-between gap-2 text-sm font-medium text-text-primary"
-		>
-			{{
-				t('components.delivery.rampPresetPicker.legend', { stream: localized(streamLabel(stream)) })
-			}}
+		<!-- The legend names the group for assistive tech; the visible line repeats
+		     it beside the marker (hidden from the accessibility tree), so the Reset
+		     button never becomes part of the group's name. -->
+		<legend class="sr-only">{{ groupLabel }}</legend>
+		<div class="flex w-full items-center justify-between gap-2">
+			<span class="text-sm font-medium text-text-primary" aria-hidden="true">
+				{{ groupLabel }}
+			</span>
 			<!-- A stored pace, even one equal to today's default, stops following the
 			     deployment default; Reset deletes the row like "Use the default". -->
 			<SettingsResetToDefault
 				:changed="preset !== null"
-				:label="
-					t('components.delivery.rampPresetPicker.legend', {
-						stream: localized(streamLabel(stream)),
-					})
-				"
+				:label="groupLabel"
 				:disabled="busy === true"
 				@reset="choose(null)"
 			/>
-		</legend>
+		</div>
 		<p class="text-xs text-text-secondary">
 			{{ t('components.delivery.rampPresetPicker.deploymentDefault', { preset: defaultLabel }) }}
 		</p>

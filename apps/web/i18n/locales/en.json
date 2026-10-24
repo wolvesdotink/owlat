@@ -746,7 +746,8 @@
 					"thu": "Thu",
 					"tue": "Tue",
 					"wed": "Wed"
-				}
+				},
+				"windowLabel": "Working hours window"
 			},
 			"feedbackStatsCard": {
 				"approved": "Approved",
