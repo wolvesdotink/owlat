@@ -118,6 +118,7 @@ const INERT = Object.fromEntries(
 		'PostboxFolderDrawer',
 		'PostboxListHeader',
 		'PostboxPaneResizer',
+		'PostboxPinnedBand',
 		'PostboxReaderPlaceholder',
 		'PostboxShortcutHelp',
 		'PostboxArrivalExplain',

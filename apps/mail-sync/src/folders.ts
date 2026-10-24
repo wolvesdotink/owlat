@@ -5,7 +5,9 @@
  * system role (out of scope for v1 — we only sync the system folders).
  */
 
-export type FolderRole = 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archive';
+import type { FolderRole } from '@owlat/worker-protocol/fields';
+
+export type { FolderRole };
 
 export function mapFolderRole(specialUse: string | undefined, path: string): FolderRole | null {
 	switch (specialUse) {

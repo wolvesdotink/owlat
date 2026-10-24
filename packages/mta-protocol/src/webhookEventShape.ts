@@ -104,6 +104,12 @@ export interface MtaWebhookEventFields<P extends MtaWebhookPayloads = MtaWebhook
 	eventId?: string;
 	messageId?: string;
 	/**
+	 * The `x-owlat-correlation` id the job was accepted under, echoed so Convex's
+	 * log line for the outcome joins the request that caused it
+	 * (`@owlat/shared/correlation`). Log-only; absent when the producer sent none.
+	 */
+	correlationId?: string;
+	/**
 	 * Complained/bounced recipient address. Carried on `complained` events
 	 * extracted from an ARF feedback-report part (RFC 5965 §3.2) when no
 	 * original Message-ID is recoverable, so Convex can suppress the

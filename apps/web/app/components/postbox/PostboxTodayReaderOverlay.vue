@@ -111,6 +111,7 @@ function onWindowKeydown(event: KeyboardEvent) {
 let openerEl: HTMLElement | null = null;
 onMounted(() => {
 	openerEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- hands Postbox keys, resolved through the registry, to the reader
 	window.addEventListener('keydown', onWindowKeydown);
 	nextTick(() => paneEl.value?.focus());
 });

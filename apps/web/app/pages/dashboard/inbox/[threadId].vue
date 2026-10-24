@@ -5,7 +5,6 @@ import { useOrganization } from '~/composables/useOrganization';
 import { teamThreadPreview } from '~/utils/teamThreadPreviews';
 import { formatRelativeTime } from '~/utils/formatters';
 import { otherWaitingDrafts, pickReplyTarget, replySubject } from '~/utils/teamThreadReply';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { countMentionsOf, type ReplyEntry } from '~/utils/teamStream';
 import { useTeamThread } from '~/composables/team/useTeamThread';
 import { useZenMode } from '~/composables/useZenMode';
@@ -107,21 +106,18 @@ const assignToMe = () => {
 	const me = user.value?.id;
 	if (me) void handleAssign(me);
 };
-// `r` opens the reply in Answer mode, as the shortcut sheet promises; `n`
-// opens an internal note under the thread.
-function onThreadKeydown(event: KeyboardEvent) {
-	const key = event.key.toLowerCase();
-	if (key !== 'i' && key !== 'r' && key !== 'n') return;
-	if (event.metaKey || event.ctrlKey || event.altKey) return;
-	// Never hijack typing in an input / textarea / contenteditable.
-	if (isEditableTarget(event.target)) return;
-	event.preventDefault();
-	if (key === 'i') assignToMe();
-	else if (key === 'r') openReply();
-	else if (isAdmin.value) composer.value?.focus('note');
-}
-onMounted(() => window.addEventListener('keydown', onThreadKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onThreadKeydown));
+// The thread's keys (`i` assigns it to me, `r` opens the reply in Answer mode,
+// `n` an internal note) live in the `inbox` scope, so they take precedence over
+// the app-wide `n` here and follow the person's remaps.
+useShortcutScope('inbox');
+const { registerShortcut } = useKeyboardShortcuts();
+registerShortcut({ id: 'inbox.assignToMe', handler: assignToMe });
+registerShortcut({ id: 'inbox.reply', handler: () => openReply() });
+registerShortcut({
+	id: 'inbox.note',
+	handler: () => composer.value?.focus('note'),
+	when: () => isAdmin.value,
+});
 
 // Mark the thread seen for THIS user (per-user unread, mirroring chat's
 // lastReadAt) on open and whenever we navigate to another thread. Best-effort:

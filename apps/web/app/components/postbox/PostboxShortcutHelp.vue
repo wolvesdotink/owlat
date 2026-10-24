@@ -51,6 +51,7 @@ function onGlobalKey(event: KeyboardEvent) {
 let releaseClaim: (() => void) | null = null;
 onMounted(() => {
 	releaseClaim = claimHelpOverlay();
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- resolves postbox.help through the registry
 	window.addEventListener('keydown', onGlobalKey);
 });
 onBeforeUnmount(() => {

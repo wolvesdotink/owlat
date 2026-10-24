@@ -49,6 +49,10 @@ import {
 	runDeferral,
 	type DeferralBudget,
 } from './remoteOpDeferral';
+import {
+	listDueRemoteOps as listDueRemoteOpsContract,
+	settleRemoteOps as settleRemoteOpsContract,
+} from '@owlat/worker-protocol/mailSync';
 
 export type RemoteFolderRef = Infer<typeof remoteFolderRefValidator>;
 export type RemoteFlagChanges = Infer<typeof remoteFlagChangesValidator>;
@@ -342,7 +346,8 @@ async function remoteFolderRef(
  * account receives new mail only.
  */
 export const listDueRemoteOps = internalQuery({
-	args: { accountId: v.id('externalMailAccounts') },
+	args: listDueRemoteOpsContract.args,
+	returns: listDueRemoteOpsContract.returns,
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
 		if (!account || !writesBack(account)) return [];
@@ -378,15 +383,8 @@ export function remoteOpRetryDelayMs(attempts: number): number {
  * attempts are spent.
  */
 export const settleRemoteOps = internalMutation({
-	args: {
-		results: v.array(
-			v.object({
-				opId: v.id('externalMailRemoteOps'),
-				outcome: v.union(v.literal('done'), v.literal('not_found'), v.literal('failed')),
-				error: v.optional(v.string()),
-			})
-		),
-	},
+	args: settleRemoteOpsContract.args,
+	returns: settleRemoteOpsContract.returns,
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		const budget = deferralBudget();

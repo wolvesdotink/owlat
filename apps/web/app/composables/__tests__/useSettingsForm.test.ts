@@ -263,6 +263,44 @@ describe('useSettingsForm', () => {
 		expect(isDirty.value).toBe(true);
 	});
 
+	it('reports which fields differ from their defaults, by value', async () => {
+		const { form, isFieldChanged } = setup({ timezone: 'Europe/Berlin', fromName: '' });
+		await settle();
+
+		expect(isFieldChanged('timezone')).toBe(true);
+		expect(isFieldChanged('fromName')).toBe(false);
+
+		// Typed back to the default: no marker, whatever is stored.
+		form.timezone = 'UTC';
+		expect(isFieldChanged('timezone')).toBe(false);
+	});
+
+	it('resetField restores one default, keeps sibling edits, and stays dirty until saved', async () => {
+		const { form, isDirty, isFieldChanged, resetField, handleSave, save, source } = setup({
+			timezone: 'Europe/Berlin',
+			fromName: 'Owlat',
+		});
+		await settle();
+
+		form.fromName = 'Owlat Team';
+		resetField('timezone');
+		await settle();
+
+		expect(form).toEqual({ timezone: 'UTC', fromName: 'Owlat Team' });
+		expect(isFieldChanged('timezone')).toBe(false);
+		expect(isDirty.value).toBe(true);
+
+		expect(await handleSave()).toBe(true);
+		expect(save).toHaveBeenCalledWith({ timezone: 'UTC', fromName: 'Owlat Team' });
+		expect(isDirty.value).toBe(false);
+
+		// The server echoes the write back: the reset value is what reloads.
+		source.value = { timezone: 'UTC', fromName: 'Owlat Team' };
+		await settle();
+		expect(form.timezone).toBe('UTC');
+		expect(isFieldChanged('timezone')).toBe(false);
+	});
+
 	it('reset throws the draft away', async () => {
 		const { form, isDirty, reset } = setup({ timezone: 'UTC', fromName: 'Owlat' });
 		await settle();

@@ -15,7 +15,7 @@ const { t } = useI18n();
 const route = useRoute();
 
 // Initialize keyboard shortcuts
-const { registerNavigationShortcuts, isHelpModalOpen } = useKeyboardShortcuts();
+const { registerNavigationShortcuts, registerShortcut, isHelpModalOpen } = useKeyboardShortcuts();
 
 // The palette and the "?" sheet stay off the boot path: each mounts the first
 // time it is asked for, and stays mounted after that.
@@ -277,36 +277,21 @@ onMounted(() => {
 	onUnmounted(() => mql.removeEventListener('change', sync));
 });
 
-// Cmd/Ctrl-\ toggles the sidebar's hidden mode (desktop only; the composable
-// guards the breakpoint), Cmd/Ctrl-, opens Settings, and Cmd/Ctrl-J opens the
-// Assistant for every member while the feature is on. Registered alongside the
-// other global shortcuts.
+// Hide/show the sidebar (desktop only; the composable guards the breakpoint),
+// open Settings, and open the Assistant for every member while the feature is
+// on. Catalog ids, so a remap on the shortcuts page moves them; as modifier
+// chords they fire while a text field has focus, like the browser's own.
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
-onMounted(() => {
-	const handleToggleHidden = (e: KeyboardEvent) => {
-		if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
-			e.preventDefault();
-			toggleHidden();
-		}
-		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === ',') {
-			e.preventDefault();
-			void navigateTo('/dashboard/preferences');
-		}
-		if (
-			(e.metaKey || e.ctrlKey) &&
-			!e.shiftKey &&
-			!e.altKey &&
-			e.key.toLowerCase() === 'j' &&
-			isFeatureEnabled('ai.assistant') &&
-			// Inside Answer mode the chord belongs to the draft ("Draft with AI").
-			!isAnswerMode.value
-		) {
-			e.preventDefault();
-			void navigateTo('/dashboard/assistant');
-		}
-	};
-	document.addEventListener('keydown', handleToggleHidden);
-	onUnmounted(() => document.removeEventListener('keydown', handleToggleHidden));
+registerShortcut({ id: 'global.toggleSidebar', handler: toggleHidden });
+registerShortcut({
+	id: 'global.settings',
+	handler: () => void navigateTo('/dashboard/preferences'),
+});
+registerShortcut({
+	id: 'global.assistant',
+	handler: () => void navigateTo('/dashboard/assistant'),
+	// Inside Answer mode ⌘J belongs to the draft ("Draft with AI").
+	when: () => isFeatureEnabled('ai.assistant') && !isAnswerMode.value,
 });
 
 // Peek overlay: open on left-edge hover, close 300ms after the pointer leaves

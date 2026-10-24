@@ -213,6 +213,7 @@ function onPageHide() {
 }
 
 onMounted(() => {
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape on the full-page composer: blurs the field, then leaves
 	window.addEventListener('keydown', onKeydown);
 	window.addEventListener('pagehide', onPageHide);
 });

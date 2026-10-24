@@ -56,6 +56,7 @@ function sources(
 		hintText: () => 'Invoice 4471',
 		isMuted: () => false,
 		isAlerted: () => false,
+		isPinned: () => false,
 		followUp: () => ({ state: 'none' }),
 		canTranslate: () => true,
 		labels: () => [{ _id: 'l1', name: 'Work' }],
@@ -70,6 +71,7 @@ function sources(
 		moveTo: vi.fn(),
 		toggleMute: vi.fn(),
 		toggleAlert: vi.fn(),
+		togglePin: vi.fn(),
 		translate: vi.fn(),
 		...overrides,
 	};

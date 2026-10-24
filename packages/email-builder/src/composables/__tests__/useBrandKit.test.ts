@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// @vitest-environment-options {"settings": {"disableCSSFileLoading": true, "handleDisabledFileLoadingAsSuccess": true}}
+// @vitest-environment-options {"settings": {"handleDisabledFileLoadingAsSuccess": true}}
 /**
  * The brand kit inside the editor: brand swatches lead every colour picker,
  * new Blocks start in the kit's styles, the logo and footer insert as Blocks,

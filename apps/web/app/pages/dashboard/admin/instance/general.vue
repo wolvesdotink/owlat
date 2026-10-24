@@ -5,6 +5,8 @@ import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { isValidEmail } from '@owlat/shared';
 import { unverifiedFromDomainWarning } from '~/utils/fromEmailDomain';
 import { useSettingsForm } from '~/composables/useSettingsForm';
+import { FEATURE_FLAGS } from '@owlat/shared/featureFlags';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t } = useI18n();
 
@@ -73,7 +75,9 @@ const DEFAULTS: GeneralForm = {
 	timezone: '',
 	defaultFromName: '',
 	defaultFromEmail: '',
-	archiveEnabled: false,
+	// The flag's shipped default, so the archive switch's "changed" marker and
+	// its Reset compare against what a fresh deployment has.
+	archiveEnabled: FEATURE_FLAGS['campaigns.archive'].default,
 };
 
 // BetterAuth refreshes the active organization after its own round trip, so a
@@ -166,6 +170,8 @@ const {
 	isDirty: isFormDirty,
 	isSaving,
 	handleSave,
+	isFieldChanged,
+	resetField,
 	unsavedDialog,
 } = useSettingsForm({
 	source: stored,
@@ -347,9 +353,17 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 							<!-- Campaign Archives Default -->
 							<div class="flex items-center justify-between gap-4 py-2">
 								<div class="min-w-0">
-									<p class="text-sm font-medium text-text-primary">
-										{{ t('dashboard.admin.instance.general.archives') }}
-									</p>
+									<div class="flex items-center gap-2">
+										<p class="text-sm font-medium text-text-primary">
+											{{ t('dashboard.admin.instance.general.archives') }}
+										</p>
+										<SettingsResetToDefault
+											:changed="isFieldChanged('archiveEnabled')"
+											:label="t('dashboard.admin.instance.general.archives')"
+											:disabled="isSaving"
+											@reset="resetField('archiveEnabled')"
+										/>
+									</div>
 									<p class="text-xs text-text-tertiary mt-0.5">
 										{{ t('dashboard.admin.instance.general.archivesHelp') }}
 									</p>

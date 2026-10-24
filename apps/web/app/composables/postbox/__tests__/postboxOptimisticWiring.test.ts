@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import * as mailUpdaters from '~/lib/mailOptimistic/mailUpdaters';
 import * as labelUpdaters from '~/lib/mailOptimistic/labelUpdaters';
+import { optimisticUnpin } from '../usePostboxPins';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -59,6 +60,7 @@ describe('Postbox writes send their optimistic update', () => {
 		expect(updaterOf(`${list}snoozeOperation`, 0)).toBe(mailUpdaters.optimisticSnooze);
 		expect(updaterOf(`${list}snoozeOperation`, 1)).toBe(mailUpdaters.optimisticSnoozeThread);
 		expect(updaterOf(`${list}moveOperation`)).toBe(mailUpdaters.optimisticMove);
+		expect(updaterOf('postbox.pins.operation')).toBe(optimisticUnpin);
 	});
 
 	it('label edits and label-on-mail writes', async () => {

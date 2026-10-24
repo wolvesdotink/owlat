@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 import SidebarFooter from '../SidebarFooter.vue';
 
 const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
@@ -27,6 +28,7 @@ beforeEach(() => {
 enableAutoUnmount(afterEach);
 afterEach(() => {
 	delete (window.navigator as { userAgent?: string }).userAgent;
+	resetShortcutPreferences();
 });
 
 const NuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
@@ -75,5 +77,17 @@ describe('account menu shortcut hints', () => {
 			'?',
 			undefined,
 		]);
+	});
+
+	it('follow a remap made on the shortcuts page', async () => {
+		applyShortcutPreferences('owlat', [
+			{ id: 'global.assistant', keys: ['mod+u'] },
+			{ id: 'global.settings', keys: ['mod+.'] },
+		]);
+		const wrapper = await openMenu(WINDOWS_UA);
+		expect(hints(wrapper)).toEqual(['Ctrl+U', 'Ctrl+Shift+F', '?']);
+		const settings = wrapper.get('a[href="/dashboard/preferences"]');
+		expect(settings.attributes('title')).toBe('Settings (Ctrl+.)');
+		expect(settings.attributes('aria-keyshortcuts')).toBe('Control+.');
 	});
 });

@@ -6,7 +6,9 @@ import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { useShortcutScope } from '~/composables/useShortcutScope';
 import type { AnswerCardControls } from '~/utils/answerCard';
 
 type MentionEntry = FunctionReturnType<typeof api.chat.mentions.listMyUnreadMentions>[number];
@@ -15,6 +17,9 @@ type MentionEntry = FunctionReturnType<typeof api.chat.mentions.listMyUnreadMent
  * A teammate asked the viewer something in chat. Answering happens in chat
  * itself (Enter opens the conversation), or the mention can be marked read.
  * A mention inside an email's team discussion opens that email instead.
+ *
+ * Keys (the `mentionCard` scope): Enter opens it, `d` marks it read, `s`
+ * skips it for now.
  */
 const props = defineProps<{ mention: MentionEntry; controls: AnswerCardControls }>();
 const { t } = useI18n();
@@ -43,21 +48,20 @@ async function dismiss() {
 	if (result.ok) props.controls.complete('cleared');
 }
 
-function onKeydown(event: KeyboardEvent) {
-	if (event.metaKey || event.ctrlKey || event.altKey || isEditableTarget(event.target)) return;
-	if (event.key === 'Enter') {
-		event.preventDefault();
-		void reply();
-	} else if (event.key === 'd') {
-		event.preventDefault();
-		void dismiss();
-	} else if (event.key === 's') {
-		event.preventDefault();
-		props.controls.skip();
-	}
-}
-onMounted(() => window.addEventListener('keydown', onKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+useShortcutScope('mentionCard');
+const { registerShortcut } = useKeyboardShortcuts();
+registerShortcut({ id: 'mentionCard.reply', handler: () => void reply() });
+registerShortcut({ id: 'mentionCard.markRead', handler: () => void dismiss() });
+registerShortcut({ id: 'mentionCard.skip', handler: () => props.controls.skip() });
+
+// The hints follow the person's keys.
+const { keyHints } = useShortcutLabels();
+const hints = computed(() =>
+	keyHints([
+		{ id: 'mentionCard.reply', label: t('components.answer.mention.reply') },
+		{ id: 'mentionCard.markRead', label: t('components.answer.mention.markRead') },
+	])
+);
 </script>
 
 <template>
@@ -72,10 +76,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 			:primary-label="t('components.answer.mention.reply')"
 			primary-icon="lucide:message-circle"
 			:skip-label="t('components.answer.mention.markRead')"
-			:hints="[
-				{ keys: ['Enter'], label: t('components.answer.mention.reply') },
-				{ keys: ['d'], label: t('components.answer.mention.markRead') },
-			]"
+			:hints="hints"
 			@primary="reply"
 			@skip="dismiss"
 		/>
