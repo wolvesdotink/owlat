@@ -74,6 +74,8 @@ const emit = defineEmits<{
 	(e: 'block-sender'): void;
 	(e: 'create-filter'): void;
 	(e: 'print'): void;
+	(e: 'copy-link'): void;
+	(e: 'share-in-chat'): void;
 	(e: 'preview-attachment', att: AttachmentMeta, all: AttachmentMeta[]): void;
 	(e: 'download-attachment', att: AttachmentMeta): void;
 	(e: 'trackers', detection: TrackerDetection): void;
@@ -474,6 +476,8 @@ const renderToggleLabel = computed(() =>
 			@block-sender="emit('block-sender')"
 			@create-filter="emit('create-filter')"
 			@print="emit('print')"
+			@copy-link="emit('copy-link')"
+			@share-in-chat="emit('share-in-chat')"
 		/>
 	</section>
 </template>

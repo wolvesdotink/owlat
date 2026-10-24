@@ -108,6 +108,8 @@ import type { Placement } from '@owlat/shared/arrival';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { primaryReplyKindFor } from '~/composables/postbox/postboxReplySpec';
 import { replyDropRecipient, type ReplyDropTarget } from '~/utils/replyFileDrop';
+import type { ConversationLinkTarget } from '~/utils/conversationLink';
+import { useConversationLink } from '~/composables/useConversationLink';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -716,6 +718,20 @@ const translationTarget = computed(
 );
 const translation = usePostboxReaderTranslation(() => translationTarget.value);
 
+// "Copy link" / "Share in chat…", from any card's ⋯ menu or the palette. The
+// link names the card's message, so it opens the thread at the mail it came from,
+// and the dialog is this reader's own: a second mounted reader never opens it.
+const { copyConversationLink } = useConversationLink();
+function conversationLinkOf(messageId: string): ConversationLinkTarget {
+	return {
+		kind: 'postbox',
+		messageId,
+		mailboxId: props.message.mailboxId,
+		folder: props.folderRole,
+	};
+}
+const shareTarget = shallowRef<ConversationLinkTarget | null>(null);
+
 // ⌘K, while a conversation is open, offers every verb this reader has. Runs the
 // actions directly, so it acts on THIS conversation.
 usePostboxThreadCommandSurface({
@@ -724,6 +740,8 @@ usePostboxThreadCommandSurface({
 	threadId: () => readerThread.value?._id ?? props.message.threadId,
 	mailboxId: () => props.message.mailboxId,
 	href: () => `/dashboard/postbox/${props.folderRole ?? 'inbox'}/${props.message._id}`,
+	link: () => conversationLinkOf(props.message._id),
+	shareInChat: () => (shareTarget.value = conversationLinkOf(props.message._id)),
 	hintText: () => snoozeHintText.value,
 	isMuted: () => readerThread.value?.mutedAt != null,
 	isAlerted: () => readerThread.value?.notifyOnReplyAt != null,
@@ -967,6 +985,8 @@ const replyDrop = computed<ReplyDropTarget | null>(() => {
 					@block-sender="blockSenderOf(msg._id)"
 					@create-filter="createFilterFrom(msg)"
 					@print="runReaderAction('print')"
+					@copy-link="copyConversationLink(conversationLinkOf(msg._id))"
+					@share-in-chat="shareTarget = conversationLinkOf(msg._id)"
 					@preview-attachment="(att, all) => openAttachmentPreview(msg._id, att, all)"
 					@download-attachment="(att) => handleAttachmentDownload(msg._id, att)"
 					@trackers="onTrackersDetected(msg._id, $event)"
@@ -1038,6 +1058,13 @@ const replyDrop = computed<ReplyDropTarget | null>(() => {
 			:from-address="senderProfile.fromAddress"
 			:from-name="senderProfile.fromName"
 			@update:open="(open: boolean) => !open && (senderProfile = null)"
+		/>
+
+		<LazyChatLinkEmailDialog
+			v-if="shareTarget"
+			:conversation="shareTarget"
+			:audience="rb.isShared.value ? 'shared' : 'personal'"
+			@close="shareTarget = null"
 		/>
 
 		<!-- Quick Look overlay for image/PDF attachments (Teleports to body). -->

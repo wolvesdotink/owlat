@@ -1823,6 +1823,21 @@
 				"empty": "Keine Posteingangs-Konversationen gefunden.",
 				"removeLink": "Aktuelle Verknüpfung entfernen",
 				"searchPlaceholder": "Posteingangs-Konversationen suchen…",
+				"share": {
+					"title": "Im Chat teilen",
+					"searchPlaceholder": "Kanäle und Personen suchen…",
+					"roomsLabel": "Wo teilen",
+					"empty": "Kein Kanal und keine Direktnachricht zum Posten.",
+					"partial": "Einige Kanäle oder Direktnachrichten konnten nicht geladen werden.",
+					"notePlaceholder": "Notiz hinzufügen (optional)",
+					"send": "Teilen",
+					"shared": "Link in {room} geteilt",
+					"audience": {
+						"personal": "Aus deinem persönlichen Posteingang. Andere im Chat sehen den Link, nicht die Mail.",
+						"shared": "Mitglieder dieses Posteingangs können den Link öffnen. Alle anderen sehen nur den Link.",
+						"team": "Inhaber und Admins können den Link öffnen. Alle anderen sehen nur den Link."
+					}
+				},
 				"title": "E-Mail-Konversation verknüpfen"
 			},
 			"chatLinkedEmailPanel": {
@@ -18160,9 +18175,6 @@
 				"cancelFollowUp": "Antwort-Erinnerung abbrechen",
 				"translate": "Übersetzen",
 				"showOriginal": "Original herunterladen (.eml)",
-				"copyLink": "Link kopieren",
-				"linkCopied": "Link kopiert",
-				"linkCopyFailed": "Der Link konnte nicht kopiert werden",
 				"pin": "Unterhaltung anheften",
 				"unpin": "Unterhaltung lösen"
 			},
@@ -18183,6 +18195,13 @@
 				"priorityPrompt": "Priorität",
 				"current": "Aktuell"
 			}
+		},
+		"conversationLink": {
+			"copyLink": "Link kopieren",
+			"shareInChat": "Im Chat teilen…",
+			"linkCopied": "Link kopiert",
+			"linkCopyFailed": "Der Link konnte nicht kopiert werden",
+			"linkUnavailable": "Dieser Workspace hat keine Webadresse für einen Link"
 		},
 		"inboxSla": {
 			"dueIn": {
