@@ -94,8 +94,8 @@ export function useInboxesThreadArchive<R extends ArchivableRow>(args: {
 				if (thread.moved > 0) archived.add(thread.threadId);
 				if (!thread.isDone) {
 					queue.push(
-						thread.after
-							? { threadId: thread.threadId, after: thread.after }
+						thread.from
+							? { threadId: thread.threadId, from: thread.from }
 							: { threadId: thread.threadId }
 					);
 				} else if (thread.hasLeftInbox) {

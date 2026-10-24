@@ -29,7 +29,7 @@ const ARCHIVE = 'dashboard.inboxes.archiveOperation';
 const ROW_PX = 50;
 
 type Row = { key: string; archive: { threadId: string } | null };
-type Request = { threadId: string; after?: { receivedAt: number; creationTime: number } };
+type Request = { threadId: string; from?: { receivedAt: number; creationTime: number } };
 
 let runs: Array<{ label: string; args: { threads?: Request[] } }>;
 let outcomes: Array<{ ok: boolean; result?: unknown }>;
@@ -63,7 +63,7 @@ type ThreadOutcome = {
 	threadId: string;
 	moved: number;
 	isDone: boolean;
-	after: { receivedAt: number; creationTime: number } | null;
+	from: { receivedAt: number; creationTime: number } | null;
 	hasLeftInbox: boolean;
 };
 
@@ -72,7 +72,7 @@ function callResult(threads: Array<Partial<ThreadOutcome> & { threadId: string }
 	const outcomes = threads.map((thread) => ({
 		moved: 1,
 		isDone: true,
-		after: null,
+		from: null,
 		hasLeftInbox: true,
 		...thread,
 	}));
@@ -244,9 +244,9 @@ describe('useInboxesThreadArchive', () => {
 
 	it('calls again for a conversation the server left unfinished, from where it stopped', async () => {
 		const api = await mount([mailRow('t1'), mailRow('t2')]);
-		const after = { receivedAt: 5, creationTime: 6 };
+		const from = { receivedAt: 5, creationTime: 6 };
 		outcomes = [
-			callResult([{ threadId: 't1', moved: 3, isDone: false, after, hasLeftInbox: false }]),
+			callResult([{ threadId: 't1', moved: 3, isDone: false, from, hasLeftInbox: false }]),
 			callResult([{ threadId: 't1', moved: 2 }]),
 		];
 
@@ -254,7 +254,7 @@ describe('useInboxesThreadArchive', () => {
 
 		expect(runs.map((r) => r.args.threads)).toEqual([
 			[{ threadId: 't1' }],
-			[{ threadId: 't1', after }],
+			[{ threadId: 't1', from }],
 		]);
 		expect(api.visible.value.map((r) => r.key)).toEqual(['mail:mbx:t2']);
 		expect(registerMoveBack).toHaveBeenCalledTimes(1);
@@ -264,12 +264,12 @@ describe('useInboxesThreadArchive', () => {
 
 	it('resumes every unfinished conversation of a sweep under one Undo', async () => {
 		const api = await mount([mailRow('t1'), mailRow('t2'), mailRow('t3')]);
-		const after = { receivedAt: 5, creationTime: 6 };
+		const from = { receivedAt: 5, creationTime: 6 };
 		outcomes = [
 			callResult([
 				{ threadId: 't1', moved: 2 },
-				{ threadId: 't2', moved: 4, isDone: false, after, hasLeftInbox: false },
-				{ threadId: 't3', moved: 0, isDone: false, after: null, hasLeftInbox: false },
+				{ threadId: 't2', moved: 4, isDone: false, from, hasLeftInbox: false },
+				{ threadId: 't3', moved: 0, isDone: false, from: null, hasLeftInbox: false },
 			]),
 			callResult([
 				{ threadId: 't2', moved: 1 },
@@ -283,7 +283,7 @@ describe('useInboxesThreadArchive', () => {
 
 		expect(runs.map((r) => r.args.threads)).toEqual([
 			[{ threadId: 't1' }, { threadId: 't2' }, { threadId: 't3' }],
-			[{ threadId: 't2', after }, { threadId: 't3' }],
+			[{ threadId: 't2', from }, { threadId: 't3' }],
 		]);
 		expect(registerMoveBack).toHaveBeenCalledTimes(1);
 		expect(registerMoveBack.mock.calls[0]![0].moved).toHaveLength(8);
