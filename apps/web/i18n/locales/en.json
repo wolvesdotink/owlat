@@ -6439,7 +6439,14 @@
 			},
 			"resetToDefault": {
 				"reset": "Reset",
-				"resetLabel": "Reset {setting} to its default"
+				"resetLabel": "Reset {setting} to its default",
+				"names": {
+					"autoCheckUpdates": "Update check at startup",
+					"dailyBriefTime": "Daily brief time",
+					"shareLinkExpiry": "Share link expiry",
+					"voicePersonalize": "Personalize AI drafts for {address}",
+					"workspaceMute": "Mute notifications for {workspace}"
+				}
 			}
 		},
 		"shareLinksPopover": {

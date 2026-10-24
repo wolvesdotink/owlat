@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { hasInboundFeature } from '~/utils/inboundDns';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 import { useDomainAutoRecheck } from '~/composables/useDomainAutoRecheck';
+import { useSoleDomainDeepLink } from '~/composables/useSoleDomainDeepLink';
 import type { DmarcPolicy } from '~/utils/domainStatus';
 
 const { t } = useI18n();
@@ -267,17 +268,12 @@ const toggleDomainExpansion = (domainId: Id<'domains'>) => {
 	});
 };
 
-// The palette's DKIM result lands on `#sending-domain-list`. With one domain,
-// open its records too: that panel is where its DKIM record lives.
-watch(
-	() => [route.hash, domainsData.value] as const,
-	([hash, domains]) => {
-		const only = domains?.length === 1 ? domains[0] : undefined;
-		if (hash !== '#sending-domain-list' || !only || expandedDomainId.value !== null) return;
-		toggleDomainExpansion(only._id);
-	},
-	{ immediate: true }
-);
+useSoleDomainDeepLink({
+	hash: () => route.hash,
+	domains: () => domainsData.value,
+	isAnyExpanded: () => expandedDomainId.value !== null,
+	expand: toggleDomainExpansion,
+});
 
 // Gentle auto-recheck while a domain panel is open: the polling lifecycle (which
 // domain, the mirrored "Checking DNS…" flag, teardown) lives in its own

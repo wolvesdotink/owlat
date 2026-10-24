@@ -11,6 +11,7 @@
  */
 import { api } from '@owlat/api';
 import type { FunctionArgs } from 'convex/server';
+import SettingsResetToDefault from './ResetToDefault.vue';
 
 type ExclusionTarget = FunctionArgs<
 	typeof api.decision.exclusion.setHostedDecisionExclusion
@@ -50,7 +51,16 @@ function toggle(isExcluded: boolean) {
 		:data-testid="`hosted-decision-exclusion-${target.kind}`"
 	>
 		<div class="min-w-0 text-sm">
-			<p class="font-medium text-text-primary">{{ t(`${K}.label`) }}</p>
+			<div class="flex items-center gap-2">
+				<p class="font-medium text-text-primary">{{ t(`${K}.label`) }}</p>
+				<!-- Not excluded is the default (absent ⇒ false). Admin only, like the switch. -->
+				<SettingsResetToDefault
+					:changed="isExcluded"
+					:label="t(`${K}.label`)"
+					:disabled="!isAdmin || setExclusion.isLoading.value"
+					@reset="toggle(false)"
+				/>
+			</div>
 			<p class="mt-0.5 text-text-secondary">{{ help }}</p>
 			<p v-if="!isAdmin" class="mt-1 text-xs text-text-tertiary">{{ t(`${K}.adminOnly`) }}</p>
 		</div>

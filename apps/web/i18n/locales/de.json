@@ -6439,7 +6439,14 @@
 			},
 			"resetToDefault": {
 				"reset": "Zurücksetzen",
-				"resetLabel": "{setting} auf den Standard zurücksetzen"
+				"resetLabel": "{setting} auf den Standard zurücksetzen",
+				"names": {
+					"autoCheckUpdates": "Update-Prüfung beim Start",
+					"dailyBriefTime": "Uhrzeit des Tagesüberblicks",
+					"shareLinkExpiry": "Ablaufzeit geteilter Links",
+					"voicePersonalize": "KI-Entwürfe für {address} personalisieren",
+					"workspaceMute": "Benachrichtigungen für {workspace} stummschalten"
+				}
 			}
 		},
 		"shareLinksPopover": {

@@ -11,6 +11,8 @@
 import type { Id } from '@owlat/api/dataModel';
 import { formatCompactRelativeTime, formatDate } from '~/utils/formatters';
 import { webPushStatusKey } from '~/utils/webPush';
+import { POSTBOX_PREFERENCE_DEFAULTS } from '~/utils/postboxPreferenceDefaults';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t } = useI18n();
 
@@ -160,9 +162,18 @@ async function onRemove(id: Id<'pushSubscriptions'>) {
 			<!-- Private notifications (the shared "hide message preview" preference) -->
 			<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 				<div class="min-w-0">
-					<label for="web-push-private" class="font-medium text-sm block">
-						{{ t(`${KEY}.private.label`) }}
-					</label>
+					<div class="flex items-center gap-2">
+						<label for="web-push-private" class="font-medium text-sm block">
+							{{ t(`${KEY}.private.label`) }}
+						</label>
+						<!-- The shared preview preference, off by default. The status reads
+						     false until it answers, so nothing is marked before then. -->
+						<SettingsResetToDefault
+							:changed="isPrivate !== POSTBOX_PREFERENCE_DEFAULTS.hidePreview"
+							:label="t(`${KEY}.private.label`)"
+							@reset="setPrivate(POSTBOX_PREFERENCE_DEFAULTS.hidePreview)"
+						/>
+					</div>
 					<p class="text-xs text-text-tertiary mt-0.5">{{ t(`${KEY}.private.hint`) }}</p>
 				</div>
 				<UiSwitch id="web-push-private" :model-value="isPrivate" @update:model-value="setPrivate" />

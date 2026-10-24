@@ -21,6 +21,8 @@
 import { captureShortcutKey } from '~/utils/postboxShortcutCapture';
 import { SHORTCUT_CATALOG } from '~/utils/shortcutCatalog';
 import { SHORTCUT_PRESET_IDS, type ShortcutPreset } from '~/utils/shortcutPresets';
+import { POSTBOX_PREFERENCE_DEFAULTS } from '~/utils/postboxPreferenceDefaults';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 import { formatChord } from '~/utils/shortcutRegistry';
 
 const { t } = useI18n();
@@ -29,6 +31,7 @@ const {
 	overridesById,
 	bindings,
 	isSaving,
+	isLoading,
 	setPreset,
 	remapShortcut,
 	clearShortcutOverride,
@@ -100,6 +103,11 @@ const presetOptions = computed(() =>
 );
 
 const hasOverrides = computed(() => overridesById.value.size > 0);
+
+// Hidden while the settings row loads: the shipped map is then only the fallback.
+const presetChanged = computed(
+	() => !isLoading.value && preset.value !== POSTBOX_PREFERENCE_DEFAULTS.shortcutPreset
+);
 </script>
 
 <template>
@@ -111,13 +119,22 @@ const hasOverrides = computed(() => overridesById.value.size > 0);
 			</p>
 		</header>
 
-		<div class="px-5 py-4 border-b border-border-subtle">
+		<!-- The marker sits on the select's own label line, at its far end, so the
+		     select keeps naming itself and its listbox from its label. -->
+		<div class="relative px-5 py-4 border-b border-border-subtle">
 			<UiSelect
 				:model-value="preset"
 				:label="t('components.postbox.postboxShortcutSettings.presetLabel')"
 				:options="presetOptions"
 				:disabled="isSaving"
 				@update:model-value="setPreset($event as ShortcutPreset)"
+			/>
+			<SettingsResetToDefault
+				class="absolute right-5 top-4"
+				:changed="presetChanged"
+				:label="t('components.postbox.postboxShortcutSettings.presetLabel')"
+				:disabled="isSaving"
+				@reset="setPreset(POSTBOX_PREFERENCE_DEFAULTS.shortcutPreset)"
 			/>
 		</div>
 
