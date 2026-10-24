@@ -20,6 +20,8 @@ import {
 	type AiReplyMode,
 	type AiReplySettings,
 } from '~/utils/aiReplyMode';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+import { ITEM_COVERAGE_ENFORCED_DEFAULT, WORKING_HOURS_DEFAULTS } from '~/utils/autonomyDefaults';
 
 definePageMeta({
 	layout: 'admin',
@@ -110,6 +112,8 @@ const {
 	isDirty: isFormDirty,
 	isSaving,
 	handleSave,
+	isFieldChanged,
+	resetField,
 	unsavedDialog,
 } = useSettingsForm({
 	source: config,
@@ -204,7 +208,7 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 
 			<div class="space-y-6 max-w-3xl">
 				<!-- The one control -->
-				<section class="card" aria-labelledby="ai-replies-mode-heading">
+				<section id="ai-reply-mode" class="card" aria-labelledby="ai-replies-mode-heading">
 					<div class="flex items-start justify-between gap-4 mb-4">
 						<div>
 							<h2 id="ai-replies-mode-heading" class="text-lg font-medium text-text-primary">
@@ -276,6 +280,12 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 								<label for="ai-replies-threshold" class="text-text-primary font-medium">
 									{{ t('dashboard.admin.instance.aiReplies.when.thresholdLabel') }}
 								</label>
+								<SettingsResetToDefault
+									class="ml-auto mr-3"
+									:changed="isFieldChanged('confidenceThreshold')"
+									:label="t('dashboard.admin.instance.aiReplies.when.thresholdLabel')"
+									@reset="resetField('confidenceThreshold')"
+								/>
 								<span class="text-sm font-mono text-brand bg-brand-subtle px-2 py-0.5 rounded">
 									{{ confidencePercent }}%
 								</span>
@@ -299,9 +309,16 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 						</div>
 
 						<div>
-							<label for="ai-replies-daily" class="text-text-primary font-medium">
-								{{ t('dashboard.admin.instance.aiReplies.when.dailyLabel') }}
-							</label>
+							<div class="flex items-center justify-between gap-2">
+								<label for="ai-replies-daily" class="text-text-primary font-medium">
+									{{ t('dashboard.admin.instance.aiReplies.when.dailyLabel') }}
+								</label>
+								<SettingsResetToDefault
+									:changed="isFieldChanged('maxDailyAutoReplies')"
+									:label="t('dashboard.admin.instance.aiReplies.when.dailyLabel')"
+									@reset="resetField('maxDailyAutoReplies')"
+								/>
+							</div>
 							<p class="text-sm text-text-tertiary mt-1 mb-3">
 								{{ t('dashboard.admin.instance.aiReplies.when.dailyHelp') }}
 							</p>
@@ -332,17 +349,17 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 
 				<AutonomyWorkingHours
 					v-if="mode === 'auto'"
-					:enabled="config?.isWorkingHoursEnabled ?? false"
+					:enabled="config?.isWorkingHoursEnabled ?? WORKING_HOURS_DEFAULTS.enabled"
 					:timezone="config?.workingHoursTimezone ?? ''"
-					:start="config?.workingHoursStart ?? 540"
-					:end="config?.workingHoursEnd ?? 1020"
-					:days="config?.workingHoursDays ?? [1, 2, 3, 4, 5]"
+					:start="config?.workingHoursStart ?? WORKING_HOURS_DEFAULTS.start"
+					:end="config?.workingHoursEnd ?? WORKING_HOURS_DEFAULTS.end"
+					:days="config?.workingHoursDays ?? [...WORKING_HOURS_DEFAULTS.days]"
 					:busy="workingHoursBusy"
 					@save="handleSaveWorkingHours"
 				/>
 				<AutonomyItemCoverage
 					v-if="mode === 'auto'"
-					:enforced="config?.isItemCoverageEnforced ?? false"
+					:enforced="config?.isItemCoverageEnforced ?? ITEM_COVERAGE_ENFORCED_DEFAULT"
 				/>
 
 				<!-- Rules: per type of message, and in plain words -->
@@ -405,9 +422,16 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 						</div>
 
 						<div>
-							<label for="ai-replies-coalesce" class="text-text-primary font-medium">
-								{{ t('dashboard.admin.instance.aiReplies.tone.coalesceLabel') }}
-							</label>
+							<div class="flex items-center justify-between gap-2">
+								<label for="ai-replies-coalesce" class="text-text-primary font-medium">
+									{{ t('dashboard.admin.instance.aiReplies.tone.coalesceLabel') }}
+								</label>
+								<SettingsResetToDefault
+									:changed="isFieldChanged('coalesceWindowMs')"
+									:label="t('dashboard.admin.instance.aiReplies.tone.coalesceLabel')"
+									@reset="resetField('coalesceWindowMs')"
+								/>
+							</div>
 							<p class="text-sm text-text-tertiary mt-1 mb-3">
 								{{ t('dashboard.admin.instance.aiReplies.tone.coalesceHelp') }}
 							</p>

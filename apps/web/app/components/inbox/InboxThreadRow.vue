@@ -264,6 +264,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 				:current-user-id="currentUserId ?? null"
 				:assigned-to="thread.assignedTo ?? null"
 				position="right"
+				assign-shortcut-id="inboxList.assignToMe"
 				@assign="emit('assign', $event)"
 			>
 				<template #trigger>

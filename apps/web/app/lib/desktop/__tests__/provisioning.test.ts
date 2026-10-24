@@ -1,3 +1,7 @@
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { COMPOSE_BUILD_SERVICES } from '@owlat/shared/composeBuildServices';
 import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
@@ -225,13 +229,71 @@ describe('remote commands', () => {
 
 	it('resolve-release asks the GitHub releases API of the clone repo for the newest stable vX.Y.Z tag', () => {
 		const cmd = resolveLatestReleaseCommand(DEFAULT_REMOTE);
-		expect(cmd).toContain('https://api.github.com/repos/wolvesdotink/owlat/releases?per_page=30');
+		expect(cmd).toContain('https://api.github.com/repos/wolvesdotink/owlat/releases?per_page=100');
 		expect(cmd).toContain('curl -fsSL --max-time 10');
-		expect(cmd).toContain('head -1');
-		expect(cmd).toContain('release=');
 		expect(
 			resolveLatestReleaseCommand({ ...DEFAULT_REMOTE, repo: 'git@github.com:acme/fork.git' })
 		).toContain('repos/acme/fork/releases');
+	});
+
+	describe('resolve-release against a stubbed releases API', () => {
+		const candidates = (count: number, minor: number) =>
+			Array.from({ length: count }, (_, index) => ({
+				tag_name: `v0.${minor}.0-rc.${count - index}`,
+				prerelease: true,
+			}));
+		const stable = { tag_name: 'v0.6.16', prerelease: false };
+
+		/** Runs the command in sh with `curl` serving `pages[n - 1]` for `&page=n`, `[]` past the end. */
+		function run(pages: unknown[][], { fail = false } = {}) {
+			const dir = mkdtempSync(join(tmpdir(), 'owlat-resolve-release-'));
+			try {
+				for (const [index, page] of pages.entries())
+					writeFileSync(join(dir, `${index + 1}.json`), JSON.stringify(page));
+				const stub = `curl() { for a; do u="$a"; done; p="\${u##*page=}"; [ -n "$FAIL" ] && return 22; if [ -f "$PAGES/$p.json" ]; then cat "$PAGES/$p.json"; else printf '[]'; fi; }`;
+				const result = spawnSync(
+					'sh',
+					['-c', `${stub}\n${resolveLatestReleaseCommand(DEFAULT_REMOTE)}`],
+					{
+						encoding: 'utf8',
+						env: { PATH: process.env['PATH'], PAGES: dir, FAIL: fail ? '1' : '' },
+					}
+				);
+				return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		}
+
+		it('takes the first stable tag, skipping candidates and other release lines', () => {
+			const page = [
+				{ tag_name: 'v0.7.0-rc.2', prerelease: true },
+				{ tag_name: 'server-v0.6.20', prerelease: false },
+				stable,
+			];
+			expect(parseResolvedRelease(run([page]).stdout)).toBe('0.6.16');
+		});
+
+		it('pages past a full page of candidates to the stable release behind them', () => {
+			expect(parseResolvedRelease(run([candidates(100, 7), [stable]]).stdout)).toBe('0.6.16');
+		});
+
+		it('says the history holds no stable release when it ends without one', () => {
+			const result = run([candidates(100, 7), candidates(5, 6)]);
+			expect(result).toMatchObject({ status: 0, stdout: '' });
+			expect(result.stderr).toContain('no stable vX.Y.Z release published');
+		});
+
+		it('says the history was truncated when the page budget ends first', () => {
+			const pages = Array.from({ length: 10 }, (_, index) => candidates(100, 10 + index));
+			const result = run([...pages, [stable]]);
+			expect(result.stdout).toBe('');
+			expect(result.stderr).toContain('among the newest 1000 releases');
+		});
+
+		it('prints nothing when the API fails', () => {
+			expect(run([[stable]], { fail: true })).toMatchObject({ status: 0, stdout: '', stderr: '' });
+		});
 	});
 
 	it('parses the resolved release line and rejects anything else', () => {

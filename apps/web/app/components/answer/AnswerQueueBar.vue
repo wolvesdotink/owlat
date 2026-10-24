@@ -3,10 +3,9 @@ import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { useAnswerQueueChips } from '~/composables/useAnswerQueueChips';
 import { useAnswerMailActions } from '~/composables/useAnswerMailActions';
 import { useAnswerLayout } from '~/composables/useAnswerSheet';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { isDialogOpen } from '~/utils/dialogOpen';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
-import { isChordPending } from '~/utils/shortcutScope';
-import { isImeComposing } from '~/utils/imeComposition';
 
 /**
  * The Answer queue in Answer mode's top bar (the frame's `#queue` slot):
@@ -14,8 +13,9 @@ import { isImeComposing } from '~/utils/imeComposition';
  * an item without a reply. Renders nothing when the page is not part of a
  * queue.
  *
- * Keys, whenever no text field, dialog or chord has them: `[` / `]` previous /
- * next item, `e` archive and `h` snooze (Postbox items). Browsing finishes
+ * Keys (the `answer` scope, so a remap moves them), whenever no text field,
+ * dialog or chord has them: `[` / `]` previous / next item, `e` archive and
+ * `h` snooze (Postbox items). Browsing finishes
  * nothing; archive, snooze and Done do, and move on to the next item.
  *
  * A team item has no snooze here: snoozing its thread does not take the
@@ -81,21 +81,23 @@ const { chips } = useAnswerQueueChips(session);
 // A phone's top bar is one line: the menu keeps its icon, and the subject the room.
 const layout = useAnswerLayout();
 
-function onKeydown(event: KeyboardEvent) {
-	if (!visible.value || !session) return;
-	if (event.defaultPrevented || isImeComposing(event)) return;
-	if (event.metaKey || event.ctrlKey || event.altKey) return;
-	if (isEditableTarget(event.target) || isDialogOpen() || isChordPending()) return;
-	const key = event.key;
-	if (key === '[' && session.flow.canGoBack.value) session.back();
-	else if (key === ']' && session.flow.canGoNext.value) session.next();
-	else if ((key === 'e' || key === 'E') && canArchive.value) archive();
-	else if ((key === 'h' || key === 'H') && canSnooze.value) openSnooze();
-	else return;
-	event.preventDefault();
-}
-onMounted(() => window.addEventListener('keydown', onKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+// Each key is claimed only while its verb can run; otherwise the press is
+// left alone, like a disabled button.
+const { registerShortcut } = useKeyboardShortcuts();
+const live = (can: () => boolean) => () => visible.value && !isDialogOpen() && can();
+registerShortcut({
+	id: 'answer.previousItem',
+	handler: () => session?.back(),
+	when: live(() => !!session?.flow.canGoBack.value),
+});
+registerShortcut({
+	id: 'answer.nextItem',
+	handler: () => session?.next(),
+	when: live(() => !!session?.flow.canGoNext.value),
+});
+registerShortcut({ id: 'answer.archive', handler: archive, when: live(() => canArchive.value) });
+registerShortcut({ id: 'answer.snooze', handler: openSnooze, when: live(() => canSnooze.value) });
+const { labelFor } = useShortcutLabels();
 
 const menuItem =
 	'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-bg-surface disabled:opacity-50';
@@ -168,7 +170,9 @@ const menuItem =
 					>
 						<Icon name="lucide:archive" class="size-4 text-text-tertiary" />
 						<span class="flex-1">{{ t('common.archive') }}</span>
-						<kbd class="font-mono text-2xs text-text-tertiary">E</kbd>
+						<kbd v-if="labelFor('answer.archive')" class="font-mono text-2xs text-text-tertiary">{{
+							labelFor('answer.archive')
+						}}</kbd>
 					</button>
 					<button
 						v-if="canSnooze"
@@ -181,7 +185,9 @@ const menuItem =
 					>
 						<Icon name="lucide:clock" class="size-4 text-text-tertiary" />
 						<span class="flex-1">{{ t('components.postbox.postboxReplyFlow.snooze') }}</span>
-						<kbd class="font-mono text-2xs text-text-tertiary">H</kbd>
+						<kbd v-if="labelFor('answer.snooze')" class="font-mono text-2xs text-text-tertiary">{{
+							labelFor('answer.snooze')
+						}}</kbd>
 					</button>
 					<button
 						v-if="canMarkDone"

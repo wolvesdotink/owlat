@@ -16,12 +16,14 @@ import {
 	optimisticSnoozeUntilReply,
 	optimisticTrash,
 } from '~/lib/mailOptimistic/mailUpdaters';
+import { usePostboxPinAction } from './usePostboxPins';
 
 /** The live thread fields the reader's thread-level actions branch on. */
 export type ReaderActionThread = {
 	_id: string;
 	mutedAt?: number;
 	notifyOnReplyAt?: number;
+	pinnedAt?: number;
 };
 
 /** The open message as the actions see it: id plus the text the snooze hint reads. */
@@ -54,7 +56,7 @@ type MovedRows = {
 
 /**
  * Thread-level triage of the OPEN message — archive / trash / star / read /
- * snooze / mute / alert / label / move / spam / block — plus the auto-advance
+ * snooze / mute / alert / pin / label / move / spam / block — plus the auto-advance
  * that follows a triage and the pickers it opens. Extracted from
  * PostboxThreadReader.vue so the reader shell and its verbs stay independently
  * readable; behaviour is unchanged.
@@ -146,6 +148,7 @@ export function usePostboxReaderActions(opts: {
 	const setNotifyOnReplyOp = useBackendOperation(api.mail.threadAlerts.setNotifyOnReplyForMessage, {
 		label: () => t('components.postbox.postboxThreadReader.notifyOnReplyOperation'),
 	});
+	const pinAction = usePostboxPinAction();
 	const moveOp = useBackendOperation(api.mail.messageActions.move, {
 		label: () => t('components.postbox.postboxThreadReader.moveOperation'),
 		optimisticUpdate: optimisticMove,
@@ -317,6 +320,15 @@ export function usePostboxReaderActions(opts: {
 		});
 	}
 
+	/**
+	 * Pin/unpin the open conversation in the Inbox's band. A pin moves no mail,
+	 * so the reader stays on the thread.
+	 */
+	const isThreadPinned = computed(() => readerThread.value?.pinnedAt != null);
+	function toggleOpenThreadPin() {
+		void pinAction.toggle(messageId.value, isThreadPinned.value);
+	}
+
 	function snoozeOpenMessageUntilReply(capUntil: number) {
 		void runAndAdvance((id) => snoozeUntilReplyOp.run({ messageId: id, capUntil }));
 	}
@@ -464,6 +476,8 @@ export function usePostboxReaderActions(opts: {
 		toggleMessageStar,
 		toggleOpenThreadMute,
 		toggleOpenThreadAlert,
+		isThreadPinned,
+		toggleOpenThreadPin,
 		snoozeOpenMessage,
 		snoozeOpenMessageUntilReply,
 		applyLabelToOpenMessage,

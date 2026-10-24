@@ -25,13 +25,9 @@ const { user, signOut, isPending } = useAuth();
 const { isEnabled } = useFeatureFlag();
 const { openHelpModal } = useKeyboardShortcuts();
 const { enterZen } = useZenMode();
-const { ariaFor, chordAria, chordLabel } = useShortcutLabels();
-
-// The layout binds Cmd/Ctrl+J (Assistant) and Cmd/Ctrl+, (Settings) itself;
-// the catalog has no entries for them yet, so their hints spell the fixed
-// chords, still for this machine.
-const ASSISTANT_CHORD = 'mod+j';
-const SETTINGS_CHORD = 'mod+,';
+// The Assistant and Settings hints read the person's live binding, so a remap
+// on the shortcuts page shows up here too.
+const { ariaFor, titleWithShortcut } = useShortcutLabels();
 
 const settingsActive = computed(
 	() => route.path.startsWith('/dashboard/preferences') || route.path.startsWith('/dashboard/admin')
@@ -53,6 +49,7 @@ function onKeydown(event: KeyboardEvent) {
 }
 onMounted(() => {
 	document.addEventListener('click', onClickOutside);
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape closes the account menu
 	document.addEventListener('keydown', onKeydown);
 });
 onUnmounted(() => {
@@ -147,12 +144,12 @@ function startZen() {
 						v-if="showAssistant"
 						to="/dashboard/assistant"
 						role="menuitem"
-						:aria-keyshortcuts="chordAria(ASSISTANT_CHORD)"
+						:aria-keyshortcuts="ariaFor('global.assistant')"
 						class="flex items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
 					>
 						<Icon name="lucide:sparkles" class="size-4 text-text-tertiary" />
 						<span class="flex-1">{{ t('components.shell.footer.assistant') }}</span>
-						<UiShortcut :chord="ASSISTANT_CHORD" class="font-mono text-2xs text-text-tertiary" />
+						<UiShortcut id="global.assistant" class="font-mono text-2xs text-text-tertiary" />
 					</NuxtLink>
 					<button
 						type="button"
@@ -206,8 +203,8 @@ function startZen() {
 			to="/dashboard/preferences"
 			:aria-current="settingsActive ? 'page' : undefined"
 			:aria-label="t('components.shell.footer.settings')"
-			:title="`${t('components.shell.footer.settings')} (${chordLabel(SETTINGS_CHORD)})`"
-			:aria-keyshortcuts="chordAria(SETTINGS_CHORD)"
+			:title="titleWithShortcut(t('components.shell.footer.settings'), 'global.settings')"
+			:aria-keyshortcuts="ariaFor('global.settings')"
 			class="flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors"
 			:class="
 				settingsActive

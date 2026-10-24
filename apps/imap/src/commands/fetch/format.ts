@@ -10,31 +10,15 @@
 
 import { encodeWords } from '@owlat/mail-message/compose/headers';
 import { collapseControlChars } from '@owlat/mail-message/parse/headers';
+import type { Wire } from '@owlat/worker-protocol';
+import type { ImapEnvelope } from '@owlat/worker-protocol/imap';
 import { imapString } from '../helpers/imapString.js';
 
-export interface FetchEnvelope {
-	readonly _id: string;
-	readonly uid: number;
-	readonly modseq: number;
-	readonly rawSize: number;
-	readonly rfc822MessageId: string;
-	readonly inReplyTo?: string;
-	readonly references?: string[];
-	readonly fromAddress: string;
-	readonly fromName?: string;
-	readonly toAddresses: string[];
-	readonly ccAddresses: string[];
-	readonly bccAddresses: string[];
-	readonly replyToAddress?: string;
-	readonly subject: string;
-	readonly internalDate: number;
-	readonly flagSeen: boolean;
-	readonly flagFlagged: boolean;
-	readonly flagAnswered: boolean;
-	readonly flagDraft: boolean;
-	readonly flagDeleted: boolean;
-	readonly customFlags: string[];
-}
+/**
+ * The envelope fields the formatters read. `mail/imap/fetch` answers with the
+ * whole `ImapEnvelope` (attachment metadata included), which is assignable here.
+ */
+export type FetchEnvelope = Omit<Wire<ImapEnvelope>, 'attachments' | 'hasAttachments'>;
 
 const MONTHS = [
 	'Jan',

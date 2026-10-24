@@ -51,6 +51,18 @@ describe('mta logger redaction', () => {
 		expect(job['messageId']).toBe('m-1');
 	});
 
+	it('redacts the recipient a structured event carries under detail', () => {
+		const out = logLine({
+			event: 'mta.delivery.outcome',
+			outcome: 'deferred',
+			detail: { to: 'jane@example.com', smtpCode: 451 },
+		});
+		const detail = out['detail'] as Record<string, unknown>;
+		expect(detail['to']).toMatch(/^redacted-[0-9a-f]{12}@example\.com$/);
+		expect(detail['smtpCode']).toBe(451);
+		expect(JSON.stringify(out)).not.toContain('jane');
+	});
+
 	it('leaves a non-address value under an address-shaped key readable', () => {
 		const out = logLine({ to: 'deferred', messageId: 'm-1', orgId: 'org_1' });
 		expect(out['to']).toBe('deferred');

@@ -13,13 +13,15 @@ import { requireOrgMember, requireOrgPermission } from '../lib/sessionOrganizati
  * reachable by any logged-in identity, including a self-registered non-member.
  *
  * Throws `unauthenticated` (no session) / `forbidden` (no active org or not a
- * member). Returns `null` on success — callers only care that it didn't throw.
+ * member). Returns the org the floor resolved, which the action builder uses
+ * only to attribute a failed invocation in its failure log
+ * (`lib/functionLogging.ts`); the handler still gets no session.
  */
 export const assertOrgMember = internalQuery({
 	args: {},
-	handler: async (ctx): Promise<null> => {
-		await requireOrgMember(ctx);
-		return null;
+	handler: async (ctx): Promise<{ organizationId: string }> => {
+		const session = await requireOrgMember(ctx);
+		return { organizationId: session.activeOrganizationId };
 	},
 });
 

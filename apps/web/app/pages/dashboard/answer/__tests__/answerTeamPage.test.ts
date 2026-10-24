@@ -367,7 +367,10 @@ describe('Answer mode for a Team inbox thread', () => {
 
 	it('opens the Note tab with n outside a text field', async () => {
 		const wrapper = await mountPage();
-		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
+		// Through the app-wide dispatcher (`answer.writeNote`), a document listener.
+		// The reply editor takes focus on open; a single key belongs to it then.
+		(document.activeElement as HTMLElement | null)?.blur();
+		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
 		await flushPromises();
 		expect(wrapper.get('[data-testid="answer-notes-panel"]').attributes('data-active')).toBe(
 			'true'

@@ -596,19 +596,21 @@ jobs:
 
       # The upgrade path: find the newest published stable release that shipped
       # a compose asset. Empty output (first release ever) turns the seeded leg
-      # into a no-op rather than a failure.
+      # into a no-op rather than a failure. Release candidates can fill whole
+      # pages ahead of it, so read every page; `sed -n 1p` (not `head`) drains
+      # the stream so gh never dies of SIGPIPE under pipefail.
       - name: Resolve previous release (seeded leg)
         id: prev
         if: matrix.volumes == 'seeded'
         run: |
           set -euo pipefail
-          prev_tag=$(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '
-            [.[]
-             | select(.draft == false and .prerelease == false)
-             | select(.tag_name | test("^(server-)?v[0-9]+\\.[0-9]+\\.[0-9]+$"))
-             | select(.tag_name != "'"$TAG"'")
-             | select([.assets[].name] | any(startswith("docker-compose-")))
-            ][0].tag_name // empty')
+          prev_tag=$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" --jq '
+            .[]
+            | select(.draft == false and .prerelease == false)
+            | select(.tag_name | test("^(server-)?v[0-9]+\\.[0-9]+\\.[0-9]+$"))
+            | select(.tag_name != "'"$TAG"'")
+            | select([.assets[].name] | any(startswith("docker-compose-")))
+            | .tag_name' | sed -n 1p)
           if [ -z "$prev_tag" ]; then
             echo "No previous installable release found — seeded leg is a no-op on the first release."
           else

@@ -52,6 +52,7 @@ export function usePostboxReaderShortcuts(opts: {
 	}
 
 	onMounted(() => {
+		// oxlint-disable-next-line owlat/no-raw-keydown-listener -- resolves its keys through the registry (resolvePostboxShortcut)
 		window.addEventListener('keydown', onReaderShortcut);
 		window.addEventListener('owlat:postbox-reader-action', onPaletteCommand);
 	});
