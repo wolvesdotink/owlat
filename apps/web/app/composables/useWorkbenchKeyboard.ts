@@ -1,5 +1,5 @@
-import { onBeforeUnmount, onMounted } from 'vue';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { useShortcutScope } from '~/composables/useShortcutScope';
 import type { TodayChange, TodayLine } from '~/utils/todayDigest';
 
 interface WorkbenchKeyboardActions {
@@ -13,40 +13,76 @@ interface WorkbenchKeyboardActions {
 }
 
 /**
- * The Workbench's keys: j/k move between lines, Enter opens the peek, d marks
- * a line done (and moves on), r sends a team-inbox update to the Answer queue.
- * Lines are found by their `data-today-key` attribute, so focus follows the
- * rendered order whatever the column layout.
+ * The Workbench's keys, as catalog ids in the `workbench` scope: next/previous
+ * move between lines (j/k), open shows the peek (Enter), done marks a line
+ * done and moves on (d), reply sends a team-inbox update to the Answer queue
+ * (r). Lines are found by their `data-today-key` attribute, so focus follows
+ * the rendered order whatever the column layout.
+ *
+ * Each command says when it can run (`when`), so a press it cannot act on is
+ * left alone rather than swallowed, exactly as before the keys were remappable.
  */
 export function useWorkbenchKeyboard(actions: WorkbenchKeyboardActions) {
-	function onKeydown(event: KeyboardEvent) {
-		if (actions.peekOpen() || event.metaKey || event.ctrlKey || event.altKey) return;
-		if (isEditableTarget(event.target)) return;
-		const all = Array.from(document.querySelectorAll<HTMLElement>('[data-today-key]'));
-		if (all.length === 0) return;
-		const active = document.activeElement?.closest<HTMLElement>('[data-today-key]') ?? null;
-		const index = active ? all.indexOf(active) : -1;
-		if (event.key === 'j' || event.key === 'k') {
-			event.preventDefault();
-			const next = event.key === 'j' ? Math.min(all.length - 1, index + 1) : Math.max(0, index - 1);
-			all[next]?.focus();
-			return;
-		}
-		if (!active) return;
-		const line = actions.lines().find((l) => l.key === active.dataset['todayKey']);
-		if (!line) return;
-		if (event.key === 'Enter') {
-			event.preventDefault();
-			actions.open(line);
-		} else if (event.key === 'd') {
-			event.preventDefault();
-			all[index + 1]?.focus();
-			actions.done(line);
-		} else if (event.key === 'r' && 'inboundMessageId' in line && line.inboundMessageId) {
-			event.preventDefault();
-			actions.replyAnyway(line);
-		}
+	useShortcutScope('workbench');
+	const { registerShortcut } = useKeyboardShortcuts();
+
+	const rows = () => Array.from(document.querySelectorAll<HTMLElement>('[data-today-key]'));
+	const activeRow = () => document.activeElement?.closest<HTMLElement>('[data-today-key]') ?? null;
+	function activeLine() {
+		const row = activeRow();
+		if (!row) return null;
+		return actions.lines().find((l) => l.key === row.dataset['todayKey']) ?? null;
 	}
-	onMounted(() => window.addEventListener('keydown', onKeydown));
-	onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+	const free = () => !actions.peekOpen();
+
+	function move(delta: 1 | -1) {
+		const all = rows();
+		const active = activeRow();
+		const index = active ? all.indexOf(active) : -1;
+		const next = delta === 1 ? Math.min(all.length - 1, index + 1) : Math.max(0, index - 1);
+		all[next]?.focus();
+	}
+
+	registerShortcut({
+		id: 'workbench.next',
+		handler: () => move(1),
+		when: () => free() && rows().length > 0,
+	});
+	registerShortcut({
+		id: 'workbench.previous',
+		handler: () => move(-1),
+		when: () => free() && rows().length > 0,
+	});
+	registerShortcut({
+		id: 'workbench.open',
+		handler: () => {
+			const line = activeLine();
+			if (line) actions.open(line);
+		},
+		when: () => free() && activeLine() !== null,
+	});
+	registerShortcut({
+		id: 'workbench.done',
+		handler: () => {
+			const line = activeLine();
+			if (!line) return;
+			const all = rows();
+			const row = activeRow();
+			all[(row ? all.indexOf(row) : -1) + 1]?.focus();
+			actions.done(line);
+		},
+		when: () => free() && activeLine() !== null,
+	});
+	registerShortcut({
+		id: 'workbench.reply',
+		handler: () => {
+			const line = activeLine();
+			if (line && 'inboundMessageId' in line && line.inboundMessageId) actions.replyAnyway(line);
+		},
+		when: () => {
+			if (!free()) return false;
+			const line = activeLine();
+			return line !== null && 'inboundMessageId' in line && !!line.inboundMessageId;
+		},
+	});
 }

@@ -148,6 +148,8 @@ export interface MtaExtras {
 	routingLease?: string;
 	/** Decision input bound into the authenticated routing lease. */
 	allowWarmupOverflow?: boolean;
+	/** Sent as the `x-owlat-correlation` header, never in the body; log-only. */
+	correlationId?: string;
 }
 
 export type SesExtras = Record<string, never>;
@@ -291,6 +293,12 @@ export interface DispatchExtrasInput {
 	 * authorises it — see `SmtpExtras.returnPathHost`.
 	 */
 	readonly relayReturnPathHost?: string | undefined;
+	/**
+	 * The cross-service log key for this send (`@owlat/shared/correlation`). A
+	 * transport that can carry it (the owned MTA) sends it as a header; it never
+	 * feeds an idempotency key or a work identity.
+	 */
+	readonly correlationId?: string | undefined;
 }
 
 export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'

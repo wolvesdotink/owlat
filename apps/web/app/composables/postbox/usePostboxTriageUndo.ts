@@ -40,6 +40,7 @@
 
 import type { Id } from '@owlat/api/dataModel';
 import type { ToastAction } from '@owlat/ui/composables/useToast';
+import { isTriageUndoPress } from '~/utils/fixedShortcutPresses';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import {
 	joinableUndoGroup,
@@ -220,6 +221,7 @@ export function usePostboxTriageUndo() {
 		const wanted = entries.value.length > 0;
 		if (wanted && !boundHotkey) {
 			boundHotkey = onWindowKeydown;
+			// oxlint-disable-next-line owlat/no-raw-keydown-listener -- postbox.undoChord, bound only while an undo is pending
 			window.addEventListener('keydown', boundHotkey);
 		} else if (!wanted && boundHotkey) {
 			window.removeEventListener('keydown', boundHotkey);
@@ -403,8 +405,7 @@ export function usePostboxTriageUndo() {
 	 * and when nothing is pending, so the browser default is untouched.
 	 */
 	function onWindowKeydown(event: KeyboardEvent) {
-		if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
-		if (event.key.toLowerCase() !== 'z') return;
+		if (event.defaultPrevented || !isTriageUndoPress(event)) return;
 		if (isEditableTarget(event.target)) return;
 		prune();
 		if (entries.value.length === 0) return;

@@ -31,6 +31,7 @@ import type {
 	RemoteOpsClient,
 	ReplayHooks,
 } from '../remoteOpTypes.js';
+import { WireContractError } from '@owlat/worker-protocol/client';
 import { drainRemoteOps, reportFolderRename } from '../remoteOpsDrain.js';
 import { fn, isMissingFunction } from '../convex.js';
 import { CommandRefusals } from '../imapCommandErrors.js';
@@ -1599,6 +1600,29 @@ describe('reportFolderRename', () => {
 			})
 		).rejects.toThrow('503');
 		expect(calls).toBe(3);
+	});
+
+	it('does not report again a rename whose answer broke the contract', async () => {
+		// The backend ran the mutation; only its answer is unreadable, and asking
+		// again cannot change that. The op fails now and its retry reports later.
+		let calls = 0;
+		const broken = new WireContractError(
+			'mail/external/remoteFolderRename:recordRemoteFolderRename',
+			'mutation',
+			'$: expected null',
+			true
+		);
+		await expect(
+			reportFolderRename({
+				record: async () => {
+					calls++;
+					throw broken;
+				},
+				isUnsupported: (err) => isMissingFunction(err, fn.recordRemoteFolderRename),
+				sleep: async () => {},
+			})
+		).rejects.toBe(broken);
+		expect(calls).toBe(1);
 	});
 
 	it('settles as before on a backend that has no such mutation', async () => {

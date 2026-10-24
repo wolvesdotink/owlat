@@ -28,12 +28,9 @@
  *     both. Nothing is deleted on either side by the merge.
  */
 
-import { v } from 'convex/values';
 import { internalQuery, type QueryCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { paginationOptsValidator } from 'convex/server';
-import { remoteSightingValidator } from '../../lib/validators/mail';
 import { moveMessagesToFolder } from '../messageActions';
 import { applyFlagDelta } from '../flagWrites';
 import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from '../messagePurge';
@@ -46,6 +43,15 @@ import {
 	writesBack,
 	type RemoteFlagChanges,
 } from './remoteOps';
+import {
+	applyRemoteObservations as applyRemoteObservationsContract,
+	forgetRemoteFolders as forgetRemoteFoldersContract,
+	getSyncSettings as getSyncSettingsContract,
+	listLocalMessages as listLocalMessagesContract,
+	lookupLocalMessages as lookupLocalMessagesContract,
+	markFullSyncAligned as markFullSyncAlignedContract,
+	type LocalMessageRowWire,
+} from '@owlat/worker-protocol/mailSync';
 
 /** Worker-invented Message-IDs (`apps/mail-sync/src/ingest.ts`) cannot be matched remotely. */
 const SYNTHETIC_MESSAGE_ID_SUFFIX = '@owlat-mail-sync';
@@ -59,29 +65,17 @@ const FLAG_COLUMNS = {
 	answered: 'flagAnswered',
 } as const;
 
-const flagStateValidator = v.object({
-	seen: v.boolean(),
-	flagged: v.boolean(),
-	answered: v.boolean(),
-});
-
 type RemoteSighting = NonNullable<Doc<'mailMessages'>['remoteSighting']>;
 
 /** What the worker needs per local message to compare it with the provider. */
-type LocalRow = {
-	messageId: string;
-	remoteName: string | null;
-	role: Doc<'mailFolders'>['role'] | null;
-	flags: { seen: boolean; flagged: boolean; answered: boolean };
-	sighting: RemoteSighting | null;
-};
+type LocalRow = LocalMessageRowWire;
 
 async function toLocalRows(
 	ctx: QueryCtx,
 	messages: ReadonlyArray<Doc<'mailMessages'>>,
 	remoteByFolder: Map<Id<'mailFolders'>, string>
 ): Promise<LocalRow[]> {
-	const roles = new Map<Id<'mailFolders'>, Doc<'mailFolders'>['role'] | null>();
+	const roles = new Map<Id<'mailFolders'>, LocalRow['role']>();
 	const rows: LocalRow[] = [];
 	for (const m of messages) {
 		if (m.rfc822MessageId.endsWith(SYNTHETIC_MESSAGE_ID_SUFFIX)) continue;
@@ -112,7 +106,8 @@ async function liveFullSyncAccount(
 
 /** The account's sync mode, read by the worker every cycle so a switch applies at once. */
 export const getSyncSettings = internalQuery({
-	args: { accountId: v.id('externalMailAccounts') },
+	args: getSyncSettingsContract.args,
+	returns: getSyncSettingsContract.returns,
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
 		return {
@@ -124,7 +119,8 @@ export const getSyncSettings = internalQuery({
 
 /** One page of the mailbox's messages as the worker compares them — the full reconcile. */
 export const listLocalMessages = internalQuery({
-	args: { accountId: v.id('externalMailAccounts'), paginationOpts: paginationOptsValidator },
+	args: listLocalMessagesContract.args,
+	returns: listLocalMessagesContract.returns,
 	handler: async (ctx, args) => {
 		const account = await liveFullSyncAccount(ctx, args.accountId);
 		if (!account) return { page: [], isDone: true, continueCursor: '' };
@@ -162,7 +158,8 @@ async function rowsForMessageId(
 
 /** The local rows behind the Message-IDs that changed on the provider since the last cycle. */
 export const lookupLocalMessages = internalQuery({
-	args: { accountId: v.id('externalMailAccounts'), messageIds: v.array(v.string()) },
+	args: lookupLocalMessagesContract.args,
+	returns: lookupLocalMessagesContract.returns,
 	handler: async (ctx, args) => {
 		const account = await liveFullSyncAccount(ctx, args.accountId);
 		if (!account) return [];
@@ -193,19 +190,8 @@ export const lookupLocalMessages = internalQuery({
  *     from before it would get the message deleted once the account is aligned.
  */
 export const applyRemoteObservations = internalMutation({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		observations: v.array(
-			v.object({
-				messageId: v.string(),
-				remoteFolders: v.optional(v.array(v.string())),
-				isGone: v.optional(v.boolean()),
-				flags: v.optional(flagStateValidator),
-				sightings: v.optional(v.array(remoteSightingValidator)),
-				forgetSightings: v.optional(v.boolean()),
-			})
-		),
-	},
+	args: applyRemoteObservationsContract.args,
+	returns: applyRemoteObservationsContract.returns,
 	handler: async (ctx, args) => {
 		const account = await liveFullSyncAccount(ctx, args.accountId);
 		if (!account) return { pulled: 0, pushed: 0 };
@@ -349,7 +335,8 @@ export const applyRemoteObservations = internalMutation({
  * from now on the provider's changes are pulled rather than merged.
  */
 export const markFullSyncAligned = internalMutation({
-	args: { accountId: v.id('externalMailAccounts') },
+	args: markFullSyncAlignedContract.args,
+	returns: markFullSyncAlignedContract.returns,
 	handler: async (ctx, args) => {
 		const account = await liveFullSyncAccount(ctx, args.accountId);
 		if (!account || account.fullSyncAlignedAt !== undefined) return;
@@ -373,11 +360,8 @@ export const markFullSyncAligned = internalMutation({
  * retired mapping goes only once its folder is empty, and the folder with it.
  */
 export const forgetRemoteFolders = internalMutation({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		listed: v.array(v.string()),
-		retired: v.optional(v.array(v.string())),
-	},
+	args: forgetRemoteFoldersContract.args,
+	returns: forgetRemoteFoldersContract.returns,
 	handler: async (ctx, args) => {
 		const account = await liveFullSyncAccount(ctx, args.accountId);
 		if (!account) return { forgotten: 0 };

@@ -39,7 +39,8 @@ export const authResultValidator = v.union(
 	v.literal('unknown')
 );
 export const transportArmValidator = v.union(v.literal('own'), v.literal('reference'));
-export const mailAppPasswordScopeValidator = v.union(v.literal('imap'), v.literal('smtp'));
+// App passwords sign in over IMAP, so the worker wire contract declares the scopes.
+export { mailAppPasswordScopeValidator } from '@owlat/worker-protocol/fields';
 export const reviewActionValidator = v.union(
 	v.literal('approved'),
 	v.literal('rejected'),
