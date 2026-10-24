@@ -395,8 +395,8 @@ correlate — across the MTA boundary and across restarts — while the plaintex
 never lands.
 
 `scripts/check-log-pii.sh` (wired into `bun run lint`) enforces this with a
-**baseline of zero**: a `logInfo`/`logWarn`/`logError`/`logDebug`/`console.*`
-call whose payload carries a `from` / `to` / `subject` / `email` / `recipient` /
+**baseline of zero**: a `logInfo`/`logWarn`/`logError`/`logDebug`/`logEvent`/`console.*`
+call whose payload (for `logEvent`, its `detail` object too) carries a `from` / `to` / `subject` / `email` / `recipient` /
 `rcptTo` / `mailFrom` / `address` / `sender` key fails unless the value passes
 through a redaction helper. Qualified names — `fromDomain`, `toCount`,
 `senderId`, `recipientHash` — are out of scope by construction; a domain, a

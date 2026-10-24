@@ -22,7 +22,8 @@ import type { AstNode, Context, Rule } from '../types.ts';
  * stable digest, so lines about the same correspondent still correlate.
  *
  * Inside the arguments of a `logInfo` / `logWarn` / `logError` / `logDebug` /
- * `console.{log,info,warn,error,debug}` call (recognized through import
+ * `logEvent` / `console.{log,info,warn,error,debug}` call (for `logEvent`
+ * that includes its nested `detail` object; recognized through import
  * aliases, namespaces and local aliases, including the methods imported from
  * `node:console`), every object property keyed
  * `from | to | subject | email | recipient | rcptTo | mailFrom | address |
@@ -43,7 +44,7 @@ import type { AstNode, Context, Rule } from '../types.ts';
  * logs, delivery logs) are a different question.
  */
 
-const LOG_FUNCTIONS = new Set(['logInfo', 'logWarn', 'logError', 'logDebug']);
+const LOG_FUNCTIONS = new Set(['logInfo', 'logWarn', 'logError', 'logDebug', 'logEvent']);
 const CONSOLE_METHODS = new Set(['log', 'info', 'warn', 'error', 'debug']);
 const SENSITIVE_KEYS = new Set([
 	'from',
@@ -243,7 +244,7 @@ const rule: Rule = {
 	create(context) {
 		const options = context.options[0] as ScopeOptions | undefined;
 		if (!inScope(slashed(context.filename), options)) return {};
-		if (!/log(?:Info|Warn|Error|Debug)|console/u.test(context.sourceCode.text)) return {};
+		if (!/log(?:Info|Warn|Error|Debug|Event)|console/u.test(context.sourceCode.text)) return {};
 		const reported = new Set<AstNode>();
 		return {
 			CallExpression(node) {

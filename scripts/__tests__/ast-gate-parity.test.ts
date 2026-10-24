@@ -209,7 +209,21 @@ const CASES: readonly ParityCase[] = [
 				'\tfrom: payload.queueName,',
 				'});',
 				"await ctx.runMutation(internal.inbox.transition, { to: 'archived', from: args.from });",
-				"logInfo('literal', { to: `ops@example.com` });"
+				"logInfo('literal', { to: `ops@example.com` });",
+				"logEvent('inbound.duplicate', {",
+				'\tmessageId: args.messageId,',
+				'\tdetail: { from: args.from, subject: args.subject },',
+				"}, 'warn');",
+				"logEvent('inbound.duplicate', {",
+				'\tmessageId: args.messageId,',
+				'\tdetail: {',
+				'\t\tfrom: redactEmailAddress(args.from),',
+				'\t\tsubject: redactSubject(args.subject),',
+				'\t\tfromDomain: domainOf(args.from),',
+				'\t},',
+				"}, 'warn');",
+				"import * as runtimeLog from '../lib/runtimeLog';",
+				"runtimeLog.logEvent('inbound.bounced', { detail: { to: args.to } });"
 			),
 			// Both: a namespace import spelled `console` reads like the global.
 			'apps/api/convex/inbound/stdout.ts': lines(
@@ -228,7 +242,9 @@ const CASES: readonly ParityCase[] = [
 				"import { warn } from 'node:console';",
 				"import * as out from 'node:console';",
 				"warn('imported', { from: address });",
-				"out.error('namespace', { subject: s });"
+				"out.error('namespace', { subject: s });",
+				"import { logEvent as emit } from '../lib/runtimeLog';",
+				"emit('inbound.duplicate', { detail: { from: args.from } }, 'warn');"
 			),
 		},
 		onlyOld: [],
@@ -239,6 +255,7 @@ const CASES: readonly ParityCase[] = [
 			'apps/api/convex/inbound/missed.ts:27',
 			'apps/api/convex/inbound/missed.ts:31',
 			'apps/api/convex/inbound/missed.ts:32',
+			'apps/api/convex/inbound/missed.ts:34',
 		],
 	},
 	{
