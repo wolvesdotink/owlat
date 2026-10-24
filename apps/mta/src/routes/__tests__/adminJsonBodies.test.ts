@@ -1,11 +1,10 @@
 /**
  * The master-key admin routes decode their JSON bodies before acting on them.
  *
- * Each of these bodies used to arrive through `c.req.json<T>()`, a type
- * argument that checks nothing: a numeric domain reached `.toLowerCase()` and
- * answered 500, a `null` organization was stored as a credential's tenant, and
- * a malformed body threw out of the handler. Every case here asserts the
- * controlled 400 AND that nothing was written to Redis.
+ * A type argument on `c.req.json<T>()` checks nothing: a numeric domain would
+ * reach `.toLowerCase()` and answer 500, a list element of the wrong type would
+ * be stored, and a malformed body would throw out of the handler. Every case
+ * here asserts the controlled 400 AND that nothing was written to Redis.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

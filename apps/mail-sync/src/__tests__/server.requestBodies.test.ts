@@ -1,11 +1,10 @@
 /**
  * The worker's JSON routes decode their bodies before doing any work.
  *
- * Each body used to be cast (`(await c.req.json()) as SendBody`): a recipient
- * list holding a number reached the SMTP envelope, and a `/test` body whose
- * credentials were the wrong shape reached a live IMAP login. Every refusal
- * here is a 400 answered before Convex, the network or a mail server is asked
- * anything.
+ * A cast checks nothing: a recipient list holding a number would reach the
+ * SMTP envelope, and a `/test` body whose credentials are the wrong shape
+ * would reach a live IMAP login. Every refusal here is a 400 answered before
+ * Convex, the network or a mail server is asked anything.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
