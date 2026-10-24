@@ -80,7 +80,7 @@ describe('postboxBodyPlaceholder', () => {
 			saved,
 			opts(false, { textSize: 'larger', readingWidth: 'narrow' })
 		)!.srcdoc;
-		expect(larger).toContain('max-width:60ch;font-size:19px;');
+		expect(larger).toContain('max-width:60ch;font-size:15px;zoom:1.267;');
 		expect(larger).not.toContain('max-width:72ch');
 		// One comfort block, still inside the head; the body is untouched.
 		expect(larger.split(POSTBOX_COMFORT_STYLE_OPEN)).toHaveLength(2);
@@ -99,7 +99,7 @@ describe('postboxBodyPlaceholder', () => {
 		)!.srcdoc;
 		// Last in the head, so it wins the cascade over the old values.
 		expect(srcdoc).toContain(
-			`body{max-width:72ch;font-size:15px;}</style>${POSTBOX_COMFORT_STYLE_OPEN}body{max-width:none;font-size:17px;}</style></head>`
+			`body{max-width:72ch;font-size:15px;}</style>${POSTBOX_COMFORT_STYLE_OPEN}body{max-width:none;font-size:15px;zoom:1.133;}</style></head>`
 		);
 	});
 

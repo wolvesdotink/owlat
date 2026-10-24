@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-	designedMailZoom,
+	mailZoom,
 	MAIL_TEXT_PX,
 	mailTypographyKey,
 	parseReadingComfort,
@@ -69,11 +69,11 @@ describe('resolveReadingComfort', () => {
 });
 
 describe('mail typography', () => {
-	it('scales designed mail by the same ratio simple mail grows', () => {
-		expect(designedMailZoom('default')).toBe(1);
-		expect(designedMailZoom('small')).toBe(0.933);
-		expect(designedMailZoom('large')).toBe(1.133);
-		expect(designedMailZoom('larger')).toBe(1.267);
+	it('scales mail by the ratio of the effective text sizes', () => {
+		expect(mailZoom('default')).toBe(1);
+		expect(mailZoom('small')).toBe(0.933);
+		expect(mailZoom('large')).toBe(1.133);
+		expect(mailZoom('larger')).toBe(1.267);
 	});
 
 	it('keys every size and width combination apart', () => {

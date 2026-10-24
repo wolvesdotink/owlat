@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, computed, watch, type Ref } from 'vue';
 
+import { setAppReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import PostboxConnectedAccountCard from '../PostboxConnectedAccountCard.vue';
 import { createTestI18n, i18nStubs, expectFullyLocalized } from '~/__tests__/i18n';
 
@@ -384,7 +385,7 @@ describe('PostboxConnectedAccountCard — states that are not the happy path', (
 		expect(wrapper.find('[data-testid="connected-account-disconnect"]').exists()).toBe(true);
 	});
 
-	it('scrolls to the connect form instead of navigating to the page it is on', async () => {
+	function showRetainedOnWizard(): ReturnType<typeof vi.fn> {
 		const scrollTo = vi.fn();
 		vi.stubGlobal('scrollTo', scrollTo);
 		routePath.value = '/dashboard/postbox/migrate';
@@ -398,13 +399,30 @@ describe('PostboxConnectedAccountCard — states that are not the happy path', (
 				canReattach: true,
 			},
 		};
-		const wrapper = mountCard();
-		await wrapper
+		return scrollTo;
+	}
+	const connectAgain = (wrapper: ReturnType<typeof mountCard>) =>
+		wrapper
 			.findAll('button')
 			.find((b) => b.text() === 'Connect it again')!
 			.trigger('click');
+
+	it('scrolls to the connect form instead of navigating to the page it is on', async () => {
+		const scrollTo = showRetainedOnWizard();
+		await connectAgain(mountCard());
 		expect(navigateTo).not.toHaveBeenCalled();
-		expect(scrollTo).toHaveBeenCalled();
+		expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' });
+	});
+
+	it('jumps to the connect form without animating when motion is reduced in the app', async () => {
+		const scrollTo = showRetainedOnWizard();
+		setAppReducedMotion(true);
+		try {
+			await connectAgain(mountCard());
+		} finally {
+			setAppReducedMotion(false);
+		}
+		expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' });
 	});
 });
 

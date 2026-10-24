@@ -609,16 +609,24 @@ describe('buildBaseStyle', () => {
 		}
 	});
 
-	it("writes the reader's text size and width into simple mail", () => {
+	it("writes the reader's width into simple mail and scales its text by zoom", () => {
 		for (const scheme of ['light', 'dark'] as const) {
 			const style = buildBaseStyle(scheme, 'simple', { textSize: 'larger', readingWidth: 'wide' });
-			expect(style).toContain('body{max-width:90ch;font-size:19px;}');
+			// The 15px base stays; the zoom carries inline and Outlook sizes along.
+			expect(style).toContain('body{max-width:90ch;font-size:15px;zoom:1.267;}');
 			expect(style).not.toContain('72ch');
-			expect(style).not.toContain('font-size:15px');
 		}
 		expect(
 			buildBaseStyle('light', 'simple', { textSize: 'small', readingWidth: 'full' })
-		).toContain('body{max-width:none;font-size:14px;}');
+		).toContain('body{max-width:none;font-size:15px;zoom:0.933;}');
+	});
+
+	it('leaves simple mail exactly as before at the default size', () => {
+		for (const scheme of ['light', 'dark'] as const) {
+			const style = buildBaseStyle(scheme, 'simple');
+			expect(style).toContain('body{max-width:72ch;font-size:15px;}');
+			expect(style).not.toContain('zoom');
+		}
 	});
 
 	it('scales designed mail as a whole and never re-measures it', () => {

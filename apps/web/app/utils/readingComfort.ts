@@ -110,8 +110,9 @@ export const MAIL_TYPOGRAPHY_DEFAULT: Readonly<MailTypography> = Object.freeze({
 });
 
 /**
- * Body text size of plain ("simple") mail in the Postbox reader, in px. The
- * default is the reader's long-standing 15px.
+ * Effective body text size of plain ("simple") mail in the Postbox reader, in
+ * px. The default is the reader's long-standing 15px; the other steps are
+ * reached by scaling (see mailZoom), not by changing the base size.
  */
 export const MAIL_TEXT_PX: Record<MailTextSize, number> = {
 	small: 14,
@@ -144,13 +145,15 @@ export const READING_WIDTH_CSS: Record<ReadingWidth, string> = {
 };
 
 /**
- * Zoom applied to a "designed" (newsletter / marketing layout) body. Its text
- * sizes are written inline by the sender, so a base font size reaches none of
- * it; scaling the whole design keeps its images, tables and spacing in
- * proportion, the way browser zoom does. A layout wider than the pane after
- * scaling scrolls sideways inside the frame instead of being squeezed.
+ * Zoom applied to a mail body for a text size. Mail of either kind carries
+ * sizes a base font size never reaches: a newsletter writes them inline, a
+ * plain reply has `<span style="font-size:12px">` signatures and Outlook's
+ * 11pt `MsoNormal` paragraphs. Scaling the whole body grows every one of them
+ * by the same ratio and keeps images, tables and spacing in proportion, the
+ * way browser zoom does. A layout wider than the pane after scaling scrolls
+ * sideways inside the frame instead of being squeezed.
  */
-export function designedMailZoom(textSize: MailTextSize): number {
+export function mailZoom(textSize: MailTextSize): number {
 	return Math.round((MAIL_TEXT_PX[textSize] / MAIL_TEXT_PX.default) * 1000) / 1000;
 }
 

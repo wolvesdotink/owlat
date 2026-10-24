@@ -164,52 +164,173 @@ describe('the in-app Reduce motion switch reaches what the OS preference does', 
 		expect(offences).toEqual([]);
 	});
 
-	/** Bodies of every `@media (prefers-reduced-motion: reduce) { … }` block. */
-	function reducedBlocks(css: string): string[] {
-		const blocks: string[] = [];
-		let from = 0;
-		for (;;) {
-			const start = css.indexOf('@media (prefers-reduced-motion: reduce)', from);
-			if (start < 0) return blocks;
-			const open = css.indexOf('{', start);
-			let depth = 0;
-			let end = open;
-			for (; end < css.length; end++) {
-				if (css[end] === '{') depth++;
-				else if (css[end] === '}' && --depth === 0) break;
+	it('never scrolls smoothly without asking the shared owner first', () => {
+		// The CSS floor turns off `scroll-behavior: smooth`, but an explicit
+		// `behavior: 'smooth'` passed to scrollTo / scrollIntoView overrides any
+		// stylesheet, so every caller has to pick 'auto' itself when motion is
+		// reduced (`prefersReducedMotion() ? 'auto' : 'smooth'`).
+		const unconditional = /behavior:\s*['"`]smooth['"`]/;
+		const offences: string[] = [];
+		for (const root of SOURCE_ROOTS) {
+			for (const file of filesUnder(root, ['.ts', '.vue'])) {
+				const rel = relative(repoRoot, file);
+				// The owner's own doc comment spells the pattern out.
+				if (rel === OWNER) continue;
+				const lines = readFileSync(file, 'utf8').split('\n');
+				for (const [index, text] of lines.entries()) {
+					if (unconditional.test(text)) offences.push(`${rel}:${index + 1} — ${text.trim()}`);
+				}
 			}
-			blocks.push(css.slice(open + 1, end));
-			from = end;
 		}
-	}
+		expect(offences).toEqual([]);
+	});
 
 	it('gives every OS-only rule that does more than stop motion a data-motion twin', () => {
-		// The global floor in base.css collapses durations for both switches, so
-		// a block that only says `transition: none` / `animation: none` is
-		// covered. Anything else (dropping a transform, parking a sweep, hiding
-		// a ring) is a static end state the floor cannot produce on its own.
-		const floorOnly = /^(?:transition|animation): none;$/;
 		const missing: string[] = [];
 		let checked = 0;
 		for (const root of SOURCE_ROOTS) {
 			for (const file of filesUnder(root, ['.css', '.vue'])) {
 				const css = readFileSync(file, 'utf8');
-				for (const block of reducedBlocks(css)) {
-					checked++;
-					const declarations = block
-						.replace(/\/\*[\s\S]*?\*\//g, '')
-						.split('\n')
-						.map((line) => line.trim())
-						.filter((line) => line.includes(':') && line.endsWith(';'));
-					if (declarations.every((d) => floorOnly.test(d))) continue;
-					if (!css.includes(":root[data-motion='reduce']")) {
-						missing.push(relative(repoRoot, file));
-					}
-				}
+				checked += cssRules(css).filter((rule) => rule.osReduced).length;
+				for (const gap of missingMotionTwins(css))
+					missing.push(`${relative(repoRoot, file)} — ${gap}`);
 			}
 		}
 		expect(missing).toEqual([]);
-		// A scan that finds no blocks is reading the wrong tree.
-		expect(checked).toBeGreaterThan(5);
+		// A scan that finds no rules is reading the wrong tree.
+		expect(checked).toBeGreaterThan(10);
+	});
+
+	it('fails when one twin goes missing while the file keeps others', () => {
+		const css = readFileSync(join(repoRoot, 'packages/ui/assets/css/motion.css'), 'utf8');
+		const twin = ":root[data-motion='reduce'] .ui-press:active {\n\tscale: none;\n}\n";
+		expect(css).toContain(twin);
+		expect(missingMotionTwins(css)).toEqual([]);
+		expect(missingMotionTwins(css.replace(twin, ''))).toEqual([
+			'.ui-press:active { scale: none; }',
+		]);
+		// A twin with a different declaration is no twin either.
+		expect(missingMotionTwins(css.replace(twin, twin.replace('scale: none', 'scale: 1')))).toEqual([
+			'.ui-press:active { scale: none; }',
+		]);
 	});
 });
+
+const OS_REDUCED = '@media (prefers-reduced-motion: reduce)';
+const APP_REDUCED = ":root[data-motion='reduce'] ";
+
+interface CssRule {
+	readonly selectors: readonly string[];
+	readonly declarations: readonly string[];
+	/** Inside an `@media (prefers-reduced-motion: reduce)` block. */
+	readonly osReduced: boolean;
+}
+
+/** Split on commas outside parentheses (`:where(a, b)` stays one selector). */
+function splitTopLevel(text: string, separator: string): string[] {
+	const parts: string[] = [];
+	let depth = 0;
+	let from = 0;
+	for (let i = 0; i < text.length; i++) {
+		if (text[i] === '(') depth++;
+		else if (text[i] === ')') depth--;
+		else if (text[i] === separator && depth === 0) {
+			parts.push(text.slice(from, i));
+			from = i + 1;
+		}
+	}
+	parts.push(text.slice(from));
+	return parts.map((part) => part.trim().replace(/\s+/g, ' ')).filter(Boolean);
+}
+
+function normaliseDeclaration(declaration: string): string {
+	const colon = declaration.indexOf(':');
+	return `${declaration.slice(0, colon).trim()}: ${declaration
+		.slice(colon + 1)
+		.trim()
+		.replace(/\s+/g, ' ')}`;
+}
+
+/**
+ * Every style rule in a stylesheet (or a .vue file's style blocks), flattened
+ * out of @layer / @media / @supports, keyframes skipped. Enough of a CSS
+ * parser for this repo's hand-written sheets, which use no nesting.
+ */
+function cssRules(source: string): CssRule[] {
+	const rules: CssRule[] = [];
+	const css = source.replace(/\/\*[\s\S]*?\*\//g, '');
+	const walk = (text: string, osReduced: boolean): void => {
+		let from = 0;
+		for (let i = 0; i < text.length; i++) {
+			if (text[i] === ';' && text.slice(from, i).trim().startsWith('@')) {
+				from = i + 1;
+				continue;
+			}
+			if (text[i] !== '{') continue;
+			let depth = 0;
+			let end = i;
+			for (; end < text.length; end++) {
+				if (text[end] === '{') depth++;
+				else if (text[end] === '}' && --depth === 0) break;
+			}
+			const prelude = text.slice(from, i).trim().replace(/\s+/g, ' ');
+			const body = text.slice(i + 1, end);
+			if (prelude.startsWith('@')) {
+				if (!/^@(?:-webkit-)?keyframes/.test(prelude)) {
+					walk(body, osReduced || prelude.startsWith(OS_REDUCED));
+				}
+			} else {
+				rules.push({
+					// A .vue file's `<style scoped>` tag ends up in the first prelude.
+					selectors: splitTopLevel(prelude.replace(/^[\s\S]*<style[^>]*>/, ''), ','),
+					declarations: splitTopLevel(body, ';')
+						.filter((d) => d.includes(':'))
+						.map(normaliseDeclaration),
+					osReduced,
+				});
+			}
+			i = end;
+			from = end + 1;
+		}
+	};
+	walk(css, false);
+	return rules;
+}
+
+/**
+ * The OS-only reduced-motion rules of one stylesheet that have no matching
+ * `:root[data-motion='reduce']` twin, as `selector { declaration; }` per gap.
+ * A rule made only of `transition: none` / `animation: none` is the global
+ * floor's job (base.css collapses durations for both switches); every other
+ * rule (dropping a transform, parking a sweep, hiding a ring) is a static end
+ * state the floor cannot produce, so each of its selectors needs every one of
+ * its declarations again under the root attribute.
+ */
+function missingMotionTwins(css: string): string[] {
+	const floorOnly = /^(?:transition|animation): none$/;
+	const rules = cssRules(css);
+	const twins = new Map<string, Set<string>>();
+	for (const rule of rules) {
+		if (rule.osReduced) continue;
+		for (const selector of rule.selectors) {
+			const quoted = selector.replace(/"/g, "'");
+			if (!quoted.startsWith(APP_REDUCED)) continue;
+			const target = quoted.slice(APP_REDUCED.length);
+			const known = twins.get(target) ?? new Set<string>();
+			for (const declaration of rule.declarations) known.add(declaration);
+			twins.set(target, known);
+		}
+	}
+	const missing: string[] = [];
+	for (const rule of rules) {
+		if (!rule.osReduced || rule.declarations.every((d) => floorOnly.test(d))) continue;
+		for (const selector of rule.selectors) {
+			for (const declaration of rule.declarations) {
+				if (!twins.get(selector)?.has(declaration)) {
+					missing.push(`${selector} { ${declaration}; }`);
+				}
+			}
+		}
+	}
+	return missing;
+}

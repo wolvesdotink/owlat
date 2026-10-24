@@ -242,7 +242,7 @@ describe('PostboxMessageBody render worker', () => {
 		await flushPromises();
 		// Typography lives in the document head: only the main-thread stage reruns.
 		expect(pendingRequests()).toHaveLength(1);
-		expect(srcdoc(first)).toContain('max-width:60ch;font-size:19px;');
+		expect(srcdoc(first)).toContain('max-width:60ch;font-size:15px;zoom:1.267;');
 		expect(srcdoc(first)).not.toContain('72ch');
 		expect(persistBody).toHaveBeenLastCalledWith('msg-b', srcdoc(first));
 		first.unmount();
@@ -254,6 +254,7 @@ describe('PostboxMessageBody render worker', () => {
 		comfort.reset('readingWidth');
 		const again = mountBody({ message: OTHER });
 		expect(srcdoc(again)).toContain('max-width:72ch;font-size:15px;');
+		expect(srcdoc(again)).not.toContain('zoom:');
 		await flushPromises();
 		expect(pendingRequests()).toHaveLength(1);
 	});
