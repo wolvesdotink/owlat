@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * The rules `bun run capture` applies before a browser starts: what the
  * command line accepts, where the PNGs may go (never into the checkout), which

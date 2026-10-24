@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * One capture run end to end, with the browser and the filesystem faked: a
  * run that fails at any point writes nothing, refusals happen before the
