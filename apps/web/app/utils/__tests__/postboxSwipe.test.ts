@@ -59,6 +59,21 @@ describe('resolvePostboxSwipeAction', () => {
 	});
 });
 
+describe('surface verbs outside the mail preference', () => {
+	it('paints the Team Inbox resolve verb and fires it like any other', () => {
+		expect(POSTBOX_SWIPE_VISUALS.resolve).toEqual({ icon: 'lucide:check-circle', tone: 'success' });
+		expect(swipeActionFor(-100, 'resolve', 'snooze')).toBe('resolve');
+		expect(
+			swipeTrackState({ dx: -100, leftAction: 'resolve', rightAction: 'snooze' })?.action
+		).toBe('resolve');
+	});
+
+	it('never lets a stored mail preference resolve to it', () => {
+		expect(resolvePostboxSwipeAction('resolve', 'archive')).toBe('archive');
+		expect(POSTBOX_SWIPE_ACTION_OPTIONS.map((option) => option.value)).not.toContain('resolve');
+	});
+});
+
 describe('classifySwipeIntent — scrolling wins ties', () => {
 	it('claims nothing inside the slop', () => {
 		expect(classifySwipeIntent(POSTBOX_SWIPE_SLOP_PX, 0)).toBe('pending');

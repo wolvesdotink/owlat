@@ -10,6 +10,9 @@
  *     browser menu shows through
  *   - `items` may be a getter, called only when the menu opens (long tables
  *     pass one so no row builds a menu array on render)
+ *   - an item's key renders in a right-aligned shortcut column (with its
+ *     `aria-keyshortcuts`), and keys typed in the open menu never reach the
+ *     document-level shortcut dispatcher behind it, Escape excepted
  */
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -168,6 +171,41 @@ describe('UiContextMenu', () => {
 
 		expect(event.defaultPrevented).toBe(false);
 		expect(menuEl()).toBeNull();
+		wrapper.unmount();
+	});
+
+	it('renders the shortcut column and its aria-keyshortcuts', async () => {
+		const wrapper = mountHarness([
+			{ id: 'resolve', label: 'Resolve', shortcut: 'E', ariaKeyshortcuts: 'E', run: () => {} },
+			{ id: 'open', label: 'Open', run: () => {} },
+		]);
+		await wrapper.find('.trigger').trigger('contextmenu', { clientX: 5, clientY: 5 });
+
+		const [resolve, open] = menuItems();
+		expect(resolve?.querySelector('kbd')?.textContent).toBe('E');
+		expect(resolve?.getAttribute('aria-keyshortcuts')).toBe('E');
+		expect(open?.querySelector('kbd')).toBeNull();
+		expect(open?.hasAttribute('aria-keyshortcuts')).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('keeps keys typed in the menu from the document, and still closes on Escape', async () => {
+		const heard: string[] = [];
+		const listener = (event: KeyboardEvent) => heard.push(event.key);
+		document.addEventListener('keydown', listener);
+		const wrapper = mountHarness([{ id: 'archive', label: 'Archive', run: () => {} }]);
+		await wrapper.find('.trigger').trigger('contextmenu', { clientX: 5, clientY: 5 });
+
+		const item = menuItems()[0]!;
+		item.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', bubbles: true }));
+		item.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+		expect(heard).toEqual([]);
+
+		// Escape is left to the escape layer, which closes the menu.
+		item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await waitForClose();
+		expect(menuEl()).toBeNull();
+		document.removeEventListener('keydown', listener);
 		wrapper.unmount();
 	});
 });

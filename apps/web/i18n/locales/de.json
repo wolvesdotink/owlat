@@ -4171,7 +4171,9 @@
 				"resolve": "Erledigen",
 				"snooze": "Zurückstellen",
 				"unknownSender": "Unbekannter Absender",
-				"unread": "Ungelesen"
+				"unread": "Ungelesen",
+				"select": "Auswählen",
+				"deselect": "Auswahl aufheben"
 			},
 			"statusChip": {
 				"returned": "· Zurückgekehrt"
@@ -4297,6 +4299,18 @@
 				"retryHint": "Ein neuer Versuch lässt den Agenten die Nachricht mit der normalen Automatik bearbeiten, sodass seine Antwort von selbst gesendet werden kann.",
 				"since": "Zurückgehalten am {date}. Solange die Nachricht zurückgehalten wird, wird nichts automatisch gesendet.",
 				"title": "Wartet auf eine Person: KI-Budget erreicht"
+			},
+			"rowMenu": {
+				"counted": "{verb} ({count})",
+				"assignToMe": "Mir zuweisen",
+				"assign": "Zuweisen an …",
+				"snooze": "Zurückstellen …"
+			},
+			"bulkBar": {
+				"label": "Ausgewählte Unterhaltungen",
+				"selected": "{count} ausgewählt",
+				"assign": "Zuweisen",
+				"clear": "Auswahl aufheben"
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -7273,7 +7287,9 @@
 			},
 			"line": {
 				"done": "Erledigt",
-				"replyAnyway": "Trotzdem antworten"
+				"replyAnyway": "Trotzdem antworten",
+				"open": "Vorschau",
+				"openThread": "Unterhaltung öffnen"
 			},
 			"source": {
 				"one": "Quelle: E-Mail von {from}, „{subject}“",
@@ -11488,7 +11504,14 @@
 				"sortSwitchTo": "Nach {sort} sortieren",
 				"waitingOver24h": "{count} Person wartet seit über einem Tag auf eine Antwort | {count} Personen warten seit über einem Tag auf eine Antwort",
 				"showLongestWaitFirst": "Längste Wartezeit zuerst",
-				"analytics": "Auswertung"
+				"analytics": "Auswertung",
+				"bulk": {
+					"failed": {
+						"resolved": "{count} von {total} Unterhaltungen wurde nicht erledigt und bleibt ausgewählt. | {count} von {total} Unterhaltungen wurden nicht erledigt und bleiben ausgewählt.",
+						"snoozed": "{count} von {total} Unterhaltungen wurde nicht zurückgestellt und bleibt ausgewählt. | {count} von {total} Unterhaltungen wurden nicht zurückgestellt und bleiben ausgewählt.",
+						"assigned": "{count} von {total} Unterhaltungen wurde nicht zugewiesen und bleibt ausgewählt. | {count} von {total} Unterhaltungen wurden nicht zugewiesen und bleiben ausgewählt."
+					}
+				}
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Absender blockieren",
@@ -16831,7 +16854,10 @@
 				"rejectDraft": "Entwurf ablehnen",
 				"openMention": "Erwähnung öffnen, um zu antworten",
 				"markMentionRead": "Erwähnung als gelesen markieren",
-				"skipCard": "Vorerst überspringen"
+				"skipCard": "Vorerst überspringen",
+				"clearSelection": "Auswahl aufheben",
+				"resolveThread": "Thread erledigen",
+				"assignThread": "Thread zuweisen an …"
 			}
 		},
 		"signatureBadge": {
@@ -18111,7 +18137,8 @@
 				"snooze": "Zurückstellen",
 				"star": "Markieren",
 				"read": "Als gelesen markieren",
-				"none": "Nichts"
+				"none": "Nichts",
+				"resolve": "Erledigen"
 			}
 		},
 		"postboxKeyVerification": {
@@ -18222,6 +18249,13 @@
 				"automation": "Automatisierung",
 				"template": "Vorlage"
 			}
+		},
+		"rowMenu": {
+			"open": "Öffnen",
+			"openInNewTab": "In neuem Tab öffnen",
+			"copyLink": "Link kopieren",
+			"linkCopied": "Link kopiert",
+			"copyFailed": "Der Link konnte nicht kopiert werden"
 		}
 	},
 	"sharedPkg": {

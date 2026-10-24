@@ -126,6 +126,53 @@ export const SURFACE_SHORTCUTS: readonly ShortcutDefinition[] = [
 		labelKey: L('assignToMe'),
 		groupKey: G.teamInbox,
 	},
+	// The triage verbs act on the selection when there is one, else on the
+	// focused row.
+	{
+		id: 'inboxList.toggleSelect',
+		scope: 'inboxList',
+		keys: ['x'],
+		labelKey: L('selectDeselect'),
+		groupKey: G.teamInbox,
+	},
+	{
+		id: 'inboxList.extendSelection',
+		scope: 'inboxList',
+		keys: ['J', 'K'],
+		displayKeys: 'shift+j/k',
+		labelKey: L('extendSelection'),
+		groupKey: G.teamInbox,
+		...SURFACE,
+	},
+	{
+		id: 'inboxList.clearSelection',
+		scope: 'inboxList',
+		keys: ['Escape'],
+		labelKey: L('clearSelection'),
+		groupKey: G.teamInbox,
+		...CONVENTION,
+	},
+	{
+		id: 'inboxList.resolve',
+		scope: 'inboxList',
+		keys: ['e'],
+		labelKey: L('resolveThread'),
+		groupKey: G.teamInbox,
+	},
+	{
+		id: 'inboxList.snooze',
+		scope: 'inboxList',
+		keys: ['h'],
+		labelKey: L('snooze'),
+		groupKey: G.teamInbox,
+	},
+	{
+		id: 'inboxList.assign',
+		scope: 'inboxList',
+		keys: ['a'],
+		labelKey: L('assignThread'),
+		groupKey: G.teamInbox,
+	},
 
 	// --- Team inbox threads (claimed by the thread page) -----------------------
 	{

@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
 import { useOrganization } from '~/composables/useOrganization';
-import type { UndoGroup } from '~/composables/postbox/usePostboxTriageUndo';
-import { resolveActiveChord } from '~/utils/shortcutScope';
+import { useInboxSelection } from '~/composables/useInboxSelection';
+import {
+	INBOX_ACTIVE_WORK_FILTERS,
+	useInboxListActions,
+	type InboxListThread,
+} from '~/composables/useInboxListActions';
+import { useInboxRowMenu } from '~/composables/useInboxRowMenu';
+import { resolveActiveChord, resolveActiveShortcut } from '~/utils/shortcutScope';
 import { useShortcutScope } from '~/composables/useShortcutScope';
 import { teamThreadHasDraft, useComposerDrafts } from '~/composables/useComposerDrafts';
 import {
@@ -14,7 +18,6 @@ import {
 	INBOX_SORT_META,
 	isInboxSlaFilter,
 	nextInboxSort,
-	type InboxFilter,
 } from '~/utils/inboxFilters';
 
 const { t, te } = useI18n();
@@ -67,43 +70,24 @@ const {
 	loadMoreThreads,
 } = useInbox(computed(() => isAdmin.value));
 
-// ── Row triage mutations (shared with the thread detail view) ──
+// ── Row triage (shared with the thread detail view) ──
 const { user } = useAuth();
 // The pencil on rows where the viewer left unsent text (this device).
 const drafts = useComposerDrafts();
-const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
-	label: () => t('dashboard.inbox.index.assignThreadOperation'),
-});
-const { run: updateThreadStatus } = useBackendOperation(api.inbox.mutations.updateThreadStatus, {
-	label: () => t('dashboard.inbox.index.updateThreadStatusOperation'),
-});
-const { run: snoozeThread } = useBackendOperation(api.inbox.snooze.snoozeThread, {
-	label: () => t('dashboard.inbox.index.snoozeThreadOperation'),
-});
-const { run: unsnoozeThread } = useBackendOperation(api.inbox.snooze.unsnoozeThread, {
-	label: () => t('dashboard.inbox.index.unsnoozeThreadOperation'),
-});
 
-type TeamThread = InboxThreadRowThread & { _id: Id<'conversationThreads'> };
-
-// Tabs whose rows require an open/waiting, not-snoozed thread — resolving or
-// snoozing a row removes it from these, so those actions hide optimistically.
-const ACTIVE_WORK_FILTERS = new Set<InboxFilter>(['open', 'waiting']);
-
-// Optimistic hide + one-slot undo toast (Cmd/Ctrl+Z), reusing the Postbox house
+// Optimistic hide + undo toast (Cmd/Ctrl+Z), reusing the Postbox house
 // composables. The list renders `visibleThreads`; a failed mutation restores the
 // row and a successful one is undoable for ~8s.
-const { visible: visibleThreads, run: runTriage } = useInboxTriage(threads as Ref<TeamThread[]>);
+const { visible: visibleThreads, run: runTriage } = useInboxTriage(
+	threads as Ref<InboxListThread[]>
+);
 
 // The assignee-avatar presence ring and the note chip, read for the shown rows only.
 const isAssigneePresent = useInboxAssigneePresence(visibleThreads);
 const noteCountOf = useInboxNoteCounts(visibleThreads);
 
-// Org members for the row hover assignee picker (Me / members / Unassign).
+// Org members for the assignee pickers (Me / members / Unassign).
 const { members, fetchMembers } = useOrganization();
-// Cmd/Ctrl+Z undoes the last triage while focus is outside any text field —
-// usePostboxTriageUndo binds that listener app-wide while its stack is
-// non-empty, so this page only has to register the actions.
 onMounted(() => {
 	void fetchMembers();
 });
@@ -116,123 +100,95 @@ const assignMembers = computed(() =>
 	}))
 );
 
-/**
- * Undo-toast copy for an assignment: the single action, and the shared toast a
- * run of assignments to the same person collapses into.
- */
-function assignUndo(assignedTo: string | undefined): { label: string; group: UndoGroup } {
-	const many = (key: string, params: Record<string, string> = {}): UndoGroup => ({
-		key: `inbox:assign:${assignedTo ?? ''}`,
-		label: (count) => t(`dashboard.inbox.index.undo.${key}`, { ...params, count }, count),
-	});
-	if (assignedTo === undefined) {
-		return { label: t('dashboard.inbox.index.undo.unassigned'), group: many('unassignedMany') };
-	}
-	if (assignedTo === user.value?.id) {
-		return {
-			label: t('dashboard.inbox.index.undo.assignedToYou'),
-			group: many('assignedToYouMany'),
-		};
-	}
-	const member = assignMembers.value.find((m) => m.userId === assignedTo);
-	const name = member?.name || member?.email;
-	return name
-		? {
-				label: t('dashboard.inbox.index.undo.assignedTo', { name }),
-				group: many('assignedToMany', { name }),
-			}
-		: { label: t('dashboard.inbox.index.undo.assigned'), group: many('assignedMany') };
-}
-
-/** Consecutive resolves (or snoozes) share one undo toast that counts them. */
-function statusUndoGroup(kind: 'resolved' | 'snoozed'): UndoGroup {
-	return {
-		key: `inbox:${kind}`,
-		label: (count) => t(`dashboard.inbox.index.undo.${kind}Many`, { count }, count),
-	};
-}
-
-/** Does assigning to `assignedTo` drop the row from the active assignment filter? */
-function assignLeavesView(assignedTo: string | undefined): boolean {
-	if (assignee.value === 'unassigned') return assignedTo !== undefined;
-	if (assignee.value === 'me') return assignedTo !== user.value?.id;
-	return false;
-}
-
-/** Assign/unassign a thread optimistically, with an undo that restores the prior owner. */
-async function assignTo(thread: TeamThread, assignedTo: string | undefined) {
-	const previous = thread.assignedTo ?? undefined;
-	if (previous === assignedTo) return;
-	await runTriage({
-		id: thread._id,
-		...assignUndo(assignedTo),
-		leavesView: assignLeavesView(assignedTo),
-		mutate: () => assignThread({ threadId: thread._id, assignedTo }),
-		inverse: () => assignThread({ threadId: thread._id, assignedTo: previous }),
-	});
-}
-
-/** `i` claims the thread for the current user. */
-async function assignToMe(thread: TeamThread) {
-	const me = user.value?.id;
-	if (!me) return;
-	await assignTo(thread, me);
-}
-
-async function resolveThread(thread: TeamThread) {
-	const previousStatus = thread.status;
-	if (previousStatus === 'resolved') return;
-	await runTriage({
-		id: thread._id,
-		label: t('dashboard.inbox.index.undo.resolved'),
-		group: statusUndoGroup('resolved'),
-		leavesView: ACTIVE_WORK_FILTERS.has(filter.value),
-		mutate: () => updateThreadStatus({ threadId: thread._id, status: 'resolved' }),
-		inverse: () => updateThreadStatus({ threadId: thread._id, status: previousStatus }),
-	});
-}
-
-// Snooze picker — reuses the Postbox snooze presets (PostboxSnoozeDialog),
-// bound to whichever row's Snooze quick-action opened it.
-const showSnoozeDialog = ref(false);
-const snoozeThreadId = ref<Id<'conversationThreads'> | null>(null);
-function openSnooze(thread: TeamThread) {
-	snoozeThreadId.value = thread._id;
-	showSnoozeDialog.value = true;
-}
-async function onSnoozeConfirm(timestamp: number) {
-	showSnoozeDialog.value = false;
-	const id = snoozeThreadId.value;
-	if (!id) return;
-	await runTriage({
-		id,
-		label: t('dashboard.inbox.index.undo.snoozed'),
-		group: statusUndoGroup('snoozed'),
-		leavesView: ACTIVE_WORK_FILTERS.has(filter.value),
-		mutate: () => snoozeThread({ threadId: id, until: timestamp }),
-		inverse: () => unsnoozeThread({ threadId: id }),
-	});
-}
-
-// ── List keyboard: j/k move, Enter opens, i assigns-to-me. Shares the Postbox
-// listbox composable so the conventions match. Reset focus on filter/sort.
-// Every key of the list lives in ONE scope (`inboxList`), so a remap that
-// would put "assign" on the key that moves the list is refused, and claiming
-// it puts the list's keys on the "?" sheet. ──
-useShortcutScope('inboxList');
+// ── Selection: x toggles, Shift+click / Shift+J/K extend, Esc clears. A verb
+// acts on the selection, or on the focused / clicked row when nothing is
+// selected. A change of view starts from an empty selection. ──
 const listKey = computed(() => `${filter.value}:${assignee.value}:${sort.value}:${mentions.value}`);
-const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>({
+const selection = useInboxSelection({ rows: visibleThreads, resetKey: listKey });
+const actions = useInboxListActions({
+	runTriage,
+	filter,
+	assignee,
+	members: assignMembers,
+	// A verb on the selection leaves exactly its failures selected, to retry.
+	onSettled: (targets, failedIds) => {
+		if (targets.length > 1 || targets.some((row) => selection.isSelected(row._id))) {
+			selection.replace(failedIds);
+		}
+	},
+});
+
+// The assignee pickers: one per row (its hover cluster) and the bulk bar's.
+const assignRowId = ref<string | null>(null);
+const bulkAssignOpen = ref(false);
+function openAssign(row: InboxListThread, targets: InboxListThread[]) {
+	if (targets.length > 1 || selection.isSelected(row._id)) bulkAssignOpen.value = true;
+	else assignRowId.value = row._id;
+}
+const rowMenuFor = useInboxRowMenu({
+	canManage: isAdmin,
+	targetsFor: selection.targetsFor,
+	isSelected: selection.isSelected,
+	toggleSelect: (row) => selection.toggle(row._id),
+	assignToMe: (targets) => void actions.assignToMe(targets),
+	openAssign,
+	resolve: (targets) => void actions.resolve(targets),
+	snooze: actions.openSnooze,
+});
+// The row hands back the thread it was given, which is one of `visibleThreads`.
+const rowMenu = (thread: InboxThreadRowThread) => rowMenuFor(thread as InboxListThread);
+
+// ── List keyboard: j/k move, Enter opens, and the triage keys. Shares the
+// Postbox listbox composable so the conventions match. Every key of the list
+// lives in ONE scope (`inboxList`), so a remap that would put "assign" on the
+// key that moves the list is refused, and claiming it puts the list's keys on
+// the "?" sheet. ──
+useShortcutScope('inboxList');
+const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<InboxListThread>({
 	items: visibleThreads,
 	resetKey: listKey,
 	rowDomId: (thread) => `inbox-row-${thread._id}`,
 	scope: 'inboxList',
 	onActivate: (thread) => navigateTo(`/dashboard/inbox/${thread._id}`),
+	onExtendSelection: (to, from) => {
+		if (isAdmin.value) selection.extendTo(to._id, from?._id);
+	},
 	onAction: (key, thread) => {
-		if (resolveActiveChord(key, ['inboxList']) === 'inboxList.assignToMe' && isAdmin.value) {
-			void assignToMe(thread);
+		if (!isAdmin.value) return;
+		const targets = selection.count.value > 0 ? selection.selectedRows.value : [thread];
+		switch (resolveActiveChord(key, ['inboxList'])) {
+			case 'inboxList.assignToMe':
+				void actions.assignToMe(targets);
+				break;
+			case 'inboxList.toggleSelect':
+				selection.toggle(thread._id);
+				break;
+			case 'inboxList.resolve':
+				void actions.resolve(targets);
+				break;
+			case 'inboxList.snooze':
+				actions.openSnooze(targets);
+				break;
+			case 'inboxList.assign':
+				openAssign(thread, targets);
+				break;
 		}
 	},
 });
+
+/** Escape lets go of the selection before anything else hears it. */
+function onListKeydown(event: KeyboardEvent) {
+	if (
+		selection.count.value > 0 &&
+		!event.defaultPrevented &&
+		resolveActiveShortcut(event, ['inboxList']) === 'inboxList.clearSelection'
+	) {
+		event.preventDefault();
+		selection.clear();
+		return;
+	}
+	onKeydown(event);
+}
 
 // Empty-state copy per active tab + assignment. An assignment on an active tab
 // has its own sentence ("Nothing is assigned to you right now."); otherwise the
@@ -240,7 +196,7 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>
 // rendering `shared.inboxFilters.…` at a person.
 const emptyMessage = computed(() => {
 	if (mentions.value) return t('dashboard.inbox.index.empty.mentions');
-	if (assignee.value !== DEFAULT_INBOX_ASSIGNEE && ACTIVE_WORK_FILTERS.has(filter.value)) {
+	if (assignee.value !== DEFAULT_INBOX_ASSIGNEE && INBOX_ACTIVE_WORK_FILTERS.has(filter.value)) {
 		return t(`dashboard.inbox.index.empty.${assignee.value}`);
 	}
 	const key = `dashboard.inbox.index.empty.${filter.value}`;
@@ -399,15 +355,27 @@ const showOldestFirst = () => setSort('oldest-waiting');
 				</template>
 
 				<!-- Thread List — Postbox row DNA: single column, weight-based unread,
-			     one status chip, hover-reveal triage. Keyboard: j/k/Enter + i. -->
+			     one status chip, hover-reveal triage, a row menu and swipe. -->
 				<div>
+					<InboxBulkBar
+						v-if="isAdmin && selection.count.value > 0"
+						v-model:assign-open="bulkAssignOpen"
+						:count="selection.count.value"
+						:members="assignMembers"
+						:current-user-id="user?.id ?? null"
+						@assign="actions.assign(selection.selectedRows.value, $event)"
+						@resolve="actions.resolve(selection.selectedRows.value)"
+						@snooze="actions.openSnooze(selection.selectedRows.value)"
+						@clear="selection.clear()"
+					/>
 					<ul
 						role="listbox"
 						tabindex="0"
 						:aria-label="t('dashboard.inbox.index.listAriaLabel')"
 						:aria-activedescendant="activeId"
+						:aria-multiselectable="isAdmin ? 'true' : undefined"
 						class="divide-y divide-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
-						@keydown="onKeydown"
+						@keydown="onListKeydown"
 					>
 						<InboxThreadRow
 							v-for="(thread, index) in visibleThreads"
@@ -422,9 +390,16 @@ const showOldestFirst = () => setSort('oldest-waiting');
 							:assignee-present="isAssigneePresent(thread._id)"
 							:note-count="noteCountOf(thread._id)"
 							:has-draft="teamThreadHasDraft(drafts, thread._id)"
-							@assign="assignTo(thread, $event)"
-							@resolve="resolveThread(thread)"
-							@snooze="openSnooze(thread)"
+							:selected="selection.isSelected(thread._id)"
+							:menu-items="rowMenu"
+							:assign-open="assignRowId === thread._id"
+							@update:assign-open="assignRowId = $event ? thread._id : null"
+							@toggle-select="
+								$event ? selection.extendTo(thread._id) : selection.toggle(thread._id)
+							"
+							@assign="actions.assign([thread], $event)"
+							@resolve="actions.resolve([thread])"
+							@snooze="actions.openSnooze([thread])"
 						/>
 					</ul>
 
@@ -440,9 +415,9 @@ const showOldestFirst = () => setSort('oldest-waiting');
 
 		<PostboxSnoozeDialog
 			v-if="isAdmin"
-			:open="showSnoozeDialog"
-			@update:open="showSnoozeDialog = $event"
-			@confirm="onSnoozeConfirm"
+			:open="actions.showSnoozeDialog.value"
+			@update:open="actions.showSnoozeDialog.value = $event"
+			@confirm="actions.onSnoozeConfirm"
 		/>
 	</div>
 </template>

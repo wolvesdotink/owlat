@@ -34,6 +34,14 @@
  */
 export type PostboxSwipeAction = 'archive' | 'trash' | 'snooze' | 'star' | 'read' | 'none';
 
+/**
+ * Every verb a row's swipe can fire: the mail verbs a person can map in the
+ * settings, plus the ones a surface wires itself. `'resolve'` is the Team
+ * Inbox's own verb; it is deliberately not in {@link SWIPE_ACTIONS}, so a
+ * stored mail preference can never resolve to it.
+ */
+export type RowSwipeAction = PostboxSwipeAction | 'resolve';
+
 /** Which way the row was dragged. Left = towards the start of the row. */
 export type PostboxSwipeDirection = 'left' | 'right';
 
@@ -86,7 +94,7 @@ export const POSTBOX_SWIPE_ACTION_OPTIONS: ReadonlyArray<{
 ];
 
 /** The semantic colours a track can fill with — theme tokens, not raw values. */
-export type PostboxSwipeTone = 'brand' | 'error' | 'warning' | 'info';
+export type PostboxSwipeTone = 'brand' | 'error' | 'warning' | 'info' | 'success';
 
 /**
  * How the reveal track paints for each action: the icon that slides in behind
@@ -97,7 +105,7 @@ export type PostboxSwipeTone = 'brand' | 'error' | 'warning' | 'info';
  */
 export const POSTBOX_SWIPE_VISUALS: Readonly<
 	Record<
-		Exclude<PostboxSwipeAction, 'none'>,
+		Exclude<RowSwipeAction, 'none'>,
 		{ readonly icon: string; readonly tone: PostboxSwipeTone }
 	>
 > = {
@@ -106,6 +114,7 @@ export const POSTBOX_SWIPE_VISUALS: Readonly<
 	snooze: { icon: 'lucide:clock', tone: 'warning' },
 	star: { icon: 'lucide:star', tone: 'warning' },
 	read: { icon: 'lucide:mail-open', tone: 'info' },
+	resolve: { icon: 'lucide:check-circle', tone: 'success' },
 };
 
 /**
@@ -177,15 +186,15 @@ export function swipeDirection(dx: number): PostboxSwipeDirection | null {
  * `'none'` (or there is no direction yet). The row uses this both to paint the
  * track and to decide whether to follow the finger at all.
  */
-export function swipeActionFor(
+export function swipeActionFor<A extends RowSwipeAction>(
 	dx: number,
-	leftAction: PostboxSwipeAction,
-	rightAction: PostboxSwipeAction
-): Exclude<PostboxSwipeAction, 'none'> | null {
+	leftAction: A,
+	rightAction: A
+): Exclude<A, 'none'> | null {
 	const direction = swipeDirection(dx);
 	if (!direction) return null;
 	const action = direction === 'left' ? leftAction : rightAction;
-	return action === 'none' ? null : action;
+	return action === 'none' ? null : (action as Exclude<A, 'none'>);
 }
 
 /**
@@ -209,8 +218,8 @@ export function swipeProgress(dx: number): number {
 }
 
 /** The reveal track behind the row, as the row needs to paint it. */
-export interface PostboxSwipeTrackState {
-	readonly action: Exclude<PostboxSwipeAction, 'none'>;
+export interface PostboxSwipeTrackState<A extends RowSwipeAction = PostboxSwipeAction> {
+	readonly action: Exclude<A, 'none'>;
 	readonly direction: PostboxSwipeDirection;
 	readonly icon: string;
 	readonly tone: PostboxSwipeTone;
@@ -228,11 +237,11 @@ export interface PostboxSwipeTrackState {
  * `'none'` (which must stay completely inert rather than revealing an empty
  * track the row then snaps back from).
  */
-export function swipeTrackState(args: {
+export function swipeTrackState<A extends RowSwipeAction>(args: {
 	dx: number;
-	leftAction: PostboxSwipeAction;
-	rightAction: PostboxSwipeAction;
-}): PostboxSwipeTrackState | null {
+	leftAction: A;
+	rightAction: A;
+}): PostboxSwipeTrackState<A> | null {
 	const direction = swipeDirection(args.dx);
 	const action = swipeActionFor(args.dx, args.leftAction, args.rightAction);
 	if (!direction || !action) return null;
@@ -256,13 +265,13 @@ export function swipeTrackState(args: {
  * the last moment ("no, not that") has withdrawn the gesture, and honouring its
  * speed would be the exact opposite of what it said.
  */
-export function resolveSwipeRelease(args: {
+export function resolveSwipeRelease<A extends RowSwipeAction>(args: {
 	dx: number;
 	/** Signed px/ms over the last few samples; positive is rightward. */
 	velocityX: number;
-	leftAction: PostboxSwipeAction;
-	rightAction: PostboxSwipeAction;
-}): Exclude<PostboxSwipeAction, 'none'> | null {
+	leftAction: A;
+	rightAction: A;
+}): Exclude<A, 'none'> | null {
 	const action = swipeActionFor(args.dx, args.leftAction, args.rightAction);
 	if (!action) return null;
 	const distance = Math.abs(args.dx);
