@@ -6,11 +6,21 @@
  *
  *   bun scripts/action-commit-census.ts           ratchet entries
  *   bun scripts/action-commit-census.ts --counts  `<commits> <module>:<action>`, worst first
+ *   bun scripts/action-commit-census.ts --stdin <module>
+ *                                                 the census of one module read from stdin, as
+ *                                                 JSON (how the gate's own tests drive it)
  */
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { censusLines, censusModule, type ActionCommitCount } from './lib/actionCommits';
 import { productionModules } from './lib/sourceGraph';
+
+const stdinModule = process.argv.indexOf('--stdin');
+if (stdinModule !== -1) {
+	const module = process.argv[stdinModule + 1] ?? 'convex/stdin.ts';
+	console.info(JSON.stringify(censusModule(module, readFileSync(0, 'utf8'))));
+	process.exit(0);
+}
 
 const apiRoot = join(import.meta.dirname, '..');
 const convexRoot = join(apiRoot, 'convex');

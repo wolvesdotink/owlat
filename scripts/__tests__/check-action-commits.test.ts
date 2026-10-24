@@ -8,21 +8,37 @@
  * early returns are not added up, loops and per-item callbacks are, same-module
  * helpers are followed — and where a `// checkpoint:` marker may sit. The last
  * block runs the real gate, once against a throwaway tree to see the ratchet
- * fail in both directions and once against the repository itself.
+ * fail in both directions and once against the repository itself. The census
+ * is driven through its CLI (`--stdin`), the way the gate runs it.
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
-import { censusLines, censusModule } from '../../apps/api/scripts/lib/actionCommits';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
+const CENSUS = join(REPOSITORY_ROOT, 'apps/api/scripts/action-commit-census.ts');
 const run = promisify(execFile);
+
+// Every case runs the census in a bun subprocess.
+vi.setConfig({ testTimeout: PARALLEL_GATE_TIMEOUT_MS });
+
+interface ModuleCensus {
+	readonly actions: ReadonlyArray<{ module: string; name: string; commits: number }>;
+	readonly problems: readonly string[];
+}
+
+/** The real census of one module, through the CLI's `--stdin` mode. */
+function censusModule(module: string, source: string): ModuleCensus {
+	const result = spawnSync('bun', [CENSUS, '--stdin', module], { input: source, encoding: 'utf8' });
+	if (result.status !== 0) throw new Error(`census exited ${result.status}: ${result.stderr}`);
+	return JSON.parse(result.stdout) as ModuleCensus;
+}
 
 /** The commit count of each action in a module made of `source`. */
 function counts(source: string): Record<string, number> {
@@ -237,17 +253,6 @@ describe('action commit census — // checkpoint: markers', () => {
 	it('does not read a block comment or prose as a marker', () => {
 		const body = `/* checkpoint: not a marker */\n// Advance the checkpoint: patch the cursor\n${M('a')}`;
 		expect(problems(action(body))).toEqual([]);
-	});
-});
-
-describe('action commit census — ratchet entries', () => {
-	it('emits one entry per commit past the first', () => {
-		expect(
-			censusLines([
-				{ module: 'convex/a.ts', name: 'one', commits: 1 },
-				{ module: 'convex/a.ts', name: 'three', commits: 3 },
-			])
-		).toEqual(['convex/a.ts:three #2', 'convex/a.ts:three #3']);
 	});
 });
 
