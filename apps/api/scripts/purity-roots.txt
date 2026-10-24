@@ -36,6 +36,8 @@ convex/lib/lifecycle.ts
 convex/mail/draftLifecycle
 # Dispatcher and effect runner.
 !convex/mail/draftLifecycle/effects.ts
+# Runner for every effect but the `→ sent` cascade (scheduler, audit log, storage).
+!convex/mail/draftLifecycle/nonSentEffects.ts
 # Mints the random undo token the dispatcher hands to the reducers.
 !convex/mail/draftLifecycle/undoToken.ts
 

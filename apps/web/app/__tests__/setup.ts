@@ -29,6 +29,8 @@ import {
 	getCurrentScope,
 	onScopeDispose,
 	useId,
+	provide,
+	inject,
 } from 'vue';
 import { useConfirm } from '~/composables/useConfirm';
 
@@ -66,6 +68,9 @@ vi.stubGlobal('getCurrentScope', getCurrentScope);
 vi.stubGlobal('onScopeDispose', onScopeDispose);
 // Nuxt auto-imports `useId` too; components that label a control by id need it.
 vi.stubGlobal('useId', useId);
+// The UI layer's dropdown menu hands its items their close through provide/inject.
+vi.stubGlobal('provide', provide);
+vi.stubGlobal('inject', inject);
 // A plugin module can carry named exports next to its `defineNuxtPlugin` default
 // (`plugins/plugin-composition.generated.ts` exports the bundled composition the
 // admin rail and palette read), so importing it must not throw outside Nuxt.

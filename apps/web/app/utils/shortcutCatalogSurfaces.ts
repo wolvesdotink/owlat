@@ -32,6 +32,15 @@ export const SURFACE_SHORTCUTS: readonly ShortcutDefinition[] = [
 		...CONVENTION,
 	},
 	{
+		// Send, then the opposite of the "after replying" setting (keep / done).
+		id: 'composer.sendAlternate',
+		scope: 'composer',
+		keys: ['mod+alt+Enter'],
+		labelKey: L('sendAlternate'),
+		groupKey: G.compose,
+		...SURFACE,
+	},
+	{
 		id: 'composer.schedule',
 		scope: 'composer',
 		keys: ['mod+shift+Enter'],

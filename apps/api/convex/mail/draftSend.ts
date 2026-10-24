@@ -11,7 +11,7 @@
 
 import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle/types';
@@ -36,6 +36,8 @@ export async function sendHandler(
 		undoSendDelayMs?: number;
 		scheduledSendAt?: number;
 		allowUnsealed?: boolean;
+		afterSend?: 'keep' | 'done';
+		afterSendChosenAt?: number;
 	}
 ): Promise<{ undoToken: string; sendAt: number }> {
 	const draft = await getOrThrow(ctx, args.draftId, 'Draft');
@@ -68,12 +70,13 @@ export async function sendHandler(
 	// Record WHO is sending (team-inbox attribution). The dispatch runs later
 	// in a session-less scheduled action, so the acting user must be captured
 	// here; the sent-effects reducer copies it onto the message + thread.
+	const now = Date.now();
 	await ctx.db.patch(args.draftId, {
 		sentByUserId: owned.userId,
 		isUnsealedSendAllowed,
+		doneOnSendAt: doneOnSendCutoff(draft, args, now),
 	});
 
-	const now = Date.now();
 	const outcome: DraftTransitionOutcome = await ctx.runMutation(
 		internal.mail.draftLifecycle.transition,
 		{
@@ -192,4 +195,21 @@ export async function cancelScheduledSendHandler(
 	}
 	await recordPostboxSendCancelled(ctx, draft, { userId: owned.userId, at: Date.now() });
 	return { ok: true, draftId: outcome.draftId };
+}
+
+/**
+ * When "send and mark done" was chosen, or `undefined` for a send that keeps
+ * its conversation. Only a reply has a conversation to finish, so a new message
+ * or a forward never carries it. The cutoff never lies in the server's future,
+ * so a fast client clock cannot reach mail that arrives after the send; a
+ * replayed offline send keeps the time the sender chose, so mail that arrived
+ * while the device was offline (which they never saw) stays in the Inbox.
+ */
+export function doneOnSendCutoff(
+	draft: Pick<Doc<'mailDrafts'>, 'inReplyToMessageId' | 'threadId'>,
+	args: { afterSend?: 'keep' | 'done'; afterSendChosenAt?: number },
+	now: number
+): number | undefined {
+	if (args.afterSend !== 'done' || !draft.inReplyToMessageId || !draft.threadId) return undefined;
+	return Math.min(now, args.afterSendChosenAt ?? now);
 }
