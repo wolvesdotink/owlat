@@ -429,10 +429,8 @@ jobs:
         with:
           bun-version-file: package.json
 
-      # The same copy also feeds the test-code check: the server's traced
-      # package.json and the client manifest must name no test package, test
-      # route or vitest module (#1172).
-      - name: Check the web entry bundle budget and test code
+      - name: Copy the web build out of the image
+        id: web-output
         if: matrix.name == 'web'
         run: |
           set -euo pipefail
@@ -444,14 +442,24 @@ jobs:
           docker cp "$cid:/app/server/chunks/virtual/precomputed.mjs" "$out/server/chunks/virtual/"
           docker cp "$cid:/app/server/package.json" "$out/server/"
           docker cp "$cid:/app/public/_nuxt" "$out/public/"
-          bun scripts/check-bundle-budget.ts "$out"
-          bun scripts/check-web-build-test-code.ts "$out"
+
+      # The same copy also feeds the test-code check: the server's traced
+      # package.json and the client manifest must name no test package, test
+      # route or vitest module (#1172).
+      - name: Check the web entry bundle budget and test code
+        if: matrix.name == 'web'
+        run: |
+          set -euo pipefail
+          bun scripts/check-bundle-budget.ts "$RUNNER_TEMP/web-output"
+          bun scripts/check-web-build-test-code.ts "$RUNNER_TEMP/web-output"
 
       # Report-only (plan item OW-076): what each page and each lazily loaded
       # feature adds on top of the entry closure, read from the same copy. There
       # is no budget yet, so a change in these numbers never fails the job.
       - name: Report web route and deferred-feature closures
-        if: matrix.name == 'web'
+        # These report steps also run when the budget check failed, which is
+        # when the delta matters most.
+        if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
         continue-on-error: true
         run: bun scripts/report-bundle-closures.ts "$RUNNER_TEMP/web-output"
 
@@ -459,7 +467,7 @@ jobs:
       # commit, so a later pull request can compare against its exact base
       # commit. The toolchain id names the image recipe the build ran in.
       - name: Record the web bundle report
-        if: matrix.name == 'web'
+        if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
         continue-on-error: true
         env:
           BUNDLE_REPORT_SHA: ${{ github.sha }}
@@ -471,7 +479,7 @@ jobs:
           bun scripts/report-bundle-closures.ts "$RUNNER_TEMP/web-output" --json > "$RUNNER_TEMP/web-bundle/report.json"
 
       - name: Keep the web bundle report
-        if: matrix.name == 'web'
+        if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -486,7 +494,7 @@ jobs:
       # commit's own kept report is compared; without one the summary says so
       # and gives no delta. The entry budget above stays the blocking check.
       - name: Compare the web entry bundle with the base commit
-        if: matrix.name == 'web'
+        if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}

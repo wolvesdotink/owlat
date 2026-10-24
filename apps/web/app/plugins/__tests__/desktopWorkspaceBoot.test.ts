@@ -205,8 +205,9 @@ describe('desktop boot plugin — SPA router exposure', () => {
 		});
 		await vi.waitFor(() => expect(loadWorkspaces).toHaveBeenCalledTimes(1));
 		// Nuxt runs `convex.client.ts` once this plugin resolves: it must not
-		// resolve while the workspace and keychain session are still loading.
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		// resolve while the workspace and keychain session are still loading,
+		// however many microtasks pass.
+		for (let i = 0; i < 20; i += 1) await Promise.resolve();
 		expect(settled).toBe(false);
 
 		finishBoot();

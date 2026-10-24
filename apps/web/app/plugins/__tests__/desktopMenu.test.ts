@@ -77,7 +77,7 @@ describe('desktop menu plugin', () => {
 		desktopRuntime = false;
 
 		await setupMenuPlugin();
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		for (let i = 0; i < 20; i += 1) await Promise.resolve();
 
 		expect(onMenuAction).not.toHaveBeenCalled();
 		expect(onOpenMailto).not.toHaveBeenCalled();
