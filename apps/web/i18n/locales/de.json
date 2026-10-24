@@ -5187,7 +5187,8 @@
 					"unsnooze": "Zurückstellung von Nachrichten aufheben",
 					"unsubscribe": "Abmelden und archivieren"
 				},
-				"purgeConfirm": "{count} Nachricht endgültig löschen? Das kann nicht rückgängig gemacht werden. | {count} Nachrichten endgültig löschen? Das kann nicht rückgängig gemacht werden.",
+				"purgeConfirm": "{count} Nachricht endgültig löschen? | {count} Nachrichten endgültig löschen?",
+				"purgeConfirmBody": "Das kann nicht rückgängig gemacht werden.",
 				"read": "Gelesen",
 				"selected": "{count} ausgewählt",
 				"snooze": "Zurückstellen",
@@ -5554,7 +5555,8 @@
 			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Von dieser Mailingliste abmelden",
-				"confirm": "Von dieser Mailingliste abmelden?\n\nOwlat sendet die standardmäßige Ein-Klick-Abmeldeanfrage an {host}.",
+				"confirm": "Von dieser Mailingliste abmelden?",
+				"confirmBody": "Owlat sendet die standardmäßige Ein-Klick-Abmeldeanfrage an {host}.",
 				"requestFailed": "Abmeldeanfrage fehlgeschlagen — die Abmeldeseite wird stattdessen geöffnet",
 				"requestSent": "Abmeldeanfrage gesendet",
 				"theSender": "den Absender",
@@ -5644,7 +5646,7 @@
 			"postboxSubscriptionsPanel": {
 				"action": "Abmelden und archivieren | Abmelden und archivieren ({count})",
 				"clearSelection": "Auswahl aufheben",
-				"confirm": "Von {count} Absender abmelden und deren Post archivieren?",
+				"confirm": "Von {count} Absender abmelden und dessen Post archivieren? | Von {count} Absendern abmelden und deren Post archivieren?",
 				"empty": "Keine Abonnements gefunden.",
 				"emptyHint": "Newsletter und andere Listenpost erscheinen hier, sobald welche ankommt.",
 				"heading": "Abonnements",
@@ -13237,7 +13239,8 @@
 				"draftsResumed": "Entwürfe fortgesetzt",
 				"applied": "{count} Vorschlag übernommen | {count} Vorschläge übernommen"
 			},
-			"confirmUnsubscribe": "Von {name} abmelden? Ihre Mails werden ab jetzt archiviert.",
+			"confirmUnsubscribe": "Von {name} abmelden?",
+			"confirmUnsubscribeBody": "Ihre Mails werden ab jetzt archiviert.",
 			"shortcuts": {
 				"autoArchive": "Mails dieses Absenders automatisch archivieren",
 				"unsubscribe": "Von diesem Absender abmelden"
@@ -15801,7 +15804,8 @@
 				"moveOperation": "Nachrichten verschieben",
 				"unsubscribeOperation": "Bündel abbestellen",
 				"undoArchived": "{count} Nachrichten archiviert",
-				"unsubscribeConfirm": "{count} Absender abbestellen und ihre Mail archivieren? Jede Abmeldung ist eine Anfrage in deinem Namen."
+				"unsubscribeConfirm": "Von {count} Absender abmelden und dessen Mail archivieren? | Von {count} Absendern abmelden und deren Mail archivieren?",
+				"unsubscribeConfirmBody": "Jede Abmeldung ist eine Anfrage in deinem Namen."
 			},
 			"usePostboxTriageSuggestion": {
 				"createRule": "Regel aus Vorschlag erstellen",
