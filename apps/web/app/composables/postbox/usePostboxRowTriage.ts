@@ -230,9 +230,9 @@ export function usePostboxRowTriage(args: {
 	}
 
 	/**
-	 * A committed swipe on a row (UX plan idea 21). It is a fourth ENTRY POINT, not
-	 * a fourth implementation: every branch lands on the verb the hover buttons,
-	 * the context menu and the single-key shortcuts already call, so the optimistic
+	 * A committed swipe on a row. It is a fourth ENTRY POINT, not a fourth
+	 * implementation: every branch lands on the verb the hover buttons, the
+	 * context menu and the single-key shortcuts already call, so the optimistic
 	 * hide and the "Undo — Cmd+Z" registration come along for free. Snooze opens
 	 * the same picker `h` does — a deferral needs a time, and guessing one from a
 	 * gesture is how mail disappears until Thursday.

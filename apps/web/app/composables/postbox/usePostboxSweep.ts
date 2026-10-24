@@ -46,7 +46,10 @@ export interface PostboxSweepCommit {
 }
 
 export interface PostboxSweepOptions {
-	/** Every loaded row id in display order, read fresh on each move. */
+	/**
+	 * Every loaded row id in display order, read fresh on each move. Reactive:
+	 * a change that alters the covered range mid-sweep cancels the sweep.
+	 */
 	orderedIds: () => readonly string[];
 	/** The element whose `[data-sweep-row]` descendants are the rendered rows. */
 	listEl: () => HTMLElement | null | undefined;
@@ -125,10 +128,23 @@ export function usePostboxSweep(options: PostboxSweepOptions) {
 		if (state?.phase === 'sweeping') retarget(state.lastY);
 	}
 
+	/**
+	 * The range as it resolves now, if it is still exactly the rows the preview
+	 * showed; null once a live update has changed it (a row inserted between the
+	 * ends, one reordered into or out of the interval, a covered row removed).
+	 */
+	function previewedRange(): string[] | null {
+		const ids = resolve();
+		const shown = swept.value;
+		return ids.length === shown.size && ids.every((id) => shown.has(id)) ? ids : null;
+	}
+
 	function onPointerup(event: PointerEvent) {
 		if (!state || event.pointerId !== state.pointerId) return;
 		const finished = state;
-		const ids = finished.phase === 'sweeping' ? resolve() : [];
+		// Release applies what the pill and the marks promised, never a range the
+		// person did not see: a list that changed under a still pointer applies nothing.
+		const ids = finished.phase === 'sweeping' ? (previewedRange() ?? []) : [];
 		// Released before moving: an ordinary click, left alone.
 		if (finished.phase !== 'pressed') swallowNextClick();
 		detach();
@@ -240,6 +256,13 @@ export function usePostboxSweep(options: PostboxSweepOptions) {
 	);
 
 	watch(options.scopeKey, () => cancel());
+
+	// A live update can move rows under a pointer that is not moving. Re-aiming
+	// silently could slip unseen rows into the range just before release, so a
+	// sweep whose covered rows changed is cancelled instead (the pill goes away).
+	watch(options.orderedIds, () => {
+		if (state?.phase === 'sweeping' && previewedRange() === null) cancel();
+	});
 
 	onScopeDispose(() => {
 		detach();

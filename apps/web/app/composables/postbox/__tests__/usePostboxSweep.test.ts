@@ -258,6 +258,49 @@ describe('usePostboxSweep', () => {
 		expect(commits).toEqual([]);
 	});
 
+	it('cancels when a live update inserts a row inside the previewed range', async () => {
+		const sweep = mountSweep();
+		drag(sweep, 'archive', 1, 3);
+		expect(sweep.status.value?.count).toBe(3);
+		order.value = ['a', 'b', 'x', 'c', 'd', 'e'];
+		await nextTick();
+		expect(sweep.status.value).toBeNull();
+		expect(sweep.markOf('b')).toBeNull();
+		release(3);
+		expect(commits).toEqual([]);
+		// The button was still down: the click it leaves behind is swallowed.
+		expect(click()).toBe(true);
+	});
+
+	it('cancels when a live update reorders a row into the previewed range', async () => {
+		const sweep = mountSweep();
+		drag(sweep, 'archive', 1, 3);
+		order.value = ['a', 'b', 'e', 'd', 'c'];
+		await nextTick();
+		expect(sweep.status.value).toBeNull();
+		release(3);
+		expect(commits).toEqual([]);
+	});
+
+	it('applies nothing when the range changed in the same tick as the release', () => {
+		const sweep = mountSweep();
+		drag(sweep, 'archive', 1, 3);
+		// No nextTick: the order watcher has not run yet, release must still refuse.
+		order.value = ['a', 'b', 'x', 'c', 'd', 'e'];
+		release(3);
+		expect(commits).toEqual([]);
+	});
+
+	it('keeps sweeping when a live update leaves the covered rows alone', async () => {
+		const sweep = mountSweep();
+		drag(sweep, 'archive', 1, 3);
+		order.value = ['new', 'a', 'b', 'c', 'd', 'e'];
+		await nextTick();
+		expect(sweep.status.value?.count).toBe(3);
+		release(3);
+		expect(commits[0]?.ids).toEqual(['b', 'c', 'd']);
+	});
+
 	it('resolves the range against the whole row order, not just the mounted rows', () => {
 		// A windowed list mounts a slice; the rows between two mounted ones that
 		// are loaded but not rendered still belong to the range.
