@@ -11,9 +11,9 @@
  * window, over the same `by_period` index the sweep walks. There is no gate read
  * here — a `getMicrosoftGateInput` internalQuery and the pure gate beside it
  * shipped ahead of a controller that never consumed either, and both were
- * removed under D20 (issue #515) rather than given an invented caller.
+ * removed rather than given an invented caller.
  *
- * D2 — ADDITIVE ONLY. Nothing here throws on an absent enrolment: with no feed
+ * ADDITIVE ONLY. Nothing here throws on an absent enrolment: with no feed
  * configured the poller returns early, no row is ever written, and the Microsoft
  * cell runs on the `microsoft_snds` substitution the degradation matrix already
  * applies. SNDS can only lower measurement confidence and slow that cell's ramp,
@@ -76,7 +76,7 @@ function isStorableObservation(
  *
  * BATCHING IS THE CALLER'S CONTRACT. `sndsPoll.poll` slices at
  * `SNDS_INGEST_BATCH_SIZE` before it calls, and it is the only caller. A second
- * cap here would be a seam with no user (D20) and — since the argument validator
+ * cap here would be a seam with no user and — since the argument validator
  * cannot bound an array's length — it would not protect the transaction from a
  * large argument anyway, only from a large loop.
  */

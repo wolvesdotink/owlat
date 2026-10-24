@@ -3,11 +3,11 @@
  * asked about. Four round trips per labelled message, mirroring where each
  * judgment sits in the target call flow:
  *
- *   - `mail.triage`: message only, before any retrieval (D11);
+ *   - `mail.triage`: message only, before any retrieval;
  *   - `mail.category`: category and reply disposition in ONE bundle, over the
  *     same message-only state (Phase 2 bundles questions that share a state
  *     instead of resending it);
- *   - `mail.necessity`: whether the owner must be asked before a reply (D5);
+ *   - `mail.necessity`: whether the owner must be asked before a reply;
  *   - `mail.draft_quality`: one per labelled draft (Phase 4).
  *
  * Triage and the two message bundles are the production sets from
@@ -144,7 +144,7 @@ function messageState(input: DecisionEvalInput): DecisionState {
 }
 
 /**
- * The message-only state triage and the message bundles read (D11: before
+ * The message-only state triage and the message bundles read (before
  * retrieval and interpretation), built exactly as production builds it.
  */
 export function triageState(input: DecisionEvalInput): DecisionState {

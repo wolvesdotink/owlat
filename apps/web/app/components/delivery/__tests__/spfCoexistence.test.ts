@@ -12,7 +12,7 @@
  * that exceeds the 10-lookup limit once the relay include is merged in (which
  * must name the include to flatten); a missing DKIM selector; and DMARC that
  * does not align. Plus the two states that must never be laundered into a
- * verdict: an unresolvable lookup, and no reference transport at all (D2).
+ * verdict: an unresolvable lookup, and no reference transport at all.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AlignmentCheckId } from '@owlat/shared/deliverabilityAlignment';
@@ -139,7 +139,7 @@ describe('wizard alignment — live DNS', () => {
 		expect(row.detail).toContain('servfail');
 	});
 
-	it('passes trivially with no reference transport — absence is supported (D2)', async () => {
+	it('passes trivially with no reference transport — absence is supported', async () => {
 		stubDoh(ALIGNED_DNS);
 		const result = await runAlignmentProbe(OWN_ARM, { kind: 'none' }, 1_700_000_000_000);
 		expect(result.verdict).toBe('single_arm');

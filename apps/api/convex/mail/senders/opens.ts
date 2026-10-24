@@ -1,5 +1,5 @@
 /**
- * First opens (SPEC §5): the implementation behind the `recordFirstOpen` hook
+ * First opens: the implementation behind the `recordFirstOpen` hook
  * and the two events that may call it.
  *
  *   - `markOpened({messageId})`: the reader showed this message open. Called

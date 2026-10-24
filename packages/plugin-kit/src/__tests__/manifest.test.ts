@@ -218,7 +218,7 @@ describe('plugin manifest validation', () => {
 	});
 
 	it('rejects the withdrawn channelAdapters bucket as an unknown contribution kind', () => {
-		// D10 withdrew the reservation with the stub `ChannelAdapter` surface it
+		// The reservation is gone with the stub `ChannelAdapter` surface it
 		// named. A reservation is only free while it points at something real, so
 		// the name must now fail the same way any typo does — a manifest that
 		// declares it learns immediately rather than shipping an inert bucket.

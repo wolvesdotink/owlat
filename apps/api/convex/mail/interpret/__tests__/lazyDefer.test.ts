@@ -91,7 +91,7 @@ async function deliver(
 async function seed(t: Test, mailbox: MailboxSeed = {}) {
 	const mailboxId = await seedMailbox(t, { address: 'me@owlat.test', ...mailbox });
 	for (const role of ['inbox', 'archive'] as const) await seedFolder(t, mailboxId, role);
-	// D10 as it stands: read on arrival is off (SPEC §2.1; on, the run reads it now).
+	// The deferral: read on arrival is off (on, the run reads it now).
 	await t.run(async (ctx) => {
 		const owner = (await ctx.db.get(mailboxId))!.userId;
 		await ctx.db.insert('mailUserSettings', {
@@ -131,7 +131,7 @@ const deliverToArchive = (t: Test, mailboxId: Id<'mailboxes'>, messageId?: strin
 		})
 	);
 
-describe('D10: display-only interpretation is deferred', () => {
+describe('display-only interpretation is deferred', () => {
 	it('defers a personal delivery whose only consumer is the reader', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seed(t);
@@ -300,7 +300,7 @@ describe('D10: display-only interpretation is deferred', () => {
 	});
 });
 
-describe('D10: every other consumer keeps the eager run', () => {
+describe('every other consumer keeps the eager run', () => {
 	it('a shared mailbox (actions mode)', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seed(t, { scope: 'shared' });

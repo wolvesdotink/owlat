@@ -35,7 +35,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
  * by construction, so a bucket added tomorrow is verified with no edit here.
  *
  * The same reasoning applies one level DOWN. A contribution can carry a second
- * executable half on a named field — the send transport's `webhook` (D6) is the
+ * executable half on a named field — the send transport's `webhook` is the
  * first — and that half is imported into generated Convex code exactly like the
  * primary one, so it must be provenance-verified exactly like the primary one.
  * Nested fields are therefore walked structurally too, in sorted field order for

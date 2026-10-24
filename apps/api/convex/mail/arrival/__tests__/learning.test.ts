@@ -1,5 +1,5 @@
 /**
- * Learning without asking (SPEC §4.3): unread archives by a person become
+ * Learning without asking: unread archives by a person become
  * versioned evidence, sessions gate like triageTally, the learned digest is an
  * undoable operation with a one-time notice, undo leaves a "do not relearn"
  * sentinel, a reply reverses a learned digest, and a `user` status is never

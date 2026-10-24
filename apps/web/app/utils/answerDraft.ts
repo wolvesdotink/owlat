@@ -104,8 +104,8 @@ export function isAlreadyAnsweredRefusal(op: OperationError): boolean {
 const MESSAGE_HELD_BY_GUARD = 'MESSAGE_HELD_BY_GUARD';
 
 /**
- * Whether a failed `composeDraft.start` (or `answer`) is the guard's refusal
- * (D13, #1339): the message this reply answers was quarantined, carried
+ * Whether a failed `composeDraft.start` (or `answer`) is the guard's refusal:
+ * the message this reply answers was quarantined, carried
  * malware or a malicious link, or the safety check flagged it. There is no
  * AI draft for it; the person can still write the reply.
  */

@@ -1,5 +1,5 @@
 /**
- * Offline outbox flow (adoption-gaps D8, piece E2) — the queue+drain seam
+ * Offline outbox flow — the queue+drain seam
  * between usePostboxCompose.send() and usePostboxOfflineOutbox.
  *
  *   - an offline send enqueues the FULL payload and returns a synthetic

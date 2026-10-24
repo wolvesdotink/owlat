@@ -1,5 +1,5 @@
 /**
- * The interpretation eval run (SPEC §9, plan §14): replays the corpus through
+ * The interpretation eval run: replays the corpus through
  * scope, segmentation and grounding, with a model when one is supplied and the
  * labels themselves (the oracle) otherwise, and scores the result:
  *   - recall: labelled obligations an accepted item covers (quote spans overlap);

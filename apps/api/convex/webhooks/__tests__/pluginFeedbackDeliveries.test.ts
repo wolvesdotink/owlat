@@ -1,5 +1,5 @@
 /**
- * The replay claim, against a real database (the seams plan's D6/P2.2).
+ * The replay claim, against a real database.
  *
  * The route suite proves the ROUTE refuses a delivery the claim mutation
  * rejects. This proves the mutation itself does the rejecting — the property the

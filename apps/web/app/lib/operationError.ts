@@ -130,7 +130,7 @@ export function operationCopy(
 ): OperationCopy {
 	const treatment = TREATMENT[op.category];
 	if (treatment.genericCopyKey) return { key: treatment.genericCopyKey };
-	// D1 / U5: a spend-admission refusal reads as the budget sentence for its
+	// A spend-admission refusal reads as the budget sentence for its
 	// reason, in the reader's language, on every surface that shows it.
 	const budgetReason = budgetReasonOf(op);
 	if (budgetReason) return { key: BUDGET_REASON_KEYS[budgetReason] };

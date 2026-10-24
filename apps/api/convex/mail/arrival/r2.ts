@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.2): R2, the category refinement extended to work
+ * Read on arrival: R2, the category refinement extended to work
  * per message. `mail/ai/categoryClassify.ts` gets the delivered message's id;
  * besides the thread category it answers THAT message's pending rule
  * questions, read with the rules hook `listArrivalAiQuestions`, from that

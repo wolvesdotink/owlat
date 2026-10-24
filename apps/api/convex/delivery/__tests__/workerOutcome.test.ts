@@ -107,7 +107,7 @@ describe('what the flat-boolean shape let through and the wire does not', () => 
 			},
 		],
 		[
-			// D4, structurally: the park exists BECAUSE the lost response may sit on
+			// Ambiguous timeouts park, structurally: the park exists BECAUSE the lost response may sit on
 			// top of a delivered message. An envelope on this arm is a re-dispatch
 			// waiting to happen, and the wire is where that is refused.
 			'a park carrying something to re-dispatch from',

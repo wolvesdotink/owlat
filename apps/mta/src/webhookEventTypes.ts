@@ -2,7 +2,7 @@
  * The MTA -> Convex webhook EVENT payload types, AS THIS SERVICE PRODUCES THEM.
  *
  * The field set itself is not declared here any more: it lives once in
- * `@owlat/mta-protocol` (D7), which both ends of the wire import. What this
+ * `@owlat/mta-protocol`, which both ends of the wire import. What this
  * module still owns is the one thing that is genuinely local — the SHAPE of the
  * three nested blobs the MTA builds and Convex only re-parses (`inboundPayload`,
  * `mailboxPayload`, `routingReentry`). Binding them to this service's own parsed

@@ -64,7 +64,7 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *     personal mailbox), written before the category check so the category
  *     lands in it, and the thread's projection once everything is in
  *     (`../arrival/records.ts`, `../arrival/projection.ts`).
- *   - Interpretation (the thread brief, SPEC §5): the classify above
+ *   - Interpretation (the thread brief): the classify above
  *     interprets the delivered message; other live mail that could be
  *     eligible is scheduled on its own (`../interpret/enqueue.ts`). Either way
  *     the brief reads "pending" until the run lands.
@@ -84,7 +84,7 @@ export async function runPostInsertInboundEffects(
 		folder: Doc<'mailFolders'>;
 		origin: InboundOrigin;
 		antiLoopHeaders?: Record<string, string>;
-		/** What the live-ingest rules pass decided for the record (lane rules, SPEC §6.2). */
+		/** What the live-ingest rules pass decided for the record (lane rules). */
 		arrival?: ArrivalRecordSeed;
 	}
 ): Promise<void> {
@@ -95,7 +95,7 @@ export async function runPostInsertInboundEffects(
 
 	const precedence = antiLoopHeaders?.['precedence'];
 	const listId = antiLoopHeaders?.['list-id'];
-	// Read on arrival (SPEC §2.8): the arrival record, before the category
+	// Read on arrival: the arrival record, before the category
 	// check below writes its category into it.
 	const record = await writeArrivalRecord(ctx, delivered, { isLive, ...params.arrival });
 	const isClassifyQueued = queuesNeedsReplyCheck(origin, folder, delivered.folderId);
@@ -116,7 +116,7 @@ export async function runPostInsertInboundEffects(
 			messageId,
 		});
 	}
-	// R2 also answers this message's pending rule questions (SPEC §6.2) and
+	// R2 also answers this message's pending rule questions and
 	// the cold-pitch question (#1381): per message, also when the heuristic
 	// settled the category without the model (a heuristic label does not keep
 	// a pitch out of Needs you).

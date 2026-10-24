@@ -15,7 +15,7 @@ import { useProfileSync } from '~/composables/useProfileSync';
 import { createTestI18n } from '~/__tests__/i18n';
 
 /**
- * Plan D4 — apply is explicit, not automatic. Toggling a flag persists it in
+ * Apply is explicit, not automatic. Toggling a flag persists it in
  * Convex only; when the toggle changes the derived docker-profile set, the
  * "Services out of sync — Apply & restart" banner surfaces (on the features
  * page for flag + pack toggles, and on the migration-mode card), Apply proxies

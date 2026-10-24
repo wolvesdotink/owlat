@@ -1,6 +1,5 @@
 /**
- * THE PLUGIN FEEDBACK ROUTE, ADVERSARIALLY (the seams plan's D6, wired by
- * P2.2).
+ * THE PLUGIN FEEDBACK ROUTE, ADVERSARIALLY.
  *
  * `/webhooks/plugin/<pluginId>` is the only unauthenticated, internet-facing
  * write path the plugin platform has, and everything behind it — suppression

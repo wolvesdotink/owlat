@@ -93,7 +93,7 @@ export const envelopeInputValidator = v.union(
 		// opaque id, same `X-Owlat-Seed-Probe` header, same ledger row.
 		//
 		// `sendId` is what makes a transactional send countable, and a probe never
-		// carries one — the probe ledger row is its ONLY durable record (D18). It
+		// carries one — the probe ledger row is its ONLY durable record. It
 		// is still a durable reference, which is what the governed boundary needs:
 		// `seedProbeRef` takes `sendId`'s place there, and nowhere else.
 		seedProbeId: v.optional(v.string()),

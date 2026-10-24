@@ -175,7 +175,7 @@ describe('decisionProvider — resolution order', () => {
 		expect(plane.source).toBe('stored');
 	});
 
-	it('marks an unrecognised DECISION_PROVIDER unavailable rather than answering through the default (D3)', async () => {
+	it('marks an unrecognised DECISION_PROVIDER unavailable rather than answering through the default', async () => {
 		vi.stubEnv('DECISION_PROVIDER', 'typesaef');
 		vi.stubEnv('TYPESAFE_API_KEY', 'env-key');
 		const { ctx } = makeCtx(null);
@@ -258,7 +258,7 @@ describe('decisionProvider — resolution order', () => {
 	});
 });
 
-describe('decisionProvider — an explicit provider that cannot answer is terminal (D3)', () => {
+describe('decisionProvider — an explicit provider that cannot answer is terminal', () => {
 	beforeEach(() => {
 		__resetDecisionPlaneCacheForTests();
 		vi.unstubAllEnvs();

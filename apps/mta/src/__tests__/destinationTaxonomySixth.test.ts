@@ -1,12 +1,12 @@
 /**
- * P4.2 / D8 — the sixth provider, injected for real.
+ * The sixth provider, injected for real.
  *
  * `destinationTaxonomy.test.ts` proves every consumer agrees on the key for
- * every domain. It cannot prove the OTHER half of D8 — that a provider added to
+ * every domain. It cannot prove the OTHER half of the one-declaration rule — that a provider added to
  * the one declaration reaches every consumer — because a consumer that re-forked
  * its own five-key list still agrees with a five-key taxonomy. A test that loops
  * over the shared constant and asserts the consumer round-trips each entry stays
- * green through exactly the regression D8 exists to prevent.
+ * green through exactly the regression the one declaration exists to prevent.
  *
  * So this suite widens the declaration itself: `DESTINATION_PROVIDER_KEYS` is
  * mocked to carry a sixth key, and the consumers that ENUMERATE the taxonomy
@@ -32,7 +32,7 @@ import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting
  *
  * `shipped` is the UNMOCKED list, captured by that same factory. Every
  * expectation about the widened list is derived from it, so the day a real sixth
- * provider joins `DESTINATION_PROVIDER_KEYS` — the exact change D8 exists to
+ * provider joins `DESTINATION_PROVIDER_KEYS` — the exact change the one declaration exists to
  * make safe — this file keeps asserting "the shipped taxonomy plus one" instead
  * of failing on a stale literal.
  */

@@ -1,5 +1,5 @@
 /**
- * THE UNTYPED TIER CANNOT DECLARE CUSTODY (plan P0.1 / D2).
+ * THE UNTYPED TIER CANNOT DECLARE CUSTODY.
  *
  * `CoreSendProviderCatalogEntry` makes `acceptanceSemantics: 'accepted'` and
  * `messageIdSource: 'idempotency-key'` a compile-time proposition for the five

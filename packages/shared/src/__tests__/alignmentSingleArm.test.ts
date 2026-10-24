@@ -1,5 +1,5 @@
 /**
- * THE D2 PROOF — the additive-only third-party rule, at the single easiest place
+ * THE ABSENCE PROOF — the additive-only third-party rule, at the single easiest place
  * in the plan to accidentally make an ESP mandatory.
  *
  * With NO reference transport there is no second arm and therefore nothing to

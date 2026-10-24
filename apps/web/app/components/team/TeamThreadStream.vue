@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * A team thread as a conversation between colleagues (plan §4.3): the
+ * A team thread as a conversation between colleagues: the
  * customer's emails as written (gray), the team's replies (white, with an
  * arrow), internal notes (tinted, "Internal") and what happened as thin
  * system lines, in one order. Older entries load on "Show earlier".

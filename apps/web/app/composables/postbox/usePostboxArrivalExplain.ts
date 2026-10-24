@@ -66,7 +66,7 @@ export function usePostboxArrivalExplainState(): ExplainHost {
 }
 
 /**
- * Apply one Fix and say what it did, with Undo (SPEC §4.2, §4.4). Shared by the
+ * Apply one Fix and say what it did, with Undo. Shared by the
  * Fix dialog and the popover's "Always here".
  */
 export function usePostboxFixApply() {

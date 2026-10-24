@@ -94,6 +94,7 @@
 		"lint:page-headers": "bash scripts/check-page-headers.sh",
 		"lint:branding": "bash scripts/check-branding.sh",
 		"lint:format": "bash scripts/check-format.sh",
+		"lint:comment-policy": "bun scripts/check-comment-policy.ts",
 		"lint:imports": "bash scripts/check-cross-package-imports.sh",
 		"lint:providers": "bash scripts/check-provider-identity.sh",
 		"lint:ui-controls": "bun scripts/check-ui-controls.ts",

@@ -79,7 +79,7 @@ describe('toAssessment — the planner-verdict mapping', () => {
 
 	/**
 	 * An under-counted audience is its OWN fact, not a truncated plan. Folding
-	 * the two made a five-day schedule render as "more than 60 days" (D14).
+	 * the two made a five-day schedule render as "more than 60 days".
 	 */
 	it('marks an under-counted audience without forging a truncated plan', () => {
 		const plan = {

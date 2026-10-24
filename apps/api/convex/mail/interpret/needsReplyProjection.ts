@@ -1,5 +1,5 @@
 /**
- * The Postbox projection of an interpretation (SPEC §5 "Postbox"): turn a run's
+ * The Postbox projection of an interpretation: turn a run's
  * {@link NeedsReplyProjection} into the `mailThreads.needsReply` write the
  * classifier used to make from its own refinement call.
  *

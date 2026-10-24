@@ -1,5 +1,5 @@
 /**
- * Read on arrival, the run's side (SPEC §2.3): which runs are arrival reads,
+ * Read on arrival, the run's side: which runs are arrival reads,
  * the depth decision once the message is scoped (`arrivalDecide.ts`), and
  * the answers a run gives for the outcomes that end it there.
  *

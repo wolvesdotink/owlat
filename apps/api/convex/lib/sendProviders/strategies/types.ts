@@ -85,8 +85,8 @@ export interface SendRouteStrategyModule<K extends SendRouteStrategyKind> {
 	 * health statuses, return the chosen provider — or null if no
 	 * candidate is selectable (caller falls back).
 	 *
-	 * `mix` is the per-RECIPIENT context `adaptive_mix` splits against (plan
-	 * D7) — either a recipient to decide for or an already-recorded arm to
+	 * `mix` is the per-RECIPIENT context `adaptive_mix` splits against
+	 * — either a recipient to decide for or an already-recorded arm to
 	 * replay. It is optional and the shipped three ignore it: a strategy that
 	 * does not split per recipient has no use for one, and every caller that
 	 * has no recipient in hand (health probes, preflight) supplies none.

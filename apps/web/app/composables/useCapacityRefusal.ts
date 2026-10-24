@@ -11,8 +11,8 @@ import {
  *
  * Pre-flight refuses a campaign that provably cannot finish inside the MTA's
  * message-retention horizon and attaches the schedule it WOULD take. That is
- * not a fault — it is an offer, and the deliverability plan (D14) is explicit
- * that a multi-day send is a normal, visible state for a warming deployment,
+ * not a fault — it is an offer: a multi-day send is a normal,
+ * visible state for a warming deployment,
  * never an error and never a surprise. Claiming the failure here is what keeps
  * it off the generic red `invalid_state` toast.
  *

@@ -741,7 +741,7 @@ describe('the screen picks the evaluator the controller picked', () => {
 	 *
 	 * Now both readers grade both arms over the controller's span, so the VERDICT
 	 * and the DECIDING GATE are the same object on both sides — while the arm the
-	 * card renders is still the seven days plan D2/D5 asks for, spike included.
+	 * card renders is still the seven-day week, spike included.
 	 * That split is the whole fix, so it is asserted in one test: same verdict,
 	 * different reported counters, and the query naming both spans on the wire.
 	 */

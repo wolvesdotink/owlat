@@ -78,7 +78,7 @@ function toSource(message: Doc<'mailMessages'>): SourceMessage {
 /** "The Verge", else the sender's domain ("substack.com"), else the address. */
 /**
  * The thread brief's "Latest update" line in the reader's language, or null.
- * Personal mailboxes only: a shared one never shows a latest line (SPEC §7).
+ * Personal mailboxes only: a shared one never shows a latest line.
  */
 async function latestLineOf(
 	thread: Doc<'mailThreads'>,

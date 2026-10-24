@@ -1,5 +1,5 @@
 /**
- * The reducer's in-memory fold, pure (SPEC §4, review round 4 M1/M2): plans
+ * The reducer's in-memory fold, pure (review round 4 M1/M2): plans
  * from `reducePlan.ts` applied to a copy of the thread's items and facts;
  * `reduceWrite.ts` writes the difference.
  *

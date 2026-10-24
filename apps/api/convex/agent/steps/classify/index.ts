@@ -9,7 +9,7 @@
  * response at all. The same call detects the sender's language (the draft
  * step writes the reply in it) and scores how much the recipient needs to know
  * about the message. It no longer writes a summary for the Updates dashboard
- * (D7, thread brief): Updates rows show the subject and the first lines of the
+ * (thread brief): Updates rows show the subject and the first lines of the
  * message, and old rows' stored summaries are left alone (the validator keeps
  * the field optional).
  *
@@ -239,7 +239,7 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 
 		// Phase 2: the category and disposition bundle runs BESIDE this
 		// classifier, scheduled and compared with what it decided; nothing it
-		// answers reaches `route` (D9). Off by default: nothing is scheduled.
+		// answers reaches `route`. Off by default: nothing is scheduled.
 		await scheduleTeamMessageBundle(ctx, input.inboundMessageId, {
 			baseline: {
 				category: output.category,

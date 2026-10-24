@@ -6,7 +6,7 @@
  * Builds the briefing string the LLM steps consume: contact profile,
  * recent activities, thread history, current message. Token-budgeted
  * with three compaction tiers (normal / compacted / emergency). Node-only:
- * the history runs the late guard (D13); every caller is Node already.
+ * the history runs the late guard; every caller is Node already.
  */
 
 import type { Infer } from 'convex/values';
@@ -186,7 +186,7 @@ export async function assembleInboundBriefing(
 		}
 	}
 
-	// 3. Thread history (previous messages in this conversation). D13 / #1339: a
+	// 3. Thread history (previous messages in this conversation). Guard placement: a
 	// message the guard rejected is left out; one whose guard was skipped is
 	// guarded first (security_scan/guard.ts `guardedHistory`).
 	if (message.threadId) {

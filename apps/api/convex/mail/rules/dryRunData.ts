@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.2): the data half of "Test on recent mail". The
+ * Read on arrival: the data half of "Test on recent mail". The
  * rule under test (a draft on screen, or a saved filter) is evaluated against
  * the newest 50 Inbox messages with the SAME deterministic predicate delivery
  * uses (`filtersEval.ts`), from the stored fields. The AI condition is left

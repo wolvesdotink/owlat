@@ -5,7 +5,7 @@
  *
  *   (a) ROUND-TRIP with E3 — a message sealed by `sealMime` (E3) opens via
  *       `openSealed` (E4): the body decrypts, the signature verifies against the
- *       sender key, and the protected headers (real Subject + bodies, D4) are
+ *       sender key, and the protected headers (real Subject + bodies) are
  *       restored byte-equal.
  *   (b) FAILURE HONESTY — a decrypt against the WRONG sender key still opens but
  *       reports `signatureValid: false` (UNVERIFIED, never "verified"); a decrypt
@@ -266,7 +266,7 @@ describe('e2ee/open · GnuPG interop (gpg-generated fixtures)', () => {
 			readFileSync(gnupgFixturePath('inner-protected-headers.eml'))
 		);
 
-		// Protected headers restored (D4): the real subject + BOTH body branches
+		// Protected headers restored: the real subject + BOTH body branches
 		// travelled inside the ciphertext; the outer `.eml` carries only `Subject: ...`.
 		const restored = parseInnerMessage(outcome.innerMime);
 		expect(restored.subject).toBe('GnuPG sealed interop figures');

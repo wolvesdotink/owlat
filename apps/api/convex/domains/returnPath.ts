@@ -1,5 +1,5 @@
 /**
- * Per-domain VERP return-path host — public write surface (D1/D2).
+ * Per-domain VERP return-path host — public write surface.
  *
  * Split out of `domains/domains.ts` (CONVENTIONS.md: split a feature file once it
  * grows past ~500 LOC). This is the thin, admin-gated public shell over the
@@ -17,7 +17,7 @@ import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 import { LIFECYCLE_USER_PUBLIC_MUTATION } from './lifecycle';
 
 // Mutation: Set (or change) the domain's per-domain VERP return-path host
-// (D1/D2). Delegates to the lifecycle's `setReturnPathHost`, which regenerates
+// on the MTA. Delegates to the lifecycle's `setReturnPathHost`, which regenerates
 // the `mailFrom` SPF record on the new host, drops the domain to `pending` for
 // re-verification, and reflects the host to the MTA. Admin-gated
 // (`organization:manage`) to match the other domain-management writes.

@@ -1,5 +1,5 @@
 /**
- * Undo (SPEC §4.4): pages of ≤100 change rows, each restored only while its
+ * Undo: pages of ≤100 change rows, each restored only while its
  * value (and, for threads, records and senders, its operation marker) still
  * matches; skipped rows make the operation `undo_partial`. Delayed actions the
  * operation created are cancelled and projections recomputed.

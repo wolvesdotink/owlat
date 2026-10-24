@@ -144,7 +144,7 @@ const showSpamBanner = computed(
 		(msg.value.spamVerdict === 'spam' || (!reader.authEnabled && msg.value.dmarcResult === 'fail'))
 );
 
-// A cited quote (plan §4.2): bring the message into view; the body marks the
+// A cited quote: bring the message into view; the body marks the
 // words, or reports that it could not find that exact passage.
 const sectionEl = ref<HTMLElement | null>(null);
 const isCiteMissed = ref(false);
@@ -418,7 +418,7 @@ const renderToggleLabel = computed(() =>
 			:signature="shownSignature"
 			:omits-content="signedView.kind === 'signed' && signedView.omitsContent"
 		/>
-		<!-- Off-screen bodies wait as a sized placeholder until near the viewport (plan D8). -->
+		<!-- Off-screen bodies wait as a sized placeholder until near the viewport. -->
 		<PostboxLazyBody
 			v-else
 			:message-id="msg._id"

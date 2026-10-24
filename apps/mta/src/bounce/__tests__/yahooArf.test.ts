@@ -231,7 +231,7 @@ describe('a Yahoo CFL report through the shipped ARF processor', () => {
 	// row here fails to compile — the same totality the ISP→cell map now gets from
 	// `satisfies`, applied to its coverage. It carries only the branded
 	// `User-Agent` and the expected cell: where each operator's own mailboxes live
-	// is declared ONCE, in `__tests__/helpers/destinationDomainCorpus.ts` (D8), so
+	// is declared ONCE, in `__tests__/helpers/destinationDomainCorpus.ts`, so
 	// a seventh token needs a domain in exactly one place.
 	const ISP_ROWS_BY_TOKEN: Record<
 		FblSourceIspToken,

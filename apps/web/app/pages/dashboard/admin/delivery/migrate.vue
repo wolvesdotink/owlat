@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Migrate from Mailchimp/Mandrill" — the runbook (plan §10) as a screen.
+ * "Migrate from Mailchimp/Mandrill" — the runbook as a screen.
  *
  * The five steps are the runbook's five steps, in its order: connect the key,
  * carry the history across, verify the sending domain at Mandrill, apply the

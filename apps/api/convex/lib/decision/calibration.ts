@@ -4,8 +4,8 @@
  * A decision verdict may feed the auto-send path only with compatible adapter
  * provenance and a valid task/language calibration stamp. "Valid" means the
  * artifact names the calibration revision that is checked in for its task and
- * language today. No report has been run against a real provider yet (SPEC §2
- * keeps that out of this release), so the registry is empty and every verdict
+ * language today. No report has been run against a real provider yet (this release
+ * leaves that out), so the registry is empty and every verdict
  * is uncalibrated. The gate therefore refuses any verdict that reaches it, and
  * none reaches it: {@link AUTO_SEND_VERDICT_TASKS} is empty.
  */
@@ -32,7 +32,7 @@ export function calibrationRevisionFor(
 
 /**
  * The decision tasks whose verdicts feed the auto-send path. EMPTY: no
- * decision output feeds auto-send in this release (D9). The writer lane's
+ * decision output feeds auto-send in this release. The writer lane's
  * auto-send contract adds a task here when a verdict starts feeding
  * `resolveAutoApproveScore`, and the gate then checks every such verdict.
  */

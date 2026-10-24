@@ -1,5 +1,5 @@
 /**
- * The pure core of an interpretation run (SPEC §4): everything between the
+ * The pure core of an interpretation run: everything between the
  * load and the reducer that needs no Convex context and no model, so the run
  * (`run.ts`), the verifier (`verify.ts`) and the eval (`__eval__/runEval.ts`)
  * share it.
@@ -142,7 +142,7 @@ function partyLabel(party: { email?: string; name?: string; isUs: boolean }): st
 }
 
 /**
- * The claims SPEC §4 sends to the verifier: consequential items and items the
+ * The claims sent to the verifier: consequential items and items the
  * reader owns (ownership, deadlines), closing transitions, and fact
  * supersessions. Pure.
  */
@@ -434,7 +434,7 @@ export function runStatusOf(input: {
 	isVerifyUnsendable?: boolean;
 	/** Claims past the per-message verify cap were not checked: unverified, never retried. */
 	isVerifyCapped?: boolean;
-	/** Claim checks are enforced and the decision provider cannot answer (D3): never retried. */
+	/** Claim checks are enforced and the decision provider cannot answer: never retried. */
 	isVerifyUnavailable?: boolean;
 	/** Scoping could not load the whole body (an excerpt stood in). */
 	isBodyIncomplete?: boolean;

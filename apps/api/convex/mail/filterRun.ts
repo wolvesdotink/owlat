@@ -51,7 +51,7 @@ const SAFE_ACTION_TYPES = new Set([
 	// section, so `mail/sections.ts` reads the mail back under "Everything else".
 	'pinToSection',
 	// sendToDigest / placeInUpdates / placeInNeedsMe / archiveAfter / notify are
-	// not retroactive: explicit no-ops here, handled by lane rules (SPEC §6.3).
+	// not retroactive: explicit no-ops here, handled by lane rules.
 ]);
 
 /**

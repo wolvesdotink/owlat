@@ -58,7 +58,7 @@ export type ClarificationFlag = Omit<
  *      replies and keep only the slots they genuinely disagree on. A
  *      converging slot is a safe assumption and is dropped. A file request
  *      skips this stage (splitCandidateSlots): the samples all "attach" it.
- *      When the routing policy enforces D5, one necessity judgment replaces
+ *      When the routing policy enforces the necessity judgment, it replaces
  *      the samples and the judge (inbox/clarifyJudge.ts): no capable call.
  * Every survivor is deterministically sanitized (credential/OTP solicitations
  * dropped, attributed to the sender). FAIL-SOFT: any error returns undefined so
@@ -73,7 +73,7 @@ export async function refineClarification(
 		items?: readonly SlotItem<Id<'threadItems'>>[];
 		/** The message the clarification is for. */
 		root?: LlmRootContext;
-		/** The same message as the necessity judgment's subject (D5). */
+		/** The same message as the necessity judgment's subject. */
 		subject?: BundleSubject;
 	}
 ): Promise<ClarificationFlag | undefined> {
@@ -152,7 +152,7 @@ function postboxClarifySurface(
 		root,
 		// The necessity call replaces calls the pipeline held at its own priority.
 		priority: 'pipeline',
-		// A spend refusal is never a failed sample or judgment: the run defers (D1).
+		// A spend refusal is never a failed sample or judgment: the run defers.
 		onCallError: rethrowAdmissionRefusal,
 	};
 }
@@ -174,7 +174,7 @@ async function openSlotsToAsk(
 		const { judgment } = await judgeOpenSlots(ctx, surface, transcript, candidates);
 		return keptSlots(judgment, candidates);
 	} catch (error) {
-		rethrowAdmissionRefusal(error); // a refusal defers the run (D1); any other fault asks nothing
+		rethrowAdmissionRefusal(error); // a refusal defers the run; any other fault asks nothing
 		return [];
 	}
 }

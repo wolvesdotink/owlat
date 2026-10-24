@@ -49,7 +49,7 @@ interface AnswerContext extends AnswerDraftContext {
 	/** Where the automatic file search may look in the mailbox (Postbox only). */
 	mailboxScope?: MailboxAttachmentScope | undefined;
 	eagerness?: EagernessMode | undefined;
-	/** The message answered, for the necessity judgment (D5); absent for a fresh draft. */
+	/** The message answered, for the necessity judgment; absent for a fresh draft. */
 	decisionSubject?: BundleSubject | undefined;
 }
 
@@ -125,7 +125,7 @@ export async function loadAnswerContext(
 		threadId: target.threadId,
 		...(target.inboundMessageId ? { inboundMessageId: target.inboundMessageId } : {}),
 	});
-	// D13 / #1339: the message this reply answers reaches the gap check and the
+	// The message this reply answers reaches the gap check and the
 	// drafter only after the injection guard passes it (a skipped guard runs
 	// now). A message the guard rejected is refused outright: no briefing, and
 	// no fallback to its raw text.
@@ -138,7 +138,7 @@ export async function loadAnswerContext(
 	try {
 		context = (await assembleInboundBriefing(ctx, loaded.inboundMessageId)).context;
 	} catch (err) {
-		// A spend refusal (D1), a cached interpretation's included, is the
+		// A spend refusal, a cached interpretation's included, is the
 		// caller's budget error: no clarification or draft from the raw mail.
 		rethrowAdmissionRefusal(err);
 		logError('[composeDraft] team briefing failed, drafting from the message:', err);

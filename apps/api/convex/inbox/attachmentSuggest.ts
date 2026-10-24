@@ -99,7 +99,7 @@ export async function computeAttachmentSuggestions(
 
 		return { query, ambiguous: picked.ambiguous, candidates: picked.candidates };
 	} catch (error) {
-		rethrowAdmissionRefusal(error); // held, deferred or shown by the caller (D1)
+		rethrowAdmissionRefusal(error); // held, deferred or shown by the caller
 		// Fail-soft: no suggestion, no ask — today's behaviour.
 		return null;
 	}
@@ -172,7 +172,7 @@ export async function searchFilesForRequest(
 			});
 		}
 	} catch (error) {
-		rethrowAdmissionRefusal(error); // held, deferred or shown by the caller (D1)
+		rethrowAdmissionRefusal(error); // held, deferred or shown by the caller
 		// Fail-soft: no Files hits.
 	}
 	if (args.mailboxScope) {

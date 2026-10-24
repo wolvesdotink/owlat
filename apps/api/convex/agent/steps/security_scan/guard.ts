@@ -143,7 +143,7 @@ ${sample}
 		return object;
 	} catch (error) {
 		// Fail open — never let a flaky guard model block the pipeline. A budget
-		// refusal is not a flaky model: the caller holds or defers (D1).
+		// refusal is not a flaky model: the caller holds or defers.
 		rethrowAdmissionRefusal(error);
 		return undefined;
 	}
@@ -226,7 +226,7 @@ export function isGuardFlagged(
 }
 
 /**
- * D13's "guard required before autonomy" for a generative consumer that reads
+ * "Guard required before autonomy" for a generative consumer that reads
  * a stored Team message outside the pipeline: knowledge extraction (including
  * the first-enable backfill), thread interpretation, and a briefing's
  * conversation history. See {@link guardStanding}:

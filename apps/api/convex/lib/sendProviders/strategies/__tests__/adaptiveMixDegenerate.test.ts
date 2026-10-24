@@ -3,7 +3,7 @@
  *
  * DEGENERATE IS NORMAL here, not exceptional: `s = 0` is every cell before the
  * controller ever runs and every cell the relay is carrying, `s = 1` is every
- * standalone deployment (D3), a transactional send has no contact row, and a
+ * standalone deployment, a transactional send has no contact row, and a
  * fresh contact has no engagement score. Each of these is the COMMON case for
  * somebody, so each has to be exactly right rather than merely non-throwing.
  */
@@ -197,7 +197,7 @@ describe('adaptive_mix — strategy-level degeneracy', () => {
 		expect(Math.abs(shareOfArm(assignments, 'own') - 0.2)).toBeLessThan(0.04);
 	});
 
-	it('still sends when NO reference transport is configured (D2)', () => {
+	it('still sends when NO reference transport is configured', () => {
 		// The additive-only third-party rule: a standalone deployment with only
 		// the own MTA must send every message, whatever the share says. Absence
 		// of an external account lowers confidence; it never blocks a send.
@@ -232,7 +232,7 @@ describe('adaptive_mix — strategy-level degeneracy', () => {
 	])('clears the calibration flag on a ONE-ARMED route (%s)', (_label, entries) => {
 		// A calibration row is a member of a randomized COMPARISON. With one arm
 		// configured every slice member dispatches on the same transport, so the
-		// cohort would be one-armed — the bias D8 carves the slice out to avoid.
+		// cohort would be one-armed — the bias the slice is carved out to avoid.
 		// The strategy is the only module that can see both arms, so it is the
 		// one that clears the flag; the recorder copies it through.
 		let sawSliceMember = false;
@@ -256,7 +256,7 @@ describe('adaptive_mix — strategy-level degeneracy', () => {
 		// The cell axis never reaches the decision function: the classifier's
 		// answer selects WHICH cell's share is read, and an unclassifiable
 		// domain is dropped upstream. So an "unknown provider" is simply a cell
-		// with no state, which resolves to the D1 default of s = 1.
+		// with no state, which resolves to the default share of s = 1.
 		const noState: MixCellState = { ownShare: 1 };
 		expect(decideMixAssignment({ cell: noState, recipient: { contactId: 'c' } }).arm).toBe('own');
 	});

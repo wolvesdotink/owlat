@@ -1,5 +1,5 @@
 /**
- * Thread brief: the pure item rules (SPEC §3, plan §5) over the vocabulary in
+ * Thread brief: the pure item rules over the vocabulary in
  * `threadBrief.ts`: the state a user sees, the reaction an item offers, the
  * "For you" order, which proposals the verifier checks, and the reducer's
  * lifecycle edges.
@@ -75,7 +75,7 @@ interface ReactionChoice {
 	also: readonly ItemReaction[];
 }
 
-/** Plan §5's table: one primary reaction per intent + facets, the rest in the ⋯ menu. */
+/** The reaction table: one primary reaction per intent + facets, the rest in the ⋯ menu. */
 function chooseReactions(
 	intent: ItemIntent,
 	facets: readonly ItemFacet[],
@@ -103,7 +103,7 @@ function chooseReactions(
 	}
 }
 
-/** The one primary reaction an item shows (plan §5). */
+/** The one primary reaction an item shows. */
 export function primaryReaction(
 	intent: ItemIntent,
 	facets: readonly ItemFacet[],
@@ -113,7 +113,7 @@ export function primaryReaction(
 	return chooseReactions(intent, facets, responsibility, options).primary;
 }
 
-/** The reactions that sit in the item's ⋯ menu besides the primary one (plan §5 "Also in ⋯"). */
+/** The reactions that sit in the item's ⋯ menu besides the primary one. */
 export function secondaryReactions(
 	intent: ItemIntent,
 	facets: readonly ItemFacet[],
@@ -204,7 +204,7 @@ export interface ConsequentialInput {
 }
 
 /**
- * Whether an item proposal goes through the verifier (SPEC §4 verify): any
+ * Whether an item proposal goes through the verifier: any
  * consequence tag (payment, signature, access, disclosure, promise,
  * concession, cancellation), a promise, a payment/signature/access facet, a
  * stated amount, or a deadline. Missing tags are ambiguity, and ambiguity is
@@ -239,7 +239,7 @@ export function isLegalStatusEdge(from: ItemStatus, to: ItemStatus, actor: Activ
 }
 
 /**
- * Disposition edges (plan §5): `unanswered → answered | accepted | deferred |
+ * Disposition edges: `unanswered → answered | accepted | deferred |
  * declined`, and any → `failed` (the only send that carried it failed). Two
  * additions: a `failed` disposition is recomputed from the sends that remain
  * (back to `unanswered`, or to what a successful resend said), and a
@@ -253,7 +253,7 @@ export function isLegalDispositionEdge(from: ItemDisposition, to: ItemDispositio
 	return from === 'unanswered';
 }
 
-// ── Response plan stances (SPEC §6) ────────────────────────────────────────
+// ── Response plan stances ────────────────────────────────────────
 
 const ACCEPTING_FACETS: ReadonlySet<ItemFacet> = new Set<ItemFacet>([
 	'payment',
@@ -268,7 +268,7 @@ const ANSWERING_FACETS: ReadonlySet<ItemFacet> = new Set<ItemFacet>([
 ]);
 
 /**
- * The stances Answer mode offers for an item (plan §6): a decision is
+ * The stances Answer mode offers for an item: a decision is
  * accepted, declined, deferred or held for the owner's input ("Ask"); so is a
  * request with money, a signature or access in it, unless what it asks for is
  * a file or a meeting time, which is answered, declined or deferred, like a
@@ -295,13 +295,13 @@ export function stanceChoicesFor(
  * slot of the item is still unanswered (the owner has to supply something),
  * otherwise `answer`. A request is never accepted by default: accepting a
  * price, a deadline, a concession or a disclosure takes the owner's choice or a
- * policy (SPEC §6).
+ * policy.
  */
 export function defaultStance(options: { hasOpenSlot: boolean }): ResponseStance {
 	return options.hasOpenSlot ? 'clarify' : 'answer';
 }
 
-// ── Draft binding (SPEC §6) ────────────────────────────────────────────────
+// ── Draft binding ────────────────────────────────────────────────
 
 /** Whitespace-insensitive form of a draft: what a plan's hash and spans read. */
 export function normalizeDraftText(text: string): string {

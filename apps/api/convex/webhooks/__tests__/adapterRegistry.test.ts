@@ -19,7 +19,7 @@ import {
 } from '../adapters';
 
 /**
- * THE FEEDBACK-PLANE REGISTRY (the seams plan's D6 / P2.1).
+ * THE FEEDBACK-PLANE REGISTRY.
  *
  * Four thin `httpAction` files — one per provider, each naming an adapter and
  * doing nothing else — became one registry plus one parameterized dispatcher.
@@ -40,8 +40,8 @@ import {
  *  2. COVERAGE — every kind of the COMPOSED catalog that declares feedback is
  *     served by SOME feedback surface. Deliberately weaker than (1) and stated
  *     separately, because a bundled plugin transport's feedback does not belong
- *     in this registry at all (D6: `/webhooks/plugin/<pluginId>`, the seams
- *     plan's P2.2). Set-equality against the composed catalog would say the
+ *     in this registry at all (it has `/webhooks/plugin/<pluginId>`).
+ *     Set-equality against the composed catalog would say the
  *     opposite, and would say it as an instruction.
  *  3. IDENTITY — the key a route dispatches by IS the `source` the pipeline
  *     rate-limits and audits under, and the value behind it is a real adapter.
@@ -191,9 +191,9 @@ describe('the registry covers exactly the CORE kinds that declare feedback', () 
 		// EQUALITY, but only over the CORE tier. Against the COMPOSED catalog this
 		// would be a wrong statement waiting for its first counterexample: the day a
 		// bundled plugin transport declares feedback its events correctly arrive on
-		// `/webhooks/plugin/<pluginId>` and NOT here (D6), and a set-equality
+		// `/webhooks/plugin/<pluginId>` and NOT here, and a set-equality
 		// failure would read as an instruction to register a plugin kind in the core
-		// registry — precisely the conflation D6 forbids. The composed tier gets its
+		// registry — precisely the conflation to avoid. The composed tier gets its
 		// own, weaker statement below.
 		expect([...DECLARING_CORE_KINDS].sort()).toEqual([...REGISTERED_KINDS].sort());
 	});
@@ -221,9 +221,9 @@ describe('every declared feedback channel is served by some surface', () => {
 
 		// A bundled plugin transport. Its feedback surface is keyed by PLUGIN ID,
 		// not by kind — one route `/webhooks/plugin/<pluginId>` behind the hosted
-		// contribution authorization (D6, the seams plan's P2.2). Registering it
+		// contribution authorization (the seams plan's P2.2). Registering it
 		// here instead would give it a core route with no grant check, which is the
-		// conflation D6 exists to prevent. So what this asserts of a plugin kind is
+		// conflation to avoid. So what this asserts of a plugin kind is
 		// the prerequisite that surface needs: an id to be keyed by.
 		const entry = SEND_PROVIDER_CATALOG.find((candidate) => candidate.kind === kind);
 		expect(

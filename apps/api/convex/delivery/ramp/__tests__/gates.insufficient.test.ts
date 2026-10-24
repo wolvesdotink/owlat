@@ -1,5 +1,5 @@
 /**
- * MINIMUM SAMPLE is enforced, not advisory (plan D10). A gate returning a
+ * MINIMUM SAMPLE is enforced, not advisory. A gate returning a
  * verdict below its minimum sample is a defect: the controller must not
  * increase on thin data, and must not DECREASE on it either — which is why a
  * catastrophic rate over 5 sends still returns `insufficient_data`.
@@ -49,7 +49,7 @@ describeEquipped('gate 1 — hard bounce minimum sample', () => {
 		expect(result.reason).toBe('reference_sample_below_floor');
 	});
 
-	it('holds when there is no reference arm at all — absence is never a failure (D2)', () => {
+	it('holds when there is no reference arm at all — absence is never a failure', () => {
 		const result = evaluateHardBounceGate(
 			input({ own: arm({ sent: 10_000, hardBounced: 10 }), reference: null })
 		);
@@ -163,7 +163,7 @@ describe('gate 2 — an uninstrumented zero is not a clean window', () => {
 
 	it('a thin window is reported as thin, not as uninstrumented', () => {
 		// Ordering: the sample floor is the earlier, more fundamental problem, and a
-		// hold reason exists to name the thing to fix (plan D12).
+		// hold reason exists to name the thing to fix.
 		const result = evaluateDeferralGate(
 			input({ own: arm({ sent: RAMP_GATE_SAMPLE_FLOORS.deferral - 1 }) })
 		);
@@ -181,7 +181,7 @@ describe('gate 2 — an uninstrumented zero is not a clean window', () => {
 		});
 		expect(uninstrumented.verdict).toBe('insufficient_data');
 		expect(uninstrumented.increaseEvidence).toBe(false);
-		// A hold HOLDS the streak (plan D10) — it is neither clean nor dirty.
+		// A hold HOLDS the streak — it is neither clean nor dirty.
 		expect(uninstrumented.cleanStreak).toBe(2);
 
 		const instrumented = aggregateRampGates({
@@ -239,7 +239,7 @@ describeEquipped('gate 5 — seed placement minimum sample (optional gate)', () 
 		expect(OPTIONAL_RAMP_GATES.has(result.gate)).toBe(true);
 	});
 
-	it('absent own seed data holds and never fails (D2)', () => {
+	it('absent own seed data holds and never fails', () => {
 		const result = evaluateSeedPlacementGate(input({ own: arm({ sent: 10_000 }) }));
 		expect(result.status).toBe('insufficient_data');
 		expect(result.reason).toBe('evidence_absent');

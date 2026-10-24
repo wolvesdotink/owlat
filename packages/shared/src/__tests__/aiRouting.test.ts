@@ -102,7 +102,7 @@ describe('resolveRoutingPolicy', () => {
 	});
 });
 
-describe('shadowAllowanceUsd (D4)', () => {
+describe('shadowAllowanceUsd', () => {
 	const shadowing = resolveRoutingPolicy({ triageBundle: 'shadow' });
 
 	it('is zero while nothing is shadowed', () => {
@@ -124,7 +124,7 @@ describe('shadowAllowanceUsd (D4)', () => {
 	});
 });
 
-describe('D4 shadow maxima', () => {
+describe('shadow allowance maxima', () => {
 	it('are 10% of messages and 5% of the daily ceiling, and the defaults', () => {
 		expect(SHADOW_FRACTION_MAXIMA).toEqual({
 			shadowMaxMessageFraction: 0.1,

@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.6, Sol r1 F3/F4): the one admission point of
+ * Read on arrival: the one admission point of
  * arrival work. Every leased run of a received Postbox message of a personal
  * mailbox whose owner reads on arrival asks it FIRST, before it reads any of
  * the thread's earlier mail (`run.ts runLeased`), so an over-limit run never
@@ -7,7 +7,7 @@
  * own and is admitted the same way.
  *
  *   - Not arrival work (a shared mailbox, a sent message, the preference off,
- *     D10 as today, a source its snapshot makes ineligible, mail that did not
+ *     a deferred screen-only source, a source its snapshot makes ineligible, mail that did not
  *     arrive live: no arrival record): `go`, nothing charged.
  *   - A deferred source waits for its open: `done` unless the run reads in full.
  *   - A display-only arrival read: one already settled short of a full read is
@@ -135,7 +135,7 @@ export const admitArrivalRun = internalMutation({
 		// A terminal exclusion (security mail, a suppressed sender) is never read,
 		// whatever asks (Sol r2 F3).
 		if (row.readOutcome !== undefined && row.isUpgradeable === false) return { kind: 'done' };
-		// D10 leftovers wait for their open, which reads them in full (Sol r1 F1).
+		// Deferred screen-only sources wait for their open, which reads them in full.
 		if (!isFull && row.isDeferred === true) return { kind: 'done' };
 		const now = Date.now();
 		const isDisplayOnly = !isFull && (await isDisplayOnlyInterpretation(ctx, message));

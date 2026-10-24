@@ -1,6 +1,6 @@
 /**
  * The `POST /send/decision` wire — the last-mile routing conversation between
- * Convex's governed dispatch and the MTA's routing governance (D7).
+ * Convex's governed dispatch and the MTA's routing governance.
  *
  * The REQUEST's vocabulary was already one declaration — `GovernedRoutingContext`
  * in `@owlat/shared`, which the MTA's handler validated against — but Convex's
@@ -95,7 +95,7 @@ export type MtaDeferOrigin = 'governed' | 'local';
  * One table, two jobs, so the accept-list and the classification cannot drift
  * apart: a reason absent here is an answer Convex did not understand and falls
  * through to the unrecognised-body return, and a reason added here cannot be
- * added without naming an origin. Since D7 it is also the table the MTA'S OWN
+ * added without naming an origin. It is also the table the MTA'S OWN
  * HANDLER types its `defer` answers against, so the two ends change together
  * or one of them stops compiling.
  *

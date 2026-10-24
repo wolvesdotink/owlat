@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * "Latest update": what the newest message says, in at most two sentences,
- * each followed by its source markers (plan §4.1). Nothing renders without a
+ * each followed by its source markers. Nothing renders without a
  * line: short mail and security mail have none by design.
  */
 import type { LatestLineView } from '../../../../api/convex/mail/interpret/briefShape';

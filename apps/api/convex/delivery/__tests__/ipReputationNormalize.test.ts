@@ -1,6 +1,6 @@
 /**
  * The Convex-side coverage of the IP-reputation snapshot normalizer
- * (`@owlat/mta-protocol/src/ipReputation.ts`, D7) — the one suite that pins the
+ * (`@owlat/mta-protocol/src/ipReputation.ts`) — the one suite that pins the
  * rolling-upgrade path, where a snapshot from an MTA that predates the Phase-1
  * fields must still sync. `delivery/warmingSync.ts` is the consumer.
  */

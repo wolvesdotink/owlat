@@ -23,9 +23,9 @@ socket-free core** — exhaustively testable without any network:
 The socket-driven state machine (`SmtpClient.connect` / `.send`, STARTTLS, AUTH)
 lands in a later piece.
 
-## Locked decisions this piece implements
+## Invariants
 
-- **D2** body encoding is always 7-bit-safe; dot-stuffing is deterministic and
+- Body encoding is always 7-bit-safe; dot-stuffing is deterministic and
   byte-stable so DATA is identical across MX retries.
 - **STRING-MATCHING ON ERROR MESSAGES IS BANNED** — `SmtpError` carries machine
   classifiable `phase` / `tlsCause` / reply codes instead.

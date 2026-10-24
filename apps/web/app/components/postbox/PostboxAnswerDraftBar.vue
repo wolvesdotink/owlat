@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * "Draft to Jonas saved · Resume": the reply left in Answer mode, offered back
- * on the list it returned to (plan §02, "Leaving never throws work away").
+ * on the list it returned to ("Leaving never throws work away").
  *
  * One line in the list's banner slot, for the mailbox the draft belongs to.
  * Resume reopens Answer mode on the same draft; the × drops the offer, never

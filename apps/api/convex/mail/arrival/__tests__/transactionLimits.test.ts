@@ -1,5 +1,5 @@
 /**
- * Sender-wide re-sorts within Convex transaction limits (SPEC §16), measured
+ * Sender-wide re-sorts within Convex transaction limits, measured
  * with `transactionLimits: true` at 200 distinct threads per sender: the
  * mutation that changes the sender recomputes a first batch of projections,
  * a bounded chain does the rest of the same set, and an undo reports

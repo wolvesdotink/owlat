@@ -1,5 +1,5 @@
 /**
- * Internal notes and the thread brief (SPEC §2, §7 "Team"): a note's `#` link
+ * Internal notes and the thread brief (§7 "Team"): a note's `#` link
  * to an item, and emoji reactions on notes.
  *
  * Notes live in two tables: Team Inbox `threadNotes` (`inbox/notes.ts`) and

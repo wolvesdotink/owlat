@@ -1,5 +1,5 @@
 /**
- * The response plan's pure rules (SPEC §6): which items a plan holds, the
+ * The response plan's pure rules: which items a plan holds, the
  * default stances, the owner's choices over them, the draft hash, the verdict,
  * and every objection of the `item_coverage` gate.
  */

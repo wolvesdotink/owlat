@@ -8,7 +8,7 @@
  * The failure table below is the SHARED four-check table: `alignmentPreflight`
  * runs it with a reference arm and asserts each failure and its remedy;
  * `alignmentSingleArm` re-runs THE SAME TABLE with `reference: { kind: 'none' }`
- * and asserts every single row passes anyway. That is the D2 proof — not three
+ * and asserts every single row passes anyway. That is the absence proof — not three
  * hand-written cases that could drift from the real table.
  */
 

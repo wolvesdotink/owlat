@@ -1,5 +1,5 @@
 /**
- * D1 — Per-domain VERP return-path host.
+ * Per-domain VERP return-path host.
  *
  * A sending domain may register its OWN bounce/return-path host at DKIM
  * registration time (`POST /dkim/{domain}/register` with `{ returnPathHost }`),
@@ -149,7 +149,7 @@ function createMockDsn(overrides: Partial<ParsedMessage> = {}): ParsedMessage {
 	} as ParsedMessage;
 }
 
-describe('D1 — per-domain VERP return-path host', () => {
+describe('per-domain VERP return-path host', () => {
 	let redis: RealRedis;
 
 	beforeEach(() => {
@@ -462,7 +462,7 @@ describe('D1 — per-domain VERP return-path host', () => {
 		});
 
 		it('accepts punycode / IDN TLDs (must not diverge from the shared validator)', () => {
-			// A host that passes the shared DNS-hostname validator (which D2 uses)
+			// A host that passes the shared DNS-hostname validator (which the Convex side uses)
 			// must not 400 here, so an alphabetic-only TLD rule is wrong.
 			expect(normalizeReturnPathHost('bounce.example.xn--p1ai')).toBe('bounce.example.xn--p1ai');
 			expect(normalizeReturnPathHost('mail.xn--80akhbyknj4f')).toBe('mail.xn--80akhbyknj4f');

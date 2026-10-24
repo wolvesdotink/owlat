@@ -136,7 +136,7 @@ export const ask = authedAction({
 			});
 			embeddingSpaceId = target?.spaceId;
 		} catch (error) {
-			rethrowAdmissionRefusal(error); // shown to the user (D1)
+			rethrowAdmissionRefusal(error); // shown to the user
 			logInfo('[quickQuery] embed failed', { error: secretFreeErrorText(error) });
 			embedding = undefined;
 		}
@@ -241,7 +241,7 @@ export const ask = authedAction({
 				answer = contextBlocks.join('\n\n');
 			}
 		} catch (error) {
-			rethrowAdmissionRefusal(error); // shown to the user (D1)
+			rethrowAdmissionRefusal(error); // shown to the user
 			// Synthesis failed — degrade to the retrieved snippets so the user still
 			// gets their cross-source results (and the citations still resolve).
 			logInfo('[quickQuery] synthesis failed', { error: String(error) });

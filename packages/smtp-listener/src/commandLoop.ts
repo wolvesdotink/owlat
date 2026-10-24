@@ -5,7 +5,7 @@
  * The loop is written against a plain duplex socket so the same machine runs
  * over `net.Socket` and `tls.TLSSocket`; a STARTTLS upgrade rebinds the same
  * connection to TLS mid-loop and performs a full RFC 3207 state reset. DATA is
- * bounded by {@link ByteBudget} (D5) and dot-decoded by {@link dotDecode}; the
+ * bounded by {@link ByteBudget} and dot-decoded by {@link dotDecode}; the
  * wire reader and command parsers live in {@link module:reader}; every stall is
  * closed by the socket idle timeout.
  */
@@ -155,7 +155,7 @@ export async function runCommandLoop<S, T>(
 	// the single choke point for error streams (unknown
 	// verbs, malformed MAIL/RCPT, STARTTLS/AUTH misuse, failed AUTH attempts, AND
 	// application policy rejections of MAIL FROM / RCPT TO — matching
-	// `smtp-server`'s unauthenticated-command cap, D2). Because every MAIL/RCPT
+	// `smtp-server`'s unauthenticated-command cap). Because every MAIL/RCPT
 	// rejection is a bad command, a peer cannot loop rejected envelope commands to
 	// drive unbounded SPF/route/auth lookups or to hold the connection open: each
 	// rejection advances the budget, and only a command that makes real FORWARD
@@ -441,7 +441,7 @@ export async function runCommandLoop<S, T>(
 				onError: opts.onError,
 			});
 			if (result === 'closed') return;
-			// One byte-identical reply per outcome — no auth oracle (D6).
+			// One byte-identical reply per outcome — no auth oracle.
 			if (result === 'ok') {
 				badCommands = 0;
 				write(Reply.authOk());
@@ -450,8 +450,8 @@ export async function runCommandLoop<S, T>(
 			// Every failed AUTH (rejected credentials OR protocol garbage that never
 			// reached the backend) counts against the bad-command budget, so a
 			// hostile client looping AUTH cannot hold the connection open forever —
-			// the cap `smtp-server` enforces via `_maxAllowedUnauthenticatedCommands`
-			// (D2). The 535 bytes are unchanged (no oracle).
+			// the cap `smtp-server` enforces via `_maxAllowedUnauthenticatedCommands`.
+			// The 535 bytes are unchanged (no oracle).
 			if (noteBadCommand(Reply.authFailed()) === 'stop') return;
 			continue;
 		}

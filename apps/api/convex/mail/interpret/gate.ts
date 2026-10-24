@@ -1,5 +1,5 @@
 /**
- * The spend gate of an interpretation run (SPEC §4 step 4), checked before the
+ * The spend gate of an interpretation run, checked before the
  * model is called. Interpretation runs in the background, with no user behind
  * it, so it does not take the per-user rate limit of `mail/ai/gate.ts`; it
  * takes the two switches that matter:

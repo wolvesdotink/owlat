@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * One internal note in the team stream (plan §4.3): a tinted team message
+ * One internal note in the team stream: a tinted team message
  * with an "Internal" chip, so it never reads as mail. `@handle` mentions are
  * emphasised, a `#` link names the action it is about ("on Refund €129.00"),
  * and teammates react with an emoji.

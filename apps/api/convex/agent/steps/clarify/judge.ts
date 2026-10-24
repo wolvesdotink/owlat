@@ -51,7 +51,7 @@ export function teamClarifySurface(
 		// The necessity call replaces calls the pipeline held at its own priority.
 		priority: 'pipeline',
 		// A spend refusal is never a failed sample or judgment: the walker holds
-		// the message (D1).
+		// the message.
 		onCallError: rethrowAdmissionRefusal,
 	};
 }

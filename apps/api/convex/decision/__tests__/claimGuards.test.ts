@@ -348,7 +348,7 @@ describe('the gates and the endpoint snapshot, right before the call', () => {
 		const inboundMessageId = await teamMessage(t);
 		await enableFeatures(t, ['ai.decisionPlane']);
 		// Resolved to the language rung (`llm`, no stored config); then TypeSafe is
-		// configured, with no key: D3 makes that terminal, so no language call.
+		// configured, with no key: that is terminal, so no language call.
 		await t.run((ctx) => ctx.db.insert('aiProviderConfig', typesafeWithoutKey()));
 		expect(
 			await t.mutation(

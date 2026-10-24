@@ -98,7 +98,7 @@ const props = defineProps<{
 	 * load on open, whatever the preference or the allowlist says.
 	 */
 	suspicious?: boolean;
-	/** A cited quote of the thread brief to mark and scroll to (plan §4.2). */
+	/** A cited quote of the thread brief to mark and scroll to. */
 	highlightQuote?: CitedQuote | null;
 	/** Render the image banner there instead (the calm reader's Details, §3). */
 	imageBannerTo?: HTMLElement | null;

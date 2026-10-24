@@ -1,5 +1,5 @@
 /**
- * The cite link of a brief line (SPEC §7, plan §4.2): `?cite=<ref>:<n>`.
+ * The cite link of a brief line: `?cite=<ref>:<n>`.
  * The reader is one page now (read on arrival §3), so there is no view to
  * resolve; only the cite round-trip is left.
  */

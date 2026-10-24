@@ -4,7 +4,7 @@
  * Split out of `analytics/seedPlacement.ts` for size (CONVENTIONS' ~500 LOC
  * guideline). Neither sweep sends mail, touches a campaign, or can fail a send:
  * both are bounded passes over `seedPlacementProbes`, and with no seed
- * mailboxes connected the ledger is empty and both are no-ops (D2).
+ * mailboxes connected the ledger is empty and both are no-ops.
  *
  * They are registered from `analytics/cronRegistration.ts`.
  */
@@ -92,14 +92,14 @@ export const abandonUndispatchedSeedProbes = internalMutation({
 
 // ============ RETENTION ============
 
-/** Cleanup cron — the probe ledger is retention-bounded (D16). */
+/** Cleanup cron — the probe ledger is retention-bounded. */
 export const deleteExpiredSeedProbes = internalMutation({
 	args: {},
 	handler: async (ctx) => {
 		const now = Date.now();
 		// A full batch means there is more to drop. Continue immediately rather
 		// than waiting 24h — ten seeds x twenty campaigns a day outpaces a single
-		// bounded pass, and an unbounded ledger is not "retention-bounded" (D16).
+		// bounded pass, and an unbounded ledger is not "retention-bounded".
 		// Same self-rescheduling idiom as `webhooks/cleanup.ts`.
 		const { processed, hasMore } = await sweepSeedProbeLedger({
 			batch: SEED_PROBE_CLEANUP_BATCH,

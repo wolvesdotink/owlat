@@ -1,5 +1,5 @@
 /**
- * Sender-status changes as operations (SPEC §2.9, §4.4, §5): each change
+ * Sender-status changes as operations: each change
  * writes its operation header and change rows in the same mutation, stamps the
  * profile's `lastOperationId`, archives the sender's newest Inbox mail for
  * archiving statuses (logged per message), and unsubscribing records local

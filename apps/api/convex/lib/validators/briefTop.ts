@@ -1,7 +1,7 @@
 /**
  * `mailThreads.briefTop`: the thread brief folded down to what a list row,
  * the Answer queue and the Workbench show without reading the brief itself
- * (SPEC §7 "PostboxThreadRowBody shows the top item instead of the snippet").
+ * (a Postbox row shows the top item instead of the snippet).
  *
  * A projection, rewritten by `mail/interpret/briefTop.ts refreshBriefTop`
  * whenever the thread's items change. The texts are SEALED like every other
@@ -40,7 +40,7 @@ export const briefTopValidator = v.object({
 	),
 	// The first "Latest update" line (brief mode only).
 	latest: v.optional(localizedSealedTextValidator),
-	// Read on arrival (SPEC §2.4): the gist for a row with no brief line. Sealed.
+	// Read on arrival: the gist for a row with no brief line. Sealed.
 	gist: v.optional(briefTopGistValidator),
 	// The brief's interpretationRevision this was folded at.
 	revision: v.number(),

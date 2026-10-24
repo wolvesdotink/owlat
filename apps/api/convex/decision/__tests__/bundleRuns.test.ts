@@ -207,7 +207,7 @@ describe('default posture', () => {
 	});
 });
 
-describe('the triage shadow (D11)', () => {
+describe('the triage shadow', () => {
 	it('is ONE fast-tier call on the language rung, admitted as shadow and metered once', async () => {
 		const t = await setup({ triageBundle: 'shadow' });
 		const inboundMessageId = await seedTeamMessage(t);
@@ -367,7 +367,7 @@ describe('the message bundle', () => {
 		expect(JSON.parse(artifact!.baseline!)).toEqual(baseline);
 	});
 
-	it('never changes the message: no routing reads an advisory verdict (D9)', async () => {
+	it('never changes the message: no routing reads an advisory verdict', async () => {
 		mocks.plane.kind = 'typesafe';
 		mocks.admitBundle.mockResolvedValue(admitted('advisory'));
 		const t = await setup({
@@ -383,7 +383,7 @@ describe('the message bundle', () => {
 		expect(await artifacts(t)).toHaveLength(1);
 	});
 
-	it('is terminal when the decision plane cannot even be resolved (D3)', async () => {
+	it('is terminal when the decision plane cannot even be resolved', async () => {
 		const { resolveDecisionConfig } = await import('../../lib/decisionProvider');
 		vi.mocked(resolveDecisionConfig).mockRejectedValueOnce(new Error('undecryptable'));
 		const t = await setup({ triageBundle: 'shadow' });
@@ -394,7 +394,7 @@ describe('the message bundle', () => {
 		expect(mocks.admitBundle).not.toHaveBeenCalled();
 	});
 
-	it('is terminal when the configured decision provider cannot answer (D3)', async () => {
+	it('is terminal when the configured decision provider cannot answer', async () => {
 		mocks.plane.kind = 'typesafe';
 		mocks.plane.unavailable = { code: 'missing_credentials', reason: 'no key' };
 		const t = await setup({ triageBundle: 'shadow', categoryDisplayBundle: 'shadow' });
@@ -583,7 +583,7 @@ describe('dispatch races (Sol r2)', () => {
 		expect(await artifacts(t)).toEqual([]);
 	});
 
-	it('sends no language call when TypeSafe without a key is configured after resolving to llm (D3)', async () => {
+	it('sends no language call when TypeSafe without a key is configured after resolving to llm', async () => {
 		mocks.plane.kind = 'llm';
 		const t = await setup({ triageBundle: 'shadow' });
 		await enableFeatures(t, ['ai.decisionPlane']);
@@ -640,7 +640,7 @@ describe('dispatch races (Sol r2)', () => {
 	});
 });
 
-describe('a corrected message (D12)', () => {
+describe('a corrected message', () => {
 	it('is never judged once the owner corrected it, however late the job runs', async () => {
 		const t = await setup({ triageBundle: 'shadow' });
 		const inboundMessageId = await seedTeamMessage(t, { decisionCorrectedAt: Date.now() });
@@ -671,7 +671,7 @@ describe('the Postbox message bundle', () => {
 		return { mailboxId, messageId, threadId };
 	}
 
-	it('judges the latest inbound message beside the refinement, and moves nothing (D9)', async () => {
+	it('judges the latest inbound message beside the refinement, and moves nothing', async () => {
 		mocks.plane.kind = 'typesafe';
 		mocks.admitBundle.mockResolvedValue(admitted('advisory'));
 		const t = await setup({ categoryDisplayBundle: 'enforce' });

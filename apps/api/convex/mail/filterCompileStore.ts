@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.1): the rows behind a plain-language rule. The
+ * Read on arrival: the rows behind a plain-language rule. The
  * compile action (`filterCompile.ts`) writes a `mailRuleDrafts` row that goes
  * `compiling` → `ready` (with a preview) or `failed`; the rules section
  * subscribes to the mailbox's recent drafts. Confirming a ready draft saves

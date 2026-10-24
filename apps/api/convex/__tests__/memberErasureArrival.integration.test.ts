@@ -11,7 +11,7 @@ import {
 } from './memberErasureFixtures';
 
 /**
- * Read on arrival (SPEC §0, §2.9): erasing a member takes every arrival row of
+ * Read on arrival: erasing a member takes every arrival row of
  * their personal mailbox along (records, sender profiles, the undo log, rule
  * drafts, delayed actions, digests), and leaves a team inbox's alone.
  */

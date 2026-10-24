@@ -6,10 +6,10 @@
  * status, so these tests feed it each guide shape and assert what an operator
  * can see and do.
  *
- * D2 is the load-bearing assertion: a domain that never enrolls renders as a
+ * Absence blocking nothing is the load-bearing assertion: a domain that never enrolls renders as a
  * CALM unstarted option — no error, no warning styling, no "setup incomplete"
  * nag — and states which complaint signal the yahoo cell runs on instead, with
- * the confidence caveat spelled out (D14).
+ * the confidence caveat spelled out.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref, type Ref } from 'vue';
@@ -361,7 +361,7 @@ describe('the controls', () => {
 	});
 });
 
-describe('D2 — never enrolling is a supported configuration', () => {
+describe('never enrolling is a supported configuration', () => {
 	it('states the substituted signal and its caveat instead of a nag', () => {
 		const w = mountPanel(NOT_STARTED);
 		const confidence = w.get('[data-testid="yahoocfl-confidence"]').text();

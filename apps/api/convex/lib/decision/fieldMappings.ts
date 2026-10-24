@@ -90,7 +90,7 @@ export const TEAM_FIELD_MAPPINGS = {
 		askedBy: { bundleId: 'mail.message.team', key: 'category' },
 		reads: 'choice_peakedness',
 		hostRule:
-			'Display only (D9). `unknown` keeps the classifier label. Spam archival and the complaint auto-send block keep the classifier as their source.',
+			'Display only. `unknown` keeps the classifier label. Spam archival and the complaint auto-send block keep the classifier as their source.',
 		consumers: [
 			'agent/steps/classify route (spam archive)',
 			'agent/steps/route/autoSendGates complaint_or_urgent',
@@ -147,7 +147,7 @@ export const TEAM_FIELD_MAPPINGS = {
 		askedBy: { bundleId: 'mail.message.team', key: 'disposition' },
 		reads: 'noul_probability',
 		hostRule:
-			'Advisory reply disposition (`./bundles.ts` `interpretDisposition`); the classifier keeps the informational exit (D9).',
+			'Advisory reply disposition (`./bundles.ts` `interpretDisposition`); the classifier keeps the informational exit.',
 		consumers: ['agent/steps/classify resolveResponseDisposition (informational exit)'],
 	},
 	language: {
@@ -199,7 +199,7 @@ export const POSTBOX_FIELD_MAPPINGS = {
 		askedBy: { bundleId: 'mail.message.postbox', key: 'category' },
 		reads: 'choice_peakedness',
 		hostRule:
-			'Display only (D9). `unknown` keeps the persisted label. Spam movement and overrides keep `mail/category.ts` as their source.',
+			'Display only. `unknown` keeps the persisted label. Spam movement and overrides keep `mail/category.ts` as their source.',
 		consumers: ['mail/category writeCategory (Spam folder)', 'smart-inbox grouping'],
 	},
 	needsReply: {
@@ -207,7 +207,7 @@ export const POSTBOX_FIELD_MAPPINGS = {
 		askedBy: { bundleId: 'mail.message.postbox', key: 'disposition' },
 		reads: 'noul_probability',
 		hostRule:
-			'Advisory only (D9): Reply Queue inclusion and interpretation eligibility keep the needs-reply pipeline as their source.',
+			'Advisory only: Reply Queue inclusion and interpretation eligibility keep the needs-reply pipeline as their source.',
 		consumers: ['mail/needsReply Reply Queue', 'mail/interpret eligibility'],
 	},
 } as const satisfies Readonly<Record<string, FieldMapping>>;

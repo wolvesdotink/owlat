@@ -60,7 +60,7 @@ export type PostboxReaderMessage = {
 	// Sealed Mail (E5): the inbound sealing record (`inboundEncryptionInfo`), only on
 	// mail sealed between Owlat instances; else the structural badge takes over.
 	inboundEncryptionInfo?: InboundEncryptionInfo;
-	// F2 (D9): the signature verdict for PGP-signed mail verified at ingest; absent
+	// F2: the signature verdict for PGP-signed mail verified at ingest; absent
 	// for plaintext and pre-F1 rows (the badge falls back to "not verified").
 	inboundSignatureInfo?: InboundSignatureInfo;
 	flagSeen?: boolean;
@@ -272,7 +272,7 @@ const readerThread = computed(
 			| null
 			| undefined
 );
-// The thread brief (SPEC §7, personal mailboxes): the strip, cites, latest lines, reactions.
+// The thread brief (personal mailboxes): the strip, cites, latest lines, reactions.
 // Per-user reader preferences (auto-advance, reply default, mark-read policy, the
 // brief), read before the brief and the mark-read watcher, which both run immediately.
 const { autoAdvance, replyDefault, markReadPolicy, autoSummarize, autoLoadImages } =
@@ -521,7 +521,7 @@ const authBadgesEnabled = computed(() => isFeatureEnabled('senderAuthBadges'));
 // sealing record. When off, sealed messages fall back to the structural badge.
 const sealedMailEnabled = computed(() => isFeatureEnabled('sealedMail'));
 
-// The thread's correspondent (Sealed Mail 1:1 plane, D5): the first party in the
+// The thread's correspondent (Sealed Mail 1:1 plane): the first party in the
 // conversation who isn't us. Prefer an inbound sender; fall back to a recipient
 // on an all-outbound thread. Drives the thread-level key-change banner + contact
 // key panel. Empty when we can't identify a single counterpart (the container

@@ -1,5 +1,5 @@
 /**
- * THE ASYMMETRY (plan D14) — the key suite of P1-7.
+ * THE ASYMMETRY — the key suite of P1-7.
  *
  * The standalone engagement gate is genuinely weak: a redesigned newsletter that
  * opens 20% worse is indistinguishable from a 20% placement loss. The plan's
@@ -96,7 +96,7 @@ describe('the aggregator enforces it', () => {
 		});
 		expect(evaluation.verdict).toBe('insufficient_data');
 		expect(evaluation.increaseEvidence).toBe(false);
-		// HOLDS, both ways (plan D10): no advance toward K_CLEAN, and no reset.
+		// HOLDS, both ways: no advance toward K_CLEAN, and no reset.
 		expect(evaluation.cleanStreak).toBe(2);
 	});
 
@@ -148,7 +148,7 @@ describe('the standalone evaluator cannot be handed a strong engagement verdict'
 	});
 
 	it('re-REASONS it too: no standalone audit row names a relay that does not exist', () => {
-		// Re-grading alone would leave the operator a `reference_*` reason (plan D12
+		// Re-grading alone would leave the operator a `reference_*` reason (the ramp
 		// keys the audit row and the admin notification off it) pointing at a
 		// transport this deployment has never had.
 		const measurement = {

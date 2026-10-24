@@ -21,8 +21,8 @@ export const keyVaultFields = {
 	fingerprint: v.string(),
 	// Primary key algorithm label, e.g. `eddsaLegacy` (the GnuPG-compatible
 	// LEGACY curve25519 profile: EdDSA-legacy sign primary + ECDH encryption
-	// subkey — what every OpenPGP implementation accepts; per locked decision
-	// D1 the message/signature format is unchanged, only the key profile).
+	// subkey — what every OpenPGP implementation accepts; the
+	// message/signature format is unchanged, only the key profile).
 	algorithm: v.string(),
 	// ASCII-armored transferable PUBLIC key (safe to serve).
 	publicKeyArmored: v.string(),

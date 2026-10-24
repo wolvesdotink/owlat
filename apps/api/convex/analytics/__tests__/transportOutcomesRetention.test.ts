@@ -1,5 +1,5 @@
 /**
- * transportOutcomes — the aging sweep (plan D16).
+ * transportOutcomes — the aging sweep.
  *
  * The bucket table is written on the send hot path, so an unbounded table is a
  * design defect rather than housekeeping. The sweep must be indexed, bounded

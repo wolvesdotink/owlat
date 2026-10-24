@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.5): which threads a digest covers.
+ * Read on arrival: which threads a digest covers.
  *
  * ELIGIBILITY is per thread and explicit: `mailThreads.digestPendingSince`
  * (set by `refreshArrivalProjection` while the placement is `digest` and the

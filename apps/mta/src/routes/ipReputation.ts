@@ -296,7 +296,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 			now
 		);
 		// The consumer's half of this snapshot is declared once, in
-		// `@owlat/mta-protocol` (D7): `delivery/warmingSync.ts` normalizes what
+		// `@owlat/mta-protocol`: `delivery/warmingSync.ts` normalizes what
 		// arrives here against `MtaIpReputationPayload`. This producer is
 		// deliberately WIDER than that contract and weaker in two places — `dnsbl`
 		// and `warmingPhase` are plain strings here, narrowed by the normalizer's

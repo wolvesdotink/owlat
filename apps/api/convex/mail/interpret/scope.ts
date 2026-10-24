@@ -1,5 +1,5 @@
 /**
- * What of a message interpretation may read (SPEC §3 `signedScope`, §4 step 1):
+ * What of a message interpretation may read (`signedScope`):
  * `scopeForInterpretation(ctx, source)` loads the body through the body
  * accessors (`lib/messageBody*.ts`), applies the clearsigned scoping rules the
  * reader applies (`@owlat/shared/signedScope`), and says what it left out.

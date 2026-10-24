@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "AI safety check not run" on a Team inbox message (D13, U4): the message
+ * "AI safety check not run" on a Team inbox message: the message
  * was archived as spam, or arrived while the agent was off, so the model
  * guard was skipped and recorded as skipped. Says which, and that the check
  * runs before the agent acts on the message. Presentational.

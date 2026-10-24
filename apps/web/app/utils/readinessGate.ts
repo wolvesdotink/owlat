@@ -25,7 +25,7 @@ export type { LocalizedText };
  * an unfinished inbound-TLS hardening step is surfaced without adding noise to
  * deployments that don't publish a policy. `dual-arm-alignment` is conditional
  * for the mirror-image reason: a deployment with no reference transport has
- * nothing to align, so the gate is not rendered at all (D2).
+ * nothing to align, so the gate is not rendered at all.
  */
 export type ReadinessGateKey =
 	| 'transport'

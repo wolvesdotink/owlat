@@ -1,8 +1,8 @@
 /**
  * Wire-compat, MTA half: the handlers still produce and accept the SAME BYTES.
  *
- * D7 moved the Convex<->MTA contract into `@owlat/mta-protocol` and typed both
- * ends against it; the stated risk is that TS narrowing silently changes wire
+ * The Convex<->MTA contract lives in `@owlat/mta-protocol`, which types both
+ * ends; the risk is that TS narrowing silently changes wire
  * semantics. This suite drives the SHIPPED handlers and compares their raw
  * response text against the frozen fixtures in
  * `@owlat/mta-protocol/wireFixtures` — the very module
@@ -399,7 +399,7 @@ describe('send intake', () => {
  * Drive the SHIPPED postbox intake with the frozen Postbox bodies.
  *
  * The three fields only this leg carries — `sealedMimeBase64`, `amp`,
- * `allowedFromAddresses` — had no typed producer before D7 bound
+ * `allowedFromAddresses` — would have no typed producer without binding
  * `mail/outbound.ts` and `mail/deliveryHooks.ts` to `MtaSendRequest`, and they
  * fail QUIETLY: a dropped `sealedMimeBase64` ships the placeholder `html: ' '`
  * body and loses the ciphertext, a dropped `amp` loses the alternative part,

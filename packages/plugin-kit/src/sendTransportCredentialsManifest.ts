@@ -1,5 +1,5 @@
 /**
- * Manifest-time validation of a bundled send transport's CREDENTIAL FORM (D5).
+ * Manifest-time validation of a bundled send transport's CREDENTIAL FORM.
  *
  * Split from `./sendTransportManifest` the way `./settingsSchemaManifest` is
  * split from the manifest validator it serves, and for the same reason: a field
@@ -41,7 +41,7 @@ import {
 import type { ConfigEnvVarField, DeclaredConfigEnvVars } from './sendTransportManifest';
 
 /**
- * The credential FORM (D5): descriptors, joined to the configuration above.
+ * The credential FORM: descriptors, joined to the configuration above.
  *
  * The join is the rule this module owns. The rest of a field is the platform's
  * `settingsSchema` vocabulary, validated through the same functions it is — but

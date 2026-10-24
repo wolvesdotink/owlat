@@ -268,7 +268,7 @@ jobs:
         timeout-minutes: 10
         run: bun run --cwd apps/web test:browser
 
-  # THE STANDALONE MATRIX (deliverability plan D2/D3). The ramp controller has two
+  # THE STANDALONE MATRIX. The ramp controller has two
   # gate implementations behind one interface: the concurrent reference-arm one,
   # and the trailing-baseline one a deployment with zero third-party accounts
   # runs. A deployment with no ESP is a SUPPORTED CONFIGURATION, so the whole gate

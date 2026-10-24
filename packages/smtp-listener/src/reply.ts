@@ -60,7 +60,7 @@ export function replyBytes(reply: SmtpReply): Buffer {
 
 /**
  * Canonical reply table. These are the codes L1 emits from the command loop.
- * The enhanced codes follow RFC 3463 (D2 sanctioned "real enhanced codes"
+ * The enhanced codes follow RFC 3463 (a deliberate "real enhanced codes"
  * improvement over ad-hoc library defaults); L3 pins any parity divergence
  * against `smtp-server` in a fixture.
  */
@@ -92,7 +92,7 @@ export const Reply = {
 	authOk: (): SmtpReply => ({ code: 235, enhanced: '2.7.0', text: 'Authentication successful' }),
 	/**
 	 * 535 AUTH failure. The SINGLE reply emitted for every failed AUTH regardless
-	 * of stage or cause — the no-auth-oracle invariant (D6).
+	 * of stage or cause — the no-auth-oracle invariant.
 	 */
 	authFailed: (): SmtpReply => ({
 		code: 535,

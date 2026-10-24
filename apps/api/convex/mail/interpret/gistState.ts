@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.4): the gist as stored and as shown.
+ * Read on arrival: the gist as stored and as shown.
  *
  *   - `threadBriefs.gist`: the 1–2 verbatim spans of ONE source message, an
  *     optional fact, every quote sealed. One per thread: a gist of an older

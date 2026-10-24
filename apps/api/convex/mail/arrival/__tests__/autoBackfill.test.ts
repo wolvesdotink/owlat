@@ -1,5 +1,5 @@
 /**
- * Read on arrival, D4 (SPEC §2.7): a finished history import starts the
+ * Read on arrival: a finished history import starts the
  * 30-day interpretation backfill once, behind a durable marker, and never
  * undoes a cancellation, overrides a paused walk or touches a shared mailbox.
  */

@@ -1,5 +1,5 @@
 /**
- * Seed mailbox placement — the PURE decision core (D15).
+ * Seed mailbox placement — the PURE decision core.
  *
  * A handful of operator-owned consumer mailboxes (Gmail, Outlook, Yahoo,
  * iCloud, plus regional providers) receive a SHADOW COPY of a send; an IMAP
@@ -8,7 +8,7 @@
  * classification, the per-provider roll-up, the corroboration rule, gate 5's
  * verdict, and the probe-hygiene plan.
  *
- * D17 — A TRIPWIRE, NOT A GAUGE. Five to ten brand-new consumer mailboxes are
+ * A TRIPWIRE, NOT A GAUGE. Five to ten brand-new consumer mailboxes are
  * far too small a sample for a percentage anyone should quote, and fresh
  * consumer accounts with no engagement history are filtered more harshly than
  * real subscribers. Everything this module returns to a caller is therefore a
@@ -24,9 +24,9 @@
  * share must clear `SEED_REACHED_THRESHOLD` (90 %) AND, when a reference
  * transport carried probes of its own, sit within `SEED_REFERENCE_TOLERANCE`
  * (5 pp) of it. Standalone there is no reference arm, the second clause is
- * `no_reference_arm`, and the absolute clause is the whole gate (D3).
+ * `no_reference_arm`, and the absolute clause is the whole gate.
  *
- * D2 — ADDITIVE-ONLY. Zero seed mailboxes is a SUPPORTED CONFIGURATION. It
+ * ADDITIVE-ONLY. Zero seed mailboxes is a SUPPORTED CONFIGURATION. It
  * yields `insufficient_data` and nothing else: no error, no warning, no
  * "setup incomplete" nag, and no effect on any share or pace decision.
  *
@@ -61,7 +61,7 @@ export function isSeedProbeId(value: string): boolean {
 /**
  * How many seed mailboxes one organization may connect.
  *
- * D17 sizes a seed set at 5-10 per provider, and EVERY send drops a full
+ * A seed set is sized at 5-10 per provider, and EVERY send drops a full
  * shadow copy into EVERY seed — the cost of a seed is linear in send volume,
  * so an unbounded set is a self-inflicted volume problem, not a better
  * measurement. The limit is enforced at CONNECT time (`mail/external/accountsSeed

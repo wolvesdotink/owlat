@@ -1,5 +1,5 @@
 /**
- * Mandrill webhook adapter + route (plan D10, piece P2.1).
+ * Mandrill webhook adapter + route.
  *
  * Two layers, because the piece has two failure modes and they are not the same
  * kind of bug:
@@ -10,7 +10,7 @@
  *      calling the adapter's own helper, so a change to the construction fails
  *      these tests instead of agreeing with itself. Wrong key, wrong URL,
  *      missing header and unset env var each have their own case.
- *   2. THE JOIN. Every event in the D10 table is replayed through the REAL
+ *   2. THE JOIN. Every event in the event table is replayed through the REAL
  *      route — `t.fetch('/webhooks/mandrill')` → signature → rate limit → audit
  *      store → batch parse → dispatcher → Send lifecycle — against a seeded
  *      send row, and the assertion is on the row and its blocklist/counter
@@ -328,13 +328,13 @@ describe('Mandrill batch fan-out', () => {
 	});
 });
 
-// ═══ 4. The D10 event table, end to end ════════════════════════════════════
+// ═══ 4. The event table, end to end ════════════════════════════════════════
 
-describe('Mandrill event mapping (D10 table)', () => {
+describe('Mandrill event mapping', () => {
 	it('`send` reconciles a send whose acceptance was left unknown by an ambiguous timeout', async () => {
-		// D4: a Mandrill API timeout is terminal-but-undecided, so the send stays
+		// A Mandrill API timeout is terminal-but-undecided, so the send stays
 		// `queued` with its provider identity bound and NOTHING claims it was
-		// accepted. This event is the acceptance — the D4↔D10 handshake.
+		// accepted. This event is the acceptance — the park and the event table meet here.
 		const t = setupTest();
 		const { sendId } = await seedMandrillSend(t, {
 			providerMessageId: 'ambiguous-1',
@@ -567,7 +567,7 @@ describe('Mandrill event mapping (D10 table)', () => {
 		});
 	});
 
-	it('acknowledges `open` and `click` without touching the send (D3)', async () => {
+	it('acknowledges `open` and `click` without touching the send', async () => {
 		const t = setupTest();
 		const { sendId } = await seedMandrillSend(t, { providerMessageId: 'm-eng', status: 'sent' });
 		const res = await postBatch(t, [
@@ -729,7 +729,7 @@ describe('mapMandrillEvent / parseMandrillBatch', () => {
 	});
 
 	/**
-	 * `msg._id` IS THE ONLY JOIN KEY, and that is a constraint the D4 park depends
+	 * `msg._id` IS THE ONLY JOIN KEY, and that is a constraint the ambiguous-timeout park depends
 	 * on rather than an oversight (`delivery/sendCompletion.ts`).
 	 *
 	 * An ambiguous API timeout is exactly the case where the row never learned an

@@ -159,7 +159,7 @@ export function isAnyShadowed(form: RoutingPolicyForm): boolean {
  * policy opened as), a field whose text is unchanged stands for its stored
  * value, which the server already accepted and a save leaves as it is: a
  * stored triage share of 0.9999999 shows as "100" and 0.0000001 as "0", and
- * neither may block saving another field. The cross-field rule (D4) always
+ * neither may block saving another field. The cross-field rule always
  * applies: with no daily ceiling, shadowing needs a finite cap.
  */
 export function routingPolicyFormProblems(
@@ -262,7 +262,7 @@ export function routingPolicyDraft(
 	return resolveRoutingPolicy(merged as RoutingPolicyRow);
 }
 
-/** What shadow runs may spend a day under the form, in USD (D4). */
+/** What shadow runs may spend a day under the form, in USD. */
 export function draftShadowAllowanceUsd(
 	form: RoutingPolicyForm,
 	base: ResolvedRoutingPolicy,

@@ -200,7 +200,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 120,
 	},
 
-	// Read on arrival (SPEC §2.6): every arrival read that will call a model,
+	// Read on arrival: every arrival read that will call a model,
 	// keyed by the mailbox owner. It bounds what outside senders can make one
 	// owner spend per hour: over it, display-only mail is counted instead of
 	// read, and eager work waits for the bucket (never dropped).

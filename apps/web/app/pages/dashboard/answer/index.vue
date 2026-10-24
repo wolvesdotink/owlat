@@ -5,7 +5,7 @@
  * redirect here). `?in=team` narrows it to the team inbox, `?in=<mailboxId>` to
  * one mailbox, `?in=chat` to chat mentions.
  *
- * Opening it opens Answer mode on the first item (plan §07); what stays here is
+ * Opening it opens Answer mode on the first item; what stays here is
  * the loading, empty and done states and the items that have no Answer mode
  * (chat mentions, follow-up reminders), shown as cards.
  */

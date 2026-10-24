@@ -1,5 +1,5 @@
 /**
- * Source markers on team surfaces (SPEC §7 "Team"): who sent a cited email
+ * Source markers on team surfaces: who sent a cited email
  * and when (read from the stream; a reply names its author, never its
  * recipient), and what a click does: bring that email into view and ring it,
  * walking the stream back until it is loaded, or hand it to a host that pages

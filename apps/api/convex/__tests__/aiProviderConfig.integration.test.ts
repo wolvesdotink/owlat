@@ -13,7 +13,7 @@
  *   • a stored key is reused only for the same provider kind and base URL.
  *   • a new embedding key is bound to the embedding kind the save names.
  *   • a vector embedded in a space that is no longer configured is not committed.
- *   • embedding space (D8, post-provenance): an omitted embedding selection
+ *   • embedding space (post-provenance): an omitted embedding selection
  *     keeps the stored one, and a save or a removal may switch the space on a
  *     populated corpus (old vectors leave vector search until re-embedded).
  *   • testConnection ok / err paths (adapter mocked; real crypto round-trip).
@@ -631,7 +631,7 @@ describe('stored key reuse', () => {
 	});
 });
 
-describe('embedding space (D8, post-provenance)', () => {
+describe('embedding space (post-provenance)', () => {
 	const ENV_KEYS = ['LLM_API_KEY', 'LLM_PROVIDER', 'LLM_BASE_URL', 'LLM_EMBEDDING_MODEL'] as const;
 	afterEach(() => {
 		for (const key of ENV_KEYS) vi.stubEnv(key, undefined);

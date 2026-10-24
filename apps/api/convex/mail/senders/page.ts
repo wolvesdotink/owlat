@@ -1,5 +1,5 @@
 /**
- * The Senders page reads (SPEC §5, `/dashboard/postbox/senders`).
+ * The Senders page reads (`/dashboard/postbox/senders`).
  *
  *   - `list({mailboxId, tab, paginationOpts})`: All (newest delivery first,
  *     `by_mailbox_last`) or one status (`by_mailbox_status_last`), paginated.

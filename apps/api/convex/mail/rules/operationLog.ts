@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.9, §4.4, §6.2, §6.4): the undo log of rule work.
+ * Read on arrival: the undo log of rule work.
  * One operation header per message and pass (`rule_apply`, or
  * `delayed_archive` for an executed delayed action), created on the first
  * change it logs, its change rows built by `arrivalChangeRow` and written in

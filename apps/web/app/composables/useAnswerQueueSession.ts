@@ -1,5 +1,5 @@
 /**
- * The Answer queue as a session over Answer mode (plan §07).
+ * The Answer queue as a session over Answer mode.
  *
  * Opening the queue opens Answer mode on its first item: a Postbox item on
  * `/dashboard/answer/m/<messageId>`, a team draft on `/dashboard/answer/t/<threadId>`.

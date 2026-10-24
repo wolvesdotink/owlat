@@ -195,13 +195,13 @@ describe('resolveReturnPathCapability', () => {
 	});
 
 	it('mandrill is decided by the PROBE, and reads degraded until one settles', () => {
-		// D5: Mandrill accepts a per-message `return_path_domain`, but only for a
+		// Mandrill accepts a per-message `return_path_domain`, but only for a
 		// domain SPF'd to it in the account, and whether VERP-style envelope
 		// senders survive is deployment-specific — so the catalog declares
 		// `probe` and an observed bounce is what settles it. Unprobed it reads
 		// exactly like unsupported, and it widens the bounce tolerance by the
 		// PROVIDER-FEEDBACK factor rather than the no-feedback one, because its
-		// webhooks do report bounces (D10) even if our own VERP stream cannot.
+		// webhooks do report bounces even if our own VERP stream cannot.
 		const unprobed = resolveReturnPathCapability('mandrill', null, T0);
 		expect(unprobed.declared).toBe('probe');
 		expect(unprobed.capability).toBe('unknown');

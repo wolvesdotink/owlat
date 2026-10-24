@@ -5,7 +5,7 @@
  * P0-5 repointed it at the published warming schedule so the advisory estimate
  * and the BINDING pre-flight refusal can never tell the operator two different
  * stories. That is a change to shipped behaviour, and the query had no tests at
- * all, so every branch is pinned here (D19: divergences are fixture-pinned or
+ * all, so every branch is pinned here (divergences are fixture-pinned or
  * they are defects).
  */
 

@@ -1,5 +1,5 @@
 /**
- * Gate 4 — THE MINIMUM SAMPLE IS ENFORCED, NOT ADVISORY (plan D10).
+ * Gate 4 — THE MINIMUM SAMPLE IS ENFORCED, NOT ADVISORY.
  *
  * Below the floor the gate must return `insufficient_data` so the controller
  * HOLDS: it never increases on thin data and never decreases on it either. The

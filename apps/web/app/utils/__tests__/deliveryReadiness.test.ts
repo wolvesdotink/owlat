@@ -394,7 +394,7 @@ describe('readinessInputFromSources — folding the two live sources', () => {
 /**
  * The dual-transport alignment gate (P3-5).
  *
- * D2 is the invariant under test: a deployment with no reference transport must
+ * Absence blocking nothing is the invariant under test: a deployment with no reference transport must
  * see NO gate at all — not a pending one, not an informational one. And when the
  * gate does appear, it must never change the send-path verdict: what it holds is
  * the ramp, not sending.
@@ -437,7 +437,7 @@ const BLOCKED_ROW = dualArmRow({
 describe('summarizeDualArmAlignment', () => {
 	// "Nothing to say" is the ABSENCE of a summary, encoded once. There is no
 	// `not_applicable` state for a caller to forget to filter out.
-	it('says nothing at all with no rows, null rows, or only single_arm rows (D2)', () => {
+	it('says nothing at all with no rows, null rows, or only single_arm rows', () => {
 		for (const rows of [null, undefined, [], [dualArmRow({ verdict: 'single_arm' })]]) {
 			expect(summarizeDualArmAlignment(rows)).toBeUndefined();
 		}
@@ -464,7 +464,7 @@ describe('summarizeDualArmAlignment', () => {
 });
 
 describe('the dual-transport alignment gate', () => {
-	it('is absent entirely for a deployment with no reference transport (D2)', () => {
+	it('is absent entirely for a deployment with no reference transport', () => {
 		const standalone = deriveDeliveryReadiness(
 			readinessInputFromSources({ canSend: true }, [verifiedRow()], null, null, [
 				dualArmRow({ verdict: 'single_arm' }),

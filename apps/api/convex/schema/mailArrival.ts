@@ -23,7 +23,7 @@ import {
 import { mailArrivalRulesTables } from './mailArrivalRules';
 
 /**
- * Read on arrival (SPEC §2.9): the arrival tables, children before parents.
+ * Read on arrival: the arrival tables, children before parents.
  * The order the organization wipe deletes them in, and the list the tenant
  * registry, the wipe union and the coverage tests spread.
  */
@@ -46,7 +46,7 @@ export type MailArrivalTable = (typeof MAIL_ARRIVAL_TABLES)[number];
  *
  * Every row is mailbox-scoped and inherits the mailbox's read permission.
  *
- * ERASURE (SPEC §0): member erasure, an external mailbox's teardown and the
+ * ERASURE: member erasure, an external mailbox's teardown and the
  * organization wipe delete every row with its mailbox
  * (`mail/arrival/mailboxRows.ts`, the wipe steps). Purging a message deletes
  * its arrival record, delayed actions and the change rows that name it, drops
@@ -197,7 +197,7 @@ export const mailArrivalTables = {
 		.index('by_mailbox', ['mailboxId'])
 		.index('by_expires', ['expiresAt']),
 
-	// Unused-draft streak (SPEC §7, mail/draftPause.ts): one row per offered AI
+	// Unused-draft streak (mail/draftPause.ts): one row per offered AI
 	// reply (an arrival slot or a clarification draft) whose outcome already
 	// counted, keyed `<threadId>:<owed messageId>`. Checked and written in the
 	// mutation that counts, so no copy of the offer counts again. No expiry:

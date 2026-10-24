@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.2): ONE evaluation algebra for plain-language, Fix
+ * Read on arrival: ONE evaluation algebra for plain-language, Fix
  * and AI-conditioned filters, behind the three rules hooks
  * (`mail/arrival/hooks.ts`).
  *

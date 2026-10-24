@@ -1,5 +1,5 @@
 /**
- * ONE INTERFACE, TWO IMPLEMENTATIONS (plan D3).
+ * ONE INTERFACE, TWO IMPLEMENTATIONS.
  *
  * The controller is written once, so the two evaluators must be
  * indistinguishable to it: same input type, same evaluation type, same
@@ -75,7 +75,7 @@ describe.each(RUNNABLE)('$name satisfies the gate interface', (implementation) =
 		expect(evaluation.failedGate).toBeUndefined();
 	});
 
-	it('every evaluation carries the full audit shape (plan D12)', () => {
+	it('every evaluation carries the full audit shape', () => {
 		const evaluation = evaluator.evaluate(healthy());
 		expect(evaluation.evaluatedAt).toBe(NOW);
 		expect(evaluation.perGate.length).toBeGreaterThan(0);
@@ -114,7 +114,7 @@ describe.each(RUNNABLE)('$name satisfies the gate interface', (implementation) =
 		expect(evaluation.cleanStreak).toBe(2);
 	});
 
-	it('an ABSENT optional gate (no seed mailboxes) never holds the ramp (plan D2)', () => {
+	it('an ABSENT optional gate (no seed mailboxes) never holds the ramp', () => {
 		const withSeeds = evaluator.evaluate(healthy({ previousCleanStreak: 0 }));
 		const withoutSeeds = evaluator.evaluate(
 			healthy({ ownSeeds: null, referenceSeeds: null, previousCleanStreak: 0 })
@@ -123,7 +123,7 @@ describe.each(RUNNABLE)('$name satisfies the gate interface', (implementation) =
 		expect(withoutSeeds.verdict).toBe('pass');
 	});
 
-	it('a seed collapse fails and is flagged as requiring corroboration (plan D17)', () => {
+	it('a seed collapse fails and is flagged as requiring corroboration', () => {
 		const evaluation = evaluator.evaluate(
 			healthy({
 				ownSeeds: seeds(1, 19),

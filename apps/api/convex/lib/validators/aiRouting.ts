@@ -48,15 +48,15 @@ export const routingSwitchFields = {
 
 /**
  * Which ceiling slice a reservation or a ledger row draws on. `triage`: paid
- * guard and classify calls, which may use the triage allowance (D1). `shadow`:
- * shadow traffic, bounded by the shadow allowance (D4). `standard`: the rest.
+ * guard and classify calls, which may use the triage allowance. `shadow`:
+ * shadow traffic, bounded by the shadow allowance. `standard`: the rest.
  * Absent on a ledger row ⇒ `standard`.
  */
 export const BUDGET_CLASSES = ['standard', 'triage', 'shadow'] as const;
 export type BudgetClass = (typeof BUDGET_CLASSES)[number];
 export const budgetClassValidator = literalUnion(BUDGET_CLASSES);
 
-/** Who waits on an admitted call. Background work defers at the ceiling (D1). */
+/** Who waits on an admitted call. Background work defers at the ceiling. */
 export const ADMISSION_PRIORITIES = ['interactive', 'pipeline', 'background'] as const;
 export type AdmissionPriority = (typeof ADMISSION_PRIORITIES)[number];
 export const admissionPriorityValidator = literalUnion(ADMISSION_PRIORITIES);
@@ -92,7 +92,7 @@ export const qualityResultValidator = literalUnion(QUALITY_RESULTS);
 // ── Team message markers ──────────────────────────────────────────────────
 
 /**
- * D13: the model guard did not run on this message. Stored on
+ * The model guard did not run on this message. Stored on
  * `inboundMessages.securityFlags.guardNotRun`. The deterministic layers did run;
  * the semantic verdict is missing, so the guard is required before any later
  * autonomous processing (`lib/aiRouting/guardRecord.ts`).
@@ -103,7 +103,7 @@ export const guardNotRunValidator = v.object({
 });
 
 /**
- * D1: the ceiling (or an unverifiable spend state) stopped the model path and
+ * The ceiling (or an unverifiable spend state) stopped the model path and
  * the message waits for a person. Stored on `inboundMessages.budgetHold`; its
  * presence blocks auto-send. `missingJudgments` names what the model did not
  * judge, so the reviewer and the UI can say so.
@@ -116,7 +116,7 @@ export const budgetHoldValidator = v.object({
 export type BudgetHold = Infer<typeof budgetHoldValidator>;
 
 /**
- * D1: a spend refusal an interpretation run met (the gate, its hold, a model
+ * A spend refusal an interpretation run met (the gate, its hold, a model
  * call, a verifier batch or a claim check), stored on the run's
  * `messageInterpretations` row so a replay reports it like the run did.
  */
@@ -126,7 +126,7 @@ export const runBudgetRefusalValidator = v.object({
 });
 
 /**
- * D1 on a user-facing AI result (an assistant answer, a visualization): the
+ * The spend ceiling on a user-facing AI result (an assistant answer, a visualization): the
  * paid call was refused for budget. The stable code and reason, never the
  * English sentence, so the web can say it in the reader's language.
  */
@@ -242,12 +242,12 @@ export const AI_INVALIDATION_REASONS = [
 	'model_change',
 	'settings_change',
 	'superseded',
-	/** D12: mail from the remembered sender failed DMARC, so its memory no longer applies. */
+	/** Mail from the remembered sender failed DMARC, so its memory no longer applies. */
 	'auth_failure',
 ] as const;
 export const aiInvalidationReasonValidator = literalUnion(AI_INVALIDATION_REASONS);
 
-/** Where a sender-memory entry applies (D12). `team_inbox` has no mailbox id. */
+/** Where a sender-memory entry applies. `team_inbox` has no mailbox id. */
 export const SENDER_MEMORY_SCOPES = ['team_inbox', 'mailbox'] as const;
 export const senderMemoryScopeValidator = literalUnion(SENDER_MEMORY_SCOPES);
 
@@ -261,5 +261,5 @@ export const senderAuthBasisValidator = literalUnion(SENDER_AUTH_BASES);
 
 // ── Deferred interpretation ───────────────────────────────────────────────
 
-/** D10: why a source waits for its thread to be opened. */
+/** Why a source waits for its thread to be opened. */
 export const interpretDeferReasonValidator = literalUnion(INTERPRET_DEFER_REASONS);

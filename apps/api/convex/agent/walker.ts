@@ -64,7 +64,7 @@ async function loadRunContext(
 	return { inboundMessageId, agentConfig };
 }
 
-/** D1: hold the message for a person when `kind` is a paid step without headroom. */
+/** Hold the message for a person when `kind` is a paid step without headroom. */
 async function isHeldForBudget(
 	ctx: ActionCtx,
 	inboundMessageId: Id<'inboundMessages'>,
@@ -83,7 +83,7 @@ async function isHeldForBudget(
 	return isHeld;
 }
 
-/** D13: fail the message; a retry restarts the pipeline at the scan, which runs the guard. */
+/** Fail the message; a retry restarts the pipeline at the scan, which runs the guard. */
 async function failForGuard(ctx: ActionCtx, inboundMessageId: Id<'inboundMessages'>) {
 	await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
 		inboundMessageId,
@@ -212,7 +212,7 @@ export const resumeDraft = internalAction({
 		// re-running the draft step against a stale state would produce an illegal
 		// edge downstream.
 		if (!message || message.processingStatus !== 'drafting') return;
-		// D13: never draft on a message whose model guard was skipped.
+		// Never draft on a message whose model guard was skipped.
 		if (guardBlocksStep(message, 'draft')) {
 			await failForGuard(ctx, args.inboundMessageId);
 			return;
@@ -227,7 +227,7 @@ export const resumeDraft = internalAction({
 			});
 			context = retrieval.output.context;
 		} catch (error) {
-			// D1: a refused guard or embedding holds the message, never a blind draft.
+			// A refused guard or embedding holds the message, never a blind draft.
 			const refusal = admissionRefusalOf(error);
 			if (refusal && (await isHeldForBudget(ctx, args.inboundMessageId, 'draft', { refusal }))) {
 				return;
@@ -294,7 +294,7 @@ export const runStep = internalAction({
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
 		});
-		// D13: no step after the scan runs before the model guard has.
+		// No step after the scan runs before the model guard has.
 		if (guardBlocksStep(message, args.kind)) {
 			await failForGuard(ctx, args.inboundMessageId);
 			return;
@@ -349,7 +349,7 @@ export const runStep = internalAction({
 			route = module.route(result.output, args.input, runCtx);
 		} catch (error) {
 			// A paid call admission refused mid-step (another call took the
-			// headroom): the same D1 hold, not a pipeline failure.
+			// headroom): the same spend-ceiling hold, not a pipeline failure.
 			const refusal = admissionRefusalOf(error);
 			if (refusal && isTeamPaidStep(args.kind)) {
 				await isHeldForBudget(ctx, args.inboundMessageId, args.kind, { refusal, actionId });

@@ -1,5 +1,5 @@
 /**
- * Read on arrival (INBOX_ZERO_PLAN, SPEC §2.9): the shared vocabulary of the
+ * Read on arrival: the shared vocabulary of the
  * arrival record, the thread projection, sender profiles and the undo log.
  *
  * Types and closed lists only. The functions that decide (`chooseArrivalDepth`
@@ -23,7 +23,7 @@ export type Depth = (typeof DEPTHS)[number];
 
 /**
  * `chooseArrivalDepth`'s answer: a depth, or `deferred` (row 3, the
- * preference is off): not a depth, the caller keeps today's D10 deferral.
+ * preference is off): not a depth, the caller defers screen-only work to the open.
  */
 export type ArrivalDepthDecision = Depth | 'deferred';
 
@@ -240,7 +240,7 @@ export interface SenderDraftPauseValue {
 /**
  * One changed entity of an operation (`mailArrivalOperationChanges.change`).
  * Ids are strings here; the API's validator types them. Undo restores a row
- * only when the entity still equals `after` (SPEC §4.4). The message-level
+ * only when the entity still equals `after`. The message-level
  * kinds (`messageFolder`, `messageRead`, `messageLabel`, `messageFlag`,
  * `messageSection`) check that value only: messages carry no operation marker.
  * Every other kind also requires its entity's last-operation id to still name

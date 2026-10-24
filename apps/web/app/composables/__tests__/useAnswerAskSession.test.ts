@@ -184,7 +184,7 @@ describe('useAnswerAskSession', () => {
 		).toBe(false);
 	});
 
-	it('reads the guard refusal as held, with no toast, until the target changes (D13)', async () => {
+	it('reads the guard refusal as held, with no toast, until the target changes', async () => {
 		const draftId = ref<string | null>('d1');
 		const { api } = host(composerMock(), draftId);
 		const held = {

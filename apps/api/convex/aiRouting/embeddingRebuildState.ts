@@ -8,7 +8,7 @@
  * stored configuration switches to the staged embedder. Rollback is the same
  * flip back to the recorded predecessor. A staged rebuild needs a stored
  * configuration, because activation rewrites it; an env-only deployment switches
- * through its environment (D8). Activation needs a completed rebuild (every
+ * through its environment. Activation needs a completed rebuild (every
  * page landed) and no row written during the rebuild still lacking its vector
  * (`catchUpRebuild` walks again): every input change and every added row
  * records `inputChangedAt` on the staged space (`markCorpusChanged`), so a pass
@@ -71,7 +71,7 @@ async function requireStoredConfig(ctx: MutationCtx): Promise<ConfigRow> {
  * of one provider kind, whose stored key stays valid. Any other move (hosted to
  * local, local to hosted, one hosted provider to another) would drop or need a
  * key, which would leave the rollback without credentials; it goes through the
- * settings instead (the D8 switch path).
+ * settings instead (the embedding switch path).
  */
 export function isStagedTransitionAllowed(
 	from: EmbeddingProviderKind,

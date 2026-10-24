@@ -2,7 +2,7 @@
  * Read on arrival, Sol review r1 (F1–F8, F12, F13): each case fails without
  * its fix.
  *
- *   F1  a D10-deferred source stays deferred through its category write
+ *   F1  a deferred source stays deferred through its category write
  *   F2  eager demand reads a gisted source in full; the full-read prerequisite
  *       upgrades a thread's gist-only mail, oldest first, and the plan says so
  *   F3  eager work over the owner limit persists its continuation
@@ -169,7 +169,7 @@ async function epochOf(t: Test, threadId: Id<'mailThreads'>) {
 	});
 }
 
-describe('Sol r1 F1: D10 deferrals survive the category write', () => {
+describe('deferrals survive the category write', () => {
 	it('a deferred source is never stamped, never woken, and a stray run reads nothing', async () => {
 		const t = setup();
 		await enableFeatures(t, ['ai']);

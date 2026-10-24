@@ -87,7 +87,7 @@ export function validateSendTransportContributions(
 		validateDomainIdentity(transport, path, declaredEnvVars, issues);
 		if (validateWebhook(transport, path, issues, webhookSecretEnvVars)) {
 			if (webhookDeclaredAt !== null) {
-				// The feedback route is `/webhooks/plugin/<pluginId>` (D6): a plugin id
+				// The feedback route is `/webhooks/plugin/<pluginId>`: a plugin id
 				// addresses exactly one inbound adapter, so a second declaration is a
 				// contribution no request could ever reach. Rejected at manifest time
 				// rather than resolved by an arbitrary rule at dispatch time.

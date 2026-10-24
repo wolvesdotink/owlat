@@ -52,7 +52,7 @@ function shellQuote(value: string): string {
 }
 
 /**
- * The missing variable names, ORDERED BY THE CATALOG ENTRY (the seams plan's D1/D5):
+ * The missing variable names, ORDERED BY THE CATALOG ENTRY:
  * the active kind's `requiredEnvVars`, in the order it declares them, filtered
  * to the ones the status query reports missing.
  *

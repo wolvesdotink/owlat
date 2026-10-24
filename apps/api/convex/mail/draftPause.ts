@@ -1,5 +1,5 @@
 /**
- * Unused-draft pause (SPEC §7): draft-on-arrival stops for a sender whose AI
+ * Unused-draft pause: draft-on-arrival stops for a sender whose AI
  * drafts keep going unused, until the owner resumes it on the Senders page.
  *
  * **Logical drafts.** One AI draft is either
