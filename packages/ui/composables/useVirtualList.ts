@@ -204,7 +204,9 @@ export function useVirtualList<T>(options: VirtualListOptions<T>) {
 			if (el instanceof Element) {
 				elementOf.set(key, el);
 				keyOf.set(el, key);
-				ensureObserver()?.observe(el);
+				// The cached height is the border box, so a change to a row's padding
+				// or border alone must notify too; the default content box would not.
+				ensureObserver()?.observe(el, { box: 'border-box' });
 			}
 		};
 		rowRefs.set(key, ref);
@@ -307,9 +309,12 @@ export function useVirtualList<T>(options: VirtualListOptions<T>) {
 
 	// Runs before the list re-renders: the anchor is taken from the geometry
 	// the reader last saw, and the new window is rendered at the corrected
-	// position instead of flashing the old one first.
+	// position instead of flashing the old one first. The source is watched as
+	// a shallow copy: a reactive array changed in place (`unshift`, `splice`)
+	// keeps its identity, and the anchor and the cache pruning need the rows
+	// as they were next to the rows as they are.
 	watch(
-		() => toValue(options.items),
+		() => [...toValue(options.items)],
 		(next, prev) => {
 			const el = scrollerRef.value;
 			const nextKeys = new Set(next.map(getKey));

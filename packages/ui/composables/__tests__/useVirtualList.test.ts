@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { defineComponent, h, nextTick, ref, type PropType } from 'vue';
+import { defineComponent, h, nextTick, ref, type PropType, type Ref } from 'vue';
 import { useVirtualList } from '../useVirtualList';
 
 interface Item {
@@ -26,19 +26,30 @@ const realHeight = (key: string) => real.get(key) ?? ESTIMATE;
 class FakeResizeObserver {
 	static instances: FakeResizeObserver[] = [];
 	observed = new Set<Element>();
+	boxes = new Map<Element, ResizeObserverBoxOptions>();
 	disconnected = false;
 	constructor(public callback: ResizeObserverCallback) {
 		FakeResizeObserver.instances.push(this);
 	}
-	observe(el: Element) {
+	observe(el: Element, options?: ResizeObserverOptions) {
 		this.observed.add(el);
+		this.boxes.set(el, options?.box ?? 'content-box');
 	}
 	unobserve(el: Element) {
 		this.observed.delete(el);
+		this.boxes.delete(el);
 	}
 	disconnect() {
 		this.disconnected = true;
 		this.observed.clear();
+		this.boxes.clear();
+	}
+	/**
+	 * A change to the row's padding or border only: the browser notifies just
+	 * the observers watching the border box.
+	 */
+	deliverPaddingChange(target: Element) {
+		if (this.boxes.get(target) === 'border-box') this.deliver([target]);
 	}
 	/** Deliver one notification for `targets` with their current real heights. */
 	deliver(targets: Element[]) {
@@ -135,7 +146,9 @@ function restoreGeometry() {
 
 const Harness = defineComponent({
 	props: {
-		items: { type: Array as PropType<Item[]>, required: true },
+		items: { type: Array as PropType<Item[]>, default: () => [] },
+		/** A reactive array the test changes in place, instead of `items`. */
+		source: { type: Object as PropType<Ref<Item[]>>, default: undefined },
 		keep: { type: Array as PropType<string[]>, default: () => [] },
 		stickToEnd: { type: Boolean, default: true },
 		endThresholdPx: { type: Number, default: 80 },
@@ -143,7 +156,7 @@ const Harness = defineComponent({
 	setup(props, { expose }) {
 		const scrollerRef = ref<HTMLElement | null>(null);
 		const list = useVirtualList<Item>({
-			items: () => props.items,
+			items: () => props.source?.value ?? props.items,
 			getKey: (item) => item.id,
 			estimateSize: () => ESTIMATE,
 			scrollerRef,
@@ -179,7 +192,8 @@ const items = (from: number, to: number): Item[] =>
 let wrapper: VueWrapper | undefined;
 
 function mountList(props: {
-	items: Item[];
+	items?: Item[];
+	source?: Ref<Item[]>;
 	keep?: string[];
 	stickToEnd?: boolean;
 	endThresholdPx?: number;
@@ -364,6 +378,68 @@ describe('useVirtualList', () => {
 		await nextTick();
 
 		expect(scroller().scrollTop).toBe(9_950);
+	});
+
+	it('keeps the visible row in place when a row above it gains padding', async () => {
+		mountList({ items: items(0, 500) });
+		await nextTick();
+		await scrollReader(10_000);
+
+		// Row 198, in the overscan above r200, gets 16px of top padding: its
+		// border box grows, its content box does not.
+		real.set('r198', 66);
+		observer().deliverPaddingChange(scroller().querySelector('[data-key="r198"]')!);
+
+		expect(scroller().scrollTop).toBe(10_016);
+	});
+
+	it('keeps the position when older rows are prepended to the same array', async () => {
+		const source = ref(items(100, 500));
+		mountList({ source });
+		await nextTick();
+		await scrollReader(5_000); // row r200 at the top
+
+		source.value.unshift(...items(0, 100));
+		// One tick for the re-render, one for the scroll correction after it.
+		await nextTick();
+		await nextTick();
+
+		expect(scroller().scrollTop).toBe(10_000);
+		expect(mountedKeys()).toContain('r200');
+	});
+
+	it('holds on to the next visible row when the top one is spliced out', async () => {
+		const source = ref(items(0, 500));
+		mountList({ source });
+		await nextTick();
+		await scrollReader(10_000);
+
+		source.value.splice(200, 1);
+		// One tick for the re-render, one for the scroll correction after it.
+		await nextTick();
+		await nextTick();
+
+		expect(scroller().scrollTop).toBe(9_950);
+	});
+
+	it('forgets the height of a row removed in place', async () => {
+		const source = ref(items(0, 500));
+		mountList({ source });
+		await nextTick();
+		await scrollReader(10_000);
+		real.set('r205', 300);
+		observer().deliver([scroller().querySelector('[data-key="r205"]')!]);
+		await runFrame();
+		await scrollReader(0); // r205 unmounted, its 300px still cached
+		expect(scroller().scrollHeight).toBe(25_250);
+
+		source.value.splice(205, 1);
+		await nextTick();
+		source.value.splice(205, 0, { id: 'r205' });
+		await nextTick();
+
+		// Back at its estimate: the removal pruned the cached height.
+		expect(scroller().scrollHeight).toBe(25_000);
 	});
 
 	it('keeps the position when a narrower viewport makes every row taller', async () => {
