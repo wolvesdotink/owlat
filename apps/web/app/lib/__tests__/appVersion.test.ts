@@ -10,12 +10,13 @@
  *   - SAFE RELOAD. A change of page reloads the tab at its destination only
  *     when nothing would be lost at that moment; otherwise it navigates as
  *     usual. The decision never waits, and a navigation another request
- *     replaced while an earlier guard waited never reloads.
+ *     replaced while an earlier guard waited never reloads, a back step
+ *     the history has not reported yet included.
  *   - NO LOOPS. A reload that landed on the old build again does not reload
  *     by itself a second time.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMemoryHistory, createRouter, type Router } from 'vue-router';
+import { createMemoryHistory, createRouter, type Router, type RouterHistory } from 'vue-router';
 import { defineComponent } from 'vue';
 import {
 	CHECK_INTERVAL_MS,
@@ -101,9 +102,9 @@ function memoryStorage(initial: Record<string, string> = {}): Storage {
 
 const Page = defineComponent({ render: () => null });
 
-function testRouter(): Router {
+function testRouter(history: RouterHistory = createMemoryHistory()): Router {
 	return createRouter({
-		history: createMemoryHistory(),
+		history,
 		routes: [
 			{ path: '/', component: Page },
 			{ path: '/inbox', component: Page },
@@ -134,7 +135,7 @@ async function harness(
 	/** Guards registered before the watch's own, as Nuxt's route middleware is. */
 	earlierGuards: (router: Router) => void = () => {}
 ): Promise<Harness> {
-	const router = testRouter();
+	const router = (options.router as Router | undefined) ?? testRouter();
 	await router.push('/inbox');
 	earlierGuards(router);
 	const visible = { value: true };
@@ -375,13 +376,52 @@ describe('createAppVersionWatch: reloading on navigation', () => {
 		expect(h.assign).toHaveBeenCalledWith('/inbox');
 	});
 
-	it('gives the router back its push and replace once stopped', async () => {
+	it('never reloads into a navigation a back step replaced before the history reported it', async () => {
+		// A browser reports a traversal in a later task; until then the router
+		// does not know where it goes.
+		const history = createMemoryHistory();
+		const go = history.go.bind(history);
+		let deliver: (() => void) | undefined;
+		history.go = (delta, triggerListeners) => void (deliver = () => go(delta, triggerListeners));
+		let hold = false;
+		const waiting = new Map<string, () => void>();
+		const h = await harness({ router: testRouter(history) }, (router) =>
+			router.beforeEach((to) =>
+				hold ? new Promise<void>((resume) => void waiting.set(to.fullPath, resume)) : undefined
+			)
+		);
+		await h.router.push('/settings');
+		await h.watch.check();
+		hold = true;
+
+		const toArticle = h.router.push('/inbox/42');
+		await tick();
+		h.router.back();
+		// The earlier guard resumes before the history names the back step's destination.
+		waiting.get('/inbox/42')?.();
+		await toArticle;
+		expect(h.assign).not.toHaveBeenCalled();
+		expect(h.router.currentRoute.value.path).toBe('/inbox/42');
+
+		// Once reported, the back step (from the page that landed) reloads at its own destination.
+		deliver?.();
+		await tick();
+		waiting.get('/settings')?.();
+		await tick();
+		expect(h.assign).toHaveBeenCalledTimes(1);
+		expect(h.assign).toHaveBeenCalledWith('/settings');
+	});
+
+	it('gives the router back its own methods once stopped', async () => {
 		const router = testRouter();
-		const { push, replace } = router;
+		const { push, replace, go, back, forward } = router;
 		const h = await harness({ router });
 		h.stop();
 		expect(router.push).toBe(push);
 		expect(router.replace).toBe(replace);
+		expect(router.go).toBe(go);
+		expect(router.back).toBe(back);
+		expect(router.forward).toBe(forward);
 	});
 
 	it('does not reload by itself again after a reload landed on the old build', async () => {

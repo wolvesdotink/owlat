@@ -10,12 +10,16 @@
  * {@link NavigationRequests.isLatest} first.
  *
  * Requests reach the router through `push`/`replace` (links, `navigateTo`) or
- * through the history (back, forward, `go`). Both are seen here synchronously,
- * when they are made, before any guard of theirs runs.
+ * through the history: the router's `go`/`back`/`forward`, or the browser's
+ * own buttons. Each is seen synchronously, when it is made, before any guard
+ * of its own runs. A traversal's destination is known only once the history
+ * reports it, which a browser does in a later task; from the moment one is
+ * asked for until then, no destination is the latest.
  */
 import type { RouteLocationNormalized, RouteLocationRaw, Router } from 'vue-router';
 
-type TrackedRouter = Pick<Router, 'push' | 'replace' | 'resolve' | 'options'>;
+type WrappedMethod = 'push' | 'replace' | 'go' | 'back' | 'forward';
+type TrackedRouter = Pick<Router, WrappedMethod | 'resolve' | 'options'>;
 
 interface NavigationRequests {
 	/** Whether `to` is what the router was last asked for, directly or through a redirect. */
@@ -24,7 +28,8 @@ interface NavigationRequests {
 }
 
 export function trackNavigationRequests(router: TrackedRouter): NavigationRequests {
-	// Null until the first request is seen: an unknown request is never the latest.
+	// Null while no destination is known: before the first request, and while a
+	// traversal waits for the history to name its destination.
 	let latest: string | null = null;
 
 	const note = (target: RouteLocationRaw | string) => {
@@ -34,19 +39,33 @@ export function trackNavigationRequests(router: TrackedRouter): NavigationReques
 			// The router throws the same error at the caller and navigates nowhere.
 		}
 	};
+	const forget = () => {
+		latest = null;
+	};
 
-	const push = router.push;
-	const replace = router.replace;
-	const trackedPush: Router['push'] = (to) => {
-		note(to);
-		return push(to);
+	const restores: Array<() => void> = [];
+	const wrap = <K extends WrappedMethod>(
+		key: K,
+		onCall: (...args: Parameters<Router[K]>) => void
+	) => {
+		const original = router[key] as (...args: Parameters<Router[K]>) => ReturnType<Router[K]>;
+		const tracked = ((...args: Parameters<Router[K]>) => {
+			onCall(...args);
+			return original(...args);
+		}) as Router[K];
+		router[key] = tracked;
+		restores.push(() => {
+			// Someone may have wrapped it in turn; theirs stays, ours keeps forwarding.
+			if (router[key] === tracked) router[key] = original as Router[K];
+		});
 	};
-	const trackedReplace: Router['replace'] = (to) => {
-		note(to);
-		return replace(to);
-	};
-	router.push = trackedPush;
-	router.replace = trackedReplace;
+	wrap('push', note);
+	wrap('replace', note);
+	// `back` and `forward` call the router's own `go`, not the property, so each
+	// needs its own wrapper.
+	wrap('go', forget);
+	wrap('back', forget);
+	wrap('forward', forget);
 	const stopListening = router.options.history.listen((to) => note(to));
 
 	return {
@@ -54,9 +73,7 @@ export function trackNavigationRequests(router: TrackedRouter): NavigationReques
 			latest !== null && (to.fullPath === latest || to.redirectedFrom?.fullPath === latest),
 		stop: () => {
 			stopListening();
-			// Someone may have wrapped them in turn; theirs stays, ours keeps forwarding.
-			if (router.push === trackedPush) router.push = push;
-			if (router.replace === trackedReplace) router.replace = replace;
+			for (const restore of restores) restore();
 		},
 	};
 }

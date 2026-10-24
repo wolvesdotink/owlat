@@ -94,7 +94,10 @@ export interface AppVersionWatchDeps {
 	bootBuildId: string;
 	/** The deployed build's answer: the parsed JSON body, or anything when it failed. */
 	fetchDeployed: () => Promise<unknown>;
-	router: Pick<Router, 'beforeEach' | 'resolve' | 'push' | 'replace' | 'options'>;
+	router: Pick<
+		Router,
+		'beforeEach' | 'resolve' | 'push' | 'replace' | 'go' | 'back' | 'forward' | 'options'
+	>;
 	/** Let pending device writes land, then answer whether a reload loses nothing. */
 	settleForReload: () => Promise<boolean>;
 	/** Whether a reload right now loses nothing, without waiting for anything. */
