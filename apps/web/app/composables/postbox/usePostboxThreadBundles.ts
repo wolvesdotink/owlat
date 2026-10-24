@@ -64,6 +64,7 @@ export function usePostboxThreadBundles<T extends PostboxBundleMessage>(args: {
 				label: t('shared.postbox.usePostboxThreadBundles.undoArchived', {
 					count: result.result.moved.length,
 				}),
+				kind: 'archived',
 				moved: result.result.moved,
 				runMove: (moveArgs) => moveOp.run(moveArgs),
 			});

@@ -36,7 +36,18 @@ vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	if (!stateBuckets.has(key)) stateBuckets.set(key, ref(init()));
 	return stateBuckets.get(key);
 });
-vi.stubGlobal('useToast', () => ({ showToast, removeToast, setToastShortcutHint: vi.fn() }));
+const updateToast = (id: string, patch: { message?: string; action?: StubToast['action'] }) => {
+	const toast = toasts.find((t) => t.id === id);
+	if (!toast) return;
+	if (patch.message !== undefined) toast.message = patch.message;
+	if (patch.action) toast.action = patch.action;
+};
+vi.stubGlobal('useToast', () => ({
+	showToast,
+	removeToast,
+	setToastShortcutHint: vi.fn(),
+	updateToast,
+}));
 // The undo toast's action label is translated, so the real catalog sits behind
 // the `useI18n` auto-import (mirrors usePostboxTriageUndo's own test).
 const i18n = createTestI18n();
@@ -120,5 +131,39 @@ describe('useInboxTriage', () => {
 		expect(ok).toBe(true);
 		expect(ids(visible.value)).toEqual(['a', 'b']);
 		expect(toasts[0]?.message).toBe('Assigned to you');
+	});
+
+	it('collapses consecutive resolves into one toast whose Undo all brings every row back', async () => {
+		const rows = ref<Row[]>([{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }]);
+		const { visible, run } = useInboxTriage(rows);
+		const group = {
+			key: 'inbox:resolved',
+			label: (count: number) => `Resolved ${count} conversations`,
+		};
+		const mutate = vi.fn(async () => ({ ok: true, result: null }) as const);
+		const undone: string[] = [];
+		for (const id of ['a', 'b']) {
+			await run({
+				id,
+				label: 'Resolved',
+				leavesView: true,
+				mutate,
+				inverse: async () => {
+					undone.push(id);
+				},
+				group,
+			});
+		}
+
+		expect(ids(visible.value)).toEqual(['c']);
+		expect(toasts.map((t) => [t.message, t.action?.label])).toEqual([
+			['Resolved 2 conversations', 'Undo all'],
+		]);
+
+		toasts[0]!.action!.onAction();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(undone).toEqual(['b', 'a']);
+		expect(ids(visible.value)).toEqual(['a', 'b', 'c']);
+		expect(toasts).toHaveLength(0);
 	});
 });

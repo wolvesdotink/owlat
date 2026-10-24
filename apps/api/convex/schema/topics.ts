@@ -38,6 +38,11 @@ export const topicTables = {
 		// topic.requireDoubleOptIn) still fires this membership's topic_subscribed
 		// trigger + topic_confirmed activity. Cleared once that fanout runs.
 		pendingDoiConfirmation: v.optional(v.boolean()),
+		// Set when an undo of a bulk remove put this row back: the id of the
+		// membership it replaces (the first one, across repeated remove/undo
+		// cycles). An earlier bulk add's undo receipt names that id, and must
+		// still find this row; a fresh re-add carries no such id and is spared.
+		restoredFrom: v.optional(v.id('contactTopics')),
 	})
 		.index('by_contact', ['contactId'])
 		.index('by_topic', ['topicId'])

@@ -5,6 +5,7 @@ import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import { pickAdjacentMessageId, type PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import type { PostboxSnoozeScope } from '~/utils/postboxSnoozeScope';
 import { hidePostboxRowEverywhere, unhidePostboxRowEverywhere } from './usePostboxOptimisticHide';
+import type { PostboxMoveUndoKind } from './usePostboxTriageUndo';
 import type { SenderShortcutMessage } from './usePostboxSenderShortcuts';
 import {
 	optimisticArchive,
@@ -166,15 +167,24 @@ export function usePostboxReaderActions(opts: {
 	// Successful triage registers its inverse for the "Undo — Cmd+Z" toast
 	// (the move-family mutations return each message's source folder).
 	const triageUndo = usePostboxTriageUndo();
+	const undoLabelKey: Record<PostboxMoveUndoKind, string> = {
+		archived: 'components.postbox.postboxThreadReader.undoArchived',
+		trashed: 'components.postbox.postboxThreadReader.undoTrashed',
+		moved: 'components.postbox.postboxThreadReader.undoMoved',
+		spam: 'components.postbox.postboxThreadReader.undoSpam',
+	};
 	function registerTriageUndo(
-		label: string,
+		kind: PostboxMoveUndoKind,
 		outcome: BackendOperationResult<MovedRows>,
-		before?: () => Promise<unknown>
+		extra: { before?: () => Promise<unknown>; scope?: string } = {}
 	) {
 		if (!outcome.ok || !outcome.result || outcome.result.moved.length === 0) return;
 		const moved = outcome.result.moved;
+		const { before, scope } = extra;
 		triageUndo.registerMoveBack({
-			label,
+			label: t(undoLabelKey[kind]),
+			kind,
+			...(scope ? { scope } : {}),
 			moved,
 			runMove: (a) => moveOp.run(a),
 			...(before ? { before } : {}),
@@ -347,7 +357,7 @@ export function usePostboxReaderActions(opts: {
 	async function moveOpenMessageTo(targetFolderId: Id<'mailFolders'>) {
 		moveDialogOpen.value = false;
 		const result = await moveOp.run({ messageIds: [messageId.value], targetFolderId });
-		registerTriageUndo(t('components.postbox.postboxThreadReader.undoMoved'), result);
+		registerTriageUndo('moved', result, { scope: targetFolderId });
 	}
 
 	function reportSpamMessage(msgId: string) {
@@ -356,9 +366,7 @@ export function usePostboxReaderActions(opts: {
 			const result = await reportSpamOp.run({ messageIds });
 			// Undo = notSpam (clears the verdict, parks in Inbox) + move back to
 			// the true source folder when it wasn't the Inbox.
-			registerTriageUndo(t('components.postbox.postboxThreadReader.undoSpam'), result, () =>
-				notSpamOp.run({ messageIds })
-			);
+			registerTriageUndo('spam', result, { before: () => notSpamOp.run({ messageIds }) });
 			return result;
 		};
 		// Only the OPEN message's spam report ejects the reader; reporting an
@@ -400,14 +408,14 @@ export function usePostboxReaderActions(opts: {
 			case 'archive':
 				void runAndAdvance(async (id) => {
 					const result = await archiveOp.run({ messageIds: [id] });
-					registerTriageUndo(t('components.postbox.postboxThreadReader.undoArchived'), result);
+					registerTriageUndo('archived', result);
 					return result;
 				});
 				break;
 			case 'trash':
 				void runAndAdvance(async (id) => {
 					const result = await trashOp.run({ messageIds: [id] });
-					registerTriageUndo(t('components.postbox.postboxThreadReader.undoTrashed'), result);
+					registerTriageUndo('trashed', result);
 					return result;
 				});
 				break;
