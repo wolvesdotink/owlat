@@ -158,6 +158,25 @@ function setToastShortcutHint(id: string, hint: string | undefined): void {
 }
 
 /**
+ * Rewrite a toast's message and plain action in place, keeping its id, its
+ * position in the stack and its lifetime. For a caller whose one notice stands
+ * for a changing set of things (an undo notice that coalesces a burst of
+ * archives: "Archived 3 messages", then "Archived 4 messages"), where removing
+ * and re-showing would re-announce it and move it in the stack. Not for a toast
+ * with an observed action: that action's label belongs to its run state. No-op
+ * once the toast is gone.
+ */
+function updateToast(id: string, patch: { message?: string; action?: ToastAction }): void {
+	if (observed.has(id)) return;
+	patchToast(id, (toast) => {
+		const nextMessage = patch.message ?? toast.message;
+		const nextAction = patch.action ?? toast.action;
+		if (nextMessage === toast.message && nextAction === toast.action) return toast;
+		return { ...toast, message: nextMessage, ...(nextAction ? { action: nextAction } : {}) };
+	});
+}
+
+/**
  * Remove a specific toast by ID, running its `onDismiss` callback if it has
  * one. A second call for the same id is a no-op — the callback is gone with
  * the toast.
@@ -356,6 +375,7 @@ export function useToast() {
 		showToast,
 		removeToast,
 		setToastShortcutHint,
+		updateToast,
 		dismissAfterAction,
 		clearToasts,
 	};

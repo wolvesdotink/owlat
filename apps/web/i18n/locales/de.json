@@ -5187,7 +5187,8 @@
 					"unsnooze": "Zurückstellung von Nachrichten aufheben",
 					"unsubscribe": "Abmelden und archivieren"
 				},
-				"purgeConfirm": "{count} Nachricht endgültig löschen? Das kann nicht rückgängig gemacht werden. | {count} Nachrichten endgültig löschen? Das kann nicht rückgängig gemacht werden.",
+				"purgeConfirm": "{count} Nachricht endgültig löschen? | {count} Nachrichten endgültig löschen?",
+				"purgeConfirmBody": "Das kann nicht rückgängig gemacht werden.",
 				"read": "Gelesen",
 				"selected": "{count} ausgewählt",
 				"snooze": "Zurückstellen",
@@ -5554,7 +5555,8 @@
 			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Von dieser Mailingliste abmelden",
-				"confirm": "Von dieser Mailingliste abmelden?\n\nOwlat sendet die standardmäßige Ein-Klick-Abmeldeanfrage an {host}.",
+				"confirm": "Von dieser Mailingliste abmelden?",
+				"confirmBody": "Owlat sendet die standardmäßige Ein-Klick-Abmeldeanfrage an {host}.",
 				"requestFailed": "Abmeldeanfrage fehlgeschlagen — die Abmeldeseite wird stattdessen geöffnet",
 				"requestSent": "Abmeldeanfrage gesendet",
 				"theSender": "den Absender",
@@ -5644,7 +5646,7 @@
 			"postboxSubscriptionsPanel": {
 				"action": "Abmelden und archivieren | Abmelden und archivieren ({count})",
 				"clearSelection": "Auswahl aufheben",
-				"confirm": "Von {count} Absender abmelden und deren Post archivieren?",
+				"confirm": "Von {count} Absender abmelden und dessen Post archivieren? | Von {count} Absendern abmelden und deren Post archivieren?",
 				"empty": "Keine Abonnements gefunden.",
 				"emptyHint": "Newsletter und andere Listenpost erscheinen hier, sobald welche ankommt.",
 				"heading": "Abonnements",
@@ -11309,11 +11311,17 @@
 				"title": "Team-Postfach",
 				"undo": {
 					"assigned": "Zugewiesen",
+					"assignedMany": "{count} Unterhaltung zugewiesen | {count} Unterhaltungen zugewiesen",
 					"assignedTo": "{name} zugewiesen",
+					"assignedToMany": "{count} Unterhaltung {name} zugewiesen | {count} Unterhaltungen {name} zugewiesen",
 					"assignedToYou": "Dir zugewiesen",
+					"assignedToYouMany": "Dir {count} Unterhaltung zugewiesen | Dir {count} Unterhaltungen zugewiesen",
 					"resolved": "Erledigt",
+					"resolvedMany": "{count} Unterhaltung erledigt | {count} Unterhaltungen erledigt",
 					"snoozed": "Zurückgestellt",
-					"unassigned": "Zuweisung aufgehoben"
+					"snoozedMany": "{count} Unterhaltung zurückgestellt | {count} Unterhaltungen zurückgestellt",
+					"unassigned": "Zuweisung aufgehoben",
+					"unassignedMany": "Zuweisung von {count} Unterhaltung aufgehoben | Zuweisung von {count} Unterhaltungen aufgehoben"
 				},
 				"unsnoozeThreadOperation": "Zurückstellung aufheben",
 				"updateThreadStatusOperation": "Status der Konversation ändern",
@@ -13231,7 +13239,8 @@
 				"draftsResumed": "Entwürfe fortgesetzt",
 				"applied": "{count} Vorschlag übernommen | {count} Vorschläge übernommen"
 			},
-			"confirmUnsubscribe": "Von {name} abmelden? Ihre Mails werden ab jetzt archiviert.",
+			"confirmUnsubscribe": "Von {name} abmelden?",
+			"confirmUnsubscribeBody": "Ihre Mails werden ab jetzt archiviert.",
 			"shortcuts": {
 				"autoArchive": "Mails dieses Absenders automatisch archivieren",
 				"unsubscribe": "Von diesem Absender abmelden"
@@ -15766,8 +15775,16 @@
 				"recategorizeThread": "Konversation neu einordnen"
 			},
 			"usePostboxTriageUndo": {
+				"grouped": {
+					"archived": "{count} Nachricht archiviert | {count} Nachrichten archiviert",
+					"moved": "{count} Nachricht verschoben | {count} Nachrichten verschoben",
+					"spam": "{count} Nachricht als Spam markiert | {count} Nachrichten als Spam markiert",
+					"trashed": "{count} Nachricht in den Papierkorb verschoben | {count} Nachrichten in den Papierkorb verschoben"
+				},
 				"keyHint": "{keys} zum Rückgängigmachen",
-				"undo": "Rückgängig"
+				"keyHintLast": "{keys} macht die letzte Aktion rückgängig",
+				"undo": "Rückgängig",
+				"undoAll": "Alle rückgängig"
 			},
 			"usePostboxImageAllowlist": {
 				"allowOperation": "Bilder dieses Absenders immer anzeigen",
@@ -15787,7 +15804,8 @@
 				"moveOperation": "Nachrichten verschieben",
 				"unsubscribeOperation": "Bündel abbestellen",
 				"undoArchived": "{count} Nachrichten archiviert",
-				"unsubscribeConfirm": "{count} Absender abbestellen und ihre Mail archivieren? Jede Abmeldung ist eine Anfrage in deinem Namen."
+				"unsubscribeConfirm": "Von {count} Absender abmelden und dessen Mail archivieren? | Von {count} Absendern abmelden und deren Mail archivieren?",
+				"unsubscribeConfirmBody": "Jede Abmeldung ist eine Anfrage in deinem Namen."
 			},
 			"usePostboxTriageSuggestion": {
 				"createRule": "Regel aus Vorschlag erstellen",
@@ -17257,11 +17275,15 @@
 			"exportFailed": "Export fehlgeschlagen. Bitte versuche es erneut.",
 			"exported": "{count} Kontakt nach {filename} exportiert | {count} Kontakte nach {filename} exportiert",
 			"listFallback": "Liste",
+			"nothingAdded": "Alle ausgewählten Kontakte sind schon in „{list}“",
 			"noContactsToExport": "Keine Kontakte zum Exportieren",
+			"nothingRemoved": "Keiner der ausgewählten Kontakte ist in „{list}“",
 			"removeContactsOperation": "Kontakte aus Thema entfernen",
 			"removedFromList": "{count} Kontakt aus „{list}“ entfernt | {count} Kontakte aus „{list}“ entfernt",
 			"selectAllFailed": "Es konnten nicht alle Kontakte ausgewählt werden. Bitte versuche es erneut.",
-			"selectionTruncated": "Die ersten {count} passenden Kontakte wurden ausgewählt. Verfeinere deinen Filter, um die übrigen zu bearbeiten."
+			"selectionTruncated": "Die ersten {count} passenden Kontakte wurden ausgewählt. Verfeinere deinen Filter, um die übrigen zu bearbeiten.",
+			"undoAddOperation": "Hinzufügen von Kontakten zum Thema rückgängig machen",
+			"undoRemoveOperation": "Entfernen von Kontakten aus dem Thema rückgängig machen"
 		},
 		"useContactDetail": {
 			"clearPropertyOperation": "Kontakteigenschaft löschen",
