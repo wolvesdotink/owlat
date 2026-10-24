@@ -7335,6 +7335,55 @@
 			"zenMore": {
 				"hidden": "{count} weiteres Update in {inbox} wartet außerhalb von Zen. | {count} weitere Updates in {inbox} warten außerhalb von Zen.",
 				"show": "Alles zeigen"
+			},
+			"upcoming": {
+				"title": "Demnächst",
+				"loadFailed": "Was demnächst ansteht, konnte nicht geladen werden",
+				"when": {
+					"now": "Jetzt",
+					"today": "{time}",
+					"tomorrow": "Morgen {time}",
+					"week": "{day} {time}",
+					"date": "{date}, {time}"
+				},
+				"noSubject": "(kein Betreff)",
+				"send": {
+					"to": "Geht an {to}",
+					"toMany": "Geht an {to} und {count} weitere Person | Geht an {to} und {count} weitere Personen",
+					"noRecipient": "Geplanter Versand, noch ohne Empfänger"
+				},
+				"snooze": {
+					"returns": "Kommt aus dem Zurückstellen zurück · {from}",
+					"untilReply": "Kommt aus dem Zurückstellen zurück, früher bei einer Antwort · {from}"
+				},
+				"followUp": {
+					"waitingOn": "Erinnerung, falls {who} nicht geantwortet hat",
+					"anyone": "Erinnerung, falls niemand geantwortet hat"
+				},
+				"teamSnooze": "Team-Postfach · kommt aus dem Zurückstellen zurück · {contact}",
+				"campaign": {
+					"title": "Kampagne {name}",
+					"toAudience": "an {audience}",
+					"recipients": "{count} Empfänger | {count} Empfänger",
+					"countedAt": "Empfänger gezählt {when}",
+					"local": "um {time} in der Zeitzone jedes Empfängers",
+					"optimized": "zur üblichen Lesezeit jedes Empfängers"
+				},
+				"actionsFor": "Geplanter Versand: {subject}",
+				"actions": {
+					"sendNow": "Jetzt senden",
+					"edit": "Bearbeiten",
+					"cancel": "Abbrechen"
+				},
+				"operations": {
+					"sendNow": "Jetzt senden",
+					"cancel": "Versand nicht mehr planen"
+				},
+				"noLongerScheduled": "Dieser Versand ist nicht mehr geplant.",
+				"sent": "Wird jetzt gesendet.",
+				"cancelled": "Nicht mehr geplant. Du findest die Nachricht in den Entwürfen.",
+				"showMore": "Mehr anzeigen",
+				"moreThanShown": "Es ist mehr geplant, als die Werkbank anzeigt."
 			}
 		},
 		"answer": {
