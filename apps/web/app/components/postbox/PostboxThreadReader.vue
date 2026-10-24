@@ -79,6 +79,7 @@ import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
 import { usePostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
 import { usePostboxCalmReader } from '~/composables/postbox/usePostboxCalmReader';
+import { providePostboxReaderContext } from '~/composables/postbox/usePostboxReaderContext';
 import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 import { usePostboxTeamStream } from '~/composables/postbox/usePostboxTeamStream';
 import { usePostboxReaderExpansion } from '~/composables/postbox/usePostboxReaderExpansion';
@@ -758,6 +759,19 @@ const {
 	downloadLightboxAttachment,
 } = usePostboxReaderAttachments();
 
+// What every card shares; the props carry only what differs per message.
+providePostboxReaderContext({
+	mailboxId: () => props.message.mailboxId,
+	authEnabled: authBadgesEnabled,
+	sealedEnabled: sealedMailEnabled,
+	appIsDark,
+	ownEmail,
+	downloadingAttachment,
+	eagerBody: mountAllBodies,
+	reduced: false,
+	chromeOf: calm.cardOf,
+});
+
 /**
  * Open the filter builder pre-filled from this message.
  *
@@ -896,20 +910,16 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			<template v-for="msg in allMessages" :key="msg._id">
 				<PostboxReaderMessage
 					:message="msg"
-					:mailbox-id="message.mailboxId"
 					:expanded="expanded.has(msg._id)"
 					:relative-time="relativeReceivedAt(msg.receivedAt)"
 					:starred="isMessageStarred(msg)"
 					:show-reply-all="hasOtherRecipients(msg)"
 					:show-sender-controls="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
-					:auth-enabled="authBadgesEnabled"
-					:sealed-enabled="sealedMailEnabled"
 					:secure-class="secureClass(msg)"
 					:hide-body="hideRawBody(msg)"
 					:tracker="trackerDetection(msg)"
 					:delivery="deliveryFor(msg)"
 					:scheduling-times="schedulingTimesFor(msg)"
-					:show-render-toggle="appIsDark"
 					:forced-light="isForcedLight(msg._id)"
 					:images="
 						postboxBodyImageProps(msg, {
@@ -917,14 +927,10 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 							isSenderAllowed: imageAllowlist.isAllowed(msg.fromAddress),
 						})
 					"
-					:own-email="ownEmail"
 					:has-invite="!!calendarAttachment(msg)"
 					:seal-status="sealStatusFor(msg)"
-					:downloading-attachment="downloadingAttachment"
-					:eager-body="mountAllBodies"
 					:latest-line="rb.latestFor(msg._id)"
 					:cite-quote="rb.citeQuoteFor(msg._id)"
-					v-bind="calm.cardOf(msg._id)"
 					@image-state="calm.onImageState(msg._id, $event)"
 					@toggle-expanded="toggleExpanded(msg._id)"
 					@open-sender-profile="openSenderProfile(msg)"
