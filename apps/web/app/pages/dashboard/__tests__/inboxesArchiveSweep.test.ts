@@ -72,15 +72,20 @@ function install() {
 			refetch: vi.fn(),
 		}),
 		useBackendOperation: (_fn: unknown, opts: { label: () => string }) => ({
-			run: vi.fn(async (args: { threadIds?: string[] }) => {
+			run: vi.fn(async (args: { threads?: { threadId: string }[] }) => {
 				runs.push({ label: opts.label(), args });
+				const threadIds = (args.threads ?? []).map((thread) => thread.threadId);
 				return {
 					ok: true,
 					result: {
 						ok: true,
-						moved: (args.threadIds ?? []).map((id) => ({
-							messageId: `msg_${id}`,
-							sourceFolderId: 'inbox',
+						moved: threadIds.map((id) => ({ messageId: `msg_${id}`, sourceFolderId: 'inbox' })),
+						threads: threadIds.map((threadId) => ({
+							threadId,
+							moved: 1,
+							isDone: true,
+							after: null,
+							hasLeftInbox: true,
 						})),
 					},
 				};
@@ -152,7 +157,7 @@ describe('All inboxes: Archive and the sweep from it', () => {
 
 		await rows[0]!.find('[data-testid="inboxes-row-archive"]').trigger('click');
 
-		expect(runs).toEqual([{ label: ARCHIVE, args: { threadIds: ['t1'] } }]);
+		expect(runs).toEqual([{ label: ARCHIVE, args: { threads: [{ threadId: 't1' }] } }]);
 		await nextTick();
 		expect(wrapper.text()).not.toContain('Newsletter t1');
 		wrapper.unmount();
@@ -174,7 +179,12 @@ describe('All inboxes: Archive and the sweep from it', () => {
 		handle.element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 		await nextTick();
 
-		expect(runs).toEqual([{ label: ARCHIVE, args: { threadIds: ['t1', 't2', 't3'] } }]);
+		expect(runs).toEqual([
+			{
+				label: ARCHIVE,
+				args: { threads: [{ threadId: 't1' }, { threadId: 't2' }, { threadId: 't3' }] },
+			},
+		]);
 		expect(wrapper.text()).toContain('Team question');
 		wrapper.unmount();
 	});

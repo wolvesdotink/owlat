@@ -5,7 +5,9 @@
  * Rows are conversations, so what is pinned is that the call carries THREAD
  * ids (never a stand-in message id), that team-inbox rows are never archived,
  * that a sweep does nothing before release and archives exactly the range
- * once, and that one Undo covers it all.
+ * once, that one Undo covers it all, that a conversation the server left
+ * unfinished goes round again, and that a row comes back whenever its
+ * conversation is still in the Inbox once the calls settle.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { effectScope, nextTick, ref, type EffectScope } from 'vue';
@@ -27,8 +29,9 @@ const ARCHIVE = 'dashboard.inboxes.archiveOperation';
 const ROW_PX = 50;
 
 type Row = { key: string; archive: { threadId: string } | null };
+type Request = { threadId: string; after?: { receivedAt: number; creationTime: number } };
 
-let runs: Array<{ label: string; args: { threadIds?: string[] } }>;
+let runs: Array<{ label: string; args: { threads?: Request[] } }>;
 let outcomes: Array<{ ok: boolean; result?: unknown }>;
 let scope: EffectScope;
 let list: HTMLElement;
@@ -43,9 +46,9 @@ beforeEach(() => {
 			params?.count === undefined ? key : `${key}:${params.count}`,
 	}));
 	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: { label: () => string }) => ({
-		run: vi.fn(async (args: { threadIds?: string[] }) => {
+		run: vi.fn(async (args: { threads?: Request[] }) => {
 			runs.push({ label: opts.label(), args });
-			return outcomes.shift() ?? movedFor(args.threadIds ?? []);
+			return outcomes.shift() ?? movedFor((args.threads ?? []).map((thread) => thread.threadId));
 		}),
 	}));
 });
@@ -56,16 +59,44 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-/** A successful archive that moved one message per thread. */
-function movedFor(threadIds: string[]) {
+type ThreadOutcome = {
+	threadId: string;
+	moved: number;
+	isDone: boolean;
+	after: { receivedAt: number; creationTime: number } | null;
+	hasLeftInbox: boolean;
+};
+
+/** A successful call: `moved` messages per listed thread, with per-thread outcomes. */
+function callResult(threads: Array<Partial<ThreadOutcome> & { threadId: string }>) {
+	const outcomes = threads.map((thread) => ({
+		moved: 1,
+		isDone: true,
+		after: null,
+		hasLeftInbox: true,
+		...thread,
+	}));
 	return {
 		ok: true,
 		result: {
 			ok: true,
-			moved: threadIds.map((id) => ({ messageId: `m-${id}`, sourceFolderId: 'inbox' })),
+			moved: outcomes.flatMap((thread) =>
+				Array.from({ length: thread.moved }, (_, i) => ({
+					messageId: `m-${thread.threadId}-${i}`,
+					sourceFolderId: 'inbox',
+				}))
+			),
+			threads: outcomes,
 		},
 	};
 }
+
+/** A successful archive that moved one message per thread and cleared each from the Inbox. */
+function movedFor(threadIds: string[]) {
+	return callResult(threadIds.map((threadId) => ({ threadId })));
+}
+
+const sent = (i = 0) => runs[i]!.args.threads!.map((thread) => thread.threadId);
 
 const mailRow = (id: string): Row => ({ key: `mail:mbx:${id}`, archive: { threadId: id } });
 const teamRow = (id: string): Row => ({ key: `team:${id}`, archive: null });
@@ -136,12 +167,13 @@ describe('useInboxesThreadArchive', () => {
 
 		expect(await api.archiveRow(api.rows.value[0]!)).toBe(true);
 
-		expect(runs).toEqual([{ label: ARCHIVE, args: { threadIds: ['t1'] } }]);
+		expect(runs).toEqual([{ label: ARCHIVE, args: { threads: [{ threadId: 't1' }] } }]);
 		expect(api.visible.value.map((r) => r.key)).toEqual(['mail:mbx:t2']);
 		expect(registerMoveBack).toHaveBeenCalledTimes(1);
 		expect(registerMoveBack.mock.calls[0]![0]).toMatchObject({
+			label: 'dashboard.inboxes.archivedUndo:1',
 			kind: 'archived',
-			moved: [{ messageId: 'm-t1', sourceFolderId: 'inbox' }],
+			moved: [{ messageId: 'm-t1-0', sourceFolderId: 'inbox' }],
 		});
 	});
 
@@ -178,7 +210,8 @@ describe('useInboxesThreadArchive', () => {
 		release(3);
 		await settle();
 
-		expect(runs).toEqual([{ label: ARCHIVE, args: { threadIds: ['t1', 't2', 't3'] } }]);
+		expect(runs).toHaveLength(1);
+		expect(sent()).toEqual(['t1', 't2', 't3']);
 		expect(registerMoveBack).toHaveBeenCalledTimes(1);
 		expect(api.visible.value.map((r) => r.key)).toEqual(['team:x', 'mail:mbx:t4']);
 	});
@@ -204,7 +237,105 @@ describe('useInboxesThreadArchive', () => {
 		await settle();
 
 		expect(registerMoveBack).toHaveBeenCalledTimes(1);
-		expect(runs.map((r) => r.args.threadIds!.length)).toEqual([100, 50]);
+		expect(runs.map((r) => r.args.threads!.length)).toEqual([100, 50]);
 		expect(registerMoveBack.mock.calls[0]![0].moved).toHaveLength(150);
+		expect(registerMoveBack.mock.calls[0]![0].label).toBe('dashboard.inboxes.archivedUndo:150');
+	});
+
+	it('calls again for a conversation the server left unfinished, from where it stopped', async () => {
+		const api = await mount([mailRow('t1'), mailRow('t2')]);
+		const after = { receivedAt: 5, creationTime: 6 };
+		outcomes = [
+			callResult([{ threadId: 't1', moved: 3, isDone: false, after, hasLeftInbox: false }]),
+			callResult([{ threadId: 't1', moved: 2 }]),
+		];
+
+		expect(await api.archiveRow(api.rows.value[0]!)).toBe(true);
+
+		expect(runs.map((r) => r.args.threads)).toEqual([
+			[{ threadId: 't1' }],
+			[{ threadId: 't1', after }],
+		]);
+		expect(api.visible.value.map((r) => r.key)).toEqual(['mail:mbx:t2']);
+		expect(registerMoveBack).toHaveBeenCalledTimes(1);
+		expect(registerMoveBack.mock.calls[0]![0].moved).toHaveLength(5);
+		expect(registerMoveBack.mock.calls[0]![0].label).toBe('dashboard.inboxes.archivedUndo:1');
+	});
+
+	it('resumes every unfinished conversation of a sweep under one Undo', async () => {
+		const api = await mount([mailRow('t1'), mailRow('t2'), mailRow('t3')]);
+		const after = { receivedAt: 5, creationTime: 6 };
+		outcomes = [
+			callResult([
+				{ threadId: 't1', moved: 2 },
+				{ threadId: 't2', moved: 4, isDone: false, after, hasLeftInbox: false },
+				{ threadId: 't3', moved: 0, isDone: false, after: null, hasLeftInbox: false },
+			]),
+			callResult([
+				{ threadId: 't2', moved: 1 },
+				{ threadId: 't3', moved: 1 },
+			]),
+		];
+
+		drag(api, 0, 2);
+		release(2);
+		await settle();
+
+		expect(runs.map((r) => r.args.threads)).toEqual([
+			[{ threadId: 't1' }, { threadId: 't2' }, { threadId: 't3' }],
+			[{ threadId: 't2', after }, { threadId: 't3' }],
+		]);
+		expect(registerMoveBack).toHaveBeenCalledTimes(1);
+		expect(registerMoveBack.mock.calls[0]![0].moved).toHaveLength(8);
+		expect(registerMoveBack.mock.calls[0]![0].label).toBe('dashboard.inboxes.archivedUndo:3');
+		expect(api.visible.value).toEqual([]);
+	});
+
+	it('brings back a conversation the call left in the Inbox, and keeps it after a list update', async () => {
+		const api = await mount([mailRow('t1'), mailRow('t2')]);
+		outcomes = [callResult([{ threadId: 't1', moved: 0, hasLeftInbox: false }])];
+
+		expect(await api.archiveRow(api.rows.value[0]!)).toBe(true);
+
+		expect(api.visible.value.map((r) => r.key)).toEqual(['mail:mbx:t1', 'mail:mbx:t2']);
+		api.rows.value = [...api.rows.value];
+		await nextTick();
+		expect(api.visible.value.map((r) => r.key)).toEqual(['mail:mbx:t1', 'mail:mbx:t2']);
+		expect(registerMoveBack).not.toHaveBeenCalled();
+	});
+
+	it('brings back a partly archived conversation (snoozed mail stays) but keeps its Undo', async () => {
+		const api = await mount([mailRow('t1'), mailRow('t2'), mailRow('t3')]);
+		outcomes = [
+			callResult([
+				{ threadId: 't1', moved: 1 },
+				{ threadId: 't2', moved: 2, hasLeftInbox: false },
+				{ threadId: 't3', moved: 0, hasLeftInbox: false },
+			]),
+		];
+
+		drag(api, 0, 2);
+		release(2);
+		await settle();
+
+		expect(api.visible.value.map((r) => r.key)).toEqual(['mail:mbx:t2', 'mail:mbx:t3']);
+		expect(registerMoveBack.mock.calls[0]![0]).toMatchObject({
+			label: 'dashboard.inboxes.archivedUndo:2',
+		});
+		expect(registerMoveBack.mock.calls[0]![0].moved).toHaveLength(3);
+	});
+
+	it('counts only the conversations archived when one of the split calls fails', async () => {
+		const many = Array.from({ length: 101 }, (_, i) => mailRow(`t${i}`));
+		const api = await mount(many);
+		outcomes = [{ ok: false }, movedFor(['t100'])];
+
+		drag(api, 0, 100);
+		release(100);
+		await settle();
+
+		expect(api.visible.value).toHaveLength(100);
+		expect(api.visible.value.some((r) => r.key === 'mail:mbx:t100')).toBe(false);
+		expect(registerMoveBack.mock.calls[0]![0].label).toBe('dashboard.inboxes.archivedUndo:1');
 	});
 });
