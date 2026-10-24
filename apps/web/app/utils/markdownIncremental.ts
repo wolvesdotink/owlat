@@ -5,9 +5,14 @@
  * it whole each time costs O(n²) over the answer. The parser here keeps the
  * blocks that can no longer change (see `parseMarkdownSettled`) together with the
  * source text they came from, and on the next flush parses only what follows
- * that text. Work per flush is then bounded by the unsettled tail: the block the
- * stream is extending, not the answer. One growing paragraph, list or unclosed
- * fence is still parsed again in full on every flush until it ends.
+ * that text. Parsing per flush is then bounded by the unsettled tail: the block
+ * the stream is extending, plus at most the complete block before it (a block
+ * settles only once the line after it is complete, so a just-closed fence stays
+ * in the tail until the next line ends). One growing paragraph, list or unclosed
+ * fence is still parsed again in full on every flush until it ends. The settled
+ * prefix is not parsed again, but each flush still does linear work over it: a
+ * prefix compare of the settled source, and copying and identity-comparing the
+ * settled block array. Those are cheap next to parsing.
  *
  * The result shares structure with the previous one (settled blocks are the very
  * same objects, the tail is matched by position), so a renderer re-renders only
