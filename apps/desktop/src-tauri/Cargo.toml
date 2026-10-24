@@ -86,3 +86,9 @@ custom-protocol = ["tauri/custom-protocol"]
 # those commands are neither compiled nor registered, and main.rs refuses to
 # compile it into an optimized build.
 dev-provisioning = ["dep:tar", "dep:flate2", "dep:ignore", "dep:libc"]
+# The packaged-app smoke test and updater end-to-end run (scripts/desktop-smoke.ts):
+# reports boot, mount, renderer errors and update steps on stdout when
+# OWLAT_E2E_REPORT=1, and lets the updater trust a loopback http origin whenever
+# it is compiled in. Debug fixture builds only; main.rs refuses to compile it
+# into an optimized build.
+e2e-fixture = []

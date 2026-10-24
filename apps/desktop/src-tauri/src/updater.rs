@@ -40,6 +40,8 @@
 //! download). A server chooses among signed releases; it can never substitute
 //! one. Endpoints are required to be https — the plugin refuses plain http
 //! unless `dangerousInsecureTransportProtocol` is set, and that flag stays off.
+//! (A debug-only `e2e-fixture` build also trusts the IPv4 loopback over http;
+//! see `is_fixture_origin`.)
 //!
 //! The manifest itself is not signed, only the bundle is, so the plugin's
 //! "newer than me?" decision reads a version string the endpoint can make up.
@@ -131,10 +133,26 @@ pub enum UpdateProgress {
 /// config-provided endpoint looks like by the time the plugin substitutes them.
 fn parse_endpoint(raw: &str) -> Result<Url, String> {
     let url = Url::parse(raw).map_err(|e| format!("unknown: invalid update endpoint ({e})"))?;
-    if url.scheme() != "https" {
+    if url.scheme() != "https" && !is_fixture_origin(&url) {
         return Err("unknown: update endpoints must be https".to_string());
     }
     Ok(url)
+}
+
+/// The one extra origin an `e2e-fixture` build trusts for both the manifest
+/// endpoint and the bundle: plain http on the IPv4 loopback, where
+/// scripts/desktop-smoke.ts serves the update route and its release assets.
+/// The bundle path rules and the minisign check stay exactly as they are, and
+/// main.rs refuses to compile the feature into an optimized build, so no
+/// shipped binary ever has this branch.
+#[cfg(feature = "e2e-fixture")]
+fn is_fixture_origin(url: &Url) -> bool {
+    url.scheme() == "http" && url.host_str() == Some("127.0.0.1")
+}
+
+#[cfg(not(feature = "e2e-fixture"))]
+fn is_fixture_origin(_url: &Url) -> bool {
+    false
 }
 
 /// `owlat-desktop/<version>`, so an instance (and GitHub) can tell desktop
@@ -170,7 +188,8 @@ fn release_path_prefix() -> String {
 fn vet_download_url(url: &Url, version: &str) -> Result<(), String> {
     let refuse =
         || format!("signature: {url} is not a release asset of this app for version {version}");
-    if url.scheme() != "https" || url.host_str() != Some(RELEASE_HOST) {
+    let github = url.scheme() == "https" && url.host_str() == Some(RELEASE_HOST);
+    if !github && !is_fixture_origin(url) {
         return Err(refuse());
     }
     let prefix = release_path_prefix();
@@ -608,6 +627,39 @@ mod tests {
         assert!(parse_endpoint("http://localhost:3000/api/desktop/update/a/b/c").is_err());
         assert!(parse_endpoint("file:///etc/passwd").is_err());
         assert!(parse_endpoint("not a url").is_err());
+    }
+
+    /// The update route and release assets as scripts/desktop-smoke.ts serves
+    /// them to a fixture build.
+    const FIXTURE_ENDPOINT: &str =
+        "http://127.0.0.1:4000/api/desktop/update/{{target}}/{{arch}}/{{current_version}}";
+    const FIXTURE_ASSET: &str =
+        "http://127.0.0.1:4100/wolvesdotink/owlat/releases/download/v0.4.7/Owlat_0.4.7_amd64.AppImage";
+
+    #[cfg(not(feature = "e2e-fixture"))]
+    #[test]
+    fn loopback_fixture_origin_is_refused_outside_fixture_builds() {
+        assert!(parse_endpoint(FIXTURE_ENDPOINT).is_err());
+        assert!(vet_download_url(&url(FIXTURE_ASSET), "0.4.7").is_err());
+    }
+
+    #[cfg(feature = "e2e-fixture")]
+    #[test]
+    fn fixture_build_trusts_the_ipv4_loopback_with_the_same_path_rules() {
+        assert!(parse_endpoint(FIXTURE_ENDPOINT).is_ok());
+        assert!(vet_download_url(&url(FIXTURE_ASSET), "0.4.7").is_ok());
+        // Still bound to the claimed version and this repository's layout.
+        let err = vet_download_url(&url(FIXTURE_ASSET), "9.9.9").unwrap_err();
+        assert_eq!(classify_error(&err), "signature");
+        for bad in [
+            "http://localhost:4100/wolvesdotink/owlat/releases/download/v0.4.7/x.AppImage",
+            "http://127.0.0.2:4100/wolvesdotink/owlat/releases/download/v0.4.7/x.AppImage",
+            "http://127.0.0.1:4100/someone-else/owlat/releases/download/v0.4.7/x.AppImage",
+            "http://198.51.100.7:8080/wolvesdotink/owlat/releases/download/v0.4.7/x.AppImage",
+        ] {
+            assert!(vet_download_url(&url(bad), "0.4.7").is_err(), "{bad}");
+        }
+        assert!(parse_endpoint("http://localhost:4000/api/desktop/update/a/b/c").is_err());
     }
 
     #[test]
