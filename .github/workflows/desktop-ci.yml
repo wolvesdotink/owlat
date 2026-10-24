@@ -21,6 +21,7 @@ on:
       # and the update route the updater run goes through.
       - 'apps/web/nuxt.config.ts'
       - 'apps/web/app/plugins/*desktop*'
+      - 'apps/web/app/plugins/error-handler.client.ts'
       - 'apps/web/app/middleware/desktop-*'
       - 'apps/web/app/lib/desktop/**'
       - 'apps/web/app/pages/desktop/**'
@@ -39,6 +40,9 @@ jobs:
   rust:
     name: Rust build + tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Three cargo builds (default, dev-provisioning, e2e-fixture) of the shell
+    # with vendored OpenSSL/libssh2; a cold Windows cache is the slow case.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -118,6 +122,7 @@ jobs:
       # The fixture build (package job) adds the e2e instrumentation and the
       # loopback allowance to the updater; test that shape too.
       - name: Build + test Rust shell (e2e-fixture)
+        timeout-minutes: 20
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --features e2e-fixture
 
   # The packaged app, end to end on Linux. Builds the web server, the desktop SPA

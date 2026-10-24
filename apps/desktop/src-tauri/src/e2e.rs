@@ -1,7 +1,9 @@
 //! Instrumentation for the packaged-app smoke test and the updater end-to-end
 //! run (scripts/desktop-smoke.ts). Only compiled with the `e2e-fixture`
-//! feature, which main.rs refuses in optimized builds, and inert unless
-//! `OWLAT_E2E_REPORT=1` is set when the app starts.
+//! feature, which main.rs refuses in optimized builds. The instrumentation
+//! below is inert unless `OWLAT_E2E_REPORT=1` is set when the app starts; the
+//! updater's loopback allowance (updater.rs) applies whenever the feature is
+//! compiled in.
 //!
 //! The harness cannot see inside the webview, so this reports on stdout, one
 //! `owlat-e2e {json}` line per event:
@@ -10,8 +12,9 @@
 //!   - `mounted`: the SPA mounted the welcome page (a fresh profile has no
 //!     workspace). The window is revealed at splash paint, earlier than this,
 //!     so the reveal alone does not prove the bundle booted;
-//!   - `renderer-error`: an uncaught error, an unhandled rejection or a
-//!     resource that failed to load, caught in the webview;
+//!   - `renderer-error`: an uncaught error, an unhandled rejection, a resource
+//!     that failed to load, or a Vue component or Nuxt app error the web app's
+//!     error handler caught, seen in the webview;
 //!   - the update steps, when `OWLAT_E2E_UPDATE_ENDPOINT` names a manifest
 //!     route: `update-found` / `no-update`, then `update-downloaded` or
 //!     `update-error`, then `restarting`. The restart goes through
@@ -40,54 +43,13 @@ const PROBE_EVENT: &str = "owlat-e2e";
 /// The prefix scripts/desktop-smoke/report.ts parses.
 const LINE_PREFIX: &str = "owlat-e2e ";
 
-/// Runs before the page's own scripts in the main frame of every window. It
-/// emits through the event plugin the default capability already grants
-/// (`core:event:default`), so the instrumentation needs no IPC permission of
-/// its own. Mount is detected with a MutationObserver rather than a timer: the
-/// welcome page's address field inside the mounted Vue root, with the page
-/// title set.
-const RENDERER_PROBE: &str = r#"(() => {
-	const send = (payload) => {
-		try {
-			window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'owlat-e2e', payload });
-		} catch (_) {}
-	};
-	window.addEventListener('error', (event) => {
-		const target = event.target;
-		if (target && target !== window && (target.src || target.href)) {
-			send({ event: 'renderer-error', kind: 'resource', detail: String(target.src || target.href) });
-			return;
-		}
-		send({
-			event: 'renderer-error',
-			kind: 'uncaught',
-			detail: `${event.message} (${event.filename}:${event.lineno})`,
-		});
-	}, true);
-	window.addEventListener('unhandledrejection', (event) => {
-		const reason = event.reason;
-		send({
-			event: 'renderer-error',
-			kind: 'unhandled-rejection',
-			detail: String((reason && reason.stack) || reason),
-		});
-	});
-	let reported = false;
-	const check = () => {
-		if (reported) return;
-		const root = document.getElementById('__nuxt');
-		if (!root || !root.__vue_app__ || !root.querySelector('input')) return;
-		if (!location.pathname.startsWith('/desktop/welcome') || !document.title) return;
-		reported = true;
-		observer.disconnect();
-		send({ event: 'mounted', path: location.pathname, title: document.title });
-	};
-	const observer = new MutationObserver(check);
-	observer.observe(document, { childList: true, subtree: true, characterData: true });
-})();"#;
+/// The webview half of the instrumentation (e2e-probe.js): reports renderer
+/// errors, Vue component errors included, and the welcome page's mount.
+const RENDERER_PROBE: &str = include_str!("e2e-probe.js");
 
 /// Adds the instrumentation when `OWLAT_E2E_REPORT=1`; otherwise the builder is
-/// returned untouched and a fixture build behaves like any other debug build.
+/// returned untouched. The updater's loopback allowance does not depend on
+/// this: it is compiled into every fixture build.
 pub fn attach(builder: Builder<Wry>) -> Builder<Wry> {
     if std::env::var(REPORT_ENV).as_deref() != Ok("1") {
         return builder;

@@ -182,7 +182,7 @@ fn main() {
 
             Ok(())
         });
-    // Inert unless the harness asks for it; see e2e.rs.
+    // The instrumentation is inert unless the harness asks for it; see e2e.rs.
     #[cfg(feature = "e2e-fixture")]
     let builder = e2e::attach(builder);
     builder

@@ -210,7 +210,8 @@ xvfb-run -a dbus-run-session -- bun scripts/desktop-smoke.ts update --fixtures ~
   N+1 (the next patch, set through tauri's `--config`, so no file changes).
   Both carry the `e2e-fixture` feature and the throwaway public key.
 - `launch` starts N on a fresh profile and requires the welcome page to mount,
-  with no uncaught renderer error, failed asset load, panic or crash.
+  with no uncaught renderer error, failed asset load, caught Vue component
+  error, panic or crash.
 - `update` serves N+1 through the built web server's own
   `/api/desktop/update/...` route, with a fake Convex upstream behind it and the
   bundle served from a loopback copy of the GitHub release-asset path. N must
@@ -222,12 +223,15 @@ xvfb-run -a dbus-run-session -- bun scripts/desktop-smoke.ts update --fixtures ~
   AppImage it just built (`_desktop-build.yml`), before the draft release can be
   published.
 
-The `e2e-fixture` feature (`src-tauri/src/e2e.rs`) is inert unless
-`OWLAT_E2E_REPORT=1` is set. It reports boot, mount and update steps on stdout,
-drives the update through the same `updater_*` commands the webview calls, and
-lets the updater trust `http://127.0.0.1` for the endpoint and the bundle (the
-path and signature rules stay). `main.rs` refuses to compile it into an
-optimized build, so a release binary cannot carry it. No signing secret is
+The `e2e-fixture` feature (`src-tauri/src/e2e.rs`) does two things. Its
+instrumentation is inert unless `OWLAT_E2E_REPORT=1` is set: it reports boot,
+mount, renderer errors (Vue component errors the web app's error handler
+catches included) and update steps on stdout, and drives the update through the
+same `updater_*` commands the webview calls. Its transport allowance applies
+whenever the feature is compiled in, with or without that variable: the updater
+trusts `http://127.0.0.1` for the endpoint and the bundle (the path and
+signature rules stay). `main.rs` refuses to compile the feature into an
+optimized build, so a release binary cannot carry either. No signing secret is
 involved: the fixture builds sign with the key `build` generates.
 
 ## Release (CI)
