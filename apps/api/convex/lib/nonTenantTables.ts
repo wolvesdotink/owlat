@@ -53,7 +53,7 @@ export const NON_TENANT_TABLES = [
 	// org, and a sweep still running during a wipe must keep its fence.
 	'mailBodySearchPurges',
 	// Sweep and sampler marks, no Send, contact or row content. The lost-send pass
-	// leases (#1208) go stale after a wipe and are taken over by the next pass.
+	// leases go stale after a wipe and are taken over by the next pass.
 	'lostSendSweepLeases',
 	'derivedFieldCursors', // the derived-field drift sampler's place in each table
 	// Instance infrastructure / regenerable caches — not org business data.
@@ -89,7 +89,7 @@ export const NON_TENANT_TABLES = [
 	'tlsReports',
 	// End-to-end encryption key material (Sealed Mail): the instance signing
 	// identity plus per-address OpenPGP keypairs whose PUBLIC halves are published
-	// for discovery. Kept on purpose (#1101), unlike `aiProviderConfig`: nobody
+	// for discovery. Kept on purpose, unlike `aiProviderConfig`: nobody
 	// entered these as credentials, the instance minted them, and other instances
 	// have recorded and pinned their fingerprints. The identity row signs the
 	// manifest whose rotation feed is the only way a pinned key may change; a
@@ -126,7 +126,7 @@ export const NON_TENANT_TABLES = [
 	// protocol/telemetry tables — wiping it would only make a working channel
 	// read as `awaiting_event` until the provider next spoke.
 	'pluginWebhookFeedbackActivity',
-	// Replay claims for single provider events (Mandrill, #1228): the adapter's
+	// Replay claims for single provider events (Mandrill): the adapter's
 	// address-free `replayKey` (event name, provider message id, timestamp) and
 	// the claim state, nothing else. Wire-protocol bookkeeping like
 	// `pluginWebhookDeliveries`, self-expiring a week after the event; wiping
