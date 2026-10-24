@@ -583,6 +583,32 @@ describe('checkCommentPolicy', () => {
 		expect(result.messages.at(-1)).toContain('origin/main');
 	});
 
+	it('keeps the base of a pull request when its target branch moves', () => {
+		const { root, base } = repository();
+		const remote = mkdtempSync(join(tmpdir(), 'owlat-comment-policy-remote-'));
+		sandboxes.push(remote);
+		git(remote, ['init', '--quiet', '--bare']);
+		git(root, ['remote', 'add', 'origin', remote]);
+		git(root, ['push', '--quiet', 'origin', 'main']);
+		git(root, ['checkout', '--quiet', '-b', 'feature']);
+		write(root, 'src/clean.ts', '// until now\nexport const b = 2;\n');
+		git(root, ['commit', '--quiet', '-am', 'narrate']);
+		// The target moves after the checkout; the local origin/main stays put.
+		git(root, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+		git(root, ['update-ref', 'refs/remotes/origin/main', base]);
+
+		for (const env of [{}, { PR_BASE_SHA: base }]) {
+			const result = check(root, { CI: 'true', GITHUB_BASE_REF: 'main', ...env });
+			expect(found(result)).toEqual(['src/clean.ts:1:narration']);
+		}
+		expect(git(root, ['rev-parse', 'origin/main'])).toBe(base);
+
+		git(root, ['update-ref', '-d', 'refs/remotes/origin/main']);
+		const pinned = check(root, { CI: 'true', GITHUB_BASE_REF: 'main', PR_BASE_SHA: base });
+		expect(found(pinned)).toEqual(['src/clean.ts:1:narration']);
+		expect(pinned.messages.at(-1)).toContain(`origin/main at ${base}`);
+	});
+
 	it('skips an unresolvable base locally and fails on it in CI', () => {
 		const { root } = repository();
 		expect(check(root, {})).toMatchObject({ status: 0 });
