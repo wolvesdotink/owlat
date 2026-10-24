@@ -11309,11 +11309,17 @@
 				"title": "Team-Postfach",
 				"undo": {
 					"assigned": "Zugewiesen",
+					"assignedMany": "{count} Unterhaltung zugewiesen | {count} Unterhaltungen zugewiesen",
 					"assignedTo": "{name} zugewiesen",
+					"assignedToMany": "{count} Unterhaltung {name} zugewiesen | {count} Unterhaltungen {name} zugewiesen",
 					"assignedToYou": "Dir zugewiesen",
+					"assignedToYouMany": "Dir {count} Unterhaltung zugewiesen | Dir {count} Unterhaltungen zugewiesen",
 					"resolved": "Erledigt",
+					"resolvedMany": "{count} Unterhaltung erledigt | {count} Unterhaltungen erledigt",
 					"snoozed": "Zurückgestellt",
-					"unassigned": "Zuweisung aufgehoben"
+					"snoozedMany": "{count} Unterhaltung zurückgestellt | {count} Unterhaltungen zurückgestellt",
+					"unassigned": "Zuweisung aufgehoben",
+					"unassignedMany": "Zuweisung von {count} Unterhaltung aufgehoben | Zuweisung von {count} Unterhaltungen aufgehoben"
 				},
 				"unsnoozeThreadOperation": "Zurückstellung aufheben",
 				"updateThreadStatusOperation": "Status der Konversation ändern",
@@ -15766,8 +15772,16 @@
 				"recategorizeThread": "Konversation neu einordnen"
 			},
 			"usePostboxTriageUndo": {
+				"grouped": {
+					"archived": "{count} Nachricht archiviert | {count} Nachrichten archiviert",
+					"moved": "{count} Nachricht verschoben | {count} Nachrichten verschoben",
+					"spam": "{count} Nachricht als Spam markiert | {count} Nachrichten als Spam markiert",
+					"trashed": "{count} Nachricht in den Papierkorb verschoben | {count} Nachrichten in den Papierkorb verschoben"
+				},
 				"keyHint": "{keys} zum Rückgängigmachen",
-				"undo": "Rückgängig"
+				"keyHintLast": "{keys} macht die letzte Aktion rückgängig",
+				"undo": "Rückgängig",
+				"undoAll": "Alle rückgängig"
 			},
 			"usePostboxImageAllowlist": {
 				"allowOperation": "Bilder dieses Absenders immer anzeigen",
@@ -17257,11 +17271,15 @@
 			"exportFailed": "Export fehlgeschlagen. Bitte versuche es erneut.",
 			"exported": "{count} Kontakt nach {filename} exportiert | {count} Kontakte nach {filename} exportiert",
 			"listFallback": "Liste",
+			"nothingAdded": "Alle ausgewählten Kontakte sind schon in „{list}“",
 			"noContactsToExport": "Keine Kontakte zum Exportieren",
+			"nothingRemoved": "Keiner der ausgewählten Kontakte ist in „{list}“",
 			"removeContactsOperation": "Kontakte aus Thema entfernen",
 			"removedFromList": "{count} Kontakt aus „{list}“ entfernt | {count} Kontakte aus „{list}“ entfernt",
 			"selectAllFailed": "Es konnten nicht alle Kontakte ausgewählt werden. Bitte versuche es erneut.",
-			"selectionTruncated": "Die ersten {count} passenden Kontakte wurden ausgewählt. Verfeinere deinen Filter, um die übrigen zu bearbeiten."
+			"selectionTruncated": "Die ersten {count} passenden Kontakte wurden ausgewählt. Verfeinere deinen Filter, um die übrigen zu bearbeiten.",
+			"undoAddOperation": "Hinzufügen von Kontakten zum Thema rückgängig machen",
+			"undoRemoveOperation": "Entfernen von Kontakten aus dem Thema rückgängig machen"
 		},
 		"useContactDetail": {
 			"clearPropertyOperation": "Kontakteigenschaft löschen",
