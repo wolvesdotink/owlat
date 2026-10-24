@@ -10,13 +10,22 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { ref } from 'vue';
 import { useRichText } from '../useRichText';
 
-/** Mount a contenteditable editor and select the substring `needle`. */
-function mountAndSelect(html: string, needle: string) {
-	document.body.innerHTML = '';
+/** Editors this file appended to the document; each test's are removed after it. */
+const editors: HTMLElement[] = [];
+
+/** Append an editor holding `html` to the document. */
+function appendEditor(html: string): HTMLElement {
 	const editor = document.createElement('div');
-	editor.setAttribute('contenteditable', 'true');
 	editor.innerHTML = html;
 	document.body.appendChild(editor);
+	editors.push(editor);
+	return editor;
+}
+
+/** Mount a contenteditable editor and select the substring `needle`. */
+function mountAndSelect(html: string, needle: string) {
+	const editor = appendEditor(html);
+	editor.setAttribute('contenteditable', 'true');
 
 	const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
 	let textNode: Text | null = null;
@@ -50,7 +59,7 @@ afterEach(() => {
 	} else {
 		(document as { execCommand?: unknown }).execCommand = originalExec;
 	}
-	document.body.innerHTML = '';
+	for (const editor of editors.splice(0)) editor.remove();
 });
 
 describe('replaceSelection', () => {
@@ -109,10 +118,7 @@ describe('replaceSelection', () => {
 	});
 
 	it('no-ops (returns false) with no selection inside the editor', () => {
-		document.body.innerHTML = '';
-		const editor = document.createElement('div');
-		editor.innerHTML = '<p>untouched</p>';
-		document.body.appendChild(editor);
+		const editor = appendEditor('<p>untouched</p>');
 		window.getSelection()!.removeAllRanges();
 
 		const editorRef = ref<HTMLElement | null>(editor);

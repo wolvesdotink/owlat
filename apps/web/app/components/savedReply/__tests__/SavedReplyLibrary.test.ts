@@ -1,4 +1,4 @@
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
 import SavedReplyLibrary from '../SavedReplyLibrary.vue';
@@ -31,7 +31,6 @@ beforeAll(() => {
 		useBackendOperation: () => ({ run, isLoading: ref(false) }),
 	});
 });
-enableAutoUnmount(afterEach);
 afterEach(() => run.mockClear());
 
 function reply(overrides: Record<string, unknown>) {

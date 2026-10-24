@@ -5,8 +5,8 @@
  * it, Enter inserts the highlighted teammate (and never sends or saves), and
  * the first Escape closes only the list.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import ChatInput from '../ChatInput.vue';
 import ChatMentionPicker from '../ChatMentionPicker.vue';
@@ -15,8 +15,6 @@ import TeamNoteComposer from '~/components/team/TeamNoteComposer.vue';
 import UiAvatar from '~/components/ui/Avatar.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useComposerDrafts } from '~/composables/useComposerDrafts';
-
-enableAutoUnmount(afterEach);
 
 const PEOPLE = [
 	{ memberId: 'm_ada', name: 'Ada Marlow', email: 'ada@example.com', image: null, handle: 'ada' },

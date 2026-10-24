@@ -4,8 +4,8 @@
  * an answer, and the answer must be no: the caller is awaiting a destructive
  * action and must neither run it nor wait forever.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { useConfirm } from '~/composables/useConfirm';
 import ConfirmDialogHost from '../ConfirmDialogHost.vue';
 
@@ -14,8 +14,6 @@ vi.mock('@owlat/ui/components/ui/ConfirmationDialog.vue', () => {
 	imports.attempts += 1;
 	throw new Error('Failed to fetch dynamically imported module');
 });
-
-enableAutoUnmount(afterEach);
 
 describe('ConfirmDialogHost when the dialog cannot be loaded', () => {
 	it('answers no, renders nothing, and tries the import again for the next question', async () => {

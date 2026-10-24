@@ -129,16 +129,17 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 		<p v-if="entry.isDeleted" class="mt-1.5 text-sm italic text-text-tertiary">
 			{{ t('components.team.note.deleted') }}
 		</p>
-		<InboxNoteComposer
-			v-else-if="editing && save"
-			class="mt-2"
-			:submit="saveEdit"
-			:candidates-for="candidatesFor"
-			:initial-body="entry.body"
-			editing
-			autofocus
-			@cancel="editing = false"
-		/>
+		<AppErrorBoundary v-else-if="editing && save" surface="composer" :reset-keys="[entry.noteId]">
+			<InboxNoteComposer
+				class="mt-2"
+				:submit="saveEdit"
+				:candidates-for="candidatesFor"
+				:initial-body="entry.body"
+				editing
+				autofocus
+				@cancel="editing = false"
+			/>
+		</AppErrorBoundary>
 		<p
 			v-else
 			class="mt-1.5 whitespace-pre-wrap break-words text-sm text-text-primary"

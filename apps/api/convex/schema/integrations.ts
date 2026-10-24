@@ -30,10 +30,10 @@ export const integrationTables = {
 		failed: v.number(),
 		errors: v.array(v.string()),
 		totalEstimate: v.optional(v.number()),
-		// AGGREGATED — per-disposition tally of the suppression carry-over half of
-		// this run. Absent on every contacts-only run. Written only by the
-		// walker's per-page accumulation; the terminal hop reports it once as
-		// `blocklist.provider_import_summary`.
+		// COUNTER [importSuppressionTally] — per-disposition tally of the
+		// suppression carry-over half of this run. Absent on every contacts-only
+		// run. Written only by the walker's per-page accumulation; the terminal
+		// hop reports it once as `blocklist.provider_import_summary`.
 		suppressionCounts: v.optional(suppressionCountsValidator),
 		// Page identity and recovery (#996/#999). A page
 		// commits only while `status` is 'running' and its `cursor` and page

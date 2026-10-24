@@ -1,4 +1,4 @@
-import { globToRegExp } from '../fileGlobs.ts';
+import { matchesFileGlobs } from '../fileGlobs.ts';
 import type { Rule } from '../types.ts';
 
 /**
@@ -11,11 +11,8 @@ import type { Rule } from '../types.ts';
  *     "allow": [{ "environment": "node", "files": ["apps/web/e2e/__tests__/x.test.ts"] }]
  *   }]
  *
- * `files` are repository-relative globs (`*`, `**`, `?`). They are matched as a
- * path suffix at a directory boundary rather than against the working
- * directory, because oxlint runs from the repository root and from each
- * workspace with the same config, and its own `overrides` globs resolve against
- * whichever directory that is.
+ * `files` are repository-relative globs, matched as a path suffix (see
+ * `fileGlobs.ts`).
  *
  * The rule matches the source text exactly the way vitest does: vitest runs
  * this pattern over a test file's raw text and takes the first match, whether
@@ -66,10 +63,9 @@ const rule: Rule = {
 	},
 	create(context) {
 		if (!context.sourceCode.text.includes('-environment')) return {};
-		const filename = context.filename.replaceAll('\\', '/');
 		const allowed = new Set(
 			((context.options[0] as Options | undefined)?.allow ?? [])
-				.filter(({ files }) => files.some((glob) => globToRegExp(glob).test(filename)))
+				.filter(({ files }) => matchesFileGlobs(context.filename, files))
 				.map(({ environment }) => environment)
 		);
 		return {

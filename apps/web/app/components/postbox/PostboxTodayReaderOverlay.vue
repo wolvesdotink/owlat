@@ -155,16 +155,20 @@ onUnmounted(() => {
 		>
 			<!-- Keyed swap: j/k and triage auto-advance replace the thread in
 			     place with the same enter-only fade the three-pane reader uses
-			     (postbox-motion.css); nothing waits for the old thread to leave. -->
-			<PostboxThreadReader
-				:key="message._id"
-				class="pbx-reader-swap"
-				:message="message"
-				:advance-ids="advanceIds"
-				folder-role="inbox"
-				advance-in-place
-				@advance="onAdvance"
-			/>
+			     (postbox-motion.css); nothing waits for the old thread to leave.
+			     The boundary keeps a thread that fails to render inside the
+			     overlay, which still closes and still steps to the next one. -->
+			<AppErrorBoundary surface="reader" :reset-keys="[message._id]">
+				<PostboxThreadReader
+					:key="message._id"
+					class="pbx-reader-swap"
+					:message="message"
+					:advance-ids="advanceIds"
+					folder-role="inbox"
+					advance-in-place
+					@advance="onAdvance"
+				/>
+			</AppErrorBoundary>
 		</div>
 	</div>
 </template>

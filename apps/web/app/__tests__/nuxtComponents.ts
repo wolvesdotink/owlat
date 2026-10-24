@@ -17,6 +17,10 @@
  * editor page renders by its auto-registered name (#1441); it stays closed
  * until a suite opens it.
  *
+ * `AppErrorBoundary` (and the `UiErrorBoundary` it renders) wraps every page
+ * under the shell, the Postbox panes, message bodies and every composer. Real, so a suite mounting
+ * one of those hosts renders its content through the boundary the browser has.
+ *
  * `UiShortcut` is the shortcut hint chip the shell, the palette and the
  * onboarding tips render; real, so a suite sees the key a person would.
  *
@@ -33,12 +37,14 @@ import UiCheckbox from '@owlat/ui/components/ui/Checkbox.vue';
 import UiCombobox from '@owlat/ui/components/ui/Combobox.vue';
 import UiEmptyState from '@owlat/ui/components/ui/EmptyState.vue';
 import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
+import UiErrorBoundary from '@owlat/ui/components/ui/ErrorBoundary.vue';
 import UiListbox from '@owlat/ui/components/ui/Listbox.vue';
 import UiPopover from '@owlat/ui/components/ui/Popover.vue';
 import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
 import UiSuggestionPopover from '@owlat/ui/components/ui/SuggestionPopover.vue';
 import UiUnsavedChangesDialog from '@owlat/ui/components/ui/UnsavedChangesDialog.vue';
 import UiQueryBoundary from '~/components/ui/QueryBoundary.vue';
+import AppErrorBoundary from '~/components/AppErrorBoundary.vue';
 import UiShortcut from '~/components/ui/Shortcut.vue';
 
 export const IconStub = defineComponent({
@@ -70,6 +76,8 @@ export function registerNuxtComponents(): void {
 		UiQueryBoundary,
 		UiEmptyState,
 		UiErrorAlert,
+		UiErrorBoundary,
+		AppErrorBoundary,
 		UiSpinner,
 		UiUnsavedChangesDialog,
 		UiShortcut,

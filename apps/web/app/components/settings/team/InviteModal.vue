@@ -306,7 +306,7 @@ defineExpose({ open: openInviteModal });
 							:key="def.role"
 							type="button"
 							:class="[
-								'p-3 rounded-xl border text-left transition-all',
+								'p-3 rounded-xl border text-left transition-colors',
 								inviteForm.role === def.role
 									? 'border-brand bg-brand/10'
 									: 'border-border-subtle hover:border-border-default',

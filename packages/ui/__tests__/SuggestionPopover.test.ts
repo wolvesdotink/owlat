@@ -3,12 +3,10 @@
  * the list answers ↑ ↓ Enter Tab, Escape dismisses ahead of anything else, and
  * the field carries the ARIA that names the highlighted option.
  */
-import { afterEach, describe, expect, it } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { describe, expect, it } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h, ref, type Component } from 'vue';
 import SuggestionPopover from '../components/ui/SuggestionPopover.vue';
-
-enableAutoUnmount(afterEach);
 
 const HANDLES = ['ada', 'adrian', 'alma'];
 

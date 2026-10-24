@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { SEND_PAGE_SIZE, type CampaignRecipient } from './audienceCandidates';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
 import type { CampaignEnqueueEmail } from '../delivery/enqueue';
@@ -20,6 +20,7 @@ import {
 	combineContentScan,
 	isEmptyAudienceComplete,
 	isPlannedTotalCounted,
+	isSendPrepared,
 	isTimezoneScheduled,
 	makeVariantBucketer,
 	pageSizeForSlice,
@@ -54,8 +55,6 @@ const NO_PROVIDER_RETRY_MS = 5 * 60 * 1000; // 5 minutes
  * whole campaign in one mutation.
  */
 const CAMPAIGN_ENQUEUE_CHUNK_SIZE = 50;
-const LIFECYCLE_USER_SCHEDULER_TICK = 'system:scheduler_tick';
-const LIFECYCLE_USER_CONTENT_SCAN = 'system:content_scan';
 const LIFECYCLE_USER_ORCHESTRATOR = 'system:orchestrator';
 import { scanContent, levelForScore } from '@owlat/email-scanner';
 import {
@@ -64,7 +63,9 @@ import {
 	type ContentFlag,
 	type UrlReputationCache,
 } from '@owlat/email-scanner';
-import { resolveAbFanout, testFractionForSplit } from './sendVariantSplit';
+import { testFractionForSplit } from './sendVariantSplit';
+import { scannedContentDigest, scannedSubject } from './sendCommit';
+import type { ArchiveSnapshot } from './archiveQueries';
 import { logWarn } from '../lib/runtimeLog';
 
 // Convex-backed implementation of the email-scanner's `UrlReputationCache`,
@@ -87,6 +88,8 @@ function makeUrlReputationCache(ctx: ActionCtx): UrlReputationCache {
 		},
 		async set(urlHash, verdict) {
 			try {
+				// checkpoint: a best-effort verdict cache, not campaign state; a write
+				// that stands after the send fails costs nothing but a cache hit.
 				await ctx.runMutation(internal.campaigns.sendQueries.upsertUrlReputationVerdict, {
 					urlHash,
 					verdict: verdict.verdict,
@@ -155,6 +158,12 @@ interface CampaignSendResult {
 //     (campaigns/lifecycle.ts) — fired on `→ scheduled` (delayed) and
 //     `→ sending` (immediate)
 //   - `campaigns/scheduling.ts:reschedule` — direct reschedule
+//   - `campaigns/sendCommit.ts:commitPreparation` — a rescan, when the
+//     content changed while it was being scanned
+//
+// Reads and the content scan happen here; every write of the preparation is
+// one `commitPreparation` mutation, so a failure part-way leaves nothing
+// behind and a second hop cannot reset a prepared send.
 //
 // The orchestrator is the only writer of `emailSends.abVariant` and the
 // only caller of `enqueueCampaignEmails` for the first-phase send. The
@@ -165,7 +174,15 @@ export const startCampaignSend = internalAction({
 		campaignId: v.id('campaigns'),
 	},
 	handler: async (ctx, args): Promise<CampaignSendResult> => {
-		// Get campaign details
+		const skip = (reason: string): CampaignSendResult => ({
+			totalRecipients: 0,
+			totalBatches: 0,
+			skipped: true,
+			reason,
+		});
+
+		// READ. Everything below until the commit is reads and external I/O;
+		// `campaigns/sendCommit.ts:commitPreparation` re-checks what matters.
 		const campaign = await ctx.runQuery(internal.campaigns.sendQueries.getCampaignForSending, {
 			campaignId: args.campaignId,
 		});
@@ -174,38 +191,30 @@ export const startCampaignSend = internalAction({
 			throw new Error('Campaign not found');
 		}
 
-		// Fire-time race guards — cancelled, unscheduled, already sent, or a
-		// stale early-firing hop for a rescheduled campaign. `sending` is
-		// deliberately NOT skipped; see `classifyStartSendSkip`.
+		// Fire-time race guards — cancelled, unscheduled, already sent, held for
+		// review, or a stale early-firing hop for a rescheduled campaign.
+		// `sending` is deliberately NOT skipped; see `classifyStartSendSkip`.
 		const guardSkip = classifyStartSendSkip(campaign, Date.now());
-		if (guardSkip !== undefined) {
-			return { totalRecipients: 0, totalBatches: 0, skipped: true, reason: guardSkip };
+		if (guardSkip !== undefined) return skip(guardSkip);
+		if (campaign.status !== 'scheduled' && campaign.status !== 'sending') {
+			return skip(`Campaign is ${campaign.status}`);
 		}
 
 		// Pre-flight re-validation at fire time — catches state that drifted
 		// between the original schedule and now (org suspended, template
-		// deleted, domain verification expired). Collapses the prior
-		// defense-in-depth `isSendingAllowed` re-check into one consolidated
-		// gate.
+		// deleted, domain verification expired).
 		const preflight = await ctx.runQuery(internal.campaigns.preflight.validateReadyToSendQuery, {
 			campaignId: args.campaignId,
 		});
-		if (!preflight.ok) {
-			return {
-				totalRecipients: 0,
-				totalBatches: 0,
-				skipped: true,
-				reason: `Pre-flight failed: ${preflight.message}`,
-			};
-		}
+		if (!preflight.ok) return skip(`Pre-flight failed: ${preflight.message}`);
 
-		// If campaign is scheduled, transition it to sending via the lifecycle.
-		if (campaign.status === 'scheduled') {
-			await ctx.runMutation(internal.campaigns.lifecycle.transition, {
+		// The lifecycle schedules a hop on `→ sending`, so the hop after a
+		// scheduler-tick start finds its send prepared. Skip before scanning.
+		if (campaign.status === 'sending') {
+			const job = await ctx.runQuery(internal.campaigns.sendJob.getSendJob, {
 				campaignId: args.campaignId,
-				input: { to: 'sending', at: Date.now() },
-				userId: LIFECYCLE_USER_SCHEDULER_TICK,
 			});
+			if (isSendPrepared(campaign, job)) return skip('Campaign send is already prepared');
 		}
 
 		if (!campaign.emailTemplateId) {
@@ -236,11 +245,11 @@ export const startCampaignSend = internalAction({
 			logWarn(`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`);
 		}
 
-		// Content scanning: check for spam, phishing, and prohibited content
-		const scanSubject = campaign.subject ?? template.subject;
-		const scanResultBase = scanContent(scanSubject, template.htmlContent);
+		// EXTERNAL I/O. Content scanning: spam, phishing and prohibited content,
+		// plus URL reputation via Google Safe Browsing (blocking for campaigns).
+		const subject = scannedSubject(campaign, template);
+		const scanResultBase = scanContent(subject, template.htmlContent);
 
-		// URL reputation checking via Google Safe Browsing (blocking for campaigns)
 		const safeBrowsingApiKey = getOptional('GOOGLE_SAFE_BROWSING_API_KEY');
 		let urlFlags: ContentFlag[] = [];
 		if (safeBrowsingApiKey) {
@@ -258,140 +267,68 @@ export const startCampaignSend = internalAction({
 		const verdict = combineContentScan(scanResultBase, urlFlags);
 		const combinedLevel = levelForScore(verdict.score);
 		const scanOutcome = classifyContentScan(combinedLevel, verdict);
+		const scan = { score: verdict.score, level: combinedLevel, flags: verdict.flags };
 
-		if (scanOutcome.kind !== 'proceed') {
-			await ctx.runMutation(internal.campaigns.sendQueries.storeContentScanResult, {
-				resourceType: 'campaign',
-				resourceId: args.campaignId,
-				score: verdict.score,
-				level: combinedLevel,
-				flags: verdict.flags,
-				scannedAt: Date.now(),
-			});
+		const commitVerdict =
+			scanOutcome.kind === 'blocked'
+				? { kind: 'blocked' as const, contentBlockReason: scanOutcome.contentBlockReason, scan }
+				: scanOutcome.kind === 'held'
+					? { kind: 'held' as const, scan }
+					: {
+							kind: 'proceed' as const,
+							archive: await composeArchiveSnapshot(ctx, campaign, subject, template.htmlContent),
+						};
 
-			if (scanOutcome.kind === 'blocked') {
-				// Revert campaign to draft via the lifecycle (writes
-				// contentBlockReason atomically with the status patch).
-				await ctx.runMutation(internal.campaigns.lifecycle.transition, {
-					campaignId: args.campaignId,
-					input: {
-						to: 'draft',
-						at: Date.now(),
-						contentBlockReason: scanOutcome.contentBlockReason,
-					},
-					userId: LIFECYCLE_USER_CONTENT_SCAN,
-				});
-			} else {
-				// Flag for platform admin review via the lifecycle.
-				await ctx.runMutation(internal.campaigns.lifecycle.transition, {
-					campaignId: args.campaignId,
-					input: { to: 'pending_review', at: Date.now() },
-					userId: LIFECYCLE_USER_CONTENT_SCAN,
-				});
-			}
-			return {
-				totalRecipients: 0,
-				totalBatches: 0,
-				skipped: true,
-				reason: scanOutcome.reason,
-			};
-		}
-
-		// Version history: record the template state this send is going out
-		// with, past the content-scan gate so a blocked/held campaign leaves no
-		// "sent" snapshot. Deduplicated and capped by the versions module.
-		await ctx.runMutation(internal.emailTemplates.versions.captureForSend, {
-			templateId: campaign.emailTemplateId,
-			userId: LIFECYCLE_USER_ORCHESTRATOR,
-		});
-
-		// Archive snapshot: generate public archive if enabled. The "view in
-		// browser" URL is re-derived per page by the walker from the stored
-		// `archiveToken`, so PREP only writes the snapshot here.
-		const siteUrl = getOptional('SITE_URL');
-
-		const resolvedFlags = await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {});
-		const orgArchiveDefault = resolvedFlags['campaigns.archive'] ?? false;
-		const archiveEnabled = campaign.archiveEnabled ?? orgArchiveDefault;
-
-		if (archiveEnabled && siteUrl) {
-			const archiveToken = nanoid(24);
-			const archiveSubject = campaign.subject ?? template.subject;
-			const archiveComposed = composeForSend({
-				kind: 'archive_snapshot',
-				template: { subject: archiveSubject, htmlContent: template.htmlContent },
-			});
-
-			await ctx.runMutation(internal.campaigns.archiveQueries.setArchiveSnapshot, {
-				campaignId: args.campaignId,
-				archiveToken,
-				archiveHtmlContent: archiveComposed.html,
-				archiveSubject,
-			});
-		}
-
-		if (!campaign.audience) {
-			throw new Error('Campaign has no audience');
-		}
-
-		// Freeze the segment snapshot at send time so this Campaign
-		// reproduces the exact Segment it targeted even if the Segment is later
-		// edited; topic Audiences and already-frozen segments pass through.
-		const audience = await ctx.runMutation(internal.campaigns.sendQueries.freezeCampaignAudience, {
+		// COMMIT. One mutation writes the outcome, or nothing.
+		const committed = await ctx.runMutation(internal.campaigns.sendCommit.commitPreparation, {
 			campaignId: args.campaignId,
+			read: {
+				status: campaign.status,
+				templateId: campaign.emailTemplateId,
+				contentDigest: await scannedContentDigest(subject, template.htmlContent),
+			},
+			verdict: commitVerdict,
 		});
-		if (!audience) {
-			throw new Error('Campaign has no audience');
-		}
-
-		// A/B test fanout: only fires when isABTest is set AND the AB test
-		// lifecycle is in `testing` (the cross-machine effect from the
-		// Campaign lifecycle transitions abTestStatus there on `→ sending`).
-		// `splitPercentage` means "% per variant of the test cohort" — so
-		// the cohort is `2 × splitPercentage %` of the audience (e.g., 20 →
-		// 40% cohort, 60% remainder). Remainder is held back; it gets the
-		// winner's content via `sendCampaignWinnerToRemainder` after
-		// `declareABTestWinner`.
-		const abFanout = resolveAbFanout(campaign);
+		if (committed.kind !== 'committed') return skip(committed.reason);
+		if (scanOutcome.kind !== 'proceed') return skip(scanOutcome.reason);
 
 		// ── PREP→DRIVE handoff: the checkpointed send walker. ──
-		// Rather than resolving the WHOLE audience in one query (which a very
-		// large topic/segment can push past the Convex per-query document-read
-		// cap), open a `campaignSendJobs` checkpoint and hand off to
+		// The commit opened a `campaignSendJobs` checkpoint and scheduled
 		// `resolveCampaignPage`, which streams the audience one bounded page at
-		// a time, enqueuing as it goes and self-rescheduling until exhausted.
-		// The completion guard in `campaigns/lifecycle.ts` holds the campaign in
-		// `sending` until the walker flips the job to `done`.
-		//
-		// A/B test sends stream through the SAME walker (`variantMode:
-		// 'ab_test'`): each page buckets contacts by `hashFraction(campaignId,
-		// contactId)` — `h < testFraction` is the test cohort (variant A/B
-		// sub-bucketed by hash), the rest is held back for the winner phase.
-		// No global shuffle, no materialize, no read-cap ceiling.
-		if (abFanout) {
-			await ctx.runMutation(internal.campaigns.sendJob.createSendJob, {
-				campaignId: args.campaignId,
-				audience,
-				variantMode: 'ab_test',
-				testFraction: testFractionForSplit(abFanout.config.splitPercentage),
-				splitPercentage: abFanout.config.splitPercentage,
-			});
-		} else {
-			await ctx.runMutation(internal.campaigns.sendJob.createSendJob, {
-				campaignId: args.campaignId,
-				audience,
-				variantMode: 'plain',
-			});
-		}
-		await ctx.scheduler.runAfter(0, internal.campaigns.send.resolveCampaignPage, {
-			campaignId: args.campaignId,
-		});
+		// a time (A/B sends bucket each page by `hashFraction(campaignId,
+		// contactId)`), enqueuing as it goes and self-rescheduling until
+		// exhausted. The completion guard in `campaigns/lifecycle.ts` holds the
+		// campaign in `sending` until the walker flips the job to `done`.
 		return {
 			totalRecipients: 0,
 			totalBatches: 0,
 		};
 	},
 });
+
+/**
+ * The public archive copy, when the campaign archives (its own setting, else
+ * the org's `campaigns.archive` default) and SITE_URL is set. The "view in
+ * browser" URL is re-derived per page by the walker from the stored
+ * `archiveToken`, so only the snapshot is composed here.
+ */
+async function composeArchiveSnapshot(
+	ctx: ActionCtx,
+	campaign: Doc<'campaigns'>,
+	subject: string,
+	htmlContent: string
+): Promise<ArchiveSnapshot | undefined> {
+	const siteUrl = getOptional('SITE_URL');
+	if (!siteUrl) return undefined;
+	const resolvedFlags = await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {});
+	const archiveEnabled = campaign.archiveEnabled ?? resolvedFlags['campaigns.archive'] ?? false;
+	if (!archiveEnabled) return undefined;
+	const composed = composeForSend({
+		kind: 'archive_snapshot',
+		template: { subject, htmlContent },
+	});
+	return { archiveToken: nanoid(24), archiveHtmlContent: composed.html, archiveSubject: subject };
+}
 
 // ─── Per-variant batch enqueue ─────────────────────────────────────────
 

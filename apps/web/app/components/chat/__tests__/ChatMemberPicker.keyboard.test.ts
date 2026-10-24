@@ -5,14 +5,12 @@
  * the query and keeps the list ready for the next, and each member is added
  * once.
  */
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref } from 'vue';
 import ChatMemberPicker, { type SelectedChatMember } from '../ChatMemberPicker.vue';
 import UiAvatar from '~/components/ui/Avatar.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-
-enableAutoUnmount(afterEach);
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });

@@ -38,9 +38,9 @@ const replying = computed(() => ordered.value[0]?.mode === 'replying');
 		data-testid="answer-team-presence"
 	>
 		<span class="flex shrink-0 -space-x-1.5">
-			<span v-for="person in ordered.slice(0, 3)" :key="person.userId" class="ui-presence-ring">
+			<UiPresenceRing v-for="person in ordered.slice(0, 3)" :key="person.userId">
 				<UiAvatar :name="person.name" :image="person.image" size="xs" deterministic-color />
-			</span>
+			</UiPresenceRing>
 		</span>
 		<span class="truncate">{{ label }}</span>
 	</span>

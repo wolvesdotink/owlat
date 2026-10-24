@@ -33,7 +33,7 @@ mounted component reads the current date, so the clock is not pinned.
 | --------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `assistant-stream/start`    | `AssistantMessage` list under the assistant page's scroll container and `useFollowLatest` | answer streams from empty, one write per 250 ms, under 20 settled turns |
 | `assistant-stream/near-cap` | same                                                                                      | the last 12 s of an estimated near-cap answer (see below)               |
-| `chat-history/500`          | `ChatMessageList` (and every `ChatMessage`)                                               | a room's full 500-message window, scrolled newest to oldest             |
+| `chat-history/500`          | `ChatMessageList` (and the `ChatMessage` rows its window mounts)                          | a room's full 500-message window, scrolled newest to oldest             |
 
 The limits the workloads obey live in `scripts/perf-bench/scenarioWriterLimits.ts`.
 `apps/api/convex/__tests__/perfScenarioWriterLimits.integration.test.ts` checks

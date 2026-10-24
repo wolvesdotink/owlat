@@ -77,12 +77,17 @@ describe('announcedPageLabel', () => {
 });
 
 describe('shouldMoveFocusToMain', () => {
+	const hosts: HTMLElement[] = [];
+
 	function render(html: string): void {
-		document.body.innerHTML = html;
+		const host = document.createElement('div');
+		host.innerHTML = html;
+		document.body.append(host);
+		hosts.push(host);
 	}
 
 	afterEach(() => {
-		document.body.innerHTML = '';
+		for (const host of hosts.splice(0)) host.remove();
 	});
 
 	it('moves focus when the page navigated with focus on nothing', () => {

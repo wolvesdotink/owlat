@@ -4,15 +4,13 @@
  * first Escape is the popover's), and, for suggestion lists, leaving focus in
  * the field it hangs from.
  */
-import { afterEach, describe, expect, it } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { describe, expect, it } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h, nextTick, ref, type Component } from 'vue';
 import Modal from '../components/ui/Modal.vue';
 import Popover from '../components/ui/Popover.vue';
 import { anchorToElementBox } from '../utils/popoverAnchor';
 import { createUiI18n } from './i18n';
-
-enableAutoUnmount(afterEach);
 
 const IconStub = { name: 'Icon', setup: () => () => h('i') };
 const panel = () => document.querySelector<HTMLElement>('[data-testid="panel"]');

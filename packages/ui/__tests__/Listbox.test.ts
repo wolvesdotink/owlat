@@ -3,12 +3,10 @@
  * and driven from a field that keeps focus (`virtual-focus`). Mounted for real
  * and driven by keyboard and pointer events.
  */
-import { afterEach, describe, expect, it } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { describe, expect, it } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h, nextTick, ref, type Component } from 'vue';
 import Listbox from '../components/ui/Listbox.vue';
-
-enableAutoUnmount(afterEach);
 
 interface Fruit {
 	id: string;

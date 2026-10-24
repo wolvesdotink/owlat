@@ -3,13 +3,11 @@
  * listbox the caller fills. Inline (the list is the surface) and as a popover
  * under the input; with the built-in list and with a caller-laid-out one.
  */
-import { afterEach, describe, expect, it } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { describe, expect, it } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, type Component } from 'vue';
 import Combobox from '../components/ui/Combobox.vue';
 import Listbox from '../components/ui/Listbox.vue';
-
-enableAutoUnmount(afterEach);
 
 const PEOPLE = ['Ada', 'Adrian', 'Alma', 'Ben'];
 

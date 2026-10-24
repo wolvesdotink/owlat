@@ -77,7 +77,9 @@ function isBodyHidden(msg: PostboxReaderMessage): boolean {
 					{{ t('components.brief.incomplete.openConversation') }}
 				</button>
 			</p>
-			<PostboxMessageBody v-else :message="msg" />
+			<AppErrorBoundary v-else surface="messageBody" :reset-keys="[msg._id]">
+				<PostboxMessageBody :message="msg" />
+			</AppErrorBoundary>
 		</section>
 	</details>
 </template>

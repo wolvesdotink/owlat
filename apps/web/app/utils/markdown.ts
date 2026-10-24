@@ -70,11 +70,40 @@ export function parseInlines(text: string): Inline[] {
 
 /** Parse a Markdown document into a block AST. */
 export function parseMarkdown(src: string): Block[] {
+	return parseMarkdownSettled(src).blocks;
+}
+
+/**
+ * `parseMarkdown(src)`, plus the last point where appending text to `src` can
+ * no longer change what was parsed before it: the first `settledLines` lines of
+ * `src` (each ended by a `\n` in `src`) always parse to exactly the first
+ * `settledBlocks` blocks, and the rest of any longer source starting with those
+ * lines parses on its own to the remaining blocks.
+ *
+ * That holds because the block loop below carries no state between iterations
+ * beyond the line index, and every block decides where it ends by looking at no
+ * line past the one the next iteration starts on. So an iteration start counts
+ * as settled only when that line is itself complete: an unfinished last line
+ * can still turn from blank into paragraph text, or from `#` into a heading.
+ */
+export function parseMarkdownSettled(src: string): {
+	blocks: Block[];
+	settledLines: number;
+	settledBlocks: number;
+} {
 	const lines = src.replace(/\r\n/g, '\n').split('\n');
 	const blocks: Block[] = [];
+	// The last line has no `\n` after it, so it is the only unfinished one.
+	const lastComplete = lines.length - 2;
+	let settledLines = 0;
+	let settledBlocks = 0;
 	let i = 0;
 
 	while (i < lines.length) {
+		if (i <= lastComplete) {
+			settledLines = i;
+			settledBlocks = blocks.length;
+		}
 		const line = lines[i] ?? '';
 		const trimmed = line.trim();
 
@@ -158,5 +187,5 @@ export function parseMarkdown(src: string): Block[] {
 		blocks.push({ type: 'paragraph', inlines: parseInlines(para.join(' ')) });
 	}
 
-	return blocks;
+	return { blocks, settledLines, settledBlocks };
 }

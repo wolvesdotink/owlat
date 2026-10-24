@@ -373,7 +373,9 @@ async function confirmSave() {
 							{{ t('dashboard.postbox.search.backToResults') }}
 						</button>
 					</div>
-					<PostboxThreadReader v-if="activeMessage" :message="activeMessage" />
+					<AppErrorBoundary v-if="activeMessage" surface="reader" :reset-keys="[activeMessageId]">
+						<PostboxThreadReader :message="activeMessage" />
+					</AppErrorBoundary>
 					<!-- Only invite a pick when there is something to pick; with no
 					     results the list pane already says why, so this stays blank. -->
 					<div v-else-if="results.length > 0" class="h-full flex items-center justify-center">

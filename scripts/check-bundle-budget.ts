@@ -39,8 +39,14 @@ import { kb, measure, readWebBuild, staticClosure } from './bundle-closure';
  * to the entry's preload map, so features that add icons or pages grow it by a
  * few hundred bytes with nothing turning eager. 2 KB of headroom covers that
  * drift while a feature imported eagerly (several KB at least) still fails.
+ *
+ * Raised to 258 on 2026-10-24 from 256.0 KB, by the same rule: main had grown to
+ * 255.6 KB, and the pane error boundaries add about 0.4 KB that has to load at
+ * boot. The global error handler must show its toast even when a lazy chunk
+ * fails to load, and the page outlet wraps every page. The boundary component
+ * itself stays in the dashboard layout's lazy chunk.
  */
-const GZIP_BUDGET_KB = 256;
+const GZIP_BUDGET_KB = 258;
 
 const { publicDir, entry } = readWebBuild('check-bundle-budget', process.argv[2]);
 
