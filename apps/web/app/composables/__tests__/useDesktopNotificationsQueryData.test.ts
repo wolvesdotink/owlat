@@ -203,7 +203,7 @@ describe('useDesktopNotifications: query results are watched by identity', () =>
 		expect(showToast).toHaveBeenCalledTimes(1);
 	});
 
-	it('repaints the badge on every new result and toasts only what arrived after the first load', async () => {
+	it('repaints the badge when the unread count changes and toasts only what arrived after the first load', async () => {
 		await mountDashboard();
 		const now = Date.now();
 		unread.value = { total: 1, messages: [message('m1', now)] };
