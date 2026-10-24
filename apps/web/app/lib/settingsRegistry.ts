@@ -279,6 +279,8 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		controls: [
 			control('pushNotifications', 'push', all(browserOnly, hasPushSource)),
 			control('marketingNotifications', 'marketing-notifications', hasMarketingNotices),
+			// Reply alerts need mail; assignment and agent-question sounds need the team inbox.
+			control('alertSounds', 'alert-sounds', any(hasMail, flag('inbox'))),
 			control('offlineCache', 'offline', hasMail),
 			control('notifyAbout', 'notifications', all(desktopOnly, hasMail)),
 			control('quietHours', 'notifications', all(desktopOnly, hasMail)),

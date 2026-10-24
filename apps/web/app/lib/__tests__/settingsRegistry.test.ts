@@ -248,6 +248,20 @@ describe('settingsControlTargets', () => {
 		);
 	});
 
+	it('offers the alert sounds wherever mail or the team inbox can raise one', () => {
+		const ids = (env: SettingsEnvironment) =>
+			settingsControlTargets(env).map((target) => target.control.id);
+		expect(ids(WEB_WITH_MAIL)).toContain('alertSounds');
+		expect(ids(FULL)).toContain('alertSounds');
+		expect(ids({ isFeatureEnabled: (flag) => flag === 'inbox', isDesktop: false })).toContain(
+			'alertSounds'
+		);
+		expect(ids(MARKETING_ONLY)).not.toContain('alertSounds');
+		expect(
+			settingsControlTargets(FULL).find((target) => target.control.id === 'alertSounds')?.href
+		).toBe(`${SETTINGS_ROOT}/device#alert-sounds`);
+	});
+
 	it('drops every control of a page the environment cannot reach', () => {
 		const ids = settingsControlTargets(NO_PUSH_SOURCE).map((target) => target.control.id);
 		expect(ids).toEqual([

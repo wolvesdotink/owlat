@@ -38,6 +38,8 @@
  *     pixels stay stripped either way. Defaults ON (undefined => true).
  *   - `sendSound` — play a short confirmation sound when a message is
  *     dispatched. Defaults OFF (opt-in).
+ *   - `alertSounds` — chime per alert kind (armed reply, assignment, agent
+ *     question); see lib/alertSoundRules. Every kind defaults OFF (opt-in).
  *   - `undoSendSeconds` — how long a sent message is held before it dispatches
  *     (Off / 10 / 30 / 60). Defaults to 30s, the server's own default, so an
  *     unset preference is exactly the behaviour that shipped before it existed.
@@ -115,6 +117,8 @@ import { resolveShortcutPreset } from '~/utils/shortcutPresets';
 import type { AttachmentShareExpiryDays } from '@owlat/shared/attachmentShares';
 import { resolveAttachmentShareExpiryDays } from '@owlat/shared/attachmentShares';
 import { optimisticUpdateSettings } from '~/lib/mailOptimistic/settingsUpdater';
+import type { AlertSoundKind, AlertSoundPrefs } from '~/lib/alertSoundRules';
+import { alertSoundPatch, resolveAlertSoundPrefs } from '~/lib/alertSoundRules';
 
 export function usePostboxSettings() {
 	const { data, isLoading } = useConvexQuery(api.mail.settings.get, () => ({}));
@@ -184,6 +188,7 @@ export function usePostboxSettings() {
 	// Confirmation sound on send. Default OFF (opt-in): an unset preference means
 	// no sound, so the composer stays silent unless the user turns it on.
 	const sendSound = computed<boolean>(() => data.value?.isSendSoundOn ?? false);
+	const alertSounds = computed<AlertSoundPrefs>(() => resolveAlertSoundPrefs(data.value));
 
 	// Remote images on open. Default ON once the row is known: an unset
 	// preference loads images in mail that is not suspicious. Until the query
@@ -357,6 +362,10 @@ export function usePostboxSettings() {
 		await updateOp.run({ isSendSoundOn: enabled });
 	}
 
+	async function setAlertSound(kind: AlertSoundKind, enabled: boolean) {
+		await updateOp.run(alertSoundPatch(kind, enabled));
+	}
+
 	async function setAutoLoadImages(enabled: boolean) {
 		await updateOp.run({ isAutoLoadImagesOn: enabled });
 	}
@@ -436,6 +445,7 @@ export function usePostboxSettings() {
 		inboxMode,
 		sortOrder,
 		sendSound,
+		alertSounds,
 		autoLoadImages,
 		undoSendSeconds,
 		notifyAbout,
@@ -467,6 +477,7 @@ export function usePostboxSettings() {
 		setInboxMode,
 		setSortOrder,
 		setSendSound,
+		setAlertSound,
 		setAutoLoadImages,
 		setUndoSendSeconds,
 		setNotifyAbout,
