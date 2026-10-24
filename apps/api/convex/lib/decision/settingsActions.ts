@@ -106,7 +106,7 @@ function decisionClientConfig(
  * that passes because the FALLBACK worked is a test that lies. It never retries
  * (`maxAttempts: 1`), because an operator pressing a button wants an answer, not
  * a backoff curve. It returns the plane's unavailable reason rather than probing,
- * when the stored config cannot produce a client (D3). And it persists nothing and
+ * when the stored config cannot produce a client. And it persists nothing and
  * returns no key.
  */
 export async function testDecisionPlane(ctx: ActionCtx): Promise<{ ok: boolean; error?: string }> {

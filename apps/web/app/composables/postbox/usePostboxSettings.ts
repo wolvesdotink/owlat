@@ -136,10 +136,10 @@ export function usePostboxSettings() {
 	// this is a per-user opt-out from seeing AI briefs (`isAutoSummarizeOn`).
 	const autoSummarize = computed<boolean>(() => data.value?.isAutoSummarizeOn ?? true);
 
-	// Read on arrival (SPEC §2.1): default ON. The AI provider reads personal
+	// Read on arrival: default ON. The AI provider reads personal
 	// mail as it arrives; off, mail waits until a thread is opened.
 	const readOnArrival = computed<boolean>(() => data.value?.isReadOnArrival ?? true);
-	// Read on arrival (SPEC §6.4): archive codes and sign-in links after a day. Default OFF.
+	// Read on arrival: archive codes and sign-in links after a day. Default OFF.
 	const codeAutoArchive = computed<boolean>(() => data.value?.isCodeAutoArchiveOn ?? false);
 
 	// Which mode the primary reply affordance (Reply button / `r`) uses. Reads
@@ -192,6 +192,11 @@ export function usePostboxSettings() {
 	const autoLoadImages = computed<boolean>(() =>
 		data.value === undefined ? false : (data.value?.isAutoLoadImagesOn ?? true)
 	);
+
+	// Whether the saved row (or its absence) has arrived. Until then every value
+	// here is a default, so a caller whose action cannot be taken back (an OS
+	// notification that would show a name, or fire inside quiet hours) waits.
+	const isResolved = computed<boolean>(() => data.value !== undefined);
 
 	// Undo-send window. An unset (or unknown) value resolves to 10s — the server
 	// default the composer gets by sending no `undoSendDelayMs` at all.
@@ -448,6 +453,7 @@ export function usePostboxSettings() {
 		dailyBriefEmail,
 		hasSeenSealedMailNudge,
 		isLoading,
+		isResolved,
 		setAutoAdvance,
 		setWritingSuggestions,
 		setAutoSummarize,

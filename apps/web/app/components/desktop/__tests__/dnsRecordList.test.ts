@@ -17,8 +17,8 @@
  * other desktop component tests) so the copy call and the per-key "Copied"
  * state are asserted without a real clipboard.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 
 import DnsRecordList from '../DnsRecordList.vue';
@@ -32,8 +32,6 @@ const copyMock = vi.fn((_text: string, key?: string) => {
 	copiedKey.value = key ?? _text;
 	return Promise.resolve(true);
 });
-
-enableAutoUnmount(afterEach);
 
 beforeAll(() => {
 	// The table renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.

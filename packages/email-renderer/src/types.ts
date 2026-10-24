@@ -4,12 +4,7 @@ import type { EmailTheme, VariableType } from '@owlat/shared';
  * Target email client for render preview simulation.
  * Degrades the output to approximate how a specific client would render the email.
  */
-export type TargetClient =
-	| 'gmail'
-	| 'outlookDesktop'
-	| 'outlookNew'
-	| 'appleMail'
-	| 'yahooMail';
+export type TargetClient = 'gmail' | 'outlookDesktop' | 'outlookNew' | 'appleMail' | 'yahooMail';
 
 /**
  * Validation strictness level.
@@ -18,6 +13,9 @@ export type TargetClient =
  * - 'strict': Throw on error-level validation issues
  */
 export type ValidationLevel = 'skip' | 'soft' | 'strict';
+
+/** What happened to one Block between two versions of a template (`./templateDiff.ts`). */
+export type BlockChangeKind = 'added' | 'removed' | 'edited' | 'moved';
 
 export interface RenderOptions {
 	theme?: EmailTheme;
@@ -58,6 +56,12 @@ export interface RenderOptions {
 	validationLevel?: ValidationLevel;
 	/** Gmail Promotions tab annotations (Schema.org/JSON-LD). Only affects Gmail (~30-40% of opens). */
 	gmailAnnotations?: GmailAnnotations;
+	/**
+	 * Comparison previews only: outline these Blocks, by id, as the given kind
+	 * of change (`diffTemplateVersions().outlines`). HTML that is sent or stored
+	 * never sets it.
+	 */
+	diffOutlines?: Readonly<Record<string, BlockChangeKind>>;
 }
 
 /**
@@ -125,4 +129,6 @@ export interface RenderContext {
 	warnings: string[];
 	/** Gmail Promotions tab JSON-LD annotations */
 	gmailAnnotations?: GmailAnnotations;
+	/** Blocks a comparison preview outlines, by id (`RenderOptions.diffOutlines`). */
+	diffOutlines?: Readonly<Record<string, BlockChangeKind>>;
 }

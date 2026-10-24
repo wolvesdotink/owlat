@@ -84,6 +84,15 @@
 		"import/no-unassigned-import": "off",
 		"owlat/require-suppression-reason": "error",
 		"owlat/no-test-in-loop": "error",
+		// The vitest setups of these workspaces unmount every component a test
+		// mounted, so a test never wipes the document to clean up. email-builder
+		// has no shared setup that does this; its suites still clear the body.
+		"owlat/no-document-body-reset": [
+			"error",
+			{
+				"files": ["apps/web/**/__tests__/**", "packages/ui/**/__tests__/**"]
+			}
+		],
 		// Exponential backoff goes through @owlat/shared/retryPolicy (nextDelay).
 		"owlat/no-inline-backoff": "error",
 		"owlat/no-test-timeout-or-unreasoned-skip": "warn",
@@ -140,6 +149,16 @@
 							"apps/web/server/api/storage/__tests__/uploadConfig.test.ts",
 							"apps/web/server/api/storage/__tests__/upload.test.ts",
 							"apps/web/server/utils/__tests__/updater.test.ts"
+						]
+					},
+					{
+						// The mail render worker's pipeline and entry: a dedicated worker
+						// has no DOM, and node is the environment without one, so a stage
+						// that reaches for `document` fails here.
+						"environment": "node",
+						"files": [
+							"apps/web/app/utils/__tests__/postboxRenderPipeline.test.ts",
+							"apps/web/app/workers/__tests__/postboxRender.worker.test.ts"
 						]
 					}
 				]

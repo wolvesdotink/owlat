@@ -1,5 +1,5 @@
 /**
- * A cited quote marked in a rendered body (plan §4.2):
+ * A cited quote marked in a rendered body:
  *   - found in the visible text across inline markup and typographic quotes;
  *   - repeated wording: the evidence's occurrence picks the passage, never
  *     the first match;

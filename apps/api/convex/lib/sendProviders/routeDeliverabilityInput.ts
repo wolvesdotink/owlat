@@ -52,7 +52,7 @@ export async function deliverabilityInput(
 	// EVERY row of the cell is considered, not just the most specific one: the
 	// per-stream row carries the controller's share and the stream-less row
 	// carries the infrastructure signals, so reading only one would drop a hard
-	// stop. `freshFallbackReasons` applies D1's share resolution and the
+	// stop. `freshFallbackReasons` applies the share resolution and the
 	// advisory-signal filter for both call sites.
 	const activeReasons = freshFallbackReasons(
 		[globalState, providerCell.streamless, providerCell.perStream],

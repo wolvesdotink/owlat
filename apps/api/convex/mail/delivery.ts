@@ -278,12 +278,12 @@ export const deliverToMailbox = internalMutation({
 		// stored beside the verdicts on `mailMessages`. Both optional.
 		envelopeFromDomain: v.optional(v.string()),
 		dkimSigningDomain: v.optional(v.string()),
-		// Sealed Mail (E4, D3): the inbound unsealing outcome, computed by the
+		// Sealed Mail: the inbound unsealing outcome, computed by the
 		// ingest action before this mutation. Present only for a message that
 		// arrived sealed; the body args above already hold the RESTORED plaintext
 		// when it decrypted. Absent ⇒ a plaintext message (unchanged fast path).
 		inboundEncryptionInfo: v.optional(inboundEncryptionInfoValidator),
-		// Inbound signature verdict (F1, D9), computed by the ingest action for a
+		// Inbound signature verdict, computed by the ingest action for a
 		// SIGNED-but-not-encrypted message. Data only — never affects routing.
 		inboundSignatureInfo: v.optional(inboundSignatureInfoValidator),
 		// Plan 3.5: the attachment leaves the ingest action stored one blob each,

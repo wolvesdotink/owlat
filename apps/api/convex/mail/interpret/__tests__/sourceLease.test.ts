@@ -1,5 +1,5 @@
 /**
- * The per-source run lease (lease.ts, SPEC §2.5; Sol fixes-r1 F1). Two
+ * The per-source run lease (lease.ts; Sol fixes-r1 F1). Two
  * interpretation runs of one source that overlap (delivery and the category
  * wake, the stale sweep, a second dispatch) used to both pass the replay
  * dedupe before either committed, and both bought the extraction. Now the

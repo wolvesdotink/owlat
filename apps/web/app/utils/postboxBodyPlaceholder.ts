@@ -4,7 +4,9 @@
  * is still loading. Pure string work, so it is unit-tested without the reader.
  */
 
+import { buildComfortStyle, POSTBOX_COMFORT_STYLE_OPEN } from '~/utils/postboxBaseStyle';
 import type { EmailHtmlKind, PostboxRenderScheme } from '~/utils/postboxDarkMode';
+import type { MailTypography } from '~/utils/readingComfort';
 
 /** Opening of every srcdoc PostboxMessageBody builds, CSP meta included. */
 export const POSTBOX_SRCDOC_HEAD = '<!doctype html><html><head>';
@@ -45,10 +47,14 @@ export interface PostboxBodyPlaceholder {
  * user asking this time. A copy saved while images were blocked already
  * carries the no-network policy. A saved copy that starts with neither head is
  * not used at all, since its policy cannot be swapped reliably.
+ *
+ * The copy keeps the typography it was saved under, so its comfort block is
+ * replaced with one for the reader's current `typography` (or added, for a copy
+ * saved before the block existed: last in the head, it wins the cascade).
  */
 export function postboxBodyPlaceholder(
 	cachedSrcdoc: string | null,
-	options: { blockRemote: boolean }
+	options: { blockRemote: boolean; typography: MailTypography }
 ): PostboxBodyPlaceholder | null {
 	if (!cachedSrcdoc) return null;
 	let srcdoc = cachedSrcdoc;
@@ -63,9 +69,26 @@ export function postboxBodyPlaceholder(
 	}
 	const headEnd = srcdoc.indexOf('</head>');
 	const headPart = headEnd >= 0 ? srcdoc.slice(0, headEnd) : '';
+	const kind: EmailHtmlKind = headPart.includes(SIMPLE_MARKER) ? 'simple' : 'designed';
 	return {
-		srcdoc,
+		srcdoc: headEnd >= 0 ? withComfortStyle(srcdoc, headEnd, kind, options.typography) : srcdoc,
 		scheme: headPart.includes(DARK_MARKER) ? 'dark' : 'light',
-		kind: headPart.includes(SIMPLE_MARKER) ? 'simple' : 'designed',
+		kind,
 	};
+}
+
+/** `srcdoc` with its head's comfort block set to `typography`. */
+function withComfortStyle(
+	srcdoc: string,
+	headEnd: number,
+	kind: EmailHtmlKind,
+	typography: MailTypography
+): string {
+	const style = buildComfortStyle(kind, typography);
+	const open = srcdoc.lastIndexOf(POSTBOX_COMFORT_STYLE_OPEN, headEnd);
+	const close = open >= 0 ? srcdoc.indexOf('</style>', open) : -1;
+	if (open >= 0 && close >= 0 && close < headEnd) {
+		return srcdoc.slice(0, open) + style + srcdoc.slice(close + '</style>'.length);
+	}
+	return srcdoc.slice(0, headEnd) + style + srcdoc.slice(headEnd);
 }

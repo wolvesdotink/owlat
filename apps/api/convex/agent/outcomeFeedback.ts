@@ -21,7 +21,7 @@
  *   - The reply body is attacker-controlled inbound email, so it is framed as
  *     untrusted DATA (SYSTEM_GUARD), never instructions.
  *   - It reaches the model only after the pipeline's security scan and the
- *     injection guard (D13, final review F4): the job is scheduled at ingest,
+ *     injection guard: the job is scheduled at ingest,
  *     before the scan, so it re-checks until the scan has landed (bounded,
  *     {@link MAX_SCAN_RECHECKS}), then asks `guardAllowsInboundMessage`, the
  *     check Answer mode and interpretation make. A rejected reply (quarantined,
@@ -151,7 +151,7 @@ export const classifyReplyOutcome = internalAction({
 			}
 			return null;
 		}
-		// Then the guard (D13): a rejected reply is never read, a skipped guard runs now.
+		// Then the guard: a rejected reply is never read, a skipped guard runs now.
 		try {
 			const deadlineAt = anchorActionDeadline(ctx); // the anchor taken at entry
 			if (!(await guardAllowsInboundMessage(ctx, args.replyMessageId, deadlineAt))) return null;

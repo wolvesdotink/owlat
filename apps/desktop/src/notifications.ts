@@ -65,9 +65,16 @@ export async function sendDesktopNotification(title: string, body: string): Prom
 }
 
 export interface NotificationActionPayload {
+	/**
+	 * "open", "archive", "read" or "reply" for a message notification;
+	 * "navigate" for a link notification, which carries `url` instead of a
+	 * message.
+	 */
 	action: string;
-	messageId: string;
-	folderRole: string;
+	messageId?: string;
+	folderRole?: string;
+	/** The in-app path a clicked link notification opens. */
+	url?: string;
 	/** Text typed into the macOS inline reply field (absent for other actions). */
 	reply?: string;
 	/**
@@ -105,6 +112,31 @@ export async function sendActionableNotification(
 		});
 	} catch (e) {
 		console.warn('[desktop] Failed to send actionable notification:', e);
+	}
+}
+
+/**
+ * Send a notification about something with a page of its own (a campaign, an
+ * automation, a sending domain). Clicking it (macOS, Linux, Windows) emits the
+ * `notification-action` event with `action: 'navigate'`, the in-app `url` and
+ * `workspaceId` back unchanged, so the app can open that page in the
+ * workspace that sent it. No buttons; other targets show a plain notification.
+ */
+export async function sendLinkNotification(
+	title: string,
+	body: string,
+	url: string,
+	workspaceId?: string | null
+): Promise<void> {
+	try {
+		await invoke('send_link_notification', {
+			title,
+			body,
+			url,
+			workspaceId: workspaceId ?? null,
+		});
+	} catch (e) {
+		console.warn('[desktop] Failed to send link notification:', e);
 	}
 }
 

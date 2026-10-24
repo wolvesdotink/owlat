@@ -1,5 +1,5 @@
 /**
- * THE PER-UTC-DAY IDEMPOTENCY GUARD, PRESERVED (plan D19, P3-7).
+ * THE PER-UTC-DAY IDEMPOTENCY GUARD, PRESERVED.
  *
  * The shipped MTA warming evaluator advances a schedule AT MOST ONCE per UTC
  * day, because the cron calls it hourly and a clean IP would otherwise walk the

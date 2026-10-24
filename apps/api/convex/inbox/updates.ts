@@ -14,7 +14,7 @@
  * It never makes a model call, so the dashboard cannot fail-open into hiding
  * something the classifier already decided was important.
  *
- * D7 (thread brief): the classifier no longer writes a one-sentence summary
+ * The classifier writes no one-sentence summary
  * for these rows. Each row carries `preview`, the first lines of the message
  * itself (quoted history cut, bounded), so what a reader sees is what the
  * sender wrote, never a model's paraphrase.
@@ -275,7 +275,7 @@ export const requestReply = adminMutation({
 			input: { to: 'drafting', at: now },
 		});
 		if (!outcome.ok) throwInvalidState('Message could not be sent to drafting');
-		// D12: the owner overruled the classifier; nothing decided about this
+		// The owner overruled the classifier; nothing decided about this
 		// sender's mail may be reused (advisory decision data only).
 		await invalidateSenderMemoryForCorrection(ctx, { scope: 'team_inbox' }, message.from);
 		await recordOwnerCorrection(ctx, { inboundMessageId: args.inboundMessageId });

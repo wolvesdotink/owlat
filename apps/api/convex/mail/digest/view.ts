@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.5): the digest section of the Daily Brief email,
+ * Read on arrival: the digest section of the Daily Brief email,
  * and what sending it does.
  *
  * {@link digestForEmail} reads the one generated digest under its claim and

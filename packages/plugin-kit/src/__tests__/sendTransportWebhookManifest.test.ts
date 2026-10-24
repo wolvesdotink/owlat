@@ -1,6 +1,6 @@
 /**
- * The feedback webhook a send transport may declare (the seams plan's D6,
- * wired by P2.2) — the MANIFEST half.
+ * The feedback webhook a send transport may declare
+ * — the MANIFEST half.
  *
  * The route this descriptor feeds is unauthenticated and internet-facing by
  * design, so the validator is the first of the piece's fail-closed gates and the

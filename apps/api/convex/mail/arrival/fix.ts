@@ -1,5 +1,5 @@
 /**
- * Read on arrival, Fix (SPEC §4.2): "That's wrong" on a sorted message.
+ * Read on arrival, Fix: "That's wrong" on a sorted message.
  *
  * | destination                   | `message` scope            | `sender` scope                        |
  * |-------------------------------|----------------------------|---------------------------------------|

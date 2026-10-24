@@ -1,7 +1,7 @@
 /**
  * Byte budget for the SMTP DATA phase.
  *
- * This PORTS `apps/mta/src/lib/dataStream.ts` semantics EXACTLY (D5 — the byte
+ * This PORTS `apps/mta/src/lib/dataStream.ts` semantics EXACTLY (the byte
  * budget is load-bearing):
  *
  *  - Within budget: buffer the chunk.

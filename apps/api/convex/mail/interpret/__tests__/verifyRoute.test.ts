@@ -136,7 +136,7 @@ describe('claim checks enforced', () => {
 		expect(mocks.verifyClaims).not.toHaveBeenCalled();
 	});
 
-	it('reports a spend refusal as itself and asks no further claim (D1)', async () => {
+	it('reports a spend refusal as itself and asks no further claim', async () => {
 		mocks.resolveBundleRung.mockResolvedValue(rung('decision'));
 		const refusal = new AdmissionRefusedError('daily_ceiling', '$1.00');
 		mocks.runBundle.mockImplementationOnce(
@@ -220,7 +220,7 @@ describe('claim checks enforced', () => {
 		expect(out.verdicts.size).toBe(3);
 	});
 
-	it('verifies nothing, with no language call, when the provider cannot answer (D3)', async () => {
+	it('verifies nothing, with no language call, when the provider cannot answer', async () => {
 		mocks.resolveBundleRung.mockResolvedValue(rung('unavailable'));
 		const out = await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
 			source,

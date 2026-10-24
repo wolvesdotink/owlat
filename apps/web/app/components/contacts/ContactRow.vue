@@ -106,7 +106,7 @@ function menuItems(): ContextMenuItem[] {
 			@click="onRowClick"
 			@contextmenu="onContextmenu"
 		>
-			<td v-if="canManage" class="w-12 px-4 py-4">
+			<td v-if="canManage" class="w-12 px-4 py-4 density-compact:py-2">
 				<!-- A real checkbox: its checked state is the selection, so the name
 				     stays put. The row's click guard leaves its clicks (and Space) alone. -->
 				<UiCheckbox
@@ -115,7 +115,7 @@ function menuItems(): ContextMenuItem[] {
 					@update:model-value="emit('toggle-select')"
 				/>
 			</td>
-			<td class="px-6 py-4">
+			<td class="px-6 py-4 density-compact:py-2">
 				<!-- The row is not focusable, so the menu key listens on its link. -->
 				<NuxtLink
 					:to="to"
@@ -134,13 +134,13 @@ function menuItems(): ContextMenuItem[] {
 					` ${t('dashboard.audience.contacts.index.noEmail')}`
 				}}</span>
 			</td>
-			<td class="px-6 py-4">
+			<td class="px-6 py-4 density-compact:py-2">
 				<span class="text-text-secondary">{{ contact.firstName || '-' }}</span>
 			</td>
-			<td class="px-6 py-4">
+			<td class="px-6 py-4 density-compact:py-2">
 				<span class="text-text-secondary">{{ contact.lastName || '-' }}</span>
 			</td>
-			<td class="px-6 py-4">
+			<td class="px-6 py-4 density-compact:py-2">
 				<span class="text-text-tertiary text-sm">{{ formatDate(contact.createdAt) }}</span>
 			</td>
 		</tr>

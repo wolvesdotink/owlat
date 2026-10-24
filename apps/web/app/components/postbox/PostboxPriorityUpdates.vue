@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * The Priority view's "Updates · no reply needed" group (read on arrival §3,
- * plan §6 rule 5): mail that needs nothing folds away. The first three rows
+ * The Priority view's "Updates · no reply needed" group: mail
+ * that needs nothing folds away. The first three rows
  * show, one line each; the rest fold into "9 more updates from GitHub,
  * Hetzner and 4 others", which opens them in place.
  */

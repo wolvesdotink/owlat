@@ -1,5 +1,5 @@
 /**
- * Lazily mounted reader bodies (performance plan D8).
+ * Lazily mounted reader bodies.
  *
  * An expanded message whose body sits far below the fold renders a placeholder
  * of the body's cached frame height and mounts the real body once it nears the
@@ -9,9 +9,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import en from '../../../../i18n/locales/en.json';
 import type { PostboxBodyImageProps } from '~/utils/postboxImageAllowlist';
 import PostboxLazyBody from '../PostboxLazyBody.vue';
 import { getPostboxRenderCache, postboxRenderKey } from '../../../utils/postboxRenderCache';
+import { MAIL_TYPOGRAPHY_DEFAULT } from '~/utils/readingComfort';
 import {
 	POSTBOX_BODY_PLACEHOLDER_PX,
 	usePostboxMountAllBodies,
@@ -58,6 +61,8 @@ beforeEach(() => {
 	getPostboxRenderCache().clear();
 	vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
 	vi.stubGlobal('useAppTheme', () => ({ isDark: ref(false) }));
+	// The body's error boundary resolves its fallback copy through vue-i18n.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
 		() =>
 			({
@@ -75,15 +80,25 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-const LIGHT = { scheme: 'light', showImages: false, loadEverything: false, showQuoted: false };
+const LIGHT = {
+	scheme: 'light',
+	showImages: false,
+	loadEverything: false,
+	showQuoted: false,
+	typography: MAIL_TYPOGRAPHY_DEFAULT,
+};
 
 const ASK = { senderImagesAllowed: false, autoLoadImages: false, suspicious: false };
 
-function mountBody(props: Partial<{ eager: boolean; images: PostboxBodyImageProps }> = {}) {
+function mountBody(
+	props: Partial<{ eager: boolean; images: PostboxBodyImageProps; messageId: string }> = {},
+	body: () => unknown = () => h('div', { class: 'real-body' }, 'body')
+) {
 	return mount(PostboxLazyBody, {
 		props: { messageId: 'm1', forceLight: false, images: ASK, ...props },
-		slots: { default: () => h('div', { class: 'real-body' }, 'body') },
+		slots: { default: body },
 		attachTo: document.body,
+		global: { plugins: [createTestI18n()] },
 	});
 }
 
@@ -219,6 +234,31 @@ describe('usePostboxMountAllBodies', () => {
 		threadKey.value = 't2';
 		await nextTick();
 		expect(api().mountAll.value).toBe(false);
+		wrapper.unmount();
+	});
+});
+
+describe('PostboxLazyBody — a body that fails to render', () => {
+	it('replaces only that body, and opening another message recovers it', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const failing = ref(true);
+		const Body = defineComponent({
+			setup: () => () => {
+				if (failing.value) throw new Error('unrenderable mail');
+				return h('div', { class: 'real-body' }, 'body');
+			},
+		});
+		const wrapper = mountBody({ eager: true }, () => h(Body));
+		await nextTick();
+		await nextTick();
+
+		expect(wrapper.get('[role="alert"]').text()).toContain(en.shell.paneError.messageBody);
+		expect(wrapper.find('.real-body').exists()).toBe(false);
+
+		failing.value = false;
+		await wrapper.setProps({ messageId: 'm2' });
+		expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+		expect(wrapper.find('.real-body').exists()).toBe(true);
 		wrapper.unmount();
 	});
 });

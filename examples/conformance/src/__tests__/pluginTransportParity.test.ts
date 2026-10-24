@@ -1,6 +1,5 @@
 /**
- * THE PLUGIN TRANSPORT'S CAPABILITY CONTRACT, END TO END (the seams plan's D4,
- * wired by P3.1).
+ * THE PLUGIN TRANSPORT'S CAPABILITY CONTRACT, END TO END.
  *
  * The sibling suites each own one link — the kit's validator, the renderer's
  * output, the host's registry and resolver. This one walks the chain a provider
@@ -136,7 +135,7 @@ describe('a declared capability reaches the host unchanged', () => {
 			// Required and optional together: what the host resolves per instance and
 			// hands to the module, and what a named instance reads under its suffix.
 			instanceEnvVars: ['PLUGIN_POSTMARK_TOKEN', 'PLUGIN_POSTMARK_STREAM'],
-			// The credential FORM (D5), carried through as declared. Every `envVar`
+			// The credential FORM, carried through as declared. Every `envVar`
 			// was joined to one of the two lists above at manifest validation, so a
 			// renderer reading this entry cannot ask for a variable no send reads.
 			credentialFields: [

@@ -9,7 +9,7 @@
  * Nothing here reads or returns a credential, and nothing here reads mailbox
  * CONTENTS — a probe id and a folder NAME are the entire vocabulary.
  *
- * D2: with no seed mailboxes connected this returns an empty page forever and
+ * With no seed mailboxes connected this returns an empty page forever and
  * the worker's sweep is a no-op. Absence is a supported configuration.
  */
 

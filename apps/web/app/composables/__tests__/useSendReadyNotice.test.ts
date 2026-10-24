@@ -10,7 +10,7 @@
  * deal with it. Sticky + acknowledge-on-dismissal is the contract.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { effectScope, nextTick, ref, type EffectScope } from 'vue';
+import { effectScope, nextTick, ref, shallowRef, type EffectScope } from 'vue';
 import type { ToastOptions } from '@owlat/ui/composables/useToast';
 import { createTestI18n } from '~/__tests__/i18n';
 import { SEND_READY_DEEP_LINK } from '~/lib/onboarding/sendReadyNotice';
@@ -133,5 +133,38 @@ describe('useSendReadyNotice', () => {
 		};
 		await nextTick();
 		expect(showToast).toHaveBeenCalledTimes(1);
+	});
+
+	it('watches the query result by identity and never walks it', async () => {
+		// Shallow, like `useConvexQuery`'s own `data`: a new delivery is a new object.
+		const delivered = shallowRef<(NoticeState & { extra?: object }) | undefined>(undefined);
+		vi.stubGlobal('useOrganizationQuery', () => ({
+			data: delivered,
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+		}));
+		// A nested value no consumer reads; any read of it means the result was traversed.
+		let probeReads = 0;
+		const probe = () => ({
+			get unused() {
+				probeReads += 1;
+				return 0;
+			},
+		});
+
+		mount();
+		delivered.value = { isReady: true, notices: [], extra: probe() };
+		await nextTick();
+		expect(showToast).not.toHaveBeenCalled();
+
+		delivered.value = {
+			isReady: true,
+			notices: [{ id: 'n1', createdAt: 10 }],
+			extra: probe(),
+		};
+		await nextTick();
+		expect(showToast).toHaveBeenCalledTimes(1);
+		expect(probeReads).toBe(0);
 	});
 });

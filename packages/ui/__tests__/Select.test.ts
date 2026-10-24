@@ -4,7 +4,7 @@
  * and every way of closing it (pick, Escape, Tab) leaves keyboard users where
  * they were. Mounted for real, driven by keyboard events.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h, nextTick, ref, type Component } from 'vue';
 import Modal from '../components/ui/Modal.vue';
@@ -45,7 +45,6 @@ function mountSelect(props: Record<string, unknown> = {}): VueWrapper {
 
 afterEach(() => {
 	for (const wrapper of mounted.splice(0)) wrapper.unmount();
-	document.body.innerHTML = '';
 });
 
 const trigger = (wrapper: VueWrapper) => wrapper.get<HTMLButtonElement>('[role="combobox"]');
@@ -323,6 +322,7 @@ describe('Select pointer', () => {
 		const wrapper = mountSelect();
 		const elsewhere = document.createElement('input');
 		document.body.appendChild(elsewhere);
+		onTestFinished(() => elsewhere.remove());
 		await focusTrigger(wrapper);
 		await press(wrapper, 'ArrowDown');
 

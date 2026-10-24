@@ -1,6 +1,6 @@
 /**
- * Which embedding target the deployment's configuration names (AI routing plan,
- * Phase 1a provenance and owner decision D8).
+ * Which embedding target the deployment's configuration names (embedding
+ * provenance).
  *
  * A target is the configured part of an embedding space: provider kind, the
  * secret-free endpoint identity, the resolved model and the width requested
@@ -11,7 +11,7 @@
  *
  * Since provenance exists, a populated deployment may switch targets: every
  * vector records its space, retrieval searches only the active one, and the
- * re-embed job brings the rest back (D8, post-provenance). Everything here is
+ * re-embed job brings the rest back (post-provenance). Everything here is
  * pure or reads env, so the v8 settings mutation, the commit mutations and the
  * resolver (`lib/llmProvider.ts`) share one definition.
  */
@@ -307,7 +307,7 @@ export function throwEmbeddingKindRequired(): never {
  * configured target does, so resubmitting the model an absent field already
  * resolved to is a no-op. Since provenance exists the save is never refused: a
  * switch drops the old space out of vector search until the re-embed job or a
- * staged rebuild replaces its vectors (D8, post-provenance).
+ * staged rebuild replaces its vectors (post-provenance).
  */
 export function nextEmbeddingModelVersion(
 	existing: (StoredEmbeddingSelection & { readonly embeddingModelVersion: number }) | null,

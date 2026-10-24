@@ -91,7 +91,7 @@ export async function recordApprovalSignals(
 
 	// The `'edited'` signal fires HERE, once per approve, iff the text being
 	// sent differs from the agent's original (revision 0) — not at save time
-	// (D7): saving progress is not a verdict, and an edit reverted back to the
+	// either: saving progress is not a verdict, and an edit reverted back to the
 	// agent's exact text honestly counts as unedited.
 	if (draftDiffersFromAgentOriginal(message)) {
 		await recordAutonomyFeedback(ctx, message, 'edited');

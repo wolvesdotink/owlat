@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.5): the digest's claim and commit.
+ * Read on arrival: the digest's claim and commit.
  *
  * CLAIM. One `mailDigests` row per (mailbox, periodKey). The claim mutation
  * finds it: `generated` is reused, `sent` is done, `claimed` under a live

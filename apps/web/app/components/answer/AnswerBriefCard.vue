@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * Answer mode's view of the thread being answered (SPEC §7):
+ * Answer mode's view of the thread being answered:
  *
  *  - a personal mailbox: the thread brief with selectable items;
  *  - a shared (team) mailbox: the actions only (open for the team, waiting on
  *    others, unclear), never a summary. The originals are the conversation
  *    beside it.
  *
- * With the reply's response plan (`plan`, SPEC §6) the checkboxes are the
+ * With the reply's response plan (`plan`) the checkboxes are the
  * plan's selection (an unchecked item is skipped), each selected item has its
  * stance picker, and the draft's coverage marks it "Addressed in draft" or
  * "File missing" (provided to the items as `RESPONSE_PLAN`). Without a plan

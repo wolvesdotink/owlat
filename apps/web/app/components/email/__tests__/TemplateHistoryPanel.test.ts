@@ -4,7 +4,9 @@
  * The preview and the confirmation dialog share the modal layer. Opening the
  * confirmation over an open preview would stack two backdrops and two focus
  * traps, so the preview has to close as the confirmation opens — that ordering
- * is what these tests pin.
+ * is what these tests pin. Comparing a snapshot with the editor is read-only:
+ * it reads the canvas at the moment it is asked, never restores, and drops a
+ * snapshot that arrives for a comparison already left.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -49,9 +51,27 @@ const confirmationDialogStub = {
 	</div>`,
 };
 
-function mountPanel(hasUnsavedChanges: boolean) {
+const compareModalStub = {
+	props: ['open', 'before', 'after', 'loading'],
+	emits: ['update:open'],
+	template: `<div v-if="open" data-testid="compare-modal">
+		<span data-testid="compare-before">{{ before?.subject ?? '' }}</span>
+		<span data-testid="compare-after">{{ after?.subject ?? '' }}</span>
+		<button data-testid="compare-close" @click="$emit('update:open', false)">close</button>
+		<slot name="actions" />
+	</div>`,
+};
+
+function mountPanel(
+	hasUnsavedChanges: boolean,
+	readCurrent?: () => { blocks: never[]; name: string; subject: string }
+) {
 	return mount(TemplateHistoryPanel, {
-		props: { templateId: 'template1' as never, hasUnsavedChanges },
+		props: {
+			templateId: 'template1' as never,
+			hasUnsavedChanges,
+			...(readCurrent ? { readCurrent } : {}),
+		},
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
@@ -62,6 +82,7 @@ function mountPanel(hasUnsavedChanges: boolean) {
 				UiModal: modalStub,
 				UiModalFooter: { template: '<div><slot /></div>' },
 				UiConfirmationDialog: confirmationDialogStub,
+				EmailTemplateCompareModal: compareModalStub,
 				UiIconBox: true,
 				UiSpinner: true,
 				Icon: true,
@@ -84,7 +105,6 @@ function restoreButton(wrapper: ReturnType<typeof mountPanel>) {
 }
 
 beforeEach(() => {
-	document.body.innerHTML = '';
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useConvexQuery', () => ({
 		data: ref([VERSION]),
@@ -129,6 +149,114 @@ describe('TemplateHistoryPanel — restore from the preview', () => {
 
 		expect(wrapper.find('[data-testid="confirm-dialog"]').exists()).toBe(false);
 		expect(wrapper.emitted('restore')).toHaveLength(1);
+		wrapper.unmount();
+	});
+});
+
+describe('TemplateHistoryPanel — compare with the editor', () => {
+	const unsaved = () => ({
+		blocks: [] as never[],
+		name: 'Spring launch',
+		subject: 'Unsaved subject',
+	});
+
+	async function openPanel(wrapper: ReturnType<typeof mountPanel>) {
+		await wrapper.get('button').trigger('click');
+		await flushPromises();
+	}
+
+	function compareButtons() {
+		return [
+			...document.querySelectorAll<HTMLElement>('[aria-label="Compare with the current editor"]'),
+		];
+	}
+
+	it('compares the snapshot with the unsaved canvas, read at the click, and restores nothing', async () => {
+		const readCurrent = vi.fn(unsaved);
+		const wrapper = mountPanel(true, readCurrent);
+		await openPanel(wrapper);
+		expect(readCurrent).not.toHaveBeenCalled();
+
+		compareButtons()[0]?.click();
+		await flushPromises();
+
+		expect(readCurrent).toHaveBeenCalledTimes(1);
+		expect(wrapper.get('[data-testid="compare-before"]').text()).toBe('Spring is here');
+		expect(wrapper.get('[data-testid="compare-after"]').text()).toBe('Unsaved subject');
+		expect(wrapper.emitted('restore')).toBeUndefined();
+		wrapper.unmount();
+	});
+
+	it('restores from the comparison through the same unsaved-changes question', async () => {
+		const wrapper = mountPanel(true, unsaved);
+		await openPanel(wrapper);
+		compareButtons()[0]?.click();
+		await flushPromises();
+
+		await restoreButton(wrapper)?.trigger('click');
+		await flushPromises();
+
+		expect(wrapper.find('[data-testid="compare-modal"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="confirm-dialog"]').exists()).toBe(true);
+		await wrapper.get('[data-testid="confirm"]').trigger('click');
+		await flushPromises();
+		expect(wrapper.emitted('restore')).toHaveLength(1);
+		wrapper.unmount();
+	});
+
+	it('drops a snapshot that arrives after a newer comparison was asked for', async () => {
+		const OLDER = { ...VERSION, _id: 'version2', subject: 'Older subject' };
+		vi.stubGlobal('useConvexQuery', () => ({
+			data: ref([VERSION, OLDER]),
+			isLoading: ref(false),
+			isRefetching: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+		}));
+		const pending = new Map<string, (snapshot: typeof SNAPSHOT) => void>();
+		vi.stubGlobal('useConvex', () => ({
+			query: vi.fn(
+				(_ref: unknown, args: { versionId: string }) =>
+					new Promise((resolve) => pending.set(args.versionId, resolve))
+			),
+		}));
+		const wrapper = mountPanel(false, unsaved);
+		await openPanel(wrapper);
+
+		compareButtons()[0]?.click();
+		compareButtons()[1]?.click();
+		await flushPromises();
+		pending.get('version2')?.({ ...SNAPSHOT, subject: 'Older subject' });
+		await flushPromises();
+		pending.get('version1')?.(SNAPSHOT);
+		await flushPromises();
+
+		expect(wrapper.get('[data-testid="compare-before"]').text()).toBe('Older subject');
+		wrapper.unmount();
+	});
+
+	it('drops a snapshot that arrives after the comparison was closed', async () => {
+		let resolveSnapshot: (snapshot: typeof SNAPSHOT) => void = () => {};
+		vi.stubGlobal('useConvex', () => ({
+			query: vi.fn(() => new Promise((resolve) => (resolveSnapshot = resolve))),
+		}));
+		const wrapper = mountPanel(false, unsaved);
+		await openPanel(wrapper);
+		compareButtons()[0]?.click();
+		await flushPromises();
+
+		await wrapper.get('[data-testid="compare-close"]').trigger('click');
+		resolveSnapshot(SNAPSHOT);
+		await flushPromises();
+
+		expect(wrapper.find('[data-testid="compare-modal"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('offers no comparison without a current editor state', async () => {
+		const wrapper = mountPanel(false);
+		await openPanel(wrapper);
+		expect(compareButtons()).toEqual([]);
 		wrapper.unmount();
 	});
 });

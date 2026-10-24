@@ -9,12 +9,15 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { ref } from 'vue';
 import { useRichText } from '../useRichText';
 
+/** Editors this file appended to the document; each test's are removed after it. */
+const editors: HTMLElement[] = [];
+
 function mount(html: string): HTMLElement {
-	document.body.innerHTML = '';
 	const editor = document.createElement('div');
 	editor.setAttribute('contenteditable', 'true');
 	editor.innerHTML = html;
 	document.body.appendChild(editor);
+	editors.push(editor);
 	return editor;
 }
 
@@ -69,7 +72,7 @@ type AsciiReplace = NonNullable<Parameters<typeof useRichText>[0]['asciiReplace'
 
 function makeEditor(
 	html: string,
-	opts?: { patternShortcuts?: boolean; asciiReplace?: AsciiReplace },
+	opts?: { patternShortcuts?: boolean; asciiReplace?: AsciiReplace }
 ) {
 	const editor = mount(html);
 	const editorRef = ref<HTMLElement | null>(editor);
@@ -94,7 +97,7 @@ const smileyReplace: AsciiReplace = (before) => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
-	document.body.innerHTML = '';
+	for (const editor of editors.splice(0)) editor.remove();
 });
 
 describe('block shortcuts (trigger: space)', () => {
@@ -142,8 +145,7 @@ describe('block shortcuts (trigger: space)', () => {
 	});
 
 	it('Cmd+Z restores the literal "- " as a single undo step', () => {
-		const { editor, handleBeforeInput, handleShortcutUndoKeydown } =
-			makeEditor('<p>-</p>');
+		const { editor, handleBeforeInput, handleShortcutUndoKeydown } = makeEditor('<p>-</p>');
 		caretAtEndOf(firstText(editor.querySelector('p')!));
 		handleBeforeInput(beforeInput('insertText', ' '));
 		expect(editor.querySelector('ul')).not.toBeNull();
@@ -174,8 +176,7 @@ describe('block shortcuts (trigger: space)', () => {
 
 describe('inline shortcuts (trigger: closing char)', () => {
 	it('**bold** becomes <strong>; Cmd+Z restores the literal', () => {
-		const { editor, handleBeforeInput, handleShortcutUndoKeydown } =
-			makeEditor('<p>**bold*</p>');
+		const { editor, handleBeforeInput, handleShortcutUndoKeydown } = makeEditor('<p>**bold*</p>');
 		caretAtEndOf(firstText(editor.querySelector('p')!));
 		expect(handleBeforeInput(beforeInput('insertText', '*'))).toBe(true);
 		expect(editor.querySelector('strong')?.textContent).toBe('bold');
@@ -222,10 +223,9 @@ describe('asciiReplace (convert-on-space, shared one-shot undo)', () => {
 	});
 
 	it('first Cmd+Z restores the literal smiley + space as one step', () => {
-		const { editor, handleBeforeInput, handleShortcutUndoKeydown } = makeEditor(
-			'<p>ok :)</p>',
-			{ asciiReplace: smileyReplace },
-		);
+		const { editor, handleBeforeInput, handleShortcutUndoKeydown } = makeEditor('<p>ok :)</p>', {
+			asciiReplace: smileyReplace,
+		});
 		caretAtEndOf(firstText(editor.querySelector('p')!));
 		handleBeforeInput(beforeInput('insertText', ' '));
 		expect(editor.textContent).toBe('ok 🙂 ');
@@ -255,10 +255,9 @@ describe('asciiReplace (convert-on-space, shared one-shot undo)', () => {
 
 describe('opt-out (patternShortcuts: false)', () => {
 	it('leaves every pattern inert', () => {
-		const { editor, handleBeforeInput, handleShortcutUndoKeydown } = makeEditor(
-			'<p>-</p>',
-			{ patternShortcuts: false },
-		);
+		const { editor, handleBeforeInput, handleShortcutUndoKeydown } = makeEditor('<p>-</p>', {
+			patternShortcuts: false,
+		});
 		caretAtEndOf(firstText(editor.querySelector('p')!));
 		expect(handleBeforeInput(beforeInput('insertText', ' '))).toBe(false);
 		expect(editor.querySelector('ul')).toBeNull();

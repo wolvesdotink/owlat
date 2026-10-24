@@ -154,7 +154,7 @@ const tabs = computed(() => [
 			<input
 				v-model="query"
 				type="search"
-				class="min-w-0 flex-1 bg-transparent text-text-primary outline-none placeholder:text-text-tertiary"
+				class="input-bare min-w-0 flex-1"
 				:placeholder="t('components.shell.settings.search')"
 				:aria-label="t('components.shell.settings.search')"
 				@keydown.enter.prevent="openFirstResult"

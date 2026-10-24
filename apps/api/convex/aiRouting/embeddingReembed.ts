@@ -4,7 +4,7 @@
  *   - `kickoff` runs from the cron and after every event that changes what is
  *     searchable (a settings save, a space switch, an attestation). With a
  *     local embedder it measures the configured space (one free probe call),
- *     activates it (the D8 switch path) and starts or resumes the local
+ *     activates it (the embedding switch path) and starts or resumes the local
  *     re-embed. A hosted embedder never re-embeds from here: an admin starts it
  *     (`startReembed`), and every batch is admitted.
  *   - `startReembed` is the admin start, and the bootstrap of a corpus with no
@@ -94,7 +94,7 @@ export const kickoff = internalAction({
 
 /**
  * Re-embed now into the configured space (admin). With a hosted embedder this
- * is the only way a paid re-embed starts (D8), and it needs spend admission: it
+ * is the only way a paid re-embed starts, and it needs spend admission: it
  * is refused while admission is absent. When no space is searchable yet (a
  * hosted deployment's first upgrade, with no new content since), it first
  * measures the configured space with one admitted call and activates it.

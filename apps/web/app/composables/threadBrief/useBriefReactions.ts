@@ -1,5 +1,5 @@
 /**
- * Runs what a person does to a brief item (plan §5). Replying reactions
+ * Runs what a person does to a brief item. Replying reactions
  * (reply, attach, propose times, nudge, decline) hand over to the host, which
  * opens Answer mode: nothing here sends anything. The rest are the viewer's
  * statements about the item and go to `mail/interpret/reactions.ts`; Mark done

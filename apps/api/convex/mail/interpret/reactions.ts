@@ -1,5 +1,5 @@
 /**
- * What people do to a brief item (SPEC §5 "Reactions"). Each one:
+ * What people do to a brief item. Each one:
  *
  *   - applies the thread's reader rule (`threadAccess.ts`): mailbox access for
  *     a Postbox thread, the shared-inbox reader gate for a Team Inbox thread;
@@ -28,7 +28,7 @@
  *   - claimItem is atomic (one serializable transaction): it assigns the item
  *     to the caller when nobody holds it, is a no-op when the caller already
  *     does, and is refused (`conflict`) when someone else holds it. That
- *     includes the D4 default, the thread's assignee at item creation:
+ *     includes the default, the thread's assignee at item creation:
  *     taking over an item someone holds is an explicit `assignItem`.
  *
  * Commitments (`mailCommitments.threadItemId`) keep their own reminder state:

@@ -68,8 +68,10 @@ describe('formatReport', () => {
 					{ rows: counter(500), 'frame p95': timing(16.9) },
 				]),
 				voided: [],
+				budgets: { rows: { exact: 500 } },
 			},
 		],
+		budgetFailures: [],
 	};
 
 	it('records the reference machine and separates counters from timings', () => {
@@ -78,9 +80,27 @@ describe('formatReport', () => {
 		expect(md).toContain('| Runs | 2 per scenario, each on a fresh page |');
 		expect(md).toContain('| Timezone | UTC |');
 		expect(md).toContain('| Browser locale | en-US');
-		expect(md).toContain('| rows | 500 | 500 | 500 | yes |');
+		expect(md).toContain('| rows | 500 | 500 | 500 | yes | = 500 |');
+		expect(md).toContain('Budgets: every run held every budget.');
 		expect(md).toContain('| frame p95 (ms) | 16.80 | 16.70 | 16.90 |');
 		expect(md).not.toContain('VOID');
+	});
+
+	it('lists every budget breach above the scenarios', () => {
+		const md = formatReport({
+			...report,
+			budgetFailures: [
+				{
+					scenario: 'chat-history/500',
+					metric: 'rows',
+					run: 2,
+					message: 'measured 499, budget exactly 500',
+				},
+			],
+		});
+		expect(md).toContain('Budgets: 1 breach.');
+		expect(md).toContain('- chat-history/500 / rows (run 2): measured 499, budget exactly 500');
+		expect(md.indexOf('Budgets: 1 breach.')).toBeLessThan(md.indexOf('## chat-history/500'));
 	});
 
 	it('voids a scenario whose fixture did not render cleanly', () => {

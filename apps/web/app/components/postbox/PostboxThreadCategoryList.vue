@@ -105,6 +105,7 @@ function pickCategory(label: MailCategory) {
 			<PostboxConversationRow
 				v-bind="pinDrag.source(thread.latestMessageId, thread.latestSubject)"
 				:thread="thread"
+				:folder-role="folderRole"
 				:dom-id="rowDomId(thread)"
 				:to="threadTo(thread)"
 				:selected="focused"

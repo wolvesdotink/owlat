@@ -182,7 +182,7 @@ export const undoAutoSend = adminMutation({
 /**
  * Edit the draft text before approving.
  *
- * Revision-appending per D7: the agent original is preserved as revision 0 and
+ * Revision-appending: the agent original is preserved as revision 0 and
  * the edit becomes the working draft via `appendDraftRevision` — never an
  * in-place overwrite. Records NO autonomy feedback here; the `'edited'` signal
  * fires once at send-fire time iff the sent text differs from the agent

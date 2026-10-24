@@ -47,30 +47,9 @@ const handleSubmit = async () => {
 				v-model:query="memberQuery"
 				:label="t('components.chat.chatNewDmDialog.toLabel')"
 				:placeholder="t('components.chat.chatNewDmDialog.toPlaceholder')"
-			>
-				<template #candidates="{ addMember }">
-					<div
-						v-if="memberQuery && addCandidates.length > 0"
-						class="mt-2 max-h-48 overflow-y-auto space-y-1 bg-bg-surface border border-border-subtle rounded p-1"
-					>
-						<button
-							v-for="candidate in addCandidates"
-							:key="candidate.memberId"
-							class="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-bg-elevated text-text-primary flex items-center gap-2"
-							@click="addMember(candidate)"
-						>
-							<UiAvatar
-								:name="candidate.name"
-								:email="candidate.email"
-								:image="candidate.image"
-								size="sm"
-								bg="elevated"
-							/>
-							<span>{{ candidate.name ?? candidate.email ?? candidate.memberId }}</span>
-						</button>
-					</div>
-				</template>
-			</ChatMemberPicker>
+				:candidates="addCandidates"
+				avatars
+			/>
 			<p class="text-xs text-text-tertiary">
 				{{ t('components.chat.chatNewDmDialog.hint') }}
 			</p>

@@ -536,7 +536,7 @@ describe('writeAnswerDraft on the shared draft service (parity)', () => {
 		});
 	});
 
-	it('shows the budget error when admission refuses the draft (D1)', async () => {
+	it('shows the budget error when admission refuses the draft', async () => {
 		mocks.runLlmStream.mockImplementationOnce(async () => {
 			throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
 		});

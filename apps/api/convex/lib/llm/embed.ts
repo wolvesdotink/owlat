@@ -2,7 +2,7 @@
  * The embedding dispatch: every `embed()` call in the deployment
  * goes through {@link runEmbedding}, so each provider request is metered like
  * a language request and lands in the ledger as an `embedding` row. Embedding
- * calls wrote no ledger row before; a paid re-embed (D8) needs them to.
+ * calls wrote no ledger row before; a paid re-embed needs them to.
  *
  * Retries go through the shared retry policy, not the SDK's: the SDK's own
  * retries would hide requests from the meter, the way they did for language

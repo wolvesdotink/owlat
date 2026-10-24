@@ -161,7 +161,7 @@ async function handleSave() {
 		showNotification(t('dashboard.admin.delivery.providerRouting.errors.noProvider'), 'error');
 		return;
 	}
-	// The backend's own rule and the backend's own sentence (D6), so the screen
+	// The backend's own rule and the backend's own sentence, so the screen
 	// refuses exactly what `setRoute` would refuse and says the same thing.
 	if (editFallbackEnabled.value) {
 		const issue = fallbackRelayIssue(editProviders.value, editFallbackRelay.value);

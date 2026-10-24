@@ -46,10 +46,8 @@ function remove(index: number) {
 					:value="color"
 					type="text"
 					spellcheck="false"
-					:class="[
-						'w-20 bg-transparent text-xs font-mono text-text-primary outline-none',
-						!isBrandHexColor(color) && 'text-error',
-					]"
+					class="input-bare w-20 font-mono text-xs"
+					:class="{ 'text-error': !isBrandHexColor(color) }"
 					:aria-label="t('dashboard.admin.instance.brandKit.colors.swatchValue', { n: index + 1 })"
 					:disabled="disabled"
 					@change="update(index, ($event.target as HTMLInputElement).value)"

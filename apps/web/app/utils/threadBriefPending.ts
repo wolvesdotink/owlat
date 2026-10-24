@@ -1,6 +1,6 @@
 /**
  * Every change a held update would make to an item, as the lines the brief
- * shows before Confirm (SPEC §4 "held"): wording, parties, who does it, due
+ * shows before Confirm: wording, parties, who does it, due
  * date, amount, choices (old → new) and the values the newer reading removes.
  * Confirm applies exactly these, so none may be left out. Pure; the caller
  * passes `t` and the locale.

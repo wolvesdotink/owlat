@@ -49,9 +49,17 @@ export const hasMail: SettingsGate = (env) =>
 	env.isFeatureEnabled('postbox') || env.isFeatureEnabled('mail.external');
 const desktopOnly: SettingsGate = (env) => env.isDesktop;
 const browserOnly: SettingsGate = (env) => !env.isDesktop;
-/** Something on this instance can send a Web Push: mail, the shared inbox or chat. */
+/** Campaigns, automations or transactional sending: marketing notifications can fire. */
+const hasMarketingNotices: SettingsGate = (env) =>
+	env.isFeatureEnabled('campaigns') ||
+	env.isFeatureEnabled('automations') ||
+	env.isFeatureEnabled('transactional');
+/** Something on this instance can send a Web Push: mail, the shared inbox, chat or marketing. */
 const hasPushSource: SettingsGate = (env) =>
-	hasMail(env) || env.isFeatureEnabled('inbox') || env.isFeatureEnabled('chat');
+	hasMail(env) ||
+	env.isFeatureEnabled('inbox') ||
+	env.isFeatureEnabled('chat') ||
+	hasMarketingNotices(env);
 const all =
 	(...gates: readonly SettingsGate[]): SettingsGate =>
 	(env) =>
@@ -145,6 +153,11 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		section: 'general',
 		controls: [
 			control('appearance', 'appearance'),
+			control('mailTextSize', 'comfort'),
+			control('readingWidth', 'comfort'),
+			control('listDensity', 'comfort'),
+			control('highContrast', 'comfort'),
+			control('reduceMotion', 'comfort'),
 			control('language', 'language'),
 			control('autoAdvance', 'reading', hasMail),
 			control('markRead', 'reading', hasMail),
@@ -257,12 +270,15 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		path: `${SETTINGS_ROOT}/device`,
 		icon: 'lucide:monitor',
 		section: 'device',
-		// Everything on this page is device-local: Web Push and the offline read
-		// cache (any browser) plus the desktop app's own switches. Each section
-		// self-hides, and the page disappears entirely on an instance with none.
-		gate: any(desktopOnly, hasMail, all(browserOnly, hasPushSource)),
+		// Device-local: Web Push and the offline read cache (any browser) plus
+		// the desktop app's own switches; with them, the marketing notification
+		// switches that decide what push and the desktop notify about. Each
+		// section self-hides, and the page disappears entirely on an instance
+		// with none.
+		gate: any(desktopOnly, hasMail, hasMarketingNotices, all(browserOnly, hasPushSource)),
 		controls: [
 			control('pushNotifications', 'push', all(browserOnly, hasPushSource)),
+			control('marketingNotifications', 'marketing-notifications', hasMarketingNotices),
 			control('offlineCache', 'offline', hasMail),
 			control('notifyAbout', 'notifications', all(desktopOnly, hasMail)),
 			control('quietHours', 'notifications', all(desktopOnly, hasMail)),

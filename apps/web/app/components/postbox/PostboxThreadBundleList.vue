@@ -24,6 +24,8 @@ import { senderRowMarkerOf } from '~/utils/senderAuth';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import { replyDropForMessage } from '~/utils/replyFileDrop';
 
 const props = defineProps<{
 	entries: Array<PostboxFeedEntry<PostboxThreadRowMessage>>;
@@ -123,6 +125,7 @@ function focusIndexOf(messageId: string): number {
 					<NuxtLink
 						v-bind="pinDrag.source(String(entry.message._id), entry.message.subject)"
 						:id="`postbox-bundled-${String(entry.message._id)}`"
+						v-reply-drop="replyDropForMessage(entry.message, folderRole)"
 						role="option"
 						:aria-selected="focusedIndex === focusIndexOf(String(entry.message._id))"
 						:to="messageTo(entry.message)"
@@ -217,6 +220,7 @@ function focusIndexOf(messageId: string): number {
 							<NuxtLink
 								v-bind="pinDrag.source(String(message._id), message.subject)"
 								:id="`postbox-bundled-${String(message._id)}`"
+								v-reply-drop="replyDropForMessage(message, folderRole)"
 								role="option"
 								:aria-selected="focusedIndex === focusIndexOf(String(message._id))"
 								:to="messageTo(message)"

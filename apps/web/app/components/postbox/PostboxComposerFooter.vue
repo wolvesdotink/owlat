@@ -154,7 +154,7 @@ function onPickFiles(event: Event) {
 <template>
 	<footer class="px-3 py-2 border-t border-border-subtle flex flex-col gap-1.5">
 		<!-- Send, attach, schedule, the follow-up chip, ⋯ and the save state on
-		     one row (plan §04). It does not fit a phone (or the narrowest split
+		     one row. It does not fit a phone (or the narrowest split
 		     column) beside "Show quoted text" and the status: the status group
 		     wraps to its own line, right-aligned, instead of the buttons painting
 		     over it. Coach/Revise and Discard live in ⋯. -->
@@ -257,7 +257,7 @@ function onPickFiles(event: Event) {
 							<select
 								:value="activeSignatureId ?? ''"
 								:disabled="bodyPending"
-								class="ml-auto bg-bg-surface border border-border-subtle rounded px-1.5 py-1 text-xs outline-none"
+								class="input input-sm ml-auto w-auto"
 								:aria-label="t('components.postbox.postboxComposerFooter.signature')"
 								@change="emit('signature-change', $event)"
 							>

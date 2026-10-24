@@ -52,7 +52,7 @@ export async function main(): Promise<void> {
 		metrics: metrics.registry,
 	});
 	// Deliverability seed-probe sweep. With no seed mailboxes connected — the
-	// default — every pass is an empty no-op (D2).
+	// default — every pass is an empty no-op.
 	const stopSeedSweeper = startSeedProbeSweeper(convex);
 
 	// Stop the HTTP server first, then let every account connection log out of

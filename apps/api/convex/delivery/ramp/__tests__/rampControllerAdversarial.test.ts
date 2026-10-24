@@ -340,7 +340,7 @@ describe('degenerate numbers fail closed', () => {
 
 	it('holds on a ZERO-VOLUME cell rather than reading it as infinite headroom', () => {
 		// The two readings are DIFFERENT SHAPES on purpose, and they answer
-		// DIFFERENT things. A MISSING warming reading constrains nothing (plan D2):
+		// DIFFERENT things. A MISSING warming reading constrains nothing:
 		// absence is never evidence of a spent cap. A projection of ZERO volume is
 		// not absence — it is a denominator we cannot divide by — so it HOLDS
 		// (plan P3-3), because a cell with no measured demand is neither a cell in

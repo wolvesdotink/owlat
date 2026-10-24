@@ -8,7 +8,7 @@
  *     thread's job rows (counted through the index, so a lost update heals at
  *     the next start or finish) and rewrites completeness through the one
  *     rule (`purgeRepairs.briefCompleteness`: partial while it is non-zero);
- *   - `isPurgeActive` is the indexed lookup the D3 hold reads, in the route
+ *   - `isPurgeActive` is the indexed lookup the interpretation hold reads, in the route
  *     gate and again in the transaction that creates an autonomous Send.
  *
  * Isolate-safe helpers, no Convex functions.

@@ -131,7 +131,7 @@ function teamCtx(
 	});
 }
 
-describe('Team clarify step with D5 enforced', () => {
+describe('Team clarify step with the necessity judgment enforced', () => {
 	it('asks every open slot in one capped batch, keeping memory, with no sample', async () => {
 		necessity('needed');
 		const ctx = teamCtx('enforce', [{ questionId: 'clarify_1', value: '1,200 EUR' }]);
@@ -201,7 +201,7 @@ function actionCtx(mode: 'off' | 'shadow' | 'enforce') {
 	} as never;
 }
 
-describe('Postbox refinement with D5 enforced', () => {
+describe('Postbox refinement with the necessity judgment enforced', () => {
 	const opts = {
 		transcript: 'Them: can we move the date, at what price, and which contract applies?',
 		fromAddress: 'ada@acme.test',
@@ -236,7 +236,7 @@ describe('Postbox refinement with D5 enforced', () => {
 
 // ── Answer mode ───────────────────────────────────────────────────────────
 
-describe('Answer mode gap check with D5 enforced', () => {
+describe('Answer mode gap check with the necessity judgment enforced', () => {
 	const input = {
 		context: 'Them: can we move the date, at what price? Please send the contract.',
 		triggerText: 'Please send the contract.',
@@ -274,7 +274,7 @@ describe('Answer mode gap check with D5 enforced', () => {
 	});
 });
 
-// ── Spend refusals (D1): never a failed sample or judgment ────────────────
+// ── Spend refusals: never a failed sample or judgment ────────────────
 
 describe('a spend refusal during clarification', () => {
 	const refusal = () => new AdmissionRefusedError('daily_ceiling', '$1.00');

@@ -1,8 +1,8 @@
 /**
- * THE SCAFFOLDED PROVIDER, MATERIALISED — the subject of P3.4's conformance gate.
+ * THE SCAFFOLDED PROVIDER, MATERIALISED — the subject of a conformance gate.
  *
- * P3.3 proved that a HAND-WRITTEN plugin ESP reaches everywhere a provider has to
- * reach. P3.4's claim is narrower and, for D4's "provider N+1 is a package"
+ * The hand-written fixture ESP proves a plugin ESP reaches everywhere a provider has to
+ * reach. This claim is narrower and, for the "provider N+1 is a package"
  * policy, more load-bearing: that the bundle `owlat plugins create --template
  * send-provider` EMITS is already such a provider, with no author edit in
  * between. A template that scaffolds a package which does not compose is worse

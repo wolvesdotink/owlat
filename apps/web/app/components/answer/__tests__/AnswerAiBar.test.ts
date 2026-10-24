@@ -1,5 +1,5 @@
 /**
- * "What should the reply say?" (plan §04):
+ * "What should the reply say?":
  *   - Enter or the button drafts, with the optional instruction;
  *   - Cmd/Ctrl+J reaches the instruction field through `useAnswerAiFocus`;
  *   - while the AI checks or writes, the bar says so and takes no second start;
@@ -48,7 +48,7 @@ describe('AnswerAiBar', () => {
 		w.unmount();
 	});
 
-	it('says the safety check held the message back, and offers no AI draft (D13)', async () => {
+	it('says the safety check held the message back, and offers no AI draft', async () => {
 		const w = mountBar({ phase: 'held' });
 		const status = w.get('[data-testid="answer-ai-status"]');
 		expect(status.text()).toBe(

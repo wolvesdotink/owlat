@@ -1,5 +1,5 @@
 /**
- * Read on arrival, end to end across the lanes (SPEC §9, the wiring gate).
+ * Read on arrival, end to end across the lanes (the wiring gate).
  *
  * One personal mailbox, three live hosted deliveries, every scheduled job run
  * with a stubbed model:

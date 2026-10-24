@@ -3,7 +3,7 @@
  *
  * The card's own accessibility pass covers the card; this covers the page that
  * frames it — the single `h1` the cards' `h3`s descend from, the loading state's
- * announceable name, the non-alarming error copy, and D14's headline switch
+ * announceable name, the non-alarming error copy, and the headline switch
  * between "Sending independence" and "Warm-up autopilot".
  *
  * Mounted rather than read as source text: a heading inside an HTML comment, or
@@ -151,7 +151,7 @@ describe('measurement page — states', () => {
 		wrapper.unmount();
 	});
 
-	it('switches to the standalone feature and offers a relay where there is none (D14)', () => {
+	it('switches to the standalone feature and offers a relay where there is none', () => {
 		data.value = dashboard({
 			referenceTransportId: null,
 			isRelayConfigured: false,
@@ -163,7 +163,7 @@ describe('measurement page — states', () => {
 		expect(note.exists()).toBe(true);
 		expect(note.text()).toContain('Connecting a relay you already pay for');
 		expect(note.text()).toContain('optional');
-		// An invitation, never a warning or a "setup incomplete" nag (plan D2).
+		// An invitation, never a warning or a "setup incomplete" nag.
 		expect(note.text()).not.toMatch(/error|incomplete|required|must/i);
 		wrapper.unmount();
 	});

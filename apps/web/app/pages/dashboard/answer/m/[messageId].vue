@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Answer mode for Postbox mail: one reply, the whole screen (plan §02).
+ * Answer mode for Postbox mail: one reply, the whole screen.
  *
  *   /dashboard/answer/m/<mailMessageId>?kind=reply|replyAll|forward&draft=<id>
  *
@@ -42,6 +42,7 @@ import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
 import { hasOwnWriting } from '~/utils/answerDraft';
+import { useReplyDropDelivery } from '~/composables/useReplyFileDrop';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -141,6 +142,16 @@ const composerKey = computed(() => `${messageId.value}:${openedDraftId ?? 'new'}
 
 const draftId = ref<string | null>(openedDraftId);
 
+// Files dropped on this conversation in a list or the reader arrive once the
+// composer is up, through its own attachment pipeline.
+useReplyDropDelivery({
+	target: () => (messageId.value ? { kind: 'message', id: messageId.value } : null),
+	deliver: () => {
+		const answer = composerRef.value?.answer;
+		return answer ? (files: File[]) => void answer.addFiles(files) : null;
+	},
+});
+
 function onDraftId(id: string) {
 	draftId.value = id;
 	if (route.query['draft'] === id) return;
@@ -149,7 +160,7 @@ function onDraftId(id: string) {
 	});
 }
 
-// The response plan, "Draft with AI" and thread files (plan §03 to §06)
+// The response plan, "Draft with AI" and thread files
 const assist = useAnswerModeAssist({
 	message: () => message.value,
 	composer: () => composerRef.value?.answer ?? null,

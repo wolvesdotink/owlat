@@ -370,7 +370,7 @@ const registrationSettled = computed(
 					/>
 
 					<!-- Yahoo's CFL is enrolled against the DKIM DOMAIN, so its guided flow
-					     belongs here. Never enrolling is supported (D2); the panel owns its
+					     belongs here. Never enrolling is supported; the panel owns its
 					     own divider so nothing renders when it has nothing to show. -->
 					<DomainsYahooCflPanel
 						v-if="registrationSettled"

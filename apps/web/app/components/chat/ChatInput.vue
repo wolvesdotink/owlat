@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
 import { isMentionHandlePrefix } from '@owlat/shared/chatMentions';
 import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
 import { useComposerDraft } from '~/composables/useComposerDrafts';
 import { isImeComposing } from '~/utils/imeComposition';
+import { composerRecallDirection, type ChatRecallTarget } from '~/utils/composerRecall';
 
 const props = defineProps<{
 	/**
@@ -14,6 +16,11 @@ const props = defineProps<{
 	send: (text: string, attachmentIds?: Id<'mediaAssets'>[]) => Promise<{ ok: boolean }>;
 	/** The room, which keeps the unsent text and files on this device. */
 	draftTarget?: string | null;
+	/**
+	 * ↑ in the empty box: the room opens your last message in its editor and
+	 * says what it did. Leaves the draft alone either way.
+	 */
+	recallLast?: () => ChatRecallTarget;
 }>();
 
 const { t } = useI18n();
@@ -31,6 +38,7 @@ const text = computed({
 });
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const mentionPicker = ref<SuggestionListHandle | null>(null);
 
 const pendingAttachments = computed({
 	get: () => draft.value.attachments as PendingAttachment[],
@@ -118,6 +126,10 @@ const recalcMentionQuery = () => {
 	mentionQuery.value = fragment;
 };
 
+// Said (politely) when ↑ found none of your messages among the loaded ones:
+// the room may hold an older one, so "nothing happened" would be a guess.
+const recallNotice = ref<string | null>(null);
+
 const fitTextarea = () => {
 	if (textareaRef.value) {
 		textareaRef.value.style.height = 'auto';
@@ -128,19 +140,45 @@ const fitTextarea = () => {
 const handleInput = () => {
 	fitTextarea();
 	recalcMentionQuery();
+	recallNotice.value = null;
+};
+
+/** ↑ with nothing typed and nothing attached. True when the key was used. */
+const recallLastMessage = (): boolean => {
+	if (!props.recallLast) return false;
+	if (text.value !== '' || pendingAttachments.value.length > 0 || isUploading.value) return false;
+	const target = props.recallLast();
+	if (target.kind === 'edit') {
+		recallNotice.value = null;
+		return true;
+	}
+	recallNotice.value =
+		target.kind === 'notLoaded'
+			? t(
+					target.canLoadEarlier
+						? 'components.chat.chatInput.recallNotLoaded'
+						: 'components.chat.chatInput.recallNotInHistory'
+				)
+			: null;
+	return false;
+};
+
+const closeMention = () => {
+	mentionQuery.value = null;
+	mentionStart.value = -1;
 };
 
 const handleKeydown = (event: KeyboardEvent) => {
 	// An IME's confirming Enter finishes the word, it does not send (#1052).
 	if (isImeComposing(event)) return;
+	// The open teammate list takes ↑ ↓ Enter Tab: Enter picks, never sends.
+	if (mentionPicker.value?.handleKeydown(event)) return;
 	if (event.key === 'Enter' && !event.shiftKey && mentionQuery.value === null) {
 		event.preventDefault();
 		void handleSend();
 	}
-	if (event.key === 'Escape' && mentionQuery.value !== null) {
-		mentionQuery.value = null;
-		mentionStart.value = -1;
-	}
+	if (event.key === 'Escape' && mentionQuery.value !== null) closeMention();
+	if (composerRecallDirection(event) === 'older' && recallLastMessage()) event.preventDefault();
 };
 
 const handlePickMention = (handle: string) => {
@@ -222,8 +260,11 @@ const handleSend = async () => {
 		<!-- Mention picker (above input) -->
 		<ChatMentionPicker
 			v-if="mentionQuery !== null && mentionCandidates.length > 0"
+			ref="mentionPicker"
 			:candidates="mentionCandidates"
+			:anchor="textareaRef"
 			@pick="handlePickMention"
+			@dismiss="closeMention"
 		/>
 
 		<!-- Pending attachments -->
@@ -266,7 +307,8 @@ const handleSend = async () => {
 				v-model="text"
 				:placeholder="t('components.chat.chatInput.placeholder')"
 				rows="1"
-				class="flex-1 resize-none bg-bg-surface border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+				class="input flex-1 resize-none"
+				v-bind="mentionPicker?.fieldAttrs"
 				@keydown="handleKeydown"
 				@input="handleInput"
 				@paste="handlePaste"
@@ -296,6 +338,15 @@ const handleSend = async () => {
 			</UiButton>
 		</div>
 
+		<div role="status" aria-live="polite">
+			<p
+				v-if="recallNotice"
+				class="text-xs text-text-secondary mt-1.5 px-1"
+				data-testid="chat-recall-notice"
+			>
+				{{ recallNotice }}
+			</p>
+		</div>
 		<p class="text-[11px] text-text-tertiary mt-1.5 px-1">
 			{{ t('components.chat.chatInput.hint') }}
 		</p>

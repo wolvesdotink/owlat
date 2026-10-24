@@ -1,5 +1,5 @@
 /**
- * Gate 4 — THE CALIBRATION RESTRICTION (plan D8). THE KEY SUITE.
+ * Gate 4 — THE CALIBRATION RESTRICTION. THE KEY SUITE.
  *
  * Assignment is stratified by default: the own arm gets the top engagement
  * percentile first, because that is what warms an IP. So the GENERAL counters

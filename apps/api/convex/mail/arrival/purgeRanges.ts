@@ -1,6 +1,6 @@
 /**
- * Read on arrival: what a purged message takes along (SPEC §0 "erasure",
- * §2.9). These are ranges of the resumable `sources` purge job
+ * Read on arrival: what a purged message takes along (erasure).
+ * These are ranges of the resumable `sources` purge job
  * (`mail/interpret/purge.ts sourcesPlan`, appended after its own ranges), so
  * they share its transaction budget and its durable cursor
  * (`mail/interpret/purgeDrain.ts`). In order:
@@ -234,7 +234,7 @@ export const arrivalSourceRanges: readonly PurgeRange[] = [
 
 /**
  * A purged source's `interpretSources` row is about to be deleted: a gist-only
- * or skipped outcome no longer counts in the brief (SPEC §2.5).
+ * or skipped outcome no longer counts in the brief.
  */
 export async function releaseArrivalSourceAccounting(
 	ctx: MutationCtx,

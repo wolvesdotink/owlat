@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The Team inbox reply, in Answer mode's composer column (plan §07).
+ * The Team inbox reply, in Answer mode's composer column.
  *
  * One composer for every state a team message can be in:
  *
@@ -360,7 +360,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 					<input
 						:value="subject"
 						type="text"
-						class="input w-full text-sm"
+						class="input"
 						:aria-label="t('dashboard.inbox.detail.composer.subjectLabel')"
 						:placeholder="t('dashboard.inbox.detail.composer.subjectLabel')"
 						data-testid="thread-composer-subject"
@@ -382,16 +382,16 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 
 				<slot name="above-editor" :composer="answer" />
 
-				<!-- Plain text: the reply is escaped into HTML on the way out. The `;`
-				     saved-reply dropdown is anchored under the caret inside it. -->
+				<!-- Plain text, escaped into HTML on the way out; `;` opens saved replies. -->
 				<div class="relative flex min-h-48 flex-1 flex-col">
 					<textarea
 						ref="textarea"
 						:value="body"
-						class="min-h-48 w-full flex-1 resize-none bg-transparent text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-tertiary"
+						class="input-bare min-h-48 w-full flex-1 resize-none text-sm leading-relaxed"
 						:aria-label="t('dashboard.inbox.detail.composer.bodyLabel')"
 						:placeholder="t('dashboard.inbox.detail.composer.placeholder')"
 						data-testid="thread-composer-body"
+						v-bind="savedReplies.dropdown.list.value?.fieldAttrs"
 						@input="onInput"
 						@keydown="onKeydown"
 						@keyup="savedReplies.handleKeyup"
@@ -399,12 +399,13 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 						@blur="savedReplies.dropdown.close"
 					/>
 					<PostboxSnippetPicker
-						v-if="savedReplies.dropdown.style.value"
+						v-if="savedReplies.dropdown.anchor.value"
+						:ref="savedReplies.dropdown.bindList"
 						:items="savedReplies.dropdown.items.value"
-						:active-index="savedReplies.dropdown.index.value"
-						:style="savedReplies.dropdown.style.value"
+						:anchor="savedReplies.dropdown.anchor.value"
+						:field="textarea"
 						@select="savedReplies.dropdown.select"
-						@hover="(i) => (savedReplies.dropdown.index.value = i)"
+						@dismiss="savedReplies.dropdown.dismiss"
 					/>
 				</div>
 				<PostboxSnippetVariableDialog

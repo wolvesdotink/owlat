@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { nextTick, ref, type ShallowRef } from 'vue';
 import { createRouter, createWebHistory, type Router } from 'vue-router';
 import type * as PostHogModule from 'posthog-js';
@@ -119,7 +119,6 @@ beforeEach(() => {
 	Object.defineProperty(navigator, 'webdriver', { configurable: true, get: () => false });
 	window.localStorage.clear();
 	window.sessionStorage.clear();
-	document.body.innerHTML = '';
 	Object.defineProperty(document, 'referrer', {
 		configurable: true,
 		value: 'https://webmail.example.org/read/PATH_SENTINEL?m=QUERY_SENTINEL',
@@ -165,9 +164,12 @@ describe('posthog plugin — URL privacy with the real SDK', () => {
 		telemetry.reportPerf('owlat_boot_shell_ms', { duration_ms: 12 });
 
 		// An autocaptured click on a token-bearing link.
-		document.body.innerHTML = `<a id="l" class="row" href="/share?token=QUERY_SENTINEL#FRAGMENT_SENTINEL">
+		const links = document.createElement('div');
+		links.innerHTML = `<a id="l" class="row" href="/share?token=QUERY_SENTINEL#FRAGMENT_SENTINEL">
 			<span>Subject PATH_SENTINEL</span></a>
 			<a id="m" href="${window.location.origin}/dashboard/postbox/PATH_SENTINEL?q=QUERY_SENTINEL">x</a>`;
+		document.body.append(links);
+		onTestFinished(() => links.remove());
 		click(document.getElementById('l')!);
 		click(document.getElementById('m')!);
 

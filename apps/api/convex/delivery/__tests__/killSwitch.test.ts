@@ -264,7 +264,7 @@ describe('the kill switch, through the cron', () => {
 	});
 
 	// A PROMOTION IS A MOVE. It raises the phase ceiling AND bumps `mixVersion`,
-	// which re-shuffles which arm every recipient of the cell lands in (plan D7) —
+	// which re-shuffles which arm every recipient of the cell lands in —
 	// the last thing anyone wants mid-incident, while the controller is
 	// deliberately frozen. "Everything held still" has to mean everything.
 	it('refuses a phase promotion while the switch is engaged', async () => {

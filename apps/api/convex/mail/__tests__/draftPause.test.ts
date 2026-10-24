@@ -1,5 +1,5 @@
 /**
- * How the unused-draft streak moves (SPEC §7, mail/draftPause.ts): an unused
+ * How the unused-draft streak moves (mail/draftPause.ts): an unused
  * draft counts, the fifth pauses, a used one resets (also while paused), and
  * nothing counts up while paused.
  */

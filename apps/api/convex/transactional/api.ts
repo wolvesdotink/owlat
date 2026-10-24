@@ -6,9 +6,10 @@
  *   - CORS / OPTIONS preflight (registered separately in `http.ts`).
  *   - JSON body parsing.
  *   - This route's own request-body ceiling ({@link TRANSACTIONAL_MAX_BODY_BYTES}).
- *   - JSON-shape validation (required fields, types, email format, language
- *     format, envelope size, attachment count + size limits, https-only URL
- *     check), all of it before any attachment byte is stored.
+ *   - Request decoding against the public contract's schema
+ *     (`@owlat/public-contract`), then this endpoint's own checks: email
+ *     syntax and the envelope size. All of it runs before any attachment
+ *     byte is stored.
  *   - Attachment validation, storage upload and the pending-upload handoff to
  *     dispatch, in `transactional/attachmentIntake.ts`.
  *   - Response shaping.
@@ -29,23 +30,16 @@ import {
 	type AuthenticatedContext,
 } from '../auth/apiHandlers';
 import { jsonResponse, errorResponse } from '../auth/apiResponses';
-import {
-	isJsonPrimitiveRecord,
-	isValidEmail,
-	normalizeEmail,
-	type JsonPrimitiveValue,
-} from '../lib/inputGuards';
+import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
 import { featureDisabledMessage } from '../lib/featureFlags';
 import { utf8Bytes } from '../lib/bytes';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
+import type { SendTransactionalResponse } from '@owlat/public-contract';
+import { decodeRequest, sendTransactionalRequestSchema } from '@owlat/public-contract/schemas';
+import type { z } from 'zod';
 import type { DispatchRejectionReason } from './dispatch';
-import {
-	prepareAttachments,
-	uploadAndDispatch,
-	type AttachmentInput,
-	type PreparedAttachment,
-} from './attachmentIntake';
+import { prepareAttachments, uploadAndDispatch, type PreparedAttachment } from './attachmentIntake';
 import {
 	IDEMPOTENCY_REFUSAL_MESSAGES,
 	idempotencyRefusalResponse,
@@ -56,31 +50,11 @@ import {
 	storedTransactionalResponse,
 } from '../auth/apiRequestReceipts';
 
-// ============================================================
-// HTTP request / response types
-// ============================================================
-
-interface SendTransactionalBody {
-	transactionalId?: string;
-	slug?: string;
-	email: string;
-	dataVariables?: Record<string, JsonPrimitiveValue>;
-	language?: string;
-	attachments?: AttachmentInput[];
-}
-
-interface SendTransactionalResponse {
-	status: 'queued';
-	email: string;
-	transactionalEmailId: string;
-	slug: string;
-	contactId?: string;
-	contactCreated: boolean;
-	language: string;
-}
+/** A request body that passed the contract's schema. */
+type SendTransactionalBody = z.output<typeof sendTransactionalRequestSchema>;
 
 // ============================================================
-// Shape validation
+// Endpoint checks beyond the contract's shape
 // ============================================================
 
 const MAX_ATTACHMENTS = ATTACHMENT_COMPOSE_LIMITS.maxCount;
@@ -114,61 +88,18 @@ export const TRANSACTIONAL_MAX_BODY_BYTES =
  * the part of the body that is not covered by the decoded-size budget.
  */
 function envelopeBytes(body: SendTransactionalBody): number {
-	const attachments = Array.isArray(body.attachments)
-		? body.attachments.map((att) =>
-				att && typeof att === 'object' && typeof att.content === 'string'
-					? { ...att, content: undefined }
-					: att
-			)
-		: body.attachments;
+	const attachments = body.attachments?.map((att) => ({ ...att, content: undefined }));
 	return utf8Bytes(JSON.stringify({ ...body, attachments })).byteLength;
 }
 
 /**
- * Validate the request body shape — required fields, types, email format,
- * language format, attachment count + size limits, https-only URL check.
- * Returns a Response on failure, or null when the body passes every gate.
- * No DB access — this is the boundary check the module trusts has run.
+ * The checks the contract's schema leaves to the server: email syntax and the
+ * envelope budget. Returns the 400 to send, or null when the body passes. No
+ * DB access — this is the boundary check the module trusts has run.
  */
-function validateRequestShape(body: SendTransactionalBody): Response | null {
-	if (!body || typeof body !== 'object' || Array.isArray(body)) {
-		return errorResponse('invalid_input', 'Request body must be a JSON object');
-	}
-	if (!body.email) {
-		return errorResponse('invalid_input', 'email is required');
-	}
-	if (typeof body.email !== 'string') {
-		return errorResponse('invalid_input', 'email must be a string');
-	}
+function validateDecodedBody(body: SendTransactionalBody): Response | null {
 	if (!isValidEmail(body.email)) {
 		return errorResponse('invalid_input', 'Invalid email format');
-	}
-	if (!body.transactionalId && !body.slug) {
-		return errorResponse('invalid_input', 'Either transactionalId or slug is required');
-	}
-	if (body.dataVariables !== undefined && !isJsonPrimitiveRecord(body.dataVariables)) {
-		return errorResponse(
-			'invalid_input',
-			'dataVariables must be an object of string, number, boolean or null values'
-		);
-	}
-	if (body.language !== undefined && typeof body.language !== 'string') {
-		return errorResponse('invalid_input', 'language must be a string');
-	}
-	if (body.language && !/^[a-z]{2}(-[A-Za-z]{2,3})?$/i.test(body.language)) {
-		return errorResponse(
-			'invalid_input',
-			"language must be a valid language code (e.g., 'en', 'de', 'fr', 'en-US')"
-		);
-	}
-
-	if (body.attachments !== undefined) {
-		if (!Array.isArray(body.attachments)) {
-			return errorResponse('invalid_input', 'attachments must be an array');
-		}
-		if (body.attachments.length > MAX_ATTACHMENTS) {
-			return errorResponse('invalid_input', `Maximum ${MAX_ATTACHMENTS} attachments allowed`);
-		}
 	}
 	if (envelopeBytes(body) > MAX_ENVELOPE_BYTES) {
 		return errorResponse(
@@ -176,7 +107,6 @@ function validateRequestShape(body: SendTransactionalBody): Response | null {
 			`Request fields other than attachment content exceed ${MAX_ENVELOPE_BYTES} bytes`
 		);
 	}
-
 	return null;
 }
 
@@ -307,17 +237,17 @@ export const sendTransactional = createAuthenticatedHandler(
 		}
 		const idempotencyKey = readIdempotencyKey(request);
 		if (!idempotencyKey.ok) return errorResponse('invalid_input', idempotencyKey.message);
-		// Parse body.
-		let body: SendTransactionalBody;
+		let raw: unknown;
 		try {
-			body = (await request.json()) as SendTransactionalBody;
+			raw = await request.json();
 		} catch {
 			return errorResponse('invalid_input', 'Invalid JSON in request body');
 		}
-
-		// JSON-shape validation.
-		const shapeError = validateRequestShape(body);
-		if (shapeError) return shapeError;
+		const decoded = decodeRequest(sendTransactionalRequestSchema, raw);
+		if (!decoded.ok) return errorResponse('invalid_input', decoded.message);
+		const body = decoded.value;
+		const bodyError = validateDecodedBody(body);
+		if (bodyError) return bodyError;
 
 		// Every attachment is checked and decoded before any byte is stored.
 		const preparedAttachments = prepareAttachments(body.attachments);
@@ -346,7 +276,8 @@ export const sendTransactional = createAuthenticatedHandler(
 					kind: 'id' as const,
 					id: body.transactionalId as Id<'transactionalEmails'>,
 				}
-			: { kind: 'slug' as const, slug: body.slug! };
+			: // The schema refuses a body naming neither.
+				{ kind: 'slug' as const, slug: body.slug! };
 
 		const intake = await uploadAndDispatch(ctx, prepared, {
 			templateLookup,

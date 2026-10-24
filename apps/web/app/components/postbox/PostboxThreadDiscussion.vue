@@ -185,7 +185,7 @@ watch(
 			<textarea
 				v-model="draft"
 				rows="2"
-				class="w-full resize-none rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-brand-border focus:outline-none"
+				class="input resize-none"
 				:placeholder="placeholder"
 				:aria-label="t('components.postbox.threadDiscussion.composerLabel')"
 				data-testid="thread-discussion-input"

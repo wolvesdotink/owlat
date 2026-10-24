@@ -7,9 +7,9 @@
  * (as errors, or as warnings for the rules whose debt the owlat lint ratchet
  * holds) and makes a stale suppression fail.
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../../../vitest.timeouts';
 import { type Diagnostic, lintFixtures } from './runOxlint.ts';
@@ -139,6 +139,41 @@ const FIXTURES: Record<string, string> = {
 		"export const count: number = 'one';",
 		'',
 	].join('\n'),
+	// The body-reset rule is scoped to the workspaces whose vitest setup
+	// unmounts every mount; `document` is a global the browser env provides.
+	'apps/web/app/__tests__/bodyReset.test.ts': [
+		"import { afterEach } from 'vitest';",
+		'',
+		'afterEach(() => {',
+		"\tdocument.body.innerHTML = '';",
+		'});',
+		'',
+	].join('\n'),
+	// Removing a node found inside each child, one child's own children, a
+	// filtered subset of the children, only the children a condition picks,
+	// children down to a bound above zero, or every child after the first
+	// leaves the body in place.
+	'apps/web/app/__tests__/bodyOwnedRemoval.test.ts': [
+		"import { afterEach } from 'vitest';",
+		'',
+		'afterEach(() => {',
+		"\tfor (const child of document.body.children) child.querySelector('[data-owned]')?.remove();",
+		'\tfor (const node of document.body.children[0].children) node.remove();',
+		"\tfor (const node of [...document.body.children].filter((el) => el.matches('.toast'))) node.remove();",
+		"\tfor (const child of document.body.children) { if (child.hasAttribute('data-owned')) child.remove(); }",
+		'\twhile (document.body.childElementCount > 1) document.body.lastElementChild!.remove();',
+		'\twhile (document.body.children[1]) document.body.children[1].remove();',
+		'});',
+		'',
+	].join('\n'),
+	'packages/email-builder/src/__tests__/bodyResetElsewhere.test.ts': [
+		"import { afterEach } from 'vitest';",
+		'',
+		'afterEach(() => {',
+		"\tdocument.body.innerHTML = '';",
+		'});',
+		'',
+	].join('\n'),
 };
 
 let fixtureDirectory: string;
@@ -146,7 +181,9 @@ let fixtureDirectory: string;
 beforeAll(() => {
 	fixtureDirectory = mkdtempSync(join(tmpdir(), 'owlat-oxlint-plugin-'));
 	for (const [name, source] of Object.entries(FIXTURES)) {
-		writeFileSync(join(fixtureDirectory, name), source);
+		const path = join(fixtureDirectory, name);
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(path, source);
 	}
 });
 
@@ -240,6 +277,15 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(stale.map((d) => [d.severity, d.message])).toEqual([
 			['error', expect.stringMatching(/^Unused oxlint-disable directive/)],
 		]);
+	});
+
+	it('reports a whole-body reset in a web test, and only in the configured workspaces', () => {
+		expect(errorCodes(byFile.get('bodyReset.test.ts'))).toEqual(['owlat(no-document-body-reset)']);
+		expect(byFile.get('bodyResetElsewhere.test.ts')).toBeUndefined();
+	});
+
+	it('accepts a loop over the body that removes only some of its nodes', () => {
+		expect(byFile.get('bodyOwnedRemoval.test.ts')).toBeUndefined();
 	});
 
 	it('leaves a clean test file alone', () => {

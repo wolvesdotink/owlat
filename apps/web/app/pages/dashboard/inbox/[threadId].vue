@@ -4,7 +4,14 @@ import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
 import { teamThreadPreview } from '~/utils/teamThreadPreviews';
 import { formatRelativeTime } from '~/utils/formatters';
-import { otherWaitingDrafts, pickReplyTarget, replySubject } from '~/utils/teamThreadReply';
+import {
+	isChannelMessage,
+	otherWaitingDrafts,
+	pickReplyTarget,
+	replySubject,
+} from '~/utils/teamThreadReply';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import type { ReplyDropTarget } from '~/utils/replyFileDrop';
 import { countMentionsOf, type ReplyEntry } from '~/utils/teamStream';
 import { useTeamThread } from '~/composables/team/useTeamThread';
 import { useZenMode } from '~/composables/useZenMode';
@@ -220,6 +227,13 @@ const replySenderLabel = computed(() => {
 	}
 	return replyTarget.value?.from ?? '';
 });
+// Files dropped on the thread reply to it with them, as Reply does. Only for a
+// viewer who may reply, and only by email: a channel reply carries no files.
+const replyDrop = computed<ReplyDropTarget | null>(() =>
+	isAdmin.value && replyTarget.value && !isChannelMessage(replyTarget.value)
+		? { kind: 'team', id: threadId.value, recipient: replySenderLabel.value }
+		: null
+);
 // ── The stream: emails, replies, internal notes and what happened, in one order ──
 const team = useTeamThread({
 	target: () => ({ kind: 'team', id: threadId.value }),
@@ -526,6 +540,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			>
 				<!-- The thread as one stream; the open actions pinned above it. -->
 				<div
+					v-reply-drop="replyDrop"
 					class="space-y-4"
 					:class="isZen ? '' : 'lg:col-span-2 xl:col-span-1'"
 					data-testid="team-thread-main"
@@ -573,17 +588,18 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					/>
 
 					<!-- Internal note or Reply to the customer (Answer mode), each with its own draft. -->
-					<TeamNoteComposer
-						v-if="isAdmin"
-						ref="composer"
-						v-model:reply-draft="replyDraft"
-						:draft-key="teamNoteDraftKey(threadId)"
-						:reply-name="replyTarget ? replySenderLabel : null"
-						:items="team.items.value"
-						:candidates-for="team.candidatesFor"
-						:submit-note="team.postNote"
-						@reply="openReply()"
-					/>
+					<AppErrorBoundary v-if="isAdmin" surface="composer">
+						<TeamNoteComposer
+							ref="composer"
+							v-model:reply-draft="replyDraft"
+							:draft-key="teamNoteDraftKey(threadId)"
+							:reply-name="replyTarget ? replySenderLabel : null"
+							:items="team.items.value"
+							:candidates-for="team.candidatesFor"
+							:submit-note="team.postNote"
+							@reply="openReply()"
+						/>
+					</AppErrorBoundary>
 				</div>
 
 				<div v-if="!isZen" class="space-y-6">

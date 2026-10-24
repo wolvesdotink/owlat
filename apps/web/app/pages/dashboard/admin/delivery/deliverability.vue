@@ -18,6 +18,7 @@ import {
 } from '~/utils/deliverabilityCenter';
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 import { useLocalized } from '~/composables/useLocalized';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 const { t } = useI18n();
 
@@ -105,9 +106,8 @@ async function openRegressionCheck(alert: DeliverabilityRegressionAlert) {
 	if (details.tagName === 'DETAILS') {
 		(details as HTMLDetailsElement).open = true;
 	}
-	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 	details.scrollIntoView({
-		behavior: reducedMotion ? 'auto' : 'smooth',
+		behavior: prefersReducedMotion() ? 'auto' : 'smooth',
 		block: 'center',
 	});
 	(details.querySelector('summary') as HTMLElement | null)?.focus({ preventScroll: true });

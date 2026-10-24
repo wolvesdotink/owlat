@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * "Activity": the latest things that changed the substance of the thread,
- * newest first (plan §6). Each row says how Owlat knows: `recorded` means it
+ * newest first. Each row says how Owlat knows: `recorded` means it
  * saw it happen, `you said` that a person stated it, `from their email` that a
  * message reported it.
  */

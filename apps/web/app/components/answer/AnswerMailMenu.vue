@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Answer mode's ⋯ for a Postbox reply (plan §09): what the reader offers that
+ * Answer mode's ⋯ for a Postbox reply: what the reader offers that
  * is still worth a click while answering, so the person does not have to leave
  * the reply for it.
  *

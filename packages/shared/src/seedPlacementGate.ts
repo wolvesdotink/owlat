@@ -7,7 +7,7 @@
  * Every threshold that produces a reading stays here; the ramp owns the
  * controller decision it makes from that reading.
  *
- * D17 — A TRIPWIRE, NOT A GAUGE. Nothing this module returns is a placement
+ * A TRIPWIRE, NOT A GAUGE. Nothing this module returns is a placement
  * percentage: the roll-up is a STATUS per mailbox provider, the reference-arm
  * comparison is a STATUS, and `sampleSize` counts OBSERVATIONS rather than
  * measuring placement.
@@ -16,7 +16,7 @@
  * share must clear `SEED_REACHED_THRESHOLD` AND, when a reference transport
  * carried probes of its own, sit within `SEED_REFERENCE_TOLERANCE` of it.
  * Standalone there is no reference arm and the absolute clause is the whole
- * gate (D3's substitution).
+ * gate (the standalone substitution).
  *
  * THE DIVISION OF LABOUR, because gate 5 has exactly one implementation and it
  * is this one:
@@ -36,7 +36,7 @@
  *     second answer to "did the seeds reach the inbox", and the controller and
  *     the dashboard must never be able to disagree about a number.
  *
- * Pure: no clock, no I/O, every input a parameter (D15).
+ * Pure: no clock, no I/O, every input a parameter.
  */
 
 import type { DestinationProviderKey } from './deliverabilityRouting';
@@ -66,7 +66,7 @@ export interface SeedObservation {
 
 /**
  * Below this many classified probes for a provider the roll-up refuses to
- * render a verdict at all (D10 — `insufficient_data` HOLDS; it never nudges a
+ * render a verdict at all (`insufficient_data` HOLDS; it never nudges a
  * decision in either direction).
  */
 export const SEED_MIN_OBSERVATIONS = 3;
@@ -85,7 +85,7 @@ export const SEED_REACHED_THRESHOLD = 0.9;
 /**
  * Below this share of reached probes the provider reads as a COLLAPSE.
  *
- * Derived, not invented: D17's collapse is "mostly-inbox → mostly-spam", and
+ * Derived, not invented: the collapse a seed set must catch is "mostly-inbox → mostly-spam", and
  * "mostly spam" is exactly "a MAJORITY of probes did not reach" — so the
  * threshold is one half and the comparison is strict. Nothing else is tuned
  * here; the corroboration gate in front of the tripwire, not a cleverer
@@ -98,7 +98,7 @@ const SEED_COLLAPSE_THRESHOLD = 0.5;
  * may sit below the reference arm's before the comparison reads as a breach.
  * Only meaningful when a reference transport is connected and carried enough
  * probes of its own; standalone there is nothing to compare against, and the
- * absolute clause is the whole gate (D3's substitution).
+ * absolute clause is the whole gate (the standalone substitution).
  */
 export const SEED_REFERENCE_TOLERANCE = 0.05;
 
@@ -123,7 +123,7 @@ export type SeedPlacementStatus =
  * confidence level is two different sentences on one screen.
  *
  * `none` is not a weaker grade, it is the ABSENCE of one: below the minimum
- * sample there is no reading to grade (D10 — insufficient_data HOLDS).
+ * sample there is no reading to grade (insufficient_data HOLDS).
  */
 export const SEED_GATE_CONFIDENCE = 'medium';
 
@@ -132,7 +132,7 @@ export type SeedConfidence = 'none' | typeof SEED_GATE_CONFIDENCE;
 /**
  * The own arm's standing against the reference arm — gate 5's second clause,
  * rendered as a STATUS. The underlying comparison is arithmetic on two shares,
- * but neither share leaves this module: D17 forbids quoting a placement number,
+ * but neither share leaves this module: a placement number is never quoted,
  * and "we are behind the relay" is the whole of what a caller needs.
  */
 export type SeedReferenceStatus =
@@ -262,7 +262,7 @@ function rollupFromArms(
 	reference: ArmReading
 ): SeedProviderRollup {
 	// The comparison needs BOTH arms to clear the minimum sample; below it the
-	// second clause holds rather than guessing (D10 — insufficient_data HOLDS).
+	// second clause holds rather than guessing (insufficient_data HOLDS).
 	const referenceStatus: SeedReferenceStatus =
 		reference.sampleSize === 0
 			? 'no_reference_arm'

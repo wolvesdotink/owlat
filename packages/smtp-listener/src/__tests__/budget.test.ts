@@ -12,7 +12,7 @@ function streamOf(chunks: Buffer[], opts: { sizeExceeded?: boolean } = {}) {
 
 // ---------------------------------------------------------------------------
 // Ported verbatim from apps/mta/src/lib/__tests__/dataStream.test.ts — the byte
-// budget MUST preserve those exact semantics (D5).
+// budget MUST preserve those exact semantics.
 // ---------------------------------------------------------------------------
 describe('collectDataStream (ported dataStream semantics)', () => {
 	it('collects a message within the budget', async () => {

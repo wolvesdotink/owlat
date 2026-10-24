@@ -389,7 +389,7 @@ export const completeBackfillImport = internalMutation({
 		// background now (no-op when personalization is off for this mailbox) so the
 		// first draft after the import doesn't pay the derivation latency.
 		await scheduleVoiceProfileRefresh(ctx, migration.mailboxId);
-		// Read on arrival (D4): the imported month is read once, like new mail.
+		// Read on arrival: the imported month is read once, like new mail.
 		await startAutoBackfillAfterImport(ctx, migration.mailboxId);
 	},
 });

@@ -1,5 +1,5 @@
 /**
- * Seed mailbox placement — FOLDER CLASSIFICATION (the pure decision core, D15).
+ * Seed mailbox placement — FOLDER CLASSIFICATION (the pure decision core).
  *
  * A domain sibling of `seedPlacement.ts` (CONVENTIONS.md's ~500 LOC split
  * guideline): given the NAME of the remote folder an IMAP poller found a probe

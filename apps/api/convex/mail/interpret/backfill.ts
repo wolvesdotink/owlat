@@ -53,7 +53,7 @@ import { loadBriefRow } from './briefRow';
 import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
 import type { InterpretMode } from '@owlat/shared/threadBrief';
 
-/** How far back the walk reaches (D5). */
+/** How far back the walk reaches. */
 export const BACKFILL_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 /** Threads read per batch. */
 export const THREADS_PER_BATCH = 10;

@@ -410,7 +410,7 @@
 		},
 		"assistant": {
 			"assistantComposer": {
-				"hint": "Enter zum Senden · Umschalt+Enter für einen Zeilenumbruch · der Assistent kann deinen Workspace durchsuchen und Texte entwerfen",
+				"hint": "Enter zum Senden · Umschalt+Enter für einen Zeilenumbruch · ↑ für deine vorige Frage · der Assistent kann deinen Workspace durchsuchen und Texte entwerfen",
 				"label": "Frage an den Assistenten",
 				"placeholder": "Frage den Assistenten alles…",
 				"sendFailed": "Senden hat nicht geklappt. Deine Frage ist noch da.",
@@ -1152,6 +1152,13 @@
 			}
 		},
 		"campaigns": {
+			"cancelIntentDialog": {
+				"title": "Diese geplante Kampagne abbrechen?",
+				"description": "{name} wird am {date} versendet. Ein Abbruch stoppt sie endgültig: Eine abgebrochene Kampagne lässt sich nicht erneut planen.",
+				"confirm": "Kampagne abbrechen",
+				"keep": "Geplant lassen",
+				"notScheduled": "Diese Kampagne ist nicht mehr geplant, es gibt nichts abzubrechen."
+			},
 			"abTestConfig": {
 				"contentOption": "E-Mail-Inhalt",
 				"contentOptionDescription": "Verschiedene E-Mail-Vorlagen testen",
@@ -1207,6 +1214,15 @@
 				"recipients": "{count} Empfänger",
 				"truncated": "Nur die ersten {covered} Empfänger konnten mit deiner aktuellen Kapazität eingeplant werden. Verkleinere die Zielgruppe oder versende in Etappen.",
 				"underCounted": "Diese Zielgruppe ist größer, als wir sie genau gezählt haben, daher ist der Plan oben eine Untergrenze — der tatsächliche Versand kann länger dauern."
+			},
+			"changedSinceLastSend": {
+				"changed": "Geändert seit dem letzten Versand ({time})",
+				"compare": "Vergleichen",
+				"lastSendLabel": "Letzter Versand",
+				"loadFailed": "Der letzte Versand konnte nicht geladen werden",
+				"noSend": "Kein früherer Versand dieser E-Mail im Versionsverlauf.",
+				"nowLabel": "Jetzt",
+				"unchanged": "Unverändert seit dem letzten Versand ({time})"
 			},
 			"commandRow": {
 				"abBadge": "A/B",
@@ -1797,8 +1813,10 @@
 			},
 			"chatInput": {
 				"attachFile": "Datei anhängen",
-				"hint": "Enter zum Senden · Shift+Enter für Zeilenumbruch · {'@'} zum Erwähnen · Dateien einfügen oder anhängen",
+				"hint": "Enter zum Senden · Shift+Enter für Zeilenumbruch · ↑ zum Bearbeiten deiner letzten Nachricht · {'@'} zum Erwähnen · Dateien einfügen oder anhängen",
 				"placeholder": "Nachricht schreiben… mit {'@'} erwähnen",
+				"recallNotInHistory": "Unter den hier angezeigten Nachrichten ist keine von dir, die du bearbeiten kannst.",
+				"recallNotLoaded": "Unter den letzten Nachrichten ist keine von dir, die du bearbeiten kannst. Lade frühere Nachrichten, um weiter zurückzugehen.",
 				"removeAttachment": "Anhang {filename} entfernen"
 			},
 			"chatLinkEmailDialog": {
@@ -1831,8 +1849,12 @@
 			},
 			"chatMemberPicker": {
 				"label": "Mitglieder",
+				"listLabel": "Passende Mitglieder",
 				"placeholder": "Nach Name oder E-Mail suchen…",
 				"removeMember": "{name} entfernen"
+			},
+			"chatMentionPicker": {
+				"listLabel": "Teammitglieder zum Erwähnen"
 			},
 			"chatMentionsDialog": {
 				"emptyBody": "Keine ungelesenen Erwähnungen.",
@@ -3874,10 +3896,71 @@
 				"subtitle": "Betreffzeile und Vorschautext für deine Standardsprache",
 				"title": "Betreff & Vorschautext"
 			},
+			"templateCompareModal": {
+				"blockTypes": {
+					"accordion": "Akkordeon",
+					"button": "Button",
+					"carousel": "Karussell",
+					"columns": "Spalten",
+					"container": "Container",
+					"divider": "Trennlinie",
+					"hero": "Hero",
+					"image": "Bild",
+					"list": "Liste",
+					"menu": "Menü",
+					"other": "Block",
+					"progressBar": "Fortschrittsbalken",
+					"rawHtml": "HTML",
+					"social": "Social-Links",
+					"spacer": "Abstand",
+					"table": "Tabelle",
+					"text": "Text",
+					"video": "Video"
+				},
+				"blocks": "Geänderte Blöcke",
+				"copyChanges": "Textänderungen",
+				"copyNone": "Kein Text geändert.",
+				"counts": {
+					"added": "{count} Block hinzugefügt | {count} Blöcke hinzugefügt",
+					"edited": "{count} Block geändert | {count} Blöcke geändert",
+					"moved": "{count} Block verschoben | {count} Blöcke verschoben",
+					"removed": "{count} Block entfernt | {count} Blöcke entfernt"
+				},
+				"empty": "(leer)",
+				"frameTitle": "E-Mail-Vorschau: {side}",
+				"identical": "Keine Unterschiede: Betreff und Inhalt sind in beiden Versionen gleich.",
+				"kinds": {
+					"added": "Hinzugefügt",
+					"edited": "Geändert",
+					"moved": "Verschoben",
+					"removed": "Entfernt"
+				},
+				"linksChanges": "Link-Änderungen",
+				"linksNone": "Keine Links geändert.",
+				"meta": {
+					"previewText": "Vorschautext",
+					"subject": "Betreff"
+				},
+				"parts": {
+					"copy": "Text",
+					"links": "Links",
+					"moved": "Auch verschoben",
+					"other": "Stil oder Layout"
+				},
+				"steps": {
+					"added": "Hinzugefügt",
+					"changed": "Geändert",
+					"removed": "Entfernt"
+				},
+				"title": "Versionen vergleichen"
+			},
 			"templateHistoryPanel": {
+				"compare": "Mit aktuellem Stand vergleichen",
+				"compareAction": "Mit dem aktuellen Stand im Editor vergleichen",
 				"confirmAction": "Version wiederherstellen",
 				"confirmDescription": "Diese E-Mail enthält Änderungen, die du nicht gespeichert hast. Beim Wiederherstellen wird die ältere Version auf die Arbeitsfläche geladen – du kannst das rückgängig machen, aber die Wiederherstellung selbst ist erst mit dem nächsten Speichern gesichert.",
 				"confirmTitle": "Deine nicht gespeicherten Änderungen ersetzen?",
+				"currentLabel": "Jetzt im Editor",
 				"empty": "Noch keine Versionen. Beim Speichern dieser E-Mail wird eine angelegt.",
 				"frameTitle": "Versionsvorschau",
 				"loadFailed": "Diese Version konnte nicht geladen werden",
@@ -5363,7 +5446,6 @@
 				"title": "Tastenkürzel"
 			},
 			"postboxSnippetPicker": {
-				"empty": "Keine passende gespeicherte Antwort",
 				"listLabel": "Gespeicherte Antworten"
 			},
 			"postboxSnoozeDialog": {
@@ -6037,6 +6119,36 @@
 			"preferencesBackLink": {
 				"label": "Zurück zu den Einstellungen"
 			},
+			"preferencesComfort": {
+				"title": "Lesekomfort",
+				"subtitle": "Textgröße, Kontrast, Bewegung und Listenabstände auf diesem Gerät.",
+				"textSizeLabel": "Textgröße in Mails",
+				"textSizeHelp": "Wie groß Mails in Postbox und im Team-Posteingang erscheinen. Gestaltete Newsletter werden als Ganzes skaliert.",
+				"readingWidthLabel": "Lesebreite",
+				"readingWidthHelp": "Wie lang eine Mailzeile werden darf, bevor sie umbricht. Gestaltete Newsletter behalten ihr eigenes Layout.",
+				"listDensityLabel": "Listendichte",
+				"listDensityHelp": "Zeilenabstand in Team-Posteingang, Kontakten und Kampagnen. Postbox hat unter Lesen eine eigene Dichte.",
+				"highContrastLabel": "Höherer Kontrast",
+				"highContrastHelp": "Dunklerer Text und kräftigere Rahmen im hellen Modus, hellere im dunklen Modus.",
+				"reduceMotionLabel": "Bewegung reduzieren",
+				"reduceMotionHelp": "Schaltet Animationen und weiches Scrollen in Owlat ab. Wenn dein Gerät weniger Bewegung verlangt, ist sie immer reduziert.",
+				"textSize": {
+					"small": "Klein",
+					"default": "Standard",
+					"large": "Groß",
+					"larger": "Größer"
+				},
+				"readingWidth": {
+					"narrow": "Schmal",
+					"default": "Standard",
+					"wide": "Breit",
+					"full": "Volle Breite"
+				},
+				"listDensity": {
+					"comfortable": "Komfortabel",
+					"compact": "Kompakt"
+				}
+			},
 			"preferencesExportManifest": {
 				"loading": "Wird gezählt…",
 				"moreThan": "mehr als {count}",
@@ -6132,6 +6244,7 @@
 					"global": "Überall",
 					"postbox": "E-Mail",
 					"composer": "Beim Schreiben",
+					"chatComposer": "Eingabefelder in Chat und Assistent",
 					"inbox": "Threads im Team-Postfach",
 					"review": "Updates im Team-Postfach",
 					"workbench": "Werkbank",
@@ -6158,6 +6271,32 @@
 				"title": "Deine Daten",
 				"trashPurgeHelp": "Gezählt ab dem Tag, an dem du etwas wegwirfst. Standardmäßig aus.",
 				"trashPurgeLabel": "Papierkorb automatisch leeren"
+			},
+			"marketingNotifications": {
+				"heading": "Marketing-Benachrichtigungen",
+				"intro": "Zu Kampagnen, Automationen und dem Versand. Diese Schalter gehören zu deinem Konto: Schaltest du einen aus, kommt diese Benachrichtigung auf keinem Gerät mehr, weder in der App noch in der Desktop-App noch per Push.",
+				"scopeBadge": "Alle deine Geräte",
+				"campaignFinished": {
+					"label": "Kampagne abgeschlossen",
+					"hint": "Wenn eine Kampagne fertig versendet ist, mit dem Anteil, der zugestellt wurde."
+				},
+				"campaignReminder": {
+					"label": "Geplante Kampagne startet gleich",
+					"hint": "15 Minuten bevor eine geplante Kampagne startet, mit der Möglichkeit, sie abzubrechen."
+				},
+				"deliveryHold": {
+					"label": "Versandschutz bei Bounces",
+					"hint": "Wenn Owlat nach vielen Bounces oder Beschwerden Mails an einen Mail-Anbieter zurückhält oder über dein Relay umleitet."
+				},
+				"automationProblems": {
+					"label": "Probleme mit Automationen",
+					"hint": "Wenn Kontakte in einer Automation hängen bleiben oder eine Automation sich nach fehlgeschlagenen Läufen pausiert."
+				},
+				"domainDns": {
+					"label": "DNS der Versanddomain fehlerhaft",
+					"hint": "Wenn ein DNS-Eintrag einer Versanddomain seine Prüfung nicht mehr besteht."
+				},
+				"saveOperation": "Benachrichtigungseinstellung speichern"
 			},
 			"webPush": {
 				"heading": "Push-Benachrichtigungen",
@@ -6981,6 +7120,13 @@
 			}
 		},
 		"shell": {
+			"replyDrop": {
+				"hint": "Ablegen, um {name} mit {count} Datei zu antworten | Ablegen, um {name} mit {count} Dateien zu antworten",
+				"hintNoCount": "Ablegen, um {name} mit diesen Dateien zu antworten",
+				"hintNoName": "Ablegen, um mit {count} Datei zu antworten | Ablegen, um mit {count} Dateien zu antworten",
+				"hintNoNameNoCount": "Ablegen, um mit diesen Dateien zu antworten",
+				"refused": "Diese Antwort geht über einen anderen Kanal raus und kann keine Dateien mitnehmen. Die abgelegten Dateien wurden nicht angehängt."
+			},
 			"status": {
 				"draftReady": "Entwurf bereit",
 				"needsYou": "Braucht dich",
@@ -12035,7 +12181,7 @@
 				"pageTitle": "Buchungsseite"
 			},
 			"device": {
-				"intro": "Einstellungen, die nur auf diesem Gerät gespeichert werden — sie wandern nie auf einen anderen Computer oder Browser.",
+				"intro": "Benachrichtigungen und Einstellungen für dieses Gerät. Die meisten werden nur hier gespeichert und wandern nie auf einen anderen Computer oder Browser; eine Einstellung, die zu deinem Konto gehört, sagt das dazu.",
 				"nothingHere": "Auf dieser Instanz speichert nichts etwas auf diesem Gerät."
 			},
 			"filters": {
@@ -16393,6 +16539,26 @@
 					"title": "Erscheinungsbild",
 					"keywords": "Dunkelmodus, heller Modus, Design, Farbschema"
 				},
+				"mailTextSize": {
+					"title": "Textgröße in Mails",
+					"keywords": "Schriftgröße, Textgröße, Zoom, größere Schrift, Lesbarkeit"
+				},
+				"readingWidth": {
+					"title": "Lesebreite",
+					"keywords": "Zeilenlänge, Satzbreite, Spaltenbreite, breit"
+				},
+				"listDensity": {
+					"title": "Listendichte",
+					"keywords": "kompakt, komfortabel, Abstand, Zeilenhöhe, Team-Posteingang, Kontakte, Kampagnen"
+				},
+				"highContrast": {
+					"title": "Höherer Kontrast",
+					"keywords": "Kontrast, Barrierefreiheit, Lesbarkeit, Rahmen, Sehschwäche"
+				},
+				"reduceMotion": {
+					"title": "Bewegung reduzieren",
+					"keywords": "Animation, Bewegung, Barrierefreiheit, weiches Scrollen, Schwindel"
+				},
 				"language": {
 					"title": "Sprache",
 					"keywords": "Gebietsschema, Übersetzung, Englisch, Deutsch"
@@ -16500,6 +16666,10 @@
 				"connectedAccount": {
 					"keywords": "trennen, entfernen, löschen, verbundenes Postfach, externes Konto, gmail, outlook, fastmail",
 					"title": "Verbundenes Postfach trennen"
+				},
+				"marketingNotifications": {
+					"title": "Marketing-Benachrichtigungen",
+					"keywords": "kampagne abgeschlossen, erinnerung, geplante kampagne, bounce-spitze, versandschutz, versand pausiert, automation hängt, dns fehlerhaft, warnungen"
 				},
 				"pushNotifications": {
 					"title": "Push-Benachrichtigungen",
@@ -16636,6 +16806,8 @@
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
 				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
 				"savedReplies": "Gespeicherte Antwort einfügen",
+				"recallLastMessage": "In einem leeren Eingabefeld: deine letzte Chat-Nachricht bearbeiten oder deine vorige Frage an den Assistenten zurückholen",
+				"recallNewerQuestion": "Assistent: zu einer neueren Frage weitergehen (nach der neuesten zurück zum leeren Feld)",
 				"writeNote": "Interne Notiz schreiben (Threads im Team-Postfach)",
 				"openSettings": "Einstellungen öffnen",
 				"openAssistant": "Assistenten öffnen",
@@ -17359,6 +17531,51 @@
 			},
 			"pickerTitle": "CSV-Datei auswählen"
 		},
+		"marketingNotices": {
+			"toast": "{title}: {body}",
+			"quietSummary": {
+				"title": "Während du weg warst",
+				"body": "1 Hinweis zu Kampagnen oder Versand ist während der Ruhezeiten eingegangen | {count} Hinweise zu Kampagnen und Versand sind während der Ruhezeiten eingegangen"
+			},
+			"campaignFinished": {
+				"title": "Kampagne abgeschlossen",
+				"body": "{name} · {percent} % zugestellt",
+				"bodyNoPercent": "{name} ist fertig versendet",
+				"private": "Eine Kampagne ist fertig versendet"
+			},
+			"campaignReminder": {
+				"title": "Geplante Kampagne startet in {minutes} Min.",
+				"body": "{name}",
+				"private": "Öffne sie, um den Versand zu prüfen oder abzubrechen"
+			},
+			"deliveryHold": {
+				"title": "Bounce-Spitze: Versandschutz aktiv",
+				"body": "Owlat hält Mails an {provider} nach vielen Bounces oder Beschwerden zurück oder leitet sie über dein Relay um"
+			},
+			"providers": {
+				"gmail": "Gmail",
+				"microsoft": "Microsoft",
+				"yahoo": "Yahoo",
+				"apple": "Apple",
+				"other": "andere Anbieter"
+			},
+			"automationStalled": {
+				"title": "Automation hängt",
+				"body": "{name}: {count} hängender Kontakt | {name}: {count} hängende Kontakte",
+				"private": "Kontakte hängen in einer Automation"
+			},
+			"automationPaused": {
+				"title": "Automation pausiert",
+				"body": "{name} hat sich nach wiederholt fehlgeschlagenen Läufen pausiert",
+				"private": "Eine Automation hat sich nach wiederholt fehlgeschlagenen Läufen pausiert"
+			},
+			"domainDns": {
+				"title": "DNS der Versanddomain fehlerhaft",
+				"body": "{domain}: Prüfung „{check}“ fehlgeschlagen",
+				"bodyNoCheck": "{domain}: eine DNS-Prüfung ist fehlgeschlagen",
+				"private": "Eine DNS-Prüfung einer Versanddomain ist fehlgeschlagen"
+			}
+		},
 		"useDesktopNotifications": {
 			"draftsReady": {
 				"body": "1 neuer Entwurf wartet auf deine Prüfung | {count} neue Entwürfe warten auf deine Prüfung",
@@ -17759,6 +17976,17 @@
 			"changeCount": "{count} Änderung | {count} Änderungen",
 			"nothingWaiting": "Nichts wartet mehr aufs Speichern.",
 			"allSaved": "Alle Änderungen gespeichert"
+		},
+		"appUpdated": {
+			"title": "Owlat wurde aktualisiert",
+			"body": "Lade neu, um die neue Version zu nutzen. Deine Entwürfe bleiben erhalten.",
+			"bodyVersion": "Lade neu, um Version {version} zu nutzen. Deine Entwürfe bleiben erhalten.",
+			"reload": "Neu laden",
+			"reloading": "Lädt neu…",
+			"whatsNew": "Was ist neu",
+			"opensInNewTab": "(öffnet in einem neuen Tab)",
+			"dismiss": "Hinweis ausblenden",
+			"blocked": "Einige Änderungen sind noch nicht gespeichert. Speichere oder beende sie und lade dann neu."
 		},
 		"format": {
 			"never": "Nie",
@@ -18534,7 +18762,16 @@
 			"pageTitleGeneric": "Fehler — Owlat",
 			"pageTitleNotFound": "Seite nicht gefunden — Owlat",
 			"serverError": "Auf unserer Seite ist etwas schiefgelaufen. Bitte versuche es später erneut.",
+			"toast": "Etwas ist schiefgelaufen. Lade die Seite neu und versuche es noch einmal.",
 			"unexpected": "Ein unerwarteter Fehler ist aufgetreten."
+		},
+		"paneError": {
+			"page": "Diese Seite konnte nicht angezeigt werden.",
+			"reader": "Diese Unterhaltung konnte nicht angezeigt werden.",
+			"messageBody": "Diese Nachricht konnte nicht angezeigt werden.",
+			"list": "Die Nachrichtenliste konnte nicht angezeigt werden.",
+			"composer": "Der Editor konnte nicht angezeigt werden.",
+			"detail": "Alles andere funktioniert weiter. Versuch es noch einmal oder öffne etwas anderes."
 		},
 		"preferences": {
 			"title": "Einstellungen",

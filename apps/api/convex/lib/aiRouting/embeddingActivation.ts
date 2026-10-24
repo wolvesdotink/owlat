@@ -231,7 +231,7 @@ export async function activateSpace(
 		(job) => job.targetSpaceId === activated._id && job.kind === 'reembed',
 		now
 	);
-	// A local embedder re-embeds right away; a hosted one waits for an admin (D8).
+	// A local embedder re-embeds right away; a hosted one waits for an admin.
 	await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, { isForced: true });
 	return activated;
 }
@@ -245,7 +245,7 @@ export async function retireStagedSpace(ctx: MutationCtx, staged: SpaceDoc): Pro
 
 /**
  * The active space for a vector a job measured, registering and activating it
- * when the configuration names it (the D8 switch path). Null when the job's
+ * when the configuration names it (the embedding switch path). Null when the job's
  * target is no longer the configured one: its vector is stale.
  */
 export async function ensureConfiguredSpace(

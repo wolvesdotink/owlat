@@ -1,5 +1,5 @@
 /**
- * Response plans (SPEC §6): the store.
+ * Response plans: the store.
  *
  * A plan belongs to one draft (`draftResponsePlans`, a Postbox draft or the
  * draft on a team inbound message) and holds one stance per open item the
@@ -11,7 +11,7 @@
  *     plan (or without a draft yet) it still returns the default stances.
  *   - `setStances`: the owner's stance per item; `skip` deselects an item.
  *     Every write bumps the plan revision, so a coverage result computed for
- *     the stances before it no longer counts (review D1).
+ *     the stances before it no longer counts.
  *   - `adoptArrivalPlan`: the Reply Queue's prepared reply became a Postbox
  *     draft; its plan (and its check, still bound to the prepared text's hash)
  *     moves to that draft.
@@ -166,7 +166,7 @@ async function requireDraftWriter(
  * reply). Every given item must be open in the thread; stances the owner did
  * not touch keep their default. The write bumps the plan revision: the stored
  * coverage was computed for the stances before it and reads as pending until
- * the next check (review D1). Returns the new revision.
+ * the next check. Returns the new revision.
  */
 // authz: requireDraftWriter: the thread's reader rule (requireThreadReader) and,
 // for a Postbox draft, requireMailboxAccess on the draft's mailbox.

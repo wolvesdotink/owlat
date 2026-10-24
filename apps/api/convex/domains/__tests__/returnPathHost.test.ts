@@ -1,9 +1,9 @@
 /**
- * Per-domain VERP return-path host — Convex side (D2).
+ * Per-domain VERP return-path host — Convex side.
  *
- * The D1 MTA API added an optional `returnPathHost` to `/dkim/{domain}/register`
- * (tri-state: absent = no change, string = set, null = clear). D2 wires the
- * Convex backend to it end to end. This gate locks:
+ * The MTA's `/dkim/{domain}/register` takes an optional `returnPathHost`
+ * (tri-state: absent = no change, string = set, null = clear), and the
+ * Convex backend uses it end to end. This gate locks:
  *
  *   1. Registration default vs override — the MTA HTTP client sends the correct
  *      tri-state body, and `mtaProvider.registerDomain` builds the `mailFrom`
@@ -172,7 +172,7 @@ afterEach(() => {
 
 // ─── 1. Registration: default vs override ─────────────────────────────────────
 
-describe('MTA HTTP client — returnPathHost tri-state body (D1 contract)', () => {
+describe('MTA HTTP client — returnPathHost tri-state body', () => {
 	async function captureRequest(
 		call: (m: import('../../lib/emailProviders/mtaIdentity').MtaIdentityManager) => Promise<unknown>
 	): Promise<RequestInit> {

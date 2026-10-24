@@ -57,7 +57,7 @@ export const ARRIVAL_SPAM_MOVE_MAX_MESSAGES = 25;
  * Returns whether the LLM refinement was scheduled: read on arrival waits a
  * little for it before it decides how deep to read (`interpret/enqueue.ts`).
  * `messageId` names the delivered message, so the refinement also answers
- * that message's pending rule questions (SPEC §6.2 R2).
+ * that message's pending rule questions.
  */
 export async function enqueueCategoryCheck(
 	ctx: MutationCtx,

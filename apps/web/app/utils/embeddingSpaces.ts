@@ -21,7 +21,7 @@ const K = 'dashboard.admin.instance.aiProvider.embeddingSpace';
  * Where vector search stands:
  *   - `none`: no embedder is configured;
  *   - `switching`: the configuration names a space whose first vector has not
- *     landed, so vector search has nothing to compare yet (D8);
+ *     landed, so vector search has nothing to compare yet;
  *   - `searchable`: the configured space is active.
  */
 export type EmbeddingSearchState = 'none' | 'switching' | 'searchable';
@@ -182,7 +182,7 @@ export function paidBlocker(status: EmbeddingStatus, payment: EmbeddingPayment):
 /**
  * Why a re-embed cannot start now, as a message key, or null when it can. A
  * local embedder re-embeds for free on this server; a hosted one is paid work
- * and needs spend admission (D8), which the server's flag reports.
+ * and needs spend admission, which the server's flag reports.
  */
 export function reembedBlocker(status: EmbeddingStatus): string | null {
 	if (!status.configured) return `${K}.reembed.blocked.noEmbedder`;
@@ -269,7 +269,7 @@ export function attestationBlocker(status: EmbeddingStatus): string | null {
 
 /**
  * Everything an attestation assigns, as the admin must see it before stating
- * it (D8): the provider, the endpoint, the model, the vector width and the
+ * it: the provider, the endpoint, the model, the vector width and the
  * revision when one is known. The endpoint is shown as an origin only: the
  * server stores no more than that, and a path, query or credentials must
  * never be displayed even if one slipped through.
@@ -346,7 +346,7 @@ export function cohortEnd(day: string, now: number): number | null {
 /**
  * The embedders a staged rebuild may move to without a new key: another local
  * embedder, or another model of the stored hosted provider. Everything else
- * goes through the provider settings (the D8 switch path).
+ * goes through the provider settings (the embedding switch path).
  */
 export function rebuildKinds(status: EmbeddingStatus): EmbeddingProviderKind[] {
 	const configured = status.configured;

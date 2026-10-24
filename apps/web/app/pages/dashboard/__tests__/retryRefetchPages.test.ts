@@ -94,6 +94,7 @@ const FEATURE_STUBS = Object.fromEntries(
 	[
 		'BackupCommandRow',
 		'CampaignsABTestConfig',
+		'CampaignsCampaignCancelIntentDialog',
 		'CampaignsCampaignEditLocked',
 		'CampaignsCapacitySchedulePanel',
 		'CampaignsSendReadinessNote',

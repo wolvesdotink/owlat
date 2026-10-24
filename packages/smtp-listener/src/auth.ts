@@ -2,7 +2,7 @@
  * SASL AUTH for the SMTP listener: PLAIN and LOGIN (RFC 4954), with a strict
  * "no auth oracle" rule.
  *
- * D6: AUTH is refused before TLS (`requireTls`), and EVERY failure — an
+ * AUTH is refused before TLS (`requireTls`), and EVERY failure — an
  * unsupported mechanism, malformed base64, a client cancel (`*`), or rejected
  * credentials — is byte-identical from the client's point of view. The command
  * loop emits ONE generic `535 5.7.8` for any failure and one `235 2.7.0` on
@@ -22,7 +22,7 @@
  *  - An unsupported mechanism, a client cancel (`*`), and malformed base64 all
  *    fail with the SAME `535 5.7.8` as rejected credentials — smtp-server leaks
  *    the stage via `504` (bad mechanism) / `501` (bad base64 / cancel). Collapsing
- *    them to one reply is the deliberate no-oracle invariant (D6): the client
+ *    them to one reply is the deliberate no-oracle invariant: the client
  *    cannot tell which stage or which field was wrong.
  *  - The failure text is `535 5.7.8 Authentication credentials invalid` (a real
  *    enhanced status code) rather than smtp-server's `535 Error: Authentication
@@ -112,7 +112,7 @@ export async function performAuth<S, T>(
 	// A throwing/rejecting backend hook (throttle-store hiccup, transient fault)
 	// must NOT escape as an unhandled rejection — that would tear the connection
 	// down with no reply, a failure mode observably distinct from the generic
-	// `535` (violates D6). Route it to `onError` and fail generically.
+	// `535` (an auth oracle). Route it to `onError` and fail generically.
 	let outcome: SmtpAuthOutcome;
 	try {
 		outcome = await auth.authenticate(credentials, session);

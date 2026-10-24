@@ -207,7 +207,7 @@ export async function streamReplyOptions(
 				modelUsed: undefined,
 			};
 		}
-		// A budget refusal carries the stable code the web reads (D1).
+		// A budget refusal carries the stable code the web reads.
 		const message = admissionRefusalOf(error)
 			? AI_BUDGET_ERROR_CODE
 			: error instanceof Error

@@ -321,6 +321,10 @@ describe('buildPlan', () => {
 			command: ['bun', 'run', 'lint:format'],
 			env: { OXFMT_BASE: 'abc123', GITHUB_BASE_REF: undefined },
 		});
+		expect(step(p, 'lint:comment-policy')).toMatchObject({
+			command: ['bun', 'run', 'lint:comment-policy'],
+			env: { COMMENT_POLICY_BASE: 'abc123', GITHUB_BASE_REF: undefined },
+		});
 		expect(step(p, 'oxlint')?.command).toEqual([
 			'node_modules/.bin/oxlint',
 			'--config',
@@ -343,7 +347,7 @@ describe('buildPlan', () => {
 			'--filter=@owlat/web',
 		]);
 		expect(names(p)).not.toContain('typecheck scripts/');
-		expect(names(p)).toContain('lint:ui-buttons');
+		expect(names(p)).toContain('lint:ui-controls');
 		expect(names(p)).not.toContain('lint:compose');
 		expect(step(p, 'test @owlat/web')).toEqual({
 			name: 'test @owlat/web (related)',
@@ -359,12 +363,15 @@ describe('buildPlan', () => {
 		});
 		expect(p.skipped).toContain('smoke convex-bundle');
 		expect(p.skipped).toContain('lint:compose');
-		expect(p.skipped).not.toContain('lint:ui-buttons');
+		expect(p.skipped).not.toContain('lint:ui-controls');
 		const ci = ciAlsoRuns(p);
 		expect(ci[0]).toMatch(
 			/^lint: every root gate and plugin smoke \(not run here: .*smoke convex-bundle/
 		);
 		expect(ci).toContain('test-web: the full web suite with coverage');
+		expect(ci).toContain(
+			'test-web-browser: the web component tests in Chrome (bun run --cwd apps/web test:browser)'
+		);
 		expect(ci).toContain('docker-build: image builds: web');
 		expect(ci.some((line) => line.startsWith('test-api'))).toBe(false);
 	});
@@ -441,6 +448,7 @@ describe('buildPlan', () => {
 			'format (oxfmt)',
 			'lint:script-tests',
 			'lint:branding',
+			'lint:comment-policy',
 			'lint:source-bytes',
 			'lint:no-pr-assets',
 		]);

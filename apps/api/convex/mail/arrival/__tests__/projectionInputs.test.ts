@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.8): every writer of a projection input recomputes
+ * Read on arrival: every writer of a projection input recomputes
  * the projection in its own mutation. These cover the needs-reply reconcile
  * paths (Sol r1 F9): a heuristic flag the sweep gives up on becomes settled
  * (`needs_me`), and a requeue makes it pending again (`today`).

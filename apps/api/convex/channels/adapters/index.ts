@@ -34,7 +34,7 @@
  *     verify real signatures against real secrets on the real route. The old
  *     `ChannelAdapter.validateSignature`/`parseInbound` pair was a second,
  *     caller-less expression of those same rules (and had already drifted from
- *     them), so the D10 pass deleted it rather than carrying it along.
+ *     them), so it was deleted rather than carried along.
  *
  * The barrel exports only what the outbound action outside this folder needs.
  * `DeliveryStatus` is a sibling-only type: import it from './types'.

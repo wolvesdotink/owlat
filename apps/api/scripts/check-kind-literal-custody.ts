@@ -1,9 +1,9 @@
 /**
  * KIND LITERALS OUTSIDE THE ADAPTER FOLDERS ARE AN ENUMERATED, SHRINKING SET.
  *
- * Seams plan D2: no code outside an adapter folder may declare a provider kind
- * as a literal (`= 'ses'`); D3 sanctions exactly one exception (own vs.
- * not-own) and says every other "is this our own MTA?" test READS its
+ * Capabilities, not identity: no code outside an adapter folder may declare a provider kind
+ * as a literal (`= 'ses'`); there is exactly one sanctioned exception (own vs.
+ * not-own), and every other "is this our own MTA?" test READS its
  * declaration. What the leak sweep could not convert is the map below, asserted
  * in both directions: a declaration in a file not on it fails, an entry whose
  * file no longer declares one fails and must be deleted.
@@ -44,7 +44,7 @@ const SURVIVING_KIND_LITERALS: Record<string, { family: string; owner: string }>
 	},
 };
 
-// Files whose own-arm comparison is the sanctioned D3 exception.
+// Files whose own-arm comparison is the sanctioned own-vs-not-own exception.
 const OWN_ARM_COMPARISON_EXEMPT = new Set([
 	'domains/returnPathProviders.ts',
 	'delivery/lastMileRouting.ts',

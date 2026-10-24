@@ -16,16 +16,19 @@ const replyDraft = computed({
 </script>
 
 <template>
-	<TeamNoteComposer
-		v-if="state.isActive.value"
-		v-model:reply-draft="replyDraft"
-		class="mt-4"
-		:draft-key="`mail:${threadId}`"
-		:reply-name="counterparty || null"
-		:notes-enabled="state.notesEnabled.value"
-		:items="state.team.items.value"
-		:candidates-for="state.team.candidatesFor"
-		:submit-note="state.team.postNote"
-		@reply="state.continueReply"
-	/>
+	<!-- Its own boundary: a note composer that fails to render must not take the
+	     conversation above it down with it. -->
+	<AppErrorBoundary v-if="state.isActive.value" surface="composer" :reset-keys="[threadId]">
+		<TeamNoteComposer
+			v-model:reply-draft="replyDraft"
+			class="mt-4"
+			:draft-key="`mail:${threadId}`"
+			:reply-name="counterparty || null"
+			:notes-enabled="state.notesEnabled.value"
+			:items="state.team.items.value"
+			:candidates-for="state.team.candidatesFor"
+			:submit-note="state.team.postNote"
+			@reply="state.continueReply"
+		/>
+	</AppErrorBoundary>
 </template>

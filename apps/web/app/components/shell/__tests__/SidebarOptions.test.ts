@@ -50,7 +50,6 @@ beforeEach(() => {
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 const focused = () => document.activeElement as HTMLElement | null;

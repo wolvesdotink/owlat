@@ -33,7 +33,7 @@ import { DEFAULT_INBOUND_RAW_RETENTION_DAYS } from '@owlat/shared/inboundRetenti
 
 const BATCH = 200;
 
-/** D4's shadow quota counts and answers (`aiRouting/shadowQuota.ts`) are needed for one UTC day; kept a week. */
+/** The shadow quota counts and answers (`aiRouting/shadowQuota.ts`) are needed for one UTC day; kept a week. */
 const SHADOW_QUOTA_RETENTION_MS = 7 * DAY_MS;
 
 /** Operational metadata on form submissions ages out after 90 days. */
@@ -100,7 +100,7 @@ export const sweepPluginLlmAccounting = internalMutation({
  * AI routing records: decision artifacts and sender memory past their
  * own `expiresAt` (every row carries one), and admission reservations that
  * reached a terminal state more than the audit window ago. A `held` reservation
- * is never swept here; the admission expiry sweep settles it first. The D4
+ * is never swept here; the admission expiry sweep settles it first. The
  * shadow quota rows go after a week. Terminal provider batch items (L14) go
  * after the audit window, like the holds they carried.
  */
@@ -181,7 +181,7 @@ export const sweepAiRoutingRecords = internalMutation({
 const SETTLED_DELAYED_ACTION_RETENTION_MS = 30 * DAY_MS;
 
 /**
- * Read on arrival (SPEC §2.9): every table that carries `expiresAt` past it
+ * Read on arrival: every table that carries `expiresAt` past it
  * (arrival records 90 days, the undo log 30, rule drafts 7, digests 30), and
  * delayed actions a month after they settled. Pending delayed actions stay.
  */

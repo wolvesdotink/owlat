@@ -105,7 +105,7 @@ export async function refreshBriefTop(
 }
 
 /**
- * Read on arrival (SPEC §2.4): set the list row's gist (sealed by the
+ * Read on arrival: set the list row's gist (sealed by the
  * caller), keeping the rest of the projection. A thread with no projection
  * yet gets an empty brief-mode one around it.
  */
@@ -149,7 +149,7 @@ export type BriefTopRow = {
 		dueAt?: number;
 	};
 	latest?: { en: string; de: string };
-	/** Read on arrival: the gist line for a row without a brief line (SPEC §2.4). */
+	/** Read on arrival: the gist line for a row without a brief line. */
 	gist?: { text: string; factQuote?: string };
 	/** The thread is in the Answer queue (`needsReply` set): "for you", not "to do". */
 	isReplyNeeded: boolean;

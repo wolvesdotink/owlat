@@ -87,7 +87,7 @@ describeEquipped('gate 4 — engagement ratio matrix', () => {
 		expect(result.reason).toBe('reference_not_a_denominator');
 	});
 
-	it('HOLDS when there is no reference transport at all (plan D2)', () => {
+	it('HOLDS when there is no reference transport at all', () => {
 		const result = evaluateEngagementRatioGate(
 			engagementInput({ own: slice(200), reference: null })
 		);
@@ -95,7 +95,7 @@ describeEquipped('gate 4 — engagement ratio matrix', () => {
 		expect(result.reason).toBe('evidence_absent');
 	});
 
-	it('carries the threshold IN BOTH UNITS and both samples with every verdict (D12)', () => {
+	it('carries the threshold IN BOTH UNITS and both samples with every verdict', () => {
 		const result = verdict(100, 200);
 		// The dimensionless floor and the absolute rate it works out to are
 		// different numbers in different units, so they are different fields: an

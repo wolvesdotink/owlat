@@ -1,5 +1,5 @@
 /**
- * ONE trust verdict per message, for the reader's single trust chip (plan §05).
+ * ONE trust verdict per message, for the reader's single trust chip.
  *
  * The reader used to spend up to five separate indicators on the sender line —
  * the verified-sender badge, the PGP/S-MIME security badge, the sealed-mail

@@ -15,7 +15,7 @@ const props = defineProps<{
 	// account data. Undefined for illustrative sample-data charts (not
 	// refreshable).
 	dataQuery?: string | null;
-	/** Generation was refused for budget (D1): shown in place of the page, localized. */
+	/** Generation was refused for budget: shown in place of the page, localized. */
 	budgetRefusal?: unknown;
 }>();
 

@@ -1,5 +1,5 @@
 /**
- * Response plans in the prompt and in the self-check (SPEC §6), pure:
+ * Response plans in the prompt and in the self-check, pure:
  *
  *   - `buildResponsePlanSection`: the drafter's plan block. The stances are
  *     the owner's choices and sit outside the untrusted tags as trusted
@@ -41,7 +41,7 @@ const CLAIM_TEXT_CHARS = 240;
 const MAX_SPANS = 4;
 /**
  * Claims and promises kept per draft. Past it the check is incomplete (the
- * gate then holds); nothing is dropped silently (review D2).
+ * gate then holds); nothing is dropped silently.
  */
 const MAX_CLAIMS = 50;
 

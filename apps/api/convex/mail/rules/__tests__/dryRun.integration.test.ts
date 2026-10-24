@@ -1,5 +1,5 @@
 /**
- * "Test on recent mail" (SPEC §6.2): the deterministic part over the newest
+ * "Test on recent mail": the deterministic part over the newest
  * 50 Inbox messages from stored fields, and the AI condition answered by ONE
  * batched `mail.rule_test` call over the deterministic matches, each fenced,
  * with messages that have no readable input shown as "not tested".

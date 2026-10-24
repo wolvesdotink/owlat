@@ -1,5 +1,5 @@
 /**
- * Mandrill rejection-blacklist carry-over (plan D9, P4.1).
+ * Mandrill rejection-blacklist carry-over.
  *
  * What has to hold, in the order it matters:
  *   1. **Reason routing** — the ten reasons Mandrill reports on one field mean

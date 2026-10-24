@@ -627,6 +627,65 @@ env at runtime via `vi.stubEnv` and `delete process.env.X`.
 
 The `bun run lint:env` script enforces this.
 
+## Actions commit once
+
+Every `ctx.runMutation` an action makes is its own transaction. An action that
+writes through several of them leaves the earlier writes in place when it fails
+between two, and the next run starts from a state no code path meant to
+produce: a campaign in `sending` with no send job, a version row for a send
+that never went out. So an action has three phases, in this order:
+
+1. **Read** with `ctx.runQuery`. Decide what to do from what was read.
+2. **External I/O**: provider calls, fetches, LLM calls, anything outside the
+   database. Nothing is written yet.
+3. **Commit once**: one mutation that writes everything the action decided and
+   schedules what comes next (`ctx.scheduler.runAfter` inside the mutation is
+   transactional, so the next hop exists exactly when the writes do).
+
+The commit mutation re-checks its preconditions, because the world moved
+during phase 2: the status the action read, the guards it applied, the row it
+is about to complete, and the identity of what the I/O worked on. When the
+input changed (an edited template under a content scan), the commit writes
+nothing and either skips or schedules a fresh run; it never commits a decision
+made on stale input. It returns an outcome the action maps to its result
+instead of throwing on a lost race.
+
+To reuse the writes other modules own, call their `MutationCtx` helpers inside
+the commit, not their internal mutations: `transitionCampaign`
+(`campaigns/lifecycle.ts`), `captureTemplateVersion`
+(`emailTemplates/versions.ts`), `openSendJob` (`campaigns/sendJob.ts`). The
+owning module's internal mutation stays a thin wrapper over the same helper,
+so there is one implementation. `campaigns/sendCommit.ts` (the commit of
+`campaigns/send.ts:startCampaignSend`) is the worked example.
+
+A write that is meant to stand on its own if the action fails after it is a
+**checkpoint**, and says so with a `// checkpoint: <why it may stand alone>`
+line directly above the statement making the call: one page of a chunked walk
+that the next page resumes from, a lease or reservation claimed before an
+irreversible external effect, a best-effort cache. One database commit cannot
+make an external effect atomic; a claim before it, and a commit after it, is
+the protocol for that.
+
+`scripts/check-action-commits.sh` (in `bun run lint`) counts, per action, the
+most `runMutation` calls one run can make, from the syntax tree
+(`scripts/lib/actionCommits.ts`: branches and early returns take the costlier
+path, a `switch` clause that falls through adds to the next, a loop's body,
+condition and increment and a per-item callback count twice, same-module helpers are followed by lexical
+scope, also when passed by name, other modules are not). Every commit past the first is a line in
+`scripts/action-commit-baseline.txt`, frozen debt: a new multi-commit action
+fails, and converting one fails until its lines are deleted. A marker that
+exempts no call, or gives no reason, fails too. Convert an action on its own,
+with characterization tests of what it writes landed first.
+
+Converting an action leaves the internal mutations it used to call without a
+caller. Keep them for one release in `scripts/entryWiringPreviousRelease.ts`:
+an action of the previous release still running during the deploy calls them
+by path. It can call them after the new commit already did the same work,
+so each one must leave that work alone: `createSendJob` and
+`setArchiveSnapshot` return early once `findPreparedSendJob`
+(`campaigns/sendJob.ts`) finds the send prepared, also after it completed:
+the emails it already mailed still point at what the commit wrote.
+
 ## Convex best practices
 
 This codebase tracks the official Convex AI/cursor rules
@@ -1162,12 +1221,33 @@ discriminator. See `shareLinks.targetType` and `blockedEmails.sourceType`.
   `emailSends.contactFirstName`, `emailSends.contactLastName` — they record
   what we sent, not the contact's current state. Touching them post-send is
   a corruption bug.
-- Aggregated fields (computed from child rows) are marked with `// AGGREGATED —`.
-  Examples: `campaigns.statsSent` etc. Update only via the dedicated
-  aggregator — for campaign send stats this is the Send lifecycle's effect
-  system (`campaign_stats_sent` / `campaign_stats_failed` etc. in
-  `delivery/sendLifecycle.ts`); never write these from a user-facing
-  mutation. Track freshness with `statsUpdatedAt`/`cachedCountUpdatedAt`.
+- Aggregated fields (a cache of what other rows already record) are marked
+  with `// AGGREGATED [<id>] —`, where `<id>` is the field's entry in
+  `maintenance/derivedFields/registry.ts`. Examples: `campaigns.statsSent` etc.
+  Update only via the dedicated aggregator — for campaign send stats this is
+  the Send lifecycle's effect system (`campaign_stats_sent` /
+  `campaign_stats_failed` etc. in `delivery/sendLifecycle.ts`); never write
+  these from a user-facing mutation. Track freshness with
+  `statsUpdatedAt`/`cachedCountUpdatedAt`.
+- A field may only be marked `AGGREGATED` if it is registered with a
+  `recompute(ctx, parent, budget)` adapter (`maintenance/derivedFields/adapters.ts`)
+  that recounts one parent from its source rows within a row and byte budget.
+  The hourly `derived fields: sample drift` cron
+  (`maintenance/derivedFields/sampler.ts`) visits a few parents per field in
+  turn, logs a difference once as `derived_field.drift` and repairs it in the
+  same transaction as the recount. A recount that would outrun its budget, or
+  whose source is incomplete (rows aged out, a rebuild not finished), writes
+  nothing. A lifetime total whose source rows may be removed uses the
+  `raise_only` policy: the cache is raised to the recount, never lowered.
+- A tally or event stamp that is the only record of what it counts (each
+  saved-reply use, each SMTP response) is marked `// COUNTER [<id>] —` and
+  registered with the reason nothing can recompute it. It is not sampled.
+  Moving a field from `AGGREGATED` to `COUNTER` needs that reason; a field
+  that other rows do record stays `AGGREGATED`, label or no label.
+- `__tests__/derivedFieldRegistry.test.ts` fails on a label without a
+  registered id, an id under the other label, a label that does not sit on the
+  fields its entry names (including shared validator spreads), or an entry
+  whose fields are not in the schema.
 
 ### Cascade contracts
 

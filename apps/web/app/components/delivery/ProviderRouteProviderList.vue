@@ -163,7 +163,7 @@ function moveProvider(index: number, direction: -1 | 1) {
 							type="number"
 							min="0"
 							max="100"
-							class="input w-20 text-sm"
+							class="input w-20"
 							:disabled="!provider.isEnabled"
 						/>
 						<span class="text-xs text-text-tertiary">{{

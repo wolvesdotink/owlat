@@ -410,7 +410,7 @@
 		},
 		"assistant": {
 			"assistantComposer": {
-				"hint": "Enter to send · Shift+Enter for newline · the assistant can search your workspace and draft copy",
+				"hint": "Enter to send · Shift+Enter for newline · ↑ for your previous question · the assistant can search your workspace and draft copy",
 				"label": "Question for the assistant",
 				"placeholder": "Ask the assistant anything…",
 				"sendFailed": "Couldn't send. Your question is still here.",
@@ -1152,6 +1152,13 @@
 			}
 		},
 		"campaigns": {
+			"cancelIntentDialog": {
+				"title": "Cancel this scheduled campaign?",
+				"description": "{name} is scheduled to send on {date}. Cancelling stops it for good: a cancelled campaign cannot be scheduled again.",
+				"confirm": "Cancel campaign",
+				"keep": "Keep it scheduled",
+				"notScheduled": "This campaign is no longer scheduled, so there is nothing to cancel."
+			},
 			"abTestConfig": {
 				"contentOption": "Email content",
 				"contentOptionDescription": "Test different email templates",
@@ -1207,6 +1214,15 @@
 				"recipients": "{count} recipients",
 				"truncated": "Only the first {covered} recipients could be scheduled at your current capacity. Reduce the audience, or send it in stages.",
 				"underCounted": "This audience is larger than we counted exactly, so the schedule above is a floor — the real send may take longer."
+			},
+			"changedSinceLastSend": {
+				"changed": "Changed since the last send ({time})",
+				"compare": "Compare",
+				"lastSendLabel": "Last send",
+				"loadFailed": "Couldn't load the last send",
+				"noSend": "No earlier send of this email in its version history.",
+				"nowLabel": "Now",
+				"unchanged": "Unchanged since the last send ({time})"
 			},
 			"commandRow": {
 				"abBadge": "A/B",
@@ -1797,8 +1813,10 @@
 			},
 			"chatInput": {
 				"attachFile": "Attach file",
-				"hint": "Enter to send · Shift+Enter for newline · {'@'} to mention · paste or attach files",
+				"hint": "Enter to send · Shift+Enter for newline · ↑ to edit your last message · {'@'} to mention · paste or attach files",
 				"placeholder": "Type a message… use {'@'} to mention",
+				"recallNotInHistory": "None of the messages shown here is yours to edit.",
+				"recallNotLoaded": "None of the recent messages is yours to edit. Load earlier messages to look further back.",
 				"removeAttachment": "Remove attachment {filename}"
 			},
 			"chatLinkEmailDialog": {
@@ -1831,8 +1849,12 @@
 			},
 			"chatMemberPicker": {
 				"label": "Members",
+				"listLabel": "Matching members",
 				"placeholder": "Search by name or email…",
 				"removeMember": "Remove {name}"
+			},
+			"chatMentionPicker": {
+				"listLabel": "Teammates to mention"
 			},
 			"chatMentionsDialog": {
 				"emptyBody": "No unread mentions.",
@@ -3874,10 +3896,71 @@
 				"subtitle": "The subject line and preview text for your default language",
 				"title": "Subject & preview text"
 			},
+			"templateCompareModal": {
+				"blockTypes": {
+					"accordion": "Accordion",
+					"button": "Button",
+					"carousel": "Carousel",
+					"columns": "Columns",
+					"container": "Container",
+					"divider": "Divider",
+					"hero": "Hero",
+					"image": "Image",
+					"list": "List",
+					"menu": "Menu",
+					"other": "Block",
+					"progressBar": "Progress bar",
+					"rawHtml": "HTML",
+					"social": "Social links",
+					"spacer": "Spacer",
+					"table": "Table",
+					"text": "Text",
+					"video": "Video"
+				},
+				"blocks": "Changed blocks",
+				"copyChanges": "Copy changes",
+				"copyNone": "No copy changed.",
+				"counts": {
+					"added": "{count} block added | {count} blocks added",
+					"edited": "{count} block edited | {count} blocks edited",
+					"moved": "{count} block moved | {count} blocks moved",
+					"removed": "{count} block removed | {count} blocks removed"
+				},
+				"empty": "(empty)",
+				"frameTitle": "Email preview: {side}",
+				"identical": "No differences: both versions have the same subject and content.",
+				"kinds": {
+					"added": "Added",
+					"edited": "Edited",
+					"moved": "Moved",
+					"removed": "Removed"
+				},
+				"linksChanges": "Link changes",
+				"linksNone": "No links changed.",
+				"meta": {
+					"previewText": "Preview text",
+					"subject": "Subject"
+				},
+				"parts": {
+					"copy": "Copy",
+					"links": "Links",
+					"moved": "Also moved",
+					"other": "Style or layout"
+				},
+				"steps": {
+					"added": "Added",
+					"changed": "Changed",
+					"removed": "Removed"
+				},
+				"title": "Compare versions"
+			},
 			"templateHistoryPanel": {
+				"compare": "Compare with current",
+				"compareAction": "Compare with the current editor",
 				"confirmAction": "Restore version",
 				"confirmDescription": "This email has edits you haven't saved. Restoring loads the older version onto the canvas — you can undo it, but the restore itself is not saved until you save.",
 				"confirmTitle": "Replace your unsaved changes?",
+				"currentLabel": "In the editor now",
 				"empty": "No versions yet. Saving this email records one.",
 				"frameTitle": "Version preview",
 				"loadFailed": "Couldn't load that version",
@@ -5363,7 +5446,6 @@
 				"title": "Keyboard shortcuts"
 			},
 			"postboxSnippetPicker": {
-				"empty": "No matching saved replies",
 				"listLabel": "Saved replies"
 			},
 			"postboxSnoozeDialog": {
@@ -6037,6 +6119,36 @@
 			"preferencesBackLink": {
 				"label": "Back to preferences"
 			},
+			"preferencesComfort": {
+				"title": "Reading comfort",
+				"subtitle": "Text size, contrast, motion and list spacing on this device.",
+				"textSizeLabel": "Mail text size",
+				"textSizeHelp": "How large mail reads in Postbox and the Team Inbox. Designed newsletters scale as a whole.",
+				"readingWidthLabel": "Reading width",
+				"readingWidthHelp": "How long a line of mail can run before it wraps. Designed newsletters keep their own layout.",
+				"listDensityLabel": "List density",
+				"listDensityHelp": "Row spacing in the Team Inbox, contacts and campaign lists. Postbox has its own density under Reading.",
+				"highContrastLabel": "Higher contrast",
+				"highContrastHelp": "Darker text and stronger borders in light mode, brighter ones in dark mode.",
+				"reduceMotionLabel": "Reduce motion",
+				"reduceMotionHelp": "Turn off animations and smooth scrolling in Owlat. Motion is always reduced when your device asks for it.",
+				"textSize": {
+					"small": "Small",
+					"default": "Default",
+					"large": "Large",
+					"larger": "Larger"
+				},
+				"readingWidth": {
+					"narrow": "Narrow",
+					"default": "Default",
+					"wide": "Wide",
+					"full": "Full width"
+				},
+				"listDensity": {
+					"comfortable": "Comfortable",
+					"compact": "Compact"
+				}
+			},
 			"preferencesExportManifest": {
 				"loading": "Counting…",
 				"moreThan": "more than {count}",
@@ -6132,6 +6244,7 @@
 					"global": "Everywhere",
 					"postbox": "Mail",
 					"composer": "Writing a message",
+					"chatComposer": "Chat and assistant message boxes",
 					"inbox": "Team inbox threads",
 					"review": "Team inbox updates",
 					"workbench": "Workbench",
@@ -6158,6 +6271,32 @@
 				"title": "Your data",
 				"trashPurgeHelp": "Counted from the day you bin a message. Off unless you turn it on.",
 				"trashPurgeLabel": "Empty the trash automatically"
+			},
+			"marketingNotifications": {
+				"heading": "Marketing notifications",
+				"intro": "About campaigns, automations and sending. These switches belong to your account: turning one off stops that notification in the app, in the desktop app and by push on every device.",
+				"scopeBadge": "All your devices",
+				"campaignFinished": {
+					"label": "Campaign finished",
+					"hint": "When a campaign has finished sending, with the share that was delivered."
+				},
+				"campaignReminder": {
+					"label": "Scheduled campaign about to send",
+					"hint": "15 minutes before a scheduled campaign starts, with a way to cancel it."
+				},
+				"deliveryHold": {
+					"label": "Bounce protection",
+					"hint": "When a spike in bounces or complaints makes Owlat hold back mail to a mail provider, or reroute it through your relay."
+				},
+				"automationProblems": {
+					"label": "Automation problems",
+					"hint": "When contacts stall in an automation, or an automation pauses itself after failed runs."
+				},
+				"domainDns": {
+					"label": "Sending domain DNS broken",
+					"hint": "When a DNS record of a sending domain stops passing its check."
+				},
+				"saveOperation": "Save notification setting"
 			},
 			"webPush": {
 				"heading": "Push notifications",
@@ -6981,6 +7120,13 @@
 			}
 		},
 		"shell": {
+			"replyDrop": {
+				"hint": "Drop to reply to {name} with {count} file | Drop to reply to {name} with {count} files",
+				"hintNoCount": "Drop to reply to {name} with these files",
+				"hintNoName": "Drop to reply with {count} file | Drop to reply with {count} files",
+				"hintNoNameNoCount": "Drop to reply with these files",
+				"refused": "This reply goes out on another channel, so it can't carry files. The dropped files were not attached."
+			},
 			"status": {
 				"draftReady": "Draft ready",
 				"needsYou": "Needs you",
@@ -12035,7 +12181,7 @@
 				"pageTitle": "Booking page"
 			},
 			"device": {
-				"intro": "Settings stored on this device only — they never travel to another computer or browser.",
+				"intro": "Notifications and settings for this device. Most are stored only here and never travel to another computer or browser; a setting that belongs to your account says so.",
 				"nothingHere": "Nothing on this instance stores anything on this device."
 			},
 			"filters": {
@@ -16393,6 +16539,26 @@
 					"title": "Appearance",
 					"keywords": "dark mode, light mode, theme, colour scheme"
 				},
+				"mailTextSize": {
+					"title": "Mail text size",
+					"keywords": "font size, text size, zoom, larger text, readability"
+				},
+				"readingWidth": {
+					"title": "Reading width",
+					"keywords": "line length, measure, column width, wide"
+				},
+				"listDensity": {
+					"title": "List density",
+					"keywords": "compact, comfortable, spacing, row height, team inbox, contacts, campaigns"
+				},
+				"highContrast": {
+					"title": "Higher contrast",
+					"keywords": "contrast, accessibility, readability, borders, low vision"
+				},
+				"reduceMotion": {
+					"title": "Reduce motion",
+					"keywords": "animation, motion, accessibility, smooth scrolling, vestibular"
+				},
 				"language": {
 					"title": "Language",
 					"keywords": "locale, translation, English, German"
@@ -16500,6 +16666,10 @@
 				"connectedAccount": {
 					"keywords": "disconnect, remove, delete, unlink, connected mailbox, external account, gmail, outlook, fastmail",
 					"title": "Disconnect a connected mailbox"
+				},
+				"marketingNotifications": {
+					"title": "Marketing notifications",
+					"keywords": "campaign finished, scheduled campaign reminder, bounce spike, bounce protection, sending paused, automation stalled, dns broken, alerts"
 				},
 				"pushNotifications": {
 					"title": "Push notifications",
@@ -16636,6 +16806,8 @@
 				"previousQueueItem": "Previous item in the Answer queue",
 				"nextQueueItem": "Next item in the Answer queue",
 				"savedReplies": "Insert a saved reply",
+				"recallLastMessage": "In an empty message box: edit your last chat message, or bring back your previous question to the assistant",
+				"recallNewerQuestion": "Assistant: step forward to a newer question (past the newest, back to an empty box)",
 				"writeNote": "Write an internal note (Team inbox threads)",
 				"openSettings": "Open settings",
 				"openAssistant": "Open the assistant",
@@ -17359,6 +17531,51 @@
 			},
 			"pickerTitle": "Choose a CSV file"
 		},
+		"marketingNotices": {
+			"toast": "{title}: {body}",
+			"quietSummary": {
+				"title": "While you were away",
+				"body": "1 campaign or sending notice arrived during quiet hours | {count} campaign and sending notices arrived during quiet hours"
+			},
+			"campaignFinished": {
+				"title": "Campaign finished",
+				"body": "{name} · {percent}% delivered",
+				"bodyNoPercent": "{name} has finished sending",
+				"private": "A campaign has finished sending"
+			},
+			"campaignReminder": {
+				"title": "Scheduled campaign sends in {minutes} min",
+				"body": "{name}",
+				"private": "Open it to review or cancel the send"
+			},
+			"deliveryHold": {
+				"title": "Bounce spike: sending protection on",
+				"body": "Owlat is holding back mail to {provider}, or rerouting it through your relay, after a spike in bounces or complaints"
+			},
+			"providers": {
+				"gmail": "Gmail",
+				"microsoft": "Microsoft",
+				"yahoo": "Yahoo",
+				"apple": "Apple",
+				"other": "other providers"
+			},
+			"automationStalled": {
+				"title": "Automation stalled",
+				"body": "{name}: {count} stalled contact | {name}: {count} stalled contacts",
+				"private": "Contacts stalled in an automation"
+			},
+			"automationPaused": {
+				"title": "Automation paused",
+				"body": "{name} paused itself after repeated failed runs",
+				"private": "An automation paused itself after repeated failed runs"
+			},
+			"domainDns": {
+				"title": "Sending domain DNS broken",
+				"body": "{domain}: {check} check failed",
+				"bodyNoCheck": "{domain}: a DNS check failed",
+				"private": "A DNS check of a sending domain failed"
+			}
+		},
 		"useDesktopNotifications": {
 			"draftsReady": {
 				"body": "1 new draft is ready for your review | {count} new drafts are ready for your review",
@@ -17759,6 +17976,17 @@
 			"changeCount": "{count} change | {count} changes",
 			"nothingWaiting": "Nothing is waiting to be saved.",
 			"allSaved": "All changes saved"
+		},
+		"appUpdated": {
+			"title": "Owlat was updated",
+			"body": "Reload to use the new version. Your drafts are kept.",
+			"bodyVersion": "Reload to use version {version}. Your drafts are kept.",
+			"reload": "Reload",
+			"reloading": "Reloading…",
+			"whatsNew": "What's new",
+			"opensInNewTab": "(opens in a new tab)",
+			"dismiss": "Hide this notice",
+			"blocked": "Some changes are not saved yet. Save or finish them, then reload."
 		},
 		"format": {
 			"never": "Never",
@@ -18534,7 +18762,16 @@
 			"pageTitleGeneric": "Error — Owlat",
 			"pageTitleNotFound": "Page not found — Owlat",
 			"serverError": "Something went wrong on our end. Please try again later.",
+			"toast": "Something went wrong. Please refresh and try again.",
 			"unexpected": "An unexpected error occurred."
+		},
+		"paneError": {
+			"page": "This page couldn't be displayed.",
+			"reader": "This conversation couldn't be displayed.",
+			"messageBody": "This message couldn't be displayed.",
+			"list": "The message list couldn't be displayed.",
+			"composer": "The composer couldn't be displayed.",
+			"detail": "Everything else still works. Try again, or open something else."
 		},
 		"preferences": {
 			"title": "Preferences",

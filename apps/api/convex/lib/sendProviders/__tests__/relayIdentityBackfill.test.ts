@@ -97,7 +97,7 @@ describe('ensureRelayIdentities reports what it swallowed', () => {
 	});
 
 	it('attempts nothing on a domain hosted at a provider of its own', async () => {
-		// D3's sanctioned own-vs-not-own gate, and the outcome has to say so: a
+		// The sanctioned own-vs-not-own gate, and the outcome has to say so: a
 		// drain page of relay-primary domains attempted zero backfills, which is
 		// not the same fact as zero failures out of many.
 		const only = backfill('ses');

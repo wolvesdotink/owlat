@@ -382,7 +382,7 @@ export const finalizeAssistantChatMessage = internalMutation({
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		errorMessage: v.optional(v.string()),
-		/** A budget refusal (D1): stored as its code and reason, for the web to localize. */
+		/** A budget refusal: stored as its code and reason, for the web to localize. */
 		budgetRefusal: v.optional(budgetRefusalValidator),
 		toolCalls: v.optional(v.array(assistantToolCallValidator)),
 	},

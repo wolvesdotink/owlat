@@ -1,5 +1,5 @@
 /**
- * A shared-mailbox thread as one team stream (SPEC §7 "Team"): the emails
+ * A shared-mailbox thread as one team stream: the emails
  * (customer mail as written, the team's sent mail with its delivery state),
  * the thread's internal discussion (`chat.mailDiscussion` messages) and the
  * activity system lines, in one order and paged together

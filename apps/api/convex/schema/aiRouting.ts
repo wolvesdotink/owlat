@@ -78,13 +78,13 @@ export const aiRoutingPolicyFields = {
 	verifyClaimCapPerMessage: v.optional(v.number()),
 	/** L9: tasks whose prompts carry cache markers. Absent ⇒ none (today). */
 	promptCacheTasks: v.optional(v.array(aiTaskNameValidator)),
-	/** D1: share of each ceiling held back for paid guard and classify. Absent ⇒ 0.1. */
+	/** Share of each ceiling held back for paid guard and classify. Absent ⇒ 0.1. */
 	triageAllowanceFraction: v.optional(v.number()),
-	/** D4: share of eligible messages that may be shadowed, at most 0.1. Absent ⇒ 0.1. */
+	/** Share of eligible messages that may be shadowed, at most 0.1. Absent ⇒ 0.1. */
 	shadowMaxMessageFraction: v.optional(v.number()),
-	/** D4: share of the daily ceiling shadow traffic may spend, at most 0.05. Absent ⇒ 0.05. */
+	/** Share of the daily ceiling shadow traffic may spend, at most 0.05. Absent ⇒ 0.05. */
 	shadowMaxCeilingFraction: v.optional(v.number()),
-	/** D4: finite USD cap on shadow spend; required to shadow without a daily ceiling. */
+	/** Finite USD cap on shadow spend; required to shadow without a daily ceiling. */
 	shadowCapUsd: v.optional(v.number()),
 	/** Bumped by every save; artifacts and ledger rows record the version they ran under. */
 	policyVersion: v.number(),
@@ -98,11 +98,12 @@ export const aiRoutingTables = {
 	// behaviour. Read through `aiRouting/policy.ts` and `resolveRoutingPolicy`.
 	aiRoutingPolicy: defineTable(aiRoutingPolicyFields),
 
-	// AGGREGATED — settled spend per UTC day and month, per plane and budget
-	// class, derived ONLY from `llmUsageEvents`: every ledger insert adds its
-	// row's micro-USD here in the same mutation (lib/aiRouting/spendPeriods.ts),
-	// and a rebuild recomputes every bucket from the ledger. Never holds
-	// reservations. `generation` is the rebuild that last reset the bucket.
+	// AGGREGATED [llmSpendBuckets] — settled spend per UTC day and month, per
+	// plane and budget class, derived ONLY from `llmUsageEvents`: every ledger
+	// insert adds its row's micro-USD here in the same mutation
+	// (lib/aiRouting/spendPeriods.ts), and a rebuild recomputes every bucket
+	// from the ledger. Never holds reservations. `generation` is the rebuild
+	// that last reset the bucket.
 	llmSpendPeriods: defineTable({
 		periodKind: spendPeriodKindValidator,
 		/** `YYYY-MM-DD` for a day, `YYYY-MM` for a month (UTC). */
@@ -238,7 +239,7 @@ export const aiRoutingTables = {
 		// Retention: terminal rows past the audit window.
 		.index('by_status_and_updated_at', ['status', 'updatedAt']),
 
-	// D4's message share, counted (admission lane). One row per (task, UTC day):
+	// The shadow allowance's message share, counted (admission lane). One row per (task, UTC day):
 	// how many eligible messages asked to be shadowed and how many were. A
 	// message is admitted only while admitted + 1 ≤ floor(share × eligible).
 	shadowQuotaDays: defineTable({
@@ -281,12 +282,12 @@ export const aiRoutingTables = {
 		// Retention ages out `complete` markers only (Sol r3 F2).
 		.index('by_status_and_updated_at', ['status', 'updatedAt']),
 
-	// Decision artifacts (Phase 2, D9, D11): a bundle's typed answers for one
+	// Decision artifacts: a bundle's typed answers for one
 	// message, keyed by task, message, content hash and policy version
 	// (`artifactKey`), with the provenance and calibration stamp the block-only
 	// gate reads. `advisory` verdicts may feed displays and advice; `shadow`
 	// observations only record what the bundle said beside today's source
-	// (`baseline`). No artifact drives a destructive action (D9), and only a
+	// (`baseline`). No artifact drives a destructive action, and only a
 	// `complete`, uninvalidated one is reusable. `answers` and `baseline` are
 	// JSON of LABELS (enum values, scores, probabilities), never message text.
 	decisionArtifacts: defineTable({
@@ -331,7 +332,7 @@ export const aiRoutingTables = {
 		.index('by_task_and_kind', ['task', 'kind', 'createdAt'])
 		.index('by_expires_at', ['expiresAt']),
 
-	// Sender memory (D12): a remembered outcome for an AUTHENTICATED sender in
+	// Sender memory: a remembered outcome for an AUTHENTICATED sender in
 	// one scope (a mailbox, or the Team Inbox), reusable only for an exact valid
 	// artifact (`matchKind: exact`, `matchKey` = content hash) or an evaluated
 	// template fingerprint (`template`, `matchKey` = fingerprint at

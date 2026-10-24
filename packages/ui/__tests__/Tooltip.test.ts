@@ -22,7 +22,6 @@ afterEach(async () => {
 	// Let the shared warm window lapse so no test starts with a warm group.
 	await vi.advanceTimersByTimeAsync(TOOLTIP_WARM_MS + TOOLTIP_CLOSE_DELAY_MS);
 	vi.useRealTimers();
-	document.body.innerHTML = '';
 });
 
 const tooltip = () => document.querySelector<HTMLElement>('[role="tooltip"]');

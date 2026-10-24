@@ -35,9 +35,23 @@ const NO_MAIL: SettingsEnvironment = {
 	isFeatureEnabled: (flag) => flag !== 'postbox' && flag !== 'mail.external' && flag !== 'inbox',
 	isDesktop: false,
 };
-/** Nothing on the instance could ever send a Web Push: no mail, shared inbox or chat. */
+/** Nothing on the instance could ever send a Web Push: no mail, shared inbox, chat or marketing. */
 const NO_PUSH_SOURCE: SettingsEnvironment = {
-	isFeatureEnabled: (flag) => !['postbox', 'mail.external', 'inbox', 'chat'].includes(flag),
+	isFeatureEnabled: (flag) =>
+		![
+			'postbox',
+			'mail.external',
+			'inbox',
+			'chat',
+			'campaigns',
+			'automations',
+			'transactional',
+		].includes(flag),
+	isDesktop: false,
+};
+/** Marketing only: campaigns, nothing that reads mail. */
+const MARKETING_ONLY: SettingsEnvironment = {
+	isFeatureEnabled: (flag) => flag === 'campaigns',
 	isDesktop: false,
 };
 const NO_AI: SettingsEnvironment = { isFeatureEnabled: (flag) => flag !== 'ai', isDesktop: false };
@@ -223,9 +237,29 @@ describe('settingsControlTargets', () => {
 		);
 	});
 
+	it('keeps push and the marketing switches on a marketing-only instance', () => {
+		expect(visibleSettingsEntries(MARKETING_ONLY).map((entry) => entry.id)).toContain('device');
+		const ids = settingsControlTargets(MARKETING_ONLY).map((target) => target.control.id);
+		expect(ids).toContain('pushNotifications');
+		expect(ids).toContain('marketingNotifications');
+		expect(ids).not.toContain('offlineCache');
+		expect(settingsControlTargets(NO_PUSH_SOURCE).map((target) => target.control.id)).not.toContain(
+			'marketingNotifications'
+		);
+	});
+
 	it('drops every control of a page the environment cannot reach', () => {
 		const ids = settingsControlTargets(NO_PUSH_SOURCE).map((target) => target.control.id);
-		expect(ids).toEqual(['appearance', 'language', 'shortcuts']);
+		expect(ids).toEqual([
+			'appearance',
+			'mailTextSize',
+			'readingWidth',
+			'listDensity',
+			'highContrast',
+			'reduceMotion',
+			'language',
+			'shortcuts',
+		]);
 	});
 });
 

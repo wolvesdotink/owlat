@@ -288,7 +288,7 @@ export type AgentReplyIntakeOutcome =
 	| { ok: false; reason: 'attachment_copying' | 'attachment_failed'; detail?: undefined }
 	// The item_coverage gate enforces and the exact outgoing reply is not covered.
 	| { ok: false; reason: 'item_coverage'; detail: string }
-	// D3: the thread's interpretation is no longer complete (always checked).
+	// The thread's interpretation is no longer complete (always checked).
 	| { ok: false; reason: 'interpretation_incomplete'; detail: string };
 
 export const intakeAgentReply = internalMutation({
@@ -326,10 +326,10 @@ export const intakeAgentReply = internalMutation({
 			(entry) => replyAttachmentStatus(entry) === 'ready' && include(entry)
 		);
 		const carried = [...(message.replyAttachments ?? []), ...ready];
-		// SPEC §6: an unattended reply goes out only if its coverage was checked
-		// for exactly this text and these files (review D1), in this transaction.
+		// An unattended reply goes out only if its coverage was checked
+		// for exactly this text and these files, in this transaction.
 		if (args.autonomous === true) {
-			// D3 again, whatever the item_coverage mode: a purge or a re-read in the
+			// Incomplete interpretation holds auto-send, whatever the item_coverage mode: a purge or a re-read in the
 			// undo or file-copy window can leave the interpretation incomplete or an
 			// item redacted after the route approved (final review F1).
 			const incomplete = await interpretationHoldFor(ctx, message._id);

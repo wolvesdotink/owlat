@@ -1,5 +1,5 @@
 /**
- * THE SETUP FORK (plan D14) — two paths, offered as EQUAL choices.
+ * THE SETUP FORK — two paths, offered as EQUAL choices.
  *
  * The failure this suite exists to catch is a soft one: a "recommended" badge, a
  * pre-selection that steers a fresh install toward buying an ESP, or a trade-off
@@ -27,7 +27,7 @@ describe('both paths are offered as equal choices', () => {
 		}
 	});
 
-	it('names the actuator each path drives (plan D3)', () => {
+	it('names the actuator each path drives', () => {
 		expect(RAMP_SETUP_PATHS.find((path) => path.id === 'own_server')?.actuator).toBe('pace');
 		expect(RAMP_SETUP_PATHS.find((path) => path.id === 'esp_relay')?.actuator).toBe('share');
 	});

@@ -88,6 +88,7 @@ fn main() {
             notifications::update_unread_badge,
             notifications::send_native_notification,
             notifications::send_actionable_notification,
+            notifications::send_link_notification,
             secrets::secret_get,
             secrets::session_secret_read,
             secrets::session_secret_write,

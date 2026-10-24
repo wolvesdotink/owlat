@@ -16,8 +16,8 @@
  *      a run that ends without a verdict on purpose (interpretation refused,
  *      failed or skipped, the result not persisting) settles it
  *      (mail/needsReplyPending.ts).
- *   3. Interpretation of the newest inbound message (mail/interpret/run.ts,
- *      SPEC §5 "Postbox") replaces the old reply-intent refinement call: the
+ *   3. Interpretation of the newest inbound message (mail/interpret/run.ts)
+ *      is the reply-intent refinement: the
  *      one model pass that fills the thread brief also NAMES the message from
  *      the closed reply-intent taxonomy (./replyIntent.ts), with urgency and
  *      any meeting request. The server still decides (`decideNeedsReply`
@@ -143,7 +143,7 @@ export const classifyThread = internalAction({
 					expectedLatestMessageId: context.latestMessageId,
 					needsReply: null,
 				});
-				// D10: with no reply to decide, the reader display may be the only
+				// With no reply to decide, the reader display may be the only
 				// consumer left; then the message waits for the thread to be opened.
 				if (args.interpretMessageId && (await isDeferredUntilOpen(ctx, args.interpretMessageId)))
 					return;
@@ -174,8 +174,8 @@ export const classifyThread = internalAction({
 
 			// Never throws; a replayed run (the sweep, a retry) hands back the stored
 			// projection instead of calling the model again. While the thread's
-			// earlier deferred mail is still being read (D10), or another run holds
-			// the message or it waits for its category (SPEC §2.5), this
+			// earlier deferred mail is still being read, or another run holds
+			// the message or it waits for its category, this
 			// classification continues later and the thread stays pending
 			// (needsReplyGates.ts).
 			const run = await runInterpretation(ctx, {
@@ -186,7 +186,7 @@ export const classifyThread = internalAction({
 			// A spend refusal anywhere in the run (the gate, the model call, a
 			// verifier batch or a claim check) defers the whole classification
 			// BEFORE its projection is applied: a projection from a run that could
-			// not finish its checks must not settle the thread (D1). It stays
+			// not finish its checks must not settle the thread. It stays
 			// pending and runs again.
 			if (isBudgetRefused(run)) throw new BudgetDeferral();
 			const projection = usableProjection(run);
@@ -366,7 +366,7 @@ async function clarifyWithMemory(
 	}
 }
 
-/** The thread's open items, so each question can name the item it fills (SPEC §6). */
+/** The thread's open items, so each question can name the item it fills. */
 async function slotItemsFor(
 	ctx: ActionCtx,
 	threadId: Id<'mailThreads'>

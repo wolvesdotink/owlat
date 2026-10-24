@@ -331,7 +331,7 @@ describe('last-mile governance boundary', () => {
 			}
 		);
 
-		// D2: an unproven / unprobed / absent relay is a SUPPORTED configuration.
+		// An unproven / unprobed / absent relay is a SUPPORTED configuration.
 		// The overflow route still sends — it just does not stamp.
 		it('carries an unproven verdict through the overflow fallback without blocking', async () => {
 			vi.stubEnv('MTA_API_URL', 'https://mta.test');

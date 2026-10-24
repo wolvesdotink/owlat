@@ -1,5 +1,5 @@
 /**
- * Read on arrival, Undo (SPEC §4.4): restoring ONE change row.
+ * Read on arrival, Undo: restoring ONE change row.
  *
  * A row is restored only when BOTH hold:
  *   (a) the entity's current value deep-equals the row's `after`, and

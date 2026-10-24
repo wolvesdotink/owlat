@@ -13,7 +13,7 @@
  * ever had a host caller: the shipped inbound route verifies and parses through
  * `webhooks/adapters/{twilio,meta,generic}.ts`. Two expressions of one rule is
  * how a Twilio field change gets fixed in one place and silently missed in the
- * other, so the D10 honesty pass kept the verifiers that run and deleted the
+ * other, so only the verifiers that run are kept, not the
  * pair that only compiled. Do not re-add an inbound half here — extend
  * `webhooks/adapters/` instead.
  *
@@ -59,7 +59,7 @@ export type DeliveryStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'failed'
  * measured on every 5-minute probe and then dropped on the floor, because
  * `channelConfigs` has nowhere to put it. (`channelConfigs.lastSuccessfulSend`
  * is a real column, but it is stamped by `unifiedMessages.recordOutbound` off
- * an actual send — never by a probe.) The D10 honesty pass dropped all three;
+ * an actual send — never by a probe.) None of the three is on the type;
  * persisting probe latency is a schema + mutation change, so it needs its own
  * piece rather than a member nothing reads.
  */

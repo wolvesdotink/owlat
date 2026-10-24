@@ -3,7 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 /**
- * The calm reader's header line (read on arrival §3, plan §6): the subject,
+ * The calm reader's header line (read on arrival §3): the subject,
  * Reply, Archive and ONE ⋯ menu. Nothing else sits between the subject and
  * the strip: the follow-up chip, the team badge, the labels and the
  * cross-surface link moved into the strip's Details row.

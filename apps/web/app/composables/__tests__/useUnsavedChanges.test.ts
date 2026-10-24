@@ -17,6 +17,7 @@ vi.mock('vue-router', () => ({
 }));
 
 import { useUnsavedChanges } from '../useUnsavedChanges';
+import { settleForReload } from '~/lib/reloadSafety';
 
 // Every mount is torn down after its test, so a `beforeunload` listener left by
 // one test cannot answer for another.
@@ -276,5 +277,22 @@ describe('useUnsavedChanges while a Save is in flight', () => {
 		await saving;
 
 		expect(h.push).not.toHaveBeenCalled();
+	});
+});
+
+describe('useUnsavedChanges and reloading', () => {
+	it('keeps the page from reloading while it is dirty and mounted', async () => {
+		const page = withSetup(() => useUnsavedChanges());
+		expect(await settleForReload()).toBe(true);
+
+		page.result.setHasChanges(true);
+		expect(await settleForReload()).toBe(false);
+
+		page.result.setHasChanges(false);
+		expect(await settleForReload()).toBe(true);
+
+		page.result.setHasChanges(true);
+		page.unmount();
+		expect(await settleForReload()).toBe(true);
 	});
 });

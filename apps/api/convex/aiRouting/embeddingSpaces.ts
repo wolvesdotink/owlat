@@ -89,7 +89,7 @@ export const assertAdmin = internalQuery({
 });
 
 /**
- * Register and activate the configured space a job measured (the D8 switch
+ * Register and activate the configured space a job measured (the embedding switch
  * path), or null when the configuration no longer names it. With
  * `expectedTargetKey` (the target the caller confirmed and embedded with), a
  * configuration that moved since is refused with `embedding_target_changed`
@@ -199,7 +199,7 @@ function jobView(job: Doc<'embeddingReembedJobs'>) {
  * staged rebuild and the space a rollback would restore, the jobs, and the
  * recorded attestations. `configured.isActive` false means the configuration
  * names another space whose first vector has not landed: vector search has
- * nothing to compare until it does (D8).
+ * nothing to compare until it does.
  */
 export const status = adminQuery({
 	args: {},
@@ -254,7 +254,7 @@ export const status = adminQuery({
 				: null,
 			jobs: jobs.map(jobView),
 			attestations,
-			/** A hosted re-embed or rebuild needs spend admission (D8); absent until it lands. */
+			/** A hosted re-embed or rebuild needs spend admission; absent until it lands. */
 			isPaidEmbeddingAvailable: isPaidEmbeddingAdmissionAvailable(),
 			/** A staged rebuild and its activation rewrite the stored configuration. */
 			canStageRebuild: hasStoredConfig && staged === null && searchable !== null,

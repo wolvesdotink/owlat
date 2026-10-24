@@ -1,5 +1,5 @@
 /**
- * THE SECOND ACTUATOR, END TO END THROUGH THE CRON (plan D3, D12, D13).
+ * THE SECOND ACTUATOR, END TO END THROUGH THE CRON.
  *
  * The pure suites prove the pace ladder is correct. This file proves it is
  * REACHABLE and APPLIED: that the controller loads the stored dial off the
@@ -101,12 +101,12 @@ async function selectedActuator(t: Harness): Promise<'share' | 'pace'> {
 	});
 }
 
-describe('the cron selects the actuator from the substitution table (D3)', () => {
+describe('the cron selects the actuator from the substitution table', () => {
 	it('a deployment with NO reference transport drives the PACE dial', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t, { paceMultiplier: 1, warming: { dailyCap: 1_000, sentToday: 900 } });
 		// Own traffic only — a zero-third-party deployment, which is a SUPPORTED
-		// configuration and not a degraded one (plan D2). This is the exact
+		// configuration and not a degraded one. This is the exact
 		// configuration the standalone twin exists for.
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
 
@@ -155,12 +155,12 @@ describe('the pace dial is loaded, decided and WRITTEN by the cron', () => {
 		const row = await readManagedCell(t);
 		expect(row?.paceMultiplier).toBe(1);
 		// A hold is not an advance: the per-UTC-day anchor stays unset, so a later
-		// tick the same day can still evaluate the day once (plan D19).
+		// tick the same day can still evaluate the day once.
 		expect(row?.paceLastEvaluatedUtcDay).toBeUndefined();
 		expect(row?.paceFrozenUntil).toBeUndefined();
 	});
 
-	it('records BOTH actuators on the one audit row, interlock included (D12)', async () => {
+	it('records BOTH actuators on the one audit row, interlock included', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t, { paceMultiplier: 1, warming: { dailyCap: 1_000, sentToday: 900 } });
 
@@ -254,9 +254,9 @@ describe('the pace dial is loaded, decided and WRITTEN by the cron', () => {
 	// THE STALE-BUT-EXERCISED READING. `sentToday` / `dailyCap` reset at the UTC
 	// boundary, so a warming row from hours ago describes a day that is over — and
 	// a 900/1000 reading from it would otherwise satisfy `isCapExercised` and buy
-	// today's +STEP. The rule the one sanctioned D19 change exists to enforce is
+	// today's +STEP. The rule `isCapExercised` exists to enforce is
 	// that an unexercised cap is not evidence, so a broken measurement pipe must
-	// read `unknown` and HOLD (plan D10).
+	// read `unknown` and HOLD.
 	it('a STALE warming reading is unknown even when it looks exercised, and holds', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t, {
@@ -295,7 +295,7 @@ describe('the pace dial is loaded, decided and WRITTEN by the cron', () => {
 		});
 	});
 
-	// THE INTERLOCK OUTLIVES THE TICK THAT FIRED IT (plan D3). The cron ticks
+	// THE INTERLOCK OUTLIVES THE TICK THAT FIRED IT. The cron ticks
 	// hourly against a day-long share window, so the withheld step has to stay
 	// withheld across ticks — the pure suite pins the rule, this pins the column.
 	it('the deferral anchor survives a tick that did not fire the interlock', async () => {
@@ -323,7 +323,7 @@ describe('the pace dial is loaded, decided and WRITTEN by the cron', () => {
 		expect(row?.paceLastEvaluatedUtcDay).toBeUndefined();
 	});
 
-	// D12: EVERY DECREASE emits an admin notification naming the gate that broke.
+	// EVERY DECREASE emits an admin notification naming the gate that broke.
 	// A pace-only retreat is reachable because the two dials keep separate freeze
 	// columns: the share sits inside an earlier cooldown and holds, while the pace
 	// dial — whose own freeze has expired — halves on the same breach.
@@ -350,7 +350,7 @@ describe('the pace dial is loaded, decided and WRITTEN by the cron', () => {
 		expect(notice).toContain('blocklist');
 	});
 
-	it('NO warming state at all is a supported configuration, not an error (D2/D10)', async () => {
+	it('NO warming state at all is a supported configuration, not an error', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t, { paceMultiplier: 1 });
 
@@ -368,7 +368,7 @@ describe('the pace dial is loaded, decided and WRITTEN by the cron', () => {
 });
 
 /**
- * THE OPERATOR'S HAND ON THE SECOND DIAL (plan D3, P3-6).
+ * THE OPERATOR'S HAND ON THE SECOND DIAL.
  *
  * `setCellPause` succeeds on any managed cell and its row promises that "only the
  * increase is held". Until the override reached this dial that sentence was false
@@ -477,7 +477,7 @@ describe('the operator pause reaches the pace dial (P3-6)', () => {
 });
 
 /**
- * THE SAME HAND, ON A FULLY EQUIPPED CELL (plan D3, P3-6).
+ * THE SAME HAND, ON A FULLY EQUIPPED CELL.
  *
  * `applyPaceCellControl` is applied to EVERY cell and not only the pace-actuated
  * ones, so a pause on a deployment with a live reference arm holds the warming

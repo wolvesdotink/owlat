@@ -1,6 +1,6 @@
 /**
- * Whether the sender's fresh text hands a forwarded message to us (plan §11:
- * "can you handle the below?"). Context only: grounding (`./ground.ts`) keeps
+ * Whether the sender's fresh text hands a forwarded message to us
+ * ("can you handle the below?"). Context only: grounding (`./ground.ts`) keeps
  * every item that rests only on forwarded text as a proposal ("Check this")
  * whatever this says, and uses a `delegated` reading to say why it is shown
  * ("Mara asked you to handle this"). It never authorizes tracking.

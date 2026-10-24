@@ -1,12 +1,12 @@
 /**
- * The thread brief of one Postbox thread (SPEC §7): the `brief.get` read in
+ * The thread brief of one Postbox thread: the `brief.get` read in
  * the UI's locale, and `markSeen` once the viewer has actually looked at the
  * brief, so "new since you last looked" moves only on a real look.
  *
  * `brief` is `undefined` while loading, `null` when the server has nothing
  * (no access, or no brief row), else the view. A thread with nothing
  * interpreted yet (`completeness: 'none'`) is handed to the first-open
- * interpretation (`mail.interpret.lazy.ensure`, D5) once. A team-mode view (actions,
+ * interpretation (`mail.interpret.lazy.ensure`) once. A team-mode view (actions,
  * shared mailbox) is passed through: the reader decides not to show it.
  */
 import type { Id } from '@owlat/api/dataModel';
@@ -81,8 +81,8 @@ export function useThreadBrief(opts: {
 	const itemsState = computed<BriefItemsState>(() => paged.value?.itemsState ?? 'complete');
 	const isClosedTruncated = computed(() => paged.value?.isClosedTruncated === true);
 
-	// An older thread with nothing interpreted yet (D5), or messages whose
-	// reading waited for this open (D10): ask for their interpretation; the
+	// An older thread with nothing interpreted yet, or messages whose
+	// reading waited for this open: ask for their interpretation; the
 	// Conversation shows until a brief with nothing in it yet fills in.
 	useBriefEnsure({
 		threadRef: () => threadRef.value,

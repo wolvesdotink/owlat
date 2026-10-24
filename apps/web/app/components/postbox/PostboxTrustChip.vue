@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * ONE trust chip per message (plan §05).
+ * ONE trust chip per message.
  *
  * The sender line used to carry up to five competing indicators — the
  * verified-sender badge, the PGP/S-MIME + sealed-mail security badge, the
@@ -56,7 +56,7 @@ const props = defineProps<{
 	showSecurityDetail: boolean;
 	/**
 	 * Answer mode: verified is the quiet default, so the chip renders only when
-	 * there is something to say (plan §09).
+	 * there is something to say.
 	 */
 	hideWhenOk?: boolean;
 }>();

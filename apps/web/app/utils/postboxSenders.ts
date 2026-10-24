@@ -1,5 +1,5 @@
 /**
- * The Senders page's pure parts (SPEC §5): tabs, the read bar, the status
+ * The Senders page's pure parts: tabs, the read bar, the status
  * control's options, and which sentence describes an unsubscribe result.
  * Copy is returned as i18n keys under `postbox.senders.*`; the components are
  * the render boundary.

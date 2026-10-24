@@ -19,7 +19,7 @@ export type ScaffoldFiles = ReadonlyMap<string, string>;
  *  - `minimal`       an empty manifest declaring nothing. The default, because
  *                    most plugins contribute something other than a transport
  *                    and every bucket is one `contributes` key away.
- *  - `send-provider` a complete send-transport bundle (the seams plan's D4/P3.4):
+ *  - `send-provider` a complete send-transport bundle:
  *                    send module, feedback webhook, sending-domain identity,
  *                    capability declarations, credential form and test stubs.
  *                    Emitted whole rather than in pieces because the halves are

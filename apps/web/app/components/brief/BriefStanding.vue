@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
  * "Where things stand": the current value of each fact after everything in
- * the thread (plan §4.1). A value a later message changed shows the old one
+ * the thread. A value a later message changed shows the old one
  * struck through after the new; two statements that disagree are shown as a
- * pair ("Thu 15 Oct vs Mon 19 Oct"), never silently overwritten (plan §8).
+ * pair ("Thu 15 Oct vs Mon 19 Oct"), never silently overwritten.
  */
 import type { FactView } from '../../../../api/convex/mail/interpret/briefShape';
 import { factLabel, factRows } from '~/utils/threadBriefFacts';

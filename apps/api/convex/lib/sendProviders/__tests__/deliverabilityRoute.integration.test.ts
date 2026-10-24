@@ -337,7 +337,7 @@ describe('DB-backed deliverability route verification', () => {
 		).toMatchObject({ route: null, deferralCode: 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED' });
 	});
 
-	// Boolean -> share widening (D1). Legacy rows carry no `ownShare`, so every
+	// Boolean -> share widening. Legacy rows carry no `ownShare`, so every
 	// case above already asserts the no-behaviour-change requirement; these two
 	// pin the resolution contract itself at the resolver boundary.
 	it('routes a legacy row exactly as the stored boolean, with no share written', async () => {

@@ -149,7 +149,16 @@ export const templateTables = {
 		// BetterAuth user id, or a `system:*` sentinel for scheduler-fired sends.
 		createdBy: v.string(),
 		createdAt: v.number(),
-	}).index('by_template_and_created_at', ['templateId', 'createdAt']),
+		// `send` rows only: when the newest send of exactly this snapshot
+		// started. A repeated send of unchanged content is deduplicated into
+		// the existing row and moves this forward; the snapshot fields above
+		// stay as captured. Absent means the send at `createdAt` was the last.
+		lastSentAt: v.optional(v.number()),
+	})
+		.index('by_template_and_created_at', ['templateId', 'createdAt'])
+		// The newest snapshot of one trigger, for the review step's "changed
+		// since the last send" without reading the rest of the history.
+		.index('by_template_and_trigger_and_created_at', ['templateId', 'trigger', 'createdAt']),
 
 	// Email Blocks - reusable content blocks for email templates
 	emailBlocks: defineTable({
@@ -237,10 +246,11 @@ export const templateTables = {
 		attachmentsVersion: v.optional(v.number()),
 		// Schema version for `translations` / `htmlTranslations` JSON. Bump on shape change.
 		translationsVersion: v.optional(v.number()),
-		// AGGREGATED — total transactional sends enqueued against this
-		// template. Bumped atomically with the `transactionalSends` insert
-		// in `transactional/dispatch.ts`. The list page reads this directly
-		// instead of N+1 scanning `transactionalSends` per template.
+		// AGGREGATED [transactionalTemplateSends] — total transactional sends
+		// enqueued against this template. Bumped atomically with the
+		// `transactionalSends` insert in `transactional/dispatch.ts`. The list
+		// page reads this directly instead of N+1 scanning `transactionalSends`
+		// per template.
 		sendCount: v.optional(v.number()),
 		// Saved-block rerender state.
 		htmlRenderState: v.optional(htmlRenderStateValidator),

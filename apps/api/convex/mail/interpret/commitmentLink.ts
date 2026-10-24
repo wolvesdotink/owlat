@@ -1,6 +1,6 @@
 /**
  * Link a Daily Brief commitment (`mailCommitments`, `mail/commitments.ts`) to
- * the thread brief item for the same obligation (SPEC §5 "Commitments").
+ * the thread brief item for the same obligation.
  *
  * Both are derived from one message, independently and in either order: the
  * commitment extraction runs from the sweep, the interpretation from ingest

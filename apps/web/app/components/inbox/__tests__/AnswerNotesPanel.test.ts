@@ -1,5 +1,5 @@
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import AnswerNotesPanel from '../AnswerNotesPanel.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -8,7 +8,6 @@ import type { ThreadNotes } from '~/composables/useThreadNotes';
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
-enableAutoUnmount(afterEach);
 
 /**
  * Answer mode's Note tab stays mounted while Reply shows, so a half-written

@@ -1,5 +1,5 @@
 /**
- * THE SUBSTITUTION TABLE, gate by gate (plan D2, D10, D14).
+ * THE SUBSTITUTION TABLE, gate by gate.
  *
  * One table per gate against the plan's "gates, degraded honestly" thresholds:
  * the 1.5x-trailing bounce rule, the 3x-trailing unsubscribe proxy, and the
@@ -351,8 +351,8 @@ describe('gate 4 — trailing-baseline engagement (0.85 / 7 days / 2000 sends)',
 	 * THE 7-DAY WINDOW, pinned the only way it can be today.
 	 *
 	 * The window itself is a CALLER PARAMETER (`trailingBaselineGates.ts` says
-	 * why: inventing a constant with no consumer is the speculative seam D20
-	 * forbids), so nothing here can assert its width. What IS assertable is that
+	 * why: inventing a constant with no consumer is a speculative seam), so
+	 * nothing here can assert its width. What IS assertable is that
 	 * the two age allowances ADMIT the intended shape as a pair: a 7-day recent
 	 * window whose newest observation is a day old is fresh under the concurrent
 	 * rule, while its DISJOINT prior 30-day baseline — which by contract ends
@@ -436,7 +436,7 @@ describe('gate 4 — trailing-baseline engagement (0.85 / 7 days / 2000 sends)',
 		expect(result.status).toBe('insufficient_data');
 	});
 
-	it('an absent baseline HOLDS — never a fail (plan D2)', () => {
+	it('an absent baseline HOLDS — never a fail', () => {
 		const result = evaluateTrailingEngagementGate(
 			engagementInput({
 				own: arm({ sent: 10_000, calibrationSent: 10_000, calibrationOpened: 2_000 }),
@@ -490,7 +490,7 @@ describe('gate 5 — self-hosted seed placement, absolute floor only', () => {
 		expect(result.measurement.ownRate).toBeCloseTo(0.85, 10);
 	});
 
-	it('no seed mailboxes at all HOLDS and never fails (plan D2)', () => {
+	it('no seed mailboxes at all HOLDS and never fails', () => {
 		const result = evaluateStandaloneSeedPlacementGate(input({ own: arm({ sent: 10_000 }) }));
 		expect(result.status).toBe('insufficient_data');
 		expect(result.reason).toBe('evidence_absent');

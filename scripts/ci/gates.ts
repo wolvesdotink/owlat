@@ -219,6 +219,17 @@ export const ROOT_GATES: readonly RootGate[] = [
 		baseEnv: 'OXFMT_BASE',
 	},
 	{
+		// Reads the comments of the lines a change adds, in code, shell and YAML.
+		name: 'comment-policy',
+		paths: [
+			CODE_ANYWHERE,
+			'**/*.{sh,bash,yml,yaml}',
+			'scripts/check-comment-policy.ts',
+			'scripts/comment-policy.ts',
+		],
+		baseEnv: 'COMMENT_POLICY_BASE',
+	},
+	{
 		name: 'imports',
 		paths: [CODE_ANYWHERE, '**/package.json', 'scripts/check-cross-package-imports.sh'],
 	},
@@ -231,7 +242,7 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'scripts/provider-identity-collisions.txt',
 		],
 	},
-	{ name: 'ui-buttons', paths: ['apps/web/app/', 'scripts/check-ui-buttons.ts'] },
+	{ name: 'ui-controls', paths: ['apps/web/app/', 'scripts/check-ui-controls.ts'] },
 	{
 		name: 'native-title',
 		paths: [

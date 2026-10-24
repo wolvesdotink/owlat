@@ -52,7 +52,7 @@ const { labels } = usePostboxLabels(mailboxIdRef);
 const MAX_SECTION_NAME_LENGTH = 60;
 
 /**
- * Read on arrival (SPEC §6.3): actions the rules UI writes. Labelled here so a
+ * Read on arrival: actions the rules UI writes. Labelled here so a
  * saved rule reads correctly, but never offered as a new choice in this editor.
  */
 function isArrivalActionType(type: string): type is ArrivalFilterActionType {

@@ -1,5 +1,5 @@
 /**
- * Delivery enqueues interpretation (SPEC §5 "Postbox", `afterInsert.ts` →
+ * Delivery enqueues interpretation (`afterInsert.ts` →
  * `enqueue.ts`): wider than the Reply Queue, never twice for one message,
  * never for backfill, spam or a muted thread, and the brief reads pending.
  */
@@ -112,7 +112,7 @@ describe('delivery → interpretation', () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		// A shared mailbox (actions mode): a personal one would defer this
-		// display-only message until the thread is opened (D10, lazyDefer.test.ts).
+		// display-only message until the thread is opened (lazyDefer.test.ts).
 		const mailboxId = await seedMailbox(t, { address: 'me@owlat.test', scope: 'shared' });
 		for (const role of ['inbox', 'archive'] as const) await seedFolder(t, mailboxId, role);
 		const message = await t.run(async (ctx) =>

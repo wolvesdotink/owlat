@@ -67,7 +67,7 @@ export async function forwardToTarget(
 				Authorization: `Bearer ${mta.apiKey}`,
 				...correlationHeader(correlationId, 'fwd'),
 			},
-			// Typed against the wire's one declaration (D7): this is the same
+			// Typed against the wire's one declaration: this is the same
 			// `/send/postbox` body `mail/outbound.ts` posts, and `allowedFromAddresses`
 			// is the field the MTA enforces From ownership with — a rename that left
 			// this literal behind would refuse every forward with a 403.
@@ -334,7 +334,7 @@ export const runPostDelivery = internalAction({
 						...correlationHeader(correlationId, 'vac'),
 					},
 					// The third `/send/postbox` producer, bound to the same declaration
-					// (D7) as the forward above and `mail/outbound.ts`.
+					// as the forward above and `mail/outbound.ts`.
 					body: JSON.stringify({
 						messageId: `pb-vac-${args.mailboxId}-${now}-${Math.random().toString(36).slice(2, 8)}`,
 						from: args.mailboxAddress,

@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Read on arrival (SPEC §6.2): "Test on recent mail" for a draft or saved
+ * Read on arrival: "Test on recent mail" for a draft or saved
  * rule. The deterministic part is evaluated from the stored fields of the
  * newest 50 Inbox messages (`dryRunData.ts`). When the rule has an AI
  * condition, ONE batched `mail.rule_test` call answers it for every message

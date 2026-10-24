@@ -2,19 +2,22 @@
  * Session-scoped LRU cache for rendered Postbox message bodies.
  *
  * PostboxMessageBody.vue runs a non-trivial pipeline on every mount:
- * sanitize-html (parser-based allowlist) + dark-mode adaptation + tracker
- * detection + image gating + link transparency. Re-opening a thread you just
+ * sanitize-html (parser-based allowlist) + dark-mode adaptation + link
+ * transparency in the render worker, then tracker detection + image gating on
+ * the main thread (composables/postbox/usePostboxRenderedBody). Re-opening a thread you just
  * closed re-does all of that from scratch, which shows up as visible jank on
  * long newsletters. This cache memoises the *final* rendered output (the
  * sanitized+transformed srcdoc and the tracker detection) plus the measured
  * iframe content height, keyed by messageId + the render options that change
- * the output (scheme / showImages / loadEverything / showQuoted).
+ * the output (scheme / showImages / loadEverything / showQuoted / the reader's
+ * text size and reading width).
  *
  * Contract:
  *  - Message bodies are immutable once fetched, so a hit is always valid for a
  *    given (messageId, options) key — no time-based invalidation needed.
- *  - A different option value (e.g. the user shows images, or the app flips to
- *    dark) produces a different key, so stale renders are never served.
+ *  - A different option value (e.g. the user shows images, the app flips to
+ *    dark, or the reader picks a larger text size) produces a different key,
+ *    so stale renders are never served.
  *  - Plain Map-with-cap LRU: re-reading or re-writing a key moves it to the
  *    most-recently-used end; overflow evicts the least-recently-used entry.
  *  - The cache is a pure data structure — no reactivity, no DOM, no network —
@@ -23,6 +26,8 @@
 
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { EmailHtmlKind, PostboxRenderScheme } from '~/utils/postboxDarkMode';
+import type { PostboxRenderStageOutput } from '~/utils/postboxRenderPipeline';
+import { mailTypographyKey, type MailTypography } from '~/utils/readingComfort';
 
 /** Render options that change the produced srcdoc; part of the cache key. */
 export interface PostboxRenderOptions {
@@ -30,6 +35,8 @@ export interface PostboxRenderOptions {
 	showImages: boolean;
 	loadEverything: boolean;
 	showQuoted: boolean;
+	/** The reader's text size and reading width, written into the srcdoc head. */
+	typography: MailTypography;
 }
 
 export interface PostboxRenderEntry {
@@ -55,6 +62,15 @@ export interface PostboxRenderEntry {
 	 * whatever the consent short of "Load everything"; the banner says so.
 	 */
 	inventoryFailed: boolean;
+	/** The body has a quoted reply chain to fold away (shows the toggle). */
+	hasQuote: boolean;
+	/**
+	 * The worker pipeline's output this entry was finished from. A consent
+	 * change on a re-opened message re-runs only the main-thread image stage
+	 * over it instead of asking the worker again. Entries of one message that
+	 * differ only in consent share the same string.
+	 */
+	stage: PostboxRenderStageOutput;
 	/** Last measured iframe content height (px); null until first load. */
 	height: number | null;
 }
@@ -68,6 +84,7 @@ export function postboxRenderKey(messageId: string, options: PostboxRenderOption
 		options.showImages ? 1 : 0,
 		options.loadEverything ? 1 : 0,
 		options.showQuoted ? 1 : 0,
+		mailTypographyKey(options.typography),
 	].join('|');
 }
 

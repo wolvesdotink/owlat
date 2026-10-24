@@ -1,6 +1,6 @@
 /**
- * Thread brief erasure inside the contact and member erasure walkers (SPEC §5
- * "Erasure"; relations in `threadBriefRelations.ts` here and in
+ * Thread brief erasure inside the contact and member erasure walkers (row-level
+ * erasure; relations in `threadBriefRelations.ts` here and in
  * `auth/erasure/threadBriefRelations.ts`).
  *
  * The walkers drive the same resumable purge jobs the inline purge paths

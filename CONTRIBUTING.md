@@ -88,6 +88,25 @@ npx vitest --changed              # only tests affected by uncommitted changes
 npx vitest related path/to/file.ts  # only tests that import the given file
 ```
 
+### Real-browser component tests
+
+The web unit suite defaults to happy-dom: no layout, no native focus traversal,
+no ResizeObserver that fires. Behaviour that depends on those (a virtual list's
+window under real scrolling, a modal's Tab trap, which layer an Escape press
+reaches, a caret-anchored picker's placement) is tested in Chrome instead, by
+`apps/web/app/__tests__/browser/*.browser.test.ts`:
+
+```bash
+bun run --cwd apps/web test:browser
+```
+
+It launches the locally installed Google Chrome (`npx playwright install chrome`
+if there is none). Keep the project small: every file costs CI time in a real
+browser, and whatever a fabricated DOM proves just as well belongs in the unit
+suite. Drive the page with `userEvent` from `vitest/browser` (real key presses
+and clicks), and wait for the browser's own events (`app/__tests__/browser/events.ts`),
+never for a timer.
+
 ## Backend conventions
 
 The Convex backend (`apps/api/convex/`) has its own file-layout, naming, and
@@ -140,6 +159,12 @@ of `bun run lint` and will fail CI, including:
   fixture goes only with its `contentBlockVersion` retired in `retired.json`,
   and a snapshot of the current renderer version goes only with its fixture or
   an `EMAIL_RENDERER_VERSION` bump (`scripts/check-stored-block-corpus.ts`).
+- `lint:comment-policy` (root, in `ci:lint`) — on the lines a change adds
+  against its merge base, comments carry no issue numbers, no narration of
+  earlier code and no tags into specs, plans or decision records the
+  repository does not hold. Test titles are checked for those document and
+  decision tags only; an issue number or "previously" in a title passes
+  (CLAUDE.md, "Comments"; `scripts/check-comment-policy.ts`).
 
 The web app's `lint` script (`apps/web`) runs gates of its own, including:
 
@@ -320,6 +345,9 @@ manual dispatch run the full set as a safety valve.
     per-path floor; the merge validates every report's commit, run, attempt
     and shard identity, then enforces all original thresholds. Successful
     reports from earlier attempts of the same run survive partial reruns.
+  - **Test web (browser).** The real-browser component tests in Chrome
+    (`bun run --cwd apps/web test:browser`), selected whenever the web suite
+    is, outside the coverage shards.
   - **Ramp gates (reference_arm | standalone).** The ramp-controller gate
     suite twice: once equipped, once as a deployment with zero third-party
     accounts. Never affected-filtered. Locally: `bun run test:ramp` runs both

@@ -149,7 +149,7 @@ interface HostDisplay {
 }
 
 /**
- * Zone-aware host display (improvement plan §3.3). Primary = the name relative to
+ * Zone-aware host display. Primary = the name relative to
  * the domain's registrable zone (`s171._domainkey.mail`, or `@` at the apex);
  * secondary = the FQDN. When the record is NOT inside the domain's zone — the
  * env-derived shared return-path host is the real-world case — `zoneRelativeHost`

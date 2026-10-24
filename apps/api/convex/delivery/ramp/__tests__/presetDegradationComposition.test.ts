@@ -1,5 +1,5 @@
 /**
- * ONE FACT MAY SLOW A CELL ONCE (plan D3, D9, D14).
+ * ONE FACT MAY SLOW A CELL ONCE.
  *
  * The operator's aggressiveness preset (P3-6) and the substitution table (P3-8)
  * both transform the same per-stream constants, and for a while both of them

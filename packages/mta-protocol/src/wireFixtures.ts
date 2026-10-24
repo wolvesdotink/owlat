@@ -1,5 +1,5 @@
 /**
- * FROZEN WIRE FIXTURES — the bytes, exactly as they crossed before D7.
+ * FROZEN WIRE FIXTURES — the bytes, exactly as they cross the wire.
  *
  * Test-only, but declared here rather than in a `__tests__` folder for one
  * reason: it is the only place BOTH apps can import ONE copy from. The whole

@@ -1,5 +1,5 @@
 /**
- * The replay-bound form — the one that gates a live endpoint (D6/P2.2).
+ * The replay-bound form — the one that gates a live endpoint.
  *
  * `./importProviderSignature.test.ts` proves ORIGIN. None of that proves
  * FRESHNESS, and on an unauthenticated internet-facing route those are different

@@ -103,7 +103,7 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 						issues
 					);
 				}
-				// The credential form (D5). Each descriptor is a record whose `options`
+				// The credential form. Each descriptor is a record whose `options`
 				// is a nested array of records, so the snapshot has to go two levels
 				// down for the same reason the webhook's does — a live inner array
 				// could pass validation and then render something else.

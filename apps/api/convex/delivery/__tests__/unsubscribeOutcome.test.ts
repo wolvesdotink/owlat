@@ -1,5 +1,5 @@
 /**
- * The `unsubscribed` transport outcome — the emitter (plan D5/D10).
+ * The `unsubscribed` transport outcome — the emitter.
  *
  * Three claims, and the third is the reason the piece exists:
  *

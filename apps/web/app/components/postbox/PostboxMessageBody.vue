@@ -28,35 +28,26 @@
  *   5. All <a> rewritten to target=_blank rel=noreferrer noopener
  *   6. Link transparency: real-destination-host tooltips, inline markers on
  *      text-vs-href host mismatches, tracking query params stripped
+ *
+ * Steps 3, 5 and 6, with dark-mode adaptation, run in the shared render worker
+ * (utils/postboxRenderPipeline); step 4 needs a DOM and runs here once the
+ * worker answers (composables/postbox/usePostboxRenderedBody).
  */
 
-import sanitizeHtml from 'sanitize-html';
-import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
-import { applyLinkTransparency } from '@owlat/shared/postboxLinkTransparency';
-import { adaptEmailHtml, type PostboxRenderScheme } from '~/utils/postboxDarkMode';
-import { buildBaseStyle } from '~/utils/postboxBaseStyle';
-import { trimTrailingBlankBlocks } from '~/utils/postboxBodyTidy';
-import {
-	getPostboxRenderCache,
-	postboxRenderKey,
-	type PostboxRenderEntry,
-} from '~/utils/postboxRenderCache';
-import {
-	POSTBOX_BODY_META_CSP,
-	POSTBOX_BODY_META_CSP_NO_REMOTE,
-	POSTBOX_SRCDOC_HEAD,
-	postboxBodyPlaceholder,
-} from '~/utils/postboxBodyPlaceholder';
-import { applyPostboxImageConsent } from '~/utils/postboxRemoteResources';
+import type { PostboxRenderScheme } from '~/utils/postboxDarkMode';
+import { getPostboxRenderCache } from '~/utils/postboxRenderCache';
+import { useReadingComfort } from '~/composables/useReadingComfort';
+import { postboxBodyPlaceholder } from '~/utils/postboxBodyPlaceholder';
 import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
 import { useRegisterReadableBody } from '~/composables/postbox/usePostboxSenderOpen';
 import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
 import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
 import { usePostboxImageConsent } from '~/composables/postbox/usePostboxImageConsent';
 import { usePostboxQuoteHighlight } from '~/composables/postbox/usePostboxQuoteHighlight';
+import { usePostboxRenderedBody } from '~/composables/postbox/usePostboxRenderedBody';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
-import { resolveCidImages, type CidAttachment } from '~/utils/postboxCidImages';
+import type { CidAttachment } from '~/utils/postboxCidImages';
 import { notePostboxBodyRendered } from '~/composables/postbox/usePostboxPerfMarks';
 import {
 	postboxSenderKey,
@@ -107,7 +98,7 @@ const props = defineProps<{
 	 * load on open, whatever the preference or the allowlist says.
 	 */
 	suspicious?: boolean;
-	/** A cited quote of the thread brief to mark and scroll to (plan §4.2). */
+	/** A cited quote of the thread brief to mark and scroll to. */
 	highlightQuote?: CitedQuote | null;
 	/** Render the image banner there instead (the calm reader's Details, §3). */
 	imageBannerTo?: HTMLElement | null;
@@ -129,6 +120,9 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const { isDark } = useAppTheme();
+// Text size and reading width (Preferences → Reading comfort): part of the
+// rendered document and of its cache key, so a change re-renders the body.
+const { mailTypography } = useReadingComfort();
 
 // Offline read cache: persist this message's post-sanitize srcdoc once rendered
 // (so it stays readable without a connection) and show the cached srcdoc until
@@ -193,145 +187,65 @@ const renderFinal = computed(() => contentFinal.value && !cidImagesPending.value
 
 // The saved copy shown in place of a live body that is not here (yet).
 const placeholder = computed(() =>
-	postboxBodyPlaceholder(cachedSrcdoc.value, { blockRemote: !isOffline.value })
+	postboxBodyPlaceholder(cachedSrcdoc.value, {
+		blockRemote: !isOffline.value,
+		typography: mailTypography.value,
+	})
 );
 
-// Paragraph-bar skeleton while the body loads, unless a saved copy can stand
-// in for it. Degrades to the normal "(empty message)" iframe if the action
-// errors or the download fails.
-const bodyLoading = computed(() => waiting.value && !placeholder.value);
-// Senders (§5): the live body is the readable one; skeleton and saved copy are not.
-const readableEl = ref<HTMLElement | null>(null);
-useRegisterReadableBody(() => (waiting.value ? null : readableEl.value));
-
-function sanitize(html: string): string {
-	return sanitizeHtml(html, POSTBOX_SANITIZE_CONFIG);
-}
-
-function rewriteLinks(html: string): string {
-	return html.replace(/<a\s+([^>]*)>/gi, (_match, attrs: string) => {
-		// Strip target/rel attrs and rewrite uniformly
-		const cleaned = attrs
-			.replace(/\s+target\s*=\s*"[^"]*"/gi, '')
-			.replace(/\s+rel\s*=\s*"[^"]*"/gi, '');
-		return `<a ${cleaned} target="_blank" rel="noreferrer noopener">`;
-	});
-}
-
-const quotedSplit = computed(() => {
-	const html = effectiveHtml.value;
-	if (html) return splitQuotedHtml(html);
-	const text = effectiveText.value;
-	const split = splitQuotedText(text);
-	// Convert to HTML-shape so the rest of the pipeline matches
-	const escape = (s: string) =>
-		s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-	return {
-		fresh: `<pre style="white-space:pre-wrap;font-family:inherit;margin:0;">${escape(split.fresh)}</pre>`,
-		quoted: split.quoted
-			? `<pre style="white-space:pre-wrap;font-family:inherit;margin:0;color:#666;">${escape(split.quoted)}</pre>`
-			: '',
-		hasQuote: split.hasQuote,
-	};
-});
-
-// Run the full render pipeline for the current message + options. Kept as a
-// plain function (not a chain of computeds) so a cache hit can skip ALL of it —
-// sanitize-html, dark-mode adaptation, tracker detection, image gating and link
-// transparency — rather than only skipping the final string concat.
-function buildRender(): Omit<PostboxRenderEntry, 'height'> {
-	const split = quotedSplit.value;
-	// Blank padding above a folded-away quote is all that would be left at the
-	// bottom of the body, so it goes; with the quote shown it separates the two.
-	const fresh = showQuoted.value
-		? sanitize(split.fresh)
-		: trimTrailingBlankBlocks(sanitize(split.fresh));
-	const quoted = showQuoted.value ? sanitize(split.quoted) : '';
-	const combined = quoted
-		? `${fresh}<hr style="margin:1.25em 0;border:0;border-top:1px solid rgba(128,128,128,0.3)">${quoted}`
-		: fresh;
-	// Adaptive dark rendering runs AFTER sanitization on the sanitized string
-	// only; when the app is light (or forced light) it's a pass-through no-op.
-	const adapted = adaptEmailHtml(combined, appScheme.value);
-	const resolved = resolveCidImages(adapted.html, cidImageUrls.value);
-	// Link transparency (real-host tooltips, phish-mismatch markers, tracking
-	// param stripping) runs on sanitized output only and fails soft to a no-op.
-	const linked = rewriteLinks(applyLinkTransparency(resolved));
-	// Remote-resource consent runs last, over the SANITIZED output only (never
-	// raw mail): one inventory of every img src, srcset candidate and CSS
-	// background gates the body and counts the trackers. "Show images" loads
-	// real content but keeps probable tracking pixels stripped; "Load
-	// everything" is the explicit escalation past that.
-	const consent = !showImages.value ? 'blocked' : loadEverything.value ? 'everything' : 'images';
-	const gated = applyPostboxImageConsent(
-		linked,
-		consent,
-		t('components.postbox.postboxMessageBody.blockedImage')
-	);
-	// Until the user consents, the frame's policy admits no remote image at
-	// all, whatever spelling the reference uses; nor does it when the body
-	// could not be inventoried.
-	const csp =
-		showImages.value && !gated.noRemote ? POSTBOX_BODY_META_CSP : POSTBOX_BODY_META_CSP_NO_REMOTE;
-	const srcdoc = `${POSTBOX_SRCDOC_HEAD}${csp}${buildBaseStyle(adapted.scheme, adapted.kind)}</head><body>${gated.html || t('components.postbox.postboxMessageBody.emptyMessage')}</body></html>`;
-	return {
-		srcdoc,
-		renderScheme: adapted.scheme,
-		kind: adapted.kind,
-		detection: gated.detection,
-		hasRemoteImages: gated.hasRemoteResources,
-		inventoryFailed: gated.noRemote,
-	};
-}
-
-// The render key includes every option that changes the output; a body is
-// immutable once fetched, so a hit is always valid. We only touch the cache
-// once the body content is final (not pending or mid-fetch), so a transient
-// loading state can never be memoised under a real key.
-const renderKey = computed(() =>
-	props.message._id
-		? postboxRenderKey(props.message._id, {
-				scheme: appScheme.value,
-				showImages: showImages.value,
-				loadEverything: loadEverything.value,
-				showQuoted: showQuoted.value,
-			})
-		: null
-);
-
-// Session-scoped LRU: re-opening a thread skips the whole pipeline above.
-const render = computed<Omit<PostboxRenderEntry, 'height'>>(() => {
-	const key = renderKey.value;
-	const cache = getPostboxRenderCache();
-	if (key && renderFinal.value) {
-		const hit = cache.get(key);
-		if (hit) return hit;
-		const built = buildRender();
-		cache.set(key, { ...built, height: null });
-		return built;
-	}
-	return buildRender();
-});
-
-const srcdoc = computed(() => render.value.srcdoc);
+// The sanitized document, rendered by the shared render worker (string
+// pipeline) plus the main-thread image-consent stage, and memoised in the
+// session LRU: re-opening a thread is a synchronous cache hit.
+const rendered = usePostboxRenderedBody(() => ({
+	messageId: props.message._id,
+	html: effectiveHtml.value ?? '',
+	text: effectiveText.value,
+	scheme: appScheme.value,
+	showQuoted: showQuoted.value,
+	showImages: showImages.value,
+	loadEverything: loadEverything.value,
+	typography: mailTypography.value,
+	cidUrls: cidImageUrls.value,
+	final: renderFinal.value,
+	blockedImageLabel: t('components.postbox.postboxMessageBody.blockedImage'),
+	emptyLabel: t('components.postbox.postboxMessageBody.emptyMessage'),
+}));
+const render = rendered.entry;
+const renderKey = rendered.renderKey;
 
 // Whether the live pipeline actually produced a body (vs an "(empty message)"
 // placeholder while a blob body is still unfetched).
 const hasLiveContent = computed(() => !!(effectiveHtml.value || effectiveText.value));
 
-// The document the iframe renders: the live render when we have real content,
-// otherwise the saved copy (still loading, offline or degraded), otherwise the
-// live render.
-const shownPlaceholder = computed(() => (hasLiveContent.value ? null : placeholder.value));
-const displaySrcdoc = computed(() => shownPlaceholder.value?.srcdoc ?? srcdoc.value);
+// The document the iframe renders: the live render when we have real content
+// and it is done, otherwise the saved copy (still loading or rendering,
+// offline or degraded), otherwise the live render.
+const shownPlaceholder = computed(() =>
+	hasLiveContent.value && render.value ? null : placeholder.value
+);
+const displaySrcdoc = computed(() => shownPlaceholder.value?.srcdoc ?? render.value?.srcdoc ?? '');
 
-// Persist the rendered srcdoc once the body is final and non-empty. Best-effort
-// (LRU-capped, quota-safe); keeps the 50 most-recently-read bodies offline.
+// Paragraph-bar skeleton while the body loads or its first render runs, unless
+// a saved copy can stand in for it. Degrades to the normal "(empty message)"
+// iframe if the action errors or the download fails.
+const bodyLoading = computed(() =>
+	waiting.value ? !placeholder.value : !shownPlaceholder.value && !render.value
+);
+// Senders (§5): the live body is the readable one; skeleton and saved copy are not.
+const readableEl = ref<HTMLElement | null>(null);
+useRegisterReadableBody(() =>
+	waiting.value || (hasLiveContent.value && !render.value) ? null : readableEl.value
+);
+
+// Persist the rendered srcdoc once the render of the final body is in and
+// non-empty. Best-effort (LRU-capped, quota-safe); keeps the 50
+// most-recently-read bodies offline.
 watch(
-	[srcdoc, renderFinal, hasLiveContent],
+	[render, rendered.settled, hasLiveContent],
 	() => {
-		if (renderFinal.value && hasLiveContent.value && props.message._id) {
-			void persistBody(props.message._id, srcdoc.value);
+		const entry = render.value;
+		if (entry && rendered.settled.value && hasLiveContent.value && props.message._id) {
+			void persistBody(props.message._id, entry.srcdoc);
 		}
 	},
 	{ immediate: true }
@@ -339,20 +253,29 @@ watch(
 // Scheme the iframe actually renders with ("designed" mail stays light —
 // a paper card on the dark app background — even when the app is dark). The
 // saved copy carries its own scheme and kind in its head.
-const renderScheme = computed(() => shownPlaceholder.value?.scheme ?? render.value.renderScheme);
+const renderScheme = computed(
+	() => shownPlaceholder.value?.scheme ?? render.value?.renderScheme ?? 'light'
+);
 // Plain mail sits straight on the message card (transparent canvas, no frame);
 // designed mail keeps its own canvas on a white paper card, and so does the
 // "(empty message)" document.
 const isPaper = computed(() =>
 	shownPlaceholder.value
 		? shownPlaceholder.value.kind === 'designed'
-		: !hasLiveContent.value || render.value.kind === 'designed'
+		: !hasLiveContent.value || render.value?.kind === 'designed'
 );
-const trackerDetection = computed<TrackerDetection>(() => render.value.detection);
+const trackerDetection = computed<TrackerDetection>(() => rendered.detection.value);
 
-watch(trackerDetection, (detection) => emit('trackers', detection), { immediate: true });
+// Only a shown render reports: a body still rendering has no facts yet.
+watch(
+	render,
+	(entry) => {
+		if (entry) emit('trackers', entry.detection);
+	},
+	{ immediate: true }
+);
 
-const hasRemoteImages = computed(() => render.value.hasRemoteImages);
+const hasRemoteImages = computed(() => render.value?.hasRemoteImages ?? false);
 
 // Exactly one banner sits above the body; which one is a pure function of the
 // render's facts (utils/postboxImageAllowlist), so the choice between the
@@ -367,7 +290,7 @@ const imageBanner = computed(() =>
 		isSenderAllowed: !!props.senderImagesAllowed && !props.autoLoadImages && !props.suspicious,
 		hasSenderKey: senderKey.value !== null,
 		trackerCount: trackerDetection.value.pixelCount,
-		inventoryFailed: render.value.inventoryFailed,
+		inventoryFailed: render.value?.inventoryFailed ?? false,
 		isSuspicious: !!props.suspicious,
 	})
 );
@@ -375,10 +298,16 @@ const imageBanner = computed(() =>
 /** Flattened for the template: narrowing a discriminated union across
  *  sibling v-else-if branches is more fragile than reading a plain kind. */
 const imageBannerKind = computed(() => imageBanner.value.kind);
-watch(imageBannerKind, (kind) => emit('imageState', kind), { immediate: true });
+watch(
+	[imageBannerKind, () => render.value !== null],
+	([kind, isRendered]) => {
+		if (isRendered) emit('imageState', kind);
+	},
+	{ immediate: true }
+);
 const canTrustSender = computed(() => senderKey.value !== null);
 
-const hasQuotedContent = computed(() => quotedSplit.value.hasQuote);
+const hasQuotedContent = computed(() => render.value?.hasQuote ?? false);
 
 function trustSender() {
 	const from = props.message.fromAddress;
@@ -425,8 +354,8 @@ usePostboxFrameAutosize({
 		// 0.2) once it is the real body or its saved copy, not the error stand-in.
 		if (contentFinal.value || shownPlaceholder.value) notePostboxBodyRendered(props.message._id);
 		presetHeight.value = height;
-		const key = renderKey.value;
-		if (key) getPostboxRenderCache().update(key, { height });
+		const key = rendered.shownKey.value;
+		if (key && !shownPlaceholder.value) getPostboxRenderCache().update(key, { height });
 	},
 });
 </script>

@@ -1,5 +1,5 @@
 /**
- * Response plans (SPEC §6): the internal reads and the write the node
+ * Response plans: the internal reads and the write the node
  * drafters and Answer mode's coverage check use (the agent `draft` step, draft
  * on arrival, "Draft with AI", `coverage.check`). The public reads and the
  * owner's stance writes are in `responsePlan.ts`.
@@ -147,7 +147,7 @@ async function isStillBound(
  * coverage check, draft on arrival). The caller already applied the reader
  * rule; claim and promise texts are sealed here.
  *
- * Compare-and-set on the plan revision (review D1): the result is written only
+ * Compare-and-set on the plan revision: the result is written only
  * while the stored stances are still the ones the check read
  * (`planRevision`); a result computed for older stances is dropped, never
  * written over newer ones. A draft that no longer replies in the thread, or

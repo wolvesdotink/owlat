@@ -1,6 +1,6 @@
 /**
- * The Postbox reader's side of a shared (team) mailbox thread (SPEC §7
- * "Team"): no Overview there; the reader keeps rendering the emails, and the
+ * The Postbox reader's side of a shared (team) mailbox thread: no Overview
+ * there; the reader keeps rendering the emails, and the
  * team stream fills in around them. This places the stream's internal notes
  * (the thread's discussion) and system lines between the reader's messages,
  * pins "Open for the team" above them and drives the team composer.

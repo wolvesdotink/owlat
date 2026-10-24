@@ -2,6 +2,7 @@ import type { TableNames } from '../_generated/dataModel';
 import { THREAD_BRIEF_TABLES } from '../schema/threadBrief';
 import { AI_ROUTING_TABLES } from '../schema/aiRouting';
 import { MAIL_ARRIVAL_TABLES } from '../schema/mailArrival';
+import { MARKETING_NOTIFICATION_TABLES } from '../schema/marketingNotifications';
 
 /**
  * The single source of truth for "which tables hold tenant business data".
@@ -19,11 +20,8 @@ import { MAIL_ARRIVAL_TABLES } from '../schema/mailArrival';
  * Tables are ordered children-before-parents: Convex enforces no referential
  * integrity, so the order is defensive hygiene that keeps the intent legible.
  *
- * Previously this list was copy-pasted into both wipers and had drifted: account
- * deletion left a user's Postbox mail, knowledge and chats behind. The guard
- * at the bottom of this file now forces every schema table to be classified as
- * either tenant data (here) or non-tenant (handled separately), so the lists
- * can never drift again.
+ * The guard at the bottom of this file forces every schema table to be
+ * classified as either tenant data (here) or non-tenant (handled separately).
  */
 export const TENANT_TABLES = [
 	'storageUploads',
@@ -55,6 +53,8 @@ export const TENANT_TABLES = [
 	// Property-deletion progress; references the property rows below.
 	'contactPropertyDeletionJobs',
 	'contactProperties',
+
+	...MARKETING_NOTIFICATION_TABLES, // point at automations, campaigns and domains
 
 	// ── Automations (children first) ──
 	'automationStepRuns',
@@ -405,10 +405,10 @@ export const NON_TENANT_TABLES = [
 	// cursor, no message content. It follows the instance switch rather than the
 	// org, and a sweep still running during a wipe must keep its fence.
 	'mailBodySearchPurges',
-	// The lost-send sweep's pass leases (#1208): which pass over which send range
-	// is running, a generation and two timestamps, no Send or contact data. A
-	// lease left behind by a wipe goes stale and is taken over by the next pass.
+	// Sweep and sampler marks, no Send, contact or row content. The lost-send pass
+	// leases (#1208) go stale after a wipe and are taken over by the next pass.
 	'lostSendSweepLeases',
+	'derivedFieldCursors', // the derived-field drift sampler's place in each table
 	// Instance infrastructure / regenerable caches — not org business data.
 	'systemUpdates',
 	// Worker release and wire-version reports; the next report regenerates them.

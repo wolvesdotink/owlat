@@ -4,7 +4,7 @@
  * outstanding holds, all in the caller's query or mutation, so the verdict
  * and the hold that follows it are one serializable transaction.
  *
- * FAIL CLOSED (D1, #1333). The totals are verifiable only when the aggregate
+ * FAIL CLOSED. The totals are verifiable only when the aggregate
  * says it is `complete` (a reconcile of the ledger's history has finished) and
  * the outstanding holds fit in one bounded read. Anything else is
  * `spend_unverifiable`, which refuses paid dispatch while a ceiling is

@@ -131,7 +131,7 @@ describe('useReviewQueue', () => {
 		});
 	});
 
-	// Piece D1': saved drafts ("Saved · edited by you") float to the top of the
+	// Saved drafts ("Saved · edited by you") float to the top of the
 	// queue, most recently saved first; the rest keep the server's order.
 	describe('saved-first sort bump', () => {
 		it('bumps saved drafts above untouched ones, newest save first', () => {

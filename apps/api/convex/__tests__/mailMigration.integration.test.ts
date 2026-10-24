@@ -1114,7 +1114,7 @@ describe('completeBackfillImport — writing-voice refresh', () => {
 		expect(await voiceJobs(off.t)).toEqual([]);
 	});
 
-	it('starts the 30-day interpretation backfill once (read on arrival, D4)', async () => {
+	it('starts the 30-day interpretation backfill once (read on arrival)', async () => {
 		const { t, migrationId } = await setupWithProfile(null);
 		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
 		await t.run((ctx) => ctx.db.patch(migrationId, { status: 'importing' }));

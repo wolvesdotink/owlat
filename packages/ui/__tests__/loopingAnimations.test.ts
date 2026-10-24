@@ -46,7 +46,6 @@ beforeEach(() => {
 
 afterEach(() => {
 	while (mounted.length) mounted.pop()!.unmount();
-	document.body.innerHTML = '';
 });
 
 describe('UiProgressBar', () => {
@@ -217,4 +216,15 @@ describe('looping animation stylesheets', () => {
 		const reduced = css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
 		expect(ruleBody(reduced, rule)).toContain('animation: none;');
 	});
+
+	it.each(loops)(
+		"$rule stops entirely under the app's own Reduce motion switch",
+		({ file, rule }) => {
+			// A media query cannot be switched on from script, so the in-app setting
+			// (data-motion on <html>) needs its own static fallback beside it.
+			expect(ruleBody(read(file), `:root[data-motion='reduce'] ${rule}`)).toContain(
+				'animation: none;'
+			);
+		}
+	);
 });
