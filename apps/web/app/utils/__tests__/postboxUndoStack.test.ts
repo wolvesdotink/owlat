@@ -6,9 +6,13 @@
 import { describe, it, expect } from 'vitest';
 import {
 	POSTBOX_UNDO_STACK_LIMIT,
+	joinableUndoGroup,
 	popUndoEntry,
 	pruneUndoStack,
 	pushUndoEntry,
+	takeUndoGroup,
+	undoGroupMembers,
+	undoGroupTotal,
 } from '../postboxUndoStack';
 
 const NOW = 1_000_000;
@@ -87,5 +91,76 @@ describe('popUndoEntry', () => {
 		const allStale = popUndoEntry([entry('a', NOW - 1)], NOW);
 		expect(allStale.entry).toBeNull();
 		expect(allStale.expired.map((e) => e.id)).toEqual(['a']);
+	});
+});
+
+const grouped = (
+	id: string,
+	groupId: string,
+	groupKey: string,
+	count = 1,
+	expiresAt = NOW + 8_000
+) => ({
+	id,
+	expiresAt,
+	groupId,
+	groupKey,
+	count,
+});
+
+describe('joinableUndoGroup', () => {
+	const open = () => true;
+
+	it('joins the newest live entry when its kind matches and its notice is open', () => {
+		const stack = [grouped('b', 'n1', 'archive'), grouped('a', 'n1', 'archive')];
+		expect(joinableUndoGroup(stack, 'archive', NOW, open)).toBe('n1');
+	});
+
+	it('starts a new notice for another kind, a closed notice, no kind or an empty stack', () => {
+		const stack = [grouped('b', 'n2', 'trash'), grouped('a', 'n1', 'archive')];
+		// Only consecutive actions join: the archive notice is not the newest.
+		expect(joinableUndoGroup(stack, 'archive', NOW, open)).toBeNull();
+		expect(joinableUndoGroup(stack, 'trash', NOW, () => false)).toBeNull();
+		expect(joinableUndoGroup(stack, undefined, NOW, open)).toBeNull();
+		expect(joinableUndoGroup([], 'archive', NOW, open)).toBeNull();
+		// An entry without a kind never takes company.
+		expect(joinableUndoGroup([entry('x')], 'archive', NOW, open)).toBeNull();
+	});
+
+	it('looks past an expired top entry to the newest live one', () => {
+		const stack = [grouped('b', 'n2', 'trash', 1, NOW - 1), grouped('a', 'n1', 'archive')];
+		expect(joinableUndoGroup(stack, 'archive', NOW, open)).toBe('n1');
+	});
+});
+
+describe('undo group members and totals', () => {
+	it("lists a notice's entries newest first and sums what they touched", () => {
+		const stack = [
+			grouped('c', 'n1', 'archive', 3),
+			grouped('b', 'n2', 'trash'),
+			grouped('a', 'n1', 'archive', 1),
+		];
+		const members = undoGroupMembers(stack, 'n1');
+		expect(members.map((e) => e.id)).toEqual(['c', 'a']);
+		expect(undoGroupTotal(members)).toBe(4);
+		// A missing or nonsensical count still counts the action once.
+		expect(undoGroupTotal([entry('x'), { ...entry('y'), count: 0 }])).toBe(2);
+	});
+});
+
+describe('takeUndoGroup', () => {
+	it('takes every live entry of one notice newest first and leaves the rest', () => {
+		const stack = [
+			grouped('d', 'n1', 'archive'),
+			grouped('c', 'n2', 'trash'),
+			grouped('b', 'n1', 'archive'),
+			grouped('a', 'n1', 'archive', 1, NOW - 1),
+		];
+		const taken = takeUndoGroup(stack, 'n1', NOW);
+		expect(taken.entries.map((e) => e.id)).toEqual(['d', 'b']);
+		expect(taken.stack.map((e) => e.id)).toEqual(['c']);
+		expect(taken.expired.map((e) => e.id)).toEqual(['a']);
+		// Taking it again finds nothing.
+		expect(takeUndoGroup(taken.stack, 'n1', NOW).entries).toEqual([]);
 	});
 });

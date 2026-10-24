@@ -10,6 +10,12 @@ export interface ImapConfig {
 	port: number;
 	listenAddress: string;
 	/**
+	 * Port of the plain-HTTP `/metrics` listener (`IMAP_METRICS_PORT`, default
+	 * 9464), bound to `listenAddress`. `0` or absent turns it off. Compose does
+	 * not publish it, so only the Docker network can scrape it.
+	 */
+	metricsPort?: number;
+	/**
 	 * `paths` is set when both halves were read from files, so the server can
 	 * re-read them after a renewal (tlsReload.ts). Inline PEM has none.
 	 */
@@ -68,6 +74,16 @@ function allowsUnthrottledAuth(): boolean {
 export function loadConfig(): ImapConfig {
 	const port = readIntEnv(process.env, 'IMAP_PORT', { default: 993, ...TCP_PORT_RANGE });
 	const listenAddress = process.env['IMAP_LISTEN'] ?? '0.0.0.0';
+	const metricsPort = readIntEnv(process.env, 'IMAP_METRICS_PORT', {
+		default: 9464,
+		min: 0,
+		max: TCP_PORT_RANGE.max,
+	});
+	if (metricsPort === port) {
+		throw new Error(
+			`IMAP_METRICS_PORT (${metricsPort}) must differ from IMAP_PORT: both listen on IMAP_LISTEN`
+		);
+	}
 	const greetingHost = process.env['IMAP_GREETING_HOST'] ?? hostname();
 	const convexUrl = process.env['CONVEX_URL'] ?? '';
 	const convexAdminKey = process.env['CONVEX_ADMIN_KEY'] ?? '';
@@ -118,6 +134,7 @@ export function loadConfig(): ImapConfig {
 	return {
 		port,
 		listenAddress,
+		metricsPort,
 		tls,
 		greetingHost,
 		convexUrl,

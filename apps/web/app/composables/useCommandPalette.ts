@@ -1,4 +1,5 @@
 import type { PaletteScope } from '~/lib/commandPaletteScope';
+import { commandPalettePress } from '~/utils/fixedShortcutPresses';
 
 /**
  * Shared control surface for the app command palette (`AppCommandPalette`,
@@ -21,16 +22,6 @@ export const COMMAND_PALETTE_OPEN_EVENT = 'owlat:command-palette-open';
 
 /** The palette's own "Ask knowledge…" verb: opens the palette on its Ask scope. */
 export const COMMAND_PALETTE_ASK_EVENT = 'owlat:open-knowledge-query';
-
-/**
- * What a keydown means to the palette: plain Cmd/Ctrl+K toggles it, and
- * Cmd/Ctrl+Shift+K opens it on Ask. Shared by the palette and the layout's
- * pre-mount listener (`useCommandPaletteHost`), so the chord lives in one place.
- */
-export function commandPaletteChord(event: KeyboardEvent): 'toggle' | 'ask' | null {
-	if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return null;
-	return event.shiftKey ? 'ask' : 'toggle';
-}
 
 /** Detail carried by the open event. Absent detail means "follow the route". */
 export interface CommandPaletteOpenDetail {
@@ -57,16 +48,19 @@ export interface CommandPaletteTriggers {
  * Attach the window listeners that open the palette: the Cmd/Ctrl+K chords,
  * the shared open event and the Ask verb's event. Both the palette and the
  * layout's pre-mount stand-in (`useCommandPaletteHost`) listen through this, so
- * the two agree on what counts as a request. A chord the palette acts on has
- * its browser default suppressed; the Ask chord without Ask is left alone.
- * Returns the detach.
+ * the two agree on what counts as a request (`commandPalettePress`, which the
+ * remap check reads too). A chord the palette acts on has its browser default
+ * suppressed; the Ask chord without Ask is left alone, and so is a press
+ * something nearer already claimed (a remapped shortcut, an editor's link
+ * key), so one press never does two things. Returns the detach.
  */
 export function listenForCommandPaletteTriggers(
 	triggers: CommandPaletteTriggers,
 	isAskAvailable: () => boolean
 ): () => void {
 	const onKeydown = (event: KeyboardEvent) => {
-		const chord = commandPaletteChord(event);
+		if (event.defaultPrevented) return;
+		const chord = commandPalettePress(event);
 		if (!chord) return;
 		if (chord === 'ask') {
 			if (!isAskAvailable()) return;
@@ -83,6 +77,7 @@ export function listenForCommandPaletteTriggers(
 	const onAsk = () => {
 		if (isAskAvailable()) triggers.ask();
 	};
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- global.commandPalette, shared by the palette and its pre-mount stand-in
 	window.addEventListener('keydown', onKeydown);
 	window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpen);
 	window.addEventListener(COMMAND_PALETTE_ASK_EVENT, onAsk);

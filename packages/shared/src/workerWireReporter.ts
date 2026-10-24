@@ -28,12 +28,18 @@ interface ReporterLog {
 
 type TimerHandle = { unref?: () => unknown };
 
+/** The backend's answer as the reporter reads it. */
+type WorkerWireReportAnswer = Omit<WorkerWireReportResult, 'reason'> & { reason?: string };
+
 export interface WorkerWireReporterDeps {
 	service: WorkerService;
 	wireVersion: number;
 	owlatVersion: string;
-	/** One report; throws what the transport throws. */
-	report: () => Promise<WorkerWireReportResult>;
+	/**
+	 * One report; throws what the transport throws. `reason` is a hint the
+	 * reporter never reads, so a later backend's unnamed reason still fits.
+	 */
+	report: () => Promise<WorkerWireReportAnswer>;
 	log: ReporterLog;
 	/** Seams for tests. */
 	setInterval?: (callback: () => void, ms: number) => TimerHandle;
@@ -71,7 +77,7 @@ type WorkerWireReportOutcome =
 
 /** Classify the backend's answer from this worker's side of the contract. */
 function classifyWorkerWireReport(
-	result: WorkerWireReportResult,
+	result: WorkerWireReportAnswer,
 	wireVersion: number
 ): WorkerWireReportOutcome {
 	const verdict = workerWireVerdict(wireVersion, {

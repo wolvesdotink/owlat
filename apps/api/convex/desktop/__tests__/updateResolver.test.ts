@@ -3,10 +3,13 @@ import {
 	activePin,
 	DEFAULT_DESKTOP_UPDATE_POLICY,
 	DESKTOP_RELEASE_CACHE_LIMIT,
+	DESKTOP_RELEASE_PAGE_LIMIT,
 	newestRelease,
 	oneRowPerVersion,
 	releasesToPrune,
 	resolveDesktopUpdate,
+	retainedStableVersions,
+	stableReleaseSearch,
 	type DesktopUpdatePolicy,
 } from '../updateResolver';
 
@@ -208,36 +211,236 @@ describe('releasesToPrune', () => {
 		return Array.from({ length: count }, (_, i) => ({
 			version: `0.1.${i}`,
 			line: 'unified' as const,
+			isPrerelease: false,
 			publishedAt: NOW - (count - i) * HOUR,
 		}));
 	}
 
+	/** `count` candidates of 0.2.0, all newer than every row `rows` makes. */
+	function candidates(count: number) {
+		return Array.from({ length: count }, (_, i) => ({
+			version: `0.2.0-rc.${i + 1}`,
+			line: 'unified' as const,
+			isPrerelease: true,
+			publishedAt: NOW - (count - i) * 60_000,
+		}));
+	}
+
+	const latest: DesktopUpdatePolicy = { mode: 'latest', channel: 'stable' };
+	const pinnedTo = (version: string): DesktopUpdatePolicy => ({
+		mode: 'pinned',
+		channel: 'stable',
+		pinnedVersion: version,
+	});
+	const prune = <R extends { version?: string; publishedAt?: number }>(
+		cache: R[],
+		policy: DesktopUpdatePolicy = latest
+	) => releasesToPrune(cache, policy, NOW);
+
 	it('keeps everything while the cache is within its limit', () => {
-		expect(releasesToPrune(rows(DESKTOP_RELEASE_CACHE_LIMIT), undefined)).toEqual([]);
+		expect(prune(rows(DESKTOP_RELEASE_CACHE_LIMIT))).toEqual([]);
 	});
 
 	it('drops the oldest rows past the limit when nothing is pinned', () => {
-		const doomed = releasesToPrune(rows(DESKTOP_RELEASE_CACHE_LIMIT + 3), undefined);
+		const doomed = prune(rows(DESKTOP_RELEASE_CACHE_LIMIT + 3));
 		expect(doomed.map((row) => row.version).sort()).toEqual(['0.1.0', '0.1.1', '0.1.2']);
 	});
 
 	it('keeps the pinned version on top of the newest rows', () => {
-		const doomed = releasesToPrune(rows(DESKTOP_RELEASE_CACHE_LIMIT + 3), '0.1.0');
+		const doomed = prune(rows(DESKTOP_RELEASE_CACHE_LIMIT + 3), pinnedTo('0.1.0'));
 		expect(doomed.map((row) => row.version).sort()).toEqual(['0.1.1', '0.1.2']);
 	});
 
 	it('keeps both release lines of a pinned version', () => {
 		const cache = [
 			...rows(DESKTOP_RELEASE_CACHE_LIMIT + 1),
-			{ version: '0.1.0', line: 'desktop' as const, publishedAt: NOW - 1000 * HOUR },
+			{
+				version: '0.1.0',
+				line: 'desktop' as const,
+				isPrerelease: false,
+				publishedAt: NOW - 1000 * HOUR,
+			},
 		];
-		expect(releasesToPrune(cache, '0.1.0')).toEqual([]);
+		expect(prune(cache, pinnedTo('0.1.0'))).toEqual([]);
 	});
 
 	it('does not grow the cache when the pin is already among the newest', () => {
 		const pin = `0.1.${DESKTOP_RELEASE_CACHE_LIMIT + 2}`;
-		const doomed = releasesToPrune(rows(DESKTOP_RELEASE_CACHE_LIMIT + 3), pin);
+		const doomed = prune(rows(DESKTOP_RELEASE_CACHE_LIMIT + 3), pinnedTo(pin));
 		expect(doomed.map((row) => row.version).sort()).toEqual(['0.1.0', '0.1.1', '0.1.2']);
+	});
+
+	it('keeps the newest stable release when candidates fill the rolling cache', () => {
+		const cache = [...rows(3), ...candidates(DESKTOP_RELEASE_CACHE_LIMIT)];
+		const doomed = prune(cache);
+		expect(doomed.map((row) => row.version).sort()).toEqual(['0.1.0', '0.1.1']);
+		// What a stable client is then served is the kept stable release.
+		const left = cache.filter((row) => !doomed.includes(row));
+		expect(resolve({}, left, '0.1.1')).toMatchObject({ release: { version: '0.1.2' } });
+	});
+
+	it('also keeps the newest stable release past the defer window', () => {
+		// 0.1.2 is an hour old: inside a two-hour defer window, so clients are
+		// served 0.1.1 until it passes, and 0.1.1 has to survive the candidates.
+		const cache = [...rows(3), ...candidates(DESKTOP_RELEASE_CACHE_LIMIT)];
+		const deferred: DesktopUpdatePolicy = { ...latest, deferHours: 2 };
+		const doomed = prune(cache, deferred);
+		expect(doomed.map((row) => row.version)).toEqual(['0.1.0']);
+		const left = cache.filter((row) => !doomed.includes(row));
+		expect(resolve({ deferHours: 2 }, left, '0.1.0')).toMatchObject({
+			release: { version: '0.1.1' },
+		});
+	});
+
+	it('decides what the defer window serves from the preferred row of each version', () => {
+		// The desktop hot-fix of 0.6.16 is past a 24-hour window, the unified
+		// 0.6.16 clients would be served is not: 0.6.15 is what they get, before
+		// the prune and after it.
+		const cache = [
+			{
+				version: '0.6.15',
+				line: 'unified' as const,
+				isPrerelease: false,
+				publishedAt: NOW - 72 * HOUR,
+			},
+			{
+				version: '0.6.16',
+				line: 'desktop' as const,
+				isPrerelease: false,
+				publishedAt: NOW - 48 * HOUR,
+			},
+			{
+				version: '0.6.16',
+				line: 'unified' as const,
+				isPrerelease: false,
+				publishedAt: NOW - 12 * HOUR,
+			},
+			...candidates(DESKTOP_RELEASE_CACHE_LIMIT),
+		];
+		const deferred: DesktopUpdatePolicy = { ...latest, deferHours: 24 };
+		const served = (rows: typeof cache) =>
+			resolve({ deferHours: 24 }, oneRowPerVersion(rows), '0.6.14');
+		expect(served(cache)).toMatchObject({ release: { version: '0.6.15' } });
+
+		const doomed = prune(cache, deferred);
+		expect(doomed).toEqual([]);
+		expect(served(cache.filter((row) => !doomed.includes(row)))).toMatchObject({
+			release: { version: '0.6.15' },
+		});
+	});
+
+	it('lets a retained stable release age out once a newer one lands', () => {
+		const cache = [
+			...rows(2),
+			...candidates(DESKTOP_RELEASE_CACHE_LIMIT - 1),
+			{ version: '0.2.0', line: 'unified' as const, isPrerelease: false, publishedAt: NOW },
+		];
+		const doomed = prune(cache);
+		expect(doomed.map((row) => row.version).sort()).toEqual(['0.1.0', '0.1.1']);
+	});
+});
+
+describe('retainedStableVersions', () => {
+	it('is the newest stable version when nothing is deferred, ignoring candidates', () => {
+		const cache = [
+			release('0.4.6', { ageHours: 3 }),
+			release('0.4.7', { ageHours: 2 }),
+			release('0.5.0-rc.1', { isPrerelease: true, ageHours: 1 }),
+		];
+		expect([...retainedStableVersions(cache, undefined, NOW)]).toEqual(['0.4.7']);
+	});
+
+	it('adds the newest stable version a deferred client is served', () => {
+		const cache = [release('0.4.6', { ageHours: 3 }), release('0.4.7', { ageHours: 1 })];
+		expect([...retainedStableVersions(cache, 2, NOW)].sort()).toEqual(['0.4.6', '0.4.7']);
+	});
+
+	it('applies the defer window to the preferred row of a version, as the resolver does', () => {
+		const cache = [
+			{ ...release('0.4.6', { ageHours: 72 }), line: 'unified' as const },
+			{ ...release('0.4.7', { ageHours: 48 }), line: 'desktop' as const },
+			{ ...release('0.4.7', { ageHours: 12 }), line: 'unified' as const },
+		];
+		expect([...retainedStableVersions(cache, 24, NOW)].sort()).toEqual(['0.4.6', '0.4.7']);
+		// Without the unified row the desktop one is the preferred 0.4.7 and is served.
+		expect([...retainedStableVersions(cache.slice(0, 2), 24, NOW)]).toEqual(['0.4.7']);
+	});
+
+	it('is empty when only candidates are cached', () => {
+		const cache = [release('0.5.0-rc.1', { isPrerelease: true, ageHours: 1 })];
+		expect(retainedStableVersions(cache, undefined, NOW).size).toBe(0);
+	});
+});
+
+describe('stableReleaseSearch', () => {
+	const listed = (
+		version: string,
+		options: { isPrerelease?: boolean; ageHours?: number; line?: 'unified' | 'desktop' } = {}
+	) => ({ ...release(version, options), line: options.line ?? ('unified' as const) });
+	const candidate = listed('0.5.0-rc.1', { isPrerelease: true, ageHours: 1 });
+	const stable = listed('0.4.7', { ageHours: 1 });
+
+	it('takes the whole first page and stops once it holds a stable release', () => {
+		const search = stableReleaseSearch(undefined, NOW);
+		expect(search.wants(1, candidate)).toBe(true);
+		search.held(candidate);
+		expect(search.readsOn(1, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(true);
+		search.held(stable);
+		expect(search.readsOn(1, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(false);
+	});
+
+	it('wants only stable releases past the first page', () => {
+		const search = stableReleaseSearch(undefined, NOW);
+		expect(search.wants(2, candidate)).toBe(false);
+		expect(search.wants(2, stable)).toBe(true);
+		search.held(stable);
+		expect(search.wants(2, listed('0.4.6', { ageHours: 2 }))).toBe(false);
+	});
+
+	it('looks on for one past the defer window when the newest stable is deferred', () => {
+		const search = stableReleaseSearch(2, NOW);
+		search.held(listed('0.4.7', { ageHours: 0.5 }));
+		expect(search.readsOn(1, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(true);
+		expect(search.wants(2, listed('0.4.6', { ageHours: 1 }))).toBe(false);
+		expect(search.wants(2, listed('0.4.6', { ageHours: 3 }))).toBe(true);
+	});
+
+	it('does not stop at a desktop row whose preferred unified row is still deferred', () => {
+		// Newest first, as GitHub lists them: v0.6.16 (12 h), desktop-v0.6.16
+		// (48 h), v0.6.15 (72 h), under a 24-hour window. Clients are served
+		// 0.6.15, so the walk has to reach it.
+		const search = stableReleaseSearch(24, NOW);
+		const unified = listed('0.6.16', { ageHours: 12 });
+		const desktop = listed('0.6.16', { ageHours: 48, line: 'desktop' });
+		const older = listed('0.6.15', { ageHours: 72 });
+		expect(search.wants(2, unified)).toBe(true);
+		search.held(unified);
+		// It cannot change what 0.6.16 serves, so it is not cached.
+		expect(search.wants(2, desktop)).toBe(false);
+		expect(search.readsOn(2, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(true);
+		expect(search.wants(2, older)).toBe(true);
+		search.held(older);
+		expect(search.readsOn(2, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(false);
+		// What it cached agrees with the resolver.
+		expect(resolve({ deferHours: 24 }, oneRowPerVersion([unified, older]), '0.6.14')).toMatchObject(
+			{ release: { version: '0.6.15' } }
+		);
+	});
+
+	it('stops at a desktop row past the window when no unified row of its version is held', () => {
+		const search = stableReleaseSearch(24, NOW);
+		search.held(listed('0.6.17', { ageHours: 12 }));
+		const desktop = listed('0.6.16', { ageHours: 48, line: 'desktop' });
+		expect(search.wants(2, desktop)).toBe(true);
+		search.held(desktop);
+		expect(search.readsOn(2, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(false);
+	});
+
+	it('stops at the end of the history and at the page budget', () => {
+		const search = stableReleaseSearch(undefined, NOW);
+		expect(search.readsOn(1, DESKTOP_RELEASE_CACHE_LIMIT - 1)).toBe(false);
+		expect(search.readsOn(DESKTOP_RELEASE_PAGE_LIMIT - 1, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(true);
+		expect(search.readsOn(DESKTOP_RELEASE_PAGE_LIMIT, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(false);
 	});
 });
 

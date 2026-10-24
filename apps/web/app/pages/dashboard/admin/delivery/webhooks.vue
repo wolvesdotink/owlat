@@ -188,7 +188,7 @@ async function handleGuardSave() {
 		</UiPageHeader>
 
 		<!-- Info Box -->
-		<div class="card p-4 mb-6 bg-brand-subtle/50 border-brand/20">
+		<div id="webhook-signing" class="card p-4 mb-6 bg-brand-subtle/50 border-brand/20">
 			<div class="flex items-start gap-3">
 				<Icon name="lucide:shield" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 				<div>

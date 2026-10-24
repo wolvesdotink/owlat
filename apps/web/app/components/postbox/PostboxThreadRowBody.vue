@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * The presentational body of a Postbox message row: sender, timestamp, the
- * sender-trust marker, the state chips (star, snoozed, muted, back from snooze,
- * attachment, follow-up), subject and snippet.
+ * sender-trust marker, the state chips (star, pinned, snoozed, muted, back
+ * from snooze, attachment, follow-up), subject and snippet.
  *
  * Every renderer that lists messages builds on this one body — the flat list
  * (PostboxThreadRow), the split inbox (PostboxThreadSectionList) and the
@@ -194,6 +194,15 @@ function onCancelFollowUp(event: MouseEvent) {
 				<span class="pbx-row-trust-label">{{ t(trustMarker.label) }}</span>
 			</span>
 			<Icon v-if="msg.flagFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
+			<!-- In the Inbox's pinned band; the star is a separate flag. -->
+			<Icon
+				v-if="msg.pinnedAt"
+				name="lucide:pin"
+				class="w-3.5 h-3.5 text-brand"
+				:title="t('components.postbox.postboxThreadRow.pinnedChip')"
+				:aria-label="t('components.postbox.postboxThreadRow.pinnedChip')"
+				data-testid="row-pinned-chip"
+			/>
 			<Icon
 				v-if="msg.snoozedUntil"
 				name="lucide:clock"

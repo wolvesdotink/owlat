@@ -21,7 +21,7 @@
  * `mail/appPasswords.touch` without one calls {@link noteLegacyImapLogin}.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import {
 	IMAP_WIRE_LEGACY,
 	IMAP_WIRE_MIN_SUPPORTED,
@@ -29,6 +29,7 @@ import {
 	imapWireVerdict,
 	type ImapWireVerdict,
 } from '@owlat/shared/imapWire';
+import { reportServer as reportServerContract } from '@owlat/worker-protocol/imap';
 import { internalQuery, type DatabaseReader, type MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { internalMutation } from '../../lib/writeFence';
@@ -62,12 +63,7 @@ const clampLabel = (value: string, fallback: string) =>
 const verdictOf = (wireVersion: number): ImapWireVerdict =>
 	imapWireVerdict(wireVersion, IMAP_WIRE_VERSION, IMAP_WIRE_MIN_SUPPORTED);
 
-type ReportResult = {
-	backendWireVersion: number;
-	minSupportedWireVersion: number;
-	compatible: boolean;
-	reason?: 'server_too_old' | 'backend_older';
-};
+type ReportResult = Infer<typeof reportServerContract.returns>;
 
 /**
  * Refuse a call from an IMAP server older than `IMAP_WIRE_MIN_SUPPORTED`. A
@@ -118,13 +114,8 @@ export const noteLegacyLogin = internalMutation({
 });
 
 export const report = internalMutation({
-	args: {
-		instanceId: v.string(),
-		hostLabel: v.string(),
-		owlatVersion: v.string(),
-		wireVersion: v.number(),
-		startedAt: v.number(),
-	},
+	args: reportServerContract.args,
+	returns: reportServerContract.returns,
 	handler: async (ctx, args): Promise<ReportResult> => {
 		const now = Date.now();
 		const hostLabel = clampLabel(args.hostLabel, 'unknown');

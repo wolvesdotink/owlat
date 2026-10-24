@@ -31,6 +31,7 @@ import {
 	type WorkerWireReportResult,
 	type WorkerWireVerdict,
 } from '@owlat/shared/workerWire';
+import { reportWorker as reportWorkerContract } from '@owlat/worker-protocol/mailSync';
 import { internalQuery, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../lib/writeFence';
@@ -70,20 +71,9 @@ const MAX_LABEL_LENGTH = 64;
 const clampLabel = (value: string, fallback: string) =>
 	value.trim().slice(0, MAX_LABEL_LENGTH) || fallback;
 
-export const workerServiceValidator = v.union(
-	v.literal('imap'),
-	v.literal('mail-sync'),
-	v.literal('mta'),
-	v.literal('code-worker')
-);
-
-const reportFields = {
-	instanceId: v.string(),
-	hostLabel: v.string(),
-	owlatVersion: v.string(),
-	wireVersion: v.number(),
-	startedAt: v.number(),
-};
+// mail-sync calls `report` through its wire contract, so the arguments and the
+// answer are declared there once; the code-worker's entry takes the same fields.
+const { service: _service, ...reportFields } = reportWorkerContract.args;
 
 export interface WorkerReport {
 	instanceId: string;
@@ -140,7 +130,8 @@ export async function recordWorkerReport(
 
 /** A worker's report: mail-sync with the admin key, the MTA through its signed route. */
 export const report = internalMutation({
-	args: { service: workerServiceValidator, ...reportFields },
+	args: reportWorkerContract.args,
+	returns: reportWorkerContract.returns,
 	handler: async (ctx, { service, ...args }): Promise<WorkerWireReportResult> =>
 		recordWorkerReport(ctx, service, args),
 });

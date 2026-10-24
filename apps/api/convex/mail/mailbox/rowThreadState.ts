@@ -19,8 +19,8 @@
  * still unseal at their read boundary.
  *
  * A message row also renders chips that live on its THREAD, not on the message:
- * the follow-up watch, the mute marker, the back-from-snooze marker and the
- * smart-inbox category, the thread brief's top item (`briefTop`, opened
+ * the follow-up watch, the mute marker, the pin, the back-from-snooze marker
+ * and the smart-inbox category, the thread brief's top item (`briefTop`, opened
  * from its at-rest seal once per thread) and the Priority view's placement
  * (read on arrival, SPEC §3). {@link attachThreadState} joins them
  * in so no client has to join a second, capped thread subscription to recover
@@ -119,6 +119,8 @@ type RowFollowUp = { remindAt: number; dueAt?: number; watched: boolean };
 export type RowThreadState = {
 	followUp?: RowFollowUp;
 	mutedAt?: number;
+	/** The thread is in the Inbox's pinned band (mail/pins.ts). */
+	pinnedAt?: number;
 	snoozeReturnedAt?: number;
 	category?: Infer<typeof mailCategoryLabelValidator>;
 	briefTop?: BriefTopRow;
@@ -185,6 +187,7 @@ export async function attachThreadState(
 					}
 				: {}),
 			...(thread?.mutedAt !== undefined ? { mutedAt: thread.mutedAt } : {}),
+			...(thread?.pinnedAt !== undefined ? { pinnedAt: thread.pinnedAt } : {}),
 			...(thread?.snoozeReturnedAt !== undefined
 				? { snoozeReturnedAt: thread.snoozeReturnedAt }
 				: {}),

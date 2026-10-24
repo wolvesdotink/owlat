@@ -486,6 +486,10 @@
 			"types": "./src/nodeShutdown.ts",
 			"import": "./src/nodeShutdown.ts"
 		},
+		"./nodeMetrics": {
+			"types": "./src/nodeMetrics.ts",
+			"import": "./src/nodeMetrics.ts"
+		},
 		"./nodeEnv": {
 			"types": "./src/nodeEnv.ts",
 			"import": "./src/nodeEnv.ts"
@@ -522,6 +526,14 @@
 			"types": "./src/logRedaction.ts",
 			"import": "./src/logRedaction.ts"
 		},
+		"./logEvent": {
+			"types": "./src/logEvent.ts",
+			"import": "./src/logEvent.ts"
+		},
+		"./correlation": {
+			"types": "./src/correlation.ts",
+			"import": "./src/correlation.ts"
+		},
 		"./threadStatus": {
 			"types": "./src/threadStatus.ts",
 			"import": "./src/threadStatus.ts"
@@ -554,6 +566,7 @@
 	},
 	"dependencies": {
 		"@owlat/mail-message": "workspace:*",
+		"prom-client": "^15.1.0",
 		"tldts": "^7.0.30"
 	},
 	"devDependencies": {

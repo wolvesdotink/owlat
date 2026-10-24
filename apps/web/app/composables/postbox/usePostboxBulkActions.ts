@@ -171,6 +171,7 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		if (result.result?.moved) {
 			triageUndo.registerMoveBack({
 				label: undoLabel('archived', result.result.moved.length),
+				kind: 'archived',
 				moved: result.result.moved,
 				runMove: (a) => move.run(a),
 			});
@@ -185,6 +186,7 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		if (result.result?.moved) {
 			triageUndo.registerMoveBack({
 				label: undoLabel('trashed', result.result.moved.length),
+				kind: 'trashed',
 				moved: result.result.moved,
 				runMove: (a) => move.run(a),
 			});
@@ -206,6 +208,8 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		if (result.result.moved) {
 			triageUndo.registerMoveBack({
 				label: undoLabel('moved', result.result.moved.length),
+				kind: 'moved',
+				scope: targetFolderId,
 				moved: result.result.moved,
 				runMove: (a) => move.run(a),
 			});
@@ -223,6 +227,7 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 			// move restores the true source folder when it wasn't the Inbox.
 			triageUndo.registerMoveBack({
 				label: undoLabel('spam', result.result.moved.length),
+				kind: 'spam',
 				moved: result.result.moved,
 				before: () => notSpamOp.run({ messageIds }),
 				runMove: (a) => move.run(a),

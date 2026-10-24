@@ -21,6 +21,7 @@ import {
 import type { BrandLogoAsset } from '@owlat/shared/brandKitBlocks';
 import type { BrandKitImportSelection } from '~/components/brand-kit/ImportDialog.vue';
 import { useSettingsForm } from '~/composables/useSettingsForm';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.instance.brandKit.pageTitle') });
@@ -93,18 +94,27 @@ async function save(draft: BrandKitForm): Promise<boolean> {
 	return true;
 }
 
-const { form, loaded, isDirty, isSaving, handleSave, resetToDefaults, unsavedDialog } =
-	useSettingsForm({
-		source: brandKit,
-		defaults,
-		project: (kit) => ({
-			...designFields(kit.design),
-			logo: kit.logos.light,
-			logoDark: kit.logos.dark,
-		}),
-		validate,
-		save,
-	});
+const {
+	form,
+	loaded,
+	isDirty,
+	isSaving,
+	handleSave,
+	resetToDefaults,
+	isFieldChanged,
+	resetField,
+	unsavedDialog,
+} = useSettingsForm({
+	source: brandKit,
+	defaults,
+	project: (kit) => ({
+		...designFields(kit.design),
+		logo: kit.logos.light,
+		logoDark: kit.logos.dark,
+	}),
+	validate,
+	save,
+});
 
 const previewLogos = computed(() => ({ light: form.logo, dark: form.logo ? form.logoDark : null }));
 const workspaceName = computed(() => organization.value?.name?.trim() ?? '');
@@ -203,7 +213,7 @@ const buttonFields = [
 					</section>
 
 					<!-- Colours -->
-					<section class="card space-y-5" aria-labelledby="brand-kit-colors">
+					<section id="brand-colors" class="card space-y-5" aria-labelledby="brand-kit-colors">
 						<header>
 							<h2 id="brand-kit-colors" class="text-lg font-semibold text-text-primary">
 								{{ t('dashboard.admin.instance.brandKit.colors.title') }}
@@ -221,6 +231,8 @@ const buttonFields = [
 								:label="t(`dashboard.admin.instance.brandKit.colors.${name}`)"
 								:help="t(`dashboard.admin.instance.brandKit.colors.${name}Help`)"
 								:disabled="isSaving"
+								:changed="isFieldChanged(key)"
+								@reset="resetField(key)"
 							/>
 						</div>
 						<BrandKitSwatches v-model="form.swatches" :disabled="isSaving" />
@@ -242,23 +254,36 @@ const buttonFields = [
 								v-model="form.headingFontFamily"
 								:label="t('dashboard.admin.instance.brandKit.typography.headingFont')"
 								:disabled="isSaving"
+								:changed="isFieldChanged('headingFontFamily')"
+								@reset="resetField('headingFontFamily')"
 							/>
 							<BrandKitFontSelect
 								id="brand-kit-body-font"
 								v-model="form.bodyFontFamily"
 								:label="t('dashboard.admin.instance.brandKit.typography.bodyFont')"
 								:disabled="isSaving"
+								:changed="isFieldChanged('bodyFontFamily')"
+								@reset="resetField('bodyFontFamily')"
 							/>
 						</div>
 						<div>
 							<p class="label">{{ t('dashboard.admin.instance.brandKit.buttons.title') }}</p>
 							<div class="grid gap-4 sm:grid-cols-3">
-								<label v-for="[key, name, range] in buttonFields" :key="key" class="block">
-									<span class="text-xs text-text-secondary">
-										{{ t(`dashboard.admin.instance.brandKit.buttons.${name}`) }}
+								<div v-for="[key, name, range] in buttonFields" :key="key">
+									<span class="flex items-center justify-between gap-2">
+										<label :for="`brand-kit-button-${name}`" class="text-xs text-text-secondary">
+											{{ t(`dashboard.admin.instance.brandKit.buttons.${name}`) }}
+										</label>
+										<SettingsResetToDefault
+											:changed="isFieldChanged(key)"
+											:label="t(`dashboard.admin.instance.brandKit.buttons.${name}`)"
+											:disabled="isSaving"
+											@reset="resetField(key)"
+										/>
 									</span>
 									<span class="mt-1 flex items-center gap-1">
 										<input
+											:id="`brand-kit-button-${name}`"
 											v-model.number="form[key]"
 											type="number"
 											:min="range.min"
@@ -270,13 +295,21 @@ const buttonFields = [
 											{{ t('dashboard.admin.instance.brandKit.px') }}
 										</span>
 									</span>
-								</label>
+								</div>
 							</div>
 						</div>
 						<div>
-							<label for="brand-kit-width" class="label">
-								{{ t('dashboard.admin.instance.brandKit.layout.emailWidth') }}
-							</label>
+							<div class="mb-2 flex items-center justify-between gap-2">
+								<label for="brand-kit-width" class="label mb-0">
+									{{ t('dashboard.admin.instance.brandKit.layout.emailWidth') }}
+								</label>
+								<SettingsResetToDefault
+									:changed="isFieldChanged('baseWidth')"
+									:label="t('dashboard.admin.instance.brandKit.layout.emailWidth')"
+									:disabled="isSaving"
+									@reset="resetField('baseWidth')"
+								/>
+							</div>
 							<div class="flex items-center gap-3">
 								<input
 									id="brand-kit-width"

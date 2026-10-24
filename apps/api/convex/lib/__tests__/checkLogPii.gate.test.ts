@@ -76,6 +76,30 @@ describe('check-log-pii.sh gate', () => {
 		expect(runGate(root)).toBe(1);
 	});
 
+	it('fails a logEvent whose detail carries a raw address or subject', () => {
+		const root = fixture('bad-log-event', [
+			"logEvent('inbound.duplicate', {",
+			'	messageId: args.messageId,',
+			'	detail: { from: args.from, subject: args.subject },',
+			"}, 'warn');",
+		]);
+		expect(runGate(root)).toBe(1);
+	});
+
+	it('passes a logEvent whose detail is redacted or carries only qualified names', () => {
+		const root = fixture('redacted-log-event', [
+			"logEvent('inbound.duplicate', {",
+			'	messageId: args.messageId,',
+			'	detail: {',
+			'		from: redactEmailAddress(args.from),',
+			'		subject: redactSubject(args.subject),',
+			'		fromDomain: domainOf(args.from),',
+			'	},',
+			"}, 'warn');",
+		]);
+		expect(runGate(root)).toBe(0);
+	});
+
 	it('passes when the values go through the redaction helpers', () => {
 		const root = fixture('redacted', [
 			"logWarn('[Inbound Email] duplicate delivery', {",

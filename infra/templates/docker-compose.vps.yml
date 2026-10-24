@@ -204,6 +204,10 @@ services:
       - '0.0.0.0:993:993'
     environment:
       IMAP_PORT: '993'
+      # In-network Prometheus `/metrics` listener (apps/imap/src/metricsServer.ts).
+      # Deliberately not under `ports:`: it is unauthenticated, so only the
+      # Docker network may reach it. `0` turns it off.
+      IMAP_METRICS_PORT: ${IMAP_METRICS_PORT:-9464}
       IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
       CONVEX_URL: http://convex:3210
       CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}

@@ -7,6 +7,9 @@
  * server-side in the route step). Emits `save` with the window; the parent page
  * persists it via agentConfigMutations.updateConfig. Prop-driven + presentational.
  */
+import { WORKING_HOURS_DEFAULTS } from '~/utils/autonomyDefaults';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+
 interface Props {
 	enabled?: boolean;
 	timezone?: string;
@@ -20,11 +23,11 @@ interface Props {
 const { t } = useI18n();
 
 const props = withDefaults(defineProps<Props>(), {
-	enabled: false,
+	enabled: WORKING_HOURS_DEFAULTS.enabled,
 	timezone: '',
-	start: 9 * 60,
-	end: 17 * 60,
-	days: () => [1, 2, 3, 4, 5],
+	start: WORKING_HOURS_DEFAULTS.start,
+	end: WORKING_HOURS_DEFAULTS.end,
+	days: () => [...WORKING_HOURS_DEFAULTS.days],
 	busy: false,
 });
 
@@ -81,6 +84,30 @@ const toggleDay = (day: number) => {
 	else form.days.splice(i, 1);
 };
 
+// The markers compare the draft, so a Reset is an edit like any other and is
+// written by Save. The timezone has no marker: unset means this browser's zone,
+// which is not one fixed value to return to.
+const isEnabledChanged = computed(() => form.enabled !== WORKING_HOURS_DEFAULTS.enabled);
+const isWindowChanged = computed(() => {
+	const days = [...form.days].sort((a, b) => a - b);
+	return (
+		hhmmToMinutes(form.start) !== WORKING_HOURS_DEFAULTS.start ||
+		hhmmToMinutes(form.end) !== WORKING_HOURS_DEFAULTS.end ||
+		days.length !== WORKING_HOURS_DEFAULTS.days.length ||
+		days.some((day, i) => day !== WORKING_HOURS_DEFAULTS.days[i])
+	);
+});
+
+function resetEnabled() {
+	form.enabled = WORKING_HOURS_DEFAULTS.enabled;
+}
+
+function resetWindow() {
+	form.start = minutesToHHMM(WORKING_HOURS_DEFAULTS.start);
+	form.end = minutesToHHMM(WORKING_HOURS_DEFAULTS.end);
+	form.days = [...WORKING_HOURS_DEFAULTS.days];
+}
+
 const handleSave = () => {
 	emit('save', {
 		enabled: form.enabled,
@@ -98,9 +125,17 @@ const handleSave = () => {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:clock" size="sm" variant="surface" />
 				<div>
-					<h3 class="text-base font-medium text-text-primary">
-						{{ t('components.autonomy.autonomyWorkingHours.title') }}
-					</h3>
+					<div class="flex items-center gap-2">
+						<h3 class="text-base font-medium text-text-primary">
+							{{ t('components.autonomy.autonomyWorkingHours.title') }}
+						</h3>
+						<SettingsResetToDefault
+							:changed="isEnabledChanged"
+							:label="t('components.autonomy.autonomyWorkingHours.title')"
+							:disabled="busy"
+							@reset="resetEnabled"
+						/>
+					</div>
 					<p class="text-xs text-text-tertiary">
 						{{ t('components.autonomy.autonomyWorkingHours.subtitle') }}
 					</p>
@@ -125,7 +160,7 @@ const handleSave = () => {
 				/>
 			</div>
 
-			<div class="flex items-center gap-4">
+			<div class="flex items-end gap-4">
 				<div>
 					<label class="text-sm font-medium text-text-primary">
 						{{ t('components.autonomy.autonomyWorkingHours.fromLabel') }}
@@ -138,6 +173,14 @@ const handleSave = () => {
 					</label>
 					<input v-model="form.end" type="time" class="input mt-1" />
 				</div>
+				<!-- One marker for the window: hours and days reset together. -->
+				<SettingsResetToDefault
+					class="mb-2.5"
+					:changed="isWindowChanged"
+					:label="t('components.autonomy.autonomyWorkingHours.windowLabel')"
+					:disabled="busy"
+					@reset="resetWindow"
+				/>
 			</div>
 
 			<div>

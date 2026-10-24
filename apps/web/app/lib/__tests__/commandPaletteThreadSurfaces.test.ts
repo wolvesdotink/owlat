@@ -33,6 +33,7 @@ function postboxDeps(overrides: Partial<ThreadSurfaceDeps> = {}): ThreadSurfaceD
 		t: translate,
 		isMuted: () => false,
 		isAlerted: () => false,
+		isPinned: () => false,
 		followUp: () => 'none',
 		canTranslate: () => true,
 		snoozeOptions: () => [option('snooze-0')],
@@ -45,6 +46,7 @@ function postboxDeps(overrides: Partial<ThreadSurfaceDeps> = {}): ThreadSurfaceD
 		onMarkUnread: vi.fn(),
 		onToggleMute: vi.fn(),
 		onToggleAlert: vi.fn(),
+		onTogglePin: vi.fn(),
 		onCancelFollowUp: vi.fn(),
 		onShowOriginal: vi.fn(),
 		onTranslate: vi.fn(),
@@ -70,6 +72,7 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 			['postbox:thread-mark-unread', 'Mark as unread'],
 			['postbox:thread-mute', 'Mute conversation'],
 			['postbox:thread-alert', 'Notify me when they reply'],
+			['postbox:thread-pin', 'Pin conversation'],
 			['postbox:label-as', 'Label as…'],
 			['postbox:move', 'Move to…'],
 			['postbox:thread-translate', 'Translate'],
@@ -94,9 +97,14 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 	});
 
 	it('names the state each toggle leads to', () => {
-		const items = postboxItems('', { isMuted: () => true, isAlerted: () => true });
+		const items = postboxItems('', {
+			isMuted: () => true,
+			isAlerted: () => true,
+			isPinned: () => true,
+		});
 		expect(byId(items, 'postbox:thread-mute')?.label).toBe('Unmute conversation');
 		expect(byId(items, 'postbox:thread-alert')?.label).toBe('Stop notifying me on reply');
+		expect(byId(items, 'postbox:thread-pin')?.label).toBe('Unpin conversation');
 	});
 
 	it('makes each parameter verb ONE row with a submenu, and never runs the row itself', () => {
@@ -155,6 +163,7 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 			['postbox:thread-mark-unread', 'onMarkUnread'],
 			['postbox:thread-mute', 'onToggleMute'],
 			['postbox:thread-alert', 'onToggleAlert'],
+			['postbox:thread-pin', 'onTogglePin'],
 			['postbox:thread-translate', 'onTranslate'],
 			['postbox:thread-original', 'onShowOriginal'],
 			['postbox:thread-copy-link', 'onCopyLink'],

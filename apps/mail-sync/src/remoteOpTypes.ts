@@ -4,30 +4,24 @@
  * ImapFlow it drives, and what it reports back to the connection running it.
  */
 
-import type { FolderRole } from './folders.js';
+import type { EndpointArgs, EndpointResult, Wire } from '@owlat/worker-protocol';
+import type { FolderRole } from '@owlat/worker-protocol/fields';
+import type {
+	RemoteOpWire,
+	listQueuedFolderRenames,
+	settleRemoteOps,
+} from '@owlat/worker-protocol/mailSync';
 
 /** A system folder by role, an Owlat folder by its path of names, or a mapped folder by remote name. */
-export type RemoteFolderRef = { role: FolderRole } | { path: string[] } | { remote: string };
+export type { RemoteFolderRef } from '@owlat/worker-protocol/fields';
 
 /** One queued write-back, as `listDueRemoteOps` returns it. */
-export interface RemoteOp {
-	opId: string;
-	kind: 'move' | 'flags' | 'delete' | 'renameFolder' | 'deleteFolder';
-	/** Absent on the two folder kinds. */
-	rfc822MessageId?: string;
-	source: RemoteFolderRef;
-	target?: RemoteFolderRef;
-	flags?: { seen?: boolean; flagged?: boolean; answered?: boolean };
-	attempts: number;
-}
+export type RemoteOp = Wire<RemoteOpWire>;
 
-export type RemoteOpOutcome = 'done' | 'not_found' | 'failed';
+/** How the replay settles one op, as `settleRemoteOps` takes it. */
+export type RemoteOpResult = EndpointArgs<typeof settleRemoteOps>['results'][number];
 
-export interface RemoteOpResult {
-	opId: string;
-	outcome: RemoteOpOutcome;
-	error?: string;
-}
+export type RemoteOpOutcome = RemoteOpResult['outcome'];
 
 /** What MOVE and COPY resolve: the COPYUID map, or `false` / nothing when refused or never sent. */
 type Copied = object | false | undefined;
@@ -95,8 +89,4 @@ export interface ReplayHooks {
 }
 
 /** One page of an account's queued folder renames (`listQueuedFolderRenames`). */
-export interface QueuedRenamesPage {
-	page: RemoteOp[];
-	isDone: boolean;
-	continueCursor: string;
-}
+export type QueuedRenamesPage = EndpointResult<typeof listQueuedFolderRenames>;

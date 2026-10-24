@@ -75,6 +75,7 @@ import {
 	type SeedPlacementSweepIndex,
 } from './seedPlacementSweeps';
 import { transportArmValidator } from '../lib/literalValidators';
+import { recordSeedProbeClassification as recordSeedProbeClassificationContract } from '@owlat/worker-protocol/mailSync';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
 export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -211,21 +212,8 @@ async function loadOwnedProbe(
  * No subject, no body, no sender: mailbox contents never enter Convex.
  */
 export const recordSeedProbeClassification = internalMutation({
-	args: {
-		organizationId: v.string(),
-		probeId: v.string(),
-		folderName: v.union(v.string(), v.null()),
-		/**
-		 * The folder's RFC 6154 SPECIAL-USE attribute (`\Junk`, `\Trash`) when the
-		 * server advertised one. It DECIDES ahead of the folder name: names are
-		 * localized per account language, and an unrecognised name falls through to
-		 * `category`, which counts as reached.
-		 */
-		specialUse: v.optional(v.string()),
-		now: v.number(),
-		/** Uniform [0,1) draw for the occasional click. Randomness stays at the edge. */
-		clickRoll: v.number(),
-	},
+	args: recordSeedProbeClassificationContract.args,
+	returns: recordSeedProbeClassificationContract.returns,
 	handler: async (ctx, args) => {
 		// Existence + the tenant boundary, in the one implementation all three
 		// probe-writing mutations share.

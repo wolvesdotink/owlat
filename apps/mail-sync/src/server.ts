@@ -10,10 +10,13 @@
  *                    connected or re-authorized); answers 202 at once
  *   POST /remote-ops — an account has queued write-backs; replay them now
  *   GET  /health
+ *   GET  /metrics — Prometheus process metrics; unauthenticated like the MTA's,
+ *                   since the port is not published
  */
 
 import { Hono, type Context } from 'hono';
 import { secretMatches } from '@owlat/shared/constantTimeEqual';
+import type { MetricsSource } from '@owlat/shared/nodeMetrics';
 
 /** http(s) only, and the origin must be one of the configured Convex origins. */
 export function isAllowedEmlUrl(raw: string, allowedOrigins: string[]): boolean {
@@ -66,6 +69,8 @@ export interface ServerHooks {
 	requestReconcile?: () => void;
 	/** Replay one account's write-back queue (AccountManager.requestRemoteOps). */
 	requestRemoteOps?: RemoteOpsRequester;
+	/** The process registry served on `GET /metrics`; the route is absent without it. */
+	metrics?: MetricsSource;
 }
 
 /** The worker's routes, without a listener (tests drive it through `app.request`). */
@@ -89,6 +94,13 @@ export function createApp(
 	app.use('/remote-ops', auth);
 
 	app.get('/health', (c) => c.json({ ok: true, service: 'owlat-mail-sync' }));
+
+	const { metrics } = hooks;
+	if (metrics) {
+		app.get('/metrics', async (c) =>
+			c.body(await metrics.metrics(), 200, { 'Content-Type': metrics.contentType })
+		);
+	}
 
 	// Convex pokes this after a connect so the new account's IMAP connection
 	// opens now rather than on the next reconcile tick (up to 30 s later). The

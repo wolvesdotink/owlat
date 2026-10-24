@@ -5,7 +5,8 @@
  *   account (inbound sync, near-real-time via IDLE).
  * - HTTP server exposes /send + /test for Convex (outbound relay + cred check),
  *   /reconcile so a freshly connected mailbox starts syncing at once, and
- *   /remote-ops, the nudge to replay changes made in Owlat on the provider.
+ *   /remote-ops, the nudge to replay changes made in Owlat on the provider,
+ *   and /metrics with the process metrics.
  * - Reports its wire version to `maintenance/workerRegistry:report`.
  */
 
@@ -17,6 +18,7 @@ import { drainSentCopies } from './send.js';
 import { startSeedProbeSweeper } from './seedProbeRunner.js';
 import { logger } from './logger.js';
 import { installCrashHandlers, installShutdown, pinoShutdownLog } from '@owlat/shared/nodeShutdown';
+import { startNodeMetrics } from '@owlat/shared/nodeMetrics';
 import { workerWireWindow } from '@owlat/shared/workerWire';
 import { startWorkerWireReports, workerReportIdentity } from '@owlat/shared/workerWireReporter';
 import { pathToFileURL } from 'node:url';
@@ -24,6 +26,7 @@ import { pathToFileURL } from 'node:url';
 export async function main(): Promise<void> {
 	const config = loadConfig();
 	const convex = createConvexClient(config);
+	const metrics = startNodeMetrics({ log: logger });
 
 	// Report this worker's release and wire version, so the backend can show
 	// version skew and hold contract steps until every worker has moved.
@@ -46,6 +49,7 @@ export async function main(): Promise<void> {
 			void manager.requestReconcile();
 		},
 		requestRemoteOps: (accountId) => manager.requestRemoteOps(accountId),
+		metrics: metrics.registry,
 	});
 	// Deliverability seed-probe sweep. With no seed mailboxes connected — the
 	// default — every pass is an empty no-op (D2).
@@ -60,6 +64,7 @@ export async function main(): Promise<void> {
 		drain: async () => {
 			wireReports.stop();
 			stopSeedSweeper();
+			metrics.stop();
 			await Promise.all([manager.stop(), drainSentCopies()]);
 		},
 		timeoutMs: 25_000,

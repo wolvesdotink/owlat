@@ -81,4 +81,20 @@ describe('PreferencesAppearance', () => {
 	it('renders catalog copy, not key paths', () => {
 		expectFullyLocalized(mountAppearance());
 	});
+
+	it('offers no reset while the device follows the system theme', () => {
+		expect(mountAppearance().find('[data-testid="setting-reset"]').exists()).toBe(false);
+	});
+
+	it('marks a chosen theme as changed and resets it to the system theme', async () => {
+		themePreference.value = 'dark';
+		const w = mountAppearance();
+		const reset = w.get('[data-testid="setting-reset"] button');
+		expect(reset.attributes('aria-label')).toBe('Reset Appearance to its default');
+
+		await reset.trigger('click');
+
+		expect(setTheme).toHaveBeenCalledWith('system');
+		expect(w.find('[data-testid="setting-reset"]').exists()).toBe(false);
+	});
 });
