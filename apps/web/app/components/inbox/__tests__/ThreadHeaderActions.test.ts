@@ -105,4 +105,25 @@ describe('ThreadHeaderActions', () => {
 		const checked = radios.filter((r) => r.attributes('aria-checked') === 'true');
 		expect(checked).toHaveLength(2);
 	});
+
+	it('switches auto-close off or back on from both menus, and hides it when there is nothing to switch', async () => {
+		const items = (wrapper: ReturnType<typeof mountActions>, label: string) =>
+			wrapper.findAll('button').filter((b) => b.text() === label);
+
+		const on = mountActions({ autoClose: 'on' });
+		const offItems = items(on, 'Turn off auto-close');
+		// The wide ⋯ menu and the compact one.
+		expect(offItems).toHaveLength(2);
+		for (const item of offItems) await item.trigger('click');
+		expect(on.emitted('autoClose')).toEqual([[true], [true]]);
+
+		const off = mountActions({ autoClose: 'off' });
+		await items(off, 'Turn on auto-close')[0]!.trigger('click');
+		expect(off.emitted('autoClose')).toEqual([[false]]);
+
+		expect(items(mountActions({ autoClose: null }), 'Turn off auto-close')).toHaveLength(0);
+		expect(
+			items(mountActions({ autoClose: 'on', isAdmin: false }), 'Turn off auto-close')
+		).toHaveLength(0);
+	});
 });

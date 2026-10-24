@@ -4104,7 +4104,8 @@
 				"unread": "Ungelesen"
 			},
 			"statusChip": {
-				"returned": "· Zurückgekehrt"
+				"returned": "· Zurückgekehrt",
+				"autoClosed": "· Automatisch geschlossen"
 			},
 			"threadChannelTimeline": {
 				"longMessage": "Gekürzt: Die ganze Nachricht steht oben.",
@@ -4179,6 +4180,14 @@
 					"hours": "Stunden",
 					"minutes": "Minuten"
 				}
+			},
+			"inboxAutoClosePolicyForm": {
+				"title": "Ruhige Konversationen automatisch schließen",
+				"hint": "Erledigt eine Konversation, die so viele Tage auf den Kunden wartet, ohne dass eine Seite geschrieben hat. Eine Antwort öffnet sie wieder, und jede Konversation kann davon ausgenommen werden.",
+				"daysLabel": "Schließen nach",
+				"daysSuffix": "ruhigen Tagen",
+				"problem": "Gib eine ganze Zahl von Tagen zwischen 1 und 365 ein.",
+				"save": "Automatisches Schließen speichern"
 			},
 			"notes": {
 				"add": "Notiz hinzufügen",
@@ -11236,6 +11245,20 @@
 				"followUpSentToast": "Nachfassnachricht wird gesendet",
 				"followUpUndoneToast": "Nachfassnachricht abgebrochen. Dein Text steht wieder im Antwortfeld.",
 				"lastMessage": "Letzte Nachricht",
+				"autoClose": {
+					"label": "Automatisch schließen",
+					"closesAt": "Schließt {time}, wenn niemand schreibt",
+					"onWhenWaiting": "Nach {days} ruhigem Tag beim Warten | Nach {days} ruhigen Tagen beim Warten",
+					"off": "Für diese Konversation aus",
+					"notice": "Automatisch geschlossen {time}: Die Konversation hat {days} Tag ohne Nachricht auf den Kunden gewartet. | Automatisch geschlossen {time}: Die Konversation hat {days} Tage ohne Nachricht auf den Kunden gewartet.",
+					"noticeNoDays": "Automatisch geschlossen {time}: Die Konversation hat ohne Nachricht auf den Kunden gewartet.",
+					"reopen": "Wieder öffnen",
+					"reopenedToast": "Konversation wieder geöffnet",
+					"turnOff": "Automatisches Schließen ausschalten",
+					"turnOn": "Automatisches Schließen einschalten",
+					"turnedOffToast": "Automatisches Schließen ist für diese Konversation aus",
+					"turnedOnToast": "Automatisches Schließen ist für diese Konversation an"
+				},
 				"loading": "Konversation wird geladen …",
 				"markSeenOperation": "Konversation als gelesen markieren",
 				"markAs": {
@@ -11462,6 +11485,9 @@
 				"pageTitle": "Antwortziele",
 				"saveOperation": "Antwortziele speichern",
 				"saved": "Antwortziele gespeichert",
+				"autoCloseSaveOperation": "Automatisches Schließen speichern",
+				"autoCloseSaved": "Automatisches Schließen gespeichert",
+				"autoCloseErrorTitle": "Das automatische Schließen konnte nicht geladen werden",
 				"subtitle": "Wie schnell das Team auf Konversationen im Team-Postfach antworten soll.",
 				"title": "Antwortziele",
 				"backToInbox": "Team-Postfach"
@@ -17688,7 +17714,8 @@
 			"snoozeThread": "Konversation zurückstellen",
 			"unsnoozeThread": "Zurückstellung aufheben",
 			"updateThreadStatus": "Konversationsstatus aktualisieren",
-			"setPriority": "Priorität setzen"
+			"setPriority": "Priorität setzen",
+			"setAutoClose": "Automatisches Schließen ändern"
 		},
 		"useWebhookActions": {
 			"copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",

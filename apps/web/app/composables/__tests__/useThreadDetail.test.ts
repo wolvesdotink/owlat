@@ -18,7 +18,7 @@ describe('useThreadDetail', () => {
 	// 0 = approveDraft, 1 = rejectDraft, 2 = editDraft, 3 = assignThread,
 	// 4 = updateThreadStatus, 5 = retryFailedMessage, 6 = snoozeThread,
 	// 7 = unsnoozeThread, 8 = saveDraftRevision, 9 = sendFollowUp,
-	// 10 = cancelFollowUp.
+	// 10 = cancelFollowUp, 11 = setThreadPriority, 12 = setThreadAutoClose.
 	let runs: Array<ReturnType<typeof vi.fn>>;
 	/** Each operation's `onError`, in the same declaration order. */
 	let onErrors: Array<((op: unknown) => boolean) | undefined>;
@@ -197,6 +197,27 @@ describe('useThreadDetail', () => {
 			await detail.cancelFollowUp('followUp_1' as never);
 
 			expect(cancelFollowUpRun()).toHaveBeenCalledWith({ followUpId: 'followUp_1' });
+		});
+	});
+
+	describe('auto-close', () => {
+		it('turns auto-close off and back on for this thread', async () => {
+			const detail = useThreadDetail(threadId);
+
+			await detail.handleSetAutoClose(true);
+			await detail.handleSetAutoClose(false);
+
+			expect(runs[12]).toHaveBeenNthCalledWith(1, { threadId: 'thread_1', isDisabled: true });
+			expect(runs[12]).toHaveBeenNthCalledWith(2, { threadId: 'thread_1', isDisabled: false });
+		});
+
+		it('hands the status change result back, so Reopen can confirm it', async () => {
+			const detail = useThreadDetail(threadId);
+
+			const result = await detail.handleStatusChange('open');
+
+			expect(runs[4]).toHaveBeenCalledWith({ threadId: 'thread_1', status: 'open' });
+			expect(result).toEqual({ ok: true, result: { success: true } });
 		});
 	});
 });

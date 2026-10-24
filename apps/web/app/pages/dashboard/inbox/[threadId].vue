@@ -20,6 +20,7 @@ import {
 } from '~/utils/teamThreadPriority';
 import { useTeamThreadCommandSurface } from '~/composables/team/useTeamThreadCommandSurface';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
+import { isAutoClosed, threadAutoCloseFact, threadAutoCloseSwitch } from '~/utils/inboxAutoClose';
 
 const { t, locale } = useI18n();
 // Zen: the conversation and the reply only; the side cards wait outside.
@@ -52,6 +53,7 @@ const {
 	handleUnsnooze,
 	handleAssign,
 	handleSetPriority,
+	handleSetAutoClose,
 } = useThreadDetail(threadId);
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const answerNav = useAnswerModeNav();
@@ -366,6 +368,37 @@ const currentStatus = computed<(typeof statusOptions)[number]>(() => {
 	return status === 'open' || status === 'waiting' ? status : 'resolved';
 });
 
+// Auto-close: the rule's state for this thread (when it will close, whether
+// it opted out), the switch in the header's ⋯ menu, and the notice with Reopen
+// over a thread the sweep resolved.
+const { data: autoClose } = useConvexQuery(api.inbox.autoClose.getThreadAutoClose, () =>
+	isAdmin.value ? { threadId: threadId.value } : 'skip'
+);
+const autoCloseSwitch = computed(() => threadAutoCloseSwitch(autoClose.value ?? null));
+const autoCloseFact = computed(() => threadAutoCloseFact(autoClose.value ?? null));
+const isReopening = ref(false);
+async function onReopen() {
+	isReopening.value = true;
+	try {
+		const result = await handleStatusChange('open');
+		if (result.ok) showToast(t('dashboard.inbox.detail.autoClose.reopenedToast'));
+	} finally {
+		isReopening.value = false;
+	}
+}
+async function onAutoClose(isDisabled: boolean) {
+	const result = await handleSetAutoClose(isDisabled);
+	if (result.ok && result.result.changed) {
+		showToast(
+			t(
+				isDisabled
+					? 'dashboard.inbox.detail.autoClose.turnedOffToast'
+					: 'dashboard.inbox.detail.autoClose.turnedOnToast'
+			)
+		);
+	}
+}
+
 // Chat integration: surface existing chat channels that already discuss this
 // thread, and offer to spin up a new one. Only active when the chat flag is
 // enabled — the query throws FEATURE_DISABLED otherwise.
@@ -495,14 +528,25 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					:assigned-member-name="assignedMemberName"
 					:is-snoozed="isSnoozed"
 					:current-status="currentStatus"
+					:auto-close="autoCloseSwitch"
 					@reply="openReply()"
 					@assign="onAssign"
 					@new-channel="showNewChannel = true"
 					@snooze="showSnoozeDialog = true"
 					@unsnooze="onUnsnooze"
 					@status="handleStatusChange"
+					@auto-close="onAutoClose"
 				/>
 			</div>
+
+			<InboxAutoClosedNotice
+				v-if="isAutoClosed(thread) && thread.autoClosedAt"
+				:auto-closed-at="thread.autoClosedAt"
+				:quiet-days="autoClose?.quietDays ?? null"
+				:can-reopen="isAdmin"
+				:busy="isReopening"
+				@reopen="onReopen"
+			/>
 
 			<PostboxSnoozeDialog
 				:open="showSnoozeDialog"
@@ -660,6 +704,24 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								>
 									{{ formatRelativeTime(thread.lastMessageAt) }}
 								</time>
+							</div>
+							<!-- Auto-close READS here and is switched in the header's ⋯ menu. -->
+							<div v-if="autoCloseFact" data-testid="thread-auto-close-fact">
+								<p class="text-xs text-text-tertiary">
+									{{ t('dashboard.inbox.detail.autoClose.label') }}
+								</p>
+								<p v-if="'dueAt' in autoCloseFact" class="text-sm text-text-primary">
+									<time
+										:datetime="new Date(autoCloseFact.dueAt).toISOString()"
+										:title="absoluteTime(autoCloseFact.dueAt)"
+									>
+										{{ t(autoCloseFact.key, { time: formatRelativeTime(autoCloseFact.dueAt) }) }}
+									</time>
+								</p>
+								<p v-else-if="'days' in autoCloseFact" class="text-sm text-text-primary">
+									{{ t(autoCloseFact.key, { days: autoCloseFact.days }, autoCloseFact.days) }}
+								</p>
+								<p v-else class="text-sm text-text-primary">{{ t(autoCloseFact.key) }}</p>
 							</div>
 						</div>
 					</div>

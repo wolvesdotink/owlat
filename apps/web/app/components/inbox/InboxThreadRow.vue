@@ -27,6 +27,8 @@ export interface InboxThreadRowThread {
 	assignee?: { name?: string; email: string; image?: string | null } | null;
 	/** Running reply deadline while response targets are on; absent otherwise. */
 	responseDueAt?: number | null;
+	/** Set while the current resolve is the auto-close sweep's. */
+	autoClosedAt?: number | null;
 }
 </script>
 
@@ -175,6 +177,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 							:latest-draft-status="thread.latestDraftStatus"
 							:snoozed-until="thread.snoozedUntil"
 							:snooze-returned-at="thread.snoozeReturnedAt"
+							:auto-closed-at="thread.autoClosedAt"
 						/>
 						<span
 							v-if="showChannelChip"

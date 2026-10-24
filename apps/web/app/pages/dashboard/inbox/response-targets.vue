@@ -5,9 +5,13 @@
  * every open thread carries a reply deadline: the inbox list shows it, filters
  * and sorts by it, and a missed deadline notifies the assignee (or every inbox
  * reader when nobody owns the thread).
+ *
+ * Below them, the Team Inbox's auto-close rule: resolve a conversation that
+ * has waited on the customer for N quiet days. Also off until turned on.
  */
 import { api } from '@owlat/api';
 import { DEFAULT_SLA_FORM_POLICY, type SlaPolicyShape } from '~/utils/inboxSlaPolicyForm';
+import { AUTO_CLOSE_DEFAULT_DAYS, type AutoClosePolicyShape } from '~/utils/inboxAutoClose';
 
 const { t } = useI18n();
 
@@ -53,6 +57,29 @@ const { run: savePolicy, isLoading: isSaving } = useBackendOperation(
 async function onSave(next: SlaPolicyShape) {
 	const result = await savePolicy(next);
 	if (result.ok) showToast(t('dashboard.inbox.responseTargets.saved'));
+}
+
+const {
+	data: storedAutoClose,
+	isLoading: isAutoCloseLoading,
+	error: autoCloseError,
+	refetch: refetchAutoClose,
+} = useConvexQuery(api.inbox.autoClose.getPolicy, () => (isAdmin.value ? {} : 'skip'));
+
+// Nothing saved yet: off, with the default number of days.
+const autoClosePolicy = computed<AutoClosePolicyShape>(() => ({
+	isEnabled: storedAutoClose.value?.isEnabled ?? false,
+	quietDays: storedAutoClose.value?.quietDays ?? AUTO_CLOSE_DEFAULT_DAYS,
+}));
+
+const { run: saveAutoClose, isLoading: isSavingAutoClose } = useBackendOperation(
+	api.inbox.autoClose.savePolicy,
+	{ label: () => t('dashboard.inbox.responseTargets.autoCloseSaveOperation') }
+);
+
+async function onSaveAutoClose(next: AutoClosePolicyShape) {
+	const result = await saveAutoClose(next);
+	if (result.ok) showToast(t('dashboard.inbox.responseTargets.autoCloseSaved'));
 }
 </script>
 
@@ -103,5 +130,26 @@ async function onSave(next: SlaPolicyShape) {
 			</template>
 			<InboxSlaPolicyForm :policy="policy" :busy="isSaving" @save="onSave" />
 		</UiQueryBoundary>
+		<div v-if="!showAdminGate" class="mt-6">
+			<UiQueryBoundary
+				:loading="isAutoCloseLoading"
+				:error="autoCloseError"
+				:error-title="t('dashboard.inbox.responseTargets.autoCloseErrorTitle')"
+				@retry="refetchAutoClose"
+			>
+				<template #loading>
+					<div
+						class="h-32 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface"
+						role="status"
+						aria-live="polite"
+					/>
+				</template>
+				<InboxAutoClosePolicyForm
+					:policy="autoClosePolicy"
+					:busy="isSavingAutoClose"
+					@save="onSaveAutoClose"
+				/>
+			</UiQueryBoundary>
+		</div>
 	</div>
 </template>
