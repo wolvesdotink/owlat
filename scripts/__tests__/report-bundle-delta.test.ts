@@ -127,6 +127,17 @@ describe('the entry bundle delta report', () => {
 		expect(markdown).not.toContain('d1.js');
 	});
 
+	it('does not compare entry chunks with a report that has no chunk rows', () => {
+		const head = report(233 * 1024, { chunks: [['useAuth', 2_500]] });
+		const { chunks: _chunks, ...olderEntry } = report(236 * 1024).entry;
+
+		const { markdown } = delta(head, { ...report(236 * 1024), entry: olderEntry });
+
+		expect(markdown).toContain('**Delta −3.0 KiB**');
+		expect(markdown).toContain('Entry chunks: not compared, one of the reports has no chunk rows.');
+		expect(markdown).not.toContain('`useAuth`');
+	});
+
 	it('lists route and deferred closures that moved by 1 KiB or more', () => {
 		const base = report(236 * 1024, {
 			routes: { 'pages/auth/login.vue': 8_000, 'pages/index.vue': 5_000 },

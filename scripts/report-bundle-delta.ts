@@ -148,8 +148,14 @@ export function renderDelta(input: DeltaInput): { markdown: string; warnings: st
 		);
 	}
 
-	const chunkRows = moves(chunkSizes(head), chunkSizes(base), CHUNK_MOVE_BYTES).slice(0, MAX_ROWS);
-	if (chunkRows.length > 0) {
+	// A report from before the chunk rows existed would list every chunk as new.
+	const comparableChunks = Boolean(head.entry.chunks && base.entry.chunks);
+	const chunkRows = comparableChunks
+		? moves(chunkSizes(head), chunkSizes(base), CHUNK_MOVE_BYTES).slice(0, MAX_ROWS)
+		: [];
+	if (!comparableChunks) {
+		lines.push('', 'Entry chunks: not compared, one of the reports has no chunk rows.');
+	} else if (chunkRows.length > 0) {
 		lines.push('', '| Entry chunk | Base KiB | Head KiB | Delta |', '|---|---:|---:|---:|');
 		for (const row of chunkRows) {
 			lines.push(
