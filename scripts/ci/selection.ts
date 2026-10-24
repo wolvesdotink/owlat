@@ -131,7 +131,7 @@ export function expectedJobs(selection: {
 		'ramp-gate-matrix',
 		...(selection.groups.length ? ['test'] : []),
 		...(selection.api ? ['test-api', 'test-api-merge'] : []),
-		...(selection.web ? ['test-web', 'test-web-merge'] : []),
+		...(selection.web ? ['test-web', 'test-web-merge', 'test-web-browser'] : []),
 		...(selection.mta ? ['test-mta'] : []),
 		...(selection.images.length ? ['docker-build'] : []),
 		...(selection.java ? ['sdk-java'] : []),
