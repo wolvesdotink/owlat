@@ -76,8 +76,26 @@ export function isSendPrepared(
 	campaign: { readonly status: string; readonly sentAt?: number },
 	job: { readonly startedAt: number } | null
 ): boolean {
-	if (campaign.status !== 'sending' || job === null) return false;
-	return campaign.sentAt === undefined || job.startedAt >= campaign.sentAt;
+	return campaign.status === 'sending' && wasLatestSendPrepared(campaign, job);
+}
+
+/**
+ * Whether the campaign's latest send got its job, whatever became of that
+ * send since: still `sending`, `sent`, or moved off `sending` part-way. What
+ * its preparation wrote outlives the walk, because the emails it already
+ * mailed keep pointing at it (the archive link), so a stale writer for that
+ * send must leave it alone after completion too. Each `→ sending` transition
+ * stamps a new `sentAt`, so a job opened for an earlier send predates it and
+ * a later send is never taken for this one. Without a `sentAt` the sends
+ * cannot be told apart, and only a running one counts.
+ */
+export function wasLatestSendPrepared(
+	campaign: { readonly status: string; readonly sentAt?: number },
+	job: { readonly startedAt: number } | null
+): boolean {
+	if (job === null) return false;
+	if (campaign.sentAt === undefined) return campaign.status === 'sending';
+	return job.startedAt >= campaign.sentAt;
 }
 
 // ─── startCampaignSend: content-scan verdict ───────────────────────────

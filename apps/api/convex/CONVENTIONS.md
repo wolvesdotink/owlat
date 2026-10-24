@@ -671,7 +671,8 @@ an action of the previous release still running during the deploy calls them
 by path. It can call them after the new commit already did the same work,
 so each one must leave that work alone: `createSendJob` and
 `setArchiveSnapshot` return early once `findPreparedSendJob`
-(`campaigns/sendJob.ts`) finds the send prepared.
+(`campaigns/sendJob.ts`) finds the send prepared, also after it completed:
+the emails it already mailed still point at what the commit wrote.
 
 ## Convex best practices
 

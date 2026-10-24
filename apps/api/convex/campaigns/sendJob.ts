@@ -34,7 +34,7 @@ import { internalMutation, readActiveWorkspaceDeletion } from '../lib/writeFence
 import { internal } from '../_generated/api';
 import { audienceValidator, type StoredAudience } from './audience';
 import { abVariantValidator } from '../lib/literalValidators';
-import { isSendPrepared } from './sendPlanning';
+import { wasLatestSendPrepared } from './sendPlanning';
 
 const variantModeValidator = v.union(
 	v.literal('plain'),
@@ -88,11 +88,12 @@ export async function readSendJob(
 }
 
 /**
- * The job of the campaign's current send when that send is already prepared
- * (`isSendPrepared`), else null. The mutations a preparation action of the
- * previous release calls one by one check it, so one that resumes after the
- * new preparation committed the same send cannot overwrite what that commit
- * wrote, or reset the walk it started.
+ * The job of the campaign's latest send when that send was prepared, also
+ * once it finished (`wasLatestSendPrepared`), else null. The mutations a
+ * preparation action of the previous release calls one by one check it, so
+ * one that resumes after the new preparation committed the same send cannot
+ * overwrite what that commit wrote, or reset the walk it started, even after
+ * the walk completed.
  */
 export async function findPreparedSendJob(
 	ctx: QueryCtx,
@@ -101,7 +102,7 @@ export async function findPreparedSendJob(
 	const campaign = await ctx.db.get(campaignId);
 	if (!campaign) return null;
 	const job = await readSendJob(ctx, campaignId);
-	return isSendPrepared(campaign, job) ? job : null;
+	return wasLatestSendPrepared(campaign, job) ? job : null;
 }
 
 /** What one send walk starts from; `createSendJob`'s arguments plus the clock. */

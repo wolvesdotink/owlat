@@ -62,6 +62,7 @@ beforeEach(() => {
 afterEach(() => {
 	vi.clearAllTimers();
 	vi.useRealTimers();
+	vi.unstubAllEnvs();
 });
 
 /** The digest `startCampaignSend` would send for the campaign as stored now. */
@@ -304,6 +305,23 @@ async function advanceWalk(t: Harness, { campaignId }: Seeded): Promise<Doc<'cam
 	});
 }
 
+/** The walker enqueued the last page and the campaign completed. */
+async function completeSend(t: Harness, { campaignId }: Seeded): Promise<void> {
+	await t.run(async (ctx) => {
+		const job = await ctx.db
+			.query('campaignSendJobs')
+			.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
+			.first();
+		await ctx.db.patch(job!._id, { phase: 'done', cursor: 'page-2', enqueuedCount: 50 });
+	});
+	const outcome = await t.mutation(internal.campaigns.lifecycle.transition, {
+		campaignId,
+		input: { to: 'sent', at: Date.now() },
+		userId: 'system',
+	});
+	expect(outcome).toMatchObject({ ok: true });
+}
+
 // A preparation action of the previous release, still running during the
 // deploy, calls these mutations one by one after its own scan. When the new
 // commit has prepared the same send meanwhile, they must not undo it.
@@ -409,5 +427,48 @@ describe('send preparation commit — beside a previous-release preparation', ()
 		});
 
 		expect((await prepared(t, seeded)).campaign?.archiveToken).toBe('committed-token');
+	});
+
+	it('after the send completed, setArchiveSnapshot keeps the link its emails carry', async () => {
+		vi.stubEnv('SITE_URL', 'https://owlat.example');
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t, { status: 'scheduled', archiveEnabled: true });
+		await start(t, seeded.campaignId);
+		const mailed = (await prepared(t, seeded)).campaign?.archiveToken;
+		expect(mailed).toMatch(/^[\w-]{24}$/);
+		await completeSend(t, seeded);
+		const archive = () =>
+			t.query(internal.campaigns.archiveQueries.getCampaignByArchiveToken, {
+				archiveToken: mailed!,
+			});
+		expect(await archive()).toMatchObject({ subject: 'Hello {{firstName}}' });
+
+		await t.mutation(internal.campaigns.archiveQueries.setArchiveSnapshot, {
+			campaignId: seeded.campaignId,
+			archiveToken: 'stale-token',
+			archiveHtmlContent: '<p>stale</p>',
+			archiveSubject: 'Stale',
+		});
+
+		expect((await prepared(t, seeded)).campaign?.archiveToken).toBe(mailed);
+		expect(await archive()).toMatchObject({ subject: 'Hello {{firstName}}' });
+	});
+
+	it('after the send completed, a first-phase createSendJob leaves its job alone', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t, { status: 'scheduled' });
+		await start(t, seeded.campaignId);
+		await completeSend(t, seeded);
+		const job = (await prepared(t, seeded)).jobs[0]!;
+
+		const jobId = await t.mutation(internal.campaigns.sendJob.createSendJob, {
+			campaignId: seeded.campaignId,
+			audience: job.audience,
+		});
+
+		expect(jobId).toBe(job._id);
+		const state = await prepared(t, seeded);
+		expect(state.campaign?.status).toBe('sent');
+		expect(state.jobs).toEqual([job]);
 	});
 });
