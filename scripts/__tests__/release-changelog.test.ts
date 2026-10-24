@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { changelogSection } from '../release-body';
-import { bucketSubjects, bucketSummary, hasSection, writeSection } from '../release-changelog';
+import { bucketSubjects, bucketSummary, writeSection } from '../release-changelog';
 
 const CHANGELOG = `# Changelog
 
@@ -72,7 +72,6 @@ describe('writeSection', () => {
 			'More lead.\n\n### Fixed\n\n- **Two.** Curated by hand.\n- three\n\n### Added\n\n- four'
 		);
 		expect(changelogSection(second, '0.6.16')).toBe(changelogSection(CHANGELOG, '0.6.16'));
-		expect(hasSection(second, '0.7.0')).toBe(true);
 	});
 
 	it('extends the last section of the file too', () => {

@@ -18,9 +18,9 @@
  */
 import type { Run } from './reuse';
 
-export type ReleaseChannel = 'stable' | 'rc' | 'prerelease';
+type ReleaseChannel = 'stable' | 'rc' | 'prerelease';
 
-export interface ReleaseTag {
+interface ReleaseTag {
 	tag: string;
 	/** The tag without its leading `v`. */
 	version: string;
@@ -95,9 +95,7 @@ export interface CandidateEvidence {
 	runs: Run[];
 }
 
-export type PromotionResult =
-	| { ok: true; candidate: string; run: Run }
-	| { ok: false; reason: string };
+type PromotionResult = { ok: true; candidate: string; run: Run } | { ok: false; reason: string };
 
 /**
  * Whether `stableTag` may be published at `commit`. The newest candidate of

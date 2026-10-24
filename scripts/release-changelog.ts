@@ -8,11 +8,11 @@
  * newest candidate's commit is the stable release's notes.
  */
 
-export const RELEASE_MARKER = '<!-- Add released versions below this line, newest first. -->';
+const RELEASE_MARKER = '<!-- Add released versions below this line, newest first. -->';
 
 const BUCKETS = ['Added', 'Changed', 'Fixed', 'Removed', 'Security', 'Documentation'] as const;
 type Bucket = (typeof BUCKETS)[number];
-export type Buckets = Record<Bucket, string[]>;
+type Buckets = Record<Bucket, string[]>;
 
 const TYPE_TO_BUCKET: Record<string, Bucket> = {
 	feat: 'Added',
@@ -66,10 +66,6 @@ function sectionSpan(changelog: string, version: string) {
 		bodyStart,
 		end: next === -1 ? changelog.length : bodyStart + next,
 	};
-}
-
-export function hasSection(changelog: string, version: string): boolean {
-	return sectionSpan(changelog, version) !== null;
 }
 
 /** Append each bucket's new entries under its `### Bucket` heading, adding missing headings. */
