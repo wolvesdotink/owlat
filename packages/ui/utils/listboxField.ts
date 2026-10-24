@@ -20,6 +20,7 @@ import {
 	type ShallowRef,
 } from 'vue';
 import { injectListboxRootContext } from 'reka-ui';
+import { isComposingKey } from './composingKey';
 
 /** Keys a particular field hands to the list, beyond ↑ ↓ and Enter. */
 export interface ListboxFieldKeys {
@@ -42,15 +43,6 @@ export interface ListboxFieldControls {
 
 const NAVIGATION = new Set(['ArrowDown', 'ArrowUp']);
 const JUMPS = new Set(['Home', 'End']);
-
-/**
- * An IME is composing: its Enter confirms a candidate, its arrows pick one.
- * Safari sends the confirming Enter after `compositionend`, with `isComposing`
- * already false but still `keyCode` 229.
- */
-export function isComposingKey(event: KeyboardEvent): boolean {
-	return event.isComposing || event.keyCode === 229;
-}
 
 export const ListboxFieldBridge = defineComponent({
 	name: 'ListboxFieldBridge',

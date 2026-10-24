@@ -12,10 +12,12 @@
  *
  * Escape goes through `useEscapeLayer` while the panel is open, so inside a
  * modal the first Escape closes the panel and the second the modal. Reka's own
- * Escape handling is switched off to keep one owner for the key.
+ * Escape handling never closes it, to keep one owner for the key.
  *
- * `focus` decides whether the panel takes focus when it opens (and gives it
- * back when it closes). A panel that takes focus is a dialog: Tab cycles
+ * `focus` decides whether the panel takes focus when it opens and gives it
+ * back when it closes: to the `#trigger`, or without one to whatever had focus
+ * when it opened. A press or focus outside that closes it leaves focus where
+ * that went. A panel that takes focus is a dialog: Tab cycles
  * through it, an open `UiModal`'s Tab trap stands aside meanwhile (the panel
  * is outside the modal's DOM), and it is named by its `#trigger` or by
  * `label`. Suggestion lists turn focus off: the person keeps typing in the
@@ -89,18 +91,61 @@ const semantics = computed(() => {
 	return {};
 });
 
+/**
+ * Reka closes the panel on any Escape that reaches its window listener unless
+ * the key is cancelled, and cancelling a composing Escape breaks the IME's own
+ * cancel. Every Escape that should close the panel is the escape layer's and
+ * never reaches Reka, so a close Reka asks for in answer to an Escape is
+ * dropped instead, and the key keeps its default. Reka asks synchronously
+ * inside its listener, before the microtask that clears the flag.
+ */
+let escapeReached = false;
+
+function onRekaEscape() {
+	escapeReached = true;
+	queueMicrotask(() => (escapeReached = false));
+}
+
+function onRekaOpen(next: boolean) {
+	if (!next && escapeReached) return;
+	open.value = next;
+}
+
+// Reka gives focus back only to its registered `#trigger`. Without one, the
+// panel gives it back to its opener itself, unless the panel was closed by a
+// press or focus outside: then focus belongs where that went.
+let opener: HTMLElement | null = null;
+let interactedOutside = false;
+
 function onInteractOutside(event: Event) {
 	const target = event.target as Node | null;
 	if (target && props.inside.some((el) => el?.contains(target))) event.preventDefault();
+	if (!event.defaultPrevented) interactedOutside = true;
 }
 
-function onAutoFocus(event: Event) {
+function onOpenAutoFocus(event: Event) {
+	const active = document.activeElement;
+	opener = active instanceof HTMLElement && active !== document.body ? active : null;
+	interactedOutside = false;
 	if (!props.focus) event.preventDefault();
+}
+
+function onCloseAutoFocus(event: Event) {
+	const restoreTo = !interactedOutside && opener?.isConnected ? opener : null;
+	opener = null;
+	interactedOutside = false;
+	if (!props.focus) {
+		event.preventDefault();
+		return;
+	}
+	if (slots['trigger']) return;
+	event.preventDefault();
+	restoreTo?.focus();
 }
 </script>
 
 <template>
-	<PopoverRoot v-model:open="open">
+	<PopoverRoot :open="open" @update:open="onRekaOpen">
 		<PopoverTrigger v-if="$slots['trigger']" as-child>
 			<slot name="trigger" />
 		</PopoverTrigger>
@@ -112,10 +157,10 @@ function onAutoFocus(event: Event) {
 				:align="align"
 				:side-offset="sideOffset"
 				:collision-padding="8"
-				@escape-key-down.prevent
+				@escape-key-down="onRekaEscape"
 				@interact-outside="onInteractOutside"
-				@open-auto-focus="onAutoFocus"
-				@close-auto-focus="onAutoFocus"
+				@open-auto-focus="onOpenAutoFocus"
+				@close-auto-focus="onCloseAutoFocus"
 			>
 				<div
 					v-bind="{ ...$attrs, ...semantics }"

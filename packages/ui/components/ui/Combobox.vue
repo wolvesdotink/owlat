@@ -20,7 +20,8 @@
 import { computed, ref, shallowRef, provide, useSlots, type ShallowRef } from 'vue';
 import UiListbox from './Listbox.vue';
 import UiPopover from './Popover.vue';
-import { LISTBOX_FIELD_HOST, isComposingKey, type DrivenListbox } from '../../utils/listboxField';
+import { isComposingKey } from '../../utils/composingKey';
+import { LISTBOX_FIELD_HOST, type DrivenListbox } from '../../utils/listboxField';
 
 defineOptions({ inheritAttrs: false });
 

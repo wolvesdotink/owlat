@@ -180,6 +180,98 @@ describe('UiPopover', () => {
 		outside.remove();
 	});
 
+	it('leaves a composing Escape to the IME: not cancelled, panel still open', async () => {
+		const { wrapper, open } = mountWithTrigger();
+		await wrapper.get('[data-testid="trigger"]').trigger('click');
+		await flushPromises();
+		expect(document.activeElement?.closest('[data-testid="panel"]')).not.toBeNull();
+
+		const event = new KeyboardEvent('keydown', {
+			key: 'Escape',
+			isComposing: true,
+			bubbles: true,
+			cancelable: true,
+		});
+		document.activeElement!.dispatchEvent(event);
+		await flushPromises();
+		expect(event.defaultPrevented).toBe(false);
+		expect(open.value).toBe(true);
+
+		// The next, plain Escape still closes it.
+		expect((await escape()).defaultPrevented).toBe(true);
+		expect(open.value).toBe(false);
+	});
+
+	describe('without a trigger, anchored to an element', () => {
+		function mountAnchored() {
+			const open = ref(false);
+			const anchor = ref<HTMLButtonElement | null>(null);
+			const Host = defineComponent({
+				setup: () => () => [
+					h(
+						'button',
+						{ ref: anchor, 'data-testid': 'opener', onClick: () => (open.value = true) },
+						'Filters'
+					),
+					h('button', { 'data-testid': 'elsewhere' }, 'Elsewhere'),
+					h(
+						Popover as Component,
+						{
+							open: open.value,
+							anchor: anchor.value,
+							label: 'Filters',
+							'onUpdate:open': (next: boolean) => (open.value = next),
+						},
+						{ default: () => h('div', { 'data-testid': 'panel' }, [h('button', 'Apply')]) }
+					),
+				],
+			});
+			const wrapper = mount(Host, { attachTo: document.body });
+			const opener = wrapper.get<HTMLButtonElement>('[data-testid="opener"]').element;
+			const elsewhere = wrapper.get<HTMLButtonElement>('[data-testid="elsewhere"]').element;
+			return { open, opener, elsewhere };
+		}
+
+		async function openFrom(opener: HTMLButtonElement) {
+			opener.focus();
+			opener.click();
+			await flushPromises();
+			expect(document.activeElement?.closest('[data-testid="panel"]')).not.toBeNull();
+		}
+
+		it('gives focus back to its opener when Escape closes it', async () => {
+			const { open, opener } = mountAnchored();
+			await openFrom(opener);
+			await escape();
+			expect(open.value).toBe(false);
+			expect(document.activeElement).toBe(opener);
+		});
+
+		it('gives focus back to its opener when the caller closes it', async () => {
+			const { open, opener } = mountAnchored();
+			await openFrom(opener);
+			open.value = false;
+			await flushPromises();
+			expect(panel()).toBeNull();
+			expect(document.activeElement).toBe(opener);
+		});
+
+		it('leaves focus where a press outside put it', async () => {
+			const { open, opener, elsewhere } = mountAnchored();
+			await openFrom(opener);
+			elsewhere.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+			elsewhere.focus();
+			await flushPromises();
+			expect(open.value).toBe(false);
+			expect(document.activeElement).toBe(elsewhere);
+
+			// A later open from the keyboard restores again.
+			await openFrom(opener);
+			await escape();
+			expect(document.activeElement).toBe(opener);
+		});
+	});
+
 	it('is a dialog named by its trigger', async () => {
 		const { wrapper } = mountWithTrigger();
 		await wrapper.get('[data-testid="trigger"]').trigger('click');

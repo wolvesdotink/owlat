@@ -194,6 +194,19 @@ describe('UiCombobox and an IME', () => {
 		expect(el.getAttribute('aria-activedescendant')).toBe(highlighted);
 	});
 
+	it('leaves a composing Escape alone while the popup is open', async () => {
+		const { wrapper, query } = mountCombobox({ autoHighlight: true });
+		await input(wrapper).setValue('a');
+		await flushPromises();
+		expect(input(wrapper).attributes('aria-expanded')).toBe('true');
+		for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+			const event = await compose(input(wrapper).element, 'Escape', init);
+			expect(event.defaultPrevented).toBe(false);
+			expect(input(wrapper).attributes('aria-expanded')).toBe('true');
+		}
+		expect(query.value).toBe('a');
+	});
+
 	it('leaves a composing Escape alone in an inline search', async () => {
 		const { wrapper, query } = mountCombobox({ inline: true });
 		await input(wrapper).setValue('ad');
