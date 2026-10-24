@@ -26,7 +26,7 @@ const { data: latest } = useOrganizationQuery(api.emailTemplates.versions.latest
 }));
 
 const sentAt = computed(() =>
-	latest.value ? new Date(latest.value.version.createdAt).toLocaleString(locale.value) : ''
+	latest.value ? new Date(latest.value.version.sentAt).toLocaleString(locale.value) : ''
 );
 
 const isOpen = ref(false);
@@ -57,7 +57,7 @@ async function compare() {
 		if (!template) throw new Error('Template not found');
 		before.value = {
 			label: t(`${KEY}.lastSendLabel`),
-			detail: new Date(snapshot.createdAt).toLocaleString(locale.value),
+			detail: new Date(found.version.sentAt).toLocaleString(locale.value),
 			blocks: parseSnapshotBlocks(snapshot.content),
 			subject: snapshot.subject,
 			previewText: snapshot.previewText ?? '',
@@ -91,12 +91,12 @@ async function compare() {
 			:title="sentAt"
 		>
 			<Icon name="lucide:check-circle-2" class="h-4 w-4 shrink-0 text-success" />
-			{{ t(`${KEY}.unchanged`, { time: formatRelativeTime(latest.version.createdAt) }) }}
+			{{ t(`${KEY}.unchanged`, { time: formatRelativeTime(latest.version.sentAt) }) }}
 		</p>
 		<div v-else class="flex flex-wrap items-center gap-x-3 gap-y-2">
 			<p class="flex items-center gap-2 text-sm text-text-secondary" :title="sentAt">
 				<Icon name="lucide:git-compare" class="h-4 w-4 shrink-0 text-warning" />
-				{{ t(`${KEY}.changed`, { time: formatRelativeTime(latest.version.createdAt) }) }}
+				{{ t(`${KEY}.changed`, { time: formatRelativeTime(latest.version.sentAt) }) }}
 			</p>
 			<UiButton variant="outline" size="sm" data-testid="compare-last-send" @click="compare">
 				{{ t(`${KEY}.compare`) }}

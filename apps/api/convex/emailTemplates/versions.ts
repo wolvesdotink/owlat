@@ -70,7 +70,19 @@ export async function captureTemplateVersion(
 	});
 
 	const previous = await latestVersion(ctx, template._id);
-	if (!shouldCaptureVersion(previous, { contentHash: fingerprint.contentHash, trigger })) {
+	// The fingerprint leaves out the preview text, but a send record must hold
+	// what went out, so a send whose preview text differs is a new snapshot.
+	const sameSendPreview =
+		trigger !== 'send' || (previous?.previewText ?? '') === (template.previewText ?? '');
+	if (
+		sameSendPreview &&
+		!shouldCaptureVersion(previous, { contentHash: fingerprint.contentHash, trigger })
+	) {
+		// A repeated send of unchanged content keeps one row, but the review's
+		// "last send" must still date the newest send, not the first.
+		if (previous && trigger === 'send') {
+			await ctx.db.patch(previous._id, { lastSentAt: Date.now() });
+		}
 		return null;
 	}
 
@@ -196,8 +208,8 @@ export const get = authedQuery({
  * The newest `send` snapshot of a template, for the campaign review's "changed
  * since the last send": the body the template's most recent campaign send
  * started with (captured in that send's preparation commit, whichever campaign
- * it was), and whether the template still holds the same body, subject and
- * preview text.
+ * it was), when that send started, and whether the template still holds the
+ * same body, subject and preview text.
  *
  * Null when the history holds no send: the template was never sent, or that
  * snapshot was evicted by the retention cap. The caller says so instead of
@@ -225,6 +237,9 @@ export const latestSend = authedQuery({
 				subject: version.subject,
 				contentBytes: version.contentBytes,
 				createdAt: version.createdAt,
+				// When the newest send started: later than `createdAt` when an
+				// unchanged template was sent again into the same snapshot.
+				sentAt: version.lastSentAt ?? version.createdAt,
 			},
 			unchanged:
 				version.content === template.content &&

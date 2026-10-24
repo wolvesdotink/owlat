@@ -39,16 +39,18 @@ const compareStub = {
 	template: `<div v-if="open" data-testid="compare">
 		<span data-testid="before">{{ before ? before.subject + '|' + before.previewText + '|' + before.blocks[0].content.html : '' }}</span>
 		<span data-testid="after">{{ after ? after.subject + '|' + after.previewText + '|' + after.blocks[0].content.html : '' }}</span>
+		<span data-testid="before-detail">{{ before ? before.detail : '' }}</span>
 		<button data-testid="close" @click="$emit('update:open', false)">close</button>
 	</div>`,
 };
 
-function mountLine() {
+function mountLine(relative: (time: number) => string = () => '3 days ago') {
+	vi.stubGlobal('formatRelativeTime', relative);
 	return mount(ChangedSinceLastSend, {
 		props: { templateId: 'template1' as never },
 		global: {
 			plugins: [createTestI18n()],
-			mocks: { formatRelativeTime: () => '3 days ago' },
+			mocks: { formatRelativeTime: relative },
 			stubs: { EmailTemplateCompareModal: compareStub, Icon: true },
 		},
 	});
@@ -87,7 +89,10 @@ describe('ChangedSinceLastSend', () => {
 	});
 
 	it('says when the email is unchanged since its last send', async () => {
-		latest.value = { version: { _id: 'version1', createdAt: SNAPSHOT.createdAt }, unchanged: true };
+		latest.value = {
+			version: { _id: 'version1', createdAt: SNAPSHOT.createdAt, sentAt: SNAPSHOT.createdAt },
+			unchanged: true,
+		};
 		const wrapper = mountLine();
 		await flushPromises();
 		expect(wrapper.text()).toContain('Unchanged since the last send (3 days ago)');
@@ -96,7 +101,7 @@ describe('ChangedSinceLastSend', () => {
 
 	it('compares the last send with the template as stored', async () => {
 		latest.value = {
-			version: { _id: 'version1', createdAt: SNAPSHOT.createdAt },
+			version: { _id: 'version1', createdAt: SNAPSHOT.createdAt, sentAt: SNAPSHOT.createdAt },
 			unchanged: false,
 		};
 		const wrapper = mountLine();
@@ -110,9 +115,26 @@ describe('ChangedSinceLastSend', () => {
 		expect(wrapper.get('[data-testid="after"]').text()).toBe('New subject||New');
 	});
 
+	it('dates the newest send, even when it reused an older snapshot', async () => {
+		const SENT_AT = SNAPSHOT.createdAt + 23 * 24 * 60 * 60 * 1000;
+		latest.value = {
+			version: { _id: 'version1', createdAt: SNAPSHOT.createdAt, sentAt: SENT_AT },
+			unchanged: false,
+		};
+		const wrapper = mountLine((time) => (time === SENT_AT ? 'today' : 'weeks ago'));
+		await flushPromises();
+		expect(wrapper.text()).toContain('Changed since the last send (today)');
+
+		await wrapper.get('[data-testid="compare-last-send"]').trigger('click');
+		await flushPromises();
+		expect(wrapper.get('[data-testid="before-detail"]').text()).toBe(
+			new Date(SENT_AT).toLocaleString('en')
+		);
+	});
+
 	it('drops an answer that arrives after the comparison was closed', async () => {
 		latest.value = {
-			version: { _id: 'version1', createdAt: SNAPSHOT.createdAt },
+			version: { _id: 'version1', createdAt: SNAPSHOT.createdAt, sentAt: SNAPSHOT.createdAt },
 			unchanged: false,
 		};
 		const settle: Array<() => void> = [];
@@ -135,7 +157,7 @@ describe('ChangedSinceLastSend', () => {
 
 	it('closes with a message when the versions cannot be loaded', async () => {
 		latest.value = {
-			version: { _id: 'version1', createdAt: SNAPSHOT.createdAt },
+			version: { _id: 'version1', createdAt: SNAPSHOT.createdAt, sentAt: SNAPSHOT.createdAt },
 			unchanged: false,
 		};
 		answer = async () => {

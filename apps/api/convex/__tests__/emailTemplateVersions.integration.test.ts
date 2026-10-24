@@ -334,6 +334,49 @@ describe('latest send', () => {
 		expect(latest?.unchanged).toBe(true);
 	});
 
+	it('dates a repeated send of an unchanged template by the newest send', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const first = Date.UTC(2026, 9, 1, 9);
+			const second = Date.UTC(2026, 9, 24, 9);
+			vi.setSystemTime(first);
+			const t = convexTest(schema, modules);
+			const templateId = await seedTemplate(t);
+			await send(t, templateId);
+			vi.setSystemTime(second);
+			await send(t, templateId);
+
+			const latest = await t.query(api.emailTemplates.versions.latestSend, { templateId });
+			expect(latest?.version.createdAt).toBe(first);
+			expect(latest?.version.sentAt).toBe(second);
+			expect(latest?.unchanged).toBe(true);
+			// Still one row: the repeat moved the send date, not the snapshot.
+			const rows = await versionRows(t, templateId);
+			expect(rows.filter((row) => row.trigger === 'send')).toHaveLength(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('keeps a new send snapshot when only the preview text changed', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		await send(t, templateId);
+		// A writer that records no save in between (the translation paths patch
+		// the template directly), so the two sends are consecutive.
+		await t.run(async (ctx) => ctx.db.patch(templateId, { previewText: 'New peek' }));
+		await send(t, templateId);
+
+		const latest = await t.query(api.emailTemplates.versions.latestSend, { templateId });
+		const snapshot = await t.query(api.emailTemplates.versions.get, {
+			versionId: latest!.version._id,
+		});
+		expect(snapshot.previewText).toBe('New peek');
+		expect(latest?.unchanged).toBe(true);
+		const rows = await versionRows(t, templateId);
+		expect(rows.filter((row) => row.trigger === 'send')).toHaveLength(2);
+	});
+
 	it('is null once retention evicted the send snapshot', async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t);

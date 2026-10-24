@@ -149,6 +149,11 @@ export const templateTables = {
 		// BetterAuth user id, or a `system:*` sentinel for scheduler-fired sends.
 		createdBy: v.string(),
 		createdAt: v.number(),
+		// `send` rows only: when the newest send of exactly this snapshot
+		// started. A repeated send of unchanged content is deduplicated into
+		// the existing row and moves this forward; the snapshot fields above
+		// stay as captured. Absent means the send at `createdAt` was the last.
+		lastSentAt: v.optional(v.number()),
 	})
 		.index('by_template_and_created_at', ['templateId', 'createdAt'])
 		// The newest snapshot of one trigger, for the review step's "changed

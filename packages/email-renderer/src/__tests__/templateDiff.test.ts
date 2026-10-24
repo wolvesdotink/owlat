@@ -86,6 +86,50 @@ describe('diffTemplateVersions', () => {
 		]);
 	});
 
+	it('compares the real href, not a data-href beside it', () => {
+		const anchor = (url: string) => `<p><a data-href="tracking" href="${url}">Shop</a></p>`;
+		const result = diff(
+			[text('t1', anchor('https://example.com/old'))],
+			[text('t1', anchor('https://example.com/new'))]
+		);
+		expect(result.blocks[0]?.parts).toEqual({ copy: false, links: true, other: false });
+		expect(result.links).toEqual([
+			expect.objectContaining({
+				kind: 'changed',
+				before: 'https://example.com/old',
+				after: 'https://example.com/new',
+				field: 'html',
+			}),
+		]);
+	});
+
+	it('reads an href that follows a quoted attribute holding ">"', () => {
+		const anchor = (url: string) => `<p><a title="Save > 20%" href='${url}'>Shop</a></p>`;
+		const result = diff(
+			[text('t1', anchor('https://example.com/old'))],
+			[text('t1', anchor('https://example.com/new'))]
+		);
+		expect(result.blocks[0]?.parts).toEqual({ copy: false, links: true, other: false });
+		expect(result.links).toEqual([
+			expect.objectContaining({
+				kind: 'changed',
+				before: 'https://example.com/old',
+				after: 'https://example.com/new',
+			}),
+		]);
+	});
+
+	it('ignores anchors in comments and tags that only start with "a"', () => {
+		const html = (url: string) =>
+			`<p><!-- <a href="${url}">x</a> --><abbr href="${url}">A</abbr> <a href=https://example.com/kept>k</a></p>`;
+		const result = diff(
+			[text('t1', html('https://example.com/old'))],
+			[text('t1', html('https://example.com/new'))]
+		);
+		expect(result.links).toEqual([]);
+		expect(result.blocks[0]?.parts).toEqual({ copy: false, links: false, other: true });
+	});
+
 	it('reports a style-only edit without copy or link changes', () => {
 		const result = diff(
 			[text('t1', '<p>Same</p>')],

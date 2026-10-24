@@ -43,8 +43,6 @@ const LINK_KEYS = new Set(['url', 'linkUrl', 'videoUrl', 'href']);
 /** Stands in for a copy or link string, so "other" compares the rest only. */
 const EXTRACTED = '\u0000';
 
-const ANCHOR_HREF = /<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi;
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -56,14 +54,100 @@ const decodeAttribute = (value: string): string =>
 		.replace(/&gt;/g, '>')
 		.replace(/&amp;/g, '&');
 
-/** The href of every anchor in `html`, in document order. */
-function anchorHrefs(html: string): string[] {
-	const hrefs: string[] = [];
-	for (const match of html.matchAll(ANCHOR_HREF)) {
-		const href = decodeAttribute((match[1] ?? match[2] ?? match[3] ?? '').trim());
-		if (href) hrefs.push(href);
+const isSpace = (char: string | undefined): boolean =>
+	char === ' ' || char === '\t' || char === '\n' || char === '\r' || char === '\f';
+
+interface ScannedTag {
+	/** Index just past the tag's `>` (or the end of the input). */
+	end: number;
+	/** Attributes by lowercased name; the first occurrence wins, as in a browser. */
+	attributes: Map<string, string>;
+	/** `[start, end)` of every quoted attribute value. */
+	quoted: Array<[number, number]>;
+}
+
+/**
+ * Read the attributes of the tag whose name ends at `from`, one by one, with
+ * quoted values kept whole: a `>` inside quotes does not end the tag.
+ */
+function scanTag(html: string, from: number): ScannedTag {
+	const attributes = new Map<string, string>();
+	const quoted: Array<[number, number]> = [];
+	let i = from;
+	while (i < html.length) {
+		const char = html[i];
+		if (char === '>') return { end: i + 1, attributes, quoted };
+		if (isSpace(char) || char === '/') {
+			i++;
+			continue;
+		}
+		let nameEnd = i + 1; // a leading `=` belongs to the name, as in HTML
+		while (nameEnd < html.length && !/[\s/>=]/.test(html[nameEnd]!)) nameEnd++;
+		const name = html.slice(i, nameEnd).toLowerCase();
+		i = nameEnd;
+		while (isSpace(html[i])) i++;
+		let value = '';
+		if (html[i] === '=') {
+			i++;
+			while (isSpace(html[i])) i++;
+			const quote = html[i];
+			if (quote === '"' || quote === "'") {
+				const close = html.indexOf(quote, i + 1);
+				const stop = close < 0 ? html.length : close;
+				value = html.slice(i + 1, stop);
+				quoted.push([i + 1, stop]);
+				i = stop + 1;
+			} else {
+				const start = i;
+				while (i < html.length && !isSpace(html[i]) && html[i] !== '>') i++;
+				value = html.slice(start, i);
+			}
+		}
+		if (!attributes.has(name)) attributes.set(name, value);
 	}
-	return hrefs;
+	return { end: html.length, attributes, quoted };
+}
+
+/**
+ * Read an html field tag by tag rather than with a pattern: the href of every
+ * anchor in document order, and the html with `<` and `>` inside quoted
+ * attribute values escaped so the plain-text extraction cannot mistake them
+ * for the end of a tag. `data-href` is not `href`, and comments are skipped,
+ * so the compared destination is the one a reader actually reaches.
+ */
+function readHtmlField(html: string): { hrefs: string[]; tagSafe: string } {
+	const hrefs: string[] = [];
+	let tagSafe = '';
+	let copied = 0;
+	let i = 0;
+	while (i < html.length) {
+		const open = html.indexOf('<', i);
+		if (open < 0) break;
+		if (html.startsWith('<!--', open)) {
+			const close = html.indexOf('-->', open + 4);
+			i = close < 0 ? html.length : close + 3;
+			continue;
+		}
+		if (!/[a-z]/i.test(html.charAt(open + 1))) {
+			i = open + 1;
+			continue;
+		}
+		let nameEnd = open + 1;
+		while (nameEnd < html.length && !/[\s/>]/.test(html[nameEnd]!)) nameEnd++;
+		const tag = scanTag(html, nameEnd);
+		if (html.slice(open + 1, nameEnd).toLowerCase() === 'a') {
+			const href = decodeAttribute((tag.attributes.get('href') ?? '').trim());
+			if (href) hrefs.push(href);
+		}
+		for (const [start, stop] of tag.quoted) {
+			tagSafe +=
+				html.slice(copied, start) +
+				html.slice(start, stop).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+			copied = stop;
+		}
+		i = tag.end;
+	}
+	return { hrefs, tagSafe: tagSafe + html.slice(copied) };
 }
 
 const looksLikeHtml = (value: string): boolean => /<[a-z!/][^>]*>/i.test(value);
@@ -103,9 +187,10 @@ export function readOwnFields(node: BlockTreeNode): OwnFields {
 		if (typeof value === 'string') {
 			const key = lastKey(field);
 			if (HTML_KEYS.has(key) || (COPY_KEYS.has(key) && looksLikeHtml(value))) {
-				const text = htmlToPlainText(value);
+				const { hrefs, tagSafe } = readHtmlField(value);
+				const text = htmlToPlainText(tagSafe);
 				if (text) push(copy, field, text);
-				for (const href of anchorHrefs(value)) push(links, field, href);
+				for (const href of hrefs) push(links, field, href);
 				return { own: value, rest: EXTRACTED };
 			}
 			if (COPY_KEYS.has(key)) {
