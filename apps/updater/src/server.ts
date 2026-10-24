@@ -8,7 +8,9 @@ import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { hasVersionDrift, parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
 import { applyEnvUpdates, isRateLimited, isValidIPv4 } from './security.js';
 import { readBuildInfo } from './config.js';
-import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
+import { composePsServices, exec, json, OWLAT_DIR, readJsonBody, requireAuth } from './http.js';
+import { parserDecoder } from '@owlat/worker-protocol/decodeJson';
+import { asRecord, readConfigureIpBody } from './requestBodies.js';
 import {
 	composeArgv,
 	recoverStackAfterFailedUp,
@@ -90,25 +92,17 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 		return json(res, 429, { error: 'Too many configure-ip requests.' });
 	}
 
-	let ip: string;
-	let action: 'add' | 'remove';
+	const body = await readJsonBody(
+		req,
+		res,
+		parserDecoder(readConfigureIpBody, 'Missing or invalid "ip" or "action" (add|remove)')
+	);
+	if (!body) return;
+	const { ip, action } = body;
 
-	try {
-		const raw = await readBody(req);
-		const body = JSON.parse(raw);
-		ip = body.ip;
-		action = body.action;
-
-		if (!ip || !action || !['add', 'remove'].includes(action)) {
-			return json(res, 400, { error: 'Missing or invalid "ip" or "action" (add|remove)' });
-		}
-
-		// Strict IPv4 validation using Node's built-in net.isIPv4() + octet range check
-		if (!isValidIPv4(ip)) {
-			return json(res, 400, { error: 'Invalid IPv4 address' });
-		}
-	} catch {
-		return json(res, 400, { error: 'Invalid JSON body' });
+	// Strict IPv4 validation using Node's built-in net.isIPv4() + octet range check
+	if (!isValidIPv4(ip)) {
+		return json(res, 400, { error: 'Invalid IPv4 address' });
 	}
 
 	const steps: { step: string; ok?: boolean; stdout: string; stderr: string }[] = [];
@@ -228,19 +222,8 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 		return json(res, 429, { error: 'Rotation rate-limited; try again shortly' });
 	}
 
-	interface RotateBody {
-		instanceSecret?: string;
-		convexAdminKey?: string;
-		mtaApiKey?: string;
-		mtaWebhookSecret?: string;
-		redisPassword?: string;
-	}
-	let body: RotateBody;
-	try {
-		body = JSON.parse(await readBody(req)) as RotateBody;
-	} catch {
-		return json(res, 400, { error: 'Invalid JSON body' });
-	}
+	const body = await readJsonBody(req, res, parserDecoder(asRecord, '$: expected object'));
+	if (!body) return;
 
 	// Require ALL fields — partial rotation is a footgun.
 	const fields = [
@@ -250,6 +233,7 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 		'mtaWebhookSecret',
 		'redisPassword',
 	] as const;
+	const secrets = {} as Record<(typeof fields)[number], string>;
 	for (const f of fields) {
 		const val = body[f];
 		if (typeof val !== 'string' || val.length < 16 || val.length > 256) {
@@ -260,6 +244,7 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 		if (/[\r\n\x00]/.test(val)) {
 			return json(res, 400, { error: `Field contains illegal character: ${f}` });
 		}
+		secrets[f] = val;
 	}
 
 	const envFile = join(OWLAT_DIR, '.env');
@@ -274,11 +259,11 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	// of the secret-rotation primitive — /apply-profiles has its own single-key
 	// list; neither may grow the other's.
 	const updates: Record<string, string> = {
-		INSTANCE_SECRET: body.instanceSecret!,
-		CONVEX_ADMIN_KEY: body.convexAdminKey!,
-		MTA_API_KEY: body.mtaApiKey!,
-		MTA_WEBHOOK_SECRET: body.mtaWebhookSecret!,
-		REDIS_PASSWORD: body.redisPassword!,
+		INSTANCE_SECRET: secrets.instanceSecret,
+		CONVEX_ADMIN_KEY: secrets.convexAdminKey,
+		MTA_API_KEY: secrets.mtaApiKey,
+		MTA_WEBHOOK_SECRET: secrets.mtaWebhookSecret,
+		REDIS_PASSWORD: secrets.redisPassword,
 	};
 
 	// Hardened line-by-line rewrite — preserves comments + ordering; keys absent

@@ -34,6 +34,8 @@ import {
 } from '../webhooks/mtaSignature';
 import { getClientIp } from '../lib/publicRateLimit';
 import { errorResponse, jsonResponse, methodNotAllowed } from '../lib/httpResponse';
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
+import { forwardedReportBody, type ForwardedAttachment } from './forwardedReportBody';
 import {
 	readStreamBytes,
 	StreamByteLimitExceeded,
@@ -45,12 +47,6 @@ import {
 // when an unauthenticated sender exceeds it.
 const TLS_RPT_MAX_WEBHOOK_BODY_BYTES =
 	4 * Math.ceil(TLS_RPT_MAX_DECOMPRESSED_BYTES / 3) + 64 * 1024;
-
-interface ForwardedAttachment {
-	filename?: string;
-	contentType?: string;
-	content?: string; // base64
-}
 
 function isTlsReportAttachment(att: ForwardedAttachment): boolean {
 	const ct = (att.contentType ?? '').toLowerCase();
@@ -118,12 +114,9 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 		);
 	}
 
-	let payload: { attachments?: ForwardedAttachment[] };
-	try {
-		payload = JSON.parse(bodyText);
-	} catch {
-		return errorResponse('invalid_input', 'Invalid JSON');
-	}
+	const decoded = decodeJsonText(bodyText, forwardedReportBody);
+	if (!decoded.ok) return errorResponse('invalid_input', decoded.failure.message);
+	const payload = decoded.value;
 
 	const attachment = (payload.attachments ?? []).find(isTlsReportAttachment);
 	if (!attachment?.content) {

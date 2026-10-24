@@ -51,8 +51,10 @@ import {
 	parseReleaseVersionFromTemplate,
 	validateComposeTemplate,
 } from './security.js';
-import { exec, json, OWLAT_DIR, readBody, requireAuth, UPDATE_STEP_BOUNDS } from './http.js';
+import { exec, json, OWLAT_DIR, readJsonBody, requireAuth, UPDATE_STEP_BOUNDS } from './http.js';
 import { shutdownSignal } from './lifecycle.js';
+import { parserDecoder } from '@owlat/worker-protocol/decodeJson';
+import { readUpdateBody } from './requestBodies.js';
 import {
 	composeArgv,
 	dockerApiPreflight,
@@ -172,21 +174,14 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		return json(res, 429, { error: 'Too many update requests. Try again later.' });
 	}
 
-	let composeTemplate: string | undefined;
-	let attempt: string | undefined;
-
-	try {
-		const raw = await readBody(req);
-		if (raw) {
-			const body = JSON.parse(raw);
-			composeTemplate = body.composeTemplate;
-			// The caller's id for this attempt, echoed on /health so it can tell
-			// this update's verdict from an earlier one's.
-			if (isAttemptId(body.attempt)) attempt = body.attempt;
-		}
-	} catch {
-		// No body or invalid JSON — proceed without compose template update
-	}
+	// No body updates without a new compose template; a body that is not one is
+	// refused here, before the rollout touches Docker, state or disk.
+	const body = await readJsonBody(req, res, parserDecoder(readUpdateBody), { emptyBody: {} });
+	if (!body) return;
+	const { composeTemplate } = body;
+	// The caller's id for this attempt, echoed on /health so it can tell this
+	// update's verdict from an earlier one's. A malformed id is dropped.
+	const attempt = isAttemptId(body.attempt) ? body.attempt : undefined;
 
 	const steps: { step: string; ok?: boolean; stdout: string; stderr: string }[] = [];
 

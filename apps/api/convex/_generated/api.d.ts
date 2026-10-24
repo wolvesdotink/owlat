@@ -718,6 +718,7 @@ import type * as domains_dmarcSources from '../domains/dmarcSources.js';
 import type * as domains_dnsMatch from '../domains/dnsMatch.js';
 import type * as domains_dnsVerification from '../domains/dnsVerification.js';
 import type * as domains_domains from '../domains/domains.js';
+import type * as domains_forwardedReportBody from '../domains/forwardedReportBody.js';
 import type * as domains_lifecycle from '../domains/lifecycle.js';
 import type * as domains_lifecycleDkim from '../domains/lifecycleDkim.js';
 import type * as domains_lifecycleDmarc from '../domains/lifecycleDmarc.js';
@@ -2604,6 +2605,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/dnsMatch': typeof domains_dnsMatch;
 	'domains/dnsVerification': typeof domains_dnsVerification;
 	'domains/domains': typeof domains_domains;
+	'domains/forwardedReportBody': typeof domains_forwardedReportBody;
 	'domains/lifecycle': typeof domains_lifecycle;
 	'domains/lifecycleDkim': typeof domains_lifecycleDkim;
 	'domains/lifecycleDmarc': typeof domains_lifecycleDmarc;

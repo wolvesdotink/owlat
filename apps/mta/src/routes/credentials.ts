@@ -3,10 +3,20 @@
  */
 
 import { Hono } from 'hono';
+import { v } from 'convex/values';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import * as credentials from '../auth/credentials.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
+import { readJsonBody } from '../lib/jsonBody.js';
+
+const createBody = v.object({
+	organizationId: v.string(),
+	name: v.string(),
+	allowedDomains: v.optional(v.array(v.string())),
+});
+
+const allowedDomainsBody = v.object({ allowedDomains: v.array(v.string()) });
 
 export function createCredentialRoutes(redis: Redis, config: MtaConfig) {
 	const app = new Hono();
@@ -16,16 +26,11 @@ export function createCredentialRoutes(redis: Redis, config: MtaConfig) {
 
 	// Create credential
 	app.post('/', async (c) => {
-		const body = await c.req.json<{
-			organizationId: string;
-			name: string;
-			allowedDomains?: string[];
-		}>();
+		const read = await readJsonBody(c, createBody);
+		if (!read.ok) return read.response;
+		const body = read.value;
 		if (!body.organizationId || !body.name) {
 			return c.json({ error: 'organizationId and name are required' }, 400);
-		}
-		if (body.allowedDomains !== undefined && !Array.isArray(body.allowedDomains)) {
-			return c.json({ error: 'allowedDomains must be an array of domains' }, 400);
 		}
 		const result = await credentials.createCredential(
 			redis,
@@ -62,21 +67,11 @@ export function createCredentialRoutes(redis: Redis, config: MtaConfig) {
 	// allowedDomains backfill migration; idempotent.
 	app.patch('/:apiKey', async (c) => {
 		const apiKey = c.req.param('apiKey');
-		const body = await c.req
-			.json<{ allowedDomains?: unknown }>()
-			.catch(() => null as { allowedDomains?: unknown } | null);
-		if (
-			!body ||
-			!Array.isArray(body.allowedDomains) ||
-			!body.allowedDomains.every((d) => typeof d === 'string')
-		) {
-			return c.json({ error: 'allowedDomains must be an array of domain strings' }, 400);
-		}
-		const updated = await credentials.setAllowedDomains(
-			redis,
-			apiKey,
-			body.allowedDomains as string[]
-		);
+		const read = await readJsonBody(c, allowedDomainsBody, {
+			invalidMessage: 'allowedDomains must be an array of domain strings',
+		});
+		if (!read.ok) return read.response;
+		const updated = await credentials.setAllowedDomains(redis, apiKey, read.value.allowedDomains);
 		if (!updated) return c.json({ error: 'Credential not found' }, 404);
 		return c.json({ success: true });
 	});

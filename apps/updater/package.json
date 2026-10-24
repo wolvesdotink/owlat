@@ -17,7 +17,8 @@
 		"test:coverage": "vitest run --coverage --passWithNoTests"
 	},
 	"dependencies": {
-		"@owlat/shared": "workspace:*"
+		"@owlat/shared": "workspace:*",
+		"@owlat/worker-protocol": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",

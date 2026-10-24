@@ -5,11 +5,19 @@
  */
 
 import { Hono } from 'hono';
+import { v } from 'convex/values';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import * as orgLimits from '../intelligence/orgLimits.js';
 import { logger } from '../monitoring/logger.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
+import { readJsonBody } from '../lib/jsonBody.js';
+
+const limitsBody = v.object({
+	organizationId: v.string(),
+	dailyLimit: v.optional(v.number()),
+	hourlyLimit: v.optional(v.number()),
+});
 
 /**
  * Create the org limits route group
@@ -22,12 +30,9 @@ export function createOrgLimitsRoutes(redis: Redis, config: MtaConfig): Hono {
 
 	// POST / — set limits for an organization
 	app.post('/', async (c) => {
-		let body: { organizationId: string; dailyLimit?: number; hourlyLimit?: number };
-		try {
-			body = await c.req.json();
-		} catch {
-			return c.json({ error: 'Invalid JSON body' }, 400);
-		}
+		const read = await readJsonBody(c, limitsBody);
+		if (!read.ok) return read.response;
+		const body = read.value;
 
 		if (!body.organizationId) {
 			return c.json({ error: 'Missing required field: organizationId' }, 400);

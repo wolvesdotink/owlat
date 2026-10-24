@@ -64,6 +64,7 @@ import {
 	type TransportCredentialValues,
 } from '~/composables/setupWizardCredentials';
 import { probeRequestBuilder } from '~/composables/useRelayCredentialDraft';
+import { jsonRequestEvent } from '../../../__tests__/nitro';
 
 /** Which validator the route reached, recorded by the stubs installed below. */
 const { probeCalls } = vi.hoisted(() => ({ probeCalls: [] as string[] }));
@@ -104,7 +105,7 @@ let body: unknown;
 async function callRoute(): Promise<ProbeResult> {
 	const mod = await import('../validate-transport.post');
 	const handler = mod.default as unknown as (event: unknown) => Promise<ProbeResult>;
-	return handler({});
+	return handler(jsonRequestEvent(body));
 }
 
 /**
@@ -158,10 +159,6 @@ beforeEach(() => {
 	body = undefined;
 	requireOrgAdminMock.mockReset().mockResolvedValue(undefined);
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode })
 	);

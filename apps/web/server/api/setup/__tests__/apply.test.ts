@@ -8,6 +8,7 @@ import {
 	isEnvBackupSealedValue,
 } from '@owlat/shared/envBackupBox';
 import { getDefaultFlags } from '@owlat/shared/featureFlags';
+import { jsonRequestEvent } from '../../../__tests__/nitro';
 
 /**
  * Secrets-at-rest test for `POST /api/setup/apply` (the web setup wizard's final
@@ -61,7 +62,7 @@ interface ApplyResult {
 async function callRoute(): Promise<ApplyResult> {
 	const mod = await import('../apply.post');
 	const handler = mod.default as unknown as (event: unknown) => Promise<ApplyResult>;
-	return handler({});
+	return handler(jsonRequestEvent(body));
 }
 
 function writtenEnv(): Record<string, string> {
@@ -96,10 +97,6 @@ beforeEach(() => {
 	);
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
 	vi.stubGlobal('requireSetupToken', vi.fn());
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode })
 	);

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { installNitroGlobals, requestEvent } from '../../../__tests__/nitro';
+import { installNitroGlobals, jsonRequestEvent } from '../../../__tests__/nitro';
 
 /**
  * `POST /api/setup/validate-provider` keeps its own gate (setup mode plus the
@@ -30,7 +30,7 @@ async function callRoute(): Promise<{ ok: boolean; message: string }> {
 	const handler = mod.default as unknown as (
 		event: unknown
 	) => Promise<{ ok: boolean; message: string }>;
-	return handler(requestEvent());
+	return handler(jsonRequestEvent(body));
 }
 
 beforeEach(() => {
@@ -40,10 +40,6 @@ beforeEach(() => {
 	requireSetupToken.mockReset();
 	vi.stubGlobal('requireSetupToken', requireSetupToken);
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	for (const [name, mock] of Object.entries(mocks)) {
 		mock.mockReset().mockResolvedValue({ ok: true, message: `ran ${name}` });
 	}
