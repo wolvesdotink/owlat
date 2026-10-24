@@ -42,6 +42,7 @@ import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
 import { hasOwnWriting } from '~/utils/answerDraft';
+import { useReplyDropDelivery } from '~/composables/useReplyFileDrop';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -140,6 +141,16 @@ const composerRef = shallowRef<{
 const composerKey = computed(() => `${messageId.value}:${openedDraftId ?? 'new'}`);
 
 const draftId = ref<string | null>(openedDraftId);
+
+// Files dropped on this conversation in a list or the reader arrive once the
+// composer is up, through its own attachment pipeline.
+useReplyDropDelivery({
+	target: () => (messageId.value ? { kind: 'message', id: messageId.value } : null),
+	deliver: () => {
+		const answer = composerRef.value?.answer;
+		return answer ? (files: File[]) => void answer.addFiles(files) : null;
+	},
+});
 
 function onDraftId(id: string) {
 	draftId.value = id;

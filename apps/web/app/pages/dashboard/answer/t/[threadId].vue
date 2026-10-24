@@ -40,6 +40,7 @@ import { useLocalized } from '~/composables/useLocalized';
 import { answerBackLabelKey, singleQueryValue } from '~/utils/answerMode';
 import { sendHoldReason } from '~/utils/replyCollision';
 import { isChannelMessage } from '~/utils/teamThreadReply';
+import { useReplyDropDelivery } from '~/composables/useReplyFileDrop';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -107,6 +108,15 @@ const attachmentsAllowed = computed(
 );
 const files = useTeamReplyAttachments(() => threadId.value, {
 	enabled: () => attachmentsAllowed.value,
+});
+// Files dropped on this thread in the Team inbox arrive once the reply takes
+// files and its list has loaded; a reply on another channel turns them away.
+const { showToast } = useToast();
+useReplyDropDelivery({
+	target: () => ({ kind: 'team', id: threadId.value }),
+	deliver: () => (attachmentsAllowed.value && files.loaded.value ? files.addFiles : null),
+	refused: () => !!reply.target.value && isChannelMessage(reply.target.value),
+	onRefused: () => showToast(t('components.shell.replyDrop.refused'), 'error'),
 });
 const sendHold = computed(() => {
 	const block = attachmentsAllowed.value ? files.block.value : null;

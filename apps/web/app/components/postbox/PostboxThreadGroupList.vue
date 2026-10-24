@@ -138,6 +138,7 @@ const { handleScroll } = usePostboxListAutoLoad({
 					<PostboxConversationRow
 						v-bind="pinDrag.source(thread.latestMessageId, thread.latestSubject)"
 						:thread="thread"
+						:folder-role="folderRole"
 						:dom-id="`postbox-thread-${thread._id}`"
 						:to="threadTo(thread)"
 						:selected="focusedIndex === windowStart + localI"

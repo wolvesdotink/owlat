@@ -17,7 +17,7 @@ vi.mock('~/composables/useDesktopContext', () => ({
 	useDesktopContext: () => ({ isDesktop }),
 }));
 
-import { useDropZone } from '../useDropZone';
+import { osFileDropClaimed, useDropZone } from '../useDropZone';
 
 /** Build a minimal DragEvent stand-in with a tracked preventDefault + files. */
 function dragEvent(files: File[] = []): DragEvent & { preventDefault: ReturnType<typeof vi.fn> } {
@@ -231,5 +231,19 @@ describe('useDropZone osFileDrop hit-testing', () => {
 
 		host.handlers?.onDrop([droppedFile()], { x: 999, y: 999 });
 		expect(host.onFiles).toHaveBeenCalledTimes(1);
+	});
+
+	it('tells other window-drop handlers which drops a mounted zone takes', async () => {
+		await mountHost({ withRoot: true });
+		expect(osFileDropClaimed({ x: 50, y: 50 })).toBe(true);
+		expect(osFileDropClaimed({ x: 250, y: 250 })).toBe(false);
+		wrapper?.unmount();
+		wrapper = null;
+		expect(osFileDropClaimed({ x: 50, y: 50 })).toBe(false);
+	});
+
+	it('claims every drop while an unscoped zone (an upload modal) is mounted', async () => {
+		await mountHost({ withRoot: false });
+		expect(osFileDropClaimed({ x: 999, y: 999 })).toBe(true);
 	});
 });

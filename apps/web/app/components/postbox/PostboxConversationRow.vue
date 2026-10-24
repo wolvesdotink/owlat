@@ -11,6 +11,8 @@
  * the subject and no unread count.
  */
 import { usePostboxThreadTimestamp } from '~/composables/postbox/usePostboxListClock';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import { replyDropForMessage } from '~/utils/replyFileDrop';
 
 export type PostboxConversationThread = {
 	_id: string;
@@ -36,11 +38,24 @@ const props = defineProps<{
 	selected: boolean;
 	/** The conversation open in the reader. */
 	active?: boolean;
+	/** The folder the list shows; a draft's row takes no reply drop. */
+	folderRole?: string;
 }>();
 
 const { t } = useI18n();
 // Ticks with the list's shared minute clock (usePostboxListClock).
 const formatTimestamp = usePostboxThreadTimestamp();
+
+// Files dropped on the row reply to the conversation's latest message.
+const replyDrop = computed(() => {
+	const { latestMessageId, latestFromAddress } = props.thread;
+	return latestMessageId
+		? replyDropForMessage(
+				{ _id: latestMessageId, fromAddress: latestFromAddress },
+				props.folderRole
+			)
+		: null;
+});
 
 const rowLabel = computed(() =>
 	props.thread.unreadCount > 0
@@ -57,6 +72,7 @@ const rowLabel = computed(() =>
 <template>
 	<NuxtLink
 		:id="domId"
+		v-reply-drop="replyDrop"
 		role="option"
 		:aria-selected="selected"
 		:aria-label="rowLabel"
