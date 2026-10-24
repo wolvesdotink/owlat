@@ -19,7 +19,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxFlagOverride } from './usePostboxOptimisticFlags';
-import type { PostboxMoveUndoKind } from './usePostboxTriageUndo';
+import { chunkForMove, type PostboxMoveUndoKind } from './usePostboxTriageUndo';
 import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import {
 	optimisticArchive,
@@ -91,55 +91,69 @@ export function usePostboxRowTriage(args: {
 	 * Run a row-removing mutation: hide first, restore on failure, and register
 	 * the inverse move for the "Undo — Cmd+Z" toast when rows actually moved.
 	 * archive/trash/move all return `{ ok, moved }`, so they share this shape.
-	 * Resolves to whether the mutation landed.
+	 *
+	 * A long range (a sweep, a dragged selection) goes in calls of at most
+	 * `POSTBOX_MESSAGES_PER_MOVE` messages, one after another, so no call
+	 * outgrows a transaction. The first failed call stops the run, so one error
+	 * is shown rather than one per call: its rows and the ones not yet sent come
+	 * back, and what the earlier calls moved stays moved under ONE Undo entry.
+	 * Resolves to whether every call landed.
 	 */
 	async function runRemoving(
 		ids: Id<'mailMessages'>[],
-		undoLabel: string,
+		undoLabel: (count: number) => string,
 		undoKind: { kind: PostboxMoveUndoKind; scope?: string },
-		mutate: () => Promise<
+		mutate: (chunk: Id<'mailMessages'>[]) => Promise<
 			BackendOperationResult<{
 				moved: Parameters<typeof triageUndo.registerMoveBack>[0]['moved'];
 			} | null>
 		>
 	) {
-		const unhideAll = () => {
-			for (const id of ids) args.unhide(id);
-		};
 		for (const id of ids) args.hide(id);
-		const outcome = await mutate();
-		if (!outcome.ok || outcome.result === null) {
-			unhideAll();
-			return false;
+		const landed: Id<'mailMessages'>[] = [];
+		const moved: Parameters<typeof triageUndo.registerMoveBack>[0]['moved'] = [];
+		let isAllLanded = true;
+		for (const chunk of chunkForMove(ids)) {
+			const outcome = await mutate(chunk);
+			if (!outcome.ok || outcome.result == null) {
+				isAllLanded = false;
+				break;
+			}
+			landed.push(...chunk);
+			moved.push(...outcome.result.moved);
 		}
-		if (outcome.result.moved.length > 0) {
+		for (const id of ids.slice(landed.length)) args.unhide(id);
+		if (moved.length > 0) {
 			triageUndo.registerMoveBack({
-				label: undoLabel,
+				label: undoLabel(landed.length),
 				...undoKind,
-				moved: outcome.result.moved,
+				moved,
 				runMove: (a) => moveOp.run(a),
-				after: unhideAll,
+				after: () => {
+					for (const id of landed) args.unhide(id);
+				},
 			});
 		}
-		return true;
+		return isAllLanded;
 	}
 
 	/**
-	 * Archive one row or several (a sweep across the Archive buttons) in ONE
-	 * mutation, so the undo toast is one entry that puts every one of them back.
-	 * The ids must share a mailbox: the server files them all in the first
-	 * one's Archive folder.
+	 * Archive one row or several (a sweep across the Archive buttons) under ONE
+	 * undo entry that puts every one of them back. The ids must share a
+	 * mailbox: the server files each call's messages in its first one's
+	 * Archive folder.
 	 */
 	const archiveMany = (ids: Id<'mailMessages'>[]) =>
 		ids.length === 0
 			? Promise.resolve(false)
 			: runRemoving(
 					ids,
-					ids.length > 1
-						? t('shared.postbox.usePostboxBulkActions.undo.archivedMany', { count: ids.length })
-						: t('components.postbox.postboxThreadList.archivedUndo'),
+					(count) =>
+						count > 1
+							? t('shared.postbox.usePostboxBulkActions.undo.archivedMany', { count })
+							: t('components.postbox.postboxThreadList.archivedUndo'),
 					{ kind: 'archived' },
-					() => archiveOp.run({ messageIds: ids })
+					(chunk) => archiveOp.run({ messageIds: chunk })
 				);
 
 	const archiveMsg = (id: Id<'mailMessages'>) => archiveMany([id]);
@@ -147,25 +161,26 @@ export function usePostboxRowTriage(args: {
 	const trashMsg = (id: Id<'mailMessages'>) =>
 		runRemoving(
 			[id],
-			t('components.postbox.postboxThreadList.trashedUndo'),
+			() => t('components.postbox.postboxThreadList.trashedUndo'),
 			{ kind: 'trashed' },
-			() => trashOp.run({ messageIds: [id] })
+			(chunk) => trashOp.run({ messageIds: chunk })
 		);
 
 	/**
-	 * Move one row or several (a dragged selection) in ONE mutation, so the undo
-	 * toast is one entry that puts every one of them back.
+	 * Move one row or several (a dragged selection) under ONE undo entry that
+	 * puts every one of them back.
 	 */
 	const moveMany = (ids: Id<'mailMessages'>[], targetFolderId: Id<'mailFolders'>) =>
 		ids.length === 0
 			? Promise.resolve(false)
 			: runRemoving(
 					ids,
-					ids.length > 1
-						? t('shared.postbox.usePostboxBulkActions.undo.movedMany', { count: ids.length })
-						: t('components.postbox.postboxThreadList.movedUndo'),
+					(count) =>
+						count > 1
+							? t('shared.postbox.usePostboxBulkActions.undo.movedMany', { count })
+							: t('components.postbox.postboxThreadList.movedUndo'),
 					{ kind: 'moved', scope: targetFolderId },
-					() => moveOp.run({ messageIds: ids, targetFolderId })
+					(chunk) => moveOp.run({ messageIds: chunk, targetFolderId })
 				);
 
 	const moveMsg = (id: Id<'mailMessages'>, targetFolderId: Id<'mailFolders'>) =>

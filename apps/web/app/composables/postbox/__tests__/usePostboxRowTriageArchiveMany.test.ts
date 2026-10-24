@@ -1,7 +1,8 @@
 /**
  * usePostboxRowTriage.archiveMany — the verb an Archive sweep lands on. One
- * mutation for the whole range, so one optimistic hide, one failure restore and
- * ONE undo entry that puts every row back.
+ * optimistic hide, one failure restore and ONE undo entry that puts every row
+ * back; a long range goes in archive calls of at most 100 messages, so none
+ * outgrows a transaction.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
@@ -16,11 +17,14 @@ vi.mock('@owlat/api', () => {
 
 let runs: Array<{ label: string; args: unknown }>;
 let outcome: { ok: boolean; result: unknown };
+/** When set, answers each call in turn (overrides `outcome`). */
+let outcomeFor: ((args: { messageIds: string[] }, call: number) => typeof outcome) | null;
 let registerMoveBack: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
 	runs = [];
 	outcome = { ok: true, result: null };
+	outcomeFor = null;
 	registerMoveBack = vi.fn();
 	vi.stubGlobal('useI18n', () => ({
 		t: (key: string, params?: { count?: number }) =>
@@ -31,7 +35,7 @@ beforeEach(() => {
 	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: { label: () => string }) => ({
 		run: vi.fn(async (args: unknown) => {
 			runs.push({ label: opts.label(), args });
-			return outcome;
+			return outcomeFor ? outcomeFor(args as { messageIds: string[] }, runs.length - 1) : outcome;
 		}),
 		isLoading: ref(false),
 	}));
@@ -51,7 +55,7 @@ async function triage() {
 const ARCHIVE = 'components.postbox.postboxThreadList.archiveOperation';
 
 describe('archiveMany', () => {
-	it('archives the whole range in one mutation with one undo entry', async () => {
+	it('archives a short range in one mutation with one undo entry', async () => {
 		const moved = [
 			{ messageId: 'a', sourceFolderId: 'inbox' },
 			{ messageId: 'b', sourceFolderId: 'inbox' },
@@ -70,6 +74,59 @@ describe('archiveMany', () => {
 			label: 'shared.postbox.usePostboxBulkActions.undo.archivedMany:3',
 			moved,
 		});
+	});
+
+	it('archives a long range in calls of at most 100, under one undo entry for all of it', async () => {
+		const ids = Array.from({ length: 250 }, (_, i) => `m${i}`);
+		outcomeFor = ({ messageIds }) => ({
+			ok: true,
+			result: {
+				ok: true,
+				moved: messageIds.map((messageId) => ({ messageId, sourceFolderId: 'inbox' })),
+			},
+		});
+		const t = await triage();
+
+		expect(await t.archiveMany(ids as never[])).toBe(true);
+
+		expect(runs.map((r) => r.label)).toEqual([ARCHIVE, ARCHIVE, ARCHIVE]);
+		expect(runs.map((r) => (r.args as { messageIds: string[] }).messageIds.length)).toEqual([
+			100, 100, 50,
+		]);
+		expect(runs.flatMap((r) => (r.args as { messageIds: string[] }).messageIds)).toEqual(ids);
+		expect(t.unhide).not.toHaveBeenCalled();
+		expect(registerMoveBack).toHaveBeenCalledTimes(1);
+		const entry = registerMoveBack.mock.calls[0]![0];
+		expect(entry.label).toBe('shared.postbox.usePostboxBulkActions.undo.archivedMany:250');
+		expect(entry.moved.map((m: { messageId: string }) => m.messageId)).toEqual(ids);
+	});
+
+	it('stops at a failed call: its rows and the unsent ones come back, the landed ones keep their undo', async () => {
+		const ids = Array.from({ length: 250 }, (_, i) => `m${i}`);
+		outcomeFor = ({ messageIds }, call) =>
+			call === 1
+				? { ok: false, result: null }
+				: {
+						ok: true,
+						result: {
+							ok: true,
+							moved: messageIds.map((messageId) => ({ messageId, sourceFolderId: 'inbox' })),
+						},
+					};
+		const t = await triage();
+
+		expect(await t.archiveMany(ids as never[])).toBe(false);
+
+		// The third call is never sent: one failure, one error.
+		expect(runs).toHaveLength(2);
+		expect(t.unhide.mock.calls.map(([id]) => id)).toEqual(ids.slice(100));
+		expect(registerMoveBack).toHaveBeenCalledTimes(1);
+		const entry = registerMoveBack.mock.calls[0]![0];
+		expect(entry.label).toBe('shared.postbox.usePostboxBulkActions.undo.archivedMany:100');
+		expect(entry.moved.map((m: { messageId: string }) => m.messageId)).toEqual(ids.slice(0, 100));
+		t.unhide.mockClear();
+		entry.after();
+		expect(t.unhide.mock.calls.map(([id]) => id)).toEqual(ids.slice(0, 100));
 	});
 
 	it('restores every row when the archive fails', async () => {

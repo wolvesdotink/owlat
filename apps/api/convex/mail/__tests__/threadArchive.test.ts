@@ -9,6 +9,10 @@
  * stopped, without skipping or repeating mail, through any run of snoozed
  * mail, and every call, the archive and its Undo, stays inside Convex's
  * transaction limits.
+ *
+ * The Postbox list's Archive sweep archives MESSAGES through
+ * `messageActions.archive` instead; its long-range round trip, in the client's
+ * calls of 100, is checked against the same limits at the end.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -167,8 +171,8 @@ async function archiveUntilDone(threadIds: Id<'mailThreads'>[], maxCalls = 50) {
 }
 
 /**
- * The Undo `useInboxesThreadArchive` registers: every moved message back to
- * its source folder, at most 100 per `move`.
+ * The Undo `registerMoveBack` runs (groupMovedBySourceFolder): every moved
+ * message back to its source folder, at most 100 per `move`.
  */
 async function undoArchive(
 	moved: { messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> }[]
@@ -562,5 +566,34 @@ describe('archiveThreads', () => {
 
 		expect(result.moved).toHaveLength(100);
 		expect(result.threads.every((outcome) => outcome.isDone && outcome.hasLeftInbox)).toBe(true);
+	});
+});
+
+describe('Postbox Archive sweep over a long range', () => {
+	it('archives 600 conversations in calls of 100 and undoes them within the transaction limits', async () => {
+		// One archive of all 600 exceeds the 4,096 index-range limit, so
+		// usePostboxRowTriage sends at most 100 messages per call, and the Undo
+		// (groupMovedBySourceFolder) puts them back 100 per move.
+		t = convexTest({ schema, modules, transactionLimits: true });
+		const { mailboxId, folders } = await seedBox(t);
+		const messageIds: Id<'mailMessages'>[] = [];
+		for (let i = 0; i < 600; i++) {
+			messageIds.push((await seedThread(t, mailboxId, folders, [{}])).messageIds[0]!);
+		}
+
+		const moved = [];
+		for (let i = 0; i < messageIds.length; i += 100) {
+			const result = await t.mutation(api.mail.messageActions.archive, {
+				messageIds: messageIds.slice(i, i + 100),
+			});
+			moved.push(...result!.moved);
+		}
+
+		expect(moved).toHaveLength(600);
+		for (const id of messageIds) expect(await folderOf(t, id)).toBe(folders.archive);
+
+		await undoArchive(moved);
+
+		for (const id of messageIds) expect(await folderOf(t, id)).toBe(folders.inbox);
 	});
 });

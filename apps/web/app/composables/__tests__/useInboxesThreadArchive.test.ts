@@ -366,23 +366,22 @@ describe('useInboxesThreadArchive', () => {
 		expect(runs[1]!.args.threads!.slice(1).every((thread) => !('cursor' in thread))).toBe(true);
 	});
 
-	it('undoes a long archive in moves of at most 100 messages, under its one Undo', async () => {
+	it('registers a long archive under its one Undo, which puts each bounded group back with `move`', async () => {
 		const api = await mount([mailRow('t1')]);
 		outcomes = [callResult([{ threadId: 't1', moved: 250 }])];
 		await api.archiveRow(api.rows.value[0]!);
+		expect(registerMoveBack).toHaveBeenCalledTimes(1);
 		const { moved, runMove } = registerMoveBack.mock.calls[0]![0];
 		expect(moved).toHaveLength(250);
 		runs = [];
 
-		await runMove({
-			messageIds: moved.map((m: { messageId: string }) => m.messageId),
+		// registerMoveBack splits the provenance into groups of at most 100.
+		const group = {
+			messageIds: moved.slice(0, 100).map((m: { messageId: string }) => m.messageId),
 			targetFolderId: 'inbox',
-		});
+		};
+		await runMove(group);
 
-		expect(runs.map((r) => r.label)).toEqual([UNDO_MOVE, UNDO_MOVE, UNDO_MOVE]);
-		expect(runs.map((r) => r.args.messageIds!.length)).toEqual([100, 100, 50]);
-		expect(runs.flatMap((r) => r.args.messageIds)).toEqual(
-			moved.map((m: { messageId: string }) => m.messageId)
-		);
+		expect(runs).toEqual([{ label: UNDO_MOVE, args: group }]);
 	});
 });

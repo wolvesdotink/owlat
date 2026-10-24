@@ -32,13 +32,6 @@ interface ArchivableRow {
 /** `archiveThreads` refuses more than this per call; a longer sweep is split. */
 const THREADS_PER_CALL = 100;
 
-/**
- * Messages one Undo `move` puts back. The archive moved them at most 100 per
- * call (its move budget) to stay inside a transaction's index-range limit,
- * and moving them back costs the same bookkeeping, so the Undo splits alike.
- */
-const MESSAGES_PER_UNDO_MOVE = 100;
-
 /** One conversation for `archiveThreads`, with where to resume it if a call left it unfinished. */
 type ThreadRequest = FunctionArgs<typeof api.mail.threadArchive.archiveThreads>['threads'][number];
 
@@ -122,14 +115,8 @@ export function useInboxesThreadArchive<R extends ArchivableRow>(args: {
 				label: t('dashboard.inboxes.archivedUndo', { count: archived.size }, archived.size),
 				kind: 'archived',
 				moved,
-				runMove: async (move) => {
-					for (let i = 0; i < move.messageIds.length; i += MESSAGES_PER_UNDO_MOVE) {
-						await moveOp.run({
-							...move,
-							messageIds: move.messageIds.slice(i, i + MESSAGES_PER_UNDO_MOVE),
-						});
-					}
-				},
+				// registerMoveBack hands these over in bounded calls, like the archive's.
+				runMove: (move) => moveOp.run(move),
 				after: () => {
 					for (const key of keyOf.values()) unhide(key);
 				},
