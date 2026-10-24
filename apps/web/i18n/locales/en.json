@@ -746,7 +746,8 @@
 					"thu": "Thu",
 					"tue": "Tue",
 					"wed": "Wed"
-				}
+				},
+				"windowLabel": "Working hours window"
 			},
 			"feedbackStatsCard": {
 				"approved": "Approved",
@@ -4827,7 +4828,7 @@
 				"all": "All mail",
 				"label": "Inbox view",
 				"priority": "Priority",
-				"title": "Priority mail or all mail (B)"
+				"title": "Priority mail or all mail"
 			},
 			"postboxInsertAvailability": {
 				"intro": "Here are a few times that work for me ({zone}):",
@@ -5193,7 +5194,8 @@
 					"unsnooze": "Un-snooze messages",
 					"unsubscribe": "Unsubscribe and archive"
 				},
-				"purgeConfirm": "Permanently delete {count} message? This cannot be undone. | Permanently delete {count} messages? This cannot be undone.",
+				"purgeConfirm": "Permanently delete {count} message? | Permanently delete {count} messages?",
+				"purgeConfirmBody": "This cannot be undone.",
 				"read": "Read",
 				"selected": "{count} selected",
 				"snooze": "Snooze",
@@ -5369,25 +5371,6 @@
 			"postboxShortcutHelp": {
 				"title": "Keyboard shortcuts"
 			},
-			"postboxShortcutSettings": {
-				"change": "Change",
-				"changeAriaLabel": "Change the shortcut for {shortcut}",
-				"heading": "Keyboard shortcuts",
-				"hint": "Pick the map you already know, then move the keys you disagree with. Press a key while a row is listening.",
-				"listening": "Press a key…",
-				"modifierRefused": "Shortcuts here are single keys — press a key without Ctrl, Cmd or Alt.",
-				"presetLabel": "Keyboard map",
-				"presets": {
-					"gmail": "Gmail",
-					"outlook": "Outlook",
-					"owlat": "Owlat (default)",
-					"superhuman": "Superhuman"
-				},
-				"reset": "Reset",
-				"resetAll": "Reset all my changes",
-				"taken": "{shortcut} already uses that key.",
-				"unbound": "Not set"
-			},
 			"postboxSnippetPicker": {
 				"empty": "No matching saved replies",
 				"listLabel": "Saved replies"
@@ -5441,7 +5424,9 @@
 				"menuLabel": "Conversation actions",
 				"muteConversation": "Mute conversation",
 				"noSubject": "(no subject)",
-				"unmuteHint": "Muted conversations stay out of the inbox."
+				"unmuteHint": "Muted conversations stay out of the inbox.",
+				"pinConversation": "Pin conversation",
+				"pinHint": "Keep it in the pinned band at the top of the Inbox"
 			},
 			"postboxThreadList": {
 				"archiveOperation": "Archive",
@@ -5529,7 +5514,10 @@
 				"snoozedUntil": "Snoozed until {when}",
 				"star": "Star",
 				"unmute": "Unmute conversation",
-				"unstar": "Unstar"
+				"unstar": "Unstar",
+				"pin": "Pin conversation",
+				"unpin": "Unpin conversation",
+				"pinnedChip": "Pinned to the top of the Inbox"
 			},
 			"postboxThreadRowFollowUp": {
 				"cancelLabel": "Cancel reply reminder",
@@ -5574,7 +5562,8 @@
 			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Unsubscribe from this mailing list",
-				"confirm": "Unsubscribe from this mailing list?\n\nOwlat will send the standard one-click unsubscribe request to {host}.",
+				"confirm": "Unsubscribe from this mailing list?",
+				"confirmBody": "Owlat will send the standard one-click unsubscribe request to {host}.",
 				"requestFailed": "Unsubscribe request failed — opening the unsubscribe page instead",
 				"requestSent": "Unsubscribe request sent",
 				"theSender": "the sender",
@@ -5664,7 +5653,7 @@
 			"postboxSubscriptionsPanel": {
 				"action": "Unsubscribe and archive | Unsubscribe and archive ({count})",
 				"clearSelection": "Clear selection",
-				"confirm": "Unsubscribe from {count} sender and archive their mail?",
+				"confirm": "Unsubscribe from {count} sender and archive their mail? | Unsubscribe from {count} senders and archive their mail?",
 				"empty": "No subscriptions found.",
 				"emptyHint": "Newsletters and other list mail show up here once some arrives.",
 				"heading": "Subscriptions",
@@ -6109,6 +6098,63 @@
 				"swipeHelp": "Drag a row sideways on a touchscreen to triage it. A mouse never triggers this.",
 				"swipeRightHelp": "The same gesture, the other way."
 			},
+			"preferencesShortcuts": {
+				"heading": "Keyboard shortcuts",
+				"hint": "Pick the map you already know, then change the keys you disagree with. Press a key while a row is listening.",
+				"presetLabel": "Keyboard map",
+				"presets": {
+					"gmail": "Gmail",
+					"outlook": "Outlook",
+					"owlat": "Owlat (default)",
+					"superhuman": "Superhuman"
+				},
+				"filterLabel": "Find a shortcut",
+				"filterPlaceholder": "Name or key, e.g. archive or ctrl",
+				"noMatch": "No shortcut matches “{query}”.",
+				"change": "Change",
+				"changeAriaLabel": "Change the shortcut for {shortcut}",
+				"listening": "Press a key…",
+				"reset": "Reset",
+				"resetAriaLabel": "Reset the shortcut for {shortcut}",
+				"resetAll": "Reset all my changes",
+				"unbound": "Not set",
+				"fixed": "Fixed",
+				"fixedReasons": {
+					"convention": "Works the same as in every other app.",
+					"layout": "Follows the key's position, so it works on every keyboard layout.",
+					"surface": "Its screen answers this key itself, so it can't be changed yet.",
+					"numbered": "The number picks the option in that place, so it stays."
+				},
+				"refused": {
+					"modifier": "This shortcut is a single key — press a key without Ctrl, Cmd or Alt.",
+					"needsModifier": "This shortcut needs Ctrl or Cmd — hold it while you press the key.",
+					"reserved": "Your browser or system keeps that key for itself — pick another.",
+					"taken": "{shortcut} already uses that key.",
+					"prefix": "That key and {shortcut} start the same way, so one of them could never fire."
+				},
+				"clashesHeading": "Some shortcuts share a key",
+				"clashesHint": "Only the first one fires. Change or reset one of them.",
+				"clashLine": "{keys} is used by {shortcuts}",
+				"clashesWith": "Shares a key with {shortcuts}",
+				"saveOperation": "Save keyboard shortcuts",
+				"scopes": {
+					"global": "Everywhere",
+					"postbox": "Mail",
+					"composer": "Writing a message",
+					"inbox": "Team inbox threads",
+					"review": "Team inbox updates",
+					"workbench": "Workbench",
+					"peek": "Workbench panel",
+					"answer": "Answer mode",
+					"workspace": "Desktop workspaces",
+					"inboxList": "Team inbox list",
+					"answerQueue": "Answer queue",
+					"askCard": "The AI’s questions",
+					"mailCard": "Answer queue: follow-ups",
+					"teamCard": "Answer queue: Team inbox drafts",
+					"mentionCard": "Answer queue: mentions"
+				}
+			},
 			"preferencesYourData": {
 				"mailExportAction": "Download .mbox",
 				"mailExportDone": "Downloaded {count} messages.",
@@ -6469,6 +6515,17 @@
 				"title": "Logo",
 				"upload": "Upload",
 				"uploadUrlOperation": "Prepare logo upload"
+			},
+			"resetToDefault": {
+				"reset": "Reset",
+				"resetLabel": "Reset {setting} to its default",
+				"names": {
+					"autoCheckUpdates": "Update check at startup",
+					"dailyBriefTime": "Daily brief time",
+					"shareLinkExpiry": "Share link expiry",
+					"voicePersonalize": "Personalize AI drafts for {address}",
+					"workspaceMute": "Mute notifications for {workspace}"
+				}
 			}
 		},
 		"shareLinksPopover": {
@@ -6493,24 +6550,34 @@
 			"unsavedHint": "Save your changes before creating a share link."
 		},
 		"system": {
-			"imapServersCard": {
-				"title": "IMAP servers",
-				"intro": "IMAP servers that reported to this backend in the last 7 days. Update the backend first, then the IMAP container: the IMAP server may run one release behind the backend, never ahead of it.",
-				"loading": "Loading IMAP servers…",
-				"empty": "No IMAP server reported in the last 7 days. That is expected when this deployment does not run the IMAP container.",
-				"legacyWarning": "An IMAP server from 0.6.7 or older handled a login on {date}. It does not report its version, so it is not listed and is not stopped at startup. Update the IMAP container to the backend's release.",
-				"unsupportedWarning": "An IMAP server older than this backend supports was seen. The backend refuses its logins, and a server that reports its version does not start, until you update the IMAP container.",
-				"aheadWarning": "An IMAP server newer than this backend reported in. It does not serve mail until the backend is updated.",
-				"truncated": "Showing the {count} most recent. The warnings above cover every IMAP server in the last 7 days.",
+			"workerVersionsCard": {
+				"title": "Worker versions",
+				"intro": "The workers that reported to this backend in the last 7 days, per service, and whether the backend still serves their wire version. Update the backend first, then the worker containers: a worker may run one release behind the backend, never ahead of it.",
+				"loading": "Loading worker versions…",
+				"contract": "Backend speaks wire version {current}, serves versions {min} to {current}",
+				"contractSingle": "Backend speaks and serves wire version {current} only",
+				"empty": "Nothing reported in the last 7 days. That is expected when this deployment does not run this service.",
+				"legacyImapWarning": "An IMAP server from 0.6.7 or older handled a login on {date}. It does not report its version, so it is not listed and is not stopped at startup. Update the IMAP container to the backend's release.",
+				"unsupportedWarning": "A worker older than this backend supports reported in the last 7 days. Update its container to the backend's release.",
+				"aheadWarning": "A worker newer than this backend reported in. Update the backend first.",
+				"skew": "Wire versions {oldest} to {newest} reported in the last 7 days. Contract steps that need the newer one wait until no older worker is running.",
+				"truncated": "Showing the {count} most recent. The warnings above cover every report of this service in the last 7 days.",
 				"host": "Host",
 				"version": "Release",
 				"lastSeen": "Last report",
+				"notLive": "stopped reporting",
 				"wireVersion": "(wire version {version})",
 				"verdict": {
 					"current": "Current",
 					"supported": "Older, supported",
 					"unsupported": "Not supported",
 					"ahead": "Waiting for backend update"
+				},
+				"services": {
+					"imap": "IMAP server",
+					"mailSync": "Mail sync",
+					"mta": "MTA",
+					"codeWorker": "Code worker"
 				}
 			},
 			"llmSpendCard": {
@@ -6540,6 +6607,8 @@
 				"completedAt": "completed {date}",
 				"lastProgress": "last progress {date}",
 				"waitsFor": "Starts after {names} has completed.",
+				"waitsForWorkersLagging": "{service}: waits until every worker runs wire version {version} or newer. One still runs {oldest}.",
+				"waitsForWorkersMissing": "{service}: waits for a worker to report wire version {version} or newer.",
 				"interruptedHint": "No progress for a while: its background job stopped. Run again to resume from the last recorded page.",
 				"failedHint": "Fix the cause, then run again to retry from the last recorded page. The maintenance guide has the CLI commands for the same steps.",
 				"startsItself": "Also starts by itself in the background. Running it here only starts it sooner.",
@@ -11287,11 +11356,17 @@
 				"title": "Team inbox",
 				"undo": {
 					"assigned": "Assigned",
+					"assignedMany": "Assigned {count} conversation | Assigned {count} conversations",
 					"assignedTo": "Assigned to {name}",
+					"assignedToMany": "Assigned {count} conversation to {name} | Assigned {count} conversations to {name}",
 					"assignedToYou": "Assigned to you",
+					"assignedToYouMany": "Assigned {count} conversation to you | Assigned {count} conversations to you",
 					"resolved": "Resolved",
+					"resolvedMany": "Resolved {count} conversation | Resolved {count} conversations",
 					"snoozed": "Snoozed",
-					"unassigned": "Unassigned"
+					"snoozedMany": "Snoozed {count} conversation | Snoozed {count} conversations",
+					"unassigned": "Unassigned",
+					"unassignedMany": "Unassigned {count} conversation | Unassigned {count} conversations"
 				},
 				"unsnoozeThreadOperation": "Unsnooze thread",
 				"updateThreadStatusOperation": "Update thread status",
@@ -12188,7 +12263,8 @@
 				}
 			},
 			"shortcuts": {
-				"intro": "Pick a set of keys you already know from another mail app, or change single keys. Press ? anywhere to see them.",
+				"intro": "Every key the app answers, in one place. Pick a set you already know from another mail app, change single keys, or search for one.",
+				"introHelp": "Press {key} anywhere to see the keys that work there.",
 				"pageTitle": "Keyboard shortcuts — Owlat"
 			},
 			"signatures": {
@@ -13208,7 +13284,8 @@
 				"draftsResumed": "Drafts resumed",
 				"applied": "Applied {count} suggestion | Applied {count} suggestions"
 			},
-			"confirmUnsubscribe": "Unsubscribe from {name}? Their mail will be archived from now on.",
+			"confirmUnsubscribe": "Unsubscribe from {name}?",
+			"confirmUnsubscribeBody": "Their mail will be archived from now on.",
 			"shortcuts": {
 				"autoArchive": "Auto-archive this sender's mail",
 				"unsubscribe": "Unsubscribe from this sender"
@@ -13483,6 +13560,15 @@
 				"discard": "Discard rule draft",
 				"test": "Test rule"
 			}
+		},
+		"pins": {
+			"title": "Pinned",
+			"count": "{count} of {limit}",
+			"operation": "Pin conversation",
+			"unpin": "Unpin",
+			"unpinNamed": "Unpin “{subject}”",
+			"full": "You can pin up to 5 conversations. Unpin one to make room.",
+			"dropHint": "Drop here to pin"
 		}
 	},
 	"recipient": {
@@ -15734,8 +15820,16 @@
 				"recategorizeThread": "Recategorize thread"
 			},
 			"usePostboxTriageUndo": {
+				"grouped": {
+					"archived": "Archived {count} message | Archived {count} messages",
+					"moved": "Moved {count} message | Moved {count} messages",
+					"spam": "Marked {count} message as spam | Marked {count} messages as spam",
+					"trashed": "Moved {count} message to trash | Moved {count} messages to trash"
+				},
 				"keyHint": "{keys} to undo",
-				"undo": "Undo"
+				"keyHintLast": "{keys} undoes the last",
+				"undo": "Undo",
+				"undoAll": "Undo all"
 			},
 			"usePostboxImageAllowlist": {
 				"allowOperation": "Always show images from this sender",
@@ -15755,7 +15849,8 @@
 				"moveOperation": "Move messages",
 				"unsubscribeOperation": "Unsubscribe from bundle",
 				"undoArchived": "Archived {count} messages",
-				"unsubscribeConfirm": "Unsubscribe from {count} senders and archive their mail? Each one is a request sent on your behalf."
+				"unsubscribeConfirm": "Unsubscribe from {count} sender and archive their mail? | Unsubscribe from {count} senders and archive their mail?",
+				"unsubscribeConfirmBody": "Each one is a request sent on your behalf."
 			},
 			"usePostboxTriageSuggestion": {
 				"createRule": "Create rule from suggestion",
@@ -16449,6 +16544,32 @@
 					"title": "Push notifications",
 					"keywords": "web push, browser notifications, phone, mobile, pwa, notify, devices"
 				}
+			},
+			"adminControls": {
+				"dkim": {
+					"title": "DKIM signing",
+					"keywords": "dkim, domain key, signing key, dns records, spf, dmarc, sender authentication"
+				},
+				"aiProviderKey": {
+					"title": "AI provider API key",
+					"keywords": "api key, ai key, openai key, anthropic key, language model, llm, model provider"
+				},
+				"autonomy": {
+					"title": "AI autonomy",
+					"keywords": "autonomy, auto-reply, send automatically, draft only, autopilot, agent mode"
+				},
+				"rampPace": {
+					"title": "Delivery ramp pace",
+					"keywords": "ramp, warm-up, warmup, ip warming, preset, how hard to ramp, conservative"
+				},
+				"webhookSecret": {
+					"title": "Webhook signing secret",
+					"keywords": "webhook secret, signing secret, signature, hmac, x-owlat-signature, regenerate secret"
+				},
+				"brandColors": {
+					"title": "Brand colors",
+					"keywords": "brand colours, colors, colours, primary color, link color, palette, theme color"
+				}
 			}
 		},
 		"setupMtaIdentity": {
@@ -16490,6 +16611,8 @@
 				"triage": "Triage",
 				"workspace": "Workspaces",
 				"review": "Updates list",
+				"teamInbox": "Team inbox",
+				"workbench": "Workbench",
 				"answer": "Answer mode"
 			},
 			"labels": {
@@ -16552,7 +16675,33 @@
 				"previousQueueItem": "Previous item in the Answer queue",
 				"nextQueueItem": "Next item in the Answer queue",
 				"savedReplies": "Insert a saved reply",
-				"writeNote": "Write an internal note (Team inbox threads)"
+				"writeNote": "Write an internal note (Team inbox threads)",
+				"openSettings": "Open settings",
+				"openAssistant": "Open the assistant",
+				"jumpToSidebarItem": "Jump to a sidebar item (hold Alt to see the numbers)",
+				"toggleFolderRail": "Collapse / expand the folder list",
+				"assignToMe": "Assign the thread to me",
+				"replyInAnswerMode": "Reply in Answer mode",
+				"nextLine": "Next line",
+				"previousLine": "Previous line",
+				"openLine": "Open the email behind the line",
+				"markLineDone": "Mark the line done",
+				"replyToUpdate": "Send a Team inbox update to the Answer queue",
+				"nextPeekEmail": "Next email in the panel",
+				"previousPeekEmail": "Previous email in the panel",
+				"closePeek": "Close the panel",
+				"undoQueueStep": "Undo the last step in the Answer queue",
+				"askKnowledge": "Ask knowledge",
+				"dismissUpdate": "Mark the update done",
+				"markFollowUpDone": "Mark the follow-up done",
+				"previousCard": "Previous card",
+				"nextCard": "Next card",
+				"sendOrApprove": "Send the reply, or approve the draft",
+				"approveDraft": "Review & send the draft",
+				"rejectDraft": "Reject the draft",
+				"openMention": "Open the mention to reply",
+				"markMentionRead": "Mark the mention read",
+				"skipCard": "Skip for now"
 			}
 		},
 		"signatureBadge": {
@@ -17175,11 +17324,15 @@
 			"exportFailed": "Export failed. Please try again.",
 			"exported": "Exported {count} contact to {filename} | Exported {count} contacts to {filename}",
 			"listFallback": "list",
+			"nothingAdded": "All selected contacts are already in \"{list}\"",
 			"noContactsToExport": "No contacts to export",
+			"nothingRemoved": "None of the selected contacts are in \"{list}\"",
 			"removeContactsOperation": "Remove contacts from topic",
 			"removedFromList": "Removed {count} contact from \"{list}\" | Removed {count} contacts from \"{list}\"",
 			"selectAllFailed": "Failed to select all contacts. Please try again.",
-			"selectionTruncated": "Selected the first {count} matching contacts. Refine your filter to act on the rest."
+			"selectionTruncated": "Selected the first {count} matching contacts. Refine your filter to act on the rest.",
+			"undoAddOperation": "Undo adding contacts to topic",
+			"undoRemoveOperation": "Undo removing contacts from topic"
 		},
 		"useContactDetail": {
 			"clearPropertyOperation": "Clear contact property",
@@ -17862,7 +18015,9 @@
 				"showOriginal": "Download original (.eml)",
 				"copyLink": "Copy link",
 				"linkCopied": "Link copied",
-				"linkCopyFailed": "Could not copy the link"
+				"linkCopyFailed": "Could not copy the link",
+				"pin": "Pin conversation",
+				"unpin": "Unpin conversation"
 			},
 			"teamThread": {
 				"heading": "This conversation",
@@ -18463,7 +18618,16 @@
 			"pageTitleGeneric": "Error — Owlat",
 			"pageTitleNotFound": "Page not found — Owlat",
 			"serverError": "Something went wrong on our end. Please try again later.",
+			"toast": "Something went wrong. Please refresh and try again.",
 			"unexpected": "An unexpected error occurred."
+		},
+		"paneError": {
+			"page": "This page couldn't be displayed.",
+			"reader": "This conversation couldn't be displayed.",
+			"messageBody": "This message couldn't be displayed.",
+			"list": "The message list couldn't be displayed.",
+			"composer": "The composer couldn't be displayed.",
+			"detail": "Everything else still works. Try again, or open something else."
 		},
 		"preferences": {
 			"title": "Preferences",

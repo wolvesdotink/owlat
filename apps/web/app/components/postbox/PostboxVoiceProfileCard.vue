@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t, locale } = useI18n();
 
@@ -45,8 +46,11 @@ const lastComputedLabel = computed(() => {
 });
 
 async function onToggle(event: Event) {
+	await setPersonalize((event.target as HTMLInputElement).checked);
+}
+
+async function setPersonalize(next: boolean) {
 	if (data.value === undefined) return;
-	const next = (event.target as HTMLInputElement).checked;
 	await setEnabled.run({ mailboxId: props.mailboxId, enabled: next });
 }
 
@@ -89,6 +93,16 @@ async function onRemoveAdjustment(kind: string) {
 					{{ t('components.postbox.postboxVoiceProfileCard.personalize') }}
 				</span>
 			</label>
+			<!-- Off is the default; outside the <label> so it never becomes its control. -->
+			<SettingsResetToDefault
+				v-if="data !== undefined"
+				:changed="enabled"
+				:label="
+					t('components.settings.resetToDefault.names.voicePersonalize', { address: address })
+				"
+				:disabled="setEnabled.isLoading.value || !!error"
+				@reset="setPersonalize(false)"
+			/>
 		</header>
 
 		<div v-if="isLoading" class="p-6 flex justify-center">

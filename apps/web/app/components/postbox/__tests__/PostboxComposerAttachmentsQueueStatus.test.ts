@@ -4,8 +4,8 @@
  * is added, reads how many files wait for a transfer slot, says when none do
  * any more, and stays put while bytes go out.
  */
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { UploadChip } from '~/composables/postbox/postboxAttachmentUploads';
 import { formatCompactFileSize } from '~/utils/formatters';
@@ -19,7 +19,6 @@ beforeAll(() => {
 		shouldOfferShareLink,
 	});
 });
-enableAutoUnmount(afterEach);
 
 const meter = { visible: false, amber: false, ratio: 0, totalBytes: 0, budgetBytes: 1 };
 

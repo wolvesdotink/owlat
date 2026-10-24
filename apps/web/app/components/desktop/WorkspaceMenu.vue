@@ -102,6 +102,7 @@ function onClickOutside(e: MouseEvent): void {
 
 watch(open, (isOpen) => {
 	if (isOpen) {
+		// oxlint-disable-next-line owlat/no-raw-keydown-listener -- the open menu's own focus keys (arrows, Home, End, Escape)
 		document.addEventListener('keydown', onKeydown);
 		document.addEventListener('click', onClickOutside, true);
 	} else {

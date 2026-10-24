@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { ThemeOption } from '~/composables/useAppTheme';
+import { THEME_DEFAULT, type ThemeOption } from '~/composables/useAppTheme';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t } = useI18n();
 const { isDesktop } = useDesktopContext();
@@ -36,9 +37,16 @@ const themeOptions = computed<
 <template>
 	<section class="card mb-6">
 		<div class="mb-4">
-			<h2 class="font-semibold text-text-primary">
-				{{ t('components.preferences.preferencesAppearance.title') }}
-			</h2>
+			<div class="flex items-center gap-2">
+				<h2 class="font-semibold text-text-primary">
+					{{ t('components.preferences.preferencesAppearance.title') }}
+				</h2>
+				<SettingsResetToDefault
+					:changed="themePreference !== THEME_DEFAULT"
+					:label="t('components.preferences.preferencesAppearance.title')"
+					@reset="setTheme(THEME_DEFAULT)"
+				/>
+			</div>
 			<p class="text-sm text-text-secondary">
 				{{ t('components.preferences.preferencesAppearance.subtitle') }}
 			</p>

@@ -3,7 +3,7 @@
  * chord, and Esc leaves it BEFORE the page sees the press, so one press is one
  * action. A dialog, a text field or a page that owns Esc keeps it.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -47,7 +47,6 @@ afterEach(() => {
 	document.removeEventListener('keydown', onDocumentKeydown);
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 describe('ZenExit', () => {
@@ -88,11 +87,13 @@ describe('ZenExit', () => {
 		const dialog = document.createElement('div');
 		dialog.setAttribute('role', 'dialog');
 		document.body.append(dialog);
+		onTestFinished(() => dialog.remove());
 		press({ key: 'Escape' });
 		dialog.remove();
 
 		const input = document.createElement('input');
 		document.body.append(input);
+		onTestFinished(() => input.remove());
 		press({ key: 'Escape' }, input);
 
 		expect(useZenMode().isZen.value).toBe(true);

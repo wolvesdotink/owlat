@@ -98,6 +98,7 @@ const handleEscape = (event: KeyboardEvent) => {
 	if (event.key === 'Escape') isOpen.value = false;
 };
 watch(isOpen, (open) => {
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape closes the popover
 	if (open) document.addEventListener('keydown', handleEscape);
 	else document.removeEventListener('keydown', handleEscape);
 });

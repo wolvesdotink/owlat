@@ -33,6 +33,7 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const { showToast } = useToast();
+const confirm = useConfirm();
 
 const mailboxIdRef = computed(() => props.mailboxId);
 const bulk = usePostboxBulkActions(mailboxIdRef);
@@ -99,25 +100,24 @@ const unsubscribeOp = useBackendOperation(api.mail.subscriptions.unsubscribeAndA
 });
 
 async function unsubscribeSelected() {
+	// Read before asking: the answer comes back later, and the request must go
+	// to exactly the senders and rows the question named.
+	const mailboxId = props.mailboxId;
 	const senderEmails = unsubscribableSenders.value.map((sender) => sender.senderEmail);
+	const messageIds = bulk.ids.value;
 	if (senderEmails.length === 0) return;
 	// N state-changing POSTs at third parties — always behind an explicit yes.
-	if (
-		!window.confirm(
-			t(
-				'components.postbox.postboxQuickActionsBar.unsubscribeConfirm',
-				{ count: senderEmails.length },
-				senderEmails.length
-			)
-		)
-	) {
-		return;
-	}
-	const outcome = await unsubscribeOp.run({
-		mailboxId: props.mailboxId,
-		senderEmails,
-		messageIds: bulk.ids.value,
+	const confirmed = await confirm({
+		title: t(
+			'components.postbox.postboxQuickActionsBar.unsubscribeConfirm',
+			{ count: senderEmails.length },
+			senderEmails.length
+		),
+		confirmText: t('components.postbox.postboxQuickActionsBar.unsubscribe'),
+		variant: 'warning',
 	});
+	if (!confirmed) return;
+	const outcome = await unsubscribeOp.run({ mailboxId, senderEmails, messageIds });
 	if (!outcome.ok) return;
 	// Every line, not just the headline: "2 unsubscribed" alone hides the 148
 	// archived and the one that still needs finishing by hand.
@@ -133,11 +133,18 @@ async function unsubscribeSelected() {
 // it behind a confirm. Only offered from Trash, where "Delete" already means
 // "remove for good" rather than "move to Trash".
 async function purgeSelected() {
-	const n = bulk.count.value;
+	// The ids the question counted, not whatever is selected once it is answered.
+	const messageIds = bulk.ids.value;
+	const n = messageIds.length;
 	if (n === 0) return;
-	if (!window.confirm(t('components.postbox.postboxQuickActionsBar.purgeConfirm', { count: n }, n)))
-		return;
-	await bulk.purgeSelected();
+	const confirmed = await confirm({
+		title: t('components.postbox.postboxQuickActionsBar.purgeConfirm', { count: n }, n),
+		body: t('components.postbox.postboxQuickActionsBar.purgeConfirmBody'),
+		confirmText: t('components.postbox.postboxQuickActionsBar.deleteForever'),
+		variant: 'danger',
+	});
+	if (!confirmed) return;
+	await bulk.purgeSelected(messageIds);
 }
 
 /** One string, so five near-identical items cannot drift apart. */

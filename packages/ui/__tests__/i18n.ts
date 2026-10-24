@@ -54,7 +54,20 @@ export function createForeignI18n() {
 
 export interface MountedUi {
 	el: HTMLElement;
+	/** Unmounts the app and removes its host element; later calls do nothing. */
 	unmount: () => void;
+}
+
+/** Apps `mountUi()` made that are still mounted; drained by `unmountAllUi()`. */
+const liveMounts = new Set<MountedUi>();
+
+/**
+ * Unmount everything `mountUi()` mounted and the test did not unmount itself.
+ * The vitest setup runs it after every test, so a failed assertion cannot leave
+ * an app, its listeners or its host element behind for the next test.
+ */
+export function unmountAllUi(): void {
+	for (const mounted of liveMounts) mounted.unmount();
 }
 
 /**
@@ -79,11 +92,14 @@ export function mountUi(
 	if (plugin) app.use(plugin);
 	app.component('Icon', IconStub);
 	app.mount(el);
-	return {
+	const mounted: MountedUi = {
 		el,
 		unmount: () => {
+			if (!liveMounts.delete(mounted)) return;
 			app.unmount();
 			el.remove();
 		},
 	};
+	liveMounts.add(mounted);
+	return mounted;
 }

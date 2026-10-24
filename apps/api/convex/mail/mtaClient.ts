@@ -10,6 +10,7 @@
  * The trailing slash is trimmed so callers can append `/path` directly.
  */
 
+import { CORRELATION_HEADER, mintCorrelationId } from '@owlat/shared/correlation';
 import { getOptional } from '../lib/env';
 import { FETCH_TIMEOUTS, fetchWithTimeout } from '../lib/fetchWithTimeout';
 import { logError, logWarn } from '../lib/runtimeLog';
@@ -45,6 +46,10 @@ export const MTA_FETCH_TIMEOUT_MS = 10_000;
  * request is aborted when no response has arrived after `timeoutMs`, so a hung
  * MTA cannot hold the action until the Convex runtime kills it. Rejects on a
  * network failure or the timeout; the status is the caller's to judge.
+ *
+ * Every call carries an `x-owlat-correlation` header: the caller's own when it
+ * set one in `init.headers`, else a fresh id, so the MTA's log lines for the
+ * request can be found from either side.
  */
 export async function mtaFetch(
 	config: MtaConfig,
@@ -54,6 +59,7 @@ export async function mtaFetch(
 ): Promise<Response> {
 	const headers = new Headers(init.headers);
 	headers.set('Authorization', `Bearer ${config.apiKey}`);
+	if (!headers.has(CORRELATION_HEADER)) headers.set(CORRELATION_HEADER, mintCorrelationId('mta'));
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), timeoutMs);
 	try {

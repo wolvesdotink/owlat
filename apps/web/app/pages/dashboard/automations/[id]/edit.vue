@@ -811,7 +811,7 @@ onUnmounted(() => {
 							     click is a larger target for the pointer. -->
 							<div
 								:class="[
-									'card p-4 cursor-pointer transition-all has-[.step-title:focus-visible]:ring-2 has-[.step-title:focus-visible]:ring-brand',
+									'card p-4 cursor-pointer transition-[border-color,box-shadow] has-[.step-title:focus-visible]:ring-2 has-[.step-title:focus-visible]:ring-brand',
 									selectedStepId === step._id
 										? 'ring-2 ring-brand border-brand'
 										: 'hover:border-border-default',

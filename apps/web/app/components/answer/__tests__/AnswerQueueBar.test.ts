@@ -6,10 +6,16 @@
  * keeps the room in the one-line bar.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AnswerQueueBar from '../AnswerQueueBar.vue';
+import {
+	applyShortcutPreferences,
+	pushShortcutScope,
+	resetShortcutPreferences,
+	resetShortcutScopes,
+} from '~/utils/shortcutScope';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -60,8 +66,13 @@ beforeAll(() => {
 	});
 });
 
-enableAutoUnmount(afterEach);
+afterEach(() => {
+	resetShortcutScopes();
+	resetShortcutPreferences();
+});
 beforeEach(() => {
+	// AnswerModeFrame claims the scope on the real page.
+	pushShortcutScope('answer');
 	provided = session;
 	active.value = true;
 	isCurrentRoute.value = true;
@@ -116,8 +127,11 @@ function setWidth(width: number) {
 	}) as typeof window.matchMedia;
 }
 
+// The bar's keys go through the app-wide dispatcher, a document listener.
 function press(key: string) {
-	window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true }));
+	document.body.dispatchEvent(
+		new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+	);
 }
 
 describe('AnswerQueueBar', () => {
@@ -162,6 +176,18 @@ describe('AnswerQueueBar', () => {
 	it('e archives the Postbox item and finishes it', async () => {
 		mountBar();
 		press('e');
+		await flushPromises();
+		expect(session.complete).toHaveBeenCalledWith('archived', expect.any(Function));
+	});
+
+	it('follows a remap, in the key and in the menu hint', async () => {
+		applyShortcutPreferences('owlat', [{ id: 'answer.archive', keys: ['y'] }]);
+		const wrapper = mountBar();
+		expect(wrapper.get('[data-testid="answer-queue-archive"]').text()).toContain('Y');
+		press('e');
+		await flushPromises();
+		expect(session.complete).not.toHaveBeenCalled();
+		press('y');
 		await flushPromises();
 		expect(session.complete).toHaveBeenCalledWith('archived', expect.any(Function));
 	});

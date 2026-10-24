@@ -12,8 +12,15 @@
  *   .ui-proximity                              — nearest-target hover emphasis
  *   .ui-presence-ring                          — pulsing "here now" avatar halo
  *   .ui-window-enter                           — slow spring mount for a new window
+ *   .ui-meter-fill                             — layout-free progress/meter fill
  *
  * The matching NumberTicker component lives in components/ui/NumberTicker.vue.
+ *
+ * Looping effects (the presence halo here, the skeleton shimmer and the
+ * progress sweep in their components) animate only opacity or transform, step
+ * through a handful of frames instead of repainting every one, and read
+ * `--ui-animation-state`, which utils/visibleAnimation.ts sets to `running`
+ * only while the element is on screen in a visible tab.
  */
 
 /*
@@ -123,28 +130,61 @@
 /*
  * Presence ring — a softly-pulsing success halo on an avatar to say "this
  * person is here right now" (shared-inbox thread presence + the assignee avatar
- * on a team-inbox row). Box-shadow only, so it adds ZERO layout shift and never
- * nudges neighbours in an overlap stack. Two beats fade an outer glow in/out
- * atop a steady 1.5px ring. Wrap the avatar: `<span class="ui-presence-ring">`.
+ * on a team-inbox row). Render it through `<UiPresenceRing>`, which registers
+ * the halo with the shared visibility observer; the bare class holds a steady
+ * ring with no pulse.
+ *
+ * The steady 1.5px ring is a static box-shadow on the host. The pulsing outer
+ * glow is a second, static shadow on a pointer-transparent pseudo-element whose
+ * OPACITY steps up and down, so a beat re-composites one layer instead of
+ * repainting a shadow every frame. Both are shadows, so the halo adds zero
+ * layout and never nudges neighbours in an overlap stack. The host is
+ * positioned only to anchor the pseudo-element, which lifts it into the
+ * positioned paint layer: a non-ring sibling that overlaps it in a stack (an
+ * overflow "+2" chip) needs `position: relative` as well to keep painting on
+ * top in document order.
  */
 .ui-presence-ring {
+	position: relative;
 	display: inline-flex;
 	border-radius: 9999px;
 	box-shadow: 0 0 0 1.5px var(--color-success);
-	animation: ui-presence-pulse 2s var(--ease-spring, ease-in-out) infinite;
 }
-@keyframes ui-presence-pulse {
+.ui-presence-ring::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	pointer-events: none;
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 40%, transparent);
+	opacity: 0;
+	animation: ui-presence-glow 2s steps(8) infinite;
+	animation-play-state: var(--ui-animation-state, paused);
+}
+@keyframes ui-presence-glow {
 	0%,
 	100% {
-		box-shadow:
-			0 0 0 1.5px var(--color-success),
-			0 0 0 3px color-mix(in srgb, var(--color-success) 40%, transparent);
+		opacity: 1;
 	}
 	50% {
-		box-shadow:
-			0 0 0 1.5px var(--color-success),
-			0 0 0 3px color-mix(in srgb, var(--color-success) 0%, transparent);
+		opacity: 0;
 	}
+}
+
+/*
+ * Layout-free meter fill. The fill is always exactly as wide as its track and
+ * slides in from the left, so a changing value moves a composited layer
+ * instead of re-laying-out the row on every frame the way an animated `width`
+ * does. Translate rather than scaleX: scaling would squash a rounded end cap.
+ *
+ * Contract: the track clips (`overflow: hidden`), the fill sets
+ * `--ui-meter-value` (0–100) through `meterFillStyle()` (utils/meterFill.ts),
+ * and the consumer names the transition (`transition-transform` plus its
+ * duration and easing).
+ */
+.ui-meter-fill {
+	width: 100%;
+	transform: translateX(calc(var(--ui-meter-value, 0) * 1% - 100%));
 }
 
 /*
@@ -188,8 +228,8 @@
 		scale: none;
 	}
 	/* Motion is information, not decoration — hold a static ring when reduced. */
-	.ui-presence-ring {
+	.ui-presence-ring::after {
 		animation: none;
-		box-shadow: 0 0 0 1.5px var(--color-success);
+		opacity: 0;
 	}
 }

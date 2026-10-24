@@ -380,3 +380,52 @@ describe('Desktop updates — the unsaved policy', () => {
 		expect(setHasChanges).toHaveBeenLastCalledWith(false);
 	});
 });
+
+describe('Desktop updates — reset to default', () => {
+	const resets = (wrapper: ReturnType<typeof mountPage>) =>
+		wrapper
+			.findAll('[data-testid="setting-reset"] button')
+			.map((button) => button.attributes('aria-label'));
+
+	it('marks nothing for the shipped policy', () => {
+		expect(resets(mountPage())).toEqual([]);
+	});
+
+	it('marks a stored non-default mode, channel and defer window', () => {
+		policy.value = storedPolicy({ mode: 'paused', channel: 'prerelease', deferHours: 24 });
+		expect(resets(mountPage())).toEqual([
+			'Reset Mode to its default',
+			'Reset Channel to its default',
+			'Reset Wait before offering a new release to its default',
+		]);
+	});
+
+	it('puts the default in the draft only: the policy saves on Save', async () => {
+		policy.value = storedPolicy({ mode: 'paused', deferHours: 24 });
+		const wrapper = mountPage();
+		const reset = wrapper
+			.findAll('[data-testid="setting-reset"] button')
+			.find((button) => button.attributes('aria-label') === 'Reset Mode to its default');
+		await reset!.trigger('click');
+
+		expect(
+			(wrapper.find('[data-testid="desktop-updates-mode-latest"]').element as HTMLInputElement)
+				.checked
+		).toBe(true);
+		expect(resets(wrapper)).toEqual(['Reset Wait before offering a new release to its default']);
+		expect(savePolicy).not.toHaveBeenCalled();
+
+		await wrapper.find(SAVE).trigger('click');
+		await flushPromises();
+		expect(savePolicy).toHaveBeenCalledWith(
+			expect.objectContaining({ mode: 'latest', channel: 'stable', deferHours: 24 })
+		);
+	});
+
+	it('keeps the reset as locked as the controls for a member without settings:manage', () => {
+		canManageSettings.value = false;
+		policy.value = storedPolicy({ mode: 'paused' });
+		const [reset] = mountPage().findAll('[data-testid="setting-reset"] button');
+		expect(reset!.attributes('disabled')).toBeDefined();
+	});
+});

@@ -21,12 +21,14 @@ import {
 	combineContentScan,
 	isEmptyAudienceComplete,
 	isPlannedTotalCounted,
+	isSendPrepared,
 	isTimezoneScheduled,
 	makeVariantBucketer,
 	pageSizeForSlice,
 	resolveParkInstant,
 	type SendPlanCapacity,
 	type SendPlanJobRow,
+	wasLatestSendPrepared,
 } from '../sendPlanning';
 import { planTodaysSlice, type SendPlanState } from '../multiDaySendPlan';
 import { testFractionForSplit } from '../sendVariantSplit';
@@ -65,6 +67,35 @@ describe('classifyStartSendSkip', () => {
 		);
 		expect(classifyStartSendSkip({ status: 'scheduled', scheduledAt: NOW }, NOW)).toBeUndefined();
 		expect(classifyStartSendSkip({ status: 'scheduled' }, NOW)).toBeUndefined();
+	});
+});
+
+describe('whether a send was prepared', () => {
+	const current = { startedAt: NOW };
+	const earlier = { startedAt: NOW - 60_000 };
+
+	it('stops a second hop only while the prepared send is running', () => {
+		expect(isSendPrepared({ status: 'sending', sentAt: NOW }, current)).toBe(true);
+		expect(isSendPrepared({ status: 'sending', sentAt: NOW }, earlier)).toBe(false);
+		expect(isSendPrepared({ status: 'sending', sentAt: NOW }, null)).toBe(false);
+		expect(isSendPrepared({ status: 'sent', sentAt: NOW }, current)).toBe(false);
+	});
+
+	it('keeps the latest prepared send prepared after it completed or stopped', () => {
+		for (const status of ['sending', 'sent', 'draft', 'pending_review']) {
+			expect(wasLatestSendPrepared({ status, sentAt: NOW }, current)).toBe(true);
+		}
+	});
+
+	it('does not take a job of an earlier send for the latest one', () => {
+		expect(wasLatestSendPrepared({ status: 'sending', sentAt: NOW }, earlier)).toBe(false);
+		expect(wasLatestSendPrepared({ status: 'sent', sentAt: NOW }, earlier)).toBe(false);
+		expect(wasLatestSendPrepared({ status: 'sent', sentAt: NOW }, null)).toBe(false);
+	});
+
+	it('without a sentAt, counts only a running send', () => {
+		expect(wasLatestSendPrepared({ status: 'sending' }, current)).toBe(true);
+		expect(wasLatestSendPrepared({ status: 'sent' }, current)).toBe(false);
 	});
 });
 

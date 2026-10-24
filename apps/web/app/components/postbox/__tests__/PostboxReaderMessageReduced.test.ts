@@ -10,6 +10,7 @@ import { defineComponent, h } from 'vue';
 import { mount } from '@vue/test-utils';
 
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
+import { readerContextProvide } from './readerContextFixture';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 /** The Senders open signal (§5): every card reports its own body being shown. */
@@ -58,24 +59,20 @@ function mountCard(reduced: boolean) {
 	return mount(PostboxReaderMessage, {
 		props: {
 			message: message as never,
-			mailboxId: 'mbx_1',
 			expanded: true,
 			relativeTime: '2h',
 			starred: false,
 			showReplyAll: true,
 			showSenderControls: true,
-			authEnabled: true,
-			sealedEnabled: false,
 			secureClass: 'none',
 			hideBody: false,
-			showRenderToggle: false,
 			forcedLight: false,
 			images: { senderImagesAllowed: false, autoLoadImages: false, suspicious: false },
 			hasInvite: false,
-			reduced,
 		},
 		global: {
 			plugins: [createTestI18n()],
+			provide: readerContextProvide({ authEnabled: true, reduced }),
 			components: {
 				UiAvatar: marker('UiAvatar'),
 				PostboxTrustChip: marker('PostboxTrustChip', ['hideWhenOk']),

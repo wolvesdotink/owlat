@@ -64,6 +64,14 @@ export function desktopSpaSelected(full: boolean, web: boolean, changed: string[
 		)
 	);
 }
+/**
+ * Paths the Java SDK's Maven suite reads. It lives outside the bun workspace,
+ * so turbo cannot see that its contract tests read the generated OpenAPI
+ * document from packages/public-contract; a contract-only change must still
+ * run them.
+ */
+const JAVA_SDK_INPUTS = ['packages/sdk-java/', 'packages/public-contract/'];
+
 export interface DockerImage {
 	name: string;
 	package: string;
@@ -103,7 +111,7 @@ export function selectCiWork<Image extends DockerImage>(input: {
 				: images.filter(
 						(image) => affected.includes(image.package) || changed.includes(image.dockerfile)
 					),
-		java: full || changed.some((file) => file.startsWith('packages/sdk-java/')),
+		java: full || changed.some((file) => JAVA_SDK_INPUTS.some((input) => file.startsWith(input))),
 		desktopSpa: desktopSpaSelected(full, web, changed),
 	};
 }

@@ -571,14 +571,27 @@ export const transition = internalMutation({
 		input: transitionInputValidator,
 		userId: v.string(),
 	},
-	handler: async (ctx, args): Promise<CampaignTransitionOutcome> => {
-		// A campaign in Recently deleted keeps its status (a scheduled one was
-		// unscheduled on the way in), so nothing can send it until it is restored.
-		const campaign = await getLive(ctx, args.campaignId);
-		if (!campaign) return { ok: false, reason: 'campaign_not_found' };
-		return await dispatch(ctx, campaign, args.input, args.userId);
-	},
+	handler: async (ctx, args): Promise<CampaignTransitionOutcome> =>
+		await transitionCampaign(ctx, args.campaignId, args.input, args.userId),
 });
+
+/**
+ * `transition` inside the caller's own transaction, for a mutation that
+ * commits a status change together with the rows it belongs to (the send
+ * preparation commit). Same guards, patch and effects as the mutation.
+ */
+export async function transitionCampaign(
+	ctx: MutationCtx,
+	campaignId: Id<'campaigns'>,
+	input: CampaignTransitionInput,
+	userId: string
+): Promise<CampaignTransitionOutcome> {
+	// A campaign in Recently deleted keeps its status (a scheduled one was
+	// unscheduled on the way in), so nothing can send it until it is restored.
+	const campaign = await getLive(ctx, campaignId);
+	if (!campaign) return { ok: false, reason: 'campaign_not_found' };
+	return await dispatch(ctx, campaign, input, userId);
+}
 
 // ─── Batch-completion (sending → sent) ──────────────────────────────────────
 //

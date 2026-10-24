@@ -5,7 +5,7 @@
  * Capture sites (all of them):
  *   `emails.update`            → trigger `save`
  *   `emails.publish`           → trigger `publish`
- *   `campaigns/send.ts` PREP   → trigger `send` (via `captureForSend`)
+ *   `campaigns/sendCommit.ts`  → trigger `send` (the send preparation commit)
  *   `emailCoediting/sessions.ts` → trigger `conflict` (a co-editor's change replaced)
  *
  * Restore is deliberately NOT a mutation here: the editor loads a snapshot into
@@ -127,9 +127,10 @@ export async function deleteTemplateVersions(
 }
 
 /**
- * Capture a `send` snapshot from an action (the campaign send orchestrator has
- * no `ctx.db`). Silently no-ops on a template that vanished mid-send —
- * recording history must never be able to fail a send.
+ * Capture a `send` snapshot from an action. Silently no-ops on a template that
+ * vanished mid-send — recording history must never be able to fail a send.
+ * The send preparation now captures inside its own commit; this stays for
+ * preparations the previous release still has in flight.
  */
 export const captureForSend = internalMutation({
 	args: {

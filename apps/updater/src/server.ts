@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
+import type { MetricsSource } from '@owlat/shared/nodeMetrics';
 import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { hasVersionDrift, parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
 import { applyEnvUpdates, isRateLimited, isValidIPv4 } from './security.js';
@@ -350,7 +351,8 @@ const ROLLOUTS = new Map<string, { kind: RolloutKind; handle: RolloutHandler }>(
  * The HTTP routing listener, exported separately from the listening socket so
  * tests can mount it on an ephemeral server (index.ts owns the real listen).
  */
-export function buildRequestListener() {
+export function buildRequestListener(options: { metrics?: MetricsSource } = {}) {
+	const { metrics } = options;
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		// Only the path and query are read; the base just makes the URL absolute.
 		const url = new URL(req.url || '/', 'http://localhost');
@@ -361,6 +363,16 @@ export function buildRequestListener() {
 		// limited and lists containers through the Docker API on every call.
 		if (req.method === 'GET' && url.pathname === '/livez') {
 			json(res, 200, { status: 'ok' });
+			return;
+		}
+
+		// Process metrics, unauthenticated like /livez and the MTA's /metrics:
+		// compose does not publish this port, and the registry holds process
+		// counters only. It never touches Docker or the install directory.
+		if (metrics && req.method === 'GET' && url.pathname === '/metrics') {
+			const body = await metrics.metrics();
+			res.writeHead(200, { 'Content-Type': metrics.contentType });
+			res.end(body);
 			return;
 		}
 

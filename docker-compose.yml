@@ -679,17 +679,21 @@ services:
     build:
       context: .
       dockerfile: apps/code-worker/Dockerfile
+      # The release this worker reports with its wire version; without it a
+      # source build reports `dev` whatever the image tag says.
+      args:
+        OWLAT_VERSION: ${OWLAT_VERSION:-dev}
     volumes:
       - code-workspace:/workspace
     environment:
       # LEAST-PRIVILEGE (security review M4): this container runs UNTRUSTED,
       # inbound-email-driven code, so it holds NO deployment admin key. Instead
       # it reaches Convex ONLY through the `convex-fn-proxy` sidecar, which holds
-      # the real admin key and forwards ONLY the fifteen allowlisted
-      # `codeWorkTasks:*` / `plugins/workerTasks:*` calls the worker makes. The
-      # worker authenticates to the proxy with CODE_WORKER_PROXY_TOKEN (presented
-      # as its Convex key); the proxy validates+strips it and injects the admin
-      # key. A compromised task cannot use this credential for anything else.
+      # the real admin key and forwards ONLY the sixteen allowlisted
+      # `codeWorkTasks:*` / `plugins/workerTasks:*` / wire-report calls the
+      # worker makes. The worker authenticates to the proxy with
+      # CODE_WORKER_PROXY_TOKEN (presented as its Convex key); the proxy
+      # validates+strips it and injects the admin key. A compromised task cannot use this credential for anything else.
       #
       # convexClient.ts keeps the CONVEX_ADMIN_KEY fallback for operators who
       # revert to a direct, non-proxied deployment — see docs. In the shipped
@@ -808,10 +812,10 @@ services:
   # ── Convex function-allowlist proxy (least-privilege for code-worker) ──
   # SECURITY REVIEW M4: self-hosted Convex mints only a FULL admin key, so the
   # least-privilege boundary is built OUTSIDE Convex here. This sidecar holds the
-  # real CONVEX_ADMIN_KEY and forwards ONLY the fifteen allowlisted
-  # `codeWorkTasks:*` / `plugins/workerTasks:*` calls the worker makes; it
-  # authenticates the worker with CODE_WORKER_PROXY_TOKEN (constant-time, then
-  # stripped) and injects the admin key upstream. Any other function path → 403.
+  # real CONVEX_ADMIN_KEY and forwards ONLY the sixteen allowlisted
+  # `codeWorkTasks:*` / `plugins/workerTasks:*` / wire-report calls the worker
+  # makes; it authenticates the worker with CODE_WORKER_PROXY_TOKEN
+  # (constant-time, then stripped) and injects the admin key upstream. Any other function path → 403.
   # The untrusted code-worker therefore never holds admin. Shares the isolated
   # `code-worker` network with convex (which it forwards to) and the worker.
   convex-fn-proxy:
@@ -1095,10 +1099,18 @@ services:
     build:
       context: .
       dockerfile: apps/imap/Dockerfile
+      # The release this worker reports with its wire version; without it a
+      # source build reports `dev` whatever the image tag says.
+      args:
+        OWLAT_VERSION: ${OWLAT_VERSION:-dev}
     ports:
       - '${IMAP_PORT:-993}:993'
     environment:
       IMAP_PORT: '993'
+      # In-network Prometheus `/metrics` listener (apps/imap/src/metricsServer.ts).
+      # Deliberately not under `ports:`: it is unauthenticated, so only the
+      # Docker network may reach it. `0` turns it off.
+      IMAP_METRICS_PORT: ${IMAP_METRICS_PORT:-9464}
       IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
       CONVEX_URL: http://convex:3210
       # Written with no `:-` fallback as DOCUMENTATION, not as a guard: compose
@@ -1178,6 +1190,10 @@ services:
     build:
       context: .
       dockerfile: apps/mail-sync/Dockerfile
+      # The release this worker reports with its wire version; without it a
+      # source build reports `dev` whatever the image tag says.
+      args:
+        OWLAT_VERSION: ${OWLAT_VERSION:-dev}
     environment:
       MAIL_SYNC_PORT: '3200'
       CONVEX_URL: http://convex:3210
@@ -1232,7 +1248,7 @@ networks:
   # compromised (inbound-email-driven) code task cannot pivot to the mail/infra
   # tier on `default` AND cannot reach the internet directly. Its only paths off
   # this network are the two dual-homed sidecars it depends on: convex-fn-proxy
-  # (which alone holds the Convex admin key and forwards only the fifteen
+  # (which alone holds the Convex admin key and forwards only the sixteen
   # allowlisted worker functions to convex, which also attaches here) and
   # code-worker-egress (the tinyproxy forward-proxy — the SOLE bridge to
   # `default`, permitting only the git remote and the LLM endpoint). Because

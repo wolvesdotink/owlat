@@ -1,6 +1,7 @@
 /**
  * The item coverage gate's setting (AutonomyItemCoverage): it shows the stored
- * state, writes `isItemCoverageEnforced` when switched, and says so.
+ * state, writes `isItemCoverageEnforced` when switched, and says so. Reset puts
+ * an enforced check back to off through the same write.
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
@@ -13,12 +14,13 @@ vi.mock('@owlat/api', () => ({
 
 const run = vi.fn(async (_args: unknown) => ({ ok: true }));
 const showToast = vi.fn();
+const isLoading = ref(false);
 
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
 		useToast: () => ({ showToast }),
-		useBackendOperation: () => ({ run, isLoading: ref(false) }),
+		useBackendOperation: () => ({ run, isLoading }),
 	});
 });
 
@@ -43,7 +45,12 @@ function mountCard(enforced: boolean) {
 		props: { enforced },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { UiCard: { template: '<div><slot /></div>' }, UiIconBox: true, UiSwitch: SwitchStub },
+			stubs: {
+				UiCard: { template: '<div><slot /></div>' },
+				UiIconBox: true,
+				UiSwitch: SwitchStub,
+				Icon: true,
+			},
 		},
 	});
 }
@@ -65,5 +72,31 @@ describe('AutonomyItemCoverage', () => {
 		const w = mountCard(true);
 		await w.get('[role="switch"]').trigger('click');
 		expect(run).toHaveBeenCalledWith({ isItemCoverageEnforced: false });
+	});
+
+	it('has no reset marker while off, the default', () => {
+		expect(mountCard(false).find('[data-testid="setting-reset"]').exists()).toBe(false);
+	});
+
+	it('resets an enforced check to off through the same write', async () => {
+		run.mockClear();
+		const w = mountCard(true);
+		const reset = w.get('[data-testid="setting-reset"] button');
+		expect(reset.attributes('aria-label')).toBe(
+			'Reset Hold replies that miss an open item to its default'
+		);
+		await reset.trigger('click');
+		await flushPromises();
+		expect(run).toHaveBeenCalledWith({ isItemCoverageEnforced: false });
+	});
+
+	it('holds the reset while a write is in flight', () => {
+		isLoading.value = true;
+		try {
+			const w = mountCard(true);
+			expect(w.get('[data-testid="setting-reset"] button').attributes('disabled')).toBeDefined();
+		} finally {
+			isLoading.value = false;
+		}
 	});
 });

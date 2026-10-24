@@ -21,6 +21,7 @@ import { alignmentTables } from './schema/alignment';
 import { sendAssignmentTables } from './schema/sendAssignments';
 import { sendCompletionFailureTables } from './schema/sendCompletionFailures';
 import { lostSendSweepTables } from './schema/lostSendSweep';
+import { derivedFieldTables } from './schema/derivedFields';
 import { smtpResponseCategoryTables } from './schema/smtpResponseCategories';
 import { transportOutcomeTables } from './schema/transportOutcomes';
 import { deliveryTables } from './schema/delivery';
@@ -53,6 +54,7 @@ import { pushSubscriptionTables } from './schema/pushSubscriptions';
 import { marketingNotificationTables } from './schema/marketingNotifications';
 import { emailCoeditingTables } from './schema/emailCoediting';
 import { imapServerTables } from './schema/imapServers';
+import { workerServerTables } from './schema/workerServers';
 import { threadBriefTables } from './schema/threadBrief';
 import { interpretBackfillTables } from './schema/interpretBackfill';
 import { threadPurgeJobTables } from './schema/threadPurgeJobs';
@@ -87,6 +89,7 @@ export default defineSchema({
 	...sendAssignmentTables,
 	...sendCompletionFailureTables,
 	...lostSendSweepTables,
+	...derivedFieldTables,
 	...smtpResponseCategoryTables,
 	...transportOutcomeTables,
 	...inboxTables,
@@ -117,6 +120,7 @@ export default defineSchema({
 	...marketingNotificationTables,
 	...emailCoeditingTables,
 	...imapServerTables,
+	...workerServerTables,
 	...threadBriefTables,
 	...interpretBackfillTables,
 	...threadPurgeJobTables,

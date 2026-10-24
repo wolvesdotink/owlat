@@ -3,6 +3,10 @@
  * loaded window (500 messages, the `listMessages` cap), scrolled from the
  * newest message to the oldest one step per animation frame.
  *
+ * The list is windowed, so the run also counts the message rows mounted at
+ * once and the day separators that passed through the viewport: every day of
+ * the history has to show up on the way to the oldest message.
+ *
  * The rows reach the list the way `useChatRoom` hands them over: parsed JSON
  * through `shareStructure`. The list opens at the bottom on its own
  * (`onMounted` scrolls there), so the scroll covers the full history.
@@ -39,6 +43,16 @@ export function chatHistory(scenario: ChatHistoryScenario) {
 
 		const scrollHeight = scroller.scrollHeight;
 		const startTop = scroller.scrollTop;
+		const mountedMessages = () => scroller.querySelectorAll('[data-row-kind="message"]').length;
+		const openRows = mountedMessages();
+		let mostRows = openRows;
+		const daysSeen = new Set<string>();
+		const noteDays = () => {
+			for (const row of scroller.querySelectorAll('[data-row-kind="date"]')) {
+				daysSeen.add(row.textContent?.trim() ?? '');
+			}
+		};
+		noteDays();
 		const frameMs: number[] = [];
 		let last = await nextFrame();
 		while (scroller.scrollTop > 0) {
@@ -46,6 +60,8 @@ export function chatHistory(scenario: ChatHistoryScenario) {
 			const now = await nextFrame();
 			frameMs.push(now - last);
 			last = now;
+			mostRows = Math.max(mostRows, mountedMessages());
+			noteDays();
 		}
 		const updates = probe.takeUpdates();
 		const mutations = probe.takeMutations();
@@ -58,6 +74,9 @@ export function chatHistory(scenario: ChatHistoryScenario) {
 				startTop + scroller.clientHeight >= scrollHeight - 1 ? 1 : 0,
 				'bool'
 			),
+			'message rows mounted at open': counter(openRows),
+			'message rows mounted, most at once': counter(mostRows),
+			'days shown on the way to the oldest': counter(daysSeen.size),
 			'scroll frames': counter(frameMs.length),
 			'component updates while scrolling': counter(sum(updates.values())),
 			'DOM mutations while scrolling': counter(

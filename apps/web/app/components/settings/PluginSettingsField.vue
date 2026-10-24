@@ -11,7 +11,8 @@
  */
 import { computed, useId } from 'vue';
 import type { PluginSettingsField } from '@owlat/plugin-kit';
-import type { PluginSettingsFormValue } from '~/utils/pluginSettings';
+import { pluginSettingsFieldDefault, type PluginSettingsFormValue } from '~/utils/pluginSettings';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t } = useI18n();
 
@@ -42,6 +43,17 @@ const describedBy = computed(() => {
 const stringValue = computed(() => (typeof props.modelValue === 'string' ? props.modelValue : ''));
 const numberValue = computed(() => (typeof props.modelValue === 'number' ? props.modelValue : ''));
 const booleanValue = computed(() => props.modelValue === true);
+
+// The marker compares the form value, so a Reset is an edit like any other: it
+// stays unsaved until the form's Save, and the whole-form reset is unchanged.
+const fieldDefault = computed(() => pluginSettingsFieldDefault(props.field));
+const isChanged = computed(
+	() => fieldDefault.value !== undefined && props.modelValue !== fieldDefault.value
+);
+
+function resetToDefault() {
+	if (fieldDefault.value !== undefined) emit('update:modelValue', fieldDefault.value);
+}
 
 const secretHint = computed(() =>
 	props.field.kind === 'secret'
@@ -82,7 +94,15 @@ const inputClass =
 		     with <label for>. -->
 		<div v-if="field.kind === 'boolean'" class="flex items-start justify-between gap-4">
 			<div class="min-w-0">
-				<span :id="labelId" class="text-sm font-medium text-text-primary">{{ field.label }}</span>
+				<div class="flex items-center gap-2">
+					<span :id="labelId" class="text-sm font-medium text-text-primary">{{ field.label }}</span>
+					<SettingsResetToDefault
+						:changed="isChanged"
+						:label="field.label"
+						:disabled="disabled"
+						@reset="resetToDefault"
+					/>
+				</div>
 				<p v-if="field.description" :id="descriptionId" class="text-xs text-text-tertiary mt-0.5">
 					{{ field.description }}
 				</p>
@@ -134,10 +154,20 @@ const inputClass =
 		</div>
 
 		<template v-else>
-			<label :for="controlId" class="block text-sm font-medium text-text-primary mb-1">
-				{{ field.label }}
-				<span v-if="field.required" class="text-error" aria-hidden="true">*</span>
-			</label>
+			<!-- The marker sits beside the <label>, not inside it, so the Reset
+			     button never becomes part of the control's name. -->
+			<div class="mb-1 flex items-center gap-2">
+				<label :for="controlId" class="block text-sm font-medium text-text-primary">
+					{{ field.label }}
+					<span v-if="field.required" class="text-error" aria-hidden="true">*</span>
+				</label>
+				<SettingsResetToDefault
+					:changed="isChanged"
+					:label="field.label"
+					:disabled="disabled"
+					@reset="resetToDefault"
+				/>
+			</div>
 			<p v-if="field.description" :id="descriptionId" class="text-xs text-text-tertiary mb-1.5">
 				{{ field.description }}
 			</p>

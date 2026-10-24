@@ -91,7 +91,7 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 				class="flex items-center gap-1.5 py-[7px] px-2 border border-border-subtle rounded-lg"
 				:class="
 					childrenAreBlocks &&
-					'group/item transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-border-subtle'
+					'group/item transition-colors duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-border-subtle'
 				"
 			>
 				<span
@@ -146,7 +146,7 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 						? t('builder.panel.nested.addSection')
 						: t('builder.panel.nested.addChild')
 				"
-				class="w-full py-[7px] px-2 text-xs font-medium border border-dashed border-border-strong rounded-lg bg-bg-surface text-text-secondary cursor-pointer outline-none appearance-none bg-no-repeat bg-[right_8px_center] transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-text-tertiary hover:text-text-primary"
+				class="w-full py-[7px] px-2 text-xs font-medium border border-dashed border-border-strong rounded-lg bg-bg-surface text-text-secondary cursor-pointer outline-none appearance-none bg-no-repeat bg-[right_8px_center] transition-colors duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-text-tertiary hover:text-text-primary"
 				:style="{ backgroundImage: chevronBgImage }"
 				@change="(e) => { const val = (e.target as HTMLSelectElement).value; if (val) { emit('add-child', val as BlockType); (e.target as HTMLSelectElement).value = ''; } }"
 			>

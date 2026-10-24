@@ -170,8 +170,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		path: `${SETTINGS_ROOT}/shortcuts`,
 		icon: 'lucide:keyboard',
 		section: 'general',
-		gate: hasMail,
-		controls: [control('shortcuts', 'shortcuts', hasMail)],
+		controls: [control('shortcuts', 'shortcuts')],
 	}),
 	entry('booking', {
 		path: `${SETTINGS_ROOT}/booking`,

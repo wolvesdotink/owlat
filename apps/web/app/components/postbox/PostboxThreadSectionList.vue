@@ -15,6 +15,7 @@ import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import type { PostboxThreadListSection } from './PostboxSectionedThreadList.vue';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
 import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
+import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
 
 const props = defineProps<{
 	sections: PostboxInboxSection[];
@@ -32,6 +33,8 @@ const emit = defineEmits<{
 const { t } = useI18n();
 // The viewer's brief preference for every row (no AI lines when it is off).
 provideBriefLines(usePostboxSettings().autoSummarize);
+// A row drags its conversation onto the Inbox's pinned band.
+const pinDrag = usePostboxPinRowDrag();
 
 // The sender-trust marker gate, resolved once for the list (not per row).
 const { isEnabled } = useFeatureFlag();
@@ -94,6 +97,7 @@ const listSections = computed<PostboxThreadListSection<PostboxThreadRowMessage>[
 	>
 		<template #row="{ item: msg, focused }">
 			<NuxtLink
+				v-bind="pinDrag.source(msg._id, msg.subject)"
 				:id="rowDomId(msg)"
 				role="option"
 				:aria-selected="focused"

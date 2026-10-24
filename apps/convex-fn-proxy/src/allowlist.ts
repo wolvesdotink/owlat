@@ -6,7 +6,7 @@
  * mints only a FULL deployment admin key — there is no per-function scoping — so
  * the least-privilege boundary is built OUTSIDE Convex, here: this sidecar holds
  * the real admin key, and only forwards a request whose Convex function `path`
- * is one of the exact fifteen the worker legitimately calls. Everything else is
+ * is one of the exact sixteen the worker legitimately calls. Everything else is
  * a 403 that never reaches the backend, so a compromised task cannot use the
  * worker's credential to read or write any other table.
  *
@@ -17,9 +17,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 
 /**
- * The EXACT set of Convex function paths the code-worker is permitted to call,
- * across the two worker-queue namespaces. Kept in lock-step with the `fn` and
- * `pluginFn` reference tables in `apps/code-worker/src/convexClient.ts`: the
+ * The EXACT set of Convex function paths the code-worker is permitted to call:
+ * the two worker-queue namespaces and its wire-version report. Kept in
+ * lock-step with the `fn`, `pluginFn` and `wireFn` reference tables in
+ * `apps/code-worker/src/convexClient.ts`: the
  * worker can call nothing this set omits, and this set names nothing the worker
  * does not call. Any other path — `codeWorkTasks:create`, an admin mutation, a
  * different module — is rejected before it reaches the deployment.
@@ -42,6 +43,9 @@ export const ALLOWED_FUNCTION_PATHS: ReadonlySet<string> = new Set([
 	'plugins/workerTasks:complete',
 	'plugins/workerTasks:fail',
 	'plugins/workerTasks:reclaimStale',
+	// maintenance/workerRegistry (the wire-version report; records only a
+	// code-worker row, so a task can forge nothing about the other workers)
+	'maintenance/workerRegistry:reportCodeWorker',
 ]);
 
 /**

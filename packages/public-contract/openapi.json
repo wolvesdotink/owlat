@@ -1,0 +1,1885 @@
+{
+	"openapi": "3.1.0",
+	"info": {
+		"title": "Owlat API",
+		"version": "v1",
+		"description": "The public REST API of an Owlat instance. Generated from `@owlat/public-contract`; do not edit by hand."
+	},
+	"servers": [
+		{
+			"url": "{baseUrl}",
+			"variables": {
+				"baseUrl": {
+					"default": "https://api.owlat.app"
+				}
+			}
+		}
+	],
+	"tags": [
+		{
+			"name": "Contacts"
+		},
+		{
+			"name": "Events"
+		},
+		{
+			"name": "Transactional"
+		},
+		{
+			"name": "Topics"
+		},
+		{
+			"name": "Health"
+		}
+	],
+	"paths": {
+		"/api/v1/health": {
+			"get": {
+				"operationId": "getHealth",
+				"tags": ["Health"],
+				"summary": "Check that the API answers. Needs no API key.",
+				"security": [],
+				"responses": {
+					"200": {
+						"description": "The API is up.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/HealthStatus"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"status": "ok",
+										"timestamp": "2026-01-15T09:30:00.000Z"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/contacts": {
+			"get": {
+				"operationId": "listContacts",
+				"tags": ["Contacts"],
+				"summary": "List contacts, a page at a time.",
+				"security": [
+					{
+						"apiKey": ["contacts:read"]
+					}
+				],
+				"parameters": [
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"description": "Items per page, at most 100; a larger value is clamped.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 25
+						}
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"required": false,
+						"description": "The previous page's `pagination.cursor`. Omit it for the first page.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "search",
+						"in": "query",
+						"required": false,
+						"description": "Filter by a search query; results are relevance-ordered.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "One page of contacts.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "Requests left in the current window.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "When the window resets, as a Unix timestamp.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"type": "array",
+											"items": {
+												"$ref": "#/components/schemas/Contact"
+											}
+										},
+										"pagination": {
+											"$ref": "#/components/schemas/PaginationMeta"
+										}
+									},
+									"required": ["data", "pagination"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": [
+										{
+											"id": "k57c0ntact00000000000000000000",
+											"email": "ada@example.com",
+											"firstName": "Ada",
+											"lastName": null,
+											"source": "api",
+											"createdAt": "2026-01-15T09:30:00.000Z",
+											"updatedAt": "2026-01-16T10:00:00.000Z"
+										},
+										{
+											"id": "k57c0ntact00000000000000000001",
+											"email": "ada@example.com",
+											"firstName": "Ada",
+											"lastName": null,
+											"source": "inbound",
+											"createdAt": "2026-01-15T09:30:00.000Z",
+											"updatedAt": "2026-01-16T10:00:00.000Z"
+										}
+									],
+									"pagination": {
+										"limit": 25,
+										"totalItems": 42,
+										"cursor": "eyJwYWdlIjoxfQ",
+										"isDone": false
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "createContact",
+				"tags": ["Contacts"],
+				"summary": "Create a contact.",
+				"security": [
+					{
+						"apiKey": ["contacts:write"]
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateContactRequest"
+							},
+							"example": {
+								"email": "ada@example.com",
+								"firstName": "Ada",
+								"lastName": "Lovelace"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "The created contact.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "Requests left in the current window.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "When the window resets, as a Unix timestamp.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/Contact"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"id": "k57c0ntact00000000000000000000",
+										"email": "ada@example.com",
+										"firstName": "Ada",
+										"lastName": null,
+										"source": "api",
+										"createdAt": "2026-01-15T09:30:00.000Z",
+										"updatedAt": "2026-01-16T10:00:00.000Z"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with existing data or reuses an Idempotency-Key.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/contacts/{id}": {
+			"get": {
+				"operationId": "getContact",
+				"tags": ["Contacts"],
+				"summary": "Get a contact by ID or email address.",
+				"security": [
+					{
+						"apiKey": ["contacts:read"]
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The contact ID, or the contact email address (URL-encoded).",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The contact.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "Requests left in the current window.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "When the window resets, as a Unix timestamp.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/Contact"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"id": "k57c0ntact00000000000000000000",
+										"email": "ada@example.com",
+										"firstName": "Ada",
+										"lastName": null,
+										"source": "api",
+										"createdAt": "2026-01-15T09:30:00.000Z",
+										"updatedAt": "2026-01-16T10:00:00.000Z"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "A resource the request names does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"put": {
+				"operationId": "updateContact",
+				"tags": ["Contacts"],
+				"summary": "Update a contact. Fields left out keep their value.",
+				"security": [
+					{
+						"apiKey": ["contacts:write"]
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The contact ID, or the contact email address (URL-encoded).",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateContactRequest"
+							},
+							"example": {
+								"firstName": "Ada",
+								"lastName": "Lovelace"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "The updated contact.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "Requests left in the current window.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "When the window resets, as a Unix timestamp.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/Contact"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"id": "k57c0ntact00000000000000000000",
+										"email": "ada@example.com",
+										"firstName": "Ada",
+										"lastName": "Lovelace",
+										"source": "api",
+										"createdAt": "2026-01-15T09:30:00.000Z",
+										"updatedAt": "2026-01-16T10:00:00.000Z"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "A resource the request names does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with existing data or reuses an Idempotency-Key.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteContact",
+				"tags": ["Contacts"],
+				"summary": "Delete a contact.",
+				"security": [
+					{
+						"apiKey": ["contacts:write"]
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The contact ID, or the contact email address (URL-encoded).",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The contact was deleted.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "Requests left in the current window.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "When the window resets, as a Unix timestamp.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/DeleteContactResponse"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"id": "k57c0ntact00000000000000000000",
+										"deleted": true
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "A resource the request names does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/events": {
+			"post": {
+				"operationId": "sendEvent",
+				"tags": ["Events"],
+				"summary": "Record an event for a contact and fire the automations it triggers.",
+				"security": [
+					{
+						"apiKey": ["events:write"]
+					}
+				],
+				"parameters": [
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "Makes the request safe to retry: the server applies it at most once per key for 24 hours and answers a repeat with the first response. 1 to 255 printable ASCII characters without spaces.",
+						"schema": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 255,
+							"pattern": "^[!-~]+$"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SendEventRequest"
+							},
+							"example": {
+								"email": "ada@example.com",
+								"eventName": "signup_completed",
+								"eventProperties": {
+									"plan": "pro",
+									"seats": 3,
+									"trial": false,
+									"referrer": null
+								},
+								"createContactIfNotExists": true
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "The event was recorded.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "Requests left in the current window.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "When the window resets, as a Unix timestamp.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"Idempotent-Replayed": {
+								"description": "`true` when the response repeats the first answer to this key.",
+								"schema": {
+									"type": "string",
+									"enum": ["true"]
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/SendEventResponse"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"eventId": "k57ev3nt000000000000000000000",
+										"contactId": "k57c0ntact00000000000000000000",
+										"eventName": "signup_completed",
+										"triggeredAutomations": 2,
+										"contactCreated": false
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "A resource the request names does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with existing data or reuses an Idempotency-Key.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/transactional": {
+			"post": {
+				"operationId": "sendTransactional",
+				"tags": ["Transactional"],
+				"summary": "Queue a transactional email for one recipient.",
+				"security": [
+					{
+						"apiKey": ["transactional:send"]
+					}
+				],
+				"parameters": [
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": false,
+						"description": "Makes the request safe to retry: the server applies it at most once per key for 24 hours and answers a repeat with the first response. 1 to 255 printable ASCII characters without spaces.",
+						"schema": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 255,
+							"pattern": "^[!-~]+$"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SendTransactionalRequest"
+							},
+							"example": {
+								"email": "ada@example.com",
+								"slug": "order-confirmation",
+								"dataVariables": {
+									"orderNumber": "A-1001",
+									"total": 42.5,
+									"giftWrap": true,
+									"note": null
+								},
+								"language": "en-US",
+								"attachments": [
+									{
+										"filename": "invoice.pdf",
+										"content": "JVBERi0xLjQK",
+										"contentType": "application/pdf"
+									},
+									{
+										"filename": "terms.pdf",
+										"url": "https://owlat.example/terms.pdf"
+									}
+								]
+							}
+						}
+					}
+				},
+				"responses": {
+					"202": {
+						"description": "The email was queued.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "Requests left in the current window.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "When the window resets, as a Unix timestamp.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"Idempotent-Replayed": {
+								"description": "`true` when the response repeats the first answer to this key.",
+								"schema": {
+									"type": "string",
+									"enum": ["true"]
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/SendTransactionalResponse"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"status": "queued",
+										"email": "ada@example.com",
+										"transactionalEmailId": "k57s3nd00000000000000000000000",
+										"slug": "order-confirmation",
+										"contactId": "k57c0ntact00000000000000000000",
+										"contactCreated": false,
+										"language": "en-US"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "A resource the request names does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The request conflicts with existing data or reuses an Idempotency-Key.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The workspace is not in a state that can carry out the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/topics/{topicId}/contacts": {
+			"post": {
+				"operationId": "addContactToTopic",
+				"tags": ["Topics"],
+				"summary": "Subscribe a contact to a topic, starting double opt-in when the topic needs it.",
+				"security": [
+					{
+						"apiKey": ["topics:write"]
+					}
+				],
+				"parameters": [
+					{
+						"name": "topicId",
+						"in": "path",
+						"required": true,
+						"description": "The topic ID.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AddContactToTopicRequest"
+							},
+							"example": {
+								"email": "ada@example.com"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "The contact is subscribed, or awaiting confirmation.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "Requests left in the current window.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "When the window resets, as a Unix timestamp.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/AddToTopicResponse"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"success": true,
+										"contactId": "k57c0ntact00000000000000000000",
+										"topicId": "k57t0pic0000000000000000000000",
+										"doiStatus": "pending"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "A resource the request names does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/topics/{topicId}/contacts/{emailOrId}": {
+			"delete": {
+				"operationId": "removeContactFromTopic",
+				"tags": ["Topics"],
+				"summary": "Unsubscribe a contact from a topic.",
+				"security": [
+					{
+						"apiKey": ["topics:write"]
+					}
+				],
+				"parameters": [
+					{
+						"name": "topicId",
+						"in": "path",
+						"required": true,
+						"description": "The topic ID.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "emailOrId",
+						"in": "path",
+						"required": true,
+						"description": "The contact ID, or the contact email address (URL-encoded).",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The contact is no longer subscribed.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "Requests left in the current window.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "When the window resets, as a Unix timestamp.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/RemoveFromTopicResponse"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"success": true,
+										"removed": true
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "A resource the request names does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	},
+	"components": {
+		"securitySchemes": {
+			"apiKey": {
+				"type": "http",
+				"scheme": "bearer",
+				"description": "An Owlat API key, sent as `Authorization: Bearer <key>`. Each operation lists the scope the key needs."
+			}
+		},
+		"schemas": {
+			"AddContactToTopicRequest": {
+				"type": "object",
+				"properties": {
+					"email": {
+						"type": ["string", "null"]
+					},
+					"contactId": {
+						"type": ["string", "null"]
+					}
+				},
+				"anyOf": [
+					{
+						"required": ["email"],
+						"properties": {
+							"email": {
+								"type": "string",
+								"minLength": 1
+							}
+						}
+					},
+					{
+						"required": ["contactId"],
+						"properties": {
+							"contactId": {
+								"type": "string",
+								"minLength": 1
+							}
+						}
+					}
+				]
+			},
+			"AddToTopicResponse": {
+				"type": "object",
+				"properties": {
+					"success": {
+						"type": "boolean"
+					},
+					"contactId": {
+						"type": "string"
+					},
+					"topicId": {
+						"type": "string"
+					},
+					"doiStatus": {
+						"type": "string",
+						"enum": ["not_required", "pending", "confirmed"]
+					}
+				},
+				"required": ["success", "contactId", "topicId", "doiStatus"],
+				"additionalProperties": false
+			},
+			"ApiErrorResponse": {
+				"type": "object",
+				"properties": {
+					"error": {
+						"type": "object",
+						"properties": {
+							"category": {
+								"type": "string",
+								"description": "The error's classification, such as `invalid_input`, `not_found`, `conflict` or `rate_limited`. New categories can be added; treat an unknown one by its HTTP status."
+							},
+							"message": {
+								"type": "string"
+							},
+							"data": {
+								"type": "object",
+								"propertyNames": {
+									"type": "string"
+								},
+								"additionalProperties": {}
+							}
+						},
+						"required": ["category", "message"],
+						"additionalProperties": false
+					}
+				},
+				"required": ["error"],
+				"additionalProperties": false
+			},
+			"Contact": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"email": {
+						"type": "string"
+					},
+					"firstName": {
+						"type": ["string", "null"]
+					},
+					"lastName": {
+						"type": ["string", "null"]
+					},
+					"source": {
+						"type": "string",
+						"enum": ["api", "import", "form", "transactional", "inbound"]
+					},
+					"createdAt": {
+						"type": "string",
+						"description": "ISO 8601 timestamp."
+					},
+					"updatedAt": {
+						"type": "string",
+						"description": "ISO 8601 timestamp."
+					}
+				},
+				"required": ["id", "email", "firstName", "lastName", "source", "createdAt", "updatedAt"],
+				"additionalProperties": false
+			},
+			"CreateContactRequest": {
+				"type": "object",
+				"properties": {
+					"email": {
+						"type": "string",
+						"minLength": 1
+					},
+					"firstName": {
+						"type": "string"
+					},
+					"lastName": {
+						"type": "string"
+					}
+				},
+				"required": ["email"]
+			},
+			"DeleteContactResponse": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"deleted": {
+						"type": "boolean"
+					}
+				},
+				"required": ["id", "deleted"],
+				"additionalProperties": false
+			},
+			"HealthStatus": {
+				"type": "object",
+				"properties": {
+					"status": {
+						"type": "string",
+						"const": "ok"
+					},
+					"timestamp": {
+						"type": "string"
+					}
+				},
+				"required": ["status", "timestamp"],
+				"additionalProperties": false
+			},
+			"PaginationMeta": {
+				"type": "object",
+				"properties": {
+					"limit": {
+						"type": "integer"
+					},
+					"totalItems": {
+						"type": "integer"
+					},
+					"cursor": {
+						"type": ["string", "null"]
+					},
+					"isDone": {
+						"type": "boolean"
+					}
+				},
+				"required": ["limit", "totalItems", "cursor", "isDone"],
+				"additionalProperties": false
+			},
+			"RemoveFromTopicResponse": {
+				"type": "object",
+				"properties": {
+					"success": {
+						"type": "boolean"
+					},
+					"removed": {
+						"type": "boolean"
+					}
+				},
+				"required": ["success", "removed"],
+				"additionalProperties": false
+			},
+			"SendEventRequest": {
+				"type": "object",
+				"properties": {
+					"email": {
+						"type": "string",
+						"minLength": 1
+					},
+					"eventName": {
+						"type": "string",
+						"minLength": 1,
+						"pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,99}$"
+					},
+					"eventProperties": {
+						"type": "object",
+						"propertyNames": {
+							"type": "string"
+						},
+						"additionalProperties": {
+							"type": ["string", "number", "boolean", "null"]
+						}
+					},
+					"createContactIfNotExists": {
+						"type": "boolean"
+					}
+				},
+				"required": ["email", "eventName"]
+			},
+			"SendEventResponse": {
+				"type": "object",
+				"properties": {
+					"eventId": {
+						"type": "string"
+					},
+					"contactId": {
+						"type": "string"
+					},
+					"eventName": {
+						"type": "string"
+					},
+					"triggeredAutomations": {
+						"type": "integer"
+					},
+					"contactCreated": {
+						"type": "boolean"
+					}
+				},
+				"required": ["eventId", "contactId", "eventName", "triggeredAutomations", "contactCreated"],
+				"additionalProperties": false
+			},
+			"SendTransactionalRequest": {
+				"type": "object",
+				"properties": {
+					"email": {
+						"type": "string",
+						"minLength": 1
+					},
+					"transactionalId": {
+						"type": ["string", "null"]
+					},
+					"slug": {
+						"type": ["string", "null"]
+					},
+					"dataVariables": {
+						"type": "object",
+						"propertyNames": {
+							"type": "string"
+						},
+						"additionalProperties": {
+							"type": ["string", "number", "boolean", "null"]
+						}
+					},
+					"language": {
+						"type": "string",
+						"pattern": "^(?:[A-Za-z]{2}(?:-[A-Za-z]{2,3})?)?$"
+					},
+					"attachments": {
+						"maxItems": 10,
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/TransactionalAttachment"
+						}
+					}
+				},
+				"required": ["email"],
+				"anyOf": [
+					{
+						"required": ["transactionalId"],
+						"properties": {
+							"transactionalId": {
+								"type": "string",
+								"minLength": 1
+							}
+						}
+					},
+					{
+						"required": ["slug"],
+						"properties": {
+							"slug": {
+								"type": "string",
+								"minLength": 1
+							}
+						}
+					}
+				]
+			},
+			"SendTransactionalResponse": {
+				"type": "object",
+				"properties": {
+					"status": {
+						"type": "string",
+						"const": "queued"
+					},
+					"email": {
+						"type": "string"
+					},
+					"transactionalEmailId": {
+						"type": "string",
+						"description": "ID of the send record created for this email, not the template ID. Delivery webhooks carry it."
+					},
+					"slug": {
+						"type": "string"
+					},
+					"contactId": {
+						"type": "string"
+					},
+					"contactCreated": {
+						"type": "boolean"
+					},
+					"language": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"status",
+					"email",
+					"transactionalEmailId",
+					"slug",
+					"contactCreated",
+					"language"
+				],
+				"additionalProperties": false
+			},
+			"TransactionalAttachment": {
+				"type": "object",
+				"properties": {
+					"filename": {
+						"type": "string",
+						"minLength": 1,
+						"pattern": "^[^/\\\\]*$"
+					},
+					"content": {
+						"type": "string"
+					},
+					"url": {
+						"type": "string"
+					},
+					"contentType": {
+						"type": "string"
+					}
+				},
+				"required": ["filename"],
+				"oneOf": [
+					{
+						"required": ["content"]
+					},
+					{
+						"required": ["url"]
+					}
+				]
+			},
+			"UpdateContactRequest": {
+				"type": "object",
+				"properties": {
+					"email": {
+						"type": "string"
+					},
+					"firstName": {
+						"type": "string"
+					},
+					"lastName": {
+						"type": "string"
+					}
+				}
+			}
+		}
+	}
+}

@@ -26,7 +26,8 @@
 #
 #   from | to | subject | email | recipient | rcptTo | mailFrom | address | sender
 #
-# inside a `logInfo` / `logWarn` / `logError` / `logDebug` / `console.*` call,
+# inside a `logInfo` / `logWarn` / `logError` / `logDebug` / `logEvent` /
+# `console.*` call (for `logEvent` that includes its `detail` object),
 # whose value does not pass through `redactEmailAddress` / `redactEmailAddresses`
 # / `redactSubject` / `redactionDigest` on the same line.
 #
@@ -46,6 +47,11 @@
 #
 # Optional first arg overrides the scan root (default `convex`) so the self-test
 # (convex/lib/__tests__/checkLogPii.gate.test.ts) can point it at a fixture tree.
+#
+# The oxlint rule owlat/no-log-pii (packages/oxlint-plugin-owlat) enforces
+# this on the AST and runs beside this script until scripts/ast-gate-parity.ts
+# (`bun run lint:ast-gate-parity`) shows the two agree; a change to what this
+# script reports needs the same change in the rule, or that gate fails.
 
 set -uo pipefail
 
@@ -69,7 +75,7 @@ violations=$(
 			{
 				is_comment = ($0 ~ /^[[:space:]]*\/\//)
 				is_just    = ($0 ~ /\/\/[[:space:]]*log-pii-safe:/)
-				is_open    = ($0 ~ /(logInfo|logWarn|logError|logDebug|console\.(log|info|warn|error|debug))\(/)
+				is_open    = ($0 ~ /(logInfo|logWarn|logError|logDebug|logEvent|console\.(log|info|warn|error|debug))\(/)
 				is_key     = ($0 ~ /(^|[{,[:space:]])(from|to|subject|email|recipient|rcptTo|mailFrom|address|sender)[[:space:]]*:/)
 				is_redact  = ($0 ~ /redact(EmailAddress|EmailAddresses|Subject|ionDigest)/)
 				is_close   = ($0 ~ /\)[[:space:]]*;?[[:space:]]*$/)

@@ -5,14 +5,19 @@
  * from one `mailFolders` row.
  */
 
-import { v } from 'convex/values';
+import {
+	listFolders as listFoldersContract,
+	peekFolderModseq as peekFolderModseqContract,
+	resolveSpecialFolder as resolveSpecialFolderContract,
+	selectFolder as selectFolderContract,
+} from '@owlat/worker-protocol/imap';
 import { internalQuery } from '../../_generated/server';
-import { folderRoleValidator } from '../../lib/validators/mail';
 
 /** LIST output for a single mailbox account. Includes role + counts so the
  *  IMAP server can emit `* LIST (\Inbox \HasNoChildren) "/" "INBOX"` etc. */
 export const listFolders = internalQuery({
-	args: { mailboxId: v.id('mailboxes') },
+	args: listFoldersContract.args,
+	returns: listFoldersContract.returns,
 	handler: async (ctx, args) => {
 		const folders = await ctx.db
 			.query('mailFolders')
@@ -45,7 +50,8 @@ export const listFolders = internalQuery({
  *  `IMAP_WIRE_MIN_SUPPORTED`: its logins are refused and it stops at its next
  *  report. */
 export const selectFolder = internalQuery({
-	args: { folderId: v.id('mailFolders') },
+	args: selectFolderContract.args,
+	returns: selectFolderContract.returns,
 	handler: async (ctx, args) => {
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) return null;
@@ -77,10 +83,8 @@ export const selectFolder = internalQuery({
 
 /** Resolve the system folder for an account by its IMAP role (\Sent \Trash …) */
 export const resolveSpecialFolder = internalQuery({
-	args: {
-		mailboxId: v.id('mailboxes'),
-		role: folderRoleValidator,
-	},
+	args: resolveSpecialFolderContract.args,
+	returns: resolveSpecialFolderContract.returns,
 	handler: async (ctx, args) => {
 		const folder = await ctx.db
 			.query('mailFolders')
@@ -94,7 +98,8 @@ export const resolveSpecialFolder = internalQuery({
 
 /** Per-folder highest modseq, used by IDLE to detect changes since last poll. */
 export const peekFolderModseq = internalQuery({
-	args: { folderId: v.id('mailFolders') },
+	args: peekFolderModseqContract.args,
+	returns: peekFolderModseqContract.returns,
 	handler: async (ctx, args) => {
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) return null;

@@ -3,6 +3,8 @@ import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce'
 import { useSectionNavigation } from '~/composables/useSectionNavigation';
 import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
+import type { ShellPageBoundaryKey } from '~/lib/pageBoundary';
+import AppErrorBoundary from '~/components/AppErrorBoundary.vue';
 import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
 import { useMountOnFirst } from '~/composables/useMountOnFirst';
 import { usePerfMark } from '~/composables/usePerfMark';
@@ -13,7 +15,7 @@ const { t } = useI18n();
 const route = useRoute();
 
 // Initialize keyboard shortcuts
-const { registerNavigationShortcuts, isHelpModalOpen } = useKeyboardShortcuts();
+const { registerNavigationShortcuts, registerShortcut, isHelpModalOpen } = useKeyboardShortcuts();
 
 // The palette and the "?" sheet stay off the boot path: each mounts the first
 // time it is asked for, and stays mounted after that.
@@ -67,6 +69,9 @@ function onToggleCollapse() {
 const showSectionNavigation = computed(() => !!activeSection.value && !showAppNavigation.value);
 const sectionNavigationTarget = ref<HTMLElement | null>(null);
 provide('section-navigation-target', sectionNavigationTarget);
+// Handed down from this lazy layout chunk to keep the boundary out of the
+// entry bundle (see ShellPageBoundaryKey).
+provide('owlat:shell-page-boundary' satisfies ShellPageBoundaryKey, AppErrorBoundary);
 
 // Settings' Back returns to the last page of real work, however many settings
 // pages were visited in between.
@@ -272,36 +277,21 @@ onMounted(() => {
 	onUnmounted(() => mql.removeEventListener('change', sync));
 });
 
-// Cmd/Ctrl-\ toggles the sidebar's hidden mode (desktop only; the composable
-// guards the breakpoint), Cmd/Ctrl-, opens Settings, and Cmd/Ctrl-J opens the
-// Assistant for every member while the feature is on. Registered alongside the
-// other global shortcuts.
+// Hide/show the sidebar (desktop only; the composable guards the breakpoint),
+// open Settings, and open the Assistant for every member while the feature is
+// on. Catalog ids, so a remap on the shortcuts page moves them; as modifier
+// chords they fire while a text field has focus, like the browser's own.
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
-onMounted(() => {
-	const handleToggleHidden = (e: KeyboardEvent) => {
-		if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
-			e.preventDefault();
-			toggleHidden();
-		}
-		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === ',') {
-			e.preventDefault();
-			void navigateTo('/dashboard/preferences');
-		}
-		if (
-			(e.metaKey || e.ctrlKey) &&
-			!e.shiftKey &&
-			!e.altKey &&
-			e.key.toLowerCase() === 'j' &&
-			isFeatureEnabled('ai.assistant') &&
-			// Inside Answer mode the chord belongs to the draft ("Draft with AI").
-			!isAnswerMode.value
-		) {
-			e.preventDefault();
-			void navigateTo('/dashboard/assistant');
-		}
-	};
-	document.addEventListener('keydown', handleToggleHidden);
-	onUnmounted(() => document.removeEventListener('keydown', handleToggleHidden));
+registerShortcut({ id: 'global.toggleSidebar', handler: toggleHidden });
+registerShortcut({
+	id: 'global.settings',
+	handler: () => void navigateTo('/dashboard/preferences'),
+});
+registerShortcut({
+	id: 'global.assistant',
+	handler: () => void navigateTo('/dashboard/assistant'),
+	// Inside Answer mode ⌘J belongs to the draft ("Draft with AI").
+	when: () => isFeatureEnabled('ai.assistant') && !isAnswerMode.value,
 });
 
 // Peek overlay: open on left-edge hover, close 300ms after the pointer leaves
@@ -392,8 +382,14 @@ watch(isFocusMode, (active) => {
 // shared control so the event name lives in one place.
 const { open: openCommandPalette } = useCommandPalette();
 
-// Initialize desktop notifications (no-op in browser)
-useDesktopNotifications();
+// Unread mail is read once and badged everywhere from the same count: the
+// browser tab (title prefix + dotted favicon) and, in the desktop app, the
+// dock/taskbar icon plus native notifications. The desktop app has no tab and
+// paints the count natively, so the tab badge stays browser-only.
+const unreadBadge = useUnreadBadge();
+const { isDesktop: isDesktopApp } = useDesktopContext();
+useTabBadge(() => (isDesktopApp.value ? null : unreadBadge.count.value));
+useDesktopNotifications(unreadBadge);
 
 // Campaign, delivery, automation and sending-domain notices: in-app toast
 // everywhere, native notification on the desktop app.
@@ -648,6 +644,9 @@ const sidebarDesktopClass = computed(() => {
 						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem-2.25rem-1px)] lg:min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]'
 				"
 			>
+				<!-- A page that fails to render falls back in here, inside the shell
+				     (AppPageOutlet reads ShellPageBoundaryKey): the rail, the header
+				     and the palette stay usable. -->
 				<slot />
 			</main>
 		</div>

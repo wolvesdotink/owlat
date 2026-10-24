@@ -10,7 +10,7 @@
  * than repeating the test.
  */
 
-import { v } from 'convex/values';
+import { storeFlags as storeFlagsContract } from '@owlat/worker-protocol/imap';
 import { internalMutation } from '../../lib/writeFence';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { bumpFolderModseq } from '../folders';
@@ -64,12 +64,8 @@ function buildFlagDelta(rawFlags: string[], mode: 'set' | 'add' | 'remove'): Fla
  * provided list, `add` (`+FLAGS`) ORs them in, `remove` (`-FLAGS`) clears.
  */
 export const storeFlags = internalMutation({
-	args: {
-		messageIds: v.array(v.id('mailMessages')),
-		flags: v.array(v.string()),
-		mode: v.union(v.literal('set'), v.literal('add'), v.literal('remove')),
-		unchangedSinceModseq: v.optional(v.number()),
-	},
+	args: storeFlagsContract.args,
+	returns: storeFlagsContract.returns,
 	handler: async (ctx, args) => {
 		const updated: Array<{
 			messageId: Id<'mailMessages'>;

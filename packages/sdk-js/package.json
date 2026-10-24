@@ -39,7 +39,7 @@
 		"README.md"
 	],
 	"scripts": {
-		"build": "tsup",
+		"build": "tsup && node scripts/check-dist.mjs",
 		"dev": "tsup --watch",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
@@ -49,6 +49,7 @@
 		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix"
 	},
 	"devDependencies": {
+		"@owlat/public-contract": "workspace:*",
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"tsup": "^8.5.1",

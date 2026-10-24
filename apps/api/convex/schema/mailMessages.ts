@@ -221,9 +221,10 @@ export const mailMessagesTables = {
 		// the Postbox outbound lifecycle module (the only writer).
 		outbound: v.optional(
 			v.object({
-				// AGGREGATED — derived from recipients[] by the lifecycle module.
-				// `partial` is the only literal that exists here but not on a
-				// per-recipient entry; it covers any mix of recipient states.
+				// AGGREGATED [postboxOutboundState] — derived from recipients[] by the
+				// lifecycle module. `partial` is the only literal that exists here
+				// but not on a per-recipient entry; it covers any mix of recipient
+				// states.
 				state: v.union(
 					v.literal('queued'),
 					v.literal('sent'),

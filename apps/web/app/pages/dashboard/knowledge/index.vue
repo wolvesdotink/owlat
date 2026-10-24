@@ -308,10 +308,10 @@ const handleCancelled = () => {
 					@click.self="handleCancelled"
 				>
 					<Transition
-						enter-active-class="transition-all duration-(--motion-moderate)"
+						enter-active-class="transition-[opacity,scale] duration-(--motion-moderate)"
 						enter-from-class="opacity-0 scale-95"
 						enter-to-class="opacity-100 scale-100"
-						leave-active-class="transition-all duration-(--motion-moderate-exit)"
+						leave-active-class="transition-[opacity,scale] duration-(--motion-moderate-exit)"
 						leave-from-class="opacity-100 scale-100"
 						leave-to-class="opacity-0 scale-95"
 					>

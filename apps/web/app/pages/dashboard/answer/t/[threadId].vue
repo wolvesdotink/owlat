@@ -31,6 +31,7 @@ import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
+import { useAnswerModeKeys } from '~/composables/useAnswerModeKeys';
 import { useAnswerTeamReply } from '~/composables/useAnswerTeamReply';
 import { useTeamReplyAttachments } from '~/composables/useTeamReplyAttachments';
 import { useKeptTeamComposer } from '~/composables/useTeamKeptReply';
@@ -39,10 +40,6 @@ import { useLocalized } from '~/composables/useLocalized';
 import { answerBackLabelKey, singleQueryValue } from '~/utils/answerMode';
 import { sendHoldReason } from '~/utils/replyCollision';
 import { isChannelMessage } from '~/utils/teamThreadReply';
-import { isDialogOpen } from '~/utils/dialogOpen';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
-import { isChordPending } from '~/utils/shortcutScope';
-import { isImeComposing } from '~/utils/imeComposition';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -224,47 +221,20 @@ async function undoFollowUp(followUpId: Parameters<typeof cancelFollowUp>[0]) {
 	}
 }
 
-function onKeydown(event: KeyboardEvent) {
-	if (event.defaultPrevented || isImeComposing(event)) return;
-	if (event.key === 'Escape') {
-		if (isDialogOpen()) return;
-		event.preventDefault();
-		const active = document.activeElement;
-		if (isEditableTarget(active) && active instanceof HTMLElement) active.blur();
-		else leave();
-		return;
-	}
-	const plain = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
-	if (
-		plain &&
-		(event.key === 't' || event.key === 'T' || event.key === 'n' || event.key === 'N') &&
-		!isEditableTarget(event.target) &&
-		!isChordPending() &&
-		!isDialogOpen()
-	) {
-		event.preventDefault();
-		if (event.key.toLowerCase() !== 'n') view.value = view.value === 'summary' ? 'full' : 'summary';
-		else if (isAdmin.value) [tab.value, composeMode.value] = ['reply', 'note'];
-	}
-}
 const aiFocus = useAnswerAiFocus();
-/** Cmd/Ctrl+J focuses "Draft with AI" (or the reply) instead of opening the Assistant. */
-function onChordCapture(event: KeyboardEvent) {
-	if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
-	if (event.key.toLowerCase() !== 'j') return;
-	event.preventDefault();
-	event.stopPropagation();
-	tab.value = 'reply';
-	composeMode.value = 'reply';
-	if (!aiFocus.request()) composerRef.value?.focus();
-}
-onMounted(() => {
-	window.addEventListener('keydown', onKeydown);
-	window.addEventListener('keydown', onChordCapture, true);
-});
-onBeforeUnmount(() => {
-	window.removeEventListener('keydown', onKeydown);
-	window.removeEventListener('keydown', onChordCapture, true);
+useAnswerModeKeys({
+	leave,
+	toggleView: () => {
+		view.value = view.value === 'summary' ? 'full' : 'summary';
+	},
+	draftWithAi: () => {
+		tab.value = 'reply';
+		composeMode.value = 'reply';
+		if (!aiFocus.request()) composerRef.value?.focus();
+	},
+	writeNote: () => {
+		if (isAdmin.value) [tab.value, composeMode.value] = ['reply', 'note'];
+	},
 });
 </script>
 

@@ -10,13 +10,16 @@
 
 export type ThemeOption = 'dark' | 'light' | 'system';
 
+/** What an untouched device follows (nuxt.config `colorMode.preference`). */
+export const THEME_DEFAULT: ThemeOption = 'system';
+
 export function useAppTheme() {
 	const colorMode = useColorMode();
 
 	const themePreference = computed<ThemeOption>(() => {
 		const pref = colorMode.preference;
 		if (pref === 'light' || pref === 'dark' || pref === 'system') return pref;
-		return 'system';
+		return THEME_DEFAULT;
 	});
 
 	const resolvedTheme = computed<'dark' | 'light'>(() => {

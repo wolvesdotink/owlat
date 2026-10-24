@@ -8,7 +8,7 @@
  * dialog, a sheet — or it becomes a row of invisible tap targets
  * over someone else's buttons.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, defineComponent, h } from 'vue';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
@@ -88,7 +88,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	document.body.innerHTML = '';
 	document.documentElement.removeAttribute('data-mobile-tab-bar');
 });
 
@@ -187,6 +186,7 @@ describe('getting out of the way', () => {
 		const dialog = document.createElement('div');
 		dialog.setAttribute('aria-modal', 'true');
 		document.body.append(dialog);
+		onTestFinished(() => dialog.remove());
 		await settle();
 		await nextTick();
 		expect(bar.find('[data-testid="mobile-tab-bar"]').exists()).toBe(false);
@@ -249,6 +249,7 @@ describe('keeping the toast stack clear of the bar (#1438)', () => {
 		const dialog = document.createElement('div');
 		dialog.setAttribute('aria-modal', 'true');
 		document.body.append(dialog);
+		onTestFinished(() => dialog.remove());
 		await settle();
 		await nextTick();
 		expect(marked()).toBe(false);

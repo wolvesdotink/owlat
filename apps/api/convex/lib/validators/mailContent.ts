@@ -9,14 +9,10 @@
 
 import { v, type Infer } from 'convex/values';
 
-// Attachment metadata embedded in raw .eml (mailMessages.attachments)
-export const mailMessageAttachmentValidator = v.object({
-	filename: v.string(),
-	contentType: v.string(),
-	size: v.number(),
-	contentId: v.optional(v.string()),
-	partIndex: v.string(),
-});
+// Attachment metadata embedded in raw .eml (mailMessages.attachments). The IMAP
+// envelope and the mail-sync ingest carry it too, so the worker wire contract
+// declares it.
+export { mailMessageAttachmentValidator } from '@owlat/worker-protocol/fields';
 
 // Sealed-Mail validators (sealPolicyValidator / sealSkipReasonValidator /
 // mailEncryptionInfoValidator) live in `../mail/sealPolicy.ts` for the ~500 LOC ratchet.
