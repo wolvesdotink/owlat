@@ -9,7 +9,8 @@
  *
  *   1. A six-hourly cron (and the admin "Check now" button) runs
  *      `refreshReleases`, which lists the repo's releases, downloads each new
- *      one's `latest.json`, validates it, and caches it VERBATIM.
+ *      one's `latest.json`, validates it, and caches it VERBATIM. It pages past
+ *      a run of release candidates until it holds a stable release.
  *   2. `manifestForClient` applies `instanceSettings.desktopUpdates` to that
  *      cache through the pure resolver and hands back the stored manifest text.
  *   3. The Nitro route `/api/desktop/update/:target/:arch/:current` serves that
@@ -27,7 +28,7 @@ import {
 	RELEASE_DOWNLOAD_BASE,
 } from '@owlat/shared/releaseArtifacts';
 import { parseVersion, semverCompare } from '@owlat/shared/semver';
-import { internalAction, internalQuery } from '../_generated/server';
+import { internalAction, internalQuery, type ActionCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
@@ -47,11 +48,13 @@ import {
 	DESKTOP_RELEASE_CACHE_LIMIT,
 	DESKTOP_RELEASE_READ_LIMIT,
 	MAX_DEFER_HOURS,
+	type ListedRelease,
 	newestRelease,
 	oneRowPerVersion,
 	preferCachedRelease,
 	releasesToPrune,
 	resolveDesktopUpdate,
+	stableReleaseSearch,
 } from './updateResolver';
 import {
 	readCheckState,
@@ -63,7 +66,7 @@ import {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const GITHUB_RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO_SLUG}/releases?per_page=30`;
+const GITHUB_RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO_SLUG}/releases?per_page=${DESKTOP_RELEASE_CACHE_LIMIT}`;
 
 /** Release bodies are shown on the admin page; clamp what we store. */
 const NOTES_MAX_CHARS = 8000;
@@ -79,6 +82,11 @@ export const listCachedTagsInternal = internalQuery({
 			.take(DESKTOP_RELEASE_READ_LIMIT);
 		return rows.map((row) => row.tag ?? '').filter((tag) => tag.length > 0);
 	},
+});
+
+export const getPolicyInternal = internalQuery({
+	args: {},
+	handler: async (ctx) => await readPolicy(ctx),
 });
 
 export const getCheckStateInternal = internalQuery({
@@ -129,8 +137,8 @@ export const recordCheck = internalMutation({
 });
 
 /**
- * Keep the newest `DESKTOP_RELEASE_CACHE_LIMIT` releases plus the pinned one;
- * drop the rest. The policy is read in the same transaction, so a pin saved
+ * Keep the newest `DESKTOP_RELEASE_CACHE_LIMIT` releases plus the pinned one and
+ * the retained stable ones; drop the rest. The policy is read in the same transaction, so a pin saved
  * concurrently either lands first and is kept, or conflicts and retries.
  */
 export const pruneReleases = internalMutation({
@@ -143,13 +151,49 @@ export const pruneReleases = internalMutation({
 				.withIndex('by_kind_and_version', (q) => q.eq('kind', 'release'))
 				.take(DESKTOP_RELEASE_CACHE_LIMIT * 4),
 		]);
-		for (const row of releasesToPrune(rows, activePin(policy))) {
+		for (const row of releasesToPrune(rows, policy, Date.now())) {
 			await ctx.db.delete(row._id);
 		}
 	},
 });
 
 // ── Refresh (cron + admin button) ────────────────────────────────────────────
+
+/**
+ * Download, validate and cache one release's `latest.json`. False when the
+ * release shipped no desktop bundle (the server-only line, or a unified release
+ * that predates the updater) or its manifest failed validation.
+ */
+async function cacheFromGithub(
+	ctx: ActionCtx,
+	release: GithubRelease,
+	parsed: { version: string; line: 'unified' | 'desktop' },
+	listed: ListedRelease,
+	headers: { 'User-Agent': string }
+): Promise<boolean> {
+	const tag = release.tag_name ?? '';
+	const manifestResp = await fetch(`${RELEASE_DOWNLOAD_BASE}/${tag}/latest.json`, {
+		headers: { 'User-Agent': headers['User-Agent'] },
+	});
+	if (!manifestResp.ok) return false;
+
+	const manifest = await manifestResp.text();
+	if (!isValidManifest(manifest, parsed.version)) {
+		console.warn(`desktop updates: rejected manifest for ${tag} (failed validation)`);
+		return false;
+	}
+
+	await ctx.runMutation(internal.desktop.updates.cacheRelease, {
+		tag,
+		version: parsed.version,
+		line: parsed.line,
+		isPrerelease: listed.isPrerelease,
+		publishedAt: listed.publishedAt,
+		notes: (release.body ?? '').slice(0, NOTES_MAX_CHARS),
+		manifest,
+	});
+	return true;
+}
 
 export const refreshReleases = internalAction({
 	args: {},
@@ -163,58 +207,54 @@ export const refreshReleases = internalAction({
 		};
 
 		try {
-			const resp = await fetch(GITHUB_RELEASES_URL, { headers });
-			if (resp.status === 403 || resp.status === 429) {
-				// Rate-limited: record it and leave the cache exactly as it was, so
-				// clients keep being served what we already know about.
-				await ctx.runMutation(internal.desktop.updates.recordCheck, { error: 'rate_limited' });
-				return null;
-			}
-			if (!resp.ok) {
-				await ctx.runMutation(internal.desktop.updates.recordCheck, {
-					error: `GitHub API returned ${resp.status}`,
-				});
-				return null;
-			}
+			const [known, policy] = await Promise.all([
+				ctx
+					.runQuery(internal.desktop.updates.listCachedTagsInternal, {})
+					.then((tags) => new Set(tags)),
+				ctx.runQuery(internal.desktop.updates.getPolicyInternal, {}),
+			]);
+			const search = stableReleaseSearch(policy.deferHours, Date.now());
+			let pageError: string | undefined;
 
-			const releases = (await resp.json()) as GithubRelease[];
-			const known = new Set(
-				await ctx.runQuery(internal.desktop.updates.listCachedTagsInternal, {})
-			);
-
-			for (const release of Array.isArray(releases) ? releases : []) {
-				const tag = release.tag_name ?? '';
-				if (release.draft || known.has(tag)) continue;
-				const parsed = parseDesktopReleaseTag(tag);
-				if (!parsed) continue;
-
-				const manifestResp = await fetch(`${RELEASE_DOWNLOAD_BASE}/${tag}/latest.json`, {
-					headers: { 'User-Agent': headers['User-Agent'] },
-				});
-				// A release with no `latest.json` shipped no desktop bundle (the
-				// server-only line, or a unified release that predates the updater).
-				if (!manifestResp.ok) continue;
-
-				const manifest = await manifestResp.text();
-				if (!isValidManifest(manifest, parsed.version)) {
-					console.warn(`desktop updates: rejected manifest for ${tag} (failed validation)`);
-					continue;
+			for (let page = 1; ; page++) {
+				const resp = await fetch(`${GITHUB_RELEASES_URL}&page=${page}`, { headers });
+				if (!resp.ok) {
+					pageError =
+						resp.status === 403 || resp.status === 429
+							? 'rate_limited'
+							: `GitHub API returned ${resp.status}`;
+					// Nothing listed yet: record it and leave the cache exactly as it
+					// was, so clients keep being served what we already know about.
+					if (page === 1) {
+						await ctx.runMutation(internal.desktop.updates.recordCheck, { error: pageError });
+						return null;
+					}
+					break;
 				}
 
-				await ctx.runMutation(internal.desktop.updates.cacheRelease, {
-					tag,
-					version: parsed.version,
-					line: parsed.line,
-					// A `-rc.N` tag is a pre-release whatever GitHub's flag says.
-					isPrerelease: release.prerelease === true || parseVersion(parsed.version).pre !== '',
-					publishedAt: release.published_at ? new Date(release.published_at).getTime() : Date.now(),
-					notes: (release.body ?? '').slice(0, NOTES_MAX_CHARS),
-					manifest,
-				});
+				const body: unknown = await resp.json();
+				const releases = Array.isArray(body) ? (body as GithubRelease[]) : [];
+				for (const release of releases) {
+					const tag = release.tag_name ?? '';
+					const parsed = release.draft ? null : parseDesktopReleaseTag(tag);
+					if (!parsed) continue;
+					const listed: ListedRelease = {
+						// A `-rc.N` tag is a pre-release whatever GitHub's flag says.
+						isPrerelease: release.prerelease === true || parseVersion(parsed.version).pre !== '',
+						publishedAt: release.published_at
+							? new Date(release.published_at).getTime()
+							: Date.now(),
+					};
+					if (!search.wants(page, listed)) continue;
+					if (known.has(tag) || (await cacheFromGithub(ctx, release, parsed, listed, headers))) {
+						search.held(listed);
+					}
+				}
+				if (!search.readsOn(page, releases.length)) break;
 			}
 
 			await ctx.runMutation(internal.desktop.updates.pruneReleases, {});
-			await ctx.runMutation(internal.desktop.updates.recordCheck, {});
+			await ctx.runMutation(internal.desktop.updates.recordCheck, { error: pageError });
 		} catch (err) {
 			await ctx.runMutation(internal.desktop.updates.recordCheck, {
 				error: err instanceof Error ? err.message : 'Unknown error',

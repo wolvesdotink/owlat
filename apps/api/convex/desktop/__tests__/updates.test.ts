@@ -9,7 +9,7 @@ import type { OrganizationRole } from '../../lib/sessionOrganization';
  *
  *   - `refreshReleases` against a mocked GitHub: which releases are cached,
  *     which manifests are refused, what a rate-limited poll does to the cache,
- *     and the prune to 30.
+ *     the prune to 30, and the stable release kept behind release candidates.
  *   - `updatePolicy`: the `settings:manage` gate, and every validation that
  *     stops a policy the cache cannot honour.
  *   - `manifestForClient`: verbatim manifest on a hit, null on a miss.
@@ -77,7 +77,7 @@ const PUBLISHED = '2026-09-10T08:00:00Z';
 
 function githubRelease(
 	tag: string,
-	extra: { draft?: boolean; prerelease?: boolean; body?: string } = {}
+	extra: { draft?: boolean; prerelease?: boolean; body?: string; published_at?: string } = {}
 ) {
 	return { tag_name: tag, published_at: PUBLISHED, body: extra.body ?? 'notes', ...extra };
 }
@@ -96,6 +96,10 @@ function manifestFor(version: string, url = 'https://github.com/wolvesdotink/owl
 interface FetchPlan {
 	releases?: unknown;
 	releasesStatus?: number;
+	/** The listing page by page (`&page=N` serves `pages[N-1]`); overrides `releases`. */
+	pages?: unknown[][];
+	/** Keyed by page number: a status other than 200 for that page. */
+	pageStatus?: Record<number, number>;
 	/** Keyed by tag: the body served for that tag's `latest.json`, or null for 404. */
 	manifests?: Record<string, string | null>;
 }
@@ -107,11 +111,12 @@ function stubFetch(plan: FetchPlan) {
 		vi.fn(async (input: string) => {
 			calls.push(input);
 			if (input.startsWith('https://api.github.com/')) {
-				const status = plan.releasesStatus ?? 200;
+				const page = Number(new URL(input).searchParams.get('page') ?? '1');
+				const status = plan.pageStatus?.[page] ?? plan.releasesStatus ?? 200;
 				return {
 					ok: status >= 200 && status < 300,
 					status,
-					json: async () => plan.releases ?? [],
+					json: async () => (plan.pages ? (plan.pages[page - 1] ?? []) : (plan.releases ?? [])),
 				};
 			}
 			const tag = input.split('/download/')[1]?.split('/')[0] ?? '';
@@ -354,6 +359,137 @@ describe('desktop.updates.refreshReleases', () => {
 		// The five oldest went; the newest survived.
 		expect(rows.some((row) => row.version === '0.1.0')).toBe(false);
 		expect(rows.some((row) => row.version === '0.1.34')).toBe(true);
+	});
+});
+
+// ── stable releases behind release candidates ────────────────────────────────
+
+describe('desktop.updates stable release behind release candidates', () => {
+	/** `count` candidates of 0.7.0, newest first, each a minute newer than the last. */
+	function candidateReleases(count: number, from = 1) {
+		return Array.from({ length: count }, (_, i) => {
+			const n = from + count - 1 - i;
+			return githubRelease(`v0.7.0-rc.${n}`, {
+				prerelease: true,
+				published_at: new Date(Date.parse(PUBLISHED) + (24 * 60 + n) * 60_000).toISOString(),
+			});
+		});
+	}
+
+	function candidateManifests(count: number, from = 1) {
+		return Object.fromEntries(
+			Array.from({ length: count }, (_, i) => [
+				`v0.7.0-rc.${from + i}`,
+				manifestFor(`0.7.0-rc.${from + i}`),
+			])
+		);
+	}
+
+	const stableManifests = {
+		'v0.6.15': manifestFor('0.6.15'),
+		'v0.6.16': manifestFor('0.6.16'),
+	};
+
+	async function servedTo(t: TestHarness, currentVersion: string) {
+		return await t.query(api.desktop.updates.manifestForClient, {
+			target: 'linux',
+			arch: 'x86_64',
+			currentVersion,
+		});
+	}
+
+	const listingCalls = (calls: string[]) =>
+		calls.filter((url) => url.startsWith('https://api.github.com/'));
+
+	it('keeps serving the stable release while candidates are refreshed in one by one', async () => {
+		const t = harness();
+		stubFetch({ releases: [githubRelease('v0.6.16')], manifests: stableManifests });
+		await t.action(internal.desktop.updates.refreshReleases, {});
+		expect((await servedTo(t, '0.6.15'))?.version).toBe('0.6.16');
+
+		// Each candidate is published and refreshed on its own, so 0.6.16 slides
+		// off the first listing page while the cache already holds it.
+		const LIMIT = 30;
+		for (let n = 1; n <= LIMIT + 1; n++) {
+			const listing = [...candidateReleases(n), githubRelease('v0.6.16')];
+			stubFetch({
+				pages: [listing.slice(0, LIMIT), listing.slice(LIMIT)],
+				manifests: { ...stableManifests, ...candidateManifests(n) },
+			});
+			await t.action(internal.desktop.updates.refreshReleases, {});
+		}
+
+		const versions = (await cachedReleases(t)).map((row) => row.version);
+		// The newest thirty candidates are the rolling cache; 0.6.16 rides on top.
+		expect(versions).toHaveLength(LIMIT + 1);
+		expect(versions).toContain('0.6.16');
+		expect(versions).not.toContain('0.7.0-rc.1');
+		expect((await servedTo(t, '0.6.15'))?.version).toBe('0.6.16');
+		const summary = await t.query(api.desktop.updates.getPolicySummary, {});
+		expect(summary.latestVersion).toBe('0.6.16');
+	});
+
+	it('finds the stable release past a full page of candidates on a fresh cache', async () => {
+		const t = harness();
+		const calls = stubFetch({
+			pages: [
+				candidateReleases(30, 5),
+				[...candidateReleases(4), githubRelease('v0.6.16'), githubRelease('v0.6.15')],
+			],
+			manifests: { ...stableManifests, ...candidateManifests(34) },
+		});
+
+		await t.action(internal.desktop.updates.refreshReleases, {});
+
+		const versions = (await cachedReleases(t)).map((row) => row.version);
+		// The first page whole, then only the stable release from the second.
+		expect(versions).toHaveLength(31);
+		expect(versions).toContain('0.6.16');
+		expect(versions).not.toContain('0.6.15');
+		expect(versions).not.toContain('0.7.0-rc.4');
+		expect(listingCalls(calls)).toHaveLength(2);
+		expect((await servedTo(t, '0.6.15'))?.version).toBe('0.6.16');
+		expect((await checkState(t))?.error).toBeUndefined();
+	});
+
+	it('reads one listing page when the stable release is on it', async () => {
+		const t = harness();
+		const calls = stubFetch({
+			pages: [[...candidateReleases(29), githubRelease('v0.6.16')], [githubRelease('v0.6.15')]],
+			manifests: { ...stableManifests, ...candidateManifests(29) },
+		});
+
+		await t.action(internal.desktop.updates.refreshReleases, {});
+
+		expect(listingCalls(calls)).toHaveLength(1);
+		expect((await servedTo(t, '0.6.15'))?.version).toBe('0.6.16');
+	});
+
+	it('stops at the page budget when no stable release is listed', async () => {
+		const t = harness();
+		const pages = Array.from({ length: 12 }, (_, i) => candidateReleases(30, 1000 - 30 * (i + 1)));
+		const calls = stubFetch({ pages, manifests: candidateManifests(30, 970) });
+
+		await t.action(internal.desktop.updates.refreshReleases, {});
+
+		expect(listingCalls(calls)).toHaveLength(10);
+		// Candidates past the first page are never downloaded.
+		expect(calls.filter((url) => url.includes('latest.json'))).toHaveLength(30);
+		expect(await cachedReleases(t)).toHaveLength(30);
+	});
+
+	it('keeps the first page and records the error when a later page fails', async () => {
+		const t = harness();
+		stubFetch({
+			pages: [candidateReleases(30)],
+			pageStatus: { 2: 429 },
+			manifests: candidateManifests(30),
+		});
+
+		await t.action(internal.desktop.updates.refreshReleases, {});
+
+		expect(await cachedReleases(t)).toHaveLength(30);
+		expect((await checkState(t))?.error).toBe('rate_limited');
 	});
 });
 
