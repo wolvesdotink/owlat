@@ -29,7 +29,13 @@ export function useInboxSelection<T extends { _id: string }>(opts: {
 
 	const orderedIds = computed(() => opts.rows.value.map((row) => row._id));
 
+	// Bumped by every reset (a change of view, Esc, the bulk bar's clear). A
+	// verb captures it when invoked; a verb whose writes settle after a reset
+	// no longer speaks for what is selected, so it leaves the selection alone.
+	let generation = 0;
+
 	function clear() {
+		generation += 1;
 		if (selected.value.size > 0) selected.value = new Set();
 		anchorId.value = null;
 	}
@@ -74,17 +80,39 @@ export function useInboxSelection<T extends { _id: string }>(opts: {
 	}
 
 	/**
-	 * After a verb ran on the selection: its targets leave the selection, except
-	 * the ones whose write failed, which stay (or come back) so they can be
-	 * retried. Rows the verb did not touch keep their place.
+	 * Called when a verb is invoked on `targetIds`. Returns how to settle the
+	 * selection once its writes land, or `null` when the verb is not acting on
+	 * the selection (none of its targets is selected).
+	 *
+	 * Settling takes the targets out of the selection, except the ones whose
+	 * write failed, which stay (or come back) so they can be retried. Rows the
+	 * verb did not touch keep their place. A reset between the call and the
+	 * settlement makes the settlement a no-op: an old failure must not select a
+	 * row in the view the person has since moved to.
+	 *
+	 * The settlement reports whether every failed row is now selected, so the
+	 * failure summary only says "they stay selected" when they do.
 	 */
-	function settle(targetIds: readonly string[], failedIds: readonly string[]) {
-		const live = new Set(orderedIds.value);
+	function captureSettle(
+		targetIds: readonly string[]
+	): ((failedIds: readonly string[]) => boolean) | null {
+		if (!targetIds.some((id) => selected.value.has(id))) return null;
+		const captured = generation;
 		const touched = new Set(targetIds);
-		const next = new Set([...selected.value].filter((id) => !touched.has(id)));
-		for (const id of failedIds) if (live.has(id)) next.add(id);
-		selected.value = next;
-		if (next.size === 0) anchorId.value = null;
+		return (failedIds) => {
+			if (captured !== generation) return false;
+			const live = new Set(orderedIds.value);
+			const next = new Set([...selected.value].filter((id) => !touched.has(id)));
+			let kept = 0;
+			for (const id of failedIds) {
+				if (!live.has(id)) continue;
+				next.add(id);
+				kept += 1;
+			}
+			selected.value = next;
+			if (next.size === 0) anchorId.value = null;
+			return kept === failedIds.length;
+		};
 	}
 
 	/** The selected rows, in list order. */
@@ -107,7 +135,7 @@ export function useInboxSelection<T extends { _id: string }>(opts: {
 		isSelected,
 		toggle,
 		extendTo,
-		settle,
+		captureSettle,
 		clear,
 		targetsFor,
 	};

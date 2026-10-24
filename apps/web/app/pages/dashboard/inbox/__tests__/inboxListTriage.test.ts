@@ -66,6 +66,8 @@ let calls: Call[];
 let failing: Set<string>;
 /** Error toasts the default failure treatment would have raised. */
 let errorToasts: number;
+/** While set, every write waits on it before it answers. */
+let pending: Promise<void> | null;
 
 const OPS: Record<string, string> = {
 	'Assign thread': 'assign',
@@ -74,18 +76,23 @@ const OPS: Record<string, string> = {
 	'Unsnooze thread': 'unsnooze',
 };
 
+type ClaimError = (e: unknown) => boolean;
+
 function useBackendOperationStub(
 	_op: unknown,
-	opts: { label: string | (() => string); onError?: (e: unknown) => boolean }
+	opts: { label: string | (() => string); onError?: ClaimError }
 ) {
 	const label = typeof opts.label === 'function' ? opts.label() : opts.label;
 	const op = OPS[label] ?? label;
 	return {
 		isLoading: ref(false),
-		run: vi.fn(async (args: Record<string, unknown>) => {
+		run: vi.fn(async (args: Record<string, unknown>, runOpts?: { onError?: ClaimError }) => {
 			calls.push({ op, args });
+			if (pending) await pending;
 			if (op !== 'unsnooze' && failing.has(String(args['threadId']))) {
-				if (opts.onError?.({ category: 'internal' }) !== true) errorToasts += 1;
+				// The run's own claim replaces the operation's, as in the real module.
+				const onError = runOpts?.onError ?? opts.onError;
+				if (onError?.({ category: 'internal' }) !== true) errorToasts += 1;
 				return { ok: false };
 			}
 			return { ok: true, result: { success: true } };
@@ -247,6 +254,19 @@ const forward = (op: string) =>
 		.filter((c) => c.op === op)
 		.map((c) => [c.args['threadId'], c.args['status'] ?? c.args['assignedTo'] ?? c.args['until']]);
 
+/** Hold every write until the returned release is called. */
+function holdWrites(): () => void {
+	let release!: () => void;
+	pending = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	return () => {
+		pending = null;
+		release();
+	};
+}
+const errorSummaries = () => toasts.filter((t) => t.type === 'error').map((t) => t.message);
+
 const menu = () => document.body.querySelector<HTMLElement>('[role="menu"]');
 const menuLabels = () =>
 	Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')).map((el) =>
@@ -274,6 +294,7 @@ beforeEach(() => {
 	calls = [];
 	failing = new Set();
 	errorToasts = 0;
+	pending = null;
 	toasts = [];
 	stateBuckets = new Map();
 	filter = ref('open');
@@ -421,6 +442,30 @@ describe('Team Inbox list: triage keys', () => {
 		const row = wrapper.get('#inbox-row-a').element.closest('li')!;
 		expect(row.querySelector('[data-testid="assign-picker"]')).not.toBeNull();
 		expect(bulkBar().exists()).toBe(false);
+		// Picked through the popover's own event: a click on a button that
+		// rendered in the same millisecond is dropped by Vue's handler guard,
+		// once the row's capture-phase listener has seen the event.
+		const rowPicker = wrapper
+			.findAllComponents(AssignPopoverStub)
+			.find((popover) => popover.props('open'));
+		rowPicker!.vm.$emit('assign', 'user2');
+		await flushPromises();
+		expect(forward('assign')).toEqual([['a', 'user2']]);
+	});
+
+	it('a assigns the rows captured when the picker opened, though one left the list since', async () => {
+		await mountPage();
+		await press('j');
+		await press('x');
+		await press('J', { shiftKey: true });
+		await press('a');
+		// A leaves through a live update while the picker is up; B already
+		// belongs to Grace, so the live selection alone would assign nothing.
+		threads.value = threads.value.filter((t) => t._id !== 'a');
+		await flushPromises();
+		await bulkBar().get('[data-testid="assign-grace"]').trigger('click');
+		await flushPromises();
+		expect(forward('assign')).toEqual([['a', 'user2']]);
 	});
 });
 
@@ -474,14 +519,13 @@ describe('Team Inbox list: partial failure and undo', () => {
 		expect(forward('status').map(([id]) => id)).toEqual(['a', 'b', 'c', 'd']);
 		// The failed rows are back on screen and still selected, to retry.
 		expect(selectedIds()).toEqual(['b', 'c']);
-		// One summary instead of a toast per failed row (at most the first, and
-		// any already in flight with it, keep their specific error).
+		// One summary instead of a toast per failed row; only the first failure,
+		// though both were in flight together, keeps its specific error.
 		const summary = toasts.filter((t) => t.type === 'error');
 		expect(summary.map((t) => t.message)).toEqual([
 			"2 of 4 conversations weren't resolved. They stay selected.",
 		]);
-		expect(errorToasts).toBeLessThanOrEqual(2);
-		expect(errorToasts).toBeGreaterThanOrEqual(1);
+		expect(errorToasts).toBe(1);
 
 		// Undo all: each succeeded row goes back to its own prior status.
 		calls = [];
@@ -492,6 +536,83 @@ describe('Team Inbox list: partial failure and undo', () => {
 			['a', 'waiting'],
 			['d', 'waiting'],
 		]);
+	});
+});
+
+describe('Team Inbox list: failures in flight', () => {
+	it('keeps one specific error when a run’s writes fail together, and counts per run', async () => {
+		failing = new Set(['a', 'b', 'c', 'd']);
+		await mountPage();
+		await press('j');
+		await press('x');
+		await press('J', { shiftKey: true });
+		await press('J', { shiftKey: true });
+		await press('J', { shiftKey: true });
+		const release = holdWrites();
+		await wrapper.get('[data-testid="inbox-bulk-resolve"]').trigger('click');
+		await flushPromises();
+		// All four are in flight before any of them answers.
+		expect(forward('status').map(([id]) => id)).toEqual(['a', 'b', 'c', 'd']);
+		release();
+		await flushPromises();
+		expect(errorToasts).toBe(1);
+		expect(errorSummaries()).toHaveLength(1);
+		expect(selectedIds()).toEqual(['a', 'b', 'c', 'd']);
+		// A retry is a run of its own: its first failure speaks again.
+		await press('e');
+		expect(errorToasts).toBe(2);
+	});
+
+	it('does not select an old failure in the view the person moved to', async () => {
+		failing = new Set(['b']);
+		await mountPage();
+		await press('j');
+		await press('x');
+		await press('J', { shiftKey: true });
+		const release = holdWrites();
+		await wrapper.get('[data-testid="inbox-bulk-resolve"]').trigger('click');
+		await flushPromises();
+		filter.value = 'waiting';
+		await flushPromises();
+		expect(selectedIds()).toEqual([]);
+		release();
+		await flushPromises();
+		// B is back on screen (its write failed) but not selected, and the run
+		// still says what failed, without claiming it stayed selected.
+		expect(wrapper.find('#inbox-row-b').exists()).toBe(true);
+		expect(selectedIds()).toEqual([]);
+		expect(errorSummaries()).toEqual(["1 of 2 conversations wasn't resolved."]);
+	});
+});
+
+describe('Team Inbox list: snooze undo', () => {
+	it('puts a rescheduled row back to its own deadline and wakes one that was not snoozed', async () => {
+		const later = Date.now() + 86_400_000;
+		filter.value = 'snoozed';
+		threads.value = [
+			thread('a', { snoozedUntil: later }),
+			thread('b', { snoozedUntil: later + 1000 }),
+			thread('c'),
+		];
+		await mountPage();
+		await press('j');
+		await press('x');
+		await press('J', { shiftKey: true });
+		await press('J', { shiftKey: true });
+		await press('h');
+		await wrapper.get('[data-testid="snooze-confirm"]').trigger('click');
+		await flushPromises();
+		expect(forward('snooze').map(([id]) => id)).toEqual(['a', 'b', 'c']);
+
+		calls = [];
+		const notice = toasts.find((t) => t.message.startsWith('Snoozed 3'));
+		notice!.action!.onAction();
+		await flushPromises();
+		expect(forward('snooze').sort()).toEqual([
+			['a', later],
+			['b', later + 1000],
+		]);
+		expect(forward('unsnooze')).toEqual([['c', undefined]]);
 	});
 });
 

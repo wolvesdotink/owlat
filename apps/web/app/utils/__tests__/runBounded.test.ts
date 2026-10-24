@@ -16,25 +16,28 @@ function deferred() {
 	return { promise, resolve, reject };
 }
 
-const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 describe('runBounded', () => {
 	it('keeps at most `limit` tasks in flight and starts them in order', async () => {
 		const gates = Array.from({ length: 6 }, deferred);
+		// Each task signals its own start, so the test waits on the milestone it
+		// asserts about rather than on the clock.
+		const starts = Array.from({ length: 6 }, deferred);
 		const started: number[] = [];
 		let inFlight = 0;
 		let peak = 0;
 		const done = runBounded([0, 1, 2, 3, 4, 5], 2, async (i) => {
 			started.push(i);
+			starts[i]!.resolve();
 			inFlight += 1;
 			peak = Math.max(peak, inFlight);
 			await gates[i]!.promise;
 			inFlight -= 1;
 		});
-		await tick();
+		await starts[1]!.promise;
 		expect(started).toEqual([0, 1]);
+		// Only task 1 has finished, so exactly one more may start: task 2.
 		gates[1]!.resolve();
-		await tick();
+		await starts[2]!.promise;
 		expect(started).toEqual([0, 1, 2]);
 		for (const gate of gates) gate.resolve();
 		await done;

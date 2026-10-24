@@ -11510,6 +11510,11 @@
 						"resolved": "{count} von {total} Unterhaltungen wurde nicht erledigt und bleibt ausgewählt. | {count} von {total} Unterhaltungen wurden nicht erledigt und bleiben ausgewählt.",
 						"snoozed": "{count} von {total} Unterhaltungen wurde nicht zurückgestellt und bleibt ausgewählt. | {count} von {total} Unterhaltungen wurden nicht zurückgestellt und bleiben ausgewählt.",
 						"assigned": "{count} von {total} Unterhaltungen wurde nicht zugewiesen und bleibt ausgewählt. | {count} von {total} Unterhaltungen wurden nicht zugewiesen und bleiben ausgewählt."
+					},
+					"failedUnselected": {
+						"resolved": "{count} von {total} Unterhaltungen wurde nicht erledigt. | {count} von {total} Unterhaltungen wurden nicht erledigt.",
+						"snoozed": "{count} von {total} Unterhaltungen wurde nicht zurückgestellt. | {count} von {total} Unterhaltungen wurden nicht zurückgestellt.",
+						"assigned": "{count} von {total} Unterhaltungen wurde nicht zugewiesen. | {count} von {total} Unterhaltungen wurden nicht zugewiesen."
 					}
 				}
 			},

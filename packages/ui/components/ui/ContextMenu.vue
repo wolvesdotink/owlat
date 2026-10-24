@@ -223,7 +223,7 @@ onUnmounted(() => {
 				ref="menuRef"
 				role="menu"
 				aria-orientation="vertical"
-				class="fixed z-50 min-w-44 max-w-72 py-1 rounded-lg border border-border-subtle bg-bg-elevated shadow-lg origin-top-left focus:outline-none"
+				class="fixed z-(--z-menu) min-w-44 max-w-72 py-1 rounded-lg border border-border-subtle bg-bg-elevated shadow-lg origin-top-left focus:outline-none"
 				:style="{ top: `${position.y}px`, left: `${position.x}px` }"
 				@keydown="onMenuKeydown"
 				@contextmenu.prevent

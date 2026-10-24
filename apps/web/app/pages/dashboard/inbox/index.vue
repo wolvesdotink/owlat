@@ -111,21 +111,33 @@ const actions = useInboxListActions({
 	filter,
 	assignee,
 	members: assignMembers,
-	isSelected: selection.isSelected,
 	// A verb on the selection leaves exactly its failures selected, to retry.
-	onSelectionSettled: (targets, failedIds) =>
-		selection.settle(
-			targets.map((row) => row._id),
-			failedIds
-		),
+	captureSelection: (targets) => selection.captureSettle(targets.map((row) => row._id)),
 });
 
 // The assignee pickers: one per row (its hover cluster) and the bulk bar's.
+// Opening either captures its targets; at most one is open at a time.
 const assignRowId = ref<string | null>(null);
 const bulkAssignOpen = ref(false);
 function openAssign(row: InboxListThread, targets: InboxListThread[]) {
-	if (targets.length > 1 || selection.isSelected(row._id)) bulkAssignOpen.value = true;
-	else assignRowId.value = row._id;
+	actions.openAssign(targets);
+	const bulk = targets.length > 1 || selection.isSelected(row._id);
+	bulkAssignOpen.value = bulk;
+	assignRowId.value = bulk ? null : row._id;
+}
+function setBulkAssignOpen(open: boolean) {
+	if (open) {
+		actions.openAssign(selection.selectedRows.value);
+		assignRowId.value = null;
+	}
+	bulkAssignOpen.value = open;
+}
+function setRowAssignOpen(row: InboxListThread, open: boolean) {
+	if (open) {
+		actions.openAssign([row]);
+		bulkAssignOpen.value = false;
+	}
+	assignRowId.value = open ? row._id : null;
 }
 const rowMenuFor = useInboxRowMenu({
 	canManage: isAdmin,
@@ -392,11 +404,12 @@ const showOldestFirst = () => setSort('oldest-waiting');
 				<div>
 					<InboxBulkBar
 						v-if="isAdmin && selection.count.value > 0"
-						v-model:assign-open="bulkAssignOpen"
+						:assign-open="bulkAssignOpen"
 						:count="selection.count.value"
 						:members="assignMembers"
 						:current-user-id="user?.id ?? null"
-						@assign="actions.assign(selection.selectedRows.value, $event)"
+						@update:assign-open="setBulkAssignOpen"
+						@assign="actions.onAssignConfirm($event)"
 						@resolve="actions.resolve(selection.selectedRows.value)"
 						@snooze="actions.openSnooze(selection.selectedRows.value)"
 						@clear="selection.clear()"
@@ -427,11 +440,11 @@ const showOldestFirst = () => setSort('oldest-waiting');
 							:selected="selection.isSelected(thread._id)"
 							:menu-items="rowMenu"
 							:assign-open="assignRowId === thread._id"
-							@update:assign-open="assignRowId = $event ? thread._id : null"
+							@update:assign-open="setRowAssignOpen(thread, $event)"
 							@toggle-select="
 								$event ? selection.extendTo(thread._id) : selection.toggle(thread._id)
 							"
-							@assign="actions.assign([thread], $event)"
+							@assign="actions.onAssignConfirm($event)"
 							@resolve="actions.resolve([thread])"
 							@snooze="actions.openSnooze([thread])"
 						/>

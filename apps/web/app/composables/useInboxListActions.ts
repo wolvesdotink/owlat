@@ -37,6 +37,10 @@ const BULK_CONCURRENCY = 4;
  * leaves exactly the failed rows selected, so the person can retry them. The
  * first failure of a run keeps its specific error toast; the rest are folded
  * into that summary instead of stacking one toast per row.
+ *
+ * The pickers (assign, snooze) capture their targets, and whether those came
+ * from the selection, when they open: a live update or a change of selection
+ * while a picker is up cannot change what its confirmation acts on.
  */
 export function useInboxListActions(opts: {
 	runTriage: ReturnType<typeof useInboxTriage<InboxListThread>>['run'];
@@ -44,85 +48,80 @@ export function useInboxListActions(opts: {
 	assignee: Ref<string>;
 	/** Org members, for naming an assignee in the undo toast. */
 	members: Ref<{ userId: string; name?: string | null; email: string }[]>;
-	/** Whether a row is part of the list's selection right now. */
-	isSelected: (id: string) => boolean;
 	/**
-	 * Called after a verb on the selection settles, with the rows whose write
-	 * failed. Whether the verb ran on the selection is decided when it is
-	 * invoked: by the time the writes land, rows that left the view have also
-	 * left the selection.
+	 * Called when a verb is invoked on `targets`. When the verb acts on the
+	 * list's selection, returns how to settle it once the writes land, given
+	 * the rows whose write failed; `null` otherwise. Deciding at invocation
+	 * matters: by the time the writes land, rows that left the view have also
+	 * left the selection, and the view itself may have changed.
 	 */
-	onSelectionSettled: (targets: readonly InboxListThread[], failedIds: string[]) => void;
+	captureSelection: (
+		targets: readonly InboxListThread[]
+	) => ((failedIds: readonly string[]) => boolean) | null;
 }) {
 	const { t } = useI18n();
 	const { user } = useAuth();
 	const { showToast } = useToast();
 
-	// Above zero while a run has already shown one failure: further failures
-	// of that run are counted into its summary instead of toasting each.
-	let quietRuns = 0;
-	const quietAfterFirst = () => quietRuns > 0;
-
 	const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
 		label: () => t('dashboard.inbox.index.assignThreadOperation'),
-		onError: quietAfterFirst,
 	});
 	const { run: updateThreadStatus } = useBackendOperation(api.inbox.mutations.updateThreadStatus, {
 		label: () => t('dashboard.inbox.index.updateThreadStatusOperation'),
-		onError: quietAfterFirst,
 	});
 	const { run: snoozeThread } = useBackendOperation(api.inbox.snooze.snoozeThread, {
 		label: () => t('dashboard.inbox.index.snoozeThreadOperation'),
-		onError: quietAfterFirst,
 	});
 	const { run: unsnoozeThread } = useBackendOperation(api.inbox.snooze.unsnoozeThread, {
 		label: () => t('dashboard.inbox.index.unsnoozeThreadOperation'),
 	});
 
+	type SettleSelection = ReturnType<typeof opts.captureSelection>;
+	/** A forward write's failure claim, scoped to the run it belongs to. */
+	type ClaimError = () => boolean;
+
 	/**
 	 * Run `perRow` over the targets, a few at a time, and report the rows whose
 	 * write failed. `perRow` resolves `false` for a failure and `null` for a row
-	 * the verb leaves alone (already in that state).
+	 * the verb leaves alone (already in that state), and hands `claimError` to
+	 * its forward write as that run's `onError`.
 	 */
 	async function runVerb(
 		targets: readonly InboxListThread[],
 		verb: 'resolved' | 'snoozed' | 'assigned',
-		perRow: (thread: InboxListThread) => Promise<boolean | null>,
-		fromSelection = onSelection(targets)
+		perRow: (thread: InboxListThread, claimError: ClaimError) => Promise<boolean | null>,
+		settleSelection: SettleSelection = opts.captureSelection(targets)
 	): Promise<string[]> {
-		const failed: string[] = [];
-		let quieted = false;
-		try {
-			await runBounded(targets, BULK_CONCURRENCY, async (thread) => {
-				const outcome = await perRow(thread);
-				if (outcome !== false) return;
-				failed.push(thread._id);
-				if (!quieted) {
-					quieted = true;
-					quietRuns += 1;
-				}
-			});
-		} finally {
-			if (quieted) quietRuns -= 1;
-		}
-		if (failed.length > 0 && targets.length > 1) {
+		// The run's first failure keeps its own error toast; every later one is
+		// claimed (silenced) and counted into the summary. Decided inside the
+		// failure handler itself, so writes that fail together still show one.
+		let errorShown = false;
+		const claimError: ClaimError = () => {
+			if (errorShown) return true;
+			errorShown = true;
+			return false;
+		};
+		const failed = new Set<string>();
+		await runBounded(targets, BULK_CONCURRENCY, async (thread) => {
+			if ((await perRow(thread, claimError)) === false) failed.add(thread._id);
+		});
+		// Keep the list order, not the order the writes settled in.
+		const order = targets.map((thread) => thread._id).filter((id) => failed.has(id));
+		const keptSelected = settleSelection?.(order) ?? false;
+		if (order.length > 0 && targets.length > 1) {
+			// "They stay selected" only when they do: not after the view changed
+			// under the run, nor when a failed row has left the list since.
+			const key = keptSelected ? 'failed' : 'failedUnselected';
 			showToast(
 				t(
-					`dashboard.inbox.index.bulk.failed.${verb}`,
-					{ count: failed.length, total: targets.length },
-					failed.length
+					`dashboard.inbox.index.bulk.${key}.${verb}`,
+					{ count: order.length, total: targets.length },
+					order.length
 				),
 				'error'
 			);
 		}
-		// Keep the list order, not the order the writes settled in.
-		const order = targets.map((thread) => thread._id).filter((id) => failed.includes(id));
-		if (fromSelection) opts.onSelectionSettled(targets, order);
 		return order;
-	}
-
-	function onSelection(targets: readonly InboxListThread[]): boolean {
-		return targets.some((thread) => opts.isSelected(thread._id));
 	}
 
 	/**
@@ -169,20 +168,29 @@ export function useInboxListActions(opts: {
 	}
 
 	/** Assign/unassign each target, with an undo that restores its own prior owner. */
-	function assign(targets: readonly InboxListThread[], assignedTo: string | undefined) {
+	function assign(
+		targets: readonly InboxListThread[],
+		assignedTo: string | undefined,
+		settleSelection: SettleSelection = opts.captureSelection(targets)
+	) {
 		const copy = assignUndo(assignedTo);
 		const leavesView = assignLeavesView(assignedTo);
-		return runVerb(targets, 'assigned', async (thread) => {
-			const previous = thread.assignedTo ?? undefined;
-			if (previous === assignedTo) return null;
-			return opts.runTriage({
-				id: thread._id,
-				...copy,
-				leavesView,
-				mutate: () => assignThread({ threadId: thread._id, assignedTo }),
-				inverse: () => assignThread({ threadId: thread._id, assignedTo: previous }),
-			});
-		});
+		return runVerb(
+			targets,
+			'assigned',
+			async (thread, onError) => {
+				const previous = thread.assignedTo ?? undefined;
+				if (previous === assignedTo) return null;
+				return opts.runTriage({
+					id: thread._id,
+					...copy,
+					leavesView,
+					mutate: () => assignThread({ threadId: thread._id, assignedTo }, { onError }),
+					inverse: () => assignThread({ threadId: thread._id, assignedTo: previous }),
+				});
+			},
+			settleSelection
+		);
 	}
 
 	/** `i`: claim the targets for the current user. */
@@ -192,6 +200,23 @@ export function useInboxListActions(opts: {
 		return assign(targets, me);
 	}
 
+	// Assignee picker: whichever picker opens (a row's own, or the bulk bar's)
+	// confirms against the targets captured here when it opened.
+	let assignTargets: readonly InboxListThread[] = [];
+	let assignSettle: SettleSelection = null;
+	function openAssign(targets: readonly InboxListThread[]) {
+		assignTargets = [...targets];
+		assignSettle = opts.captureSelection(targets);
+	}
+	function onAssignConfirm(assignedTo: string | undefined) {
+		const targets = assignTargets;
+		const settle = assignSettle;
+		assignTargets = [];
+		assignSettle = null;
+		if (targets.length === 0) return Promise.resolve([] as string[]);
+		return assign(targets, assignedTo, settle);
+	}
+
 	/**
 	 * `e` and the Resolve control. The list's done state is `resolved`: the UI
 	 * merged the legacy `closed` status into it, and no tab lists `closed`, so a
@@ -199,7 +224,7 @@ export function useInboxListActions(opts: {
 	 */
 	function resolve(targets: readonly InboxListThread[]) {
 		const leavesView = INBOX_ACTIVE_WORK_FILTERS.has(opts.filter.value);
-		return runVerb(targets, 'resolved', async (thread) => {
+		return runVerb(targets, 'resolved', async (thread, onError) => {
 			const previousStatus = thread.status;
 			if (previousStatus === 'resolved') return null;
 			return opts.runTriage({
@@ -207,48 +232,66 @@ export function useInboxListActions(opts: {
 				label: t('dashboard.inbox.index.undo.resolved'),
 				group: statusUndoGroup('resolved'),
 				leavesView,
-				mutate: () => updateThreadStatus({ threadId: thread._id, status: 'resolved' }),
+				mutate: () => updateThreadStatus({ threadId: thread._id, status: 'resolved' }, { onError }),
 				inverse: () => updateThreadStatus({ threadId: thread._id, status: previousStatus }),
 			});
 		});
 	}
 
-	// Snooze picker: reuses the Postbox snooze presets (PostboxSnoozeDialog).
-	// The targets are captured when it opens, so a live update or a change of
-	// selection while the dialog is up cannot change what gets snoozed.
+	/**
+	 * Undo of a snooze: a row that was already snoozed goes back to its own
+	 * earlier deadline (rescheduling from the Snoozed tab must not wake it), a
+	 * row that was not is woken. A deadline that has passed by the time of the
+	 * undo has nothing to go back to, and the backend refuses a past one.
+	 */
+	function undoSnooze(threadId: InboxListThread['_id'], previousUntil: number | null) {
+		if (previousUntil !== null && previousUntil > Date.now()) {
+			return snoozeThread({ threadId, until: previousUntil });
+		}
+		return unsnoozeThread({ threadId });
+	}
+
+	// Snooze picker: reuses the Postbox snooze presets (PostboxSnoozeDialog),
+	// with its targets captured when it opens.
 	const showSnoozeDialog = ref(false);
 	const snoozeTargets = shallowRef<readonly InboxListThread[]>([]);
-	let snoozeFromSelection = false;
+	let snoozeSettle: SettleSelection = null;
 	function openSnooze(targets: readonly InboxListThread[]) {
 		if (targets.length === 0) return;
 		snoozeTargets.value = [...targets];
-		snoozeFromSelection = onSelection(targets);
+		snoozeSettle = opts.captureSelection(targets);
 		showSnoozeDialog.value = true;
 	}
 	function onSnoozeConfirm(until: number) {
 		showSnoozeDialog.value = false;
 		const targets = snoozeTargets.value;
+		const settle = snoozeSettle;
 		snoozeTargets.value = [];
+		snoozeSettle = null;
 		const leavesView = INBOX_ACTIVE_WORK_FILTERS.has(opts.filter.value);
 		return runVerb(
 			targets,
 			'snoozed',
-			(thread) =>
-				opts.runTriage({
+			(thread, onError) => {
+				// The deadline the undo goes back to, from before this snooze.
+				const previousUntil = thread.snoozedUntil ?? null;
+				return opts.runTriage({
 					id: thread._id,
 					label: t('dashboard.inbox.index.undo.snoozed'),
 					group: statusUndoGroup('snoozed'),
 					leavesView,
-					mutate: () => snoozeThread({ threadId: thread._id, until }),
-					inverse: () => unsnoozeThread({ threadId: thread._id }),
-				}),
-			snoozeFromSelection
+					mutate: () => snoozeThread({ threadId: thread._id, until }, { onError }),
+					inverse: () => undoSnooze(thread._id, previousUntil),
+				});
+			},
+			settle
 		);
 	}
 
 	return {
-		assign,
 		assignToMe,
+		openAssign,
+		onAssignConfirm,
 		resolve,
 		showSnoozeDialog,
 		snoozeCount: computed(() => snoozeTargets.value.length),

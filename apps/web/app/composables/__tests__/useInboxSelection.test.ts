@@ -64,13 +64,39 @@ describe('useInboxSelection', () => {
 		selection.toggle('a');
 		selection.toggle('b');
 		selection.toggle('c');
+		const settleAB = selection.captureSettle(['a', 'b'])!;
+		const settleCZ = selection.captureSettle(['c', 'zz'])!;
 		// b failed; a succeeded and left the list; d was never selected.
 		rows.value = rows.value.filter((row) => row._id !== 'a');
 		await nextTick();
-		selection.settle(['a', 'b'], ['b']);
+		expect(settleAB(['b'])).toBe(true);
 		expect(picked()).toEqual(['b', 'c']);
-		// A failure that is no longer on screen cannot be selected.
-		selection.settle(['c', 'zz'], ['zz']);
+		// A failure that is no longer on screen cannot be selected, and the
+		// settlement says it could not keep it.
+		expect(settleCZ(['zz'])).toBe(false);
 		expect(picked()).toEqual(['b']);
+	});
+
+	it('does not settle a verb that is not acting on the selection', () => {
+		const { selection } = setup();
+		selection.toggle('a');
+		expect(selection.captureSettle(['b'])).toBeNull();
+	});
+
+	it('ignores a settlement that lands after a reset', async () => {
+		const { resetKey, selection, picked } = setup();
+		selection.toggle('a');
+		selection.toggle('b');
+		const settle = selection.captureSettle(['a', 'b'])!;
+		resetKey.value = 'waiting';
+		await nextTick();
+		expect(settle(['b'])).toBe(false);
+		expect(picked()).toEqual([]);
+		// Esc (a plain clear) is a reset too.
+		selection.toggle('c');
+		const settleC = selection.captureSettle(['c'])!;
+		selection.clear();
+		settleC(['c']);
+		expect(picked()).toEqual([]);
 	});
 });

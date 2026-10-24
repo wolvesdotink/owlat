@@ -13,6 +13,8 @@
  *   - an item's key renders in a right-aligned shortcut column (with its
  *     `aria-keyshortcuts`), and keys typed in the open menu never reach the
  *     document-level shortcut dispatcher behind it, Escape excepted
+ *   - the menu stacks on the shared menu layer, so fixed shell chrome never
+ *     covers its last items
  */
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -186,6 +188,13 @@ describe('UiContextMenu', () => {
 		expect(resolve?.getAttribute('aria-keyshortcuts')).toBe('E');
 		expect(open?.querySelector('kbd')).toBeNull();
 		expect(open?.hasAttribute('aria-keyshortcuts')).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('stacks on the menu layer, above the fixed shell chrome (mobile tab bar, titlebar)', async () => {
+		const wrapper = mountHarness([{ id: 'open', label: 'Open', run: () => {} }]);
+		await wrapper.find('.trigger').trigger('contextmenu', { clientX: 5, clientY: 5 });
+		expect(menuEl()?.classList.contains('z-(--z-menu)')).toBe(true);
 		wrapper.unmount();
 	});
 

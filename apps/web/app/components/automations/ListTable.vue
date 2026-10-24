@@ -23,6 +23,7 @@ export type AutomationListItem = Pick<
  */
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import RowContextMenu from '~/components/RowContextMenu.vue';
+import { automationRowHref } from '~/utils/automationRowVerbs';
 import { formatDate, formatNumber } from '~/utils/formatters';
 
 const props = defineProps<{
@@ -45,10 +46,7 @@ defineSlots<{
 const { t } = useI18n();
 const { getStatusBadge, getTriggerDisplay } = useAutomationBadges();
 
-const nameTo = (automation: AutomationListItem): string | null => {
-	if (automation.status !== 'draft') return `/dashboard/automations/${automation._id}`;
-	return props.canManage ? `/dashboard/automations/${automation._id}/edit` : null;
-};
+const nameTo = (automation: AutomationListItem) => automationRowHref(automation, props.canManage);
 
 const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand';
 const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap';

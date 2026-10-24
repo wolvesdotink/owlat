@@ -11510,6 +11510,11 @@
 						"resolved": "{count} of {total} conversations wasn't resolved. It stays selected. | {count} of {total} conversations weren't resolved. They stay selected.",
 						"snoozed": "{count} of {total} conversations wasn't snoozed. It stays selected. | {count} of {total} conversations weren't snoozed. They stay selected.",
 						"assigned": "{count} of {total} conversations wasn't assigned. It stays selected. | {count} of {total} conversations weren't assigned. They stay selected."
+					},
+					"failedUnselected": {
+						"resolved": "{count} of {total} conversations wasn't resolved. | {count} of {total} conversations weren't resolved.",
+						"snoozed": "{count} of {total} conversations wasn't snoozed. | {count} of {total} conversations weren't snoozed.",
+						"assigned": "{count} of {total} conversations wasn't assigned. | {count} of {total} conversations weren't assigned."
 					}
 				}
 			},

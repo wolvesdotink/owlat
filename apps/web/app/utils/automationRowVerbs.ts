@@ -59,3 +59,18 @@ export function automationRowVerbs(
 	}
 	return verbs;
 }
+
+/**
+ * Where an automation row's name leads: a draft opens the builder, anything
+ * else its detail page. A draft has no detail page (it has never run), so for
+ * a caller without `automations:manage` a draft leads nowhere (`null`). The
+ * name link and the row menu's link verbs both read this, so a copied link is
+ * always one the row itself offers.
+ */
+export function automationRowHref(
+	automation: { _id: string; status: 'draft' | 'active' | 'paused' },
+	canManage: boolean
+): string | null {
+	if (automation.status !== 'draft') return `/dashboard/automations/${automation._id}`;
+	return canManage ? `/dashboard/automations/${automation._id}/edit` : null;
+}
