@@ -8,20 +8,25 @@
  *     write nothing;
  *   · ticks rotate through the parents in creation order, at most the sample
  *     size per field, and start over once the table is exhausted;
+ *   · parents that share one creation time are each visited in turn;
+ *   · a field whose rows are large picks its sample in pages that stay inside
+ *     the transaction read limit;
  *   · a write between the pick and the check is part of the recount, not
  *     overwritten by a stale value;
  *   · nothing is sampled while a workspace deletion is running.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
+import { withCreationTime } from './helpers/creationTimeSeam';
+import { createTestTransactionalEmail } from './factories';
 
 const modules = import.meta.glob('../**/*.*s');
-type T = ReturnType<typeof convexTest>;
+type T = TestConvex<typeof schema>;
 
 let warn: MockInstance;
 let info: MockInstance;
@@ -154,13 +159,13 @@ describe('checkParent', () => {
 	});
 });
 
-const scheduledChecks = async (t: T) =>
+type CheckArgs = { fieldId: string; parentId: string };
+
+/** Every check the sampler has scheduled so far, run or not, oldest first. */
+const allChecks = async (t: T) =>
 	(await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect()))
-		.filter(
-			(job) =>
-				job.name === 'maintenance/derivedFields/sampler:checkParent' && job.state.kind === 'pending'
-		)
-		.map((job) => job.args[0] as { fieldId: string; parentId: string });
+		.filter((job) => job.name === 'maintenance/derivedFields/sampler:checkParent')
+		.map((job) => ({ jobId: job._id as string, ...(job.args[0] as CheckArgs) }));
 
 async function drain(t: T): Promise<void> {
 	vi.useFakeTimers();
@@ -171,6 +176,46 @@ async function drain(t: T): Promise<void> {
 	}
 }
 
+/** Run one tick to the end and return the checks it scheduled. */
+async function tick(t: T, args: { sampleSize?: number } = {}): Promise<CheckArgs[]> {
+	const before = new Set((await allChecks(t)).map((job) => job.jobId));
+	await t.mutation(internal.maintenance.derivedFields.sampler.sampleAll, args);
+	await drain(t);
+	return (await allChecks(t))
+		.filter((job) => !before.has(job.jobId))
+		.map(({ fieldId, parentId }) => ({ fieldId, parentId }));
+}
+
+const cursorOf = (t: T, fieldId: string) =>
+	t.run((ctx) =>
+		ctx.db
+			.query('derivedFieldCursors')
+			.withIndex('by_field_id', (q) => q.eq('fieldId', fieldId))
+			.unique()
+	);
+
+function insertRooms(t: T, count: number, messageCount: number): Promise<Id<'chatRooms'>[]> {
+	return t.run(async (ctx) => {
+		const ids: Id<'chatRooms'>[] = [];
+		for (let i = 0; i < count; i++) {
+			ids.push(
+				await ctx.db.insert('chatRooms', {
+					kind: 'channel',
+					name: `room${i}`,
+					normalizedName: `room${i}`,
+					visibility: 'public',
+					createdBy: 'user-1',
+					createdAt: 1_000,
+					updatedAt: 1_000,
+					lastMessageAt: 1_000,
+					messageCount,
+				})
+			);
+		}
+		return ids;
+	});
+}
+
 describe('sampleAll', () => {
 	it('rotates through every parent in turn, at most the sample size per tick', async () => {
 		const t = convexTest(schema, modules);
@@ -178,12 +223,10 @@ describe('sampleAll', () => {
 		for (let i = 0; i < 5; i++) rooms.push((await seedRoom(t, { messages: 0 })).roomId);
 
 		const ticks: string[][] = [];
-		for (let tick = 0; tick < 4; tick++) {
-			await t.mutation(internal.maintenance.derivedFields.sampler.sampleAll, { sampleSize: 2 });
-			const picked = await scheduledChecks(t);
+		for (let i = 0; i < 4; i++) {
+			const picked = await tick(t, { sampleSize: 2 });
 			expect(picked.every((job) => job.fieldId === 'chatRoomActivity')).toBe(true);
 			ticks.push(picked.map((job) => job.parentId));
-			await drain(t);
 		}
 
 		expect(ticks).toEqual([
@@ -192,20 +235,73 @@ describe('sampleAll', () => {
 			[rooms[4]],
 			[rooms[0], rooms[1]],
 		]);
-		const cursor = await t.run((ctx) =>
-			ctx.db
-				.query('derivedFieldCursors')
-				.withIndex('by_field_id', (q) => q.eq('fieldId', 'chatRoomActivity'))
-				.unique()
+		expect(await cursorOf(t, 'chatRoomActivity')).toMatchObject({ rotations: 1, sampledCount: 7 });
+	});
+
+	it('visits every parent that shares one creation time', async () => {
+		const t = convexTest(schema, modules);
+		// Rows written in the same millisecond tie on `_creationTime`.
+		const rooms = await withCreationTime(1_000, () => insertRooms(t, 5, 9));
+
+		const ticks: string[][] = [];
+		for (let i = 0; i < 3; i++) {
+			ticks.push((await tick(t, { sampleSize: 2 })).map((job) => job.parentId));
+		}
+
+		expect(ticks.flat().sort()).toEqual([...rooms].sort());
+		const counts = await t.run(async (ctx) =>
+			Promise.all(rooms.map(async (id) => (await ctx.db.get(id))?.messageCount))
 		);
-		expect(cursor).toMatchObject({ rotations: 1, sampledCount: 7 });
+		expect(counts).toEqual([0, 0, 0, 0, 0]);
+		expect(await cursorOf(t, 'chatRoomActivity')).toMatchObject({ rotations: 1, sampledCount: 5 });
+	});
+
+	it('picks a sample of large parents inside the transaction read limit', async () => {
+		// Enforces Convex's per-transaction limits, 16 MiB of reads among them.
+		const t = convexTest({ schema, modules, transactionLimits: true }) as T;
+		const content = 'x'.repeat(900_000);
+		// 20 rows of ~900 KB: one page of the whole sample would read past 16 MiB.
+		const emails: string[] = [];
+		for (let i = 0; i < 20; i++) {
+			emails.push(
+				await t.run((ctx) =>
+					ctx.db.insert('transactionalEmails', createTestTransactionalEmail({ content }))
+				)
+			);
+		}
+
+		const picked = await tick(t, { sampleSize: 20 });
+		// The byte bound cuts a page at the fifth row (4.5 MB); the cut page is
+		// retried at two rows, the next page is cut again, and the last of the
+		// tick's four pages picks two more.
+		expect(
+			picked
+				.filter((job) => job.fieldId === 'transactionalTemplateSends')
+				.map((job) => job.parentId)
+		).toEqual(emails.slice(0, 4));
+		expect(events(info, 'derived_field.sampled')).toContainEqual(
+			expect.objectContaining({
+				detail: expect.objectContaining({ field: 'transactionalTemplateSends', pagesRead: 4 }),
+			})
+		);
+		// The next tick goes on from the fifth row.
+		const next = await tick(t, { sampleSize: 20 });
+		expect(next.filter((job) => job.fieldId === 'transactionalTemplateSends')[0]?.parentId).toBe(
+			emails[4]
+		);
 	});
 
 	it('counts a write that lands between the pick and the check', async () => {
 		const t = convexTest(schema, modules);
 		const { roomId } = await seedRoom(t, { messages: 2, messageCount: 9 });
-		await t.mutation(internal.maintenance.derivedFields.sampler.sampleAll, {});
-		expect(await scheduledChecks(t)).toEqual([{ fieldId: 'chatRoomActivity', parentId: roomId }]);
+		await t.mutation(internal.maintenance.derivedFields.sampler.samplePage, {
+			fieldId: 'chatRoomActivity',
+			remaining: 5,
+			pageRows: 5,
+			pagesLeft: 1,
+		});
+		const pending = (await allChecks(t)).map(({ fieldId, parentId }) => ({ fieldId, parentId }));
+		expect(pending).toEqual([{ fieldId: 'chatRoomActivity', parentId: roomId }]);
 
 		// The writer posts a message after the pick, bumping the (still wrong) cache.
 		const lastAt = await t.run(async (ctx) => {
@@ -225,8 +321,15 @@ describe('sampleAll', () => {
 		await seedRoom(t, { messages: 0, messageCount: 4 });
 		await t.run((ctx) => openWorkspaceDeletionFence(ctx));
 		expect(await t.mutation(internal.maintenance.derivedFields.sampler.sampleAll, {})).toEqual({
-			scheduled: 0,
+			fields: 0,
 		});
-		expect(await scheduledChecks(t)).toEqual([]);
+		// A page chained before the deletion started stops too.
+		await t.mutation(internal.maintenance.derivedFields.sampler.samplePage, {
+			fieldId: 'chatRoomActivity',
+			remaining: 5,
+			pageRows: 5,
+			pagesLeft: 1,
+		});
+		expect(await allChecks(t)).toEqual([]);
 	});
 });

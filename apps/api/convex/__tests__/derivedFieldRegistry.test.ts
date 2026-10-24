@@ -192,6 +192,93 @@ describe('derived-field label scan', () => {
 		]);
 	});
 
+	it('fails a nested label under the wrong parent object, on the same leaf', () => {
+		const nested: RegistryEntry = {
+			kind: 'derived',
+			id: 'outboundState',
+			table: 'mailMessages',
+			fields: ['outbound.state'],
+			source: 'recipients',
+			policy: 'exact',
+			current: () => ({}),
+			recompute: async () => ({ status: 'skipped', reason: 'over_budget' }),
+		};
+		const table = (labelled: 'outbound' | 'other') =>
+			[
+				'\tmailMessages: defineTable({',
+				'\t\tother: v.object({',
+				...(labelled === 'other' ? ['\t\t\t// AGGREGATED [outboundState] — wrong object.'] : []),
+				"\t\t\tstate: v.string(), // a ')' in a comment does not count",
+				'\t\t}),',
+				'\t\toutbound: v.optional(',
+				'\t\t\tv.object({',
+				...(labelled === 'outbound' ? ['\t\t\t\t// AGGREGATED [outboundState] — recipients.'] : []),
+				"\t\t\t\tstate: v.union(v.literal('a)'), v.literal('b')),",
+				'\t\t\t})',
+				'\t\t),',
+				'\t}),',
+			].join('\n');
+		const scan = (labelled: 'outbound' | 'other') =>
+			labelViolations(
+				[...clean, { path: 'schema/mail.ts', text: table(labelled) }],
+				[...registry, nested]
+			);
+		expect(scan('outbound')).toEqual([]);
+		expect(scan('other')).toEqual([
+			'schema/mail.ts:3: [outboundState] labels `other.state`, not one of its fields',
+		]);
+	});
+
+	it('follows a validator object into the table that spreads it', () => {
+		const metrics: RegistryEntry = {
+			kind: 'counter',
+			id: 'threadMetrics',
+			table: 'conversationThreads',
+			fields: ['sla.metCount'],
+			why: 'judged once',
+		};
+		const validators = {
+			path: 'lib/validators/sla.ts',
+			text: [
+				'export const slaFields = {',
+				'\t// COUNTER [threadMetrics] — replies on time.',
+				'\tmetCount: v.optional(v.number()),',
+				'};',
+			].join('\n'),
+		};
+		const schemaFile = (table: string, spread: string) => ({
+			path: 'schema/threads.ts',
+			text: [
+				'export const threadTables = {',
+				`\t${table}: defineTable({`,
+				'\t\tsla: v.object({',
+				`\t\t\t...${spread},`,
+				'\t\t}),',
+				'\t}),',
+				'};',
+			].join('\n'),
+		});
+		const scan = (table: string, spread: string) =>
+			labelViolations([...clean, validators, schemaFile(table, spread)], [...registry, metrics]);
+		expect(scan('conversationThreads', 'slaFields')).toEqual([]);
+		expect(scan('notes', 'slaFields')).toEqual([
+			'lib/validators/sla.ts:2: [threadMetrics] sits in table notes, not conversationThreads',
+		]);
+		expect(scan('conversationThreads', 'otherFields')).toEqual([
+			'lib/validators/sla.ts:2: [threadMetrics] sits in table ?, not conversationThreads',
+		]);
+	});
+
+	it('fails a label on a spread its entry does not name', () => {
+		const files = withFile(
+			'schema/campaigns2.ts',
+			'\tcampaigns: defineTable({\n\t\t// AGGREGATED [sendStats] — wrong spread.\n\t\t...otherFields,\n\t}),'
+		);
+		expect(labelViolations(files, registry)).toEqual([
+			'schema/campaigns2.ts:2: [sendStats] labels `...otherFields`, not one of its fields',
+		]);
+	});
+
 	it('fails a counter labelled AGGREGATED, and the reverse', () => {
 		const files = withFile(
 			'mail/savedReplies.ts',

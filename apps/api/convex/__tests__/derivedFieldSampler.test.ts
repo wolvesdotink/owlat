@@ -1,46 +1,66 @@
 import { describe, expect, it } from 'vitest';
-import { compareDerived, planSample } from '../maintenance/derivedFields/sampler';
+import { compareDerived, planPage } from '../maintenance/derivedFields/sampler';
 import { spendPeriodRange } from '../maintenance/derivedFields/adapters';
 import { RecountBudget, recountWithin } from '../maintenance/derivedFields/types';
 
-const rows = (eligible: boolean[]) =>
-	eligible.map((isEligible, i) => ({ id: `p${i}`, creationTime: 100 + i, isEligible }));
+const page = (eligible: boolean[], rest: { isDone?: boolean; pageStatus?: string } = {}) => ({
+	rows: eligible.map((isEligible, i) => ({ id: `p${i}`, isEligible })),
+	isDone: rest.isDone ?? false,
+	continueCursor: 'next',
+	pageStatus: rest.pageStatus ?? null,
+});
 
-describe('planSample', () => {
-	it('stops at the sample size and keeps the unvisited rows ahead of the mark', () => {
-		expect(planSample(rows([true, true, true, true]), 4, 2)).toEqual({
+const at = (remaining: number, pagesLeft = 4) => ({ cursor: 'here', remaining, pagesLeft });
+
+describe('planPage', () => {
+	it('picks a full page and moves the cursor past it', () => {
+		expect(planPage(page([true, true]), at(2))).toEqual({
 			picked: ['p0', 'p1'],
-			afterCreationTime: 101,
+			cursor: 'next',
 			wrapped: false,
+			nextPageRows: undefined,
 		});
 	});
 
-	it('passes over ineligible rows and moves the mark past them', () => {
-		expect(planSample(rows([false, true, false, false]), 4, 2)).toEqual({
+	it('passes over ineligible rows and asks for the rest of the sample', () => {
+		expect(planPage(page([false, true, false]), at(3))).toEqual({
 			picked: ['p1'],
-			afterCreationTime: 103,
+			cursor: 'next',
 			wrapped: false,
+			nextPageRows: 2,
 		});
 	});
 
-	it('wraps when a scan comes back short of its limit', () => {
-		expect(planSample(rows([true]), 8, 2)).toEqual({
+	it('stops asking once the tick has no pages left', () => {
+		expect(planPage(page([false, false]), at(2, 1)).nextPageRows).toBeUndefined();
+	});
+
+	it('wraps at the end of the table and starts the next pass at the oldest row', () => {
+		expect(planPage(page([true], { isDone: true }), at(2))).toEqual({
 			picked: ['p0'],
-			afterCreationTime: undefined,
+			cursor: null,
 			wrapped: true,
+			nextPageRows: undefined,
 		});
-		expect(planSample([], 8, 2)).toEqual({
-			picked: [],
-			afterCreationTime: undefined,
+		expect(planPage(page([], { isDone: true }), at(2))).toMatchObject({
+			cursor: null,
 			wrapped: true,
 		});
 	});
 
-	it('does not wrap when the last row filled the sample and the scan was full', () => {
-		expect(planSample(rows([true, true]), 2, 2)).toEqual({
-			picked: ['p0', 'p1'],
-			afterCreationTime: 101,
+	it('keeps its place and halves the page when the byte bound cut it short', () => {
+		expect(
+			planPage(page([true, true, true, true, true], { pageStatus: 'SplitRequired' }), at(5))
+		).toEqual({
+			picked: [],
+			cursor: 'here',
 			wrapped: false,
+			nextPageRows: 2,
+		});
+		// One row is complete however the page was stopped.
+		expect(planPage(page([true], { pageStatus: 'SplitRequired' }), at(5))).toMatchObject({
+			picked: ['p0'],
+			cursor: 'next',
 		});
 	});
 });

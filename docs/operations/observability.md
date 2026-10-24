@@ -89,7 +89,7 @@ those prefixes.
 | `postbox.forward.*`, `postbox.vacation_reply.*`                 | Convex delivery hooks                        | info / error |
 | `runtime.event_loop.stalled`                                    | IMAP, mail sync, updater, per stall (below)  | warn         |
 | `derived_field.drift`                                           | Convex drift sampler, per drifted parent     | warn         |
-| `derived_field.skipped` / `derived_field.sampled`               | Convex drift sampler, per skip / per tick    | info         |
+| `derived_field.skipped` / `derived_field.sampled`               | Convex drift sampler, per skip / field tick  | info         |
 
 These replace the earlier `[Outbound] MTA /send …`, `[Forwarding] …`,
 `[Vacation] auto-replied …` and `[mta Webhook] Ingress guard rejected …` lines,
