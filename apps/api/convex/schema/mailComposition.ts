@@ -147,6 +147,11 @@ export const mailCompositionTables = {
 		// Per-send explicit plaintext consent. Dispatch checks this again after
 		// discovery/crypto so a trust change during the undo window fails closed.
 		isUnsealedSendAllowed: v.optional(v.boolean()),
+		// The sender chose "send and mark done" for this send of a reply. The cutoff
+		// is when they chose it: once the reply is sent, the conversation's Inbox
+		// mail up to then is archived (mail/replyDone.ts) and anything newer stays.
+		// Per send: set or cleared by `drafts.send`, cleared on every revert.
+		doneOnSendAt: v.optional(v.number()),
 
 		// Idempotency key for offline-outbox replays: the queued outbox
 		// item's client-generated id, threaded through `drafts.create` so a

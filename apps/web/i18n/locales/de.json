@@ -1823,6 +1823,21 @@
 				"empty": "Keine Posteingangs-Konversationen gefunden.",
 				"removeLink": "Aktuelle Verknüpfung entfernen",
 				"searchPlaceholder": "Posteingangs-Konversationen suchen…",
+				"share": {
+					"title": "Im Chat teilen",
+					"searchPlaceholder": "Kanäle und Personen suchen…",
+					"roomsLabel": "Wo teilen",
+					"empty": "Kein Kanal und keine Direktnachricht zum Posten.",
+					"partial": "Einige Kanäle oder Direktnachrichten konnten nicht geladen werden.",
+					"notePlaceholder": "Notiz hinzufügen (optional)",
+					"send": "Teilen",
+					"shared": "Link in {room} geteilt",
+					"audience": {
+						"personal": "Aus deinem persönlichen Posteingang. Andere im Chat sehen den Link, nicht die Mail.",
+						"shared": "Mitglieder dieses Posteingangs können den Link öffnen. Alle anderen sehen nur den Link.",
+						"team": "Inhaber und Admins können den Link öffnen. Alle anderen sehen nur den Link."
+					}
+				},
 				"title": "E-Mail-Konversation verknüpfen"
 			},
 			"chatLinkedEmailPanel": {
@@ -4689,6 +4704,9 @@
 				"moreOptions": "Weitere Optionen zum Verfassen",
 				"scheduleSend": "Senden planen…",
 				"sending": "Wird gesendet…",
+				"sendOptions": "Weitere Sendeoptionen",
+				"sendAndKeep": "Senden und im Posteingang lassen",
+				"sendAndDone": "Senden und als erledigt markieren",
 				"signature": "Signatur",
 				"uploadingTitle": "Warten, bis die Anhänge vollständig hochgeladen sind…",
 				"previewAsSent": "Vorschau wie gesendet",
@@ -6177,6 +6195,8 @@
 				"readingPaneHelp": "Wo der Reader neben der Liste sitzt. Zieh den Trenner – oder fokussiere ihn und nutze die Pfeiltasten –, um ihn zu verschieben.",
 				"replyDefaultLabel": "Standardverhalten beim Antworten",
 				"replyDefaultHelp": "Was die Schaltfläche „Antworten“ und das Tastenkürzel {replyKey} tun. {replyAllKey} antwortet immer allen; beim Verfassen kannst du eine Antwort auf „Allen antworten“ umstellen.",
+				"afterReplyLabel": "Nach dem Antworten",
+				"afterReplyHelp": "Was „Senden“ mit der beantworteten Konversation macht. Als erledigt markiert, wird sie archiviert, sobald die Antwort rausgeht, und es geht weiter wie nach dem Archivieren. {oppositeKey} oder das Menü neben „Senden“ macht für eine Antwort das andere.",
 				"writingSuggestionsLabel": "Schreibvorschläge",
 				"writingSuggestionsHelp": "Inline-KI-Autovervollständigung beim Schreiben anzeigen. Mit Tab übernehmen.",
 				"autoSummarizeLabel": "Übersicht über dem Verlauf anzeigen",
@@ -6801,6 +6821,7 @@
 			"updateProgress": {
 				"heading": "Update auf v{version} läuft",
 				"restartNotice": "Die Web-App startet während des Updates möglicherweise neu. Diese Seite verbindet sich automatisch wieder.",
+				"rollingBackNotice": "Das Update ist fehlgeschlagen und wird auf den Snapshot von davor zurückgesetzt. Das kann einige Minuten dauern.",
 				"stepFailed": "Fehlgeschlagen",
 				"steps": {
 					"convexDeploy": "Backend-Funktionen bereitstellen",
@@ -16050,6 +16071,10 @@
 				"scopeOperation": "Zugriff auf den Freigabelink ändern"
 			}
 		},
+		"postboxAfterReply": {
+			"keep": "Im Posteingang lassen",
+			"done": "Als erledigt markieren (archivieren)"
+		},
 		"postboxAutoAdvance": {
 			"backToList": "Zurück zur Liste",
 			"next": "Die nächste Konversation öffnen",
@@ -16630,6 +16655,10 @@
 					"title": "Standardverhalten beim Antworten",
 					"keywords": "allen antworten, antworten, Taste r"
 				},
+				"afterReply": {
+					"title": "Nach dem Antworten",
+					"keywords": "senden und archivieren, als erledigt markieren, erledigt, nach dem Antworten archivieren, im Posteingang lassen"
+				},
 				"shortcuts": {
 					"keywords": "Tastatur, Tastenkürzel, Hotkeys, Tastenbelegung, neu belegen, Gmail-Tasten, Superhuman-Tasten, Outlook-Tasten",
 					"title": "Tastenkürzel"
@@ -16835,6 +16864,7 @@
 				"scheduleSend": "Senden planen (im Editor)",
 				"selectDeselect": "Auswählen / Auswahl aufheben",
 				"send": "Senden (im Editor)",
+				"sendAlternate": "Senden, andere Aktion nach dem Antworten (im Editor)",
 				"showShortcuts": "Tastenkürzel anzeigen",
 				"snooze": "Zurückstellen",
 				"starUnstar": "Markieren / Markierung entfernen",
@@ -18208,9 +18238,6 @@
 				"cancelFollowUp": "Antwort-Erinnerung abbrechen",
 				"translate": "Übersetzen",
 				"showOriginal": "Original herunterladen (.eml)",
-				"copyLink": "Link kopieren",
-				"linkCopied": "Link kopiert",
-				"linkCopyFailed": "Der Link konnte nicht kopiert werden",
 				"pin": "Unterhaltung anheften",
 				"unpin": "Unterhaltung lösen"
 			},
@@ -18231,6 +18258,13 @@
 				"priorityPrompt": "Priorität",
 				"current": "Aktuell"
 			}
+		},
+		"conversationLink": {
+			"copyLink": "Link kopieren",
+			"shareInChat": "Im Chat teilen…",
+			"linkCopied": "Link kopiert",
+			"linkCopyFailed": "Der Link konnte nicht kopiert werden",
+			"linkUnavailable": "Dieser Workspace hat keine Webadresse für einen Link"
 		},
 		"inboxSla": {
 			"dueIn": {

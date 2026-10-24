@@ -10,15 +10,19 @@
  *   4. team-inbox collision safety (usePostboxStaleReplyGuard) — a teammate
  *      replied after this reply opened.
  *
- * Every gate parks the send and replays it verbatim (scheduled time and all)
- * once answered, through `handleSend`. Lifted out of PostboxComposer.vue for the
- * file-size ratchet; the order and the behaviour are the ones it had there.
+ * The upload gate rejects the attempt: nothing is kept, and the sender presses
+ * Send again once the file is up. Every other gate parks the send and replays
+ * it verbatim (scheduled time, the after-reply action and all) once answered,
+ * through `handleSend`: the action is chosen when Send is pressed, so a gate's
+ * dialog cannot change it. Lifted out of PostboxComposer.vue for the file-size
+ * ratchet; the order and the behaviour are the ones it had there.
  */
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposerSeed } from './usePostboxCompose';
 import type { AlignableIdentity } from '~/utils/senderAlignment';
+import type { SendOpts } from './usePostboxComposeOfflineSend';
 
-type SendOptions = { scheduledSendAt?: number; allowUnsealed?: boolean };
+type SendOptions = Omit<SendOpts, 'undoSendDelayMs'>;
 
 export function usePostboxComposerSendGate(opts: {
 	seed: () => ComposerSeed;
@@ -33,8 +37,11 @@ export function usePostboxComposerSendGate(opts: {
 	/** The seal lock (a getter: it is wired with this gate's own `handleSend`). */
 	seal: () => { blockSend: (opts?: SendOptions) => Promise<boolean> };
 	send: (opts?: SendOptions) => Promise<unknown>;
-	/** Reached only when it sent (or queued offline); the undo window is armed. */
-	onSent: (outcome: { scheduled: boolean }) => void;
+	/**
+	 * Reached only when it sent (or queued offline); the undo window is armed.
+	 * `done`: the reply marks its conversation done once it goes out.
+	 */
+	onSent: (outcome: { scheduled: boolean; done: boolean }) => void;
 }) {
 	const { t } = useI18n();
 	const { showToast } = useToast();
@@ -75,7 +82,10 @@ export function usePostboxComposerSendGate(opts: {
 			// `send()` throws on a backend reject, already toasted by the operation
 			// module (SurfacedOperationError): stay put and do not report `sent`.
 			await opts.send(sendOpts);
-			opts.onSent({ scheduled: sendOpts?.scheduledSendAt !== undefined });
+			opts.onSent({
+				scheduled: sendOpts?.scheduledSendAt !== undefined,
+				done: sendOpts?.afterSend === 'done',
+			});
 		} catch (err) {
 			// Anything not already surfaced (the draft row could not be created, a
 			// throw from the flush before it) gets a toast of its own.

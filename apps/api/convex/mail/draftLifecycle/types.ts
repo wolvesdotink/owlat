@@ -176,6 +176,17 @@ export type Effect =
 			contactAddress?: string;
 			baselineText: string;
 			sentText: string;
+	  }
+	| {
+			// "Send and mark done": archive the answered conversation's Inbox mail
+			// up to `cutoffAt` (mail/replyDone.ts). Scheduled, so a failure to
+			// archive can never undo or hold back the send itself.
+			kind: 'schedule_reply_done';
+			mailboxId: Id<'mailboxes'>;
+			threadId: Id<'mailThreads'>;
+			repliedToMessageId: Id<'mailMessages'>;
+			userId: string;
+			cutoffAt: number;
 	  };
 
 export type ReducerResult = {

@@ -24,6 +24,11 @@ export const mailAutoAdvanceValidator = v.union(
 // or a Reply-all. Single source so schema and args can't drift.
 export const mailReplyDefaultValidator = v.union(v.literal('reply'), v.literal('reply-all'));
 
+// What a sent reply does to its conversation (mailUserSettings.afterReply, the
+// mail/settings update args and the per-send choice on `mail.drafts.send`):
+// 'keep' leaves it in the Inbox, 'done' archives it once the reply goes out.
+export const mailAfterReplyValidator = v.union(v.literal('keep'), v.literal('done'));
+
 // Postbox list/reader density (mailUserSettings.density and mail/settings update
 // args) — 'comfortable' (the roomy default) vs 'compact' (tighter rows +
 // single-line subject/snippet). Single source so schema and args can't drift.

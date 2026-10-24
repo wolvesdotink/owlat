@@ -53,6 +53,9 @@ function sources(overrides: Partial<TeamThreadCommandSources> = {}): TeamThreadC
 		onUnsnooze: vi.fn(),
 		onAddNote: vi.fn(),
 		onSetPriority: vi.fn(),
+		onCopyLink: vi.fn(),
+		canShareInChat: () => true,
+		onShareInChat: vi.fn(),
 		...overrides,
 	};
 }
@@ -137,5 +140,20 @@ describe('useTeamThreadCommandSurface', () => {
 		mountPage(src);
 		byId(items(), 'inbox:thread-status').run();
 		expect(src.onStatus).toHaveBeenCalledWith('resolved');
+	});
+
+	it('copies the link and shares it in chat through the page’s handlers', () => {
+		const src = sources();
+		mountPage(src);
+		byId(items(), 'inbox:thread-copy-link').run();
+		byId(items(), 'inbox:thread-share-in-chat').run();
+		expect(src.onCopyLink).toHaveBeenCalledTimes(1);
+		expect(src.onShareInChat).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves Share in chat out while chat is off', () => {
+		mountPage(sources({ canShareInChat: () => false }));
+		expect(items().map((item) => item.id)).not.toContain('inbox:thread-share-in-chat');
+		expect(items().map((item) => item.id)).toContain('inbox:thread-copy-link');
 	});
 });

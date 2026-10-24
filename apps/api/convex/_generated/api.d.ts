@@ -1311,6 +1311,7 @@ import type * as mail_draftExpectedAttachmentsFulfil from '../mail/draftExpected
 import type * as mail_draftInlineImages from '../mail/draftInlineImages.js';
 import type * as mail_draftLifecycle from '../mail/draftLifecycle.js';
 import type * as mail_draftLifecycle_effects from '../mail/draftLifecycle/effects.js';
+import type * as mail_draftLifecycle_nonSentEffects from '../mail/draftLifecycle/nonSentEffects.js';
 import type * as mail_draftLifecycle_reducers from '../mail/draftLifecycle/reducers.js';
 import type * as mail_draftLifecycle_types from '../mail/draftLifecycle/types.js';
 import type * as mail_draftLifecycle_undoToken from '../mail/draftLifecycle/undoToken.js';
@@ -1454,6 +1455,7 @@ import type * as mail_permissions from '../mail/permissions.js';
 import type * as mail_pins from '../mail/pins.js';
 import type * as mail_postboxOutboundAudit from '../mail/postboxOutboundAudit.js';
 import type * as mail_postboxOutboundLifecycle from '../mail/postboxOutboundLifecycle.js';
+import type * as mail_replyDone from '../mail/replyDone.js';
 import type * as mail_replyOptions from '../mail/replyOptions.js';
 import type * as mail_rfc822 from '../mail/rfc822.js';
 import type * as mail_savedReplies from '../mail/savedReplies.js';
@@ -3200,6 +3202,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/draftInlineImages': typeof mail_draftInlineImages;
 	'mail/draftLifecycle': typeof mail_draftLifecycle;
 	'mail/draftLifecycle/effects': typeof mail_draftLifecycle_effects;
+	'mail/draftLifecycle/nonSentEffects': typeof mail_draftLifecycle_nonSentEffects;
 	'mail/draftLifecycle/reducers': typeof mail_draftLifecycle_reducers;
 	'mail/draftLifecycle/types': typeof mail_draftLifecycle_types;
 	'mail/draftLifecycle/undoToken': typeof mail_draftLifecycle_undoToken;
@@ -3343,6 +3346,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/pins': typeof mail_pins;
 	'mail/postboxOutboundAudit': typeof mail_postboxOutboundAudit;
 	'mail/postboxOutboundLifecycle': typeof mail_postboxOutboundLifecycle;
+	'mail/replyDone': typeof mail_replyDone;
 	'mail/replyOptions': typeof mail_replyOptions;
 	'mail/rfc822': typeof mail_rfc822;
 	'mail/savedReplies': typeof mail_savedReplies;

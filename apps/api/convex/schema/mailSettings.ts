@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
+	mailAfterReplyValidator,
 	mailAutoAdvanceValidator,
 	mailDailyBriefEmailValidator,
 	mailDensityValidator,
@@ -55,6 +56,10 @@ export const mailSettingsTables = {
 		// and the `r` shortcut) opens a plain Reply or a Reply-all. Optional so
 		// existing rows read as undefined; the reader defaults it to 'reply'.
 		replyDefault: v.optional(mailReplyDefaultValidator),
+		// What sending a reply does to its conversation: 'keep' it in the Inbox or
+		// mark it 'done' (archive). Absent reads as 'keep', the behaviour before
+		// the setting existed. The composer's opposite-action chord flips it per send.
+		afterReply: v.optional(mailAfterReplyValidator),
 		// List/reader density: 'comfortable' (roomy default) vs 'compact' (tighter
 		// rows + single-line subject/snippet). Optional so existing rows read as
 		// undefined; the reader defaults it to 'comfortable'.

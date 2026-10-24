@@ -30,6 +30,8 @@
  *     - patch_mailbox_bytes            — usedBytes += rawSize
  *     - delete_attachment_storage      — frees the draft's attachment blobs
  *     - record_recipients_in_address_book
+ *     - schedule_reply_done            — archives the answered conversation
+ *                                        ("send and mark done" only)
  *     - delete_draft_row               — terminal row delete
  *     - audit_log('postbox_draft.sent')
  */

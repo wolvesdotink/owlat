@@ -33,13 +33,18 @@ export interface TeamThreadCommandSources {
 	onUnsnooze: () => void;
 	onAddNote: () => void;
 	onSetPriority: (priority: TeamThreadPriority) => void;
+	onCopyLink: () => void;
+	/** Chat is on: the thread's link can be posted to a room. */
+	canShareInChat: () => boolean;
+	onShareInChat: () => void;
 }
 
 /**
  * Registers the open Team Inbox conversation as a palette provider while its
  * page is mounted: reply, assign ›, assign to me, close / reopen, snooze › /
- * wake, add a note, priority ›. Contributes nothing to a member who cannot
- * write the shared inbox — the page offers them none of these either.
+ * wake, add a note, priority ›, copy link, share in chat. Contributes nothing
+ * to a member who cannot write the shared inbox — the page offers them none of
+ * these either.
  */
 export function useTeamThreadCommandSurface(sources: TeamThreadCommandSources): void {
 	const { t } = useI18n();
@@ -110,6 +115,9 @@ export function useTeamThreadCommandSurface(sources: TeamThreadCommandSources): 
 					onReopen: () => sources.onStatus('open'),
 					onUnsnooze: sources.onUnsnooze,
 					onAddNote: sources.onAddNote,
+					onCopyLink: sources.onCopyLink,
+					canShareInChat: sources.canShareInChat,
+					onShareInChat: sources.onShareInChat,
 				},
 				query,
 				mode

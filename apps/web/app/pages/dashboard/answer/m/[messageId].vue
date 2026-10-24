@@ -11,7 +11,8 @@
  *
  * Leaving (Esc, "← Inbox", or a send) goes back to the page it came from; the
  * draft stays saved, and a draft with something in it is offered back on the
- * list ("Draft to Jonas saved · Resume").
+ * list ("Draft to Jonas saved · Resume"). A reply marked done moves on to the
+ * next conversation of that list instead, as archiving does in the reader.
  *
  * Keys: Esc leaves (inside the editor the first Esc only blurs it), `t`
  * toggles Summary / Full conversation, Cmd/Ctrl+J focuses "Draft with AI"
@@ -266,10 +267,17 @@ function leaveMissing() {
 	else queueSession.goCurrent();
 }
 
-function onSent() {
+// The reader's auto-advance preference, for a reply that marks its conversation done.
+const { autoAdvance } = usePostboxSettings();
+function onSent(outcome: { done: boolean }) {
 	leftDraft.clearFor(draftId.value);
 	if (queueSession?.handleSent()) return;
-	answerNav.leave();
+	if (outcome.done)
+		answerNav.leaveDone(
+			{ messageId: messageId.value, threadId: message.value?.threadId ?? null },
+			autoAdvance.value
+		);
+	else answerNav.leave();
 }
 
 function onDiscarded() {
