@@ -1,6 +1,7 @@
 /**
  * Drag a thread-list row (or the whole bulk selection) onto the folder rail:
- * drop on a folder to move it there, drop on a label to apply the label.
+ * drop on a folder to move it there, drop on a label to apply the label. The
+ * Inbox's pinned band is a target too: a drop there pins the conversations.
  *
  * The source list starts a SESSION carrying the dragged ids and its own move
  * verb, so a drop runs the exact path `v` and the bulk bar's Move run —
@@ -198,12 +199,27 @@ export function usePostboxMessageDropTargets(mailboxId: Ref<Id<'mailboxes'> | nu
 		);
 	}
 
+	/**
+	 * The pinned band. `accepts` lets a full band refuse the drop up front (the
+	 * no-drop cursor) instead of taking it and toasting the refusal.
+	 */
+	function pin(accepts: () => boolean, apply: (messageIds: Id<'mailMessages'>[]) => unknown) {
+		return listeners(
+			'pin',
+			(drag) => drag.mailboxId === mailboxId.value && accepts(),
+			'copy',
+			(drag) => apply(drag.messageIds)
+		);
+	}
+
 	return {
 		/** A message drag is in flight (the rail may spring folded groups open). */
 		active: computed(() => session.value !== null),
 		isOverFolder: (folderId: string) => overKey.value === `folder:${folderId}`,
 		isOverLabel: (labelId: string) => overKey.value === `label:${labelId}`,
+		isOverPin: () => overKey.value === 'pin',
 		folder,
 		label,
+		pin,
 	};
 }

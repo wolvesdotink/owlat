@@ -123,6 +123,7 @@ export interface ListRow {
 	// Thread state, joined in by attachThreadState.
 	followUp?: { remindAt: number; dueAt?: number; watched: boolean };
 	mutedAt?: number;
+	pinnedAt?: number;
 	snoozeReturnedAt?: number;
 	category?: string;
 	briefTop?: ListRowBriefTop;
@@ -133,6 +134,7 @@ export interface ListRow {
 export const THREAD_STATE_KEYS = [
 	'followUp',
 	'mutedAt',
+	'pinnedAt',
 	'snoozeReturnedAt',
 	'category',
 	'briefTop',

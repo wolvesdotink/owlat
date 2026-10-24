@@ -38,6 +38,8 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
 	// The row's thread is MUTED (mail/mute.ts) — new mail on it skips the
 	// inbox and never notifies. Present so the silence is legible.
 	mutedAt?: number;
+	// The row's thread is in the Inbox's pinned band (mail/pins.ts).
+	pinnedAt?: number;
 	// The row's thread just came BACK from snooze (mail/snooze.ts sweep).
 	// Transient: the reader clears it the first time the thread is opened.
 	snoozeReturnedAt?: number;
@@ -113,6 +115,7 @@ const emit = defineEmits<{
 	archive: [];
 	trash: [];
 	'toggle-mute': [];
+	'toggle-pin': [];
 	'cancel-follow-up': [];
 	/** A committed swipe (idea 21). The list maps it onto its own triage verbs. */
 	swipe: [action: Exclude<PostboxSwipeAction, 'none'>];
@@ -156,7 +159,9 @@ function onCheckboxClick(event: MouseEvent) {
  * Narrow to a literal per branch: Vue types `emit` as an intersection of
  * per-event call signatures, so a union-typed argument matches no overload.
  */
-function triage(e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash' | 'toggle-mute') {
+function triage(
+	e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash' | 'toggle-mute' | 'toggle-pin'
+) {
 	switch (e) {
 		case 'toggle-star':
 			emit('toggle-star');
@@ -172,6 +177,9 @@ function triage(e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash' | 'toggle
 			break;
 		case 'toggle-mute':
 			emit('toggle-mute');
+			break;
+		case 'toggle-pin':
+			emit('toggle-pin');
 			break;
 	}
 }
@@ -226,6 +234,14 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 		label: t('common.archive'),
 		icon: 'lucide:archive',
 		run: () => triage('archive'),
+	},
+	{
+		id: 'pin',
+		label: props.msg.pinnedAt
+			? t('components.postbox.postboxThreadRow.unpin')
+			: t('components.postbox.postboxThreadRow.pin'),
+		icon: props.msg.pinnedAt ? 'lucide:pin-off' : 'lucide:pin',
+		run: () => triage('toggle-pin'),
 	},
 	{
 		id: 'mute',

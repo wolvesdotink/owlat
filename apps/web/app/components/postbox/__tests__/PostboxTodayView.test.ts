@@ -189,6 +189,7 @@ function mountView(extraProps: Record<string, unknown> = {}) {
 				Icon: iconStub,
 				NuxtLink: nuxtLinkStub,
 				PostboxDailyBrief: dailyBriefStub,
+				PostboxPinnedBand: { template: '<section data-testid="pinned-band-stub" />' },
 				PostboxInboxModeToggle: inboxModeToggleStub,
 				PostboxThreadList: threadListStub,
 				PostboxThreadListSkeleton: skeletonStub,

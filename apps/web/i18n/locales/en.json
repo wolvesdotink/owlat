@@ -5434,7 +5434,9 @@
 				"menuLabel": "Conversation actions",
 				"muteConversation": "Mute conversation",
 				"noSubject": "(no subject)",
-				"unmuteHint": "Muted conversations stay out of the inbox."
+				"unmuteHint": "Muted conversations stay out of the inbox.",
+				"pinConversation": "Pin conversation",
+				"pinHint": "Keep it in the pinned band at the top of the Inbox"
 			},
 			"postboxThreadList": {
 				"archiveOperation": "Archive",
@@ -5522,7 +5524,10 @@
 				"snoozedUntil": "Snoozed until {when}",
 				"star": "Star",
 				"unmute": "Unmute conversation",
-				"unstar": "Unstar"
+				"unstar": "Unstar",
+				"pin": "Pin conversation",
+				"unpin": "Unpin conversation",
+				"pinnedChip": "Pinned to the top of the Inbox"
 			},
 			"postboxThreadRowFollowUp": {
 				"cancelLabel": "Cancel reply reminder",
@@ -13450,6 +13455,15 @@
 				"discard": "Discard rule draft",
 				"test": "Test rule"
 			}
+		},
+		"pins": {
+			"title": "Pinned",
+			"count": "{count} of {limit}",
+			"operation": "Pin conversation",
+			"unpin": "Unpin",
+			"unpinNamed": "Unpin “{subject}”",
+			"full": "You can pin up to 5 conversations. Unpin one to make room.",
+			"dropHint": "Drop here to pin"
 		}
 	},
 	"recipient": {
@@ -17780,7 +17794,9 @@
 				"showOriginal": "Download original (.eml)",
 				"copyLink": "Copy link",
 				"linkCopied": "Link copied",
-				"linkCopyFailed": "Could not copy the link"
+				"linkCopyFailed": "Could not copy the link",
+				"pin": "Pin conversation",
+				"unpin": "Unpin conversation"
 			},
 			"teamThread": {
 				"heading": "This conversation",

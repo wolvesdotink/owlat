@@ -332,12 +332,12 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 							@select-density="(mode) => void setDensity(mode)"
 							@select-reading-pane="(pane) => void setReadingPane(pane)"
 						/>
-						<template v-if="folderRole === 'drafts'">
-							<div class="flex-1 overflow-auto">
-								<PostboxDraftList :mailbox-id="mailboxId" />
-							</div>
-						</template>
+						<div v-if="folderRole === 'drafts'" class="flex-1 overflow-auto">
+							<PostboxDraftList :mailbox-id="mailboxId" />
+						</div>
 						<template v-else>
+							<!-- Pinned conversations: the Inbox's, above whichever renderer. -->
+							<PostboxPinnedBand v-if="folderRole === 'inbox'" :mailbox-id="mailboxId" />
 							<!-- Triage filter chips — flat list only; the grouped renderers own
 						     their sections. One tap from "everything" to "what needs me". -->
 							<PostboxTriageFilterChips
