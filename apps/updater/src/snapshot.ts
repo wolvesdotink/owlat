@@ -230,16 +230,21 @@ export interface Plumbing {
 	installation: string;
 }
 
-/** What a copy helper is started from: this container's own image and install bind. */
-export async function helperPlumbing(): Promise<Plumbing | null> {
+/**
+ * What a copy helper is started from: this container's own image and install
+ * bind. `installation` is the run's `resolveInstallation` answer; a bind that
+ * no longer matches it is refused, so a helper never carries a label the
+ * run's cleanup does not look for.
+ */
+export async function helperPlumbing(installation: string): Promise<Plumbing | null> {
 	const self = await inspectSelf();
 	const bind = self?.binds.find((mount) => mount.split(':')[1] === OWLAT_DIR);
 	const hostDir = bind?.split(':')[0];
-	if (!self || !hostDir) return null;
+	if (!self || !hostDir || hostDir !== installation) return null;
 	return {
 		image: self.image,
 		hostSnapshotDir: join(hostDir, '.owlat-update-snapshot'),
-		installation: hostDir,
+		installation,
 	};
 }
 

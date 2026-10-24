@@ -9,12 +9,11 @@
  * from INSIDE the stack it is updating, so anything it stops mid-flight, it
  * stops with itself in it.
  */
-import { hostname } from 'node:os';
 import { existsSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
-import { bindArgs, COMPOSE_SHADOWED_VARS, exec, OWLAT_DIR } from './http.js';
+import { bindArgs, COMPOSE_SHADOWED_VARS, exec, OWLAT_DIR, readSelf } from './http.js';
 import { dockerHost as configuredDockerHost } from './config.js';
 import { verifyReadiness } from './readiness.js';
 import { shutdownSignal } from './lifecycle.js';
@@ -186,7 +185,7 @@ export async function dockerApiPreflight(signal?: AbortSignal): Promise<RolloutS
  * container's install dir at OWLAT_DIR is the one thing that knows the real
  * path, so read it back off ourselves.
  */
-export async function hostInstallDir(): Promise<string | null> {
+async function hostInstallDir(): Promise<string | null> {
 	const self = await inspectSelf();
 	const bind = self?.binds.find((mount) => mount.split(':')[1] === OWLAT_DIR);
 	return bind?.split(':')[0] ?? null;
@@ -308,19 +307,11 @@ interface SelfContainer {
 
 /** What this very container was created with — the plumbing a helper must clone. */
 export async function inspectSelf(): Promise<SelfContainer | null> {
-	const format =
-		'{{.Config.Image}}{{"\\n"}}{{json .Mounts}}{{"\\n"}}{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}';
-	const result = await exec('docker', ['inspect', hostname(), '--format', format], OWLAT_DIR);
-	if (!result.ok) return null;
-
-	const [image = '', mounts = '', networks = ''] = result.stdout.split('\n');
-	const binds = bindArgs(mounts);
+	const self = await readSelf();
+	if (self.kind !== 'container') return null;
+	const binds = bindArgs(self.mounts);
 	if (!binds) return null;
-	const container: SelfContainer = {
-		image: image.trim(),
-		binds,
-		networks: networks.split(' ').filter(Boolean),
-	};
+	const container: SelfContainer = { image: self.image, binds, networks: self.networks };
 
 	const everyArg = [container.image, ...container.binds, ...container.networks];
 	if (!container.image || everyArg.some((arg) => !SAFE_ARG.test(arg))) return null;

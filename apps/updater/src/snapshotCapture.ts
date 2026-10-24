@@ -77,6 +77,8 @@ const gib = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 interface CaptureOptions {
 	targetVersion: string | null;
 	signal: AbortSignal;
+	/** The update's `resolveInstallation` answer, which its copy helpers are labelled with. */
+	installation: string;
 }
 
 type CaptureResult =
@@ -125,7 +127,7 @@ export async function captureSnapshot(options: CaptureOptions): Promise<CaptureR
 		return refuse(500, `Cannot take the snapshot: ${config.error}. Nothing was changed.`);
 	}
 
-	const plumbing = await helperPlumbing();
+	const plumbing = await helperPlumbing(options.installation);
 	if (!plumbing) {
 		return refuse(
 			500,

@@ -70,9 +70,9 @@ import {
 	deployContainerName,
 	deployRunArgs,
 	failedDeploy,
-	installationId,
 	removeContainer,
 	removeUpdateContainers,
+	resolveInstallation,
 } from './deployRun.js';
 import { discardSnapshot, markSnapshot, readSnapshot, type Snapshot } from './snapshot.js';
 import { captureSnapshot, recoverInterruptedCapture } from './snapshotCapture.js';
@@ -343,20 +343,35 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// installation left behind (a shutdown, a client that lost the daemon) may
 	// keep running alongside this one, whether or not that update took a
 	// snapshot, so it is stopped before anything else changes, and the update
-	// is refused when it cannot be.
-	const earlier = await removeUpdateContainers();
-	if (!earlier.ok) {
+	// is refused when it cannot be. Which containers are this installation's
+	// is read once here and used for every container this update starts.
+	const refuseEarly = async (error: string) => {
 		await discardStaged();
-		const error = `Cannot stop a container an earlier update started (${earlier.reason}). Nothing was changed.`;
 		steps.push({ step: 'earlier-deploy', ok: false, stdout: '', stderr: error });
 		console.error('[update] refused before deploying:', error);
 		return answer(500, { error, steps });
+	};
+	const installation = await resolveInstallation();
+	if (!installation.ok) {
+		return refuseEarly(
+			`Cannot tell which containers belong to this install, so an earlier update's could not be stopped (${installation.reason}). Nothing was changed.`
+		);
+	}
+	const earlier = await removeUpdateContainers(installation.id);
+	if (!earlier.ok) {
+		return refuseEarly(
+			`Cannot stop a container an earlier update started (${earlier.reason}). Nothing was changed.`
+		);
 	}
 
 	// Step 4d: snapshot the data and configuration the rest of the rollout
 	// changes (snapshot.ts). No snapshot, no update: without one a failed
 	// release cannot be rolled back, unless `.env` opts out.
-	const captured = await captureSnapshot({ targetVersion: record.targetVersion, signal: stopping });
+	const captured = await captureSnapshot({
+		targetVersion: record.targetVersion,
+		signal: stopping,
+		installation: installation.id,
+	});
 	steps.push(captured.step);
 	if (captured.kind === 'taken') snapshot = captured.snapshot;
 	if (stopping.aborted) return backOut();
@@ -409,7 +424,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	const deployName = deployContainerName(snapshot?.id);
 	const deploy = await exec(
 		'docker',
-		[...deployArgs, ...deployRunArgs(deployName, noDeps, await installationId())],
+		[...deployArgs, ...deployRunArgs(deployName, noDeps, installation.id)],
 		OWLAT_DIR,
 		{
 			signal: stopping,

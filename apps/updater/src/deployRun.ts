@@ -17,8 +17,8 @@
  * again (`removeUpdateContainers`).
  */
 import { randomBytes } from 'node:crypto';
-import { exec, OWLAT_DIR } from './http.js';
-import { hostInstallDir, oneLine } from './rollout.js';
+import { exec, OWLAT_DIR, readSelf } from './http.js';
+import { oneLine } from './rollout.js';
 
 /**
  * Labels every container an update or a rollback starts (the deploy and the
@@ -32,11 +32,27 @@ export const UPDATE_INSTALL_LABEL = 'ink.wolves.owlat.update-install';
 /**
  * Which installation this updater works for: its install directory as the
  * host sees it, which no two installations on one daemon share. An updater
- * outside a container sees the host path itself, and one whose install bind
- * cannot be read falls back to it the same way `composeArgv` does.
+ * outside a container (or one whose install directory is not a bind) has
+ * nothing else to go by and uses its own path.
+ *
+ * Every container of a run is labelled, and every leftover is looked for, with
+ * the value one call returned, passed down rather than read again: a later
+ * inspect that failed must not change which containers the run looks for, or
+ * a deploy labelled with the host path would be missed while data is restored
+ * under it. For the same reason a failed inspect is refused rather than read
+ * as "outside a container": the answer must be the one an earlier run
+ * labelled its containers with.
  */
-export async function installationId(): Promise<string> {
-	return (await hostInstallDir()) ?? OWLAT_DIR;
+export async function resolveInstallation(): Promise<
+	{ ok: true; id: string } | { ok: false; reason: string }
+> {
+	const self = await readSelf();
+	if (self.kind === 'unreadable') {
+		return { ok: false, reason: `cannot inspect this container (${oneLine(self.reason)})` };
+	}
+	if (self.kind === 'none') return { ok: true, id: OWLAT_DIR };
+	const bind = self.mounts.find((m) => m.type === 'bind' && m.destination === OWLAT_DIR);
+	return { ok: true, id: bind?.source ?? OWLAT_DIR };
 }
 
 /**
@@ -125,12 +141,12 @@ export async function removeContainer(
  * snapshot (`OWLAT_UPDATE_SNAPSHOT=off`) leaves no record of its deploy. Run
  * inside the lock, before anything starts a container of its own, so every
  * one it finds is stale. The updater's own replacement helper carries no such
- * label, so it is never among them.
+ * label, so it is never among them. `installation` is the run's
+ * `resolveInstallation` answer, the one its own containers are labelled with.
  */
-export async function removeUpdateContainers(): Promise<
-	{ ok: true } | { ok: false; reason: string }
-> {
-	const installation = await installationId();
+export async function removeUpdateContainers(
+	installation: string
+): Promise<{ ok: true } | { ok: false; reason: string }> {
 	const listed = await exec(
 		'docker',
 		[

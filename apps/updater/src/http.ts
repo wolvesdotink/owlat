@@ -6,6 +6,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { hostname } from 'node:os';
 import { errorMessage } from '@owlat/shared';
 import { parseComposePs, type ComposeService } from '@owlat/shared/containerHealth';
 import { secretMatches } from '@owlat/shared/constantTimeEqual';
@@ -439,20 +440,52 @@ export function parseMounts(value: unknown): DockerMount[] | null {
 }
 
 /**
- * The binds of a container's `{{json .Mounts}}` as `-v` arguments
+ * The binds of a container's mounts as `-v` arguments
  * (`source:destination:rw`), or null when one cannot be written as one: `-v`
  * splits on the colon.
  */
-export function bindArgs(mountsJson: string): string[] | null {
+export function bindArgs(mounts: DockerMount[]): string[] | null {
+	const binds = mounts.filter((mount) => mount.type === 'bind');
+	if (binds.some((m) => m.source.includes(':') || m.destination.includes(':'))) return null;
+	return binds.map((m) => `${m.source}:${m.destination}:${m.rw ? 'rw' : 'ro'}`);
+}
+
+/** This very container, as `docker inspect` reports it. */
+export type SelfInspect =
+	| { kind: 'container'; image: string; mounts: DockerMount[]; networks: string[] }
+	/** Docker knows no container by this host's name: the updater runs outside one. */
+	| { kind: 'none' }
+	/** Docker did not answer, or answered with something that is not this container. */
+	| { kind: 'unreadable'; reason: string };
+
+const NO_SUCH_OBJECT = /no such (container|object)/i;
+
+/**
+ * Inspect the container this process runs in. A failed inspect is told apart
+ * from an answer that there is no such container: only the second is a fact
+ * about this updater that the next inspect repeats.
+ */
+export async function readSelf(): Promise<SelfInspect> {
+	const format =
+		'{{.Config.Image}}{{"\\n"}}{{json .Mounts}}{{"\\n"}}{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}';
+	const result = await exec('docker', ['inspect', hostname(), '--format', format], OWLAT_DIR);
+	if (!result.ok) {
+		return NO_SUCH_OBJECT.test(result.stderr)
+			? { kind: 'none' }
+			: { kind: 'unreadable', reason: result.stderr.trim() || 'docker inspect failed' };
+	}
+	const [image = '', mountsJson = '', networks = ''] = result.stdout.split('\n');
 	let mounts: DockerMount[] | null;
 	try {
 		mounts = parseMounts(JSON.parse(mountsJson));
 	} catch {
-		return null;
+		mounts = null;
 	}
-	const binds = mounts?.filter((mount) => mount.type === 'bind');
-	if (!binds || binds.some((m) => m.source.includes(':') || m.destination.includes(':'))) {
-		return null;
-	}
-	return binds.map((m) => `${m.source}:${m.destination}:${m.rw ? 'rw' : 'ro'}`);
+	if (!mounts) return { kind: 'unreadable', reason: 'its mounts are not a mount list' };
+	return {
+		kind: 'container',
+		image: image.trim(),
+		mounts,
+		networks: networks.split(' ').filter(Boolean),
+	};
 }

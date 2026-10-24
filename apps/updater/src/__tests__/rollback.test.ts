@@ -1151,6 +1151,117 @@ describe('what else may write while a rollback restores', () => {
 	});
 });
 
+describe('a self-inspect that fails partway', () => {
+	const isSelfInspect = (cmd: string) =>
+		cmd.startsWith('docker inspect ') && cmd.includes('{{json .Mounts}}');
+	const LEFT = 'owlat-update-deploy-later';
+
+	/** Docker loses its connection on the `n`th time the updater inspects itself. */
+	function failSelfInspect(n: number): void {
+		let reads = 0;
+		overrides.push((cmd) => {
+			if (isSelfInspect(cmd) && ++reads === n) fail('error during connect: unexpected EOF');
+			return undefined;
+		});
+	}
+
+	/** Every install label the run started a container with or looked for one by. */
+	function labelsUsed(): string[] {
+		return commandLines().flatMap((cmd) =>
+			[
+				...cmd.matchAll(/(?:--label |--filter label=)(ink\.wolves\.owlat\.update-install=\S+)/g),
+			].map((m) => m[1] ?? '')
+		);
+	}
+
+	// Whichever inspect fails, the run never restores under a deploy of this
+	// install it did not find, nor looks for one under another install's label.
+	it.each([1, 2, 3, 4, 5, 6])(
+		'restores nothing under a running deploy when inspect %i fails during a rollback',
+		async (n) => {
+			await update();
+			const snapshot = journal()['id'];
+			deployContainers.set(LEFT, INSTALL_LABEL);
+			commandMock.mockClear();
+			failSelfInspect(n);
+			const runningAtRestore: string[] = [];
+			overrides.push((cmd) => {
+				if (isRestore(cmd)) runningAtRestore.push(...deployContainers.keys());
+				return undefined;
+			});
+
+			const res = await post('/rollback', { snapshot });
+			expect(runningAtRestore).toEqual([]);
+			for (const label of labelsUsed()) expect(label).toBe(INSTALL_LABEL);
+			if (res.status !== 200) {
+				expect(commandLines().some(isRestore)).toBe(false);
+				expect(journal()).toMatchObject({ state: 'kept' });
+			}
+		}
+	);
+
+	it('refuses a rollback when it cannot tell which containers are this install', async () => {
+		await update();
+		const snapshot = journal()['id'];
+		deployContainers.set(LEFT, INSTALL_LABEL);
+		overrides.push((cmd) => (isSelfInspect(cmd) ? fail('error during connect: EOF') : undefined));
+
+		const res = await post('/rollback', { snapshot });
+		const json = (await res.json()) as Answer;
+		expect(res.status).toBe(500);
+		expect(json.error).toContain('cannot tell which containers belong to this install');
+		expect(commandLines().some(isRestore)).toBe(false);
+		expect(deployContainers.has(LEFT)).toBe(true);
+		expect(journal()).toMatchObject({ state: 'kept' });
+	});
+
+	it.each([
+		['with a snapshot', ''],
+		['without a snapshot', 'OWLAT_UPDATE_SNAPSHOT=off\n'],
+	])('never deploys beside an earlier deploy, %s, whichever inspect fails', async (_, optOut) => {
+		let refusedUnresolved = false;
+		for (const n of [1, 2, 3, 4, 5, 6]) {
+			deployContainers = new Map([[LEFT, INSTALL_LABEL]]);
+			rmSync(SNAPSHOT_DIR, { recursive: true, force: true });
+			rmSync(RECORD, { force: true });
+			writeFileSync(join(OWLAT_DIR, '.env'), `${OLD_ENV}${optOut}`, { mode: 0o600 });
+			commandMock.mockClear();
+			overrides = [];
+			failSelfInspect(n);
+			const besideDeploy: string[] = [];
+			overrides.push((cmd) => {
+				if (isDeploy(cmd)) besideDeploy.push(...deployContainers.keys());
+				return undefined;
+			});
+
+			const { status, json } = await update();
+			expect(besideDeploy).not.toContain(LEFT);
+			for (const label of labelsUsed()) expect(label).toBe(INSTALL_LABEL);
+			if (json.error?.includes('Cannot tell which containers belong to this install')) {
+				expect(status).toBe(500);
+				expect(commandLines().some(isDeploy)).toBe(false);
+				refusedUnresolved = true;
+			}
+		}
+		expect(refusedUnresolved).toBe(true);
+	});
+
+	it('labels an updater outside a container with its own path, and finds its deploys by it', async () => {
+		overrides.push((cmd) =>
+			isSelfInspect(cmd) ? fail('Error: No such object: updater-host') : undefined
+		);
+		writeFileSync(join(OWLAT_DIR, '.env'), `${OLD_ENV}OWLAT_UPDATE_SNAPSHOT=off\n`);
+		const own = `ink.wolves.owlat.update-install=${OWLAT_DIR}`;
+		deployContainers.set(LEFT, own);
+
+		await update();
+		expect(deployContainers.has(LEFT)).toBe(false);
+		const labels = labelsUsed();
+		expect(labels.length).toBeGreaterThan(0);
+		for (const label of labels) expect(label).toBe(own);
+	});
+});
+
 describe('mount paths the snapshot cannot pass to Docker', () => {
 	it('refuses a bind whose path holds a space, before pausing or deploying anything', async () => {
 		stack[0] = { ...stack[0]!, mounts: [bind('/srv/Owlat Data/convex', '/convex/data')] };

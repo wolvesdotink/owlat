@@ -26,7 +26,7 @@ import {
 	servicesToRecreate,
 } from './rollout.js';
 import { verifyReadiness } from './readiness.js';
-import { removeUpdateContainers } from './deployRun.js';
+import { removeUpdateContainers, resolveInstallation } from './deployRun.js';
 import { isRateLimited } from './security.js';
 import {
 	COPY_TIMEOUT_MS,
@@ -167,8 +167,16 @@ async function restoreAndStart(
 		return startRestored(snapshot, preExisting, steps);
 	}
 
+	// Which containers are this installation's is read once: the copy helpers
+	// below are labelled with it, and the leftovers are looked for by it.
+	const installation = await resolveInstallation();
+	if (!installation.ok) {
+		const reason = `cannot tell which containers belong to this install: ${installation.reason}`;
+		fail('rollback-restore', reason);
+		return result('untouched', `${reason}. Nothing was restored.`);
+	}
 	const damaged = await damagedPayload(snapshot);
-	const plumbing = damaged ? null : await helperPlumbing();
+	const plumbing = damaged ? null : await helperPlumbing(installation.id);
 	if (damaged || !plumbing) {
 		const reason = damaged
 			? `the snapshot cannot be used: ${damaged}`
@@ -183,7 +191,7 @@ async function restoreAndStart(
 	// may a copy helper of a restore an earlier rollback lost. Each is stopped
 	// and waited for first, or it could go on writing to the backend or the
 	// data restored under it.
-	const settled = await removeUpdateContainers();
+	const settled = await removeUpdateContainers(installation.id);
 	if (!settled.ok) {
 		const reason = `could not stop a container an update or rollback of this install started (${settled.reason})`;
 		fail('rollback-restore', reason);
