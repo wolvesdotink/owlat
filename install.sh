@@ -220,17 +220,17 @@ resolve_ref() {
 		# is the only sensible target.
 		OWLAT_REF="main"
 		warn "No published vX.Y.Z release found (HTTP ${http_code}) — falling back to the default branch 'main'."
-		warn "Pin a specific version with: OWLAT_REF=v1.2.3 curl … | bash"
+		warn "Pin a specific version with: curl … | OWLAT_REF=v1.2.3 bash"
 	elif [[ "$http_code" == "200" ]]; then
 		die "No stable vX.Y.Z release among the newest $((max_pages * per_page)) releases of ${OWLAT_GH_SLUG},
 but the release history goes on, so refusing to fall back to the bleeding-edge 'main'. Pin a ref:
-  OWLAT_REF=v1.2.3 curl … | bash   # a release tag"
+  curl … | OWLAT_REF=v1.2.3 bash   # a release tag"
 	else
 		die "Could not resolve a release from the GitHub API (HTTP ${http_code}) for ${OWLAT_GH_SLUG}.
 This is usually a transient network error or an API rate-limit, not a missing release,
 so refusing to silently install the bleeding-edge 'main'. Re-run later, or pin a ref:
-  OWLAT_REF=v1.2.3 curl … | bash   # a release tag
-  OWLAT_REF=main   curl … | bash   # the bleeding edge, if you really want it"
+  curl … | OWLAT_REF=v1.2.3 bash   # a release tag
+  curl … | OWLAT_REF=main bash     # the bleeding edge, if you really want it"
 	fi
 }
 

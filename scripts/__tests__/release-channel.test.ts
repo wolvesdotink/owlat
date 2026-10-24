@@ -192,4 +192,13 @@ printf '%s' "$OWLAT_REF"
 	it('refuses to install main when the API fails', () => {
 		expect(resolve('', [recent], 403)).toMatch(/^die: Could not resolve a release/);
 	});
+
+	it('hands the pinned ref to the installer, not to curl, in every hint', () => {
+		// `OWLAT_REF=x curl … | bash` sets the variable for curl only; the bash
+		// that runs the installer never sees it and repeats the failed lookup.
+		const pages = Array.from({ length: 10 }, (_, index) => candidates(100, 10 + index));
+		expect(resolve('', pages)).toContain('curl … | OWLAT_REF=v1.2.3 bash');
+		expect(resolve('', [recent], 403)).toContain('curl … | OWLAT_REF=main bash');
+		expect(resolveRef).not.toMatch(/OWLAT_REF=\S+\s+curl/);
+	});
 });
