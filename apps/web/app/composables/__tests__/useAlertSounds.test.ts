@@ -2,9 +2,9 @@
  * The alert sounds composable against shallow query refs, the way
  * `useConvexQuery` delivers them. Pins: the first answer of each source is
  * silent, a burst of mixed alerts makes one sound, a re-delivery or a switch
- * flipped later never replays the backlog, the next burst sounds again, quiet
- * hours and the desktop mute silence everything, and none of it needs Tauri
- * or Web Push. The real player runs against a stubbed `Audio`; the burst clock
+ * flipped later never replays the backlog, an older item sliding into a
+ * bounded window is no arrival, the next burst sounds again, quiet hours and
+ * the desktop mute silence everything, and none of it needs Tauri or Web Push. The real player runs against a stubbed `Audio`; the burst clock
  * is the faked `Date`, never the real one.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -40,7 +40,8 @@ const queryArgs: unknown[] = [];
 function stubNuxt(): void {
 	vi.stubGlobal('Audio', MockAudio as unknown as typeof Audio);
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop }));
-	vi.stubGlobal('usePostboxSettings', () => ({ alertSounds: prefs, quietHours }));
+	vi.stubGlobal('usePostboxSettings', () => ({ quietHours }));
+	vi.stubGlobal('useAlertSoundPreferences', () => ({ alertSounds: prefs }));
 	vi.stubGlobal('useDesktopAppSettings', () => ({
 		settings: desktopSettings,
 		workspaceLocal: () => ({ muteNotifications: muted.value }),
@@ -71,19 +72,29 @@ async function tick(): Promise<void> {
 	await nextTick();
 }
 
+/**
+ * Server arrival times, fixed per id on first use: every fixture made later in
+ * a test arrived later, and a re-delivery keeps its time.
+ */
+const arrivedAt = new Map<string, number>();
+function at(id: string): number {
+	if (!arrivedAt.has(id)) arrivedAt.set(id, arrivedAt.size + 1);
+	return arrivedAt.get(id)!;
+}
+
 function message(id: string, extra: { alerted?: boolean; muted?: boolean } = {}) {
 	return {
 		messageId: id,
 		threadId: `t-${id}`,
 		fromAddress: 'alice@example.com',
 		subject: `Subject ${id}`,
-		receivedAt: 1,
+		receivedAt: at(id),
 		...extra,
 	};
 }
 
 function notice(id: string, kind?: 'assignment' | 'clarification' | 'mention' | 'sla_breach') {
-	return { id, kind, threadId: `t-${id}`, subject: id, assignedByName: 'Bob', createdAt: 1 };
+	return { id, kind, threadId: `t-${id}`, subject: id, assignedByName: 'Bob', createdAt: at(id) };
 }
 
 /** Advance the faked wall clock past one burst window. */
@@ -106,6 +117,7 @@ beforeEach(() => {
 	desktopSettings.value = { global: { notificationsEnabled: true } };
 	muted.value = false;
 	queryArgs.length = 0;
+	arrivedAt.clear();
 });
 
 afterEach(() => {
@@ -201,6 +213,40 @@ describe('useAlertSounds', () => {
 		notices.value = [notice('a1')];
 		await tick();
 		expect(plays).toHaveBeenCalledTimes(1);
+	});
+
+	it('stays silent when reading the newest lets an older armed reply into the peek', async () => {
+		// Six unread, oldest first; the peek shows the newest five.
+		const ids = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+		for (const id of ids) at(id);
+		const peek = (shown: string[]) => ({
+			total: shown.length + 1,
+			messages: shown.map((id) => message(id, { alerted: true })),
+		});
+		await mountDashboard();
+		unread.value = peek(['m6', 'm5', 'm4', 'm3', 'm2']);
+		await tick();
+
+		// m6 is read: m1, older than everything seen, slides in. No mail arrived.
+		unread.value = peek(['m5', 'm4', 'm3', 'm2', 'm1']);
+		await tick();
+		expect(plays).not.toHaveBeenCalled();
+
+		// A real arrival still sounds.
+		unread.value = peek(['m7', 'm5', 'm4', 'm3', 'm2']);
+		await tick();
+		expect(plays).toHaveBeenCalledTimes(1);
+	});
+
+	it('stays silent when an older notice slides into the notice window', async () => {
+		for (const id of ['a1', 'a2', 'a3']) at(id);
+		await mountDashboard();
+		notices.value = [notice('a3'), notice('a2')];
+		await tick();
+
+		notices.value = [notice('a2'), notice('a1')];
+		await tick();
+		expect(plays).not.toHaveBeenCalled();
 	});
 
 	it('plays only the kinds switched on, and turning one on later replays nothing', async () => {

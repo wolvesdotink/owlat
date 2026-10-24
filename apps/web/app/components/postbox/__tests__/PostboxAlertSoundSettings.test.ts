@@ -19,18 +19,18 @@ vi.mock('~/composables/postbox/useUiSound', () => ({ previewAlertSound: preview 
 const setAlertSound = vi.fn(async () => {});
 let prefs: AlertSoundPrefs;
 let flags: Set<string>;
-let isAdmin: boolean;
+let role: 'owner' | 'admin' | 'editor' | null;
 
 beforeEach(() => {
 	preview.mockClear();
 	setAlertSound.mockClear();
 	prefs = { reply: false, assignment: false, question: false };
 	flags = new Set(['postbox', 'inbox']);
-	isAdmin = true;
+	role = 'admin';
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: (flag: string) => flags.has(flag) }));
-	vi.stubGlobal('usePermissions', () => ({ isAdmin: ref(isAdmin) }));
-	vi.stubGlobal('usePostboxSettings', () => ({
+	vi.stubGlobal('usePermissions', () => ({ role: ref(role) }));
+	vi.stubGlobal('useAlertSoundPreferences', () => ({
 		alertSounds: ref(prefs),
 		setAlertSound,
 		isSaving: ref(false),
@@ -61,15 +61,20 @@ describe('PostboxAlertSoundSettings', () => {
 	});
 
 	it('keeps the team alerts to owners and admins with the team inbox', () => {
-		isAdmin = false;
+		role = 'editor';
+		expect(switchIds(mountCard())).toEqual(['alert-sound-reply']);
+		role = null;
 		expect(switchIds(mountCard())).toEqual(['alert-sound-reply']);
 
-		isAdmin = true;
+		role = 'owner';
 		flags = new Set(['postbox']);
 		expect(switchIds(mountCard())).toEqual(['alert-sound-reply']);
 
 		flags = new Set(['inbox']);
 		expect(switchIds(mountCard())).toEqual(['alert-sound-assignment', 'alert-sound-question']);
+		// An editor on a Team-inbox-only instance has no row, so no card.
+		role = 'editor';
+		expect(mountCard().find('#alert-sounds').exists()).toBe(false);
 	});
 
 	it('hides itself when no alert it covers can reach this person', () => {

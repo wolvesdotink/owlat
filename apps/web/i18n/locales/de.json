@@ -5212,6 +5212,7 @@
 				}
 			},
 			"postboxAlertSoundSettings": {
+				"saveOperation": "Hinweiston speichern",
 				"heading": "Hinweistöne",
 				"scopeBadge": "Alle deine Geräte",
 				"intro": "Ein leiser Ton für die Hinweise, die du auswählst, und für nichts sonst. Diese Schalter gehören zu deinem Konto und gelten in jedem Browser und in der Desktop-App. In deinen Ruhezeiten bleibt jeder Ton aus, und Hinweise, die zusammen ankommen, klingen nur einmal.",

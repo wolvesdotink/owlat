@@ -14,7 +14,7 @@
  * hears what they chose and the browser lets later alerts play.
  */
 import type { AlertSoundKind } from '~/lib/alertSoundRules';
-import { ALERT_SOUND_KINDS } from '~/lib/alertSoundRules';
+import { alertSoundKindsFor } from '~/lib/alertSoundRules';
 import { previewAlertSound } from '~/composables/postbox/useUiSound';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
@@ -22,14 +22,12 @@ const KEY = 'components.postbox.postboxAlertSoundSettings';
 
 const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
-const { isAdmin } = usePermissions();
-const { alertSounds, setAlertSound, isSaving, isLoading } = usePostboxSettings();
+const { role } = usePermissions();
+const { alertSounds, setAlertSound, isSaving, isLoading } = useAlertSoundPreferences();
 
-const hasMail = computed(() => isEnabled('postbox') || isEnabled('mail.external'));
-const hasTeamAlerts = computed(() => isAdmin.value && isEnabled('inbox'));
-
+// The same predicate gates the palette's "Alert sounds" control.
 const kinds = computed<AlertSoundKind[]>(() =>
-	ALERT_SOUND_KINDS.filter((kind) => (kind === 'reply' ? hasMail.value : hasTeamAlerts.value))
+	alertSoundKindsFor({ isFeatureEnabled: isEnabled, role: role.value })
 );
 
 function toggle(kind: AlertSoundKind, enabled: boolean): void {

@@ -20,6 +20,8 @@
  *
  * Kept free of Vue, the DOM and Convex so the decision table is unit-testable.
  */
+import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
+import { hasPermission, type OrganizationRole } from '@owlat/shared/organizationPermissions';
 import type { AssignmentNotice } from '~/lib/inbox/assignmentNoticeRules';
 import type { UnreadPeekMessage } from '~/lib/desktop/notificationRules';
 
@@ -29,6 +31,29 @@ export type AlertSoundKind = 'reply' | 'assignment' | 'question';
 export const ALERT_SOUND_KINDS: readonly AlertSoundKind[] = ['reply', 'assignment', 'question'];
 
 export type AlertSoundPrefs = Readonly<Record<AlertSoundKind, boolean>>;
+
+/** What decides which alerts can reach a person at all. */
+interface AlertSoundAudience {
+	isFeatureEnabled(flag: FeatureFlagKey): boolean;
+	/** Unresolved (null or absent) reaches no Team-inbox alert. */
+	role?: OrganizationRole | null;
+}
+
+/**
+ * The kinds this person can hear, in card order. The reply alert needs
+ * personal mail; assignment and agent-question notices come from the Team
+ * inbox and reach only its readers (owners and admins, the same permission the
+ * notice query checks). The settings card and the palette's control both read
+ * this, so search never offers a switch the card hides.
+ */
+export function alertSoundKindsFor(audience: AlertSoundAudience): AlertSoundKind[] {
+	const hasMail =
+		audience.isFeatureEnabled('postbox') || audience.isFeatureEnabled('mail.external');
+	const hasTeamAlerts =
+		audience.isFeatureEnabled('inbox') &&
+		hasPermission(audience.role ?? null, 'organization:manage');
+	return ALERT_SOUND_KINDS.filter((kind) => (kind === 'reply' ? hasMail : hasTeamAlerts));
+}
 
 /** The settings-row fields that hold the switches (`mail.settings`). */
 interface AlertSoundSettingsFields {
@@ -51,7 +76,7 @@ export function resolveAlertSoundPrefs(
 	};
 }
 
-/** The `mail.settings.update` patch that flips one switch and nothing else. */
+/** The `preferences.alertSounds.update` patch that flips one switch and nothing else. */
 export function alertSoundPatch(kind: AlertSoundKind, enabled: boolean): AlertSoundSettingsFields {
 	if (kind === 'reply') return { isReplyAlertSoundOn: enabled };
 	if (kind === 'assignment') return { isAssignmentSoundOn: enabled };
@@ -77,6 +102,41 @@ export function noticeAlertKind(notice: Pick<AssignmentNotice, 'kind'>): AlertSo
 	if (notice.kind === undefined || notice.kind === 'assignment') return 'assignment';
 	if (notice.kind === 'clarification') return 'question';
 	return null;
+}
+
+/**
+ * What one source has shown so far: every id, and the newest arrival time
+ * among them (`null` until the source has shown anything).
+ */
+export interface ArrivalMemory {
+	readonly seen: Set<string>;
+	newestAt: number | null;
+}
+
+/**
+ * The items of a newest-first window that actually ARRIVED since the last
+ * look: unseen, and newer than anything seen before. The id alone is not
+ * enough, because the window is bounded: reading or archiving its newest item
+ * lets an older unread one slide in from below, unseen but not new. Anything
+ * that slides in is older than what it replaces, so the watermark keeps it
+ * silent. Updates `memory` with the whole window. Pure apart from `memory`.
+ */
+export function takeArrivals<T>(
+	memory: ArrivalMemory,
+	items: readonly T[],
+	idOf: (item: T) => string,
+	timeOf: (item: T) => number
+): T[] {
+	const since = memory.newestAt;
+	const fresh = items.filter(
+		(item) => !memory.seen.has(idOf(item)) && (since === null || timeOf(item) > since)
+	);
+	for (const item of items) {
+		memory.seen.add(idOf(item));
+		const at = timeOf(item);
+		if (memory.newestAt === null || at > memory.newestAt) memory.newestAt = at;
+	}
+	return fresh;
 }
 
 /** The distinct kinds a batch of new arrivals stands for. */

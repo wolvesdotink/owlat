@@ -3,15 +3,13 @@ import {
 	alertKindsOf,
 	noticeAlertKind,
 	shouldPlayAlertSound,
+	takeArrivals,
 	unreadAlertKind,
 	type AlertSoundKind,
+	type ArrivalMemory,
 } from '~/lib/alertSoundRules';
 import type { AssignmentNotice } from '~/lib/inbox/assignmentNoticeRules';
-import {
-	isWithinQuietHours,
-	newlyArrived,
-	type UnreadPeekMessage,
-} from '~/lib/desktop/notificationRules';
+import { isWithinQuietHours, type UnreadPeekMessage } from '~/lib/desktop/notificationRules';
 import { playAlertSound, primeAlertSound } from '~/composables/postbox/useUiSound';
 import type { UnreadBadge } from '~/composables/useUnreadBadge';
 
@@ -33,16 +31,21 @@ const MAX_SEEN = 1000;
  * The first answer of each source is seeded silently and every id is
  * remembered afterwards, whether or not a sound was on, so opening the app,
  * reconnecting, a query re-delivery or switching a sound on later never turns
- * a backlog into a chime. The unread peek is a bounded newest-first window, so
- * a reply that arrives behind a flood of newer mail can go unheard: the sound
- * is a courtesy, never the record (the notification and the inbox are).
+ * a backlog into a chime. Both sources are bounded newest-first windows, so an
+ * item only counts as an arrival when it is also newer than anything seen
+ * before (`takeArrivals`): reading the newest unread message lets an older one
+ * slide into the peek, and that is no new mail. The flip side: a reply that
+ * arrives behind a flood of newer mail, or with an arrival time older than
+ * mail already shown, goes unheard. The sound is a courtesy, never the record
+ * (the notification and the inbox are).
  *
  * On the desktop app the device switches apply as for notifications: the
  * notification master switch off, or this workspace muted, means no sound.
  */
 export function useAlertSounds(unread: UnreadBadge) {
 	const { isDesktop } = useDesktopContext();
-	const { alertSounds, quietHours } = usePostboxSettings();
+	const { quietHours } = usePostboxSettings();
+	const { alertSounds } = useAlertSoundPreferences();
 	const { settings: appSettings, workspaceLocal } = useDesktopAppSettings();
 	const { activeId } = useDesktopWorkspaces();
 
@@ -71,49 +74,48 @@ export function useAlertSounds(unread: UnreadBadge) {
 		if (play) playAlertSound();
 	}
 
-	/** Mark `ids` as seen, re-seeding from them when the set has grown too large. */
-	function remember(seen: Set<string>, ids: readonly string[]): void {
-		for (const id of ids) seen.add(id);
-		if (seen.size <= MAX_SEEN) return;
-		seen.clear();
-		for (const id of ids) seen.add(id);
+	/**
+	 * Watch one source: the first answer only seeds `memory`, every later one
+	 * sounds for what actually arrived. Watched by identity: a delivery that
+	 * changes anything is a new object.
+	 */
+	function watchArrivals<T>(
+		source: () => readonly T[] | null | undefined,
+		idOf: (item: T) => string,
+		timeOf: (item: T) => number,
+		kindOf: (item: T) => AlertSoundKind | null
+	): void {
+		const memory: ArrivalMemory = { seen: new Set(), newestAt: null };
+		let loaded = false;
+		watch(
+			source,
+			(items) => {
+				if (!items) return;
+				const fresh = takeArrivals(memory, items, idOf, timeOf);
+				// Bounded: re-seed from the current window. The watermark stays, so
+				// nothing older than what was already seen can come back as new.
+				if (memory.seen.size > MAX_SEEN) {
+					memory.seen.clear();
+					for (const item of items) memory.seen.add(idOf(item));
+				}
+				if (loaded) sound(alertKindsOf(fresh, kindOf));
+				loaded = true;
+			},
+			{ immediate: true }
+		);
 	}
 
-	const seenMessages = new Set<string>();
-	let messagesLoaded = false;
-	// Watched by identity: a delivery that changes anything is a new object.
-	watch(
-		() => unread.data.value,
-		(data) => {
-			if (!data) return;
-			const messages = data.messages as UnreadPeekMessage[];
-			const fresh = messagesLoaded ? newlyArrived(messages, seenMessages) : [];
-			remember(
-				seenMessages,
-				messages.map((m) => m.messageId)
-			);
-			messagesLoaded = true;
-			sound(alertKindsOf(fresh, unreadAlertKind));
-		},
-		{ immediate: true }
+	watchArrivals(
+		() => unread.data.value?.messages as UnreadPeekMessage[] | undefined,
+		(m) => m.messageId,
+		(m) => m.receivedAt,
+		unreadAlertKind
 	);
-
-	const seenNotices = new Set<string>();
-	let noticesLoaded = false;
-	watch(
-		() => noticeData.value,
-		(rows) => {
-			if (!rows) return;
-			const notices = rows as AssignmentNotice[];
-			const fresh = noticesLoaded ? notices.filter((n) => !seenNotices.has(n.id)) : [];
-			remember(
-				seenNotices,
-				notices.map((n) => n.id)
-			);
-			noticesLoaded = true;
-			sound(alertKindsOf(fresh, noticeAlertKind));
-		},
-		{ immediate: true }
+	watchArrivals(
+		() => noticeData.value as AssignmentNotice[] | undefined,
+		(n) => n.id,
+		(n) => n.createdAt,
+		noticeAlertKind
 	);
 
 	// An alert never arrives inside a user gesture, and WebKit only lets an

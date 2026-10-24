@@ -248,14 +248,24 @@ describe('settingsControlTargets', () => {
 		);
 	});
 
-	it('offers the alert sounds wherever mail or the team inbox can raise one', () => {
+	it('offers the alert sounds exactly when the card shows a row', () => {
 		const ids = (env: SettingsEnvironment) =>
 			settingsControlTargets(env).map((target) => target.control.id);
+		const inboxOnly = (role: SettingsEnvironment['role']): SettingsEnvironment => ({
+			isFeatureEnabled: (flag) => flag === 'inbox',
+			isDesktop: false,
+			role,
+		});
 		expect(ids(WEB_WITH_MAIL)).toContain('alertSounds');
 		expect(ids(FULL)).toContain('alertSounds');
-		expect(ids({ isFeatureEnabled: (flag) => flag === 'inbox', isDesktop: false })).toContain(
-			'alertSounds'
-		);
+		// Team-inbox alerts reach owners and admins only; an editor there has no row.
+		expect(ids(inboxOnly('admin'))).toContain('alertSounds');
+		expect(ids(inboxOnly('owner'))).toContain('alertSounds');
+		expect(ids(inboxOnly('editor'))).not.toContain('alertSounds');
+		expect(ids(inboxOnly(null))).not.toContain('alertSounds');
+		expect(ids(inboxOnly(undefined))).not.toContain('alertSounds');
+		// Mail alone reaches every role: the reply sound is personal.
+		expect(ids({ ...WEB_WITH_MAIL, role: 'editor' })).toContain('alertSounds');
 		expect(ids(MARKETING_ONLY)).not.toContain('alertSounds');
 		expect(
 			settingsControlTargets(FULL).find((target) => target.control.id === 'alertSounds')?.href

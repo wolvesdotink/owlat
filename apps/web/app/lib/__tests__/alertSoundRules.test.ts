@@ -3,13 +3,16 @@ import {
 	ALERT_SOUND_BURST_MS,
 	ALERT_SOUND_KINDS,
 	alertKindsOf,
+	alertSoundKindsFor,
 	alertSoundPatch,
 	isNewAlertBurst,
 	noticeAlertKind,
 	resolveAlertSoundPrefs,
 	shouldPlayAlertSound,
+	takeArrivals,
 	unreadAlertKind,
 	type AlertSoundPrefs,
+	type ArrivalMemory,
 } from '../alertSoundRules';
 
 const ALL_ON: AlertSoundPrefs = { reply: true, assignment: true, question: true };
@@ -41,6 +44,106 @@ describe('alertSoundPatch', () => {
 			expect(prefs[kind]).toBe(true);
 			expect(Object.values(prefs).filter(Boolean)).toHaveLength(1);
 		}
+	});
+});
+
+describe('alertSoundKindsFor', () => {
+	const flags =
+		(...on: string[]) =>
+		(flag: string) =>
+			on.includes(flag);
+
+	it('lists the reply sound wherever personal mail exists, whatever the role', () => {
+		expect(alertSoundKindsFor({ isFeatureEnabled: flags('postbox'), role: 'editor' })).toEqual([
+			'reply',
+		]);
+		expect(alertSoundKindsFor({ isFeatureEnabled: flags('mail.external') })).toEqual(['reply']);
+	});
+
+	it('lists the Team inbox sounds for its readers only', () => {
+		const inbox = flags('inbox');
+		expect(alertSoundKindsFor({ isFeatureEnabled: inbox, role: 'owner' })).toEqual([
+			'assignment',
+			'question',
+		]);
+		expect(alertSoundKindsFor({ isFeatureEnabled: inbox, role: 'admin' })).toEqual([
+			'assignment',
+			'question',
+		]);
+		expect(alertSoundKindsFor({ isFeatureEnabled: inbox, role: 'editor' })).toEqual([]);
+		expect(alertSoundKindsFor({ isFeatureEnabled: inbox, role: null })).toEqual([]);
+		expect(alertSoundKindsFor({ isFeatureEnabled: inbox })).toEqual([]);
+	});
+
+	it('lists all three in card order, and none without mail or the Team inbox', () => {
+		expect(alertSoundKindsFor({ isFeatureEnabled: () => true, role: 'admin' })).toEqual(
+			ALERT_SOUND_KINDS
+		);
+		expect(alertSoundKindsFor({ isFeatureEnabled: flags('campaigns'), role: 'owner' })).toEqual([]);
+	});
+});
+
+describe('takeArrivals', () => {
+	interface Item {
+		id: string;
+		at: number;
+	}
+	const take = (memory: ArrivalMemory, items: Item[]) =>
+		takeArrivals(
+			memory,
+			items,
+			(item) => item.id,
+			(item) => item.at
+		).map((item) => item.id);
+	const fresh = (): ArrivalMemory => ({ seen: new Set(), newestAt: null });
+
+	it('counts unseen items newer than anything seen before', () => {
+		const memory = fresh();
+		expect(
+			take(memory, [
+				{ id: 'b', at: 20 },
+				{ id: 'a', at: 10 },
+			])
+		).toEqual(['b', 'a']);
+		expect(memory.newestAt).toBe(20);
+		expect(
+			take(memory, [
+				{ id: 'c', at: 30 },
+				{ id: 'b', at: 20 },
+			])
+		).toEqual(['c']);
+		expect(memory.newestAt).toBe(30);
+	});
+
+	it('never counts an older item that slides into the window as an arrival', () => {
+		const memory = fresh();
+		take(memory, [
+			{ id: 'e', at: 50 },
+			{ id: 'd', at: 40 },
+		]);
+		// The newest is read: an older unread one slides in from below.
+		expect(
+			take(memory, [
+				{ id: 'd', at: 40 },
+				{ id: 'c', at: 30 },
+			])
+		).toEqual([]);
+		// The watermark holds after the newest left the window.
+		expect(memory.newestAt).toBe(50);
+		expect(
+			take(memory, [
+				{ id: 'f', at: 60 },
+				{ id: 'd', at: 40 },
+			])
+		).toEqual(['f']);
+	});
+
+	it('never counts a re-delivery, and seeds from an empty window by id alone', () => {
+		const memory = fresh();
+		expect(take(memory, [])).toEqual([]);
+		expect(memory.newestAt).toBeNull();
+		expect(take(memory, [{ id: 'a', at: 5 }])).toEqual(['a']);
+		expect(take(memory, [{ id: 'a', at: 5 }])).toEqual([]);
 	});
 });
 

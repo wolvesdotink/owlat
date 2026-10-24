@@ -5212,6 +5212,7 @@
 				}
 			},
 			"postboxAlertSoundSettings": {
+				"saveOperation": "Save alert sound",
 				"heading": "Alert sounds",
 				"scopeBadge": "All your devices",
 				"intro": "A soft chime for the alerts you pick, and for nothing else. These switches belong to your account, so they hold in every browser and in the desktop app. Quiet hours keep every chime silent, and alerts that arrive together make one sound.",
