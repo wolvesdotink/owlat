@@ -32,7 +32,13 @@ const setToastShortcutHint = (id: string, hint: string | undefined) => {
 	const toast = toasts.find((t) => t.id === id);
 	if (toast) toast.shortcutHint = hint;
 };
-vi.stubGlobal('useToast', () => ({ showToast, removeToast, setToastShortcutHint }));
+const updateToast = (id: string, patch: { message?: string; action?: StubToast['action'] }) => {
+	const toast = toasts.find((t) => t.id === id);
+	if (!toast) return;
+	if (patch.message !== undefined) toast.message = patch.message;
+	if (patch.action) toast.action = patch.action;
+};
+vi.stubGlobal('useToast', () => ({ showToast, removeToast, setToastShortcutHint, updateToast }));
 
 let stateBuckets = new Map<string, ReturnType<typeof ref>>();
 vi.stubGlobal('useState', (key: string, init: () => unknown) => {

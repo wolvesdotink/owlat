@@ -19,6 +19,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxFlagOverride } from './usePostboxOptimisticFlags';
+import type { PostboxMoveUndoKind } from './usePostboxTriageUndo';
 import {
 	optimisticArchive,
 	optimisticMarkRead,
@@ -92,6 +93,7 @@ export function usePostboxRowTriage(args: {
 	async function runRemoving(
 		ids: Id<'mailMessages'>[],
 		undoLabel: string,
+		undoKind: { kind: PostboxMoveUndoKind; scope?: string },
 		mutate: () => Promise<
 			BackendOperationResult<{
 				moved: Parameters<typeof triageUndo.registerMoveBack>[0]['moved'];
@@ -110,6 +112,7 @@ export function usePostboxRowTriage(args: {
 		if (outcome.result.moved.length > 0) {
 			triageUndo.registerMoveBack({
 				label: undoLabel,
+				...undoKind,
 				moved: outcome.result.moved,
 				runMove: (a) => moveOp.run(a),
 				after: unhideAll,
@@ -119,13 +122,19 @@ export function usePostboxRowTriage(args: {
 	}
 
 	const archiveMsg = (id: Id<'mailMessages'>) =>
-		runRemoving([id], t('components.postbox.postboxThreadList.archivedUndo'), () =>
-			archiveOp.run({ messageIds: [id] })
+		runRemoving(
+			[id],
+			t('components.postbox.postboxThreadList.archivedUndo'),
+			{ kind: 'archived' },
+			() => archiveOp.run({ messageIds: [id] })
 		);
 
 	const trashMsg = (id: Id<'mailMessages'>) =>
-		runRemoving([id], t('components.postbox.postboxThreadList.trashedUndo'), () =>
-			trashOp.run({ messageIds: [id] })
+		runRemoving(
+			[id],
+			t('components.postbox.postboxThreadList.trashedUndo'),
+			{ kind: 'trashed' },
+			() => trashOp.run({ messageIds: [id] })
 		);
 
 	/**
@@ -140,6 +149,7 @@ export function usePostboxRowTriage(args: {
 					ids.length > 1
 						? t('shared.postbox.usePostboxBulkActions.undo.movedMany', { count: ids.length })
 						: t('components.postbox.postboxThreadList.movedUndo'),
+					{ kind: 'moved', scope: targetFolderId },
 					() => moveOp.run({ messageIds: ids, targetFolderId })
 				);
 

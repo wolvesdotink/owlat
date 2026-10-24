@@ -11254,11 +11254,17 @@
 				"title": "Team inbox",
 				"undo": {
 					"assigned": "Assigned",
+					"assignedMany": "Assigned {count} conversation | Assigned {count} conversations",
 					"assignedTo": "Assigned to {name}",
+					"assignedToMany": "Assigned {count} conversation to {name} | Assigned {count} conversations to {name}",
 					"assignedToYou": "Assigned to you",
+					"assignedToYouMany": "Assigned {count} conversation to you | Assigned {count} conversations to you",
 					"resolved": "Resolved",
+					"resolvedMany": "Resolved {count} conversation | Resolved {count} conversations",
 					"snoozed": "Snoozed",
-					"unassigned": "Unassigned"
+					"snoozedMany": "Snoozed {count} conversation | Snoozed {count} conversations",
+					"unassigned": "Unassigned",
+					"unassignedMany": "Unassigned {count} conversation | Unassigned {count} conversations"
 				},
 				"unsnoozeThreadOperation": "Unsnooze thread",
 				"updateThreadStatusOperation": "Update thread status",
@@ -15701,8 +15707,16 @@
 				"recategorizeThread": "Recategorize thread"
 			},
 			"usePostboxTriageUndo": {
+				"grouped": {
+					"archived": "Archived {count} message | Archived {count} messages",
+					"moved": "Moved {count} message | Moved {count} messages",
+					"spam": "Marked {count} message as spam | Marked {count} messages as spam",
+					"trashed": "Moved {count} message to trash | Moved {count} messages to trash"
+				},
 				"keyHint": "{keys} to undo",
-				"undo": "Undo"
+				"keyHintLast": "{keys} undoes the last",
+				"undo": "Undo",
+				"undoAll": "Undo all"
 			},
 			"usePostboxImageAllowlist": {
 				"allowOperation": "Always show images from this sender",
@@ -17138,11 +17152,15 @@
 			"exportFailed": "Export failed. Please try again.",
 			"exported": "Exported {count} contact to {filename} | Exported {count} contacts to {filename}",
 			"listFallback": "list",
+			"nothingAdded": "All selected contacts are already in \"{list}\"",
 			"noContactsToExport": "No contacts to export",
+			"nothingRemoved": "None of the selected contacts are in \"{list}\"",
 			"removeContactsOperation": "Remove contacts from topic",
 			"removedFromList": "Removed {count} contact from \"{list}\" | Removed {count} contacts from \"{list}\"",
 			"selectAllFailed": "Failed to select all contacts. Please try again.",
-			"selectionTruncated": "Selected the first {count} matching contacts. Refine your filter to act on the rest."
+			"selectionTruncated": "Selected the first {count} matching contacts. Refine your filter to act on the rest.",
+			"undoAddOperation": "Undo adding contacts to topic",
+			"undoRemoveOperation": "Undo removing contacts from topic"
 		},
 		"useContactDetail": {
 			"clearPropertyOperation": "Clear contact property",
