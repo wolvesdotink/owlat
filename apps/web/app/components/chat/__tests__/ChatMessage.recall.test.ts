@@ -3,7 +3,7 @@
  * end. Saving edits that same message, Escape cancels, and either way focus
  * goes back to the composer the ↑ came from.
  */
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ref } from 'vue';
 
@@ -27,11 +27,17 @@ const STUBS = {
 	AiBudgetRefusal: true,
 	ChatAttachmentChip: true,
 };
-const mounted: VueWrapper[] = [];
+// The hand-built DOM of a test (the composer, the row's host); the shared setup
+// unmounts the components.
+let root: HTMLElement;
+
+beforeEach(() => {
+	root = document.createElement('div');
+	document.body.appendChild(root);
+});
 
 afterEach(() => {
-	for (const w of mounted.splice(0)) w.unmount();
-	document.body.innerHTML = '';
+	root.remove();
 });
 
 function message(extra: Partial<ChatMessageRow> = {}): ChatMessageRow {
@@ -50,10 +56,10 @@ function message(extra: Partial<ChatMessageRow> = {}): ChatMessageRow {
 /** A composer textarea that holds focus, then the message row beside it. */
 function setup(row = message()) {
 	const composer = document.createElement('textarea');
-	document.body.appendChild(composer);
+	root.appendChild(composer);
 	composer.focus();
 	const host = document.createElement('div');
-	document.body.appendChild(host);
+	root.appendChild(host);
 	const w = mount(ChatMessage, {
 		attachTo: host,
 		props: { message: row, isOwnMessage: true, currentUserId: ME },
@@ -62,7 +68,6 @@ function setup(row = message()) {
 			stubs: STUBS,
 		},
 	});
-	mounted.push(w);
 	return { w, composer };
 }
 
@@ -117,7 +122,7 @@ describe('ChatMessage opened from the composer', () => {
 		await flushPromises();
 
 		const elsewhere = document.createElement('button');
-		document.body.appendChild(elsewhere);
+		root.appendChild(elsewhere);
 		elsewhere.focus();
 		await w
 			.findAll('button')
@@ -130,7 +135,7 @@ describe('ChatMessage opened from the composer', () => {
 
 	it('opens when the row mounts with the request already set', async () => {
 		const host = document.createElement('div');
-		document.body.appendChild(host);
+		root.appendChild(host);
 		const w = mount(ChatMessage, {
 			attachTo: host,
 			props: { message: message(), isOwnMessage: true, currentUserId: ME, editRequested: true },
@@ -139,7 +144,6 @@ describe('ChatMessage opened from the composer', () => {
 				stubs: STUBS,
 			},
 		});
-		mounted.push(w);
 		await flushPromises();
 		expect(document.activeElement).toBe(editor(w).element);
 	});

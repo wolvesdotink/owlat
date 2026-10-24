@@ -13,14 +13,12 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { PromptHistoryEntry } from '~/utils/composerRecall';
 
 let send: ReturnType<typeof vi.fn>;
-const mounted: VueWrapper[] = [];
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
 beforeEach(() => {
-	for (const w of mounted.splice(0)) w.unmount();
 	send = vi.fn(async () => ({ ok: true }));
 });
 
@@ -31,13 +29,11 @@ const HISTORY: PromptHistoryEntry[] = [
 ];
 
 function mountComposer(props: Record<string, unknown> = {}) {
-	const w = mount(AssistantComposer, {
+	return mount(AssistantComposer, {
 		attachTo: document.body,
 		props: { send: send as never, promptHistory: HISTORY, historyKey: 'convo_a', ...props },
 		global: { plugins: [createTestI18n()] },
 	});
-	mounted.push(w);
-	return w;
 }
 
 const field = (w: VueWrapper) => w.get('textarea').element as HTMLTextAreaElement;
