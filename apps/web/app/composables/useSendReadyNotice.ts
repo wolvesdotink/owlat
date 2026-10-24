@@ -44,6 +44,8 @@ export function useSendReadyNotice() {
 	// all say the same thing, so a re-report must not toast the older rows again.
 	const surfaced = new Set<string>();
 
+	// By reference, not `deep`: the query hands over a new object whenever the
+	// state changes (see `useConvexQuery`), so walking it would only cost time.
 	watch(
 		() => data.value,
 		(state) => {
@@ -66,6 +68,6 @@ export function useSendReadyNotice() {
 				onDismiss: () => void acknowledge({}),
 			});
 		},
-		{ immediate: true, deep: true }
+		{ immediate: true }
 	);
 }

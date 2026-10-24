@@ -312,6 +312,9 @@ export function useDesktopNotifications(unread: UnreadBadge) {
 		}
 	}
 
+	// The query watchers below compare references, never `deep`: a delivery that
+	// changes anything is a new object and one that changes nothing keeps its
+	// identity (see `useConvexQuery`), so walking every row would only cost time.
 	watch(
 		() => unread.data.value,
 		async (data) => {
@@ -331,7 +334,7 @@ export function useDesktopNotifications(unread: UnreadBadge) {
 			rememberSeen(messages);
 			loadedOnce = true;
 		},
-		{ immediate: true, deep: true }
+		{ immediate: true }
 	);
 
 	// The dock/taskbar badge follows the shared count, so it repaints on an
@@ -381,8 +384,7 @@ export function useDesktopNotifications(unread: UnreadBadge) {
 				// Tauri modules unavailable.
 			}
 			previousReviewQueue.value = reviewQueue;
-		},
-		{ deep: true }
+		}
 	);
 
 	// "Assigned to you" → in-app toast (always) + desktop notification (when the
@@ -462,7 +464,7 @@ export function useDesktopNotifications(unread: UnreadBadge) {
 				}
 			}
 		},
-		{ immediate: true, deep: true }
+		{ immediate: true }
 	);
 
 	return { isDesktop };
