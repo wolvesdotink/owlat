@@ -217,7 +217,7 @@ function startOver() {
 						autocomplete="url"
 						spellcheck="false"
 						:placeholder="t('desktop.welcome.connect.urlPlaceholder')"
-						class="input input-sm text-sm"
+						class="input input-sm"
 					/>
 					<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
 					<UiButton type="submit" :disabled="isConnecting" full-width>
@@ -250,7 +250,7 @@ function startOver() {
 							autocomplete="off"
 							spellcheck="false"
 							:placeholder="t('desktop.welcome.connect.codePlaceholder')"
-							class="input input-sm font-mono text-sm"
+							class="input input-sm font-mono"
 						/>
 						<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
 						<UiButton type="submit" :disabled="isRedeeming || !pastedCode.trim()" full-width>

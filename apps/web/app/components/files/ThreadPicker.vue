@@ -58,7 +58,7 @@ const pick = (thread: PickerThread) => {
 			<input
 				v-model="search"
 				type="text"
-				class="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+				class="input"
 				:placeholder="t('components.files.threadPicker.searchPlaceholder')"
 				autocomplete="off"
 			/>

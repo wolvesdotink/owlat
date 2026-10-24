@@ -176,7 +176,7 @@ defineExpose({
 			ref="textarea"
 			v-model="body"
 			rows="3"
-			class="input w-full resize-none bg-bg-elevated text-sm"
+			class="input w-full resize-none"
 			:placeholder="t('components.inbox.notes.placeholder')"
 			:aria-label="
 				editing ? t('components.inbox.notes.editLabel') : t('components.inbox.notes.composerLabel')

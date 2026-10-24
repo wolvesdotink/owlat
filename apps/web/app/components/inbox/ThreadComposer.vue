@@ -360,7 +360,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 					<input
 						:value="subject"
 						type="text"
-						class="input w-full text-sm"
+						class="input"
 						:aria-label="t('dashboard.inbox.detail.composer.subjectLabel')"
 						:placeholder="t('dashboard.inbox.detail.composer.subjectLabel')"
 						data-testid="thread-composer-subject"
@@ -388,7 +388,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 					<textarea
 						ref="textarea"
 						:value="body"
-						class="min-h-48 w-full flex-1 resize-none bg-transparent text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-tertiary"
+						class="input-bare min-h-48 w-full flex-1 resize-none text-sm leading-relaxed"
 						:aria-label="t('dashboard.inbox.detail.composer.bodyLabel')"
 						:placeholder="t('dashboard.inbox.detail.composer.placeholder')"
 						data-testid="thread-composer-body"
