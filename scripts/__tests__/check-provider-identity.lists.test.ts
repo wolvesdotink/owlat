@@ -185,7 +185,7 @@ describe('provider-identity ratchet, the kind list', () => {
 	});
 
 	it('reads only the ENTRY kinds, never a credential field\u2019s own `kind:`', () => {
-		// The catalog entries carry typed credential-field descriptors (D5), and a
+		// The catalog entries carry typed credential-field descriptors, and a
 		// descriptor has a `kind:` too — `kind: 'secret'`, `kind: 'host-port'`.
 		// A parser that read those as transport kinds would turn every
 		// `=== 'secret'` in the repo into a provider-identity violation, and the

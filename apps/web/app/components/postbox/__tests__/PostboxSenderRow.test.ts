@@ -1,5 +1,5 @@
 /**
- * One Senders row (SPEC §5): the read bar, the kind, the status control and
+ * One Senders row: the read bar, the kind, the status control and
  * the markers under the name. The row only emits; the panel runs the calls.
  */
 import { describe, it, expect, beforeAll } from 'vitest';

@@ -1,6 +1,6 @@
 /**
  * What a thread list row says instead of its snippet once the thread is
- * interpreted (SPEC §7, plan §4.1): the top open item.
+ * interpreted: the top open item.
  *
  *   "4 for you · Approve the revised quote by Fri"
  *   "1 to do · Pay €38.08 by 21 Oct · no reply needed"

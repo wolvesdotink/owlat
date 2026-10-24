@@ -118,7 +118,7 @@ function safeReportedDomain(value: string | undefined): string | undefined {
  * than the send it complains about. The two tokens that happen to spell a
  * destination-provider key (`microsoft`, `yahoo`) are listed like every other
  * one rather than passed through by a coincidence-of-spelling branch: a
- * passthrough would make those rows unreachable dead code (D20).
+ * passthrough would make those rows unreachable dead code.
  */
 const FBL_ISP_TO_CELL = {
 	microsoft: 'microsoft',

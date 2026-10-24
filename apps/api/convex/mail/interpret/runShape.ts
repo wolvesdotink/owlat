@@ -28,7 +28,7 @@ export interface InterpretArgs {
 	isLive?: boolean;
 	precedence?: string;
 	listId?: string;
-	/** D10: how the thread's earlier deferred mail is handled (`defer.ts`). */
+	/** How the thread's earlier deferred mail is handled (`defer.ts`). */
 	predecessors?: PredecessorMode;
 	/** The awaiting caller's root, deadline included; else the message's own. */
 	root?: LlmRootContext;

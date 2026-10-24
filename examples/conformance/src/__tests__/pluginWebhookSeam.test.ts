@@ -1,5 +1,5 @@
 /**
- * THE PLUGIN FEEDBACK SEAM, END TO END (the seams plan's D6, wired by P2.2).
+ * THE PLUGIN FEEDBACK SEAM, END TO END.
  *
  * The other suites in this piece each own one link: the kit's validator, the
  * renderer's output, the host's registry, the route's gates. This one walks the

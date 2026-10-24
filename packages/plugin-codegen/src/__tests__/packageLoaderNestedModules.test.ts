@@ -4,7 +4,7 @@
  * `packageLoaderExecutableBuckets.test.ts` proves every bucket's own
  * `module.exportPath` is resolved through the installed package's `exports` map
  * and asserted to live inside the package root. A send transport's feedback
- * webhook (the seams plan's D6/P2.2) hangs off `webhook.module.exportPath`
+ * webhook hangs off `webhook.module.exportPath`
  * instead — one level down — and codegen emits `import … from "<pkg>/<path>"`
  * for it exactly as it does for the send half.
  *

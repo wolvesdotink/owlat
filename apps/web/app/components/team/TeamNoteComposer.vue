@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The bottom of a team thread (plan §4.3): two explicit modes, "Internal
+ * The bottom of a team thread: two explicit modes, "Internal
  * note" and "Reply to <name>". Switching is a deliberate choice that shows
  * who reads what, and each mode keeps its own unsent text.
  *

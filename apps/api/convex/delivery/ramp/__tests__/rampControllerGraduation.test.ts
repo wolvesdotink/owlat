@@ -1,5 +1,5 @@
 /**
- * GRADUATION (plan D9): s = 1.0 held FOURTEEN days with every gate green pins
+ * GRADUATION: s = 1.0 held FOURTEEN days with every gate green pins
  * the cell, and the relay drops to priority_failover standby.
  *
  * Thirteen days does not. One non-green window resets the clock.
@@ -350,7 +350,7 @@ describe('graduation', () => {
 		expect(decision.reason).toBe('phase_ceiling');
 	});
 
-	// D17: a lone seed tripwire is SUSPECT and the controller explicitly declines
+	// A lone seed tripwire is SUSPECT and the controller explicitly declines
 	// to act on it. Revoking the pin on that same evidence would be acting on it —
 	// and an expensive action at that, since the next clean window restarts the
 	// hold clock from zero and the cell would owe another fourteen days.

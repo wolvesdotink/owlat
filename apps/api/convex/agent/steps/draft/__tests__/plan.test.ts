@@ -91,7 +91,7 @@ describe('recordDraftPlan', () => {
 			coverage: checked.coverage,
 			draftHash: await draftHashOf('Your refund is on its way.'),
 			verdict: 'covered',
-			// Bound to the stance revision and the attachment set it read (review D1).
+			// Bound to the stance revision and the attachment set it read.
 			planRevision: 2,
 			deletionEpoch: 3,
 			attachmentSetHash: 'files-0',

@@ -9,9 +9,9 @@
  * tidiness exercise: two copies had already drifted apart in the operator-facing
  * provider hints, which is the failure mode this prevents.
  *
- * IT NO LONGER KNOWS ANY PROVIDER (the seams plan's D5). The draft used to hold
- * one named ref per vendor field (`resendKey`, `sesRegion`, `smtpHost`, …), a
- * hand-written option table, and two `provider === '<kind>'` questions. It now
+ * IT KNOWS NO PROVIDER. Rather than one named ref per vendor field
+ * (`resendKey`, `sesRegion`, `smtpHost`, …), a
+ * hand-written option table, and `provider === '<kind>'` questions, it
  * holds ONE map keyed by deployment env variable, seeded and rendered from the
  * catalog's `credentialFields` descriptors, and asks the catalog which kinds can
  * be checked before they are applied. Adding a provider adds nothing here.
@@ -55,7 +55,7 @@ import {
 } from '~/utils/composedSendProviderCatalog';
 
 /**
- * The transports you CONNECT: every catalog kind except the own arm (D3's one
+ * The transports you CONNECT: every catalog kind except the own arm (the one
  * legitimate identity — a relay is what the own MTA is an alternative TO) and
  * except the receive-only answer, which is not a transport at all.
  */
@@ -103,7 +103,7 @@ const TRANSPORT_PICKER_COPY: readonly {
 }[] = [
 	{
 		kind: OWN_SEND_PROVIDER_KIND,
-		// THE ONE `labelKey` OVERRIDE, and it is on the one kind D3 calls special
+		// THE ONE `labelKey` OVERRIDE, and it is on the one kind that is special
 		// by definition: this picker's own-arm option is an INSTRUCTION ("Run your
 		// own MTA"), not the transport's name, and it is what the shipped editor
 		// says. Every relay shows the catalog's label — none of the four incumbents

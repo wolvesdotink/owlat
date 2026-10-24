@@ -119,7 +119,7 @@ export const chatTables = {
 		// Model + token accounting for the reply.
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
-		// The reply's paid call was refused for budget (D1): the stable code and
+		// The reply's paid call was refused for budget: the stable code and
 		// reason the web localizes.
 		budgetRefusal: v.optional(budgetRefusalValidator),
 		// The human message whose @assistant mention triggered this reply

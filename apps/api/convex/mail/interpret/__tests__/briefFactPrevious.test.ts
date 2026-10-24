@@ -1,6 +1,6 @@
 /**
- * "Where things stand" strikes through the value a later message replaced
- * (plan §4.1). The brief lists current facts only, so each current fact
+ * "Where things stand" strikes through the value a later message replaced.
+ * The brief lists current facts only, so each current fact
  * carries its direct predecessor (`previous`), opened in the viewer's locale,
  * read from the same thread only, and never while a purge of the thread is
  * unfinished (the superseded row may still hold erased text).

@@ -113,7 +113,7 @@ describe('routingPolicyFormProblems', () => {
 		expect(problems.triagePercent?.key).toMatch(/percentBelow$/);
 	});
 
-	it('accepts the D4 maxima themselves and a comma decimal', () => {
+	it('accepts the shadow allowance maxima themselves and a comma decimal', () => {
 		const form = {
 			...routingPolicyFormOf(defaults),
 			shadowMessagePercent: '10',
@@ -123,7 +123,7 @@ describe('routingPolicyFormProblems', () => {
 		expect(routingPolicyFormProblems(form, ceiling)).toEqual({});
 	});
 
-	it('needs a shadow cap only while a switch is in shadow and no daily ceiling is set (D4)', () => {
+	it('needs a shadow cap only while a switch is in shadow and no daily ceiling is set', () => {
 		const form = routingPolicyFormOf(defaults);
 		form.switches.triageBundle = 'shadow';
 		expect(routingPolicyFormProblems(form, { dailyCeilingUsd: 0 }).shadowCapUsd?.key).toMatch(
@@ -176,7 +176,7 @@ describe('routingPolicyFormProblems', () => {
 			expect(routingPolicyFormProblems(exact, { ...ceiling, opened })).toEqual({});
 		});
 
-		it('keeps the D4 cap rule for an untouched empty cap', () => {
+		it('keeps the shadow cap rule for an untouched empty cap', () => {
 			const opened = routingPolicyFormOf(stored());
 			const form = { ...opened, switches: { ...opened.switches, triageBundle: 'shadow' } };
 			expect(

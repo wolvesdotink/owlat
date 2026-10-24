@@ -1,5 +1,5 @@
 /**
- * A send that failed takes back what it answered (SPEC §5 "Outbound"): when a
+ * A send that failed takes back what it answered: when a
  * Postbox recipient bounces or fails, or a team reply's Send fails or bounces,
  * the item dispositions THAT send moved (`answered`, `accepted`, `deferred`,
  * `declined`) become `failed`. Nothing else is recomputed: items the send did

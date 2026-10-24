@@ -1,5 +1,5 @@
 /**
- * Fixtures for the rules lane tests (SPEC §6): filters of every origin, the
+ * Fixtures for the rules lane tests: filters of every origin, the
  * arrival record, the rule operation log and an external sync delivery. The
  * personal mailbox and hosted delivery come from the senders fixtures.
  */

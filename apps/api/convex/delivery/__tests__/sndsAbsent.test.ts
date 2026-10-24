@@ -1,5 +1,5 @@
 /**
- * P4-1 (d): the D2 proof.
+ * Absence blocks nothing: SNDS.
  *
  * SNDS enrollment is free, but it is still an account. A deployment that never
  * enrolled must send, poll and render exactly as cleanly as one that did — the
@@ -9,9 +9,9 @@
  *
  * The gate half of this proof went with the gate. `evaluateSndsGate` and
  * `snds.getMicrosoftGateInput` were a parallel route no controller ever
- * consumed, removed under D20 (issue #515); the substitution they described is
+ * consumed, so they are gone; the substitution they described is
  * the `microsoft_snds` row of the degradation matrix, which the controller DOES
- * fold, and `ramp/__tests__/degradationMatrix.test.ts` asserts its D2 posture.
+ * fold, and `ramp/__tests__/degradationMatrix.test.ts` asserts that it blocks nothing.
  */
 
 import { convexTest } from 'convex-test';
@@ -36,7 +36,7 @@ describe('SNDS absent — the poller', () => {
 		const summary = await t.action(internal.delivery.sndsPoll.poll, {});
 
 		// The invariant is "nothing happened", NOT an exhaustive summary shape:
-		// asserting every key would make adding a diagnostic counter break the D2
+		// asserting every key would make adding a diagnostic counter break the absence
 		// proof, which is exactly the wrong thing for this test to be sensitive to.
 		expect(summary).toMatchObject({ enrolled: false, feeds: 0, observations: 0, ingested: 0 });
 		expect(summary.enrolled).toBe(false);

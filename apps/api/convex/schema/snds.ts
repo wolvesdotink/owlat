@@ -11,7 +11,7 @@ import type { AssertTrue, Exact } from '../lib/typeAssert';
  * Microsoft publishes it — we never widen it into a rate, because the feed
  * does not carry one (see `delivery/sndsFeed.ts`).
  *
- * SNDS is ADDITIVE-ONLY (D2). An operator who never enrolled simply has no
+ * SNDS is ADDITIVE-ONLY. An operator who never enrolled simply has no
  * rows here: the Microsoft cell then falls back to the outcomes of its own
  * sends, with a doubled dwell time and a one-phase-lower ceiling. That is a
  * supported configuration, never an error state, and it never blocks a send.

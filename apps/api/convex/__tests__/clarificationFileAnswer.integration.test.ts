@@ -1,5 +1,5 @@
 /**
- * `inbox.answerClarification` with file answers (Answer mode, plan §06).
+ * `inbox.answerClarification` with file answers (Answer mode).
  *
  * Covers:
  *   - a Files pick is stored on the answer and recorded as the message's

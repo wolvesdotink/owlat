@@ -1,5 +1,5 @@
 /**
- * Source markers on team surfaces (SPEC §7 "Team"): who sent a message of the
+ * Source markers on team surfaces: who sent a message of the
  * thread and when, read from the team stream, and which message a marker
  * points at. Pure.
  */

@@ -1,5 +1,5 @@
 /**
- * The calm reader as one page (read on arrival §3, plan §6 rule 2): at most
+ * The calm reader as one page: at most
  * three elements above the first body on every fixture — the header line,
  * the strip (or the slim "Why here? · Details" line) and ONE notice.
  *

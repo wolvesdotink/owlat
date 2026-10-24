@@ -183,7 +183,7 @@ export interface DeliverabilitySignal {
 }
 
 /**
- * The share-resolution contract (D1).
+ * The share-resolution contract.
  *
  * `deliverabilityRouteStates` is being widened from a boolean to a share in
  * [0,1]; the boolean is the DEGENERATE CASE. Rows written before the migration
@@ -216,7 +216,7 @@ export function clampOwnShare(value: number): number {
  * Fraction of this cell's traffic that the own MTA carries. A missing row is
  * the un-migrated, un-degraded default: the own MTA carries everything.
  *
- * This is D1's expression literally — `ownShare ?? (isFallbackActive ? 0 : 1)`.
+ * This is the share resolution literally — `ownShare ?? (isFallbackActive ? 0 : 1)`.
  * `??` fires on an ABSENT share, never on a corrupt one: a stored `NaN` or
  * `±Infinity` is degenerate evidence, not a missing field, so it flows into
  * `clampOwnShare` and fails closed on the floor exactly as the write boundary
@@ -250,7 +250,7 @@ export function isFallbackActiveForShare(ownShare: number): boolean {
  * critical DNSBL listing, quarantined IP) stays honoured even while a share is
  * stored, instead of being ignored until the controller's next tick.
  *
- * `resolveOwnShare` keeps the D1 contract untouched (`ownShare ?? (isFallbackActive ? 0 : 1)`),
+ * `resolveOwnShare` keeps the share resolution untouched (`ownShare ?? (isFallbackActive ? 0 : 1)`),
  * so a legacy row still resolves to exactly its stored boolean.
  */
 export function isRouteStateFallbackActive(
@@ -333,7 +333,7 @@ export function normalizeDeliverabilityRoutingSnapshot(
 
 /**
  * The one normalization a destination domain passes through before it is
- * compared to the taxonomy or used as a per-domain key (D8).
+ * compared to the taxonomy or used as a per-domain key.
  *
  * It is exported because it is not private to the classifier: `canonicalProfileKey`
  * in the MTA decides with `destinationProviderForDomain` but RETURNS the input

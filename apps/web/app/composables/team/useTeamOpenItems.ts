@@ -1,5 +1,5 @@
 /**
- * The actions of a team thread (SPEC §7 "Team"): `brief.get` in actions mode
+ * The actions of a team thread: `brief.get` in actions mode
  * for an agent Team Inbox thread or a shared-mailbox thread, in the UI's
  * locale. The first item page only; the strip says when the lists are cut.
  *
@@ -26,7 +26,7 @@ export function useTeamOpenItems(opts: { target: () => TeamStreamTarget | null }
 		if (data === undefined) return undefined;
 		return data?.mode === 'actions' ? data : null;
 	});
-	// A thread from before the brief (D5): interpret it on first open.
+	// A thread from before the brief: interpret it on first open.
 	useBriefEnsure({
 		threadRef: () => opts.target(),
 		completeness: () => query.data.value?.completeness,

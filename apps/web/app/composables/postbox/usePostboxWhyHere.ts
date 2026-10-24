@@ -1,5 +1,5 @@
 /**
- * The "Why here?" seam (SPEC §3, §4.1). The calm reader renders the link in
+ * The "Why here?" seam. The calm reader renders the link in
  * the strip's meta row (or the slim "Why here? · Details" line) and in the
  * header ⋯ menu; what it opens belongs to lane `learn` (the popover that
  * answers from the arrival record, with "That's wrong", "Always here" and the

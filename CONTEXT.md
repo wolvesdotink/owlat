@@ -4115,7 +4115,7 @@ mail thread, the Team Inbox reader role for a **§ Conversation threads**
 row).
 _Avoid_: Summary (the brief tracks state; the five summary generators it
 replaced are gone), Catch-up (the retired Answer mode card), Overview in code
-("Overview" is the UI name, "brief" the code name, D6).
+("Overview" is the UI name, "brief" the code name).
 
 **Item**:
 One obligation in a thread, a row in `threadItems`: an `intent` (`question |

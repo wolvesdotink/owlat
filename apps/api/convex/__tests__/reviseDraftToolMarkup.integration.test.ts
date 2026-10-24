@@ -34,7 +34,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 			activeOrganizationId: 'org-a',
 			role: sess.user.role,
 		})),
-		// The D7 apply path persists through `inbox.mutations.editDraft`
+		// The revision apply path persists through `inbox.mutations.editDraft`
 		// (adminMutation), whose floor resolves via requireAdminContext.
 		requireAdminContext: vi.fn(async () => sess.user),
 	};

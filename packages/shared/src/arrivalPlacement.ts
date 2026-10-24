@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.8): where a thread reads in the Priority view.
+ * Read on arrival: where a thread reads in the Priority view.
  * Derived, never stored from an action: the API recomputes it from current
  * state inside every mutation that changes one of its inputs
  * (`mail/arrival/projection.ts refreshArrivalProjection`). Pure.

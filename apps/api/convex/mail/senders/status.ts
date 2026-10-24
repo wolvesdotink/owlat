@@ -1,5 +1,5 @@
 /**
- * What a person does to a sender (SPEC §5): set its status, unsubscribe, and
+ * What a person does to a sender: set its status, unsubscribe, and
  * resume paused auto-drafts. Each is one undoable operation (`./operations.ts`).
  *
  * A sender is named either by `{mailboxId, senderDigest}` (the Senders page)

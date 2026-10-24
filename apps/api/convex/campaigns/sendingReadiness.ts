@@ -6,8 +6,8 @@
  * the right answer at the moment of sending and the wrong one before it: an
  * operator who has not chosen an audience yet — or who is looking at the
  * getting-started checklist — has no schedule to be shown, and discovering the
- * warming cap as a pre-flight refusal is exactly the surprise the deliverability
- * plan's D14 forbids.
+ * warming cap as a pre-flight refusal is exactly the surprise an operator must
+ * never meet.
  *
  * So this module answers the smaller, earlier question: how much can go out
  * TODAY, and when does that number grow. Same paced projection as the binding

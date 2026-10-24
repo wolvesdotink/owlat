@@ -1,8 +1,8 @@
 /**
- * What Answer mode adds around the Team inbox reply (plan §03 to §06), the
+ * What Answer mode adds around the Team inbox reply, the
  * team counterpart of `useAnswerModeAssist`:
  *
- *  - the reply's response plan (SPEC §6) over the thread's open actions (for
+ *  - the reply's response plan over the thread's open actions (for
  *    the team and unclear, from the brief's actions view): a stance per item,
  *    what the draft addresses ("3 of 4 addressed" in the footer), and the
  *    file-claim banner, beside the composer. The plan belongs to the inbound
@@ -13,7 +13,7 @@
  *    was given come back as `attachedFiles`, which the reply attaches through
  *    `inbox.replyAttachments` (the server does not, for a team thread).
  *
- * Team threads have no catch-up summary (SPEC §7 "Team"): the left column is
+ * Team threads have no catch-up summary: the left column is
  * the team stream with its open actions.
  *
  * "Draft with AI" needs the `ai` flag and the team inbox: the ask session and

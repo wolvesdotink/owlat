@@ -86,7 +86,7 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// pre-seeded from DKIM_KEYS), it returns the existing selector + record.
 	// Use /rotate for deliberate key rotation that replaces the active key.
 	//
-	// Optionally accepts a JSON body `{ returnPathHost?: string | null }` (D1): a
+	// Optionally accepts a JSON body `{ returnPathHost?: string | null }`: a
 	// per-sending-domain VERP return-path / bounce host that overrides the global
 	// `RETURN_PATH_DOMAIN` for THIS domain's outbound MAIL FROM. The `returnPathHost`
 	// field is tri-state, and the whole contract is backward compatible:
@@ -169,7 +169,7 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 			await dkimStore.clearReturnPathHost(redis, domain);
 		}
 
-		// Echo the resolved return-path host so the caller (D2/Convex) can confirm
+		// Echo the resolved return-path host so the caller (Convex) can confirm
 		// what was persisted. Omitted when the domain has no override.
 		const storedReturnPathHost = await dkimStore.getReturnPathHost(redis, domain);
 		// `result` carries `ownership` (assigned | unchanged | unowned) — echoed via

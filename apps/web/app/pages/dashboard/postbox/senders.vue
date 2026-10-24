@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { postboxPageTransition } from '~/utils/postboxPageTransition';
 /**
- * Senders — who writes to you, and what Owlat does with their mail (SPEC §5).
+ * Senders — who writes to you, and what Owlat does with their mail.
  *
  * A virtual destination like the Reply Queue: no backing folder. The rail
  * links here. It is also the one place for list-mail hygiene: the old

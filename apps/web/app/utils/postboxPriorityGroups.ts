@@ -1,5 +1,5 @@
 /**
- * The Priority view's groups (SPEC §3, plan §6 "The inbox"). Pure, so the
+ * The Priority view's groups. Pure, so the
  * grouping and the one-line rows are unit-testable without the view.
  *
  * Rows group by their thread's placement (`row.placement`: its arrival

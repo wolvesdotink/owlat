@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Answer mode's frame: one reply, the whole screen (plan §02, §04, §08).
+ * Answer mode's frame: one reply, the whole screen.
  *
  * A top bar ("← Inbox" with its Esc hint, the subject and message count, and
  * three slots the page fills: who the reply goes out as, queue navigation, a ⋯

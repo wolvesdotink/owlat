@@ -2,7 +2,7 @@
 
 /**
  * R2's model call when the delivered message has pending rule questions
- * (SPEC §6.2, `mail/arrival/r2.ts`), split out of `categoryClassify.ts` at
+ * (`mail/arrival/r2.ts`), split out of `categoryClassify.ts` at
  * the size cap. One call answers the questions from this message's scoped
  * text, the cold-pitch question when the sender is a candidate (#1381,
  * `mail/arrival/coldPitch.ts`) and, when the thread category is still
@@ -10,7 +10,7 @@
  *
  * Behind the same gate as the plain refinement (the `ai` flag and the owner's
  * background rate limit, #1380) and metered as `postbox_category`. A budget
- * refusal is rethrown so the action defers (D1); a rate-limit refusal comes
+ * refusal is rethrown so the action defers; a rate-limit refusal comes
  * back as `rateLimited` for the caller's bounded retry; anything else leaves
  * every question unanswered, which counts as no match.
  */

@@ -11,7 +11,7 @@
  * third-party code). Every expectation below was therefore unsatisfiable before
  * this piece: they pass only because the relay-identity registry is COMPOSED with
  * the bundled plugin tier at build time, and because the rows land in the generic
- * `sendingDomainRelayIdentities` table keyed by the namespaced kind (D10: rows,
+ * `sendingDomainRelayIdentities` table keyed by the namespaced kind (rows,
  * not columns — no schema changed).
  *
  * The four properties, in order:

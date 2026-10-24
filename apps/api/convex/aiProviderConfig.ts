@@ -120,7 +120,7 @@ export const getConfig = authedQuery({
  * already encrypted any newly-entered key into `languageEnvelope` /
  * `embeddingEnvelope`; this mutation enforces the `organization:manage` floor,
  * preserves an unchanged key from disk, writes the row, and records the audit
- * log. An embedding switch is allowed (D8, post-provenance) and schedules the
+ * log. An embedding switch is allowed (post-provenance) and schedules the
  * re-embed kickoff.
  */
 export const _persistConfig = internalMutation({
@@ -205,7 +205,7 @@ export const _persistConfig = internalMutation({
 			existing
 		);
 
-		// D8, post-provenance: a switch is allowed on a populated corpus. Vectors of
+		// With embedding provenance, a switch is allowed on a populated corpus. Vectors of
 		// the old space drop out of vector search until they are re-embedded; the
 		// version moves with the target.
 		const embeddingModelVersion = nextEmbeddingModelVersion(existing, selection);
@@ -315,7 +315,7 @@ export const removeConfig = adminMutation({
 	handler: async (ctx, _args, session): Promise<{ removed: boolean }> => {
 		const existing = await getSingleton(ctx);
 		if (!existing) return { removed: false };
-		// D8, post-provenance: the vectors' spaces are recorded in `embeddingSpaces`,
+		// With embedding provenance, the vectors' spaces are recorded in `embeddingSpaces`,
 		// so removal no longer loses them. The env fallback's target, if any, is a
 		// switch like any other.
 		await ctx.db.delete(existing._id);

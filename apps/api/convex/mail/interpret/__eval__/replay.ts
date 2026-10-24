@@ -1,5 +1,5 @@
 /**
- * Deterministic replay of the eval corpus (SPEC §9): the pure parts of
+ * Deterministic replay of the eval corpus: the pure parts of
  * interpretation (signed scope, segmentation, grounding) run over every
  * labelled thread, with the labels themselves standing in for a perfect model
  * (the "oracle"). A label that fails to ground here is a segmentation or

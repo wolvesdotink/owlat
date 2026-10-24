@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VERP_KEY_MIN_BYTES, parseVerpAddress } from '@owlat/shared/verp';
 
 /**
- * The PRODUCTION WIRING of G-08 (1), at the level where D11 can actually break:
+ * The PRODUCTION WIRING of the custom return path, at the level where one sending identity per cell can actually break:
  * `smtpSendProvider.sendEmail` must put our VERP address on `envelope.from`
  * while `envelope.data` — the bytes the DKIM signer covers and DMARC alignment
  * is evaluated against — stays BYTE-IDENTICAL between a VERP run and a
@@ -94,7 +94,7 @@ describe('smtpSendProvider.sendEmail — the custom return path on the wire', ()
 		expect(lastEnvelope().from).toBe('news@example.com');
 	});
 
-	it('D11: envelope.data is BYTE-IDENTICAL with and without the VERP stamp', async () => {
+	it('envelope.data is BYTE-IDENTICAL with and without the VERP stamp', async () => {
 		// Same Message-ID on both runs, so any byte difference is caused by the
 		// return path and nothing else. (A real pair of sends differs only in the
 		// Message-ID and Date the composer generates.)
@@ -128,7 +128,7 @@ describe('smtpSendProvider.sendEmail — the custom return path on the wire', ()
  * Runs one send and returns its envelope with the three values the composer
  * generates FRESH on every call — Message-ID, Date and the crypto-random MIME
  * boundary — neutralised. Those differ between any two sends, custom return
- * path or not; everything else must not, which is what D11 asserts.
+ * path or not; everything else must not, which is what one sending identity per cell asserts.
  */
 async function runAndCapture(extras: {
 	returnPathHost?: string;

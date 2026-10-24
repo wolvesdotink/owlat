@@ -3,7 +3,7 @@
  * that produced a verdict writes, what a rejected credential may overwrite, and
  * what an outage may not.
  *
- * Every kind after MTA and SES shares this one table (D7), and until this file
+ * Every kind after MTA and SES shares this one table, and until this file
  * existed each of them also carried its own copy of the same four operations:
  * Mandrill's `mandrill/persistence.ts` and the bundled plugin tier's
  * `plugin/persistence.ts` were the same upsert, the same failure patch and the

@@ -1,5 +1,5 @@
 /**
- * Answer mode "Draft with AI" and the response plan (SPEC §6): the thread's
+ * Answer mode "Draft with AI" and the response plan: the thread's
  * open items with the stances the owner chose in Answer mode
  * (`mail/interpret/responsePlan.setStances`), for the drafter's prompt. An
  * item whose question in this ask session is still unanswered defaults to

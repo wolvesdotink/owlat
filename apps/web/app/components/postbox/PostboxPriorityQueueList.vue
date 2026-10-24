@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * The Reply Queue's rows inside the Priority view's "Needs you" group (read on
- * arrival §3, plan §6): one line each, avatar and sender, what they want (the
+ * The Reply Queue's rows inside the Priority view's "Needs you" group: one line
+ * each, avatar and sender, what they want (the
  * brief's ask, else the AI's ask summary, else the subject) and one state.
  * Every row routes to the Answer queue, filtered to this mailbox: the queue
  * stays the doing surface.

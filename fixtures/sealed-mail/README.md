@@ -30,7 +30,7 @@ ciphertext it did not itself produce. Consumed by
 `apps/api/convex/e2ee/__tests__/open.test.ts` (the INTEROP case).
 
 - `pgp/inbound-sealed-goodsig.eml` — a PGP/MIME `multipart/encrypted` message
-  whose outer `Subject` is the `...` placeholder (protected headers, D4); the
+  whose outer `Subject` is the `...` placeholder (protected headers); the
   inner ciphertext holds the real subject `Q3 sealed interop numbers` and a
   `multipart/alternative` body carrying the `CANARY_INBOUND_INTEROP_…` marker in
   both `text/plain` and `text/html`. Encrypted to `inbound-recipient` and signed

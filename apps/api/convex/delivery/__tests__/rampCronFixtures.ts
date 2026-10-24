@@ -89,7 +89,7 @@ export interface SeedRampCellOptions {
 	readonly ownShare?: number;
 	/**
 	 * Seed the pool and provider slices WITHOUT the managed per-stream row — the
-	 * pre-enrolment state of every cell in every deployment (plan D1). The
+	 * pre-enrolment state of every cell in every deployment. The
 	 * enrolment suite needs it, and hand-rolling it would be a fourth copy of the
 	 * row triple this fixture exists to keep singular.
 	 */
@@ -110,7 +110,7 @@ export interface SeedRampCellOptions {
 	 */
 	readonly omitPhaseCeiling?: boolean;
 	readonly mixVersion?: number;
-	/** The derived boolean view of the share (plan D1). */
+	/** The derived boolean view of the share. */
 	readonly isFallbackActive?: boolean;
 	/** A freeze expiry already on the row — expired instants included. */
 	readonly frozenUntil?: number;
@@ -134,7 +134,7 @@ export interface SeedRampCellOptions {
 	/**
 	 * A warming sync reading for the pace actuator's utilisation evidence.
 	 * Omitted means NO warming state at all — the standalone deployment's normal
-	 * starting point, and the reading the actuator must hold on (plan D10).
+	 * starting point, and the reading the actuator must hold on.
 	 */
 	readonly warming?: { readonly dailyCap: number; readonly sentToday: number };
 	/**

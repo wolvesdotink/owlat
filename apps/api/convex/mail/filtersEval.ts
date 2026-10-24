@@ -37,9 +37,9 @@ export interface EvalResultAction {
 		| 'delete'
 		| 'pinToSection'
 		| 'discard'
-		// Read on arrival (SPEC §6.3). Explicit no-ops in this evaluator's
+		// Read on arrival. Explicit no-ops in this evaluator's
 		// consumers (`resolveFilterOutcome`, the retroactive run): handled by
-		// lane rules (SPEC §6.3) in the arrival hook.
+		// lane rules in the arrival hook.
 		| ArrivalFilterActionType;
 	folderId?: Id<'mailFolders'>;
 	labelId?: Id<'mailLabels'>;

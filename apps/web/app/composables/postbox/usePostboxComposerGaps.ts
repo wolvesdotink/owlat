@@ -1,6 +1,6 @@
 /**
- * The `[[...]]` gaps an AI draft leaves where a fact is missing (Answer mode,
- * plan §05): counted, painted, and one click away from being replaced.
+ * The `[[...]]` gaps an AI draft leaves where a fact is missing (Answer mode):
+ * counted, painted, and one click away from being replaced.
  *
  *  - `gaps`: the placeholders in what was written (not in the quote). While
  *    the AI wrote them, the composer holds Send back until none is left and

@@ -240,7 +240,7 @@ describe('Settings Features — plugin approval behavior', () => {
 });
 
 // postbox.aiDraft declares requires:['ai'] + requiresAny:[['postbox','mail.external']]
-// (decision D2); the page renders the "Needs one of" hint generically from the
+// and the page renders the "Needs one of" hint generically from the
 // registry, so any future any-of flag gets the same treatment for free.
 describe('Settings Features — any-of dependency hint (requiresAny)', () => {
 	it('disables the toggle with a "Needs one of" hint when no group member is on', () => {

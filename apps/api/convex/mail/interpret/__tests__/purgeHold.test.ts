@@ -1,6 +1,6 @@
 /**
- * Final review r2, F1: while an erasure of a Team Inbox thread is still
- * running (budgeted slices), the thread reads partial and the D3 hold refuses
+ * While an erasure of a Team Inbox thread is still
+ * running (budgeted slices), the thread reads partial and the interpretation hold refuses
  * auto-send, in the route gate and in the transaction that creates an
  * autonomous Send. Once the last slice ran, the purge no longer holds.
  */
@@ -23,7 +23,7 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-describe('D3 holds during an unfinished erasure', () => {
+describe('the interpretation hold holds during an unfinished erasure', () => {
 	it('refuses auto-send mid-purge and stops holding for the purge once it finished', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, inboundId } = await seedTeamThread(t);

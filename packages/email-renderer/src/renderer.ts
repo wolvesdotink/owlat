@@ -74,6 +74,7 @@ const createContext = (options: RenderOptions = {}): RenderContext => {
 		linkTransform: options.linkTransform,
 		warnings: [],
 		gmailAnnotations: options.gmailAnnotations,
+		diffOutlines: options.diffOutlines,
 	};
 };
 

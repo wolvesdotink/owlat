@@ -3,7 +3,7 @@
  *
  * Pins the four things the piece card names: both implementations satisfy one
  * interface; the self-hosted path is the DEFAULT; an absent commercial key
- * changes NOTHING (D2); and the scheduler fires before a phase promotion and
+ * changes NOTHING; and the scheduler fires before a phase promotion and
  * feeds gate 5.
  */
 
@@ -100,7 +100,7 @@ describe('the self-hosted path is the default', () => {
 	});
 });
 
-describe('D2 — an absent commercial key changes NOTHING', () => {
+describe('an absent commercial key changes NOTHING', () => {
 	it('never blocks, whatever is configured', () => {
 		const configs = [
 			{ seedMailboxCount: 0, commercialApiConfigured: false },

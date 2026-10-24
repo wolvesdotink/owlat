@@ -143,7 +143,7 @@ export const inboxTables = {
 		// monitor-only `p=none` fail from one the domain owner asked us to act on.
 		dmarcPolicy: v.optional(v.string()),
 		// Sealed Mail (E4): mirrored flags of the inbound unsealing outcome on the
-		// AI-inbox path (decrypt-on-ingest, D3). The full record lives on the
+		// AI-inbox path (decrypt-on-ingest). The full record lives on the
 		// mailMessages side; here only what the reader's badge needs. `isSealed` is
 		// true when the message arrived as PGP/MIME ciphertext; `isSignatureValid`
 		// is present ONLY when we decrypted it AND checked the signature (true iff
@@ -154,7 +154,7 @@ export const inboxTables = {
 		isSignatureValid: v.optional(v.boolean()),
 		signerFingerprint: v.optional(v.string()),
 		signerInstance: v.optional(v.string()),
-		// F1 (D9): mirrored display fields of the inbound SIGNED-but-not-encrypted
+		// F1: mirrored display fields of the inbound SIGNED-but-not-encrypted
 		// PGP verdict, the signed-plaintext sibling of the sealed mirror above.
 		// The full `inboundSignatureInfo` record lives on the mailMessages side;
 		// here only what the reader's badge needs. `isInboundSignatureValid` is
@@ -308,7 +308,7 @@ export const inboxTables = {
 		// Used to tell an UNEDITED owner-send of an answered-clarification draft
 		// (a strong positive autonomy outcome) apart from an edited-then-sent one.
 		isDraftEdited: v.optional(v.boolean()),
-		// Non-destructive draft revision history (D7, save-without-approving).
+		// Non-destructive draft revision history (save-without-approving).
 		// Seeded on the FIRST human save with the agent's original as revision 0
 		// (`savedBy: 'agent'`), then one entry appended per save / revise-apply
 		// (`savedBy` = the saving user's id). Revision 0 is immutable — the

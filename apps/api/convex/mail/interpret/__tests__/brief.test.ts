@@ -322,7 +322,7 @@ describe('viewer state', () => {
 	});
 });
 
-describe('view preference (D1)', () => {
+describe('view preference', () => {
 	it('defaults to Overview, Conversation when auto-summarize is off, and the explicit choice wins', () => {
 		expect(resolveThreadDefaultView(null)).toBe('overview');
 		expect(resolveThreadDefaultView({ isAutoSummarizeOn: false })).toBe('conversation');

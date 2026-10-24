@@ -202,7 +202,7 @@ export function buildTodayModel(input: {
 	 * The viewer's "Show the brief above conversations" (`isAutoSummarizeOn`).
 	 * Off, no mail line carries an AI sentence: a changed thread says who wrote
 	 * and quotes the new mail, an update is its sender and subject. Absent = on.
-	 * Team-inbox lines never carry one (D7) and are unaffected.
+	 * Team-inbox lines never carry one and are unaffected.
 	 */
 	isBriefShown?: boolean;
 }): TodayModel {
@@ -277,7 +277,7 @@ export function buildTodayModel(input: {
 		const m = update.message;
 		if (m.receivedAt <= input.since) continue;
 		const from = parseFromHeader(m.from);
-		// No classifier summary (D7): the subject, with the sender's own first lines as the snippet.
+		// No classifier summary: the subject, with the sender's own first lines as the snippet.
 		const line: TodayLine = {
 			key: `team:${m._id}`,
 			lead: senderName(from.name, from.address),

@@ -22,7 +22,7 @@
  *
  *   1. A REROUTE IS A SHORTFALL THE CONTROLLER CAN SEE — the own arm did not
  *      carry the share the cell is set to, and that reaches the `mixDecisions`
- *      snapshot (plan D12) as evidence an operator can read, never as a rung.
+ *      snapshot as evidence an operator can read, never as a rung.
  *   2. AND IT LOWERS THE PROJECTION of what the own arm will carry.
  *   3. BUT IT MUST NOT RAISE THE CEILING. That is the runaway loop the design
  *      has to avoid: were the ceiling divided by the OWN arm's volume, every

@@ -124,10 +124,10 @@ export function emailStepIsValid(draft: EmailStepDraft): boolean {
  * `satisfies Record<keyof EmailStepErrors, boolean>` for the same reason
  * {@link TRANSPORT_EDITOR_OWNED_ERRORS} does it: the NEXT credential key this
  * step gains has to be classified here or the build fails. The alternative —
- * the `errors.resendKey ?? errors.mandrillKey ?? …` chain both components used
- * to spell out — was per-vendor knowledge in a `.vue` file (the seams plan's
- * D5), in TWO copies, and silently non-exhaustive: a new key rendered nowhere
- * while Apply refused, which is a button that does nothing with no sentence
+ * an `errors.resendKey ?? errors.mandrillKey ?? …` chain in both components
+ * — is per-vendor knowledge in a `.vue` file,
+ * in TWO copies, and silently non-exhaustive: a new key renders nowhere
+ * while Apply refuses, which is a button that does nothing with no sentence
  * saying why.
  *
  * ORDER IS THE DECLARATION ORDER of `EmailStepErrors`, and it does not matter:

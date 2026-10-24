@@ -1,5 +1,5 @@
 /**
- * The message card's sender row at phone widths (plan §10): the trust chip ran
+ * The message card's sender row at phone widths: the trust chip ran
  * off the card's right edge at 390px, because the row never wrapped and the
  * chip never shrinks. The wrap is for phones only; desktop keeps one line. happy-dom cannot lay out, so what is pinned is the
  * structure the fix relies on: a wrapping row, a sender that may shrink and

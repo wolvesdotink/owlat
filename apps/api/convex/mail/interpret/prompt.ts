@@ -1,5 +1,5 @@
 /**
- * The interpretation prompt (SPEC §4 `prompt.ts`), for both modes.
+ * The interpretation prompt, for both modes.
  * Isolate-safe and pure: `run.ts` renders {@link InterpretInput} through
  * {@link buildInterpretPrompt} and hands the result to the model.
  *

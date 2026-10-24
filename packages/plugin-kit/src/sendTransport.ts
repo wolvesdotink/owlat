@@ -27,8 +27,7 @@ export interface PluginStaticModuleExport {
 
 /**
  * The feedback half of a send-transport bundle: how the provider's bounces,
- * complaints, deliveries and deferrals get back in (the seams plan's D6, wired
- * by P2.2).
+ * complaints, deliveries and deferrals get back in.
  *
  * It is a MODULE EXPORT ON THE SEND TRANSPORT, not a bucket of its own. A
  * provider's send path and its feedback path are one integration — the same
@@ -78,7 +77,7 @@ export interface PluginSendTransportWebhookDefinition {
 
 /**
  * Does this transport let the host choose the RFC5321.MailFrom on a send — the
- * catalog's `supportsCustomReturnPath` (the seams plan's D1), as a plugin may
+ * catalog's `supportsCustomReturnPath`, as a plugin may
  * declare it.
  *
  *  - `no`  the transport owns the envelope sender. The fail-closed default, and
@@ -137,7 +136,7 @@ export type PluginSendTransportMessageIdSource = 'provider' | 'composed';
 /**
  * Data-only manifest descriptor. Executable code lives at `module.exportPath`.
  *
- * CAPABILITY PARITY (the seams plan's D4/P3.1). The fields below are the catalog
+ * CAPABILITY PARITY. The fields below are the catalog
  * entry's own vocabulary, spelled identically, because a plugin kind is meant to
  * be indistinguishable from a core kind to routing, dispatch, ramp and
  * measurement. Every one is optional and every one has the SAME fail-closed
@@ -255,7 +254,7 @@ export interface PluginSendTransportDefinition {
 	readonly domainIdentity?: PluginSendTransportDomainIdentityDefinition;
 	/**
 	 * The credential FORM for this transport's configuration, as typed descriptors
-	 * — the catalog entry's `credentialFields` (D5), spelled in the vocabulary the
+	 * — the catalog entry's `credentialFields`, spelled in the vocabulary the
 	 * plugin platform's `settingsSchema` already uses, so one renderer draws a
 	 * plugin's credential the same way it draws a core provider's.
 	 *

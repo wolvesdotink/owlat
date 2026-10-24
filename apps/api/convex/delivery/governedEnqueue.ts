@@ -56,7 +56,7 @@ export async function enqueueGovernedSend(
  * Enqueue a deliverability SEED PROBE: the campaign shadow copy
  * (`delivery/seedShadowCopy.ts`) or a scheduled stream probe
  * (`delivery/seedScheduledProbe.ts`). A probe has no Send row — that is what
- * keeps it out of every denominator (D18) — so there is no `SendRef` to carry
+ * keeps it out of every denominator — so there is no `SendRef` to carry
  * and no completion owner: it is enqueued WITHOUT `onComplete`, on
  * purpose. Its durable record is the `seedPlacementProbes` ledger row, which
  * the placement poller classifies later.

@@ -9,7 +9,7 @@
  * a late answer from a dead lease never overwrites a newer one.
  *
  * Artifacts store labels and probabilities only, never message text. They are
- * advisory or shadow (D9): nothing in routing, archival, Spam movement, the
+ * advisory or shadow: nothing in routing, archival, Spam movement, the
  * Reply Queue or interpretation eligibility reads them. Only a `complete`
  * artifact with no `invalidatedAt` may be reused, and the block-only auto-send
  * gate refuses any verdict without a valid calibration stamp.
@@ -70,7 +70,7 @@ export type ClaimOutcome =
  * exactly this endpoint; the claim refuses (`stale`) on EITHER rung once the
  * flag or the configuration is no longer the snapshot, since either can change
  * which rung, and which provider, the call should have had (a provider
- * configured without a usable key is terminal, D3).
+ * configured without a usable key is terminal).
  */
 const endpointValidator = v.object({
 	rung: v.union(v.literal('decision'), v.literal('language')),
@@ -293,7 +293,7 @@ async function heldLease(
 
 /**
  * Store the answer under the caller's lease, and, in the same transaction,
- * compare it with sender memory and remember it (D12, advisory). A lease that
+ * compare it with sender memory and remember it (advisory). A lease that
  * lapsed and was taken over is not ours to complete: the call is dropped.
  */
 export const complete = internalMutation({
@@ -464,7 +464,7 @@ export async function recordOwnerCorrection(
 
 /**
  * Delete a purged Postbox message's artifacts with it, and the sender memory
- * learned from it (contract §12, D12). Called from `mail/messagePurge.ts`
+ * learned from it. Called from `mail/messagePurge.ts`
  * `deleteMessageRowAndBlobs`, the one way a `mailMessages` row is destroyed.
  * Memory is found through its own index on the source message, so an artifact
  * that retention already deleted cannot hide it.

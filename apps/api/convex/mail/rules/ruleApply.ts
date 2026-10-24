@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.2, §6.3): what matched rules do to ONE message, in
+ * Read on arrival: what matched rules do to ONE message, in
  * two halves shared by the arrival hook pass and the late AI answers.
  *
  * PLANNING (pure). Filters are folded in priority order into a plan. The

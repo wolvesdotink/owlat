@@ -189,7 +189,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 					extractRoot
 				);
 			} catch (error) {
-				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run
 				// Fail soft — extraction is best-effort enrichment, never the reason a
 				// message fails to process. Name the source so the gap is traceable.
 				logError('[knowledge.extractFromMessage] failed', {
@@ -299,7 +299,7 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 					extractRoot
 				);
 			} catch (error) {
-				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run
 				logError('[knowledge.extractFromFile] failed', {
 					fileId: args.fileId,
 					error: secretFreeErrorText(error),
@@ -447,7 +447,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 					extractRoot
 				);
 			} catch (error) {
-				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run
 				logError('[knowledge.extractFromMailMessage] failed', {
 					mailMessageId: args.mailMessageId,
 					error: secretFreeErrorText(error),

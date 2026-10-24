@@ -33,7 +33,7 @@
 # behind for the next restatement to inherit.
 #
 # WHAT P1.1 DID HERE, for the record: it moved the catalog into packages/shared,
-# which put `OWN_SEND_PROVIDER_KIND` / `isOwnSendProviderKind` — the D3 own-arm
+# which put `OWN_SEND_PROVIDER_KIND` / `isOwnSendProviderKind` — the own-arm
 # declaration — where the CLI, the web app and this package can all read it, and
 # repointed the kind parser at the top of check-provider-identity.sh at the same
 # time (SEND_TRANSPORT_KINDS is a derivation now, so there is no literal array
@@ -48,7 +48,7 @@
 # LICENSED SPELLING, not one file, and the number the ratchet prints on a green
 # run is the number of lines here. Twelve files, 38 spellings.
 #
-# SCOPE NOTE — WIDER THAN P0.5'S CARD READS, AND SO IS A1. The card names the D3
+# SCOPE NOTE — WIDER THAN P0.5'S CARD READS, AND SO IS A1. The card names the
 # definitional sites — the own-arm constant, delivery/relayConfiguration.ts, the
 # hybrid detection in route.ts / routing.ts — as the expected contents. After the
 # P0.1–P0.4 sweep none of those four files COMPARES a kind any more: the own-arm
@@ -158,7 +158,7 @@
 # declares `supportsCustomReturnPath`. The capability has no home on
 # `SendingDomainProviderModule` yet; domains/providers/index.ts states the gap in
 # full. No wave-0 or wave-1 piece clears this one — whichever piece finally grows
-# that capability, D1's field reaching the module contract, deletes all three
+# that capability, the catalog field reaching the module contract, deletes all three
 # lines. The lifecycle split (#860) gathered every lifecycle-side branch of this
 # family (create's up-front check, the edit, the reconcile, the reflection) into
 # domains/returnPathProviders.ts.
@@ -192,7 +192,7 @@ apps/api/convex/delivery/checklistDomainValidators.ts:ses  # restates the same q
 apps/api/convex/domains/mandrillRelay.ts:mandrill  # the scheduled provisioning sweep's own-domain question
 
 
-# ── provider-shaped-ui — CLEARED by P1.2 (the UI renders descriptors, D5) ─────
+# ── provider-shaped-ui — CLEARED (the UI renders descriptors) ─────────────────
 #
 # Kept as a note rather than as entries, because the entries are gone: the
 # transport editor, the wizard's credential step, the shared relay draft, the

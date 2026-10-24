@@ -1,5 +1,5 @@
 /**
- * The thread brief inside the Postbox reader (SPEC §7, read on arrival §3),
+ * The thread brief inside the Postbox reader (read on arrival §3),
  * kept out of PostboxThreadReader.vue, which is at its size cap:
  *
  *  - the brief read for personal mailboxes only, and the calm reader's strip

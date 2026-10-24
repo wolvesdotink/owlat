@@ -261,7 +261,7 @@ describe('coverage.check', () => {
 	const draft =
 		'Hi Jonas,\nthe signed contract follows tomorrow. Tuesday at 10:00 works for the call. I’ve attached the agenda.';
 
-	it('reports a spend-admission refusal instead of reading it as a model fault (D1)', async () => {
+	it('reports a spend-admission refusal instead of reading it as a model fault', async () => {
 		const t = harness();
 		const s = await setup(t);
 		runLlmObjectMock.mockRejectedValueOnce(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
@@ -393,7 +393,7 @@ describe('review round 1', () => {
 	const USAGE_ = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
 	const empty = { coverage: [], fileClaims: [], promises: [] };
 
-	it('F2/D1: a stance write bumps the revision and leaves the old check pending', async () => {
+	it('a stance write bumps the revision and leaves the old check pending', async () => {
 		const t = harness();
 		const s = await setup(t);
 		runLlmObjectMock.mockResolvedValue({ object: empty, tokenUsage: USAGE_, modelUsed: 'm' });
@@ -445,7 +445,7 @@ describe('review round 1', () => {
 		expect(result?.fileClaims).toEqual([expect.objectContaining({ isMatched: false })]);
 	});
 
-	it('F1/D2: items past the bound are counted as overflow, not dropped silently', async () => {
+	it('items past the bound are counted as overflow, not dropped silently', async () => {
 		const t = harness();
 		const s = await setup(t);
 		await t.run(async (ctx) => {

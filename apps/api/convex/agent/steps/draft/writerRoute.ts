@@ -1,5 +1,5 @@
 /**
- * How the Team Inbox `draft` step writes its reply (plan Phase 4, D2).
+ * How the Team Inbox `draft` step writes its reply.
  *
  * The route comes from the TRUSTED classifier signals and two settings:
  * `LLM_COMPLEXITY_ROUTING` (today's downgrade) and the routing policy's

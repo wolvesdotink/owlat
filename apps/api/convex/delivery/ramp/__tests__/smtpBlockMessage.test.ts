@@ -89,7 +89,7 @@ describe.each(PRESSURE_SAMPLES)('rate pressure ($category) does not halt', (samp
 });
 
 describe('the hard stop is guarded like every other verdict', () => {
-	it('does not fire below the minimum classified-response sample (plan D10)', () => {
+	it('does not fire below the minimum classified-response sample', () => {
 		const observed = RAMP_GATE_SAMPLE_FLOORS.smtpBlock - 1;
 		const evaluation = evaluateStandaloneDeferralGate(
 			standaloneInput({ smtpBlocks: blocks(observed, observed) })
@@ -215,7 +215,7 @@ describe('the block stop outranks the rate check', () => {
 });
 
 /**
- * THE UNIT THE HALT IS DENOMINATED IN (plan D12).
+ * THE UNIT THE HALT IS DENOMINATED IN.
  *
  * Every other `deferral` verdict counts SENDS. This one counts CLASSIFIED SMTP
  * RESPONSES, because the question it answers is "what share of the receiver's

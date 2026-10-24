@@ -1,5 +1,5 @@
 /**
- * What the composer shows by default in Answer mode (`frame="answer"`, plan §04):
+ * What the composer shows by default in Answer mode (`frame="answer"`):
  * room to write, nothing else. Three pieces of view state, all of them
  * presentation only, so the draft, autosave and the SENT message are exactly
  * the popup's:

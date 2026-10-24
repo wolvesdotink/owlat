@@ -136,10 +136,10 @@ export function usePostboxSettings() {
 	// this is a per-user opt-out from seeing AI briefs (`isAutoSummarizeOn`).
 	const autoSummarize = computed<boolean>(() => data.value?.isAutoSummarizeOn ?? true);
 
-	// Read on arrival (SPEC §2.1): default ON. The AI provider reads personal
+	// Read on arrival: default ON. The AI provider reads personal
 	// mail as it arrives; off, mail waits until a thread is opened.
 	const readOnArrival = computed<boolean>(() => data.value?.isReadOnArrival ?? true);
-	// Read on arrival (SPEC §6.4): archive codes and sign-in links after a day. Default OFF.
+	// Read on arrival: archive codes and sign-in links after a day. Default OFF.
 	const codeAutoArchive = computed<boolean>(() => data.value?.isCodeAutoArchiveOn ?? false);
 
 	// Which mode the primary reply affordance (Reply button / `r`) uses. Reads

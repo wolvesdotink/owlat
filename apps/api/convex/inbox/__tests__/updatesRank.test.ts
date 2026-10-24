@@ -91,7 +91,7 @@ describe('updateViewForKind', () => {
 	});
 });
 
-describe('updatePreviewText (D7: the sender’s own first lines, no summary)', () => {
+describe('updatePreviewText (the sender’s own first lines, no summary)', () => {
 	it('uses the text part, cuts quoted history and collapses whitespace', () => {
 		expect(
 			updatePreviewText({

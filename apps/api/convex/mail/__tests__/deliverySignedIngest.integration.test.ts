@@ -10,7 +10,7 @@
  *   - a clearsigned message delivers with the same verified record;
  *   - a plaintext reply merely QUOTING one gets NO record at all (FU1);
  *   - a TAMPERED signed message still delivers — verdict invalid, delivery
- *     NEVER blocked (D10);
+ *     NEVER blocked;
  *   - an unknown-sender signed message delivers with the honest `not_found`
  *     verdict;
  *   - the SEALED path is untouched: a sealed message gets its
@@ -141,7 +141,7 @@ async function composeDetachedSigned(
 	});
 }
 
-describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1/D9)', () => {
+describe('mail.delivery.ingestFromWebhook — inbound signature verification', () => {
 	beforeEach(() => {
 		vi.stubEnv('INSTANCE_SECRET', INSTANCE_SECRET);
 		vi.stubEnv('MTA_INTERNAL_URL', '');

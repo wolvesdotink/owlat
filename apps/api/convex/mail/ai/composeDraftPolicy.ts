@@ -7,7 +7,7 @@
  * that records answers.
  *
  *  - Files: rank what the search found against what the other party asked
- *    for, and pick one of the three outcomes (plan §06): one confident match
+ *    for, and pick one of the three outcomes: one confident match
  *    is attached without a question, several close ones become a "which file"
  *    question, nothing becomes an upload question with near misses and the
  *    "It isn't ready yet" way out.
@@ -203,7 +203,7 @@ export type FileOutcome =
 	| { kind: 'missing'; near: RankedFile[] };
 
 /**
- * The three outcomes of plan §06. Only a file that clears the match floor and
+ * The three outcomes of a file question. Only a file that clears the match floor and
  * is not about another period may be attached or offered as a choice; when
  * none qualifies, the near misses (lower floor, period mismatches included and
  * noted) go with the upload question.

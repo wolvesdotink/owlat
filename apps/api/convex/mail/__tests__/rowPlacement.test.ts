@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §3): every Postbox list row carries its thread's
+ * Read on arrival: every Postbox list row carries its thread's
  * Priority placement, so the Priority view groups any page alike.
  *
  * The placement is the arrival projection's, which is computed with the
@@ -86,7 +86,7 @@ async function placementsBySubject(t: T, mailboxId: Id<'mailboxes'>) {
 	);
 }
 
-describe('list rows carry the Priority placement (SPEC §3)', () => {
+describe('list rows carry the Priority placement', () => {
 	it('reads the arrival projection (which carries a Fix), falls back to an override, and omits it otherwise', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedInbox(t);

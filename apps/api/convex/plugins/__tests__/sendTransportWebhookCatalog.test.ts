@@ -1,6 +1,6 @@
 /**
  * The plugin webhook registry refuses to LOAD when its two generated halves
- * disagree (the seams plan's D6/P2.2).
+ * disagree.
  *
  * Every other check in this piece runs per request. This one runs once, at
  * module load, and it is the only one that can still be made to run before a

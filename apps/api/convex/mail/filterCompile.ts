@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Read on arrival (SPEC §6.1): plain-language Postbox rules, the COMPILE
+ * Read on arrival: plain-language Postbox rules, the COMPILE
  * seam. Modelled on `handlingRulesCompile.ts`: the person's own rule text
  * (trusted, never an inbound email) is compiled ONCE by the fast tier into a
  * deterministic filter (`mailFilters` conditions and restrict-only actions)

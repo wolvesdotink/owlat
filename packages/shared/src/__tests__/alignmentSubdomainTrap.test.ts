@@ -1,5 +1,5 @@
 /**
- * D11 — the per-transport subdomain trap.
+ * The per-transport subdomain trap.
  *
  * Giving the own-MTA arm its own From subdomain or its own DKIM `d=` splits
  * domain reputation, throws away the reputation the relay arm spent weeks

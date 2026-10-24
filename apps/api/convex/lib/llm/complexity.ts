@@ -127,7 +127,7 @@ export function isTrivialClassifiedMessage(signals: ClassificationSignals): bool
 }
 
 /**
- * How the inbound agent's draft is written (plan Phase 4, D2):
+ * How the inbound agent's draft is written:
  *   - `fast`: `LLM_COMPLEXITY_ROUTING` downgrades it, exactly as before;
  *   - `cheap_first`: the fast writer first, then at most one escalation to the
  *     capable writer when its quality check does not pass

@@ -1,5 +1,5 @@
 /**
- * Answer mode files and the send guard: the three file outcomes of plan §06 on
+ * Answer mode files and the send guard: the three file outcomes on
  * a Postbox draft, file answers (a fresh upload kept in Files unless the owner
  * opts out, a pick from Files), `mail.drafts.attachExisting` copying a Files row
  * or a mail attachment onto a draft and refusing what the caller may not read,

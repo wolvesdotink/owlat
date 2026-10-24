@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The team reply's response plan, beside the composer (plan §6): what the
+ * The team reply's response plan, beside the composer: what the
  * reply covers among the thread's open actions, each selected item with its
  * stance (Accept / Decline / Defer / Ask, or Answer / Decline / Defer) and,
  * once the draft was checked, "Addressed in draft" or "File missing"; and the

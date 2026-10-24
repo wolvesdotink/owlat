@@ -1,5 +1,5 @@
 /**
- * Plain-language rules (read on arrival, SPEC §6.1, §6.2): compile the
+ * Plain-language rules (read on arrival): compile the
  * person's sentence into a draft the section subscribes to, confirm or drop
  * it, and test a draft or saved rule on recent mail.
  *

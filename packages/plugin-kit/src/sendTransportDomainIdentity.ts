@@ -36,7 +36,7 @@ import type { PluginSendTransportConfig, PluginStaticModuleExport } from './send
 
 /**
  * The sending-domain identity half of a send-transport bundle (the seams plan's
- * D5: send module + webhook + domain identity travel together).
+ * Send module + webhook + domain identity travel together).
  *
  * DECLARING ONE IS the catalog's `domainVerification: 'api'` for this kind — one
  * fact stated once, exactly as {@link PluginSendTransportDefinition.webhook} is

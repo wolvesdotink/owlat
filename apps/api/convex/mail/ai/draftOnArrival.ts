@@ -95,7 +95,7 @@ export async function generateDraftOnArrival(
 		await loadVoiceGuidance(ctx, { mailboxId: loaded.mailboxId, requireAccess: false })
 	);
 
-	// The thread's open items with their default stances (SPEC §6).
+	// The thread's open items with their default stances.
 	const plan = await loadThreadPlan(ctx, args.threadId);
 
 	try {

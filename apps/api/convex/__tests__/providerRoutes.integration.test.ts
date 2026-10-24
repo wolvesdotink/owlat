@@ -191,7 +191,7 @@ describe('providerRoutes mutation contracts', () => {
 	});
 
 	/**
-	 * THE PERSISTENCE GATE AND THE ROUTING GATE ARE ONE PREDICATE (plan D6).
+	 * THE PERSISTENCE GATE AND THE ROUTING GATE ARE ONE PREDICATE.
 	 *
 	 * The shipped check here was `relayProviderType !== 'ses'` — a capability
 	 * question answered with a list of one. `resolveRoute` was widened to
@@ -230,7 +230,7 @@ describe('providerRoutes mutation contracts', () => {
 
 	it('rejects an UNCONFIGURED relay and never persists it', async () => {
 		// `RESEND_API_KEY` is absent, so the kind is known and non-MTA but has no
-		// credentials. Before D6 this was refused for being "not SES"; now it is
+		// credentials. It is not refused for being "not SES"; it is
 		// refused for the reason routing would refuse it at dispatch.
 		const t = convexTest(schema, modules).withIdentity(identity);
 
@@ -285,7 +285,7 @@ describe('providerRoutes mutation contracts', () => {
 	});
 
 	it('requires the arm the fallback moves traffic away from to be enabled', async () => {
-		// The own-MTA precondition (D3's one sanctioned identity). A fallback is
+		// The own-MTA precondition (the one sanctioned identity check). A fallback is
 		// traffic leaving OUR infrastructure for a relay, so a route that carries
 		// no enabled own-MTA arm has nothing to fall back FROM — the relay would
 		// simply be the route. Present-but-disabled is the interesting shape: the
@@ -462,7 +462,7 @@ describe('deliverability relay domain lifecycle', () => {
 
 		// BOTH identity stores, not just SES's. "Backfills nothing" is a claim
 		// about every destination the drain can write to, and the generic
-		// `sendingDomainRelayIdentities` row is where every kind after SES (D7)
+		// `sendingDomainRelayIdentities` row is where every kind after SES
 		// lands — a future `domainVerification: 'none'` kind that kept an
 		// `ensureRelayIdentity` would write THERE, and a SES-only assertion would
 		// stay green through exactly the regression this case exists to catch.
@@ -597,7 +597,7 @@ describe('deliverability relay domain lifecycle', () => {
 		// The positive half of the same claim: Mandrill declares
 		// `domainVerification: 'api'` and registers a sending-domain provider, so
 		// the SAME drain backfills ITS identity — into the generic
-		// `sendingDomainRelayIdentities` row (D7), with no SES identity written at
+		// `sendingDomainRelayIdentities` row, with no SES identity written at
 		// all. Nothing in `providerRoutes.ts` names either kind.
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.run(async (ctx) => {

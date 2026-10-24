@@ -1,6 +1,6 @@
 /**
  * The knowledge backfill card reports how many messages the run left partly
- * read at the AI spend budget (D1). The count only grows, so the copy reads it
+ * read at the AI spend budget. The count only grows, so the copy reads it
  * as history and promises no completion; nothing is said while it is zero.
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';

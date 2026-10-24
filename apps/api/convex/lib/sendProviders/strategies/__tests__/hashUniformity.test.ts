@@ -164,7 +164,7 @@ describe('mix hash — a caller cannot steer the arm', () => {
 		// With neither a contact id nor a fallback key, BOTH partitions have no
 		// key material. Neither may substitute the other's draw: a slice whose
 		// membership were a function of the arm would hand the engagement-ratio
-		// gate a one-armed sample (D8). Both simply return null, and the
+		// gate a one-armed sample. Both simply return null, and the
 		// decision fails closed.
 		const recipient = {};
 		expect(armBucketFor(recipient, 1)).toBeNull();

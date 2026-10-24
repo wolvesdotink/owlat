@@ -1,5 +1,5 @@
 /**
- * D10 with Sol r2 F1: a source turning eager reads its thread's EARLIER
+ * Deferral: a source turning eager reads its thread's EARLIER
  * deferred sources first. An earlier message (an invoice) can hold the item a
  * later one cancels or completes; the later run reads only items that exist,
  * so the earlier one is promoted (outstanding again) and interpreted first,
@@ -142,7 +142,7 @@ async function capture(t: Test, source: InterpretationSource) {
 	await t.run((ctx) => captureInterpretSource(ctx, { source, isLive: true }));
 }
 
-describe('D10: an eager run reads its deferred predecessors first (Sol r2 F1)', () => {
+describe('an eager run reads its deferred predecessors first', () => {
 	it('inbound: the later message is read after the deferred invoice', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
@@ -236,7 +236,7 @@ describe('D10: an eager run reads its deferred predecessors first (Sol r2 F1)', 
  * reschedule of the eager source; crash-safe because what was not read is
  * still deferred, in place.
  */
-describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
+describe('the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 	const TAG = /\[(\w)\]/;
 	const readTags = () =>
 		llm.runLlmObject.mock.calls
@@ -395,7 +395,7 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
  * the thread-order index, one indexed read each, whatever the backlog, and in
  * thread order however the rows were written.
  */
-describe('D10: indexed thread order (Sol r4 F2)', () => {
+describe('indexed thread order', () => {
 	const settleRun =
 		(t: Test, order: string[], tags: Map<string, string>) => async (s: InterpretationSource) => {
 			order.push(tags.get(s.id as string) ?? '?');
@@ -520,7 +520,7 @@ describe('D10: indexed thread order (Sol r4 F2)', () => {
  * its own predecessor lookup, a predecessor the loop selected is read without
  * re-entering the selection, and every row deferral writes carries a key.
  */
-describe('D10: keyless rows and predecessor mode (Sol r5)', () => {
+describe('keyless rows and predecessor mode (Sol r5)', () => {
 	it('a keyless deferred row and a later eager source settle with the real runner, no self-recursion', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);

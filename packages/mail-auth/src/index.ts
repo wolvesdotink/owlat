@@ -7,7 +7,7 @@
  *     verdict / policy / identity types.
  *   - DNS: an injectable, Redis-cached resolver (`createCachedResolver`,
  *     `toSpfResolver`) with the TTL contract in `dns.ts`.
- *   - Canonicalization (RFC 6376 §3.4): the shared `canon` public API (D4),
+ *   - Canonicalization (RFC 6376 §3.4): the shared `canon` public API,
  *     consumed by both the DKIM verifier and the outbound signer.
  *   - DKIM (RFC 6376 / 8463 / 8601): `verifyDkim` plus the key-record parser.
  *   - ARC (RFC 8617): `verifyArc` — chain verification over the shared canon.

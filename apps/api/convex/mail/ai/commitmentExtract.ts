@@ -125,7 +125,7 @@ export const extractCommitment = internalAction({
 					source: 'llm',
 				});
 			} catch (error) {
-				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run
 				// Fail-soft: AI disabled / rate-limited / provider down / bad output —
 				// no commitment row is written (today's behaviour).
 			}

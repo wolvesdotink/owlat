@@ -54,7 +54,7 @@ export async function inboundBodyForContext(
 
 /**
  * Build the `[CURRENT MESSAGE]` briefing section: the sender's body rendered as
- * the thread's STRUCTURED actions (SPEC §5 "Team pipeline") rather than raw
+ * the thread's STRUCTURED actions rather than raw
  * prose, so the draft and clarify steps never consume the sender's free text
  * verbatim in an instruction-adjacent slot.
  *
@@ -67,7 +67,7 @@ export async function inboundBodyForContext(
  * FAIL-SOFT: interpretation unavailable (empty body, AI off, a failed or
  * partial run, a throwing seam in tests) falls back to the hidden-stripped raw
  * body for the DRAFT context. The autonomy hold for the same case is the
- * `interpretation_incomplete` gate (D3), not this function.
+ * `interpretation_incomplete` gate, not this function.
  */
 export async function buildCurrentMessageSection(
 	ctx: ActionCtx,
@@ -121,20 +121,20 @@ async function structuredActions(
 			});
 			// The run answers a spend refusal instead of throwing it: thrown here, it
 			// reaches the walker, which records the missing judgments and holds the
-			// message rather than drafting from the raw body (D1, Sol r3 F5).
+			// message rather than drafting from the raw body.
 			throwRunBudgetRefusal(run);
 			read = await ctx.runQuery(internal.mail.interpret.teamActions.briefingActions, {
 				inboundMessageId,
 			});
 		}
 		// A stored refusal holds a cached read too: until its retry is due the run
-		// is not called, and the raw body must not carry the paid steps on (D1).
+		// is not called, and the raw body must not carry the paid steps on.
 		const stored = read.interpretation?.budgetRefusal;
 		if (stored) throw new AdmissionRefusedError(stored.reason, stored.limit);
 		if (read.interpretation?.status !== 'complete') return null;
 		return renderBriefingActions(read.selection);
 	} catch (error) {
-		rethrowAdmissionRefusal(error); // the walker holds the message (D1)
+		rethrowAdmissionRefusal(error); // the walker holds the message
 		// Fail soft — keep the hidden-stripped raw body.
 		return null;
 	}

@@ -9,7 +9,7 @@
  * currently ONE shared cascade — and a change to the poisoned-rate or clock-skew
  * rule that is right for the concurrent arm and wrong for the trailing one would
  * fail neither leg. That coupling is exactly what the degraded path must not be
- * allowed to depend on (plan D3).
+ * allowed to depend on.
  *
  * NOTHING HERE IS WRAPPED IN `describeEquipped`: every fixture is built from
  * `standaloneInput` / `engagementInput` with no reference arm and no reference
@@ -106,7 +106,7 @@ function expectNoPassAndNoIncrease(built: RampGateEvaluationInput): void {
  *
  * The own arm is deliberately left healthy there, so the gates that read no
  * baseline (deferral, and the absolute-only CFBL complaint spec) are SUPPOSED to
- * keep deciding — that is plan D2's rule that a missing or unusable second series
+ * keep deciding — a missing or unusable second series
  * lowers confidence and slows the ramp rather than stopping the deployment. What
  * must hold is that the two gates whose comparative half just evaporated do not
  * pass on half a check, and that the cell as a whole cannot be advanced.
@@ -185,7 +185,7 @@ describe('standalone — poisoned rates', () => {
 
 	it('a poisoned OWN rate is reported as unmeasurable, not as a thin window', () => {
 		// The reason code is what the audit row and the admin notification render
-		// from (plan D12); a poisoned bucket and a small one need different fixes.
+		// from; a poisoned bucket and a small one need different fixes.
 		const built = bare({ own: arm(AMPLE, poisonedRates(Number.NaN)) });
 		expect(evaluateTrailingHardBounceGate(built)).toMatchObject({
 			status: 'insufficient_data',
@@ -312,7 +312,7 @@ describe('standalone — gate 4 under attack', () => {
 		});
 	});
 
-	it('NO trailing-baseline verdict may ever justify an increase (plan D14)', () => {
+	it('NO trailing-baseline verdict may ever justify an increase', () => {
 		expect(trailingEngagement({}).mayJustifyIncrease).toBe(false);
 	});
 });

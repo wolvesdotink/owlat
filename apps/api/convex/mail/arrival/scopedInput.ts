@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.4, §6.2, §6.5): the one scoped-input builder for
+ * Read on arrival: the one scoped-input builder for
  * every short model read of a single message: the gist (6,000 characters),
  * the digest lines (800 per item) and the rule dry run / R2 questions.
  *

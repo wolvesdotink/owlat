@@ -7,7 +7,7 @@
  * independent oracle — and assert SEMANTIC equality: same effective header
  * values, same decoded text/html bodies, same attachment set, same multipart
  * part tree (ordering + nesting), and the same decoded AMP part. Byte equality is
- * NOT required; parsed equality is (locked decision D2 keeps encoding 7-bit safe
+ * NOT required; parsed equality is (encoding stays 7-bit safe
  * on both sides, but boundary strings and CTE choices may legitimately differ).
  *
  * Because we compare mailparser(ours) against mailparser(nodemailer), any

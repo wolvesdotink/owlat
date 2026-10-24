@@ -6,6 +6,7 @@ import {
 	formatSnapshotSize,
 	type HistoryState,
 } from '@owlat/email-builder';
+import type { CompareSide } from './TemplateCompareModal.vue';
 
 /**
  * Persisted version history for one email template — the durable sibling of the
@@ -14,11 +15,14 @@ import {
  *
  * Restore does NOT write: it hands the parsed snapshot back to the editor,
  * which loads it as working state, so it lands in the undo stack like any other
- * edit and only reaches the server on the next save.
+ * edit and only reaches the server on the next save. Compare neither writes nor
+ * restores: it shows a snapshot beside the editor's current state.
  */
 const props = defineProps<{
 	templateId: Id<'emailTemplates'>;
 	hasUnsavedChanges: boolean;
+	/** The editor's state right now, unsaved edits included; enables "Compare". */
+	readCurrent?: () => HistoryState;
 }>();
 
 const emit = defineEmits<{ restore: [state: HistoryState] }>();
@@ -98,6 +102,58 @@ async function openPreview(version: VersionSummary) {
 	}
 }
 
+// ── Compare with the editor ────────────────────────────────────────────────
+
+const compareVersion = ref<VersionSummary | null>(null);
+const compareBefore = shallowRef<CompareSide | null>(null);
+const compareAfter = shallowRef<CompareSide | null>(null);
+const isCompareLoading = ref(false);
+// Bumped per comparison and on close: a snapshot that arrives for a comparison
+// the user already left or replaced is dropped.
+let compareRequest = 0;
+const isCompareOpen = computed({
+	get: () => compareVersion.value !== null,
+	set: (open: boolean) => {
+		if (open) return;
+		compareVersion.value = null;
+		compareRequest++;
+	},
+});
+
+async function openCompare(version: VersionSummary) {
+	if (!props.readCurrent) return;
+	const request = ++compareRequest;
+	// The canvas keeps moving while the dialog is open; the comparison is of the
+	// moment it was asked for. One dialog at a time, so the preview closes.
+	const current = props.readCurrent();
+	previewVersion.value = null;
+	compareVersion.value = version;
+	compareBefore.value = null;
+	compareAfter.value = {
+		label: t('components.email.templateHistoryPanel.currentLabel'),
+		detail: current.name,
+		blocks: current.blocks,
+		subject: current.subject,
+	};
+	isCompareLoading.value = true;
+	try {
+		const state = deserializeVersionSnapshot(await loadSnapshot(version._id));
+		if (request !== compareRequest) return;
+		compareBefore.value = {
+			label: triggerLabel(version.trigger),
+			detail: absoluteTime(version.createdAt),
+			blocks: state.blocks,
+			subject: state.subject,
+		};
+	} catch {
+		if (request !== compareRequest) return;
+		compareVersion.value = null;
+		showToast(t('components.email.templateHistoryPanel.loadFailed'), 'error');
+	} finally {
+		if (request === compareRequest) isCompareLoading.value = false;
+	}
+}
+
 // ── Restore ────────────────────────────────────────────────────────────────
 
 const pendingRestore = ref<VersionSummary | null>(null);
@@ -110,8 +166,9 @@ function requestRestore(version: VersionSummary) {
 		// One dialog at a time: the confirmation shares the modal layer with the
 		// preview, so stacking it on top would leave two backdrops and two focus
 		// traps. Close the preview first — cancelling still leaves the history
-		// panel open behind it.
+		// panel open behind it. The same goes for the comparison.
 		previewVersion.value = null;
+		isCompareOpen.value = false;
 		pendingRestore.value = version;
 		return;
 	}
@@ -125,6 +182,7 @@ async function applyRestore(version: VersionSummary) {
 		emit('restore', deserializeVersionSnapshot(snapshot));
 		isOpen.value = false;
 		previewVersion.value = null;
+		isCompareOpen.value = false;
 		showToast(t('components.email.templateHistoryPanel.restored'));
 	} catch {
 		showToast(t('components.email.templateHistoryPanel.restoreFailed'), 'error');
@@ -136,24 +194,23 @@ async function applyRestore(version: VersionSummary) {
 
 // ── Panel chrome (mirrors ShareLinksPopover) ───────────────────────────────
 
+const hasOverlay = () =>
+	previewVersion.value !== null || compareVersion.value !== null || pendingRestore.value !== null;
+
 const panelRightPx = computed(() => {
 	if (!triggerRef.value) return '0';
 	return `${document.documentElement.clientWidth - triggerRef.value.getBoundingClientRect().right}px`;
 });
 
 useClickOutside([panelRef, triggerRef], () => {
-	// The preview modal teleports outside the panel; closing the panel behind it
-	// would strand the modal's restore button.
-	if (isOpen.value && previewVersion.value === null && pendingRestore.value === null) {
-		isOpen.value = false;
-	}
+	// The preview and compare modals teleport outside the panel; closing the
+	// panel behind them would strand their restore buttons.
+	if (isOpen.value && !hasOverlay()) isOpen.value = false;
 });
 
 const handleEscape = (event: KeyboardEvent) => {
 	// Escape belongs to whichever overlay sits on top of the panel.
-	if (event.key === 'Escape' && previewVersion.value === null && pendingRestore.value === null) {
-		isOpen.value = false;
-	}
+	if (event.key === 'Escape' && !hasOverlay()) isOpen.value = false;
 };
 watch(isOpen, (open) => {
 	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape closes the panel
@@ -259,6 +316,14 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 										<Icon name="lucide:eye" class="w-3.5 h-3.5" />
 									</button>
 									<button
+										v-if="readCurrent"
+										class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors"
+										:title="t('components.email.templateHistoryPanel.compareAction')"
+										@click="openCompare(version)"
+									>
+										<Icon name="lucide:git-compare" class="w-3.5 h-3.5" />
+									</button>
+									<button
 										class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors"
 										:title="t('components.email.templateHistoryPanel.restoreAction')"
 										:disabled="isRestoring"
@@ -312,6 +377,17 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 					{{ t('common.close') }}
 				</UiButton>
 				<UiButton
+					v-if="readCurrent"
+					variant="secondary"
+					:disabled="!previewVersion"
+					@click="previewVersion && openCompare(previewVersion)"
+				>
+					<template #iconLeft>
+						<Icon name="lucide:git-compare" class="w-4 h-4" />
+					</template>
+					{{ t('components.email.templateHistoryPanel.compare') }}
+				</UiButton>
+				<UiButton
 					:loading="isRestoring"
 					:disabled="!previewVersion"
 					@click="previewVersion && requestRestore(previewVersion)"
@@ -323,6 +399,26 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 				</UiButton>
 			</UiModalFooter>
 		</UiModal>
+
+		<EmailTemplateCompareModal
+			v-model:open="isCompareOpen"
+			:before="compareBefore"
+			:after="compareAfter"
+			:loading="isCompareLoading"
+		>
+			<template #actions>
+				<UiButton
+					:loading="isRestoring"
+					:disabled="!compareVersion || isCompareLoading"
+					@click="compareVersion && requestRestore(compareVersion)"
+				>
+					<template #iconLeft>
+						<Icon name="lucide:rotate-ccw" class="w-4 h-4" />
+					</template>
+					{{ t('components.email.templateHistoryPanel.restore') }}
+				</UiButton>
+			</template>
+		</EmailTemplateCompareModal>
 
 		<UiConfirmationDialog
 			:open="pendingRestore !== null"

@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * The entailment check of an interpretation (SPEC §4 `verify.ts`): a no-tool
+ * The entailment check of an interpretation: a no-tool
  * call on the `guard` tier, three claims per call, asking only whether the
  * quoted words SAY the claim. It sees the claims (`pipeline.ts
  * verifyClaimsOf`) and their quotes, never the whole thread, and it cannot

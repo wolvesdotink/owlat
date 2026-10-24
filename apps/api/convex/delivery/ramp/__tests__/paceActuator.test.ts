@@ -1,5 +1,5 @@
 /**
- * THE AIMD TABLE ON THE PACE MULTIPLIER (plan P3-7, D3, D9, D10).
+ * THE AIMD TABLE ON THE PACE MULTIPLIER.
  *
  * The share actuator's table, applied to the second dial: fail halves and
  * freezes, a halt goes straight to the floor, thin data holds in BOTH
@@ -87,7 +87,7 @@ describe('pace actuator — the AIMD table', () => {
 		expect(decision.multiplier).toBe(PACE_AIMD.multiplierCeiling);
 	});
 
-	it('HOLDS on thin data — never up, and never down either (D10)', () => {
+	it('HOLDS on thin data — never up, and never down either', () => {
 		const decision = nextPaceMultiplier(paceInput({ evaluation: thinEvaluation(3) }));
 		expect(decision.direction).toBe('hold');
 		expect(decision.multiplier).toBe(1);

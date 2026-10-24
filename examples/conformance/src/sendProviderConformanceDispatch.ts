@@ -75,7 +75,7 @@ export function describeGovernedDispatchConformance(subject: SendProviderConform
 		});
 
 		/**
-		 * NAMED INSTANCES, which is the parity gap D4 opened and P3.1 closed — and
+		 * NAMED INSTANCES, a parity property of plugin transports — and
 		 * the property a bundle is most likely to break, because the wrong shape (a
 		 * `process.env` read) also "works" on the default instance.
 		 *

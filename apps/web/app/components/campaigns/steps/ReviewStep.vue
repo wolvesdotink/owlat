@@ -145,8 +145,8 @@ const { arm: armUndoSend } = useCampaignUndoSend();
 
 /**
  * Pre-flight refused the send and handed back the multi-day schedule it would
- * take instead. Capacity is a SCHEDULE, not a failure (deliverability plan
- * D14), so the refusal is claimed here and rendered as a calm panel rather than
+ * take instead. Capacity is a SCHEDULE, not a failure, so
+ * the refusal is claimed here and rendered as a calm panel rather than
  * left to the generic red `invalid_state` toast.
  */
 const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } = useCapacityRefusal();
@@ -532,6 +532,7 @@ const variantBTemplateName = computed(() => {
 							<Icon name="lucide:alert-circle" class="h-4 w-4 shrink-0" />
 							{{ t('components.campaigns.steps.reviewStep.emptyBody') }}
 						</p>
+						<CampaignsChangedSinceLastSend :template-id="data.selectedTemplate._id" class="mt-3" />
 						<UiButton
 							variant="secondary"
 							size="sm"
@@ -586,6 +587,11 @@ const variantBTemplateName = computed(() => {
 										data.abTestType === 'subject' ? data.abVariantBSubject : variantBTemplateName
 									}}</span>
 								</div>
+								<CampaignsChangedSinceLastSend
+									v-if="data.abTestType === 'content' && data.abVariantBTemplateId"
+									:template-id="data.abVariantBTemplateId"
+									class="pl-7"
+								/>
 								<p class="text-sm text-text-tertiary mt-2">
 									{{
 										t('components.campaigns.steps.reviewStep.splitSummary', {

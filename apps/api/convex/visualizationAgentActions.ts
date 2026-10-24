@@ -149,7 +149,7 @@ Respond with ONLY the title, no quotes or explanation.`,
 				dataQuery: liveData ? (datasetKey ?? undefined) : undefined,
 			});
 		} catch (error) {
-			// A budget refusal (D1) is stored as its stable code and reason, which
+			// A budget refusal is stored as its stable code and reason, which
 			// the web says in the reader's language; the page carries no sentence.
 			const refusal = admissionRefusalOf(error);
 			await ctx.runMutation(internal.visualizationAgent.updateGenerated, {

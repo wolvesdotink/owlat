@@ -42,7 +42,7 @@ export const NOW = 1_760_000_000_000;
  * used to spell the same three poison values and the same beyond-skew timestamp
  * in two shapes. Two spellings of one catalogue is two chances for a new poison
  * shape to reach one implementation's suite and not the other's — which is
- * precisely the degraded-path rot the second suite exists to prevent (plan D3).
+ * precisely the degraded-path rot the second suite exists to prevent.
  * A value added here reaches both legs of the matrix at once.
  */
 export const POISON_RATE_VALUES: ReadonlyArray<readonly [label: string, value: number]> = [
@@ -78,7 +78,7 @@ export const BEYOND_SKEW = NOW + RAMP_GATE_THRESHOLDS.maxFutureSkewMs + 60_000;
  * WHICH LEG OF THE CI MATRIX THIS PROCESS IS, and — the load-bearing part —
  * whether it may use ANY external input at all.
  *
- * The matrix is plan D3's defence against the degraded path rotting, and it only
+ * The matrix is the defence against the degraded path rotting, and it only
  * defends anything if the mode reaches the FIXTURES. A second leg that rebuilt the
  * same two-armed cells and merely added a handful of mode-branching assertions
  * would pass exactly when the first leg passes, so a change that quietly made a

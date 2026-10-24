@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * One plain-language rule as a line of chips (read on arrival, SPEC §6.1):
+ * One plain-language rule as a line of chips (read on arrival):
  * its conditions joined by "and"/"or", its AI question, an arrow, then what
  * it does. Used for a compiled draft and for a saved rule, so the person sees
  * the same thing before and after saving.

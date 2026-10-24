@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.7, D4): a finished history import starts the
+ * Read on arrival: a finished history import starts the
  * mailbox's 30-day interpretation backfill on its own, once.
  *
  * Called from the import's completion mutation (`mail/migrationBackfill.ts

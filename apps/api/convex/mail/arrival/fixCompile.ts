@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §4.2): the async compile of a Fix reason into a rule
+ * Read on arrival: the async compile of a Fix reason into a rule
  * draft. `fix.apply` writes the `mailRuleDrafts` row and schedules
  * {@link compile}; the compile itself is the `compileFixRuleDraft` hook
  * (`./hooks.ts`), which lane rules / wiring connect to the §6.1 compile

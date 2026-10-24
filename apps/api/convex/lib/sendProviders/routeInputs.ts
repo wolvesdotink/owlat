@@ -134,7 +134,7 @@ export function configuredSendProviderKinds(
  * of the cell — because the per-stream row carries the controller's share and
  * the stream-less row carries the infrastructure signals, so reading only one
  * would drop a hard stop. "Active" is `isRouteStateFallbackActive`, the union
- * of the stored boolean and D1's resolved share, so a legacy row still
+ * of the stored boolean and the resolved share, so a legacy row still
  * resolves to exactly its stored boolean.
  */
 export function freshFallbackReasons(

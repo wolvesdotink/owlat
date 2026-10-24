@@ -242,7 +242,7 @@ describe('deployment.relay readiness — every eligible relay counts, not just S
 
 describe('deployment.relay readiness — fail closed on what it cannot vouch for', () => {
 	it('refuses a fallback that names our own MTA', async () => {
-		// D3's one sanctioned identity, read through `isFallbackRelayEligible`: the
+		// The one sanctioned identity check (own MTA or not), read through `isFallbackRelayEligible`: the
 		// MTA is the arm a fallback moves traffic away from. A route row naming it
 		// would otherwise match an enabled `mta` entry — which every deployment has
 		// — and report a relay that does not exist as ready. Handed a projection
