@@ -204,7 +204,7 @@ export interface ConsequentialInput {
 }
 
 /**
- * Whether an item proposal goes through the verifier : any
+ * Whether an item proposal goes through the verifier: any
  * consequence tag (payment, signature, access, disclosure, promise,
  * concession, cancellation), a promise, a payment/signature/access facet, a
  * stated amount, or a deadline. Missing tags are ambiguity, and ambiguity is

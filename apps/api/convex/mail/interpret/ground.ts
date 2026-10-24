@@ -1,5 +1,5 @@
 /**
- * Mechanical grounding of an interpretation : which
+ * Mechanical grounding of an interpretation: which
  * of the model's proposed items, transitions, latest-update lines and facts
  * the message itself supports, and which derived strings need a human look.
  *

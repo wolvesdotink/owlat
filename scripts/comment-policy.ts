@@ -235,16 +235,52 @@ interface HereDocument {
 const HERE_DOCUMENT = /^<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|\\?([A-Za-z_][\w.-]*))/;
 
 /**
- * The `#` comments of a shell script that starts on `firstLine`. Quoting
- * carries across lines and a here-document body runs to its delimiter, so a
- * `#` in a multiline string or a here-document is data. A `#` opens a comment
- * only at the start of a word (`${#items[@]}` and `$#` are expansions).
+ * A shell syntax context the scanner is inside. `command` is the script itself
+ * or a `$(...)` / backquote substitution: only there do `#` comments and
+ * here-documents exist. `depth` counts the open parentheses a `$(` or `((`
+ * body holds, so its own closing `)` or `))` is the one that ends it.
+ */
+interface ShellContext {
+	readonly kind: 'command' | 'single' | 'double' | 'ansi' | 'parameter' | 'arithmetic';
+	/** What closes a command context: `)` for `$(`, a backquote for `` ` ``, nothing for the script. */
+	readonly closer?: ')' | '`';
+	depth: number;
+}
+
+/** The context a `$`, quote or backquote at `column` opens, and how many characters open it. */
+function openedContext(line: string, column: number): [ShellContext, number] | undefined {
+	const char = line[column];
+	if (char === "'") return [{ kind: 'single', depth: 0 }, 1];
+	if (char === '"') return [{ kind: 'double', depth: 0 }, 1];
+	if (char === '`') return [{ kind: 'command', closer: '`', depth: 0 }, 1];
+	if (char !== '$') return undefined;
+	const next = line[column + 1];
+	if (next === "'") return [{ kind: 'ansi', depth: 0 }, 2];
+	if (next === '{') return [{ kind: 'parameter', depth: 0 }, 2];
+	if (line.startsWith('$((', column)) return [{ kind: 'arithmetic', depth: 0 }, 3];
+	if (next === '(') return [{ kind: 'command', closer: ')', depth: 0 }, 2];
+	return undefined;
+}
+
+/** Whether `column` starts a shell word, where `#` opens a comment and `((` an arithmetic command. */
+function atWordStart(line: string, column: number): boolean {
+	return column === 0 || /[\s;&|()]/.test(line[column - 1]!);
+}
+
+/**
+ * The `#` comments of a shell script that starts on `firstLine`. The scanner
+ * keeps a stack of syntax contexts across lines: quoted strings, `${...}`
+ * expansions and arithmetic are data, while a `$(...)` or backquote
+ * substitution is a script again, even inside double quotes. A `#` opens a
+ * comment only at the start of a word in a script context (`${#items[@]}` and
+ * `$#` are expansions), `<<` opens a here-document only there (in arithmetic
+ * it shifts), and a here-document body runs to its delimiter line.
  */
 export function shellCommentPieces(text: string, firstLine = 1): TextPiece[] {
 	const pieces: TextPiece[] = [];
 	const pending: HereDocument[] = [];
 	const bodies: HereDocument[] = [];
-	let quote: "'" | '"' | "$'" | undefined;
+	const stack: ShellContext[] = [{ kind: 'command', depth: 0 }];
 	for (const [index, line] of text.split('\n').entries()) {
 		const body = bodies[0];
 		if (body) {
@@ -253,21 +289,67 @@ export function shellCommentPieces(text: string, firstLine = 1): TextPiece[] {
 		}
 		if (index === 0 && line.startsWith('#!')) continue;
 		for (let column = 0; column < line.length; column += 1) {
+			const context = stack.at(-1)!;
 			const char = line[column]!;
-			if (quote) {
-				if (char === '\\' && quote !== "'") column += 1;
-				else if (char === (quote === '"' ? '"' : "'")) quote = undefined;
-			} else if (char === '\\') column += 1;
-			else if (char === "'" || char === '"') quote = char as "'" | '"';
-			else if (char === '$' && line[column + 1] === "'") {
-				quote = "$'";
+			if (context.kind === 'single') {
+				if (char === "'") stack.pop();
+				continue;
+			}
+			if (char === '\\') {
 				column += 1;
-			} else if (line.startsWith('<<<', column)) column += 2;
-			else if (line.startsWith('<<', column)) {
-				// `$(( x << n ))` shifts; it is not a here-document.
-				const match = line.slice(0, column).includes('((')
+				continue;
+			}
+			if (context.kind === 'ansi') {
+				if (char === "'") stack.pop();
+				continue;
+			}
+			if (context.kind === 'double' && char === '"') {
+				stack.pop();
+				continue;
+			}
+			if (context.kind === 'parameter' && char === '}') {
+				stack.pop();
+				continue;
+			}
+			if (context.kind === 'command' && char === context.closer && context.depth === 0) {
+				stack.pop();
+				continue;
+			}
+			if (context.kind === 'arithmetic' && char === ')' && context.depth === 0) {
+				// `))` ends the expression; a lone `)` is malformed, and ending there keeps the scan going.
+				stack.pop();
+				if (line[column + 1] === ')') column += 1;
+				continue;
+			}
+			// Only `$`-expansions, quotes and substitutions open inside a double-quoted string.
+			const opened =
+				context.kind === 'double' && char !== '$' && char !== '`'
 					? undefined
-					: HERE_DOCUMENT.exec(line.slice(column));
+					: openedContext(line, column);
+			if (opened) {
+				stack.push(opened[0]);
+				column += opened[1] - 1;
+				continue;
+			}
+			if (context.kind === 'double') continue;
+			if (char === '(' || char === ')') {
+				if (
+					context.kind === 'command' &&
+					char === '(' &&
+					line[column + 1] === '(' &&
+					atWordStart(line, column)
+				) {
+					stack.push({ kind: 'arithmetic', depth: 0 });
+					column += 1;
+				} else if (context.closer === ')' || context.kind === 'arithmetic') {
+					context.depth += char === '(' ? 1 : -1;
+				}
+				continue;
+			}
+			if (context.kind !== 'command') continue;
+			if (line.startsWith('<<<', column)) column += 2;
+			else if (line.startsWith('<<', column)) {
+				const match = HERE_DOCUMENT.exec(line.slice(column));
 				if (match) {
 					pending.push({
 						delimiter: match[2] ?? match[3] ?? match[4]!,
@@ -275,12 +357,19 @@ export function shellCommentPieces(text: string, firstLine = 1): TextPiece[] {
 					});
 					column += match[0].length - 1;
 				} else column += 1;
-			} else if (char === '#' && (column === 0 || /[\s;&|()]/.test(line[column - 1]!))) {
-				pieces.push({ line: firstLine + index, text: line.slice(column), kind: 'comment' });
-				break;
+			} else if (char === '#' && atWordStart(line, column)) {
+				// A comment inside backquotes ends at the closing backquote, elsewhere at the line end.
+				const end = context.closer === '`' ? line.indexOf('`', column) : -1;
+				const comment = end === -1 ? line.slice(column) : line.slice(column, end);
+				pieces.push({ line: firstLine + index, text: comment, kind: 'comment' });
+				if (end === -1) break;
+				column = end - 1;
 			}
 		}
-		if (!quote) bodies.push(...pending.splice(0));
+		// A here-document body starts on the next line unless that line is still inside a string.
+		const kind = stack.at(-1)!.kind;
+		if (kind !== 'single' && kind !== 'double' && kind !== 'ansi')
+			bodies.push(...pending.splice(0));
 	}
 	return pieces;
 }
@@ -343,7 +432,7 @@ function templateCommentPieces(node: RootNode | TemplateChildNode): TextPiece[] 
 
 /** A string, an unquoted `url(...)`, a block comment, or a `//` line. */
 const STYLE_TOKEN =
-	/"(?:[^"\\\n]|\\.)*"?|'(?:[^'\\\n]|\\.)*'?|\burl\(\s*[^\s'")][^)]*\)?|\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*/gi;
+	/"(?:[^"\\\n]|\\(?:\r\n|[\s\S]))*"?|'(?:[^'\\\n]|\\(?:\r\n|[\s\S]))*'?|\burl\(\s*[^\s'")][^)]*\)?|\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*/gi;
 const LINE_COMMENT_STYLES = new Set(['scss', 'sass', 'less', 'stylus', 'styl']);
 
 /** The comments of a `<style>` block; `//` lines count in the preprocessors that have them. */

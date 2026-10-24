@@ -398,11 +398,10 @@ is its own piece. The five ramp keys are pinned against the shared classifier by
 `signals/__tests__/signalRegistry.test.ts`, so the ramp cannot come to measure a
 signal the routing vocabulary spells differently.
 
-**Absence is the point of the seam.** "Not configured" is a supported verdict
-: every absence carries `isBlocking: false` BY TYPE,
-so a source that blocked on its own absence could not be declared, and the
-registry suite drives each source with its evidence removed to check that what it
-declared is what it does — `substitute` hands back the stand-in it names,
+**Absence is the point of the seam.** "Not configured" is a supported verdict:
+every absence carries `isBlocking: false` BY TYPE, so a source that blocked on
+its own absence could not be declared, and the registry suite drives each source
+with its evidence removed to check that what it declared is what it does — `substitute` hands back the stand-in it names,
 `hold` still answers `insufficient_data`, `omit` contributes nothing at all.
 The substitution sentences are READ from the substitution the cell actually
 applies (`yahooComplaintSubstitution`), never

@@ -4,7 +4,8 @@
  * the repository does not hold. The cases cover each rule and the text it must
  * leave alone, the comment extraction per file kind (strings, regular
  * expressions, JSX text, template interpolations and attributes, shell
- * here-documents and YAML scalars are not comments), the diff parsing, and the gate
+ * here-documents and YAML scalars are not comments; a command substitution
+ * inside a string is code again), the diff parsing, and the gate
  * end to end in a scratch repository: legacy comments, deletions and renames
  * pass, committed, staged, unstaged and untracked additions are read, and a
  * base that cannot be resolved skips locally and fails in CI.
@@ -227,6 +228,22 @@ describe('vuePieces', () => {
 		]);
 	});
 
+	it('reads a string continued over an escaped line ending as one string', () => {
+		const source = [
+			'<template><p /></template>', // 1
+			'<style>', // 2
+			'a { content: "first \\', // 3
+			'/* until now */ second"; }', // 4
+			"b { content: 'crlf \\\r", // 5
+			"/* D13 */ end'; }", // 6
+			'/* css note */', // 7
+			'</style>', // 8
+		].join('\n');
+		expect(vuePieces(source)!.map((piece) => [piece.line, piece.text.trim()])).toEqual([
+			[7, '/* css note */'],
+		]);
+	});
+
 	it('answers undefined for a component that does not parse', () => {
 		expect(vuePieces('<template><div></template>')).toBeUndefined();
 	});
@@ -276,6 +293,41 @@ describe('shellCommentPieces', () => {
 			[15, '# after'],
 		]);
 	});
+	it('reads here-documents after a completed arithmetic expression', () => {
+		const source = [
+			"((count++)); cat <<'EOF'", // 1
+			'# until now', // 2
+			'EOF', // 3
+			'echo "$((1 + 2))"; cat <<EOF # opens', // 4
+			'# D13', // 5
+			'EOF', // 6
+			'(( x << 2 )) # a shift, not a here-document', // 7
+			'# after', // 8
+		].join('\n');
+		expect(lineTexts(shellCommentPieces(source))).toEqual([
+			[4, '# opens'],
+			[7, '# a shift, not a here-document'],
+			[8, '# after'],
+		]);
+	});
+
+	it('reads comments inside a command substitution, even within double quotes', () => {
+		const source = [
+			'value="$(', // 1
+			'  # until now, this was empty', // 2
+			'  printf "%s" "# data" # trailing', // 3
+			')" # after', // 4
+			'other="`printf x # in backquotes`"', // 5
+			'nested="$(echo "$(printf y) # inner")"', // 6
+			'text="# still a string $HOME"', // 7
+		].join('\n');
+		expect(lineTexts(shellCommentPieces(source))).toEqual([
+			[2, '# until now, this was empty'],
+			[3, '# trailing'],
+			[4, '# after'],
+			[5, '# in backquotes'],
+		]);
+	});
 });
 
 describe('yamlCommentPieces', () => {
@@ -307,13 +359,17 @@ describe('yamlCommentPieces', () => {
 			'          # heredoc data', // 7
 			'          EOF', // 8
 			'          echo "# data" # trailing', // 9
-			'      - with:', // 10
-			'          script: |', // 11
-			'            # not shell', // 12
+			'          value="$(', // 10
+			'            # until now, this was empty', // 11
+			'          )"', // 12
+			'      - with:', // 13
+			'          script: |', // 14
+			'            # not shell', // 15
 		].join('\n');
 		expect(lineTexts(yamlCommentPieces(source))).toEqual([
 			[5, '# shell note'],
 			[9, '# trailing'],
+			[11, '# until now, this was empty'],
 		]);
 	});
 });
