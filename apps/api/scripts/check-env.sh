@@ -22,6 +22,12 @@
 #
 # Test files (`__tests__/`, `*.test.ts`, `*.spec.ts`) are exempt: they configure
 # a test run rather than a deployment.
+#
+# For the Convex backend (the no-argument form) the oxlint rule
+# owlat/no-process-env (packages/oxlint-plugin-owlat) enforces this on the AST
+# and runs beside this script until scripts/ast-gate-parity.ts
+# (`bun run lint:ast-gate-parity`) shows the two agree; a change to what this
+# script reports there needs the same change in the rule, or that gate fails.
 
 set -euo pipefail
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMarkdown, parseInlines, isSafeHref } from '~/utils/markdown';
+import { parseMarkdown, parseMarkdownSettled, parseInlines, isSafeHref } from '~/utils/markdown';
 
 describe('parseInlines', () => {
 	it('parses bold, italic, and inline code', () => {
@@ -44,8 +44,15 @@ describe('isSafeHref', () => {
 describe('parseMarkdown', () => {
 	it('parses headings and paragraphs', () => {
 		const blocks = parseMarkdown('# Title\n\nHello world.');
-		expect(blocks[0]).toEqual({ type: 'heading', level: 1, inlines: [{ type: 'text', value: 'Title' }] });
-		expect(blocks[1]).toEqual({ type: 'paragraph', inlines: [{ type: 'text', value: 'Hello world.' }] });
+		expect(blocks[0]).toEqual({
+			type: 'heading',
+			level: 1,
+			inlines: [{ type: 'text', value: 'Title' }],
+		});
+		expect(blocks[1]).toEqual({
+			type: 'paragraph',
+			inlines: [{ type: 'text', value: 'Hello world.' }],
+		});
 	});
 
 	it('parses fenced code blocks with a language and preserves contents verbatim', () => {
@@ -64,14 +71,81 @@ describe('parseMarkdown', () => {
 
 	it('parses blockquotes and horizontal rules', () => {
 		const bq = parseMarkdown('> quoted line');
-		expect(bq[0]).toEqual({ type: 'blockquote', inlines: [{ type: 'text', value: 'quoted line' }] });
+		expect(bq[0]).toEqual({
+			type: 'blockquote',
+			inlines: [{ type: 'text', value: 'quoted line' }],
+		});
 		expect(parseMarkdown('---')[0]).toEqual({ type: 'hr' });
 	});
 
 	it('joins soft-wrapped paragraph lines and separates on blank lines', () => {
 		const blocks = parseMarkdown('line one\nline two\n\nsecond para');
 		expect(blocks).toHaveLength(2);
-		expect(blocks[0]).toEqual({ type: 'paragraph', inlines: [{ type: 'text', value: 'line one line two' }] });
-		expect(blocks[1]).toEqual({ type: 'paragraph', inlines: [{ type: 'text', value: 'second para' }] });
+		expect(blocks[0]).toEqual({
+			type: 'paragraph',
+			inlines: [{ type: 'text', value: 'line one line two' }],
+		});
+		expect(blocks[1]).toEqual({
+			type: 'paragraph',
+			inlines: [{ type: 'text', value: 'second para' }],
+		});
+	});
+});
+
+describe('parseMarkdownSettled', () => {
+	const doc = [
+		'# Title',
+		'',
+		'Para line one',
+		'line two',
+		'- a',
+		'- b',
+		'> quote',
+		'---',
+		'```js',
+		'x',
+		'',
+		'```',
+		'',
+		'tail',
+	].join('\n');
+
+	it('settles nothing until a line completes, and never the unfinished last line', () => {
+		expect(parseMarkdownSettled('# Tit')).toMatchObject({ settledLines: 0, settledBlocks: 0 });
+		// The blank line after the heading is not complete yet, and the heading
+		// line alone does not settle the block that follows it.
+		expect(parseMarkdownSettled('# Title\n')).toMatchObject({ settledLines: 0, settledBlocks: 0 });
+		expect(parseMarkdownSettled('# Title\n\n')).toMatchObject({
+			settledLines: 1,
+			settledBlocks: 1,
+		});
+		// An open fence swallows blank lines, so nothing after its opening line
+		// settles.
+		expect(parseMarkdownSettled('Intro\n\n```\na\n\n\nb')).toMatchObject({
+			settledLines: 2,
+			settledBlocks: 1,
+		});
+	});
+
+	it('reports a prefix whose blocks no appended text can change', () => {
+		for (let k = 0; k <= doc.length; k++) {
+			const head = doc.slice(0, k);
+			const { blocks, settledLines, settledBlocks } = parseMarkdownSettled(head);
+			expect(blocks).toEqual(parseMarkdown(head));
+			const settledText = head
+				.split('\n')
+				.slice(0, settledLines)
+				.map((line) => `${line}\n`)
+				.join('');
+			for (let m = k; m <= doc.length; m++) {
+				const longer = doc.slice(0, m);
+				expect(longer.startsWith(settledText)).toBe(true);
+				const full = parseMarkdown(longer);
+				expect(full.slice(0, settledBlocks), `${k} -> ${m}`).toEqual(
+					blocks.slice(0, settledBlocks)
+				);
+				expect(full.slice(settledBlocks)).toEqual(parseMarkdown(longer.slice(settledText.length)));
+			}
+		}
 	});
 });

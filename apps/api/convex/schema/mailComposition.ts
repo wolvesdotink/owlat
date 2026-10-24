@@ -386,7 +386,8 @@ export const mailCompositionTables = {
 		ownerUserId: v.optional(v.string()),
 		authorUserId: v.optional(v.string()),
 		mailboxIds: v.optional(v.array(v.id('mailboxes'))),
-		// AGGREGATED — bumped by mail/savedReplies.ts:recordUse on every insert.
+		// COUNTER [savedReplyUsage] — bumped by mail/savedReplies.ts:recordUse on
+		// every insert.
 		useCount: v.optional(v.number()),
 		lastUsedAt: v.optional(v.number()),
 		name: v.string(),

@@ -95,7 +95,7 @@ type HostOptions = {
 	folderRole?: string;
 	inPlace?: boolean;
 	autoAdvance?: PostboxAutoAdvanceMode;
-	thread?: { _id: string; mutedAt?: number } | null;
+	thread?: { _id: string; mutedAt?: number; pinnedAt?: number } | null;
 	/** The list's query the reader keeps (`?placement=`). */
 	query?: string;
 };
@@ -280,6 +280,27 @@ describe('usePostboxReaderActions — triage moves first', () => {
 		expect(navigateTo).not.toHaveBeenCalled();
 		expect(visibleIds(list)).toEqual(['m1', 'm2', 'm3']);
 		scope.stop();
+	});
+
+	it('pinning and unpinning keep the reader put and send the open message', async () => {
+		const { actions, list, scope } = await setup();
+		actions.toggleOpenThreadPin();
+		expect(op('postbox.pins.operation').run).toHaveBeenCalledWith({
+			messageIds: ['m2'],
+			pinned: true,
+		});
+		expect(navigateTo).not.toHaveBeenCalled();
+		expect(visibleIds(list)).toEqual(['m1', 'm2', 'm3']);
+		scope.stop();
+
+		const pinned = await setup({ thread: { _id: 't2', pinnedAt: 1 } });
+		expect(pinned.actions.isThreadPinned.value).toBe(true);
+		pinned.actions.toggleOpenThreadPin();
+		expect(op('postbox.pins.operation', 1).run).toHaveBeenCalledWith({
+			messageIds: ['m2'],
+			pinned: false,
+		});
+		pinned.scope.stop();
 	});
 
 	it('the search preview (no folder) neither hides nor navigates', async () => {

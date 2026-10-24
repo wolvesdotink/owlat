@@ -70,4 +70,21 @@ describe('HostedDecisionExclusion', () => {
 		await control.trigger('change');
 		expect(run).not.toHaveBeenCalled();
 	});
+
+	it('marks an exclusion as changed from the default, and Reset readmits', async () => {
+		expect(
+			mountToggle({ target: { kind: 'team_inbox' }, isExcluded: false })
+				.find('[data-testid="setting-reset"]')
+				.exists()
+		).toBe(false);
+		const w = mountToggle({ target: { kind: 'team_inbox' }, isExcluded: true });
+		await w.get('[data-testid="setting-reset"] button').trigger('click');
+		expect(run).toHaveBeenCalledWith({ target: { kind: 'team_inbox' }, isExcluded: false });
+	});
+
+	it('keeps the reset as locked as the switch for a member', () => {
+		role.value = 'member';
+		const w = mountToggle({ target: { kind: 'team_inbox' }, isExcluded: true });
+		expect(w.get('[data-testid="setting-reset"] button').attributes('disabled')).toBeDefined();
+	});
 });

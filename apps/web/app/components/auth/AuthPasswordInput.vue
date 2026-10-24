@@ -77,8 +77,8 @@ function onInput(event: Event) {
 				:aria-describedby="describedBy"
 				autocapitalize="off"
 				spellcheck="false"
-				class="ui-input-control w-full min-h-9 bg-surface-1 shadow-surface-1 rounded-lg py-2 pl-3 pr-10 text-sm leading-5 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring"
-				:class="error ? 'ring-1 ring-error focus:ring-error' : ''"
+				class="input pr-10"
+				:class="error ? 'input-error' : ''"
 				@input="onInput"
 				@blur="emit('blur', $event)"
 			/>

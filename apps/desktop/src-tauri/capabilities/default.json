@@ -32,6 +32,7 @@
 		"allow-update-unread-badge",
 		"allow-send-native-notification",
 		"allow-send-actionable-notification",
+		"allow-send-link-notification",
 		"allow-secret-get",
 		"allow-session-secret-read",
 		"allow-session-secret-write",

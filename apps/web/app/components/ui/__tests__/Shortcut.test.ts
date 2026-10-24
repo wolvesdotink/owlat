@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import UiShortcut from '../Shortcut.vue';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
@@ -27,7 +27,6 @@ function onPlatform(userAgent: string) {
 	Object.defineProperty(window.navigator, 'userAgent', { value: userAgent, configurable: true });
 }
 
-enableAutoUnmount(afterEach);
 afterEach(() => {
 	delete (window.navigator as { userAgent?: string }).userAgent;
 	resetShortcutPreferences();

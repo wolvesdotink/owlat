@@ -4,7 +4,7 @@
  * the page's `close`, which waits for the step's save), the phone's tab bar
  * steps aside, and focus moves into it when it opens.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -45,10 +45,6 @@ function mountPanel({ wide, saveStatus = 'saved' }: { wide: boolean; saveStatus?
 }
 
 describe('step inspector placement', () => {
-	beforeEach(() => {
-		document.body.innerHTML = '';
-	});
-
 	it('titles the sheet with the step number and kind', () => {
 		const wrapper = mountPanel({ wide: false });
 		const header = wrapper.get('header');

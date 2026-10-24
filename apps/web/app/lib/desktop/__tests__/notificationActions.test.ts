@@ -53,6 +53,15 @@ describe('resolveNotificationEffect', () => {
 		});
 	});
 
+	it('routes a link notification click to its page, and only to an app path', () => {
+		expect(
+			resolveNotificationEffect({ action: 'navigate', url: '/dashboard/campaigns/c1/edit' })
+		).toEqual({ type: 'navigate', path: '/dashboard/campaigns/c1/edit' });
+		for (const url of ['https://evil.example.com', '//evil.example.com', 'javascript:x', 7, '']) {
+			expect(resolveNotificationEffect({ action: 'navigate', url })).toBeNull();
+		}
+	});
+
 	it('returns null without a messageId or for malformed payloads', () => {
 		expect(resolveNotificationEffect({ action: 'open' })).toBeNull();
 		expect(resolveNotificationEffect({})).toBeNull();
@@ -78,6 +87,16 @@ describe('runEffect open → SPA router (no full document reload)', () => {
 		await runEffect({ type: 'open', folderRole: 'archive', messageId: 'm9' }, convex, navigate);
 
 		expect(navigate).toHaveBeenCalledWith('/dashboard/postbox/archive/m9');
+	});
+
+	it('opens a link notification’s page through the injected router', async () => {
+		const navigate = vi.fn((_path: string) => {});
+		const convex = { query: vi.fn(), mutation: vi.fn() } as unknown as ConvexClient;
+
+		await runEffect({ type: 'navigate', path: '/dashboard/automations/a1' }, convex, navigate);
+
+		expect(navigate).toHaveBeenCalledWith('/dashboard/automations/a1');
+		expect(convex.mutation).not.toHaveBeenCalled();
 	});
 
 	it('does not navigate for the in-place triage actions (archive / read)', async () => {

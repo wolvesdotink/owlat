@@ -72,6 +72,7 @@ export async function emitExpiredBounce(
 				messageId: data.messageId,
 				organizationId: data.organizationId,
 				deliveryDomain: data.deliveryDomain,
+				...(data.correlationId ? { correlationId: data.correlationId } : {}),
 				bounceType: 'soft',
 				message: `Message expired after ${deps.config.maxMessageAgeMs}ms without delivery`,
 				timestamp: expiredAt,
@@ -139,6 +140,7 @@ export async function emitRunawayDeferBounce(
 				messageId: data.messageId,
 				organizationId: data.organizationId,
 				deliveryDomain: data.deliveryDomain,
+				...(data.correlationId ? { correlationId: data.correlationId } : {}),
 				bounceType: 'soft',
 				message: `Message was deferred ${successors} times without delivery`,
 				timestamp: startedAt,
@@ -197,6 +199,7 @@ export async function handleDrop(
 			messageId: job.messageId,
 			organizationId: job.organizationId,
 			deliveryDomain: job.deliveryDomain,
+			...(job.correlationId ? { correlationId: job.correlationId } : {}),
 			// The screening reason carries a live rspamd score, which is
 			// re-evaluated on a replay and would break the outbox payload
 			// comparison. The exact score stays in the delivery log above.

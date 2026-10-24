@@ -238,4 +238,32 @@ describe('MigrationsCard', () => {
 		expect(alert).toContain('Template k1 has an unreadable block');
 		expect(wrapper.find('button').attributes('disabled')).toBeUndefined();
 	});
+
+	it('says which workers a contract step waits for', () => {
+		const wrapper = mountCard({
+			runner: null,
+			migrations: [
+				row({
+					waitingForWorkers: [
+						{ service: 'mta', requiredWireVersion: 2, reason: 'lagging', oldestLiveWireVersion: 1 },
+						{
+							service: 'mail-sync',
+							requiredWireVersion: 2,
+							reason: 'missing',
+							oldestLiveWireVersion: null,
+						},
+					],
+				}),
+			],
+		});
+
+		expect(wrapper.text()).toContain('Waiting');
+		expect(wrapper.find('[data-test="worker-wait-mta"]').text()).toBe(
+			'MTA: waits until every worker runs wire version 2 or newer. One still runs 1.'
+		);
+		expect(wrapper.find('[data-test="worker-wait-mail-sync"]').text()).toBe(
+			'Mail sync: waits for a worker to report wire version 2 or newer.'
+		);
+		expectFullyLocalized(wrapper);
+	});
 });

@@ -461,6 +461,8 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			isLinux: ref(false),
 			platform: ref('linux'),
 		}),
+		useUnreadBadge: () => ({ data: ref(undefined), count: ref(null) }),
+		useTabBadge: vi.fn(),
 		useDesktopNotifications: () => ({ isDesktop: ref(false) }),
 		useWorkspaceHotkeys: vi.fn(),
 		useCommandPalette: () => ({ open: ref(false) }),
@@ -551,6 +553,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 		// route, and the shell announces its last crumb on every navigation.
 		useBreadcrumbs,
 		useSendReadyNotice: () => ({ isSendPathReady: ref(true) }),
+		useMarketingNotices: () => undefined,
 	};
 }
 

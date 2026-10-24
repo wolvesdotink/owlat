@@ -7,11 +7,17 @@ import { useSectionNavigation } from '~/composables/useSectionNavigation';
 const desktop = ref(true);
 const state = new Map<string, Ref>();
 const wrappers: ReturnType<typeof mount>[] = [];
+/** The shell's navigation target and the page's `main`, appended per test. */
+const fixture: HTMLElement[] = [];
 
 beforeEach(() => {
 	desktop.value = true;
 	state.clear();
-	document.body.innerHTML = '<div id="section-navigation"></div><main></main>';
+	const target = document.createElement('div');
+	target.id = 'section-navigation';
+	const main = document.createElement('main');
+	document.body.append(target, main);
+	fixture.push(target, main);
 	vi.stubGlobal('useId', useId);
 	vi.stubGlobal('useMediaQuery', () => desktop);
 	vi.stubGlobal('useSectionNavigation', useSectionNavigation);
@@ -24,7 +30,7 @@ beforeEach(() => {
 afterEach(() => {
 	wrappers.forEach((wrapper) => wrapper.unmount());
 	wrappers.length = 0;
-	document.body.innerHTML = '';
+	for (const node of fixture.splice(0)) node.remove();
 });
 
 function mountPortal(title = 'Mail') {

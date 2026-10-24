@@ -74,17 +74,18 @@ function presenceTitle(person: PresencePerson): string {
 		<!-- Avatar stack: everyone currently on the thread, pulsing success ring. -->
 		<div class="flex items-center gap-2">
 			<div class="flex -space-x-1.5">
-				<span
+				<UiPresenceRing
 					v-for="person in shownPeople"
 					:key="person.userId"
-					class="ui-presence-ring"
 					:title="presenceTitle(person)"
 				>
 					<UiAvatar :name="person.name" :image="person.image" size="sm" deterministic-color />
-				</span>
+				</UiPresenceRing>
+				<!-- `relative`: the rings are positioned, so the chip has to be too
+				     to keep painting on top of the last avatar it overlaps. -->
 				<span
 					v-if="overflow > 0"
-					class="w-6 h-6 rounded-full border border-border-subtle bg-bg-surface text-text-tertiary text-[0.625rem] font-medium flex items-center justify-center"
+					class="relative w-6 h-6 rounded-full border border-border-subtle bg-bg-surface text-text-tertiary text-[0.625rem] font-medium flex items-center justify-center"
 					:title="t('components.inbox.inboxThreadPresence.moreHere', { count: overflow })"
 				>
 					+{{ overflow }}
@@ -116,8 +117,8 @@ function presenceTitle(person: PresencePerson): string {
 
 <style scoped>
 /*
- * The pulsing "here now" avatar ring is the shared `.ui-presence-ring` utility
- * (packages/ui motion.css) so this surface and the team-inbox row never drift.
+ * The pulsing "here now" avatar ring is the shared `<UiPresenceRing>`
+ * (packages/ui) so this surface and the team-inbox row never drift.
  */
 .presence-banner {
 	background-color: var(--color-warning-subtle);

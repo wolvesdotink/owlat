@@ -185,10 +185,10 @@ watch(showLogs, async (open) => {
 				</span>
 			</button>
 			<Transition
-				enter-active-class="transition-all duration-(--motion-moderate) ease-spring"
+				enter-active-class="transition-[opacity,max-height] duration-(--motion-moderate) ease-spring"
 				enter-from-class="opacity-0 max-h-0"
 				enter-to-class="opacity-100 max-h-64"
-				leave-active-class="transition-all duration-(--motion-moderate-exit) ease-exit"
+				leave-active-class="transition-[opacity,max-height] duration-(--motion-moderate-exit) ease-exit"
 				leave-from-class="opacity-100 max-h-64"
 				leave-to-class="opacity-0 max-h-0"
 			>

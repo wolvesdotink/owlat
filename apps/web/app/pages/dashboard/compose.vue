@@ -213,6 +213,7 @@ function onPageHide() {
 }
 
 onMounted(() => {
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape on the full-page composer: blurs the field, then leaves
 	window.addEventListener('keydown', onKeydown);
 	window.addEventListener('pagehide', onPageHide);
 });
@@ -266,21 +267,22 @@ const frameStyle = computed(() => ({
 			<div
 				class="flex min-h-0 w-full max-w-3xl flex-col overflow-hidden bg-bg-elevated md:rounded-lg md:border md:border-border-subtle md:shadow-sm"
 			>
-				<PostboxComposer
-					v-if="seed"
-					ref="composerRef"
-					class="min-h-0 flex-1"
-					frame="page"
-					:seed="seed"
-					:before-ready="request.beforeReady"
-					:reply-all-recipients="seed.replyAllRecipients"
-					@draft-id="onDraftId"
-					@saved="onSaved"
-					@subject="subject = $event"
-					@sent="finish"
-					@discarded="finish"
-					@minimize="onComposerEsc"
-				/>
+				<AppErrorBoundary v-if="seed" surface="composer">
+					<PostboxComposer
+						ref="composerRef"
+						class="min-h-0 flex-1"
+						frame="page"
+						:seed="seed"
+						:before-ready="request.beforeReady"
+						:reply-all-recipients="seed.replyAllRecipients"
+						@draft-id="onDraftId"
+						@saved="onSaved"
+						@subject="subject = $event"
+						@sent="finish"
+						@discarded="finish"
+						@minimize="onComposerEsc"
+					/>
+				</AppErrorBoundary>
 				<div
 					v-else-if="request.state.value.status === 'expired'"
 					class="m-auto flex flex-col items-center gap-3 p-6 text-center"
@@ -291,7 +293,11 @@ const frameStyle = computed(() => ({
 						{{ t('compose.startNew') }}
 					</UiButton>
 				</div>
-				<div v-else-if="isLoading || (!requestKey && currentMailbox)" class="flex-1 space-y-3 p-4" aria-hidden="true">
+				<div
+					v-else-if="isLoading || (!requestKey && currentMailbox)"
+					class="flex-1 space-y-3 p-4"
+					aria-hidden="true"
+				>
 					<UiSkeleton class="h-4 w-2/3" />
 					<UiSkeleton class="h-32 w-full" />
 				</div>

@@ -4,12 +4,17 @@
  * usePostboxLazyBody). Until then it renders an empty block of the body's
  * last measured frame height from the render cache, so the thread does not
  * jump when the real body replaces it.
+ *
+ * The body renders untrusted mail, so once mounted it sits in its own
+ * boundary: a body that fails to render takes down only itself, not the rest
+ * of the conversation.
  */
 import {
 	POSTBOX_BODY_PLACEHOLDER_PX,
 	usePostboxLazyBody,
 } from '~/composables/postbox/usePostboxLazyBody';
 import { getPostboxRenderCache } from '~/utils/postboxRenderCache';
+import { useReadingComfort } from '~/composables/useReadingComfort';
 import { postboxImagesLoadOnOpen, type PostboxBodyImageProps } from '~/utils/postboxImageAllowlist';
 
 const props = defineProps<{
@@ -22,6 +27,7 @@ const props = defineProps<{
 }>();
 
 const { isDark } = useAppTheme();
+const { mailTypography } = useReadingComfort();
 
 const placeholderEl = ref<HTMLElement | null>(null);
 const { mounted } = usePostboxLazyBody({ target: placeholderEl, eager: () => !!props.eager });
@@ -35,12 +41,15 @@ const placeholderHeight = computed(
 			showImages: postboxImagesLoadOnOpen(props.images),
 			loadEverything: false,
 			showQuoted: false,
+			typography: mailTypography.value,
 		}) ?? POSTBOX_BODY_PLACEHOLDER_PX
 );
 </script>
 
 <template>
-	<slot v-if="mounted" />
+	<AppErrorBoundary v-if="mounted" surface="messageBody" :reset-keys="[messageId]">
+		<slot />
+	</AppErrorBoundary>
 	<div
 		v-else
 		ref="placeholderEl"

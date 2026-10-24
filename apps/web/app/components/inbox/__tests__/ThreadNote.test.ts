@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
 import ThreadNote, { type ThreadNoteView } from '../ThreadNote.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -86,5 +87,30 @@ describe('ThreadNote', () => {
 		});
 		expect(wrapper.text()).toContain('(edited)');
 		expect(wrapper.text()).toContain('Former teammate');
+	});
+});
+
+describe('ThreadNote editor failure', () => {
+	it('keeps a failed editor inside its note', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const FailingEditor = {
+			name: 'InboxNoteComposer',
+			setup: () => () => {
+				throw new Error('editor could not render');
+			},
+		};
+		const wrapper = mount(ThreadNote, {
+			props: { note: note(), canEdit: true, save: vi.fn(async () => true) },
+			global: {
+				plugins: [createTestI18n()],
+				stubs: { Icon: true, UiAvatar: true, InboxNoteComposer: FailingEditor },
+			},
+		});
+		await wrapper.get('[data-testid="thread-note-edit"]').trigger('click');
+		await nextTick();
+
+		expect(wrapper.get('[role="alert"]').text()).toContain("The composer couldn't be displayed.");
+		expect(wrapper.text()).toContain('Ada Marlow');
+		vi.restoreAllMocks();
 	});
 });

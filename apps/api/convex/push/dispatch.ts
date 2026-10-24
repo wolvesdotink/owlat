@@ -15,6 +15,9 @@
  *     everything but "Nothing", exactly as the desktop notifies them.
  *   - CHAT (an @-mention or a direct message): treated as mail from a person —
  *     a muted room is muted, "Nothing" silences it, quiet hours hold it.
+ *   - MARKETING (a notice from `marketing/notifications`): its own switches
+ *     decided who gets it; quiet hours hold it like mail. "Notify me about" is
+ *     a mail scope and does not apply.
  *
  * Every event is re-read here rather than trusted from the producer: a message
  * read, deleted or moved before the job runs does not notify, and a surface
@@ -54,6 +57,7 @@ import { canUserReadMailbox, loadPersonalMailboxForUser } from '../mail/permissi
 import { getMembership, isMailThreadDiscussion } from '../chat/_helpers';
 import { isSharedInboxReader } from '../inbox/access';
 import { isWebPushConfigured } from './config';
+import { resolveMarketingPush } from './marketing';
 import {
 	assignmentPayload,
 	chatPayload,
@@ -89,6 +93,8 @@ type Rule =
 	// A rule's `notify` (read on arrival §6.3): past the scope, never past mute or quiet hours.
 	| { kind: 'rule-notify'; muted: boolean }
 	| { kind: 'unless-nothing' }
+	// Marketing notices: their own switches decided who gets one; only quiet hours hold it.
+	| { kind: 'quiet-hours' }
 	| { kind: 'always' };
 
 interface Resolved {
@@ -287,6 +293,17 @@ async function resolveEvent(
 			return resolveAssignment(ctx, userId, event.noticeId, prefs, role);
 		case 'chat':
 			return resolveChat(ctx, userId, event.messageId, prefs);
+		case 'marketing': {
+			const marketing = await resolveMarketingPush(
+				ctx,
+				userId,
+				event.noticeId,
+				prefs,
+				role,
+				Date.now()
+			);
+			return marketing && { ...marketing, rule: { kind: 'quiet-hours' } };
+		}
 		case 'test':
 			return {
 				payload: testPayload(prefs.locale),
@@ -314,17 +331,19 @@ function toDelivery(
 
 /**
  * Count one held-back notification on a device and make sure its summary is
- * scheduled for the moment the window ends there.
+ * scheduled for the moment the window ends there. Marketing notices are
+ * counted apart: the summary applies "Notify me about" to held mail only.
  */
 async function deferForQuietHours(
 	ctx: MutationCtx,
 	subscription: Doc<'pushSubscriptions'>,
 	quietHours: QuietHours,
-	now: number
+	now: number,
+	isMarketing = false
 ): Promise<void> {
-	const patch: Partial<Doc<'pushSubscriptions'>> = {
-		quietDeferredCount: (subscription.quietDeferredCount ?? 0) + 1,
-	};
+	const patch: Partial<Doc<'pushSubscriptions'>> = isMarketing
+		? { quietDeferredMarketingCount: (subscription.quietDeferredMarketingCount ?? 0) + 1 }
+		: { quietDeferredCount: (subscription.quietDeferredCount ?? 0) + 1 };
 	if (subscription.quietSummaryAt === undefined) {
 		const minutes = minutesUntilQuietEnd(quietHours, localClockIn(subscription.timeZone, now));
 		const at = now + (minutes ?? 1) * 60_000;
@@ -377,11 +396,13 @@ export const prepareDelivery = internalMutation({
 				}
 				continue;
 			}
-			if (rule.kind === 'rule-notify') {
+			if (rule.kind === 'rule-notify' || rule.kind === 'quiet-hours') {
 				const isQuiet = isQuietAt(prefs.quietHours, localClockIn(subscription.timeZone, now));
-				if (rule.muted) continue;
-				if (isQuiet) await deferForQuietHours(ctx, subscription, prefs.quietHours, now);
-				else deliveries.push(toDelivery(subscription, resolved.payload, resolved.ttlSeconds));
+				if (rule.kind === 'rule-notify' && rule.muted) continue;
+				if (isQuiet) {
+					const isMarketing = rule.kind === 'quiet-hours';
+					await deferForQuietHours(ctx, subscription, prefs.quietHours, now, isMarketing);
+				} else deliveries.push(toDelivery(subscription, resolved.payload, resolved.ttlSeconds));
 				continue;
 			}
 			const decision = decideNotification({
@@ -412,16 +433,19 @@ export const takeQuietSummary = internalMutation({
 	handler: async (ctx, { subscriptionId }): Promise<PushDelivery | null> => {
 		const subscription = await ctx.db.get(subscriptionId);
 		if (!subscription) return null;
-		const count = subscription.quietDeferredCount ?? 0;
+		const mailCount = subscription.quietDeferredCount ?? 0;
+		const marketingCount = subscription.quietDeferredMarketingCount ?? 0;
+		const cleared = {
+			quietDeferredCount: undefined,
+			quietDeferredMarketingCount: undefined,
+			quietSummaryAt: undefined,
+		};
 		if (
-			count === 0 ||
+			mailCount + marketingCount === 0 ||
 			!isWebPushConfigured() ||
 			!(await loadCurrentRole(ctx, subscription.userId))
 		) {
-			await ctx.db.patch(subscriptionId, {
-				quietDeferredCount: undefined,
-				quietSummaryAt: undefined,
-			});
+			await ctx.db.patch(subscriptionId, cleared);
 			return null;
 		}
 		const prefs = await loadPreferences(ctx, subscription.userId);
@@ -436,11 +460,10 @@ export const takeQuietSummary = internalMutation({
 			await ctx.scheduler.runAt(at, internal.push.send.deliverQuietSummary, { subscriptionId });
 			return null;
 		}
-		await ctx.db.patch(subscriptionId, {
-			quietDeferredCount: undefined,
-			quietSummaryAt: undefined,
-		});
-		if (prefs.notifyAbout === 'nothing') return null;
+		await ctx.db.patch(subscriptionId, cleared);
+		// "Nothing" silences held mail; marketing notices never were in its scope.
+		const count = (prefs.notifyAbout === 'nothing' ? 0 : mailCount) + marketingCount;
+		if (count === 0) return null;
 		return toDelivery(subscription, quietSummaryPayload(count, prefs.locale), TTL_SECONDS.quiet);
 	},
 });

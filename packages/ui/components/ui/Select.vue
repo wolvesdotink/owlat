@@ -78,25 +78,17 @@ const activeDescendant = computed(() =>
 	isOpen.value && activeIndex.value >= 0 ? optionId(activeIndex.value) : undefined
 );
 
+// The trigger wears the shared `.input` recipe (assets/css/components.css), so
+// a UiSelect lines up with every other field; the open state keeps the ring.
 const triggerClasses = computed(() => {
-	const classes = [
-		'ui-select-control w-full flex items-center justify-between gap-2 text-left',
-		'bg-surface-1 rounded-lg transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring',
-		'focus:outline-none focus:ring-1 focus:ring-brand',
-	];
+	const classes = ['input flex items-center justify-between gap-2 text-left'];
 
-	if (props.size === 'sm') {
-		classes.push('min-h-8 px-3 py-1.5 text-sm leading-5');
-	} else {
-		classes.push('min-h-9 px-3 py-2 text-sm leading-5');
-	}
+	if (props.size === 'sm') classes.push('input-sm');
 
 	if (props.error) {
-		classes.push('shadow-surface-1 ring-1 ring-error focus:ring-error');
+		classes.push('input-error');
 	} else if (isOpen.value) {
 		classes.push('ring-1 ring-brand');
-	} else {
-		classes.push('shadow-surface-1');
 	}
 
 	if (props.disabled) {

@@ -15,6 +15,7 @@ import { ref } from 'vue';
 import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 
 import PostboxUnsubscribeChip from '../PostboxUnsubscribeChip.vue';
+import { installConfirm, type ConfirmDriver } from '~/__tests__/confirm';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { usePostboxUnsubscribeOpen } from '~/composables/postbox/usePostboxUnsubscribeOpen';
 import { usePostboxSenderActions } from '~/composables/postbox/usePostboxSenderActions';
@@ -30,7 +31,7 @@ vi.mock('@owlat/api', () => {
 const composeOpen = vi.fn();
 const oneClickRun = vi.fn();
 const windowOpen = vi.fn();
-const confirmSpy = vi.fn(() => true);
+let confirmDriver: ConfirmDriver;
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -47,11 +48,12 @@ beforeEach(() => {
 	oneClickRun.mockReset();
 	windowOpen.mockReset();
 	vi.spyOn(window, 'open').mockImplementation(windowOpen);
-	window.confirm = confirmSpy;
-	confirmSpy.mockReset().mockReturnValue(true);
+	confirmDriver = installConfirm();
+	confirmDriver.answerAll(true);
 });
 
 afterEach(() => {
+	confirmDriver.dispose();
 	vi.restoreAllMocks();
 });
 
@@ -99,10 +101,28 @@ describe('PostboxUnsubscribeChip', () => {
 		await wrapper.get('button').trigger('click');
 		await flushPromises();
 
-		expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('list.example'));
+		expect(confirmDriver.asked).toHaveLength(1);
+		expect(confirmDriver.asked[0]).toMatchObject({
+			title: 'Unsubscribe from this mailing list?',
+			body: expect.stringContaining('list.example'),
+			confirmText: 'Unsubscribe',
+		});
 		expect(oneClickRun).toHaveBeenCalledWith({ target: { messageId: 'msg-1' } });
 		expect(wrapper.text()).toContain('Unsubscribed');
 		expect(windowOpen).not.toHaveBeenCalled();
+	});
+
+	it('sends nothing until the question is answered, and nothing after a no', async () => {
+		confirmDriver.answerAll(false);
+		const target = { httpUrl: 'https://list.example/unsub', oneClick: true };
+		const wrapper = mountChip(target);
+		serverAnswers(target, 'confirmed');
+		await wrapper.get('button').trigger('click');
+		await flushPromises();
+
+		expect(confirmDriver.asked).toHaveLength(1);
+		expect(oneClickRun).not.toHaveBeenCalled();
+		expect(wrapper.text()).not.toContain('Unsubscribed');
 	});
 
 	it('opens the sender page when the one-click request fails', async () => {

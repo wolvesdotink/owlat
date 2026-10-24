@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Doc } from '@owlat/api/dataModel';
+import { useReadingComfort } from '~/composables/useReadingComfort';
+import { INBOX_TEXT_REM, READING_WIDTH_CSS } from '~/utils/readingComfort';
 
 /**
  * One team-inbox message's text in the thread view.
@@ -24,6 +26,15 @@ export type InboxMessageText = Pick<
 const props = defineProps<{ message: InboxMessageText }>();
 
 const { t } = useI18n();
+
+// The reader's text size and reading width (Preferences → Reading comfort),
+// the same settings the Postbox reader applies to plain mail. The inline size
+// overrides `text-sm`, whose unitless line-height then scales with it.
+const { mailTypography } = useReadingComfort();
+const textStyle = computed(() => ({
+	fontSize: INBOX_TEXT_REM[mailTypography.value.textSize],
+	maxWidth: READING_WIDTH_CSS[mailTypography.value.readingWidth],
+}));
 
 const fullText = ref<string | null>(null);
 const isLoading = ref(false);
@@ -74,9 +85,13 @@ const isShowingExcerpt = computed(
 
 <template>
 	<div aria-live="polite" :aria-busy="isLoading">
-		<!-- The Postbox reader's 72ch measure, so a wide thread page does not run
-		     a line of mail across the whole screen. -->
-		<div class="max-w-[72ch] text-text-secondary text-sm whitespace-pre-wrap">
+		<!-- The Postbox reader's measure (72ch by default), so a wide thread page
+		     does not run a line of mail across the whole screen. -->
+		<div
+			class="text-text-secondary text-sm whitespace-pre-wrap"
+			:style="textStyle"
+			data-testid="inbox-message-body-text"
+		>
 			{{ displayText || t('dashboard.inbox.detail.noTextContent') }}
 		</div>
 		<p

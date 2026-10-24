@@ -12,7 +12,15 @@
  * seen the whole requested window.
  */
 
-import { paginationOptsValidator } from 'convex/server';
+import {
+	fetchChangedEnvelopes as fetchChangedEnvelopesContract,
+	fetchEnvelopes as fetchEnvelopesContract,
+	folderMembershipPage as folderMembershipPageContract,
+	getRawStorageUrls as getRawStorageUrlsContract,
+	listFolderUidsPage as listFolderUidsPageContract,
+	resolveMessageIdsByUid as resolveMessageIdsByUidContract,
+	type ImapEnvelope,
+} from '@owlat/worker-protocol/imap';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
@@ -64,14 +72,12 @@ function nextUid(rows: ReadonlyArray<{ uid: number }>, limit: number): number | 
 export const MAX_UID_RANGES = 100;
 
 /**
- * Optional restriction of a UID window to disjoint sub-ranges. A sparse set
+ * A UID window, optionally restricted to disjoint sub-ranges. A sparse set
  * such as `UID FETCH 1,100000` resolves to two single-UID ranges; without them
  * the window is the min..max span and every row between is read and thrown
  * away. The IMAP server builds the ranges from its sequence map, so each one
  * holds only requested messages.
  */
-const uidRangesValidator = v.optional(v.array(v.object({ low: v.number(), high: v.number() })));
-
 type UidWindowArgs = {
 	folderId: Id<'mailFolders'>;
 	uidLow: number;
@@ -127,7 +133,7 @@ async function readUidWindow(
 }
 
 /** The IMAP-visible projection of a message row. */
-function toEnvelope(m: Doc<'mailMessages'>) {
+function toEnvelope(m: Doc<'mailMessages'>): ImapEnvelope {
 	return {
 		_id: m._id,
 		uid: m.uid,
@@ -164,13 +170,8 @@ function toEnvelope(m: Doc<'mailMessages'>) {
  * sparse set actually addresses (see {@link readUidWindow}).
  */
 export const fetchEnvelopes = internalQuery({
-	args: {
-		folderId: v.id('mailFolders'),
-		uidLow: v.number(),
-		uidHigh: v.number(),
-		ranges: uidRangesValidator,
-		limit: v.optional(v.number()),
-	},
+	args: fetchEnvelopesContract.args,
+	returns: fetchEnvelopesContract.returns,
 	handler: async (ctx, args) => {
 		const limit = pageSize(args.limit, DEFAULT_ENVELOPE_PAGE_SIZE);
 		const rows = await readUidWindow(ctx, args, limit);
@@ -196,11 +197,8 @@ export const fetchEnvelopes = internalQuery({
  * back twice (harmless — the same flags, pushed again) but never skips it.
  */
 export const fetchChangedEnvelopes = internalQuery({
-	args: {
-		folderId: v.id('mailFolders'),
-		modseqSince: v.number(),
-		paginationOpts: paginationOptsValidator,
-	},
+	args: fetchChangedEnvelopesContract.args,
+	returns: fetchChangedEnvelopesContract.returns,
 	handler: async (ctx, args) => {
 		const result = await ctx.db
 			.query('mailMessages')
@@ -230,11 +228,8 @@ export const fetchChangedEnvelopes = internalQuery({
  * upgrade shim with a removal date.
  */
 export const listFolderUidsPage = internalQuery({
-	args: {
-		folderId: v.id('mailFolders'),
-		afterUid: v.optional(v.number()),
-		limit: v.optional(v.number()),
-	},
+	args: listFolderUidsPageContract.args,
+	returns: listFolderUidsPageContract.returns,
 	handler: async (ctx, args) => {
 		const limit = pageSize(args.limit, DEFAULT_UID_PAGE_SIZE);
 		const after = args.afterUid;
@@ -272,11 +267,8 @@ const MEMBERSHIP_BLOCKS_PER_PAGE = 512;
  * Either way the caller lists `mailMessages` as before.
  */
 export const folderMembershipPage = internalQuery({
-	args: {
-		folderId: v.id('mailFolders'),
-		knownVersion: v.optional(v.string()),
-		afterFirstUid: v.optional(v.number()),
-	},
+	args: folderMembershipPageContract.args,
+	returns: folderMembershipPageContract.returns,
 	handler: async (ctx, args) => {
 		const state = await loadFolderMembership(ctx.db, args.folderId);
 		if (!state) return null;
@@ -284,7 +276,7 @@ export const folderMembershipPage = internalQuery({
 		if (args.knownVersion === version) {
 			return { version, isReady: state.isReady, unchanged: true as const };
 		}
-		if (!state.isReady) return { version, isReady: false };
+		if (!state.isReady) return { version, isReady: false as const };
 		const rows = await readMembershipBlocks(
 			ctx.db,
 			args.folderId,
@@ -294,7 +286,7 @@ export const folderMembershipPage = internalQuery({
 		const page = rows.slice(0, MEMBERSHIP_BLOCKS_PER_PAGE);
 		return {
 			version,
-			isReady: true,
+			isReady: true as const,
 			blocks: page.map((block) => block.uids),
 			nextFirstUid:
 				rows.length > MEMBERSHIP_BLOCKS_PER_PAGE ? page[page.length - 1]!.firstUid : null,
@@ -329,7 +321,8 @@ export const fetchRawStorageIds = internalQuery({
  * message's body fields, as it does for any failed download.
  */
 export const getRawStorageUrls = internalAction({
-	args: { messageIds: v.array(v.id('mailMessages')) },
+	args: getRawStorageUrlsContract.args,
+	returns: getRawStorageUrlsContract.returns,
 	handler: async (
 		ctx,
 		args
@@ -358,13 +351,8 @@ export const getRawStorageUrls = internalAction({
  * optional `ranges` for a sparse set.
  */
 export const resolveMessageIdsByUid = internalQuery({
-	args: {
-		folderId: v.id('mailFolders'),
-		uidLow: v.number(),
-		uidHigh: v.number(),
-		ranges: uidRangesValidator,
-		limit: v.optional(v.number()),
-	},
+	args: resolveMessageIdsByUidContract.args,
+	returns: resolveMessageIdsByUidContract.returns,
 	handler: async (ctx, args) => {
 		const limit = pageSize(args.limit, DEFAULT_ENVELOPE_PAGE_SIZE);
 		const rows = await readUidWindow(ctx, args, limit);

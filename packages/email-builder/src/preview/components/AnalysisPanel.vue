@@ -213,7 +213,9 @@ const headerSummary = computed(() => {
 	font-size: 12px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition-property: color, border-color;
+	transition-duration: var(--motion-fast, 80ms);
+	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-analysis-tab:hover {

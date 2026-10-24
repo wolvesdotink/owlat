@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h, nextTick, ref, type Ref, type VNode } from 'vue';
 import DropdownMenu from '../components/ui/DropdownMenu.vue';
@@ -24,7 +24,6 @@ let wrapper: VueWrapper | null = null;
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 type TriggerState = 'enabled' | 'disabled' | 'gone';
@@ -186,6 +185,7 @@ describe('DropdownMenu keyboard', () => {
 		const field = document.createElement('input');
 		dialog.append(field);
 		document.body.append(dialog);
+		onTestFinished(() => dialog.remove());
 		field.focus();
 		for (const key of ['ArrowDown', 'ArrowUp', 'Home', 'End', 'Tab']) {
 			expect(press(field, key).defaultPrevented, key).toBe(false);

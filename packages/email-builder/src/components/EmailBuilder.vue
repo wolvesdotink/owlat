@@ -30,6 +30,7 @@ import type {
 	BuilderCollabFocus,
 } from '../types';
 import { applyCoeditOps, type CoeditOp } from '@owlat/shared/coeditOps';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { normalizeBlockTreeIds } from '@owlat/shared/blockTree';
 import type { ParentContext } from './canvas/types';
 
@@ -541,9 +542,10 @@ function selectBlock(blockId: string): boolean {
 	if (location.parent) selectNestedItem(location.root.id, blockId);
 	else handleSelectBlock(blockId);
 	nextTick(() => {
-		blockElements.value
-			.get(location.root.id)
-			?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		blockElements.value.get(location.root.id)?.scrollIntoView({
+			behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+			block: 'nearest',
+		});
 	});
 	return true;
 }
@@ -1002,7 +1004,10 @@ function handleAddTextBlockFromPlaceholder() {
 		enterInlineEdit(newBlock.id);
 		nextTick(() => {
 			const el = blockState.blockElements.value.get(newBlock.id);
-			el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+			el?.scrollIntoView({
+				behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+				block: 'nearest',
+			});
 		});
 	});
 }

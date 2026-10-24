@@ -29,6 +29,7 @@ import { serveAttachmentShare } from './mail/attachmentShareHttp';
 import { handleVerifyCredential } from './mail/authHttp';
 import { handleTlsReportWebhook } from './domains/tlsReportsHttp';
 import { handleDmarcReportWebhook } from './domains/dmarcReportsHttp';
+import { handleMtaWorkerReport } from './maintenance/workerReportHttp';
 import {
 	handleSmsWebhook,
 	handleWhatsAppWebhook,
@@ -260,6 +261,14 @@ http.route({
 	path: '/webhooks/mta-dmarc-report',
 	method: 'POST',
 	handler: handleDmarcReportWebhook,
+});
+
+// POST /webhooks/mta-worker-report - the MTA's wire-version report, at startup
+// and every 5 minutes (maintenance/workerRegistry.ts)
+http.route({
+	path: '/webhooks/mta-worker-report',
+	method: 'POST',
+	handler: handleMtaWorkerReport,
 });
 
 // GET /sealed-blob - decrypt-serving proxy for sealed storage blobs (Sealed

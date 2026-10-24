@@ -33,6 +33,8 @@ import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadRea
 import { POSTBOX_MARK_READ_DWELL_MS, markReadOnOpen } from '~/utils/postboxMarkReadPolicy';
 import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
 import { postboxBodyImageProps } from '~/utils/postboxImageAllowlist';
+import { providePostboxReaderContext } from '~/composables/postbox/usePostboxReaderContext';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 export type AnswerConversationView = 'summary' | 'full';
 
@@ -175,6 +177,18 @@ const {
 	downloadLightboxAttachment,
 } = usePostboxReaderAttachments();
 
+// Every card in its reduced cut, chrome in place: no calm-reader Details here.
+providePostboxReaderContext({
+	mailboxId: () => props.message.mailboxId,
+	authEnabled: () => isFeatureEnabled('senderAuthBadges'),
+	sealedEnabled: () => isFeatureEnabled('sealedMail'),
+	appIsDark,
+	ownEmail,
+	downloadingAttachment,
+	eagerBody: false,
+	reduced: true,
+});
+
 const senderProfile = ref<{ fromAddress: string; fromName: string | null } | null>(null);
 function openSenderProfile(msg: { fromAddress: string; fromName?: string | null }) {
 	senderProfile.value = { fromAddress: msg.fromAddress, fromName: msg.fromName ?? null };
@@ -194,8 +208,7 @@ async function reveal(messageId: string) {
 		`[data-answer-message="${CSS.escape(messageId)}"]`
 	);
 	if (!el) return;
-	const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-	el.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
+	el.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 	highlightedId.value = messageId;
 	clearTimeout(highlightTimer);
 	highlightTimer = setTimeout(() => (highlightedId.value = null), 1600);
@@ -249,25 +262,20 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 		<PostboxReaderMessage
 			v-for="msg in allMessages"
 			:key="msg._id"
-			reduced
 			:data-answer-message="msg._id"
 			:data-answer-anchor="msg._id === message._id ? '' : undefined"
 			class="scroll-mt-4 rounded-md transition-shadow duration-(--motion-fast)"
 			:class="highlightedId === msg._id ? 'ring-2 ring-brand/60' : ''"
 			:message="msg"
-			:mailbox-id="message.mailboxId"
 			:expanded="expanded.has(msg._id)"
 			:relative-time="relativeTime(msg.receivedAt)"
 			:starred="false"
 			:show-reply-all="false"
 			:show-sender-controls="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
-			:auth-enabled="isFeatureEnabled('senderAuthBadges')"
-			:sealed-enabled="isFeatureEnabled('sealedMail')"
 			:secure-class="secureClass(msg)"
 			:hide-body="hideRawBody(msg)"
 			:tracker="trackerFor(msg)"
 			:scheduling-times="null"
-			:show-render-toggle="appIsDark"
 			:forced-light="isForcedLight(msg._id)"
 			:images="
 				postboxBodyImageProps(msg, {
@@ -275,9 +283,7 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 					isSenderAllowed: imageAllowlist.isAllowed(msg.fromAddress),
 				})
 			"
-			:own-email="ownEmail"
 			:has-invite="hasInvite(msg)"
-			:downloading-attachment="downloadingAttachment"
 			@toggle-expanded="toggleExpanded(msg._id)"
 			@open-sender-profile="openSenderProfile(msg)"
 			@toggle-forced-light="toggleForcedLight(msg._id)"

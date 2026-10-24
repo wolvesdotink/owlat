@@ -80,6 +80,8 @@ describe('useEscapeLayer', () => {
 
 			press({ key: 'Enter' });
 			press({ isComposing: true });
+			// Safari: the key that ends a composition, after compositionend.
+			press({ keyCode: 229 });
 			claiming = true;
 			press();
 			expect(onEscape).not.toHaveBeenCalled();

@@ -51,7 +51,6 @@ beforeEach(() => {
 	route.query = {};
 	crumbs.value = [];
 	useAnnounce().clear();
-	document.body.innerHTML = '';
 	installNuxtStubs({
 		...i18nStubs,
 		...dashboardShellStubs(),

@@ -59,3 +59,12 @@
 	--ep-shadow-md: var(--shadow-md);
 	--ep-shadow-lg: var(--shadow-lg);
 }
+
+/* A settings deep link's target, briefly outlined (lib/settingsAnchorReveal.ts).
+   Global rather than scoped: the layout marks an element inside the page it
+   renders, which no scoped style of the layout can reach. */
+[data-settings-flash] {
+	outline: 2px solid var(--color-brand);
+	outline-offset: 4px;
+	scroll-margin-top: 1.5rem;
+}

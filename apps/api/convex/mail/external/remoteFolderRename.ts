@@ -28,6 +28,10 @@ import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import { FOLDER_KINDS, MESSAGE_KINDS } from './remoteFolderOpOrder';
 import { nudgeWorker, workerOp, writesBack } from './remoteOps';
+import {
+	listQueuedFolderRenames as listQueuedFolderRenamesContract,
+	recordRemoteFolderRename as recordRemoteFolderRenameContract,
+} from '@owlat/worker-protocol/mailSync';
 
 /** Queued ops one transaction rewrites before it hands the rest to a continuation. */
 const RENAME_ROWS_PER_RUN = 1000;
@@ -158,11 +162,8 @@ async function applyRename(ctx: MutationCtx, op: RenameOp): Promise<void> {
  * replayed after a worker restart, reaches the folder.
  */
 export const recordRemoteFolderRename = internalMutation({
-	args: {
-		opId: v.id('externalMailRemoteOps'),
-		remoteName: v.string(),
-		delimiter: v.string(),
-	},
+	args: recordRemoteFolderRenameContract.args,
+	returns: recordRemoteFolderRenameContract.returns,
 	handler: async (ctx, args) => {
 		const op = await ctx.db.get(args.opId);
 		if (!op || op.kind !== 'renameFolder' || !('remote' in op.source)) return null;
@@ -207,10 +208,8 @@ export const continueFolderRename = internalMutation({
  * anything, so a rename past the first page is never missed.
  */
 export const listQueuedFolderRenames = internalQuery({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		cursor: v.optional(v.union(v.string(), v.null())),
-	},
+	args: listQueuedFolderRenamesContract.args,
+	returns: listQueuedFolderRenamesContract.returns,
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
 		if (!account || !writesBack(account)) return { page: [], isDone: true, continueCursor: '' };

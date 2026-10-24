@@ -237,10 +237,11 @@ export const templateTables = {
 		attachmentsVersion: v.optional(v.number()),
 		// Schema version for `translations` / `htmlTranslations` JSON. Bump on shape change.
 		translationsVersion: v.optional(v.number()),
-		// AGGREGATED — total transactional sends enqueued against this
-		// template. Bumped atomically with the `transactionalSends` insert
-		// in `transactional/dispatch.ts`. The list page reads this directly
-		// instead of N+1 scanning `transactionalSends` per template.
+		// AGGREGATED [transactionalTemplateSends] — total transactional sends
+		// enqueued against this template. Bumped atomically with the
+		// `transactionalSends` insert in `transactional/dispatch.ts`. The list
+		// page reads this directly instead of N+1 scanning `transactionalSends`
+		// per template.
 		sendCount: v.optional(v.number()),
 		// Saved-block rerender state.
 		htmlRenderState: v.optional(htmlRenderStateValidator),

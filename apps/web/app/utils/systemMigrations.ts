@@ -9,15 +9,32 @@
  * passes without a new answer.
  */
 
+import type { WorkerService } from '@owlat/shared/workerWire';
+
 export type MigrationServerState = 'pending' | 'running' | 'failed' | 'interrupted' | 'completed';
 
-/** The backend's states plus `waiting`: pending until a dependency completes. */
+/** The backend's states plus `waiting`: pending until a dependency completes or a worker moves. */
 export type MigrationDisplayState = MigrationServerState | 'waiting';
+
+/**
+ * A contract step's wait on a worker service (`readWorkerWaits` in
+ * apps/api/convex/maintenance/workerRegistry.ts): a live worker still reports
+ * a lower wire version (`lagging`), or none has reported the required one yet
+ * (`missing`).
+ */
+export interface MigrationWorkerWait {
+	service: WorkerService;
+	requiredWireVersion: number;
+	reason: 'lagging' | 'missing';
+	oldestLiveWireVersion: number | null;
+}
 
 export interface MigrationRow {
 	migration: string;
 	introducedIn: string;
 	waitingFor: string[];
+	/** Absent from a backend that predates worker-gated contract steps. */
+	waitingForWorkers?: MigrationWorkerWait[];
 	isSteppingStone: boolean;
 	requiredBefore: string | null;
 	startsItself: boolean;
@@ -52,7 +69,12 @@ export function displayState(row: MigrationRow, now: number): MigrationDisplaySt
 	if (row.state === 'running' && row.stalledAt !== null && now >= row.stalledAt) {
 		return 'interrupted';
 	}
-	if (row.state === 'pending' && row.waitingFor.length > 0) return 'waiting';
+	if (
+		row.state === 'pending' &&
+		(row.waitingFor.length > 0 || (row.waitingForWorkers?.length ?? 0) > 0)
+	) {
+		return 'waiting';
+	}
 	return row.state;
 }
 

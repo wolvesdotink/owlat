@@ -55,6 +55,7 @@ function account(
 				remoteName,
 				role: ROLES[remoteName] ?? null,
 				flags: NO_FLAGS,
+				sighting: null,
 			});
 		}
 	}
@@ -180,6 +181,7 @@ describe('provider deletions made while the worker was stopped (#1071)', () => {
 			remoteName: 'INBOX',
 			role: 'inbox',
 			flags: NO_FLAGS,
+			sighting: null,
 		});
 		acc.ingested('s@x', 'Sent');
 		await acc.pass();
@@ -222,6 +224,7 @@ describe('provider deletions made while the worker was stopped (#1071)', () => {
 						remoteName: 'INBOX',
 						role: 'inbox',
 						flags: NO_FLAGS,
+						sighting: null,
 					});
 					acc.ingested('new@x', 'INBOX');
 				},
@@ -396,7 +399,13 @@ describe('an incomplete look at a folder is never taken for a deletion', () => {
 		await acc.pass();
 		for (const id of ['n1@x', 'n2@x']) {
 			acc.imap.add('INBOX', id);
-			acc.local.set(id, { messageId: id, remoteName: 'INBOX', role: 'inbox', flags: NO_FLAGS });
+			acc.local.set(id, {
+				messageId: id,
+				remoteName: 'INBOX',
+				role: 'inbox',
+				flags: NO_FLAGS,
+				sighting: null,
+			});
 			acc.ingested(id, 'INBOX');
 		}
 		acc.imap.unreadable.add(acc.imap.uidOf('INBOX', 'n1@x')!);

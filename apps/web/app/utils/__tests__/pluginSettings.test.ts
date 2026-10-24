@@ -6,6 +6,7 @@ import {
 	missingRequiredPluginSettings,
 	pluginSettingsBaseline,
 	pluginSettingsChanges,
+	pluginSettingsFieldDefault,
 	unsetRequiredPluginSecrets,
 	type PluginSettingsRedactedState,
 } from '../pluginSettings';
@@ -237,5 +238,22 @@ describe('unsetRequiredPluginSecrets', () => {
 		expect(
 			unsetRequiredPluginSecrets(schema, { values: {}, secretsSet: { optional: false } })
 		).toEqual([]);
+	});
+});
+
+describe('pluginSettingsFieldDefault', () => {
+	it('returns the declared default of every editable kind', () => {
+		expect(SCHEMA.map((field) => [field.key, pluginSettingsFieldDefault(field)])).toEqual([
+			['endpoint', 'https://api.test'],
+			['apiKey', undefined],
+			['timeout', 30],
+			['verbose', false],
+			['region', 'eu'],
+		]);
+	});
+
+	it('has nothing to return to without a declared default', () => {
+		const field: PluginSettingsField = { kind: 'number', key: 'retries', label: 'Retries' };
+		expect(pluginSettingsFieldDefault(field)).toBeUndefined();
 	});
 });

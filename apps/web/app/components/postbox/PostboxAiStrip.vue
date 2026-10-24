@@ -147,15 +147,13 @@ watch(
 				</p>
 			</div>
 
-			<div
-				class="input input-sm flex items-center gap-2 rounded-full py-1.5 focus-within:ring-1 focus-within:ring-brand"
-			>
+			<div class="input input-sm flex items-center gap-2">
 				<Icon name="lucide:sparkles" class="w-4 h-4 shrink-0 text-text-tertiary" />
 				<input
 					ref="askInput"
 					v-model="question"
 					type="text"
-					class="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none"
+					class="input-bare flex-1 text-sm"
 					:placeholder="t('components.postbox.postboxAiStrip.askPlaceholder')"
 					:aria-label="t('components.postbox.postboxAiStrip.askAbout')"
 					:disabled="askBusy"

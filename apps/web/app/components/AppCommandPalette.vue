@@ -407,10 +407,10 @@ onBeforeUnmount(() => detachTriggers?.());
 		</Transition>
 
 		<Transition
-			enter-active-class="transition-all duration-(--motion-moderate)"
+			enter-active-class="transition-[opacity,scale] duration-(--motion-moderate)"
 			enter-from-class="opacity-0 scale-95"
 			enter-to-class="opacity-100 scale-100"
-			leave-active-class="transition-all duration-(--motion-moderate-exit)"
+			leave-active-class="transition-[opacity,scale] duration-(--motion-moderate-exit)"
 			leave-from-class="opacity-100 scale-100"
 			leave-to-class="opacity-0 scale-95"
 		>
@@ -450,7 +450,7 @@ onBeforeUnmount(() => detachTriggers?.());
 						v-model="searchQuery"
 						type="text"
 						:placeholder="placeholder"
-						class="flex-1 bg-transparent text-text-primary placeholder-text-tertiary outline-none text-base"
+						class="input-bare flex-1 text-base"
 						role="combobox"
 						aria-expanded="true"
 						aria-controls="app-cmdk-list"

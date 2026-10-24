@@ -61,7 +61,8 @@ export const instanceHotRowTables = {
 	//   - imapLegacy:   legacyImapSeenAt, the last login through an IMAP server
 	//                   too old to report its version (v0.6.7 and older;
 	//                   `mail/appPasswords.touch`), written at most hourly.
-	//                   Read by `mail/imap/serverRegistry`.
+	//                   Read by `mail/imap/serverRegistry` and
+	//                   `maintenance/workerRegistry`.
 	instanceCounters: defineTable({
 		key: v.union(
 			v.literal('contacts'),

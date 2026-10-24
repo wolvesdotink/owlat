@@ -76,6 +76,18 @@ describe('mtaFetch', () => {
 		expect(init.signal).toBeInstanceOf(AbortSignal);
 	});
 
+	it('stamps a fresh correlation id, or keeps the caller one', async () => {
+		fetchMock.mockResolvedValue(new Response('ok'));
+
+		await mtaFetch(config, '/health');
+		await mtaFetch(config, '/health', { headers: { 'x-owlat-correlation': 'txn_abc' } });
+
+		const minted = new Headers((fetchMock.mock.calls[0]![1] as RequestInit).headers);
+		const carried = new Headers((fetchMock.mock.calls[1]![1] as RequestInit).headers);
+		expect(minted.get('x-owlat-correlation')).toMatch(/^mta_[0-9a-f]{32}$/);
+		expect(carried.get('x-owlat-correlation')).toBe('txn_abc');
+	});
+
 	it('aborts a request that has not answered by the timeout', async () => {
 		vi.useFakeTimers();
 		fetchMock.mockImplementation(

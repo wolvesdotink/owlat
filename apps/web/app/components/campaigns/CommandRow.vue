@@ -93,7 +93,7 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 	<UiContextMenu :items="contextItems">
 		<template #default="{ onContextmenu, onKeydown }">
 			<li
-				class="group flex items-center gap-4 px-4 sm:px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-fast) ease-spring cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
+				class="group flex items-center gap-4 px-4 sm:px-6 py-4 density-compact:py-2 hover:bg-bg-surface transition-colors duration-(--motion-fast) ease-spring cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
 				tabindex="0"
 				role="link"
 				:aria-label="t('components.campaigns.commandRow.openCampaign', { name: row.campaign.name })"

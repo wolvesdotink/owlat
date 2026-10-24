@@ -746,7 +746,8 @@
 					"thu": "Do",
 					"tue": "Di",
 					"wed": "Mi"
-				}
+				},
+				"windowLabel": "Arbeitszeitfenster"
 			},
 			"feedbackStatsCard": {
 				"approved": "Freigegeben",
@@ -1151,6 +1152,13 @@
 			}
 		},
 		"campaigns": {
+			"cancelIntentDialog": {
+				"title": "Diese geplante Kampagne abbrechen?",
+				"description": "{name} wird am {date} versendet. Ein Abbruch stoppt sie endgültig: Eine abgebrochene Kampagne lässt sich nicht erneut planen.",
+				"confirm": "Kampagne abbrechen",
+				"keep": "Geplant lassen",
+				"notScheduled": "Diese Kampagne ist nicht mehr geplant, es gibt nichts abzubrechen."
+			},
 			"abTestConfig": {
 				"contentOption": "E-Mail-Inhalt",
 				"contentOptionDescription": "Verschiedene E-Mail-Vorlagen testen",
@@ -1830,8 +1838,12 @@
 			},
 			"chatMemberPicker": {
 				"label": "Mitglieder",
+				"listLabel": "Passende Mitglieder",
 				"placeholder": "Nach Name oder E-Mail suchen…",
 				"removeMember": "{name} entfernen"
+			},
+			"chatMentionPicker": {
+				"listLabel": "Teammitglieder zum Erwähnen"
 			},
 			"chatMentionsDialog": {
 				"emptyBody": "Keine ungelesenen Erwähnungen.",
@@ -4820,7 +4832,7 @@
 				"all": "Alle E-Mails",
 				"label": "Posteingangsansicht",
 				"priority": "Priorität",
-				"title": "Wichtige E-Mails oder alle E-Mails (B)"
+				"title": "Wichtige E-Mails oder alle E-Mails"
 			},
 			"postboxInsertAvailability": {
 				"intro": "Hier ein paar Zeiten, die bei mir passen ({zone}):",
@@ -5186,7 +5198,8 @@
 					"unsnooze": "Zurückstellung von Nachrichten aufheben",
 					"unsubscribe": "Abmelden und archivieren"
 				},
-				"purgeConfirm": "{count} Nachricht endgültig löschen? Das kann nicht rückgängig gemacht werden. | {count} Nachrichten endgültig löschen? Das kann nicht rückgängig gemacht werden.",
+				"purgeConfirm": "{count} Nachricht endgültig löschen? | {count} Nachrichten endgültig löschen?",
+				"purgeConfirmBody": "Das kann nicht rückgängig gemacht werden.",
 				"read": "Gelesen",
 				"selected": "{count} ausgewählt",
 				"snooze": "Zurückstellen",
@@ -5362,27 +5375,7 @@
 			"postboxShortcutHelp": {
 				"title": "Tastenkürzel"
 			},
-			"postboxShortcutSettings": {
-				"change": "Ändern",
-				"changeAriaLabel": "Tastenkürzel für {shortcut} ändern",
-				"heading": "Tastenkürzel",
-				"hint": "Wähle die Belegung, die du kennst, und ändere einzelne Tasten. Drücke eine Taste, während eine Zeile darauf wartet.",
-				"listening": "Taste drücken …",
-				"modifierRefused": "Tastenkürzel sind hier Einzeltasten – drücke eine Taste ohne Strg, Cmd oder Alt.",
-				"presetLabel": "Tastaturbelegung",
-				"presets": {
-					"gmail": "Gmail",
-					"outlook": "Outlook",
-					"owlat": "Owlat (Standard)",
-					"superhuman": "Superhuman"
-				},
-				"reset": "Zurücksetzen",
-				"resetAll": "Alle Änderungen zurücksetzen",
-				"taken": "{shortcut} belegt diese Taste bereits.",
-				"unbound": "Nicht belegt"
-			},
 			"postboxSnippetPicker": {
-				"empty": "Keine passende gespeicherte Antwort",
 				"listLabel": "Gespeicherte Antworten"
 			},
 			"postboxSnoozeDialog": {
@@ -5434,7 +5427,9 @@
 				"menuLabel": "Konversationsaktionen",
 				"muteConversation": "Konversation stummschalten",
 				"noSubject": "(kein Betreff)",
-				"unmuteHint": "Stummgeschaltete Konversationen bleiben aus dem Posteingang."
+				"unmuteHint": "Stummgeschaltete Konversationen bleiben aus dem Posteingang.",
+				"pinConversation": "Unterhaltung anheften",
+				"pinHint": "Bleibt oben im Posteingang angeheftet"
 			},
 			"postboxThreadList": {
 				"archiveOperation": "Archivieren",
@@ -5522,7 +5517,10 @@
 				"snoozedUntil": "Zurückgestellt bis {when}",
 				"star": "Markieren",
 				"unmute": "Stummschaltung aufheben",
-				"unstar": "Markierung entfernen"
+				"unstar": "Markierung entfernen",
+				"pin": "Unterhaltung anheften",
+				"unpin": "Unterhaltung lösen",
+				"pinnedChip": "Oben im Posteingang angeheftet"
 			},
 			"postboxThreadRowFollowUp": {
 				"cancelLabel": "Antwort-Erinnerung abbrechen",
@@ -5567,7 +5565,8 @@
 			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Von dieser Mailingliste abmelden",
-				"confirm": "Von dieser Mailingliste abmelden?\n\nOwlat sendet die standardmäßige Ein-Klick-Abmeldeanfrage an {host}.",
+				"confirm": "Von dieser Mailingliste abmelden?",
+				"confirmBody": "Owlat sendet die standardmäßige Ein-Klick-Abmeldeanfrage an {host}.",
 				"requestFailed": "Abmeldeanfrage fehlgeschlagen — die Abmeldeseite wird stattdessen geöffnet",
 				"requestSent": "Abmeldeanfrage gesendet",
 				"theSender": "den Absender",
@@ -5657,7 +5656,7 @@
 			"postboxSubscriptionsPanel": {
 				"action": "Abmelden und archivieren | Abmelden und archivieren ({count})",
 				"clearSelection": "Auswahl aufheben",
-				"confirm": "Von {count} Absender abmelden und deren Post archivieren?",
+				"confirm": "Von {count} Absender abmelden und dessen Post archivieren? | Von {count} Absendern abmelden und deren Post archivieren?",
 				"empty": "Keine Abonnements gefunden.",
 				"emptyHint": "Newsletter und andere Listenpost erscheinen hier, sobald welche ankommt.",
 				"heading": "Abonnements",
@@ -6050,6 +6049,36 @@
 			"preferencesBackLink": {
 				"label": "Zurück zu den Einstellungen"
 			},
+			"preferencesComfort": {
+				"title": "Lesekomfort",
+				"subtitle": "Textgröße, Kontrast, Bewegung und Listenabstände auf diesem Gerät.",
+				"textSizeLabel": "Textgröße in Mails",
+				"textSizeHelp": "Wie groß Mails in Postbox und im Team-Posteingang erscheinen. Gestaltete Newsletter werden als Ganzes skaliert.",
+				"readingWidthLabel": "Lesebreite",
+				"readingWidthHelp": "Wie lang eine Mailzeile werden darf, bevor sie umbricht. Gestaltete Newsletter behalten ihr eigenes Layout.",
+				"listDensityLabel": "Listendichte",
+				"listDensityHelp": "Zeilenabstand in Team-Posteingang, Kontakten und Kampagnen. Postbox hat unter Lesen eine eigene Dichte.",
+				"highContrastLabel": "Höherer Kontrast",
+				"highContrastHelp": "Dunklerer Text und kräftigere Rahmen im hellen Modus, hellere im dunklen Modus.",
+				"reduceMotionLabel": "Bewegung reduzieren",
+				"reduceMotionHelp": "Schaltet Animationen und weiches Scrollen in Owlat ab. Wenn dein Gerät weniger Bewegung verlangt, ist sie immer reduziert.",
+				"textSize": {
+					"small": "Klein",
+					"default": "Standard",
+					"large": "Groß",
+					"larger": "Größer"
+				},
+				"readingWidth": {
+					"narrow": "Schmal",
+					"default": "Standard",
+					"wide": "Breit",
+					"full": "Volle Breite"
+				},
+				"listDensity": {
+					"comfortable": "Komfortabel",
+					"compact": "Kompakt"
+				}
+			},
 			"preferencesExportManifest": {
 				"loading": "Wird gezählt…",
 				"moreThan": "mehr als {count}",
@@ -6102,6 +6131,63 @@
 				"swipeHelp": "Ziehe eine Zeile auf dem Touchscreen zur Seite, um sie abzuarbeiten. Mit der Maus passiert nichts.",
 				"swipeRightHelp": "Dieselbe Geste, andere Richtung."
 			},
+			"preferencesShortcuts": {
+				"heading": "Tastenkürzel",
+				"hint": "Wähle die Belegung, die du kennst, und ändere einzelne Tasten. Drücke eine Taste, während eine Zeile darauf wartet.",
+				"presetLabel": "Tastaturbelegung",
+				"presets": {
+					"gmail": "Gmail",
+					"outlook": "Outlook",
+					"owlat": "Owlat (Standard)",
+					"superhuman": "Superhuman"
+				},
+				"filterLabel": "Tastenkürzel finden",
+				"filterPlaceholder": "Name oder Taste, z. B. Archivieren oder Strg",
+				"noMatch": "Kein Tastenkürzel passt zu „{query}“.",
+				"change": "Ändern",
+				"changeAriaLabel": "Tastenkürzel für {shortcut} ändern",
+				"listening": "Taste drücken …",
+				"reset": "Zurücksetzen",
+				"resetAriaLabel": "Tastenkürzel für {shortcut} zurücksetzen",
+				"resetAll": "Alle Änderungen zurücksetzen",
+				"unbound": "Nicht belegt",
+				"fixed": "Fest",
+				"fixedReasons": {
+					"convention": "Funktioniert wie in jeder anderen App.",
+					"layout": "Richtet sich nach der Position der Taste und funktioniert so mit jeder Tastaturbelegung.",
+					"surface": "Diese Ansicht reagiert selbst auf die Taste, deshalb lässt sie sich noch nicht ändern.",
+					"numbered": "Die Zahl wählt die Option an dieser Stelle, deshalb bleibt sie."
+				},
+				"refused": {
+					"modifier": "Dieses Tastenkürzel ist eine Einzeltaste – drücke eine Taste ohne Strg, Cmd oder Alt.",
+					"needsModifier": "Dieses Tastenkürzel braucht Strg oder Cmd – halte sie gedrückt, während du die Taste drückst.",
+					"reserved": "Dein Browser oder System nutzt diese Taste selbst – wähle eine andere.",
+					"taken": "{shortcut} belegt diese Taste bereits.",
+					"prefix": "Diese Taste und {shortcut} beginnen gleich, eins von beiden würde nie auslösen."
+				},
+				"clashesHeading": "Einige Tastenkürzel teilen sich eine Taste",
+				"clashesHint": "Nur das erste löst aus. Ändere eins davon oder setze es zurück.",
+				"clashLine": "{keys} wird genutzt von {shortcuts}",
+				"clashesWith": "Teilt sich eine Taste mit {shortcuts}",
+				"saveOperation": "Tastenkürzel speichern",
+				"scopes": {
+					"global": "Überall",
+					"postbox": "E-Mail",
+					"composer": "Beim Schreiben",
+					"inbox": "Threads im Team-Postfach",
+					"review": "Updates im Team-Postfach",
+					"workbench": "Werkbank",
+					"peek": "Bereich der Werkbank",
+					"answer": "Antwortmodus",
+					"workspace": "Desktop-Workspaces",
+					"inboxList": "Liste im Team-Postfach",
+					"answerQueue": "Antwortliste",
+					"askCard": "Fragen der KI",
+					"mailCard": "Antwortliste: Nachfassen",
+					"teamCard": "Antwortliste: Entwürfe aus dem Team-Postfach",
+					"mentionCard": "Antwortliste: Erwähnungen"
+				}
+			},
 			"preferencesYourData": {
 				"mailExportAction": ".mbox herunterladen",
 				"mailExportDone": "{count} Nachrichten heruntergeladen.",
@@ -6114,6 +6200,32 @@
 				"title": "Deine Daten",
 				"trashPurgeHelp": "Gezählt ab dem Tag, an dem du etwas wegwirfst. Standardmäßig aus.",
 				"trashPurgeLabel": "Papierkorb automatisch leeren"
+			},
+			"marketingNotifications": {
+				"heading": "Marketing-Benachrichtigungen",
+				"intro": "Zu Kampagnen, Automationen und dem Versand. Diese Schalter gehören zu deinem Konto: Schaltest du einen aus, kommt diese Benachrichtigung auf keinem Gerät mehr, weder in der App noch in der Desktop-App noch per Push.",
+				"scopeBadge": "Alle deine Geräte",
+				"campaignFinished": {
+					"label": "Kampagne abgeschlossen",
+					"hint": "Wenn eine Kampagne fertig versendet ist, mit dem Anteil, der zugestellt wurde."
+				},
+				"campaignReminder": {
+					"label": "Geplante Kampagne startet gleich",
+					"hint": "15 Minuten bevor eine geplante Kampagne startet, mit der Möglichkeit, sie abzubrechen."
+				},
+				"deliveryHold": {
+					"label": "Versandschutz bei Bounces",
+					"hint": "Wenn Owlat nach vielen Bounces oder Beschwerden Mails an einen Mail-Anbieter zurückhält oder über dein Relay umleitet."
+				},
+				"automationProblems": {
+					"label": "Probleme mit Automationen",
+					"hint": "Wenn Kontakte in einer Automation hängen bleiben oder eine Automation sich nach fehlgeschlagenen Läufen pausiert."
+				},
+				"domainDns": {
+					"label": "DNS der Versanddomain fehlerhaft",
+					"hint": "Wenn ein DNS-Eintrag einer Versanddomain seine Prüfung nicht mehr besteht."
+				},
+				"saveOperation": "Benachrichtigungseinstellung speichern"
 			},
 			"webPush": {
 				"heading": "Push-Benachrichtigungen",
@@ -6436,6 +6548,17 @@
 				"title": "Logo",
 				"upload": "Hochladen",
 				"uploadUrlOperation": "Logo-Upload vorbereiten"
+			},
+			"resetToDefault": {
+				"reset": "Zurücksetzen",
+				"resetLabel": "{setting} auf den Standard zurücksetzen",
+				"names": {
+					"autoCheckUpdates": "Update-Prüfung beim Start",
+					"dailyBriefTime": "Uhrzeit des Tagesüberblicks",
+					"shareLinkExpiry": "Ablaufzeit geteilter Links",
+					"voicePersonalize": "KI-Entwürfe für {address} personalisieren",
+					"workspaceMute": "Benachrichtigungen für {workspace} stummschalten"
+				}
 			}
 		},
 		"shareLinksPopover": {
@@ -6460,24 +6583,34 @@
 			"unsavedHint": "Speichere deine Änderungen, bevor du einen Freigabelink erstellst."
 		},
 		"system": {
-			"imapServersCard": {
-				"title": "IMAP-Server",
-				"intro": "IMAP-Server, die sich in den letzten 7 Tagen bei diesem Backend gemeldet haben. Aktualisiere zuerst das Backend, dann den IMAP-Container: Der IMAP-Server darf ein Release hinter dem Backend liegen, ihm aber nie voraus sein.",
-				"loading": "IMAP-Server werden geladen…",
-				"empty": "In den letzten 7 Tagen hat sich kein IMAP-Server gemeldet. Das ist zu erwarten, wenn dieses Deployment keinen IMAP-Container betreibt.",
-				"legacyWarning": "Ein IMAP-Server aus 0.6.7 oder älter hat am {date} eine Anmeldung bearbeitet. Er meldet seine Version nicht, steht deshalb nicht in der Liste und wird beim Start nicht angehalten. Aktualisiere den IMAP-Container auf das Release des Backends.",
-				"unsupportedWarning": "Ein IMAP-Server, der älter ist, als dieses Backend unterstützt, war aktiv. Das Backend lehnt seine Anmeldungen ab, und ein Server, der seine Version meldet, startet nicht, bis du den IMAP-Container aktualisierst.",
-				"aheadWarning": "Ein IMAP-Server, der neuer ist als dieses Backend, hat sich gemeldet. Er stellt erst wieder Mail bereit, wenn das Backend aktualisiert ist.",
-				"truncated": "Angezeigt werden die {count} neuesten. Die Warnungen oben berücksichtigen alle IMAP-Server der letzten 7 Tage.",
+			"workerVersionsCard": {
+				"title": "Worker-Versionen",
+				"intro": "Die Worker, die sich in den letzten 7 Tagen bei diesem Backend gemeldet haben, nach Dienst, und ob das Backend ihre Protokollversion noch bedient. Aktualisiere zuerst das Backend, dann die Worker-Container: Ein Worker darf ein Release hinter dem Backend liegen, ihm aber nie voraus sein.",
+				"loading": "Worker-Versionen werden geladen…",
+				"contract": "Backend spricht Protokollversion {current}, bedient Versionen {min} bis {current}",
+				"contractSingle": "Backend spricht und bedient nur Protokollversion {current}",
+				"empty": "In den letzten 7 Tagen hat sich nichts gemeldet. Das ist zu erwarten, wenn dieses Deployment diesen Dienst nicht betreibt.",
+				"legacyImapWarning": "Ein IMAP-Server aus 0.6.7 oder älter hat am {date} eine Anmeldung bearbeitet. Er meldet seine Version nicht, steht deshalb nicht in der Liste und wird beim Start nicht angehalten. Aktualisiere den IMAP-Container auf das Release des Backends.",
+				"unsupportedWarning": "Ein Worker, der älter ist, als dieses Backend unterstützt, hat sich in den letzten 7 Tagen gemeldet. Aktualisiere seinen Container auf das Release des Backends.",
+				"aheadWarning": "Ein Worker, der neuer ist als dieses Backend, hat sich gemeldet. Aktualisiere zuerst das Backend.",
+				"skew": "In den letzten 7 Tagen wurden die Protokollversionen {oldest} bis {newest} gemeldet. Schritte, die die neuere brauchen, warten, bis kein älterer Worker mehr läuft.",
+				"truncated": "Angezeigt werden die {count} neuesten. Die Warnungen oben berücksichtigen alle Meldungen dieses Dienstes der letzten 7 Tage.",
 				"host": "Hostname",
 				"version": "Version",
 				"lastSeen": "Letzte Meldung",
+				"notLive": "meldet sich nicht mehr",
 				"wireVersion": "(Protokollversion {version})",
 				"verdict": {
 					"current": "Aktuell",
 					"supported": "Älter, unterstützt",
 					"unsupported": "Nicht unterstützt",
 					"ahead": "Wartet auf Backend-Update"
+				},
+				"services": {
+					"imap": "IMAP-Server",
+					"mailSync": "Mail-Sync",
+					"mta": "MTA",
+					"codeWorker": "Code-Worker"
 				}
 			},
 			"llmSpendCard": {
@@ -6507,6 +6640,8 @@
 				"completedAt": "abgeschlossen {date}",
 				"lastProgress": "letzter Fortschritt {date}",
 				"waitsFor": "Startet, sobald {names} abgeschlossen ist.",
+				"waitsForWorkersLagging": "{service}: wartet, bis jeder Worker Protokollversion {version} oder neuer nutzt. Einer nutzt noch {oldest}.",
+				"waitsForWorkersMissing": "{service}: wartet auf die Meldung eines Workers mit Protokollversion {version} oder neuer.",
 				"interruptedHint": "Seit einer Weile kein Fortschritt: Der Hintergrundjob ist stehen geblieben. Starte erneut, um ab der zuletzt gespeicherten Seite fortzufahren.",
 				"failedHint": "Behebe die Ursache und starte erneut, um ab der zuletzt gespeicherten Seite weiterzumachen. Die Wartungsanleitung enthält die CLI-Befehle für dieselben Schritte.",
 				"startsItself": "Startet auch von selbst im Hintergrund. Hier startest du sie nur früher.",
@@ -6915,6 +7050,13 @@
 			}
 		},
 		"shell": {
+			"replyDrop": {
+				"hint": "Ablegen, um {name} mit {count} Datei zu antworten | Ablegen, um {name} mit {count} Dateien zu antworten",
+				"hintNoCount": "Ablegen, um {name} mit diesen Dateien zu antworten",
+				"hintNoName": "Ablegen, um mit {count} Datei zu antworten | Ablegen, um mit {count} Dateien zu antworten",
+				"hintNoNameNoCount": "Ablegen, um mit diesen Dateien zu antworten",
+				"refused": "Diese Antwort geht über einen anderen Kanal raus und kann keine Dateien mitnehmen. Die abgelegten Dateien wurden nicht angehängt."
+			},
 			"status": {
 				"draftReady": "Entwurf bereit",
 				"needsYou": "Braucht dich",
@@ -11255,11 +11397,17 @@
 				"title": "Team-Postfach",
 				"undo": {
 					"assigned": "Zugewiesen",
+					"assignedMany": "{count} Unterhaltung zugewiesen | {count} Unterhaltungen zugewiesen",
 					"assignedTo": "{name} zugewiesen",
+					"assignedToMany": "{count} Unterhaltung {name} zugewiesen | {count} Unterhaltungen {name} zugewiesen",
 					"assignedToYou": "Dir zugewiesen",
+					"assignedToYouMany": "Dir {count} Unterhaltung zugewiesen | Dir {count} Unterhaltungen zugewiesen",
 					"resolved": "Erledigt",
+					"resolvedMany": "{count} Unterhaltung erledigt | {count} Unterhaltungen erledigt",
 					"snoozed": "Zurückgestellt",
-					"unassigned": "Zuweisung aufgehoben"
+					"snoozedMany": "{count} Unterhaltung zurückgestellt | {count} Unterhaltungen zurückgestellt",
+					"unassigned": "Zuweisung aufgehoben",
+					"unassignedMany": "Zuweisung von {count} Unterhaltung aufgehoben | Zuweisung von {count} Unterhaltungen aufgehoben"
 				},
 				"unsnoozeThreadOperation": "Zurückstellung aufheben",
 				"updateThreadStatusOperation": "Status der Konversation ändern",
@@ -11963,7 +12111,7 @@
 				"pageTitle": "Buchungsseite"
 			},
 			"device": {
-				"intro": "Einstellungen, die nur auf diesem Gerät gespeichert werden — sie wandern nie auf einen anderen Computer oder Browser.",
+				"intro": "Benachrichtigungen und Einstellungen für dieses Gerät. Die meisten werden nur hier gespeichert und wandern nie auf einen anderen Computer oder Browser; eine Einstellung, die zu deinem Konto gehört, sagt das dazu.",
 				"nothingHere": "Auf dieser Instanz speichert nichts etwas auf diesem Gerät."
 			},
 			"filters": {
@@ -12156,7 +12304,8 @@
 				}
 			},
 			"shortcuts": {
-				"intro": "Wähle eine Tastenbelegung, die du aus einer anderen Mail-App kennst, oder ändere einzelne Tasten. Drücke überall ?, um sie zu sehen.",
+				"intro": "Alle Tasten der App an einem Ort. Wähle eine Belegung, die du aus einer anderen Mail-App kennst, ändere einzelne Tasten oder suche danach.",
+				"introHelp": "Drücke überall {key}, um die Tasten zu sehen, die dort funktionieren.",
 				"pageTitle": "Tastenkürzel — Owlat"
 			},
 			"signatures": {
@@ -13176,7 +13325,8 @@
 				"draftsResumed": "Entwürfe fortgesetzt",
 				"applied": "{count} Vorschlag übernommen | {count} Vorschläge übernommen"
 			},
-			"confirmUnsubscribe": "Von {name} abmelden? Ihre Mails werden ab jetzt archiviert.",
+			"confirmUnsubscribe": "Von {name} abmelden?",
+			"confirmUnsubscribeBody": "Ihre Mails werden ab jetzt archiviert.",
 			"shortcuts": {
 				"autoArchive": "Mails dieses Absenders automatisch archivieren",
 				"unsubscribe": "Von diesem Absender abmelden"
@@ -13451,6 +13601,15 @@
 				"discard": "Regelentwurf verwerfen",
 				"test": "Regel testen"
 			}
+		},
+		"pins": {
+			"title": "Angeheftet",
+			"count": "{count} von {limit}",
+			"operation": "Unterhaltung anheften",
+			"unpin": "Lösen",
+			"unpinNamed": "„{subject}“ lösen",
+			"full": "Du kannst bis zu 5 Unterhaltungen anheften. Löse zuerst eine.",
+			"dropHint": "Zum Anheften hier ablegen"
 		}
 	},
 	"recipient": {
@@ -15702,8 +15861,16 @@
 				"recategorizeThread": "Konversation neu einordnen"
 			},
 			"usePostboxTriageUndo": {
+				"grouped": {
+					"archived": "{count} Nachricht archiviert | {count} Nachrichten archiviert",
+					"moved": "{count} Nachricht verschoben | {count} Nachrichten verschoben",
+					"spam": "{count} Nachricht als Spam markiert | {count} Nachrichten als Spam markiert",
+					"trashed": "{count} Nachricht in den Papierkorb verschoben | {count} Nachrichten in den Papierkorb verschoben"
+				},
 				"keyHint": "{keys} zum Rückgängigmachen",
-				"undo": "Rückgängig"
+				"keyHintLast": "{keys} macht die letzte Aktion rückgängig",
+				"undo": "Rückgängig",
+				"undoAll": "Alle rückgängig"
 			},
 			"usePostboxImageAllowlist": {
 				"allowOperation": "Bilder dieses Absenders immer anzeigen",
@@ -15723,7 +15890,8 @@
 				"moveOperation": "Nachrichten verschieben",
 				"unsubscribeOperation": "Bündel abbestellen",
 				"undoArchived": "{count} Nachrichten archiviert",
-				"unsubscribeConfirm": "{count} Absender abbestellen und ihre Mail archivieren? Jede Abmeldung ist eine Anfrage in deinem Namen."
+				"unsubscribeConfirm": "Von {count} Absender abmelden und dessen Mail archivieren? | Von {count} Absendern abmelden und deren Mail archivieren?",
+				"unsubscribeConfirmBody": "Jede Abmeldung ist eine Anfrage in deinem Namen."
 			},
 			"usePostboxTriageSuggestion": {
 				"createRule": "Regel aus Vorschlag erstellen",
@@ -16301,6 +16469,26 @@
 					"title": "Erscheinungsbild",
 					"keywords": "Dunkelmodus, heller Modus, Design, Farbschema"
 				},
+				"mailTextSize": {
+					"title": "Textgröße in Mails",
+					"keywords": "Schriftgröße, Textgröße, Zoom, größere Schrift, Lesbarkeit"
+				},
+				"readingWidth": {
+					"title": "Lesebreite",
+					"keywords": "Zeilenlänge, Satzbreite, Spaltenbreite, breit"
+				},
+				"listDensity": {
+					"title": "Listendichte",
+					"keywords": "kompakt, komfortabel, Abstand, Zeilenhöhe, Team-Posteingang, Kontakte, Kampagnen"
+				},
+				"highContrast": {
+					"title": "Höherer Kontrast",
+					"keywords": "Kontrast, Barrierefreiheit, Lesbarkeit, Rahmen, Sehschwäche"
+				},
+				"reduceMotion": {
+					"title": "Bewegung reduzieren",
+					"keywords": "Animation, Bewegung, Barrierefreiheit, weiches Scrollen, Schwindel"
+				},
 				"language": {
 					"title": "Sprache",
 					"keywords": "Gebietsschema, Übersetzung, Englisch, Deutsch"
@@ -16409,9 +16597,39 @@
 					"keywords": "trennen, entfernen, löschen, verbundenes Postfach, externes Konto, gmail, outlook, fastmail",
 					"title": "Verbundenes Postfach trennen"
 				},
+				"marketingNotifications": {
+					"title": "Marketing-Benachrichtigungen",
+					"keywords": "kampagne abgeschlossen, erinnerung, geplante kampagne, bounce-spitze, versandschutz, versand pausiert, automation hängt, dns fehlerhaft, warnungen"
+				},
 				"pushNotifications": {
 					"title": "Push-Benachrichtigungen",
 					"keywords": "web push, browser-benachrichtigungen, handy, smartphone, pwa, benachrichtigen, geräte"
+				}
+			},
+			"adminControls": {
+				"dkim": {
+					"title": "DKIM-Signatur",
+					"keywords": "dkim, Domainschlüssel, Signaturschlüssel, DNS-Einträge, spf, dmarc, Absender-Authentifizierung"
+				},
+				"aiProviderKey": {
+					"title": "API-Schlüssel des KI-Anbieters",
+					"keywords": "API-Schlüssel, KI-Schlüssel, api key, OpenAI-Schlüssel, Anthropic-Schlüssel, Sprachmodell, llm"
+				},
+				"autonomy": {
+					"title": "KI-Autonomie",
+					"keywords": "Autonomie, automatische Antwort, automatisch senden, nur Entwürfe, Autopilot, Agent"
+				},
+				"rampPace": {
+					"title": "Tempo der Zustellungsrampe",
+					"keywords": "Rampe, Aufwärmen, warm-up, IP-Aufwärmung, Voreinstellung, wie stark hochfahren, vorsichtig"
+				},
+				"webhookSecret": {
+					"title": "Webhook-Signaturgeheimnis",
+					"keywords": "Webhook-Geheimnis, Signaturgeheimnis, Signatur, hmac, x-owlat-signature, Geheimnis neu erzeugen"
+				},
+				"brandColors": {
+					"title": "Markenfarben",
+					"keywords": "Farben, Markenfarbe, Primärfarbe, Linkfarbe, Palette, brand colors"
 				}
 			}
 		},
@@ -16454,6 +16672,8 @@
 				"triage": "Triage",
 				"workspace": "Workspaces",
 				"review": "Updates-Liste",
+				"teamInbox": "Team-Postfach",
+				"workbench": "Werkbank",
 				"answer": "Antwortmodus"
 			},
 			"labels": {
@@ -16516,7 +16736,33 @@
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
 				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
 				"savedReplies": "Gespeicherte Antwort einfügen",
-				"writeNote": "Interne Notiz schreiben (Threads im Team-Postfach)"
+				"writeNote": "Interne Notiz schreiben (Threads im Team-Postfach)",
+				"openSettings": "Einstellungen öffnen",
+				"openAssistant": "Assistenten öffnen",
+				"jumpToSidebarItem": "Zu einem Eintrag der Seitenleiste springen (halte Alt gedrückt, um die Nummern zu sehen)",
+				"toggleFolderRail": "Ordnerliste ein-/ausklappen",
+				"assignToMe": "Thread mir zuweisen",
+				"replyInAnswerMode": "Im Antwortmodus antworten",
+				"nextLine": "Nächste Zeile",
+				"previousLine": "Vorherige Zeile",
+				"openLine": "E-Mail hinter der Zeile öffnen",
+				"markLineDone": "Zeile als erledigt markieren",
+				"replyToUpdate": "Update aus dem Team-Postfach in die Antwortliste legen",
+				"nextPeekEmail": "Nächste E-Mail im Bereich",
+				"previousPeekEmail": "Vorherige E-Mail im Bereich",
+				"closePeek": "Bereich schließen",
+				"undoQueueStep": "Letzten Schritt in der Antwortliste rückgängig machen",
+				"askKnowledge": "Wissen fragen",
+				"dismissUpdate": "Update als erledigt markieren",
+				"markFollowUpDone": "Nachfassen als erledigt markieren",
+				"previousCard": "Vorherige Karte",
+				"nextCard": "Nächste Karte",
+				"sendOrApprove": "Antwort senden oder den Entwurf freigeben",
+				"approveDraft": "Entwurf prüfen & senden",
+				"rejectDraft": "Entwurf ablehnen",
+				"openMention": "Erwähnung öffnen, um zu antworten",
+				"markMentionRead": "Erwähnung als gelesen markieren",
+				"skipCard": "Vorerst überspringen"
 			}
 		},
 		"signatureBadge": {
@@ -17139,11 +17385,15 @@
 			"exportFailed": "Export fehlgeschlagen. Bitte versuche es erneut.",
 			"exported": "{count} Kontakt nach {filename} exportiert | {count} Kontakte nach {filename} exportiert",
 			"listFallback": "Liste",
+			"nothingAdded": "Alle ausgewählten Kontakte sind schon in „{list}“",
 			"noContactsToExport": "Keine Kontakte zum Exportieren",
+			"nothingRemoved": "Keiner der ausgewählten Kontakte ist in „{list}“",
 			"removeContactsOperation": "Kontakte aus Thema entfernen",
 			"removedFromList": "{count} Kontakt aus „{list}“ entfernt | {count} Kontakte aus „{list}“ entfernt",
 			"selectAllFailed": "Es konnten nicht alle Kontakte ausgewählt werden. Bitte versuche es erneut.",
-			"selectionTruncated": "Die ersten {count} passenden Kontakte wurden ausgewählt. Verfeinere deinen Filter, um die übrigen zu bearbeiten."
+			"selectionTruncated": "Die ersten {count} passenden Kontakte wurden ausgewählt. Verfeinere deinen Filter, um die übrigen zu bearbeiten.",
+			"undoAddOperation": "Hinzufügen von Kontakten zum Thema rückgängig machen",
+			"undoRemoveOperation": "Entfernen von Kontakten aus dem Thema rückgängig machen"
 		},
 		"useContactDetail": {
 			"clearPropertyOperation": "Kontakteigenschaft löschen",
@@ -17208,6 +17458,51 @@
 				"lastName": "Nachname"
 			},
 			"pickerTitle": "CSV-Datei auswählen"
+		},
+		"marketingNotices": {
+			"toast": "{title}: {body}",
+			"quietSummary": {
+				"title": "Während du weg warst",
+				"body": "1 Hinweis zu Kampagnen oder Versand ist während der Ruhezeiten eingegangen | {count} Hinweise zu Kampagnen und Versand sind während der Ruhezeiten eingegangen"
+			},
+			"campaignFinished": {
+				"title": "Kampagne abgeschlossen",
+				"body": "{name} · {percent} % zugestellt",
+				"bodyNoPercent": "{name} ist fertig versendet",
+				"private": "Eine Kampagne ist fertig versendet"
+			},
+			"campaignReminder": {
+				"title": "Geplante Kampagne startet in {minutes} Min.",
+				"body": "{name}",
+				"private": "Öffne sie, um den Versand zu prüfen oder abzubrechen"
+			},
+			"deliveryHold": {
+				"title": "Bounce-Spitze: Versandschutz aktiv",
+				"body": "Owlat hält Mails an {provider} nach vielen Bounces oder Beschwerden zurück oder leitet sie über dein Relay um"
+			},
+			"providers": {
+				"gmail": "Gmail",
+				"microsoft": "Microsoft",
+				"yahoo": "Yahoo",
+				"apple": "Apple",
+				"other": "andere Anbieter"
+			},
+			"automationStalled": {
+				"title": "Automation hängt",
+				"body": "{name}: {count} hängender Kontakt | {name}: {count} hängende Kontakte",
+				"private": "Kontakte hängen in einer Automation"
+			},
+			"automationPaused": {
+				"title": "Automation pausiert",
+				"body": "{name} hat sich nach wiederholt fehlgeschlagenen Läufen pausiert",
+				"private": "Eine Automation hat sich nach wiederholt fehlgeschlagenen Läufen pausiert"
+			},
+			"domainDns": {
+				"title": "DNS der Versanddomain fehlerhaft",
+				"body": "{domain}: Prüfung „{check}“ fehlgeschlagen",
+				"bodyNoCheck": "{domain}: eine DNS-Prüfung ist fehlgeschlagen",
+				"private": "Eine DNS-Prüfung einer Versanddomain ist fehlgeschlagen"
+			}
 		},
 		"useDesktopNotifications": {
 			"draftsReady": {
@@ -17610,6 +17905,17 @@
 			"nothingWaiting": "Nichts wartet mehr aufs Speichern.",
 			"allSaved": "Alle Änderungen gespeichert"
 		},
+		"appUpdated": {
+			"title": "Owlat wurde aktualisiert",
+			"body": "Lade neu, um die neue Version zu nutzen. Deine Entwürfe bleiben erhalten.",
+			"bodyVersion": "Lade neu, um Version {version} zu nutzen. Deine Entwürfe bleiben erhalten.",
+			"reload": "Neu laden",
+			"reloading": "Lädt neu…",
+			"whatsNew": "Was ist neu",
+			"opensInNewTab": "(öffnet in einem neuen Tab)",
+			"dismiss": "Hinweis ausblenden",
+			"blocked": "Einige Änderungen sind noch nicht gespeichert. Speichere oder beende sie und lade dann neu."
+		},
 		"format": {
 			"never": "Nie",
 			"invalidDate": "Ungültiges Datum",
@@ -17781,7 +18087,9 @@
 				"showOriginal": "Original herunterladen (.eml)",
 				"copyLink": "Link kopieren",
 				"linkCopied": "Link kopiert",
-				"linkCopyFailed": "Der Link konnte nicht kopiert werden"
+				"linkCopyFailed": "Der Link konnte nicht kopiert werden",
+				"pin": "Unterhaltung anheften",
+				"unpin": "Unterhaltung lösen"
 			},
 			"teamThread": {
 				"heading": "Diese Unterhaltung",
@@ -18382,7 +18690,16 @@
 			"pageTitleGeneric": "Fehler — Owlat",
 			"pageTitleNotFound": "Seite nicht gefunden — Owlat",
 			"serverError": "Auf unserer Seite ist etwas schiefgelaufen. Bitte versuche es später erneut.",
+			"toast": "Etwas ist schiefgelaufen. Lade die Seite neu und versuche es noch einmal.",
 			"unexpected": "Ein unerwarteter Fehler ist aufgetreten."
+		},
+		"paneError": {
+			"page": "Diese Seite konnte nicht angezeigt werden.",
+			"reader": "Diese Unterhaltung konnte nicht angezeigt werden.",
+			"messageBody": "Diese Nachricht konnte nicht angezeigt werden.",
+			"list": "Die Nachrichtenliste konnte nicht angezeigt werden.",
+			"composer": "Der Editor konnte nicht angezeigt werden.",
+			"detail": "Alles andere funktioniert weiter. Versuch es noch einmal oder öffne etwas anderes."
 		},
 		"preferences": {
 			"title": "Einstellungen",

@@ -10,7 +10,7 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const mailboxIdRef = computed(() => props.mailboxId);
+const mailboxIdRef = providePostboxListMailbox(computed(() => props.mailboxId));
 const folderRef = computed(() => props.folderRole);
 const folderIdRef = computed(() => props.folderId);
 // Custom folders drive the list-header name; the rest of the folder rail is
@@ -332,12 +332,12 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 							@select-density="(mode) => void setDensity(mode)"
 							@select-reading-pane="(pane) => void setReadingPane(pane)"
 						/>
-						<template v-if="folderRole === 'drafts'">
-							<div class="flex-1 overflow-auto">
-								<PostboxDraftList :mailbox-id="mailboxId" />
-							</div>
-						</template>
+						<div v-if="folderRole === 'drafts'" class="flex-1 overflow-auto">
+							<PostboxDraftList :mailbox-id="mailboxId" />
+						</div>
 						<template v-else>
+							<!-- Pinned conversations: the Inbox's, above whichever renderer. -->
+							<PostboxPinnedBand v-if="folderRole === 'inbox'" :mailbox-id="mailboxId" />
 							<!-- Triage filter chips — flat list only; the grouped renderers own
 						     their sections. One tap from "everything" to "what needs me". -->
 							<PostboxTriageFilterChips
@@ -366,75 +366,77 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 										:key="`${String(folderId ?? folderRole ?? 'all')}:${activeListRenderer}`"
 										class="h-full"
 									>
-										<!-- A failed read is not an empty folder (#721); cached rows win. -->
-										<UiQueryBoundary v-if="listError" :error="listError" @retry="retryList" />
-										<PostboxThreadCategoryList
-											v-else-if="categoriesEnabled"
-											ref="threadListRef"
-											:sections="categories.sections.value"
-											:collapsed="categories.collapsed.value"
-											:loading="categories.isLoading.value"
-											:folder-role="folderRole"
-											:active-message-id="activeMessageId"
-											:has-more="categories.hasMore.value"
-											@load-more="categories.loadMore"
-											@toggle="categories.toggle"
-											@recategorize="categories.recategorize"
-										/>
-										<PostboxThreadGroupList
-											v-else-if="conversationsEnabled"
-											ref="threadListRef"
-											:threads="conversations.threads.value"
-											:loading="conversations.isLoading.value"
-											:folder-role="folderRole"
-											:active-message-id="activeMessageId"
-											:has-more="conversations.hasMore.value"
-											@load-more="conversations.loadMore"
-										/>
-										<PostboxThreadBundleList
-											v-else-if="bundlesEnabled"
-											ref="threadListRef"
-											:entries="bundles.entries.value"
-											:expanded="bundles.expanded.value"
-											:loading="isLoading && !showingCached"
-											:folder-role="folderRole"
-											:active-message-id="activeMessageId"
-											:has-more="canLoadMore"
-											:busy="bundles.isBusy.value"
-											@load-more="loadMore"
-											@toggle="bundles.toggle"
-											@archive-bundle="(ids) => void bundles.archiveBundle(ids)"
-											@unsubscribe-bundle="
-												(senders, ids) => void bundles.unsubscribeBundle(senders, ids)
-											"
-										/>
-										<PostboxThreadSectionList
-											v-else-if="sectionsEnabled"
-											ref="threadListRef"
-											:sections="sections.sections.value"
-											:collapsed="sections.collapsed.value"
-											:loading="sections.isLoading.value"
-											:folder-role="folderRole"
-											:active-message-id="activeMessageId"
-											@load-more="sections.loadMore"
-											@toggle="sections.toggle"
-										/>
-										<PostboxThreadList
-											v-else
-											ref="threadListRef"
-											:mailbox-id="mailboxId"
-											:messages="listMessages"
-											:loading="isLoading && !showingCached"
-											:folder-role="folderRole"
-											:folder-id="folderId"
-											:active-message-id="activeMessageId"
-											:has-more="canLoadMore"
-											:loading-more="isLoadingMore"
-											:capped="listCapped"
-											:filter-active="filterHidesRows"
-											@load-more="loadMore"
-											@clear-filter="setTriageFilter('all')"
-										/>
+										<AppErrorBoundary surface="list">
+											<!-- A failed read is not an empty folder (#721); cached rows win. -->
+											<UiQueryBoundary v-if="listError" :error="listError" @retry="retryList" />
+											<PostboxThreadCategoryList
+												v-else-if="categoriesEnabled"
+												ref="threadListRef"
+												:sections="categories.sections.value"
+												:collapsed="categories.collapsed.value"
+												:loading="categories.isLoading.value"
+												:folder-role="folderRole"
+												:active-message-id="activeMessageId"
+												:has-more="categories.hasMore.value"
+												@load-more="categories.loadMore"
+												@toggle="categories.toggle"
+												@recategorize="categories.recategorize"
+											/>
+											<PostboxThreadGroupList
+												v-else-if="conversationsEnabled"
+												ref="threadListRef"
+												:threads="conversations.threads.value"
+												:loading="conversations.isLoading.value"
+												:folder-role="folderRole"
+												:active-message-id="activeMessageId"
+												:has-more="conversations.hasMore.value"
+												@load-more="conversations.loadMore"
+											/>
+											<PostboxThreadBundleList
+												v-else-if="bundlesEnabled"
+												ref="threadListRef"
+												:entries="bundles.entries.value"
+												:expanded="bundles.expanded.value"
+												:loading="isLoading && !showingCached"
+												:folder-role="folderRole"
+												:active-message-id="activeMessageId"
+												:has-more="canLoadMore"
+												:busy="bundles.isBusy.value"
+												@load-more="loadMore"
+												@toggle="bundles.toggle"
+												@archive-bundle="(ids) => void bundles.archiveBundle(ids)"
+												@unsubscribe-bundle="
+													(senders, ids) => void bundles.unsubscribeBundle(senders, ids)
+												"
+											/>
+											<PostboxThreadSectionList
+												v-else-if="sectionsEnabled"
+												ref="threadListRef"
+												:sections="sections.sections.value"
+												:collapsed="sections.collapsed.value"
+												:loading="sections.isLoading.value"
+												:folder-role="folderRole"
+												:active-message-id="activeMessageId"
+												@load-more="sections.loadMore"
+												@toggle="sections.toggle"
+											/>
+											<PostboxThreadList
+												v-else
+												ref="threadListRef"
+												:mailbox-id="mailboxId"
+												:messages="listMessages"
+												:loading="isLoading && !showingCached"
+												:folder-role="folderRole"
+												:folder-id="folderId"
+												:active-message-id="activeMessageId"
+												:has-more="canLoadMore"
+												:loading-more="isLoadingMore"
+												:capped="listCapped"
+												:filter-active="filterHidesRows"
+												@load-more="loadMore"
+												@clear-filter="setTriageFilter('all')"
+											/>
+										</AppErrorBoundary>
 									</div>
 								</Transition>
 							</div>
@@ -456,40 +458,21 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 					<!-- Pane 3: reader — below lg it replaces the list rather than sitting
 				     beside it, so the empty "Select a message" pane never shows there.
 				     With the reading pane off it only exists once a message is open. -->
-					<section
+					<PostboxReaderPane
 						class="pbx-pane-reader @container flex-1 min-w-0 min-h-0 overflow-auto bg-bg-base"
 						:class="readerPaneVisibility"
-					>
-						<!-- Drill-in back (mobile; and in Zen, with previous/next). -->
-						<PostboxReaderBackBar
-							v-if="activeMessageId"
-							:folder-name="currentFolderName"
-							:folder-path="String(folderId ?? folderRole)"
-							:active-message-id="activeMessageId"
-							:ordered-ids="stepIds"
-							:zen="zen.isZen.value"
-							@back="backToList"
-						/>
-
-						<!-- Keyed, enter-only swap (postbox-motion.css): the next thread
-						     mounts in the same frame the previous one goes. -->
-						<PostboxThreadReader
-							v-if="activeMessage"
-							:key="activeMessageId ?? undefined"
-							class="pbx-reader-swap"
-							:message="activeMessage"
-							:advance-ids="advanceIds"
-							:folder-role="folderId ? String(folderId) : folderRole"
-						/>
-						<PostboxReaderPlaceholder
-							v-else
-							:error="activeMessageId ? activeRead.error.value : null"
-							:not-found="!!activeMessageId && activeRead.notFound.value"
-							:folder-name="currentFolderName"
-							@retry="activeRead.refetch"
-							@back="backToList"
-						/>
-					</section>
+						:active-message-id="activeMessageId"
+						:message="activeMessage"
+						:advance-ids="advanceIds"
+						:step-ids="stepIds"
+						:folder-path="String(folderId ?? folderRole)"
+						:folder-name="currentFolderName"
+						:zen="zen.isZen.value"
+						:error="activeRead.error.value"
+						:not-found="activeRead.notFound.value"
+						@retry="activeRead.refetch"
+						@back="backToList"
+					/>
 				</div>
 			</div>
 		</Transition>

@@ -88,6 +88,25 @@ npx vitest --changed              # only tests affected by uncommitted changes
 npx vitest related path/to/file.ts  # only tests that import the given file
 ```
 
+### Real-browser component tests
+
+The web unit suite defaults to happy-dom: no layout, no native focus traversal,
+no ResizeObserver that fires. Behaviour that depends on those (a virtual list's
+window under real scrolling, a modal's Tab trap, which layer an Escape press
+reaches, a caret-anchored picker's placement) is tested in Chrome instead, by
+`apps/web/app/__tests__/browser/*.browser.test.ts`:
+
+```bash
+bun run --cwd apps/web test:browser
+```
+
+It launches the locally installed Google Chrome (`npx playwright install chrome`
+if there is none). Keep the project small: every file costs CI time in a real
+browser, and whatever a fabricated DOM proves just as well belongs in the unit
+suite. Drive the page with `userEvent` from `vitest/browser` (real key presses
+and clicks), and wait for the browser's own events (`app/__tests__/browser/events.ts`),
+never for a timer.
+
 ## Backend conventions
 
 The Convex backend (`apps/api/convex/`) has its own file-layout, naming, and
@@ -102,6 +121,11 @@ of `bun run lint` and will fail CI, including:
 - `lint:session-threading` — handlers on the org-scoped builders must use the
   session their auth floor already resolved instead of re-resolving it
   (frozen-baseline ratchet, `apps/api/scripts/check-session-threading.sh`).
+- `lint:ast-gate-parity` (root, in `ci:lint`) — the AST rules in
+  `packages/oxlint-plugin-owlat` that replace the crypto, env, log-PII, error,
+  raw-builder, session-threading and feature-floor scripts run beside them;
+  this diffs the two finding sets per rule and fails on any difference not
+  listed with its reason in `scripts/ast-gate-parity.ts`.
 - `lint:feature-floors` — handlers in a feature-gated family use its
   `featureGated` builder instead of an inline `assertFeatureEnabled`
   (ratchet with a justified-sites baseline,
@@ -315,6 +339,9 @@ manual dispatch run the full set as a safety valve.
     per-path floor; the merge validates every report's commit, run, attempt
     and shard identity, then enforces all original thresholds. Successful
     reports from earlier attempts of the same run survive partial reruns.
+  - **Test web (browser).** The real-browser component tests in Chrome
+    (`bun run --cwd apps/web test:browser`), selected whenever the web suite
+    is, outside the coverage shards.
   - **Ramp gates (reference_arm | standalone).** The ramp-controller gate
     suite twice: once equipped, once as a deployment with zero third-party
     accounts. Never affected-filtered. Locally: `bun run test:ramp` runs both

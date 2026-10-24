@@ -20,6 +20,7 @@
  * Explicitly imported by consumers (never via the path-prefixed auto-import).
  */
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 withDefaults(
 	defineProps<{
@@ -77,6 +78,7 @@ function onKeydown(event: KeyboardEvent) {
 		emit('exit');
 	}
 }
+// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape leaves the flow
 onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 
@@ -177,7 +179,7 @@ const MAX_DOTS = 9;
 					<span
 						v-for="i in total"
 						:key="i"
-						class="h-1.5 rounded-full transition-all duration-(--motion-moderate)"
+						class="h-1.5 rounded-full transition-[width,background-color] duration-(--motion-moderate)"
 						:class="
 							(complete ? true : i < position)
 								? 'w-5 bg-brand'
@@ -196,10 +198,8 @@ const MAX_DOTS = 9;
 					:aria-valuemax="total"
 				>
 					<div
-						class="h-full bg-brand rounded-full transition-all duration-(--motion-slow)"
-						:style="{
-							width: `${Math.round(((complete ? total : position - 1) / total) * 100)}%`,
-						}"
+						class="ui-meter-fill h-full bg-brand rounded-full transition-transform duration-(--motion-slow)"
+						:style="meterFillStyle(((complete ? total : position - 1) / total) * 100)"
 					/>
 				</div>
 			</div>

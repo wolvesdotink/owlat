@@ -4,6 +4,7 @@ import { AlertTriangle } from '@lucide/vue';
 import { GMAIL_CLIP_BYTES } from '@owlat/shared/emailLimits';
 import type { PreviewEmailAnalysis } from '../../types';
 import AnalysisEmpty from './AnalysisEmpty.vue';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();
@@ -93,7 +94,7 @@ function formatBytes(bytes: number): string {
 				<div
 					class="ep-size-bar-fill"
 					:class="{ 'ep-size-bar-danger': emailAnalysis.exceedsGmailClip }"
-					:style="{ width: `${sizePercentage}%` }"
+					:style="meterFillStyle(sizePercentage)"
 				></div>
 			</div>
 			<div v-if="emailAnalysis.exceedsGmailClip" class="ep-size-warning">
@@ -122,7 +123,7 @@ function formatBytes(bytes: number): string {
 				<div class="ep-size-breakdown-track">
 					<div
 						class="ep-size-breakdown-fill"
-						:style="{ width: `${bar.pct}%`, background: bar.color }"
+						:style="[meterFillStyle(bar.pct), { background: bar.color }]"
 					></div>
 				</div>
 			</div>
@@ -188,13 +189,23 @@ function formatBytes(bytes: number): string {
 	height: 6px;
 	background: var(--ep-bg-overlay);
 	border-radius: 3px;
+	overflow: hidden;
+}
+
+/* Full-width fills slid in from the left (the `.ui-meter-fill` recipe): a new
+ * analysis moves composited layers instead of re-laying-out the panel. */
+.ep-size-bar-fill,
+.ep-size-breakdown-fill {
+	height: 100%;
+	width: 100%;
+	transform: translateX(calc(var(--ui-meter-value, 0) * 1% - 100%));
+	transition: transform var(--motion-moderate, 160ms)
+		var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-size-bar-fill {
-	height: 100%;
 	border-radius: 3px;
 	background: var(--ep-success);
-	transition: width var(--motion-moderate, 160ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-size-bar-danger {
@@ -264,12 +275,11 @@ function formatBytes(bytes: number): string {
 	height: 3px;
 	background: var(--ep-bg-overlay);
 	border-radius: 2px;
+	overflow: hidden;
 }
 
 .ep-size-breakdown-fill {
-	height: 100%;
 	border-radius: 2px;
-	transition: width var(--motion-moderate, 160ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-size-stats {

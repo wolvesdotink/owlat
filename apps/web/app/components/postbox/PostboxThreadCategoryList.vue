@@ -9,6 +9,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import { RECATEGORIZE_OPTIONS } from '~/composables/postbox/usePostboxThreadCategories';
 import type { MailCategory } from '~/utils/mailCategory';
+import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import type { PostboxConversationThread } from './PostboxConversationRow.vue';
 import type { PostboxThreadListSection } from './PostboxSectionedThreadList.vue';
 
@@ -30,6 +31,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+// A row drags its conversation onto the Inbox's pinned band.
+const pinDrag = usePostboxPinRowDrag();
 
 function threadTo(thread: { latestMessageId?: string }) {
 	return thread.latestMessageId
@@ -100,7 +103,9 @@ function pickCategory(label: MailCategory) {
 	>
 		<template #row="{ item: thread, focused }">
 			<PostboxConversationRow
+				v-bind="pinDrag.source(thread.latestMessageId, thread.latestSubject)"
 				:thread="thread"
+				:folder-role="folderRole"
 				:dom-id="rowDomId(thread)"
 				:to="threadTo(thread)"
 				:selected="focused"

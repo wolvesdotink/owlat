@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 /**
  * Sealed mail settings (flag `sealedMail`). The org-level sealing policy:
@@ -37,14 +38,17 @@ const {
 
 type SealPolicy = 'auto' | 'ask' | 'off';
 
+/** What an unset policy resolves to. */
+const SEAL_POLICY_DEFAULT: SealPolicy = 'auto';
+
 // Local mirror so the choice feels instant; the query re-emits the authoritative
 // value on save. Unset ⇒ `auto` (the resolution-time default).
-const policy = ref<SealPolicy>('auto');
+const policy = ref<SealPolicy>(SEAL_POLICY_DEFAULT);
 watch(
 	settings,
 	(value) => {
 		const stored = value?.sealPolicy;
-		policy.value = stored === 'ask' || stored === 'off' ? stored : 'auto';
+		policy.value = stored === 'ask' || stored === 'off' ? stored : SEAL_POLICY_DEFAULT;
 	},
 	{ immediate: true }
 );
@@ -181,6 +185,16 @@ async function runReSeal() {
 					<legend class="sr-only">
 						{{ t('dashboard.admin.instance.sealedMail.policyLegend') }}
 					</legend>
+					<!-- Only once the policy is read (the boundary above), so the
+					     fallback is never reported as a choice. -->
+					<div v-if="policy !== SEAL_POLICY_DEFAULT" class="flex justify-end">
+						<SettingsResetToDefault
+							changed
+							:label="t('dashboard.admin.instance.sealedMail.policyLegend')"
+							:disabled="saving"
+							@reset="choose(SEAL_POLICY_DEFAULT)"
+						/>
+					</div>
 					<label
 						v-for="opt in OPTIONS"
 						:key="opt.value"
@@ -275,7 +289,7 @@ async function runReSeal() {
 						spellcheck="false"
 						:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.importKeyPlaceholder')"
 						data-testid="recovery-kit.result-import-key"
-						class="input input-sm font-mono text-xs"
+						class="input input-sm font-mono"
 					/>
 					<div class="flex justify-end">
 						<UiButton

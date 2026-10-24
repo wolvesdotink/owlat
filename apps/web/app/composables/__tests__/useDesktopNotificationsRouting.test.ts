@@ -89,10 +89,11 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 async function mountDashboard(): Promise<VueWrapper> {
 	const { useDesktopNotifications } = await import('../useDesktopNotifications');
+	const { useUnreadBadge } = await import('../useUnreadBadge');
 	return mount(
 		defineComponent({
 			setup() {
-				useDesktopNotifications();
+				useDesktopNotifications(useUnreadBadge());
 				return () => h('div');
 			},
 		})

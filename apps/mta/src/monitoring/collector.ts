@@ -19,6 +19,13 @@ const METRICS_TTL = 30 * 86400; // 30 days
 // Prometheus registry
 export const registry = new Registry();
 
+/**
+ * How many distinct campaign ids get their own `campaign` label value on
+ * `mta_fbl_complaints_by_campaign_total` before later campaigns share one.
+ */
+export const CAMPAIGN_LABEL_LIMIT = 100;
+export const CAMPAIGN_OVERFLOW_LABEL = 'other';
+
 // Prometheus counters
 export const emailsSentTotal = new Counter({
 	name: 'mta_emails_sent_total',
@@ -74,13 +81,51 @@ export const fblComplaintsTotal = new Counter({
  * per-ORG complaint rate, so a campaign whose ARF carried a `Feedback-ID`
  * campaignId (but whose org was not extractable) was previously invisible. This
  * counter gives per-campaign granularity alongside the per-isp view.
+ *
+ * Written only through {@link recordFblComplaintByCampaign}, which bounds both
+ * labels: every campaign id is a new series that lives until the process
+ * restarts, so an MTA that runs for months would otherwise grow one per
+ * campaign ever complained about.
  */
-export const fblComplaintsByCampaignTotal = new Counter({
+const fblComplaintsByCampaignTotal = new Counter({
 	name: 'mta_fbl_complaints_by_campaign_total',
-	help: 'FBL/ARF complaints attributed to a campaign',
+	help: `FBL/ARF complaints attributed to a campaign (the first ${CAMPAIGN_LABEL_LIMIT} campaigns since start by id, later ones as "${CAMPAIGN_OVERFLOW_LABEL}")`,
 	labelNames: ['campaign', 'isp'] as const,
 	registers: [registry],
 });
+
+/**
+ * The `isp` values the ARF classifier can produce (`FblSourceIspToken` in
+ * bounce/fblProcessor.ts, plus `unknown`). Anything else is counted as
+ * `unknown` rather than minted as a new series.
+ */
+const FBL_COMPLAINT_ISP_LABELS: ReadonlySet<string> = new Set([
+	'microsoft',
+	'yahoo',
+	'aol',
+	'comcast',
+	'google',
+	'mailru',
+	'unknown',
+]);
+
+const campaignLabels = new Set<string>();
+
+/**
+ * Count one campaign-attributed complaint. Only this Prometheus label is
+ * bucketed: the campaign's complaint-rate window and its alert keep the real id
+ * (`campaign_complaint_record`). The sum over all series still equals the
+ * number of attributed complaints.
+ */
+export function recordFblComplaintByCampaign(campaign: string, isp: string): void {
+	if (!campaignLabels.has(campaign) && campaignLabels.size < CAMPAIGN_LABEL_LIMIT) {
+		campaignLabels.add(campaign);
+	}
+	fblComplaintsByCampaignTotal.inc({
+		campaign: campaignLabels.has(campaign) ? campaign : CAMPAIGN_OVERFLOW_LABEL,
+		isp: FBL_COMPLAINT_ISP_LABELS.has(isp) ? isp : 'unknown',
+	});
+}
 
 /**
  * RFC 9477 CFBL reports that produced a TRUSTED attribution, by the signed

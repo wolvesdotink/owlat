@@ -25,6 +25,10 @@
 				"scripts/read-feature-flags.mjs",
 				// Spawned by the shell selector; knip cannot follow that edge.
 				"scripts/ci/select.ts",
+				// Run by .github/workflows/kill-tests.yml, and by bun inside the
+				// kill-test stack's world container (scripts/kill-tests/compose.yml).
+				"scripts/kill-tests/run.ts",
+				"scripts/kill-tests/world/main.ts",
 			],
 			"includeEntryExports": false,
 			// @owlat/plugin-kit, @owlat/provider-kit and @owlat/sdk-js are tsup
@@ -293,6 +297,33 @@
 				"src/webhookEvent.ts",
 				"src/ipReputation.ts",
 				"src/wireFixtures.ts",
+				"src/**/__tests__/**/*.ts",
+			],
+		},
+		// The Convex<->worker wire contract (IMAP, mail-sync). Its public surface is
+		// the barrel plus its subpaths, and `wireFixtures/` — the frozen answers the
+		// backend and both workers' suites pin against, which is why it is an
+		// exported subpath rather than a `__tests__` folder no app could import.
+		"packages/worker-protocol": {
+			"entry": [
+				"src/index.ts",
+				"src/validatorMatch.ts",
+				"src/fields.ts",
+				"src/imap/index.ts",
+				"src/mailSync/index.ts",
+				"src/client.ts",
+				"src/wireFixtures/index.ts",
+				"src/**/__tests__/**/*.ts",
+			],
+		},
+		// The public REST API contract: the plain types (its root export, which the
+		// JS SDK inlines), the schemas and operation table the server validates
+		// with, and the generator that writes openapi.json.
+		"packages/public-contract": {
+			"entry": [
+				"src/types.ts",
+				"src/schemas.ts",
+				"scripts/openapi.ts",
 				"src/**/__tests__/**/*.ts",
 			],
 		},

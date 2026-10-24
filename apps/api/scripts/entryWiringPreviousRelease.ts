@@ -73,4 +73,10 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'the previous Files page and Answer file picker, in tabs opened before the deploy',
 	'semanticFiles.ts#listByContact':
 		'the previous contact Files tab and Team Answer attach menu, in tabs opened before the deploy',
+	'campaigns/sendQueries.ts#storeContentScanResult': 'old campaign send preparations mid-run',
+	'campaigns/archiveQueries.ts#setArchiveSnapshot': 'old campaign send preparations mid-run',
+	'emailTemplates/versions.ts#captureForSend': 'old campaign send preparations mid-run',
+	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
+	'mail/imap/serverRegistry.ts#getForAdmin':
+		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',
 };
