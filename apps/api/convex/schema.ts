@@ -30,6 +30,7 @@ import { inboxTables } from './schema/inbox';
 import { inboxCollaborationTables } from './schema/inboxCollaboration';
 import { inboxFollowUpTables } from './schema/inboxFollowUps';
 import { inboxSlaTables } from './schema/inboxSla';
+import { inboxAutoCloseTables } from './schema/inboxAutoClose';
 import { autonomyTables } from './schema/autonomy';
 import { askEagernessTables } from './schema/askEagerness';
 import { knowledgeTables } from './schema/knowledge';
@@ -96,6 +97,7 @@ export default defineSchema({
 	...inboxCollaborationTables,
 	...inboxFollowUpTables,
 	...inboxSlaTables,
+	...inboxAutoCloseTables,
 	...autonomyTables,
 	...askEagernessTables,
 	...knowledgeTables,

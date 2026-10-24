@@ -211,6 +211,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	handlingRules: makeSweepStep('handlingRules'),
 	askEagernessSettings: makeSweepStep('askEagernessSettings'),
 	inboxSlaPolicies: makeSweepStep('inboxSlaPolicies'),
+	inboxAutoClosePolicies: makeSweepStep('inboxAutoClosePolicies'),
 	clarificationAskLog: makeSweepStep('clarificationAskLog'),
 	clarificationMemory: makeSweepStep('clarificationMemory'),
 	agentShadowDecisions: makeSweepStep('agentShadowDecisions'),

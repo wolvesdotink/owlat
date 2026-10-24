@@ -207,6 +207,7 @@ export const TENANT_TABLES = [
 	'autonomySuggestions',
 	'askEagernessSettings',
 	'inboxSlaPolicies',
+	'inboxAutoClosePolicies',
 	'clarificationAskLog',
 	'clarificationMemory',
 	'agentShadowDecisions',

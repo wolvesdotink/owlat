@@ -73,10 +73,14 @@ export const unsnoozeThread = adminMutation({
 		if (thread.snoozedUntil === undefined) {
 			return { success: true };
 		}
+		const now = Date.now();
 		await ctx.db.patch(args.threadId, {
 			snoozedUntil: undefined,
 			snoozeReturnedAt: undefined,
-			...(await snoozeClockPatch(ctx, thread, 'wake', Date.now())),
+			// Waking it by hand restarts the auto-close quiet period, as the wake
+			// cron's `snoozeReturnedAt` does (inbox/autoCloseRules.ts).
+			autoCloseRestartedAt: now,
+			...(await snoozeClockPatch(ctx, thread, 'wake', now)),
 		});
 		await recordAuditLog(ctx, {
 			userId,
