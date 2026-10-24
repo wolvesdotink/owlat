@@ -192,6 +192,34 @@ describe('onWebviewFileDrop', () => {
 		expect(onDropA).not.toHaveBeenCalled();
 	});
 
+	it('reports how many paths a drag enters with, and where a drop lands before reading it', async () => {
+		const { onWebviewFileDrop } = await freshDialog();
+		const ref = captureHandler();
+		let finishRead: (bytes: ArrayBuffer) => void = () => {};
+		invokeMock.mockImplementation(
+			() => new Promise<ArrayBuffer>((resolve) => (finishRead = resolve))
+		);
+
+		const onEnter = vi.fn();
+		const onOver = vi.fn();
+		const onDropStart = vi.fn();
+		const onDrop = vi.fn();
+		await onWebviewFileDrop({ onEnter, onOver, onDropStart, onDrop });
+
+		ref.handler?.({
+			payload: { type: 'enter', paths: ['/x/a.pdf', '/x/b.csv'], position: { x: 4, y: 5 } },
+		});
+		expect(onEnter).toHaveBeenCalledWith(2, { x: 4, y: 5 });
+		expect(onOver).toHaveBeenCalledWith({ x: 4, y: 5 });
+
+		ref.handler?.({ payload: { type: 'drop', paths: ['/x/a.pdf'], position: { x: 7, y: 8 } } });
+		// The landing spot is reported at once; the files only once read.
+		expect(onDropStart).toHaveBeenCalledWith({ x: 7, y: 8 });
+		expect(onDrop).not.toHaveBeenCalled();
+		finishRead(new Uint8Array([1]).buffer);
+		await vi.waitFor(() => expect(onDrop).toHaveBeenCalledTimes(1));
+	});
+
 	it('still fires onDrop (clearing drag state) when a dropped path is unreadable', async () => {
 		const { onWebviewFileDrop } = await freshDialog();
 		const ref = captureHandler();

@@ -7016,6 +7016,13 @@
 			}
 		},
 		"shell": {
+			"replyDrop": {
+				"hint": "Drop to reply to {name} with {count} file | Drop to reply to {name} with {count} files",
+				"hintNoCount": "Drop to reply to {name} with these files",
+				"hintNoName": "Drop to reply with {count} file | Drop to reply with {count} files",
+				"hintNoNameNoCount": "Drop to reply with these files",
+				"refused": "This reply goes out on another channel, so it can't carry files. The dropped files were not attached."
+			},
 			"status": {
 				"draftReady": "Draft ready",
 				"needsYou": "Needs you",

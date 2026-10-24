@@ -7016,6 +7016,13 @@
 			}
 		},
 		"shell": {
+			"replyDrop": {
+				"hint": "Ablegen, um {name} mit {count} Datei zu antworten | Ablegen, um {name} mit {count} Dateien zu antworten",
+				"hintNoCount": "Ablegen, um {name} mit diesen Dateien zu antworten",
+				"hintNoName": "Ablegen, um mit {count} Datei zu antworten | Ablegen, um mit {count} Dateien zu antworten",
+				"hintNoNameNoCount": "Ablegen, um mit diesen Dateien zu antworten",
+				"refused": "Diese Antwort geht über einen anderen Kanal raus und kann keine Dateien mitnehmen. Die abgelegten Dateien wurden nicht angehängt."
+			},
 			"status": {
 				"draftReady": "Entwurf bereit",
 				"needsYou": "Braucht dich",

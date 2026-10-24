@@ -112,6 +112,16 @@ export async function pickFiles(options: PickFilesOptions = {}): Promise<File[]>
 export interface WebviewFileDropHandlers {
 	/** Fired while files are dragged over the window (enter + move). */
 	onOver?: (position: { x: number; y: number }) => void;
+	/**
+	 * Fired once as a drag enters the window, with how many paths it carries
+	 * (`onOver` fires too). Only the enter event names the paths.
+	 */
+	onEnter?: (count: number, position: { x: number; y: number }) => void;
+	/**
+	 * Fired as the drop lands, before its files are read, so a subscriber can
+	 * settle where the drop went while the page is still the one it landed on.
+	 */
+	onDropStart?: (position: { x: number; y: number }) => void;
 	/** Fired when the drag leaves the window or is cancelled. */
 	onLeave?: () => void;
 	/** Fired on drop with the dropped files read into `File` objects. */
@@ -148,11 +158,16 @@ function ensureDragDropListener(): Promise<() => void> {
 		dragDropListener = getCurrentWebview().onDragDropEvent((event) => {
 			const payload = event.payload;
 			if (payload.type === 'enter' || payload.type === 'over') {
+				if (payload.type === 'enter') {
+					const count = payload.paths.length;
+					fanOutToSubscribers((h) => h.onEnter?.(count, payload.position));
+				}
 				fanOutToSubscribers((h) => h.onOver?.(payload.position));
 			} else if (payload.type === 'leave') {
 				fanOutToSubscribers((h) => h.onLeave?.());
 			} else if (payload.type === 'drop') {
 				const position = payload.position;
+				fanOutToSubscribers((h) => h.onDropStart?.(position));
 				// Read each dropped path ONCE, then hand the same `File[]` to every
 				// subscriber. `readFilesFromPaths` never rejects (it skips unreadable
 				// entries), so `onDrop` always fires and every zone can clear its drag
