@@ -7,6 +7,8 @@ interface Props {
 	message: ChatMessageRow;
 	isOwnMessage: boolean;
 	currentUserId: string;
+	/** The composer's ↑ asked to edit this message: open the editor and focus it. */
+	editRequested?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -44,14 +46,26 @@ const isMentioned = computed(() => (props.message.mentions ?? []).includes(props
 // Render the text with @-mentions visually emphasized.
 const segments = computed(() => splitMentionSegments(props.message.text));
 
+const editTextareaRef = ref<HTMLTextAreaElement | null>(null);
+// Where focus goes back to once an editor opened from the keyboard closes:
+// the composer the ↑ came from, so the next message can be typed at once.
+let returnFocusTo: HTMLElement | null = null;
+
 const startEdit = () => {
 	if (props.message.deletedAt) return;
 	editText.value = props.message.text;
 	isEditing.value = true;
 };
-const cancelEdit = () => {
+const closeEdit = () => {
+	const editorHadFocus =
+		!!editTextareaRef.value && editTextareaRef.value === document.activeElement;
+	const target = returnFocusTo;
+	returnFocusTo = null;
 	isEditing.value = false;
+	// Only when focus was still in the editor: a click elsewhere keeps its focus.
+	if (editorHadFocus && target?.isConnected) void nextTick(() => target.focus());
 };
+const cancelEdit = closeEdit;
 const saveEdit = () => {
 	const trimmed = editText.value.trim();
 	if (!trimmed || trimmed === props.message.text) {
@@ -59,8 +73,30 @@ const saveEdit = () => {
 		return;
 	}
 	emit('edit', props.message._id, trimmed);
-	isEditing.value = false;
+	closeEdit();
 };
+
+const openEditorFromKeyboard = () => {
+	if (props.message.deletedAt) return;
+	if (!isEditing.value) startEdit();
+	const active = document.activeElement;
+	if (active instanceof HTMLElement && active !== document.body) returnFocusTo = active;
+	void nextTick(() => {
+		const field = editTextareaRef.value;
+		if (!field) return;
+		field.focus();
+		field.setSelectionRange(field.value.length, field.value.length);
+		field.scrollIntoView?.({ block: 'nearest' });
+	});
+};
+watch(
+	() => props.editRequested,
+	(requested) => {
+		if (requested) openEditorFromKeyboard();
+	},
+	{ immediate: true }
+);
+
 const doDelete = () => {
 	emit('delete', props.message._id);
 };
@@ -115,6 +151,7 @@ const aiTyping = computed(
 			<!-- Edit mode -->
 			<div v-if="isEditing" class="mt-1">
 				<textarea
+					ref="editTextareaRef"
 					v-model="editText"
 					rows="2"
 					class="w-full input resize-none"

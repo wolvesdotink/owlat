@@ -39,6 +39,7 @@ export type ShortcutScope =
 	| 'peek'
 	| 'review'
 	| 'composer'
+	| 'chatComposer'
 	| 'workspace'
 	| 'answer'
 	| 'answerQueue'

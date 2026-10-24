@@ -107,7 +107,8 @@ beforeEach(() => {
 	vi.stubGlobal('useConvexQuery', (query: unknown) => {
 		const name = fn(query);
 		if (name === GET_ROOM) return { data: roomData, isLoading: ref(false) };
-		if (name === LIST_MESSAGES) return { data: messagesData, isLoading: ref(false) };
+		if (name === LIST_MESSAGES)
+			return { data: messagesData, isLoading: ref(false), error: ref(null) };
 		return { data: ref(undefined), isLoading: ref(false) };
 	});
 	vi.stubGlobal('useBackendOperation', (operation: unknown) => {
@@ -300,5 +301,57 @@ describe('useChatRoom.sendMessage (#945)', () => {
 		roomId.value = undefined;
 		await expect(chat.sendMessage('hello')).resolves.toEqual({ ok: false });
 		expect(sendCalls).toHaveLength(0);
+	});
+});
+
+describe('useChatRoom.recallTarget (↑ in the empty composer)', () => {
+	const ME = 'user_me';
+	const row = (id: string, roomId: string, authorId: string, extra: object = {}) => ({
+		_id: id,
+		roomId,
+		authorId,
+		createdAt: (clock += 1000),
+		text: id,
+		...extra,
+	});
+	const show = (rows: ReturnType<typeof row>[], hasMore = false) => {
+		messagesData.value = { messages: rows as never, hasMore };
+	};
+
+	it('opens your newest editable message in the room', async () => {
+		const { chat } = await open();
+		show([
+			row('a1', ROOM_A, ME),
+			row('a2', ROOM_A, ME, { deletedAt: clock }),
+			row('a3', ROOM_A, 'user_ines'),
+		]);
+		expect(chat.recallTarget(ME)).toEqual({ kind: 'edit', messageId: 'a1' });
+	});
+
+	it("never opens the previous room's message after a switch", async () => {
+		const { chat, roomId } = await open();
+		show([row('a1', ROOM_A, ME)]);
+		roomId.value = ROOM_B;
+		await nextTick();
+		// The list still holds room A until room B answers.
+		expect(chat.recallTarget(ME)).toEqual({ kind: 'none' });
+		show([row('b1', ROOM_B, ME)]);
+		expect(chat.recallTarget(ME)).toEqual({ kind: 'edit', messageId: 'b1' });
+	});
+
+	it('says older history is unknown, and stops offering more at the cap', async () => {
+		const { chat } = await open();
+		show([row('a1', ROOM_A, 'user_ines')], true);
+		expect(chat.recallTarget(ME)).toEqual({ kind: 'notLoaded', canLoadEarlier: true });
+		// 100 → 500 in pages of 100: "Load earlier messages" is gone after four.
+		for (let i = 0; i < 4; i++) chat.loadMoreMessages();
+		expect(chat.atMaxMessages.value).toBe(true);
+		expect(chat.recallTarget(ME)).toEqual({ kind: 'notLoaded', canLoadEarlier: false });
+	});
+
+	it('answers nothing before the list has loaded', async () => {
+		const { chat } = await open();
+		messagesData.value = undefined;
+		expect(chat.recallTarget(ME)).toEqual({ kind: 'none' });
 	});
 });
