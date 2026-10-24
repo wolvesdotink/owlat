@@ -5,9 +5,10 @@
  * Rows are conversations, so what is pinned is that the call carries THREAD
  * ids (never a stand-in message id), that team-inbox rows are never archived,
  * that a sweep does nothing before release and archives exactly the range
- * once, that one Undo covers it all, that a conversation the server left
- * unfinished goes round again, and that a row comes back whenever its
- * conversation is still in the Inbox once the calls settle.
+ * once, that one Undo covers it all and puts the mail back in bounded moves,
+ * that a conversation the server left unfinished leads the next call, and
+ * that a row comes back whenever its conversation is still in the Inbox once
+ * the calls settle.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { effectScope, nextTick, ref, type EffectScope } from 'vue';
@@ -26,12 +27,13 @@ vi.mock('../postbox/usePostboxTriageUndo', () => ({
 }));
 
 const ARCHIVE = 'dashboard.inboxes.archiveOperation';
+const UNDO_MOVE = 'dashboard.inboxes.archiveUndoOperation';
 const ROW_PX = 50;
 
 type Row = { key: string; archive: { threadId: string } | null };
-type Request = { threadId: string; from?: { receivedAt: number; creationTime: number } };
+type Request = { threadId: string; cursor?: string };
 
-let runs: Array<{ label: string; args: { threads?: Request[] } }>;
+let runs: Array<{ label: string; args: { threads?: Request[]; messageIds?: string[] } }>;
 let outcomes: Array<{ ok: boolean; result?: unknown }>;
 let scope: EffectScope;
 let list: HTMLElement;
@@ -46,7 +48,7 @@ beforeEach(() => {
 			params?.count === undefined ? key : `${key}:${params.count}`,
 	}));
 	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: { label: () => string }) => ({
-		run: vi.fn(async (args: { threads?: Request[] }) => {
+		run: vi.fn(async (args: { threads?: Request[]; messageIds?: string[] }) => {
 			runs.push({ label: opts.label(), args });
 			return outcomes.shift() ?? movedFor((args.threads ?? []).map((thread) => thread.threadId));
 		}),
@@ -63,7 +65,7 @@ type ThreadOutcome = {
 	threadId: string;
 	moved: number;
 	isDone: boolean;
-	from: { receivedAt: number; creationTime: number } | null;
+	cursor: string | null;
 	hasLeftInbox: boolean;
 };
 
@@ -72,7 +74,7 @@ function callResult(threads: Array<Partial<ThreadOutcome> & { threadId: string }
 	const outcomes = threads.map((thread) => ({
 		moved: 1,
 		isDone: true,
-		from: null,
+		cursor: null,
 		hasLeftInbox: true,
 		...thread,
 	}));
@@ -244,9 +246,9 @@ describe('useInboxesThreadArchive', () => {
 
 	it('calls again for a conversation the server left unfinished, from where it stopped', async () => {
 		const api = await mount([mailRow('t1'), mailRow('t2')]);
-		const from = { receivedAt: 5, creationTime: 6 };
+		const cursor = 'page-2';
 		outcomes = [
-			callResult([{ threadId: 't1', moved: 3, isDone: false, from, hasLeftInbox: false }]),
+			callResult([{ threadId: 't1', moved: 3, isDone: false, cursor, hasLeftInbox: false }]),
 			callResult([{ threadId: 't1', moved: 2 }]),
 		];
 
@@ -254,7 +256,7 @@ describe('useInboxesThreadArchive', () => {
 
 		expect(runs.map((r) => r.args.threads)).toEqual([
 			[{ threadId: 't1' }],
-			[{ threadId: 't1', from }],
+			[{ threadId: 't1', cursor }],
 		]);
 		expect(api.visible.value.map((r) => r.key)).toEqual(['mail:mbx:t2']);
 		expect(registerMoveBack).toHaveBeenCalledTimes(1);
@@ -264,15 +266,15 @@ describe('useInboxesThreadArchive', () => {
 
 	it('resumes every unfinished conversation of a sweep under one Undo', async () => {
 		const api = await mount([mailRow('t1'), mailRow('t2'), mailRow('t3')]);
-		const from = { receivedAt: 5, creationTime: 6 };
+		const cursor = 'page-2';
 		outcomes = [
 			callResult([
-				{ threadId: 't1', moved: 2 },
-				{ threadId: 't2', moved: 4, isDone: false, from, hasLeftInbox: false },
-				{ threadId: 't3', moved: 0, isDone: false, from: null, hasLeftInbox: false },
+				{ threadId: 't1', moved: 2, isDone: false, cursor, hasLeftInbox: false },
+				{ threadId: 't2', moved: 4 },
+				{ threadId: 't3', moved: 0, isDone: false, cursor: null, hasLeftInbox: false },
 			]),
 			callResult([
-				{ threadId: 't2', moved: 1 },
+				{ threadId: 't1', moved: 1 },
 				{ threadId: 't3', moved: 1 },
 			]),
 		];
@@ -283,7 +285,7 @@ describe('useInboxesThreadArchive', () => {
 
 		expect(runs.map((r) => r.args.threads)).toEqual([
 			[{ threadId: 't1' }, { threadId: 't2' }, { threadId: 't3' }],
-			[{ threadId: 't2', from }, { threadId: 't3' }],
+			[{ threadId: 't1', cursor }, { threadId: 't3' }],
 		]);
 		expect(registerMoveBack).toHaveBeenCalledTimes(1);
 		expect(registerMoveBack.mock.calls[0]![0].moved).toHaveLength(8);
@@ -337,5 +339,50 @@ describe('useInboxesThreadArchive', () => {
 		expect(api.visible.value).toHaveLength(100);
 		expect(api.visible.value.some((r) => r.key === 'mail:mbx:t100')).toBe(false);
 		expect(registerMoveBack.mock.calls[0]![0].label).toBe('dashboard.inboxes.archivedUndo:1');
+	});
+
+	it('puts unfinished conversations ahead of the rest of a split sweep', async () => {
+		const many = Array.from({ length: 150 }, (_, i) => mailRow(`t${i}`));
+		const api = await mount(many);
+		const cursor = 'page-2';
+		outcomes = [
+			callResult(
+				many
+					.slice(0, 100)
+					.map((row, i) =>
+						i === 0
+							? { threadId: row.archive!.threadId, isDone: false, cursor, hasLeftInbox: false }
+							: { threadId: row.archive!.threadId }
+					)
+			),
+		];
+
+		drag(api, 0, 149);
+		release(149);
+		await settle();
+
+		expect(runs.map((r) => r.args.threads!.length)).toEqual([100, 51]);
+		expect(runs[1]!.args.threads![0]).toEqual({ threadId: 't0', cursor });
+		expect(runs[1]!.args.threads!.slice(1).every((thread) => !('cursor' in thread))).toBe(true);
+	});
+
+	it('undoes a long archive in moves of at most 100 messages, under its one Undo', async () => {
+		const api = await mount([mailRow('t1')]);
+		outcomes = [callResult([{ threadId: 't1', moved: 250 }])];
+		await api.archiveRow(api.rows.value[0]!);
+		const { moved, runMove } = registerMoveBack.mock.calls[0]![0];
+		expect(moved).toHaveLength(250);
+		runs = [];
+
+		await runMove({
+			messageIds: moved.map((m: { messageId: string }) => m.messageId),
+			targetFolderId: 'inbox',
+		});
+
+		expect(runs.map((r) => r.label)).toEqual([UNDO_MOVE, UNDO_MOVE, UNDO_MOVE]);
+		expect(runs.map((r) => r.args.messageIds!.length)).toEqual([100, 100, 50]);
+		expect(runs.flatMap((r) => r.args.messageIds)).toEqual(
+			moved.map((m: { messageId: string }) => m.messageId)
+		);
 	});
 });

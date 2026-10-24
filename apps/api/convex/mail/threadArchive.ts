@@ -14,7 +14,7 @@
  * In its own module because `messageActions.ts` sits at the size cap.
  */
 
-import { v, type Infer } from 'convex/values';
+import { v } from 'convex/values';
 import { postboxMutation } from './_helpers';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -45,27 +45,18 @@ const ARCHIVE_MOVE_BUDGET = 100;
 
 /**
  * Inbox messages one call reads, across all its threads, moved or not
- * (snoozed mail is read and left). A conversation either budget does not
- * reach comes back unfinished, with where to resume, and the client calls
- * again until every thread is done: a whole-conversation archive must not
- * stop at a page.
+ * (snoozed mail is read and left). A conversation the budgets do not reach
+ * comes back unfinished and the client calls again until every thread is
+ * done: a whole-conversation archive must not stop at a page.
  */
 const ARCHIVE_SCAN_BUDGET = 2000;
 
 /**
- * Where a thread's Inbox walk resumes: AT the first message with this
- * `receivedAt` and `_creationTime`, in `by_thread_folder_received` order.
- *
- * Inclusive because a position is not unique: many messages can share both
- * timestamps (one import writes a batch in one millisecond), and within such
- * a tie the index orders by `_id`, which a range cannot name. Starting at the
- * tie again is safe: the mail an earlier call moved has left the Inbox, so
- * all it re-reads there is snoozed mail, which it skips again. Snoozed
- * messages stay in the Inbox, so a walk that restarted from the top would
- * re-read them and could never get past a long snoozed run.
+ * Messages the first conversation of a call reads: one page. No larger than
+ * the move budget, so a page never holds more mail than the call may move
+ * and its cursor is never left behind mail it could not move.
  */
-const resumeFrom = v.object({ receivedAt: v.number(), creationTime: v.number() });
-type ResumeFrom = Infer<typeof resumeFrom>;
+const ARCHIVE_PAGE_SIZE = ARCHIVE_MOVE_BUDGET;
 
 type MovedMessage = Awaited<ReturnType<typeof moveMessagesToFolder>>['moved'][number];
 
@@ -74,10 +65,10 @@ type ThreadOutcome = {
 	threadId: Id<'mailThreads'>;
 	/** Messages of this thread moved by this call. */
 	moved: number;
-	/** False: a budget ran out first; call again with `from`. */
+	/** False: a budget ran out first; call again, this thread first, with `cursor`. */
 	isDone: boolean;
-	/** Where to resume an unfinished thread (null: from its first Inbox message). */
-	from: ResumeFrom | null;
+	/** Where an unfinished thread resumes (null: from its first Inbox message). */
+	cursor: string | null;
 	/**
 	 * Done and nothing of it is left in the Inbox, so the list drops it. False
 	 * for a thread skipped, unreachable or still holding (snoozed) Inbox mail:
@@ -85,6 +76,9 @@ type ThreadOutcome = {
 	 */
 	hasLeftInbox: boolean;
 };
+
+/** What a walk of one thread's Inbox found: the mail to move and how many messages it read. */
+type Walk = { eligible: Id<'mailMessages'>[]; read: number };
 
 async function folderByRole(
 	ctx: MutationCtx,
@@ -97,49 +91,68 @@ async function folderByRole(
 		.first();
 }
 
+function threadInbox(ctx: MutationCtx, threadId: Id<'mailThreads'>, inboxId: Id<'mailFolders'>) {
+	return ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread_folder_received', (q) =>
+			q.eq('threadId', threadId).eq('folderId', inboxId)
+		);
+}
+
 /**
- * A thread's Inbox messages, oldest first, from `from` on (inclusive). A
- * stream: the caller stops reading where its budget ends.
+ * The call's first conversation: one page from its cursor. A pagination
+ * cursor names an exact index position, `_id` included, so a resumed walk
+ * neither skips nor re-reads mail however many messages share both
+ * timestamps, and every call moves the cursor on, even through snoozed mail
+ * (which stays in the Inbox). A function may paginate only once, so only the
+ * first conversation of a call walks this way.
  */
-async function* inboxFrom(
+async function walkPage(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
 	inboxId: Id<'mailFolders'>,
-	from: ResumeFrom | null
-): AsyncGenerator<Doc<'mailMessages'>> {
-	const messages = () => ctx.db.query('mailMessages');
-	if (!from) {
-		yield* messages().withIndex('by_thread_folder_received', (q) =>
-			q.eq('threadId', threadId).eq('folderId', inboxId)
-		);
-		return;
+	cursor: string | null,
+	now: number
+): Promise<Walk & { isDone: boolean; cursor: string | null }> {
+	const page = await threadInbox(ctx, threadId, inboxId).paginate({
+		cursor,
+		numItems: ARCHIVE_PAGE_SIZE,
+	});
+	return {
+		eligible: page.page.filter((m) => !isMessageSnoozed(m, now)).map((m) => m._id),
+		read: page.page.length,
+		isDone: page.isDone,
+		cursor: page.isDone ? null : page.continueCursor,
+	};
+}
+
+/**
+ * Any later conversation: streamed whole within what the call has left, or
+ * null when it does not fit. Then none of it moves in this call: it comes
+ * back unfinished without a cursor, leads the next call and is paged there.
+ */
+async function walkWhole(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	inboxId: Id<'mailFolders'>,
+	now: number,
+	left: { scan: number; move: number }
+): Promise<Walk | null> {
+	const walk: Walk = { eligible: [], read: 0 };
+	for await (const m of threadInbox(ctx, threadId, inboxId)) {
+		if (walk.read === left.scan || walk.eligible.length === left.move) return null;
+		walk.read += 1;
+		if (!isMessageSnoozed(m, now)) walk.eligible.push(m._id);
 	}
-	// The resume position's own timestamp from its creation time on, then everything later.
-	yield* messages().withIndex('by_thread_folder_received', (q) =>
-		q
-			.eq('threadId', threadId)
-			.eq('folderId', inboxId)
-			.eq('receivedAt', from.receivedAt)
-			.gte('_creationTime', from.creationTime)
-	);
-	yield* messages().withIndex('by_thread_folder_received', (q) =>
-		q.eq('threadId', threadId).eq('folderId', inboxId).gt('receivedAt', from.receivedAt)
-	);
-}
-
-function positionOf(m: Doc<'mailMessages'>): ResumeFrom {
-	return { receivedAt: m.receivedAt, creationTime: m._creationTime };
-}
-
-function isSamePosition(a: ResumeFrom | null, b: ResumeFrom): boolean {
-	return a !== null && a.receivedAt === b.receivedAt && a.creationTime === b.creationTime;
+	return walk;
 }
 
 // authz: every thread's mailbox passes the caller's mailbox gate before any of
 // its messages are read; threads the caller cannot reach are skipped.
 export const archiveThreads = postboxMutation({
 	args: {
-		threads: v.array(v.object({ threadId: v.id('mailThreads'), from: v.optional(resumeFrom) })),
+		/** Only the first may carry a `cursor`: the one conversation a call pages. */
+		threads: v.array(v.object({ threadId: v.id('mailThreads'), cursor: v.optional(v.string()) })),
 	},
 	handler: async (
 		ctx,
@@ -149,27 +162,31 @@ export const archiveThreads = postboxMutation({
 		if (args.threads.length > ARCHIVE_THREADS_MAX) {
 			throwInvalidInput(`At most ${ARCHIVE_THREADS_MAX} conversations per archive`);
 		}
+		if (args.threads.some((request, index) => index > 0 && request.cursor !== undefined)) {
+			throwInvalidInput('Only the first conversation of an archive resumes from a cursor');
+		}
 		const access = createMailboxAccessGate(ctx, session);
 		const now = Date.now();
 		const inboxes = new Map<Id<'mailboxes'>, Doc<'mailFolders'> | null>();
 		const byMailbox = new Map<Id<'mailboxes'>, Id<'mailMessages'>[]>();
 		const outcomes = new Map<Id<'mailThreads'>, ThreadOutcome>();
+		const reached = new Set<Id<'mailThreads'>>();
 		const threadOf = new Map<Id<'mailMessages'>, Id<'mailThreads'>>();
-		let scanLeft = ARCHIVE_SCAN_BUDGET;
-		let moveLeft = ARCHIVE_MOVE_BUDGET;
+		const left = { scan: ARCHIVE_SCAN_BUDGET, move: ARCHIVE_MOVE_BUDGET };
+		let isSpent = false;
 
-		for (const request of args.threads) {
+		for (const [index, request] of args.threads.entries()) {
 			const { threadId } = request;
 			if (outcomes.has(threadId)) continue;
 			const outcome: ThreadOutcome = {
 				threadId,
 				moved: 0,
 				isDone: true,
-				from: request.from ?? null,
+				cursor: request.cursor ?? null,
 				hasLeftInbox: false,
 			};
 			outcomes.set(threadId, outcome);
-			if (scanLeft === 0 || moveLeft === 0) {
+			if (isSpent || left.scan === 0 || left.move === 0) {
 				outcome.isDone = false;
 				continue;
 			}
@@ -182,37 +199,31 @@ export const archiveThreads = postboxMutation({
 			}
 			const inbox = inboxes.get(thread.mailboxId);
 			if (!inbox) continue;
+			reached.add(threadId);
 
-			const hadFullScan = scanLeft === ARCHIVE_SCAN_BUDGET;
-			const ids: Id<'mailMessages'>[] = [];
-			for await (const m of inboxFrom(ctx, threadId, inbox._id, outcome.from)) {
-				if (scanLeft === 0 || moveLeft === 0) {
-					// The first message this call leaves is where the next one starts.
-					outcome.isDone = false;
-					outcome.from = positionOf(m);
-					break;
-				}
-				scanLeft -= 1;
-				if (isMessageSnoozed(m, now)) continue;
-				ids.push(m._id);
-				threadOf.set(m._id, threadId);
-				moveLeft -= 1;
+			let walk: Walk | null;
+			if (index === 0) {
+				const page = await walkPage(ctx, threadId, inbox._id, outcome.cursor, now);
+				outcome.isDone = page.isDone;
+				outcome.cursor = page.cursor;
+				walk = page;
+			} else {
+				walk = await walkWhole(ctx, threadId, inbox._id, now, left);
 			}
-			// A whole call's reads spent on snoozed mail at the very position it
-			// started from: more snoozed messages share one timestamp pair than a
-			// call reads, and no call could get past them. Stop rather than
-			// hand back the same position forever; the conversation stays listed.
-			if (
-				!outcome.isDone &&
-				ids.length === 0 &&
-				hadFullScan &&
-				outcome.from &&
-				isSamePosition(request.from ?? null, outcome.from)
-			) {
-				outcome.isDone = true;
+			if (!walk) {
+				// It did not fit what was left: the next call starts with it.
+				outcome.isDone = false;
+				isSpent = true;
+				continue;
 			}
-			if (ids.length === 0) continue;
-			byMailbox.set(thread.mailboxId, [...(byMailbox.get(thread.mailboxId) ?? []), ...ids]);
+			left.scan -= walk.read;
+			left.move -= walk.eligible.length;
+			if (walk.eligible.length === 0) continue;
+			for (const id of walk.eligible) threadOf.set(id, threadId);
+			byMailbox.set(thread.mailboxId, [
+				...(byMailbox.get(thread.mailboxId) ?? []),
+				...walk.eligible,
+			]);
 		}
 
 		const moved: MovedMessage[] = [];
@@ -238,9 +249,11 @@ export const archiveThreads = postboxMutation({
 			if (outcome) outcome.moved += 1;
 		}
 		// Read after the moves: `moveMessagesToFolder` has rebuilt the thread's
-		// folder roles, the same field the inbox list filters on.
+		// folder roles, the same field the inbox list filters on. Read for every
+		// thread the call finished, moved or not: a finishing page can be empty
+		// when an earlier call moved the rest.
 		for (const outcome of outcomes.values()) {
-			if (!outcome.isDone || outcome.moved === 0) continue;
+			if (!outcome.isDone || !reached.has(outcome.threadId)) continue;
 			const thread = await ctx.db.get(outcome.threadId);
 			outcome.hasLeftInbox = !thread || !thread.folderRoles.includes('inbox');
 		}

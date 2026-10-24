@@ -6,8 +6,9 @@
  * in that mailbox's own Archive, a mailbox the caller cannot reach is left
  * alone, and the returned provenance is enough for the usual move-back Undo.
  * A conversation larger than one call's budgets resumes where the call
- * stopped, without skipping or repeating mail, and every call stays inside
- * Convex's transaction limits.
+ * stopped, without skipping or repeating mail, through any run of snoozed
+ * mail, and every call, the archive and its Undo, stays inside Convex's
+ * transaction limits.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -136,25 +137,53 @@ async function archiveThreads(threadIds: Id<'mailThreads'>[]) {
 	});
 }
 
+/** The next call's threads: the unfinished ones, in order, the first with its cursor. */
+function unfinished(
+	outcomes: { threadId: Id<'mailThreads'>; isDone: boolean; cursor: string | null }[]
+) {
+	return outcomes
+		.filter((outcome) => !outcome.isDone)
+		.map(({ threadId, cursor }) => (cursor ? { threadId, cursor } : { threadId }));
+}
+
 /**
- * Call again for every unfinished thread, from where it stopped, until all are
- * done (what `useInboxesThreadArchive` does); every call's result, in order.
+ * Call again with every unfinished thread, from where it stopped, until all
+ * are done (what `useInboxesThreadArchive` does); every call's result, in order.
  */
-async function archiveUntilDone(threadIds: Id<'mailThreads'>[]) {
-	let threads: {
-		threadId: Id<'mailThreads'>;
-		from?: { receivedAt: number; creationTime: number };
-	}[] = threadIds.map((threadId) => ({ threadId }));
+async function archiveUntilDone(threadIds: Id<'mailThreads'>[], maxCalls = 50) {
+	let threads: { threadId: Id<'mailThreads'>; cursor?: string }[] = threadIds.map((threadId) => ({
+		threadId,
+	}));
 	const calls = [];
 	while (threads.length > 0) {
-		if (calls.length === 50) throw new Error('archiveThreads did not finish in 50 calls');
+		if (calls.length === maxCalls) {
+			throw new Error(`archiveThreads did not finish in ${maxCalls} calls`);
+		}
 		const result = await t.mutation(api.mail.threadArchive.archiveThreads, { threads });
 		calls.push(result);
-		threads = result.threads
-			.filter((outcome) => !outcome.isDone)
-			.map(({ threadId, from }) => (from ? { threadId, from } : { threadId }));
+		threads = unfinished(result.threads);
 	}
 	return calls;
+}
+
+/**
+ * The Undo `useInboxesThreadArchive` registers: every moved message back to
+ * its source folder, at most 100 per `move`.
+ */
+async function undoArchive(
+	moved: { messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> }[]
+) {
+	const bySource = new Map<Id<'mailFolders'>, Id<'mailMessages'>[]>();
+	for (const m of moved)
+		bySource.set(m.sourceFolderId, [...(bySource.get(m.sourceFolderId) ?? []), m.messageId]);
+	for (const [targetFolderId, messageIds] of bySource) {
+		for (let i = 0; i < messageIds.length; i += 100) {
+			await t.mutation(api.mail.messageActions.move, {
+				messageIds: messageIds.slice(i, i + 100),
+				targetFolderId,
+			});
+		}
+	}
 }
 
 let t: T;
@@ -269,7 +298,6 @@ describe('archiveThreads', () => {
 			folders,
 			Array.from({ length: 150 }, () => ({}))
 		);
-		const hundredth = await t.run(async (ctx) => (await ctx.db.get(messageIds[100]!))!);
 
 		const calls = await archiveUntilDone([threadId]);
 
@@ -278,8 +306,7 @@ describe('archiveThreads', () => {
 				threadId,
 				moved: 100,
 				isDone: false,
-				// The first message the call left.
-				from: { receivedAt: hundredth.receivedAt, creationTime: hundredth._creationTime },
+				cursor: expect.any(String),
 				hasLeftInbox: false,
 			},
 			expect.objectContaining({ moved: 50, isDone: true, hasLeftInbox: true }),
@@ -298,11 +325,14 @@ describe('archiveThreads', () => {
 			{},
 		]);
 
-		const result = await archiveThreads([threadId]);
+		const calls = await archiveUntilDone([threadId]);
 
-		expect(result.moved.map((m) => m.messageId)).toEqual([messageIds[120]]);
+		expect(calls.flatMap((call) => call.moved.map((m) => m.messageId))).toEqual([messageIds[120]]);
 		// The snoozed mail keeps the conversation in the Inbox list.
-		expect(result.threads[0]).toMatchObject({ moved: 1, isDone: true, hasLeftInbox: false });
+		expect(calls.map((call) => call.threads[0])).toEqual([
+			expect.objectContaining({ moved: 0, isDone: false }),
+			expect.objectContaining({ moved: 1, isDone: true, hasLeftInbox: false }),
+		]);
 	});
 
 	it('reports a conversation it could not archive as still in the Inbox', async () => {
@@ -324,59 +354,98 @@ describe('archiveThreads', () => {
 		expect(await listed()).toContain(threadId);
 	});
 
-	it('resumes at the given position, including later ones received at the same time', async () => {
+	it('refuses a cursor on any but the first conversation, before moving anything', async () => {
 		const { mailboxId, folders } = await seedBox(t);
-		const at = Date.now() - 60_000;
-		const { threadId, messageIds } = await seedThread(t, mailboxId, folders, [
-			{ receivedAt: at },
-			{ receivedAt: at },
-			{ receivedAt: at + 1000 },
-		]);
-		const second = await t.run(async (ctx) => (await ctx.db.get(messageIds[1]!))!);
-
-		const result = await t.mutation(api.mail.threadArchive.archiveThreads, {
-			threads: [{ threadId, from: { receivedAt: at, creationTime: second._creationTime } }],
-		});
-
-		expect(result.moved.map((m) => m.messageId).sort()).toEqual(
-			[messageIds[1]!, messageIds[2]!].sort()
+		const a = await seedThread(
+			t,
+			mailboxId,
+			folders,
+			Array.from({ length: 101 }, () => ({}))
 		);
-		expect(await folderOf(t, messageIds[0]!)).toBe(folders.inbox);
+		const b = await seedThread(t, mailboxId, folders, [{}]);
+		const first = await archiveThreads([a.threadId]);
+		const cursor = first.threads[0]!.cursor!;
+
+		await expect(
+			t.mutation(api.mail.threadArchive.archiveThreads, {
+				threads: [{ threadId: b.threadId }, { threadId: a.threadId, cursor }],
+			})
+		).rejects.toThrow(/first conversation/);
+		expect(await folderOf(t, b.messageIds[0]!)).toBe(folders.inbox);
 	});
 
-	it('hands back what one call could not reach, and a second call finishes it', async () => {
+	it('hands back a later conversation that does not fit, which leads the next call', async () => {
+		const { mailboxId, folders } = await seedBox(t);
+		const first = await seedThread(
+			t,
+			mailboxId,
+			folders,
+			Array.from({ length: 50 }, () => ({}))
+		);
+		// 60 more than the 50 the call has left to move: none of it moves in this call.
+		const cut = await seedThread(
+			t,
+			mailboxId,
+			folders,
+			Array.from({ length: 60 }, () => ({}))
+		);
+		const after = await seedThread(t, mailboxId, folders, [{}]);
+
+		const one = await archiveThreads([first.threadId, cut.threadId, after.threadId]);
+
+		expect(one.threads).toEqual([
+			expect.objectContaining({ threadId: first.threadId, moved: 50, isDone: true }),
+			{ threadId: cut.threadId, moved: 0, isDone: false, cursor: null, hasLeftInbox: false },
+			{ threadId: after.threadId, moved: 0, isDone: false, cursor: null, hasLeftInbox: false },
+		]);
+		for (const id of cut.messageIds) expect(await folderOf(t, id)).toBe(folders.inbox);
+
+		const two = await t.mutation(api.mail.threadArchive.archiveThreads, {
+			threads: unfinished(one.threads),
+		});
+
+		expect(two.threads).toEqual([
+			expect.objectContaining({
+				threadId: cut.threadId,
+				moved: 60,
+				isDone: true,
+				hasLeftInbox: true,
+			}),
+			expect.objectContaining({
+				threadId: after.threadId,
+				moved: 1,
+				isDone: true,
+				hasLeftInbox: true,
+			}),
+		]);
+	});
+
+	it('hands back a later conversation with more snoozed mail than the call has left to read', async () => {
 		const { mailboxId, folders } = await seedBox(t);
 		const later = Date.now() + 86_400_000;
-		// More snoozed mail than one call reads, then one message to archive.
+		const small = await seedThread(t, mailboxId, folders, [{}]);
 		const big = await seedThread(t, mailboxId, folders, [
 			...Array.from({ length: 2000 }, () => ({ snoozedUntil: later })),
 			{},
 		]);
-		const small = await seedThread(t, mailboxId, folders, [{}]);
 
-		const first = await archiveThreads([big.threadId, small.threadId]);
+		const calls = await archiveUntilDone([small.threadId, big.threadId]);
 
-		expect(first.moved).toEqual([]);
-		expect(first.threads).toEqual([
-			expect.objectContaining({ threadId: big.threadId, isDone: false, moved: 0 }),
-			{ threadId: small.threadId, moved: 0, isDone: false, from: null, hasLeftInbox: false },
+		expect(calls[0]!.threads).toEqual([
+			expect.objectContaining({ threadId: small.threadId, moved: 1, isDone: true }),
+			{ threadId: big.threadId, moved: 0, isDone: false, cursor: null, hasLeftInbox: false },
 		]);
-		expect(first.threads[0]!.from).not.toBeNull();
-
-		const second = await t.mutation(api.mail.threadArchive.archiveThreads, {
-			threads: first.threads.map(({ threadId, from }) =>
-				from ? { threadId, from } : { threadId }
-			),
+		// From then on it leads, a page a call, until it reaches the mail after the run.
+		expect(calls).toHaveLength(1 + 21);
+		expect(calls[calls.length - 1]!.threads[0]).toMatchObject({
+			threadId: big.threadId,
+			moved: 1,
+			isDone: true,
+			hasLeftInbox: false,
 		});
-
-		expect(second.moved.map((m) => m.messageId).sort()).toEqual(
-			[big.messageIds[2000]!, small.messageIds[0]!].sort()
-		);
-		expect(second.threads).toEqual([
-			expect.objectContaining({ threadId: big.threadId, moved: 1, isDone: true }),
-			expect.objectContaining({ threadId: small.threadId, moved: 1, hasLeftInbox: true }),
-		]);
+		expect(await folderOf(t, big.messageIds[2000]!)).toBe(folders.archive);
 	});
+
 	it('archives every message of a tie on both timestamps that spans calls', async () => {
 		const { mailboxId, folders } = await seedBox(t);
 		const at = Date.now() - 60_000;
@@ -393,13 +462,12 @@ describe('archiveThreads', () => {
 		const calls = await archiveUntilDone([threadId]);
 
 		expect(calls.map((call) => call.threads[0]!.moved)).toEqual([100, 100, 50]);
-		expect(calls[0]!.threads[0]!.from).toEqual({ receivedAt: at, creationTime: at });
 		expect(calls[calls.length - 1]!.threads[0]).toMatchObject({ isDone: true, hasLeftInbox: true });
 		expect(new Set(calls.flatMap((call) => call.moved.map((m) => m.messageId))).size).toBe(250);
 		for (const id of messageIds) expect(await folderOf(t, id)).toBe(folders.archive);
 	});
 
-	it('skips snoozed mail inside such a tie again on resuming, and archives the rest', async () => {
+	it('skips snoozed mail inside such a tie across pages, and archives the rest', async () => {
 		const { mailboxId, folders } = await seedBox(t);
 		const at = Date.now() - 60_000;
 		const later = Date.now() + 86_400_000;
@@ -413,37 +481,45 @@ describe('archiveThreads', () => {
 
 		const calls = await archiveUntilDone([threadId]);
 
-		expect(calls.map((call) => call.threads[0]!.moved)).toEqual([100, 50]);
-		expect(calls[1]!.threads[0]).toMatchObject({ isDone: true, hasLeftInbox: false });
+		// Two pages: every message read once, the 150 unsnoozed moved once.
+		expect(calls).toHaveLength(2);
+		expect(new Set(calls.flatMap((call) => call.moved.map((m) => m.messageId))).size).toBe(150);
+		expect(calls[calls.length - 1]!.threads[0]).toMatchObject({
+			isDone: true,
+			hasLeftInbox: false,
+		});
 		for (const [i, id] of messageIds.entries()) {
 			const snoozed = i >= 100 && i < 105;
 			expect(await folderOf(t, id)).toBe(snoozed ? folders.inbox : folders.archive);
 		}
 	});
 
-	it('stops, rather than looping, at more snoozed mail on one timestamp pair than a call reads', async () => {
+	it('pages through more snoozed mail on one timestamp pair than a call reads, to the mail after it', async () => {
 		const { mailboxId, folders } = await seedBox(t);
 		const at = Date.now() - 60_000;
 		const later = Date.now() + 86_400_000;
-		const { threadId } = await withCreationTime(at, () =>
+		const { threadId, messageIds } = await withCreationTime(at, () =>
 			seedThread(t, mailboxId, folders, [
 				...Array.from({ length: 2001 }, () => ({ receivedAt: at, snoozedUntil: later })),
-				{ receivedAt: at },
+				{ receivedAt: at + 1000 },
 			])
 		);
 
 		const calls = await archiveUntilDone([threadId]);
 
-		// The first call stops at the tie; the second re-reads it from there and gives up.
-		expect(calls.map((call) => call.threads[0])).toEqual([
-			expect.objectContaining({ moved: 0, isDone: false }),
-			expect.objectContaining({ moved: 0, isDone: true, hasLeftInbox: false }),
-		]);
+		// Every call moves the cursor on by a page, through the tie and out of it.
+		expect(calls).toHaveLength(21);
+		expect(calls.flatMap((call) => call.moved.map((m) => m.messageId))).toEqual([messageIds[2001]]);
+		expect(calls[calls.length - 1]!.threads[0]).toMatchObject({
+			moved: 1,
+			isDone: true,
+			hasLeftInbox: false,
+		});
 	});
 
-	it('archives a 1,000-message conversation within the transaction limits, resuming between calls', async () => {
+	it('archives a 1,000-message conversation and undoes it within the transaction limits', async () => {
 		// Enforces Convex's per-transaction limits, 4,096 index ranges among them.
-		// Moving 1,000 messages in one transaction would pass that limit.
+		// Moving 1,000 messages in one transaction, either way, would pass that limit.
 		t = convexTest({ schema, modules, transactionLimits: true });
 		const { mailboxId, folders } = await seedBox(t);
 		const { threadId, messageIds } = await seedThread(
@@ -466,6 +542,12 @@ describe('archiveThreads', () => {
 				.collect()
 		);
 		expect(archived).toHaveLength(messageIds.length);
+
+		await undoArchive(calls.flatMap((call) => call.moved));
+
+		for (const id of messageIds) expect(await folderOf(t, id)).toBe(folders.inbox);
+		const thread = await t.run(async (ctx) => ctx.db.get(threadId));
+		expect(thread!.folderRoles).toContain('inbox');
 	});
 
 	it('archives as many conversations as one call takes within the transaction limits', async () => {

@@ -8,7 +8,8 @@
  * message id: every Inbox copy of the thread moves, each to its own mailbox's
  * Archive. Team-inbox rows carry no archive target and are skipped by a sweep.
  * Rows hide at once, come back if the call fails or the conversation stays in
- * the Inbox, and one "Undo" moves every archived message back.
+ * the Inbox, and one "Undo" moves every archived message back, in calls as
+ * bounded as the archive's.
  */
 
 import { computed, type Ref } from 'vue';
@@ -30,6 +31,13 @@ interface ArchivableRow {
 
 /** `archiveThreads` refuses more than this per call; a longer sweep is split. */
 const THREADS_PER_CALL = 100;
+
+/**
+ * Messages one Undo `move` puts back. The archive moved them at most 100 per
+ * call (its move budget) to stay inside a transaction's index-range limit,
+ * and moving them back costs the same bookkeeping, so the Undo splits alike.
+ */
+const MESSAGES_PER_UNDO_MOVE = 100;
 
 /** One conversation for `archiveThreads`, with where to resume it if a call left it unfinished. */
 type ThreadRequest = FunctionArgs<typeof api.mail.threadArchive.archiveThreads>['threads'][number];
@@ -59,8 +67,10 @@ export function useInboxesThreadArchive<R extends ArchivableRow>(args: {
 	 * Archive the rows `keys` name (those with a target), hiding them while the
 	 * calls run. A call takes at most {@link THREADS_PER_CALL} conversations and
 	 * reads a bounded amount of mail, handing back the conversations it did not
-	 * finish with where to resume; those go round again until every one is done,
-	 * so a long conversation is archived whole.
+	 * finish; those lead the next call until every one is done, so a long
+	 * conversation is archived whole. They go first, in the order returned,
+	 * because only a call's first conversation may resume from a cursor, and
+	 * only the first of those carries one.
 	 *
 	 * Settling, a row stays hidden only if its conversation has left the Inbox
 	 * (the list will drop it). A row whose call failed, or whose conversation
@@ -90,18 +100,20 @@ export function useInboxesThreadArchive<R extends ArchivableRow>(args: {
 				continue;
 			}
 			moved.push(...outcome.result.moved);
+			const unfinished: ThreadRequest[] = [];
 			for (const thread of outcome.result.threads) {
 				if (thread.moved > 0) archived.add(thread.threadId);
 				if (!thread.isDone) {
-					queue.push(
-						thread.from
-							? { threadId: thread.threadId, from: thread.from }
+					unfinished.push(
+						thread.cursor
+							? { threadId: thread.threadId, cursor: thread.cursor }
 							: { threadId: thread.threadId }
 					);
 				} else if (thread.hasLeftInbox) {
 					gone.add(thread.threadId);
 				}
 			}
+			queue = [...unfinished, ...queue];
 		}
 		for (const [threadId, key] of keyOf) if (!gone.has(threadId)) unhide(key);
 
@@ -110,7 +122,14 @@ export function useInboxesThreadArchive<R extends ArchivableRow>(args: {
 				label: t('dashboard.inboxes.archivedUndo', { count: archived.size }, archived.size),
 				kind: 'archived',
 				moved,
-				runMove: (move) => moveOp.run(move),
+				runMove: async (move) => {
+					for (let i = 0; i < move.messageIds.length; i += MESSAGES_PER_UNDO_MOVE) {
+						await moveOp.run({
+							...move,
+							messageIds: move.messageIds.slice(i, i + MESSAGES_PER_UNDO_MOVE),
+						});
+					}
+				},
 				after: () => {
 					for (const key of keyOf.values()) unhide(key);
 				},
