@@ -174,6 +174,7 @@ export function usePostboxComposeSend(o: ComposeSendOptions) {
 				undoSendDelayMs: opts?.undoSendDelayMs ?? o.undoSendDelayMs(),
 				scheduledSendAt: opts?.scheduledSendAt,
 				allowUnsealed: opts?.allowUnsealed,
+				afterSend: opts?.afterSend,
 			})
 		);
 		// `useBackendOperation.run` swallows categorized failures (it has already

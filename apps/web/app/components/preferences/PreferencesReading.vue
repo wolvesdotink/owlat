@@ -16,6 +16,9 @@
 import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import { POSTBOX_REPLY_DEFAULT_OPTIONS } from '~/utils/postboxReplyDefault';
+import type { PostboxAfterReply } from '~/utils/postboxAfterReply';
+import { POSTBOX_AFTER_REPLY_OPTIONS } from '~/utils/postboxAfterReply';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { POSTBOX_DENSITY_OPTIONS } from '~/utils/postboxDensity';
 import type { PostboxReadingPane } from '~/utils/postboxReadingPane';
@@ -39,6 +42,8 @@ const {
 	setReadOnArrival,
 	replyDefault,
 	setReplyDefault,
+	afterReply,
+	setAfterReply,
 	density,
 	setDensity,
 	readingPane,
@@ -64,6 +69,13 @@ function onReplyDefaultChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value as PostboxReplyDefaultMode;
 	void setReplyDefault(value);
 }
+
+function onAfterReplyChange(event: Event) {
+	const value = (event.target as HTMLSelectElement).value as PostboxAfterReply;
+	void setAfterReply(value);
+}
+// The composer's opposite-action chord, named in the help line as this machine spells it.
+const { chordLabel } = useShortcutLabels();
 
 function onDensityChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value as PostboxDensity;
@@ -280,6 +292,41 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 			>
 				<option
 					v-for="option in POSTBOX_REPLY_DEFAULT_OPTIONS"
+					:key="option.value"
+					:value="option.value"
+				>
+					{{ t(option.label) }}
+				</option>
+			</select>
+		</div>
+		<div
+			class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-t border-border-subtle"
+			data-testid="preferences-after-reply"
+		>
+			<div class="min-w-0">
+				<label for="postbox-after-reply" class="font-medium text-sm block">
+					{{ t('components.preferences.preferencesReading.afterReplyLabel') }}
+				</label>
+				<I18nT
+					keypath="components.preferences.preferencesReading.afterReplyHelp"
+					tag="p"
+					class="text-xs text-text-tertiary mt-0.5"
+					scope="global"
+				>
+					<template #oppositeKey
+						><kbd>{{ chordLabel('mod+alt+Enter') }}</kbd></template
+					>
+				</I18nT>
+			</div>
+			<select
+				id="postbox-after-reply"
+				class="input w-full sm:w-64 shrink-0"
+				:value="afterReply"
+				:disabled="isSaving"
+				@change="onAfterReplyChange"
+			>
+				<option
+					v-for="option in POSTBOX_AFTER_REPLY_OPTIONS"
 					:key="option.value"
 					:value="option.value"
 				>

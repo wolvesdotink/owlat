@@ -3,12 +3,14 @@
  *
  * One `mailUserSettings` row per BetterAuth user at most, spanning all of
  * the user's mailboxes (these are reader-behavior preferences of the
- * person, not properties of a mailbox). Currently a single preference:
+ * person, not properties of a mailbox). Among them:
  *
  *   - `autoAdvance` — what the thread reader does after the open message
  *     is triaged away (archive / trash / snooze / spam): open the next
  *     conversation in list order (default), the previous one, or go back
  *     to the list.
+ *   - `afterReply` — whether sending a reply keeps its conversation in the
+ *     Inbox (default) or marks it done (see mail/replyDone.ts).
  *
  * Mirrors the vacation/forwarding modules' get/update shape; rows are
  * keyed by the session user rather than a mailbox id.
@@ -18,6 +20,7 @@ import { v } from 'convex/values';
 import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
 import {
+	mailAfterReplyValidator,
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
 	mailDensityValidator,
@@ -59,6 +62,7 @@ export const get = publicQuery({
 			isReadOnArrival: row.isReadOnArrival,
 			isCodeAutoArchiveOn: row.isCodeAutoArchiveOn,
 			replyDefault: row.replyDefault,
+			afterReply: row.afterReply,
 			density: row.density,
 			viewMode: row.viewMode,
 			readingPane: row.readingPane,
@@ -100,6 +104,7 @@ export const update = postboxMutation({
 		// Read on arrival (SPEC §6.4): archive codes and sign-in links after a day; absent = off.
 		isCodeAutoArchiveOn: v.optional(v.boolean()),
 		replyDefault: v.optional(mailReplyDefaultValidator),
+		afterReply: v.optional(mailAfterReplyValidator),
 		density: v.optional(mailDensityValidator),
 		viewMode: v.optional(mailViewModeValidator),
 		readingPane: v.optional(mailReadingPaneValidator),
@@ -146,6 +151,7 @@ export const update = postboxMutation({
 			isReadOnArrival?: boolean;
 			isCodeAutoArchiveOn?: boolean;
 			replyDefault?: (typeof args)['replyDefault'];
+			afterReply?: (typeof args)['afterReply'];
 			density?: (typeof args)['density'];
 			viewMode?: (typeof args)['viewMode'];
 			readingPane?: (typeof args)['readingPane'];
@@ -179,6 +185,7 @@ export const update = postboxMutation({
 		if (args.isCodeAutoArchiveOn !== undefined)
 			patch.isCodeAutoArchiveOn = args.isCodeAutoArchiveOn;
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
+		if (args.afterReply !== undefined) patch.afterReply = args.afterReply;
 		if (args.density !== undefined) patch.density = args.density;
 		if (args.viewMode !== undefined) patch.viewMode = args.viewMode;
 		if (args.readingPane !== undefined) patch.readingPane = args.readingPane;

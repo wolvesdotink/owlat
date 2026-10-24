@@ -1,13 +1,16 @@
 /**
  * Answer mode's shared state: where a reply came from and how to get back
- * there, the draft someone walked away from, the list position they left, and
- * the "Draft with AI" focus hook Cmd/Ctrl+J reaches for.
+ * there (or on, after a reply marked done), the draft someone walked away
+ * from, the list position they left, and the "Draft with AI" focus hook
+ * Cmd/Ctrl+J reaches for.
  *
  * All of it is session state (`useState` / module scope), never persisted: a
  * reload of the Answer mode route rebuilds itself from the URL, and a reload of
  * the list starts from the list's own URL.
  */
+import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
+import { pickAdjacentMessageId, type PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import {
 	answerFallbackReturn,
 	answerModeHref,
@@ -51,6 +54,7 @@ export function useAnswerModeNav(
 		const current = useRouter().currentRoute.value;
 		if (!isAnswerModePath(current.path)) {
 			returnTo.value = current.fullPath;
+			answerOrigin = null;
 			markListReturn();
 		}
 		return navigateTo(href);
@@ -76,6 +80,7 @@ export function useAnswerModeNav(
 	function leave() {
 		const target = returnTarget(opts.currentPath?.() ?? useRouter().currentRoute.value.path);
 		returnTo.value = null;
+		answerOrigin = null;
 		const back =
 			typeof window === 'undefined'
 				? undefined
@@ -84,6 +89,20 @@ export function useAnswerModeNav(
 			useRouter().back();
 			return;
 		}
+		void navigateTo(target, { replace: true });
+	}
+
+	/**
+	 * Leave after a reply that marked its conversation done: on to the next
+	 * conversation of the list it was opened from, the way archiving moves on
+	 * in the reader (`mode` is that auto-advance preference). Without such a
+	 * list, the plain way back.
+	 */
+	function leaveDone(messageId: string, mode: PostboxAutoAdvanceMode) {
+		const target = answerDoneTarget(answerOrigin, messageId, mode);
+		if (!target) return leave();
+		returnTo.value = null;
+		answerOrigin = null;
 		void navigateTo(target, { replace: true });
 	}
 
@@ -103,7 +122,7 @@ export function useAnswerModeNav(
 		returnTo.value = path;
 	}
 
-	return { open, openTeam, leave, returnPath, setReturnPath };
+	return { open, openTeam, leave, leaveDone, returnPath, setReturnPath };
 }
 
 /** A reply draft left in Answer mode, offered back on the list ("Resume"). */
@@ -181,6 +200,45 @@ function markListReturn() {
 	listReturnPending = true;
 }
 
+/**
+ * Where a list Answer mode was opened from stood, so a reply marked done can
+ * move on through it. Only a list that routes its own opens files one, only
+ * the departure into Answer mode keeps it, and leaving Answer mode drops it: a
+ * later reply never moves through a list it did not come from.
+ */
+export interface AnswerOrigin {
+	/** The list's route without a message (`/dashboard/postbox/inbox`). */
+	path: string;
+	/** The list's query (`?placement=…`), kept on the route it moves to. */
+	query: string;
+	/** The rows in the order the list showed them. */
+	orderedIds: readonly string[];
+	/** The conversation open beside the list, if any. */
+	activeId: string | null;
+}
+
+let answerOrigin: AnswerOrigin | null = null;
+
+/**
+ * The route a reply to `messageId`, marked done, moves on to: the adjacent row
+ * of the list it came from, per `mode`, or that list itself (no adjacent row,
+ * 'back-to-list', or the conversation is not a row of it). `null` without a
+ * list: the caller goes back the plain way.
+ */
+export function answerDoneTarget(
+	origin: AnswerOrigin | null,
+	messageId: string,
+	mode: PostboxAutoAdvanceMode
+): string | null {
+	if (!origin) return null;
+	// The reply may answer an older message of the conversation open beside the list.
+	const current = [messageId, origin.activeId].find(
+		(id): id is string => id !== null && origin.orderedIds.includes(id)
+	);
+	const next = current ? pickAdjacentMessageId(origin.orderedIds, current, mode) : null;
+	return next ? `${origin.path}/${next}${origin.query}` : `${origin.path}${origin.query}`;
+}
+
 /** The list files its place for `folderKey` (called on unmount). */
 export function rememberListPlace(folderKey: string, snapshot: ListReturnSnapshot): void {
 	listSnapshots.set(folderKey, snapshot);
@@ -196,6 +254,42 @@ export function takeListPlace(folderKey: string): ListReturnSnapshot | null {
 	const snapshot = listSnapshots.get(folderKey) ?? null;
 	listSnapshots.delete(folderKey);
 	return snapshot;
+}
+
+/**
+ * A list's side of the Answer mode round trip: its j/k row comes back with it
+ * (the scroll offset has its own per-folder memory), and `origin` (a list that
+ * routes its own opens) files where it stood for a reply marked done. Filed on
+ * every unmount; taken only on the mount that is the way back.
+ */
+export function useListAnswerRoundTrip(o: {
+	folderKey: Ref<string>;
+	rows: Ref<readonly { _id: string }[]>;
+	focusedIndex: Ref<number>;
+	origin: () => Omit<AnswerOrigin, 'orderedIds'> | null;
+}) {
+	onBeforeUnmount(() => {
+		rememberListPlace(o.folderKey.value, {
+			focusedId: o.rows.value[o.focusedIndex.value]?._id ?? null,
+		});
+		const origin = o.origin();
+		if (origin && listReturnPending) {
+			answerOrigin = { ...origin, orderedIds: o.rows.value.map((row) => row._id) };
+		}
+	});
+	const returnPlace = takeListPlace(o.folderKey.value);
+	if (!returnPlace?.focusedId) return;
+	const focusedId = returnPlace.focusedId;
+	const stop = watch(
+		o.rows,
+		(rows) => {
+			const index = rows.findIndex((row) => row._id === focusedId);
+			if (index < 0) return;
+			o.focusedIndex.value = index;
+			void nextTick(() => stop());
+		},
+		{ immediate: true }
+	);
 }
 
 // Cmd/Ctrl+J: "Draft with AI"

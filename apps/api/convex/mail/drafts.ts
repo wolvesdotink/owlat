@@ -38,6 +38,7 @@ import {
 	listForMailboxHandler,
 } from './draftQueries';
 import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } from './draftSend';
+import { mailAfterReplyValidator } from '../lib/validators/mailSettings';
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteDraftRow } from './answeredReply';
@@ -453,6 +454,11 @@ export const send = postboxMutation({
 		undoSendDelayMs: v.optional(v.number()),
 		scheduledSendAt: v.optional(v.number()),
 		allowUnsealed: v.optional(v.boolean()),
+		// A reply only: 'done' archives its conversation once it is sent. Absent
+		// is 'keep'. `afterSendChosenAt` is when the sender chose, for a send the
+		// offline outbox replays later.
+		afterSend: v.optional(mailAfterReplyValidator),
+		afterSendChosenAt: v.optional(v.number()),
 	},
 	handler: sendHandler,
 });

@@ -4605,6 +4605,9 @@
 				"moreOptions": "More compose options",
 				"scheduleSend": "Schedule send…",
 				"sending": "Sending…",
+				"sendOptions": "More ways to send",
+				"sendAndKeep": "Send and keep in Inbox",
+				"sendAndDone": "Send and mark done",
 				"signature": "Signature",
 				"uploadingTitle": "Waiting for attachments to finish uploading…",
 				"previewAsSent": "Preview as sent",
@@ -6076,6 +6079,8 @@
 				"readingPaneHelp": "Where the reader sits next to the list. Drag the divider — or focus it and use the arrow keys — to move the seam.",
 				"replyDefaultLabel": "Default reply behavior",
 				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
+				"afterReplyLabel": "After replying",
+				"afterReplyHelp": "What Send does with the conversation you answered. Marked done, it is archived once the reply goes out, and you move on as after archiving. {oppositeKey} or the menu beside Send does the other for one reply.",
 				"writingSuggestionsLabel": "Writing suggestions",
 				"writingSuggestionsHelp": "Show inline AI autocomplete as you write. Press Tab to accept.",
 				"autoSummarizeLabel": "Show the brief above conversations",
@@ -15760,6 +15765,10 @@
 				"scopeOperation": "changing who can open the share link"
 			}
 		},
+		"postboxAfterReply": {
+			"keep": "Keep it in the Inbox",
+			"done": "Mark it done (archive)"
+		},
 		"postboxAutoAdvance": {
 			"backToList": "Go back to the list",
 			"next": "Open the next conversation",
@@ -16320,6 +16329,10 @@
 					"title": "Default reply behavior",
 					"keywords": "reply all, reply, r key"
 				},
+				"afterReply": {
+					"title": "After replying",
+					"keywords": "send and archive, mark done, done, archive after reply, keep in inbox"
+				},
 				"shortcuts": {
 					"keywords": "keyboard, shortcuts, hotkeys, key bindings, remap, gmail keys, superhuman keys, outlook keys",
 					"title": "Keyboard shortcuts"
@@ -16493,6 +16506,7 @@
 				"scheduleSend": "Schedule send (in composer)",
 				"selectDeselect": "Select / deselect",
 				"send": "Send (in composer)",
+				"sendAlternate": "Send and do the other after-reply action (in composer)",
 				"showShortcuts": "Show keyboard shortcuts",
 				"snooze": "Snooze",
 				"starUnstar": "Star / unstar",

@@ -4,7 +4,8 @@
  * left behind, the pending AI body, and the Cmd/Ctrl+J focus hook.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { defineComponent, h, ref } from 'vue';
+import { mount } from '@vue/test-utils';
 
 let state: Map<string, ReturnType<typeof ref>>;
 const navigateTo = vi.fn();
@@ -22,8 +23,10 @@ vi.stubGlobal('useRouter', () => ({ currentRoute, back }));
 vi.stubGlobal('navigateTo', navigateTo);
 
 import {
+	answerDoneTarget,
 	rememberListPlace,
 	takeListPlace,
+	useListAnswerRoundTrip,
 	useAnswerAiFocus,
 	useAnswerLeftDraft,
 	useAnswerModeNav,
@@ -117,6 +120,101 @@ describe('the list place', () => {
 		void useAnswerModeNav().open('msg_3');
 		expect(takeListPlace('inbox')).toEqual({ focusedId: 'msg_3' });
 		expect(takeListPlace('inbox')).toBeNull();
+	});
+});
+
+describe('a reply marked done', () => {
+	const origin = {
+		path: '/dashboard/postbox/inbox',
+		query: '?placement=other',
+		orderedIds: ['msg_0', 'msg_1', 'msg_2'],
+		activeId: null,
+	};
+
+	it('moves on through the list it came from, per the auto-advance preference', () => {
+		expect(answerDoneTarget(origin, 'msg_1', 'next')).toBe(
+			'/dashboard/postbox/inbox/msg_2?placement=other'
+		);
+		expect(answerDoneTarget(origin, 'msg_1', 'previous')).toBe(
+			'/dashboard/postbox/inbox/msg_0?placement=other'
+		);
+		expect(answerDoneTarget(origin, 'msg_1', 'back-to-list')).toBe(
+			'/dashboard/postbox/inbox?placement=other'
+		);
+		// Past the end there is nothing to open: the list itself.
+		expect(answerDoneTarget(origin, 'msg_2', 'next')).toBe(
+			'/dashboard/postbox/inbox?placement=other'
+		);
+	});
+
+	it('finds the conversation by the row open beside the list when it answered an older message', () => {
+		expect(answerDoneTarget({ ...origin, activeId: 'msg_0' }, 'msg_old', 'next')).toBe(
+			'/dashboard/postbox/inbox/msg_1?placement=other'
+		);
+		expect(answerDoneTarget(origin, 'msg_old', 'next')).toBe(
+			'/dashboard/postbox/inbox?placement=other'
+		);
+	});
+
+	it('has nowhere to move on to without a list', () => {
+		expect(answerDoneTarget(null, 'msg_1', 'next')).toBeNull();
+	});
+
+	function mountList(opts: { routes?: boolean } = {}) {
+		return mount(
+			defineComponent({
+				setup() {
+					useListAnswerRoundTrip({
+						folderKey: ref('inbox'),
+						rows: ref([{ _id: 'msg_0' }, { _id: 'msg_1' }, { _id: 'msg_2' }]),
+						focusedIndex: ref(0),
+						origin: () =>
+							opts.routes === false
+								? null
+								: { path: '/dashboard/postbox/inbox', query: '', activeId: 'msg_1' },
+					});
+					return () => h('div');
+				},
+			})
+		);
+	}
+
+	it('moves on when Answer mode was opened from a list that routes its opens', () => {
+		const list = mountList();
+		const nav = useAnswerModeNav();
+		void nav.open('msg_1');
+		list.unmount();
+		navigateTo.mockClear();
+		nav.leaveDone('msg_1', 'next');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox/msg_2', { replace: true });
+	});
+
+	it('goes back the plain way when the list was left for somewhere else first', () => {
+		// The list unmounts on a plain navigation, then Answer mode opens elsewhere.
+		mountList().unmount();
+		const nav = useAnswerModeNav();
+		void nav.open('msg_1');
+		navigateTo.mockClear();
+		nav.leaveDone('msg_1', 'next');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
+	});
+
+	it('forgets the list once Answer mode is left, and for a list that does not route', () => {
+		const list = mountList();
+		const nav = useAnswerModeNav();
+		void nav.open('msg_1');
+		list.unmount();
+		nav.leave();
+		navigateTo.mockClear();
+		nav.leaveDone('msg_1', 'next');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
+
+		const selectable = mountList({ routes: false });
+		void nav.open('msg_1');
+		selectable.unmount();
+		navigateTo.mockClear();
+		nav.leaveDone('msg_1', 'next');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
 	});
 });
 

@@ -13,12 +13,14 @@ import PreferencesReading from '../PreferencesReading.vue';
 
 const setReadOnArrival = vi.fn();
 const setAutoSummarize = vi.fn();
+const setAfterReply = vi.fn();
 let isAiOn = true;
 let isBriefShown = true;
 
 beforeEach(() => {
 	setReadOnArrival.mockClear();
 	setAutoSummarize.mockClear();
+	setAfterReply.mockClear();
 	isAiOn = true;
 	isBriefShown = true;
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -34,6 +36,8 @@ beforeEach(() => {
 		setReadOnArrival,
 		replyDefault: ref('reply'),
 		setReplyDefault: vi.fn(),
+		afterReply: ref('keep'),
+		setAfterReply,
 		density: ref('comfortable'),
 		setDensity: vi.fn(),
 		readingPane: ref('right'),
@@ -108,5 +112,27 @@ describe('PreferencesReading: read on arrival', () => {
 		const off = mountCard();
 		expect(off.find('preferences-brief-backfill-stub').exists()).toBe(false);
 		expect(off.find('#postbox-auto-summarize').exists()).toBe(false);
+	});
+});
+
+describe('PreferencesReading: after replying', () => {
+	it('offers keeping a replied conversation or marking it done, and names the chord', () => {
+		const card = mountCard();
+		const row = card.get('[data-testid="preferences-after-reply"]');
+		expect(row.text()).toContain('After replying');
+		expect(row.text()).toContain('Ctrl+Alt+Enter');
+		const select = card.get<HTMLSelectElement>('#postbox-after-reply');
+		expect(select.element.value).toBe('keep');
+		expect(select.findAll('option').map((o) => o.text())).toEqual([
+			'Keep it in the Inbox',
+			'Mark it done (archive)',
+		]);
+		expectFullyLocalized(card);
+	});
+
+	it('writes the preference', async () => {
+		const card = mountCard();
+		await card.get('#postbox-after-reply').setValue('done');
+		expect(setAfterReply).toHaveBeenCalledWith('done');
 	});
 });

@@ -7,7 +7,8 @@
  *     REPLACE, so Back still leaves Answer mode and a reload lands here again;
  *   - Esc leaves (the draft stays saved and is offered back on the list),
  *     `t` toggles Overview / Conversation, Cmd/Ctrl+J focuses "Draft with AI";
- *   - a send goes back where the reply started;
+ *   - a send goes back where the reply started; a reply marked done moves on
+ *     to the next conversation of the list it came from;
  *   - with AI on, the composer carries "Draft with AI" (or the ask card while
  *     the AI asks), the footer the asks covered, and the resting phone sheet a
  *     "Draft" button (useAnswerModeAssist has its own suite).
@@ -18,7 +19,12 @@ import { defineComponent, h, reactive, ref, computed, useId, shallowRef } from '
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AnswerModeFrame from '~/components/answer/AnswerModeFrame.vue';
-import { useAnswerAiFocus, useAnswerLeftDraft } from '~/composables/useAnswerMode';
+import {
+	useAnswerAiFocus,
+	useAnswerLeftDraft,
+	useAnswerModeNav,
+	useListAnswerRoundTrip,
+} from '~/composables/useAnswerMode';
 import AnswerPage from '../m/[messageId].vue';
 import PostboxOverflowMenu from '~/components/postbox/PostboxOverflowMenu.vue';
 import { useClickOutside } from '~/composables/useClickOutside';
@@ -130,6 +136,7 @@ beforeAll(() => {
 		}),
 		useConvexQuery: () => ({ data: ref(['ada@example.com']), error: ref(null) }),
 		usePostboxSettings: () => ({
+			autoAdvance: ref('next'),
 			replyDefault: ref('reply'),
 			autoLoadImages: ref(true),
 			isLoading: ref(false),
@@ -469,6 +476,49 @@ describe('Answer mode page', () => {
 		expect(useAnswerLeftDraft().left.value).toEqual(other);
 		w.getComponent(ComposerStub).vm.$emit('discarded');
 		expect(useAnswerLeftDraft().left.value).toEqual(other);
+	});
+
+	it('moves a reply marked done on to the next conversation of the list it came from', async () => {
+		// The inbox list, with msg_1 open beside it, opens Answer mode on msg_1.
+		route.path = '/dashboard/postbox/inbox/msg_1';
+		route.fullPath = route.path;
+		const list = mount(
+			defineComponent({
+				setup() {
+					useListAnswerRoundTrip({
+						folderKey: ref('inbox'),
+						rows: ref([{ _id: 'msg_0' }, { _id: 'msg_1' }, { _id: 'msg_2' }]),
+						focusedIndex: ref(1),
+						origin: () => ({ path: '/dashboard/postbox/inbox', query: '', activeId: 'msg_1' }),
+					});
+					return () => h('div');
+				},
+			})
+		);
+		void useAnswerModeNav().open('msg_1');
+		list.unmount();
+		route.path = '/dashboard/answer/m/msg_1';
+		navigateTo.mockClear();
+
+		const w = await mountAt({ draft: 'draft_1' });
+		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false, done: true });
+		expect(navigateTo).toHaveBeenCalledTimes(1);
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox/msg_2', { replace: true });
+	});
+
+	it('goes back the plain way after a reply marked done that came from no list', async () => {
+		const w = await mountAt({ draft: 'draft_1' });
+		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false, done: true });
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
+	});
+
+	it('in the Answer queue, a reply marked done finishes the item once and moves on', async () => {
+		const handleSent = vi.fn(() => true);
+		activeQueueSession = { handleSent };
+		const w = await mountAt({ draft: 'draft_1', queue: 'all' });
+		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false, done: true });
+		expect(handleSent).toHaveBeenCalledTimes(1);
+		expect(navigateTo).not.toHaveBeenCalled();
 	});
 
 	it('in the Answer queue, a send finishes the item and moves on instead of leaving', async () => {

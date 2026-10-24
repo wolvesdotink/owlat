@@ -375,6 +375,15 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		remappable: false,
 	},
 	{
+		// Send, then the opposite of the "after replying" setting (keep / done).
+		id: 'composer.sendAlternate',
+		scope: 'composer',
+		keys: ['mod+alt+Enter'],
+		labelKey: L('sendAlternate'),
+		groupKey: G.compose,
+		remappable: false,
+	},
+	{
 		id: 'composer.schedule',
 		scope: 'composer',
 		keys: ['mod+shift+Enter'],

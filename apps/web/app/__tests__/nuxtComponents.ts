@@ -19,11 +19,17 @@
  *
  * `UiShortcut` is the shortcut hint chip the shell, the palette and the
  * onboarding tips render; real, so a suite sees the key a person would.
+ *
+ * `UiDropdownMenu` and `UiDropdownMenuItem` are real too: the composer
+ * footer's Send renders them for a reply, and every suite mounting the footer
+ * would otherwise need its own stub. A suite that stubs them still wins.
  */
 import { config } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiCheckbox from '@owlat/ui/components/ui/Checkbox.vue';
+import UiDropdownMenu from '@owlat/ui/components/ui/DropdownMenu.vue';
+import UiDropdownMenuItem from '@owlat/ui/components/ui/DropdownMenuItem.vue';
 import UiEmptyState from '@owlat/ui/components/ui/EmptyState.vue';
 import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
@@ -57,6 +63,8 @@ export function registerNuxtComponents(): void {
 		NuxtLink: NuxtLinkStub,
 		UiButton,
 		UiCheckbox,
+		UiDropdownMenu,
+		UiDropdownMenuItem,
 		UiQueryBoundary,
 		UiEmptyState,
 		UiErrorAlert,
