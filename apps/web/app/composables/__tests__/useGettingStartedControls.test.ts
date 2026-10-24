@@ -1,6 +1,5 @@
 /**
- * Hiding and bringing back Getting started. Dismissing used to be one way:
- * nothing offered Undo and nothing led back. Pinned here: Undo restores exactly
+ * Hiding and bringing back Getting started. Pinned here: Undo restores exactly
  * the writes that landed, with their tokens; a failed or refused restore is not
  * reported as undone; "Show setup checklist" restores within the viewer's own
  * boundary (instance-wide only for admins, once the role is known), leaves Zen
