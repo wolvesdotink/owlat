@@ -10,7 +10,7 @@
 const REGEXP_SYNTAX = /[.+^${}()|[\]\\]/gu;
 const compiled = new Map<string, RegExp>();
 
-const globToRegExp = (glob: string): RegExp => {
+export const globToRegExp = (glob: string): RegExp => {
 	const cached = compiled.get(glob);
 	if (cached) return cached;
 	let pattern = '';
