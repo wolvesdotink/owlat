@@ -68,11 +68,14 @@ function applyFeedbackProvenancePolicy(
 	if (!feedback.feedbackProvenance) return reduction;
 	if (feedback.feedbackProvenance === 'unknown') return { effects: [] };
 	const deliveryDomain = feedback.feedbackProvenance;
+	// The original job's id from the same persisted record, so a delayed DSN or
+	// complaint joins the send that caused it in the logs.
+	const correlation = feedback.correlationId ? { correlationId: feedback.correlationId } : {};
 	const events = reduction.effects.map((effect): BounceEffect =>
 		effect.kind === 'notify_convex'
 			? {
 					...effect,
-					event: { ...effect.event, deliveryDomain },
+					event: { ...effect.event, deliveryDomain, ...correlation },
 				}
 			: effect
 	);

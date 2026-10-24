@@ -71,6 +71,23 @@ describe('InboundTlsRequirementCard', () => {
 		expect(wrapper.find('[role="switch"]').attributes('aria-checked')).toBe('true');
 	});
 
+	it('marks a stored opt-out of the required default, and Reset requires TLS again', async () => {
+		expect(mountCard().find('[data-testid="setting-reset"]').exists()).toBe(false);
+		settings.value = undefined;
+		expect(mountCard().find('[data-testid="setting-reset"]').exists()).toBe(false);
+
+		settings.value = { isInboundTlsRequired: false };
+		const wrapper = mountCard();
+		const reset = wrapper.find('[data-testid="setting-reset"] button');
+		expect(reset.attributes('aria-label')).toBe(
+			'Reset Require TLS for incoming mail to its default'
+		);
+		await reset.trigger('click');
+		await flushPromises();
+		expect(run).toHaveBeenCalledWith({ isInboundTlsRequired: true });
+		expect(wrapper.find('[data-testid="setting-reset"]').exists()).toBe(false);
+	});
+
 	it('is not shown where there are no hosted mailboxes to receive for', () => {
 		postbox = false;
 		const wrapper = mountCard();

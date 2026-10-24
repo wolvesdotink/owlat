@@ -71,46 +71,6 @@ export function isSeedProbeId(value: string): boolean {
  */
 export const SEED_ACCOUNTS_PER_ORG_LIMIT = 50;
 
-/**
- * One seed mailbox's outstanding probe work — the WIRE CONTRACT between the
- * Convex poller surface (`analytics/seedProbePoller.listSeedProbeWork`) and the
- * mail-sync worker that walks the mailbox. Declared here, once, because both
- * ends are separate deployables: two hand-kept copies of a wire shape drift.
- *
- * Carries no credential and nothing from inside a mailbox — an address the
- * worker must connect to, and opaque probe ids to look for.
- */
-export interface SeedProbeWorkItem {
-	organizationId: string;
-	accountId: string;
-	address: string;
-	provider: DestinationProviderKey;
-	/** Probes dispatched, settled, and still unclassified. */
-	probeIds: string[];
-	/** Probes past the give-up horizon — report MISSING without searching. */
-	expiredProbeIds: string[];
-	/**
-	 * The ONLY hosts the hygiene click may be issued against — this deployment's
-	 * own tracking/site origins. The click target is chosen from links found
-	 * inside a message sitting in a mailbox we do not control the server of, so
-	 * the allowed set is supplied by the backend rather than inferred from the
-	 * content. An empty list means "click nothing".
-	 */
-	clickHosts: string[];
-}
-
-/**
- * One PAGE of seed work. The sweep is cursored rather than a bounded top-N:
- * a fixed page with no cursor starves whichever organizations sort last on a
- * multi-org deployment, permanently and silently. The worker holds `cursor`
- * between ticks and starts over when the sweep reports `isDone`.
- */
-export interface SeedProbeWorkPage {
-	items: SeedProbeWorkItem[];
-	cursor: string | null;
-	isDone: boolean;
-}
-
 // ============ PLACEMENT CLASSIFICATION ============
 
 // Folder naming is provider-specific and long enough to own a file; the

@@ -7,7 +7,12 @@
  * functions so the IMAP server never needs to know the storage shape.
  */
 
-import { v } from 'convex/values';
+import {
+	copyMessages as copyMessagesContract,
+	discardCopies as discardCopiesContract,
+	expungeFolder as expungeFolderContract,
+	moveMessages as moveMessagesContract,
+} from '@owlat/worker-protocol/imap';
 import { internalMutation } from '../../lib/writeFence';
 import type { Id } from '../../_generated/dataModel';
 import { rebuildThreadAggregates } from '../messageActions';
@@ -34,11 +39,8 @@ import { assertImapWireSupported } from './serverRegistry';
  * Returns the (sourceUid, targetUid) pairs for `COPYUID` response.
  */
 export const copyMessages = internalMutation({
-	args: {
-		sourceFolderId: v.id('mailFolders'),
-		targetFolderId: v.id('mailFolders'),
-		messageIds: v.array(v.id('mailMessages')),
-	},
+	args: copyMessagesContract.args,
+	returns: copyMessagesContract.returns,
 	handler: async (ctx, args) => {
 		const target = await ctx.db.get(args.targetFolderId);
 		const source = await ctx.db.get(args.sourceFolderId);
@@ -141,11 +143,8 @@ export const copyMessages = internalMutation({
  * COPY but the source row is removed instead of duplicated.
  */
 export const moveMessages = internalMutation({
-	args: {
-		sourceFolderId: v.id('mailFolders'),
-		targetFolderId: v.id('mailFolders'),
-		messageIds: v.array(v.id('mailMessages')),
-	},
+	args: moveMessagesContract.args,
+	returns: moveMessagesContract.returns,
 	handler: async (ctx, args) => {
 		const target = await ctx.db.get(args.targetFolderId);
 		const source = await ctx.db.get(args.sourceFolderId);
@@ -227,10 +226,8 @@ export const moveMessages = internalMutation({
  * which both RFCs allow.
  */
 export const discardCopies = internalMutation({
-	args: {
-		targetFolderId: v.id('mailFolders'),
-		uids: v.array(v.number()),
-	},
+	args: discardCopiesContract.args,
+	returns: discardCopiesContract.returns,
 	handler: async (ctx, args) => {
 		const folder = await ctx.db.get(args.targetFolderId);
 		if (!folder) return { removed: 0 };
@@ -292,18 +289,13 @@ export const discardCopies = internalMutation({
  * returned on the last page too, for that reason.
  */
 export const expungeFolder = internalMutation({
-	args: {
-		folderId: v.id('mailFolders'),
-		uidSet: v.optional(v.array(v.number())),
-		beforeUid: v.optional(v.number()),
-		// The caller's wire version. An IMAP server from v0.6.7 or
-		// older (wire 0, sends none) numbered its `* n EXPUNGE` lines from the
-		// `sequenceNumbers` this used to return, and paged on
-		// `nextSequenceNumber`. Both are gone, so such a server is refused here,
-		// before the page deletes anything.
-		imapWireVersion: v.optional(v.number()),
-	},
+	args: expungeFolderContract.args,
+	returns: expungeFolderContract.returns,
 	handler: async (ctx, args) => {
+		// The caller's wire version. An IMAP server from v0.6.7 or older (wire 0,
+		// sends none) numbered its `* n EXPUNGE` lines from the `sequenceNumbers`
+		// this used to return, and paged on `nextSequenceNumber`. Both are gone,
+		// so such a server is refused here, before the page deletes anything.
 		assertImapWireSupported(args.imapWireVersion);
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) return { uids: [], modseq: 0, done: true };

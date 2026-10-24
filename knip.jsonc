@@ -296,6 +296,22 @@
 				"src/**/__tests__/**/*.ts",
 			],
 		},
+		// The Convex<->worker wire contract (IMAP, mail-sync). Its public surface is
+		// the barrel plus its subpaths, and `wireFixtures/` — the frozen answers the
+		// backend and both workers' suites pin against, which is why it is an
+		// exported subpath rather than a `__tests__` folder no app could import.
+		"packages/worker-protocol": {
+			"entry": [
+				"src/index.ts",
+				"src/validatorMatch.ts",
+				"src/fields.ts",
+				"src/imap/index.ts",
+				"src/mailSync/index.ts",
+				"src/client.ts",
+				"src/wireFixtures/index.ts",
+				"src/**/__tests__/**/*.ts",
+			],
+		},
 		"packages/channels": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-renderer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },

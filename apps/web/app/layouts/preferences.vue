@@ -27,6 +27,7 @@ import {
 } from '~/lib/settingsRegistry';
 import SettingsPageShell from '~/components/settings/PageShell.vue';
 import { useWorkspaceSettingsNav } from '~/composables/useWorkspaceSettingsNav';
+import { useSettingsAnchorReveal } from '~/composables/useSettingsAnchorReveal';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -44,33 +45,10 @@ const { areas: adminAreas, badges } = useWorkspaceSettingsNav(isAdmin);
 const activeEntry = computed(() => settingsEntryFor(route.path));
 const heading = computed(() => (activeEntry.value ? t(activeEntry.value.titleKey) : ''));
 
-/**
- * Palette deep links arrive as `path#anchor`. Nuxt does not scroll to a hash
- * that was already present when the page mounted, and the target may be several
- * screens down, so bring it into view ourselves — and flash it, because landing
- * silently in the middle of a long page reads as "this is the wrong page".
- */
-const flashedAnchor = ref<string | null>(null);
-
-function revealAnchor(hash: string) {
-	const anchor = settingsAnchorFromHash(hash);
-	if (!anchor) return;
-	void nextTick(() => {
-		const target = document.getElementById(anchor);
-		if (!target) return;
-		target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-		flashedAnchor.value = anchor;
-		window.setTimeout(() => {
-			if (flashedAnchor.value === anchor) flashedAnchor.value = null;
-		}, 2000);
-	});
-}
-
-onMounted(() => revealAnchor(route.hash));
-watch(
-	() => route.fullPath,
-	() => revealAnchor(route.hash)
-);
+// Palette deep links arrive as `path#anchor`: bring the control into view and
+// flash it, because landing silently in the middle of a long page reads as
+// "this is the wrong page". Only anchors the registry declares are honoured.
+useSettingsAnchorReveal((_path, hash) => settingsAnchorFromHash(hash));
 
 // The compact row: every My settings page, in rail order.
 const compactEntries = computed(() =>
@@ -114,20 +92,8 @@ const compactEntries = computed(() =>
 					</h1>
 				</template>
 
-				<div :class="flashedAnchor ? 'settings-anchor-flash' : undefined">
-					<slot />
-				</div>
+				<slot />
 			</SettingsPageShell>
 		</NuxtLayout>
 	</div>
 </template>
-
-<style scoped>
-/* The deep-linked section, briefly outlined. Scoped to a deep selector because
-   the target lives inside the page rendered into the slot. */
-.settings-anchor-flash :deep(:target) {
-	outline: 2px solid var(--color-brand);
-	outline-offset: 4px;
-	border-radius: var(--radius-md, 0.5rem);
-}
-</style>

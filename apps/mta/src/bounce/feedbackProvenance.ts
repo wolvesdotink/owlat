@@ -18,6 +18,7 @@
 import { createHash } from 'crypto';
 import type Redis from 'ioredis';
 import type { DeliveryDomain } from '@owlat/shared';
+import { isCorrelationId } from '@owlat/shared/correlation';
 import type { BounceAttempt } from './types.js';
 import type { EmailJob } from '../types.js';
 import { parseCampaignFromFeedbackId } from '../intelligence/campaignComplaintRate.js';
@@ -34,6 +35,8 @@ interface FeedbackProvenance {
 	organizationId: string;
 	recipient: string;
 	campaignId?: string;
+	/** The job's log-only correlation id; absent on records written before it. */
+	correlationId?: string;
 }
 
 function messageKey(messageId: string): string {
@@ -61,6 +64,7 @@ export async function recordFeedbackProvenance(redis: Redis, job: EmailJob): Pro
 		organizationId: job.organizationId,
 		recipient: job.to.trim().toLowerCase(),
 		...(campaignId ? { campaignId } : {}),
+		...(job.correlationId ? { correlationId: job.correlationId } : {}),
 	};
 	const now = Date.now();
 	const recipient = recipientKey(record.recipient);
@@ -97,7 +101,13 @@ function parseRecord(value: string | null, expectedMessageId: string): FeedbackP
 			parsed['recipient'].length <= 320 &&
 			isKnownCampaignId
 		) {
-			return parsed as unknown as FeedbackProvenance;
+			// A malformed correlation id costs the log join, never the attribution:
+			// it is dropped rather than failing the whole record.
+			const { correlationId, ...record } = parsed;
+			return {
+				...(record as unknown as FeedbackProvenance),
+				...(isCorrelationId(correlationId) ? { correlationId } : {}),
+			};
 		}
 	} catch {
 		// Corrupt state is unknown, never production evidence.
@@ -170,6 +180,8 @@ export async function attachFeedbackProvenance(
 			campaignId: exact.campaignId,
 			deliveryDomain: exact.deliveryDomain,
 			feedbackProvenance: exact.deliveryDomain,
+			// Assigned even when absent, so nothing the report carried survives.
+			correlationId: exact.correlationId,
 		};
 		return attempt.kind === 'fbl'
 			? { ...attempt, arf: enriched }

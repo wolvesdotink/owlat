@@ -7,7 +7,9 @@
  */
 
 import type { ShortcutOverlay } from './shortcutRegistry';
+import { normalizeChord } from './shortcutRegistry';
 import { SHORTCUT_CATALOG } from './shortcutCatalog';
+import { chordFitsShortcut } from './shortcutCapture';
 
 /**
  * Named key maps people arrive with. A preset REPLACES a shortcut's chords, so
@@ -67,10 +69,12 @@ export interface StoredShortcutOverride {
 
 /**
  * Turn the stored remap rows into an overlay, dropping anything this build
- * cannot honour: ids that left the catalog, and ids the catalog refuses to
- * move. (Unparseable chords are dropped one layer down, by
- * `buildShortcutBindings`.) A settings row written by a newer client must never
- * take the keyboard down on an older one.
+ * cannot honour: ids that left the catalog, ids the catalog refuses to move,
+ * and chords of the wrong shape for their command (a Cmd/Ctrl chord on a
+ * single-key command, a single key on a chord command; see `shortcutCapture`).
+ * (Unparseable chords are dropped one layer down, by `buildShortcutBindings`.)
+ * A settings row written by a newer client must never take the keyboard down
+ * on an older one.
  */
 export function shortcutOverridesToOverlay(
 	stored: readonly StoredShortcutOverride[] | undefined | null
@@ -78,7 +82,15 @@ export function shortcutOverridesToOverlay(
 	const overlay: Record<string, string[]> = {};
 	for (const row of stored ?? []) {
 		if (!isRemappableShortcut(row.id)) continue;
-		overlay[row.id] = row.keys;
+		const def = SHORTCUT_CATALOG.find((entry) => entry.id === row.id);
+		if (!def) continue;
+		const keys = row.keys.filter((key) => {
+			const chord = normalizeChord(key);
+			return chord === null || chordFitsShortcut(def, chord);
+		});
+		// `[]` stored is a deliberate unbind; `[]` left after the filter is not.
+		if (row.keys.length > 0 && keys.length === 0) continue;
+		overlay[row.id] = keys;
 	}
 	return overlay;
 }

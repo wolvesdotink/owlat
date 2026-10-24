@@ -15,9 +15,18 @@
  * the file-size ratchet and this is the one section with moving parts.
  */
 import { restartToUpdate } from '~/lib/desktop/updater.client';
+import { defaultDesktopSettings } from '~/lib/desktop/settingsTypes';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t, locale } = useI18n();
 const { settings, isReady, setGlobal } = useDesktopAppSettings();
+
+// The boot-time check is on for a device that never chose; unmarked until the
+// settings store has loaded.
+const AUTO_CHECK_DEFAULT = defaultDesktopSettings().global.autoCheckUpdates;
+const autoCheckChanged = computed(
+	() => isReady.value && settings.value.global.autoCheckUpdates !== AUTO_CHECK_DEFAULT
+);
 const { phase, version, percent, downloadedBytes, totalBytes, lastCheckedAt, source, errorKind } =
 	useDesktopUpdateState();
 
@@ -48,9 +57,12 @@ const managedBy = computed(() => {
 	return t('desktop.settings.updates.managedBy', { host: current.host, policy });
 });
 
-const sizeFormatter = computed(() => new Intl.NumberFormat(locale.value, {
-	maximumFractionDigits: 1,
-}));
+const sizeFormatter = computed(
+	() =>
+		new Intl.NumberFormat(locale.value, {
+			maximumFractionDigits: 1,
+		})
+);
 
 function megabytes(bytes: number): string {
 	return `${sizeFormatter.value.format(bytes / 1024 / 1024)} MB`;
@@ -95,7 +107,15 @@ async function restart() {
 	<div>
 		<div class="flex items-center justify-between gap-4">
 			<span>
-				<span class="block text-sm font-medium">{{ t('desktop.settings.updates.title') }}</span>
+				<span class="flex items-center gap-2">
+					<span class="block text-sm font-medium">{{ t('desktop.settings.updates.title') }}</span>
+					<SettingsResetToDefault
+						:changed="autoCheckChanged"
+						:label="t('components.settings.resetToDefault.names.autoCheckUpdates')"
+						:disabled="!isReady"
+						@reset="setGlobal('autoCheckUpdates', AUTO_CHECK_DEFAULT)"
+					/>
+				</span>
 				<span class="block text-xs text-text-tertiary">
 					{{ appVersion ? t('desktop.settings.updates.version', { version: appVersion }) : '' }}
 					{{ managedBy || t('desktop.settings.updates.description') }}

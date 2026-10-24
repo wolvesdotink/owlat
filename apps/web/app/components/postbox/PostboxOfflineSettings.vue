@@ -9,6 +9,8 @@
  * device-global and Clear wipes every mailbox's cache on this device.
  */
 import { describeShellStatus } from '~/utils/offlineShell';
+import { POSTBOX_OFFLINE_CACHE_DEFAULT } from '~/composables/postbox/usePostboxOfflineCache';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t } = useI18n();
 
@@ -59,9 +61,16 @@ async function onClearOfflineCache() {
 		</header>
 		<div class="px-5 py-4 flex items-center justify-between gap-4">
 			<div class="min-w-0">
-				<label for="postbox-offline-cache" class="font-medium text-sm block">
-					{{ t('components.postbox.postboxOfflineSettings.store.label') }}
-				</label>
+				<div class="flex items-center gap-2">
+					<label for="postbox-offline-cache" class="font-medium text-sm block">
+						{{ t('components.postbox.postboxOfflineSettings.store.label') }}
+					</label>
+					<SettingsResetToDefault
+						:changed="offlineCacheEnabled !== POSTBOX_OFFLINE_CACHE_DEFAULT"
+						:label="t('components.postbox.postboxOfflineSettings.store.label')"
+						@reset="setOfflineCacheEnabled(POSTBOX_OFFLINE_CACHE_DEFAULT)"
+					/>
+				</div>
 				<p class="text-xs text-text-tertiary mt-0.5">
 					{{ t('components.postbox.postboxOfflineSettings.store.hint') }}
 					{{ t('components.postbox.postboxOfflineSettings.store.default') }}

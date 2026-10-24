@@ -250,7 +250,7 @@ function applyOne(
 			if (effect.metric === 'fbl_complaint') {
 				metrics.fblComplaintsTotal.inc({ isp: effect.isp, attributed: effect.attributed });
 			} else if (effect.metric === 'fbl_complaint_by_campaign') {
-				metrics.fblComplaintsByCampaignTotal.inc({ campaign: effect.campaign, isp: effect.isp });
+				metrics.recordFblComplaintByCampaign(effect.campaign, effect.isp);
 			} else {
 				metrics.unattributedBouncesTotal.inc();
 			}

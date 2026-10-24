@@ -6,17 +6,76 @@ adds a new service image.
 
 ## Cutting a release
 
+Every unified release goes through a release candidate. The candidate runs the
+whole pipeline, and the stable release is its commit, tagged once that run is
+green:
+
 ```sh
-bun run release:cut <version|major|minor|patch>   # bump + changelog + commit + tag
-# curate the generated CHANGELOG.md section, then:
-git push origin main v<X.Y.Z>
+bun run release:cut <major|minor|patch|X.Y.Z> --no-commit # prepare X.Y.Z: bump + changelog + schema snapshot
+# curate the generated CHANGELOG.md section, then commit and tag the candidate:
+git add -A && git commit -m "chore(release): vX.Y.Z-rc.1"
+git tag -a vX.Y.Z-rc.1 -m "Owlat vX.Y.Z-rc.1"
+git push origin main vX.Y.Z-rc.1
+# wait for release.yml to pass on the candidate, test it (below), then:
+bun run release:promote vX.Y.Z-rc.1 --push    # tag vX.Y.Z on the candidate's commit
 ```
+
+Without `--no-commit`, `release:cut` commits and tags the candidate itself
+(add `--push` to push both). The stable release is the candidate's commit, so
+changelog edits made after the tag exist only in a later commit: they reach a
+release only through the next candidate (`release:cut rc`).
+
+A fix found while testing goes to main as usual, then
+`bun run release:cut rc` cuts `vX.Y.Z-rc.2` from main: it keeps the prepared
+versions, adds what landed since `rc.1` to the version's CHANGELOG section
+and moves the schema snapshot forward. To fold in hand-written notes under
+[Unreleased] or curate the section again, cut it with `--no-commit` as above
+and commit and tag `vX.Y.Z-rc.2` after curating. Only the newest candidate can be
+promoted. `release:cut` refuses to prepare a new version while the prepared one
+is unreleased: cut its next candidate or promote one first.
+
+What a candidate does, and what it never does:
+
+|                                                                                             | Candidate `vX.Y.Z-rc.N`          | Stable `vX.Y.Z` |
+| ------------------------------------------------------------------------------------------- | -------------------------------- | --------------- |
+| Verification, server images, desktop apps, install gates                                    | yes                              | yes             |
+| Update flow from the previous stable release                                                | yes                              | yes             |
+| GitHub release                                                                              | prerelease, never "latest"       | "latest"        |
+| Image aliases (`latest`, `X.Y`)                                                             | no                               | yes             |
+| `install.sh`, `owlat upgrade`, the in-app update check, the desktop updater's `latest.json` | not by default                   | yes             |
+| Managed desktop updates                                                                     | only on the `prerelease` channel | yes             |
+
+The `resolve` job of `release.yml` (`scripts/ci/release-gate.ts`) enforces
+this. A candidate must sit on a prepared commit, where the root `package.json`
+already holds `X.Y.Z`. A stable tag must point at the commit of the newest
+`vX.Y.Z-rc.N`, which has to be published as a prerelease, and the newest
+`release.yml` run for that candidate must have succeeded. Anything else stops
+before a build. `release:promote` runs the same check before it creates the
+tag. The stable run builds the artifacts again from that same commit, so they
+carry the stable version and signatures.
+
+Testing a candidate means installing it by name, never by default:
+
+```sh
+curl -fsSL https://get.owlat.app | OWLAT_REF=vX.Y.Z-rc.N bash   # fresh install
+owlat upgrade --version X.Y.Z-rc.N                           # an existing test install
+```
+
+Desktop apps get it from the candidate's release assets, or through managed
+desktop updates on the `prerelease` channel. The candidate's artifacts carry
+`X.Y.Z-rc.N`; the Windows installer's MSI version is `X.Y.Z.N`, because
+Windows Installer versions are numeric (`scripts/ci/msi-version.ts`).
+
+Other prerelease tags (`vX.Y.Z-beta.1`) still publish a prerelease the same
+way, but can never be promoted.
 
 The curated section is also the release's notes: `release.yml` builds the
 GitHub Release body with `scripts/release-body.ts`, which puts that section
 first and the update instructions after it, and the in-app update card shows
-the section to admins. A tag without a CHANGELOG section fails before anything
-is built. Preview the body with
+the section to admins. A candidate's body is the `X.Y.Z` section under a
+release-candidate note, so the candidate and the stable release carry the same
+notes. A tag without a CHANGELOG section fails before anything is built.
+Preview the body with
 `bun scripts/release-body.ts <X.Y.Z> --repo wolvesdotink/owlat`.
 
 `release:cut` also moves the schema-compatibility guard forward: it snapshots
@@ -29,7 +88,7 @@ in `apps/api/convex/CONVENTIONS.md`). To redo the snapshot by hand, for example
 after a cut made without the script:
 
 ```sh
-bun run --cwd apps/api schema-compat:refresh   # snapshots the newest vX.Y.Z tag
+bun run --cwd apps/api schema-compat:refresh   # snapshots the newest stable vX.Y.Z tag
 git add apps/api/convex/__tests__/schemaCompat/previousRelease.json
 git commit -m "test(api): snapshot the v<X.Y.Z> schema for the compat guard"
 ```
@@ -43,6 +102,7 @@ Pushing the tag triggers one of three pipelines:
 | Tag              | Workflow                | Ships                                                                                        |
 | ---------------- | ----------------------- | -------------------------------------------------------------------------------------------- |
 | `vX.Y.Z`         | `release.yml` (unified) | server images + desktop apps + install assets — the line `install.sh` and the updater follow |
+| `vX.Y.Z-rc.N`    | `release.yml` (unified) | the same, published as a prerelease that nothing follows by default                          |
 | `server-vX.Y.Z`  | `server-release.yml`    | server images + compose assets only                                                          |
 | `desktop-vX.Y.Z` | `desktop-release.yml`   | desktop apps only                                                                            |
 
@@ -123,7 +183,9 @@ first warm desktop release, record the compiled crate count per OS; also compare
 ARM64 build times and exact-commit reuse rates over the next few releases.
 
 The unified workflow explicitly calls Update flow after publication, using the
-highest earlier stable unified version and this release's version. This tests
+highest earlier stable unified version and this release's version. A candidate
+runs it too, from the highest stable version below `X.Y.Z`, and a failed
+update fails the candidate's run, which blocks its promotion. This tests
 the actual previous updater applying the new release. Before the update it
 seeds Convex data through the previous release (its sample data plus one queued
 Send, with no way to send mail) and records a baseline: the named contact, sent

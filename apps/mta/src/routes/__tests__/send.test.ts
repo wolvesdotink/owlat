@@ -1017,3 +1017,42 @@ describe('POST /send/system — attachments', () => {
 		expect(large.res.status).toBe(400);
 	});
 });
+
+describe('POST /send — correlation header', () => {
+	function postWith(app: Hono<AuthEnv>, correlation: string) {
+		return app.request('/send', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', 'x-owlat-correlation': correlation },
+			body: validBody(),
+		});
+	}
+
+	it('stores a valid header on the queued job, outside the body contract', async () => {
+		const queue = fakeQueue();
+		const res = await postWith(buildApp(queue, fakeRedis()), 'txn_V1StGXR8_Z5jdHi6');
+
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as { data: Record<string, unknown> };
+		expect(arg.data['correlationId']).toBe('txn_V1StGXR8_Z5jdHi6');
+		// It is not a work identity: the queue identity is untouched.
+		expect(arg).toMatchObject({ jobId: 'work-attempt-1' });
+	});
+
+	it('drops a malformed header instead of refusing the send', async () => {
+		const queue = fakeQueue();
+		const res = await postWith(buildApp(queue, fakeRedis()), 'not a valid id');
+
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as { data: Record<string, unknown> };
+		expect(arg.data).not.toHaveProperty('correlationId');
+	});
+
+	it('queues a job without one when the producer sent no header', async () => {
+		const queue = fakeQueue();
+		const res = await post(buildApp(queue, fakeRedis()), validBody());
+
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as { data: Record<string, unknown> };
+		expect(arg.data).not.toHaveProperty('correlationId');
+	});
+});

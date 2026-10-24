@@ -77,6 +77,7 @@ function onKeydown(event: KeyboardEvent) {
 		emit('exit');
 	}
 }
+// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape leaves the flow
 onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 

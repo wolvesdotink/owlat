@@ -221,3 +221,43 @@ describe('one row per destination', () => {
 		expect(byId(navItems.value, 'nav:/dashboard/campaigns')?.subtitle).toBe('Marketing');
 	});
 });
+
+describe('settings controls', () => {
+	const adminControls = (items: PaletteItem[]) =>
+		items.filter((item) => item.id.startsWith('setting:admin:')).map((item) => item.id);
+
+	it('indexes the Workspace controls for an admin, beside the personal ones', async () => {
+		const { settingsItems } = await providers();
+		expect(adminControls(settingsItems.value)).toEqual([
+			'setting:admin:domains:dkim',
+			'setting:admin:aiProvider:aiProviderKey',
+			'setting:admin:aiReplies:autonomy',
+			'setting:admin:rampControls:rampPace',
+			'setting:admin:webhooks:webhookSecret',
+			'setting:admin:brandKit:brandColors',
+		]);
+		expect(byId(settingsItems.value, 'setting:overview:appearance')).toBeDefined();
+	});
+
+	it('offers a member none of them', async () => {
+		role = 'editor';
+		const { settingsItems } = await providers();
+		expect(adminControls(settingsItems.value)).toEqual([]);
+		expect(byId(settingsItems.value, 'setting:overview:appearance')).toBeDefined();
+	});
+
+	it('follows the page gates: no ramp pace before the ramp has started', async () => {
+		hasRampStarted = false;
+		const { settingsItems } = await providers();
+		expect(adminControls(settingsItems.value)).not.toContain('setting:admin:rampControls:rampPace');
+	});
+
+	it('names the control, files it under its page, and deep-links to its anchor', async () => {
+		const { settingsItems } = await providers();
+		const dkim = byId(settingsItems.value, 'setting:admin:domains:dkim');
+		expect(dkim?.label).toBe('DKIM signing');
+		expect(dkim?.subtitle).toBe('Sending domains');
+		dkim?.run();
+		expect(navigations).toEqual(['/dashboard/admin/delivery/domains#sending-domain-list']);
+	});
+});

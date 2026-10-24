@@ -32,6 +32,8 @@ import { routePrefixMatcher } from '~/lib/commandPaletteRegistry';
 import { settingsSectionsFor } from '~/lib/settingsRegistry';
 import SettingsPageShell from '~/components/settings/PageShell.vue';
 import { useWorkspaceSettingsNav } from '~/composables/useWorkspaceSettingsNav';
+import { useSettingsAnchorReveal } from '~/composables/useSettingsAnchorReveal';
+import { adminAnchorFromHash } from '~/lib/adminSettingsControls';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -77,6 +79,11 @@ const compactPills = computed(() =>
 		? compactEntries.value.map((entry) => ({ path: entry.path, title: t(entry.titleKey) }))
 		: []
 );
+
+// A palette control result lands on `path#anchor`: reveal and flash the control
+// once the page has rendered it. Only anchors this page's registry controls
+// declare are honoured.
+useSettingsAnchorReveal(adminAnchorFromHash);
 
 // ⌘K, from inside Workspace settings: every admin destination this deployment
 // has, above the core groups. The core navigation group caps at eight rows

@@ -421,7 +421,7 @@ async function changePreset(
 					</ul>
 				</UiCard>
 
-				<UiCard>
+				<UiCard id="ramp-presets">
 					<h2 class="text-base font-semibold text-text-primary">
 						{{ t('dashboard.admin.delivery.advanced.controls.howHard') }}
 					</h2>

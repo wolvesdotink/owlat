@@ -12,7 +12,7 @@
  *     there leaves as it always did.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { computed, defineComponent, h, nextTick, reactive, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { AnswerItem } from '~/composables/useAnswerQueue';
@@ -236,6 +236,24 @@ describe('the Answer queue opens Answer mode', () => {
 		await session.undo();
 		expect(route.path).toBe('/dashboard/answer/m/msg_a');
 		expect(inverse).toHaveBeenCalledTimes(1);
+	});
+
+	it('undoes the last step with Cmd/Ctrl+Z, but not from a text field', async () => {
+		items.value = [mail('a'), mail('b')];
+		const session = mountSession();
+		await nextTick();
+		session.complete('archived', vi.fn());
+		const input = document.body.appendChild(document.createElement('input'));
+		input.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+		await nextTick();
+		input.remove();
+		expect(route.path).toBe('/dashboard/answer/m/msg_b');
+		// Through the app-wide dispatcher (`answerQueue.undo`), a document listener.
+		document.body.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true })
+		);
+		await flushPromises();
+		expect(route.path).toBe('/dashboard/answer/m/msg_a');
 	});
 
 	it('keeps a follow-up reminder as a card on the queue page', async () => {

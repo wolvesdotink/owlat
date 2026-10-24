@@ -29,6 +29,7 @@ import { isDeliveryDomain } from '@owlat/shared/routingDispatch';
 import { parseIpAddress } from '@owlat/shared/ipAddress';
 import { isDeliverabilityProbeTokenFormat } from '@owlat/shared/deliverabilityProbeFormat';
 import { isSmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
+import { isCorrelationId } from '@owlat/shared/correlation';
 
 const EVENT_TYPES = new Set<string>(MTA_WEBHOOK_EVENT_TYPES);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -76,6 +77,7 @@ export function isMtaWebhookEvent(value: unknown): value is ValidatedMtaWebhookE
 		!optionalBounded(value['ptr'], 512) ||
 		!optionalBounded(value['primarySendingDomain'], 253) ||
 		!optionalBounded(value['remoteMessageId'], 512) ||
+		(value['correlationId'] !== undefined && !isCorrelationId(value['correlationId'])) ||
 		(value['deliveryDomain'] !== undefined && !isDeliveryDomain(value['deliveryDomain'])) ||
 		(value['destinationProvider'] !== undefined &&
 			!isDestinationProviderKey(value['destinationProvider'])) ||
