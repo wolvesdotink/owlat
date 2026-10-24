@@ -6,10 +6,12 @@ import { parseKeywords, settingsControlTargets } from '~/lib/settingsRegistry';
 import { adminControlTargets } from '~/lib/adminSettingsControls';
 import { useAdminEnvironment } from '~/composables/useAdminEnvironment';
 import { useZenMode } from '~/composables/useZenMode';
+import { useGettingStartedControls } from '~/composables/useGettingStartedControls';
 
 /**
  * Static item providers for the app-wide command palette (AppCommandPalette):
- *   - verbs — New campaign, Compose, New contact, Ask knowledge, updates;
+ *   - verbs — New campaign, Compose, New contact, Ask knowledge, Zen, the
+ *     setup checklist, updates;
  *   - sidebar-context switch — offers the OTHER context (Inbox ↔ Marketing),
  *     only while the sidebar toggle itself exists (both contexts survived the
  *     feature flags); runs the same last-visited navigation as the toggle;
@@ -61,6 +63,7 @@ export function useCommandPaletteProviders() {
 	const { openCompose, openNewContact } = useQuickCreate();
 	const { showToggle: hasSidebarContexts, activeContext, switchContext } = useSidebarContext();
 	const { isZen, toggleZen } = useZenMode();
+	const { showChecklist } = useGettingStartedControls();
 	// The admin registry's own gates, for the Administration pages the route
 	// provider offers. Subscribed only for someone who can open those pages.
 	const canAdminister = computed(() => role.value === 'admin' || role.value === 'owner');
@@ -106,6 +109,14 @@ export function useCommandPaletteProviders() {
 			subtitle: t('components.shell.zen.paletteSubtitle'),
 			icon: isZen.value ? 'lucide:minimize-2' : 'lucide:maximize-2',
 			run: toggleZen,
+		});
+		// The way back to Getting started after it was dismissed or finished.
+		verbs.push({
+			id: 'verb:show-setup-checklist',
+			label: t('components.dashboard.gettingStarted.show'),
+			subtitle: t('components.dashboard.gettingStarted.title'),
+			icon: 'lucide:list-checks',
+			run: () => void showChecklist(),
 		});
 		if (isDesktop.value) {
 			verbs.push({

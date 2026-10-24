@@ -180,7 +180,40 @@ export const dismiss = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await requireSelf(ctx, args.userId);
-		await upsertOnboardingRow(ctx, args.userId, { dismissedAt: Date.now() });
+		const dismissedAt = Date.now();
+		await upsertOnboardingRow(ctx, args.userId, { dismissedAt });
+		// The instant is the Undo token: `restore` given it leaves a later
+		// dismissal alone.
+		return { dismissedAt };
+	},
+});
+
+/**
+ * Bring the caller's own checklist back — the inverse of {@link dismiss}. Clears
+ * only `dismissedAt`: step stamps and `welcomedAt` stay as they are. With
+ * `dismissedAt` (the token `dismiss` returned) this is an Undo, and a dismissal
+ * made after that instant (another tab, a second click) is left in place.
+ * Idempotent; a member with no row has nothing to restore. Returns whether the
+ * checklist is still dismissed afterwards.
+ */
+// authz: self — requireSelf asserts args.userId is the caller.
+export const restore = authedMutation({
+	args: {
+		userId: v.string(),
+		dismissedAt: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		await requireSelf(ctx, args.userId);
+		const row = await ctx.db
+			.query('userOnboarding')
+			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.userId))
+			.first();
+		if (row?.dismissedAt === undefined) return { isDismissed: false };
+		if (args.dismissedAt !== undefined && row.dismissedAt > args.dismissedAt) {
+			return { isDismissed: true };
+		}
+		await ctx.db.patch(row._id, { dismissedAt: undefined, updatedAt: Date.now() });
+		return { isDismissed: false };
 	},
 });
 

@@ -9,6 +9,11 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 import SidebarFooter from '../SidebarFooter.vue';
 
+const showChecklist = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('~/composables/useGettingStartedControls', () => ({
+	useGettingStartedControls: () => ({ showChecklist }),
+}));
+
 const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
 const WINDOWS_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
@@ -75,6 +80,7 @@ describe('account menu shortcut hints', () => {
 			'Control+Shift+F',
 			'?',
 			undefined,
+			undefined,
 		]);
 	});
 
@@ -88,5 +94,21 @@ describe('account menu shortcut hints', () => {
 		const settings = wrapper.get('a[href="/dashboard/preferences"]');
 		expect(settings.attributes('title')).toBe('Settings (Ctrl+.)');
 		expect(settings.attributes('aria-keyshortcuts')).toBe('Control+.');
+	});
+});
+
+describe('account menu setup checklist', () => {
+	it('brings the checklist back and closes the menu', async () => {
+		showChecklist.mockClear();
+		const wrapper = await openMenu(WINDOWS_UA);
+		const item = wrapper
+			.findAll('[role="menuitem"]')
+			.find((el) => el.text() === 'Show setup checklist');
+		expect(item).toBeDefined();
+
+		await item!.trigger('click');
+
+		expect(showChecklist).toHaveBeenCalledTimes(1);
+		expect(wrapper.find('[role="menu"]').exists()).toBe(false);
 	});
 });
