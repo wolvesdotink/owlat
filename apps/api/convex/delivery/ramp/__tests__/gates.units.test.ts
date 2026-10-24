@@ -83,7 +83,7 @@ describe('every shipped ceiling spec is decidable', () => {
 /**
  * THE ARM VOCABULARY AND THE BREACH VOCABULARY MUST AGREE.
  *
- * A hold or a fail reason exists to NAME THE THING TO FIX (plan D12): it reaches
+ * A hold or a fail reason exists to NAME THE THING TO FIX: it reaches
  * the audit row, the admin notification and `gateExplanation`. `reference_*`
  * names a second transport, `trailing_baseline_*` names the cell's own past, and
  * a spec that compares against one while reporting the other sends the operator
@@ -149,7 +149,7 @@ describe('every threshold is stored as a FRACTION, never as a percentage', () =>
 		// every input that respects the contract.
 		expect(RAMP_GATE_THRESHOLDS.maxBaselineAgeMs).toBeGreaterThan(30 * DAY_MS);
 		// …and it must stay a SEPARATE knob: widening the concurrent rule to reach
-		// a month would loosen "never increase without fresh evidence" (D9/D10) for
+		// a month would loosen "never increase without fresh evidence" for
 		// every other gate.
 		expect(RAMP_GATE_THRESHOLDS.maxBaselineAgeMs).toBeGreaterThan(
 			RAMP_GATE_THRESHOLDS.maxEvidenceAgeMs

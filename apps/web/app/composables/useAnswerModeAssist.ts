@@ -1,8 +1,8 @@
 /**
- * Everything Answer mode adds around the Postbox composer (plan §03 to §06),
+ * Everything Answer mode adds around the Postbox composer,
  * wired for the page:
  *
- *  - the reply's response plan (SPEC §6): a stance per open item of the
+ *  - the reply's response plan: a stance per open item of the
  *    thread brief, and what the draft addresses ("3 of 4 addressed · 1 needs a
  *    file" in the composer footer, chips on the items, the file-claim banner);
  *  - which conversation view opens: Summary when the thread has a brief, the

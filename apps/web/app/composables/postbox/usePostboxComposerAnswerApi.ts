@@ -1,6 +1,6 @@
 /**
  * What Answer mode's page and its AI pieces may do to the composer they sit
- * around (plan §04 to §06), in one object the composer exposes and hands to its
+ * around, in one object the composer exposes and hands to its
  * `#above-editor` slot:
  *
  *  - read what was written (plain text, for the ask coverage check);

@@ -1,5 +1,5 @@
 /**
- * Outbound wiring (SPEC §5 "Outbound") against a real (convex-test) database:
+ * Outbound wiring against a real (convex-test) database:
  *
  *   - a Postbox recipient reaching `sent` appends `reply_sent`, schedules the
  *     sent message's interpretation once and marks the brief pending;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Attest which embedder wrote the vectors from before provenance (U1, D8,
- * #1334). Owlat kept no record of that, so a vector from before provenance is
+ * Attest which embedder wrote the vectors from before provenance. Owlat
+ * kept no record of that, so a vector from before provenance is
  * out of vector search until it is re-embedded, or an admin states, as an
  * attestation, that the configured embedder wrote it. The statement is the
  * admin's: the form says so, asks what it rests on, and needs an explicit
@@ -89,7 +89,7 @@ const width = computed(() => {
 	return Number.isInteger(value) && value >= 1 ? value : null;
 });
 /**
- * Everything the attestation assigns (D8): the admin states all of it, for
+ * Everything the attestation assigns: the admin states all of it, for
  * the whole period, not only the model name.
  */
 const identity = computed(() => attestationIdentity(props.status, width.value));

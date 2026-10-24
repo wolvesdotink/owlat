@@ -95,9 +95,9 @@ export const update = postboxMutation({
 		autoAdvance: v.optional(mailAutoAdvanceValidator),
 		isWritingSuggestionsOn: v.optional(v.boolean()),
 		isAutoSummarizeOn: v.optional(v.boolean()),
-		// Read on arrival (SPEC §2.1): absent = on.
+		// Read on arrival: absent = on.
 		isReadOnArrival: v.optional(v.boolean()),
-		// Read on arrival (SPEC §6.4): archive codes and sign-in links after a day; absent = off.
+		// Read on arrival: archive codes and sign-in links after a day; absent = off.
 		isCodeAutoArchiveOn: v.optional(v.boolean()),
 		replyDefault: v.optional(mailReplyDefaultValidator),
 		density: v.optional(mailDensityValidator),

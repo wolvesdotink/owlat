@@ -1,5 +1,5 @@
 /**
- * ONE SENTENCE PER PACE RUNG (plan D12).
+ * ONE SENTENCE PER PACE RUNG.
  *
  * `describePaceDecision` is exhaustive over `PaceDecisionReason` so a new rung
  * cannot ship without a sentence — but exhaustiveness is a COMPILE-time

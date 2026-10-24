@@ -37,7 +37,7 @@ const { form, problems } = routing;
 watch(routing.isDirty, (isDirty) => emit('dirty', isDirty), { immediate: true });
 defineExpose({ save: routing.save });
 
-/** D4's maxima as the percentages the two help lines name. */
+/** The shadow allowance's maxima as the percentages the two help lines name. */
 const maxPercent = {
 	message: SHADOW_FRACTION_MAXIMA.shadowMaxMessageFraction * 100,
 	ceiling: SHADOW_FRACTION_MAXIMA.shadowMaxCeilingFraction * 100,

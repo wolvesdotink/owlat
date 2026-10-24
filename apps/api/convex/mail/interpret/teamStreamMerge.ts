@@ -1,5 +1,5 @@
 /**
- * The team stream's paging rules (SPEC §7 "Team"), pure.
+ * The team stream's paging rules, pure.
  *
  * A team thread is read as one stream: customer emails, the team's replies,
  * internal notes and activity system lines, in one order with keys that stay

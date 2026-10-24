@@ -1,5 +1,5 @@
 /**
- * A rule's `notify` action (read on arrival, SPEC §6.3): it pushes for its
+ * A rule's `notify` action (read on arrival): it pushes for its
  * message even when "Notify me about" says Nothing or the category is out of
  * scope, and wherever the rule filed the mail, but never past a muted thread,
  * quiet hours or the preview-privacy setting, and never from Trash or Spam.

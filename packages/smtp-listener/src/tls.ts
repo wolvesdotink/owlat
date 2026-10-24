@@ -7,7 +7,7 @@
  * AEAD-only ECDHE cipher list, `honorCipherOrder`, and optional SNI. Both flavors — the
  * STARTTLS upgrade of a live plaintext socket and an implicit-TLS listener that
  * is encrypted from the first byte — present the same secure context, so the
- * two transports are cryptographically indistinguishable (D6).
+ * two transports are cryptographically indistinguishable.
  */
 
 import {

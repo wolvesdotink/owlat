@@ -1,5 +1,5 @@
 /**
- * "To review" and "Apply N suggestions" on the Senders page (SPEC §5).
+ * "To review" and "Apply N suggestions" on the Senders page.
  *
  * A `keep` sender qualifies when, over the window (about 90 days):
  *   - it is a promotion that was never read → Unsubscribe when it offers

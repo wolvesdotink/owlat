@@ -398,7 +398,7 @@ describe('the rotation reminder surfaces on schedule', () => {
 		expect(emitted[0]?.resource).toBe('seed_mailbox');
 		expect(emitted[0]?.resourceId).toBe(accountId);
 		expect(emitted[0]?.details).toEqual({ provider: 'microsoft', ageDays: 91 });
-		// Advisory, and carrying no address or credential (D2 + the security rule).
+		// Advisory (an absent seed blocks nothing), and carrying no address or credential.
 		expect(JSON.stringify(emitted[0])).not.toContain('owlat.seed.02@outlook.example');
 	});
 
@@ -504,7 +504,7 @@ describe('the rotation reminder surfaces on schedule', () => {
 		expect(await reminders(t)).toHaveLength(2);
 	});
 
-	it('is a silent no-op with no seed mailboxes connected at all (D2)', async () => {
+	it('is a silent no-op with no seed mailboxes connected at all', async () => {
 		const t = convexTest(schema, modules);
 		expect(await sweep(t, NOW + SEED_ROTATION_INTERVAL_MS)).toEqual({
 			reminded: 0,

@@ -11,6 +11,7 @@ import {
 	type MaybeRefOrGetter,
 	type Ref,
 } from 'vue';
+import { prefersReducedMotion } from './useReducedMotion';
 import {
 	buildVirtualListLayout,
 	captureVirtualListAnchors,
@@ -284,7 +285,12 @@ export function useVirtualList<T>(options: VirtualListOptions<T>) {
 		scheduleCommit();
 		if (!affectsView) return;
 		if (pinned) {
-			if (seekingEnd) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+			// Retargets a smooth seek, unless motion was reduced since it began.
+			if (seekingEnd)
+				el.scrollTo({
+					top: el.scrollHeight,
+					behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+				});
 			else el.scrollTop = el.scrollHeight;
 			return;
 		}

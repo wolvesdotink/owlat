@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * One sender on the Senders page (SPEC §5): who it is, how much it sent in
+ * One sender on the Senders page: who it is, how much it sent in
  * about 90 days, how much of that was read (the bar), its kind, and the
  * Keep / Digest / Auto-archive / Unsubscribe control the arrival ladder obeys.
  *

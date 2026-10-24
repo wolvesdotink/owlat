@@ -1,5 +1,5 @@
 /**
- * Plan D8's single-reference-relay warning, on the screen. The properties that
+ * The single-reference-relay warning, on the screen. The properties that
  * matter are what it does NOT render: nothing on a standalone deployment, and
  * nothing when the relay is describable.
  */

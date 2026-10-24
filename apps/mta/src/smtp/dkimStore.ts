@@ -27,7 +27,7 @@ export type DkimOwnershipOutcome = 'assigned' | 'unchanged' | 'unowned';
 
 /**
  * Hash field on `mta:dkim:{domain}` holding that domain's per-domain VERP
- * return-path host (D1). Co-located with the DKIM material so it shares the
+ * return-path host. Co-located with the DKIM material so it shares the
  * domain's lifecycle: registration writes it, `removeDkimKey` (whole-hash DEL)
  * clears it. Absent field → the domain has no override and the sender falls back
  * to the global `RETURN_PATH_DOMAIN` (backward-compatible with every legacy
@@ -149,7 +149,7 @@ export async function removeDkimKey(redis: Redis, domain: string): Promise<boole
 }
 
 /**
- * Store a domain's per-domain VERP return-path host (D1).
+ * Store a domain's per-domain VERP return-path host.
  *
  * The value MUST already be a validated, normalized DNS FQDN (see
  * `normalizeReturnPathHost` in `@owlat/shared/returnPathHost`) — this function does no
@@ -169,7 +169,7 @@ export async function setReturnPathHost(
 
 /**
  * Clear a domain's per-domain VERP return-path host, reverting it to the global
- * `RETURN_PATH_DOMAIN` fallback (D1). Idempotent: clearing an already-unset
+ * `RETURN_PATH_DOMAIN` fallback. Idempotent: clearing an already-unset
  * domain is a no-op. Returns whether a value was actually removed.
  */
 export async function clearReturnPathHost(redis: Redis, domain: string): Promise<boolean> {

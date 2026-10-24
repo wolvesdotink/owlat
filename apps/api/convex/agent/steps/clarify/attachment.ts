@@ -9,7 +9,7 @@
  * and FAIL-SOFT: any failure resolves to zero questions so ingest is never
  * blocked and the agent never guesses which file to attach.
  *
- * Three outcomes when the inbound asks for a file (plan §06):
+ * Three outcomes when the inbound asks for a file:
  *   - one confident match  → no question; the `draft` step suggests the file.
  *   - several close matches → "Which file should I attach?" with the matches as
  *     `fileCandidates` (and their titles as `options` for older clients).

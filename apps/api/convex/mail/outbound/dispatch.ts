@@ -250,7 +250,7 @@ export async function dispatchViaMta(
 						Authorization: `Bearer ${mta.apiKey}`,
 						...correlationHeader(correlationId, 'pbx'),
 					},
-					// The postbox intake wire, typed against its one declaration (D7).
+					// The postbox intake wire, typed against its one declaration.
 					// `sealedMimeBase64`, `amp` and `allowedFromAddresses` exist on
 					// `MtaSendRequest` for THIS producer and the two in
 					// `deliveryHooks.ts` only, so without the annotation they had no

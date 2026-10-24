@@ -2,7 +2,7 @@
 /**
  * A source marker after a line of the brief: the sender's initials and the
  * message date ("JW 7 Oct"). Clicking it shows the quoted words in the
- * Conversation (plan §4.2). The accessible name says whose message and when,
+ * Conversation. The accessible name says whose message and when,
  * and the tooltip carries the quote itself.
  *
  * Reads the sender and date from the thread through `BRIEF_CONTEXT`; a message

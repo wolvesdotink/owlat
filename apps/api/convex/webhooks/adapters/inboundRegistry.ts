@@ -8,11 +8,9 @@
  *
  * Each adapter owns the whole translation for its source: the vendor envelope
  * (Resend / Postmark / Mailgun all have different shells) and the inner field
- * extraction. Until the D10 honesty pass, the Resend adapter borrowed the inner
- * half from a bidirectional `EmailAdapter` whose other three methods were
- * fictions (a `send` that hard-returned failure, a `healthCheck` that
- * hard-returned healthy, a `validateSignature` that hard-returned true); that
- * class is gone and its one real method is inlined below, unchanged.
+ * extraction. An adapter here is inbound only: it does not borrow the inner
+ * half from a bidirectional channel adapter, whose send, health and
+ * signature methods would be fictions for an inbound-only source.
  *
  * This lived in `@owlat/channels` until that package was folded away: one
  * module behind a workspace boundary only this folder ever crossed, mirroring

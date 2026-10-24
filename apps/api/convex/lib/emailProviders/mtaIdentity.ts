@@ -53,8 +53,8 @@ export class MtaIdentityManager {
 	 * rather than overwritten, so registering never breaks an already-published
 	 * DKIM DNS record. Use the MTA's dedicated rotate endpoint to replace a key.
 	 *
-	 * `returnPathHost` sets the domain's per-domain VERP return-path host (D1),
-	 * tri-state per the D1 register contract:
+	 * `returnPathHost` sets the domain's per-domain VERP return-path host,
+	 * tri-state per the MTA's register contract:
 	 *   - `undefined` → send NO body: the MTA keeps whatever return-path config it
 	 *     had (none by default → the MTA's global `RETURN_PATH_DOMAIN`). This is
 	 *     the historic call, byte-identical to before the field existed.

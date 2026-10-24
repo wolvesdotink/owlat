@@ -4,24 +4,24 @@
  * The Phase 2 bundle runner: asks ONE registered bundle
  * about ONE message, once, on the rung the routing ladder picks, and stores the
  * answer as a decision artifact. It returns nothing a caller could route on:
- * every caller schedules it and moves on (D9).
+ * every caller schedules it and moves on.
  *
  * The order of work, each step refusing before anything is paid:
  *
  * 1. The rung (`lib/decision/routing.ts` `decisionRung`). An explicitly
- *    configured decision provider that cannot answer is terminal (D3). The
+ *    configured decision provider that cannot answer is terminal. The
  *    message bundles have no language rung of their own: there, today's
  *    classifier call IS the rung.
- * 2. Admission (`./bundleAdmission.ts`): the D4 shadow allowance, or an
+ * 2. Admission (`./bundleAdmission.ts`): the shadow allowance, or an
  *    advisory reservation. Nothing runs unadmitted.
  * 3. The artifact lease (`./artifacts.ts` `claim`): one worker per key, and an
  *    answered key is never asked again.
  * 4. ONE call: `runDecision` on the decision plane, with no fallback hop
- *    (inbound background work never takes a paid fallback, D3), or one
+ *    (inbound background work never takes a paid fallback), or one
  *    fast-tier structured call on the language rung, both metered.
  * 5. The answer, projected to labels through the bundle's thresholds, is
  *    stored with its provenance and calibration stamp, and compared with
- *    today's source (`baseline`) and with sender memory (D12).
+ *    today's source (`baseline`) and with sender memory.
  */
 
 import type { ActionCtx } from '../_generated/server';
@@ -106,7 +106,7 @@ export interface BundleRun<Q extends QuestionSet> {
 	/**
 	 * Called with a failed call's error after its lease is released, for an
 	 * inline caller that must not swallow it (a spend refusal holds, defers or
-	 * surfaces, D1). Throwing from it rethrows out of `runBundle`.
+	 * surfaces). Throwing from it rethrows out of `runBundle`.
 	 */
 	readonly onCallError?: (error: unknown) => void;
 	readonly plan: BundlePlan;
@@ -254,7 +254,7 @@ export async function resolveBundleRung(
 	routing: RoutingContext
 ): Promise<ResolvedRung | 'stale'> {
 	// A plane that cannot even be resolved (an undecryptable key, say) is the
-	// D3 case too: terminal, never a language call in its place.
+	// terminal too, never a language call in its place.
 	const plane = routing.isDecisionPlaneOn
 		? await resolveDecisionConfig(ctx).catch(() => null)
 		: null;
@@ -322,7 +322,7 @@ export async function runBundle<Q extends QuestionSet>(
 		// The selected rung's plane, for the hold and the rows alike (Sol r7 F1).
 		plane: rung === 'decision' ? ('decision' as const) : ('language' as const),
 	};
-	// A shadow observation always takes its own D4 admission; an advisory call
+	// A shadow observation always takes its own shadow admission; an advisory call
 	// the caller's hold covers takes none.
 	const admitted =
 		run.outerHold && plan.mode === 'advisory'

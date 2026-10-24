@@ -1,5 +1,5 @@
 /**
- * THE BASE SCHEDULE IS A HARD CEILING (plan D19, P3-7).
+ * THE BASE SCHEDULE IS A HARD CEILING.
  *
  * The pace actuator may take a deployment SLOWER than the published warming
  * ramp. It may never take it faster than that ramp's ceiling for the current
@@ -88,7 +88,7 @@ describe('effectiveDailyCap — the cap never outgrows exercised volume', () => 
 		expect(cap).toBe(50);
 	});
 
-	it('ABSENCE of a volume reading is not a constraint (plan D2)', () => {
+	it('ABSENCE of a volume reading is not a constraint', () => {
 		expect(effectiveDailyCap({ cellCap: 1_000, baseScheduleCap: 1_000, multiplier: 1 })).toBe(
 			1_000
 		);

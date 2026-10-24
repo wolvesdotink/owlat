@@ -15,7 +15,7 @@
  *     non-language provider), ONE decision question per claim and its quotes
  *     replaces the verifier, through the decisions lane's runner and claim.
  *     On the language rung the verifier IS the rung and runs as today. A
- *     provider that cannot answer is terminal (D3): no claim is verified and
+ *     provider that cannot answer is terminal: no claim is verified and
  *     the run is `partial` (`verify_unavailable`), with no language call in
  *     its place.
  *   - `shadow`: the verifier decides; on the decision rung each checked claim
@@ -57,9 +57,9 @@ export interface RoutedVerification {
 	readonly isUnsendable: boolean;
 	/** Claims past the per-message cap were not checked (`verify_capped`). */
 	readonly isCapped: boolean;
-	/** Claim checks are enforced and the decision provider cannot answer (D3). */
+	/** Claim checks are enforced and the decision provider cannot answer. */
 	readonly isUnavailable: boolean;
-	/** A spend refusal stopped a check: the run reports it (D1), never as a model failure. */
+	/** A spend refusal stopped a check: the run reports it, never as a model failure. */
 	readonly refusal?: AdmissionRefusalData;
 }
 
@@ -94,7 +94,7 @@ export interface VerifyPlan {
 	/**
 	 * `language`: today's verifier. `decision`: one claim check per claim.
 	 * `unavailable`: claim checks are enforced and the provider cannot answer
-	 * (D3), nothing runs. `stale`: the configuration moved under the plan,
+	 * (terminal), nothing runs. `stale`: the configuration moved under the plan,
 	 * nothing runs and a retry asks again.
 	 */
 	readonly path: 'language' | 'decision' | 'unavailable' | 'stale';
@@ -231,7 +231,7 @@ async function checkClaims(
 	let isUnsendable = false;
 	let refusal: AdmissionRefusalData | undefined;
 	// A spend refusal is caught as itself, not as a failed check: it stops the
-	// rest (they would be refused the same way) and the run reports it (D1).
+	// rest (they would be refused the same way) and the run reports it.
 	const onCallError = (error: unknown) => {
 		refusal ??= admissionRefusalOf(error) ?? undefined;
 	};

@@ -19,7 +19,7 @@
  * Call order (Phase 1c, ./disposition.ts):
  *   1. Every deterministic layer runs first, URL reputation included. A
  *      quarantine they confirm ends the step without a guard call (L1).
- *   2. D13: the guard is skipped for mail archived on its spam score (or on the
+ *   2. The guard is skipped for mail archived on its spam score (or on the
  *      MTA verdict, behind `mtaVerdictTerminal`) and for mail arriving while
  *      the agent is off. The skip is recorded as `securityFlags.guardNotRun`,
  *      and every later autonomous path requires the guard first.
@@ -175,7 +175,7 @@ async function earlyRuleArchives(
 
 const NO_GUARD_RUN: GuardScanResult = { verdict: undefined, incomplete: false };
 
-/** The guard's scan, or the spend admission refusal that stopped it (D1). */
+/** The guard's scan, or the spend admission refusal that stopped it. */
 async function guardOrRefusal(
 	ctx: ActionCtx,
 	inboundMessageId: Id<'inboundMessages'>,
@@ -235,7 +235,7 @@ export const securityScanStep: AgentStepModule<
 
 		// ── Layer 5: Guard-tier LLM injection classifier (fails open) ──
 		// Not called when the deterministic layers already quarantine (L1) or
-		// when D13 skips it; the skip is recorded below.
+		// when the skip policy skips it; the skip is recorded below.
 		const deterministicQuarantine = isDeterministicQuarantine({
 			patternInjection,
 			patternConfidence,
@@ -249,7 +249,7 @@ export const securityScanStep: AgentStepModule<
 		const { guardScan, refusal } = runsGuard
 			? await guardOrRefusal(ctx, input.inboundMessageId, guardSample)
 			: { guardScan: NO_GUARD_RUN, refusal: undefined };
-		// D13 marker: skipped by policy, or refused by spend admission (D1).
+		// The guard-skip marker: skipped by policy, or refused by spend admission.
 		const notRunReason = skipReason ?? (refusal ? ('budget_refused' as const) : null);
 		const llmVerdict = guardScan.verdict;
 		const llmFlagged = isGuardFlagged(llmVerdict);
@@ -293,7 +293,7 @@ export const securityScanStep: AgentStepModule<
 			scanTimestamp,
 		};
 
-		// Spend admission refused the guard (D1, Sol r3 F1): the deterministic
+		// Spend admission refused the guard: the deterministic
 		// verdict is stored with the `guardNotRun` marker, so every later
 		// generative consumer runs the guard first, and the refusal goes on to
 		// the walker, which holds the message.
@@ -321,13 +321,13 @@ export const securityScanStep: AgentStepModule<
 		if (disposition === 'continue' && policy.earlyRuleArchive === 'enforce') {
 			output.isEarlyRuleArchive = await earlyRuleArchives(ctx, input.inboundMessageId);
 		}
-		// D11: the guard passed and nothing ends the run before retrieval, so
+		// The guard passed and nothing ends the run before retrieval, so
 		// the message-only triage shadow may observe it (only at `shadow`).
 		if (scanDisposition(output) === 'continue') {
 			await scheduleTeamTriage(ctx, policy, input.inboundMessageId);
 		}
 		// The agent-off path ends without a transition, so the scan (and its
-		// D13 marker) is stored here. Not fail-soft: the marker is what later
+		// guard-skip marker) is stored here. Not fail-soft: the marker is what later
 		// autonomous paths check.
 		if (disposition === 'agent_off') {
 			await ctx.runMutation(internal.inbox.stepOutputs.recordSecurityScan, {

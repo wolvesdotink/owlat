@@ -1,7 +1,7 @@
 /**
  * `applyInterpretation` and `appendActivity` against a real (convex-test)
  * database: item ids, activity in the same transaction, compare-and-set,
- * deletion epochs, vanished sources, replays, completeness and D4.
+ * deletion epochs, vanished sources, replays, completeness and the default item assignee.
  */
 
 import { convexTest } from 'convex-test';
@@ -259,7 +259,7 @@ describe('applyInterpretation', () => {
 		]);
 	});
 
-	it('assigns new team items to the thread assignee (D4) and writes no facts', async () => {
+	it('assigns new team items to the thread assignee and writes no facts', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, inboundId } = await seedTeamThread(t, { assignedTo: 'user-B' });
 		const out = await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {

@@ -131,7 +131,7 @@ const filterHidesRows = computed(
 	() => triageFilter.value !== 'all' && displayMessages.value.length > 0
 );
 
-// Offline outbox (D8): mounting here registers the drain-on-reconnect watcher
+// Offline outbox: mounting here registers the drain-on-reconnect watcher
 // for the active mailbox; the counts drive the offline banner ("n queued")
 // and the post-drain "couldn't send" banner with its retry affordance.
 const {

@@ -1,4 +1,5 @@
 import { revealSettingsAnchor } from '~/lib/settingsAnchorReveal';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 /**
  * The reveal-and-flash both Settings layouts share: on mount and on every
@@ -20,7 +21,7 @@ export function useSettingsAnchorReveal(
 		const anchor = resolveAnchor(route.path, route.hash);
 		if (!anchor) return;
 		cancel = revealSettingsAnchor(document, anchor, {
-			reducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
+			reducedMotion: prefersReducedMotion(),
 		});
 	}
 

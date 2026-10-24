@@ -1,6 +1,6 @@
 /**
  * The `clarify` step's link from a question to the thread item it fills
- * (SPEC §6): the thread's open items are listed in the slot prompt, and a
+ * in the response plan: the thread's open items are listed in the slot prompt, and a
  * question whose slot names one carries its `itemId`. The plan then holds
  * that item at `clarify` until the question is answered.
  *

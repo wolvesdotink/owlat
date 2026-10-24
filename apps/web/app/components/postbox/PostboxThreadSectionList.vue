@@ -16,6 +16,8 @@ import type { PostboxThreadListSection } from './PostboxSectionedThreadList.vue'
 import { senderRowMarkerOf } from '~/utils/senderAuth';
 import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import { replyDropForMessage } from '~/utils/replyFileDrop';
 
 const props = defineProps<{
 	sections: PostboxInboxSection[];
@@ -99,6 +101,7 @@ const listSections = computed<PostboxThreadListSection<PostboxThreadRowMessage>[
 			<NuxtLink
 				v-bind="pinDrag.source(msg._id, msg.subject)"
 				:id="rowDomId(msg)"
+				v-reply-drop="replyDropForMessage(msg, folderRole)"
 				role="option"
 				:aria-selected="focused"
 				:to="messageTo(msg._id)"

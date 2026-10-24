@@ -1,5 +1,5 @@
 /**
- * The brief's presentation rules: the ring per item state (plan §5), the ⋯
+ * The brief's presentation rules: the ring per item state, the ⋯
  * menu of a personal item, what a cite points at, the "Where things stand"
  * rows, the incomplete banners, and the one line a list row shows.
  */

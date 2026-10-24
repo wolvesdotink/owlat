@@ -8,9 +8,9 @@
  *
  * The state is the message ALONE: its sender, recipients, header signals,
  * subject and segmented body. No history, no retrieval, no later message and
- * no label. Two reasons. D11 asks triage before retrieval and interpretation,
+ * no label. Two reasons. Triage runs before retrieval and interpretation,
  * so it can only read the message. And a Team thread's earlier messages may
- * still be waiting for the D13 guard, which would turn a shadow observation
+ * still be waiting for the injection guard, which would turn a shadow observation
  * into paid guard calls.
  *
  * Redaction:

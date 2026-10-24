@@ -1,6 +1,6 @@
 /**
- * What a teammate does to an item in the "Open for the team" strip (SPEC §5
- * reactions, §7 "Team"): the brief's reactions (`useBriefReactions`), plus
+ * What a teammate does to an item in the "Open for the team" strip: the
+ * brief's reactions (`useBriefReactions`), plus
  * Claim (take it yourself, atomically; a teammate who already holds it keeps
  * it) and Assign (hand it to someone, or back to Unassigned). Neither changes
  * who is responsible or whether it is done.

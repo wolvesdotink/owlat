@@ -15,12 +15,12 @@
  *   2. it hands the SAME producer/pool/router the stream's real mail uses, with
  *      an envelope that is a probe by construction — the durable reference is
  *      the ledger row and there is no countable Send id anywhere on it;
- *   3. the probe leaves NO trace in any denominator (D18) — no
+ *   3. the probe leaves NO trace in any denominator — no
  *      `transactionalSends` row, no `sendAssignments` row, no reputation event;
  *   4. the CADENCE guard makes a re-run a no-op, which is what makes a retried
  *      tick and an organization split across two pages safe;
  *   5. every absence — no seeds, no sender, an unverified domain — is a silent
- *      no-op and never an error (D2);
+ *      no-op and never an error;
  *   6. the message the worker composes carries the poller's join header, and the
  *      automation probe carries a real RFC 8058 one-click target, so the two
  *      streams are measured with the mail those streams actually send;
@@ -265,7 +265,7 @@ describe('sweepScheduledSeedProbes — the probes it writes', () => {
 			expect(envelope.sendId).toBeUndefined();
 			expect(envelope.contactId).toBeUndefined();
 			expect(isSeedShadowEnvelope(envelope)).toBe(true);
-			// No `onComplete`: there is no Send lifecycle to complete (D18).
+			// No `onComplete`: there is no Send lifecycle to complete.
 			expect(call[3]).toBeUndefined();
 		}
 
@@ -279,7 +279,7 @@ describe('sweepScheduledSeedProbes — the probes it writes', () => {
 		}
 	});
 
-	// ── (3) THE D18 DENOMINATOR PROOF, against the shipped counters ───────────
+	// ── (3) THE DENOMINATOR EXCLUSION, against the shipped counters ───────────
 	it('writes no Send row, no send assignment and no reputation event', async () => {
 		const t = convexTest(schema, modules);
 		await connectSeeds(t);
@@ -367,7 +367,7 @@ describe('sweepScheduledSeedProbes — the cadence guard', () => {
 	});
 });
 
-// ── (5) D2 — EVERY ABSENCE IS A SILENT NO-OP ────────────────────────────────
+// ── (5) EVERY ABSENCE IS A SILENT NO-OP ─────────────────────────────────────
 
 describe('sweepScheduledSeedProbes — absence is a supported configuration', () => {
 	it('does nothing at all with no seed mailboxes connected', async () => {
@@ -520,7 +520,7 @@ describe('the scheduled probe as a composed message', () => {
 	});
 });
 
-// ── THE D18 EXCLUSION, ON THE ENVELOPE THAT CARRIES A COUNTABLE ID ──────────
+// ── THE DENOMINATOR EXCLUSION, ON THE ENVELOPE THAT CARRIES A COUNTABLE ID ──────────
 
 describe('assertSeedShadowExclusion — now that a transactional envelope can be a probe', () => {
 	const PROBE_ID = 'sp_a1b2c3d4e5f60718293a4b';

@@ -1,6 +1,5 @@
 /**
- * The Team Inbox agent pipeline's view of interpretation (SPEC §5 "Team
- * pipeline", D3).
+ * The Team Inbox agent pipeline's view of interpretation.
  *
  *   - `captureInbound` is the team pipeline's enqueue point: it snapshots the
  *     message's eligibility (`sources.ts`) before the first run.
@@ -10,7 +9,7 @@
  *     The context step calls the run only when the message has no extraction
  *     (or an outdated one), so a repeated briefing assembly (retries, Answer
  *     mode) reuses the stored result without a model call.
- *   - `interpretationHold` is the D3 autonomy input: auto-send holds for a
+ *   - `interpretationHold` is the autonomy input: auto-send holds for a
  *     person unless this message was interpreted completely, the thread's
  *     brief is complete, the briefing showed every open item (review F9:
  *     an item the draft never saw must not be auto-answered by omission), AND
@@ -83,7 +82,7 @@ export interface BriefingInterpretation {
 	skipReason?: InterpretationSkipReason;
 	/** Run it again: an older extractor wrote it, or its scheduled repair is due. */
 	isRerunDue?: boolean;
-	/** The spend refusal it met (D1): a cached read holds on it as the run's replay does. */
+	/** The spend refusal it met: a cached read holds on it as the run's replay does. */
 	budgetRefusal?: RunBudgetRefusal;
 }
 
@@ -328,7 +327,7 @@ function section(title: string, items: readonly BriefingItem[], omitted: number)
  * item text was derived from untrusted mail, so the block says it is data;
  * each line is flattened and bounded. Every item of the current message is
  * rendered; earlier messages' items are capped, and the cap says how many
- * were left out (the D3 hold then keeps the draft from going out alone).
+ * were left out (the interpretation hold then keeps the draft from going out alone).
  */
 export function renderBriefingActions(selection: BriefingSelection<BriefingItem>): string {
 	return (
@@ -350,7 +349,7 @@ export function renderBriefingActions(selection: BriefingSelection<BriefingItem>
 	);
 }
 
-// ── D3: the autonomy hold ──────────────────────────────────────────────────
+// ── The autonomy hold ──────────────────────────────────────────────────────
 
 /**
  * Why auto-send must hold for a person, or null when interpretation is
@@ -404,7 +403,7 @@ export function isUnresolved(
 }
 
 /**
- * The D3 hold for one message, read in the caller's transaction: the route
+ * The interpretation hold for one message, read in the caller's transaction: the route
  * gate (`interpretationHold`) and, again, the transaction that creates an
  * autonomous Send (`inbox/replyAttachments.intakeAgentReply`), so a purge or
  * re-read in the undo / file-copy window still holds the send (final review

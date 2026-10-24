@@ -321,6 +321,10 @@ describe('buildPlan', () => {
 			command: ['bun', 'run', 'lint:format'],
 			env: { OXFMT_BASE: 'abc123', GITHUB_BASE_REF: undefined },
 		});
+		expect(step(p, 'lint:comment-policy')).toMatchObject({
+			command: ['bun', 'run', 'lint:comment-policy'],
+			env: { COMMENT_POLICY_BASE: 'abc123', GITHUB_BASE_REF: undefined },
+		});
 		expect(step(p, 'oxlint')?.command).toEqual([
 			'node_modules/.bin/oxlint',
 			'--config',
@@ -444,6 +448,7 @@ describe('buildPlan', () => {
 			'format (oxfmt)',
 			'lint:script-tests',
 			'lint:branding',
+			'lint:comment-policy',
 			'lint:source-bytes',
 			'lint:no-pr-assets',
 		]);

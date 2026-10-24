@@ -1,11 +1,11 @@
 /**
- * Read on arrival end to end (SPEC §2): the interpretation run decides how
+ * Read on arrival end to end: the interpretation run decides how
  * deep a display-only Postbox message is read when it arrives, with a stubbed
  * model.
  *
  *   - a display-only notification gets a gist; a newsletter is counted; a
  *     reply candidate gets the full read; a refused budget counts; the
- *     preference off keeps D10's deferral;
+ *     preference off keeps the deferral;
  *   - the per-source lease keeps two runs from buying two reads;
  *   - a later reply candidate upgrades the thread's gisted message;
  *   - the projection follows the needs-reply verdict and is never taken over
@@ -270,7 +270,7 @@ describe('read on arrival: the depth of a display-only message', () => {
 		});
 	});
 
-	it('the preference off keeps D10: the message waits for the open', async () => {
+	it('the preference off keeps the deferral: the message waits for the open', async () => {
 		const t = setup();
 		await enableFeatures(t, ['ai']);
 		const { messageId } = await seedMailThread(t, { text: NOTICE, isReadOnArrival: false });

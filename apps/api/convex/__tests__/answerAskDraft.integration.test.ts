@@ -53,7 +53,7 @@ const llm = vi.hoisted(() => ({
 	}>,
 	draft: 'Hi Jonas,\n\nthanks for your note.\n\nBest,\nAda',
 	files: [] as FoundFile[],
-	// The late injection guard's verdict (D13), for a message whose scan skipped it.
+	// The late injection guard's verdict, for a message whose scan skipped it.
 	guard: { isInjection: false, confidence: 0.02, reason: 'benign' },
 	// A failure before the draft opens its stream (the response plan's load).
 	planFailure: null as Error | null,
@@ -942,7 +942,7 @@ describe('team thread', () => {
 		).rejects.toMatchObject({ data: { category: 'forbidden' } });
 	});
 
-	// D13 / #1339 (Sol r2 F2): the message being answered is guarded before its
+	// The message being answered is guarded before its
 	// briefing, its trigger text or the gap check reach a model, and a held-back
 	// message is refused with no raw-text fallback.
 	const SKIPPED_SCAN = {

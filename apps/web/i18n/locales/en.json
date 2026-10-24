@@ -1215,6 +1215,15 @@
 				"truncated": "Only the first {covered} recipients could be scheduled at your current capacity. Reduce the audience, or send it in stages.",
 				"underCounted": "This audience is larger than we counted exactly, so the schedule above is a floor — the real send may take longer."
 			},
+			"changedSinceLastSend": {
+				"changed": "Changed since the last send ({time})",
+				"compare": "Compare",
+				"lastSendLabel": "Last send",
+				"loadFailed": "Couldn't load the last send",
+				"noSend": "No earlier send of this email in its version history.",
+				"nowLabel": "Now",
+				"unchanged": "Unchanged since the last send ({time})"
+			},
 			"commandRow": {
 				"abBadge": "A/B",
 				"abResults": "A/B results",
@@ -3885,10 +3894,71 @@
 				"subtitle": "The subject line and preview text for your default language",
 				"title": "Subject & preview text"
 			},
+			"templateCompareModal": {
+				"blockTypes": {
+					"accordion": "Accordion",
+					"button": "Button",
+					"carousel": "Carousel",
+					"columns": "Columns",
+					"container": "Container",
+					"divider": "Divider",
+					"hero": "Hero",
+					"image": "Image",
+					"list": "List",
+					"menu": "Menu",
+					"other": "Block",
+					"progressBar": "Progress bar",
+					"rawHtml": "HTML",
+					"social": "Social links",
+					"spacer": "Spacer",
+					"table": "Table",
+					"text": "Text",
+					"video": "Video"
+				},
+				"blocks": "Changed blocks",
+				"copyChanges": "Copy changes",
+				"copyNone": "No copy changed.",
+				"counts": {
+					"added": "{count} block added | {count} blocks added",
+					"edited": "{count} block edited | {count} blocks edited",
+					"moved": "{count} block moved | {count} blocks moved",
+					"removed": "{count} block removed | {count} blocks removed"
+				},
+				"empty": "(empty)",
+				"frameTitle": "Email preview: {side}",
+				"identical": "No differences: both versions have the same subject and content.",
+				"kinds": {
+					"added": "Added",
+					"edited": "Edited",
+					"moved": "Moved",
+					"removed": "Removed"
+				},
+				"linksChanges": "Link changes",
+				"linksNone": "No links changed.",
+				"meta": {
+					"previewText": "Preview text",
+					"subject": "Subject"
+				},
+				"parts": {
+					"copy": "Copy",
+					"links": "Links",
+					"moved": "Also moved",
+					"other": "Style or layout"
+				},
+				"steps": {
+					"added": "Added",
+					"changed": "Changed",
+					"removed": "Removed"
+				},
+				"title": "Compare versions"
+			},
 			"templateHistoryPanel": {
+				"compare": "Compare with current",
+				"compareAction": "Compare with the current editor",
 				"confirmAction": "Restore version",
 				"confirmDescription": "This email has edits you haven't saved. Restoring loads the older version onto the canvas — you can undo it, but the restore itself is not saved until you save.",
 				"confirmTitle": "Replace your unsaved changes?",
+				"currentLabel": "In the editor now",
 				"empty": "No versions yet. Saving this email records one.",
 				"frameTitle": "Version preview",
 				"loadFailed": "Couldn't load that version",
@@ -6058,6 +6128,36 @@
 			"preferencesBackLink": {
 				"label": "Back to preferences"
 			},
+			"preferencesComfort": {
+				"title": "Reading comfort",
+				"subtitle": "Text size, contrast, motion and list spacing on this device.",
+				"textSizeLabel": "Mail text size",
+				"textSizeHelp": "How large mail reads in Postbox and the Team Inbox. Designed newsletters scale as a whole.",
+				"readingWidthLabel": "Reading width",
+				"readingWidthHelp": "How long a line of mail can run before it wraps. Designed newsletters keep their own layout.",
+				"listDensityLabel": "List density",
+				"listDensityHelp": "Row spacing in the Team Inbox, contacts and campaign lists. Postbox has its own density under Reading.",
+				"highContrastLabel": "Higher contrast",
+				"highContrastHelp": "Darker text and stronger borders in light mode, brighter ones in dark mode.",
+				"reduceMotionLabel": "Reduce motion",
+				"reduceMotionHelp": "Turn off animations and smooth scrolling in Owlat. Motion is always reduced when your device asks for it.",
+				"textSize": {
+					"small": "Small",
+					"default": "Default",
+					"large": "Large",
+					"larger": "Larger"
+				},
+				"readingWidth": {
+					"narrow": "Narrow",
+					"default": "Default",
+					"wide": "Wide",
+					"full": "Full width"
+				},
+				"listDensity": {
+					"comfortable": "Comfortable",
+					"compact": "Compact"
+				}
+			},
 			"preferencesExportManifest": {
 				"loading": "Counting…",
 				"moreThan": "more than {count}",
@@ -7028,6 +7128,13 @@
 			}
 		},
 		"shell": {
+			"replyDrop": {
+				"hint": "Drop to reply to {name} with {count} file | Drop to reply to {name} with {count} files",
+				"hintNoCount": "Drop to reply to {name} with these files",
+				"hintNoName": "Drop to reply with {count} file | Drop to reply with {count} files",
+				"hintNoNameNoCount": "Drop to reply with these files",
+				"refused": "This reply goes out on another channel, so it can't carry files. The dropped files were not attached."
+			},
 			"status": {
 				"draftReady": "Draft ready",
 				"needsYou": "Needs you",
@@ -16456,6 +16563,26 @@
 				"appearance": {
 					"title": "Appearance",
 					"keywords": "dark mode, light mode, theme, colour scheme"
+				},
+				"mailTextSize": {
+					"title": "Mail text size",
+					"keywords": "font size, text size, zoom, larger text, readability"
+				},
+				"readingWidth": {
+					"title": "Reading width",
+					"keywords": "line length, measure, column width, wide"
+				},
+				"listDensity": {
+					"title": "List density",
+					"keywords": "compact, comfortable, spacing, row height, team inbox, contacts, campaigns"
+				},
+				"highContrast": {
+					"title": "Higher contrast",
+					"keywords": "contrast, accessibility, readability, borders, low vision"
+				},
+				"reduceMotion": {
+					"title": "Reduce motion",
+					"keywords": "animation, motion, accessibility, smooth scrolling, vestibular"
 				},
 				"language": {
 					"title": "Language",

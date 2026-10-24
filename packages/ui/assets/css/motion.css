@@ -233,3 +233,24 @@
 		opacity: 0;
 	}
 }
+
+/* Twin of the block above for the app's own "Reduce motion" setting (see the
+ * data-motion floor in base.css): the same static end states, keyed on the
+ * root attribute instead of the OS media query. */
+:root[data-motion='reduce'] .ui-press:active {
+	scale: none;
+}
+:root[data-motion='reduce'] .ui-window-enter {
+	animation-name: ui-window-enter-fade;
+}
+:root[data-motion='reduce'] .ui-stagger > * {
+	animation: none;
+}
+:root[data-motion='reduce'] .ui-proximity > *:hover,
+:root[data-motion='reduce'] .ui-proximity > *:focus-visible {
+	scale: none;
+}
+:root[data-motion='reduce'] .ui-presence-ring::after {
+	animation: none;
+	opacity: 0;
+}

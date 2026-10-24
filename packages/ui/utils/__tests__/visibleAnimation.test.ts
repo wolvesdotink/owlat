@@ -10,7 +10,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ANIMATION_STATE_PROPERTY, observeVisibleAnimation } from '../visibleAnimation';
-import { REDUCED_MOTION_QUERY } from '../../composables/useReducedMotion';
+import { REDUCED_MOTION_QUERY, setAppReducedMotion } from '../../composables/useReducedMotion';
 import {
 	FakeIntersectionObserver,
 	installFakeIntersectionObserver,
@@ -76,6 +76,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 	window.matchMedia = originalMatchMedia;
+	setAppReducedMotion(false);
 	for (const el of elements.splice(0)) el.remove();
 });
 
@@ -145,6 +146,28 @@ describe('observeVisibleAnimation', () => {
 
 		media.set(false);
 		expect(stateOf(el)).toBe('running');
+	});
+
+	it("stops under the app's own Reduce motion switch, and runs again when it goes off", () => {
+		const el = element();
+		register(el);
+		FakeIntersectionObserver.instances[0]!.report(el, true);
+		expect(stateOf(el)).toBe('running');
+
+		setAppReducedMotion(true);
+		expect(stateOf(el)).toBe('paused');
+
+		setAppReducedMotion(false);
+		expect(stateOf(el)).toBe('running');
+	});
+
+	it('stops listening to the app switch once nothing is registered', () => {
+		const el = element();
+		register(el)();
+		setAppReducedMotion(true);
+		setAppReducedMotion(false);
+		// Released: the switch no longer writes into it.
+		expect(stateOf(el)).toBe('paused');
 	});
 
 	it('never runs an element registered while reduced motion is already on', () => {

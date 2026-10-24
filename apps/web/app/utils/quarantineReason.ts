@@ -38,7 +38,7 @@ export interface QuarantineSecurityFlags {
 	phishingDetected?: boolean;
 	/** The guard-tier classifier could not run at all (model error / empty sample). */
 	guardUnavailable?: boolean;
-	/** D13: the model guard was skipped (spam archive, agent off), and why. */
+	/** The model guard was skipped (spam archive, agent off), and why. */
 	guardNotRun?: GuardNotRunMarker;
 	scanTimestamp?: number;
 }

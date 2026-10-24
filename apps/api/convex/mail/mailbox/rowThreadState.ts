@@ -22,7 +22,7 @@
  * the follow-up watch, the mute marker, the pin, the back-from-snooze marker
  * and the smart-inbox category, the thread brief's top item (`briefTop`, opened
  * from its at-rest seal once per thread) and the Priority view's placement
- * (read on arrival, SPEC §3). {@link attachThreadState} joins them
+ * (read on arrival). {@link attachThreadState} joins them
  * in so no client has to join a second, capped thread subscription to recover
  * a field the server already read.
  *
@@ -125,7 +125,7 @@ export type RowThreadState = {
 	category?: Infer<typeof mailCategoryLabelValidator>;
 	briefTop?: BriefTopRow;
 	/**
-	 * Where the Priority view groups the row (SPEC §3): the arrival
+	 * Where the Priority view groups the row: the arrival
 	 * projection's placement, which already applies the thread's override
 	 * (except an older one an exact-wording candidate overrules, #1384), else
 	 * the override itself. Absent with neither; the view then falls back to
@@ -136,7 +136,7 @@ export type RowThreadState = {
 
 /**
  * The thread's effective Priority placement: the projection, computed with the
- * override (SPEC §2.8 step 1), else the override of a thread without one.
+ * override, else the override of a thread without one.
  */
 function threadPlacement(
 	thread: Pick<Doc<'mailThreads'>, 'arrival' | 'placementOverride'> | null

@@ -1,5 +1,5 @@
 /**
- * P4-7 — THE D11 GUARD.
+ * ONE SENDING IDENTITY PER CELL.
  *
  * "NEVER GIVE THE TWO ARMS OF A CELL DIFFERENT SENDING IDENTITIES. Same From
  * domain, same d=, same Message-ID scheme, same tracking […]; only Received
@@ -223,7 +223,7 @@ describe('the generated records cannot express a per-transport subdomain', () =>
 		expect(byArm.size).toBe(2);
 		expect(byArm.get('own')).toBe('s1711-news._domainkey.news.example.com');
 		// The relay's key is the ESP's, so its row is pending — but it is pending
-		// UNDER THE SAME NAME, which is the whole of what D11 permits.
+		// UNDER THE SAME NAME, which is the whole of what the rule permits.
 		expect(byArm.get('reference')).toBe('_domainkey.news.example.com');
 	});
 

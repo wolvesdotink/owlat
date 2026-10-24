@@ -11,11 +11,11 @@ a real GUI mail client, a third-party provider, a public network, and a human
 eye on the badges. Run it against a **staging pair of real Owlat instances**
 before flipping `sealedMail` / `senderAuthBadges` on by default.
 
-Locked decisions this exercise validates end to end: **D1** PGP/MIME via
-openpgp.js, **D2** auto-seal only when every recipient has a usable key, **D3**
-decrypt-on-ingest into the normal pipeline, **D4** protected headers (outer
-subject `...`), **D6** DANE via `DANE_MODE` (report-only never bounces by
-default), **D7** recovery kit only.
+What this exercise validates end to end: PGP/MIME via
+openpgp.js, auto-seal only when every recipient has a usable key,
+decrypt-on-ingest into the normal pipeline, protected headers (outer
+subject `...`), DANE via `DANE_MODE` (report-only never bounces by
+default), recovery kit only.
 
 ---
 
@@ -49,7 +49,7 @@ default), **D7** recovery kit only.
 - [ ] From Thunderbird, send an **OpenPGP-encrypted + signed** message to
       `bob@b.staging.example` (encrypt to B's WKD key, sign with the Thunderbird
       key, and — if available — enable *protected headers* / encrypted subject).
-- [ ] In B's Postbox the message **decrypts on ingest** (D3): the real subject
+- [ ] In B's Postbox the message **decrypts on ingest**: the real subject
       and body render; the raw sealed `.eml` is still downloadable.
 - [ ] The badge is honest: **verified** only if B has pinned the Thunderbird
       sender key (TOFU); otherwise it reads *sealed, sender not verified* — never
@@ -58,8 +58,8 @@ default), **D7** recovery kit only.
 ## 3. Owlat ↔ Owlat sealed round-trip (both directions)
 
 - [ ] From A's Postbox, `alice@…` sends `bob@…` a 1:1 message. Auto-seal engages
-      (D2) because bob's key is pinned. On the wire / in the stored `.eml`: the
-      outer `Subject:` is the literal `...` (D4) and there is **no plaintext**.
+      because bob's key is pinned. On the wire / in the stored `.eml`: the
+      outer `Subject:` is the literal `...` and there is **no plaintext**.
 - [ ] B opens it: real subject + body restored, badge **Sealed — sender
       verified** (signature verifies against the alice key B pinned).
 - [ ] Reverse direction `bob@… → alice@…` behaves identically.
@@ -86,7 +86,7 @@ default), **D7** recovery kit only.
       sees A's and B's published `mta-sts.txt` policy + `_mta-sts` TXT, and a mail
       from a strict-policy sender to each domain negotiates TLS.
 - [ ] **DANE** (only if `DANE_MODE` is `report`/`enforce`, `DANE_RESOLVER_URL` is
-      set, and TLSA records are published, D6): a staging send to a DANE-enabled
+      set, and TLSA records are published): a staging send to a DANE-enabled
       domain validates the TLSA record via the configured validating resolver (AD
       bit trusted; AD absent ⇒ treated as no TLSA). In `report` the result surfaces
       in TLS-RPT (tlsa policy) without ever bouncing; `enforce` defers a non-match.

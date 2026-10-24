@@ -207,7 +207,7 @@ describe('no-silent-downgrade guarantee', () => {
 /**
  * Verification is unanimous or it is not claimed (plan idea 54). A lock that
  * said "verified" over a list where only some keys were checked would be read as
- * covering all of them — the same all-or-nothing reasoning D2 applies to sealing
+ * covering all of them — the same all-or-nothing reasoning that applies to sealing
  * itself.
  */
 describe('allRecipientsVerified', () => {

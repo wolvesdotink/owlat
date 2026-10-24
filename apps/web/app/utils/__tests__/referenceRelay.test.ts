@@ -22,7 +22,7 @@ describe('referenceRelayNotice', () => {
 	});
 
 	it('says nothing on a standalone deployment', () => {
-		// `none` is a supported configuration (plan D2), not a missing second arm.
+		// `none` is a supported configuration, not a missing second arm.
 		expect(referenceRelayNotice({ reference: { kind: 'none' } })).toBeNull();
 	});
 
@@ -30,7 +30,7 @@ describe('referenceRelayNotice', () => {
 		expect(referenceRelayNotice({ reference: { kind: 'arm', arm: ARM } })).toBeNull();
 	});
 
-	it('classifies the D8 multi-relay case and keeps the backend sentence verbatim', () => {
+	it('classifies the multi-relay case and keeps the backend sentence verbatim', () => {
 		const detail = `${MULTI_RELAY_DETAIL_PREFIX} (mandrill, ses), so there is no single second arm for example.com to be compared against.`;
 		const notice = referenceRelayNotice({ reference: { kind: 'unknown', detail } });
 		expect(notice?.kind).toBe('multi_relay');

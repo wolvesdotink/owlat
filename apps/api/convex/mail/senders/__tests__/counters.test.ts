@@ -1,5 +1,5 @@
 /**
- * Sender counters (SPEC §5): 13 calendar-week buckets, the cohort rule (an
+ * Sender counters: 13 calendar-week buckets, the cohort rule (an
  * open counts in the week its mail was delivered), and the window totals.
  */
 

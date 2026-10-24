@@ -105,7 +105,7 @@ describe('renderBriefingActions', () => {
 	});
 });
 
-describe('interpretationHoldReason (D3)', () => {
+describe('interpretationHoldReason', () => {
 	it('holds when the message was never interpreted', () => {
 		expect(interpretationHoldReason({ interpretation: null, completeness: 'complete' })).toContain(
 			'not been interpreted'

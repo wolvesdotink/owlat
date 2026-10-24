@@ -1,5 +1,5 @@
 /**
- * DKIM verifier — VERDICT EQUALITY vs the `mailauth` oracle (D1: mailauth is
+ * DKIM verifier — VERDICT EQUALITY vs the `mailauth` oracle (mailauth is
  * kept as a devDependency so these differential tests are not self-referential).
  *
  * For every fixture we sign with `mailauth`'s `dkimSign`, publish the matching
@@ -338,7 +338,7 @@ describe('verifyDkim differential vs mailauth', () => {
 	it('crypto-valid rsa-sha1 -> mailauth pass, ours fail (RFC 8301 policy divergence)', async () => {
 		// The one algorithm divergence: rsa-sha1 verifies cryptographically but is
 		// policy-failed as deprecated. mailauth still returns `pass`; we return
-		// `fail`. Pin BOTH sides so the sanctioned divergence is enumerated (D2).
+		// `fail`. Pin BOTH sides so the sanctioned divergence is enumerated.
 		const msg = mintOverOurCanon({ hTag: 'from:to:subject', algTag: 'rsa-sha1' });
 		const ours = await verifyDkim(msg, { resolver: resolverFor(rsaTxt) });
 		const oracle = normalizeMailauth(await dkimVerify(msg, { resolver: resolverFor(rsaTxt) }));

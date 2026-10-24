@@ -12,7 +12,7 @@
  *     provider), reusing the stored key.
  *
  * Any other target (another hosted provider, an env-configured endpoint) is
- * reached through the settings instead: a saved switch is the D8 path.
+ * reached through the settings instead: a saved switch is the embedding switch path.
  */
 
 import type { ActionCtx } from '../../_generated/server';
@@ -153,7 +153,7 @@ export async function embedTextsForIndex(
 			width = raw.length;
 			vectors.push({ vector: toIndexVector(raw), raw });
 		} catch (error) {
-			rethrowAdmissionRefusal(error); // a refused text is not a failed one (D1)
+			rethrowAdmissionRefusal(error); // a refused text is not a failed one
 			vectors.push(null);
 		}
 	}

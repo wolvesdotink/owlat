@@ -83,7 +83,7 @@ function fakeRedis(failSetFor: string[] = []): { redis: Redis; store: Map<string
  * With every resolver down, each zone we actually query must report `unknown`
  * — never `clean`. The credential-gated feeds carry no key in this fixture, so
  * they must stay `skipped`: a dead resolver may not turn an inert feed into a
- * signal (D2).
+ * signal.
  */
 function expectEveryReachableZoneUnknown(record: IpAuditRecord): void {
 	const keyed = record.zones.filter((zone) => zone.status === 'skipped');

@@ -104,4 +104,10 @@ useVisibleAnimation(track, () => props.indeterminate);
 		transform: translateX(100%);
 	}
 }
+
+/* The app's own "Reduce motion" setting (the data-motion floor in base.css). */
+:root[data-motion='reduce'] .progress-indeterminate {
+	animation: none;
+	transform: translateX(100%);
+}
 </style>

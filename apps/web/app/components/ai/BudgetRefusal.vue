@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * A stored AI result the spend budget refused (D1): an assistant answer, an
+ * A stored AI result the spend budget refused: an assistant answer, an
  * @assistant reply or a visualization. The server keeps the stable code and
  * reason (`{ code: 'AI_BUDGET_EXHAUSTED', reason }`), never a sentence, so the
  * reader gets it in their own language. Renders nothing for anything else.

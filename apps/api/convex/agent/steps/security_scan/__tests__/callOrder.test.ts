@@ -1,6 +1,6 @@
 /**
  * The security scan's call order: L1 deterministic
- * quarantine before the guard, the D13 guard skip and its marker, the L5 MTA
+ * quarantine before the guard, the guard skip and its marker, the L5 MTA
  * verdict (recorded, terminal only behind its switch), and the L4 early
  * handling-rule archive (behind its switch, after every safety outcome).
  *
@@ -123,7 +123,7 @@ describe('L1: deterministic quarantine before the guard', () => {
 	});
 });
 
-describe('D13: the guard skip and its record', () => {
+describe('the guard skip and its record', () => {
 	it('skips the guard for spam-score archived mail and records why', async () => {
 		const { route, output } = await runScan({ message: SPAM });
 		expect(mocks.runLlmObject).not.toHaveBeenCalled();
@@ -313,7 +313,7 @@ describe('Sol r3 F1: a guard refused by spend admission', () => {
 			injectionDetected: false,
 			guardNotRun: { reason: 'budget_refused' },
 		});
-		// The D13 marker: every later generative consumer runs the guard first.
+		// The guard-skip marker: every later generative consumer runs the guard first.
 		expect(guardStanding({ processingStatus: 'failed', securityFlags: flags })).toBe('needs_guard');
 		// And the hold names the guard as missing at every later step.
 		expect(missingJudgmentsAt('draft', { securityFlags: flags })).toEqual(['guard', 'draft']);

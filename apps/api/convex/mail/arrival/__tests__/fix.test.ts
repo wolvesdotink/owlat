@@ -1,5 +1,5 @@
 /**
- * Fix (SPEC §4.2): every destination × scope writes its change and its
+ * Fix: every destination × scope writes its change and its
  * operation rows in the same mutation, stamps the ABA markers, re-sorts a
  * sender's newest ≤200 Inbox messages only, never writes a category, and a
  * reason starts a rule-draft compile.

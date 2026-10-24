@@ -1,5 +1,5 @@
 /**
- * Convex validators of a draft's response plan (SPEC §6, `draftResponsePlans`):
+ * Convex validators of a draft's response plan (`draftResponsePlans`):
  * the draft it belongs to, the stance per item, the coverage of the draft, its
  * file claims and its commitments. Split out of `threadBrief.ts` for the size
  * cap; the literal unions stay there.

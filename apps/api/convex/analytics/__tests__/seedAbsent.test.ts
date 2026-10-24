@@ -14,7 +14,7 @@ const NOW = 1_800_000_000_000;
 const ORG = 'org_standalone';
 
 /**
- * (f) THE D2 PROOF — a fresh install with zero seed mailboxes.
+ * (f) ABSENCE BLOCKS NOTHING — a fresh install with zero seed mailboxes.
  *
  * Absence of a seed mailbox lowers measurement confidence and slows the ramp.
  * It does NOTHING else: no throw, no error state, no warning, no
@@ -28,7 +28,7 @@ describe('zero seed mailboxes is a supported configuration', () => {
 		expect(summary.seedAccountCount).toBe(0);
 		expect(summary.rotationRemindersDue).toBe(0);
 		expect(summary.windowStart).toBe(NOW - SEED_PLACEMENT_WINDOW_MS);
-		// D14 — the reading carries how much it is WORTH, and the one hint that
+		// The reading carries how much it is WORTH, and the one hint that
 		// would improve it. A hint, never an error and never a nag: nothing here
 		// is an unresolved task and nothing gates a send on it.
 		expect(summary.placementSource).toBe('self_hosted_seeds');
@@ -246,13 +246,13 @@ describe('the shipped summary reports a provider-wide collapse', () => {
 			confidence: SEED_GATE_CONFIDENCE,
 		});
 		expect(summary.seedAccountCount).toBe(SEEDS);
-		// D14 — connected seeds are the reading's own grade, and there is nothing
+		// Connected seeds are the reading's own grade, and there is nothing
 		// left to advise: the hint is the ABSENCE of seeds, not a bad result.
 		expect(summary.placementConfidence).toBe(SEED_GATE_CONFIDENCE);
 		expect(summary.placementImprovement).toBe('none');
 	});
 
-	it('reports a STATUS and never a placement number (D17)', async () => {
+	it('reports a STATUS and never a placement number', async () => {
 		const t = convexTest(schema, modules);
 		await connectSeedsWithSpamProbes(t);
 		const summary = await t.run(async (ctx) => summarizeSeedPlacementWindow(ctx.db, ORG, NOW));

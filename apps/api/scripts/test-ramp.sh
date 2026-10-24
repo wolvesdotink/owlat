@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The ramp-gate matrix (deliverability plan D2/D3): the ramp controller has two
+# The ramp-gate matrix: the ramp controller has two
 # gate implementations behind one interface, the concurrent reference-arm one
 # and the trailing-baseline one a deployment with zero third-party accounts
 # runs. That deployment is a SUPPORTED CONFIGURATION, so the gate suite runs
@@ -15,8 +15,8 @@
 #   bun run test:ramp                 both legs, one after the other
 #   bun run test:ramp standalone      one leg (the CI matrix runs one per job)
 #
-# `convex/delivery/signals` holds the registry the evaluators fold (seams plan
-# D9), so each leg has to cover it or it loses the half of the suite that says
+# `convex/delivery/signals` holds the registry the evaluators fold (the
+# signal registry), so each leg has to cover it or it loses the half of the suite that says
 # which gates it even runs.
 set -euo pipefail
 cd "$(dirname "$0")/.."

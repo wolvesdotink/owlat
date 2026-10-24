@@ -28,7 +28,7 @@ export const sendRefValidator = v.union(
 );
 
 /**
- * A deliverability SEED PROBE's durable reference (D18). A shadow copy has no
+ * A deliverability SEED PROBE's durable reference. A shadow copy has no
  * `emailSends` row — that is what keeps it out of every denominator — but its
  * probe-ledger row IS durable, org-scoped and unique, which is what the
  * governed boundary needs for an idempotency key and a re-entry token.

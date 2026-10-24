@@ -309,4 +309,16 @@ useModalFocus(
 		transform: none;
 	}
 }
+
+/* The app's own "Reduce motion" setting (the data-motion floor in base.css). */
+:root[data-motion='reduce'] .modal-panel,
+:root[data-motion='reduce'] .modal-enter-active .modal-panel,
+:root[data-motion='reduce'] .modal-leave-active .modal-panel {
+	transition: none;
+}
+
+:root[data-motion='reduce'] .modal-enter-from .modal-panel,
+:root[data-motion='reduce'] .modal-leave-to .modal-panel {
+	transform: none;
+}
 </style>

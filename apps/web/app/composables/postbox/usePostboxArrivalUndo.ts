@@ -71,7 +71,7 @@ export function usePostboxArrivalUndoAnnouncer(): void {
 }
 
 /**
- * Undo for read-on-arrival operations (SPEC §4.4): Fix, sender status (the
+ * Undo for read-on-arrival operations: Fix, sender status (the
  * Senders page, ⇧E, ⇧O, Keep), suggestions, the learned-digest notice.
  *
  * `offerUndo` shows the toast that says what happened, with an Undo button

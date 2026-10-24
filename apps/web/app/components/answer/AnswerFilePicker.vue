@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Pick from Files" for a file question (plan §06): a small dialog over the
+ * "Pick from Files" for a file question: a small dialog over the
  * files the person can already read, searchable by name.
  *
  *  - Files: the organization's Files library as compact cards

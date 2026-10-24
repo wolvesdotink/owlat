@@ -43,7 +43,7 @@ describe('WebhookAdapter — send()', () => {
 		expect(url).toBe('https://hook.example/in');
 		expect(init.method).toBe('POST');
 		// Content-Type and nothing else. The generic channel collects no secret
-		// any more (D10 removed the form field with the caller-less verifier it
+		// (the form field went with the caller-less verifier it
 		// fed), and the shipped inbound verifier reads GENERIC_WEBHOOK_SECRET.
 		// Signing the outbound POST would be a new wire behaviour, not a
 		// refactor — so this pins the header set until someone decides

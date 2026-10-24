@@ -1,6 +1,6 @@
 /**
  * "Read the exact wording" is found by index, not from the newest extractions
- * (SPEC §7 legal mail). Only the CURRENT extraction of a source carries the flag:
+ * (legal mail). Only the CURRENT extraction of a source carries the flag:
  *   - the reducer stores the flag and reason on the extraction row;
  *   - an older legal message stays listed behind fifty ordinary ones;
  *   - a newer extraction that read the message and no longer asks for it

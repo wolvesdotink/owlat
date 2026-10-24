@@ -135,7 +135,7 @@ export function shouldSendDecisionConfig(state: DecisionFormSnapshot): boolean {
  *  • `localUncalibrated` — the local engine returns a real distribution, but
  *    one nobody has calibrated, so it is stamped `calibrated: false` too.
  *  • `keyMissing`     — a keyed adapter is selected with no key we can see, so
- *    decisions are refused (D3: terminal, never the language plane), unless
+ *    decisions are refused (terminal, never the language plane), unless
  *    the deployment supplies one through its environment, which a query
  *    cannot tell us.
  *  • `breakerOpen`    — the plane has been failing and the breaker has cut it.

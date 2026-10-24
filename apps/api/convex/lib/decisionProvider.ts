@@ -55,7 +55,7 @@
  *
  * Environment (fallback only):
  *   DECISION_PROVIDER   typesafe | local | llm — any other value makes the plane
- *                       unavailable (D3), never the default
+ *                       unavailable, never the default
  *   TYPESAFE_API_KEY    the TypeSafe (Jev) key
  *   DECISION_MODEL      model id override — SENT as the model id. Unset ⇒ the
  *                       adapter's pinned version. An answer the provider
@@ -127,7 +127,7 @@ export interface ResolvedDecisionPlane {
 	readonly deadlineMs: number;
 	readonly source: DecisionConfigSource;
 	/**
-	 * Set when the configured provider cannot answer (D3): its credential is
+	 * Set when the configured provider cannot answer: its credential is
 	 * missing, malformed or undecryptable, or its config is invalid. `kind`
 	 * stays the configured one. Absent on the ordinary path, including the
 	 * "nobody configured anything" path, which is the `default` source.
@@ -301,7 +301,7 @@ function planeFor(input: {
 	storedBaseUrl: string | undefined;
 	isFallbackEnabled: boolean;
 	configVersion: string | undefined;
-	/** The stored key could not be decrypted (D3: terminal, never a language call). */
+	/** The stored key could not be decrypted (terminal, never a language call). */
 	decryptFailure?: DecisionUnavailable;
 }): ResolvedDecisionPlane {
 	const { kind, source, isFallbackEnabled, configVersion } = input;
@@ -449,7 +449,7 @@ export async function resolveDecisionProvider(
 	task: AiTaskName
 ): Promise<ResolvedDecisionProvider> {
 	const plane = await resolveDecisionConfig(ctx);
-	// D3: an explicit provider that cannot answer is terminal. Nothing is
+	// An explicit provider that cannot answer is terminal. Nothing is
 	// resolved on the language plane for it.
 	if (plane.unavailable) throw new DecisionProviderUnavailable(plane.kind, plane.unavailable);
 	return {
@@ -471,7 +471,7 @@ export async function resolveDecisionProvider(
  * the default, because ABSENT MEANS NO HOP. Four ways to get there: the
  * operator never turned the hop on, the primary already IS the language plane
  * (hopping to itself would only double the bill of a failure), or the plane
- * cannot answer at all (D3: terminal, so there is no failure for a hop to cover).
+ * cannot answer at all (terminal, so there is no failure for a hop to cover).
  *
  * A caller that must never hop — the high-volume background classifiers, where
  * an outage becomes a bill rather than an incident — simply does not call this.
@@ -482,7 +482,7 @@ export async function resolveDecisionFallback(
 	task: AiTaskName
 ): Promise<ResolvedDecisionProvider | undefined> {
 	const plane = await resolveDecisionConfig(ctx);
-	// D3: no hop for a provider that cannot answer at all; the hop is for an
+	// No hop for a provider that cannot answer at all; the hop is for an
 	// operational failure of a working provider.
 	if (!plane.isFallbackEnabled || plane.kind === 'llm' || plane.unavailable) return undefined;
 	return {

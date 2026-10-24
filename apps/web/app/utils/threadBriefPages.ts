@@ -1,5 +1,5 @@
 /**
- * The brief's item pages, merged (SPEC §7). `brief.get` returns the thread's
+ * The brief's item pages, merged. `brief.get` returns the thread's
  * open items a page at a time (`page.cursor`), the recently closed ones on the
  * first page only. The reader walks the pages on its own, up to a bound, and
  * merges their lists back into the "For you" order, so a payment obligation

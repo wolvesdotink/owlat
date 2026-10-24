@@ -58,11 +58,11 @@ export const CONTRIBUTION_CAPABILITY_REQUIREMENTS = [
 		moduleExports: [
 			// The send half: `pluginProvider.ts` adapts it into the dispatch registry.
 			{ role: 'module', dispatch: 'wired' },
-			// The feedback half (D6/P2.2): `/webhooks/plugin/<pluginId>` verifies the
+			// The feedback half: `/webhooks/plugin/<pluginId>` verifies the
 			// declared signature, rejects a replay, reauthorizes the contribution and
 			// dispatches the parsed events into the inbound plane.
 			{ role: 'webhook', dispatch: 'wired' },
-			// The sending-domain identity half (D5/P3.2): the transport is registered
+			// The sending-domain identity half: the transport is registered
 			// into the host's relay-identity registry at composition time, and
 			// `domains/pluginRelay.ts` calls this module to register and re-check the
 			// identity whose row `relayDomainVerified` reads on the enqueue path.

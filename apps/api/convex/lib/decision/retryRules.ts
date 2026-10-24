@@ -79,7 +79,7 @@ export function mayFallBack(error: unknown): boolean {
 	// volume we just declined to serve on a model that costs 24 to 50 times more.
 	if (error instanceof DecisionRateLimitRefusal) return false;
 	if (error instanceof DecisionWireError) return false;
-	// D3: a provider that cannot answer, or an exhausted spend cap, is terminal.
+	// A provider that cannot answer, or an exhausted spend cap, is terminal.
 	if (error instanceof DecisionProviderUnavailable) return false;
 	if (admissionRefusalOf(error)) return false;
 	return isOperationalFailure(error);

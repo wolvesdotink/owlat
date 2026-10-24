@@ -1,5 +1,5 @@
 /**
- * Follow-up nudges in the Answer queue (SPEC §7, mail/nudges.ts): a "Waiting
+ * Follow-up nudges in the Answer queue (mail/nudges.ts): a "Waiting
  * on others" item past its due date, or 3 business days old with no reply
  * since, is a follow-up card offering "Draft a nudge", derived when the queue
  * is read. A reply from them cancels it; a fenced, muted or team thread

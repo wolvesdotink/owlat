@@ -149,7 +149,7 @@ export const listMessages = assistantQuery({
 			status: m.status,
 			toolCalls: m.toolCalls ?? [],
 			errorMessage: m.errorMessage ?? null,
-			// A budget refusal (D1): the code and reason the web says in the reader's language.
+			// A budget refusal: the code and reason the web says in the reader's language.
 			budgetRefusal: m.budgetRefusal ?? null,
 			model: m.model ?? null,
 			tokenUsage: m.tokenUsage ?? null,
@@ -345,7 +345,7 @@ export const finalizeAssistantMessage = internalMutation({
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		errorMessage: v.optional(v.string()),
-		/** A budget refusal (D1): stored as its code and reason, for the web to localize. */
+		/** A budget refusal: stored as its code and reason, for the web to localize. */
 		budgetRefusal: v.optional(budgetRefusalValidator),
 		toolCalls: v.optional(v.array(assistantToolCallValidator)),
 	},

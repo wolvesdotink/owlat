@@ -1,5 +1,5 @@
 /**
- * Read on arrival, Undo (SPEC §4.4): `undo({ operationId })` puts back what
+ * Read on arrival, Undo: `undo({ operationId })` puts back what
  * one operation changed.
  *
  * One bounded mutation per page of ≤{@link UNDO_PAGE} change rows: the public

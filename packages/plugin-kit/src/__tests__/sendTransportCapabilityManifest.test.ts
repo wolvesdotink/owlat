@@ -340,7 +340,7 @@ describe('declared capability fields', () => {
 });
 
 /**
- * The credential FORM (D5) — descriptors, joined to the configuration.
+ * The credential FORM — descriptors, joined to the configuration.
  *
  * The join is the property under test. A descriptor's `envVar` must name a
  * variable this transport declared, in the list its own `required` implies:

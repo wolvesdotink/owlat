@@ -1,8 +1,8 @@
 /**
- * The per-thread `threadBriefs` row (SPEC §2): find it, create it, and decide
+ * The per-thread `threadBriefs` row: find it, create it, and decide
  * which mode a thread interprets in.
  *
- * Mode (SPEC §0): a Team Inbox thread and a thread of a shared-scope mailbox
+ * Mode: a Team Inbox thread and a thread of a shared-scope mailbox
  * run in `actions` mode; a personal Postbox thread runs in `brief` mode. The
  * row is created lazily by the first writer (the reducer, an activity append,
  * a viewer marking it seen), so every thread that never had interpretation or

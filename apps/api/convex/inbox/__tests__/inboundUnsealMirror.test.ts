@@ -1,5 +1,5 @@
 /**
- * Sealed Mail E4 — decrypt-on-ingest on the AI-inbox path (D3), the MIRROR half
+ * Sealed Mail E4 — decrypt-on-ingest on the AI-inbox path, the MIRROR half
  * of the hard gate.
  *
  * Drives the REAL `e2ee.open.decryptAndReceive` action end-to-end: it decrypts a
@@ -69,7 +69,7 @@ async function readMirror(
 	});
 }
 
-describe('e2ee.open.decryptAndReceive — mirror + agent consume decrypted text (E4/D3)', () => {
+describe('e2ee.open.decryptAndReceive — mirror + agent consume decrypted text', () => {
 	beforeEach(() => {
 		vi.stubEnv('INSTANCE_SECRET', INSTANCE_SECRET);
 	});

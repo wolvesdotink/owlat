@@ -4,8 +4,7 @@
  * things only the component decides:
  *   - it renders NOTHING when there is nothing honest to say (an unmeasured cap
  *     must not leave an empty box beside the send button), and
- *   - a capped day is dressed as information, never as the error treatment
- *     (deliverability plan D14).
+ *   - a capped day is dressed as information, never as the error treatment.
  */
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';

@@ -7,13 +7,14 @@ import { teamConversationOpenIds } from '~/utils/answerTeamConversation';
 import type { TeamStreamEntry } from '../../../../api/convex/mail/interpret/briefShape';
 import type { ReplyEntry } from '~/utils/teamStream';
 import TeamThreadStream from '~/components/team/TeamThreadStream.vue';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 type ThreadData = NonNullable<FunctionReturnType<typeof api.inbox.queries.getThread>>;
 type ThreadMessage = ThreadData['messages'][number];
 type ThreadContact = ThreadData['contact'];
 
 /**
- * Answer mode's left column for a Team inbox thread (plan §07, SPEC §7): the
+ * Answer mode's left column for a Team inbox thread: the
  * team stream in its own order. The customer's messages show with their
  * HTML bodies, rendered by the Postbox's sandboxed body component (quotes
  * folded, remote images behind "Show images"; a body too large for its row
@@ -101,8 +102,7 @@ function reveal(id: string): boolean {
 	if (messageById.value.has(id) && !isOpen(id)) toggle(id);
 	void nextTick(() => {
 		const el = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(id)}"]`);
-		const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-		el?.scrollIntoView?.({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+		el?.scrollIntoView?.({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 		flashed.value = id;
 		// Reply rows come from the stream component, so ring the element itself too.
 		el?.classList.add('ring-2', 'ring-brand/50');

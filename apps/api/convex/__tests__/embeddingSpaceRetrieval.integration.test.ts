@@ -218,7 +218,7 @@ describe('a query embedded here searches its own space', () => {
 		const inSpace = await search(t, { queryText: 'currency preference' });
 		expect(scored(inSpace)).toEqual([{ title: 'Invoices go out in EUR', isVectorHit: true }]);
 
-		// D8: switching drops the old vectors from vector search at once.
+		// Switching drops the old vectors from vector search at once.
 		await configureLocalEmbedder(t, 'mxbai-embed-large');
 		expect(await search(t, { queryText: 'currency preference' })).toEqual([]);
 		// The lexical leg still finds the entry.

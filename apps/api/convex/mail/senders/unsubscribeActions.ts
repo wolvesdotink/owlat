@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * The external half of unsubscribing (SPEC §5), both entry points running
+ * The external half of unsubscribing, both entry points running
  * the EXISTING guarded RFC 8058 POST (`mail/unsubscribe.ts`): the shared URL
  * policy, the DNS-rebinding guard, no redirects, a bounded timeout and the
  * fail-soft result. The URL is always re-read from the message at run time.

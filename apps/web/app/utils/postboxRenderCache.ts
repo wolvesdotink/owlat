@@ -9,13 +9,15 @@
  * long newsletters. This cache memoises the *final* rendered output (the
  * sanitized+transformed srcdoc and the tracker detection) plus the measured
  * iframe content height, keyed by messageId + the render options that change
- * the output (scheme / showImages / loadEverything / showQuoted).
+ * the output (scheme / showImages / loadEverything / showQuoted / the reader's
+ * text size and reading width).
  *
  * Contract:
  *  - Message bodies are immutable once fetched, so a hit is always valid for a
  *    given (messageId, options) key — no time-based invalidation needed.
- *  - A different option value (e.g. the user shows images, or the app flips to
- *    dark) produces a different key, so stale renders are never served.
+ *  - A different option value (e.g. the user shows images, the app flips to
+ *    dark, or the reader picks a larger text size) produces a different key,
+ *    so stale renders are never served.
  *  - Plain Map-with-cap LRU: re-reading or re-writing a key moves it to the
  *    most-recently-used end; overflow evicts the least-recently-used entry.
  *  - The cache is a pure data structure — no reactivity, no DOM, no network —
@@ -25,6 +27,7 @@
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { EmailHtmlKind, PostboxRenderScheme } from '~/utils/postboxDarkMode';
 import type { PostboxRenderStageOutput } from '~/utils/postboxRenderPipeline';
+import { mailTypographyKey, type MailTypography } from '~/utils/readingComfort';
 
 /** Render options that change the produced srcdoc; part of the cache key. */
 export interface PostboxRenderOptions {
@@ -32,6 +35,8 @@ export interface PostboxRenderOptions {
 	showImages: boolean;
 	loadEverything: boolean;
 	showQuoted: boolean;
+	/** The reader's text size and reading width, written into the srcdoc head. */
+	typography: MailTypography;
 }
 
 export interface PostboxRenderEntry {
@@ -79,6 +84,7 @@ export function postboxRenderKey(messageId: string, options: PostboxRenderOption
 		options.showImages ? 1 : 0,
 		options.loadEverything ? 1 : 0,
 		options.showQuoted ? 1 : 0,
+		mailTypographyKey(options.typography),
 	].join('|');
 }
 

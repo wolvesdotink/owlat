@@ -1,5 +1,5 @@
 /**
- * Mailbox scope change (SPEC §5 "Scope change"): a personal mailbox that
+ * Mailbox scope change: a personal mailbox that
  * becomes a team inbox (`mail/teamInboxConversion.ts`) moves its threads from
  * `brief` to `actions` mode, and what brief mode produced is incompatible:
  *
@@ -97,7 +97,7 @@ export async function startScopeChange(
 	mode: InterpretMode
 ): Promise<boolean> {
 	// Read on arrival is personal-only: a team inbox keeps no placement,
-	// override, digest eligibility or arrival record (SPEC §2.9).
+	// override, digest eligibility or arrival record.
 	if (mode === 'actions') await clearSharedThreadArrival(ctx, threadId);
 	const brief = await loadBriefRow(ctx, { kind: 'mail', id: threadId });
 	if (!brief) {
@@ -111,7 +111,7 @@ export async function startScopeChange(
 		interpretationRevision: brief.interpretationRevision + 1,
 		overview: undefined,
 		checkpoint: undefined,
-		// The arrival gist is a brief-mode reading (SPEC §2.4), and so are the
+		// The arrival gist is a brief-mode reading, and so are the
 		// gist-only and counted settlements: the team surfaces read the brief as
 		// what was actually extracted (`none` once the extractions are gone). The
 		// sources stay upgradeable, so the thread's next full read reads them.

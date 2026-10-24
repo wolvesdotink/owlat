@@ -16,7 +16,7 @@ const corpus = loadCorpus();
 const eligible = corpus.filter((t) => !t.expectIneligible);
 
 describe('eval corpus', () => {
-	it('holds at least 60 labelled threads covering every plan §14 slice', () => {
+	it('holds at least 60 labelled threads covering every corpus slice', () => {
 		expect(corpus.length).toBeGreaterThanOrEqual(60);
 		for (const slice of EVAL_SLICES) {
 			expect(corpus.filter((t) => t.slices.includes(slice)).length, slice).toBeGreaterThanOrEqual(

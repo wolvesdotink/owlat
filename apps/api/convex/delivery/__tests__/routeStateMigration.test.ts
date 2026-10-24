@@ -1,5 +1,5 @@
 /**
- * Migration guard for the boolean -> share widening (D1).
+ * Migration guard for the boolean -> share widening.
  *
  * Rows written in the OLD shape (no `stream`, no `ownShare`) must read
  * correctly through every shipped consumer, and the shipped hysteresis must be

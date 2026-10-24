@@ -1,7 +1,7 @@
 /**
  * ONE FIELD VOCABULARY, TWO PACKAGES — the pin behind the decision P1.1 closed.
  *
- * The seams plan asked whether a core provider's `credentialFields` (D5) should
+ * The seams plan asked whether a core provider's `credentialFields` should
  * reuse the plugin platform's `settingsSchema` field kinds exactly or invent its
  * own; the answer shipped is the plan's recommendation, the same five base kinds
  * spelled identically plus two composites (`region-select`, `host-port`). That

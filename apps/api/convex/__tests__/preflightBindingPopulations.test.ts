@@ -49,7 +49,7 @@ describe('pre-flight capacity gate — one IP population (mixed graduated pools)
 	 * `warmingState.phase` is only `'graduated'` when NO campaign IP is ramping,
 	 * so a deployment of graduated IPs plus one freshly added day-1 IP reports
 	 * phase `'ramp'`. Projecting only the day-1 IP would refuse campaigns the
-	 * graduated IPs can deliver instantly — the false blocker D2/D10 forbid.
+	 * graduated IPs can deliver instantly — a false blocker.
 	 */
 	it('does NOT refuse when a graduated campaign IP sits beside a day-1 one', async () => {
 		const t = convexTest(schema, modules);
@@ -346,7 +346,7 @@ describe('pre-flight capacity gate — audiences past the read budget', () => {
 
 	/**
 	 * The mirror case: the floor is BELOW horizon capacity, so it decides nothing
-	 * and the send is allowed. A failure to measure never blocks (D2/D10) — the
+	 * and the send is allowed. A failure to measure never blocks — the
 	 * `otherContacts` noise floor exhausts the budget before the 40 matches are
 	 * reached.
 	 */

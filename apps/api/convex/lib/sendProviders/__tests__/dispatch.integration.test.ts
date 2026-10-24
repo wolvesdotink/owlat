@@ -291,7 +291,7 @@ describe('sendProviderDispatch — per-provider retry counts', () => {
 		}
 	});
 
-	it('Mandrill STOPS at one attempt on an ambiguous timeout (D4)', async () => {
+	it('Mandrill STOPS at one attempt on an ambiguous timeout', async () => {
 		// The counterweight to the row above: a retryable code exhausts the whole
 		// schedule, but `AMBIGUOUS_TIMEOUT` must never spend even one retry — the
 		// message may already be in the recipient's inbox.

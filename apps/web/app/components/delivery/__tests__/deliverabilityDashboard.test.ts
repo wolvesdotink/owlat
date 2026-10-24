@@ -1,12 +1,12 @@
 /**
- * Deliverability measurement screen — every state (plan D2, D5, D10, D14).
+ * Deliverability measurement screen — every state.
  *
  * THE STATES ARE THE FEATURE, so each one is a test rather than an afterthought:
  * a healthy cell, a cell holding on thin data, a zero-volume cell, a standalone
  * cell with no reference arm, a deployment with no integrations connected, and
  * a failing gate whose NUMBERS are rendered next to its verdict.
  *
- * Plus the regression that keeps plan D5 true: NO RATE IS RECOMPUTED CLIENT
+ * Plus the regression that keeps rates derived on read: NO RATE IS RECOMPUTED CLIENT
  * SIDE. The fixture at the bottom carries counters that flatly contradict its
  * rates; the component must print the server's rate, because the moment it
  * starts dividing counters itself, the screen and the ramp controller can
@@ -281,7 +281,7 @@ describe('measurement cell card — a failing gate', () => {
 	});
 });
 
-describe('regression — no rate is recomputed client side (plan D5)', () => {
+describe('regression — no rate is recomputed client side', () => {
 	it('prints the server’s rate even when the counters would imply another one', () => {
 		// 500 of 1000 sends hard bounced, but the server says 1.00%. The screen is
 		// NOT allowed to "fix" that: it renders what the one summarizer derived.

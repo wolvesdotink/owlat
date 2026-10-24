@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Read on arrival (SPEC §2.4): the extractive gist, its own path beside the
+ * Read on arrival: the extractive gist, its own path beside the
  * interpretation (not a mode: mode still means brief or actions).
  *
  * It reuses the run's load, eligibility, fence, lease and sealing, and its

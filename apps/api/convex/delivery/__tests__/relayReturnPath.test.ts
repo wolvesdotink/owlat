@@ -218,7 +218,7 @@ describe('relay return-path probe persistence', () => {
 	});
 
 	it('answers the resolver for an unconfigured transport without erroring', async () => {
-		// D2: absence is a supported configuration. An id this deployment does not
+		// Absence is a supported configuration. An id this deployment does not
 		// configure resolves to the degraded posture, never to a thrown error.
 		const t = convexTest(schema, modules);
 		const resolved = await t.run((ctx) =>
@@ -570,19 +570,19 @@ describe('resolveLastMileRoutePlanFromDb derives the stamp from persisted state'
 		expect((await plan(t)).relayReturnPathHost).toBeUndefined();
 	});
 
-	it('an UNPROVEN relay never stamps — absence is silent, not an error (D2)', async () => {
+	it('an UNPROVEN relay never stamps — absence is silent, not an error', async () => {
 		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
 		const t = convexTest(schema, modules);
 		await authorizeReturnPath(t);
 		expect((await plan(t)).relayReturnPathHost).toBeUndefined();
 	});
 
-	it("stamps the From domain's OWN return-path host, not the global one (D11)", async () => {
+	it("stamps the From domain's OWN return-path host, not the global one", async () => {
 		// The direct-MX arm keys the host by the sending domain
 		// (apps/mta/src/smtp/sender.ts). A relay arm that stamped the global host
 		// instead would put the two arms of one cell on DIFFERENT SPF-evaluation
 		// domains for the same From domain, which is exactly the comparability
-		// D11 protects.
+		// a cell's two arms must keep.
 		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
 		const t = convexTest(schema, modules);
 		await proveRelay(t);
@@ -594,7 +594,7 @@ describe('resolveLastMileRoutePlanFromDb derives the stamp from persisted state'
 		// The shipped record authorises the MTA pool only. Stamping it on a relay
 		// send would fail SPF for the bounce domain at the receiver — degrading
 		// the very arm under measurement — so the host is withheld and the cell is
-		// simply graded degraded-measurement. Nothing is blocked (D2).
+		// simply graded degraded-measurement. Nothing is blocked.
 		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
 		const t = convexTest(schema, modules);
 		await proveRelay(t);
@@ -630,7 +630,7 @@ describe('resolveLastMileRoutePlanFromDb derives the stamp from persisted state'
  * copy that says "this provider" is the exact bug `referenceRelayTransportId`
  * was added to prevent, so the resolution is pinned here.
  *
- * D2 runs through all of it: no relay, two relays and a transport id this
+ * Absence blocks nothing, all through it: no relay, two relays and a transport id this
  * deployment cannot resolve all answer with the degraded posture and none of
  * them throws.
  */

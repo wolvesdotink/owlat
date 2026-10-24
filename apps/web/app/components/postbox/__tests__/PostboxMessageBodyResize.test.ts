@@ -25,6 +25,7 @@ import {
 	splitQuotedHtml,
 } from '../../../composables/postbox/usePostboxQuotedText';
 import { getPostboxRenderCache, postboxRenderKey } from '../../../utils/postboxRenderCache';
+import { MAIL_TYPOGRAPHY_DEFAULT } from '~/utils/readingComfort';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -136,6 +137,7 @@ describe('PostboxMessageBody iframe sizing', () => {
 			showImages: false,
 			loadEverything: false,
 			showQuoted: false,
+			typography: MAIL_TYPOGRAPHY_DEFAULT,
 		});
 		expect(getPostboxRenderCache().get(key)?.height).toBe(840);
 	});
@@ -171,6 +173,7 @@ describe('PostboxMessageBody iframe sizing', () => {
 			showImages: false,
 			loadEverything: false,
 			showQuoted: false,
+			typography: MAIL_TYPOGRAPHY_DEFAULT,
 		});
 		expect(getPostboxRenderCache().get(key)?.height).toBe(1400);
 	});

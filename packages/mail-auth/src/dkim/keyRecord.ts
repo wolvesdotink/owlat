@@ -6,7 +6,7 @@
  * never throws. Every malformed record — an empty / revoked `p=`, a
  * `v=` mismatch, an unknown key type, joined TXT strings, or outright garbage —
  * resolves to a structured outcome the verifier can act on, never an
- * exception. (Locked decision D7: the verifier as a whole never throws.)
+ * exception. (The verifier as a whole never throws.)
  *
  * {@link resolveDkimKey} is the ONE place the `_domainkey` key-record policy
  * lives (lookup, revocation, key type, `h=`, `s=`, the RFC 8301 RSA floor). The

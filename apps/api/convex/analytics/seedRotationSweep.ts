@@ -12,10 +12,10 @@
  * rotating — never produced the artifact at all. Here it is decided by the
  * clock and nothing else, and every seed is reached whatever its status.
  *
- * D16: paged with a CURSOR, bounded per tick, self-rescheduling to the next
+ * Paged with a CURSOR, bounded per tick, self-rescheduling to the next
  * page. A bare bounded page with no cursor starves whichever orgs sort last.
  *
- * D2: with no seed mailboxes connected the page is empty and the sweep is a
+ * With no seed mailboxes connected the page is empty and the sweep is a
  * no-op forever. The reminder itself is advisory — it never blocks a send, a
  * phase promotion or a screen.
  */

@@ -1,5 +1,5 @@
 /**
- * Answer mode's conversation column (plan §03, v1):
+ * Answer mode's conversation column (v1):
  *   - the thread newest last, every card in its reduced cut;
  *   - "Overview" opens the newest and the unread messages and leaves the rest
  *     as one-line rows (the thread's first message too, unlike the reader);

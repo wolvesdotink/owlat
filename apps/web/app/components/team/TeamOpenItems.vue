@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Open for the team", pinned above the team stream (plan §4.3): the actions
+ * "Open for the team", pinned above the team stream: the actions
  * the customer's emails ask of the team, each with its owner, Claim and the
  * reactions. What the customer owes and what nobody can tell who owns stay
  * visible below, with that uncertainty said.

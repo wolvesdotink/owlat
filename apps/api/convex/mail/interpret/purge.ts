@@ -1,5 +1,5 @@
 /**
- * Thread brief erasure, the message level (SPEC §5 "Erasure"): when a source
+ * Thread brief erasure, the message level: when a source
  * message is purged (Postbox "Delete forever", the trash auto-purge, an IMAP
  * EXPUNGE, a provider-side deletion pulled in by two-way sync, a contact's
  * erasure taking a Team Inbox message), everything the thread brief derived

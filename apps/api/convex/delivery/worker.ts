@@ -97,7 +97,7 @@ export function buildTransactionalListUnsubscribe(
 }
 
 /**
- * The D18 invariant, enforced structurally rather than by convention: a seed
+ * The denominator exclusion, enforced structurally rather than by convention: a seed
  * probe is NEVER countable, and a countable Send NEVER carries the probe
  * header. `seedProbeId` and the envelope's countable id (`emailSendId` on a
  * campaign, `sendId` on a transactional one) are mutually exclusive, as are
@@ -173,7 +173,7 @@ export function resolveListUnsubscribeHeader(
 }
 
 export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeInput {
-	// The D18 exclusion, ahead of the per-kind split: both kinds carry probes now,
+	// The denominator exclusion, ahead of the per-kind split: both kinds carry probes now,
 	// so asserting it inside one branch would leave the other unchecked.
 	assertSeedShadowExclusion(envelopeInput);
 	if (envelopeInput.kind === 'transactional') {
@@ -359,7 +359,7 @@ export const sendSingleEmail = internalAction({
 			sendRef:
 				envelopeInput.kind === 'campaign' && envelopeInput.emailSendId
 					? { kind: 'campaign', id: envelopeInput.emailSendId }
-					: // A seed probe's durable reference is its probe ledger row (D18):
+					: // A seed probe's durable reference is its probe ledger row:
 						// enough for a stable idempotency key and an authenticated
 						// re-entry token, and deliberately not a Send. Checked ahead of
 						// `sendId` on either kind — the exclusion above already refuses an
@@ -402,7 +402,7 @@ export const sendSingleEmail = internalAction({
 				// keyed by arm, so a probe filed under a different rule than the
 				// assignment rows use would compare two populations;
 				// `armForTransportLabel` defers to the same `armForTransport` the
-				// assignment rows are written with, reading D3's single own-arm
+				// assignment rows are written with, reading the single own-arm
 				// declaration.
 				transportArm: armForTransportLabel(dispatchResult.providerType),
 				now: Date.now(),

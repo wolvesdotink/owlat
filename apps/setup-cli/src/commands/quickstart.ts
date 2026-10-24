@@ -557,7 +557,7 @@ export function dnsInstructions(config: SetupConfig): string[] {
 		"DNS records required for public access (point them at this server's public IP):",
 		...hosts.map((h) => `  ${h.padEnd(pad)}A    <server IP>`),
 	];
-	// The OWN arm (D3), asked through the catalog rather than spelled again: only
+	// The OWN arm, asked through the catalog rather than spelled again: only
 	// our own MTA needs an EHLO A record and a bounce-domain MX pointed here.
 	if (isOwnSendProviderKind(config.sending?.provider) && config.domain) {
 		lines.push(

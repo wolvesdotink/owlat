@@ -1,5 +1,5 @@
 /**
- * Sender profiles (SPEC §2.9, §5): one `mailSenderProfiles` row per
+ * Sender profiles: one `mailSenderProfiles` row per
  * (personal mailbox, sender), keyed by `senderDigest` (SHA-256 of the bare
  * lowercased address, `decision/senderMemory.ts`).
  *

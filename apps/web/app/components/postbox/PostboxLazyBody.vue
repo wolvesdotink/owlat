@@ -14,6 +14,7 @@ import {
 	usePostboxLazyBody,
 } from '~/composables/postbox/usePostboxLazyBody';
 import { getPostboxRenderCache } from '~/utils/postboxRenderCache';
+import { useReadingComfort } from '~/composables/useReadingComfort';
 import { postboxImagesLoadOnOpen, type PostboxBodyImageProps } from '~/utils/postboxImageAllowlist';
 
 const props = defineProps<{
@@ -26,6 +27,7 @@ const props = defineProps<{
 }>();
 
 const { isDark } = useAppTheme();
+const { mailTypography } = useReadingComfort();
 
 const placeholderEl = ref<HTMLElement | null>(null);
 const { mounted } = usePostboxLazyBody({ target: placeholderEl, eager: () => !!props.eager });
@@ -39,6 +41,7 @@ const placeholderHeight = computed(
 			showImages: postboxImagesLoadOnOpen(props.images),
 			loadEverything: false,
 			showQuoted: false,
+			typography: mailTypography.value,
 		}) ?? POSTBOX_BODY_PLACEHOLDER_PX
 );
 </script>

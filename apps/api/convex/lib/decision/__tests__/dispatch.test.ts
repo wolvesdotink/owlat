@@ -145,7 +145,7 @@ function run(h: Harness, overrides: Record<string, unknown> = {}) {
 		// that are about something else do not have to, and the ones that are
 		// about the breaker override it.
 		breaker: openableBreaker(),
-		// And with spend admission (D3): a port that admits without a hold.
+		// And with spend admission: a port that admits without a hold.
 		admission: { admit: async () => null, extend: async () => {}, release: async () => {} },
 		// Mid-range, so a jittered delay is neither its floor nor its ceiling.
 		random: () => 0.5,
@@ -428,7 +428,7 @@ describe('fallback', () => {
 		}
 	);
 
-	it('refuses the hop, and makes no language call, for a provider that cannot answer (D3)', async () => {
+	it('refuses the hop, and makes no language call, for a provider that cannot answer', async () => {
 		const h = harness();
 		adapters.typesafe.mockRejectedValue(
 			new DecisionProviderUnavailable('typesafe', {
@@ -443,7 +443,7 @@ describe('fallback', () => {
 		expect(adapters.llm).not.toHaveBeenCalled();
 	});
 
-	it('refuses the hop, without retry, when spend admission refused (D3: exhausted caps)', async () => {
+	it('refuses the hop, without retry, when spend admission refused (exhausted caps are terminal)', async () => {
 		const h = harness();
 		adapters.typesafe.mockRejectedValue(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
 

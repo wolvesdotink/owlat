@@ -1,9 +1,9 @@
 /**
- * The read-on-arrival contract (SPEC §2.9): every new table and field
+ * The read-on-arrival contract: every new table and field
  * validates a realistic row, every index the later lanes build on exists with
  * the fields they query by, the shared vocabularies match the validators, the
  * new filter actions are no-ops on the existing paths, and no hook is still
- * a stub (the final wiring gate, SPEC §9).
+ * a stub (the final wiring gate).
  */
 
 import { convexTest } from 'convex-test';
@@ -283,7 +283,7 @@ describe('new filter actions on the existing paths', () => {
 	});
 });
 
-describe('the wiring gate (SPEC §9)', () => {
+describe('the wiring gate', () => {
 	it('leaves no hook a stub', () => {
 		expect([...ARRIVAL_HOOK_STUBS]).toEqual([]);
 	});

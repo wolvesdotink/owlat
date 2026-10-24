@@ -1,5 +1,5 @@
 /**
- * Sealed Mail E4 — decrypt-on-ingest on the personal-mailbox path (D3), the
+ * Sealed Mail E4 — decrypt-on-ingest on the personal-mailbox path, the
  * convex-test INGEST MATRIX half of the hard gate.
  *
  * Drives the REAL `mail.delivery.ingestFromWebhook` action end-to-end (no MTA env
@@ -157,7 +157,7 @@ async function readRow(t: T, messageId: Id<'mailMessages'>) {
 	});
 }
 
-describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/D3)', () => {
+describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4)', () => {
 	beforeEach(() => {
 		vi.stubEnv('INSTANCE_SECRET', INSTANCE_SECRET);
 		vi.stubEnv('MTA_INTERNAL_URL', '');
@@ -189,7 +189,7 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		if (!('messageId' in result)) return;
 
 		const { msg, rawText } = await readRow(t, result.messageId);
-		// Restored plaintext + real subject flow into the pipeline (D3). BYTE-EQUAL
+		// Restored plaintext + real subject flow into the pipeline. BYTE-EQUAL
 		// body (card acceptance): the stored plaintext is byte-for-byte the exact
 		// inner-message body, not merely "contains the canary".
 		expect(msg.subject).toBe(REAL_SUBJECT);

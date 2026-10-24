@@ -60,7 +60,7 @@ export type PostboxReaderMessage = {
 	// Sealed Mail (E5): the inbound sealing record (`inboundEncryptionInfo`), only on
 	// mail sealed between Owlat instances; else the structural badge takes over.
 	inboundEncryptionInfo?: InboundEncryptionInfo;
-	// F2 (D9): the signature verdict for PGP-signed mail verified at ingest; absent
+	// F2: the signature verdict for PGP-signed mail verified at ingest; absent
 	// for plaintext and pre-F1 rows (the badge falls back to "not verified").
 	inboundSignatureInfo?: InboundSignatureInfo;
 	flagSeen?: boolean;
@@ -105,6 +105,9 @@ import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
 import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
 import type { Placement } from '@owlat/shared/arrival';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import { primaryReplyKindFor } from '~/composables/postbox/postboxReplySpec';
+import { replyDropRecipient, type ReplyDropTarget } from '~/utils/replyFileDrop';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -269,7 +272,7 @@ const readerThread = computed(
 			| null
 			| undefined
 );
-// The thread brief (SPEC §7, personal mailboxes): the strip, cites, latest lines, reactions.
+// The thread brief (personal mailboxes): the strip, cites, latest lines, reactions.
 // Per-user reader preferences (auto-advance, reply default, mark-read policy, the
 // brief), read before the brief and the mark-read watcher, which both run immediately.
 const { autoAdvance, replyDefault, markReadPolicy, autoSummarize, autoLoadImages } =
@@ -518,7 +521,7 @@ const authBadgesEnabled = computed(() => isFeatureEnabled('senderAuthBadges'));
 // sealing record. When off, sealed messages fall back to the structural badge.
 const sealedMailEnabled = computed(() => isFeatureEnabled('sealedMail'));
 
-// The thread's correspondent (Sealed Mail 1:1 plane, D5): the first party in the
+// The thread's correspondent (Sealed Mail 1:1 plane): the first party in the
 // conversation who isn't us. Prefer an inbound sender; fall back to a recipient
 // on an all-outbound thread. Drives the thread-level key-change banner + contact
 // key panel. Empty when we can't identify a single counterpart (the container
@@ -795,11 +798,26 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 	if (Object.keys(query).length === 0) return;
 	void navigateTo({ path: '/dashboard/preferences/filters', query });
 }
+
+// Files dropped on the conversation reply to it the way `r` does: to the latest
+// message, as the person's default reply, behind the sender-auth reply guard.
+const replyDrop = computed<ReplyDropTarget | null>(() => {
+	const latest = latestMessage.value;
+	if (!latest || props.folderRole === 'drafts') return null;
+	return {
+		kind: 'message',
+		id: latest._id,
+		recipient: replyDropRecipient(latest, ownAddresses.value),
+		replyKind: primaryReplyKindFor(replyDefault.value, latest, ownAddresses.value),
+		guard: guardLatestReply,
+	};
+});
 </script>
 
 <template>
 	<article
 		ref="articleEl"
+		v-reply-drop="replyDrop"
 		class="pbx-reader-article p-6 max-w-4xl mx-auto"
 		:class="team.isActive.value ? '' : discussionArticleClass"
 	>

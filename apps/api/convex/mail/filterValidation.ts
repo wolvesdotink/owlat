@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.1, §6.2): the server-side check every filter passes
+ * Read on arrival: the server-side check every filter passes
  * on its way into `mailFilters`, at every boundary that writes one: create,
  * update, the Gmail import and a confirmed plain-language or Fix compile.
  *

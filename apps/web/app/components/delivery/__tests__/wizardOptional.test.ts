@@ -1,5 +1,5 @@
 /**
- * D2 — THE ADDITIVE-ONLY THIRD-PARTY RULE, as a test.
+ * THE ADDITIVE-ONLY THIRD-PARTY RULE, as a test.
  *
  * Never connecting a transport must leave the deployment fully functional and
  * every delivery screen CLEAN: no warning, no error, no "setup incomplete"
@@ -36,7 +36,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-describe('connecting a transport is optional (D2)', () => {
+describe('connecting a transport is optional', () => {
 	it('states, in one place, that skipping changes nothing', () => {
 		const impact = skippingWizardImpact();
 		expect(impact.blocksSend).toBe(false);
@@ -99,7 +99,7 @@ describe('connecting a transport is optional (D2)', () => {
  * connected, the delivery readiness verdict every delivery screen renders from
  * must be a clean "ready", with no gate and no nag anywhere in its copy.
  */
-describe('a standalone deployment renders a clean delivery screen (D2)', () => {
+describe('a standalone deployment renders a clean delivery screen', () => {
 	const STANDALONE: ReadinessInput = {
 		// The own MTA IS a configured transport. "No ESP" is not "no transport".
 		transportConfigured: true,
