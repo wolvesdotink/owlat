@@ -377,8 +377,14 @@ watch(isFocusMode, (active) => {
 // shared control so the event name lives in one place.
 const { open: openCommandPalette } = useCommandPalette();
 
-// Initialize desktop notifications (no-op in browser)
-useDesktopNotifications();
+// Unread mail is read once and badged everywhere from the same count: the
+// browser tab (title prefix + dotted favicon) and, in the desktop app, the
+// dock/taskbar icon plus native notifications. The desktop app has no tab and
+// paints the count natively, so the tab badge stays browser-only.
+const unreadBadge = useUnreadBadge();
+const { isDesktop: isDesktopApp } = useDesktopContext();
+useTabBadge(() => (isDesktopApp.value ? null : unreadBadge.count.value));
+useDesktopNotifications(unreadBadge);
 
 // "You can send now" — one in-app toast for a member whose onboarding first-send
 // step was blocked while the instance had no outbound transport.
