@@ -3,8 +3,8 @@
  * `?intent=cancel`: the page asks before cancelling, drops the intent from the
  * address, and says so when the campaign is no longer scheduled.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mount } from '@vue/test-utils';
 import { nextTick, reactive, ref, watch } from 'vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import CampaignCancelIntentDialog from '../CampaignCancelIntentDialog.vue';
@@ -14,10 +14,6 @@ const replace = vi.fn(async ({ query }: { query: Record<string, string> }) => {
 	route.query = query;
 });
 const showToast = vi.fn();
-
-// Every mounted dialog watches the shared route: one left over from an earlier
-// case would handle the next case's intent first.
-enableAutoUnmount(afterEach);
 
 beforeEach(() => {
 	vi.clearAllMocks();
