@@ -24,6 +24,7 @@ import BlockCard from '~/components/send/BlockCard.vue';
 import AudienceListTable from '~/components/audience/AudienceListTable.vue';
 import AutomationsListTable from '~/components/automations/ListTable.vue';
 import AutomationsRowActions from '~/components/automations/RowActions.vue';
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -142,6 +143,8 @@ const STUBS = {
 	ListPageShell,
 	AudienceListTable,
 	SendBlockCard: BlockCard,
+	// A shallow stub would swallow the icon-only write controls it wraps.
+	UiTooltip,
 	// Row names are links; render them so the list's content can be asserted.
 	NuxtLink: NuxtLinkStub,
 	ListSortMenu: true,
