@@ -4,7 +4,7 @@
  * first Escape is the popover's), and, for suggestion lists, leaving focus in
  * the field it hangs from.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h, nextTick, ref, type Component } from 'vue';
 import Modal from '../components/ui/Modal.vue';
@@ -179,6 +179,10 @@ describe('UiPopover', () => {
 	});
 
 	describe('inside a modal that an action in the focused popover closes', () => {
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
 		// The popover's own return target is in the modal and leaves with it, so
 		// focus goes back to what opened the modal.
 		function mountModalWithPopover(withTrigger: boolean, transitions: boolean) {
@@ -267,10 +271,13 @@ describe('UiPopover', () => {
 			expect(popoverOpen.value).toBe(true);
 			expect(document.activeElement).toBe(byId('save'));
 
+			// Reka's focus scope hands focus back in a zero-delay timeout. Run it
+			// on the fake clock so the assertion sees focus after every deferred
+			// restore, not before one that could still move it.
+			vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 			byId('save')!.click();
 			await flushPromises();
-			// Reka's focus scope hands focus back in a zero-delay timeout.
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			vi.runAllTimers();
 			await flushPromises();
 			expect(modalOpen.value).toBe(false);
 			expect(byId('save')).toBeNull();

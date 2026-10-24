@@ -250,4 +250,31 @@ describe('UiListbox with focus inside', () => {
 			'Date',
 		]);
 	});
+
+	it('tells the option slot what is selected when no v-model is bound', async () => {
+		const wrapper = mount(Listbox as Component, {
+			props: { options: FRUIT, optionKey: (f: Fruit) => f.id, label: 'Fruit' },
+			slots: {
+				option: ({ option, selected }: { option: Fruit; selected: boolean }) =>
+					`${option.name}:${selected}`,
+			},
+			attachTo: document.body,
+		});
+		await flushPromises();
+		await wrapper.findAll('[role="option"]')[2]!.trigger('click');
+		await flushPromises();
+		const options = wrapper.findAll('[role="option"]');
+		expect(options.map((o) => o.text())).toEqual([
+			'Apple:false',
+			'Banana:false',
+			'Cherry:true',
+			'Date:false',
+		]);
+		expect(options.map((o) => o.attributes('aria-selected'))).toEqual([
+			'false',
+			'false',
+			'true',
+			'false',
+		]);
+	});
 });

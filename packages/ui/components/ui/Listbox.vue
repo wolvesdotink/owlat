@@ -116,11 +116,6 @@ const rootValue = computed(() =>
 	followsHighlight.value ? (highlightedKey.value ?? undefined) : props.modelValue
 );
 
-function isSelected(key: string): boolean {
-	const value = rootValue.value;
-	return Array.isArray(value) ? value.includes(key) : value === key;
-}
-
 function onModelValue(value: unknown) {
 	if (followsHighlight.value) return;
 	emit('update:modelValue', value as string | string[] | undefined);
@@ -226,14 +221,18 @@ defineExpose(driven);
 				@pointermove="onOptionPointermove"
 				@mousedown="onOptionMousedown"
 			>
-				<slot
-					name="option"
-					:option="option"
-					:highlighted="highlightedKey === keyOf(option)"
-					:selected="isSelected(keyOf(option))"
-				>
-					{{ keyOf(option) }}
-				</slot>
+				<!-- Reka's own selection: without a v-model it holds the value itself,
+				     and the slot must agree with the option's aria-selected. -->
+				<template #default="{ selected }">
+					<slot
+						name="option"
+						:option="option"
+						:highlighted="highlightedKey === keyOf(option)"
+						:selected="selected"
+					>
+						{{ keyOf(option) }}
+					</slot>
+				</template>
 			</ListboxItem>
 		</ListboxContent>
 	</ListboxRoot>
