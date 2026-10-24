@@ -35,7 +35,7 @@
 			"vitest": "^4.1.11",
 			"@vitest/coverage-v8": "^4.1.11",
 			"@types/node": "^25.6.0",
-			"happy-dom": "^20.8.4",
+			"happy-dom": "^21.0.4",
 			"vue-tsc": "^3.2.7"
 		},
 		"catalogs": {
@@ -105,6 +105,7 @@
 		"lint:compose": "bash scripts/check-compose-invariants.sh",
 		"lint:html-to-text": "bash scripts/check-html-to-text.sh",
 		"lint:crypto-primitives": "bash scripts/check-crypto-primitives.sh",
+		"lint:ast-gate-parity": "bun scripts/ast-gate-parity.ts",
 		"lint:mail-services": "bash scripts/check-mail-service-guards.sh",
 		"lint:source-bytes": "bash scripts/check-source-nul-bytes.sh",
 		"lint:no-pr-assets": "bun scripts/check-no-pr-assets.ts",
@@ -136,7 +137,8 @@
 		"test:ramp": "bun run --cwd apps/api test:ramp",
 		"perf:bench": "bun scripts/perf-bench/run.ts",
 		"goldens:update": "bun --cwd packages/mail-message run goldens:update",
-		"release:cut": "bun scripts/release.ts"
+		"release:cut": "bun scripts/release.ts",
+		"release:promote": "bun scripts/release-promote.ts"
 	},
 	"dependencies": {
 		"nuxt": "4.5.2",
@@ -178,7 +180,7 @@
 		"svgo": "^4.1.0",
 		"tar": "^7.5.22",
 		"tmp": "^0.2.7",
-		"undici": "^7.29.1",
+		"undici": "^7.30.1",
 		"valibot": "^1.4.2",
 		"vite": "8.3.3",
 		"ws": "^8.21.0"

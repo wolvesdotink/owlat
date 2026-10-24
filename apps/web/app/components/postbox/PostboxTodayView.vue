@@ -6,6 +6,7 @@
  * top to bottom:
  *
  *   - minimal header ("Inbox (n)" + the shared Priority|All mail switch)
+ *   - the pinned band (PostboxPinnedBand), when anything is pinned
  *   - the Brief slot (the Daily Brief greeting card)
  *   - "NEEDS YOU": the Reply Queue's rows (they open the Answer queue,
  *     filtered to this mailbox) and the threads placed `needs_me`
@@ -272,6 +273,15 @@ function onModeSelect(mode: PostboxInboxMode) {
 				</h1>
 				<PostboxInboxModeToggle class="flex-shrink-0" mode="today" @select="onModeSelect" />
 			</header>
+
+			<!-- Pinned conversations, above everything else until unpinned. -->
+			<PostboxPinnedBand
+				:mailbox-id="mailboxId"
+				selectable
+				framed
+				:active-message-id="openMessageId"
+				@select="openMessageId = $event"
+			/>
 
 			<!-- Brief slot: the Daily Brief greeting card (fail-soft — renders
 			     nothing while there is no cached brief, so the list below stays

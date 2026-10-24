@@ -24,7 +24,6 @@ let wrapper: VueWrapper | null = null;
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 function mountBar(props: { zen: boolean; activeMessageId?: string }) {

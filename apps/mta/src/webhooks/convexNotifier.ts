@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto';
 import { signMtaRequest } from '@owlat/mta-protocol/signer';
 import type Redis from 'ioredis';
 import { isRecord, sleep } from '@owlat/shared';
+import { CORRELATION_HEADER } from '@owlat/shared/correlation';
 import type { GooglePostmasterWebhookEvent, MtaWebhookEvent } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import {
@@ -109,6 +110,9 @@ async function deliverWithRetries<T>(
 				headers: {
 					'Content-Type': 'application/json',
 					...signMtaRequest(config.webhookSecret, body),
+					// Mirrors the signed body field for proxies and access logs;
+					// Convex reads the body, never this header.
+					...(event.correlationId ? { [CORRELATION_HEADER]: event.correlationId } : {}),
 				},
 				body,
 				signal: controller.signal,

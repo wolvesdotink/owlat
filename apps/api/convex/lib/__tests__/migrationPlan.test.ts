@@ -108,6 +108,20 @@ describe('planMigrationStarts', () => {
 			waiting: ['b'],
 		});
 	});
+
+	it('holds a contract step a worker has not moved for, and resumes none of it', () => {
+		const heldByWorkers = new Set(['c']);
+		expect(
+			planMigrationStarts(entries, states({}), { resumeStopped: true, heldByWorkers })
+		).toEqual({ start: ['a'], waiting: ['b', 'c'] });
+		// An interrupted contract step waits too: resuming it would contract just the same.
+		expect(
+			planMigrationStarts(entries, states({ a: 'completed', c: 'interrupted' }), {
+				resumeStopped: true,
+				heldByWorkers,
+			})
+		).toEqual({ start: ['b'], waiting: ['c'] });
+	});
 });
 
 describe('firstStoppedMigration', () => {

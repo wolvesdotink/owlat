@@ -15,25 +15,8 @@ import {
 } from '../auth/apiResponses';
 import { isValidEmail, isValidConvexId } from '../lib/inputGuards';
 import { contactRefFromPath, resolveContactRef } from '../contacts/api';
-
-// Request body types
-interface AddContactBody {
-	email?: string;
-	contactId?: string;
-}
-
-// Response types
-interface AddContactResponse {
-	success: boolean;
-	contactId: string;
-	topicId: string;
-	doiStatus: 'not_required' | 'pending' | 'confirmed';
-}
-
-interface RemoveContactResponse {
-	success: boolean;
-	removed: boolean;
-}
+import type { AddToTopicResponse, RemoveFromTopicResponse } from '@owlat/public-contract';
+import { addContactToTopicRequestSchema, decodeRequest } from '@owlat/public-contract/schemas';
 
 /**
  * The `{topicId}` segment of `/api/v1/topics/{topicId}/...`, or the 400 to
@@ -61,18 +44,16 @@ export const addContactToTopic = createAuthenticatedHandler(
 		const topicId = topicIdFromPath(pathSegmentAfter(request, 'topics'));
 		if (topicId instanceof Response) return topicId;
 
-		// Parse request body
-		let body: AddContactBody;
+		let raw: unknown;
 		try {
-			body = await request.json();
+			raw = await request.json();
 		} catch {
 			return errorResponse('invalid_input', 'Invalid JSON in request body');
 		}
-
-		// Validate that either email or contactId is provided
-		if (!body.email && !body.contactId) {
-			return errorResponse('invalid_input', 'Either email or contactId is required');
-		}
+		// The schema refuses a body naming neither an email nor a contact ID.
+		const decoded = decodeRequest(addContactToTopicRequestSchema, raw);
+		if (!decoded.ok) return errorResponse('invalid_input', decoded.message);
+		const body = decoded.value;
 
 		// Validate email format if provided
 		if (body.email && !isValidEmail(body.email)) {
@@ -96,7 +77,7 @@ export const addContactToTopic = createAuthenticatedHandler(
 		// lookup + not-found path. The email 404 echoes the address back.
 		const resolved = await resolveContactRef(
 			ctx,
-			{ email: body.email, id: body.contactId },
+			{ email: body.email ?? undefined, id: body.contactId ?? undefined },
 			body.contactId
 				? undefined
 				: { notFoundMessage: `Contact with email "${body.email}" not found` }
@@ -112,7 +93,7 @@ export const addContactToTopic = createAuthenticatedHandler(
 				siteUrl: getOptional('SITE_URL'),
 			});
 
-			const response: AddContactResponse = {
+			const response: AddToTopicResponse = {
 				success: true,
 				contactId: contactId,
 				topicId: topicId,
@@ -178,7 +159,7 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 				contactId,
 			});
 
-			const response: RemoveContactResponse = {
+			const response: RemoveFromTopicResponse = {
 				success: true,
 				removed: isInTopic,
 			};

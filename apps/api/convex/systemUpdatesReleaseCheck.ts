@@ -3,7 +3,7 @@
  *
  * The other half of the feature lives in `systemUpdates.ts`, which records the
  * history of updates this instance actually applied. This file is the read
- * side: `checkForUpdates` fetches the newest unified `v*` release, caches it
+ * side: `checkForUpdates` fetches the newest stable unified `v*` release, caches it
  * on the `kind='latestCheck'` singleton of the `systemUpdates` table, and
  * answers whether it is newer than what this instance is running. The public
  * query that reads that cache back — `getLatestRelease` — stays next to the
@@ -30,24 +30,42 @@ import { throwForbidden, throwInternal } from './_utils/errors';
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Extract the semver string from a GitHub release tag, but ONLY for the
- * unified release line (bare `vX.Y.Z` / `vX.Y.Z-pre`).
+ * Extract the semver string from a GitHub release tag, but ONLY for a stable
+ * release of the unified line (bare `vX.Y.Z`).
  *
  * The repo publishes three release lines from separate pipelines — the unified
  * `v*` release (server + desktop + install assets) plus target-only
- * `server-v*` and `desktop-v*` releases. Only the unified `v*` line is marked
- * `--latest`, so `/releases/latest` normally returns it. This guard is defence
- * in depth: a target-prefixed tag such as `server-v0.2.1` must be ignored
- * rather than mis-parsed to `0.0.0` (which would hide a real available update).
+ * `server-v*` and `desktop-v*` releases. Only stable unified releases are
+ * marked `--latest`, so `/releases/latest` normally returns one. This guard is
+ * defence in depth: a target-prefixed tag such as `server-v0.2.1` must be
+ * ignored rather than mis-parsed to `0.0.0` (which would hide a real available
+ * update), and a release candidate (`v0.7.0-rc.1`) is for testing and is
+ * never offered as an update.
  *
  * Returns the bare version (leading `v` stripped) or `null` if the tag is not
  * a bare `vX.Y.Z` release tag.
  */
 export function parseReleaseTag(tag: string): string | null {
-	if (!/^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(tag)) {
+	if (!/^v\d+\.\d+\.\d+$/.test(tag)) {
 		return null;
 	}
 	return tag.replace(/^v/, '');
+}
+
+/**
+ * The version a GitHub release response offers as an update: its stable tag,
+ * or null for a draft, a prerelease or any other tag. Installing a candidate
+ * stays possible by naming it (`owlat upgrade --version X.Y.Z-rc.N`).
+ */
+export function offeredReleaseVersion(release: {
+	tag_name?: string;
+	draft?: boolean;
+	prerelease?: boolean;
+}): string | null {
+	if (release.draft === true || release.prerelease === true) {
+		return null;
+	}
+	return parseReleaseTag(release.tag_name || '');
 }
 
 const CHECK_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -215,18 +233,19 @@ export const checkForUpdates = authedAction({
 				tag_name?: string;
 				body?: string;
 				published_at?: string;
+				draft?: boolean;
+				prerelease?: boolean;
 			};
 
-			const tag = release.tag_name || '';
-			const latestVersion = parseReleaseTag(tag);
+			const latestVersion = offeredReleaseVersion(release);
 			const releaseNotes = release.body || '';
 			const publishedAt = release.published_at ? new Date(release.published_at).getTime() : now;
 
 			if (!latestVersion) {
-				// Not a bare `vX.Y.Z` tag from the unified release line (e.g. a
-				// target-only `server-v*` / `desktop-v*` release, or a missing
-				// tag). Ignore it: keep any cached version and report no update
-				// rather than mis-parsing the tag to 0.0.0.
+				// Not a stable `vX.Y.Z` release of the unified line (e.g. a
+				// target-only `server-v*` / `desktop-v*` release, a prerelease,
+				// or a missing tag). Ignore it: keep any cached version and report
+				// no update rather than mis-parsing the tag to 0.0.0.
 				const cachedVersion = cached?.latestVersion ?? null;
 				return {
 					latestVersion: cachedVersion,

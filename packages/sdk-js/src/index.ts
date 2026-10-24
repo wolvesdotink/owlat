@@ -12,8 +12,10 @@ export type {
 	ApiResponse,
 	PaginatedResponse,
 	RequestOptions,
+	JsonPrimitive,
 	// Contacts
 	Contact,
+	ContactSource,
 	CreateContactParams,
 	UpdateContactParams,
 	DeleteContactResponse,

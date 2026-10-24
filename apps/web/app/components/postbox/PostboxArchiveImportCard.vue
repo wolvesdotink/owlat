@@ -18,6 +18,7 @@ import {
 	archiveImportSummary,
 	type ArchiveImportJob,
 } from '~/utils/postboxArchiveImport';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 const { t, locale } = useI18n();
 const localized = useLocalized();
@@ -105,8 +106,8 @@ async function onFilterFileChange(event: Event) {
 					:aria-label="t('components.postbox.postboxArchiveImportCard.progressLabel')"
 				>
 					<div
-						class="h-full bg-brand transition-[width] duration-300 motion-reduce:transition-none"
-						:style="{ width: `${job.percent}%` }"
+						class="ui-meter-fill h-full bg-brand transition-transform duration-300 motion-reduce:transition-none"
+						:style="meterFillStyle(job.percent)"
 					/>
 				</div>
 				<p class="text-xs text-text-tertiary">{{ summaryOf(job) }}</p>

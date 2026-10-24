@@ -14,8 +14,8 @@
  * dev`). These tests mount two components on the REAL composable, so the old
  * code fails them with that exact recursion error.
  */
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { mount } from '@vue/test-utils';
 import { defineComponent, h, nextTick, ref } from 'vue';
 
 vi.mock('@owlat/api', () => ({
@@ -58,8 +58,6 @@ beforeAll(() => {
 		data: query === api.inbox.queries.getInboundStats ? inboundStats : mentionCount,
 	}));
 });
-
-enableAutoUnmount(afterEach);
 
 /** Stand-in for a badge consumer: render the active badge. */
 const Probe = defineComponent({

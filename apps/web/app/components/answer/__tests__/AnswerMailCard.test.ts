@@ -9,8 +9,8 @@
  * that rule fixed: the card completed the item as the composer OPENED, so
  * closing it without sending dropped the email from the queue.
  */
-import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 
 import AnswerMailCard from '../AnswerMailCard.vue';
@@ -44,9 +44,6 @@ beforeAll(() => {
 
 /** The feature flags that are on. */
 const flags = new Set<string>(['ai']);
-
-// Every card listens on window; a card left mounted would answer the next test's keys.
-enableAutoUnmount(afterEach);
 
 const controls: AnswerCardControls = {
 	complete: vi.fn(),
@@ -112,8 +109,9 @@ function mountCard(item: ReplyQueueItem = followUp()) {
 	});
 }
 
-const press = (key: string, target: EventTarget = window) =>
-	target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+// The card's keys go through the app-wide dispatcher, a document listener.
+const press = (key: string, target: EventTarget = document.body) =>
+	target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 
 describe('AnswerMailCard renders a follow-up reminder', () => {
 	it('says who we are waiting on, under a Follow-up chip, with Done as its verb', () => {
@@ -186,7 +184,9 @@ describe('AnswerMailCard keyboard', () => {
 		mountCard();
 		const input = document.body.appendChild(document.createElement('input'));
 		press('Enter', input);
-		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true }));
+		document.body.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })
+		);
 		await flushPromises();
 		input.remove();
 		expect(runs.get('Dismiss reminder')).not.toHaveBeenCalled();

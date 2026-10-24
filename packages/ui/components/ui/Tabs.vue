@@ -100,7 +100,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
 			:aria-controls="panelId || undefined"
 			:tabindex="selectedValue === tab.value ? 0 : -1"
 			:class="[
-				'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-(--motion-moderate) ease-spring',
+				'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm font-medium transition-[color,background-color,box-shadow] duration-(--motion-moderate) ease-spring',
 				selectedValue === tab.value
 					? 'bg-bg-elevated text-text-primary shadow-sm'
 					: 'text-text-secondary hover:text-text-primary',

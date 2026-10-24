@@ -85,7 +85,7 @@ async function handleFileSelect(event: Event) {
 			/>
 			<button
 				v-if="hasMediaLibrary"
-				class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-subtle rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap transition-all duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
+				class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-subtle rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap transition-[color,background-color,opacity] duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
 				type="button"
 				:title="t('builder.panel.image.browse')"
 				:aria-label="t('builder.panel.image.browse')"
@@ -95,7 +95,7 @@ async function handleFileSelect(event: Event) {
 			</button>
 			<button
 				v-else
-				class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-subtle rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap transition-all duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
+				class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-subtle rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap transition-[color,background-color,opacity] duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
 				type="button"
 				:title="uploadLabel"
 				:aria-label="uploadLabel"

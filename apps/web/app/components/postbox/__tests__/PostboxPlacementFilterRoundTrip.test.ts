@@ -17,6 +17,7 @@ import PostboxLayout from '../PostboxLayout.vue';
 import PostboxThreadList from '../PostboxThreadList.vue';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
 import PostboxReaderBackBar from '../PostboxReaderBackBar.vue';
+import PostboxReaderPane from '../PostboxReaderPane.vue';
 import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
 import PostboxSwipeTrack from '../PostboxSwipeTrack.vue';
@@ -117,6 +118,7 @@ const INERT = Object.fromEntries(
 		'PostboxFolderDrawer',
 		'PostboxListHeader',
 		'PostboxPaneResizer',
+		'PostboxPinnedBand',
 		'PostboxReaderPlaceholder',
 		'PostboxShortcutHelp',
 		'PostboxArrivalExplain',
@@ -152,6 +154,7 @@ async function mountLayout(activeMessageId?: string) {
 				PostboxThreadList,
 				PostboxThreadRow,
 				PostboxReaderBackBar,
+				PostboxReaderPane,
 				PostboxThreadReader: readerProbe,
 				PostboxThreadRowBody,
 				PostboxRowCore,

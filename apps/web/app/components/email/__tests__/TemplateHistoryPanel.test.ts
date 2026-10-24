@@ -84,7 +84,6 @@ function restoreButton(wrapper: ReturnType<typeof mountPanel>) {
 }
 
 beforeEach(() => {
-	document.body.innerHTML = '';
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useConvexQuery', () => ({
 		data: ref([VERSION]),

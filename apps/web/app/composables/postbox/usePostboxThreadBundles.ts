@@ -24,6 +24,7 @@ export function usePostboxThreadBundles<T extends PostboxBundleMessage>(args: {
 	messages: Ref<T[]>;
 }) {
 	const { t } = useI18n();
+	const confirm = useConfirm();
 
 	// Lazy: nothing folds until the bundled renderer actually reads `entries`.
 	const entries = computed(() => bundlePostboxFeed(args.messages.value));
@@ -64,6 +65,7 @@ export function usePostboxThreadBundles<T extends PostboxBundleMessage>(args: {
 				label: t('shared.postbox.usePostboxThreadBundles.undoArchived', {
 					count: result.result.moved.length,
 				}),
+				kind: 'archived',
 				moved: result.result.moved,
 				runMove: (moveArgs) => moveOp.run(moveArgs),
 			});
@@ -82,11 +84,13 @@ export function usePostboxThreadBundles<T extends PostboxBundleMessage>(args: {
 	async function unsubscribeBundle(senderEmails: string[], messageIds: string[]): Promise<boolean> {
 		const mailboxId = args.mailboxId.value;
 		if (!mailboxId || senderEmails.length === 0) return false;
-		const confirmed = window.confirm(
-			t('shared.postbox.usePostboxThreadBundles.unsubscribeConfirm', {
-				count: senderEmails.length,
-			})
-		);
+		const count = senderEmails.length;
+		const confirmed = await confirm({
+			title: t('shared.postbox.usePostboxThreadBundles.unsubscribeConfirm', { count }, count),
+			body: t('shared.postbox.usePostboxThreadBundles.unsubscribeConfirmBody'),
+			confirmText: t('components.postbox.postboxThreadBundleList.unsubscribe'),
+			variant: 'warning',
+		});
 		if (!confirmed) return false;
 		const result = await unsubscribeOp.run({
 			mailboxId,

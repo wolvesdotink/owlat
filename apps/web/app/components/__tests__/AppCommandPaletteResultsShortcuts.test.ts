@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import AppCommandPaletteResults from '../AppCommandPaletteResults.vue';
 import type { PaletteGroup, PaletteItem } from '~/lib/commandPalette';
@@ -14,7 +14,6 @@ import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shor
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
-enableAutoUnmount(afterEach);
 afterEach(() => resetShortcutPreferences());
 
 const item = (id: string, shortcutId?: string): PaletteItem => ({

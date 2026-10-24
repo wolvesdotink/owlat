@@ -53,8 +53,9 @@ export const chatTables = {
 		purpose: v.optional(v.literal('mail_thread_discussion')),
 		// The Postbox thread a 'mail_thread_discussion' room belongs to.
 		linkedMailThreadId: v.optional(v.id('mailThreads')),
-		// AGGREGATED — touched by messages.sendMessage / deleteMessage. Do not
-		// write from user-facing mutations directly.
+		// AGGREGATED [chatRoomActivity] — every chatMessages row of the room,
+		// soft-deleted ones included (a delete keeps the row); bumped by
+		// chat/messageInsert.ts. Do not write from user-facing mutations directly.
 		lastMessageAt: v.number(),
 		messageCount: v.number(),
 	})

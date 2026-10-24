@@ -19,7 +19,8 @@
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { logError } from '../../lib/runtimeLog';
+import { logError, logEvent } from '../../lib/runtimeLog';
+import { correlationHeader, mintCorrelationId } from '@owlat/shared/correlation';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { sealedBlobUrl } from '../../lib/sealedBlob';
 import { getMailSyncConfig } from '../mtaClient';
@@ -224,6 +225,10 @@ export async function dispatchViaMta(
 		return;
 	}
 
+	// One correlation id for the whole message, so every recipient's MTA job and
+	// webhook joins this send's log lines.
+	const correlationId = mintCorrelationId('pbx');
+
 	// Every recipient is POSTed concurrently (up to POSTBOX_SEND_CONCURRENCY at
 	// once) instead of one after another: each POST is an independent intake
 	// with its own `pb-<id>-<idx>` job id, and each keeps its own outcome — a
@@ -243,6 +248,7 @@ export async function dispatchViaMta(
 					headers: {
 						'Content-Type': 'application/json',
 						Authorization: `Bearer ${mta.apiKey}`,
+						...correlationHeader(correlationId, 'pbx'),
 					},
 					// The postbox intake wire, typed against its one declaration (D7).
 					// `sealedMimeBase64`, `amp` and `allowedFromAddresses` exist on
@@ -278,8 +284,15 @@ export async function dispatchViaMta(
 			);
 			if (!res.ok) {
 				const body = await res.text().catch(() => '');
-				logError(
-					`[Outbound] MTA /send failed for ${redactEmailAddress(to)}: ${res.status} ${body}`
+				logEvent(
+					'postbox.mta_intake.refused',
+					{
+						messageId: mtaMessageId,
+						correlationId,
+						outcome: 'refused',
+						detail: { recipient: redactEmailAddress(to), status: res.status, error: body },
+					},
+					'error'
 				);
 				// Per-recipient synchronous bounce — record it now rather
 				// than waiting forever in `queued`.
@@ -294,7 +307,19 @@ export async function dispatchViaMta(
 				});
 			}
 		} catch (err) {
-			logError(`[Outbound] MTA /send error for ${redactEmailAddress(to)}:`, err);
+			logEvent(
+				'postbox.mta_intake.failed',
+				{
+					messageId: mtaMessageId,
+					correlationId,
+					outcome: 'failed',
+					detail: {
+						recipient: redactEmailAddress(to),
+						error: err instanceof Error ? err.message : String(err),
+					},
+				},
+				'error'
+			);
 			// Per-recipient pre-MTA error (network failure, DNS, etc.).
 			// Recipient resolves to `failed` instead of staying `queued`.
 			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {

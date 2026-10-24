@@ -9,6 +9,7 @@ import { POSTBOX_ROW_HEIGHT, POSTBOX_VIRTUAL_THRESHOLD } from '~/utils/postboxDe
 import { usePostboxVirtualList } from '~/composables/postbox/usePostboxVirtualList';
 import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
+import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import type { PostboxConversationThread } from './PostboxConversationRow.vue';
 
 const props = defineProps<{
@@ -23,6 +24,8 @@ const emit = defineEmits<{ (e: 'load-more'): void }>();
 
 const { t } = useI18n();
 usePostboxListNow(); // one minute clock for every row's timestamp
+// A row drags its conversation onto the Inbox's pinned band.
+const pinDrag = usePostboxPinRowDrag();
 
 function threadTo(thread: { latestMessageId?: string }) {
 	return thread.latestMessageId
@@ -133,6 +136,7 @@ const { handleScroll } = usePostboxListAutoLoad({
 					"
 				>
 					<PostboxConversationRow
+						v-bind="pinDrag.source(thread.latestMessageId, thread.latestSubject)"
 						:thread="thread"
 						:dom-id="`postbox-thread-${thread._id}`"
 						:to="threadTo(thread)"

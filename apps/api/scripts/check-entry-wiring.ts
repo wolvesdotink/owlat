@@ -210,6 +210,8 @@ const HAND_RUN_ENTRIES: Readonly<Record<string, string>> = {
 		'the operator run of the stale-source sweep the needs-reply reconcile cron runs inline (`convex run`)',
 	'mail/imap/serverRegistry.ts#status':
 		'the operator view of which IMAP server releases reported, before a contract step (`convex run`)',
+	'maintenance/workerRegistry.ts#status':
+		'the operator view of which worker releases reported per service, before a contract step (`convex run`)',
 	'delivery/sendCompletionFailureAdmin.ts#status':
 		'the operator view of recorded send completions that threw and their last error (`convex run`)',
 	'delivery/sendCompletionFailureAdmin.ts#closeCompletionFailure':

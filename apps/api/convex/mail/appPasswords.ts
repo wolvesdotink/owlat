@@ -28,6 +28,10 @@ import { mailAppPasswordScopeValidator } from '../lib/literalValidators';
 import { bytesToHex } from '../lib/bytes';
 import { constantTimeEqual } from '../lib/crypto';
 import { assertImapWireSupported, noteLegacyImapLogin } from './imap/serverRegistry';
+import {
+	touchAppPassword as touchAppPasswordContract,
+	verifyAppPassword as verifyAppPasswordContract,
+} from '@owlat/worker-protocol/imap';
 
 const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
@@ -202,17 +206,8 @@ export const revokeAll = postboxMutation({
  * app-password id so the caller can record session-level activity.
  */
 export const verify = internalAction({
-	args: {
-		address: v.string(),
-		password: v.string(),
-		scope: mailAppPasswordScopeValidator,
-		// The logging-in client's IP (the IMAP peer, or the SMTP peer the MTA
-		// forwarded), keyed per client by the shared auth-failure table.
-		ip: v.optional(v.string()),
-		// The IMAP server's wire version; absent from IMAP servers
-		// that predate reporting and from SMTP submission.
-		imapWireVersion: v.optional(v.number()),
-	},
+	args: verifyAppPasswordContract.args,
+	returns: verifyAppPasswordContract.returns,
 	handler: async (
 		ctx,
 		args
@@ -337,13 +332,8 @@ export const _candidatesByAddressAndPrefix = internalQuery({
  * records.
  */
 export const touch = internalMutation({
-	args: {
-		appPasswordId: v.id('mailAppPasswords'),
-		ip: v.optional(v.string()),
-		userAgent: v.optional(v.string()),
-		imapWireVersion: v.optional(v.number()),
-		channel: v.optional(v.literal('smtp')),
-	},
+	args: touchAppPasswordContract.args,
+	returns: touchAppPasswordContract.returns,
 	handler: async (ctx, args) => {
 		if (args.imapWireVersion === undefined && args.channel === undefined) {
 			await noteLegacyImapLogin(ctx);

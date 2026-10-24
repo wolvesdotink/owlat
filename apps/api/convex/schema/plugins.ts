@@ -63,8 +63,9 @@ export const pluginTables = {
 		.index('by_organization_id_and_plugin_id_and_key', ['organizationId', 'pluginId', 'key'])
 		.index('by_organization_id_and_plugin_id', ['organizationId', 'pluginId']),
 
-	// AGGREGATED — exact quota counters maintained transactionally by the
-	// plugin-storage service on every entry insert, overwrite, and delete.
+	// AGGREGATED [pluginStorageQuota] — exact quota counters maintained
+	// transactionally by the plugin-storage service on every entry insert,
+	// overwrite, and delete.
 	pluginStorageUsage: defineTable({
 		organizationId: v.string(),
 		pluginId: v.string(),
@@ -73,8 +74,9 @@ export const pluginTables = {
 		updatedAt: v.number(),
 	}).index('by_organization_id_and_plugin_id', ['organizationId', 'pluginId']),
 
-	// AGGREGATED — fixed-point micro-USD reservations are serialized through
-	// this UTC-day row before a plugin LLM request reaches the provider.
+	// AGGREGATED [pluginLlmDailySpend] — fixed-point micro-USD reservations are
+	// serialized through this UTC-day row before a plugin LLM request reaches
+	// the provider; the day's pluginLlmReservations are what it sums.
 	pluginLlmDailyUsage: defineTable({
 		organizationId: v.string(),
 		pluginId: v.string(),

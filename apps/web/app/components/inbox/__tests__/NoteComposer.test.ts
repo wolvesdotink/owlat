@@ -1,5 +1,5 @@
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import NoteComposer from '../NoteComposer.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useComposerDrafts } from '~/composables/useComposerDrafts';
@@ -8,7 +8,6 @@ import { settleForReload } from '~/lib/reloadSafety';
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
-enableAutoUnmount(afterEach);
 
 /**
  * The note box: says only the team sees it, offers teammates on `@`, saves with

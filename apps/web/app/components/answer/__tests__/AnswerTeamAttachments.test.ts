@@ -7,8 +7,8 @@
  *  - Attach uploads a file or picks one of the contact's files, this
  *    conversation's first, and hides what is already attached.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AttachSuggestion from '~/components/inbox/AttachSuggestion.vue';
@@ -37,7 +37,6 @@ beforeAll(() => {
 		},
 	});
 });
-enableAutoUnmount(afterEach);
 beforeEach(() => {
 	contactFiles.value = [];
 	queryArgs.length = 0;

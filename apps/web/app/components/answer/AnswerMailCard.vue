@@ -6,8 +6,8 @@ import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import { useAnswerMailActions } from '~/composables/useAnswerMailActions';
 import { useLocalized } from '~/composables/useLocalized';
-import { resolveReplyFocusKey } from '~/utils/taskFlowKeyboard';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { useShortcutScope } from '~/composables/useShortcutScope';
 import type { AnswerCardControls } from '~/utils/answerCard';
 import {
 	replyQueueHeadline,
@@ -32,7 +32,8 @@ import {
  * Replying never finishes the card by itself: Answer mode finishes the item
  * when the reply is sent.
  *
- * Keyboard on the focused card: Enter = Done, ←/→ browse. Inert while typing.
+ * Keyboard on the focused card (the `mailCard` scope): Enter = Done, ←/→ (and
+ * k/j) browse. Inert while typing.
  */
 const props = defineProps<{
 	row: ReplyQueueItem;
@@ -87,18 +88,11 @@ function openRow() {
 	void navigateTo(`/dashboard/postbox/inbox/${props.row.messageId}?mailbox=${props.mailboxId}`);
 }
 
-function onKeydown(event: KeyboardEvent) {
-	if (event.metaKey || event.ctrlKey || event.altKey) return;
-	if (isEditableTarget(event.target)) return;
-	const action = resolveReplyFocusKey(event.key, { currentKind: 'reply', isFollowup: true });
-	if (action === 'markDone') markDone();
-	else if (action === 'browseBack') props.controls.back();
-	else if (action === 'browseNext') props.controls.next();
-	else return;
-	event.preventDefault();
-}
-onMounted(() => window.addEventListener('keydown', onKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+useShortcutScope('mailCard');
+const { registerShortcut } = useKeyboardShortcuts();
+registerShortcut({ id: 'mailCard.done', handler: markDone });
+registerShortcut({ id: 'mailCard.previous', handler: () => props.controls.back() });
+registerShortcut({ id: 'mailCard.next', handler: () => props.controls.next() });
 
 const secondaryButton =
 	'inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)';

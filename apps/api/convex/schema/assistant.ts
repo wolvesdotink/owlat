@@ -33,9 +33,12 @@ export const assistantTables = {
 		title: v.string(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-		// AGGREGATED — bumped by the messages writer (sendMessage / runner). Drives
-		// the conversation-list ordering and "empty conversation" cleanup.
+		// COUNTER [assistantConversationActivity] — moved by the messages writer
+		// when a turn is sent and when the reply finishes (sendMessage / runner).
+		// Drives the conversation-list ordering.
 		lastMessageAt: v.number(),
+		// AGGREGATED [assistantConversationMessages] — the conversation's
+		// aiMessages, bumped by sendMessage. Drives "empty conversation" cleanup.
 		messageCount: v.number(),
 		// Soft-delete: user-initiated deletes mark the row; list queries filter it.
 		deletedAt: v.optional(v.number()),

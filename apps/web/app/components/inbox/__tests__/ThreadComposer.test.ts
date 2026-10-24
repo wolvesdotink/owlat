@@ -1,4 +1,4 @@
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import ThreadComposer from '../ThreadComposer.vue';
@@ -32,7 +32,6 @@ afterEach(() => {
 	savedReplies.value = [];
 	recordUse.mockClear();
 });
-enableAutoUnmount(afterEach);
 
 /**
  * The Team inbox reply in Answer mode's composer column (#765, plan §07):

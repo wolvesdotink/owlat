@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { installCrashHandlers, installShutdown } from '@owlat/shared/nodeShutdown';
+import { startNodeMetrics } from '@owlat/shared/nodeMetrics';
 import { buildRequestListener } from './server.js';
 import { readListenPort } from './config.js';
 import {
@@ -20,12 +21,17 @@ installCrashHandlers({ log });
 // Read before anything else runs, so a bad PORT ends the boot with its name.
 const port = readListenPort();
 
+// The updater logs plain lines, so the stall record goes out as JSON text.
+const metrics = startNodeMetrics({
+	log: { warn: (record, message) => console.warn(`[updater] ${message}`, JSON.stringify(record)) },
+});
+
 // A rollout the previous process never finished is settled before anything
 // else is served: its record says so in words, and a template it had only
 // staged is removed.
 await reconcileInterruptedUpdate();
 
-const server = createServer(buildRequestListener());
+const server = createServer(buildRequestListener({ metrics: metrics.registry }));
 
 // The budget is in lifecycle.ts: a rollout that can still back out stops as
 // soon as the signal lands (`beginShutdown`), one that has promoted its
@@ -37,7 +43,10 @@ setShutdownHandle(
 		server,
 		timeoutMs: SHUTDOWN_DEADLINE_MS,
 		log,
-		onShutdown: beginShutdown,
+		onShutdown: () => {
+			beginShutdown();
+			metrics.stop();
+		},
 		exit: (code) => void exitAfterStoppingChildren(code),
 	})
 );

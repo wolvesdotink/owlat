@@ -232,7 +232,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 					class="flex-shrink-0 mt-0.5"
 					:title="t('components.inbox.inboxThreadRow.assignedTo', { name: assigneeName })"
 				>
-					<span :class="assigneePresent ? 'ui-presence-ring' : ''">
+					<UiPresenceRing :active="assigneePresent">
 						<UiAvatar
 							:name="assigneeName ?? undefined"
 							:email="thread.assignee.email"
@@ -240,7 +240,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 							deterministic-color
 							size="sm"
 						/>
-					</span>
+					</UiPresenceRing>
 				</span>
 			</div>
 		</NuxtLink>
@@ -264,6 +264,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 				:current-user-id="currentUserId ?? null"
 				:assigned-to="thread.assignedTo ?? null"
 				position="right"
+				assign-shortcut-id="inboxList.assignToMe"
 				@assign="emit('assign', $event)"
 			>
 				<template #trigger>
