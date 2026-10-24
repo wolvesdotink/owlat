@@ -10,7 +10,7 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const mailboxIdRef = computed(() => props.mailboxId);
+const mailboxIdRef = providePostboxListMailbox(computed(() => props.mailboxId));
 const folderRef = computed(() => props.folderRole);
 const folderIdRef = computed(() => props.folderId);
 // Custom folders drive the list-header name; the rest of the folder rail is

@@ -5,7 +5,7 @@
  * A pin is `mailThreads.pinnedAt`, a CONVERSATION fact like the mute marker,
  * so it is shared by everyone who reads the mailbox (a team inbox pins for the
  * team) and is independent of the star, which stays a per-message IMAP flag.
- * Nothing but the two mutations here writes the field: new deliveries, the
+ * Nothing but `setPinned` here writes the field: new deliveries, the
  * aggregate rebuilds, archive and snooze all patch other fields of the thread,
  * so a pin survives them. Deleting the thread's last message deletes the
  * thread and its pin with it (`mail/threadAggregates.ts`).

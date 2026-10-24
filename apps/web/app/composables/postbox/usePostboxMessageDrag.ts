@@ -10,12 +10,17 @@
  * the session: may this drag land here (utils/postboxMessageDrag.ts), and
  * what happens when it does.
  *
+ * The grouped renderers (Conversations, Categories, Bundled, Sections) start a
+ * pin-only session instead: they have neither a bulk selection nor a move verb
+ * of their own, so their rows carry one message and only the band takes it.
+ *
  * The session is module state rather than `useState`: it holds a callback,
  * there is only ever one pointer dragging, and it exists only between a
  * client-side dragstart and its dragend, so there is nothing to serialise.
  */
 
 import type { Id } from '@owlat/api/dataModel';
+import { inject, provide, type InjectionKey } from 'vue';
 import {
 	acceptsMessageDrop,
 	dragMessageIds,
@@ -27,8 +32,11 @@ export interface PostboxMessageDragSession {
 	messageIds: Id<'mailMessages'>[];
 	/** The list's folder (role or custom-folder id); null for label/search views. */
 	sourceFolder: string | null;
-	/** File the dragged rows into a folder, through the source list's own verb. */
-	moveTo: (folderId: Id<'mailFolders'>) => Promise<unknown>;
+	/**
+	 * File the dragged rows into a folder, through the source list's own verb.
+	 * Null for a pin-only source: the rail's folders and labels refuse it.
+	 */
+	moveTo: ((folderId: Id<'mailFolders'>) => Promise<unknown>) | null;
 }
 
 const session = shallowRef<PostboxMessageDragSession | null>(null);
@@ -128,6 +136,50 @@ export function usePostboxListRowDrag(opts: {
 	return { start };
 }
 
+const LIST_MAILBOX_KEY: InjectionKey<Ref<Id<'mailboxes'>>> = Symbol('postbox-list-mailbox');
+
+/**
+ * Hands the list's mailbox to the grouped renderers below, so their rows can
+ * start a drag stamped with it. Returns its argument.
+ */
+export function providePostboxListMailbox(mailboxId: Ref<Id<'mailboxes'>>) {
+	provide(LIST_MAILBOX_KEY, mailboxId);
+	return mailboxId;
+}
+
+/**
+ * The source half for the grouped renderers: `source(messageId, subject)` is
+ * the attribute/listener object a row binds with `v-bind`. A conversation row
+ * passes its newest message (the server pins by message, resolving the
+ * thread). Outside a Postbox list (no provided mailbox) rows stay undraggable.
+ */
+export function usePostboxPinRowDrag() {
+	const { t } = useI18n();
+	const mailboxId = inject(LIST_MAILBOX_KEY, null);
+	const drag = usePostboxMessageDrag();
+
+	function source(messageId: string | undefined, subject: string) {
+		if (!mailboxId || !messageId) return {};
+		return {
+			draggable: 'true' as const,
+			onDragstart: (event: DragEvent) =>
+				drag.start(
+					event,
+					{
+						mailboxId: mailboxId.value,
+						messageIds: [messageId as Id<'mailMessages'>],
+						sourceFolder: null,
+						moveTo: null,
+					},
+					subject || t('components.postbox.postboxThreadRow.noSubject')
+				),
+			onDragend: () => drag.end(),
+		};
+	}
+
+	return { source };
+}
+
 /**
  * Drop-target wiring for the rail. `folder(row)` and `label(id, apply)` each
  * return a listener object for `v-on`, and `isOverFolder` / `isOverLabel` drive
@@ -184,16 +236,17 @@ export function usePostboxMessageDropTargets(mailboxId: Ref<Id<'mailboxes'> | nu
 	function folder(row: { _id: string; role?: string | null }) {
 		return listeners(
 			`folder:${row._id}`,
-			(drag) => !!mailboxId.value && acceptsMessageDrop(row, drag, mailboxId.value),
+			(drag) =>
+				!!drag.moveTo && !!mailboxId.value && acceptsMessageDrop(row, drag, mailboxId.value),
 			'move',
-			(drag) => drag.moveTo(row._id as Id<'mailFolders'>)
+			(drag) => drag.moveTo?.(row._id as Id<'mailFolders'>)
 		);
 	}
 
 	function label(labelId: string, apply: (messageIds: Id<'mailMessages'>[]) => unknown) {
 		return listeners(
 			`label:${labelId}`,
-			(drag) => drag.mailboxId === mailboxId.value,
+			(drag) => !!drag.moveTo && drag.mailboxId === mailboxId.value,
 			'copy',
 			(drag) => apply(drag.messageIds)
 		);
