@@ -78,6 +78,23 @@ const BUN_DOCTOR_IO: DoctorIo = {
 	print: (line) => console.log(line),
 };
 
+export interface CollectDoctorOptions {
+	/**
+	 * Ask the MTA to re-resolve reverse DNS before reading its health (default
+	 * true). That is a write on the MTA's side, so a read-only collector such as
+	 * the support bundle turns it off and reports the stored verdict.
+	 */
+	recheckIdentity?: boolean;
+	/**
+	 * Keep only the code-owned text of each message (default false). The support
+	 * bundle sets it: runtime text such as an MTA headline or an IP-audit note
+	 * can carry personal data that doctor's known-secret pass cannot recognise.
+	 * Install paths are then named relative to the install directory, whose
+	 * operator-chosen name can carry a person's or a client's name.
+	 */
+	codeOwnedMessages?: boolean;
+}
+
 /**
  * Run every check against the install in `owlatDir` and return the report.
  * `onCheck` sees each check as it is recorded, so the text checklist streams
@@ -86,9 +103,16 @@ const BUN_DOCTOR_IO: DoctorIo = {
 export async function collectDoctorReport(
 	owlatDir: string,
 	io: DoctorIo,
-	onCheck?: (check: DoctorCheck) => void
+	onCheck?: (check: DoctorCheck) => void,
+	options: CollectDoctorOptions = {}
 ): Promise<DoctorReport> {
 	const report = new DoctorReportBuilder(onCheck);
+	if (options.codeOwnedMessages === true) report.withholdRuntimeText();
+	// A file in the install directory, as a message may name it. The directory is
+	// operator input even though doctor composes the path, so code-owned-only
+	// output names the file by a fixed label instead.
+	const shownInstallFile = (name: string) =>
+		trusted(options.codeOwnedMessages === true ? `<install dir>/${name}` : join(owlatDir, name));
 
 	const envPath = join(owlatDir, '.env');
 	const envPresent = existsSync(envPath);
@@ -97,7 +121,7 @@ export async function collectDoctorReport(
 	report.record({
 		check: 'env.file',
 		ok: envPresent,
-		message: doctorText`.env file present at ${trusted(envPath)}`,
+		message: doctorText`.env file present at ${shownInstallFile('.env')}`,
 	});
 
 	// Read flags from the local mirror.
@@ -140,7 +164,9 @@ export async function collectDoctorReport(
 		// `owlat doctor` is what the docs tell an operator to run after changing
 		// reverse DNS, so re-observe before reporting: the stored verdict can be up
 		// to an hour old and would answer about the PTR they just replaced.
-		await refreshMtaIdentity(env['MTA_API_URL'], env['MTA_API_KEY']);
+		if (options.recheckIdentity !== false) {
+			await refreshMtaIdentity(env['MTA_API_URL'], env['MTA_API_KEY']);
+		}
 		for (const finding of await probeMtaHealth(env['MTA_API_URL'], env)) report.record(finding);
 		// Pre-flight IP audit: the operator sees the verdict and the delisting path
 		// BEFORE investing hours in DNS. Silent when no audit exists yet.
@@ -153,7 +179,7 @@ export async function collectDoctorReport(
 	report.record({
 		check: 'compose.override',
 		ok: existsSync(overridePath),
-		message: doctorText`Compose override present at ${trusted(overridePath)}`,
+		message: doctorText`Compose override present at ${shownInstallFile('docker-compose.override.yml')}`,
 	});
 
 	// Best-effort docker check via shelling out.

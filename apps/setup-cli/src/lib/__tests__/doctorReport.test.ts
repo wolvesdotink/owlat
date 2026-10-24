@@ -58,6 +58,18 @@ describe('doctor report — recording', () => {
 			message: 'SMTP_RELAY_HOST is set (runtime said: [redacted])',
 		});
 	});
+
+	it('records only code-owned text once runtime text is withheld', () => {
+		const builder = new DoctorReportBuilder();
+		builder.useEnv({});
+		builder.withholdRuntimeText();
+		builder.record({
+			check: 'mta.health',
+			ok: false,
+			message: doctorText`MTA at ${trusted('http://mta:3100/')} answered: ${'queue for Alice Smith stuck'}`,
+		});
+		expect(builder.checks[0]!.message).toBe('MTA at http://mta:3100/ answered: [redacted]');
+	});
 });
 
 describe('doctor report — text rendering', () => {
