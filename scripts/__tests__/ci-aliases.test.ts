@@ -37,3 +37,10 @@ it('binds complete published image lists and compose images to checksums', () =>
 	]);
 	expect(() => composeDigests(compose, checksum(compose), '0.6.13', 'example', ['web'])).toThrow();
 });
+it('starts the update flow of a candidate from the stable release below its version', () => {
+	const releases = ['v0.6.16', 'v0.6.15', 'v0.7.0-rc.1', 'server-v0.6.20'].map(release);
+	expect(previousRelease(releases, '0.7.0-rc.2')).toBe('0.6.16');
+	expect(previousRelease(releases, '0.6.16-rc.1')).toBe('0.6.15');
+	expect(previousRelease(releases, '0.7.0')).toBe('0.6.16');
+	expect(() => previousRelease(releases, 'server-v0.7.0')).toThrow();
+});

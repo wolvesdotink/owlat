@@ -136,7 +136,8 @@
 		"test:ramp": "bun run --cwd apps/api test:ramp",
 		"perf:bench": "bun scripts/perf-bench/run.ts",
 		"goldens:update": "bun --cwd packages/mail-message run goldens:update",
-		"release:cut": "bun scripts/release.ts"
+		"release:cut": "bun scripts/release.ts",
+		"release:promote": "bun scripts/release-promote.ts"
 	},
 	"dependencies": {
 		"nuxt": "4.5.2",

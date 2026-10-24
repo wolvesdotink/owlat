@@ -79,6 +79,28 @@ describe('buildReleaseBody', () => {
 		).toThrow('CHANGELOG.md has no section for 0.7.0');
 	});
 
+	it("builds a candidate's notes from the section of the version it is a candidate for", () => {
+		const candidate = buildReleaseBody({
+			version: '0.6.9-rc.2',
+			changelog: CHANGELOG,
+			repo: REPO,
+			images: ['web', 'mta'],
+		});
+		expect(candidate.startsWith('> [!NOTE]\n> Release candidate for 0.6.9.')).toBe(true);
+		const notes = (text: string) =>
+			text.slice(text.indexOf('A fix release.'), text.indexOf('## Updating'));
+		expect(notes(candidate)).toBe(notes(body));
+		expect(candidate).toContain('owlat upgrade --version 0.6.9-rc.2');
+		expect(candidate).toContain(`releases/download/v0.6.9-rc.2/docker-compose-0.6.9-rc.2.yml`);
+		expect(candidate).toContain(`https://github.com/${REPO}/compare/v0.6.8...v0.6.9-rc.2`);
+	});
+
+	it('fails for a candidate of a version the changelog does not cover', () => {
+		expect(() =>
+			buildReleaseBody({ version: '0.7.0-rc.1', changelog: CHANGELOG, repo: REPO, images: [] })
+		).toThrow('CHANGELOG.md has no section for 0.7.0-rc.1');
+	});
+
 	it('lists every image in docker/images.json by default', () => {
 		const manifest = JSON.parse(
 			readFileSync(join(import.meta.dirname, '../../docker/images.json'), 'utf8')
