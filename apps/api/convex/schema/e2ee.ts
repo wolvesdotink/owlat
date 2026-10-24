@@ -76,7 +76,7 @@ export const keyVaultFields = {
  * serve to the world by design — that is the whole point of key discovery.
  *
  * Instance crypto infrastructure, not per-org business data — see
- * `lib/tenantTables.ts` NON_TENANT_TABLES, which says why a workspace deletion
+ * `lib/nonTenantTables.ts` NON_TENANT_TABLES, which says why a workspace deletion
  * keeps it. Written only by `e2ee/keys.ts:storeKeypair`.
  */
 export const e2eeTables = {
@@ -111,7 +111,7 @@ export const e2eeTables = {
 	 * row as it is at commit time (see `revision`).
 	 *
 	 * Instance discovery infrastructure, not per-org business data (classified in
-	 * `lib/tenantTables.ts` NON_TENANT_TABLES alongside `keyVault` / caches):
+	 * `lib/nonTenantTables.ts` NON_TENANT_TABLES alongside `keyVault` / caches):
 	 * regenerable by re-discovery. Written only by `e2ee/recipientKeys.ts` (row
 	 * transitions in `e2ee/recipientKeyTransitions.ts`).
 	 */

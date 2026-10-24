@@ -211,7 +211,7 @@ export const domainTables = {
 	// reporting organization plus its `report-id` (RFC 8460 §4.1) so a
 	// re-delivered report is idempotent without conflating different reporters.
 	// Operator deliverability telemetry — instance infrastructure,
-	// not org business data (see lib/tenantTables.ts NON_TENANT_TABLES).
+	// not org business data (see lib/nonTenantTables.ts NON_TENANT_TABLES).
 	// Written only by `domains/tlsReports.ts:ingest`.
 	tlsReports: defineTable({
 		// RFC 8460 report-id — unique within the reporting organization.

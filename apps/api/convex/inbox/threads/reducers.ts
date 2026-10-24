@@ -1,7 +1,8 @@
 /**
  * Conversation thread reducers: the transition inputs and the pure per-kind
- * reducers `./module.ts` runs. Split out of the module at the file-size cap;
- * the module stays the only caller and the only writer of the table.
+ * reducers `./module.ts` runs. Kept apart from the module so neither crosses
+ * the file-size cap; the module stays the only caller and the only writer of
+ * the table.
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
