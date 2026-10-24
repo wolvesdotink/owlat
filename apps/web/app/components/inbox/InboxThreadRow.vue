@@ -143,10 +143,8 @@ function onSwipe(action: Exclude<InboxRowSwipeAction, 'none'>) {
 
 const rowMenuItems = () => props.menuItems?.(props.thread) ?? [];
 
-/** The checkbox never follows the row's link; Shift extends from the anchor. */
+/** Shift on the checkbox extends the selection from the anchor. */
 function onCheckboxClick(event: MouseEvent) {
-	event.stopPropagation();
-	event.preventDefault();
 	emit('toggle-select', event.shiftKey);
 }
 
@@ -221,26 +219,8 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 					@click="emit('open')"
 				>
 					<div class="flex items-start gap-3">
-						<!-- Selection checkbox: shown on hover, and always while checked. -->
-						<button
-							v-if="canManage"
-							type="button"
-							class="mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
-							:class="
-								selected
-									? 'bg-brand border-brand text-text-inverse'
-									: 'border-border-subtle bg-bg-base opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
-							"
-							:aria-label="
-								selected
-									? t('components.inbox.inboxThreadRow.deselect')
-									: t('components.inbox.inboxThreadRow.select')
-							"
-							data-testid="inbox-row-checkbox"
-							@click="onCheckboxClick"
-						>
-							<Icon v-if="selected" name="lucide:check" class="w-3 h-3" />
-						</button>
+						<!-- Room for the selection checkbox, which sits over it from outside the link. -->
+						<span v-if="canManage" class="w-4 h-4 flex-shrink-0" aria-hidden="true" />
 						<!-- Unread dot — weight-based emphasis lives on the identifier; the dot
 				     is a small brand indicator, the one sanctioned accent use. -->
 						<span class="mt-1.5 w-2 flex-shrink-0" aria-hidden="true">
@@ -341,6 +321,34 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 						</span>
 					</div>
 				</NuxtLink>
+
+				<!-- Selection checkbox: shown on hover, and always while checked. A sibling
+		     of the option, never inside it: an option's content is presentational and
+		     a link may not hold a control, so a nested button loses its role and name
+		     for assistive tech. It is laid over the spacer at the start of the link
+		     and follows the row's swipe offset; z-2 keeps it above a dragged row's
+		     link (z-index 1) and below the sticky bulk bar (z-10). -->
+				<button
+					v-if="canManage"
+					type="button"
+					class="absolute z-2 left-4 top-3.5 density-compact:top-2 w-4 h-4 rounded border flex items-center justify-center"
+					:class="[
+						selected
+							? 'bg-brand border-brand text-text-inverse'
+							: 'border-border-subtle bg-bg-base opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100',
+						{ 'pbx-row-settle': settling },
+					]"
+					:style="rowStyle"
+					:aria-label="
+						selected
+							? t('components.inbox.inboxThreadRow.deselect')
+							: t('components.inbox.inboxThreadRow.select')
+					"
+					data-testid="inbox-row-checkbox"
+					@click="onCheckboxClick"
+				>
+					<Icon v-if="selected" name="lucide:check" class="w-3 h-3" />
+				</button>
 
 				<!-- Hover-reveal quick actions (opacity-only, focus-within reveals for
 		     keyboard) — single-thread triage without opening the thread. While the

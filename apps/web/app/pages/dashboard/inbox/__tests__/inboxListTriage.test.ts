@@ -17,6 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref, type Ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import axe from 'axe-core';
 import { installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n } from '~/__tests__/i18n';
 import { usePostboxListKeyboard } from '~/composables/postbox/usePostboxListKeyboard';
@@ -265,6 +266,19 @@ function holdWrites(): () => void {
 		release();
 	};
 }
+/**
+ * axe over the rendered listbox, one `rule: markup` line per violating node.
+ * The rule families of the shared harness (`~/__tests__/a11y`); colour contrast
+ * needs a layout engine happy-dom does not have.
+ */
+async function listViolations(): Promise<string[]> {
+	const results = await axe.run(list().element, {
+		resultTypes: ['violations'],
+		runOnly: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'],
+		rules: { 'color-contrast': { enabled: false } },
+	});
+	return results.violations.flatMap((v) => v.nodes.map((n) => `${v.id}: ${n.html}`));
+}
 const errorSummaries = () => toasts.filter((t) => t.type === 'error').map((t) => t.message);
 
 const menu = () => document.body.querySelector<HTMLElement>('[role="menu"]');
@@ -387,6 +401,35 @@ describe('Team Inbox list: selection', () => {
 	});
 });
 
+describe('Team Inbox list: accessibility', () => {
+	it('keeps each row’s checkbox outside its option, so no control nests in the option', async () => {
+		await mountPage();
+		await press('j');
+		await press('x');
+		for (const id of ['a', 'b', 'c', 'd']) {
+			const option = wrapper.get(`#inbox-row-${id}`).element;
+			expect(option.querySelector('button, a[href], input, [tabindex]')).toBeNull();
+			const checkbox = option.closest('li')!.querySelector('[data-testid="inbox-row-checkbox"]');
+			expect(checkbox?.tagName).toBe('BUTTON');
+			expect(checkbox?.getAttribute('aria-label')).toBe(id === 'a' ? 'Deselect' : 'Select');
+		}
+		// The one gap left is the listbox owning the per-row controls (the
+		// checkbox and the hover quick actions) beside its options, which the
+		// Postbox list shares (postboxA11y.test.ts). Closing it means the grid
+		// pattern, a keyboard-model change. Pinned to that rule on the listbox
+		// alone, so anything else, a nested control included, fails here.
+		const violations = await listViolations();
+		expect(violations).toHaveLength(1);
+		expect(violations[0]).toMatch(/^aria-required-children: <ul role="listbox"/);
+	});
+
+	it('has no axe violations for a viewer without triage controls', async () => {
+		await mountPage({ admin: false });
+		expect(wrapper.find('[data-testid="inbox-row-checkbox"]').exists()).toBe(false);
+		expect(await listViolations()).toEqual([]);
+	});
+});
+
 describe('Team Inbox list: triage keys', () => {
 	it('e resolves the focused row when nothing is selected', async () => {
 		await mountPage();
@@ -492,7 +535,11 @@ describe('Team Inbox list: triage keys', () => {
 
 describe('Team Inbox list: selection made with the mouse', () => {
 	const check = async (id: string) => {
-		wrapper.get(`#inbox-row-${id}`).element.querySelector<HTMLElement>('button')!.click();
+		wrapper
+			.get(`#inbox-row-${id}`)
+			.element.closest('li')!
+			.querySelector<HTMLElement>('[data-testid="inbox-row-checkbox"]')!
+			.click();
 		await flushPromises();
 	};
 
