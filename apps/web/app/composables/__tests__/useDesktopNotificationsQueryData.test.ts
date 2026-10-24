@@ -109,7 +109,25 @@ async function mountDashboard(): Promise<void> {
 	);
 }
 
-afterEach(() => {
+/**
+ * The watchers reach the desktop module through a dynamic import. Wait for the
+ * module loads they started, then for the promise chain behind them, so a
+ * case's toasts and badges land inside that case.
+ *
+ * Feed one query per step. While vitest runs a `vi.mock` factory it marks the
+ * importer's call stack, so a second import of the mocked module from the same
+ * importer in that window counts as a self-import and gets the real Tauri
+ * module instead. Its load outlives the case and its toast fires in a later
+ * one. In the app, watchers firing in the same tick are fine; only this mock
+ * cannot take overlapping imports.
+ */
+async function settle(): Promise<void> {
+	await vi.dynamicImportSettled();
+	await flushPromises();
+}
+
+afterEach(async () => {
+	await settle();
 	mounted?.unmount();
 	mounted = null;
 });
@@ -138,14 +156,8 @@ function notice(id: string, createdAt: number) {
 	};
 }
 
-beforeEach(async () => {
+beforeEach(() => {
 	vi.resetModules();
-	// The watchers reach the desktop module through a dynamic import. Load it
-	// here, after the reset, so their import resolves from the module cache
-	// within one `flushPromises`. Left cold, a slow first load outlives the
-	// case that started it: its toast lands in a later case, and the next
-	// reset can hand it the real Tauri module instead of the mock.
-	await import('@owlat/desktop/src/notifications');
 	stubNuxt();
 	unread.value = undefined;
 	inboundStats.value = undefined;
@@ -163,34 +175,44 @@ describe('useDesktopNotifications: query results are watched by identity', () =>
 		await mountDashboard();
 		const now = Date.now();
 		unread.value = { total: 1, messages: [message('m1', now)], extra: probe() };
+		await settle();
 		inboundStats.value = { draftReady: 0, extra: probe() };
+		await settle();
 		assignments.value = [notice('a1', now)];
-		await flushPromises();
+		await settle();
 
 		unread.value = {
 			total: 2,
 			messages: [message('m2', now + 1), message('m1', now)],
 			extra: probe(),
 		};
+		await settle();
 		inboundStats.value = { draftReady: 1, extra: probe() };
+		await settle();
 		assignments.value = [notice('a2', now + 1), notice('a1', now)];
-		await flushPromises();
+		await settle();
 
 		expect(probeReads).toBe(0);
+		// Every delivery was handled inside this case, through the mock.
+		expect(desktop.updateUnreadBadge).toHaveBeenLastCalledWith(2);
+		expect(desktop.sendActionableNotification).toHaveBeenCalledTimes(1);
+		// The review-queue growth plus the desktop copy of the assignment notice.
+		expect(desktop.sendDesktopNotification).toHaveBeenCalledTimes(2);
+		expect(showToast).toHaveBeenCalledTimes(1);
 	});
 
 	it('repaints the badge on every new result and toasts only what arrived after the first load', async () => {
 		await mountDashboard();
 		const now = Date.now();
 		unread.value = { total: 1, messages: [message('m1', now)] };
-		await flushPromises();
+		await settle();
 
 		expect(desktop.updateUnreadBadge).toHaveBeenLastCalledWith(1);
 		// The backlog present at first load is seeded, never toasted.
 		expect(desktop.sendActionableNotification).not.toHaveBeenCalled();
 
 		unread.value = { total: 2, messages: [message('m2', now + 1), message('m1', now)] };
-		await flushPromises();
+		await settle();
 
 		expect(desktop.updateUnreadBadge).toHaveBeenLastCalledWith(2);
 		expect(desktop.sendActionableNotification).toHaveBeenCalledTimes(1);
@@ -198,7 +220,7 @@ describe('useDesktopNotifications: query results are watched by identity', () =>
 
 		// A fresh object holding the same rows repaints the badge and toasts nothing.
 		unread.value = { total: 2, messages: [message('m2', now + 1), message('m1', now)] };
-		await flushPromises();
+		await settle();
 
 		expect(desktop.updateUnreadBadge).toHaveBeenCalledTimes(3);
 		expect(desktop.sendActionableNotification).toHaveBeenCalledTimes(1);
@@ -207,18 +229,18 @@ describe('useDesktopNotifications: query results are watched by identity', () =>
 	it('announces only the growth of the review queue', async () => {
 		await mountDashboard();
 		inboundStats.value = { draftReady: 2 };
-		await flushPromises();
+		await settle();
 		expect(desktop.sendDesktopNotification).not.toHaveBeenCalled();
 
 		inboundStats.value = { draftReady: 5 };
-		await flushPromises();
+		await settle();
 		expect(desktop.sendDesktopNotification).toHaveBeenCalledTimes(1);
 		expect(desktop.sendDesktopNotification.mock.calls[0]?.[1]).toBe(
 			'shared.useDesktopNotifications.draftsReady.body {"count":3}'
 		);
 
 		inboundStats.value = { draftReady: 4 };
-		await flushPromises();
+		await settle();
 		expect(desktop.sendDesktopNotification).toHaveBeenCalledTimes(1);
 	});
 
@@ -226,16 +248,16 @@ describe('useDesktopNotifications: query results are watched by identity', () =>
 		await mountDashboard();
 		const now = Date.now();
 		assignments.value = [notice('a1', now)];
-		await flushPromises();
+		await settle();
 		expect(showToast).not.toHaveBeenCalled();
 
 		assignments.value = [notice('a2', now + 1), notice('a1', now)];
-		await flushPromises();
+		await settle();
 		expect(showToast).toHaveBeenCalledTimes(1);
 
 		// Re-delivered as new objects: same ids, nothing to say.
 		assignments.value = [notice('a2', now + 1), notice('a1', now)];
-		await flushPromises();
+		await settle();
 		expect(showToast).toHaveBeenCalledTimes(1);
 	});
 });
