@@ -25,8 +25,9 @@ vi.mock('@owlat/api', () => ({
 		},
 	},
 }));
+const routeLeave = vi.hoisted(() => vi.fn());
 vi.mock('vue-router', () => ({
-	onBeforeRouteLeave: vi.fn(),
+	onBeforeRouteLeave: routeLeave,
 	useRouter: () => ({ push: vi.fn() }),
 }));
 // A test that needs device copies sets `draftStore`; the rest run without one.
@@ -39,6 +40,7 @@ vi.mock('~/utils/editorDraftStore', async (importOriginal) => {
 import { ref, nextTick, onMounted, onUnmounted, type Ref } from 'vue';
 import type { EditorBlock } from '@owlat/email-builder';
 import { useEmailEditorBridge, type EmailEditorSaveBase } from '../useEmailEditorBridge';
+import { useUnsavedChanges } from '../useUnsavedChanges';
 import { StaleDraftError } from '../useEditorSaveOperation';
 import { withSetup } from '~/__tests__/withSetup';
 import {
@@ -299,6 +301,65 @@ describe('useEmailEditorBridge autosave (classic)', () => {
 		expect(loadState).not.toHaveBeenCalled();
 		expect(bridge.autosave?.recovery.pending.value?.data).toMatchObject({ blocks: [] });
 		unmount();
+	});
+
+	describe('leaving while text is typed into a block', () => {
+		/** The text editor is open with `typed`; closing it puts the text in the subject. */
+		const typeInto = (bridge: ReturnType<typeof setup>['bridge'], typed: string) => {
+			bridge.builderRef.value = {
+				loadState: vi.fn(),
+				isInlineEditing: true,
+				commitInlineEdit: () => {
+					bridge.subject.value = typed;
+					(bridge.builderRef.value as { isInlineEditing: boolean }).isInlineEditing = false;
+				},
+			};
+		};
+		/** Runs the page's leave guards in order; resolves what the first refusal (if any) said. */
+		const leave = async () => {
+			for (const [guard] of routeLeave.mock.calls) {
+				let answer: unknown = 'none';
+				await guard({ fullPath: '/dashboard/send' }, {}, (value?: unknown) => {
+					answer = value;
+				});
+				if (answer === false) return 'blocked';
+			}
+			return 'left';
+		};
+		beforeEach(() => {
+			routeLeave.mockClear();
+			vi.stubGlobal('useUnsavedChanges', useUnsavedChanges);
+		});
+
+		it('asks before leaving when the text could be kept nowhere', async () => {
+			// No device storage, and the save on the way out will fail.
+			draftStore = createEditorDraftStore(createNoopDriver());
+			const { bridge, save, unmount } = setup();
+			save.mockRejectedValue(new Error('offline'));
+			await settle();
+			typeInto(bridge, 'Typed, not committed');
+			await settle();
+			expect(bridge.hasChanges.value).toBe(false);
+
+			expect(await leave()).toBe('blocked');
+			expect(bridge.subject.value).toBe('Typed, not committed');
+			expect(bridge.showUnsavedChangesDialog.value).toBe(true);
+			expect(bridge.autosave?.autosave.atRisk.value).toBe(true);
+			unmount();
+		});
+
+		it('leaves without asking once the text is on the device', async () => {
+			draftStore = memoryStore({});
+			const { bridge, unmount } = setup();
+			await settle();
+			typeInto(bridge, 'Typed, kept');
+			await settle();
+
+			expect(await leave()).toBe('left');
+			expect(bridge.showUnsavedChangesDialog.value).toBe(false);
+			expect(bridge.autosave?.autosave.onDevice.value).toBe(true);
+			unmount();
+		});
 	});
 
 	it('leaves a published email to its explicit Save', async () => {

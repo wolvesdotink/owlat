@@ -13,7 +13,6 @@ import {
 	type Ref,
 	type WatchSource,
 } from 'vue';
-import { onBeforeRouteLeave } from 'vue-router';
 import { backendConnectionPhase } from '~/lib/backendConnection';
 import {
 	editorDraftKey,
@@ -129,10 +128,18 @@ export interface DraftAutosave {
 	keep: () => Promise<boolean>;
 	/**
 	 * Leaving now would lose an edit: arm the leave guards with this. Typing
-	 * the draft cannot see yet is not counted: leaving within the app commits
-	 * it first, and closing the tab is guarded here.
+	 * the draft cannot see yet is not counted: the leave guard runs
+	 * `commitBeforeLeaving` before it reads this, and closing the tab is
+	 * guarded here.
 	 */
 	atRisk: ComputedRef<boolean>;
+	/**
+	 * Make typing the draft cannot see yet part of it and write its device
+	 * copy, so `atRisk` covers it. A leave guard awaits this (and the watchers
+	 * that feed it) before it decides; reading `atRisk` first would let the
+	 * page go with that text kept nowhere.
+	 */
+	commitBeforeLeaving: () => Promise<void>;
 	/** Save now; resolves true when nothing is left unsaved. */
 	flush: () => Promise<boolean>;
 	/** Retry a failed save. */
@@ -150,6 +157,8 @@ const DEFAULT_DEBOUNCE_MS = 1500;
 const MIRROR_DELAY_MS = 300;
 /** Saves a flush runs before giving up on an editor that keeps changing. */
 const FLUSH_ROUNDS = 3;
+/** How long leaving waits for the device copy of committed text before it asks instead. */
+const LEAVE_WRITE_WAIT_MS = 1000;
 
 const defaultOnline = () =>
 	backendConnectionPhase.value === null &&
@@ -372,11 +381,6 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 	if (getCurrentInstance()) {
 		onMounted(() => window.addEventListener('beforeunload', onBeforeUnload));
 		onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload));
-		// Text still open in an editor becomes part of the draft before the
-		// page goes, so the save below includes it.
-		onBeforeRouteLeave(() => {
-			if (opts.enabled() && opts.uncommitted?.()) opts.commit?.();
-		});
 	}
 
 	// Leaving the editor: what is still pending is saved now (the request
@@ -406,6 +410,19 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		return onDevice.value;
 	};
 
+	const commitBeforeLeaving = async () => {
+		if (!opts.enabled() || !opts.uncommitted?.()) return;
+		opts.commit?.();
+		// A write that hangs (storage blocked by another tab) must not hold the
+		// page: past the wait, `atRisk` still counts the text and the guard asks.
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const waited = new Promise<void>((resolve) => {
+			timer = setTimeout(resolve, LEAVE_WRITE_WAIT_MS);
+		});
+		await Promise.race([keep(), waited]);
+		clearTimeout(timer);
+	};
+
 	return {
 		status,
 		savedAt,
@@ -414,6 +431,7 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		edits,
 		keep,
 		atRisk,
+		commitBeforeLeaving,
 		flush,
 		retry,
 		cancel,

@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ref, watch } from 'vue';
 import { withSetup as mountSetup } from '~/__tests__/withSetup';
 
 // useUnsavedChanges imports `onBeforeRouteLeave`/`useRouter` from vue-router.
 // Capture the registered leave guard and a router push spy so we can drive the
 // guard directly and assert what it does — without mounting a routed component.
 const h = vi.hoisted(() => ({
-	guard: null as null | ((to: unknown, from: unknown, next: (v?: unknown) => void) => void),
+	guard: null as null | ((to: unknown, from: unknown, next: (v?: unknown) => void) => unknown),
 	push: vi.fn(),
 }));
 
@@ -95,6 +96,29 @@ describe('useUnsavedChanges navigation guard', () => {
 		expect(guarded.showDialog.value).toBe(false);
 		expect(h.push).toHaveBeenCalledTimes(1);
 		expect(h.push).toHaveBeenCalledWith('/target');
+	});
+
+	it('decides only after beforeLeave and the dirty feed it moves have run', async () => {
+		// The owner learns of an edit only once beforeLeave commits it, and feeds
+		// the guard through a watcher, as the editors do.
+		const committed = ref(false);
+		const guarded = withSetup(() => {
+			const unsaved = useUnsavedChanges({
+				beforeLeave: async () => {
+					committed.value = true;
+				},
+			});
+			watch(committed, (value) => unsaved.setHasChanges(value));
+			return unsaved;
+		}).result;
+		const next = vi.fn();
+
+		await h.guard?.({ fullPath: '/target' }, {}, next);
+
+		expect(next).toHaveBeenCalledTimes(1);
+		expect(next).toHaveBeenCalledWith(false);
+		expect(guarded.showDialog.value).toBe(true);
+		expect(guarded.pendingRoute.value).toBe('/target');
 	});
 
 	it('cancelNavigation dismisses the dialog and stays put', () => {

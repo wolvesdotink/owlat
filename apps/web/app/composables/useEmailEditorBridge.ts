@@ -186,8 +186,8 @@ export function useEmailEditorBridge<S>(
 	const isSaving = ref(false);
 	const ctx: EmailEditorBridgeContext = { blocks, subject, name };
 
-	// Unsaved-changes guard. `onSave` closes over `save` (declared below); it is
-	// only invoked later from the navigation guard, by which point it is defined.
+	// Unsaved-changes guard. Its hooks close over `save` and `drafts` (declared
+	// below); only the navigation guard calls them, by which point both exist.
 	const {
 		showDialog: showUnsavedChangesDialog,
 		isSavingBeforeLeave,
@@ -196,9 +196,9 @@ export function useEmailEditorBridge<S>(
 		cancelNavigation,
 		setHasChanges,
 	} = useUnsavedChanges({
-		onSave: async () => {
-			await (autosaveOn() && drafts ? drafts.saveBeforeLeaving() : save());
-		},
+		onSave: () => (autosaveOn() && drafts ? drafts.saveBeforeLeaving() : save()),
+		// Open inline text joins the draft (and its device copy) before the guard decides.
+		beforeLeave: () => drafts?.autosave.commitBeforeLeaving(),
 	});
 
 	// Load → dirty loop.

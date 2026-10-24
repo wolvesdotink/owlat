@@ -275,6 +275,62 @@ describe('useDraftAutosave', () => {
 		expect(t.saves).toEqual(['from the text editor']);
 	});
 
+	describe('commitBeforeLeaving', () => {
+		/** An editor with text open that commits to `typed`. */
+		const typing = (over: Partial<DraftAutosaveOptions<{ text: string }>> = {}) => {
+			const open = ref(true);
+			const t = setup({
+				uncommitted: () => open.value,
+				commit: () => {
+					open.value = false;
+					t.text.value = 'typed';
+					t.dirty.value = true;
+				},
+				...over,
+			});
+			return t;
+		};
+
+		it('commits the open text and writes its copy, so nothing is at risk', async () => {
+			const t = typing();
+			expect(t.autosave.atRisk.value).toBe(false);
+			await t.autosave.commitBeforeLeaving();
+			expect(t.text.value).toBe('typed');
+			expect(t.driver.data.get(KEY)).toMatchObject({ data: { text: 'typed' } });
+			expect(t.autosave.onDevice.value).toBe(true);
+			expect(t.autosave.atRisk.value).toBe(false);
+		});
+
+		it('leaves the committed text at risk when the device cannot keep it', async () => {
+			const t = typing({ store: createEditorDraftStore(memoryDriver(false)) });
+			await t.autosave.commitBeforeLeaving();
+			expect(t.text.value).toBe('typed');
+			expect(t.autosave.atRisk.value).toBe(true);
+		});
+
+		it('stops waiting for a write that hangs, with the text still at risk', async () => {
+			const driver = memoryDriver();
+			driver.set = () => new Promise<void>(() => {});
+			const t = typing({ store: createEditorDraftStore(driver) });
+			let done = false;
+			void t.autosave.commitBeforeLeaving().then(() => {
+				done = true;
+			});
+			await settle();
+			expect(done).toBe(false);
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(done).toBe(true);
+			expect(t.autosave.atRisk.value).toBe(true);
+		});
+
+		it('does nothing while no text is open', async () => {
+			const t = typing({ uncommitted: () => false });
+			await t.autosave.commitBeforeLeaving();
+			expect(t.text.value).toBe('saved');
+			expect(t.driver.data.size).toBe(0);
+		});
+	});
+
 	it('saves what is pending when the editor goes away', async () => {
 		const t = setup();
 		await t.edit('leaving');
