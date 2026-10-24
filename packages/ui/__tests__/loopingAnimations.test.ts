@@ -46,7 +46,6 @@ beforeEach(() => {
 
 afterEach(() => {
 	while (mounted.length) mounted.pop()!.unmount();
-	document.body.innerHTML = '';
 });
 
 describe('UiProgressBar', () => {

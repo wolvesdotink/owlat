@@ -45,9 +45,11 @@ function setVisibility(value: DocumentVisibilityState): void {
 
 const stateOf = (element: HTMLElement) => element.style.getPropertyValue(ANIMATION_STATE_PROPERTY);
 
+const elements: HTMLElement[] = [];
 function element(): HTMLElement {
 	const el = document.createElement('div');
 	document.body.appendChild(el);
+	elements.push(el);
 	return el;
 }
 
@@ -74,7 +76,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 	window.matchMedia = originalMatchMedia;
-	document.body.innerHTML = '';
+	for (const el of elements.splice(0)) el.remove();
 });
 
 describe('observeVisibleAnimation', () => {
