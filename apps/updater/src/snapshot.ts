@@ -51,7 +51,7 @@ import {
 import { rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { exec, OWLAT_DIR, parseMounts, type DockerMount } from './http.js';
-import { composeArgv, inspectSelf, oneLine } from './rollout.js';
+import { composeArgv, hostInstallDir, inspectSelf, oneLine } from './rollout.js';
 import { UPDATE_INSTALL_LABEL } from './deployRun.js';
 
 export interface SnapshotStep {
@@ -226,7 +226,10 @@ export interface Plumbing {
 	image: string;
 	/** The snapshot directory as the HOST sees it, for a helper's `-v`. */
 	hostSnapshotDir: string;
-	/** The install directory as the host sees it: which installation a helper works for. */
+	/**
+	 * The install directory as the host sees it: which installation a helper
+	 * works for, and the project directory a rollback's compose calls name.
+	 */
 	installation: string;
 }
 
@@ -238,8 +241,7 @@ export interface Plumbing {
  */
 export async function helperPlumbing(installation: string): Promise<Plumbing | null> {
 	const self = await inspectSelf();
-	const bind = self?.binds.find((mount) => mount.split(':')[1] === OWLAT_DIR);
-	const hostDir = bind?.split(':')[0];
+	const hostDir = hostInstallDir(self);
 	if (!self || !hostDir || hostDir !== installation) return null;
 	return {
 		image: self.image,
@@ -348,12 +350,15 @@ export async function inspectContainers(
  * off the containers themselves, so a renamed volume or a bind an override
  * added is copied too. A source is checked whole before it can reach a `-v`
  * argument: one that cannot be passed safely refuses the snapshot, never
- * shortened to a path that would be.
+ * shortened to a path that would be. `compose` is the run's own invocation when
+ * it has resolved one (a rollback); otherwise it is read now.
  */
-export async function statefulContainers(): Promise<StatefulContainer[] | { error: string }> {
+export async function statefulContainers(
+	compose?: string[]
+): Promise<StatefulContainer[] | { error: string }> {
 	const listed = await exec(
 		'docker',
-		[...(await composeArgv()), 'ps', '--all', '--quiet'],
+		[...(compose ?? (await composeArgv())), 'ps', '--all', '--quiet'],
 		OWLAT_DIR
 	);
 	if (!listed.ok) return { error: `cannot list the stack's containers: ${oneLine(listed.stderr)}` };

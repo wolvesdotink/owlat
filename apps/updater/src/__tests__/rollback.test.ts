@@ -1174,8 +1174,20 @@ describe('a self-inspect that fails partway', () => {
 		);
 	}
 
+	/**
+	 * Every compose call the run made, the updater replacement's included, and
+	 * whether it named this install's project directory: a bare `docker compose`
+	 * would name another project and start its containers on its volumes.
+	 */
+	function composeProjects(): Array<[string, boolean]> {
+		return commandLines()
+			.flatMap((cmd) => cmd.match(/docker compose.*/g) ?? [])
+			.map((cmd) => [cmd, cmd.includes(`--project-directory ${HOST_INSTALL_DIR} `)]);
+	}
+
 	// Whichever inspect fails, the run never restores under a deploy of this
-	// install it did not find, nor looks for one under another install's label.
+	// install it did not find, nor looks for one under another install's label,
+	// nor names another compose project.
 	it.each([1, 2, 3, 4, 5, 6])(
 		'restores nothing under a running deploy when inspect %i fails during a rollback',
 		async (n) => {
@@ -1193,12 +1205,47 @@ describe('a self-inspect that fails partway', () => {
 			const res = await post('/rollback', { snapshot });
 			expect(runningAtRestore).toEqual([]);
 			for (const label of labelsUsed()) expect(label).toBe(INSTALL_LABEL);
+			for (const [cmd, named] of composeProjects()) expect([cmd, named]).toEqual([cmd, true]);
 			if (res.status !== 200) {
 				expect(commandLines().some(isRestore)).toBe(false);
 				expect(journal()).toMatchObject({ state: 'kept' });
 			}
 		}
 	);
+
+	it("starts the restored release in this install's compose project whichever inspect fails", async () => {
+		let refused = false;
+		for (const n of [1, 2, 3, 4]) {
+			overrides = [];
+			rmSync(SNAPSHOT_DIR, { recursive: true, force: true });
+			await update();
+			const snapshot = journal()['id'];
+			// The first rollback restores the data, then cannot start the release.
+			overrides.push((cmd) =>
+				cmd.includes(' up -d --remove-orphans') ? fail('error during connect: EOF') : undefined
+			);
+			expect((await post('/rollback', { snapshot })).status).toBe(500);
+			expect(journal()).toMatchObject({ state: 'starting' });
+
+			overrides = [];
+			commandMock.mockClear();
+			failSelfInspect(n);
+			const res = await post('/rollback', { snapshot });
+			for (const [cmd, named] of composeProjects()) expect([cmd, named]).toEqual([cmd, true]);
+			expect(commandLines().some(isRestore)).toBe(false);
+			if (res.status !== 200) {
+				const json = (await res.json()) as Answer;
+				expect(json.error).toContain('so the restored release was not started');
+				expect(commandLines().some((c) => c.includes(' up -d'))).toBe(false);
+				expect(journal()).toMatchObject({ state: 'starting' });
+				refused = true;
+			} else {
+				expect(commandLines().some((c) => c.includes(' up -d --remove-orphans'))).toBe(true);
+				expect(journal()).toMatchObject({ state: 'restored' });
+			}
+		}
+		expect(refused).toBe(true);
+	});
 
 	it('refuses a rollback when it cannot tell which containers are this install', async () => {
 		await update();

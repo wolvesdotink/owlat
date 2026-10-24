@@ -183,10 +183,9 @@ export async function dockerApiPreflight(signal?: AbortSignal): Promise<RolloutS
  * a path that does not exist on the host, which Docker helpfully creates as an
  * empty directory and mounts over the real config. The bind that put this
  * container's install dir at OWLAT_DIR is the one thing that knows the real
- * path, so read it back off ourselves.
+ * path, so it is read back off `self` (`inspectSelf`).
  */
-async function hostInstallDir(): Promise<string | null> {
-	const self = await inspectSelf();
+export function hostInstallDir(self: SelfContainer | null): string | null {
 	const bind = self?.binds.find((mount) => mount.split(':')[1] === OWLAT_DIR);
 	return bind?.split(':')[0] ?? null;
 }
@@ -201,30 +200,17 @@ export function withOverrideFile(base: string): string[] {
 const defaultComposeFiles = () => withOverrideFile(join(OWLAT_DIR, 'docker-compose.yml'));
 
 /**
- * `docker compose`, told where the project really lives.
+ * `docker compose` as an argv for `exec`, told where the project really lives:
+ * `hostDir`, the install directory as the host sees it (`hostInstallDir`).
  *
  * `--project-directory` fixes relative bind resolution; it also moves where
  * compose looks for the compose files and `.env`, so both are named explicitly
- * at the paths THIS container can read. The project name is derived from the
- * directory's basename either way, so the containers keep their names.
- *
- * Falls back to a bare `docker compose` (cwd = OWLAT_DIR) when the host path
- * cannot be read back — an updater running outside a container, or a path with
- * a character this refuses to interpolate. That is the behaviour this had
- * before, relative binds and all.
+ * at the paths THIS container can read. It also names the project, so a run
+ * that changed `hostDir` would start another project's containers on its
+ * volumes. With no `hostDir` (an updater outside a container) this is a bare
+ * `docker compose` with cwd = OWLAT_DIR.
  */
-/**
- * The same invocation as `composeCommand`, as an argv for `exec`.
- *
- * This is the form every caller in this process wants: `exec` runs
- * an argv with no shell, so a path holding a space is one argument rather
- * than two, and nothing here has to be quoted. `composeCommand` survives for
- * the single case that genuinely needs a command LINE — the `sh -c` payload
- * handed to the helper container below, which is interpreted by that
- * container's shell and not by this one.
- */
-export async function composeArgv(files: string[] = []): Promise<string[]> {
-	const hostDir = await hostInstallDir();
+export function composeArgvIn(hostDir: string | null, files: string[] = []): string[] {
 	const envFile = join(OWLAT_DIR, '.env');
 	if (!hostDir || hostDir === OWLAT_DIR) {
 		return ['compose', ...files.flatMap((file) => ['-f', file])];
@@ -240,22 +226,15 @@ export async function composeArgv(files: string[] = []): Promise<string[]> {
 	];
 }
 
-export async function composeCommand(files: string[] = []): Promise<string> {
-	const hostDir = await hostInstallDir();
-	const envFile = join(OWLAT_DIR, '.env');
-	if (!hostDir || hostDir === OWLAT_DIR) {
-		return ['docker compose', ...files.map((file) => `-f ${file}`)].join(' ');
-	}
-
-	const chosen = files.length > 0 ? files : defaultComposeFiles();
-	return [
-		'docker compose',
-		`--project-directory ${hostDir}`,
-		existsSync(envFile) ? `--env-file ${envFile}` : '',
-		...chosen.map((file) => `-f ${file}`),
-	]
-		.filter(Boolean)
-		.join(' ');
+/**
+ * `composeArgvIn` for the directory a fresh inspect reads back. It falls back
+ * to a bare `docker compose` when that inspect fails or the path has a
+ * character this refuses to interpolate, the behaviour this had before; a
+ * rollback, which must not change project, uses `composeArgvIn` with the
+ * directory it verified instead.
+ */
+export async function composeArgv(files: string[] = []): Promise<string[]> {
+	return composeArgvIn(hostInstallDir(await inspectSelf()), files);
 }
 
 /**
@@ -264,12 +243,15 @@ export async function composeCommand(files: string[] = []): Promise<string> {
  *
  * `docker compose config --services` already filters by COMPOSE_PROFILES, so
  * this never starts a profile-gated service (`convex-deploy`, `code-worker`)
- * that a plain `up` would have left alone.
+ * that a plain `up` would have left alone. `compose` is the run's own
+ * invocation when it has resolved one (a rollback); otherwise it is read now.
  */
-export async function servicesToRecreate(): Promise<{ services: string[]; error?: string }> {
+export async function servicesToRecreate(
+	compose?: string[]
+): Promise<{ services: string[]; error?: string }> {
 	const listed = await exec(
 		'docker',
-		[...(await composeArgv()), 'config', '--services'],
+		[...(compose ?? (await composeArgv())), 'config', '--services'],
 		OWLAT_DIR
 	);
 	if (!listed.ok) {
@@ -396,7 +378,8 @@ async function scheduleUpdaterRecreate(): Promise<RolloutStep> {
 		self.image,
 		'-c',
 		// Interpreted by the HELPER container's shell, so this one stays a
-		// command line — hence `composeCommand` rather than `composeArgv`.
+		// command line. Its project directory comes from the inspect above, not
+		// a second one that could fail and fall back to another project.
 		//
 		// The `unset` is the helper's half of what `childEnv` does for the
 		// updater. The helper runs the updater's own image, which bakes
@@ -407,7 +390,7 @@ async function scheduleUpdaterRecreate(): Promise<RolloutStep> {
 		`unset ${COMPOSE_SHADOWED_VARS.join(' ')}; ` +
 			`i=0; while [ ! -e ${REPLACEMENT_RELEASE_FILE} ] && [ $i -lt ${REPLACEMENT_WAIT_SECONDS} ]; do sleep 1; i=$((i+1)); done; ` +
 			`rm -f ${REPLACEMENT_RELEASE_FILE}; ` +
-			`${await composeCommand()} up -d --no-deps updater`,
+			`docker ${composeArgvIn(hostInstallDir(self)).join(' ')} up -d --no-deps updater`,
 	];
 
 	const started = await exec('docker', args, OWLAT_DIR);

@@ -20,7 +20,7 @@ import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { errorMessage } from '@owlat/shared';
 import { exec, json, OWLAT_DIR, readBody } from './http.js';
 import {
-	composeArgv,
+	composeArgvIn,
 	oneLine,
 	scheduleUpdaterRecreateSafely,
 	servicesToRecreate,
@@ -90,8 +90,11 @@ async function damagedPayload(snapshot: Snapshot): Promise<string | null> {
  * path, so each one it lists is inspected and kept only when it mounts the
  * source itself.
  */
-async function writersOf(snapshot: Snapshot): Promise<string[] | { error: string }> {
-	const found = await statefulContainers();
+async function writersOf(
+	snapshot: Snapshot,
+	hostDir: string
+): Promise<string[] | { error: string }> {
+	const found = await statefulContainers(composeArgvIn(hostDir));
 	if ('error' in found) return found;
 	const ids = new Set(found.filter((c) => c.running).map((c) => c.id));
 	const listed = new Set<string>();
@@ -157,6 +160,24 @@ async function restoreAndStart(
 	const fail = (step: string, reason: string) =>
 		steps.push({ step, ok: false, stdout: '', stderr: reason });
 
+	// Which installation this is is read once and checked against the
+	// updater's own bind: the helpers carry it as their label, the leftovers
+	// are looked for by it, and every compose call names it as the project
+	// directory. A bare `docker compose` would name another project and start
+	// its containers on its volumes, so an unverified directory refuses.
+	const installation = await resolveInstallation();
+	const plumbing = installation.ok ? await helperPlumbing(installation.id) : null;
+	if (!plumbing) {
+		const reason = installation.ok
+			? 'cannot read the install directory this updater is mounted from'
+			: `cannot tell which containers belong to this install: ${installation.reason}`;
+		fail('rollback-restore', reason);
+		return snapshot.state === 'starting'
+			? result('restored', `${reason}, so the restored release was not started.`)
+			: result('untouched', `${reason}. Nothing was restored.`);
+	}
+	const hostDir = plumbing.installation;
+
 	if (snapshot.state === 'starting') {
 		steps.push({
 			step: 'rollback-restore',
@@ -164,23 +185,12 @@ async function restoreAndStart(
 			stdout: `The data and configuration of snapshot ${snapshot.id} were already restored; starting the release they belong to again.`,
 			stderr: '',
 		});
-		return startRestored(snapshot, preExisting, steps);
+		return startRestored(snapshot, hostDir, preExisting, steps);
 	}
 
-	// Which containers are this installation's is read once: the copy helpers
-	// below are labelled with it, and the leftovers are looked for by it.
-	const installation = await resolveInstallation();
-	if (!installation.ok) {
-		const reason = `cannot tell which containers belong to this install: ${installation.reason}`;
-		fail('rollback-restore', reason);
-		return result('untouched', `${reason}. Nothing was restored.`);
-	}
 	const damaged = await damagedPayload(snapshot);
-	const plumbing = damaged ? null : await helperPlumbing(installation.id);
-	if (damaged || !plumbing) {
-		const reason = damaged
-			? `the snapshot cannot be used: ${damaged}`
-			: 'cannot read the install directory this updater is mounted from';
+	if (damaged) {
+		const reason = `the snapshot cannot be used: ${damaged}`;
 		fail('rollback-restore', reason);
 		return result('untouched', `${reason}. Nothing was restored.`);
 	}
@@ -191,7 +201,7 @@ async function restoreAndStart(
 	// may a copy helper of a restore an earlier rollback lost. Each is stopped
 	// and waited for first, or it could go on writing to the backend or the
 	// data restored under it.
-	const settled = await removeUpdateContainers(installation.id);
+	const settled = await removeUpdateContainers(hostDir);
 	if (!settled.ok) {
 		const reason = `could not stop a container an update or rollback of this install started (${settled.reason})`;
 		fail('rollback-restore', reason);
@@ -203,7 +213,7 @@ async function restoreAndStart(
 
 	// Stop the writers. Until a byte is overwritten, a failure here puts them
 	// back as they were.
-	const writers = await writersOf(current);
+	const writers = await writersOf(current, hostDir);
 	const stopped =
 		'error' in writers
 			? { ok: false, stdout: '', stderr: writers.error }
@@ -274,15 +284,17 @@ async function restoreAndStart(
 			(removed.length > 0 ? `; ${removed.join(', ')}` : ''),
 		stderr: '',
 	});
-	return startRestored(current, preExisting, steps);
+	return startRestored(current, hostDir, preExisting, steps);
 }
 
 /**
  * Start the release the restored data and configuration belong to, and only
- * once it passes the readiness check call the rollback finished.
+ * once it passes the readiness check call the rollback finished. Every compose
+ * call names `hostDir`, the project directory the rollback verified.
  */
 async function startRestored(
 	snapshot: Snapshot,
+	hostDir: string,
 	preExisting: Map<string, string>,
 	steps: SnapshotStep[]
 ): Promise<RollbackResult> {
@@ -294,8 +306,9 @@ async function startRestored(
 		warnings,
 	});
 
-	const plan = await servicesToRecreate();
-	const compose = await composeArgv();
+	// Read after the configuration is back, so it names the restored files.
+	const compose = composeArgvIn(hostDir);
+	const plan = await servicesToRecreate(compose);
 	const up = plan.error
 		? { ok: false, stdout: '', stderr: plan.error }
 		: await exec(
