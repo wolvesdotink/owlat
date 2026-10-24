@@ -16,9 +16,9 @@
 import ts from 'typescript';
 import { parse } from 'vue/compiler-sfc';
 
-export type CommentRule = 'issue-reference' | 'narration' | 'dangling-document' | 'decision-tag';
+type CommentRule = 'issue-reference' | 'narration' | 'dangling-document' | 'decision-tag';
 
-export interface RuleHit {
+interface RuleHit {
 	readonly rule: CommentRule;
 	readonly match: string;
 }
@@ -170,8 +170,9 @@ export function scriptPieces(text: string, kind: ts.ScriptKind, firstLine = 1): 
 /** The `#` comment on each line of a shell script or YAML file. */
 export function hashCommentPieces(text: string): TextPiece[] {
 	const pieces: TextPiece[] = [];
-	text.split('\n').forEach((line, index) => {
-		if (index === 0 && line.startsWith('#!')) return;
+	const lines = text.split('\n');
+	for (const [index, line] of lines.entries()) {
+		if (index === 0 && line.startsWith('#!')) continue;
 		let quote: string | undefined;
 		for (let column = 0; column < line.length; column += 1) {
 			const char = line[column]!;
@@ -182,10 +183,10 @@ export function hashCommentPieces(text: string): TextPiece[] {
 			else if (char === '"' || char === "'") quote = char;
 			else if (char === '#' && (column === 0 || /\s/.test(line[column - 1]!))) {
 				pieces.push({ line: index + 1, text: line.slice(column), kind: 'comment' });
-				return;
+				break;
 			}
 		}
-	});
+	}
 	return pieces;
 }
 

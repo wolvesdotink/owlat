@@ -445,6 +445,7 @@ describe('buildPlan', () => {
 			'format (oxfmt)',
 			'lint:script-tests',
 			'lint:branding',
+			'lint:comment-policy',
 			'lint:source-bytes',
 			'lint:no-pr-assets',
 		]);

@@ -249,6 +249,6 @@ export function checkCommentPolicy(root: string, env: NodeJS.ProcessEnv): GateRe
 
 if (import.meta.main) {
 	const result = checkCommentPolicy(join(import.meta.dirname, '..'), process.env);
-	(result.status === 0 ? console.log : console.error)(result.messages.join('\n'));
+	(result.status === 0 ? process.stdout : process.stderr).write(`${result.messages.join('\n')}\n`);
 	process.exit(result.status);
 }
