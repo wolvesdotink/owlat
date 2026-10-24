@@ -28,6 +28,21 @@ export function unexpectedErrorBackoffMs(attempt: number): number {
 }
 
 /**
+ * Stalls a job may survive before GroupMQ dead-letters it.
+ *
+ * A stall is a job whose worker stopped heartbeating: the process was killed
+ * (SIGKILL, OOM, host loss) mid-job. check-stalled.lua re-queues the job until
+ * this count is reached, and the re-run resumes from the SMTP outcome journal
+ * (journaledSmtpAttempt.ts): a pre-DATA attempt is retried, one cut off after
+ * the body is reported ambiguous, a finished one replays its outcome. GroupMQ's
+ * default at this worker's concurrency is 1, which dead-lettered every
+ * interrupted send on its first stall with no terminal callback, so a single
+ * restart lost every in-flight Send. The cap still bounds a job that kills its
+ * worker every time it runs.
+ */
+export const MAX_STALLED_COUNT = 3;
+
+/**
  * Create the email queue
  */
 export function createEmailQueue(redis: Redis): Queue<EmailJob> {
@@ -88,6 +103,9 @@ export function createEmailWorker(
 		// Exponential backoff for *unexpected* handler errors only (transient
 		// deferrals re-enqueue themselves with their own computed delay).
 		backoff: unexpectedErrorBackoffMs,
+		// The patched cleanup.lua and reserve scripts no longer reclaim expired
+		// jobs, so check-stalled.lua is the one recovery path, and this is its bound.
+		maxStalledCount: MAX_STALLED_COUNT,
 	});
 
 	worker.on('error', (err) => {
