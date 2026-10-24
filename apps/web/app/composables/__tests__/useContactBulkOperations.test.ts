@@ -115,7 +115,9 @@ describe('bulk add to a topic', () => {
 		answer = (_label, args) => ({
 			ok: true,
 			result: {
-				added: (args.contactIds as string[]).slice(1).map((id) => ({ membershipId: `m-${id}` })),
+				added: (args.contactIds as string[])
+					.slice(1)
+					.map((id) => ({ membershipId: `m-${id}`, contactId: id })),
 			},
 		});
 		const { ops, clearSelection } = setup(selected);
@@ -140,7 +142,7 @@ describe('bulk add to a topic', () => {
 		expect(undone.flatMap((c) => c.args.added as Array<{ membershipId: string }>)).toEqual(
 			selected
 				.filter((_, i) => i !== 0 && i !== BATCH_SIZES.CONTACTS_ADD_TO_LIST)
-				.map((id) => ({ membershipId: `m-${id}` }))
+				.map((id) => ({ membershipId: `m-${id}`, contactId: id }))
 		);
 		expect(undone.every((c) => c.args.topicId === TOPIC)).toBe(true);
 		expect(toasts).toHaveLength(0);
@@ -161,7 +163,12 @@ describe('bulk add to a topic', () => {
 	it('coalesces consecutive adds to the same topic into one notice', async () => {
 		answer = (_label, args) => ({
 			ok: true,
-			result: { added: (args.contactIds as string[]).map((id) => ({ membershipId: `m-${id}` })) },
+			result: {
+				added: (args.contactIds as string[]).map((id) => ({
+					membershipId: `m-${id}`,
+					contactId: id,
+				})),
+			},
 		});
 		await setup(ids(2)).ops.handleBulkAddToList(TOPIC);
 		await setup(ids(3)).ops.handleBulkAddToList(TOPIC);
@@ -185,7 +192,7 @@ describe('bulk remove from a topic', () => {
 				result: {
 					removed: (args.contactIds as string[])
 						.slice(0, 4)
-						.map((contactId) => ({ contactId, addedAt: 1 })),
+						.map((contactId) => ({ membershipId: `m-${contactId}`, contactId, addedAt: 1 })),
 				},
 			};
 		};
@@ -202,7 +209,9 @@ describe('bulk remove from a topic', () => {
 		expect(restored).toHaveLength(1);
 		expect(restored[0]!.args).toEqual({
 			topicId: TOPIC,
-			removed: selected.slice(0, 4).map((contactId) => ({ contactId, addedAt: 1 })),
+			removed: selected
+				.slice(0, 4)
+				.map((contactId) => ({ membershipId: `m-${contactId}`, contactId, addedAt: 1 })),
 		});
 	});
 

@@ -169,16 +169,19 @@ describe('bulk remove receipt and undo', () => {
 		const t = convexTest(schema, modules);
 		const { topicId, contacts } = await seed(t);
 		const [a, b, nonMember] = contacts as [Id<'contacts'>, Id<'contacts'>, Id<'contacts'>];
-		await t.run(async (ctx) => {
-			await ctx.db.insert('contactTopics', { contactId: a, topicId, addedAt: 111 });
-			await ctx.db.insert('contactTopics', {
-				contactId: b,
-				topicId,
-				addedAt: 222,
-				pendingDoiConfirmation: true,
-			});
+		const [aRow, bRow] = await t.run(async (ctx) => {
+			const ids = [
+				await ctx.db.insert('contactTopics', { contactId: a, topicId, addedAt: 111 }),
+				await ctx.db.insert('contactTopics', {
+					contactId: b,
+					topicId,
+					addedAt: 222,
+					pendingDoiConfirmation: true,
+				}),
+			];
 			await ctx.db.patch(b, { doiStatus: 'pending' });
 			await ctx.db.patch(topicId, { cachedMemberCount: 2 });
+			return ids;
 		});
 
 		const { removed } = await t.mutation(api.topics.bulk.removeContacts, {
@@ -186,8 +189,8 @@ describe('bulk remove receipt and undo', () => {
 			contactIds: [a, b, nonMember, a],
 		});
 		expect(removed).toEqual([
-			{ contactId: a, addedAt: 111 },
-			{ contactId: b, addedAt: 222, pendingDoiConfirmation: true },
+			{ membershipId: aRow, contactId: a, addedAt: 111 },
+			{ membershipId: bRow, contactId: b, addedAt: 222, pendingDoiConfirmation: true },
 		]);
 		expect(await cachedCount(t, topicId)).toBe(0);
 
@@ -203,11 +206,12 @@ describe('bulk remove receipt and undo', () => {
 					contactId: m.contactId,
 					addedAt: m.addedAt,
 					pending: m.pendingDoiConfirmation,
+					restoredFrom: m.restoredFrom,
 				}))
 				.sort((x, y) => x.addedAt - y.addedAt)
 		).toEqual([
-			{ contactId: a, addedAt: 111, pending: undefined },
-			{ contactId: b, addedAt: 222, pending: true },
+			{ contactId: a, addedAt: 111, pending: undefined, restoredFrom: aRow },
+			{ contactId: b, addedAt: 222, pending: true, restoredFrom: bRow },
 		]);
 		expect(await cachedCount(t, topicId)).toBe(2);
 	});
@@ -276,9 +280,16 @@ describe('bulk remove receipt and undo', () => {
 		const t = convexTest(schema, modules);
 		const { topicId, contacts } = await seed(t);
 		const a = contacts[0]!;
+		// A receipt for a row deleted earlier, as `removeContacts` returns it.
+		const membershipId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert('contactTopics', { contactId: a, topicId, addedAt: 9 });
+			await ctx.db.delete(id);
+			return id;
+		});
+		const receipt = { membershipId, contactId: a, addedAt: 9, pendingDoiConfirmation: true };
 		const { restored } = await t.mutation(api.topics.bulk.undoRemoveContacts, {
 			topicId,
-			removed: [{ contactId: a, addedAt: 9, pendingDoiConfirmation: true }],
+			removed: [receipt],
 		});
 		expect(restored).toBe(1);
 		const [row] = await membersOf(t, topicId);
@@ -289,11 +300,90 @@ describe('bulk remove receipt and undo', () => {
 			await ctx.db.delete(row!._id);
 			await ctx.db.patch(a, { doiStatus: 'confirmed', doiConfirmedAt: 10 });
 		});
-		await t.mutation(api.topics.bulk.undoRemoveContacts, {
-			topicId,
-			removed: [{ contactId: a, addedAt: 9, pendingDoiConfirmation: true }],
-		});
+		await t.mutation(api.topics.bulk.undoRemoveContacts, { topicId, removed: [receipt] });
 		const [again] = await membersOf(t, topicId);
 		expect(again?.pendingDoiConfirmation).toBeUndefined();
+	});
+});
+
+describe('undo of an add after the undo of a later remove', () => {
+	it('restores the original absence, the cached count and the lifted opt-out', async () => {
+		const t = convexTest(schema, modules);
+		const { topicId, contacts } = await seed(t);
+		const [optedOut, plain] = contacts as [Id<'contacts'>, Id<'contacts'>];
+		await t.run(async (ctx) => ctx.db.patch(optedOut, { unsubscribedAt: 1234 }));
+		const contactIds = [optedOut, plain];
+
+		const { added } = await t.mutation(api.topics.bulk.addContacts, { topicId, contactIds });
+		const { removed } = await t.mutation(api.topics.bulk.removeContacts, {
+			topicId,
+			contactIds,
+		});
+
+		// Newest first, as the undo stack runs them.
+		const { restored } = await t.mutation(api.topics.bulk.undoRemoveContacts, {
+			topicId,
+			removed,
+		});
+		expect(restored).toBe(2);
+		expect(await cachedCount(t, topicId)).toBe(2);
+		const { reverted } = await t.mutation(api.topics.bulk.undoAddContacts, { topicId, added });
+		expect(reverted).toBe(2);
+
+		expect(await membersOf(t, topicId)).toHaveLength(0);
+		expect(await cachedCount(t, topicId)).toBe(0);
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(optedOut))?.unsubscribedAt).toBe(1234);
+			expect((await ctx.db.get(plain))?.unsubscribedAt).toBeUndefined();
+		});
+	});
+
+	it('follows the row through repeated remove and undo cycles', async () => {
+		const t = convexTest(schema, modules);
+		const { topicId, contacts } = await seed(t);
+		const contactIds = [contacts[0]!];
+
+		const { added } = await t.mutation(api.topics.bulk.addContacts, { topicId, contactIds });
+		for (let cycle = 0; cycle < 2; cycle++) {
+			const { removed } = await t.mutation(api.topics.bulk.removeContacts, {
+				topicId,
+				contactIds,
+			});
+			expect(removed.map((r) => r.membershipId)).toEqual([added[0]!.membershipId]);
+			await t.mutation(api.topics.bulk.undoRemoveContacts, { topicId, removed });
+		}
+
+		const { reverted } = await t.mutation(api.topics.bulk.undoAddContacts, { topicId, added });
+		expect(reverted).toBe(1);
+		expect(await membersOf(t, topicId)).toHaveLength(0);
+		expect(await cachedCount(t, topicId)).toBe(0);
+	});
+
+	it('leaves a restored membership that the add did not create', async () => {
+		const t = convexTest(schema, modules);
+		const { topicId, contacts } = await seed(t);
+		const [member, fresh] = contacts as [Id<'contacts'>, Id<'contacts'>];
+		await t.run(async (ctx) => {
+			await ctx.db.insert('contactTopics', { contactId: member, topicId, addedAt: 1 });
+			await ctx.db.patch(topicId, { cachedMemberCount: 1 });
+		});
+
+		// The add inserts only `fresh`; `member` was already in.
+		const { added } = await t.mutation(api.topics.bulk.addContacts, {
+			topicId,
+			contactIds: [member, fresh],
+		});
+		const { removed } = await t.mutation(api.topics.bulk.removeContacts, {
+			topicId,
+			contactIds: [member, fresh],
+		});
+		await t.mutation(api.topics.bulk.undoRemoveContacts, { topicId, removed });
+		const { reverted } = await t.mutation(api.topics.bulk.undoAddContacts, { topicId, added });
+
+		expect(reverted).toBe(1);
+		const left = await membersOf(t, topicId);
+		expect(left.map((m) => m.contactId)).toEqual([member]);
+		expect(left[0]!.addedAt).toBe(1);
+		expect(await cachedCount(t, topicId)).toBe(1);
 	});
 });

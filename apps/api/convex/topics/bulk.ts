@@ -40,18 +40,21 @@ export const addContacts = authedMutation({
 			...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
 		});
 
+		// `subscribeMany` returns one outcome per contact id, in argument order.
 		const added: AddedMembership[] = [];
-		for (const outcome of outcomes) {
+		for (const [i, outcome] of outcomes.entries()) {
 			if (!outcome.ok) continue;
+			const contactId = args.contactIds[i]!;
 			if (outcome.action === 'subscribed') {
 				added.push({
 					membershipId: outcome.membershipId,
+					contactId,
 					...(outcome.liftedOptOutAt !== undefined
 						? { liftedOptOutAt: outcome.liftedOptOutAt }
 						: {}),
 				});
 			} else if (outcome.action === 'pending_doi') {
-				added.push({ membershipId: outcome.membershipId });
+				added.push({ membershipId: outcome.membershipId, contactId });
 			}
 		}
 		return { added };

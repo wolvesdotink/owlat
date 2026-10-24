@@ -113,12 +113,18 @@ export type UnsubscribeOutcome =
 /** One membership a subscribe inserted, and the opt-out it lifted, if any. */
 export const addedMembershipValidator = v.object({
 	membershipId: v.id('contactTopics'),
+	contactId: v.id('contacts'),
 	liftedOptOutAt: v.optional(v.number()),
 });
 export type AddedMembership = Infer<typeof addedMembershipValidator>;
 
-/** One membership an unsubscribe deleted, with the fields a restore puts back. */
+/**
+ * One membership an unsubscribe deleted, with the fields a restore puts back.
+ * `membershipId` is the id an add receipt knows the row by: its own, or the one
+ * it was restored from (`contactTopics.restoredFrom`).
+ */
 export const removedMembershipValidator = v.object({
+	membershipId: v.id('contactTopics'),
 	contactId: v.id('contacts'),
 	addedAt: v.number(),
 	pendingDoiConfirmation: v.optional(v.boolean()),
@@ -467,6 +473,7 @@ async function unsubscribeOne(
 		deleted: true,
 		context: { topicId: args.topic._id, topicName: args.topic.name },
 		removed: {
+			membershipId: membership.restoredFrom ?? membership._id,
 			contactId: membership.contactId,
 			addedAt: membership.addedAt,
 			...(membership.pendingDoiConfirmation === true ? { pendingDoiConfirmation: true } : {}),
@@ -1017,10 +1024,29 @@ export const unsubscribeAllForContact = internalMutation({
 // sent and an automation already started stay, and a restore requests no DOI,
 // fires no trigger and lifts no opt-out.
 
+async function findReceiptedMembership(
+	ctx: MutationCtx,
+	topicId: Id<'topics'>,
+	receipt: AddedMembership
+): Promise<Doc<'contactTopics'> | null> {
+	const original = await ctx.db.get(receipt.membershipId);
+	if (original) return original.topicId === topicId ? original : null;
+	const current = await ctx.db
+		.query('contactTopics')
+		.withIndex('by_contact_and_topic', (q) =>
+			q.eq('contactId', receipt.contactId).eq('topicId', topicId)
+		)
+		.first();
+	return current?.restoredFrom === receipt.membershipId ? current : null;
+}
+
 /**
  * Undo a `subscribeMany`: delete the memberships it inserted while they are
- * still those rows (one removed and re-added since has a new id and stays),
- * and put back a global opt-out the subscribe lifted, unless one is set again.
+ * still those rows, and put back a global opt-out the subscribe lifted, unless
+ * one is set again. A row an undone remove put back counts as the row it
+ * replaced (`restoredFrom`), so undoing a remove and then the add before it
+ * restores the original absence; a row re-added fresh since has neither id
+ * and stays.
  */
 export const revertSubscribeMany = internalMutation({
 	args: {
@@ -1034,8 +1060,8 @@ export const revertSubscribeMany = internalMutation({
 		const now = Date.now();
 		let reverted = 0;
 		for (const receipt of args.added) {
-			const membership = await ctx.db.get(receipt.membershipId);
-			if (!membership || membership.topicId !== args.topicId) continue;
+			const membership = await findReceiptedMembership(ctx, args.topicId, receipt);
+			if (!membership) continue;
 			await ctx.db.delete(membership._id);
 			reverted += 1;
 
@@ -1054,8 +1080,10 @@ export const revertSubscribeMany = internalMutation({
 });
 
 /**
- * Undo an `unsubscribeMany`: put back the memberships it deleted, as they were.
- * A contact that is a member again, or has been deleted since, is skipped. The
+ * Undo an `unsubscribeMany`: put back the memberships it deleted, as they were,
+ * each marked with the id it replaces so an undo of the add that created it
+ * still finds it. A contact that is a member again, or has been deleted since,
+ * is skipped. The
  * form-DOI deferral flag comes back only while the contact is still unconfirmed:
  * a confirmation in between would otherwise leave the restored row excluded
  * from the audience with nothing left to clear the flag.
@@ -1088,6 +1116,7 @@ export const restoreMemberships = internalMutation({
 				contactId: receipt.contactId,
 				topicId: args.topicId,
 				addedAt: Math.min(receipt.addedAt, now),
+				restoredFrom: receipt.membershipId,
 				...(stillPending ? { pendingDoiConfirmation: true } : {}),
 				...(receipt.seedTag !== undefined ? { seedTag: receipt.seedTag } : {}),
 			});
