@@ -42,8 +42,8 @@ export const NON_TENANT_TABLES = [
 	'migrationRuns',
 	'migrationDriver',
 	// Instance configuration singleton — recreated by setup; reset clears it in a
-	// dedicated step. The flag singleton and counter rows split off it (plan 2.4)
-	// go with it, in the same reset step and the walker's terminal steps.
+	// dedicated step. The flag singleton and counter rows split off it go with
+	// it, in the same reset step and the walker's terminal steps.
 	'instanceSettings',
 	'featureFlagSettings',
 	'instanceCounters',
