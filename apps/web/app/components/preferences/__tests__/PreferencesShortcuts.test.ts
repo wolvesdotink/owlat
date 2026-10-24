@@ -25,14 +25,21 @@ vi.mock('@owlat/api', () => {
 
 const shortcutPreset = ref<'owlat' | 'gmail' | 'superhuman' | 'outlook'>('owlat');
 const shortcutOverrides = ref<StoredShortcutOverride[]>([]);
+const settingsLoading = ref(false);
 vi.mock('~/composables/postbox/usePostboxSettings', () => ({
-	usePostboxSettings: () => ({ shortcutPreset, shortcutOverrides }),
+	usePostboxSettings: () => ({ shortcutPreset, shortcutOverrides, isLoading: settingsLoading }),
 }));
 
-const save = vi.fn(async (args: { shortcutOverrides?: StoredShortcutOverride[] }) => {
-	if (args.shortcutOverrides) shortcutOverrides.value = args.shortcutOverrides;
-	return { ok: true };
-});
+const save = vi.fn(
+	async (args: {
+		shortcutOverrides?: StoredShortcutOverride[];
+		shortcutPreset?: typeof shortcutPreset.value;
+	}) => {
+		if (args.shortcutOverrides) shortcutOverrides.value = args.shortcutOverrides;
+		if (args.shortcutPreset) shortcutPreset.value = args.shortcutPreset;
+		return { ok: true };
+	}
+);
 let flags: string[];
 
 beforeAll(() => {
@@ -49,6 +56,7 @@ beforeEach(() => {
 	flags = ['postbox', 'inbox', 'ai.assistant'];
 	shortcutPreset.value = 'owlat';
 	shortcutOverrides.value = [];
+	settingsLoading.value = false;
 	save.mockClear();
 	resetShortcutPreferences();
 });
@@ -231,6 +239,27 @@ describe('PreferencesShortcuts', () => {
 		expect(save).toHaveBeenCalledWith({
 			shortcutOverrides: [{ id: 'postbox.archive', keys: ['y'] }],
 		});
+	});
+
+	it('marks a non-default keyboard map and resets it to the shipped one', async () => {
+		const wrapper = mountPage();
+		expect(wrapper.find('[data-testid="setting-reset"]').exists()).toBe(false);
+
+		shortcutPreset.value = 'gmail';
+		settingsLoading.value = true;
+		await flushPromises();
+		// The shipped map is only a fallback while the settings row loads.
+		expect(wrapper.find('[data-testid="setting-reset"]').exists()).toBe(false);
+
+		settingsLoading.value = false;
+		await flushPromises();
+		const marker = wrapper.get('[data-testid="setting-reset"]');
+		// Outside the select's label, so the select's name stays its own.
+		expect(marker.element.closest('label')).toBeNull();
+		await marker.get('button').trigger('click');
+		expect(save).toHaveBeenCalledWith({ shortcutPreset: 'owlat' });
+		await flushPromises();
+		expect(wrapper.find('[data-testid="setting-reset"]').exists()).toBe(false);
 	});
 
 	it('flags a clash the person already lives with, on the banner and both rows', async () => {

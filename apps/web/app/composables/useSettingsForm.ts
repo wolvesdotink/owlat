@@ -77,6 +77,13 @@ export interface UseSettingsFormReturn<F extends SettingsFormShape> {
 	reset: () => void;
 	/** Put the defaults in the draft (dirty until saved, unless already stored). */
 	resetToDefaults: () => void;
+	/** Whether one field's draft value differs from its default, by value. */
+	isFieldChanged: (key: keyof F) => boolean;
+	/**
+	 * Put one field's default in the draft and leave every other field alone.
+	 * Like `resetToDefaults` it only edits the draft: dirty until saved.
+	 */
+	resetField: (key: keyof F) => void;
 	unsavedDialog: SettingsUnsavedDialog;
 }
 
@@ -152,6 +159,13 @@ export function useSettingsForm<Row, F extends SettingsFormShape>(
 		Object.assign(form, clone(opts.defaults));
 	};
 
+	const isFieldChanged = (key: keyof F) =>
+		JSON.stringify(form[key]) !== JSON.stringify(opts.defaults[key]);
+
+	const resetField = (key: keyof F) => {
+		form[key] = clone(opts.defaults[key]);
+	};
+
 	// The leave guard. `onSave` throws on a failed save, so the guard keeps the
 	// operator (and the edits) on the page instead of leaving for the route.
 	const guard = useUnsavedChanges({
@@ -179,6 +193,8 @@ export function useSettingsForm<Row, F extends SettingsFormShape>(
 		handleSave,
 		reset: tracker.reload,
 		resetToDefaults,
+		isFieldChanged,
+		resetField,
 		unsavedDialog,
 	};
 }

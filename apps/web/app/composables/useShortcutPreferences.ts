@@ -186,6 +186,7 @@ export function useShortcutPreferences() {
 		bindings: shortcutBindings,
 		conflicts: computed(() => shortcutBindings.value.conflicts),
 		isSaving: saveOp.isLoading,
+		isLoading: settings.isLoading,
 		setPreset,
 		remapShortcut,
 		conflictsFor,
