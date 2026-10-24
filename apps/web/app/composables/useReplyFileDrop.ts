@@ -160,6 +160,15 @@ export function useReplyDropHost() {
 	const answerNav = useAnswerModeNav();
 	const { user, activeOrganizationId } = useAuth();
 
+	/**
+	 * The session a drop belongs to: bumped when the signed-in account or
+	 * workspace changes and when the host goes away. A drop captures it as it
+	 * lands; one that only gets to queue later (after a desktop read or a reply
+	 * guard) is discarded if it went stale meanwhile, so files never cross into
+	 * another session or open a conversation from the one that ended.
+	 */
+	let session = 0;
+
 	async function open(target: ReplyDropTarget, files: File[]) {
 		const id = queue.queue(target, files);
 		try {
@@ -174,14 +183,23 @@ export function useReplyDropHost() {
 		}
 	}
 
-	function drop(target: ReplyDropTarget, files: File[]) {
-		if (target.guard) target.guard(() => void open(target, files));
-		else void open(target, files);
+	function drop(target: ReplyDropTarget, files: File[], landedIn = session) {
+		const proceed = () => {
+			if (landedIn === session) void open(target, files);
+		};
+		if (target.guard) target.guard(proceed);
+		else proceed();
 	}
 
+	// Synchronous, so a desktop read that completes right after the switch,
+	// before a pre-flush watcher would run, already sees the new session.
 	watch(
 		() => `${user.value?.id ?? ''}:${activeOrganizationId.value ?? ''}`,
-		() => queue.clearAll()
+		() => {
+			session += 1;
+			queue.clearAll();
+		},
+		{ flush: 'sync' }
 	);
 
 	// The drag ended somewhere else (Esc, a drop outside any target).
@@ -192,13 +210,14 @@ export function useReplyDropHost() {
 		window.addEventListener('drop', endDrag);
 	});
 	onBeforeUnmount(() => {
+		session += 1;
 		if (dropHandler === drop) dropHandler = null;
 		window.removeEventListener('dragend', endDrag);
 		window.removeEventListener('drop', endDrag);
 		clearHover();
 	});
 
-	useDesktopReplyDrops(drop);
+	useDesktopReplyDrops({ drop, session: () => session });
 
 	return { hover: readonly(hover) };
 }
@@ -206,13 +225,18 @@ export function useReplyDropHost() {
 /**
  * Tauri takes OS file drags itself, so the HTML5 events above never fire on
  * the desktop app: there the drop is placed by its window position. Where it
- * lands is settled as it lands, before the files are read, so a list that
- * re-renders during the read cannot send them to another conversation.
+ * lands, and in which session, is settled as it lands, before the files are
+ * read, so a list that re-renders during the read cannot send them to another
+ * conversation. Reads run concurrently and can finish out of order, so each
+ * drop's landing is kept under the bridge's id for that drop.
  */
-function useDesktopReplyDrops(drop: (target: ReplyDropTarget, files: File[]) => void) {
+function useDesktopReplyDrops(host: {
+	drop: (target: ReplyDropTarget, files: File[], landedIn: number) => void;
+	session: () => number;
+}) {
 	if (!useDesktopContext().isDesktop.value) return;
 	let count: number | null = null;
-	let landed: ReplyDropTarget | null = null;
+	const landed = new Map<number, { target: ReplyDropTarget; session: number }>();
 	let stop: (() => void) | undefined;
 	let disposed = false;
 
@@ -231,15 +255,16 @@ function useDesktopReplyDrops(drop: (target: ReplyDropTarget, files: File[]) => 
 				count = null;
 				clearHover();
 			},
-			onDropStart: (position) => {
-				landed = targetAt(position)?.target ?? null;
+			onDropStart: (position, dropId) => {
+				const hit = targetAt(position);
+				if (hit) landed.set(dropId, { target: hit.target, session: host.session() });
+				count = null;
 				clearHover();
 			},
-			onDrop: (files) => {
-				const target = landed;
-				landed = null;
-				count = null;
-				if (target && files.length > 0) drop(target, files);
+			onDrop: (files, _position, dropId) => {
+				const drop = landed.get(dropId);
+				landed.delete(dropId);
+				if (drop && files.length > 0) host.drop(drop.target, files, drop.session);
 			},
 		});
 		if (disposed) unsubscribe();
@@ -247,6 +272,7 @@ function useDesktopReplyDrops(drop: (target: ReplyDropTarget, files: File[]) => 
 	});
 	onBeforeUnmount(() => {
 		disposed = true;
+		landed.clear();
 		stop?.();
 	});
 }

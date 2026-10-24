@@ -120,12 +120,17 @@ export interface WebviewFileDropHandlers {
 	/**
 	 * Fired as the drop lands, before its files are read, so a subscriber can
 	 * settle where the drop went while the page is still the one it landed on.
+	 * Reads run concurrently and can finish out of order: `dropId` is the same
+	 * opaque id the matching `onDrop` carries, unique per drop.
 	 */
-	onDropStart?: (position: { x: number; y: number }) => void;
+	onDropStart?: (position: { x: number; y: number }, dropId: number) => void;
 	/** Fired when the drag leaves the window or is cancelled. */
 	onLeave?: () => void;
-	/** Fired on drop with the dropped files read into `File` objects. */
-	onDrop: (files: File[], position: { x: number; y: number }) => void;
+	/**
+	 * Fired on drop with the dropped files read into `File` objects; `dropId`
+	 * matches the drop's `onDropStart`.
+	 */
+	onDrop: (files: File[], position: { x: number; y: number }, dropId: number) => void;
 }
 
 /**
@@ -145,6 +150,9 @@ const dropSubscribers = new Set<WebviewFileDropHandlers>();
 
 /** The shared drag-drop listener registration, created on the first subscriber. */
 let dragDropListener: Promise<() => void> | null = null;
+
+/** Source of the per-drop id that pairs `onDropStart` with its `onDrop`. */
+let lastDropId = 0;
 
 /** Run `visit` for each current subscriber over a snapshot (so a subscriber
  *  unsubscribing mid-drop can't disturb the iteration). */
@@ -167,14 +175,15 @@ function ensureDragDropListener(): Promise<() => void> {
 				fanOutToSubscribers((h) => h.onLeave?.());
 			} else if (payload.type === 'drop') {
 				const position = payload.position;
-				fanOutToSubscribers((h) => h.onDropStart?.(position));
+				const dropId = ++lastDropId;
+				fanOutToSubscribers((h) => h.onDropStart?.(position, dropId));
 				// Read each dropped path ONCE, then hand the same `File[]` to every
 				// subscriber. `readFilesFromPaths` never rejects (it skips unreadable
 				// entries), so `onDrop` always fires and every zone can clear its drag
 				// state — even on a folder drop. The `.catch` is belt-and-suspenders.
 				void readFilesFromPaths(payload.paths)
-					.then((files) => fanOutToSubscribers((h) => h.onDrop(files, position)))
-					.catch(() => fanOutToSubscribers((h) => h.onDrop([], position)));
+					.then((files) => fanOutToSubscribers((h) => h.onDrop(files, position, dropId)))
+					.catch(() => fanOutToSubscribers((h) => h.onDrop([], position, dropId)));
 			}
 		});
 	}

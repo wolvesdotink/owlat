@@ -30,8 +30,8 @@ type DesktopHandlers = {
 	onEnter?: (count: number, position: { x: number; y: number }) => void;
 	onOver?: (position: { x: number; y: number }) => void;
 	onLeave?: () => void;
-	onDropStart?: (position: { x: number; y: number }) => void;
-	onDrop: (files: File[], position: { x: number; y: number }) => void;
+	onDropStart?: (position: { x: number; y: number }, dropId: number) => void;
+	onDrop: (files: File[], position: { x: number; y: number }, dropId: number) => void;
 };
 let desktop: DesktopHandlers | null = null;
 vi.mock('@owlat/desktop/src/dialog', () => ({
@@ -326,6 +326,31 @@ describe('a drop, through to Answer mode', () => {
 		expect(page.received).toEqual([[a]]);
 	});
 
+	it('drops a guarded reply whose guard proceeds after the workspace changed', async () => {
+		mountHost();
+		let proceed: (() => void) | null = null;
+		const row = mountTarget(ref({ ...ines, guard: (run: () => void) => (proceed = run) }));
+		row.element.dispatchEvent(drag('drop', { files: [file('a')] }));
+		orgId.value = 'org-2';
+		proceed!();
+		await flushPromises();
+		expect(open).not.toHaveBeenCalled();
+		const page = mountAnswer({ target: ref({ kind: 'message', id: 'm1' }), ready: ref(true) });
+		expect(page.received).toEqual([]);
+	});
+
+	it('drops a guarded reply whose guard proceeds after the shell went away', async () => {
+		const host = mountHost();
+		let proceed: (() => void) | null = null;
+		const row = mountTarget(ref({ ...ines, guard: (run: () => void) => (proceed = run) }));
+		row.element.dispatchEvent(drag('drop', { files: [file('a')] }));
+		host.unmount();
+		mounted.splice(mounted.indexOf(host), 1);
+		proceed!();
+		await flushPromises();
+		expect(open).not.toHaveBeenCalled();
+	});
+
 	it('forgets what waits when the account or workspace changes', async () => {
 		mountHost();
 		const row = mountTarget(ref(ines));
@@ -427,11 +452,11 @@ describe('desktop window drops', () => {
 	it('sends the files where the drop landed, even if the page changes during the read', async () => {
 		await setup();
 		hit = rowEl;
-		desktop!.onDropStart?.({ x: 10, y: 10 });
+		desktop!.onDropStart?.({ x: 10, y: 10 }, 1);
 		// The list re-rendered while the files were read off disk.
 		hit = otherEl;
 		const a = file('a');
-		desktop!.onDrop([a], { x: 10, y: 10 });
+		desktop!.onDrop([a], { x: 10, y: 10 }, 1);
 		await flushPromises();
 		expect(open).toHaveBeenCalledWith('m1', { kind: null });
 		expect(open).toHaveBeenCalledOnce();
@@ -443,8 +468,8 @@ describe('desktop window drops', () => {
 		hit = rowEl;
 		desktop!.onOver?.({ x: 10, y: 10 });
 		expect(host.vm.hover).toBeNull();
-		desktop!.onDropStart?.({ x: 10, y: 10 });
-		desktop!.onDrop([file('a')], { x: 10, y: 10 });
+		desktop!.onDropStart?.({ x: 10, y: 10 }, 1);
+		desktop!.onDrop([file('a')], { x: 10, y: 10 }, 1);
 		await flushPromises();
 		expect(open).not.toHaveBeenCalled();
 	});
@@ -452,8 +477,91 @@ describe('desktop window drops', () => {
 	it('ignores a drop outside any conversation', async () => {
 		await setup();
 		hit = document.body;
-		desktop!.onDropStart?.({ x: 10, y: 10 });
-		desktop!.onDrop([file('a')], { x: 10, y: 10 });
+		desktop!.onDropStart?.({ x: 10, y: 10 }, 1);
+		desktop!.onDrop([file('a')], { x: 10, y: 10 }, 1);
+		await flushPromises();
+		expect(open).not.toHaveBeenCalled();
+	});
+
+	it('keeps overlapping drops apart, whichever read finishes first', async () => {
+		await setup();
+		hit = rowEl;
+		desktop!.onDropStart?.({ x: 10, y: 10 }, 1);
+		hit = otherEl;
+		desktop!.onDropStart?.({ x: 10, y: 40 }, 2);
+		const [first, second] = [file('first.pdf'), file('second.pdf')];
+		// The first drop's read finishes first, then the second's.
+		desktop!.onDrop([first], { x: 10, y: 10 }, 1);
+		desktop!.onDrop([second], { x: 10, y: 40 }, 2);
+		await flushPromises();
+		expect(open.mock.calls).toEqual([
+			['m1', { kind: null }],
+			['m2', { kind: null }],
+		]);
+		const toInes = mountAnswer({ target: ref({ kind: 'message', id: 'm1' }), ready: ref(true) });
+		const toJonas = mountAnswer({ target: ref({ kind: 'message', id: 'm2' }), ready: ref(true) });
+		expect(toInes.received).toEqual([[first]]);
+		expect(toJonas.received).toEqual([[second]]);
+	});
+
+	it('keeps overlapping drops apart when the later read finishes first', async () => {
+		await setup();
+		hit = rowEl;
+		desktop!.onDropStart?.({ x: 10, y: 10 }, 1);
+		hit = otherEl;
+		desktop!.onDropStart?.({ x: 10, y: 40 }, 2);
+		const [first, second] = [file('first.pdf'), file('second.pdf')];
+		desktop!.onDrop([second], { x: 10, y: 40 }, 2);
+		desktop!.onDrop([first], { x: 10, y: 10 }, 1);
+		await flushPromises();
+		expect(open.mock.calls).toEqual([
+			['m2', { kind: null }],
+			['m1', { kind: null }],
+		]);
+		const toInes = mountAnswer({ target: ref({ kind: 'message', id: 'm1' }), ready: ref(true) });
+		const toJonas = mountAnswer({ target: ref({ kind: 'message', id: 'm2' }), ready: ref(true) });
+		expect(toInes.received).toEqual([[first]]);
+		expect(toJonas.received).toEqual([[second]]);
+	});
+
+	it('discards a drop whose read finishes after the workspace changed', async () => {
+		await setup();
+		hit = rowEl;
+		desktop!.onDropStart?.({ x: 10, y: 10 }, 1);
+		orgId.value = 'org-2';
+		desktop!.onDrop([file('a')], { x: 10, y: 10 }, 1);
+		await flushPromises();
+		expect(open).not.toHaveBeenCalled();
+		const page = mountAnswer({ target: ref({ kind: 'message', id: 'm1' }), ready: ref(true) });
+		expect(page.received).toEqual([]);
+	});
+
+	it('discards a drop whose read finishes after the account changed', async () => {
+		await setup();
+		hit = rowEl;
+		desktop!.onDropStart?.({ x: 10, y: 10 }, 1);
+		userId.value = 'user-2';
+		// A drop that lands in the new session still goes through.
+		desktop!.onDropStart?.({ x: 10, y: 10 }, 2);
+		desktop!.onDrop([file('stale')], { x: 10, y: 10 }, 1);
+		const fresh = file('fresh');
+		desktop!.onDrop([fresh], { x: 10, y: 10 }, 2);
+		await flushPromises();
+		expect(open).toHaveBeenCalledOnce();
+		const page = mountAnswer({ target: ref({ kind: 'message', id: 'm1' }), ready: ref(true) });
+		expect(page.received).toEqual([[fresh]]);
+	});
+
+	it('discards a drop whose read finishes after the shell went away', async () => {
+		const host = await setup();
+		const bridge = desktop!;
+		hit = rowEl;
+		bridge.onDropStart?.({ x: 10, y: 10 }, 1);
+		host.unmount();
+		mounted.splice(mounted.indexOf(host), 1);
+		expect(desktop).toBeNull();
+		// A completion already on its way still reaches the old handlers.
+		bridge.onDrop([file('a')], { x: 10, y: 10 }, 1);
 		await flushPromises();
 		expect(open).not.toHaveBeenCalled();
 	});

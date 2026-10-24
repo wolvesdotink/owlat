@@ -195,15 +195,23 @@ describe('onWebviewFileDrop', () => {
 	it('reports how many paths a drag enters with, and where a drop lands before reading it', async () => {
 		const { onWebviewFileDrop } = await freshDialog();
 		const ref = captureHandler();
-		let finishRead: (bytes: ArrayBuffer) => void = () => {};
+		// Each read waits for the test to finish it, keyed by path.
+		const finishRead = new Map<string, (bytes: ArrayBuffer) => void>();
 		invokeMock.mockImplementation(
-			() => new Promise<ArrayBuffer>((resolve) => (finishRead = resolve))
+			(_cmd: string, args?: { path?: string }) =>
+				new Promise<ArrayBuffer>((resolve) => finishRead.set(args?.path ?? '', resolve))
 		);
 
 		const onEnter = vi.fn();
 		const onOver = vi.fn();
 		const onDropStart = vi.fn();
-		const onDrop = vi.fn();
+		const delivered: Array<{ name: string | undefined; dropId: number }> = [];
+		let nextDelivery: () => void = () => {};
+		const onDrop = vi.fn((files: File[], _position: unknown, dropId: number) => {
+			delivered.push({ name: files[0]?.name, dropId });
+			nextDelivery();
+		});
+		const delivery = () => new Promise<void>((resolve) => (nextDelivery = resolve));
 		await onWebviewFileDrop({ onEnter, onOver, onDropStart, onDrop });
 
 		ref.handler?.({
@@ -212,12 +220,28 @@ describe('onWebviewFileDrop', () => {
 		expect(onEnter).toHaveBeenCalledWith(2, { x: 4, y: 5 });
 		expect(onOver).toHaveBeenCalledWith({ x: 4, y: 5 });
 
+		// Two drops land before either read finishes.
 		ref.handler?.({ payload: { type: 'drop', paths: ['/x/a.pdf'], position: { x: 7, y: 8 } } });
-		// The landing spot is reported at once; the files only once read.
-		expect(onDropStart).toHaveBeenCalledWith({ x: 7, y: 8 });
+		ref.handler?.({ payload: { type: 'drop', paths: ['/x/b.csv'], position: { x: 9, y: 9 } } });
+		// The landing spots are reported at once; the files only once read.
+		expect(onDropStart).toHaveBeenCalledTimes(2);
+		expect(onDropStart.mock.calls[0]?.[0]).toEqual({ x: 7, y: 8 });
+		expect(onDropStart.mock.calls[1]?.[0]).toEqual({ x: 9, y: 9 });
+		const [firstId, secondId] = onDropStart.mock.calls.map((call) => call[1] as number);
+		expect(firstId).not.toBe(secondId);
 		expect(onDrop).not.toHaveBeenCalled();
-		finishRead(new Uint8Array([1]).buffer);
-		await vi.waitFor(() => expect(onDrop).toHaveBeenCalledTimes(1));
+
+		// The second read finishes first: each batch carries its own drop's id.
+		let arrived = delivery();
+		finishRead.get('/x/b.csv')!(new Uint8Array([1]).buffer);
+		await arrived;
+		arrived = delivery();
+		finishRead.get('/x/a.pdf')!(new Uint8Array([1]).buffer);
+		await arrived;
+		expect(delivered).toEqual([
+			{ name: 'b.csv', dropId: secondId },
+			{ name: 'a.pdf', dropId: firstId },
+		]);
 	});
 
 	it('still fires onDrop (clearing drag state) when a dropped path is unreadable', async () => {
