@@ -80,12 +80,65 @@ const FIELD_COMPONENTS = /^(?:UiInput|UiTextarea|UiSelect|ui-input|ui-textarea|u
 /** Utilities that draw a field's chrome, on any element carrying a recipe. */
 const CHROME = /^(?:bg|border|rounded|shadow|ring|outline)(?:-|$)|^surface-\d/;
 
+/** The same chrome written as an arbitrary property (`[background:none]`). */
+const CHROME_PROPERTY = /^(?:background|border|box-shadow|outline)(?:-|$)/;
+
 /**
  * Utilities that size a field: `input` and `input-sm` own its padding and font
  * size. One-sided padding (`pl-10`, `pr-8`, `pb-8`, `ps-*`, …) stays open: it
  * makes room for an icon or an action drawn over the field, not a new size.
  */
-const FIELD_SIZE = /^p[xy]?-|^text-(?:xs|sm|base|lg|\d?xl)(?:\/|$)/;
+const FIELD_PADDING = /^p[xy]?-/;
+
+/** The same size written as an arbitrary property (`[font-size:10px]`). */
+const SIZE_PROPERTY = /^(?:font|font-size|padding|padding-inline|padding-block)$/;
+
+/**
+ * The named font sizes: Tailwind's scale plus the theme's own `--text-*`
+ * tokens in packages/ui/assets/css/tokens.css (`2xs`, `caption`, `md`). A new
+ * token there must be added here; the gate's tests compare the two lists.
+ */
+const NAMED_FONT_SIZE = /^text-(?:xs|2xs|sm|base|md|lg|caption|\d?xl)(?:\/|$)/;
+
+/**
+ * `text-[…]` / `text-(…)` set the font size or the colour depending on the
+ * value, the way Tailwind resolves them. A size type hint (`text-[length:14px]`)
+ * or a size-shaped value (`12px`, `0.85em`, `50%`, `calc(…)`, `small`) is a font
+ * size; anything else (`#fff`, `var(--x)`, `color:…`) is a colour and stays
+ * open like `text-error`.
+ */
+const ARBITRARY_TEXT = /^text-(?:\[(.+?)\]|\((.+?)\))(?=\/|$)/;
+const SIZE_HINT = /^(?:length|percentage|absolute-size|relative-size):/;
+const SIZE_VALUE =
+	/^(?:[-+]?(?:\d+\.?\d*|\.\d+)(?:[a-z]+|%)|(?:calc|clamp|min|max)\(.*|(?:x{1,3}-)?(?:small|large)|medium|larger|smaller)$/i;
+
+/** The CSS property of an arbitrary property utility: `[font-size:10px]` → `font-size`. */
+function arbitraryProperty(base: string): string | undefined {
+	return /^\[([a-z-]+):/.exec(base)?.[1];
+}
+
+function isChrome(base: string): boolean {
+	const property = arbitraryProperty(base);
+	return CHROME.test(base) || (property !== undefined && CHROME_PROPERTY.test(property));
+}
+
+function isFontSize(base: string): boolean {
+	if (NAMED_FONT_SIZE.test(base)) return true;
+	const arbitrary = ARBITRARY_TEXT.exec(base);
+	if (!arbitrary) return false;
+	const value = (arbitrary[1] ?? arbitrary[2] ?? '').trim();
+	return SIZE_HINT.test(value) || SIZE_VALUE.test(value);
+}
+
+/** Whether a utility sets the padding or font size that `input` owns. */
+function isFieldSize(base: string): boolean {
+	const property = arbitraryProperty(base);
+	return (
+		FIELD_PADDING.test(base) ||
+		isFontSize(base) ||
+		(property !== undefined && SIZE_PROPERTY.test(property))
+	);
+}
 
 type Token = { name: string; base: string };
 
@@ -145,14 +198,18 @@ function classTokens(tag: string): Token[] {
 	return names.filter(Boolean).map((name) => ({ name, base: utility(name) }));
 }
 
-/** `hover:!bg-x` → `bg-x`: the utility under its variants and `!` important. */
+/**
+ * `hover:!bg-x` → `bg-x`: the utility under its variants and `!` important. A
+ * `:` inside `[…]` or `(…)` belongs to an arbitrary value (`text-(length:--x)`),
+ * not to a variant.
+ */
 function utility(token: string): string {
 	let depth = 0;
 	let start = 0;
 	for (let at = 0; at < token.length; at += 1) {
 		const char = token[at];
-		if (char === '[') depth += 1;
-		else if (char === ']') depth -= 1;
+		if (char === '[' || char === '(') depth += 1;
+		else if (char === ']' || char === ')') depth -= 1;
 		else if (char === ':' && depth === 0) start = at + 1;
 	}
 	return token.slice(start).replace(/^!|!$/g, '');
@@ -226,10 +283,10 @@ for (const file of (await vueFiles(root)).sort()) {
 		let offending: Token[] = [];
 		if (field || bare) {
 			offending = tokens.filter(
-				(token) => CHROME.test(token.base) || (field && FIELD_SIZE.test(token.base))
+				(token) => isChrome(token.base) || (field && isFieldSize(token.base))
 			);
 		} else if (FIELD_COMPONENTS.test(tag.name)) {
-			offending = tokens.filter((token) => CHROME.test(token.base));
+			offending = tokens.filter((token) => isChrome(token.base));
 		}
 		if (offending.length > 0) {
 			const list = [...new Set(offending.map((token) => token.name))].join(' ');

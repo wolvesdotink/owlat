@@ -9,7 +9,7 @@
  * that flagged them would be routed around rather than obeyed.
  */
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -192,6 +192,35 @@ describe('a field adds layout, not chrome', () => {
 		],
 		['a font size', 'class="input text-xs"', 'text-xs'],
 		['a responsive font size', 'class="input md:text-lg"', 'md:text-lg'],
+		['a theme font size', 'class="input text-caption"', 'text-caption'],
+		['an arbitrary font size', 'class="input text-[12px]"', 'text-[12px]'],
+		['an arbitrary relative font size', 'class="input text-[0.85em]"', 'text-[0.85em]'],
+		[
+			'a responsive arbitrary font size with a type hint',
+			'class="input md:text-[length:14px]"',
+			'md:text-[length:14px]',
+		],
+		[
+			'a font-size variable with a type hint',
+			'class="input text-(length:--field-size)"',
+			'text-(length:--field-size)',
+		],
+		['an arbitrary font size with a line height', 'class="input text-[12px]/4"', 'text-[12px]/4'],
+		[
+			'an arbitrary font size with an arbitrary line height',
+			'class="input text-[12px]/[1.5]"',
+			'text-[12px]/[1.5]',
+		],
+		['a computed font size', 'class="input text-[calc(1rem+2px)]"', 'text-[calc(1rem+2px)]'],
+		['a keyword font size', 'class="input text-[small]"', 'text-[small]'],
+		['a font-size property', 'class="input [font-size:10px]"', '[font-size:10px]'],
+		['a font shorthand property', 'class="input lg:[font:inherit]"', 'lg:[font:inherit]'],
+		['a padding property', 'class="input [padding:0]"', '[padding:0]'],
+		['an inline padding property', 'class="input [padding-inline:1rem]"', '[padding-inline:1rem]'],
+		['a background property', 'class="input [background:none]"', '[background:none]'],
+		['a radius property', 'class="input [border-radius:4px]"', '[border-radius:4px]'],
+		['a shadow property', 'class="input [box-shadow:none]"', '[box-shadow:none]'],
+		['an outline property', 'class="input focus:[outline:none]"', 'focus:[outline:none]'],
 		['all-round padding', 'class="input p-2"', 'p-2'],
 		['horizontal padding', 'class="input px-4"', 'px-4'],
 		['vertical padding', 'class="input py-1.5"', 'py-1.5'],
@@ -226,6 +255,11 @@ describe('a field adds layout, not chrome', () => {
 		['a native select arrow swap', 'class="input appearance-none pr-8"'],
 		['disabled-state layout', 'class="input disabled:cursor-not-allowed disabled:opacity-50"'],
 		['a text colour', `class="input" :class="{ 'text-error': bad }"`],
+		['an arbitrary hex text colour', 'class="input text-[#ff0000]"'],
+		['an arbitrary variable text colour', 'class="input text-[var(--brand)] text-(--brand)"'],
+		['a text colour with a type hint', 'class="input text-[color:var(--brand)]"'],
+		['a one-sided padding property', 'class="input [padding-left:2.5rem]"'],
+		['a weight property', 'class="input [font-weight:600]"'],
 	])('passes %s', (_label, attributes) => {
 		const result = check(`<input ${attributes} />`);
 
@@ -233,8 +267,31 @@ describe('a field adds layout, not chrome', () => {
 		expect(result.status).toBe(0);
 	});
 
+	it('flags every theme font size in tokens.css', () => {
+		// The gate names the theme's font sizes itself; a token added to the
+		// theme without the gate learning it would let `.input text-<token>` by.
+		const tokens = readFileSync(
+			resolve(import.meta.dirname, '../../packages/ui/assets/css/tokens.css'),
+			'utf8'
+		);
+		const sizes = [...tokens.matchAll(/--text-([\w-]+?):/g)]
+			.map((match) => match[1] ?? '')
+			.filter((name) => !name.endsWith('--line-height'));
+		expect(sizes.length).toBeGreaterThan(0);
+
+		const result = check(
+			`<input class="input ${sizes.map((size) => `text-${size}`).join(' ')}" />`
+		);
+
+		expect(result.output).toContain(
+			`${FILE}:2 <input> ${sizes.map((size) => `text-${size}`).join(' ')}`
+		);
+		expect(result.status).toBe(1);
+	});
+
 	it('lets a bare control size itself but not draw chrome', () => {
 		expect(check('<input class="input-bare px-1 text-xs leading-relaxed" />').status).toBe(0);
+		expect(check('<input class="input-bare text-[12px] [font-size:10px]" />').status).toBe(0);
 
 		const result = check('<input class="input-bare bg-bg-surface rounded-lg" />');
 		expect(result.output).toContain(`${FILE}:2 <input> bg-bg-surface rounded-lg`);
@@ -258,6 +315,7 @@ describe('class on a field component places its container', () => {
 		['UiSelect', '<UiSelect v-model="x" :options="o" class="bg-bg-base" />'],
 		['UiTextarea', '<UiTextarea v-model="x" :class="[\'shadow-none\']" />'],
 		['the kebab-case spelling', '<ui-input v-model="x" class="border" />'],
+		['an arbitrary property', '<UiInput v-model="x" class="[border-radius:0]" />'],
 	])('fails on chrome on %s', (_label, markup) => {
 		const result = check(markup);
 

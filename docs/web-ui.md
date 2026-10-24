@@ -27,8 +27,13 @@ modifiers sit next to it:
 
 ### Which control
 
-- A text field with a visible label, help text or an error: `UiInput` or
-  `UiTextarea`. They connect the label, `aria-invalid` and `aria-describedby`.
+- A text field with a visible label, help text or an error: `UiInput`. It
+  connects the label, sets `aria-invalid` and points `aria-describedby` at the
+  error or help text. `UiTextarea` connects its label and shows the error below
+  the field, but does not mark the textarea invalid or link the error to it.
+  Where a screen reader must hear a textarea's error, use a native
+  `<textarea class="input">` and wire `aria-invalid` and `aria-describedby`
+  yourself.
 - A field that lays out its own label, or needs native behaviour (`time`, `url`
   or `datetime-local` types, `v-model.number`, `v-model.lazy`, saving on
   `change`): the native element with `class="input"`.
@@ -54,7 +59,10 @@ disabled-state cursor and opacity, and one-sided padding (`pl-10`, `pr-8`,
 `pb-8`) that makes room for an icon or an action drawn over the field.
 
 Background, border, radius, shadow, ring, outline, all-round padding and font
-size belong to the recipe, and the gate rejects them. The size comes from
+size belong to the recipe, and the gate rejects them, including the arbitrary
+spellings (`text-[12px]`, `text-(length:--x)`, `[font-size:10px]`,
+`[background:none]`). An arbitrary text colour (`text-[#fff]`,
+`text-[var(--x)]`) is still a colour and stays allowed. The size comes from
 `input-sm`. A control carrying `input-bare` may size its text but draws no
 chrome. `class` on `UiInput`, `UiTextarea` or `UiSelect` places the component's
 container, so it carries no chrome either.
