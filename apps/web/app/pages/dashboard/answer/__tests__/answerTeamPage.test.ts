@@ -11,8 +11,8 @@
  *   - `?message=` answers an older message that also waits;
  *   - a send leaves (or, in the Answer queue, moves on).
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, reactive, ref, useId } from 'vue';
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -186,7 +186,6 @@ beforeAll(() => {
 });
 let queryCount = 0;
 
-enableAutoUnmount(afterEach);
 beforeEach(() => {
 	state = new Map();
 	// Kept replies live in the page-wide draft book: each case starts with none.
@@ -254,6 +253,7 @@ async function mountPage() {
 				PostboxFollowUpDialog: inert('PostboxFollowUpDialog'),
 				PostboxPreviewAsSent: inert('PostboxPreviewAsSent'),
 				UiAvatar: inert('UiAvatar'),
+				UiPresenceRing: passThrough('UiPresenceRing'),
 				UiSkeleton: inert('UiSkeleton'),
 				UiModal: passThrough('UiModal'),
 			},

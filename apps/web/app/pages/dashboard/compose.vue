@@ -267,21 +267,22 @@ const frameStyle = computed(() => ({
 			<div
 				class="flex min-h-0 w-full max-w-3xl flex-col overflow-hidden bg-bg-elevated md:rounded-lg md:border md:border-border-subtle md:shadow-sm"
 			>
-				<PostboxComposer
-					v-if="seed"
-					ref="composerRef"
-					class="min-h-0 flex-1"
-					frame="page"
-					:seed="seed"
-					:before-ready="request.beforeReady"
-					:reply-all-recipients="seed.replyAllRecipients"
-					@draft-id="onDraftId"
-					@saved="onSaved"
-					@subject="subject = $event"
-					@sent="finish"
-					@discarded="finish"
-					@minimize="onComposerEsc"
-				/>
+				<AppErrorBoundary v-if="seed" surface="composer">
+					<PostboxComposer
+						ref="composerRef"
+						class="min-h-0 flex-1"
+						frame="page"
+						:seed="seed"
+						:before-ready="request.beforeReady"
+						:reply-all-recipients="seed.replyAllRecipients"
+						@draft-id="onDraftId"
+						@saved="onSaved"
+						@subject="subject = $event"
+						@sent="finish"
+						@discarded="finish"
+						@minimize="onComposerEsc"
+					/>
+				</AppErrorBoundary>
 				<div
 					v-else-if="request.state.value.status === 'expired'"
 					class="m-auto flex flex-col items-center gap-3 p-6 text-center"

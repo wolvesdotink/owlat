@@ -7,11 +7,14 @@
  *     unsubscribe through the one path (local suppression, then its page);
  *   - "select all" picks the one-click senders and nothing else;
  *   - the action sends exactly those addresses, once the confirm is accepted,
- *     and does nothing at all when it is declined.
+ *     and does nothing at all before the answer or when it is declined;
+ *   - the addresses are the ones the question counted, even if the list
+ *     changes while it is open, and nothing is sent once the panel is gone.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
+import { installConfirm, type ConfirmDriver } from '~/__tests__/confirm';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxSubscriptionsPanel from '../PostboxSubscriptionsPanel.vue';
@@ -92,10 +95,22 @@ function mountPanel() {
 	});
 }
 
+let confirmDriver: ConfirmDriver;
 beforeEach(() => {
 	runSpy.mockClear();
 	listData.value = { senders, scanned: 42, truncated: false };
+	confirmDriver = installConfirm();
 });
+afterEach(() => confirmDriver.dispose());
+
+async function tickAndRun(w: ReturnType<typeof mountPanel>, index: number) {
+	await w.findAll('input[type="checkbox"]')[index]!.trigger('change');
+	await w
+		.findAll('button')
+		.find((b) => b.text().includes('Unsubscribe and archive'))!
+		.trigger('click');
+	await flushPromises();
+}
 
 describe('PostboxSubscriptionsPanel', () => {
 	it('lists every list sender, loudest first, with volume and last-read', () => {
@@ -137,13 +152,18 @@ describe('PostboxSubscriptionsPanel', () => {
 	});
 
 	it('sends exactly the ticked one-click senders after the confirm', async () => {
-		vi.stubGlobal('confirm', () => true);
 		const w = mountPanel();
-		await w.findAll('input[type="checkbox"]')[1]!.trigger('change');
-		await w
-			.findAll('button')
-			.find((b) => b.text().includes('Unsubscribe and archive'))!
-			.trigger('click');
+		await tickAndRun(w, 1);
+		expect(confirmDriver.pending[0]).toMatchObject({
+			title: 'Unsubscribe from 1 sender and archive their mail?',
+			confirmText: 'Unsubscribe and archive',
+			variant: 'warning',
+		});
+		expect(runSpy).not.toHaveBeenCalled();
+
+		confirmDriver.answer(true);
+		await flushPromises();
+		expect(runSpy).toHaveBeenCalledTimes(1);
 		expect(runSpy).toHaveBeenCalledWith({
 			mailboxId: 'mb1',
 			senderEmails: ['news@northwind.example'],
@@ -151,13 +171,32 @@ describe('PostboxSubscriptionsPanel', () => {
 	});
 
 	it('does nothing when the confirm is declined', async () => {
-		vi.stubGlobal('confirm', () => false);
 		const w = mountPanel();
+		await tickAndRun(w, 0);
+		confirmDriver.answer(false);
+		await flushPromises();
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
+	it('sends the senders the question named, not a selection changed while it was open', async () => {
+		const w = mountPanel();
+		await tickAndRun(w, 1);
+		// The list re-sorts and the person's ticks move on underneath the dialog.
 		await w.findAll('input[type="checkbox"]')[0]!.trigger('change');
-		await w
-			.findAll('button')
-			.find((b) => b.text().includes('Unsubscribe and archive'))!
-			.trigger('click');
+		confirmDriver.answer(true);
+		await flushPromises();
+		expect(runSpy).toHaveBeenCalledWith({
+			mailboxId: 'mb1',
+			senderEmails: ['news@northwind.example'],
+		});
+	});
+
+	it('sends nothing when the panel goes away with the question open', async () => {
+		const w = mountPanel();
+		await tickAndRun(w, 1);
+		w.unmount();
+		expect(confirmDriver.pending).toEqual([]);
+		await flushPromises();
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 

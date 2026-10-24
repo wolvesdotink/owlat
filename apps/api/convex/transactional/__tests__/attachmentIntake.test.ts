@@ -224,14 +224,21 @@ describe('prepareAttachments — the whole list is checked first', () => {
 		const result = prepareAttachments([
 			{ filename: 'a.pdf', content: 'YQ==' },
 			{ filename: 'b.pdf', url: 'https://files.example.com/b.pdf' },
-			{ filename: 'c.pdf' },
+			{ filename: 'c.pdf', content: 'not base64!' },
 		]);
 
 		expect(result.ok).toBe(false);
 	});
 
-	it('refuses a non-object entry with a 400 rather than throwing', async () => {
-		const result = prepareAttachments([null as never]);
+	it('refuses a URL naming a private address with a 400 rather than throwing', async () => {
+		const result = prepareAttachments([{ filename: 'a.pdf', url: 'https://127.0.0.1/a.pdf' }]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.response.status).toBe(400);
+	});
+
+	it('refuses an entry with neither content nor url', async () => {
+		const result = prepareAttachments([{ filename: 'a.pdf' }]);
 
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.response.status).toBe(400);

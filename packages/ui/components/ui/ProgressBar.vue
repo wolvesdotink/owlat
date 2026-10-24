@@ -1,5 +1,17 @@
 <script setup lang="ts">
+/**
+ * Determinate or indeterminate progress track.
+ *
+ * Neither state touches layout while it moves: the determinate fill is a
+ * full-width layer slid in with `transform` (`.ui-meter-fill`), and the
+ * indeterminate sweep is a stepped `transform` loop that runs only while the
+ * bar is on screen in a visible tab. Under reduced motion the sweep stops and
+ * parks in the middle of the track.
+ */
+import { ref } from 'vue';
 import { useUiI18n } from '../../composables/useUiI18n';
+import { useVisibleAnimation } from '../../composables/useVisibleAnimation';
+import { meterFillStyle } from '../../utils/meterFill';
 
 type ProgressVariant = 'brand' | 'success' | 'warning' | 'error';
 
@@ -34,10 +46,18 @@ const fillColor: Record<ProgressVariant, string> = {
 };
 
 const trackHeight = computed(() => (props.size === 'sm' ? 'h-1.5' : 'h-2.5'));
+
+// Observe the stationary track, not the sweep: the sweep slides out of the
+// viewport mid-cycle on a wide bar, and pausing it there would leave an empty
+// track. The sweep reads the track's play state through the inherited custom
+// property.
+const track = ref<HTMLElement | null>(null);
+useVisibleAnimation(track, () => props.indeterminate);
 </script>
 
 <template>
 	<div
+		ref="track"
 		class="w-full rounded-full bg-text-tertiary/15 overflow-hidden"
 		:class="trackHeight"
 		role="progressbar"
@@ -54,9 +74,9 @@ const trackHeight = computed(() => (props.size === 'sm' ? 'h-1.5' : 'h-2.5'));
 		/>
 		<div
 			v-else
-			class="h-full rounded-full transition-[width] duration-(--motion-slow) ease-spring"
+			class="ui-meter-fill h-full rounded-full transition-transform duration-(--motion-slow) ease-spring"
 			:class="fillColor[variant]"
-			:style="{ width: `${clamped}%` }"
+			:style="meterFillStyle(clamped)"
 		/>
 	</div>
 </template>
@@ -71,11 +91,17 @@ const trackHeight = computed(() => (props.size === 'sm' ? 'h-1.5' : 'h-2.5'));
 	}
 }
 .progress-indeterminate {
-	animation: progress-sweep 1.4s ease-in-out infinite;
+	transform: translateX(-100%);
+	animation: progress-sweep 1.4s steps(21) infinite;
+	animation-play-state: var(--ui-animation-state, paused);
 }
+/* No sweep at all, not a slower one: the global reduced-motion floor shrinks
+ * the duration to nothing, which would turn an infinite loop into a strobe.
+ * The parked middle third still reads as "working, amount unknown". */
 @media (prefers-reduced-motion: reduce) {
 	.progress-indeterminate {
-		animation-duration: 3s;
+		animation: none;
+		transform: translateX(100%);
 	}
 }
 </style>

@@ -486,9 +486,9 @@ async function unsubscribeOne(
  * Attribute a contact's unsubscribe to their most-recent campaign send, OFF the
  * synchronous public-unsubscribe path. Scheduled (not called inline) so the
  * RFC 8058 one-click response isn't gated on an OCC retry of the shared campaign
- * row during a post-blast unsubscribe burst, and so `statsUnsubscribed` — an
- * AGGREGATED field — is written by an internal mutation rather than the
- * user-facing unsubscribe mutation (restoring the schema contract).
+ * row during a post-blast unsubscribe burst, and so `statsUnsubscribed`, a
+ * counter only internal mutations may move, is written by an internal mutation
+ * rather than the user-facing unsubscribe mutation (the schema contract).
  *
  * WHICH send is the shared join's answer, not this module's: the transport
  * outcome scheduled beside this counter must not be able to name a different

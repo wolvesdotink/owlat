@@ -174,12 +174,9 @@ const handleLeave = async () => {
 					/>
 					<ChatRoomSkeleton v-else :header="false" />
 					<!-- Keyed by room: a send that resolves after a switch settles its own room's draft. -->
-					<ChatInput
-						v-if="room.isMember"
-						:key="room._id"
-						:send="sendMessage"
-						:draft-target="room._id"
-					/>
+					<AppErrorBoundary v-if="room.isMember" surface="composer" :reset-keys="[room._id]">
+						<ChatInput :key="room._id" :send="sendMessage" :draft-target="room._id" />
+					</AppErrorBoundary>
 				</div>
 
 				<!-- Member panel (right column) -->

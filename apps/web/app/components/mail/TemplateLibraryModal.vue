@@ -182,7 +182,7 @@ defineExpose({
 					>
 						<button
 							:class="[
-								'w-full text-left rounded-xl border transition-all overflow-hidden',
+								'w-full text-left rounded-xl border transition-[border-color,box-shadow] overflow-hidden',
 								preset.id === 'blank'
 									? 'border-dashed border-border-default hover:border-brand'
 									: 'border-border-subtle hover:border-brand hover:shadow-lg',

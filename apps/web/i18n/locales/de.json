@@ -5187,7 +5187,8 @@
 					"unsnooze": "Zurückstellung von Nachrichten aufheben",
 					"unsubscribe": "Abmelden und archivieren"
 				},
-				"purgeConfirm": "{count} Nachricht endgültig löschen? Das kann nicht rückgängig gemacht werden. | {count} Nachrichten endgültig löschen? Das kann nicht rückgängig gemacht werden.",
+				"purgeConfirm": "{count} Nachricht endgültig löschen? | {count} Nachrichten endgültig löschen?",
+				"purgeConfirmBody": "Das kann nicht rückgängig gemacht werden.",
 				"read": "Gelesen",
 				"selected": "{count} ausgewählt",
 				"snooze": "Zurückstellen",
@@ -5554,7 +5555,8 @@
 			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Von dieser Mailingliste abmelden",
-				"confirm": "Von dieser Mailingliste abmelden?\n\nOwlat sendet die standardmäßige Ein-Klick-Abmeldeanfrage an {host}.",
+				"confirm": "Von dieser Mailingliste abmelden?",
+				"confirmBody": "Owlat sendet die standardmäßige Ein-Klick-Abmeldeanfrage an {host}.",
 				"requestFailed": "Abmeldeanfrage fehlgeschlagen — die Abmeldeseite wird stattdessen geöffnet",
 				"requestSent": "Abmeldeanfrage gesendet",
 				"theSender": "den Absender",
@@ -5644,7 +5646,7 @@
 			"postboxSubscriptionsPanel": {
 				"action": "Abmelden und archivieren | Abmelden und archivieren ({count})",
 				"clearSelection": "Auswahl aufheben",
-				"confirm": "Von {count} Absender abmelden und deren Post archivieren?",
+				"confirm": "Von {count} Absender abmelden und dessen Post archivieren? | Von {count} Absendern abmelden und deren Post archivieren?",
 				"empty": "Keine Abonnements gefunden.",
 				"emptyHint": "Newsletter und andere Listenpost erscheinen hier, sobald welche ankommt.",
 				"heading": "Abonnements",
@@ -6515,24 +6517,34 @@
 			"unsavedHint": "Speichere deine Änderungen, bevor du einen Freigabelink erstellst."
 		},
 		"system": {
-			"imapServersCard": {
-				"title": "IMAP-Server",
-				"intro": "IMAP-Server, die sich in den letzten 7 Tagen bei diesem Backend gemeldet haben. Aktualisiere zuerst das Backend, dann den IMAP-Container: Der IMAP-Server darf ein Release hinter dem Backend liegen, ihm aber nie voraus sein.",
-				"loading": "IMAP-Server werden geladen…",
-				"empty": "In den letzten 7 Tagen hat sich kein IMAP-Server gemeldet. Das ist zu erwarten, wenn dieses Deployment keinen IMAP-Container betreibt.",
-				"legacyWarning": "Ein IMAP-Server aus 0.6.7 oder älter hat am {date} eine Anmeldung bearbeitet. Er meldet seine Version nicht, steht deshalb nicht in der Liste und wird beim Start nicht angehalten. Aktualisiere den IMAP-Container auf das Release des Backends.",
-				"unsupportedWarning": "Ein IMAP-Server, der älter ist, als dieses Backend unterstützt, war aktiv. Das Backend lehnt seine Anmeldungen ab, und ein Server, der seine Version meldet, startet nicht, bis du den IMAP-Container aktualisierst.",
-				"aheadWarning": "Ein IMAP-Server, der neuer ist als dieses Backend, hat sich gemeldet. Er stellt erst wieder Mail bereit, wenn das Backend aktualisiert ist.",
-				"truncated": "Angezeigt werden die {count} neuesten. Die Warnungen oben berücksichtigen alle IMAP-Server der letzten 7 Tage.",
+			"workerVersionsCard": {
+				"title": "Worker-Versionen",
+				"intro": "Die Worker, die sich in den letzten 7 Tagen bei diesem Backend gemeldet haben, nach Dienst, und ob das Backend ihre Protokollversion noch bedient. Aktualisiere zuerst das Backend, dann die Worker-Container: Ein Worker darf ein Release hinter dem Backend liegen, ihm aber nie voraus sein.",
+				"loading": "Worker-Versionen werden geladen…",
+				"contract": "Backend spricht Protokollversion {current}, bedient Versionen {min} bis {current}",
+				"contractSingle": "Backend spricht und bedient nur Protokollversion {current}",
+				"empty": "In den letzten 7 Tagen hat sich nichts gemeldet. Das ist zu erwarten, wenn dieses Deployment diesen Dienst nicht betreibt.",
+				"legacyImapWarning": "Ein IMAP-Server aus 0.6.7 oder älter hat am {date} eine Anmeldung bearbeitet. Er meldet seine Version nicht, steht deshalb nicht in der Liste und wird beim Start nicht angehalten. Aktualisiere den IMAP-Container auf das Release des Backends.",
+				"unsupportedWarning": "Ein Worker, der älter ist, als dieses Backend unterstützt, hat sich in den letzten 7 Tagen gemeldet. Aktualisiere seinen Container auf das Release des Backends.",
+				"aheadWarning": "Ein Worker, der neuer ist als dieses Backend, hat sich gemeldet. Aktualisiere zuerst das Backend.",
+				"skew": "In den letzten 7 Tagen wurden die Protokollversionen {oldest} bis {newest} gemeldet. Schritte, die die neuere brauchen, warten, bis kein älterer Worker mehr läuft.",
+				"truncated": "Angezeigt werden die {count} neuesten. Die Warnungen oben berücksichtigen alle Meldungen dieses Dienstes der letzten 7 Tage.",
 				"host": "Hostname",
 				"version": "Version",
 				"lastSeen": "Letzte Meldung",
+				"notLive": "meldet sich nicht mehr",
 				"wireVersion": "(Protokollversion {version})",
 				"verdict": {
 					"current": "Aktuell",
 					"supported": "Älter, unterstützt",
 					"unsupported": "Nicht unterstützt",
 					"ahead": "Wartet auf Backend-Update"
+				},
+				"services": {
+					"imap": "IMAP-Server",
+					"mailSync": "Mail-Sync",
+					"mta": "MTA",
+					"codeWorker": "Code-Worker"
 				}
 			},
 			"llmSpendCard": {
@@ -6562,6 +6574,8 @@
 				"completedAt": "abgeschlossen {date}",
 				"lastProgress": "letzter Fortschritt {date}",
 				"waitsFor": "Startet, sobald {names} abgeschlossen ist.",
+				"waitsForWorkersLagging": "{service}: wartet, bis jeder Worker Protokollversion {version} oder neuer nutzt. Einer nutzt noch {oldest}.",
+				"waitsForWorkersMissing": "{service}: wartet auf die Meldung eines Workers mit Protokollversion {version} oder neuer.",
 				"interruptedHint": "Seit einer Weile kein Fortschritt: Der Hintergrundjob ist stehen geblieben. Starte erneut, um ab der zuletzt gespeicherten Seite fortzufahren.",
 				"failedHint": "Behebe die Ursache und starte erneut, um ab der zuletzt gespeicherten Seite weiterzumachen. Die Wartungsanleitung enthält die CLI-Befehle für dieselben Schritte.",
 				"startsItself": "Startet auch von selbst im Hintergrund. Hier startest du sie nur früher.",
@@ -13237,7 +13251,8 @@
 				"draftsResumed": "Entwürfe fortgesetzt",
 				"applied": "{count} Vorschlag übernommen | {count} Vorschläge übernommen"
 			},
-			"confirmUnsubscribe": "Von {name} abmelden? Ihre Mails werden ab jetzt archiviert.",
+			"confirmUnsubscribe": "Von {name} abmelden?",
+			"confirmUnsubscribeBody": "Ihre Mails werden ab jetzt archiviert.",
 			"shortcuts": {
 				"autoArchive": "Mails dieses Absenders automatisch archivieren",
 				"unsubscribe": "Von diesem Absender abmelden"
@@ -15801,7 +15816,8 @@
 				"moveOperation": "Nachrichten verschieben",
 				"unsubscribeOperation": "Bündel abbestellen",
 				"undoArchived": "{count} Nachrichten archiviert",
-				"unsubscribeConfirm": "{count} Absender abbestellen und ihre Mail archivieren? Jede Abmeldung ist eine Anfrage in deinem Namen."
+				"unsubscribeConfirm": "Von {count} Absender abmelden und dessen Mail archivieren? | Von {count} Absendern abmelden und deren Mail archivieren?",
+				"unsubscribeConfirmBody": "Jede Abmeldung ist eine Anfrage in deinem Namen."
 			},
 			"usePostboxTriageSuggestion": {
 				"createRule": "Regel aus Vorschlag erstellen",
@@ -18520,7 +18536,16 @@
 			"pageTitleGeneric": "Fehler — Owlat",
 			"pageTitleNotFound": "Seite nicht gefunden — Owlat",
 			"serverError": "Auf unserer Seite ist etwas schiefgelaufen. Bitte versuche es später erneut.",
+			"toast": "Etwas ist schiefgelaufen. Lade die Seite neu und versuche es noch einmal.",
 			"unexpected": "Ein unerwarteter Fehler ist aufgetreten."
+		},
+		"paneError": {
+			"page": "Diese Seite konnte nicht angezeigt werden.",
+			"reader": "Diese Unterhaltung konnte nicht angezeigt werden.",
+			"messageBody": "Diese Nachricht konnte nicht angezeigt werden.",
+			"list": "Die Nachrichtenliste konnte nicht angezeigt werden.",
+			"composer": "Der Editor konnte nicht angezeigt werden.",
+			"detail": "Alles andere funktioniert weiter. Versuch es noch einmal oder öffne etwas anderes."
 		},
 		"preferences": {
 			"title": "Einstellungen",

@@ -4,8 +4,8 @@
  * that message, and a team update (which needs no reply until someone asks for
  * one) leaves the verb to the page's "Reply anyway".
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, reactive, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { TodaySource } from '~/utils/todayDigest';
@@ -56,7 +56,6 @@ beforeAll(() => {
 		useRouter: () => ({ push: vi.fn() }),
 	});
 });
-enableAutoUnmount(afterEach);
 beforeEach(() => {
 	open.mockClear();
 	openTeam.mockClear();

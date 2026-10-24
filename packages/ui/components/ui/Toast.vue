@@ -59,11 +59,15 @@ const politeToasts = computed(() => toasts.value.filter((t) => t.type !== 'error
 <style scoped>
 /* Toast transition - slide up + fade; exits one notch faster than enters */
 .toast-enter-active {
-	transition: all var(--motion-fast) var(--ease-spring);
+	transition-property: opacity, transform;
+	transition-duration: var(--motion-fast);
+	transition-timing-function: var(--ease-spring);
 }
 
 .toast-leave-active {
-	transition: all var(--motion-fast-exit) var(--ease-exit);
+	transition-property: opacity, transform;
+	transition-duration: var(--motion-fast-exit);
+	transition-timing-function: var(--ease-exit);
 }
 
 .toast-enter-from {

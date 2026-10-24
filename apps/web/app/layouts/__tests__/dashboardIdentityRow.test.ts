@@ -67,7 +67,6 @@ function authStub(pending: boolean): Record<string, unknown> {
 beforeEach(() => {
 	route.path = '/dashboard';
 	route.fullPath = '/dashboard';
-	document.body.innerHTML = '';
 });
 
 function mountLayout(pending = false): VueWrapper {

@@ -4,7 +4,7 @@
  * fresh and again on every in-app navigation, and leaving the layout cancels a
  * reveal still waiting for its target.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { nextTick, reactive } from 'vue';
 import { withSetup } from '~/__tests__/withSetup';
 import { useSettingsAnchorReveal } from '../useSettingsAnchorReveal';
@@ -39,13 +39,13 @@ function addTarget(id: string) {
 	const el = document.createElement('section');
 	el.id = id;
 	document.body.append(el);
+	onTestFinished(() => el.remove());
 	return el;
 }
 
 beforeEach(() => {
 	vi.useFakeTimers();
 	scrolled = [];
-	document.body.innerHTML = '';
 	resolve.mockClear();
 	go('/dashboard/admin/instance/brand-kit', '');
 	vi.stubGlobal('useRoute', () => route);

@@ -24,6 +24,12 @@
 # modules `mail/_helpers.ts` exempts because they serve another surface. A new
 # entry means a new handler skipped the gated builder: use the builder. A
 # stale entry means a justified site went away: delete its line.
+#
+# The oxlint rule owlat/feature-floor-in-builder
+# (packages/oxlint-plugin-owlat) enforces this on the AST and runs beside this
+# script until scripts/ast-gate-parity.ts (`bun run lint:ast-gate-parity`)
+# shows the two agree; a change to what this script reports needs the same
+# change in the rule, or that gate fails.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"

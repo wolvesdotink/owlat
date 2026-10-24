@@ -28,6 +28,8 @@ const SANCTIONED = {
 	'packages/shared/src/constantTimeEqual.ts':
 		'export const constantTimeEqual = (a, b) => timingSafeEqual(digest(a), digest(b));\n',
 	'apps/convex-fn-proxy/src/allowlist.ts': 'return timingSafeEqual(hashA, hashB);\n',
+	'packages/oxlint-plugin-owlat/src/rules/noCryptoPrimitives.ts':
+		"const SAFE_EQUAL = 'timingSafeEqual';\n",
 };
 
 const OPEN_CODED_HMAC = [
@@ -142,6 +144,7 @@ describe('crypto-primitives gate', () => {
 			'apps/api/convex/lib/crypto.ts:2:sign(HMAC)',
 			'apps/convex-fn-proxy/src/allowlist.ts:1:timingSafeEqual',
 			'apps/web/server/utils/x.ts:1:timingSafeEqual',
+			'packages/oxlint-plugin-owlat/src/rules/noCryptoPrimitives.ts:1:timingSafeEqual',
 			'packages/shared/src/constantTimeEqual.ts:1:timingSafeEqual',
 		]);
 	});

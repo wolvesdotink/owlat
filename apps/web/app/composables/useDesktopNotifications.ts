@@ -16,7 +16,6 @@ import {
 	type AssignmentNotice,
 } from '~/lib/inbox/assignmentNoticeRules';
 import {
-	badgeCount,
 	decideNotification,
 	isWithinQuietHours,
 	newlyArrived,
@@ -32,12 +31,14 @@ import {
 	type UnreadPeekMessage,
 } from '~/lib/desktop/notificationRules';
 import { useLocalized } from '~/composables/useLocalized';
+import type { UnreadBadge } from '~/composables/useUnreadBadge';
 
 /**
  * Desktop-only native notifications and the app-icon unread badge.
  *
- * Driven by `mail.mailbox.queries.newestUnreadInbox`, which returns the exact unread
- * `total` plus a bounded newest-first window of unread messages. From that we:
+ * Driven by the shared unread peek (`useUnreadBadge`: the exact unread `total`
+ * plus a bounded newest-first window of unread messages, and the badge count
+ * derived from them — the same number the browser tab shows). From that we:
  *
  *   - keep the dock/taskbar **badge** truthful (the affordance every native mail
  *     client exposes) — optionally counting only `person` mail when the user
@@ -63,10 +64,10 @@ import { useLocalized } from '~/composables/useLocalized';
 /** How often we re-check whether the quiet-hours window has closed. */
 const QUIET_HOURS_POLL_MS = 60_000;
 
-export function useDesktopNotifications() {
+export function useDesktopNotifications(unread: UnreadBadge) {
 	const { isDesktop } = useDesktopContext();
 	const convex = requireConvex();
-	const { notifyAbout, badgeNonPeople, quietHours, hidePreview } = usePostboxSettings();
+	const { notifyAbout, quietHours, hidePreview } = usePostboxSettings();
 	const { canSend, request: requestNotificationPermission } = useDesktopNotificationPermission();
 	const { showToast } = useToast();
 	const { t } = useI18n();
@@ -176,11 +177,6 @@ export function useDesktopNotifications() {
 	let quietState: QuietHoursState = QUIET_HOURS_INITIAL_STATE;
 	const previousReviewQueue = ref<number | null>(null);
 
-	// Personal inbox unread window → badge + toast.
-	const { data: unreadData } = useConvexQuery(api.mail.mailbox.queries.newestUnreadInbox, () =>
-		isDesktop.value ? { limit: 5 } : 'skip'
-	);
-
 	// AI shared-inbox review queue (admin-only; null otherwise) → labeled toast.
 	const { data: inboundStats } = useConvexQuery(api.inbox.queries.getInboundStats, () =>
 		isDesktop.value ? {} : 'skip'
@@ -197,10 +193,23 @@ export function useDesktopNotifications() {
 	const seenAssignmentIds = new Set<string>();
 	let loadedAssignmentsOnce = false;
 
-	function loadDesktopNotifications() {
+	// A plain dynamic import keeps Tauri out of the browser bundle and lets the
+	// dead-code check see every export of the module as used.
+	function importDesktopNotifications() {
 		return import('@owlat/desktop/src/notifications');
 	}
-	type DesktopNotif = Awaited<ReturnType<typeof loadDesktopNotifications>>;
+	type DesktopNotif = Awaited<ReturnType<typeof importDesktopNotifications>>;
+	// One pending import shared by every caller: a delivery wakes the badge and
+	// the toast paths in the same tick, and both should wait on the same module
+	// load. A failed load is forgotten so the next call can try again.
+	let desktopNotif: Promise<DesktopNotif> | null = null;
+	function loadDesktopNotifications(): Promise<DesktopNotif> {
+		desktopNotif ??= importDesktopNotifications().catch((error: unknown) => {
+			desktopNotif = null;
+			throw error;
+		});
+		return desktopNotif;
+	}
 
 	/**
 	 * Send one planned notification. Mail-addressed ones stay actionable (so
@@ -307,28 +316,20 @@ export function useDesktopNotifications() {
 	// changes anything is a new object and one that changes nothing keeps its
 	// identity (see `useConvexQuery`), so walking every row would only cost time.
 	watch(
-		() => unreadData.value,
+		() => unread.data.value,
 		async (data) => {
 			if (!isDesktop.value || !data) return;
-			const total = data.total;
 			const messages = data.messages as UnreadPeekMessage[];
 			const now = Date.now();
-			try {
-				const notif = await loadDesktopNotifications();
-				// A disabled badge clears to 0 (not "skip the call") so a previously
-				// painted count can't linger on the dock icon.
-				await notif.updateUnreadBadge(
-					appSettings.value.global.showUnreadBadge
-						? badgeCount(total, messages, badgeNonPeople.value)
-						: 0
-				);
-				// A refused OS permission blocks the send outright; every other
-				// permission state (including "we couldn't tell") still tries.
-				if (loadedOnce && toastsAllowed.value && canSend.value) {
+			// A refused OS permission blocks the send outright; every other
+			// permission state (including "we couldn't tell") still tries.
+			if (loadedOnce && toastsAllowed.value && canSend.value) {
+				try {
+					const notif = await loadDesktopNotifications();
 					await firePlanned(notif, messages, now);
+				} catch {
+					// Tauri modules unavailable — running in the browser.
 				}
-			} catch {
-				// Tauri modules unavailable — running in the browser.
 			}
 			rememberSeen(messages);
 			loadedOnce = true;
@@ -336,25 +337,28 @@ export function useDesktopNotifications() {
 		{ immediate: true }
 	);
 
-	// Repaint the badge when its toggle changes — the data watch above only
-	// fires on unread changes, which could leave a stale count (or a stale
-	// blank) on the dock icon until the next arrival.
+	// The dock/taskbar badge follows the shared count, so it repaints on an
+	// unread change, on the device's badge toggle and on the per-user
+	// "count all mail" preference alike — watching only deliveries would leave
+	// a stale number on the icon until the next arrival. A disabled badge
+	// clears to 0 (not "skip the call") so a previously painted count can't
+	// linger; `null` (no delivery yet) paints nothing.
 	watch(
-		() => appSettings.value.global.showUnreadBadge,
-		async (show) => {
-			if (!isDesktop.value) return;
-			const data = unreadData.value;
+		() => {
+			if (!isDesktop.value) return null;
+			if (!appSettings.value.global.showUnreadBadge) return 0;
+			return unread.count.value;
+		},
+		async (badge) => {
+			if (badge === null) return;
 			try {
 				const notif = await loadDesktopNotifications();
-				await notif.updateUnreadBadge(
-					show && data
-						? badgeCount(data.total, data.messages as UnreadPeekMessage[], badgeNonPeople.value)
-						: 0
-				);
+				await notif.updateUnreadBadge(badge);
 			} catch {
 				// Tauri modules unavailable.
 			}
-		}
+		},
+		{ immediate: true }
 	);
 
 	watch(

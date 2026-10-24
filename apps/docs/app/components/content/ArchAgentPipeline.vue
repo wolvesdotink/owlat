@@ -637,7 +637,8 @@ function setStep(i: number) {
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
   color: var(--color-text-tertiary);
-  transition: all var(--motion-moderate);
+  transition-property: color, background-color, border-color;
+  transition-duration: var(--motion-moderate);
 }
 
 .pipe-intent.is-active {

@@ -8,7 +8,7 @@
  * every chord nothing is bound to with the browser. `when` lets a surface say
  * a command cannot run right now without unregistering it.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { defineComponent } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { useKeyboardShortcuts } from '../useKeyboardShortcuts';
@@ -48,7 +48,6 @@ beforeEach(() => {
 
 afterEach(() => {
 	for (const wrapper of mounted.splice(0)) wrapper.unmount();
-	document.body.innerHTML = '';
 });
 
 describe('modifier chords', () => {
@@ -69,6 +68,7 @@ describe('modifier chords', () => {
 		});
 		const input = document.createElement('input');
 		document.body.appendChild(input);
+		onTestFinished(() => input.remove());
 		input.focus();
 		press('\\', { ctrlKey: true }, input);
 		press(',', { ctrlKey: true }, input);

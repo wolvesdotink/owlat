@@ -25,6 +25,7 @@ import type * as GovernedEnqueue from '../delivery/governedEnqueue';
 import type * as SessionOrganization from '../lib/sessionOrganization';
 import type * as Receipts from '../auth/apiRequestReceipts';
 import { RECEIPT_TTL_MS } from '../auth/apiRequestReceipts';
+import { publicOperation, successBodySchema } from '@owlat/public-contract/schemas';
 import { readInstanceCounter } from '../lib/instanceCounters';
 import {
 	createTestAutomation,
@@ -248,7 +249,11 @@ describe('Idempotency-Key on POST /api/v1/transactional', () => {
 		// Rate-limit and CORS headers are rebuilt for the replay too.
 		expect(second.headers.get('X-RateLimit-Limit')).not.toBeNull();
 		expect(second.headers.get('Access-Control-Allow-Origin')).not.toBeNull();
-		expect(await second.json()).toEqual(await first.json());
+		const firstBody: unknown = await first.json();
+		expect(await second.json()).toEqual(firstBody);
+		// The send and its replay are both the contract's documented 202 body.
+		const sent = successBodySchema(publicOperation('sendTransactional')).safeParse(firstBody);
+		expect(sent.error?.issues).toBeUndefined();
 
 		expect(await sendRows(t)).toHaveLength(1);
 		expect(await transactionalCount(t)).toBe(1);
@@ -565,6 +570,8 @@ describe('Idempotency-Key on POST /api/v1/events', () => {
 		const firstBody = await first.json();
 		expect(await second.json()).toEqual(firstBody);
 		expect(firstBody.data).toMatchObject({ contactCreated: true, triggeredAutomations: 1 });
+		const sent = successBodySchema(publicOperation('sendEvent')).safeParse(firstBody);
+		expect(sent.error?.issues).toBeUndefined();
 		expect(await contacts(t)).toHaveLength(1);
 		expect(await runs(t)).toHaveLength(1);
 	});

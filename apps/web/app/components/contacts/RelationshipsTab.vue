@@ -308,7 +308,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 						</div>
 					</div>
 					<button
-						class="p-1.5 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-all"
+						class="p-1.5 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-[color,background-color,opacity]"
 						:title="t('components.contacts.relationshipsTab.removeRelationship')"
 						@click="onRemove(rel._id)"
 					>

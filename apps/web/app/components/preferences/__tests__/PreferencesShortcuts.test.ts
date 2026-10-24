@@ -4,8 +4,8 @@
  * shortcut is in the way, and Reset per row. Mounted with the real preferences
  * composable and registry; only the settings row and the save are stand-ins.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ref, useSlots } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { StoredShortcutOverride } from '~/utils/shortcutPresets';
@@ -51,7 +51,6 @@ beforeAll(() => {
 		useDesktopContext: () => ({ isDesktop: ref(false) }),
 	});
 });
-enableAutoUnmount(afterEach);
 beforeEach(() => {
 	flags = ['postbox', 'inbox', 'ai.assistant'];
 	shortcutPreset.value = 'owlat';

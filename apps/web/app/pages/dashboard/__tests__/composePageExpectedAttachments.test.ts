@@ -17,9 +17,9 @@
  *   - a forwarded file that cannot be read stays owed, with Retry;
  *   - removing the chip while its copy is in flight keeps it out.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, ref, watch, type Ref } from 'vue';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 
 import ComposePage from '../compose.vue';
 import { usePostboxComposeNav, type ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
@@ -332,8 +332,6 @@ let query: Record<string, string>;
 let states: Record<string, unknown>;
 const replace = vi.fn(async (_to: unknown) => {});
 const showToast = vi.fn();
-
-enableAutoUnmount(afterEach);
 
 beforeEach(() => {
 	row = null;

@@ -250,7 +250,7 @@ const previewSrcdoc = computed(() => {
 
 .email-preview :deep(a) {
 	text-decoration: none;
-	transition: all var(--motion-moderate) var(--ease-spring);
+	transition: filter var(--motion-moderate) var(--ease-spring);
 }
 
 .email-preview :deep(a:hover) {

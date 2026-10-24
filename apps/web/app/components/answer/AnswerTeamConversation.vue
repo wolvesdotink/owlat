@@ -257,17 +257,19 @@ const showViewToggle = computed(() => props.messages.length > 1);
 						class="px-4 pb-4"
 						data-testid="answer-team-message-body"
 					>
-						<PostboxMessageBody
-							v-if="hasInlineBody(messageOf(entry)!)"
-							:message="bodyOf(messageOf(entry)!)"
-						/>
-						<InboxMessageBody
-							v-else-if="hasStoredBody(messageOf(entry)!)"
-							:message="messageOf(entry)!"
-						/>
-						<p v-else class="text-sm text-text-tertiary">
-							{{ t('dashboard.inbox.detail.noTextContent') }}
-						</p>
+						<AppErrorBoundary surface="messageBody" :reset-keys="[entry.source.id]">
+							<PostboxMessageBody
+								v-if="hasInlineBody(messageOf(entry)!)"
+								:message="bodyOf(messageOf(entry)!)"
+							/>
+							<InboxMessageBody
+								v-else-if="hasStoredBody(messageOf(entry)!)"
+								:message="messageOf(entry)!"
+							/>
+							<p v-else class="text-sm text-text-tertiary">
+								{{ t('dashboard.inbox.detail.noTextContent') }}
+							</p>
+						</AppErrorBoundary>
 						<InboxMessageAttachments :message="messageOf(entry)!" />
 					</div>
 				</article>
