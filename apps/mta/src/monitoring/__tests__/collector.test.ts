@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Redis from 'ioredis-mock';
-import { registry, emailsSentTotal, record, getIspMetrics, getIpMetrics } from '../collector.js';
+import {
+	registry,
+	emailsSentTotal,
+	record,
+	getIspMetrics,
+	getIpMetrics,
+	CAMPAIGN_LABEL_LIMIT,
+	CAMPAIGN_OVERFLOW_LABEL,
+} from '../collector.js';
 import type { FblSourceIspToken } from '../../bounce/fblProcessor.js';
 
 vi.mock('../logger.js', () => ({
@@ -76,30 +84,29 @@ describe('collector', () => {
 		// The campaign budget is per process, so each case loads a fresh module.
 		async function freshCollector() {
 			vi.resetModules();
-			return import('../collector.js');
-		}
-
-		async function series(collector: Awaited<ReturnType<typeof freshCollector>>) {
-			const metric = (await collector.registry.getMetricsAsJSON()).find((m) => m.name === NAME);
-			return metric?.values ?? [];
+			const { registry: freshRegistry, recordFblComplaintByCampaign } =
+				await import('../collector.js');
+			const series = async () =>
+				(await freshRegistry.getMetricsAsJSON()).find((m) => m.name === NAME)?.values ?? [];
+			return { recordFblComplaintByCampaign, series };
 		}
 
 		it('caps the campaign label and keeps every complaint in the total', async () => {
 			const collector = await freshCollector();
-			const complaints = collector.CAMPAIGN_LABEL_LIMIT * 5;
+			const complaints = CAMPAIGN_LABEL_LIMIT * 5;
 			for (let i = 0; i < complaints; i++) {
 				collector.recordFblComplaintByCampaign(`campaign_${i}`, 'yahoo');
 			}
 			// A campaign that got a label before the budget ran out keeps it.
 			collector.recordFblComplaintByCampaign('campaign_0', 'yahoo');
 
-			const values = await series(collector);
-			expect(values).toHaveLength(collector.CAMPAIGN_LABEL_LIMIT + 1);
+			const values = await collector.series();
+			expect(values).toHaveLength(CAMPAIGN_LABEL_LIMIT + 1);
 			expect(values.reduce((sum, v) => sum + v.value, 0)).toBe(complaints + 1);
 			expect(values.find((v) => v.labels['campaign'] === 'campaign_0')?.value).toBe(2);
-			expect(
-				values.find((v) => v.labels['campaign'] === collector.CAMPAIGN_OVERFLOW_LABEL)?.value
-			).toBe(complaints - collector.CAMPAIGN_LABEL_LIMIT);
+			expect(values.find((v) => v.labels['campaign'] === CAMPAIGN_OVERFLOW_LABEL)?.value).toBe(
+				complaints - CAMPAIGN_LABEL_LIMIT
+			);
 		});
 
 		it('keeps classifier ISP tokens and files anything else under unknown', async () => {
@@ -117,7 +124,7 @@ describe('collector', () => {
 			for (const isp of Object.keys(tokens)) collector.recordFblComplaintByCampaign('camp', isp);
 			collector.recordFblComplaintByCampaign('camp', 'evil.example');
 
-			const values = await series(collector);
+			const values = await collector.series();
 			expect(values.map((v) => v.labels['isp']).sort()).toEqual(Object.keys(tokens).sort());
 			expect(values.find((v) => v.labels['isp'] === 'unknown')?.value).toBe(2);
 		});
