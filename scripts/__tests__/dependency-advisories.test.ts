@@ -42,12 +42,21 @@
  *   parses a single element, which is the fix;
  * - @nuxt/content still requires zod 3. When it moves to zod 4 this fails, and
  *   the acknowledgement goes.
+ *
+ * The gate blocks on happy-dom too (GHSA-834v-8h66-3h79, high): before 21.0.4
+ * its ESM compiler pasted a named import's alias into generated code unchecked,
+ * so a page with JavaScript evaluation on could run host code from an invalid
+ * import clause. happy-dom is only the vitest DOM of apps/web, packages/ui and
+ * packages/email-builder, which never turn evaluation on, but each of them must
+ * resolve the fixed release, and that copy must refuse the injected alias while
+ * it still binds a valid one.
  */
 
 import { readFileSync } from 'node:fs';
 import { createServer, type AddressInfo, type Server, type Socket } from 'node:net';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import type * as HappyDom from 'happy-dom';
 import type * as IpAddress from 'ip-address';
 import type * as Socks from 'socks';
 import type * as Zod from 'zod';
@@ -70,6 +79,10 @@ const devtoolsRequire = createRequire(nuxtRequire.resolve('@nuxt/devtools/packag
 
 const apiRequire = createRequire(`${REPOSITORY_ROOT}apps/api/package.json`);
 const { z } = apiRequire('zod') as typeof Zod;
+
+const happyDomConsumers = ['apps/web', 'packages/ui', 'packages/email-builder'].map(
+	(workspace) => [workspace, createRequire(`${REPOSITORY_ROOT}${workspace}/package.json`)] as const
+);
 
 const LOCKFILE = readFileSync(`${REPOSITORY_ROOT}bun.lock`, 'utf8');
 
@@ -251,5 +264,58 @@ describe('zod (GHSA-mrhx-c7xc-m3w5)', () => {
 		const range = entry?.match(/"zod": "([^"]+)"/)?.[1];
 		expect(range, 'drop GHSA-MRHX-C7XC-M3W5 from check-security-audit.ts').toMatch(/^\^3\./);
 		expect(lockedZodCopies().get('@nuxt/content/zod')).toMatch(/^3\./);
+	});
+});
+
+describe('happy-dom (GHSA-834v-8h66-3h79)', () => {
+	it.each(happyDomConsumers)('resolves 21.0.4 or later from %s', (_workspace, workspaceRequire) => {
+		const { version } = workspaceRequire('happy-dom/package.json') as { version: string };
+		expect(atLeast(version, '21.0.4'), `happy-dom ${version}`).toBe(true);
+	});
+
+	it('binds a valid import alias but never runs code passed off as one', async () => {
+		const { Window } = (await import(
+			pathToFileURL(webRequire.resolve('happy-dom')).href
+		)) as typeof HappyDom;
+		const modules = new Map<string, [type: string, body: string]>([
+			['https://advisory.test/value.js', ['text/javascript', 'export const value = 7;']],
+			['https://advisory.test/empty.json', ['application/json', '{}']],
+		]);
+		const window = new Window({
+			url: 'https://advisory.test/',
+			settings: {
+				// The advisory needs evaluation on. Owlat's test environments leave it off.
+				enableJavaScriptEvaluation: true,
+				suppressCodeGenerationFromStringsWarning: true,
+				fetch: {
+					interceptor: {
+						async beforeAsyncRequest({ request, window }) {
+							const [type, body] = modules.get(request.url) ?? ['text/plain', ''];
+							return new window.Response(body, {
+								status: body ? 200 : 404,
+								headers: { 'content-type': type },
+							});
+						},
+					},
+				},
+			},
+		});
+		try {
+			for (const source of [
+				"import { value as aliased } from './value.js'; globalThis.boundAlias = aliased;",
+				"import { missing as injected = globalThis.injected = 1337 } from './empty.json' with { type: 'json' };",
+			]) {
+				const script = window.document.createElement('script');
+				script.type = 'module';
+				script.textContent = source;
+				window.document.body.appendChild(script);
+			}
+			await window.happyDOM.waitUntilComplete();
+			const globals = window as unknown as { boundAlias?: unknown; injected?: unknown };
+			expect(globals.boundAlias).toBe(7);
+			expect(globals.injected).toBeUndefined();
+		} finally {
+			await window.happyDOM.close();
+		}
 	});
 });
