@@ -179,6 +179,8 @@ export const mailCompositionTables = {
 		// hidden answered drafts never push a live one past the page.
 		.index('by_mailbox_live_and_edited', ['mailboxId', 'obsoleted.at', 'lastEditedAt'])
 		.index('by_state_and_scheduled', ['state', 'scheduledSendAt'])
+		// Today's Upcoming band: one mailbox's scheduled sends, soonest first.
+		.index('by_mailbox_state_and_scheduled', ['mailboxId', 'state', 'scheduledSendAt'])
 		.index('by_undo_token', ['undoToken'])
 		.index('by_client_nonce', ['clientNonce'])
 		.index('by_obsoleted_at', ['obsoleted.at']),

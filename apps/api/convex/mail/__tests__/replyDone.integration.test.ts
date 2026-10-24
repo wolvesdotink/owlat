@@ -176,6 +176,35 @@ describe('drafts.send carries the after-send choice', () => {
 		await t.mutation(api.mail.drafts.send, { draftId, afterSend: 'done' });
 		expect((await t.run((ctx) => ctx.db.get(draftId)))?.doneOnSendAt).toBeUndefined();
 	});
+
+	it('keeps the choice and its cutoff when a scheduled reply is sent now', async () => {
+		const t = convexTest();
+		const conv = await seedConversation(t);
+		const draftId = await seedReplyDraft(t, conv);
+		const chosenAt = Date.now() - 60_000;
+		await t.mutation(api.mail.drafts.send, {
+			draftId,
+			scheduledSendAt: Date.now() + 86_400_000,
+			afterSend: 'done',
+			afterSendChosenAt: chosenAt,
+		});
+
+		const now = await t.mutation(api.mail.scheduledSends.sendNow, { draftId });
+		expect(now.ok).toBe(true);
+		const pending = await t.run((ctx) => ctx.db.get(draftId));
+		expect(pending?.state).toBe('pending_send');
+		expect(pending?.doneOnSendAt).toBe(chosenAt);
+	});
+
+	it('sends a scheduled reply that keeps its conversation now without the choice', async () => {
+		const t = convexTest();
+		const conv = await seedConversation(t);
+		const draftId = await seedReplyDraft(t, conv);
+		await t.mutation(api.mail.drafts.send, { draftId, scheduledSendAt: Date.now() + 86_400_000 });
+
+		await t.mutation(api.mail.scheduledSends.sendNow, { draftId });
+		expect((await t.run((ctx) => ctx.db.get(draftId)))?.doneOnSendAt).toBeUndefined();
+	});
 });
 
 describe('the sent transition schedules the archive', () => {

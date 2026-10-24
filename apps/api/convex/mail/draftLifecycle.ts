@@ -102,11 +102,26 @@ export const transition = internalMutation({
 	args: {
 		draftId: v.id('mailDrafts'),
 		input: transitionInputValidator,
+		// The undo token the caller's work belongs to. A dispatch hop reads the
+		// draft long before it commits, and by then the send it started for may
+		// have been cancelled and a new one queued under a fresh token (Send now,
+		// undo then Send again). The state alone cannot tell the two sends apart,
+		// so the token is compared here, in the same transaction as the write.
+		expectedUndoToken: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
 		const draft = await ctx.db.get(args.draftId);
 		if (!draft) {
 			return { ok: false, reason: 'draft_not_found', draftId: args.draftId };
+		}
+		if (args.expectedUndoToken !== undefined && draft.undoToken !== args.expectedUndoToken) {
+			return {
+				ok: false,
+				reason: 'undo_token_mismatch',
+				draftId: args.draftId,
+				from: draft.state,
+				to: args.input.to,
+			};
 		}
 		const outcome = await dispatch(ctx, draft, args.input);
 		// Log reverts so an operator can see why a draft popped back to

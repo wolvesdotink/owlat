@@ -41,11 +41,11 @@ export const dispatchDraft = internalAction({
 	args: { draftId: v.id('mailDrafts'), undoToken: v.string() },
 	handler: async (ctx, args) => {
 		// Read the draft via the existing internalQuery surface. The
-		// state/from-binding/undoToken checks all move into the
-		// `transition({ to: 'sent' })` reducer where they're atomic with
-		// the cascade. We still need a read-side fetch here because the
-		// action has to build the RFC 5322 envelope from the draft body
-		// BEFORE it can call the lifecycle.
+		// state/from-binding/undoToken checks are repeated by every lifecycle
+		// transition below (each passes `expectedUndoToken`), atomic with its
+		// write. We still need a read-side fetch here because the action has
+		// to build the RFC 5322 envelope from the draft body BEFORE it can
+		// call the lifecycle.
 		const draft = (await ctx.runQuery(internal.mail.drafts.getInternal, {
 			draftId: args.draftId,
 		})) as DraftRow | null;
@@ -80,6 +80,7 @@ export const dispatchDraft = internalAction({
 				logError(`[Outbound] Aborting draft ${args.draftId}: ${err.message}`);
 				await ctx.runMutation(internal.mail.draftLifecycle.transition, {
 					draftId: args.draftId,
+					expectedUndoToken: args.undoToken,
 					input: {
 						to: 'draft',
 						at: Date.now(),
@@ -117,6 +118,7 @@ export const dispatchDraft = internalAction({
 			);
 			await ctx.runMutation(internal.mail.draftLifecycle.transition, {
 				draftId: args.draftId,
+				expectedUndoToken: args.undoToken,
 				input: {
 					to: 'draft',
 					at: Date.now(),
@@ -152,6 +154,7 @@ export const dispatchDraft = internalAction({
 			internal.mail.draftLifecycle.transition,
 			{
 				draftId: args.draftId,
+				expectedUndoToken: args.undoToken,
 				input: {
 					to: 'sent',
 					at: Date.now(),
@@ -180,6 +183,14 @@ export const dispatchDraft = internalAction({
 		);
 
 		if (!sentOutcome.ok) {
+			if (sentOutcome.reason === 'undo_token_mismatch') {
+				// The send this hop was scheduled for was withdrawn while the
+				// message was being built; the draft now belongs to another send
+				// (or to the composer), which this hop must leave alone.
+				logInfo(`[Outbound] Draft ${args.draftId} undoToken changed during dispatch; skipping`);
+				await ctx.storage.delete(rawStorageId).catch(() => {});
+				return;
+			}
 			if (sentOutcome.reason === 'from_revoked') {
 				// With send-as, the allow-set that refused belongs to the SENDING
 				// mailbox (the teammate's personal mailbox on a personal send-as),
@@ -194,6 +205,7 @@ export const dispatchDraft = internalAction({
 				await ctx.storage.delete(rawStorageId).catch(() => {});
 				await ctx.runMutation(internal.mail.draftLifecycle.transition, {
 					draftId: args.draftId,
+					expectedUndoToken: args.undoToken,
 					input: {
 						to: 'draft',
 						at: Date.now(),

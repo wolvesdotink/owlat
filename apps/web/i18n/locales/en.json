@@ -7356,6 +7356,55 @@
 			"zenMore": {
 				"hidden": "{count} more update in {inbox} waits outside Zen. | {count} more updates in {inbox} wait outside Zen.",
 				"show": "Show everything"
+			},
+			"upcoming": {
+				"title": "Upcoming",
+				"loadFailed": "Could not load what is coming up",
+				"when": {
+					"now": "Now",
+					"today": "{time}",
+					"tomorrow": "Tomorrow {time}",
+					"week": "{day} {time}",
+					"date": "{date}, {time}"
+				},
+				"noSubject": "(no subject)",
+				"send": {
+					"to": "Sends to {to}",
+					"toMany": "Sends to {to} and {count} other | Sends to {to} and {count} others",
+					"noRecipient": "Scheduled send, no recipient yet"
+				},
+				"snooze": {
+					"returns": "Returns from snooze · {from}",
+					"untilReply": "Returns from snooze, sooner if they reply · {from}"
+				},
+				"followUp": {
+					"waitingOn": "Reminder if {who} has not replied",
+					"anyone": "Reminder if nobody has replied"
+				},
+				"teamSnooze": "Team inbox · returns from snooze · {contact}",
+				"campaign": {
+					"title": "Campaign {name}",
+					"toAudience": "to {audience}",
+					"recipients": "{count} recipient | {count} recipients",
+					"countedAt": "Recipients counted {when}",
+					"local": "at {time} in each recipient's time zone",
+					"optimized": "at each recipient's usual reading time"
+				},
+				"actionsFor": "Scheduled send: {subject}",
+				"actions": {
+					"sendNow": "Send now",
+					"edit": "Edit",
+					"cancel": "Cancel"
+				},
+				"operations": {
+					"sendNow": "Send now",
+					"cancel": "Unschedule the send"
+				},
+				"noLongerScheduled": "That send is no longer scheduled.",
+				"sent": "Sending now.",
+				"cancelled": "Unscheduled. It is back in Drafts.",
+				"showMore": "Show more",
+				"moreThanShown": "More is scheduled than the Workbench lists."
 			}
 		},
 		"answer": {

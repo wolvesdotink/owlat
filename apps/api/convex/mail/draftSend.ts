@@ -198,6 +198,57 @@ export async function cancelScheduledSendHandler(
 }
 
 /**
+ * Send a scheduled draft now instead of at its time, in one transaction: the
+ * schedule is withdrawn (`scheduled → draft`, which drops the undo token the
+ * scheduled dispatch hop carries) and the ordinary send starts
+ * (`draft → pending_send` through {@link sendHandler}, with the same checks,
+ * attribution and undo window as Send). A send the checks refuse throws and
+ * rolls the withdrawal back with it, so the draft stays scheduled.
+ *
+ * The scheduled hop sends nothing afterwards: it compares its token on its
+ * first read and again in every lifecycle transition it commits, so a hop that
+ * was already building the message when Send now ran cannot take over the new
+ * send or cut its undo window short.
+ *
+ * A draft that is no longer scheduled — dispatched, cancelled, or already
+ * sent now by another tab — answers `{ ok: false }` and changes nothing, so a
+ * lost race never queues a second send. The plaintext consent given when the
+ * send was scheduled carries over: it was given for this send, and the
+ * dispatch checks it again after discovery as it does for every send. So does
+ * "send and mark done", with the cutoff chosen at scheduling time: the
+ * withdrawal clears both, so they are read from the scheduled row first.
+ */
+export async function sendScheduledNowHandler(
+	ctx: MutationCtx,
+	args: { draftId: Id<'mailDrafts'>; undoSendDelayMs?: number }
+): Promise<{ ok: false } | { ok: true; undoToken: string; sendAt: number }> {
+	const draft = await ctx.db.get(args.draftId);
+	if (!draft) return { ok: false };
+	const owned = await requireMailboxAccess(ctx, draft.mailboxId);
+	if (!owned.ok) throwForbidden('Draft not accessible');
+	if (draft.state !== 'scheduled') return { ok: false };
+
+	const withdrawn: DraftTransitionOutcome = await ctx.runMutation(
+		internal.mail.draftLifecycle.transition,
+		{
+			draftId: args.draftId,
+			input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
+		}
+	);
+	if (!withdrawn.ok) return { ok: false };
+
+	const sent = await sendHandler(ctx, {
+		draftId: args.draftId,
+		undoSendDelayMs: args.undoSendDelayMs,
+		allowUnsealed: draft.isUnsealedSendAllowed === true,
+		...(draft.doneOnSendAt !== undefined
+			? { afterSend: 'done' as const, afterSendChosenAt: draft.doneOnSendAt }
+			: {}),
+	});
+	return { ok: true, ...sent };
+}
+
+/**
  * When "send and mark done" was chosen, or `undefined` for a send that keeps
  * its conversation. Only a reply has a conversation to finish, so a new message
  * or a forward never carries it. The cutoff never lies in the server's future,

@@ -291,6 +291,9 @@ export const mailThreadsTables = {
 		// Backs the 1-minute follow-up sweep cron — range scan on
 		// followUpRemindAt <= now (lower-bounded gt(0) like the snooze sweep).
 		.index('by_follow_up_remind', ['followUpRemindAt'])
+		// Today's Upcoming band: one mailbox's armed follow-ups, soonest first
+		// (lower-bounded by now, which also skips the never-armed rows).
+		.index('by_mailbox_follow_up_remind', ['mailboxId', 'followUpRemindAt'])
 		// Backs the Reply Queue's "You're waiting on <name>" follow-up items —
 		// due watches per mailbox without a full-table scan.
 		.index('by_mailbox_follow_up_due', ['mailboxId', 'followUp.dueAt'])
