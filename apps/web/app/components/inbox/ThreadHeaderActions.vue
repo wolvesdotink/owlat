@@ -14,6 +14,7 @@
  * Presentation only: the page owns the data and the writes.
  */
 import type { AssignPopoverMember } from '~/components/inbox/AssignPopover.vue';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 const THREAD_STATUSES = ['open', 'waiting', 'resolved'] as const;
 type ThreadStatus = (typeof THREAD_STATUSES)[number];
@@ -40,6 +41,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const { ariaFor } = useShortcutLabels();
 
 const assignMenuOpen = ref(false);
 const statusMenuOpen = ref(false);
@@ -116,7 +118,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 			size="sm"
 			class="gap-1.5"
 			data-testid="thread-reply"
-			:aria-keyshortcuts="'r'"
+			:aria-keyshortcuts="ariaFor('inbox.reply')"
 			@click="emit('reply')"
 		>
 			<Icon name="lucide:reply" class="w-4 h-4" />

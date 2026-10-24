@@ -62,6 +62,7 @@ function onKeydown(event: KeyboardEvent) {
 	event.preventDefault();
 	open(id === 'postbox.next' ? nextId.value : previousId.value);
 }
+// oxlint-disable-next-line owlat/no-raw-keydown-listener -- resolves its step keys through the registry (postbox scope)
 onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 

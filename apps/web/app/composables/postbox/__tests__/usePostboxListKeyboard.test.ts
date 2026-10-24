@@ -6,6 +6,7 @@ import {
 	beginChord,
 	clearPendingChord,
 	resetShortcutPreferences,
+	resolveActiveChord,
 } from '~/utils/shortcutScope';
 
 function key(k: string) {
@@ -255,5 +256,31 @@ describe('usePostboxListKeyboard', () => {
 		clearPendingChord();
 		onKeydown(key('s'));
 		expect(actions).toEqual(['s']);
+	});
+
+	it('answers the Team inbox list from its own scope, assign included', () => {
+		applyShortcutPreferences('owlat', [
+			// A Postbox remap leaves the Team inbox list alone.
+			{ id: 'postbox.next', keys: ['n'] },
+			{ id: 'inboxList.assignToMe', keys: ['y'] },
+		]);
+		const items = ref([{ _id: 'a' }, { _id: 'b' }]);
+		const assigned: string[] = [];
+		const { focusedIndex, onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('open'),
+			rowDomId: (m) => `row-${m._id}`,
+			scope: 'inboxList',
+			onActivate: () => {},
+			onAction: (k, m) => {
+				if (resolveActiveChord(k, ['inboxList']) === 'inboxList.assignToMe') assigned.push(m._id);
+			},
+		});
+		onKeydown(key('j'));
+		expect(focusedIndex.value).toBe(0);
+		onKeydown(key('i'));
+		expect(assigned).toEqual([]);
+		onKeydown(key('y'));
+		expect(assigned).toEqual(['a']);
 	});
 });
