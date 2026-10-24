@@ -49,12 +49,24 @@ describe('createTarGz', () => {
 			'a//b',
 			'a b',
 			'x'.repeat(100),
+			`a/${'x'.repeat(100)}`,
+			`${'p'.repeat(155)}/x`,
 			'',
 		]) {
 			expect(isSafeTarName(name)).toBe(false);
 			expect(() => createTarGz([{ name, content: '' }], new Date(0))).toThrow(/unsafe/);
 		}
 		expect(isSafeTarName('owlat-support-20261024T100000Z/logs/convex.ndjson')).toBe(true);
+	});
+
+	it('splits a path longer than the name field into the ustar prefix', () => {
+		// The longest member a bundle writes: a 64-character compose service name.
+		const service = `s${'x'.repeat(63)}`;
+		const name = `owlat-support-20261024T100000Z/logs/${service}.ndjson`;
+		expect(name.length).toBeGreaterThan(100);
+		expect(isSafeTarName(name)).toBe(true);
+		const dir = extract(createTarGz([{ name, content: 'line\n' }], new Date(0)));
+		expect(readFileSync(join(dir, name), 'utf8')).toBe('line\n');
 	});
 
 	it('refuses a duplicate member', () => {

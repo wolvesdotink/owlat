@@ -85,6 +85,12 @@ export interface CollectDoctorOptions {
 	 * the support bundle turns it off and reports the stored verdict.
 	 */
 	recheckIdentity?: boolean;
+	/**
+	 * Keep only the code-owned text of each message (default false). The support
+	 * bundle sets it: runtime text such as an MTA headline or an IP-audit note
+	 * can carry personal data that doctor's known-secret pass cannot recognise.
+	 */
+	codeOwnedMessages?: boolean;
 }
 
 /**
@@ -99,6 +105,7 @@ export async function collectDoctorReport(
 	options: CollectDoctorOptions = {}
 ): Promise<DoctorReport> {
 	const report = new DoctorReportBuilder(onCheck);
+	if (options.codeOwnedMessages === true) report.withholdRuntimeText();
 
 	const envPath = join(owlatDir, '.env');
 	const envPresent = existsSync(envPath);

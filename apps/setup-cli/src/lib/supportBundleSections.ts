@@ -103,24 +103,21 @@ export function projectComposeServices(
 const DOCTOR_SUBJECT = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 /**
- * The `doctor --json` report, with what doctor's own redaction does not
- * cover: doctor removes `.env` secrets, but a message can quote an MTA headline
- * or a configured address. Every embedded address is de-identified, and a
- * subject that is not an identifier (env key, IP, service) becomes a digest.
+ * The doctor report as the bundle collects it: `collectDoctorReport` with
+ * `codeOwnedMessages`, so each message is already reduced to code-owned text
+ * with every run of runtime text (MTA answers, docker status lines, error
+ * messages) replaced by `[redacted]`. Here, on top of that, a subject is kept
+ * only when it is an identifier (env key, IP, service) and dropped otherwise,
+ * and an email-shaped string left in a message (a code-owned path or key name
+ * never holds one) is still de-identified.
  */
 export function projectDoctorReport(report: DoctorReport): DoctorReport {
 	return {
 		...report,
 		activeFeatures: report.activeFeatures.filter((feature) => DOCTOR_SUBJECT.test(feature)),
-		checks: report.checks.map((check) => ({
+		checks: report.checks.map(({ subject, ...check }) => ({
 			...check,
-			...(check.subject !== undefined
-				? {
-						subject: DOCTOR_SUBJECT.test(check.subject)
-							? check.subject
-							: redactEmailAddress(check.subject),
-					}
-				: {}),
+			...(subject !== undefined && DOCTOR_SUBJECT.test(subject) ? { subject } : {}),
 			message: check.message.replace(EMBEDDED_ADDRESS, (address) => redactEmailAddress(address)),
 		})),
 	};

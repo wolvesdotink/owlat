@@ -114,14 +114,14 @@ describe('projectDoctorReport', () => {
 		],
 	};
 
-	it('de-identifies embedded addresses and replaces a subject that is not an identifier', () => {
+	it('de-identifies embedded addresses and drops a subject that is not an identifier', () => {
 		const projected = projectDoctorReport(report);
 		const text = JSON.stringify(projected);
 		expect(text).not.toContain('postmaster');
 		expect(text).not.toContain('marcel');
 		expect(projected.checks[0]!.subject).toBe('192.0.2.10');
 		expect(projected.checks[0]!.message).toMatch(/redacted-[0-9a-f]{12}@example\.net/);
-		expect(projected.checks[1]!.subject).toMatch(/^redacted-[0-9a-f]{12}@example\.com$/);
+		expect(projected.checks[1]).not.toHaveProperty('subject');
 		expect(projected.summary).toEqual(report.summary);
 	});
 });

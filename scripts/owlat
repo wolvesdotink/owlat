@@ -818,20 +818,32 @@ case "$cmd" in
 	support-bundle)
 		# One archive for a bug report, collected read-only by the setup image:
 		# it needs the Docker socket (compose ps/logs, and the migration read
-		# through the convex-deploy image) and this stack's project name and
-		# profiles, so the in-container compose sees THIS stack. The archive
-		# comes back on stdout and is written here, so --output can be any host
-		# path; it is created owner-only and removed again if collection fails.
+		# through the convex-deploy image), this stack's project name and
+		# profiles, so the in-container compose sees THIS stack, and the stack's
+		# default network, where doctor's MTA probes resolve MTA_API_URL
+		# (`http://mta:3100`). The archive comes back on stdout and is written
+		# here, so --output can be any host path.
+		bundle_usage="Usage: owlat support-bundle [--lines N] [--output FILE]"
 		bundle_out=""
 		bundle_args=()
 		while [[ $# -gt 0 ]]; do
 			case "$1" in
-				--output|-o)
-					bundle_out="${2:-}"
-					shift 2 || shift
+				--output|-o|--lines)
+					# A missing value is a malformed command line, not a request for
+					# the default.
+					if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+						printf '%s\n' "Error: $1 needs a value." "$bundle_usage" >&2
+						exit 2
+					fi
+					if [[ "$1" == "--lines" ]]; then bundle_args+=("$1" "$2"); else bundle_out="$2"; fi
+					shift 2
 					;;
 				--output=*)
 					bundle_out="${1#*=}"
+					if [[ -z "$bundle_out" ]]; then
+						printf '%s\n' "Error: --output needs a value." "$bundle_usage" >&2
+						exit 2
+					fi
 					shift
 					;;
 				*)
@@ -847,32 +859,66 @@ case "$cmd" in
 		fi
 		[[ -n "$bundle_out" ]] || bundle_out="owlat-support-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
 		[[ "$bundle_out" == /* ]] || bundle_out="$OWLAT_CALLER_PWD/$bundle_out"
-		if [[ -e "$bundle_out" ]]; then
+		if [[ -e "$bundle_out" || -L "$bundle_out" ]]; then
 			echo "Error: $bundle_out already exists; choose another --output." >&2
 			exit 1
 		fi
-		bundle_partial="$bundle_out.partial"
-		if ! (umask 077 && : >"$bundle_partial"); then
+		# The archive is written to a temp file beside the output: mktemp creates
+		# it exclusively, owner-only, under a random name, so nothing that already
+		# exists (a file or a symlink) is ever written through. It is opened once
+		# as fd 3, checked to still be that file, and removed on every exit.
+		bundle_tmp=""
+		trap 'exec 3>&-; [[ -z "$bundle_tmp" ]] || rm -f -- "$bundle_tmp"' EXIT
+		trap 'exit 129' HUP
+		trap 'exit 130' INT
+		trap 'exit 143' TERM
+		if ! bundle_tmp="$(mktemp "$(dirname -- "$bundle_out")/.owlat-support.XXXXXXXXXX" 2>/dev/null)" \
+			|| ! exec 3>>"$bundle_tmp" \
+			|| [[ -L "$bundle_tmp" ]] || ! [[ "$bundle_tmp" -ef /dev/fd/3 ]]; then
 			echo "Error: cannot write $bundle_out." >&2
 			exit 1
 		fi
 		export_compose_profiles
 		project_name="$(compose_project_name)"
+		bundle_network=""
+		if [[ -n "$project_name" ]]; then
+			# Compose labels the network it created as the project's `default`,
+			# whatever name it was given. None while the stack is down: the MTA is
+			# then unreachable from anywhere and doctor reports exactly that.
+			bundle_network="$(docker network ls \
+				--filter "label=com.docker.compose.project=$project_name" \
+				--filter "label=com.docker.compose.network=default" \
+				--format '{{.Name}}' 2>/dev/null | sed -n 1p)" || bundle_network=""
+		fi
 		bundle_status=0
 		docker run --rm \
+			${bundle_network:+--network "$bundle_network"} \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			-v /var/run/docker.sock:/var/run/docker.sock \
 			-e "OWLAT_DIR=/opt/owlat" \
 			${project_name:+-e "COMPOSE_PROJECT_NAME=$project_name"} \
 			${COMPOSE_PROFILES:+-e "COMPOSE_PROFILES=$COMPOSE_PROFILES"} \
 			"$OWLAT_SETUP_IMAGE" support-bundle --output - ${bundle_args[@]+"${bundle_args[@]}"} \
-			>"$bundle_partial" || bundle_status=$?
+			>&3 || bundle_status=$?
+		exec 3>&-
 		if [[ "$bundle_status" -ne 0 ]]; then
-			rm -f -- "$bundle_partial"
 			echo "Error: the support bundle could not be collected (see above)." >&2
 			exit "$bundle_status"
 		fi
-		mv -f -- "$bundle_partial" "$bundle_out"
+		# Published with a hard link: link(2) never replaces an existing path, so
+		# a file created at the output while the bundle was collected is kept and
+		# this run fails instead. The -ef check catches a directory that appeared
+		# there (ln would have linked into it).
+		if ! ln -- "$bundle_tmp" "$bundle_out" 2>/dev/null || ! [[ "$bundle_tmp" -ef "$bundle_out" ]]; then
+			bundle_stray="$bundle_out/$(basename -- "$bundle_tmp")"
+			if [[ "$bundle_stray" -ef "$bundle_tmp" ]]; then rm -f -- "$bundle_stray"; fi
+			if [[ -e "$bundle_out" || -L "$bundle_out" ]]; then
+				echo "Error: $bundle_out was created while the bundle was collected; nothing was written." >&2
+			else
+				echo "Error: cannot write $bundle_out." >&2
+			fi
+			exit 1
+		fi
 		printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Support bundle written to $bundle_out"
 		;;
 	shell|exec)

@@ -20,9 +20,10 @@
  * the archive can land anywhere on the host, not only under the install dir.
  */
 
+import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { link, readFile, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join, resolve } from 'node:path';
 import { parseComposePs } from '@owlat/shared/containerHealth';
 import { readEnv, type EnvMap } from '../lib/env';
 import { parseArgv } from '../lib/argv';
@@ -126,7 +127,8 @@ export async function collectSupportBundle(
 	const envPath = join(owlatDir, '.env');
 	const env: EnvMap = existsSync(envPath) ? await readEnv(envPath).catch(() => ({})) : {};
 
-	// Doctor, minus the MTA identity recheck (a write on the MTA's side).
+	// Doctor, minus the MTA identity recheck (a write on the MTA's side), with
+	// every message reduced to its code-owned text.
 	io.log('Collecting the doctor report…');
 	try {
 		const report = await collectDoctorReport(
@@ -146,7 +148,7 @@ export async function collectSupportBundle(
 				print: () => {},
 			},
 			undefined,
-			{ recheckIdentity: false }
+			{ recheckIdentity: false, codeOwnedMessages: true }
 		);
 		sections['doctor'] = { status: 'ok' };
 		add('doctor.json', sectionFile(sections['doctor'], { report: projectDoctorReport(report) }));
@@ -311,7 +313,7 @@ export async function collectSupportBundle(
 		logs,
 		skippedServices,
 		redaction:
-			'Allowlist projection: log lines keep level, event name, error class/code, HTTP status, duration, length and a digest of the message; message text, addresses, subjects, stacks and unknown fields are dropped. Doctor messages are redacted for .env secrets and email addresses. Migration and rollout sections carry states, counts and timestamps, never error text.',
+			'Allowlist projection: log lines keep level, event name, error class/code, HTTP status, duration, length and a digest of the message; message text, addresses, subjects, stacks and unknown fields are dropped. Doctor checks keep id, subject (identifiers only), status and remediation, and their message keeps only code-owned text: runtime text such as MTA answers is replaced by [redacted]. Migration and rollout sections carry states, counts and timestamps, never error text.',
 	};
 	return {
 		root,
@@ -332,6 +334,11 @@ interface ParsedOptions {
 export function parseSupportBundleArgs(args: readonly string[]): ParsedOptions | { error: string } {
 	const { values, positional } = parseArgv(args);
 	if (positional.length > 0) return { error: `Unexpected argument: ${positional[0]}` };
+	// `parseArgv` leaves out an option whose value is missing (`--output` last);
+	// that is a malformed command line, not a request for the default.
+	for (const option of ['--lines', '--output']) {
+		if (args.includes(option) && !values.has(option)) return { error: `${option} needs a value` };
+	}
 	const linesValue = values.get('--lines');
 	let lines = DEFAULT_LOG_LINES;
 	if (linesValue !== undefined) {
@@ -346,15 +353,23 @@ export function parseSupportBundleArgs(args: readonly string[]): ParsedOptions |
 	return { lines, output };
 }
 
-/** Write `data` to `path` owner-only, never leaving a partial file behind. */
+/**
+ * Write `data` to `path` owner-only, never leaving a partial file behind and
+ * never replacing a file: the archive goes to a fresh private temp file
+ * beside `path` (created exclusively, so an existing file or symlink there is
+ * refused) and is published with `link`, which fails with EEXIST when
+ * something created `path` while the bundle was being collected.
+ */
 async function writeArchive(path: string, data: Uint8Array): Promise<void> {
-	const partial = `${path}.partial-${process.pid}`;
+	const partial = join(
+		dirname(path),
+		`.${basename(path)}.${randomBytes(6).toString('hex')}.partial`
+	);
 	try {
 		await writeFile(partial, data, { mode: 0o600, flag: 'wx' });
-		await rename(partial, path);
-	} catch (error) {
+		await link(partial, path);
+	} finally {
 		await rm(partial, { force: true });
-		throw error;
 	}
 }
 
@@ -387,8 +402,15 @@ export async function runSupportBundle(
 		io
 	);
 	const archive = createTarGz(bundle.entries, io.now());
-	if (target) await writeArchive(target, archive);
-	else await io.writeStdout(archive);
+	if (target) {
+		try {
+			await writeArchive(target, archive);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+			io.log(`Error: ${target} was created while the bundle was collected; nothing was written.`);
+			return 1;
+		}
+	} else await io.writeStdout(archive);
 
 	for (const [name, result] of Object.entries(bundle.sections)) {
 		io.log(`  ${name}: ${result.status}${result.reason ? ` (${result.reason})` : ''}`);

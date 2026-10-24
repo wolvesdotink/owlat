@@ -40,6 +40,13 @@ describe('doctor text — trusted and untrusted parts', () => {
 		expect(text.render(() => 'X')).toBe('SMTP_RELAY_HOST saw 3 rows: X');
 		expect(String(text)).toBe('SMTP_RELAY_HOST saw 3 rows: SMTP down');
 	});
+
+	it('keeps only the code-owned text, one marker per run of runtime parts', () => {
+		const text = doctorText`IP audit for ${'192.0.2.10'}: ${'Invoice 4012 belongs to Alice Smith'}${' more'}${trusted(' (low confidence)')} after ${2} tries${''}`;
+		expect(text.codeOwned()).toBe(
+			'IP audit for [redacted]: [redacted] (low confidence) after 2 tries'
+		);
+	});
 });
 
 describe('doctor text — known-secret pass', () => {

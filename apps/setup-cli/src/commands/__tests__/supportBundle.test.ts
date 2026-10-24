@@ -423,6 +423,9 @@ describe('runSupportBundle', () => {
 			[['--lines', 'all'], /whole number/],
 			[['--lines', '-5'], /whole number/],
 			[['--output='], /needs a file path/],
+			[['--lines'], /--lines needs a value/],
+			[['--output'], /--output needs a value/],
+			[['--lines', '5', '--output'], /--output needs a value/],
 			[['extra'], /Unexpected argument/],
 			[['--output', existing], /already exists/],
 		];
@@ -444,5 +447,77 @@ describe('runSupportBundle', () => {
 			runSupportBundle({ owlatDir, args: ['--output', target], cliVersion: '0.6.16' }, fakeIo())
 		).rejects.toThrow();
 		expect(readdirSync(outDir)).toEqual([]);
+	});
+
+	it('never replaces an output that appears while the bundle is collected', async () => {
+		const owlatDir = install();
+		const outDir = tempDir('out-');
+		const target = join(outDir, 'bundle.tar.gz');
+		const io = fakeIo({
+			'compose logs': (args) => {
+				writeFileSync(target, 'created meanwhile');
+				return { output: logLines(args[args.length - 1]!, 2) };
+			},
+		});
+		expect(
+			await runSupportBundle({ owlatDir, args: ['--output', target], cliVersion: '0.6.16' }, io)
+		).toBe(1);
+		expect(io.stderr.join('\n')).toMatch(/was created while the bundle was collected/);
+		expect(readFileSync(target, 'utf8')).toBe('created meanwhile');
+		expect(readdirSync(outDir)).toEqual(['bundle.tar.gz']);
+	});
+
+	it('keeps only code-owned doctor text, whatever the MTA answers', async () => {
+		vi.stubGlobal('fetch', async (url: string) => {
+			if (url.endsWith('/ip-audit')) {
+				return Response.json({
+					audits: [
+						{
+							ip: '192.0.2.10',
+							verdict: 'unusable',
+							headline: 'Invoice 4012 belongs to Alice Smith',
+							nextAction: 'Call Alice Smith on +1 555 0100.',
+							delisting: [{ label: 'Alice list', removalUrl: 'https://example.com/alice' }],
+						},
+					],
+				});
+			}
+			return Response.json({ status: 'ok' });
+		});
+		const owlatDir = install();
+		const out = join(tempDir('out-'), 'bundle.tar.gz');
+		expect(
+			await runSupportBundle({ owlatDir, args: ['--output', out], cliVersion: '0.6.16' }, fakeIo())
+		).toBe(0);
+		const files = extract(out);
+		const audit = json(files, 'doctor.json').report.checks.find(
+			(check: { id: string }) => check.id === 'mta.ip_audit'
+		);
+		expect(audit).toMatchObject({
+			subject: '192.0.2.10',
+			status: 'fail',
+			remediation: 'replace_or_delist_ip',
+			message: 'IP audit for [redacted]: [redacted]',
+		});
+		for (const needle of ['Alice', 'Invoice 4012', '555 0100', 'example.com/alice']) {
+			expect(JSON.stringify(files)).not.toContain(needle);
+		}
+	});
+
+	it('archives the logs of a service with the longest name compose allows', async () => {
+		const service = `s${'x'.repeat(63)}`;
+		const owlatDir = install();
+		const out = join(tempDir('out-'), 'bundle.tar.gz');
+		const io = fakeIo({
+			'compose ps --all --format json': {
+				output: JSON.stringify({ ...PS_ROWS[0], Service: service }),
+			},
+		});
+		expect(
+			await runSupportBundle({ owlatDir, args: ['--output', out], cliVersion: '0.6.16' }, io)
+		).toBe(0);
+		const files = extract(out);
+		expect(files[`${root}/logs/${service}.ndjson`]).toBeDefined();
+		expect(json(files, 'manifest.json').logs).toMatchObject([{ service, status: 'ok' }]);
 	});
 });

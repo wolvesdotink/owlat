@@ -16,6 +16,7 @@ import {
 	realpath,
 	rm,
 	stat,
+	symlink,
 	writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -35,18 +36,24 @@ afterAll(async () => {
 
 // Answers:
 //   compose config               → a rendered config naming the project
+//   network ls …                 → $STUB_NETWORK (default owlat-test_default)
 //   run … --help                 → $STUB_SETUP_HELP (default lists support-bundle)
-//   run … support-bundle …       → FAKE-ARCHIVE on stdout, exit $STUB_BUNDLE_EXIT
+//   run … support-bundle …       → FAKE-ARCHIVE on stdout, exit $STUB_BUNDLE_EXIT;
+//                                  first creates $STUB_CREATE if set, and sends
+//                                  the wrapper $STUB_SIGNAL if set
 const STUB_DOCKER = `#!/bin/sh
 printf '%s | profiles=%s project=%s\\n' "$*" "\${COMPOSE_PROFILES-<unset>}" "\${COMPOSE_PROJECT_NAME-<unset>}" >> "$STUB_LOG"
 case "$*" in
 	"compose config") printf 'name: owlat-test\\nservices: {}\\n' ;;
+	network\\ ls*) printf '%s\\n' "\${STUB_NETWORK-owlat-test_default}" ;;
 	run\\ *--help)
 		printf '%s\\n' "\${STUB_SETUP_HELP-  support-bundle [--lines N] [--output FILE|-]}"
 		;;
 	run\\ *support-bundle*)
+		[ -z "\${STUB_CREATE-}" ] || printf 'created meanwhile' > "$STUB_CREATE"
 		printf 'FAKE-ARCHIVE'
 		echo "collector progress" >&2
+		[ -z "\${STUB_SIGNAL-}" ] || kill -"$STUB_SIGNAL" "$PPID"
 		exit "\${STUB_BUNDLE_EXIT:-0}" ;;
 esac
 exit 0
@@ -126,10 +133,76 @@ describe('owlat support-bundle', () => {
 		expect(ok.stdout).toContain(`Support bundle written to ${target}`);
 
 		const collector = (await install.calls()).find((call) => call.includes(' support-bundle '));
+		expect(collector).toContain('run --rm --network owlat-test_default -v');
 		expect(collector).toContain('-v /var/run/docker.sock:/var/run/docker.sock');
 		expect(collector).toContain('-e COMPOSE_PROJECT_NAME=owlat-test');
 		expect(collector).toContain('-e COMPOSE_PROFILES=mta');
 		expect(collector).toContain('setup-image:test support-bundle --output - --lines 50 |');
+		expect(await install.calls()).toContain(
+			'network ls --filter label=com.docker.compose.project=owlat-test --filter label=com.docker.compose.network=default --format {{.Name}} | profiles=mta project=<unset>'
+		);
+	});
+
+	it('runs on the default bridge when the stack has no network yet', async () => {
+		const install = await makeInstall();
+		const result = await install.invoke(['support-bundle', '-o', 'bundle.tar.gz'], {
+			STUB_NETWORK: '',
+		});
+		expect(result.code, result.stderr).toBe(0);
+		const collector = (await install.calls()).find((call) => call.includes(' support-bundle '));
+		expect(collector).not.toContain('--network');
+	});
+
+	it('never writes through a file or symlink already beside the output', async () => {
+		const install = await makeInstall();
+		const sentinel = join(install.caller, 'sentinel');
+		await writeFile(sentinel, 'untouched');
+		await symlink(sentinel, join(install.caller, 'bundle.tar.gz.partial'));
+		await writeFile(join(install.caller, 'bundle.tar.gz.partial-1'), 'open', { mode: 0o644 });
+		const result = await install.invoke(['support-bundle', '-o', 'bundle.tar.gz']);
+		expect(result.code, result.stderr).toBe(0);
+		expect(await readFile(sentinel, 'utf8')).toBe('untouched');
+		const target = join(install.caller, 'bundle.tar.gz');
+		expect(await readFile(target, 'utf8')).toBe('FAKE-ARCHIVE');
+		expect((await stat(target)).mode & 0o777).toBe(0o600);
+		expect((await readdir(install.caller)).sort()).toEqual([
+			'bundle.tar.gz',
+			'bundle.tar.gz.partial',
+			'bundle.tar.gz.partial-1',
+			'sentinel',
+		]);
+	});
+
+	it('keeps an output created while the bundle was collected', async () => {
+		const install = await makeInstall();
+		const target = join(install.caller, 'bundle.tar.gz');
+		const result = await install.invoke(['support-bundle', '-o', 'bundle.tar.gz'], {
+			STUB_CREATE: target,
+		});
+		expect(result.code).toBe(1);
+		expect(result.stderr).toContain('was created while the bundle was collected');
+		expect(await readFile(target, 'utf8')).toBe('created meanwhile');
+		expect(await readdir(install.caller)).toEqual(['bundle.tar.gz']);
+	});
+
+	it('removes the temp file when interrupted', async () => {
+		const install = await makeInstall();
+		const result = await install.invoke(['support-bundle', '-o', 'bundle.tar.gz'], {
+			STUB_SIGNAL: 'TERM',
+		});
+		expect(result.code).toBe(143);
+		expect(await readdir(install.caller)).toEqual([]);
+	});
+
+	it('refuses an option without its value before collecting anything', async () => {
+		for (const args of [['--output'], ['-o'], ['--lines'], ['--output='], ['-o', '--lines', '5']]) {
+			const install = await makeInstall();
+			const result = await install.invoke(['support-bundle', ...args]);
+			expect(result.code, args.join(' ')).toBe(2);
+			expect(result.stderr).toContain('needs a value');
+			expect(await readdir(install.caller)).toEqual([]);
+			expect(await install.calls()).toEqual([]);
+		}
 	});
 
 	it('names the archive after the time, in the directory the operator ran it from', async () => {

@@ -17,16 +17,32 @@ export interface TarEntry {
 }
 
 const BLOCK = 512;
-/** ustar's name field; longer names would need the prefix field or a pax header. */
-const MAX_NAME = 99;
+/** ustar's name field, and the prefix field a longer path is split into (each NUL-terminated here). */
+const NAME_FIELD = 99;
+const PREFIX_FIELD = 154;
 const SAFE_NAME = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+
+/**
+ * The ustar `prefix` and `name` fields for a member path: a path that does not
+ * fit the name field is split at a `/` into a prefix and the rest, as ustar
+ * readers join them back with a `/`. Null when no split fits both fields.
+ */
+function splitName(name: string): { prefix: string; name: string } | null {
+	if (name.length <= NAME_FIELD) return { prefix: '', name };
+	for (let slash = name.indexOf('/'); slash !== -1; slash = name.indexOf('/', slash + 1)) {
+		if (slash > PREFIX_FIELD) break;
+		const rest = name.slice(slash + 1);
+		if (rest.length <= NAME_FIELD) return { prefix: name.slice(0, slash), name: rest };
+	}
+	return null;
+}
 
 /** Whether `name` is a member name this writer accepts. */
 export function isSafeTarName(name: string): boolean {
 	return (
-		name.length <= MAX_NAME &&
 		SAFE_NAME.test(name) &&
-		!name.split('/').some((part) => part === '.' || part === '..')
+		!name.split('/').some((part) => part === '.' || part === '..') &&
+		splitName(name) !== null
 	);
 }
 
@@ -39,7 +55,8 @@ function writeOctal(header: Uint8Array, offset: number, length: number, value: n
 	writeString(header, offset, length, `${value.toString(8).padStart(length - 1, '0')}\0`);
 }
 
-function headerFor(name: string, size: number, mtimeSeconds: number): Uint8Array {
+function headerFor(path: string, size: number, mtimeSeconds: number): Uint8Array {
+	const { prefix, name } = splitName(path)!;
 	const header = new Uint8Array(BLOCK);
 	writeString(header, 0, 100, name);
 	writeOctal(header, 100, 8, 0o600);
@@ -52,6 +69,7 @@ function headerFor(name: string, size: number, mtimeSeconds: number): Uint8Array
 	header[156] = 0x30; // typeflag '0': regular file
 	writeString(header, 257, 6, 'ustar\0');
 	writeString(header, 263, 2, '00');
+	writeString(header, 345, 155, prefix);
 	let sum = 0;
 	for (const byte of header) sum += byte;
 	writeString(header, 148, 8, `${sum.toString(8).padStart(6, '0')}\0 `);
