@@ -168,7 +168,9 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 						</select>
 					</div>
 					<div>
-						<label class="label">{{ t('components.contacts.relationshipsTab.confidence') }}</label>
+						<label class="label">{{
+							t('components.contacts.relationshipsTab.confidence')
+						}}</label>
 						<div class="flex items-center gap-2">
 							<input
 								v-model.number="addForm.confidence"

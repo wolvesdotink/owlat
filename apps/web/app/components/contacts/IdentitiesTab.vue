@@ -84,9 +84,7 @@ const identifierPlaceholder = computed(() => {
 				</h2>
 				<UiButton variant="secondary" size="sm" class="gap-1" @click="showAddForm = !showAddForm">
 					<Icon :name="showAddForm ? 'lucide:x' : 'lucide:plus'" class="w-3 h-3" />
-					{{
-						showAddForm ? t('common.cancel') : t('components.contacts.identitiesTab.addIdentity')
-					}}
+					{{ showAddForm ? t('common.cancel') : t('components.contacts.identitiesTab.addIdentity') }}
 				</UiButton>
 			</div>
 
@@ -173,10 +171,7 @@ const identifierPlaceholder = computed(() => {
 						<p class="text-xs text-text-tertiary">{{ t(getChannelLabel(identity.channel)) }}</p>
 					</div>
 					<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-						<UiTooltip
-							v-if="!identity.verifiedAt"
-							:text="t('components.contacts.identitiesTab.markVerified')"
-						>
+						<UiTooltip v-if="!identity.verifiedAt" :text="t('components.contacts.identitiesTab.markVerified')">
 							<button
 								class="p-1.5 rounded text-text-tertiary hover:text-success hover:bg-success-subtle transition-colors"
 								:aria-label="t('components.contacts.identitiesTab.markVerified')"

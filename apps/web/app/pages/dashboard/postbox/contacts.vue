@@ -330,5 +330,6 @@ function initial(c: { displayName?: string; email: string }) {
 				</div>
 			</form>
 		</UiModal>
+
 	</div>
 </template>

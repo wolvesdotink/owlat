@@ -76,6 +76,12 @@ describe('z-index layers', () => {
 		);
 	});
 
+	it('tooltips sit above every other layer, toasts included', () => {
+		const tooltip = classLayer(read('packages/ui/components/ui/Tooltip.vue'), "'ui-tooltip fixed");
+		expect(tooltip).toBe(layer('tooltip'));
+		expect(Math.max(...layers.values())).toBe(tooltip);
+	});
+
 	it('no modal raises itself above the toast stack', () => {
 		const toast = layer('toast');
 		const raised = ['apps/web/app', 'packages/ui/components', 'packages/email-builder/src']
