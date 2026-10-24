@@ -455,6 +455,65 @@ jobs:
         continue-on-error: true
         run: bun scripts/report-bundle-closures.ts "$RUNNER_TEMP/web-output"
 
+      # Report-only: the same report as JSON, kept as an artifact named by the
+      # commit, so a later pull request can compare against its exact base
+      # commit. The toolchain id names the image recipe the build ran in.
+      - name: Record the web bundle report
+        if: matrix.name == 'web'
+        continue-on-error: true
+        env:
+          BUNDLE_REPORT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          BUNDLE_REPORT_TOOLCHAIN="bun-$(bun --version)+web-dockerfile-$(sha256sum apps/web/Dockerfile | cut -c1-12)"
+          export BUNDLE_REPORT_TOOLCHAIN
+          mkdir -p "$RUNNER_TEMP/web-bundle"
+          bun scripts/report-bundle-closures.ts "$RUNNER_TEMP/web-output" --json > "$RUNNER_TEMP/web-bundle/report.json"
+
+      - name: Keep the web bundle report
+        if: matrix.name == 'web'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: web-bundle-${{ github.sha }}
+          path: ${{ runner.temp }}/web-bundle/report.json
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 30
+
+      # Delta and headroom against the base commit (a pull request's base, or
+      # the previous tip for a push), in the job summary. Only the base
+      # commit's own kept report is compared; without one the summary says so
+      # and gives no delta. The entry budget above stays the blocking check.
+      - name: Compare the web entry bundle with the base commit
+        if: matrix.name == 'web'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -uo pipefail
+          report="$RUNNER_TEMP/web-bundle/report.json"
+          base_dir="$RUNNER_TEMP/web-bundle-base"
+          reason=""
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            reason="This run has no base commit to compare with."
+          else
+            id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=web-bundle-$BASE_SHA&per_page=20" \
+              --jq '[.artifacts[] | select(.expired == false and .workflow_run.head_sha == env.BASE_SHA)][0].id // empty' || true)
+            if [ -z "$id" ]; then
+              reason="No report was kept for the base commit: its run may still be in progress, may have failed before the report, or the report expired."
+            elif ! { gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/web-bundle-base.zip" \
+              && unzip -q -o "$RUNNER_TEMP/web-bundle-base.zip" -d "$base_dir"; }; then
+              reason="The base commit's report could not be downloaded."
+            fi
+          fi
+          if [ -n "$reason" ]; then
+            bun scripts/report-bundle-delta.ts "$report" --base-sha "$BASE_SHA" --unavailable "$reason"
+          else
+            bun scripts/report-bundle-delta.ts "$report" "$base_dir/report.json" --base-sha "$BASE_SHA"
+          fi
+
       - name: Smoke-test packaged Node runtime
         if: matrix.runtimeSmoke == true
         run: |
