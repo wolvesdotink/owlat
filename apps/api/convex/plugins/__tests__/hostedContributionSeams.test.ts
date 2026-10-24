@@ -30,7 +30,10 @@ vi.mock('../../agent/steps/catalog', () => ({
 			: undefined,
 }));
 
-vi.mock('../../automations/steps/catalog', () => ({
+// Partial: the schema's automation tables (reached through lib/tenantTables)
+// read the real step-kind validator from this module at load time.
+vi.mock('../../automations/steps/catalog', async (importOriginal) => ({
+	...(await importOriginal<typeof import('../../automations/steps/catalog')>()),
 	pluginStepCatalogEntry: (kind: string) =>
 		kind === 'plugin.deliverability.notify'
 			? {
