@@ -18,7 +18,16 @@
  *    on the way to the device land there, and when they sign in again their
  *    copy loads only after those have.
  */
-import { shallowRef, watch, effectScope, computed, type WritableComputedRef } from 'vue';
+import {
+	shallowRef,
+	watch,
+	effectScope,
+	computed,
+	getCurrentScope,
+	onScopeDispose,
+	type WritableComputedRef,
+} from 'vue';
+import { registerReloadBlocker } from '~/lib/reloadBlockers';
 import {
 	composerDraftHasContent,
 	composerDraftKey,
@@ -74,14 +83,27 @@ export function createComposerDraftBook(
 	const known = new Map<string, StoredComposerDraft>();
 	const queued = new Map<string, DeviceOp[]>();
 	const writing = new Map<string, Promise<void>>();
+	/**
+	 * By storage key: text the book holds whose newest value did not commit on
+	 * the device (a failed write, or a device without IndexedDB). A reload
+	 * would lose it.
+	 */
+	const unstored = new Set<string>();
 
 	async function apply(key: string, op: DeviceOp): Promise<void> {
 		if ('offBook' in op) {
 			await op.offBook();
 		} else if (op.put) {
+			// Marked first, so a write that throws still counts as not stored.
+			unstored.add(key);
 			const stored = await store().write(key, op.put, now());
-			if (stored) known.set(key, stored);
+			if (stored) {
+				known.set(key, stored);
+				unstored.delete(key);
+			}
 		} else {
+			// A cleared draft leaves nothing for a reload to lose.
+			unstored.delete(key);
 			// Only what this page saw there goes. A device copy it never read
 			// was saved by another tab (or after this one loaded) and stays;
 			// before the load, the person's clear wins over a copy not yet shown.
@@ -222,6 +244,17 @@ export function createComposerDraftBook(
 			ready.value = next === null;
 			if (next) hydration = hydrate(next, generation);
 		},
+		/**
+		 * Text of the signed-in person that exists only in this page: a write
+		 * still on its way to the device, or one that did not commit there.
+		 */
+		hasUnstoredDrafts(): boolean {
+			if (writing.size > 0) return true;
+			for (const key of unstored) {
+				if (userId !== null && isComposerDraftKeyOf(key, userId)) return true;
+			}
+			return false;
+		},
 		/** Resolves once the device copy has loaded and every write has settled. */
 		async idle(): Promise<void> {
 			await hydration;
@@ -262,7 +295,9 @@ export function followComposerDraftsUser(userId: () => string | null | undefined
 /**
  * One composer's draft as a ref. `target` names the thread or room; while it
  * is null (no target known, or a box that must not be kept, such as an edit
- * of something already saved) the value lives in the component alone.
+ * of something already saved) the value lives in the component alone, and
+ * while it differs from `blank` it keeps an app update from reloading the
+ * page over it (`reloadBlockers.ts`), for as long as the caller's scope lives.
  *
  * `pin()` remembers the target, and who is signed in, as they are now and
  * returns an updater for that draft, so a send or upload that resolves after
@@ -290,6 +325,14 @@ export function useComposerDraft<K extends ComposerDraftKind>(
 		get: () => read(target() ?? null),
 		set: (fields) => write(target() ?? null, fields),
 	});
+	if (getCurrentScope()) {
+		const blankJson = JSON.stringify(blank);
+		onScopeDispose(
+			registerReloadBlocker(
+				() => (target() ?? null) === null && JSON.stringify(local.value) !== blankJson
+			)
+		);
+	}
 	return {
 		draft,
 		pin() {

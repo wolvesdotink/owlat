@@ -17762,6 +17762,17 @@
 			"nothingWaiting": "Nichts wartet mehr aufs Speichern.",
 			"allSaved": "Alle Änderungen gespeichert"
 		},
+		"appUpdated": {
+			"title": "Owlat wurde aktualisiert",
+			"body": "Lade neu, um die neue Version zu nutzen. Deine Entwürfe bleiben erhalten.",
+			"bodyVersion": "Lade neu, um Version {version} zu nutzen. Deine Entwürfe bleiben erhalten.",
+			"reload": "Neu laden",
+			"reloading": "Lädt neu…",
+			"whatsNew": "Was ist neu",
+			"opensInNewTab": "(öffnet in einem neuen Tab)",
+			"dismiss": "Hinweis ausblenden",
+			"blocked": "Einige Änderungen sind noch nicht gespeichert. Speichere oder beende sie und lade dann neu."
+		},
 		"format": {
 			"never": "Nie",
 			"invalidDate": "Ungültiges Datum",

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { watch } from 'vue';
 import {
 	EPISODE_QUIET_MS,
+	hasPendingWork,
 	holdPendingWork,
 	onSlowEpisodeEnd,
 	registerUnsavedWorkProbe,
@@ -326,6 +327,29 @@ describe('pending operations', () => {
 		quiet();
 
 		expect(outcomes).toEqual(['discarded']);
+	});
+
+	it('says whether anything is still unacknowledged: a run, a hold or a probe', () => {
+		expect(hasPendingWork()).toBe(false);
+		const settle = trackPendingOperation(() => 'Save');
+		expect(hasPendingWork()).toBe(true);
+		settle(true);
+		expect(hasPendingWork()).toBe(false);
+
+		const release = holdPendingWork();
+		expect(hasPendingWork()).toBe(true);
+		release(false);
+		expect(hasPendingWork()).toBe(false);
+
+		let unsent = true;
+		const unregister = registerUnsavedWorkProbe(() => unsent);
+		try {
+			expect(hasPendingWork()).toBe(true);
+			unsent = false;
+			expect(hasPendingWork()).toBe(false);
+		} finally {
+			unregister();
+		}
 	});
 
 	it('a run reset before its threshold never turns slow', () => {

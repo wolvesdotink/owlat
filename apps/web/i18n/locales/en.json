@@ -17762,6 +17762,17 @@
 			"nothingWaiting": "Nothing is waiting to be saved.",
 			"allSaved": "All changes saved"
 		},
+		"appUpdated": {
+			"title": "Owlat was updated",
+			"body": "Reload to use the new version. Your drafts are kept.",
+			"bodyVersion": "Reload to use version {version}. Your drafts are kept.",
+			"reload": "Reload",
+			"reloading": "Reloading…",
+			"whatsNew": "What's new",
+			"opensInNewTab": "(opens in a new tab)",
+			"dismiss": "Hide this notice",
+			"blocked": "Some changes are not saved yet. Save or finish them, then reload."
+		},
 		"format": {
 			"never": "Never",
 			"invalidDate": "Invalid date",
