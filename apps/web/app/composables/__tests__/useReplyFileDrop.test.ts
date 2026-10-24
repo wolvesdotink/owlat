@@ -536,6 +536,18 @@ describe('desktop window drops', () => {
 		expect(page.received).toEqual([]);
 	});
 
+	it('raises no reply guard for a drop whose read finishes after the workspace changed', async () => {
+		await setup();
+		const guard = vi.fn();
+		hit = mountTarget(ref<ReplyDropTarget>({ ...ines, guard })).element;
+		desktop!.onDropStart?.({ x: 10, y: 10 }, 1);
+		orgId.value = 'org-2';
+		desktop!.onDrop([file('a')], { x: 10, y: 10 }, 1);
+		await flushPromises();
+		expect(guard).not.toHaveBeenCalled();
+		expect(open).not.toHaveBeenCalled();
+	});
+
 	it('discards a drop whose read finishes after the account changed', async () => {
 		await setup();
 		hit = rowEl;

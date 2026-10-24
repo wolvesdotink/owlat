@@ -184,6 +184,8 @@ export function useReplyDropHost() {
 	}
 
 	function drop(target: ReplyDropTarget, files: File[], landedIn = session) {
+		// A stale drop does not even raise the reply guard's prompt.
+		if (landedIn !== session) return;
 		const proceed = () => {
 			if (landedIn === session) void open(target, files);
 		};
