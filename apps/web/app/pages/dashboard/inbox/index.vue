@@ -9,7 +9,7 @@ import {
 	type InboxListThread,
 } from '~/composables/useInboxListActions';
 import { useInboxRowMenu } from '~/composables/useInboxRowMenu';
-import { resolveActiveChord, resolveActiveShortcut } from '~/utils/shortcutScope';
+import { isChordPending, resolveActiveChord, resolveActiveShortcut } from '~/utils/shortcutScope';
 import { useShortcutScope } from '~/composables/useShortcutScope';
 import { teamThreadHasDraft, useComposerDrafts } from '~/composables/useComposerDrafts';
 import {
@@ -111,12 +111,13 @@ const actions = useInboxListActions({
 	filter,
 	assignee,
 	members: assignMembers,
+	isSelected: selection.isSelected,
 	// A verb on the selection leaves exactly its failures selected, to retry.
-	onSettled: (targets, failedIds) => {
-		if (targets.length > 1 || targets.some((row) => selection.isSelected(row._id))) {
-			selection.replace(failedIds);
-		}
-	},
+	onSelectionSettled: (targets, failedIds) =>
+		selection.settle(
+			targets.map((row) => row._id),
+			failedIds
+		),
 });
 
 // The assignee pickers: one per row (its hover cluster) and the bulk bar's.
@@ -145,6 +146,31 @@ const rowMenu = (thread: InboxThreadRowThread) => rowMenuFor(thread as InboxList
 // key that moves the list is refused, and claiming it puts the list's keys on
 // the "?" sheet. ──
 useShortcutScope('inboxList');
+/**
+ * The list's triage keys: on the selection when there is one, else on `row`.
+ * Reports whether the key was one of them.
+ */
+function runListKey(id: string | null, row: InboxListThread | undefined): boolean {
+	const targets = selection.count.value > 0 ? selection.selectedRows.value : row ? [row] : [];
+	const anchor = row ?? targets[0];
+	if (!anchor) return false;
+	switch (id) {
+		case 'inboxList.assignToMe':
+			void actions.assignToMe(targets);
+			return true;
+		case 'inboxList.resolve':
+			void actions.resolve(targets);
+			return true;
+		case 'inboxList.snooze':
+			actions.openSnooze(targets);
+			return true;
+		case 'inboxList.assign':
+			openAssign(anchor, targets);
+			return true;
+	}
+	return false;
+}
+
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<InboxListThread>({
 	items: visibleThreads,
 	resetKey: listKey,
@@ -156,37 +182,43 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<InboxListTh
 	},
 	onAction: (key, thread) => {
 		if (!isAdmin.value) return;
-		const targets = selection.count.value > 0 ? selection.selectedRows.value : [thread];
-		switch (resolveActiveChord(key, ['inboxList'])) {
-			case 'inboxList.assignToMe':
-				void actions.assignToMe(targets);
-				break;
-			case 'inboxList.toggleSelect':
-				selection.toggle(thread._id);
-				break;
-			case 'inboxList.resolve':
-				void actions.resolve(targets);
-				break;
-			case 'inboxList.snooze':
-				actions.openSnooze(targets);
-				break;
-			case 'inboxList.assign':
-				openAssign(thread, targets);
-				break;
-		}
+		const id = resolveActiveChord(key, ['inboxList']);
+		if (id === 'inboxList.toggleSelect') selection.toggle(thread._id);
+		else runListKey(id, thread);
 	},
 });
 
-/** Escape lets go of the selection before anything else hears it. */
+/**
+ * The menu key (or a keyboard `contextmenu`, which reports no pointer) on the
+ * list opens the focused row's menu, as a right-click on that row would.
+ */
+function openFocusedRowMenu(event: Event): boolean {
+	if (event.target !== event.currentTarget) return false;
+	if (event instanceof MouseEvent && (event.clientX !== 0 || event.clientY !== 0)) return false;
+	const row = activeId.value ? document.getElementById(activeId.value)?.closest('li') : null;
+	if (!row) return false;
+	event.preventDefault();
+	row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+	return true;
+}
+
 function onListKeydown(event: KeyboardEvent) {
-	if (
-		selection.count.value > 0 &&
-		!event.defaultPrevented &&
-		resolveActiveShortcut(event, ['inboxList']) === 'inboxList.clearSelection'
-	) {
-		event.preventDefault();
-		selection.clear();
-		return;
+	const isMenuKey = event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10');
+	if (isMenuKey && openFocusedRowMenu(event)) return;
+	if (!event.defaultPrevented && !isChordPending() && isAdmin.value && selection.count.value > 0) {
+		const id = resolveActiveShortcut(event, ['inboxList']);
+		// Escape lets go of the selection before anything else hears it.
+		if (id === 'inboxList.clearSelection') {
+			event.preventDefault();
+			selection.clear();
+			return;
+		}
+		// A selection made with the mouse leaves no focused row for the list's
+		// own handler to pass on; the verb still has its rows.
+		if (focusedIndex.value < 0 && runListKey(id, undefined)) {
+			event.preventDefault();
+			return;
+		}
 	}
 	onKeydown(event);
 }
@@ -377,6 +409,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 						:aria-multiselectable="isAdmin ? 'true' : undefined"
 						class="divide-y divide-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
 						@keydown="onListKeydown"
+						@contextmenu="openFocusedRowMenu"
 					>
 						<InboxThreadRow
 							v-for="(thread, index) in visibleThreads"

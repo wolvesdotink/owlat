@@ -44,8 +44,15 @@ export function useInboxListActions(opts: {
 	assignee: Ref<string>;
 	/** Org members, for naming an assignee in the undo toast. */
 	members: Ref<{ userId: string; name?: string | null; email: string }[]>;
-	/** Called after a verb settles with the rows whose write failed. */
-	onSettled: (targets: readonly InboxListThread[], failedIds: string[]) => void;
+	/** Whether a row is part of the list's selection right now. */
+	isSelected: (id: string) => boolean;
+	/**
+	 * Called after a verb on the selection settles, with the rows whose write
+	 * failed. Whether the verb ran on the selection is decided when it is
+	 * invoked: by the time the writes land, rows that left the view have also
+	 * left the selection.
+	 */
+	onSelectionSettled: (targets: readonly InboxListThread[], failedIds: string[]) => void;
 }) {
 	const { t } = useI18n();
 	const { user } = useAuth();
@@ -80,7 +87,8 @@ export function useInboxListActions(opts: {
 	async function runVerb(
 		targets: readonly InboxListThread[],
 		verb: 'resolved' | 'snoozed' | 'assigned',
-		perRow: (thread: InboxListThread) => Promise<boolean | null>
+		perRow: (thread: InboxListThread) => Promise<boolean | null>,
+		fromSelection = onSelection(targets)
 	): Promise<string[]> {
 		const failed: string[] = [];
 		let quieted = false;
@@ -109,8 +117,12 @@ export function useInboxListActions(opts: {
 		}
 		// Keep the list order, not the order the writes settled in.
 		const order = targets.map((thread) => thread._id).filter((id) => failed.includes(id));
-		opts.onSettled(targets, order);
+		if (fromSelection) opts.onSelectionSettled(targets, order);
 		return order;
+	}
+
+	function onSelection(targets: readonly InboxListThread[]): boolean {
+		return targets.some((thread) => opts.isSelected(thread._id));
 	}
 
 	/**
@@ -206,9 +218,11 @@ export function useInboxListActions(opts: {
 	// selection while the dialog is up cannot change what gets snoozed.
 	const showSnoozeDialog = ref(false);
 	const snoozeTargets = shallowRef<readonly InboxListThread[]>([]);
+	let snoozeFromSelection = false;
 	function openSnooze(targets: readonly InboxListThread[]) {
 		if (targets.length === 0) return;
 		snoozeTargets.value = [...targets];
+		snoozeFromSelection = onSelection(targets);
 		showSnoozeDialog.value = true;
 	}
 	function onSnoozeConfirm(until: number) {
@@ -216,15 +230,19 @@ export function useInboxListActions(opts: {
 		const targets = snoozeTargets.value;
 		snoozeTargets.value = [];
 		const leavesView = INBOX_ACTIVE_WORK_FILTERS.has(opts.filter.value);
-		return runVerb(targets, 'snoozed', (thread) =>
-			opts.runTriage({
-				id: thread._id,
-				label: t('dashboard.inbox.index.undo.snoozed'),
-				group: statusUndoGroup('snoozed'),
-				leavesView,
-				mutate: () => snoozeThread({ threadId: thread._id, until }),
-				inverse: () => unsnoozeThread({ threadId: thread._id }),
-			})
+		return runVerb(
+			targets,
+			'snoozed',
+			(thread) =>
+				opts.runTriage({
+					id: thread._id,
+					label: t('dashboard.inbox.index.undo.snoozed'),
+					group: statusUndoGroup('snoozed'),
+					leavesView,
+					mutate: () => snoozeThread({ threadId: thread._id, until }),
+					inverse: () => unsnoozeThread({ threadId: thread._id }),
+				}),
+			snoozeFromSelection
 		);
 	}
 

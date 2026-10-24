@@ -35,10 +35,10 @@ describe('Team inbox keys', () => {
 	it("answers every key of the list in the list's own scope", () => {
 		expect(list).toContain("useShortcutScope('inboxList')");
 		expect(list).toContain("scope: 'inboxList'");
-		expect(list).toContain("switch (resolveActiveChord(key, ['inboxList']))");
+		expect(list).toContain("resolveActiveChord(key, ['inboxList'])");
+		expect(list).toContain("id === 'inboxList.toggleSelect'");
 		for (const id of [
 			'inboxList.assignToMe',
-			'inboxList.toggleSelect',
 			'inboxList.resolve',
 			'inboxList.snooze',
 			'inboxList.assign',

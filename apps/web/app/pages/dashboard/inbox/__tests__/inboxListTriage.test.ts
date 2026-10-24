@@ -424,6 +424,35 @@ describe('Team Inbox list: triage keys', () => {
 	});
 });
 
+describe('Team Inbox list: selection made with the mouse', () => {
+	const check = async (id: string) => {
+		wrapper.get(`#inbox-row-${id}`).element.querySelector<HTMLElement>('button')!.click();
+		await flushPromises();
+	};
+
+	it('runs a key on the selection with no row focused', async () => {
+		await mountPage();
+		await check('b');
+		await check('d');
+		await press('e');
+		expect(forward('status')).toEqual([
+			['b', 'resolved'],
+			['d', 'resolved'],
+		]);
+	});
+
+	it('keeps the rest of the selection when one selected row is triaged on its own', async () => {
+		await mountPage();
+		await check('a');
+		await check('c');
+		const row = wrapper.get('#inbox-row-a').element.closest('li')!;
+		row.querySelector<HTMLElement>('[aria-label="Resolve"]')!.click();
+		await flushPromises();
+		expect(forward('status')).toEqual([['a', 'resolved']]);
+		expect(selectedIds()).toEqual(['c']);
+	});
+});
+
 describe('Team Inbox list: partial failure and undo', () => {
 	it('says so once, keeps the failures selected, and undoes only what changed', async () => {
 		threads.value = [
@@ -496,6 +525,16 @@ describe('Team Inbox list: row menu', () => {
 		expect(forward('status')).toEqual([['c', 'resolved']]);
 		// The selection made elsewhere is untouched.
 		expect(selectedIds()).toEqual(['a']);
+	});
+
+	it('opens the focused row’s menu from the keyboard menu key', async () => {
+		await mountPage();
+		await press('j');
+		await press('j');
+		await press('F10', { shiftKey: true });
+		expect(menuLabels()).toContain('ResolveE');
+		await pickMenu('Resolve');
+		expect(forward('status')).toEqual([['b', 'resolved']]);
 	});
 
 	it('offers a non-admin only the row’s link verbs', async () => {

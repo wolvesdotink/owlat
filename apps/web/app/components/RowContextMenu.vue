@@ -86,10 +86,9 @@ function bindingsFor(
 
 <template>
 	<UiContextMenu :items="items">
-		<template #default="{ onContextmenu, onKeydown, open }">
+		<template #default="{ onContextmenu, onKeydown }">
 			<slot
 				:row-bindings="bindingsFor(onContextmenu, onKeydown)"
-				:menu-open="open"
 				:track="gestures.track.value"
 				:settling="gestures.settling.value"
 				:row-style="gestures.rowStyle.value"

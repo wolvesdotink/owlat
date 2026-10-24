@@ -59,9 +59,18 @@ describe('useInboxSelection', () => {
 		expect(selection.targetsFor(a!).map((row) => row._id)).toEqual(['a']);
 	});
 
-	it('replaces the selection with what is still on screen', () => {
-		const { selection, picked } = setup();
-		selection.replace(['c', 'zz']);
-		expect(picked()).toEqual(['c']);
+	it('settles a verb: its targets leave, its failures stay, the rest keep their place', async () => {
+		const { rows, selection, picked } = setup();
+		selection.toggle('a');
+		selection.toggle('b');
+		selection.toggle('c');
+		// b failed; a succeeded and left the list; d was never selected.
+		rows.value = rows.value.filter((row) => row._id !== 'a');
+		await nextTick();
+		selection.settle(['a', 'b'], ['b']);
+		expect(picked()).toEqual(['b', 'c']);
+		// A failure that is no longer on screen cannot be selected.
+		selection.settle(['c', 'zz'], ['zz']);
+		expect(picked()).toEqual(['b']);
 	});
 });

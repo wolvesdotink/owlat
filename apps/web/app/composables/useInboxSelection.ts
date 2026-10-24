@@ -73,11 +73,18 @@ export function useInboxSelection<T extends { _id: string }>(opts: {
 		anchorId.value = anchor ?? targetId;
 	}
 
-	/** Replace the selection with exactly these ids (a partial failure keeps its failures). */
-	function replace(ids: readonly string[]) {
+	/**
+	 * After a verb ran on the selection: its targets leave the selection, except
+	 * the ones whose write failed, which stay (or come back) so they can be
+	 * retried. Rows the verb did not touch keep their place.
+	 */
+	function settle(targetIds: readonly string[], failedIds: readonly string[]) {
 		const live = new Set(orderedIds.value);
-		selected.value = new Set(ids.filter((id) => live.has(id)));
-		if (selected.value.size === 0) anchorId.value = null;
+		const touched = new Set(targetIds);
+		const next = new Set([...selected.value].filter((id) => !touched.has(id)));
+		for (const id of failedIds) if (live.has(id)) next.add(id);
+		selected.value = next;
+		if (next.size === 0) anchorId.value = null;
 	}
 
 	/** The selected rows, in list order. */
@@ -100,7 +107,7 @@ export function useInboxSelection<T extends { _id: string }>(opts: {
 		isSelected,
 		toggle,
 		extendTo,
-		replace,
+		settle,
 		clear,
 		targetsFor,
 	};
