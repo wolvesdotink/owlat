@@ -215,6 +215,28 @@ PR description records why the change was made. Don't add a numbered decision
 record or a new decisions folder. To read a removed record, use
 `git log --diff-filter=D --name-only -- docs/adr` and `git show <sha>^:<path>`.
 
+## Comments
+
+A comment says why the code is the way it is: a constraint, an external quirk,
+or an invariant the code cannot show. What changed, when and in which issue is
+history, and the PR and `CHANGELOG.md` hold it.
+
+- No issue or PR numbers (`#1234`). The quarantine line above a skipped test
+  (`// quarantine: #1234 <why>`) is the one exception, because it tracks open
+  work.
+- No narration of earlier code: "until now", "previously", "used to be",
+  "this PR".
+- No tags into documents the repository does not hold: spec and plan sections
+  (`SPEC §4.2`, `plan §06`) or decision and ADR numbers (`D13`, `ADR-0040`).
+  Write the rule out in words.
+- No commented-out code. Version control keeps it.
+
+`bun run lint:comment-policy` (part of `ci:lint`) checks the comments and test
+titles on the lines a change adds, in code, Vue templates, shell scripts and
+YAML. It does not read existing lines, and existing comments are not
+mass-deleted: many of them carry a real constraint. When you edit a comment for
+another reason, cut the history out of it and keep the constraint.
+
 ## Documentation
 
 Most changes need no documentation change. The code, its types and its tests
