@@ -149,7 +149,7 @@ onBeforeUnmount(abortStamp);
 					<div class="mt-8 grid gap-4 sm:grid-cols-2">
 						<NuxtLink
 							to="/dashboard/postbox/migrate"
-							class="group flex flex-col rounded-xl border border-border-subtle bg-bg-surface/50 p-5 text-left transition-all hover:border-brand hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+							class="group flex flex-col rounded-xl border border-border-subtle bg-bg-surface/50 p-5 text-left transition-colors hover:border-brand hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 						>
 							<UiIconBox icon="lucide:import" variant="surface" size="sm" />
 							<h2 class="mt-4 font-medium text-text-primary">{{ t('welcome.migrate.title') }}</h2>
@@ -164,7 +164,7 @@ onBeforeUnmount(abortStamp);
 
 						<NuxtLink
 							to="/dashboard"
-							class="group flex flex-col rounded-xl border border-border-subtle bg-bg-surface/50 p-5 text-left transition-all hover:border-brand hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+							class="group flex flex-col rounded-xl border border-border-subtle bg-bg-surface/50 p-5 text-left transition-colors hover:border-brand hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 						>
 							<UiIconBox icon="lucide:sparkles" variant="surface" size="sm" />
 							<h2 class="mt-4 font-medium text-text-primary">{{ t('welcome.fresh.title') }}</h2>

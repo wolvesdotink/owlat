@@ -263,7 +263,9 @@ function handleConfigCancelled() {
 <style scoped>
 .expand-enter-active,
 .expand-leave-active {
-	transition: all var(--motion-moderate) var(--ease-spring);
+	transition-property: opacity, max-height;
+	transition-duration: var(--motion-moderate);
+	transition-timing-function: var(--ease-spring);
 	overflow: hidden;
 }
 

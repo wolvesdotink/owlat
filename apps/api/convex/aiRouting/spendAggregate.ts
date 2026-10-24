@@ -31,6 +31,7 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { utcMonthStart } from '../lib/clock';
 import {
@@ -88,13 +89,22 @@ export const ensureReconciled = internalMutation({
 	},
 });
 
+/**
+ * Where a rebuild starts counting: the start of its cutoff's UTC month. Buckets
+ * of earlier periods were left as they were and may miss rows written before
+ * the aggregate existed.
+ */
+export function rebuildStart(state: Doc<'llmSpendAggregateState'>): number {
+	return utcMonthStart(state.rebuildCutoff ?? state.startedAt ?? state.updatedAt);
+}
+
 /** Count one page of the ledger into the buckets of `generation`. */
 export const rebuildPage = internalMutation({
 	args: { generation: v.number() },
 	handler: async (ctx, args) => {
 		const state = await ctx.db.query('llmSpendAggregateState').first();
 		if (!state || state.status !== 'rebuilding' || state.generation !== args.generation) return;
-		const from = utcMonthStart(state.rebuildCutoff ?? state.startedAt ?? state.updatedAt);
+		const from = rebuildStart(state);
 		const page = await ctx.db
 			.query('llmUsageEvents')
 			.withIndex('by_creation_time', (q) => q.gte('_creationTime', from))

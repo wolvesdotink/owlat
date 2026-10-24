@@ -127,9 +127,9 @@ function startZen() {
 			</button>
 
 			<Transition
-				enter-active-class="transition-all duration-(--motion-moderate)"
+				enter-active-class="transition-[opacity,translate] duration-(--motion-moderate)"
 				enter-from-class="opacity-0 translate-y-1"
-				leave-active-class="transition-all duration-(--motion-moderate-exit)"
+				leave-active-class="transition-[opacity,translate] duration-(--motion-moderate-exit)"
 				leave-to-class="opacity-0 translate-y-1"
 			>
 				<div

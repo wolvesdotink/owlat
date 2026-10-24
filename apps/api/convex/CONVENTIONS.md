@@ -1162,12 +1162,33 @@ discriminator. See `shareLinks.targetType` and `blockedEmails.sourceType`.
   `emailSends.contactFirstName`, `emailSends.contactLastName` — they record
   what we sent, not the contact's current state. Touching them post-send is
   a corruption bug.
-- Aggregated fields (computed from child rows) are marked with `// AGGREGATED —`.
-  Examples: `campaigns.statsSent` etc. Update only via the dedicated
-  aggregator — for campaign send stats this is the Send lifecycle's effect
-  system (`campaign_stats_sent` / `campaign_stats_failed` etc. in
-  `delivery/sendLifecycle.ts`); never write these from a user-facing
-  mutation. Track freshness with `statsUpdatedAt`/`cachedCountUpdatedAt`.
+- Aggregated fields (a cache of what other rows already record) are marked
+  with `// AGGREGATED [<id>] —`, where `<id>` is the field's entry in
+  `maintenance/derivedFields/registry.ts`. Examples: `campaigns.statsSent` etc.
+  Update only via the dedicated aggregator — for campaign send stats this is
+  the Send lifecycle's effect system (`campaign_stats_sent` /
+  `campaign_stats_failed` etc. in `delivery/sendLifecycle.ts`); never write
+  these from a user-facing mutation. Track freshness with
+  `statsUpdatedAt`/`cachedCountUpdatedAt`.
+- A field may only be marked `AGGREGATED` if it is registered with a
+  `recompute(ctx, parent, budget)` adapter (`maintenance/derivedFields/adapters.ts`)
+  that recounts one parent from its source rows within a row and byte budget.
+  The hourly `derived fields: sample drift` cron
+  (`maintenance/derivedFields/sampler.ts`) visits a few parents per field in
+  turn, logs a difference once as `derived_field.drift` and repairs it in the
+  same transaction as the recount. A recount that would outrun its budget, or
+  whose source is incomplete (rows aged out, a rebuild not finished), writes
+  nothing. A lifetime total whose source rows may be removed uses the
+  `raise_only` policy: the cache is raised to the recount, never lowered.
+- A tally or event stamp that is the only record of what it counts (each
+  saved-reply use, each SMTP response) is marked `// COUNTER [<id>] —` and
+  registered with the reason nothing can recompute it. It is not sampled.
+  Moving a field from `AGGREGATED` to `COUNTER` needs that reason; a field
+  that other rows do record stays `AGGREGATED`, label or no label.
+- `__tests__/derivedFieldRegistry.test.ts` fails on a label without a
+  registered id, an id under the other label, a label that does not sit on the
+  fields its entry names (including shared validator spreads), or an entry
+  whose fields are not in the schema.
 
 ### Cascade contracts
 

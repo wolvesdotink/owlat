@@ -139,16 +139,17 @@ async function saveEdit(body: string): Promise<boolean> {
 		>
 			{{ t('components.inbox.notes.deleted') }}
 		</p>
-		<InboxNoteComposer
-			v-else-if="editing && save"
-			class="mt-2"
-			:submit="saveEdit"
-			:candidates-for="candidatesFor"
-			:initial-body="note.body"
-			editing
-			autofocus
-			@cancel="editing = false"
-		/>
+		<AppErrorBoundary v-else-if="editing && save" surface="composer" :reset-keys="[note._id]">
+			<InboxNoteComposer
+				class="mt-2"
+				:submit="saveEdit"
+				:candidates-for="candidatesFor"
+				:initial-body="note.body"
+				editing
+				autofocus
+				@cancel="editing = false"
+			/>
+		</AppErrorBoundary>
 		<p
 			v-else
 			class="mt-1.5 whitespace-pre-wrap break-words text-sm text-text-primary"
