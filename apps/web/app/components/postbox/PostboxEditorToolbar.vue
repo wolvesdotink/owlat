@@ -16,7 +16,7 @@ import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 const { t } = useI18n();
 // The editor's own Cmd/Ctrl-B/I/U/K (useRichText's handleFormatKeydown).
-const { chordLabel } = useShortcutLabels();
+const { chordLabel, chordAria } = useShortcutLabels();
 
 const props = withDefaults(
 	defineProps<{
@@ -51,15 +51,15 @@ const emit = defineEmits<{
 <template>
 	<div :class="containerClass">
 		<UiTooltip
-			:text="t('components.postbox.postboxEditorToolbar.bold', { keys: chordLabel('mod+b') })"
+			:text="t('components.postbox.postboxEditorToolbar.bold')"
+			:shortcut="chordLabel('mod+b')"
 		>
 			<button
 				type="button"
 				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.bold }"
-				:aria-label="
-					t('components.postbox.postboxEditorToolbar.bold', { keys: chordLabel('mod+b') })
-				"
+				:aria-label="t('components.postbox.postboxEditorToolbar.bold')"
+				:aria-keyshortcuts="chordAria('mod+b')"
 				@mousedown.prevent
 				@click="emit('bold')"
 			>
@@ -67,15 +67,15 @@ const emit = defineEmits<{
 			</button>
 		</UiTooltip>
 		<UiTooltip
-			:text="t('components.postbox.postboxEditorToolbar.italic', { keys: chordLabel('mod+i') })"
+			:text="t('components.postbox.postboxEditorToolbar.italic')"
+			:shortcut="chordLabel('mod+i')"
 		>
 			<button
 				type="button"
 				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.italic }"
-				:aria-label="
-					t('components.postbox.postboxEditorToolbar.italic', { keys: chordLabel('mod+i') })
-				"
+				:aria-label="t('components.postbox.postboxEditorToolbar.italic')"
+				:aria-keyshortcuts="chordAria('mod+i')"
 				@mousedown.prevent
 				@click="emit('italic')"
 			>
@@ -83,15 +83,15 @@ const emit = defineEmits<{
 			</button>
 		</UiTooltip>
 		<UiTooltip
-			:text="t('components.postbox.postboxEditorToolbar.underline', { keys: chordLabel('mod+u') })"
+			:text="t('components.postbox.postboxEditorToolbar.underline')"
+			:shortcut="chordLabel('mod+u')"
 		>
 			<button
 				type="button"
 				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.underline }"
-				:aria-label="
-					t('components.postbox.postboxEditorToolbar.underline', { keys: chordLabel('mod+u') })
-				"
+				:aria-label="t('components.postbox.postboxEditorToolbar.underline')"
+				:aria-keyshortcuts="chordAria('mod+u')"
 				@mousedown.prevent
 				@click="emit('underline')"
 			>
@@ -162,15 +162,15 @@ const emit = defineEmits<{
 		</UiTooltip>
 		<span class="w-px h-4 bg-border-subtle mx-1" />
 		<UiTooltip
-			:text="t('components.postbox.postboxEditorToolbar.link', { keys: chordLabel('mod+k') })"
+			:text="t('components.postbox.postboxEditorToolbar.link')"
+			:shortcut="chordLabel('mod+k')"
 		>
 			<button
 				type="button"
 				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.link }"
-				:aria-label="
-					t('components.postbox.postboxEditorToolbar.link', { keys: chordLabel('mod+k') })
-				"
+				:aria-label="t('components.postbox.postboxEditorToolbar.link')"
+				:aria-keyshortcuts="chordAria('mod+k')"
 				@mousedown.prevent
 				@click="emit('link')"
 			>

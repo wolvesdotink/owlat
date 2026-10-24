@@ -7,6 +7,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { focusTooltip } from '~/__tests__/tooltip';
 import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 import PostboxThreadHeader from '../PostboxThreadHeader.vue';
 
@@ -21,17 +22,19 @@ function mountHeader() {
 	return mount(PostboxThreadHeader, {
 		props: { subject: 'Invoice 4471', messageCount: 1, messageId: 'm1' as never },
 		global: { plugins: [createTestI18n()], stubs: { PostboxOverflowMenu: true } },
+		attachTo: document.body,
 	});
 }
 
 describe('reader header shortcuts', () => {
-	it('names the reply and archive keys in the tooltip and for assistive tech', () => {
+	it('names the reply and archive keys in the tooltip and for assistive tech', async () => {
 		const wrapper = mountHeader();
 		const reply = wrapper.get('[data-testid="thread-header-reply"]');
 		const archive = wrapper.get('[data-testid="thread-header-archive"]');
-		expect(reply.attributes('title')).toBe('Reply (R)');
+		expect(await focusTooltip(reply)).toBe('Reply R');
+		expect(reply.attributes('title')).toBeUndefined();
 		expect(reply.attributes('aria-keyshortcuts')).toBe('r');
-		expect(archive.attributes('title')).toBe('Archive (E)');
+		expect(await focusTooltip(archive)).toBe('Archive E');
 		expect(archive.attributes('aria-keyshortcuts')).toBe('e');
 	});
 
@@ -43,10 +46,10 @@ describe('reader header shortcuts', () => {
 		]);
 		await nextTick();
 		const archive = wrapper.get('[data-testid="thread-header-archive"]');
-		expect(archive.attributes('title')).toBe('Archive (Y)');
+		expect(await focusTooltip(archive)).toBe('Archive Y');
 		expect(archive.attributes('aria-keyshortcuts')).toBe('y');
 		const reply = wrapper.get('[data-testid="thread-header-reply"]');
-		expect(reply.attributes('title')).toBe('Reply');
+		expect(await focusTooltip(reply)).toBe('Reply');
 		expect(reply.attributes('aria-keyshortcuts')).toBeUndefined();
 	});
 });

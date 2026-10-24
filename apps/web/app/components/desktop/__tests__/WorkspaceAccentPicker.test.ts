@@ -11,6 +11,7 @@ import WorkspaceAccentPicker from '../WorkspaceAccentPicker.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { WORKSPACE_ACCENT_OPTIONS } from '~/lib/desktop/workspaceTypes';
 import de from '~~/i18n/locales/de.json';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -71,8 +72,9 @@ describe('WorkspaceAccentPicker', () => {
 	});
 
 	it.each(['en', 'de'] as const)('names every swatch in the %s copy', (locale) => {
-		const swatches = render(WORKSPACE_ACCENT_OPTIONS[0].value, locale).findAll(SWATCH);
-		expect(swatches.map((s) => s.attributes('title'))).toEqual(ACCENT_NAMES[locale]);
+		const wrapper = render(WORKSPACE_ACCENT_OPTIONS[0].value, locale);
+		const swatches = wrapper.findAll(SWATCH);
+		expect(swatches.map((s) => tooltipOf(wrapper, s))).toEqual(ACCENT_NAMES[locale]);
 		expect(swatches.map((s) => s.attributes('aria-label'))).toEqual(
 			ACCENT_NAMES[locale].map((name) => (locale === 'de' ? `Akzent ${name}` : `${name} accent`))
 		);

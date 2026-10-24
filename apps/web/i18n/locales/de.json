@@ -4682,14 +4682,14 @@
 			},
 			"postboxEditorToolbar": {
 				"blockquote": "Zitat",
-				"bold": "Fett ({keys})",
+				"bold": "Fett",
 				"bulletList": "Aufzählung",
 				"heading1": "Überschrift 1",
 				"heading2": "Überschrift 2",
-				"italic": "Kursiv ({keys})",
-				"link": "Link ({keys})",
+				"italic": "Kursiv",
+				"link": "Link",
 				"orderedList": "Nummerierte Liste",
-				"underline": "Unterstrichen ({keys})"
+				"underline": "Unterstrichen"
 			},
 			"postboxEmojiPicker": {
 				"listLabel": "Emoji"

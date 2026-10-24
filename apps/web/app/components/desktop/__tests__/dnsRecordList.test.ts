@@ -25,6 +25,7 @@ import DnsRecordList from '../DnsRecordList.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { deriveHostnames } from '~/lib/desktop/provisioning';
 import { buildDnsRecords } from '~/lib/desktop/provisioningForm';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 const copiedKey = ref<string | null>(null);
 const copyMock = vi.fn((_text: string, key?: string) => {
@@ -91,11 +92,11 @@ describe('DesktopDnsRecordList', () => {
 		const w = mountList(rows);
 		await w.get(`button[aria-label="Copy value for ${A_RECORD.name}"]`).trigger('click');
 
-		// The clicked row flips to "Copied"; the sibling row keeps its copy title.
-		expect(w.get(`button[aria-label="Copy value for ${A_RECORD.name}"]`).attributes('title')).toBe(
+		// The clicked row flips to "Copied"; the sibling row keeps its copy tooltip.
+		expect(tooltipOf(w, w.get(`button[aria-label="Copy value for ${A_RECORD.name}"]`))).toBe(
 			'Copied'
 		);
-		expect(w.get('button[aria-label="Copy value for api.wolves.ink"]').attributes('title')).toBe(
+		expect(tooltipOf(w, w.get('button[aria-label="Copy value for api.wolves.ink"]'))).toBe(
 			'Copy value for api.wolves.ink'
 		);
 	});

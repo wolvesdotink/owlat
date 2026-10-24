@@ -36,14 +36,14 @@ const nextId = computed(() =>
 );
 
 /**
- * "(j)" after a step's label: the key that steps here, as the person has it
- * mapped. Only plain keys count, since those are what the handler below takes.
+ * The key that steps here, as the person has it mapped, for the step's
+ * tooltip. Only plain keys count, since those are what the handler below takes.
  */
-function keyHint(id: 'postbox.next' | 'postbox.previous'): string {
+function stepKey(id: 'postbox.next' | 'postbox.previous'): string | undefined {
 	const chord = shortcutBindings.value.byId
 		.get(id)
 		?.find((step) => !step.startsWith('Arrow') && !step.includes('+') && !step.includes(' '));
-	return chord ? ` (${formatChord(chord, false).join('')})` : '';
+	return chord ? formatChord(chord, false).join('') : undefined;
 }
 
 function open(id: string | null) {
@@ -85,7 +85,8 @@ const stepClass =
 		</button>
 		<template v-if="zen">
 			<UiTooltip
-				:text="t('components.postbox.readerBackBar.previous') + keyHint('postbox.previous')"
+				:text="t('components.postbox.readerBackBar.previous')"
+				:shortcut="stepKey('postbox.previous')"
 			>
 				<button
 					type="button"
@@ -97,7 +98,10 @@ const stepClass =
 					<Icon name="lucide:chevron-up" class="size-4" />
 				</button>
 			</UiTooltip>
-			<UiTooltip :text="t('components.postbox.readerBackBar.next') + keyHint('postbox.next')">
+			<UiTooltip
+				:text="t('components.postbox.readerBackBar.next')"
+				:shortcut="stepKey('postbox.next')"
+			>
 				<button
 					type="button"
 					:class="stepClass"

@@ -124,7 +124,7 @@ describe('dashboard layout — sidebar motion', () => {
 		expect(rail().classList.contains('w-64')).toBe(true);
 
 		const toggle = [...rail().querySelectorAll('button')].find(
-			(button) => button.getAttribute('title') === 'Collapse sidebar'
+			(button) => button.getAttribute('aria-label') === 'Collapse sidebar'
 		);
 		expect(toggle, 'collapse toggle not found').toBeTruthy();
 		toggle?.click();
@@ -151,7 +151,7 @@ describe('dashboard layout — the Postbox folds the sidebar on its own', () => 
 		expect(rail().classList.contains('w-16')).toBe(true);
 
 		const expand = [...rail().querySelectorAll('button')].find(
-			(button) => button.getAttribute('title') === 'Expand sidebar'
+			(button) => button.getAttribute('aria-label') === 'Expand sidebar'
 		);
 		expect(expand, 'expand toggle not found').toBeTruthy();
 		expand?.click();

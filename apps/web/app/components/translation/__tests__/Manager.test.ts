@@ -151,7 +151,7 @@ describe.each(SURFACES)('$emailType translation table', (surface) => {
 		expect(leaveGuard.hasChanges).toBe(true);
 
 		run(REMOVE[surface.emailType]).mockResolvedValue({ ok: true, result: { contentRevision: 5 } });
-		await w.get('button[title="Remove language"]').trigger('click');
+		await w.get('button[aria-label="Remove language"]').trigger('click');
 		await flush();
 		w.findComponent({ name: 'UiConfirmationDialog' }).vm.$emit('confirm');
 		await flush();
