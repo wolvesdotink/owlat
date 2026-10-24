@@ -1826,6 +1826,7 @@
 					"searchPlaceholder": "Kanäle und Personen suchen…",
 					"roomsLabel": "Wo teilen",
 					"empty": "Kein Kanal und keine Direktnachricht zum Posten.",
+					"partial": "Einige Kanäle oder Direktnachrichten konnten nicht geladen werden.",
 					"notePlaceholder": "Notiz hinzufügen (optional)",
 					"send": "Teilen",
 					"shared": "Link in {room} geteilt",

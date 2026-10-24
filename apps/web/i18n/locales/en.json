@@ -1826,6 +1826,7 @@
 					"searchPlaceholder": "Search channels and people…",
 					"roomsLabel": "Where to share",
 					"empty": "No channel or direct message to post in.",
+					"partial": "Some channels or direct messages could not be loaded.",
 					"notePlaceholder": "Add a note (optional)",
 					"send": "Share",
 					"shared": "Link shared in {room}",

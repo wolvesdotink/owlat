@@ -5,7 +5,7 @@
  * thread picker it always was, and neither mode reads the other's data.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { computed, ref } from 'vue';
+import { computed, ref, type Ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { getFunctionName } from 'convex/server';
 import { installNuxtStubs } from '~/__tests__/a11y';
@@ -17,6 +17,10 @@ const showToast = vi.fn();
 let sendOutcome: () => Promise<{ ok: boolean }>;
 let sends: Array<{ name: string; args: Record<string, unknown> }>;
 let queried: string[];
+let roomChannels: Ref<Array<ReturnType<typeof channel>>>;
+let roomDms: Ref<Array<{ _id: string; displayName: string }>>;
+let roomsError: Ref<Error | null>;
+const refetchRooms = vi.fn();
 
 const channel = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
 	_id: id,
@@ -31,17 +35,23 @@ beforeEach(() => {
 	sends = [];
 	queried = [];
 	sendOutcome = async () => ({ ok: true });
+	refetchRooms.mockClear();
+	roomChannels = ref([
+		channel('c1', 'support'),
+		channel('c2', 'leadership', { visibility: 'private' }),
+		channel('c3', 'random', { isMember: false }),
+	]);
+	roomDms = ref([{ _id: 'd1', displayName: 'Inés Okafor' }]);
+	roomsError = ref<Error | null>(null);
 	installNuxtStubs({
 		...i18nStubs,
 		useToast: () => ({ showToast }),
 		useChatRooms: () => ({
-			channels: ref([
-				channel('c1', 'support'),
-				channel('c2', 'leadership', { visibility: 'private' }),
-				channel('c3', 'random', { isMember: false }),
-			]),
-			dms: ref([{ _id: 'd1', displayName: 'Inés Okafor' }]),
+			channels: roomChannels,
+			dms: roomDms,
 			isLoading: ref(false),
+			error: roomsError,
+			refetch: refetchRooms,
 		}),
 		useBackendOperation: (reference: unknown) => ({
 			run: (args: Record<string, unknown>) => {
@@ -73,6 +83,12 @@ const stubs = {
 		template: '<section :data-title="title"><slot /></section>',
 	},
 	ChatShareConversationPicker,
+	UiQueryBoundary: {
+		props: ['error'],
+		emits: ['retry'],
+		template:
+			'<div data-testid="rooms-error"><button data-testid="rooms-retry" @click="$emit(\'retry\')" /></div>',
+	},
 	UiButton: {
 		props: ['disabled', 'loading', 'variant', 'size'],
 		emits: ['click'],
@@ -158,6 +174,56 @@ describe('ChatLinkEmailDialog, opened from a conversation', () => {
 		const wrapper = mountShare();
 		await wrapper.get('input').setValue('SUP');
 		expect(roomLabels(wrapper)).toEqual(['#support']);
+	});
+
+	it('offers a retry, not "nowhere to post", when the room reads fail, and keeps the note', async () => {
+		const wrapper = mountShare();
+		await wrapper.get('textarea').setValue('For the billing team');
+		roomChannels.value = [];
+		roomDms.value = [];
+		roomsError.value = new Error('read failed');
+		await flushPromises();
+
+		expect(wrapper.find('[data-testid="rooms-error"]').exists()).toBe(true);
+		expect(wrapper.text()).not.toContain('No channel or direct message to post in.');
+		await wrapper.get('[data-testid="rooms-retry"]').trigger('click');
+		expect(refetchRooms).toHaveBeenCalledTimes(1);
+
+		roomsError.value = null;
+		roomDms.value = [{ _id: 'd1', displayName: 'Inés Okafor' }];
+		await flushPromises();
+		expect(roomLabels(wrapper)).toEqual(['Inés Okafor']);
+		expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe(
+			'For the billing team'
+		);
+	});
+
+	it('says the list is partial when one of the room reads fails, and retries it', async () => {
+		const wrapper = mountShare();
+		roomDms.value = [];
+		roomsError.value = new Error('read failed');
+		await flushPromises();
+
+		expect(wrapper.find('[data-testid="rooms-error"]').exists()).toBe(false);
+		expect(roomLabels(wrapper)).toEqual(['#support', '#leadership']);
+		const notice = wrapper.get('[data-testid="share-rooms-partial"]');
+		expect(notice.text()).toContain('Some channels or direct messages could not be loaded.');
+		await notice.get('button').trigger('click');
+		expect(refetchRooms).toHaveBeenCalledTimes(1);
+	});
+
+	it('disables Share when the chosen room drops out of the list', async () => {
+		const wrapper = mountShare();
+		await wrapper.get('[data-testid="share-room-c2"]').trigger('click');
+		expect(sendButton(wrapper).attributes('disabled')).toBeUndefined();
+
+		// Archived, or you left it, while the dialog was open.
+		roomChannels.value = roomChannels.value.filter((room) => room._id !== 'c2');
+		await flushPromises();
+		expect(sendButton(wrapper).attributes('disabled')).toBeDefined();
+		await sendButton(wrapper).trigger('click');
+		await flushPromises();
+		expect(sends).toEqual([]);
 	});
 
 	it('says who can open the link', () => {

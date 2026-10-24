@@ -24,7 +24,7 @@ const emit = defineEmits<{ close: [] }>();
 
 const { t } = useI18n();
 const { showToast } = useToast();
-const { channels, dms, isLoading } = useChatRooms();
+const { channels, dms, isLoading, error, refetch } = useChatRooms();
 
 interface RoomChoice {
 	id: Id<'chatRooms'>;
@@ -54,6 +54,9 @@ const visibleRooms = computed(() => {
 });
 
 const selectedId = ref<Id<'chatRooms'> | null>(null);
+// Resolved against the live list: a room that is archived or that you leave
+// while the dialog is open drops out, and Share goes back to disabled.
+const selectedRoom = computed(() => rooms.value.find((room) => room.id === selectedId.value));
 const note = ref('');
 const sending = ref(false);
 
@@ -62,7 +65,7 @@ const { run: sendMessage } = useBackendOperation(api.chat.messages.sendMessage, 
 });
 
 async function share() {
-	const room = rooms.value.find((candidate) => candidate.id === selectedId.value);
+	const room = selectedRoom.value;
 	if (!room || sending.value) return;
 	const url = conversationLinkUrl(props.conversation);
 	if (!url) {
@@ -99,30 +102,46 @@ async function share() {
 		<div v-if="isLoading" class="flex items-center justify-center py-8">
 			<UiSpinner size="md" delay />
 		</div>
-		<div v-else-if="visibleRooms.length === 0" class="text-center py-8 text-text-tertiary text-sm">
-			{{ t('components.chat.chatLinkEmailDialog.share.empty') }}
-		</div>
-		<div
-			v-else
-			role="group"
-			:aria-label="t('components.chat.chatLinkEmailDialog.share.roomsLabel')"
-			class="space-y-1"
-		>
-			<button
-				v-for="room in visibleRooms"
-				:key="room.id"
-				type="button"
-				:aria-pressed="room.id === selectedId"
-				class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg transition-colors"
-				:class="room.id === selectedId ? 'bg-brand-subtle' : 'hover:bg-bg-surface'"
-				:data-testid="`share-room-${room.id}`"
-				@click="selectedId = room.id"
+		<!-- A failed read is not "nowhere to post": offer the retry instead. -->
+		<UiQueryBoundary v-else-if="error && rooms.length === 0" :error="error" @retry="refetch" />
+		<template v-else>
+			<!-- One of the two reads failed: the list is partial, say so. -->
+			<div
+				v-if="error"
+				role="alert"
+				class="flex items-center justify-between gap-3 px-3 py-2 text-xs text-text-secondary"
+				data-testid="share-rooms-partial"
 			>
-				<Icon :name="room.icon" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
-				<span class="flex-1 min-w-0 truncate text-sm text-text-primary">{{ room.label }}</span>
-				<Icon v-if="room.id === selectedId" name="lucide:check" class="w-4 h-4 text-brand" />
-			</button>
-		</div>
+				<span>{{ t('components.chat.chatLinkEmailDialog.share.partial') }}</span>
+				<UiButton variant="ghost" size="sm" @click="refetch">
+					{{ t('components.ui.queryBoundary.tryAgain') }}
+				</UiButton>
+			</div>
+			<div v-if="visibleRooms.length === 0" class="text-center py-8 text-text-tertiary text-sm">
+				{{ t('components.chat.chatLinkEmailDialog.share.empty') }}
+			</div>
+			<div
+				v-else
+				role="group"
+				:aria-label="t('components.chat.chatLinkEmailDialog.share.roomsLabel')"
+				class="space-y-1"
+			>
+				<button
+					v-for="room in visibleRooms"
+					:key="room.id"
+					type="button"
+					:aria-pressed="room.id === selectedId"
+					class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg transition-colors"
+					:class="room.id === selectedId ? 'bg-brand-subtle' : 'hover:bg-bg-surface'"
+					:data-testid="`share-room-${room.id}`"
+					@click="selectedId = room.id"
+				>
+					<Icon :name="room.icon" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
+					<span class="flex-1 min-w-0 truncate text-sm text-text-primary">{{ room.label }}</span>
+					<Icon v-if="room.id === selectedId" name="lucide:check" class="w-4 h-4 text-brand" />
+				</button>
+			</div>
+		</template>
 	</div>
 
 	<div class="px-5 pt-3 space-y-2 border-t border-border-subtle">
@@ -140,7 +159,7 @@ async function share() {
 
 	<div class="flex items-center justify-end gap-3 px-5 py-3">
 		<UiButton variant="secondary" @click="emit('close')">{{ t('common.cancel') }}</UiButton>
-		<UiButton data-testid="share-send" :disabled="!selectedId" :loading="sending" @click="share">
+		<UiButton data-testid="share-send" :disabled="!selectedRoom" :loading="sending" @click="share">
 			{{ t('components.chat.chatLinkEmailDialog.share.send') }}
 		</UiButton>
 	</div>
