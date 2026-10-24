@@ -3,10 +3,12 @@
  * nothing offered Undo and nothing led back. Pinned here: Undo restores exactly
  * the writes that landed, with their tokens; a failed or refused restore is not
  * reported as undone; "Show setup checklist" restores within the viewer's own
- * boundary (instance-wide only for admins), leaves Zen and opens Today.
+ * boundary (instance-wide only for admins, once the role is known), leaves Zen
+ * and opens Today; an older show or dismiss never overrules a newer one, and
+ * one person's request never opens the card for the next person signed in.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { nextTick, ref, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import type { ToastOptions } from '@owlat/ui/composables/useToast';
@@ -19,7 +21,9 @@ let runs: Record<string, Run>;
 let toasts: { message: string; type: string; options?: ToastOptions }[];
 let navigations: unknown[];
 let path: string;
-let isAdmin: boolean;
+let isAdmin: Ref<boolean>;
+let isRoleLoading: Ref<boolean>;
+let currentUser: Ref<{ id: string } | null>;
 
 const DISMISS_INSTANCE = getFunctionName(api.auth.onboarding.dismiss);
 const DISMISS_USER = getFunctionName(api.auth.userOnboarding.dismiss);
@@ -31,7 +35,9 @@ beforeEach(() => {
 	toasts = [];
 	navigations = [];
 	path = '/dashboard/postbox/inbox';
-	isAdmin = false;
+	isAdmin = ref(false);
+	isRoleLoading = ref(false);
+	currentUser = ref({ id: 'user-a' });
 	runs = {
 		[DISMISS_INSTANCE]: vi.fn(async () => ({ ok: true, result: { dismissedAt: 111 } })),
 		[DISMISS_USER]: vi.fn(async () => ({ ok: true, result: { dismissedAt: 222 } })),
@@ -45,8 +51,8 @@ beforeEach(() => {
 			return 'toast-1';
 		},
 	}));
-	vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'user-a' }) }));
-	vi.stubGlobal('usePermissions', () => ({ isAdmin: ref(isAdmin) }));
+	vi.stubGlobal('useAuth', () => ({ user: currentUser }));
+	vi.stubGlobal('usePermissions', () => ({ isAdmin, isRoleLoading }));
 	vi.stubGlobal('useRoute', () => ({ path }));
 	vi.stubGlobal('useBackendOperation', (fn: FunctionReference<'mutation'>) => ({
 		run: runs[getFunctionName(fn)],
@@ -62,6 +68,15 @@ async function controls() {
 	const { useGettingStartedControls } = await import('../useGettingStartedControls');
 	const { useZenMode } = await import('../useZenMode');
 	return { ...useGettingStartedControls(), zen: useZenMode() };
+}
+
+/** A mutation that settles when the test says so. */
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((r) => {
+		resolve = r;
+	});
+	return { promise, resolve };
 }
 
 function undoOf(index = 0) {
@@ -154,7 +169,7 @@ describe('showChecklist', () => {
 	});
 
 	it('restores the instance surface too for an admin, without navigating from Today', async () => {
-		isAdmin = true;
+		isAdmin.value = true;
 		path = '/dashboard';
 		const { showChecklist, reopenRequest } = await controls();
 
@@ -180,7 +195,7 @@ describe('showChecklist', () => {
 	});
 
 	it('does nothing before the session has a user', async () => {
-		vi.stubGlobal('useAuth', () => ({ user: ref(null) }));
+		currentUser.value = null;
 		const { showChecklist, reopenRequest } = await controls();
 
 		await showChecklist();
@@ -188,5 +203,117 @@ describe('showChecklist', () => {
 		expect(reopenRequest.value).toBe(0);
 		expect(runs[RESTORE_USER]).not.toHaveBeenCalled();
 		expect(navigations).toEqual([]);
+	});
+});
+
+describe('newer decisions win', () => {
+	it('keeps a checklist asked for again while an older dismissal was in flight', async () => {
+		const dismissal = deferred<{ ok: true; result: { dismissedAt: number } }>();
+		runs[DISMISS_USER] = vi.fn(() => dismissal.promise);
+		const { showChecklist, dismiss, reopenRequest } = await controls();
+
+		await showChecklist();
+		const dismissing = dismiss('user', 'user-a');
+		await showChecklist();
+		dismissal.resolve({ ok: true, result: { dismissedAt: 222 } });
+		await dismissing;
+
+		expect(reopenRequest.value).toBe(2);
+		// Nothing is hidden, so nothing is announced or offered for Undo.
+		expect(toasts).toEqual([]);
+		expect(runs[RESTORE_USER]).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not restore what was dismissed while it waited for the role', async () => {
+		isRoleLoading.value = true;
+		const { showChecklist, dismiss, reopenRequest } = await controls();
+
+		const showing = showChecklist();
+		await dismiss('user', 'user-a');
+		isRoleLoading.value = false;
+		await showing;
+
+		expect(runs[RESTORE_USER]).not.toHaveBeenCalled();
+		expect(reopenRequest.value).toBe(0);
+		expect(toasts).toHaveLength(1);
+	});
+
+	it('does not reopen through an Undo once the checklist was asked for since', async () => {
+		const { showChecklist, dismiss, reopenRequest } = await controls();
+
+		await showChecklist();
+		await dismiss('user', 'user-a');
+		await showChecklist();
+		await dismiss('user', 'user-a');
+
+		expect(await undoOf(0).run()).toBe(true);
+		expect(reopenRequest.value).toBe(0);
+	});
+});
+
+describe('role resolution', () => {
+	it('waits for the role, so an admin also clears the instance dismissal', async () => {
+		isRoleLoading.value = true;
+		const { showChecklist, reopenRequest } = await controls();
+
+		const showing = showChecklist();
+		// The card opens at once; only the writes wait.
+		expect(reopenRequest.value).toBe(1);
+		await Promise.resolve();
+		expect(runs[RESTORE_USER]).not.toHaveBeenCalled();
+
+		isAdmin.value = true;
+		isRoleLoading.value = false;
+		await showing;
+
+		expect(runs[RESTORE_USER]).toHaveBeenCalledWith({ userId: 'user-a' });
+		expect(runs[RESTORE_INSTANCE]).toHaveBeenCalledWith({ userId: 'user-a' });
+	});
+});
+
+describe('change of signed-in user', () => {
+	it("does not open the next person's checklist", async () => {
+		const { showChecklist, reopenRequest } = await controls();
+
+		await showChecklist();
+		expect(reopenRequest.value).toBe(1);
+
+		currentUser.value = null;
+		await nextTick();
+		currentUser.value = { id: 'user-b' };
+		await nextTick();
+		expect(reopenRequest.value).toBe(0);
+
+		// Nor does the first person's request come back when they sign in again.
+		currentUser.value = { id: 'user-a' };
+		await nextTick();
+		expect(reopenRequest.value).toBe(0);
+	});
+
+	it("leaves the next person's checklist alone when an old request completes", async () => {
+		isRoleLoading.value = true;
+		const { showChecklist } = await controls();
+
+		const showing = showChecklist();
+		currentUser.value = { id: 'user-b' };
+		await nextTick();
+		isRoleLoading.value = false;
+		await showing;
+
+		expect(runs[RESTORE_USER]).not.toHaveBeenCalled();
+		expect(runs[RESTORE_INSTANCE]).not.toHaveBeenCalled();
+	});
+
+	it("does not run an earlier person's Undo in the next session", async () => {
+		const { showChecklist, dismiss, reopenRequest } = await controls();
+
+		await showChecklist();
+		await dismiss('user', 'user-a');
+		currentUser.value = { id: 'user-b' };
+		await nextTick();
+
+		expect(await undoOf().run()).toBe(false);
+		expect(runs[RESTORE_USER]).toHaveBeenCalledTimes(1);
+		expect(reopenRequest.value).toBe(0);
 	});
 });
