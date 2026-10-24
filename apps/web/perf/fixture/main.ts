@@ -8,15 +8,17 @@
  */
 import './autoImports';
 import './style.css';
-import { createApp, type App } from 'vue';
+import { createApp, type App, type Component } from 'vue';
 import { createI18n } from 'vue-i18n';
 import { datetimeFormats, numberFormats } from '../../i18n/formats';
 import type { FidelitySentinels, FixtureApi } from '../fixtureApi';
-import { SCENARIOS, scenarioById } from '../scenarios';
+import { SCENARIOS, scenarioById, type Scenario } from '../scenarios';
 import { counter, timing, type Sample } from '../stats';
 import { assistantStream } from './assistantStream';
 import { chatHistory } from './chatHistory';
 import { registerComponents } from './components';
+import { postboxList } from './postboxList';
+import { teamInbox } from './teamInbox';
 import { createProbe, nextFrame, sum, type Probe } from './probe';
 
 /** A message catalog: nested keys down to message strings. */
@@ -55,10 +57,31 @@ function noteUnresolvedComponents() {
 	}
 }
 
+type Run = (probe: Probe, stage: HTMLElement) => Promise<Sample>;
+
+interface Built {
+	Host: Component;
+	rows: number;
+	run: Run;
+}
+
+function build(scenario: Scenario): Built {
+	switch (scenario.family) {
+		case 'assistant-stream':
+			return assistantStream(scenario);
+		case 'chat-history':
+			return chatHistory(scenario);
+		case 'postbox-list':
+			return postboxList(scenario);
+		case 'team-inbox':
+			return teamInbox(scenario);
+	}
+}
+
 interface Mounted {
 	app: App;
 	probe: Probe;
-	run: (probe: Probe, stage: HTMLElement) => Promise<Sample>;
+	run: Run;
 }
 let current: Mounted | null = null;
 
@@ -68,8 +91,7 @@ const api: FixtureApi = {
 	async mount(id) {
 		if (current) throw new Error('a scenario is already mounted');
 		const scenario = scenarioById(id);
-		const built =
-			scenario.family === 'assistant-stream' ? assistantStream(scenario) : chatHistory(scenario);
+		const built = build(scenario);
 		const app = createApp(built.Host);
 		app.config.errorHandler = (error) => sentinels.vueErrors.push(String(error));
 		app.use(
@@ -99,6 +121,9 @@ const api: FixtureApi = {
 		return {
 			rows: counter(built.rows),
 			'components mounted': counter(probe.live()),
+			// The rendered DOM's size as the page sees it: unlike Chrome's own node
+			// count, it does not move with the browser's internals.
+			'elements rendered': counter(stage.querySelectorAll('*').length),
 			'component updates during mount': counter(sum(probe.takeUpdates().values())),
 			'mount to second frame': timing(mountMs),
 		};

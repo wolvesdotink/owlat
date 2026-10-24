@@ -391,6 +391,10 @@ const { isDesktop: isDesktopApp } = useDesktopContext();
 useTabBadge(() => (isDesktopApp.value ? null : unreadBadge.count.value));
 useDesktopNotifications(unreadBadge);
 
+// Campaign, delivery, automation and sending-domain notices: in-app toast
+// everywhere, native notification on the desktop app.
+useMarketingNotices();
+
 // "You can send now" — one in-app toast for a member whose onboarding first-send
 // step was blocked while the instance had no outbound transport.
 useSendReadyNotice();

@@ -193,6 +193,11 @@ export function usePostboxSettings() {
 		data.value === undefined ? false : (data.value?.isAutoLoadImagesOn ?? true)
 	);
 
+	// Whether the saved row (or its absence) has arrived. Until then every value
+	// here is a default, so a caller whose action cannot be taken back (an OS
+	// notification that would show a name, or fire inside quiet hours) waits.
+	const isResolved = computed<boolean>(() => data.value !== undefined);
+
 	// Undo-send window. An unset (or unknown) value resolves to 10s — the server
 	// default the composer gets by sending no `undoSendDelayMs` at all.
 	const undoSendSeconds = computed<PostboxUndoSendSeconds>(() =>
@@ -448,6 +453,7 @@ export function usePostboxSettings() {
 		dailyBriefEmail,
 		hasSeenSealedMailNudge,
 		isLoading,
+		isResolved,
 		setAutoAdvance,
 		setWritingSuggestions,
 		setAutoSummarize,

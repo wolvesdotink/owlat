@@ -1152,6 +1152,13 @@
 			}
 		},
 		"campaigns": {
+			"cancelIntentDialog": {
+				"title": "Cancel this scheduled campaign?",
+				"description": "{name} is scheduled to send on {date}. Cancelling stops it for good: a cancelled campaign cannot be scheduled again.",
+				"confirm": "Cancel campaign",
+				"keep": "Keep it scheduled",
+				"notScheduled": "This campaign is no longer scheduled, so there is nothing to cancel."
+			},
 			"abTestConfig": {
 				"contentOption": "Email content",
 				"contentOptionDescription": "Test different email templates",
@@ -6160,6 +6167,32 @@
 				"title": "Your data",
 				"trashPurgeHelp": "Counted from the day you bin a message. Off unless you turn it on.",
 				"trashPurgeLabel": "Empty the trash automatically"
+			},
+			"marketingNotifications": {
+				"heading": "Marketing notifications",
+				"intro": "About campaigns, automations and sending. These switches belong to your account: turning one off stops that notification in the app, in the desktop app and by push on every device.",
+				"scopeBadge": "All your devices",
+				"campaignFinished": {
+					"label": "Campaign finished",
+					"hint": "When a campaign has finished sending, with the share that was delivered."
+				},
+				"campaignReminder": {
+					"label": "Scheduled campaign about to send",
+					"hint": "15 minutes before a scheduled campaign starts, with a way to cancel it."
+				},
+				"deliveryHold": {
+					"label": "Bounce protection",
+					"hint": "When a spike in bounces or complaints makes Owlat hold back mail to a mail provider, or reroute it through your relay."
+				},
+				"automationProblems": {
+					"label": "Automation problems",
+					"hint": "When contacts stall in an automation, or an automation pauses itself after failed runs."
+				},
+				"domainDns": {
+					"label": "Sending domain DNS broken",
+					"hint": "When a DNS record of a sending domain stops passing its check."
+				},
+				"saveOperation": "Save notification setting"
 			},
 			"webPush": {
 				"heading": "Push notifications",
@@ -12037,7 +12070,7 @@
 				"pageTitle": "Booking page"
 			},
 			"device": {
-				"intro": "Settings stored on this device only — they never travel to another computer or browser.",
+				"intro": "Notifications and settings for this device. Most are stored only here and never travel to another computer or browser; a setting that belongs to your account says so.",
 				"nothingHere": "Nothing on this instance stores anything on this device."
 			},
 			"filters": {
@@ -16503,6 +16536,10 @@
 					"keywords": "disconnect, remove, delete, unlink, connected mailbox, external account, gmail, outlook, fastmail",
 					"title": "Disconnect a connected mailbox"
 				},
+				"marketingNotifications": {
+					"title": "Marketing notifications",
+					"keywords": "campaign finished, scheduled campaign reminder, bounce spike, bounce protection, sending paused, automation stalled, dns broken, alerts"
+				},
 				"pushNotifications": {
 					"title": "Push notifications",
 					"keywords": "web push, browser notifications, phone, mobile, pwa, notify, devices"
@@ -17360,6 +17397,51 @@
 				"lastName": "Last name"
 			},
 			"pickerTitle": "Choose a CSV file"
+		},
+		"marketingNotices": {
+			"toast": "{title}: {body}",
+			"quietSummary": {
+				"title": "While you were away",
+				"body": "1 campaign or sending notice arrived during quiet hours | {count} campaign and sending notices arrived during quiet hours"
+			},
+			"campaignFinished": {
+				"title": "Campaign finished",
+				"body": "{name} · {percent}% delivered",
+				"bodyNoPercent": "{name} has finished sending",
+				"private": "A campaign has finished sending"
+			},
+			"campaignReminder": {
+				"title": "Scheduled campaign sends in {minutes} min",
+				"body": "{name}",
+				"private": "Open it to review or cancel the send"
+			},
+			"deliveryHold": {
+				"title": "Bounce spike: sending protection on",
+				"body": "Owlat is holding back mail to {provider}, or rerouting it through your relay, after a spike in bounces or complaints"
+			},
+			"providers": {
+				"gmail": "Gmail",
+				"microsoft": "Microsoft",
+				"yahoo": "Yahoo",
+				"apple": "Apple",
+				"other": "other providers"
+			},
+			"automationStalled": {
+				"title": "Automation stalled",
+				"body": "{name}: {count} stalled contact | {name}: {count} stalled contacts",
+				"private": "Contacts stalled in an automation"
+			},
+			"automationPaused": {
+				"title": "Automation paused",
+				"body": "{name} paused itself after repeated failed runs",
+				"private": "An automation paused itself after repeated failed runs"
+			},
+			"domainDns": {
+				"title": "Sending domain DNS broken",
+				"body": "{domain}: {check} check failed",
+				"bodyNoCheck": "{domain}: a DNS check failed",
+				"private": "A DNS check of a sending domain failed"
+			}
 		},
 		"useDesktopNotifications": {
 			"draftsReady": {

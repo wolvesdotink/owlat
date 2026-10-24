@@ -1,9 +1,9 @@
 /**
  * Validators for Web Push (`push/`): the event a producer hands the sender.
  *
- * One home because the producers (mail delivery, inbox assignment, chat) and
- * the scheduled sender all speak this shape, and a scheduled job keeps the
- * arguments it was queued with across a deploy.
+ * One home because the producers (mail delivery, inbox assignment, chat,
+ * marketing notices) and the scheduled sender all speak this shape, and a
+ * scheduled job keeps the arguments it was queued with across a deploy.
  */
 
 import { v } from 'convex/values';
@@ -31,6 +31,10 @@ export const pushEventValidator = v.union(
 		messageId: v.id('chatMessages'),
 		reason: v.union(v.literal('mention'), v.literal('dm')),
 	}),
+	// A marketing notice (campaign finished or about to send, a delivery hold,
+	// a stalled or paused automation, a broken sending-domain DNS record),
+	// written for this person by `marketing/notifications.fanOut`.
+	v.object({ kind: v.literal('marketing'), noticeId: v.id('marketingNotices') }),
 	// "Send a test notification" from Preferences, to one device.
 	v.object({ kind: v.literal('test'), subscriptionId: v.id('pushSubscriptions') })
 );

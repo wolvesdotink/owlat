@@ -265,9 +265,183 @@ pub fn send_actionable_notification(
     Ok(())
 }
 
+// ── Link notifications ─────────────────────────────────────────────────────
+//
+// A notice about something with a page of its own (a campaign, an automation,
+// a sending domain) has no message to triage, only a place to go. Clicking it
+// emits `notification-action` with `action: "navigate"` and the in-app path,
+// so the webview opens that page in the workspace that sent it. No buttons.
+// macOS and Linux go through the same native crates as the actionable
+// notifications above; Windows registers a toast activation handler, which
+// needs no buttons and so works where actions do not.
+
+/// What a link notification opens, echoed back in its click event.
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux", windows, test)),
+    allow(dead_code)
+)]
+struct LinkTarget {
+    /// App-relative path; the webview validates it before navigating.
+    url: String,
+    /// The desktop workspace that sent the notification (see [`ActionTarget`]).
+    workspace_id: Option<String>,
+    notification_id: u64,
+}
+
+impl LinkTarget {
+    fn new(url: String, workspace_id: Option<String>) -> Self {
+        Self {
+            url,
+            workspace_id: workspace_id.filter(|id| !id.is_empty()),
+            notification_id: NEXT_NOTIFICATION_ID.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux", windows, test))]
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinkActionEvent {
+    /// Always "navigate": the notification was clicked.
+    action: &'static str,
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workspace_id: Option<String>,
+    notification_id: u64,
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux", windows, test))]
+impl LinkActionEvent {
+    fn clicked(target: &LinkTarget) -> Self {
+        Self {
+            action: "navigate",
+            url: target.url.clone(),
+            workspace_id: target.workspace_id.clone(),
+            notification_id: target.notification_id,
+        }
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
+fn emit_link_click(app: &AppHandle, target: &LinkTarget) {
+    use tauri::Emitter;
+    let _ = app.emit("notification-action", LinkActionEvent::clicked(target));
+}
+
+#[cfg(target_os = "macos")]
+fn notify_with_link(app: &AppHandle, title: String, body: String, target: LinkTarget) {
+    use mac_notification_sys::{
+        send_notification, set_application, Notification, NotificationResponse,
+    };
+    let app = app.clone();
+    let bundle = app.config().identifier.clone();
+    std::thread::spawn(move || {
+        let _ = set_application(&bundle);
+        let mut options = Notification::new();
+        options.wait_for_click(true);
+        if let Ok(NotificationResponse::Click) =
+            send_notification(&title, None, &body, Some(&options))
+        {
+            emit_link_click(&app, &target);
+        }
+    });
+}
+
+#[cfg(target_os = "linux")]
+fn notify_with_link(app: &AppHandle, title: String, body: String, target: LinkTarget) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let handle = notify_rust::Notification::new()
+            .summary(&title)
+            .body(&body)
+            .action("default", "Open")
+            .show();
+        if let Ok(handle) = handle {
+            handle.wait_for_action(|action| {
+                if action == "default" {
+                    emit_link_click(&app, &target);
+                }
+            });
+        }
+    });
+}
+
+#[cfg(windows)]
+fn notify_with_link(app: &AppHandle, title: String, body: String, target: LinkTarget) {
+    use tauri_winrt_notification::Toast;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let app_id = windows_toast_app_id(&app);
+        let clicked = app.clone();
+        // The activation handler runs on a system thread when the toast (or
+        // its Action Center entry, while the app is running) is clicked; the
+        // webview's router focuses the window and opens the page.
+        let _ = Toast::new(&app_id)
+            .title(&title)
+            .text1(&body)
+            .on_activated(move |_| {
+                emit_link_click(&clicked, &target);
+                Ok(())
+            })
+            .show();
+    });
+}
+
+/// The AppUserModelID toasts are sent under, chosen the way the notification
+/// plugin chooses it so link toasts group with the app's other notifications:
+/// the bundle identifier for an installed app, PowerShell's id for a binary
+/// run from a cargo target directory, which Windows has no registration for.
+#[cfg(windows)]
+fn windows_toast_app_id(app: &AppHandle) -> String {
+    use std::path::MAIN_SEPARATOR as SEP;
+    use tauri_winrt_notification::Toast;
+    let from_target_dir = tauri::utils::platform::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.display().to_string()))
+        .is_some_and(|dir| {
+            dir.ends_with(&format!("{SEP}target{SEP}debug"))
+                || dir.ends_with(&format!("{SEP}target{SEP}release"))
+        });
+    if from_target_dir {
+        Toast::POWERSHELL_APP_ID.to_string()
+    } else {
+        app.config().identifier.clone()
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+fn notify_with_link(app: &AppHandle, title: String, body: String, _target: LinkTarget) {
+    // No click events on this target: a plain notification, which still
+    // focuses the app when clicked.
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app
+        .notification()
+        .builder()
+        .title(&title)
+        .body(&body)
+        .show();
+}
+
+/// Tauri command: send a notification that opens an in-app page when clicked
+/// (macOS, Linux and Windows), via a `notification-action` event with
+/// `action: "navigate"`, the `url` and `workspace_id` back unchanged.
+#[command]
+pub fn send_link_notification(
+    app: AppHandle,
+    title: String,
+    body: String,
+    url: String,
+    workspace_id: Option<String>,
+) -> Result<(), String> {
+    notify_with_link(&app, title, body, LinkTarget::new(url, workspace_id));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{badge_dot_rgba, ActionTarget, NotificationActionEvent};
+    use super::{
+        badge_dot_rgba, ActionTarget, LinkActionEvent, LinkTarget, NotificationActionEvent,
+    };
 
     fn pixel(rgba: &[u8], size: u32, x: u32, y: u32) -> [u8; 4] {
         let i = ((y * size + x) * 4) as usize;
@@ -310,5 +484,22 @@ mod tests {
         assert!(event.get("workspaceId").is_none());
         let empty = ActionTarget::new("m1".into(), "inbox".into(), Some(String::new()));
         assert!(empty.workspace_id.is_none());
+    }
+
+    #[test]
+    fn link_clicks_carry_the_page_and_the_sending_workspace() {
+        let target = LinkTarget::new("/dashboard/campaigns/c1".into(), Some("ws-a".into()));
+        let event = serde_json::to_value(LinkActionEvent::clicked(&target)).unwrap();
+        assert_eq!(event["action"], "navigate");
+        assert_eq!(event["url"], "/dashboard/campaigns/c1");
+        assert_eq!(event["workspaceId"], "ws-a");
+        assert_eq!(event["notificationId"], target.notification_id);
+        // A link click is not about a message: nothing to triage.
+        assert!(event.get("messageId").is_none());
+
+        let other = LinkTarget::new("/dashboard".into(), Some(String::new()));
+        assert_ne!(other.notification_id, target.notification_id);
+        let event = serde_json::to_value(LinkActionEvent::clicked(&other)).unwrap();
+        assert!(event.get("workspaceId").is_none());
     }
 }

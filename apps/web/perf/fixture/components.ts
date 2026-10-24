@@ -4,10 +4,12 @@
  * `chat/ChatMessage.vue` stays `ChatMessage`), because their templates refer
  * to each other by those names.
  *
- * Only `Icon` is a stand-in: @nuxt/icon is a Nuxt module. Its CSS mode renders
- * one sized `<span>` per icon, and so does the stand-in, with the same classes.
+ * Two stand-ins, both for Nuxt modules: `Icon` (@nuxt/icon's CSS mode renders
+ * one sized `<span>` per icon, and so does the stand-in, with the same classes)
+ * and `NuxtLink` (./nuxtComponents.ts).
  */
 import { defineComponent, h, type App, type Component } from 'vue';
+import { NuxtLink } from './nuxtComponents';
 
 const modules = import.meta.glob<Component>(
 	[
@@ -15,7 +17,9 @@ const modules = import.meta.glob<Component>(
 		'../../app/components/assistant/{AssistantMessage,AssistantMarkdown,AssistantInline,AssistantToolCalls}.vue',
 		'../../app/components/ai/BudgetRefusal.vue',
 		'../../app/components/ui/Avatar.vue',
-		'../../../../packages/ui/components/ui/Button.vue',
+		'../../app/components/postbox/{PostboxThreadList,PostboxThreadRow,PostboxThreadRowBody,PostboxThreadRowFollowUp,PostboxRowCore,PostboxSwipeTrack,PostboxThreadListSkeleton,PostboxEmptyState,PostboxSnoozeDialog,PostboxLabelPickerDialog,PostboxMovePickerDialog,PostboxPresetTimeDialog}.vue',
+		'../../app/components/inbox/{InboxThreadRow,AssignPopover,StatusChip}.vue',
+		'../../../../packages/ui/components/ui/{Button,ContextMenu,Modal,Skeleton,PresenceRing,DropdownMenu,DropdownMenuItem,DropdownDivider}.vue',
 	],
 	{ eager: true, import: 'default' }
 );
@@ -50,4 +54,5 @@ const Icon = defineComponent({
 export function registerComponents(app: App): void {
 	for (const [name, registered] of registry) app.component(name, registered);
 	app.component('Icon', Icon);
+	app.component('NuxtLink', NuxtLink);
 }
