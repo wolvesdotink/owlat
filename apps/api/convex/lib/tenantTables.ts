@@ -3,7 +3,7 @@ import { THREAD_BRIEF_TABLES } from '../schema/threadBrief';
 import { AI_ROUTING_TABLES } from '../schema/aiRouting';
 import { MAIL_ARRIVAL_TABLES } from '../schema/mailArrival';
 import { MARKETING_NOTIFICATION_TABLES } from '../schema/marketingNotifications';
-import { NON_TENANT_TABLES } from './nonTenantTables';
+import type { NON_TENANT_TABLES } from './nonTenantTables';
 
 /**
  * The single source of truth for "which tables hold tenant business data".
