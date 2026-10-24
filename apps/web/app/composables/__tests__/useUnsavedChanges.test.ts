@@ -134,6 +134,67 @@ describe('useUnsavedChanges navigation guard', () => {
 		expect(guarded.showDialog.value).toBe(true);
 	});
 
+	describe('a leave request still waiting for beforeLeave', () => {
+		// The first request waits for a device copy the test settles by hand; any
+		// later request finds the text committed and decides at once.
+		function setupWaiting() {
+			let finish!: () => void;
+			const waiting = new Promise<void>((resolve) => {
+				finish = resolve;
+			});
+			const beforeLeave = vi.fn((): Promise<void> | undefined => undefined);
+			beforeLeave.mockReturnValueOnce(waiting);
+			const setup = withSetup(() => useUnsavedChanges({ beforeLeave }));
+			setup.result.setHasChanges(true);
+			const olderNext = vi.fn();
+			const older = h.guard?.({ fullPath: '/older' }, {}, olderNext);
+			return { guarded: setup.result, unmount: setup.unmount, finish, older, olderNext };
+		}
+
+		it('leaves the target of a newer prompt in place', async () => {
+			const { guarded, finish, older, olderNext } = setupWaiting();
+
+			const newerNext = vi.fn();
+			h.guard?.({ fullPath: '/newer' }, {}, newerNext);
+			expect(newerNext).toHaveBeenCalledWith(false);
+			expect(guarded.pendingRoute.value).toBe('/newer');
+
+			finish();
+			await older;
+
+			expect(olderNext).toHaveBeenCalledTimes(1);
+			expect(olderNext).toHaveBeenCalledWith(false);
+			expect(guarded.pendingRoute.value).toBe('/newer');
+			expect(guarded.showDialog.value).toBe(true);
+		});
+
+		it('does not reopen a prompt the user cancelled', async () => {
+			const { guarded, finish, older, olderNext } = setupWaiting();
+			h.guard?.({ fullPath: '/newer' }, {}, vi.fn());
+			guarded.cancelNavigation();
+
+			finish();
+			await older;
+
+			expect(olderNext).toHaveBeenCalledWith(false);
+			expect(guarded.showDialog.value).toBe(false);
+			expect(guarded.pendingRoute.value).toBeNull();
+			expect(h.push).not.toHaveBeenCalled();
+		});
+
+		it('settles without a prompt once the page unmounted', async () => {
+			const { guarded, unmount, finish, older, olderNext } = setupWaiting();
+			unmount();
+
+			finish();
+			await older;
+
+			expect(olderNext).toHaveBeenCalledWith(false);
+			expect(guarded.showDialog.value).toBe(false);
+			expect(guarded.pendingRoute.value).toBeNull();
+		});
+	});
+
 	it('cancelNavigation dismisses the dialog and stays put', () => {
 		const guarded = withSetup(() => useUnsavedChanges()).result;
 		guarded.setHasChanges(true);

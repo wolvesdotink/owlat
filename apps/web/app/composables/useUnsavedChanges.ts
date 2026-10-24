@@ -73,14 +73,23 @@ export function useUnsavedChanges(options: UseUnsavedChangesOptions = {}): UseUn
 
 	// Vue Router navigation guard
 	onBeforeRouteLeave(async (to, _from, next) => {
+		// The request opens its decision before `beforeLeave` runs, so a newer
+		// leave request, Cancel or unmount during that wait supersedes it.
+		decision += 1;
+		const request = decision;
 		const preparing = options.beforeLeave?.();
 		if (preparing) {
 			await preparing;
 			await nextTick();
+			// Superseded: the router has moved on, and whatever replaced this
+			// request owns the dialog. Settle the guard without touching either.
+			if (request !== decision) {
+				next(false);
+				return;
+			}
 		}
 		if (hasUnsavedChanges.value) {
 			// Store the target route and show dialog
-			decision += 1;
 			pendingRoute.value = to.fullPath;
 			showDialog.value = true;
 			next(false);
