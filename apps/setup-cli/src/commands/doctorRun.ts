@@ -89,6 +89,8 @@ export interface CollectDoctorOptions {
 	 * Keep only the code-owned text of each message (default false). The support
 	 * bundle sets it: runtime text such as an MTA headline or an IP-audit note
 	 * can carry personal data that doctor's known-secret pass cannot recognise.
+	 * Install paths are then named relative to the install directory, whose
+	 * operator-chosen name can carry a person's or a client's name.
 	 */
 	codeOwnedMessages?: boolean;
 }
@@ -106,6 +108,11 @@ export async function collectDoctorReport(
 ): Promise<DoctorReport> {
 	const report = new DoctorReportBuilder(onCheck);
 	if (options.codeOwnedMessages === true) report.withholdRuntimeText();
+	// A file in the install directory, as a message may name it. The directory is
+	// operator input even though doctor composes the path, so code-owned-only
+	// output names the file by a fixed label instead.
+	const shownInstallFile = (name: string) =>
+		trusted(options.codeOwnedMessages === true ? `<install dir>/${name}` : join(owlatDir, name));
 
 	const envPath = join(owlatDir, '.env');
 	const envPresent = existsSync(envPath);
@@ -114,7 +121,7 @@ export async function collectDoctorReport(
 	report.record({
 		check: 'env.file',
 		ok: envPresent,
-		message: doctorText`.env file present at ${trusted(envPath)}`,
+		message: doctorText`.env file present at ${shownInstallFile('.env')}`,
 	});
 
 	// Read flags from the local mirror.
@@ -172,7 +179,7 @@ export async function collectDoctorReport(
 	report.record({
 		check: 'compose.override',
 		ok: existsSync(overridePath),
-		message: doctorText`Compose override present at ${trusted(overridePath)}`,
+		message: doctorText`Compose override present at ${shownInstallFile('docker-compose.override.yml')}`,
 	});
 
 	// Best-effort docker check via shelling out.

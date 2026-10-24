@@ -1,5 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -47,8 +55,11 @@ afterEach(() => {
 	for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function install(files: { rollout?: string } = {}): string {
-	const dir = tempDir('owlat-install-');
+function install(files: { rollout?: string; subdir?: string } = {}): string {
+	const dir = files.subdir
+		? join(tempDir('owlat-install-'), files.subdir)
+		: tempDir('owlat-install-');
+	mkdirSync(dir, { recursive: true });
 	writeFileSync(
 		join(dir, '.env'),
 		[
@@ -500,6 +511,29 @@ describe('runSupportBundle', () => {
 			message: 'IP audit for [redacted]: [redacted]',
 		});
 		for (const needle of ['Alice', 'Invoice 4012', '555 0100', 'example.com/alice']) {
+			expect(JSON.stringify(files)).not.toContain(needle);
+		}
+	});
+
+	it('names install files without the install directory, whatever it is called', async () => {
+		const owlatDir = install({ subdir: 'Alice Smith/Private Client' });
+		writeFileSync(join(owlatDir, 'docker-compose.override.yml'), 'services: {}\n');
+		const out = join(tempDir('out-'), 'bundle.tar.gz');
+		expect(
+			await runSupportBundle({ owlatDir, args: ['--output', out], cliVersion: '0.6.16' }, fakeIo())
+		).toBe(0);
+		const files = extract(out);
+		const messages = Object.fromEntries(
+			json(files, 'doctor.json').report.checks.map((check: { id: string; message: string }) => [
+				check.id,
+				check.message,
+			])
+		);
+		expect(messages['env.file']).toBe('.env file present at <install dir>/.env');
+		expect(messages['compose.override']).toBe(
+			'Compose override present at <install dir>/docker-compose.override.yml'
+		);
+		for (const needle of ['Alice', 'Private Client', owlatDir]) {
 			expect(JSON.stringify(files)).not.toContain(needle);
 		}
 	});

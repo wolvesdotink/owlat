@@ -313,7 +313,7 @@ export async function collectSupportBundle(
 		logs,
 		skippedServices,
 		redaction:
-			'Allowlist projection: log lines keep level, event name, error class/code, HTTP status, duration, length and a digest of the message; message text, addresses, subjects, stacks and unknown fields are dropped. Doctor checks keep id, subject (identifiers only), status and remediation, and their message keeps only code-owned text: runtime text such as MTA answers is replaced by [redacted]. Migration and rollout sections carry states, counts and timestamps, never error text.',
+			'Allowlist projection: log lines keep level, event name, error class/code, HTTP status, duration, length and a digest of the message; message text, addresses, subjects, stacks and unknown fields are dropped. Doctor checks keep id, subject (identifiers only), status and remediation, and their message keeps only code-owned text: runtime text such as MTA answers is replaced by [redacted] and install files are named as <install dir>/<file>. Migration and rollout sections carry states, counts and timestamps, never error text.',
 	};
 	return {
 		root,

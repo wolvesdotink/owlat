@@ -106,7 +106,8 @@ const DOCTOR_SUBJECT = /^[A-Za-z0-9_.:-]{1,64}$/;
  * The doctor report as the bundle collects it: `collectDoctorReport` with
  * `codeOwnedMessages`, so each message is already reduced to code-owned text
  * with every run of runtime text (MTA answers, docker status lines, error
- * messages) replaced by `[redacted]`. Here, on top of that, a subject is kept
+ * messages) replaced by `[redacted]`, and a file in the install directory
+ * named as `<install dir>/<file>`. Here, on top of that, a subject is kept
  * only when it is an identifier (env key, IP, service) and dropped otherwise,
  * and an email-shaped string left in a message (a code-owned path or key name
  * never holds one) is still de-identified.

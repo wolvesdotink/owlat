@@ -67,18 +67,27 @@ export function runBounded(
 		};
 		let child: ReturnType<typeof spawn>;
 		try {
-			child = spawn(command, [...args], { cwd: options.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+			// Its own process group, so the deadline reaches what the command starts
+			// too: `docker compose` runs as a CLI plugin process that inherits the
+			// output pipes and outlives a killed `docker`.
+			child = spawn(command, [...args], {
+				cwd: options.cwd,
+				stdio: ['ignore', 'pipe', 'pipe'],
+				detached: true,
+			});
 		} catch {
 			done({ code: 127, output: '', truncated: false, timedOut: false });
 			return;
 		}
-		const timer = setTimeout(() => {
-			timedOut = true;
-			child.kill('SIGKILL');
-		}, options.timeoutMs);
-		child.stdout?.on('data', take);
-		if (options.mergeStderr) child.stderr?.on('data', take);
-		else child.stderr?.resume();
+		const killGroup = () => {
+			if (child.pid === undefined) return;
+			try {
+				process.kill(-child.pid, 'SIGKILL');
+			} catch {
+				// The group is already gone.
+			}
+		};
+		let exitCode: number | null = null;
 		let settled = false;
 		const finish = (code: number) => {
 			if (settled) return;
@@ -89,7 +98,24 @@ export function runBounded(
 			if (truncated && options.keep === 'tail') output = output.slice(output.indexOf('\n') + 1);
 			done({ code, output, truncated, timedOut });
 		};
+		const timer = setTimeout(() => {
+			timedOut = exitCode === null;
+			killGroup();
+			// A process that left the group (setsid) can still hold the pipes; the
+			// deadline bounds the wait for them as well.
+			child.stdout?.destroy();
+			child.stderr?.destroy();
+			finish(exitCode ?? 137);
+		}, options.timeoutMs);
+		child.stdout?.on('data', take);
+		if (options.mergeStderr) child.stderr?.on('data', take);
+		else child.stderr?.resume();
 		child.on('error', () => finish(127));
-		child.on('close', (code) => finish(code ?? 1));
+		child.on('exit', (code) => {
+			exitCode = code ?? 1;
+			// A descendant left behind keeps the pipes open, and `close` waits for them.
+			killGroup();
+		});
+		child.on('close', (code) => finish(exitCode ?? code ?? 1));
 	});
 }

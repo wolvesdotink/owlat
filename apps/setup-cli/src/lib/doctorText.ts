@@ -60,7 +60,11 @@ export class DoctorText {
 	}
 }
 
-/** Code-owned text or a trusted identifier: an env key name, a path, catalog copy. */
+/**
+ * Code-owned text or a trusted identifier: an env key name, a fixed path,
+ * catalog copy. Never anything built from operator input or runtime data: a
+ * path under the configured install directory carries that directory's name.
+ */
 export function trusted(text: string): Trusted {
 	return { trustedText: text };
 }
