@@ -339,9 +339,7 @@ export default defineNuxtConfig({
 				// `scripts/check-icon-names.sh` fails the lint if a referenced icon is
 				// unresolvable or sits in a file outside these globs.
 				globInclude: ['**/*.{vue,jsx,tsx,ts,md,mdc,mdx,yml,yaml}'],
-				// Test files are skipped: a name only a test quotes would be bundled
-				// into the entry chunk for nothing (see ICON_SCAN_EXCLUDE).
-				globExclude: ICON_SCAN_EXCLUDE,
+				globExclude: ICON_SCAN_EXCLUDE, // the defaults plus test files
 			},
 			sizeLimitKb: 512,
 		},
