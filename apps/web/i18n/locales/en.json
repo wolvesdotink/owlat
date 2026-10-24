@@ -16726,7 +16726,7 @@
 				"scheduleSend": "Schedule send (in composer)",
 				"selectDeselect": "Select / deselect",
 				"send": "Send (in composer)",
-				"sendAlternate": "Send and do the other after-reply action (in composer)",
+				"sendAlternate": "Send, other after-reply action (in composer)",
 				"showShortcuts": "Show keyboard shortcuts",
 				"snooze": "Snooze",
 				"starUnstar": "Star / unstar",
