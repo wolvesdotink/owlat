@@ -71,6 +71,7 @@
 		"@owlat/plugin-host": "workspace:*",
 		"@owlat/plugin-kit": "workspace:*",
 		"@owlat/provider-kit": "workspace:*",
+		"@owlat/public-contract": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
 		"@owlat/worker-protocol": "workspace:*",

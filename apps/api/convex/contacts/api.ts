@@ -14,7 +14,13 @@ import {
 	type PathSegment,
 } from '../auth/apiResponses';
 import { isValidEmail, isValidConvexId, STRING_LIMITS } from '../lib/inputGuards';
-import type { ContactSource } from '../lib/validators/contacts';
+import type { Contact as ContactResponse } from '@owlat/public-contract';
+import {
+	createContactRequestSchema,
+	decodeRequest,
+	readListQuery,
+	updateContactRequestSchema,
+} from '@owlat/public-contract/schemas';
 
 /**
  * A create or edit refused because the email belongs to another contact. The
@@ -24,30 +30,6 @@ import type { ContactSource } from '../lib/validators/contacts';
  */
 function isDuplicateContact(error: unknown): boolean {
 	return extractOperationError(error)?.category === 'already_exists';
-}
-
-// Request body types
-interface CreateContactBody {
-	email: string;
-	firstName?: string;
-	lastName?: string;
-}
-
-interface UpdateContactBody {
-	email?: string;
-	firstName?: string;
-	lastName?: string;
-}
-
-// Response types
-interface ContactResponse {
-	id: string;
-	email: string;
-	firstName: string | null;
-	lastName: string | null;
-	source: ContactSource;
-	createdAt: string;
-	updatedAt: string;
 }
 
 /** The contact fields the v1 response exposes (exported for testing). */
@@ -159,15 +141,13 @@ export function contactRefFromPath(segment: PathSegment): string | Response {
 
 /**
  * Length caps for the optional name fields, shared by POST and PUT so both
- * answer with the specific 400 before the mutation's own bound rejects.
+ * answer with the specific 400 before the mutation's own bound rejects. The
+ * contract's schema has already checked that each one is a string.
  */
-function validateNameFields(body: { firstName?: unknown; lastName?: unknown }): Response | null {
+function validateNameFields(body: { firstName?: string; lastName?: string }): Response | null {
 	for (const field of ['firstName', 'lastName'] as const) {
 		const value = body[field];
 		if (value === undefined) continue;
-		if (typeof value !== 'string') {
-			return errorResponse('invalid_input', `${field} must be a string`);
-		}
 		if (value.length > STRING_LIMITS.NAME) {
 			return errorResponse(
 				'invalid_input',
@@ -187,28 +167,19 @@ export const createContact = createAuthenticatedHandler(
 	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'contacts:write', request.headers.get('Origin'));
 		if (denied) return denied;
-		// Parse request body
-		let body: CreateContactBody;
+		let raw: unknown;
 		try {
-			body = await request.json();
+			raw = await request.json();
 		} catch {
 			return errorResponse('invalid_input', 'Invalid JSON in request body');
 		}
-
-		// Validate required fields
-		if (!body.email) {
-			return errorResponse('invalid_input', 'Email is required');
-		}
-
-		if (typeof body.email !== 'string') {
-			return errorResponse('invalid_input', 'Email must be a string');
-		}
-
+		const decoded = decodeRequest(createContactRequestSchema, raw);
+		if (!decoded.ok) return errorResponse('invalid_input', decoded.message);
+		const body = decoded.value;
 		if (!isValidEmail(body.email)) {
 			return errorResponse('invalid_input', 'Invalid email format');
 		}
 
-		// Validate optional fields
 		const nameError = validateNameFields(body);
 		if (nameError) return nameError;
 
@@ -280,22 +251,17 @@ export const updateContact = createAuthenticatedHandler(
 		const idOrEmail = contactRefFromPath(lastPathSegment(request));
 		if (idOrEmail instanceof Response) return idOrEmail;
 
-		// Parse request body
-		let body: UpdateContactBody;
+		let raw: unknown;
 		try {
-			body = await request.json();
+			raw = await request.json();
 		} catch {
 			return errorResponse('invalid_input', 'Invalid JSON in request body');
 		}
-
-		// Validate update fields
-		if (body.email !== undefined) {
-			if (typeof body.email !== 'string') {
-				return errorResponse('invalid_input', 'email must be a string');
-			}
-			if (!isValidEmail(body.email)) {
-				return errorResponse('invalid_input', 'Invalid email format');
-			}
+		const decoded = decodeRequest(updateContactRequestSchema, raw);
+		if (!decoded.ok) return errorResponse('invalid_input', decoded.message);
+		const body = decoded.value;
+		if (body.email !== undefined && !isValidEmail(body.email)) {
+			return errorResponse('invalid_input', 'Invalid email format');
 		}
 
 		const nameError = validateNameFields(body);
@@ -385,24 +351,14 @@ export const listContacts = createAuthenticatedHandler(
 	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'contacts:read', request.headers.get('Origin'));
 		if (denied) return denied;
-		// Parse query parameters
-		const url = new URL(request.url);
-		const limit = Math.min(
-			parseInt(url.searchParams.get('limit') || '25', 10),
-			100 // Max 100 per page
-		);
-		const cursor = url.searchParams.get('cursor');
-		const search = url.searchParams.get('search') || undefined;
-
-		// Validate pagination
-		if (isNaN(limit) || limit < 1) {
-			return errorResponse('invalid_input', 'Invalid limit');
-		}
+		const query = readListQuery(new URL(request.url).searchParams);
+		if (!query.ok) return errorResponse('invalid_input', query.message);
+		const { limit, cursor, search } = query.value;
 
 		// Query contacts
 		const result = await ctx.runQuery(internal.contacts.contacts.listByTeam, {
 			search,
-			paginationOpts: { numItems: limit, cursor: cursor ?? null },
+			paginationOpts: { numItems: limit, cursor },
 		});
 
 		return jsonResponse({

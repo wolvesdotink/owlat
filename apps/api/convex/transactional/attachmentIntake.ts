@@ -18,13 +18,7 @@ import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { AttachmentRef, DispatchOutcome } from './dispatch';
 import { discardStoredUploads, type StoredUpload } from './pendingUploads';
 import type { IdempotencyArg } from '../auth/apiRequestReceipts';
-
-export interface AttachmentInput {
-	filename: string;
-	content?: string; // Base64-encoded (mutually exclusive with url)
-	url?: string; // HTTPS URL (mutually exclusive with content)
-	contentType?: string;
-}
+import type { TransactionalAttachment } from '@owlat/public-contract';
 
 const MAX_TOTAL_SIZE = ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes;
 
@@ -55,41 +49,25 @@ function decodeBase64(content: string): Uint8Array | null {
 }
 
 /**
- * Check the WHOLE attachment list (filenames, content xor url, URL safety,
- * base64, the decoded-size budget) and decode it, before a single byte is
- * stored: a bad third attachment must not leave the first two behind.
+ * Check the WHOLE attachment list (URL safety, base64, the decoded-size
+ * budget) and decode it, before a single byte is stored: a bad third
+ * attachment must not leave the first two behind. The list's shape (a
+ * filename without path separators, exactly one of `content` or `url`, each a
+ * string) is the public contract's, already checked when the request was
+ * decoded.
  */
-export function prepareAttachments(attachments: AttachmentInput[] | undefined): PrepareResult {
+export function prepareAttachments(
+	attachments: readonly TransactionalAttachment[] | undefined
+): PrepareResult {
 	const prepared: PreparedAttachment[] = [];
 	let totalDecodedSize = 0;
 
 	for (const [i, att] of (attachments ?? []).entries()) {
-		if (!att || typeof att !== 'object') {
-			return invalidAttachment(`attachments[${i}] must be an object`);
-		}
-		if (!att.filename || typeof att.filename !== 'string') {
-			return invalidAttachment(`attachments[${i}].filename is required and must be a string`);
-		}
-		if (att.filename.includes('/') || att.filename.includes('\\')) {
-			return invalidAttachment(`attachments[${i}].filename must not contain path separators`);
-		}
-
-		const hasContent = att.content !== undefined;
-		const hasUrl = att.url !== undefined;
-		if (hasContent === hasUrl) {
-			return invalidAttachment(
-				`attachments[${i}] must have exactly one of "content" (base64) or "url"`
-			);
-		}
-
-		if (hasUrl) {
+		if (att.url !== undefined) {
 			// This URL is fetched server-side later, so a `startsWith('https://')`
 			// check is not enough: parse it and reject non-https, embedded
 			// credentials, and hosts that are literal private/internal addresses
 			// (SSRF). DNS-time range enforcement is applied again at the fetch site.
-			if (typeof att.url !== 'string') {
-				return invalidAttachment(`attachments[${i}].url must be an HTTPS URL`);
-			}
 			const urlCheck = validateOutboundUrl(att.url, { requirePublic: true });
 			if (!urlCheck.ok) {
 				return invalidAttachment(`attachments[${i}].url ${urlCheck.error}`);
@@ -98,9 +76,13 @@ export function prepareAttachments(attachments: AttachmentInput[] | undefined): 
 			continue;
 		}
 
-		// Base64 content path: decode and count bytes against the budget.
-		if (typeof att.content !== 'string') {
-			return invalidAttachment(`attachments[${i}].content must be a base64-encoded string`);
+		// Base64 content path: decode and count bytes against the budget. The
+		// contract's shape check guarantees `content` here; the guard keeps an
+		// undecoded caller from storing an empty file.
+		if (att.content === undefined) {
+			return invalidAttachment(
+				`attachments[${i}] must have exactly one of "content" (base64) or "url"`
+			);
 		}
 		const bytes = decodeBase64(att.content);
 		if (!bytes) {
