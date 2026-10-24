@@ -409,6 +409,10 @@ export const NON_TENANT_TABLES = [
 	// is running, a generation and two timestamps, no Send or contact data. A
 	// lease left behind by a wipe goes stale and is taken over by the next pass.
 	'lostSendSweepLeases',
+	// Where the derived-field drift sampler left off in each table: a creation
+	// time and two counts per registered field, no row content. A wipe leaves
+	// it pointing past rows that are gone, which only starts the next pass early.
+	'derivedFieldCursors',
 	// Instance infrastructure / regenerable caches — not org business data.
 	'systemUpdates',
 	// What each IMAP server reported about its release and wire contract:

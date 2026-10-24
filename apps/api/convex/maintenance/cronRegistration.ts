@@ -1,7 +1,10 @@
 import type { cronJobs } from 'convex/server';
 import { internal } from '../_generated/api';
 
-/** Daily retention jobs, grouped with their maintenance handlers. */
+/**
+ * Daily retention jobs and the hourly derived-field drift sampler, grouped with
+ * their maintenance handlers.
+ */
 export function registerRetentionCrons(crons: ReturnType<typeof cronJobs>): void {
 	// PII retention sweeps (see maintenance/retention.ts): audit trails age out
 	// after 30 days, form-submission IP/UA after 90, agent-health rollup points
@@ -98,6 +101,14 @@ export function registerRetentionCrons(crons: ReturnType<typeof cronJobs>): void
 		'retention: imap server reports',
 		{ hours: 24 },
 		internal.mail.imap.serverRegistry.pruneStale,
+		{}
+	);
+	// Derived fields (maintenance/derivedFields/registry.ts): recount a few parent
+	// rows per cached field, in turn, and log and repair any that drifted.
+	crons.interval(
+		'derived fields: sample drift',
+		{ hours: 1 },
+		internal.maintenance.derivedFields.sampler.sampleAll,
 		{}
 	);
 }

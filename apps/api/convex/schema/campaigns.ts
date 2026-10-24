@@ -219,12 +219,16 @@ export const campaignTables = {
 		// `scheduledHour` / `scheduledMinute` carry the start's wall-clock time
 		// for the planner's last fallback. See campaigns/sendTimeOptimization.ts.
 		sendTimeOptimization: v.optional(sendTimeOptimizationValidator),
-		// AGGREGATED from emailSends — updated by sendLifecycle's effect list
+		// AGGREGATED [campaignSendStats] — the sum of the campaign's
+		// campaignStatShards, which sendLifecycle's effect list bumps
 		// (`campaign_stats_sent` / `campaign_stats_failed` / `campaign_stats_*`
-		// in `delivery/sendLifecycle.ts`). statsUpdatedAt below tracks
-		// freshness; never write these from a user-facing mutation.
-		// The sharded counters (lib/validators/campaigns.ts), then the one direct counter.
+		// in `delivery/sendLifecycle.ts`) and campaigns/statShards.ts rolls up.
+		// statsUpdatedAt below tracks freshness; never write these from a
+		// user-facing mutation.
 		...campaignShardedStatFields,
+		// COUNTER [campaignUnsubscribes] — one bump per attributed unsubscribe
+		// (topics/subscription.ts recordCampaignUnsubscribe), from internal
+		// mutations only.
 		statsUnsubscribed: v.optional(v.number()),
 		// Set when a send starts on a build that leaves automated opens out
 		// of statsOpened. Campaigns without it were counted before that

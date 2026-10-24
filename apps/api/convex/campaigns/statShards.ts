@@ -87,6 +87,17 @@ export async function rollupCampaignStatsRow(
 }
 
 /**
+ * Does a rollup cron keep this campaign's cache fresh right now? While one does,
+ * the cache trailing its shards is the rollup's cadence, not drift: a `sending`
+ * campaign is rolled up by reconcileSendingCampaigns, a recently `sent` one by
+ * rollupSentCampaignStats below.
+ */
+export function isRolledUpOnSchedule(campaign: Doc<'campaigns'>, now: number): boolean {
+	if (campaign.status === 'sending') return true;
+	return campaign.status === 'sent' && (campaign.sentAt ?? 0) >= now - SENT_ROLLUP_WINDOW_MS;
+}
+
+/**
  * Cron: roll up `sent` campaigns within the recent window (the in-flight
  * `sending` campaigns are rolled up by reconcileSendingCampaigns each minute).
  * Paginated with a scheduled continuation so no single transaction processes the

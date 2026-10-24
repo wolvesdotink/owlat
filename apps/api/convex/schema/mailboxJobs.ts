@@ -17,8 +17,8 @@ export const mailboxJobsTables = {
 	//                (per-folder cursors on externalMailFolderSync).
 	//   indexing   — a chunked sweep feeds the imported messages into the
 	//                contact-scoped knowledge graph so the AI learns from them.
-	// Both `messages*` counters are AGGREGATED — written only by the worker
-	// (import) and the indexer (index); user-facing mutations must not touch them.
+	// The `messages*` counters are written only by the worker (import) and the
+	// indexer (index); user-facing mutations must not touch them.
 
 	mailboxMigrations: defineTable({
 		userId: v.string(), // BetterAuth user (owner)
@@ -49,7 +49,7 @@ export const mailboxJobsTables = {
 		// Feed imported mail into the knowledge graph (requires `ai.knowledge`).
 		isAiIndexingEnabled: v.boolean(),
 
-		// AGGREGATED — progress counters.
+		// COUNTER [mailboxMigrationProgress] — progress counters.
 		messagesTotal: v.number(), // Σ per-folder backfillTotal (import denominator)
 		// Messages that are IN the mailbox because of this walk — stored by it, or
 		// already present when it got there (Gmail's "All Mail" repeats every other
