@@ -34,31 +34,16 @@ import { kb, measure, readWebBuild, staticClosure } from './bundle-closure';
 /**
  * Gzip budget for the entry closure, in KiB (1024 bytes).
  *
- * First set from this script's own reading, 230.7 KB, after the boot-path items
- * of the performance plan (1.7, 2.7, A8-A10) landed, plus about 5% headroom
- * (242). Raised on 2026-10-03 the same way, from 241.8 KB plus about 5%: the
- * entry had grown to within 0.2 KB of the old budget as features landed, so
- * the next eager addition would have failed.
- *
- * Raised to 256 on 2026-10-22 from 254.1 KB: every icon the app names is
- * bundled into this closure on purpose (nuxt.config.ts `icon.clientBundle`, so
- * an offline desktop never fetches one), and each new lazy chunk adds an entry
- * to the entry's preload map, so features that add icons or pages grow it by a
- * few hundred bytes with nothing turning eager. 2 KB of headroom covers that
- * drift while a feature imported eagerly (several KB at least) still fails.
- *
- * Raised to 258 on 2026-10-24 from 256.0 KB, by the same rule: main had grown to
- * 255.6 KB, and the pane error boundaries add about 0.4 KB that has to load at
- * boot. The global error handler must show its toast even when a lazy chunk
- * fails to load, and the page outlet wraps every page. The boundary component
- * itself stays in the dashboard layout's lazy chunk.
- *
- * Raised to 260 on 2026-10-24 from 258.0 KB, by the same rule: the features
- * merged since had spent the whole 2 KB of drift, and the next new lazy chunk
- * (the shared message-recall helpers of Chat and the Assistant) put one more
- * line in the preload map, about 17 bytes gzip, with nothing turning eager.
+ * The entry measured 231.9 KiB when this was set, so it leaves about 18 KiB of
+ * headroom. The headroom is deliberate: every icon the app names is bundled
+ * into this closure (nuxt.config.ts `icon.clientBundle`, so an offline desktop
+ * never fetches one), and every new lazy chunk adds a line to the entry's
+ * preload map, so features grow it by a few hundred bytes with nothing turning
+ * eager. A budget a kilobyte or two above the measured size turns that drift
+ * into a failure in whichever unrelated pull request comes next. Keep at least
+ * 12 KiB of room when lowering it.
  */
-export const GZIP_BUDGET_KB = 260;
+export const GZIP_BUDGET_KB = 250;
 
 if (import.meta.main) checkEntryBudget(process.argv[2]);
 
