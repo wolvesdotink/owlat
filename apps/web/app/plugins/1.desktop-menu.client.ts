@@ -12,9 +12,12 @@
  * this same SPA, so only the `main` window reacts — otherwise one menu click
  * would navigate both windows. Runs after the `0.desktop-workspace` boot
  * plugin (filename order); registration is non-blocking. No-op on web.
+ *
+ * The deep-link handler is imported when a mailto: arrives, not statically:
+ * this file is in every browser's boot bundle, and the handler brings the
+ * workspace connect flow with it.
  */
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
-import { handleDeepLink } from '~/lib/desktop/deepLink.client';
 
 export default defineNuxtPlugin({
 	name: 'owlat:desktop-menu',
@@ -44,7 +47,12 @@ export default defineNuxtPlugin({
 				// A mailto: clicked in any Owlat window (the Rust link policy keeps
 				// it from the OS) opens our compose window, through the same parser
 				// as the OS-level mailto: deep link.
-				await onOpenMailto((url) => void handleDeepLink(url));
+				await onOpenMailto(
+					(url) =>
+						void import('~/lib/desktop/deepLink.client')
+							.then(({ handleDeepLink }) => handleDeepLink(url))
+							.catch((e: unknown) => console.warn('[desktop] mailto handling failed:', e))
+				);
 			} catch {
 				// Tauri APIs unavailable — nothing to bridge.
 			}
