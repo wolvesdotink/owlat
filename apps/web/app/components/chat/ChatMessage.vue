@@ -47,6 +47,7 @@ const isMentioned = computed(() => (props.message.mentions ?? []).includes(props
 const segments = computed(() => splitMentionSegments(props.message.text));
 
 const editTextareaRef = ref<HTMLTextAreaElement | null>(null);
+const editorRef = ref<HTMLElement | null>(null);
 // Where focus goes back to once an editor opened from the keyboard closes:
 // the composer the ↑ came from, so the next message can be typed at once.
 let returnFocusTo: HTMLElement | null = null;
@@ -57,13 +58,17 @@ const startEdit = () => {
 	isEditing.value = true;
 };
 const closeEdit = () => {
-	const editorHadFocus =
-		!!editTextareaRef.value && editTextareaRef.value === document.activeElement;
+	// The editor's field and its Save/Cancel buttons all unmount on close, so
+	// focus held by any of them would fall to <body>. Focus that already sits
+	// on <body> (Safari does not focus a clicked button) is lost the same way.
+	// Only focus on an element outside the editor is left where it is.
+	const active = document.activeElement;
+	const focusWillBeLost =
+		!active || active === document.body || !!editorRef.value?.contains(active);
 	const target = returnFocusTo;
 	returnFocusTo = null;
 	isEditing.value = false;
-	// Only when focus was still in the editor: a click elsewhere keeps its focus.
-	if (editorHadFocus && target?.isConnected) void nextTick(() => target.focus());
+	if (focusWillBeLost && target?.isConnected) void nextTick(() => target.focus());
 };
 const cancelEdit = closeEdit;
 const saveEdit = () => {
@@ -149,7 +154,7 @@ const aiTyping = computed(
 			</div>
 
 			<!-- Edit mode -->
-			<div v-if="isEditing" class="mt-1">
+			<div v-if="isEditing" ref="editorRef" class="mt-1">
 				<textarea
 					ref="editTextareaRef"
 					v-model="editText"

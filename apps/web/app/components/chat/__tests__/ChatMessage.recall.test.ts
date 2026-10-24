@@ -1,7 +1,8 @@
 /**
  * The composer's ↑ opens a message's own inline editor: focused, caret at the
  * end. Saving edits that same message, Escape cancels, and either way focus
- * goes back to the composer the ↑ came from.
+ * goes back to the composer the ↑ came from, whether it closed from the field
+ * or from its Save/Cancel buttons.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
@@ -113,6 +114,45 @@ describe('ChatMessage opened from the composer', () => {
 
 		expect(w.emitted('edit')).toBeUndefined();
 		expect(editor(w).exists()).toBe(false);
+		expect(document.activeElement).toBe(composer);
+	});
+
+	// Tab from the field to Save or Cancel, then activate it: the focused button
+	// unmounts with the editor, so focus must not fall to <body>.
+	it.each([
+		['Save', [['msg_1', 'Pushed the copy changes, v2']]],
+		['Cancel', undefined],
+	])('hands focus back after %s is activated from the keyboard', async (label, edits) => {
+		const { w, composer } = setup();
+		await w.setProps({ editRequested: true });
+		await flushPromises();
+
+		await editor(w).setValue('Pushed the copy changes, v2');
+		const button = w.findAll('button').find((b) => b.text() === label)!;
+		(button.element as HTMLButtonElement).focus();
+		expect(document.activeElement).toBe(button.element);
+		await button.trigger('click');
+		await flushPromises();
+
+		expect(w.emitted('edit')).toEqual(edits);
+		expect(editor(w).exists()).toBe(false);
+		expect(document.activeElement).toBe(composer);
+	});
+
+	it('hands focus back when a click on Save left nothing focused', async () => {
+		const { w, composer } = setup();
+		await w.setProps({ editRequested: true });
+		await flushPromises();
+
+		await editor(w).setValue('Pushed the copy changes, v2');
+		(editor(w).element as HTMLTextAreaElement).blur();
+		await w
+			.findAll('button')
+			.find((b) => b.text() === 'Save')!
+			.trigger('click');
+		await flushPromises();
+
+		expect(w.emitted('edit')).toEqual([['msg_1', 'Pushed the copy changes, v2']]);
 		expect(document.activeElement).toBe(composer);
 	});
 
