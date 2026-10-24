@@ -5415,7 +5415,9 @@
 				"menuLabel": "Konversationsaktionen",
 				"muteConversation": "Konversation stummschalten",
 				"noSubject": "(kein Betreff)",
-				"unmuteHint": "Stummgeschaltete Konversationen bleiben aus dem Posteingang."
+				"unmuteHint": "Stummgeschaltete Konversationen bleiben aus dem Posteingang.",
+				"pinConversation": "Unterhaltung anheften",
+				"pinHint": "Bleibt oben im Posteingang angeheftet"
 			},
 			"postboxThreadList": {
 				"archiveOperation": "Archivieren",
@@ -5503,7 +5505,10 @@
 				"snoozedUntil": "Zurückgestellt bis {when}",
 				"star": "Markieren",
 				"unmute": "Stummschaltung aufheben",
-				"unstar": "Markierung entfernen"
+				"unstar": "Markierung entfernen",
+				"pin": "Unterhaltung anheften",
+				"unpin": "Unterhaltung lösen",
+				"pinnedChip": "Oben im Posteingang angeheftet"
 			},
 			"postboxThreadRowFollowUp": {
 				"cancelLabel": "Antwort-Erinnerung abbrechen",
@@ -13489,6 +13494,15 @@
 				"discard": "Regelentwurf verwerfen",
 				"test": "Regel testen"
 			}
+		},
+		"pins": {
+			"title": "Angeheftet",
+			"count": "{count} von {limit}",
+			"operation": "Unterhaltung anheften",
+			"unpin": "Lösen",
+			"unpinNamed": "„{subject}“ lösen",
+			"full": "Du kannst bis zu 5 Unterhaltungen anheften. Löse zuerst eine.",
+			"dropHint": "Zum Anheften hier ablegen"
 		}
 	},
 	"recipient": {
@@ -17847,7 +17861,9 @@
 				"showOriginal": "Original herunterladen (.eml)",
 				"copyLink": "Link kopieren",
 				"linkCopied": "Link kopiert",
-				"linkCopyFailed": "Der Link konnte nicht kopiert werden"
+				"linkCopyFailed": "Der Link konnte nicht kopiert werden",
+				"pin": "Unterhaltung anheften",
+				"unpin": "Unterhaltung lösen"
 			},
 			"teamThread": {
 				"heading": "Diese Unterhaltung",

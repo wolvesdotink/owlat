@@ -254,12 +254,13 @@ const readerThread = computed(
 						dueAt?: number;
 						waitingOn?: string;
 					};
-					// Muted conversation, its opt-in twin (alert me when they reply)
-					// and the transient back-from-snooze marker — all checkable states
-					// in the thread ⋯ menu (mail/mute.ts, mail/threadAlerts.ts,
-					// mail/snooze.ts).
+					// Muted conversation, its opt-in twin (alert me when they reply),
+					// the pin and the transient back-from-snooze marker — all
+					// checkable states in the thread ⋯ menu (mail/mute.ts,
+					// mail/threadAlerts.ts, mail/pins.ts, mail/snooze.ts).
 					mutedAt?: number;
 					notifyOnReplyAt?: number;
+					pinnedAt?: number;
 					snoozeReturnedAt?: number;
 					// The Priority placement (read on arrival §2.8), for "Why here?".
 					arrival?: { placement: Placement };
@@ -655,7 +656,7 @@ function guardLatestReply(run: () => void) {
 }
 
 // Thread-level triage of the OPEN message (archive / trash / star / snooze /
-// mute / label / move / spam / block), the auto-advance that follows it and
+// mute / pin / label / move / spam / block), the auto-advance that follows it and
 // the pickers it opens. Reply / reply-all / forward route back through the
 // composer layer above so they stay behind the sender-auth reply guard.
 const {
@@ -669,6 +670,8 @@ const {
 	toggleMessageStar,
 	toggleOpenThreadMute,
 	toggleOpenThreadAlert,
+	isThreadPinned,
+	toggleOpenThreadPin,
 	snoozeOpenMessage,
 	snoozeOpenMessageUntilReply,
 	applyLabelToOpenMessage,
@@ -721,6 +724,7 @@ usePostboxThreadCommandSurface({
 	hintText: () => snoozeHintText.value,
 	isMuted: () => readerThread.value?.mutedAt != null,
 	isAlerted: () => readerThread.value?.notifyOnReplyAt != null,
+	isPinned: () => isThreadPinned.value,
 	followUp: () => {
 		if (readerThread.value?.followUp) return { state: 'armed' };
 		const outboundId = latestOutboundId.value;
@@ -737,6 +741,7 @@ usePostboxThreadCommandSurface({
 	moveTo: (folderId) => void moveOpenMessageTo(folderId),
 	toggleMute: toggleOpenThreadMute,
 	toggleAlert: toggleOpenThreadAlert,
+	togglePin: toggleOpenThreadPin,
 	translate: () => void translation.translate(),
 });
 
@@ -812,6 +817,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			:show-full-brief="rb.hasFullBrief.value"
 			@toggle-mute="toggleOpenThreadMute"
 			@toggle-alert="toggleOpenThreadAlert"
+			@toggle-pin="toggleOpenThreadPin"
 			@mark-read="markOpenThreadRead"
 			@reply="runReaderAction('reply')"
 			@archive="runReaderAction('archive')"

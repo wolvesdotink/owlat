@@ -1448,6 +1448,7 @@ import type * as mail_outboundTransport from '../mail/outboundTransport.js';
 import type * as mail_pendingInboxMembership from '../mail/pendingInboxMembership.js';
 import type * as mail_pendingMailbox from '../mail/pendingMailbox.js';
 import type * as mail_permissions from '../mail/permissions.js';
+import type * as mail_pins from '../mail/pins.js';
 import type * as mail_postboxOutboundAudit from '../mail/postboxOutboundAudit.js';
 import type * as mail_postboxOutboundLifecycle from '../mail/postboxOutboundLifecycle.js';
 import type * as mail_replyOptions from '../mail/replyOptions.js';
@@ -3314,6 +3315,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/pendingInboxMembership': typeof mail_pendingInboxMembership;
 	'mail/pendingMailbox': typeof mail_pendingMailbox;
 	'mail/permissions': typeof mail_permissions;
+	'mail/pins': typeof mail_pins;
 	'mail/postboxOutboundAudit': typeof mail_postboxOutboundAudit;
 	'mail/postboxOutboundLifecycle': typeof mail_postboxOutboundLifecycle;
 	'mail/replyOptions': typeof mail_replyOptions;
