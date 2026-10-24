@@ -28,8 +28,7 @@
 
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { getLive } from '../lib/softDelete';
 import { contentScanResultsFields } from '../schema/delivery';
@@ -38,7 +37,7 @@ import { validateReadyToSend } from './preflight';
 import { captureTemplateVersion } from '../emailTemplates/versions';
 import { writeArchiveSnapshot } from './archiveQueries';
 import { freezeAudience } from './sendQueries';
-import { openSendJob } from './sendJob';
+import { openSendJob, readSendJob } from './sendJob';
 import { classifyStartSendSkip, isSendPrepared } from './sendPlanning';
 import { resolveAbFanout, testFractionForSplit } from './sendVariantSplit';
 
@@ -206,13 +205,3 @@ export const commitPreparation = internalMutation({
 		return { kind: 'committed', outcome: 'prepared' };
 	},
 });
-
-async function readSendJob(
-	ctx: MutationCtx,
-	campaignId: Id<'campaigns'>
-): Promise<Doc<'campaignSendJobs'> | null> {
-	return await ctx.db
-		.query('campaignSendJobs')
-		.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
-		.first();
-}

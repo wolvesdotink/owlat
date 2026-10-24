@@ -28,12 +28,13 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, type MutationCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, readActiveWorkspaceDeletion } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { audienceValidator, type StoredAudience } from './audience';
 import { abVariantValidator } from '../lib/literalValidators';
+import { isSendPrepared } from './sendPlanning';
 
 const variantModeValidator = v.union(
 	v.literal('plain'),
@@ -48,10 +49,13 @@ const variantModeValidator = v.union(
  * 'resolving'`, `cursor: ''`, counters 0, supplied mode + Audience snapshot)
  * rather than resuming the prior, already-`done` walk.
  *
- * PREP opens it once per first-phase send (its commit refuses a send that
- * already has its job, see `isSendPrepared`); the winner-remainder action
- * fires it once after winner declaration. Both are single-fire per phase, so
- * the reset cannot clobber an in-flight walk of the SAME phase.
+ * The winner-remainder action is its only caller: it fires once after winner
+ * declaration and resets the job of the send it belongs to on purpose. PREP
+ * opens the first-phase job inside its own commit (`openSendJob`). A
+ * first-phase call here can only come from a preparation action of the
+ * previous release still running during a deploy, and it must not reset a
+ * walk the new preparation already started for this send, so it returns that
+ * job unchanged (see `findPreparedSendJob`).
  */
 export const createSendJob = internalMutation({
 	args: {
@@ -63,8 +67,42 @@ export const createSendJob = internalMutation({
 		splitPercentage: v.optional(v.number()),
 		winningVariant: v.optional(abVariantValidator),
 	},
-	handler: async (ctx, args) => await openSendJob(ctx, { ...args, now: Date.now() }),
+	handler: async (ctx, args) => {
+		if (args.variantMode !== 'ab_winner') {
+			const prepared = await findPreparedSendJob(ctx, args.campaignId);
+			if (prepared) return prepared._id;
+		}
+		return await openSendJob(ctx, { ...args, now: Date.now() });
+	},
 });
+
+/** The campaign's send job row, or null. */
+export async function readSendJob(
+	ctx: QueryCtx,
+	campaignId: Id<'campaigns'>
+): Promise<Doc<'campaignSendJobs'> | null> {
+	return await ctx.db
+		.query('campaignSendJobs')
+		.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
+		.first();
+}
+
+/**
+ * The job of the campaign's current send when that send is already prepared
+ * (`isSendPrepared`), else null. The mutations a preparation action of the
+ * previous release calls one by one check it, so one that resumes after the
+ * new preparation committed the same send cannot overwrite what that commit
+ * wrote, or reset the walk it started.
+ */
+export async function findPreparedSendJob(
+	ctx: QueryCtx,
+	campaignId: Id<'campaigns'>
+): Promise<Doc<'campaignSendJobs'> | null> {
+	const campaign = await ctx.db.get(campaignId);
+	if (!campaign) return null;
+	const job = await readSendJob(ctx, campaignId);
+	return isSendPrepared(campaign, job) ? job : null;
+}
 
 /** What one send walk starts from; `createSendJob`'s arguments plus the clock. */
 export interface SendJobStart {

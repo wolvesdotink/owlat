@@ -5,6 +5,7 @@ import { internalMutation } from '../lib/writeFence';
 import { resolveStoredFeatureFlags } from '../lib/featureFlags';
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 import { isLive } from '../lib/softDelete';
+import { findPreparedSendJob } from './sendJob';
 
 /**
  * Get campaign archive data by archive token.
@@ -49,7 +50,11 @@ export interface ArchiveSnapshot {
 }
 
 /**
- * Store archive snapshot on a campaign (called during send flow).
+ * Store archive snapshot on a campaign. The send preparation commit writes it
+ * through `writeArchiveSnapshot`; this mutation is what a preparation action
+ * of the previous release calls. Once the new commit prepared the send, the
+ * walker is already sending its archive link, so a late call from such an
+ * action must not replace the token those emails point at.
  */
 export const setArchiveSnapshot = internalMutation({
 	args: {
@@ -59,6 +64,7 @@ export const setArchiveSnapshot = internalMutation({
 		archiveSubject: v.string(),
 	},
 	handler: async (ctx, { campaignId, ...snapshot }) => {
+		if (await findPreparedSendJob(ctx, campaignId)) return;
 		await writeArchiveSnapshot(ctx, campaignId, snapshot, Date.now());
 	},
 });

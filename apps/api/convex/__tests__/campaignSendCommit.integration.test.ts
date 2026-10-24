@@ -12,7 +12,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { scannedContentDigest } from '../campaigns/sendCommit';
 import type * as SendJobModule from '../campaigns/sendJob';
 import { type Harness, type Seeded, prepared, seed, start } from './helpers/campaignPreparation';
@@ -289,5 +289,125 @@ describe('send preparation commit — one preparation per send', () => {
 
 		expect(result).toMatchObject({ skipped: true, reason: expect.stringMatching(/review/) });
 		expect(await prepared(t, seeded)).toMatchObject(NOTHING_PREPARED);
+	});
+});
+
+/** The walker has enqueued a page of the prepared send since. */
+async function advanceWalk(t: Harness, { campaignId }: Seeded): Promise<Doc<'campaignSendJobs'>> {
+	return await t.run(async (ctx) => {
+		const job = await ctx.db
+			.query('campaignSendJobs')
+			.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
+			.first();
+		await ctx.db.patch(job!._id, { cursor: 'page-2', enqueuedCount: 50 });
+		return (await ctx.db.get(job!._id))!;
+	});
+}
+
+// A preparation action of the previous release, still running during the
+// deploy, calls these mutations one by one after its own scan. When the new
+// commit has prepared the same send meanwhile, they must not undo it.
+describe('send preparation commit — beside a previous-release preparation', () => {
+	it('a first-phase createSendJob does not reset the walk the commit started', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t, { status: 'scheduled' });
+		await start(t, seeded.campaignId);
+		const job = await advanceWalk(t, seeded);
+
+		const jobId = await t.mutation(internal.campaigns.sendJob.createSendJob, {
+			campaignId: seeded.campaignId,
+			audience: job.audience,
+			variantMode: 'plain',
+		});
+
+		expect(jobId).toBe(job._id);
+		const state = await prepared(t, seeded);
+		expect(state.jobs).toHaveLength(1);
+		expect(state.jobs[0]).toMatchObject({
+			phase: 'resolving',
+			cursor: 'page-2',
+			enqueuedCount: 50,
+		});
+	});
+
+	it('a first-phase createSendJob still resets a job left by an earlier send', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		const audience = await t.run(async (ctx) => {
+			const campaign = await ctx.db.get(seeded.campaignId);
+			await ctx.db.insert('campaignSendJobs', {
+				campaignId: seeded.campaignId,
+				phase: 'done',
+				variantMode: 'plain',
+				cursor: 'old-cursor',
+				audience: campaign!.audience!,
+				enqueuedCount: 9,
+				totalCandidates: 9,
+				startedAt: campaign!.sentAt! - 60_000,
+				updatedAt: campaign!.sentAt! - 60_000,
+			});
+			return campaign!.audience!;
+		});
+
+		await t.mutation(internal.campaigns.sendJob.createSendJob, {
+			campaignId: seeded.campaignId,
+			audience,
+		});
+
+		const state = await prepared(t, seeded);
+		expect(state.jobs).toHaveLength(1);
+		expect(state.jobs[0]).toMatchObject({ phase: 'resolving', cursor: '', enqueuedCount: 0 });
+	});
+
+	it('the A/B winner phase still resets the job of its own send', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t, { isABTest: true });
+		await start(t, seeded.campaignId);
+		const job = await advanceWalk(t, seeded);
+
+		await t.mutation(internal.campaigns.sendJob.createSendJob, {
+			campaignId: seeded.campaignId,
+			audience: job.audience,
+			variantMode: 'ab_winner',
+			testFraction: 0.2,
+			splitPercentage: 20,
+			winningVariant: 'B',
+		});
+
+		const state = await prepared(t, seeded);
+		expect(state.jobs).toHaveLength(1);
+		expect(state.jobs[0]).toMatchObject({
+			variantMode: 'ab_winner',
+			winningVariant: 'B',
+			cursor: '',
+			enqueuedCount: 0,
+		});
+	});
+
+	it('setArchiveSnapshot keeps the archive link the prepared send is mailing', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		const stale = {
+			archiveToken: 'stale-token',
+			archiveHtmlContent: '<p>stale</p>',
+			archiveSubject: 'Stale',
+		};
+		// Before this send is prepared, the previous release's own flow writes it.
+		await t.mutation(internal.campaigns.archiveQueries.setArchiveSnapshot, {
+			campaignId: seeded.campaignId,
+			...stale,
+		});
+		expect((await prepared(t, seeded)).campaign?.archiveToken).toBe('stale-token');
+
+		await start(t, seeded.campaignId);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(seeded.campaignId, { archiveToken: 'committed-token' });
+		});
+		await t.mutation(internal.campaigns.archiveQueries.setArchiveSnapshot, {
+			campaignId: seeded.campaignId,
+			...stale,
+		});
+
+		expect((await prepared(t, seeded)).campaign?.archiveToken).toBe('committed-token');
 	});
 });
