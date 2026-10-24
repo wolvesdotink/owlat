@@ -272,7 +272,11 @@ const { autoAdvance } = usePostboxSettings();
 function onSent(outcome: { done: boolean }) {
 	leftDraft.clearFor(draftId.value);
 	if (queueSession?.handleSent()) return;
-	if (outcome.done) answerNav.leaveDone(messageId.value, autoAdvance.value);
+	if (outcome.done)
+		answerNav.leaveDone(
+			{ messageId: messageId.value, threadId: message.value?.threadId ?? null },
+			autoAdvance.value
+		);
 	else answerNav.leave();
 }
 

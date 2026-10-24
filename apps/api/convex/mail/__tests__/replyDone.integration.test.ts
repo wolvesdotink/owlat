@@ -5,11 +5,12 @@
  * moment the sender chose, never newer mail, never another mailbox's.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import betterAuthSchema from '../../betterAuth/schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { doneOnSendCutoff } from '../draftSend';
+import { REPLY_DONE_BATCH } from '../replyDone';
 import { liveMailTest, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 
 const session = vi.hoisted(() => ({
@@ -27,6 +28,9 @@ vi.mock('../../lib/sessionOrganization', async () => ({
 
 beforeEach(() => {
 	session.userId = 'user-A';
+});
+afterEach(() => {
+	vi.useRealTimers();
 });
 
 type T = ReturnType<typeof liveMailTest>;
@@ -225,6 +229,75 @@ describe('replyDone.archiveAnswered', () => {
 		});
 		expect(result).toEqual({ archived: 1 });
 		expect(await folderOf(t, conv.first)).toBe(conv.archiveId);
+	});
+
+	it('archives a conversation longer than one run in follow-up runs, reply target included', async () => {
+		const t = convexTest();
+		const conv = await seedConversation(t);
+		// More eligible Inbox mail than one run moves. The reply target has the
+		// newest received time, so the walk reaches it last; a message that
+		// arrived after the cutoff sorts first and must not stall the walk.
+		const { cutoffAt, newer } = await t.run(async (ctx) => {
+			const { _id, _creationTime, ...fields } = (await ctx.db.get(conv.first))!;
+			let last = _id;
+			for (let i = 0; i < REPLY_DONE_BATCH; i++) {
+				last = await ctx.db.insert('mailMessages', {
+					...fields,
+					uid: 2 + i,
+					receivedAt: fields.receivedAt - 1000 - i,
+				});
+			}
+			const cutoff = (await ctx.db.get(last))!._creationTime;
+			const late = await ctx.db.insert('mailMessages', {
+				...fields,
+				uid: 2 + REPLY_DONE_BATCH,
+				receivedAt: fields.receivedAt - 1_000_000,
+			});
+			await ctx.db.patch(conv.inboxId, { totalCount: REPLY_DONE_BATCH + 2 });
+			return { cutoffAt: cutoff, newer: late };
+		});
+		vi.useFakeTimers();
+
+		const first = await t.mutation(internal.mail.replyDone.archiveAnswered, {
+			mailboxId: conv.mailboxId,
+			threadId: conv.threadId,
+			repliedToMessageId: conv.first,
+			userId: 'user-A',
+			cutoffAt,
+		});
+		// The first run moves the reply target with its batch and leaves the rest
+		// to the run it scheduled.
+		expect(first.archived).toBeLessThanOrEqual(REPLY_DONE_BATCH + 1);
+		expect(await folderOf(t, conv.first)).toBe(conv.archiveId);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const inInbox = await t.run((ctx) =>
+			ctx.db
+				.query('mailMessages')
+				.withIndex('by_thread_folder_received', (q) =>
+					q.eq('threadId', conv.threadId).eq('folderId', conv.inboxId)
+				)
+				.collect()
+		);
+		expect(inInbox.map((m) => m._id)).toEqual([newer]);
+		const archive = await t.run((ctx) => ctx.db.get(conv.archiveId));
+		expect(archive?.totalCount).toBe(REPLY_DONE_BATCH + 1);
+	});
+
+	it('stops a follow-up run once the sender lost access', async () => {
+		const t = convexTest();
+		const conv = await seedConversation(t);
+		const older = await arriveInThread(t, conv.mailboxId, conv.threadId);
+		const result = await t.mutation(internal.mail.replyDone.archiveAnswered, {
+			mailboxId: conv.mailboxId,
+			threadId: conv.threadId,
+			repliedToMessageId: conv.first,
+			userId: 'user-B',
+			cutoffAt: Date.now(),
+			cursor: 'from-an-earlier-run',
+		});
+		expect(result).toEqual({ archived: 0 });
+		expect(await folderOf(t, older)).toBe(conv.inboxId);
 	});
 
 	it('does nothing once the sender lost access to the mailbox', async () => {

@@ -35,9 +35,16 @@ export function usePostboxComposerSendChoice(o: {
 	const { afterReply } = usePostboxSettings();
 	const isReply = computed(() => !!o.seed().inReplyToMessageId);
 
-	/** The options one send takes: its after-reply action, for a reply only. */
+	/**
+	 * The options one send takes: its after-reply action, for a reply only. A
+	 * "done" carries the moment it was chosen, before any gate's dialog: mail
+	 * that arrives while a confirmation is open, or while the send waits in the
+	 * offline outbox, is news the sender has not seen and stays in the Inbox.
+	 */
 	function actionOptions(choice?: PostboxAfterReply | 'opposite'): ComposerSendOptions {
-		return isReply.value ? { afterSend: afterReplyFor(afterReply.value, choice) } : {};
+		if (!isReply.value) return {};
+		const afterSend = afterReplyFor(afterReply.value, choice);
+		return afterSend === 'done' ? { afterSend, afterSendChosenAt: Date.now() } : { afterSend };
 	}
 
 	const { sendShortcutHint, scheduleShortcutHint, sendChords, onComposerKeydown } =

@@ -124,54 +124,110 @@ describe('the list place', () => {
 });
 
 describe('a reply marked done', () => {
+	const rows = (...ids: string[]) => ids.map((id) => ({ id, threadId: `t_${id}` }));
 	const origin = {
-		path: '/dashboard/postbox/inbox',
+		listPath: '/dashboard/postbox/inbox',
+		messagePath: '/dashboard/postbox/inbox',
 		query: '?placement=other',
-		orderedIds: ['msg_0', 'msg_1', 'msg_2'],
+		rows: rows('msg_0', 'msg_1', 'msg_2'),
 		activeId: null,
 	};
+	const done = (messageId: string, threadId: string | null = `t_${messageId}`) => ({
+		messageId,
+		threadId,
+	});
 
 	it('moves on through the list it came from, per the auto-advance preference', () => {
-		expect(answerDoneTarget(origin, 'msg_1', 'next')).toBe(
+		expect(answerDoneTarget(origin, done('msg_1'), 'next')).toBe(
 			'/dashboard/postbox/inbox/msg_2?placement=other'
 		);
-		expect(answerDoneTarget(origin, 'msg_1', 'previous')).toBe(
+		expect(answerDoneTarget(origin, done('msg_1'), 'previous')).toBe(
 			'/dashboard/postbox/inbox/msg_0?placement=other'
 		);
-		expect(answerDoneTarget(origin, 'msg_1', 'back-to-list')).toBe(
+		expect(answerDoneTarget(origin, done('msg_1'), 'back-to-list')).toBe(
 			'/dashboard/postbox/inbox?placement=other'
 		);
 		// Past the end there is nothing to open: the list itself.
-		expect(answerDoneTarget(origin, 'msg_2', 'next')).toBe(
+		expect(answerDoneTarget(origin, done('msg_2'), 'next')).toBe(
 			'/dashboard/postbox/inbox?placement=other'
 		);
 	});
 
-	it('finds the conversation by the row open beside the list when it answered an older message', () => {
-		expect(answerDoneTarget({ ...origin, activeId: 'msg_0' }, 'msg_old', 'next')).toBe(
+	it('skips the other rows of the conversation the same send archives, both ways', () => {
+		// A flat feed: a1 and a2 are one conversation, b and z others.
+		const feed = {
+			...origin,
+			query: '',
+			rows: [
+				{ id: 'z', threadId: 't_z' },
+				{ id: 'a2', threadId: 't_a' },
+				{ id: 'a1', threadId: 't_a' },
+				{ id: 'b', threadId: 't_b' },
+			],
+		};
+		expect(answerDoneTarget(feed, done('a2', 't_a'), 'next')).toBe('/dashboard/postbox/inbox/b');
+		expect(answerDoneTarget(feed, done('a1', 't_a'), 'previous')).toBe(
+			'/dashboard/postbox/inbox/z'
+		);
+		// Only the conversation's rows left on that side: back to the list.
+		expect(
+			answerDoneTarget({ ...feed, rows: feed.rows.slice(0, 3) }, done('a2', 't_a'), 'next')
+		).toBe('/dashboard/postbox/inbox');
+	});
+
+	it('finds the conversation when it answered a message that is not a row of the list', () => {
+		// Another message of its conversation is a row.
+		expect(answerDoneTarget(origin, done('msg_old', 't_msg_0'), 'next')).toBe(
 			'/dashboard/postbox/inbox/msg_1?placement=other'
 		);
-		expect(answerDoneTarget(origin, 'msg_old', 'next')).toBe(
+		// Without a thread to go by, the row open beside the list.
+		expect(answerDoneTarget({ ...origin, activeId: 'msg_0' }, done('msg_old', null), 'next')).toBe(
+			'/dashboard/postbox/inbox/msg_1?placement=other'
+		);
+		expect(answerDoneTarget(origin, done('msg_old', null), 'next')).toBe(
 			'/dashboard/postbox/inbox?placement=other'
 		);
+	});
+
+	it('goes back to a label view, and opens its rows where the label view opens them', () => {
+		const label = {
+			...origin,
+			listPath: '/dashboard/postbox/label/lbl_1',
+			query: '',
+		};
+		expect(answerDoneTarget(label, done('msg_1'), 'back-to-list')).toBe(
+			'/dashboard/postbox/label/lbl_1'
+		);
+		expect(answerDoneTarget(label, done('msg_2'), 'next')).toBe('/dashboard/postbox/label/lbl_1');
+		expect(answerDoneTarget(label, done('msg_1'), 'next')).toBe('/dashboard/postbox/inbox/msg_2');
 	});
 
 	it('has nowhere to move on to without a list', () => {
-		expect(answerDoneTarget(null, 'msg_1', 'next')).toBeNull();
+		expect(answerDoneTarget(null, done('msg_1'), 'next')).toBeNull();
 	});
 
-	function mountList(opts: { routes?: boolean } = {}) {
+	function mountList(opts: { routes?: boolean; listPath?: string } = {}) {
 		return mount(
 			defineComponent({
 				setup() {
 					useListAnswerRoundTrip({
 						folderKey: ref('inbox'),
-						rows: ref([{ _id: 'msg_0' }, { _id: 'msg_1' }, { _id: 'msg_2' }]),
+						rows: ref([
+							{ _id: 'msg_0', threadId: 't_0' },
+							{ _id: 'msg_1', threadId: 't_1' },
+							{ _id: 'msg_1b', threadId: 't_1' },
+							{ _id: 'msg_2', threadId: 't_2' },
+						]),
 						focusedIndex: ref(0),
 						origin: () =>
 							opts.routes === false
 								? null
-								: { path: '/dashboard/postbox/inbox', query: '', activeId: 'msg_1' },
+								: {
+										listPath: opts.listPath ?? '/dashboard/postbox/inbox',
+										messagePath: '/dashboard/postbox/inbox',
+										query: '',
+										activeId: 'msg_1',
+									},
 					});
 					return () => h('div');
 				},
@@ -185,8 +241,18 @@ describe('a reply marked done', () => {
 		void nav.open('msg_1');
 		list.unmount();
 		navigateTo.mockClear();
-		nav.leaveDone('msg_1', 'next');
+		nav.leaveDone({ messageId: 'msg_1', threadId: 't_1' }, 'next');
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox/msg_2', { replace: true });
+	});
+
+	it('goes back to the label view it came from', () => {
+		const list = mountList({ listPath: '/dashboard/postbox/label/lbl_1' });
+		const nav = useAnswerModeNav();
+		void nav.open('msg_1');
+		list.unmount();
+		navigateTo.mockClear();
+		nav.leaveDone({ messageId: 'msg_1', threadId: 't_1' }, 'back-to-list');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/label/lbl_1', { replace: true });
 	});
 
 	it('goes back the plain way when the list was left for somewhere else first', () => {
@@ -195,7 +261,7 @@ describe('a reply marked done', () => {
 		const nav = useAnswerModeNav();
 		void nav.open('msg_1');
 		navigateTo.mockClear();
-		nav.leaveDone('msg_1', 'next');
+		nav.leaveDone({ messageId: 'msg_1', threadId: 't_1' }, 'next');
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
 	});
 
@@ -206,14 +272,14 @@ describe('a reply marked done', () => {
 		list.unmount();
 		nav.leave();
 		navigateTo.mockClear();
-		nav.leaveDone('msg_1', 'next');
+		nav.leaveDone({ messageId: 'msg_1', threadId: 't_1' }, 'next');
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
 
 		const selectable = mountList({ routes: false });
 		void nav.open('msg_1');
 		selectable.unmount();
 		navigateTo.mockClear();
-		nav.leaveDone('msg_1', 'next');
+		nav.leaveDone({ messageId: 'msg_1', threadId: 't_1' }, 'next');
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
 	});
 });

@@ -10,7 +10,7 @@
  */
 import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
-import { pickAdjacentMessageId, type PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
+import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import {
 	answerFallbackReturn,
 	answerModeHref,
@@ -96,10 +96,11 @@ export function useAnswerModeNav(
 	 * Leave after a reply that marked its conversation done: on to the next
 	 * conversation of the list it was opened from, the way archiving moves on
 	 * in the reader (`mode` is that auto-advance preference). Without such a
-	 * list, the plain way back.
+	 * list, the plain way back. `done` is the message replied to and its
+	 * conversation, whose other rows the same send archives.
 	 */
-	function leaveDone(messageId: string, mode: PostboxAutoAdvanceMode) {
-		const target = answerDoneTarget(answerOrigin, messageId, mode);
+	function leaveDone(done: AnswerDone, mode: PostboxAutoAdvanceMode) {
+		const target = answerDoneTarget(answerOrigin, done, mode);
 		if (!target) return leave();
 		returnTo.value = null;
 		answerOrigin = null;
@@ -207,36 +208,73 @@ function markListReturn() {
  * later reply never moves through a list it did not come from.
  */
 export interface AnswerOrigin {
-	/** The list's route without a message (`/dashboard/postbox/inbox`). */
-	path: string;
+	/**
+	 * The list's own route, where 'back-to-list' goes: a folder
+	 * (`/dashboard/postbox/inbox`) or a label view (`/dashboard/postbox/label/…`).
+	 */
+	listPath: string;
+	/**
+	 * The route its rows open under (`${messagePath}/<id>`). Not always the
+	 * list's: a label view opens its rows in the Inbox reader.
+	 */
+	messagePath: string;
 	/** The list's query (`?placement=…`), kept on the route it moves to. */
 	query: string;
-	/** The rows in the order the list showed them. */
-	orderedIds: readonly string[];
+	/** The rows in the order the list showed them, with their conversation. */
+	rows: readonly AnswerOriginRow[];
 	/** The conversation open beside the list, if any. */
 	activeId: string | null;
+}
+
+export interface AnswerOriginRow {
+	id: string;
+	threadId: string | null;
+}
+
+/** The reply that marked its conversation done: the message it answered, and that conversation. */
+export interface AnswerDone {
+	messageId: string;
+	threadId: string | null;
 }
 
 let answerOrigin: AnswerOrigin | null = null;
 
 /**
- * The route a reply to `messageId`, marked done, moves on to: the adjacent row
- * of the list it came from, per `mode`, or that list itself (no adjacent row,
+ * The route a reply marked done moves on to: the nearest row of the list it
+ * came from, per `mode`, that belongs to another conversation (the same send
+ * archives every row of this one), or that list itself (no such row,
  * 'back-to-list', or the conversation is not a row of it). `null` without a
  * list: the caller goes back the plain way.
  */
 export function answerDoneTarget(
 	origin: AnswerOrigin | null,
-	messageId: string,
+	done: AnswerDone,
 	mode: PostboxAutoAdvanceMode
 ): string | null {
 	if (!origin) return null;
-	// The reply may answer an older message of the conversation open beside the list.
-	const current = [messageId, origin.activeId].find(
-		(id): id is string => id !== null && origin.orderedIds.includes(id)
+	const back = `${origin.listPath}${origin.query}`;
+	if (mode === 'back-to-list') return back;
+	const { rows } = origin;
+	// Where the conversation stands in the list: the message replied to, another
+	// message of its conversation, or (an older message answered) the row open
+	// beside the list.
+	let index = rows.findIndex((row) => row.id === done.messageId);
+	if (index < 0 && done.threadId !== null)
+		index = rows.findIndex((row) => row.threadId === done.threadId);
+	if (index < 0 && origin.activeId !== null)
+		index = rows.findIndex((row) => row.id === origin.activeId);
+	if (index < 0) return back;
+	const current = rows[index]!;
+	const finished = new Set(
+		[done.threadId, current.threadId].filter((id): id is string => id !== null)
 	);
-	const next = current ? pickAdjacentMessageId(origin.orderedIds, current, mode) : null;
-	return next ? `${origin.path}/${next}${origin.query}` : `${origin.path}${origin.query}`;
+	const step = mode === 'next' ? 1 : -1;
+	for (let i = index + step; i >= 0 && i < rows.length; i += step) {
+		const row = rows[i]!;
+		if (row.id === current.id || (row.threadId !== null && finished.has(row.threadId))) continue;
+		return `${origin.messagePath}/${row.id}${origin.query}`;
+	}
+	return back;
 }
 
 /** The list files its place for `folderKey` (called on unmount). */
@@ -264,9 +302,9 @@ export function takeListPlace(folderKey: string): ListReturnSnapshot | null {
  */
 export function useListAnswerRoundTrip(o: {
 	folderKey: Ref<string>;
-	rows: Ref<readonly { _id: string }[]>;
+	rows: Ref<readonly { _id: string; threadId?: string | null }[]>;
 	focusedIndex: Ref<number>;
-	origin: () => Omit<AnswerOrigin, 'orderedIds'> | null;
+	origin: () => Omit<AnswerOrigin, 'rows'> | null;
 }) {
 	onBeforeUnmount(() => {
 		rememberListPlace(o.folderKey.value, {
@@ -274,7 +312,10 @@ export function useListAnswerRoundTrip(o: {
 		});
 		const origin = o.origin();
 		if (origin && listReturnPending) {
-			answerOrigin = { ...origin, orderedIds: o.rows.value.map((row) => row._id) };
+			answerOrigin = {
+				...origin,
+				rows: o.rows.value.map((row) => ({ id: row._id, threadId: row.threadId ?? null })),
+			};
 		}
 	});
 	const returnPlace = takeListPlace(o.folderKey.value);

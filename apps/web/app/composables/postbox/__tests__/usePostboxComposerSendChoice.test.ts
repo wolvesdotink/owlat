@@ -5,15 +5,18 @@
  * new message or a forward carries no action and offers no menu. The keys go
  * through the real key handler, so the chord itself is under test.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { usePostboxComposerKeys } from '../usePostboxComposerKeys';
 import { usePostboxComposerSendChoice } from '../usePostboxComposerSendChoice';
 import type { PostboxAfterReply } from '~/utils/postboxAfterReply';
 
 const afterReply = ref<PostboxAfterReply>('keep');
+const CHOSEN_AT = 1_700_000_000_000;
 
 beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(CHOSEN_AT);
 	afterReply.value = 'keep';
 	Object.assign(globalThis, {
 		useI18n: () => ({ t: (key: string) => key }),
@@ -22,6 +25,14 @@ beforeEach(() => {
 		usePostboxComposerKeys,
 	});
 });
+
+afterEach(() => {
+	vi.useRealTimers();
+});
+
+/** The options a send with `action` carries: a done carries when it was chosen. */
+const sent = (action: PostboxAfterReply) =>
+	action === 'done' ? { afterSend: action, afterSendChosenAt: CHOSEN_AT } : { afterSend: action };
 
 function setup(seed: { inReplyToMessageId?: string } = { inReplyToMessageId: 'msg_1' }) {
 	const send = vi.fn();
@@ -58,9 +69,9 @@ describe('usePostboxComposerSendChoice', () => {
 			afterReply.value = setting;
 			const { onComposerKeydown, send } = setup();
 			onComposerKeydown(enter());
-			expect(send).toHaveBeenLastCalledWith({ afterSend: plain });
+			expect(send).toHaveBeenLastCalledWith(sent(plain));
 			onComposerKeydown(enter({ alt: true }));
-			expect(send).toHaveBeenLastCalledWith({ afterSend: opposite });
+			expect(send).toHaveBeenLastCalledWith(sent(opposite));
 		}
 	);
 
@@ -70,7 +81,17 @@ describe('usePostboxComposerSendChoice', () => {
 		sendWith('keep');
 		expect(send).toHaveBeenLastCalledWith({ afterSend: 'keep' });
 		sendWith();
-		expect(send).toHaveBeenLastCalledWith({ afterSend: 'done' });
+		expect(send).toHaveBeenLastCalledWith(sent('done'));
+	});
+
+	it('fixes when done was chosen at the press, not when a gate lets the send through', () => {
+		afterReply.value = 'keep';
+		const { sendWith, send } = setup();
+		sendWith('done');
+		const opts = send.mock.lastCall?.[0];
+		// A confirmation answered a minute later replays these same options.
+		vi.setSystemTime(CHOSEN_AT + 60_000);
+		expect(opts).toEqual({ afterSend: 'done', afterSendChosenAt: CHOSEN_AT });
 	});
 
 	it('opens the schedule dialog on Ctrl+Shift+Enter, and a scheduled reply takes the setting', () => {
@@ -80,7 +101,7 @@ describe('usePostboxComposerSendChoice', () => {
 		expect(scheduleOpen.value).toBe(true);
 		expect(send).not.toHaveBeenCalled();
 		scheduleAt(1_000);
-		expect(send).toHaveBeenLastCalledWith({ scheduledSendAt: 1_000, afterSend: 'done' });
+		expect(send).toHaveBeenLastCalledWith({ scheduledSendAt: 1_000, ...sent('done') });
 	});
 
 	it('names both ways for the Send menu, with the chord that takes each', () => {

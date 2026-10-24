@@ -626,6 +626,13 @@ describe('drain on reconnect', () => {
 		});
 	});
 
+	it('queues a done with the time it was chosen, not the time it was queued', async () => {
+		const composer = await makeComposer({ subject: 'Chosen earlier' });
+		goOffline();
+		await composer.send({ afterSend: 'done', afterSendChosenAt: 1_000 });
+		expect(fakeOutbox.list('mbx-1')[0]!.payload.sendOptions?.afterSendChosenAt).toBe(1_000);
+	});
+
 	it('keeps failed items with lastError and still sends the rest', async () => {
 		const composer = await makeComposer({ subject: 'Poisoned' });
 		goOffline();
@@ -764,12 +771,12 @@ describe('online path', () => {
 		expect(fakeOutbox.list('mbx-1')).toHaveLength(0);
 	});
 
-	it('passes a reply’s after-send action, and leaves its time to the server', async () => {
+	it('passes a reply’s after-send action with the moment it was chosen', async () => {
 		const composer = await makeComposer({ subject: 'Done online' });
-		await composer.send({ afterSend: 'done' });
+		await composer.send({ afterSend: 'done', afterSendChosenAt: 1_000 });
 		const args = backend.callsFor('drafts.send')[0]!.args;
 		expect(args['afterSend']).toBe('done');
-		expect(args['afterSendChosenAt']).toBeUndefined();
+		expect(args['afterSendChosenAt']).toBe(1_000);
 	});
 
 	it('still throws on a non-network backend reject (no silent queueing)', async () => {

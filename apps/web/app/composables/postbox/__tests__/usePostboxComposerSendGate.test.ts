@@ -80,19 +80,20 @@ describe('usePostboxComposerSendGate', () => {
 		expect(onSent).toHaveBeenCalledWith({ scheduled: false, done: true });
 	});
 
-	it('replays a parked send with the action chosen when Send was pressed', async () => {
+	it('replays a parked send with the action and the time chosen when Send was pressed', async () => {
 		const { gate, send, onSent } = makeGate();
 		let parked: unknown;
 		guardsBlock.mockImplementationOnce((opts?: unknown) => {
 			parked = opts;
 			return true;
 		});
-		await gate.handleSend({ afterSend: 'done' });
+		await gate.handleSend({ afterSend: 'done', afterSendChosenAt: 1_000 });
 		expect(send).not.toHaveBeenCalled();
 
+		// Confirmed later: the cutoff is still the moment done was chosen.
 		guardsConfirm(parked);
 		await flushPromises();
-		expect(send).toHaveBeenCalledWith({ afterSend: 'done' });
+		expect(send).toHaveBeenCalledWith({ afterSend: 'done', afterSendChosenAt: 1_000 });
 		expect(onSent).toHaveBeenCalledWith({ scheduled: false, done: true });
 	});
 

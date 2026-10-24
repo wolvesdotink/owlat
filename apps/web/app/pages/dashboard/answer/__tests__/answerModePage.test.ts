@@ -492,9 +492,18 @@ describe('Answer mode page', () => {
 				setup() {
 					useListAnswerRoundTrip({
 						folderKey: ref('inbox'),
-						rows: ref([{ _id: 'msg_0' }, { _id: 'msg_1' }, { _id: 'msg_2' }]),
+						rows: ref([
+							{ _id: 'msg_0', threadId: 't_0' },
+							{ _id: 'msg_1', threadId: 't_1' },
+							{ _id: 'msg_2', threadId: 't_2' },
+						]),
 						focusedIndex: ref(1),
-						origin: () => ({ path: '/dashboard/postbox/inbox', query: '', activeId: 'msg_1' }),
+						origin: () => ({
+							listPath: '/dashboard/postbox/inbox',
+							messagePath: '/dashboard/postbox/inbox',
+							query: '',
+							activeId: 'msg_1',
+						}),
 					});
 					return () => h('div');
 				},

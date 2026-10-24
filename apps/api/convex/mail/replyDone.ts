@@ -13,38 +13,64 @@
 import { v } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
 import { internalMutation } from '../lib/writeFence';
 import { canUserReadMailbox } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
 import { recordArchivedMoves } from './interpret/threadEvents';
 
-/** More than any conversation holds in one Inbox; the rest stays where it is. */
-const MAX_ARCHIVED = 500;
+/**
+ * Messages one run moves. A larger conversation continues in a follow-up run
+ * from where this one stopped, so the archive is bounded per transaction but
+ * never truncated.
+ */
+export const REPLY_DONE_BATCH = 200;
 
 /**
- * The Inbox messages of the answered conversation that "done" archives: the
- * ones that had arrived by `cutoffAt`, when the sender chose done, plus the
- * message they replied to whatever the clocks say. Mail that arrived later is
- * news the sender has not seen, so it keeps the conversation in the Inbox.
+ * One batch of the Inbox messages of the answered conversation that "done"
+ * archives: the ones that had arrived by `cutoffAt`, when the sender chose
+ * done. Mail that arrived later is news the sender has not seen, so it keeps
+ * the conversation in the Inbox. The page walks the thread's Inbox rows from
+ * `cursor`; rows it leaves behind (newer mail) are behind the next cursor, so
+ * they never stall the walk.
  */
-export async function replyDoneCandidates(
+async function replyDoneBatch(
+	ctx: MutationCtx,
+	args: {
+		threadId: Id<'mailThreads'>;
+		inboxId: Id<'mailFolders'>;
+		cutoffAt: number;
+		cursor: string | null;
+	}
+): Promise<{ messageIds: Id<'mailMessages'>[]; continueCursor: string | null }> {
+	const page = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread_folder_received', (q) =>
+			q.eq('threadId', args.threadId).eq('folderId', args.inboxId)
+		)
+		.paginate({ cursor: args.cursor, numItems: REPLY_DONE_BATCH });
+	return {
+		messageIds: page.page.filter((m) => m._creationTime <= args.cutoffAt).map((m) => m._id),
+		continueCursor: page.isDone ? null : page.continueCursor,
+	};
+}
+
+/**
+ * The message replied to is archived whatever the clocks say, on the first run,
+ * so it never depends on where it falls in the walk.
+ */
+async function repliedToInInbox(
 	ctx: MutationCtx,
 	args: {
 		threadId: Id<'mailThreads'>;
 		inboxId: Id<'mailFolders'>;
 		repliedToMessageId: Id<'mailMessages'>;
-		cutoffAt: number;
 	}
 ): Promise<Id<'mailMessages'>[]> {
-	const inInbox = await ctx.db
-		.query('mailMessages')
-		.withIndex('by_thread_folder_received', (q) =>
-			q.eq('threadId', args.threadId).eq('folderId', args.inboxId)
-		)
-		.take(MAX_ARCHIVED);
-	return inInbox
-		.filter((m) => m._id === args.repliedToMessageId || m._creationTime <= args.cutoffAt)
-		.map((m) => m._id);
+	const message = await ctx.db.get(args.repliedToMessageId);
+	return message && message.threadId === args.threadId && message.folderId === args.inboxId
+		? [message._id]
+		: [];
 }
 
 export const archiveAnswered = internalMutation({
@@ -54,10 +80,13 @@ export const archiveAnswered = internalMutation({
 		repliedToMessageId: v.id('mailMessages'),
 		userId: v.string(),
 		cutoffAt: v.number(),
+		/** Where the previous run stopped; absent on the first run. */
+		cursor: v.optional(v.string()),
 	},
+	/** `archived`: the messages this run moved (a long conversation takes several runs). */
 	handler: async (ctx, args): Promise<{ archived: number }> => {
-		// The sender's access is checked again: it may have ended between the
-		// send and now (a schedule can be days out).
+		// The sender's access is checked again on every run: it may have ended
+		// between the send and now (a schedule can be days out), or between runs.
 		const mailbox = await ctx.db.get(args.mailboxId);
 		if (!mailbox || !(await canUserReadMailbox(ctx, mailbox, args.userId))) {
 			return { archived: 0 };
@@ -73,7 +102,18 @@ export const archiveAnswered = internalMutation({
 		const archive = await folderByRole('archive');
 		if (!inbox || !archive) return { archived: 0 };
 
-		const messageIds = await replyDoneCandidates(ctx, { ...args, inboxId: inbox._id });
+		const inboxId = inbox._id;
+		const batch = await replyDoneBatch(ctx, { ...args, inboxId, cursor: args.cursor ?? null });
+		if (batch.continueCursor !== null) {
+			// Same cutoff, same message: the next run re-checks access and goes on.
+			await ctx.scheduler.runAfter(0, internal.mail.replyDone.archiveAnswered, {
+				...args,
+				cursor: batch.continueCursor,
+			});
+		}
+		const first =
+			args.cursor === undefined ? await repliedToInInbox(ctx, { ...args, inboxId }) : [];
+		const messageIds = [...new Set([...first, ...batch.messageIds])];
 		if (messageIds.length === 0) return { archived: 0 };
 		const { moved } = await moveMessagesToFolder(ctx, {
 			messageIds,

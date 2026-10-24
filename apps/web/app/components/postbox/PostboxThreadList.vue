@@ -38,6 +38,10 @@ const props = defineProps<{
 	// renders with folder-role "inbox" for row links but must not claim
 	// "All clear" when the label simply has no messages).
 	emptyContext?: 'label';
+	// The list's own route when it is not its rows' folder route: the label
+	// view opens its rows in the Inbox reader but is a page of its own, and a
+	// reply marked done that goes back to the list goes back there.
+	listPath?: string;
 	// True when a triage filter chip (Unread/Starred/Attachments) is hiding
 	// rows that exist — the empty state then offers "Show all" instead of the
 	// folder's usual copy, so a filtered-to-zero list never reads as
@@ -355,7 +359,8 @@ useListAnswerRoundTrip({
 		props.selectable
 			? null
 			: {
-					path: `/dashboard/postbox/${folderKey.value}`,
+					listPath: props.listPath ?? `/dashboard/postbox/${folderKey.value}`,
+					messagePath: `/dashboard/postbox/${folderKey.value}`,
 					query: listQuery.value,
 					activeId: props.activeMessageId ?? null,
 				},
