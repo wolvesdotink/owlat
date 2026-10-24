@@ -1,13 +1,20 @@
 /**
- * Every scenario run gets a context with a pinned timezone and locale, because
- * the chat history's date groups (and with them its DOM and scroll counters)
- * depend on the browser's timezone.
+ * Every scenario run gets a context with a pinned timezone, locale and clock,
+ * because the chat history's date groups depend on the browser's timezone and
+ * the mail lists' relative times and waiting chips on the current time (and
+ * with them the DOM and update counters).
  */
 import type { Browser, BrowserContextOptions } from '@playwright/test';
 import { describe, expect, it } from 'vitest';
-import { assertPinned, newScenarioContext, SCENARIO_CONTEXT } from '../browserContext';
+import {
+	assertPinned,
+	newScenarioContext,
+	SCENARIO_CONTEXT,
+	SCENARIO_NOW,
+} from '../browserContext';
+import { postboxListWorkload, teamInboxWorkload } from '../listWorkload';
 import { SCENARIOS } from '../scenarios';
-import { chatHistoryWorkload } from '../workload';
+import { assistantStreamWorkload, chatHistoryWorkload } from '../workload';
 
 describe('scenario browser context', () => {
 	it('the context the runner opens pins timezone, locale, viewport and scale', async () => {
@@ -29,12 +36,32 @@ describe('scenario browser context', () => {
 		});
 	});
 
-	it('refuses a page that does not run in the pinned timezone and locale', () => {
-		expect(() => assertPinned({ timeZone: 'UTC', locale: 'en-US' })).not.toThrow();
-		expect(() => assertPinned({ timeZone: 'Pacific/Gambier', locale: 'en-US' })).toThrow(
+	it('refuses a page that does not run in the pinned timezone, locale and clock', () => {
+		const pinned = { timeZone: 'UTC', locale: 'en-US', now: SCENARIO_NOW };
+		expect(() => assertPinned(pinned)).not.toThrow();
+		expect(() => assertPinned({ ...pinned, timeZone: 'Pacific/Gambier' })).toThrow(
 			/Pacific\/Gambier/
 		);
-		expect(() => assertPinned({ timeZone: 'UTC', locale: 'de-DE' })).toThrow(/de-DE/);
+		expect(() => assertPinned({ ...pinned, locale: 'de-DE' })).toThrow(/de-DE/);
+		expect(() => assertPinned({ ...pinned, now: SCENARIO_NOW + 1 })).toThrow(/clock/);
+	});
+
+	it('the pinned clock reads after every synthetic timestamp', () => {
+		const latest = SCENARIOS.flatMap((scenario) => {
+			switch (scenario.family) {
+				case 'assistant-stream': {
+					const { history } = assistantStreamWorkload(scenario);
+					return history.map((row) => row.createdAt);
+				}
+				case 'chat-history':
+					return chatHistoryWorkload(scenario).map((row) => row.createdAt);
+				case 'postbox-list':
+					return postboxListWorkload(scenario).map((row) => row.receivedAt);
+				case 'team-inbox':
+					return teamInboxWorkload(scenario).map((row) => row.lastMessageAt);
+			}
+		});
+		expect(Math.max(...latest)).toBeLessThan(SCENARIO_NOW);
 	});
 
 	it('the chat history renders the same date groups only because the timezone is pinned', () => {
