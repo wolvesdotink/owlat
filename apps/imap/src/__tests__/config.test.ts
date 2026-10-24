@@ -117,6 +117,20 @@ describe('numeric limits', () => {
 		expect(config.maxConnectionsPerIp).toBe(20);
 		expect(config.maxClients).toBe(500);
 		expect(config.idleTimeoutMs).toBe(30 * 60 * 1000);
+		expect(config.metricsPort).toBe(9464);
+	});
+
+	it('turns the metrics listener off with IMAP_METRICS_PORT=0', () => {
+		process.env['IMAP_METRICS_PORT'] = '0';
+		expect(loadConfig().metricsPort).toBe(0);
+	});
+
+	it('refuses a metrics port that collides with the IMAP port', () => {
+		process.env['IMAP_PORT'] = '1993';
+		process.env['IMAP_METRICS_PORT'] = '1993';
+		expect(() => loadConfig()).toThrowError(
+			/IMAP_METRICS_PORT \(1993\) must differ from IMAP_PORT/
+		);
 	});
 
 	it('reads valid overrides', () => {
@@ -136,6 +150,7 @@ describe('numeric limits', () => {
 		['IMAP_PORT', '99999', 'IMAP_PORT must be an integer between 1 and 65535'],
 		['IMAP_IDLE_TIMEOUT_MS', '3000000000', 'IMAP_IDLE_TIMEOUT_MS must be an integer between 1'],
 		['IMAP_PRE_AUTH_DEADLINE_MS', '1.5', 'IMAP_PRE_AUTH_DEADLINE_MS must be an integer'],
+		['IMAP_METRICS_PORT', '70000', 'IMAP_METRICS_PORT must be an integer between 0 and 65535'],
 	])('refuses to boot on %s=%j', (key, value, message) => {
 		process.env[key] = value;
 		expect(() => loadConfig()).toThrowError(message);

@@ -246,6 +246,15 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		why: 'An opaque idempotency key, not content; the Send itself is governed by its contactId (scrubbed above). Nothing dereferences it: the intake only looks it up by the id of a live step run, and ids are never reused, so the dangling key is inert. Keeping it means an email attempt still in flight during the erasure resolves to this Send instead of enqueuing a second one.',
 	},
 
+	// ── contactTopics ──
+	{
+		parent: 'contactTopics',
+		table: 'contactTopics',
+		field: 'restoredFrom',
+		action: 'retain',
+		why: 'Names an earlier membership of the same contact, so the row holding it is one of the erased contact’s memberships and goes with it through contactId. The id is never dereferenced, only compared against an undo receipt.',
+	},
+
 	// ── conversationThreads ── (threadRelations.ts)
 	...CONVERSATION_THREAD_DESCENDANTS,
 

@@ -1,6 +1,6 @@
 import type { Ref } from 'vue';
 import { usePostboxOptimisticHide } from '~/composables/postbox/usePostboxOptimisticHide';
-import { usePostboxTriageUndo } from '~/composables/postbox/usePostboxTriageUndo';
+import { usePostboxTriageUndo, type UndoGroup } from '~/composables/postbox/usePostboxTriageUndo';
 
 /**
  * Optimistic triage + undo for the Team Inbox list — the same craft the Postbox
@@ -44,6 +44,11 @@ export function useInboxTriage<T extends { _id: string }>(rows: Ref<T[]>) {
 		mutate: () => Promise<BackendOperationResult<unknown>>;
 		/** Reverse mutation, run when the user undoes. */
 		inverse: () => Promise<unknown>;
+		/**
+		 * How consecutive actions of this kind share one toast ("Resolved 3
+		 * conversations · Undo all"); each action still undoes on its own.
+		 */
+		group?: UndoGroup;
 	}): Promise<boolean> {
 		if (args.leavesView) hide(args.id);
 		const result = await args.mutate();
@@ -53,6 +58,7 @@ export function useInboxTriage<T extends { _id: string }>(rows: Ref<T[]>) {
 		}
 		undo.register({
 			label: args.label,
+			...(args.group ? { group: args.group } : {}),
 			inverse: async () => {
 				// Reveal the row again immediately; the reverse mutation re-adds it
 				// server-side, and the live subscription reconciles either way.

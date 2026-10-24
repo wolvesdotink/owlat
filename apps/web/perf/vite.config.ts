@@ -32,6 +32,8 @@ export default defineConfig({
 			// `~~` before `~`: string aliases match in order (as in vitest.config.ts).
 			{ find: '~~', replacement: web },
 			{ find: '~', replacement: `${web}app` },
+			// Nuxt's virtual component module; rows import `NuxtLink` from it.
+			{ find: '#components', replacement: `${web}perf/fixture/nuxtComponents.ts` },
 		],
 	},
 	build: {

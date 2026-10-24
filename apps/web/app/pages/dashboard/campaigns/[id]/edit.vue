@@ -6,6 +6,7 @@ import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
 import { formatNumber } from '~/utils/formatters';
 import { exactEligibleCount, isLowerBoundCount } from '~/composables/useRecipientCount';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 const { t, locale } = useI18n();
 
@@ -813,10 +814,12 @@ const shownCapacityPlan = computed(() => {
 								</div>
 								<div class="w-full h-2.5 bg-bg-surface rounded-full overflow-hidden">
 									<div
-										class="h-full bg-brand rounded-full transition-all duration-(--motion-slow)"
-										:style="{
-											width: `${Math.min(100, Math.round(((warmingOverview.warming.ips?.[0]?.currentDay ?? 1) / 30) * 100))}%`,
-										}"
+										class="ui-meter-fill h-full bg-brand rounded-full transition-transform duration-(--motion-slow)"
+										:style="
+											meterFillStyle(
+												Math.round(((warmingOverview.warming.ips?.[0]?.currentDay ?? 1) / 30) * 100)
+											)
+										"
 									/>
 								</div>
 							</div>
@@ -996,6 +999,16 @@ const shownCapacityPlan = computed(() => {
 			@close="showEditEmailPrompt = false"
 			@discard="discardAndOpenEmail"
 			@save="saveAndOpenEmail"
+		/>
+
+		<!-- "Cancel send" from the scheduled-campaign reminder: asks first -->
+		<CampaignsCampaignCancelIntentDialog
+			:is-loaded="!!campaignData"
+			:is-scheduled="isScheduled"
+			:name="campaignData?.name ?? ''"
+			:scheduled-at-display="scheduledAtDisplay"
+			:is-loading="isSaving"
+			@confirm="handleCancel"
 		/>
 	</div>
 </template>

@@ -219,3 +219,15 @@
 		opacity: 1;
 	}
 }
+
+/* The app's own "Reduce motion" setting (the data-motion floor in base.css). */
+:root[data-motion='reduce'] .lp-aurora-core,
+:root[data-motion='reduce'] .lp-aurora-gold,
+:root[data-motion='reduce'] .lp-aurora-rose {
+	animation: none;
+}
+
+:root[data-motion='reduce'] .lp-hero-in {
+	animation: none;
+	opacity: 1;
+}

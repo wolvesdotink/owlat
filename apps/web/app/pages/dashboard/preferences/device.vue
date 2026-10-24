@@ -11,13 +11,23 @@
  * `/desktop/settings` is a redirect.
  *
  * Every section self-hides (the pattern `PostboxOfflineSettings` already used):
- * a browser sees push notifications and the offline cache, the desktop app sees
- * the lot, and the page itself is gated out of the registry when neither applies. The section
+ * a browser sees push notifications, the marketing notification switches and
+ * the offline cache, the desktop app sees the lot, and the page itself is gated
+ * out of the registry when none applies. The marketing switches belong to the
+ * account, not the device: they decide what push and the desktop notify about,
+ * so they sit with the notification settings, and the card (like the page
+ * intro) says that they apply on every device. The section
  * `id`s are the settings registry's control anchors, so a palette deep link
  * ("notify me about", "launch at login") lands on the right card.
  */
 import { WORKSPACE_ACCENT_OPTIONS } from '~/lib/desktop/workspaceTypes';
+import {
+	defaultDesktopSettings,
+	defaultWorkspaceLocalSettings,
+	type GlobalDesktopSettings,
+} from '~/lib/desktop/settingsTypes';
 import type { RemovalOwner } from '~/composables/useDesktopWorkspaces';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t } = useI18n();
 
@@ -31,6 +41,10 @@ definePageMeta({
 const { isEnabled } = useFeatureFlag();
 const { isDesktop, platform } = useDesktopContext();
 const hasMail = computed(() => isEnabled('postbox') || isEnabled('mail.external'));
+// Campaign, automation and sending notifications exist on this instance.
+const hasMarketing = computed(
+	() => isEnabled('campaigns') || isEnabled('automations') || isEnabled('transactional')
+);
 
 const { settings, isReady, setGlobal, workspaceLocal, setWorkspaceLocal } = useDesktopAppSettings();
 const { autostartEnabled, isReady: autostartReady, setAutostart } = useDesktopSettings();
@@ -43,6 +57,27 @@ const {
 	createRemovalOwner,
 	setWorkspaceAccent,
 } = useDesktopWorkspaces();
+
+// "Changed from default" markers for the device-local settings, against the
+// same defaults a missing settings file is read as. Hidden until the store has
+// loaded: before that every value is only the default.
+const DESKTOP_DEFAULTS = defaultDesktopSettings().global;
+const WORKSPACE_LOCAL_DEFAULTS = defaultWorkspaceLocalSettings();
+
+function isGlobalChanged(key: keyof GlobalDesktopSettings): boolean {
+	return isReady.value && settings.value.global[key] !== DESKTOP_DEFAULTS[key];
+}
+
+function resetGlobal<K extends keyof GlobalDesktopSettings>(key: K) {
+	setGlobal(key, DESKTOP_DEFAULTS[key]);
+}
+
+function isMuteChanged(workspaceId: string): boolean {
+	return (
+		isReady.value &&
+		workspaceLocal(workspaceId).muteNotifications !== WORKSPACE_LOCAL_DEFAULTS.muteNotifications
+	);
+}
 
 function onStartupWorkspaceChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value;
@@ -142,6 +177,11 @@ async function confirmRemoveWorkspace() {
 		     desktop app and while the server has no VAPID keys. -->
 		<PreferencesWebPush v-if="!isDesktop" />
 
+		<!-- Campaign, automation and sending notifications: the person's own
+		     switches, on the server, so they hold for push and the desktop alike.
+		     Hides itself when none can fire for this person. -->
+		<PreferencesMarketingNotifications v-if="!isDesktop && hasMarketing" />
+
 		<!-- Offline read cache: device-local, never synced. Any browser. -->
 		<div v-if="hasMail" id="offline" class="scroll-mt-6">
 			<PostboxOfflineSettings />
@@ -152,42 +192,64 @@ async function confirmRemoveWorkspace() {
 				<header class="px-5 py-3 border-b border-border-subtle">
 					<h2 class="font-semibold">{{ t('desktop.settings.notifications.title') }}</h2>
 				</header>
-				<label class="flex items-center justify-between gap-4 px-5 py-4">
+				<!-- Rows are a <div> with a <label for>, not a wrapping <label>: the
+				     Reset button would otherwise become the label's control. -->
+				<div class="flex items-center justify-between gap-4 px-5 py-4">
 					<span>
-						<span class="block text-sm font-medium">{{
-							t('desktop.settings.notifications.title')
-						}}</span>
+						<span class="flex items-center gap-2">
+							<label for="desktop-notifications-enabled" class="block text-sm font-medium">{{
+								t('desktop.settings.notifications.title')
+							}}</label>
+							<SettingsResetToDefault
+								:changed="isGlobalChanged('notificationsEnabled')"
+								:label="t('desktop.settings.notifications.title')"
+								:disabled="!isReady"
+								@reset="resetGlobal('notificationsEnabled')"
+							/>
+						</span>
 						<span class="block text-xs text-text-tertiary">{{
 							t('desktop.settings.notifications.description')
 						}}</span>
 					</span>
 					<UiSwitch
+						id="desktop-notifications-enabled"
 						:model-value="settings.global.notificationsEnabled"
 						:disabled="!isReady"
 						@update:model-value="setGlobal('notificationsEnabled', $event)"
 					/>
-				</label>
-				<label
+				</div>
+				<div
 					class="flex items-center justify-between gap-4 border-t border-border-subtle px-5 py-4"
 				>
 					<span>
-						<span class="block text-sm font-medium">{{
-							t('desktop.settings.unreadBadge.title')
-						}}</span>
+						<span class="flex items-center gap-2">
+							<label for="desktop-unread-badge" class="block text-sm font-medium">{{
+								t('desktop.settings.unreadBadge.title')
+							}}</label>
+							<SettingsResetToDefault
+								:changed="isGlobalChanged('showUnreadBadge')"
+								:label="t('desktop.settings.unreadBadge.title')"
+								:disabled="!isReady"
+								@reset="resetGlobal('showUnreadBadge')"
+							/>
+						</span>
 						<span class="block text-xs text-text-tertiary">{{
 							t('desktop.settings.unreadBadge.description')
 						}}</span>
 					</span>
 					<UiSwitch
+						id="desktop-unread-badge"
 						:model-value="settings.global.showUnreadBadge"
 						:disabled="!isReady"
 						@update:model-value="setGlobal('showUnreadBadge', $event)"
 					/>
-				</label>
+				</div>
 			</section>
 
 			<!-- Which mail is worth a notification, quiet hours, preview hiding. -->
 			<PostboxNotificationSettings v-if="hasMail" />
+
+			<PreferencesMarketingNotifications v-if="hasMarketing" />
 
 			<section id="startup" class="card !p-0 mb-6 scroll-mt-6 overflow-hidden">
 				<header class="px-5 py-3 border-b border-border-subtle">
@@ -208,17 +270,28 @@ async function confirmRemoveWorkspace() {
 						@update:model-value="setAutostart"
 					/>
 				</label>
-				<label
+				<div
 					class="flex items-center justify-between gap-4 border-t border-border-subtle px-5 py-4"
 				>
 					<span>
-						<span class="block text-sm font-medium">{{ t('desktop.settings.startup.title') }}</span>
+						<span class="flex items-center gap-2">
+							<label for="desktop-startup-workspace" class="block text-sm font-medium">{{
+								t('desktop.settings.startup.title')
+							}}</label>
+							<SettingsResetToDefault
+								:changed="isGlobalChanged('startupWorkspaceId')"
+								:label="t('desktop.settings.startup.title')"
+								:disabled="!isReady"
+								@reset="resetGlobal('startupWorkspaceId')"
+							/>
+						</span>
 						<span class="block text-xs text-text-tertiary">{{
 							t('desktop.settings.startup.description')
 						}}</span>
 					</span>
 					<select
-						class="input input-sm max-w-[14rem] shrink-0 text-sm"
+						id="desktop-startup-workspace"
+						class="input input-sm max-w-[14rem] shrink-0"
 						:value="settings.global.startupWorkspaceId ?? ''"
 						:disabled="!isReady || workspaces.length === 0"
 						@change="onStartupWorkspaceChange"
@@ -226,7 +299,7 @@ async function confirmRemoveWorkspace() {
 						<option value="">{{ t('desktop.settings.startup.lastActive') }}</option>
 						<option v-for="ws in workspaces" :key="ws.id" :value="ws.id">{{ ws.label }}</option>
 					</select>
-				</label>
+				</div>
 			</section>
 
 			<section id="updates" class="card mb-6 scroll-mt-6">
@@ -344,14 +417,33 @@ async function confirmRemoveWorkspace() {
 							/>
 
 							<!-- Device-local mute -->
-							<label class="flex items-center gap-2 text-xs text-text-secondary">
-								{{ t('desktop.settings.workspaces.mute') }}
+							<div class="flex items-center gap-2 text-xs text-text-secondary">
+								<SettingsResetToDefault
+									:changed="isMuteChanged(ws.id)"
+									:label="
+										t('components.settings.resetToDefault.names.workspaceMute', {
+											workspace: ws.label,
+										})
+									"
+									:disabled="!isReady"
+									@reset="
+										setWorkspaceLocal(
+											ws.id,
+											'muteNotifications',
+											WORKSPACE_LOCAL_DEFAULTS.muteNotifications
+										)
+									"
+								/>
+								<label :for="`desktop-workspace-mute-${ws.id}`">{{
+									t('desktop.settings.workspaces.mute')
+								}}</label>
 								<UiSwitch
+									:id="`desktop-workspace-mute-${ws.id}`"
 									:model-value="workspaceLocal(ws.id).muteNotifications"
 									:disabled="!isReady"
 									@update:model-value="setWorkspaceLocal(ws.id, 'muteNotifications', $event)"
 								/>
-							</label>
+							</div>
 						</div>
 					</li>
 				</ul>
@@ -383,7 +475,10 @@ async function confirmRemoveWorkspace() {
 			</section>
 		</template>
 
-		<p v-else-if="!hasMail" class="card p-8 text-center text-sm text-text-secondary">
+		<p
+			v-else-if="!hasMail && !hasMarketing"
+			class="card p-8 text-center text-sm text-text-secondary"
+		>
 			{{ t('dashboard.preferences.device.nothingHere') }}
 		</p>
 	</div>

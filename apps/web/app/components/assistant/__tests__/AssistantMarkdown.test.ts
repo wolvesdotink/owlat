@@ -4,11 +4,31 @@
  * `AssistantInline` children skip the update; only the block the new text
  * extends re-renders (#1445).
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { mount } from '@vue/test-utils';
 import AssistantMarkdown from '../AssistantMarkdown.vue';
 import AssistantInline from '../AssistantInline.vue';
+import type * as MarkdownModule from '~/utils/markdown';
+
+// Records the length of every source handed to the block parser, so a test can
+// see how much of the answer each flush parses again.
+const parserInputs = vi.hoisted(() => ({ lengths: [] as number[] }));
+
+vi.mock('~/utils/markdown', async (importOriginal) => {
+	const actual = await importOriginal<typeof MarkdownModule>();
+	return {
+		...actual,
+		parseMarkdown: (src: string) => {
+			parserInputs.lengths.push(src.length);
+			return actual.parseMarkdown(src);
+		},
+		parseMarkdownSettled: (src: string) => {
+			parserInputs.lengths.push(src.length);
+			return actual.parseMarkdownSettled(src);
+		},
+	};
+});
 
 function mountMarkdown(source: string) {
 	const counter = { inlineUpdates: 0 };
@@ -102,6 +122,25 @@ describe('AssistantMarkdown streaming', () => {
 
 		await wrapper.setProps({ source: 'Back again.' });
 		expect(wrapper.text()).toBe('Back again.');
+	});
+
+	it('parses only the text after the settled blocks on each flush', async () => {
+		const settled = Array.from({ length: 100 }, (_, i) => `Paragraph **${i}** of the answer.`).join(
+			'\n\n'
+		);
+		const { wrapper } = mountMarkdown(`${settled}\n\nThe last`);
+		expect(wrapper.findAll('p')).toHaveLength(101);
+
+		parserInputs.lengths = [];
+		await wrapper.setProps({ source: `${settled}\n\nThe last one` });
+		await wrapper.setProps({ source: `${settled}\n\nThe last one is overdue.` });
+		expect(wrapper.findAll('p').at(-1)?.text()).toBe('The last one is overdue.');
+		// Each flush hands the parser the blank line and the growing paragraph,
+		// not the 3k characters above them.
+		expect(parserInputs.lengths).toEqual([
+			'\nThe last one'.length,
+			'\nThe last one is overdue.'.length,
+		]);
 	});
 
 	it('keeps each rendered answer separate', async () => {

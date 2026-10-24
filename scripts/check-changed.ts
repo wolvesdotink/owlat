@@ -334,6 +334,7 @@ export function ciAlsoRuns(plan: Plan): string[] {
 			.join(', ')}`,
 		'test-api': 'the full API suite with coverage',
 		'test-web': 'the full web suite with coverage',
+		'test-web-browser': 'the web component tests in Chrome (bun run --cwd apps/web test:browser)',
 		'test-mta': 'the MTA suite with its Redis integration tests',
 		'docker-build': `image builds: ${ci.images.map((image) => image.name).join(', ')}`,
 		'sdk-java': 'the Java SDK build',

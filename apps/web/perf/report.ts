@@ -1,9 +1,17 @@
 /**
- * The Markdown report: reference machine, the limits the fixtures obey, and
- * per scenario its counters (with whether they held across runs) and its
- * timings (with their spread). Pure, so a test can pin its shape.
+ * The Markdown report: the budget verdict, reference machine, the limits the
+ * fixtures obey, and per scenario its counters (with whether they held across
+ * runs and their budget) and its timings (with their spread). Pure, so a test
+ * can pin its shape.
  */
+import {
+	budgetLabel,
+	formatBudgetFailure,
+	type BudgetFailure,
+	type ScenarioBudgets,
+} from './budgets';
 import type { FidelitySentinels } from './fixtureApi';
+import { SCENARIO_NOW } from './browserContext';
 import type { MetricSummary } from './stats';
 import { ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS, CHARS_PER_TOKEN, WRITER_LIMITS } from './workload';
 
@@ -32,11 +40,15 @@ export interface ScenarioResult {
 	metrics: MetricSummary[];
 	/** Sentinels from every run that reported one; any entry voids the scenario. */
 	voided: FidelitySentinels[];
+	/** The scenario's committed budgets (perf/budgets.ts). */
+	budgets: ScenarioBudgets | undefined;
 }
 
 export interface Report {
 	environment: Environment;
 	scenarios: ScenarioResult[];
+	/** Every run's budget breaches; empty when all of them held. */
+	budgetFailures: BudgetFailure[];
 }
 
 const fmt = (value: number) => {
@@ -63,13 +75,14 @@ function scenarioSection(result: ScenarioResult): string[] {
 	const counters = result.metrics.filter((m) => m.kind === 'counter');
 	const timings = result.metrics.filter((m) => m.kind === 'timing');
 	lines.push(
-		'| Counter | Median | Min | Max | Same every run |',
-		'| --- | ---: | ---: | ---: | :---: |'
+		'| Counter | Median | Min | Max | Same every run | Budget |',
+		'| --- | ---: | ---: | ---: | :---: | ---: |'
 	);
 	for (const m of counters) {
 		const unit = m.unit === 'count' ? '' : ` (${m.unit})`;
+		const budget = budgetLabel(result.budgets?.[m.name]);
 		lines.push(
-			`| ${m.name}${unit} | ${fmt(m.median)} | ${fmt(m.min)} | ${fmt(m.max)} | ${m.stable ? 'yes' : 'no'} |`
+			`| ${m.name}${unit} | ${fmt(m.median)} | ${fmt(m.min)} | ${fmt(m.max)} | ${m.stable ? 'yes' : 'no'} | ${budget} |`
 		);
 	}
 	lines.push(
@@ -86,14 +99,26 @@ function scenarioSection(result: ScenarioResult): string[] {
 	return lines;
 }
 
+function budgetSection(failures: readonly BudgetFailure[]): string[] {
+	if (failures.length === 0) return ['**Budgets: every run held every budget.**', ''];
+	return [
+		`**Budgets: ${failures.length} breach${failures.length === 1 ? '' : 'es'}.**`,
+		'',
+		...failures.map((f) => `- ${formatBudgetFailure(f)}`),
+		'',
+	];
+}
+
 export function formatReport(report: Report): string {
 	const env = report.environment;
 	const lines = [
 		'# Component performance scenarios',
 		'',
-		'Report-only. Counters are work the browser and Vue did and should come out the same on every run;',
-		'timings are wall-clock on the machine below and carry no pass/fail threshold.',
+		'Counters are work the browser and Vue did and should come out the same on every run; a counter',
+		'with a budget (perf/budgets.ts) fails the run past it. Timings are wall-clock on the machine below',
+		'and carry no pass/fail threshold.',
 		'',
+		...budgetSection(report.budgetFailures),
 		'## Reference machine',
 		'',
 		'| | |',
@@ -116,6 +141,7 @@ export function formatReport(report: Report): string {
 		'',
 		`- Assistant stream: one write per ${WRITER_LIMITS.assistantFlushIntervalMs} ms; answers end at or before an estimated ${fmt(ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS)} characters (the ${fmt(WRITER_LIMITS.assistantMaxOutputTokens)}-token output cap at an assumed ${CHARS_PER_TOKEN} characters per token; the text is never tokenized); questions at most ${fmt(WRITER_LIMITS.assistantQuestionMaxChars)} characters; at most ${WRITER_LIMITS.assistantHistoryLimit} messages loaded.`,
 		`- Chat room: at most ${WRITER_LIMITS.chatHistoryLimit} messages loaded, each at most ${fmt(WRITER_LIMITS.chatMessageMaxChars)} characters.`,
+		`- Clock: the page's \`Date.now()\` is pinned to ${new Date(SCENARIO_NOW).toISOString()}; timers and frames run at real speed.`,
 		'',
 	];
 	for (const result of report.scenarios) lines.push(...scenarioSection(result));

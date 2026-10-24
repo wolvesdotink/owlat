@@ -7,6 +7,7 @@ import { teamConversationOpenIds } from '~/utils/answerTeamConversation';
 import type { TeamStreamEntry } from '../../../../api/convex/mail/interpret/briefShape';
 import type { ReplyEntry } from '~/utils/teamStream';
 import TeamThreadStream from '~/components/team/TeamThreadStream.vue';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 type ThreadData = NonNullable<FunctionReturnType<typeof api.inbox.queries.getThread>>;
 type ThreadMessage = ThreadData['messages'][number];
@@ -101,8 +102,7 @@ function reveal(id: string): boolean {
 	if (messageById.value.has(id) && !isOpen(id)) toggle(id);
 	void nextTick(() => {
 		const el = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(id)}"]`);
-		const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-		el?.scrollIntoView?.({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+		el?.scrollIntoView?.({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 		flashed.value = id;
 		// Reply rows come from the stream component, so ring the element itself too.
 		el?.classList.add('ring-2', 'ring-brand/50');
@@ -257,17 +257,19 @@ const showViewToggle = computed(() => props.messages.length > 1);
 						class="px-4 pb-4"
 						data-testid="answer-team-message-body"
 					>
-						<PostboxMessageBody
-							v-if="hasInlineBody(messageOf(entry)!)"
-							:message="bodyOf(messageOf(entry)!)"
-						/>
-						<InboxMessageBody
-							v-else-if="hasStoredBody(messageOf(entry)!)"
-							:message="messageOf(entry)!"
-						/>
-						<p v-else class="text-sm text-text-tertiary">
-							{{ t('dashboard.inbox.detail.noTextContent') }}
-						</p>
+						<AppErrorBoundary surface="messageBody" :reset-keys="[entry.source.id]">
+							<PostboxMessageBody
+								v-if="hasInlineBody(messageOf(entry)!)"
+								:message="bodyOf(messageOf(entry)!)"
+							/>
+							<InboxMessageBody
+								v-else-if="hasStoredBody(messageOf(entry)!)"
+								:message="messageOf(entry)!"
+							/>
+							<p v-else class="text-sm text-text-tertiary">
+								{{ t('dashboard.inbox.detail.noTextContent') }}
+							</p>
+						</AppErrorBoundary>
 						<InboxMessageAttachments :message="messageOf(entry)!" />
 					</div>
 				</article>

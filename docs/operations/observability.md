@@ -87,6 +87,9 @@ those prefixes.
 | `function.query.failed` / `.mutation.failed` / `.action.failed` | Convex public function builders, on a throw  | warn / error |
 | `postbox.mta_intake.refused` / `.failed`                        | Convex Postbox send, per recipient           | error        |
 | `postbox.forward.*`, `postbox.vacation_reply.*`                 | Convex delivery hooks                        | info / error |
+| `runtime.event_loop.stalled`                                    | IMAP, mail sync, updater, per stall (below)  | warn         |
+| `derived_field.drift`                                           | Convex drift sampler, per drifted parent     | warn         |
+| `derived_field.skipped` / `derived_field.sampled`               | Convex drift sampler, per skip / field tick  | info         |
 
 These replace the earlier `[Outbound] MTA /send …`, `[Forwarding] …`,
 `[Vacation] auto-replied …` and `[mta Webhook] Ingress guard rejected …` lines,
@@ -101,6 +104,17 @@ carry none). Expected query failures are sampled at one in ten
 message is not in this line; Convex's own failure line for the same request
 has it. Argument-validation failures happen before the handler and only appear
 in Convex's own line.
+
+`derived_field.drift` means a cached field (`// AGGREGATED [<id>]` in the
+schema) differed from a recount of what it caches, for one parent row. The
+sampler (`apps/api/convex/maintenance/derivedFields/sampler.ts`) checks a few
+parents per field every hour. `outcome` is `repaired` when it wrote the recount
+back and `not_repaired` when the field's policy forbids it (a lifetime total
+above its recount is never lowered). `detail` names the field, its table, the
+parent id, and the `cached.<path>` and `recount.<path>` values. A steady stream
+for one field points at a writer that misses an update. `derived_field.skipped`
+names a parent whose recount would have read too much (`over_budget`) or whose
+source is incomplete (`unverifiable`); nothing was written for it.
 
 ### The correlation id
 
@@ -140,6 +154,9 @@ owlat logs mta | grep 'txn_<id>'
 | Endpoint       | Service        | Auth                         | Use                                                                                                                                     |
 | -------------- | -------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /metrics` | MTA            | none (internal network only) | Prometheus text: queue depth and the MTA's counters                                                                                     |
+| `GET /metrics` | IMAP server    | none (internal network only) | Prometheus text: process metrics, on its own listener (`IMAP_METRICS_PORT`, default 9464; `0` turns it off)                             |
+| `GET /metrics` | mail sync      | none (internal network only) | Prometheus text: process metrics, on the worker's API port (3200)                                                                       |
+| `GET /metrics` | updater        | none (internal network only) | Prometheus text: process metrics, on the updater's port (3200)                                                                          |
 | `GET /livez`   | MTA, updater   | none                         | Liveness of the HTTP loop; what the container healthchecks call                                                                         |
 | `GET /health`  | MTA            | none                         | Diagnostic: DNS identity, outbound SMTP reachability, Redis, queue worker heartbeat. Slow by design; do not poll it as a liveness probe |
 | `GET /health`  | mail sync      | none                         | `{ ok: true }` when the HTTP server answers                                                                                             |
@@ -148,7 +165,48 @@ owlat logs mta | grep 'txn_<id>'
 
 The shipped compose file publishes the MTA's HTTP port on the host's loopback
 only (`127.0.0.1:${MTA_HTTP_PORT:-3100}`), so `/metrics` can be scraped from the
-host itself or from inside the Docker network.
+host itself or from inside the Docker network. The IMAP and mail sync ports
+are not published, and the updater's is published on the host's loopback at
+most (the VPS template does; the development compose file does not). Scrape
+them from a container on the same network: `http://imap:9464/metrics`,
+`http://mail-sync:3200/metrics`, `http://updater:3200/metrics`.
+
+### Process metrics and event-loop stalls
+
+The IMAP server, mail sync and the updater serve prom-client's default process
+metrics: CPU (`process_cpu_*`), resident memory
+(`process_resident_memory_bytes`), heap and GC (`nodejs_heap_*`, `nodejs_gc_*`),
+open handles and event-loop lag (`nodejs_eventloop_lag_*`, reset at every
+scrape). None of them carries a per-request or per-user label.
+
+Each of the three also samples its own event loop every 10 seconds. When the
+loop was blocked for a second or more, it counts the stall in
+`nodejs_eventloop_stalls_total` and writes one warning line, whether or not
+anything scrapes `/metrics`:
+
+```json
+{
+	"event": "runtime.event_loop.stalled",
+	"durationMs": 2500,
+	"detail": { "thresholdMs": 1000, "utilization": 0.29, "rssMb": 182, "heapUsedMb": 61 },
+	"msg": "event loop stalled for 2500 ms"
+}
+```
+
+`utilization` is the share of the 10-second window the loop spent running
+code. The line is written when the loop runs again, so a process that never
+unblocks logs nothing; its container healthcheck catches that. The updater
+writes the same record as text after `[updater] event loop stalled for … ms`.
+
+### MTA metric labels
+
+`mta_fbl_complaints_by_campaign_total` labels the first 100 campaigns that
+receive a complaint after the MTA starts by their campaign id; complaints for
+later campaigns are counted under `campaign="other"`, so the sum over all
+series is still the number of attributed complaints. Its `isp` label is one of
+`microsoft`, `yahoo`, `aol`, `comcast`, `google`, `mailru` or `unknown`. The
+per-campaign complaint rate and the `campaign.complaint_rate` alert are
+tracked under the real campaign id regardless of this label.
 
 ## Following one send
 

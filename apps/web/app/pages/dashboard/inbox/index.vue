@@ -3,6 +3,9 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
 import { useOrganization } from '~/composables/useOrganization';
+import type { UndoGroup } from '~/composables/postbox/usePostboxTriageUndo';
+import { resolveActiveChord } from '~/utils/shortcutScope';
+import { useShortcutScope } from '~/composables/useShortcutScope';
 import { teamThreadHasDraft, useComposerDrafts } from '~/composables/useComposerDrafts';
 import {
 	DEFAULT_INBOX_ASSIGNEE,
@@ -113,15 +116,40 @@ const assignMembers = computed(() =>
 	}))
 );
 
-/** Human undo-toast label for an assignment. */
-function assignLabel(assignedTo: string | undefined): string {
-	if (assignedTo === undefined) return t('dashboard.inbox.index.undo.unassigned');
-	if (assignedTo === user.value?.id) return t('dashboard.inbox.index.undo.assignedToYou');
+/**
+ * Undo-toast copy for an assignment: the single action, and the shared toast a
+ * run of assignments to the same person collapses into.
+ */
+function assignUndo(assignedTo: string | undefined): { label: string; group: UndoGroup } {
+	const many = (key: string, params: Record<string, string> = {}): UndoGroup => ({
+		key: `inbox:assign:${assignedTo ?? ''}`,
+		label: (count) => t(`dashboard.inbox.index.undo.${key}`, { ...params, count }, count),
+	});
+	if (assignedTo === undefined) {
+		return { label: t('dashboard.inbox.index.undo.unassigned'), group: many('unassignedMany') };
+	}
+	if (assignedTo === user.value?.id) {
+		return {
+			label: t('dashboard.inbox.index.undo.assignedToYou'),
+			group: many('assignedToYouMany'),
+		};
+	}
 	const member = assignMembers.value.find((m) => m.userId === assignedTo);
 	const name = member?.name || member?.email;
 	return name
-		? t('dashboard.inbox.index.undo.assignedTo', { name })
-		: t('dashboard.inbox.index.undo.assigned');
+		? {
+				label: t('dashboard.inbox.index.undo.assignedTo', { name }),
+				group: many('assignedToMany', { name }),
+			}
+		: { label: t('dashboard.inbox.index.undo.assigned'), group: many('assignedMany') };
+}
+
+/** Consecutive resolves (or snoozes) share one undo toast that counts them. */
+function statusUndoGroup(kind: 'resolved' | 'snoozed'): UndoGroup {
+	return {
+		key: `inbox:${kind}`,
+		label: (count) => t(`dashboard.inbox.index.undo.${kind}Many`, { count }, count),
+	};
 }
 
 /** Does assigning to `assignedTo` drop the row from the active assignment filter? */
@@ -137,7 +165,7 @@ async function assignTo(thread: TeamThread, assignedTo: string | undefined) {
 	if (previous === assignedTo) return;
 	await runTriage({
 		id: thread._id,
-		label: assignLabel(assignedTo),
+		...assignUndo(assignedTo),
 		leavesView: assignLeavesView(assignedTo),
 		mutate: () => assignThread({ threadId: thread._id, assignedTo }),
 		inverse: () => assignThread({ threadId: thread._id, assignedTo: previous }),
@@ -157,6 +185,7 @@ async function resolveThread(thread: TeamThread) {
 	await runTriage({
 		id: thread._id,
 		label: t('dashboard.inbox.index.undo.resolved'),
+		group: statusUndoGroup('resolved'),
 		leavesView: ACTIVE_WORK_FILTERS.has(filter.value),
 		mutate: () => updateThreadStatus({ threadId: thread._id, status: 'resolved' }),
 		inverse: () => updateThreadStatus({ threadId: thread._id, status: previousStatus }),
@@ -178,6 +207,7 @@ async function onSnoozeConfirm(timestamp: number) {
 	await runTriage({
 		id,
 		label: t('dashboard.inbox.index.undo.snoozed'),
+		group: statusUndoGroup('snoozed'),
 		leavesView: ACTIVE_WORK_FILTERS.has(filter.value),
 		mutate: () => snoozeThread({ threadId: id, until: timestamp }),
 		inverse: () => unsnoozeThread({ threadId: id }),
@@ -185,15 +215,22 @@ async function onSnoozeConfirm(timestamp: number) {
 }
 
 // ── List keyboard: j/k move, Enter opens, i assigns-to-me. Shares the Postbox
-// listbox composable so the conventions match. Reset focus on filter/sort. ──
+// listbox composable so the conventions match. Reset focus on filter/sort.
+// Every key of the list lives in ONE scope (`inboxList`), so a remap that
+// would put "assign" on the key that moves the list is refused, and claiming
+// it puts the list's keys on the "?" sheet. ──
+useShortcutScope('inboxList');
 const listKey = computed(() => `${filter.value}:${assignee.value}:${sort.value}:${mentions.value}`);
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>({
 	items: visibleThreads,
 	resetKey: listKey,
 	rowDomId: (thread) => `inbox-row-${thread._id}`,
+	scope: 'inboxList',
 	onActivate: (thread) => navigateTo(`/dashboard/inbox/${thread._id}`),
 	onAction: (key, thread) => {
-		if (key === 'i' && isAdmin.value) void assignToMe(thread);
+		if (resolveActiveChord(key, ['inboxList']) === 'inboxList.assignToMe' && isAdmin.value) {
+			void assignToMe(thread);
+		}
 	},
 });
 

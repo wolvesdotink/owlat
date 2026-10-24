@@ -19,7 +19,15 @@
  * Split out of `mail/migration.ts` under CONVENTIONS.md's ~500-LOC ceiling.
  */
 
-import { v } from 'convex/values';
+import {
+	completeBackfillImport as completeBackfillImportContract,
+	findKnownMessageIds as findKnownMessageIdsContract,
+	getBackfillWork as getBackfillWorkContract,
+	initFolderBackfill as initFolderBackfillContract,
+	markImportFailed as markImportFailedContract,
+	pauseImportForThrottle as pauseImportForThrottleContract,
+	recordBackfillProgress as recordBackfillProgressContract,
+} from '@owlat/worker-protocol/mailSync';
 import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import type { MutationCtx } from '../_generated/server';
@@ -91,7 +99,8 @@ async function failMigration(
  * freshly-started migration.
  */
 export const getBackfillWork = internalQuery({
-	args: { accountId: v.id('externalMailAccounts') },
+	args: getBackfillWorkContract.args,
+	returns: getBackfillWorkContract.returns,
 	handler: async (ctx, args) => {
 		const migration = await latestMigrationRow(ctx, args.accountId);
 		if (!migration || migration.status !== 'importing') {
@@ -128,11 +137,8 @@ export const getBackfillWork = internalQuery({
  * itself.
  */
 export const findKnownMessageIds = internalQuery({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		/** Raw Message-ID headers, as the remote server reported them. */
-		messageIds: v.array(v.string()),
-	},
+	args: findKnownMessageIdsContract.args,
+	returns: findKnownMessageIdsContract.returns,
 	handler: async (ctx, args): Promise<string[]> => {
 		const account = await ctx.db.get(args.accountId);
 		if (!account) return [];
@@ -157,13 +163,8 @@ export const findKnownMessageIds = internalQuery({
  * no longer importing / there's no sync row.
  */
 export const initFolderBackfill = internalMutation({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		migrationId: v.id('mailboxMigrations'),
-		remoteName: v.string(),
-		ceilingUid: v.number(),
-		messageCount: v.number(),
-	},
+	args: initFolderBackfillContract.args,
+	returns: initFolderBackfillContract.returns,
 	handler: async (ctx, args): Promise<{ startCursor: number } | null> => {
 		const migration = await ctx.db.get(args.migrationId);
 		if (!migration || migration.status !== 'importing') return null;
@@ -208,18 +209,8 @@ export const initFolderBackfill = internalMutation({
  * than only after the current — possibly huge — folder finishes).
  */
 export const recordBackfillProgress = internalMutation({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		migrationId: v.id('mailboxMigrations'),
-		remoteName: v.string(),
-		newCursor: v.number(),
-		/** Messages in this batch the worker STORED. */
-		importedDelta: v.number(),
-		/** Messages in this batch it walked past without storing. Required so an
-		 * older worker cannot report failed ingests as successful imports during a
-		 * rolling deploy; the resumable cursor makes a brief loud failure safe. */
-		failedDelta: v.number(),
-	},
+	args: recordBackfillProgressContract.args,
+	returns: recordBackfillProgressContract.returns,
 	handler: async (ctx, args): Promise<{ stillImporting: boolean }> => {
 		// Bail before touching the folder row when this batch's migration is no
 		// longer importing (cancelled, or superseded by a newer start()): a fresh
@@ -268,10 +259,8 @@ export const recordBackfillProgress = internalMutation({
  * the row / the audit log.
  */
 export const markImportFailed = internalMutation({
-	args: {
-		migrationId: v.id('mailboxMigrations'),
-		errorMessage: v.optional(v.string()),
-	},
+	args: markImportFailedContract.args,
+	returns: markImportFailedContract.returns,
 	handler: async (ctx, args) => {
 		const migration = await ctx.db.get(args.migrationId);
 		if (!migration || migration.status !== 'importing') return;
@@ -294,13 +283,8 @@ export const markImportFailed = internalMutation({
  * time is never failed by this.
  */
 export const pauseImportForThrottle = internalMutation({
-	args: {
-		migrationId: v.id('mailboxMigrations'),
-		/** Epoch ms the worker will run the walk again. */
-		resumeAt: v.number(),
-		/** The provider's own words, for the audit log. */
-		reason: v.optional(v.string()),
-	},
+	args: pauseImportForThrottleContract.args,
+	returns: pauseImportForThrottleContract.returns,
 	handler: async (ctx, args): Promise<{ outcome: 'paused' | 'failed' | 'ignored' }> => {
 		const migration = await ctx.db.get(args.migrationId);
 		if (!migration || migration.status !== 'importing') return { outcome: 'ignored' };
@@ -344,7 +328,8 @@ export const pauseImportForThrottle = internalMutation({
  * 'failed → Try again' step is what the user sees.
  */
 export const completeBackfillImport = internalMutation({
-	args: { migrationId: v.id('mailboxMigrations') },
+	args: completeBackfillImportContract.args,
+	returns: completeBackfillImportContract.returns,
 	handler: async (ctx, args) => {
 		const migration = await ctx.db.get(args.migrationId);
 		if (!migration || migration.status !== 'importing') return;

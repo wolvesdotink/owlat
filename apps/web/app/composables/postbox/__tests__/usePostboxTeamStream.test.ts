@@ -4,9 +4,9 @@
  * short the reader says so and offers the rest (never a silent cut); the
  * viewer's discussion @mentions are cleared once the stream is seen.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const entries = ref<unknown[]>([]);
@@ -56,7 +56,6 @@ function host(
 	return () => state;
 }
 
-enableAutoUnmount(afterEach);
 beforeEach(() => {
 	entries.value = [];
 	useComposerDrafts().bindUser(null);

@@ -9,6 +9,7 @@
  * is the page.
  */
 import { api } from '@owlat/api';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import MarketingAudiencePanel from '~/components/marketing/MarketingAudiencePanel.vue';
 import MarketingLatestCampaigns from '~/components/marketing/MarketingLatestCampaigns.vue';
 import MarketingNextUp from '~/components/marketing/MarketingNextUp.vue';
@@ -75,7 +76,10 @@ const clickBars = computed(() =>
 );
 
 function scrollToNextUp() {
-	document.getElementById('next-up')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	document.getElementById('next-up')?.scrollIntoView({
+		behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+		block: 'start',
+	});
 }
 
 function handleNewCampaign() {

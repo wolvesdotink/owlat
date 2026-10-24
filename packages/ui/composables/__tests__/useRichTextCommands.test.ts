@@ -18,12 +18,15 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { ref } from 'vue';
 import { useRichText } from '../useRichText';
 
+/** Editors this file appended to the document; each test's are removed after it. */
+const editors: HTMLElement[] = [];
+
 function mountEditor(html: string): HTMLElement {
-	document.body.innerHTML = '';
 	const editor = document.createElement('div');
 	editor.setAttribute('contenteditable', 'true');
 	editor.innerHTML = html;
 	document.body.appendChild(editor);
+	editors.push(editor);
 	return editor;
 }
 
@@ -79,7 +82,7 @@ function rt(editor: HTMLElement, opts: Record<string, unknown> = {}) {
 
 afterEach(() => {
 	vi.restoreAllMocks();
-	document.body.innerHTML = '';
+	for (const editor of editors.splice(0)) editor.remove();
 });
 
 describe('inline marks (bold/italic/underline)', () => {

@@ -60,6 +60,17 @@ export function baselineFieldValue(
 	}
 }
 
+/**
+ * The value a field's Reset puts back: the schema's declared default, or
+ * `undefined` when there is nothing to return to (no declared default, or a
+ * secret, which the deployment environment supplies).
+ */
+export function pluginSettingsFieldDefault(
+	field: PluginSettingsField
+): PluginSettingsFormValue | undefined {
+	return field.kind === 'secret' ? undefined : field.default;
+}
+
 /** The full baseline form for a schema, used to seed inputs and detect changes. */
 export function pluginSettingsBaseline(
 	schema: PluginSettingsSchema,

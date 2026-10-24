@@ -7,8 +7,13 @@
  *   backend update, or refuse to start.
  * - `status`: the operator's evidence before a compatibility path is removed,
  *   `npx convex run mail/imap/serverRegistry:status '{"days": 7}'`.
- * - `getForAdmin`: the same summary for Settings → System & updates.
+ * - `getForAdmin`: the same summary for the previous release's System & updates
+ *   page; this release's page reads `maintenance/workerRegistry:getForAdmin`.
  * - `pruneStale`: the daily cron that drops reports older than 30 days.
+ *
+ * Every report is also recorded in the cross-service worker registry
+ * (`maintenance/workerRegistry.ts`). This table keeps the IMAP history from
+ * before that registry existed, so `status` still covers the full window.
  *
  * IMAP servers from before reporting (v0.6.7 and older) are noticed through
  * their logins instead: `mail/appPasswords.verify` refuses an IMAP login
@@ -16,7 +21,7 @@
  * `mail/appPasswords.touch` without one calls {@link noteLegacyImapLogin}.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import {
 	IMAP_WIRE_LEGACY,
 	IMAP_WIRE_MIN_SUPPORTED,
@@ -24,6 +29,7 @@ import {
 	imapWireVerdict,
 	type ImapWireVerdict,
 } from '@owlat/shared/imapWire';
+import { reportServer as reportServerContract } from '@owlat/worker-protocol/imap';
 import { internalQuery, type DatabaseReader, type MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { internalMutation } from '../../lib/writeFence';
@@ -31,6 +37,7 @@ import { platformAdminQuery } from '../../lib/authedFunctions';
 import { DAY_MS, HOUR_MS } from '../../lib/constants';
 import { readInstanceCounter, writeInstanceCounter } from '../../lib/instanceCounters';
 import { throwInvalidState } from '../../_utils/errors';
+import { recordWorkerReport } from '../../maintenance/workerRegistry';
 
 /** Reports not refreshed for this long are deleted. */
 export const IMAP_SERVER_RETENTION_MS = 30 * DAY_MS;
@@ -56,12 +63,7 @@ const clampLabel = (value: string, fallback: string) =>
 const verdictOf = (wireVersion: number): ImapWireVerdict =>
 	imapWireVerdict(wireVersion, IMAP_WIRE_VERSION, IMAP_WIRE_MIN_SUPPORTED);
 
-type ReportResult = {
-	backendWireVersion: number;
-	minSupportedWireVersion: number;
-	compatible: boolean;
-	reason?: 'server_too_old' | 'backend_older';
-};
+type ReportResult = Infer<typeof reportServerContract.returns>;
 
 /**
  * Refuse a call from an IMAP server older than `IMAP_WIRE_MIN_SUPPORTED`. A
@@ -112,13 +114,8 @@ export const noteLegacyLogin = internalMutation({
 });
 
 export const report = internalMutation({
-	args: {
-		instanceId: v.string(),
-		hostLabel: v.string(),
-		owlatVersion: v.string(),
-		wireVersion: v.number(),
-		startedAt: v.number(),
-	},
+	args: reportServerContract.args,
+	returns: reportServerContract.returns,
 	handler: async (ctx, args): Promise<ReportResult> => {
 		const now = Date.now();
 		const hostLabel = clampLabel(args.hostLabel, 'unknown');
@@ -146,6 +143,8 @@ export const report = internalMutation({
 				wireVersion: args.wireVersion,
 			});
 		}
+		// The cross-service registry, which the skew view and contract steps read.
+		await recordWorkerReport(ctx, 'imap', args, now);
 
 		const verdict = verdictOf(args.wireVersion);
 		const result: ReportResult = {
@@ -307,7 +306,10 @@ export const status = internalQuery({
 		readImapServerStatus(ctx.db, Date.now(), args.days),
 });
 
-/** The last 7 days for Settings → System & updates. */
+/**
+ * The last 7 days, for the previous release's IMAP servers card in tabs opened
+ * before the deploy. Remove after release N+1.
+ */
 export const getForAdmin = platformAdminQuery({
 	args: {},
 	handler: async (ctx): Promise<ImapServerStatus> => readImapServerStatus(ctx.db, Date.now()),

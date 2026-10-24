@@ -49,7 +49,10 @@ beforeEach(() => {
 		setSwipeAction: vi.fn(),
 		sendSound: ref(false),
 		setSendSound: vi.fn(),
+		autoLoadImages: ref(true),
+		setAutoLoadImages: vi.fn(),
 		isSaving: ref(false),
+		isLoading: ref(false),
 	}));
 });
 

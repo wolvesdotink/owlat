@@ -1,5 +1,5 @@
 /**
- * Component performance scenarios: report-only, never part of the PR gate.
+ * Component performance scenarios, and the budget gate over their counters.
  *
  *   bun run --cwd apps/web perf:scenarios [--repeats 5] [--only <id or family>]
  *       [--cpu-throttle 1] [--headed] [--out <dir>]
@@ -13,11 +13,12 @@
  *
  * Prints the Markdown report and writes it, with the raw per-run samples as
  * JSON, to `--out` (default node_modules/.cache/owlat-perf/reports). Exits 1
- * only when a run's fidelity sentinels fired (the fixture did not render the
- * real components cleanly); a number never fails it.
+ * when a run's fidelity sentinels fired (the fixture did not render the real
+ * components cleanly) or when any run of a scenario that ran broke one of its
+ * committed counter budgets (perf/budgets.ts). Timings never fail it.
  *
  * Needs no backend, credentials or auth: the scenarios mount components with
- * synthetic props (perf/workload.ts).
+ * synthetic props (perf/workload.ts, perf/listWorkload.ts).
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -28,7 +29,8 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { chromium, type CDPSession } from '@playwright/test';
 import { build, preview } from 'vite';
-import { assertPinned, newScenarioContext, SCENARIO_CONTEXT } from './browserContext';
+import { assertPinned, newScenarioContext, SCENARIO_CONTEXT, SCENARIO_NOW } from './browserContext';
+import { BUDGETS, checkBudgets, formatBudgetFailure } from './budgets';
 import type { FidelitySentinels } from './fixtureApi';
 import { formatReport, type Environment, type Report, type ScenarioResult } from './report';
 import { SCENARIOS } from './scenarios';
@@ -65,8 +67,14 @@ async function chromeMetrics(cdp: CDPSession): Promise<Metrics> {
 	return Object.fromEntries(metrics.map((m) => [m.name, m.value]));
 }
 
-/** Chrome's counters once garbage that nothing references is gone. */
+/**
+ * Chrome's counters once garbage that nothing references is gone. Two passes:
+ * Blink may still be sweeping the first collection's dead DOM nodes when it
+ * returns, and an unswept node still counts in `Nodes`, so a single pass left
+ * a whole torn-down tree "alive" in some runs and not in others.
+ */
 async function settledMetrics(cdp: CDPSession): Promise<Metrics> {
+	await cdp.send('HeapProfiler.collectGarbage');
 	await cdp.send('HeapProfiler.collectGarbage');
 	return chromeMetrics(cdp);
 }
@@ -109,11 +117,14 @@ try {
 		for (let i = 0; i < repeats; i++) {
 			const context = await newScenarioContext(browser);
 			const page = await context.newPage();
+			// `Date` only: timers and animation frames keep real time.
+			await page.clock.setFixedTime(SCENARIO_NOW);
 			await page.goto(url);
 			await page.waitForFunction(() => window.__owlatPerf !== undefined);
 			const resolved = await page.evaluate(() => ({
 				timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 				locale: navigator.language,
+				now: Date.now(),
 			}));
 			assertPinned(resolved);
 			const cdp = await context.newCDPSession(page);
@@ -162,6 +173,7 @@ try {
 			description: scenario.description,
 			metrics: summarizeSamples(samples),
 			voided,
+			budgets: BUDGETS[scenario.id],
 		});
 	}
 } finally {
@@ -190,7 +202,8 @@ const environment: Environment = {
 	repeats,
 	startedAt,
 };
-const report: Report = { environment, scenarios: results };
+const budgetFailures = checkBudgets(raw);
+const report: Report = { environment, scenarios: results, budgetFailures };
 const markdown = formatReport(report);
 
 mkdirSync(args.out, { recursive: true });
@@ -202,4 +215,7 @@ writeFileSync(
 );
 process.stdout.write(`${markdown}\n`);
 process.stderr.write(`report written to ${join(args.out, stamp)}.{md,json}\n`);
-if (results.some((r) => r.voided.length > 0)) process.exitCode = 1;
+for (const failure of budgetFailures) {
+	process.stderr.write(`budget breached: ${formatBudgetFailure(failure)}\n`);
+}
+if (results.some((r) => r.voided.length > 0) || budgetFailures.length > 0) process.exitCode = 1;

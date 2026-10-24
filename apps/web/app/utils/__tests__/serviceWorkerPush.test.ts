@@ -222,6 +222,86 @@ describe('notificationclick', () => {
 		});
 		expect(self.clients.openWindow).toHaveBeenCalledWith('/dashboard/chat/r1');
 	});
+
+	it('routes a pressed button to its own path, and a body click to the notification’s', async () => {
+		const { self, listeners } = makeSelf({ windows: [] });
+		const notification = () => ({
+			close: vi.fn(),
+			data: {
+				url: '/dashboard/campaigns/c1/edit',
+				actionUrls: {
+					open: '/dashboard/campaigns/c1/edit',
+					cancel: '/dashboard/campaigns/c1/edit?intent=cancel',
+				},
+			},
+		});
+		await fire(listeners, 'notificationclick', { notification: notification(), action: 'cancel' });
+		await fire(listeners, 'notificationclick', { notification: notification(), action: '' });
+		await fire(listeners, 'notificationclick', { notification: notification(), action: 'gone' });
+		expect(self.clients.openWindow.mock.calls).toEqual([
+			['/dashboard/campaigns/c1/edit?intent=cancel'],
+			['/dashboard/campaigns/c1/edit'],
+			['/dashboard/campaigns/c1/edit'],
+		]);
+	});
+});
+
+describe('notification buttons', () => {
+	const REMINDER = {
+		title: 'Scheduled campaign sends in 15 min',
+		body: 'Webinar',
+		tag: 'marketing:campaign:c1',
+		url: '/dashboard/campaigns/c1/edit',
+		actions: [
+			{ action: 'open', title: 'Open', url: '/dashboard/campaigns/c1/edit' },
+			{ action: 'cancel', title: 'Cancel send', url: '/dashboard/campaigns/c1/edit?intent=cancel' },
+		],
+	};
+
+	it('shows the buttons and remembers where each one goes', async () => {
+		const { self, listeners } = makeSelf({ windows: [] });
+		await fire(listeners, 'push', { data: pushData(REMINDER) });
+		const [, options] = self.registration.showNotification.mock.calls[0] as unknown as [
+			string,
+			{ actions: unknown; data: unknown },
+		];
+		expect(options.actions).toEqual([
+			{ action: 'open', title: 'Open' },
+			{ action: 'cancel', title: 'Cancel send' },
+		]);
+		expect(options.data).toEqual({
+			url: REMINDER.url,
+			actionUrls: {
+				open: '/dashboard/campaigns/c1/edit',
+				cancel: '/dashboard/campaigns/c1/edit?intent=cancel',
+			},
+		});
+	});
+
+	it('drops malformed buttons, keeps at most two, and never routes one off-site', async () => {
+		const { self, listeners } = makeSelf({ windows: [] });
+		await fire(listeners, 'push', {
+			data: pushData({
+				...REMINDER,
+				actions: [
+					{ action: '', title: 'No id', url: '/dashboard' },
+					{ action: 'untitled', url: '/dashboard' },
+					{ action: 'evil', title: 'Evil', url: 'https://evil.example.com/' },
+					{ action: 'open', title: 'Open', url: '/dashboard/campaigns/c1/edit' },
+					{ action: 'third', title: 'Third', url: '/dashboard' },
+				],
+			}),
+		});
+		const [, options] = self.registration.showNotification.mock.calls[0] as unknown as [
+			string,
+			{ actions: unknown; data: { actionUrls: Record<string, string> } },
+		];
+		expect(options.actions).toEqual([
+			{ action: 'evil', title: 'Evil' },
+			{ action: 'open', title: 'Open' },
+		]);
+		expect(options.data.actionUrls['evil']).toBe('/dashboard');
+	});
 });
 
 describe('push-only registration (/sw.js?shell=off)', () => {

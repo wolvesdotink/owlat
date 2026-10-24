@@ -201,3 +201,26 @@
 		transform: none;
 	}
 }
+
+/* The app's own "Reduce motion" setting (the data-motion floor in
+ * packages/ui base.css): the same rules, keyed on the root attribute. */
+:root[data-motion='reduce'] .pbx-row-settle {
+	transition: none;
+}
+:root[data-motion='reduce'] .pbx-swipe-track-mark {
+	transform: none !important;
+}
+:root[data-motion='reduce'] .pbx-fade-enter-active,
+:root[data-motion='reduce'] .pbx-fade-leave-active,
+:root[data-motion='reduce'] .pbx-toast-enter-active,
+:root[data-motion='reduce'] .pbx-toast-leave-active,
+:root[data-motion='reduce'] .pbx-cardstack-enter-active,
+:root[data-motion='reduce'] .pbx-cardstack-leave-active {
+	transition-property: opacity;
+}
+:root[data-motion='reduce'] .pbx-toast-enter-from,
+:root[data-motion='reduce'] .pbx-toast-leave-to,
+:root[data-motion='reduce'] .pbx-cardstack-enter-from,
+:root[data-motion='reduce'] .pbx-cardstack-leave-to {
+	transform: none;
+}

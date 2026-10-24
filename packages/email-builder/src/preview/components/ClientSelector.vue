@@ -270,7 +270,9 @@ function closeDropdowns() {
 	font-size: 13px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition-property: background-color, border-color;
+	transition-duration: var(--motion-fast, 80ms);
+	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-selector-button:hover {
@@ -410,7 +412,9 @@ function closeDropdowns() {
 	color: var(--ep-text-secondary);
 	font-size: 12px;
 	cursor: pointer;
-	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition-property: color, background-color, border-color;
+	transition-duration: var(--motion-fast, 80ms);
+	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-client-chip:hover {
@@ -524,7 +528,9 @@ function closeDropdowns() {
 /* Transitions */
 .ep-dropdown-enter-active,
 .ep-dropdown-leave-active {
-	transition: all var(--motion-moderate, 160ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition-property: opacity, transform;
+	transition-duration: var(--motion-moderate, 160ms);
+	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-dropdown-enter-from,

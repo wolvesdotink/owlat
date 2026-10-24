@@ -128,6 +128,7 @@ export function usePostboxPerfMarks(args: {
 	}
 	if (typeof document !== 'undefined') {
 		document.addEventListener('click', onInput, true);
+		// oxlint-disable-next-line owlat/no-raw-keydown-listener -- passive instrumentation: times the press, never handles it
 		document.addEventListener('keydown', onInput, true);
 	}
 

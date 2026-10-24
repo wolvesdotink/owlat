@@ -153,12 +153,21 @@ export interface DoctorReport {
 export class DoctorReportBuilder {
 	readonly checks: DoctorCheck[] = [];
 	private redact: DoctorRedactor = (message) => String(message);
+	private codeOwnedOnly = false;
 
 	constructor(private readonly onCheck?: (check: DoctorCheck) => void) {}
 
 	/** Redact every later message against this env (call once `.env` is read). */
 	useEnv(env: EnvMap): void {
 		this.redact = createDoctorRedactor(env);
+	}
+
+	/**
+	 * Record only the code-owned text of every later message, with each run of
+	 * runtime text (MTA answers, docker status lines, error messages) withheld.
+	 */
+	withholdRuntimeText(): void {
+		this.codeOwnedOnly = true;
 	}
 
 	record(finding: DoctorFinding): void {
@@ -169,7 +178,7 @@ export class DoctorReportBuilder {
 			component: meta.component,
 			status: finding.ok ? 'pass' : 'fail',
 			severity: 'error',
-			message: this.redact(finding.message),
+			message: this.codeOwnedOnly ? finding.message.codeOwned() : this.redact(finding.message),
 			...(finding.ok ? {} : { remediation: meta.remediation }),
 		};
 		this.checks.push(check);

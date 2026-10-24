@@ -67,7 +67,7 @@ const displayTags = computed(() => {
 	     new tab like every other row that leads somewhere. -->
 	<NuxtLink
 		:to="`/dashboard/files/${id}`"
-		class="group block bg-bg-elevated shadow-surface-1 rounded-(--radius-card) overflow-hidden transition-all duration-(--motion-moderate) hover:shadow-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+		class="group block bg-bg-elevated shadow-surface-1 rounded-(--radius-card) overflow-hidden transition-shadow duration-(--motion-moderate) hover:shadow-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 	>
 		<!-- Icon area -->
 		<div class="flex items-center justify-center py-8 bg-bg-surface">

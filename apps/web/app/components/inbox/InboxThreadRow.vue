@@ -43,6 +43,8 @@ export interface InboxThreadRowThread {
 import { INBOX_WAITING_TIER_CLASS, inboxWaitingChip } from '~/utils/inboxWaiting';
 import { INBOX_SLA_TIER_CLASS, inboxSlaChip } from '~/utils/inboxSla';
 import DraftMarker from '~/components/shell/DraftMarker.vue';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import type { ReplyDropTarget } from '~/utils/replyFileDrop';
 
 const props = withDefaults(
 	defineProps<{
@@ -122,6 +124,15 @@ const channelLabel = computed(() => {
 	return capitalize(c);
 });
 
+// Files dropped on the row reply to the thread with them, in Answer mode.
+// Only a viewer who may reply can, and only by email: a reply on another
+// channel (SMS, WhatsApp) carries no files.
+const replyDrop = computed<ReplyDropTarget | null>(() =>
+	props.canManage && !showChannelChip.value
+		? { kind: 'team', id: props.thread._id, recipient: props.thread.contactIdentifier }
+		: null
+);
+
 const assigneeName = computed(() => {
 	const a = props.thread.assignee;
 	return a ? a.name || a.email : null;
@@ -137,13 +148,13 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 </script>
 
 <template>
-	<li class="group relative">
+	<li v-reply-drop="replyDrop" class="group relative">
 		<NuxtLink
 			:id="rowId"
 			role="option"
 			:aria-selected="focused"
 			:to="`/dashboard/inbox/${thread._id}`"
-			class="block w-full text-left px-4 py-3 rounded-lg hover:bg-(--surface-1-hover) transition-colors"
+			class="block w-full text-left px-4 py-3 density-compact:py-1.5 rounded-lg hover:bg-(--surface-1-hover) transition-colors"
 			:class="{ 'ring-1 ring-inset ring-brand/50': focused }"
 			@click="emit('open')"
 		>
@@ -232,7 +243,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 					class="flex-shrink-0 mt-0.5"
 					:title="t('components.inbox.inboxThreadRow.assignedTo', { name: assigneeName })"
 				>
-					<span :class="assigneePresent ? 'ui-presence-ring' : ''">
+					<UiPresenceRing :active="assigneePresent">
 						<UiAvatar
 							:name="assigneeName ?? undefined"
 							:email="thread.assignee.email"
@@ -240,7 +251,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 							deterministic-color
 							size="sm"
 						/>
-					</span>
+					</UiPresenceRing>
 				</span>
 			</div>
 		</NuxtLink>
@@ -264,6 +275,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 				:current-user-id="currentUserId ?? null"
 				:assigned-to="thread.assignedTo ?? null"
 				position="right"
+				assign-shortcut-id="inboxList.assignToMe"
 				@assign="emit('assign', $event)"
 			>
 				<template #trigger>

@@ -86,7 +86,9 @@ const absoluteTime = computed(() =>
 
 		<!-- This message also sits in someone's personal mailbox (idea 31). -->
 		<InboxCrossSurfaceStrip :inbound-message-id="message._id" class="mb-3" />
-		<InboxMessageBody :message="message" />
+		<AppErrorBoundary surface="messageBody" :reset-keys="[message._id]">
+			<InboxMessageBody :message="message" />
+		</AppErrorBoundary>
 		<InboxMessageAttachments :message="message" />
 
 		<div

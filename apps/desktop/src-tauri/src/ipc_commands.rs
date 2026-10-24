@@ -16,6 +16,7 @@ pub const WINDOW_COMMANDS: &[&str] = &[
     "update_unread_badge",
     "send_native_notification",
     "send_actionable_notification",
+    "send_link_notification",
     "secret_get",
     "session_secret_read",
     "session_secret_write",

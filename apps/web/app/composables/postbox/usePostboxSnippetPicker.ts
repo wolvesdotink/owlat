@@ -6,8 +6,9 @@
  * This is the Selection/Range + keyboard glue that sits between
  * {@link PostboxBasicEditor}'s contenteditable and the pure trigger/rank/
  * placeholder helpers in `~/utils/postboxSnippets`. It owns the picker's open
- * state, filter query, active-item index, caret-anchored placement and the
- * insert-through-the-edit-pipeline lifecycle.
+ * state, filter query, the caret box the list hangs from and the
+ * insert-through-the-edit-pipeline lifecycle; the list itself (highlight,
+ * ↑ ↓, Enter/Tab) is the shared `UiSuggestionPopover`.
  *
  * Extracted out of `PostboxBasicEditor.vue` to keep that SFC under the
  * file-size ratchet — mirroring the `usePostboxGhostText` /
@@ -29,8 +30,11 @@
  * becomes a `[[...]]` gap, which holds Send until it is filled.
  */
 
-import { ref, computed, nextTick, type Ref } from 'vue';
+import { ref, computed, shallowRef, type Ref } from 'vue';
+import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
+import { selectionCaretAnchor, type VirtualAnchor } from '@owlat/ui/utils/popoverAnchor';
 import { detectSnippetTrigger, rankSnippets } from '~/utils/postboxSnippets';
+import { isImeComposing } from '~/utils/imeComposition';
 import {
 	promptedSnippetVariables,
 	resolveSnippetBody,
@@ -75,7 +79,6 @@ export interface SnippetPromptRequest {
 
 export interface SnippetPickerOptions {
 	editorRef: Ref<HTMLDivElement | null>;
-	surfaceRef: Ref<HTMLDivElement | null>;
 	/** Saved replies; empty/undefined disables the trigger entirely. */
 	snippets: () => EditorSnippet[] | undefined;
 	insertOptions: () => SnippetInsertOptions | undefined;
@@ -86,8 +89,10 @@ export interface SnippetPickerOptions {
 export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 	const open = ref(false);
 	const query = ref('');
-	const index = ref(0);
-	const style = ref<Record<string, string> | null>(null);
+	// Where the list hangs: the caret box when the trigger was last read.
+	const anchor = shallowRef<VirtualAnchor | null>(null);
+	// The rendered list (`PostboxSnippetPicker`), which owns ↑ ↓ and the highlight.
+	const list = shallowRef<SuggestionListHandle | null>(null);
 	// The trigger token last dismissed with Esc — suppresses immediate reopening
 	// while the caret still sits in the same ";token" run.
 	const dismissed = ref<string | null>(null);
@@ -96,6 +101,15 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 	// Where the caret last was inside the editor, for an insert from outside it
 	// (the composer's picker button, the command palette).
 	let lastRange: Range | null = null;
+
+	/**
+	 * Template ref for the rendered list. One stable function: an inline arrow
+	 * would be a new ref every render, which Vue answers by clearing and
+	 * re-setting it, and that write would render again.
+	 */
+	function bindList(rendered: unknown) {
+		list.value = rendered as SuggestionListHandle | null;
+	}
 
 	const items = computed(() => rankSnippets(opts.snippets() ?? [], query.value));
 
@@ -116,7 +130,7 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 
 	function close() {
 		open.value = false;
-		style.value = null;
+		anchor.value = null;
 	}
 
 	function dismiss() {
@@ -126,23 +140,10 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 		close();
 	}
 
-	/** Position the picker just below the caret; drop it if unmeasurable. */
+	/** Hang the list from the caret; drop it if the caret is unmeasurable. */
 	function position() {
-		const surface = opts.surfaceRef.value;
-		const sel = window.getSelection();
-		if (!surface || !sel || sel.rangeCount === 0) return close();
-		const range = sel.getRangeAt(0).cloneRange();
-		range.collapse(false);
-		const rects = range.getClientRects();
-		const rect = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
-		if (!rect || (rect.top === 0 && rect.left === 0 && rect.height === 0)) {
-			return close();
-		}
-		const host = surface.getBoundingClientRect();
-		style.value = {
-			left: `${rect.left - host.left + surface.scrollLeft}px`,
-			top: `${rect.bottom - host.top + surface.scrollTop + 4}px`,
-		};
+		anchor.value = selectionCaretAnchor(opts.editorRef.value);
+		if (!anchor.value) close();
 	}
 
 	/** Re-evaluate the trigger after an edit; open/refresh/close the picker. */
@@ -160,24 +161,8 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 		query.value = trigger.query;
 		// ";)" is a wink, not a shortcut: only open over something to pick.
 		if (items.value.length === 0) return close();
-		if (!open.value) {
-			open.value = true;
-			index.value = 0;
-		}
-		index.value = Math.min(index.value, Math.max(0, items.value.length - 1));
-		void nextTick(() => position());
-	}
-
-	function next() {
-		const max = items.value.length;
-		if (max === 0) return;
-		index.value = (index.value + 1) % max;
-	}
-
-	function prev() {
-		const max = items.value.length;
-		if (max === 0) return;
-		index.value = (index.value - 1 + max) % max;
+		open.value = true;
+		position();
 	}
 
 	/** Write resolved HTML at the caret through the edit pipeline. */
@@ -275,29 +260,16 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 	}
 
 	/**
-	 * Handle a keydown while the picker owns navigation. Returns true when the
-	 * key was consumed (the caller must then stop its own handling).
+	 * Handle a keydown while the picker is open. ↑ ↓ Enter Tab go to the list
+	 * (a pick comes back through `insert`). Returns true when the key was
+	 * consumed (the caller must then stop its own handling).
 	 */
 	function handleKeydown(event: KeyboardEvent): boolean {
-		if (!open.value) return false;
-		if (event.key === 'ArrowDown') {
-			event.preventDefault();
-			next();
-			return true;
-		}
-		if (event.key === 'ArrowUp') {
-			event.preventDefault();
-			prev();
-			return true;
-		}
-		if (event.key === 'Enter' || event.key === 'Tab') {
-			const selected = items.value[index.value];
-			if (selected) {
-				event.preventDefault();
-				insert(selected);
-				return true;
-			}
-		}
+		// An IME's keys (Escape cancels its composition) stay the IME's.
+		if (!open.value || isImeComposing(event)) return false;
+		if (list.value?.handleKeydown(event)) return true;
+		// The shown list's escape layer takes Esc first; this covers a list
+		// that could not be placed (no caret box).
 		if (event.key === 'Escape') {
 			event.preventDefault();
 			dismiss();
@@ -324,8 +296,9 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 	return {
 		open,
 		items,
-		index,
-		style,
+		anchor,
+		list,
+		bindList,
 		prompt,
 		update,
 		insert,
@@ -333,6 +306,7 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 		submitPrompt,
 		cancelPrompt,
 		close,
+		dismiss,
 		handleKeydown,
 		onSelectionChange,
 	};

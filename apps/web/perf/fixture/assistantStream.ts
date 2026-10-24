@@ -116,6 +116,7 @@ export function assistantStream(scenario: AssistantStreamScenario) {
 			flushes: counter(flushes),
 			'answer length at end': counter(workload.frames.at(-1)?.length ?? 0, 'chars'),
 			'rows re-rendered per flush (max)': counter(Math.max(...rowsPerFlush)),
+			'component updates': counter(sum(updatesByName.values())),
 			'component updates per flush (mean)': counter(sum(updatesByName.values()) / flushes),
 		};
 		for (const [name, n] of [...updatesByName].sort(([a], [b]) => a.localeCompare(b))) {

@@ -94,14 +94,15 @@ function onUndone() {
 			<p v-if="sent" class="m-auto text-sm text-text-secondary">
 				{{ t('compose.sentNotice') }}
 			</p>
-			<PostboxComposer
-				v-else
-				:key="composerKey"
-				class="min-h-0 flex-1"
-				:seed="seed"
-				@sent="onSent"
-				@discarded="closeWindow"
-			/>
+			<AppErrorBoundary v-else surface="composer" :reset-keys="[composerKey]">
+				<PostboxComposer
+					:key="composerKey"
+					class="min-h-0 flex-1"
+					:seed="seed"
+					@sent="onSent"
+					@discarded="closeWindow"
+				/>
+			</AppErrorBoundary>
 		</template>
 		<p v-else-if="isLoading" class="text-sm text-text-secondary">
 			{{ t('compose.loadingMailbox') }}

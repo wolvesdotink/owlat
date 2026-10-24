@@ -62,20 +62,13 @@ const inputId = computed(() => props.id || generatedId);
 const hasIconLeft = computed(() => !!useSlots()['iconLeft']);
 const hasIconRight = computed(() => !!useSlots()['iconRight']);
 
+// The look is the shared `.input` recipe (assets/css/components.css), the same
+// one a native field carries; this component adds only its modifiers.
 const inputClasses = computed(() => {
-	const classes = [
-		'ui-input-control w-full bg-surface-1 shadow-surface-1 rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring',
-	];
+	const classes = ['input'];
 
-	if (props.size === 'sm') {
-		classes.push('min-h-8 px-3 py-1.5 text-sm leading-5');
-	} else {
-		classes.push('min-h-9 px-3 py-2 text-sm leading-5');
-	}
-
-	if (props.error) {
-		classes.push('ring-1 ring-error focus:ring-error');
-	}
+	if (props.size === 'sm') classes.push('input-sm');
+	if (props.error) classes.push('input-error');
 
 	if (hasIconLeft.value) {
 		classes.push(props.size === 'sm' ? 'pl-8' : 'pl-10');

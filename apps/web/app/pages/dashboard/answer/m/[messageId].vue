@@ -24,9 +24,6 @@ import type { ReplyRisk } from '~/utils/senderAuth';
 import { deriveReplyRisk, senderRiskInputOf } from '~/utils/senderAuth';
 import { extractEmailAddress } from '~/utils/emailAddress';
 import { knownRecipientLabel, messageRecipientNames } from '~/utils/recipientHints';
-import { isDialogOpen } from '~/utils/dialogOpen';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
-import { isChordPending } from '~/utils/shortcutScope';
 import { answerBackLabelKey, parseAnswerKind, singleQueryValue } from '~/utils/answerMode';
 import {
 	useAnswerAiFocus,
@@ -35,6 +32,7 @@ import {
 } from '~/composables/useAnswerMode';
 import { useAnswerModeSession, type AnswerModeMessage } from '~/composables/useAnswerModeSession';
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
+import { useAnswerModeKeys } from '~/composables/useAnswerModeKeys';
 import { useAnswerModeAssist } from '~/composables/useAnswerModeAssist';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
@@ -44,8 +42,8 @@ import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
-import { isImeComposing } from '~/utils/imeComposition';
 import { hasOwnWriting } from '~/utils/answerDraft';
+import { useReplyDropDelivery } from '~/composables/useReplyFileDrop';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -144,6 +142,16 @@ const composerRef = shallowRef<{
 const composerKey = computed(() => `${messageId.value}:${openedDraftId ?? 'new'}`);
 
 const draftId = ref<string | null>(openedDraftId);
+
+// Files dropped on this conversation in a list or the reader arrive once the
+// composer is up, through its own attachment pipeline.
+useReplyDropDelivery({
+	target: () => (messageId.value ? { kind: 'message', id: messageId.value } : null),
+	deliver: () => {
+		const answer = composerRef.value?.answer;
+		return answer ? (files: File[]) => void answer.addFiles(files) : null;
+	},
+});
 
 function onDraftId(id: string) {
 	draftId.value = id;
@@ -281,47 +289,15 @@ function onComposerEsc() {
 
 const aiFocus = useAnswerAiFocus();
 
-function onKeydown(event: KeyboardEvent) {
-	if (event.defaultPrevented || isImeComposing(event)) return;
-	const plain = !event.metaKey && !event.ctrlKey && !event.altKey;
-	if (event.key === 'Escape') {
-		if (isDialogOpen()) return;
-		event.preventDefault();
-		const active = document.activeElement;
-		if (isEditableTarget(active) && active instanceof HTMLElement) active.blur();
-		else leave();
-		return;
-	}
-	if (
-		plain &&
-		(event.key === 't' || event.key === 'T') &&
-		!event.shiftKey &&
-		!isEditableTarget(event.target) &&
-		!isChordPending() &&
-		!isDialogOpen()
-	) {
-		event.preventDefault();
+useAnswerModeKeys({
+	leave,
+	toggleView: () => {
 		view.value = view.value === 'summary' ? 'full' : 'summary';
-	}
-}
-
-/** Cmd/Ctrl+J, taken before the shell's Assistant chord sees it. */
-function onChordCapture(event: KeyboardEvent) {
-	if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
-	if (event.key.toLowerCase() !== 'j') return;
-	event.preventDefault();
-	event.stopPropagation();
-	tab.value = 'reply';
-	if (!aiFocus.request()) composerRef.value?.focusBody();
-}
-
-onMounted(() => {
-	window.addEventListener('keydown', onKeydown);
-	window.addEventListener('keydown', onChordCapture, true);
-});
-onBeforeUnmount(() => {
-	window.removeEventListener('keydown', onKeydown);
-	window.removeEventListener('keydown', onChordCapture, true);
+	},
+	draftWithAi: () => {
+		tab.value = 'reply';
+		if (!aiFocus.request()) composerRef.value?.focusBody();
+	},
 });
 </script>
 

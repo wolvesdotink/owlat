@@ -73,7 +73,8 @@
  *     the app with (idea 43b): a named preset (Owlat / Gmail / Superhuman /
  *     Outlook) plus their own per-shortcut remaps on top. Absent means the
  *     shipped 'owlat' map with no remaps, which is exactly the keyboard before
- *     the setting existed.
+ *     the setting existed. Read here; `useShortcutPreferences` writes them
+ *     through its own mutation, which needs no mail flag.
  *   - `markReadPolicy` — when an opened conversation loses its unread flags:
  *     'immediate' (mark on render, the default and today's behaviour),
  *     'after-dwell' (mark after a short visible dwell, cancelled by navigating
@@ -195,6 +196,11 @@ export function usePostboxSettings() {
 	const autoLoadImages = computed<boolean>(() =>
 		data.value === undefined ? false : (data.value?.isAutoLoadImagesOn ?? true)
 	);
+
+	// Whether the saved row (or its absence) has arrived. Until then every value
+	// here is a default, so a caller whose action cannot be taken back (an OS
+	// notification that would show a name, or fire inside quiet hours) waits.
+	const isResolved = computed<boolean>(() => data.value !== undefined);
 
 	// Undo-send window. An unset (or unknown) value resolves to 10s — the server
 	// default the composer gets by sending no `undoSendDelayMs` at all.
@@ -398,14 +404,6 @@ export function usePostboxSettings() {
 		await updateOp.run({ shareLinkExpiryDays: days });
 	}
 
-	async function setShortcutPreset(preset: ShortcutPreset) {
-		await updateOp.run({ shortcutPreset: preset });
-	}
-
-	async function setShortcutOverrides(overrides: StoredShortcutOverride[]) {
-		await updateOp.run({ shortcutOverrides: overrides });
-	}
-
 	async function setSwipeAction(direction: 'left' | 'right', action: PostboxSwipeAction) {
 		await updateOp.run(
 			direction === 'left' ? { swipeLeftAction: action } : { swipeRightAction: action }
@@ -463,6 +461,7 @@ export function usePostboxSettings() {
 		dailyBriefEmail,
 		hasSeenSealedMailNudge,
 		isLoading,
+		isResolved,
 		setAutoAdvance,
 		setWritingSuggestions,
 		setAutoSummarize,
@@ -488,8 +487,6 @@ export function usePostboxSettings() {
 		setTrashAutoPurgeDays,
 		setShareLinkExpiryDays,
 		setSwipeAction,
-		setShortcutPreset,
-		setShortcutOverrides,
 		setDailyBriefEmail,
 		dismissSealedMailNudge,
 		isSaving: updateOp.isLoading,

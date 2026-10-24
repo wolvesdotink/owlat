@@ -18,6 +18,7 @@ import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants
 import { DEPLOYMENT_CHECK_IDS, checklistTraits } from './checklistTraits';
 import { resolveDeliverabilityAlert } from './checklistAlertResolution';
 import { ipv6SendingAddresses, isIpv6CheckId } from './checklistIpv6';
+import { scheduleMarketingNotice } from '../marketing/noticeEvents';
 
 const LEASE_MS = 2 * 60_000;
 const SCHEDULED_RETRY_GRACE_MS = 60_000;
@@ -202,26 +203,35 @@ async function insertRegressionAlert(
 			q.eq('organizationId', args.organizationId).eq('identity', identity)
 		)
 		.unique();
-	if (existing) return;
-	await ctx.db.insert('deliverabilityRegressionAlerts', {
-		organizationId: args.organizationId,
-		identity,
-		itemId: args.itemId,
-		targetKey,
-		...(args.domainId ? { domainId: args.domainId } : {}),
-		previousEvidenceId,
-		regressedEvidenceId,
-		observedAt: args.observedAt,
-		message: boundedDiagnostic(
-			`${definition?.title ?? 'A deliverability check'} regressed after a confirmed pass: ${args.diagnostic}`
-		),
-		emailNotificationState: 'pending',
-		createdAt: args.observedAt,
-	});
-	await ctx.scheduler.runAfter(0, internal.delivery.checklistAlerts.deliverRegressionEmail, {
-		identity,
-		organizationId: args.organizationId,
-	});
+	let alertId = existing?._id;
+	if (!alertId) {
+		alertId = await ctx.db.insert('deliverabilityRegressionAlerts', {
+			organizationId: args.organizationId,
+			identity,
+			itemId: args.itemId,
+			targetKey,
+			...(args.domainId ? { domainId: args.domainId } : {}),
+			previousEvidenceId,
+			regressedEvidenceId,
+			observedAt: args.observedAt,
+			message: boundedDiagnostic(
+				`${definition?.title ?? 'A deliverability check'} regressed after a confirmed pass: ${args.diagnostic}`
+			),
+			emailNotificationState: 'pending',
+			createdAt: args.observedAt,
+		});
+		await ctx.scheduler.runAfter(0, internal.delivery.checklistAlerts.deliverRegressionEmail, {
+			identity,
+			organizationId: args.organizationId,
+		});
+	}
+	// A sending domain's DNS record broke (a failure, not a warning, and not
+	// the server's own records): admins also get a notification. The alert may
+	// already exist from a warning that came first; the notification is keyed
+	// by the alert, so repeated failures of one regression notify once.
+	if (args.domainId && args.status === 'fail' && definition?.dnsBacked) {
+		await scheduleMarketingNotice(ctx, { kind: 'domain_dns', alertId });
+	}
 }
 
 async function resolveRecoveredAlerts(

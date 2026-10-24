@@ -34,6 +34,7 @@ function row(messageId: string, remoteName: string | null, extra: Partial<LocalM
 		remoteName,
 		role: extra.role ?? (remoteName === 'INBOX' ? 'inbox' : null),
 		flags: extra.flags ?? NO_FLAGS,
+		sighting: extra.sighting ?? null,
 	} satisfies LocalMessageRow;
 }
 

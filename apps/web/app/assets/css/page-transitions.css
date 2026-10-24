@@ -60,3 +60,20 @@
 		transform: none;
 	}
 }
+
+/* The app's own "Reduce motion" setting (the data-motion floor in
+ * packages/ui base.css): the same instant swap, keyed on the root attribute. */
+:root[data-motion='reduce'] .page-enter-active,
+:root[data-motion='reduce'] .page-leave-active,
+:root[data-motion='reduce'] .layout-enter-active,
+:root[data-motion='reduce'] .layout-leave-active {
+	transition: none;
+}
+
+:root[data-motion='reduce'] .page-enter-from,
+:root[data-motion='reduce'] .page-leave-to,
+:root[data-motion='reduce'] .layout-enter-from,
+:root[data-motion='reduce'] .layout-leave-to {
+	opacity: 1;
+	transform: none;
+}

@@ -256,7 +256,7 @@ function onPickFiles(event: Event) {
 							<select
 								:value="activeSignatureId ?? ''"
 								:disabled="bodyPending"
-								class="ml-auto bg-bg-surface border border-border-subtle rounded px-1.5 py-1 text-xs outline-none"
+								class="input input-sm ml-auto w-auto"
 								:aria-label="t('components.postbox.postboxComposerFooter.signature')"
 								@change="emit('signature-change', $event)"
 							>

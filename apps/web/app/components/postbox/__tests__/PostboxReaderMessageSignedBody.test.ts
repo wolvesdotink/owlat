@@ -12,6 +12,7 @@ import { defineComponent, h } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
+import { readerContextProvide } from './readerContextFixture';
 import PostboxSecurityBadge from '../PostboxSecurityBadge.vue';
 import { REVERIFY_IN_FLIGHT_MS } from '~/composables/postbox/usePostboxSignedBody';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
@@ -140,26 +141,22 @@ function mountCard(
 	return mount(PostboxReaderMessage, {
 		props: {
 			message: { ...base, ...message } as never,
-			mailboxId: 'mbx_1',
 			expanded: opts.expanded ?? true,
 			relativeTime: '2h',
 			starred: false,
 			showReplyAll: false,
 			showSenderControls: true,
-			authEnabled: true,
-			sealedEnabled: false,
 			secureClass: (opts.secureClass ?? 'none') as never,
 			hideBody: opts.hideBody ?? false,
-			showRenderToggle: false,
 			forcedLight: false,
 			images: { senderImagesAllowed: false, autoLoadImages: false, suspicious: false },
 			hasInvite: opts.hasInvite ?? false,
-			reduced: opts.reduced ?? false,
 			schedulingTimes: opts.schedulingTimes ?? null,
 			tracker: { pixelCount: 2, trackerHosts: ['t.example.com'] } as never,
 		},
 		global: {
 			plugins: [createTestI18n()],
+			provide: readerContextProvide({ authEnabled: true, reduced: opts.reduced ?? false }),
 			components: {
 				UiAvatar: marker('UiAvatar'),
 				PostboxTrustChip: TrustChipMarker,

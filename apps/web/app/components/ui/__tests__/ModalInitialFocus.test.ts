@@ -13,7 +13,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import UiModal from '@owlat/ui/components/ui/Modal.vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiConfirmationDialog from '@owlat/ui/components/ui/ConfirmationDialog.vue';
@@ -25,9 +25,6 @@ const global = {
 	stubs: { Icon: true, teleport: true },
 };
 
-// A failed assertion must not leave a dialog on the shared focus stack, where
-// it would keep every later dialog from ever being the top layer.
-enableAutoUnmount(afterEach);
 afterEach(() => {
 	for (const el of document.querySelectorAll('[data-opener]')) el.remove();
 });

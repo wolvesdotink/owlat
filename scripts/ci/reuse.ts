@@ -9,6 +9,7 @@ export const FULL_JOBS = [
 	'test-api-merge',
 	'test-web',
 	'test-web-merge',
+	'test-web-browser',
 	'test-mta',
 	'docker-build',
 	'sdk-java',

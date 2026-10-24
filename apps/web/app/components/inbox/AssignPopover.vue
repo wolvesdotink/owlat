@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
+
 /**
  * Avatar-based assignee picker for a Team Inbox thread — the shared control the
  * thread header, the Details card, and each list row's hover cluster all mount.
  *
- * Rows, in order: "Me" first (with an `I` keyboard hint, the same shortcut the
- * list/thread expose), then the other org members, then Unassign. The current
+ * Rows, in order: "Me" first (with the assign-to-me key of the surface it is
+ * on, as the person has it bound), then the other org members, then Unassign. The current
  * assignee carries a check. The component owns none of the mutation: it just
  * emits the chosen assignee (a user id, or `undefined` to unassign) and lets the
  * caller route it through `inbox.mutations.assignThread`.
@@ -31,12 +33,15 @@ const props = withDefaults(
 		open?: boolean;
 		/** Menu alignment relative to the trigger. */
 		position?: 'left' | 'right';
+		/** The catalog id whose key the "Me" row hints: the thread's, or the list's. */
+		assignShortcutId?: 'inbox.assignToMe' | 'inboxList.assignToMe';
 	}>(),
 	{
 		currentUserId: null,
 		assignedTo: null,
 		open: false,
 		position: 'right',
+		assignShortcutId: 'inbox.assignToMe',
 	}
 );
 
@@ -47,6 +52,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const { labelFor } = useShortcutLabels();
+const assignKey = computed(() => labelFor(props.assignShortcutId));
 
 const isOpen = computed({
 	get: () => props.open,
@@ -78,7 +85,7 @@ function choose(assignedTo: string | undefined) {
 			<slot name="trigger" :open="isOpen" />
 		</template>
 
-		<!-- Me first, with the `I` shortcut hint. -->
+		<!-- Me first, with its shortcut hint. -->
 		<UiDropdownMenuItem v-if="me" @click="choose(me.userId)">
 			<UiAvatar
 				:name="me.name ?? undefined"
@@ -89,9 +96,10 @@ function choose(assignedTo: string | undefined) {
 			/>
 			<span class="flex-1 truncate">{{ t('components.inbox.assignPopover.assignToMe') }}</span>
 			<kbd
+				v-if="assignKey"
 				class="ml-auto text-[10px] text-text-tertiary border border-border-subtle rounded px-1 py-0.5 leading-none"
 			>
-				I
+				{{ assignKey }}
 			</kbd>
 			<Icon
 				v-if="assignedTo && assignedTo === me.userId"

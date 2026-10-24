@@ -35,9 +35,23 @@ const NO_MAIL: SettingsEnvironment = {
 	isFeatureEnabled: (flag) => flag !== 'postbox' && flag !== 'mail.external' && flag !== 'inbox',
 	isDesktop: false,
 };
-/** Nothing on the instance could ever send a Web Push: no mail, shared inbox or chat. */
+/** Nothing on the instance could ever send a Web Push: no mail, shared inbox, chat or marketing. */
 const NO_PUSH_SOURCE: SettingsEnvironment = {
-	isFeatureEnabled: (flag) => !['postbox', 'mail.external', 'inbox', 'chat'].includes(flag),
+	isFeatureEnabled: (flag) =>
+		![
+			'postbox',
+			'mail.external',
+			'inbox',
+			'chat',
+			'campaigns',
+			'automations',
+			'transactional',
+		].includes(flag),
+	isDesktop: false,
+};
+/** Marketing only: campaigns, nothing that reads mail. */
+const MARKETING_ONLY: SettingsEnvironment = {
+	isFeatureEnabled: (flag) => flag === 'campaigns',
 	isDesktop: false,
 };
 const NO_AI: SettingsEnvironment = { isFeatureEnabled: (flag) => flag !== 'ai', isDesktop: false };
@@ -135,8 +149,10 @@ describe('SETTINGS_REGISTRY — coverage', () => {
 
 describe('gates', () => {
 	it('keeps a no-mail instance on the pages that are not about mail', () => {
+		// Shortcuts cover every surface, so the page stays without mail too.
 		expect(visibleSettingsEntries(NO_PUSH_SOURCE).map((entry) => entry.id)).toEqual([
 			'overview',
+			'shortcuts',
 			'booking',
 			'account',
 			'security',
@@ -144,6 +160,7 @@ describe('gates', () => {
 		// Chat and the shared inbox still push, and push lives on the device page.
 		expect(visibleSettingsEntries(NO_MAIL).map((entry) => entry.id)).toEqual([
 			'overview',
+			'shortcuts',
 			'booking',
 			'account',
 			'security',
@@ -220,9 +237,29 @@ describe('settingsControlTargets', () => {
 		);
 	});
 
+	it('keeps push and the marketing switches on a marketing-only instance', () => {
+		expect(visibleSettingsEntries(MARKETING_ONLY).map((entry) => entry.id)).toContain('device');
+		const ids = settingsControlTargets(MARKETING_ONLY).map((target) => target.control.id);
+		expect(ids).toContain('pushNotifications');
+		expect(ids).toContain('marketingNotifications');
+		expect(ids).not.toContain('offlineCache');
+		expect(settingsControlTargets(NO_PUSH_SOURCE).map((target) => target.control.id)).not.toContain(
+			'marketingNotifications'
+		);
+	});
+
 	it('drops every control of a page the environment cannot reach', () => {
 		const ids = settingsControlTargets(NO_PUSH_SOURCE).map((target) => target.control.id);
-		expect(ids).toEqual(['appearance', 'language']);
+		expect(ids).toEqual([
+			'appearance',
+			'mailTextSize',
+			'readingWidth',
+			'listDensity',
+			'highContrast',
+			'reduceMotion',
+			'language',
+			'shortcuts',
+		]);
 	});
 });
 

@@ -11,6 +11,7 @@ import type { TeamOpenItemsView } from '../../../../api/convex/mail/interpret/br
 import type { TeamStream } from '~/composables/team/useTeamStream';
 import type { BriefContext } from '~/utils/threadBriefContext';
 import { citedMessageId, streamSources } from '~/utils/teamCite';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 export function useTeamCite(opts: {
 	stream: TeamStream;
@@ -37,8 +38,7 @@ export function useTeamCite(opts: {
 		if (opts.reveal) return opts.reveal(messageId);
 		const el = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`);
 		if (!el) return false;
-		const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-		el.scrollIntoView?.({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+		el.scrollIntoView?.({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 		el.classList.add('ring-2', 'ring-brand/50');
 		setTimeout(() => el.classList.remove('ring-2', 'ring-brand/50'), 1600);
 		return true;

@@ -18,6 +18,7 @@ import {
 	checkNotificationPermission,
 	requestNotificationPermission,
 	sendActionableNotification,
+	sendLinkNotification,
 } from '../notifications';
 
 beforeEach(() => {
@@ -95,5 +96,26 @@ describe('sendActionableNotification', () => {
 		invokeMock.mockResolvedValue(undefined);
 		await sendActionableNotification('Alice', 'Hi', 'm1', 'inbox');
 		expect(invokeMock.mock.calls[0]?.[1]).toMatchObject({ workspaceId: null });
+	});
+});
+
+describe('sendLinkNotification', () => {
+	it('sends the page to open and the workspace it belongs to', async () => {
+		invokeMock.mockResolvedValue(undefined);
+		await sendLinkNotification('Campaign finished', 'Autumn', '/dashboard/campaigns/c1', 'ws-a');
+		expect(invokeMock).toHaveBeenCalledWith('send_link_notification', {
+			title: 'Campaign finished',
+			body: 'Autumn',
+			url: '/dashboard/campaigns/c1',
+			workspaceId: 'ws-a',
+		});
+	});
+
+	it('sends an explicit null workspace and swallows a bridge failure', async () => {
+		invokeMock.mockRejectedValue(new Error('no tauri'));
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		await expect(sendLinkNotification('T', 'B', '/dashboard')).resolves.toBeUndefined();
+		expect(invokeMock.mock.calls[0]?.[1]).toMatchObject({ workspaceId: null });
+		warn.mockRestore();
 	});
 });

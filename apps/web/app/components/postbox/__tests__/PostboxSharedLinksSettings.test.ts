@@ -49,6 +49,9 @@ const revoke = vi.fn(async () => ({ ok: true, result: {} }));
 const setScope = vi.fn(async () => ({ ok: true, result: {} }));
 const downloadUrl = vi.fn(async () => 'https://deploy.convex.cloud/blob/1');
 let rows: Row[];
+const setShareLinkExpiryDays = vi.fn();
+let expiryDays: number;
+let settingsLoading: boolean;
 
 const LIVE: Row = {
 	_id: 'sh-live',
@@ -93,9 +96,14 @@ beforeEach(() => {
 	vi.stubGlobal('requireConvex', () => ({ query: downloadUrl }));
 	vi.stubGlobal('useCopyToClipboard', () => ({ copy: vi.fn(), isCopied: () => false }));
 	vi.stubGlobal('formatCompactFileSize', (bytes: number) => `${bytes} B`);
+	setShareLinkExpiryDays.mockClear();
+	expiryDays = 14;
+	settingsLoading = false;
 	vi.stubGlobal('usePostboxSettings', () => ({
-		shareLinkExpiryDays: ref(14),
-		setShareLinkExpiryDays: vi.fn(),
+		shareLinkExpiryDays: ref(expiryDays),
+		setShareLinkExpiryDays,
+		isSaving: ref(false),
+		isLoading: ref(settingsLoading),
 	}));
 	vi.stubGlobal('useBackendOperation', (fn: unknown) => ({
 		run: fn === 'attachmentShares.revoke' ? revoke : setScope,
@@ -138,6 +146,23 @@ describe('PostboxSharedLinksSettings', () => {
 		// The expired one is the whole reason anyone opens this card.
 		expect(html).toContain('old-deck.key');
 		expectFullyLocalized(card);
+	});
+
+	it('marks a link lifetime other than the 14-day default, and Reset writes it back', async () => {
+		const resets = (card: ReturnType<typeof mountCard>) =>
+			card.findAll('[data-testid="setting-reset"] button');
+		expect(resets(mountCard())).toHaveLength(0);
+
+		settingsLoading = true;
+		expiryDays = 30;
+		expect(resets(mountCard())).toHaveLength(0);
+
+		settingsLoading = false;
+		const card = mountCard();
+		const [reset] = resets(card);
+		expect(reset!.attributes('aria-label')).toBe('Reset Share link expiry to its default');
+		await reset!.trigger('click');
+		expect(setShareLinkExpiryDays).toHaveBeenCalledWith(14);
 	});
 
 	it('hides itself entirely until something has been shared', () => {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * My settings → General: how the app looks, which language it speaks, and how
- * mail reads. Nothing else.
+ * My settings → General: how the app looks and reads on this device, which
+ * language it speaks, and how mail reads. Nothing else.
  *
  * This page used to open with a grid of cards repeating the sidebar next to it
  * and then run to 4,500 px: sending health, sending, daily brief, sealed mail,
@@ -29,6 +29,8 @@ const hasMail = computed(() => isEnabled('postbox') || isEnabled('mail.external'
 		<!-- `id`s are the settings registry's own control anchors, so a palette
 		     deep link ("dark mode", "auto-advance") lands on the right card. -->
 		<PreferencesAppearance id="appearance" class="scroll-mt-6" />
+
+		<PreferencesComfort id="comfort" class="scroll-mt-6" />
 
 		<PreferencesLanguage id="language" class="scroll-mt-6" />
 

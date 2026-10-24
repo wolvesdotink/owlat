@@ -32,6 +32,7 @@ import { changedRemoteFlags, recordRemoteChanges } from '../external/remoteOps';
 import { refuse } from '../../lib/lifecycle';
 import { noteDraftSent } from '../draftPause';
 import { refreshArrivalProjection } from '../arrival/projection';
+import { generateUndoToken } from './undoToken';
 import {
 	DRAFT_LIFECYCLE,
 	dedupedRecipients,
@@ -368,10 +369,10 @@ export async function dispatch(
 	let result: ReducerResult;
 	switch (input.to) {
 		case 'pending_send':
-			result = reducePendingSend(draft, input);
+			result = reducePendingSend(draft, input, generateUndoToken(input.at));
 			break;
 		case 'scheduled':
-			result = reduceScheduled(draft, input);
+			result = reduceScheduled(draft, input, generateUndoToken(input.at));
 			break;
 		case 'draft':
 			result = reduceDraftRevert(draft, input);

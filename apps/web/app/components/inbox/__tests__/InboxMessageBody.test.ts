@@ -16,6 +16,7 @@ import { api } from '@owlat/api';
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { InboxMessageText } from '../InboxMessageBody.vue';
+import { resetReadingComfortForTests, useReadingComfort } from '~/composables/useReadingComfort';
 
 const TEXT_FN = getFunctionName(api.inbox.bodyText.getInboundMessageText);
 
@@ -35,6 +36,8 @@ beforeAll(() => {
 
 beforeEach(() => {
 	action.mockClear();
+	localStorage.clear();
+	resetReadingComfortForTests();
 	answer = async () => 'The whole long message, every line of it.';
 });
 
@@ -138,5 +141,21 @@ describe('InboxMessageBody', () => {
 		await flushPromises();
 		expect(wrapper.text()).toContain('No text content');
 		expect(action).not.toHaveBeenCalled();
+	});
+
+	it("reads at the device's text size and width, following a change at once", async () => {
+		const wrapper = mountBody({ textBody: 'Short and inline.' });
+		await flushPromises();
+		const text = () => wrapper.get('[data-testid="inbox-message-body-text"]');
+		// Defaults: the view's long-standing text-sm and 72ch measure.
+		expect(text().attributes('style')).toContain('font-size: 0.875rem');
+		expect(text().attributes('style')).toContain('max-width: 72ch');
+
+		const { set } = useReadingComfort();
+		set('textSize', 'larger');
+		set('readingWidth', 'full');
+		await flushPromises();
+		expect(text().attributes('style')).toContain('font-size: 1.125rem');
+		expect(text().attributes('style')).toContain('max-width: none');
 	});
 });

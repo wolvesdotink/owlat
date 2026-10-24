@@ -182,7 +182,7 @@ watch(
 			</template>
 
 			<form class="space-y-6 max-w-3xl" @submit.prevent="handleSave">
-				<UiCard>
+				<UiCard id="ai-provider-key">
 					<h2 class="text-lg font-medium text-text-primary mb-1">
 						{{ t('dashboard.admin.instance.aiProvider.language.title') }}
 					</h2>

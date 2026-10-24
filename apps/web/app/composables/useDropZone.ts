@@ -105,6 +105,22 @@ export function useDropZone(
 	};
 }
 
+type OsDropPosition = { x: number; y: number };
+
+/**
+ * The mounted OS-drop zones, each answering "would you take a drop here?".
+ * Tauri hands every subscriber every window drop, so a handler that is not a
+ * zone of its own (the conversation reply drop) asks here first and stands
+ * aside where a composer or an open upload modal takes the drop itself.
+ */
+const osDropClaims = new Set<(position: OsDropPosition) => boolean>();
+
+/** True when a mounted, enabled OS-drop zone takes a window drop at `position`. */
+export function osFileDropClaimed(position: OsDropPosition): boolean {
+	for (const claims of osDropClaims) if (claims(position)) return true;
+	return false;
+}
+
 /**
  * Wire the Tauri OS-level drag-drop event to a drop zone. Registered on mount
  * and torn down on unmount. When `rootRef` is set, only drops within that
@@ -121,7 +137,7 @@ function registerOsFileDrop(
 	// so a component instance exists) instead of forking a third Tauri probe.
 	if (!useDesktopContext().isDesktop.value || !getCurrentInstance()) return;
 
-	const isWithinRoot = (position: { x: number; y: number }): boolean => {
+	const isWithinRoot = (position: OsDropPosition): boolean => {
 		// No rootRef: the caller opted into accept-anywhere on the window.
 		if (!rootRef) return true;
 		const el = rootRef.value;
@@ -138,8 +154,10 @@ function registerOsFileDrop(
 
 	let unlisten: (() => void) | undefined;
 	let disposed = false;
+	const claims = (position: OsDropPosition) => isEnabled() && isWithinRoot(position);
 
 	onMounted(async () => {
+		osDropClaims.add(claims);
 		const { onWebviewFileDrop } = await import('@owlat/desktop/src/dialog');
 		const stop = await onWebviewFileDrop({
 			onOver: (position) => {
@@ -162,6 +180,7 @@ function registerOsFileDrop(
 
 	onUnmounted(() => {
 		disposed = true;
+		osDropClaims.delete(claims);
 		unlisten?.();
 	});
 }
