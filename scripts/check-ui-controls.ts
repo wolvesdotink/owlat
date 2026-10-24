@@ -212,14 +212,14 @@ for (const file of (await vueFiles(root)).sort()) {
 	}
 
 	for (const tag of openingTags(templateOnly(source))) {
-		const at = `${path}:${lineOf(source, tag.index)}`;
+		const at = () => `${path}:${lineOf(source, tag.index)}`;
 		const tokens = classTokens(tag.text);
 		const names = new Set(tokens.map((token) => token.name));
 		const field = names.has(FIELD);
 		const bare = names.has(BARE);
 
 		if (isNativeTextControl(tag) && !field && !bare) {
-			unstyledFields.push(`${at} <${tag.name}>`);
+			unstyledFields.push(`${at()} <${tag.name}>`);
 			continue;
 		}
 
@@ -233,7 +233,7 @@ for (const file of (await vueFiles(root)).sort()) {
 		}
 		if (offending.length > 0) {
 			const list = [...new Set(offending.map((token) => token.name))].join(' ');
-			restyledFields.push(`${at} <${tag.name}> ${list}`);
+			restyledFields.push(`${at()} <${tag.name}> ${list}`);
 		}
 	}
 }
