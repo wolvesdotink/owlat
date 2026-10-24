@@ -18,9 +18,11 @@
  *   - `&&`, `||` and `??` add both sides, since the right side may run;
  *   - a `catch` adds to everything its `try` could have committed first, and
  *     `finally` adds to every path;
- *   - a loop body, or a callback handed to an array method (`map`, `forEach`,
- *     …), counts twice: it can commit once per item, and two is enough to make
- *     a single commit inside it an offender;
+ *   - a loop body with its condition and increment (they run on every pass),
+ *     or a callback handed to an array method (`map`, `forEach`, …), counts
+ *     twice: it can commit once per item, and two is enough to make a single
+ *     commit inside it an offender; a `for` initializer and the iterable of a
+ *     `for…of` or `for…in` run once and count once;
  *   - a `switch` clause that does not `break`, `return` or `throw` falls
  *     through, so it adds to the clauses below it;
  *   - a call to a function declared in the same module (top level, or a named
@@ -268,19 +270,23 @@ class ModuleAnalysis {
 	}
 
 	private loop(node: ts.IterationStatement): Flow {
-		let header = 0;
+		// A `for` initializer and a `for…of`/`for…in` iterable run once. A
+		// condition and an increment run on every pass, like the body, so they
+		// take the loop factor with it.
+		let once = 0;
+		let repeated = 0;
 		if (ts.isForStatement(node)) {
-			for (const part of [node.initializer, node.condition, node.incrementor]) {
-				if (part) header += this.expression(part);
-			}
+			if (node.initializer) once += this.expression(node.initializer);
+			if (node.condition) repeated += this.expression(node.condition);
+			if (node.incrementor) repeated += this.expression(node.incrementor);
 		} else if (ts.isForOfStatement(node) || ts.isForInStatement(node)) {
-			header += this.expression(node.expression);
+			once += this.expression(node.expression);
 		} else if (ts.isWhileStatement(node) || ts.isDoStatement(node)) {
-			header += this.expression(node.expression);
+			repeated += this.expression(node.expression);
 		}
 		const body = this.statement(node.statement);
-		const perIteration = worst(body);
-		const total = header + (perIteration > 0 ? LOOP_FACTOR * perIteration : 0);
+		const perIteration = repeated + worst(body);
+		const total = once + (perIteration > 0 ? LOOP_FACTOR * perIteration : 0);
 		return { fall: total, exit: body.exit === NONE ? NONE : total, jump: NONE };
 	}
 

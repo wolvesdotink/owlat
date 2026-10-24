@@ -193,6 +193,28 @@ describe('action commit census — one run, not every line', () => {
 		expect(counts(action(`while (more) {\n${M('a')}\n}`))).toEqual({ work: 2 });
 	});
 
+	it('counts a mutation in a loop condition or increment as many', () => {
+		const page = 'ctx.runMutation(internal.x.page, {})';
+		expect(counts(action(`while ((await ${page}).hasMore) {}`))).toEqual({ work: 2 });
+		expect(counts(action(`do {} while ((await ${page}).hasMore);`))).toEqual({ work: 2 });
+		expect(counts(action(`for (let i = 0; (await ${page}).hasMore; i++) {}`))).toEqual({
+			work: 2,
+		});
+		expect(counts(action(`for (let i = 0; i < 3; await ${page}) {}`))).toEqual({ work: 2 });
+		// Condition and body are one pass, so both take the factor.
+		expect(counts(action(`while ((await ${page}).hasMore) {\n${M('a')}\n}`))).toEqual({
+			work: 4,
+		});
+	});
+
+	it('counts a for initializer and a for-of iterable once', () => {
+		const page = 'ctx.runMutation(internal.x.page, {})';
+		expect(counts(action(`for (let r = await ${page}; r.hasMore; r = r.next) {}`))).toEqual({
+			work: 1,
+		});
+		expect(counts(action(`for (const item of await ${page}) {}`))).toEqual({ work: 1 });
+	});
+
 	it('counts a mutation in a per-item callback as many', () => {
 		const body = `await Promise.all(items.map((item) => ctx.runMutation(internal.x.a, { item })));`;
 		expect(counts(action(body))).toEqual({ work: 2 });
