@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { once } from 'node:events';
-import type { AddressInfo } from 'node:net';
+import { connect, type AddressInfo } from 'node:net';
 import { startNodeMetrics, type MetricsSource } from '@owlat/shared/nodeMetrics';
 import { startMetricsServer, type MetricsServerHandle } from '../metricsServer.js';
 
@@ -44,6 +44,26 @@ describe('IMAP metrics listener', () => {
 
 		expect((await fetch(`${base}/`)).status).toBe(404);
 		expect((await fetch(`${base}/metrics`, { method: 'POST' })).status).toBe(404);
+	});
+
+	it('answers 400 for an unparseable request target and keeps serving', async () => {
+		const { handle, base } = await listen({ contentType: 'text/plain', metrics: async () => 'ok' });
+		const { port } = handle.server.address() as AddressInfo;
+
+		// fetch() normalises the target, so the malformed request line goes over a raw socket.
+		const socket = connect(port, '127.0.0.1');
+		socket.setEncoding('utf8');
+		socket.write('GET //[ HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n');
+		let raw = '';
+		socket.on('data', (chunk: string) => {
+			raw += chunk;
+		});
+		await once(socket, 'end');
+
+		expect(raw.startsWith('HTTP/1.1 400 ')).toBe(true);
+		const res = await fetch(`${base}/metrics`);
+		expect(res.status).toBe(200);
+		expect(await res.text()).toBe('ok');
 	});
 
 	it('answers 500 when the registry cannot render', async () => {

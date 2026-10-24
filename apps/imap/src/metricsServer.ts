@@ -21,7 +21,16 @@ export function startMetricsServer(
 	options: { port: number; host: string }
 ): MetricsServerHandle {
 	const server = createServer((req, res) => {
-		const path = new URL(req.url ?? '/', 'http://localhost').pathname;
+		// The listener is unauthenticated, so the request target is untrusted:
+		// `new URL` throws on targets like `//[`, and a throw here would reach the
+		// crash handler and stop the mail server.
+		let path: string;
+		try {
+			path = new URL(req.url ?? '/', 'http://localhost').pathname;
+		} catch {
+			res.writeHead(400, { 'Content-Type': 'text/plain' }).end('Bad request\n');
+			return;
+		}
 		if (req.method !== 'GET' || path !== '/metrics') {
 			res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found\n');
 			return;
