@@ -101,28 +101,28 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 				class="ui-hover-reveal ml-auto flex shrink-0 items-center gap-0.5"
 			>
 				<TeamReactionPicker v-if="canReact && !hasReactions" @pick="emit('react', $event)" />
-				<button
-					v-if="save"
-					type="button"
-					class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-text-primary"
-					:title="t('components.team.note.edit')"
-					:aria-label="t('components.team.note.edit')"
-					data-testid="team-note-edit"
-					@click="editing = true"
-				>
-					<Icon name="lucide:pencil" class="size-3.5" />
-				</button>
-				<button
-					v-if="canDelete"
-					type="button"
-					class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-error"
-					:title="t('components.team.note.delete')"
-					:aria-label="t('components.team.note.delete')"
-					data-testid="team-note-delete"
-					@click="emit('delete')"
-				>
-					<Icon name="lucide:trash-2" class="size-3.5" />
-				</button>
+				<UiTooltip v-if="save" :text="t('components.team.note.edit')">
+					<button
+						type="button"
+						class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-text-primary"
+						:aria-label="t('components.team.note.edit')"
+						data-testid="team-note-edit"
+						@click="editing = true"
+					>
+						<Icon name="lucide:pencil" class="size-3.5" />
+					</button>
+				</UiTooltip>
+				<UiTooltip v-if="canDelete" :text="t('components.team.note.delete')">
+					<button
+						type="button"
+						class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-error"
+						:aria-label="t('components.team.note.delete')"
+						data-testid="team-note-delete"
+						@click="emit('delete')"
+					>
+						<Icon name="lucide:trash-2" class="size-3.5" />
+					</button>
+				</UiTooltip>
 			</span>
 		</header>
 

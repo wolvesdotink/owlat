@@ -265,17 +265,20 @@ const busy = computed(
 						>
 							{{ t('components.postbox.teamInboxMembersPanel.makeOwner') }}
 						</UiButton>
-						<button
+						<UiTooltip
 							v-if="canManage && m.role !== 'owner'"
-							type="button"
-							class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error/10"
-							:title="t('components.postbox.teamInboxMembersPanel.removeMember')"
-							:aria-label="t('components.postbox.teamInboxMembersPanel.removeMember')"
-							:disabled="busy"
-							@click="handleRemove(m.authUserId)"
+							:text="t('components.postbox.teamInboxMembersPanel.removeMember')"
 						>
-							<Icon name="lucide:user-minus" class="w-4 h-4" />
-						</button>
+							<button
+								type="button"
+								class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error/10"
+								:aria-label="t('components.postbox.teamInboxMembersPanel.removeMember')"
+								:disabled="busy"
+								@click="handleRemove(m.authUserId)"
+							>
+								<Icon name="lucide:user-minus" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
 					</div>
 				</li>
 			</ul>

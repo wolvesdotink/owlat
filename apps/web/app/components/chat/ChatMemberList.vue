@@ -37,7 +37,7 @@ const addQuery = ref('');
 const memberIdSet = computed(() => new Set(props.members.map((m) => m.memberId)));
 
 const addCandidates = computed(() =>
-	candidates.value.filter((c) => !memberIdSet.value.has(c.memberId)),
+	candidates.value.filter((c) => !memberIdSet.value.has(c.memberId))
 );
 
 const handleAdd = async (memberId: string) => {
@@ -97,7 +97,12 @@ const confirmRemove = async () => {
 					class="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface text-sm"
 					@click="handleAdd(candidate.memberId)"
 				>
-					<UiAvatar :name="candidate.name" :email="candidate.email" :image="candidate.image" size="sm" />
+					<UiAvatar
+						:name="candidate.name"
+						:email="candidate.email"
+						:image="candidate.image"
+						size="sm"
+					/>
 					<span class="flex-1 truncate text-text-primary">
 						{{ candidate.name ?? candidate.email ?? candidate.memberId }}
 					</span>
@@ -112,7 +117,13 @@ const confirmRemove = async () => {
 				:key="member._id"
 				class="group flex items-center gap-3 px-3 py-1.5 hover:bg-bg-surface transition-colors"
 			>
-				<UiAvatar :name="member.name" :email="member.email" :image="member.image" size="md" class="flex-shrink-0" />
+				<UiAvatar
+					:name="member.name"
+					:email="member.email"
+					:image="member.image"
+					size="md"
+					class="flex-shrink-0"
+				/>
 				<div class="flex-1 min-w-0">
 					<div class="text-sm text-text-primary truncate">
 						{{ member.name ?? member.email ?? member.memberId }}
@@ -120,7 +131,10 @@ const confirmRemove = async () => {
 							t('components.chat.chatMemberList.you')
 						}}</span>
 					</div>
-					<div v-if="member.role === 'admin'" class="text-[10px] text-text-tertiary uppercase tracking-wider">
+					<div
+						v-if="member.role === 'admin'"
+						class="text-[10px] text-text-tertiary uppercase tracking-wider"
+					>
 						{{ t('components.chat.chatMemberList.admin') }}
 					</div>
 				</div>
@@ -128,29 +142,36 @@ const confirmRemove = async () => {
 					v-if="canManage && member.memberId !== currentUserId"
 					class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
 				>
-					<button
+					<UiTooltip
 						v-if="member.role === 'member'"
-						class="text-xs text-text-tertiary hover:text-brand"
-						:title="t('components.chat.chatMemberList.promote')"
-						@click="handlePromote(member.memberId)"
+						:text="t('components.chat.chatMemberList.promote')"
 					>
-						<Icon name="lucide:shield" class="w-3.5 h-3.5" />
-					</button>
-					<button
-						v-else
-						class="text-xs text-text-tertiary hover:text-text-primary"
-						:title="t('components.chat.chatMemberList.demote')"
-						@click="handleDemote(member.memberId)"
-					>
-						<Icon name="lucide:shield-off" class="w-3.5 h-3.5" />
-					</button>
-					<button
-						class="text-xs text-text-tertiary hover:text-error"
-						:title="t('common.remove')"
-						@click="memberToRemove = member"
-					>
-						<Icon name="lucide:user-minus" class="w-3.5 h-3.5" />
-					</button>
+						<button
+							class="text-xs text-text-tertiary hover:text-brand"
+							:aria-label="t('components.chat.chatMemberList.promote')"
+							@click="handlePromote(member.memberId)"
+						>
+							<Icon name="lucide:shield" class="w-3.5 h-3.5" />
+						</button>
+					</UiTooltip>
+					<UiTooltip v-else :text="t('components.chat.chatMemberList.demote')">
+						<button
+							class="text-xs text-text-tertiary hover:text-text-primary"
+							:aria-label="t('components.chat.chatMemberList.demote')"
+							@click="handleDemote(member.memberId)"
+						>
+							<Icon name="lucide:shield-off" class="w-3.5 h-3.5" />
+						</button>
+					</UiTooltip>
+					<UiTooltip :text="t('common.remove')">
+						<button
+							class="text-xs text-text-tertiary hover:text-error"
+							:aria-label="t('common.remove')"
+							@click="memberToRemove = member"
+						>
+							<Icon name="lucide:user-minus" class="w-3.5 h-3.5" />
+						</button>
+					</UiTooltip>
 				</div>
 			</div>
 		</div>

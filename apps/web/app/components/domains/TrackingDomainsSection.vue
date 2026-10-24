@@ -259,14 +259,16 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 									: t('components.domains.trackingDomainsSection.verify')
 							}}
 						</UiButton>
-						<UiButton
-							variant="ghost"
-							class="p-2 text-error hover:bg-error/10"
-							:title="t('components.domains.trackingDomainsSection.removeTitle')"
-							@click.stop="deleteModal.open(td)"
-						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
-						</UiButton>
+						<UiTooltip :text="t('components.domains.trackingDomainsSection.removeTitle')">
+							<UiButton
+								variant="ghost"
+								class="p-2 text-error hover:bg-error/10"
+								:aria-label="t('components.domains.trackingDomainsSection.removeTitle')"
+								@click.stop="deleteModal.open(td)"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4" />
+							</UiButton>
+						</UiTooltip>
 						<div
 							:class="[
 								'w-5 h-5 flex items-center justify-center transition-transform',

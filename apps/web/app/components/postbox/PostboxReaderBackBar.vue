@@ -84,26 +84,30 @@ const stepClass =
 			<span class="truncate capitalize">{{ folderName }}</span>
 		</button>
 		<template v-if="zen">
-			<button
-				type="button"
-				:class="stepClass"
-				:disabled="!previousId"
-				:title="t('components.postbox.readerBackBar.previous') + keyHint('postbox.previous')"
-				:aria-label="t('components.postbox.readerBackBar.previous')"
-				@click="open(previousId)"
+			<UiTooltip
+				:text="t('components.postbox.readerBackBar.previous') + keyHint('postbox.previous')"
 			>
-				<Icon name="lucide:chevron-up" class="size-4" />
-			</button>
-			<button
-				type="button"
-				:class="stepClass"
-				:disabled="!nextId"
-				:title="t('components.postbox.readerBackBar.next') + keyHint('postbox.next')"
-				:aria-label="t('components.postbox.readerBackBar.next')"
-				@click="open(nextId)"
-			>
-				<Icon name="lucide:chevron-down" class="size-4" />
-			</button>
+				<button
+					type="button"
+					:class="stepClass"
+					:disabled="!previousId"
+					:aria-label="t('components.postbox.readerBackBar.previous')"
+					@click="open(previousId)"
+				>
+					<Icon name="lucide:chevron-up" class="size-4" />
+				</button>
+			</UiTooltip>
+			<UiTooltip :text="t('components.postbox.readerBackBar.next') + keyHint('postbox.next')">
+				<button
+					type="button"
+					:class="stepClass"
+					:disabled="!nextId"
+					:aria-label="t('components.postbox.readerBackBar.next')"
+					@click="open(nextId)"
+				>
+					<Icon name="lucide:chevron-down" class="size-4" />
+				</button>
+			</UiTooltip>
 		</template>
 	</div>
 </template>

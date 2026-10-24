@@ -231,18 +231,22 @@ onMounted(() => {
             mx.example.com:25
           </span>
           <div class="smtp-controls">
-            <button v-if="hasPlayed" class="smtp-btn" title="Replay" @click="play">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="1 4 1 10 7 10" />
-                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-              </svg>
-            </button>
-            <button v-if="isPlaying" class="smtp-btn" title="Skip to end" @click="showAll">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="5 4 15 12 5 20 5 4" />
-                <line x1="19" y1="5" x2="19" y2="19" />
-              </svg>
-            </button>
+            <UiTooltip v-if="hasPlayed" text="Replay">
+              <button class="smtp-btn" aria-label="Replay" @click="play">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="1 4 1 10 7 10" />
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+              </button>
+            </UiTooltip>
+            <UiTooltip v-if="isPlaying" text="Skip to end">
+              <button class="smtp-btn" aria-label="Skip to end" @click="showAll">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="5 4 15 12 5 20 5 4" />
+                  <line x1="19" y1="5" x2="19" y2="19" />
+                </svg>
+              </button>
+            </UiTooltip>
           </div>
         </div>
 

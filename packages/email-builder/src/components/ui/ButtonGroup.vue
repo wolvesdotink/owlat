@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import type { Component } from 'vue';
 
 defineProps<{
@@ -19,23 +20,22 @@ const emit = defineEmits<{
 		role="group"
 		:aria-label="label"
 	>
-		<button
-			v-for="(opt, i) in options"
-			:key="opt.value"
-			class="flex items-center justify-center w-[36px] h-8 cursor-pointer transition-[background-color,color] duration-(--motion-fast)"
-			:class="[
-				value === opt.value
-					? 'bg-brand text-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)]'
-					: 'bg-transparent text-text-tertiary hover:bg-bg-surface-hover hover:text-text-secondary',
-				i > 0 && 'border-l border-l-border-subtle',
-			]"
-			type="button"
-			:title="opt.label"
-			:aria-label="opt.label"
-			:aria-pressed="value === opt.value"
-			@click="emit('update', opt.value)"
-		>
-			<component :is="opt.icon" :size="16" aria-hidden="true" />
-		</button>
+		<UiTooltip v-for="(opt, i) in options" :key="opt.value" :text="opt.label">
+			<button
+				class="flex items-center justify-center w-[36px] h-8 cursor-pointer transition-[background-color,color] duration-(--motion-fast)"
+				:class="[
+					value === opt.value
+						? 'bg-brand text-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)]'
+						: 'bg-transparent text-text-tertiary hover:bg-bg-surface-hover hover:text-text-secondary',
+					i > 0 && 'border-l border-l-border-subtle',
+				]"
+				type="button"
+				:aria-label="opt.label"
+				:aria-pressed="value === opt.value"
+				@click="emit('update', opt.value)"
+			>
+				<component :is="opt.icon" :size="16" aria-hidden="true" />
+			</button>
+		</UiTooltip>
 	</div>
 </template>

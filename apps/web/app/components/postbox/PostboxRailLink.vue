@@ -51,38 +51,39 @@ withDefaults(
 </script>
 
 <template>
-	<NuxtLink
-		:to="to"
-		class="rounded text-sm"
-		:class="[
-			collapsed
-				? 'relative flex items-center justify-center w-9 h-9'
-				: 'flex items-center gap-2 px-2.5 py-1.5',
-			muted ? 'text-text-tertiary hover:text-text-secondary' : '',
-			active ? 'bg-bg-surface text-brand' : 'hover:bg-bg-surface',
-		]"
-		:title="collapsed ? label : count > 0 ? countLabel : undefined"
-		:aria-label="collapsed ? (count > 0 ? (countLabel ?? label) : label) : undefined"
-		:aria-current="active ? 'page' : undefined"
-	>
-		<Icon :name="icon" class="w-4 h-4 flex-shrink-0" />
-		<template v-if="!collapsed">
-			<!-- With a worded count the label keeps its full width and the count
-			     truncates instead (the full phrase is in the title). -->
-			<span class="min-w-0 truncate" :class="count > 0 && countText ? 'shrink-0' : 'flex-1'">{{
-				label
-			}}</span>
-			<span
-				v-if="count > 0"
-				class="ml-auto min-w-0 truncate text-xs font-medium text-text-secondary"
-				:class="countText ? '' : 'shrink-0'"
-				>{{ countText ?? count }}</span
-			>
-		</template>
-		<span
-			v-else-if="count > 0"
-			class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-text-primary text-text-inverse text-2xs leading-4 font-medium text-center"
-			>{{ count > 99 ? '99+' : count }}</span
+	<UiTooltip :text="collapsed ? label : count > 0 ? countLabel : undefined">
+		<NuxtLink
+			:to="to"
+			class="rounded text-sm"
+			:class="[
+				collapsed
+					? 'relative flex items-center justify-center w-9 h-9'
+					: 'flex items-center gap-2 px-2.5 py-1.5',
+				muted ? 'text-text-tertiary hover:text-text-secondary' : '',
+				active ? 'bg-bg-surface text-brand' : 'hover:bg-bg-surface',
+			]"
+			:aria-label="collapsed ? (count > 0 ? (countLabel ?? label) : label) : undefined"
+			:aria-current="active ? 'page' : undefined"
 		>
-	</NuxtLink>
+			<Icon :name="icon" class="w-4 h-4 flex-shrink-0" />
+			<template v-if="!collapsed">
+				<!-- With a worded count the label keeps its full width and the count
+				     truncates instead (the full phrase is in the title). -->
+				<span class="min-w-0 truncate" :class="count > 0 && countText ? 'shrink-0' : 'flex-1'">{{
+					label
+				}}</span>
+				<span
+					v-if="count > 0"
+					class="ml-auto min-w-0 truncate text-xs font-medium text-text-secondary"
+					:class="countText ? '' : 'shrink-0'"
+					>{{ countText ?? count }}</span
+				>
+			</template>
+			<span
+				v-else-if="count > 0"
+				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-text-primary text-text-inverse text-2xs leading-4 font-medium text-center"
+				>{{ count > 99 ? '99+' : count }}</span
+			>
+		</NuxtLink>
+	</UiTooltip>
 </template>

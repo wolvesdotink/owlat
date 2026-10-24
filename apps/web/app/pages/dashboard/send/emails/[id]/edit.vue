@@ -367,35 +367,33 @@ async function handlePublicationToggle() {
 								:email-template-id="templateId"
 								:has-unsaved-changes="hasChanges"
 							/>
-							<UiButton
-								variant="outline"
-								size="sm"
-								:title="t('dashboard.send.emails.detail.edit.checkEmail')"
-								data-testid="editor-check-email"
-								@click="checkEmail"
-							>
-								<template #iconLeft>
-									<Icon name="lucide:list-checks" class="w-4 h-4" />
-								</template>
-								<!-- Icon-only below 2xl, where the toolbar is short of room. -->
-								<span class="max-2xl:sr-only">{{
-									t('dashboard.send.emails.detail.edit.checkEmail')
-								}}</span>
-							</UiButton>
-							<UiButton
-								variant="outline"
-								size="sm"
-								:title="t('dashboard.send.emails.detail.edit.manageTranslations')"
-								@click="handleTranslations"
-							>
-								<template #iconLeft>
-									<Icon name="lucide:languages" class="w-4 h-4" />
-								</template>
-								<!-- Icon-only below 2xl, where the toolbar is short of room. -->
-								<span class="max-2xl:sr-only">{{
-									t('dashboard.send.emails.detail.edit.translations')
-								}}</span>
-							</UiButton>
+							<UiTooltip :text="t('dashboard.send.emails.detail.edit.checkEmail')">
+								<UiButton
+									variant="outline"
+									size="sm"
+									data-testid="editor-check-email"
+									@click="checkEmail"
+								>
+									<template #iconLeft>
+										<Icon name="lucide:list-checks" class="w-4 h-4" />
+									</template>
+									<!-- Icon-only below 2xl, where the toolbar is short of room. -->
+									<span class="max-2xl:sr-only">{{
+										t('dashboard.send.emails.detail.edit.checkEmail')
+									}}</span>
+								</UiButton>
+							</UiTooltip>
+							<UiTooltip :text="t('dashboard.send.emails.detail.edit.manageTranslations')">
+								<UiButton variant="outline" size="sm" @click="handleTranslations">
+									<template #iconLeft>
+										<Icon name="lucide:languages" class="w-4 h-4" />
+									</template>
+									<!-- Icon-only below 2xl, where the toolbar is short of room. -->
+									<span class="max-2xl:sr-only">{{
+										t('dashboard.send.emails.detail.edit.translations')
+									}}</span>
+								</UiButton>
+							</UiTooltip>
 						</template>
 					</EmailBuilder>
 				</UiErrorBoundary>

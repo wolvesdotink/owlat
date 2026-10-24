@@ -48,17 +48,18 @@ const MENU_ITEM_CLASS =
 	     pinned open everywhere hover never fires. The ⋯ holds what is left
 	     once the duplicates are gone. -->
 	<div class="mt-4 flex items-center gap-2">
-		<UiButton
-			variant="ghost"
-			type="button"
-			:class="starred ? 'text-warning' : 'text-text-tertiary'"
-			:title="starLabel"
-			:aria-label="starLabel"
-			:aria-pressed="starred"
-			@click="emit('toggle-star')"
-		>
-			<Icon name="lucide:star" class="w-4 h-4" :class="{ 'fill-current': starred }" />
-		</UiButton>
+		<UiTooltip :text="starLabel">
+			<UiButton
+				variant="ghost"
+				type="button"
+				:class="starred ? 'text-warning' : 'text-text-tertiary'"
+				:aria-label="starLabel"
+				:aria-pressed="starred"
+				@click="emit('toggle-star')"
+			>
+				<Icon name="lucide:star" class="w-4 h-4" :class="{ 'fill-current': starred }" />
+			</UiButton>
+		</UiTooltip>
 		<UiButton variant="ghost" type="button" @click="emit('reply')">
 			<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
 			{{ t('components.postbox.postboxThreadReader.reply') }}

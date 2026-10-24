@@ -19,6 +19,10 @@
  *
  * `UiShortcut` is the shortcut hint chip the shell, the palette and the
  * onboarding tips render; real, so a suite sees the key a person would.
+ *
+ * `UiTooltip` wraps most icon-only controls. It is real: it renders the control
+ * itself, so a stub would either drop the control or hide the tooltip a
+ * suite hovers or focuses to read.
  */
 import { config } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
@@ -27,6 +31,7 @@ import UiCheckbox from '@owlat/ui/components/ui/Checkbox.vue';
 import UiEmptyState from '@owlat/ui/components/ui/EmptyState.vue';
 import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import UiUnsavedChangesDialog from '@owlat/ui/components/ui/UnsavedChangesDialog.vue';
 import UiQueryBoundary from '~/components/ui/QueryBoundary.vue';
 import UiShortcut from '~/components/ui/Shortcut.vue';
@@ -63,5 +68,6 @@ export function registerNuxtComponents(): void {
 		UiSpinner,
 		UiUnsavedChangesDialog,
 		UiShortcut,
+		UiTooltip,
 	});
 }

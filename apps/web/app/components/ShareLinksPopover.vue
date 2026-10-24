@@ -108,19 +108,16 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 <template>
 	<div v-if="canShare" class="relative inline-block">
 		<div ref="triggerRef">
-			<UiButton
-				variant="outline"
-				size="sm"
-				:title="t('components.shareLinksPopover.triggerTitle')"
-				@click.stop="isOpen = !isOpen"
-			>
-				<template #iconLeft>
-					<Icon name="lucide:share-2" class="w-4 h-4" />
-				</template>
-				<!-- Icon-only below 2xl, where the builder toolbar is short of room;
-				     the label stays the accessible name. -->
-				<span class="max-2xl:sr-only">{{ t('components.shareLinksPopover.share') }}</span>
-			</UiButton>
+			<UiTooltip :text="t('components.shareLinksPopover.triggerTitle')">
+				<UiButton variant="outline" size="sm" @click.stop="isOpen = !isOpen">
+					<template #iconLeft>
+						<Icon name="lucide:share-2" class="w-4 h-4" />
+					</template>
+					<!-- Icon-only below 2xl, where the builder toolbar is short of room;
+					     the label stays the accessible name. -->
+					<span class="max-2xl:sr-only">{{ t('components.shareLinksPopover.share') }}</span>
+				</UiButton>
+			</UiTooltip>
 		</div>
 
 		<Teleport to="body">
@@ -220,25 +217,33 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 
 								<!-- Actions -->
 								<div class="flex items-center gap-1">
-									<button
+									<UiTooltip
 										v-if="getLinkStatus(link) === 'active'"
-										class="p-1 rounded hover:bg-bg-subtle text-text-secondary hover:text-text-primary transition-colors"
-										:title="t('components.shareLinksPopover.copyLink')"
-										@click="handleCopy(link.token)"
+										:text="t('components.shareLinksPopover.copyLink')"
 									>
-										<Icon
-											:name="copiedId === link.token ? 'lucide:check' : 'lucide:copy'"
-											class="w-3.5 h-3.5"
-										/>
-									</button>
-									<button
+										<button
+											class="p-1 rounded hover:bg-bg-subtle text-text-secondary hover:text-text-primary transition-colors"
+											:aria-label="t('components.shareLinksPopover.copyLink')"
+											@click="handleCopy(link.token)"
+										>
+											<Icon
+												:name="copiedId === link.token ? 'lucide:check' : 'lucide:copy'"
+												class="w-3.5 h-3.5"
+											/>
+										</button>
+									</UiTooltip>
+									<UiTooltip
 										v-if="getLinkStatus(link) === 'active'"
-										class="p-1 rounded hover:bg-error/10 text-text-secondary hover:text-error transition-colors"
-										:title="t('components.shareLinksPopover.revokeLink')"
-										@click="handleRevoke(link._id)"
+										:text="t('components.shareLinksPopover.revokeLink')"
 									>
-										<Icon name="lucide:x" class="w-3.5 h-3.5" />
-									</button>
+										<button
+											class="p-1 rounded hover:bg-error/10 text-text-secondary hover:text-error transition-colors"
+											:aria-label="t('components.shareLinksPopover.revokeLink')"
+											@click="handleRevoke(link._id)"
+										>
+											<Icon name="lucide:x" class="w-3.5 h-3.5" />
+										</button>
+									</UiTooltip>
 								</div>
 							</div>
 						</div>

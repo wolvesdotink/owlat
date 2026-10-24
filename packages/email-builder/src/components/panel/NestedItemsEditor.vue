@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { computed } from 'vue';
 import type { Component } from 'vue';
 import type { EditorBlock, BlockType, EmailTheme } from '../../types';
@@ -23,7 +24,8 @@ const emit = defineEmits<{
 
 const blockType = computed(() => props.block.type);
 
-const chevronBgImage = "url(\"data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%238b8b96' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
+const chevronBgImage =
+	"url(\"data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%238b8b96' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
 
 // The composite block's Editor module owns both shapes: how to project its
 // children into a flat list (`childrenView`) and which block types can be
@@ -73,7 +75,9 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 						: t('builder.panel.nested.children')
 				}}
 			</span>
-			<span class="text-[10px] font-medium tabular-nums text-text-disabled">{{ children.length }}</span>
+			<span class="text-[10px] font-medium tabular-nums text-text-disabled">{{
+				children.length
+			}}</span>
 		</div>
 
 		<div class="flex flex-col gap-1 mb-2">
@@ -121,16 +125,19 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 						class="text-text-tertiary shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)"
 					/>
 				</button>
-				<button
+				<UiTooltip
 					v-if="childrenAreBlocks"
-					class="flex items-center justify-center w-[22px] h-[22px] border-none rounded bg-none text-text-tertiary cursor-pointer shrink-0 opacity-0 group-hover/item:opacity-100 transition-[opacity,color,background-color] duration-(--motion-fast) hover:text-error hover:bg-error-subtle"
-					type="button"
-					:title="t('builder.panel.nested.remove', { item: childLabel(child) })"
-					:aria-label="t('builder.panel.nested.remove', { item: childLabel(child) })"
-					@click.stop="emit('remove-child', child.id)"
+					:text="t('builder.panel.nested.remove', { item: childLabel(child) })"
 				>
-					<Trash2 :size="12" />
-				</button>
+					<button
+						class="flex items-center justify-center w-[22px] h-[22px] border-none rounded bg-none text-text-tertiary cursor-pointer shrink-0 opacity-0 group-hover/item:opacity-100 transition-[opacity,color,background-color] duration-(--motion-fast) hover:text-error hover:bg-error-subtle"
+						type="button"
+						:aria-label="t('builder.panel.nested.remove', { item: childLabel(child) })"
+						@click.stop="emit('remove-child', child.id)"
+					>
+						<Trash2 :size="12" />
+					</button>
+				</UiTooltip>
 			</div>
 
 			<div v-if="children.length === 0" class="p-3 text-center text-xs text-text-tertiary">
@@ -148,7 +155,15 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 				"
 				class="w-full py-[7px] px-2 text-xs font-medium border border-dashed border-border-strong rounded-lg bg-bg-surface text-text-secondary cursor-pointer outline-none appearance-none bg-no-repeat bg-[right_8px_center] transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-text-tertiary hover:text-text-primary"
 				:style="{ backgroundImage: chevronBgImage }"
-				@change="(e) => { const val = (e.target as HTMLSelectElement).value; if (val) { emit('add-child', val as BlockType); (e.target as HTMLSelectElement).value = ''; } }"
+				@change="
+					(e) => {
+						const val = (e.target as HTMLSelectElement).value;
+						if (val) {
+							emit('add-child', val as BlockType);
+							(e.target as HTMLSelectElement).value = '';
+						}
+					}
+				"
 			>
 				<option value="">{{ t('builder.panel.nested.addBlock') }}</option>
 				<option

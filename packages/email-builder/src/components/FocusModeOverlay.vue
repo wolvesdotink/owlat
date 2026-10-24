@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { X } from '@lucide/vue';
 import { useBuilderI18n } from '../i18n/useBuilderI18n';
 
@@ -64,15 +65,15 @@ const emit = defineEmits<{
 		enter-from-class="opacity-0 -translate-y-2.5"
 		leave-to-class="opacity-0 -translate-y-2.5"
 	>
-		<button
-			v-if="isFocusMode"
-			class="fixed top-[calc(var(--titlebar-h,0px)+1rem)] right-4 z-[10050] p-2.5 rounded-[10px] bg-bg-elevated/85 backdrop-blur-overlay border border-border-subtle text-text-secondary cursor-pointer opacity-30 transition-all duration-(--motion-moderate) hover:opacity-100 hover:text-text-primary hover:bg-bg-elevated/95 hover:scale-105 active:scale-95"
-			:title="t('builder.focus.exitTitle')"
-			:aria-label="t('builder.focus.exit')"
-			type="button"
-			@click="emit('exit')"
-		>
-			<X :size="20" />
-		</button>
+		<UiTooltip v-if="isFocusMode" :text="t('builder.focus.exitTitle')">
+			<button
+				class="fixed top-[calc(var(--titlebar-h,0px)+1rem)] right-4 z-[10050] p-2.5 rounded-[10px] bg-bg-elevated/85 backdrop-blur-overlay border border-border-subtle text-text-secondary cursor-pointer opacity-30 transition-all duration-(--motion-moderate) hover:opacity-100 hover:text-text-primary hover:bg-bg-elevated/95 hover:scale-105 active:scale-95"
+				:aria-label="t('builder.focus.exit')"
+				type="button"
+				@click="emit('exit')"
+			>
+				<X :size="20" />
+			</button>
+		</UiTooltip>
 	</Transition>
 </template>

@@ -142,15 +142,16 @@ const presentation = (reason: BlockReason) => suppressionReasonPresentation(reas
 					</span>
 				</td>
 				<td class="px-4 sm:px-6 py-4 text-right">
-					<UiButton
-						variant="ghost"
-						class="p-2 text-error hover:bg-error/10"
-						:title="t('dashboard.audience.suppressions.removeSuppression')"
-						:aria-label="t('dashboard.audience.suppressions.removeSuppression')"
-						@click="emit('remove', blockedEmail)"
-					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
-					</UiButton>
+					<UiTooltip :text="t('dashboard.audience.suppressions.removeSuppression')">
+						<UiButton
+							variant="ghost"
+							class="p-2 text-error hover:bg-error/10"
+							:aria-label="t('dashboard.audience.suppressions.removeSuppression')"
+							@click="emit('remove', blockedEmail)"
+						>
+							<Icon name="lucide:trash-2" class="w-4 h-4" />
+						</UiButton>
+					</UiTooltip>
 				</td>
 			</tr>
 		</tbody>

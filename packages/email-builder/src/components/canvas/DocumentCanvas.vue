@@ -1,6 +1,14 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { computed, ref, watch, nextTick, inject, onMounted, onUnmounted, toRaw } from 'vue';
-import type { EditorBlock, EmailTheme, Variable, SlashCommand, BlockType, RemoteBlockMark as RemoteMark } from '../../types';
+import type {
+	EditorBlock,
+	EmailTheme,
+	Variable,
+	SlashCommand,
+	BlockType,
+	RemoteBlockMark as RemoteMark,
+} from '../../types';
 import type { ParentContext } from './types';
 import DocumentBlock from './DocumentBlock.vue';
 import RemoteBlockMark from './RemoteBlockMark.vue';
@@ -41,7 +49,10 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'update:blocks', blocks: EditorBlock[]): void;
 	(e: 'select', blockId: string): void;
-	(e: 'select-nested', payload: { itemId: string; context: ParentContext; element: HTMLElement }): void;
+	(
+		e: 'select-nested',
+		payload: { itemId: string; context: ParentContext; element: HTMLElement }
+	): void;
 	(e: 'clear-selection'): void;
 	(e: 'update-children', blockId: string, children: unknown[]): void;
 	(e: 'double-click-block', blockId: string): void;
@@ -96,10 +107,16 @@ const isLinkedBlockFn = (id: string) => !!linkedIndex.value.byId.get(id)?.groupI
 const isFirstInLinkedGroup = (id: string) => !!linkedIndex.value.byId.get(id)?.isFirstInGroup;
 const isLastInLinkedGroup = (id: string) => !!linkedIndex.value.byId.get(id)?.isLastInGroup;
 const requestDetachLinkedBlock = inject<(id: string) => void>('requestDetachLinkedBlock', () => {});
-const setBlockElement = inject<(blockId: string, el: HTMLElement | null) => void>('setBlockElement', () => {});
+const setBlockElement = inject<(blockId: string, el: HTMLElement | null) => void>(
+	'setBlockElement',
+	() => {}
+);
 
 // Register inline editor ref with parent EmailBuilder
-const registerInlineEditor = inject<(ref: { el: HTMLElement } | null) => void>('registerInlineEditor', () => {});
+const registerInlineEditor = inject<(ref: { el: HTMLElement } | null) => void>(
+	'registerInlineEditor',
+	() => {}
+);
 
 // Group linked blocks into single draggable units (built with the index above)
 type DisplayItem = CanvasDisplayItem;
@@ -112,11 +129,17 @@ const dragList = ref<DisplayItem[]>([]);
 
 // Sync parent → dragList with guard to prevent re-emission
 let isExternalSync = false;
-watch(displayItems, (newItems) => {
-	isExternalSync = true;
-	dragList.value = [...newItems];
-	nextTick(() => { isExternalSync = false; });
-}, { immediate: true });
+watch(
+	displayItems,
+	(newItems) => {
+		isExternalSync = true;
+		dragList.value = [...newItems];
+		nextTick(() => {
+			isExternalSync = false;
+		});
+	},
+	{ immediate: true }
+);
 
 // Initialize Sortable.js directly via composable
 useDraggable(containerRef, dragList, {
@@ -124,10 +147,14 @@ useDraggable(containerRef, dragList, {
 	handle: '.drag-handle',
 	animation: 200,
 	ghostClass: 'document-canvas__ghost',
-	onStart: () => { isDragging.value = true; },
+	onStart: () => {
+		isDragging.value = true;
+	},
 	onEnd: () => {
 		syncDragListToParent();
-		nextTick(() => { isDragging.value = false; });
+		nextTick(() => {
+			isDragging.value = false;
+		});
 	},
 	onAdd: () => {
 		syncDragListToParent();
@@ -144,7 +171,10 @@ function syncDragListToParent() {
 		return item as DisplayItem;
 	});
 	const newBlocks = normalized.flatMap((item) => item.blocks);
-	if (newBlocks.length === props.blocks.length && newBlocks.every((b, i) => b.id === props.blocks[i]!.id)) {
+	if (
+		newBlocks.length === props.blocks.length &&
+		newBlocks.every((b, i) => b.id === props.blocks[i]!.id)
+	) {
 		return;
 	}
 	emit('update:blocks', newBlocks);
@@ -152,7 +182,10 @@ function syncDragListToParent() {
 
 function handleCanvasClick(event: MouseEvent) {
 	const target = event.target as HTMLElement;
-	if (target.classList.contains('document-canvas__bg') || target.classList.contains('document-canvas__inner')) {
+	if (
+		target.classList.contains('document-canvas__bg') ||
+		target.classList.contains('document-canvas__inner')
+	) {
 		emit('clear-selection');
 	}
 }
@@ -192,7 +225,10 @@ function handlePaste(event: ClipboardEvent) {
 	if (text?.trim()) {
 		event.preventDefault();
 		const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-		const wrapped = escaped.split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+		const wrapped = escaped
+			.split(/\n{2,}/)
+			.map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+			.join('');
 		emit('paste-rich-content', wrapped);
 	}
 }
@@ -279,7 +315,7 @@ const inlineEditorComps = ref<Map<string, InlineEditorComponentRef>>(new Map());
 function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentRef) {
 	inlineEditorComps.value.set(blockId, comp);
 	const el = comp?.el;
-	const htmlEl = el && ('value' in el ? el.value : el) as HTMLElement | null;
+	const htmlEl = el && (('value' in el ? el.value : el) as HTMLElement | null);
 	if (htmlEl) {
 		registerInlineEditor({ el: htmlEl });
 	}
@@ -292,7 +328,11 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 		@click="handleCanvasClick"
 		@paste="handlePaste"
 	>
-		<div ref="canvasInnerRef" class="document-canvas__inner max-w-full min-h-[200px]" :style="{ width: (props.theme.baseWidth ?? 600) + 60 + 'px' }">
+		<div
+			ref="canvasInnerRef"
+			class="document-canvas__inner max-w-full min-h-[200px]"
+			:style="{ width: (props.theme.baseWidth ?? 600) + 60 + 'px' }"
+		>
 			<div
 				class="relative rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.08)] px-10 py-6"
 				:style="{ backgroundColor: backgroundColor || '#ffffff' }"
@@ -312,7 +352,9 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 						class="w-4 h-4 rounded-full border border-border-default shrink-0"
 						:style="{ backgroundColor: backgroundColor || '#ffffff' }"
 					/>
-					<span class="text-[11px] font-medium text-text-secondary leading-none">{{ t('builder.canvas.background') }}</span>
+					<span class="text-[11px] font-medium text-text-secondary leading-none">{{
+						t('builder.canvas.background')
+					}}</span>
 				</button>
 
 				<Teleport to="body">
@@ -325,7 +367,9 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 							left: (bgColorBubbleRef?.getBoundingClientRect().right ?? 0) - 240 + 'px',
 						}"
 					>
-						<div class="text-[11px] font-medium text-text-secondary uppercase tracking-wide mb-2">{{ t('builder.canvas.emailBackground') }}</div>
+						<div class="text-[11px] font-medium text-text-secondary uppercase tracking-wide mb-2">
+							{{ t('builder.canvas.emailBackground') }}
+						</div>
 						<ColorField
 							:label="t('builder.canvas.emailBackgroundField')"
 							:value="backgroundColor || '#ffffff'"
@@ -366,19 +410,21 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 								'relative group/block transition-all duration-(--motion-moderate) rounded-md eb-canvas-block',
 								isLinkedBlockFn(block.id)
 									? [
-										'border-x-2 border-y-0 border-dashed border-border-default my-0 rounded-none',
-										isFirstInLinkedGroup(block.id) && 'border-t-2 rounded-t-md mt-2',
-										isLastInLinkedGroup(block.id) && 'border-b-2 rounded-b-md mb-1',
-										isFirstInLinkedGroup(block.id) && isLastInLinkedGroup(block.id) && '!rounded-md',
-										selectedBlockId === block.id && '!border-brand',
-										selectedBlockId !== block.id && 'hover:border-border-strong',
-									]
+											'border-x-2 border-y-0 border-dashed border-border-default my-0 rounded-none',
+											isFirstInLinkedGroup(block.id) && 'border-t-2 rounded-t-md mt-2',
+											isLastInLinkedGroup(block.id) && 'border-b-2 rounded-b-md mb-1',
+											isFirstInLinkedGroup(block.id) &&
+												isLastInLinkedGroup(block.id) &&
+												'!rounded-md',
+											selectedBlockId === block.id && '!border-brand',
+											selectedBlockId !== block.id && 'hover:border-border-strong',
+										]
 									: [
-										'border-2 my-0.5',
-										selectedBlockId === block.id || inlineEditBlockId === block.id
-											? 'border-brand shadow-[0_0_0_1px_rgba(196,120,90,0.15)]'
-											: 'border-transparent hover:border-border-subtle',
-									],
+											'border-2 my-0.5',
+											selectedBlockId === block.id || inlineEditBlockId === block.id
+												? 'border-brand shadow-[0_0_0_1px_rgba(196,120,90,0.15)]'
+												: 'border-transparent hover:border-border-subtle',
+										],
 							]"
 							:data-block-id="block.id"
 							@click="(e) => handleBlockSelect(block.id, e)"
@@ -405,29 +451,45 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 								v-if="isLinkedBlockFn(block.id) && isFirstInLinkedGroup(block.id)"
 								class="absolute -top-[9px] left-3 z-[6] inline-flex items-center gap-1 bg-bg-elevated px-1.5"
 							>
-								<span class="text-[10px] font-semibold text-text-tertiary uppercase whitespace-nowrap tracking-[0.02em]">
+								<span
+									class="text-[10px] font-semibold text-text-tertiary uppercase whitespace-nowrap tracking-[0.02em]"
+								>
 									{{ block.savedBlockRef?.blockName || t('builder.toolbar.linkedBlock') }}
 								</span>
-								<button
-									class="inline-flex items-center justify-center w-[18px] h-[18px] p-0 text-text-tertiary bg-transparent border-none rounded-[3px] cursor-pointer transition-colors duration-(--motion-fast) hover:text-brand hover:bg-brand/10"
-									:title="t('builder.toolbar.detach')"
-									:aria-label="t('builder.canvas.detachBlock', { block: block.savedBlockRef?.blockName || t('builder.canvas.linkedBlock') })"
-									type="button"
-									@click.stop="requestDetachLinkedBlock(block.id)"
-								>
-									<Link :size="12" />
-								</button>
+								<UiTooltip :text="t('builder.toolbar.detach')">
+									<button
+										class="inline-flex items-center justify-center w-[18px] h-[18px] p-0 text-text-tertiary bg-transparent border-none rounded-[3px] cursor-pointer transition-colors duration-(--motion-fast) hover:text-brand hover:bg-brand/10"
+										:aria-label="
+											t('builder.canvas.detachBlock', {
+												block: block.savedBlockRef?.blockName || t('builder.canvas.linkedBlock'),
+											})
+										"
+										type="button"
+										@click.stop="requestDetachLinkedBlock(block.id)"
+									>
+										<Link :size="12" />
+									</button>
+								</UiTooltip>
 							</div>
 
 							<!-- Block content: inline text editor or preview -->
 							<div v-if="inlineEditBlockId === block.id && block.type === 'text'" class="relative">
 								<InlineTextEditor
-									:ref="(comp) => comp && handleInlineEditorMounted(block.id, comp as unknown as InlineEditorComponentRef)"
+									:ref="
+										(comp) =>
+											comp &&
+											handleInlineEditorMounted(
+												block.id,
+												comp as unknown as InlineEditorComponentRef
+											)
+									"
 									:block="block"
 									:theme="theme"
 									:variables="variables"
 									@exit="emit('exit-inline-edit')"
-									@slash-command-select="(cmd: SlashCommand) => emit('slash-command-select', cmd, block.id)"
+									@slash-command-select="
+										(cmd: SlashCommand) => emit('slash-command-select', cmd, block.id)
+									"
 									@insert-block-after="emit('insert-block-after', block.id)"
 									@open-link-dialog="emit('open-link-dialog', block.id)"
 								/>
@@ -440,10 +502,15 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 									:inline-edit-block-id="inlineEditBlockId"
 									:variables="variables"
 									@select-nested="(payload) => emit('select-nested', payload)"
-									@update-children="(blockId, children) => emit('update-children', blockId, children)"
+									@update-children="
+										(blockId, children) => emit('update-children', blockId, children)
+									"
 									@double-click-block="(id) => emit('double-click-block', id)"
 									@exit-inline-edit="emit('exit-inline-edit')"
-									@slash-command-select="(cmd: SlashCommand, blockId: string) => emit('slash-command-select', cmd, blockId)"
+									@slash-command-select="
+										(cmd: SlashCommand, blockId: string) =>
+											emit('slash-command-select', cmd, blockId)
+									"
 									@insert-block-after="(id: string) => emit('insert-block-after', id)"
 									@open-link-dialog="(id: string) => emit('open-link-dialog', id)"
 								/>
@@ -460,10 +527,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 				</div>
 
 				<!-- Block placeholder at bottom -->
-				<BlockPlaceholder
-					v-if="blocks.length > 0"
-					@click="emit('add-text-block')"
-				/>
+				<BlockPlaceholder v-if="blocks.length > 0" @click="emit('add-text-block')" />
 
 				<!-- Empty state -->
 				<button
@@ -473,13 +537,50 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 					:aria-label="t('builder.canvas.emptyAction')"
 					@click="emit('add-text-block')"
 				>
-					<svg class="text-text-tertiary" aria-hidden="true" width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-						<rect x="6" y="6" width="36" height="36" rx="4" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" />
-						<line x1="24" y1="16" x2="24" y2="32" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-						<line x1="16" y1="24" x2="32" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+					<svg
+						class="text-text-tertiary"
+						aria-hidden="true"
+						width="48"
+						height="48"
+						viewBox="0 0 48 48"
+						fill="none"
+						xmlns="http://www.w3.org/2000/svg"
+					>
+						<rect
+							x="6"
+							y="6"
+							width="36"
+							height="36"
+							rx="4"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-dasharray="4 3"
+						/>
+						<line
+							x1="24"
+							y1="16"
+							x2="24"
+							y2="32"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+						/>
+						<line
+							x1="16"
+							y1="24"
+							x2="32"
+							y2="24"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+						/>
 					</svg>
-					<span class="block text-sm font-medium text-text-secondary">{{ t('builder.canvas.emptyTitle') }}</span>
-					<span class="block text-[13px] text-text-tertiary">{{ t('builder.canvas.emptyHint') }}</span>
+					<span class="block text-sm font-medium text-text-secondary">{{
+						t('builder.canvas.emptyTitle')
+					}}</span>
+					<span class="block text-[13px] text-text-tertiary">{{
+						t('builder.canvas.emptyHint')
+					}}</span>
 				</button>
 			</div>
 

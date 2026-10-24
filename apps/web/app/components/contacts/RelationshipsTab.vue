@@ -104,14 +104,16 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 						class="flex items-center justify-between gap-2 input w-full"
 					>
 						<span class="text-sm text-text-primary truncate">{{ addForm.toContactLabel }}</span>
-						<button
-							type="button"
-							class="flex-shrink-0 text-text-tertiary hover:text-text-primary"
-							:title="t('components.contacts.relationshipsTab.clearSelected')"
-							@click="clearTargetContact"
-						>
-							<Icon name="lucide:x" class="w-4 h-4" />
-						</button>
+						<UiTooltip :text="t('components.contacts.relationshipsTab.clearSelected')">
+							<button
+								type="button"
+								class="flex-shrink-0 text-text-tertiary hover:text-text-primary"
+								:aria-label="t('components.contacts.relationshipsTab.clearSelected')"
+								@click="clearTargetContact"
+							>
+								<Icon name="lucide:x" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
 					</div>
 					<!-- Otherwise search and pick a contact by name or email. -->
 					<div v-else class="relative">
@@ -166,9 +168,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 						</select>
 					</div>
 					<div>
-						<label class="label">{{
-							t('components.contacts.relationshipsTab.confidence')
-						}}</label>
+						<label class="label">{{ t('components.contacts.relationshipsTab.confidence') }}</label>
 						<div class="flex items-center gap-2">
 							<input
 								v-model.number="addForm.confidence"
@@ -279,22 +279,26 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 								<span class="text-xs text-text-secondary font-mono w-9 text-right">
 									{{ Math.round(editingConfidence * 100) }}%
 								</span>
-								<button
-									type="button"
-									class="p-1 rounded text-text-tertiary hover:text-brand hover:bg-bg-elevated transition-colors"
-									:title="t('components.contacts.relationshipsTab.saveConfidence')"
-									@click="saveConfidence(rel._id)"
-								>
-									<Icon name="lucide:check" class="w-3.5 h-3.5" />
-								</button>
-								<button
-									type="button"
-									class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-									:title="t('common.cancel')"
-									@click="cancelEditConfidence"
-								>
-									<Icon name="lucide:x" class="w-3.5 h-3.5" />
-								</button>
+								<UiTooltip :text="t('components.contacts.relationshipsTab.saveConfidence')">
+									<button
+										type="button"
+										class="p-1 rounded text-text-tertiary hover:text-brand hover:bg-bg-elevated transition-colors"
+										:aria-label="t('components.contacts.relationshipsTab.saveConfidence')"
+										@click="saveConfidence(rel._id)"
+									>
+										<Icon name="lucide:check" class="w-3.5 h-3.5" />
+									</button>
+								</UiTooltip>
+								<UiTooltip :text="t('common.cancel')">
+									<button
+										type="button"
+										class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+										:aria-label="t('common.cancel')"
+										@click="cancelEditConfidence"
+									>
+										<Icon name="lucide:x" class="w-3.5 h-3.5" />
+									</button>
+								</UiTooltip>
 							</div>
 							<button
 								v-else
@@ -307,13 +311,15 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 							</button>
 						</div>
 					</div>
-					<button
-						class="p-1.5 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-all"
-						:title="t('components.contacts.relationshipsTab.removeRelationship')"
-						@click="onRemove(rel._id)"
-					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
-					</button>
+					<UiTooltip :text="t('components.contacts.relationshipsTab.removeRelationship')">
+						<button
+							class="p-1.5 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-all"
+							:aria-label="t('components.contacts.relationshipsTab.removeRelationship')"
+							@click="onRemove(rel._id)"
+						>
+							<Icon name="lucide:trash-2" class="w-4 h-4" />
+						</button>
+					</UiTooltip>
 				</div>
 			</div>
 		</div>

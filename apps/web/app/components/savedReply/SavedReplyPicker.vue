@@ -77,17 +77,18 @@ function saveCurrent() {
 </script>
 
 <template>
-	<UiButton
-		variant="ghost"
-		type="button"
-		class="shrink-0"
-		:title="`${t('shared.savedReplies.picker.button')} (${chordKeys.join(' ')})`"
-		:aria-label="t('shared.savedReplies.picker.button')"
-		data-testid="saved-reply-button"
-		@click="open = true"
-	>
-		<Icon name="lucide:message-square-quote" class="w-4 h-4" />
-	</UiButton>
+	<UiTooltip :text="`${t('shared.savedReplies.picker.button')} (${chordKeys.join(' ')})`">
+		<UiButton
+			variant="ghost"
+			type="button"
+			class="shrink-0"
+			:aria-label="t('shared.savedReplies.picker.button')"
+			data-testid="saved-reply-button"
+			@click="open = true"
+		>
+			<Icon name="lucide:message-square-quote" class="w-4 h-4" />
+		</UiButton>
+	</UiTooltip>
 	<UiModal v-model:open="open" size="lg" :title="t('shared.savedReplies.picker.title')">
 		<div class="space-y-3" data-testid="saved-reply-picker">
 			<input

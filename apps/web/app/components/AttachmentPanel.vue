@@ -280,13 +280,15 @@ function handleFileInput(event: Event) {
 							{{ formatCompactFileSize(att.fileSize) }}
 						</p>
 					</div>
-					<button
-						class="shrink-0 p-1 rounded-md text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error/10 transition-all"
-						:title="t('components.attachmentPanel.removeAttachment')"
-						@click.stop="removeAttachment(att.id)"
-					>
-						<Icon name="lucide:x" class="w-3.5 h-3.5" />
-					</button>
+					<UiTooltip :text="t('components.attachmentPanel.removeAttachment')">
+						<button
+							class="shrink-0 p-1 rounded-md text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error/10 transition-all"
+							:aria-label="t('components.attachmentPanel.removeAttachment')"
+							@click.stop="removeAttachment(att.id)"
+						>
+							<Icon name="lucide:x" class="w-3.5 h-3.5" />
+						</button>
+					</UiTooltip>
 				</div>
 
 				<!-- Size meter -->

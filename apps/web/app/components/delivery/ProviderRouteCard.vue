@@ -90,15 +90,19 @@ const description = computed(() => localized(props.messageType.description));
 			</div>
 
 			<div class="flex items-center gap-2 shrink-0">
-				<UiButton
+				<UiTooltip
 					v-if="route"
-					variant="ghost"
-					class="p-2 text-error hover:bg-error/10"
-					:title="t('dashboard.admin.delivery.providerRouting.resetToDefault')"
-					@click="emit('reset')"
+					:text="t('dashboard.admin.delivery.providerRouting.resetToDefault')"
 				>
-					<Icon name="lucide:rotate-ccw" class="w-4 h-4" />
-				</UiButton>
+					<UiButton
+						variant="ghost"
+						class="p-2 text-error hover:bg-error/10"
+						:aria-label="t('dashboard.admin.delivery.providerRouting.resetToDefault')"
+						@click="emit('reset')"
+					>
+						<Icon name="lucide:rotate-ccw" class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 				<UiButton variant="secondary" class="gap-2" @click="emit('edit')">
 					<Icon name="lucide:settings-2" class="w-4 h-4" />
 					{{ route ? t('common.edit') : t('dashboard.admin.delivery.providerRouting.configure') }}

@@ -263,17 +263,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 						<Icon name="lucide:search" class="w-4 h-4 flex-shrink-0" />
 						<span class="truncate">{{ saved.name }}</span>
 					</NuxtLink>
-					<button
-						type="button"
-						class="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 text-text-tertiary hover:text-text-primary"
-						:title="t('components.postbox.postboxFolderRail.unpinSearch')"
-						:aria-label="
-							t('components.postbox.postboxFolderRail.unpinSearchAriaLabel', { name: saved.name })
-						"
-						@click="setPinned(saved._id, false)"
-					>
-						<Icon name="lucide:pin-off" class="w-3 h-3" />
-					</button>
+					<UiTooltip :text="t('components.postbox.postboxFolderRail.unpinSearch')">
+						<button
+							type="button"
+							class="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 text-text-tertiary hover:text-text-primary"
+							:aria-label="
+								t('components.postbox.postboxFolderRail.unpinSearchAriaLabel', { name: saved.name })
+							"
+							@click="setPinned(saved._id, false)"
+						>
+							<Icon name="lucide:pin-off" class="w-3 h-3" />
+						</button>
+					</UiTooltip>
 				</li>
 			</ul>
 		</div>

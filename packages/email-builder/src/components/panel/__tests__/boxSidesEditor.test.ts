@@ -54,7 +54,7 @@ describe('BoxSidesEditor', () => {
 	it('labels the toggle and buttons from the prefix', () => {
 		const padding = mountEditor({ block: textBlock({}), prefix: 'padding', modes: PADDING_MODES });
 		expect(padding.get('[role="group"]').attributes('aria-label')).toBe('Padding mode');
-		expect(padding.findAll('[role="group"] button').map((b) => b.attributes('title'))).toEqual([
+		expect(padding.findAll('[role="group"] button').map((b) => b.attributes('aria-label'))).toEqual([
 			'Uniform padding',
 			'Vertical & horizontal pairs',
 			'Individual sides',
@@ -63,7 +63,7 @@ describe('BoxSidesEditor', () => {
 
 		const margin = mountEditor({ block: textBlock({}), prefix: 'margin', modes: MARGIN_MODES });
 		expect(margin.get('[role="group"]').attributes('aria-label')).toBe('Margin mode');
-		expect(margin.findAll('[role="group"] button').map((b) => b.attributes('title'))).toEqual([
+		expect(margin.findAll('[role="group"] button').map((b) => b.attributes('aria-label'))).toEqual([
 			'Vertical & horizontal pairs',
 			'Individual sides',
 		]);
@@ -116,7 +116,7 @@ describe('BoxSidesEditor', () => {
 			prefix: 'margin',
 			modes: MARGIN_MODES,
 		});
-		await w.get('button[title="Vertical & horizontal pairs"]').trigger('click');
+		await w.get('button[aria-label="Vertical & horizontal pairs"]').trigger('click');
 		expect(updates(w)).toEqual([
 			['marginBottom', 10],
 			['marginRight', 6],
@@ -130,7 +130,7 @@ describe('BoxSidesEditor', () => {
 			prefix: 'padding',
 			modes: PADDING_MODES,
 		});
-		await w.get('button[title="Uniform padding"]').trigger('click');
+		await w.get('button[aria-label="Uniform padding"]').trigger('click');
 		expect(updates(w)).toEqual([
 			['paddingRight', 12],
 			['paddingBottom', 12],

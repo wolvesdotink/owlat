@@ -254,18 +254,19 @@ const { showToast } = useToast();
 					</UiButton>
 				</template>
 				<template v-if="canManage" #row-actions="{ row, layout }">
-					<button
-						type="button"
-						:class="[
-							'flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-							layout === 'card' ? 'w-11 h-11' : 'p-2',
-						]"
-						:title="t('dashboard.audience.topics.detail.index.removeFromTopic')"
-						:aria-label="t('dashboard.audience.topics.detail.index.removeFromTopic')"
-						@click="openRemoveModal(row)"
-					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
-					</button>
+					<UiTooltip :text="t('dashboard.audience.topics.detail.index.removeFromTopic')">
+						<button
+							type="button"
+							:class="[
+								'flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+								layout === 'card' ? 'w-11 h-11' : 'p-2',
+							]"
+							:aria-label="t('dashboard.audience.topics.detail.index.removeFromTopic')"
+							@click="openRemoveModal(row)"
+						>
+							<Icon name="lucide:trash-2" class="w-4 h-4" />
+						</button>
+					</UiTooltip>
 				</template>
 			</AudienceMemberTable>
 		</template>

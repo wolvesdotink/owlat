@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { computed } from 'vue';
 import type { PropertyField } from '../../schema/types';
 import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Maximize2 } from '@lucide/vue';
@@ -42,19 +43,18 @@ function handleSelectChange(event: Event) {
 	<div class="flex items-center gap-0.5" role="group" :aria-label="label(field.label)">
 		<!-- Alignment buttons -->
 		<template v-if="field.type === 'align'">
-			<button
-				v-for="opt in alignOptions"
-				:key="opt"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none bg-transparent rounded text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-black/[0.08]"
-				:class="{ 'bg-black/[0.12] text-brand': value === opt }"
-				:title="t(`builder.align.${opt}`)"
-				:aria-label="`${label(field.label)}: ${t(`builder.align.${opt}`)}`"
-				:aria-pressed="value === opt"
-				type="button"
-				@click.stop="emit('update', field.key, opt)"
-			>
-				<component :is="alignIcons[opt]" :size="14" aria-hidden="true" />
-			</button>
+			<UiTooltip v-for="opt in alignOptions" :key="opt" :text="t(`builder.align.${opt}`)">
+				<button
+					class="flex items-center justify-center w-[26px] h-[26px] border-none bg-transparent rounded text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-black/[0.08]"
+					:class="{ 'bg-black/[0.12] text-brand': value === opt }"
+					:aria-label="`${label(field.label)}: ${t(`builder.align.${opt}`)}`"
+					:aria-pressed="value === opt"
+					type="button"
+					@click.stop="emit('update', field.key, opt)"
+				>
+					<component :is="alignIcons[opt]" :size="14" aria-hidden="true" />
+				</button>
+			</UiTooltip>
 		</template>
 
 		<!-- Number / Slider inline -->
@@ -92,4 +92,3 @@ function handleSelectChange(event: Event) {
 		</template>
 	</div>
 </template>
-

@@ -110,17 +110,18 @@ const menuItem =
 		data-testid="answer-queue-bar"
 	>
 		<template v-if="isCurrent">
-			<UiButton
-				variant="ghost"
-				size="sm"
-				:disabled="!session.flow.canGoBack.value"
-				:aria-label="t('components.answer.queueBar.previous')"
-				:title="t('components.answer.queueBar.previous')"
-				data-testid="answer-queue-previous"
-				@click="session.back()"
-			>
-				<Icon name="lucide:chevron-left" class="size-4" />
-			</UiButton>
+			<UiTooltip :text="t('components.answer.queueBar.previous')">
+				<UiButton
+					variant="ghost"
+					size="sm"
+					:disabled="!session.flow.canGoBack.value"
+					:aria-label="t('components.answer.queueBar.previous')"
+					data-testid="answer-queue-previous"
+					@click="session.back()"
+				>
+					<Icon name="lucide:chevron-left" class="size-4" />
+				</UiButton>
+			</UiTooltip>
 			<span class="tabular-nums" data-testid="answer-queue-position">
 				{{
 					t('components.answer.queueBar.position', {
@@ -129,17 +130,18 @@ const menuItem =
 					})
 				}}
 			</span>
-			<UiButton
-				variant="ghost"
-				size="sm"
-				:disabled="!session.flow.canGoNext.value"
-				:aria-label="t('components.answer.queueBar.next')"
-				:title="t('components.answer.queueBar.next')"
-				data-testid="answer-queue-next"
-				@click="session.next()"
-			>
-				<Icon name="lucide:chevron-right" class="size-4" />
-			</UiButton>
+			<UiTooltip :text="t('components.answer.queueBar.next')">
+				<UiButton
+					variant="ghost"
+					size="sm"
+					:disabled="!session.flow.canGoNext.value"
+					:aria-label="t('components.answer.queueBar.next')"
+					data-testid="answer-queue-next"
+					@click="session.next()"
+				>
+					<Icon name="lucide:chevron-right" class="size-4" />
+				</UiButton>
+			</UiTooltip>
 		</template>
 		<UiButton
 			v-else

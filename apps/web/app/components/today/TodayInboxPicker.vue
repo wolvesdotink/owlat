@@ -52,24 +52,23 @@ const triggerLabel = computed(() =>
 		<div class="px-3 pb-1 pt-2 text-2xs font-medium text-text-tertiary">
 			{{ t('components.today.inboxPicker.heading') }}
 		</div>
-		<button
-			v-for="inbox in inboxes"
-			:key="inbox.mailboxId"
-			type="button"
-			role="menuitemcheckbox"
-			:aria-checked="!hiddenSet.has(inbox.mailboxId)"
-			:title="inbox.address"
-			class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text-primary transition-colors hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:outline-none"
-			@click.stop="emit('toggle', inbox.mailboxId, hiddenSet.has(inbox.mailboxId))"
-		>
-			<Icon
-				:name="hiddenSet.has(inbox.mailboxId) ? 'lucide:square' : 'lucide:square-check'"
-				class="size-4 shrink-0"
-				:class="hiddenSet.has(inbox.mailboxId) ? 'text-text-tertiary' : 'text-text-primary'"
-				aria-hidden="true"
-			/>
-			<InboxChip :name="inbox.name" :slot="inbox.slot" variant="plain" size="md" />
-		</button>
+		<UiTooltip v-for="inbox in inboxes" :key="inbox.mailboxId" :text="inbox.address">
+			<button
+				type="button"
+				role="menuitemcheckbox"
+				:aria-checked="!hiddenSet.has(inbox.mailboxId)"
+				class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text-primary transition-colors hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:outline-none"
+				@click.stop="emit('toggle', inbox.mailboxId, hiddenSet.has(inbox.mailboxId))"
+			>
+				<Icon
+					:name="hiddenSet.has(inbox.mailboxId) ? 'lucide:square' : 'lucide:square-check'"
+					class="size-4 shrink-0"
+					:class="hiddenSet.has(inbox.mailboxId) ? 'text-text-tertiary' : 'text-text-primary'"
+					aria-hidden="true"
+				/>
+				<InboxChip :name="inbox.name" :slot="inbox.slot" variant="plain" size="md" />
+			</button>
+		</UiTooltip>
 		<UiDropdownDivider />
 		<p class="px-3 pb-2 pt-1.5 text-2xs text-text-tertiary">
 			{{ t('components.today.inboxPicker.note') }}

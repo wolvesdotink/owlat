@@ -141,7 +141,10 @@ async function onCancel() {
 
 		<!-- Loading -->
 		<div v-if="isLoading" class="p-8 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+			<Icon
+				name="lucide:loader-2"
+				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+			/>
 		</div>
 
 		<!-- Error: the subscription failed. Don't silently drop the section. -->
@@ -302,19 +305,23 @@ async function onCancel() {
 									<code class="flex-1 min-w-0 truncate rounded bg-bg-surface px-2 py-1.5 text-xs">{{
 										mxRecordLine
 									}}</code>
-									<button
-										type="button"
-										class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface shrink-0"
-										:title="
-											t('components.postbox.postboxMailboxMove.stage2.copyRecord', { domain })
-										"
-										:aria-label="
-											t('components.postbox.postboxMailboxMove.stage2.copyRecord', { domain })
-										"
-										@click="copy(mxRecordLine, 'mx')"
+									<UiTooltip
+										:text="t('components.postbox.postboxMailboxMove.stage2.copyRecord', { domain })"
 									>
-										<Icon :name="isCopied('mx') ? 'lucide:check' : 'lucide:copy'" class="w-4 h-4" />
-									</button>
+										<button
+											type="button"
+											class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface shrink-0"
+											:aria-label="
+												t('components.postbox.postboxMailboxMove.stage2.copyRecord', { domain })
+											"
+											@click="copy(mxRecordLine, 'mx')"
+										>
+											<Icon
+												:name="isCopied('mx') ? 'lucide:check' : 'lucide:copy'"
+												class="w-4 h-4"
+											/>
+										</button>
+									</UiTooltip>
 								</div>
 								<div class="flex items-center gap-2 flex-wrap">
 									<UiButton

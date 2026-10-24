@@ -168,7 +168,9 @@ onBeforeUnmount(() => {
 			aria-modal="true"
 			:aria-label="
 				current
-					? t('components.postbox.postboxAttachmentLightbox.previewOf', { filename: current.filename })
+					? t('components.postbox.postboxAttachmentLightbox.previewOf', {
+							filename: current.filename,
+						})
 					: t('components.postbox.postboxAttachmentLightbox.attachmentPreview')
 			"
 			tabindex="-1"
@@ -191,52 +193,67 @@ onBeforeUnmount(() => {
 						</template>
 					</p>
 				</div>
-				<button
-					type="button"
-					class="p-2 rounded hover:bg-white/10 disabled:opacity-40"
-					:title="t('components.postbox.postboxAttachmentLightbox.openInNewTab')"
-					:aria-label="t('components.postbox.postboxAttachmentLightbox.openInNewTab')"
-					:disabled="!objectUrl"
-					@click="openInNewTab"
-				>
-					<Icon name="lucide:external-link" class="w-4 h-4" />
-				</button>
-				<button
+				<UiTooltip :text="t('components.postbox.postboxAttachmentLightbox.openInNewTab')">
+					<button
+						type="button"
+						class="p-2 rounded hover:bg-white/10 disabled:opacity-40"
+						:aria-label="t('components.postbox.postboxAttachmentLightbox.openInNewTab')"
+						:disabled="!objectUrl"
+						@click="openInNewTab"
+					>
+						<Icon name="lucide:external-link" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
+				<UiTooltip
 					v-if="current"
-					type="button"
-					class="p-2 rounded hover:bg-white/10"
-					:title="
-						t('components.postbox.postboxAttachmentLightbox.download', { filename: current.filename })
+					:text="
+						t('components.postbox.postboxAttachmentLightbox.download', {
+							filename: current.filename,
+						})
 					"
-					:aria-label="
-						t('components.postbox.postboxAttachmentLightbox.download', { filename: current.filename })
-					"
-					@click="emit('download', current)"
 				>
-					<Icon name="lucide:download" class="w-4 h-4" />
-				</button>
-				<button
-					type="button"
-					class="p-2 rounded hover:bg-white/10"
-					:title="t('components.postbox.postboxAttachmentLightbox.closePreview')"
-					:aria-label="t('components.postbox.postboxAttachmentLightbox.closePreview')"
-					@click="close()"
-				>
-					<Icon name="lucide:x" class="w-4 h-4" />
-				</button>
+					<button
+						type="button"
+						class="p-2 rounded hover:bg-white/10"
+						:aria-label="
+							t('components.postbox.postboxAttachmentLightbox.download', {
+								filename: current.filename,
+							})
+						"
+						@click="emit('download', current)"
+					>
+						<Icon name="lucide:download" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
+				<UiTooltip :text="t('components.postbox.postboxAttachmentLightbox.closePreview')">
+					<button
+						type="button"
+						class="p-2 rounded hover:bg-white/10"
+						:aria-label="t('components.postbox.postboxAttachmentLightbox.closePreview')"
+						@click="close()"
+					>
+						<Icon name="lucide:x" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
 			</header>
 
-			<div class="relative flex-1 min-h-0 flex items-center justify-center px-14 pb-6" @click.self="close()">
-				<button
+			<div
+				class="relative flex-1 min-h-0 flex items-center justify-center px-14 pb-6"
+				@click.self="close()"
+			>
+				<UiTooltip
 					v-if="hasPrev"
-					type="button"
-					class="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
-					:title="t('components.postbox.postboxAttachmentLightbox.previous')"
-					:aria-label="t('components.postbox.postboxAttachmentLightbox.previous')"
-					@click="goPrev"
+					:text="t('components.postbox.postboxAttachmentLightbox.previous')"
 				>
-					<Icon name="lucide:chevron-left" class="w-5 h-5" />
-				</button>
+					<button
+						type="button"
+						class="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
+						:aria-label="t('components.postbox.postboxAttachmentLightbox.previous')"
+						@click="goPrev"
+					>
+						<Icon name="lucide:chevron-left" class="w-5 h-5" />
+					</button>
+				</UiTooltip>
 
 				<div v-if="isLoading" class="flex flex-col items-center gap-2 text-white/70">
 					<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none" />
@@ -279,16 +296,16 @@ onBeforeUnmount(() => {
 					</I18nT>
 				</object>
 
-				<button
-					v-if="hasNext"
-					type="button"
-					class="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
-					:title="t('components.postbox.postboxAttachmentLightbox.next')"
-					:aria-label="t('components.postbox.postboxAttachmentLightbox.next')"
-					@click="goNext"
-				>
-					<Icon name="lucide:chevron-right" class="w-5 h-5" />
-				</button>
+				<UiTooltip v-if="hasNext" :text="t('components.postbox.postboxAttachmentLightbox.next')">
+					<button
+						type="button"
+						class="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
+						:aria-label="t('components.postbox.postboxAttachmentLightbox.next')"
+						@click="goNext"
+					>
+						<Icon name="lucide:chevron-right" class="w-5 h-5" />
+					</button>
+				</UiTooltip>
 			</div>
 		</div>
 		<!-- palette-ok-end -->

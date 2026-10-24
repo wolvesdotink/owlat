@@ -193,15 +193,17 @@ function onPickFiles(event: Event) {
 				<!-- The composer uploads its own files only onto a draft row; a team
 				     reply's files go through the host's panel under the editor. -->
 				<template v-if="capabilities.attachments === 'draft'">
-					<UiButton
-						variant="ghost"
-						type="button"
-						class="shrink-0"
-						:title="t('components.postbox.postboxComposerFooter.attachFiles')"
-						@click="onAttachClick"
-					>
-						<Icon name="lucide:paperclip" class="w-4 h-4" />
-					</UiButton>
+					<UiTooltip :text="t('components.postbox.postboxComposerFooter.attachFiles')">
+						<UiButton
+							variant="ghost"
+							type="button"
+							class="shrink-0"
+							:aria-label="t('components.postbox.postboxComposerFooter.attachFiles')"
+							@click="onAttachClick"
+						>
+							<Icon name="lucide:paperclip" class="w-4 h-4" />
+						</UiButton>
+					</UiTooltip>
 					<!-- A proxy for the paperclip button above, opened by `.click()` and
 				     never seen or tabbed to. Out of the accessibility tree explicitly:
 				     `class="hidden"` is a stylesheet away from being an unlabelled,
@@ -218,19 +220,19 @@ function onPickFiles(event: Event) {
 				</template>
 				<SavedReplyComposerTools v-if="savedReplies" :api="savedReplies" />
 				<!-- Schedule and the follow-up chip sit on the row itself. -->
-				<UiButton
-					v-if="capabilities.schedule"
-					variant="ghost"
-					type="button"
-					class="shrink-0"
-					:title="scheduleShortcutHint"
-					:aria-label="t('components.postbox.postboxComposerFooter.scheduleSend')"
-					:disabled="!canSend || sending || isScheduled"
-					data-testid="composer-schedule"
-					@click="emit('schedule')"
-				>
-					<Icon name="lucide:clock" class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip v-if="capabilities.schedule" :text="scheduleShortcutHint">
+					<UiButton
+						variant="ghost"
+						type="button"
+						class="shrink-0"
+						:aria-label="t('components.postbox.postboxComposerFooter.scheduleSend')"
+						:disabled="!canSend || sending || isScheduled"
+						data-testid="composer-schedule"
+						@click="emit('schedule')"
+					>
+						<Icon name="lucide:clock" class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 				<PostboxComposerFollowUp
 					v-if="capabilities.replyReminder"
 					v-model:remind-at="followUpRemindAt"

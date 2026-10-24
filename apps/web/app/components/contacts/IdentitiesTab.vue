@@ -84,7 +84,9 @@ const identifierPlaceholder = computed(() => {
 				</h2>
 				<UiButton variant="secondary" size="sm" class="gap-1" @click="showAddForm = !showAddForm">
 					<Icon :name="showAddForm ? 'lucide:x' : 'lucide:plus'" class="w-3 h-3" />
-					{{ showAddForm ? t('common.cancel') : t('components.contacts.identitiesTab.addIdentity') }}
+					{{
+						showAddForm ? t('common.cancel') : t('components.contacts.identitiesTab.addIdentity')
+					}}
 				</UiButton>
 			</div>
 
@@ -171,21 +173,27 @@ const identifierPlaceholder = computed(() => {
 						<p class="text-xs text-text-tertiary">{{ t(getChannelLabel(identity.channel)) }}</p>
 					</div>
 					<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-						<button
+						<UiTooltip
 							v-if="!identity.verifiedAt"
-							class="p-1.5 rounded text-text-tertiary hover:text-success hover:bg-success-subtle transition-colors"
-							:title="t('components.contacts.identitiesTab.markVerified')"
-							@click="onVerify(identity._id)"
+							:text="t('components.contacts.identitiesTab.markVerified')"
 						>
-							<Icon name="lucide:check-circle" class="w-4 h-4" />
-						</button>
-						<button
-							class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-							:title="t('components.contacts.identitiesTab.removeIdentity')"
-							@click="onRemove(identity._id)"
-						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
-						</button>
+							<button
+								class="p-1.5 rounded text-text-tertiary hover:text-success hover:bg-success-subtle transition-colors"
+								:aria-label="t('components.contacts.identitiesTab.markVerified')"
+								@click="onVerify(identity._id)"
+							>
+								<Icon name="lucide:check-circle" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
+						<UiTooltip :text="t('components.contacts.identitiesTab.removeIdentity')">
+							<button
+								class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+								:aria-label="t('components.contacts.identitiesTab.removeIdentity')"
+								@click="onRemove(identity._id)"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
 					</div>
 				</div>
 			</div>

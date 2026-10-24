@@ -73,17 +73,20 @@ watch(
 
 			<form class="flex items-center gap-2 mb-1" @submit.prevent="handleCreate">
 				<div class="flex items-center gap-1">
-					<button
+					<UiTooltip
 						v-for="color in PRESET_COLORS"
 						:key="color"
-						type="button"
-						class="w-5 h-5 rounded-full border-2"
-						:class="newColor === color ? 'border-text-primary' : 'border-transparent'"
-						:style="{ backgroundColor: color }"
-						:title="t('components.postbox.postboxLabelManager.setColor', { color })"
-						:aria-label="t('components.postbox.postboxLabelManager.setColor', { color })"
-						@click="newColor = color"
-					/>
+						:text="t('components.postbox.postboxLabelManager.setColor', { color })"
+					>
+						<button
+							type="button"
+							class="w-5 h-5 rounded-full border-2"
+							:class="newColor === color ? 'border-text-primary' : 'border-transparent'"
+							:style="{ backgroundColor: color }"
+							:aria-label="t('components.postbox.postboxLabelManager.setColor', { color })"
+							@click="newColor = color"
+						/>
+					</UiTooltip>
 				</div>
 				<input
 					ref="newInput"

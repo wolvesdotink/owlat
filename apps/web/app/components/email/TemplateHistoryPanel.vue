@@ -166,21 +166,18 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 <template>
 	<div class="relative inline-block">
 		<div ref="triggerRef">
-			<UiButton
-				variant="outline"
-				size="sm"
-				:title="t('components.email.templateHistoryPanel.triggerTitle')"
-				@click.stop="isOpen = !isOpen"
-			>
-				<template #iconLeft>
-					<Icon name="lucide:history" class="w-4 h-4" />
-				</template>
-				<!-- Icon-only below 2xl, where the builder toolbar is short of room;
-				     the label stays the accessible name. -->
-				<span class="max-2xl:sr-only">{{
-					t('components.email.templateHistoryPanel.trigger')
-				}}</span>
-			</UiButton>
+			<UiTooltip :text="t('components.email.templateHistoryPanel.triggerTitle')">
+				<UiButton variant="outline" size="sm" @click.stop="isOpen = !isOpen">
+					<template #iconLeft>
+						<Icon name="lucide:history" class="w-4 h-4" />
+					</template>
+					<!-- Icon-only below 2xl, where the builder toolbar is short of room;
+					     the label stays the accessible name. -->
+					<span class="max-2xl:sr-only">{{
+						t('components.email.templateHistoryPanel.trigger')
+					}}</span>
+				</UiButton>
+			</UiTooltip>
 		</div>
 
 		<Teleport to="body">
@@ -251,21 +248,25 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 								</div>
 
 								<div class="flex items-center gap-1 shrink-0">
-									<button
-										class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors"
-										:title="t('components.email.templateHistoryPanel.previewAction')"
-										@click="openPreview(version)"
-									>
-										<Icon name="lucide:eye" class="w-3.5 h-3.5" />
-									</button>
-									<button
-										class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors"
-										:title="t('components.email.templateHistoryPanel.restoreAction')"
-										:disabled="isRestoring"
-										@click="requestRestore(version)"
-									>
-										<Icon name="lucide:rotate-ccw" class="w-3.5 h-3.5" />
-									</button>
+									<UiTooltip :text="t('components.email.templateHistoryPanel.previewAction')">
+										<button
+											class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors"
+											:aria-label="t('components.email.templateHistoryPanel.previewAction')"
+											@click="openPreview(version)"
+										>
+											<Icon name="lucide:eye" class="w-3.5 h-3.5" />
+										</button>
+									</UiTooltip>
+									<UiTooltip :text="t('components.email.templateHistoryPanel.restoreAction')">
+										<button
+											class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors"
+											:aria-label="t('components.email.templateHistoryPanel.restoreAction')"
+											:disabled="isRestoring"
+											@click="requestRestore(version)"
+										>
+											<Icon name="lucide:rotate-ccw" class="w-3.5 h-3.5" />
+										</button>
+									</UiTooltip>
 								</div>
 							</div>
 						</template>

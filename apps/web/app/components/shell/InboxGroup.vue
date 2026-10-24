@@ -91,14 +91,15 @@ const moreCount = computed(() =>
 					>{{ inbox.unread > 99 ? '99+' : inbox.unread }}</span
 				>
 			</NuxtLink>
-			<NuxtLink
-				:to="composeHref"
-				class="flex size-6 shrink-0 items-center justify-center rounded text-text-tertiary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover/inbox:opacity-100 max-lg:opacity-100"
-				:aria-label="t('components.shell.inboxGroup.compose', { name: inbox.name })"
-				:title="t('components.shell.inboxGroup.compose', { name: inbox.name })"
-			>
-				<Icon name="lucide:plus" class="size-3.5" />
-			</NuxtLink>
+			<UiTooltip :text="t('components.shell.inboxGroup.compose', { name: inbox.name })">
+				<NuxtLink
+					:to="composeHref"
+					class="flex size-6 shrink-0 items-center justify-center rounded text-text-tertiary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover/inbox:opacity-100 max-lg:opacity-100"
+					:aria-label="t('components.shell.inboxGroup.compose', { name: inbox.name })"
+				>
+					<Icon name="lucide:plus" class="size-3.5" />
+				</NuxtLink>
+			</UiTooltip>
 		</div>
 
 		<div v-if="!collapsed" class="mt-px space-y-px">

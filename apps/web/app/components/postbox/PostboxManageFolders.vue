@@ -107,29 +107,35 @@ watch(
 				<span v-if="renamingId !== folder._id" class="text-xs text-text-tertiary">
 					{{ folder.totalCount }}
 				</span>
-				<button
+				<UiTooltip
 					v-if="renamingId !== folder._id"
-					type="button"
-					class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-					:title="t('components.postbox.postboxManageFolders.rename')"
-					:aria-label="
-						t('components.postbox.postboxManageFolders.renameAriaLabel', { name: folder.name })
-					"
-					@click="startRename({ _id: folder._id as Id<'mailFolders'>, name: folder.name })"
+					:text="t('components.postbox.postboxManageFolders.rename')"
 				>
-					<Icon name="lucide:pencil" class="w-4 h-4" />
-				</button>
-				<button
-					type="button"
-					class="p-1 rounded hover:bg-error/10 text-error"
-					:title="t('components.postbox.postboxManageFolders.delete')"
-					:aria-label="
-						t('components.postbox.postboxManageFolders.deleteAriaLabel', { name: folder.name })
-					"
-					@click="requestFolderDelete({ _id: folder._id as Id<'mailFolders'>, name: folder.name })"
-				>
-					<Icon name="lucide:trash-2" class="w-4 h-4" />
-				</button>
+					<button
+						type="button"
+						class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
+						:aria-label="
+							t('components.postbox.postboxManageFolders.renameAriaLabel', { name: folder.name })
+						"
+						@click="startRename({ _id: folder._id as Id<'mailFolders'>, name: folder.name })"
+					>
+						<Icon name="lucide:pencil" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
+				<UiTooltip :text="t('components.postbox.postboxManageFolders.delete')">
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-error/10 text-error"
+						:aria-label="
+							t('components.postbox.postboxManageFolders.deleteAriaLabel', { name: folder.name })
+						"
+						@click="
+							requestFolderDelete({ _id: folder._id as Id<'mailFolders'>, name: folder.name })
+						"
+					>
+						<Icon name="lucide:trash-2" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
 			</li>
 		</ul>
 		<p v-else class="text-sm text-text-secondary py-4 text-center">
