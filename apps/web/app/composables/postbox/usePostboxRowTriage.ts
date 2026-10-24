@@ -4,7 +4,7 @@
  *
  * PostboxThreadList owns the v-for, windowing and keyboard handling; every
  * entry point it exposes (hover buttons, right-click menu, long-press menu,
- * single-key shortcuts) routes a verb through here, so the optimistic hide,
+ * single-key shortcuts, swipes, sweeps) routes a verb through here, so the optimistic hide,
  * the failure restore and the Cmd+Z undo registration are written once instead
  * of once per entry point.
  *
@@ -20,6 +20,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxFlagOverride } from './usePostboxOptimisticFlags';
 import type { PostboxMoveUndoKind } from './usePostboxTriageUndo';
+import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import {
 	optimisticArchive,
 	optimisticMarkRead,
@@ -123,13 +124,25 @@ export function usePostboxRowTriage(args: {
 		return true;
 	}
 
-	const archiveMsg = (id: Id<'mailMessages'>) =>
-		runRemoving(
-			[id],
-			t('components.postbox.postboxThreadList.archivedUndo'),
-			{ kind: 'archived' },
-			() => archiveOp.run({ messageIds: [id] })
-		);
+	/**
+	 * Archive one row or several (a sweep across the Archive buttons) in ONE
+	 * mutation, so the undo toast is one entry that puts every one of them back.
+	 * The ids must share a mailbox: the server files them all in the first
+	 * one's Archive folder.
+	 */
+	const archiveMany = (ids: Id<'mailMessages'>[]) =>
+		ids.length === 0
+			? Promise.resolve(false)
+			: runRemoving(
+					ids,
+					ids.length > 1
+						? t('shared.postbox.usePostboxBulkActions.undo.archivedMany', { count: ids.length })
+						: t('components.postbox.postboxThreadList.archivedUndo'),
+					{ kind: 'archived' },
+					() => archiveOp.run({ messageIds: ids })
+				);
+
+	const archiveMsg = (id: Id<'mailMessages'>) => archiveMany([id]);
 
 	const trashMsg = (id: Id<'mailMessages'>) =>
 		runRemoving(
@@ -216,6 +229,38 @@ export function usePostboxRowTriage(args: {
 		void pinAction.toggle(m._id, m.pinnedAt != null);
 	}
 
+	/**
+	 * A committed swipe on a row (UX plan idea 21). It is a fourth ENTRY POINT, not
+	 * a fourth implementation: every branch lands on the verb the hover buttons,
+	 * the context menu and the single-key shortcuts already call, so the optimistic
+	 * hide and the "Undo — Cmd+Z" registration come along for free. Snooze opens
+	 * the same picker `h` does — a deferral needs a time, and guessing one from a
+	 * gesture is how mail disappears until Thursday.
+	 */
+	function swipeRow(
+		m: { _id: Id<'mailMessages'>; threadId?: string; flagFlagged: boolean; flagSeen: boolean },
+		action: Exclude<PostboxSwipeAction, 'none'>,
+		openSnooze: (id: Id<'mailMessages'>, threadId: string | null) => void
+	) {
+		switch (action) {
+			case 'archive':
+				void archiveMsg(m._id);
+				break;
+			case 'trash':
+				void trashMsg(m._id);
+				break;
+			case 'star':
+				void toggleStar(m._id, !m.flagFlagged);
+				break;
+			case 'read':
+				void toggleRead(m._id, !m.flagSeen);
+				break;
+			case 'snooze':
+				openSnooze(m._id, m.threadId ?? null);
+				break;
+		}
+	}
+
 	function cancelFollowUp(msg: { threadId?: string }) {
 		if (!msg.threadId) return;
 		void cancelFollowUpOp.run({ threadId: msg.threadId as Id<'mailThreads'> });
@@ -223,6 +268,7 @@ export function usePostboxRowTriage(args: {
 
 	return {
 		archiveMsg,
+		archiveMany,
 		trashMsg,
 		moveMsg,
 		moveMany,
@@ -234,5 +280,6 @@ export function usePostboxRowTriage(args: {
 		toggleStar,
 		toggleRead,
 		cancelFollowUp,
+		swipeRow,
 	};
 }

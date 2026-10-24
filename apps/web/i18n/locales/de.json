@@ -5502,6 +5502,12 @@
 				"undoTrashed": "In den Papierkorb verschoben",
 				"unstar": "Markierung entfernen"
 			},
+			"postboxSweepStatus": {
+				"select": "{count} Nachricht auswählen | {count} Nachrichten auswählen",
+				"deselect": "Auswahl von {count} Nachricht aufheben | Auswahl von {count} Nachrichten aufheben",
+				"archive": "{count} Nachricht archivieren | {count} Nachrichten archivieren",
+				"escHint": "Esc bricht ab"
+			},
 			"postboxThreadRow": {
 				"backFromSnooze": "Zurück aus dem Schlummer",
 				"deselect": "Auswahl aufheben",
@@ -5520,7 +5526,9 @@
 				"unstar": "Markierung entfernen",
 				"pin": "Unterhaltung anheften",
 				"unpin": "Unterhaltung lösen",
-				"pinnedChip": "Oben im Posteingang angeheftet"
+				"pinnedChip": "Oben im Posteingang angeheftet",
+				"selectSweepHint": "Auswählen – über Zeilen ziehen, um mehrere auszuwählen",
+				"archiveSweepHint": "Archivieren – über Zeilen ziehen, um mehrere zu archivieren"
 			},
 			"postboxThreadRowFollowUp": {
 				"cancelLabel": "Antwort-Erinnerung abbrechen",

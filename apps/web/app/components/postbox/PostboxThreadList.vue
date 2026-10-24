@@ -4,9 +4,12 @@ import type { Id } from '@owlat/api/dataModel';
 import type { AnswerModeKind } from '~/utils/answerMode';
 import { rememberListPlace, takeListPlace, useAnswerModeNav } from '~/composables/useAnswerMode';
 import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
+import type { PostboxSweepKind } from '~/utils/postboxSweep';
 import { POSTBOX_ROW_HEIGHT } from '~/utils/postboxDensity';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
+import PostboxSweepStatus from './PostboxSweepStatus.vue';
 import { usePostboxThreadListWindow } from '~/composables/postbox/usePostboxThreadListWindow';
+import { usePostboxListSweep } from '~/composables/postbox/usePostboxListSweep';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { postboxListEmptyState } from '~/utils/postboxListEmptyState';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
@@ -98,6 +101,7 @@ defineExpose({ visibleIds });
 // the optimistic hide/restore and the "Undo — Cmd+Z" registration.
 const {
 	archiveMsg,
+	archiveMany,
 	trashMsg,
 	moveMsg,
 	moveMany,
@@ -108,6 +112,7 @@ const {
 	toggleStar,
 	toggleRead,
 	cancelFollowUp,
+	swipeRow,
 } = usePostboxRowTriage({
 	hide: hideRow,
 	unhide: unhideRow,
@@ -144,34 +149,6 @@ const {
 	snoozeThread,
 	moveMsg,
 });
-
-/**
- * A committed swipe on a row (UX plan idea 21). It is a fourth ENTRY POINT, not
- * a fourth implementation: every branch lands on the verb the hover buttons,
- * the context menu and the single-key shortcuts already call, so the optimistic
- * hide and the "Undo — Cmd+Z" registration come along for free. Snooze opens
- * the same picker `h` does — a deferral needs a time, and guessing one from a
- * gesture is how mail disappears until Thursday.
- */
-function onRowSwipe(m: PostboxThreadRowMessage, action: Exclude<PostboxSwipeAction, 'none'>) {
-	switch (action) {
-		case 'archive':
-			void archiveMsg(m._id);
-			break;
-		case 'trash':
-			void trashMsg(m._id);
-			break;
-		case 'star':
-			void toggleStar(m._id, !m.flagFlagged);
-			break;
-		case 'read':
-			void toggleRead(m._id, !m.flagSeen);
-			break;
-		case 'snooze':
-			openSnooze(m._id, m.threadId ?? null);
-			break;
-	}
-}
 
 // Drag a row (or the selection it belongs to) onto a rail folder or label.
 const rowDrag = usePostboxListRowDrag({ mailboxId: mailboxIdRef, bulk, moveMany });
@@ -345,6 +322,15 @@ const {
 	loadMore: () => emit('load-more'),
 });
 
+// Press a row's checkbox or Archive button and drag across rows: one action, the whole range.
+const sweep = usePostboxListSweep({
+	rows: visibleMessages,
+	listEl,
+	scopeKey: () => folderKey.value,
+	bulk,
+	archiveMany,
+});
+
 // Back from Answer mode: the j/k row comes back with the list (the scroll offset
 // has its own per-folder memory). Filed on every unmount, taken only on the
 // mount that is the way back.
@@ -417,7 +403,7 @@ if (returnPlace?.focusedId) {
 			:aria-label="t('components.postbox.postboxThreadList.listLabel')"
 			:aria-activedescendant="activeRowId"
 			class="outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
-			:class="{ relative: virtualize }"
+			:class="{ relative: virtualize, 'select-none': sweep.active.value }"
 			:style="virtualize ? { height: `${range.totalHeight}px` } : undefined"
 			@keydown="onListKeydown"
 		>
@@ -439,6 +425,7 @@ if (returnPlace?.focusedId) {
 					:selected="bulk.isSelected(msg._id)"
 					:focused="focusedIndex === windowStart + localI"
 					:active="activeMessageId === msg._id"
+					:sweep-mark="sweep.markOf(msg._id)"
 					@select="emit('select', msg._id)"
 					@toggle-select="
 						(extend: boolean) =>
@@ -452,8 +439,11 @@ if (returnPlace?.focusedId) {
 					@toggle-pin="togglePinRow(msg)"
 					@prefetch="prefetchRow(msg._id)"
 					@cancel-follow-up="cancelFollowUp(msg)"
-					@swipe="(action: Exclude<PostboxSwipeAction, 'none'>) => onRowSwipe(msg, action)"
+					@swipe="
+						(action: Exclude<PostboxSwipeAction, 'none'>) => swipeRow(msg, action, openSnooze)
+					"
 					@drag-start="(event: DragEvent) => rowDrag.start(msg, event)"
+					@sweep-start="(kind: PostboxSweepKind, e: PointerEvent) => sweep.start(kind, msg._id, e)"
 				/>
 			</div>
 		</ul>
@@ -475,6 +465,7 @@ if (returnPlace?.focusedId) {
 			{{ t('components.postbox.postboxThreadList.capNote') }}
 		</p>
 	</div>
+	<PostboxSweepStatus :status="sweep.status.value" />
 	<!-- Keyboard-flow pickers for the focused row (h / l / v). -->
 	<PostboxSnoozeDialog
 		:open="snoozeOpen"
