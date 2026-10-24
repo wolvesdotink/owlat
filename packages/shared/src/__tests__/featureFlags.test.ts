@@ -23,6 +23,7 @@ import {
 	type PluginFeatureFlagDefinition,
 	type PluginFeatureFlagKey,
 } from '../featureFlags';
+import * as runtime from '../featureFlagRuntime';
 
 describe('featureFlags — defaults', () => {
 	it('returns the registered defaults for a self-host install', () => {
@@ -250,6 +251,103 @@ describe('featureFlags — registry sanity', () => {
 		const stored: FeatureFlagState = { campaigns: true, inbox: false };
 		expect(isFlagEnabled(stored, 'campaigns')).toBe(true);
 		expect(isFlagEnabled(stored, 'inbox')).toBe(false);
+	});
+});
+
+describe('featureFlags — runtime rules (featureFlagRuntime.ts)', () => {
+	const coreKeys = Object.keys(FEATURE_FLAGS) as Array<keyof typeof FEATURE_FLAGS>;
+	const allOn = Object.fromEntries(coreKeys.map((key) => [key, true])) as FeatureFlagState;
+	const allOff = Object.fromEntries(coreKeys.map((key) => [key, false])) as FeatureFlagState;
+	/** Every flag alone on and alone off, plus everything on and everything off. */
+	const states: FeatureFlagState[] = [
+		{},
+		allOn,
+		allOff,
+		...coreKeys.flatMap((key) => [
+			{ [key]: true } as FeatureFlagState,
+			{ ...allOn, [key]: false } as FeatureFlagState,
+		]),
+	];
+
+	it('declares the same flags, in the same order, as the full registry', () => {
+		expect(Object.keys(runtime.FEATURE_FLAG_RULES)).toEqual(coreKeys);
+	});
+
+	it('holds exactly the rule half of every full definition', () => {
+		for (const key of coreKeys) {
+			const { key: ruleKey, default: on, requires, requiresAny, hostedOnly } = FEATURE_FLAGS[key];
+			expect(runtime.FEATURE_FLAG_RULES[key], key).toEqual(
+				Object.fromEntries(
+					Object.entries({ key: ruleKey, default: on, requires, requiresAny, hostedOnly }).filter(
+						([, value]) => value !== undefined
+					)
+				)
+			);
+		}
+	});
+
+	it('resolves every state as the full registry does, self-hosted and hosted', () => {
+		for (const hosted of [false, true]) {
+			expect(runtime.getDefaultFlags({ hosted })).toEqual(
+				getDefaultFlags({ hosted, registry: createFeatureFlagRegistry() })
+			);
+			for (const stored of states) {
+				expect(runtime.resolveFlags(stored, { hosted })).toEqual(
+					resolveFlags(stored, { hosted, registry: createFeatureFlagRegistry() })
+				);
+			}
+		}
+	});
+
+	it('keeps hosted-only defaults out of a self-hosted install and in a hosted one', () => {
+		expect(runtime.getDefaultFlags()).not.toHaveProperty('billing.stripe');
+		expect(runtime.getDefaultFlags({ hosted: true })).toMatchObject({
+			'billing.stripe': false,
+			multiTenancy: false,
+			'tier.autoProvision': false,
+		});
+	});
+
+	it('applies AND and any-of dependencies', () => {
+		const resolved = runtime.resolveFlags({ ai: true, 'ai.agent': true, 'postbox.aiDraft': true });
+		// ai.agent requires ai AND inbox; postbox.aiDraft needs postbox OR mail.external.
+		expect(resolved['ai.agent']).toBe(false);
+		expect(resolved['postbox.aiDraft']).toBe(false);
+		const withSources = runtime.resolveFlags({
+			ai: true,
+			inbox: true,
+			'ai.agent': true,
+			'mail.external': true,
+			'postbox.aiDraft': true,
+		});
+		expect(withSources['ai.agent']).toBe(true);
+		expect(withSources['postbox.aiDraft']).toBe(true);
+	});
+
+	it('resolves a composed plugin registry as the full module does', () => {
+		const registry = createFeatureFlagRegistry([
+			{
+				key: 'plugin.lab',
+				category: 'plugins',
+				label: 'Lab',
+				description: 'Bundled plugin.',
+				default: true,
+				requires: ['campaigns'],
+				requiredCapabilities: [],
+				pluginPackageName: '@example/lab',
+			},
+		]);
+		for (const stored of [
+			{},
+			{ campaigns: false },
+			{ 'plugin.lab': false },
+		] as FeatureFlagState[]) {
+			expect(runtime.resolveFlags(stored, { registry })).toEqual(
+				resolveFlags(stored, { registry })
+			);
+		}
+		expect(runtime.resolveFlags({}, { registry })['plugin.lab']).toBe(true);
+		expect(runtime.resolveFlags({ campaigns: false }, { registry })['plugin.lab']).toBe(false);
 	});
 });
 

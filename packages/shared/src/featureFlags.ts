@@ -1,10 +1,11 @@
 /**
  * Owlat Feature Flags — single source of truth.
  *
- * Every toggleable product surface is declared here with its default state,
- * required env vars, docker profile, and dependency rules. The setup CLI,
- * web wizard, Convex backend, and Nuxt frontend all read from this file so
- * the toggle list stays in sync across the stack.
+ * Every toggleable product surface is declared here with its required env
+ * vars, docker profile and copy, and in `featureFlagRuntime.ts` with its
+ * default state and dependency rules. The setup CLI, web wizard, Convex
+ * backend, and Nuxt frontend all read from this file so the toggle list stays
+ * in sync across the stack.
  */
 
 import {
@@ -21,61 +22,26 @@ import {
 	SEND_TRANSPORT_KINDS,
 	type CoreSendProviderKind,
 } from './sendProviderCatalog';
+import {
+	FEATURE_FLAG_RULES,
+	resolveFlags,
+	type CoreFeatureFlagKey,
+	type FeatureFlagKey,
+	type FeatureFlagRule,
+	type FeatureFlagState,
+	type PluginFeatureFlagKey,
+} from './featureFlagRuntime';
 
 export { isPluginFeatureFlagDefinition };
 export { isPluginFeatureFlagKey } from './pluginFeatureFlagDefinition';
-
-export type CoreFeatureFlagKey =
-	// Sending
-	| 'campaigns'
-	| 'campaigns.archive'
-	| 'transactional'
-	| 'automations'
-	// Receiving
-	| 'inbox'
-	| 'inbox.codeTasks'
-	| 'chat'
-	| 'postbox'
-	| 'postbox.aiDraft'
-	| 'postbox.coldPitch'
-	| 'mail.external'
-	| 'calendar.booking'
-	// AI
-	| 'ai'
-	| 'ai.agent'
-	| 'ai.autonomy'
-	| 'ai.decisionPlane'
-	| 'ai.knowledge'
-	| 'ai.knowledge.autoLink'
-	| 'ai.knowledge.graphRetrieval'
-	| 'ai.knowledge.analytics'
-	| 'ai.assistant'
-	| 'ai.visualizations'
-	// Integrations
-	| 'webhooks'
-	| 'forms'
-	| 'imports.mailchimp'
-	| 'imports.stripe'
-	| 'imports.mandrill'
-	// Security / scanning
-	| 'scan.content'
-	| 'scan.files'
-	| 'scan.urls'
-	| 'senderAuthBadges'
-	| 'sealedMail'
-	// Analytics & deliverability
-	| 'analytics.posthog'
-	| 'domains.verification'
-	| 'domains.dkimRotation'
-	// Hosted-mode only (set by control plane, hidden from self-host wizard)
-	| 'billing.stripe'
-	| 'multiTenancy'
-	| 'tier.autoProvision';
-
-/** Runtime flags contributed by statically composed plugins. */
-export type PluginFeatureFlagKey = `plugin.${string}`;
-
-export type FeatureFlagKey = CoreFeatureFlagKey | PluginFeatureFlagKey;
+export {
+	getDefaultFlags,
+	resolveFlags,
+	type CoreFeatureFlagKey,
+	type FeatureFlagKey,
+	type FeatureFlagState,
+	type PluginFeatureFlagKey,
+} from './featureFlagRuntime';
 
 export type CoreFeatureCategory =
 	| 'sending'
@@ -104,32 +70,21 @@ export type FeatureCategory = CoreFeatureCategory | 'plugins';
  * `apps/web/app/__tests__/sharedRegistryCatalog.test.ts` pins the two copies of
  * the English together, so editing a sentence here without the catalog fails.
  */
-interface FeatureFlagDefinitionBase<Key extends FeatureFlagKey, Category extends FeatureCategory> {
-	readonly key: Key;
+interface FeatureFlagDefinitionBase<
+	Key extends FeatureFlagKey,
+	Category extends FeatureCategory,
+> extends FeatureFlagRule<Key> {
 	readonly category: Category;
 	/** English name; the web renders `sharedPkg.featureFlags.flags.<key>.label`. */
 	readonly label: string;
 	/** English description; the web renders `sharedPkg.featureFlags.flags.<key>.description`. */
 	readonly description: string;
-	readonly default: boolean;
-	/** Other flags that must be ON for this flag to be ON. */
-	readonly requires?: readonly FeatureFlagKey[];
-	/**
-	 * Any-of dependency groups: each inner group is satisfied when at least one
-	 * member resolves ON. A flag with an unsatisfied group is forced OFF, exactly
-	 * like a missing `requires` dependency. Turning a flag ON never auto-enables
-	 * group members (there is no principled choice of which); UIs should disable
-	 * the toggle with a "needs one of: …" hint instead.
-	 */
-	readonly requiresAny?: readonly (readonly FeatureFlagKey[])[];
 	/** When this flag turns OFF, these flags are also turned OFF. */
 	readonly cascadesOff?: readonly FeatureFlagKey[];
 	/** Env vars required when this flag is ON (collected by setup CLI/UI). */
 	readonly requiredEnvVars?: readonly string[];
 	/** Docker compose profile names to enable when this flag is ON. */
 	readonly dockerProfiles?: readonly string[];
-	/** Hosted-mode-only flag — hidden from the self-host wizard. */
-	readonly hostedOnly?: boolean;
 }
 
 export interface CoreFeatureFlagDefinition extends FeatureFlagDefinitionBase<
@@ -152,44 +107,36 @@ export interface PluginFeatureFlagDefinition extends FeatureFlagDefinitionBase<
 
 export type FeatureFlagDefinition = CoreFeatureFlagDefinition | PluginFeatureFlagDefinition;
 
-export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition> = {
+/** Everything about a core flag besides its rule (`featureFlagRuntime.ts`). */
+type CoreFeatureFlagDetails = Omit<CoreFeatureFlagDefinition, keyof FeatureFlagRule>;
+
+const FEATURE_FLAG_DETAILS: { readonly [Key in CoreFeatureFlagKey]: CoreFeatureFlagDetails } = {
 	campaigns: {
-		key: 'campaigns',
 		category: 'sending',
 		label: 'Marketing campaigns',
 		description: 'Schedule and send broadcast campaigns to contacts and segments.',
-		default: true,
 	},
 	'campaigns.archive': {
-		key: 'campaigns.archive',
 		category: 'sending',
 		label: 'Public archive links',
 		description: 'Publish "View in browser" links for every campaign.',
-		default: true,
-		requires: ['campaigns'],
 	},
 	transactional: {
-		key: 'transactional',
 		category: 'sending',
 		label: 'Transactional API',
 		description: 'Send programmatic emails (receipts, password resets) via the API.',
-		default: true,
 	},
 	automations: {
-		key: 'automations',
 		category: 'sending',
 		label: 'Automations',
 		description: 'Trigger-based multi-step workflows (welcome series, drip campaigns).',
-		default: false,
 		// Runs inside the Convex backend (crons + stepWalker) — no extra service.
 	},
 
 	inbox: {
-		key: 'inbox',
 		category: 'receiving',
 		label: 'Email inbox',
 		description: 'Receive inbound mail, thread conversations, and manage a shared inbox.',
-		default: false,
 		// Inbound email is delivered by the MTA (now an opt-in service), so the
 		// shared inbox needs it running to receive mail.
 		dockerProfiles: ['mta'],
@@ -209,69 +156,42 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 	// lib/codeAgentGuard.ts. Default OFF — leave it off unless you trust your
 	// org members to drive a coding agent by email.
 	'inbox.codeTasks': {
-		key: 'inbox.codeTasks',
 		category: 'receiving',
 		label: 'Extract code tasks from inbox',
 		description: 'Detect bug reports in inbound mail and surface them as developer tasks.',
-		default: false,
-		requires: ['inbox', 'ai.agent'],
 		dockerProfiles: ['inbox-codetasks'],
 	},
 	chat: {
-		key: 'chat',
 		category: 'receiving',
 		label: 'Chat',
 		description: 'Real-time chat surface alongside the inbox.',
-		default: false,
 	},
 	postbox: {
-		key: 'postbox',
 		category: 'receiving',
 		label: 'Personal mail (Postbox)',
 		description:
 			'Per-user mailboxes with webmail UI, IMAP/SMTP for native clients, and MX-based delivery (Gmail-equivalent).',
-		default: false,
 		// personal-mail = the hosted IMAP server + ACME stack; mta = the MX/send
 		// transport hosted mailboxes deliver through.
 		dockerProfiles: ['personal-mail', 'mta'],
 	},
 	'postbox.aiDraft': {
-		key: 'postbox.aiDraft',
 		category: 'ai',
 		label: 'Draft replies in personal mail',
 		description:
 			'When a personal message needs a reply, have a draft waiting in the Answer queue. You always review it before it is sent.',
-		default: false,
-		// Needs the AI master toggle for an LLM provider, plus *a* mailbox source
-		// to draft for — either hosted Postbox or a connected external mailbox
-		// (`mail.external` deliberately does not require `postbox`; see its
-		// comment below). The draft pipeline is source-agnostic, so any-of is the
-		// honest dependency. resolveFlags forces this OFF whenever `ai` is off or
-		// neither source is on, so a disabled AI stack degrades to today's
-		// behaviour.
-		requires: ['ai'],
-		requiresAny: [['postbox', 'mail.external']],
 	},
 	'postbox.coldPitch': {
-		key: 'postbox.coldPitch',
 		category: 'ai',
 		label: 'Hold cold sales pitches out of the Answer queue',
 		description:
 			'Ask whether mail from a sender you have never written to is an unsolicited sales pitch. A pitch waits in your digest under Cold outreach instead of the Answer queue. It is never marked as spam.',
-		default: false,
-		// Off until the cold-pitch question passes its labelled sample
-		// (`apps/api/scripts/cold-pitch-eval.ts`). Same prerequisites as
-		// draft-on-arrival: the AI master toggle and a personal mailbox source.
-		requires: ['ai'],
-		requiresAny: [['postbox', 'mail.external']],
 	},
 	'mail.external': {
-		key: 'mail.external',
 		category: 'receiving',
 		label: 'Connect external mailbox',
 		description:
 			'Let each user connect their own existing Gmail / Fastmail / company mailbox over IMAP+SMTP — personal mail without registering a sending domain. Independent of hosted Postbox.',
-		default: false,
 		// Activates the apps/mail-sync worker. Intentionally NOT requires:['postbox']
 		// — that would force the hosted ACME + IMAP-server stack (personal-mail
 		// profile) the no-domain user is avoiding.
@@ -292,20 +212,16 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 	// go out through the system mail transport, so it needs no mailbox and no
 	// extra service.
 	'calendar.booking': {
-		key: 'calendar.booking',
 		category: 'receiving',
 		label: 'Booking page',
 		description:
 			'Give each member a public page where people pick a meeting time, and insert your open times into an email.',
-		default: false,
 	},
 
 	ai: {
-		key: 'ai',
 		category: 'ai',
 		label: 'AI features',
 		description: 'Turn on the AI features below. Needs an AI provider.',
-		default: false,
 		cascadesOff: [
 			'ai.agent',
 			'ai.autonomy',
@@ -321,23 +237,17 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		dockerProfiles: ['ai'], // optional local-LLM (ollama) sidecar
 	},
 	'ai.agent': {
-		key: 'ai.agent',
 		category: 'ai',
 		label: 'Draft replies for me',
 		description:
 			'Sort incoming team mail by topic and draft a reply to each message, ready for you to review.',
-		default: false,
-		requires: ['ai', 'inbox'],
 		cascadesOff: ['ai.autonomy', 'inbox.codeTasks'],
 	},
 	'ai.autonomy': {
-		key: 'ai.autonomy',
 		category: 'ai',
 		label: 'Rules for each type of message',
 		description:
 			'Decide per type of message when AI replies may go out without review, and add rules in plain words. Set them up under AI replies.',
-		default: false,
-		requires: ['ai', 'ai.agent'],
 	},
 	// The kill switch for the decision plane. OFF is not a
 	// degraded mode: every decision falls back to the language model the
@@ -348,206 +258,149 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 	// yet. The credential is stored configuration (the AI-providers page), not
 	// an env var, so there is nothing to list in `requiredEnvVars`.
 	'ai.decisionPlane': {
-		key: 'ai.decisionPlane',
 		category: 'ai',
 		label: 'Separate model for quick decisions',
 		description:
 			'Use a separate decision service for quick calls, such as whether a message needs a reply or which topic it belongs to. Off, your main AI model makes them.',
-		default: false,
-		requires: ['ai'],
 	},
 	'ai.knowledge': {
-		key: 'ai.knowledge',
 		category: 'ai',
 		label: 'Knowledge graph',
 		description: 'Learn facts from your conversations so drafted replies can use them.',
-		default: false,
-		requires: ['ai'],
 	},
 	'ai.knowledge.autoLink': {
-		key: 'ai.knowledge.autoLink',
 		category: 'ai',
 		label: 'Connect related facts',
 		description:
 			'Use AI to spot how saved facts relate to each other, including the ones you already have. Simple links are made either way.',
-		default: false,
-		requires: ['ai.knowledge'],
 	},
 	'ai.knowledge.graphRetrieval': {
-		key: 'ai.knowledge.graphRetrieval',
 		category: 'ai',
 		label: 'Use related facts in drafts',
 		description:
 			'Find related facts when drafting replies, not only the closest matches. Off, drafts use the closest matches only.',
-		default: false,
-		requires: ['ai.knowledge'],
 	},
 	'ai.knowledge.analytics': {
-		key: 'ai.knowledge.analytics',
 		category: 'ai',
 		label: 'Knowledge insights',
 		description:
 			'See which facts matter most and how they group together, on a knowledge dashboard.',
-		default: false,
-		requires: ['ai.knowledge'],
 	},
 	'ai.assistant': {
-		key: 'ai.assistant',
 		category: 'ai',
 		label: 'AI assistant & chat',
 		description:
 			'An assistant you can chat with, plus @assistant replies inside team chat. It searches your knowledge, files, contacts and campaigns, and drafts copy on request.',
-		default: false,
-		requires: ['ai'],
 	},
 	'ai.visualizations': {
-		key: 'ai.visualizations',
 		category: 'ai',
 		label: 'AI dashboards',
 		description: 'Describe a chart in plain words and get it built from your data.',
-		default: false,
-		requires: ['ai'],
 	},
 
 	webhooks: {
-		key: 'webhooks',
 		category: 'integrations',
 		label: 'Outbound webhooks',
 		description:
 			'Deliver event payloads (campaign sends, contact changes) to external HTTP endpoints.',
-		default: false,
 		// Outbound webhook delivery runs inside the Convex backend — no service.
 	},
 	forms: {
-		key: 'forms',
 		category: 'integrations',
 		label: 'Embeddable forms',
 		description: 'Generate signup/capture forms to embed on external sites.',
-		default: true,
 	},
 	'imports.mailchimp': {
-		key: 'imports.mailchimp',
 		category: 'integrations',
 		label: 'Mailchimp import',
 		description: 'One-click import of contacts and lists from a Mailchimp account.',
-		default: false,
 	},
 	'imports.stripe': {
-		key: 'imports.stripe',
 		category: 'integrations',
 		label: 'Stripe customer sync',
 		description: 'Sync Stripe customers into Owlat contacts with revenue properties.',
-		default: false,
 	},
 	'imports.mandrill': {
-		key: 'imports.mandrill',
 		category: 'integrations',
 		label: 'Mandrill suppression import',
 		description:
 			"Carry a Mandrill account's rejection blacklist (bounces, complaints, unsubscribes) into the suppression list when migrating.",
-		default: false,
 	},
 
 	'scan.content': {
-		key: 'scan.content',
 		category: 'security',
 		label: 'Content scanning',
 		description: 'Block obvious spam, phishing, and homoglyph attacks before sending.',
-		default: true,
 	},
 	'scan.files': {
-		key: 'scan.files',
 		category: 'security',
 		label: 'File scanning (ClamAV)',
 		description: 'Scan email attachments for malware via a local ClamAV daemon.',
-		default: true,
 		dockerProfiles: ['clamav'],
 	},
 	'scan.urls': {
-		key: 'scan.urls',
 		category: 'security',
 		label: 'URL reputation',
 		description: 'Check outbound links against Google Safe Browsing before sending.',
-		default: false,
 		requiredEnvVars: ['GOOGLE_SAFE_BROWSING_API_KEY'],
 	},
 	senderAuthBadges: {
-		key: 'senderAuthBadges',
 		category: 'security',
 		label: 'Sender authenticity badges',
 		description:
 			'Show an honest "sender verified" or "not authorized to send for this domain" badge on personal mail, based on the message\'s own authentication result.',
-		// Ships ON by default (Sealed Mail release): resolves on wherever the
-		// Postbox plane runs, and stays off on deployments without personal mail.
-		default: true,
-		// Sender-authenticity surfaces live on the Postbox 1:1 plane.
-		requires: ['postbox'],
 	},
 	sealedMail: {
-		key: 'sealedMail',
 		category: 'security',
 		label: 'Sealed mail (end-to-end encryption)',
 		description:
 			'Encrypt personal mail end-to-end between Owlat instances when every recipient has a usable key, and render a "Sealed" badge for encrypted messages.',
-		// Ships ON by default (Sealed Mail release): auto-seals wherever Postbox +
-		// sender authenticity resolve on.
-		default: true,
-		// End-to-end sealing applies to the Postbox 1:1 plane, and the honest
-		// "Sealed - sender verified" badge builds on sender authenticity.
-		requires: ['postbox', 'senderAuthBadges'],
 	},
 
 	'analytics.posthog': {
-		key: 'analytics.posthog',
 		category: 'deliverability',
 		label: 'PostHog analytics',
 		description: 'Pipe product events to a PostHog instance for funnel analysis.',
-		default: false,
 		requiredEnvVars: ['POSTHOG_API_KEY', 'POSTHOG_HOST'],
 	},
 	'domains.verification': {
-		key: 'domains.verification',
 		category: 'deliverability',
 		label: 'Domain verification',
 		description: 'Verify SPF, DKIM, and DMARC records before allowing a domain to send.',
-		default: true,
 	},
 	'domains.dkimRotation': {
-		key: 'domains.dkimRotation',
 		category: 'deliverability',
 		label: 'DKIM auto-rotation',
 		description:
 			'Flag DKIM keys due for rotation and auto-activate an operator-initiated new key once its DNS record is published.',
-		default: true,
 	},
 
 	'billing.stripe': {
-		key: 'billing.stripe',
 		category: 'hosted',
 		label: 'Stripe billing',
 		description: 'Charge tenants via Stripe (hosted control plane only).',
-		default: false,
-		hostedOnly: true,
 		requiredEnvVars: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'],
 	},
 	multiTenancy: {
-		key: 'multiTenancy',
 		category: 'hosted',
 		label: 'Multi-tenancy',
 		description: 'Per-org isolation across VPSes (hosted control plane only).',
-		default: false,
-		hostedOnly: true,
 	},
 	'tier.autoProvision': {
-		key: 'tier.autoProvision',
 		category: 'hosted',
 		label: 'Auto-provisioning',
 		description: 'Automatically provision a VPS when a paid subscription starts.',
-		default: false,
-		hostedOnly: true,
 		requiredEnvVars: ['HETZNER_API_TOKEN'],
 	},
 };
+
+/** Every core flag: its rule from `FEATURE_FLAG_RULES`, enriched with its details. */
+export const FEATURE_FLAGS = Object.fromEntries(
+	(Object.keys(FEATURE_FLAG_RULES) as CoreFeatureFlagKey[]).map((key) => [
+		key,
+		{ ...FEATURE_FLAG_RULES[key], ...FEATURE_FLAG_DETAILS[key] },
+	])
+) as Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition>;
 
 export const ALL_FEATURE_FLAG_KEYS = Object.keys(FEATURE_FLAGS) as CoreFeatureFlagKey[];
 
@@ -643,69 +496,6 @@ export const SENDING_FLAGS_REQUIRING_DELIVERY = [
 	'transactional',
 	'automations',
 ] as const satisfies readonly FeatureFlagKey[];
-
-export type FeatureFlagState = Partial<Record<CoreFeatureFlagKey, boolean>> &
-	Record<PluginFeatureFlagKey, boolean>;
-
-/**
- * Default flag state for a fresh self-host install.
- * Hosted-only flags are excluded.
- */
-export function getDefaultFlags(opts: FeatureFlagResolutionOptions = {}): FeatureFlagState {
-	const result: FeatureFlagState = {};
-	for (const def of Object.values(opts.registry ?? FEATURE_FLAGS)) {
-		if (def.hostedOnly && !opts.hosted) continue;
-		result[def.key] = def.default;
-	}
-	return result;
-}
-
-/**
- * Resolve effective flag state by merging stored state with defaults and applying
- * `requires` / `requiresAny` rules. A flag is OFF if any of its dependencies are
- * OFF, or any of its any-of groups has no ON member, regardless of its own
- * stored value.
- */
-export function resolveFlags(
-	stored: FeatureFlagState,
-	opts: FeatureFlagResolutionOptions = {}
-): Record<FeatureFlagKey, boolean> {
-	const registry = opts.registry ?? FEATURE_FLAGS;
-	const merged: Record<string, boolean> = { ...getDefaultFlags(opts) };
-	for (const definition of Object.values(registry)) {
-		if (hasOwnKey(stored, definition.key)) {
-			merged[definition.key] = stored[definition.key] === true;
-		}
-	}
-
-	// Iterate to a fixed point: dependencies can chain (codeTasks → ai.agent → ai + inbox).
-	let changed = true;
-	let iterations = 0;
-	while (changed && iterations < 10) {
-		changed = false;
-		iterations++;
-		for (const def of Object.values(registry)) {
-			if (!merged[def.key]) continue;
-			for (const dep of def.requires ?? []) {
-				if (!merged[dep]) {
-					merged[def.key] = false;
-					changed = true;
-					break;
-				}
-			}
-			if (!merged[def.key]) continue;
-			for (const group of def.requiresAny ?? []) {
-				if (!group.some((member) => merged[member])) {
-					merged[def.key] = false;
-					changed = true;
-					break;
-				}
-			}
-		}
-	}
-
-	return merged as Record<FeatureFlagKey, boolean>;
-}
 
 /**
  * Returns true if `flag` is enabled given `stored` state, after resolving dependencies.
