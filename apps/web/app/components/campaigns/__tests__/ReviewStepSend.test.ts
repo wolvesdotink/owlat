@@ -178,6 +178,7 @@ function mountStep(
 				CampaignsSendReadinessNote: true,
 				CampaignsTestEmailModal: true,
 				CampaignsEmailBodyPreview: true,
+				CampaignsChangedSinceLastSend: true,
 				CampaignsPresendChecksPanel: presendPanelStub,
 				CampaignsSendTimingOptions: true,
 				Icon: true,
@@ -461,6 +462,56 @@ describe('ReviewStep email body (#1048)', () => {
 		const wrapper = mountStep({ selectedTemplate: template, emailBodyHtml: '<p>Hi</p>' });
 		await wrapper.find('[data-testid="review-edit-email"]').trigger('click');
 		expect(wrapper.emitted('editEmail')).toEqual([[null]]);
+	});
+});
+
+describe('ReviewStep changed since the last send', () => {
+	const template = { _id: 'tpl_1' as Id<'emailTemplates'>, name: 'Digest', subject: 'Hi' };
+	const variantB = 'tpl_b' as Id<'emailTemplates'>;
+
+	const lines = (wrapper: ReturnType<typeof mountStep>) =>
+		wrapper
+			.findAll('campaigns-changed-since-last-send-stub')
+			.map((line) => line.attributes('template-id'));
+
+	it('compares the selected template, and leaves the send as it was', async () => {
+		const wrapper = mountStep({ selectedTemplate: template, emailBodyHtml: '<p>Hi</p>' });
+
+		expect(lines(wrapper)).toEqual(['tpl_1']);
+		await clickSend(wrapper);
+		expect(scheduleRuns).toHaveLength(1);
+	});
+
+	it('still blocks an empty body beside it', async () => {
+		const wrapper = mountStep({ selectedTemplate: template, emailBodyHtml: null });
+
+		expect(lines(wrapper)).toEqual(['tpl_1']);
+		await clickSend(wrapper);
+		expect(scheduleRuns).toEqual([]);
+	});
+
+	it("adds Variant B's template in a content test, not in a subject test", () => {
+		const content = mountStep({
+			selectedTemplate: template,
+			emailBodyHtml: '<p>Hi</p>',
+			abTestEnabled: true,
+			abTestType: 'content',
+			abVariantBTemplateId: variantB,
+		});
+		expect(lines(content)).toEqual(['tpl_1', 'tpl_b']);
+
+		const subject = mountStep({
+			selectedTemplate: template,
+			emailBodyHtml: '<p>Hi</p>',
+			abTestEnabled: true,
+			abTestType: 'subject',
+			abVariantBTemplateId: variantB,
+		});
+		expect(lines(subject)).toEqual(['tpl_1']);
+	});
+
+	it('has nothing to compare before a template is chosen', () => {
+		expect(lines(mountStep({ selectedTemplate: null }))).toEqual([]);
 	});
 });
 
