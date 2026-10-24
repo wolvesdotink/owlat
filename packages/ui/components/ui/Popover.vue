@@ -15,12 +15,18 @@
  * Escape handling is switched off to keep one owner for the key.
  *
  * `focus` decides whether the panel takes focus when it opens (and gives it
- * back when it closes). Suggestion lists turn it off: the person keeps typing
- * in the field while the list follows, and a press in that field (`inside`)
- * does not count as outside.
+ * back when it closes). A panel that takes focus is a dialog: Tab cycles
+ * through it, an open `UiModal`'s Tab trap stands aside meanwhile (the panel
+ * is outside the modal's DOM), and it is named by its `#trigger` or by
+ * `label`. Suggestion lists turn focus off: the person keeps typing in the
+ * field while the list follows, and a press in that field (`inside`) does not
+ * count as outside. Such a panel is only a box around what the field controls
+ * (a listbox), so it has no role and no name of its own.
  */
+import { computed, useSlots } from 'vue';
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui';
 import { useEscapeLayer } from '../../composables/useEscapeLayer';
+import { useFocusLayer } from '../../composables/useModalFocus';
 import type { PopoverAnchorTarget } from '../../utils/popoverAnchor';
 
 defineOptions({ inheritAttrs: false });
@@ -39,6 +45,8 @@ const props = withDefaults(
 		focus?: boolean;
 		/** Elements a press may land on without closing the panel. */
 		inside?: (Element | null | undefined)[];
+		/** Names the panel when it takes focus and has no `#trigger` to name it. */
+		label?: string;
 	}>(),
 	{
 		anchor: null,
@@ -48,6 +56,7 @@ const props = withDefaults(
 		matchAnchorWidth: false,
 		focus: true,
 		inside: () => [],
+		label: undefined,
 	}
 );
 
@@ -59,8 +68,25 @@ defineSlots<{
 	default?: () => unknown;
 }>();
 
+const slots = useSlots();
+
 useEscapeLayer(open, () => {
 	open.value = false;
+});
+useFocusLayer(() => open.value && props.focus);
+
+/**
+ * Reka renders every panel as a dialog labelled by the trigger. That holds
+ * for a focused panel with a trigger; without one the reference would point
+ * at nothing, and a panel that never takes focus is no dialog at all. An
+ * attribute set to `undefined` on the panel element overrides Reka's and is
+ * left out.
+ */
+const semantics = computed(() => {
+	if (!props.focus) return { role: undefined, 'aria-labelledby': undefined };
+	if (props.label) return { 'aria-label': props.label, 'aria-labelledby': undefined };
+	if (!slots['trigger']) return { 'aria-labelledby': undefined };
+	return {};
 });
 
 function onInteractOutside(event: Event) {
@@ -80,20 +106,24 @@ function onAutoFocus(event: Event) {
 		</PopoverTrigger>
 		<PopoverPortal>
 			<PopoverContent
-				v-bind="$attrs"
+				as-child
 				:reference="anchor ?? undefined"
 				:side="side"
 				:align="align"
 				:side-offset="sideOffset"
 				:collision-padding="8"
-				class="ui-popover z-(--z-menu) max-h-(--reka-popover-content-available-height) overflow-y-auto rounded-lg border border-border-subtle bg-bg-elevated shadow-lg outline-none"
-				:class="{ 'w-(--reka-popover-trigger-width)': matchAnchorWidth }"
 				@escape-key-down.prevent
 				@interact-outside="onInteractOutside"
 				@open-auto-focus="onAutoFocus"
 				@close-auto-focus="onAutoFocus"
 			>
-				<slot />
+				<div
+					v-bind="{ ...$attrs, ...semantics }"
+					class="ui-popover z-(--z-menu) max-h-(--reka-popover-content-available-height) overflow-y-auto rounded-lg border border-border-subtle bg-bg-elevated shadow-lg outline-none"
+					:class="{ 'w-(--reka-popover-trigger-width)': matchAnchorWidth }"
+				>
+					<slot />
+				</div>
 			</PopoverContent>
 		</PopoverPortal>
 	</PopoverRoot>

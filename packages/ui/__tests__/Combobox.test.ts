@@ -159,6 +159,50 @@ describe('UiCombobox as a popover', () => {
 	});
 });
 
+describe('UiCombobox and an IME', () => {
+	async function compose(el: Element, key: string, init: KeyboardEventInit) {
+		const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+		el.dispatchEvent(event);
+		await flushPromises();
+		return event;
+	}
+
+	it('leaves every composing key to the IME, closed or open', async () => {
+		const { wrapper, picked } = mountCombobox({ autoHighlight: true });
+		const el = input(wrapper).element;
+		el.focus();
+
+		// Closed: a composing ↓ neither opens the list nor moves the caret.
+		for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+			expect((await compose(el, 'ArrowDown', init)).defaultPrevented).toBe(false);
+			expect((await compose(el, 'Enter', init)).defaultPrevented).toBe(false);
+		}
+		expect(input(wrapper).attributes('aria-expanded')).toBe('false');
+
+		// Open: the confirming Enter (Safari's arrives with keyCode 229 only)
+		// does not pick the highlighted option.
+		await input(wrapper).setValue('a');
+		await flushPromises();
+		expect(input(wrapper).attributes('aria-expanded')).toBe('true');
+		const highlighted = el.getAttribute('aria-activedescendant');
+		expect(highlighted).toBeTruthy();
+		for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+			expect((await compose(el, 'Enter', init)).defaultPrevented).toBe(false);
+			expect((await compose(el, 'ArrowDown', init)).defaultPrevented).toBe(false);
+		}
+		expect(picked).toEqual([]);
+		expect(el.getAttribute('aria-activedescendant')).toBe(highlighted);
+	});
+
+	it('leaves a composing Escape alone in an inline search', async () => {
+		const { wrapper, query } = mountCombobox({ inline: true });
+		await input(wrapper).setValue('ad');
+		const event = await compose(input(wrapper).element, 'Escape', { isComposing: true });
+		expect(event.defaultPrevented).toBe(false);
+		expect(query.value).toBe('ad');
+	});
+});
+
 describe('UiCombobox with a caller-laid-out list', () => {
 	it('drives a UiListbox placed in its default slot', async () => {
 		const picked: string[] = [];

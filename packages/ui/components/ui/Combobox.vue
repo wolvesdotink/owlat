@@ -20,7 +20,7 @@
 import { computed, ref, shallowRef, provide, useSlots, type ShallowRef } from 'vue';
 import UiListbox from './Listbox.vue';
 import UiPopover from './Popover.vue';
-import { LISTBOX_FIELD_HOST, type DrivenListbox } from '../../utils/listboxField';
+import { LISTBOX_FIELD_HOST, isComposingKey, type DrivenListbox } from '../../utils/listboxField';
 
 defineOptions({ inheritAttrs: false });
 
@@ -111,6 +111,9 @@ function onSelect(option: T) {
 }
 
 function onKeydown(event: KeyboardEvent) {
+	// Every key of an IME composition is the IME's (Enter confirms a candidate,
+	// the arrows move through candidates).
+	if (isComposingKey(event)) return;
 	// A closed popover opens on ↓ (or ↑); the next press moves through it.
 	if (!props.inline && !open.value && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
 		event.preventDefault();

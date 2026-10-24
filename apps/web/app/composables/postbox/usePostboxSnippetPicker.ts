@@ -34,6 +34,7 @@ import { ref, computed, shallowRef, type Ref } from 'vue';
 import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
 import { selectionCaretAnchor, type VirtualAnchor } from '@owlat/ui/utils/popoverAnchor';
 import { detectSnippetTrigger, rankSnippets } from '~/utils/postboxSnippets';
+import { isImeComposing } from '~/utils/imeComposition';
 import {
 	promptedSnippetVariables,
 	resolveSnippetBody,
@@ -264,7 +265,8 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 	 * consumed (the caller must then stop its own handling).
 	 */
 	function handleKeydown(event: KeyboardEvent): boolean {
-		if (!open.value) return false;
+		// An IME's keys (Escape cancels its composition) stay the IME's.
+		if (!open.value || isImeComposing(event)) return false;
 		if (list.value?.handleKeydown(event)) return true;
 		// The shown list's escape layer takes Esc first; this covers a list
 		// that could not be placed (no caret box).

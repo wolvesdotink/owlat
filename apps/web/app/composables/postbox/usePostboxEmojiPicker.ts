@@ -22,6 +22,7 @@ import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
 import { selectionCaretAnchor, type VirtualAnchor } from '@owlat/ui/utils/popoverAnchor';
 import { detectShortcodeTrigger, fuzzyFilterEmoji } from '~/utils/postboxEmojiShortcodes';
 import type { PostboxEmoji } from '~/utils/postboxEmojiData';
+import { isImeComposing } from '~/utils/imeComposition';
 
 export interface EmojiPickerOptions {
 	editorRef: Ref<HTMLElement | null>;
@@ -136,7 +137,8 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 	 * comes back through `insert`.
 	 */
 	function handleKeydown(event: KeyboardEvent): boolean {
-		if (!open.value) return false;
+		// An IME's keys (Escape cancels its composition) stay the IME's.
+		if (!open.value || isImeComposing(event)) return false;
 		if (list.value?.handleKeydown(event)) return true;
 		// The shown list's escape layer takes Esc first; this covers a list
 		// that could not be placed.

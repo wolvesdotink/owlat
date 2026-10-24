@@ -103,6 +103,124 @@ describe('UiPopover', () => {
 		expect(modalOpen.value).toBe(false);
 	});
 
+	it('inside a modal, Tab and Shift+Tab stay in a focused popover', async () => {
+		const popoverOpen = ref(false);
+		const Host = defineComponent({
+			setup: () => () =>
+				h(
+					Modal,
+					{ open: true, title: 'Edit' },
+					{
+						default: () => [
+							h('input', { 'data-testid': 'modal-field' }),
+							h(
+								Popover as Component,
+								{
+									open: popoverOpen.value,
+									'onUpdate:open': (next: boolean) => (popoverOpen.value = next),
+								},
+								{
+									trigger: () => h('button', { 'data-testid': 'trigger' }, 'More'),
+									default: () => [
+										h('button', { 'data-testid': 'first' }, 'First'),
+										h('button', { 'data-testid': 'second' }, 'Second'),
+									],
+								}
+							),
+						],
+					}
+				),
+		});
+		mount(Host, {
+			attachTo: document.body,
+			global: { plugins: [createUiI18n('en')], components: { Icon: IconStub } },
+		});
+		await flushPromises();
+		const byId = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
+		byId('trigger').click();
+		await flushPromises();
+		expect(document.activeElement).toBe(byId('first'));
+
+		async function tab(shiftKey = false) {
+			const event = new KeyboardEvent('keydown', {
+				key: 'Tab',
+				shiftKey,
+				bubbles: true,
+				cancelable: true,
+			});
+			document.activeElement!.dispatchEvent(event);
+			await flushPromises();
+			return event;
+		}
+
+		// Between the panel's own controls Tab is the browser's: the modal's
+		// trap does not pull focus back into the modal.
+		expect((await tab()).defaultPrevented).toBe(false);
+		expect(document.activeElement).toBe(byId('first'));
+		expect(popoverOpen.value).toBe(true);
+
+		// At the edges it wraps inside the panel, both ways.
+		byId('second').focus();
+		await tab();
+		expect(document.activeElement).toBe(byId('first'));
+		await tab(true);
+		expect(document.activeElement).toBe(byId('second'));
+		expect(popoverOpen.value).toBe(true);
+
+		// Once the popover closes, the modal's trap is back in charge: Tab from
+		// outside the modal lands back inside it.
+		await escape();
+		expect(popoverOpen.value).toBe(false);
+		expect(document.activeElement).toBe(byId('trigger'));
+		const outside = document.createElement('button');
+		document.body.append(outside);
+		outside.focus();
+		expect((await tab()).defaultPrevented).toBe(true);
+		expect(document.activeElement?.closest('[aria-modal="true"]')).not.toBeNull();
+		outside.remove();
+	});
+
+	it('is a dialog named by its trigger', async () => {
+		const { wrapper } = mountWithTrigger();
+		await wrapper.get('[data-testid="trigger"]').trigger('click');
+		await flushPromises();
+		const dialog = panel()!.closest('[role="dialog"]')!;
+		const labelledBy = dialog.getAttribute('aria-labelledby')!;
+		expect(document.getElementById(labelledBy)?.textContent).toBe('Filters');
+	});
+
+	it('without a trigger, is a dialog named by `label`', async () => {
+		const anchor = document.createElement('button');
+		document.body.append(anchor);
+		mount(Popover as Component, {
+			props: { open: true, anchor, label: 'Filters' },
+			slots: { default: () => h('div', { 'data-testid': 'panel' }, [h('button', 'Apply')]) },
+			attachTo: document.body,
+		});
+		await flushPromises();
+		const named = panel()!.closest('[role="dialog"]')!;
+		expect(named.getAttribute('aria-label')).toBe('Filters');
+		expect(named.hasAttribute('aria-labelledby')).toBe(false);
+		anchor.remove();
+	});
+
+	it('without taking focus it is a plain box, not an unnamed dialog', async () => {
+		const field = document.createElement('textarea');
+		document.body.append(field);
+		mount(Popover as Component, {
+			props: { open: true, anchor: field, focus: false, inside: [field] },
+			slots: { default: () => h('div', { 'data-testid': 'panel' }, 'Suggestions') },
+			attachTo: document.body,
+		});
+		await flushPromises();
+		const box = panel()!.parentElement!;
+		expect(box.classList.contains('ui-popover')).toBe(true);
+		expect(box.hasAttribute('role')).toBe(false);
+		expect(box.hasAttribute('aria-labelledby')).toBe(false);
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
+		field.remove();
+	});
+
 	it('anchored to a field without taking focus, a press in the field keeps it open', async () => {
 		const open = ref(true);
 		const fieldRef = ref<HTMLTextAreaElement | null>(null);

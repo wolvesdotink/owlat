@@ -3,7 +3,7 @@
  * trigger, the matching and the insertion; the list on screen owns the
  * highlight and ↑ ↓ Enter Tab. These pin the hand-off: the controllers hang
  * the list from the caret, forward the editor's keys to the rendered list,
- * and take nothing when no list is on screen.
+ * take nothing when no list is on screen, and leave an IME's keys alone.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
@@ -37,6 +37,8 @@ afterEach(() => {
 });
 
 const key = (k: string) => new KeyboardEvent('keydown', { key: k, cancelable: true });
+const composing = (k: string) =>
+	new KeyboardEvent('keydown', { key: k, cancelable: true, isComposing: true });
 
 const SNIPPETS: EditorSnippet[] = [
 	{ _id: 's1', name: 'Refund policy', shortcut: 'refund', bodyHtml: '<p>30 days.</p>' },
@@ -87,6 +89,20 @@ describe('usePostboxSnippetPicker', () => {
 		expect(escape.defaultPrevented).toBe(true);
 		expect(picker.open.value).toBe(false);
 	});
+
+	it('leaves a composing key to the IME, Escape included', () => {
+		const picker = mountPicker('Hello ;re');
+		picker.update();
+		const list = { handleKeydown: vi.fn(() => true), fieldAttrs: {} };
+		picker.bindList(list);
+		for (const k of ['ArrowDown', 'Enter', 'Escape']) {
+			const event = composing(k);
+			expect(picker.handleKeydown(event)).toBe(false);
+			expect(event.defaultPrevented).toBe(false);
+		}
+		expect(list.handleKeydown).not.toHaveBeenCalled();
+		expect(picker.open.value).toBe(true);
+	});
 });
 
 describe('usePostboxEmojiPicker', () => {
@@ -122,5 +138,19 @@ describe('usePostboxEmojiPicker', () => {
 		expect(picker.handleKeydown(key('Escape'))).toBe(true);
 		expect(picker.open.value).toBe(false);
 		expect(picker.anchor.value).toBeNull();
+	});
+
+	it('leaves a composing key to the IME, Escape included', () => {
+		const picker = mountPicker('Nice :sm');
+		picker.refresh();
+		const list = { handleKeydown: vi.fn(() => true), fieldAttrs: {} };
+		picker.bindList(list);
+		for (const k of ['ArrowDown', 'Enter', 'Escape']) {
+			const event = composing(k);
+			expect(picker.handleKeydown(event)).toBe(false);
+			expect(event.defaultPrevented).toBe(false);
+		}
+		expect(list.handleKeydown).not.toHaveBeenCalled();
+		expect(picker.open.value).toBe(true);
 	});
 });

@@ -43,8 +43,12 @@ export interface ListboxFieldControls {
 const NAVIGATION = new Set(['ArrowDown', 'ArrowUp']);
 const JUMPS = new Set(['Home', 'End']);
 
-/** An IME is composing: its Enter confirms a candidate, its arrows pick one. */
-function composing(event: KeyboardEvent): boolean {
+/**
+ * An IME is composing: its Enter confirms a candidate, its arrows pick one.
+ * Safari sends the confirming Enter after `compositionend`, with `isComposing`
+ * already false but still `keyCode` 229.
+ */
+export function isComposingKey(event: KeyboardEvent): boolean {
 	return event.isComposing || event.keyCode === 229;
 }
 
@@ -86,7 +90,7 @@ export const ListboxFieldBridge = defineComponent({
 		);
 
 		function keydown(event: KeyboardEvent, keys: ListboxFieldKeys = {}): boolean {
-			if (props.empty || composing(event) || event.altKey || event.ctrlKey || event.metaKey) {
+			if (props.empty || isComposingKey(event) || event.altKey || event.ctrlKey || event.metaKey) {
 				return false;
 			}
 			if (NAVIGATION.has(event.key) || (keys.homeEnd && JUMPS.has(event.key))) {

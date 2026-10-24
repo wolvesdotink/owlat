@@ -5,6 +5,33 @@ import { useEscapeLayer } from './useEscapeLayer';
 // Nested dialogs suspend the parent trap until the child closes.
 const activeDialogs: symbol[] = [];
 
+function removeLayer(token: symbol) {
+	const index = activeDialogs.indexOf(token);
+	if (index !== -1) activeDialogs.splice(index, 1);
+}
+
+/**
+ * A layer that holds focus outside every dialog's DOM while it is active (a
+ * popover rendered at the end of `<body>`). An open dialog's trap would see
+ * focus outside its container and pull it back in, which also dismisses the
+ * layer, so the trap stands aside until the layer closes, as for a nested
+ * dialog. The layer keeps Tab inside itself; nothing else is done here (no
+ * initial focus, no restore, no Escape).
+ */
+export function useFocusLayer(active: Ref<boolean> | (() => boolean)): void {
+	if (typeof window === 'undefined') return;
+	const token = Symbol('focus layer');
+	watch(
+		active,
+		(isActive) => {
+			if (!isActive) removeLayer(token);
+			else if (!activeDialogs.includes(token)) activeDialogs.push(token);
+		},
+		{ immediate: true }
+	);
+	onScopeDispose(() => removeLayer(token));
+}
+
 export interface ModalFocusOptions {
 	/**
 	 * The element to focus on open instead of the first focusable one, e.g.
@@ -104,8 +131,7 @@ export function useModalFocus(
 	function release() {
 		generation += 1;
 		const restore = isTop();
-		const index = activeDialogs.indexOf(token);
-		if (index !== -1) activeDialogs.splice(index, 1);
+		removeLayer(token);
 		document.removeEventListener('keydown', handleKeydown, true);
 		document.removeEventListener('keydown', handleOffOrderTab);
 		if (restore && opener?.isConnected) opener.focus();
