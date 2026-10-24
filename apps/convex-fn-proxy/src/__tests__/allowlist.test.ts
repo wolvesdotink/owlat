@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import {
 	ALLOWED_FUNCTION_PATHS,
@@ -9,7 +10,7 @@ import {
 } from '../allowlist.js';
 
 describe('function allowlist', () => {
-	it('permits exactly the fifteen worker-queue functions across both namespaces', () => {
+	it('permits exactly the sixteen worker functions: both queue namespaces and the wire report', () => {
 		expect([...ALLOWED_FUNCTION_PATHS].sort()).toEqual(
 			[
 				'codeWorkTasks:getNextQueued',
@@ -27,9 +28,21 @@ describe('function allowlist', () => {
 				'plugins/workerTasks:complete',
 				'plugins/workerTasks:fail',
 				'plugins/workerTasks:reclaimStale',
+				'maintenance/workerRegistry:reportCodeWorker',
 			].sort()
 		);
-		expect(ALLOWED_FUNCTION_PATHS.size).toBe(15);
+		expect(ALLOWED_FUNCTION_PATHS.size).toBe(16);
+	});
+
+	it('names exactly the paths the code-worker references', () => {
+		const client = readFileSync(
+			new URL('../../../code-worker/src/convexClient.ts', import.meta.url),
+			'utf8'
+		);
+		const referenced = [...client.matchAll(/makeFunctionReference<[\s\S]*?>\(\s*'([^']+)'/g)].map(
+			(match) => match[1]
+		);
+		expect(new Set(referenced)).toEqual(new Set(ALLOWED_FUNCTION_PATHS));
 	});
 
 	it('accepts every allowlisted path', () => {
@@ -44,6 +57,8 @@ describe('function allowlist', () => {
 			'codeWorkTasks:cancel',
 			'codeWorkTasks:list',
 			'plugins/workerTasks:enqueue',
+			// The generic report names its service; only the code-worker's own entry is allowed.
+			'maintenance/workerRegistry:report',
 			'organizations:deleteAll',
 			'auth:signIn',
 			'',

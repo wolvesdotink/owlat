@@ -53,6 +53,7 @@ import { bookingTables } from './schema/booking';
 import { pushSubscriptionTables } from './schema/pushSubscriptions';
 import { emailCoeditingTables } from './schema/emailCoediting';
 import { imapServerTables } from './schema/imapServers';
+import { workerServerTables } from './schema/workerServers';
 import { threadBriefTables } from './schema/threadBrief';
 import { interpretBackfillTables } from './schema/interpretBackfill';
 import { threadPurgeJobTables } from './schema/threadPurgeJobs';
@@ -117,6 +118,7 @@ export default defineSchema({
 	...pushSubscriptionTables,
 	...emailCoeditingTables,
 	...imapServerTables,
+	...workerServerTables,
 	...threadBriefTables,
 	...interpretBackfillTables,
 	...threadPurgeJobTables,

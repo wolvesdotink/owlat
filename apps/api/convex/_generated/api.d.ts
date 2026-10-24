@@ -1487,6 +1487,8 @@ import type * as maintenance_derivedFields_registry from '../maintenance/derived
 import type * as maintenance_derivedFields_sampler from '../maintenance/derivedFields/sampler.js';
 import type * as maintenance_derivedFields_types from '../maintenance/derivedFields/types.js';
 import type * as schema_derivedFields from '../schema/derivedFields.js';
+import type * as maintenance_workerRegistry from '../maintenance/workerRegistry.js';
+import type * as maintenance_workerReportHttp from '../maintenance/workerReportHttp.js';
 import type * as mediaAssets from '../mediaAssets.js';
 import type * as migrations_0035_seal_bodies_at_rest from '../migrations/0035_seal_bodies_at_rest.js';
 import type * as migrations_0036_seed_platform_admin from '../migrations/0036_seed_platform_admin.js';
@@ -1658,6 +1660,7 @@ import type * as schema_topics from '../schema/topics.js';
 import type * as schema_transportOutcomes from '../schema/transportOutcomes.js';
 import type * as schema_webhooks from '../schema/webhooks.js';
 import type * as schema_workspaceDeletion from '../schema/workspaceDeletion.js';
+import type * as schema_workerServers from '../schema/workerServers.js';
 import type * as seedAdminHttp from '../seedAdminHttp.js';
 import type * as seedDemo_index from '../seedDemo/index.js';
 import type * as seedDemo_indexHttp from '../seedDemo/indexHttp.js';
@@ -3359,6 +3362,8 @@ declare const fullApi: ApiFromModules<{
 	'maintenance/derivedFields/sampler': typeof maintenance_derivedFields_sampler;
 	'maintenance/derivedFields/types': typeof maintenance_derivedFields_types;
 	'schema/derivedFields': typeof schema_derivedFields;
+	'maintenance/workerRegistry': typeof maintenance_workerRegistry;
+	'maintenance/workerReportHttp': typeof maintenance_workerReportHttp;
 	mediaAssets: typeof mediaAssets;
 	'migrations/0035_seal_bodies_at_rest': typeof migrations_0035_seal_bodies_at_rest;
 	'migrations/0036_seed_platform_admin': typeof migrations_0036_seed_platform_admin;
@@ -3530,6 +3535,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/transportOutcomes': typeof schema_transportOutcomes;
 	'schema/webhooks': typeof schema_webhooks;
 	'schema/workspaceDeletion': typeof schema_workspaceDeletion;
+	'schema/workerServers': typeof schema_workerServers;
 	seedAdminHttp: typeof seedAdminHttp;
 	'seedDemo/index': typeof seedDemo_index;
 	'seedDemo/indexHttp': typeof seedDemo_indexHttp;
