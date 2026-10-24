@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
+import { isFolderRailPress } from '~/utils/fixedShortcutPresses';
 import { resolveActiveShortcut } from '~/utils/shortcutScope';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
@@ -128,14 +129,11 @@ const { open: openCommandPalette } = useCommandPalette();
 const { toggleHidden: toggleShellNavigation } = useSidebarState();
 
 function onGlobalKey(event: KeyboardEvent) {
+	// A press something nearer claimed (a remapped shortcut) does one thing.
+	if (event.defaultPrevented) return;
 	// Cmd/Ctrl+Shift+D toggles the folder rail between full width and the icon
 	// strip. Works regardless of focus so it's reachable from anywhere.
-	if (
-		(event.metaKey || event.ctrlKey) &&
-		event.shiftKey &&
-		!event.altKey &&
-		event.key.toLowerCase() === 'd'
-	) {
+	if (isFolderRailPress(event)) {
 		event.preventDefault();
 		if (props.forceExpanded) toggleShellNavigation();
 		else toggleRail();
@@ -153,6 +151,7 @@ function onGlobalKey(event: KeyboardEvent) {
 }
 
 onMounted(() => {
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- resolves postbox.search through the registry; the chord is postbox.toggleRail
 	window.addEventListener('keydown', onGlobalKey);
 });
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));

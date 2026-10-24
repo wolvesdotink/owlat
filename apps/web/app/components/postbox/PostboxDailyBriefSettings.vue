@@ -17,6 +17,7 @@ import {
 	minuteToTimeInput,
 	timeInputToMinute,
 } from '~/utils/postboxBriefSchedule';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t } = useI18n();
 const { dailyBriefEmail, setDailyBriefEmail, isSaving } = usePostboxSettings();
@@ -48,6 +49,27 @@ function onTime(value: string) {
 	void save({ enabled: enabled.value, minute });
 }
 
+// "Changed from default" markers. Off is the default, so the switch is marked
+// while delivery is on; the time is marked when it is not the default hour.
+// Both read the stored preference, which is null until someone saves one (and
+// while the row loads), so nothing is marked before the row answers.
+const minuteChanged = computed(
+	() =>
+		dailyBriefEmail.value !== null &&
+		dailyBriefEmail.value.minute !== POSTBOX_BRIEF_TIME_DEFAULT_MINUTE
+);
+
+function resetEnabled() {
+	void save({
+		enabled: false,
+		minute: dailyBriefEmail.value?.minute ?? POSTBOX_BRIEF_TIME_DEFAULT_MINUTE,
+	});
+}
+
+function resetTime() {
+	void save({ enabled: enabled.value, minute: POSTBOX_BRIEF_TIME_DEFAULT_MINUTE });
+}
+
 // DST correction. Only while delivery is ON, and only when the offset actually
 // moved — an unconditional write would put a mutation on every page load.
 watch(
@@ -72,10 +94,25 @@ watch(
 			</p>
 		</header>
 
-		<label class="flex items-center justify-between gap-4 text-sm">
-			{{ t('components.postbox.postboxDailyBriefSettings.enable') }}
-			<UiSwitch :model-value="enabled" :disabled="isSaving" @update:model-value="onToggle" />
-		</label>
+		<div class="flex items-center justify-between gap-4 text-sm">
+			<span class="flex items-center gap-2">
+				<label for="daily-brief-enabled">
+					{{ t('components.postbox.postboxDailyBriefSettings.enable') }}
+				</label>
+				<SettingsResetToDefault
+					:changed="enabled"
+					:label="t('components.postbox.postboxDailyBriefSettings.enable')"
+					:disabled="isSaving"
+					@reset="resetEnabled"
+				/>
+			</span>
+			<UiSwitch
+				id="daily-brief-enabled"
+				:model-value="enabled"
+				:disabled="isSaving"
+				@update:model-value="onToggle"
+			/>
+		</div>
 
 		<div v-if="enabled" class="mt-3 flex items-center gap-2">
 			<label for="daily-brief-time" class="text-sm text-text-secondary">
@@ -94,6 +131,13 @@ watch(
 			<span class="text-xs text-text-tertiary">
 				{{ t('components.postbox.postboxDailyBriefSettings.localTimeHint') }}
 			</span>
+			<SettingsResetToDefault
+				class="ml-auto"
+				:changed="minuteChanged"
+				:label="t('components.settings.resetToDefault.names.dailyBriefTime')"
+				:disabled="isSaving"
+				@reset="resetTime"
+			/>
 		</div>
 	</section>
 </template>

@@ -8,6 +8,8 @@
  * It can only hold replies, never send one.
  */
 import { api } from '@owlat/api';
+import { ITEM_COVERAGE_ENFORCED_DEFAULT } from '~/utils/autonomyDefaults';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const props = defineProps<{ enforced: boolean }>();
 
@@ -30,9 +32,17 @@ async function setEnforced(value: boolean) {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:list-checks" size="sm" variant="surface" />
 				<div>
-					<h3 class="text-base font-medium text-text-primary">
-						{{ t('components.autonomy.autonomyItemCoverage.title') }}
-					</h3>
+					<div class="flex items-center gap-2">
+						<h3 class="text-base font-medium text-text-primary">
+							{{ t('components.autonomy.autonomyItemCoverage.title') }}
+						</h3>
+						<SettingsResetToDefault
+							:changed="enforced !== ITEM_COVERAGE_ENFORCED_DEFAULT"
+							:label="t('components.autonomy.autonomyItemCoverage.title')"
+							:disabled="isLoading"
+							@reset="setEnforced(ITEM_COVERAGE_ENFORCED_DEFAULT)"
+						/>
+					</div>
 					<p class="text-xs text-text-tertiary">
 						{{ t('components.autonomy.autonomyItemCoverage.subtitle') }}
 					</p>

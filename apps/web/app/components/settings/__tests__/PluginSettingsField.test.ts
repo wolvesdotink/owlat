@@ -2,9 +2,10 @@
  * PluginSettingsField — one schema-rendered plugin settings control.
  *
  * Covers the accessibility wiring (label association, aria-describedby,
- * aria-required, a UiSwitch for booleans), the secret-field behaviour (read-only, presence
- * only, names the environment variable, offers no input), and SSR-safety
- * (renders to a string with no window/document access).
+ * aria-required, a UiSwitch for booleans), the secret-field behaviour (read-only,
+ * presence only, names the environment variable, offers no input), the per-field
+ * reset to the schema default, and SSR-safety (renders to a string with no
+ * window/document access).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -223,6 +224,78 @@ describe('PluginSettingsField unset select placeholder', () => {
 	it('drops the placeholder once a real value is selected', () => {
 		const wrapper = mountField(field, { modelValue: 'us' });
 		expect(wrapper.find('option[value=""]').exists()).toBe(false);
+	});
+});
+
+describe('PluginSettingsField reset to default', () => {
+	const timeout: Field = { kind: 'number', key: 'timeout', label: 'Timeout', default: 30 };
+	const verbose: Field = { kind: 'boolean', key: 'verbose', label: 'Verbose', default: false };
+	const region: Field = {
+		kind: 'select',
+		key: 'region',
+		label: 'Region',
+		default: 'eu',
+		options: [
+			{ value: 'eu', label: 'EU' },
+			{ value: 'us', label: 'US' },
+		],
+	};
+	const endpoint: Field = {
+		kind: 'string',
+		key: 'endpoint',
+		label: 'Endpoint',
+		default: 'https://api.example.com',
+	};
+
+	it.each([
+		[timeout, 30],
+		[verbose, false],
+		[region, 'eu'],
+		[endpoint, 'https://api.example.com'],
+	] as const)('is quiet at the declared default (%o)', (field, value) => {
+		expect(
+			mountField(field, { modelValue: value }).find('[data-testid="setting-reset"]').exists()
+		).toBe(false);
+	});
+
+	it.each([
+		[timeout, 60, 30],
+		[timeout, '', 30],
+		[verbose, true, false],
+		[region, 'us', 'eu'],
+		[endpoint, 'https://other.example.com', 'https://api.example.com'],
+	] as const)('marks %o and resets it to the declared default', async (field, value, fallback) => {
+		const wrapper = mountField(field, { modelValue: value });
+		const reset = wrapper.get('[data-testid="setting-reset"] button');
+		expect(reset.attributes('aria-label')).toBe(`Reset ${field.label} to its default`);
+		await reset.trigger('click');
+		expect(wrapper.emitted('update:modelValue')).toEqual([[fallback]]);
+	});
+
+	it('keeps the reset out of the control name', () => {
+		const wrapper = mountField(timeout, { modelValue: 60 });
+		expect(wrapper.get('label').find('button').exists()).toBe(false);
+		const switchWrapper = mountField(verbose, { modelValue: true });
+		const labelledBy = switchWrapper.get('[role="switch"]').attributes('aria-labelledby');
+		expect(switchWrapper.get(`#${labelledBy}`).find('button').exists()).toBe(false);
+	});
+
+	it('offers no reset without a declared default, or for a secret', () => {
+		const retries: Field = { kind: 'number', key: 'retries', label: 'Retries' };
+		expect(
+			mountField(retries, { modelValue: 3 }).find('[data-testid="setting-reset"]').exists()
+		).toBe(false);
+		const secret: Field = { kind: 'secret', key: 'apiKey', envVar: 'PLUGIN_API_KEY', label: 'Key' };
+		expect(
+			mountField(secret, { secretSet: true }).find('[data-testid="setting-reset"]').exists()
+		).toBe(false);
+	});
+
+	it('holds the reset while the form is saving or resetting', () => {
+		const wrapper = mountField(timeout, { modelValue: 60, disabled: true });
+		expect(
+			wrapper.get('[data-testid="setting-reset"] button').attributes('disabled')
+		).toBeDefined();
 	});
 });
 

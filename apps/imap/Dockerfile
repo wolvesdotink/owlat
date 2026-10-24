@@ -20,6 +20,8 @@ RUN bun install --frozen-lockfile --filter @owlat/imap
 # Copy IMAP source + the workspace packages it imports (@owlat/shared, TS source).
 # @owlat/shared's mailMime.ts re-exports from @owlat/mail-message/headers, so its
 # source must be present for tsc to resolve the subpath during the build.
+# @owlat/worker-protocol is the Convex wire contract the client checks answers
+# against; it imports @owlat/shared.
 # The app tsconfig and every copied package tsconfig `extends` this file; without
 # it tsc aborts with TS5083 and bun build silently drops the compiler options.
 COPY tsconfig.base.json ./
@@ -28,6 +30,7 @@ COPY apps/imap/src/ apps/imap/src/
 COPY packages/shared/ packages/shared/
 COPY packages/mail-message/ packages/mail-message/
 COPY packages/mail-canon/ packages/mail-canon/
+COPY packages/worker-protocol/ packages/worker-protocol/
 
 # Typecheck first, then bundle the complete runtime graph. App-local Bun
 # workspace node_modules entries are symlinks into root-owned paths and cannot

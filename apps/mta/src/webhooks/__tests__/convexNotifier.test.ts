@@ -86,6 +86,24 @@ describe('notifyConvex', () => {
 		expect(headers['X-MTA-Timestamp']).toMatch(/^\d+$/);
 	});
 
+	it('mirrors the signed correlation id as a header, and sends none without one', async () => {
+		globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+		await notifyConvex(createEvent({ correlationId: 'txn_V1StGXR8_Z5jdHi6' }), createConfig());
+		await notifyConvex(createEvent(), createConfig());
+
+		const [withId, withoutId] = vi
+			.mocked(globalThis.fetch)
+			.mock.calls.map((call) => call[1] as RequestInit);
+		expect((withId!.headers as Record<string, string>)['x-owlat-correlation']).toBe(
+			'txn_V1StGXR8_Z5jdHi6'
+		);
+		expect(JSON.parse(withId!.body as string)).toMatchObject({
+			correlationId: 'txn_V1StGXR8_Z5jdHi6',
+		});
+		expect(withoutId!.headers).not.toHaveProperty('x-owlat-correlation');
+	});
+
 	it.each([
 		['inbound.received', '/webhooks/mta-inbound'],
 		['inbound.mailbox.received', '/webhooks/mta-mailbox'],

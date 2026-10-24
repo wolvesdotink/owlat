@@ -36,6 +36,8 @@ export type ThreadListRow = Pick<
 	 */
 	needsReply?: { draftSlot?: true; clarification?: { draft?: true } };
 	followUp?: { dueAt?: number };
+	/** The thread is in the Inbox's pinned band (mail/pins.ts). */
+	pinnedAt?: number;
 };
 
 export function toThreadListRow(thread: Doc<'mailThreads'>): ThreadListRow {
@@ -54,6 +56,7 @@ export function toThreadListRow(thread: Doc<'mailThreads'>): ThreadListRow {
 	// present `undefined`.
 	if (thread.latestMessageId) row.latestMessageId = thread.latestMessageId;
 	if (thread.category) row.category = { label: thread.category.label };
+	if (thread.pinnedAt !== undefined) row.pinnedAt = thread.pinnedAt;
 	const flag = thread.needsReply;
 	if (flag) {
 		row.needsReply = {};

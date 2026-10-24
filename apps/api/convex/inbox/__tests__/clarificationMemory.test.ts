@@ -30,7 +30,12 @@ vi.mock('../../lib/sessionOrganization', async () => {
 			role: sessionMocks.role,
 		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
-		requireOrgPermission: vi.fn(async () => undefined),
+		// The admin floor resolves the caller's session like every other floor.
+		requireOrgPermission: vi.fn(async () => ({
+			userId: sessionMocks.userId,
+			role: sessionMocks.role,
+			activeOrganizationId: 'org-1',
+		})),
 		getMutationContext: vi.fn(async () => ({
 			userId: sessionMocks.userId,
 			role: sessionMocks.role,

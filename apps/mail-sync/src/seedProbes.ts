@@ -34,14 +34,21 @@ import {
 	toSeedAccountLogView,
 	type SeedHygienePlan,
 	type SeedPlacement,
-	type SeedProbeWorkItem,
-	type SeedProbeWorkPage,
 } from '@owlat/shared/seedPlacement';
+import type { EndpointArgs, EndpointResult, Wire } from '@owlat/worker-protocol';
+import type {
+	recordSeedProbeClassification,
+	SeedProbeWorkItem as SeedProbeWorkItemWire,
+	SeedProbeWorkPage as SeedProbeWorkPageWire,
+} from '@owlat/worker-protocol/mailSync';
 import { logger } from './logger.js';
 
-// The wire contract with the Convex poller surface lives in @owlat/shared, so
-// there is exactly one declaration of it across the two deployables.
-export type { SeedHygienePlan, SeedPlacement, SeedProbeWorkItem, SeedProbeWorkPage };
+// The wire contract with the Convex poller surface lives in
+// @owlat/worker-protocol, so there is exactly one declaration of it across the
+// two deployables, and the worker checks every answer against it.
+export type SeedProbeWorkItem = Wire<SeedProbeWorkItemWire>;
+export type SeedProbeWorkPage = Wire<SeedProbeWorkPageWire>;
+export type { SeedHygienePlan, SeedPlacement };
 
 export interface SeedProbeLocation {
 	folderName: string;
@@ -83,15 +90,9 @@ export interface SeedProbeDeps {
 	 */
 	listWork(now: number, cursor: string | null): Promise<SeedProbeWorkPage>;
 	openMailbox(item: SeedProbeWorkItem): Promise<SeedMailboxSession | null>;
-	recordClassification(input: {
-		organizationId: string;
-		probeId: string;
-		folderName: string | null;
-		/** The folder's RFC 6154 attribute, when the server advertised one. */
-		specialUse?: string;
-		now: number;
-		clickRoll: number;
-	}): Promise<{ recorded: boolean; placement?: SeedPlacement; hygiene?: SeedHygienePlan }>;
+	recordClassification(
+		input: EndpointArgs<typeof recordSeedProbeClassification>
+	): Promise<EndpointResult<typeof recordSeedProbeClassification>>;
 	/** Perform the occasional click. Best-effort; a failure is never fatal. */
 	click(url: string): Promise<void>;
 }

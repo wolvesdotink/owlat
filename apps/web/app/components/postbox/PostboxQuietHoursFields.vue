@@ -11,8 +11,15 @@ import {
 	parseMinuteOfDay,
 	POSTBOX_WEEKDAY_ORDER,
 } from '~/utils/postboxQuietHours';
+import { POSTBOX_PREFERENCE_DEFAULTS, isSameQuietHours } from '~/utils/postboxPreferenceDefaults';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
-const props = defineProps<{ value: PostboxQuietHours; disabled?: boolean }>();
+const props = defineProps<{
+	value: PostboxQuietHours;
+	disabled?: boolean;
+	/** The settings row has not answered: the window is only the fallback. */
+	loading?: boolean;
+}>();
 const emit = defineEmits<{ (e: 'update', value: PostboxQuietHours): void }>();
 
 const { t } = useI18n();
@@ -36,6 +43,17 @@ const endTime = computed(() => formatMinuteOfDay(props.value.endMinute));
 // because "22:00 to 07:00" otherwise reads as an empty range.
 const isOvernight = computed(() => props.value.endMinute <= props.value.startMinute);
 const hasNoDays = computed(() => props.value.days.length === 0);
+
+// Reset puts back the whole default window (off, 22:00–07:00, every day), not
+// just the switch: the marker says the window differs, whichever part did.
+const isChanged = computed(
+	() => !props.loading && !isSameQuietHours(props.value, POSTBOX_PREFERENCE_DEFAULTS.quietHours)
+);
+
+function resetToDefault() {
+	const fallback = POSTBOX_PREFERENCE_DEFAULTS.quietHours;
+	emit('update', { ...fallback, days: [...fallback.days] });
+}
 
 function onEnabledChange(event: Event) {
 	emit('update', { ...props.value, enabled: (event.target as HTMLInputElement).checked });
@@ -61,9 +79,17 @@ function toggleDay(day: number) {
 	<div class="px-5 py-4 border-t border-border-subtle">
 		<div class="flex items-center justify-between gap-4">
 			<div class="min-w-0">
-				<label for="postbox-quiet-hours" class="font-medium text-sm block">
-					{{ t('components.postbox.postboxNotificationSettings.quietHours.label') }}
-				</label>
+				<div class="flex items-center gap-2">
+					<label for="postbox-quiet-hours" class="font-medium text-sm block">
+						{{ t('components.postbox.postboxNotificationSettings.quietHours.label') }}
+					</label>
+					<SettingsResetToDefault
+						:changed="isChanged"
+						:label="t('components.postbox.postboxNotificationSettings.quietHours.label')"
+						:disabled="disabled"
+						@reset="resetToDefault"
+					/>
+				</div>
 				<p class="text-xs text-text-tertiary mt-0.5">
 					{{ t('components.postbox.postboxNotificationSettings.quietHours.hint') }}
 				</p>
