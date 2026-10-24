@@ -3,7 +3,7 @@ import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
 import { I18N_MODULES, I18N_OPTIONS } from './i18n/catalogModule';
 import { FONT_OPTIONS, NUXT_LINK_DEFAULTS, publicAssetCompression } from './scripts/deliveryTuning';
-import { uiLayerIconNames } from './scripts/uiLayerIcons';
+import { ICON_SCAN_EXCLUDE, uiLayerIconNames } from './scripts/uiLayerIcons';
 
 // Local default endpoints, single-sourced so the CSP connect-src and the
 // runtimeConfig fallbacks (and the PostHog plugin) can't drift.
@@ -339,6 +339,9 @@ export default defineNuxtConfig({
 				// `scripts/check-icon-names.sh` fails the lint if a referenced icon is
 				// unresolvable or sits in a file outside these globs.
 				globInclude: ['**/*.{vue,jsx,tsx,ts,md,mdc,mdx,yml,yaml}'],
+				// Test files are skipped: a name only a test quotes would be bundled
+				// into the entry chunk for nothing (see ICON_SCAN_EXCLUDE).
+				globExclude: ICON_SCAN_EXCLUDE,
 			},
 			sizeLimitKb: 512,
 		},
