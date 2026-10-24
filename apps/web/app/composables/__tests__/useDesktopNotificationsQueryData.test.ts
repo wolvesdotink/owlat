@@ -4,8 +4,9 @@
  * delivery is a new object, an unchanged one keeps its identity. So a watcher
  * only needs the reference. These specs feed the composable shallow refs the
  * way the real query does and pin that it never walks a result (a nested field
- * nobody reads stays unread), while every replacement still drives the badge,
- * the toasts and the review-queue delta, and the first load stays silent.
+ * nobody reads stays unread), while every replacement still reaches the
+ * toasts, the badge count and the review-queue delta, and the first load stays
+ * silent.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { defineComponent, h, ref, shallowRef } from 'vue';
@@ -99,10 +100,11 @@ let mounted: VueWrapper | null = null;
 
 async function mountDashboard(): Promise<void> {
 	const { useDesktopNotifications } = await import('../useDesktopNotifications');
+	const { useUnreadBadge } = await import('../useUnreadBadge');
 	mounted = mount(
 		defineComponent({
 			setup() {
-				useDesktopNotifications();
+				useDesktopNotifications(useUnreadBadge());
 				return () => h('div');
 			},
 		})
@@ -218,11 +220,12 @@ describe('useDesktopNotifications: query results are watched by identity', () =>
 		expect(desktop.sendActionableNotification).toHaveBeenCalledTimes(1);
 		expect(desktop.sendActionableNotification.mock.calls[0]?.[2]).toBe('m2');
 
-		// A fresh object holding the same rows repaints the badge and toasts nothing.
+		// A fresh object holding the same rows toasts nothing, and the badge
+		// follows the derived count, which did not change.
 		unread.value = { total: 2, messages: [message('m2', now + 1), message('m1', now)] };
 		await settle();
 
-		expect(desktop.updateUnreadBadge).toHaveBeenCalledTimes(3);
+		expect(desktop.updateUnreadBadge).toHaveBeenCalledTimes(2);
 		expect(desktop.sendActionableNotification).toHaveBeenCalledTimes(1);
 	});
 
