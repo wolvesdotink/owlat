@@ -478,6 +478,10 @@
 			"types": "./src/nodeShutdown.ts",
 			"import": "./src/nodeShutdown.ts"
 		},
+		"./nodeMetrics": {
+			"types": "./src/nodeMetrics.ts",
+			"import": "./src/nodeMetrics.ts"
+		},
 		"./nodeEnv": {
 			"types": "./src/nodeEnv.ts",
 			"import": "./src/nodeEnv.ts"
@@ -554,6 +558,7 @@
 	},
 	"dependencies": {
 		"@owlat/mail-message": "workspace:*",
+		"prom-client": "^15.1.0",
 		"tldts": "^7.0.30"
 	},
 	"devDependencies": {

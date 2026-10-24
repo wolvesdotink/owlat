@@ -594,6 +594,7 @@
       "version": "0.6.16",
       "dependencies": {
         "@owlat/mail-message": "workspace:*",
+        "prom-client": "^15.1.0",
         "tldts": "^7.0.30",
       },
       "devDependencies": {
