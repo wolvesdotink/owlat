@@ -225,7 +225,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			<select
 				v-else
 				:value="fromAddress || firstIdentityAddress"
-				class="flex-1 bg-transparent outline-none font-medium border-0"
+				class="input-bare flex-1 font-medium"
 				data-testid="postbox-from-select"
 				:aria-label="t('components.postbox.postboxComposerEnvelope.sendAs')"
 				@change="onFromChange"
@@ -379,12 +379,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			<label for="subject" class="text-text-tertiary w-12">{{
 				t('components.postbox.postboxComposerEnvelope.subject')
 			}}</label>
-			<input
-				id="subject"
-				v-model="subject"
-				type="text"
-				class="flex-1 bg-transparent outline-none font-medium"
-			/>
+			<input id="subject" v-model="subject" type="text" class="input-bare flex-1 font-medium" />
 		</div>
 	</div>
 </template>

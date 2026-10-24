@@ -128,7 +128,7 @@ async function onRemoveAdjustment(kind: string) {
 						:id="`voice-rules-${mailboxId}`"
 						v-model="instructionDraft"
 						rows="3"
-						class="input mt-1 w-full resize-y text-sm"
+						class="input mt-1 w-full resize-y"
 						:placeholder="t('components.postbox.postboxVoiceProfileCard.rulesPlaceholder')"
 					/>
 					<div class="mt-2 flex justify-end">

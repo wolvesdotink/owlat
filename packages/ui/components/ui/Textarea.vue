@@ -32,20 +32,13 @@ const emit = defineEmits<{
 const generatedId = useId();
 const textareaId = computed(() => props.id || generatedId);
 
+// The look is the shared `.input` recipe (assets/css/components.css), the same
+// one a native field carries; this component adds only its modifiers.
 const textareaClasses = computed(() => {
-	const classes = [
-		'w-full bg-surface-1 shadow-surface-1 rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring',
-	];
+	const classes = ['input'];
 
-	if (props.size === 'sm') {
-		classes.push('px-3 py-2 text-sm');
-	} else {
-		classes.push('px-4 py-3');
-	}
-
-	if (props.error) {
-		classes.push('ring-1 ring-error focus:ring-error');
-	}
+	if (props.size === 'sm') classes.push('input-sm');
+	if (props.error) classes.push('input-error');
 
 	// Resize classes
 	switch (props.resize) {

@@ -289,7 +289,7 @@ async function runReSeal() {
 						spellcheck="false"
 						:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.importKeyPlaceholder')"
 						data-testid="recovery-kit.result-import-key"
-						class="input input-sm font-mono text-xs"
+						class="input input-sm font-mono"
 					/>
 					<div class="flex justify-end">
 						<UiButton

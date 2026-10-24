@@ -291,7 +291,7 @@ async function confirmRemoveWorkspace() {
 					</span>
 					<select
 						id="desktop-startup-workspace"
-						class="input input-sm max-w-[14rem] shrink-0 text-sm"
+						class="input input-sm max-w-[14rem] shrink-0"
 						:value="settings.global.startupWorkspaceId ?? ''"
 						:disabled="!isReady || workspaces.length === 0"
 						@change="onStartupWorkspaceChange"

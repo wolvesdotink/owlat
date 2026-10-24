@@ -139,7 +139,7 @@ watch(editValue, () => {
 			<textarea
 				ref="textareaRef"
 				v-model="editValue"
-				class="w-full min-h-[80px] p-2 pb-8 text-sm bg-bg-base border border-brand rounded-lg text-text-primary resize-none focus:outline-none focus:ring-1 focus:ring-brand"
+				class="input min-h-[80px] pb-8 resize-none"
 				:placeholder="placeholderText"
 				:aria-label="fieldName"
 				:aria-describedby="hintId"
