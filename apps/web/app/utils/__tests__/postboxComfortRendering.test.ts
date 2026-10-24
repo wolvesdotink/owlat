@@ -6,11 +6,13 @@
  * inherited text and leaves those alone makes a reply read in two sizes.
  *
  * Rendered through the cascade rather than asserted on the CSS string: the
- * real classifier picks the kind, the real base style is applied to a
- * document, and the effective size of each element is its computed font size
- * times the zoom of it and its ancestors.
+ * real classifier picks the kind, the real base style heads a document of its
+ * own (a separate window, as the reader's sandboxed iframe is), and the
+ * effective size of each element is its computed font size times the zoom of
+ * it and its ancestors.
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import { Window } from 'happy-dom';
 import { buildBaseStyle } from '../postboxBaseStyle';
 import { adaptEmailHtml } from '../postboxDarkMode';
 import { MAIL_TEXT_PX, type MailTextSize } from '../readingComfort';
@@ -23,31 +25,35 @@ const REPLY =
 const SIZES: readonly MailTextSize[] = ['small', 'default', 'large', 'larger'];
 const IDS = ['inherited', 'outlook', 'inline'] as const;
 
-function zoomOf(el: Element): number {
-	const value = parseFloat(getComputedStyle(el).getPropertyValue('zoom'));
-	return Number.isFinite(value) && value > 0 ? value : 1;
-}
+const windows: Window[] = [];
+type FrameElement = NonNullable<ReturnType<Window['document']['getElementById']>>;
+
+afterEach(async () => {
+	await Promise.all(windows.splice(0).map((frame) => frame.happyDOM.close()));
+});
 
 /** Rendered text size of each element: computed font size times every zoom above it. */
 function renderedSizes(textSize: MailTextSize): Record<(typeof IDS)[number], number> {
 	const { html, scheme, kind } = adaptEmailHtml(REPLY, 'light');
 	expect(kind).toBe('simple');
-	document.head.innerHTML = buildBaseStyle(scheme, kind, { textSize, readingWidth: 'default' });
-	document.body.innerHTML = html;
+	const frame = new Window();
+	windows.push(frame);
+	frame.document.write(
+		`<!doctype html><html><head>${buildBaseStyle(scheme, kind, { textSize, readingWidth: 'default' })}</head><body>${html}</body></html>`
+	);
+	const zoomOf = (el: FrameElement): number => {
+		const value = parseFloat(frame.getComputedStyle(el).getPropertyValue('zoom'));
+		return Number.isFinite(value) && value > 0 ? value : 1;
+	};
 	const sizes = {} as Record<(typeof IDS)[number], number>;
 	for (const id of IDS) {
-		const el = document.getElementById(id)!;
+		const el = frame.document.getElementById(id)!;
 		let scale = 1;
-		for (let node: Element | null = el; node; node = node.parentElement) scale *= zoomOf(node);
-		sizes[id] = parseFloat(getComputedStyle(el).fontSize) * scale;
+		for (let node: FrameElement | null = el; node; node = node.parentElement) scale *= zoomOf(node);
+		sizes[id] = parseFloat(frame.getComputedStyle(el).fontSize) * scale;
 	}
 	return sizes;
 }
-
-afterEach(() => {
-	document.head.innerHTML = '';
-	document.body.innerHTML = '';
-});
 
 describe('mail text size in rendered simple mail', () => {
 	it('keeps the default rendering: 15px body text, the inline and Outlook sizes as sent', () => {
