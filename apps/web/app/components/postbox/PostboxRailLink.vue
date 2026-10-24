@@ -3,14 +3,16 @@
  * One navigation row in the Postbox folder rail.
  *
  * The rail had seven near-identical `<NuxtLink>` blocks — each repeating the
- * expanded/collapsed class pair, the collapsed `title` + `aria-label`, and the
- * inline-count vs corner-badge switch. They are one row type, so they are one
+ * expanded/collapsed class pair, the collapsed label tooltip + `aria-label`, and
+ * the inline-count vs corner-badge switch. They are one row type, so they are one
  * component: adding a destination to the rail (or to its "More" group) is now a
  * line, not a copied twenty.
  *
- * Collapsed, the rail is a ~48px icon strip: the label survives only as `title`
- * + `aria-label`, or the strip is unusable with a screen reader, and a count
- * moves from an inline number to a corner badge for the same reason.
+ * Collapsed, the rail is a ~48px icon strip: the label survives only as a
+ * UiTooltip for sighted pointer and keyboard users, and as the `aria-label`
+ * (with the count, when there is one) for screen readers. The tooltip is not in
+ * the DOM until it opens, so it cannot be the accessible name. A count moves
+ * from an inline number to a corner badge.
  */
 withDefaults(
 	defineProps<{
@@ -68,7 +70,7 @@ withDefaults(
 			<Icon :name="icon" class="w-4 h-4 flex-shrink-0" />
 			<template v-if="!collapsed">
 				<!-- With a worded count the label keeps its full width and the count
-				     truncates instead (the full phrase is in the title). -->
+				     truncates instead (the tooltip shows the full countLabel phrase). -->
 				<span class="min-w-0 truncate" :class="count > 0 && countText ? 'shrink-0' : 'flex-1'">{{
 					label
 				}}</span>

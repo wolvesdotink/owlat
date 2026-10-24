@@ -92,6 +92,7 @@
 	 * defined relative to it. Consume with the Tailwind v4 var shorthand, e.g.
 	 * `z-(--z-titlebar)`. */
 	--z-float: 40; /* in-page floating tool chrome (email builder block rail + toolbar): under every backdrop */
+	--z-focus-chrome: 45; /* email builder focus-mode chrome (exit button, save state, hint): over its floating tool chrome, under every backdrop */
 	--z-modal: 50; /* UiModal / dialog backdrops */
 	--z-header: 60; /* mobile top bar */
 	--z-titlebar: 70; /* desktop window titlebar */

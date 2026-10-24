@@ -150,7 +150,7 @@ onUnmounted(() => {
 					ref="menuRef"
 					role="listbox"
 					:aria-label="label"
-					class="z-[9999] p-1 bg-bg-elevated light border border-border-subtle rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.25),0_2px_6px_rgba(0,0,0,0.1)] overflow-y-auto scrollbar-thin"
+					class="z-(--z-menu) p-1 bg-bg-elevated light border border-border-subtle rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.25),0_2px_6px_rgba(0,0,0,0.1)] overflow-y-auto scrollbar-thin"
 					:style="dropdownStyle"
 				>
 					<button

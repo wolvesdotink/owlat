@@ -36,14 +36,38 @@ function classLayer(source: string, marker: string): number {
 	return layer(token);
 }
 
-function vueFiles(dir: string): string[] {
+const skippedDirs = new Set(['node_modules', '__tests__', 'dist', '.nuxt', '.output']);
+
+function sourceFiles(dir: string, extensions: readonly string[]): string[] {
 	return readdirSync(join(repo, dir)).flatMap((entry) => {
 		const path = join(dir, entry);
-		if (entry === 'node_modules' || entry === '__tests__') return [];
-		if (statSync(join(repo, path)).isDirectory()) return vueFiles(path);
-		return path.endsWith('.vue') ? [path] : [];
+		if (skippedDirs.has(entry)) return [];
+		if (statSync(join(repo, path)).isDirectory()) return sourceFiles(path, extensions);
+		return extensions.some((extension) => path.endsWith(extension)) ? [path] : [];
 	});
 }
+
+const vueFiles = (dir: string) => sourceFiles(dir, ['.vue']);
+
+/** Every literal z-index in a source file: `z-[N]`, `z-index: N`, `zIndex: N`, `z-index="N"`. */
+function rawZIndexes(source: string): { match: string; value: number }[] {
+	const patterns = [
+		/(?<![\w-])z-\[(\d+)\]/g,
+		/z-index:\s*(\d+)/g,
+		/zIndex:\s*['"]?(\d+)/g,
+		/z-index="(\d+)"/g,
+	];
+	return patterns.flatMap((pattern) =>
+		[...source.matchAll(pattern)].map(([match, value]) => ({ match, value: Number(value) }))
+	);
+}
+
+/**
+ * Raw z-index values allowed at or above the tooltip layer. The workspace
+ * switch skeleton stands in for the whole window while it reloads, so it must
+ * cover everything, tooltips included.
+ */
+const aboveTooltipAllowed = new Set(['apps/web/app/lib/desktop/workspaceSwitch.ts']);
 
 describe('z-index layers', () => {
 	it('toasts sit above the modal backdrop', () => {
@@ -80,6 +104,65 @@ describe('z-index layers', () => {
 		const tooltip = classLayer(read('packages/ui/components/ui/Tooltip.vue'), "'ui-tooltip fixed");
 		expect(tooltip).toBe(layer('tooltip'));
 		expect(Math.max(...layers.values())).toBe(tooltip);
+	});
+
+	it("the email builder's popovers sit above its floating chrome and under tooltips", () => {
+		const popovers = [
+			['packages/email-builder/src/components/canvas/DocumentCanvas.vue', 'w-[240px]'],
+			['packages/email-builder/src/components/canvas/BlockPickerPopover.vue', 'w-[280px]'],
+			['packages/email-builder/src/components/canvas/SavedBlockPickerMenu.vue', 'w-80'],
+			['packages/email-builder/src/components/panel/fields/SelectField.vue', 'scrollbar-thin'],
+		] as const;
+		for (const [path, marker] of popovers) {
+			const popover = classLayer(read(path), marker);
+			expect(popover, path).toBeGreaterThan(layer('float'));
+			expect(popover, path).toBeGreaterThan(layer('modal'));
+			expect(popover, path).toBeLessThan(layer('tooltip'));
+		}
+	});
+
+	it("the builder's focus-mode chrome sits over its floating chrome and under the modal backdrop", () => {
+		const overlay = read('packages/email-builder/src/components/FocusModeOverlay.vue');
+		const fixed = overlay.split('\n').filter((line) => line.includes('class="fixed '));
+		expect(fixed).toHaveLength(3);
+		for (const line of fixed) {
+			const chrome = classLayer(line, 'class="fixed ');
+			expect(chrome).toBeGreaterThan(layer('float'));
+			expect(chrome).toBeLessThan(layer('modal'));
+		}
+	});
+
+	it('no raw z-index outranks the tooltip layer', () => {
+		// A tooltip is mounted on <body>, so anything painted above --z-tooltip
+		// can hide the label of a control it contains or sits next to.
+		const tooltip = layer('tooltip');
+		const raised = [
+			'apps/web/app',
+			'apps/docs/app',
+			'apps/marketing/app',
+			'packages/ui',
+			'packages/email-builder/src',
+		]
+			.flatMap((dir) => sourceFiles(dir, ['.vue', '.ts', '.css']))
+			.filter((path) => !aboveTooltipAllowed.has(path))
+			.flatMap((path) =>
+				rawZIndexes(read(path))
+					.filter(({ value }) => value >= tooltip)
+					.map(({ match }) => `${path}: ${match}`)
+			);
+		expect(raised).toEqual([]);
+	});
+
+	it('the raw z-index scan reads every notation', () => {
+		expect(
+			rawZIndexes(
+				'class="fixed z-[9999] hover:z-[10] -z-[1]" z-index: 5; zIndex: \'2147483000\', zIndex: 7 :z-index="200"'
+			).map(({ value }) => value)
+		).toEqual([9999, 10, 5, 2147483000, 7, 200]);
+		expect(rawZIndexes(read('apps/web/app/lib/desktop/workspaceSwitch.ts'))).toContainEqual({
+			match: "zIndex: '2147483000",
+			value: 2147483000,
+		});
 	});
 
 	it('no modal raises itself above the toast stack', () => {

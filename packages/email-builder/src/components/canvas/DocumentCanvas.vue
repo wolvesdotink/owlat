@@ -320,7 +320,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 					<div
 						v-if="showBgColorPopover"
 						ref="bgColorPopoverRef"
-						class="light fixed z-[9999] bg-bg-elevated border border-border-subtle rounded-xl shadow-lg p-3 w-[240px]"
+						class="light fixed z-(--z-menu) bg-bg-elevated border border-border-subtle rounded-xl shadow-lg p-3 w-[240px]"
 						:style="{
 							top: (bgColorBubbleRef?.getBoundingClientRect().bottom ?? 0) + 6 + 'px',
 							left: (bgColorBubbleRef?.getBoundingClientRect().right ?? 0) - 240 + 'px',
