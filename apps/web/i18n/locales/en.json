@@ -1821,6 +1821,20 @@
 				"empty": "No inbox threads found.",
 				"removeLink": "Remove current link",
 				"searchPlaceholder": "Search inbox threads…",
+				"share": {
+					"title": "Share in chat",
+					"searchPlaceholder": "Search channels and people…",
+					"roomsLabel": "Where to share",
+					"empty": "No channel or direct message to post in.",
+					"notePlaceholder": "Add a note (optional)",
+					"send": "Share",
+					"shared": "Link shared in {room}",
+					"audience": {
+						"personal": "From your personal inbox. Others in the chat see the link, not the mail.",
+						"shared": "Members of this inbox can open the link. Anyone else sees just the link.",
+						"team": "Owners and admins can open the link. Anyone else sees just the link."
+					}
+				},
 				"title": "Link an email thread"
 			},
 			"chatLinkedEmailPanel": {
@@ -18154,9 +18168,6 @@
 				"cancelFollowUp": "Cancel reply reminder",
 				"translate": "Translate",
 				"showOriginal": "Download original (.eml)",
-				"copyLink": "Copy link",
-				"linkCopied": "Link copied",
-				"linkCopyFailed": "Could not copy the link",
 				"pin": "Pin conversation",
 				"unpin": "Unpin conversation"
 			},
@@ -18177,6 +18188,13 @@
 				"priorityPrompt": "Priority",
 				"current": "Current"
 			}
+		},
+		"conversationLink": {
+			"copyLink": "Copy link",
+			"shareInChat": "Share in chat…",
+			"linkCopied": "Link copied",
+			"linkCopyFailed": "Could not copy the link",
+			"linkUnavailable": "This workspace has no web address to link to"
 		},
 		"inboxSla": {
 			"dueIn": {
