@@ -49,8 +49,10 @@ case "$*" in
 	*" pull"*) hold pull ;;
 	*"up -d"*) hold up ;;
 	"run -d"*) echo helper-container-id ;;
+	*"ps --all --quiet"*) printf 'c0ffee000001\\nc0ffee000002\\n' ;;
+	"container inspect"*) printf '{"Id":"c0ffee000001","Running":true,"Service":"convex","Mounts":[]}\\n{"Id":"c0ffee000002","Running":true,"Service":"redis","Mounts":[]}\\n' ;;
 	inspect*org.opencontainers*) ;;
-	inspect*) printf 'ghcr.io/wolvesdotink/updater:0.5.0\\n/srv/owlat:%s:rw \\nowlat_default \\n' "$OWLAT_DIR" ;;
+	inspect*) printf 'ghcr.io/wolvesdotink/updater:0.5.0\\n[{"Type":"bind","Source":"/srv/owlat","Destination":"%s","RW":true}]\\nowlat_default \\n' "$OWLAT_DIR" ;;
 esac
 exit 0
 `
@@ -98,6 +100,8 @@ beforeEach(() => {
 	}
 	writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.16\n');
 	writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), OLD_COMPOSE);
+	// Each case starts without the snapshot an earlier case's update left.
+	rmSync(join(OWLAT_DIR, '.owlat-update-snapshot'), { recursive: true, force: true });
 	exit = vi.fn<(code: number) => void>();
 	// Signals are delivered by the test (`handle.shutdown`), never by the OS,
 	// and the server is the test's own: the shutdown must not close it.

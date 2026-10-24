@@ -103,8 +103,13 @@ const IN_FLIGHT_TIMEOUT_MS = UPDATE_REQUEST_TIMEOUT_MS;
 const updaterWorking = ref(false);
 // How far /health says the update has got (see `RolloutStage`).
 const stage = ref<RolloutStage>('applying');
+// The last stage that moved the update forward. A rollback can start after
+// any step, so the rows keep what they showed done before it began.
+const forwardStage = ref<Exclude<RolloutStage, 'rolling-back'>>('applying');
 // The recreate is done and the updater is checking the stack's health.
 const verifying = computed(() => stage.value === 'verifying');
+// The release failed and the updater is restoring the snapshot taken before it.
+const rollingBack = computed(() => stage.value === 'rolling-back');
 
 /**
  * The displayed steps /health shows are behind the update, though the updater
@@ -112,7 +117,7 @@ const verifying = computed(() => stage.value === 'verifying');
  * Without this the card kept its spinner on "Pull new container images" while
  * the note under it said the new version was already running.
  */
-const STEPS_BEHIND_STAGE: Record<RolloutStage, readonly string[]> = {
+const STEPS_BEHIND_STAGE: Record<Exclude<RolloutStage, 'rolling-back'>, readonly string[]> = {
 	applying: [],
 	recreating: ['pull', 'convex-deploy', 'write-compose'],
 	verifying: stepOrder,
@@ -135,14 +140,15 @@ const reportedStatuses = computed<Record<string, StepStatus>>(() => {
  * the row that gets the spinner, so the card shows work happening instead of
  * four inert circles for the length of the update.
  *
- * Nothing spins once a step has failed (the updater aborts the run there) or
- * once polling has stopped (completed, or timed out).
+ * Nothing spins once a step has failed (the updater aborts the run there),
+ * once polling has stopped (completed, or timed out), or while the updater
+ * rolls the release back: no step of the update is running then.
  */
 const stepStatuses = computed<Record<string, StepStatus>>(() => {
 	const reported = reportedStatuses.value;
 	const aborted = Object.values(reported).includes('failed');
-	let inFlightTaken = aborted || !polling.value;
-	const behind = STEPS_BEHIND_STAGE[stage.value];
+	let inFlightTaken = aborted || !polling.value || rollingBack.value;
+	const behind = STEPS_BEHIND_STAGE[forwardStage.value];
 
 	const statuses: Record<string, StepStatus> = {};
 	for (const step of stepOrder) {
@@ -193,6 +199,7 @@ async function pollHealth() {
 		if (reading.kind === 'in-flight') {
 			updaterWorking.value = true;
 			stage.value = reading.stage;
+			if (reading.stage !== 'rolling-back') forwardStage.value = reading.stage;
 		} else if (reading.kind === 'complete') {
 			stopPolling();
 			emit('complete', resp);
@@ -302,9 +309,11 @@ const totalElapsedDisplay = computed(() => {
 				aria-hidden="true"
 			/>
 			<span>{{
-				verifying
-					? t('components.system.updateProgress.verifyingNotice')
-					: t('components.system.updateProgress.restartNotice')
+				rollingBack
+					? t('components.system.updateProgress.rollingBackNotice')
+					: verifying
+						? t('components.system.updateProgress.verifyingNotice')
+						: t('components.system.updateProgress.restartNotice')
 			}}</span>
 		</div>
 	</div>

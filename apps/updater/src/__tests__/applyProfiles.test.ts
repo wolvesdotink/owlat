@@ -85,7 +85,7 @@ function dockerFixture(file: unknown, args: unknown): string {
 	if (cmd.startsWith('docker inspect')) {
 		return [
 			'ghcr.io/wolvesdotink/updater:0.5.0',
-			`/srv/owlat:${OWLAT_DIR}:rw `,
+			JSON.stringify([{ Type: 'bind', Source: '/srv/owlat', Destination: OWLAT_DIR, RW: true }]),
 			'owlat_default ',
 		].join('\n');
 	}

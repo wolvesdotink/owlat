@@ -6798,6 +6798,7 @@
 			"updateProgress": {
 				"heading": "Updating to v{version}",
 				"restartNotice": "The web app may restart during the update. This page will reconnect automatically.",
+				"rollingBackNotice": "The update failed and is being rolled back to the snapshot taken before it. This can take several minutes.",
 				"stepFailed": "Failed",
 				"steps": {
 					"convexDeploy": "Deploy backend functions",

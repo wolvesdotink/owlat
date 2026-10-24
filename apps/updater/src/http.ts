@@ -6,6 +6,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { hostname } from 'node:os';
 import { errorMessage } from '@owlat/shared';
 import { parseComposePs, type ComposeService } from '@owlat/shared/containerHealth';
 import { secretMatches } from '@owlat/shared/constantTimeEqual';
@@ -400,4 +401,91 @@ export async function composePsServices(): Promise<{ containers: ComposeService[
 	// shapes Compose has shipped (NDJSON and a single JSON array), and splits
 	// the image tag without mistaking a registry port for one.
 	return { containers: parseComposePs(result.stdout), raw: result.stdout };
+}
+
+/** One entry of a container's `.Mounts`, as `docker inspect` reports it. */
+export interface DockerMount {
+	type: string;
+	/** The volume name; empty for a bind. */
+	name: string;
+	/** The host path. */
+	source: string;
+	destination: string;
+	rw: boolean;
+}
+
+/**
+ * A container's `.Mounts`, read from its JSON (`{{json .Mounts}}`). A host
+ * path may hold a space or a colon, so mounts are never read from a list
+ * joined with one: the path would be cut there, and the cut-off prefix taken
+ * for the path. Null when the value is not a mount list.
+ */
+export function parseMounts(value: unknown): DockerMount[] | null {
+	if (!Array.isArray(value)) return null;
+	const mounts: DockerMount[] = [];
+	for (const entry of value as Array<Record<string, unknown> | null>) {
+		const { Type, Name = '', Source, Destination, RW } = entry ?? {};
+		if (
+			typeof Type !== 'string' ||
+			typeof Name !== 'string' ||
+			typeof Source !== 'string' ||
+			typeof Destination !== 'string' ||
+			typeof RW !== 'boolean'
+		) {
+			return null;
+		}
+		mounts.push({ type: Type, name: Name, source: Source, destination: Destination, rw: RW });
+	}
+	return mounts;
+}
+
+/**
+ * The binds of a container's mounts as `-v` arguments
+ * (`source:destination:rw`), or null when one cannot be written as one: `-v`
+ * splits on the colon.
+ */
+export function bindArgs(mounts: DockerMount[]): string[] | null {
+	const binds = mounts.filter((mount) => mount.type === 'bind');
+	if (binds.some((m) => m.source.includes(':') || m.destination.includes(':'))) return null;
+	return binds.map((m) => `${m.source}:${m.destination}:${m.rw ? 'rw' : 'ro'}`);
+}
+
+/** This very container, as `docker inspect` reports it. */
+export type SelfInspect =
+	| { kind: 'container'; image: string; mounts: DockerMount[]; networks: string[] }
+	/** Docker knows no container by this host's name: the updater runs outside one. */
+	| { kind: 'none' }
+	/** Docker did not answer, or answered with something that is not this container. */
+	| { kind: 'unreadable'; reason: string };
+
+const NO_SUCH_OBJECT = /no such (container|object)/i;
+
+/**
+ * Inspect the container this process runs in. A failed inspect is told apart
+ * from an answer that there is no such container: only the second is a fact
+ * about this updater that the next inspect repeats.
+ */
+export async function readSelf(): Promise<SelfInspect> {
+	const format =
+		'{{.Config.Image}}{{"\\n"}}{{json .Mounts}}{{"\\n"}}{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}';
+	const result = await exec('docker', ['inspect', hostname(), '--format', format], OWLAT_DIR);
+	if (!result.ok) {
+		return NO_SUCH_OBJECT.test(result.stderr)
+			? { kind: 'none' }
+			: { kind: 'unreadable', reason: result.stderr.trim() || 'docker inspect failed' };
+	}
+	const [image = '', mountsJson = '', networks = ''] = result.stdout.split('\n');
+	let mounts: DockerMount[] | null;
+	try {
+		mounts = parseMounts(JSON.parse(mountsJson));
+	} catch {
+		mounts = null;
+	}
+	if (!mounts) return { kind: 'unreadable', reason: 'its mounts are not a mount list' };
+	return {
+		kind: 'container',
+		image: image.trim(),
+		mounts,
+		networks: networks.split(' ').filter(Boolean),
+	};
 }
