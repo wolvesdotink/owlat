@@ -45,8 +45,12 @@ import { kb, measure, readWebBuild, staticClosure } from './bundle-closure';
  * boot. The global error handler must show its toast even when a lazy chunk
  * fails to load, and the page outlet wraps every page. The boundary component
  * itself stays in the dashboard layout's lazy chunk.
+ *
+ * Raised to 260 on 2026-10-24 from 258.0 KB, by the same rule: main had used
+ * up its headroom (258.0 KB in CI), so the next feature adding one icon or one
+ * lazy chunk would fail with nothing turning eager.
  */
-const GZIP_BUDGET_KB = 258;
+const GZIP_BUDGET_KB = 260;
 
 const { publicDir, entry } = readWebBuild('check-bundle-budget', process.argv[2]);
 
