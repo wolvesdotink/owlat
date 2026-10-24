@@ -312,6 +312,17 @@
 				"src/**/__tests__/**/*.ts",
 			],
 		},
+		// The public REST API contract: the plain types (its root export, which the
+		// JS SDK inlines), the schemas and operation table the server validates
+		// with, and the generator that writes openapi.json.
+		"packages/public-contract": {
+			"entry": [
+				"src/types.ts",
+				"src/schemas.ts",
+				"scripts/openapi.ts",
+				"src/**/__tests__/**/*.ts",
+			],
+		},
 		"packages/channels": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-renderer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },

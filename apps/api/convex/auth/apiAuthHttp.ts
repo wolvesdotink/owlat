@@ -7,6 +7,7 @@
 import { httpAction } from '../_generated/server';
 import { corsHeaders as sharedCorsHeaders } from '../lib/cors';
 import { jsonResponse, publicCorsHeaders } from '../lib/httpResponse';
+import type { ApiResponse, HealthStatus } from '@owlat/public-contract';
 
 /**
  * Handle CORS preflight requests
@@ -46,7 +47,7 @@ export const healthCheck = httpAction(async (_ctx, request) => {
 				status: 'ok',
 				timestamp: new Date().toISOString(),
 			},
-		},
+		} satisfies ApiResponse<HealthStatus>,
 		200,
 		headers
 	);
