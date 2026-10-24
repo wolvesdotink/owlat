@@ -45,8 +45,14 @@ export interface EmailEditorAutosaveHost {
 	isLive: () => boolean;
 	/** The classic draft has loaded the row. */
 	isInitialized: () => boolean;
-	/** The loaded row's revision (the device copy's base). */
+	/** The loaded row's revision: what the server holds now. */
 	rowRevision: () => number | undefined;
+	/**
+	 * The revision the classic draft is built on (hydration, a landed save,
+	 * "keep my version"). It stays behind the row while an unsaved draft
+	 * waits on a newer write.
+	 */
+	draftRevision: () => number | undefined;
 	hasChanges: () => boolean;
 	/** A stale-revision choice is open. */
 	hasConflict: () => boolean;
@@ -128,7 +134,12 @@ export function useEmailEditorAutosave(
 		mirror: {
 			scope: () => scope.value,
 			snapshot,
-			base: () => host.rowRevision() ?? null,
+			// What the edits were built on (live: the session's base), not what
+			// the server holds now: a copy of edits made before someone else's
+			// write must not pass for one made after it, or reopening would
+			// apply it over that write.
+			base: () =>
+				(host.isLive() ? coediting?.meta.value?.baseRevision : host.draftRevision()) ?? null,
 		},
 	});
 

@@ -242,6 +242,7 @@ export function useEmailEditorBridge<S>(
 	const {
 		hasChanges: classicHasChanges,
 		isInitialized,
+		baseRevision: draftRevision,
 		beginSubmit,
 		acknowledge,
 		rebase,
@@ -382,6 +383,7 @@ export function useEmailEditorBridge<S>(
 				isLive: () => isLive.value,
 				isInitialized: () => isInitialized.value,
 				rowRevision,
+				draftRevision,
 				hasChanges: () => hasChanges.value,
 				hasConflict: () => conflict.value !== null,
 				isChoosing: () => showUnsavedChangesDialog.value,
@@ -403,14 +405,7 @@ export function useEmailEditorBridge<S>(
 	// refusal; resolving against an older emission would hide the change the
 	// user was just told about. Wait (briefly) for the live query to deliver it.
 	const untilRevision = (target: number) =>
-		untilReached(
-			opts.source,
-			() => {
-				const revision = rowRevision();
-				return revision === undefined || revision >= target;
-			},
-			CONFLICT_CATCH_UP_MS
-		);
+		untilReached(opts.source, () => (rowRevision() ?? target) >= target, CONFLICT_CATCH_UP_MS);
 
 	const resolveConflict = async (
 		resolve: (pending: EmailEditorConflict) => Promise<void> | void

@@ -81,7 +81,15 @@ export const saveDraft = campaignsMutation({
 		});
 
 		if (args.abTest) await saveAbTestDraft(ctx, campaign, args.abTest, session.userId);
-		return { campaignId: args.campaignId };
+		// The editor's device copy names the `updatedAt` its draft is built on.
+		// It may move that on to this save's only when nobody else wrote since
+		// (`previousUpdatedAt`): their write is not in the draft.
+		const saved = await ctx.db.get(args.campaignId);
+		return {
+			campaignId: args.campaignId,
+			updatedAt: saved?.updatedAt ?? campaign.updatedAt,
+			previousUpdatedAt: campaign.updatedAt,
+		};
 	},
 });
 

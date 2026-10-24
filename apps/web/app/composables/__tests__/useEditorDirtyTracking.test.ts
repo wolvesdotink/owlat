@@ -109,6 +109,32 @@ describe('useEditorDirtyTracking', () => {
 		expect(editor.beginSubmit().revision).toBe(3);
 	});
 
+	it('reports the revision the draft is built on, not the latest row', async () => {
+		const editor = setupEditor({ _id: 't1', name: 'Original', contentRevision: 3 });
+		await settle();
+		expect(editor.baseRevision()).toBe(3);
+		editor.name.value = 'My unsaved edit';
+		await nextTick();
+
+		// Someone else's write arrives while the edit is unsaved: not the draft's base.
+		editor.source.value = { _id: 't1', name: 'Their edit', contentRevision: 4 };
+		await settle();
+		expect(editor.baseRevision()).toBe(3);
+
+		// A save of the draft that landed moves it on…
+		const submission = editor.beginSubmit();
+		editor.acknowledge(submission, 6);
+		expect(editor.baseRevision()).toBe(6);
+		// …and so does building the draft on the latest row.
+		editor.name.value = 'Edited again';
+		await nextTick();
+		editor.source.value = { _id: 't1', name: 'Theirs again', contentRevision: 8 };
+		await settle();
+		expect(editor.baseRevision()).toBe(6);
+		editor.rebase();
+		expect(editor.baseRevision()).toBe(8);
+	});
+
 	it('advances the base on a same-revision emission without touching the draft', async () => {
 		const editor = setupEditor({ _id: 't1', name: 'Original', contentRevision: 3 });
 		await settle();

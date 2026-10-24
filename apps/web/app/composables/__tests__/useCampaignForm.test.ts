@@ -12,6 +12,19 @@ import { nextTick, ref, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import { createTestI18n } from '~/__tests__/i18n';
 import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
+import {
+	createEditorDraftStore,
+	editorDraftScope,
+	type EditorDraftStore,
+} from '~/utils/editorDraftStore';
+import { createNoopDriver } from '~/utils/postboxOfflineKvDriver';
+
+// A test that needs device copies sets `draftStore`; the rest run without one.
+let draftStore: EditorDraftStore | null = null;
+vi.mock('~/utils/editorDraftStore', async (importOriginal) => {
+	const actual: { getEditorDraftStore: () => EditorDraftStore } = await importOriginal();
+	return { ...actual, getEditorDraftStore: () => draftStore ?? actual.getEditorDraftStore() };
+});
 
 const i18n = createTestI18n();
 
@@ -27,6 +40,8 @@ let failLabel: string | null;
 let showToast: ReturnType<typeof vi.fn>;
 /** The leave prompt's Save (useUnsavedChanges' `onSave`). */
 let leaveSave: (() => Promise<void>) | undefined;
+/** What a run that lands reports (`saveDraft`: the campaign's `updatedAt`). */
+let landed: unknown;
 
 function paginated(rows: unknown[] = []) {
 	return {
@@ -41,6 +56,8 @@ function paginated(rows: unknown[] = []) {
 
 beforeEach(() => {
 	runs = [];
+	landed = null;
+	draftStore = null;
 	failNext = false;
 	failLabel = null;
 	showToast = vi.fn();
@@ -95,7 +112,7 @@ beforeEach(() => {
 					options.onError?.({ category: 'invalid_input', message: 'Name is too long' });
 					return { ok: false };
 				}
-				return { ok: true, result: null };
+				return { ok: true, result: landed };
 			},
 		})
 	);
@@ -120,12 +137,12 @@ const DRAFT = {
 	subject: 'What is new',
 };
 
-async function setup(senderProblem: string | null = null) {
+async function setup(senderProblem: string | null = null, row: Record<string, unknown> = DRAFT) {
 	const validate = vi.fn(() => senderProblem);
 	const picker = ref<SenderPickerHandle | null>({ validate, isReady: senderProblem === null });
 	const abTest = useCampaignABTest();
 	const form = useCampaignForm(ref('cmp_1' as Id<'campaigns'>), abTest, picker);
-	campaign.value = { ...DRAFT };
+	campaign.value = { ...row };
 	await nextTick();
 	await nextTick();
 	return { form, validate, abTest };
@@ -362,5 +379,82 @@ describe('useCampaignForm autosave', () => {
 		await nextTick();
 		await vi.advanceTimersByTimeAsync(1500);
 		expect(saves().map((run) => run.args)).toEqual([{ campaignId: 'cmp_1', name: 'Edited name' }]);
+	});
+});
+
+describe('useCampaignForm device copy base', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		const data = new Map<string, unknown>();
+		draftStore = createEditorDraftStore({
+			...createNoopDriver(),
+			persistent: true,
+			get: async <T>(key: string) => data.get(key) as T,
+			set: async (key, value) => {
+				data.set(key, value);
+			},
+			delete: async (key) => {
+				data.delete(key);
+			},
+			keys: async () => [...data.keys()],
+			deleteIf: async (key, predicate) => {
+				if (!predicate(data.get(key))) return false;
+				data.delete(key);
+				return true;
+			},
+		});
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	const scope = editorDraftScope({
+		userId: 'user_1',
+		organizationId: 'org_1',
+		kind: 'campaign',
+		id: 'cmp_1',
+	});
+	const copyBases = async () =>
+		(await draftStore!.list(scope, (data): data is unknown => true)).map(({ copy }) => copy.base);
+	/** A schedule a draft does not store: its copy stays after a save. */
+	const pickSchedule = async (form: Awaited<ReturnType<typeof setup>>['form']) => {
+		form.scheduledDate.value = '2099-11-02';
+		form.scheduledTime.value = '09:00';
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(300);
+	};
+
+	it('names the campaign as loaded, not a newer write by someone else', async () => {
+		const { form } = await setup(null, { ...DRAFT, updatedAt: 100 });
+		form.campaignName.value = 'My name';
+		await nextTick();
+		campaign.value = { ...DRAFT, replyTo: 'their@owlat.example', updatedAt: 200 };
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(300);
+
+		// The copy holds the reply-to as loaded; a newer base would let it be applied over theirs.
+		expect(await copyBases()).toEqual([100]);
+	});
+
+	it('moves on with its own save when nobody else wrote in between', async () => {
+		const { form } = await setup(null, { ...DRAFT, updatedAt: 100 });
+		landed = { campaignId: 'cmp_1', updatedAt: 150, previousUpdatedAt: 100 };
+		form.campaignName.value = 'My name';
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(1500);
+		await pickSchedule(form);
+
+		expect(await copyBases()).toEqual([150]);
+	});
+
+	it("stays on the campaign as loaded when its save lands on someone else's write", async () => {
+		const { form } = await setup(null, { ...DRAFT, updatedAt: 100 });
+		landed = { campaignId: 'cmp_1', updatedAt: 300, previousUpdatedAt: 200 };
+		form.campaignName.value = 'My name';
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(1500);
+		await pickSchedule(form);
+
+		expect(await copyBases()).toEqual([100]);
 	});
 });

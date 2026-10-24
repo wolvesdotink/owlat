@@ -9,6 +9,8 @@
  *   - only drafts are writable
  *   - the A/B test goes through its lifecycle only when it changed, so a
  *     repeated autosave leaves no audit entry behind
+ *   - a save reports the `updatedAt` it found and the one it left, so the
+ *     editor can tell whether anyone else wrote since its draft's base
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -169,6 +171,19 @@ describe('campaigns.drafts.saveDraft', () => {
 				content: { emailTemplateId: templateId },
 			})
 		).rejects.toThrow();
+	});
+
+	it('reports the updatedAt it found and the one it left', async () => {
+		const t = convexTest(schema, modules);
+		const { campaignId } = await seed(t, { updatedAt: 1_000 });
+
+		const saved = await t.mutation(api.campaigns.drafts.saveDraft, { campaignId, name: 'Changed' });
+		expect(saved.previousUpdatedAt).toBe(1_000);
+		expect(saved.updatedAt).toBe((await read(t, campaignId))?.updatedAt);
+		expect(saved.updatedAt).toBeGreaterThan(1_000);
+
+		const next = await t.mutation(api.campaigns.drafts.saveDraft, { campaignId, name: 'Again' });
+		expect(next.previousUpdatedAt).toBe(saved.updatedAt);
 	});
 
 	it('only writes drafts', async () => {

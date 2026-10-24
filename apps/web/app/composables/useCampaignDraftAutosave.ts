@@ -1,7 +1,7 @@
 import { computed, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Doc, Id } from '@owlat/api/dataModel';
-import type { FunctionArgs } from 'convex/server';
+import type { FunctionArgs, FunctionReturnType } from 'convex/server';
 import type { OperationError } from '@owlat/shared/operationError';
 import { sendTimingFromCampaign, type SendTiming } from '~/lib/sendTiming';
 import { editorDraftScope } from '~/utils/editorDraftStore';
@@ -26,6 +26,8 @@ import { SaveRefusedError } from './useEditorSaveOperation';
 type ABTest = ReturnType<typeof useCampaignABTest>;
 type SaveDraftArgs = FunctionArgs<typeof api.campaigns.drafts.saveDraft>;
 type DraftPayload = Omit<SaveDraftArgs, 'campaignId'>;
+/** What a landed `saveDraft` reports about the campaign's `updatedAt`. */
+type SavedDraft = FunctionReturnType<typeof api.campaigns.drafts.saveDraft>;
 
 /** Everything the form holds, as the device keeps it. */
 export interface CampaignDraftSnapshot {
@@ -97,11 +99,13 @@ export interface CampaignDraftAutosave {
 	recovery: DraftRecovery<CampaignDraftSnapshot>;
 	/** The whole draft as `saveDraft` takes it (the explicit save before Send). */
 	payload: () => DraftPayload;
+	/** The form was just loaded from the campaign: the server holds `payload()`. */
+	markLoaded: () => void;
 	/**
-	 * The server holds `payload` (the form was just loaded from it, or a save
-	 * of it landed): later autosaves send only what changes after it.
+	 * A save of `payload` landed (`saved`: what the server reported): later
+	 * autosaves send only what changes after it.
 	 */
-	markSent: (payload: DraftPayload) => void;
+	markSent: (payload: DraftPayload, saved: SavedDraft | null) => void;
 }
 
 const isSnapshot = (data: unknown): data is CampaignDraftSnapshot => {
@@ -164,11 +168,25 @@ export function useCampaignDraftAutosave<Submission>(
 
 	// What the server holds, per section, as of the last save that landed.
 	let sent: Record<string, string> = {};
-	const markSent = (draft: DraftPayload) => {
+	const recordSent = (draft: DraftPayload) => {
 		sent = {
 			...sent,
 			...Object.fromEntries(Object.entries(draft).map(([k, v]) => [k, JSON.stringify(v)])),
 		};
+	};
+	// The campaign's `updatedAt` the form is built on (the device copy's
+	// base). The form does not follow later writes, so only its own save moves
+	// this on, and only when the server reports nobody else wrote in between.
+	// Left behind, a copy is offered on the next visit instead of applied
+	// over a write it does not contain.
+	let base: number | null = null;
+	const markLoaded = () => {
+		recordSent(payload());
+		base = form.campaignData.value?.updatedAt ?? null;
+	};
+	const markSent = (draft: DraftPayload, saved: SavedDraft | null) => {
+		recordSent(draft);
+		if (base !== null && saved?.previousUpdatedAt === base) base = saved.updatedAt;
 	};
 
 	const snapshot = (): CampaignDraftSnapshot => ({
@@ -235,14 +253,14 @@ export function useCampaignDraftAutosave<Submission>(
 				if (!outcome.ok) {
 					throw refused ? new SaveRefusedError(refused) : new Error('Saving the campaign failed');
 				}
-				markSent(changed);
+				markSent(changed, outcome.result);
 			}
 			form.acknowledge(submission);
 		},
 		mirror: {
 			scope: () => scope.value,
 			snapshot,
-			base: () => form.campaignData.value?.updatedAt ?? null,
+			base: () => base,
 			keepAfterSave: holdsDeviceOnly,
 		},
 	});
@@ -284,5 +302,5 @@ export function useCampaignDraftAutosave<Submission>(
 		onApplied: () => showToast(t('shared.draftAutosave.restored')),
 	});
 
-	return { autosave, recovery, payload, markSent };
+	return { autosave, recovery, payload, markLoaded, markSent };
 }

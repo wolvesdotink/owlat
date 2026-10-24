@@ -126,7 +126,7 @@ export function useCampaignForm(
 		}
 		const fields = drafts.payload();
 		const result = await saveDraft({ campaignId: campaignId.value, ...fields });
-		if (result.ok) drafts.markSent(fields);
+		if (result.ok) drafts.markSent(fields, result.result);
 		return result.ok;
 	};
 
@@ -287,7 +287,7 @@ export function useCampaignForm(
 			senderPickerKey.value += 1;
 		},
 	});
-	onFormLoaded = () => drafts.markSent(drafts.payload());
+	onFormLoaded = () => drafts.markLoaded();
 	if (isFormInitialized.value) onFormLoaded();
 	markCleanForm = () => {
 		markClean();

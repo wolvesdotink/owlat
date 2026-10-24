@@ -96,6 +96,12 @@ export interface EditorSubmission<S> {
 export interface UseEditorDirtyTrackingReturn<S> {
 	hasChanges: Ref<boolean>;
 	isInitialized: Ref<boolean>;
+	/**
+	 * The revision the draft is built on: the hydrated row's, the one an
+	 * acknowledged save stored, or the latest row's after `rebase`. A newer
+	 * row arriving while the draft holds unsaved work does not move it.
+	 */
+	baseRevision: () => number | undefined;
 	/** Freeze the draft at the start of a save. */
 	beginSubmit: () => EditorSubmission<S>;
 	/**
@@ -318,6 +324,7 @@ export function useEditorDirtyTracking<S>(
 	return {
 		hasChanges,
 		isInitialized,
+		baseRevision: () => baseRevision,
 		beginSubmit,
 		acknowledge,
 		markClean: catchUp,

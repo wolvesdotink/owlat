@@ -174,7 +174,7 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-function setup(status: 'draft' | 'published' = 'draft') {
+function setup(status: 'draft' | 'published' = 'draft', initial: Partial<TemplateRow> = {}) {
 	const source = ref<TemplateRow | null>({
 		_id: 't1',
 		name: 'Welcome',
@@ -182,6 +182,7 @@ function setup(status: 'draft' | 'published' = 'draft') {
 		content: JSON.stringify([text('a', 'Alpha')]),
 		status,
 		contentRevision: 2,
+		...initial,
 	});
 	const save = vi.fn(
 		async (ctx: { subject: Ref<string> }, base: EmailEditorSaveBase<TemplateRow | null>) => {
@@ -362,6 +363,67 @@ describe('useEmailEditorBridge autosave (classic)', () => {
 		});
 	});
 
+	describe('a device copy of edits made before a newer write', () => {
+		const scope = editorDraftScope({
+			userId: 'user_1',
+			organizationId: 'org_1',
+			kind: 'emailTemplate',
+			id: 't1',
+		});
+		/** Edits at revision 2; another writer's revision 3 arrives and refuses the save. */
+		async function editBeforeTheirWrite() {
+			draftStore = memoryStore({});
+			const first = setup();
+			first.save.mockRejectedValue(new StaleDraftError(3));
+			await settle();
+			first.bridge.subject.value = 'My subject';
+			await settle();
+			first.source.value = { ...first.source.value!, subject: 'Their subject', contentRevision: 3 };
+			await settle();
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(first.bridge.conflict.value).toEqual({ currentRevision: 3 });
+			const copies = await draftStore.list(scope, (data): data is unknown => true);
+			expect(copies).toHaveLength(1);
+			return { first, copy: copies[0]!.copy };
+		}
+
+		it('names the revision the edits were built on', async () => {
+			const { first, copy } = await editBeforeTheirWrite();
+			expect(copy.base).toBe(2);
+			first.unmount();
+		});
+
+		it('is offered on reopen, not applied over the newer write', async () => {
+			const { first } = await editBeforeTheirWrite();
+			first.unmount();
+			const reopened = setup('draft', { subject: 'Their subject', contentRevision: 3 });
+			await settle();
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(reopened.bridge.subject.value).toBe('Their subject');
+			expect(reopened.bridge.autosave?.recovery.pending.value?.data).toMatchObject({
+				subject: 'My subject',
+			});
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(reopened.save).not.toHaveBeenCalled();
+			reopened.unmount();
+		});
+
+		it('names the newer revision once "keep my version" built the edits on it', async () => {
+			const { first } = await editBeforeTheirWrite();
+			// Its save does not land: the copy is what keeps the edits.
+			first.save.mockReset();
+			first.save.mockRejectedValue(new Error('offline'));
+			await first.bridge.keepMyVersion();
+			first.bridge.subject.value = 'My subject, kept';
+			await settle();
+			await vi.advanceTimersByTimeAsync(1500);
+			const copies = await draftStore!.list(scope, (data): data is unknown => true);
+			expect(copies.map(({ copy }) => copy.base)).toEqual([3]);
+			first.unmount();
+		});
+	});
+
 	it('leaves a published email to its explicit Save', async () => {
 		const { bridge, save, unmount } = setup('published');
 		await settle();
@@ -415,6 +477,31 @@ describe('useEmailEditorBridge autosave (co-editing)', () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(save).toHaveBeenCalledOnce();
 		expect(save.mock.calls[0]?.[1]).toMatchObject({ coeditVersion: 2, autosave: true });
+		unmount();
+	});
+
+	it('names the revision the session is built on in the device copy', async () => {
+		draftStore = memoryStore({});
+		const { bridge, source, unmount } = await joined();
+		bridge.blocks.value = [text('a', 'Alpha edited')];
+		await settle();
+		await vi.advanceTimersByTimeAsync(300);
+		queries['sessions.get']!.value = sessionRow(2, 1);
+		await settle();
+		// The email moves on outside the session (an API write) before the next copy.
+		source.value = { ...source.value!, contentRevision: 3 };
+		bridge.blocks.value = [text('a', 'Alpha edited again')];
+		await settle();
+		await vi.advanceTimersByTimeAsync(300);
+
+		const scope = editorDraftScope({
+			userId: 'user_1',
+			organizationId: 'org_1',
+			kind: 'emailTemplate',
+			id: 't1',
+		});
+		const copies = await draftStore.list(scope, (data): data is unknown => true);
+		expect(copies.map(({ copy }) => copy.base)).toEqual([2]);
 		unmount();
 	});
 
