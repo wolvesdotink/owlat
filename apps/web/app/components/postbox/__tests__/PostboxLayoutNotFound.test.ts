@@ -19,6 +19,7 @@ import { useClickOutside } from '~/composables/useClickOutside';
 import { useLocalStorage } from '~/composables/useLocalStorage';
 import PostboxLayout from '../PostboxLayout.vue';
 import PostboxMessageNotFound from '../PostboxMessageNotFound.vue';
+import PostboxReaderPane from '../PostboxReaderPane.vue';
 import PostboxReaderPlaceholder from '../PostboxReaderPlaceholder.vue';
 import en from '../../../../i18n/locales/en.json';
 
@@ -137,7 +138,12 @@ async function mountLayout() {
 		global: {
 			plugins: [createTestI18n()],
 			mocks: autoImportedHelpers(),
-			components: { ...INERT, PostboxMessageNotFound, PostboxReaderPlaceholder },
+			components: {
+				...INERT,
+				PostboxMessageNotFound,
+				PostboxReaderPane,
+				PostboxReaderPlaceholder,
+			},
 		},
 	});
 	await flushPromises();

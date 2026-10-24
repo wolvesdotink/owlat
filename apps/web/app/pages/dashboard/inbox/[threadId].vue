@@ -573,17 +573,18 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					/>
 
 					<!-- Internal note or Reply to the customer (Answer mode), each with its own draft. -->
-					<TeamNoteComposer
-						v-if="isAdmin"
-						ref="composer"
-						v-model:reply-draft="replyDraft"
-						:draft-key="teamNoteDraftKey(threadId)"
-						:reply-name="replyTarget ? replySenderLabel : null"
-						:items="team.items.value"
-						:candidates-for="team.candidatesFor"
-						:submit-note="team.postNote"
-						@reply="openReply()"
-					/>
+					<AppErrorBoundary v-if="isAdmin" surface="composer">
+						<TeamNoteComposer
+							ref="composer"
+							v-model:reply-draft="replyDraft"
+							:draft-key="teamNoteDraftKey(threadId)"
+							:reply-name="replyTarget ? replySenderLabel : null"
+							:items="team.items.value"
+							:candidates-for="team.candidatesFor"
+							:submit-note="team.postNote"
+							@reply="openReply()"
+						/>
+					</AppErrorBoundary>
 				</div>
 
 				<div v-if="!isZen" class="space-y-6">

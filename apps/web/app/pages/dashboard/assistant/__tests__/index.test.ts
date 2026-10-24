@@ -11,7 +11,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { defineComponent, h, inject, nextTick, provide, ref } from 'vue';
+import { defineComponent, h, inject, nextTick, provide, ref, type Component } from 'vue';
 import UiDropdownMenu from '@owlat/ui/components/ui/DropdownMenu.vue';
 import UiDropdownMenuItem from '@owlat/ui/components/ui/DropdownMenuItem.vue';
 import AssistantComposer from '~/components/assistant/AssistantComposer.vue';
@@ -83,12 +83,16 @@ beforeEach(() => {
 	});
 });
 
-function mountPage(options: { attachTo?: HTMLElement } = {}): VueWrapper {
+function mountPage(options: { attachTo?: HTMLElement; composer?: Component } = {}): VueWrapper {
 	return mount(AssistantPage, {
 		attachTo: options.attachTo,
 		global: {
 			plugins: [createTestI18n()],
-			components: { UiDropdownMenu, UiDropdownMenuItem, AssistantComposer },
+			components: {
+				UiDropdownMenu,
+				UiDropdownMenuItem,
+				AssistantComposer: options.composer ?? AssistantComposer,
+			},
 			stubs: {
 				UiRailDrawer: RailDrawerStub,
 				UiConfirmationDialog: true,
@@ -215,6 +219,31 @@ describe('Assistant feed follows only a reader at the end (#1050)', () => {
 		await flushPromises();
 		expect(box.scrollTop).toBe(1900);
 		expect(w.find('[data-testid="assistant-jump-latest"]').exists()).toBe(false);
+		w.unmount();
+	});
+});
+
+describe('Assistant composer boundary', () => {
+	it('clears a failed composer when another chat opens, though the route stays the same', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const composerFails = ref(true);
+		const FlakyComposer = defineComponent({
+			setup: () => () => {
+				if (composerFails.value) throw new Error('composer could not render');
+				return h('div', { 'data-testid': 'composer' });
+			},
+		});
+		const w = mountPage({ composer: FlakyComposer });
+		await nextTick();
+		expect(w.find('[role="alert"]').text()).toContain("The composer couldn't be displayed.");
+
+		composerFails.value = false;
+		await rowButtons(w)[1]!.trigger('click');
+		await nextTick();
+
+		expect(selectConversation).toHaveBeenCalledWith('conv_2');
+		expect(w.find('[role="alert"]').exists()).toBe(false);
+		expect(w.find('[data-testid="composer"]').exists()).toBe(true);
 		w.unmount();
 	});
 });
