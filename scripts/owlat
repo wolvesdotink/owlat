@@ -29,6 +29,10 @@
 #   owlat status              — docker compose ps
 #   owlat logs [service]      — docker compose logs -f [service]
 #   owlat doctor [--json]     — diagnose a broken install (--json: machine-readable report)
+#   owlat support-bundle [--lines N] [--output FILE]
+#                             — one redacted .tar.gz for a bug report (doctor,
+#                               compose ps, last N log lines per service,
+#                               versions, migration ledger, last rollout)
 #   owlat upgrade             — trigger in-app update to latest
 #   owlat upgrade --version X — pin to a specific semver version
 #   owlat backup [path]       — bash scripts/backup.sh [path]
@@ -71,6 +75,10 @@ if [[ ! -f "$OWLAT_DIR/docker-compose.yml" ]]; then
 	echo "Set OWLAT_DIR=/path/to/your/owlat/clone to override." >&2
 	exit 1
 fi
+
+# Where the operator ran `owlat` from: `support-bundle` resolves a relative
+# --output against it, as any command line tool would.
+OWLAT_CALLER_PWD="$PWD"
 
 cd "$OWLAT_DIR"
 
@@ -542,7 +550,7 @@ case "$cmd" in
 esac
 
 case "$cmd" in
-	setup|quickstart|config|sample-data|feature|env|unset-env|doctor|apply)
+	setup|quickstart|config|sample-data|feature|env|unset-env|doctor|apply|support-bundle)
 		require_supported_arch
 		;;
 esac
@@ -806,6 +814,66 @@ case "$cmd" in
 		exec docker run --rm \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			"$OWLAT_SETUP_IMAGE" doctor "$@"
+		;;
+	support-bundle)
+		# One archive for a bug report, collected read-only by the setup image:
+		# it needs the Docker socket (compose ps/logs, and the migration read
+		# through the convex-deploy image) and this stack's project name and
+		# profiles, so the in-container compose sees THIS stack. The archive
+		# comes back on stdout and is written here, so --output can be any host
+		# path; it is created owner-only and removed again if collection fails.
+		bundle_out=""
+		bundle_args=()
+		while [[ $# -gt 0 ]]; do
+			case "$1" in
+				--output|-o)
+					bundle_out="${2:-}"
+					shift 2 || shift
+					;;
+				--output=*)
+					bundle_out="${1#*=}"
+					shift
+					;;
+				*)
+					bundle_args+=("$1")
+					shift
+					;;
+			esac
+		done
+		if ! setup_image_has_command support-bundle; then
+			printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} No bundle was written: this stack's setup image (${OWLAT_SETUP_IMAGE}) predates 'owlat support-bundle'." \
+				"       Upgrade the stack with 'owlat upgrade', or attach 'owlat doctor --json' and 'owlat status' instead." >&2
+			exit 1
+		fi
+		[[ -n "$bundle_out" ]] || bundle_out="owlat-support-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
+		[[ "$bundle_out" == /* ]] || bundle_out="$OWLAT_CALLER_PWD/$bundle_out"
+		if [[ -e "$bundle_out" ]]; then
+			echo "Error: $bundle_out already exists; choose another --output." >&2
+			exit 1
+		fi
+		bundle_partial="$bundle_out.partial"
+		if ! (umask 077 && : >"$bundle_partial"); then
+			echo "Error: cannot write $bundle_out." >&2
+			exit 1
+		fi
+		export_compose_profiles
+		project_name="$(compose_project_name)"
+		bundle_status=0
+		docker run --rm \
+			-v "$OWLAT_DIR:/opt/owlat" \
+			-v /var/run/docker.sock:/var/run/docker.sock \
+			-e "OWLAT_DIR=/opt/owlat" \
+			${project_name:+-e "COMPOSE_PROJECT_NAME=$project_name"} \
+			${COMPOSE_PROFILES:+-e "COMPOSE_PROFILES=$COMPOSE_PROFILES"} \
+			"$OWLAT_SETUP_IMAGE" support-bundle --output - ${bundle_args[@]+"${bundle_args[@]}"} \
+			>"$bundle_partial" || bundle_status=$?
+		if [[ "$bundle_status" -ne 0 ]]; then
+			rm -f -- "$bundle_partial"
+			echo "Error: the support bundle could not be collected (see above)." >&2
+			exit "$bundle_status"
+		fi
+		mv -f -- "$bundle_partial" "$bundle_out"
+		printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Support bundle written to $bundle_out"
 		;;
 	shell|exec)
 		svc="${1:-web}"

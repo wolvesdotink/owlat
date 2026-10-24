@@ -26,7 +26,8 @@
  * twice: the second sees the first's ledger rows, and an active runner.
  *
  * Gating: platform admins only, like the rest of System & updates. `advance`
- * is internal.
+ * and `supportBundleState` (the support bundle's read, with the admin key) are
+ * internal.
  */
 
 import { v } from 'convex/values';
@@ -34,6 +35,7 @@ import { internal } from '../_generated/api';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { platformAdminMutation, platformAdminQuery } from '../lib/authedFunctions';
+import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { readMigrationRun, type MigrationRun } from '../lib/migrationLedger';
 import {
@@ -47,6 +49,7 @@ import {
 	type MigrationState,
 } from '../lib/migrationPlan';
 import { logInfo, logWarn } from '../lib/runtimeLog';
+import { getOptional } from '../lib/env';
 import { throwInvalidInput } from '../_utils/errors';
 import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { DEFAULT_STALL_AFTER_MS, MIGRATION_MANIFEST } from './manifest';
@@ -228,6 +231,50 @@ export const updateBlockers = platformAdminQuery({
 				state: states.get(migration)!.derived.state,
 			};
 		});
+	},
+});
+
+/**
+ * The ledger as `owlat support-bundle` exports it: run with the deployment's
+ * admin key (`convex run migrations/admin:supportBundleState`), so it is
+ * internal. The bundle leaves the operator's box, so it carries states, counts
+ * and timestamps only: no cursor, no auth user id and no error text (an error
+ * can quote a document), just whether there is one.
+ */
+export const supportBundleState = internalQuery({
+	args: {},
+	handler: async (ctx) => {
+		const states = await readManifestStates(ctx, Date.now());
+		const runner = await readRunner(ctx);
+		return {
+			deployedVersion: getOptional('OWLAT_VERSION') || null,
+			migrations: MIGRATION_MANIFEST.map((entry) => {
+				const { run, derived } = states.get(entry.migration)!;
+				return {
+					migration: entry.migration,
+					introducedIn: entry.introducedIn,
+					state: derived.state,
+					stalledAt: derived.stalledAt,
+					hasError: derived.error !== null,
+					startedAt: run?.startedAt ?? null,
+					updatedAt: run?.updatedAt ?? null,
+					completedAt: run?.completedAt ?? null,
+					pageCount: run?.pageCount ?? null,
+					scannedCount: run?.scannedCount ?? null,
+					changedCount: run?.changedCount ?? null,
+				};
+			}),
+			runner: runner
+				? {
+						status: runner.status,
+						startedAt: runner.startedAt,
+						updatedAt: runner.updatedAt,
+						finishedAt: runner.finishedAt ?? null,
+						stoppedMigration: runner.stoppedMigration ?? null,
+						hasStoppedError: runner.stoppedError !== undefined,
+					}
+				: null,
+		};
 	},
 });
 

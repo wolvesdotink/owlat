@@ -18,8 +18,10 @@ import type { CliOptions } from './cliOptions';
 export const VALUE_OPTIONS: ReadonlySet<string> = new Set([
 	'--config',
 	'--email',
+	'--lines',
 	'--mode',
 	'--name',
+	'--output',
 	'--owlat-dir',
 	'--owlat-version',
 	'--password',

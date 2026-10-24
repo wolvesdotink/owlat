@@ -78,6 +78,15 @@ const BUN_DOCTOR_IO: DoctorIo = {
 	print: (line) => console.log(line),
 };
 
+export interface CollectDoctorOptions {
+	/**
+	 * Ask the MTA to re-resolve reverse DNS before reading its health (default
+	 * true). That is a write on the MTA's side, so a read-only collector such as
+	 * the support bundle turns it off and reports the stored verdict.
+	 */
+	recheckIdentity?: boolean;
+}
+
 /**
  * Run every check against the install in `owlatDir` and return the report.
  * `onCheck` sees each check as it is recorded, so the text checklist streams
@@ -86,7 +95,8 @@ const BUN_DOCTOR_IO: DoctorIo = {
 export async function collectDoctorReport(
 	owlatDir: string,
 	io: DoctorIo,
-	onCheck?: (check: DoctorCheck) => void
+	onCheck?: (check: DoctorCheck) => void,
+	options: CollectDoctorOptions = {}
 ): Promise<DoctorReport> {
 	const report = new DoctorReportBuilder(onCheck);
 
@@ -140,7 +150,9 @@ export async function collectDoctorReport(
 		// `owlat doctor` is what the docs tell an operator to run after changing
 		// reverse DNS, so re-observe before reporting: the stored verdict can be up
 		// to an hour old and would answer about the PTR they just replaced.
-		await refreshMtaIdentity(env['MTA_API_URL'], env['MTA_API_KEY']);
+		if (options.recheckIdentity !== false) {
+			await refreshMtaIdentity(env['MTA_API_URL'], env['MTA_API_KEY']);
+		}
 		for (const finding of await probeMtaHealth(env['MTA_API_URL'], env)) report.record(finding);
 		// Pre-flight IP audit: the operator sees the verdict and the delisting path
 		// BEFORE investing hours in DNS. Silent when no audit exists yet.
