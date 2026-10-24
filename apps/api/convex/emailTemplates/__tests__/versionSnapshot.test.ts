@@ -12,10 +12,11 @@ import {
 	AUTOSAVE_VERSION_WINDOW_MS,
 	VERSION_HISTORY_LIMIT,
 	fingerprintSnapshot,
-	replacesAutosaveVersion,
+	selectAutosaveVersion,
 	selectVersionsToEvict,
 	shouldCaptureVersion,
 	snapshotByteLength,
+	type TemplateVersionTrigger,
 } from '../versionSnapshot';
 
 const source = (over: Partial<{ name: string; subject: string; content: string }> = {}) => ({
@@ -108,28 +109,48 @@ describe('selectVersionsToEvict', () => {
 	});
 });
 
-describe('replacesAutosaveVersion', () => {
+describe('selectAutosaveVersion', () => {
 	const W = AUTOSAVE_VERSION_WINDOW_MS;
-	const save = (createdAt: number, createdBy = 'alice') =>
-		({ trigger: 'save', createdBy, createdAt }) as const;
-
-	it("replaces the same person's save from the same window", () => {
-		expect(replacesAutosaveVersion(save(W * 3 + 10), { userId: 'alice', now: W * 3 + W - 1 })).toBe(
-			true
-		);
+	const row = (
+		createdAt: number,
+		createdBy = 'alice',
+		trigger: TemplateVersionTrigger = 'save'
+	) => ({
+		trigger,
+		createdBy,
+		createdAt,
 	});
 
-	it('keeps a row from an earlier window, another person or another event', () => {
-		expect(replacesAutosaveVersion(save(W * 3 - 1), { userId: 'alice', now: W * 3 })).toBe(false);
-		expect(replacesAutosaveVersion(save(W * 3), { userId: 'bob', now: W * 3 + 5 })).toBe(false);
+	it("finds the same person's save from the same window", () => {
+		const own = row(W * 3 + 10);
+		expect(selectAutosaveVersion([own], { userId: 'alice', now: W * 3 + W - 1 })).toBe(own);
+	});
+
+	it("finds it behind co-editors' saves from the window", () => {
+		const own = row(W * 3 + 10);
+		const rows = [row(W * 3 + 30, 'bob'), row(W * 3 + 20, 'carol'), own];
+		expect(selectAutosaveVersion(rows, { userId: 'alice', now: W * 3 + 40 })).toBe(own);
+	});
+
+	it('keeps a row from an earlier window, or from before an event', () => {
+		expect(selectAutosaveVersion([row(W * 3 - 1)], { userId: 'alice', now: W * 3 })).toBeNull();
+		expect(
+			selectAutosaveVersion([row(W * 3, 'bob')], { userId: 'alice', now: W * 3 + 5 })
+		).toBeNull();
 		for (const trigger of ['publish', 'send', 'conflict'] as const) {
 			expect(
-				replacesAutosaveVersion(
-					{ trigger, createdBy: 'alice', createdAt: W * 3 },
-					{ userId: 'alice', now: W * 3 + 5 }
-				)
-			).toBe(false);
+				selectAutosaveVersion([row(W * 3 + 2, 'alice', trigger)], {
+					userId: 'alice',
+					now: W * 3 + 5,
+				})
+			).toBeNull();
+			expect(
+				selectAutosaveVersion([row(W * 3 + 2, 'bob', trigger), row(W * 3 + 1)], {
+					userId: 'alice',
+					now: W * 3 + 5,
+				})
+			).toBeNull();
 		}
-		expect(replacesAutosaveVersion(null, { userId: 'alice', now: 0 })).toBe(false);
+		expect(selectAutosaveVersion([], { userId: 'alice', now: 0 })).toBeNull();
 	});
 });

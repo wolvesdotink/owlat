@@ -217,6 +217,29 @@ describe('version capture on autosave', () => {
 		]);
 	});
 
+	it('keeps one row per person in the window while co-editors alternate', async () => {
+		vi.useFakeTimers({ now: Date.UTC(2026, 9, 24, 10, 0, 0), toFake: ['Date'] });
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		const save = async (userId: string, content: string, second: number) => {
+			sessionMock.user = { id: userId, role: 'owner' };
+			vi.setSystemTime(Date.UTC(2026, 9, 24, 10, 0, second));
+			await t.mutation(api.emailTemplates.emails.update, { templateId, content, autosave: true });
+		};
+
+		await save('user-alice', CONTENT_B, 0);
+		await save('user-bob', CONTENT_C, 2);
+		await save('user-alice', CONTENT_A, 4);
+		await save('user-bob', CONTENT_B, 6);
+
+		const rows = await versionRows(t, templateId);
+		expect(rows.map((r) => [r.createdBy, r.content])).toEqual([
+			['user-alice', CONTENT_A],
+			['user-bob', CONTENT_B],
+		]);
+		expect(await audits(t)).toHaveLength(2);
+	});
+
 	it('leaves a save without the flag as its own row', async () => {
 		vi.useFakeTimers({ now: Date.UTC(2026, 9, 24, 10, 0, 0), toFake: ['Date'] });
 		const t = convexTest(schema, modules);

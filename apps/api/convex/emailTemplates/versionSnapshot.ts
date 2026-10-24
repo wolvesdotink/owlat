@@ -104,6 +104,19 @@ export function shouldCaptureVersion(
  */
 export const AUTOSAVE_VERSION_WINDOW_MS = 10 * 60 * 1000;
 
+/**
+ * How many of the window's newest rows an autosave looks through for its
+ * author's row. Every author keeps at most one save row per window, so this
+ * is the number of people saving the same template in one window; past it a
+ * save just adds a row.
+ */
+export const AUTOSAVE_VERSION_SCAN = 20;
+
+/** Where the fixed window holding `now` starts. */
+export function autosaveWindowStart(now: number, windowMs = AUTOSAVE_VERSION_WINDOW_MS): number {
+	return Math.floor(now / windowMs) * windowMs;
+}
+
 interface TemplateVersionAuthor {
 	trigger: TemplateVersionTrigger;
 	createdBy: string;
@@ -111,19 +124,26 @@ interface TemplateVersionAuthor {
 }
 
 /**
- * Whether an autosave by `userId` at `now` replaces `latest` instead of adding
- * a row: the newest row is a save by the same person in the same window (the
- * windows are fixed slices of the clock, so a burst of edits keeps at most one
- * row per slice). Publish, send and conflict rows are records of events and
- * are never replaced.
+ * The row an autosave by `userId` at `now` replaces instead of adding one: that
+ * person's newest save in the same window (fixed slices of the clock, so an
+ * editing session keeps at most one row per person and slice, however the
+ * co-editors' saves interleave). A publish, send or conflict row in between
+ * is a record of an event: the saves before it stay as they were, so the
+ * search stops there. Null when there is nothing to replace.
+ *
+ * `newestFirst` is the template's newest rows, at least those of the window.
  */
-export function replacesAutosaveVersion(
-	latest: TemplateVersionAuthor | null,
+export function selectAutosaveVersion<T extends TemplateVersionAuthor>(
+	newestFirst: readonly T[],
 	next: { userId: string; now: number },
 	windowMs = AUTOSAVE_VERSION_WINDOW_MS
-): boolean {
-	if (!latest || latest.trigger !== 'save' || latest.createdBy !== next.userId) return false;
-	return Math.floor(latest.createdAt / windowMs) === Math.floor(next.now / windowMs);
+): T | null {
+	const windowStart = autosaveWindowStart(next.now, windowMs);
+	for (const row of newestFirst) {
+		if (row.createdAt < windowStart || row.trigger !== 'save') return null;
+		if (row.createdBy === next.userId) return row;
+	}
+	return null;
 }
 
 /**
