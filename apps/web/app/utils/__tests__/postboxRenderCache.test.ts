@@ -21,6 +21,8 @@ function entry(srcdoc: string, height: number | null = null): PostboxRenderEntry
 		detection: { pixelCount: 0, hosts: [] } as unknown as PostboxRenderEntry['detection'],
 		hasRemoteImages: false,
 		inventoryFailed: false,
+		hasQuote: false,
+		stage: { html: srcdoc, scheme: 'light', kind: 'simple', hasQuote: false },
 		height,
 	};
 }
