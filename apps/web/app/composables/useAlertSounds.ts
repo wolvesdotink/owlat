@@ -126,6 +126,7 @@ export function useAlertSounds(unread: UnreadBadge) {
 		listening = on;
 		if (on) {
 			window.addEventListener('pointerdown', prime, true);
+			// oxlint-disable-next-line owlat/no-raw-keydown-listener -- any key press unlocks audio; it is not a shortcut
 			window.addEventListener('keydown', prime, true);
 		} else {
 			window.removeEventListener('pointerdown', prime, true);
