@@ -1,5 +1,5 @@
 import { logError } from '~/lib/runtimeLog';
-import { clientErrorReporterKey } from '~/lib/clientErrorReporter';
+import type { ClientErrorReporter, ClientErrorReporterKey } from '~/lib/clientErrorReporter';
 import type { PostHogHandle } from '~/composables/usePostHog';
 
 /**
@@ -91,5 +91,8 @@ export default defineNuxtPlugin((nuxtApp) => {
 	});
 
 	// Failures a pane boundary already shows: diagnostics only, no toast.
-	nuxtApp.vueApp.provide(clientErrorReporterKey, report);
+	nuxtApp.vueApp.provide(
+		'owlat:client-error-reporter' satisfies ClientErrorReporterKey,
+		report satisfies ClientErrorReporter
+	);
 });

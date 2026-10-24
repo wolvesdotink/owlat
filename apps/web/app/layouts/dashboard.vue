@@ -3,7 +3,7 @@ import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce'
 import { useSectionNavigation } from '~/composables/useSectionNavigation';
 import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
-import { shellPageBoundaryKey } from '~/lib/pageBoundary';
+import type { ShellPageBoundaryKey } from '~/lib/pageBoundary';
 import AppErrorBoundary from '~/components/AppErrorBoundary.vue';
 import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
 import { useMountOnFirst } from '~/composables/useMountOnFirst';
@@ -70,8 +70,8 @@ const showSectionNavigation = computed(() => !!activeSection.value && !showAppNa
 const sectionNavigationTarget = ref<HTMLElement | null>(null);
 provide('section-navigation-target', sectionNavigationTarget);
 // Handed down from this lazy layout chunk to keep the boundary out of the
-// entry bundle (see shellPageBoundaryKey).
-provide(shellPageBoundaryKey, AppErrorBoundary);
+// entry bundle (see ShellPageBoundaryKey).
+provide('owlat:shell-page-boundary' satisfies ShellPageBoundaryKey, AppErrorBoundary);
 
 // Settings' Back returns to the last page of real work, however many settings
 // pages were visited in between.
@@ -635,7 +635,7 @@ const sidebarDesktopClass = computed(() => {
 				"
 			>
 				<!-- A page that fails to render falls back in here, inside the shell
-				     (AppPageOutlet reads shellPageBoundaryKey): the rail, the header
+				     (AppPageOutlet reads ShellPageBoundaryKey): the rail, the header
 				     and the palette stay usable. -->
 				<slot />
 			</main>

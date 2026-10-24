@@ -18,7 +18,7 @@
  */
 import { computed, inject } from 'vue';
 import { routeLocationKey } from 'vue-router';
-import { clientErrorReporterKey } from '~/lib/clientErrorReporter';
+import type { ClientErrorReporter, ClientErrorReporterKey } from '~/lib/clientErrorReporter';
 import { isContainedRenderError } from '~/utils/renderPhaseError';
 
 type ErrorBoundarySurface = 'page' | 'reader' | 'messageBody' | 'list' | 'composer';
@@ -32,7 +32,10 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const route = inject(routeLocationKey, null);
-const reportError = inject(clientErrorReporterKey, null);
+const reportError = inject<ClientErrorReporter | null>(
+	'owlat:client-error-reporter' satisfies ClientErrorReporterKey,
+	null
+);
 
 // One literal key per surface so the catalog keys stay greppable.
 const MESSAGE_KEYS: Record<ErrorBoundarySurface, string> = {

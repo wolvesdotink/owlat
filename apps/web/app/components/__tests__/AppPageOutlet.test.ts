@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h, nextTick, type Component } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-import { shellPageBoundaryKey } from '~/lib/pageBoundary';
+import type { ShellPageBoundaryKey } from '~/lib/pageBoundary';
 import AppErrorBoundary from '../AppErrorBoundary.vue';
 import AppPageOutlet from '../AppPageOutlet.vue';
 
@@ -54,7 +54,9 @@ async function mountOutlet(page: Component, inShell: boolean) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { NuxtPage: nuxtPageStub(page) },
-			provide: inShell ? { [shellPageBoundaryKey as symbol]: AppErrorBoundary } : {},
+			provide: inShell
+				? { ['owlat:shell-page-boundary' satisfies ShellPageBoundaryKey]: AppErrorBoundary }
+				: {},
 			config: { errorHandler: appErrorHandler },
 		},
 	});

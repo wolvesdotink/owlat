@@ -13,7 +13,7 @@ import { defineComponent, h, nextTick, reactive, ref, type Ref } from 'vue';
 import { routeLocationKey } from 'vue-router';
 import { createI18n } from 'vue-i18n';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-import { clientErrorReporterKey } from '~/lib/clientErrorReporter';
+import type { ClientErrorReporterKey } from '~/lib/clientErrorReporter';
 import AppErrorBoundary from '../AppErrorBoundary.vue';
 import en from '../../../i18n/locales/en.json';
 import de from '../../../i18n/locales/de.json';
@@ -72,7 +72,10 @@ function mountBoundary(
 		attachTo: document.body,
 		global: {
 			plugins: [options.i18n ?? createTestI18n()],
-			provide: { [routeLocationKey as symbol]: route, [clientErrorReporterKey as symbol]: report },
+			provide: {
+				[routeLocationKey as symbol]: route,
+				['owlat:client-error-reporter' satisfies ClientErrorReporterKey]: report,
+			},
 			config: { errorHandler: appErrorHandler },
 		},
 	});

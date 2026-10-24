@@ -9,13 +9,16 @@
  * the resolved page into place (an uncaught `insertBefore` DOM error). Inside,
  * each page gets its own boundary, keyed with the page by NuxtPage.
  */
-import { inject } from 'vue';
-import { shellPageBoundaryKey } from '~/lib/pageBoundary';
+import { inject, type Component } from 'vue';
+import type { ShellPageBoundaryKey } from '~/lib/pageBoundary';
 
 defineOptions({ inheritAttrs: false });
 
-// Under the dashboard shell only; see shellPageBoundaryKey for why it is injected.
-const boundary = inject(shellPageBoundaryKey, null);
+// Under the dashboard shell only; see ShellPageBoundaryKey for why it is injected.
+const boundary = inject<Component | null>(
+	'owlat:shell-page-boundary' satisfies ShellPageBoundaryKey,
+	null
+);
 </script>
 
 <template>

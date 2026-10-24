@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clientErrorReporterKey } from '~/lib/clientErrorReporter';
+import type { ClientErrorReporterKey } from '~/lib/clientErrorReporter';
 
 /**
  * The global error toast. One failure tends to arrive as a burst (Vue errors
@@ -148,7 +148,10 @@ describe('error toast: copy', () => {
 describe('error reporter for pane boundaries', () => {
 	it('provides a reporter that ships to diagnostics without a toast', async () => {
 		await loadPlugin(fakeI18n({ value: 'en' }));
-		expect(provide).toHaveBeenCalledWith(clientErrorReporterKey, expect.any(Function));
+		expect(provide).toHaveBeenCalledWith(
+			'owlat:client-error-reporter' satisfies ClientErrorReporterKey,
+			expect.any(Function)
+		);
 
 		const report = provide.mock.calls[0]![1] as (error: unknown, source: string) => void;
 		report(new Error('reader failed'), 'boundary:reader:render function');
