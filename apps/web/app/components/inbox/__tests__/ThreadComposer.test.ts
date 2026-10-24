@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import ThreadComposer from '../ThreadComposer.vue';
@@ -480,22 +480,29 @@ describe('InboxThreadComposer and saved replies', () => {
 	const body = (w: ReturnType<typeof mountComposer>) =>
 		w.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
 
+	/** The `;` dropdown's options (its popover renders at the end of the body). */
+	const dropdown = () =>
+		Array.from(document.body.querySelectorAll<HTMLElement>('.ui-popover [role="option"]'));
+	const dropdownTexts = () => dropdown().map((o) => o.textContent?.trim());
+
 	async function type(w: ReturnType<typeof mountComposer>, text: string) {
 		const textarea = body(w);
 		textarea.element.value = text;
 		textarea.element.setSelectionRange(text.length, text.length);
 		await textarea.trigger('input');
+		// The dropdown's popover mounts its content a tick after it opens.
+		await flushPromises();
 	}
 
 	it('inserts the reply a typed ";" and shortcut picks, with its variables filled in', async () => {
 		savedReplies.value = [refund, order];
 		const wrapper = mountComposer({ recipient: { firstName: 'Ana', lastName: 'Ruiz' } });
 		await type(wrapper, 'Hello\n;ref');
-		expect(wrapper.findAll('[role="option"]').map((o) => o.text())).toEqual(['Refund;refund']);
+		expect(dropdownTexts()).toEqual(['Refund;refund']);
 
 		await body(wrapper).trigger('keydown', { key: 'Enter' });
 		expect(body(wrapper).element.value).toBe('Hello\nHi Ana,\n\nyour refund is on its way. Mira');
-		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+		expect(dropdown()).toHaveLength(0);
 		expect(recordUse).toHaveBeenCalledWith({ replyId: 'sn_1' });
 		expect(wrapper.get('[data-testid="composer-send"]').attributes('disabled')).toBeUndefined();
 	});
@@ -504,12 +511,12 @@ describe('InboxThreadComposer and saved replies', () => {
 		savedReplies.value = [refund];
 		const wrapper = mountComposer();
 		await type(wrapper, 'Thanks ;)');
-		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+		expect(dropdown()).toHaveLength(0);
 		await type(wrapper, 'a;ref');
-		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+		expect(dropdown()).toHaveLength(0);
 		// `/` is only the Postbox's older trigger.
 		await type(wrapper, 'see /ref');
-		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+		expect(dropdown()).toHaveLength(0);
 	});
 
 	it('turns what it cannot fill into gaps that hold Send until they are filled', async () => {
@@ -582,7 +589,7 @@ describe('InboxThreadComposer and saved replies', () => {
 			expect(event.defaultPrevented).toBe(false);
 		}
 		expect(body(wrapper).element.value).toBe('Hi ;ref');
-		expect(wrapper.findAll('[role="option"]').map((o) => o.text())).toEqual(['Refund;refund']);
+		expect(dropdownTexts()).toEqual(['Refund;refund']);
 		expect(recordUse).not.toHaveBeenCalled();
 
 		await body(wrapper).trigger('keydown', { key: 'Enter' });
@@ -593,17 +600,18 @@ describe('InboxThreadComposer and saved replies', () => {
 		savedReplies.value = [refund];
 		const wrapper = mountComposer({ recipient: { firstName: 'Ana' } });
 		await type(wrapper, 'Hi ;ref');
-		expect(wrapper.find('[role="option"]').exists()).toBe(true);
+		expect(dropdown()).not.toHaveLength(0);
 
 		// ← past the ";" closes the dropdown, so Enter is a newline again.
 		const textarea = body(wrapper);
 		textarea.element.setSelectionRange(2, 2);
 		await textarea.trigger('keyup', { key: 'ArrowLeft' });
-		expect(wrapper.find('[role="option"]').exists()).toBe(false);
+		expect(dropdown()).toHaveLength(0);
 
 		// Back at the end of the token, Enter replaces exactly the token.
 		textarea.element.setSelectionRange(7, 7);
 		await textarea.trigger('keyup', { key: 'End' });
+		await flushPromises();
 		await textarea.trigger('keydown', { key: 'Enter' });
 		expect(textarea.element.value).toBe('Hi Hi Ana,\n\nyour refund is on its way. Mira');
 	});

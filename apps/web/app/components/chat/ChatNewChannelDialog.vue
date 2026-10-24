@@ -114,23 +114,8 @@ const handleSubmit = async () => {
 				:label="t('components.chat.chatNewChannelDialog.initialMembers')"
 				:label-hint="t('components.chat.chatNewChannelDialog.optionalHint')"
 				:placeholder="t('components.chat.chatNewChannelDialog.membersPlaceholder')"
-			>
-				<template #candidates="{ addMember }">
-					<div
-						v-if="memberQuery && addCandidates.length > 0"
-						class="mt-2 max-h-32 overflow-y-auto space-y-1 bg-bg-surface border border-border-subtle rounded p-1"
-					>
-						<button
-							v-for="candidate in addCandidates"
-							:key="candidate.memberId"
-							class="w-full text-left px-2 py-1 text-sm rounded hover:bg-bg-elevated text-text-primary"
-							@click="addMember(candidate)"
-						>
-							{{ candidate.name ?? candidate.email ?? candidate.memberId }}
-						</button>
-					</div>
-				</template>
-			</ChatMemberPicker>
+				:candidates="addCandidates"
+			/>
 
 			<div v-if="error" class="text-sm text-error">{{ error }}</div>
 		</div>

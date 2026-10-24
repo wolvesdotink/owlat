@@ -184,7 +184,6 @@ const {
 
 const snippetPicker = usePostboxSnippetPicker({
 	editorRef,
-	surfaceRef,
 	snippets: () => props.snippets,
 	insertOptions: () => props.snippetInsert,
 	emitContent,
@@ -248,7 +247,6 @@ const inlineImages = usePostboxInlineImages({
 // conversion rides `useRichText`'s `asciiReplace` (shared one-shot-undo), above.
 const emoji = usePostboxEmojiPicker({
 	editorRef,
-	surfaceRef,
 	enabled: () => props.emojiShortcodesEnabled === true,
 	replaceSelection: richText.replaceSelection,
 	emitContent,
@@ -367,6 +365,7 @@ defineExpose({ focus: focusEditor, insertSnippet: snippetPicker.insertAtCaret })
 				contenteditable="true"
 				spellcheck="true"
 				class="postbox-basic-editor outline-none p-3 min-h-full"
+				v-bind="snippetPicker.list.value?.fieldAttrs ?? emoji.list.value?.fieldAttrs"
 				@beforeinput="onBeforeInput"
 				@input="onInput"
 				@keydown="onKeydown"
@@ -396,11 +395,12 @@ defineExpose({ focus: focusEditor, insertSnippet: snippetPicker.insertAtCaret })
 			</div>
 			<PostboxEmojiPicker
 				v-if="emojiShortcodesEnabled && emoji.open.value"
+				:ref="emoji.bindList"
 				:items="emoji.items.value"
-				:active-index="emoji.activeIndex.value"
-				:bar-style="emoji.style.value"
-				@select="emoji.insert(emoji.items.value[$event])"
-				@hover="emoji.setActive($event)"
+				:anchor="emoji.anchor.value"
+				:field="editorRef"
+				@select="emoji.insert"
+				@dismiss="emoji.close"
 			/>
 			<!--
 				Floating format bar (minimal mode): above the current selection. When
@@ -426,7 +426,7 @@ defineExpose({ focus: focusEditor, insertSnippet: snippetPicker.insertAtCaret })
 				@ai-select="rewriteCtl.onSelect"
 			/>
 			<!-- Saved-reply `;` dropdown + the prompt-on-insert dialog behind it. -->
-			<PostboxSnippetSurface :picker="snippetPicker" />
+			<PostboxSnippetSurface :picker="snippetPicker" :field="editorRef" />
 			<!-- AI rewrite pill + preview + undo affordance (all flag-gated). -->
 			<PostboxRewriteLayer v-if="rewriteEnabled" :controller="rewriteCtl" />
 		</div>

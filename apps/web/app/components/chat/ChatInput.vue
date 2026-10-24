@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
 import { isMentionHandlePrefix } from '@owlat/shared/chatMentions';
 import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
 import { useComposerDraft } from '~/composables/useComposerDrafts';
@@ -31,6 +32,7 @@ const text = computed({
 });
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const mentionPicker = ref<SuggestionListHandle | null>(null);
 
 const pendingAttachments = computed({
 	get: () => draft.value.attachments as PendingAttachment[],
@@ -130,17 +132,21 @@ const handleInput = () => {
 	recalcMentionQuery();
 };
 
+const closeMention = () => {
+	mentionQuery.value = null;
+	mentionStart.value = -1;
+};
+
 const handleKeydown = (event: KeyboardEvent) => {
 	// An IME's confirming Enter finishes the word, it does not send (#1052).
 	if (isImeComposing(event)) return;
+	// The open teammate list takes ↑ ↓ Enter Tab: Enter picks, never sends.
+	if (mentionPicker.value?.handleKeydown(event)) return;
 	if (event.key === 'Enter' && !event.shiftKey && mentionQuery.value === null) {
 		event.preventDefault();
 		void handleSend();
 	}
-	if (event.key === 'Escape' && mentionQuery.value !== null) {
-		mentionQuery.value = null;
-		mentionStart.value = -1;
-	}
+	if (event.key === 'Escape' && mentionQuery.value !== null) closeMention();
 };
 
 const handlePickMention = (handle: string) => {
@@ -222,8 +228,11 @@ const handleSend = async () => {
 		<!-- Mention picker (above input) -->
 		<ChatMentionPicker
 			v-if="mentionQuery !== null && mentionCandidates.length > 0"
+			ref="mentionPicker"
 			:candidates="mentionCandidates"
+			:anchor="textareaRef"
 			@pick="handlePickMention"
+			@dismiss="closeMention"
 		/>
 
 		<!-- Pending attachments -->
@@ -265,6 +274,7 @@ const handleSend = async () => {
 				:placeholder="t('components.chat.chatInput.placeholder')"
 				rows="1"
 				class="input flex-1 resize-none"
+				v-bind="mentionPicker?.fieldAttrs"
 				@keydown="handleKeydown"
 				@input="handleInput"
 				@paste="handlePaste"

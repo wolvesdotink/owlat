@@ -70,6 +70,11 @@ function mountEditor() {
 	});
 	const editor = wrapper.get<HTMLElement>('[role="textbox"]').element;
 	const listbox = () => document.querySelector<HTMLElement>('[role="listbox"]');
+	/**
+	 * The box the list sits in: the shared popover's panel. It is what is
+	 * placed at the caret and what scrolls; its border insets the listbox.
+	 */
+	const panel = () => listbox()?.closest<HTMLElement>('.ui-popover') ?? null;
 	const options = () => [...(listbox()?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
 	const selected = () =>
 		options()
@@ -84,7 +89,17 @@ function mountEditor() {
 	};
 	/** The editor's text, with the no-break space a contenteditable puts after a word as a space. */
 	const text = () => (editor.textContent ?? '').replace(/\u00a0/g, ' ');
-	return { editor, text, listbox, options, selected, caret, emitted };
+	return { editor, text, listbox, panel, options, selected, caret, emitted };
+}
+
+/**
+ * The panel hangs from the caret: its left edge, 4px below its bottom. The
+ * positioning engine rounds the panel to whole device pixels (the viewport
+ * here is at 1x), so it lands within half a pixel of a fractional caret.
+ */
+function expectUnderCaret(box: DOMRect, caret: DOMRect) {
+	expect(Math.abs(box.left - caret.left)).toBeLessThanOrEqual(0.5);
+	expect(Math.abs(box.top - (caret.bottom + 4))).toBeLessThanOrEqual(0.5);
 }
 
 async function typeInto(editor: HTMLElement, text: string) {
@@ -97,13 +112,8 @@ describe('the Postbox saved-reply picker in a real browser', () => {
 		const page = mountEditor();
 		await typeInto(page.editor, 'Hi ;');
 
-		const listbox = page.listbox()!;
-		expect(listbox).not.toBeNull();
-		// Anchored to the caret: its left edge, 4px below its bottom.
-		const box = listbox.getBoundingClientRect();
-		const caret = page.caret();
-		expect(box.left).toBeCloseTo(caret.left, 0);
-		expect(box.top).toBeCloseTo(caret.bottom + 4, 0);
+		expect(page.listbox()).not.toBeNull();
+		expectUnderCaret(page.panel()!.getBoundingClientRect(), page.caret());
 		expect(page.selected()).toContain('Thanks');
 
 		await userEvent.keyboard('{ArrowDown}');
@@ -144,23 +154,20 @@ describe('the Postbox emoji picker in a real browser', () => {
 		const page = mountEditor();
 		await typeInto(page.editor, 'Great :smi');
 
-		const listbox = page.listbox()!;
-		const box = listbox.getBoundingClientRect();
-		const caret = page.caret();
-		expect(box.left).toBeCloseTo(caret.left, 0);
-		expect(box.top).toBeCloseTo(caret.bottom + 4, 0);
+		const panel = page.panel()!;
+		expectUnderCaret(panel.getBoundingClientRect(), page.caret());
 		// The list is taller than its max height, so the last match starts out of view.
-		expect(listbox.scrollHeight).toBeGreaterThan(listbox.clientHeight);
-		expect(listbox.scrollTop).toBe(0);
+		expect(panel.scrollHeight).toBeGreaterThan(panel.clientHeight);
+		expect(panel.scrollTop).toBe(0);
 
 		// ArrowUp from the first match wraps to the last, which scrolls into view.
 		await userEvent.keyboard('{ArrowUp}');
 		const last = page.options().at(-1)!;
 		expect(last.getAttribute('aria-selected')).toBe('true');
 		const lastBox = last.getBoundingClientRect();
-		const listBox = listbox.getBoundingClientRect();
-		expect(lastBox.top).toBeGreaterThanOrEqual(listBox.top);
-		expect(lastBox.bottom).toBeLessThanOrEqual(listBox.bottom);
+		const panelBox = panel.getBoundingClientRect();
+		expect(lastBox.top).toBeGreaterThanOrEqual(panelBox.top);
+		expect(lastBox.bottom).toBeLessThanOrEqual(panelBox.bottom);
 		expect(document.activeElement).toBe(page.editor);
 
 		const emoji = last.querySelector('span')!.textContent!.trim();
