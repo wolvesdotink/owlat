@@ -53,19 +53,21 @@ const handleCopyMerged = () => copy(props.coexistence.merged, `${props.copyKey}-
 				>
 					{{ coexistence.merged }}
 				</code>
-				<UiButton
-					variant="ghost"
-					class="p-2"
-					:title="t('components.domains.dnsRecordPanel.copyMergedValue')"
-					@click="handleCopyMerged"
-				>
-					<Icon
-						v-if="isCopied(`${copyKey}-merged`)"
-						name="lucide:check"
-						class="w-4 h-4 text-success"
-					/>
-					<Icon v-else name="lucide:copy" class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip :text="t('components.domains.dnsRecordPanel.copyMergedValue')">
+					<UiButton
+						variant="ghost"
+						class="p-2"
+						:aria-label="t('components.domains.dnsRecordPanel.copyMergedValue')"
+						@click="handleCopyMerged"
+					>
+						<Icon
+							v-if="isCopied(`${copyKey}-merged`)"
+							name="lucide:check"
+							class="w-4 h-4 text-success"
+						/>
+						<Icon v-else name="lucide:copy" class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 			</div>
 		</div>
 	</div>

@@ -45,35 +45,43 @@ const overlayButton =
 			<div
 				class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
 			>
-				<button
-					:class="[overlayButton, 'hover:bg-brand']"
-					:title="t('dashboard.send.blocks.index.editContent')"
-					@click.stop="emit('open', block)"
-				>
-					<Icon name="lucide:file-edit" class="w-4 h-4" />
-				</button>
+				<UiTooltip :text="t('dashboard.send.blocks.index.editContent')">
+					<button
+						:class="[overlayButton, 'hover:bg-brand']"
+						:aria-label="t('dashboard.send.blocks.index.editContent')"
+						@click.stop="emit('open', block)"
+					>
+						<Icon name="lucide:file-edit" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
 				<template v-if="canManage">
-					<button
-						:class="[overlayButton, 'hover:bg-brand']"
-						:title="t('dashboard.send.blocks.index.quickSettings')"
-						@click.stop="emit('settings', block)"
-					>
-						<Icon name="lucide:settings" class="w-4 h-4" />
-					</button>
-					<button
-						:class="[overlayButton, 'hover:bg-brand']"
-						:title="t('common.duplicate')"
-						@click.stop="emit('duplicate', block)"
-					>
-						<Icon name="lucide:copy" class="w-4 h-4" />
-					</button>
-					<button
-						:class="[overlayButton, 'hover:bg-error']"
-						:title="t('common.delete')"
-						@click.stop="emit('delete', block)"
-					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
-					</button>
+					<UiTooltip :text="t('dashboard.send.blocks.index.quickSettings')">
+						<button
+							:class="[overlayButton, 'hover:bg-brand']"
+							:aria-label="t('dashboard.send.blocks.index.quickSettings')"
+							@click.stop="emit('settings', block)"
+						>
+							<Icon name="lucide:settings" class="w-4 h-4" />
+						</button>
+					</UiTooltip>
+					<UiTooltip :text="t('common.duplicate')">
+						<button
+							:class="[overlayButton, 'hover:bg-brand']"
+							:aria-label="t('common.duplicate')"
+							@click.stop="emit('duplicate', block)"
+						>
+							<Icon name="lucide:copy" class="w-4 h-4" />
+						</button>
+					</UiTooltip>
+					<UiTooltip :text="t('common.delete')">
+						<button
+							:class="[overlayButton, 'hover:bg-error']"
+							:aria-label="t('common.delete')"
+							@click.stop="emit('delete', block)"
+						>
+							<Icon name="lucide:trash-2" class="w-4 h-4" />
+						</button>
+					</UiTooltip>
 				</template>
 			</div>
 		</div>

@@ -115,16 +115,17 @@ const subject = (c: PostboxPinnedConversation) =>
 						formatTimestamp(c.lastMessageAt)
 					}}</span>
 				</component>
-				<button
-					type="button"
-					class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-tertiary opacity-0 outline-none hover:bg-bg-base hover:text-text-primary focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-brand/40 group-hover:opacity-100 pointer-coarse:opacity-100"
-					:aria-label="t('postbox.pins.unpinNamed', { subject: subject(c) })"
-					:title="t('postbox.pins.unpin')"
-					data-testid="postbox-pinned-unpin"
-					@click="pins.setPinned([c.messageId], false)"
-				>
-					<Icon name="lucide:pin-off" class="w-3.5 h-3.5" aria-hidden="true" />
-				</button>
+				<UiTooltip :text="t('postbox.pins.unpin')">
+					<button
+						type="button"
+						class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-tertiary opacity-0 outline-none hover:bg-bg-base hover:text-text-primary focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-brand/40 group-hover:opacity-100 pointer-coarse:opacity-100"
+						:aria-label="t('postbox.pins.unpinNamed', { subject: subject(c) })"
+						data-testid="postbox-pinned-unpin"
+						@click="pins.setPinned([c.messageId], false)"
+					>
+						<Icon name="lucide:pin-off" class="w-3.5 h-3.5" aria-hidden="true" />
+					</button>
+				</UiTooltip>
 			</li>
 		</ul>
 		<p

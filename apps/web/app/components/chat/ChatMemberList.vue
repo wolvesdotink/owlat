@@ -128,29 +128,33 @@ const confirmRemove = async () => {
 					v-if="canManage && member.memberId !== currentUserId"
 					class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
 				>
-					<button
-						v-if="member.role === 'member'"
-						class="text-xs text-text-tertiary hover:text-brand"
-						:title="t('components.chat.chatMemberList.promote')"
-						@click="handlePromote(member.memberId)"
-					>
-						<Icon name="lucide:shield" class="w-3.5 h-3.5" />
-					</button>
-					<button
-						v-else
-						class="text-xs text-text-tertiary hover:text-text-primary"
-						:title="t('components.chat.chatMemberList.demote')"
-						@click="handleDemote(member.memberId)"
-					>
-						<Icon name="lucide:shield-off" class="w-3.5 h-3.5" />
-					</button>
-					<button
-						class="text-xs text-text-tertiary hover:text-error"
-						:title="t('common.remove')"
-						@click="memberToRemove = member"
-					>
-						<Icon name="lucide:user-minus" class="w-3.5 h-3.5" />
-					</button>
+					<UiTooltip v-if="member.role === 'member'" :text="t('components.chat.chatMemberList.promote')">
+						<button
+							class="text-xs text-text-tertiary hover:text-brand"
+							:aria-label="t('components.chat.chatMemberList.promote')"
+							@click="handlePromote(member.memberId)"
+						>
+							<Icon name="lucide:shield" class="w-3.5 h-3.5" />
+						</button>
+					</UiTooltip>
+					<UiTooltip v-else :text="t('components.chat.chatMemberList.demote')">
+						<button
+							class="text-xs text-text-tertiary hover:text-text-primary"
+							:aria-label="t('components.chat.chatMemberList.demote')"
+							@click="handleDemote(member.memberId)"
+						>
+							<Icon name="lucide:shield-off" class="w-3.5 h-3.5" />
+						</button>
+					</UiTooltip>
+					<UiTooltip :text="t('common.remove')">
+						<button
+							class="text-xs text-text-tertiary hover:text-error"
+							:aria-label="t('common.remove')"
+							@click="memberToRemove = member"
+						>
+							<Icon name="lucide:user-minus" class="w-3.5 h-3.5" />
+						</button>
+					</UiTooltip>
 				</div>
 			</div>
 		</div>

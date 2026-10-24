@@ -91,21 +91,22 @@ useEscapeToClose(
 
 <template>
 	<div class="relative inline-flex">
-		<UiButton
-			variant="ghost"
-			ref="triggerEl"
-			type="button"
-			class="text-text-tertiary"
-			:class="props.triggerClass"
-			:title="menuLabel"
-			:aria-label="menuLabel"
-			aria-haspopup="menu"
-			:aria-expanded="open"
-			@click="toggle"
-		>
-			<Icon :name="props.icon" class="w-4 h-4" />
-			<span v-if="props.triggerText" class="ml-1.5 text-xs">{{ props.triggerText }}</span>
-		</UiButton>
+		<UiTooltip :text="menuLabel">
+			<UiButton
+				variant="ghost"
+				ref="triggerEl"
+				type="button"
+				class="text-text-tertiary"
+				:class="props.triggerClass"
+				:aria-label="menuLabel"
+				aria-haspopup="menu"
+				:aria-expanded="open"
+				@click="toggle"
+			>
+				<Icon :name="props.icon" class="w-4 h-4" />
+				<span v-if="props.triggerText" class="ml-1.5 text-xs">{{ props.triggerText }}</span>
+			</UiButton>
+		</UiTooltip>
 		<div
 			v-if="open"
 			ref="menuEl"

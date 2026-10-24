@@ -11,6 +11,7 @@ import { mount } from '@vue/test-utils';
 import PostboxFolderList from '../PostboxFolderList.vue';
 import { usePostboxMessageDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 // The rows render their copy through vue-i18n; `useI18n` is a Nuxt auto-import.
 beforeAll(() => {
@@ -62,7 +63,7 @@ describe('PostboxFolderList', () => {
 		expect(w.text().toLowerCase()).not.toContain('sent');
 		// The name lives on the link tooltip/aria-label for hover + a11y.
 		const links = w.findAll('a');
-		expect(links[0].attributes('title')).toBe('Inbox');
+		expect(tooltipOf(w, links[0]!)).toBe('Inbox');
 		expect(links[0].attributes('aria-label')).toContain('Inbox');
 		expect(links[0].attributes('aria-label')).toContain('4 unread');
 		// Unread count still surfaced as a badge.

@@ -4682,14 +4682,14 @@
 			},
 			"postboxEditorToolbar": {
 				"blockquote": "Zitat",
-				"bold": "Fett ({keys})",
+				"bold": "Fett",
 				"bulletList": "Aufzählung",
 				"heading1": "Überschrift 1",
 				"heading2": "Überschrift 2",
-				"italic": "Kursiv ({keys})",
-				"link": "Link ({keys})",
+				"italic": "Kursiv",
+				"link": "Link",
 				"orderedList": "Nummerierte Liste",
-				"underline": "Unterstrichen ({keys})"
+				"underline": "Unterstrichen"
 			},
 			"postboxEmojiPicker": {
 				"listLabel": "Emoji"
@@ -4769,12 +4769,10 @@
 			"postboxFolderRail": {
 				"collapse": "Einklappen",
 				"collapseSidebar": "Seitenleiste einklappen",
-				"collapseSidebarTitle": "Seitenleiste einklappen ({keys})",
 				"contacts": "Kontakte",
 				"deleteFolder": "Ordner löschen",
 				"deleteFolderDescription": "Den Ordner „{name}“ löschen? Nachrichten darin werden verschoben, nicht gelöscht.",
 				"expandSidebar": "Seitenleiste ausklappen",
-				"expandSidebarTitle": "Seitenleiste ausklappen ({keys})",
 				"foldersHeading": "Ordner",
 				"labelsHeading": "Labels",
 				"newFolder": "Neuer Ordner",

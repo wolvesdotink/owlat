@@ -74,7 +74,7 @@ function mountPanel(hasUnsavedChanges: boolean) {
 async function openPreview(wrapper: ReturnType<typeof mountPanel>) {
 	await wrapper.get('button').trigger('click');
 	await flushPromises();
-	const preview = document.querySelector<HTMLElement>('[title="Preview this version"]');
+	const preview = document.querySelector<HTMLElement>('[aria-label="Preview this version"]');
 	preview?.click();
 	await flushPromises();
 }

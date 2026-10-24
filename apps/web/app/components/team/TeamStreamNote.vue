@@ -101,28 +101,28 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 				class="ui-hover-reveal ml-auto flex shrink-0 items-center gap-0.5"
 			>
 				<TeamReactionPicker v-if="canReact && !hasReactions" @pick="emit('react', $event)" />
-				<button
-					v-if="save"
-					type="button"
-					class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-text-primary"
-					:title="t('components.team.note.edit')"
-					:aria-label="t('components.team.note.edit')"
-					data-testid="team-note-edit"
-					@click="editing = true"
-				>
-					<Icon name="lucide:pencil" class="size-3.5" />
-				</button>
-				<button
-					v-if="canDelete"
-					type="button"
-					class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-error"
-					:title="t('components.team.note.delete')"
-					:aria-label="t('components.team.note.delete')"
-					data-testid="team-note-delete"
-					@click="emit('delete')"
-				>
-					<Icon name="lucide:trash-2" class="size-3.5" />
-				</button>
+				<UiTooltip v-if="save" :text="t('components.team.note.edit')">
+					<button
+						type="button"
+						class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-text-primary"
+						:aria-label="t('components.team.note.edit')"
+						data-testid="team-note-edit"
+						@click="editing = true"
+					>
+						<Icon name="lucide:pencil" class="size-3.5" />
+					</button>
+				</UiTooltip>
+				<UiTooltip v-if="canDelete" :text="t('components.team.note.delete')">
+					<button
+						type="button"
+						class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-error"
+						:aria-label="t('components.team.note.delete')"
+						data-testid="team-note-delete"
+						@click="emit('delete')"
+					>
+						<Icon name="lucide:trash-2" class="size-3.5" />
+					</button>
+				</UiTooltip>
 			</span>
 		</header>
 
@@ -158,24 +158,31 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 			class="mt-2 flex flex-wrap items-center gap-1"
 			data-testid="team-note-reactions"
 		>
-			<button
+			<UiTooltip
 				v-for="reaction in entry.reactions"
 				:key="reaction.emoji"
-				type="button"
-				class="inline-flex items-center gap-1 rounded-full border px-2 py-px text-xs"
-				:class="
-					reaction.isMine
-						? 'border-brand/40 bg-brand-subtle text-text-primary'
-						: 'border-border-subtle bg-bg-elevated text-text-secondary'
-				"
-				:aria-pressed="reaction.isMine"
-				:disabled="!canReact"
-				:title="t('components.team.note.reactWith', { emoji: reaction.emoji })"
-				@click="emit('react', reaction.emoji)"
+				:text="t('components.team.note.reactWith', { emoji: reaction.emoji })"
 			>
-				<span aria-hidden="true">{{ reaction.emoji }}</span>
-				<span class="tabular-nums">{{ reaction.count }}</span>
-			</button>
+				<button
+					type="button"
+					class="inline-flex items-center gap-1 rounded-full border px-2 py-px text-xs"
+					:class="
+						reaction.isMine
+							? 'border-brand/40 bg-brand-subtle text-text-primary'
+							: 'border-border-subtle bg-bg-elevated text-text-secondary'
+					"
+					:aria-pressed="reaction.isMine"
+					:disabled="!canReact"
+					@click="emit('react', reaction.emoji)"
+				>
+					<!-- An emoji and a count are no name: "React with 👍 3". -->
+					<span class="sr-only">{{
+						t('components.team.note.reactWith', { emoji: reaction.emoji })
+					}}</span>
+					<span aria-hidden="true">{{ reaction.emoji }}</span>
+					<span class="tabular-nums">{{ reaction.count }}</span>
+				</button>
+			</UiTooltip>
 			<TeamReactionPicker v-if="canReact" class="ui-hover-reveal" @pick="emit('react', $event)" />
 		</div>
 	</article>

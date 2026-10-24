@@ -99,7 +99,7 @@ onUnmounted(() => {
 			ref="popoverRef"
 			role="menu"
 			:aria-label="t('builder.canvas.insertBlock')"
-			class="light fixed z-[9999] w-[280px] max-h-[380px] overflow-y-auto bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_4px_8px_rgba(0,0,0,0.08),0_16px_32px_rgba(0,0,0,0.12)] animate-eb-popover-enter"
+			class="light fixed z-(--z-menu) w-[280px] max-h-[380px] overflow-y-auto bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_4px_8px_rgba(0,0,0,0.08),0_16px_32px_rgba(0,0,0,0.12)] animate-eb-popover-enter"
 			:style="{ top: `${top}px`, left: `${left}px` }"
 		>
 			<div class="p-2">

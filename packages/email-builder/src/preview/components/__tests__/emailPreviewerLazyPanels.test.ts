@@ -64,7 +64,7 @@ describe('EmailPreviewer — lazily loaded panels', () => {
 
 	it('opens render options from the gear and keeps focus on it', async () => {
 		const w = mountPreviewer({ renderOptions: { baseWidth: 640 } });
-		const gear = w.find<HTMLButtonElement>('button[title="Render options"]');
+		const gear = w.find<HTMLButtonElement>('button[aria-label="Render options"]');
 		gear.element.focus();
 		await gear.trigger('click');
 		await settle();
@@ -89,7 +89,7 @@ describe('EmailPreviewer — lazily loaded panels', () => {
 			'<html><body><p>Hello</p></body></html>'
 		);
 		const w = mountPreviewer({ emailDiff: diff });
-		const button = w.find<HTMLButtonElement>('button[title="Compare changes"]');
+		const button = w.find<HTMLButtonElement>('button[aria-label="Compare changes"]');
 		button.element.focus();
 		await button.trigger('click');
 		await settle();

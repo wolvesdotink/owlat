@@ -252,28 +252,30 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 					<div
 						class="absolute top-1/2 right-4 -translate-y-1/2 flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-elevated px-1 py-1 shadow-lg opacity-0 pointer-events-none transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
 					>
-						<UiButton
-							variant="ghost"
-							size="sm"
-							:to="`/dashboard/inbox/${item.threadId}`"
-							class="!px-2"
-							:title="t('dashboard.inbox.activity.openConversation')"
-							:aria-label="t('dashboard.inbox.activity.openConversation')"
-						>
-							<Icon name="lucide:arrow-up-right" class="w-4 h-4" />
-						</UiButton>
-						<UiButton
-							variant="ghost"
-							size="sm"
-							type="button"
-							class="!px-2"
-							:disabled="resolvingId === item.threadId"
-							:title="t('dashboard.inbox.activity.markAsResolved')"
-							:aria-label="t('dashboard.inbox.activity.markAsResolved')"
-							@click="handleResolve(item.threadId)"
-						>
-							<Icon name="lucide:check-circle" class="w-4 h-4" />
-						</UiButton>
+						<UiTooltip :text="t('dashboard.inbox.activity.openConversation')">
+							<UiButton
+								variant="ghost"
+								size="sm"
+								:to="`/dashboard/inbox/${item.threadId}`"
+								class="!px-2"
+								:aria-label="t('dashboard.inbox.activity.openConversation')"
+							>
+								<Icon name="lucide:arrow-up-right" class="w-4 h-4" />
+							</UiButton>
+						</UiTooltip>
+						<UiTooltip :text="t('dashboard.inbox.activity.markAsResolved')">
+							<UiButton
+								variant="ghost"
+								size="sm"
+								type="button"
+								class="!px-2"
+								:disabled="resolvingId === item.threadId"
+								:aria-label="t('dashboard.inbox.activity.markAsResolved')"
+								@click="handleResolve(item.threadId)"
+							>
+								<Icon name="lucide:check-circle" class="w-4 h-4" />
+							</UiButton>
+						</UiTooltip>
 					</div>
 				</li>
 			</ul>

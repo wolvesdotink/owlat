@@ -4682,14 +4682,14 @@
 			},
 			"postboxEditorToolbar": {
 				"blockquote": "Blockquote",
-				"bold": "Bold ({keys})",
+				"bold": "Bold",
 				"bulletList": "Bullet list",
 				"heading1": "Heading 1",
 				"heading2": "Heading 2",
-				"italic": "Italic ({keys})",
-				"link": "Link ({keys})",
+				"italic": "Italic",
+				"link": "Link",
 				"orderedList": "Ordered list",
-				"underline": "Underline ({keys})"
+				"underline": "Underline"
 			},
 			"postboxEmojiPicker": {
 				"listLabel": "Emoji"
@@ -4769,12 +4769,10 @@
 			"postboxFolderRail": {
 				"collapse": "Collapse",
 				"collapseSidebar": "Collapse sidebar",
-				"collapseSidebarTitle": "Collapse sidebar ({keys})",
 				"contacts": "Contacts",
 				"deleteFolder": "Delete folder",
 				"deleteFolderDescription": "Delete the folder \"{name}\"? Messages in it are relocated, not deleted.",
 				"expandSidebar": "Expand sidebar",
-				"expandSidebarTitle": "Expand sidebar ({keys})",
 				"foldersHeading": "Folders",
 				"labelsHeading": "Labels",
 				"newFolder": "New folder",

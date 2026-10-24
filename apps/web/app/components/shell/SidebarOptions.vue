@@ -30,14 +30,15 @@ function stepPerInbox(by: 1 | -1) {
 <template>
 	<UiDropdownMenu v-model:open="open" position="left">
 		<template #trigger>
-			<button
-				type="button"
-				class="flex size-6 items-center justify-center rounded text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
-				:aria-label="t('components.shell.options.label')"
-				:title="t('components.shell.options.label')"
-			>
-				<Icon name="lucide:sliders-horizontal" class="size-3.5" />
-			</button>
+			<UiTooltip :text="t('components.shell.options.label')">
+				<button
+					type="button"
+					class="flex size-6 items-center justify-center rounded text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
+					:aria-label="t('components.shell.options.label')"
+				>
+					<Icon name="lucide:sliders-horizontal" class="size-3.5" />
+				</button>
+			</UiTooltip>
 		</template>
 		<div class="px-3 pb-1 pt-2 text-2xs font-medium text-text-tertiary">
 			{{ t('components.shell.options.perInbox') }}

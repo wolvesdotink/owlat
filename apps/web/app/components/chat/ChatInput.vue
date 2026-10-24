@@ -248,15 +248,17 @@ const handleSend = async () => {
 		</div>
 
 		<div class="flex items-end gap-2">
-			<button
-				class="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-				:disabled="isUploading"
-				:title="t('components.chat.chatInput.attachFile')"
-				@click="fileInputRef?.click()"
-			>
-				<Icon v-if="!isUploading" name="lucide:paperclip" class="w-4 h-4" />
-				<UiSpinner v-else size="xs" />
-			</button>
+			<UiTooltip :text="t('components.chat.chatInput.attachFile')">
+				<button
+					class="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+					:disabled="isUploading"
+					:aria-label="t('components.chat.chatInput.attachFile')"
+					@click="fileInputRef?.click()"
+				>
+					<Icon v-if="!isUploading" name="lucide:paperclip" class="w-4 h-4" />
+					<UiSpinner v-else size="xs" />
+				</button>
+			</UiTooltip>
 			<input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFilePick" />
 
 			<textarea

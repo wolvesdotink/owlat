@@ -67,15 +67,6 @@ export function useShortcutLabels() {
 	}
 
 	/**
-	 * A control's tooltip with its shortcut: `Archive (E)`. Just the name when
-	 * nothing fires the id right now.
-	 */
-	function titleWithShortcut(name: string, id: string): string {
-		const label = labelFor(id);
-		return label ? `${name} (${label})` : name;
-	}
-
-	/**
 	 * Message parameters naming keys by catalog id (`{ compose: 'global.compose' }`)
 	 * as their labels. Null when any of them fires nothing right now: a sentence
 	 * with a blank where the key belongs is worse than no sentence, so the caller
@@ -113,7 +104,6 @@ export function useShortcutLabels() {
 		ariaFor,
 		chordLabel,
 		chordAria,
-		titleWithShortcut,
 		labelParams,
 		keyHints,
 	};

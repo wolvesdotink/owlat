@@ -111,20 +111,17 @@ function onTogglePublish() {
 		}}
 	</span>
 	<ShareLinksPopover :transactional-email-id="emailId" :has-unsaved-changes="hasChanges" />
-	<UiButton
-		variant="outline"
-		size="sm"
-		:title="t('dashboard.send.transactional.detail.edit.manageTranslations')"
-		@click="emit('translations')"
-	>
-		<template #iconLeft>
-			<Icon name="lucide:languages" class="w-4 h-4" />
-		</template>
-		<!-- Icon-only below 2xl, where the builder toolbar is short of room. -->
-		<span class="max-2xl:sr-only">{{
-			t('dashboard.send.transactional.detail.edit.translations')
-		}}</span>
-	</UiButton>
+	<UiTooltip :text="t('dashboard.send.transactional.detail.edit.manageTranslations')">
+		<UiButton variant="outline" size="sm" @click="emit('translations')">
+			<template #iconLeft>
+				<Icon name="lucide:languages" class="w-4 h-4" />
+			</template>
+			<!-- Icon-only below 2xl, where the builder toolbar is short of room. -->
+			<span class="max-2xl:sr-only">{{
+				t('dashboard.send.transactional.detail.edit.translations')
+			}}</span>
+		</UiButton>
+	</UiTooltip>
 	<!-- Awaiting review — no author-side action moves this forward, so the
 	     primary action is an unavailable, honest state rather than "Publish". -->
 	<UiButton

@@ -548,30 +548,34 @@ const sidebarDesktopClass = computed(() => {
 				:aria-label="t('shell.dashboard.sidebarContextGroup')"
 			>
 				<div :class="isCollapsed ? 'flex flex-col gap-1' : 'flex gap-1'">
-					<button
+					<UiTooltip
 						v-for="context in sidebarContexts"
 						:key="context.key"
-						type="button"
-						:aria-pressed="activeContext === context.key"
-						:class="[
-							'flex items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors',
-							isCollapsed ? 'p-2' : 'flex-1 px-2 py-1.5',
-							activeContext === context.key
-								? 'bg-(--surface-2-selected) text-text-primary'
-								: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
-						]"
-						:title="isCollapsed ? t(context.label) : undefined"
-						@click="switchContext(context.key)"
+						:text="isCollapsed ? t(context.label) : undefined"
 					>
-						<Icon
-							:name="context.icon"
+						<button
+							type="button"
+							:aria-pressed="activeContext === context.key"
 							:class="[
-								isCollapsed ? 'w-5 h-5' : 'w-3.5 h-3.5',
-								activeContext === context.key ? 'text-text-primary' : 'text-text-tertiary',
+								'flex items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors',
+								isCollapsed ? 'p-2' : 'flex-1 px-2 py-1.5',
+								activeContext === context.key
+									? 'bg-(--surface-2-selected) text-text-primary'
+									: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 							]"
-						/>
-						<span v-if="!isCollapsed">{{ t(context.label) }}</span>
-					</button>
+							:aria-label="isCollapsed ? t(context.label) : undefined"
+							@click="switchContext(context.key)"
+						>
+							<Icon
+								:name="context.icon"
+								:class="[
+									isCollapsed ? 'w-5 h-5' : 'w-3.5 h-3.5',
+									activeContext === context.key ? 'text-text-primary' : 'text-text-tertiary',
+								]"
+							/>
+							<span v-if="!isCollapsed">{{ t(context.label) }}</span>
+						</button>
+					</UiTooltip>
 				</div>
 			</div>
 

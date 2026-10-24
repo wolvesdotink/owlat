@@ -272,15 +272,16 @@ const registrationSettled = computed(
 							: t('components.domains.recordRow.verify')
 					}}</template>
 				</UiButton>
-				<UiButton
-					variant="ghost"
-					class="relative p-2 text-error hover:bg-error/10"
-					:title="t('components.domains.recordRow.removeDomain')"
-					:aria-label="t('components.domains.recordRow.removeDomain')"
-					@click="emit('delete')"
-				>
-					<Icon name="lucide:trash-2" class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip :text="t('components.domains.recordRow.removeDomain')">
+					<UiButton
+						variant="ghost"
+						class="relative p-2 text-error hover:bg-error/10"
+						:aria-label="t('components.domains.recordRow.removeDomain')"
+						@click="emit('delete')"
+					>
+						<Icon name="lucide:trash-2" class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 				<!-- Decorative. Its rotation makes it a stacking context painted above
 				     the overlay, so it lets the pointer through to the disclosure. -->
 				<div

@@ -82,17 +82,18 @@ const { t } = useI18n();
 					</div>
 
 					<!-- Download link -->
-					<a
-						v-if="version.url"
-						:href="version.url"
-						target="_blank"
-						rel="noopener noreferrer"
-						class="flex-shrink-0 p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-						:title="t('components.files.versionHistory.download')"
-						@click.stop
-					>
-						<Icon name="lucide:download" class="w-4 h-4" />
-					</a>
+					<UiTooltip v-if="version.url" :text="t('components.files.versionHistory.download')">
+						<a
+							:href="version.url"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="flex-shrink-0 p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+							:aria-label="t('components.files.versionHistory.download')"
+							@click.stop
+						>
+							<Icon name="lucide:download" class="w-4 h-4" />
+						</a>
+					</UiTooltip>
 				</div>
 			</div>
 		</div>
