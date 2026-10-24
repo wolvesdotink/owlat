@@ -68,7 +68,6 @@ beforeEach(() => {
 
 afterEach(() => {
 	usePostboxTriageUndo().dismiss();
-	document.body.innerHTML = '';
 });
 
 const global = {

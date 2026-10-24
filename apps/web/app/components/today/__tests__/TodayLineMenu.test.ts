@@ -62,7 +62,6 @@ const pick = (label: string) =>
 afterEach(() => {
 	peek.open.mockClear();
 	peek.openThread.mockClear();
-	document.body.innerHTML = '';
 });
 
 describe('Updates line menu', () => {

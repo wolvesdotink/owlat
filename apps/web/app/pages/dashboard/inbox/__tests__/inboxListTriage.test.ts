@@ -288,7 +288,6 @@ beforeEach(() => {
 afterEach(() => {
 	usePostboxTriageUndo().dismiss();
 	wrapper?.unmount();
-	document.body.innerHTML = '';
 });
 
 describe('Team Inbox list: selection', () => {

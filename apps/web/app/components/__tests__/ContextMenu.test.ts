@@ -203,7 +203,7 @@ describe('UiContextMenu', () => {
 
 		// Escape is left to the escape layer, which closes the menu.
 		item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-		await waitForClose();
+		await wrapper.vm.$nextTick();
 		expect(menuEl()).toBeNull();
 		document.removeEventListener('keydown', listener);
 		wrapper.unmount();

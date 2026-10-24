@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
+import InboxBulkBar from '~/components/inbox/InboxBulkBar.vue';
 import { useOrganization } from '~/composables/useOrganization';
 import { useInboxSelection } from '~/composables/useInboxSelection';
 import {
