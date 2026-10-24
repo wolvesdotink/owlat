@@ -27,7 +27,7 @@ const MAX_RATE_PER_MINUTE = 1_000_000;
 const MAX_RECOVERY_FACTOR = 100;
 
 /**
- * PINNED DIVERGENCE (D8) — profile-key selection is NOT the taxonomy.
+ * PINNED DIVERGENCE — profile-key selection is NOT the taxonomy.
  *
  * `destinationProviderForDomain` answers "which cell of the destination-provider
  * taxonomy is this RECIPIENT DOMAIN in?", and every unrecognised domain is

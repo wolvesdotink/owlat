@@ -123,7 +123,7 @@ describe('task-policy catalog', () => {
 				expect(entry.maxReasoningTokens, entry.task).toBeNull();
 				continue;
 			}
-			// Read on arrival's gist is capped small on purpose (SPEC §0): two quotes and a fact.
+			// Read on arrival's gist is capped small on purpose: two quotes and a fact.
 			if (entry.task === 'mail.gist') continue;
 			expect(entry.maxOutputTokens, entry.task).toBeGreaterThanOrEqual(1_024);
 			if (entry.task !== 'plugin.invoke') {

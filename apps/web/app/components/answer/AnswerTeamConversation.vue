@@ -13,7 +13,7 @@ type ThreadMessage = ThreadData['messages'][number];
 type ThreadContact = ThreadData['contact'];
 
 /**
- * Answer mode's left column for a Team inbox thread (plan §07, SPEC §7): the
+ * Answer mode's left column for a Team inbox thread: the
  * team stream in its own order. The customer's messages show with their
  * HTML bodies, rendered by the Postbox's sandboxed body component (quotes
  * folded, remote images behind "Show images"; a body too large for its row

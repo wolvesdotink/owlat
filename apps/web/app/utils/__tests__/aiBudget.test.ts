@@ -1,5 +1,5 @@
 /**
- * The AI spend budget refusal as people read it (D1, U3, U5): the stable code
+ * The AI spend budget refusal as people read it: the stable code
  * and its reason become catalog keys, never the server's English sentence.
  */
 import { describe, expect, it } from 'vitest';

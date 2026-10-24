@@ -78,7 +78,7 @@ const props = defineProps<{
 	/** Live flag state, including its AI dependency; separate from saved credentials. */
 	featureState: 'loading' | 'error' | 'enabled' | 'disabled';
 	/**
-	 * D3: the deployment's DECISION_PROVIDER names no provider, so decisions are
+	 * The deployment's DECISION_PROVIDER names no provider, so decisions are
 	 * refused (`getConfig.decisionEnvProblem`, the server's own detail).
 	 */
 	envProblem?: string | null;

@@ -24,7 +24,7 @@ export const eraseThreadViewerState: MemberPhaseRunner = async ({ ctx, authUserI
 
 /**
  * Team items assigned to the member stay with the organization and read
- * Unassigned (D4). The patch moves each row out of the assignee range.
+ * Unassigned. The patch moves each row out of the assignee range.
  */
 export const eraseThreadItemAssignments: MemberPhaseRunner = async ({
 	ctx,

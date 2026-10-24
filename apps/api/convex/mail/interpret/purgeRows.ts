@@ -1,5 +1,5 @@
 /**
- * Thread brief erasure, the row level (SPEC §5 "Erasure"): the per-thread
+ * Thread brief erasure, the row level: the per-thread
  * readers of the thread brief tables, the deletion epoch bump, the extraction
  * delete that keeps the source counters, and the completeness recompute. The
  * resumable walks over them are the purge jobs (`purgeDrain.ts`).

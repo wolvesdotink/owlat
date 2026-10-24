@@ -1,5 +1,5 @@
 /**
- * "Upload" on an Answer mode file question (plan §06, §08): the OS file picker,
+ * "Upload" on an Answer mode file question: the OS file picker,
  * which on a phone also offers the camera, so a paper invoice gets in as a
  * photo.
  *

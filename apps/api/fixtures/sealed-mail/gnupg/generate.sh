@@ -12,8 +12,8 @@
 # Produces:
 #   keys/sender.pub.asc / keys/sender.sec.asc         gpg-minted signer keypair
 #   keys/recipient.pub.asc / keys/recipient.sec.asc   gpg-minted recipient keypair
-#   inner-protected-headers.eml                       committed plaintext INPUT (D4:
-#                                                     real Subject + text/html inside)
+#   inner-protected-headers.eml                       committed plaintext INPUT (protected
+#                                                     headers: real Subject + text/html inside)
 #   inner-no-protected-headers.eml                    committed plaintext INPUT (no
 #                                                     protected headers — body only)
 #   sealed-protected-headers.eml                      signed+encrypted PGP/MIME; outer
@@ -97,7 +97,7 @@ gpg_gen --armor --export "$RECIPIENT_FPR" >"$HERE/keys/recipient.pub.asc"
 gpg_gen --armor --export-secret-keys "$RECIPIENT_FPR" >"$HERE/keys/recipient.sec.asc"
 
 # --- 2. The committed plaintext INPUTS (byte-equal assertion targets) --------
-# (a) Protected headers per locked decision D4: the REAL Subject and both body
+# (a) Protected headers: the REAL Subject and both body
 #     branches travel INSIDE the ciphertext.
 crlf \
 	'Message-ID: <gnupg-interop-0001@interop.example.org>' \

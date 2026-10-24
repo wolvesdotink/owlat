@@ -1,5 +1,5 @@
 /**
- * Fixtures for the learn lane tests (SPEC §4): live deliveries through the real
+ * Fixtures for the learn lane tests: live deliveries through the real
  * hosted MX path (arrival record, sender profile, projection), and readers for
  * the operation log.
  */

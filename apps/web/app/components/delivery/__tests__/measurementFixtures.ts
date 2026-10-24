@@ -5,7 +5,7 @@
  * the query's shape breaks these tests rather than letting the screen drift
  * away from the data it renders. Nothing here computes a rate: the summaries
  * below carry the rates the server derived, which is exactly what the
- * components are required to print (plan D5).
+ * components are required to print.
  */
 
 import type {
@@ -141,8 +141,8 @@ export function cellView(
  * same units, so both the decided sentence and the below-floor hold have to say
  * "seed probes" rather than "sends" — and rather than "seed mailboxes", which is
  * a smaller number: one probe is one shadow copy into one seed mailbox for one
- * send, so a mailbox contributes a probe per send. Under D17 seeds are a
- * tripwire an operator reads directly and under D12 the same numbers render into
+ * send, so a mailbox contributes a probe per send. Seeds are a
+ * tripwire an operator reads directly and the same numbers render into
  * the audit row, so the noun has to be right.
  *
  * The counts are deliberately tiny — a handful of probes per provider is the

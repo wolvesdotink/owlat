@@ -1,5 +1,5 @@
 /**
- * Explain (SPEC §4.1): "Why here?" answers from the newest inbound arrival
+ * Explain: "Why here?" answers from the newest inbound arrival
  * record, behind the Postbox mailbox access check, and a fenced thread shows
  * nothing a model derived.
  */

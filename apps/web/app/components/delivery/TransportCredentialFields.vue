@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * THE CREDENTIAL FORM — one component for every send provider, present and
- * future (the seams plan's D5: "the UI renders descriptors, it doesn't know
- * providers").
+ * future (the UI renders descriptors, it doesn't know
+ * providers).
  *
  * Both surfaces that collect sending credentials — the in-app transport editor
  * and step 1 of the connect-a-provider wizard — used to carry a hand-written

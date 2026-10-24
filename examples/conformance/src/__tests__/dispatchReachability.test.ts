@@ -23,8 +23,8 @@
  *
  * MOST buckets carry exactly one executable module, so the seam key is the
  * bucket name. A bucket that carries MORE — today only `sendTransports`, whose
- * contributions may declare a feedback `webhook` (D6/P2.2) and a sending-domain
- * `domainIdentity` (D5/P3.2) — declares each in the kernel's `moduleExports` and
+ * contributions may declare a feedback `webhook` and a sending-domain
+ * `domainIdentity` — declares each in the kernel's `moduleExports` and
  * gets its own seam entry keyed `<bucket>.<role>`. Their reachability is a
  * genuinely separate question per half: the send half can be wired while the
  * feedback half is a contract nothing dispatches, and a per-bucket answer would

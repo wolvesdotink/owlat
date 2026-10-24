@@ -55,7 +55,7 @@ export const sendAssignmentTables = {
 		// TWO indexes, and no more: every read of this table is either the
 		// per-send join (`readAssignmentForSend`) or the retention sweep. A
 		// cell/time index shipped here with no reader at all, and an unread index
-		// on a per-recipient table is write amplification D16 exists to bound —
+		// on a per-recipient table is write amplification to keep bounded —
 		// add one back with the consumer, not before it.
 		.index('by_org_send', ['organizationId', 'sendId'])
 		.index('by_assigned_at', ['assignedAt']),

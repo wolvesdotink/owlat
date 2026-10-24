@@ -1,6 +1,6 @@
 /**
- * A reply the AI already wrote for this thread before Answer mode opened
- * (plan §04): the Reply Queue's clarification draft (written after the person
+ * A reply the AI already wrote for this thread before Answer mode opened:
+ * the Reply Queue's clarification draft (written after the person
  * answered its questions) or, failing that, the draft-on-arrival slot. Answer
  * mode opens a fresh reply with it in the editor and a quiet
  * "AI draft · Discard" tag.

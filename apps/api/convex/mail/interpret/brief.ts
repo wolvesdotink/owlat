@@ -1,5 +1,5 @@
 /**
- * The thread brief read and the viewer's own writes (SPEC §4 `brief.ts`):
+ * The thread brief read and the viewer's own writes :
  *
  *   - `get({threadRef, locale})` → `ThreadBriefView` (`briefShape.ts`), or
  *     null for a caller who may not read the thread. Deterministic: no model

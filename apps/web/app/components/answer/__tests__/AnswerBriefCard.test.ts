@@ -1,5 +1,5 @@
 /**
- * Answer mode's view of the thread (SPEC §7):
+ * Answer mode's view of the thread:
  *   - a personal thread: the brief with selectable items, all open ones selected;
  *   - a shared (team) mailbox: the actions only (for the team, waiting on
  *     others), never a latest update or "where things stand".

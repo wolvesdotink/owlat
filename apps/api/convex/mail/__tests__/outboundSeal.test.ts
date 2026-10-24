@@ -5,7 +5,7 @@
  *   - `getOutboundSealInputs` reads the flag + org policy + per-recipient TOFU
  *     state + signer presence from the real tables, returning ONLY public key
  *     material (never the private signing key).
- *   - The all-recipients rule (D2): one keyless recipient => `decideSeal` sends
+ *   - The all-recipients rule: one keyless recipient => `decideSeal` sends
  *     plaintext with `recipient_no_key`; a `policy: 'off'` org never seals.
  *   - CAPSTONE: `internal.mail.outbound.dispatchDraft` is run END-TO-END under
  *     convex-test (no MTA env → the message is stored + the sent cascade runs but
@@ -132,7 +132,7 @@ describe('mail/outboundSeal · getOutboundSealInputs + decideSeal', () => {
 		expect(inputs.discoveryAddresses).toEqual(['new@b.test', 'expired@b.test']);
 	});
 
-	it('one keyless recipient => plaintext with reason recorded (D2, no mixed send)', async () => {
+	it('one keyless recipient => plaintext with reason recorded (no mixed send)', async () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t);
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address: 'alice@a.test' });

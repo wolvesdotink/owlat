@@ -1,5 +1,5 @@
 /**
- * D13: the model guard was skipped for a Team inbox message, and why. The
+ * The model guard was skipped for a Team inbox message, and why. The
  * deterministic checks (patterns, spam score, URL reputation) ran; only the
  * model guard did not, and it runs before the agent does anything further
  * with the message. Module scope: the copy is catalog keys.

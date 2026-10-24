@@ -23,7 +23,7 @@ import type { IpPoolType } from '../types.js';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export const INTRADAY_PACING_POLICY = Object.freeze({
-	/** Share of the daily cap reserved for transactional traffic (D9). */
+	/** Share of the daily cap reserved for transactional traffic. */
 	transactionalHeadroomFraction: 0.2,
 	/** Share of the bulk ceiling available immediately at the start of the day. */
 	initialBurstFraction: 0.1,

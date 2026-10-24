@@ -5,7 +5,7 @@
  * `./schedule.ts`. Each re-reads the routing policy (a switch may have moved
  * since the hook scheduled it), builds the message's evidence, and hands one
  * bundle to `./bundleRunner.ts`. None returns anything a pipeline reads, and
- * none writes outside `decisionArtifacts` and `senderMemory` (D9, D12).
+ * none writes outside `decisionArtifacts` and `senderMemory`.
  *
  * Every action anchors its model budget at entry.
  */
@@ -54,7 +54,7 @@ async function scopedSegments(
 
 /**
  * A Team message as evidence, or null when it must not be judged: gone,
- * undecryptable, or no longer cleared by the guard (D13: unguarded or
+ * undecryptable, or no longer cleared by the guard (unguarded or
  * rejected content never goes to a model).
  */
 async function teamEvidence(
@@ -81,7 +81,7 @@ async function teamEvidence(
 	};
 }
 
-/** D11: the message-only triage shadow, scheduled after the security scan. */
+/** The message-only triage shadow, scheduled after the security scan. */
 export const teamTriage = internalAction({
 	args: { inboundMessageId: v.id('inboundMessages') },
 	handler: async (ctx, args): Promise<null> => {

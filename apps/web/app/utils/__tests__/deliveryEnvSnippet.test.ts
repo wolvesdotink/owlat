@@ -36,8 +36,8 @@ describe('buildDeliveryEnvSnippet', () => {
 });
 
 /**
- * The same skeleton, ORDERED BY THE ACTIVE KIND'S CATALOG ENTRY (the seams
- * plan's D1). The two lists are the same fact reached two ways — the status
+ * The same skeleton, ORDERED BY THE ACTIVE KIND'S CATALOG ENTRY. The two
+ * lists are the same fact reached two ways — the status
  * query's `requiredEnv` is itself derived from the entry — so the pin worth
  * having is that neither direction can lose a variable: the entry decides the
  * ORDER, and anything the entry does not declare is still emitted rather than

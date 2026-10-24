@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Says what the Overview does NOT know (plan §8). The worst failure is a brief
+ * Says what the Overview does NOT know. The worst failure is a brief
  * that reads as reassuring when it should not, so every gap is said out loud:
  *
  *  - partly read: how many messages are in the overview, why the rest is

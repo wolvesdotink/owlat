@@ -3,7 +3,7 @@
  *
  * These are the decision functions the screen's honesty rests on, and none of
  * them touches a clock or a database, so they are tested here exhaustively
- * rather than through the convex harness (plan D15). Three properties:
+ * rather than through the convex harness. Three properties:
  *
  *   - CONFIDENCE reaches every level it declares and emits every improvement
  *     code it declares. The web copy has a sentence for each code; a level or a
@@ -38,7 +38,7 @@ import {
 } from '../deliverabilityDashboardView';
 import { DAY_MS } from '../../lib/constants';
 
-/** A summary built the ONE legal way: through the summarizer (plan D5). */
+/** A summary built the ONE legal way: through the summarizer. */
 function summary(overrides: Partial<TransportOutcomeBucketCounts> = {}): TransportOutcomeSummary {
 	return summarizeTransportOutcomeBuckets([
 		{ ...ZERO_TRANSPORT_OUTCOME_TOTALS, periodStart: 0, lastRecordedAt: 0, ...overrides },
@@ -57,7 +57,7 @@ function bucket(
 	};
 }
 
-// ============ CONFIDENCE (D14) ============
+// ============ CONFIDENCE ============
 
 const ABOVE_BOUNCE_FLOOR = RAMP_GATE_SAMPLE_FLOORS.hardBounce + 1;
 const BELOW_BOUNCE_FLOOR = RAMP_GATE_SAMPLE_FLOORS.hardBounce - 1;
@@ -286,7 +286,7 @@ describe('dashboardConfidence', () => {
 		}
 	});
 
-	it('reads D14’s sentence literally: neither input present caps the cell at LOW', () => {
+	it('neither input present caps the cell at LOW', () => {
 		const result = dashboardConfidence({
 			ownSent: ABOVE_BOUNCE_FLOOR,
 			hasReferenceArm: false,
@@ -500,13 +500,13 @@ describe('buildDashboardCellView', () => {
 	});
 
 	/**
-	 * THE CELL-LEVEL NUMBER THE UI RENDERS IS THE EVALUATOR'S (plan D5, D14).
+	 * THE CELL-LEVEL NUMBER THE UI RENDERS IS THE EVALUATOR'S.
 	 *
 	 * A healthy standalone cell is graded `medium` by the decision core — gate 3
 	 * is running the unsubscribe proxy, which is the weakest link. The screen must
 	 * report that same `medium`; the placeholder it replaced said `low`, and a
-	 * controller and a dashboard that disagree about a number is the D5 failure
-	 * mode landing in the one configuration D14 says to tell the truth to.
+	 * controller and a dashboard that disagree about a number is the failure
+	 * mode landing in the one configuration that most needs the truth.
 	 */
 	it('carries a standalone evaluation’s MEDIUM to the wire, and does not upgrade a LOW', () => {
 		for (const graded of ['medium', 'low'] as const satisfies readonly RampGateConfidence[]) {

@@ -1,5 +1,5 @@
 /**
- * The shared draft service with a response plan (SPEC §6): the stances reach
+ * The shared draft service with a response plan: the stances reach
  * the prompt as trusted owner choices with each item's text fenced as
  * untrusted, and the host's self-check returns the plan's coverage from the
  * same call. Plugin strategies keep returning only a body; the host check

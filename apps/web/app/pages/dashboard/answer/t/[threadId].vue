@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Answer mode for a Team inbox thread: one reply, the whole screen (plan §07).
+ * Answer mode for a Team inbox thread: one reply, the whole screen.
  *
  *   /dashboard/answer/t/<conversationThreadId>?message=<inboundMessageId>
  *

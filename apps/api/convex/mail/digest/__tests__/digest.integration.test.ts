@@ -1,5 +1,5 @@
 /**
- * The digest (SPEC §6.5): selection (newest 200, ≤5 lines per kind, per-kind
+ * The digest: selection (newest 200, ≤5 lines per kind, per-kind
  * overflow, exact or "200+"), the claim with its attempt bound, one batched
  * `mail.digest` call with allowlisted refs and verbatim spans, the commit
  * through the one guarded writer, digest-only eligibility in `listDue`, and

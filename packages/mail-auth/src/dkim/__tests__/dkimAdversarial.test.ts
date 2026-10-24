@@ -3,7 +3,7 @@
  *
  * The verifier is on the untrusted inbound path, so every hostile shape MUST
  * be BOUNDED and SAFE: no crash, no unhandled rejection, no forged `pass`, no
- * DoS. Locked decision D7: any internal error becomes `temperror`, never a
+ * DoS. Any internal error becomes `temperror`, never a
  * throw. Covered here:
  *   - signature-header injection (a bogus signature must not forge a pass),
  *   - CRLF / header smuggling and truncated headers,
@@ -36,7 +36,7 @@ const BASE_MESSAGE = [
 	'body content\r\n',
 ].join('\r\n');
 
-describe('verifyDkim — hostile input is bounded and safe (D7)', () => {
+describe('verifyDkim — hostile input is bounded and safe', () => {
 	it('an unsigned message is none, not an error', async () => {
 		const outcome = await verifyDkim(Buffer.from(BASE_MESSAGE), { resolver: noKeyResolver });
 		expect(outcome.result).toBe('none');

@@ -1,5 +1,5 @@
 /**
- * Read on arrival retention (SPEC §2.9): every arrival table that carries
+ * Read on arrival retention: every arrival table that carries
  * `expiresAt` is swept past it, settled delayed actions a month after they
  * ran, and nothing fresher or still pending goes.
  */

@@ -1,5 +1,5 @@
 /**
- * Mechanical grounding of an interpretation (SPEC §4, plan §11 S2/S3): which
+ * Mechanical grounding of an interpretation : which
  * of the model's proposed items, transitions, latest-update lines and facts
  * the message itself supports, and which derived strings need a human look.
  *
@@ -70,7 +70,7 @@ export type QuoteVerdict =
 	| { ok: true; start: number; end: number }
 	| { ok: false; reason: QuoteFailureReason };
 
-/** Whether `quote` appears verbatim in the segment it names (SPEC §4). */
+/** Whether `quote` appears verbatim in the segment it names. */
 export function verifyQuote(
 	segments: GroundSegmentation['segments'],
 	canonicalText: string,

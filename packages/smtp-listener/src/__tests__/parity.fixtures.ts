@@ -15,7 +15,7 @@
  *
  *  - {@link BaseCodeDivergence}: the BASE reply code itself differs. Only the
  *    AUTH-failure family diverges at the base-code level, and only to uphold the
- *    no-auth-oracle rule (D6/I5 — every AUTH failure is byte-identical, so a
+ *    no-auth-oracle rule (every AUTH failure is byte-identical, so a
  *    probe cannot tell which stage was wrong) plus the real-enhanced-code
  *    improvement. Each is already pinned by `auth.test.ts`; it is re-declared
  *    here so the parity table can allow it explicitly rather than trip on it.
@@ -43,7 +43,7 @@ export interface EnhancedCodeEnrichment {
 
 /**
  * A reply where the base code itself diverges from `smtp-server`. Confined to
- * the AUTH-failure family (D6 no-auth-oracle + real enhanced codes).
+ * the AUTH-failure family (no auth oracle + real enhanced codes).
  */
 export interface BaseCodeDivergence {
 	readonly id: string;
@@ -109,7 +109,7 @@ export const ENHANCED_CODE_ENRICHMENTS: readonly EnhancedCodeEnrichment[] = [
  * collapses to ONE `535 5.7.8` regardless of the stage that failed
  * (unsupported mechanism, malformed base64, client cancel, rejected
  * credentials) and pre-TLS AUTH is refused with the modern `530 5.7.0`. Both
- * uphold the no-auth-oracle rule (D6/I5); `smtp-server` instead leaks the stage
+ * uphold the no-auth-oracle rule (I5); `smtp-server` instead leaks the stage
  * via distinct codes (504 / 501 / 538). All are pinned by `auth.test.ts`.
  */
 export const AUTH_BASE_CODE_DIVERGENCES: readonly BaseCodeDivergence[] = [

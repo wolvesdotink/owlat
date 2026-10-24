@@ -95,7 +95,7 @@ export const CURRENT_UNIFIED_MESSAGE_CONTENT_VERSION = 1;
 export const CURRENT_PLUGIN_STORAGE_VALUE_JSON_VERSION = 1;
 
 /**
- * sendingDomainRelayIdentities.providerDetails JSON shape (D7) — the
+ * sendingDomainRelayIdentities.providerDetails JSON shape — the
  * provider-specific extras blob on a generic relay identity. Every registered
  * relay provider writes its own shape into it, so bumping this is a contract
  * change for all of them at once; branch on the stored version on read.

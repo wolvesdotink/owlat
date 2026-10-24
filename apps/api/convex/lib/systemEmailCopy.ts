@@ -126,7 +126,7 @@ interface DailyBriefEmailCopy {
 	rarelyReadLine: (count: number) => string;
 	openedInUpdatesLine: (sender: string) => string;
 	sendersLink: string;
-	/** Read on arrival's digest section (SPEC §6.5, mail/digest/emailBlocks.ts). */
+	/** Read on arrival's digest section (mail/digest/emailBlocks.ts). */
 	digestSubject: string;
 	digestHeading: string;
 	digestGroups: Record<'newsletter' | 'updates' | 'promotion' | 'cold_outreach', string>;

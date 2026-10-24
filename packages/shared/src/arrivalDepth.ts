@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.2): how far an arriving message is read. Pure.
+ * Read on arrival: how far an arriving message is read. Pure.
  *
  * Only a source the interpretation run classifies as display-only (no reply
  * candidate, no item it could move, nothing else in flight) is ever read less
@@ -10,7 +10,7 @@
  *
  *   1  AI off or not eligible                                  none
  *   2  not display-only                                        full
- *   3  read on arrival off                                     deferred (today's D10)
+ *   3  read on arrival off                                     deferred
  *   4  sender unsubscribed or auto-archived                    none
  *   5  security mail                                           none
  *   6  budget refused                                          count
@@ -31,7 +31,7 @@
  * message-scope digest Fix still count it, and only a Fix made after the
  * candidate arrived (the caller drops an older one: `doesThreadOverrideHold`).
  *
- * A gist or count from rows 6–13 is upgradeable (SPEC §2.3.4): a later source
+ * A gist or count from rows 6–13 is upgradeable: a later source
  * of the thread that needs a full read reads it first. Rows 1, 4 and 5 are terminal
  * exclusions, never upgraded and never in anyone's way.
  */
@@ -58,7 +58,7 @@ export const ARRIVAL_DEPTH_REASONS = {
 	exactWording: 'arrival.reason.exactWording',
 } as const satisfies Record<string, ArrivalReasonKey | `arrival.reason.${string}`>;
 
-/** {@link chooseArrivalDepth}'s answer with the row's upgrade rule (SPEC §2.3.4). */
+/** {@link chooseArrivalDepth}'s answer with the row's upgrade rule. */
 export interface ArrivalDepthChoice extends ChooseArrivalDepthResult {
 	/** A gist or count of rows 6–13: a later full read of the thread reads this source first. */
 	isUpgradeable: boolean;
@@ -86,7 +86,7 @@ export function chooseArrivalDepth(i: ChooseArrivalDepthInput): ArrivalDepthChoi
 	if (!i.isEligible) return choice('none', [{ key: ARRIVAL_DEPTH_REASONS.ineligible }]);
 	// 2. Open work: today's eager path, untouched.
 	if (!i.isDisplayOnly) return choice('full', [{ key: ARRIVAL_DEPTH_REASONS.openWork }]);
-	// 3. The preference is off: the caller keeps today's D10 deferral.
+	// 3. The preference is off: the caller defers screen-only work to the open.
 	if (!i.isReadOnArrival) {
 		return choice('deferred', [{ key: ARRIVAL_DEPTH_REASONS.readOnArrivalOff }]);
 	}

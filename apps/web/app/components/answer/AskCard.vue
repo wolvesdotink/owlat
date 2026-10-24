@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Two things before I write this" (plan §05): the questions "Draft with AI"
+ * "Two things before I write this": the questions "Draft with AI"
  * asks when the draft would otherwise have to guess.
  *
  * Built on the clarification question list both background loops use

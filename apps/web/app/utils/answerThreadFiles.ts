@@ -1,5 +1,5 @@
 /**
- * "Files in this thread" (plan §03): every attachment exchanged in the
+ * "Files in this thread": every attachment exchanged in the
  * conversation being answered, as chips the person can click or drag into the
  * reply. Pure: the card lists them, the page attaches them.
  */

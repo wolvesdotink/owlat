@@ -148,7 +148,7 @@ describe('registerDomain', () => {
 		// Monitor-only DMARC for a brand-new domain, exactly like every other
 		// provider's first record set.
 		expect(result.dnsRecords.dmarc?.value).toContain('p=none');
-		// No custom MAIL FROM: Mandrill mints its own bounce local part (D5).
+		// No custom MAIL FROM: Mandrill mints its own bounce local part.
 		expect(result.dnsRecords.mailFrom).toBeUndefined();
 
 		expect(result.identity.kind).toBe('mandrill');

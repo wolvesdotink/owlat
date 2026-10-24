@@ -118,7 +118,7 @@ describe('resolveRoute — Mandrill under every strategy', () => {
 
 	it('adaptive_mix: Mandrill is the REFERENCE arm the share splits against', () => {
 		const config = routeWith('adaptive_mix');
-		// s = 0 is the migration's starting position (D8): the whole cell goes to
+		// s = 0 is the migration's starting position: the whole cell goes to
 		// the account the deployment arrived with.
 		expect(
 			resolveRoute(config, undefined, () => true, undefined, {
@@ -159,7 +159,7 @@ describe('resolveRoute — Mandrill under every strategy', () => {
 
 	it('deliverability fallback: an actionable signal drains the MTA slice to Mandrill', () => {
 		// The measured-migration shape from the activation matrix, now that the
-		// persistence gate accepts it (D6).
+		// persistence gate accepts it.
 		const config: ProviderRouteConfig = {
 			strategy: 'priority_failover',
 			providers: [

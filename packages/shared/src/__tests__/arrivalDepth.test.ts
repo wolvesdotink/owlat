@@ -50,7 +50,7 @@ describe('chooseArrivalDepth, one test per row of the §2.2 table', () => {
 		}
 	});
 
-	it('row 3: the preference off keeps D10 (deferred)', () => {
+	it('row 3: the preference off defers (deferred)', () => {
 		expect(decide({ isReadOnArrival: false })).toMatchObject({ depth: 'deferred' });
 		expect(keysOf({ isReadOnArrival: false })).toEqual([ARRIVAL_DEPTH_REASONS.readOnArrivalOff]);
 	});

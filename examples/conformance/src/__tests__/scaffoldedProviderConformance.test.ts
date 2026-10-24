@@ -5,7 +5,7 @@
  *
  * P3.3's parity proof (`pluginProviderParity.test.ts`) answers "can a package be
  * a provider?" against a hand-written fixture ESP. This one answers the question
- * D4's policy actually rests on — "is the package we HAND an author already such
+ * the "provider N+1 is a package" policy actually rests on — "is the package we HAND an author already such
  * a provider?" — and it answers it against the generator's real output: the
  * subject is `../fixtures/scaffolded/bundle.ts`, which calls `buildScaffold`,
  * writes the emitted files to a directory, imports the emitted TypeScript and
@@ -452,7 +452,7 @@ describe('none of it required an edit', () => {
 	 * And no production file knows this bundle exists. The scaffolded package is
 	 * written to a temporary directory and named after a stranger's scope, so a
 	 * hit under `apps/` or `packages/` would mean a core module had been taught
-	 * about it — the one thing D4's policy forbids.
+	 * about it — the one thing the package policy forbids.
 	 *
 	 * TWO TEST FILES ARE EXEMPT AND NAMED, each for its own reason.
 	 */

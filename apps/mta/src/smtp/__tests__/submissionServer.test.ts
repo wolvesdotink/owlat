@@ -935,7 +935,7 @@ describe('submission authenticate — per-IP brute-force throttle', () => {
 		}
 		// The 4th attempt is refused by the throttle BEFORE comparing the secret —
 		// even the correct master key is rejected while locked out, and the outcome
-		// is byte-identical to a normal rejection (no auth oracle — D6).
+		// is byte-identical to a normal rejection (no auth oracle).
 		const { outcome } = await authCallIp(
 			{ username: 'x', password: 'master-secret-key' },
 			'5.5.5.5',

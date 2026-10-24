@@ -7,8 +7,8 @@
  * classify (triage allowance), clarify and draft. The security scan is not
  * asked: its deterministic checks always run, and its model guard is admitted
  * at dispatch on the triage allowance. A refused guard stores the scan with
- * `securityFlags.guardNotRun { reason: 'budget_refused' }` (Sol r3 F1), the
- * D13 marker, so auto-send is blocked and every later generative consumer
+ * `securityFlags.guardNotRun { reason: 'budget_refused' }`, the
+ * guard-skip marker, so auto-send is blocked and every later generative consumer
  * (interpretation, knowledge extraction, a briefing's history) runs the guard
  * first; the hold names it as a missing judgment.
  *

@@ -9,7 +9,7 @@
  *     plane, tiers, limits and fallback; this file only names them;
  *   - the routing-policy switches (`ROUTING_SWITCHES`) and the numeric settings
  *     beside them, with their defaults. A missing stored row means these
- *     defaults, and the defaults are today's behaviour (SPEC §2);
+ *     defaults, and the defaults are today's behaviour;
  *   - the small enums the new records store and the UI renders: why the model
  *     guard did not run, why a message waits for a human after the ceiling,
  *     where an embedding space's provenance came from, the re-embed job state;
@@ -75,7 +75,7 @@ export const AI_TASK_NAMES = [
 	'embedding.query',
 	// Language plane: the clarification samples, apart from `mail.clarify` (Phase 3)
 	'mail.clarify_sample',
-	// Language plane: read on arrival's extractive gist (INBOX_ZERO_PLAN §2.4)
+	// Language plane: read on arrival's extractive gist
 	'mail.gist',
 	// Language plane: read on arrival's digest lines and the rule dry run (§6)
 	'mail.digest',
@@ -102,7 +102,7 @@ interface RoutingSwitchSpec {
 }
 
 /**
- * The behaviour switches of SPEC §2's "off or shadow" list. Each one defaults
+ * The behaviour switches that ship off or in shadow. Each one defaults
  * to today's behaviour. `off` keeps today's path; `shadow` runs the new path
  * beside it and records what it would have done, inside the shadow allowance;
  * `enforce` (or the task-specific value) makes the new path live.
@@ -120,13 +120,13 @@ export const ROUTING_SWITCHES = {
 		defaultValue: 'off',
 		task: 'mail.category',
 	},
-	/** Phase 2: the reply-disposition bundle; `enforce` is advisory output only (D9). */
+	/** Phase 2: the reply-disposition bundle; `enforce` is advisory output only. */
 	dispositionAdvisoryBundle: {
 		values: ['off', 'shadow', 'enforce'],
 		defaultValue: 'off',
 		task: 'mail.disposition',
 	},
-	/** D11: the message-only triage bundle before Team retrieval. Shadow only. */
+	/** The message-only triage bundle before Team retrieval. Shadow only. */
 	triageBundle: { values: ['off', 'shadow'], defaultValue: 'off', task: 'mail.triage' },
 	/** Phase 3: claim verification through decision questions. */
 	claimVerification: {
@@ -134,13 +134,13 @@ export const ROUTING_SWITCHES = {
 		defaultValue: 'off',
 		task: 'mail.claim_check',
 	},
-	/** D5: the necessity judgment; `off` keeps the sampling path (the kill switch). */
+	/** The necessity judgment; `off` keeps the sampling path (the kill switch). */
 	clarifyNecessity: {
 		values: ['off', 'shadow', 'enforce'],
 		defaultValue: 'off',
 		task: 'mail.necessity',
 	},
-	/** D2: a cheap writer first, for drafts a person reviews. */
+	/** A cheap writer first, for drafts a person reviews. */
 	cheapFirstWriter: { values: ['off', 'reviewed'], defaultValue: 'off' },
 	/** L14: provider batch APIs for non-interactive work. */
 	batchApi: { values: ['off', 'enforce'], defaultValue: 'off' },
@@ -158,7 +158,7 @@ export const ROUTING_CAP_MIN = 1;
 export const ROUTING_CAP_MAX = 1000;
 
 /**
- * D4's ceilings on shadow traffic: at most 10% of eligible messages and at most
+ * The shadow allowance, the ceilings on shadow traffic: at most 10% of eligible messages and at most
  * 5% of the daily ceiling. An admin may lower either share, never raise it, so
  * the defaults below are these maxima.
  */
@@ -169,11 +169,11 @@ export const SHADOW_FRACTION_MAXIMA = {
 
 /** The defaults of the numeric settings. Fractions are of the daily or monthly ceiling. */
 const ROUTING_POLICY_NUMERIC_DEFAULTS = {
-	/** D1: share of each ceiling held back for paid guard and classify calls. */
+	/** Share of each ceiling held back for paid guard and classify calls. */
 	triageAllowanceFraction: 0.1,
-	/** D4: share of eligible messages that may be shadowed. */
+	/** Share of eligible messages that may be shadowed. */
 	shadowMaxMessageFraction: SHADOW_FRACTION_MAXIMA.shadowMaxMessageFraction,
-	/** D4: share of the daily ceiling shadow traffic may spend. */
+	/** Share of the daily ceiling shadow traffic may spend. */
 	shadowMaxCeilingFraction: SHADOW_FRACTION_MAXIMA.shadowMaxCeilingFraction,
 } as const;
 
@@ -207,7 +207,7 @@ export type ResolvedRoutingPolicy = RoutingSwitches & {
 	readonly triageAllowanceFraction: number;
 	readonly shadowMaxMessageFraction: number;
 	readonly shadowMaxCeilingFraction: number;
-	/** D4: finite USD cap on shadow spend. `null` = unset. */
+	/** Finite USD cap on shadow spend. `null` = unset. */
 	readonly shadowCapUsd: number | null;
 	/** When the stored row was last saved; `null` for the defaults. */
 	readonly updatedAt: number | null;
@@ -226,7 +226,7 @@ function isCap(value: unknown): value is number {
 	);
 }
 
-/** A shadow share: a fraction no larger than its D4 maximum. */
+/** A shadow share: a fraction no larger than its shadow allowance maximum. */
 function isShadowFraction(
 	value: unknown,
 	key: keyof typeof SHADOW_FRACTION_MAXIMA
@@ -300,7 +300,7 @@ export function shadowedSwitches(policy: RoutingSwitches): RoutingSwitchKey[] {
 }
 
 /**
- * D4: the most shadow traffic may spend today, in USD. Both limits apply: the
+ * The most shadow traffic may spend today, in USD. Both limits apply: the
  * share of the daily ceiling and the explicit cap. With no daily ceiling the
  * explicit cap is required; without either, or with nothing set to shadow, the
  * allowance is zero and no shadow call is admitted.
@@ -316,7 +316,7 @@ export function shadowAllowanceUsd(policy: ResolvedRoutingPolicy, dailyCeilingUs
 /**
  * Why a policy cannot be saved, or `null` when it can. Checks the merged policy
  * (the stored row with the requested change applied), with the deployment's
- * configured daily ceiling, because D4's rule spans both: shadowing needs a
+ * configured daily ceiling, because the shadow allowance rule spans both: shadowing needs a
  * finite cap when no daily ceiling is set.
  */
 export function routingPolicyProblem(
@@ -368,16 +368,16 @@ export function routingPolicyProblem(
 
 // ── Stored enums the UI renders ───────────────────────────────────────────
 
-/** D13: why the model guard was skipped for a Team message. */
+/** Why the model guard was skipped for a Team message. */
 /**
- * Why the scan did not run the model guard (D13): skipped for spam-archived mail
- * or while the agent is off, or refused by spend admission (D1, Sol r3 F1).
+ * Why the scan did not run the model guard: skipped for spam-archived mail
+ * or while the agent is off, or refused by spend admission.
  * Each requires the guard before any later generative processing.
  */
 export const GUARD_NOT_RUN_REASONS = ['spam_archived', 'agent_disabled', 'budget_refused'] as const;
 export type GuardNotRunReason = (typeof GUARD_NOT_RUN_REASONS)[number];
 
-/** D1: why a Team message waits for a person instead of the model path. */
+/** Why a Team message waits for a person instead of the model path. */
 export const BUDGET_HOLD_REASONS = [
 	'daily_ceiling',
 	'monthly_ceiling',
@@ -385,12 +385,12 @@ export const BUDGET_HOLD_REASONS = [
 ] as const;
 export type BudgetHoldReason = (typeof BUDGET_HOLD_REASONS)[number];
 
-/** D1: the model judgments a held message is missing. */
+/** The model judgments a held message is missing. */
 export const MISSING_JUDGMENTS = ['guard', 'classify', 'interpret', 'clarify', 'draft'] as const;
 export type MissingJudgment = (typeof MISSING_JUDGMENTS)[number];
 
 /**
- * D1 / U5: the stable code a spend-admission refusal carries. A refused paid
+ * The stable code a spend-admission refusal carries. A refused paid
  * call throws `ConvexError({ category: 'forbidden', message, data: { code,
  * reason } })`, where `reason` is a {@link BudgetHoldReason}; the web reads
  * `error.data.data.code` to show the budget state instead of a generic error.
@@ -398,7 +398,7 @@ export type MissingJudgment = (typeof MISSING_JUDGMENTS)[number];
 export const AI_BUDGET_ERROR_CODE = 'AI_BUDGET_EXHAUSTED';
 
 /**
- * D1 / U3: the error text a Team message held by the ceiling fails with. The
+ * The error text a Team message held by the ceiling fails with. The
  * reason and the missing judgments are on the message's `budgetHold`.
  */
 export const BUDGET_HOLD_ERROR_MESSAGE =
@@ -434,7 +434,7 @@ export type ReembedJobStatus = (typeof REEMBED_JOB_STATUSES)[number];
 export const REEMBED_PAUSE_REASONS = ['budget', 'provider_unavailable', 'space_changed'] as const;
 export type ReembedPauseReason = (typeof REEMBED_PAUSE_REASONS)[number];
 
-/** D10: why an interpretation source waits for the thread to be opened. */
+/** Why an interpretation source waits for the thread to be opened. */
 export const INTERPRET_DEFER_REASONS = ['display_only'] as const;
 export type InterpretDeferReason = (typeof INTERPRET_DEFER_REASONS)[number];
 

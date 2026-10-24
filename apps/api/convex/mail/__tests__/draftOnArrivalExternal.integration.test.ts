@@ -2,7 +2,7 @@
  * Draft-on-arrival on an EXTERNAL-account mailbox with `postbox` OFF.
  *
  * `postbox.aiDraft` is declared `requires: ['ai']` +
- * `requiresAny: [['postbox', 'mail.external']]` (adoption-gaps decision D2):
+ * `requiresAny: [['postbox', 'mail.external']]`:
  * the draft pipeline needs *a* mailbox source, either source. This proves the
  * full pipeline end-to-end on an external-only install (the no-domain user):
  *
@@ -18,7 +18,7 @@
  *
  * The control test flips only `mail.external` off: with neither any-of member
  * ON the resolved flag is forced off, nothing is scheduled, and the queue row
- * renders without a slot — today's behaviour, per D10.
+ * renders without a slot.
  *
  * The third case starts one step earlier, at the IMAP-sync ingest itself, on a
  * SHARED (team) inbox: forward sync enqueues the classifier, and the screener

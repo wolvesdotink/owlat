@@ -89,7 +89,7 @@ describe('replyQueueHeadline', () => {
 		expect(replyQueueHeadline(shared, 'en', { showBrief: false })).toBe('Refund the order');
 	});
 
-	it('never uses the ask summary of a shared mailbox (SPEC §7)', () => {
+	it('never uses the ask summary of a shared mailbox', () => {
 		const row = { askSummary: 'Wants a refund', subject: 'Order #4471' };
 		expect(replyQueueHeadline(row, 'en', { isShared: true })).toBe('Order #4471');
 		const actions = {

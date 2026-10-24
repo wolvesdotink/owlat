@@ -271,7 +271,7 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 		tokenUsage = first.tokenUsage;
 		modelUsed = first.modelUsed;
 	} catch (error) {
-		// A budget refusal holds the Team message or defers the Postbox run (D1).
+		// A budget refusal holds the Team message or defers the Postbox run.
 		rethrowAdmissionRefusal(error);
 		// A completion that failed the schema was still billed.
 		const billed = partialUsageOf(error);
@@ -305,7 +305,7 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 		tokenUsage = sumUsage(tokenUsage, retry.tokenUsage);
 		modelUsed = modelUsed ?? retry.modelUsed;
 	} catch (error) {
-		rethrowAdmissionRefusal(error); // a refusal is not a gap (D1)
+		rethrowAdmissionRefusal(error); // a refusal is not a gap
 		// Keep the first pass; the gap is logged below.
 		const billed = partialUsageOf(error);
 		tokenUsage = sumUsage(tokenUsage, billed?.tokenUsage);

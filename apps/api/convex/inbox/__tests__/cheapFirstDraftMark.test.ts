@@ -1,5 +1,5 @@
 /**
- * The review-only mark of a cheap-first draft (D2): written with the draft it
+ * The review-only mark of a cheap-first draft: written with the draft it
  * describes, in the same mutation, and cleared by the next draft, so the
  * `cheap_first_draft` auto-send gate reads the mark of exactly the draft it
  * would send.

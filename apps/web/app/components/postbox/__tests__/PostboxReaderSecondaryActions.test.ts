@@ -12,8 +12,8 @@
  *
  * Reading the source rather than mounting: the behaviour IS the CSS cascade,
  * which happy-dom has no layout engine to resolve, and the reader needs a live
- * Convex client to mount at all. The card was split out of PostboxThreadReader
- * (plan §05), so the two classes are read from where they are now rendered.
+ * Convex client to mount at all. The card lives outside PostboxThreadReader,
+ * so the two classes are read from where they are rendered.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.5): the digest section of the personal Daily Brief
+ * Read on arrival: the digest section of the personal Daily Brief
  * email, as renderer blocks. Grouped Newsletters / Updates / Promotions /
  * Cold outreach, at most 5 lines per group (chosen at selection), each line
  * linking to its mail, then "and N more" (or "and at least N more" past 200

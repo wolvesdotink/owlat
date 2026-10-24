@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * The line over the conversation while it shows the source of a line of the
- * brief (plan §4.2): what is being shown, and a way to drop the mark. While
+ * brief: what is being shown, and a way to drop the mark. While
  * the cited message is still being loaded (an earlier page) it says so, and
  * when it cannot be reached it says that instead of showing nothing. The cite
  * was for this visit only; dropping it writes nothing.

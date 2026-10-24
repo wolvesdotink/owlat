@@ -1,5 +1,5 @@
 /**
- * When a "Waiting on others" item asks for a nudge (SPEC §7, mail/nudges.ts):
+ * When a "Waiting on others" item asks for a nudge (mail/nudges.ts):
  * past its due date, or 3 business days old with no reply since, a weekend
  * not counting.
  */

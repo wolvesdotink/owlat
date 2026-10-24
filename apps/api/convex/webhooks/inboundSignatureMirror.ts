@@ -1,5 +1,5 @@
 /**
- * F1 (D9): the clearsigned-body signature mirror for the AI-inbox ingest path.
+ * F1: the clearsigned-body signature mirror for the AI-inbox ingest path.
  *
  * The `inbound.received` dispatcher carries parsed bodies (no raw MIME), so
  * only a CLEARSIGNED body — whose signature travels inline in the text — can

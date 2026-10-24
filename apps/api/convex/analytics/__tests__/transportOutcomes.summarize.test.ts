@@ -1,5 +1,5 @@
 /**
- * transportOutcomes — the read path (plan D5: derive on read, never store).
+ * transportOutcomes — the read path (derive on read, never store).
  *
  * The summarizer is the single place a rate exists. Coverage here:
  *   - it sums across ALL shards and ALL days in the window, so the write-side
@@ -280,7 +280,7 @@ describe('summarizeTransportOutcomeBuckets (pure)', () => {
 		 * does not send at weekends is quiet on both of the span's oldest days once
 		 * every seven, so a test anchored on that day re-entered the hold weekly —
 		 * clearing `greenSince` and restarting the fourteen-day graduation clock
-		 * with it, which is the permanent block plan D2 forbids, made intermittent.
+		 * with it: a permanent block from a missing reading, made intermittent.
 		 */
 		it('reads continuous traffic as observed even with the span’s oldest days quiet', () => {
 			const everyDay = Array.from({ length: 29 }, (_, index) => index);

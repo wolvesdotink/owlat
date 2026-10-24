@@ -62,7 +62,7 @@ fail-closed default (`hasProviderFeedback` absent ⇒ `false`,
 module's `…Of(entry)` functions, so web and the CLI get the same reading from
 their own core-only lookup. `tier: 'own'` is likewise read through
 `isOwnSendProviderKind` rather than compared to a literal — the one identity
-question D3 sanctions, asked in the one place that declares the answer. Adding a
+question the catalog sanctions, asked in the one place that declares the answer. Adding a
 provider means adding an entry, not editing a table somewhere else; the
 accompanying `bun run lint:providers` ratchet parses its kinds out of that same
 literal.
@@ -310,7 +310,7 @@ route surface keyed by plugin id — the next section.
 
 `pluginSendTransportWebhookFor`
 (`apps/api/convex/plugins/sendTransportWebhookCatalog.ts`) — the plugin tier's
-half of the same seam (the seams plan's D6, wired by P2.2). A plugin transport
+half of the same seam. A plugin transport
 may declare a `webhook` on its `sendTransports` contribution: a parse-only module
 export plus the signature contract the HOST verifies it with. One route serves
 all of them, `POST /webhooks/plugin/<pluginId>`
@@ -399,7 +399,7 @@ is its own piece. The five ramp keys are pinned against the shared classifier by
 signal the routing vocabulary spells differently.
 
 **Absence is the point of the seam.** "Not configured" is a supported verdict
-(the deliverability plan's D2): every absence carries `isBlocking: false` BY TYPE,
+: every absence carries `isBlocking: false` BY TYPE,
 so a source that blocked on its own absence could not be declared, and the
 registry suite drives each source with its evidence removed to check that what it
 declared is what it does — `substitute` hands back the stand-in it names,
@@ -464,11 +464,11 @@ and per health probe.
 
 Not adapters here, on purpose. **Email** is the send-provider seam above —
 `sendEmail` on a catalog kind, not a channel. **Chat** is native: the mutation
-persists the row and there is no provider to adapt. Until the D10 honesty pass
-both had a class in this set anyway, and each faked its answers — a `send` that
+persists the row and there is no provider to adapt. A class for either would
+have to fake its answers — a `send` that
 hard-returned failure or a fabricated id, a `healthCheck` that hard-returned
 healthy without probing, a `validateSignature` that hard-returned `true`. They
-are deleted, not reimplemented — and the exclusion is now typed, not merely
+are left out, not reimplemented — and the exclusion is typed, not merely
 documented: `ChannelAdapter.id` is `OutboundChannel` (`sms | whatsapp |
 generic`), the dispatchable subset declared beside `UnifiedMessageChannel` in
 `lib/convexValidators.ts`, so an adapter claiming `email` or `chat` does not
@@ -492,7 +492,7 @@ implementation — where they run against real secrets on the real inbound route
 The `ChannelAdapter` interface used to declare a `validateSignature` and a
 `parseInbound` that nothing ever called and that had already drifted from the
 shipped verifiers (the generic one accepted a bare `Authorization` value where
-the route strips `Bearer ` first). D10 deleted the pair rather than keep two
+the route strips `Bearer ` first). The pair is gone rather than keep two
 expressions of one rule. A new inbound source is a new `webhooks/adapters/`
 module, never a method here.
 
@@ -500,7 +500,7 @@ module, never a method here.
 
 The source-keyed registry that turns a vendor's inbound envelope into the
 canonical `InboundEmailMessage` the backend persists. It was `@owlat/channels`
-until that package was folded away: after the D10 honesty pass it held nothing
+until that package was folded away: at the end it held nothing
 but this registry, behind a workspace boundary only `webhooks/` ever crossed,
 so it moved next to its caller — as the three real outbound adapters already
 had (the section above).

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Answer mode's left column: the conversation being answered, newest last
- * (plan §03, v1).
+ * (v1).
  *
  * The same thread paging and the same message card the reader uses, with the
  * card's chrome cut (`reduced`): no per-message action row, the trust chip only

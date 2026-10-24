@@ -1,5 +1,5 @@
 /**
- * Answer mode's response plan on screen (plan §6):
+ * Answer mode's response plan on screen:
  *   - `m/`: the brief's selected items show a stance picker (Accept / Decline /
  *     Defer / Ask for a decision, Answer / Decline / Defer for a file request),
  *     the draft's coverage marks an item "Addressed in draft" (never "Done")

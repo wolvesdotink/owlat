@@ -245,7 +245,7 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		expect(conn.rawSocket.destroyed).toBe(true);
 	});
 
-	it('rejects a concurrent read while one is already pending (D5 invariant)', async () => {
+	it('rejects a concurrent read while one is already pending (sequential-read invariant)', async () => {
 		const port = await startRawServer({
 			greeting: '220 mx.test ready\r\n',
 			handle: (line) => (line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n'),
@@ -296,7 +296,7 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		let caught: unknown;
 		try {
 			// Properly framed line: the refusal must come from the busy-guard, not
-			// the framing guard, so this genuinely exercises the D5 pre-write check.
+			// the framing guard, so this genuinely exercises the sequential-read pre-write check.
 			await conn.command('NOOP\r\n', 'rcpt');
 		} catch (err) {
 			caught = err;

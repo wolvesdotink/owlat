@@ -4,8 +4,8 @@
  * `campaigns.preflight` refuses a campaign that provably cannot finish inside
  * the MTA's message-retention horizon and attaches the multi-day schedule it
  * WOULD take (`reason: 'exceeds_sending_capacity'`, `data.capacityPlan`). That
- * is not a fault — it is an offer, and the deliverability plan (D14) is explicit
- * that a multi-day send is a normal, visible state for a warming deployment,
+ * is not a fault — it is an offer: a multi-day send is a normal,
+ * visible state for a warming deployment,
  * never an error and never a surprise. So the caller claims the failure through
  * `useBackendOperation`'s `onError` and renders THIS instead of a red toast.
  *
@@ -89,7 +89,7 @@ export function capacityRefusalPlan(error: OperationError): CampaignCapacitySche
 
 /**
  * The headline for a capacity schedule. Each variant says exactly as much as
- * the plan actually knows (D14 — say the quiet part):
+ * the plan actually knows (say the quiet part):
  *
  *  - `truncated` — the enumeration stopped with recipients still unscheduled,
  *    so `days` is NOT a finish date and must not be quoted as one.
@@ -174,7 +174,7 @@ export function isCapacityDayToday(dayStartMs: number, now: number): boolean {
  *
  * The pairing is the whole point — "Sending over at least 5 days" beside a bare
  * "Everyone is reached by Friday" reads as a promise for Friday, which is
- * exactly the date the plan just said it does not have (D14).
+ * exactly the date the plan just said it does not have.
  */
 export function capacityFinishSentence(
 	plan: CampaignCapacitySchedulePlan,

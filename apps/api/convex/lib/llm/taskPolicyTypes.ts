@@ -9,21 +9,21 @@ import type { LlmUsagePlane } from '../llmUsageTags';
 export type LlmTier = 'fast' | 'capable';
 
 /**
- * Which ceiling slice a task's spend draws on (D1, D4). `triage`: paid guard and
+ * Which ceiling slice a task's spend draws on. `triage`: paid guard and
  * classify calls, which may use the triage allowance held back inside each
  * ceiling. `standard`: everything else. Shadow spend is a mode, not a task
  * property: the caller marks a shadow call `shadow` whatever its task.
  */
 export type TaskBudgetClass = 'triage' | 'standard';
 
-/** Who waits on the call. Background work defers when the ceiling is reached (D1). */
+/** Who waits on the call. Background work defers when the ceiling is reached. */
 export type TaskPriority = 'interactive' | 'pipeline' | 'background';
 
 /**
  * The fallback a task may take. `none`: a failure ends the call and the caller
  * keeps its deterministic baseline or goes to human review. `language_hop`:
  * the decision plane's one opt-in, breaker-protected hop onto the fast language
- * tier, for operational failures only (D3). No inbound background task may take
+ * tier, for operational failures only. No inbound background task may take
  * a paid fallback, so every inbound decision task below says `none`.
  */
 export type TaskFallback = 'none' | 'language_hop';

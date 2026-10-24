@@ -3,7 +3,7 @@
  * The action row under one expanded message in the reader: Star, Reply,
  * Reply all, Forward and the ⋯ overflow (report spam, block, filter, print,
  * download the original). Split out of PostboxReaderMessage so Answer mode can
- * render the same card without it (plan §09: you are already replying).
+ * render the same card without it (you are already replying there).
  * Presentational; every verb is emitted back to the reader.
  */
 import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalEml';

@@ -1,5 +1,5 @@
 /**
- * THE PROBE WIRE IS A PER-ADAPTER CAPABILITY (plan D5).
+ * THE PROBE WIRE IS A PER-ADAPTER CAPABILITY.
  *
  * A return-path verdict is written against ONE transport id, so the send that
  * produced it must have left through THAT transport's adapter. Before `mandrill`

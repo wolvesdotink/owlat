@@ -5,7 +5,7 @@
  * retreat, and on a deployment that has finished — so each of those is a test
  * rather than an afterthought. The two properties that carry the most weight:
  *
- *   - nothing merely unconfigured is described as a problem (plan D2): a
+ *   - nothing merely unconfigured is described as a problem: a
  *     deployment with no cell on the ramp gets an invitation, not a warning;
  *   - the controller's own sentences are rendered verbatim, never re-worded, so
  *     this card and the audit trail cannot describe one decision two ways.
@@ -298,7 +298,7 @@ describe('the single next action', () => {
 });
 
 describe('the four doors into the detail', () => {
-	it('follows the D14 rename when there is no relay to become independent of', () => {
+	it('follows the no-relay rename when there is no relay to become independent of', () => {
 		expect(rampAdvancedScreens(true).map((screen) => localized(screen.label))).toEqual([
 			'Cells',
 			'Controls',

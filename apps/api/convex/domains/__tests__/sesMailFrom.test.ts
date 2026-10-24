@@ -1,8 +1,8 @@
 /**
  * SES custom MAIL FROM parity — X1.
  *
- * D2 wired a per-domain `returnPathHost` through the built-in MTA and rejected
- * SES-backed domains with `unsupported_provider`. X1 lifts that: a return-path
+ * The built-in MTA takes a per-domain `returnPathHost`, and SES-backed domains
+ * are not refused with `unsupported_provider` for it either: a return-path
  * host on an SES domain configures SES's custom MAIL FROM (a subdomain of the
  * sending domain) + the MX/SPF-TXT records SES requires, so provider choice does
  * not change the feature set. This gate locks:

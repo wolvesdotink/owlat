@@ -1,5 +1,5 @@
 /**
- * CROSSING THE 0.5 CEILING (plan D3) — the either/or, exhaustively.
+ * CROSSING THE 0.5 CEILING — the either/or, exhaustively.
  *
  * Each of the four standalone conditions is failed on its own to prove it is
  * load-bearing, then all four are met together to prove they are sufficient. The

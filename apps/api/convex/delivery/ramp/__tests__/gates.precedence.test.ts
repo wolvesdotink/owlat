@@ -4,9 +4,9 @@
  * The two rules that are easy to get backwards, and that decide whether a
  * deployment ramps into the spam folder:
  *   - the deferral HALT outranks an ordinary fail (a hard stop, not a decrease);
- *   - `insufficient_data` outranks `pass` (plan D10 — never increase on thin
+ *   - `insufficient_data` outranks `pass` (never increase on thin
  *     data), while an OPTIONAL gate's `insufficient_data` is ignored entirely
- *     (plan D2 — an absent external account never holds the ramp).
+ *     (an absent external account never holds the ramp).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -32,7 +32,7 @@ function evaluate(built: RampGateEvaluationInput): RampGateEvaluation {
  * pretend to be.
  */
 function result(gate: RampGateId, status: RampGateStatus): RampGateResult {
-	// Every verdict carries a grade (plan D14). These synthetic answers are
+	// Every verdict carries a grade. These synthetic answers are
 	// high-confidence and increase-justifying so that the PRECEDENCE contract is
 	// what this suite measures; the asymmetry has its own suite.
 	const grade = { confidence: 'high', mayJustifyIncrease: true } as const;
@@ -167,8 +167,8 @@ describe('aggregateRampGates precedence', () => {
 
 	it('an evidence-free evaluation HOLDS — `pass` is never the default', () => {
 		// Nothing contributed: no gate at all, and then only an optional gate that
-		// is holding. `pass` is the one verdict that raises a share (D9), so it
-		// must be unreachable from zero evidence (D10).
+		// is holding. `pass` is the one verdict that raises a share, so it
+		// must be unreachable from zero evidence.
 		const empty = aggregateRampGates({ perGate: [], previousCleanStreak: 2, now: EVALUATED_AT });
 		expect(empty.verdict).toBe('insufficient_data');
 		expect(empty.failedGate).toBeUndefined();
@@ -183,7 +183,7 @@ describe('aggregateRampGates precedence', () => {
 		expect(optionalOnly.cleanStreak).toBe(2);
 	});
 
-	it('flags a tripwire fail as requiring corroboration, and nothing else (D17)', () => {
+	it('flags a tripwire fail as requiring corroboration, and nothing else', () => {
 		const seedFail = aggregateRampGates({
 			perGate: [result('hard_bounce', 'pass'), result('seed_placement', 'fail')],
 			previousCleanStreak: 0,
@@ -220,7 +220,7 @@ describe('aggregateRampGates precedence', () => {
 		).toBe(false);
 	});
 
-	it('carries every gate result through untouched for the audit row (D12)', () => {
+	it('carries every gate result through untouched for the audit row', () => {
 		const perGate = [result('hard_bounce', 'pass'), result('deferral', 'fail')];
 		expect(
 			aggregateRampGates({ perGate, previousCleanStreak: 0, now: EVALUATED_AT }).perGate
@@ -229,7 +229,7 @@ describe('aggregateRampGates precedence', () => {
 });
 
 describeEquipped('referenceArmGateEvaluator', () => {
-	it('is the reference-arm implementation of the one gate interface (D3)', () => {
+	it('is the reference-arm implementation of the one gate interface', () => {
 		expect(referenceArmGateEvaluator.kind).toBe('reference_arm');
 	});
 
@@ -258,7 +258,7 @@ describeEquipped('referenceArmGateEvaluator', () => {
 		expect(evaluation.perGate).toHaveLength(4);
 	});
 
-	it('holds — never fails — a fresh install with no relay and no seeds (D2)', () => {
+	it('holds — never fails — a fresh install with no relay and no seeds', () => {
 		const evaluation = evaluate(
 			input({
 				own: arm({ sent: 10_000, deferred: 100, hardBounced: 10, complained: 5 }),

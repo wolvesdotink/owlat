@@ -1,5 +1,5 @@
 /**
- * THE COOLDOWN LADDER (plan D9): 6h, DOUBLING on a repeat within 24h, capped at
+ * THE COOLDOWN LADDER: 6h, DOUBLING on a repeat within 24h, capped at
  * 48h — the shape of the shipped MTA circuit breaker, so an operator has one
  * back-off model to hold in their head rather than two.
  *
@@ -152,7 +152,7 @@ describe('the published ladder is reachable from real ticks', () => {
 
 /**
  * THE SAME LADDER ON THE SECOND DIAL. Both actuators climb one ladder through one
- * helper (plan D3), so the pace dial's rungs are the share dial's rungs — if this
+ * helper, so the pace dial's rungs are the share dial's rungs — if this
  * suite and the walk above ever disagree, one actuator has grown its own penalty.
  */
 describe('the pace actuator climbs the same ladder', () => {

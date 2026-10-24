@@ -3,12 +3,12 @@
  *
  * The piece adds a projection and a ceiling; it must not have touched the shipped
  * warming sync, the shipped capacity projection every campaign pre-flight already
- * depends on, or the plan's D2 rule that an absent reading constrains nothing.
+ * depends on, or the rule that an absent reading constrains nothing.
  *
  * Three shipped absences answer `unconstrained` — no warming state, a sync that
  * has gone quiet, and a graduated pool with no cap to speak of — and in every one
- * of them the controller is bounded by its PHASE CEILING exactly as it was before
- * this piece landed. That is the whole of the D2 guarantee for this ceiling: a
+ * of them the controller is bounded by its PHASE CEILING alone.
+ * That is the whole of the absence guarantee for this ceiling: a
  * fresh install with no MTA warming state behaves identically.
  *
  * THE ONE SANCTIONED CHANGE, pinned here and in `ramp/__tests__/capacityDegenerate`:
@@ -73,7 +73,7 @@ async function runTick(options: {
 	return { capacity: await capacityFor(t), harness: t };
 }
 
-describe('the shipped absences still constrain nothing (plan D2)', () => {
+describe('the shipped absences still constrain nothing', () => {
 	it('NO warming state at all: unconstrained, exactly as before this piece', async () => {
 		const { capacity } = await runTick({ warming: 'absent' });
 		expect(capacity.kind).toBe('unconstrained');
@@ -123,13 +123,13 @@ describe('THE SANCTIONED CHANGE: a known cap over unprojectable demand HOLDS', (
 	});
 
 	it('and NAMES the reason, so the audit row says brand-new rather than merely "unknown"', async () => {
-		// D12: an operator has to be able to learn WHICH degenerate case this is —
+		// An operator has to be able to learn WHICH degenerate case this is —
 		// a cell that has never sent reads differently from a paused one.
 		const { capacity } = await runTick({ traffic: false });
 		expect(capacity.kind === 'unknown' ? capacity.reason : null).toBe('no_history');
 	});
 
-	it('and holds the share where it was — a hold, never a retreat (plan D10)', async () => {
+	it('and holds the share where it was — a hold, never a retreat', async () => {
 		const { harness } = await runTick({ traffic: false });
 		expect((await readManagedCell(harness))?.ownShare).toBe(RAMP_FIXTURE_SHARE);
 	});

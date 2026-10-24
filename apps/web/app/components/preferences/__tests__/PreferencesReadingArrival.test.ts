@@ -1,5 +1,5 @@
 /**
- * Read on arrival's switch in the Reading card (SPEC §2.1): it says plainly
+ * Read on arrival's switch in the Reading card: it says plainly
  * that the AI provider reads mail when it arrives, including mail that is
  * never opened; it writes `isReadOnArrival`; and it is only offered when AI
  * is on at all. Next to it, "Show the brief above conversations"
@@ -75,7 +75,7 @@ describe('PreferencesReading: read on arrival', () => {
 		const text = card.text();
 		expect(text).toContain('Read new mail when it arrives');
 		expect(text).toContain('including mail you never open');
-		// Off is D10, not "nothing is read": replies and categories are still checked (Sol r1 F11).
+		// Off defers screen-only work, it is not "nothing is read": replies and categories are still checked.
 		expect(text).toContain('still checks new mail for replies and categories');
 		expect(text).toContain('only prepares the brief of other mail when you open it');
 		expect(card.get('#postbox-read-on-arrival').attributes('data-on')).toBe('true');

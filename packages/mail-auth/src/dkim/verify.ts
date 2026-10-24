@@ -10,13 +10,13 @@
  *     old `inboundDkim.pickVerdict` (pass > fail > permerror > temperror >
  *     neutral > none): one valid signature authenticates the message
  *     (RFC 6376 §6.1).
- *   - NEVER THROWS (locked decision D7): any internal error — a hostile header,
+ *   - NEVER THROWS: any internal error — a hostile header,
  *     a broken key record, a DNS explosion — becomes `temperror`, so an
  *     already-accepted message is never dropped because verification crashed.
  *   - Both `rsa-sha256` and `ed25519-sha256` (RFC 8463) verify; `rsa-sha1` is
  *     verified but POLICY-FAILED per RFC 8301 (it is deprecated and MUST NOT be
  *     treated as a pass).
- *   - SANCTIONED IMPROVEMENT (locked decision D2): the `l=` body-length tag is
+ *   - SANCTIONED IMPROVEMENT: the `l=` body-length tag is
  *     honored cryptographically but a signature that carries it is CAPPED AT
  *     `neutral` — never `pass`. `l=` lets an attacker append unsigned content
  *     to a validly-signed body, so we refuse to call such a message
@@ -85,7 +85,7 @@ const MAX_SIGNATURES = 10;
 /**
  * Verify the DKIM signature(s) on a raw RFC 822 message.
  *
- * Never throws (D7): the whole body is wrapped so any unexpected failure
+ * Never throws: the whole body is wrapped so any unexpected failure
  * surfaces as `temperror`.
  */
 export async function verifyDkim(
@@ -134,7 +134,7 @@ export async function verifyDkim(
 			? { result: best.verdict, domain: best.domain, passingDomains, signatures }
 			: { result: best.verdict, passingDomains, signatures };
 	} catch {
-		// D7: an unexpected internal error is a transient result, never a throw.
+		// An unexpected internal error is a transient result, never a throw.
 		return { result: 'temperror', passingDomains: [], signatures: [] };
 	}
 }

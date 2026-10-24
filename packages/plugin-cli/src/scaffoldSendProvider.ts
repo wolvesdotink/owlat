@@ -1,7 +1,7 @@
 /**
  * The `send-provider` scaffold template — the seams plan's P3.4.
  *
- * D4's policy is that provider N+1 is a PACKAGE, not a twelve-file hunt through
+ * The policy is that provider N+1 is a PACKAGE, not a twelve-file hunt through
  * routing, dispatch, ramp and UI code. That policy only holds if the package is
  * cheap to start: a send-transport bundle has three executable halves, a
  * capability vocabulary, a credential form and a host-verified signature

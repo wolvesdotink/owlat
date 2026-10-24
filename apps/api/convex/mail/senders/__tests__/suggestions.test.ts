@@ -1,5 +1,5 @@
 /**
- * The suggestion rules of the Senders page and the weekly brief line (SPEC §5).
+ * The suggestion rules of the Senders page and the weekly brief line.
  */
 
 import { describe, expect, it } from 'vitest';

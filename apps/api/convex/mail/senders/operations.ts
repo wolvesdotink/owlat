@@ -1,5 +1,5 @@
 /**
- * Sender-status changes as undoable operations (SPEC §2.9, §4.4, §5).
+ * Sender-status changes as undoable operations.
  *
  * Every change writes its `mailArrivalOperations` header and its
  * `mailArrivalOperationChanges` rows (built by `arrivalChangeRow`) in the SAME

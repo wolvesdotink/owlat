@@ -32,7 +32,7 @@ const REFUSAL_MESSAGE: Readonly<Record<BudgetHoldReason, string>> = {
 };
 
 /**
- * A paid call admission refused (D1). A `ConvexError` in the Operation error
+ * A paid call admission refused. A `ConvexError` in the Operation error
  * shape (`{ category: 'forbidden', message, data: { code, reason, limit } }`),
  * so it reaches a client unchanged; never retried and never a fallback hop.
  */

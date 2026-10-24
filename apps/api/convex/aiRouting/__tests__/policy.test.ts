@@ -149,7 +149,7 @@ describe('aiRouting.policy', () => {
 		).rejects.toThrow(message);
 	});
 
-	it('refuses to shadow without a daily ceiling or a shadow cap (D4)', async () => {
+	it('refuses to shadow without a daily ceiling or a shadow cap', async () => {
 		const t = setup();
 		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '0');
 		await expect(

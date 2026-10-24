@@ -1,5 +1,5 @@
 /**
- * The thread brief (SPEC §7, plan §4.1, §5, §8):
+ * The thread brief:
  *   - the blocks in order, every line with a source marker that names whose
  *     message and when, and a click on it cites that line;
  *   - item states as rings and chips, due dates, one primary reaction and the
@@ -360,7 +360,7 @@ describe('ThreadBrief', () => {
 			expectFullyLocalized(w);
 		});
 
-		it('says new mail waited for this open (D10)', () => {
+		it('says new mail waited for this open', () => {
 			const w = mountBrief({
 				brief: briefView({ completeness: 'pending', latest: [], deferredSources: 1 }),
 			});

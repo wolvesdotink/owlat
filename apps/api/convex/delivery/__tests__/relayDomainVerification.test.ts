@@ -1,13 +1,6 @@
 /**
  * Relay-domain verification through the sending-domain provider registry.
  *
- * PLAN NUMBERS IN THIS FILE ARE THE MANDRILL PLAN'S (`D6` = kill the 'ses'-only
- * gates, `D7` = one generic relay-identity table + this registry; `P3.1` = the
- * Mandrill domain-identity adapter). The seams plan that owns the branch
- * numbers those differently — its D6 is the webhook registry and its D7 is the
- * `@owlat/mta-protocol` package — so the qualification is written out once here
- * rather than left to the reader. This seam is the seams plan's P0.3.
- *
  * `relayDomainVerified` used to open with `relayProviderType !== 'ses' → false`
  * and inline SES's proof. It now dispatches to the registered provider for the
  * relay kind, which has to leave three things exactly where they were:
@@ -80,7 +73,7 @@ async function seedSesRelay(
 
 /**
  * A fresh, fully verified Mandrill relay identity in the GENERIC
- * `sendingDomainRelayIdentities` table (Mandrill D7) — Mandrill's own verdict
+ * `sendingDomainRelayIdentities` table — Mandrill's own verdict
  * rather than our DNS crawl, which is why it needs no `domains` row of its own.
  */
 async function seedMandrillIdentity(
@@ -244,7 +237,7 @@ describe('relayDomainVerified — kinds with no registered proof', () => {
  * "is SES".
  *
  * Its proof is a row in the GENERIC `sendingDomainRelayIdentities` table
- * (Mandrill D7) rather than a per-provider sibling, and it is Mandrill's own
+ * rather than a per-provider sibling, and it is Mandrill's own
  * verdict rather than our DNS crawl — so the cases that can go wrong are
  * different ones: a
  * status that is not `verified`, record verdicts that contradict it, and an

@@ -1,7 +1,7 @@
 /**
  * Pure Sealed-Mail decision logic — `decideSeal` (dispatch-time) and
  * `deriveSealState` (composer-facing). No crypto, no db: exhaustive coverage of
- * the policy + all-recipients (D2) gates and the composer's three states.
+ * the policy + all-recipients gates and the composer's three states.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -70,7 +70,7 @@ describe('mail/sealPolicy · decideSeal', () => {
 		});
 	});
 
-	it('sends plaintext when ANY recipient lacks a usable key (D2 — no mixed send)', () => {
+	it('sends plaintext when ANY recipient lacks a usable key (no mixed send)', () => {
 		const d = decideSeal(
 			baseInputs({
 				recipients: [trusted('bob@b.test'), { address: 'dave@d.test', outcome: 'notFound' }],

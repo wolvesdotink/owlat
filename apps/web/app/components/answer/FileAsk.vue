@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The answer to a file question (plan §06): the file they asked for, from
+ * The answer to a file question: the file they asked for, from
  * wherever it is.
  *
  *  - drop it here, or choose it from disk: it is uploaded now and attached to

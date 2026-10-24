@@ -1,5 +1,5 @@
 /**
- * Plain-language rules (SPEC §6.1): the asynchronous compile into a
+ * Plain-language rules: the asynchronous compile into a
  * `mailRuleDrafts` row (`compiling` → `ready` | `failed`), the name-resolved,
  * validated preview, and confirming it into a filter with `origin` and
  * `sourceText`.

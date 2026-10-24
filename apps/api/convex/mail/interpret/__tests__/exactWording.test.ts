@@ -1,5 +1,5 @@
 /**
- * The "exact wording" signal (SPEC §7 legal mail) and the evidence occurrence
+ * The "exact wording" signal (legal mail) and the evidence occurrence
  * index the reader uses to mark the right passage:
  *   - the model schema requires `exactWording` (nullable reason); the parse
  *     schema tolerates payloads stored before it existed;

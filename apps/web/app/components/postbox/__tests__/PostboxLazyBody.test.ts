@@ -1,5 +1,5 @@
 /**
- * Lazily mounted reader bodies (performance plan D8).
+ * Lazily mounted reader bodies.
  *
  * An expanded message whose body sits far below the fold renders a placeholder
  * of the body's cached frame height and mounts the real body once it nears the

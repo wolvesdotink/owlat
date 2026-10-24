@@ -14,8 +14,8 @@
  *     outgoing text and attachment set; it holds only while the gate enforces.
  *     Shadow mode never relaxes another gate and never holds.
  *
- * Coverage counts only when every value it is bound to equals the send's
- * (review D1): the plan revision it was computed for, the draft hash, the
+ * Coverage counts only when every value it is bound to equals the send's:
+ * the plan revision it was computed for, the draft hash, the
  * attachment-set hash, the thread revision and every item revision.
  *
  * Restrict-only: nothing here can approve or widen a send.

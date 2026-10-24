@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * A list of items under its heading: "For you", "Waiting on others" or
- * "Unclear who should act" (plan §4.1).
+ * "Unclear who should act".
  *
  * The empty "For you" says so only when the brief is complete AND every item
  * page is in: an incomplete brief never claims there is nothing to do (plan

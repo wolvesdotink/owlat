@@ -22,7 +22,7 @@
  *     the source only while it still waits for that deadline. After it the
  *     thread's label is final, whatever it is.
  *
- * Every run of the source goes through its lease (`lease.ts`, SPEC §2.5).
+ * Every run of the source goes through its lease (`lease.ts`).
  * Recording the wait ends the waiting run's lease. A category that settled
  * between the run's read and its deferral sends the run back to read again,
  * under the lease it still holds, with nothing scheduled. The wake and the
@@ -202,7 +202,7 @@ async function wakePage(
 const DEPTH_WAKE_RECORDS = 3;
 
 /**
- * Read on arrival (SPEC §2.3.3b): a category was just written for the thread
+ * Read on arrival: a category was just written for the thread
  * (the refinement, a heuristic label, an owner override). It is the category
  * of the thread's newest inbound message, so that message's run, waiting up
  * to `CATEGORY_DEPTH_WAIT_MS` to decide how deep to read, runs now: the wait
@@ -246,12 +246,12 @@ export async function releaseDepthWait(
 	return releaseSourceWait(ctx, messageId);
 }
 
-/** Clear one source's depth-wait marker and run it now, unless D10 deferred or it settled. */
+/** Clear one source's depth-wait marker and run it now, unless it was deferred or it settled. */
 async function releaseSourceWait(ctx: MutationCtx, messageId: Id<'mailMessages'>): Promise<number> {
 	const row = await loadInterpretSource(ctx, { kind: 'mail', id: messageId });
 	if (row?.categoryPendingAt === undefined) return 0;
 	await ctx.db.patch(row._id, { categoryPendingAt: undefined, updatedAt: Date.now() });
-	// D10 kept it for its open (read on arrival off): nothing runs it now (Sol r1 F1).
+	// Deferred to its open (read on arrival off): nothing runs it now.
 	if (row.isDeferred === true || row.readOutcome !== undefined) return 0;
 	await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
 		source: row.source,

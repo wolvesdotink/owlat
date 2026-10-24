@@ -5,7 +5,7 @@
  * (RFC 8617 §4.1.2), so signer, DKIM and ARC AMS all canonicalize/hash through
  * this ONE core (U4) — there is no second canonicalization or hashing path.
  *
- * Canonicalization is delegated to the shared `../canon.ts` public API (D4).
+ * Canonicalization is delegated to the shared `../canon.ts` public API.
  */
 
 import { createHash, verify as cryptoVerify } from 'crypto';
@@ -343,7 +343,7 @@ export async function verifyMessageSignature(
 		return withVerdict('fail');
 	}
 
-	// D2 sanctioned improvement: an `l=` signature is capped at neutral.
+	// A deliberate improvement over the oracle: an `l=` signature is capped at neutral.
 	if (hasLengthTag) {
 		return withVerdict('neutral');
 	}

@@ -1,5 +1,5 @@
 /**
- * "SENDING OVER 4 DAYS · DAY 1 OF 4 · 5 000 OF 20 000" (plan D14, P3-7).
+ * "SENDING OVER 4 DAYS · DAY 1 OF 4 · 5 000 OF 20 000".
  *
  * A multi-day send is a NORMAL, VISIBLE state for a warming deployment — not an
  * error and not a surprise — and the line has to be there from the moment the
@@ -8,7 +8,7 @@
  * The property this suite really enforces is that the derivation has NO FAILURE
  * SHAPE AT ALL: every input, including the hostile ones, produces a renderable
  * day-of-N. There is nothing here for a UI to show as a warning, a nag or an
- * unresolvable "setup incomplete" (plan D2).
+ * unresolvable "setup incomplete".
  */
 
 import { describe, expect, it } from 'vitest';
@@ -106,7 +106,7 @@ describe('campaignSendPlanProgress', () => {
 	 * `planTotalDays >= MAX_PLAN_DAYS`, which told an operator whose send is
 	 * fully scheduled — the last recipient goes out on day MAX_PLAN_DAYS — that
 	 * it runs "more than 60 days". A schedule that covers its audience is
-	 * complete however long it is (plan D14).
+	 * complete however long it is.
 	 */
 	describe('a plan exactly MAX_PLAN_DAYS long', () => {
 		/** Checkpoint the walker would write for `remaining` at 100/day. */
@@ -173,7 +173,7 @@ describe('campaignSendPlanProgress', () => {
 		});
 	});
 
-	it('says the quiet part about the denominator too (plan D14)', () => {
+	it('says the quiet part about the denominator too', () => {
 		const bounded = campaignSendPlanProgress({
 			plan: plan({
 				planDayIndex: 0,

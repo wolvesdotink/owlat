@@ -241,7 +241,7 @@ describe('presets', () => {
 });
 
 /**
- * THE SAME HAND ON THE SECOND DIAL (plan D3, P3-6).
+ * THE SAME HAND ON THE SECOND DIAL.
  *
  * `setCellPause` succeeds on every managed cell, and until this existed the
  * override only reached the SHARE — so on a pace-actuated cell (a deployment with

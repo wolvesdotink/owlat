@@ -308,7 +308,7 @@ describe('mandrill extras', () => {
 		);
 	});
 
-	it('omits the return-path domain until the probe proves the transport honours one (D5)', () => {
+	it('omits the return-path domain until the probe proves the transport honours one', () => {
 		// The catalog declares `supportsCustomReturnPath: 'probe'`, so an unproven
 		// transport must NOT be handed a `return_path_domain`: Mandrill would
 		// silently ignore or reject a domain that is not SPF'd to it, and the cell
@@ -400,7 +400,7 @@ describe('declared dispatch semantics', () => {
 		// The coupling is not decorative: the ambiguous-acceptance arm resolves by
 		// REPLAYING the attempt, which is only safe because the replay carries the
 		// same idempotency key. A kind that claimed custody without owning its
-		// message id would double-deliver on every lost response (D4) — and one
+		// message id would double-deliver on every lost response — and one
 		// that owned its id without claiming custody would pay for the pre-dispatch
 		// identity binding and still refuse to reconcile. `CoreSendProviderCatalogEntry`
 		// makes both a build break; this executes the same rule against the values.

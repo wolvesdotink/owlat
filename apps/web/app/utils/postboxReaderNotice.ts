@@ -1,5 +1,5 @@
 /**
- * The calm reader's one notice slot (SPEC §3): one banner per thread, in
+ * The calm reader's one notice slot: one banner per thread, in
  * priority order. It is the list pane's banner-slot rule (`PostboxBannerSlot`)
  * applied to the open thread: the next one takes the slot the moment the one
  * above it resolves. Pure.

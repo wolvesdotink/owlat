@@ -180,7 +180,7 @@ export const coachDraft = authedAction({
 				}),
 			};
 		} catch (error) {
-			// A budget refusal is shown to the user (D1, AI_BUDGET_EXHAUSTED).
+			// A budget refusal is shown to the user (AI_BUDGET_EXHAUSTED).
 			rethrowAdmissionRefusal(error);
 			// FAIL-SOFT: no critique is better than blocking the user's own draft.
 			return { suggestions: [] };

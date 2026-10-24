@@ -1,5 +1,5 @@
 /**
- * The provider-identity ratchet's own gate (SEAMS plan D2), part one: the run
+ * The provider-identity ratchet's own gate, part one: the run
  * against the repository it guards, and the violations it must catch.
  *
  * A ratchet nobody has watched FAIL is indistinguishable from `exit 0`, so

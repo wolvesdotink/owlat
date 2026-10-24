@@ -1,5 +1,5 @@
 /**
- * P4-6 D2 proof — a deployment with NO Yahoo CFL enrollment.
+ * Absence blocks nothing — a deployment with NO Yahoo CFL enrollment.
  *
  * The additive-only third-party rule: absence of the enrollment may lower
  * measurement confidence and slow the ramp, and must do NOTHING else. It never
@@ -12,7 +12,7 @@
  * SCOPE: `yahooComplaintSubstitution` is the yahoo cell's only definition today.
  * P3-8 lands the ONE substitution table for every gate and SUBSUMES it — so
  * these assertions move there rather than being duplicated, or we end up with
- * two disagreeing yahoo complaint gates (D3). The THRESHOLDS do not move: they
+ * two disagreeing yahoo complaint gates. The THRESHOLDS do not move: they
  * already live in `../gateConfig` alongside every other ramp threshold, which is
  * why this suite reads them from there rather than from a second declaration.
  */
@@ -89,7 +89,7 @@ describe('the substitution table always yields a usable gate', () => {
 	});
 
 	/**
-	 * THE ANTI-DIVERGENCE FIXTURE (plan D5). This module publishes the trip point
+	 * THE ANTI-DIVERGENCE FIXTURE. This module publishes the trip point
 	 * the WIZARD renders; `UNSUBSCRIBE_PROXY_SPEC` is the rule the CONTROLLER
 	 * actually applies. They were once two numbers with two confidence labels —
 	 * an absolute 0.05% ceiling at low confidence here, a 3x relative rule at
@@ -268,8 +268,8 @@ describe('the comparison boundary is inclusive on the pass side', () => {
 
 	it('never trips the proxy on a trailing rate that cannot be a denominator', () => {
 		// Absent, zero and non-finite baselines are a comparison that cannot be
-		// built — the running gate HOLDS on them with `baseline_not_a_denominator`
-		// (D10). `not_comparable` is the comparator's word for that hold, and it is
+		// built — the running gate HOLDS on them with `baseline_not_a_denominator`.
+		// `not_comparable` is the comparator's word for that hold, and it is
 		// deliberately NOT `no_breach`: a caller that reads "cannot tell" as
 		// "healthy" advances a cell on a number nobody has.
 		for (const trailing of [null, 0, Number.NaN, Number.POSITIVE_INFINITY, -1]) {

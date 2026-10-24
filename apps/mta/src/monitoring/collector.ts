@@ -146,7 +146,7 @@ export const cfblAttributionsTotal = new Counter({
  *
  * The §3.1.3 alignment rule makes SILENCE the default branch: a sending domain
  * that has not registered its own return-path host carries no CFBL pair at all.
- * That is a correct, D2-clean outcome — no error, no warning, no setup nag — but
+ * That is a correct outcome — no error, no warning, no setup nag — but
  * an invisible one, so it is counted here. `host_unaligned` dominating this
  * counter is how an operator learns that CFBL is off for their domains and what
  * would turn it on.

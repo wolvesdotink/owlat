@@ -1,5 +1,5 @@
 /**
- * `applyInterpretation` (SPEC §4 `reduce.ts`): fold one message's grounded,
+ * `applyInterpretation`: fold one message's grounded,
  * verified interpretation into its thread, in ONE transaction:
  *
  *   1. recheck, against the database as it is now, everything the run assumed:

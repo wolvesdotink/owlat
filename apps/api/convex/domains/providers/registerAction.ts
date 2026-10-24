@@ -61,7 +61,7 @@ export const run = internalAction({
 		const at = Date.now();
 		let registered = false;
 		try {
-			// Thread the domain's per-domain VERP return-path host (D1/D2) so the
+			// Thread the domain's per-domain VERP return-path host so the
 			// adapter reflects it to the provider and builds the `mailFrom` SPF
 			// record on that host. Absent ⇒ the adapter falls back to the global
 			// `MTA_RETURN_PATH_DOMAIN` (historic behavior).
@@ -372,8 +372,8 @@ async function runReturnPathReflection(
 }
 
 /**
- * Reflect a domain's changed per-domain VERP return-path host (D1/D2) to the
- * MTA. POSTs the host to the D1 register endpoint, which is idempotent for the
+ * Reflect a domain's changed per-domain VERP return-path host to the
+ * MTA. POSTs the host to the MTA's register endpoint, which is idempotent for the
  * DKIM key — so this sets ONLY the return-path host, never the signing key.
  * All retry/supersession/give-up handling lives in {@link runReturnPathReflection}.
  */

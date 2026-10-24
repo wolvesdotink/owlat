@@ -194,13 +194,13 @@ export async function buildOutboundMime(
 
 /**
  * Sealed Mail (E3): seal the built message into signed+encrypted PGP/MIME when
- * the org policy allows AND EVERY recipient has a usable pinned key (locked
- * decisions D1/D2/D4). One keyless recipient ⇒ plaintext with the reason
- * recorded — NEVER a mixed send (D2). The agent-reply path flows through this
+ * the org policy allows AND EVERY recipient has a usable pinned key.
+ * One keyless recipient ⇒ plaintext with the reason
+ * recorded — NEVER a mixed send. The agent-reply path flows through this
  * exact code (agent drafts dispatch via `dispatchDraft` too), so it seals
  * identically with no special-casing. When sealed, the stored `.eml` and the
  * on-wire body are ciphertext; the real subject travels inside and the outer
- * subject is the literal placeholder "..." (D4).
+ * subject is the literal placeholder "...".
  *
  * `isFlagEnabled` is returned so the caller can keep a flag-off deployment
  * byte-identical: it neither stamps `encryptionInfo` on the row nor enforces

@@ -18,7 +18,7 @@
  *      inbound mail, so it is framed as untrusted DATA (SYSTEM_GUARD), mirroring
  *      mail/ai/assist.ts. The result only ever updates the advisory grouping — it never
  *      sends or modifies mail. A rate-limited gate is retried, backed off, up to
- *      {@link MAX_RATE_LIMIT_RETRIES} times; a budget refusal defers (D1).
+ *      {@link MAX_RATE_LIMIT_RETRIES} times; a budget refusal defers.
  */
 
 import { v, type ObjectType } from 'convex/values';
@@ -118,7 +118,7 @@ const classifyThreadArgs = {
 	/** Runs this work tried again after a rate-limited gate (#1380). */
 	rateLimitRetries: v.optional(v.number()),
 	/**
-	 * Read on arrival R2 (SPEC §6.2): the delivered message. Its pending rule
+	 * Read on arrival R2: the delivered message. Its pending rule
 	 * questions are answered too, from its own text, even when the category
 	 * settles without the model.
 	 */
@@ -201,7 +201,7 @@ export const classifyThread = internalAction({
 				threadId: args.threadId,
 			});
 			if (!context) return;
-			// R2: this message's pending rule questions (the rules hook; SPEC §6.2).
+			// R2: this message's pending rule questions (the rules hook).
 			const questions = args.messageId
 				? await ctx.runQuery(internal.mail.arrival.r2.arrivalQuestions, {
 						messageId: args.messageId,
@@ -350,7 +350,7 @@ export const classifyThread = internalAction({
 					settled = resolved.label;
 				}
 			} catch (error) {
-				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run
 				// Rate-limited: try again, backed off and bounded, instead of
 				// keeping the baseline for good. The retry runs the bundle below.
 				const limited = rateLimitRefusalOf(error);
@@ -364,7 +364,7 @@ export const classifyThread = internalAction({
 			}
 
 			// Phase 2: the category and disposition bundle runs BESIDE the
-			// refinement, for ambiguous mail only, and never moves the thread (D9).
+			// refinement, for ambiguous mail only, and never moves the thread.
 			// Off by default: nothing is scheduled.
 			await schedulePostboxMessageBundle(ctx, {
 				threadId: args.threadId,

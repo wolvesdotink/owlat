@@ -145,8 +145,8 @@ const { arm: armUndoSend } = useCampaignUndoSend();
 
 /**
  * Pre-flight refused the send and handed back the multi-day schedule it would
- * take instead. Capacity is a SCHEDULE, not a failure (deliverability plan
- * D14), so the refusal is claimed here and rendered as a calm panel rather than
+ * take instead. Capacity is a SCHEDULE, not a failure, so
+ * the refusal is claimed here and rendered as a calm panel rather than
  * left to the generic red `invalid_state` toast.
  */
 const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } = useCapacityRefusal();

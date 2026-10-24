@@ -1,10 +1,10 @@
 /**
- * Read on arrival (SPEC §2.3.2): the dispatch of a delivered message that is
+ * Read on arrival: the dispatch of a delivered message that is
  * no Reply Queue candidate. There is no new ladder: the interpretation run is
  * the coordinator, and it decides how deep to read once it has the message
  * (`interpret/arrivalDecide.ts`).
  *
- *   - Read on arrival OFF (or not a personal mailbox): D10 exactly as today.
+ *   - Read on arrival OFF (or not a personal mailbox): screen-only work waits for the screen.
  *     A display-only source is deferred until the thread is opened
  *     (`interpret/defer.ts deferIfDisplayOnly`).
  *   - Otherwise the source is read now: its run picks full, gist, count or
@@ -23,7 +23,7 @@ import { deferIfDisplayOnly } from '../interpret/defer';
 
 export type ArrivalDispatch = 'deferred' | 'read';
 
-/** Defer it (D10, the preference off) or read it now (see the module doc). */
+/** Defer it (the preference off) or read it now (see the module doc). */
 export async function arrivalDispatchOf(
 	ctx: MutationCtx,
 	message: Doc<'mailMessages'>

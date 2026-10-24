@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.4): the pre-gist exact-wording detector.
+ * Read on arrival: the pre-gist exact-wording detector.
  *
  * A gist is two verbatim sentences picked by a model. For some mail the
  * wording itself is what matters, and two picked sentences can mislead:

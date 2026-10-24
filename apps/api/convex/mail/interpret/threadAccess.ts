@@ -1,5 +1,5 @@
 /**
- * Who may act on a thread brief (SPEC §1): every row of the brief inherits
+ * Who may act on a thread brief: every row of the brief inherits
  * the read permission of its thread.
  *
  *   - A Postbox thread (`mail`) follows its mailbox: `requireMailboxAccess`

@@ -1,5 +1,5 @@
 /**
- * Everything a team thread surface needs around its stream (SPEC §7 "Team"),
+ * Everything a team thread surface needs around its stream,
  * shared by the Team Inbox page, the shared-mailbox reader and team Answer
  * mode: the stream, the pinned actions, the teammates (for owners, mentions
  * and names), and the writes: notes, note reactions, Claim / Assign and the

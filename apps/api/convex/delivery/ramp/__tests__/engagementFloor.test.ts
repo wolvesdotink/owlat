@@ -8,7 +8,7 @@
  * OWN PRIOR 30-day window, and it is the only thing in the gate set that can see
  * that.
  *
- * It is also the check most likely to fire for the wrong reason (plan D14: a
+ * It is also the check most likely to fire for the wrong reason (a
  * redesigned newsletter looks exactly like a placement loss), so the suite pins
  * both halves: it fires on a LARGE smooth decay, and it stays quiet on a small
  * one and on a young cell with no baseline.
@@ -146,7 +146,7 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 		const floor = evaluateEngagementFloorGate(input);
 		expect(floor.status).toBe('insufficient_data');
 		expect(floor.reason).toBe('baseline_sample_below_floor');
-		// The audit row (plan D12) must report BOTH floors, each beside the sample
+		// The audit row must report BOTH floors, each beside the sample
 		// it governs. The two differ by 3x here, so a measurement carrying only one
 		// of them would tell an operator something false about the other arm —
 		// either that a 1,000-send recent window is below a 1,200 floor, or that a
@@ -234,7 +234,7 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 		expect(ratio.reason).toBe('reference_evidence_stale');
 	});
 
-	it('HOLDS on a thin recent window — the floor obeys the same sample rule (D10)', () => {
+	it('HOLDS on a thin recent window — the floor obeys the same sample rule', () => {
 		const input = engagementInput({
 			own: engagementWindow(399, 0.01),
 			ownPriorBaseline: BASELINE_30D,
