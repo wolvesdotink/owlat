@@ -150,9 +150,11 @@ beforeEach(() => {
 			return {
 				sendShortcutHint: ref('Send (Ctrl+Enter)'),
 				scheduleShortcutHint: ref('Schedule send (Ctrl+Shift+Enter)'),
+				sendChords: ref({ send: 'Ctrl+Enter', alternate: 'Ctrl+Alt+Enter' }),
 				onComposerKeydown: vi.fn(),
 			};
 		},
+		usePostboxSettings: () => ({ afterReply: ref('keep') }),
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		useInboxes: () => ({ byId: ref(new Map()) }),
 		useBackendOperation: () => ({ run: vi.fn(async () => ({ ok: true })), isLoading: ref(false) }),

@@ -36,6 +36,9 @@ export interface OfflineComposePayload extends DraftFields {
 		undoSendDelayMs?: number;
 		scheduledSendAt?: number;
 		allowUnsealed?: boolean;
+		/** Absent on items queued before the after-reply action existed: keep. */
+		afterSend?: 'keep' | 'done';
+		afterSendChosenAt?: number;
 	};
 }
 

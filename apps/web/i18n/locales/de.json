@@ -4704,6 +4704,9 @@
 				"moreOptions": "Weitere Optionen zum Verfassen",
 				"scheduleSend": "Senden planen…",
 				"sending": "Wird gesendet…",
+				"sendOptions": "Weitere Sendeoptionen",
+				"sendAndKeep": "Senden und im Posteingang lassen",
+				"sendAndDone": "Senden und als erledigt markieren",
 				"signature": "Signatur",
 				"uploadingTitle": "Warten, bis die Anhänge vollständig hochgeladen sind…",
 				"previewAsSent": "Vorschau wie gesendet",
@@ -6192,6 +6195,8 @@
 				"readingPaneHelp": "Wo der Reader neben der Liste sitzt. Zieh den Trenner – oder fokussiere ihn und nutze die Pfeiltasten –, um ihn zu verschieben.",
 				"replyDefaultLabel": "Standardverhalten beim Antworten",
 				"replyDefaultHelp": "Was die Schaltfläche „Antworten“ und das Tastenkürzel {replyKey} tun. {replyAllKey} antwortet immer allen; beim Verfassen kannst du eine Antwort auf „Allen antworten“ umstellen.",
+				"afterReplyLabel": "Nach dem Antworten",
+				"afterReplyHelp": "Was „Senden“ mit der beantworteten Konversation macht. Als erledigt markiert, wird sie archiviert, sobald die Antwort rausgeht, und es geht weiter wie nach dem Archivieren. {oppositeKey} oder das Menü neben „Senden“ macht für eine Antwort das andere.",
 				"writingSuggestionsLabel": "Schreibvorschläge",
 				"writingSuggestionsHelp": "Inline-KI-Autovervollständigung beim Schreiben anzeigen. Mit Tab übernehmen.",
 				"autoSummarizeLabel": "Übersicht über dem Verlauf anzeigen",
@@ -7351,6 +7356,55 @@
 			"zenMore": {
 				"hidden": "{count} weiteres Update in {inbox} wartet außerhalb von Zen. | {count} weitere Updates in {inbox} warten außerhalb von Zen.",
 				"show": "Alles zeigen"
+			},
+			"upcoming": {
+				"title": "Demnächst",
+				"loadFailed": "Was demnächst ansteht, konnte nicht geladen werden",
+				"when": {
+					"now": "Jetzt",
+					"today": "{time}",
+					"tomorrow": "Morgen {time}",
+					"week": "{day} {time}",
+					"date": "{date}, {time}"
+				},
+				"noSubject": "(kein Betreff)",
+				"send": {
+					"to": "Geht an {to}",
+					"toMany": "Geht an {to} und {count} weitere Person | Geht an {to} und {count} weitere Personen",
+					"noRecipient": "Geplanter Versand, noch ohne Empfänger"
+				},
+				"snooze": {
+					"returns": "Kommt aus dem Zurückstellen zurück · {from}",
+					"untilReply": "Kommt aus dem Zurückstellen zurück, früher bei einer Antwort · {from}"
+				},
+				"followUp": {
+					"waitingOn": "Erinnerung, falls {who} nicht geantwortet hat",
+					"anyone": "Erinnerung, falls niemand geantwortet hat"
+				},
+				"teamSnooze": "Team-Postfach · kommt aus dem Zurückstellen zurück · {contact}",
+				"campaign": {
+					"title": "Kampagne {name}",
+					"toAudience": "an {audience}",
+					"recipients": "{count} Empfänger | {count} Empfänger",
+					"countedAt": "Empfänger gezählt {when}",
+					"local": "um {time} in der Zeitzone jedes Empfängers",
+					"optimized": "zur üblichen Lesezeit jedes Empfängers"
+				},
+				"actionsFor": "Geplanter Versand: {subject}",
+				"actions": {
+					"sendNow": "Jetzt senden",
+					"edit": "Bearbeiten",
+					"cancel": "Abbrechen"
+				},
+				"operations": {
+					"sendNow": "Jetzt senden",
+					"cancel": "Versand nicht mehr planen"
+				},
+				"noLongerScheduled": "Dieser Versand ist nicht mehr geplant.",
+				"sent": "Wird jetzt gesendet.",
+				"cancelled": "Nicht mehr geplant. Du findest die Nachricht in den Entwürfen.",
+				"showMore": "Mehr anzeigen",
+				"moreThanShown": "Es ist mehr geplant, als die Werkbank anzeigt."
 			}
 		},
 		"answer": {
@@ -16017,6 +16071,10 @@
 				"scopeOperation": "Zugriff auf den Freigabelink ändern"
 			}
 		},
+		"postboxAfterReply": {
+			"keep": "Im Posteingang lassen",
+			"done": "Als erledigt markieren (archivieren)"
+		},
 		"postboxAutoAdvance": {
 			"backToList": "Zurück zur Liste",
 			"next": "Die nächste Konversation öffnen",
@@ -16597,6 +16655,10 @@
 					"title": "Standardverhalten beim Antworten",
 					"keywords": "allen antworten, antworten, Taste r"
 				},
+				"afterReply": {
+					"title": "Nach dem Antworten",
+					"keywords": "senden und archivieren, als erledigt markieren, erledigt, nach dem Antworten archivieren, im Posteingang lassen"
+				},
 				"shortcuts": {
 					"keywords": "Tastatur, Tastenkürzel, Hotkeys, Tastenbelegung, neu belegen, Gmail-Tasten, Superhuman-Tasten, Outlook-Tasten",
 					"title": "Tastenkürzel"
@@ -16802,6 +16864,7 @@
 				"scheduleSend": "Senden planen (im Editor)",
 				"selectDeselect": "Auswählen / Auswahl aufheben",
 				"send": "Senden (im Editor)",
+				"sendAlternate": "Senden, andere Aktion nach dem Antworten (im Editor)",
 				"showShortcuts": "Tastenkürzel anzeigen",
 				"snooze": "Zurückstellen",
 				"starUnstar": "Markieren / Markierung entfernen",
