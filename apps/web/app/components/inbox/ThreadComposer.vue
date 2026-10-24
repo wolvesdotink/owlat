@@ -382,8 +382,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 
 				<slot name="above-editor" :composer="answer" />
 
-				<!-- Plain text: the reply is escaped into HTML on the way out. The `;`
-				     saved-reply dropdown is anchored under the caret inside it. -->
+				<!-- Plain text, escaped into HTML on the way out; `;` opens saved replies. -->
 				<div class="relative flex min-h-48 flex-1 flex-col">
 					<textarea
 						ref="textarea"
@@ -392,6 +391,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 						:aria-label="t('dashboard.inbox.detail.composer.bodyLabel')"
 						:placeholder="t('dashboard.inbox.detail.composer.placeholder')"
 						data-testid="thread-composer-body"
+						v-bind="savedReplies.dropdown.list.value?.fieldAttrs"
 						@input="onInput"
 						@keydown="onKeydown"
 						@keyup="savedReplies.handleKeyup"
@@ -399,12 +399,13 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 						@blur="savedReplies.dropdown.close"
 					/>
 					<PostboxSnippetPicker
-						v-if="savedReplies.dropdown.style.value"
+						v-if="savedReplies.dropdown.anchor.value"
+						:ref="savedReplies.dropdown.bindList"
 						:items="savedReplies.dropdown.items.value"
-						:active-index="savedReplies.dropdown.index.value"
-						:style="savedReplies.dropdown.style.value"
+						:anchor="savedReplies.dropdown.anchor.value"
+						:field="textarea"
 						@select="savedReplies.dropdown.select"
-						@hover="(i) => (savedReplies.dropdown.index.value = i)"
+						@dismiss="savedReplies.dropdown.dismiss"
 					/>
 				</div>
 				<PostboxSnippetVariableDialog

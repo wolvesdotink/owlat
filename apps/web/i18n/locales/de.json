@@ -1831,8 +1831,12 @@
 			},
 			"chatMemberPicker": {
 				"label": "Mitglieder",
+				"listLabel": "Passende Mitglieder",
 				"placeholder": "Nach Name oder E-Mail suchen…",
 				"removeMember": "{name} entfernen"
+			},
+			"chatMentionPicker": {
+				"listLabel": "Teammitglieder zum Erwähnen"
 			},
 			"chatMentionsDialog": {
 				"emptyBody": "Keine ungelesenen Erwähnungen.",
@@ -5365,7 +5369,6 @@
 				"title": "Tastenkürzel"
 			},
 			"postboxSnippetPicker": {
-				"empty": "Keine passende gespeicherte Antwort",
 				"listLabel": "Gespeicherte Antworten"
 			},
 			"postboxSnoozeDialog": {

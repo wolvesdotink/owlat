@@ -19,14 +19,24 @@
  *
  * `UiShortcut` is the shortcut hint chip the shell, the palette and the
  * onboarding tips render; real, so a suite sees the key a person would.
+ *
+ * The pickers' primitives (`UiPopover`, `UiListbox`, `UiCombobox`,
+ * `UiSuggestionPopover`) are real too: a picker's keys, highlight and ARIA
+ * live in them, so a stub would leave a suite typing into nothing. A suite
+ * finds popover content under `document.body` (it is teleported there) or
+ * stubs `teleport`.
  */
 import { config } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiCheckbox from '@owlat/ui/components/ui/Checkbox.vue';
+import UiCombobox from '@owlat/ui/components/ui/Combobox.vue';
 import UiEmptyState from '@owlat/ui/components/ui/EmptyState.vue';
 import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
+import UiListbox from '@owlat/ui/components/ui/Listbox.vue';
+import UiPopover from '@owlat/ui/components/ui/Popover.vue';
 import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
+import UiSuggestionPopover from '@owlat/ui/components/ui/SuggestionPopover.vue';
 import UiUnsavedChangesDialog from '@owlat/ui/components/ui/UnsavedChangesDialog.vue';
 import UiQueryBoundary from '~/components/ui/QueryBoundary.vue';
 import UiShortcut from '~/components/ui/Shortcut.vue';
@@ -63,5 +73,9 @@ export function registerNuxtComponents(): void {
 		UiSpinner,
 		UiUnsavedChangesDialog,
 		UiShortcut,
+		UiPopover,
+		UiListbox,
+		UiCombobox,
+		UiSuggestionPopover,
 	});
 }
