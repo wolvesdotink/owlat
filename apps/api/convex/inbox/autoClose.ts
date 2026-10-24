@@ -91,7 +91,7 @@ export const savePolicy = teamInboxAdminMutation({
 /**
  * One thread's auto-close state for the reader: whether the rule is on, the
  * thread opted out, when it will close if nobody writes, and whether its
- * current resolve was automatic.
+ * current resolve was automatic (and after how many quiet days).
  */
 export const getThreadAutoClose = teamInboxAdminQuery({
 	args: { threadId: v.id('conversationThreads') },
@@ -105,6 +105,8 @@ export const getThreadAutoClose = teamInboxAdminQuery({
 			isDisabledForThread: thread.isAutoCloseDisabled === true,
 			dueAt: autoCloseDueAt(thread, policy),
 			autoClosedAt: thread.autoClosedAt ?? null,
+			// The rule's days at the automatic close; `null` when there was none.
+			autoClosedQuietDays: thread.autoClosedQuietDays ?? null,
 		};
 	},
 });

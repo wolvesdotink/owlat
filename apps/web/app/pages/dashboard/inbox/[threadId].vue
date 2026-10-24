@@ -542,7 +542,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			<InboxAutoClosedNotice
 				v-if="isAutoClosed(thread) && thread.autoClosedAt"
 				:auto-closed-at="thread.autoClosedAt"
-				:quiet-days="autoClose?.quietDays ?? null"
+				:quiet-days="autoClose?.autoClosedQuietDays ?? null"
 				:can-reopen="isAdmin"
 				:busy="isReopening"
 				@reopen="onReopen"

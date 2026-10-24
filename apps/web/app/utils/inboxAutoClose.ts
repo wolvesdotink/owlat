@@ -32,6 +32,8 @@ export interface ThreadAutoCloseView {
 	isDisabledForThread: boolean;
 	dueAt: number | null;
 	autoClosedAt: number | null;
+	/** The rule's days at the automatic close, not the rule's days now. */
+	autoClosedQuietDays: number | null;
 }
 
 /**

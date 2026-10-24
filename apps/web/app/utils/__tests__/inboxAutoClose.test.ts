@@ -13,6 +13,7 @@ const view = (over: Partial<ThreadAutoCloseView> = {}): ThreadAutoCloseView => (
 	isDisabledForThread: false,
 	dueAt: null,
 	autoClosedAt: null,
+	autoClosedQuietDays: null,
 	...over,
 });
 

@@ -59,6 +59,11 @@ type AutoCloseThread = Pick<
  * (on its own or by hand), the rule being switched on, and auto-close being
  * turned back on for it. A thread that waited before `waitingSince` existed
  * has only the others, and never less than the switch-on time.
+ *
+ * A snooze still on the row counts from its deadline: the snooze cron clears
+ * it and stamps `snoozeReturnedAt` some time after that, so an auto-close run
+ * in between must already see the wake, or it would close the thread without
+ * the fresh quiet period the wake promises.
  */
 export function quietSince(thread: AutoCloseThread, policy: AutoClosePolicyView): number {
 	return Math.max(
@@ -67,6 +72,7 @@ export function quietSince(thread: AutoCloseThread, policy: AutoClosePolicyView)
 		thread.waitingSince ?? 0,
 		thread.lastReplySentAt ?? 0,
 		thread.snoozeReturnedAt ?? 0,
+		thread.snoozedUntil ?? 0,
 		thread.autoCloseRestartedAt ?? 0
 	);
 }
@@ -84,15 +90,17 @@ export function autoCloseDueAt(
 	return quietSince(thread, policy) + policy.quietDays * DAY_MS;
 }
 
-/** Due now. A snoozed thread is parked by a person and waits for its snooze. */
+/**
+ * Due now. A snoozed thread never is: its quiet period starts at the snooze
+ * deadline (see `quietSince`), and the rule's days are at least one.
+ */
 export function isAutoCloseDue(
 	thread: AutoCloseThread,
 	policy: AutoClosePolicyView | null,
 	now: number
 ): boolean {
 	const due = autoCloseDueAt(thread, policy);
-	if (due === null || due > now) return false;
-	return thread.snoozedUntil === undefined || thread.snoozedUntil <= now;
+	return due !== null && due <= now;
 }
 
 /** The newest `lastMessageAt` a thread due at `now` can have: the sweep's index bound. */
@@ -100,15 +108,21 @@ export function autoCloseCutoff(policy: AutoClosePolicyView, now: number): numbe
 	return now - policy.quietDays * DAY_MS;
 }
 
-type AutoCloseColumns = Partial<Pick<Doc<'conversationThreads'>, 'waitingSince' | 'autoClosedAt'>>;
+type AutoCloseColumns = Partial<
+	Pick<Doc<'conversationThreads'>, 'waitingSince' | 'autoClosedAt' | 'autoClosedQuietDays'>
+>;
 
 /**
  * The auto-close columns a real status edge moves: entering `waiting` starts
  * a fresh window, leaving it clears the stamp, and any edge out of an
- * automatic close ends its "closed automatically" provenance.
+ * automatic close ends its "closed automatically" provenance (when, and the
+ * days the rule had then).
  */
 export function autoCloseColumnsOnStatus(
-	thread: Pick<Doc<'conversationThreads'>, 'status' | 'waitingSince' | 'autoClosedAt'>,
+	thread: Pick<
+		Doc<'conversationThreads'>,
+		'status' | 'waitingSince' | 'autoClosedAt' | 'autoClosedQuietDays'
+	>,
 	to: Doc<'conversationThreads'>['status'],
 	now: number
 ): AutoCloseColumns {
@@ -117,5 +131,6 @@ export function autoCloseColumnsOnStatus(
 	if (to === 'waiting') patch.waitingSince = now;
 	else if (thread.waitingSince !== undefined) patch.waitingSince = undefined;
 	if (thread.autoClosedAt !== undefined) patch.autoClosedAt = undefined;
+	if (thread.autoClosedQuietDays !== undefined) patch.autoClosedQuietDays = undefined;
 	return patch;
 }

@@ -179,7 +179,12 @@ function reduceAutoClose(
 	// opt-out since the sweep read the thread leaves it alone.
 	if (thread.status !== 'waiting' || thread.isAutoCloseDisabled) return NOOP;
 	return {
-		patch: { status: 'resolved', autoClosedAt: input.at, waitingSince: undefined },
+		patch: {
+			status: 'resolved',
+			autoClosedAt: input.at,
+			autoClosedQuietDays: input.quietDays,
+			waitingSince: undefined,
+		},
 		effects: [
 			{
 				kind: 'audit_log',

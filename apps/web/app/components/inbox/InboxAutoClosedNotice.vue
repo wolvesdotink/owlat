@@ -9,7 +9,7 @@ import { formatRelativeTime } from '~/utils/formatters';
 
 const props = defineProps<{
 	autoClosedAt: number;
-	/** The rule's days when it closed; `null` when the rule is off now. */
+	/** The rule's days when it closed (not the rule's days now); `null` when unknown. */
 	quietDays: number | null;
 	canReopen: boolean;
 	busy?: boolean;

@@ -173,6 +173,7 @@ describe('the sweep', () => {
 		const closed = (await getThread(t, id))!;
 		expect(closed.status).toBe('resolved');
 		expect(closed.autoClosedAt).toBe(T0 + 3 * DAY);
+		expect(closed.autoClosedQuietDays).toBe(3);
 		expect(closed.resolvedAt).toBe(T0 + 3 * DAY);
 		expect(closed.waitingSince).toBeUndefined();
 
@@ -262,6 +263,37 @@ describe('the sweep', () => {
 		expect((await getThread(t, id))!.status).toBe('resolved');
 	});
 
+	// The auto-close and snooze crons run on their own schedules; whichever
+	// reaches a thread first at the snooze deadline, the quiet period starts there.
+	it.each([
+		['the auto-close sweep runs before the snooze wakes it', ['autoClose', 'snooze']],
+		['the snooze wakes it before the auto-close sweep runs', ['snooze', 'autoClose']],
+	] as const)('a snooze ending gives a fresh quiet period when %s', async (_, order) => {
+		const t = await setup();
+		await enable(t, 3);
+		const id = await insertThread(t, { snoozedUntil: T0 + 10 * DAY });
+		const runCrons = async () => {
+			for (const cron of order) {
+				if (cron === 'autoClose') await sweep(t);
+				else await t.mutation(internal.inbox.snooze.internalSweep, {});
+			}
+		};
+
+		at(T0 + 10 * DAY);
+		await runCrons();
+		const woken = (await getThread(t, id))!;
+		expect(woken.status).toBe('waiting');
+		expect(woken.snoozedUntil).toBeUndefined();
+		expect(woken.snoozeReturnedAt).toBe(T0 + 10 * DAY);
+
+		at(T0 + 13 * DAY - 1);
+		await runCrons();
+		expect((await getThread(t, id))!.status).toBe('waiting');
+		at(T0 + 13 * DAY);
+		await runCrons();
+		expect((await getThread(t, id))!.status).toBe('resolved');
+	});
+
 	it('starts a fresh window each time the thread re-enters waiting', async () => {
 		const t = await setup();
 		await enable(t, 3);
@@ -314,13 +346,26 @@ describe('after an automatic close', () => {
 		expect(await t.query(api.inbox.autoClose.getThreadAutoClose, { threadId: id })).toMatchObject({
 			isPolicyEnabled: true,
 			autoClosedAt: T0 + 3 * DAY,
+			autoClosedQuietDays: 3,
 			dueAt: null,
 		});
 		await t.mutation(api.inbox.mutations.updateThreadStatus, { threadId: id, status: 'open' });
 		const reopened = (await getThread(t, id))!;
 		expect(reopened.status).toBe('open');
 		expect(reopened.autoClosedAt).toBeUndefined();
+		expect(reopened.autoClosedQuietDays).toBeUndefined();
 		expect(reopened.resolvedAt).toBeUndefined();
+	});
+
+	it('keeps the days it closed after when the rule changes later', async () => {
+		const t = await setup();
+		const id = await autoClosed(t);
+		await enable(t, 30);
+		expect(await t.query(api.inbox.autoClose.getThreadAutoClose, { threadId: id })).toMatchObject({
+			quietDays: 30,
+			autoClosedAt: T0 + 3 * DAY,
+			autoClosedQuietDays: 3,
+		});
 	});
 
 	it('a customer reply reopens it and clears the provenance', async () => {
@@ -338,6 +383,7 @@ describe('after an automatic close', () => {
 		const reopened = (await getThread(t, id))!;
 		expect(reopened.status).toBe('open');
 		expect(reopened.autoClosedAt).toBeUndefined();
+		expect(reopened.autoClosedQuietDays).toBeUndefined();
 	});
 });
 
@@ -352,6 +398,7 @@ describe('per-thread opt-out', () => {
 			isDisabledForThread: false,
 			dueAt: T0 + 3 * DAY,
 			autoClosedAt: null,
+			autoClosedQuietDays: null,
 		});
 
 		const off = await t.mutation(api.inbox.autoClose.setThreadAutoClose, {

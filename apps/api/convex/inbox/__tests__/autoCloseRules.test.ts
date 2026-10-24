@@ -52,6 +52,7 @@ describe('quietSince', () => {
 		expect(quietSince(waiting, policy)).toBe(T0);
 		expect(quietSince({ ...waiting, lastReplySentAt: T0 + 1 }, policy)).toBe(T0 + 1);
 		expect(quietSince({ ...waiting, snoozeReturnedAt: T0 + 2 }, policy)).toBe(T0 + 2);
+		expect(quietSince({ ...waiting, snoozedUntil: T0 + 5 }, policy)).toBe(T0 + 5);
 		expect(quietSince({ ...waiting, autoCloseRestartedAt: T0 + 3 }, policy)).toBe(T0 + 3);
 		expect(quietSince(waiting, { ...policy, enabledAt: T0 + 4 })).toBe(T0 + 4);
 		// A thread that waited before the stamp existed: its last message.
@@ -71,10 +72,18 @@ describe('autoCloseDueAt / isAutoCloseDue', () => {
 		expect(autoCloseDueAt({ ...waiting, status: 'resolved' }, policy)).toBeNull();
 		expect(autoCloseDueAt({ ...waiting, isAutoCloseDisabled: true }, policy)).toBeNull();
 	});
-	it('waits for a snooze to end', () => {
+	it('counts a snooze still on the row from its deadline', () => {
+		// The snooze cron has not woken it yet: the fresh quiet period still
+		// starts at the deadline, not at whichever cron runs first.
 		const snoozed = { ...waiting, snoozedUntil: T0 + 10 * DAY };
+		expect(autoCloseDueAt(snoozed, policy)).toBe(T0 + 13 * DAY);
 		expect(isAutoCloseDue(snoozed, policy, T0 + 5 * DAY)).toBe(false);
-		expect(isAutoCloseDue(snoozed, policy, T0 + 10 * DAY)).toBe(true);
+		expect(isAutoCloseDue(snoozed, policy, T0 + 10 * DAY)).toBe(false);
+		expect(isAutoCloseDue(snoozed, policy, T0 + 13 * DAY - 1)).toBe(false);
+		expect(isAutoCloseDue(snoozed, policy, T0 + 13 * DAY)).toBe(true);
+		// Once woken, from the wake.
+		const woken = { ...waiting, snoozeReturnedAt: T0 + 10 * DAY + 1 };
+		expect(autoCloseDueAt(woken, policy)).toBe(T0 + 13 * DAY + 1);
 	});
 	it('bounds the sweep at the newest last message a due thread can have', () => {
 		expect(autoCloseCutoff(policy, T0)).toBe(T0 - 3 * DAY);
@@ -92,8 +101,12 @@ describe('autoCloseColumnsOnStatus', () => {
 	});
 	it('ends the automatic-close provenance on any real edge', () => {
 		expect(
-			autoCloseColumnsOnStatus({ status: 'resolved', autoClosedAt: T0 }, 'open', T0 + 1)
-		).toEqual({ autoClosedAt: undefined });
+			autoCloseColumnsOnStatus(
+				{ status: 'resolved', autoClosedAt: T0, autoClosedQuietDays: 3 },
+				'open',
+				T0 + 1
+			)
+		).toEqual({ autoClosedAt: undefined, autoClosedQuietDays: undefined });
 	});
 	it('changes nothing on a non-edge', () => {
 		expect(

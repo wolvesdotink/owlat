@@ -209,7 +209,6 @@ export const TENANT_TABLES = [
 	'askEagernessSettings',
 	'inboxSlaPolicies',
 	'inboxAutoClosePolicies',
-	'inboxAutoClosePolicies',
 	'clarificationAskLog',
 	'clarificationMemory',
 	'agentShadowDecisions',

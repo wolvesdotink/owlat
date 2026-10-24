@@ -33,4 +33,8 @@ export const conversationThreadAutoCloseFields = {
 	// Set when the sweep resolved the thread; cleared by the next status change
 	// or inbound reopen. Drives the "closed automatically" notice.
 	autoClosedAt: v.optional(v.number()),
+	// The rule's quiet days at that close, cleared with `autoClosedAt`. The
+	// notice quotes these, not the current rule, which an admin may have
+	// changed since.
+	autoClosedQuietDays: v.optional(v.number()),
 };
