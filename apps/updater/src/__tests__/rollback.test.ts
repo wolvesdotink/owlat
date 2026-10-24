@@ -1290,6 +1290,10 @@ describe('mount paths the snapshot cannot pass to Docker', () => {
 		expect(status).toBe(500);
 		expect(json.error).toContain('Cannot read the install directory');
 		expect(commandLines().some(isDeploy)).toBe(false);
-		expect(commandLines().some((c) => c.includes('/srv/Owlat'))).toBe(false);
+		// The install label names the whole directory; nothing names a part of it.
+		const args = commandMock.mock.calls.flatMap((c) => c[1] as string[]);
+		for (const arg of args.filter((a) => a.includes('/srv/Owlat'))) {
+			expect(arg).toContain('/srv/Owlat Data');
+		}
 	});
 });

@@ -865,15 +865,34 @@ describe('POST /update', () => {
 		}
 	});
 
-	it('falls back to a bare compose command when the host path cannot be read', async () => {
+	it('uses a bare compose command when Docker says the updater runs outside a container', async () => {
 		// Without the host path there is nowhere to put a snapshot either.
+		withoutSnapshot();
+		commandMock.mockImplementation(
+			dockerFailing(
+				(cmd) => cmd.startsWith('docker inspect'),
+				'Error: No such object: updater-host'
+			)
+		);
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+		expect(composeCommands()).toContain('docker compose up -d --remove-orphans web convex mta');
+	});
+
+	it('refuses the update, with nothing changed, when the updater cannot inspect itself', async () => {
+		// Which containers an earlier update left is looked up by the install
+		// directory; a failed inspect cannot stand in for it.
 		withoutSnapshot();
 		commandMock.mockImplementation(
 			dockerFailing((cmd) => cmd.startsWith('docker inspect'), 'permission denied')
 		);
 		const res = await post('/update');
-		expect(res.status).toBe(200);
-		expect(composeCommands()).toContain('docker compose up -d --remove-orphans web convex mta');
+		const json = (await res.json()) as { error: string };
+		expect(res.status).toBe(500);
+		expect(json.error).toContain('Cannot tell which containers belong to this install');
+		expect(json.error).toContain('Nothing was changed');
+		expect(commandLines().some((cmd) => cmd.includes('convex-deploy'))).toBe(false);
+		expect(composeCommands().some((cmd) => cmd.includes(' up '))).toBe(false);
 	});
 
 	/**
