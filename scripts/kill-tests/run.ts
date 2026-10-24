@@ -4,10 +4,13 @@
  *   bun scripts/kill-tests/run.ts [--no-build] [--keep] [--only=mta|mail-sync]
  *
  * Builds the current tree's MTA and mail-sync images, starts them in a
- * throwaway Compose project (compose.yml) against a scripted world, SIGKILLs
- * each one in the middle of its work, starts it again and checks the outcome
- * (oracle.ts). Exits non-zero with the reasons, and the services' logs, when a
- * scenario fails. Needs Docker with Compose v2 and openssl.
+ * throwaway Compose project (compose.yml) with a self-hosted Convex backend
+ * running the current tree's functions (backend.ts) and a scripted world,
+ * SIGKILLs each worker in the middle of its work, starts it again and checks
+ * the persisted outcome (oracle.ts). Exits non-zero with the reasons, and the
+ * services' logs, when a scenario fails. Needs Docker with Compose v2,
+ * openssl, an installed workspace, and the libraries `apps/api` imports built
+ * (`turbo run build --filter='@owlat/api^...'`).
  *
  *   --no-build  reuse images already built by an earlier run
  *   --keep      leave the stack running afterwards for inspection
@@ -18,8 +21,8 @@ import { runMtaScenario } from './mtaScenario';
 import { KillStack } from './stack';
 
 const SCENARIOS = {
-	'mail-sync': { services: ['mail-sync', 'world', 'imap'], run: runBackfillScenario },
-	mta: { services: ['mta', 'world'], run: runMtaScenario },
+	'mail-sync': { services: ['mail-sync', 'world', 'imap', 'convex'], run: runBackfillScenario },
+	mta: { services: ['mta', 'world', 'convex'], run: runMtaScenario },
 } as const;
 type ScenarioName = keyof typeof SCENARIOS;
 
@@ -42,8 +45,10 @@ async function main(): Promise<number> {
 	let failed = false;
 	try {
 		log(`project ${stack.project}`);
-		if (options.build) stack.compose(['build', 'mta', 'mail-sync'], { inherit: true });
-		stack.compose(['up', '-d', '--no-build', '--wait', 'redis', 'world', 'imap', 'mta']);
+		if (options.build) stack.compose(['build', 'convex', 'mta', 'mail-sync'], { inherit: true });
+		stack.compose(['up', '-d', '--no-build', '--wait', 'redis', 'convex', 'world', 'imap']);
+		stack.backend().deploy(log);
+		stack.compose(['up', '-d', '--no-build', '--wait', 'mta']);
 		for (const name of options.scenarios) {
 			log(`scenario ${name}`);
 			let failures: string[];

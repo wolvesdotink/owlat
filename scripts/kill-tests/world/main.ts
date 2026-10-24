@@ -1,9 +1,11 @@
 /**
- * Everything outside the process under test, in one long-lived container that
- * is never killed: the SMTP sink the MTA delivers to (port 25), the blocklist
- * resolver it checks its sending address against (5353/udp), and one HTTP
- * server (port 3210) that is both the Convex deployment (MTA webhooks, the
- * mail-sync function API and raw upload) and the orchestrator's control API.
+ * The scripted part of the world around the processes under test, in one
+ * long-lived container that is never killed: the SMTP sink the MTA delivers to
+ * (port 25), the blocklist resolver it checks its sending address against
+ * (5353/udp), and the path from both workers to the real Convex backend
+ * (world/convexProxy.ts): port 3210 forwards to the backend's function API and
+ * also serves the orchestrator's control API under `/control/`, port 3211
+ * forwards to its HTTP actions.
  *
  * Runs under bun with no dependencies beyond the runtime, so the container
  * needs nothing but this directory mounted.
@@ -11,31 +13,27 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { listenBlocklistDns } from './blocklistDns';
-import { ConvexStub } from './convexStub';
+import { ConvexProxy } from './convexProxy';
 import { EventLog } from './events';
 import { SmtpSink, type HoldRule } from './smtpSink';
 
-const HTTP_PORT = 3210;
+const API_PORT = 3210;
+const SITE_PORT = 3211;
 const SMTP_PORT = 25;
 const DNS_PORT = 5353;
 /** Upper bound for one control wait; the orchestrator picks shorter ones. */
 const MAX_WAIT_MS = 600_000;
 
-export interface MtaWebhook {
-	readonly event: string;
-	readonly messageId: string;
-	readonly body: Record<string, unknown>;
-}
-
+const backend = process.env['KILL_BACKEND_HOST'] ?? 'backend.owlat.test';
 const events = new EventLog();
 const sink = new SmtpSink(events);
-const convex = new ConvexStub(events, {
-	host: process.env['KILL_IMAP_HOST'] ?? 'imap.owlat.test',
-	port: Number(process.env['KILL_IMAP_PORT'] ?? 143),
-	username: process.env['KILL_IMAP_USER'] ?? 'migrate@owlat.test',
-	password: process.env['KILL_IMAP_PASSWORD'] ?? 'pass',
-});
-const webhooks: MtaWebhook[] = [];
+const convex = new ConvexProxy(
+	events,
+	new Map([
+		[API_PORT, `http://${backend}:${API_PORT}`],
+		[SITE_PORT, `http://${backend}:${SITE_PORT}`],
+	])
+);
 
 async function readBody(request: IncomingMessage): Promise<Buffer> {
 	const chunks: Buffer[] = [];
@@ -64,67 +62,40 @@ async function control(url: URL, request: IncomingMessage, response: ServerRespo
 		sink.arm(rules);
 		return send(response, 200, { armed: rules.length });
 	}
-	if (url.pathname === '/control/convex/import') {
-		const { holdUids } = JSON.parse((await readBody(request)).toString()) as {
-			holdUids: number[];
-		};
-		convex.startImport(holdUids);
-		return send(response, 200, { importing: true });
+	if (url.pathname === '/control/convex/hold-ingest') {
+		const { uids } = JSON.parse((await readBody(request)).toString()) as { uids: number[] };
+		convex.holdIngest(uids);
+		return send(response, 200, { armed: uids.length });
 	}
 	if (url.pathname === '/control/state') {
 		return send(response, 200, {
 			events: events.all(),
 			smtp: sink.transactions,
-			webhooks,
-			convex: {
-				migrationStatus: convex.migrationStatus,
-				inboxCursor: convex.cursorOf('INBOX') ?? null,
-				stored: [...convex.stored.values()],
-				ingestCalls: convex.ingestCalls,
-				progress: convex.progress,
-			},
+			webhooks: convex.webhooks,
+			ingestCalls: convex.ingestCalls,
 		});
 	}
 	send(response, 404, { error: 'unknown control route' });
 }
 
-async function route(request: IncomingMessage, response: ServerResponse): Promise<void> {
-	const url = new URL(request.url ?? '/', 'http://world');
-	if (url.pathname.startsWith('/control/')) return control(url, request, response);
-	if (request.method !== 'POST') return send(response, 405, { error: 'POST only' });
-	const body = await readBody(request);
-	if (url.pathname.startsWith('/webhooks/mta')) {
-		const parsed = JSON.parse(body.toString()) as Record<string, unknown>;
-		const webhook = {
-			event: String(parsed['event']),
-			messageId: String(parsed['messageId'] ?? ''),
-			body: parsed,
-		};
-		webhooks.push(webhook);
-		events.emit(`mta.webhook:${webhook.messageId}:${webhook.event}`, parsed);
-		// The events after which Convex holds the Send in a terminal state
-		// (oracle.ts TERMINAL_EVENTS; this container imports nothing from the repo).
-		if (['sent', 'bounced', 'failed'].includes(webhook.event)) {
-			events.emit(`mta.terminal:${webhook.messageId}`, parsed);
-		}
-		return send(response, 200, { ok: true });
-	}
-	if (url.pathname === '/http/mail-sync/raw-message') {
-		return send(response, 200, convex.upload(body.length));
-	}
-	if (/^\/api\/(query|mutation|action)$/.test(url.pathname)) {
-		const answer = await convex.call(url.pathname, JSON.parse(body.toString()));
-		return send(response, 200, answer);
-	}
-	send(response, 404, { error: `no route ${url.pathname}` });
+function serve(port: number): void {
+	createServer((request, response) => {
+		const url = new URL(request.url ?? '/', 'http://world');
+		const handled =
+			port === API_PORT && url.pathname.startsWith('/control/')
+				? control(url, request, response)
+				: readBody(request).then((body) => convex.handle(port, request, body, response));
+		handled.catch((error: unknown) => {
+			events.emit('world.error', String(error));
+			if (!response.headersSent) send(response, 502, { error: String(error) });
+		});
+	}).listen(port, '0.0.0.0');
 }
 
-createServer((request, response) => {
-	route(request, response).catch((error: unknown) => {
-		events.emit('world.error', String(error));
-		if (!response.headersSent) send(response, 500, { error: String(error) });
-	});
-}).listen(HTTP_PORT, '0.0.0.0');
+serve(API_PORT);
+serve(SITE_PORT);
 await sink.listen(SMTP_PORT);
 await listenBlocklistDns(DNS_PORT);
-console.info(`kill-test world ready: http ${HTTP_PORT}, smtp ${SMTP_PORT}, dns ${DNS_PORT}/udp`);
+console.info(
+	`kill-test world ready: proxy ${API_PORT}/${SITE_PORT} -> ${backend}, smtp ${SMTP_PORT}, dns ${DNS_PORT}/udp`
+);

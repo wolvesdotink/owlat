@@ -1,14 +1,17 @@
 /**
  * The kill-test stack as the orchestrator sees it: one Compose project with a
  * unique name (removed by that name, volumes included), the throwaway TLS
- * material the IMAP fixture serves, and the world container's control API.
+ * material the IMAP fixture serves, the Convex backend, and the world
+ * container's control API.
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { KillBackend } from './backend';
 import type { HoldRule } from './world/smtpSink';
 
 /** One control long-poll; `waitFor` chains them up to its deadline. */
@@ -64,11 +67,15 @@ export function makeImapCertificates(dir: string): void {
 
 export class KillStack {
 	readonly project = `owlat-kill-${process.pid}-${Date.now().toString(36)}`;
-	private readonly certDir = mkdtempSync(join(tmpdir(), 'owlat-kill-tests-'));
+	/** The run's scratch directory: TLS material, seed files. */
+	readonly scratchDir = mkdtempSync(join(tmpdir(), 'owlat-kill-tests-'));
+	/** The backend derives its admin key from this; new for every run. */
+	private readonly instanceSecret = randomBytes(32).toString('hex');
+	private adminKey = '';
 	private worldUrl: string | undefined;
 
 	constructor() {
-		makeImapCertificates(this.certDir);
+		makeImapCertificates(this.scratchDir);
 	}
 
 	compose(args: readonly string[], options: { input?: string; inherit?: boolean } = {}): string {
@@ -76,7 +83,12 @@ export class KillStack {
 			'docker',
 			['compose', '-p', this.project, '-f', COMPOSE_FILE, ...args],
 			{
-				env: { ...process.env, KILL_CERT_DIR: this.certDir },
+				env: {
+					...process.env,
+					KILL_CERT_DIR: this.scratchDir,
+					KILL_INSTANCE_SECRET: this.instanceSecret,
+					KILL_ADMIN_KEY: this.adminKey,
+				},
 				input: options.input,
 				encoding: 'utf8',
 				stdio: options.inherit ? 'inherit' : 'pipe',
@@ -87,6 +99,21 @@ export class KillStack {
 			throw new Error(`docker compose ${args.join(' ')} failed:\n${result.stderr ?? ''}`);
 		}
 		return result.stdout ?? '';
+	}
+
+	/** The running backend, with its admin key; the workers started after this get the key. */
+	backend(): KillBackend {
+		this.adminKey ||= KillBackend.adminKeyFrom(
+			this.compose(['exec', '-T', 'convex', './generate_admin_key.sh'])
+		);
+		return new KillBackend(
+			{
+				api: `http://${this.address('convex', 3210)}`,
+				site: `http://${this.address('convex', 3211)}`,
+			},
+			this.adminKey,
+			this.instanceSecret
+		);
 	}
 
 	/** The service's container id; the kill and the restart address the same container. */
@@ -141,8 +168,9 @@ export class KillStack {
 		await this.post('/control/smtp/hold', { rules });
 	}
 
-	async startImport(holdUids: readonly number[]): Promise<void> {
-		await this.post('/control/convex/import', { holdUids });
+	/** Commit the ingest of these UIDs at the backend, then never answer the worker. */
+	async holdIngest(uids: readonly number[]): Promise<void> {
+		await this.post('/control/convex/hold-ingest', { uids });
 	}
 
 	async state<T>(): Promise<T> {
@@ -161,7 +189,7 @@ export class KillStack {
 		try {
 			this.compose(['down', '--volumes', '--remove-orphans', '--timeout', '5']);
 		} finally {
-			rmSync(this.certDir, { recursive: true, force: true });
+			rmSync(this.scratchDir, { recursive: true, force: true });
 		}
 	}
 

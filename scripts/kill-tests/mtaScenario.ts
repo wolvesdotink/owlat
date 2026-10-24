@@ -1,18 +1,20 @@
 /**
- * SIGKILL the MTA mid-batch and check every queued send still terminates once.
+ * SIGKILL the MTA mid-batch and check every queued Send still terminates once.
  *
- * Two recipient domains are two GroupMQ groups, which the MTA works in
- * parallel and each in FIFO order. In each, the third send is pinned at the
- * sink (world/smtpSink.ts): domain A before the body (`data`), domain B after
- * the body's terminating dot (`dot`). With both pinned, the MTA container is
- * killed and started again. Then every send must reach exactly one terminal
- * webhook, the receiver must hold exactly one body per send, and the send cut
- * off after its dot must end ambiguous without a resend.
+ * Each planned send is a Send row in the backend, handed to the MTA under its
+ * message id. Two recipient domains are two GroupMQ groups, which the MTA
+ * works in parallel and each in FIFO order. In each, the third send is pinned
+ * at the sink (world/smtpSink.ts): domain A before the body (`data`), domain B
+ * after the body's terminating dot (`dot`). With both pinned, the MTA
+ * container is killed and started again. Then every Send must be persisted in
+ * its terminal state, the receiver must hold exactly one body per send, and
+ * the Send cut off after its dot must end ambiguous without a resend.
  */
 
 import {
 	checkMtaRun,
 	type PlannedSend,
+	type SendRowState,
 	type SinkTransactionState,
 	type WebhookState,
 } from './oracle';
@@ -77,6 +79,15 @@ export async function runMtaScenario(
 	log: (line: string) => void
 ): Promise<string[]> {
 	const plan = plannedSends();
+	const backend = stack.backend();
+	backend.seedQueuedSends(
+		plan.map((send) => ({
+			providerMessageId: send.messageId,
+			email: send.rcpt,
+			subject: `kill test ${send.messageId}`,
+		})),
+		stack.scratchDir
+	);
 	// Route both domains to the sink. The MTA reads this cache before DNS, and
 	// the test network has no DNS server that could answer an MX query.
 	for (const domain of DOMAINS) {
@@ -110,12 +121,15 @@ export async function runMtaScenario(
 	// The kill closed the pinned SMTP sessions: the sink saw the peer go.
 	for (const send of held) await stack.waitFor(`smtp.dropped:${send.rcpt}`, HOLD_BUDGET_MS);
 	stack.restart('mta');
-	log('mta restarted; waiting for every send to reach a terminal state');
+	log('mta restarted; waiting for the backend to acknowledge a terminal event for every send');
 
+	// The backend answers a webhook after its transition committed, so once
+	// every terminal event is acknowledged the Send rows are final.
 	const deadline = Date.now() + RECOVERY_BUDGET_MS;
 	for (const send of plan) {
 		await stack.waitFor(`mta.terminal:${send.messageId}`, Math.max(1, deadline - Date.now()));
 	}
 	const state = await stack.state<{ smtp: SinkTransactionState[]; webhooks: WebhookState[] }>();
-	return checkMtaRun(plan, state.smtp, state.webhooks);
+	const sends = backend.rows('transactionalSends') as unknown as SendRowState[];
+	return checkMtaRun(plan, state.smtp, state.webhooks, sends);
 }

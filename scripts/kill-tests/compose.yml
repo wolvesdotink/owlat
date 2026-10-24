@@ -1,8 +1,10 @@
 # Kill-the-process test stack (scripts/kill-tests/run.ts). Never shipped: it
 # exists so CI can SIGKILL the real MTA and mail-sync images mid-work and check
-# what survives. Everything outside the two processes under test is the
-# `world` container (world/main.ts): the receiving MX, the Convex deployment
-# both workers call, and the control API the orchestrator drives the run with.
+# what survives. `convex` is a self-hosted backend the orchestrator deploys the
+# current tree's functions to; the outcome is read from its tables. The rest is
+# the `world` container (world/main.ts): the receiving MX, the path from both
+# workers to the backend (it forwards and observes), and the control API the
+# orchestrator drives the run with.
 #
 # The orchestrator starts this under a unique project name and removes it by
 # that name, volumes included, when the run ends.
@@ -28,6 +30,31 @@ services:
       timeout: 3s
       retries: 30
 
+  convex:
+    # The same first-party wrapper and local tag as docker-compose.yml.
+    image: ghcr.io/wolvesdotink/convex-backend:dev
+    build:
+      context: ../../docker
+      dockerfile: convex-backend.Dockerfile
+    environment:
+      # The backend derives the admin key from it (run.ts generates one per run).
+      INSTANCE_SECRET: ${KILL_INSTANCE_SECRET:-}
+      # Actions call back into the backend, and the auth JWT's issuer is fetched
+      # by the backend itself, so both origins must resolve inside it.
+      CONVEX_CLOUD_ORIGIN: http://backend.owlat.test:3210
+      CONVEX_SITE_ORIGIN: http://backend.owlat.test:3211
+    ports:
+      - '127.0.0.1::3210'
+      - '127.0.0.1::3211'
+    networks:
+      kill:
+        aliases: [backend.owlat.test]
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3210/version']
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
   world:
     image: oven/bun:${BUN_IMAGE_VERSION:-1-alpine}
     command: ['bun', '/world/main.ts']
@@ -36,10 +63,7 @@ services:
     volumes:
       - ./world:/world:ro
     environment:
-      KILL_IMAP_HOST: imap.owlat.test
-      KILL_IMAP_PORT: '143'
-      KILL_IMAP_USER: migrate@owlat.test
-      KILL_IMAP_PASSWORD: pass
+      KILL_BACKEND_HOST: backend.owlat.test
     ports:
       - '127.0.0.1::3210'
     networks:
@@ -65,7 +89,8 @@ services:
       BOUNCE_VERP_KEY: kill-test-verp-key-0123456789abcdef0123456789abcdef
       EHLO_HOSTNAME: mta.owlat.example
       RETURN_PATH_DOMAIN: bounces.owlat.example
-      CONVEX_SITE_URL: http://convex.owlat.test:3210
+      CONVEX_SITE_URL: http://convex.owlat.test:3211
+      # Also set on the deployment (backend.ts), which verifies every webhook.
       MTA_WEBHOOK_SECRET: kill-test-webhook-secret-0123456789abcdef
       IP_POOLS_TRANSACTIONAL: ${KILL_MTA_IP:-10.231.0.10}
       IP_POOLS_CAMPAIGN: ${KILL_MTA_IP:-10.231.0.10}
@@ -114,7 +139,10 @@ services:
       dockerfile: apps/mail-sync/Dockerfile
     environment:
       CONVEX_URL: http://convex.owlat.test:3210
-      CONVEX_ADMIN_KEY: kill-test-admin-key
+      CONVEX_SITE_URL: http://convex.owlat.test:3211
+      # The deployment's admin key, read from the backend once it is up.
+      CONVEX_ADMIN_KEY: ${KILL_ADMIN_KEY:-}
+      # Also set on the deployment (backend.ts), which checks it on raw uploads.
       MAIL_SYNC_API_KEY: kill-test-mail-sync-key-0123456789abcdef
       # Small batches, so a kill lands inside a batch with committed ones behind it.
       MAIL_SYNC_BACKFILL_BATCH: '4'
@@ -127,6 +155,8 @@ services:
       - ${KILL_CERT_DIR:?run.ts sets KILL_CERT_DIR}:/certs:ro
     networks: [kill]
     depends_on:
+      convex:
+        condition: service_healthy
       world:
         condition: service_healthy
       imap:
