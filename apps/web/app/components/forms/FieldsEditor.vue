@@ -101,7 +101,7 @@ const fieldTypes: Array<{ value: FormFieldDraft['type']; labelKey: string }> = [
 							<select
 								:id="`${idPrefix}-field-type-${index}`"
 								v-model="field.type"
-								class="input py-1.5"
+								class="input input-sm"
 								:disabled="disabled"
 							>
 								<option

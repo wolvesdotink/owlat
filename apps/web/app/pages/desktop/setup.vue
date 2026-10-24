@@ -562,7 +562,6 @@ watch(stage, (s) => {
 });
 // Shared design-system input (packages/ui components.css) — same recipe the
 // dashboard and the marketing site build on.
-const inputClass = 'input input-sm text-sm';
 const labelClass = 'mb-1 block text-xs font-medium text-text-secondary';
 /** Section headers in the configure step (above groups of fields). */
 const sectionClass = 'mb-2 block text-xs font-semibold uppercase tracking-wide text-text-secondary';
@@ -612,20 +611,20 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								}}</label>
 								<input
 									v-model="host"
-									:class="inputClass"
+									class="input input-sm"
 									:placeholder="t('desktop.setup.fields.hostPlaceholder')"
 									:disabled="busy"
 								/>
 							</div>
 							<div>
 								<label :class="labelClass">{{ t('desktop.setup.fields.port') }}</label>
-								<input v-model="port" :class="inputClass" inputmode="numeric" :disabled="busy" />
+								<input v-model="port" class="input input-sm" inputmode="numeric" :disabled="busy" />
 							</div>
 						</div>
 
 						<div>
 							<label :class="labelClass">{{ t('desktop.setup.fields.sshUser') }}</label>
-							<input v-model="username" :class="inputClass" :disabled="busy" />
+							<input v-model="username" class="input input-sm" :disabled="busy" />
 						</div>
 
 						<div>
@@ -648,7 +647,8 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									<input
 										:value="keyPath"
 										readonly
-										:class="[inputClass, 'cursor-pointer', keyPath && 'font-mono text-xs']"
+										class="input input-sm cursor-pointer"
+										:class="{ 'font-mono': keyPath }"
 										:placeholder="t('desktop.setup.fields.noKeyFile')"
 										:aria-label="t('desktop.setup.fields.keyFile')"
 										:disabled="busy"
@@ -667,7 +667,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								<textarea
 									v-else
 									v-model="privateKey"
-									:class="[inputClass, 'h-28 resize-none font-mono text-xs']"
+									class="input input-sm h-28 resize-none font-mono"
 									placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
 									:disabled="busy"
 								/>
@@ -686,7 +686,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								<input
 									v-model="passphrase"
 									type="password"
-									:class="[inputClass, 'mt-2']"
+									class="input input-sm mt-2"
 									:placeholder="t('desktop.setup.fields.passphrasePlaceholder')"
 									:disabled="busy"
 								/>
@@ -695,7 +695,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								v-else
 								v-model="password"
 								type="password"
-								:class="inputClass"
+								class="input input-sm"
 								:placeholder="t('desktop.setup.fields.sshPasswordPlaceholder')"
 								:disabled="busy"
 							/>
@@ -712,13 +712,13 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<div class="grid grid-cols-2 gap-3">
 								<div>
 									<label :class="labelClass">{{ t('desktop.setup.fields.installDir') }}</label>
-									<input v-model="installDir" :class="inputClass" :disabled="busy" />
+									<input v-model="installDir" class="input input-sm" :disabled="busy" />
 								</div>
 								<div v-if="devInstall">
 									<label :class="labelClass">{{ t('desktop.setup.fields.branch') }}</label>
 									<input
 										v-model="branch"
-										:class="inputClass"
+										class="input input-sm"
 										:disabled="busy || !!localSource.trim()"
 									/>
 								</div>
@@ -726,7 +726,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									<label :class="labelClass">{{ t('desktop.setup.fields.version') }}</label>
 									<input
 										:value="t('desktop.setup.fields.versionLatest')"
-										:class="inputClass"
+										class="input input-sm"
 										readonly
 									/>
 									<p class="mt-1.5 text-xs text-text-secondary">
@@ -750,7 +750,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								<label :class="labelClass">{{ t('desktop.setup.fields.localSource') }}</label>
 								<input
 									v-model="localSource"
-									:class="inputClass"
+									class="input input-sm"
 									:placeholder="t('desktop.setup.fields.localSourcePlaceholder')"
 									:disabled="busy"
 								/>
@@ -903,7 +903,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						<div v-show="configStep === 'providers'">
 							<label :class="sectionClass">{{ t('desktop.setup.sections.emailSending') }}</label>
 							<div class="relative">
-								<select v-model="sendingProvider" :class="[inputClass, 'appearance-none pr-8']">
+								<select v-model="sendingProvider" class="input input-sm appearance-none pr-8">
 									<option v-for="opt in sendingOptions" :key="opt.value" :value="opt.value">
 										{{ opt.label }}
 									</option>
@@ -941,7 +941,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						<div v-show="configStep === 'providers'" class="mt-5">
 							<label :class="sectionClass">{{ t('desktop.setup.sections.ai') }}</label>
 							<div class="relative">
-								<select v-model="aiProvider" :class="[inputClass, 'appearance-none pr-8']">
+								<select v-model="aiProvider" class="input input-sm appearance-none pr-8">
 									<option value="none">{{ t('common.none') }}</option>
 									<option value="openrouter">{{ t('desktop.setup.ai.openrouter') }}</option>
 									<option value="openai">{{ t('desktop.setup.ai.openai') }}</option>
@@ -955,7 +955,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<input
 								v-if="aiProvider === 'openrouter' || aiProvider === 'openai'"
 								v-model="aiKey"
-								:class="[inputClass, 'mt-2']"
+								class="input input-sm mt-2"
 								:placeholder="t('desktop.setup.ai.keyPlaceholder')"
 							/>
 						</div>
@@ -963,17 +963,21 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						<div v-show="configStep === 'admin'">
 							<label :class="sectionClass">{{ t('desktop.setup.sections.admin') }}</label>
 							<div class="space-y-2">
-								<input v-model="adminEmail" :class="inputClass" placeholder="admin@example.com" />
+								<input
+									v-model="adminEmail"
+									class="input input-sm"
+									placeholder="admin@example.com"
+								/>
 								<input
 									v-model="adminName"
-									:class="inputClass"
+									class="input input-sm"
 									:placeholder="t('desktop.setup.admin.namePlaceholder')"
 								/>
 								<div class="relative">
 									<input
 										v-model="adminPassword"
 										:type="revealPassword ? 'text' : 'password'"
-										:class="[inputClass, 'pr-10']"
+										class="input input-sm pr-10"
 										autocomplete="new-password"
 										:placeholder="
 											t('desktop.setup.admin.passwordPlaceholder', { min: MIN_PASSWORD_LENGTH })
@@ -996,7 +1000,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								<input
 									v-model="adminPasswordConfirm"
 									:type="revealPassword ? 'text' : 'password'"
-									:class="inputClass"
+									class="input input-sm"
 									autocomplete="new-password"
 									:placeholder="t('desktop.setup.admin.confirmPasswordPlaceholder')"
 								/>
@@ -1040,7 +1044,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							}}</label>
 							<input
 								v-model="domain"
-								:class="inputClass"
+								class="input input-sm"
 								:placeholder="
 									isRemoteTarget
 										? t('desktop.setup.domain.placeholderRequired')
@@ -1072,7 +1076,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								<label :class="labelClass">{{ t('desktop.setup.domain.publicIpLabel') }}</label>
 								<input
 									v-model="publicIp"
-									:class="[inputClass, 'font-mono text-xs']"
+									class="input input-sm font-mono"
 									placeholder="203.0.113.5"
 									inputmode="decimal"
 								/>

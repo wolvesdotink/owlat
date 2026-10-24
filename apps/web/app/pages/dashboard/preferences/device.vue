@@ -11,8 +11,12 @@
  * `/desktop/settings` is a redirect.
  *
  * Every section self-hides (the pattern `PostboxOfflineSettings` already used):
- * a browser sees push notifications and the offline cache, the desktop app sees
- * the lot, and the page itself is gated out of the registry when neither applies. The section
+ * a browser sees push notifications, the marketing notification switches and
+ * the offline cache, the desktop app sees the lot, and the page itself is gated
+ * out of the registry when none applies. The marketing switches belong to the
+ * account, not the device: they decide what push and the desktop notify about,
+ * so they sit with the notification settings, and the card (like the page
+ * intro) says that they apply on every device. The section
  * `id`s are the settings registry's control anchors, so a palette deep link
  * ("notify me about", "launch at login") lands on the right card.
  */
@@ -37,6 +41,10 @@ definePageMeta({
 const { isEnabled } = useFeatureFlag();
 const { isDesktop, platform } = useDesktopContext();
 const hasMail = computed(() => isEnabled('postbox') || isEnabled('mail.external'));
+// Campaign, automation and sending notifications exist on this instance.
+const hasMarketing = computed(
+	() => isEnabled('campaigns') || isEnabled('automations') || isEnabled('transactional')
+);
 
 const { settings, isReady, setGlobal, workspaceLocal, setWorkspaceLocal } = useDesktopAppSettings();
 const { autostartEnabled, isReady: autostartReady, setAutostart } = useDesktopSettings();
@@ -169,6 +177,11 @@ async function confirmRemoveWorkspace() {
 		     desktop app and while the server has no VAPID keys. -->
 		<PreferencesWebPush v-if="!isDesktop" />
 
+		<!-- Campaign, automation and sending notifications: the person's own
+		     switches, on the server, so they hold for push and the desktop alike.
+		     Hides itself when none can fire for this person. -->
+		<PreferencesMarketingNotifications v-if="!isDesktop && hasMarketing" />
+
 		<!-- Offline read cache: device-local, never synced. Any browser. -->
 		<div v-if="hasMail" id="offline" class="scroll-mt-6">
 			<PostboxOfflineSettings />
@@ -236,6 +249,8 @@ async function confirmRemoveWorkspace() {
 			<!-- Which mail is worth a notification, quiet hours, preview hiding. -->
 			<PostboxNotificationSettings v-if="hasMail" />
 
+			<PreferencesMarketingNotifications v-if="hasMarketing" />
+
 			<section id="startup" class="card !p-0 mb-6 scroll-mt-6 overflow-hidden">
 				<header class="px-5 py-3 border-b border-border-subtle">
 					<h2 class="font-semibold">{{ t('desktop.settings.globalHeading') }}</h2>
@@ -276,7 +291,7 @@ async function confirmRemoveWorkspace() {
 					</span>
 					<select
 						id="desktop-startup-workspace"
-						class="input input-sm max-w-[14rem] shrink-0 text-sm"
+						class="input input-sm max-w-[14rem] shrink-0"
 						:value="settings.global.startupWorkspaceId ?? ''"
 						:disabled="!isReady || workspaces.length === 0"
 						@change="onStartupWorkspaceChange"
@@ -460,7 +475,10 @@ async function confirmRemoveWorkspace() {
 			</section>
 		</template>
 
-		<p v-else-if="!hasMail" class="card p-8 text-center text-sm text-text-secondary">
+		<p
+			v-else-if="!hasMail && !hasMarketing"
+			class="card p-8 text-center text-sm text-text-secondary"
+		>
 			{{ t('dashboard.preferences.device.nothingHere') }}
 		</p>
 	</div>

@@ -208,6 +208,37 @@ describe('campaigns.scheduling.reschedule', () => {
 		expect(newScheduledAt).toBeGreaterThan(future - 24 * HOUR);
 	});
 
+	it('queues the 15-minute reminder for the new start', async () => {
+		// The scheduler turns the reminder's delay back into a timestamp with its
+		// own Date.now(); hold the clock still so both reads agree to the
+		// millisecond.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const t = setupTest();
+			const campaignId = await seedSchedulableCampaign(t, {
+				scheduledAt: Date.now() + 2 * HOUR,
+			});
+			const newScheduledAt = Date.now() + 48 * HOUR;
+			await t.mutation(api.campaigns.scheduling.reschedule, {
+				campaignId,
+				scheduledAt: newScheduledAt,
+			});
+
+			const reminders = await t.run(async (ctx) =>
+				(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+					(job) => job.name === 'marketing/notifications:fanOut'
+				)
+			);
+			expect(reminders).toHaveLength(1);
+			expect(reminders[0]!.args[0]).toEqual({
+				event: { kind: 'campaign_reminder', campaignId, scheduledAt: newScheduledAt },
+			});
+			expect(reminders[0]!.scheduledTime).toBe(newScheduledAt - 15 * 60 * 1000);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('toggles recipient-timezone staggering and the target local hour on reschedule', async () => {
 		const t = setupTest();
 		// Seed a wall-clock (non-timezone) scheduled campaign.

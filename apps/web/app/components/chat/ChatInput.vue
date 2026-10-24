@@ -273,7 +273,7 @@ const handleSend = async () => {
 				v-model="text"
 				:placeholder="t('components.chat.chatInput.placeholder')"
 				rows="1"
-				class="flex-1 resize-none bg-bg-surface border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+				class="input flex-1 resize-none"
 				v-bind="mentionPicker?.fieldAttrs"
 				@keydown="handleKeydown"
 				@input="handleInput"

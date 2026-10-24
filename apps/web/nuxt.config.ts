@@ -118,11 +118,11 @@ export default defineNuxtConfig({
 				// SPA shell's inline scripts without it → blank window, and the
 				// packaged app's enforcement boundary is tauri.conf.json's CSP.
 				'style-src': ["'self'", 'https:', "'unsafe-inline'"],
-				// The offline app shell worker (/sw.js). Same value on both branches
-				// — it is only ever registered from this origin, and the desktop
-				// build ships no worker at all. Stated explicitly rather than left to
+				// The offline shell worker (/sw.js) and the mail render worker (a
+				// /_nuxt/ module, lib/postboxRenderWorker); same value on both branches,
+				// both load only from this origin. Stated explicitly rather than left to
 				// the worker-src → script-src fallback, so tightening script-src (or
-				// adding a default-src) can never silently stop the worker from
+				// adding a default-src) can never silently stop the shell worker from
 				// registering, which would degrade to a blank offline window.
 				'worker-src': ["'self'"],
 				'script-src':

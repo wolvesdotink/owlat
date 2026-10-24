@@ -2,8 +2,9 @@
  * Session-scoped LRU cache for rendered Postbox message bodies.
  *
  * PostboxMessageBody.vue runs a non-trivial pipeline on every mount:
- * sanitize-html (parser-based allowlist) + dark-mode adaptation + tracker
- * detection + image gating + link transparency. Re-opening a thread you just
+ * sanitize-html (parser-based allowlist) + dark-mode adaptation + link
+ * transparency in the render worker, then tracker detection + image gating on
+ * the main thread (composables/postbox/usePostboxRenderedBody). Re-opening a thread you just
  * closed re-does all of that from scratch, which shows up as visible jank on
  * long newsletters. This cache memoises the *final* rendered output (the
  * sanitized+transformed srcdoc and the tracker detection) plus the measured
@@ -23,6 +24,7 @@
 
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { EmailHtmlKind, PostboxRenderScheme } from '~/utils/postboxDarkMode';
+import type { PostboxRenderStageOutput } from '~/utils/postboxRenderPipeline';
 
 /** Render options that change the produced srcdoc; part of the cache key. */
 export interface PostboxRenderOptions {
@@ -55,6 +57,15 @@ export interface PostboxRenderEntry {
 	 * whatever the consent short of "Load everything"; the banner says so.
 	 */
 	inventoryFailed: boolean;
+	/** The body has a quoted reply chain to fold away (shows the toggle). */
+	hasQuote: boolean;
+	/**
+	 * The worker pipeline's output this entry was finished from. A consent
+	 * change on a re-opened message re-runs only the main-thread image stage
+	 * over it instead of asking the worker again. Entries of one message that
+	 * differ only in consent share the same string.
+	 */
+	stage: PostboxRenderStageOutput;
 	/** Last measured iframe content height (px); null until first load. */
 	height: number | null;
 }

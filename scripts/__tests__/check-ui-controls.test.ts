@@ -1,14 +1,12 @@
 /**
- * The raw-`.btn` gate's own gate.
+ * The form-control gate's own gate (scripts/check-ui-controls.ts).
  *
- * The script this covers shipped with a per-line matcher —
- * `/class="[^"]*(?:^|\s)btn(?:\s|$)/` — whose two boundaries were both dead:
- * `^` cannot match after `class="` has been consumed, and `(?:\s|$)` never
- * reaches the closing quote. So the two spellings a human actually writes,
- * `class="btn btn-primary"` and `class="foo btn"`, both passed. A gate that
- * only catches a middle-of-string `btn` is indistinguishable from `exit 0` for
- * every real violation, so every boundary is proved by a pair here: the token
- * that must fail and the near-miss beside it that must pass.
+ * A gate that misses a real spelling is indistinguishable from `exit 0` for
+ * that spelling, so every boundary is proved by a pair: the markup that must
+ * fail and the near-miss beside it that must pass. For `.btn` that is the
+ * token at each position (a per-line matcher once caught only a mid-string
+ * `btn`); for fields it is each control type, each way of spelling a class,
+ * and each chrome utility against the layout utilities a caller may add.
  */
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -16,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-const SCRIPT = resolve(import.meta.dirname, '../check-ui-buttons.ts');
+const SCRIPT = resolve(import.meta.dirname, '../check-ui-controls.ts');
 const REPO_ROOT = resolve(import.meta.dirname, '../..');
 
 const sandboxes: string[] = [];
@@ -35,17 +33,20 @@ type Result = { status: number; output: string };
  * sources the case seeds under the apps/web/app root the script walks.
  */
 function run(files: Record<string, string>): Result {
-	const root = mkdtempSync(join(tmpdir(), 'owlat-ui-buttons-'));
+	const root = mkdtempSync(join(tmpdir(), 'owlat-ui-controls-'));
 	sandboxes.push(root);
 	mkdirSync(join(root, 'scripts'), { recursive: true });
-	copyFileSync(SCRIPT, join(root, 'scripts/check-ui-buttons.ts'));
+	copyFileSync(SCRIPT, join(root, 'scripts/check-ui-controls.ts'));
 	mkdirSync(join(root, 'apps/web/app'), { recursive: true });
 	for (const [path, contents] of Object.entries(files)) {
 		const absolute = join(root, path);
 		mkdirSync(dirname(absolute), { recursive: true });
 		writeFileSync(absolute, contents);
 	}
-	const result = spawnSync('bun', ['scripts/check-ui-buttons.ts'], { cwd: root, encoding: 'utf8' });
+	const result = spawnSync('bun', ['scripts/check-ui-controls.ts'], {
+		cwd: root,
+		encoding: 'utf8',
+	});
 	return { status: result.status ?? -1, output: `${result.stdout}${result.stderr}` };
 }
 
@@ -54,9 +55,9 @@ function component(attribute: string): string {
 	return ['<template>', `\t<button ${attribute}>Send</button>`, '</template>', ''].join('\n');
 }
 
-describe('the raw-.btn gate, on the repository it guards', () => {
+describe('the form-control gate, on the repository it guards', () => {
 	it('passes', () => {
-		const result = spawnSync('bun', ['scripts/check-ui-buttons.ts'], {
+		const result = spawnSync('bun', ['scripts/check-ui-controls.ts'], {
 			cwd: REPO_ROOT,
 			encoding: 'utf8',
 		});

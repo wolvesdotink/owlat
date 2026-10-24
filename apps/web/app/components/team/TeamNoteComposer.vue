@@ -317,7 +317,7 @@ defineExpose({ focus });
 				ref="textarea"
 				v-model="noteBody"
 				rows="2"
-				class="input w-full resize-none border-warning/30 bg-warning/5 text-sm"
+				class="input input-note w-full resize-none"
 				:placeholder="
 					replyName
 						? t('components.team.composer.notePlaceholder', { name: replyName })
@@ -336,7 +336,7 @@ defineExpose({ focus });
 				ref="textarea"
 				v-model="replyDraft"
 				rows="2"
-				class="input w-full resize-none text-sm"
+				class="input w-full resize-none"
 				:placeholder="t('components.team.composer.replyPlaceholder', { name: replyName ?? '' })"
 				:aria-label="t('components.team.composer.replyTo', { name: replyName ?? '' })"
 				data-testid="team-composer-reply-input"

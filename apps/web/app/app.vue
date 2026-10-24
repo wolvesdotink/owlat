@@ -64,6 +64,9 @@ useHead(() => ({ htmlAttrs: localeHead.value.htmlAttrs }));
 			     the entry bundle every page boots with stays out of it. -->
 			<LazyShellBackendStatusHost v-if="identityTracking" />
 			<PostboxArrivalUndoHost v-if="hasPendingArrivalUndo" />
+			<!-- "Owlat was updated" for a tab older than the server's build; app
+			     pages only. Lazy for the same reason as the status host. -->
+			<LazySystemAppUpdatedBanner v-if="identityTracking" />
 			<!-- The one dialog behind useConfirm(). Not lazy: a question asked
 			     before a lazy chunk arrived would find no host and answer no. -->
 			<ShellConfirmDialogHost />

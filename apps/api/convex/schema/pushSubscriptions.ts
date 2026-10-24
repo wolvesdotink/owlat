@@ -40,6 +40,10 @@ export const pushSubscriptionTables = {
 		// Notifications quiet hours held back on this device since the window
 		// opened, rolled into one summary when it closes. Absent ⇒ none.
 		quietDeferredCount: v.optional(v.number()),
+		// Marketing notices among them, counted apart because "Notify me about"
+		// is a mail scope: "Nothing" drops held mail from the summary but not
+		// these. Absent ⇒ none.
+		quietDeferredMarketingCount: v.optional(v.number()),
 		// When that summary is scheduled to go out. Absent ⇒ nothing scheduled.
 		quietSummaryAt: v.optional(v.number()),
 	})

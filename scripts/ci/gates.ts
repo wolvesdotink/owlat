@@ -231,7 +231,7 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'scripts/provider-identity-collisions.txt',
 		],
 	},
-	{ name: 'ui-buttons', paths: ['apps/web/app/', 'scripts/check-ui-buttons.ts'] },
+	{ name: 'ui-controls', paths: ['apps/web/app/', 'scripts/check-ui-controls.ts'] },
 	{
 		name: 'desktop-invoke',
 		paths: [
