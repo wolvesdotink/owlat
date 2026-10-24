@@ -156,6 +156,7 @@ const handleEscape = (event: KeyboardEvent) => {
 	}
 };
 watch(isOpen, (open) => {
+	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape closes the panel
 	if (open) document.addEventListener('keydown', handleEscape);
 	else document.removeEventListener('keydown', handleEscape);
 });

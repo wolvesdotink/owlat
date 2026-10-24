@@ -108,8 +108,8 @@ describe('useKeyboardShortcuts — sequence chords', () => {
 		input.remove();
 	});
 
-	it('never claims a Cmd/Ctrl/Alt chord — those belong to the browser', () => {
-		press('g', { metaKey: true });
+	it('never claims a Cmd/Ctrl/Alt chord nothing is bound to — those belong to the browser', () => {
+		expect(press('g', { metaKey: true }).defaultPrevented).toBe(false);
 		press('d');
 		expect(push).not.toHaveBeenCalled();
 	});
@@ -274,8 +274,10 @@ describe('useKeyboardShortcuts — help + escape', () => {
 			instance.registerSaveShortcut(vi.fn());
 		});
 
+		// The "?" sheet is always bound: the dispatcher owns it.
 		expect(api.getRegisteredShortcuts()).toEqual([
 			{ id: 'global.save', keys: ['s'], description: 'shared.shortcuts.labels.save' },
+			{ id: 'global.help', keys: ['?'], description: 'shared.shortcuts.labels.showShortcuts' },
 		]);
 	});
 });

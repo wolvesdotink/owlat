@@ -135,8 +135,10 @@ describe('SETTINGS_REGISTRY — coverage', () => {
 
 describe('gates', () => {
 	it('keeps a no-mail instance on the pages that are not about mail', () => {
+		// Shortcuts cover every surface, so the page stays without mail too.
 		expect(visibleSettingsEntries(NO_PUSH_SOURCE).map((entry) => entry.id)).toEqual([
 			'overview',
+			'shortcuts',
 			'booking',
 			'account',
 			'security',
@@ -144,6 +146,7 @@ describe('gates', () => {
 		// Chat and the shared inbox still push, and push lives on the device page.
 		expect(visibleSettingsEntries(NO_MAIL).map((entry) => entry.id)).toEqual([
 			'overview',
+			'shortcuts',
 			'booking',
 			'account',
 			'security',
@@ -222,7 +225,7 @@ describe('settingsControlTargets', () => {
 
 	it('drops every control of a page the environment cannot reach', () => {
 		const ids = settingsControlTargets(NO_PUSH_SOURCE).map((target) => target.control.id);
-		expect(ids).toEqual(['appearance', 'language']);
+		expect(ids).toEqual(['appearance', 'language', 'shortcuts']);
 	});
 });
 

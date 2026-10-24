@@ -746,7 +746,8 @@
 					"thu": "Do",
 					"tue": "Di",
 					"wed": "Mi"
-				}
+				},
+				"windowLabel": "Arbeitszeitfenster"
 			},
 			"feedbackStatsCard": {
 				"approved": "Freigegeben",
@@ -4820,7 +4821,7 @@
 				"all": "Alle E-Mails",
 				"label": "Posteingangsansicht",
 				"priority": "Priorität",
-				"title": "Wichtige E-Mails oder alle E-Mails (B)"
+				"title": "Wichtige E-Mails oder alle E-Mails"
 			},
 			"postboxInsertAvailability": {
 				"intro": "Hier ein paar Zeiten, die bei mir passen ({zone}):",
@@ -5362,25 +5363,6 @@
 			"postboxShortcutHelp": {
 				"title": "Tastenkürzel"
 			},
-			"postboxShortcutSettings": {
-				"change": "Ändern",
-				"changeAriaLabel": "Tastenkürzel für {shortcut} ändern",
-				"heading": "Tastenkürzel",
-				"hint": "Wähle die Belegung, die du kennst, und ändere einzelne Tasten. Drücke eine Taste, während eine Zeile darauf wartet.",
-				"listening": "Taste drücken …",
-				"modifierRefused": "Tastenkürzel sind hier Einzeltasten – drücke eine Taste ohne Strg, Cmd oder Alt.",
-				"presetLabel": "Tastaturbelegung",
-				"presets": {
-					"gmail": "Gmail",
-					"outlook": "Outlook",
-					"owlat": "Owlat (Standard)",
-					"superhuman": "Superhuman"
-				},
-				"reset": "Zurücksetzen",
-				"resetAll": "Alle Änderungen zurücksetzen",
-				"taken": "{shortcut} belegt diese Taste bereits.",
-				"unbound": "Nicht belegt"
-			},
 			"postboxSnippetPicker": {
 				"empty": "Keine passende gespeicherte Antwort",
 				"listLabel": "Gespeicherte Antworten"
@@ -5434,7 +5416,9 @@
 				"menuLabel": "Konversationsaktionen",
 				"muteConversation": "Konversation stummschalten",
 				"noSubject": "(kein Betreff)",
-				"unmuteHint": "Stummgeschaltete Konversationen bleiben aus dem Posteingang."
+				"unmuteHint": "Stummgeschaltete Konversationen bleiben aus dem Posteingang.",
+				"pinConversation": "Unterhaltung anheften",
+				"pinHint": "Bleibt oben im Posteingang angeheftet"
 			},
 			"postboxThreadList": {
 				"archiveOperation": "Archivieren",
@@ -5522,7 +5506,10 @@
 				"snoozedUntil": "Zurückgestellt bis {when}",
 				"star": "Markieren",
 				"unmute": "Stummschaltung aufheben",
-				"unstar": "Markierung entfernen"
+				"unstar": "Markierung entfernen",
+				"pin": "Unterhaltung anheften",
+				"unpin": "Unterhaltung lösen",
+				"pinnedChip": "Oben im Posteingang angeheftet"
 			},
 			"postboxThreadRowFollowUp": {
 				"cancelLabel": "Antwort-Erinnerung abbrechen",
@@ -6102,6 +6089,63 @@
 				"swipeHelp": "Ziehe eine Zeile auf dem Touchscreen zur Seite, um sie abzuarbeiten. Mit der Maus passiert nichts.",
 				"swipeRightHelp": "Dieselbe Geste, andere Richtung."
 			},
+			"preferencesShortcuts": {
+				"heading": "Tastenkürzel",
+				"hint": "Wähle die Belegung, die du kennst, und ändere einzelne Tasten. Drücke eine Taste, während eine Zeile darauf wartet.",
+				"presetLabel": "Tastaturbelegung",
+				"presets": {
+					"gmail": "Gmail",
+					"outlook": "Outlook",
+					"owlat": "Owlat (Standard)",
+					"superhuman": "Superhuman"
+				},
+				"filterLabel": "Tastenkürzel finden",
+				"filterPlaceholder": "Name oder Taste, z. B. Archivieren oder Strg",
+				"noMatch": "Kein Tastenkürzel passt zu „{query}“.",
+				"change": "Ändern",
+				"changeAriaLabel": "Tastenkürzel für {shortcut} ändern",
+				"listening": "Taste drücken …",
+				"reset": "Zurücksetzen",
+				"resetAriaLabel": "Tastenkürzel für {shortcut} zurücksetzen",
+				"resetAll": "Alle Änderungen zurücksetzen",
+				"unbound": "Nicht belegt",
+				"fixed": "Fest",
+				"fixedReasons": {
+					"convention": "Funktioniert wie in jeder anderen App.",
+					"layout": "Richtet sich nach der Position der Taste und funktioniert so mit jeder Tastaturbelegung.",
+					"surface": "Diese Ansicht reagiert selbst auf die Taste, deshalb lässt sie sich noch nicht ändern.",
+					"numbered": "Die Zahl wählt die Option an dieser Stelle, deshalb bleibt sie."
+				},
+				"refused": {
+					"modifier": "Dieses Tastenkürzel ist eine Einzeltaste – drücke eine Taste ohne Strg, Cmd oder Alt.",
+					"needsModifier": "Dieses Tastenkürzel braucht Strg oder Cmd – halte sie gedrückt, während du die Taste drückst.",
+					"reserved": "Dein Browser oder System nutzt diese Taste selbst – wähle eine andere.",
+					"taken": "{shortcut} belegt diese Taste bereits.",
+					"prefix": "Diese Taste und {shortcut} beginnen gleich, eins von beiden würde nie auslösen."
+				},
+				"clashesHeading": "Einige Tastenkürzel teilen sich eine Taste",
+				"clashesHint": "Nur das erste löst aus. Ändere eins davon oder setze es zurück.",
+				"clashLine": "{keys} wird genutzt von {shortcuts}",
+				"clashesWith": "Teilt sich eine Taste mit {shortcuts}",
+				"saveOperation": "Tastenkürzel speichern",
+				"scopes": {
+					"global": "Überall",
+					"postbox": "E-Mail",
+					"composer": "Beim Schreiben",
+					"inbox": "Threads im Team-Postfach",
+					"review": "Updates im Team-Postfach",
+					"workbench": "Werkbank",
+					"peek": "Bereich der Werkbank",
+					"answer": "Antwortmodus",
+					"workspace": "Desktop-Workspaces",
+					"inboxList": "Liste im Team-Postfach",
+					"answerQueue": "Antwortliste",
+					"askCard": "Fragen der KI",
+					"mailCard": "Antwortliste: Nachfassen",
+					"teamCard": "Antwortliste: Entwürfe aus dem Team-Postfach",
+					"mentionCard": "Antwortliste: Erwähnungen"
+				}
+			},
 			"preferencesYourData": {
 				"mailExportAction": ".mbox herunterladen",
 				"mailExportDone": "{count} Nachrichten heruntergeladen.",
@@ -6436,6 +6480,17 @@
 				"title": "Logo",
 				"upload": "Hochladen",
 				"uploadUrlOperation": "Logo-Upload vorbereiten"
+			},
+			"resetToDefault": {
+				"reset": "Zurücksetzen",
+				"resetLabel": "{setting} auf den Standard zurücksetzen",
+				"names": {
+					"autoCheckUpdates": "Update-Prüfung beim Start",
+					"dailyBriefTime": "Uhrzeit des Tagesüberblicks",
+					"shareLinkExpiry": "Ablaufzeit geteilter Links",
+					"voicePersonalize": "KI-Entwürfe für {address} personalisieren",
+					"workspaceMute": "Benachrichtigungen für {workspace} stummschalten"
+				}
 			}
 		},
 		"shareLinksPopover": {
@@ -11254,11 +11309,17 @@
 				"title": "Team-Postfach",
 				"undo": {
 					"assigned": "Zugewiesen",
+					"assignedMany": "{count} Unterhaltung zugewiesen | {count} Unterhaltungen zugewiesen",
 					"assignedTo": "{name} zugewiesen",
+					"assignedToMany": "{count} Unterhaltung {name} zugewiesen | {count} Unterhaltungen {name} zugewiesen",
 					"assignedToYou": "Dir zugewiesen",
+					"assignedToYouMany": "Dir {count} Unterhaltung zugewiesen | Dir {count} Unterhaltungen zugewiesen",
 					"resolved": "Erledigt",
+					"resolvedMany": "{count} Unterhaltung erledigt | {count} Unterhaltungen erledigt",
 					"snoozed": "Zurückgestellt",
-					"unassigned": "Zuweisung aufgehoben"
+					"snoozedMany": "{count} Unterhaltung zurückgestellt | {count} Unterhaltungen zurückgestellt",
+					"unassigned": "Zuweisung aufgehoben",
+					"unassignedMany": "Zuweisung von {count} Unterhaltung aufgehoben | Zuweisung von {count} Unterhaltungen aufgehoben"
 				},
 				"unsnoozeThreadOperation": "Zurückstellung aufheben",
 				"updateThreadStatusOperation": "Status der Konversation ändern",
@@ -12155,7 +12216,8 @@
 				}
 			},
 			"shortcuts": {
-				"intro": "Wähle eine Tastenbelegung, die du aus einer anderen Mail-App kennst, oder ändere einzelne Tasten. Drücke überall ?, um sie zu sehen.",
+				"intro": "Alle Tasten der App an einem Ort. Wähle eine Belegung, die du aus einer anderen Mail-App kennst, ändere einzelne Tasten oder suche danach.",
+				"introHelp": "Drücke überall {key}, um die Tasten zu sehen, die dort funktionieren.",
 				"pageTitle": "Tastenkürzel — Owlat"
 			},
 			"signatures": {
@@ -13450,6 +13512,15 @@
 				"discard": "Regelentwurf verwerfen",
 				"test": "Regel testen"
 			}
+		},
+		"pins": {
+			"title": "Angeheftet",
+			"count": "{count} von {limit}",
+			"operation": "Unterhaltung anheften",
+			"unpin": "Lösen",
+			"unpinNamed": "„{subject}“ lösen",
+			"full": "Du kannst bis zu 5 Unterhaltungen anheften. Löse zuerst eine.",
+			"dropHint": "Zum Anheften hier ablegen"
 		}
 	},
 	"recipient": {
@@ -15701,8 +15772,16 @@
 				"recategorizeThread": "Konversation neu einordnen"
 			},
 			"usePostboxTriageUndo": {
+				"grouped": {
+					"archived": "{count} Nachricht archiviert | {count} Nachrichten archiviert",
+					"moved": "{count} Nachricht verschoben | {count} Nachrichten verschoben",
+					"spam": "{count} Nachricht als Spam markiert | {count} Nachrichten als Spam markiert",
+					"trashed": "{count} Nachricht in den Papierkorb verschoben | {count} Nachrichten in den Papierkorb verschoben"
+				},
 				"keyHint": "{keys} zum Rückgängigmachen",
-				"undo": "Rückgängig"
+				"keyHintLast": "{keys} macht die letzte Aktion rückgängig",
+				"undo": "Rückgängig",
+				"undoAll": "Alle rückgängig"
 			},
 			"usePostboxImageAllowlist": {
 				"allowOperation": "Bilder dieses Absenders immer anzeigen",
@@ -16412,6 +16491,32 @@
 					"title": "Push-Benachrichtigungen",
 					"keywords": "web push, browser-benachrichtigungen, handy, smartphone, pwa, benachrichtigen, geräte"
 				}
+			},
+			"adminControls": {
+				"dkim": {
+					"title": "DKIM-Signatur",
+					"keywords": "dkim, Domainschlüssel, Signaturschlüssel, DNS-Einträge, spf, dmarc, Absender-Authentifizierung"
+				},
+				"aiProviderKey": {
+					"title": "API-Schlüssel des KI-Anbieters",
+					"keywords": "API-Schlüssel, KI-Schlüssel, api key, OpenAI-Schlüssel, Anthropic-Schlüssel, Sprachmodell, llm"
+				},
+				"autonomy": {
+					"title": "KI-Autonomie",
+					"keywords": "Autonomie, automatische Antwort, automatisch senden, nur Entwürfe, Autopilot, Agent"
+				},
+				"rampPace": {
+					"title": "Tempo der Zustellungsrampe",
+					"keywords": "Rampe, Aufwärmen, warm-up, IP-Aufwärmung, Voreinstellung, wie stark hochfahren, vorsichtig"
+				},
+				"webhookSecret": {
+					"title": "Webhook-Signaturgeheimnis",
+					"keywords": "Webhook-Geheimnis, Signaturgeheimnis, Signatur, hmac, x-owlat-signature, Geheimnis neu erzeugen"
+				},
+				"brandColors": {
+					"title": "Markenfarben",
+					"keywords": "Farben, Markenfarbe, Primärfarbe, Linkfarbe, Palette, brand colors"
+				}
 			}
 		},
 		"setupMtaIdentity": {
@@ -16453,6 +16558,8 @@
 				"triage": "Triage",
 				"workspace": "Workspaces",
 				"review": "Updates-Liste",
+				"teamInbox": "Team-Postfach",
+				"workbench": "Werkbank",
 				"answer": "Antwortmodus"
 			},
 			"labels": {
@@ -16515,7 +16622,33 @@
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
 				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
 				"savedReplies": "Gespeicherte Antwort einfügen",
-				"writeNote": "Interne Notiz schreiben (Threads im Team-Postfach)"
+				"writeNote": "Interne Notiz schreiben (Threads im Team-Postfach)",
+				"openSettings": "Einstellungen öffnen",
+				"openAssistant": "Assistenten öffnen",
+				"jumpToSidebarItem": "Zu einem Eintrag der Seitenleiste springen (halte Alt gedrückt, um die Nummern zu sehen)",
+				"toggleFolderRail": "Ordnerliste ein-/ausklappen",
+				"assignToMe": "Thread mir zuweisen",
+				"replyInAnswerMode": "Im Antwortmodus antworten",
+				"nextLine": "Nächste Zeile",
+				"previousLine": "Vorherige Zeile",
+				"openLine": "E-Mail hinter der Zeile öffnen",
+				"markLineDone": "Zeile als erledigt markieren",
+				"replyToUpdate": "Update aus dem Team-Postfach in die Antwortliste legen",
+				"nextPeekEmail": "Nächste E-Mail im Bereich",
+				"previousPeekEmail": "Vorherige E-Mail im Bereich",
+				"closePeek": "Bereich schließen",
+				"undoQueueStep": "Letzten Schritt in der Antwortliste rückgängig machen",
+				"askKnowledge": "Wissen fragen",
+				"dismissUpdate": "Update als erledigt markieren",
+				"markFollowUpDone": "Nachfassen als erledigt markieren",
+				"previousCard": "Vorherige Karte",
+				"nextCard": "Nächste Karte",
+				"sendOrApprove": "Antwort senden oder den Entwurf freigeben",
+				"approveDraft": "Entwurf prüfen & senden",
+				"rejectDraft": "Entwurf ablehnen",
+				"openMention": "Erwähnung öffnen, um zu antworten",
+				"markMentionRead": "Erwähnung als gelesen markieren",
+				"skipCard": "Vorerst überspringen"
 			}
 		},
 		"signatureBadge": {
@@ -17138,11 +17271,15 @@
 			"exportFailed": "Export fehlgeschlagen. Bitte versuche es erneut.",
 			"exported": "{count} Kontakt nach {filename} exportiert | {count} Kontakte nach {filename} exportiert",
 			"listFallback": "Liste",
+			"nothingAdded": "Alle ausgewählten Kontakte sind schon in „{list}“",
 			"noContactsToExport": "Keine Kontakte zum Exportieren",
+			"nothingRemoved": "Keiner der ausgewählten Kontakte ist in „{list}“",
 			"removeContactsOperation": "Kontakte aus Thema entfernen",
 			"removedFromList": "{count} Kontakt aus „{list}“ entfernt | {count} Kontakte aus „{list}“ entfernt",
 			"selectAllFailed": "Es konnten nicht alle Kontakte ausgewählt werden. Bitte versuche es erneut.",
-			"selectionTruncated": "Die ersten {count} passenden Kontakte wurden ausgewählt. Verfeinere deinen Filter, um die übrigen zu bearbeiten."
+			"selectionTruncated": "Die ersten {count} passenden Kontakte wurden ausgewählt. Verfeinere deinen Filter, um die übrigen zu bearbeiten.",
+			"undoAddOperation": "Hinzufügen von Kontakten zum Thema rückgängig machen",
+			"undoRemoveOperation": "Entfernen von Kontakten aus dem Thema rückgängig machen"
 		},
 		"useContactDetail": {
 			"clearPropertyOperation": "Kontakteigenschaft löschen",
@@ -17780,7 +17917,9 @@
 				"showOriginal": "Original herunterladen (.eml)",
 				"copyLink": "Link kopieren",
 				"linkCopied": "Link kopiert",
-				"linkCopyFailed": "Der Link konnte nicht kopiert werden"
+				"linkCopyFailed": "Der Link konnte nicht kopiert werden",
+				"pin": "Unterhaltung anheften",
+				"unpin": "Unterhaltung lösen"
 			},
 			"teamThread": {
 				"heading": "Diese Unterhaltung",

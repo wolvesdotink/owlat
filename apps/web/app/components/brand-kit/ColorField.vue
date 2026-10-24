@@ -4,13 +4,17 @@
  * line or the validation error in place of it.
  */
 import { isBrandHexColor } from '@owlat/shared/brandKit';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const props = defineProps<{
 	id: string;
 	label: string;
 	help: string;
 	disabled?: boolean;
+	/** Differs from the brand kit default; shows the reset marker. */
+	changed?: boolean;
 }>();
+const emit = defineEmits<{ reset: [] }>();
 
 const color = defineModel<string>({ required: true });
 const { t } = useI18n();
@@ -26,7 +30,15 @@ function expand(hex: string): string {
 
 <template>
 	<div>
-		<label :for="props.id" class="label">{{ label }}</label>
+		<div class="mb-2 flex items-center justify-between gap-2">
+			<label :for="props.id" class="label mb-0">{{ label }}</label>
+			<SettingsResetToDefault
+				:changed="changed === true"
+				:label="label"
+				:disabled="disabled"
+				@reset="emit('reset')"
+			/>
+		</div>
 		<div class="flex items-center gap-3">
 			<input
 				:value="pickerValue"

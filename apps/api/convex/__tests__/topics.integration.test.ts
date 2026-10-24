@@ -447,12 +447,12 @@ describe('topics.addContacts', () => {
 			contactId3 = await ctx.db.insert('contacts', createTestContact());
 		});
 
-		const addedIds = await t.mutation(api.topics.bulk.addContacts, {
+		const { added } = await t.mutation(api.topics.bulk.addContacts, {
 			topicId: topicId!,
 			contactIds: [contactId1!, contactId2!, contactId3!],
 		});
 
-		expect(addedIds).toHaveLength(3);
+		expect(added).toHaveLength(3);
 
 		await t.run(async (ctx) => {
 			const memberships = await ctx.db
@@ -482,13 +482,13 @@ describe('topics.addContacts', () => {
 			});
 		});
 
-		const addedIds = await t.mutation(api.topics.bulk.addContacts, {
+		const { added } = await t.mutation(api.topics.bulk.addContacts, {
 			topicId: topicId!,
 			contactIds: [contactId1!, contactId2!],
 		});
 
 		// Only contactId2 should be newly added
-		expect(addedIds).toHaveLength(1);
+		expect(added).toHaveLength(1);
 	});
 
 	it('should return only newly added IDs', async () => {
@@ -508,14 +508,14 @@ describe('topics.addContacts', () => {
 			topicId: topicId!,
 			contactIds: [contactId1!],
 		});
-		expect(firstBatch).toHaveLength(1);
+		expect(firstBatch.added).toHaveLength(1);
 
 		// Add second batch (overlapping)
 		const secondBatch = await t.mutation(api.topics.bulk.addContacts, {
 			topicId: topicId!,
 			contactIds: [contactId1!, contactId2!],
 		});
-		expect(secondBatch).toHaveLength(1); // Only contactId2 is new
+		expect(secondBatch.added).toHaveLength(1); // Only contactId2 is new
 	});
 });
 

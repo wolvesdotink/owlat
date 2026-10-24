@@ -94,6 +94,8 @@ export interface ThreadSurfaceDeps {
 	isMuted: () => boolean;
 	/** "Notify me when they reply" is armed. */
 	isAlerted: () => boolean;
+	/** The conversation is in the Inbox's pinned band. */
+	isPinned: () => boolean;
 	followUp: () => ThreadFollowUpState;
 	/** Translation is offered (the AI flag is on). */
 	canTranslate: () => boolean;
@@ -108,6 +110,7 @@ export interface ThreadSurfaceDeps {
 	onMarkUnread: () => void;
 	onToggleMute: () => void;
 	onToggleAlert: () => void;
+	onTogglePin: () => void;
 	onCancelFollowUp: () => void;
 	onShowOriginal: () => void;
 	onTranslate: () => void;
@@ -179,6 +182,12 @@ export function buildThreadSurfaceGroups(
 			label: t(deps.isAlerted() ? `${P}.stopNotifyOnReply` : `${P}.notifyOnReply`),
 			icon: 'lucide:bell',
 			run: deps.onToggleAlert,
+		},
+		{
+			id: 'postbox:thread-pin',
+			label: t(deps.isPinned() ? `${P}.unpin` : `${P}.pin`),
+			icon: deps.isPinned() ? 'lucide:pin-off' : 'lucide:pin',
+			run: deps.onTogglePin,
 		},
 	];
 	const labels = deps.labelOptions();

@@ -103,7 +103,8 @@ const {
 	moveMany,
 	snoozeMsg,
 	snoozeThread,
-	toggleMute,
+	toggleMuteRow,
+	togglePinRow,
 	toggleStar,
 	toggleRead,
 	cancelFollowUp,
@@ -174,11 +175,6 @@ function onRowSwipe(m: PostboxThreadRowMessage, action: Exclude<PostboxSwipeActi
 
 // Drag a row (or the selection it belongs to) onto a rail folder or label.
 const rowDrag = usePostboxListRowDrag({ mailboxId: mailboxIdRef, bulk, moveMany });
-
-/** Mute/unmute the focused row's conversation (the `m` shortcut + context menu). */
-function toggleMuteRow(m: PostboxThreadRowMessage) {
-	void toggleMute(m._id, m.mutedAt == null);
-}
 
 // Context-aware empty state — a filtered-to-zero folder, inbox zero, an empty
 // label and an empty custom folder each say something different. The choice is
@@ -453,6 +449,7 @@ if (returnPlace?.focusedId) {
 					@archive="archiveMsg(msg._id)"
 					@trash="trashMsg(msg._id)"
 					@toggle-mute="toggleMuteRow(msg)"
+					@toggle-pin="togglePinRow(msg)"
 					@prefetch="prefetchRow(msg._id)"
 					@cancel-follow-up="cancelFollowUp(msg)"
 					@swipe="(action: Exclude<PostboxSwipeAction, 'none'>) => onRowSwipe(msg, action)"

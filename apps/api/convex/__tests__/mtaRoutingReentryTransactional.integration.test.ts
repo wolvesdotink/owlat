@@ -3,6 +3,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { callbackDigest, decryptToken } from '../delivery/routingReentryToken';
 import schema from '../schema';
 import { createTestTransactionalEmail } from './factories';
 
@@ -93,5 +94,84 @@ describe('transactional MTA routing re-entry', () => {
 			providerType: 'mta',
 			mtaRoutingReentryAttempt: 2,
 		});
+	});
+
+	it('returns the Send correlation id beside the token and leaves the digest unchanged', async () => {
+		const t = convexTest(schema, modules);
+		const sendIds = await t.run(async (ctx) => {
+			const transactionalEmailId = await ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail()
+			);
+			const row = {
+				kind: 'transactional' as const,
+				transactionalEmailId,
+				email: 'transactional@example.com',
+				status: 'queued' as const,
+				queuedAt: Date.now(),
+			};
+			return {
+				correlated: await ctx.db.insert('transactionalSends', {
+					...row,
+					correlationId: 'txn_V1StGXR8_Z5jdHi6',
+				}),
+				legacy: await ctx.db.insert('transactionalSends', row),
+			};
+		});
+		const startedAt = Date.now();
+		const issue = (sendId: Id<'transactionalSends'>) => {
+			const envelopeInput = {
+				kind: 'transactional' as const,
+				emailPurpose: 'transactional' as const,
+				to: 'transactional@example.com',
+				from: 'sender@example.org',
+				sendId,
+				template: { subject: 'Hello', htmlContent: '<p>Hello</p>' },
+				organizationId: 'org-1',
+			};
+			const retryState = { attempt: 1, startedAt, idempotencyKey: `send_${sendId}` };
+			return {
+				envelopeInput,
+				retryState,
+				issued: t.mutation(internal.delivery.routingReentry.issueSnapshot, {
+					sendRef: { kind: 'transactional', id: sendId },
+					organizationId: 'org-1',
+					messageId: retryState.idempotencyKey,
+					workAttemptId: 'attempt-1',
+					envelopeInput,
+					retryState,
+				}),
+			};
+		};
+
+		const correlated = issue(sendIds.correlated);
+		const correlatedIssued = await correlated.issued;
+		expect(correlatedIssued.correlationId).toBe('txn_V1StGXR8_Z5jdHi6');
+		const correlatedToken = await decryptToken(correlatedIssued.token);
+		// The digest is the one the envelope alone produces: the stored log key is
+		// read from the row, never folded into the authenticated material.
+		expect(correlatedToken?.callbackDigest).toBe(
+			await callbackDigest(correlated.envelopeInput, correlated.retryState)
+		);
+
+		const legacy = issue(sendIds.legacy);
+		const legacyIssued = await legacy.issued;
+		expect('correlationId' in legacyIssued).toBe(false);
+		expect((await decryptToken(legacyIssued.token))?.callbackDigest).toBe(
+			await callbackDigest(legacy.envelopeInput, legacy.retryState)
+		);
+
+		// The envelope validator has no slot for the id, so it cannot reach the
+		// digest by riding the envelope either.
+		await expect(
+			t.mutation(internal.delivery.routingReentry.issueSnapshot, {
+				sendRef: { kind: 'transactional', id: sendIds.correlated },
+				organizationId: 'org-1',
+				messageId: correlated.retryState.idempotencyKey,
+				workAttemptId: 'attempt-2',
+				envelopeInput: { ...correlated.envelopeInput, correlationId: 'txn_V1StGXR8_Z5jdHi6' },
+				retryState: correlated.retryState,
+			} as never)
+		).rejects.toThrow(/correlationId/);
 	});
 });

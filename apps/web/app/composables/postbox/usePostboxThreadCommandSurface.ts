@@ -30,6 +30,7 @@ export interface PostboxThreadCommandSources {
 	hintText: () => string;
 	isMuted: () => boolean;
 	isAlerted: () => boolean;
+	isPinned: () => boolean;
 	/** The follow-up watch: armable on the sent message `outboundId`, armed, or neither. */
 	followUp: () => { state: ThreadFollowUpState; outboundId?: string };
 	canTranslate: () => boolean;
@@ -43,6 +44,7 @@ export interface PostboxThreadCommandSources {
 	moveTo: (folderId: Id<'mailFolders'>) => void;
 	toggleMute: () => void;
 	toggleAlert: () => void;
+	togglePin: () => void;
 	translate: () => void;
 }
 
@@ -59,7 +61,7 @@ const mountedReaders = shallowRef<readonly string[]>([]);
  * reader is mounted, and records it for the palette's "Jump back" list.
  *
  * Every verb the reader offers is here — reply, archive, snooze ›, forward,
- * mark unread, mute, notify on reply, label ›, move ›, remind me if no reply ›,
+ * mark unread, mute, notify on reply, pin, label ›, move ›, remind me if no reply ›,
  * translate, the original `.eml`, copy link — and each runs THIS reader's own
  * action rather than a window-event broadcast to every mounted reader.
  */
@@ -120,6 +122,7 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 					t,
 					isMuted: sources.isMuted,
 					isAlerted: sources.isAlerted,
+					isPinned: sources.isPinned,
 					followUp: () => sources.followUp().state,
 					canTranslate: sources.canTranslate,
 					snoozeOptions: () =>
@@ -148,6 +151,7 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 					onMarkUnread: () => sources.runAction('markUnread'),
 					onToggleMute: sources.toggleMute,
 					onToggleAlert: sources.toggleAlert,
+					onTogglePin: sources.togglePin,
 					onCancelFollowUp: () => {
 						const threadId = sources.threadId();
 						if (threadId) void followUp.cancel(threadId);

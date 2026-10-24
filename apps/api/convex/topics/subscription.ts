@@ -16,6 +16,11 @@
  *   unsubscribe / unsubscribeMany            — one topic, one-or-many contacts
  *   unsubscribeAllForContact                 — one contact, some-or-all topics
  *
+ * Plus the two inverses an operator's bulk "Undo" runs, each fed the receipt
+ * its forward call returned (see "Undo of a bulk edit" below):
+ *   revertSubscribeMany                      — undo a subscribeMany
+ *   restoreMemberships                       — undo an unsubscribeMany
+ *
  * Per-call effects (cached count patch, contact.updatedAt patch, campaign-stats,
  * webhook) fire ONCE per call regardless of how many memberships are touched.
  * Per-membership effects (insert, delete, activity row) fire N times.
@@ -26,7 +31,7 @@
  * from the contact row.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { literalUnion } from '../lib/literalUnion';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -67,7 +72,14 @@ const unsubscribeSourceValidator = literalUnion(UNSUBSCRIBE_SOURCE_LITERALS);
 // ─── Outcome types ──────────────────────────────────────────────────────────
 
 export type SubscribeOutcome =
-	| { ok: true; action: 'subscribed'; membershipId: Id<'contactTopics'> }
+	| {
+			ok: true;
+			action: 'subscribed';
+			membershipId: Id<'contactTopics'>;
+			// The global opt-out (`contacts.unsubscribedAt`) this subscribe lifted,
+			// when it lifted one. An undo of the subscribe puts it back.
+			liftedOptOutAt?: number;
+	  }
 	| {
 			ok: true;
 			action: 'pending_doi';
@@ -92,6 +104,33 @@ export type UnsubscribeOutcome =
 			reason: 'contact_not_found' | 'topic_not_found';
 			topicId?: Id<'topics'>;
 	  };
+
+// ─── Undo receipts ──────────────────────────────────────────────────────────
+//
+// What a bulk edit hands its caller so the edit can be undone exactly: the
+// rows it inserted, or the rows it deleted as they were.
+
+/** One membership a subscribe inserted, and the opt-out it lifted, if any. */
+export const addedMembershipValidator = v.object({
+	membershipId: v.id('contactTopics'),
+	contactId: v.id('contacts'),
+	liftedOptOutAt: v.optional(v.number()),
+});
+export type AddedMembership = Infer<typeof addedMembershipValidator>;
+
+/**
+ * One membership an unsubscribe deleted, with the fields a restore puts back.
+ * `membershipId` is the id an add receipt knows the row by: its own, or the one
+ * it was restored from (`contactTopics.restoredFrom`).
+ */
+export const removedMembershipValidator = v.object({
+	membershipId: v.id('contactTopics'),
+	contactId: v.id('contacts'),
+	addedAt: v.number(),
+	pendingDoiConfirmation: v.optional(v.boolean()),
+	seedTag: v.optional(v.string()),
+});
+export type RemovedMembership = Infer<typeof removedMembershipValidator>;
 
 // ─── Source → effects gating ────────────────────────────────────────────────
 //
@@ -314,7 +353,8 @@ async function subscribeOne(
 		// CAN-SPAM/GDPR gap PR-09 closes. For the pending path the opt-out is
 		// lifted only at DOI-confirm time, in the lifecycle
 		// (contacts/doiLifecycle.ts reduceConfirmed).
-		if (contact.unsubscribedAt !== undefined) {
+		const liftedOptOutAt = contact.unsubscribedAt;
+		if (liftedOptOutAt !== undefined) {
 			await ctx.db.patch(args.contactId, { unsubscribedAt: undefined });
 		}
 
@@ -324,7 +364,12 @@ async function subscribeOne(
 			topicId: args.topic._id,
 		});
 		return {
-			outcome: { ok: true, action: 'subscribed', membershipId },
+			outcome: {
+				ok: true,
+				action: 'subscribed',
+				membershipId,
+				...(liftedOptOutAt !== undefined ? { liftedOptOutAt } : {}),
+			},
 			insertedCount: 1,
 		};
 	}
@@ -382,6 +427,8 @@ interface UnsubscribeOneResult {
 		topicId: Id<'topics'>;
 		topicName: string;
 	};
+	// The deleted row as `restoreMemberships` needs it. Only when `deleted`.
+	removed?: RemovedMembership;
 }
 
 async function unsubscribeOne(
@@ -425,6 +472,13 @@ async function unsubscribeOne(
 		outcome: { ok: true, action: 'unsubscribed', topicId: args.topic._id },
 		deleted: true,
 		context: { topicId: args.topic._id, topicName: args.topic.name },
+		removed: {
+			membershipId: membership.restoredFrom ?? membership._id,
+			contactId: membership.contactId,
+			addedAt: membership.addedAt,
+			...(membership.pendingDoiConfirmation === true ? { pendingDoiConfirmation: true } : {}),
+			...(membership.seedTag !== undefined ? { seedTag: membership.seedTag } : {}),
+		},
 	};
 }
 
@@ -713,7 +767,10 @@ const unsubscribeManyArgsValidator = {
  */
 export const unsubscribeMany = internalMutation({
 	args: unsubscribeManyArgsValidator,
-	handler: async (ctx, args): Promise<{ outcomes: UnsubscribeOutcome[] }> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ outcomes: UnsubscribeOutcome[]; removed: RemovedMembership[] }> => {
 		const topic = await ctx.db.get(args.topicId);
 		if (!topic) {
 			return {
@@ -722,12 +779,15 @@ export const unsubscribeMany = internalMutation({
 					reason: 'topic_not_found',
 					topicId: args.topicId,
 				})),
+				removed: [],
 			};
 		}
 
 		const now = Date.now();
 		const reason = args.reason ?? defaultUnsubscribeReason(args.source);
 		const outcomes: UnsubscribeOutcome[] = [];
+		// What was deleted, so an operator's bulk remove can be undone exactly.
+		const removed: RemovedMembership[] = [];
 		let totalDeleted = 0;
 
 		for (const contactId of args.contactIds) {
@@ -750,6 +810,7 @@ export const unsubscribeMany = internalMutation({
 			});
 			outcomes.push(result.outcome);
 
+			if (result.removed) removed.push(result.removed);
 			if (result.deleted && result.context) {
 				totalDeleted += 1;
 				// Per-contact call effects fire once per contact regardless of
@@ -768,7 +829,7 @@ export const unsubscribeMany = internalMutation({
 			await patchCachedMemberCountDelta(ctx, topic, -totalDeleted, now);
 		}
 
-		return { outcomes };
+		return { outcomes, removed };
 	},
 });
 
@@ -950,5 +1011,119 @@ export const unsubscribeAllForContact = internalMutation({
 		}
 
 		return { outcomes };
+	},
+});
+
+// ─── Undo of a bulk edit ────────────────────────────────────────────────────
+//
+// An operator's bulk add or remove can be taken back for a few seconds. The
+// forward call returned a receipt naming exactly what it changed, and these
+// inverses touch only that: rows another writer added or removed in between are
+// left alone. Neither replays the forward call's effects in reverse, and
+// neither fires the effects of the opposite call: a confirmation email already
+// sent and an automation already started stay, and a restore requests no DOI,
+// fires no trigger and lifts no opt-out.
+
+async function findReceiptedMembership(
+	ctx: MutationCtx,
+	topicId: Id<'topics'>,
+	receipt: AddedMembership
+): Promise<Doc<'contactTopics'> | null> {
+	const original = await ctx.db.get(receipt.membershipId);
+	if (original) return original.topicId === topicId ? original : null;
+	const current = await ctx.db
+		.query('contactTopics')
+		.withIndex('by_contact_and_topic', (q) =>
+			q.eq('contactId', receipt.contactId).eq('topicId', topicId)
+		)
+		.first();
+	return current?.restoredFrom === receipt.membershipId ? current : null;
+}
+
+/**
+ * Undo a `subscribeMany`: delete the memberships it inserted while they are
+ * still those rows, and put back a global opt-out the subscribe lifted, unless
+ * one is set again. A row an undone remove put back counts as the row it
+ * replaced (`restoredFrom`), so undoing a remove and then the add before it
+ * restores the original absence; a row re-added fresh since has neither id
+ * and stays.
+ */
+export const revertSubscribeMany = internalMutation({
+	args: {
+		topicId: v.id('topics'),
+		added: v.array(addedMembershipValidator),
+	},
+	handler: async (ctx, args): Promise<{ reverted: number }> => {
+		const topic = await ctx.db.get(args.topicId);
+		if (!topic) return { reverted: 0 };
+
+		const now = Date.now();
+		let reverted = 0;
+		for (const receipt of args.added) {
+			const membership = await findReceiptedMembership(ctx, args.topicId, receipt);
+			if (!membership) continue;
+			await ctx.db.delete(membership._id);
+			reverted += 1;
+
+			if (receipt.liftedOptOutAt === undefined) continue;
+			const contact = await ctx.db.get(membership.contactId);
+			if (contact && contact.unsubscribedAt === undefined) {
+				await ctx.db.patch(contact._id, {
+					unsubscribedAt: Math.min(receipt.liftedOptOutAt, now),
+				});
+			}
+		}
+
+		await patchCachedMemberCountDelta(ctx, topic, -reverted, now);
+		return { reverted };
+	},
+});
+
+/**
+ * Undo an `unsubscribeMany`: put back the memberships it deleted, as they were,
+ * each marked with the id it replaces so an undo of the add that created it
+ * still finds it. A contact that is a member again, or has been deleted since,
+ * is skipped. The
+ * form-DOI deferral flag comes back only while the contact is still unconfirmed:
+ * a confirmation in between would otherwise leave the restored row excluded
+ * from the audience with nothing left to clear the flag.
+ */
+export const restoreMemberships = internalMutation({
+	args: {
+		topicId: v.id('topics'),
+		removed: v.array(removedMembershipValidator),
+	},
+	handler: async (ctx, args): Promise<{ restored: number }> => {
+		const topic = await ctx.db.get(args.topicId);
+		if (!topic) return { restored: 0 };
+
+		const now = Date.now();
+		let restored = 0;
+		for (const receipt of args.removed) {
+			const contact = await ctx.db.get(receipt.contactId);
+			if (!contact || contact.deletedAt !== undefined) continue;
+			const existing = await ctx.db
+				.query('contactTopics')
+				.withIndex('by_contact_and_topic', (q) =>
+					q.eq('contactId', receipt.contactId).eq('topicId', args.topicId)
+				)
+				.first();
+			if (existing) continue;
+
+			const stillPending =
+				receipt.pendingDoiConfirmation === true && contact.doiStatus !== 'confirmed';
+			await ctx.db.insert('contactTopics', {
+				contactId: receipt.contactId,
+				topicId: args.topicId,
+				addedAt: Math.min(receipt.addedAt, now),
+				restoredFrom: receipt.membershipId,
+				...(stillPending ? { pendingDoiConfirmation: true } : {}),
+				...(receipt.seedTag !== undefined ? { seedTag: receipt.seedTag } : {}),
+			});
+			restored += 1;
+		}
+
+		await patchCachedMemberCountDelta(ctx, topic, restored, now);
+		return { restored };
 	},
 });

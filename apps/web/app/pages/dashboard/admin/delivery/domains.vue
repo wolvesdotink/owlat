@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { hasInboundFeature } from '~/utils/inboundDns';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 import { useDomainAutoRecheck } from '~/composables/useDomainAutoRecheck';
+import { useSoleDomainDeepLink } from '~/composables/useSoleDomainDeepLink';
 import type { DmarcPolicy } from '~/utils/domainStatus';
 
 const { t } = useI18n();
@@ -267,6 +268,13 @@ const toggleDomainExpansion = (domainId: Id<'domains'>) => {
 	});
 };
 
+useSoleDomainDeepLink({
+	hash: () => route.hash,
+	domains: () => domainsData.value,
+	isAnyExpanded: () => expandedDomainId.value !== null,
+	expand: toggleDomainExpansion,
+});
+
 // Gentle auto-recheck while a domain panel is open: the polling lifecycle (which
 // domain, the mirrored "Checking DNS…" flag, teardown) lives in its own
 // composable, over the framework-agnostic poller in `utils/domainAutoRecheck`.
@@ -385,6 +393,7 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 			<!-- Empty State -->
 			<UiEmptyState
 				v-else-if="domainsData && domainsData.length === 0"
+				id="sending-domain-list"
 				icon="lucide:globe"
 				:title="t('dashboard.admin.delivery.domains.empty.title')"
 				:description="t('dashboard.admin.delivery.domains.empty.description')"
@@ -398,7 +407,11 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 			</UiEmptyState>
 
 			<!-- Domains List -->
-			<div v-else-if="domainsData && domainsData.length > 0" class="space-y-4">
+			<div
+				v-else-if="domainsData && domainsData.length > 0"
+				id="sending-domain-list"
+				class="space-y-4"
+			>
 				<DomainsRecordRow
 					v-for="domain in domainsData"
 					:id="`domain-${domain._id}`"

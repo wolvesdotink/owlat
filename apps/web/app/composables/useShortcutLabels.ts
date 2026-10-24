@@ -91,5 +91,30 @@ export function useShortcutLabels() {
 		return params;
 	}
 
-	return { isMac, labelFor, ariaFor, chordLabel, chordAria, titleWithShortcut, labelParams };
+	/**
+	 * Key hints for a strip of `<kbd>`s (a card's footer, a list's legend):
+	 * each entry with the live labels of its ids (one hint can cover two, "j k
+	 * move"), in the order given. An entry none of whose ids fires right now is
+	 * left out rather than shown with a stale key.
+	 */
+	function keyHints<T extends { id: string | readonly string[] }>(
+		entries: readonly T[]
+	): Array<T & { keys: string[] }> {
+		return entries.flatMap((entry) => {
+			const ids = typeof entry.id === 'string' ? [entry.id] : entry.id;
+			const keys = ids.flatMap((id) => labelFor(id) ?? []);
+			return keys.length > 0 ? [{ ...entry, keys }] : [];
+		});
+	}
+
+	return {
+		isMac,
+		labelFor,
+		ariaFor,
+		chordLabel,
+		chordAria,
+		titleWithShortcut,
+		labelParams,
+		keyHints,
+	};
 }

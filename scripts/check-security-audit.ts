@@ -16,6 +16,10 @@ export const ACKNOWLEDGED_ADVISORIES: Readonly<Record<string, string>> = Object.
 	'GHSA-G4WM-2VF7-VFGR': `simple-git@3.36.0 has no fixed 3.x release; ${SIMPLE_GIT_VIA_NUXT_DEVTOOLS}`,
 	'GHSA-858H-WHJF-MVG5': `simple-git@3.36.0 has no fixed 3.x release; ${SIMPLE_GIT_VIA_NUXT_DEVTOOLS}`,
 	'GHSA-V5RQ-49VH-5V5C': `@simple-git/argv-parser@1.1.1 has no fixed 1.x release (simple-git 3 requires ^1.1.0, and 2.0.1 ships only with simple-git 4); ${SIMPLE_GIT_VIA_NUXT_DEVTOOLS}`,
+	// Matches every zod copy, so dependency-advisories.test.ts holds all the
+	// others at the 4.6.6 floor.
+	'GHSA-MRHX-C7XC-M3W5':
+		'zod@3.25.76 is the last 3.x release, and the fix shipped only in 4.6.6. That copy only arrives through @nuxt/content, a devDependency of apps/docs, whose latest release still requires zod ^3.25.76. apps/api declares zod ^4.6.6, and every other consumer shares that hoisted copy. @nuxt/content never validates input with zod: it turns the collection schema in apps/docs/content.config.ts (two string fields, no arrays, maps or sets) into JSON Schema for its content tables, which happens only in the Nuxt build and dev server. apps/docs deploys as static files behind nginx. Drop this once @nuxt/content depends on zod 4.',
 });
 
 export interface AuditFinding {
