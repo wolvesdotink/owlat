@@ -193,3 +193,45 @@ export async function cancelScheduledSendHandler(
 	await recordPostboxSendCancelled(ctx, draft, { userId: owned.userId, at: Date.now() });
 	return { ok: true, draftId: outcome.draftId };
 }
+
+/**
+ * Send a scheduled draft now instead of at its time, in one transaction: the
+ * schedule is withdrawn (`scheduled → draft`, which drops the undo token the
+ * scheduled dispatch hop carries, so that hop finds nothing to send) and the
+ * ordinary send starts (`draft → pending_send` through {@link sendHandler}, with
+ * the same checks, attribution and undo window as Send). A send the checks
+ * refuse throws and rolls the withdrawal back with it, so the draft stays
+ * scheduled.
+ *
+ * A draft that is no longer scheduled — dispatched, cancelled, or already
+ * sent now by another tab — answers `{ ok: false }` and changes nothing, so a
+ * lost race never queues a second send. The plaintext consent given when the
+ * send was scheduled carries over: it was given for this send, and the
+ * dispatch checks it again after discovery as it does for every send.
+ */
+export async function sendScheduledNowHandler(
+	ctx: MutationCtx,
+	args: { draftId: Id<'mailDrafts'>; undoSendDelayMs?: number }
+): Promise<{ ok: false } | { ok: true; undoToken: string; sendAt: number }> {
+	const draft = await ctx.db.get(args.draftId);
+	if (!draft) return { ok: false };
+	const owned = await requireMailboxAccess(ctx, draft.mailboxId);
+	if (!owned.ok) throwForbidden('Draft not accessible');
+	if (draft.state !== 'scheduled') return { ok: false };
+
+	const withdrawn: DraftTransitionOutcome = await ctx.runMutation(
+		internal.mail.draftLifecycle.transition,
+		{
+			draftId: args.draftId,
+			input: { to: 'draft', at: Date.now(), reason: 'user_cancel' },
+		}
+	);
+	if (!withdrawn.ok) return { ok: false };
+
+	const sent = await sendHandler(ctx, {
+		draftId: args.draftId,
+		undoSendDelayMs: args.undoSendDelayMs,
+		allowUnsealed: draft.isUnsealedSendAllowed === true,
+	});
+	return { ok: true, ...sent };
+}
