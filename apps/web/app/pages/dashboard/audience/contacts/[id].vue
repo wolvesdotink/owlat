@@ -880,7 +880,7 @@ async function handleRemoveSuppression() {
 								</div>
 								<UiTooltip :text="t('dashboard.audience.contacts.detail.topics.remove')">
 									<button
-										class="p-1 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-all"
+										class="p-1 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-[color,background-color,opacity]"
 										:aria-label="t('dashboard.audience.contacts.detail.topics.remove')"
 										@click="handleRemoveFromTopic(list._id)"
 									>

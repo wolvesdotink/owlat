@@ -6,6 +6,7 @@ import { formatNumber } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
 import type { LocalizedText } from '~/utils/localizedText';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 const { t } = useI18n();
 
@@ -440,13 +441,15 @@ const handleEdit = () => {
 									<div class="flex-1 min-w-0">
 										<!-- The fill is proportional; the label spans the whole track, so
 										     a short bar no longer cuts "472 completed" down to "472 co…". -->
-										<div class="relative min-h-8 rounded-lg flex items-center">
+										<div class="relative min-h-8 rounded-lg overflow-hidden flex items-center">
 											<div
-												class="absolute inset-y-0 left-0 rounded-lg transition-all"
+												class="ui-meter-fill absolute inset-y-0 left-0 rounded-lg transition-transform"
 												:class="stepAccent(step.stepType).barBg"
-												:style="{
-													width: `${Math.max(getFunnelPercentage(step.stats, stats?.totalEntered || 0), 10)}%`,
-												}"
+												:style="
+													meterFillStyle(
+														Math.max(getFunnelPercentage(step.stats, stats?.totalEntered || 0), 10)
+													)
+												"
 											/>
 											<!-- Wraps on a phone, one line from sm up. -->
 											<span

@@ -271,10 +271,10 @@ async function handleDismiss() {
 
 <template>
 	<Transition
-		enter-active-class="transition-all duration-(--motion-moderate) ease-spring"
+		enter-active-class="transition-[opacity,translate] duration-(--motion-moderate) ease-spring"
 		enter-from-class="opacity-0 -translate-y-2"
 		enter-to-class="opacity-100 translate-y-0"
-		leave-active-class="transition-all duration-(--motion-moderate-exit) ease-exit"
+		leave-active-class="transition-[opacity,translate] duration-(--motion-moderate-exit) ease-exit"
 		leave-from-class="opacity-100 translate-y-0"
 		leave-to-class="opacity-0 -translate-y-2"
 	>
@@ -397,7 +397,7 @@ async function handleDismiss() {
 							:id="stepDomId(step.id)"
 							:key="step.id"
 							:to="step.blocked ? undefined : step.href"
-							class="group flex items-center gap-3 rounded-xl border p-3 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+							class="group flex items-center gap-3 rounded-xl border p-3 transition-[background-color,border-color,box-shadow] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 							:class="[
 								step.completed
 									? 'border-success/20 bg-success/5'

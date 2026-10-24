@@ -254,6 +254,7 @@ async function mountPage() {
 				PostboxFollowUpDialog: inert('PostboxFollowUpDialog'),
 				PostboxPreviewAsSent: inert('PostboxPreviewAsSent'),
 				UiAvatar: inert('UiAvatar'),
+				UiPresenceRing: passThrough('UiPresenceRing'),
 				UiSkeleton: inert('UiSkeleton'),
 				UiModal: passThrough('UiModal'),
 			},

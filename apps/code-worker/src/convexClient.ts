@@ -179,3 +179,31 @@ export const pluginFn = {
 		{ reclaimed: number }
 	>('plugins/workerTasks:reclaimStale'),
 };
+
+/** What the worker reports about its process (`maintenance/workerRegistry:reportCodeWorker`). */
+export type CodeWorkerWireReport = {
+	instanceId: string;
+	hostLabel: string;
+	owlatVersion: string;
+	wireVersion: number;
+	startedAt: number;
+};
+
+/** The backend's side of the code-worker contract (`WorkerWireReportResult` in `@owlat/shared/workerWire`). */
+export interface CodeWorkerWireReportResult {
+	backendWireVersion: number;
+	minSupportedWireVersion: number;
+	compatible: boolean;
+	reason?: 'server_too_old' | 'backend_older';
+}
+
+/**
+ * The wire-version report. Its own entry point, which records only a
+ * code-worker row, so allowlisting it lets a task forge nothing about the
+ * other workers.
+ */
+export const wireFn = {
+	report: makeFunctionReference<'mutation', CodeWorkerWireReport, CodeWorkerWireReportResult>(
+		'maintenance/workerRegistry:reportCodeWorker'
+	),
+};

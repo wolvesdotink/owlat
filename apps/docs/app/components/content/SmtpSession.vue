@@ -424,7 +424,7 @@ onMounted(() => {
   font-weight: var(--font-weight-medium);
   letter-spacing: 0.02em;
   color: var(--color-text-disabled);
-  transition: all var(--motion-slow) var(--ease-spring);
+  transition: color var(--motion-slow) var(--ease-spring);
 }
 
 .smtp-phase-icon {
@@ -436,7 +436,9 @@ onMounted(() => {
   border-radius: 50%;
   background: var(--color-bg-surface);
   border: 1.5px solid var(--color-border-subtle);
-  transition: all var(--motion-slow) var(--ease-spring);
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-slow);
+  transition-timing-function: var(--ease-spring);
 }
 
 .smtp-phase-icon svg {

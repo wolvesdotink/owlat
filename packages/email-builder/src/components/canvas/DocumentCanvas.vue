@@ -364,7 +364,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 							:aria-label="blockAccessibleLabel(block, { t, label })"
 							:tabindex="blockTabIndex(block.id)"
 							:class="[
-								'relative group/block transition-all duration-(--motion-moderate) rounded-md eb-canvas-block',
+								'relative group/block transition-[border-color,box-shadow] duration-(--motion-moderate) rounded-md eb-canvas-block',
 								isLinkedBlockFn(block.id)
 									? [
 										'border-x-2 border-y-0 border-dashed border-border-default my-0 rounded-none',

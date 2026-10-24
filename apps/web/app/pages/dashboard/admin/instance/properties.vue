@@ -571,7 +571,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 								:key="type.value"
 								type="button"
 								:class="[
-									'p-3 rounded-xl border text-left transition-all',
+									'p-3 rounded-xl border text-left transition-colors',
 									createForm.type === type.value
 										? 'border-brand bg-brand/10'
 										: 'border-border-subtle hover:border-border-default',
@@ -748,7 +748,9 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 /* Dropdown transition */
 .dropdown-enter-active,
 .dropdown-leave-active {
-	transition: all var(--motion-fast) var(--ease-spring);
+	transition-property: opacity, transform;
+	transition-duration: var(--motion-fast);
+	transition-timing-function: var(--ease-spring);
 }
 
 .dropdown-enter-from,

@@ -317,7 +317,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 					</div>
 					<UiTooltip :text="t('components.contacts.relationshipsTab.removeRelationship')">
 						<button
-							class="p-1.5 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-all"
+							class="p-1.5 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-[color,background-color,opacity]"
 							:aria-label="t('components.contacts.relationshipsTab.removeRelationship')"
 							@click="onRemove(rel._id)"
 						>

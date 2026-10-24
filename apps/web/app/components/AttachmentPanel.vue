@@ -249,7 +249,7 @@ function handleFileInput(event: Event) {
 	<div>
 		<!-- Drop zone — always visible -->
 		<div
-			class="relative rounded-xl border-2 border-dashed transition-all duration-(--motion-moderate) cursor-pointer"
+			class="relative rounded-xl border-2 border-dashed transition-colors duration-(--motion-moderate) cursor-pointer"
 			:class="
 				isDragOver
 					? 'border-brand bg-brand/5'
@@ -282,7 +282,7 @@ function handleFileInput(event: Event) {
 					</div>
 					<UiTooltip :text="t('components.attachmentPanel.removeAttachment')">
 						<button
-							class="shrink-0 p-1 rounded-md text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error/10 transition-all"
+							class="shrink-0 p-1 rounded-md text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error/10 transition-[color,background-color,opacity]"
 							:aria-label="t('components.attachmentPanel.removeAttachment')"
 							@click.stop="removeAttachment(att.id)"
 						>

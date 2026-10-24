@@ -111,6 +111,8 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'oxlintrc.json',
 			'**/.oxlintrc.json',
 			'scripts/lint-warning-baseline.json',
+			// the Convex rules read the builder classification there
+			'apps/api/scripts/lib/convex-builders.sh',
 		],
 	},
 	{
@@ -123,6 +125,7 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'**/.oxlintrc.json',
 			'scripts/check-owlat-lint.sh',
 			'scripts/owlat-lint-baseline.txt',
+			'apps/api/scripts/lib/convex-builders.sh',
 			RATCHET,
 		],
 	},
@@ -353,6 +356,18 @@ export const ROOT_GATES: readonly RootGate[] = [
 	{
 		name: 'crypto-primitives',
 		paths: [`{apps,packages}/**/${CODE}`, 'scripts/check-crypto-primitives.sh'],
+	},
+	{
+		// Runs the text gates the owlat boundary rules replace beside those rules
+		// and diffs their findings, until the text gates are retired.
+		name: 'ast-gate-parity',
+		paths: [
+			`{apps,packages}/**/${CODE}`,
+			'oxlintrc.json',
+			'apps/api/scripts/',
+			'scripts/ast-gate-parity.ts',
+			'scripts/check-crypto-primitives.sh',
+		],
 	},
 	// Scans every tracked source, config and doc file.
 	{ name: 'source-bytes', paths: [ANYWHERE] },

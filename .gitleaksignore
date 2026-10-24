@@ -7,3 +7,11 @@
 # a follow-up commit. The string never was a credential (see wireFixtures.ts —
 # frozen fake bytes for wire-compat tests).
 2cf140378480fa47c1ca7fcd9a6f413046463ca0:packages/mta-protocol/src/wireFixtures.ts:generic-api-key:438
+#
+# The kill-test harness's first commit carried fixed throwaway keys for its
+# disposable Compose stack (MTA API key, MTA secret, VERP key); they were never
+# deployed anywhere and the harness now generates every key per run.
+f1df650628bfbec08b8a34ba9b686adce3ffae09:scripts/kill-tests/mtaScenario.ts:generic-api-key:27
+f1df650628bfbec08b8a34ba9b686adce3ffae09:scripts/kill-tests/compose.yml:generic-api-key:63
+f1df650628bfbec08b8a34ba9b686adce3ffae09:scripts/kill-tests/compose.yml:generic-api-key:64
+f1df650628bfbec08b8a34ba9b686adce3ffae09:scripts/kill-tests/compose.yml:generic-api-key:65

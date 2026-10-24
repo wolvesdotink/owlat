@@ -47,7 +47,7 @@ function handleAdd(type: BlockType) {
 	>
 		<UiTooltip v-for="block in quickBlocks" :key="block.type" :text="label(block.label)">
 			<button
-				class="flex items-center justify-center w-8 h-8 rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary hover:border-border-subtle"
+				class="flex items-center justify-center w-8 h-8 rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-colors duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary hover:border-border-subtle"
 				:aria-label="label(block.label)"
 				type="button"
 				@click="handleAdd(block.type)"
@@ -57,7 +57,7 @@ function handleAdd(type: BlockType) {
 		</UiTooltip>
 		<UiTooltip :text="t('builder.canvas.moreBlocksTitle')">
 			<button
-				class="flex items-center justify-center w-8 h-8 rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong"
+				class="flex items-center justify-center w-8 h-8 rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-colors duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong"
 				:aria-label="t('builder.canvas.moreBlocksTitle')"
 				:aria-expanded="showMore"
 				type="button"

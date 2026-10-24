@@ -2,6 +2,7 @@
 import type { UploadChip } from '~/composables/postbox/postboxAttachmentUploads';
 import type { AttachmentMeter } from '~/composables/postbox/postboxAttachmentMeter';
 import { useUploadQueueStatus } from '~/composables/postbox/useUploadQueueStatus';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 // Two roots: the parent's attributes (`inert` while the draft mirror is busy)
 // belong on the visible row, not on the queue status beside it.
@@ -181,16 +182,16 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 				>
 					<Icon name="lucide:x" class="w-3 h-3" />
 				</button>
-				<!-- Progress bar: determinate width, or an indeterminate shimmer -->
+				<!-- Progress bar: determinate fill, or an indeterminate shimmer -->
 				<span
 					v-if="up.status === 'uploading'"
 					class="absolute inset-x-0 bottom-0 h-0.5 bg-bg-elevated"
 					aria-hidden="true"
 				>
 					<span
-						class="block h-full bg-accent transition-[width] duration-(--motion-moderate)"
-						:class="up.indeterminate ? 'w-full animate-pulse motion-reduce:animate-none' : ''"
-						:style="up.indeterminate ? undefined : { width: Math.round(up.progress * 100) + '%' }"
+						class="ui-meter-fill block h-full bg-accent transition-transform duration-(--motion-moderate)"
+						:class="up.indeterminate ? 'animate-pulse motion-reduce:animate-none' : ''"
+						:style="meterFillStyle(up.indeterminate ? 100 : Math.round(up.progress * 100))"
 					/>
 				</span>
 			</span>
@@ -204,9 +205,9 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 					aria-hidden="true"
 				>
 					<span
-						class="block h-full rounded-full transition-[width] duration-(--motion-moderate)"
+						class="ui-meter-fill block h-full rounded-full transition-transform duration-(--motion-moderate)"
 						:class="meter.amber ? 'bg-warning' : 'bg-accent'"
-						:style="{ width: Math.min(100, Math.round(meter.ratio * 100)) + '%' }"
+						:style="meterFillStyle(Math.round(meter.ratio * 100))"
 					/>
 				</span>
 				<span

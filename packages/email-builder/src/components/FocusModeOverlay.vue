@@ -19,8 +19,8 @@ const emit = defineEmits<{
 <template>
 	<!-- Focus Mode Keyboard Shortcut Hint (shows briefly when entering focus mode) -->
 	<Transition
-		enter-active-class="transition-all duration-(--motion-moderate) ease-spring"
-		leave-active-class="transition-all duration-(--motion-slow-exit) ease-exit"
+		enter-active-class="transition-[opacity,translate] duration-(--motion-moderate) ease-spring"
+		leave-active-class="transition-[opacity,translate] duration-(--motion-slow-exit) ease-exit"
 		enter-from-class="opacity-0 -translate-y-2.5"
 		leave-to-class="opacity-0 -translate-y-[5px]"
 	>
@@ -39,8 +39,8 @@ const emit = defineEmits<{
 
 	<!-- Focus Mode Save Indicator (shows unsaved changes status) -->
 	<Transition
-		enter-active-class="transition-all duration-(--motion-moderate) ease-spring"
-		leave-active-class="transition-all duration-(--motion-moderate-exit) ease-exit"
+		enter-active-class="transition-[opacity,translate] duration-(--motion-moderate) ease-spring"
+		leave-active-class="transition-[opacity,translate] duration-(--motion-moderate-exit) ease-exit"
 		enter-from-class="opacity-0 -translate-y-2.5"
 		leave-to-class="opacity-0 -translate-y-2.5"
 	>
@@ -60,14 +60,14 @@ const emit = defineEmits<{
 
 	<!-- Focus Mode Exit Button (floating overlay) -->
 	<Transition
-		enter-active-class="transition-all duration-(--motion-moderate) ease-spring"
-		leave-active-class="transition-all duration-(--motion-moderate-exit) ease-exit"
+		enter-active-class="transition-[opacity,translate] duration-(--motion-moderate) ease-spring"
+		leave-active-class="transition-[opacity,translate] duration-(--motion-moderate-exit) ease-exit"
 		enter-from-class="opacity-0 -translate-y-2.5"
 		leave-to-class="opacity-0 -translate-y-2.5"
 	>
 		<UiTooltip v-if="isFocusMode" :text="t('builder.focus.exitTitle')">
 			<button
-				class="fixed top-[calc(var(--titlebar-h,0px)+1rem)] right-4 z-[10050] p-2.5 rounded-[10px] bg-bg-elevated/85 backdrop-blur-overlay border border-border-subtle text-text-secondary cursor-pointer opacity-30 transition-all duration-(--motion-moderate) hover:opacity-100 hover:text-text-primary hover:bg-bg-elevated/95 hover:scale-105 active:scale-95"
+				class="fixed top-[calc(var(--titlebar-h,0px)+1rem)] right-4 z-[10050] p-2.5 rounded-[10px] bg-bg-elevated/85 backdrop-blur-overlay border border-border-subtle text-text-secondary cursor-pointer opacity-30 transition-[color,background-color,opacity,scale] duration-(--motion-moderate) hover:opacity-100 hover:text-text-primary hover:bg-bg-elevated/95 hover:scale-105 active:scale-95"
 				:aria-label="t('builder.focus.exit')"
 				type="button"
 				@click="emit('exit')"

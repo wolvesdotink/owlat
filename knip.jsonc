@@ -25,6 +25,10 @@
 				"scripts/read-feature-flags.mjs",
 				// Spawned by the shell selector; knip cannot follow that edge.
 				"scripts/ci/select.ts",
+				// Run by .github/workflows/kill-tests.yml, and by bun inside the
+				// kill-test stack's world container (scripts/kill-tests/compose.yml).
+				"scripts/kill-tests/run.ts",
+				"scripts/kill-tests/world/main.ts",
 			],
 			"includeEntryExports": false,
 			// @owlat/plugin-kit, @owlat/provider-kit and @owlat/sdk-js are tsup

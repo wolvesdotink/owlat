@@ -62,13 +62,13 @@ describe('references', () => {
 		expect(Object.keys(refs).sort()).toEqual(Object.keys(IMAP_ENDPOINTS).sort());
 	});
 
-	it('the two worker registries name 47 distinct functions', () => {
+	it('the two worker registries name 48 distinct functions', () => {
 		const paths = [...Object.values(IMAP_ENDPOINTS), ...Object.values(MAIL_SYNC_ENDPOINTS)].map(
 			(endpoint) => endpoint.path
 		);
 		expect(Object.keys(IMAP_ENDPOINTS)).toHaveLength(20);
-		expect(Object.keys(MAIL_SYNC_ENDPOINTS)).toHaveLength(27);
-		expect(new Set(paths).size).toBe(47);
+		expect(Object.keys(MAIL_SYNC_ENDPOINTS)).toHaveLength(28);
+		expect(new Set(paths).size).toBe(48);
 	});
 });
 

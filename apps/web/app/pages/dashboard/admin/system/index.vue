@@ -118,11 +118,12 @@ const {
 		<!-- Container health -->
 		<SystemContainerHealthCard />
 
-		<!-- IMAP servers: which IMAP server releases call this backend, and
-		     whether it still serves them. Sits under container
-		     health: the IMAP container is updated after the backend, and this
-		     is where an operator sees whether it was. -->
-		<SystemImapServersCard />
+		<!-- Worker versions: which releases of each worker (IMAP server,
+		     mail-sync, MTA, code-worker) call this backend, and whether it still
+		     serves them. Sits under container health: the worker containers are
+		     updated after the backend, and this is where an operator sees
+		     whether they were. -->
+		<SystemWorkerVersionsCard />
 
 		<!-- Network ports: which ports this instance's features need, and whether
 		     the host's provider actually lets them through. Sits next to container
