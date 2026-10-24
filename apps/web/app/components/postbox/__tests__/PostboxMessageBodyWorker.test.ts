@@ -4,7 +4,10 @@
  * each state between "requested" and "shown" can be inspected:
  *   - the skeleton holds the space, and nothing is saved, cached or reported;
  *   - an answer for a body that is no longer current is dropped;
- *   - a re-opened message is a cache hit that never reaches the worker;
+ *   - a re-opened message is a cache hit that never reaches the worker, and
+ *     neither does a consent change after it;
+ *   - a document kept on screen during a re-render follows the current image
+ *     consent at once, not when the worker answers;
  *   - a dead worker or a failed render still settles, on the main thread.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +19,10 @@ import PostboxMessageBody from '../PostboxMessageBody.vue';
 import PostboxReaderSkeleton from '../PostboxReaderSkeleton.vue';
 import UiSkeleton from '@owlat/ui/components/ui/Skeleton.vue';
 import { getPostboxRenderCache } from '../../../utils/postboxRenderCache';
+import {
+	POSTBOX_BODY_META_CSP,
+	POSTBOX_BODY_META_CSP_NO_REMOTE,
+} from '../../../utils/postboxBodyPlaceholder';
 import {
 	renderPostboxBodyStage,
 	type PostboxRenderWorkerRequest,
@@ -245,6 +252,77 @@ describe('PostboxMessageBody render worker', () => {
 		await flushPromises();
 		expect(pendingRequests()).toHaveLength(1);
 		expect(srcdoc(w)).toContain('src="https://cdn.example/photo.jpg"');
+	});
+
+	it('applies image consent to a message re-opened from the cache without the worker', async () => {
+		const message = {
+			_id: 'msg-img-cached',
+			htmlBodyInline:
+				'<p>Look</p><img src="https://cdn.example/photo.jpg" width="300" height="200">',
+		};
+		const first = mountBody({ message, autoLoadImages: false });
+		await flushPromises();
+		workers[0]!.answer(pendingRequests()[0]!);
+		await flushPromises();
+		first.unmount();
+		mounted.splice(0);
+
+		const again = mountBody({ message, autoLoadImages: false });
+		await flushPromises();
+		expect(pendingRequests()).toHaveLength(1);
+		expect(srcdoc(again)).not.toContain('src="https://cdn.example/photo.jpg"');
+
+		// No cached render has images on, but the cached stage output does not
+		// depend on consent, so only the main-thread stage reruns.
+		await again.setProps({ autoLoadImages: true });
+		await flushPromises();
+		expect(pendingRequests()).toHaveLength(1);
+		expect(srcdoc(again)).toContain('src="https://cdn.example/photo.jpg"');
+		expect(srcdoc(again)).toContain(POSTBOX_BODY_META_CSP);
+	});
+
+	it('withdraws images from the kept document as soon as consent is revoked', async () => {
+		const message = {
+			_id: 'msg-img-quote',
+			htmlBodyInline:
+				'<p>Look</p><img src="https://cdn.example/photo.jpg" width="300" height="200">' +
+				'<blockquote><p>Earlier</p></blockquote>',
+		};
+		const w = mountBody({ message, autoLoadImages: true });
+		await flushPromises();
+		workers[0]!.answer(pendingRequests()[0]!);
+		await flushPromises();
+		expect(srcdoc(w)).toContain('src="https://cdn.example/photo.jpg"');
+		expect(srcdoc(w)).toContain(POSTBOX_BODY_META_CSP);
+		expect(persistBody).toHaveBeenCalledTimes(1);
+
+		// Unfold the quote: the worker holds that render, the old document stays.
+		await w.find('button').trigger('click');
+		await flushPromises();
+		expect(pendingRequests()).toHaveLength(2);
+
+		// Revoke consent while the worker is still busy.
+		await w.setProps({ autoLoadImages: false });
+		await flushPromises();
+		expect(w.findComponent(PostboxReaderSkeleton).exists()).toBe(false);
+		expect(srcdoc(w)).toContain('Look');
+		expect(srcdoc(w)).not.toContain('src="https://cdn.example/photo.jpg"');
+		expect(srcdoc(w)).toContain(POSTBOX_BODY_META_CSP_NO_REMOTE);
+		expect(srcdoc(w)).not.toContain(POSTBOX_BODY_META_CSP);
+		// A stand-in is not a settled render: nothing saved or cached for it.
+		expect(persistBody).toHaveBeenCalledTimes(1);
+
+		// The cancelled render answers and is dropped; the current one follows.
+		workers[0]!.answer(pendingRequests()[1]!);
+		await flushPromises();
+		expect(pendingRequests()).toHaveLength(3);
+		expect(srcdoc(w)).not.toContain('src="https://cdn.example/photo.jpg"');
+		workers[0]!.answer(pendingRequests()[2]!);
+		await flushPromises();
+		expect(srcdoc(w)).toContain('Earlier');
+		expect(srcdoc(w)).not.toContain('src="https://cdn.example/photo.jpg"');
+		expect(srcdoc(w)).toContain(POSTBOX_BODY_META_CSP_NO_REMOTE);
+		expect(persistBody).toHaveBeenCalledTimes(2);
 	});
 
 	it('renders on the main thread once the worker dies, and keeps doing so', async () => {

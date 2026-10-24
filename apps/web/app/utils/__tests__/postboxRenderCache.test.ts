@@ -22,6 +22,7 @@ function entry(srcdoc: string, height: number | null = null): PostboxRenderEntry
 		hasRemoteImages: false,
 		inventoryFailed: false,
 		hasQuote: false,
+		stage: { html: srcdoc, scheme: 'light', kind: 'simple', hasQuote: false },
 		height,
 	};
 }

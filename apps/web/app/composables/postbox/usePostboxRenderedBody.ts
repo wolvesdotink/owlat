@@ -34,8 +34,10 @@ import { getPostboxRenderClient, type PostboxRenderJob } from '~/lib/postboxRend
  * it; an answer from an older generation, or one arriving after unmount, is
  * dropped. Until the first render of the current body is in, `entry` is null
  * and the reader shows its skeleton; a re-render of the SAME body (a theme or
- * quote toggle) keeps the previous document on screen instead. Consent changes
- * re-run only the main-thread stage over the last pipeline output.
+ * quote toggle) keeps the previous document on screen instead, re-finished
+ * under the current image consent so a revoked consent never lingers while the
+ * worker runs. Consent changes re-run only the main-thread stage over the last
+ * pipeline output, which a cache hit restores from the cached entry.
  */
 
 export interface PostboxRenderedBodySource {
@@ -58,9 +60,9 @@ export interface PostboxRenderedBodySource {
 export type PostboxRenderedEntry = Omit<PostboxRenderEntry, 'height'>;
 
 interface ShownRender {
-	messageId: string | undefined;
-	html: string;
-	text: string;
+	/** The inputs `entry` was finished under (body and consent). */
+	source: PostboxRenderedBodySource;
+	/** Cache key of `entry`, or null when it belongs to no key (re-finished). */
 	key: string | null;
 	final: boolean;
 	entry: PostboxRenderedEntry;
@@ -80,6 +82,20 @@ function sameMap(a: ReadonlyMap<string, string>, b: ReadonlyMap<string, string>)
 	if (a.size !== b.size) return false;
 	for (const [k, v] of a) if (b.get(k) !== v) return false;
 	return true;
+}
+
+function sameBody(a: PostboxRenderedBodySource, b: PostboxRenderedBodySource): boolean {
+	return a.messageId === b.messageId && a.html === b.html && a.text === b.text;
+}
+
+/** Everything the main-thread stage reads besides the pipeline output. */
+function sameFinish(a: PostboxRenderedBodySource, b: PostboxRenderedBodySource): boolean {
+	return (
+		a.showImages === b.showImages &&
+		a.loadEverything === b.loadEverything &&
+		a.blockedImageLabel === b.blockedImageLabel &&
+		a.emptyLabel === b.emptyLabel
+	);
 }
 
 function sameStageInput(a: PostboxRenderStageInput, b: PostboxRenderStageInput): boolean {
@@ -118,6 +134,7 @@ function finishRender(
 		hasRemoteImages: gated.hasRemoteResources,
 		inventoryFailed: gated.noRemote,
 		hasQuote: stage.hasQuote,
+		stage,
 	};
 }
 
@@ -150,7 +167,7 @@ export function usePostboxRenderedBody(source: () => PostboxRenderedBodySource) 
 		entry: PostboxRenderedEntry,
 		final: boolean
 	) {
-		shown.value = { messageId: s.messageId, html: s.html, text: s.text, key, final, entry };
+		shown.value = { source: s, key, final, entry };
 		pending.value = false;
 	}
 
@@ -188,18 +205,6 @@ export function usePostboxRenderedBody(source: () => PostboxRenderedBodySource) 
 		job = null;
 		const s = current.value;
 		const key = renderKey.value;
-		const prev = shown.value;
-		// Another body's document is never shown while this one renders.
-		if (prev && (prev.messageId !== s.messageId || prev.html !== s.html || prev.text !== s.text)) {
-			shown.value = null;
-		}
-		if (key && s.final) {
-			const hit = getPostboxRenderCache().get(key);
-			if (hit) {
-				show(s, key, hit, true);
-				return;
-			}
-		}
 		const input: PostboxRenderStageInput = {
 			html: s.html,
 			text: s.text,
@@ -208,6 +213,20 @@ export function usePostboxRenderedBody(source: () => PostboxRenderedBodySource) 
 			// A snapshot: the caller may fill its map in place after handing it over.
 			cidUrls: new Map(s.cidUrls),
 		};
+		const prev = shown.value;
+		// Another body's document is never shown while this one renders.
+		if (prev && !sameBody(prev.source, s)) shown.value = null;
+		if (key && s.final) {
+			const hit = getPostboxRenderCache().get(key);
+			if (hit) {
+				// The key fixes scheme and quote state, and a final body has all its
+				// inline images, so the cached stage is the pipeline's output for
+				// these inputs: a later consent change needs no worker request.
+				lastStage = { input, output: hit.stage };
+				show(s, key, hit, true);
+				return;
+			}
+		}
 		// A consent change keeps every pipeline input: only the main-thread stage reruns.
 		if (lastStage && sameStageInput(lastStage.input, input)) {
 			accept(s, key, lastStage.output);
@@ -217,6 +236,19 @@ export function usePostboxRenderedBody(source: () => PostboxRenderedBodySource) 
 		if (!client) {
 			runOnMainThread(s, key, input);
 			return;
+		}
+		// The document kept on screen while the worker runs must honour the
+		// current consent (revoked images stay out of the frame however long the
+		// worker takes): re-finish its own stage under it. It belongs to no cache
+		// key, so its measured height is not recorded against another render.
+		const kept = shown.value;
+		if (kept && !sameFinish(kept.source, s)) {
+			shown.value = {
+				source: s,
+				key: null,
+				final: false,
+				entry: finishRender(kept.entry.stage, s),
+			};
 		}
 		pending.value = true;
 		const request = client.render(input);

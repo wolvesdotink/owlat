@@ -24,6 +24,7 @@
 
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { EmailHtmlKind, PostboxRenderScheme } from '~/utils/postboxDarkMode';
+import type { PostboxRenderStageOutput } from '~/utils/postboxRenderPipeline';
 
 /** Render options that change the produced srcdoc; part of the cache key. */
 export interface PostboxRenderOptions {
@@ -58,6 +59,13 @@ export interface PostboxRenderEntry {
 	inventoryFailed: boolean;
 	/** The body has a quoted reply chain to fold away (shows the toggle). */
 	hasQuote: boolean;
+	/**
+	 * The worker pipeline's output this entry was finished from. A consent
+	 * change on a re-opened message re-runs only the main-thread image stage
+	 * over it instead of asking the worker again. Entries of one message that
+	 * differ only in consent share the same string.
+	 */
+	stage: PostboxRenderStageOutput;
 	/** Last measured iframe content height (px); null until first load. */
 	height: number | null;
 }
