@@ -3,7 +3,8 @@
  * rejects issue numbers, narration of earlier code, and tags into documents
  * the repository does not hold. The cases cover each rule and the text it must
  * leave alone, the comment extraction per file kind (strings, regular
- * expressions and JSX text are not comments), the diff parsing, and the gate
+ * expressions, JSX text, template interpolations and attributes, shell
+ * here-documents and YAML scalars are not comments), the diff parsing, and the gate
  * end to end in a scratch repository: legacy comments, deletions and renames
  * pass, committed, staged, unstaged and untracked additions are read, and a
  * base that cannot be resolved skips locally and fails in CI.
@@ -22,11 +23,13 @@ import {
 } from '../check-comment-policy';
 import {
 	type TextPiece,
-	hashCommentPieces,
 	isCheckedPath,
+	piecesOfFile,
 	ruleHits,
 	scriptPieces,
+	shellCommentPieces,
 	vuePieces,
+	yamlCommentPieces,
 } from '../comment-policy';
 
 const rulesOf = (text: string, kind: TextPiece['kind'] = 'comment') =>
@@ -39,6 +42,12 @@ describe('ruleHits', () => {
 		['// Wiring contract for the flow (PR #166).', 'issue-reference:#166'],
 		['// Retry is safe until now: nothing was sent', 'narration:until now'],
 		['// Previously the audit page kept a copy of the list', 'narration:Previously'],
+		['// previously the cap was lower', 'narration:previously'],
+		['# Previously the cap was lower', 'narration:Previously'],
+		['<!-- Previously the list was cached -->', 'narration:Previously'],
+		[' * - previously the cap was lower', 'narration:previously'],
+		['// The cap holds. previously it was lower', 'narration:previously'],
+		['// Previously, the cap was lower', 'narration:Previously'],
 		['* The leaf used to be dropped before the scan', 'narration:used to be'],
 		['// What this PR changes', 'narration:this PR'],
 		['* Read on arrival (SPEC §2.4): the gist', 'dangling-document:SPEC §'],
@@ -48,6 +57,7 @@ describe('ruleHits', () => {
 		['// The guard runs first (D13).', 'decision-tag:D13'],
 		['* D8: a switch is allowed on a populated corpus', 'decision-tag:D8'],
 		['// the shared-inbox floor ADR-0040 set', 'decision-tag:ADR-0040'],
+		['* differently from the pre-D8 implementation', 'decision-tag:D8'],
 	])('rejects %j', (text, expected) => {
 		expect(rulesOf(text)).toEqual([expected]);
 	});
@@ -62,8 +72,19 @@ describe('ruleHits', () => {
 		'// RFC 5321 §4.5.3.2 and CONVENTIONS.md §3 are real documents',
 		'// magic bytes `D0 CF 11 E0` and `FF D8 FF`',
 		'// 0xD1, ID12, a 3D chart and version D1.5 are not tags',
+		'// draws with D3.js; the name is %D1%80%D0%B0.pdf',
+		'# cc -D1 sets the flag',
+		'// the element previously focused keeps its ring',
 	])('accepts %j', (text) => {
 		expect(rulesOf(text)).toEqual([]);
+	});
+
+	it('reads a lower-case line-opening "previously" as wrapped when the sentence above runs on', () => {
+		const continued = (previous: string) =>
+			ruleHits({ text: ' * previously focused element', kind: 'comment', previous });
+		expect(continued(' * restore the')).toEqual([]);
+		expect(continued(' * The ring is drawn.').map((hit) => hit.rule)).toEqual(['narration']);
+		expect(continued('/**').map((hit) => hit.rule)).toEqual(['narration']);
 	});
 
 	it('reads only document tags in a test title', () => {
@@ -127,6 +148,22 @@ describe('scriptPieces', () => {
 		]);
 	});
 
+	it('reads the title after a tagged-template table', () => {
+		const source = [
+			'test.each`', // 1
+			'\ta    | b', // 2
+			'\t${1} | ${2}', // 3
+			"`('D13 guard $a', () => {});", // 4
+			"describe.skip.each`a | ${1}`('plain', () => {});", // 5
+		].join('\n');
+		const pieces = scriptPieces(source, ts.ScriptKind.TS);
+		expect(titles(pieces)).toEqual([
+			[4, "'D13 guard $a'"],
+			[5, "'plain'"],
+		]);
+		expect(pieces.flatMap((piece) => ruleHits(piece)).map((hit) => hit.match)).toEqual(['D13']);
+	});
+
 	it('offsets lines by the first line of an embedded script', () => {
 		expect(commentLines(scriptPieces('\n// x', ts.ScriptKind.TS, 10))).toEqual([11]);
 	});
@@ -155,24 +192,128 @@ describe('vuePieces', () => {
 		]);
 	});
 
+	it('reads template comment nodes, not comment-like strings in interpolations or attributes', () => {
+		const source = [
+			'<template>', // 1
+			'\t<div :title="\'<!-- until now -->\'" data-x="<!-- D13 -->">', // 2
+			'\t\t{{ "<!-- until now -->" }}', // 3
+			'\t\t<span v-if="ok"><!-- nested', // 4
+			'\t\tnote --></span>', // 5
+			'\t</div>', // 6
+			'</template>', // 7
+		].join('\n');
+		expect(vuePieces(source)!.map((piece) => [piece.line, piece.text.trim()])).toEqual([
+			[4, '<!-- nested'],
+			[5, 'note -->'],
+		]);
+	});
+
+	it('reads style comments, not strings or urls, and // lines only in preprocessors', () => {
+		const source = [
+			'<template><p /></template>', // 1
+			'<style>', // 2
+			'a { content: "/* D13 */"; background: url(https://owlat.example/a.png); }', // 3
+			'/* css note */', // 4
+			'// not a css comment', // 5
+			'</style>', // 6
+			'<style lang="scss">', // 7
+			'$x: url(//owlat.example/b.png); // scss note', // 8
+			"b { content: '// D13'; }", // 9
+			'</style>', // 10
+		].join('\n');
+		expect(vuePieces(source)!.map((piece) => [piece.line, piece.text.trim()])).toEqual([
+			[4, '/* css note */'],
+			[8, '// scss note'],
+		]);
+	});
+
 	it('answers undefined for a component that does not parse', () => {
 		expect(vuePieces('<template><div></template>')).toBeUndefined();
 	});
 });
 
-describe('hashCommentPieces', () => {
+const lineTexts = (pieces: TextPiece[]) => pieces.map((piece) => [piece.line, piece.text]);
+
+describe('shellCommentPieces', () => {
 	it('reads # comments, not # inside quotes or parameter expansions', () => {
 		const source = [
 			'#!/usr/bin/env bash', // 1: shebang
 			'# D13: a tag', // 2
-			'echo "#1234 is data" \'# also data\'', // 3
+			"echo \"#1234 is data\" '# also data' $'# ansi'", // 3
 			'count=${#items[@]} # trailing #1234', // 4
-			'  key: value # yaml note', // 5
+			'true;# after a separator', // 5
 		].join('\n');
-		expect(hashCommentPieces(source).map((piece) => [piece.line, piece.text])).toEqual([
+		expect(lineTexts(shellCommentPieces(source))).toEqual([
 			[2, '# D13: a tag'],
 			[4, '# trailing #1234'],
-			[5, '# yaml note'],
+			[5, '# after a separator'],
+		]);
+	});
+
+	it('treats multiline strings and here-document bodies as data', () => {
+		const source = [
+			'message="first line', // 1
+			'# until now, still the string"', // 2
+			"note='a", // 3
+			"# D13 in single quotes' # real one", // 4
+			'cat <<EOF # opens a here-document', // 5
+			'# until now', // 6
+			'EOF', // 7
+			'cat <<-\'END\' <<"TWO"', // 8
+			'\t# D13', // 9
+			'\tEND', // 10
+			'# SPEC §4', // 11
+			'TWO', // 12
+			'read -r x <<< "$y" # here-string', // 13
+			'echo $(( 1 << n )) # a shift', // 14
+			'# after', // 15
+		].join('\n');
+		expect(lineTexts(shellCommentPieces(source))).toEqual([
+			[4, '# real one'],
+			[5, '# opens a here-document'],
+			[13, '# here-string'],
+			[14, '# a shift'],
+			[15, '# after'],
+		]);
+	});
+});
+
+describe('yamlCommentPieces', () => {
+	it('reads YAML comments, not # inside block or quoted scalars', () => {
+		const source = [
+			'# top', // 1
+			'message: | # header note', // 2
+			'  # until now, data', // 3
+			'quoted: "multi', // 4
+			'  # D13 in a quoted scalar"', // 5
+			'plain: value # trailing', // 6
+			'url: https://owlat.example/#12', // 7
+		].join('\n');
+		expect(lineTexts(yamlCommentPieces(source))).toEqual([
+			[1, '# top'],
+			[2, '# header note'],
+			[6, '# trailing'],
+		]);
+	});
+
+	it('reads the shell comments of a run: block on their file lines', () => {
+		const source = [
+			'jobs:', // 1
+			'  test:', // 2
+			'    steps:', // 3
+			'      - run: |', // 4
+			'          # shell note', // 5
+			'          cat <<EOF', // 6
+			'          # heredoc data', // 7
+			'          EOF', // 8
+			'          echo "# data" # trailing', // 9
+			'      - with:', // 10
+			'          script: |', // 11
+			'            # not shell', // 12
+		].join('\n');
+		expect(lineTexts(yamlCommentPieces(source))).toEqual([
+			[5, '# shell note'],
+			[9, '# trailing'],
 		]);
 	});
 });
@@ -219,11 +360,22 @@ describe('parseChangedLines', () => {
 			'@@ -0,0 +1,2 @@',
 			'+one',
 			'+two',
+			'diff --git a/space name.ts b/space name.ts',
+			'--- /dev/null',
+			'+++ b/space name.ts\t',
+			'@@ -0,0 +1 @@',
+			'+three',
+			'diff --git "a/caf\\303\\251 x.ts" "b/caf\\303\\251 x.ts"',
+			'--- /dev/null',
+			'+++ "b/caf\\303\\251 x.ts"\t',
+			'@@ -0,0 +1 @@',
+			'+four',
 		].join('\n');
 		const changed = parseChangedLines(diff);
-		expect([...changed.keys()]).toEqual(['a.ts', 'café\ty.ts']);
+		expect([...changed.keys()]).toEqual(['a.ts', 'café\ty.ts', 'space name.ts', 'café x.ts']);
 		expect([...changed.get('a.ts')!]).toEqual([1, 2, 3, 21]);
 		expect([...changed.get('café\ty.ts')!]).toEqual([1, 2]);
+		expect([...changed.get('space name.ts')!]).toEqual([1]);
 	});
 
 	it('unquotes C-style paths and leaves plain ones alone', () => {
@@ -238,6 +390,15 @@ describe('findingsInFile', () => {
 		expect(findingsInFile('a.ts', text, new Set([2]))!.map((finding) => finding.line)).toEqual([2]);
 		expect(findingsInFile('a.ts', text, 'all')!.map((finding) => finding.line)).toEqual([1, 2]);
 		expect(findingsInFile('a.md', text, 'all')).toBeUndefined();
+	});
+
+	it('links each comment line to the one above, across every file kind', () => {
+		const wrapped = '// restore the\n// previously focused element\n';
+		const opened = '// The ring is drawn.\n// previously it was not\n';
+		expect(findingsInFile('a.ts', wrapped, 'all')).toEqual([]);
+		expect(findingsInFile('a.ts', opened, 'all')!.map((finding) => finding.line)).toEqual([2]);
+		expect(findingsInFile('a.sh', '# restore the\n# previously focused one\n', 'all')).toEqual([]);
+		expect(piecesOfFile('a.yml', '# one\n# two\n')![1]!.previous).toBe('# one');
 	});
 });
 
@@ -329,6 +490,20 @@ describe('checkCommentPolicy', () => {
 		git(root, ['add', '.']);
 		git(root, ['commit', '--quiet', '-m', 'delete, rename, quarantine']);
 		expect(against(root, base)).toMatchObject({ status: 0, findings: [] });
+	});
+
+	it('reads committed and staged files whose names hold spaces', () => {
+		const { root, base } = repository();
+		write(root, 'src/space name.ts', '// until now\nexport const c = 3;\n');
+		git(root, ['add', '.']);
+		git(root, ['commit', '--quiet', '-m', 'committed space']);
+		write(root, 'src/staged name.vue', '<template>\n\t<!-- D13 -->\n</template>\n');
+		git(root, ['add', '.']);
+		const result = against(root, base);
+		expect(found(result).sort()).toEqual([
+			'src/space name.ts:1:narration',
+			'src/staged name.vue:2:decision-tag',
+		]);
 	});
 
 	it('rejects a document tag in a new test title', () => {

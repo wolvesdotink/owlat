@@ -84,18 +84,15 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 		expect(evaluateEngagementGate(input).status).toBe('fail');
 	});
 
-	itEquipped(
-		'stays quiet on a small decline (plan D14: editorial moves are not placement losses)',
-		() => {
-			const input = engagementInput({
-				own: engagementWindow(1_000, 0.08),
-				reference: engagementWindow(1_000, 0.08),
-				ownPriorBaseline: BASELINE_30D,
-			});
-			expect(evaluateEngagementFloorGate(input).status).toBe('pass');
-			expect(evaluateEngagementGate(input).status).toBe('pass');
-		}
-	);
+	itEquipped('stays quiet on a small decline (editorial moves are not placement losses)', () => {
+		const input = engagementInput({
+			own: engagementWindow(1_000, 0.08),
+			reference: engagementWindow(1_000, 0.08),
+			ownPriorBaseline: BASELINE_30D,
+		});
+		expect(evaluateEngagementFloorGate(input).status).toBe('pass');
+		expect(evaluateEngagementGate(input).status).toBe('pass');
+	});
 
 	it('passes exactly AT the floor, and fails one send below it', () => {
 		// 0.5 and 0.7 multiply EXACTLY in float64, so this really is the boundary

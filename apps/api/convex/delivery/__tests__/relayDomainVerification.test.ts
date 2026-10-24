@@ -292,9 +292,9 @@ describe('relayDomainVerified — Mandrill', () => {
  * kinds spelled out here.
  *
  * Everything above pins a KIND's answer, which is what the byte-identical gate
- * needs — but a hand-listed set is exactly what let the pre-D6 version of this
- * module carry `relayProviderType !== 'ses' → false` for so long: the shipped
- * kinds all agreed with it. These two cases pin the DISPATCH instead. The first
+ * needs — but a hand-listed set lets a module carry
+ * `relayProviderType !== 'ses' → false` unnoticed for as long as the shipped
+ * kinds all agree with it. These two cases pin the DISPATCH instead. The first
  * walks every registered provider and requires the seam's answer to be the
  * provider's own, so a kind quietly special cased — or a new kind whose adapter
  * is never reached — diverges on some row without anyone having to add a case

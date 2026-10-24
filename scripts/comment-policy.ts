@@ -9,12 +9,16 @@
  * shapes of both that are cheap to recognise; they are not a style guide.
  *
  * Comments are found by parsing, not by matching `//` on a line: TypeScript's
- * scanner for script files and `<script>` blocks, `<!-- -->` in a Vue template,
- * `/* *\/` in a `<style>` block, and `#` comments in shell and YAML. Strings,
- * template literals and regular expressions are never read as comments.
+ * scanner for script files and `<script>` blocks, the comment nodes of a Vue
+ * template, a quote-aware scan of `<style>` blocks, the YAML parser's comment
+ * tokens, and a shell scan that follows quoting and here-documents. Strings,
+ * template literals, regular expressions, interpolations, attribute values,
+ * here-document bodies and YAML scalars are data, never comments.
  */
 import ts from 'typescript';
+import { NodeTypes, type RootNode, type TemplateChildNode } from '@vue/compiler-core';
 import { parse } from 'vue/compiler-sfc';
+import { Parser as YamlParser } from 'yaml';
 
 type CommentRule = 'issue-reference' | 'narration' | 'dangling-document' | 'decision-tag';
 
@@ -29,6 +33,11 @@ export interface TextPiece {
 	readonly text: string;
 	/** A test title is checked for document tags only; narration there is product wording. */
 	readonly kind: 'comment' | 'test-title';
+	/**
+	 * The comment line directly above when this line continues it, so a
+	 * sentence wrapped onto this line is not read as opening here.
+	 */
+	readonly previous?: string;
 }
 
 export const RULE_ADVICE: Record<CommentRule, string> = {
@@ -56,12 +65,11 @@ const REPEATED_DIGITS = /^(\d)\1\1$/;
 /**
  * Phrases that only make sense against an earlier version of the code. Kept
  * narrow on purpose: "the previously focused element" describes runtime state,
- * so `previously` counts only where it opens a sentence or a clause.
+ * so `previously` counts only where it opens a sentence or a clause (see
+ * `opensWithPreviously`).
  */
 const NARRATION = [
 	/\buntil now\b/i,
-	/(?:^|[.;:!?(\-*/]\s*|—\s*)Previously\b/,
-	/\bpreviously,/i,
 	/\bformerly\b/i,
 	/\bthis (?:PR|pull request|commit)\b/i,
 	/\b(?:before|after) this (?:change|fix|PR|commit|refactor)\b/i,
@@ -77,14 +85,40 @@ const DANGLING_DOCUMENT =
 	/\b(?:SPEC|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_PLAN|[Pp]lan(?:'s)?|[Cc]ontract(?:'s)?)\s*§/g;
 
 /**
- * `D13`, `(D1)`, `ADR-0040`: tags into the removed ADR series and plan
- * documents. A `D` that is part of a longer word (`0xD1`, `ID12`) is not one.
+ * `D13`, `(D1)`, `pre-D8`, `ADR-0040`: tags into the removed ADR series and
+ * plan documents. A `D` that is part of a longer word (`0xD1`, `ID12`, `D3.js`,
+ * `D1.5`), a flag (`-D1`), a percent-escape (`%D1%80`) or a hex dump
+ * (`FF D8 FF`) is not one.
  */
 const DECISION_TAG =
-	/(?<![\w$.-]|[0-9A-F]{2} )(?:D[1-9]\d?|ADRs?[- ]?\d{1,4})(?![\w$]|\.\d| [0-9A-F]{2}\b)/g;
+	/(?<![\w$.%]|(?:^|[^a-z])-|[0-9A-F]{2} )(?:D[1-9]\d?|ADRs?[- ]?\d{1,4})(?![\w$]|\.\w| [0-9A-F]{2}\b)/g;
+
+/** A comment line without its delimiters (`//`, `/*`, ` * `, `#`, `<!--`) and list bullet. */
+function commentBody(text: string): string {
+	return text
+		.replace(/^\s*(?:\/\/+|\/\*+|\*+(?!\/)|#+|<!--)?\s*(?:[-–•]\s+)?/, '')
+		.replace(/\s*(?:\*\/|-->)\s*$/, '');
+}
+
+/** "previously" after a clause boundary, or followed by a comma ("Previously, ..."). */
+const PREVIOUSLY_IN_LINE = /(?:[.;:!?(]|\s[-–]|—)\s*previously\b|\bpreviously,/i;
+
+/**
+ * Whether the line opens with "previously". Capitalised it opens a sentence
+ * wherever it stands; in lower case it does unless the line above is the same
+ * comment with its sentence still running ("restore the" / "previously focused
+ * element").
+ */
+function opensWithPreviously(piece: Pick<TextPiece, 'text' | 'previous'>): string | undefined {
+	const match = /^previously\b/i.exec(commentBody(piece.text));
+	if (!match) return undefined;
+	if (match[0] === 'Previously' || piece.previous === undefined) return match[0];
+	const above = commentBody(piece.previous).trimEnd();
+	return above === '' || /[.;:!?]$/.test(above) ? match[0] : undefined;
+}
 
 /** Every rule hit in one line of comment text or test title. */
-export function ruleHits(piece: Pick<TextPiece, 'text' | 'kind'>): RuleHit[] {
+export function ruleHits(piece: Pick<TextPiece, 'text' | 'kind' | 'previous'>): RuleHit[] {
 	const hits: RuleHit[] = [];
 	const text = piece.text;
 	if (piece.kind === 'comment') {
@@ -94,8 +128,12 @@ export function ruleHits(piece: Pick<TextPiece, 'text' | 'kind'>): RuleHit[] {
 		}
 		for (const pattern of NARRATION) {
 			const match = pattern.exec(text);
-			if (match) hits.push({ rule: 'narration', match: match[0].replace(/^[^A-Za-z]+/, '') });
+			if (match) hits.push({ rule: 'narration', match: match[0] });
 		}
+		const previously =
+			opensWithPreviously(piece) ??
+			/previously/i.exec(PREVIOUSLY_IN_LINE.exec(text)?.[0] ?? '')?.[0];
+		if (previously) hits.push({ rule: 'narration', match: previously });
 	}
 	for (const match of text.matchAll(DANGLING_DOCUMENT)) {
 		hits.push({ rule: 'dangling-document', match: match[0] });
@@ -113,7 +151,10 @@ function piecesOf(text: string, line: number, kind: TextPiece['kind']): TextPiec
 
 const TEST_FUNCTIONS = new Set(['describe', 'it', 'test', 'suite', 'bench']);
 
-/** `it`, `describe.each(rows)`, `it.skipIf(x)`: the test function a call goes back to. */
+/**
+ * `it`, `describe.each(rows)`, `it.skipIf(x)`, ``test.each`a | b` ``: the test
+ * function a call goes back to.
+ */
 function testFunctionOf(callee: ts.Expression): string | undefined {
 	let current: ts.Expression = callee;
 	for (;;) {
@@ -121,6 +162,7 @@ function testFunctionOf(callee: ts.Expression): string | undefined {
 			return TEST_FUNCTIONS.has(current.text) ? current.text : undefined;
 		if (ts.isPropertyAccessExpression(current)) current = current.expression;
 		else if (ts.isCallExpression(current)) current = current.expression;
+		else if (ts.isTaggedTemplateExpression(current)) current = current.tag;
 		else return undefined;
 	}
 }
@@ -167,27 +209,121 @@ export function scriptPieces(text: string, kind: ts.ScriptKind, firstLine = 1): 
 	return pieces;
 }
 
-/** The `#` comment on each line of a shell script or YAML file. */
-export function hashCommentPieces(text: string): TextPiece[] {
+/** The 1-based line of an offset into `text`, which starts on `firstLine`. */
+function lineCounter(text: string, firstLine = 1): (offset: number) => number {
+	const starts = [0];
+	for (const match of text.matchAll(/\n/g)) starts.push(match.index + 1);
+	return (offset) => {
+		let low = 0;
+		let high = starts.length - 1;
+		while (low < high) {
+			const middle = Math.ceil((low + high) / 2);
+			if (starts[middle]! <= offset) low = middle;
+			else high = middle - 1;
+		}
+		return firstLine + low;
+	};
+}
+
+interface HereDocument {
+	readonly delimiter: string;
+	/** `<<-`: the closing line may be indented with tabs. */
+	readonly stripTabs: boolean;
+}
+
+/** `<<EOF`, `<<-EOF`, `<< 'EOF'`, `<<"EOF"`, `<<\EOF`. */
+const HERE_DOCUMENT = /^<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|\\?([A-Za-z_][\w.-]*))/;
+
+/**
+ * The `#` comments of a shell script that starts on `firstLine`. Quoting
+ * carries across lines and a here-document body runs to its delimiter, so a
+ * `#` in a multiline string or a here-document is data. A `#` opens a comment
+ * only at the start of a word (`${#items[@]}` and `$#` are expansions).
+ */
+export function shellCommentPieces(text: string, firstLine = 1): TextPiece[] {
 	const pieces: TextPiece[] = [];
-	const lines = text.split('\n');
-	for (const [index, line] of lines.entries()) {
+	const pending: HereDocument[] = [];
+	const bodies: HereDocument[] = [];
+	let quote: "'" | '"' | "$'" | undefined;
+	for (const [index, line] of text.split('\n').entries()) {
+		const body = bodies[0];
+		if (body) {
+			if ((body.stripTabs ? line.replace(/^\t+/, '') : line) === body.delimiter) bodies.shift();
+			continue;
+		}
 		if (index === 0 && line.startsWith('#!')) continue;
-		let quote: string | undefined;
 		for (let column = 0; column < line.length; column += 1) {
 			const char = line[column]!;
 			if (quote) {
-				if (char === '\\' && quote === '"') column += 1;
-				else if (char === quote) quote = undefined;
+				if (char === '\\' && quote !== "'") column += 1;
+				else if (char === (quote === '"' ? '"' : "'")) quote = undefined;
 			} else if (char === '\\') column += 1;
-			else if (char === '"' || char === "'") quote = char;
-			else if (char === '#' && (column === 0 || /\s/.test(line[column - 1]!))) {
-				pieces.push({ line: index + 1, text: line.slice(column), kind: 'comment' });
+			else if (char === "'" || char === '"') quote = char as "'" | '"';
+			else if (char === '$' && line[column + 1] === "'") {
+				quote = "$'";
+				column += 1;
+			} else if (line.startsWith('<<<', column)) column += 2;
+			else if (line.startsWith('<<', column)) {
+				// `$(( x << n ))` shifts; it is not a here-document.
+				const match = line.slice(0, column).includes('((')
+					? undefined
+					: HERE_DOCUMENT.exec(line.slice(column));
+				if (match) {
+					pending.push({
+						delimiter: match[2] ?? match[3] ?? match[4]!,
+						stripTabs: match[1] === '-',
+					});
+					column += match[0].length - 1;
+				} else column += 1;
+			} else if (char === '#' && (column === 0 || /[\s;&|()]/.test(line[column - 1]!))) {
+				pieces.push({ line: firstLine + index, text: line.slice(column), kind: 'comment' });
 				break;
 			}
 		}
+		if (!quote) bodies.push(...pending.splice(0));
 	}
 	return pieces;
+}
+
+interface YamlToken {
+	readonly type?: string;
+	readonly offset?: number;
+	readonly source?: string;
+	readonly key?: YamlToken | null;
+	readonly value?: YamlToken | null;
+}
+
+/** A block scalar's lines without the indentation they share. */
+function dedent(source: string): string {
+	const lines = source.split('\n');
+	const indents = lines.filter((line) => line.trim()).map((line) => /^ */.exec(line)![0].length);
+	const shared = indents.length > 0 ? Math.min(...indents) : 0;
+	return lines.map((line) => line.slice(shared)).join('\n');
+}
+
+/**
+ * The comments of a YAML file, from the YAML parser's comment tokens, so a `#`
+ * inside a quoted or block scalar is data. The block scalar of a `run:` key is
+ * a shell script (a GitHub Actions step), and its shell comments are read too.
+ */
+export function yamlCommentPieces(text: string): TextPiece[] {
+	const lineOf = lineCounter(text);
+	const pieces: TextPiece[] = [];
+	const visit = (node: unknown) => {
+		if (typeof node !== 'object' || node === null) return;
+		const token = node as YamlToken;
+		if (token.type === 'comment' && token.offset !== undefined && token.source) {
+			pieces.push({ line: lineOf(token.offset), text: token.source, kind: 'comment' });
+		}
+		const { key, value } = token;
+		if (key?.source === 'run' && value?.type === 'block-scalar' && value.offset !== undefined) {
+			// The scalar's content starts on the line after its `|` header.
+			pieces.push(...shellCommentPieces(dedent(value.source ?? ''), lineOf(value.offset) + 1));
+		}
+		for (const child of Object.values(node)) visit(child);
+	};
+	for (const token of new YamlParser().parse(text)) visit(token);
+	return pieces.toSorted((a, b) => a.line - b.line);
 }
 
 function scriptKindOf(lang: string | undefined): ts.ScriptKind {
@@ -197,30 +333,52 @@ function scriptKindOf(lang: string | undefined): ts.ScriptKind {
 	return ts.ScriptKind.JS;
 }
 
-/** Matches of `pattern` in a block, as pieces on the file's lines. */
-function blockMatches(content: string, firstLine: number, pattern: RegExp): TextPiece[] {
+/** The comment nodes of a template, wherever they nest. */
+function templateCommentPieces(node: RootNode | TemplateChildNode): TextPiece[] {
+	if (node.type === NodeTypes.COMMENT)
+		return piecesOf(node.loc.source, node.loc.start.line, 'comment');
+	if (node.type !== NodeTypes.ROOT && node.type !== NodeTypes.ELEMENT) return [];
+	return node.children.flatMap((child) => templateCommentPieces(child));
+}
+
+/** A string, an unquoted `url(...)`, a block comment, or a `//` line. */
+const STYLE_TOKEN =
+	/"(?:[^"\\\n]|\\.)*"?|'(?:[^'\\\n]|\\.)*'?|\burl\(\s*[^\s'")][^)]*\)?|\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*/gi;
+const LINE_COMMENT_STYLES = new Set(['scss', 'sass', 'less', 'stylus', 'styl']);
+
+/** The comments of a `<style>` block; `//` lines count in the preprocessors that have them. */
+function styleCommentPieces(
+	content: string,
+	firstLine: number,
+	lang: string | undefined
+): TextPiece[] {
+	const lineOf = lineCounter(content, firstLine);
 	const pieces: TextPiece[] = [];
-	for (const match of content.matchAll(pattern)) {
-		const line = firstLine + content.slice(0, match.index).split('\n').length - 1;
-		pieces.push(...piecesOf(match[0], line, 'comment'));
+	for (const match of content.matchAll(STYLE_TOKEN)) {
+		const token = match[0];
+		const isComment =
+			token.startsWith('/*') || (token.startsWith('//') && LINE_COMMENT_STYLES.has(lang ?? ''));
+		if (isComment) pieces.push(...piecesOf(token, lineOf(match.index), 'comment'));
 	}
 	return pieces;
 }
 
 /** Comment lines and test titles of a single-file component; undefined if it does not parse. */
 export function vuePieces(text: string): TextPiece[] | undefined {
-	const { descriptor, errors } = parse(text, { filename: 'file.vue' });
+	const { descriptor, errors } = parse(text, {
+		filename: 'file.vue',
+		templateParseOptions: { comments: true },
+	});
 	if (errors.length > 0) return undefined;
 	const pieces: TextPiece[] = [];
 	for (const block of [descriptor.script, descriptor.scriptSetup]) {
 		if (block)
 			pieces.push(...scriptPieces(block.content, scriptKindOf(block.lang), block.loc.start.line));
 	}
-	const { template } = descriptor;
-	if (template)
-		pieces.push(...blockMatches(template.content, template.loc.start.line, /<!--[\s\S]*?-->/g));
+	// A template in another language (pug) has no AST; its comments are not read.
+	if (descriptor.template?.ast) pieces.push(...templateCommentPieces(descriptor.template.ast));
 	for (const style of descriptor.styles) {
-		pieces.push(...blockMatches(style.content, style.loc.start.line, /\/\*[\s\S]*?\*\//g));
+		pieces.push(...styleCommentPieces(style.content, style.loc.start.line, style.lang));
 	}
 	return pieces;
 }
@@ -235,13 +393,37 @@ const SCRIPT_KINDS: Record<string, ts.ScriptKind> = {
 	cjs: ts.ScriptKind.JS,
 	jsx: ts.ScriptKind.JSX,
 };
-const HASH_COMMENT_EXTENSIONS = new Set(['sh', 'bash', 'yml', 'yaml']);
+const SHELL_EXTENSIONS = new Set(['sh', 'bash']);
+const YAML_EXTENSIONS = new Set(['yml', 'yaml']);
 
 /** Whether the gate reads a file of this path at all. */
 export function isCheckedPath(path: string): boolean {
 	if (/(^|\/)_generated\//.test(path)) return false;
 	const extension = /\.([^./]+)$/.exec(path)?.[1] ?? '';
-	return extension in SCRIPT_KINDS || extension === 'vue' || HASH_COMMENT_EXTENSIONS.has(extension);
+	return (
+		extension in SCRIPT_KINDS ||
+		extension === 'vue' ||
+		SHELL_EXTENSIONS.has(extension) ||
+		YAML_EXTENSIONS.has(extension)
+	);
+}
+
+/** Each comment piece with the comment line directly above it, when there is one. */
+function withLineAbove(pieces: TextPiece[]): TextPiece[] {
+	const comments = new Map<number, string>();
+	for (const piece of pieces) if (piece.kind === 'comment') comments.set(piece.line, piece.text);
+	return pieces.map((piece) => {
+		const above = piece.kind === 'comment' ? comments.get(piece.line - 1) : undefined;
+		return above === undefined ? piece : { ...piece, previous: above };
+	});
+}
+
+/** The pieces of a file by its extension, before they are linked to the lines above. */
+function rawPiecesOfFile(extension: string, text: string): TextPiece[] | undefined {
+	if (extension === 'vue') return vuePieces(text);
+	if (SHELL_EXTENSIONS.has(extension)) return shellCommentPieces(text);
+	if (YAML_EXTENSIONS.has(extension)) return yamlCommentPieces(text);
+	return scriptPieces(text, SCRIPT_KINDS[extension]!);
 }
 
 /**
@@ -250,8 +432,6 @@ export function isCheckedPath(path: string): boolean {
  */
 export function piecesOfFile(path: string, text: string): TextPiece[] | undefined {
 	if (!isCheckedPath(path)) return undefined;
-	const extension = /\.([^./]+)$/.exec(path)![1]!;
-	if (extension === 'vue') return vuePieces(text);
-	if (HASH_COMMENT_EXTENSIONS.has(extension)) return hashCommentPieces(text);
-	return scriptPieces(text, SCRIPT_KINDS[extension]!);
+	const pieces = rawPiecesOfFile(/\.([^./]+)$/.exec(path)![1]!, text);
+	return pieces && withLineAbove(pieces);
 }

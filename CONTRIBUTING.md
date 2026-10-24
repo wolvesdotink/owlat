@@ -141,10 +141,11 @@ of `bun run lint` and will fail CI, including:
   and a snapshot of the current renderer version goes only with its fixture or
   an `EMAIL_RENDERER_VERSION` bump (`scripts/check-stored-block-corpus.ts`).
 - `lint:comment-policy` (root, in `ci:lint`) — on the lines a change adds
-  against its merge base, comments and test titles carry no issue numbers, no
-  narration of earlier code and no tags into specs, plans or decision records
-  the repository does not hold (CLAUDE.md, "Comments";
-  `scripts/check-comment-policy.ts`).
+  against its merge base, comments carry no issue numbers, no narration of
+  earlier code and no tags into specs, plans or decision records the
+  repository does not hold. Test titles are checked for those document and
+  decision tags only; an issue number or "previously" in a title passes
+  (CLAUDE.md, "Comments"; `scripts/check-comment-policy.ts`).
 
 The web app's `lint` script (`apps/web`) runs gates of its own, including:
 

@@ -70,11 +70,11 @@ const MAX_RECOVERY_FACTOR = 100;
  * step — IDNA folding is the obvious candidate — a unicode domain would be
  * classified in its punycode form and returned in its unicode form, giving one
  * operator two rows that each see half the traffic. Two inputs answer
- * differently from the pre-D8 implementation, both unreachable from production
+ * differently than a local transform would, both unreachable from production
  * because every shipped caller hands over either an already-normalized
- * `throttleKey` or a validated provider key: `'gmail.com.'` now folds to
- * `gmail` instead of naming its own row, and `'example.com.'` now shares the
- * `example.com` row instead of splitting one operator across two.
+ * `throttleKey` or a validated provider key: `'gmail.com.'` folds to `gmail`
+ * rather than naming its own row, and `'example.com.'` shares the
+ * `example.com` row rather than splitting one operator across two.
  */
 export function canonicalProfileKey(value: string): string {
 	const normalized = normalizeDestinationDomain(value);

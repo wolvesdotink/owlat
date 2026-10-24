@@ -131,7 +131,7 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		improvements: ['connect_reference_transport'],
 	},
 	{
-		name: 'a STANDALONE cell whose gates all graded HIGH is still capped at medium (D14)',
+		name: 'a STANDALONE cell whose gates all graded HIGH is still capped at medium',
 		// THE REGRESSION THIS TABLE EXISTS FOR. A one-armed cell whose only DECIDED
 		// gate is the (genuinely high-confidence) deferral check must not tell the
 		// operator the cell is well-measured: there is no second arm, and the screen
@@ -165,7 +165,7 @@ const CONFIDENCE_CASES: readonly ConfidenceCase[] = [
 		improvements: [],
 	},
 	{
-		name: 'high measurement with no seeds — still high, seeds are an invitation not a gate (D2)',
+		name: 'high measurement with no seeds — still high, seeds are an invitation not a gate',
 		ownSent: ABOVE_BOUNCE_FLOOR,
 		hasReferenceArm: true,
 		hasRelayConfigured: true,

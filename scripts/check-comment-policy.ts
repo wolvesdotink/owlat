@@ -99,7 +99,10 @@ export function parseChangedLines(diff: string): Map<string, Set<number>> {
 		const line = lines[index]!;
 		if (line.startsWith('diff --git ')) current = undefined;
 		else if (line.startsWith('+++ ')) {
-			const target = line.slice(4);
+			// Git ends the header with a tab when the path holds a space. A
+			// path that holds a tab itself is always quoted, so the tab is never
+			// part of the name.
+			const target = line.slice(4).replace(/\t$/, '');
 			current = target === '/dev/null' ? undefined : unquotePath(target).replace(/^b\//, '');
 		} else if (line.startsWith('@@ ')) {
 			const hunk = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);

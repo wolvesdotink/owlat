@@ -120,7 +120,7 @@ export const AUTH_BASE_CODE_DIVERGENCES: readonly BaseCodeDivergence[] = [
 		ourCode: 530,
 		ourEnhanced: '5.7.0',
 		rationale:
-			'D6/RFC 4954 §4: encryption required. 530 5.7.0 is the modern code; smtp-server replies 538.',
+			'RFC 4954 §4: encryption required. 530 5.7.0 is the modern code; smtp-server replies 538.',
 	},
 	{
 		id: 'auth-bad-mechanism',
@@ -129,7 +129,7 @@ export const AUTH_BASE_CODE_DIVERGENCES: readonly BaseCodeDivergence[] = [
 		ourCode: 535,
 		ourEnhanced: '5.7.8',
 		rationale:
-			'D6 no-auth-oracle: an unsupported mechanism fails identically to bad credentials (535 5.7.8); smtp-server leaks it as 504.',
+			'No auth oracle: an unsupported mechanism fails identically to bad credentials (535 5.7.8); smtp-server leaks it as 504.',
 	},
 	{
 		id: 'auth-cancel-or-bad-base64',
@@ -138,6 +138,6 @@ export const AUTH_BASE_CODE_DIVERGENCES: readonly BaseCodeDivergence[] = [
 		ourCode: 535,
 		ourEnhanced: '5.7.8',
 		rationale:
-			'D6 no-auth-oracle: a client cancel (*) or malformed base64 fails identically to bad credentials (535 5.7.8); smtp-server leaks the stage as 501.',
+			'No auth oracle: a client cancel (*) or malformed base64 fails identically to bad credentials (535 5.7.8); smtp-server leaks the stage as 501.',
 	},
 ] as const;

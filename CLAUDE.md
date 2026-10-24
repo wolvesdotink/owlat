@@ -231,11 +231,13 @@ history, and the PR and `CHANGELOG.md` hold it.
   Write the rule out in words.
 - No commented-out code. Version control keeps it.
 
-`bun run lint:comment-policy` (part of `ci:lint`) checks the comments and test
-titles on the lines a change adds, in code, Vue templates, shell scripts and
-YAML. It does not read existing lines, and existing comments are not
-mass-deleted: many of them carry a real constraint. When you edit a comment for
-another reason, cut the history out of it and keep the constraint.
+`bun run lint:comment-policy` (part of `ci:lint`) checks the comments on the
+lines a change adds, in code, Vue templates and styles, shell scripts and YAML,
+for issue numbers, the narration phrases above and document tags. Test titles
+on those lines are checked for the document and decision tags only. It does not
+read existing lines, and existing comments are not mass-deleted: many of them
+carry a real constraint. When you edit a comment for another reason, cut the
+history out of it and keep the constraint.
 
 ## Documentation
 

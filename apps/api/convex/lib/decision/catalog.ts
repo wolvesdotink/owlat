@@ -127,7 +127,7 @@ export const TRIAGE_QUESTIONS = {
 } satisfies QuestionSet;
 register(
 	'mail.triage',
-	'Team Inbox: spam, automated, needs work or no work, from the message alone (D11, shadow).',
+	'Team Inbox: spam, automated, needs work or no work, from the message alone (shadow).',
 	TRIAGE_QUESTIONS
 );
 
@@ -233,7 +233,7 @@ export const NECESSITY_QUESTIONS = {
 } satisfies QuestionSet;
 register(
 	'mail.necessity',
-	'Team Inbox, Postbox and Answer mode: whether the owner must be asked before a reply (D5).',
+	'Team Inbox, Postbox and Answer mode: whether the owner must be asked before a reply.',
 	NECESSITY_QUESTIONS
 );
 
