@@ -142,7 +142,9 @@ const discardAndOpenEmail = async () => {
 	await openWithoutSaving({
 		url,
 		isDesktop: isDesktop.value,
+		// This window leaves for the editor: the discarded edits are not saved on the way.
 		discard: () => {
+			drafts.autosave.cancel();
 			hasUnsavedChanges.value = false;
 		},
 		navigate: navigateTo,

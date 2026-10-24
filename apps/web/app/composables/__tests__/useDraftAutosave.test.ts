@@ -6,7 +6,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
 import type { OfflineKvDriver } from '~/utils/postboxOfflineKvDriver';
-import { createEditorDraftStore } from '~/utils/editorDraftStore';
+import { createEditorDraftStore, editorDraftKey } from '~/utils/editorDraftStore';
+import { createEditorDraftWriters } from '~/utils/editorDraftWriters';
 import { useDraftAutosave, type DraftAutosaveOptions } from '../useDraftAutosave';
 
 function memoryDriver(persistent = true): OfflineKvDriver & { data: Map<string, unknown> } {
@@ -43,17 +44,25 @@ function deferred() {
 	return { promise, resolve, reject };
 }
 
-const KEY = 'editor-draft:v1:user_1:org_1:emailTemplate:tpl_1';
+const SCOPE = 'editor-draft:v1:user_1:org_1:emailTemplate:tpl_1:';
+/** The copy of the first editor opened in tab A. */
+const KEY = editorDraftKey(SCOPE, 'tab-a.1');
 
-/** An editor with one text field, a dirty flag and a revision. */
-function setup(over: Partial<DraftAutosaveOptions<{ text: string }>> = {}) {
+/**
+ * An editor with one text field, a dirty flag and a revision; `env` puts
+ * several of them on one device (shared storage, a tab each).
+ */
+function setup(
+	over: Partial<DraftAutosaveOptions<{ text: string }>> = {},
+	env: { driver?: ReturnType<typeof memoryDriver>; tab?: string } = {}
+) {
 	const text = ref('saved');
 	const serverText = ref('saved');
 	const dirty = ref(false);
 	const enabled = ref(true);
 	const paused = ref(false);
 	const online = ref(true);
-	const driver = memoryDriver();
+	const driver = env.driver ?? memoryDriver();
 	const saves: string[] = [];
 	let pending: ReturnType<typeof deferred> | null = null;
 	const save = vi.fn(async () => {
@@ -73,7 +82,8 @@ function setup(over: Partial<DraftAutosaveOptions<{ text: string }>> = {}) {
 			save,
 			online: () => online.value,
 			store: createEditorDraftStore(driver),
-			mirror: { key: () => KEY, snapshot: () => ({ text: text.value }), base: () => 3 },
+			writers: createEditorDraftWriters(env.tab ?? 'tab-a', null),
+			mirror: { scope: () => SCOPE, snapshot: () => ({ text: text.value }), base: () => 3 },
 			...over,
 		})
 	)!;
@@ -277,7 +287,7 @@ describe('useDraftAutosave', () => {
 		let base = 3;
 		const t = setup({
 			mirror: {
-				key: () => KEY,
+				scope: () => SCOPE,
 				snapshot: () => ({ text: 'device-only choice' }),
 				base: () => base,
 				keepAfterSave: () => true,
@@ -288,6 +298,54 @@ describe('useDraftAutosave', () => {
 		await vi.advanceTimersByTimeAsync(1500);
 		await settle();
 		expect(t.driver.data.get(KEY)).toMatchObject({ base: 4 });
+		expect(t.autosave.status.value).toBe('saved');
+		expect(t.autosave.atRisk.value).toBe(false);
+	});
+
+	it('keeps a choice only the device holds at risk while its copy cannot be written', async () => {
+		const t = setup({
+			store: createEditorDraftStore(memoryDriver(false)),
+			mirror: {
+				scope: () => SCOPE,
+				snapshot: () => ({ text: 'device-only choice' }),
+				base: () => 3,
+				keepAfterSave: () => true,
+			},
+		});
+		await t.edit('x');
+		await vi.advanceTimersByTimeAsync(1500);
+		await settle();
+		// The save landed, but what only the device holds is nowhere.
+		expect(t.saves).toEqual(['x']);
+		expect(t.dirty.value).toBe(false);
+		expect(t.autosave.status.value).toBe('unkept');
+		expect(t.autosave.atRisk.value).toBe(true);
+
+		t.autosave.cancel();
+		expect(t.autosave.atRisk.value).toBe(false);
+	});
+
+	it("keeps each tab's copy apart, so neither loses its edits to the other", async () => {
+		const driver = memoryDriver();
+		const a = setup({}, { driver, tab: 'tab-a' });
+		const b = setup({}, { driver, tab: 'tab-b' });
+		for (const tab of [a, b]) {
+			tab.online.value = false;
+			tab.hold();
+		}
+		await a.edit('from A');
+		await b.edit('from B');
+		await vi.advanceTimersByTimeAsync(300);
+		await settle();
+
+		expect(driver.data.get(editorDraftKey(SCOPE, 'tab-a.1'))).toMatchObject({
+			data: { text: 'from A' },
+		});
+		expect(driver.data.get(editorDraftKey(SCOPE, 'tab-b.1'))).toMatchObject({
+			data: { text: 'from B' },
+		});
+		expect(a.autosave.onDevice.value).toBe(true);
+		expect(b.autosave.onDevice.value).toBe(true);
 	});
 
 	it('drops the pending save and the copy when the draft is discarded', async () => {
@@ -300,5 +358,25 @@ describe('useDraftAutosave', () => {
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(t.save).not.toHaveBeenCalled();
 		expect(t.driver.data.has(KEY)).toBe(false);
+	});
+
+	it('saves nothing it discarded when the editor goes away right after', async () => {
+		const t = setup();
+		await t.edit('discarded');
+		t.autosave.cancel();
+		t.scope.stop();
+		await settle();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(t.save).not.toHaveBeenCalled();
+		expect(t.driver.data.size).toBe(0);
+	});
+
+	it('saves again after an edit that follows a discard', async () => {
+		const t = setup();
+		await t.edit('discarded');
+		t.autosave.cancel();
+		await t.edit('kept');
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(t.saves).toEqual(['kept']);
 	});
 });

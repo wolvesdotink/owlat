@@ -131,4 +131,28 @@ describe('TemplateHistoryPanel — restore from the preview', () => {
 		expect(wrapper.emitted('restore')).toHaveLength(1);
 		wrapper.unmount();
 	});
+
+	it('restores what the preview loaded after an autosave replaced its row', async () => {
+		const query = vi.fn(async () => SNAPSHOT);
+		vi.stubGlobal('useConvex', () => ({ query }));
+		for (const unsaved of [false, true]) {
+			query.mockClear();
+			const wrapper = mountPanel(unsaved);
+			await openPreview(wrapper);
+			// The row is gone now: asking for it again fails.
+			query.mockRejectedValue(new Error('Version not found'));
+
+			await restoreButton(wrapper)?.trigger('click');
+			await flushPromises();
+			if (unsaved) {
+				await wrapper.get('[data-testid="confirm"]').trigger('click');
+				await flushPromises();
+			}
+
+			expect(wrapper.emitted('restore')).toHaveLength(1);
+			expect(query).toHaveBeenCalledOnce();
+			wrapper.unmount();
+			query.mockResolvedValue(SNAPSHOT);
+		}
+	});
 });

@@ -1,7 +1,7 @@
 import { computed, ref, type Ref } from 'vue';
 import type { EditorBlock } from '@owlat/email-builder';
 import { canonicalJson } from '@owlat/shared/canonicalJson';
-import { editorDraftKey, type EditorDraftKind } from '~/utils/editorDraftStore';
+import { editorDraftScope, type EditorDraftKind } from '~/utils/editorDraftStore';
 import { useDraftAutosave, type DraftAutosave } from './useDraftAutosave';
 import { useDraftRecovery, type DraftRecovery } from './useDraftRecovery';
 import type { EmailEditorBridgeContext, EmailBuilderHandle } from './useEmailEditorBridge';
@@ -79,12 +79,12 @@ export function useEmailEditorAutosave(
 	const { t } = useI18n();
 	const { ctx, extraWatch, coediting } = host;
 
-	const key = computed(() => {
+	const scope = computed(() => {
 		const id = opts.id();
 		const userId = user.value?.id;
 		const organizationId = activeOrganizationId.value;
 		return id && userId && organizationId
-			? editorDraftKey({ userId, organizationId, kind: opts.kind, id })
+			? editorDraftScope({ userId, organizationId, kind: opts.kind, id })
 			: null;
 	});
 
@@ -120,7 +120,7 @@ export function useEmailEditorAutosave(
 		uncommitted: () => host.builder()?.isInlineEditing === true,
 		commit: () => host.builder()?.commitInlineEdit?.(),
 		mirror: {
-			key: () => key.value,
+			scope: () => scope.value,
 			snapshot,
 			base: () => host.rowRevision() ?? null,
 		},
@@ -137,7 +137,7 @@ export function useEmailEditorAutosave(
 	};
 
 	const recovery = useDraftRecovery<EmailDraftSnapshot>({
-		key: () => key.value,
+		scope: () => scope.value,
 		ready: () =>
 			opts.enabled() &&
 			(coediting?.status.value === 'connecting' ? false : host.isLive() || host.isInitialized()),
@@ -150,6 +150,8 @@ export function useEmailEditorAutosave(
 			copy.base === host.rowRevision() &&
 			!(host.isLive() && coediting?.hasSharedChanges.value === true),
 		apply,
+		edits: () => autosave.edits.value,
+		keep: autosave.keep,
 		onApplied: () => showToast(t('shared.draftAutosave.restored')),
 	});
 

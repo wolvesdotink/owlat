@@ -199,6 +199,17 @@ describe('useEmailEditorBridge autosave (classic)', () => {
 		unmount();
 	});
 
+	it('saves nothing of a discarded edit, also when the editor closes right after', async () => {
+		const { bridge, save, unmount } = setup();
+		await settle();
+		bridge.subject.value = 'Discarded';
+		await nextTick();
+		bridge.confirmDiscard();
+		unmount();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(save).not.toHaveBeenCalled();
+	});
+
 	it('leaves a published email to its explicit Save', async () => {
 		const { bridge, save, unmount } = setup('published');
 		await settle();

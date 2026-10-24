@@ -4,7 +4,7 @@ import type { Doc, Id } from '@owlat/api/dataModel';
 import type { FunctionArgs } from 'convex/server';
 import type { OperationError } from '@owlat/shared/operationError';
 import { sendTimingFromCampaign, type SendTiming } from '~/lib/sendTiming';
-import { editorDraftKey } from '~/utils/editorDraftStore';
+import { editorDraftScope } from '~/utils/editorDraftStore';
 import type { useCampaignABTest } from './useCampaignABTest';
 import type { CampaignAudienceSelection, CampaignAudienceType } from './useCampaignAudience';
 import { useDraftAutosave, type DraftAutosave } from './useDraftAutosave';
@@ -204,11 +204,11 @@ export function useCampaignDraftAutosave<Submission>(
 		(form.audience.value === null && form.campaignData.value?.audience != null) ||
 		(draft.templateId === null && draft.subject.trim() !== '');
 
-	const key = computed(() => {
+	const scope = computed(() => {
 		const userId = user.value?.id;
 		const organizationId = activeOrganizationId.value;
 		return userId && organizationId
-			? editorDraftKey({ userId, organizationId, kind: 'campaign', id: form.campaignId.value })
+			? editorDraftScope({ userId, organizationId, kind: 'campaign', id: form.campaignId.value })
 			: null;
 	});
 
@@ -237,7 +237,7 @@ export function useCampaignDraftAutosave<Submission>(
 			form.acknowledge(submission);
 		},
 		mirror: {
-			key: () => key.value,
+			scope: () => scope.value,
 			snapshot,
 			base: () => form.campaignData.value?.updatedAt ?? null,
 			keepAfterSave: holdsDeviceOnly,
@@ -270,12 +270,14 @@ export function useCampaignDraftAutosave<Submission>(
 	};
 
 	const recovery = useDraftRecovery<CampaignDraftSnapshot>({
-		key: () => key.value,
+		scope: () => scope.value,
 		ready,
 		accept: isSnapshot,
 		matches: (data) => JSON.stringify(data) === JSON.stringify(snapshot()),
 		canApply: (copy) => copy.base !== null && copy.base === form.campaignData.value?.updatedAt,
 		apply,
+		edits: () => autosave.edits.value,
+		keep: autosave.keep,
 		onApplied: () => showToast(t('shared.draftAutosave.restored')),
 	});
 

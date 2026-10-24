@@ -8,9 +8,11 @@
  * only one of an edit made offline.
  *
  * Keys are namespaced by the signed-in person and workspace, so one person's
- * unsaved edits are never offered to another on a shared browser:
+ * unsaved edits are never offered to another on a shared browser, and end in
+ * the editor that wrote the copy (`editorDraftWriters.ts`), so two tabs never
+ * overwrite each other's:
  *
- *   editor-draft:v1:<userId>:<organizationId>:<kind>:<entityId>
+ *   editor-draft:v1:<userId>:<organizationId>:<kind>:<entityId>:<writerId>
  *
  * Pure data layer: no Vue, no network.
  */
@@ -40,13 +42,27 @@ export interface EditorDraftCopy<T> {
 	data: T;
 }
 
-export function editorDraftKey(parts: {
+/** The prefix every copy of one draft shares, whichever editor wrote it. */
+export function editorDraftScope(parts: {
 	userId: string;
 	organizationId: string;
 	kind: EditorDraftKind;
 	id: string;
 }): string {
-	return `${PREFIX}${parts.userId}:${parts.organizationId}:${parts.kind}:${parts.id}`;
+	return `${PREFIX}${parts.userId}:${parts.organizationId}:${parts.kind}:${parts.id}:`;
+}
+
+/** One editor's copy of the draft `scope` names. */
+export function editorDraftKey(scope: string, writerId: string): string {
+	return `${scope}${writerId}`;
+}
+
+/** A copy found under a draft's scope. */
+export interface FoundEditorDraft<T> {
+	key: string;
+	/** The editor that wrote it. */
+	writerId: string;
+	copy: EditorDraftCopy<T>;
 }
 
 function isCopy(value: unknown): value is EditorDraftCopy<unknown> {
@@ -74,6 +90,12 @@ export interface EditorDraftStore {
 		accept: (data: unknown) => data is T,
 		now?: number
 	): Promise<EditorDraftCopy<T> | null>;
+	/** Every copy of one draft (`read` applied to each), newest first. */
+	list<T>(
+		scope: string,
+		accept: (data: unknown) => data is T,
+		now?: number
+	): Promise<FoundEditorDraft<T>[]>;
 	/**
 	 * Delete the copy only if it is still the one written at `savedAt`, so a
 	 * newer copy (another tab, a later edit) written meanwhile stays.
@@ -97,6 +119,24 @@ export function createEditorDraftStore(driver: OfflineKvDriver): EditorDraftStor
 	const expired = (copy: EditorDraftCopy<unknown>, now: number) =>
 		now - copy.savedAt > EDITOR_DRAFT_MAX_AGE_MS;
 
+	const read = async <T>(
+		key: string,
+		accept: (data: unknown) => data is T,
+		now = Date.now()
+	): Promise<EditorDraftCopy<T> | null> => {
+		try {
+			const stored = await driver.get<unknown>(key);
+			if (stored === undefined) return null;
+			if (isCopy(stored) && !expired(stored, now) && accept(stored.data)) {
+				return stored as EditorDraftCopy<T>;
+			}
+			await removeIf(key, (current) => current === stored || sameCopy(current, stored));
+			return null;
+		} catch {
+			return null;
+		}
+	};
+
 	return {
 		persistent,
 		async write(key, copy) {
@@ -110,18 +150,20 @@ export function createEditorDraftStore(driver: OfflineKvDriver): EditorDraftStor
 				return false;
 			}
 		},
-		async read(key, accept, now = Date.now()) {
+		read,
+		async list(scope, accept, now = Date.now()) {
+			let keys: string[];
 			try {
-				const stored = await driver.get<unknown>(key);
-				if (stored === undefined) return null;
-				if (isCopy(stored) && !expired(stored, now) && accept(stored.data)) {
-					return stored as EditorDraftCopy<never>;
-				}
-				await removeIf(key, (current) => current === stored || sameCopy(current, stored));
-				return null;
+				keys = (await driver.keys()).filter((key) => key.startsWith(scope));
 			} catch {
-				return null;
+				return [];
 			}
+			const found = [];
+			for (const key of keys) {
+				const copy = await read(key, accept, now);
+				if (copy) found.push({ key, writerId: key.slice(scope.length), copy });
+			}
+			return found.sort((a, b) => b.copy.savedAt - a.copy.savedAt);
 		},
 		async removeIf(key, savedAt) {
 			try {

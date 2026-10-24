@@ -15,7 +15,12 @@ import {
 } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 import { backendConnectionPhase } from '~/lib/backendConnection';
-import { getEditorDraftStore, type EditorDraftStore } from '~/utils/editorDraftStore';
+import {
+	editorDraftKey,
+	getEditorDraftStore,
+	type EditorDraftStore,
+} from '~/utils/editorDraftStore';
+import { getEditorDraftWriters, type EditorDraftWriters } from '~/utils/editorDraftWriters';
 
 /**
  * Draft autosave: the background save behind the draft editors (Email
@@ -25,13 +30,17 @@ import { getEditorDraftStore, type EditorDraftStore } from '~/utils/editorDraftS
  * - Every edit restarts a short pause; when it runs out the draft is saved.
  *   One save runs at a time, and an edit made while it runs is saved after it.
  * - Every edit is also written to the device (`editorDraftStore.ts`) a moment
- *   later, and that copy is deleted once a save of the same draft landed. The
- *   editors read it back when they open (`useDraftRecovery.ts`).
+ *   later, under this editor's own key, and that copy is deleted once a save
+ *   of the same draft landed. The editors read copies left behind back when
+ *   they open (`useDraftRecovery.ts`).
  * - `flush` saves now and reports whether nothing is left unsaved: Publish,
  *   Schedule and Send call it before they act, so they never act on a draft
  *   the server has not got.
  * - `atRisk` is what leaving would lose: an edit neither saved nor on the
- *   device. The page arms its leave guards with it instead of with "dirty".
+ *   device, or a choice only the device can hold whose copy could not be
+ *   written. The page arms its leave guards with it instead of with "dirty".
+ * - `cancel` is Discard: nothing of the current edits is saved or kept, not
+ *   even when the editor goes away right after.
  *
  * Save failures are shown by the status, not by a toast per attempt; the next
  * edit, `retry`, or the backend coming back tries again. While the backend is
@@ -39,11 +48,22 @@ import { getEditorDraftStore, type EditorDraftStore } from '~/utils/editorDraftS
  * so a save in flight while offline is not a failure, only late.
  */
 
-export type DraftSaveStatus = 'idle' | 'editing' | 'saving' | 'offline' | 'saved' | 'error';
+export type DraftSaveStatus =
+	| 'idle'
+	| 'editing'
+	| 'saving'
+	| 'offline'
+	| 'saved'
+	/** Saved, but a choice only the device holds could not be written to it. */
+	| 'unkept'
+	| 'error';
 
 export interface DraftAutosaveMirror<T> {
-	/** The device copy's key; null while there is none (not signed in yet). */
-	key: () => string | null;
+	/**
+	 * The draft's device copies (`editorDraftScope`); null while there is
+	 * none (not signed in yet). This editor's copy is its own key under it.
+	 */
+	scope: () => string | null;
 	/** The draft as it is now, read synchronously. */
 	snapshot: () => T;
 	/** The server state the draft is built on (revision, `updatedAt`). */
@@ -84,6 +104,8 @@ export interface DraftAutosaveOptions<T> {
 	online?: () => boolean;
 	/** Injected in tests; defaults to the page's IndexedDB store. */
 	store?: EditorDraftStore;
+	/** Injected in tests; defaults to the page's writers. */
+	writers?: EditorDraftWriters;
 }
 
 export interface DraftAutosave {
@@ -94,6 +116,10 @@ export interface DraftAutosave {
 	error: Readonly<Ref<unknown>>;
 	/** The current draft is on this device. */
 	onDevice: ComputedRef<boolean>;
+	/** Counts this editor's edits (recovery checks none came in meanwhile). */
+	edits: Readonly<Ref<number>>;
+	/** Write the device copy now; resolves whether it holds the current draft. */
+	keep: () => Promise<boolean>;
 	/**
 	 * Leaving now would lose an edit: arm the leave guards with this. Typing
 	 * the draft cannot see yet is not counted: leaving within the app commits
@@ -104,7 +130,11 @@ export interface DraftAutosave {
 	flush: () => Promise<boolean>;
 	/** Retry a failed save. */
 	retry: () => void;
-	/** Drop the pending save and device copy (the draft is being discarded). */
+	/**
+	 * Discard: drop the pending save and the device copy, and save nothing of
+	 * the current edits, also when the editor goes away. The next edit saves
+	 * again.
+	 */
 	cancel: () => void;
 }
 
@@ -123,6 +153,7 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 	const online = opts.online ?? defaultOnline;
 	const mirror = opts.mirror;
 	const store = mirror ? (opts.store ?? getEditorDraftStore()) : null;
+	const writer = mirror ? (opts.writers ?? getEditorDraftWriters()).open() : null;
 	const canSave = () => opts.enabled() && opts.paused?.() !== true;
 
 	/** Bumped by every edit; a save or device write covers the edits up to its number. */
@@ -133,6 +164,11 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 	const timerPending = ref(false);
 	const savedAt = ref<number | null>(null);
 	const error = shallowRef<unknown>(null);
+	/** Device-only choices a save left to the device copy, which failed to write. */
+	const deviceShortfall = ref(false);
+	/** The edit count `cancel` discarded; nothing up to it is saved or kept. */
+	let discarded = -1;
+	const isDiscarded = () => edits.value === discarded;
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let mirrorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -153,7 +189,7 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 
 	const schedule = (delay = debounceMs) => {
 		clearSaveTimer();
-		if (disposed) return;
+		if (disposed || isDiscarded()) return;
 		timerPending.value = true;
 		saveTimer = setTimeout(() => {
 			saveTimer = null;
@@ -163,11 +199,15 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 	};
 
 	// ── Device copy ─────────────────────────────────────────────────────
-	const writeMirror = async (keep = false) => {
+	/** Resolves whether the copy was written. */
+	const writeMirror = async (keep = false): Promise<boolean> => {
 		clearMirrorTimer();
-		const key = mirror?.key();
+		const scope = mirror?.scope();
 		// A change that left nothing unsaved (the draft loading) needs no copy.
-		if (!mirror || !store || !key || (!keep && !opts.dirty())) return;
+		if (!mirror || !store || !writer || !scope || isDiscarded() || (!keep && !opts.dirty())) {
+			return false;
+		}
+		const key = editorDraftKey(scope, writer.id);
 		const covers = edits.value;
 		const copy = {
 			v: 1 as const,
@@ -176,9 +216,14 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 			data: mirror.snapshot(),
 		};
 		mirrorStamp = { key, savedAt: copy.savedAt };
-		if ((await store.write(key, copy)) && (keep || covers === edits.value)) {
-			mirroredEdits.value = covers;
+		const written = await store.write(key, copy);
+		// Discarded while it was written: the copy goes too.
+		if (discarded === covers) {
+			if (written) await store.removeIf(key, copy.savedAt);
+			return false;
 		}
+		if (written && covers === edits.value) mirroredEdits.value = covers;
+		return written;
 	};
 	const scheduleMirror = () => {
 		clearMirrorTimer();
@@ -190,9 +235,10 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		if (!mirror || !store) return;
 		clearMirrorTimer();
 		if (mirror.keepAfterSave?.(mirror.snapshot())) {
-			await writeMirror(true);
+			deviceShortfall.value = !(await writeMirror(true));
 			return;
 		}
+		deviceShortfall.value = false;
 		const stamp = mirrorStamp;
 		mirrorStamp = null;
 		if (stamp) await store.removeIf(stamp.key, stamp.savedAt);
@@ -201,7 +247,7 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 	// ── Saving ──────────────────────────────────────────────────────────
 	const run = (): Promise<void> => {
 		if (running) return running;
-		if (!canSave() || !opts.dirty()) return Promise.resolve();
+		if (!canSave() || !opts.dirty() || isDiscarded()) return Promise.resolve();
 		const covers = edits.value;
 		inFlight.value = true;
 		running = (async () => {
@@ -266,6 +312,8 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		clearSaveTimer();
 		clearMirrorTimer();
 		error.value = null;
+		deviceShortfall.value = false;
+		discarded = edits.value;
 		const stamp = mirrorStamp;
 		mirrorStamp = null;
 		if (stamp && store) void store.removeIf(stamp.key, stamp.savedAt);
@@ -281,13 +329,17 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		() => store?.persistent === true && mirroredEdits.value === edits.value
 	);
 	const atRisk = computed(
-		() => opts.enabled() && opts.dirty() && savedEdits.value !== edits.value && !onDevice.value
+		() =>
+			opts.enabled() &&
+			!onDevice.value &&
+			((opts.dirty() && savedEdits.value !== edits.value) || deviceShortfall.value)
 	);
 	const status = computed<DraftSaveStatus>(() => {
 		if (!opts.enabled()) return 'idle';
 		if (opts.uncommitted?.()) return 'editing';
 		if (error.value && !inFlight.value) return 'error';
 		if (pending.value) return online() ? 'saving' : 'offline';
+		if (deviceShortfall.value && !onDevice.value) return 'unkept';
 		return savedAt.value === null ? 'idle' : 'saved';
 	});
 
@@ -308,10 +360,15 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 	}
 
 	// Leaving the editor: what is still pending is saved now (the request
-	// outlives the page within the app) and its device copy written.
+	// outlives the page within the app) and its device copy written, unless
+	// it was discarded. The copy is then left behind for recovery.
 	if (getCurrentScope())
 		onScopeDispose(() => {
-			if (opts.enabled() && (timerPending.value || mirrorTimer !== null || opts.dirty())) {
+			const leaving =
+				opts.enabled() &&
+				!isDiscarded() &&
+				(timerPending.value || mirrorTimer !== null || opts.dirty());
+			if (leaving) {
 				if (mirrorTimer !== null) void writeMirror();
 				clearSaveTimer();
 				void run();
@@ -319,13 +376,23 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 			clearSaveTimer();
 			clearMirrorTimer();
 			disposed = true;
+			writer?.close();
 		});
+
+	const keep = async (): Promise<boolean> => {
+		// The edit that asks for it reaches the counters through watchers.
+		await nextTick();
+		await writeMirror();
+		return onDevice.value;
+	};
 
 	return {
 		status,
 		savedAt,
 		error,
 		onDevice,
+		edits,
+		keep,
 		atRisk,
 		flush,
 		retry,

@@ -15120,17 +15120,19 @@
 			"editing": "Wird bearbeitet…",
 			"saving": "Wird gespeichert…",
 			"saved": "Gespeichert",
-			"savedAgo": "Gespeichert · {when}",
+			"savedAge": "· {when}",
 			"offlineOnDevice": "Offline, auf diesem Gerät gesichert",
 			"offlineNotSaved": "Offline, noch nicht gespeichert",
 			"notSaved": "Nicht gespeichert",
+			"unkept": "Nicht auf diesem Gerät gesichert",
+			"unkeptDetail": "Gespeichert, aber dieser Browser konnte die Angaben nicht sichern, die ein Entwurf nicht speichert. Verlässt du die Seite, gehen sie verloren.",
 			"failed": "Deine Änderungen konnten nicht gespeichert werden.",
 			"retry": "Erneut versuchen",
 			"notSavedYet": "Deine letzten Änderungen sind noch nicht gespeichert. Versuche es gleich noch einmal.",
 			"restored": "Die auf diesem Gerät gesicherten Änderungen wurden wiederhergestellt",
 			"recovery": {
 				"title": "Nicht gespeicherte Änderungen auf diesem Gerät.",
-				"description": "Änderungen von {when} wurden nicht übernommen, weil inzwischen anderswo etwas geändert wurde.",
+				"description": "Änderungen von {when} wurden nicht übernommen, weil sich der Entwurf inzwischen geändert hat.",
 				"restore": "Wiederherstellen",
 				"discard": "Verwerfen"
 			}

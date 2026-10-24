@@ -246,4 +246,27 @@ describe('useCampaignForm autosave', () => {
 		expect(saves()).toHaveLength(2);
 		expect(form.drafts.autosave.status.value).toBe('saved');
 	});
+
+	// The test environment has no IndexedDB: nothing can be kept on the device.
+	it('keeps a schedule choice at risk when this browser cannot keep it', async () => {
+		const { form } = await setup();
+		form.scheduledDate.value = '2026-11-02';
+		form.scheduledTime.value = '09:00';
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(1500);
+
+		// A draft does not store the schedule, so nothing went to the server.
+		expect(saves()).toHaveLength(0);
+		expect(form.drafts.autosave.status.value).toBe('unkept');
+		expect(guardDirty.value).toBe(true);
+	});
+
+	it('saves nothing of a discarded edit on the way out', async () => {
+		const { form } = await setup();
+		form.campaignName.value = 'Discarded name';
+		await nextTick();
+		form.confirmDiscard();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(saves()).toHaveLength(0);
+	});
 });

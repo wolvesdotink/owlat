@@ -289,7 +289,6 @@ export function useEmailEditorBridge<S>(
 	// The handler set the builder injects, and the media picker it opens.
 	const { showMediaPicker, onMediaPickerSelect } = provideEmailEditorHandlers();
 
-	// Test-email modal.
 	const showTestEmailModal = ref(false);
 	const testEmailHtml = ref('');
 	const onSendTest = (html: string) => {
@@ -472,8 +471,9 @@ export function useEmailEditorBridge<S>(
 		hasChanges,
 		showUnsavedChangesDialog,
 		isSavingBeforeLeave,
-		// Leaving a live session alone without saving: the shared draft goes too.
+		// Discard saves nothing more (leaving a live session alone: the shared draft goes too).
 		confirmDiscard: () => {
+			drafts?.autosave.cancel();
 			if (isLive.value) void coediting?.resetShared();
 			confirmDiscard();
 		},

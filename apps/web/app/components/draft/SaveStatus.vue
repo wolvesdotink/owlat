@@ -2,7 +2,11 @@
 /**
  * The save state of a draft that saves itself (`useDraftAutosave`), where a
  * Save button used to be: "Saved · 3s ago", "Saving…", offline with or
- * without a copy on this device, or a failure with Retry.
+ * without a copy on this device, not kept on this device, or a failure with
+ * Retry.
+ *
+ * Only the state is a live region: the age beside "Saved" keeps changing
+ * while nothing happens, and a screen reader would read every change out.
  */
 import type { DraftAutosave } from '~/composables/useDraftAutosave';
 import { SaveRefusedError } from '~/composables/useEditorSaveOperation';
@@ -17,6 +21,13 @@ const { t, locale, te } = useI18n();
 // Re-renders "3s ago" as it ages; the formatter reads the clock itself.
 const now = useNow({ intervalMs: 5_000 });
 
+const age = computed(() => {
+	const savedAt = props.autosave.savedAt.value;
+	if (status.value !== 'saved' || savedAt === null) return '';
+	void now.value;
+	return t('shared.draftAutosave.savedAge', { when: formatCompactRelativeTime(savedAt) });
+});
+
 const label = computed(() => {
 	switch (status.value) {
 		case 'editing':
@@ -29,11 +40,8 @@ const label = computed(() => {
 				: t('shared.draftAutosave.offlineNotSaved');
 		case 'error':
 			return t('shared.draftAutosave.notSaved');
-		case 'saved':
-			void now.value;
-			return t('shared.draftAutosave.savedAgo', {
-				when: formatCompactRelativeTime(props.autosave.savedAt.value),
-			});
+		case 'unkept':
+			return t('shared.draftAutosave.unkept');
 		default:
 			return t('shared.draftAutosave.saved');
 	}
@@ -41,6 +49,7 @@ const label = computed(() => {
 
 /** Why the last save failed, in the words the toast would have used. */
 const errorDetail = computed(() => {
+	if (status.value === 'unkept') return t('shared.draftAutosave.unkeptDetail');
 	if (status.value !== 'error') return '';
 	const error = props.autosave.error.value;
 	const options = { locale: locale.value, hasMessage: (key: string) => te(key) };
@@ -58,6 +67,7 @@ const icon = computed(() => {
 		case 'offline':
 			return 'lucide:cloud-off';
 		case 'error':
+		case 'unkept':
 			return 'lucide:alert-circle';
 		case 'editing':
 			return 'lucide:pencil';
@@ -70,9 +80,8 @@ const icon = computed(() => {
 <template>
 	<div class="flex shrink-0 items-center gap-2" data-testid="draft-save-status">
 		<span
-			role="status"
 			class="inline-flex items-center gap-1.5 text-xs whitespace-nowrap"
-			:class="status === 'error' ? 'text-error' : 'text-text-secondary'"
+			:class="status === 'error' || status === 'unkept' ? 'text-error' : 'text-text-secondary'"
 			:title="errorDetail || undefined"
 		>
 			<Icon
@@ -81,8 +90,13 @@ const icon = computed(() => {
 				:class="{ 'animate-spin motion-reduce:animate-none': status === 'saving' }"
 				aria-hidden="true"
 			/>
-			{{ label }}
-			<span v-if="errorDetail" class="sr-only">{{ errorDetail }}</span>
+			<span>
+				<span role="status">
+					{{ label }}
+					<span v-if="errorDetail" class="sr-only">{{ errorDetail }}</span>
+				</span>
+				<template v-if="age">{{ ` ${age}` }}</template>
+			</span>
 		</span>
 		<UiButton v-if="status === 'error'" variant="ghost" size="sm" @click="autosave.retry()">
 			{{ t('shared.draftAutosave.retry') }}

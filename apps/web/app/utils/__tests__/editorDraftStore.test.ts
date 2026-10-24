@@ -9,6 +9,7 @@ import {
 	EDITOR_DRAFT_MAX_AGE_MS,
 	createEditorDraftStore,
 	editorDraftKey,
+	editorDraftScope,
 	type EditorDraftCopy,
 } from '../editorDraftStore';
 
@@ -36,12 +37,13 @@ function memoryDriver(persistent = true): OfflineKvDriver & { data: Map<string, 
 	};
 }
 
-const KEY = editorDraftKey({
+const SCOPE = editorDraftScope({
 	userId: 'user_1',
 	organizationId: 'org_1',
 	kind: 'campaign',
 	id: 'cmp_1',
 });
+const KEY = editorDraftKey(SCOPE, 'tab-a.1');
 const isText = (data: unknown): data is { text: string } =>
 	typeof (data as { text?: unknown } | null)?.text === 'string';
 const copy = (over: Partial<EditorDraftCopy<{ text: string }>> = {}) => ({
@@ -53,8 +55,30 @@ const copy = (over: Partial<EditorDraftCopy<{ text: string }>> = {}) => ({
 });
 
 describe('editorDraftStore', () => {
-	it('namespaces keys by person, workspace, kind and draft', () => {
-		expect(KEY).toBe('editor-draft:v1:user_1:org_1:campaign:cmp_1');
+	it('namespaces keys by person, workspace, kind, draft and editor', () => {
+		expect(KEY).toBe('editor-draft:v1:user_1:org_1:campaign:cmp_1:tab-a.1');
+	});
+
+	it("lists every editor's copy of one draft, newest first, and nothing else", async () => {
+		const driver = memoryDriver();
+		const store = createEditorDraftStore(driver);
+		const other = editorDraftScope({
+			userId: 'user_1',
+			organizationId: 'org_1',
+			kind: 'campaign',
+			id: 'cmp_10',
+		});
+		await store.write(KEY, copy({ savedAt: 1_000 }));
+		await store.write(editorDraftKey(SCOPE, 'tab-b.1'), copy({ savedAt: 3_000 }));
+		await store.write(editorDraftKey(other, 'tab-a.1'), copy({ savedAt: 2_000 }));
+		driver.data.set(editorDraftKey(SCOPE, 'tab-c.1'), { v: 2, junk: true });
+
+		const found = await store.list(SCOPE, isText, 4_000);
+		expect(found.map((f) => [f.writerId, f.copy.savedAt])).toEqual([
+			['tab-b.1', 3_000],
+			['tab-a.1', 1_000],
+		]);
+		expect(driver.data.has(editorDraftKey(SCOPE, 'tab-c.1'))).toBe(false);
 	});
 
 	it('stores reactive state and reads it back', async () => {
@@ -99,7 +123,10 @@ describe('editorDraftStore', () => {
 	it('prunes expired and malformed copies under its own prefix only', async () => {
 		const driver = memoryDriver();
 		const store = createEditorDraftStore(driver);
-		const fresh = editorDraftKey({ userId: 'u', organizationId: 'o', kind: 'campaign', id: 'a' });
+		const fresh = editorDraftKey(
+			editorDraftScope({ userId: 'u', organizationId: 'o', kind: 'campaign', id: 'a' }),
+			'tab-a.1'
+		);
 		driver.data.set(KEY, copy({ savedAt: 0 }));
 		driver.data.set(fresh, copy({ savedAt: EDITOR_DRAFT_MAX_AGE_MS }));
 		driver.data.set('composer-draft:v1:other', { anything: true });

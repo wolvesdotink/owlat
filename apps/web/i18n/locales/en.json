@@ -15120,17 +15120,19 @@
 			"editing": "Editing…",
 			"saving": "Saving…",
 			"saved": "Saved",
-			"savedAgo": "Saved · {when}",
+			"savedAge": "· {when}",
 			"offlineOnDevice": "Offline, kept on this device",
 			"offlineNotSaved": "Offline, not saved yet",
 			"notSaved": "Not saved",
+			"unkept": "Not kept on this device",
+			"unkeptDetail": "Saved, but this browser could not keep the choices a draft does not store. Leaving the page loses them.",
 			"failed": "Your changes could not be saved.",
 			"retry": "Retry",
 			"notSavedYet": "Your latest changes are not saved yet. Try again in a moment.",
 			"restored": "Restored the changes this device kept",
 			"recovery": {
 				"title": "Unsaved changes on this device.",
-				"description": "Changes from {when} were not applied, because this was changed elsewhere since.",
+				"description": "Changes from {when} were not applied, because the draft has changed since.",
 				"restore": "Restore them",
 				"discard": "Discard"
 			}

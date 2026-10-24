@@ -399,7 +399,11 @@ export function useCampaignForm(
 		showUnsavedChangesDialog,
 		isSavingBeforeLeave,
 		hasUnsavedChanges,
-		confirmDiscard,
+		// Discard: nothing of the draft's edits is saved on the way out.
+		confirmDiscard: () => {
+			drafts.autosave.cancel();
+			confirmDiscard();
+		},
 		confirmSave,
 		cancelNavigation,
 		onSenderPreselected,
