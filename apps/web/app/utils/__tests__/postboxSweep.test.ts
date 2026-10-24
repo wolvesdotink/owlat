@@ -60,6 +60,11 @@ describe('postboxSweepMark', () => {
 		expect(postboxSweepMark('select', true)).toBe('deselect');
 		expect(postboxSweepMark('archive', true)).toBe('archive');
 	});
+
+	it('keeps Team Updates’ dismiss apart from archive', () => {
+		expect(postboxSweepMark('dismiss', false)).toBe('dismiss');
+		expect(postboxSweepMark('dismiss', true)).toBe('dismiss');
+	});
 });
 
 describe('isPostboxSweepPress', () => {

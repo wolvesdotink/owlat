@@ -1,28 +1,32 @@
 /**
- * Sweep: press a row's checkbox or hover Archive button and drag across the
- * list to apply that one action to every row the pointer passes. The pointer
- * bookkeeping lives in `usePostboxSweep`; these are the pure parts, so the
- * range math and the row hit-test are tested without a mounted list.
+ * Sweep: press a row's checkbox or hover Archive (or Dismiss) button and drag
+ * across the list to apply that one action to every row the pointer passes.
+ * The pointer bookkeeping lives in `usePostboxSweep`; these are the pure parts,
+ * so the range math and the row hit-test are tested without a mounted list.
+ * The Postbox lists, the all-inboxes list and Team Updates share them.
  */
 
 /** Movement that turns a press on a sweep handle into a sweep; less is a click. */
 export const POSTBOX_SWEEP_START_PX = 5;
 
-/** The two handles a sweep can start from. */
-export type PostboxSweepKind = 'select' | 'archive';
+/**
+ * The handles a sweep can start from. `dismiss` is Team Updates' own verb (a
+ * terminal lifecycle step with no Undo), kept apart from mail's `archive`.
+ */
+export type PostboxSweepKind = 'select' | 'archive' | 'dismiss';
 
 /**
  * What a sweep does to each row it covers. A checkbox sweep takes its direction
  * from the row it started on: from an unticked box it selects, from a ticked
  * one it deselects, the way a click on that box would have.
  */
-export type PostboxSweepMark = 'select' | 'deselect' | 'archive';
+export type PostboxSweepMark = 'select' | 'deselect' | 'archive' | 'dismiss';
 
 export function postboxSweepMark(
 	kind: PostboxSweepKind,
 	originSelected: boolean
 ): PostboxSweepMark {
-	if (kind === 'archive') return 'archive';
+	if (kind !== 'select') return kind;
 	return originSelected ? 'deselect' : 'select';
 }
 
@@ -98,7 +102,7 @@ export function postboxSweepRowAtY(
  * up for the folder rail instead of sweeping.
  */
 export function createPostboxSweepHandle(
-	onStart: (kind: PostboxSweepKind, event: PointerEvent) => void
+	onStart: (kind: 'select' | 'archive', event: PointerEvent) => void
 ) {
 	let pressOnHandle = false;
 	return {

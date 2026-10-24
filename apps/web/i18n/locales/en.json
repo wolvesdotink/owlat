@@ -5506,6 +5506,7 @@
 				"select": "Select {count} message | Select {count} messages",
 				"deselect": "Deselect {count} message | Deselect {count} messages",
 				"archive": "Archive {count} message | Archive {count} messages",
+				"dismiss": "Dismiss {count} update | Dismiss {count} updates",
 				"escHint": "Esc to cancel"
 			},
 			"postboxThreadRow": {
@@ -11503,6 +11504,8 @@
 				"dismiss": "Done",
 				"dismissOperation": "Dismiss update",
 				"dismissedToast": "Update dismissed",
+				"dismissedManyToast": "{count} update dismissed | {count} updates dismissed",
+				"dismissSweepHint": "Done — drag across updates to dismiss several",
 				"empty": {
 					"updates": {
 						"title": "You're caught up",
@@ -12789,7 +12792,12 @@
 				"other": "Other"
 			},
 			"empty": "No conversations match these filters.",
-			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search."
+			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search.",
+			"archiveOperation": "Archive conversations",
+			"archiveUndoOperation": "Undo archive",
+			"archivedUndo": "Archived {count} conversation | Archived {count} conversations",
+			"archiveSweepHint": "Archive — drag across rows to archive several",
+			"sweepStatus": "Archive {count} conversation | Archive {count} conversations"
 		}
 	},
 	"desktop": {

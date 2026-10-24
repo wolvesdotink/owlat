@@ -7,7 +7,14 @@ import type { PostboxSweepMark } from '~/utils/postboxSweep';
  * scrolled out of view, or an Archive sweep's dimmed rows, would not say how
  * much is about to happen.
  */
-defineProps<{ status: { mark: PostboxSweepMark; count: number } | null }>();
+const props = defineProps<{
+	status: { mark: PostboxSweepMark; count: number } | null;
+	/**
+	 * The plural message for the count, when the rows are not messages (the
+	 * all-inboxes list sweeps conversations). Default: the mark's own key.
+	 */
+	labelKey?: string;
+}>();
 const { t } = useI18n();
 </script>
 
@@ -20,7 +27,7 @@ const { t } = useI18n();
 	>
 		<span class="font-medium">{{
 			t(
-				`components.postbox.postboxSweepStatus.${status.mark}`,
+				props.labelKey ?? `components.postbox.postboxSweepStatus.${status.mark}`,
 				{ count: status.count },
 				status.count
 			)

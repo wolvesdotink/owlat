@@ -1,0 +1,210 @@
+/**
+ * useInboxesThreadArchive — Archive (and the sweep from it) on the all-inboxes
+ * list, where Today's "Filed away" mailbox tiles land.
+ *
+ * Rows are conversations, so what is pinned is that the call carries THREAD
+ * ids (never a stand-in message id), that team-inbox rows are never archived,
+ * that a sweep does nothing before release and archives exactly the range
+ * once, and that one Undo covers it all.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { effectScope, nextTick, ref, type EffectScope } from 'vue';
+
+vi.mock('@owlat/api', () => {
+	const anyPath: unknown = new Proxy(function () {}, {
+		get: () => anyPath,
+		apply: () => anyPath,
+	});
+	return { api: anyPath };
+});
+
+const registerMoveBack = vi.fn();
+vi.mock('../postbox/usePostboxTriageUndo', () => ({
+	usePostboxTriageUndo: () => ({ registerMoveBack }),
+}));
+
+const ARCHIVE = 'dashboard.inboxes.archiveOperation';
+const ROW_PX = 50;
+
+type Row = { key: string; archive: { threadId: string } | null };
+
+let runs: Array<{ label: string; args: { threadIds?: string[] } }>;
+let outcomes: Array<{ ok: boolean; result?: unknown }>;
+let scope: EffectScope;
+let list: HTMLElement;
+
+beforeEach(() => {
+	runs = [];
+	outcomes = [];
+	registerMoveBack.mockClear();
+	vi.useFakeTimers();
+	vi.stubGlobal('useI18n', () => ({
+		t: (key: string, params?: { count?: number }) =>
+			params?.count === undefined ? key : `${key}:${params.count}`,
+	}));
+	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: { label: () => string }) => ({
+		run: vi.fn(async (args: { threadIds?: string[] }) => {
+			runs.push({ label: opts.label(), args });
+			return outcomes.shift() ?? movedFor(args.threadIds ?? []);
+		}),
+	}));
+});
+
+afterEach(() => {
+	scope?.stop();
+	list?.remove();
+	vi.useRealTimers();
+});
+
+/** A successful archive that moved one message per thread. */
+function movedFor(threadIds: string[]) {
+	return {
+		ok: true,
+		result: {
+			ok: true,
+			moved: threadIds.map((id) => ({ messageId: `m-${id}`, sourceFolderId: 'inbox' })),
+		},
+	};
+}
+
+const mailRow = (id: string): Row => ({ key: `mail:mbx:${id}`, archive: { threadId: id } });
+const teamRow = (id: string): Row => ({ key: `team:${id}`, archive: null });
+
+function buildList(rows: Row[]) {
+	list = document.createElement('ul');
+	for (const [i, row] of rows.entries()) {
+		const li = document.createElement('li');
+		li.dataset['sweepRow'] = row.key;
+		li.getBoundingClientRect = () => ({ top: i * ROW_PX, bottom: (i + 1) * ROW_PX }) as DOMRect;
+		list.appendChild(li);
+	}
+	document.body.appendChild(list);
+}
+
+function pointer(type: string, y: number): PointerEvent {
+	const event = new Event(type, { bubbles: true, cancelable: true });
+	Object.defineProperties(event, {
+		clientX: { value: 10 },
+		clientY: { value: y },
+		pointerType: { value: 'mouse' },
+		pointerId: { value: 1 },
+		isPrimary: { value: true },
+		button: { value: 0 },
+		shiftKey: { value: false },
+		metaKey: { value: false },
+		ctrlKey: { value: false },
+		altKey: { value: false },
+	});
+	return event as PointerEvent;
+}
+
+const yOf = (i: number) => i * ROW_PX + ROW_PX / 2;
+
+async function mount(initial: Row[]) {
+	const { useInboxesThreadArchive } = await import('../useInboxesThreadArchive');
+	const rows = ref(initial);
+	buildList(initial);
+	const listEl = ref<HTMLElement | null>(list);
+	const scopeKey = ref('all');
+	scope = effectScope();
+	const archive = scope.run(() =>
+		useInboxesThreadArchive({ rows: rows as never, listEl, scopeKey: () => scopeKey.value })
+	)!;
+	return { rows, scopeKey, ...archive };
+}
+
+/** Press row `from`'s Archive button and drag to row `to`. */
+function drag(api: Awaited<ReturnType<typeof mount>>, from: number, to: number) {
+	const key = api.rows.value[from]!.key;
+	api.sweep.start('archive', key, pointer('pointerdown', yOf(from)));
+	const step = to >= from ? 1 : -1;
+	window.dispatchEvent(pointer('pointermove', yOf(from) + step * 8));
+	for (let i = from; i !== to + step; i += step)
+		window.dispatchEvent(pointer('pointermove', yOf(i)));
+}
+
+const release = (row: number) => window.dispatchEvent(pointer('pointerup', yOf(row)));
+
+/** Let the awaited mutation calls settle (microtasks only, no clock). */
+async function settle() {
+	for (let i = 0; i < 10; i++) await Promise.resolve();
+}
+
+describe('useInboxesThreadArchive', () => {
+	it("archives a row's conversation by its thread id, with one Undo", async () => {
+		const api = await mount([mailRow('t1'), mailRow('t2')]);
+
+		expect(await api.archiveRow(api.rows.value[0]!)).toBe(true);
+
+		expect(runs).toEqual([{ label: ARCHIVE, args: { threadIds: ['t1'] } }]);
+		expect(api.visible.value.map((r) => r.key)).toEqual(['mail:mbx:t2']);
+		expect(registerMoveBack).toHaveBeenCalledTimes(1);
+		expect(registerMoveBack.mock.calls[0]![0]).toMatchObject({
+			kind: 'archived',
+			moved: [{ messageId: 'm-t1', sourceFolderId: 'inbox' }],
+		});
+	});
+
+	it('brings the row back when the archive fails', async () => {
+		const api = await mount([mailRow('t1'), mailRow('t2')]);
+		outcomes = [{ ok: false }];
+
+		expect(await api.archiveRow(api.rows.value[0]!)).toBe(false);
+
+		expect(api.visible.value.map((r) => r.key)).toEqual(['mail:mbx:t1', 'mail:mbx:t2']);
+		expect(registerMoveBack).not.toHaveBeenCalled();
+	});
+
+	it('never archives a team-inbox row', async () => {
+		const api = await mount([teamRow('x')]);
+		expect(await api.archiveRow(api.rows.value[0]!)).toBe(false);
+		expect(runs).toEqual([]);
+	});
+
+	it('a sweep archives exactly the range, once, on release, skipping team rows', async () => {
+		const api = await mount([
+			mailRow('t1'),
+			mailRow('t2'),
+			teamRow('x'),
+			mailRow('t3'),
+			mailRow('t4'),
+		]);
+
+		drag(api, 0, 3);
+		expect(runs).toEqual([]);
+		expect(api.sweep.status.value).toEqual({ mark: 'archive', count: 3 });
+		expect(api.sweep.markOf('team:x')).toBeNull();
+
+		release(3);
+		await settle();
+
+		expect(runs).toEqual([{ label: ARCHIVE, args: { threadIds: ['t1', 't2', 't3'] } }]);
+		expect(registerMoveBack).toHaveBeenCalledTimes(1);
+		expect(api.visible.value.map((r) => r.key)).toEqual(['team:x', 'mail:mbx:t4']);
+	});
+
+	it('a filter change mid-sweep cancels it', async () => {
+		const api = await mount([mailRow('t1'), mailRow('t2'), mailRow('t3')]);
+		drag(api, 0, 2);
+		api.scopeKey.value = 'mbx';
+		await nextTick();
+		release(2);
+		await nextTick();
+		expect(runs).toEqual([]);
+	});
+
+	it('splits a range longer than one call takes, under one Undo', async () => {
+		const many = Array.from({ length: 150 }, (_, i) => mailRow(`t${i}`));
+		const api = await mount(many);
+
+		api.sweep.start('archive', many[0]!.key, pointer('pointerdown', yOf(0)));
+		window.dispatchEvent(pointer('pointermove', yOf(0) + 8));
+		window.dispatchEvent(pointer('pointermove', yOf(149)));
+		release(149);
+		await settle();
+
+		expect(registerMoveBack).toHaveBeenCalledTimes(1);
+		expect(runs.map((r) => r.args.threadIds!.length)).toEqual([100, 50]);
+		expect(registerMoveBack.mock.calls[0]![0].moved).toHaveLength(150);
+	});
+});
