@@ -74,18 +74,24 @@ describe('UiProgressBar', () => {
 		);
 	});
 
-	it('runs the indeterminate sweep only while it is on screen', async () => {
+	it('runs the indeterminate sweep only while its stationary track is on screen', async () => {
 		const wrapper = mountUi(ProgressBar, { indeterminate: true });
 		await nextTick();
+		const track = wrapper.get('[role="progressbar"]').element;
 		const sweep = wrapper.get('.progress-indeterminate').element;
 		const observer = FakeIntersectionObserver.current();
-		expect(observer.observed.has(sweep)).toBe(true);
-		expect(stateOf(sweep)).toBe('paused');
+		// The sweep moves out of the viewport mid-cycle; observing it would pause
+		// it off-track. Only the track is observed, and the sweep inherits its
+		// state (the scoped CSS reads the custom property without setting it).
+		expect([...observer.observed]).toEqual([track]);
+		expect(sweep.parentElement).toBe(track);
+		expect(stateOf(sweep)).toBe('');
+		expect(stateOf(track)).toBe('paused');
 
-		observer.report(sweep, true);
-		expect(stateOf(sweep)).toBe('running');
-		observer.report(sweep, false);
-		expect(stateOf(sweep)).toBe('paused');
+		observer.report(track, true);
+		expect(stateOf(track)).toBe('running');
+		observer.report(track, false);
+		expect(stateOf(track)).toBe('paused');
 	});
 
 	it('keeps the indeterminate ARIA contract and drops the observer when it turns determinate', async () => {

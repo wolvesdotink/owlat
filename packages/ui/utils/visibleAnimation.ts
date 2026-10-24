@@ -84,7 +84,12 @@ function stop(): void {
 }
 
 /**
- * Register a looping animation's host element. Returns the unregister function;
+ * Register a looping animation's host element. The host must stay put while the
+ * animation runs (a track, not the sweep moving across it): a moving element
+ * leaves the viewport mid-cycle and would pause itself out of sight. Animated
+ * descendants inherit the state through the custom property.
+ *
+ * Returns the unregister function;
  * calling it more than once, or after the element was registered again, is a
  * no-op for the stale registration.
  *

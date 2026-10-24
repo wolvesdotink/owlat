@@ -47,12 +47,17 @@ const fillColor: Record<ProgressVariant, string> = {
 
 const trackHeight = computed(() => (props.size === 'sm' ? 'h-1.5' : 'h-2.5'));
 
-const sweep = ref<HTMLElement | null>(null);
-useVisibleAnimation(sweep);
+// Observe the stationary track, not the sweep: the sweep slides out of the
+// viewport mid-cycle on a wide bar, and pausing it there would leave an empty
+// track. The sweep reads the track's play state through the inherited custom
+// property.
+const track = ref<HTMLElement | null>(null);
+useVisibleAnimation(track, () => props.indeterminate);
 </script>
 
 <template>
 	<div
+		ref="track"
 		class="w-full rounded-full bg-text-tertiary/15 overflow-hidden"
 		:class="trackHeight"
 		role="progressbar"
@@ -64,7 +69,6 @@ useVisibleAnimation(sweep);
 	>
 		<div
 			v-if="indeterminate"
-			ref="sweep"
 			class="h-full w-1/3 rounded-full progress-indeterminate"
 			:class="fillColor[variant]"
 		/>
