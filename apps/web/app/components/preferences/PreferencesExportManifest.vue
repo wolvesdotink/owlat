@@ -11,6 +11,7 @@
  * unknown count and an empty resource must not look the same.
  */
 import type { AccountExportManifestRow } from '~/utils/accountExportProgress';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 const props = defineProps<{
 	rows: AccountExportManifestRow[];
@@ -35,8 +36,6 @@ function countLabel(row: AccountExportManifestRow): string {
 			})
 		: formatCount(row.count);
 }
-
-const barWidth = computed(() => `${props.percent ?? 100}%`);
 </script>
 
 <template>
@@ -76,9 +75,9 @@ const barWidth = computed(() => `${props.percent ?? 100}%`);
 				:aria-label="t('components.preferences.preferencesExportManifest.progressLabel')"
 			>
 				<div
-					class="h-full bg-brand transition-[width] duration-300 motion-reduce:transition-none"
+					class="ui-meter-fill h-full bg-brand transition-transform duration-300 motion-reduce:transition-none"
 					:class="percent === null ? 'animate-pulse motion-reduce:animate-none' : ''"
-					:style="{ width: barWidth }"
+					:style="meterFillStyle(percent ?? 100)"
 				/>
 			</div>
 			<p class="text-xs text-text-tertiary" aria-live="polite">

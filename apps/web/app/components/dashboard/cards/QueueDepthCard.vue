@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { formatNumber } from '~/utils/formatters';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 const { t, locale } = useI18n();
 
@@ -88,9 +89,9 @@ const maxCount = computed(() => {
 						</div>
 						<div class="h-1.5 bg-bg-surface rounded-full overflow-hidden">
 							<div
-								class="h-full rounded-full transition-all duration-(--motion-slow)"
+								class="ui-meter-fill h-full rounded-full transition-transform duration-(--motion-slow)"
 								:class="item.color"
-								:style="{ width: `${(item.count / maxCount) * 100}%` }"
+								:style="meterFillStyle((item.count / maxCount) * 100)"
 							/>
 						</div>
 					</div>

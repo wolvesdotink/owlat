@@ -18,6 +18,7 @@ import { mount } from '@vue/test-utils';
 import InboxThreadRow, { type InboxThreadRowThread } from '../InboxThreadRow.vue';
 import PostboxRowCore from '../../postbox/PostboxRowCore.vue';
 import StatusChip from '../StatusChip.vue';
+import UiPresenceRing from '@owlat/ui/components/ui/PresenceRing.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 // Every visible string flows through vue-i18n now: mount with the real catalog
@@ -65,7 +66,7 @@ function mountRow(
 		},
 		global: {
 			plugins: [createTestI18n()],
-			components: { PostboxRowCore, InboxStatusChip: StatusChip },
+			components: { PostboxRowCore, InboxStatusChip: StatusChip, UiPresenceRing },
 			stubs: {
 				Icon: true,
 				UiAvatar: UiAvatarStub,
@@ -182,7 +183,7 @@ describe('InboxThreadRow response-target chip', () => {
 			},
 			global: {
 				plugins: [createTestI18n()],
-				components: { PostboxRowCore, InboxStatusChip: StatusChip },
+				components: { PostboxRowCore, InboxStatusChip: StatusChip, UiPresenceRing },
 				stubs: {
 					Icon: true,
 					UiAvatar: UiAvatarStub,

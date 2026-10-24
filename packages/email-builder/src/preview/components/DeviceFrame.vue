@@ -94,7 +94,10 @@ const isTablet = computed(() => props.device.type === 'tablet');
 	background: var(--ep-bg-surface);
 	border: 1px solid var(--ep-border-default);
 	overflow: hidden;
-	transition: all var(--motion-moderate, 160ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition-property:
+		width, height, transform, border-radius, border-width, border-color, box-shadow;
+	transition-duration: var(--motion-moderate, 160ms);
+	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 /* Desktop frame */
