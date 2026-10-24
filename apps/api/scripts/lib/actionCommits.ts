@@ -21,9 +21,14 @@
  *   - a loop body, or a callback handed to an array method (`map`, `forEach`,
  *     …), counts twice: it can commit once per item, and two is enough to make
  *     a single commit inside it an offender;
+ *   - a `switch` clause that does not `break`, `return` or `throw` falls
+ *     through, so it adds to the clauses below it;
  *   - a call to a function declared in the same module (top level, or a named
- *     closure inside the handler) adds that function's own count, at each call;
- *     any other function literal counts once where it is written.
+ *     closure in any enclosing function, resolved by lexical scope) adds that
+ *     function's own count, at each call; so does handing such a function to
+ *     another call by name (`items.map(persist)`), counted like a literal
+ *     callback there. Any other function literal counts once where it is
+ *     written.
  *
  * Functions imported from another module are not followed, and neither is a
  * mutation reached through `ctx.runAction`. The count is a bound for review,
@@ -145,27 +150,92 @@ function isRunMutationCall(node: ts.Node): node is ts.CallExpression {
 	);
 }
 
-/** Named functions a body declares anywhere inside it, by binding name. */
-function collectNamedFunctions(root: ts.Node, into: Map<string, FunctionLike>): void {
-	const visit = (node: ts.Node): void => {
-		if (ts.isFunctionDeclaration(node) && node.name) {
-			into.set(node.name.text, node);
-		} else if (
-			ts.isVariableDeclaration(node) &&
-			ts.isIdentifier(node.name) &&
-			node.initializer &&
-			(ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
-		) {
-			into.set(node.name.text, node.initializer);
+/** Aliases (`const run = persist`) followed before a name is given up on. */
+const MAX_ALIASES = 8;
+
+/**
+ * The function `name` stands for where it is written, found the way
+ * JavaScript scoping finds it: the nearest enclosing block, function or module
+ * that declares the name. A parameter, a non-function binding or an import
+ * shadows it and resolves to nothing; `const run = persist` is followed to
+ * `persist`. Resolution depends only on where the name is written, so a helper
+ * declared in a handler is found from every closure nested in that handler.
+ */
+function resolveFunction(name: ts.Identifier): FunctionLike | undefined {
+	return resolveName(name.text, name, 0);
+}
+
+function resolveName(name: string, site: ts.Node, aliases: number): FunctionLike | undefined {
+	for (let scope = site.parent; scope; scope = scope.parent) {
+		if (isFunctionLiteral(scope)) {
+			if (scope.parameters.some((parameter) => bindsName(parameter.name, name))) return undefined;
+			if (ts.isFunctionExpression(scope) && scope.name?.text === name) return scope;
 		}
-		ts.forEachChild(node, visit);
-	};
-	ts.forEachChild(root, visit);
+		if (ts.isCatchClause(scope) && scope.variableDeclaration) {
+			if (bindsName(scope.variableDeclaration.name, name)) return undefined;
+		}
+		if (
+			(ts.isForStatement(scope) || ts.isForOfStatement(scope) || ts.isForInStatement(scope)) &&
+			scope.initializer &&
+			ts.isVariableDeclarationList(scope.initializer) &&
+			scope.initializer.declarations.some((declaration) => bindsName(declaration.name, name))
+		) {
+			return undefined;
+		}
+		for (const statement of scopeStatements(scope)) {
+			const binding = declarationOf(statement, name);
+			if (binding === undefined) continue;
+			if (binding === SHADOWED) return undefined;
+			if (isFunctionLiteral(binding)) return binding;
+			return aliases < MAX_ALIASES ? resolveName(binding.text, binding, aliases + 1) : undefined;
+		}
+	}
+	return undefined;
+}
+
+const SHADOWED = 'shadowed';
+
+/** The statements declared directly in `scope`, if it is a block-like scope. */
+function scopeStatements(scope: ts.Node): readonly ts.Statement[] {
+	if (ts.isBlock(scope) || ts.isSourceFile(scope) || ts.isModuleBlock(scope)) {
+		return scope.statements;
+	}
+	if (ts.isCaseBlock(scope)) return scope.clauses.flatMap((clause) => [...clause.statements]);
+	return [];
+}
+
+/**
+ * What `statement` binds `name` to: a function, an identifier it aliases,
+ * `SHADOWED` for any other binding, or `undefined` when it does not bind it.
+ */
+function declarationOf(
+	statement: ts.Statement,
+	name: string
+): FunctionLike | ts.Identifier | typeof SHADOWED | undefined {
+	if (ts.isFunctionDeclaration(statement) && statement.name?.text === name) return statement;
+	if (ts.isClassDeclaration(statement) && statement.name?.text === name) return SHADOWED;
+	if (!ts.isVariableStatement(statement)) return undefined;
+	for (const declaration of statement.declarationList.declarations) {
+		if (!bindsName(declaration.name, name)) continue;
+		const init = declaration.initializer;
+		if (!ts.isIdentifier(declaration.name) || !init) return SHADOWED;
+		if (ts.isArrowFunction(init) || ts.isFunctionExpression(init) || ts.isIdentifier(init)) {
+			return init;
+		}
+		return SHADOWED;
+	}
+	return undefined;
+}
+
+function bindsName(binding: ts.BindingName, name: string): boolean {
+	if (ts.isIdentifier(binding)) return binding.text === name;
+	return binding.elements.some(
+		(element) => !ts.isOmittedExpression(element) && bindsName(element.name, name)
+	);
 }
 
 class ModuleAnalysis {
 	private readonly text: string;
-	private readonly topLevel = new Map<string, FunctionLike>();
 	private readonly cost = new Map<FunctionLike, number>();
 	private readonly inProgress = new Set<FunctionLike>();
 	/** Every `// checkpoint:` comment, by its start offset. */
@@ -176,22 +246,6 @@ class ModuleAnalysis {
 		readonly sourceFile: ts.SourceFile
 	) {
 		this.text = sourceFile.getFullText();
-		for (const statement of sourceFile.statements) {
-			if (ts.isFunctionDeclaration(statement) && statement.name) {
-				this.topLevel.set(statement.name.text, statement);
-			} else if (ts.isVariableStatement(statement)) {
-				for (const declaration of statement.declarationList.declarations) {
-					const init = declaration.initializer;
-					if (
-						ts.isIdentifier(declaration.name) &&
-						init &&
-						(ts.isArrowFunction(init) || ts.isFunctionExpression(init))
-					) {
-						this.topLevel.set(declaration.name.text, init);
-					}
-				}
-			}
-		}
 		this.collectMarkers();
 		this.claimMarkers();
 	}
@@ -217,7 +271,7 @@ class ModuleAnalysis {
 		const [definition] = init.arguments;
 		if (!definition) return undefined;
 		if (isFunctionLiteral(definition)) return definition;
-		if (ts.isIdentifier(definition)) return this.topLevel.get(definition.text);
+		if (ts.isIdentifier(definition)) return resolveFunction(definition);
 		if (!ts.isObjectLiteralExpression(definition)) return undefined;
 		for (const property of definition.properties) {
 			if (!property.name || !ts.isIdentifier(property.name)) continue;
@@ -226,9 +280,9 @@ class ModuleAnalysis {
 			if (ts.isPropertyAssignment(property)) {
 				const value = property.initializer;
 				if (isFunctionLiteral(value)) return value;
-				if (ts.isIdentifier(value)) return this.topLevel.get(value.text);
+				if (ts.isIdentifier(value)) return resolveFunction(value);
 			}
-			if (ts.isShorthandPropertyAssignment(property)) return this.topLevel.get('handler');
+			if (ts.isShorthandPropertyAssignment(property)) return resolveFunction(property.name);
 		}
 		return undefined;
 	}
@@ -239,103 +293,103 @@ class ModuleAnalysis {
 		if (known !== undefined) return known;
 		if (this.inProgress.has(fn) || !fn.body) return 0;
 		this.inProgress.add(fn);
-		const locals = new Map<string, FunctionLike>();
-		collectNamedFunctions(fn.body, locals);
 		const commits = ts.isBlock(fn.body)
-			? worst(this.block(fn.body.statements, locals))
-			: this.expression(fn.body, locals);
+			? worst(this.block(fn.body.statements))
+			: this.expression(fn.body);
 		this.inProgress.delete(fn);
 		this.cost.set(fn, commits);
 		return commits;
 	}
 
-	private block(statements: ts.NodeArray<ts.Statement>, locals: Locals): Flow {
+	private block(statements: ts.NodeArray<ts.Statement>): Flow {
 		let flow = straight(0);
-		for (const statement of statements) flow = sequence(flow, this.statement(statement, locals));
+		for (const statement of statements) flow = sequence(flow, this.statement(statement));
 		return flow;
 	}
 
-	private statement(node: ts.Statement, locals: Locals): Flow {
-		if (ts.isBlock(node)) return this.block(node.statements, locals);
+	private statement(node: ts.Statement): Flow {
+		if (ts.isBlock(node)) return this.block(node.statements);
 		if (ts.isReturnStatement(node) || ts.isThrowStatement(node)) {
-			const commits = node.expression ? this.expression(node.expression, locals) : 0;
+			const commits = node.expression ? this.expression(node.expression) : 0;
 			return { fall: NONE, exit: commits, jump: NONE };
 		}
 		if (ts.isBreakStatement(node) || ts.isContinueStatement(node)) {
 			return { fall: NONE, exit: NONE, jump: 0 };
 		}
 		if (ts.isIfStatement(node)) {
-			const then = this.statement(node.thenStatement, locals);
-			const otherwise = node.elseStatement
-				? this.statement(node.elseStatement, locals)
-				: straight(0);
-			return sequence(straight(this.expression(node.expression, locals)), either(then, otherwise));
+			const then = this.statement(node.thenStatement);
+			const otherwise = node.elseStatement ? this.statement(node.elseStatement) : straight(0);
+			return sequence(straight(this.expression(node.expression)), either(then, otherwise));
 		}
-		if (ts.isIterationStatement(node, false)) return this.loop(node, locals);
+		if (ts.isIterationStatement(node, false)) return this.loop(node);
 		if (ts.isSwitchStatement(node)) {
-			let clauses: Flow | undefined;
+			// A clause is entered by matching (with nothing committed yet) or by
+			// falling through from the clause above it, so a clause without a
+			// `break`, `return` or `throw` adds to the clauses below it. `break`
+			// leaves the switch, which is falling through past it.
+			let carried = NONE;
+			let leaves = straight(NONE);
 			let hasDefault = false;
 			for (const clause of node.caseBlock.clauses) {
 				if (ts.isDefaultClause(clause)) hasDefault = true;
-				const body = this.block(clause.statements, locals);
-				// `break` leaves the switch, which is falling through past it.
-				const flow = { fall: Math.max(body.fall, body.jump), exit: body.exit, jump: NONE };
-				clauses = clauses ? either(clauses, flow) : flow;
+				const body = sequence(straight(Math.max(0, carried)), this.block(clause.statements));
+				leaves = either(leaves, { fall: body.jump, exit: body.exit, jump: NONE });
+				carried = body.fall;
 			}
-			const joined = clauses ?? straight(0);
+			const joined = either(leaves, straight(carried));
 			return sequence(
-				straight(this.expression(node.expression, locals)),
+				straight(this.expression(node.expression)),
 				hasDefault ? joined : either(joined, straight(0))
 			);
 		}
 		if (ts.isTryStatement(node)) {
-			const attempt = this.block(node.tryBlock.statements, locals);
+			const attempt = this.block(node.tryBlock.statements);
 			let body = attempt;
 			if (node.catchClause) {
-				const recovered = this.block(node.catchClause.block.statements, locals);
+				const recovered = this.block(node.catchClause.block.statements);
 				body = either(attempt, sequence(straight(worst(attempt)), recovered));
 			}
 			if (!node.finallyBlock) return body;
-			const cleanup = this.block(node.finallyBlock.statements, locals);
+			const cleanup = this.block(node.finallyBlock.statements);
 			return {
 				fall: body.fall + cleanup.fall,
 				exit: Math.max(body.exit + cleanup.fall, worst(body) + cleanup.exit),
 				jump: body.jump + cleanup.fall,
 			};
 		}
-		if (ts.isLabeledStatement(node)) return this.statement(node.statement, locals);
+		if (ts.isLabeledStatement(node)) return this.statement(node.statement);
 		// Named functions are counted where they are called.
 		if (ts.isFunctionDeclaration(node)) return straight(0);
-		return straight(this.children(node, locals));
+		return straight(this.children(node));
 	}
 
-	private loop(node: ts.IterationStatement, locals: Locals): Flow {
+	private loop(node: ts.IterationStatement): Flow {
 		let header = 0;
 		if (ts.isForStatement(node)) {
 			for (const part of [node.initializer, node.condition, node.incrementor]) {
-				if (part) header += this.expression(part, locals);
+				if (part) header += this.expression(part);
 			}
 		} else if (ts.isForOfStatement(node) || ts.isForInStatement(node)) {
-			header += this.expression(node.expression, locals);
+			header += this.expression(node.expression);
 		} else if (ts.isWhileStatement(node) || ts.isDoStatement(node)) {
-			header += this.expression(node.expression, locals);
+			header += this.expression(node.expression);
 		}
-		const body = this.statement(node.statement, locals);
+		const body = this.statement(node.statement);
 		const perIteration = worst(body);
 		const total = header + (perIteration > 0 ? LOOP_FACTOR * perIteration : 0);
 		return { fall: total, exit: body.exit === NONE ? NONE : total, jump: NONE };
 	}
 
-	private expression(node: ts.Node, locals: Locals): number {
+	private expression(node: ts.Node): number {
 		if (isRunMutationCall(node)) {
 			const own = this.isExempt(node) ? 0 : 1;
-			return own + this.children(node, locals);
+			return own + this.children(node);
 		}
-		if (ts.isCallExpression(node)) return this.call(node, locals);
+		if (ts.isCallExpression(node)) return this.call(node);
 		if (ts.isConditionalExpression(node)) {
 			return (
-				this.expression(node.condition, locals) +
-				Math.max(this.expression(node.whenTrue, locals), this.expression(node.whenFalse, locals))
+				this.expression(node.condition) +
+				Math.max(this.expression(node.whenTrue), this.expression(node.whenFalse))
 			);
 		}
 		if (isFunctionLiteral(node)) {
@@ -346,33 +400,34 @@ class ModuleAnalysis {
 				ts.isFunctionDeclaration(node);
 			return isNamed ? 0 : this.functionCost(node);
 		}
-		return this.children(node, locals);
+		return this.children(node);
 	}
 
-	private call(node: ts.CallExpression, locals: Locals): number {
+	private call(node: ts.CallExpression): number {
 		const callee = node.expression;
 		let commits = 0;
 		if (ts.isIdentifier(callee)) {
-			const target = locals.get(callee.text) ?? this.topLevel.get(callee.text);
+			const target = resolveFunction(callee);
 			if (target) commits += this.functionCost(target);
 		} else {
-			commits += this.expression(callee, locals);
+			commits += this.expression(callee);
 		}
 		const iterates =
 			ts.isPropertyAccessExpression(callee) && ITERATING_METHODS.has(callee.name.text);
 		for (const argument of node.arguments) {
-			const cost = this.expression(argument, locals);
-			commits += iterates && isFunctionLiteral(argument) ? LOOP_FACTOR * cost : cost;
+			// A function handed over by name may be called just like a literal one.
+			const named = ts.isIdentifier(argument) ? resolveFunction(argument) : undefined;
+			const isCallback = named !== undefined || isFunctionLiteral(argument);
+			const cost = named ? this.functionCost(named) : this.expression(argument);
+			commits += iterates && isCallback ? LOOP_FACTOR * cost : cost;
 		}
 		return commits;
 	}
 
-	private children(node: ts.Node, locals: Locals): number {
+	private children(node: ts.Node): number {
 		let commits = 0;
 		ts.forEachChild(node, (child) => {
-			commits += ts.isBlock(child)
-				? worst(this.block(child.statements, locals))
-				: this.expression(child, locals);
+			commits += ts.isBlock(child) ? worst(this.block(child.statements)) : this.expression(child);
 		});
 		return commits;
 	}
@@ -440,8 +495,6 @@ interface Marker {
 	readonly isOwnLine: boolean;
 	isClaimed: boolean;
 }
-
-type Locals = ReadonlyMap<string, FunctionLike>;
 
 /** Count the commits of every action in one module's source. */
 export function censusModule(module: string, source: string): ModuleCensus {

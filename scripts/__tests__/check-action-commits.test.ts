@@ -5,8 +5,9 @@
  * The census (`apps/api/scripts/lib/actionCommits.ts`) counts the most
  * `runMutation` calls one run of an action can make. These cases pin how it
  * reads code — comments and strings are not calls, alternative branches and
- * early returns are not added up, loops and per-item callbacks are, same-module
- * helpers are followed — and where a `// checkpoint:` marker may sit. The last
+ * early returns are not added up, loops, per-item callbacks and switch
+ * fall-through are, same-module helpers are followed by lexical scope, also
+ * when handed over by name — and where a `// checkpoint:` marker may sit. The last
  * block runs the real gate, once against a throwaway tree to see the ratchet
  * fail in both directions and once against the repository itself. The census
  * is driven through its CLI (`--stdin`), the way the gate runs it.
@@ -144,6 +145,34 @@ describe('action commit census — one run, not every line', () => {
 		expect(counts(action(body))).toEqual({ work: 3 });
 	});
 
+	it('adds a switch clause that falls through to the clauses below it', () => {
+		const body = [
+			'switch (kind) {',
+			"case 'both':",
+			M('first'),
+			'// falls through',
+			'default:',
+			M('second'),
+			'}',
+		].join('\n');
+		expect(counts(action(body))).toEqual({ work: 2 });
+	});
+
+	it('stops a fall-through at break, return or throw', () => {
+		const body = [
+			'switch (kind) {',
+			`case 'a': ${M('a')} break;`,
+			`case 'b': ${M('b')}`,
+			`case 'c': ${M('c')} return;`,
+			`case 'd': ${M('d')} throw new Error('x');`,
+			`case 'e': ${M('e')}`,
+			'}',
+			M('after'),
+		].join('\n');
+		// 'b' falls into 'c' and returns (2); 'e' falls out of the switch (2).
+		expect(counts(action(body))).toEqual({ work: 2 });
+	});
+
 	it('adds both sides of && / ||', () => {
 		const body = `ok && (await ctx.runMutation(internal.x.a, {}));\nok || (await ctx.runMutation(internal.x.b, {}));`;
 		expect(counts(action(body))).toEqual({ work: 2 });
@@ -192,6 +221,39 @@ describe('action commit census — helpers', () => {
 			),
 		].join('\n');
 		expect(counts(source)).toEqual({ work: 3 });
+	});
+
+	it('counts a helper handed by name to a per-item callback as many', () => {
+		const body = [
+			'const persist = async (item) => ctx.runMutation(internal.x.save, { item });',
+			'await Promise.all(items.map(persist));',
+		].join('\n');
+		expect(counts(action(body))).toEqual({ work: 2 });
+		const source = [
+			`async function persist(ctx, item) {\n${M('a')}\n}`,
+			action('await withRetry(persist);'),
+		].join('\n');
+		expect(counts(source)).toEqual({ work: 1 });
+	});
+
+	it('resolves a helper from a closure nested in the function that declares it', () => {
+		const body = [
+			`const persist = async () => { ${M('a')} };`,
+			'const twice = async () => { await persist(); await persist(); };',
+			'await twice();',
+		].join('\n');
+		expect(counts(action(body))).toEqual({ work: 2 });
+	});
+
+	it('follows an alias, and not a name a parameter shadows', () => {
+		const body = [
+			`const persist = async () => { ${M('a')} };`,
+			'const run = persist;',
+			'await run();',
+			'const inner = async (persist) => { await persist(); await persist(); };',
+			'await inner(noop);',
+		].join('\n');
+		expect(counts(action(body))).toEqual({ work: 1 });
 	});
 
 	it('counts a closure that is never called by name where it is written', () => {
