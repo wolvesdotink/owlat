@@ -190,7 +190,9 @@ export function nativeTitleFindings(root: string = workspace): string[] {
 				sites = nativeTitleSites(readFileSync(file, 'utf8'));
 			} catch (error) {
 				// A template the gate cannot read is not one it can vouch for.
-				throw new Error(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+				throw new Error(`${path}: ${error instanceof Error ? error.message : String(error)}`, {
+					cause: error,
+				});
 			}
 			for (const site of sites) lines.push(`${path}\t${site}`);
 		}
