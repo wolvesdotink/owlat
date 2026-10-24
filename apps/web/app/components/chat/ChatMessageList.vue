@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { useReducedMotion } from '@owlat/ui/composables/useReducedMotion';
+import { useVirtualList } from '@owlat/ui/composables/useVirtualList';
 import type { ChatMessageRow } from '~/composables/chat/useChatRoom';
 
 interface Props {
@@ -20,25 +21,41 @@ const { t, locale } = useI18n();
 const scrollerRef = ref<HTMLElement | null>(null);
 const reducedMotion = useReducedMotion();
 
-// Group messages by date for date separators.
-const groupedMessages = computed(() => {
+/** One row of the windowed list: a day separator or a message. */
+type ChatListRow =
+	| { kind: 'date'; key: string; label: string; firstInList: boolean }
+	| { kind: 'message'; key: string; message: ChatMessageRow; firstInDay: boolean };
+
+// Day separators and messages as one flat, keyed list, so the window can start
+// or end inside a day and each separator is measured like any other row.
+const rows = computed<ChatListRow[]>(() => {
 	const dateFormat = new Intl.DateTimeFormat(locale.value, {
 		weekday: 'long',
 		year: 'numeric',
 		month: 'long',
 		day: 'numeric',
 	});
-	const groups: { date: string; messages: ChatMessageRow[] }[] = [];
+	const out: ChatListRow[] = [];
+	const seen = new Map<string, number>();
 	let currentDate = '';
 	for (const message of props.messages) {
 		const messageDate = dateFormat.format(new Date(message.createdAt));
-		if (messageDate !== currentDate) {
+		const firstInDay = messageDate !== currentDate;
+		if (firstInDay) {
 			currentDate = messageDate;
-			groups.push({ date: messageDate, messages: [] });
+			// Out-of-order timestamps can repeat a day; keys must stay unique.
+			const repeat = seen.get(messageDate) ?? 0;
+			seen.set(messageDate, repeat + 1);
+			out.push({
+				kind: 'date',
+				key: repeat === 0 ? `date:${messageDate}` : `date:${messageDate}#${repeat}`,
+				label: messageDate,
+				firstInList: out.length === 0,
+			});
 		}
-		groups[groups.length - 1]!.messages.push(message);
+		out.push({ kind: 'message', key: message._id, message, firstInDay });
 	}
-	return groups;
+	return out;
 });
 
 const isOwnMessage = (message: ChatMessageRow) => message.authorId === props.currentUserId;
@@ -50,15 +67,64 @@ const isOwnMessage = (message: ChatMessageRow) => message.authorId === props.cur
  */
 const STICK_TO_BOTTOM_PX = 80;
 
-const scrollToBottom = (behavior: ScrollBehavior) => {
-	const el = scrollerRef.value;
-	if (!el) return;
-	el.scrollTo({ top: el.scrollHeight, behavior });
+// Row heights before a row is measured, from the row's box: 8px of padding, a
+// 20px name line, 22.75px per text line and a 2px gap above all but a day's
+// first message. Close guesses keep the scrollbar steady while history mounts.
+const MESSAGE_CHROME_PX = 28;
+const TEXT_LINE_PX = 22.75;
+const CHARS_PER_LINE = 100;
+const ATTACHMENTS_PX = 48;
+const estimates = new WeakMap<ChatMessageRow, number>();
+const estimateRow = (row: ChatListRow): number => {
+	if (row.kind === 'date') return row.firstInList ? 25 : 41;
+	let estimate = estimates.get(row.message);
+	if (estimate === undefined) {
+		let lines = 0;
+		for (const line of row.message.text.split('\n')) {
+			lines += Math.max(1, Math.ceil(line.length / CHARS_PER_LINE));
+		}
+		estimate =
+			MESSAGE_CHROME_PX +
+			lines * TEXT_LINE_PX +
+			((row.message.attachmentIds?.length ?? 0) > 0 ? ATTACHMENTS_PX : 0);
+		estimates.set(row.message, estimate);
+	}
+	return estimate + (row.firstInDay ? 0 : 2);
 };
 
-// Opening a room lands on the newest message at once. A smooth scroll here
-// animated through the whole history on every open.
-onMounted(() => scrollToBottom('auto'));
+// A message with its editor open keeps its draft in the row, so the row stays
+// mounted while scrolled out of view.
+const editingIds = shallowRef<ReadonlySet<string>>(new Set());
+const onEditing = (messageId: Id<'chatMessages'>, active: boolean) => {
+	const next = new Set(editingIds.value);
+	if (active) next.add(messageId);
+	else next.delete(messageId);
+	editingIds.value = next;
+};
+
+const {
+	rows: visibleRows,
+	paddingTop,
+	paddingBottom,
+	measure,
+	distanceFromEnd,
+	scrollToEnd,
+} = useVirtualList({
+	items: rows,
+	getKey: (row) => row.key,
+	estimateSize: estimateRow,
+	scrollerRef,
+	// Opening a room lands on the newest message at once; a reader at the
+	// bottom stays there while a reply streams in or an attachment loads.
+	stickToEnd: true,
+	endThresholdPx: STICK_TO_BOTTOM_PX,
+	keepMounted: () => editingIds.value,
+});
+
+const rowClass = (row: ChatListRow): string => {
+	if (row.kind === 'date') return row.firstInList ? 'pb-2' : 'pt-4 pb-2';
+	return row.firstInDay ? '' : 'pt-0.5';
+};
 
 // A new message at the end follows the conversation only if the viewer was
 // already at the bottom, or it is their own (they just sent it). This watcher
@@ -71,13 +137,12 @@ watch(
 	(lastId, previousLastId) => {
 		if (!lastId || lastId === previousLastId) return;
 		if (previousLastId && !props.messages.some((m) => m._id === previousLastId)) return;
-		const el = scrollerRef.value;
-		if (!el) return;
-		const wasNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_TO_BOTTOM_PX;
+		if (!scrollerRef.value) return;
+		const wasNearBottom = distanceFromEnd() <= STICK_TO_BOTTOM_PX;
 		const newest = props.messages.at(-1);
 		if (!wasNearBottom && !(newest && isOwnMessage(newest))) return;
 		const behavior: ScrollBehavior = reducedMotion.value ? 'auto' : 'smooth';
-		nextTick(() => scrollToBottom(behavior));
+		nextTick(() => scrollToEnd(behavior));
 	}
 );
 </script>
@@ -101,28 +166,36 @@ watch(
 			</p>
 		</div>
 
-		<template v-else>
-			<div v-for="group in groupedMessages" :key="group.date" class="mb-4">
-				<div class="flex items-center gap-4 mb-2">
+		<!-- Only the rows near the viewport are mounted; the spacers stand in for
+		     the rest of the history (see useVirtualList). -->
+		<div v-else class="pb-4">
+			<div :style="{ height: `${paddingTop}px` }" />
+			<div
+				v-for="row in visibleRows"
+				:key="row.key"
+				:ref="measure(row.key)"
+				:data-row-kind="row.item.kind"
+				:class="rowClass(row.item)"
+				:style="row.gapBefore > 0 ? { marginTop: `${row.gapBefore}px` } : undefined"
+			>
+				<div v-if="row.item.kind === 'date'" class="flex items-center gap-4">
 					<div class="flex-1 h-px bg-border-subtle" />
 					<span class="text-[11px] text-text-tertiary font-medium flex-shrink-0">
-						{{ group.date }}
+						{{ row.item.label }}
 					</span>
 					<div class="flex-1 h-px bg-border-subtle" />
 				</div>
-
-				<div class="space-y-0.5">
-					<ChatMessage
-						v-for="message in group.messages"
-						:key="message._id"
-						:message="message"
-						:is-own-message="isOwnMessage(message)"
-						:current-user-id="currentUserId"
-						@edit="(id, text) => emit('edit', id, text)"
-						@delete="(id) => emit('delete', id)"
-					/>
-				</div>
+				<ChatMessage
+					v-else
+					:message="row.item.message"
+					:is-own-message="isOwnMessage(row.item.message)"
+					:current-user-id="currentUserId"
+					@edit="(id, text) => emit('edit', id, text)"
+					@delete="(id) => emit('delete', id)"
+					@editing="onEditing"
+				/>
 			</div>
-		</template>
+			<div :style="{ height: `${paddingBottom}px` }" />
+		</div>
 	</div>
 </template>
