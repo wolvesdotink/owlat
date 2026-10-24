@@ -12,22 +12,13 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageAttachmentValidator } from '../../lib/validators/mailContent';
 
-/** The addressing and identity headers of a delivered message. */
-export const deliveredEnvelopeFields = {
-	from: v.string(),
-	to: v.array(v.string()),
-	cc: v.array(v.string()),
-	bcc: v.array(v.string()),
-	replyTo: v.optional(v.string()),
-	subject: v.string(),
-	/** Raw `Message-ID` header; the insert step canonicalises it. */
-	messageId: v.string(),
-	inReplyTo: v.optional(v.string()),
-	references: v.optional(v.string()),
-	attachments: v.array(mailMessageAttachmentValidator),
-};
+/**
+ * The addressing and identity headers of a delivered message. The mail-sync
+ * worker sends them to `ingestExternalRaw`, so the worker wire contract
+ * declares them.
+ */
+export { deliveredEnvelopeFields } from '@owlat/worker-protocol/fields';
 
 /**
  * The stored form of a message's body and raw source, as the insert mutations

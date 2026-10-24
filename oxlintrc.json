@@ -93,6 +93,11 @@
 		"owlat/no-real-time-wait-in-tests": "warn",
 		"owlat/no-wall-clock-in-tests": "warn",
 		"owlat/no-polling-loop-in-tests": "warn",
+		// Shortcuts in the web app go through the shortcut registry. Scoped by the
+		// rule's own path-suffix `files`, not an override, so the root gates and
+		// apps/web's own lint agree. Every raw keydown listener left carries a
+		// suppression saying why it is not a shortcut.
+		"owlat/no-raw-keydown-listener": ["error", { "files": ["apps/web/app/**"] }],
 		"owlat/no-test-environment-pragma": [
 			"error",
 			{

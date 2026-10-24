@@ -84,22 +84,40 @@ function githubSlug(repo: string): string {
 	return m?.[1] ?? 'wolvesdotink/owlat';
 }
 
+/** Releases per page and pages read before {@link resolveLatestReleaseCommand} gives up. */
+const RELEASES_PER_PAGE = 100;
+const RELEASE_PAGES = 10;
+
 /**
  * Resolve the newest published STABLE release on the server, the same way
  * install.sh does: list releases and take the first bare `vX.Y.Z` tag —
  * prereleases (`v0.3.0-rc.1`) and the `server-v*` / `desktop-v*` lines are
- * not matched. Prints `release=vX.Y.Z`; prints nothing when the API is
- * unreachable or no release exists, which the caller treats as failure rather
- * than silently installing `main`.
+ * not matched. Release candidates can fill whole pages ahead of the newest
+ * stable release, so the lookup pages through the history (a short page is
+ * its end) instead of reading the first page only. Prints `release=vX.Y.Z`;
+ * prints nothing when the API is unreachable, no stable release exists or the
+ * page budget runs out first, which the caller treats as failure rather than
+ * silently installing `main`. The two "nothing found" cases say which on
+ * stderr so the wizard log tells an empty history from a truncated one.
+ * Plain POSIX sh: it runs in the SSH user's login shell.
  */
 export function resolveLatestReleaseCommand(o: RemoteOptions): string {
-	const api = `https://api.github.com/repos/${githubSlug(o.repo)}/releases?per_page=30`;
+	const api = `https://api.github.com/repos/${githubSlug(o.repo)}/releases?per_page=${RELEASES_PER_PAGE}`;
+	const stableTag = `grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[0-9]+\\.[0-9]+\\.[0-9]+"'`;
 	return [
-		`curl -fsSL --max-time 10 '${api}'`,
-		`grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[0-9]+\\.[0-9]+\\.[0-9]+"'`,
-		`sed -n 's/.*"v\\([0-9][^"]*\\)"/release=\\1/p'`,
-		'head -1',
-	].join(' | ');
+		'owlat_page=1; owlat_found=; owlat_end=;',
+		`while [ "$owlat_page" -le ${RELEASE_PAGES} ]; do`,
+		`owlat_body=$(curl -fsSL --max-time 10 '${api}&page='"$owlat_page") || break;`,
+		`owlat_found=$(printf '%s' "$owlat_body" | ${stableTag} | sed -n 's/.*"v\\([0-9][^"]*\\)"/release=\\1/p' | head -1);`,
+		'[ -n "$owlat_found" ] && break;',
+		`if [ "$(printf '%s' "$owlat_body" | grep -oE '"tag_name"[[:space:]]*:' | wc -l)" -lt ${RELEASES_PER_PAGE} ]; then owlat_end=1; break; fi;`,
+		'owlat_page=$((owlat_page + 1));',
+		'done;',
+		'if [ -n "$owlat_found" ]; then echo "$owlat_found";',
+		'elif [ -n "$owlat_end" ]; then echo "no stable vX.Y.Z release published" >&2;',
+		`elif [ "$owlat_page" -gt ${RELEASE_PAGES} ]; then echo "no stable vX.Y.Z release among the newest ${RELEASE_PAGES * RELEASES_PER_PAGE} releases" >&2;`,
+		'fi',
+	].join(' ');
 }
 
 /** Parse the bare semver out of a `release=…` line; `null` for anything else. */

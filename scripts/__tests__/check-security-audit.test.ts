@@ -77,6 +77,7 @@ describe('security audit parser', () => {
 			'GHSA-G4WM-2VF7-VFGR': expect.stringContaining('@nuxt/devtools@3.4.1'),
 			'GHSA-858H-WHJF-MVG5': expect.stringContaining('@nuxt/devtools@3.4.1'),
 			'GHSA-V5RQ-49VH-5V5C': expect.stringContaining('@nuxt/devtools@3.4.1'),
+			'GHSA-MRHX-C7XC-M3W5': expect.stringContaining('zod@3.25.76 is the last 3.x release'),
 		});
 	});
 });

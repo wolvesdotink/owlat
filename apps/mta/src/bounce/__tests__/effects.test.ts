@@ -7,7 +7,7 @@ vi.mock('../../intelligence/circuitBreaker.js', () => ({
 }));
 vi.mock('../../monitoring/collector.js', () => ({
 	fblComplaintsTotal: { inc: vi.fn() },
-	fblComplaintsByCampaignTotal: { inc: vi.fn() },
+	recordFblComplaintByCampaign: vi.fn(),
 	unattributedBouncesTotal: { inc: vi.fn() },
 }));
 vi.mock('../../webhooks/convexNotifier.js', () => ({
@@ -75,7 +75,7 @@ describe('applyEffects — per-effect dispatch', () => {
 	});
 
 	// PR-15: per-campaign complaint counter (distinct from the per-isp counter).
-	it('metric_inc(fbl_complaint_by_campaign) → fblComplaintsByCampaignTotal.inc with labels', async () => {
+	it('metric_inc(fbl_complaint_by_campaign) → recordFblComplaintByCampaign with labels', async () => {
 		await applyEffects(
 			[
 				{
@@ -87,10 +87,7 @@ describe('applyEffects — per-effect dispatch', () => {
 			],
 			makeDeps()
 		);
-		expect(metrics.fblComplaintsByCampaignTotal.inc).toHaveBeenCalledWith({
-			campaign: 'camp_1',
-			isp: 'yahoo',
-		});
+		expect(metrics.recordFblComplaintByCampaign).toHaveBeenCalledWith('camp_1', 'yahoo');
 	});
 
 	it('metric_inc(unattributed_bounce) → unattributedBouncesTotal.inc', async () => {

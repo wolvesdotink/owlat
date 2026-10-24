@@ -23,6 +23,8 @@ export type PostboxConversationThread = {
 	unreadCount: number;
 	hasFlagged: boolean;
 	hasAttachments: boolean;
+	/** In the Inbox's pinned band (mail/pins.ts). */
+	pinnedAt?: number;
 };
 
 const props = defineProps<{
@@ -78,6 +80,13 @@ const rowLabel = computed(() =>
 		</div>
 		<div class="flex items-center gap-1.5 mt-0.5">
 			<Icon v-if="thread.hasFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
+			<Icon
+				v-if="thread.pinnedAt"
+				name="lucide:pin"
+				class="w-3.5 h-3.5 text-brand"
+				:title="t('components.postbox.postboxThreadRow.pinnedChip')"
+				:aria-label="t('components.postbox.postboxThreadRow.pinnedChip')"
+			/>
 			<Icon
 				v-if="thread.hasAttachments"
 				name="lucide:paperclip"

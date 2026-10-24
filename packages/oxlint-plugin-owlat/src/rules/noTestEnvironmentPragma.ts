@@ -1,4 +1,4 @@
-import { globToRegExp, slashed } from '../lib/paths.ts';
+import { globToRegExp } from '../fileGlobs.ts';
 import type { Rule } from '../types.ts';
 
 /**
@@ -66,7 +66,7 @@ const rule: Rule = {
 	},
 	create(context) {
 		if (!context.sourceCode.text.includes('-environment')) return {};
-		const filename = slashed(context.filename);
+		const filename = context.filename.replaceAll('\\', '/');
 		const allowed = new Set(
 			((context.options[0] as Options | undefined)?.allow ?? [])
 				.filter(({ files }) => files.some((glob) => globToRegExp(glob).test(filename)))

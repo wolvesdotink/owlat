@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { classifyReleaseTag } from './release-policy';
 export interface PublishedRelease {
 	tag_name: string;
 	draft: boolean;
@@ -54,9 +55,15 @@ export function composeDigests(
 	return names.map((name) => ({ name, digest: found.get(name)! }));
 }
 
+/**
+ * The highest published stable unified release below `current`, the update
+ * flow's starting point. A candidate (`X.Y.Z-rc.N`) or other prerelease starts
+ * from the stable release below its base, which is what installs upgrade from.
+ */
 export function previousRelease<T extends PublishedRelease>(releases: T[], current: string) {
-	const version = stableVersion(`v${current}`);
-	if (!version) throw new Error('Invalid stable update version');
+	const parsed = classifyReleaseTag(`v${current}`);
+	const version = parsed && stableVersion(`v${parsed.base}`);
+	if (!version) throw new Error('Invalid update version');
 	return (
 		aliasReleases(
 			releases.filter((release) => {

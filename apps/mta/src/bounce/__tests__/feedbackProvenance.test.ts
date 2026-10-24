@@ -105,6 +105,56 @@ describe('delayed feedback provenance', () => {
 		}
 	);
 
+	it.each([dsn('correlated-message'), attributedFbl('correlated-message')] as const)(
+		'echoes the persisted correlation id on the delayed $kind webhook',
+		async (attempt) => {
+			await recordFeedbackProvenance(redis, {
+				...job('correlated-message', 'production'),
+				correlationId: 'txn_V1StGXR8_Z5jdHi6',
+			});
+			const attributed = await attachFeedbackProvenance(redis, attempt);
+			const notify = reduce(attributed, {} as never).effects.filter(
+				(effect) => effect.kind === 'notify_convex'
+			);
+
+			expect(notify).toHaveLength(1);
+			expect(notify[0]).toMatchObject({
+				event: { deliveryDomain: 'production', correlationId: 'txn_V1StGXR8_Z5jdHi6' },
+			});
+		}
+	);
+
+	it('emits no correlation id for a legacy record and never trusts one from the report', async () => {
+		await recordFeedbackProvenance(redis, job('legacy-message', 'production'));
+		const forged: BounceAttempt = {
+			kind: 'dsn_attributed',
+			bounce: { ...dsn('legacy-message').bounce, correlationId: 'forged_by_report' },
+		};
+		const attributed = await attachFeedbackProvenance(redis, forged);
+		const notify = reduce(attributed, {} as never).effects.find(
+			(effect) => effect.kind === 'notify_convex'
+		);
+
+		expect(notify?.kind === 'notify_convex' && notify.event).toMatchObject({
+			deliveryDomain: 'production',
+		});
+		expect(notify?.kind === 'notify_convex' && 'correlationId' in notify.event).toBe(false);
+	});
+
+	it('drops a malformed persisted correlation id and keeps the attribution', async () => {
+		await recordFeedbackProvenance(redis, job('bad-correlation', 'production'));
+		const [messageKey] = (await redis.keys('mta:{feedback}:message:*')) as string[];
+		const stored = JSON.parse((await redis.get(messageKey!))!) as Record<string, unknown>;
+		await redis.set(messageKey!, JSON.stringify({ ...stored, correlationId: 'not a valid id' }));
+
+		const attributed = await attachFeedbackProvenance(redis, dsn('bad-correlation'));
+		expect(attributed.kind === 'dsn_attributed' && attributed.bounce).toMatchObject({
+			feedbackProvenance: 'production',
+			organizationId: 'org-1',
+		});
+		expect(attributed.kind === 'dsn_attributed' && attributed.bounce.correlationId).toBe(undefined);
+	});
+
 	it('treats mixed recipient-only attribution as unknown and non-destructive', async () => {
 		await recordFeedbackProvenance(redis, job('production-1', 'production'));
 		await recordFeedbackProvenance(redis, job('member-1', 'member_test'));

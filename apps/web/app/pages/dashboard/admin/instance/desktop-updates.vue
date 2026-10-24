@@ -21,6 +21,7 @@
  * lock rather than the only one.
  */
 import DesktopReleaseTable from '~/components/settings/DesktopReleaseTable.vue';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 import { useSettingsForm } from '~/composables/useSettingsForm';
 import { formatDateTime, formatRelativeTime } from '~/utils/formatters';
 import { releaseLineKey } from '~/composables/useDesktopUpdatePolicy';
@@ -77,40 +78,41 @@ const isSavable = (draft: PolicyForm) =>
 // The stored policy is the authority; the form is a working copy of it. Another
 // admin saving (or our own write landing) re-emits it, which replaces the copy
 // only while it holds no unsaved change.
-const { form, isDirty, isSaving, handleSave, unsavedDialog } = useSettingsForm({
-	source: storedPolicy,
-	defaults: DEFAULTS,
-	project: (stored) => ({
-		mode: stored.mode,
-		channel: stored.channel,
-		pinnedVersion: stored.pinnedVersion ?? '',
-		deferHours: stored.deferHours ?? 0,
-	}),
-	// The pin only means something in pinned mode: a pin left over from an
-	// earlier pinned policy, or dropped by the channel watch below, is no change.
-	dirtyKey: (draft) => ({
-		mode: draft.mode,
-		channel: draft.channel,
-		deferHours: draft.deferHours,
-		pinnedVersion: draft.mode === 'pinned' ? draft.pinnedVersion : '',
-	}),
-	validate: isSavable,
-	save: async (draft) => {
-		// `requiredVersion` has no control yet (the blocking prompt is a later
-		// change), and `updatePolicy` REPLACES the whole object — so carry the
-		// stored value through rather than clearing a floor nobody asked us to clear.
-		const result = await savePolicy({
+const { form, isDirty, isSaving, handleSave, isFieldChanged, resetField, unsavedDialog } =
+	useSettingsForm({
+		source: storedPolicy,
+		defaults: DEFAULTS,
+		project: (stored) => ({
+			mode: stored.mode,
+			channel: stored.channel,
+			pinnedVersion: stored.pinnedVersion ?? '',
+			deferHours: stored.deferHours ?? 0,
+		}),
+		// The pin only means something in pinned mode: a pin left over from an
+		// earlier pinned policy, or dropped by the channel watch below, is no change.
+		dirtyKey: (draft) => ({
 			mode: draft.mode,
 			channel: draft.channel,
-			pinnedVersion: draft.mode === 'pinned' ? draft.pinnedVersion : undefined,
-			requiredVersion: storedPolicy.value?.requiredVersion ?? undefined,
-			deferHours: draft.deferHours > 0 ? draft.deferHours : undefined,
-		});
-		if (!result.ok) return false;
-		showToast(t('dashboard.admin.instance.desktopUpdates.savedToast'));
-		return true;
-	},
-});
+			deferHours: draft.deferHours,
+			pinnedVersion: draft.mode === 'pinned' ? draft.pinnedVersion : '',
+		}),
+		validate: isSavable,
+		save: async (draft) => {
+			// `requiredVersion` has no control yet (the blocking prompt is a later
+			// change), and `updatePolicy` REPLACES the whole object — so carry the
+			// stored value through rather than clearing a floor nobody asked us to clear.
+			const result = await savePolicy({
+				mode: draft.mode,
+				channel: draft.channel,
+				pinnedVersion: draft.mode === 'pinned' ? draft.pinnedVersion : undefined,
+				requiredVersion: storedPolicy.value?.requiredVersion ?? undefined,
+				deferHours: draft.deferHours > 0 ? draft.deferHours : undefined,
+			});
+			if (!result.ok) return false;
+			showToast(t('dashboard.admin.instance.desktopUpdates.savedToast'));
+			return true;
+		},
+	});
 
 const cachedReleases = computed(() => releases.value ?? []);
 
@@ -247,10 +249,24 @@ async function runCheck() {
 
 				<!-- The policy itself -->
 				<section class="card p-5 space-y-6">
+					<!-- The legend names the group for assistive tech; the visible line
+					     repeats it beside the marker (hidden from the accessibility tree),
+					     so the Reset button never becomes part of the group's name. -->
 					<fieldset class="space-y-2.5">
-						<legend class="text-sm font-medium text-text-primary mb-2">
+						<legend class="sr-only">
 							{{ t('dashboard.admin.instance.desktopUpdates.modes.label') }}
 						</legend>
+						<div class="mb-2 flex items-center gap-2">
+							<span class="text-sm font-medium text-text-primary" aria-hidden="true">
+								{{ t('dashboard.admin.instance.desktopUpdates.modes.label') }}
+							</span>
+							<SettingsResetToDefault
+								:changed="isFieldChanged('mode')"
+								:label="t('dashboard.admin.instance.desktopUpdates.modes.label')"
+								:disabled="!canManageSettings || isSaving"
+								@reset="resetField('mode')"
+							/>
+						</div>
 						<label
 							v-for="mode in MODES"
 							:key="mode"
@@ -326,9 +342,20 @@ async function runCheck() {
 					</div>
 
 					<fieldset class="space-y-2.5">
-						<legend class="text-sm font-medium text-text-primary mb-2">
+						<legend class="sr-only">
 							{{ t('dashboard.admin.instance.desktopUpdates.channel.label') }}
 						</legend>
+						<div class="mb-2 flex items-center gap-2">
+							<span class="text-sm font-medium text-text-primary" aria-hidden="true">
+								{{ t('dashboard.admin.instance.desktopUpdates.channel.label') }}
+							</span>
+							<SettingsResetToDefault
+								:changed="isFieldChanged('channel')"
+								:label="t('dashboard.admin.instance.desktopUpdates.channel.label')"
+								:disabled="!canManageSettings || isSaving"
+								@reset="resetField('channel')"
+							/>
+						</div>
 						<label
 							v-for="channel in CHANNELS"
 							:key="channel"
@@ -349,9 +376,17 @@ async function runCheck() {
 					</fieldset>
 
 					<div class="space-y-2">
-						<label for="desktop-update-defer" class="block text-sm font-medium text-text-primary">
-							{{ t('dashboard.admin.instance.desktopUpdates.defer.label') }}
-						</label>
+						<div class="flex items-center gap-2">
+							<label for="desktop-update-defer" class="block text-sm font-medium text-text-primary">
+								{{ t('dashboard.admin.instance.desktopUpdates.defer.label') }}
+							</label>
+							<SettingsResetToDefault
+								:changed="isFieldChanged('deferHours')"
+								:label="t('dashboard.admin.instance.desktopUpdates.defer.label')"
+								:disabled="!canManageSettings || isSaving"
+								@reset="resetField('deferHours')"
+							/>
+						</div>
 						<div class="flex items-center gap-2">
 							<input
 								id="desktop-update-defer"

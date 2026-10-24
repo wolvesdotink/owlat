@@ -2,17 +2,20 @@ import type { DispatchEffect } from './effects.js';
 import type { OutcomeReduction } from './outcome.js';
 import type { AttemptCtx } from './types.js';
 
-/** Bind webhook provenance and isolate member previews from production effects. */
+/**
+ * Bind webhook provenance (the delivery domain and the job's correlation id)
+ * and isolate member previews from production effects.
+ */
 export function applyDeliveryDomainPolicy(
 	reduction: OutcomeReduction,
 	ctx: AttemptCtx
 ): OutcomeReduction {
 	const deliveryDomain = ctx.job.deliveryDomain ?? 'production';
-	const authenticatedEffects = reduction.effects.map(
-		(effect): DispatchEffect =>
-			effect.kind === 'notify_convex'
-				? { ...effect, event: { ...effect.event, deliveryDomain } }
-				: effect
+	const correlation = ctx.job.correlationId ? { correlationId: ctx.job.correlationId } : {};
+	const authenticatedEffects = reduction.effects.map((effect): DispatchEffect =>
+		effect.kind === 'notify_convex'
+			? { ...effect, event: { ...effect.event, deliveryDomain, ...correlation } }
+			: effect
 	);
 	if (deliveryDomain !== 'member_test') {
 		return { ...reduction, effects: authenticatedEffects };

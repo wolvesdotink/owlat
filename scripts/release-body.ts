@@ -9,12 +9,18 @@
  * in-app update card renders that half and links to the docs for the rest, so
  * everything after the `## Updating` heading is for the GitHub page only.
  *
+ * A release candidate (`X.Y.Z-rc.N`) uses the section of the version it is a
+ * candidate for: it is cut from the commit the stable release will be tagged
+ * on, so both carry the same notes. Its body opens with a note that nothing
+ * updates to it on its own.
+ *
  * A version without a CHANGELOG section fails: release.yml runs this before
  * anything is built, so a tag cut without `release:cut` stops there instead of
  * publishing a release with no notes.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { classifyReleaseTag } from './ci/release-policy';
 
 export const UPDATE_DOCS_URL = 'https://docs.owlat.app/developer/self-hosting-maintenance#updating';
 
@@ -53,15 +59,21 @@ export function buildReleaseBody(opts: {
 	images?: string[];
 }): string {
 	const { version, changelog, repo, images = imageNames() } = opts;
-	const section = changelogSection(changelog, version);
+	const release = classifyReleaseTag(`v${version}`);
+	const candidate = release?.channel === 'rc' ? release.base : null;
+	const notesVersion = changelogSection(changelog, version) || !candidate ? version : candidate;
+	const section = changelogSection(changelog, notesVersion);
 	if (!section) throw new Error(`CHANGELOG.md has no section for ${version}`);
 	const owner = repo.split('/')[0];
 	const tag = `v${version}`;
 	const compose = `docker-compose-${version}.yml`;
 	const download = `https://github.com/${repo}/releases/download/${tag}`;
-	const previous = previousVersion(changelog, version);
+	const previous = previousVersion(changelog, notesVersion);
+	const lead = candidate
+		? `> [!NOTE]\n> Release candidate for ${candidate}. Installs, the in-app update and desktop apps on the stable channel do not move to it on their own; install it explicitly to test it.\n\n`
+		: '';
 
-	return `${section}
+	return `${lead}${section}
 
 ## Updating
 

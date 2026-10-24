@@ -1,37 +1,10 @@
 /**
- * Path scoping shared by the rules. oxlint runs from the repository root (the
- * root lint gates) and from each workspace (`--config ../../oxlintrc.json`),
- * and its own `overrides` globs resolve against whichever directory that is.
- * Rule options therefore hold repository-relative globs (`*`, `**`, `?`) that
- * are matched as a path suffix at a directory boundary, which reads the same
- * from every working directory.
+ * Path scoping shared by the boundary rules. Rule options hold
+ * repository-relative globs matched as a path suffix (see `../fileGlobs.ts`),
+ * so a scope reads the same whether oxlint runs from the repository root or
+ * from a workspace.
  */
-
-const REGEXP_SYNTAX = /[.+^${}()|[\]\\]/gu;
-const compiled = new Map<string, RegExp>();
-
-export const globToRegExp = (glob: string): RegExp => {
-	const cached = compiled.get(glob);
-	if (cached) return cached;
-	let pattern = '';
-	for (let index = 0; index < glob.length; index++) {
-		const char = glob[index] as string;
-		if (char === '*' && glob[index + 1] === '*') {
-			const slash = glob[index + 2] === '/';
-			pattern += slash ? '(?:.*/)?' : '.*';
-			index += slash ? 2 : 1;
-		} else if (char === '*') {
-			pattern += '[^/]*';
-		} else if (char === '?') {
-			pattern += '[^/]';
-		} else {
-			pattern += char.replace(REGEXP_SYNTAX, '\\$&');
-		}
-	}
-	const regExp = new RegExp(`(?:^|/)${pattern}$`, 'u');
-	compiled.set(glob, regExp);
-	return regExp;
-};
+import { globToRegExp } from '../fileGlobs.ts';
 
 /** The linted file's name with forward slashes. */
 export const slashed = (filename: string): string => filename.replaceAll('\\', '/');

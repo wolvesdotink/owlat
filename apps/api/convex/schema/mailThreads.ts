@@ -271,6 +271,12 @@ export const mailThreadsTables = {
 		// recognisable as "you asked for this back" rather than looking like new
 		// mail. Advisory display state only: nothing routes off it.
 		snoozeReturnedAt: v.optional(v.number()),
+		// Pinned conversation (`mail/pins.ts`): kept in the Inbox's pinned band
+		// until someone unpins it. Mailbox-scoped like `mutedAt`, independent of
+		// the per-message star, and written only by the pin mutation, so no
+		// delivery, aggregate rebuild, archive or snooze clears it. Its value is
+		// the pin time, which orders the band. Absent = not pinned.
+		pinnedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -289,7 +295,10 @@ export const mailThreadsTables = {
 		// due watches per mailbox without a full-table scan.
 		.index('by_mailbox_follow_up_due', ['mailboxId', 'followUp.dueAt'])
 		// The digest's selection: a mailbox's digest-eligible threads, newest first.
-		.index('by_mailbox_digest_pending', ['mailboxId', 'digestPendingSince']),
+		.index('by_mailbox_digest_pending', ['mailboxId', 'digestPendingSince'])
+		// The pinned band: a mailbox's pinned threads in pin order (lower-bounded
+		// gt(0), since an unpinned thread's absent value sorts first).
+		.index('by_mailbox_pinned', ['mailboxId', 'pinnedAt']),
 
 	// Per-identity (mailbox) writing-voice profile, derived from the user's own
 	// SENT mail so advisory AI drafts sound like them. Recomputed lazily (see

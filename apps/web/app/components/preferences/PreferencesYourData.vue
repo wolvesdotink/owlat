@@ -31,13 +31,27 @@ import {
 } from '~/utils/incrementalJsonDownload';
 import { mboxExportFilename, writeMailboxMboxExport } from '~/utils/mboxExport';
 import { useLocalized } from '~/composables/useLocalized';
+import { POSTBOX_PREFERENCE_DEFAULTS } from '~/utils/postboxPreferenceDefaults';
+import PreferencesSettingRow from './PreferencesSettingRow.vue';
 
 const { t, locale } = useI18n();
 const localized = useLocalized();
 const { showToast } = useToast();
 const convex = useConvex();
 const { currentMailbox } = usePostboxMailbox();
-const { trashAutoPurgeDays, setTrashAutoPurgeDays, isSaving } = usePostboxSettings();
+const {
+	trashAutoPurgeDays,
+	setTrashAutoPurgeDays,
+	isSaving,
+	isLoading: isSettingsLoading,
+} = usePostboxSettings();
+
+// Hidden while the settings row loads: "Never" is then only the fallback.
+const trashHorizonChanged = computed(
+	() =>
+		!isSettingsLoading.value &&
+		trashAutoPurgeDays.value !== POSTBOX_PREFERENCE_DEFAULTS.trashAutoPurgeDays
+);
 
 const statements = computed(() => dataRetentionStatements(trashAutoPurgeDays.value));
 
@@ -110,17 +124,14 @@ async function downloadAllMail() {
 		</dl>
 
 		<!-- Stacks under ~sm so the label column is never crushed beside the select. -->
-		<div
-			class="px-5 py-4 border-t border-border-subtle flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+		<PreferencesSettingRow
+			control-id="trash-auto-purge"
+			:label="t('components.preferences.preferencesYourData.trashPurgeLabel')"
+			:help="t('components.preferences.preferencesYourData.trashPurgeHelp')"
+			:changed="trashHorizonChanged"
+			:disabled="isSaving"
+			@reset="setTrashAutoPurgeDays(POSTBOX_PREFERENCE_DEFAULTS.trashAutoPurgeDays)"
 		>
-			<div class="min-w-0">
-				<label for="trash-auto-purge" class="font-medium text-sm block">
-					{{ t('components.preferences.preferencesYourData.trashPurgeLabel') }}
-				</label>
-				<p class="text-xs text-text-tertiary mt-0.5">
-					{{ t('components.preferences.preferencesYourData.trashPurgeHelp') }}
-				</p>
-			</div>
 			<select
 				id="trash-auto-purge"
 				class="input w-full sm:w-48 shrink-0"
@@ -136,7 +147,7 @@ async function downloadAllMail() {
 					{{ t(option.label) }}
 				</option>
 			</select>
-		</div>
+		</PreferencesSettingRow>
 
 		<div class="px-5 py-4 border-t border-border-subtle">
 			<div class="flex items-start justify-between gap-4">

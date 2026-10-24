@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useAddCampaignSender } from '~/composables/useAddCampaignSender';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t } = useI18n();
 
@@ -31,8 +32,9 @@ const { data: settings } = useOrganizationQuery(api.workspaces.settings.get);
 
 // --- "Allow custom from-addresses" toggle -----------------------------------
 // Local mirror of the instance setting so the switch feels instant; the query
-// re-emits the authoritative value on save.
-const allowCustom = ref(false);
+// re-emits the authoritative value on save. Off is the default (unset ⇒ off).
+const ALLOW_CUSTOM_DEFAULT = false;
+const allowCustom = ref(ALLOW_CUSTOM_DEFAULT);
 watch(
 	settings,
 	(value) => {
@@ -152,7 +154,9 @@ const {
 	verificationMessage,
 	reset: resetAdd,
 	add: addSender,
-} = useAddCampaignSender({ operationLabel: () => t('dashboard.admin.team.senders.operations.add') });
+} = useAddCampaignSender({
+	operationLabel: () => t('dashboard.admin.team.senders.operations.add'),
+});
 
 function openAdd() {
 	resetAdd();
@@ -300,9 +304,18 @@ async function onSubmitAdd() {
 			<UiCard padding="none" overflow="hidden">
 				<div class="flex items-start justify-between gap-4 p-5">
 					<div>
-						<p class="text-sm font-medium text-text-primary">
-							{{ t('dashboard.admin.team.senders.allowCustom.title') }}
-						</p>
+						<div class="flex items-center gap-2">
+							<p class="text-sm font-medium text-text-primary">
+								{{ t('dashboard.admin.team.senders.allowCustom.title') }}
+							</p>
+							<!-- Unmarked until the settings row is read: off is then only the fallback. -->
+							<SettingsResetToDefault
+								:changed="settings !== undefined && allowCustom !== ALLOW_CUSTOM_DEFAULT"
+								:label="t('dashboard.admin.team.senders.allowCustom.title')"
+								:disabled="savingSettings"
+								@reset="onToggleAllowCustom(ALLOW_CUSTOM_DEFAULT)"
+							/>
+						</div>
 						<p class="text-xs text-text-tertiary mt-1 max-w-md">
 							{{ t('dashboard.admin.team.senders.allowCustom.description') }}
 						</p>

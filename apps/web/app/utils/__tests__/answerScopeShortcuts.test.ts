@@ -5,10 +5,11 @@ import { resetShortcutScopes, resolveActiveChord, shortcutBindings } from '../sh
 import { createTestI18n } from '~/__tests__/i18n';
 
 /**
- * Answer mode's keys are bound by its pages, but the "?" sheet only knows the
- * catalog: with the `answer` scope claimed (AnswerModeFrame), the sheet lists
- * Esc, t, Cmd/Ctrl+J, 1 to 9, [ and ], and the app-wide Esc and Cmd/Ctrl+J
- * they take over drop out of it.
+ * Answer mode and its queue cards answer through the catalog: with the
+ * `answer` scope claimed (AnswerModeFrame), the "?" sheet lists Esc, t, n,
+ * Cmd/Ctrl+J, [ and ], e and h, and the app-wide Esc and Cmd/Ctrl+J (the
+ * Assistant) they take over drop out of it. The queue's cards reuse keys, so
+ * each kind has a scope of its own.
  */
 afterEach(() => resetShortcutScopes());
 
@@ -17,8 +18,22 @@ describe('answer scope', () => {
 		expect(resolveActiveChord('t', ['answer', 'global'])).toBe('answer.toggleView');
 		expect(resolveActiveChord('[', ['answer', 'global'])).toBe('answer.previousItem');
 		expect(resolveActiveChord(']', ['answer', 'global'])).toBe('answer.nextItem');
-		expect(resolveActiveChord('3', ['answer', 'global'])).toBe('answer.pickAskOption');
+		expect(resolveActiveChord('mod+j', ['answer', 'global'])).toBe('answer.draftWithAi');
+		expect(resolveActiveChord('3', ['askCard', 'answer', 'global'])).toBe('askCard.pickOption');
+		expect(resolveActiveChord('mod+z', ['answerQueue', 'global'])).toBe('answerQueue.undo');
 		expect(resolveActiveChord('t', ['global'])).toBeNull();
+		expect(resolveActiveChord('mod+j', ['global'])).toBe('global.assistant');
+	});
+
+	it.each([
+		['mailCard', 'Enter', 'mailCard.done'],
+		['teamCard', 'Enter', 'teamCard.send'],
+		['mentionCard', 'Enter', 'mentionCard.reply'],
+		['mentionCard', 's', 'mentionCard.skip'],
+		['teamCard', 'x', 'teamCard.reject'],
+		['mailCard', 'ArrowRight', 'mailCard.next'],
+	] as const)('gives the %s card its own meaning for %s', (scope, key, id) => {
+		expect(resolveActiveChord(key, [scope, 'answerQueue', 'global'])).toBe(id);
 	});
 
 	it('puts them on the cheat sheet in one group, over the globals they shadow', () => {
@@ -31,12 +46,14 @@ describe('answer scope', () => {
 			'answer.toggleView',
 			'answer.writeNote',
 			'answer.draftWithAi',
-			'answer.pickAskOption',
 			'answer.previousItem',
 			'answer.nextItem',
+			'answer.archive',
+			'answer.snooze',
 		]);
 		const ids = groups.flatMap((g) => g.items.map((i) => i.id));
 		expect(ids).not.toContain('global.close');
+		expect(ids).not.toContain('global.assistant');
 	});
 
 	it('says where the note key works, since personal mail has no notes', () => {
