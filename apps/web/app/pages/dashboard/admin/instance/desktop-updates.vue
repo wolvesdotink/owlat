@@ -249,19 +249,24 @@ async function runCheck() {
 
 				<!-- The policy itself -->
 				<section class="card p-5 space-y-6">
-					<!-- The marker stands at the end of the legend's line, outside the
-					     legend, so it does not become part of the group's name. -->
-					<fieldset class="relative space-y-2.5">
-						<legend class="text-sm font-medium text-text-primary mb-2">
+					<!-- The legend names the group for assistive tech; the visible line
+					     repeats it beside the marker (hidden from the accessibility tree),
+					     so the Reset button never becomes part of the group's name. -->
+					<fieldset class="space-y-2.5">
+						<legend class="sr-only">
 							{{ t('dashboard.admin.instance.desktopUpdates.modes.label') }}
 						</legend>
-						<SettingsResetToDefault
-							class="absolute right-0 top-0 !mt-0"
-							:changed="isFieldChanged('mode')"
-							:label="t('dashboard.admin.instance.desktopUpdates.modes.label')"
-							:disabled="!canManageSettings || isSaving"
-							@reset="resetField('mode')"
-						/>
+						<div class="mb-2 flex items-center gap-2">
+							<span class="text-sm font-medium text-text-primary" aria-hidden="true">
+								{{ t('dashboard.admin.instance.desktopUpdates.modes.label') }}
+							</span>
+							<SettingsResetToDefault
+								:changed="isFieldChanged('mode')"
+								:label="t('dashboard.admin.instance.desktopUpdates.modes.label')"
+								:disabled="!canManageSettings || isSaving"
+								@reset="resetField('mode')"
+							/>
+						</div>
 						<label
 							v-for="mode in MODES"
 							:key="mode"
@@ -336,17 +341,21 @@ async function runCheck() {
 						</p>
 					</div>
 
-					<fieldset class="relative space-y-2.5">
-						<legend class="text-sm font-medium text-text-primary mb-2">
+					<fieldset class="space-y-2.5">
+						<legend class="sr-only">
 							{{ t('dashboard.admin.instance.desktopUpdates.channel.label') }}
 						</legend>
-						<SettingsResetToDefault
-							class="absolute right-0 top-0 !mt-0"
-							:changed="isFieldChanged('channel')"
-							:label="t('dashboard.admin.instance.desktopUpdates.channel.label')"
-							:disabled="!canManageSettings || isSaving"
-							@reset="resetField('channel')"
-						/>
+						<div class="mb-2 flex items-center gap-2">
+							<span class="text-sm font-medium text-text-primary" aria-hidden="true">
+								{{ t('dashboard.admin.instance.desktopUpdates.channel.label') }}
+							</span>
+							<SettingsResetToDefault
+								:changed="isFieldChanged('channel')"
+								:label="t('dashboard.admin.instance.desktopUpdates.channel.label')"
+								:disabled="!canManageSettings || isSaving"
+								@reset="resetField('channel')"
+							/>
+						</div>
 						<label
 							v-for="channel in CHANNELS"
 							:key="channel"
