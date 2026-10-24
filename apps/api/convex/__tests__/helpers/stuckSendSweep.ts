@@ -1,7 +1,10 @@
 import { vi } from 'vitest';
-import { internal } from '../../_generated/api';
+import { components, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
+import betterAuthSchema from '../../betterAuth/schema';
+import { _resetSingletonOrgCacheForTests } from '../../lib/sessionOrganization';
 import { createTestCampaign, createTestContact, createTestEmailSend } from '../factories';
+import { betterAuthModules } from '../testModules';
 import type { T } from './sendCompletionFailures';
 
 /** Shared fixtures for the lost-send sweep suites (#1208). */
@@ -13,10 +16,28 @@ export function at(ms: number): void {
 	vi.setSystemTime(ms);
 }
 
+const withOrganization = new WeakSet<T>();
+
+/**
+ * The organization a real deployment always has. A campaign the sweep finishes
+ * schedules its "campaign finished" notification, and that fan-out reads the
+ * organization's members.
+ */
+async function ensureOrganization(t: T): Promise<void> {
+	if (withOrganization.has(t)) return;
+	withOrganization.add(t);
+	_resetSingletonOrgCacheForTests();
+	t.registerComponent('betterAuth', betterAuthSchema, betterAuthModules);
+	await t.mutation(components.betterAuth.adapter.create, {
+		input: { model: 'organization', data: { name: 'Acme', slug: 'acme', createdAt: Date.now() } },
+	} as never);
+}
+
 export async function queuedCampaignSend(
 	t: T,
 	overrides: Record<string, unknown> = {}
 ): Promise<{ campaignId: Id<'campaigns'>; sendId: Id<'emailSends'> }> {
+	await ensureOrganization(t);
 	return await t.run(async (ctx) => {
 		const campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
 		const contactId = await ctx.db.insert('contacts', createTestContact());

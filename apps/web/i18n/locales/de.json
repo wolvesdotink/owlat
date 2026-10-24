@@ -1152,6 +1152,13 @@
 			}
 		},
 		"campaigns": {
+			"cancelIntentDialog": {
+				"title": "Diese geplante Kampagne abbrechen?",
+				"description": "{name} wird am {date} versendet. Ein Abbruch stoppt sie endgültig: Eine abgebrochene Kampagne lässt sich nicht erneut planen.",
+				"confirm": "Kampagne abbrechen",
+				"keep": "Geplant lassen",
+				"notScheduled": "Diese Kampagne ist nicht mehr geplant, es gibt nichts abzubrechen."
+			},
 			"abTestConfig": {
 				"contentOption": "E-Mail-Inhalt",
 				"contentOptionDescription": "Verschiedene E-Mail-Vorlagen testen",
@@ -6160,6 +6167,32 @@
 				"title": "Deine Daten",
 				"trashPurgeHelp": "Gezählt ab dem Tag, an dem du etwas wegwirfst. Standardmäßig aus.",
 				"trashPurgeLabel": "Papierkorb automatisch leeren"
+			},
+			"marketingNotifications": {
+				"heading": "Marketing-Benachrichtigungen",
+				"intro": "Zu Kampagnen, Automationen und dem Versand. Diese Schalter gehören zu deinem Konto: Schaltest du einen aus, kommt diese Benachrichtigung auf keinem Gerät mehr, weder in der App noch in der Desktop-App noch per Push.",
+				"scopeBadge": "Alle deine Geräte",
+				"campaignFinished": {
+					"label": "Kampagne abgeschlossen",
+					"hint": "Wenn eine Kampagne fertig versendet ist, mit dem Anteil, der zugestellt wurde."
+				},
+				"campaignReminder": {
+					"label": "Geplante Kampagne startet gleich",
+					"hint": "15 Minuten bevor eine geplante Kampagne startet, mit der Möglichkeit, sie abzubrechen."
+				},
+				"deliveryHold": {
+					"label": "Versandschutz bei Bounces",
+					"hint": "Wenn Owlat nach vielen Bounces oder Beschwerden Mails an einen Mail-Anbieter zurückhält oder über dein Relay umleitet."
+				},
+				"automationProblems": {
+					"label": "Probleme mit Automationen",
+					"hint": "Wenn Kontakte in einer Automation hängen bleiben oder eine Automation sich nach fehlgeschlagenen Läufen pausiert."
+				},
+				"domainDns": {
+					"label": "DNS der Versanddomain fehlerhaft",
+					"hint": "Wenn ein DNS-Eintrag einer Versanddomain seine Prüfung nicht mehr besteht."
+				},
+				"saveOperation": "Benachrichtigungseinstellung speichern"
 			},
 			"webPush": {
 				"heading": "Push-Benachrichtigungen",
@@ -12037,7 +12070,7 @@
 				"pageTitle": "Buchungsseite"
 			},
 			"device": {
-				"intro": "Einstellungen, die nur auf diesem Gerät gespeichert werden — sie wandern nie auf einen anderen Computer oder Browser.",
+				"intro": "Benachrichtigungen und Einstellungen für dieses Gerät. Die meisten werden nur hier gespeichert und wandern nie auf einen anderen Computer oder Browser; eine Einstellung, die zu deinem Konto gehört, sagt das dazu.",
 				"nothingHere": "Auf dieser Instanz speichert nichts etwas auf diesem Gerät."
 			},
 			"filters": {
@@ -16503,6 +16536,10 @@
 					"keywords": "trennen, entfernen, löschen, verbundenes Postfach, externes Konto, gmail, outlook, fastmail",
 					"title": "Verbundenes Postfach trennen"
 				},
+				"marketingNotifications": {
+					"title": "Marketing-Benachrichtigungen",
+					"keywords": "kampagne abgeschlossen, erinnerung, geplante kampagne, bounce-spitze, versandschutz, versand pausiert, automation hängt, dns fehlerhaft, warnungen"
+				},
 				"pushNotifications": {
 					"title": "Push-Benachrichtigungen",
 					"keywords": "web push, browser-benachrichtigungen, handy, smartphone, pwa, benachrichtigen, geräte"
@@ -17360,6 +17397,51 @@
 				"lastName": "Nachname"
 			},
 			"pickerTitle": "CSV-Datei auswählen"
+		},
+		"marketingNotices": {
+			"toast": "{title}: {body}",
+			"quietSummary": {
+				"title": "Während du weg warst",
+				"body": "1 Hinweis zu Kampagnen oder Versand ist während der Ruhezeiten eingegangen | {count} Hinweise zu Kampagnen und Versand sind während der Ruhezeiten eingegangen"
+			},
+			"campaignFinished": {
+				"title": "Kampagne abgeschlossen",
+				"body": "{name} · {percent} % zugestellt",
+				"bodyNoPercent": "{name} ist fertig versendet",
+				"private": "Eine Kampagne ist fertig versendet"
+			},
+			"campaignReminder": {
+				"title": "Geplante Kampagne startet in {minutes} Min.",
+				"body": "{name}",
+				"private": "Öffne sie, um den Versand zu prüfen oder abzubrechen"
+			},
+			"deliveryHold": {
+				"title": "Bounce-Spitze: Versandschutz aktiv",
+				"body": "Owlat hält Mails an {provider} nach vielen Bounces oder Beschwerden zurück oder leitet sie über dein Relay um"
+			},
+			"providers": {
+				"gmail": "Gmail",
+				"microsoft": "Microsoft",
+				"yahoo": "Yahoo",
+				"apple": "Apple",
+				"other": "andere Anbieter"
+			},
+			"automationStalled": {
+				"title": "Automation hängt",
+				"body": "{name}: {count} hängender Kontakt | {name}: {count} hängende Kontakte",
+				"private": "Kontakte hängen in einer Automation"
+			},
+			"automationPaused": {
+				"title": "Automation pausiert",
+				"body": "{name} hat sich nach wiederholt fehlgeschlagenen Läufen pausiert",
+				"private": "Eine Automation hat sich nach wiederholt fehlgeschlagenen Läufen pausiert"
+			},
+			"domainDns": {
+				"title": "DNS der Versanddomain fehlerhaft",
+				"body": "{domain}: Prüfung „{check}“ fehlgeschlagen",
+				"bodyNoCheck": "{domain}: eine DNS-Prüfung ist fehlgeschlagen",
+				"private": "Eine DNS-Prüfung einer Versanddomain ist fehlgeschlagen"
+			}
 		},
 		"useDesktopNotifications": {
 			"draftsReady": {

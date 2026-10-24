@@ -127,6 +127,7 @@ function mountPage() {
 				UiSwitch: true,
 				I18nT: true,
 				PreferencesWebPush: true,
+				PreferencesMarketingNotifications: true,
 				PostboxOfflineSettings: true,
 				PostboxNotificationSettings: true,
 				DesktopUpdateCard: true,

@@ -140,7 +140,13 @@ export const subscribe = authedMutation({
 				...fields,
 				userId: session.userId,
 				// A quiet-hours count belongs to the person it was held for.
-				...(changedOwner ? { quietDeferredCount: undefined, quietSummaryAt: undefined } : {}),
+				...(changedOwner
+					? {
+							quietDeferredCount: undefined,
+							quietDeferredMarketingCount: undefined,
+							quietSummaryAt: undefined,
+						}
+					: {}),
 			});
 			return existing._id;
 		}

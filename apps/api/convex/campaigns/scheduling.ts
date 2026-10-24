@@ -15,6 +15,7 @@ import {
 } from '../lib/validators/sendTime';
 import { sendTimeSettingsError } from './sendTimeOptimization';
 import { getLiveOrThrow } from '../lib/softDelete';
+import { scheduleCampaignReminder } from '../marketing/noticeEvents';
 
 /**
  * The pre-flight every path that puts a campaign on the clock runs: `schedule`
@@ -192,10 +193,14 @@ export const reschedule = campaignsMutation({
 			},
 		});
 
-		const delayMs = args.scheduledAt - Date.now();
+		const now = Date.now();
+		const delayMs = args.scheduledAt - now;
 		await ctx.scheduler.runAfter(delayMs, internal.campaigns.send.startCampaignSend, {
 			campaignId: args.campaignId,
 		});
+		// The reminder for the old start goes stale on its own (the fan-out
+		// compares starts); this one is for the new start.
+		await scheduleCampaignReminder(ctx, args.campaignId, args.scheduledAt, now);
 
 		return args.campaignId;
 	},
