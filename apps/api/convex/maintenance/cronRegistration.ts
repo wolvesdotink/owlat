@@ -100,4 +100,12 @@ export function registerRetentionCrons(crons: ReturnType<typeof cronJobs>): void
 		internal.mail.imap.serverRegistry.pruneStale,
 		{}
 	);
+	// Worker reports (maintenance/workerRegistry.ts): the same 30 days, for
+	// every worker service.
+	crons.interval(
+		'retention: worker reports',
+		{ hours: 24 },
+		internal.maintenance.workerRegistry.pruneStale,
+		{}
+	);
 }

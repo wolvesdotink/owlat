@@ -37,6 +37,7 @@ import {
 	markFullSyncAligned,
 } from './remoteState';
 import { listSeedProbeWork, recordSeedProbeClassification } from './seedProbes';
+import { reportWorker } from './workerReport';
 
 export * from './accounts';
 export * from './backfill';
@@ -44,6 +45,7 @@ export * from './delivery';
 export * from './remoteOps';
 export * from './remoteState';
 export * from './seedProbes';
+export * from './workerReport';
 
 export const MAIL_SYNC_ENDPOINTS = {
 	getCredentialsForWorker,
@@ -73,4 +75,5 @@ export const MAIL_SYNC_ENDPOINTS = {
 	applyRemoteObservations,
 	markFullSyncAligned,
 	forgetRemoteFolders,
+	reportWorker,
 } as const;
