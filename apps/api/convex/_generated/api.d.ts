@@ -1576,6 +1576,7 @@ import type * as plugins_storageJson from '../plugins/storageJson.js';
 import type * as plugins_webhookEventCatalog from '../plugins/webhookEventCatalog.js';
 import type * as plugins_webhookEventCatalog_generated from '../plugins/webhookEventCatalog.generated.js';
 import type * as plugins_workerTasks from '../plugins/workerTasks.js';
+import type * as preferences_alertSounds from '../preferences/alertSounds.js';
 import type * as preferences_shortcuts from '../preferences/shortcuts.js';
 import type * as providers_composition from '../providers/composition.js';
 import type * as providers_domainIdentity from '../providers/domainIdentity.js';
@@ -3442,6 +3443,7 @@ declare const fullApi: ApiFromModules<{
 	'plugins/sendTransportWebhookCatalog': typeof plugins_sendTransportWebhookCatalog;
 	'plugins/sendTransportWebhookCatalog.generated': typeof plugins_sendTransportWebhookCatalog_generated;
 	'plugins/sendTransportWebhookModules.generated': typeof plugins_sendTransportWebhookModules_generated;
+	'preferences/alertSounds': typeof preferences_alertSounds;
 	'preferences/shortcuts': typeof preferences_shortcuts;
 	'providers/composition': typeof providers_composition;
 	'providers/domainIdentity': typeof providers_domainIdentity;
