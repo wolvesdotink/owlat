@@ -175,33 +175,56 @@ resolve_ref() {
 	# the unified line carries the full install asset set, so we list releases
 	# (newest first) and pick the first bare `vX.Y.Z` tag — ignoring any
 	# `server-v*` / `desktop-v*` tag even if it were mistakenly marked "latest".
+	# Release candidates (`vX.Y.Z-rc.N`) are published as prereleases and can
+	# outnumber stable releases at the head of the list, so page through the
+	# history until a stable tag turns up rather than reading one page only.
 	# Inspect the HTTP status so we can tell "no releases yet" (fall back to the
 	# default branch) apart from a hard API failure / rate-limit. On a hard
 	# failure we must NOT silently downgrade to bleeding-edge 'main' — fail fast
-	# and let the operator pin a ref.
-	local api_url="https://api.github.com/repos/${OWLAT_GH_SLUG}/releases?per_page=30"
-	local response http_code latest
-	response=$(curl -sSL --max-time 10 -w $'\n%{http_code}' "$api_url" 2>/dev/null) || response=$'\n000'
-	http_code="${response##*$'\n'}"
-	# Match only bare STABLE `vX.Y.Z` tags: the trailing `"` is anchored so a
-	# prerelease tag like `v0.3.0-rc.1` is NOT matched. This preserves the old
-	# `/releases/latest` behaviour (which excludes prereleases/drafts) and keeps
-	# the installer in agreement with the updater (systemUpdates.ts, also
-	# stable-only). The leading `v` distinguishes these unified releases from the
-	# `server-v*` / `desktop-v*` prefixed lines.
-	latest=$(printf '%s' "${response%$'\n'*}" \
-		| grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[0-9]+\.[0-9]+\.[0-9]+"' \
-		| sed -n 's/.*"\(v[0-9][^"]*\)"/\1/p' | head -1)
+	# and let the operator pin a ref. The same holds when the page budget runs
+	# out with releases still unread: that history is truncated, not empty.
+	local per_page=100 max_pages=10
+	local api_url="https://api.github.com/repos/${OWLAT_GH_SLUG}/releases?per_page=${per_page}"
+	local page=1 response http_code body latest="" listed exhausted=""
+	while ((page <= max_pages)); do
+		response=$(curl -sSL --max-time 10 -w $'\n%{http_code}' "${api_url}&page=${page}" 2>/dev/null) || response=$'\n000'
+		http_code="${response##*$'\n'}"
+		[[ "$http_code" == "200" ]] || break
+		body="${response%$'\n'*}"
+		# Match only bare STABLE `vX.Y.Z` tags: the trailing `"` is anchored so a
+		# prerelease tag like `v0.3.0-rc.1` is NOT matched. This preserves the old
+		# `/releases/latest` behaviour (which excludes prereleases/drafts) and keeps
+		# the installer in agreement with the updater (systemUpdates.ts, also
+		# stable-only). The leading `v` distinguishes these unified releases from the
+		# `server-v*` / `desktop-v*` prefixed lines.
+		# grep finding nothing is an answer, not an error: `|| true` keeps
+		# `set -euo pipefail` from ending the script on a page without a match.
+		latest=$(printf '%s' "$body" \
+			| grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[0-9]+\.[0-9]+\.[0-9]+"' \
+			| sed -n 's/.*"\(v[0-9][^"]*\)"/\1/p' | head -1) || true
+		[[ -n "$latest" ]] && break
+		# A short page is the end of the release history.
+		listed=$(printf '%s' "$body" | grep -oE '"tag_name"[[:space:]]*:' | wc -l) || true
+		if ((listed < per_page)); then
+			exhausted=1
+			break
+		fi
+		page=$((page + 1))
+	done
 
 	if [[ -n "$latest" ]]; then
 		OWLAT_REF="$latest"
 		info "Installing latest release: $OWLAT_REF"
-	elif [[ "$http_code" == "200" || "$http_code" == "404" ]]; then
+	elif [[ -n "$exhausted" || ("$http_code" == "404" && "$page" == 1) ]]; then
 		# Repo reachable but no unified release published yet — the default branch
 		# is the only sensible target.
 		OWLAT_REF="main"
 		warn "No published vX.Y.Z release found (HTTP ${http_code}) — falling back to the default branch 'main'."
 		warn "Pin a specific version with: OWLAT_REF=v1.2.3 curl … | bash"
+	elif [[ "$http_code" == "200" ]]; then
+		die "No stable vX.Y.Z release among the newest $((max_pages * per_page)) releases of ${OWLAT_GH_SLUG},
+but the release history goes on, so refusing to fall back to the bleeding-edge 'main'. Pin a ref:
+  OWLAT_REF=v1.2.3 curl … | bash   # a release tag"
 	else
 		die "Could not resolve a release from the GitHub API (HTTP ${http_code}) for ${OWLAT_GH_SLUG}.
 This is usually a transient network error or an API rate-limit, not a missing release,

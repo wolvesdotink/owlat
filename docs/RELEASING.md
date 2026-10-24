@@ -11,18 +11,26 @@ whole pipeline, and the stable release is its commit, tagged once that run is
 green:
 
 ```sh
-bun run release:cut <major|minor|patch|X.Y.Z> # prepare X.Y.Z: bump + changelog + schema snapshot, tag vX.Y.Z-rc.1
-# curate the generated CHANGELOG.md section (or cut with --no-commit and curate first), then:
+bun run release:cut <major|minor|patch|X.Y.Z> --no-commit # prepare X.Y.Z: bump + changelog + schema snapshot
+# curate the generated CHANGELOG.md section, then commit and tag the candidate:
+git add -A && git commit -m "chore(release): vX.Y.Z-rc.1"
+git tag -a vX.Y.Z-rc.1 -m "Owlat vX.Y.Z-rc.1"
 git push origin main vX.Y.Z-rc.1
 # wait for release.yml to pass on the candidate, test it (below), then:
 bun run release:promote vX.Y.Z-rc.1 --push    # tag vX.Y.Z on the candidate's commit
 ```
 
+Without `--no-commit`, `release:cut` commits and tags the candidate itself
+(add `--push` to push both). The stable release is the candidate's commit, so
+changelog edits made after the tag exist only in a later commit: they reach a
+release only through the next candidate (`release:cut rc`).
+
 A fix found while testing goes to main as usual, then
 `bun run release:cut rc` cuts `vX.Y.Z-rc.2` from main: it keeps the prepared
 versions, adds what landed since `rc.1` to the version's CHANGELOG section
-(fold in hand-written notes under [Unreleased] or curate the section again)
-and moves the schema snapshot forward. Only the newest candidate can be
+and moves the schema snapshot forward. To fold in hand-written notes under
+[Unreleased] or curate the section again, cut it with `--no-commit` as above
+and commit and tag `vX.Y.Z-rc.2` after curating. Only the newest candidate can be
 promoted. `release:cut` refuses to prepare a new version while the prepared one
 is unreleased: cut its next candidate or promote one first.
 
