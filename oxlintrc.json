@@ -153,6 +153,159 @@
 					}
 				]
 			}
+		],
+		// The boundary rules below replaced text-matching gates (scripts/check-*.sh)
+		// that still run beside them for one release; scripts/ast-gate-parity.ts
+		// diffs the two finding sets per rule. `files` / `ignore` / `allow` paths are
+		// repository-relative globs matched as a path suffix (see the plugin README),
+		// and every rule skips test files. Each `allow` entry says why.
+		"owlat/no-crypto-primitives": [
+			"error",
+			{
+				"files": ["apps/**", "packages/**"],
+				"ignore": ["**/*.d.ts", "**/*.d.mts", "**/*.d.cts"],
+				"allow": [
+					{
+						"files": ["apps/api/convex/lib/crypto.ts"],
+						"reason": "the Convex compare and HMAC (V8 isolate and 'use node')"
+					},
+					{
+						"files": ["packages/shared/src/constantTimeEqual.ts"],
+						"reason": "the Node compare (@owlat/shared/constantTimeEqual)"
+					},
+					{
+						"files": ["apps/convex-fn-proxy/src/allowlist.ts"],
+						"reason": "hash-then-compare copy; the proxy has no workspace dependencies"
+					}
+				]
+			}
+		],
+		"owlat/no-process-env": [
+			"error",
+			{
+				"files": ["apps/api/convex/**"],
+				"allow": [
+					{
+						"files": ["apps/api/convex/lib/env.ts"],
+						"reason": "the one reader: getRequired / getOptional / getWithDefault over the EnvKey union"
+					}
+				]
+			}
+		],
+		"owlat/no-log-pii": ["error", { "files": ["apps/api/convex/**"] }],
+		"owlat/convex-error-taxonomy": [
+			"error",
+			{
+				"files": ["apps/api/convex/**"],
+				"allow": [
+					{
+						"files": ["apps/api/convex/_utils/errors.ts"],
+						"reason": "the throw* helpers that emit the canonical { category, message, data? } payload"
+					},
+					{
+						"files": ["apps/api/convex/lib/llm/admissionPort.ts"],
+						"reason": "AdmissionRefusedError subclasses ConvexError in the Operation error shape ({ category: 'forbidden', message, data }) so a refused paid call reaches the client unchanged while the LLM router reads its typed reason"
+					}
+				]
+			}
+		],
+		"owlat/no-raw-convex-builder": [
+			"error",
+			{
+				"files": ["apps/api/convex/**"],
+				"allow": [
+					{
+						"files": ["apps/api/convex/lib/authedFunctions.ts"],
+						"reason": "defines the secure-by-default builders on top of the raw ones"
+					}
+				]
+			}
+		],
+		// A warning: handlers that predate session threading are frozen debt in
+		// scripts/owlat-lint-baseline.txt (scripts/check-owlat-lint.sh).
+		"owlat/use-threaded-session": [
+			"warn",
+			{
+				"files": ["apps/api/convex/**"],
+				"ignore": ["apps/api/convex/lib/**"],
+				"kinds": ["query", "mutation"],
+				"floors": ["member", "role"],
+				"helpers": [
+					"getMutationContext",
+					"getUserIdFromSession",
+					"getBetterAuthSessionWithRole",
+					"getBetterAuthSession",
+					"requireOrgMember",
+					"requireOrgPermission",
+					"requireAdminContext",
+					"requireOwnerContext"
+				]
+			}
+		],
+		"owlat/feature-floor-in-builder": [
+			"error",
+			{
+				"files": ["apps/api/convex/**"],
+				// A flag and the folder its gated builders cover. Add a pair when a
+				// folder gains its gated builders.
+				"families": [
+					{ "flag": "mail.external", "files": ["apps/api/convex/mail/**"] },
+					{ "flag": "transactional", "files": ["apps/api/convex/transactional/**"] },
+					{ "flag": "campaigns", "files": ["apps/api/convex/campaigns/**"] },
+					{ "flag": "automations", "files": ["apps/api/convex/automations/**"] },
+					{ "flag": "forms", "files": ["apps/api/convex/forms/**"] },
+					{ "flag": "ai.knowledge", "files": ["apps/api/convex/knowledge/**"] },
+					{ "flag": "calendar.booking", "files": ["apps/api/convex/booking/**"] },
+					{ "flag": "inbox", "files": ["apps/api/convex/inbox/sla/**"] }
+				],
+				// Postbox handlers use postboxQuery / postboxMutation, the external
+				// mailbox family the externalMail* builders.
+				"bareBuilders": {
+					"builders": ["authedQuery", "authedMutation"],
+					"files": ["apps/api/convex/mail/**"]
+				},
+				// Justified sites, not debt: each must stay as it is.
+				"allow": [
+					{
+						"reason": "Soft-auth publicQuery reads in the mail.external family keep an inline assertFeatureEnabled(ctx, 'mail.external'), marked // flag-inline:, because a gated publicQuery would slip past the raw-builder ban and its // public: rule.",
+						"sites": [
+							"apps/api/convex/mail/external/accounts.ts:getForCurrentUser",
+							"apps/api/convex/mail/mailboxMove.ts:moveStatus",
+							"apps/api/convex/mail/migration.ts:getStatus",
+							"apps/api/convex/mail/sendingSwitch.ts:sendingSwitchStatus"
+						]
+					},
+					{
+						"reason": "Soft-fails to null (isFeatureEnabled) rather than throwing: the admin page renders it beside other cards and reads null as no team inbox import.",
+						"sites": ["apps/api/convex/mail/migrationShared.ts:getStatusShared"]
+					},
+					{
+						"reason": "Reachable before any mail flag is on (mail/_helpers.ts exemptions): the mailbox request / fresh-start guard a mailbox-less member sees, invitation acceptance, and the team roster's mailbox column.",
+						"sites": [
+							"apps/api/convex/mail/mailboxRequest.ts:freshStartStatus",
+							"apps/api/convex/mail/mailboxRequest.ts:provisionFromRequest",
+							"apps/api/convex/mail/mailboxRequest.ts:request",
+							"apps/api/convex/mail/memberMailboxStatus.ts:byMembers",
+							"apps/api/convex/mail/pendingInboxMembership.ts:claimInboxMemberships",
+							"apps/api/convex/mail/pendingMailbox.ts:cancelForInvitation",
+							"apps/api/convex/mail/pendingMailbox.ts:claimForInvitation",
+							"apps/api/convex/mail/pendingMailbox.ts:setForInvitation"
+						]
+					},
+					{
+						"reason": "Instance capability, not mail data: a boolean from env presence that the connect form reads to pick its branch.",
+						"sites": ["apps/api/convex/mail/external/googleOAuth.ts:isConfigured"]
+					},
+					{
+						"reason": "The AI handling rules serve the ai.autonomy surface, not Postbox (mail/_helpers.ts exemption).",
+						"sites": [
+							"apps/api/convex/mail/handlingRules.ts:create",
+							"apps/api/convex/mail/handlingRules.ts:remove",
+							"apps/api/convex/mail/handlingRules.ts:update"
+						]
+					}
+				]
+			}
 		]
 	},
 	"overrides": [

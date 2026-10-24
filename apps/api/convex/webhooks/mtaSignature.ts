@@ -9,6 +9,7 @@
  *   /webhooks/mta-mailbox, /webhooks/mta-inbound   `adapters/mtaRawRoute.ts`
  *   /webhooks/mta-tls-report                       `domains/tlsReportsHttp.ts`
  *   /webhooks/mta-verify-credential                `mail/authHttp.ts`
+ *   /webhooks/mta-worker-report                    `maintenance/workerReportHttp.ts`
  *
  * `/webhooks/mta` is a provider-feedback surface and goes through the verifier
  * registry (`providerVerifierRegistry.ts`) with a declared `hmac-timestamp-body`

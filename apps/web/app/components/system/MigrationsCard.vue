@@ -12,6 +12,7 @@
 import { api } from '@owlat/api';
 import { semverCompare } from '@owlat/shared/semver';
 import { formatDateTime } from '~/utils/formatters';
+import { workerServiceKey } from '~/utils/workerServices';
 import {
 	countByState,
 	displayState,
@@ -21,6 +22,7 @@ import {
 	migrationNameKey,
 	type MigrationDisplayState,
 	type MigrationRow,
+	type MigrationWorkerWait,
 } from '~/utils/systemMigrations';
 
 const { t, te } = useI18n();
@@ -42,6 +44,18 @@ const hasRunnable = computed(() =>
 const isEverythingCompleted = computed(
 	() => rows.value.length > 0 && counts.value.completed === rows.value.length
 );
+
+/** What a contract step waits for on one worker service. */
+function workerWaitText(wait: MigrationWorkerWait): string {
+	const params = {
+		service: t(`components.system.workerVersionsCard.services.${workerServiceKey(wait.service)}`),
+		version: wait.requiredWireVersion,
+		oldest: wait.oldestLiveWireVersion ?? 0,
+	};
+	return wait.reason === 'lagging'
+		? t('components.system.migrationsCard.waitsForWorkersLagging', params)
+		: t('components.system.migrationsCard.waitsForWorkersMissing', params);
+}
 
 function nameOf(migration: string): string {
 	const key = `components.system.migrationsCard.names.${migrationNameKey(migration)}`;
@@ -245,12 +259,20 @@ async function runPending() {
 									}}
 								</template>
 							</p>
-							<p v-if="displayState(row, now) === 'waiting'">
+							<p v-if="displayState(row, now) === 'waiting' && row.waitingFor.length > 0">
 								{{
 									t('components.system.migrationsCard.waitsFor', {
 										names: row.waitingFor.map(nameOf).join(', '),
 									})
 								}}
+							</p>
+							<!-- A contract step: it starts once every worker has moved. -->
+							<p
+								v-for="wait in row.waitingForWorkers ?? []"
+								:key="wait.service"
+								:data-test="`worker-wait-${wait.service}`"
+							>
+								{{ workerWaitText(wait) }}
 							</p>
 							<p v-if="displayState(row, now) === 'interrupted'" class="text-warning">
 								{{ t('components.system.migrationsCard.interruptedHint') }}

@@ -354,7 +354,9 @@ export default defineNuxtConfig({
 			// and it is now the right one.
 			viewport: 'width=device-width, initial-scale=1, viewport-fit=cover',
 			link: [
-				{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+				// Keyed so the dashboard's unread badge (useTabBadge) can swap in the
+				// dotted icon under the same key instead of adding a second icon link.
+				{ key: 'favicon', rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
 				// iOS ignores the manifest's icons for "Add to Home Screen" and uses
 				// this one (full-bleed: iOS applies its own corner mask).
 				{ rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },

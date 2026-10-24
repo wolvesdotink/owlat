@@ -461,6 +461,8 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			isLinux: ref(false),
 			platform: ref('linux'),
 		}),
+		useUnreadBadge: () => ({ data: ref(undefined), count: ref(null) }),
+		useTabBadge: vi.fn(),
 		useDesktopNotifications: () => ({ isDesktop: ref(false) }),
 		useWorkspaceHotkeys: vi.fn(),
 		useCommandPalette: () => ({ open: ref(false) }),

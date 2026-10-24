@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 const sources = {
 	...import.meta.glob('../mail/**/*.ts'),
 	...import.meta.glob('../analytics/*.ts'),
+	...import.meta.glob('../maintenance/*.ts'),
 };
 
 /** A validator's JSON form, what `exportArgs` / `exportReturns` serialize. */

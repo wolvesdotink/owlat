@@ -5187,7 +5187,8 @@
 					"unsnooze": "Un-snooze messages",
 					"unsubscribe": "Unsubscribe and archive"
 				},
-				"purgeConfirm": "Permanently delete {count} message? This cannot be undone. | Permanently delete {count} messages? This cannot be undone.",
+				"purgeConfirm": "Permanently delete {count} message? | Permanently delete {count} messages?",
+				"purgeConfirmBody": "This cannot be undone.",
 				"read": "Read",
 				"selected": "{count} selected",
 				"snooze": "Snooze",
@@ -5554,7 +5555,8 @@
 			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Unsubscribe from this mailing list",
-				"confirm": "Unsubscribe from this mailing list?\n\nOwlat will send the standard one-click unsubscribe request to {host}.",
+				"confirm": "Unsubscribe from this mailing list?",
+				"confirmBody": "Owlat will send the standard one-click unsubscribe request to {host}.",
 				"requestFailed": "Unsubscribe request failed — opening the unsubscribe page instead",
 				"requestSent": "Unsubscribe request sent",
 				"theSender": "the sender",
@@ -5644,7 +5646,7 @@
 			"postboxSubscriptionsPanel": {
 				"action": "Unsubscribe and archive | Unsubscribe and archive ({count})",
 				"clearSelection": "Clear selection",
-				"confirm": "Unsubscribe from {count} sender and archive their mail?",
+				"confirm": "Unsubscribe from {count} sender and archive their mail? | Unsubscribe from {count} senders and archive their mail?",
 				"empty": "No subscriptions found.",
 				"emptyHint": "Newsletters and other list mail show up here once some arrives.",
 				"heading": "Subscriptions",
@@ -6515,24 +6517,34 @@
 			"unsavedHint": "Save your changes before creating a share link."
 		},
 		"system": {
-			"imapServersCard": {
-				"title": "IMAP servers",
-				"intro": "IMAP servers that reported to this backend in the last 7 days. Update the backend first, then the IMAP container: the IMAP server may run one release behind the backend, never ahead of it.",
-				"loading": "Loading IMAP servers…",
-				"empty": "No IMAP server reported in the last 7 days. That is expected when this deployment does not run the IMAP container.",
-				"legacyWarning": "An IMAP server from 0.6.7 or older handled a login on {date}. It does not report its version, so it is not listed and is not stopped at startup. Update the IMAP container to the backend's release.",
-				"unsupportedWarning": "An IMAP server older than this backend supports was seen. The backend refuses its logins, and a server that reports its version does not start, until you update the IMAP container.",
-				"aheadWarning": "An IMAP server newer than this backend reported in. It does not serve mail until the backend is updated.",
-				"truncated": "Showing the {count} most recent. The warnings above cover every IMAP server in the last 7 days.",
+			"workerVersionsCard": {
+				"title": "Worker versions",
+				"intro": "The workers that reported to this backend in the last 7 days, per service, and whether the backend still serves their wire version. Update the backend first, then the worker containers: a worker may run one release behind the backend, never ahead of it.",
+				"loading": "Loading worker versions…",
+				"contract": "Backend speaks wire version {current}, serves versions {min} to {current}",
+				"contractSingle": "Backend speaks and serves wire version {current} only",
+				"empty": "Nothing reported in the last 7 days. That is expected when this deployment does not run this service.",
+				"legacyImapWarning": "An IMAP server from 0.6.7 or older handled a login on {date}. It does not report its version, so it is not listed and is not stopped at startup. Update the IMAP container to the backend's release.",
+				"unsupportedWarning": "A worker older than this backend supports reported in the last 7 days. Update its container to the backend's release.",
+				"aheadWarning": "A worker newer than this backend reported in. Update the backend first.",
+				"skew": "Wire versions {oldest} to {newest} reported in the last 7 days. Contract steps that need the newer one wait until no older worker is running.",
+				"truncated": "Showing the {count} most recent. The warnings above cover every report of this service in the last 7 days.",
 				"host": "Host",
 				"version": "Release",
 				"lastSeen": "Last report",
+				"notLive": "stopped reporting",
 				"wireVersion": "(wire version {version})",
 				"verdict": {
 					"current": "Current",
 					"supported": "Older, supported",
 					"unsupported": "Not supported",
 					"ahead": "Waiting for backend update"
+				},
+				"services": {
+					"imap": "IMAP server",
+					"mailSync": "Mail sync",
+					"mta": "MTA",
+					"codeWorker": "Code worker"
 				}
 			},
 			"llmSpendCard": {
@@ -6562,6 +6574,8 @@
 				"completedAt": "completed {date}",
 				"lastProgress": "last progress {date}",
 				"waitsFor": "Starts after {names} has completed.",
+				"waitsForWorkersLagging": "{service}: waits until every worker runs wire version {version} or newer. One still runs {oldest}.",
+				"waitsForWorkersMissing": "{service}: waits for a worker to report wire version {version} or newer.",
 				"interruptedHint": "No progress for a while: its background job stopped. Run again to resume from the last recorded page.",
 				"failedHint": "Fix the cause, then run again to retry from the last recorded page. The maintenance guide has the CLI commands for the same steps.",
 				"startsItself": "Also starts by itself in the background. Running it here only starts it sooner.",
@@ -11309,11 +11323,17 @@
 				"title": "Team inbox",
 				"undo": {
 					"assigned": "Assigned",
+					"assignedMany": "Assigned {count} conversation | Assigned {count} conversations",
 					"assignedTo": "Assigned to {name}",
+					"assignedToMany": "Assigned {count} conversation to {name} | Assigned {count} conversations to {name}",
 					"assignedToYou": "Assigned to you",
+					"assignedToYouMany": "Assigned {count} conversation to you | Assigned {count} conversations to you",
 					"resolved": "Resolved",
+					"resolvedMany": "Resolved {count} conversation | Resolved {count} conversations",
 					"snoozed": "Snoozed",
-					"unassigned": "Unassigned"
+					"snoozedMany": "Snoozed {count} conversation | Snoozed {count} conversations",
+					"unassigned": "Unassigned",
+					"unassignedMany": "Unassigned {count} conversation | Unassigned {count} conversations"
 				},
 				"unsnoozeThreadOperation": "Unsnooze thread",
 				"updateThreadStatusOperation": "Update thread status",
@@ -13231,7 +13251,8 @@
 				"draftsResumed": "Drafts resumed",
 				"applied": "Applied {count} suggestion | Applied {count} suggestions"
 			},
-			"confirmUnsubscribe": "Unsubscribe from {name}? Their mail will be archived from now on.",
+			"confirmUnsubscribe": "Unsubscribe from {name}?",
+			"confirmUnsubscribeBody": "Their mail will be archived from now on.",
 			"shortcuts": {
 				"autoArchive": "Auto-archive this sender's mail",
 				"unsubscribe": "Unsubscribe from this sender"
@@ -15766,8 +15787,16 @@
 				"recategorizeThread": "Recategorize thread"
 			},
 			"usePostboxTriageUndo": {
+				"grouped": {
+					"archived": "Archived {count} message | Archived {count} messages",
+					"moved": "Moved {count} message | Moved {count} messages",
+					"spam": "Marked {count} message as spam | Marked {count} messages as spam",
+					"trashed": "Moved {count} message to trash | Moved {count} messages to trash"
+				},
 				"keyHint": "{keys} to undo",
-				"undo": "Undo"
+				"keyHintLast": "{keys} undoes the last",
+				"undo": "Undo",
+				"undoAll": "Undo all"
 			},
 			"usePostboxImageAllowlist": {
 				"allowOperation": "Always show images from this sender",
@@ -15787,7 +15816,8 @@
 				"moveOperation": "Move messages",
 				"unsubscribeOperation": "Unsubscribe from bundle",
 				"undoArchived": "Archived {count} messages",
-				"unsubscribeConfirm": "Unsubscribe from {count} senders and archive their mail? Each one is a request sent on your behalf."
+				"unsubscribeConfirm": "Unsubscribe from {count} sender and archive their mail? | Unsubscribe from {count} senders and archive their mail?",
+				"unsubscribeConfirmBody": "Each one is a request sent on your behalf."
 			},
 			"usePostboxTriageSuggestion": {
 				"createRule": "Create rule from suggestion",
@@ -17257,11 +17287,15 @@
 			"exportFailed": "Export failed. Please try again.",
 			"exported": "Exported {count} contact to {filename} | Exported {count} contacts to {filename}",
 			"listFallback": "list",
+			"nothingAdded": "All selected contacts are already in \"{list}\"",
 			"noContactsToExport": "No contacts to export",
+			"nothingRemoved": "None of the selected contacts are in \"{list}\"",
 			"removeContactsOperation": "Remove contacts from topic",
 			"removedFromList": "Removed {count} contact from \"{list}\" | Removed {count} contacts from \"{list}\"",
 			"selectAllFailed": "Failed to select all contacts. Please try again.",
-			"selectionTruncated": "Selected the first {count} matching contacts. Refine your filter to act on the rest."
+			"selectionTruncated": "Selected the first {count} matching contacts. Refine your filter to act on the rest.",
+			"undoAddOperation": "Undo adding contacts to topic",
+			"undoRemoveOperation": "Undo removing contacts from topic"
 		},
 		"useContactDetail": {
 			"clearPropertyOperation": "Clear contact property",

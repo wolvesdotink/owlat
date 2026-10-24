@@ -62,6 +62,12 @@
 #   * A `^})` at column 0 inside a handler body would end the block early. No
 #     such formatting exists today (oxfmt keeps nested closers indented) and the
 #     block scanner reports nothing unterminated across the tree.
+#
+# The oxlint rule owlat/use-threaded-session (packages/oxlint-plugin-owlat)
+# enforces this on the AST and runs beside this script until
+# scripts/ast-gate-parity.ts (`bun run lint:ast-gate-parity`) shows the two
+# agree; a change to what this script reports needs the same change in the
+# rule, or that gate fails.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"

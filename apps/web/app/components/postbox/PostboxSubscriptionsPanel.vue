@@ -29,6 +29,7 @@ import {
 const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 
 const { t } = useI18n();
+const confirm = useConfirm();
 
 const { data, isLoading, error, refetch } = useConvexQuery(api.mail.subscriptions.list, () => ({
 	mailboxId: props.mailboxId,
@@ -88,19 +89,22 @@ const summary = computed(() =>
 );
 
 async function runBatch() {
+	// Read before asking: the batch goes to the mailbox and senders the
+	// question named, even if the list re-sorts while it is open.
+	const mailboxId = props.mailboxId;
 	const senderEmails = oneClickSelection.value;
-	if (senderEmails.length === 0) return;
+	const count = senderEmails.length;
+	if (count === 0) return;
 	// Unsubscribing is a state-changing request to a third party, times N —
 	// never fired without an explicit yes.
-	if (
-		!window.confirm(
-			t('components.postbox.postboxSubscriptionsPanel.confirm', { count: senderEmails.length })
-		)
-	) {
-		return;
-	}
+	const confirmed = await confirm({
+		title: t('components.postbox.postboxSubscriptionsPanel.confirm', { count }, count),
+		confirmText: t('components.postbox.postboxSubscriptionsPanel.action', { count }, count),
+		variant: 'warning',
+	});
+	if (!confirmed) return;
 	results.value = null;
-	const outcome = await batchOp.run({ mailboxId: props.mailboxId, senderEmails });
+	const outcome = await batchOp.run({ mailboxId, senderEmails });
 	if (!outcome.ok) return;
 	results.value = outcome.result.results;
 	clearSelection();

@@ -1,10 +1,11 @@
 /**
  * How each mail-sync wire fixture is produced: the call the worker makes, against
  * the seeded deployment (`workerWireMailSync.testlib.ts`), for every fixture case
- * of the account, ingest, seed-probe and backfill endpoints. The write-back and
+ * of the account, ingest, seed-probe, backfill and wire-report endpoints. The write-back and
  * remote-sync endpoints are in `workerWireMailSyncRemoteDrives.testlib.ts`.
  */
 
+import { workerWireWindow } from '@owlat/shared/workerWire';
 import { MAIL_SYNC_WIRE_IDS as M, WIRE_FIXTURE_NOW } from '@owlat/worker-protocol/wireFixtures';
 import { expect, vi } from 'vitest';
 import { internal } from '../../_generated/api';
@@ -88,6 +89,16 @@ const classify = (w: MailSyncWireWorld, probeId: string, organizationId = 'org-f
 		folderName: 'INBOX',
 		now: WIRE_FIXTURE_NOW,
 		clickRoll: 0.99,
+	});
+
+const reportWorker = (w: MailSyncWireWorld, wireVersion: number) =>
+	w.t.mutation(internal.maintenance.workerRegistry.report, {
+		service: 'mail-sync',
+		instanceId: 'mail-sync-fixture',
+		hostLabel: 'mail-sync-1',
+		owlatVersion: '0.6.16',
+		wireVersion,
+		startedAt: WIRE_FIXTURE_NOW - 60_000,
 	});
 
 export const MAIL_SYNC_DRIVES = {
@@ -267,6 +278,10 @@ export const MAIL_SYNC_DRIVES = {
 			await setMigration(w, { status: 'cancelled' });
 			return await pause(w);
 		},
+	},
+	reportWorker: {
+		current: (w) => reportWorker(w, workerWireWindow('mail-sync').current),
+		'backend older': (w) => reportWorker(w, workerWireWindow('mail-sync').current + 1),
 	},
 } satisfies Record<string, Record<string, MailSyncDrive>>;
 

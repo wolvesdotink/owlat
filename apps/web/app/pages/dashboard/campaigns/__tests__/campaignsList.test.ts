@@ -117,7 +117,12 @@ beforeEach(() => {
 			isLoading: ref(false),
 			error: ref(null),
 		}),
-		useToast: () => ({ showToast, removeToast: vi.fn(), setToastShortcutHint: vi.fn() }),
+		useToast: () => ({
+			showToast,
+			removeToast: vi.fn(),
+			setToastShortcutHint: vi.fn(),
+			updateToast: vi.fn(),
+		}),
 	});
 });
 

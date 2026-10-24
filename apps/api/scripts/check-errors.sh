@@ -33,6 +33,12 @@
 #
 # This is the locality guarantee made permanent — what stops re-drift back to
 # 317 bare throws and a fourth code vocabulary.
+#
+# The oxlint rule owlat/convex-error-taxonomy (packages/oxlint-plugin-owlat)
+# enforces this on the AST and runs beside this script until
+# scripts/ast-gate-parity.ts (`bun run lint:ast-gate-parity`) shows the two
+# agree; a change to what this script reports needs the same change in the
+# rule, or that gate fails.
 
 set -euo pipefail
 

@@ -30,6 +30,7 @@ import {
 	onScopeDispose,
 	useId,
 } from 'vue';
+import { useConfirm } from '~/composables/useConfirm';
 
 registerNuxtComponents();
 installVueWarnGuard();
@@ -69,6 +70,11 @@ vi.stubGlobal('useId', useId);
 // (`plugins/plugin-composition.generated.ts` exports the bundled composition the
 // admin rail and palette read), so importing it must not throw outside Nuxt.
 vi.stubGlobal('defineNuxtPlugin', (plugin: unknown) => plugin);
+// The app's own composable, not a stand-in: with no dialog host mounted every
+// question answers no, so a suite that never looks at a confirmation cannot
+// run a destructive action by accident. `~/__tests__/confirm` adds a host the
+// test answers for.
+vi.stubGlobal('useConfirm', useConfirm);
 
 // Type augmentation for global scope
 declare global {
