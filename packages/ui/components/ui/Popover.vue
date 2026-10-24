@@ -16,16 +16,17 @@
  *
  * `focus` decides whether the panel takes focus when it opens and gives it
  * back when it closes: to the `#trigger`, or without one to whatever had focus
- * when it opened. A press or focus outside that closes it leaves focus where
- * that went. A panel that takes focus is a dialog: Tab cycles
- * through it, an open `UiModal`'s Tab trap stands aside meanwhile (the panel
- * is outside the modal's DOM), and it is named by its `#trigger` or by
- * `label`. Suggestion lists turn focus off: the person keeps typing in the
+ * when it opened. If focus has already left the panel when it closes (a press
+ * or focus outside, or a modal around it closing and restoring its own
+ * opener), focus stays where it went. A panel that takes focus is a dialog:
+ * Tab cycles through it, an open `UiModal`'s Tab trap stands aside meanwhile
+ * (the panel is outside the modal's DOM), and it is named by its `#trigger`
+ * or by `label`. Suggestion lists turn focus off: the person keeps typing in the
  * field while the list follows, and a press in that field (`inside`) does not
  * count as outside. Such a panel is only a box around what the field controls
  * (a listbox), so it has no role and no name of its own.
  */
-import { computed, useSlots } from 'vue';
+import { computed, ref, useSlots } from 'vue';
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui';
 import { useEscapeLayer } from '../../composables/useEscapeLayer';
 import { useFocusLayer } from '../../composables/useModalFocus';
@@ -112,10 +113,18 @@ function onRekaOpen(next: boolean) {
 }
 
 // Reka gives focus back only to its registered `#trigger`. Without one, the
-// panel gives it back to its opener itself, unless the panel was closed by a
-// press or focus outside: then focus belongs where that went.
+// panel gives it back to its opener itself. Neither happens when focus already
+// belongs elsewhere: the panel was closed by a press or focus outside, or
+// something else moved focus out of it first, e.g. a modal that closed around
+// it and returned focus to its own opener (the trigger leaves with the modal).
+const panelRef = ref<HTMLElement | null>(null);
 let opener: HTMLElement | null = null;
 let interactedOutside = false;
+
+function focusMovedElsewhere(): boolean {
+	const active = document.activeElement;
+	return !!active && active !== document.body && !panelRef.value?.contains(active);
+}
 
 function onInteractOutside(event: Event) {
 	const target = event.target as Node | null;
@@ -134,7 +143,7 @@ function onCloseAutoFocus(event: Event) {
 	const restoreTo = !interactedOutside && opener?.isConnected ? opener : null;
 	opener = null;
 	interactedOutside = false;
-	if (!props.focus) {
+	if (!props.focus || focusMovedElsewhere()) {
 		event.preventDefault();
 		return;
 	}
@@ -163,6 +172,7 @@ function onCloseAutoFocus(event: Event) {
 				@close-auto-focus="onCloseAutoFocus"
 			>
 				<div
+					ref="panelRef"
 					v-bind="{ ...$attrs, ...semantics }"
 					class="ui-popover z-(--z-menu) max-h-(--reka-popover-content-available-height) overflow-y-auto rounded-lg border border-border-subtle bg-bg-elevated shadow-lg outline-none"
 					:class="{ 'w-(--reka-popover-trigger-width)': matchAnchorWidth }"

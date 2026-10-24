@@ -180,6 +180,106 @@ describe('UiPopover', () => {
 		outside.remove();
 	});
 
+	describe('inside a modal that an action in the focused popover closes', () => {
+		// The popover's own return target is in the modal and leaves with it, so
+		// focus goes back to what opened the modal.
+		function mountModalWithPopover(withTrigger: boolean, transitions: boolean) {
+			const modalOpen = ref(false);
+			const popoverOpen = ref(false);
+			const anchor = ref<HTMLButtonElement | null>(null);
+			const Host = defineComponent({
+				setup: () => () => [
+					h('button', { 'data-testid': 'edit', onClick: () => (modalOpen.value = true) }, 'Edit'),
+					h(
+						Modal,
+						{
+							open: modalOpen.value,
+							title: 'Edit',
+							'onUpdate:open': (next: boolean) => (modalOpen.value = next),
+						},
+						{
+							default: () => [
+								withTrigger
+									? null
+									: h(
+											'button',
+											{
+												ref: anchor,
+												'data-testid': 'more',
+												onClick: () => (popoverOpen.value = true),
+											},
+											'More'
+										),
+								h(
+									Popover as Component,
+									{
+										open: popoverOpen.value,
+										anchor: withTrigger ? null : anchor.value,
+										label: withTrigger ? undefined : 'More',
+										'onUpdate:open': (next: boolean) => (popoverOpen.value = next),
+									},
+									{
+										...(withTrigger
+											? { trigger: () => h('button', { 'data-testid': 'more' }, 'More') }
+											: {}),
+										default: () =>
+											h(
+												'button',
+												{ 'data-testid': 'save', onClick: () => (modalOpen.value = false) },
+												'Save and close'
+											),
+									}
+								),
+							],
+						}
+					),
+				],
+			});
+			const wrapper = mount(Host, {
+				attachTo: document.body,
+				global: {
+					plugins: [createUiI18n('en')],
+					components: { Icon: IconStub },
+					stubs: transitions ? { transition: false } : {},
+				},
+			});
+			return { wrapper, modalOpen, popoverOpen };
+		}
+
+		const byId = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+
+		it.each([
+			{ withTrigger: true, transitions: false, name: 'with a trigger' },
+			{ withTrigger: true, transitions: true, name: 'with a trigger, modal transition running' },
+			{ withTrigger: false, transitions: false, name: 'anchored without a trigger' },
+			{
+				withTrigger: false,
+				transitions: true,
+				name: 'anchored without a trigger, modal transition running',
+			},
+		])("returns focus to the modal's opener ($name)", async ({ withTrigger, transitions }) => {
+			const { wrapper, modalOpen, popoverOpen } = mountModalWithPopover(withTrigger, transitions);
+			const edit = wrapper.get<HTMLButtonElement>('[data-testid="edit"]').element;
+			edit.focus();
+			edit.click();
+			await flushPromises();
+			byId('more')!.focus();
+			byId('more')!.click();
+			await flushPromises();
+			expect(popoverOpen.value).toBe(true);
+			expect(document.activeElement).toBe(byId('save'));
+
+			byId('save')!.click();
+			await flushPromises();
+			// Reka's focus scope hands focus back in a zero-delay timeout.
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			await flushPromises();
+			expect(modalOpen.value).toBe(false);
+			expect(byId('save')).toBeNull();
+			expect(document.activeElement).toBe(edit);
+		});
+	});
+
 	it('leaves a composing Escape to the IME: not cancelled, panel still open', async () => {
 		const { wrapper, open } = mountWithTrigger();
 		await wrapper.get('[data-testid="trigger"]').trigger('click');
