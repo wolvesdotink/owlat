@@ -6436,6 +6436,10 @@
 				"title": "Logo",
 				"upload": "Hochladen",
 				"uploadUrlOperation": "Logo-Upload vorbereiten"
+			},
+			"resetToDefault": {
+				"reset": "Zurücksetzen",
+				"resetLabel": "{setting} auf den Standard zurücksetzen"
 			}
 		},
 		"shareLinksPopover": {
@@ -16411,6 +16415,32 @@
 				"pushNotifications": {
 					"title": "Push-Benachrichtigungen",
 					"keywords": "web push, browser-benachrichtigungen, handy, smartphone, pwa, benachrichtigen, geräte"
+				}
+			},
+			"adminControls": {
+				"dkim": {
+					"title": "DKIM-Signatur",
+					"keywords": "dkim, Domainschlüssel, Signaturschlüssel, DNS-Einträge, spf, dmarc, Absender-Authentifizierung"
+				},
+				"aiProviderKey": {
+					"title": "API-Schlüssel des KI-Anbieters",
+					"keywords": "API-Schlüssel, KI-Schlüssel, api key, OpenAI-Schlüssel, Anthropic-Schlüssel, Sprachmodell, llm"
+				},
+				"autonomy": {
+					"title": "KI-Autonomie",
+					"keywords": "Autonomie, automatische Antwort, automatisch senden, nur Entwürfe, Autopilot, Agent"
+				},
+				"rampPace": {
+					"title": "Tempo der Zustellungsrampe",
+					"keywords": "Rampe, Aufwärmen, warm-up, IP-Aufwärmung, Voreinstellung, wie stark hochfahren, vorsichtig"
+				},
+				"webhookSecret": {
+					"title": "Webhook-Signaturgeheimnis",
+					"keywords": "Webhook-Geheimnis, Signaturgeheimnis, Signatur, hmac, x-owlat-signature, Geheimnis neu erzeugen"
+				},
+				"brandColors": {
+					"title": "Markenfarben",
+					"keywords": "Farben, Markenfarbe, Primärfarbe, Linkfarbe, Palette, brand colors"
 				}
 			}
 		},

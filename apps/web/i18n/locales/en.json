@@ -6436,6 +6436,10 @@
 				"title": "Logo",
 				"upload": "Upload",
 				"uploadUrlOperation": "Prepare logo upload"
+			},
+			"resetToDefault": {
+				"reset": "Reset",
+				"resetLabel": "Reset {setting} to its default"
 			}
 		},
 		"shareLinksPopover": {
@@ -16411,6 +16415,32 @@
 				"pushNotifications": {
 					"title": "Push notifications",
 					"keywords": "web push, browser notifications, phone, mobile, pwa, notify, devices"
+				}
+			},
+			"adminControls": {
+				"dkim": {
+					"title": "DKIM signing",
+					"keywords": "dkim, domain key, signing key, dns records, spf, dmarc, sender authentication"
+				},
+				"aiProviderKey": {
+					"title": "AI provider API key",
+					"keywords": "api key, ai key, openai key, anthropic key, language model, llm, model provider"
+				},
+				"autonomy": {
+					"title": "AI autonomy",
+					"keywords": "autonomy, auto-reply, send automatically, draft only, autopilot, agent mode"
+				},
+				"rampPace": {
+					"title": "Delivery ramp pace",
+					"keywords": "ramp, warm-up, warmup, ip warming, preset, how hard to ramp, conservative"
+				},
+				"webhookSecret": {
+					"title": "Webhook signing secret",
+					"keywords": "webhook secret, signing secret, signature, hmac, x-owlat-signature, regenerate secret"
+				},
+				"brandColors": {
+					"title": "Brand colors",
+					"keywords": "brand colours, colors, colours, primary color, link color, palette, theme color"
 				}
 			}
 		},

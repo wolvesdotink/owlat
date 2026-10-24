@@ -23,6 +23,7 @@ import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 import type { DeliverabilityStream } from '@owlat/shared/deliverabilityRouting';
 import { RAMP_PRESET_OPTIONS, streamLabel } from '~/utils/deliverabilityRamp';
 import { useLocalized } from '~/composables/useLocalized';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const props = defineProps<{
 	// The closed stream union, not `string`: a typo in a caller's stream name is a
@@ -114,10 +115,24 @@ function choose(preset: RampPreset | null): void {
 
 <template>
 	<fieldset ref="group" class="space-y-2" :data-testid="`ramp-preset-${stream}`">
-		<legend class="text-sm font-medium text-text-primary">
+		<legend
+			class="flex w-full items-center justify-between gap-2 text-sm font-medium text-text-primary"
+		>
 			{{
 				t('components.delivery.rampPresetPicker.legend', { stream: localized(streamLabel(stream)) })
 			}}
+			<!-- A stored pace, even one equal to today's default, stops following the
+			     deployment default; Reset deletes the row like "Use the default". -->
+			<SettingsResetToDefault
+				:changed="preset !== null"
+				:label="
+					t('components.delivery.rampPresetPicker.legend', {
+						stream: localized(streamLabel(stream)),
+					})
+				"
+				:disabled="busy === true"
+				@reset="choose(null)"
+			/>
 		</legend>
 		<p class="text-xs text-text-secondary">
 			{{ t('components.delivery.rampPresetPicker.deploymentDefault', { preset: defaultLabel }) }}
