@@ -286,7 +286,7 @@ describe('sampleAll', () => {
 		);
 		// The next tick goes on from the fifth row.
 		const next = await tick(t, { sampleSize: 20 });
-		expect(next.filter((job) => job.fieldId === 'transactionalTemplateSends')[0]?.parentId).toBe(
+		expect(next.find((job) => job.fieldId === 'transactionalTemplateSends')?.parentId).toBe(
 			emails[4]
 		);
 	});
