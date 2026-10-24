@@ -10,8 +10,9 @@
  *   - `scheduled → sending` on the scheduler-tick path;
  *   - a blocked or suspicious verdict: the scan row and `→ draft` (with the
  *     block reason) or `→ pending_review`;
- *   - a clean verdict: the template version captured for the send, the archive
- *     snapshot, the frozen segment, the send job and the first walker hop.
+ *   - a clean verdict: the template versions captured for the send (Variant
+ *     B's too in a content test), the archive snapshot, the frozen segment,
+ *     the send job and the first walker hop.
  *
  * Either all of it lands or none of it does, so a failure part-way never
  * leaves a campaign in `sending` with no job, a version row for a send that
@@ -38,7 +39,7 @@ import { captureTemplateVersion } from '../emailTemplates/versions';
 import { writeArchiveSnapshot } from './archiveQueries';
 import { freezeAudience } from './sendQueries';
 import { openSendJob, readSendJob } from './sendJob';
-import { classifyStartSendSkip, isSendPrepared } from './sendPlanning';
+import { classifyStartSendSkip, isSendPrepared, resolveVariantBSource } from './sendPlanning';
 import { resolveAbFanout, testFractionForSplit } from './sendVariantSplit';
 
 const LIFECYCLE_USER_SCHEDULER_TICK = 'system:scheduler_tick';
@@ -189,6 +190,21 @@ export const commitPreparation = internalMutation({
 		// what moves an A/B campaign's test into `testing`.
 		const sending = await ctx.db.get(campaignId);
 		const abFanout = sending ? resolveAbFanout(sending) : null;
+		// A content test sends Variant B's template too, so its history records
+		// what went out the same way. A Variant B that vanished is not a reason
+		// to refuse the send here; pre-flight owns that decision.
+		const variantBSource =
+			abFanout && sending ? resolveVariantBSource(sending).templateId : undefined;
+		const variantBId = variantBSource ? ctx.db.normalizeId('emailTemplates', variantBSource) : null;
+		const variantB =
+			variantBId && variantBId !== template._id ? await getLive(ctx, variantBId) : null;
+		if (variantB) {
+			await captureTemplateVersion(ctx, {
+				template: variantB,
+				trigger: 'send',
+				userId: LIFECYCLE_USER_ORCHESTRATOR,
+			});
+		}
 		await openSendJob(ctx, {
 			campaignId,
 			audience,

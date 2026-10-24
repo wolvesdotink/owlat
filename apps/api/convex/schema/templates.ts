@@ -149,7 +149,11 @@ export const templateTables = {
 		// BetterAuth user id, or a `system:*` sentinel for scheduler-fired sends.
 		createdBy: v.string(),
 		createdAt: v.number(),
-	}).index('by_template_and_created_at', ['templateId', 'createdAt']),
+	})
+		.index('by_template_and_created_at', ['templateId', 'createdAt'])
+		// The newest snapshot of one trigger, for the review step's "changed
+		// since the last send" without reading the rest of the history.
+		.index('by_template_and_trigger_and_created_at', ['templateId', 'trigger', 'createdAt']),
 
 	// Email Blocks - reusable content blocks for email templates
 	emailBlocks: defineTable({

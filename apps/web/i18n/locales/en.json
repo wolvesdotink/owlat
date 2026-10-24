@@ -1215,6 +1215,15 @@
 				"truncated": "Only the first {covered} recipients could be scheduled at your current capacity. Reduce the audience, or send it in stages.",
 				"underCounted": "This audience is larger than we counted exactly, so the schedule above is a floor — the real send may take longer."
 			},
+			"changedSinceLastSend": {
+				"changed": "Changed since the last send ({time})",
+				"compare": "Compare",
+				"lastSendLabel": "Last send",
+				"loadFailed": "Couldn't load the last send",
+				"noSend": "No earlier send of this email in its version history.",
+				"nowLabel": "Now",
+				"unchanged": "Unchanged since the last send ({time})"
+			},
 			"commandRow": {
 				"abBadge": "A/B",
 				"abResults": "A/B results",
@@ -3881,10 +3890,71 @@
 				"subtitle": "The subject line and preview text for your default language",
 				"title": "Subject & preview text"
 			},
+			"templateCompareModal": {
+				"blockTypes": {
+					"accordion": "Accordion",
+					"button": "Button",
+					"carousel": "Carousel",
+					"columns": "Columns",
+					"container": "Container",
+					"divider": "Divider",
+					"hero": "Hero",
+					"image": "Image",
+					"list": "List",
+					"menu": "Menu",
+					"other": "Block",
+					"progressBar": "Progress bar",
+					"rawHtml": "HTML",
+					"social": "Social links",
+					"spacer": "Spacer",
+					"table": "Table",
+					"text": "Text",
+					"video": "Video"
+				},
+				"blocks": "Changed blocks",
+				"copyChanges": "Copy changes",
+				"copyNone": "No copy changed.",
+				"counts": {
+					"added": "{count} block added | {count} blocks added",
+					"edited": "{count} block edited | {count} blocks edited",
+					"moved": "{count} block moved | {count} blocks moved",
+					"removed": "{count} block removed | {count} blocks removed"
+				},
+				"empty": "(empty)",
+				"frameTitle": "Email preview: {side}",
+				"identical": "No differences: both versions have the same subject and content.",
+				"kinds": {
+					"added": "Added",
+					"edited": "Edited",
+					"moved": "Moved",
+					"removed": "Removed"
+				},
+				"linksChanges": "Link changes",
+				"linksNone": "No links changed.",
+				"meta": {
+					"previewText": "Preview text",
+					"subject": "Subject"
+				},
+				"parts": {
+					"copy": "Copy",
+					"links": "Links",
+					"moved": "Also moved",
+					"other": "Style or layout"
+				},
+				"steps": {
+					"added": "Added",
+					"changed": "Changed",
+					"removed": "Removed"
+				},
+				"title": "Compare versions"
+			},
 			"templateHistoryPanel": {
+				"compare": "Compare with current",
+				"compareAction": "Compare with the current editor",
 				"confirmAction": "Restore version",
 				"confirmDescription": "This email has edits you haven't saved. Restoring loads the older version onto the canvas — you can undo it, but the restore itself is not saved until you save.",
 				"confirmTitle": "Replace your unsaved changes?",
+				"currentLabel": "In the editor now",
 				"empty": "No versions yet. Saving this email records one.",
 				"frameTitle": "Version preview",
 				"loadFailed": "Couldn't load that version",

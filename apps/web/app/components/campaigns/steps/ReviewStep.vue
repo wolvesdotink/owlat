@@ -532,6 +532,7 @@ const variantBTemplateName = computed(() => {
 							<Icon name="lucide:alert-circle" class="h-4 w-4 shrink-0" />
 							{{ t('components.campaigns.steps.reviewStep.emptyBody') }}
 						</p>
+						<CampaignsChangedSinceLastSend :template-id="data.selectedTemplate._id" class="mt-3" />
 						<UiButton
 							variant="secondary"
 							size="sm"
@@ -586,6 +587,11 @@ const variantBTemplateName = computed(() => {
 										data.abTestType === 'subject' ? data.abVariantBSubject : variantBTemplateName
 									}}</span>
 								</div>
+								<CampaignsChangedSinceLastSend
+									v-if="data.abTestType === 'content' && data.abVariantBTemplateId"
+									:template-id="data.abVariantBTemplateId"
+									class="pl-7"
+								/>
 								<p class="text-sm text-text-tertiary mt-2">
 									{{
 										t('components.campaigns.steps.reviewStep.splitSummary', {

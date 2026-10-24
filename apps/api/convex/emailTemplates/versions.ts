@@ -5,7 +5,8 @@
  * Capture sites (all of them):
  *   `emails.update`            → trigger `save`
  *   `emails.publish`           → trigger `publish`
- *   `campaigns/sendCommit.ts`  → trigger `send` (the send preparation commit)
+ *   `campaigns/sendCommit.ts`  → trigger `send` (the send preparation commit,
+ *                                for Variant B's template too in a content test)
  *   `emailCoediting/sessions.ts` → trigger `conflict` (a co-editor's change replaced)
  *
  * Restore is deliberately NOT a mutation here: the editor loads a snapshot into
@@ -188,5 +189,47 @@ export const get = authedQuery({
 		const version = await getOrThrow(ctx, args.versionId, 'Template version');
 		if (!(await getLive(ctx, version.templateId))) throwNotFound('Template version');
 		return version;
+	},
+});
+
+/**
+ * The newest `send` snapshot of a template, for the campaign review's "changed
+ * since the last send": the body the template's most recent campaign send
+ * started with (captured in that send's preparation commit, whichever campaign
+ * it was), and whether the template still holds the same body, subject and
+ * preview text.
+ *
+ * Null when the history holds no send: the template was never sent, or that
+ * snapshot was evicted by the retention cap. The caller says so instead of
+ * comparing against an older event. A template in Recently deleted reads as
+ * having no history, like `list`.
+ */
+// all-members: the same snapshot `get` returns to every org member.
+export const latestSend = authedQuery({
+	args: { templateId: v.id('emailTemplates') },
+	handler: async (ctx, args) => {
+		const template = await getLive(ctx, args.templateId);
+		if (!template) return null;
+		const version = await ctx.db
+			.query('emailTemplateVersions')
+			.withIndex('by_template_and_trigger_and_created_at', (q) =>
+				q.eq('templateId', args.templateId).eq('trigger', 'send')
+			)
+			.order('desc')
+			.first();
+		if (!version) return null;
+		return {
+			version: {
+				_id: version._id,
+				name: version.name,
+				subject: version.subject,
+				contentBytes: version.contentBytes,
+				createdAt: version.createdAt,
+			},
+			unchanged:
+				version.content === template.content &&
+				version.subject === template.subject &&
+				(version.previewText ?? '') === (template.previewText ?? ''),
+		};
 	},
 });

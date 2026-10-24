@@ -279,3 +279,81 @@ describe('cascade', () => {
 		expect(await versionRows(t, survivorId)).toHaveLength(1);
 	});
 });
+
+describe('latest send', () => {
+	const send = (t: TestConvex<typeof schema>, templateId: Id<'emailTemplates'>) =>
+		t.mutation(internal.emailTemplates.versions.captureForSend, {
+			templateId,
+			userId: 'system:orchestrator',
+		});
+
+	it('is null for a template that was never sent', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		await t.mutation(api.emailTemplates.emails.update, { templateId, content: CONTENT_B });
+
+		expect(await t.query(api.emailTemplates.versions.latestSend, { templateId })).toBeNull();
+	});
+
+	it('returns the newest send, not a newer save, and says whether the template still matches it', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		await send(t, templateId);
+
+		const fresh = await t.query(api.emailTemplates.versions.latestSend, { templateId });
+		expect(fresh?.unchanged).toBe(true);
+		expect(fresh).not.toHaveProperty('version.content');
+
+		await t.mutation(api.emailTemplates.emails.update, { templateId, content: CONTENT_B });
+		const edited = await t.query(api.emailTemplates.versions.latestSend, { templateId });
+		expect(edited?.version._id).toBe(fresh?.version._id);
+		expect(edited?.unchanged).toBe(false);
+		const snapshot = await t.query(api.emailTemplates.versions.get, {
+			versionId: edited!.version._id,
+		});
+		expect(snapshot).toMatchObject({ trigger: 'send', content: CONTENT_A });
+
+		await t.mutation(api.emailTemplates.emails.update, { templateId, subject: 'Other subject' });
+		await t.mutation(api.emailTemplates.emails.update, { templateId, content: CONTENT_A });
+		const subjectOnly = await t.query(api.emailTemplates.versions.latestSend, { templateId });
+		expect(subjectOnly?.unchanged).toBe(false);
+	});
+
+	it('picks the newest of several sends', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		await send(t, templateId);
+		await t.mutation(api.emailTemplates.emails.update, { templateId, content: CONTENT_B });
+		await send(t, templateId);
+
+		const latest = await t.query(api.emailTemplates.versions.latestSend, { templateId });
+		const snapshot = await t.query(api.emailTemplates.versions.get, {
+			versionId: latest!.version._id,
+		});
+		expect(snapshot.content).toBe(CONTENT_B);
+		expect(latest?.unchanged).toBe(true);
+	});
+
+	it('is null once retention evicted the send snapshot', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		await send(t, templateId);
+		for (let i = 0; i < VERSION_HISTORY_LIMIT; i++) {
+			await t.mutation(api.emailTemplates.emails.update, {
+				templateId,
+				content: JSON.stringify([{ id: 'b1', type: 'text', content: { html: `edit ${i}` } }]),
+			});
+		}
+
+		expect(await t.query(api.emailTemplates.versions.latestSend, { templateId })).toBeNull();
+	});
+
+	it('is null for a template in Recently deleted', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		await send(t, templateId);
+		await t.mutation(api.emailTemplates.emails.remove, { templateId });
+
+		expect(await t.query(api.emailTemplates.versions.latestSend, { templateId })).toBeNull();
+	});
+});

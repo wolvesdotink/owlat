@@ -1215,6 +1215,15 @@
 				"truncated": "Nur die ersten {covered} Empfänger konnten mit deiner aktuellen Kapazität eingeplant werden. Verkleinere die Zielgruppe oder versende in Etappen.",
 				"underCounted": "Diese Zielgruppe ist größer, als wir sie genau gezählt haben, daher ist der Plan oben eine Untergrenze — der tatsächliche Versand kann länger dauern."
 			},
+			"changedSinceLastSend": {
+				"changed": "Geändert seit dem letzten Versand ({time})",
+				"compare": "Vergleichen",
+				"lastSendLabel": "Letzter Versand",
+				"loadFailed": "Der letzte Versand konnte nicht geladen werden",
+				"noSend": "Kein früherer Versand dieser E-Mail im Versionsverlauf.",
+				"nowLabel": "Jetzt",
+				"unchanged": "Unverändert seit dem letzten Versand ({time})"
+			},
 			"commandRow": {
 				"abBadge": "A/B",
 				"abResults": "A/B-Ergebnisse",
@@ -3881,10 +3890,71 @@
 				"subtitle": "Betreffzeile und Vorschautext für deine Standardsprache",
 				"title": "Betreff & Vorschautext"
 			},
+			"templateCompareModal": {
+				"blockTypes": {
+					"accordion": "Akkordeon",
+					"button": "Button",
+					"carousel": "Karussell",
+					"columns": "Spalten",
+					"container": "Container",
+					"divider": "Trennlinie",
+					"hero": "Hero",
+					"image": "Bild",
+					"list": "Liste",
+					"menu": "Menü",
+					"other": "Block",
+					"progressBar": "Fortschrittsbalken",
+					"rawHtml": "HTML",
+					"social": "Social-Links",
+					"spacer": "Abstand",
+					"table": "Tabelle",
+					"text": "Text",
+					"video": "Video"
+				},
+				"blocks": "Geänderte Blöcke",
+				"copyChanges": "Textänderungen",
+				"copyNone": "Kein Text geändert.",
+				"counts": {
+					"added": "{count} Block hinzugefügt | {count} Blöcke hinzugefügt",
+					"edited": "{count} Block geändert | {count} Blöcke geändert",
+					"moved": "{count} Block verschoben | {count} Blöcke verschoben",
+					"removed": "{count} Block entfernt | {count} Blöcke entfernt"
+				},
+				"empty": "(leer)",
+				"frameTitle": "E-Mail-Vorschau: {side}",
+				"identical": "Keine Unterschiede: Betreff und Inhalt sind in beiden Versionen gleich.",
+				"kinds": {
+					"added": "Hinzugefügt",
+					"edited": "Geändert",
+					"moved": "Verschoben",
+					"removed": "Entfernt"
+				},
+				"linksChanges": "Link-Änderungen",
+				"linksNone": "Keine Links geändert.",
+				"meta": {
+					"previewText": "Vorschautext",
+					"subject": "Betreff"
+				},
+				"parts": {
+					"copy": "Text",
+					"links": "Links",
+					"moved": "Auch verschoben",
+					"other": "Stil oder Layout"
+				},
+				"steps": {
+					"added": "Hinzugefügt",
+					"changed": "Geändert",
+					"removed": "Entfernt"
+				},
+				"title": "Versionen vergleichen"
+			},
 			"templateHistoryPanel": {
+				"compare": "Mit aktuellem Stand vergleichen",
+				"compareAction": "Mit dem aktuellen Stand im Editor vergleichen",
 				"confirmAction": "Version wiederherstellen",
 				"confirmDescription": "Diese E-Mail enthält Änderungen, die du nicht gespeichert hast. Beim Wiederherstellen wird die ältere Version auf die Arbeitsfläche geladen – du kannst das rückgängig machen, aber die Wiederherstellung selbst ist erst mit dem nächsten Speichern gesichert.",
 				"confirmTitle": "Deine nicht gespeicherten Änderungen ersetzen?",
+				"currentLabel": "Jetzt im Editor",
 				"empty": "Noch keine Versionen. Beim Speichern dieser E-Mail wird eine angelegt.",
 				"frameTitle": "Versionsvorschau",
 				"loadFailed": "Diese Version konnte nicht geladen werden",
