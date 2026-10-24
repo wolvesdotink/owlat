@@ -49,9 +49,9 @@ const confirmationDialogStub = {
 	</div>`,
 };
 
-function mountPanel(hasUnsavedChanges: boolean) {
+function mountPanel(hasUnsavedChanges: boolean, autosaves = false) {
 	return mount(TemplateHistoryPanel, {
-		props: { templateId: 'template1' as never, hasUnsavedChanges },
+		props: { templateId: 'template1' as never, hasUnsavedChanges, autosaves },
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
@@ -153,6 +153,22 @@ describe('TemplateHistoryPanel — restore from the preview', () => {
 			expect(query).toHaveBeenCalledOnce();
 			wrapper.unmount();
 			query.mockResolvedValue(SNAPSHOT);
+		}
+	});
+
+	it('asks for Save after a restore only where the editor does not save by itself', async () => {
+		for (const [autosaves, key] of [
+			[false, 'components.email.templateHistoryPanel.restored'],
+			[true, 'components.email.templateHistoryPanel.restoredAutosave'],
+		] as const) {
+			const showToast = vi.fn();
+			vi.stubGlobal('useToast', () => ({ showToast }));
+			const wrapper = mountPanel(false, autosaves);
+			await openPreview(wrapper);
+			await restoreButton(wrapper)?.trigger('click');
+			await flushPromises();
+			expect(showToast).toHaveBeenCalledWith(createTestI18n().global.t(key));
+			wrapper.unmount();
 		}
 	});
 });

@@ -266,6 +266,20 @@ describe('useEmailEditorBridge autosave (co-editing)', () => {
 		unmount();
 	});
 
+	it('counts an edit from the keystroke, before it goes to the session', async () => {
+		const { bridge, unmount } = await joined();
+		const autosave = bridge.autosave!.autosave;
+		const before = autosave.edits.value;
+		bridge.subject.value = 'Hello again';
+		await settle();
+		// The edit reaches the session 250 ms later; until then it is nowhere else.
+		const sent = mutation.mock.calls.filter(([fn]) => fn === 'sessions.applyOps');
+		expect(sent).toHaveLength(0);
+		expect(autosave.edits.value).toBeGreaterThan(before);
+		expect(autosave.atRisk.value).toBe(true);
+		unmount();
+	});
+
 	it("leaves another person's edit to their tab while they are here", async () => {
 		const { save, unmount } = await joined();
 		queries['presence.list']!.value = {

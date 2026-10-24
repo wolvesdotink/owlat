@@ -325,6 +325,78 @@ describe('useDraftAutosave', () => {
 		expect(t.autosave.atRisk.value).toBe(false);
 	});
 
+	it('keeps a choice only the device holds at risk until its copy is written', async () => {
+		const driver = memoryDriver();
+		const waiting: Array<() => void> = [];
+		const set = driver.set;
+		// Every write waits until the test lets it commit.
+		driver.set = async (key, value) => {
+			await new Promise<void>((resolve) => waiting.push(resolve));
+			await set(key, value);
+		};
+		const t = setup({
+			store: createEditorDraftStore(driver),
+			mirror: {
+				scope: () => SCOPE,
+				snapshot: () => ({ text: 'device-only choice' }),
+				base: () => 3,
+				keepAfterSave: () => true,
+			},
+		});
+		await t.edit('x');
+		await vi.advanceTimersByTimeAsync(1500);
+		await settle();
+		// The save landed; the copy holding the choice has not committed yet.
+		expect(t.saves).toEqual(['x']);
+		expect(t.dirty.value).toBe(false);
+		expect(t.autosave.onDevice.value).toBe(false);
+		expect(t.autosave.atRisk.value).toBe(true);
+
+		// The writes (the delayed copy, the rewrite after the save) commit.
+		expect(waiting).toHaveLength(2);
+		for (const commit of waiting.splice(0)) commit();
+		await settle();
+		expect(t.autosave.onDevice.value).toBe(true);
+		expect(t.autosave.atRisk.value).toBe(false);
+	});
+
+	it('waits while a save-or-discard choice is open, and saves for its Save', async () => {
+		const choosing = ref(false);
+		const t = setup({ held: () => choosing.value });
+		await t.edit('typed');
+		choosing.value = true;
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(t.save).not.toHaveBeenCalled();
+
+		expect(await t.autosave.flush()).toBe(true);
+		expect(t.saves).toEqual(['typed']);
+	});
+
+	it('saves nothing while the choice is open, and nothing after its Discard', async () => {
+		const choosing = ref(false);
+		const t = setup({ held: () => choosing.value });
+		await t.edit('typed');
+		choosing.value = true;
+		await vi.advanceTimersByTimeAsync(5000);
+		t.autosave.cancel();
+		choosing.value = false;
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(t.save).not.toHaveBeenCalled();
+	});
+
+	it('saves once a choice closes without a decision', async () => {
+		const choosing = ref(false);
+		const t = setup({ held: () => choosing.value });
+		choosing.value = true;
+		await t.edit('typed');
+		await vi.advanceTimersByTimeAsync(5000);
+		choosing.value = false;
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(t.saves).toEqual(['typed']);
+	});
+
 	it("keeps each tab's copy apart, so neither loses its edits to the other", async () => {
 		const driver = memoryDriver();
 		const a = setup({}, { driver, tab: 'tab-a' });

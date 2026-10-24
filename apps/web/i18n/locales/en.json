@@ -3885,6 +3885,7 @@
 				"restoreAction": "Restore this version into the editor",
 				"restoreFailed": "Couldn't restore that version",
 				"restored": "Version loaded into the editor — save to keep it, or undo to go back",
+				"restoredAutosave": "Version loaded into the editor — it saves like any other edit; undo to go back",
 				"subtitle": "Snapshots taken on every save, publish and send",
 				"title": "Version history",
 				"trigger": "History",

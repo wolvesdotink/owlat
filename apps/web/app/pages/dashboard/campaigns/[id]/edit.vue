@@ -66,6 +66,7 @@ const {
 
 	// Unsaved-changes guard
 	showUnsavedChangesDialog,
+	showEditEmailPrompt,
 	isSavingBeforeLeave,
 	hasUnsavedChanges,
 	confirmDiscard,
@@ -118,16 +119,19 @@ const scheduledAtDisplay = computed(() => {
 // campaign and its linked email stay consistent) before opening the editor. On
 // desktop the link navigates this window instead (the route guard does fire),
 // so the prompt's actions clear the dirty state before navigating.
-const showEditEmailPrompt = ref(false);
+// While the prompt is open a draft saves nothing in the background
+// (useCampaignForm holds it), so its "without saving" has nothing to take back.
 const pendingEmailUrl = ref('');
 const onEditEmailClick = (event: MouseEvent, url: string) => {
-	// A draft keeps its edits (saved, or on this device): save what is pending
-	// now and let the editor open.
+	if (hasUnsavedChanges.value) {
+		event.preventDefault();
+		pendingEmailUrl.value = url;
+		showEditEmailPrompt.value = true;
+		return;
+	}
+	// Nothing at risk: a draft's edits are saved or on this device. Save what
+	// is pending now and let the editor open.
 	if (isDraft.value) void drafts.autosave.flush();
-	if (!hasUnsavedChanges.value) return; // nothing at risk — let it open the new tab
-	event.preventDefault();
-	pendingEmailUrl.value = url;
-	showEditEmailPrompt.value = true;
 };
 const closeEditEmailPrompt = () => {
 	pendingEmailUrl.value = '';
@@ -996,7 +1000,7 @@ const shownCapacityPlan = computed(() => {
 		<!-- Unsaved Changes Dialog — opening the linked email (new tab; same window on desktop) -->
 		<UiUnsavedChangesDialog
 			:show="showEditEmailPrompt"
-			@close="showEditEmailPrompt = false"
+			@close="closeEditEmailPrompt"
 			@discard="discardAndOpenEmail"
 			@save="saveAndOpenEmail"
 		/>

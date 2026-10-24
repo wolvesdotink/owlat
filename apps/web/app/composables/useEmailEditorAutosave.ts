@@ -50,6 +50,8 @@ export interface EmailEditorAutosaveHost {
 	hasChanges: () => boolean;
 	/** A stale-revision choice is open. */
 	hasConflict: () => boolean;
+	/** The leave prompt asks whether to save or discard the edits. */
+	isChoosing: () => boolean;
 	/** One save through the bridge's queue (rejects when it did not land). */
 	save: () => Promise<void>;
 }
@@ -95,7 +97,7 @@ export function useEmailEditorAutosave(
 		extra: extraWatch.map((field) => field.value),
 	});
 
-	// Live: the edits this tab sent since its last landed save.
+	// Live: the edits made in this tab since its last landed save.
 	const savedLocalEdits = ref(0);
 	const hasOwnEdits = () => (coediting?.localEdits.value ?? 0) !== savedLocalEdits.value;
 
@@ -104,6 +106,8 @@ export function useEmailEditorAutosave(
 		// Live with others there: their tabs save their own edits.
 		paused: () =>
 			host.hasConflict() || (host.isLive() && coediting?.isAlone.value !== true && !hasOwnEdits()),
+		// Nothing saves in the background while the leave prompt offers to discard it.
+		held: host.isChoosing,
 		dirty: host.hasChanges,
 		changes: [
 			() => (host.isLive() ? -1 : host.blocksVersion.value),

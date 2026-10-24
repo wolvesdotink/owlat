@@ -172,6 +172,9 @@ export function useCampaignForm(
 		},
 	});
 
+	// The save-or-discard prompt for opening the linked email (the page's).
+	const showEditEmailPrompt = ref(false);
+
 	// Clears the dirty flag (and retires the device copy) after a successful
 	// save/schedule/send so the route guard doesn't prompt on the action's own
 	// navigation. Bound below once the dirty tracker exists.
@@ -253,6 +256,8 @@ export function useCampaignForm(
 		isDraft: () => isDraft.value,
 		isInitialized: () => isFormInitialized.value,
 		isActing: () => actions.isSaving.value,
+		// Nothing saves in the background while a prompt offers to discard it.
+		isChoosing: () => showUnsavedChangesDialog.value || showEditEmailPrompt.value,
 		hasChanges: () => hasChanges.value,
 		beginSubmit,
 		acknowledge,
@@ -397,6 +402,7 @@ export function useCampaignForm(
 
 		// Unsaved-changes guard
 		showUnsavedChangesDialog,
+		showEditEmailPrompt,
 		isSavingBeforeLeave,
 		hasUnsavedChanges,
 		// Discard: nothing of the draft's edits is saved on the way out.

@@ -160,7 +160,7 @@ const {
 // tell apart from the live query echoing the saved document back, so it drops
 // it. `loadState` re-seeds the canvas and emits back into these refs, which
 // marks the editor dirty and records the restore as one more undoable step.
-// Nothing is persisted until the user saves.
+// A draft then saves it like any edit; a published template waits for Save.
 const handleRestoreVersion = (state: HistoryState) => {
 	blocks.value = state.blocks;
 	name.value = state.name;
@@ -397,6 +397,7 @@ async function handlePublicationToggle() {
 							<EmailTemplateHistoryPanel
 								:template-id="templateId"
 								:has-unsaved-changes="hasChanges"
+								:autosaves="isDraft && !!drafts"
 								@restore="handleRestoreVersion"
 							/>
 							<ShareLinksPopover

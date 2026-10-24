@@ -41,6 +41,8 @@ import { getEditorDraftWriters, type EditorDraftWriters } from '~/utils/editorDr
  *   written. The page arms its leave guards with it instead of with "dirty".
  * - `cancel` is Discard: nothing of the current edits is saved or kept, not
  *   even when the editor goes away right after.
+ * - While a save-or-discard prompt is open (`held`), nothing saves in the
+ *   background: a Discard chosen there must not find its edits already sent.
  *
  * Save failures are shown by the status, not by a toast per attempt; the next
  * edit, `retry`, or the backend coming back tries again. While the backend is
@@ -84,6 +86,11 @@ export interface DraftAutosaveOptions<T> {
 	 * still reach the device copy; the save runs once this turns false.
 	 */
 	paused?: () => boolean;
+	/**
+	 * A prompt asks whether to save or discard: background saves wait for the
+	 * answer. `flush` (its Save) still saves, and so does leaving without one.
+	 */
+	held?: () => boolean;
 	/** The draft differs from what the server holds. */
 	dirty: () => boolean;
 	/** Values that change with every edit. */
@@ -155,6 +162,7 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 	const store = mirror ? (opts.store ?? getEditorDraftStore()) : null;
 	const writer = mirror ? (opts.writers ?? getEditorDraftWriters()).open() : null;
 	const canSave = () => opts.enabled() && opts.paused?.() !== true;
+	const canAutosave = () => canSave() && opts.held?.() !== true;
 
 	/** Bumped by every edit; a save or device write covers the edits up to its number. */
 	const edits = ref(0);
@@ -166,6 +174,8 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 	const error = shallowRef<unknown>(null);
 	/** Device-only choices a save left to the device copy, which failed to write. */
 	const deviceShortfall = ref(false);
+	/** That copy is being written: until it commits, the choices are nowhere else. */
+	const keeping = ref(false);
 	/** The edit count `cancel` discarded; nothing up to it is saved or kept. */
 	let discarded = -1;
 	const isDiscarded = () => edits.value === discarded;
@@ -194,7 +204,7 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		saveTimer = setTimeout(() => {
 			saveTimer = null;
 			timerPending.value = false;
-			void run();
+			void run(true);
 		}, delay);
 	};
 
@@ -235,7 +245,13 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		if (!mirror || !store) return;
 		clearMirrorTimer();
 		if (mirror.keepAfterSave?.(mirror.snapshot())) {
-			deviceShortfall.value = !(await writeMirror(true));
+			keeping.value = true;
+			try {
+				const kept = await writeMirror(true);
+				deviceShortfall.value = !kept && !isDiscarded();
+			} finally {
+				keeping.value = false;
+			}
 			return;
 		}
 		deviceShortfall.value = false;
@@ -245,9 +261,12 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 	};
 
 	// ── Saving ──────────────────────────────────────────────────────────
-	const run = (): Promise<void> => {
+	/** `auto`: a background save, which waits while a prompt is open. */
+	const run = (auto = false): Promise<void> => {
 		if (running) return running;
-		if (!canSave() || !opts.dirty() || isDiscarded()) return Promise.resolve();
+		if (!(auto ? canAutosave() : canSave()) || !opts.dirty() || isDiscarded()) {
+			return Promise.resolve();
+		}
 		const covers = edits.value;
 		inFlight.value = true;
 		running = (async () => {
@@ -265,7 +284,7 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 			}
 			// Edited while it ran: save that too (a failure waits for the next
 			// edit, a retry or the reconnect instead of looping).
-			if (!error.value && canSave() && opts.dirty() && edits.value !== covers) schedule();
+			if (!error.value && canAutosave() && opts.dirty() && edits.value !== covers) schedule();
 		})();
 		return running;
 	};
@@ -274,13 +293,13 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		if (!opts.enabled()) return;
 		edits.value += 1;
 		scheduleMirror();
-		if (canSave()) schedule();
+		if (canAutosave()) schedule();
 	});
 
 	// Became savable with something unsaved (the draft finished loading, a
-	// conflict was resolved, the backend came back): save it.
+	// conflict was resolved, a prompt closed, the backend came back): save it.
 	watch(
-		() => canSave() && opts.dirty() && online(),
+		() => canAutosave() && opts.dirty() && online(),
 		(ready) => {
 			if (ready && !inFlight.value && !timerPending.value) schedule();
 		}
@@ -313,6 +332,7 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		clearMirrorTimer();
 		error.value = null;
 		deviceShortfall.value = false;
+		keeping.value = false;
 		discarded = edits.value;
 		const stamp = mirrorStamp;
 		mirrorStamp = null;
@@ -332,7 +352,7 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		() =>
 			opts.enabled() &&
 			!onDevice.value &&
-			((opts.dirty() && savedEdits.value !== edits.value) || deviceShortfall.value)
+			((opts.dirty() && savedEdits.value !== edits.value) || deviceShortfall.value || keeping.value)
 	);
 	const status = computed<DraftSaveStatus>(() => {
 		if (!opts.enabled()) return 'idle';

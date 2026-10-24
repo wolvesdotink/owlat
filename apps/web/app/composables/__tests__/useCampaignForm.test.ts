@@ -18,6 +18,8 @@ const i18n = createTestI18n();
 let campaign: Ref<Record<string, unknown> | undefined>;
 let runs: { label: string; args: unknown }[];
 let guardDirty: Ref<boolean>;
+/** The leave prompt (useUnsavedChanges' dialog) is open. */
+let leaveDialog: Ref<boolean>;
 /** The next run's outcome, for the background-save cases. */
 let failNext: boolean;
 
@@ -36,6 +38,7 @@ beforeEach(() => {
 	runs = [];
 	failNext = false;
 	guardDirty = ref(false);
+	leaveDialog = ref(false);
 	campaign = ref(undefined);
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useRouter', () => ({ push: vi.fn() }));
@@ -56,7 +59,7 @@ beforeEach(() => {
 	vi.stubGlobal('useOrganizationQuery', () => ({ data: ref(undefined) }));
 	vi.stubGlobal('useConvex', () => null);
 	vi.stubGlobal('useUnsavedChanges', () => ({
-		showDialog: ref(false),
+		showDialog: leaveDialog,
 		hasUnsavedChanges: guardDirty,
 		confirmDiscard: vi.fn(),
 		confirmSave: vi.fn(),
@@ -268,5 +271,34 @@ describe('useCampaignForm autosave', () => {
 		form.confirmDiscard();
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(saves()).toHaveLength(0);
+	});
+
+	it('saves nothing while the Edit email prompt is open, nor after opening without saving', async () => {
+		const { form } = await setup();
+		form.campaignName.value = 'Edited name';
+		await nextTick();
+		form.showEditEmailPrompt.value = true;
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(saves()).toHaveLength(0);
+
+		// "Open without saving" on desktop: the prompt closes, the edits go.
+		form.showEditEmailPrompt.value = false;
+		form.drafts.autosave.cancel();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(saves()).toHaveLength(0);
+	});
+
+	it('waits for the leave prompt, and saves once the person stays', async () => {
+		const { form } = await setup();
+		form.campaignName.value = 'Edited name';
+		await nextTick();
+		leaveDialog.value = true;
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(saves()).toHaveLength(0);
+
+		leaveDialog.value = false;
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(saves().map((run) => run.args)).toEqual([{ campaignId: 'cmp_1', name: 'Edited name' }]);
 	});
 });

@@ -356,9 +356,8 @@ export function useEmailEditorBridge<S>(
 	};
 
 	// A Save button handler's rejection would reach Vue's error handling and
-	// swap the whole editor for the page's error boundary. The failure has
-	// either been shown already (toast, conflict dialog) or is shown here; the
-	// draft stays dirty either way.
+	// swap the whole editor for the page's error boundary. The failure is shown
+	// already (toast, conflict dialog) or here; the draft stays dirty either way.
 	const { showOperationError } = useOperationErrorToast();
 	const requestSave = async () => {
 		// Autosave: the same queue, and its status shows a failure.
@@ -385,6 +384,7 @@ export function useEmailEditorBridge<S>(
 				rowRevision,
 				hasChanges: () => hasChanges.value,
 				hasConflict: () => conflict.value !== null,
+				isChoosing: () => showUnsavedChangesDialog.value,
 				save: () => save(true),
 			})
 		: null;

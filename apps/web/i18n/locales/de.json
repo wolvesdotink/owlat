@@ -3885,6 +3885,7 @@
 				"restoreAction": "Diese Version in den Editor zurückholen",
 				"restoreFailed": "Diese Version konnte nicht wiederhergestellt werden",
 				"restored": "Version in den Editor geladen – speichere sie, um sie zu behalten, oder mache den Schritt rückgängig",
+				"restoredAutosave": "Version in den Editor geladen – sie wird wie jede andere Änderung gespeichert; mache den Schritt rückgängig, um zurückzugehen",
 				"subtitle": "Momentaufnahmen bei jedem Speichern, Veröffentlichen und Senden",
 				"title": "Versionsverlauf",
 				"trigger": "Verlauf",

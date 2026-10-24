@@ -8,15 +8,17 @@
  * belongs to it (it deletes the copy once its save lands); only a copy left
  * behind, by an editor that closed before its save landed, is recovered.
  *
- * A writer id is `<tab>.<n>`. A tab holds a Web Lock named after it for as
- * long as it is open, so another tab can tell its copies are still in use.
- * Within one tab the open editors are known directly. A browser without Web
- * Locks cannot tell, and treats every other tab's copy as left behind.
+ * A writer id is `<tab>.<n>`. Each open editor holds a Web Lock named after
+ * its writer id and releases it when it closes (or its tab goes), so another
+ * tab can tell which copies are still in use: a tab that stays open after
+ * its editor closed does not keep the copy from being recovered. Within one
+ * tab the open editors are known directly. A browser without Web Locks cannot
+ * tell, and treats every other tab's copy as left behind.
  *
  * Pure data layer: no Vue, no network.
  */
 
-const LOCK_PREFIX = 'owlat-editor-draft-tab:';
+const LOCK_PREFIX = 'owlat-editor-draft-writer:';
 
 export interface EditorDraftWriter {
 	readonly id: string;
@@ -35,18 +37,28 @@ type Locks = Pick<LockManager, 'request' | 'query'>;
 export function createEditorDraftWriters(tabId: string, locks: Locks | null): EditorDraftWriters {
 	const openWriters = new Set<string>();
 	let next = 0;
-	let lockRequested = false;
 
-	const holdTabLock = () => {
-		if (lockRequested || !locks) return;
-		lockRequested = true;
-		// Never settles: the lock goes when the tab does.
+	/** Hold the writer's lock until the returned release is called. */
+	const holdLock = (id: string): (() => void) => {
+		if (!locks) return () => {};
+		let closed = false;
+		let release: (() => void) | null = null;
 		void locks
-			.request(`${LOCK_PREFIX}${tabId}`, () => new Promise<never>(() => {}))
+			.request(`${LOCK_PREFIX}${id}`, () =>
+				closed
+					? undefined
+					: new Promise<void>((resolve) => {
+							release = resolve;
+						})
+			)
 			.catch(() => {});
+		return () => {
+			closed = true;
+			release?.();
+		};
 	};
 
-	const openTabs = async (): Promise<Set<string> | null> => {
+	const openElsewhere = async (): Promise<Set<string> | null> => {
 		if (!locks) return null;
 		try {
 			const snapshot = await locks.query();
@@ -65,18 +77,24 @@ export function createEditorDraftWriters(tabId: string, locks: Locks | null): Ed
 
 	return {
 		open() {
-			holdTabLock();
 			next += 1;
 			const id = `${tabId}.${next}`;
 			openWriters.add(id);
-			return { id, close: () => openWriters.delete(id) };
+			const release = holdLock(id);
+			return {
+				id,
+				close: () => {
+					openWriters.delete(id);
+					release();
+				},
+			};
 		},
 		async liveness() {
-			const tabs = await openTabs();
+			const held = await openElsewhere();
 			return (writerId) => {
 				const tab = writerId.split('.')[0] ?? '';
 				if (tab === tabId) return openWriters.has(writerId);
-				return tabs?.has(tab) === true;
+				return held?.has(writerId) === true;
 			};
 		},
 	};

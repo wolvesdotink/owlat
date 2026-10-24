@@ -19,6 +19,8 @@ import {
 const props = defineProps<{
 	templateId: Id<'emailTemplates'>;
 	hasUnsavedChanges: boolean;
+	/** The editor saves by itself (a draft): a restore needs no Save. */
+	autosaves?: boolean;
 }>();
 
 const emit = defineEmits<{ restore: [state: HistoryState] }>();
@@ -140,7 +142,13 @@ async function applyRestore(version: VersionSummary) {
 		emit('restore', await loadState(version._id));
 		isOpen.value = false;
 		previewVersion.value = null;
-		showToast(t('components.email.templateHistoryPanel.restored'));
+		showToast(
+			t(
+				props.autosaves
+					? 'components.email.templateHistoryPanel.restoredAutosave'
+					: 'components.email.templateHistoryPanel.restored'
+			)
+		);
 	} catch {
 		showToast(t('components.email.templateHistoryPanel.restoreFailed'), 'error');
 	} finally {

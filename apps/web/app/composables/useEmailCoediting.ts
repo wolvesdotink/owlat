@@ -100,7 +100,11 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	const hasUnsent = ref(false);
 	/** Sends are failing; edits are kept and retried. */
 	const isOffline = ref(false);
-	/** Counts the batches of this tab's own edits sent to the session. */
+	/**
+	 * Counts this tab's own edits as they are made, not when they are sent:
+	 * until the session has an edit, the device copy and the leave guards are
+	 * all that cover it.
+	 */
 	const localEdits = ref(0);
 
 	const canCoedit = computed(() => !isRoleLoading.value && can('templates:manage'));
@@ -195,7 +199,6 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		const batch = current ? owner.outgoing(opts.read()) : null;
 		if (!client || !current || !batch) return false;
 		owner.sent(batch);
-		localEdits.value += 1;
 		try {
 			const result = await client.mutation(api.emailCoediting.sessions.applyOps, {
 				target: current,
@@ -238,6 +241,8 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	watch(opts.changeSignals, () => {
 		if (status.value !== 'active') return;
 		refreshUnsent();
+		// Others' edits arrive already sent; a change leaving something unsent is this tab's.
+		if (hasUnsent.value) localEdits.value += 1;
 		scheduleSend();
 	});
 
@@ -352,7 +357,7 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		hasUnsent,
 		hasSharedChanges,
 		isOffline,
-		/** Changes whenever this tab sends edits of its own (not on others' edits). */
+		/** Changes with every edit made in this tab (not with others' edits). */
 		localEdits,
 		/** Hold the version `blockId` was seen at while this tab edits it (edit lease). */
 		pinBlock: (blockId: string) => sync.pin(coeditBlockKey(blockId)),

@@ -67,6 +67,8 @@ export interface CampaignDraftForm<Submission> {
 	isInitialized: () => boolean;
 	/** Send, Schedule or the explicit save is running. */
 	isActing: () => boolean;
+	/** A prompt asks whether to save or discard the edits. */
+	isChoosing: () => boolean;
 	hasChanges: () => boolean;
 	beginSubmit: () => Submission;
 	acknowledge: (submission: Submission) => void;
@@ -217,6 +219,7 @@ export function useCampaignDraftAutosave<Submission>(
 	const autosave = useDraftAutosave<CampaignDraftSnapshot>({
 		enabled: ready,
 		paused: form.isActing,
+		held: form.isChoosing,
 		dirty: form.hasChanges,
 		changes: form.changes,
 		save: async () => {
