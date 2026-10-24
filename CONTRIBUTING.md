@@ -90,8 +90,8 @@ npx vitest related path/to/file.ts  # only tests that import the given file
 
 ### Real-browser component tests
 
-The web unit suite runs in happy-dom: no layout, no native focus traversal, no
-ResizeObserver that fires. Behaviour that depends on those (a virtual list's
+The web unit suite defaults to happy-dom: no layout, no native focus traversal,
+no ResizeObserver that fires. Behaviour that depends on those (a virtual list's
 window under real scrolling, a modal's Tab trap, which layer an Escape press
 reaches, a caret-anchored picker's placement) is tested in Chrome instead, by
 `apps/web/app/__tests__/browser/*.browser.test.ts`:

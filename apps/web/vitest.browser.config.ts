@@ -4,8 +4,8 @@
  *
  *   bun run --cwd apps/web test:browser
  *
- * The unit suite (vitest.config.ts) runs in happy-dom, which has no layout, no
- * native focus traversal and no ResizeObserver that ever fires. What depends on
+ * The unit suite (vitest.config.ts) defaults to happy-dom, which has no layout,
+ * no native focus traversal and no ResizeObserver that ever fires. What depends on
  * those (a virtual list's window under real scrolling and resizing, a modal's
  * Tab trap, which layer a real Escape press reaches, a caret-anchored picker's
  * placement) is tested here, against the real composables and components.
