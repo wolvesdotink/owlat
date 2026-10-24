@@ -68,4 +68,21 @@
 			transition-duration: 0.01ms !important;
 		}
 	}
+
+	/* The same floor for the app's own "Reduce motion" setting, which the
+	 * reading-comfort plugin writes as `data-motion="reduce"` on <html>. A
+	 * media query cannot be switched on from script, so every OS-only rule
+	 * that changes more than durations (dropping a transform, hiding a loop)
+	 * carries a `:root[data-motion='reduce']` twin next to its media block;
+	 * rules that only stop transitions or animations are covered here. The
+	 * iteration cap stops infinite loops after their single collapsed run, and
+	 * smooth scrolling jumps instead. */
+	:root[data-motion='reduce'] *,
+	:root[data-motion='reduce'] *::before,
+	:root[data-motion='reduce'] *::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
 }

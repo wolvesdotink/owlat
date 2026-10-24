@@ -685,7 +685,7 @@ onUnmounted(() => {
 							<li
 								v-for="contact in contacts"
 								:key="contact._id"
-								class="flex items-center gap-3 px-4 py-3 transition-colors"
+								class="flex items-center gap-3 px-4 py-3 density-compact:py-2 transition-colors"
 								:class="bulkSelection.selectedIds.value.has(contact._id) ? 'bg-brand/5' : ''"
 							>
 								<UiCheckbox
@@ -740,7 +740,7 @@ onUnmounted(() => {
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">
-									<th v-if="canManageContacts" class="w-12 px-4 py-4">
+									<th v-if="canManageContacts" class="w-12 px-4 py-4 density-compact:py-2">
 										<UiCheckbox
 											:model-value="isAllPageSelected"
 											:indeterminate="isSomePageSelected"
@@ -748,22 +748,28 @@ onUnmounted(() => {
 											@update:model-value="toggleSelectAll"
 										/>
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 density-compact:py-2 text-sm font-medium text-text-secondary"
+									>
 										{{ t('common.email') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 density-compact:py-2 text-sm font-medium text-text-secondary"
+									>
 										{{ t('dashboard.audience.contacts.index.table.firstName') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 density-compact:py-2 text-sm font-medium text-text-secondary"
+									>
 										{{ t('dashboard.audience.contacts.index.table.lastName') }}
 									</th>
 									<th
-										class="text-left px-6 py-4 text-sm font-medium text-text-secondary"
+										class="text-left px-6 py-4 density-compact:py-2 text-sm font-medium text-text-secondary"
 										:aria-sort="sortApplies ? getAriaSort('createdAt') : undefined"
 									>
 										<button
 											type="button"
-											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+											class="flex items-center gap-1 py-4 -my-4 density-compact:py-2 density-compact:-my-2 px-1 -mx-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 											:class="
 												sortApplies
 													? 'hover:text-text-primary'

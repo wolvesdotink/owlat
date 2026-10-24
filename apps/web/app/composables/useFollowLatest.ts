@@ -1,4 +1,5 @@
 import { nextTick, ref, type Ref } from 'vue';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 /** How close to the end still counts as "reading the latest". */
 export const FOLLOW_LATEST_THRESHOLD_PX = 80;
@@ -35,10 +36,6 @@ export function useFollowLatest(scrollRef: Ref<HTMLElement | null>) {
 		}
 		lastScrollTop = el.scrollTop;
 	};
-
-	const prefersReducedMotion = () =>
-		typeof window !== 'undefined' &&
-		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 	const scrollToEnd = (smooth: boolean) =>
 		nextTick(() => {

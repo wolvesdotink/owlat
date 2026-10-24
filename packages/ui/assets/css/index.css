@@ -7,9 +7,36 @@
  * so it always agrees with the token layer, which flips on `.dark`. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* `motion-reduce:` / `motion-safe:` answer the EFFECTIVE preference: the OS
+ * media query, or the app's own "Reduce motion" setting, which the
+ * reading-comfort plugin writes as `data-motion="reduce"` on <html>. The
+ * built-in variants only know the media query, so the in-app switch would miss
+ * every `motion-reduce:animate-none` in the product. */
+@custom-variant motion-reduce {
+	@media (prefers-reduced-motion: reduce) {
+		@slot;
+	}
+	&:where([data-motion='reduce'] *) {
+		@slot;
+	}
+}
+@custom-variant motion-safe {
+	@media (prefers-reduced-motion: no-preference) {
+		&:where(:not([data-motion='reduce'] *)) {
+			@slot;
+		}
+	}
+}
+
+/* `density-compact:` applies under the app's list density setting
+ * (`data-list-density="compact"` on <html>) for the Team Inbox, contacts and
+ * campaign lists. Postbox keeps its own `data-density` on the Postbox root. */
+@custom-variant density-compact (&:where([data-list-density='compact'] *));
+
 @import './tokens.css';
 @import './dark.css';
 @import './light.css';
+@import './contrast.css';
 @import './components.css';
 @import './landing.css';
 @import './motion.css';

@@ -6049,6 +6049,36 @@
 			"preferencesBackLink": {
 				"label": "Back to preferences"
 			},
+			"preferencesComfort": {
+				"title": "Reading comfort",
+				"subtitle": "Text size, contrast, motion and list spacing on this device.",
+				"textSizeLabel": "Mail text size",
+				"textSizeHelp": "How large mail reads in Postbox and the Team Inbox. Designed newsletters scale as a whole.",
+				"readingWidthLabel": "Reading width",
+				"readingWidthHelp": "How long a line of mail can run before it wraps. Designed newsletters keep their own layout.",
+				"listDensityLabel": "List density",
+				"listDensityHelp": "Row spacing in the Team Inbox, contacts and campaign lists. Postbox has its own density under Reading.",
+				"highContrastLabel": "Higher contrast",
+				"highContrastHelp": "Darker text and stronger borders in light mode, brighter ones in dark mode.",
+				"reduceMotionLabel": "Reduce motion",
+				"reduceMotionHelp": "Turn off animations and smooth scrolling in Owlat. Motion is always reduced when your device asks for it.",
+				"textSize": {
+					"small": "Small",
+					"default": "Default",
+					"large": "Large",
+					"larger": "Larger"
+				},
+				"readingWidth": {
+					"narrow": "Narrow",
+					"default": "Default",
+					"wide": "Wide",
+					"full": "Full width"
+				},
+				"listDensity": {
+					"comfortable": "Comfortable",
+					"compact": "Compact"
+				}
+			},
 			"preferencesExportManifest": {
 				"loading": "Counting…",
 				"moreThan": "more than {count}",
@@ -16437,6 +16467,26 @@
 				"appearance": {
 					"title": "Appearance",
 					"keywords": "dark mode, light mode, theme, colour scheme"
+				},
+				"mailTextSize": {
+					"title": "Mail text size",
+					"keywords": "font size, text size, zoom, larger text, readability"
+				},
+				"readingWidth": {
+					"title": "Reading width",
+					"keywords": "line length, measure, column width, wide"
+				},
+				"listDensity": {
+					"title": "List density",
+					"keywords": "compact, comfortable, spacing, row height, team inbox, contacts, campaigns"
+				},
+				"highContrast": {
+					"title": "Higher contrast",
+					"keywords": "contrast, accessibility, readability, borders, low vision"
+				},
+				"reduceMotion": {
+					"title": "Reduce motion",
+					"keywords": "animation, motion, accessibility, smooth scrolling, vestibular"
 				},
 				"language": {
 					"title": "Language",

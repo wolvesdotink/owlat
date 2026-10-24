@@ -34,6 +34,7 @@ import { POSTBOX_MARK_READ_DWELL_MS, markReadOnOpen } from '~/utils/postboxMarkR
 import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
 import { postboxBodyImageProps } from '~/utils/postboxImageAllowlist';
 import { providePostboxReaderContext } from '~/composables/postbox/usePostboxReaderContext';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 export type AnswerConversationView = 'summary' | 'full';
 
@@ -207,8 +208,7 @@ async function reveal(messageId: string) {
 		`[data-answer-message="${CSS.escape(messageId)}"]`
 	);
 	if (!el) return;
-	const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-	el.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
+	el.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 	highlightedId.value = messageId;
 	clearTimeout(highlightTimer);
 	highlightTimer = setTimeout(() => (highlightedId.value = null), 1600);

@@ -37,6 +37,7 @@
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { PostboxRenderScheme } from '~/utils/postboxDarkMode';
 import { getPostboxRenderCache } from '~/utils/postboxRenderCache';
+import { useReadingComfort } from '~/composables/useReadingComfort';
 import { postboxBodyPlaceholder } from '~/utils/postboxBodyPlaceholder';
 import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
 import { useRegisterReadableBody } from '~/composables/postbox/usePostboxSenderOpen';
@@ -119,6 +120,9 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const { isDark } = useAppTheme();
+// Text size and reading width (Preferences → Reading comfort): part of the
+// rendered document and of its cache key, so a change re-renders the body.
+const { mailTypography } = useReadingComfort();
 
 // Offline read cache: persist this message's post-sanitize srcdoc once rendered
 // (so it stays readable without a connection) and show the cached srcdoc until
@@ -183,7 +187,10 @@ const renderFinal = computed(() => contentFinal.value && !cidImagesPending.value
 
 // The saved copy shown in place of a live body that is not here (yet).
 const placeholder = computed(() =>
-	postboxBodyPlaceholder(cachedSrcdoc.value, { blockRemote: !isOffline.value })
+	postboxBodyPlaceholder(cachedSrcdoc.value, {
+		blockRemote: !isOffline.value,
+		typography: mailTypography.value,
+	})
 );
 
 // The sanitized document, rendered by the shared render worker (string
@@ -197,6 +204,7 @@ const rendered = usePostboxRenderedBody(() => ({
 	showQuoted: showQuoted.value,
 	showImages: showImages.value,
 	loadEverything: loadEverything.value,
+	typography: mailTypography.value,
 	cidUrls: cidImageUrls.value,
 	final: renderFinal.value,
 	blockedImageLabel: t('components.postbox.postboxMessageBody.blockedImage'),
