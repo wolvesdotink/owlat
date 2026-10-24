@@ -6,7 +6,8 @@
  *  - it queues exactly one send, with a fresh undo token, and a second click
  *    (or another tab) finds nothing scheduled;
  *  - the dispatch hop scheduled for the original time finds a stale token and
- *    sends nothing;
+ *    sends nothing, also when it was already building the message as Send now
+ *    ran (it neither sends nor reverts the new send, whose undo still works);
  *  - Cancel returns the draft to Drafts with its content, and Send now on it
  *    then does nothing;
  *  - a draft already gone or already sending answers `{ ok: false }`;
@@ -33,6 +34,52 @@ vi.mock('../lib/sessionOrganization', async () => ({
 	isActiveOrgMember: vi.fn(async () => true),
 }));
 
+// Message assembly and transport are replaced so a dispatch hop can be held
+// between its first read and its commit: `bufferDraftAttachments` reports that
+// it started and waits for `release`. Everything the hop commits (the
+// lifecycle transitions) runs for real.
+const hop = vi.hoisted(() => ({
+	started: undefined as (() => void) | undefined,
+	release: undefined as Promise<void> | undefined,
+	blocked: false,
+}));
+vi.mock('../mail/outbound/build', () => {
+	class BlockedAttachmentError extends Error {}
+	return {
+		BlockedAttachmentError,
+		bufferDraftAttachments: vi.fn(async () => {
+			hop.started?.();
+			await hop.release;
+			if (hop.blocked) throw new BlockedAttachmentError('blocked');
+			return { inlinedHtml: '<p>Here it is.</p>', attachments: [] };
+		}),
+		buildOutboundMime: vi.fn(async () => ({
+			raw: new Uint8Array([1]),
+			rfc822MessageId: '<hop@owlat.example>',
+		})),
+		sealOutboundMessage: vi.fn(async () => ({
+			storedBytes: new Uint8Array([1]),
+			sealed: false,
+			encryptionInfo: { isSealed: false },
+			isFlagEnabled: false,
+		})),
+	};
+});
+vi.mock('../lib/sealedBlob', async () => ({
+	...(await vi.importActual('../lib/sealedBlob')),
+	storeSealedBlob: vi.fn(async (storage: { store: (blob: Blob) => Promise<string> }) =>
+		storage.store(new Blob(['raw']))
+	),
+}));
+vi.mock('../mail/outbound/dispatch', () => ({
+	dispatchViaMta: vi.fn(async () => {}),
+	dispatchViaExternalWorker: vi.fn(async () => {}),
+}));
+vi.mock('../mail/mtaClient', async () => ({
+	...(await vi.importActual('../mail/mtaClient')),
+	getMtaConfig: () => ({}),
+}));
+
 const modules = import.meta.glob('../**/*.*s');
 type Harness = TestConvex<typeof schema>;
 
@@ -50,6 +97,9 @@ beforeEach(() => {
 	vi.useFakeTimers({ toFake: ['Date'], now: NOW });
 	session.userId = 'user-A';
 	session.role = 'owner';
+	hop.started = undefined;
+	hop.release = undefined;
+	hop.blocked = false;
 });
 afterEach(() => {
 	vi.useRealTimers();
@@ -86,6 +136,34 @@ async function scheduledDraft(
 }
 
 const row = (t: Harness, draftId: Id<'mailDrafts'>) => t.run((ctx) => ctx.db.get(draftId));
+
+/**
+ * Start the dispatch hop for `undoToken` and hold it after its first read of
+ * the draft, before it commits anything. Resolves once the hop is held.
+ */
+async function holdDispatch(
+	t: Harness,
+	draftId: Id<'mailDrafts'>,
+	undoToken: string
+): Promise<{ release: () => Promise<void> }> {
+	let held!: () => void;
+	let release!: () => void;
+	const isHeld = new Promise<void>((resolve) => {
+		held = resolve;
+	});
+	hop.started = held;
+	hop.release = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const running = t.action(internal.mail.outbound.dispatchDraft, { draftId, undoToken });
+	await isHeld;
+	return {
+		release: async () => {
+			release();
+			await running;
+		},
+	};
+}
 
 /** The dispatch hops scheduled for this draft, by the token each carries. */
 async function dispatchTokens(t: Harness, draftId: Id<'mailDrafts'>): Promise<string[]> {
@@ -143,6 +221,76 @@ describe('scheduledSends.sendNow', () => {
 		});
 		const sent = await t.run((ctx) => ctx.db.query('mailMessages').collect());
 		expect(sent).toEqual([]);
+	});
+
+	it('keeps the new send when the original hop was already building the message', async () => {
+		const t = convexTest();
+		const { draftId, scheduledToken } = await scheduledDraft(t);
+		vi.setSystemTime(LATER);
+		const original = await holdDispatch(t, draftId, scheduledToken);
+
+		const result = await t.mutation(api.mail.scheduledSends.sendNow, {
+			draftId,
+			undoSendDelayMs: 60_000,
+		});
+		expect(result).toMatchObject({ ok: true, sendAt: LATER + 60_000 });
+		if (!result.ok) throw new Error('expected a send');
+		await original.release();
+
+		expect(await row(t, draftId)).toMatchObject({
+			state: 'pending_send',
+			undoToken: result.undoToken,
+			scheduledSendAt: LATER + 60_000,
+		});
+		expect(await t.run((ctx) => ctx.db.query('mailMessages').collect())).toEqual([]);
+		// The raw message the stale hop stored is not left behind.
+		expect(await t.run((ctx) => ctx.db.system.query('_storage').collect())).toEqual([]);
+		// The undo window Send now promised still holds.
+		expect(
+			await t.mutation(api.mail.drafts.cancelPendingSend, { undoToken: result.undoToken })
+		).toEqual({ ok: true, draftId });
+		expect((await row(t, draftId))?.state).toBe('draft');
+	});
+
+	it('sends once, through the new hop, after the original hop gave up', async () => {
+		const t = convexTest();
+		const { draftId, scheduledToken } = await scheduledDraft(t);
+		vi.setSystemTime(LATER);
+		const original = await holdDispatch(t, draftId, scheduledToken);
+		const result = await t.mutation(api.mail.scheduledSends.sendNow, { draftId });
+		if (!result.ok) throw new Error('expected a send');
+		await original.release();
+
+		await t.action(internal.mail.outbound.dispatchDraft, {
+			draftId,
+			undoToken: result.undoToken,
+		});
+
+		expect(await row(t, draftId)).toBeNull();
+		expect(await t.run((ctx) => ctx.db.query('mailMessages').collect())).toHaveLength(1);
+	});
+
+	it('does not revert the new send when the original hop aborts', async () => {
+		const t = convexTest();
+		const { draftId, scheduledToken } = await scheduledDraft(t);
+		vi.setSystemTime(LATER);
+		hop.blocked = true;
+		const original = await holdDispatch(t, draftId, scheduledToken);
+		const result = await t.mutation(api.mail.scheduledSends.sendNow, { draftId });
+		if (!result.ok) throw new Error('expected a send');
+		await original.release();
+
+		expect(await row(t, draftId)).toMatchObject({
+			state: 'pending_send',
+			undoToken: result.undoToken,
+		});
+		const reverts = await t.run((ctx) =>
+			ctx.db
+				.query('auditLogs')
+				.filter((q) => q.eq(q.field('action'), 'postbox_draft.scan_blocked'))
+				.collect()
+		);
+		expect(reverts).toEqual([]);
 	});
 
 	it('keeps the draft in Drafts on Cancel, where Send now does nothing', async () => {

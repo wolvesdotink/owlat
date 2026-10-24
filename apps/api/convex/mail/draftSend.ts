@@ -197,11 +197,15 @@ export async function cancelScheduledSendHandler(
 /**
  * Send a scheduled draft now instead of at its time, in one transaction: the
  * schedule is withdrawn (`scheduled → draft`, which drops the undo token the
- * scheduled dispatch hop carries, so that hop finds nothing to send) and the
- * ordinary send starts (`draft → pending_send` through {@link sendHandler}, with
- * the same checks, attribution and undo window as Send). A send the checks
- * refuse throws and rolls the withdrawal back with it, so the draft stays
- * scheduled.
+ * scheduled dispatch hop carries) and the ordinary send starts
+ * (`draft → pending_send` through {@link sendHandler}, with the same checks,
+ * attribution and undo window as Send). A send the checks refuse throws and
+ * rolls the withdrawal back with it, so the draft stays scheduled.
+ *
+ * The scheduled hop sends nothing afterwards: it compares its token on its
+ * first read and again in every lifecycle transition it commits, so a hop that
+ * was already building the message when Send now ran cannot take over the new
+ * send or cut its undo window short.
  *
  * A draft that is no longer scheduled — dispatched, cancelled, or already
  * sent now by another tab — answers `{ ok: false }` and changes nothing, so a

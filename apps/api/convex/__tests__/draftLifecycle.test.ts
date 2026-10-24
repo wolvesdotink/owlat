@@ -630,6 +630,38 @@ describe('draftLifecycle.transition — to: sent', () => {
 		}
 	);
 
+	it('refuses a send keyed by an undo token the draft no longer carries', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedMailboxAndSent(t);
+		const draftId = await seedDraft(t, mailboxId, {
+			state: 'pending_send',
+			undoToken: 'tok-new',
+			scheduledSendAt: Date.now() + 60_000,
+		});
+		const rawStorageId = await storeBlob(t);
+
+		const sent = await t.mutation(internal.mail.draftLifecycle.transition, {
+			draftId,
+			expectedUndoToken: 'tok-old',
+			input: { to: 'sent', at: Date.now(), context: makeSentContext(rawStorageId) },
+		});
+		const reverted = await t.mutation(internal.mail.draftLifecycle.transition, {
+			draftId,
+			expectedUndoToken: 'tok-old',
+			input: { to: 'draft', at: Date.now(), reason: 'scan_blocked' },
+		});
+
+		expect(sent).toMatchObject({ ok: false, reason: 'undo_token_mismatch', from: 'pending_send' });
+		expect(reverted).toMatchObject({ ok: false, reason: 'undo_token_mismatch' });
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(draftId)).toMatchObject({
+				state: 'pending_send',
+				undoToken: 'tok-new',
+			});
+			expect(await ctx.db.query('mailMessages').collect()).toEqual([]);
+		});
+	});
+
 	it('refuses with from_revoked when fromAddress is no longer in allowed set', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seedMailboxAndSent(t);
