@@ -97,6 +97,20 @@ describe('CI work selection', () => {
 		expect(expectedJobs({ ...selection, desktopSpa: true })).toContain('desktop-spa');
 		expect(expectedJobs({ ...selection, desktopSpa: false })).not.toContain('desktop-spa');
 	});
+	it('runs the browser component tests whenever the web suite runs', () => {
+		const selection = {
+			groups: [],
+			images: [],
+			api: false,
+			mta: false,
+			java: false,
+			desktopSpa: false,
+		};
+		expect(expectedJobs({ ...selection, web: true })).toEqual(
+			expect.arrayContaining(['test-web', 'test-web-merge', 'test-web-browser'])
+		);
+		expect(expectedJobs({ ...selection, web: false })).not.toContain('test-web-browser');
+	});
 	it('selects the PR work the detect job and check:changed both report', () => {
 		const images = [
 			{ name: 'web', package: '@owlat/web', dockerfile: 'apps/web/Dockerfile' },
