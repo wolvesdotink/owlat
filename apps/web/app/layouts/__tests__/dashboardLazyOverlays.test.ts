@@ -67,6 +67,7 @@ beforeEach(() => {
 		useKeyboardShortcuts: () => ({
 			isHelpModalOpen,
 			registerNavigationShortcuts: vi.fn(),
+			registerShortcut: vi.fn(),
 			closeHelpModal: vi.fn(),
 		}),
 		// What the real palette needs once it is mounted.

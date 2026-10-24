@@ -1,6 +1,6 @@
 import { createRootMatcher, type Node, propertyName, unwrap } from '../documentRoot.ts';
 import { createLoopMatcher } from '../documentRootLoops.ts';
-import { matchesAnyGlob } from '../fileGlobs.ts';
+import { matchesFileGlobs } from '../fileGlobs.ts';
 import type { AstNode, Rule } from '../types.ts';
 
 /**
@@ -71,7 +71,7 @@ const rule: Rule = {
 	},
 	create(context) {
 		const files = (context.options[0] as Options | undefined)?.files;
-		if (files && !matchesAnyGlob(context.filename, files)) return {};
+		if (files && !matchesFileGlobs(context.filename, files)) return {};
 		if (!context.sourceCode.text.includes('document')) return {};
 		const root = createRootMatcher(context);
 		const { isRootElement, isRootMember } = root;

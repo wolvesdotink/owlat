@@ -23,6 +23,7 @@ import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
+import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
 
 const props = defineProps<{
 	entries: Array<PostboxFeedEntry<PostboxThreadRowMessage>>;
@@ -47,6 +48,8 @@ const { t } = useI18n();
 // The viewer's brief preference for every row (no AI lines when it is off).
 provideBriefLines(usePostboxSettings().autoSummarize);
 usePostboxListNow(); // one minute clock for every row's timestamp
+// A message row drags its conversation onto the Inbox's pinned band.
+const pinDrag = usePostboxPinRowDrag();
 
 // The sender-trust marker gate, resolved once for the list (not per row).
 const { isEnabled } = useFeatureFlag();
@@ -118,6 +121,7 @@ function focusIndexOf(messageId: string): number {
 					:class="{ 'pbx-row-danger': isDanger(entry.message) }"
 				>
 					<NuxtLink
+						v-bind="pinDrag.source(String(entry.message._id), entry.message.subject)"
 						:id="`postbox-bundled-${String(entry.message._id)}`"
 						role="option"
 						:aria-selected="focusedIndex === focusIndexOf(String(entry.message._id))"
@@ -211,6 +215,7 @@ function focusIndexOf(messageId: string): number {
 							:class="{ 'pbx-row-danger': isDanger(message) }"
 						>
 							<NuxtLink
+								v-bind="pinDrag.source(String(message._id), message.subject)"
 								:id="`postbox-bundled-${String(message._id)}`"
 								role="option"
 								:aria-selected="focusedIndex === focusIndexOf(String(message._id))"

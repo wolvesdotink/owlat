@@ -1,6 +1,6 @@
 /**
  * The Postbox list's triage verbs — archive, trash, star, read, snooze (message
- * or whole thread), mute, move, cancel-follow-up — as ONE action source.
+ * or whole thread), mute, pin, move, cancel-follow-up — as ONE action source.
  *
  * PostboxThreadList owns the v-for, windowing and keyboard handling; every
  * entry point it exposes (hover buttons, right-click menu, long-press menu,
@@ -28,6 +28,7 @@ import {
 	optimisticSnoozeThread,
 	optimisticTrash,
 } from '~/lib/mailOptimistic/mailUpdaters';
+import { usePostboxPinAction } from './usePostboxPins';
 
 export function usePostboxRowTriage(args: {
 	/** Hide a row optimistically while its mutation is in flight. */
@@ -73,6 +74,7 @@ export function usePostboxRowTriage(args: {
 	const setMutedOp = useBackendOperation(api.mail.mute.setMutedForMessage, {
 		label: () => t('components.postbox.postboxThreadList.muteOperation'),
 	});
+	const pinAction = usePostboxPinAction();
 	const moveOp = useBackendOperation(api.mail.messageActions.move, {
 		label: () => t('components.postbox.postboxThreadList.moveOperation'),
 		optimisticUpdate: optimisticMove,
@@ -191,6 +193,19 @@ export function usePostboxRowTriage(args: {
 		if (muted && !outcome.ok) args.unhide(id);
 	}
 
+	/** Mute/unmute a row's conversation (the `m` shortcut + context menu). */
+	function toggleMuteRow(m: { _id: Id<'mailMessages'>; mutedAt?: number }) {
+		void toggleMute(m._id, m.mutedAt == null);
+	}
+
+	/**
+	 * Pin/unpin a row's conversation. A pin moves no mail, so the row stays
+	 * where it is and the band picks the thread up from its own query.
+	 */
+	function togglePinRow(m: { _id: Id<'mailMessages'>; pinnedAt?: number }) {
+		void pinAction.toggle(m._id, m.pinnedAt != null);
+	}
+
 	function cancelFollowUp(msg: { threadId?: string }) {
 		if (!msg.threadId) return;
 		void cancelFollowUpOp.run({ threadId: msg.threadId as Id<'mailThreads'> });
@@ -204,6 +219,8 @@ export function usePostboxRowTriage(args: {
 		snoozeMsg,
 		snoozeThread,
 		toggleMute,
+		toggleMuteRow,
+		togglePinRow,
 		toggleStar,
 		toggleRead,
 		cancelFollowUp,

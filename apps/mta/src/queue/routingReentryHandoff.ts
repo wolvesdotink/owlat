@@ -79,6 +79,7 @@ function buildReentryEvent(job: EmailJob, receipt: RoutingReentryHandoffReceipt)
 		routingReentryToken: job.routingReentryToken,
 		workAttemptId: job.workAttemptId,
 		deliveryDomain: job.deliveryDomain,
+		...(job.correlationId ? { correlationId: job.correlationId } : {}),
 		routingReentry: job.routingReentry,
 		routingReentryReason: receipt.routingReentryReason,
 		timestamp: receipt.timestamp,

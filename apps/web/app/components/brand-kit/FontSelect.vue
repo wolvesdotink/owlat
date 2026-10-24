@@ -6,8 +6,16 @@
  * selectable so opening the page does not change it.
  */
 import { BRAND_FONTS, brandFontByStack } from '@owlat/shared/brandKit';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
-defineProps<{ id: string; label: string; disabled?: boolean }>();
+defineProps<{
+	id: string;
+	label: string;
+	disabled?: boolean;
+	/** Differs from the brand kit default; shows the reset marker. */
+	changed?: boolean;
+}>();
+const emit = defineEmits<{ reset: [] }>();
 
 const stack = defineModel<string>({ required: true });
 const { t } = useI18n();
@@ -20,7 +28,15 @@ const fontLabel = (id: string) => t(`dashboard.admin.instance.brandKit.typograph
 
 <template>
 	<div>
-		<label :for="id" class="label">{{ label }}</label>
+		<div class="mb-2 flex items-center justify-between gap-2">
+			<label :for="id" class="label mb-0">{{ label }}</label>
+			<SettingsResetToDefault
+				:changed="changed === true"
+				:label="label"
+				:disabled="disabled"
+				@reset="emit('reset')"
+			/>
+		</div>
 		<select :id="id" v-model="stack" class="input" :disabled="disabled">
 			<option v-if="isUnlisted" :value="stack">
 				{{ t('dashboard.admin.instance.brandKit.typography.otherFont', { stack }) }}

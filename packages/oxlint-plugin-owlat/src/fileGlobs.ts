@@ -1,10 +1,10 @@
 /**
- * Repository-relative file globs for rule options (`*`, `**`, `?`).
- *
- * They are matched as a path suffix at a directory boundary rather than against
- * the working directory, because oxlint runs from the repository root and from
- * each workspace with the same config, and its own `overrides` globs resolve
- * against whichever directory that is.
+ * Repository-relative file globs for rule options (`*`, `**`, `?`), matched as
+ * a path SUFFIX at a directory boundary rather than against the working
+ * directory: oxlint runs from the repository root (the root gates) and from
+ * each workspace (its `lint` script) with the same config, and its own
+ * `overrides` globs resolve against whichever directory that is, so a rule
+ * that is scoped by an override would apply in one run and not the other.
  */
 
 const REGEXP_SYNTAX = /[.+^${}()|[\]\\]/gu;
@@ -33,8 +33,8 @@ const globToRegExp = (glob: string): RegExp => {
 	return regExp;
 };
 
-/** Whether `filename` (as oxlint reports it) matches any of the repository-relative `globs`. */
-export const matchesAnyGlob = (filename: string, globs: readonly string[]): boolean => {
+/** True when `filename` (any separator) matches one of `globs`. */
+export const matchesFileGlobs = (filename: string, globs: readonly string[]): boolean => {
 	const path = filename.replaceAll('\\', '/');
 	return globs.some((glob) => globToRegExp(glob).test(path));
 };

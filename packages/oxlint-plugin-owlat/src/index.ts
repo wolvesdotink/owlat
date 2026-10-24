@@ -6,6 +6,7 @@
 import noDocumentBodyReset from './rules/noDocumentBodyReset.ts';
 import noInlineBackoff from './rules/noInlineBackoff.ts';
 import noPollingLoopInTests from './rules/noPollingLoopInTests.ts';
+import noRawKeydownListener from './rules/noRawKeydownListener.ts';
 import noRealTimeWaitInTests from './rules/noRealTimeWaitInTests.ts';
 import noTestEnvironmentPragma from './rules/noTestEnvironmentPragma.ts';
 import noTestInLoop from './rules/noTestInLoop.ts';
@@ -19,6 +20,7 @@ export default {
 		'no-document-body-reset': noDocumentBodyReset,
 		'no-inline-backoff': noInlineBackoff,
 		'no-polling-loop-in-tests': noPollingLoopInTests,
+		'no-raw-keydown-listener': noRawKeydownListener,
 		'no-real-time-wait-in-tests': noRealTimeWaitInTests,
 		'no-test-environment-pragma': noTestEnvironmentPragma,
 		'no-test-in-loop': noTestInLoop,

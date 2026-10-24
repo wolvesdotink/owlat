@@ -1,4 +1,4 @@
-import { matchesAnyGlob } from '../fileGlobs.ts';
+import { matchesFileGlobs } from '../fileGlobs.ts';
 import type { Rule } from '../types.ts';
 
 /**
@@ -65,7 +65,7 @@ const rule: Rule = {
 		if (!context.sourceCode.text.includes('-environment')) return {};
 		const allowed = new Set(
 			((context.options[0] as Options | undefined)?.allow ?? [])
-				.filter(({ files }) => matchesAnyGlob(context.filename, files))
+				.filter(({ files }) => matchesFileGlobs(context.filename, files))
 				.map(({ environment }) => environment)
 		);
 		return {

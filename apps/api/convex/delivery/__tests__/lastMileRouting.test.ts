@@ -22,6 +22,7 @@ const input = {
 	routingReentryToken: 'reentry-1',
 	startedAt: Date.now(),
 	deliveryDomain: 'production' as const,
+	correlationId: 'dsp_test',
 };
 
 afterEach(() => {
@@ -94,7 +95,9 @@ describe('last-mile governance boundary', () => {
 		expect(resolveMtaRoutingDecision).toHaveBeenCalledWith(
 			// The lease is taken from the transport the send will go through.
 			expect.objectContaining({ id: 'mta', kind: 'mta', instanceKey: null }),
-			expect.objectContaining({ requireProviderProbe: true })
+			expect.objectContaining({ requireProviderProbe: true }),
+			// The attempt's log-only correlation id, as a header beside the body.
+			'dsp_test'
 		);
 	});
 
