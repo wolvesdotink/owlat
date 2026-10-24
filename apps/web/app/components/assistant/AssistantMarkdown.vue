@@ -1,16 +1,15 @@
 <script setup lang="ts">
-import { shareStructure } from '~/lib/structuralSharing';
-import { parseMarkdown, type Block } from '~/utils/markdown';
+import type { Block } from '~/utils/markdown';
+import { createIncrementalMarkdown } from '~/utils/markdownIncremental';
 
 const props = defineProps<{ source: string }>();
-// A streaming answer arrives whole on every flush. Parsing it again yields new
-// arrays for every block, so each settled block's AssistantInline would
-// re-render. Sharing structure with the previous parse keeps unchanged blocks
-// (and their inline arrays) identical, so only the block the new text extends
-// updates.
-const blocks = computed<Block[]>((previous) =>
-	shareStructure(previous, parseMarkdown(props.source))
-);
+// A streaming answer arrives whole on every flush. The parser keeps the blocks
+// that can no longer change and parses only the text after them, and it shares
+// structure with its previous result, so settled blocks (and their inline
+// arrays) stay identical and only the block the new text extends re-renders.
+// One parser per instance: its cache belongs to this answer only.
+const parse = createIncrementalMarkdown();
+const blocks = computed<Block[]>(() => parse(props.source));
 
 const headingClass: Record<number, string> = {
 	1: 'text-lg font-semibold mt-1',

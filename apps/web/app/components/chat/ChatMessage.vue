@@ -13,12 +13,15 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
 	edit: [messageId: Id<'chatMessages'>, text: string];
 	delete: [messageId: Id<'chatMessages'>];
+	/** The inline editor opened or closed; the list keeps an editing row mounted. */
+	editing: [messageId: Id<'chatMessages'>, active: boolean];
 }>();
 
 const { t, locale } = useI18n();
 
 const isEditing = ref(false);
 const editText = ref(props.message.text);
+watch(isEditing, (active) => emit('editing', props.message._id, active));
 
 const displayName = computed(() => {
 	if (props.message.author.name) return props.message.author.name;

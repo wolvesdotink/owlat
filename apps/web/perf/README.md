@@ -40,7 +40,7 @@ Only `Date` is pinned: timers and animation frames run at real speed.
 | --------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `assistant-stream/start`    | `AssistantMessage` list under the assistant page's scroll container and `useFollowLatest` | answer streams from empty, one write per 250 ms, under 20 settled turns |
 | `assistant-stream/near-cap` | same                                                                                      | the last 12 s of an estimated near-cap answer (see below)               |
-| `chat-history/500`          | `ChatMessageList` (and every `ChatMessage`)                                               | a room's full 500-message window, scrolled newest to oldest             |
+| `chat-history/500`          | `ChatMessageList` (and the `ChatMessage` rows its window mounts)                          | a room's full 500-message window, scrolled newest to oldest             |
 | `postbox-list/50`           | `PostboxThreadList` (and every `PostboxThreadRow`) in the Postbox list pane               | one folder page, under the windowing threshold: one row read, scrolled  |
 | `postbox-list/500`          | same, with its windowing                                                                  | ten folder pages, over the threshold: one row read, scrolled to the end |
 | `team-inbox/100`            | `InboxThreadRow` rows in the Team Inbox page's listbox and keyboard model                 | four pages of threads: one thread read, one tick of the list clock      |

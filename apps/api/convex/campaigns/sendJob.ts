@@ -8,9 +8,10 @@
  *
  * One row per campaign send walk (`schema/campaigns.ts`). ALL send modes —
  * plain, A/B test cohort, and A/B winner remainder — flow through it:
- *   - PREP (`emails.startCampaignSend`) inserts it via `createSendJob`
- *     (`phase: 'resolving'`, `cursor: ''`, a `variantMode`) and schedules the
- *     first hop.
+ *   - PREP (`campaigns/send.ts:startCampaignSend`) opens it through
+ *     `openSendJob` inside its one commit (`campaigns/sendCommit.ts`), with
+ *     `phase: 'resolving'`, `cursor: ''` and a `variantMode`, and schedules the
+ *     first hop in the same transaction.
  *   - Each hop reads it via `getSendJob`, enqueues one page (classified by the
  *     job's `variantMode` + deterministic per-contact hash), then calls
  *     `advanceSendJob` to patch `cursor`/counters and (on the last page) flip
@@ -27,11 +28,13 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, readActiveWorkspaceDeletion } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import { audienceValidator } from './audience';
+import { audienceValidator, type StoredAudience } from './audience';
 import { abVariantValidator } from '../lib/literalValidators';
+import { wasLatestSendPrepared } from './sendPlanning';
 
 const variantModeValidator = v.union(
 	v.literal('plain'),
@@ -46,10 +49,13 @@ const variantModeValidator = v.union(
  * 'resolving'`, `cursor: ''`, counters 0, supplied mode + Audience snapshot)
  * rather than resuming the prior, already-`done` walk.
  *
- * PREP fires this once per first-phase send (the lifecycle dedupes same-state
- * `sending → sending`); the winner-remainder action fires it once after winner
- * declaration. Both are single-fire per phase, so the reset cannot clobber an
- * in-flight walk of the SAME phase.
+ * The winner-remainder action is its only caller: it fires once after winner
+ * declaration and resets the job of the send it belongs to on purpose. PREP
+ * opens the first-phase job inside its own commit (`openSendJob`). A
+ * first-phase call here can only come from a preparation action of the
+ * previous release still running during a deploy, and it must not reset a
+ * walk the new preparation already started for this send, so it returns that
+ * job unchanged (see `findPreparedSendJob`).
  */
 export const createSendJob = internalMutation({
 	args: {
@@ -62,48 +68,104 @@ export const createSendJob = internalMutation({
 		winningVariant: v.optional(abVariantValidator),
 	},
 	handler: async (ctx, args) => {
-		const now = Date.now();
-		const fields = {
-			phase: 'resolving' as const,
-			variantMode: args.variantMode ?? ('plain' as const),
-			testFraction: args.testFraction,
-			splitPercentage: args.splitPercentage,
-			winningVariant: args.winningVariant,
-			cursor: '',
-			audience: args.audience,
-			enqueuedCount: 0,
-			totalCandidates: 0,
-			// A RESET WIPES THE MULTI-DAY PLAN TOO. The row is reused for the second
-			// A/B phase and for a re-fired send, and a plan carried over from the
-			// previous walk would charge the new one for a day it never sent on — and,
-			// worse, could report it as "day 3 of 4" before it had enqueued anybody.
-			planDayKey: undefined,
-			enqueuedToday: undefined,
-			planDayIndex: undefined,
-			planTotalDays: undefined,
-			isPlanTruncated: undefined,
-			plannedTotal: undefined,
-			isPlannedTotalLowerBound: undefined,
-			isPlannedTotalCountAttempted: undefined,
-			resumeAt: undefined,
-			updatedAt: now,
-		};
-		const existing = await ctx.db
-			.query('campaignSendJobs')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
-			.first();
-		if (existing) {
-			await ctx.db.patch(existing._id, { ...fields, startedAt: now });
-			return existing._id;
+		if (args.variantMode !== 'ab_winner') {
+			const prepared = await findPreparedSendJob(ctx, args.campaignId);
+			if (prepared) return prepared._id;
 		}
-
-		return await ctx.db.insert('campaignSendJobs', {
-			campaignId: args.campaignId,
-			...fields,
-			startedAt: now,
-		});
+		return await openSendJob(ctx, { ...args, now: Date.now() });
 	},
 });
+
+/** The campaign's send job row, or null. */
+export async function readSendJob(
+	ctx: QueryCtx,
+	campaignId: Id<'campaigns'>
+): Promise<Doc<'campaignSendJobs'> | null> {
+	return await ctx.db
+		.query('campaignSendJobs')
+		.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
+		.first();
+}
+
+/**
+ * The job of the campaign's latest send when that send was prepared, also
+ * once it finished (`wasLatestSendPrepared`), else null. The mutations a
+ * preparation action of the previous release calls one by one check it, so
+ * one that resumes after the new preparation committed the same send cannot
+ * overwrite what that commit wrote, or reset the walk it started, even after
+ * the walk completed.
+ */
+export async function findPreparedSendJob(
+	ctx: QueryCtx,
+	campaignId: Id<'campaigns'>
+): Promise<Doc<'campaignSendJobs'> | null> {
+	const campaign = await ctx.db.get(campaignId);
+	if (!campaign) return null;
+	const job = await readSendJob(ctx, campaignId);
+	return wasLatestSendPrepared(campaign, job) ? job : null;
+}
+
+/** What one send walk starts from; `createSendJob`'s arguments plus the clock. */
+export interface SendJobStart {
+	readonly campaignId: Id<'campaigns'>;
+	readonly audience: StoredAudience;
+	readonly variantMode?: 'plain' | 'ab_test' | 'ab_winner';
+	readonly testFraction?: number;
+	readonly splitPercentage?: number;
+	readonly winningVariant?: 'A' | 'B';
+	/** Stamped on `startedAt`/`updatedAt`. */
+	readonly now: number;
+}
+
+/**
+ * `createSendJob` inside the caller's transaction: the send preparation commit
+ * opens the job in the same mutation that moves the campaign to `sending`.
+ */
+export async function openSendJob(
+	ctx: MutationCtx,
+	args: SendJobStart
+): Promise<Id<'campaignSendJobs'>> {
+	const { now } = args;
+	const fields = {
+		phase: 'resolving' as const,
+		variantMode: args.variantMode ?? ('plain' as const),
+		testFraction: args.testFraction,
+		splitPercentage: args.splitPercentage,
+		winningVariant: args.winningVariant,
+		cursor: '',
+		audience: args.audience,
+		enqueuedCount: 0,
+		totalCandidates: 0,
+		// A RESET WIPES THE MULTI-DAY PLAN TOO. The row is reused for the second
+		// A/B phase and for a re-fired send, and a plan carried over from the
+		// previous walk would charge the new one for a day it never sent on — and,
+		// worse, could report it as "day 3 of 4" before it had enqueued anybody.
+		planDayKey: undefined,
+		enqueuedToday: undefined,
+		planDayIndex: undefined,
+		planTotalDays: undefined,
+		isPlanTruncated: undefined,
+		plannedTotal: undefined,
+		isPlannedTotalLowerBound: undefined,
+		isPlannedTotalCountAttempted: undefined,
+		resumeAt: undefined,
+		updatedAt: now,
+	};
+	const existing = await ctx.db
+		.query('campaignSendJobs')
+		.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
+		.first();
+	if (existing) {
+		await ctx.db.patch(existing._id, { ...fields, startedAt: now });
+		return existing._id;
+	}
+
+	return await ctx.db.insert('campaignSendJobs', {
+		campaignId: args.campaignId,
+		...fields,
+		startedAt: now,
+	});
+}
 
 /** Read the checkpoint row for a campaign (or null). Used at every hop entry
  *  to short-circuit a re-fired/stale walk. */

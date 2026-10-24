@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { components } from '../_generated/api';
 import { contentScanResultsFields } from '../schema/delivery';
@@ -233,30 +234,37 @@ export const getEmailTemplateForLanguage = internalQuery({
  */
 export const freezeCampaignAudience = internalMutation({
 	args: { campaignId: v.id('campaigns') },
-	handler: async (ctx, args): Promise<StoredAudience | null> => {
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign?.audience) return null;
-		const audience = campaign.audience;
-
-		// Only an un-frozen segment Audience needs a snapshot.
-		if (audience.kind !== 'segment' || audience.frozenFilters) {
-			return audience;
-		}
-
-		const segment = await ctx.db.get(audience.segmentId);
-		// Segment deleted before send and no prior snapshot — nothing to freeze.
-		// Resolution will yield zero recipients (and log) rather than guess.
-		if (!segment) return audience;
-
-		const frozen: StoredAudience = {
-			kind: 'segment',
-			segmentId: audience.segmentId,
-			frozenFilters: segment.filters,
-		};
-		await ctx.db.patch(args.campaignId, { audience: frozen });
-		return frozen;
-	},
+	handler: async (ctx, args): Promise<StoredAudience | null> =>
+		await freezeAudience(ctx, args.campaignId),
 });
+
+/** `freezeCampaignAudience` inside the caller's transaction. */
+export async function freezeAudience(
+	ctx: MutationCtx,
+	campaignId: Id<'campaigns'>
+): Promise<StoredAudience | null> {
+	const campaign = await ctx.db.get(campaignId);
+	if (!campaign?.audience) return null;
+	const audience = campaign.audience;
+
+	// Only an un-frozen segment Audience needs a snapshot.
+	if (audience.kind !== 'segment' || audience.frozenFilters) {
+		return audience;
+	}
+
+	const segment = await ctx.db.get(audience.segmentId);
+	// Segment deleted before send and no prior snapshot — nothing to freeze.
+	// Resolution will yield zero recipients (and log) rather than guess.
+	if (!segment) return audience;
+
+	const frozen: StoredAudience = {
+		kind: 'segment',
+		segmentId: audience.segmentId,
+		frozenFilters: segment.filters,
+	};
+	await ctx.db.patch(campaignId, { audience: frozen });
+	return frozen;
+}
 
 // Internal query to get due scheduled campaigns
 export const getDueScheduledCampaigns = internalQuery({
