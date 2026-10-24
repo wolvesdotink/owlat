@@ -51,6 +51,13 @@ const iconButton = computed(() => [
 	props.touch ? 'w-11 h-11' : 'p-2',
 ]);
 const neutralButton = 'text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover';
+// The switch track is 44×24. On cards a transparent ::before on the switch
+// button itself grows its hit area to 56×44, so a tap anywhere in the touch
+// target reaches the real control (and its disabled state) without enlarging
+// the track.
+const switchHitArea = computed(() =>
+	props.touch ? "before:absolute before:-inset-x-1.5 before:-inset-y-2.5 before:content-['']" : ''
+);
 </script>
 
 <template>
@@ -64,6 +71,7 @@ const neutralButton = 'text-text-tertiary hover:text-text-primary hover:bg-bg-su
 				:model-value="isActive"
 				:label="switchLabel"
 				:disabled="toggling"
+				:class="switchHitArea"
 				@update:model-value="emit('toggle', automation)"
 			/>
 		</span>

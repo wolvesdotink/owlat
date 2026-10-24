@@ -280,10 +280,20 @@ describe('automations list — rows', () => {
 		const cards = wrapper.findAll('ul > li');
 		expect(cards).toHaveLength(3);
 		expect(cards[0]!.get('a').attributes('href')).toBe('/dashboard/automations/au_welcome');
-		expect(cards[0]!.find('[role="switch"][aria-label="Active: Welcome sequence"]').exists()).toBe(
-			true
+		const cardSwitch = cards[0]!.get('[role="switch"][aria-label="Active: Welcome sequence"]');
+		// The 44px touch target belongs to the switch button itself (a ::before
+		// hit area), not to a wrapper that would swallow taps around the track.
+		expect(cardSwitch.element.tagName).toBe('BUTTON');
+		expect(cardSwitch.classes()).toEqual(
+			expect.arrayContaining(['before:absolute', 'before:-inset-x-1.5', 'before:-inset-y-2.5'])
 		);
 		expect(cards[0]!.find('button[aria-label="More actions"]').exists()).toBe(true);
+	});
+
+	it('keeps the table switch at its track size', async () => {
+		const wrapper = await mountList();
+		const tableSwitch = wrapper.get('table [role="switch"][aria-label="Active: Welcome sequence"]');
+		expect(tableSwitch.classes().some((c) => c.startsWith('before:'))).toBe(false);
 	});
 
 	it('offers Create automation when the list is empty', async () => {

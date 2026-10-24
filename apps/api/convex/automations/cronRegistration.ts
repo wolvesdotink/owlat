@@ -4,9 +4,10 @@ import { internal } from '../_generated/api';
 type Crons = ReturnType<typeof cronJobs>;
 
 /**
- * Automation crons, beside the functions they schedule. The first three moved
- * here unchanged from `convex/crons.ts` (same names, cadences and arguments)
- * when the health-bucket prune would have pushed that file past the 500-LOC cap.
+ * Automation crons, beside the functions they schedule, so a change to an
+ * automation job's cadence or arguments is reviewed next to the job itself.
+ * Cron names are durable identifiers in Convex: renaming one drops the old
+ * schedule and registers a new one.
  */
 export function registerAutomationCrons(crons: Crons): void {
 	// Roll sharded automation run counters (automationStatShards) into
