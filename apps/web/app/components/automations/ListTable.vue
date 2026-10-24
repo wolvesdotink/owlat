@@ -4,7 +4,7 @@ import type { Doc } from '@owlat/api/dataModel';
 /** The fields of an `automations.list` row the list renders. */
 export type AutomationListItem = Pick<
 	Doc<'automations'>,
-	'_id' | 'name' | 'description' | 'status' | 'triggerType' | 'statsActive' | 'createdAt'
+	'_id' | 'name' | 'description' | 'status' | 'triggerType' | 'statsActive'
 >;
 </script>
 
@@ -20,13 +20,19 @@ export type AutomationListItem = Pick<
  * withheld everywhere in this list (it has never run, so there are no
  * analytics), so for a caller without `automations:manage` a draft's name
  * leads nowhere and is plain text rather than a link.
+ *
+ * The last column is the automation's last 7 days (`HealthSummary`): runs
+ * entered, stalled and failed, the last two linking to the runs they count.
  */
-import { formatDate, formatNumber } from '~/utils/formatters';
+import { formatNumber } from '~/utils/formatters';
+import AutomationsHealthSummary, { type AutomationHealth } from './HealthSummary.vue';
 
 const props = defineProps<{
 	items: AutomationListItem[];
 	layout: 'table' | 'cards';
 	canManage: boolean;
+	/** Last-7-days counts by automation id; a missing entry shows a dash. */
+	health: ReadonlyMap<string, AutomationHealth>;
 }>();
 
 defineSlots<{
@@ -70,11 +76,16 @@ const statusPill =
 						{{ t(getTriggerDisplay(automation.triggerType).label) }}
 					</span>
 				</span>
-				<span class="flex items-center gap-1.5 text-xs text-text-tertiary mt-1">
+				<span class="flex flex-wrap items-center gap-1.5 text-xs text-text-tertiary mt-1">
 					<Icon name="lucide:users" class="w-3.5 h-3.5" />
 					<span class="tabular-nums">{{ formatNumber(automation.statsActive ?? 0) }}</span>
 					<span aria-hidden="true">·</span>
-					{{ formatDate(automation.createdAt) }}
+					<span>{{ t('dashboard.automations.index.health.cardLabel') }}</span>
+					<AutomationsHealthSummary
+						:automation-id="automation._id"
+						:linkable="automation.status !== 'draft'"
+						:health="health.get(automation._id)"
+					/>
 				</span>
 			</div>
 			<slot name="actions" :automation="automation" :touch="true" />
@@ -91,7 +102,7 @@ const statusPill =
 					<th :class="headerCell">
 						{{ t('dashboard.automations.index.table.contactsInFlow') }}
 					</th>
-					<th :class="headerCell">{{ t('dashboard.automations.index.table.created') }}</th>
+					<th :class="headerCell">{{ t('dashboard.automations.index.table.lastSevenDays') }}</th>
 					<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
 						{{ t('common.actions') }}
 					</th>
@@ -149,10 +160,12 @@ const statusPill =
 							</span>
 						</div>
 					</td>
-					<td class="px-6 py-4">
-						<span class="text-text-secondary text-sm whitespace-nowrap">
-							{{ formatDate(automation.createdAt) }}
-						</span>
+					<td class="px-6 py-4 text-text-secondary text-sm">
+						<AutomationsHealthSummary
+							:automation-id="automation._id"
+							:linkable="automation.status !== 'draft'"
+							:health="health.get(automation._id)"
+						/>
 					</td>
 					<td class="px-6 py-4">
 						<slot name="actions" :automation="automation" :touch="false" />

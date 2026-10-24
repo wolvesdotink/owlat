@@ -10708,12 +10708,17 @@
 						"cancelled": "Cancelled",
 						"completed": "Completed",
 						"emptyDescription": "Contacts will appear here when the automation is triggered",
+						"emptyFiltered": "No runs match this filter",
 						"emptyTitle": "No contacts in this automation yet",
+						"failed": "Failed",
+						"failedNote": "Runs a failed step ended in the last 7 days",
 						"inProgress": "In progress",
 						"next": "Next",
 						"noEmail": "No email",
 						"previous": "Previous",
 						"range": "{from}–{to}",
+						"stalled": "Stalled",
+						"stalledNote": "Runs that stalled and were ended in the last 7 days",
 						"statusFilterLabel": "Filter contacts by status",
 						"stepAndTime": "Step {number} · {time}",
 						"title": "Contacts in automation",
@@ -10729,6 +10734,7 @@
 			"index": {
 				"actions": {
 					"activate": "Activate",
+					"activeSwitch": "Active: {name}",
 					"more": "More actions",
 					"pause": "Pause",
 					"viewDetails": "View details"
@@ -10740,6 +10746,12 @@
 					"title": "No automations yet"
 				},
 				"errorTitle": "Couldn't load automations",
+				"health": {
+					"cardLabel": "7 days:",
+					"entered": "{count} entered",
+					"failed": "{count} failed",
+					"stalled": "{count} stalled"
+				},
 				"newAutomation": "New automation",
 				"noResults": {
 					"description": "No automations match \"{query}\". Try a different search term.",
@@ -10765,7 +10777,7 @@
 				"subtitle": "Create automated email workflows triggered by events",
 				"table": {
 					"contactsInFlow": "Contacts in flow",
-					"created": "Created",
+					"lastSevenDays": "Last 7 days",
 					"trigger": "Trigger"
 				},
 				"title": "Automations",

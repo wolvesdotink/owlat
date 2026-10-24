@@ -10708,12 +10708,17 @@
 						"cancelled": "Abgebrochen",
 						"completed": "Abgeschlossen",
 						"emptyDescription": "Kontakte erscheinen hier, sobald die Automatisierung ausgelöst wird",
+						"emptyFiltered": "Keine Durchläufe für diesen Filter",
 						"emptyTitle": "Noch keine Kontakte in dieser Automatisierung",
+						"failed": "Fehlgeschlagen",
+						"failedNote": "Durchläufe, die in den letzten 7 Tagen an einem fehlgeschlagenen Schritt geendet haben",
 						"inProgress": "In Bearbeitung",
 						"next": "Weiter",
 						"noEmail": "Keine E-Mail",
 						"previous": "Zurück",
 						"range": "{from}–{to}",
+						"stalled": "Hängen geblieben",
+						"stalledNote": "Durchläufe, die in den letzten 7 Tagen hängen geblieben sind und beendet wurden",
 						"statusFilterLabel": "Kontakte nach Status filtern",
 						"stepAndTime": "Schritt {number} · {time}",
 						"title": "Kontakte in der Automatisierung",
@@ -10729,6 +10734,7 @@
 			"index": {
 				"actions": {
 					"activate": "Aktivieren",
+					"activeSwitch": "Aktiv: {name}",
 					"more": "Weitere Aktionen",
 					"pause": "Pausieren",
 					"viewDetails": "Details ansehen"
@@ -10740,6 +10746,12 @@
 					"title": "Noch keine Automationen"
 				},
 				"errorTitle": "Automationen konnten nicht geladen werden",
+				"health": {
+					"cardLabel": "7 Tage:",
+					"entered": "{count} gestartet",
+					"failed": "{count} fehlgeschlagen",
+					"stalled": "{count} hängen geblieben"
+				},
 				"newAutomation": "Neue Automation",
 				"noResults": {
 					"description": "Keine Automationen passen zu „{query}“. Versuche einen anderen Suchbegriff.",
@@ -10765,7 +10777,7 @@
 				"subtitle": "Erstelle automatisierte E-Mail-Workflows, die durch Ereignisse ausgelöst werden",
 				"table": {
 					"contactsInFlow": "Kontakte im Ablauf",
-					"created": "Erstellt",
+					"lastSevenDays": "Letzte 7 Tage",
 					"trigger": "Auslöser"
 				},
 				"title": "Automationen",

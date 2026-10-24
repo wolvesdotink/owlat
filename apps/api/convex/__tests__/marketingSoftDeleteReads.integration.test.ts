@@ -206,6 +206,11 @@ const PROBES: Record<string, Probe> = {
 			t.query(api.automations.analytics.getStepAnalytics, { automationId }),
 		shownWhileLive: true,
 	},
+	'automations/health.ts:summaries': {
+		read: ({ t, automationId }) =>
+			t.query(api.automations.health.summaries, { automationIds: [automationId] }),
+		shownWhileLive: true,
+	},
 	'automations/automations.ts:get': {
 		read: ({ t, automationId }) => t.query(api.automations.automations.get, { automationId }),
 		shownWhileLive: true,

@@ -24,6 +24,7 @@ import BlockCard from '~/components/send/BlockCard.vue';
 import AudienceListTable from '~/components/audience/AudienceListTable.vue';
 import AutomationsListTable from '~/components/automations/ListTable.vue';
 import AutomationsRowActions from '~/components/automations/RowActions.vue';
+import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -332,6 +333,7 @@ describe('automations list', () => {
 	const automationStubs = {
 		AutomationsListTable,
 		AutomationsRowActions,
+		UiSwitch,
 		UiDropdownMenu: { template: '<div><slot name="trigger" /><slot /></div>' },
 		UiDropdownMenuItem: { template: '<button role="menuitem"><slot /></button>' },
 	};
@@ -356,7 +358,7 @@ describe('automations list', () => {
 		}));
 	});
 
-	it('offers edit, pause and the action menu to an admin', async () => {
+	it('offers edit, the active switch and the action menu to an admin', async () => {
 		role.value = 'admin';
 		const wrapper = await mountPage(
 			() => import('../automations/index.vue'),
@@ -365,7 +367,7 @@ describe('automations list', () => {
 		);
 
 		expect(wrapper.find('button[title="Edit"]').exists()).toBe(true);
-		expect(wrapper.find('button[title="Pause"]').exists()).toBe(true);
+		expect(wrapper.find('[role="switch"]').exists()).toBe(true);
 		expect(wrapper.find('button[title="More actions"]').exists()).toBe(true);
 		const menu = wrapper.findAll('[role="menuitem"]').map((item) => item.text());
 		expect(menu).toEqual(['View details', 'Edit', 'Duplicate', 'Pause']);
@@ -381,7 +383,7 @@ describe('automations list', () => {
 		);
 
 		expect(wrapper.find('button[title="Edit"]').exists()).toBe(false);
-		expect(wrapper.find('button[title="Pause"]').exists()).toBe(false);
+		expect(wrapper.find('[role="switch"]').exists()).toBe(false);
 		// Reading the automation is not a write: the menu keeps "View details".
 		const menu = wrapper.findAll('[role="menuitem"]').map((item) => item.text());
 		expect(menu).toEqual(['View details']);

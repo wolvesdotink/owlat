@@ -38,6 +38,7 @@ import AutomationsListTable, {
 import AutomationsRowActions from '~/components/automations/RowActions.vue';
 import { useAutomationBadges } from '~/composables/useAutomationBadges';
 import UiCard from '@owlat/ui/components/ui/Card.vue';
+import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { formatDate } from '~/utils/formatters';
 
@@ -268,7 +269,6 @@ describe.each(['table', 'cards'] as const)('automations list %s', (layout) => {
 		status: 'paused',
 		triggerType: 'contact_created',
 		statsActive: 0,
-		createdAt: 0,
 	} as AutomationListItem;
 	const draft = {
 		...paused,
@@ -284,7 +284,7 @@ describe.each(['table', 'cards'] as const)('automations list %s', (layout) => {
 			setup: () => () =>
 				h(
 					AutomationsListTable,
-					{ items: [paused, draft], layout, canManage },
+					{ items: [paused, draft], layout, canManage, health: new Map() },
 					{
 						actions: (slot: { automation: AutomationListItem; touch: boolean }) =>
 							h(AutomationsRowActions, {
@@ -301,6 +301,7 @@ describe.each(['table', 'cards'] as const)('automations list %s', (layout) => {
 		const wrapper = mount(Harness, {
 			global: {
 				plugins: [createTestI18n()],
+				components: { UiSwitch },
 				stubs: {
 					...rowStubs,
 					UiDropdownMenu: sendStubs.UiDropdownMenu,
@@ -333,11 +334,16 @@ describe.each(['table', 'cards'] as const)('automations list %s', (layout) => {
 	it('gives the row actions a name and a focus ring', async () => {
 		const { wrapper, onToggle, onEdit } = mountList();
 		const row = wrapper.findAll(layout === 'table' ? 'tbody tr' : 'li')[0]!;
-		for (const label of ['Activate', 'Edit', 'More actions']) {
+		for (const label of ['Edit', 'More actions']) {
 			const button = row.get(`button[aria-label="${label}"]`);
 			expect(button.classes()).toContain('focus-visible:ring-2');
 		}
-		await row.get('button[aria-label="Activate"]').trigger('click');
+		// The pause/resume control is a switch named for the automation; its
+		// state is aria-checked (off: this one is paused).
+		const toggle = row.get('[role="switch"][aria-label="Active: Re-engagement: 90 days quiet"]');
+		expect(toggle.attributes('aria-checked')).toBe('false');
+		expect(toggle.classes()).toContain('focus-visible:ring-2');
+		await toggle.trigger('click');
 		await row.get('button[aria-label="Edit"]').trigger('click');
 		expect(onToggle).toHaveBeenCalledWith(paused);
 		expect(onEdit).toHaveBeenCalledWith(paused);

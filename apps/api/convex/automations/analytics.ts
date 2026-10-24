@@ -3,6 +3,8 @@ import { automationsQuery } from './_helpers';
 import { PAGE_SIZE_DEFAULT } from '../lib/constants';
 import { loadOrderedSteps } from './steps';
 import { getLive } from '../lib/softDelete';
+import { automationRunEndReasonValidator } from '../lib/validators/automations';
+import { healthWindowStart } from './health';
 
 // Runs, steps and counters of a deleted automation stay until the purge, but
 // it reads as missing: every query here answers as for an unknown id.
@@ -12,12 +14,18 @@ import { getLive } from '../lib/softDelete';
 // `.collect()`-ed every matching run, JS-sorted, then sliced — which scaled
 // linearly with run count per automation. Indexed `.order('desc').take(N)`
 // reads at most `offset + limit + 1` rows.
+//
+// `endReason` narrows to the runs behind one of the list's health counts: the
+// runs that ended for that reason inside the same last-7-days window
+// (automations/health.ts), most recently ended first. It takes precedence over
+// `status` (every such run is cancelled).
 export const getAutomationRuns = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
 		status: v.optional(
 			v.union(v.literal('running'), v.literal('completed'), v.literal('cancelled'))
 		),
+		endReason: v.optional(automationRunEndReasonValidator),
 		limit: v.optional(v.number()),
 		offset: v.optional(v.number()),
 	},
@@ -27,20 +35,32 @@ export const getAutomationRuns = automationsQuery({
 		const limit = args.limit ?? PAGE_SIZE_DEFAULT;
 		const offset = args.offset ?? 0;
 		const takeCount = offset + limit + 1;
+		const endReason = args.endReason;
 
-		const runs = args.status
+		const runs = endReason
 			? await ctx.db
 					.query('automationRuns')
-					.withIndex('by_automation_and_status', (q) =>
-						q.eq('automationId', args.automationId).eq('status', args.status!)
+					.withIndex('by_automation_end_reason_completed', (q) =>
+						q
+							.eq('automationId', args.automationId)
+							.eq('endReason', endReason)
+							.gte('completedAt', healthWindowStart(Date.now()))
 					)
 					.order('desc')
 					.take(takeCount)
-			: await ctx.db
-					.query('automationRuns')
-					.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-					.order('desc')
-					.take(takeCount);
+			: args.status
+				? await ctx.db
+						.query('automationRuns')
+						.withIndex('by_automation_and_status', (q) =>
+							q.eq('automationId', args.automationId).eq('status', args.status!)
+						)
+						.order('desc')
+						.take(takeCount)
+				: await ctx.db
+						.query('automationRuns')
+						.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
+						.order('desc')
+						.take(takeCount);
 
 		const paginatedRuns = runs.slice(offset, offset + limit);
 		const hasMore = runs.length > offset + limit;

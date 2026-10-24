@@ -8,6 +8,17 @@ import {
 } from '../lib/convexValidators';
 import { stepKindValidator } from '../automations/steps/catalog';
 import { triggerKindValidator } from '../automations/triggers/catalog';
+import { automationRunEndReasonValidator } from '../lib/validators/automations';
+
+/** Every automation table, children before parents: the order the organization wipe deletes them. */
+export const AUTOMATION_TABLES = [
+	'automationStepRuns',
+	'automationRuns',
+	'automationSteps',
+	'automationStatShards',
+	'automationHealthDays',
+	'automations',
+] as const;
 
 /**
  * Automation tables — trigger-based email workflows + per-contact runs + per-step run state.
@@ -40,6 +51,11 @@ export const automationTables = {
 		// Timestamps
 		activatedAt: v.optional(v.number()),
 		pausedAt: v.optional(v.number()),
+		// When the status last changed, by any writer (an admin or the failure
+		// breaker). An undo of a pause or resume carries the value its own
+		// transition wrote and is refused once it differs, so it never reverses
+		// a later change. Absent on rows not transitioned since it was added.
+		statusChangedAt: v.optional(v.number()),
 		// Marks rows inserted by /seed/demo so they can be wiped on reset.
 		seedTag: v.optional(v.string()),
 		// Recently deleted (lib/softDelete.ts): a deleted automation keeps its
@@ -106,6 +122,9 @@ export const automationTables = {
 		// Trigger information
 		triggeredBy: v.string(), // The trigger type that started this run
 		triggerData: v.optional(jsonPrimitiveRecord), // Trigger-specific data
+		// Set on a cancelled run that ended because a step failed or the run
+		// stalled; the list's health links read runs through it.
+		endReason: v.optional(automationRunEndReasonValidator),
 	})
 		.index('by_automation', ['automationId'])
 		.index('by_contact', ['contactId'])
@@ -115,6 +134,8 @@ export const automationTables = {
 		// never enters its scan or read set.
 		.index('by_automation_contact_status', ['automationId', 'contactId', 'status'])
 		.index('by_automation_and_status', ['automationId', 'status'])
+		// The runs a health count links to: one reason, ended inside the window.
+		.index('by_automation_end_reason_completed', ['automationId', 'endReason', 'completedAt'])
 		// The stalled-run sweep pages through every running run
 		// (automations/stalledRuns.ts).
 		.index('by_status', ['status']),
@@ -173,4 +194,22 @@ export const automationTables = {
 		statsCompleted: v.optional(v.number()),
 		statsCancelled: v.optional(v.number()),
 	}).index('by_automation_and_shard', ['automationId', 'shardKey']),
+
+	// Write-sharded per-UTC-day health counters behind the automations list's
+	// "last 7 days" column (automations/health.ts). Events, not state: a run
+	// that entered, a run a failed step ended, a run the stalled sweep ended.
+	// Random shards for the same reason as automationStatShards (an import
+	// burst enters many contacts at once); rows older than the window are
+	// pruned daily.
+	automationHealthDays: defineTable({
+		automationId: v.id('automations'),
+		// `utcDayKey` of the events' UTC day (lib/clock.ts).
+		day: v.string(),
+		shardKey: v.number(),
+		entered: v.optional(v.number()),
+		failed: v.optional(v.number()),
+		stalled: v.optional(v.number()),
+	})
+		.index('by_automation_day_shard', ['automationId', 'day', 'shardKey'])
+		.index('by_day', ['day']),
 };
