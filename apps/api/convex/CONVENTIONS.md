@@ -180,7 +180,9 @@ these builders is a SECOND BetterAuth session read plus a second `member`
 component query, on every execution of a function the dashboard may
 live-subscribe. `scripts/check-session-threading.sh` ratchets this (frozen
 baseline in `scripts/session-threading-baseline.txt`, both directions strict;
-`// session: <reason>` opts a handler out when the re-resolution is deliberate). `ctx` and `args` are untouched, and a handler declaring only
+`// session: <reason>` opts a handler out when the re-resolution is deliberate).
+The `owlat/use-threaded-session` oxlint rule checks the same thing on the AST,
+with its debt in `scripts/owlat-lint-baseline.txt`. `ctx` and `args` are untouched, and a handler declaring only
 `(ctx)` or `(ctx, args)` is unaffected — the parameter is there when you want it.
 `authedIdentityMutation` (identity, not an org session) and `authedAction`
 (enforced in another function's context) have nothing to thread and keep the raw
@@ -196,7 +198,9 @@ API-key/no-session context must call an `internal*` sibling (see
 `contacts.contacts.getInternal`, `topics.topics.addContactInternal`).
 
 `scripts/check-public-functions.sh` (wired into `bun run lint`) bans the bare
-builders outside `lib/authedFunctions.ts` — a forgotten gate fails CI.
+builders outside `lib/authedFunctions.ts` — a forgotten gate fails CI. The
+`owlat/no-raw-convex-builder` oxlint rule enforces the same ban by import
+rather than by spelling, so an aliased import or a namespace member fails too.
 
 ### The workspace write fence
 
@@ -290,6 +294,9 @@ bare `authedQuery` / `authedMutation` export under `convex/mail/`.
 `scripts/feature-floor-baseline.txt` lists only the justified sites (the
 soft-auth reads and the modules `mail/_helpers.ts` exempts), each group with its
 reason. A new entry means a handler skipped its gated builder: use the builder.
+The `owlat/feature-floor-in-builder` oxlint rule enforces the same thing on the
+AST; its families and justified sites are listed under that rule in the root
+`oxlintrc.json`, so a new family or site goes there as well as here.
 When you give another folder gated builders, add its `<flag> <path prefix>` pair
 to `FAMILIES` and the builder names to `EXPECTED_BUILDERS` in
 `check-entry-wiring.ts`.
@@ -300,7 +307,9 @@ edits for a composition: they read their builder families from source through
 `scripts/lib/convex-builders.sh`: every `(export )?const X = featureGated(Any)(<base>, …)`
 under `convex/` inherits its base's kind and auth floor. A new **base** builder
 exported from `lib/authedFunctions.ts` must be classified in that helper's
-`CONVEX_BASE_BUILDERS` table; until it is, every one of those gates fails.
+`CONVEX_BASE_BUILDERS` table; until it is, every one of those gates fails. The
+Convex oxlint rules (`owlat/convex-error-taxonomy`, `owlat/use-threaded-session`,
+`owlat/feature-floor-in-builder`) derive the same table from the same inputs.
 
 ## Permissions
 
@@ -386,14 +395,17 @@ correlate — across the MTA boundary and across restarts — while the plaintex
 never lands.
 
 `scripts/check-log-pii.sh` (wired into `bun run lint`) enforces this with a
-**baseline of zero**: a `logInfo`/`logWarn`/`logError`/`logDebug`/`console.*`
-call whose payload carries a `from` / `to` / `subject` / `email` / `recipient` /
+**baseline of zero**: a `logInfo`/`logWarn`/`logError`/`logDebug`/`logEvent`/`console.*`
+call whose payload (for `logEvent`, its `detail` object too) carries a `from` / `to` / `subject` / `email` / `recipient` /
 `rcptTo` / `mailFrom` / `address` / `sender` key fails unless the value passes
 through a redaction helper. Qualified names — `fromDomain`, `toCount`,
 `senderId`, `recipientHash` — are out of scope by construction; a domain, a
 count, an id or a digest is not the address. A value that is genuinely not a
 correspondent address opts out with `// log-pii-safe: <reason>` inside the call
-or in the comment block directly above it.
+or in the comment block directly above it. The `owlat/no-log-pii` oxlint rule
+checks each payload property on the AST: shorthand and quoted keys count, a
+redacted neighbour on the same line does not excuse a raw value, and a long call
+has no line cap.
 
 This is about **process logs only**. `auditLogs`, delivery-log rows and anything
 else persisted on purpose and read back by the UI keep the addresses they need;
@@ -964,6 +976,32 @@ calls it for every IMAP login.
   notes tell operators to run it and update the IMAP container before
   updating the backend.
 
+**Worker wire versions.** Every separately deployed worker (the IMAP server,
+mail-sync, the MTA, the code-worker) has its own wire version, independent of
+the others, in `@owlat/shared/workerWire` (the IMAP entry reads
+`@owlat/shared/imapWire`). Each worker reports it at startup and every 5
+minutes to `maintenance/workerRegistry`: mail-sync through `:report`, the
+code-worker through `:reportCodeWorker` (its proxy allows nothing that could
+record another service), the MTA over the signed `/webhooks/mta-worker-report`
+route, and the IMAP server's `mail/imap/serverRegistry:report` records there
+too. `npx convex run maintenance/workerRegistry:status` and Settings → System &
+updates show, per service, which builds reported and the version skew.
+
+- Bump a worker's `current` in the PR that changes its contract, under the same
+  rules as the IMAP wire version; the code-worker also keeps its number in
+  `apps/code-worker/src/wireVersion.ts` (its image does not ship the shared
+  package; a test keeps the two equal).
+- A migration that removes or rewrites what a worker below some version still
+  reads or writes is a contract step: its manifest entry declares
+  `requiresWorkers: { <service>: <version> }`. Nothing starts or resumes it
+  (the runner holds it; `beginMigrationRun` throws for the CLI, a cron or any
+  other caller of its `run`) while a worker of that service reported a lower
+  version within the last 15 minutes, or while the service runs here (it is
+  configured, or reported this week) and no live worker has reported the
+  version yet (`readWorkerWaits`).
+  Workers from before reporting are invisible to this check, so it does not
+  replace the N-1 window: it only adds this deployment's own evidence.
+
 **Migration manifest.** A release that needs data work ships a manifest listing,
 per migration: its module (`migrations/NNNN_name:run`), whether it must finish
 before users are let back in or may run in the background, whether a later
@@ -974,7 +1012,8 @@ chat-media migration. Every ledger-backed migration is also listed in
 stepping stone (`__tests__/manifest.test.ts` fails on one that is missing).
 Settings → System & updates reads that list with the ledger to show what is
 pending and runs it through each migration's own `run` (`migrations/admin.ts`);
-the in-app update refuses to start while a stepping stone is unfinished. When a
+the in-app update refuses to start while a stepping stone is unfinished, and a
+contract step with `requiresWorkers` waits there until the workers have moved. When a
 later release has made a migration moot (its contract removed what the
 migration converts), move it to `RETIRED_MIGRATIONS` in that release.
 
@@ -1182,12 +1221,33 @@ discriminator. See `shareLinks.targetType` and `blockedEmails.sourceType`.
   `emailSends.contactFirstName`, `emailSends.contactLastName` — they record
   what we sent, not the contact's current state. Touching them post-send is
   a corruption bug.
-- Aggregated fields (computed from child rows) are marked with `// AGGREGATED —`.
-  Examples: `campaigns.statsSent` etc. Update only via the dedicated
-  aggregator — for campaign send stats this is the Send lifecycle's effect
-  system (`campaign_stats_sent` / `campaign_stats_failed` etc. in
-  `delivery/sendLifecycle.ts`); never write these from a user-facing
-  mutation. Track freshness with `statsUpdatedAt`/`cachedCountUpdatedAt`.
+- Aggregated fields (a cache of what other rows already record) are marked
+  with `// AGGREGATED [<id>] —`, where `<id>` is the field's entry in
+  `maintenance/derivedFields/registry.ts`. Examples: `campaigns.statsSent` etc.
+  Update only via the dedicated aggregator — for campaign send stats this is
+  the Send lifecycle's effect system (`campaign_stats_sent` /
+  `campaign_stats_failed` etc. in `delivery/sendLifecycle.ts`); never write
+  these from a user-facing mutation. Track freshness with
+  `statsUpdatedAt`/`cachedCountUpdatedAt`.
+- A field may only be marked `AGGREGATED` if it is registered with a
+  `recompute(ctx, parent, budget)` adapter (`maintenance/derivedFields/adapters.ts`)
+  that recounts one parent from its source rows within a row and byte budget.
+  The hourly `derived fields: sample drift` cron
+  (`maintenance/derivedFields/sampler.ts`) visits a few parents per field in
+  turn, logs a difference once as `derived_field.drift` and repairs it in the
+  same transaction as the recount. A recount that would outrun its budget, or
+  whose source is incomplete (rows aged out, a rebuild not finished), writes
+  nothing. A lifetime total whose source rows may be removed uses the
+  `raise_only` policy: the cache is raised to the recount, never lowered.
+- A tally or event stamp that is the only record of what it counts (each
+  saved-reply use, each SMTP response) is marked `// COUNTER [<id>] —` and
+  registered with the reason nothing can recompute it. It is not sampled.
+  Moving a field from `AGGREGATED` to `COUNTER` needs that reason; a field
+  that other rows do record stays `AGGREGATED`, label or no label.
+- `__tests__/derivedFieldRegistry.test.ts` fails on a label without a
+  registered id, an id under the other label, a label that does not sit on the
+  fields its entry names (including shared validator spreads), or an entry
+  whose fields are not in the schema.
 
 ### Cascade contracts
 

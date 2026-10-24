@@ -19,6 +19,6 @@ provideAnswerQueueSession();
 
 <template>
 	<div class="contents">
-		<NuxtPage />
+		<AppPageOutlet />
 	</div>
 </template>

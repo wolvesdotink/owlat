@@ -458,6 +458,14 @@
 			"types": "./src/imapWire.ts",
 			"import": "./src/imapWire.ts"
 		},
+		"./workerWire": {
+			"types": "./src/workerWire.ts",
+			"import": "./src/workerWire.ts"
+		},
+		"./workerWireReporter": {
+			"types": "./src/workerWireReporter.ts",
+			"import": "./src/workerWireReporter.ts"
+		},
 		"./releaseArtifacts": {
 			"types": "./src/releaseArtifacts.ts",
 			"import": "./src/releaseArtifacts.ts"

@@ -71,7 +71,8 @@ export const smtpResponseCategoryTables = {
 		 */
 		observed: v.number(),
 		/**
-		 * AGGREGATED — per-category counts, keyed by `SmtpFailureCategory`.
+		 * COUNTER [smtpResponseCategoryCounts] — per-category counts, keyed by
+		 * `SmtpFailureCategory`.
 		 *
 		 * `v.record(v.string(), v.number())` and not a fixed object, because the
 		 * classifier's vocabulary is the MTA's to grow: a receiver phrase that earns

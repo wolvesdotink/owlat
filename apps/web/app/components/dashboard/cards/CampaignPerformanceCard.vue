@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { formatNumber } from '~/utils/formatters';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 const { t, locale } = useI18n();
 
@@ -66,8 +67,8 @@ function formatCount(value: number): string {
 						</div>
 						<div class="h-1.5 bg-bg-surface rounded-full overflow-hidden">
 							<div
-								class="h-full bg-brand rounded-full transition-all duration-(--motion-slow)"
-								:style="{ width: `${Math.min(openRate, 100)}%` }"
+								class="ui-meter-fill h-full bg-brand rounded-full transition-transform duration-(--motion-slow)"
+								:style="meterFillStyle(openRate)"
 							/>
 						</div>
 					</div>
@@ -82,8 +83,8 @@ function formatCount(value: number): string {
 						</div>
 						<div class="h-1.5 bg-bg-surface rounded-full overflow-hidden">
 							<div
-								class="h-full bg-success rounded-full transition-all duration-(--motion-slow)"
-								:style="{ width: `${Math.min(clickRate, 100)}%` }"
+								class="ui-meter-fill h-full bg-success rounded-full transition-transform duration-(--motion-slow)"
+								:style="meterFillStyle(clickRate)"
 							/>
 						</div>
 					</div>

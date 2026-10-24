@@ -98,11 +98,12 @@ export const aiRoutingTables = {
 	// behaviour. Read through `aiRouting/policy.ts` and `resolveRoutingPolicy`.
 	aiRoutingPolicy: defineTable(aiRoutingPolicyFields),
 
-	// AGGREGATED — settled spend per UTC day and month, per plane and budget
-	// class, derived ONLY from `llmUsageEvents`: every ledger insert adds its
-	// row's micro-USD here in the same mutation (lib/aiRouting/spendPeriods.ts),
-	// and a rebuild recomputes every bucket from the ledger. Never holds
-	// reservations. `generation` is the rebuild that last reset the bucket.
+	// AGGREGATED [llmSpendBuckets] — settled spend per UTC day and month, per
+	// plane and budget class, derived ONLY from `llmUsageEvents`: every ledger
+	// insert adds its row's micro-USD here in the same mutation
+	// (lib/aiRouting/spendPeriods.ts), and a rebuild recomputes every bucket
+	// from the ledger. Never holds reservations. `generation` is the rebuild
+	// that last reset the bucket.
 	llmSpendPeriods: defineTable({
 		periodKind: spendPeriodKindValidator,
 		/** `YYYY-MM-DD` for a day, `YYYY-MM` for a month (UTC). */

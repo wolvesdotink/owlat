@@ -239,7 +239,7 @@ const getFileIcon = (mimeType: string) => {
 				<button
 					v-for="asset in assets"
 					:key="asset._id"
-					class="group relative aspect-square bg-checker border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition-all hover:border-brand hover:ring-2 hover:ring-brand/30"
+					class="group relative aspect-square bg-checker border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition-[border-color,box-shadow] hover:border-brand hover:ring-2 hover:ring-brand/30"
 					@click="selectAsset(asset)"
 				>
 					<img

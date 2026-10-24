@@ -237,11 +237,11 @@ useModalFocus(
  * so dismissal reads crisp and final.
  */
 .modal-enter-active {
-	transition: all var(--motion-slow) var(--ease-spring-bounce);
+	transition: opacity var(--motion-slow) var(--ease-spring-bounce);
 }
 
 .modal-leave-active {
-	transition: all var(--motion-slow-exit) var(--ease-exit);
+	transition: opacity var(--motion-slow-exit) var(--ease-exit);
 }
 
 .modal-enter-from,

@@ -35,8 +35,8 @@ export function convexUrl(): string | undefined {
  * not a silent gap. The seam is here so an operator who has a narrower key can
  * supply it via `CODE_WORKER_CONVEX_KEY` WITHOUT a code change. The concrete
  * narrower key shipped for this is the `apps/convex-fn-proxy` sidecar: it holds
- * the real admin key, forwards ONLY the fifteen allowlisted `codeWorkTasks:*` /
- * `plugins/workerTasks:*` calls convexClient.ts makes, and validates+strips the
+ * the real admin key, forwards ONLY the sixteen allowlisted `codeWorkTasks:*` /
+ * `plugins/workerTasks:*` / wire-report calls convexClient.ts makes, and validates+strips the
  * token the worker presents. In that composed deployment `CONVEX_URL` points at
  * the proxy and `CODE_WORKER_CONVEX_KEY` is the proxy token — the token is what
  * `setAdminAuth` sends as `Authorization: Convex <token>`, which the proxy
@@ -53,6 +53,11 @@ export function convexKey(): string | undefined {
 	// treat empty/whitespace as unset to actually fall back to the admin key.
 	const scoped = process.env['CODE_WORKER_CONVEX_KEY']?.trim();
 	return scoped || process.env['CONVEX_ADMIN_KEY']?.trim() || undefined;
+}
+
+/** The image's `OWLAT_VERSION`, reported with the wire version; `dev` when unset or empty. */
+export function owlatVersion(): string {
+	return process.env['OWLAT_VERSION'] || 'dev';
 }
 
 export function githubToken(): string | undefined {

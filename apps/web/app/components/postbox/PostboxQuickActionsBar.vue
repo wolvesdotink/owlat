@@ -49,10 +49,10 @@ const movableFolders = computed(() =>
 
 <template>
 	<Transition
-		enter-active-class="transition-all duration-(--motion-moderate)"
+		enter-active-class="transition-[opacity,translate] duration-(--motion-moderate)"
 		enter-from-class="-translate-y-full opacity-0"
 		enter-to-class="translate-y-0 opacity-100"
-		leave-active-class="transition-all duration-(--motion-moderate-exit)"
+		leave-active-class="transition-[opacity,translate] duration-(--motion-moderate-exit)"
 		leave-from-class="translate-y-0 opacity-100"
 		leave-to-class="-translate-y-full opacity-0"
 	>

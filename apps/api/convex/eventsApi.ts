@@ -6,12 +6,9 @@ import {
 	type AuthenticatedContext,
 } from './auth/apiHandlers';
 import { jsonResponse, errorResponse } from './auth/apiResponses';
-import {
-	isJsonPrimitiveRecord,
-	isValidEmail,
-	normalizeEmail,
-	type JsonPrimitiveValue,
-} from './lib/inputGuards';
+import { isValidEmail, normalizeEmail } from './lib/inputGuards';
+import type { SendEventResponse } from '@owlat/public-contract';
+import { decodeRequest, sendEventRequestSchema } from '@owlat/public-contract/schemas';
 import {
 	idempotencyRefusalResponse,
 	readIdempotencyKey,
@@ -19,38 +16,11 @@ import {
 	resolveIdempotency,
 } from './auth/apiRequestReceipts';
 
-// Request body type for sending events
-interface SendEventBody {
-	email: string;
-	eventName: string;
-	eventProperties?: Record<string, JsonPrimitiveValue>;
-	createContactIfNotExists?: boolean;
-}
-
-// Response type
-interface SendEventResponse {
-	eventId: string;
-	contactId: string;
-	eventName: string;
-	triggeredAutomations: number;
-	contactCreated: boolean;
-}
-
 /**
  * POST /api/v1/events - Send an event to trigger automations
  *
- * Request body:
- * - email (required): Contact email address
- * - eventName (required): Name of the event
- * - eventProperties (optional): Additional properties for the event
- * - createContactIfNotExists (optional): Create contact if not found (default: false)
- *
- * Response:
- * - eventId: Unique identifier for this event
- * - contactId: ID of the associated contact
- * - eventName: Name of the event that was sent
- * - triggeredAutomations: Number of automations triggered
- * - contactCreated: Whether a new contact was created
+ * The request and response shapes are the public contract's
+ * (`@owlat/public-contract`); email syntax is checked here, after decoding.
  *
  * An `Idempotency-Key` header makes a repeat of the same request return the
  * first response (with `Idempotent-Replayed: true`) without firing again
@@ -62,57 +32,17 @@ export const sendEvent = createAuthenticatedHandler(
 		if (denied) return denied;
 		const idempotencyKey = readIdempotencyKey(request);
 		if (!idempotencyKey.ok) return errorResponse('invalid_input', idempotencyKey.message);
-		// Parse request body
-		let body: SendEventBody;
+		let raw: unknown;
 		try {
-			body = await request.json();
+			raw = await request.json();
 		} catch {
 			return errorResponse('invalid_input', 'Invalid JSON in request body');
 		}
-
-		// Validate required fields
-		if (!body.email) {
-			return errorResponse('invalid_input', 'email is required');
-		}
-
-		if (typeof body.email !== 'string') {
-			return errorResponse('invalid_input', 'email must be a string');
-		}
-
+		const decoded = decodeRequest(sendEventRequestSchema, raw);
+		if (!decoded.ok) return errorResponse('invalid_input', decoded.message);
+		const body = decoded.value;
 		if (!isValidEmail(body.email)) {
 			return errorResponse('invalid_input', 'Invalid email format');
-		}
-
-		if (!body.eventName) {
-			return errorResponse('invalid_input', 'eventName is required');
-		}
-
-		if (typeof body.eventName !== 'string') {
-			return errorResponse('invalid_input', 'eventName must be a string');
-		}
-
-		// Validate eventName format (alphanumeric, underscores, hyphens)
-		const eventNameRegex = /^[a-zA-Z][a-zA-Z0-9_-]{0,99}$/;
-		if (!eventNameRegex.test(body.eventName)) {
-			return errorResponse(
-				'invalid_input',
-				'eventName must start with a letter and contain only alphanumeric characters, underscores, or hyphens (max 100 chars)'
-			);
-		}
-
-		// Validate optional fields
-		if (body.eventProperties !== undefined && !isJsonPrimitiveRecord(body.eventProperties)) {
-			return errorResponse(
-				'invalid_input',
-				'eventProperties must be an object of string, number, boolean or null values'
-			);
-		}
-
-		if (
-			body.createContactIfNotExists !== undefined &&
-			typeof body.createContactIfNotExists !== 'boolean'
-		) {
-			return errorResponse('invalid_input', 'createContactIfNotExists must be a boolean');
 		}
 
 		const createContactIfNotExists = body.createContactIfNotExists ?? false;

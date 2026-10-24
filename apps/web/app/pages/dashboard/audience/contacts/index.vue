@@ -5,6 +5,7 @@ import { languageSelectOptions } from '~/data/languageOptions';
 import { isValidEmail } from '@owlat/shared';
 import type { ImportResults } from '~/composables/useCsvImport';
 import { contactHasEmail, contactPrimaryIdentity } from '~/utils/contactIdentity';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 const { t } = useI18n();
 
@@ -609,8 +610,8 @@ onUnmounted(() => {
 					</span>
 					<div class="w-20 h-1.5 bg-bg-elevated rounded-full overflow-hidden">
 						<div
-							class="h-full bg-brand transition-all duration-(--motion-moderate)"
-							:style="{ width: `${bulkOps.bulkOperationProgress.value}%` }"
+							class="ui-meter-fill h-full bg-brand transition-transform duration-(--motion-moderate)"
+							:style="meterFillStyle(bulkOps.bulkOperationProgress.value)"
 						/>
 					</div>
 					<span class="text-xs text-text-tertiary">{{ bulkOps.bulkOperationProgress.value }}%</span>

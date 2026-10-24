@@ -3,6 +3,8 @@ import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce'
 import { useSectionNavigation } from '~/composables/useSectionNavigation';
 import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
+import type { ShellPageBoundaryKey } from '~/lib/pageBoundary';
+import AppErrorBoundary from '~/components/AppErrorBoundary.vue';
 import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
 import { useMountOnFirst } from '~/composables/useMountOnFirst';
 import { usePerfMark } from '~/composables/usePerfMark';
@@ -67,6 +69,9 @@ function onToggleCollapse() {
 const showSectionNavigation = computed(() => !!activeSection.value && !showAppNavigation.value);
 const sectionNavigationTarget = ref<HTMLElement | null>(null);
 provide('section-navigation-target', sectionNavigationTarget);
+// Handed down from this lazy layout chunk to keep the boundary out of the
+// entry bundle (see ShellPageBoundaryKey).
+provide('owlat:shell-page-boundary' satisfies ShellPageBoundaryKey, AppErrorBoundary);
 
 // Settings' Back returns to the last page of real work, however many settings
 // pages were visited in between.
@@ -377,8 +382,14 @@ watch(isFocusMode, (active) => {
 // shared control so the event name lives in one place.
 const { open: openCommandPalette } = useCommandPalette();
 
-// Initialize desktop notifications (no-op in browser)
-useDesktopNotifications();
+// Unread mail is read once and badged everywhere from the same count: the
+// browser tab (title prefix + dotted favicon) and, in the desktop app, the
+// dock/taskbar icon plus native notifications. The desktop app has no tab and
+// paints the count natively, so the tab badge stays browser-only.
+const unreadBadge = useUnreadBadge();
+const { isDesktop: isDesktopApp } = useDesktopContext();
+useTabBadge(() => (isDesktopApp.value ? null : unreadBadge.count.value));
+useDesktopNotifications(unreadBadge);
 
 // "You can send now" — one in-app toast for a member whose onboarding first-send
 // step was blocked while the instance had no outbound transport.
@@ -629,6 +640,9 @@ const sidebarDesktopClass = computed(() => {
 						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem-2.25rem-1px)] lg:min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]'
 				"
 			>
+				<!-- A page that fails to render falls back in here, inside the shell
+				     (AppPageOutlet reads ShellPageBoundaryKey): the rail, the header
+				     and the palette stay usable. -->
 				<slot />
 			</main>
 		</div>

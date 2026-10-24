@@ -36,6 +36,7 @@
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
         "@owlat/provider-kit": "workspace:*",
+        "@owlat/public-contract": "workspace:*",
         "@owlat/shared": "workspace:*",
         "@owlat/smtp-client": "workspace:*",
         "@owlat/worker-protocol": "workspace:*",
@@ -578,10 +579,25 @@
         "vitest": "catalog:",
       },
     },
+    "packages/public-contract": {
+      "name": "@owlat/public-contract",
+      "version": "0.6.16",
+      "dependencies": {
+        "@owlat/shared": "workspace:*",
+        "zod": "^4.6.6",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/sdk-js": {
       "name": "@owlat/sdk-js",
       "version": "0.6.16",
       "devDependencies": {
+        "@owlat/public-contract": "workspace:*",
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
         "tsup": "^8.5.1",
@@ -1279,6 +1295,8 @@
     "@owlat/plugin-kit": ["@owlat/plugin-kit@workspace:packages/plugin-kit"],
 
     "@owlat/provider-kit": ["@owlat/provider-kit@workspace:packages/provider-kit"],
+
+    "@owlat/public-contract": ["@owlat/public-contract@workspace:packages/public-contract"],
 
     "@owlat/sdk-js": ["@owlat/sdk-js@workspace:packages/sdk-js"],
 

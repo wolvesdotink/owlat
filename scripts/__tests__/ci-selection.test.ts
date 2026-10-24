@@ -130,5 +130,15 @@ describe('CI work selection', () => {
 				images,
 			})
 		).toMatchObject({ images, java: true });
+		// The Java suite checks the SDK against the contract's OpenAPI document.
+		expect(
+			selectCiWork({
+				full: false,
+				changed: ['packages/public-contract/src/events.ts'],
+				coverage: [],
+				affected: ['@owlat/public-contract'],
+				images,
+			})
+		).toMatchObject({ java: true });
 	});
 });

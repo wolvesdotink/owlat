@@ -88,6 +88,8 @@ those prefixes.
 | `postbox.mta_intake.refused` / `.failed`                        | Convex Postbox send, per recipient           | error        |
 | `postbox.forward.*`, `postbox.vacation_reply.*`                 | Convex delivery hooks                        | info / error |
 | `runtime.event_loop.stalled`                                    | IMAP, mail sync, updater, per stall (below)  | warn         |
+| `derived_field.drift`                                           | Convex drift sampler, per drifted parent     | warn         |
+| `derived_field.skipped` / `derived_field.sampled`               | Convex drift sampler, per skip / field tick  | info         |
 
 These replace the earlier `[Outbound] MTA /send …`, `[Forwarding] …`,
 `[Vacation] auto-replied …` and `[mta Webhook] Ingress guard rejected …` lines,
@@ -102,6 +104,17 @@ carry none). Expected query failures are sampled at one in ten
 message is not in this line; Convex's own failure line for the same request
 has it. Argument-validation failures happen before the handler and only appear
 in Convex's own line.
+
+`derived_field.drift` means a cached field (`// AGGREGATED [<id>]` in the
+schema) differed from a recount of what it caches, for one parent row. The
+sampler (`apps/api/convex/maintenance/derivedFields/sampler.ts`) checks a few
+parents per field every hour. `outcome` is `repaired` when it wrote the recount
+back and `not_repaired` when the field's policy forbids it (a lifetime total
+above its recount is never lowered). `detail` names the field, its table, the
+parent id, and the `cached.<path>` and `recount.<path>` values. A steady stream
+for one field points at a writer that misses an update. `derived_field.skipped`
+names a parent whose recount would have read too much (`over_budget`) or whose
+source is incomplete (`unverifiable`); nothing was written for it.
 
 ### The correlation id
 

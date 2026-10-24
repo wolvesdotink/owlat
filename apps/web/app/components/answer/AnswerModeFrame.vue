@@ -340,7 +340,9 @@ function startReply() {
 					:data-sheet-hidden="composerHidden ? '' : undefined"
 					data-testid="answer-composer-content"
 				>
-					<slot name="composer" />
+					<AppErrorBoundary surface="composer">
+						<slot name="composer" />
+					</AppErrorBoundary>
 				</div>
 			</section>
 		</div>
