@@ -12,20 +12,17 @@
  * `_scheduled_functions`; nothing downstream of the preparation runs here.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
+import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import schema from '../schema';
-import { internal } from '../_generated/api';
+import type * as EmailScanner from '@owlat/email-scanner';
 import {
-	createTestCampaign,
-	createTestCampaignSender,
-	createTestContact,
-	createTestDomain,
-	createTestEmailTemplate,
-	createTestSegment,
-	createTestTopic,
-} from './factories';
-import type { Doc, Id } from '../_generated/dataModel';
+	BLOCKED_VERDICT,
+	SUSPICIOUS_VERDICT,
+	prepared,
+	seed,
+	start,
+} from './helpers/campaignPreparation';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -41,7 +38,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 // The scanner verdict drives the outcome: >= 40 blocked, >= 15 suspicious,
 // else clean. Default is clean.
 vi.mock('@owlat/email-scanner', async (importOriginal) => {
-	const original = await importOriginal<typeof import('@owlat/email-scanner')>();
+	const original = await importOriginal<typeof EmailScanner>();
 	return {
 		...original,
 		scanContent: vi.fn(() => ({ score: 0, pass: true, flags: [], level: 'clean' as const })),
@@ -49,19 +46,6 @@ vi.mock('@owlat/email-scanner', async (importOriginal) => {
 });
 
 const { scanContent: mockedScanContent } = await import('@owlat/email-scanner');
-
-const BLOCKED_VERDICT = {
-	score: 80,
-	pass: false,
-	flags: [{ type: 'prohibited_content', severity: 'high', description: 'Prohibited content' }],
-	level: 'blocked',
-};
-const SUSPICIOUS_VERDICT = {
-	score: 25,
-	pass: false,
-	flags: [{ type: 'spam_trigger', severity: 'medium', description: 'Spammy phrasing' }],
-	level: 'suspicious',
-};
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
@@ -84,126 +68,6 @@ afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllEnvs();
 });
-
-type Harness = TestConvex<typeof schema>;
-
-interface SeedOptions {
-	status?: 'scheduled' | 'sending';
-	isABTest?: boolean;
-	archiveEnabled?: boolean;
-	segment?: boolean;
-}
-
-interface Seeded {
-	campaignId: Id<'campaigns'>;
-	templateId: Id<'emailTemplates'>;
-}
-
-/**
- * A campaign that passes pre-flight: verified domain, enabled sender,
- * published template, one eligible recipient. `scheduled` campaigns are due
- * a minute ago, as the scheduler tick finds them.
- */
-async function seed(t: Harness, options: SeedOptions = {}): Promise<Seeded> {
-	return await t.run(async (ctx) => {
-		await ctx.db.insert(
-			'domains',
-			createTestDomain({ domain: 'example.com', status: 'verified', lastVerifiedAt: Date.now() })
-		);
-		await ctx.db.insert(
-			'campaignSenders',
-			createTestCampaignSender({ email: 'sender@example.com' })
-		);
-		const templateId = await ctx.db.insert(
-			'emailTemplates',
-			createTestEmailTemplate({
-				status: 'published',
-				subject: 'Hello {{firstName}}',
-				htmlContent: '<p>Body for {{firstName}}</p>',
-				defaultLanguage: 'en',
-			})
-		);
-		const contactId = await ctx.db.insert(
-			'contacts',
-			createTestContact({ email: 'r0@example.com', firstName: 'First0', doiStatus: 'not_required' })
-		);
-		let audience: Doc<'campaigns'>['audience'];
-		if (options.segment) {
-			const segmentId = await ctx.db.insert('segments', createTestSegment());
-			audience = { kind: 'segment', segmentId };
-		} else {
-			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
-			await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() });
-			audience = { kind: 'topic', topicId };
-		}
-		const status = options.status ?? 'sending';
-		const campaignId = await ctx.db.insert(
-			'campaigns',
-			createTestCampaign({
-				status,
-				...(status === 'sending' ? { sentAt: Date.now() } : {}),
-				...(status === 'scheduled' ? { scheduledAt: Date.now() - 60_000 } : {}),
-				emailTemplateId: templateId,
-				fromEmail: 'sender@example.com',
-				fromName: 'Test Sender',
-				audience,
-				subject: undefined,
-				isABTest: options.isABTest ?? false,
-				...(options.isABTest
-					? {
-							abTestConfig: {
-								testType: 'subject' as const,
-								splitPercentage: 20,
-								variantBSubject: 'Variant B {{firstName}}',
-								winnerCriteria: 'manual' as const,
-							},
-							abTestStatus: status === 'sending' ? ('testing' as const) : ('pending' as const),
-						}
-					: {}),
-				...(options.archiveEnabled !== undefined ? { archiveEnabled: options.archiveEnabled } : {}),
-			})
-		);
-		return { campaignId, templateId };
-	});
-}
-
-interface Prepared {
-	campaign: Doc<'campaigns'> | null;
-	audits: Array<{ action: string; userId: string }>;
-	scanRows: Doc<'contentScanResults'>[];
-	versions: Doc<'emailTemplateVersions'>[];
-	jobs: Doc<'campaignSendJobs'>[];
-	scheduled: string[];
-}
-
-/** Everything a preparation can write, read back in one transaction. */
-async function prepared(t: Harness, { campaignId, templateId }: Seeded): Promise<Prepared> {
-	return await t.run(async (ctx) => {
-		const audits = (await ctx.db.query('auditLogs').collect())
-			.filter((row) => row.resourceId === String(campaignId))
-			.map((row) => ({ action: row.action, userId: row.userId }));
-		const scanRows = (await ctx.db.query('contentScanResults').collect()).filter(
-			(row) => row.resourceId === String(campaignId)
-		);
-		const versions = await ctx.db
-			.query('emailTemplateVersions')
-			.withIndex('by_template_and_created_at', (q) => q.eq('templateId', templateId))
-			.collect();
-		const jobs = await ctx.db
-			.query('campaignSendJobs')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
-			.collect();
-		const scheduled = (await ctx.db.system.query('_scheduled_functions').collect())
-			.filter((job) => job.state.kind === 'pending')
-			.map((job) => job.name)
-			.sort();
-		return { campaign: await ctx.db.get(campaignId), audits, scanRows, versions, jobs, scheduled };
-	});
-}
-
-async function start(t: Harness, campaignId: Id<'campaigns'>) {
-	return await t.action(internal.campaigns.send.startCampaignSend, { campaignId });
-}
 
 describe('startCampaignSend preparation — a clean verdict', () => {
 	it('a sending campaign: captures the version, opens a plain job, schedules the walker', async () => {

@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { resolveStoredFeatureFlags } from '../lib/featureFlags';
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
@@ -40,6 +41,13 @@ export const getCampaignByArchiveToken = internalQuery({
 	},
 });
 
+/** The public archive copy of a campaign, written once per send. */
+export interface ArchiveSnapshot {
+	readonly archiveToken: string;
+	readonly archiveHtmlContent: string;
+	readonly archiveSubject: string;
+}
+
 /**
  * Store archive snapshot on a campaign (called during send flow).
  */
@@ -50,12 +58,22 @@ export const setArchiveSnapshot = internalMutation({
 		archiveHtmlContent: v.string(),
 		archiveSubject: v.string(),
 	},
-	handler: async (ctx, args) => {
-		await ctx.db.patch(args.campaignId, {
-			archiveToken: args.archiveToken,
-			archiveHtmlContent: args.archiveHtmlContent,
-			archiveSubject: args.archiveSubject,
-			updatedAt: Date.now(),
-		});
+	handler: async (ctx, { campaignId, ...snapshot }) => {
+		await writeArchiveSnapshot(ctx, campaignId, snapshot, Date.now());
 	},
 });
+
+/** `setArchiveSnapshot` inside the caller's transaction. */
+export async function writeArchiveSnapshot(
+	ctx: MutationCtx,
+	campaignId: Id<'campaigns'>,
+	snapshot: ArchiveSnapshot,
+	now: number
+): Promise<void> {
+	await ctx.db.patch(campaignId, {
+		archiveToken: snapshot.archiveToken,
+		archiveHtmlContent: snapshot.archiveHtmlContent,
+		archiveSubject: snapshot.archiveSubject,
+		updatedAt: now,
+	});
+}
