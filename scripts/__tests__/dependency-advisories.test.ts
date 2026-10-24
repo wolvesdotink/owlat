@@ -50,12 +50,22 @@
  * packages/email-builder, which never turn evaluation on, but each of them must
  * resolve the fixed release, and that copy must refuse the injected alias while
  * it still binds a valid one.
+ *
+ * The gate blocks on undici as well (GHSA-xjj6-f33q-929c, high): before 7.30.1
+ * its `fetch()` rejected a response with more than five content codings but
+ * left the body stream it had already created without an error listener, so a
+ * server that then closed early crashed the process. The root override keeps
+ * every consumer on one 7.x copy. The floor is asserted on the copies apps/api
+ * (directly and through cheerio) and Nuxt resolve, and the copy apps/api
+ * resolves must survive that response in a child process.
  */
 
+import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createServer, type AddressInfo, type Server, type Socket } from 'node:net';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 import type * as HappyDom from 'happy-dom';
 import type * as IpAddress from 'ip-address';
 import type * as Socks from 'socks';
@@ -83,6 +93,12 @@ const { z } = apiRequire('zod') as typeof Zod;
 const happyDomConsumers = ['apps/web', 'packages/ui', 'packages/email-builder'].map(
 	(workspace) => [workspace, createRequire(`${REPOSITORY_ROOT}${workspace}/package.json`)] as const
 );
+
+const undiciConsumers = [
+	['apps/api', apiRequire],
+	['apps/api → cheerio', createRequire(apiRequire.resolve('cheerio/package.json'))],
+	['apps/web → nuxt', nuxtRequire],
+] as const;
 
 const LOCKFILE = readFileSync(`${REPOSITORY_ROOT}bun.lock`, 'utf8');
 
@@ -317,5 +333,50 @@ describe('happy-dom (GHSA-834v-8h66-3h79)', () => {
 		} finally {
 			await window.happyDOM.close();
 		}
+	});
+});
+
+describe('undici (GHSA-xjj6-f33q-929c)', () => {
+	/** First fixed release on each line the advisory covers. */
+	const FIXED = new Map([
+		['6', '6.29.1'],
+		['7', '7.30.1'],
+		['8', '8.12.2'],
+	]);
+
+	it.each(undiciConsumers)('resolves a fixed release from %s', (_consumer, consumerRequire) => {
+		const { version } = consumerRequire('undici/package.json') as { version: string };
+		const floor = FIXED.get(version.split('.')[0]!);
+		expect(floor, `undici ${version} is on a line the floor does not cover`).toBeDefined();
+		expect(atLeast(version, floor!), `undici ${version}`).toBe(true);
+	});
+
+	it('survives a response with too many content codings and an early close', async () => {
+		// The unfixed release crashes the whole process on an unhandled stream
+		// error, so the fetch runs in a child process and the test reads its exit.
+		const probe = `
+			import { createServer } from 'node:net';
+			const undici = await import(process.env.UNDICI_ENTRY);
+			const server = createServer((socket) => socket.once('data', () => socket.end(
+				'HTTP/1.1 200 OK\\r\\nContent-Encoding: gzip, gzip, gzip, gzip, gzip, gzip\\r\\n' +
+				'Content-Length: 100\\r\\n\\r\\n'
+			)));
+			await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+			const dispatcher = new undici.Agent();
+			const outcome = await undici
+				.fetch('http://127.0.0.1:' + server.address().port + '/', { dispatcher })
+				.then(() => 'resolved', (error) => String(error.cause?.message ?? error));
+			// close() waits for the socket to end, which is where the orphaned
+			// stream used to fail.
+			await dispatcher.close();
+			server.close();
+			console.log(outcome);
+		`;
+		const { stdout } = await promisify(execFile)(
+			process.execPath,
+			['--input-type=module', '--eval', probe],
+			{ env: { ...process.env, UNDICI_ENTRY: pathToFileURL(apiRequire.resolve('undici')).href } }
+		);
+		expect(stdout.trim()).toBe('too many content-encodings in response: 6, maximum allowed is 5');
 	});
 });
