@@ -350,6 +350,27 @@ describe('Team Inbox list: selection', () => {
 		expect(selectedIds()).toEqual(['a', 'b', 'c']);
 	});
 
+	it('Enter on a row’s checkbox belongs to the checkbox, not the focused row', async () => {
+		await mountPage();
+		const navigate = globalThis.navigateTo as unknown as ReturnType<typeof vi.fn>;
+		await press('j');
+		const checkbox = wrapper
+			.get('#inbox-row-b')
+			.element.closest('li')!
+			.querySelector<HTMLButtonElement>('[data-testid="inbox-row-checkbox"]')!;
+		checkbox.focus();
+		const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+		checkbox.dispatchEvent(enter);
+		// The button's native activation is the click the browser sends next.
+		checkbox.click();
+		await flushPromises();
+		expect(navigate).not.toHaveBeenCalled();
+		expect(selectedIds()).toEqual(['b']);
+		// Enter on the list itself still opens the focused row.
+		await press('Enter');
+		expect(navigate).toHaveBeenCalledWith('/dashboard/inbox/a');
+	});
+
 	it('drops a row that leaves the list and clears on a change of view', async () => {
 		await mountPage();
 		await press('j');

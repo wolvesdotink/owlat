@@ -214,7 +214,18 @@ function openFocusedRowMenu(event: Event): boolean {
 	return true;
 }
 
+/**
+ * Enter and Space on a control inside a row (the checkbox, a quick action, the
+ * row's own link) belong to that control: its native activation acts on its own
+ * row, so the list must not also act on the focused one, whatever the keys are
+ * mapped to.
+ */
+function isControlActivation(event: KeyboardEvent): boolean {
+	return event.target !== event.currentTarget && (event.key === 'Enter' || event.key === ' ');
+}
+
 function onListKeydown(event: KeyboardEvent) {
+	if (isControlActivation(event)) return;
 	const isMenuKey = event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10');
 	if (isMenuKey && openFocusedRowMenu(event)) return;
 	if (!event.defaultPrevented && !isChordPending() && isAdmin.value && selection.count.value > 0) {
