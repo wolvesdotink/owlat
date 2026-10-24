@@ -132,6 +132,12 @@ async function expectContractSuccess(operationId: PublicOperationId, res: Respon
 	expect(successBodySchema(operation).safeParse(body).error?.issues).toBeUndefined();
 }
 
+/**
+ * A JSON array nested a few thousand levels deep, still well inside the body
+ * size cap: deep enough to overflow a recursive walk of the body.
+ */
+const DEEPLY_NESTED_JSON = `${'['.repeat(6000)}0${']'.repeat(6000)}`;
+
 const SAVED_ENV = { ...process.env };
 beforeEach(() => {
 	// Some handlers read SITE_URL via lib/env getOptional — keep it unset so the
@@ -281,6 +287,20 @@ describe('POST /api/v1/contacts (createContact → contacts:write)', () => {
 		});
 		expect(res.status).toBe(400);
 	});
+
+	it.each(['', '"__proto__":0,'])(
+		'201 ignoring a deeply nested unknown field (prefix %j)',
+		async (prefix) => {
+			const t = setupTest();
+			const key = await seedKey(t, ['contacts:write']);
+			const res = await t.fetch('/api/v1/contacts', {
+				method: 'POST',
+				headers: authHeaders(key),
+				body: `{${prefix}"email":"deep@example.com","extra":${DEEPLY_NESTED_JSON}}`,
+			});
+			await expectContractSuccess('createContact', res);
+		}
+	);
 
 	it('400 invalid_input for malformed JSON body', async () => {
 		const t = setupTest();
@@ -682,6 +702,22 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 		expect(res.status).toBe(400);
 		const body = await res.json();
 		expect(body.error.category).toBe('invalid_input');
+	});
+
+	it('400 invalid_input for a deeply nested eventProperties value (not 500)', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['events:write']);
+		const res = await t.fetch('/api/v1/events', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: `{"email":"deep@example.com","eventName":"signed_up","eventProperties":{"bad":${DEEPLY_NESTED_JSON}}}`,
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatchObject({
+			category: 'invalid_input',
+			message: 'eventProperties must be an object of string, number, boolean or null values',
+		});
 	});
 
 	it('400 invalid_input for a nested eventProperties value held under a __proto__ key', async () => {

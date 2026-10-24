@@ -5,11 +5,32 @@ export type Decoded<T> = { ok: true; value: T } | { ok: false; message: string }
 
 const PROTO_KEY = '__proto__';
 
+type Container = unknown[] | Record<string, unknown>;
+
+const isContainer = (value: unknown): value is Container =>
+	value !== null && typeof value === 'object';
+
+// Both walks below use an explicit stack, not recursion: they run before the
+// schema, over every field of the body including ignored ones, and a client can
+// nest a few thousand arrays well inside the body size cap. Recursion would
+// overflow the call stack there and turn a valid request into a 500.
+
 /** Whether a parsed JSON value holds an own `__proto__` key at any depth. */
 function holdsProtoKey(value: unknown): boolean {
-	if (Array.isArray(value)) return value.some(holdsProtoKey);
-	if (value === null || typeof value !== 'object') return false;
-	return Object.entries(value).some(([key, inner]) => key === PROTO_KEY || holdsProtoKey(inner));
+	const pending: unknown[] = [value];
+	while (pending.length > 0) {
+		const current = pending.pop();
+		if (!isContainer(current)) continue;
+		if (Array.isArray(current)) {
+			for (const item of current) pending.push(item);
+			continue;
+		}
+		for (const [key, inner] of Object.entries(current)) {
+			if (key === PROTO_KEY) return true;
+			pending.push(inner);
+		}
+	}
+	return false;
 }
 
 /**
@@ -17,18 +38,29 @@ function holdsProtoKey(value: unknown): boolean {
  * to a key no other key of its object uses, so the parser checks its value.
  */
 function withProtoKeysRenamed(value: unknown): unknown {
-	if (Array.isArray(value)) return value.map(withProtoKeysRenamed);
-	if (value === null || typeof value !== 'object') return value;
-	const copy: Record<string, unknown> = {};
-	for (const [key, inner] of Object.entries(value)) {
-		let name = key;
-		if (key === PROTO_KEY) {
-			name = `${PROTO_KEY}_`;
-			while (Object.prototype.hasOwnProperty.call(value, name)) name = `${name}_`;
+	if (!isContainer(value)) return value;
+	const emptyLike = (source: Container): Container => (Array.isArray(source) ? [] : {});
+	const root = emptyLike(value);
+	const pending: Array<[source: Container, copy: Container]> = [[value, root]];
+	for (let entry = pending.pop(); entry; entry = pending.pop()) {
+		const [source, copy] = entry;
+		const target = copy as Record<string, unknown>;
+		for (const [key, inner] of Object.entries(source)) {
+			let name = key;
+			if (key === PROTO_KEY && !Array.isArray(source)) {
+				name = `${PROTO_KEY}_`;
+				while (Object.prototype.hasOwnProperty.call(source, name)) name = `${name}_`;
+			}
+			if (isContainer(inner)) {
+				const innerCopy = emptyLike(inner);
+				pending.push([inner, innerCopy]);
+				target[name] = innerCopy;
+			} else {
+				target[name] = inner;
+			}
 		}
-		copy[name] = withProtoKeysRenamed(inner);
 	}
-	return copy;
+	return root;
 }
 
 /**

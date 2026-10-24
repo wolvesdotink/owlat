@@ -53,6 +53,41 @@ describe('decodeRequest', () => {
 			);
 			expect(decodeRequest(sendTransactionalRequestSchema, body).ok).toBe(true);
 		});
+
+		it('checks arrays in the renamed copy as arrays', () => {
+			const body = JSON.parse(
+				'{"__proto__":0,"email":"ada@example.com","slug":"welcome","attachments":[{"filename":"a.txt","content":"YQ=="},{"content":"YQ=="}]}'
+			);
+			expect(message(sendTransactionalRequestSchema, body)).toBe(
+				'attachments[1].filename is required and must be a string'
+			);
+		});
+	});
+
+	describe('a deeply nested value, well inside the body size cap', () => {
+		// Deep enough that a recursive walk overflows the call stack.
+		const depth = 50_000;
+		const nested = `${'['.repeat(depth)}0${']'.repeat(depth)}`;
+
+		it.each(['', '"__proto__":0,'])(
+			'is ignored in an unknown field (prefix %j) and the input comes back untouched',
+			(prefix) => {
+				const body = JSON.parse(`{${prefix}"email":"ada@example.com","extra":${nested}}`);
+				const result = decodeRequest(createContactRequestSchema, body);
+				expect(result.ok && result.value).toBe(body);
+			}
+		);
+
+		it('is refused with the documented message as a record value', () => {
+			for (const prefix of ['', '"__proto__":0,']) {
+				const body = JSON.parse(
+					`{"email":"ada@example.com","eventName":"signed_up","eventProperties":{${prefix}"bad":${nested}}}`
+				);
+				expect(message(sendEventRequestSchema, body)).toBe(
+					'eventProperties must be an object of string, number, boolean or null values'
+				);
+			}
+		});
 	});
 
 	it('accepts every request example', () => {
