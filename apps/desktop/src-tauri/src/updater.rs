@@ -655,7 +655,7 @@ mod tests {
             "http://localhost:4100/wolvesdotink/owlat/releases/download/v0.4.7/x.AppImage",
             "http://127.0.0.2:4100/wolvesdotink/owlat/releases/download/v0.4.7/x.AppImage",
             "http://127.0.0.1:4100/someone-else/owlat/releases/download/v0.4.7/x.AppImage",
-            "http://192.168.1.1:8080/wolvesdotink/owlat/releases/download/v0.4.7/x.AppImage",
+            "http://198.51.100.7:8080/wolvesdotink/owlat/releases/download/v0.4.7/x.AppImage",
         ] {
             assert!(vet_download_url(&url(bad), "0.4.7").is_err(), "{bad}");
         }
