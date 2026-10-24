@@ -683,6 +683,23 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 		const body = await res.json();
 		expect(body.error.category).toBe('invalid_input');
 	});
+
+	it('400 invalid_input for a nested eventProperties value held under a __proto__ key', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['events:write']);
+		// Raw JSON: JSON.stringify of an object literal cannot produce an own __proto__ key.
+		const res = await t.fetch('/api/v1/events', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: '{"email":"absent@example.com","eventName":"signed_up","eventProperties":{"__proto__":[1]}}',
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatchObject({
+			category: 'invalid_input',
+			message: 'eventProperties must be an object of string, number, boolean or null values',
+		});
+	});
 });
 
 // ─── POST /api/v1/transactional ──────────────────────────────────────────────
@@ -739,6 +756,23 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(res.status).toBe(400);
 		const body = await res.json();
 		expect(body.error.category).toBe('invalid_input');
+	});
+
+	it('400 invalid_input for a nested dataVariables value held under a __proto__ key', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		// Raw JSON: JSON.stringify of an object literal cannot produce an own __proto__ key.
+		const res = await t.fetch('/api/v1/transactional', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: '{"email":"to@example.com","slug":"no-such-template","dataVariables":{"__proto__":{"nested":true}}}',
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatchObject({
+			category: 'invalid_input',
+			message: 'dataVariables must be an object of string, number, boolean or null values',
+		});
 	});
 
 	it('404 not_found when the slug resolves to no template (scope passes, dispatch runs)', async () => {
@@ -962,6 +996,7 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 			headers: authHeaders(key),
 		});
 		expect(res.status).toBe(200);
+		await expectContractSuccess('removeContactFromTopic', res);
 		const body = await res.json();
 		expect(body.data.success).toBe(true);
 
@@ -1022,7 +1057,7 @@ describe('an all-scope key satisfies every route', () => {
 
 		// contacts:read
 		const list = await t.fetch('/api/v1/contacts', { method: 'GET', headers: authHeaders(key) });
-		expect(list.status).toBe(200);
+		await expectContractSuccess('listContacts', list);
 
 		// contacts:write (create a fresh contact)
 		const create = await t.fetch('/api/v1/contacts', {
@@ -1030,7 +1065,7 @@ describe('an all-scope key satisfies every route', () => {
 			headers: authHeaders(key),
 			body: JSON.stringify({ email: 'omni-new@example.com' }),
 		});
-		expect(create.status).toBe(201);
+		await expectContractSuccess('createContact', create);
 
 		// topics:write
 		const addToTopic = await t.fetch(`/api/v1/topics/${topicId}/contacts`, {
@@ -1038,7 +1073,7 @@ describe('an all-scope key satisfies every route', () => {
 			headers: authHeaders(key),
 			body: JSON.stringify({ email: 'omni@example.com' }),
 		});
-		expect(addToTopic.status).toBe(201);
+		await expectContractSuccess('addContactToTopic', addToTopic);
 	});
 });
 

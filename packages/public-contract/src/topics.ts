@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import { requestBody } from './common';
+import { anyNonemptyReference, requestBody } from './common';
 import { DOI_STATUSES } from './types';
 
 /**
@@ -20,7 +20,7 @@ export const addContactToTopicRequestSchema = requestBody({
 	.refine((body) => !!body.email || !!body.contactId, {
 		error: 'Either email or contactId is required',
 	})
-	.meta({ anyOf: [{ required: ['email'] }, { required: ['contactId'] }] });
+	.meta(anyNonemptyReference('email', 'contactId'));
 
 export const addToTopicResponseSchema = z.strictObject({
 	success: z.boolean(),

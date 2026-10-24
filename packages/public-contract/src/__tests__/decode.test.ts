@@ -21,6 +21,40 @@ describe('decodeRequest', () => {
 		expect(Object.keys(body)).toEqual(['slug', 'extra', 'email']);
 	});
 
+	describe('an own __proto__ key, as JSON.parse creates it', () => {
+		const variablesMessage =
+			'dataVariables must be an object of string, number, boolean or null values';
+		const propertiesMessage =
+			'eventProperties must be an object of string, number, boolean or null values';
+
+		it('checks a record value held under it', () => {
+			const variables = JSON.parse(
+				'{"email":"ada@example.com","slug":"welcome","dataVariables":{"__proto__":{"nested":true}}}'
+			);
+			expect(message(sendTransactionalRequestSchema, variables)).toBe(variablesMessage);
+			const properties = JSON.parse(
+				'{"email":"ada@example.com","eventName":"signed_up","eventProperties":{"__proto__":[1]}}'
+			);
+			expect(message(sendEventRequestSchema, properties)).toBe(propertiesMessage);
+		});
+
+		it('accepts a primitive record value under it and hands back the input untouched', () => {
+			const body = JSON.parse(
+				'{"email":"ada@example.com","slug":"welcome","dataVariables":{"__proto__":"x","__proto___":1}}'
+			);
+			const result = decodeRequest(sendTransactionalRequestSchema, body);
+			expect(result.ok && result.value).toBe(body);
+			expect(Object.keys(body.dataVariables)).toEqual(['__proto__', '__proto___']);
+		});
+
+		it('still ignores it as an unknown field', () => {
+			const body = JSON.parse(
+				'{"email":"ada@example.com","slug":"welcome","__proto__":{"nested":true},"attachments":[{"filename":"a.txt","content":"YQ==","__proto__":[]}]}'
+			);
+			expect(decodeRequest(sendTransactionalRequestSchema, body).ok).toBe(true);
+		});
+	});
+
 	it('accepts every request example', () => {
 		for (const operation of PUBLIC_OPERATIONS) {
 			if (!operation.request) continue;

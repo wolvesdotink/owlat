@@ -8,7 +8,12 @@
 
 import { z } from 'zod';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
-import { jsonPrimitiveRecordSchema, requestBody, requiredString } from './common';
+import {
+	anyNonemptyReference,
+	jsonPrimitiveRecordSchema,
+	requestBody,
+	requiredString,
+} from './common';
 
 /**
  * A language tag such as `en`, `de` or `en-US`, either letter case. An empty
@@ -92,7 +97,7 @@ export const sendTransactionalRequestSchema = requestBody({
 	.refine((body) => !!body.transactionalId || !!body.slug, {
 		error: 'Either transactionalId or slug is required',
 	})
-	.meta({ anyOf: [{ required: ['transactionalId'] }, { required: ['slug'] }] });
+	.meta(anyNonemptyReference('transactionalId', 'slug'));
 
 export const sendTransactionalResponseSchema = z.strictObject({
 	status: z.literal('queued'),

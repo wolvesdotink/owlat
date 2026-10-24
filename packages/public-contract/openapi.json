@@ -1523,10 +1523,22 @@
 				},
 				"anyOf": [
 					{
-						"required": ["email"]
+						"required": ["email"],
+						"properties": {
+							"email": {
+								"type": "string",
+								"minLength": 1
+							}
+						}
 					},
 					{
-						"required": ["contactId"]
+						"required": ["contactId"],
+						"properties": {
+							"contactId": {
+								"type": "string",
+								"minLength": 1
+							}
+						}
 					}
 				]
 			},
@@ -1770,10 +1782,22 @@
 				"required": ["email"],
 				"anyOf": [
 					{
-						"required": ["transactionalId"]
+						"required": ["transactionalId"],
+						"properties": {
+							"transactionalId": {
+								"type": "string",
+								"minLength": 1
+							}
+						}
 					},
 					{
-						"required": ["slug"]
+						"required": ["slug"],
+						"properties": {
+							"slug": {
+								"type": "string",
+								"minLength": 1
+							}
+						}
 					}
 				]
 			},

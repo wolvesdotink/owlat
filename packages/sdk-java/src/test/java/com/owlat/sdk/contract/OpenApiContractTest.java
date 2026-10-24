@@ -382,4 +382,58 @@ class OpenApiContractTest {
                 .set("order", JsonMapper.instance().createObjectNode().put("id", 1)));
         assertFalse(new SchemaValidator(document.root, true).validate(schema, request).isEmpty());
     }
+
+    /** Whether a request body conforms to a request schema of the document. */
+    private boolean conforms(OpenApiDocument document, String schemaName, String json) throws IOException {
+        JsonNode schema = document.root.at("/components/schemas/" + schemaName);
+        return new SchemaValidator(document.root, true).validate(schema, JsonMapper.instance().readTree(json)).isEmpty();
+    }
+
+    @Test
+    void aReferenceMustBeANonemptyString() throws IOException {
+        for (String json : List.of(
+                "{\"email\":\"ada@example.com\",\"slug\":\"\"}",
+                "{\"email\":\"ada@example.com\",\"transactionalId\":null}",
+                "{\"email\":\"ada@example.com\",\"transactionalId\":\"\",\"slug\":null}")) {
+            assertFalse(conforms(document, "SendTransactionalRequest", json), json);
+        }
+        for (String json : List.of("{\"email\":\"\"}", "{\"contactId\":null}", "{\"email\":null,\"contactId\":\"\"}")) {
+            assertFalse(conforms(document, "AddContactToTopicRequest", json), json);
+        }
+    }
+
+    @Test
+    void anEmptyOrNullReferenceBesideAUsableOneIsInsideTheContract() throws IOException {
+        for (String json : List.of(
+                "{\"email\":\"ada@example.com\",\"slug\":\"welcome\",\"transactionalId\":null}",
+                "{\"email\":\"ada@example.com\",\"slug\":\"\",\"transactionalId\":\"k57t3mpl4te0000000000000000000\"}")) {
+            assertTrue(conforms(document, "SendTransactionalRequest", json), json);
+        }
+        for (String json : List.of("{\"email\":\"\",\"contactId\":\"" + CONTACT_ID + "\"}", "{\"email\":\"ada@example.com\",\"contactId\":null}")) {
+            assertTrue(conforms(document, "AddContactToTopicRequest", json), json);
+        }
+    }
+
+    @Test
+    void aPropertyNameRuleIsEnforced() throws IOException {
+        OpenApiDocument keyed = mutated("/components/schemas/SendTransactionalRequest/properties/dataVariables/propertyNames",
+                names -> names.put("pattern", "^[a-z]+$"));
+        assertTrue(conforms(keyed, "SendTransactionalRequest",
+                "{\"email\":\"ada@example.com\",\"slug\":\"welcome\",\"dataVariables\":{\"plan\":\"pro\"}}"));
+        assertFalse(conforms(keyed, "SendTransactionalRequest",
+                "{\"email\":\"ada@example.com\",\"slug\":\"welcome\",\"dataVariables\":{\"Plan\":\"pro\"}}"));
+    }
+
+    @Test
+    void anUnsupportedKeywordAnywhereInTheSchemaFails() {
+        OpenApiDocument underNames = mutated("/components/schemas/SendTransactionalRequest/properties/dataVariables/propertyNames",
+                names -> names.put("format", "email"));
+        // The body sends no dataVariables: the keyword fails the check although no value reaches it.
+        assertThrows(IllegalArgumentException.class,
+                () -> conforms(underNames, "SendTransactionalRequest", "{\"email\":\"ada@example.com\",\"slug\":\"welcome\"}"));
+        OpenApiDocument underBranch = mutated("/components/schemas/SendTransactionalRequest/anyOf/0/properties/transactionalId",
+                id -> id.put("format", "uuid"));
+        assertThrows(IllegalArgumentException.class,
+                () -> conforms(underBranch, "SendTransactionalRequest", "{\"email\":\"ada@example.com\",\"slug\":\"welcome\"}"));
+    }
 }

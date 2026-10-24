@@ -28,6 +28,21 @@ export function requestBody<Shape extends z.ZodRawShape>(shape: Shape) {
 	return z.object(shape, { error: 'Request body must be a JSON object' });
 }
 
+/**
+ * The JSON Schema rule "at least one of `fields` holds a nonempty string",
+ * for a body whose refinement accepts the request when any one of them is
+ * truthy. Each branch constrains its own field only, so `null` or `""` in the
+ * other field stays valid beside a usable reference, as at runtime.
+ */
+export function anyNonemptyReference(...fields: readonly string[]) {
+	return {
+		anyOf: fields.map((field) => ({
+			required: [field],
+			properties: { [field]: { type: 'string', minLength: 1 } },
+		})),
+	};
+}
+
 /** A required string field: a missing or falsy value reads as missing. */
 export function requiredString(requiredMessage: string, typeMessage: string) {
 	return z
