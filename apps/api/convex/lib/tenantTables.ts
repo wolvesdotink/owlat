@@ -405,14 +405,10 @@ export const NON_TENANT_TABLES = [
 	// cursor, no message content. It follows the instance switch rather than the
 	// org, and a sweep still running during a wipe must keep its fence.
 	'mailBodySearchPurges',
-	// The lost-send sweep's pass leases (#1208): which pass over which send range
-	// is running, a generation and two timestamps, no Send or contact data. A
-	// lease left behind by a wipe goes stale and is taken over by the next pass.
+	// Sweep and sampler marks, no Send, contact or row content. The lost-send pass
+	// leases (#1208) go stale after a wipe and are taken over by the next pass.
 	'lostSendSweepLeases',
-	// Where the derived-field drift sampler left off in each table: a creation
-	// time and two counts per registered field, no row content. A wipe leaves
-	// it pointing past rows that are gone, which only starts the next pass early.
-	'derivedFieldCursors',
+	'derivedFieldCursors', // the derived-field drift sampler's place in each table
 	// Instance infrastructure / regenerable caches — not org business data.
 	'systemUpdates',
 	// What each IMAP server reported about its release and wire contract:
