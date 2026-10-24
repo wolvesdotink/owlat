@@ -174,10 +174,20 @@ const CASES: readonly ParityCase[] = [
 				'export const { env: whole } = process;',
 				'export const f = env.FOO;'
 			),
-			// Only the rule: `process` bound under another name.
+			// Both: env destructured by assignment and by a parameter default.
+			'apps/api/convex/delivery/assigned.ts': lines(
+				'let env: NodeJS.ProcessEnv;',
+				'({ env } = process);',
+				'export const token = env.SECRET;',
+				'export const read = ({ env: param } = process) => param.FOO;'
+			),
+			// Only the rule: `process` bound under another name, reached through
+			// the global object, or copied by a rest element.
 			'apps/api/convex/delivery/renamed.ts': lines(
 				"import * as host from 'node:process';",
-				'export const r = host.env.FOO;'
+				'export const r = host.env.FOO;',
+				'export const { process: { env: nested } } = globalThis;',
+				'export const { argv, ...rest } = process;'
 			),
 			// Only the gate: prose and strings that name it.
 			'apps/api/convex/delivery/prose.ts': lines(
@@ -186,7 +196,11 @@ const CASES: readonly ParityCase[] = [
 			),
 		},
 		onlyOld: ['apps/api/convex/delivery/prose.ts:1', 'apps/api/convex/delivery/prose.ts:2'],
-		onlyNew: ['apps/api/convex/delivery/renamed.ts:2'],
+		onlyNew: [
+			'apps/api/convex/delivery/renamed.ts:2',
+			'apps/api/convex/delivery/renamed.ts:3',
+			'apps/api/convex/delivery/renamed.ts:4',
+		],
 	},
 	{
 		gate: 'log-pii',
