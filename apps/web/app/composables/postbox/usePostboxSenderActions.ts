@@ -29,6 +29,7 @@ export function usePostboxSenderActions() {
 	const { showToast } = useToast();
 	const { openManualUnsubscribe } = usePostboxUnsubscribeOpen();
 	const { offerUndo } = usePostboxArrivalUndo();
+	const confirm = useConfirm();
 
 	const setStatusOp = useBackendOperation(api.mail.senders.status.setStatus, {
 		label: () => t('postbox.senders.operations.setStatus'),
@@ -87,10 +88,22 @@ export function usePostboxSenderActions() {
 		target: PostboxSenderTarget,
 		opts: { mailboxId: string; name?: string; oneClickHost?: string | null }
 	): Promise<PostboxUnsubscribeOutcome | null> {
-		const confirmText = opts.oneClickHost
-			? t('components.postbox.postboxUnsubscribeChip.confirm', { host: opts.oneClickHost })
-			: t('postbox.senders.confirmUnsubscribe', { name: opts.name ?? '' });
-		if (!window.confirm(confirmText)) return null;
+		const confirmed = await confirm({
+			...(opts.oneClickHost
+				? {
+						title: t('components.postbox.postboxUnsubscribeChip.confirm'),
+						body: t('components.postbox.postboxUnsubscribeChip.confirmBody', {
+							host: opts.oneClickHost,
+						}),
+					}
+				: {
+						title: t('postbox.senders.confirmUnsubscribe', { name: opts.name ?? '' }),
+						body: t('postbox.senders.confirmUnsubscribeBody'),
+					}),
+			confirmText: t('postbox.senders.operations.unsubscribe'),
+			variant: 'warning',
+		});
+		if (!confirmed) return null;
 		const run = await unsubscribeOp.run({ target });
 		if (!run.ok) return null;
 		const outcome = run.result;

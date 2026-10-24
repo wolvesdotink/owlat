@@ -4,8 +4,9 @@
  * whose one-click request failed (local suppression and its archive still went
  * through).
  */
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
+import { installConfirm, type ConfirmDriver } from '~/__tests__/confirm';
 import { createTestI18n } from '~/__tests__/i18n';
 import { usePostboxSenderActions } from '../usePostboxSenderActions';
 
@@ -28,14 +29,17 @@ beforeAll(() => {
 		runs.set(opts.label(), run);
 		return { run, isLoading: ref(false) };
 	});
-	vi.stubGlobal('confirm', () => true);
 	vi.stubGlobal('open', vi.fn());
 });
 
+let confirmDriver: ConfirmDriver;
 beforeEach(() => {
 	runs.clear();
 	showToast.mockReset();
+	confirmDriver = installConfirm();
+	confirmDriver.answerAll(true);
 });
+afterEach(() => confirmDriver.dispose());
 
 describe('usePostboxSenderActions undo', () => {
 	it('offers Undo when a one-click unsubscribe failed but was suppressed locally', async () => {
