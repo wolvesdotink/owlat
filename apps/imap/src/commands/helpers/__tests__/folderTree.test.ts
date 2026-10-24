@@ -16,6 +16,12 @@ import { decodeMailboxName, encodeMailboxName } from '../mailboxName.js';
 const folder = (_id: string, name: string, extra: Partial<FolderRow> = {}): FolderRow => ({
 	_id,
 	name,
+	uidValidity: 1,
+	uidNext: 1,
+	highestModseq: 1,
+	totalCount: 0,
+	unseenCount: 0,
+	subscribed: true,
 	...extra,
 });
 

@@ -3,6 +3,7 @@
  * replays each one (remoteOps.ts) and settles the page with the backend.
  */
 
+import { isWireContractError } from '@owlat/worker-protocol/client';
 import { describeRemoteOpError } from './imapCommandErrors.js';
 import type { RemoteOpReplayer } from './remoteOps.js';
 import type {
@@ -79,6 +80,9 @@ export async function reportFolderRename(deps: RenameReportDeps): Promise<boolea
 			return true;
 		} catch (err) {
 			if (deps.isUnsupported(err)) return false;
+			// The backend ran the report and answered outside the contract: asking
+			// again cannot fix the answer, so the op fails now and reports later.
+			if (isWireContractError(err)) throw err;
 			const delay = RENAME_REPORT_RETRY_MS[attempt];
 			if (delay === undefined) throw err;
 			await sleep(delay);

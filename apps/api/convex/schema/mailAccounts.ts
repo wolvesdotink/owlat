@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { destinationProviderValidator } from '../lib/validators/deliverability';
+import { externalAccountStatusValidator } from '@owlat/worker-protocol/fields';
 import {
 	externalSyncModeValidator,
 	remoteFlagChangesValidator,
@@ -46,17 +47,11 @@ export const googleOAuthIntentValidator = v.union(
 );
 
 /**
- * Connection/sync status of an external mail account. Owned here, beside the
- * `externalMailAccounts.status` column; `mail/external/accounts.ts` imports it
- * for the worker's status write.
+ * Connection/sync status of an external mail account: the
+ * `externalMailAccounts.status` column, and what the mail-sync worker writes
+ * back (`mail/external/accounts.ts`), so the worker wire contract declares it.
  */
-export const externalAccountStatusValidator = v.union(
-	v.literal('pending'), // created; worker not yet connected
-	v.literal('connected'), // IMAP IDLE live
-	v.literal('auth_error'), // bad credentials — needs user fix
-	v.literal('error'), // transient/connection error (backoff)
-	v.literal('disconnected') // user paused / removed
-);
+export { externalAccountStatusValidator };
 
 export const mailAccountsTables = {
 	externalMailAccounts: defineTable({

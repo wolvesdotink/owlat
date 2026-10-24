@@ -8,7 +8,10 @@
  * functions so the IMAP server never needs to know the storage shape.
  */
 
-import { v } from 'convex/values';
+import {
+	appendMessage as appendMessageContract,
+	generateUploadUrl as generateUploadUrlContract,
+} from '@owlat/worker-protocol/imap';
 import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import { resolveAllowedFromAddressesForCtx } from '../identities';
@@ -38,7 +41,8 @@ const FROM_NOT_AUTHORIZED_ERROR = 'From address not authorized';
 /** Mint an upload URL for APPEND so the IMAP server can store a raw message
  *  in file storage before recording it via `appendMessage`. */
 export const generateRawUploadUrl = internalMutation({
-	args: {},
+	args: generateUploadUrlContract.args,
+	returns: generateUploadUrlContract.returns,
 	handler: async (ctx) => ctx.storage.generateUploadUrl(),
 });
 
@@ -48,28 +52,8 @@ export const generateRawUploadUrl = internalMutation({
  * mutation registers the metadata row.
  */
 export const appendMessage = internalMutation({
-	args: {
-		folderId: v.id('mailFolders'),
-		rawStorageId: v.id('_storage'),
-		rawSize: v.number(),
-		rfc822MessageId: v.string(),
-		/** Bare Message-IDs from the In-Reply-To / References headers. */
-		inReplyTo: v.optional(v.string()),
-		references: v.optional(v.array(v.string())),
-		fromAddress: v.string(),
-		fromName: v.optional(v.string()),
-		toAddresses: v.array(v.string()),
-		ccAddresses: v.array(v.string()),
-		bccAddresses: v.array(v.string()),
-		subject: v.string(),
-		htmlBodyInline: v.optional(v.string()),
-		textBodyInline: v.optional(v.string()),
-		internalDate: v.optional(v.number()),
-		flags: v.optional(v.array(v.string())),
-		// The raw header section: its automation headers (Auto-Submitted, List-Id,
-		// Precedence) keep a client's filed vacation reply from counting as one.
-		headerBlock: v.optional(v.string()),
-	},
+	args: appendMessageContract.args,
+	returns: appendMessageContract.returns,
 	handler: async (ctx, args) => {
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) throw new Error('Folder not found');
