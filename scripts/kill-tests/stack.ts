@@ -7,75 +7,46 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { KillBackend } from './backend';
+import { KillBackend, type WorkerSecrets } from './backend';
+import { makeImapCertificates } from './certificates';
 import type { HoldRule } from './world/smtpSink';
 
 /** One control long-poll; `waitFor` chains them up to its deadline. */
 const LONG_POLL_MS = 60_000;
 const COMPOSE_FILE = join(dirname(fileURLToPath(import.meta.url)), 'compose.yml');
 
-/**
- * A CA and an `imap.owlat.test` certificate it signs, valid for a day. The
- * mail-sync worker verifies its IMAP peer exactly as in production and is only
- * told to trust this CA, so no TLS check is relaxed for the test.
- */
-export function makeImapCertificates(dir: string): void {
-	const openssl = (...args: string[]) => execFileSync('openssl', args, { cwd: dir, stdio: 'pipe' });
-	const ec = ['-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes'];
-	openssl(
-		'req',
-		'-x509',
-		...ec,
-		'-keyout',
-		'ca.key',
-		'-out',
-		'ca.crt',
-		'-days',
-		'1',
-		'-subj',
-		'/CN=owlat-kill-tests-ca'
-	);
-	openssl('req', ...ec, '-keyout', 'imap.key', '-out', 'imap.csr', '-subj', '/CN=imap.owlat.test');
-	writeFileSync(
-		join(dir, 'imap.ext'),
-		'subjectAltName=DNS:imap.owlat.test\nbasicConstraints=CA:FALSE\nextendedKeyUsage=serverAuth\n'
-	);
-	openssl(
-		'x509',
-		'-req',
-		'-in',
-		'imap.csr',
-		'-CA',
-		'ca.crt',
-		'-CAkey',
-		'ca.key',
-		'-CAcreateserial',
-		'-out',
-		'imap.crt',
-		'-days',
-		'1',
-		'-extfile',
-		'imap.ext'
-	);
-	// Read by dovecot's master and the worker's `node` user inside the containers.
-	execFileSync('chmod', ['0644', 'ca.crt', 'imap.crt', 'imap.key'], { cwd: dir });
-}
+const secret = (): string => randomBytes(32).toString('hex');
 
 export class KillStack {
 	readonly project = `owlat-kill-${process.pid}-${Date.now().toString(36)}`;
-	/** The run's scratch directory: TLS material, seed files. */
+	/** The run's scratch directory (private): seed files, and the TLS material in `certs/`. */
 	readonly scratchDir = mkdtempSync(join(tmpdir(), 'owlat-kill-tests-'));
+	/** Mounted into dovecot and mail-sync; the only part of the scratch directory they see. */
+	private readonly certDir = join(this.scratchDir, 'certs');
 	/** The backend derives its admin key from this; new for every run. */
-	private readonly instanceSecret = randomBytes(32).toString('hex');
+	private readonly instanceSecret = secret();
+	/**
+	 * The keys the workers and the backend share, new for every run: no
+	 * credential-shaped literal is committed, and a leftover stack accepts
+	 * nothing a later run sends.
+	 */
+	readonly secrets: WorkerSecrets = {
+		mtaApiKey: secret(),
+		mtaWebhookSecret: secret(),
+		mailSyncApiKey: secret(),
+	};
+	/** Only the MTA reads these. */
+	private readonly mtaSecret = secret();
+	private readonly bounceVerpKey = secret();
 	private adminKey = '';
 	private worldUrl: string | undefined;
 
 	constructor() {
-		makeImapCertificates(this.scratchDir);
+		makeImapCertificates(this.certDir);
 	}
 
 	compose(args: readonly string[], options: { input?: string; inherit?: boolean } = {}): string {
@@ -85,8 +56,13 @@ export class KillStack {
 			{
 				env: {
 					...process.env,
-					KILL_CERT_DIR: this.scratchDir,
+					KILL_CERT_DIR: this.certDir,
 					KILL_INSTANCE_SECRET: this.instanceSecret,
+					KILL_MTA_API_KEY: this.secrets.mtaApiKey,
+					KILL_MTA_SECRET: this.mtaSecret,
+					KILL_BOUNCE_VERP_KEY: this.bounceVerpKey,
+					KILL_MTA_WEBHOOK_SECRET: this.secrets.mtaWebhookSecret,
+					KILL_MAIL_SYNC_API_KEY: this.secrets.mailSyncApiKey,
 					KILL_ADMIN_KEY: this.adminKey,
 				},
 				input: options.input,
@@ -112,7 +88,8 @@ export class KillStack {
 				site: `http://${this.address('convex', 3211)}`,
 			},
 			this.adminKey,
-			this.instanceSecret
+			this.instanceSecret,
+			this.secrets
 		);
 	}
 

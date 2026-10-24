@@ -84,14 +84,15 @@ services:
       PORT: 3100
       BOUNCE_PORT: 2525
       REDIS_URL: redis://redis:6379
-      MTA_API_KEY: kill-test-api-key-0123456789abcdef0123456789
-      MTA_SECRET: kill-test-mta-secret-0123456789abcdef0123456789abcdef
-      BOUNCE_VERP_KEY: kill-test-verp-key-0123456789abcdef0123456789abcdef
+      # Generated per run by stack.ts, like every key below.
+      MTA_API_KEY: ${KILL_MTA_API_KEY:?run.ts sets KILL_MTA_API_KEY}
+      MTA_SECRET: ${KILL_MTA_SECRET:?run.ts sets KILL_MTA_SECRET}
+      BOUNCE_VERP_KEY: ${KILL_BOUNCE_VERP_KEY:?run.ts sets KILL_BOUNCE_VERP_KEY}
       EHLO_HOSTNAME: mta.owlat.example
       RETURN_PATH_DOMAIN: bounces.owlat.example
       CONVEX_SITE_URL: http://convex.owlat.test:3211
       # Also set on the deployment (backend.ts), which verifies every webhook.
-      MTA_WEBHOOK_SECRET: kill-test-webhook-secret-0123456789abcdef
+      MTA_WEBHOOK_SECRET: ${KILL_MTA_WEBHOOK_SECRET:?run.ts sets KILL_MTA_WEBHOOK_SECRET}
       IP_POOLS_TRANSACTIONAL: ${KILL_MTA_IP:-10.231.0.10}
       IP_POOLS_CAMPAIGN: ${KILL_MTA_IP:-10.231.0.10}
       MTA_IPV6_ENABLED: 'false'
@@ -143,7 +144,7 @@ services:
       # The deployment's admin key, read from the backend once it is up.
       CONVEX_ADMIN_KEY: ${KILL_ADMIN_KEY:-}
       # Also set on the deployment (backend.ts), which checks it on raw uploads.
-      MAIL_SYNC_API_KEY: kill-test-mail-sync-key-0123456789abcdef
+      MAIL_SYNC_API_KEY: ${KILL_MAIL_SYNC_API_KEY:?run.ts sets KILL_MAIL_SYNC_API_KEY}
       # Small batches, so a kill lands inside a batch with committed ones behind it.
       MAIL_SYNC_BACKFILL_BATCH: '4'
       # The worker verifies imap.owlat.test's certificate as in production; it

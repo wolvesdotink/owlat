@@ -30,9 +30,15 @@ const CONVEX_BIN = join(ROOT, 'node_modules', '.bin', 'convex');
 /** The origin BetterAuth trusts; nothing listens there, it only has to match. */
 const SITE_URL = 'http://localhost:3000';
 
-/** Shared with compose.yml, where the workers carry the same values. */
-export const MTA_WEBHOOK_SECRET = 'kill-test-webhook-secret-0123456789abcdef';
-export const MAIL_SYNC_API_KEY = 'kill-test-mail-sync-key-0123456789abcdef';
+/** Keys the workers and the deployment share; stack.ts generates them per run. */
+export interface WorkerSecrets {
+	/** The MTA's API key; the orchestrator queues sends with it. */
+	readonly mtaApiKey: string;
+	/** The MTA signs its webhooks with it and the deployment verifies them. */
+	readonly mtaWebhookSecret: string;
+	/** mail-sync presents it and the deployment checks it on raw uploads. */
+	readonly mailSyncApiKey: string;
+}
 
 const OWNER = {
 	email: 'owner@owlat.example',
@@ -68,7 +74,8 @@ export class KillBackend {
 		/** Published host addresses of the backend's API and HTTP-action ports. */
 		private readonly urls: { readonly api: string; readonly site: string },
 		readonly adminKey: string,
-		private readonly instanceSecret: string
+		private readonly instanceSecret: string,
+		private readonly secrets: WorkerSecrets
 	) {
 		this.cliEnv = selfHostedCliEnv(process.env, urls.api, adminKey);
 	}
@@ -87,8 +94,8 @@ export class KillBackend {
 			INSTANCE_SECRET: this.instanceSecret,
 			BETTER_AUTH_SECRET: randomBytes(32).toString('hex'),
 			SITE_URL,
-			MTA_WEBHOOK_SECRET,
-			MAIL_SYNC_API_KEY,
+			MTA_WEBHOOK_SECRET: this.secrets.mtaWebhookSecret,
+			MAIL_SYNC_API_KEY: this.secrets.mailSyncApiKey,
 		};
 		const synced = syncStage(join(ROOT, 'apps', 'api'), STAGE);
 		log(`staged apps/api (${synced.copied} copied, ${synced.removed} removed)`);

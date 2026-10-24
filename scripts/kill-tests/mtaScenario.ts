@@ -26,7 +26,6 @@ const DOMAINS = [
 ] as const;
 const SENDS_PER_DOMAIN = 5;
 const HELD_POSITION = 3;
-const API_KEY = 'kill-test-api-key-0123456789abcdef0123456789';
 /** The resolver cache key apps/mta/src/smtp/mxResolver.ts reads before DNS. */
 export const MX_CACHE_PREFIX = 'mta:mx-cache:v2:';
 
@@ -51,10 +50,10 @@ export function plannedSends(): PlannedSend[] {
 	);
 }
 
-async function queueSend(mta: string, send: PlannedSend): Promise<void> {
+async function queueSend(mta: string, apiKey: string, send: PlannedSend): Promise<void> {
 	const response = await fetch(`http://${mta}/send/system`, {
 		method: 'POST',
-		headers: { authorization: `Bearer ${API_KEY}`, 'content-type': 'application/json' },
+		headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
 		body: JSON.stringify({
 			messageId: send.messageId,
 			to: send.rcpt,
@@ -112,7 +111,7 @@ export async function runMtaScenario(
 	await stack.holdSmtp(held.map((send) => ({ rcpt: send.rcpt, point: send.heldAt! })));
 
 	const mta = stack.address('mta', 3100);
-	for (const send of plan) await queueSend(mta, send);
+	for (const send of plan) await queueSend(mta, stack.secrets.mtaApiKey, send);
 	log(`queued ${plan.length} sends`);
 	for (const send of held) await stack.waitFor(`smtp.held:${send.rcpt}`, HOLD_BUDGET_MS);
 	log(`pinned ${held.map((s) => `${s.messageId}@${s.heldAt}`).join(', ')}; killing mta`);
