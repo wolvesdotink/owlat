@@ -8,7 +8,9 @@
  *     neither does a consent change after it;
  *   - a document kept on screen during a re-render follows the current image
  *     consent at once, not when the worker answers;
- *   - a dead worker or a failed render still settles, on the main thread.
+ *   - a dead worker or a failed render still settles, on the main thread;
+ *   - a new text size or reading width re-finishes the shown body on the main
+ *     thread, and a re-opened message is never served under the old one.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
@@ -33,6 +35,10 @@ import {
 	type PostboxRenderWorkerPort,
 } from '../../../lib/postboxRenderWorker';
 import type * as RenderWorkerModule from '../../../lib/postboxRenderWorker';
+import {
+	resetReadingComfortForTests,
+	useReadingComfort,
+} from '../../../composables/useReadingComfort';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -98,6 +104,8 @@ const mounted: VueWrapper[] = [];
 
 beforeEach(() => {
 	getPostboxRenderCache().clear();
+	localStorage.clear();
+	resetReadingComfortForTests();
 	persistBody.mockClear();
 	workers = [];
 	client = createPostboxRenderClient(() => {
@@ -219,6 +227,35 @@ describe('PostboxMessageBody render worker', () => {
 		workers[0]!.answer(pendingRequests()[1]!);
 		await flushPromises();
 		expect(srcdoc(w)).toContain('Earlier');
+	});
+
+	it('applies a new text size and width without the worker, and never serves the old one', async () => {
+		const first = mountBody({ message: OTHER });
+		await flushPromises();
+		workers[0]!.answer(pendingRequests()[0]!);
+		await flushPromises();
+		expect(srcdoc(first)).toContain('max-width:72ch;font-size:15px;');
+
+		const comfort = useReadingComfort();
+		comfort.set('textSize', 'larger');
+		comfort.set('readingWidth', 'narrow');
+		await flushPromises();
+		// Typography lives in the document head: only the main-thread stage reruns.
+		expect(pendingRequests()).toHaveLength(1);
+		expect(srcdoc(first)).toContain('max-width:60ch;font-size:19px;');
+		expect(srcdoc(first)).not.toContain('72ch');
+		expect(persistBody).toHaveBeenLastCalledWith('msg-b', srcdoc(first));
+		first.unmount();
+		mounted.splice(0);
+
+		// Back to the defaults: the re-opened message is the cached default render,
+		// not the larger one the reader saw last.
+		comfort.reset('textSize');
+		comfort.reset('readingWidth');
+		const again = mountBody({ message: OTHER });
+		expect(srcdoc(again)).toContain('max-width:72ch;font-size:15px;');
+		await flushPromises();
+		expect(pendingRequests()).toHaveLength(1);
 	});
 
 	it('serves a re-opened message from the cache without a worker request', async () => {

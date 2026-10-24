@@ -6039,6 +6039,36 @@
 			"preferencesBackLink": {
 				"label": "Zurück zu den Einstellungen"
 			},
+			"preferencesComfort": {
+				"title": "Lesekomfort",
+				"subtitle": "Textgröße, Kontrast, Bewegung und Listenabstände auf diesem Gerät.",
+				"textSizeLabel": "Textgröße in Mails",
+				"textSizeHelp": "Wie groß Mails in Postbox und im Team-Posteingang erscheinen. Gestaltete Newsletter werden als Ganzes skaliert.",
+				"readingWidthLabel": "Lesebreite",
+				"readingWidthHelp": "Wie lang eine Mailzeile werden darf, bevor sie umbricht. Gestaltete Newsletter behalten ihr eigenes Layout.",
+				"listDensityLabel": "Listendichte",
+				"listDensityHelp": "Zeilenabstand in Team-Posteingang, Kontakten und Kampagnen. Postbox hat unter Lesen eine eigene Dichte.",
+				"highContrastLabel": "Höherer Kontrast",
+				"highContrastHelp": "Dunklerer Text und kräftigere Rahmen im hellen Modus, hellere im dunklen Modus.",
+				"reduceMotionLabel": "Bewegung reduzieren",
+				"reduceMotionHelp": "Schaltet Animationen und weiches Scrollen in Owlat ab. Wenn dein Gerät weniger Bewegung verlangt, ist sie immer reduziert.",
+				"textSize": {
+					"small": "Klein",
+					"default": "Standard",
+					"large": "Groß",
+					"larger": "Größer"
+				},
+				"readingWidth": {
+					"narrow": "Schmal",
+					"default": "Standard",
+					"wide": "Breit",
+					"full": "Volle Breite"
+				},
+				"listDensity": {
+					"comfortable": "Komfortabel",
+					"compact": "Kompakt"
+				}
+			},
 			"preferencesExportManifest": {
 				"loading": "Wird gezählt…",
 				"moreThan": "mehr als {count}",
@@ -16394,6 +16424,26 @@
 				"appearance": {
 					"title": "Erscheinungsbild",
 					"keywords": "Dunkelmodus, heller Modus, Design, Farbschema"
+				},
+				"mailTextSize": {
+					"title": "Textgröße in Mails",
+					"keywords": "Schriftgröße, Textgröße, Zoom, größere Schrift, Lesbarkeit"
+				},
+				"readingWidth": {
+					"title": "Lesebreite",
+					"keywords": "Zeilenlänge, Satzbreite, Spaltenbreite, breit"
+				},
+				"listDensity": {
+					"title": "Listendichte",
+					"keywords": "kompakt, komfortabel, Abstand, Zeilenhöhe, Team-Posteingang, Kontakte, Kampagnen"
+				},
+				"highContrast": {
+					"title": "Höherer Kontrast",
+					"keywords": "Kontrast, Barrierefreiheit, Lesbarkeit, Rahmen, Sehschwäche"
+				},
+				"reduceMotion": {
+					"title": "Bewegung reduzieren",
+					"keywords": "Animation, Bewegung, Barrierefreiheit, weiches Scrollen, Schwindel"
 				},
 				"language": {
 					"title": "Sprache",

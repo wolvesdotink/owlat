@@ -123,3 +123,94 @@ describe('page transitions honour prefers-reduced-motion', () => {
 		expect(reduced).toContain('transform: none;');
 	});
 });
+
+/**
+ * The app's own "Reduce motion" setting (Preferences → Reading comfort) has to
+ * reach everything the OS preference reaches. JavaScript gets it through the
+ * shared owner in packages/ui (prefersReducedMotion / useReducedMotion), never
+ * a raw media-query read; CSS gets it through `:root[data-motion='reduce']`.
+ */
+describe('the in-app Reduce motion switch reaches what the OS preference does', () => {
+	const SOURCE_ROOTS = ['apps/web/app', 'packages/ui', 'packages/email-builder/src'];
+	const OWNER = 'packages/ui/composables/useReducedMotion.ts';
+
+	function filesUnder(root: string, extensions: readonly string[]): string[] {
+		const found: string[] = [];
+		const walk = (dir: string): void => {
+			for (const entry of readdirSync(dir)) {
+				if (SKIP_DIRS.has(entry)) continue;
+				const path = join(dir, entry);
+				if (statSync(path).isDirectory()) walk(path);
+				else if (extensions.some((ext) => entry.endsWith(ext))) found.push(path);
+			}
+		};
+		walk(join(repoRoot, root));
+		return found;
+	}
+
+	it('reads reduced motion in JavaScript only through the shared owner', () => {
+		const direct = /matchMedia(?:\?\.)?\(\s*['"`]\(prefers-reduced-motion/;
+		const offences: string[] = [];
+		for (const root of SOURCE_ROOTS) {
+			for (const file of filesUnder(root, ['.ts', '.vue'])) {
+				const rel = relative(repoRoot, file);
+				if (rel === OWNER) continue;
+				readFileSync(file, 'utf8')
+					.split('\n')
+					.forEach((text, index) => {
+						if (direct.test(text)) offences.push(`${rel}:${index + 1} — ${text.trim()}`);
+					});
+			}
+		}
+		expect(offences).toEqual([]);
+	});
+
+	/** Bodies of every `@media (prefers-reduced-motion: reduce) { … }` block. */
+	function reducedBlocks(css: string): string[] {
+		const blocks: string[] = [];
+		let from = 0;
+		for (;;) {
+			const start = css.indexOf('@media (prefers-reduced-motion: reduce)', from);
+			if (start < 0) return blocks;
+			const open = css.indexOf('{', start);
+			let depth = 0;
+			let end = open;
+			for (; end < css.length; end++) {
+				if (css[end] === '{') depth++;
+				else if (css[end] === '}' && --depth === 0) break;
+			}
+			blocks.push(css.slice(open + 1, end));
+			from = end;
+		}
+	}
+
+	it('gives every OS-only rule that does more than stop motion a data-motion twin', () => {
+		// The global floor in base.css collapses durations for both switches, so
+		// a block that only says `transition: none` / `animation: none` is
+		// covered. Anything else (dropping a transform, parking a sweep, hiding
+		// a ring) is a static end state the floor cannot produce on its own.
+		const floorOnly = /^(?:transition|animation): none;$/;
+		const missing: string[] = [];
+		let checked = 0;
+		for (const root of SOURCE_ROOTS) {
+			for (const file of filesUnder(root, ['.css', '.vue'])) {
+				const css = readFileSync(file, 'utf8');
+				for (const block of reducedBlocks(css)) {
+					checked++;
+					const declarations = block
+						.replace(/\/\*[\s\S]*?\*\//g, '')
+						.split('\n')
+						.map((line) => line.trim())
+						.filter((line) => line.includes(':') && line.endsWith(';'));
+					if (declarations.every((d) => floorOnly.test(d))) continue;
+					if (!css.includes(":root[data-motion='reduce']")) {
+						missing.push(relative(repoRoot, file));
+					}
+				}
+			}
+		}
+		expect(missing).toEqual([]);
+		// A scan that finds no blocks is reading the wrong tree.
+		expect(checked).toBeGreaterThan(5);
+	});
+});

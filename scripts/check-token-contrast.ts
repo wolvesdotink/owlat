@@ -159,9 +159,60 @@ for (const theme of ['light', 'dark']) {
 	}
 }
 
+/**
+ * Higher contrast (contrast.css, the app's "Higher contrast" setting) overlays
+ * one block per theme on the default tokens. Its promise is stronger than the
+ * default ladder's, so it is held to more: every reading token at WCAG AAA
+ * (7:1) on every content surface, and the default and strong borders at the
+ * 3:1 non-text floor, so control edges and dividers are visible at all.
+ */
+const AAA = 7;
+const NON_TEXT = 3;
+const BORDER_TOKENS = ['--color-border-default', '--color-border-strong'];
+const contrastCss = readFileSync(join(cssDir, 'contrast.css'), 'utf8').replace(
+	/\/\*[\s\S]*?\*\//g,
+	''
+);
+const contrastBlocks = [...contrastCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+let highContrastPairs = 0;
+for (const theme of ['light', 'dark']) {
+	const block = contrastBlocks.find(
+		([, selector]) => selector!.includes('.dark') === (theme === 'dark')
+	);
+	if (!block) {
+		problems.push(`contrast.css: no ${theme} block`);
+		continue;
+	}
+	const tokens = declarations(readFileSync(join(cssDir, `${theme}.css`), 'utf8'));
+	for (const [name, value] of declarations(block[2]!)) tokens.set(name, value);
+	const check = (token: string, surface: string, floor: number) => {
+		const fg = resolve(`${theme} (higher contrast)`, tokens, token);
+		const bg = resolve(`${theme} (higher contrast)`, tokens, surface);
+		if (fg === null || bg === null) return;
+		highContrastPairs++;
+		const ratio = contrast(fg, bg);
+		if (ratio < floor) {
+			problems.push(
+				`${theme} (higher contrast): ${token} on ${surface} is ${ratio.toFixed(2)}:1, below ${floor}:1`
+			);
+		}
+	};
+	for (const surface of CONTENT_SURFACES) {
+		for (const token of TEXT_TOKENS) check(token, surface, AAA);
+		for (const token of BORDER_TOKENS) check(token, surface, NON_TEXT);
+	}
+}
+const EXPECTED_HIGH_CONTRAST_PAIRS =
+	(TEXT_TOKENS.length + BORDER_TOKENS.length) * CONTENT_SURFACES.length * 2;
+if (highContrastPairs !== EXPECTED_HIGH_CONTRAST_PAIRS) {
+	problems.push(
+		`contrast.css: checked ${highContrastPairs} pairs, expected ${EXPECTED_HIGH_CONTRAST_PAIRS}`
+	);
+}
+
 if (problems.length > 0) {
 	console.error(
-		`Text tokens below the WCAG AA ${FLOOR}:1 floor in packages/ui/assets/css. A token whose job\nis to be read has to be readable on every surface it is read on — pick a darker\n(light theme) or lighter (dark theme) value, or, if the pairing genuinely never\nhappens, take it out of the declared set in scripts/check-token-contrast.ts and\nsay why:`
+		`Tokens below their contrast floor in packages/ui/assets/css (WCAG AA ${FLOOR}:1; under\nHigher contrast, ${AAA}:1 for text and ${NON_TEXT}:1 for borders). A token whose job\nis to be read has to be readable on every surface it is read on — pick a darker\n(light theme) or lighter (dark theme) value, or, if the pairing genuinely never\nhappens, take it out of the declared set in scripts/check-token-contrast.ts and\nsay why:`
 	);
 	console.error(problems.map((problem) => `  ${problem}`).join('\n'));
 	process.exit(1);
@@ -169,4 +220,7 @@ if (problems.length > 0) {
 
 console.log(
 	`ok:   ${EXPECTED_PAIRS * 2} text/surface token pairs clear the WCAG AA ${FLOOR}:1 floor`
+);
+console.log(
+	`ok:   ${EXPECTED_HIGH_CONTRAST_PAIRS} higher-contrast pairs clear ${AAA}:1 (text) / ${NON_TEXT}:1 (borders)`
 );

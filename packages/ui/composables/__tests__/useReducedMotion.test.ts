@@ -11,7 +11,13 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick } from 'vue';
-import { prefersReducedMotion, REDUCED_MOTION_QUERY, useReducedMotion } from '../useReducedMotion';
+import {
+	onReducedMotionChange,
+	prefersReducedMotion,
+	REDUCED_MOTION_QUERY,
+	setAppReducedMotion,
+	useReducedMotion,
+} from '../useReducedMotion';
 
 /** A `matchMedia` whose value can be flipped, with the listeners it holds. */
 function installMatchMedia(initial: boolean) {
@@ -47,6 +53,7 @@ function installMatchMedia(initial: boolean) {
 
 afterEach(() => {
 	vi.unstubAllGlobals();
+	setAppReducedMotion(false);
 });
 
 describe('prefersReducedMotion', () => {
@@ -113,5 +120,78 @@ describe('useReducedMotion', () => {
 		const reduced = scope.run(() => useReducedMotion())!;
 		expect(reduced.value).toBe(false);
 		scope.stop();
+	});
+});
+
+/**
+ * The app's own "Reduce motion" switch. It can only add reduction: OS on or
+ * app on reduces, and only both off lets things move.
+ */
+describe('the in-app override', () => {
+	it.each([
+		{ os: false, app: false, reduced: false },
+		{ os: true, app: false, reduced: true },
+		{ os: false, app: true, reduced: true },
+		{ os: true, app: true, reduced: true },
+	])('OS $os + app $app → reduced $reduced', ({ os, app, reduced }) => {
+		installMatchMedia(os);
+		setAppReducedMotion(app);
+		expect(prefersReducedMotion()).toBe(reduced);
+		const scope = effectScope();
+		expect(scope.run(() => useReducedMotion())!.value).toBe(reduced);
+		scope.stop();
+	});
+
+	it('applies without matchMedia too', () => {
+		vi.stubGlobal('matchMedia', undefined);
+		window.matchMedia = undefined as unknown as typeof window.matchMedia;
+		setAppReducedMotion(true);
+		expect(prefersReducedMotion()).toBe(true);
+	});
+
+	it('reaches reactive readers the moment it flips', async () => {
+		installMatchMedia(false);
+		const scope = effectScope();
+		const reduced = scope.run(() => useReducedMotion())!;
+		setAppReducedMotion(true);
+		await nextTick();
+		expect(reduced.value).toBe(true);
+		setAppReducedMotion(false);
+		await nextTick();
+		expect(reduced.value).toBe(false);
+		scope.stop();
+	});
+
+	it('keeps the OS answer when the app switch goes off', async () => {
+		const media = installMatchMedia(false);
+		const scope = effectScope();
+		const reduced = scope.run(() => useReducedMotion())!;
+		setAppReducedMotion(true);
+		media.flip(true);
+		setAppReducedMotion(false);
+		await nextTick();
+		expect(reduced.value).toBe(true);
+		expect(prefersReducedMotion()).toBe(true);
+		scope.stop();
+	});
+});
+
+describe('onReducedMotionChange', () => {
+	it('fires for the OS preference and the app switch, until unsubscribed', () => {
+		const media = installMatchMedia(false);
+		const listener = vi.fn();
+		const stop = onReducedMotionChange(listener);
+
+		media.flip(true);
+		setAppReducedMotion(true);
+		// Setting the same value again is not a change.
+		setAppReducedMotion(true);
+		expect(listener).toHaveBeenCalledTimes(2);
+
+		stop();
+		expect(media.listeners.size).toBe(0);
+		setAppReducedMotion(false);
+		media.flip(false);
+		expect(listener).toHaveBeenCalledTimes(2);
 	});
 });

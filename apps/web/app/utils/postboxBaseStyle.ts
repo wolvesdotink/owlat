@@ -9,6 +9,13 @@ import {
 	type EmailHtmlKind,
 	type PostboxRenderScheme,
 } from './postboxDarkMode';
+import {
+	designedMailZoom,
+	MAIL_TEXT_PX,
+	MAIL_TYPOGRAPHY_DEFAULT,
+	READING_WIDTH_CSS,
+	type MailTypography,
+} from './readingComfort';
 
 /** The app's own UI font stack, so plain mail reads like the rest of Owlat. */
 const FONT_STACK = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
@@ -27,14 +34,15 @@ const OUTLOOK_RESET_STYLE =
 	'p.MsoNormal,li.MsoNormal,div.MsoNormal{margin:0;font-size:11pt;line-height:1.4;}';
 
 /**
- * Reading-typography block for "simple" (mostly-text) mail: a comfortable
- * measure capped around 72ch and aligned with the message header (not
- * centered, which left the text floating in the middle of a wide reader), a
- * slightly larger base size, a roomier line-height, long URLs that wrap instead
+ * Reading-typography block for "simple" (mostly-text) mail: a capped measure
+ * aligned with the message header (not centered, which left the text floating
+ * in the middle of a wide reader), a roomier line-height, long URLs that wrap instead
  * of scrolling sideways, and no stray margin above the first or below the last
  * block. The background stays transparent so the body sits directly on the
  * message card instead of in a second box. "Designed" mail (marketing /
  * newsletter layouts) never receives this — its own layout stays untouched.
+ * The measure and the text size are the reader's settings and live in the
+ * separate comfort block below.
  *
  * `pre` wraps: a plain-text body arrives as a `<pre style="white-space:pre-wrap">`,
  * but the sanitizer allowlist has no `white-space`, so the inline style is
@@ -43,7 +51,7 @@ const OUTLOOK_RESET_STYLE =
 function simpleMeasureStyle(quoteBorder: string, quoteText: string): string {
 	return (
 		'html,body{background:transparent;}' +
-		'body{max-width:72ch;font-size:15px;line-height:1.6;overflow-wrap:break-word;}' +
+		'body{line-height:1.6;overflow-wrap:break-word;}' +
 		'pre{white-space:pre-wrap;}' +
 		'body>:first-child{margin-top:0;}body>:last-child{margin-bottom:0;}' +
 		`blockquote{margin:0.5em 0 0.5em 0.25em;padding-left:0.9em;border-left:2px solid ${quoteBorder};color:${quoteText};}`
@@ -51,14 +59,43 @@ function simpleMeasureStyle(quoteBorder: string, quoteText: string): string {
 }
 
 /**
+ * Opening tag of the reader's typography block. Its own element, last in the
+ * head, so a saved copy of a body (the offline read cache) can have it swapped
+ * for the current settings without re-rendering the mail.
+ */
+export const POSTBOX_COMFORT_STYLE_OPEN = '<style data-owlat-comfort>';
+
+/**
+ * The reader's text size and reading width for one body. Simple mail gets them
+ * as a base size and a measure. Designed mail sets its own sizes inline and
+ * its own width, so it is scaled as a whole instead (see designedMailZoom) and
+ * keeps its layout; at the default size it gets nothing.
+ */
+export function buildComfortStyle(kind: EmailHtmlKind, typography: MailTypography): string {
+	const rules =
+		kind === 'simple'
+			? `body{max-width:${READING_WIDTH_CSS[typography.readingWidth]};font-size:${MAIL_TEXT_PX[typography.textSize]}px;}`
+			: typography.textSize === 'default'
+				? ''
+				: `body{zoom:${designedMailZoom(typography.textSize)};}`;
+	return `${POSTBOX_COMFORT_STYLE_OPEN}${rules}</style>`;
+}
+
+/**
  * Base <style> for the iframe head. "Designed" mail (the default `kind`) keeps
  * its own canvas on a white paper card and only gets the shared basics; "simple"
  * mail additionally gets the reading-measure block and a transparent canvas.
+ * Both end with the comfort block for the reader's typography settings.
  */
 export function buildBaseStyle(
 	scheme: PostboxRenderScheme,
-	kind: EmailHtmlKind = 'designed'
+	kind: EmailHtmlKind = 'designed',
+	typography: MailTypography = MAIL_TYPOGRAPHY_DEFAULT
 ): string {
+	return buildSchemeStyle(scheme, kind) + buildComfortStyle(kind, typography);
+}
+
+function buildSchemeStyle(scheme: PostboxRenderScheme, kind: EmailHtmlKind): string {
 	const base = `font-family:${FONT_STACK};font-size:14px;line-height:1.55;margin:0;padding:0;`;
 	if (scheme === 'dark') {
 		return (

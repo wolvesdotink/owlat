@@ -608,4 +608,46 @@ describe('buildBaseStyle', () => {
 			expect(style).not.toContain('background:transparent');
 		}
 	});
+
+	it("writes the reader's text size and width into simple mail", () => {
+		for (const scheme of ['light', 'dark'] as const) {
+			const style = buildBaseStyle(scheme, 'simple', { textSize: 'larger', readingWidth: 'wide' });
+			expect(style).toContain('body{max-width:90ch;font-size:19px;}');
+			expect(style).not.toContain('72ch');
+			expect(style).not.toContain('font-size:15px');
+		}
+		expect(
+			buildBaseStyle('light', 'simple', { textSize: 'small', readingWidth: 'full' })
+		).toContain('body{max-width:none;font-size:14px;}');
+	});
+
+	it('scales designed mail as a whole and never re-measures it', () => {
+		// A newsletter sets its sizes inline, so a base size would reach none of
+		// it: the design zooms instead, keeping images and tables in proportion.
+		const larger = buildBaseStyle('light', 'designed', {
+			textSize: 'larger',
+			readingWidth: 'narrow',
+		});
+		expect(larger).toContain('body{zoom:1.267;}');
+		expect(larger).not.toContain('60ch');
+		expect(
+			buildBaseStyle('light', 'designed', { textSize: 'small', readingWidth: 'default' })
+		).toContain('body{zoom:0.933;}');
+		// At the default size a designed body gets no zoom at all.
+		expect(
+			buildBaseStyle('dark', 'designed', { textSize: 'default', readingWidth: 'wide' })
+		).not.toContain('zoom');
+	});
+
+	it('changes the document whenever a typography setting changes', () => {
+		const sizes = ['small', 'default', 'large', 'larger'] as const;
+		const widths = ['narrow', 'default', 'wide', 'full'] as const;
+		const seen = new Set<string>();
+		for (const textSize of sizes) {
+			for (const readingWidth of widths) {
+				seen.add(buildBaseStyle('light', 'simple', { textSize, readingWidth }));
+			}
+		}
+		expect(seen.size).toBe(sizes.length * widths.length);
+	});
 });

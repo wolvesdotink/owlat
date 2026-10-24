@@ -143,7 +143,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 			role="option"
 			:aria-selected="focused"
 			:to="`/dashboard/inbox/${thread._id}`"
-			class="block w-full text-left px-4 py-3 rounded-lg hover:bg-(--surface-1-hover) transition-colors"
+			class="block w-full text-left px-4 py-3 density-compact:py-1.5 rounded-lg hover:bg-(--surface-1-hover) transition-colors"
 			:class="{ 'ring-1 ring-inset ring-brand/50': focused }"
 			@click="emit('open')"
 		>
