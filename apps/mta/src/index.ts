@@ -43,6 +43,7 @@ import { notifyConvex } from './webhooks/convexNotifier.js';
 import { sweepWebhookDlq } from './webhooks/dlqSweeper.js';
 import { logger } from './monitoring/logger.js';
 import { startMtaWireReports } from './monitoring/wireReport.js';
+import { startProcessing } from './lib/startProcessing.js';
 import { stopIntake } from './lib/stopIntake.js';
 import { fireAndForget } from './lib/fireAndForget.js';
 import { installCrashHandlers, installShutdown, pinoShutdownLog } from '@owlat/shared/nodeShutdown';
@@ -361,12 +362,18 @@ export async function main() {
 		6 * 60 * 60 * 1000
 	);
 
-	// ── 15. Start GroupMQ worker ──
-	await worker.run();
+	// ── 15. Start the GroupMQ worker, then report this replica's wire version ──
+	// (every replica, not only the leader). The loop is not awaited: it runs
+	// until the worker stops, and the shutdown hooks below must be installed now.
+	const wireReports = startProcessing({
+		worker,
+		startReports: () => startMtaWireReports(config),
+		onLoopFailure: (err) => {
+			logger.fatal({ err }, 'GroupMQ worker loop failed');
+			process.exit(1);
+		},
+	});
 	logger.info('GroupMQ worker started');
-
-	// ── 16. Report this replica's wire version (every replica, not only the leader) ──
-	const wireReports = startMtaWireReports(config);
 
 	// ── Graceful shutdown ──
 	//
