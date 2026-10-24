@@ -291,6 +291,24 @@ describe('a pull request whose target branch moves during the job', () => {
 		}
 	});
 
+	it('fails in CI, and skips locally, when the base cannot be fetched', () => {
+		const { sandbox, root, base } = race(['--depth=1', '--single-branch', '--branch', 'feature']);
+		try {
+			git(root, ['remote', 'remove', 'origin']);
+			for (const env of [{}, { PR_BASE_SHA: base }]) {
+				const ci = runFormat(root, env);
+				expect(ci.status).toBe(1);
+				expect(ci.stderr).toContain('not found');
+
+				const local = runFormat(root, { CI: '', ...env });
+				expect(local.status).toBe(0);
+				expect(local.stdout).toContain('skipping outside CI');
+			}
+		} finally {
+			rmSync(sandbox, { recursive: true, force: true });
+		}
+	});
+
 	it('fails in CI, and skips locally, when HEAD has no merge base with the base', () => {
 		const { sandbox, root, moved } = race(['--depth=1', '--single-branch', '--branch', 'feature']);
 		try {

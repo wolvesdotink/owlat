@@ -40,7 +40,11 @@ else
 fi
 
 if ! has_commit "$base"; then
-	echo "check-format: base ref '$base' not found; skipping."
+	if [ "${CI:-}" = true ]; then
+		echo "check-format: base ref '$base' not found; fetch the history (fetch-depth: 0) or set OXFMT_BASE." >&2
+		exit 1
+	fi
+	echo "check-format: base ref '$base' not found; skipping outside CI."
 	exit 0
 fi
 
