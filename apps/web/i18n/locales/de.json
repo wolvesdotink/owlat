@@ -5231,6 +5231,24 @@
 					"label": "Erstabsender prüfen"
 				}
 			},
+			"postboxAlertSoundSettings": {
+				"saveOperation": "Hinweiston speichern",
+				"heading": "Hinweistöne",
+				"scopeBadge": "Alle deine Geräte",
+				"intro": "Ein leiser Ton für die Hinweise, die du auswählst, und für nichts sonst. Diese Schalter gehören zu deinem Konto und gelten in jedem Browser und in der Desktop-App. In deinen Ruhezeiten bleibt jeder Ton aus, und Hinweise, die zusammen ankommen, klingen nur einmal.",
+				"reply": {
+					"label": "Antworten, auf die du wartest",
+					"hint": "Wenn eine Antwort in einer Unterhaltung ankommt, für die du „Benachrichtigen, wenn eine Antwort kommt“ eingeschaltet hast."
+				},
+				"assignment": {
+					"label": "Dir zugewiesene Unterhaltungen",
+					"hint": "Wenn dir jemand aus dem Team eine Unterhaltung im Team-Postfach zuweist."
+				},
+				"question": {
+					"label": "Fragen des Agenten",
+					"hint": "Wenn der Agent eine Angabe von dir braucht, bevor er antworten kann. Die Frage wartet in deiner Antwortliste."
+				}
+			},
 			"postboxOfflineBanners": {
 				"failedSendsBanner": "{count} Nachricht aus der Warteschlange konnte nicht gesendet werden — sie bleibt auf diesem Gerät. | {count} Nachrichten aus der Warteschlange konnten nicht gesendet werden — sie bleiben auf diesem Gerät.",
 				"offlineBanner": "Offline — Anzeige von diesem Gerät; deine Nachrichten gehen raus, sobald du wieder online bist.",
@@ -16750,6 +16768,10 @@
 				"marketingNotifications": {
 					"title": "Marketing-Benachrichtigungen",
 					"keywords": "kampagne abgeschlossen, erinnerung, geplante kampagne, bounce-spitze, versandschutz, versand pausiert, automation hängt, dns fehlerhaft, warnungen"
+				},
+				"alertSounds": {
+					"title": "Hinweistöne",
+					"keywords": "Ton, Klang, Audio, Antwort, mir zugewiesen, Frage des Agenten"
 				},
 				"pushNotifications": {
 					"title": "Push-Benachrichtigungen",

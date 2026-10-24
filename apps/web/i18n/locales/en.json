@@ -5231,6 +5231,24 @@
 					"label": "Screen first-time senders"
 				}
 			},
+			"postboxAlertSoundSettings": {
+				"saveOperation": "Save alert sound",
+				"heading": "Alert sounds",
+				"scopeBadge": "All your devices",
+				"intro": "A soft chime for the alerts you pick, and for nothing else. These switches belong to your account, so they hold in every browser and in the desktop app. Quiet hours keep every chime silent, and alerts that arrive together make one sound.",
+				"reply": {
+					"label": "Replies you are waiting for",
+					"hint": "When a reply lands in a conversation where you turned on \"Notify me when they reply\"."
+				},
+				"assignment": {
+					"label": "Conversations assigned to you",
+					"hint": "When a teammate assigns you a conversation in the Team inbox."
+				},
+				"question": {
+					"label": "Questions from the agent",
+					"hint": "When the agent needs a fact from you before it can reply. The question waits in your Answer queue."
+				}
+			},
 			"postboxOfflineBanners": {
 				"failedSendsBanner": "{count} queued message couldn't be sent — kept on this device. | {count} queued messages couldn't be sent — kept on this device.",
 				"offlineBanner": "Offline — reading from this device; sends will go out when you're back online.",
@@ -16750,6 +16768,10 @@
 				"marketingNotifications": {
 					"title": "Marketing notifications",
 					"keywords": "campaign finished, scheduled campaign reminder, bounce spike, bounce protection, sending paused, automation stalled, dns broken, alerts"
+				},
+				"alertSounds": {
+					"title": "Alert sounds",
+					"keywords": "sound, chime, audio, reply alert, assigned to me, agent question"
 				},
 				"pushNotifications": {
 					"title": "Push notifications",
