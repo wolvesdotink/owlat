@@ -44,8 +44,8 @@ export const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
 
 /**
  * Where a caller's template waits until pull and convex-deploy have succeeded.
- * The live docker-compose.yml is only replaced after both — it used to be
- * overwritten first, so a failed update left a half-applied breaking template
+ * The live docker-compose.yml is only replaced after both: overwriting it
+ * earlier would let a failed update leave a half-applied breaking template
  * behind that the next manual `docker compose up` would silently complete.
  */
 export const STAGED_FILE = join(OWLAT_DIR, 'docker-compose.next.yml');
