@@ -5,6 +5,7 @@ import { isMentionHandlePrefix } from '@owlat/shared/chatMentions';
 import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
 import { useComposerDraft } from '~/composables/useComposerDrafts';
 import { isImeComposing } from '~/utils/imeComposition';
+import { composerRecallDirection, type ChatRecallTarget } from '~/utils/composerRecall';
 
 const props = defineProps<{
 	/**
@@ -15,6 +16,11 @@ const props = defineProps<{
 	send: (text: string, attachmentIds?: Id<'mediaAssets'>[]) => Promise<{ ok: boolean }>;
 	/** The room, which keeps the unsent text and files on this device. */
 	draftTarget?: string | null;
+	/**
+	 * ↑ in the empty box: the room opens your last message in its editor and
+	 * says what it did. Leaves the draft alone either way.
+	 */
+	recallLast?: () => ChatRecallTarget;
 }>();
 
 const { t } = useI18n();
@@ -120,6 +126,10 @@ const recalcMentionQuery = () => {
 	mentionQuery.value = fragment;
 };
 
+// Said (politely) when ↑ found none of your messages among the loaded ones:
+// the room may hold an older one, so "nothing happened" would be a guess.
+const recallNotice = ref<string | null>(null);
+
 const fitTextarea = () => {
 	if (textareaRef.value) {
 		textareaRef.value.style.height = 'auto';
@@ -130,6 +140,27 @@ const fitTextarea = () => {
 const handleInput = () => {
 	fitTextarea();
 	recalcMentionQuery();
+	recallNotice.value = null;
+};
+
+/** ↑ with nothing typed and nothing attached. True when the key was used. */
+const recallLastMessage = (): boolean => {
+	if (!props.recallLast) return false;
+	if (text.value !== '' || pendingAttachments.value.length > 0 || isUploading.value) return false;
+	const target = props.recallLast();
+	if (target.kind === 'edit') {
+		recallNotice.value = null;
+		return true;
+	}
+	recallNotice.value =
+		target.kind === 'notLoaded'
+			? t(
+					target.canLoadEarlier
+						? 'components.chat.chatInput.recallNotLoaded'
+						: 'components.chat.chatInput.recallNotInHistory'
+				)
+			: null;
+	return false;
 };
 
 const closeMention = () => {
@@ -147,6 +178,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 		void handleSend();
 	}
 	if (event.key === 'Escape' && mentionQuery.value !== null) closeMention();
+	if (composerRecallDirection(event) === 'older' && recallLastMessage()) event.preventDefault();
 };
 
 const handlePickMention = (handle: string) => {
@@ -304,6 +336,15 @@ const handleSend = async () => {
 			</UiButton>
 		</div>
 
+		<div role="status" aria-live="polite">
+			<p
+				v-if="recallNotice"
+				class="text-xs text-text-secondary mt-1.5 px-1"
+				data-testid="chat-recall-notice"
+			>
+				{{ recallNotice }}
+			</p>
+		</div>
 		<p class="text-[11px] text-text-tertiary mt-1.5 px-1">
 			{{ t('components.chat.chatInput.hint') }}
 		</p>
