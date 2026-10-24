@@ -1,5 +1,5 @@
 /**
- * The calm reader's one element under the header (SPEC §3, plan §6): the brief
+ * The calm reader's one element under the header: the brief
  * strip, or, when there is nothing to say yet, a slim "Why here? · Details"
  * line in its place. Pure, so every state is unit-testable without the reader.
  *
@@ -12,7 +12,7 @@
  *     skipped, count/none depth (nothing was read, so there is no gist), a
  *     shared mailbox, mail whose original is the primary view. Never a skeleton: the strip fades in when
  *     the brief is ready. `note: 'reading'` is the one quiet line that replaces
- *     the old skeleton while messages wait for this open to be read (D10, or
+ *     a skeleton while messages wait for this open to be read (deferred, or
  *     read on arrival turned off). Also the viewer's choice not to see briefs
  *     ("Show the brief above conversations" off): the slim line, no note.
  */
@@ -28,7 +28,7 @@ export interface ReaderGist {
 }
 
 /**
- * `brief.get`'s gist (SPEC §2.4: the unsealed `threadBriefs.gist`, verbatim
+ * `brief.get`'s gist (the unsealed `threadBriefs.gist`, verbatim
  * spans of one message and that message's id), or null when it has none.
  */
 export function readerGistOf(brief: BriefModeView | null | undefined): ReaderGist | null {
@@ -90,7 +90,7 @@ export function resolveReaderStrip(input: ReaderStripInput): ReaderStrip {
 	if (reason === 'short' || reason === 'security') return META;
 	if (brief.completeness === 'none' || brief.completeness === 'pending') {
 		// Nothing recorded yet. Quietly say it is being read only while work is
-		// actually admitted: this open reads deferred sources (D10), or, with
+		// actually admitted: this open reads deferred sources, or, with
 		// read on arrival on, runs are in flight (`pending`). An untouched thread
 		// (`none`) or AI off says nothing; the strip fades in once it is ready.
 		const isRunning =
@@ -114,7 +114,7 @@ export function resolveReaderStrip(input: ReaderStripInput): ReaderStrip {
 	return { kind: 'brief', lead, owe, waiting };
 }
 
-/** How long the gist line may run (SPEC §2.4: a list row's gist is ≤160 characters). */
+/** How long the gist line may run (a list row's gist is ≤160 characters). */
 export const GIST_LINE_MAX = 160;
 
 /**

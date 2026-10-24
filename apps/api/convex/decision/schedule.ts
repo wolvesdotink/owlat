@@ -2,7 +2,7 @@
  * Where the Phase 2 bundles hook into today's pipelines. Each
  * hook schedules a separate action and returns: a bundle never runs inside a
  * pipeline step, so its answer, its latency and its failure cannot change the
- * step's outcome (D9). Every hook checks its routing switch first, so with
+ * step's outcome. Every hook checks its routing switch first, so with
  * every switch off (the default) nothing is scheduled at all, and a mailbox
  * excluded from hosted decisions gets nothing unless the decision plane is the
  * local engine. Every hook is fail-soft: a scheduling failure is
@@ -25,7 +25,7 @@ function logFailure(hook: string, error: unknown): void {
 }
 
 /**
- * D11: after the security scan let a Team message through (the guard ran and
+ * After the security scan let a Team message through (the guard ran and
  * passed, nothing quarantined or archived it) and before retrieval, schedule
  * the message-only triage shadow. The scan already holds the policy.
  */

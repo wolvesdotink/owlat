@@ -1,5 +1,5 @@
 /**
- * A stored budget refusal (D1) on an assistant answer, an @assistant reply or a
+ * A stored budget refusal on an assistant answer, an @assistant reply or a
  * visualization carries the stable code and reason, never a sentence; the
  * notice says it from the catalog, and shows nothing for any other payload.
  */

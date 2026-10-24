@@ -29,7 +29,7 @@ import { isSpfAligned } from './spfAlignment';
 
 /**
  * The send-transport kinds Owlat supports — DERIVED from the send-provider
- * catalog (`./sendProviderCatalog`, the seams plan's D1), not declared here.
+ * catalog (`./sendProviderCatalog`), not declared here.
  *
  * This was one of the five places the same union was written out. It is
  * re-exported rather than moved so every consumer keeps importing it from
@@ -140,7 +140,7 @@ export function checkFromAlignment(
 	// domain that does NOT align per From-domain, so an undeclared return-path is
 	// always `null` (unknown) — never a claimed alignment we didn't verify.
 	//
-	// The question is "is this OUR arm" (D3), not "is this kind spelled 'mta'":
+	// The question is "is this OUR arm", not "is this kind spelled 'mta'":
 	// what makes the assumption safe is that we run the signer. Asked through the
 	// catalog's own declaration so it moves with the catalog rather than being
 	// restated here.

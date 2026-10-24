@@ -230,7 +230,7 @@ export const updateGenerated = internalMutation({
 		// Allowlisted dataset key the viz was built from (for refresh), or
 		// undefined when illustrative sample data was used.
 		dataQuery: v.optional(datasetKeyValidator),
-		// A budget refusal (D1), as its code and reason; absent clears an old one.
+		// A budget refusal, as its code and reason; absent clears an old one.
 		budgetRefusal: v.optional(budgetRefusalValidator),
 	},
 	handler: async (ctx, args) => {

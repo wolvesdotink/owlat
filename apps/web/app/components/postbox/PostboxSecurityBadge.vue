@@ -14,7 +14,7 @@ import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
 /**
  * Honest PGP/S-MIME disclosure for the reader.
  *
- * Three drivers, in priority order (D9's badge precedence):
+ * Three drivers, in priority order (the badge precedence):
  *   1. `sealed` (Sealed Mail E5, flag `sealedMail`) — the honest inbound sealing
  *      record from decrypt-on-ingest (`mailMessages.inboundEncryptionInfo`). When
  *      present it wins: a decrypted-and-verified message reads "Sealed — sender
@@ -22,7 +22,7 @@ import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
  *      and an undecryptable one "Encrypted — can't decrypt". Every string is
  *      derived by `deriveSealedBadge`, whose honesty audit is a unit test —
  *      "verified" is unreachable without a valid signature against the pinned key.
- *   2. `signature` (F2, D9) — the honest inbound signature verdict for
+ *   2. `signature` — the honest inbound signature verdict for
  *      PGP-signed-but-unencrypted mail, verified server-side at ingest (F1,
  *      `mailMessages.inboundSignatureInfo`). Renders the verdict-driven states
  *      "Signed · verified" / "Signed · signature invalid" / "Signed · sender key
@@ -52,7 +52,7 @@ const props = defineProps<{
 	 */
 	sealed?: InboundEncryptionInfo;
 	/**
-	 * F2 (D9): the inbound signature verdict for PGP-signed (unencrypted) mail,
+	 * F2: the inbound signature verdict for PGP-signed (unencrypted) mail,
 	 * persisted at ingest by F1. Present only when the message was structurally
 	 * signed and the server verifier ran; absent for plaintext mail and pre-F1
 	 * rows, where the structural `klass` driver takes over.
@@ -69,8 +69,8 @@ const props = defineProps<{
 // Sealed-Mail badge (priority driver). Null for a message with no sealing record.
 const sealedBadge = computed(() => deriveSealedBadge(props.sealed));
 
-// Signature-verdict badge (second driver, F2). `deriveSignatureBadge` owns the
-// D9 precedence: a present sealed record silences it, and an unusable verdict
+// Signature-verdict badge (second driver). `deriveSignatureBadge` owns the
+// precedence: a present sealed record silences it, and an unusable verdict
 // yields null so the structural chip's honest "not verified" renders instead.
 const signatureBadge = computed(() => deriveSignatureBadge(props.signature, props.sealed));
 

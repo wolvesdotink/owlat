@@ -1,5 +1,5 @@
 /**
- * "With Jonas elsewhere" (plan §4.3): one section per person, each open item
+ * "With Jonas elsewhere": one section per person, each open item
  * linking to the thread it lives in (the Postbox reader by message, the Team
  * Inbox by thread), and nothing at all when the server lists nothing.
  */

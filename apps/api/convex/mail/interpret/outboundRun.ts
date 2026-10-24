@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Interpretation of a message we sent (SPEC §5 "Outbound"): a Postbox message
+ * Interpretation of a message we sent: a Postbox message
  * once its transport recorded `sent` (`{kind: 'outboundMail'}`), a team reply
  * once its Send was finalized (`{kind: 'teamReply'}`). Scheduled by
  * `enqueue.ts#enqueueSentInterpretation`, once per send.

@@ -234,7 +234,7 @@ describe('emailDomain', () => {
  * with `bounce+…@<host>` would be evaluated against the RELAY's address and
  * fail SPF — degrading the very arm under measurement. These terms are how the
  * operator closes that gap. The parser is read on the SEND path, so it is total:
- * garbage is dropped, never thrown, because a typo must not block mail (D2).
+ * garbage is dropped, never thrown, because a typo must not block mail.
  */
 describe('parseReturnPathRelaySpfTerms', () => {
 	it('accepts the mechanism forms a relay is actually authorised with', () => {

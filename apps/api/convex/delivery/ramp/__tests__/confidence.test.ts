@@ -1,5 +1,5 @@
 /**
- * EVERY VERDICT CARRIES ITS CONFIDENCE (plan D14).
+ * EVERY VERDICT CARRIES ITS CONFIDENCE.
  *
  * The UI renders it, the audit row records it, and the aggregator folds it to the
  * cell's weakest link — so "measurement confidence: low — connect a relay or add
@@ -108,7 +108,7 @@ describe('the evaluation reports the cell’s weakest link', () => {
 	 *
 	 * THIS IS NOT WHAT THE SCREEN SHOWS. `dashboardConfidence` returns `none` for
 	 * any cell with `ownSent <= 0` before it looks at this number at all, so a
-	 * fully-held window's grade is only ever visible in the D12 audit row. Do not
+	 * fully-held window's grade is only ever visible in the audit row. Do not
 	 * re-derive a friendlier level here from what an operator would see — they
 	 * would see "not measured", which is the same sentence this asserts.
 	 */

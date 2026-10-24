@@ -1,5 +1,5 @@
 /**
- * Delayed actions (SPEC §6.4): creation anchored on the message, the 5-minute
+ * Delayed actions: creation anchored on the message, the 5-minute
  * cron, the transactional re-checks at execution (owner reply after the
  * anchor, flag, moved, a newer needs-reply verdict, an undone operation),
  * `archiveSingleMessage` keeping the thread's reply state, the

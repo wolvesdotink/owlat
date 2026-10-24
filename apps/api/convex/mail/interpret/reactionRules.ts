@@ -1,5 +1,5 @@
 /**
- * What a person's statement about an item does to it (SPEC §5 "Reactions"),
+ * What a person's statement about an item does to it,
  * pure. `reactions.ts` loads the item, checks who may act, applies the plan
  * returned here and records it.
  *

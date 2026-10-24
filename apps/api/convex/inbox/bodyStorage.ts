@@ -199,7 +199,7 @@ export function inboundMirrorContent(
 	} & StoredBodyIds,
 	inboundMessageId: Id<'inboundMessages'>
 ): string {
-	// `text`/`html` are the DECRYPTED plaintext when `isSealed` (D3): the
+	// `text`/`html` are the DECRYPTED plaintext when `isSealed`: the
 	// unified timeline + agent pipeline read real content, not ciphertext.
 	const sealedFlags = input.isSealed
 		? { isSealed: true, isSignatureValid: input.isSignatureValid }

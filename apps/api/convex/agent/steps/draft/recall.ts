@@ -115,7 +115,7 @@ export function buildRecallKnowledgeTool(args: RecallToolArgs) {
 				};
 			} catch (error) {
 				// A budget refusal is not "no facts": it reaches the model as a tool
-				// error, and the draft's own next request is admitted on its own (D1).
+				// error, and the draft's own next request is admitted on its own.
 				rethrowAdmissionRefusal(error);
 				// FAIL-SOFT: retrieval failure ⇒ no facts. The model drafts with what it
 				// has; the self-check + route gate still guard auto-send.

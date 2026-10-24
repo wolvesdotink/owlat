@@ -422,7 +422,7 @@ export async function runDecision<Q extends QuestionSet>(
 	// and ends here: charging it would let a busy minute drive the breaker open
 	// and refuse the hop for the five minutes of real failures that follow.
 	if (lastError instanceof DecisionRateLimitRefusal) throw lastError;
-	// Our own spend admission said no: not a provider failure either (D3).
+	// Our own spend admission said no: not a provider failure either.
 	if (admissionRefusalOf(lastError)) throw lastError;
 
 	// Reported before the hop is considered, so a failure that trips the breaker

@@ -151,7 +151,7 @@ function submissionRecipients(session: Session): string[] {
  * failed-attempt throttle, so the master key and per-org credentials cannot be
  * brute-forced by reconnecting (RFC 4954 §4). A successful AUTH leaves the
  * counter alone, so it cannot be used to refill the budget. The listener
- * collapses every failure to one `535 5.7.8` on the wire (no auth oracle — D6),
+ * collapses every failure to one `535 5.7.8` on the wire (no auth oracle),
  * so the throttle rejection is byte-identical to a wrong secret.
  */
 export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>) {

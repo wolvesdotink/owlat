@@ -5,7 +5,7 @@
  *       `application/pgp-encrypted` protocol part), it decrypts with the
  *       recipient key AND its signature verifies with the sender key, the REAL
  *       subject travels inside the ciphertext while the OUTER subject is the
- *       literal placeholder "..." (locked decision D4), and no plaintext canary
+ *       literal placeholder "...", and no plaintext canary
  *       survives in the outer message.
  *   (b) ATTACHMENTS SURVIVE — a base64 attachment part round-trips inside.
  *   (c) ALL RECIPIENTS — encrypting to two keys lets EITHER private key open it.
@@ -240,7 +240,7 @@ describe('e2ee/seal · sealMime', () => {
 		expect(inner).not.toContain('multipart/mixed;; protected-headers');
 	});
 
-	it('seals to ALL recipients — either private key opens it (D2)', async () => {
+	it('seals to ALL recipients — either private key opens it', async () => {
 		const r1 = await generateTestKeypair('bob@b.instance.test');
 		const r2 = await generateTestKeypair('carol@c.instance.test');
 		const sender = await generateTestKeypair('alice@a.instance.test');

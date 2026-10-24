@@ -27,7 +27,7 @@ rather than three unrelated demos.
   Contribution Reference agree with the code. Most buckets carry one module; a
   bucket that carries two (`sendTransports`, whose contributions may declare a
   feedback `webhook`) is asked about each separately.
-- **`pluginWebhookSeam.test.ts`** — the send-transport feedback webhook (D6) from
+- **`pluginWebhookSeam.test.ts`** — the send-transport feedback webhook from
   manifest to generated artifact: the declared signature contract, its replay
   provisions and the opt-in raw-payload flag reach the host unchanged; the parse
   half is imported into the isolate runtime while the send half stays in Node;
@@ -35,7 +35,7 @@ rather than three unrelated demos.
   provisions, an unbounded tolerance, a secret outside the plugin namespace — is
   refused at validation, so it never becomes an artifact at all.
 - **`pluginTransportParity.test.ts`** — the send transport's CAPABILITY contract
-  (D4) over the same chain: the configuration variables, the capability fields
+  over the same chain: the configuration variables, the capability fields
   and the derived `hasProviderFeedback` reach the generated catalog exactly as
   declared, a transport written against the older contract composes unchanged,
   and a declaration the host could not honour — a credential outside the plugin

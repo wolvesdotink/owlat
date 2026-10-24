@@ -146,7 +146,7 @@ describe('deriveQuarantineReason', () => {
 		);
 	});
 
-	it('says when the model guard was skipped (D13), beside what did fire', () => {
+	it('says when the model guard was skipped, beside what did fire', () => {
 		const reason = deriveQuarantineReason({
 			injectionDetected: false,
 			spamScore: 0,

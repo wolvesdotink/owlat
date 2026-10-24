@@ -1,10 +1,10 @@
 /**
- * `adaptive_mix` — calibration slice sizing by phase (plan D8), and the
+ * `adaptive_mix` — calibration slice sizing by phase, and the
  * `isCalibration` flag reaching the assignment row.
  *
  * The slice is the ONLY input to the engagement-ratio gate, so its size is a
  * budget decision the controller depends on: too small and the gate never has
- * its minimum sample (D10), too large and warming quality is sacrificed for
+ * its minimum sample, too large and warming quality is sacrificed for
  * measurement it does not need once the share is high.
  */
 
@@ -36,7 +36,7 @@ describe('adaptive_mix — calibration slice sizing', () => {
 	});
 
 	it('is 0% after graduation, and 0% for any degenerate cell', () => {
-		// Graduation IS `s = 1` held (D9), so it needs no separate flag: a cell
+		// Graduation IS `s = 1` held, so it needs no separate flag: a cell
 		// whose two arms are the same arm has no comparison to randomize, and
 		// marking rows calibration there would hand the engagement-ratio gate a
 		// one-armed sample.
@@ -148,7 +148,7 @@ describe('adaptive_mix — assignment rows carry the calibration flag', () => {
 	});
 
 	it('never marks a row calibration when the deployment has no reference arm', async () => {
-		// The row-level D2 proof. With only the own MTA configured there is no
+		// The row-level absence proof. With only the own MTA configured there is no
 		// second arm to compare against: a `reference` decision still DISPATCHES
 		// on the MTA, so a row that recorded `isCalibration: true` would hand the
 		// engagement-ratio gate a one-armed sample — every "reference" member of

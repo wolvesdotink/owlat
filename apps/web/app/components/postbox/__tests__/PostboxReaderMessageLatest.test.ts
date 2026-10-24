@@ -1,6 +1,6 @@
 /**
  * A collapsed message in a personal thread reads its own "Latest update"
- * sentence instead of the raw snippet (SPEC §7, plan §4.2), under the same
+ * sentence instead of the raw snippet, under the same
  * `signedOnly` gate as the snippet: a clearsigned message shows neither. A
  * cited message is marked and hands its quote to the body.
  */

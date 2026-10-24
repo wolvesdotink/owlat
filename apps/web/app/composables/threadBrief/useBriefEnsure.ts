@@ -13,7 +13,7 @@
  * limit, a failed call) is retried after a growing pause, and AI turning on
  * later asks again.
  *
- * D10: a personal thread can hold messages whose reading waited for this open
+ * A personal thread can hold messages whose reading waited for this open
  * (`deferredSources` > 0). Those are asked for whatever the thread's history
  * says, also on a thread read through before, and an accepted ask is not
  * counted against the refusal bound (every new deferred message is a new
@@ -32,7 +32,7 @@ type ThreadRefArg =
 /** Asks per thread and tab, and the first pause before retrying a refusal. */
 export const ENSURE_MAX_TRIES = 5;
 export const ENSURE_RETRY_MS = 30_000;
-/** D10: the pause before asking again after `running`, and how often per thread and tab. */
+/** The pause before asking again after `running`, and how often per thread and tab. */
 export const ENSURE_RUNNING_RECHECK_MS = 10_000;
 export const ENSURE_MAX_RUNNING_RECHECKS = 30;
 
@@ -58,7 +58,7 @@ export function useBriefEnsure(opts: {
 	completeness: () => string | undefined;
 	/** The view's history progress (`brief.get` `history`). */
 	history?: () => 'running' | 'stalled' | undefined;
-	/** D10: messages waiting for this open (`brief.get` `deferredSources`). */
+	/** Messages waiting for this open (`brief.get` `deferredSources`). */
 	deferredSources?: () => number | undefined;
 }) {
 	const { t } = useI18n();
@@ -77,7 +77,7 @@ export function useBriefEnsure(opts: {
 		clearTimeout(timer);
 	});
 
-	/** Whether this thread holds messages whose reading waits for the open (D10). */
+	/** Whether this thread holds messages whose reading waits for the open. */
 	const hasDeferred = (ref: ThreadRefArg) =>
 		ref.kind === 'mail' && (opts.deferredSources?.() ?? 0) > 0;
 
@@ -95,7 +95,7 @@ export function useBriefEnsure(opts: {
 		inFlight.delete(key);
 		if (isDisposed) return;
 		const result = res.ok ? (res.result as { isEnqueued: boolean; reason?: string }) : null;
-		// D10: taken, or a run already in flight. Neither is a refusal.
+		// Taken, or a run already in flight. Neither is a refusal.
 		if (isDeferredAsk && result && (result.isEnqueued || result.reason === 'running')) {
 			if (!result.isEnqueued) recheckWhileRunning(key);
 			return;

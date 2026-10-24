@@ -1,5 +1,5 @@
 /**
- * Read on arrival, learning without asking (SPEC §4.3): the two signals the
+ * Read on arrival, learning without asking: the two signals the
  * learning listens to, recorded where they happen.
  *
  *   - **Unread archives.** The human archive mutations (`messageActions.archive`,
@@ -192,8 +192,8 @@ export async function recordUnreadArchives(
 /**
  * Our own reply went out (synced or appended Sent copy, or an Owlat reply its
  * transport accepted): a To recipient whose digest status was LEARNED goes
- * back to the default (SPEC §4.3 reply reversal), as its own operation. A
- * `user` status stays. The thread's cold-pitch verdict is cleared (#1381). A
+ * back to the default (a reply reverses it), as its own operation. A
+ * `user` status stays. The thread's cold-pitch verdict is cleared. A
  * Sent copy from another client also records its recipients as people the
  * owner wrote to, as an Owlat send does on its own path
  * (`correspondence.ts`). Cheap for inbound mail: one folder read.

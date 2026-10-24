@@ -36,7 +36,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 			activeOrganizationId: 'org-a',
 			role: sess.user.role,
 		})),
-		// The D7 apply path persists through `inbox.mutations.editDraft`
+		// The revision apply path persists through `inbox.mutations.editDraft`
 		// (adminMutation), whose floor resolves via requireAdminContext.
 		requireAdminContext: vi.fn(async () => sess.user),
 	};
@@ -256,7 +256,7 @@ describe('reviseDraft — streaming', () => {
 		expect(buffer?.errorMessage).toContain('model exploded');
 	});
 
-	it('applying the revised text persists as a draft REVISION — agent original preserved, no feedback (D7)', async () => {
+	it('applying the revised text persists as a draft REVISION — agent original preserved, no feedback', async () => {
 		const t = await makeT();
 		await enableFeatures(t, ['ai']);
 
@@ -297,7 +297,7 @@ describe('reviseDraft — streaming', () => {
 		expect(res.status).toBe('complete');
 
 		// The AiReviseBox apply persists through editDraft — revision-appending,
-		// never an in-place overwrite (D7): the agent original survives as
+		// never an in-place overwrite: the agent original survives as
 		// revision 0 and NO autonomy feedback fires at save time (the 'edited'
 		// signal is approve-time-only).
 		await t.mutation(api.inbox.mutations.editDraft, {

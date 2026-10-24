@@ -1,5 +1,5 @@
 /**
- * Resolved-action validation at every filter save boundary (SPEC §6.1, §6.2):
+ * Resolved-action validation at every filter save boundary:
  * plain-language, Fix and AI rules are restrict-only, never file into Trash,
  * Spam, Sent or Drafts, wait 1–720 hours, never match headers and, with an AI
  * condition, never stop processing. Manual filters keep today's set, minus the

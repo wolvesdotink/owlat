@@ -1,5 +1,5 @@
 /**
- * Answer mode's responsive layout, as pure rules (plan §08).
+ * Answer mode's responsive layout, as pure rules.
  *
  * Three layouts by width:
  *   - `split` from 1100px: conversation and composer side by side;

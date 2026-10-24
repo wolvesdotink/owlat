@@ -1,5 +1,5 @@
 /**
- * Sender-wide re-sorts within Convex transaction limits (SPEC §16).
+ * Sender-wide re-sorts within Convex transaction limits.
  *
  * A sender's status or override is an input of every one of its threads'
  * projections. Recomputing all of its newest ≤200 Inbox threads in the

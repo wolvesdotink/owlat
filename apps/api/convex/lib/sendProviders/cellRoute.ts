@@ -101,7 +101,7 @@ export interface CellRouteOutcome {
  * at most once per destination provider for the life of the prepared resolver
  * and memoized, so calling this per recipient costs pure computation and no
  * additional reads — the `O(distinct providers)` read bound the batch callers
- * depend on (D16) is preserved even though the decision is now per recipient.
+ * depend on is preserved even though the decision is now per recipient.
  */
 export type CellMixResolver = (
 	destinationProvider: DestinationProviderKey,
@@ -171,7 +171,7 @@ export async function prepareCellMixResolver(
 			? {
 					kind: 'decide',
 					input: {
-						// D1's resolution expression, owned by one helper next to
+						// The share resolution expression, owned by one helper next to
 						// `loadRouteStateCell` so this site and the dispatch-time
 						// replay in `route.ts` can never drift apart.
 						cell: mixCellStateFor(providerCell),

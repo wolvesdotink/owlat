@@ -1,7 +1,7 @@
 /**
  * EVERY TRANSPORT OUTCOME EVENT HAS A PRODUCTION WRITER.
  *
- * Three counters in plan D5 shipped with readers and no emitter, because each
+ * A counter can ship with readers and no emitter, because each
  * layer's tests fabricate the layer below. This reads the SOURCE and builds the
  * set of events production can emit, by two routes: literally
  * (`transportOutcomeEffect(ref, 'delivered', at)`) and through the transition

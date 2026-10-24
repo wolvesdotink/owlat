@@ -1,5 +1,5 @@
 /**
- * Follow-up nudges (SPEC §7): a "Waiting on others" item that went stale
+ * Follow-up nudges: a "Waiting on others" item that went stale
  * shows in the Answer queue as a follow-up card offering "Draft a nudge".
  *
  * Derived when the Answer queue list is read (`needsReply.listQueue`), from

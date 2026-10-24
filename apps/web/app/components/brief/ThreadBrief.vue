@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The Overview of a personal Postbox thread (SPEC §7, plan §4.1): what is new,
+ * The Overview of a personal Postbox thread: what is new,
  * where things stand, what is asked of you, what you are waiting for, and
  * what was done. It is the thread's one summary, in the reader and in Answer
  * mode.
@@ -10,7 +10,7 @@
  * read the thread's senders through `sourceOf`.
  *
  * On a phone (`compact`, or a narrow viewport when unset) "Latest update" and
- * the items come first and the rest folds into one disclosure (plan §7).
+ * the items come first and the rest folds into one disclosure.
  *
  * `selectable` (Answer mode) turns the item rings into checkboxes, bound with
  * `v-model:selected`: the items the reply should cover.
@@ -88,7 +88,7 @@ provide(BRIEF_CONTEXT, {
 
 /**
  * `pending` means nothing of the thread is recorded yet (a first read, or mail
- * whose reading waited for this open, D10): the banner says it is being read,
+ * whose reading waited for this open): the banner says it is being read,
  * and the sections show their loading shape until the brief fills in.
  */
 const isReading = computed(() => props.brief?.completeness === 'pending');

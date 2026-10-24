@@ -22,6 +22,7 @@ const {
 	messages,
 	messagesError,
 	refetchMessages,
+	promptHistory,
 	activeConversation,
 	streaming,
 	selectConversation,
@@ -393,6 +394,8 @@ const cancelRename = () => {
 					ref="composerRef"
 					:send="sendQuestion"
 					draft-target="assistant"
+					:prompt-history="promptHistory"
+					:history-key="activeId"
 					:streaming="streaming"
 					@stop="stop"
 				/>

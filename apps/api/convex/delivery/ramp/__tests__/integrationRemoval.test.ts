@@ -1,11 +1,11 @@
 /**
- * THE ACCEPTANCE TEST (plan D2, D3, D14).
+ * THE ACCEPTANCE TEST.
  *
  * Removing a previously-connected integration must:
  *   1. make the affected gate fall back to its SUBSTITUTE within ONE window,
  *   2. drop the cell's confidence, NAMING the integration that would restore it
  *      — through the fold's own `confidence` and `absent` list, which are what
- *      the tick records (`absentIntegrations`, plan D12) and what
+ *      the tick records (`absentIntegrations`) and what
  *      `controllerNarrative` reads the operator sentence off,
  *   3. and CONTINUE THE RAMP AT REDUCED SPEED rather than halting.
  *
@@ -91,8 +91,8 @@ describe('removing a connected integration degrades within one window', () => {
 
 describe('the confidence drop names the integration that would restore it', () => {
 	// ASKED OF THE RESOLUTION, which is the only thing production reads. A
-	// `rampCellConfidence` projection used to answer this; it rendered nowhere and
-	// went under D20 (issue #515). The facts it projected are all still here — the
+	// projection would answer this, but it would render nowhere, so there is none.
+	// The facts it would project are all still here — the
 	// fold's `confidence`, and the `absent` list the tick records and the narrative
 	// names — so the acceptance criterion is asserted against the surface the
 	// controller actually acts on rather than against a second copy of it.
@@ -249,7 +249,7 @@ describe('the deployment itself degrades within one window', () => {
 		const after = await confidenceNow();
 		expect(after.confidence).toBe('low');
 		expect(after.absent.map((entry) => entry.integration)).toContain('reference_transport');
-		// An OFFER, not a warning: the resolution stays non-blocking throughout (D2).
+		// An OFFER, not a warning: the resolution stays non-blocking throughout.
 		expect(after.isBlocking).toBe(false);
 	});
 });

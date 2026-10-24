@@ -19,7 +19,7 @@ const pinnedList = computed<Visualization[]>(() => {
 });
 
 const firstVisualization = computed(() => pinnedList.value[0] ?? null);
-// Generation refused for budget (D1): said in the reader's language, not the page.
+// Generation refused for budget: said in the reader's language, not the page.
 const isFirstBudgetRefused = computed(
 	() => budgetRefusalReason(firstVisualization.value?.budgetRefusal) !== null
 );

@@ -193,7 +193,7 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 	const admin = await collectAdmin();
 	if (!admin) return 1;
 
-	// Step 7: domain + DKIM — the own arm (D3), asked through the catalog rather
+	// Step 7: domain + DKIM — the own arm, asked through the catalog rather
 	// than spelled again, or a sending install that has not picked one yet.
 	const chosenProvider = envPatch['EMAIL_PROVIDER'];
 	if (isOwnSendProviderKind(chosenProvider) || (sendingEnabled && !chosenProvider)) {

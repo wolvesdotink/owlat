@@ -1,5 +1,5 @@
 /**
- * THE MULTI-DAY SEND PLAN (deliverability plan P3-7, D2, D14).
+ * THE MULTI-DAY SEND PLAN.
  *
  * A warming deployment with no relay to overflow to sends a large campaign over
  * several days: the walker takes only today's capacity slice, in engagement
@@ -190,7 +190,7 @@ describe('planTodaysSlice — a capacity change mid-plan', () => {
 	});
 });
 
-describe('planTodaysSlice — unmeasured capacity never withholds mail (D2)', () => {
+describe('planTodaysSlice — unmeasured capacity never withholds mail', () => {
 	it('imposes NO budget when there is no projection at all', () => {
 		const slice = planTodaysSlice({
 			state: NO_PLAN,

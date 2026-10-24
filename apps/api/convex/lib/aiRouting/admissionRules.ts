@@ -12,7 +12,7 @@
  * with `used` = settled + held across every plane and class:
  *
  * 1. Total: `used + microusd` stays within the ceiling. Every class.
- * 2. Triage allowance (D1): `triageAllowanceFraction` of the ceiling is held
+ * 2. Triage allowance: `triageAllowanceFraction` of the ceiling is held
  *    back for paid guard and classify calls (class `triage`). Other classes
  *    may not eat into the part of it triage has not used yet; triage itself
  *    may use any headroom that remains.
@@ -23,7 +23,7 @@
  *    fixed share of the ceiling, so a decision outage or a paid re-embed
  *    cannot consume the writer's budget. The language plane has no share of
  *    its own: it may use whatever the other rules leave.
- * 5. Shadow (D4): class `shadow` draws only on the shadow allowance of the
+ * 5. Shadow: class `shadow` draws only on the shadow allowance of the
  *    day (`shadowAllowanceUsd`), which is zero unless a switch is shadowed and
  *    a daily ceiling or a finite `shadowCapUsd` bounds it. The allowance
  *    applies with or without a ceiling.
@@ -61,7 +61,7 @@ export interface AdmissionLimits {
 	readonly monthlyCeilingMicrousd: number;
 	readonly triageAllowanceFraction: number;
 	readonly advisoryReserveFraction: number;
-	/** The day's shadow allowance (D4) in micro-USD; 0 ⇒ shadow traffic is refused. */
+	/** The day's shadow allowance in micro-USD; 0 ⇒ shadow traffic is refused. */
 	readonly shadowAllowanceMicrousd: number;
 }
 

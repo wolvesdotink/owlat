@@ -1,5 +1,5 @@
 /**
- * THE OBSERVATION SEAM, AGAINST REAL ROWS (plan D2, D3, D12).
+ * THE OBSERVATION SEAM, AGAINST REAL ROWS.
  *
  * `delivery/ramp/` is pure and its suites inject presence maps and evidence
  * objects. That leaves one thing uncovered and it is the thing this piece is
@@ -475,7 +475,7 @@ describe('the promotion-evidence reader', () => {
 	 * AND THE HOLD HAS AN EXIT. A deployment whose warm-up overflow routes to a
 	 * relay never defers at all: with no exit, `null` here would be permanent and
 	 * the standalone promotion route could never be satisfied, which is exactly
-	 * what plan D2 forbids an absent signal from doing.
+	 * what an absent signal must never do.
 	 */
 	it('reads a long observed zero as a reading once the arm’s traffic spans the observation minimum', async () => {
 		const t = convexTest(schema, modules);
@@ -542,7 +542,7 @@ describe('the promotion-evidence reader', () => {
 	});
 
 	/**
-	 * A LEGACY ROW MUST NOT BE PERMANENTLY UNPROMOTABLE (plan D2). Rows that
+	 * A LEGACY ROW MUST NOT BE PERMANENTLY UNPROMOTABLE. Rows that
 	 * reached their rung before the dwell anchor existed carry none, and for a
 	 * provider with no external promotion route the dwell is one of the only four
 	 * conditions there are.

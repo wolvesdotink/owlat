@@ -410,7 +410,7 @@
 		},
 		"assistant": {
 			"assistantComposer": {
-				"hint": "Enter to send · Shift+Enter for newline · the assistant can search your workspace and draft copy",
+				"hint": "Enter to send · Shift+Enter for newline · ↑ for your previous question · the assistant can search your workspace and draft copy",
 				"label": "Question for the assistant",
 				"placeholder": "Ask the assistant anything…",
 				"sendFailed": "Couldn't send. Your question is still here.",
@@ -1813,8 +1813,10 @@
 			},
 			"chatInput": {
 				"attachFile": "Attach file",
-				"hint": "Enter to send · Shift+Enter for newline · {'@'} to mention · paste or attach files",
+				"hint": "Enter to send · Shift+Enter for newline · ↑ to edit your last message · {'@'} to mention · paste or attach files",
 				"placeholder": "Type a message… use {'@'} to mention",
+				"recallNotInHistory": "None of the messages shown here is yours to edit.",
+				"recallNotLoaded": "None of the recent messages is yours to edit. Load earlier messages to look further back.",
 				"removeAttachment": "Remove attachment {filename}"
 			},
 			"chatLinkEmailDialog": {
@@ -6251,6 +6253,7 @@
 					"global": "Everywhere",
 					"postbox": "Mail",
 					"composer": "Writing a message",
+					"chatComposer": "Chat and assistant message boxes",
 					"inbox": "Team inbox threads",
 					"review": "Team inbox updates",
 					"workbench": "Workbench",
@@ -6805,6 +6808,7 @@
 			"updateProgress": {
 				"heading": "Updating to v{version}",
 				"restartNotice": "The web app may restart during the update. This page will reconnect automatically.",
+				"rollingBackNotice": "The update failed and is being rolled back to the snapshot taken before it. This can take several minutes.",
 				"stepFailed": "Failed",
 				"steps": {
 					"convexDeploy": "Deploy backend functions",
@@ -16812,6 +16816,8 @@
 				"previousQueueItem": "Previous item in the Answer queue",
 				"nextQueueItem": "Next item in the Answer queue",
 				"savedReplies": "Insert a saved reply",
+				"recallLastMessage": "In an empty message box: edit your last chat message, or bring back your previous question to the assistant",
+				"recallNewerQuestion": "Assistant: step forward to a newer question (past the newest, back to an empty box)",
 				"writeNote": "Write an internal note (Team inbox threads)",
 				"openSettings": "Open settings",
 				"openAssistant": "Open the assistant",

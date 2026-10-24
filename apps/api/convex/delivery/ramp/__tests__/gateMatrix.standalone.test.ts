@@ -1,5 +1,5 @@
 /**
- * THE MATRIX PROOF (plan D2, D3).
+ * THE MATRIX PROOF.
  *
  * THE STANDALONE LEG IS REALLY STANDALONE. A leg that is silently handed a
  * reference arm reports green while proving nothing — the exact failure mode
@@ -72,7 +72,7 @@ describe(`the ${MODE} leg`, () => {
 	});
 
 	it('makes the mode load-bearing for EVERY fixture, not just this suite', () => {
-		// The whole point of the second leg (plan D3). The builders every suite in
+		// The whole point of the second leg. The builders every suite in
 		// this directory uses consult the mode themselves, so a case anywhere that
 		// reaches for a reference arm to make something pass fails the standalone
 		// leg — rather than rebuilding the same two-armed cell in both legs and

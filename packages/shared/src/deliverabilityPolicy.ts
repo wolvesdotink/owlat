@@ -77,7 +77,7 @@ type CheckedInProfileKey = Exclude<DestinationProviderKey, 'other'> | '__default
 /**
  * Checked-in startup defaults; runtime operator overrides remain authoritative.
  *
- * TOTAL OVER THE TAXONOMY (D8), in BOTH directions. The explicit type argument
+ * TOTAL OVER THE TAXONOMY, in BOTH directions. The explicit type argument
  * on `Object.freeze` is what makes the object literal below checked against
  * `CheckedInProfileKey` while it is still fresh, so a MISSING row and a STALE
  * row are each a build failure: add a key to `DESTINATION_PROVIDER_KEYS` and

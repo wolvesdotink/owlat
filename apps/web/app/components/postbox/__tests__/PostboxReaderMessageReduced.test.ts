@@ -1,5 +1,5 @@
 /**
- * The message card's reduced cut, for Answer mode (plan §09):
+ * The message card's reduced cut, for Answer mode:
  *   - no Star / Reply / Reply all / Forward / ⋯ row (you are already replying);
  *   - the trust chip only when something is off (verified is the quiet default);
  *   - To/Cc, the unsubscribe chip and the message details behind a click on

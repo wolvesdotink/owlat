@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * The Workbench band "To do, no reply needed" (plan §7 "Queues and the
- * Workbench"): mail that needs no answer but still owes something, such as an
+ * The Workbench band "To do, no reply needed": mail that needs no answer but still owes something, such as an
  * invoice to pay or a domain to renew. One row per thread, its first open
  * item in due order, read from the thread brief (mail/interpret/todo.ts). A
  * row opens the thread on its Overview.

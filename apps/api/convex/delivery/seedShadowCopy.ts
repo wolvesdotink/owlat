@@ -1,5 +1,5 @@
 /**
- * Seed shadow copy — the SEND half of the seed-placement probe (D18).
+ * Seed shadow copy — the SEND half of the seed-placement probe.
  *
  * A shadow copy goes to an operator-owned seed mailbox through the IDENTICAL
  * composer and the IDENTICAL transport as the real send it mirrors: it is
@@ -17,7 +17,7 @@
  *   2. `contactId` and `emailSendId` are STRIPPED. `emailSendId` is what makes
  *      a Send countable: without it there is no `emailSends` row, no workpool
  *      `onComplete` -> no Send lifecycle -> no campaign stat-shard bump and no
- *      `sendingReputation` event. That is the D18 exclusion, enforced by
+ *      `sendingReputation` event. That is the seed-probe exclusion from every denominator, enforced by
  *      construction rather than by a filter somewhere downstream. Dropping
  *      `contactId` additionally keeps a real subscriber's unsubscribe HMAC out
  *      of a mailbox that is not theirs — the probe carries a PROBE-SCOPED
@@ -52,7 +52,7 @@
  *      subscriber's own name.
  *   d. The `X-Owlat-Seed-Probe` header is added.
  *
- * D2: zero seed mailboxes is a supported configuration. With an empty seed
+ * Zero seed mailboxes is a supported configuration. With an empty seed
  * list this enqueues nothing and reports `{ enqueued: 0 }`; it never throws
  * and never affects the real send.
  */

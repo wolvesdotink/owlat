@@ -2,7 +2,7 @@
  * A Postbox interpretation source's place in its thread, as one sortable
  * string (`interpretSources.sourceOrderKey`): the message's arrival time, then
  * its creation time, both fixed-width, so string order is thread order. The
- * D10 index (`by_mail_thread_deferred_order`) reads the oldest deferred
+ * deferral index (`by_mail_thread_deferred_order`) reads the oldest deferred
  * predecessor and the newest deferred source with one `first()` each
  * (`defer.ts`). Pure.
  */

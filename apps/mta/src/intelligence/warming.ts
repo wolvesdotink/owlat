@@ -389,12 +389,12 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 	// that cascade would cost this IP its entire UTC day of schedule progress —
 	// including the critical HALT branch — with no retry. The additive dimension
 	// therefore runs after the authoritative schedule is durable, and its failure
-	// is logged and swallowed (D1/D19: the shipped path is untouched by the
+	// is logged and swallowed (the base schedule is untouched by the
 	// additive one).
 	//
 	// The window is YESTERDAY, not `today`: the guard above arms at the FIRST
 	// hourly tick with any traffic, so `today` is a minutes-old partial window
-	// that keeps every provider below `minimumSampleSends` (D10 =>
+	// that keeps every provider below `minimumSampleSends` (=>
 	// `insufficient_data`, which HOLDS) and whose daily `pressure` counter is
 	// still almost entirely in the future. The completed previous UTC day is a
 	// whole window and is still live under PROVIDER_DAILY_STATS_TTL_SECONDS (48h).

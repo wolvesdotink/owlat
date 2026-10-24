@@ -8,7 +8,7 @@
  *                          modified, so verification MUST fail
  *   - protected-headers.eml PGP/MIME multipart/encrypted; decrypts to an inner
  *                          MIME part whose Subject is the real one (outer Subject
- *                          stays the literal "..." per locked decision D4)
+ *                          stays the literal "...", protected headers)
  *
  * The throwaway test keys (alice/bob, public + private) are committed alongside
  * so verification/decryption is reproducible. They protect nothing — regenerate
@@ -146,7 +146,7 @@ async function main() {
 	]);
 
 	// --- protected-headers.eml ---------------------------------------------
-	// Real subject travels inside the encrypted part; outer Subject is "..." (D4).
+	// Real subject travels inside the encrypted part; outer Subject is "...".
 	const innerPart = crlf([
 		'Content-Type: text/plain; charset=utf-8',
 		'Subject: Quarterly key rotation plan',

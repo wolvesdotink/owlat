@@ -54,7 +54,7 @@ describe('adaptive_mix — split matrix', () => {
 		else expect(Math.abs(realised - ownShare)).toBeLessThan(0.01);
 	});
 
-	// THE SAME MATRIX ON THE STRATIFIED PATH. Stratification is the D8 default in
+	// THE SAME MATRIX ON THE STRATIFIED PATH. Stratification is the default in
 	// production, so a matrix that only exercises the random-bucket branch
 	// asserts nothing about how the share is realised for real traffic — and the
 	// tied cohorts below are the distributions where getting it wrong pushes
@@ -313,7 +313,7 @@ describe('adaptive_mix — multi-cell split matrix (skewed cells)', () => {
 });
 
 /**
- * MANDRILL AS THE REFERENCE ARM (P1.3, plan D8).
+ * MANDRILL AS THE REFERENCE ARM.
  *
  * The migration this plan exists for is `adaptive_mix` over `[mta, mandrill]`:
  * the cell starts at `ownShare = 0` (everything still leaving through the

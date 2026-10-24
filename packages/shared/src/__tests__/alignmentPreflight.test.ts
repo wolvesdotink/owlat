@@ -4,7 +4,7 @@
  *
  * The failure cases come from the SHARED four-check table in
  * `alignmentFixtures.ts`, which `alignmentSingleArm.test.ts` re-runs verbatim
- * with no reference arm. One table, two suites — the D2 proof cannot drift from
+ * with no reference arm. One table, two suites — the absence proof cannot drift from
  * the real cases.
  */
 

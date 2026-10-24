@@ -1,5 +1,5 @@
 /**
- * P4.2 / D8 — ONE destination taxonomy: every consumer agrees on the key.
+ * ONE destination taxonomy: every consumer agrees on the key.
  *
  * The taxonomy is declared once, in `@owlat/shared/deliverabilityRouting`. The
  * MTA used to re-declare the union in `types.ts` and the key list in

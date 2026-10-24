@@ -1,6 +1,5 @@
 /**
- * Thread activity for what people do to a thread (SPEC §5 "Activity
- * writers"), appended in the transaction of the change through
+ * Thread activity for what people do to a thread, appended in the transaction of the change through
  * `appendActivity`. The host mutations call one line each, so files near the
  * size cap stay small:
  *

@@ -22,6 +22,7 @@ export const SHORTCUT_SCOPE_ORDER: readonly ShortcutScope[] = [
 	'global',
 	'postbox',
 	'composer',
+	'chatComposer',
 	'inbox',
 	'inboxList',
 	'review',
@@ -60,6 +61,8 @@ export function isShortcutScopeAvailable(scope: ShortcutScope, env: SettingsEnvi
 			return env.isFeatureEnabled('inbox');
 		case 'mentionCard':
 			return env.isFeatureEnabled('chat');
+		case 'chatComposer':
+			return env.isFeatureEnabled('chat') || env.isFeatureEnabled('ai.assistant');
 		case 'workspace':
 			return env.isDesktop;
 		default:
@@ -71,6 +74,8 @@ export function isShortcutScopeAvailable(scope: ShortcutScope, env: SettingsEnvi
 const ENTRY_GATES: Readonly<Record<string, (env: SettingsEnvironment) => boolean>> = {
 	'global.assistant': (env) => env.isFeatureEnabled('ai.assistant'),
 	'global.ask': (env) => env.isFeatureEnabled('ai.knowledge'),
+	// Only the Assistant steps forward through its questions; Chat has no ↓.
+	'chatComposer.recallNewer': (env) => env.isFeatureEnabled('ai.assistant'),
 };
 
 /**

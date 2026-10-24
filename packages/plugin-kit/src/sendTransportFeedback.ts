@@ -1,5 +1,5 @@
 /**
- * The FEEDBACK half of a bundled send transport (the seams plan's D6): the event
+ * The FEEDBACK half of a bundled send transport: the event
  * vocabulary a plugin's webhook module may report, the two limits one delivery is
  * bound by, and the parse-only module contract itself.
  *

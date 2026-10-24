@@ -192,7 +192,7 @@ export function throwAskSessionClaimed(): never {
 }
 
 /**
- * Drop every ask session of a draft, and its response plan (SPEC §6): the
+ * Drop every ask session of a draft, and its response plan: the
  * draft's Answer mode state goes with the draft (discard, send, teardown).
  */
 export async function deleteAskSessionsForDraft(
@@ -286,7 +286,7 @@ async function isAiDraftedTarget(ctx: QueryCtx, target: AnswerAskTarget): Promis
 }
 
 /**
- * The send guard of plan §05: an Answer mode "draft with gaps" marks each
+ * The send guard: an Answer mode "draft with gaps" marks each
  * missing fact `[[...]]`, and sending one would ship the marker to the
  * recipient, so a send is refused (`DRAFT_HAS_GAPS`) until the person fills or
  * deletes it. Only a target the AI wrote into is checked (an ask session, or

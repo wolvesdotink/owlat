@@ -1,5 +1,5 @@
 /**
- * Read on arrival, Explain (SPEC §4.1): "Why here?" answers from the thread's
+ * Read on arrival, Explain: "Why here?" answers from the thread's
  * newest inbound arrival record.
  *
  * {@link forThread} returns what placed the thread where it is, recomputed

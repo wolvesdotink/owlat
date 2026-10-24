@@ -1,5 +1,5 @@
 /**
- * The Answer queue on Answer mode (plan §07):
+ * The Answer queue on Answer mode:
  *
  *   - opening the queue opens Answer mode on its first item (Postbox items on
  *     `m/<messageId>`, team drafts on `t/<threadId>`), with replaces only;

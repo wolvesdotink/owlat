@@ -9,7 +9,7 @@ import { applyEnvUpdates, validateFlagSnapshot } from '../security.js';
 /**
  * POST /apply-profiles — the updater as the SINGLE writer converging
  * COMPOSE_PROFILES in .env, the compose override and the CLI flag mirror from
- * one resolved flag snapshot (plan D3/G2). Exercises the trust boundary (the
+ * one resolved flag snapshot. Exercises the trust boundary (the
  * caller sends flags, never profiles), the hardened .env rewrite, and the
  * per-service health report.
  */
@@ -85,7 +85,7 @@ function dockerFixture(file: unknown, args: unknown): string {
 	if (cmd.startsWith('docker inspect')) {
 		return [
 			'ghcr.io/wolvesdotink/updater:0.5.0',
-			`/srv/owlat:${OWLAT_DIR}:rw `,
+			JSON.stringify([{ Type: 'bind', Source: '/srv/owlat', Destination: OWLAT_DIR, RW: true }]),
 			'owlat_default ',
 		].join('\n');
 	}

@@ -1,5 +1,5 @@
 /**
- * The counted draft offers (`mailDraftOfferUsage`, SPEC §7): one row per
+ * The counted draft offers (`mailDraftOfferUsage`): one row per
  * offered AI reply (an arrival slot or a clarification draft, keyed
  * `<threadId>:<owed messageId>`) whose outcome already counted toward its
  * sender's unused-draft streak (mail/draftPause.ts). No expiry: a row goes

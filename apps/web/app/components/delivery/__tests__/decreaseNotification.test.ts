@@ -1,6 +1,6 @@
 /**
  * AN AUTOMATIC DECREASE PRODUCES AN ADMIN NOTIFICATION NAMING THE GATE AND THE
- * REMEDY (plan D12).
+ * REMEDY.
  *
  * A controller that silently retreats will be experienced as a bug. The
  * notification is not a generic "something changed": it names the CHECK that

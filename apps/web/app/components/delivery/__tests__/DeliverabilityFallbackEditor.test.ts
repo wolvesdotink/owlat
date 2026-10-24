@@ -53,7 +53,7 @@ describe('DeliverabilityFallbackEditor relay eligibility', () => {
 		const wrapper = mountEditor();
 		await wrapper.vm.$nextTick();
 
-		// The capability the backend actually gates on (plan D6): configured, and
+		// The capability the backend actually gates on: configured, and
 		// not the arm the fallback moves traffic away from.
 		expect(optionValues(wrapper)).toEqual(['ses', 'resend', 'mandrill']);
 	});

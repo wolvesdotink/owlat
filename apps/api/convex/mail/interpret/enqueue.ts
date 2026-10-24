@@ -1,5 +1,5 @@
 /**
- * Where interpretation is enqueued (SPEC §5 "Postbox" and "Outbound"), in the
+ * Where interpretation is enqueued ("Outbound"), in the
  * transaction of the event that calls for it, which also marks the thread's
  * brief `pending` until the reducer lands.
  *
@@ -12,7 +12,7 @@
  *     pre-check is cheap and conservative (folder, mute); the run decides on
  *     the full signals, snapshotted here (`sources.captureInterpretSource`).
  *     A message whose only consumer is the reader display is deferred until
- *     the thread is opened instead (D10, `defer.ts`); the classify run makes
+ *     the thread is opened instead (`defer.ts`); the classify run makes
  *     the same call for a delivered message that is no reply candidate.
  *   - {@link enqueueSentInterpretation}: a send we made reached its recipient
  *     (Postbox transport `sent`, team Send finalized). Once per send: the
@@ -88,13 +88,13 @@ export async function enqueueDeliveredInterpretation(
 	if (!captured) return false;
 	if (!opts.isInterpretedByClassify) {
 		// No Reply Queue check was queued for it, so the reader display may be
-		// its only consumer: D10 defers it with read on arrival off, else its run
+		// its only consumer: it is deferred with read on arrival off, else its run
 		// reads it now at the depth it chooses (`mail/arrival/dispatch.ts`).
 		if ((await scheduleArrivalRead(ctx, message)) === 'deferred') return true;
 	}
-	// Read on arrival (SPEC §2.3.1): the per-message marker the run's depth
+	// Read on arrival: the per-message marker the run's depth
 	// decision waits on, cleared by this message's category write. Never on a
-	// source D10 deferred (Sol r1 F1).
+	// deferred source.
 	if (opts.isCategoryRefining) await stampCategoryPending(ctx, captured);
 	await markBriefPending(ctx, ref);
 	return true;

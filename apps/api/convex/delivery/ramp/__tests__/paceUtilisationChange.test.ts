@@ -1,5 +1,5 @@
 /**
- * THE ONE SANCTIONED BEHAVIOUR CHANGE, FIXTURE-PINNED (plan D19, P3-7).
+ * THE ONE SANCTIONED BEHAVIOUR CHANGE, FIXTURE-PINNED.
  *
  * EVERY other divergence from shipped behaviour in this plan is a defect. This
  * one is deliberate, and it is called out in the PR body that ships it.

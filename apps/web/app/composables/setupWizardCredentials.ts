@@ -1,5 +1,5 @@
 /**
- * THE TRANSPORT CREDENTIAL FORM, DERIVED — the seams plan's D5 ("a provider is a
+ * THE TRANSPORT CREDENTIAL FORM, DERIVED ("a provider is a
  * bundle; UI renders descriptors, it doesn't know providers").
  *
  * Every surface that collects sending credentials — the in-app transport editor,

@@ -533,7 +533,7 @@ describe('composition rendering', () => {
 	});
 
 	it('emits the feedback webhook as a data catalog plus an isolate-safe registry', () => {
-		// The seams plan's D6/P2.2. Two artifacts, for the same reason the send
+		// Two artifacts, for the same reason the send
 		// half has two: the catalog is read by the HTTP router (which must know the
 		// signature contract BEFORE it trusts a byte), the module registry carries
 		// the executable parse half.

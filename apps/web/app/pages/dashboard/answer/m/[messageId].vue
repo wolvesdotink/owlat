@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Answer mode for Postbox mail: one reply, the whole screen (plan §02).
+ * Answer mode for Postbox mail: one reply, the whole screen.
  *
  *   /dashboard/answer/m/<mailMessageId>?kind=reply|replyAll|forward&draft=<id>
  *
@@ -160,7 +160,7 @@ function onDraftId(id: string) {
 	});
 }
 
-// The response plan, "Draft with AI" and thread files (plan §03 to §06)
+// The response plan, "Draft with AI" and thread files
 const assist = useAnswerModeAssist({
 	message: () => message.value,
 	composer: () => composerRef.value?.answer ?? null,

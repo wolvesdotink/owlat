@@ -1,7 +1,7 @@
 /**
  * Yahoo CFL guided-enrollment state machine (P4-6).
  *
- * The pure decision core (D15): every state, the DKIM-domain precondition, the
+ * The pure decision core: every state, the DKIM-domain precondition, the
  * re-check, and the guided steps. Exhaustive — the correctness of the guided
  * flow lives here, not in the Convex shell.
  */
@@ -280,7 +280,7 @@ describe('a report is ground truth', () => {
 	it('never lets a report alone yield high-confidence complaint measurement', () => {
 		// The adversarial end-to-end: the crafted report is refused, so the derived
 		// state stays `not_started` and the substitution keeps the unsubscribe proxy
-		// with its confidence caveat (D14) instead of asserting direct measurement.
+		// with its confidence caveat instead of asserting direct measurement.
 		const forged = applyYahooCflEvent(
 			emptyYahooCflEnrollment(),
 			{ kind: 'report_observed', at: T0 },

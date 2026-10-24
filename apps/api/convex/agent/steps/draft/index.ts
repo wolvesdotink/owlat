@@ -240,7 +240,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			stanceGuidance = undefined;
 		}
 
-		// The response plan (SPEC §6): every open item of the thread the reply
+		// The response plan: every open item of the thread the reply
 		// should cover, each with its default stance. Fail-soft: no plan, no
 		// coverage — the item_coverage gate then objects.
 		const plan = await loadDraftPlan(ctx, input.inboundMessageId, message?.threadId);
@@ -252,7 +252,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// inbound message.
 		// The writer's route (./writerRoute.ts): today's single tier, or for a
 		// reviewed draft with the policy's switch on, the fast writer first and
-		// at most one escalation to the capable one (D2).
+		// at most one escalation to the capable one.
 		const route = await draftWriterRoute(ctx, {
 			category: safeCategory,
 			intent: safeIntent,

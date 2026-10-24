@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.2, §2.3, §2.6): the run's depth decision for a
+ * Read on arrival: the run's depth decision for a
  * Postbox arrival read, in one mutation once the run has scoped the message
  * (it brings the security-mail and exact-wording screens of the text).
  * Admission, the owner bucket and the category wait came first, before any
@@ -23,7 +23,7 @@
  * of a full read is read in full again when eager demand reaches it (Sol r1
  * F2): this same source turning eager, or a full-read prerequisite
  * (`fullRead.ts`). With the preference off a display-only source was
- * deferred at dispatch (D10); one that reaches a run anyway keeps today's
+ * deferred at dispatch; one that reaches a run anyway keeps today's
  * full read.
  *
  * Every settlement here and in {@link settleArrivalCount} is bound to the

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * A reply the team sent the customer, in the team stream (plan §4.3):
+ * A reply the team sent the customer, in the team stream:
  * outgoing, white with an arrow, "Mika → Ana". The text is what actually went
  * out (the Send's snapshot, or the follow-up's own text), and its state stays
  * visible: still sending, failed, or sent.

@@ -9,7 +9,7 @@
  *    cheap-tier slot extraction, then sampled candidate replies (cheap tier
  *    unless the dial is `cautious`) and a divergence judgment, so only a slot
  *    the samples disagree on is asked; or, when the routing policy enforces
- *    D5, one necessity judgment instead of the samples and the judgment;
+ *    the necessity judgment, one judgment instead of the samples and the judgment;
  *  - the deterministic safety filter (`sanitizeClarificationQuestions`,
  *    credential solicitations dropped, every question attributed to the email);
  *  - attachment-request detection and ranking (inbox/attachmentMatch.ts) over
@@ -84,9 +84,9 @@ export interface GapCheckInput {
 	/** The owner's own instruction; a slot it already answers is not asked. */
 	instruction?: string | undefined;
 	locale: string;
-	/** The thread's open items: each question names the item it fills (SPEC §6). */
+	/** The thread's open items: each question names the item it fills. */
 	slotItems?: readonly SlotItem<Id<'threadItems'>>[] | undefined;
-	/** The message being answered, the necessity judgment's subject (D5); absent for a fresh draft. */
+	/** The message being answered, the necessity judgment's subject; absent for a fresh draft. */
 	decisionSubject?: BundleSubject | undefined;
 }
 
@@ -112,7 +112,7 @@ export function attributionFor(counterpartAddress: string | undefined): Question
  * message; here it runs on every "Draft with AI" click, so the three samples
  * use the cheap tier the slot extraction uses. Only the `cautious` dial, which
  * asks for the most thorough check, pays for capable-tier samples. The judgment
- * stays capable. The necessity judgment (D5) is asked about the message being
+ * stays capable. The necessity judgment is asked about the message being
  * answered, under the Postbox `ai` gate, at interactive priority.
  */
 function answerClarifySurface(
@@ -138,7 +138,7 @@ function answerClarifySurface(
 		root,
 		masterGate: 'ai',
 		priority: 'interactive',
-		// A spend refusal is never a failed sample or judgment: it reaches the user (D1).
+		// A spend refusal is never a failed sample or judgment: it reaches the user.
 		onCallError: rethrowAdmissionRefusal,
 	};
 }
@@ -166,7 +166,7 @@ async function findOpenSlots(
 		const { judgment } = await judgeOpenSlots(ctx, surface, context, candidates);
 		return [...owed, ...keptSlots(judgment, candidates)];
 	} catch (error) {
-		// A budget refusal is shown to the user (D1); any other fault keeps the owed slots.
+		// A budget refusal is shown to the user; any other fault keeps the owed slots.
 		rethrowAdmissionRefusal(error);
 		return owed;
 	}

@@ -146,7 +146,7 @@ describe('warmingCapPhase', () => {
 	});
 
 	/**
-	 * D19: an attempt holding a live reservation already owns its per-IP slot.
+	 * An attempt holding a live reservation already owns its per-IP slot.
 	 * None of the three gates may take that slot back.
 	 */
 	it('never withholds an attempt that holds a live reservation', async () => {

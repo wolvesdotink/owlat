@@ -230,7 +230,7 @@ export const mailThreadsTables = {
 		// interpretation is not used anywhere until an operator lifts the fence.
 		// Human state on its items stays.
 		interpretationStaleSince: v.optional(v.number()),
-		// Read on arrival (SPEC §2.8, §6.5): the derived placement of the newest
+		// Read on arrival: the derived placement of the newest
 		// inbound message, rewritten only by `refreshArrivalProjection`; digest
 		// eligibility and the boundary the last sent digest consumed through (a
 		// sourceOrderKey); a Fix override and the undo ABA guard. Cleared when

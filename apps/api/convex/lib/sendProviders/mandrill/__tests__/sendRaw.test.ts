@@ -1,5 +1,5 @@
 /**
- * THE D3 REGRESSION TEST.
+ * THE MANDRILL SEND REGRESSION TEST.
  *
  * Owlat's composition pipeline is the product: first-party open/click tracking,
  * RFC 8058 one-click unsubscribe headers, `Feedback-ID`, `List-Id`, and a
@@ -84,7 +84,7 @@ describe('send-raw request shape', () => {
 		expect(lastBody()['key']).toBe('md-test-key');
 	});
 
-	it('sends async:true so a slow recipient domain cannot manufacture a D4 ambiguity', async () => {
+	it('sends async:true so a slow recipient domain cannot manufacture an ambiguous timeout', async () => {
 		await mandrillSendProvider.sendEmail(transport(), params);
 		expect(lastBody()['async']).toBe(true);
 	});
@@ -220,7 +220,7 @@ describe('subaccount / ip_pool / return_path_domain plumbing', () => {
 		expect(lastBody()['ip_pool']).toBe('Campaign Pool');
 	});
 
-	it('sends return_path_domain only when the probe verdict handed one over (D5)', async () => {
+	it('sends return_path_domain only when the probe verdict handed one over', async () => {
 		await mandrillSendProvider.sendEmail(transport(), params, {
 			returnPathDomain: 'bounces.acme.com',
 		});

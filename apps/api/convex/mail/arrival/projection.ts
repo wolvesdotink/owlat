@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.8): the thread's arrival projection.
+ * Read on arrival: the thread's arrival projection.
  *
  * `mailThreads.arrival = { placement, depth, messageId, sourceOrderKey,
  * decidedAt }` and `digestPendingSince` are DERIVED, never stored from an

@@ -1,5 +1,5 @@
 /**
- * The words of a team stream system line (plan §4.3): who did what to which
+ * The words of a team stream system line: who did what to which
  * action, from the activity row alone. Pure: the caller passes `t` and how to
  * name a teammate.
  */

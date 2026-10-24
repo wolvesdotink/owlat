@@ -1,6 +1,6 @@
 /**
  * Read on arrival: the `expiresAt` horizons of the arrival tables and the one
- * builder of an undo-log change row (SPEC §2.9, §4.4).
+ * builder of an undo-log change row.
  *
  * Every writer of `mailArrivalOperationChanges` builds its row here, so the
  * top-level `messageId` / `labelId` that a message purge and the erasure

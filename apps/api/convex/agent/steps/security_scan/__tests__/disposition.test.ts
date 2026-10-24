@@ -1,6 +1,6 @@
 /**
  * The security scan's pure decisions: the outcome
- * precedence, the D13 skip reasons, L5's switch, and the walker's "guard
+ * precedence, the guard skip reasons, L5's switch, and the walker's "guard
  * required" refusal.
  */
 

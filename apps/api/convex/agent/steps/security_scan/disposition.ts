@@ -3,7 +3,7 @@
  *
  *   - L1: a quarantine the deterministic layers already confirm needs no model
  *     guard call.
- *   - D13: the model guard is skipped only for mail archived on its spam score
+ *   - The model guard is skipped only for mail archived on its spam score
  *     (or, behind `mtaVerdictTerminal`, on the MTA's verdict) and for mail that
  *     arrives while the agent is off. Quarantine keeps precedence over both.
  *   - L5: the MTA's spam verdict ends the run only behind its switch.
@@ -59,7 +59,7 @@ export function isMtaVerdictTerminal(
 }
 
 /**
- * D13: why the model guard may be skipped, or `null` when it must run. Called
+ * Why the model guard may be skipped, or `null` when it must run. Called
  * only when no deterministic quarantine settled the message. Spam archive wins
  * over agent-off, mirroring the route order.
  */
@@ -115,7 +115,7 @@ export const GUARD_REQUIRED_ERROR =
 	'The injection guard has not run on this message; it must run before the agent continues.';
 
 /**
- * D13: a message whose scan skipped the model guard must not reach any step
+ * A message whose scan skipped the model guard must not reach any step
  * after the scan until the guard has run. Every pipeline start (a new message,
  * a retry, a quarantine release) re-enters at `security_scan`, which runs it,
  * so only a path that resumes mid-pipeline can be refused here; the walker then
@@ -123,7 +123,7 @@ export const GUARD_REQUIRED_ERROR =
  *
  * Only the recorded skip refuses. A message with no scan record at all
  * (`not_scanned`) cannot reach a later step in production, and its rows predate
- * D13 or were never meant for the agent; it is not treated as a skip.
+ * the guard-skip marker or were never meant for the agent; it is not treated as a skip.
  */
 export function guardBlocksStep(
 	message: { securityFlags?: Infer<typeof securityFlagsValidator> } | null,
@@ -139,11 +139,11 @@ export function guardBlocksStep(
  *   - `rejected`: the scan or a late guard already held it back: quarantined,
  *     malware, a malicious URL, or an injection at quarantine confidence. Keyed
  *     on the persisted status and flags, so it holds after a late guard has
- *     cleared the D13 marker and for a deterministic quarantine with no marker
- *     at all (#1339).
- *   - `needs_guard`: its scan skipped the model guard (D13); run it first.
+ *     cleared the guard-skip marker and for a deterministic quarantine with no marker
+ *     at all.
+ *   - `needs_guard`: its scan skipped the model guard; run it first.
  *   - `clear`: anything else, including a message never scanned (store-only
- *     mail), which these consumers read before D13 too.
+ *     mail), which these consumers read without a guard.
  */
 export type GuardStanding = 'rejected' | 'needs_guard' | 'clear';
 
@@ -178,7 +178,7 @@ export interface LateGuardVerdict {
  * Fold one late guard run into the stored scan of the SAME scan generation
  * (`scanTimestamp`, which a late guard keeps). Monotonic, so concurrent late
  * guards (extraction, interpretation, a briefing's history) can complete in
- * any order: the D13 marker goes, a flagged injection is added and never
+ * any order: the guard-skip marker goes, a flagged injection is added and never
  * removed by a benign result, `guardUnavailable` only ever turns on, and
  * nothing the scan recorded is weakened. Pure.
  */

@@ -410,7 +410,7 @@
 		},
 		"assistant": {
 			"assistantComposer": {
-				"hint": "Enter zum Senden · Umschalt+Enter für einen Zeilenumbruch · der Assistent kann deinen Workspace durchsuchen und Texte entwerfen",
+				"hint": "Enter zum Senden · Umschalt+Enter für einen Zeilenumbruch · ↑ für deine vorige Frage · der Assistent kann deinen Workspace durchsuchen und Texte entwerfen",
 				"label": "Frage an den Assistenten",
 				"placeholder": "Frage den Assistenten alles…",
 				"sendFailed": "Senden hat nicht geklappt. Deine Frage ist noch da.",
@@ -1813,8 +1813,10 @@
 			},
 			"chatInput": {
 				"attachFile": "Datei anhängen",
-				"hint": "Enter zum Senden · Shift+Enter für Zeilenumbruch · {'@'} zum Erwähnen · Dateien einfügen oder anhängen",
+				"hint": "Enter zum Senden · Shift+Enter für Zeilenumbruch · ↑ zum Bearbeiten deiner letzten Nachricht · {'@'} zum Erwähnen · Dateien einfügen oder anhängen",
 				"placeholder": "Nachricht schreiben… mit {'@'} erwähnen",
+				"recallNotInHistory": "Unter den hier angezeigten Nachrichten ist keine von dir, die du bearbeiten kannst.",
+				"recallNotLoaded": "Unter den letzten Nachrichten ist keine von dir, die du bearbeiten kannst. Lade frühere Nachrichten, um weiter zurückzugehen.",
 				"removeAttachment": "Anhang {filename} entfernen"
 			},
 			"chatLinkEmailDialog": {
@@ -6251,6 +6253,7 @@
 					"global": "Überall",
 					"postbox": "E-Mail",
 					"composer": "Beim Schreiben",
+					"chatComposer": "Eingabefelder in Chat und Assistent",
 					"inbox": "Threads im Team-Postfach",
 					"review": "Updates im Team-Postfach",
 					"workbench": "Werkbank",
@@ -6805,6 +6808,7 @@
 			"updateProgress": {
 				"heading": "Update auf v{version} läuft",
 				"restartNotice": "Die Web-App startet während des Updates möglicherweise neu. Diese Seite verbindet sich automatisch wieder.",
+				"rollingBackNotice": "Das Update ist fehlgeschlagen und wird auf den Snapshot von davor zurückgesetzt. Das kann einige Minuten dauern.",
 				"stepFailed": "Fehlgeschlagen",
 				"steps": {
 					"convexDeploy": "Backend-Funktionen bereitstellen",
@@ -16812,6 +16816,8 @@
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
 				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
 				"savedReplies": "Gespeicherte Antwort einfügen",
+				"recallLastMessage": "In einem leeren Eingabefeld: deine letzte Chat-Nachricht bearbeiten oder deine vorige Frage an den Assistenten zurückholen",
+				"recallNewerQuestion": "Assistent: zu einer neueren Frage weitergehen (nach der neuesten zurück zum leeren Feld)",
 				"writeNote": "Interne Notiz schreiben (Threads im Team-Postfach)",
 				"openSettings": "Einstellungen öffnen",
 				"openAssistant": "Assistenten öffnen",

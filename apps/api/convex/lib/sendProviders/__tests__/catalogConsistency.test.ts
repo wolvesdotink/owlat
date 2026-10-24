@@ -1,7 +1,7 @@
 /**
  * THE CATALOG'S JOINS, PINNED — the seams plan's P1.3.
  *
- * P1.1 made the catalog the single DECLARATION (D1). What it could not make
+ * P1.1 made the catalog the single DECLARATION. What it could not make
  * single is the set of things a declaration has to be JOINED to before it means
  * anything: a `requiredEnvVars` name is a promise that `lib/env.ts` can read that
  * variable and that the setup surfaces push it into the Convex function runtime;
@@ -64,7 +64,7 @@
  * sixth provider.
  *
  * SCOPE: THE CORE TIER, deliberately. A bundled plugin transport declares its
- * env keys in its manifest (the host asserts their presence — plan §4, the
+ * env keys in its manifest (the host asserts their presence — the
  * plugin column of the N+1 checklist), carries its own executable module through
  * the generated registry, and will receive its feedback on
  * `/webhooks/plugin/<pluginId>` once Wave 2's P2.2 ships. Holding the hosted

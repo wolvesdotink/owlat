@@ -142,7 +142,7 @@ describe('gate 2 — deferral (own <= 10%, >= 25% halts)', () => {
 		}
 	);
 
-	it('halts with no reference arm configured at all (plan D2)', () => {
+	it('halts with no reference arm configured at all', () => {
 		const result = evaluateDeferralGate(
 			input({ own: arm({ sent: 10_000, deferred: 2500 }), reference: null })
 		);
@@ -300,7 +300,7 @@ describeEquipped('gate 5 — seed placement (inbox >= 90% AND >= reference - 5pp
 		expect(result.measurement.referenceRate).toBeCloseTo(0.7, 10);
 	});
 
-	it('counts missing seeds in the denominator — missing is the loudest outcome (D17)', () => {
+	it('counts missing seeds in the denominator — missing is the loudest outcome', () => {
 		const result = evaluateSeedPlacementGate(
 			input({
 				own: armWith('hardBounced', 10_000, 0),

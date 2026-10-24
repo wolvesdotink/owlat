@@ -426,7 +426,7 @@ describe('Team Inbox items', () => {
 		expect((await get(t, us._id)).assigneeUserId).toBe('user-A');
 	});
 
-	it('defaults items to the thread assignee (D4), which a claim does not override', async () => {
+	it('defaults items to the thread assignee, which a claim does not override', async () => {
 		const t = harness();
 		const { us } = await teamSetup(t, { assignedTo: 'user-B' });
 		expect(us.assigneeUserId).toBe('user-B');

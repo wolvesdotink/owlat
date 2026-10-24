@@ -1,5 +1,5 @@
 /**
- * Read on arrival erasure (SPEC §0, §2.9): a purged message takes its arrival
+ * Read on arrival erasure: a purged message takes its arrival
  * rows, its unsent digest lines and a gist read from it along, through the
  * resumable `sources` purge job; a mailbox that becomes a team inbox keeps no
  * personal arrival state, and a reversed conversion stops the drain.

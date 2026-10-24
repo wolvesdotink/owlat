@@ -1,5 +1,5 @@
 /**
- * ONE FAILING CELL DOES NOT STOP THE RAMP (plan D2, D13).
+ * ONE FAILING CELL DOES NOT STOP THE RAMP.
  *
  * A Convex mutation is one transaction: a throw rolls back everything it wrote,
  * INCLUDING the continuation it schedules for the next slice. So without

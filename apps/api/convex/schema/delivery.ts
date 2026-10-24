@@ -256,7 +256,7 @@ export const deliveryTables = {
 			v.literal('single'), // Use one provider only
 			v.literal('priority_failover'), // Try providers in order, failover on error
 			v.literal('workload_split'), // Split traffic by weight across providers
-			v.literal('adaptive_mix') // Deterministic per-recipient split by the cell's share (D7)
+			v.literal('adaptive_mix') // Deterministic per-recipient split by the cell's share
 		),
 		// Ordered list of providers for this route
 		providers: v.array(

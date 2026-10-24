@@ -1,5 +1,5 @@
 /**
- * THE SUBSTITUTION TABLE, ASSERTED AS A TABLE (plan D3).
+ * THE SUBSTITUTION TABLE, ASSERTED AS A TABLE.
  *
  * One case per absent integration, each naming the substituted gate, the
  * tightened constants and the capped ceiling the plan specifies. Table-driven on
@@ -268,7 +268,7 @@ describe('the degradation matrix substitutes exactly what the plan says', () => 
 			it('caps the ceiling where the plan caps it, and NAMES what capped it', () => {
 				expect(degradedCeilingCap(degradation)).toBe(testCase.ceilingCap);
 				// The cap and its cause come from ONE fold: an audit row that states a
-				// cap must be able to say which absence produced it (plan D12).
+				// cap must be able to say which absence produced it.
 				const caps = degradation.ceilingPhaseDelta !== 0;
 				expect(degradation.ceilingCappedBy).toBe(caps ? testCase.integration : undefined);
 			});
@@ -287,7 +287,7 @@ describe('the degradation matrix substitutes exactly what the plan says', () => 
 				expect(degradation.actuator).toBe(testCase.actuator);
 			});
 
-			it('never blocks anything (plan D2)', () => {
+			it('never blocks anything', () => {
 				expect(degradation.isBlocking).toBe(false);
 				for (const entry of degradation.absent) expect(entry.isBlocking).toBe(false);
 			});

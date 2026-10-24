@@ -299,7 +299,7 @@ describe('replay, staleness and foreign IPs', () => {
 		});
 		// Every row the caller passed is accounted for in exactly one bucket, and
 		// none is silently dropped: batching is the caller's contract, and `poll` is
-		// the only caller. A second cap here would be a seam with no user (D20).
+		// the only caller. A second cap here would be a seam with no user.
 		expect(result.ingested + result.rejected + result.replayed).toBe(over);
 		expect(result.ingested).toBe(over);
 
@@ -340,7 +340,7 @@ describe('replay, staleness and foreign IPs', () => {
 // They take a couple of seconds locally, and more than the default timeout on
 // a loaded CI runner under coverage, so the block gets an explicit, generous one.
 describe('poll fan-out bounds', { timeout: 60_000 }, () => {
-	it('caps observations per poll and counts what the cap dropped (D16)', async () => {
+	it('caps observations per poll and counts what the cap dropped', async () => {
 		const t = convexTest(schema, modules);
 		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
 		// One row per address: more distinct (IP, day) pairs than one tick may

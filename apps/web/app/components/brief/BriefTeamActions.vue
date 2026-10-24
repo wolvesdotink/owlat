@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The actions of a shared (team) mailbox thread, for Answer mode (SPEC §7):
+ * The actions of a shared (team) mailbox thread, for Answer mode:
  * what is open for the team, what the other side owes, and what nobody owns
  * yet. Never a summary: no "Latest update", no "Where things stand"; the
  * originals stay the conversation beside it. The web-team lane replaces this

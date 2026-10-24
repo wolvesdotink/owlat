@@ -2,7 +2,7 @@
 /**
  * The honesty audit for the reader's ONE trust chip.
  *
- * Five indicators collapsed into one chip (plan §05), which is exactly the
+ * Five indicators collapsed into one chip, which is exactly the
  * change that could quietly start claiming more than was checked: a green chip
  * over an unauthenticated sender, or an amber signal swallowed because a louder
  * driver won the label. Every case below pins one condition to one outcome.

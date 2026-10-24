@@ -1,5 +1,5 @@
 /**
- * The brief's deterministic projection (SPEC §4 `brief.ts`), pure: already
+ * The brief's deterministic projection (`brief.ts`), pure: already
  * unsealed rows in, the `ThreadBriefView` out. `briefRead.ts` loads and opens
  * the rows; `brief.ts get` wires the two together.
  *
@@ -53,7 +53,7 @@ export interface ProjectionInput {
 	};
 	gap: { interpretedMessages: number; totalMessages: number; reason?: GapReason };
 	history?: 'running' | 'stalled';
-	/** D10: sources waiting for the thread to be opened (`defer.ts`). */
+	/** Sources waiting for the thread to be opened (`defer.ts`). */
 	deferredSources?: number;
 	/** The thread needs no reply: payment items offer "Mark paid" first. */
 	isNoReplyNeeded?: boolean;

@@ -1252,7 +1252,7 @@ describe('Campaign send walker — the multi-day send plan (P3-7)', () => {
 		expect(await countSends(t, data.campaignId)).toBe(6);
 	});
 
-	it('with NO warming state at all the walk is exactly the shipped single-day one (D2)', async () => {
+	it('with NO warming state at all the walk is exactly the shipped single-day one', async () => {
 		const t = convexTest(schema, modules);
 		const data = await setupWalker(t, 6);
 		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });

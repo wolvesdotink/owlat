@@ -1,5 +1,5 @@
 /**
- * Sender counters (SPEC §5): 13 calendar-week buckets per sender, labelled
+ * Sender counters: 13 calendar-week buckets per sender, labelled
  * "about 90 days" in the UI and never "90 days".
  *
  * Bucket 0 is the week that starts at `weekAnchor` (Monday 00:00 UTC), bucket

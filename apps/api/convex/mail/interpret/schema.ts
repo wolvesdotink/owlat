@@ -1,5 +1,5 @@
 /**
- * The interpretation call contract (SPEC §4): what `interpretMessage` hands the
+ * The interpretation call contract: what `interpretMessage` hands the
  * model and what the model must return. Isolate-safe (no `'use node'`, no
  * Convex context), shared by the Postbox and the Team Inbox.
  *

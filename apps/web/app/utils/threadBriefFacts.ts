@@ -1,5 +1,5 @@
 /**
- * "Where things stand" as rows (plan §4.1, §8): the current facts, each with
+ * "Where things stand" as rows: the current facts, each with
  * the value it replaced, and conflicting statements paired up. Pure.
  */
 import type { FactView } from '../../../api/convex/mail/interpret/briefShape';

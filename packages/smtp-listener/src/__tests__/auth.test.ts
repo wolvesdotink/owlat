@@ -1,7 +1,7 @@
 /**
  * AUTH: PLAIN/LOGIN, the no-oracle invariant, and the backend call pattern.
  *
- * The security-critical property is D6: EVERY AUTH failure — unsupported
+ * The security-critical property is no auth oracle: EVERY AUTH failure — unsupported
  * mechanism, malformed base64, client cancel, unknown user, wrong password —
  * produces a byte-identical `535 5.7.8` reply, so a probe cannot learn which
  * stage or which field was wrong. AUTH is refused before TLS, accepted after,
@@ -309,7 +309,7 @@ describe('performAuth unit — mechanism handling', () => {
 		});
 		// The rejection is caught, surfaced to onError, and downgraded to the same
 		// generic failure — never an unhandled rejection that drops the connection
-		// with no reply (D6: failures byte-identical regardless of cause).
+		// with no reply (failures are byte-identical regardless of cause).
 		expect(result).toBe('fail');
 		expect(session.authenticated).toBe(false);
 		expect(errors).toEqual([backendError]);

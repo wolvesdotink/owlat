@@ -1,5 +1,5 @@
 /**
- * The continuation of a sender-wide re-sort (SPEC §16): each batch is one
+ * The continuation of a sender-wide re-sort: each batch is one
  * mutation over the next part of the snapshotted thread set, scheduled by
  * `./resortBatch.ts refreshThreadsBounded`. The last batch of a chain an undo
  * started reports to that undo's progress.

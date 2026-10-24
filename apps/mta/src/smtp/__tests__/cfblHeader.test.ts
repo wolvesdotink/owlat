@@ -282,7 +282,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 			// decorative field producing no complaint signal at all.
 			const result = await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
 
-			// D2: the absence is silent and non-blocking — the send still succeeds.
+			// The absence is silent and non-blocking — the send still succeeds.
 			expect(result.success).toBe(true);
 			expect(headerLine('CFBL-Address')).toBeUndefined();
 			expect(headerLine('CFBL-Feedback-ID')).toBeUndefined();
@@ -308,7 +308,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 		it('COUNTS the silent branch so an operator can see that CFBL is off, and why', async () => {
 			// Silence is the DEFAULT branch — the aligned host is opt-in admin setup
 			// — so an uncounted silence is a feature that is invisibly inert. A
-			// counter is not an error, a warning or a setup nag (D2): the send below
+			// counter is not an error, a warning or a setup nag: the send below
 			// succeeds either way, nothing is surfaced to the operator unless they
 			// go looking at /metrics.
 			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
@@ -350,7 +350,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 
 			const result = await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
 
-			// D2: absence is silent and non-blocking — the send still succeeds.
+			// Absence is silent and non-blocking — the send still succeeds.
 			expect(result.success).toBe(true);
 			expect(headerLine('CFBL-Address')).toBeUndefined();
 			expect(headerLine('CFBL-Feedback-ID')).toBeUndefined();
@@ -388,7 +388,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 
 			const result = await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
 
-			// D2: the failure is silent and non-blocking — the send still succeeds.
+			// The failure is silent and non-blocking — the send still succeeds.
 			expect(result.success).toBe(true);
 			expect(wireBytes()).not.toContain('DKIM-Signature');
 			expect(await emissionCount('no_signature')).toBe(1);
@@ -503,7 +503,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 
 		const result = await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
 
-		// D2: the absence is silent and non-blocking — the send still succeeds.
+		// The absence is silent and non-blocking — the send still succeeds.
 		expect(result.success).toBe(true);
 		expect(headerLine('CFBL-Address')).toBeUndefined();
 		expect(headerLine('CFBL-Feedback-ID')).toBeUndefined();

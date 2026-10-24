@@ -1,5 +1,5 @@
 /**
- * Answer mode's response plan (SPEC §6, plan §6), for the Postbox (`m/`) and
+ * Answer mode's response plan, for the Postbox (`m/`) and
  * the Team inbox (`t/`) composer alike: one stance per open item the reply
  * covers, and what the draft addresses.
  *
@@ -204,7 +204,7 @@ export function useResponsePlan(opts: {
 		scheduleCoverage();
 	}
 
-	/** The hash of the text in the editor now, which a result must match (review D1). */
+	/** The hash of the text in the editor now, which a result must match. */
 	const currentHash = ref<string | null>(null);
 	let hashSeq = 0;
 	watch(
@@ -274,7 +274,7 @@ export function useResponsePlan(opts: {
 
 	/**
 	 * The coverage on screen: only a result bound to exactly what is on screen
-	 * now (review D1, F10): the editor's text (draft hash), the stored stance
+	 * now: the editor's text (draft hash), the stored stance
 	 * revision, and no stance write still in flight. This page's last check
 	 * first, else the draft's stored check. Anything else is "checking".
 	 */

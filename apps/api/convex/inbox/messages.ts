@@ -107,7 +107,7 @@ export const receiveMessage = internalMutation({
 		// Everything that came off the wire — one spelling, shared with the
 		// sealed-mail writer in `e2ee/open.decryptAndReceive`.
 		...inboundMessageArgs,
-		// Sealed Mail (E4, D3): mirrored unsealing flags from the decrypt-on-ingest
+		// Sealed Mail: mirrored unsealing flags from the decrypt-on-ingest
 		// action on the AI-inbox path. `textBody`/`htmlBody` above are ALREADY the
 		// decrypted plaintext when `sealed` is set (the action opened the message
 		// before calling this mutation), so the agent pipeline + the unified mirror
@@ -118,7 +118,7 @@ export const receiveMessage = internalMutation({
 		isSignatureValid: v.optional(v.boolean()),
 		signerFingerprint: v.optional(v.string()),
 		signerInstance: v.optional(v.string()),
-		// F1 (D9): mirrored display fields of the inbound SIGNED-but-not-encrypted
+		// F1: mirrored display fields of the inbound SIGNED-but-not-encrypted
 		// PGP verdict, computed by e2ee/verifyInboundSignature on the dispatcher
 		// path for clearsigned bodies. Distinct from the sealed mirror above —
 		// signed plaintext makes no encryption claim. Both optional so every
@@ -249,7 +249,7 @@ export const receiveMessage = internalMutation({
 			inboundSignerFingerprint: args.inboundSignerFingerprint,
 		});
 		await applyInboxStatsDelta(ctx, null, 'received');
-		// D12: a DMARC failure invalidates what is remembered about the sender.
+		// A DMARC failure invalidates what is remembered about the sender.
 		await invalidateSenderMemoryOnAuthFailure(
 			ctx,
 			{ scope: 'team_inbox' },

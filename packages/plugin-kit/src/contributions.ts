@@ -6,7 +6,7 @@
  * it invokes. The rest are reservations — the validator accepts them as opaque
  * arrays and nothing reads them.
  *
- * A RESERVATION MUST NAME SOMETHING REAL. Per D10 of the seams program, a bucket
+ * A RESERVATION MUST NAME SOMETHING REAL. A bucket
  * held open for a host seam that does not exist is documentation debt that reads
  * as a roadmap. `channelAdapters` was withdrawn on those grounds: the surface it
  * pointed at (a bidirectional send/parse/verify channel interface in

@@ -1,5 +1,5 @@
 /**
- * D10 with Sol r4 F1: a Reply Queue candidate whose thread holds more
+ * Deferral: a Reply Queue candidate whose thread holds more
  * deferred predecessors than one run reads (the budget) is not left on its
  * heuristic baseline. The classifier's own run continues: the thread stays
  * pending, the classification is rescheduled with the same arguments, and
@@ -134,7 +134,7 @@ async function pendingJobs(t: Test, fragment: string) {
 	);
 }
 
-describe('D10: the Reply Queue classification continues past its predecessors (Sol r4 F1)', () => {
+describe('the Reply Queue classification continues past its predecessors', () => {
 	it('stays pending, continues itself, then applies the verdict and clarifies', async () => {
 		// Scheduled jobs wait for the test to run them.
 		vi.useFakeTimers();

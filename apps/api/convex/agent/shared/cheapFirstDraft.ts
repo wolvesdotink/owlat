@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * The cheap-first writer (plan Phase 4, D2: reviewed drafts only).
+ * The cheap-first writer, for reviewed drafts only.
  *
  * The caller chose it for a draft a person reviews whatever it says
  * (`lib/llm/complexity.ts` `classifiedDraftRoute`); the draft step also marks
@@ -32,7 +32,7 @@
  * one hold (its rows carry it; the dispatch reserves nothing more), so no
  * call can be refused after paid work, and the hold settles once against the
  * requests the path made (none: released). A refused hold refuses the draft
- * before any paid call (D1: the Team Inbox holds the message). With a plugin
+ * before any paid call, and the Team Inbox holds the message. With a plugin
  * strategy selected the writer is not cheap-first: the single pass runs.
  *
  * Every request is metered once, with its quality result: the fast draft

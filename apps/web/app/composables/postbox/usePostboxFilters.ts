@@ -38,7 +38,7 @@ export type FilterActionType =
 	/** Split inbox (idea 24): file into a named inbox SECTION, moving nothing. */
 	| 'pinToSection'
 	| 'discard'
-	/** Read on arrival (SPEC §6.3): placement-only or delayed; the rules UI writes them. */
+	/** Read on arrival: placement-only or delayed; the rules UI writes them. */
 	| ArrivalFilterActionType;
 
 export interface MailFilterCondition {
