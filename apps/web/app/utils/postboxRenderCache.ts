@@ -2,8 +2,9 @@
  * Session-scoped LRU cache for rendered Postbox message bodies.
  *
  * PostboxMessageBody.vue runs a non-trivial pipeline on every mount:
- * sanitize-html (parser-based allowlist) + dark-mode adaptation + tracker
- * detection + image gating + link transparency. Re-opening a thread you just
+ * sanitize-html (parser-based allowlist) + dark-mode adaptation + link
+ * transparency in the render worker, then tracker detection + image gating on
+ * the main thread (composables/postbox/usePostboxRenderedBody). Re-opening a thread you just
  * closed re-does all of that from scratch, which shows up as visible jank on
  * long newsletters. This cache memoises the *final* rendered output (the
  * sanitized+transformed srcdoc and the tracker detection) plus the measured
@@ -55,6 +56,8 @@ export interface PostboxRenderEntry {
 	 * whatever the consent short of "Load everything"; the banner says so.
 	 */
 	inventoryFailed: boolean;
+	/** The body has a quoted reply chain to fold away (shows the toggle). */
+	hasQuote: boolean;
 	/** Last measured iframe content height (px); null until first load. */
 	height: number | null;
 }
