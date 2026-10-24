@@ -445,7 +445,7 @@ jobs:
 
       # The same copy also feeds the test-code check: the server's traced
       # package.json and the client manifest must name no test package, test
-      # route or vitest module (#1172).
+      # route or vitest module.
       - name: Check the web entry bundle budget and test code
         if: matrix.name == 'web'
         run: |
