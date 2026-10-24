@@ -155,11 +155,10 @@ describe('the in-app Reduce motion switch reaches what the OS preference does', 
 			for (const file of filesUnder(root, ['.ts', '.vue'])) {
 				const rel = relative(repoRoot, file);
 				if (rel === OWNER) continue;
-				readFileSync(file, 'utf8')
-					.split('\n')
-					.forEach((text, index) => {
-						if (direct.test(text)) offences.push(`${rel}:${index + 1} — ${text.trim()}`);
-					});
+				const lines = readFileSync(file, 'utf8').split('\n');
+				for (const [index, text] of lines.entries()) {
+					if (direct.test(text)) offences.push(`${rel}:${index + 1} — ${text.trim()}`);
+				}
 			}
 		}
 		expect(offences).toEqual([]);

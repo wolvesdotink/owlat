@@ -219,8 +219,6 @@ if (problems.length > 0) {
 }
 
 console.log(
-	`ok:   ${EXPECTED_PAIRS * 2} text/surface token pairs clear the WCAG AA ${FLOOR}:1 floor`
-);
-console.log(
-	`ok:   ${EXPECTED_HIGH_CONTRAST_PAIRS} higher-contrast pairs clear ${AAA}:1 (text) / ${NON_TEXT}:1 (borders)`
+	`ok:   ${EXPECTED_PAIRS * 2} text/surface token pairs clear the WCAG AA ${FLOOR}:1 floor\n` +
+		`ok:   ${EXPECTED_HIGH_CONTRAST_PAIRS} higher-contrast pairs clear ${AAA}:1 (text) / ${NON_TEXT}:1 (borders)`
 );

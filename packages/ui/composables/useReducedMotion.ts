@@ -24,7 +24,8 @@ const appListeners = new Set<() => void>();
 export function setAppReducedMotion(reduce: boolean): void {
 	if (appReducedMotion.value === reduce) return;
 	appReducedMotion.value = reduce;
-	for (const listener of [...appListeners]) listener();
+	// A Set iterates safely while a listener unsubscribes itself.
+	for (const listener of appListeners) listener();
 }
 
 /** The OS half only. `false` where there is no `matchMedia`. */
