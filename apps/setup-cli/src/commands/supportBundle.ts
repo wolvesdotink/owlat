@@ -20,7 +20,6 @@
  * the archive can land anywhere on the host, not only under the install dir.
  */
 
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -28,6 +27,7 @@ import { parseComposePs } from '@owlat/shared/containerHealth';
 import { readEnv, type EnvMap } from '../lib/env';
 import { parseArgv } from '../lib/argv';
 import { createTarGz, type TarEntry } from '../lib/tarball';
+import { runBounded, type CommandOptions, type CommandResult } from '../lib/boundedCommand';
 import {
 	SUPPORT_BUNDLE_SCHEMA_VERSION,
 	isBundleServiceName,
@@ -52,25 +52,6 @@ const MIGRATION_STATE_FUNCTION = 'migrations/admin:supportBundleState';
 
 const MIB = 1024 * 1024;
 
-export interface CommandResult {
-	/** Exit code; 127 when the program could not be started. */
-	code: number;
-	output: string;
-	/** Output beyond the byte cap was dropped. */
-	truncated: boolean;
-	timedOut: boolean;
-}
-
-export interface CommandOptions {
-	cwd: string;
-	timeoutMs: number;
-	maxBytes: number;
-	/** Which end to keep when the output is over `maxBytes`. */
-	keep: 'head' | 'tail';
-	/** Capture stderr into `output` too (container logs come on both streams). */
-	mergeStderr?: boolean;
-}
-
 /** The runtime edges of a bundle run, injectable so the whole run is testable. */
 export interface SupportBundleIo {
 	docker(args: readonly string[], options: CommandOptions): Promise<CommandResult>;
@@ -79,74 +60,6 @@ export interface SupportBundleIo {
 	log(line: string): void;
 	writeStdout(data: Uint8Array): Promise<void>;
 	isStdoutTty(): boolean;
-}
-
-/** Run `command`, keeping at most `maxBytes` of its output and killing it after `timeoutMs`. */
-export function runBounded(
-	command: string,
-	args: readonly string[],
-	options: CommandOptions
-): Promise<CommandResult> {
-	return new Promise((done) => {
-		const chunks: Buffer[] = [];
-		let size = 0;
-		let truncated = false;
-		let timedOut = false;
-		const take = (chunk: Buffer) => {
-			if (options.keep === 'head') {
-				const room = options.maxBytes - size;
-				if (room <= 0) {
-					truncated = true;
-					return;
-				}
-				if (chunk.length > room) truncated = true;
-				const kept = chunk.subarray(0, room);
-				chunks.push(kept);
-				size += kept.length;
-				return;
-			}
-			chunks.push(chunk);
-			size += chunk.length;
-			while (size > options.maxBytes && chunks.length > 0) {
-				truncated = true;
-				const first = chunks[0]!;
-				const excess = size - options.maxBytes;
-				if (first.length <= excess) {
-					chunks.shift();
-					size -= first.length;
-				} else {
-					chunks[0] = first.subarray(excess);
-					size -= excess;
-				}
-			}
-		};
-		let child: ReturnType<typeof spawn>;
-		try {
-			child = spawn(command, [...args], { cwd: options.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
-		} catch {
-			done({ code: 127, output: '', truncated: false, timedOut: false });
-			return;
-		}
-		const timer = setTimeout(() => {
-			timedOut = true;
-			child.kill('SIGKILL');
-		}, options.timeoutMs);
-		child.stdout?.on('data', take);
-		if (options.mergeStderr) child.stderr?.on('data', take);
-		else child.stderr?.resume();
-		let settled = false;
-		const finish = (code: number) => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timer);
-			let output = Buffer.concat(chunks).toString('utf8');
-			// A tail cut lands mid-line; drop the partial first line.
-			if (truncated && options.keep === 'tail') output = output.slice(output.indexOf('\n') + 1);
-			done({ code, output, truncated, timedOut });
-		};
-		child.on('error', () => finish(127));
-		child.on('close', (code) => finish(code ?? 1));
-	});
 }
 
 const NODE_IO: SupportBundleIo = {
