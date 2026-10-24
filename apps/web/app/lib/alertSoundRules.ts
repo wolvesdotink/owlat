@@ -31,7 +31,7 @@ export const ALERT_SOUND_KINDS: readonly AlertSoundKind[] = ['reply', 'assignmen
 export type AlertSoundPrefs = Readonly<Record<AlertSoundKind, boolean>>;
 
 /** The settings-row fields that hold the switches (`mail.settings`). */
-export interface AlertSoundSettingsFields {
+interface AlertSoundSettingsFields {
 	isReplyAlertSoundOn?: boolean;
 	isAssignmentSoundOn?: boolean;
 	isQuestionSoundOn?: boolean;
@@ -92,7 +92,7 @@ export function alertKindsOf<T>(
 	return [...kinds];
 }
 
-export interface AlertSoundDecisionInput {
+interface AlertSoundDecisionInput {
 	/** The kinds this batch of arrivals stands for. */
 	kinds: readonly AlertSoundKind[];
 	prefs: AlertSoundPrefs;
