@@ -2,8 +2,8 @@
  * The shortcuts page's intro names the key that opens Help as the person has
  * it bound, so it never sends them to a key that does nothing.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 import ShortcutsPage from '../shortcuts.vue';
@@ -19,7 +19,6 @@ beforeAll(() => {
 		definePageMeta: () => {},
 	});
 });
-enableAutoUnmount(afterEach);
 beforeEach(() => resetShortcutPreferences());
 
 const intro = () =>

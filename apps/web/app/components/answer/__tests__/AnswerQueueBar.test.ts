@@ -6,7 +6,7 @@
  * keeps the room in the one-line bar.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AnswerQueueBar from '../AnswerQueueBar.vue';
@@ -66,7 +66,6 @@ beforeAll(() => {
 	});
 });
 
-enableAutoUnmount(afterEach);
 afterEach(() => {
 	resetShortcutScopes();
 	resetShortcutPreferences();

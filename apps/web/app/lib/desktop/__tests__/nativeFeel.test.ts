@@ -20,15 +20,19 @@ vi.mock('@owlat/desktop/src/window', () => ({
 
 const ORIGIN = 'tauri://localhost';
 
+/** Hosts `el()` appended to the document; each test's are removed after it. */
+const hosts: HTMLElement[] = [];
+
 function el(html: string): Element {
 	const host = document.createElement('div');
 	host.innerHTML = html;
 	document.body.appendChild(host);
+	hosts.push(host);
 	return host.querySelector('[data-t]') ?? host.firstElementChild!;
 }
 
 afterEach(() => {
-	document.body.innerHTML = '';
+	for (const host of hosts.splice(0)) host.remove();
 });
 
 describe('keepsDefaultContextMenu', () => {

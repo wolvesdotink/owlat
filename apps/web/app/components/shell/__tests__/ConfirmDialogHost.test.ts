@@ -11,7 +11,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import UiModal from '@owlat/ui/components/ui/Modal.vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 // Loaded up front so the host's own import() of it resolves from the module
@@ -27,7 +27,6 @@ const global = {
 	stubs: { Icon: true, teleport: true },
 };
 
-enableAutoUnmount(afterEach);
 afterEach(() => {
 	for (const el of document.querySelectorAll('[data-opener]')) el.remove();
 });

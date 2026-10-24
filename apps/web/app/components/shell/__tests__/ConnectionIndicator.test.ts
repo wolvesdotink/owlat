@@ -4,7 +4,7 @@
  * every element a Tauri drag region inside the titlebar.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import {
@@ -34,7 +34,6 @@ beforeEach(() => {
 		for (const cb of listeners) cb(state);
 	};
 });
-enableAutoUnmount(afterEach);
 afterEach(() => {
 	resetBackendConnection();
 	vi.useRealTimers();

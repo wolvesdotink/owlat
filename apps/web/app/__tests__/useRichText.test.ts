@@ -6,7 +6,7 @@
  * auto-import setup live. The composable itself has no Nuxt dependency.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { ref } from 'vue';
 import { useRichText } from '@owlat/ui/composables/useRichText';
 import {
@@ -16,11 +16,15 @@ import {
 	replaceTagPreservingChildren,
 } from '@owlat/ui/composables/richTextDom';
 
+/** Editors this file appended to the document; each test's are removed after it. */
+const editors: HTMLElement[] = [];
+
 function makeEditor(html: string) {
 	const el = document.createElement('div');
 	el.contentEditable = 'true';
 	el.innerHTML = html;
 	document.body.appendChild(el);
+	editors.push(el);
 	return el;
 }
 
@@ -43,8 +47,8 @@ function selectAllText(el: HTMLElement) {
 	return range;
 }
 
-beforeEach(() => {
-	document.body.innerHTML = '';
+afterEach(() => {
+	for (const editor of editors.splice(0)) editor.remove();
 });
 
 describe('useRichText — pure DOM helpers', () => {

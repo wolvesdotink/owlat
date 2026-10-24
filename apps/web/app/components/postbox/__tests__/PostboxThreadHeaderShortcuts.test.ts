@@ -4,7 +4,7 @@
  * has it bound, and say nothing once it is unbound.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
@@ -14,7 +14,6 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useClickOutside', () => {});
 });
-enableAutoUnmount(afterEach);
 afterEach(() => resetShortcutPreferences());
 
 function mountHeader() {

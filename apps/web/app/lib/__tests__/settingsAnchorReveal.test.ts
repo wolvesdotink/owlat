@@ -6,7 +6,7 @@
  * it never comes or when the person has moved on. The outline is an attribute
  * on the element itself and expires on its own. Timers are fake throughout.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { SETTINGS_FLASH_ATTRIBUTE, revealSettingsAnchor } from '../settingsAnchorReveal';
 
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
@@ -16,13 +16,13 @@ function addTarget(id: string): HTMLElement {
 	const el = document.createElement('section');
 	el.id = id;
 	document.body.append(el);
+	onTestFinished(() => el.remove());
 	return el;
 }
 
 beforeEach(() => {
 	vi.useFakeTimers();
 	scrolled = [];
-	document.body.innerHTML = '';
 	HTMLElement.prototype.scrollIntoView = function (options) {
 		scrolled.push({ id: this.id, options });
 	};
@@ -64,6 +64,7 @@ describe('revealSettingsAnchor', () => {
 
 		const unrelated = document.createElement('div');
 		document.body.append(unrelated);
+		onTestFinished(() => unrelated.remove());
 		await flushObservers();
 		expect(scrolled).toEqual([]);
 
@@ -76,6 +77,7 @@ describe('revealSettingsAnchor', () => {
 	it('picks up a target whose id is set after it was inserted', async () => {
 		const el = document.createElement('div');
 		document.body.append(el);
+		onTestFinished(() => el.remove());
 		revealSettingsAnchor(document, 'webhook-signing');
 		el.id = 'webhook-signing';
 		await flushObservers();

@@ -5,7 +5,7 @@
  * keyboard (1 to 9 pick a chip) and nothing here approves or rejects.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { queryResult } from '~/__tests__/queryStubs';
@@ -29,7 +29,6 @@ let entry: Record<string, unknown>;
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
-enableAutoUnmount(afterEach);
 afterEach(() => resetShortcutPreferences());
 
 const READY = {

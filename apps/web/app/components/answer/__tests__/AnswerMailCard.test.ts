@@ -9,8 +9,8 @@
  * that rule fixed: the card completed the item as the composer OPENED, so
  * closing it without sending dropped the email from the queue.
  */
-import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 
 import AnswerMailCard from '../AnswerMailCard.vue';
@@ -44,9 +44,6 @@ beforeAll(() => {
 
 /** The feature flags that are on. */
 const flags = new Set<string>(['ai']);
-
-// A card left mounted would keep its keys bound into the next test.
-enableAutoUnmount(afterEach);
 
 const controls: AnswerCardControls = {
 	complete: vi.fn(),
