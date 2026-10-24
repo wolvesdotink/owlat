@@ -37,17 +37,19 @@ const triggerLabel = computed(() =>
 	<UiDropdownMenu v-model:open="open" position="right">
 		<template #trigger>
 			<!-- Just the icon while every inbox has its tab; the count only when
-			     some are left out, since that is worth seeing. -->
-			<UiButton
-				variant="ghost"
-				size="sm"
-				:class="allShown ? 'w-8 px-0' : ''"
-				:title="triggerLabel"
-				:aria-label="`${t('components.today.inboxPicker.label')}: ${triggerLabel}`"
-			>
-				<Icon name="lucide:sliders-horizontal" class="size-4" />
-				<span v-if="!allShown" class="ml-1.5">{{ triggerLabel }}</span>
-			</UiButton>
+			     some are left out, since that is worth seeing. The tooltip names
+			     the icon alone; next to the count it would only repeat it. -->
+			<UiTooltip :text="triggerLabel" :disabled="!allShown">
+				<UiButton
+					variant="ghost"
+					size="sm"
+					:class="allShown ? 'w-8 px-0' : ''"
+					:aria-label="`${t('components.today.inboxPicker.label')}: ${triggerLabel}`"
+				>
+					<Icon name="lucide:sliders-horizontal" class="size-4" />
+					<span v-if="!allShown" class="ml-1.5">{{ triggerLabel }}</span>
+				</UiButton>
+			</UiTooltip>
 		</template>
 		<div class="px-3 pb-1 pt-2 text-2xs font-medium text-text-tertiary">
 			{{ t('components.today.inboxPicker.heading') }}

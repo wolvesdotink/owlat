@@ -85,31 +85,34 @@ function switchTo(id: Id<'mailboxes'>) {
 		class="self-start max-w-full"
 	>
 		<template #trigger>
-			<button
-				type="button"
-				class="relative rounded-full text-text-secondary hover:text-text-primary hover:bg-bg-surface focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-				:class="
-					collapsed
-						? 'flex items-center justify-center w-9 h-9'
-						: 'flex items-center gap-1 pl-2 pr-1.5 py-0.5 max-w-full min-w-0'
-				"
-				:title="t('components.postbox.postboxMailboxSwitcher.switchTitle', { label: chipLabel })"
-				:aria-label="
-					t('components.postbox.postboxMailboxSwitcher.switchTitle', { label: chipLabel })
-				"
+			<UiTooltip
+				:text="t('components.postbox.postboxMailboxSwitcher.switchTitle', { label: chipLabel })"
 			>
-				<Icon name="lucide:mail" class="w-4 h-4 flex-shrink-0" />
-				<template v-if="!collapsed">
-					<span class="text-xs truncate">{{ chipLabel }}</span>
-					<Icon name="lucide:chevron-down" class="w-3 h-3 flex-shrink-0" />
-				</template>
-				<!-- Unread waiting in the OTHER mailboxes. The current mailbox's own
-				     counts are already on the folder rows below. -->
-				<span
-					v-if="elsewhereUnread > 0"
-					class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-brand"
-				/>
-			</button>
+				<button
+					type="button"
+					class="relative rounded-full text-text-secondary hover:text-text-primary hover:bg-bg-surface focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+					:class="
+						collapsed
+							? 'flex items-center justify-center w-9 h-9'
+							: 'flex items-center gap-1 pl-2 pr-1.5 py-0.5 max-w-full min-w-0'
+					"
+					:aria-label="
+						t('components.postbox.postboxMailboxSwitcher.switchTitle', { label: chipLabel })
+					"
+				>
+					<Icon name="lucide:mail" class="w-4 h-4 flex-shrink-0" />
+					<template v-if="!collapsed">
+						<span class="text-xs truncate">{{ chipLabel }}</span>
+						<Icon name="lucide:chevron-down" class="w-3 h-3 flex-shrink-0" />
+					</template>
+					<!-- Unread waiting in the OTHER mailboxes. The current mailbox's own
+					     counts are already on the folder rows below. -->
+					<span
+						v-if="elsewhereUnread > 0"
+						class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-brand"
+					/>
+				</button>
+			</UiTooltip>
 		</template>
 
 		<template v-for="section in sectionDescriptors" :key="section.key">

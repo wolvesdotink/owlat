@@ -426,17 +426,18 @@ function handleClickOutside(event: MouseEvent) {
 			</div>
 
 			<div class="ep-toolbar-right">
-				<!-- Render Warnings Badge -->
-				<button
-					v-if="hasWarnings"
-					class="ep-warning-badge"
-					:class="{ 'ep-warning-badge-active': warningsExpanded }"
-					:title="t('builder.preview.toolbar.renderWarnings')"
-					@click="warningsExpanded = !warningsExpanded"
-				>
-					<AlertTriangle class="ep-warning-badge-icon" />
-					<span>{{ renderWarnings!.length }}</span>
-				</button>
+				<!-- Render Warnings Badge: an icon and a count, so the name is spelled out -->
+				<UiTooltip v-if="hasWarnings" :text="t('builder.preview.toolbar.renderWarnings')">
+					<button
+						class="ep-warning-badge"
+						:class="{ 'ep-warning-badge-active': warningsExpanded }"
+						:aria-label="`${t('builder.preview.toolbar.renderWarnings')}: ${renderWarnings!.length}`"
+						@click="warningsExpanded = !warningsExpanded"
+					>
+						<AlertTriangle class="ep-warning-badge-icon" />
+						<span>{{ renderWarnings!.length }}</span>
+					</button>
+				</UiTooltip>
 
 				<!-- Diff Button -->
 				<UiTooltip v-if="hasDiff" :text="t('builder.preview.toolbar.compare')">

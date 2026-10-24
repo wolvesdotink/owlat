@@ -17,7 +17,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
-const { chordLabel } = useShortcutLabels();
+const { chordLabel, chordAria } = useShortcutLabels();
 /** The rail toggle's own chord, bound in `onGlobalKey` below. */
 const RAIL_TOGGLE_CHORD = 'mod+shift+D';
 
@@ -302,34 +302,35 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		/>
 
 		<!-- Standalone rails may collapse; a rail hosted by the shell stays readable. -->
-		<button
+		<UiTooltip
 			v-if="!forceExpanded"
-			type="button"
-			class="mt-auto flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-			:class="railCollapsed ? 'w-9 h-9' : 'w-full gap-1.5 px-2.5 py-1.5 text-xs'"
-			:title="
-				railCollapsed
-					? t('components.postbox.postboxFolderRail.expandSidebarTitle', {
-							keys: chordLabel(RAIL_TOGGLE_CHORD),
-						})
-					: t('components.postbox.postboxFolderRail.collapseSidebarTitle', {
-							keys: chordLabel(RAIL_TOGGLE_CHORD),
-						})
-			"
-			:aria-label="
+			:text="
 				railCollapsed
 					? t('components.postbox.postboxFolderRail.expandSidebar')
 					: t('components.postbox.postboxFolderRail.collapseSidebar')
 			"
-			:aria-pressed="railCollapsed"
-			@click="toggleRail"
+			:shortcut="chordLabel(RAIL_TOGGLE_CHORD)"
 		>
-			<Icon
-				:name="railCollapsed ? 'lucide:chevrons-right' : 'lucide:chevrons-left'"
-				class="w-4 h-4"
-			/>
-			<span v-if="!railCollapsed">{{ t('components.postbox.postboxFolderRail.collapse') }}</span>
-		</button>
+			<button
+				type="button"
+				class="mt-auto flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
+				:class="railCollapsed ? 'w-9 h-9' : 'w-full gap-1.5 px-2.5 py-1.5 text-xs'"
+				:aria-label="
+					railCollapsed
+						? t('components.postbox.postboxFolderRail.expandSidebar')
+						: t('components.postbox.postboxFolderRail.collapseSidebar')
+				"
+				:aria-keyshortcuts="chordAria(RAIL_TOGGLE_CHORD)"
+				:aria-pressed="railCollapsed"
+				@click="toggleRail"
+			>
+				<Icon
+					:name="railCollapsed ? 'lucide:chevrons-right' : 'lucide:chevrons-left'"
+					class="w-4 h-4"
+				/>
+				<span v-if="!railCollapsed">{{ t('components.postbox.postboxFolderRail.collapse') }}</span>
+			</button>
+		</UiTooltip>
 	</aside>
 
 	<UiConfirmationDialog

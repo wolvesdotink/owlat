@@ -428,17 +428,17 @@ onBeforeUnmount(() => detachTriggers?.());
 					     is bound to cycling the scope, so the chip could never be reached
 					     by it anyway, and leaving it out of the tab ring keeps the focus
 					     trap's "first focusable" on the input, where typing belongs. -->
-					<button
-						v-if="!pendingArgument"
-						type="button"
-						tabindex="-1"
-						class="flex-shrink-0 text-xs font-medium px-2 py-1 rounded-full bg-brand/10 text-brand hover:bg-brand/20 transition-colors duration-(--motion-fast)"
-						:aria-label="t('components.appCommandPalette.scopeLabel')"
-						:title="t('components.appCommandPalette.scopeLabel')"
-						@click="cycleScope"
-					>
-						{{ scopeLabel }}
-					</button>
+					<UiTooltip v-if="!pendingArgument" :text="t('components.appCommandPalette.scopeLabel')">
+						<button
+							type="button"
+							tabindex="-1"
+							class="flex-shrink-0 text-xs font-medium px-2 py-1 rounded-full bg-brand/10 text-brand hover:bg-brand/20 transition-colors duration-(--motion-fast)"
+							:aria-label="t('components.appCommandPalette.scopeLabel')"
+							@click="cycleScope"
+						>
+							{{ scopeLabel }}
+						</button>
+					</UiTooltip>
 					<span
 						v-else
 						class="flex-shrink-0 text-xs px-2 py-1 rounded bg-bg-surface text-text-secondary"

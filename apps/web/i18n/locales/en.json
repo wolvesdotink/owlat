@@ -4769,12 +4769,10 @@
 			"postboxFolderRail": {
 				"collapse": "Collapse",
 				"collapseSidebar": "Collapse sidebar",
-				"collapseSidebarTitle": "Collapse sidebar ({keys})",
 				"contacts": "Contacts",
 				"deleteFolder": "Delete folder",
 				"deleteFolderDescription": "Delete the folder \"{name}\"? Messages in it are relocated, not deleted.",
 				"expandSidebar": "Expand sidebar",
-				"expandSidebarTitle": "Expand sidebar ({keys})",
 				"foldersHeading": "Folders",
 				"labelsHeading": "Labels",
 				"newFolder": "New folder",

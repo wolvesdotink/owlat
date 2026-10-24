@@ -37,6 +37,7 @@ import {
 	render,
 	shallowRef,
 	useId,
+	watch,
 	type PropType,
 	type VNode,
 } from 'vue';
@@ -80,7 +81,8 @@ export default defineComponent({
 	},
 	setup(props, { slots, attrs }) {
 		const id = `ui-tooltip-${useId()}`;
-		const appContext = getCurrentInstance()?.appContext ?? null;
+		const instance = getCurrentInstance();
+		const appContext = instance?.appContext ?? null;
 		const open = ref(false);
 		const position = shallowRef<Placement | null>(null);
 		// Bumped when UiTooltip re-renders while open, so the bubble (its own
@@ -98,7 +100,10 @@ export default defineComponent({
 		// A press (or an Escape) hides the tooltip until the pointer leaves or
 		// focus moves on, so clicking a control does not bring its label back.
 		let suppressed = false;
-		let describedBy: { value: string | null } | null = null;
+		// The element the open tooltip describes, with its own aria-describedby
+		// to restore: the control, or the part of a composite control (a
+		// segment, a tab) that keyboard focus is on.
+		let described: { element: Element; value: string | null } | null = null;
 
 		const owner = { close: () => hide() };
 
@@ -111,14 +116,14 @@ export default defineComponent({
 			clearTimeout(closeTimer);
 		}
 
-		function show() {
+		function show(target: Element | null = trigger) {
 			clearTimers();
 			if (!hasContent() || !trigger || open.value) return;
 			claimTooltip(owner);
 			position.value = null;
 			open.value = true;
 			mountBubble();
-			linkDescription();
+			linkDescription(target ?? trigger);
 			// Only while open: a page holds hundreds of closed tooltips.
 			window.addEventListener('scroll', onViewportChange, { capture: true, passive: true });
 			window.addEventListener('resize', onViewportChange, { passive: true });
@@ -153,23 +158,26 @@ export default defineComponent({
 		}
 
 		/**
-		 * The tooltip describes the control while it is open. Not when it only
-		 * repeats the control's name: "Archive, button, Archive" helps nobody.
+		 * The tooltip describes the focused element while it is open. Not when it
+		 * only repeats that element's name (its aria-label, else its text):
+		 * "Archive, button, Archive" helps nobody.
 		 */
-		function linkDescription() {
-			if (!trigger) return;
-			const label = trigger.getAttribute('aria-label')?.trim();
-			if (!slots['content'] && label && label === props.text?.trim()) return;
-			const current = trigger.getAttribute('aria-describedby');
-			describedBy = { value: current };
-			trigger.setAttribute('aria-describedby', current ? `${current} ${id}` : id);
+		function linkDescription(element: Element) {
+			const name = (element.getAttribute('aria-label') ?? element.textContent ?? '')
+				.replace(/\s+/g, ' ')
+				.trim();
+			if (!slots['content'] && name && name === props.text?.trim()) return;
+			const current = element.getAttribute('aria-describedby');
+			described = { element, value: current };
+			element.setAttribute('aria-describedby', current ? `${current} ${id}` : id);
 		}
 
 		function unlinkDescription() {
-			if (!describedBy || !trigger) return;
-			if (describedBy.value === null) trigger.removeAttribute('aria-describedby');
-			else trigger.setAttribute('aria-describedby', describedBy.value);
-			describedBy = null;
+			if (!described) return;
+			const { element, value } = described;
+			if (value === null) element.removeAttribute('aria-describedby');
+			else element.setAttribute('aria-describedby', value);
+			described = null;
 		}
 
 		function place() {
@@ -206,10 +214,21 @@ export default defineComponent({
 			hide();
 		}
 
-		function onFocusIn() {
+		// Focus can land on a part of the control (a segment of a segmented
+		// control), so the focused element is what is tested and described, not
+		// the control's root.
+		function onFocusIn(event: FocusEvent) {
 			focused = true;
-			if (suppressed || !trigger || !focusVisible(trigger)) return;
-			show();
+			const target = event.target instanceof Element ? event.target : trigger;
+			if (suppressed || !trigger || !target || !focusVisible(target)) return;
+			if (!open.value) {
+				show(target);
+				return;
+			}
+			// Arrow keys moving between the parts of an open composite control.
+			if (described?.element === target) return;
+			unlinkDescription();
+			linkDescription(target);
 		}
 
 		function onFocusOut(event: FocusEvent) {
@@ -265,11 +284,26 @@ export default defineComponent({
 		function sync() {
 			const element = triggerVNode?.el;
 			bind(element instanceof HTMLElement ? element : null);
-			if (open.value) {
-				revision.value += 1;
-				place();
+			if (!open.value) return;
+			// A re-render can take the content away (a cleared text, a `#content`
+			// slot behind a `v-if`, `disabled`): an open tooltip with nothing to
+			// say closes rather than staying as an empty bubble.
+			if (!hasContent()) {
+				hide();
+				return;
 			}
+			revision.value += 1;
+			place();
 		}
+
+		// `disabled` or a cleared `text` closes an open tooltip; sync() covers
+		// a `#content` slot that goes away, which no watcher can see.
+		watch(
+			() => props.disabled || (!props.text && !slots['content']),
+			(ineligible) => {
+				if (ineligible) hide();
+			}
+		);
 
 		onMounted(sync);
 		onUpdated(sync);
@@ -311,9 +345,18 @@ export default defineComponent({
 
 		const Bubble = defineComponent({
 			name: 'UiTooltipBubble',
-			setup: () => () => {
-				void revision.value;
-				return renderBubble();
+			setup: () => {
+				// The bubble is its own render root, so by default its slot content
+				// would only see the app's provides. Taking the tooltip's own keeps
+				// what the tooltip's ancestors provide (a form, a theme, a menu)
+				// visible to components rendered in `#content` and `#shortcut`.
+				const self = getCurrentInstance() as unknown as { provides: object } | null;
+				const owned = instance as unknown as { provides: object } | null;
+				if (self && owned) self.provides = owned.provides;
+				return () => {
+					void revision.value;
+					return renderBubble();
+				};
 			},
 		});
 

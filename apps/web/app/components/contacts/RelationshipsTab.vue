@@ -168,9 +168,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 						</select>
 					</div>
 					<div>
-						<label class="label">{{
-							t('components.contacts.relationshipsTab.confidence')
-						}}</label>
+						<label class="label">{{ t('components.contacts.relationshipsTab.confidence') }}</label>
 						<div class="flex items-center gap-2">
 							<input
 								v-model.number="addForm.confidence"
@@ -302,15 +300,19 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 									</button>
 								</UiTooltip>
 							</div>
-							<button
-								v-else
-								type="button"
-								class="text-xs text-text-tertiary font-mono hover:text-brand transition-colors"
-								:title="t('components.contacts.relationshipsTab.editConfidence')"
-								@click="startEditConfidence(rel._id, rel.confidence ?? 1)"
-							>
-								{{ Math.round((rel.confidence ?? 1) * 100) }}%
-							</button>
+							<UiTooltip v-else :text="t('components.contacts.relationshipsTab.editConfidence')">
+								<!-- The value is all it shows; the action is named for assistive tech. -->
+								<button
+									type="button"
+									class="text-xs text-text-tertiary font-mono hover:text-brand transition-colors"
+									@click="startEditConfidence(rel._id, rel.confidence ?? 1)"
+								>
+									<span class="sr-only">{{
+										t('components.contacts.relationshipsTab.editConfidence')
+									}}</span>
+									{{ Math.round((rel.confidence ?? 1) * 100) }}%
+								</button>
+							</UiTooltip>
 						</div>
 					</div>
 					<UiTooltip :text="t('components.contacts.relationshipsTab.removeRelationship')">

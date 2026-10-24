@@ -157,24 +157,31 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 			class="mt-2 flex flex-wrap items-center gap-1"
 			data-testid="team-note-reactions"
 		>
-			<button
+			<UiTooltip
 				v-for="reaction in entry.reactions"
 				:key="reaction.emoji"
-				type="button"
-				class="inline-flex items-center gap-1 rounded-full border px-2 py-px text-xs"
-				:class="
-					reaction.isMine
-						? 'border-brand/40 bg-brand-subtle text-text-primary'
-						: 'border-border-subtle bg-bg-elevated text-text-secondary'
-				"
-				:aria-pressed="reaction.isMine"
-				:disabled="!canReact"
-				:title="t('components.team.note.reactWith', { emoji: reaction.emoji })"
-				@click="emit('react', reaction.emoji)"
+				:text="t('components.team.note.reactWith', { emoji: reaction.emoji })"
 			>
-				<span aria-hidden="true">{{ reaction.emoji }}</span>
-				<span class="tabular-nums">{{ reaction.count }}</span>
-			</button>
+				<button
+					type="button"
+					class="inline-flex items-center gap-1 rounded-full border px-2 py-px text-xs"
+					:class="
+						reaction.isMine
+							? 'border-brand/40 bg-brand-subtle text-text-primary'
+							: 'border-border-subtle bg-bg-elevated text-text-secondary'
+					"
+					:aria-pressed="reaction.isMine"
+					:disabled="!canReact"
+					@click="emit('react', reaction.emoji)"
+				>
+					<!-- An emoji and a count are no name: "React with 👍 3". -->
+					<span class="sr-only">{{
+						t('components.team.note.reactWith', { emoji: reaction.emoji })
+					}}</span>
+					<span aria-hidden="true">{{ reaction.emoji }}</span>
+					<span class="tabular-nums">{{ reaction.count }}</span>
+				</button>
+			</UiTooltip>
 			<TeamReactionPicker v-if="canReact" class="ui-hover-reveal" @pick="emit('react', $event)" />
 		</div>
 	</article>

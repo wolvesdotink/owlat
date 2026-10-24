@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { Transition, defineComponent, h, nextTick, ref } from 'vue';
+import { Transition, defineComponent, h, inject, nextTick, provide, ref } from 'vue';
+import SegmentedControl from '../components/ui/SegmentedControl.vue';
 import Tooltip from '../components/ui/Tooltip.vue';
 import { useEscapeLayer } from '../composables/useEscapeLayer';
 import {
@@ -408,6 +409,138 @@ describe('UiTooltip', () => {
 		button('b').focus();
 		await nextTick();
 		expect(tooltip()).toBeNull();
+	});
+
+	it('closes an open tooltip that is disabled or loses its text, and its Escape layer with it', async () => {
+		const text = ref('Archive');
+		const disabled = ref(false);
+		const onEscape = vi.fn();
+		wrapper = mount(
+			defineComponent({
+				setup: () => {
+					useEscapeLayer(ref(true), onEscape);
+					return () =>
+						h(Tooltip, { text: text.value, disabled: disabled.value }, () =>
+							h('button', { id: 'a' }, 'icon')
+						);
+				},
+			}),
+			{ attachTo: document.body }
+		);
+		button('a').focus();
+		await nextTick();
+		expect(tooltip()).not.toBeNull();
+
+		disabled.value = true;
+		await nextTick();
+		expect(tooltip()).toBeNull();
+		expect(button('a').hasAttribute('aria-describedby')).toBe(false);
+		// The tooltip's layer is gone: Escape reaches the layer underneath.
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		expect(onEscape).toHaveBeenCalledTimes(1);
+
+		disabled.value = false;
+		await nextTick();
+		button('a').blur();
+		button('a').focus();
+		await nextTick();
+		expect(tooltip()).not.toBeNull();
+
+		text.value = '';
+		await nextTick();
+		expect(tooltip()).toBeNull();
+	});
+
+	it('closes when the #content slot it shows goes away', async () => {
+		const rich = ref(true);
+		wrapper = mount(
+			defineComponent({
+				setup: () => () =>
+					h(Tooltip, null, {
+						default: () => h('button', { id: 'a', 'aria-label': 'Archive' }),
+						...(rich.value ? { content: () => h('strong', 'Archive') } : {}),
+					}),
+			}),
+			{ attachTo: document.body }
+		);
+		button('a').focus();
+		await nextTick();
+		expect(tooltip()).not.toBeNull();
+
+		rich.value = false;
+		await nextTick();
+		expect(tooltip()).toBeNull();
+	});
+
+	it('opens on keyboard focus inside a composite control and describes the focused part', async () => {
+		wrapper = mount(
+			defineComponent({
+				setup: () => () =>
+					h(Tooltip, { text: 'Switch inbox mode' }, () =>
+						h(SegmentedControl, {
+							'aria-label': 'Inbox mode',
+							options: [
+								{ value: 'today', label: 'Priority' },
+								{ value: 'browse', label: 'All mail' },
+							],
+							modelValue: 'today',
+						})
+					),
+			}),
+			{ attachTo: document.body }
+		);
+		const [first, second] = Array.from(document.querySelectorAll<HTMLButtonElement>('button'));
+		first!.focus();
+		await nextTick();
+		expect(tooltip()?.textContent).toBe('Switch inbox mode');
+		expect(first!.getAttribute('aria-describedby')).toBe(tooltip()!.id);
+
+		// Moving between the parts keeps it open and moves the description.
+		second!.focus();
+		await nextTick();
+		expect(tooltip()).not.toBeNull();
+		expect(first!.hasAttribute('aria-describedby')).toBe(false);
+		expect(second!.getAttribute('aria-describedby')).toBe(tooltip()!.id);
+
+		second!.blur();
+		await nextTick();
+		expect(tooltip()).toBeNull();
+		expect(second!.hasAttribute('aria-describedby')).toBe(false);
+	});
+
+	it("gives the bubble's slot content what the tooltip's ancestors provide", async () => {
+		const key = Symbol('chip-context');
+		const Chip = defineComponent({
+			setup: () => {
+				const value = inject(key, 'missing');
+				return () => h('span', { class: 'chip' }, value);
+			},
+		});
+		const Provider = defineComponent({
+			setup: (_, { slots }) => {
+				provide(key, 'provided');
+				return () => slots['default']?.();
+			},
+		});
+		wrapper = mount(
+			defineComponent({
+				setup: () => () =>
+					h(Provider, null, () =>
+						h(
+							Tooltip,
+							{ text: 'Archive' },
+							{
+								default: () => h('button', { id: 'a' }, 'icon'),
+								shortcut: () => h(Chip),
+							}
+						)
+					),
+			}),
+			{ attachTo: document.body }
+		);
+		button('a').focus();
+		await nextTick();
+		expect(tooltip()?.querySelector('.chip')?.textContent).toBe('provided');
 	});
 
 	it('places the bubble once it has been measured', async () => {
