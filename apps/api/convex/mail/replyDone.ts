@@ -6,8 +6,13 @@
  * nothing.
  *
  * The move goes through `moveMessagesToFolder`, the bookkeeping every archive
- * shares (folder counters, thread aggregates, the Reply Queue, IMAP modseq and
- * the write-back to a connected provider).
+ * shares (folder counters, IMAP modseq, the write-back to a connected
+ * provider), with two differences a batched, delayed archive needs. The thread
+ * row takes the bounded folder-only update instead of a re-read of the whole
+ * conversation per batch. And the Reply Queue state is settled once, after the
+ * last batch: it goes with the conversation when the Inbox is left empty, and
+ * stays when newer mail (classified, or still waiting for its verdict) keeps
+ * the conversation there.
  */
 
 import { v } from 'convex/values';
@@ -17,6 +22,7 @@ import { internal } from '../_generated/api';
 import { internalMutation } from '../lib/writeFence';
 import { canUserReadMailbox } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
+import { clearThreadNeedsReply } from './needsReply';
 import { recordArchivedMoves } from './interpret/threadEvents';
 
 /**
@@ -73,6 +79,24 @@ async function repliedToInInbox(
 		: [];
 }
 
+/**
+ * After the last batch: an archive dismisses the Reply Queue state, but only
+ * when the conversation left the Inbox. Mail the walk left behind (newer than
+ * the cutoff, or moved back meanwhile) keeps its verdict or its pending one.
+ */
+async function settleReplyQueue(
+	ctx: MutationCtx,
+	args: { threadId: Id<'mailThreads'>; inboxId: Id<'mailFolders'> }
+): Promise<void> {
+	const left = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread_folder_received', (q) =>
+			q.eq('threadId', args.threadId).eq('folderId', args.inboxId)
+		)
+		.first();
+	if (!left) await clearThreadNeedsReply(ctx, args.threadId);
+}
+
 export const archiveAnswered = internalMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
@@ -82,6 +106,8 @@ export const archiveAnswered = internalMutation({
 		cutoffAt: v.number(),
 		/** Where the previous run stopped; absent on the first run. */
 		cursor: v.optional(v.string()),
+		/** An earlier run of this walk moved mail. */
+		hasArchived: v.optional(v.boolean()),
 	},
 	/** `archived`: the messages this run moved (a long conversation takes several runs). */
 	handler: async (ctx, args): Promise<{ archived: number }> => {
@@ -104,25 +130,32 @@ export const archiveAnswered = internalMutation({
 
 		const inboxId = inbox._id;
 		const batch = await replyDoneBatch(ctx, { ...args, inboxId, cursor: args.cursor ?? null });
+		const first =
+			args.cursor === undefined ? await repliedToInInbox(ctx, { ...args, inboxId }) : [];
+		const messageIds = [...new Set([...first, ...batch.messageIds])];
+		const { moved } =
+			messageIds.length === 0
+				? { moved: [] }
+				: await moveMessagesToFolder(
+						ctx,
+						{ messageIds, targetFolderId: archive._id },
+						{ isNeedsReplyKept: true, isFolderRolesOnly: true }
+					);
+		const hasArchived = args.hasArchived === true || moved.length > 0;
 		if (batch.continueCursor !== null) {
 			// Same cutoff, same message: the next run re-checks access and goes on.
 			await ctx.scheduler.runAfter(0, internal.mail.replyDone.archiveAnswered, {
 				...args,
 				cursor: batch.continueCursor,
+				hasArchived,
 			});
+		} else if (hasArchived) {
+			await settleReplyQueue(ctx, { threadId: args.threadId, inboxId });
 		}
-		const first =
-			args.cursor === undefined ? await repliedToInInbox(ctx, { ...args, inboxId }) : [];
-		const messageIds = [...new Set([...first, ...batch.messageIds])];
-		if (messageIds.length === 0) return { archived: 0 };
-		const { moved } = await moveMessagesToFolder(ctx, {
-			messageIds,
-			targetFolderId: archive._id,
-		});
 		// The conversation's history says who archived it, as for any archive.
 		// Not a triage signal: replying is not evidence that the sender's mail
 		// should be filed away unread.
-		await recordArchivedMoves(ctx, moved, args.userId);
+		if (moved.length > 0) await recordArchivedMoves(ctx, moved, args.userId);
 		return { archived: moved.length };
 	},
 });

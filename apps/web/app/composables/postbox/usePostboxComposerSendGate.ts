@@ -10,10 +10,12 @@
  *   4. team-inbox collision safety (usePostboxStaleReplyGuard) — a teammate
  *      replied after this reply opened.
  *
- * Every gate parks the send and replays it verbatim (scheduled time, the
- * after-reply action and all) once answered, through `handleSend`: the action
- * is chosen when Send is pressed, so a gate's dialog cannot change it. Lifted out of PostboxComposer.vue for the
- * file-size ratchet; the order and the behaviour are the ones it had there.
+ * The upload gate rejects the attempt: nothing is kept, and the sender presses
+ * Send again once the file is up. Every other gate parks the send and replays
+ * it verbatim (scheduled time, the after-reply action and all) once answered,
+ * through `handleSend`: the action is chosen when Send is pressed, so a gate's
+ * dialog cannot change it. Lifted out of PostboxComposer.vue for the file-size
+ * ratchet; the order and the behaviour are the ones it had there.
  */
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposerSeed } from './usePostboxCompose';

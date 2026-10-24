@@ -2,7 +2,9 @@
  * "Send and mark done" (mail/replyDone.ts): the choice rides on one send of a
  * reply, survives the undo window only as long as the send does, and archives
  * the answered conversation once the reply is sent: its Inbox mail up to the
- * moment the sender chose, never newer mail, never another mailbox's.
+ * moment the sender chose, never newer mail, never another mailbox's. The
+ * conversation's Reply Queue state goes only when its Inbox is left empty, and
+ * a long conversation never has every message re-read per batch.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +13,7 @@ import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { doneOnSendCutoff } from '../draftSend';
 import { REPLY_DONE_BATCH } from '../replyDone';
+import { rebuildThreadAggregates } from '../threadAggregates';
 import { liveMailTest, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 
 const session = vi.hoisted(() => ({
@@ -26,8 +29,17 @@ vi.mock('../../lib/sessionOrganization', async () => ({
 	isActiveOrgMember: vi.fn(async () => true),
 }));
 
+// Passed through, counted: the whole-thread re-read the batched archive avoids.
+vi.mock('../threadAggregates', async (importOriginal) => {
+	const actual = await importOriginal<{
+		rebuildThreadAggregates: typeof rebuildThreadAggregates;
+	}>();
+	return { ...actual, rebuildThreadAggregates: vi.fn(actual.rebuildThreadAggregates) };
+});
+
 beforeEach(() => {
 	session.userId = 'user-A';
+	vi.mocked(rebuildThreadAggregates).mockClear();
 });
 afterEach(() => {
 	vi.useRealTimers();
@@ -89,6 +101,33 @@ async function seedReplyDraft(
 
 const folderOf = (t: T, id: Id<'mailMessages'>) =>
 	t.run(async (ctx) => (await ctx.db.get(id))!.folderId);
+
+const threadOf = (t: T, id: Id<'mailThreads'>) => t.run((ctx) => ctx.db.get(id));
+
+/** The thread row as a full re-derivation from its messages leaves it. */
+async function rebuiltThread(t: T, id: Id<'mailThreads'>) {
+	await t.run((ctx) => rebuildThreadAggregates(ctx, id));
+	return threadOf(t, id);
+}
+
+/** What the thread row says about its messages (not when it was written). */
+function aggregatesOf(thread: Awaited<ReturnType<typeof threadOf>>) {
+	const { _creationTime, updatedAt, folderRoles, ...rest } = thread!;
+	return { ...rest, folderRoles: [...folderRoles].sort() };
+}
+
+const archiveAnswered = (
+	t: T,
+	conv: { mailboxId: Id<'mailboxes'>; threadId: Id<'mailThreads'>; first: Id<'mailMessages'> },
+	cutoffAt: number
+) =>
+	t.mutation(internal.mail.replyDone.archiveAnswered, {
+		mailboxId: conv.mailboxId,
+		threadId: conv.threadId,
+		repliedToMessageId: conv.first,
+		userId: 'user-A',
+		cutoffAt,
+	});
 
 describe('doneOnSendCutoff', () => {
 	const reply = {
@@ -196,6 +235,10 @@ describe('replyDone.archiveAnswered', () => {
 	it('archives the Inbox mail up to the cutoff, keeps newer mail and the Sent copy', async () => {
 		const t = convexTest();
 		const conv = await seedConversation(t);
+		// The reply's own Sent copy predates the cutoff: only the Inbox is walked.
+		const sentCopy = await seedMessage(t, conv.mailboxId, { subject: 'Re: invoice', role: 'sent' });
+		await t.run((ctx) => ctx.db.patch(sentCopy, { threadId: conv.threadId }));
+		const sentId = await folderOf(t, sentCopy);
 		const older = await arriveInThread(t, conv.mailboxId, conv.threadId);
 		const cutoffAt = await t.run(async (ctx) => (await ctx.db.get(older))!._creationTime);
 		const newer = await arriveInThread(t, conv.mailboxId, conv.threadId);
@@ -212,9 +255,72 @@ describe('replyDone.archiveAnswered', () => {
 		expect(await folderOf(t, conv.first)).toBe(conv.archiveId);
 		expect(await folderOf(t, older)).toBe(conv.archiveId);
 		expect(await folderOf(t, newer)).toBe(conv.inboxId);
+		expect(await folderOf(t, sentCopy)).toBe(sentId);
 		// The move's bookkeeping: the Archive folder counts what it took in.
 		const archive = await t.run((ctx) => ctx.db.get(conv.archiveId));
 		expect(archive?.totalCount).toBe(2);
+	});
+
+	describe("the conversation's Reply Queue state", () => {
+		const needsReplyOf = (messageId: Id<'mailMessages'>, at: number) => ({
+			messageId,
+			source: 'heuristic' as const,
+			urgency: 'normal' as const,
+			detectedAt: at,
+		});
+
+		it('stays with newer Inbox mail, classified or still waiting for its verdict', async () => {
+			for (const kind of ['settled', 'pending'] as const) {
+				const t = convexTest();
+				const conv = await seedConversation(t);
+				const cutoffAt = await t.run(async (ctx) => (await ctx.db.get(conv.first))!._creationTime);
+				const newer = await arriveInThread(t, conv.mailboxId, conv.threadId);
+				const verdict = needsReplyOf(newer, cutoffAt + 100);
+				await t.run((ctx) =>
+					ctx.db.patch(
+						conv.threadId,
+						kind === 'settled' ? { needsReply: verdict } : { needsReplyPendingAt: cutoffAt + 100 }
+					)
+				);
+
+				expect(await archiveAnswered(t, conv, cutoffAt)).toEqual({ archived: 1 });
+
+				expect(await folderOf(t, newer)).toBe(conv.inboxId);
+				const thread = await threadOf(t, conv.threadId);
+				if (kind === 'settled') expect(thread?.needsReply).toEqual(verdict);
+				else expect(thread?.needsReplyPendingAt).toBe(cutoffAt + 100);
+			}
+		});
+
+		it('goes with the conversation once its Inbox is empty', async () => {
+			const t = convexTest();
+			const conv = await seedConversation(t);
+			const older = await arriveInThread(t, conv.mailboxId, conv.threadId);
+			await t.run((ctx) =>
+				ctx.db.patch(conv.threadId, { needsReply: needsReplyOf(older, Date.now()) })
+			);
+
+			const cutoffAt = await t.run(async (ctx) => (await ctx.db.get(older))!._creationTime);
+			expect(await archiveAnswered(t, conv, cutoffAt)).toEqual({ archived: 2 });
+
+			expect((await threadOf(t, conv.threadId))?.needsReply).toBeUndefined();
+		});
+	});
+
+	it('updates the thread row as a full re-derivation would, without one', async () => {
+		const t = convexTest();
+		const conv = await seedConversation(t);
+		const older = await arriveInThread(t, conv.mailboxId, conv.threadId);
+		const cutoffAt = await t.run(async (ctx) => (await ctx.db.get(older))!._creationTime);
+		await rebuiltThread(t, conv.threadId);
+		vi.mocked(rebuildThreadAggregates).mockClear();
+
+		// Everything moves: the Inbox role goes, the Archive role comes.
+		await archiveAnswered(t, conv, cutoffAt);
+		expect(rebuildThreadAggregates).not.toHaveBeenCalled();
+		const after = await threadOf(t, conv.threadId);
+		expect(after?.folderRoles).toEqual(['archive']);
+		expect(aggregatesOf(after)).toEqual(aggregatesOf(await rebuiltThread(t, conv.threadId)));
 	});
 
 	it('always archives the message replied to, even behind a slow clock', async () => {
@@ -256,6 +362,8 @@ describe('replyDone.archiveAnswered', () => {
 			await ctx.db.patch(conv.inboxId, { totalCount: REPLY_DONE_BATCH + 2 });
 			return { cutoffAt: cutoff, newer: late };
 		});
+		await rebuiltThread(t, conv.threadId);
+		vi.mocked(rebuildThreadAggregates).mockClear();
 		vi.useFakeTimers();
 
 		const first = await t.mutation(internal.mail.replyDone.archiveAnswered, {
@@ -282,6 +390,12 @@ describe('replyDone.archiveAnswered', () => {
 		expect(inInbox.map((m) => m._id)).toEqual([newer]);
 		const archive = await t.run((ctx) => ctx.db.get(conv.archiveId));
 		expect(archive?.totalCount).toBe(REPLY_DONE_BATCH + 1);
+		// No run re-read the whole conversation, and the thread row still says
+		// what a re-derivation says: mail in both the Inbox and the Archive.
+		expect(rebuildThreadAggregates).not.toHaveBeenCalled();
+		const after = await threadOf(t, conv.threadId);
+		expect([...after!.folderRoles].sort()).toEqual(['archive', 'inbox']);
+		expect(aggregatesOf(after)).toEqual(aggregatesOf(await rebuiltThread(t, conv.threadId)));
 	});
 
 	it('stops a follow-up run once the sender lost access', async () => {

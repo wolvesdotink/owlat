@@ -4,9 +4,10 @@
  * A reply (the seed answers a message) takes the "after replying" setting: Send
  * and Cmd/Ctrl+Enter do what it says, Cmd/Ctrl+Alt+Enter does the opposite, and
  * the menu beside Send names both. The action is fixed when the send is asked
- * for and travels in the send's options, so a gate that parks the send (an
- * upload, the seal, the confidence checks, a stale reply) replays it unchanged
- * even if the setting moves meanwhile. A new message or a forward has no
+ * for and travels in the send's options, so a gate that parks the send (the
+ * seal, the confidence checks, a stale reply) replays it unchanged even if the
+ * setting moves meanwhile. An upload in flight parks nothing: it rejects the
+ * attempt, and the next press chooses again. A new message or a forward has no
  * conversation to finish: it carries no action and gets no menu.
  */
 

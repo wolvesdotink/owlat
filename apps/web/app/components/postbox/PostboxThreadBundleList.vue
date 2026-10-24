@@ -26,6 +26,7 @@ import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { replyDropForMessage } from '~/utils/replyFileDrop';
+import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
 
 const props = defineProps<{
 	entries: Array<PostboxFeedEntry<PostboxThreadRowMessage>>;
@@ -73,8 +74,14 @@ const navigableMessages = computed(() =>
 	)
 );
 
-// Previous/next in Zen walk the same order.
+// Previous/next in Zen walk the same order, and so does a reply marked done
+// that was opened from here.
 defineExpose({ visibleIds: computed(() => navigableMessages.value.map((m) => String(m._id))) });
+useListAnswerOrigin({
+	rows: () =>
+		navigableMessages.value.map((m) => ({ id: String(m._id), threadId: m.threadId ?? null })),
+	origin: () => folderAnswerOrigin(props.folderRole, props.activeMessageId),
+});
 
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 	items: navigableMessages,

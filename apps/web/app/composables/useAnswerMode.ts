@@ -295,10 +295,38 @@ export function takeListPlace(folderKey: string): ListReturnSnapshot | null {
 }
 
 /**
+ * Files where a list stood as it unmounts on the way into Answer mode, so a
+ * reply marked done moves on through it: `rows` in the order the list shows
+ * them (collapsed sections and bundles left out), and `origin` (null: a list
+ * that does not route its own opens). Every list renderer the Postbox can show
+ * files through here; one that does not leaves a reply marked done from it
+ * nowhere to move on to.
+ */
+export function useListAnswerOrigin(o: {
+	rows: () => readonly AnswerOriginRow[];
+	origin: () => Omit<AnswerOrigin, 'rows'> | null;
+}) {
+	onBeforeUnmount(() => {
+		if (!listReturnPending) return;
+		const origin = o.origin();
+		if (origin) answerOrigin = { ...origin, rows: o.rows() };
+	});
+}
+
+/** The origin of a list that is its folder's route and opens its rows under it. */
+export function folderAnswerOrigin(
+	folderSegment: string,
+	activeId: string | null | undefined
+): Omit<AnswerOrigin, 'rows'> {
+	const path = `/dashboard/postbox/${folderSegment}`;
+	return { listPath: path, messagePath: path, query: '', activeId: activeId ?? null };
+}
+
+/**
  * A list's side of the Answer mode round trip: its j/k row comes back with it
- * (the scroll offset has its own per-folder memory), and `origin` (a list that
- * routes its own opens) files where it stood for a reply marked done. Filed on
- * every unmount; taken only on the mount that is the way back.
+ * (the scroll offset has its own per-folder memory), and it files its origin
+ * for a reply marked done ({@link useListAnswerOrigin}). The place is filed on
+ * every unmount and taken only on the mount that is the way back.
  */
 export function useListAnswerRoundTrip(o: {
 	folderKey: Ref<string>;
@@ -306,17 +334,14 @@ export function useListAnswerRoundTrip(o: {
 	focusedIndex: Ref<number>;
 	origin: () => Omit<AnswerOrigin, 'rows'> | null;
 }) {
+	useListAnswerOrigin({
+		rows: () => o.rows.value.map((row) => ({ id: row._id, threadId: row.threadId ?? null })),
+		origin: o.origin,
+	});
 	onBeforeUnmount(() => {
 		rememberListPlace(o.folderKey.value, {
 			focusedId: o.rows.value[o.focusedIndex.value]?._id ?? null,
 		});
-		const origin = o.origin();
-		if (origin && listReturnPending) {
-			answerOrigin = {
-				...origin,
-				rows: o.rows.value.map((row) => ({ id: row._id, threadId: row.threadId ?? null })),
-			};
-		}
 	});
 	const returnPlace = takeListPlace(o.folderKey.value);
 	if (!returnPlace?.focusedId) return;
