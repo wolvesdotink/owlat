@@ -1,5 +1,5 @@
 /**
- * The world's append-only event log. Every fixture (SMTP sink, Convex stub)
+ * The world's append-only event log. Every fixture (SMTP sink, Convex proxy)
  * records what it observed here, and the orchestrator waits on named events
  * through the control API instead of polling state: `waitFor` resolves the
  * moment the event is emitted (or at once if it already was).
