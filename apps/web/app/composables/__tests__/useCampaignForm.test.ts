@@ -22,6 +22,11 @@ let guardDirty: Ref<boolean>;
 let leaveDialog: Ref<boolean>;
 /** The next run's outcome, for the background-save cases. */
 let failNext: boolean;
+/** Runs with this label fail. */
+let failLabel: string | null;
+let showToast: ReturnType<typeof vi.fn>;
+/** The leave prompt's Save (useUnsavedChanges' `onSave`). */
+let leaveSave: (() => Promise<void>) | undefined;
 
 function paginated(rows: unknown[] = []) {
 	return {
@@ -37,12 +42,14 @@ function paginated(rows: unknown[] = []) {
 beforeEach(() => {
 	runs = [];
 	failNext = false;
+	failLabel = null;
+	showToast = vi.fn();
 	guardDirty = ref(false);
 	leaveDialog = ref(false);
 	campaign = ref(undefined);
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useRouter', () => ({ push: vi.fn() }));
-	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useToast', () => ({ showToast }));
 	vi.stubGlobal('useAuth', () => ({
 		user: ref({ id: 'user_1' }),
 		activeOrganizationId: ref('org_1'),
@@ -58,16 +65,19 @@ beforeEach(() => {
 	vi.stubGlobal('useOrganizationPaginatedQuery', () => paginated());
 	vi.stubGlobal('useOrganizationQuery', () => ({ data: ref(undefined) }));
 	vi.stubGlobal('useConvex', () => null);
-	vi.stubGlobal('useUnsavedChanges', () => ({
-		showDialog: leaveDialog,
-		hasUnsavedChanges: guardDirty,
-		confirmDiscard: vi.fn(),
-		confirmSave: vi.fn(),
-		cancelNavigation: vi.fn(),
-		setHasChanges: (dirty: boolean) => {
-			guardDirty.value = dirty;
-		},
-	}));
+	vi.stubGlobal('useUnsavedChanges', (opts: { onSave?: () => Promise<void> }) => {
+		leaveSave = opts.onSave;
+		return {
+			showDialog: leaveDialog,
+			hasUnsavedChanges: guardDirty,
+			confirmDiscard: vi.fn(),
+			confirmSave: vi.fn(),
+			cancelNavigation: vi.fn(),
+			setHasChanges: (dirty: boolean) => {
+				guardDirty.value = dirty;
+			},
+		};
+	});
 	vi.stubGlobal(
 		'useBackendOperation',
 		(
@@ -80,7 +90,7 @@ beforeEach(() => {
 			run: async (args: unknown) => {
 				const label = typeof options.label === 'function' ? options.label() : options.label;
 				runs.push({ label, args });
-				if (failNext) {
+				if (failNext || label === failLabel) {
 					failNext = false;
 					options.onError?.({ category: 'invalid_input', message: 'Name is too long' });
 					return { ok: false };
@@ -286,6 +296,58 @@ describe('useCampaignForm autosave', () => {
 		form.drafts.autosave.cancel();
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(saves()).toHaveLength(0);
+	});
+
+	it("keeps the guard when the prompt's Save leaves a schedule kept nowhere", async () => {
+		const { form } = await setup();
+		form.scheduledDate.value = '2099-11-02';
+		form.scheduledTime.value = '09:00';
+		await nextTick();
+		leaveDialog.value = true;
+
+		// No IndexedDB here: the device cannot keep the schedule a draft does not store.
+		expect(await form.saveFromPrompt()).toBe(false);
+		expect(guardDirty.value).toBe(true);
+		expect(form.drafts.autosave.atRisk.value).toBe(true);
+		expect(showToast).toHaveBeenCalledWith(
+			i18n.global.t('shared.draftAutosave.unkeptDetail'),
+			'error'
+		);
+		// The prompt's own Save: no failure to throw, the armed guard keeps the prompt up.
+		await expect(leaveSave!()).resolves.toBeUndefined();
+		expect(guardDirty.value).toBe(true);
+		// The page staying open (the email opens in a new tab) keeps it, so that Save may go on.
+		expect(await form.saveFromPrompt(true)).toBe(true);
+		expect(guardDirty.value).toBe(true);
+	});
+
+	it("saves a partial draft from the prompt's Save without the send checks", async () => {
+		const { form, validate } = await setup('Choose who this campaign comes from.');
+		form.campaignSubject.value = '';
+		await nextTick();
+		leaveDialog.value = true;
+
+		await leaveSave!();
+		expect(validate).not.toHaveBeenCalled();
+		expect(saves().map((run) => run.args)).toEqual([
+			{ campaignId: 'cmp_1', content: { emailTemplateId: 'tpl_1', subject: '' } },
+		]);
+		expect(guardDirty.value).toBe(false);
+	});
+
+	it('keeps the schedule at risk when Schedule fails after its save', async () => {
+		const { form } = await setup();
+		form.scheduledDate.value = '2099-11-02';
+		form.scheduledTime.value = '09:00';
+		await nextTick();
+		failLabel = i18n.global.t('shared.useCampaignActions.operations.schedule');
+
+		await form.handleSchedule();
+		expect(saves()).toHaveLength(1);
+		// Not scheduled: the chosen date and time are still worth a warning.
+		expect(guardDirty.value).toBe(true);
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(guardDirty.value).toBe(true);
 	});
 
 	it('waits for the leave prompt, and saves once the person stays', async () => {

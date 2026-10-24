@@ -73,9 +73,9 @@ const {
 	confirmSave,
 	cancelNavigation,
 	onSenderPreselected,
+	saveFromPrompt,
 
 	// Actions
-	handleSave,
 	handleSendNow,
 	handleSchedule,
 	handleUnschedule,
@@ -155,13 +155,14 @@ const discardAndOpenEmail = async () => {
 	});
 };
 const saveAndOpenEmail = async () => {
-	// On failure keep the prompt up (with inline errors) so nothing is lost —
-	// handleSave clears the dirty flag only on success.
+	// On failure keep the prompt up (with inline errors or a toast) so nothing
+	// is lost. In a browser this page stays open, so it keeps what a draft
+	// holds only on this device.
 	const url = pendingEmailUrl.value;
 	if (!url) return;
 	const opened = await openAfterSave({
 		url,
-		save: handleSave,
+		save: () => saveFromPrompt(!isDesktop.value),
 		isDesktop: isDesktop.value,
 		navigate: navigateTo,
 	});

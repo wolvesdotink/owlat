@@ -34,6 +34,7 @@ export function useCampaignForm(
 	senderPicker: Ref<SenderPickerHandle | null>
 ) {
 	const { t, locale } = useI18n();
+	const { showToast } = useToast();
 
 	// ─── Data Fetching ──────────────────────────────────────────────────
 
@@ -155,9 +156,11 @@ export function useCampaignForm(
 
 	// ─── Unsaved-changes Guard ──────────────────────────────────────────
 
-	// Reuses the shared composable + dialog. `onSave` closes over `actions`
-	// (assigned below) and only runs after the user confirms "Save", by which
-	// point it exists; it throws on a failed save so the user stays on the page.
+	// Reuses the shared composable + dialog. `onSave` closes over
+	// `saveFromPrompt` (assigned below) and only runs after the user confirms
+	// "Save", by which point it exists; it throws on a failed save so the user
+	// stays on the page. A draft whose save landed but whose device-only
+	// choices are kept nowhere stays too: its guard is still armed.
 	const {
 		showDialog: showUnsavedChangesDialog,
 		isSavingBeforeLeave,
@@ -168,7 +171,10 @@ export function useCampaignForm(
 		setHasChanges,
 	} = useUnsavedChanges({
 		onSave: async () => {
-			if (!(await actions.handleSave())) throw new Error('Save failed');
+			if (await saveFromPrompt()) return;
+			if (!(isDraft.value && drafts.autosave.status.value === 'unkept')) {
+				throw new Error('Save failed');
+			}
 		},
 	});
 
@@ -286,6 +292,23 @@ export function useCampaignForm(
 	markCleanForm = () => {
 		markClean();
 		drafts.autosave.cancel();
+	};
+
+	// The Save of a save-or-discard prompt. A draft saves the way autosave
+	// does: what is complete goes to the server, without the checks Send and
+	// Schedule need, and what a draft cannot store (the schedule, an unfinished
+	// section) stays in this device's copy for the next visit. Nothing is
+	// discarded. Resolves false while something would still be lost, unless
+	// the page `staysOpen` (the linked email opens in a new tab) and keeps it.
+	const saveFromPrompt = async (staysOpen = false): Promise<boolean> => {
+		if (!isDraft.value) return actions.handleSave();
+		if (!(await drafts.autosave.flush())) {
+			showToast(t('shared.draftAutosave.notSavedYet'), 'error');
+			return false;
+		}
+		if (staysOpen || !drafts.autosave.atRisk.value) return true;
+		showToast(t('shared.draftAutosave.unkeptDetail'), 'error');
+		return false;
 	};
 
 	// Leaving warns about edits that would be lost: for a draft, only one
@@ -413,6 +436,7 @@ export function useCampaignForm(
 		confirmSave,
 		cancelNavigation,
 		onSenderPreselected,
+		saveFromPrompt,
 
 		// Actions
 		handleSave: actions.handleSave,

@@ -197,7 +197,7 @@ export function useEmailEditorBridge<S>(
 		setHasChanges,
 	} = useUnsavedChanges({
 		onSave: async () => {
-			await save();
+			await (autosaveOn() && drafts ? drafts.saveBeforeLeaving() : save());
 		},
 	});
 
@@ -471,10 +471,10 @@ export function useEmailEditorBridge<S>(
 		hasChanges,
 		showUnsavedChangesDialog,
 		isSavingBeforeLeave,
-		// Discard saves nothing more (leaving a live session alone: the shared draft goes too).
+		// Discard saves nothing more; live, it also drops this tab's share (`discardOnLeave`).
 		confirmDiscard: () => {
 			drafts?.autosave.cancel();
-			if (isLive.value) void coediting?.resetShared();
+			if (isLive.value) void coediting?.discardOnLeave();
 			confirmDiscard();
 		},
 		confirmSave,

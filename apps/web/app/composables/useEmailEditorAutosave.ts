@@ -59,6 +59,8 @@ export interface EmailEditorAutosaveHost {
 export interface EmailEditorAutosave {
 	autosave: DraftAutosave;
 	recovery: DraftRecovery<EmailDraftSnapshot>;
+	/** The leave prompt's Save; rejects while anything is left unsaved. */
+	saveBeforeLeaving: () => Promise<void>;
 }
 
 const isSnapshot = (data: unknown): data is EmailDraftSnapshot => {
@@ -148,16 +150,26 @@ export function useEmailEditorAutosave(
 		accept: isSnapshot,
 		matches: (data) => canonicalJson(data) === canonicalJson(snapshot()),
 		// Only over the very state it was built on: the row at the same
-		// revision, and (live) a session holding nothing unsaved by anyone.
+		// revision, (live) a session holding nothing unsaved by anyone, and no
+		// text typed into an open block that the edit count cannot see yet.
 		canApply: (copy) =>
 			copy.base !== null &&
 			copy.base === host.rowRevision() &&
-			!(host.isLive() && coediting?.hasSharedChanges.value === true),
+			!(host.isLive() && coediting?.hasSharedChanges.value === true) &&
+			host.builder()?.isInlineEditing !== true,
 		apply,
 		edits: () => autosave.edits.value,
 		keep: autosave.keep,
 		onApplied: () => showToast(t('shared.draftAutosave.restored')),
 	});
 
-	return { autosave, recovery };
+	// Through the background saves' queue: a separate save beside one in
+	// flight would be refused as stale. Open inline text is committed first.
+	const saveBeforeLeaving = async () => {
+		if (await autosave.flush()) return;
+		showToast(t('shared.draftAutosave.notSavedYet'), 'error');
+		throw new Error('The draft is not saved yet');
+	};
+
+	return { autosave, recovery, saveBeforeLeaving };
 }

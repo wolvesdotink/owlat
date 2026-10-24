@@ -175,6 +175,13 @@ export function useEmailEditorCoedit(
 	/** Leaving would drop unsaved work only when nobody else is there to keep it. */
 	const isAlone = computed(() => presence.people.value.length === 0);
 
+	/**
+	 * Discard on the way out. Alone, the session goes back to the email as
+	 * saved. With others there it is their draft too: only what this tab has
+	 * not sent yet is dropped, and their work stays.
+	 */
+	const discardOnLeave = () => (isAlone.value ? session.resetShared() : session.dropUnsent());
+
 	watch(
 		() => session.status.value,
 		(status) => {
@@ -187,6 +194,7 @@ export function useEmailEditorCoedit(
 		people: presence.people,
 		remoteMarks: presence.remoteMarks,
 		isAlone,
+		discardOnLeave,
 		notices,
 		dismissNotice,
 		restoreNotice,

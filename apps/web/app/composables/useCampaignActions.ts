@@ -131,8 +131,24 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		sendTiming.value = sendTimingFromCampaign(timing);
 	};
 
-	// Save campaign. Returns whether the save (fields + A/B test) fully
-	// succeeded so multi-step callers can abort the rest of their sequence.
+	// The validated form (fields + A/B test) in its writes. Returns whether
+	// they all landed so multi-step callers can abort the rest of their
+	// sequence. Not `onSaved`: Send and Schedule report that only once they
+	// completed, so a step that fails after this keeps the form's edits.
+	const saveForm = async (): Promise<boolean> => {
+		if (!(await handleSaveFields())) return false;
+
+		// Update A/B test settings
+		if (abTest.abTestEnabled.value) {
+			return (await enableABTest(abTest.buildEnablePayload(campaignId.value))).ok;
+		}
+		if (campaignData.value?.isABTest) {
+			return (await disableABTest({ campaignId: campaignId.value })).ok;
+		}
+		return true;
+	};
+
+	// Save campaign. Returns whether the save (fields + A/B test) fully succeeded.
 	const handleSave = async (): Promise<boolean> => {
 		if (!validateForm() || !campaignId.value) return false;
 
@@ -140,19 +156,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		saveError.value = '';
 
 		try {
-			if (!(await handleSaveFields())) return false;
-
-			// Update A/B test settings
-			if (abTest.abTestEnabled.value) {
-				if (!(await enableABTest(abTest.buildEnablePayload(campaignId.value))).ok) {
-					return false;
-				}
-			} else if (campaignData.value?.isABTest) {
-				if (!(await disableABTest({ campaignId: campaignId.value })).ok) {
-					return false;
-				}
-			}
-
+			if (!(await saveForm())) return false;
 			showToast(t('shared.useCampaignActions.toasts.saved'));
 			onSaved?.();
 			return true;
@@ -162,7 +166,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	};
 
 	// Send now. Each step aborts the sequence on failure; the failing `run`
-	// (or handleSave) has already surfaced the categorized error.
+	// (or saveForm) has already surfaced the categorized error.
 	//
 	// "Now" means one undo window from now: the campaign is SCHEDULED at
 	// `Date.now() + SEND_UNDO_WINDOW_MS` rather than handed to `sendNow`, so the
@@ -179,7 +183,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 		try {
 			if (isDraft.value) {
-				if (!(await handleSave())) return;
+				if (!(await saveForm())) return;
 			}
 
 			// `schedule` only accepts a draft, so a campaign that is already
@@ -242,7 +246,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 		try {
 			if (isDraft.value) {
-				if (!(await handleSave())) return;
+				if (!(await saveForm())) return;
 				if (
 					!(
 						await scheduleCampaign({

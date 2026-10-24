@@ -186,6 +186,9 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	let sendTimer: ReturnType<typeof setTimeout> | null = null;
 	// Sends that failed in a row since the last one the server took.
 	let sendFailures = 0;
+	// This tab discarded what it has not sent: nothing of it goes out, also
+	// not when it closes. Its next edit sends again.
+	let dropsUnsent = false;
 	const refreshUnsent = () => {
 		hasUnsent.value = sync.hasUnsent(opts.read());
 	};
@@ -229,7 +232,7 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	};
 
 	function scheduleSend(delay = SEND_DELAY_MS) {
-		if (status.value !== 'active' || sendTimer !== null) return;
+		if (status.value !== 'active' || sendTimer !== null || dropsUnsent) return;
 		sendTimer = setTimeout(() => {
 			sendTimer = null;
 			void send().then((didSend) => {
@@ -242,7 +245,10 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		if (status.value !== 'active') return;
 		refreshUnsent();
 		// Others' edits arrive already sent; a change leaving something unsent is this tab's.
-		if (hasUnsent.value) localEdits.value += 1;
+		if (hasUnsent.value) {
+			localEdits.value += 1;
+			dropsUnsent = false;
+		}
 		scheduleSend();
 	});
 
@@ -329,6 +335,16 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		}
 	};
 
+	/**
+	 * Throw away only this tab's edits that have not reached the session; what
+	 * it already sent is part of the shared draft the others are looking at.
+	 */
+	const dropUnsent = () => {
+		dropsUnsent = true;
+		if (sendTimer !== null) clearTimeout(sendTimer);
+		sendTimer = null;
+	};
+
 	/** Wait (briefly) until the session reports a save of at least `version`. */
 	const untilSaved = async (version: number) => {
 		for (let round = 0; round < 2; round++) {
@@ -345,7 +361,7 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		if (sendTimer !== null) clearTimeout(sendTimer);
 		// Best effort: hand over what this tab still has before it goes, unless
 		// it is leaving because it threw its changes away.
-		if (status.value === 'active' && !isDiscarding) void send();
+		if (status.value === 'active' && !isDiscarding && !dropsUnsent) void send();
 		notifyWaiters();
 	});
 
@@ -367,6 +383,7 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		flushNow,
 		untilSaved,
 		resetShared,
+		dropUnsent,
 	};
 }
 
