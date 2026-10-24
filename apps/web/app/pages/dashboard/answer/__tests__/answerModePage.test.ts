@@ -22,6 +22,8 @@ import { useAnswerAiFocus, useAnswerLeftDraft } from '~/composables/useAnswerMod
 import AnswerPage from '../m/[messageId].vue';
 import PostboxOverflowMenu from '~/components/postbox/PostboxOverflowMenu.vue';
 import { useClickOutside } from '~/composables/useClickOutside';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -288,8 +290,11 @@ async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean
 
 const seedOf = (w: VueWrapper) =>
 	w.getComponent(ComposerStub).props('seed') as Record<string, unknown>;
+// The page's keys go through the app-wide dispatcher, a document listener.
 const press = (init: KeyboardEventInit) =>
-	window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+	document.body.dispatchEvent(
+		new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })
+	);
 
 beforeEach(() => {
 	activeQueueSession = null;
@@ -489,16 +494,36 @@ describe('Answer mode page', () => {
 	});
 
 	it('gives Cmd/Ctrl+J to "Draft with AI" and keeps it from the shell', async () => {
+		// The dashboard layout binds the same chord to the Assistant.
+		const assistant = vi.fn();
+		const shell = mount(
+			defineComponent({
+				setup() {
+					useKeyboardShortcuts().registerShortcut({ id: 'global.assistant', handler: assistant });
+					return () => null;
+				},
+			})
+		);
 		await mountAt({});
 		const focusAi = vi.fn();
 		const unregister = useAnswerAiFocus().register(focusAi);
-		const shell = vi.fn();
-		document.addEventListener('keydown', shell);
 		press({ key: 'j', metaKey: true });
 		expect(focusAi).toHaveBeenCalledTimes(1);
-		expect(shell).not.toHaveBeenCalled();
-		document.removeEventListener('keydown', shell);
+		expect(assistant).not.toHaveBeenCalled();
 		unregister();
+		shell.unmount();
+	});
+
+	it('follows a remap of its keys', async () => {
+		applyShortcutPreferences('owlat', [{ id: 'answer.toggleView', keys: ['y'] }]);
+		const w = await mountAt({});
+		press({ key: 't' });
+		await flushPromises();
+		expect(w.get('[data-testid="conversation"]').attributes('data-view')).toBe('summary');
+		press({ key: 'y' });
+		await flushPromises();
+		expect(w.get('[data-testid="conversation"]').attributes('data-view')).toBe('full');
+		resetShortcutPreferences();
 	});
 
 	it('puts "Draft with AI" above the editor when AI is on, and nothing when it is off', async () => {

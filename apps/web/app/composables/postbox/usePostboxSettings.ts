@@ -71,7 +71,8 @@
  *     the app with (idea 43b): a named preset (Owlat / Gmail / Superhuman /
  *     Outlook) plus their own per-shortcut remaps on top. Absent means the
  *     shipped 'owlat' map with no remaps, which is exactly the keyboard before
- *     the setting existed.
+ *     the setting existed. Read here; `useShortcutPreferences` writes them
+ *     through its own mutation, which needs no mail flag.
  *   - `markReadPolicy` — when an opened conversation loses its unread flags:
  *     'immediate' (mark on render, the default and today's behaviour),
  *     'after-dwell' (mark after a short visible dwell, cancelled by navigating
@@ -391,14 +392,6 @@ export function usePostboxSettings() {
 		await updateOp.run({ shareLinkExpiryDays: days });
 	}
 
-	async function setShortcutPreset(preset: ShortcutPreset) {
-		await updateOp.run({ shortcutPreset: preset });
-	}
-
-	async function setShortcutOverrides(overrides: StoredShortcutOverride[]) {
-		await updateOp.run({ shortcutOverrides: overrides });
-	}
-
 	async function setSwipeAction(direction: 'left' | 'right', action: PostboxSwipeAction) {
 		await updateOp.run(
 			direction === 'left' ? { swipeLeftAction: action } : { swipeRightAction: action }
@@ -479,8 +472,6 @@ export function usePostboxSettings() {
 		setTrashAutoPurgeDays,
 		setShareLinkExpiryDays,
 		setSwipeAction,
-		setShortcutPreset,
-		setShortcutOverrides,
 		setDailyBriefEmail,
 		dismissSealedMailNudge,
 		isSaving: updateOp.isLoading,

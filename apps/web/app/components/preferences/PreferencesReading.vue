@@ -19,6 +19,7 @@
 import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import { POSTBOX_REPLY_DEFAULT_OPTIONS } from '~/utils/postboxReplyDefault';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { POSTBOX_DENSITY_OPTIONS } from '~/utils/postboxDensity';
 import type { PostboxReadingPane } from '~/utils/postboxReadingPane';
@@ -32,6 +33,8 @@ import PreferencesSettingRow from './PreferencesSettingRow.vue';
 
 const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
+// The reply keys as the person has them bound (a preset or a remap moves them).
+const { labelFor } = useShortcutLabels();
 
 const {
 	autoAdvance,
@@ -303,8 +306,12 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 					class="text-xs text-text-tertiary mt-0.5"
 					scope="global"
 				>
-					<template #replyKey><kbd>r</kbd></template>
-					<template #replyAllKey><kbd>a</kbd></template>
+					<template #replyKey
+						><kbd>{{ labelFor('postbox.reply') ?? '—' }}</kbd></template
+					>
+					<template #replyAllKey
+						><kbd>{{ labelFor('postbox.replyAll') ?? '—' }}</kbd></template
+					>
 				</I18nT>
 			</template>
 			<select

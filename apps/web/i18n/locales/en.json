@@ -4821,7 +4821,7 @@
 				"all": "All mail",
 				"label": "Inbox view",
 				"priority": "Priority",
-				"title": "Priority mail or all mail (B)"
+				"title": "Priority mail or all mail"
 			},
 			"postboxInsertAvailability": {
 				"intro": "Here are a few times that work for me ({zone}):",
@@ -5362,25 +5362,6 @@
 			},
 			"postboxShortcutHelp": {
 				"title": "Keyboard shortcuts"
-			},
-			"postboxShortcutSettings": {
-				"change": "Change",
-				"changeAriaLabel": "Change the shortcut for {shortcut}",
-				"heading": "Keyboard shortcuts",
-				"hint": "Pick the map you already know, then move the keys you disagree with. Press a key while a row is listening.",
-				"listening": "Press a key…",
-				"modifierRefused": "Shortcuts here are single keys — press a key without Ctrl, Cmd or Alt.",
-				"presetLabel": "Keyboard map",
-				"presets": {
-					"gmail": "Gmail",
-					"outlook": "Outlook",
-					"owlat": "Owlat (default)",
-					"superhuman": "Superhuman"
-				},
-				"reset": "Reset",
-				"resetAll": "Reset all my changes",
-				"taken": "{shortcut} already uses that key.",
-				"unbound": "Not set"
 			},
 			"postboxSnippetPicker": {
 				"empty": "No matching saved replies",
@@ -6102,6 +6083,63 @@
 				"swipeRightLabel": "Swipe right on a message",
 				"swipeHelp": "Drag a row sideways on a touchscreen to triage it. A mouse never triggers this.",
 				"swipeRightHelp": "The same gesture, the other way."
+			},
+			"preferencesShortcuts": {
+				"heading": "Keyboard shortcuts",
+				"hint": "Pick the map you already know, then change the keys you disagree with. Press a key while a row is listening.",
+				"presetLabel": "Keyboard map",
+				"presets": {
+					"gmail": "Gmail",
+					"outlook": "Outlook",
+					"owlat": "Owlat (default)",
+					"superhuman": "Superhuman"
+				},
+				"filterLabel": "Find a shortcut",
+				"filterPlaceholder": "Name or key, e.g. archive or ctrl",
+				"noMatch": "No shortcut matches “{query}”.",
+				"change": "Change",
+				"changeAriaLabel": "Change the shortcut for {shortcut}",
+				"listening": "Press a key…",
+				"reset": "Reset",
+				"resetAriaLabel": "Reset the shortcut for {shortcut}",
+				"resetAll": "Reset all my changes",
+				"unbound": "Not set",
+				"fixed": "Fixed",
+				"fixedReasons": {
+					"convention": "Works the same as in every other app.",
+					"layout": "Follows the key's position, so it works on every keyboard layout.",
+					"surface": "Its screen answers this key itself, so it can't be changed yet.",
+					"numbered": "The number picks the option in that place, so it stays."
+				},
+				"refused": {
+					"modifier": "This shortcut is a single key — press a key without Ctrl, Cmd or Alt.",
+					"needsModifier": "This shortcut needs Ctrl or Cmd — hold it while you press the key.",
+					"reserved": "Your browser or system keeps that key for itself — pick another.",
+					"taken": "{shortcut} already uses that key.",
+					"prefix": "That key and {shortcut} start the same way, so one of them could never fire."
+				},
+				"clashesHeading": "Some shortcuts share a key",
+				"clashesHint": "Only the first one fires. Change or reset one of them.",
+				"clashLine": "{keys} is used by {shortcuts}",
+				"clashesWith": "Shares a key with {shortcuts}",
+				"saveOperation": "Save keyboard shortcuts",
+				"scopes": {
+					"global": "Everywhere",
+					"postbox": "Mail",
+					"composer": "Writing a message",
+					"inbox": "Team inbox threads",
+					"review": "Team inbox updates",
+					"workbench": "Workbench",
+					"peek": "Workbench panel",
+					"answer": "Answer mode",
+					"workspace": "Desktop workspaces",
+					"inboxList": "Team inbox list",
+					"answerQueue": "Answer queue",
+					"askCard": "The AI’s questions",
+					"mailCard": "Answer queue: follow-ups",
+					"teamCard": "Answer queue: Team inbox drafts",
+					"mentionCard": "Answer queue: mentions"
+				}
 			},
 			"preferencesYourData": {
 				"mailExportAction": "Download .mbox",
@@ -12167,7 +12205,8 @@
 				}
 			},
 			"shortcuts": {
-				"intro": "Pick a set of keys you already know from another mail app, or change single keys. Press ? anywhere to see them.",
+				"intro": "Every key the app answers, in one place. Pick a set you already know from another mail app, change single keys, or search for one.",
+				"introHelp": "Press {key} anywhere to see the keys that work there.",
 				"pageTitle": "Keyboard shortcuts — Owlat"
 			},
 			"signatures": {
@@ -16491,6 +16530,8 @@
 				"triage": "Triage",
 				"workspace": "Workspaces",
 				"review": "Updates list",
+				"teamInbox": "Team inbox",
+				"workbench": "Workbench",
 				"answer": "Answer mode"
 			},
 			"labels": {
@@ -16553,7 +16594,33 @@
 				"previousQueueItem": "Previous item in the Answer queue",
 				"nextQueueItem": "Next item in the Answer queue",
 				"savedReplies": "Insert a saved reply",
-				"writeNote": "Write an internal note (Team inbox threads)"
+				"writeNote": "Write an internal note (Team inbox threads)",
+				"openSettings": "Open settings",
+				"openAssistant": "Open the assistant",
+				"jumpToSidebarItem": "Jump to a sidebar item (hold Alt to see the numbers)",
+				"toggleFolderRail": "Collapse / expand the folder list",
+				"assignToMe": "Assign the thread to me",
+				"replyInAnswerMode": "Reply in Answer mode",
+				"nextLine": "Next line",
+				"previousLine": "Previous line",
+				"openLine": "Open the email behind the line",
+				"markLineDone": "Mark the line done",
+				"replyToUpdate": "Send a Team inbox update to the Answer queue",
+				"nextPeekEmail": "Next email in the panel",
+				"previousPeekEmail": "Previous email in the panel",
+				"closePeek": "Close the panel",
+				"undoQueueStep": "Undo the last step in the Answer queue",
+				"askKnowledge": "Ask knowledge",
+				"dismissUpdate": "Mark the update done",
+				"markFollowUpDone": "Mark the follow-up done",
+				"previousCard": "Previous card",
+				"nextCard": "Next card",
+				"sendOrApprove": "Send the reply, or approve the draft",
+				"approveDraft": "Review & send the draft",
+				"rejectDraft": "Reject the draft",
+				"openMention": "Open the mention to reply",
+				"markMentionRead": "Mark the mention read",
+				"skipCard": "Skip for now"
 			}
 		},
 		"signatureBadge": {
