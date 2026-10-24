@@ -41,6 +41,7 @@ const { data: guide } = useConvexQuery(api.domains.yahooCfl.getGuide, () =>
 );
 
 const { t } = useI18n();
+const askConfirm = useConfirm();
 
 const { run: submitEnrollment, isLoading: isSubmitting } = useBackendOperation(
 	api.domains.yahooCfl.submitEnrollment,
@@ -128,15 +129,16 @@ const silentDays = computed(() => {
  * unsubscribe-rate proxy. That is a real consequence of one click, so it is
  * named in full before the mutation fires.
  */
-const resetConfirmation = (): string => {
+const resetConfirmation = () => {
 	const prefix = 'components.domains.yahooCflPanel.resetConfirmation';
-	return [
-		t(`${prefix}.question`),
-		'',
-		t(`${prefix}.ourRecord`),
-		t(`${prefix}.yahooRecord`),
-		t(`${prefix}.fallback`),
-	].join('\n');
+	return {
+		title: t(`${prefix}.question`),
+		body: [t(`${prefix}.ourRecord`), t(`${prefix}.yahooRecord`), t(`${prefix}.fallback`)].join(
+			'\n'
+		),
+		confirmText: t('components.domains.yahooCflPanel.resetButton'),
+		variant: 'warning' as const,
+	};
 };
 
 async function submit() {
@@ -146,8 +148,10 @@ async function confirm() {
 	await confirmEnrollment({ domainId: props.domainId });
 }
 async function reset() {
-	if (!window.confirm(resetConfirmation())) return;
-	await resetEnrollment({ domainId: props.domainId });
+	// The domain the question was about, even if the panel is reused for another.
+	const domainId = props.domainId;
+	if (!(await askConfirm(resetConfirmation()))) return;
+	await resetEnrollment({ domainId });
 }
 </script>
 

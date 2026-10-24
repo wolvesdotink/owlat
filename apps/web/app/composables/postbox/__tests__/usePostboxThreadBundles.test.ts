@@ -8,8 +8,9 @@
  *
  * The Convex query/operation composables are stubbed as globals.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref } from 'vue';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { effectScope, ref } from 'vue';
+import { installConfirm, type ConfirmDriver } from '~/__tests__/confirm';
 import { usePostboxThreadBundles } from '../usePostboxThreadBundles';
 
 vi.mock('@owlat/api', () => {
@@ -114,19 +115,35 @@ describe('archiveBundle', () => {
 });
 
 describe('unsubscribeBundle', () => {
+	let confirmDriver: ConfirmDriver;
+	beforeEach(() => {
+		confirmDriver = installConfirm();
+	});
+	afterEach(() => confirmDriver.dispose());
+
 	it('asks first — these are state-changing requests to third parties', async () => {
-		const confirm = vi.fn(() => false);
-		vi.stubGlobal('window', { confirm } as never);
 		const { unsubscribeBundle } = setup([]);
-		await expect(unsubscribeBundle(['a@example.com'], ['m1'])).resolves.toBe(false);
-		expect(confirm).toHaveBeenCalled();
+		const answer = unsubscribeBundle(['a@example.com', 'b@example.com'], ['m1']);
+		expect(confirmDriver.pending[0]).toMatchObject({
+			title: 'shared.postbox.usePostboxThreadBundles.unsubscribeConfirm',
+			body: 'shared.postbox.usePostboxThreadBundles.unsubscribeConfirmBody',
+			confirmText: 'components.postbox.postboxThreadBundleList.unsubscribe',
+			variant: 'warning',
+		});
+		expect(runSpy).not.toHaveBeenCalled();
+		confirmDriver.answer(false);
+		await expect(answer).resolves.toBe(false);
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 
 	it('sends the senders and the bundle ids once confirmed', async () => {
-		vi.stubGlobal('window', { confirm: () => true } as never);
 		const { unsubscribeBundle } = setup([]);
-		await expect(unsubscribeBundle(['a@example.com'], ['m1', 'm2'])).resolves.toBe(true);
+		const answer = unsubscribeBundle(['a@example.com'], ['m1', 'm2']);
+		await Promise.resolve();
+		expect(runSpy).not.toHaveBeenCalled();
+		confirmDriver.answer(true);
+		await expect(answer).resolves.toBe(true);
+		expect(runSpy).toHaveBeenCalledTimes(1);
 		expect(runSpy).toHaveBeenCalledWith({
 			mailboxId: 'mailbox-1',
 			senderEmails: ['a@example.com'],
@@ -134,11 +151,32 @@ describe('unsubscribeBundle', () => {
 		});
 	});
 
+	it('acts on the mailbox the question was asked in, not one switched to meanwhile', async () => {
+		const mailboxId = ref('mailbox-1' as never);
+		const { unsubscribeBundle } = usePostboxThreadBundles({
+			mailboxId,
+			messages: ref([]) as never,
+		});
+		const answer = unsubscribeBundle(['a@example.com'], ['m1']);
+		mailboxId.value = 'mailbox-2' as never;
+		confirmDriver.answer(true);
+		await expect(answer).resolves.toBe(true);
+		expect(runSpy).toHaveBeenCalledWith(expect.objectContaining({ mailboxId: 'mailbox-1' }));
+	});
+
+	it('sends nothing when the list that asked is torn down with the question open', async () => {
+		const scope = effectScope();
+		const { unsubscribeBundle } = scope.run(() => setup([]))!;
+		const answer = unsubscribeBundle(['a@example.com'], ['m1']);
+		scope.stop();
+		await expect(answer).resolves.toBe(false);
+		expect(confirmDriver.pending).toEqual([]);
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
 	it('never prompts when the bundle has no one-click sender', async () => {
-		const confirm = vi.fn(() => true);
-		vi.stubGlobal('window', { confirm } as never);
 		const { unsubscribeBundle } = setup([]);
 		await expect(unsubscribeBundle([], ['m1'])).resolves.toBe(false);
-		expect(confirm).not.toHaveBeenCalled();
+		expect(confirmDriver.pending).toEqual([]);
 	});
 });

@@ -5,7 +5,9 @@
  * Demoting a verb behind a menu is only safe if the menu still offers exactly
  * what the bar did, in exactly the folders it did. So: the contextual swaps
  * (Trash → Delete forever, Spam → Not spam, snoozed → Unsnooze) are asserted
- * per folder, and both destructive verbs still go through their confirm.
+ * per folder, and both destructive verbs still go through their confirm: nothing
+ * runs before the answer or after a no, and a yes acts on the rows and senders
+ * the question counted, not on a selection changed while it was open.
  *
  * Unsubscribe carries its own two ways to lie: it may only appear when the
  * backend says the selection holds One-Click list mail (a page-only newsletter
@@ -14,9 +16,10 @@
  * the action reach mail outside the subscriptions panel's inbox window, which
  * is where a selection in Archive or Spam lives.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
+import { installConfirm, type ConfirmDriver } from '~/__tests__/confirm';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxBulkOverflowMenu from '../PostboxBulkOverflowMenu.vue';
@@ -84,6 +87,7 @@ function mountMenu(folderRole = 'archive') {
 const itemNamed = (wrapper: ReturnType<typeof mountMenu>, text: string) =>
 	wrapper.findAll('button').find((b) => b.text().includes(text));
 
+let confirmDriver: ConfirmDriver;
 beforeEach(() => {
 	runSpy.mockClear();
 	clearSpy.mockClear();
@@ -94,8 +98,21 @@ beforeEach(() => {
 	selectedIds.value = ['m1', 'm2'];
 	selectionSenders.value = [];
 	labels.value = [];
-	vi.stubGlobal('confirm', () => true);
+	confirmDriver = installConfirm();
 });
+afterEach(() => confirmDriver.dispose());
+
+/** Click an item, then answer the question it asked. */
+async function clickAndAnswer(
+	wrapper: ReturnType<typeof mountMenu>,
+	text: string,
+	confirmed: boolean
+) {
+	await itemNamed(wrapper, text)!.trigger('click');
+	await flushPromises();
+	confirmDriver.answer(confirmed);
+	await flushPromises();
+}
 
 describe('PostboxBulkOverflowMenu contents', () => {
 	it('offers the five demoted verbs in an ordinary folder', () => {
@@ -124,13 +141,32 @@ describe('PostboxBulkOverflowMenu contents', () => {
 
 		const w = mountMenu('trash');
 		await itemNamed(w, 'Delete forever')!.trigger('click');
-		expect(purgeSpy).toHaveBeenCalledTimes(1);
-
-		vi.stubGlobal('confirm', () => false);
-		purgeSpy.mockClear();
-		const declined = mountMenu('trash');
-		await itemNamed(declined, 'Delete forever')!.trigger('click');
+		await flushPromises();
+		expect(confirmDriver.pending[0]).toMatchObject({
+			title: 'Permanently delete 2 messages?',
+			body: 'This cannot be undone.',
+			confirmText: 'Delete forever',
+			variant: 'danger',
+		});
 		expect(purgeSpy).not.toHaveBeenCalled();
+		confirmDriver.answer(true);
+		await flushPromises();
+		expect(purgeSpy).toHaveBeenCalledTimes(1);
+		expect(purgeSpy).toHaveBeenCalledWith(['m1', 'm2']);
+
+		purgeSpy.mockClear();
+		await clickAndAnswer(mountMenu('trash'), 'Delete forever', false);
+		expect(purgeSpy).not.toHaveBeenCalled();
+	});
+
+	it('purges the rows the question counted, not rows selected while it was open', async () => {
+		const w = mountMenu('trash');
+		await itemNamed(w, 'Delete forever')!.trigger('click');
+		await flushPromises();
+		selectedIds.value = ['m1', 'm2', 'm3'];
+		confirmDriver.answer(true);
+		await flushPromises();
+		expect(purgeSpy).toHaveBeenCalledWith(['m1', 'm2']);
 	});
 
 	it('expands the label list inside the panel instead of a second popover', async () => {
@@ -159,6 +195,20 @@ describe('PostboxBulkOverflowMenu unsubscribe', () => {
 		selectionSenders.value = [{ senderEmail: 'news@a.example', actionMessageId: 'm2' }];
 		const w = mountMenu();
 		await itemNamed(w, 'Unsubscribe')!.trigger('click');
+		await flushPromises();
+		expect(confirmDriver.pending[0]).toMatchObject({
+			title: 'Unsubscribe from 1 sender and archive their mail?',
+			confirmText: 'Unsubscribe',
+			variant: 'warning',
+		});
+		expect(runSpy).not.toHaveBeenCalled();
+		// The selection moves on while the question is open; the request still
+		// carries what was selected when it was asked.
+		selectedIds.value = ['m9'];
+		selectionSenders.value = [{ senderEmail: 'other@b.example', actionMessageId: 'm9' }];
+		confirmDriver.answer(true);
+		await flushPromises();
+		expect(runSpy).toHaveBeenCalledTimes(1);
 		expect(runSpy).toHaveBeenCalledWith({
 			mailboxId: 'mb1',
 			senderEmails: ['news@a.example'],
@@ -169,8 +219,7 @@ describe('PostboxBulkOverflowMenu unsubscribe', () => {
 	it('reports every line of the outcome, not just the headline', async () => {
 		selectionSenders.value = [{ senderEmail: 'news@a.example', actionMessageId: 'm2' }];
 		const w = mountMenu();
-		await itemNamed(w, 'Unsubscribe')!.trigger('click');
-		await Promise.resolve();
+		await clickAndAnswer(w, 'Unsubscribe', true);
 		const [message, tone] = showToast.mock.calls[0] ?? [];
 		expect(message).toContain('Unsubscribed from 1 sender');
 		expect(message).toContain('12 messages archived');
@@ -178,10 +227,20 @@ describe('PostboxBulkOverflowMenu unsubscribe', () => {
 	});
 
 	it('does nothing when the confirm is declined', async () => {
-		vi.stubGlobal('confirm', () => false);
+		selectionSenders.value = [{ senderEmail: 'news@a.example', actionMessageId: 'm2' }];
+		const w = mountMenu();
+		await clickAndAnswer(w, 'Unsubscribe', false);
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
+	it('sends nothing when the menu goes away with the question open', async () => {
 		selectionSenders.value = [{ senderEmail: 'news@a.example', actionMessageId: 'm2' }];
 		const w = mountMenu();
 		await itemNamed(w, 'Unsubscribe')!.trigger('click');
+		await flushPromises();
+		w.unmount();
+		await flushPromises();
+		expect(confirmDriver.pending).toEqual([]);
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 });
