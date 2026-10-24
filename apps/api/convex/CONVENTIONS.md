@@ -657,8 +657,9 @@ the protocol for that.
 `scripts/check-action-commits.sh` (in `bun run lint`) counts, per action, the
 most `runMutation` calls one run can make, from the syntax tree
 (`scripts/lib/actionCommits.ts`: branches and early returns take the costlier
-path, loops and per-item callbacks count twice, same-module helpers are
-followed, other modules are not). Every commit past the first is a line in
+path, a `switch` clause that falls through adds to the next, loops and
+per-item callbacks count twice, same-module helpers are followed by lexical
+scope, also when passed by name, other modules are not). Every commit past the first is a line in
 `scripts/action-commit-baseline.txt`, frozen debt: a new multi-commit action
 fails, and converting one fails until its lines are deleted. A marker that
 exempts no call, or gives no reason, fails too. Convert an action on its own,

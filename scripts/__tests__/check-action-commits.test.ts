@@ -333,6 +333,7 @@ describe('check-action-commits.sh', () => {
 			'apps/api/scripts/check-action-commits.sh',
 			'apps/api/scripts/action-commit-census.ts',
 			'apps/api/scripts/lib/actionCommits.ts',
+			'apps/api/scripts/lib/functionBindings.ts',
 			'apps/api/scripts/lib/sourceGraph.ts',
 		]) {
 			await mkdir(dirname(join(root, path)), { recursive: true });
