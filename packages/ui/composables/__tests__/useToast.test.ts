@@ -105,6 +105,45 @@ describe('useToast', () => {
 		expect(toasts.value).toHaveLength(0);
 	});
 
+	it('rewrites a toast in place: same id, same slot, same lifetime', () => {
+		const { showToast, updateToast, toasts } = useToast();
+		const onAction = vi.fn();
+		const first = showToast('Archived', 'success', {
+			durationMs: 8000,
+			action: { label: 'Undo', onAction },
+		});
+		showToast('Saved');
+		updateToast(first, {
+			message: 'Archived 2 messages',
+			action: { label: 'Undo all', onAction },
+		});
+		expect(toasts.value.map((t) => [t.id, t.message, t.action?.label])).toEqual([
+			[first, 'Archived 2 messages', 'Undo all'],
+			[toasts.value[1]!.id, 'Saved', undefined],
+		]);
+		// The rewrite does not restart the clock.
+		vi.advanceTimersByTime(8000);
+		expect(toasts.value.some((t) => t.id === first)).toBe(false);
+	});
+
+	it('leaves an observed toast and a missing toast alone', () => {
+		const { showToast, updateToast, removeToast, toasts } = useToast();
+		const observedId = showToast('Archived', 'success', {
+			observedAction: {
+				label: 'Undo',
+				pendingLabel: 'Undoing…',
+				failedNote: 'Not undone.',
+				run: async () => true,
+			},
+		});
+		updateToast(observedId, { message: 'changed', action: { label: 'x', onAction: () => {} } });
+		expect(toasts.value[0]).toMatchObject({ message: 'Archived', action: { label: 'Undo' } });
+		const gone = showToast('one');
+		removeToast(gone);
+		expect(() => updateToast(gone, { message: 'two' })).not.toThrow();
+		expect(toasts.value).toHaveLength(1);
+	});
+
 	it('tolerates removing an already-dismissed toast', () => {
 		const { showToast, removeToast, toasts } = useToast();
 		showToast('one');
