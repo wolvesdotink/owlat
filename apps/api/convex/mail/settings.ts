@@ -67,6 +67,9 @@ export const get = publicQuery({
 			inboxMode: row.inboxMode,
 			sortOrder: row.sortOrder,
 			isSendSoundOn: row.isSendSoundOn,
+			isReplyAlertSoundOn: row.isReplyAlertSoundOn,
+			isAssignmentSoundOn: row.isAssignmentSoundOn,
+			isQuestionSoundOn: row.isQuestionSoundOn,
 			isAutoLoadImagesOn: row.isAutoLoadImagesOn,
 			undoSendSeconds: row.undoSendSeconds,
 			notifyAbout: row.notifyAbout,
@@ -108,6 +111,10 @@ export const update = postboxMutation({
 		inboxMode: v.optional(mailInboxModeValidator),
 		sortOrder: v.optional(mailSortOrderValidator),
 		isSendSoundOn: v.optional(v.boolean()),
+		// Alert sounds per kind: absent = off.
+		isReplyAlertSoundOn: v.optional(v.boolean()),
+		isAssignmentSoundOn: v.optional(v.boolean()),
+		isQuestionSoundOn: v.optional(v.boolean()),
 		// Remote images on open, outside suspicious mail: absent = on.
 		isAutoLoadImagesOn: v.optional(v.boolean()),
 		undoSendSeconds: v.optional(mailUndoSendSecondsValidator),
@@ -154,6 +161,9 @@ export const update = postboxMutation({
 			inboxMode?: (typeof args)['inboxMode'];
 			sortOrder?: (typeof args)['sortOrder'];
 			isSendSoundOn?: boolean;
+			isReplyAlertSoundOn?: boolean;
+			isAssignmentSoundOn?: boolean;
+			isQuestionSoundOn?: boolean;
 			isAutoLoadImagesOn?: boolean;
 			undoSendSeconds?: (typeof args)['undoSendSeconds'];
 			notifyAbout?: (typeof args)['notifyAbout'];
@@ -187,6 +197,11 @@ export const update = postboxMutation({
 		if (args.inboxMode !== undefined) patch.inboxMode = args.inboxMode;
 		if (args.sortOrder !== undefined) patch.sortOrder = args.sortOrder;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
+		if (args.isReplyAlertSoundOn !== undefined)
+			patch.isReplyAlertSoundOn = args.isReplyAlertSoundOn;
+		if (args.isAssignmentSoundOn !== undefined)
+			patch.isAssignmentSoundOn = args.isAssignmentSoundOn;
+		if (args.isQuestionSoundOn !== undefined) patch.isQuestionSoundOn = args.isQuestionSoundOn;
 		if (args.isAutoLoadImagesOn !== undefined) patch.isAutoLoadImagesOn = args.isAutoLoadImagesOn;
 		if (args.undoSendSeconds !== undefined) patch.undoSendSeconds = args.undoSendSeconds;
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;

@@ -232,6 +232,57 @@ describe('mail.settings get/update', () => {
 		});
 	});
 
+	it('round-trips each alert sound switch without clobbering the others', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		await t.mutation(api.mail.settings.update, { isSendSoundOn: true });
+		await t.mutation(api.mail.settings.update, { isReplyAlertSoundOn: true });
+		await t.mutation(api.mail.settings.update, { isAssignmentSoundOn: true });
+		await t.mutation(api.mail.settings.update, { isQuestionSoundOn: false });
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			isSendSoundOn: true,
+			isReplyAlertSoundOn: true,
+			isAssignmentSoundOn: true,
+			isQuestionSoundOn: false,
+		});
+		await t.mutation(api.mail.settings.update, { isReplyAlertSoundOn: false });
+		expect(await t.query(api.mail.settings.get, {})).toMatchObject({
+			isReplyAlertSoundOn: false,
+			isAssignmentSoundOn: true,
+		});
+	});
+
+	it('leaves the alert sound switches absent on a row that never set them', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		await t.mutation(api.mail.settings.update, { isHidePreviewOn: true });
+		const row = await t.query(api.mail.settings.get, {});
+		expect(row?.isReplyAlertSoundOn).toBeUndefined();
+		expect(row?.isAssignmentSoundOn).toBeUndefined();
+		expect(row?.isQuestionSoundOn).toBeUndefined();
+	});
+
+	it("keeps one user's alert sounds out of another user's row", async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		await t.mutation(api.mail.settings.update, { isAssignmentSoundOn: true });
+
+		sessionMocks.userId = 'user-B';
+		expect(await t.query(api.mail.settings.get, {})).toBeNull();
+		await t.mutation(api.mail.settings.update, { isQuestionSoundOn: true });
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			isQuestionSoundOn: true,
+		});
+
+		sessionMocks.userId = 'user-A';
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			isAssignmentSoundOn: true,
+		});
+	});
+
 	it('round-trips the keyboard preset and per-shortcut remaps', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);

@@ -96,6 +96,13 @@ export const mailSettingsTables = {
 		// Play a short confirmation sound when a message is dispatched. Optional so
 		// existing rows read as undefined; the reader defaults it OFF (opt-in).
 		isSendSoundOn: v.optional(v.boolean()),
+		// Alert sounds, one switch per alert the user asked for: a reply on a thread
+		// armed with "notify me when they reply", a conversation assigned to them,
+		// and an agent question waiting on their answer. Optional so existing rows
+		// read as undefined; the reader defaults every one OFF (opt-in).
+		isReplyAlertSoundOn: v.optional(v.boolean()),
+		isAssignmentSoundOn: v.optional(v.boolean()),
+		isQuestionSoundOn: v.optional(v.boolean()),
 		// Load remote images when a message opens, except in suspicious mail
 		// (spam verdict, failed or misaligned sender auth, lookalike sender),
 		// which always asks first. Tracking pixels stay stripped either way.
