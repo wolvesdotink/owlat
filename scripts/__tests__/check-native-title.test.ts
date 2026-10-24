@@ -84,7 +84,10 @@ describe('nativeTitleSites', () => {
 		<!-- native-title: -->
 		<button title="An empty reason does not count" />
 	</div>`)
-		).toEqual(['button\ttitle="Still a tooltip"', 'button\ttitle="An empty reason does not count"']);
+		).toEqual([
+			'button\ttitle="Still a tooltip"',
+			'button\ttitle="An empty reason does not count"',
+		]);
 	});
 
 	it('reads controls under v-if branches and inside slots', () => {

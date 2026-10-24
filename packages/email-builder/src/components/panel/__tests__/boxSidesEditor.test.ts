@@ -54,11 +54,9 @@ describe('BoxSidesEditor', () => {
 	it('labels the toggle and buttons from the prefix', () => {
 		const padding = mountEditor({ block: textBlock({}), prefix: 'padding', modes: PADDING_MODES });
 		expect(padding.get('[role="group"]').attributes('aria-label')).toBe('Padding mode');
-		expect(padding.findAll('[role="group"] button').map((b) => b.attributes('aria-label'))).toEqual([
-			'Uniform padding',
-			'Vertical & horizontal pairs',
-			'Individual sides',
-		]);
+		expect(padding.findAll('[role="group"] button').map((b) => b.attributes('aria-label'))).toEqual(
+			['Uniform padding', 'Vertical & horizontal pairs', 'Individual sides']
+		);
 		padding.unmount();
 
 		const margin = mountEditor({ block: textBlock({}), prefix: 'margin', modes: MARGIN_MODES });
