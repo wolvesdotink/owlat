@@ -365,6 +365,9 @@ describe('buildPlan', () => {
 			/^lint: every root gate and plugin smoke \(not run here: .*smoke convex-bundle/
 		);
 		expect(ci).toContain('test-web: the full web suite with coverage');
+		expect(ci).toContain(
+			'test-web-browser: the web component tests in Chrome (bun run --cwd apps/web test:browser)'
+		);
 		expect(ci).toContain('docker-build: image builds: web');
 		expect(ci.some((line) => line.startsWith('test-api'))).toBe(false);
 	});
