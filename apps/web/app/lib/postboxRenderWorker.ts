@@ -108,6 +108,7 @@ export function createPostboxRenderClient(
 		inFlight = job;
 		try {
 			worker ??= startWorker();
+			// oxlint-disable-next-line unicorn/require-post-message-target-origin -- Worker.postMessage has no target origin
 			worker.postMessage({ id: job.id, input: job.input });
 		} catch (error) {
 			failAll(error instanceof Error ? error : new Error(String(error)));

@@ -12,11 +12,21 @@ import {
 	type PostboxRenderWorkerResponse,
 } from '../utils/postboxRenderPipeline';
 
+/** The dedicated worker's global scope (the app compiles against the DOM lib). */
+const scope = globalThis as unknown as {
+	postMessage(response: PostboxRenderWorkerResponse): void;
+	addEventListener(
+		type: 'message',
+		listener: (event: MessageEvent<PostboxRenderWorkerRequest>) => void
+	): void;
+};
+
 function respond(response: PostboxRenderWorkerResponse): void {
-	globalThis.postMessage(response);
+	// oxlint-disable-next-line unicorn/require-post-message-target-origin -- a worker posts to its owner, no target origin
+	scope.postMessage(response);
 }
 
-globalThis.addEventListener('message', (event: MessageEvent<PostboxRenderWorkerRequest>) => {
+scope.addEventListener('message', (event) => {
 	const { id, input } = event.data;
 	try {
 		respond({ id, ok: true, output: renderPostboxBodyStage(input) });

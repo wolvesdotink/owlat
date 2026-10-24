@@ -25,6 +25,7 @@ import {
 	type PostboxRenderClient,
 	type PostboxRenderWorkerPort,
 } from '../../../lib/postboxRenderWorker';
+import type * as RenderWorkerModule from '../../../lib/postboxRenderWorker';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -36,7 +37,7 @@ vi.mock('@owlat/api', () => {
 
 let client: PostboxRenderClient;
 vi.mock('../../../lib/postboxRenderWorker', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../../lib/postboxRenderWorker')>();
+	const actual = await importOriginal<typeof RenderWorkerModule>();
 	return { ...actual, getPostboxRenderClient: () => (client.broken ? null : client) };
 });
 
