@@ -34,6 +34,7 @@
 			"typescript": "^6.0.3",
 			"vitest": "^4.1.11",
 			"@vitest/coverage-v8": "^4.1.11",
+			"@vitest/browser-playwright": "4.1.11",
 			"@types/node": "^25.6.0",
 			"happy-dom": "^21.0.4",
 			"vue-tsc": "^3.2.7"
@@ -96,7 +97,7 @@
 		"lint:comment-policy": "bun scripts/check-comment-policy.ts",
 		"lint:imports": "bash scripts/check-cross-package-imports.sh",
 		"lint:providers": "bash scripts/check-provider-identity.sh",
-		"lint:ui-buttons": "bun scripts/check-ui-buttons.ts",
+		"lint:ui-controls": "bun scripts/check-ui-controls.ts",
 		"lint:desktop-invoke": "bun scripts/check-desktop-invoke-contract.ts",
 		"lint:tokens": "bun scripts/check-palette-classes.ts && bun scripts/check-token-contrast.ts",
 		"lint:member-jargon": "bun scripts/check-member-jargon.ts",

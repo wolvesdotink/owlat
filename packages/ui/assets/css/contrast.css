@@ -1,0 +1,36 @@
+/* Higher contrast — the app's own "Higher contrast" setting, written as
+ * `data-contrast="more"` on <html> by the reading-comfort plugin.
+ *
+ * Only the neutral reading ladder and the borders move: every text token clears
+ * WCAG AAA (7:1) on every content surface, and the default and strong borders
+ * clear the 3:1 non-text floor, so control edges and dividers stay visible.
+ * Surfaces, brand and status colours keep their values, so nothing changes
+ * meaning. scripts/check-token-contrast.ts enforces both floors.
+ *
+ * One block per theme. The dark block also matches a `.dark` island inside a
+ * light page and the light block a `.light` island inside a dark one, so an
+ * island does not fall back to the default ladder. */
+
+:root[data-contrast='more'],
+:root[data-contrast='more'] .light {
+	--color-text-primary: #0a0a0a;
+	--color-text-secondary: #333333;
+	--color-text-tertiary: #474747;
+	--color-text-disabled: #8a8a8a;
+
+	--color-border-subtle: #b0b0b0;
+	--color-border-default: #8a8a8a;
+	--color-border-strong: #707070;
+}
+
+:root[data-contrast='more'].dark,
+:root[data-contrast='more'] .dark {
+	--color-text-primary: #ffffff;
+	--color-text-secondary: #d4d4d4;
+	--color-text-tertiary: #bdbdbd;
+	--color-text-disabled: #737373;
+
+	--color-border-subtle: #4a4a4a;
+	--color-border-default: #737373;
+	--color-border-strong: #8f8f8f;
+}

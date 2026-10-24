@@ -153,6 +153,11 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		section: 'general',
 		controls: [
 			control('appearance', 'appearance'),
+			control('mailTextSize', 'comfort'),
+			control('readingWidth', 'comfort'),
+			control('listDensity', 'comfort'),
+			control('highContrast', 'comfort'),
+			control('reduceMotion', 'comfort'),
 			control('language', 'language'),
 			control('autoAdvance', 'reading', hasMail),
 			control('markRead', 'reading', hasMail),

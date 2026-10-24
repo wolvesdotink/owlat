@@ -5,6 +5,7 @@ import { hasInboundFeature } from '~/utils/inboundDns';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 import { useDomainAutoRecheck } from '~/composables/useDomainAutoRecheck';
 import { useSoleDomainDeepLink } from '~/composables/useSoleDomainDeepLink';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { DmarcPolicy } from '~/utils/domainStatus';
 
 const { t } = useI18n();
@@ -119,10 +120,10 @@ watch(
 		const { domain: _handled, ...rest } = route.query;
 		void router.replace({ query: rest });
 		void nextTick(() => {
-			const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-			document
-				.getElementById(`domain-${match._id}`)
-				?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+			document.getElementById(`domain-${match._id}`)?.scrollIntoView({
+				behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+				block: 'start',
+			});
 		});
 	},
 	{ immediate: true }

@@ -21,6 +21,7 @@
  * erases the mail, and says so before it runs.
  */
 import { api } from '@owlat/api';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { GENERIC_IMAP_PROVIDER, MAIL_PROVIDERS, type MailProvider } from '~/utils/mailAutodiscover';
 
 const props = withDefaults(
@@ -112,7 +113,7 @@ const WIZARD_PATH = '/dashboard/postbox/migrate';
  */
 function goConnect() {
 	if (route.path === WIZARD_PATH) {
-		window.scrollTo({ top: 0, behavior: 'smooth' });
+		window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 		return;
 	}
 	void navigateTo(WIZARD_PATH);

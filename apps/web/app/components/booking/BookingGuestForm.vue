@@ -101,6 +101,7 @@ function onSubmit() {
 				id="booking-guest-website"
 				v-model="form.website"
 				type="text"
+				class="input"
 				tabindex="-1"
 				autocomplete="off"
 			/>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defineComponent, h, nextTick, onMounted, ref } from 'vue';
 import { mount } from '@vue/test-utils';
-import { useModalFocus } from '../useModalFocus';
+import { useFocusLayer, useModalFocus } from '../useModalFocus';
 
 function dialog(onEscape = () => {}, empty = false) {
 	return mount(
@@ -63,6 +63,44 @@ describe('modal focus lifecycle', () => {
 		key('Escape');
 		expect(parentEscapes).toBe(1);
 		parent.unmount();
+	});
+
+	it('a dialog closing under another dialog leaves focus alone, but not under a focus layer', async () => {
+		const opener = document.createElement('button');
+		document.body.append(opener);
+
+		// Under a nested dialog: focus stays in the dialog that is still open.
+		opener.focus();
+		const parent = dialog();
+		await nextTick();
+		const child = dialog();
+		await nextTick();
+		const inChild = document.activeElement;
+		expect(child.element.contains(inChild)).toBe(true);
+		parent.unmount();
+		expect(document.activeElement).toBe(inChild);
+		child.unmount();
+
+		// Under a focus layer (a popover opened in the dialog that goes away
+		// with it): the dialog gives focus back to its opener.
+		opener.focus();
+		const withLayer = dialog();
+		await nextTick();
+		const layerOpen = ref(true);
+		const layer = mount(
+			defineComponent({
+				setup() {
+					useFocusLayer(layerOpen);
+					return () => h('button', 'In the layer');
+				},
+			}),
+			{ attachTo: document.body }
+		);
+		(layer.element as HTMLElement).focus();
+		withLayer.unmount();
+		expect(document.activeElement).toBe(opener);
+		layer.unmount();
+		opener.remove();
 	});
 
 	it('does not steal focus after disposal while initial focus is queued', async () => {

@@ -80,9 +80,6 @@ function onNumber(event: Event) {
 function onSelect(event: Event) {
 	emit('update:modelValue', (event.target as HTMLSelectElement).value);
 }
-
-const inputClass =
-	'w-full bg-surface-1 rounded-lg text-text-primary placeholder:text-text-tertiary px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed border border-border-subtle';
 </script>
 
 <template>
@@ -182,7 +179,7 @@ const inputClass =
 				:aria-describedby="describedBy"
 				:maxlength="field.maxLength"
 				:disabled="disabled"
-				:class="inputClass"
+				class="input disabled:cursor-not-allowed disabled:opacity-50"
 				@input="onText"
 			/>
 
@@ -199,7 +196,7 @@ const inputClass =
 				:min="field.min"
 				:max="field.max"
 				:disabled="disabled"
-				:class="inputClass"
+				class="input disabled:cursor-not-allowed disabled:opacity-50"
 				@input="onNumber"
 			/>
 
@@ -210,7 +207,7 @@ const inputClass =
 				:aria-required="field.required || undefined"
 				:aria-describedby="describedBy"
 				:disabled="disabled"
-				:class="inputClass"
+				class="input disabled:cursor-not-allowed disabled:opacity-50"
 				@change="onSelect"
 			>
 				<!-- Unset select (no stored value or default): an honest, non-selectable

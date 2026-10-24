@@ -608,4 +608,54 @@ describe('buildBaseStyle', () => {
 			expect(style).not.toContain('background:transparent');
 		}
 	});
+
+	it("writes the reader's width into simple mail and scales its text by zoom", () => {
+		for (const scheme of ['light', 'dark'] as const) {
+			const style = buildBaseStyle(scheme, 'simple', { textSize: 'larger', readingWidth: 'wide' });
+			// The 15px base stays; the zoom carries inline and Outlook sizes along.
+			expect(style).toContain('body{max-width:90ch;font-size:15px;zoom:1.267;}');
+			expect(style).not.toContain('72ch');
+		}
+		expect(
+			buildBaseStyle('light', 'simple', { textSize: 'small', readingWidth: 'full' })
+		).toContain('body{max-width:none;font-size:15px;zoom:0.933;}');
+	});
+
+	it('leaves simple mail exactly as before at the default size', () => {
+		for (const scheme of ['light', 'dark'] as const) {
+			const style = buildBaseStyle(scheme, 'simple');
+			expect(style).toContain('body{max-width:72ch;font-size:15px;}');
+			expect(style).not.toContain('zoom');
+		}
+	});
+
+	it('scales designed mail as a whole and never re-measures it', () => {
+		// A newsletter sets its sizes inline, so a base size would reach none of
+		// it: the design zooms instead, keeping images and tables in proportion.
+		const larger = buildBaseStyle('light', 'designed', {
+			textSize: 'larger',
+			readingWidth: 'narrow',
+		});
+		expect(larger).toContain('body{zoom:1.267;}');
+		expect(larger).not.toContain('60ch');
+		expect(
+			buildBaseStyle('light', 'designed', { textSize: 'small', readingWidth: 'default' })
+		).toContain('body{zoom:0.933;}');
+		// At the default size a designed body gets no zoom at all.
+		expect(
+			buildBaseStyle('dark', 'designed', { textSize: 'default', readingWidth: 'wide' })
+		).not.toContain('zoom');
+	});
+
+	it('changes the document whenever a typography setting changes', () => {
+		const sizes = ['small', 'default', 'large', 'larger'] as const;
+		const widths = ['narrow', 'default', 'wide', 'full'] as const;
+		const seen = new Set<string>();
+		for (const textSize of sizes) {
+			for (const readingWidth of widths) {
+				seen.add(buildBaseStyle('light', 'simple', { textSize, readingWidth }));
+			}
+		}
+		expect(seen.size).toBe(sizes.length * widths.length);
+	});
 });

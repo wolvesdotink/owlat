@@ -114,7 +114,7 @@ function cancelEditingDashboard() {
 					inputmode="url"
 					:placeholder="t('components.dashboard.gettingStartedResources.urlPlaceholder')"
 					:aria-label="t('components.dashboard.gettingStartedResources.urlLabel')"
-					class="input input-sm text-xs"
+					class="input input-sm"
 					:class="{ 'input-error': dashboardDraftInvalid }"
 					@keydown.enter.prevent="saveDashboardUrl"
 					@keydown.esc.prevent="cancelEditingDashboard"

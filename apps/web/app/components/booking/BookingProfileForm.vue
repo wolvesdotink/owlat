@@ -127,15 +127,13 @@ async function submit() {
 				<label for="booking-slug" class="mb-1 block text-sm font-medium">
 					{{ t('components.booking.profile.slug') }}
 				</label>
-				<div class="flex items-center rounded-lg border border-border-subtle bg-bg-surface">
-					<span class="shrink-0 truncate pl-3 text-sm text-text-tertiary"
-						>{{ siteOrigin }}/book/</span
-					>
+				<div class="input flex items-center">
+					<span class="shrink-0 truncate text-sm text-text-tertiary">{{ siteOrigin }}/book/</span>
 					<input
 						id="booking-slug"
 						v-model="form.slug"
 						type="text"
-						class="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm outline-none"
+						class="input-bare min-w-0 flex-1 px-1 text-sm"
 						:maxlength="BOOKING_LIMITS.slugMaxLength"
 						autocapitalize="off"
 						spellcheck="false"

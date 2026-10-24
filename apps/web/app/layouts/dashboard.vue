@@ -663,6 +663,9 @@ const sidebarDesktopClass = computed(() => {
 		     the c chord), never by navigating to the mailbox. -->
 		<ShellComposerOverlay />
 
+		<!-- Files dragged onto a conversation: the hint, and the reply it opens. -->
+		<ShellReplyDropHint />
+
 		<!-- Where every undo countdown toast lands (mail send, review approve,
 		     campaign send): one bottom-left column, so two live windows stack
 		     instead of covering each other's Undo button. -->

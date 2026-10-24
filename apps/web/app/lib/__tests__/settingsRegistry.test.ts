@@ -250,7 +250,16 @@ describe('settingsControlTargets', () => {
 
 	it('drops every control of a page the environment cannot reach', () => {
 		const ids = settingsControlTargets(NO_PUSH_SOURCE).map((target) => target.control.id);
-		expect(ids).toEqual(['appearance', 'language', 'shortcuts']);
+		expect(ids).toEqual([
+			'appearance',
+			'mailTextSize',
+			'readingWidth',
+			'listDensity',
+			'highContrast',
+			'reduceMotion',
+			'language',
+			'shortcuts',
+		]);
 	});
 });
 

@@ -5,12 +5,14 @@ import {
 	type PostboxRenderEntry,
 	type PostboxRenderOptions,
 } from '../postboxRenderCache';
+import { MAIL_TYPOGRAPHY_DEFAULT } from '~/utils/readingComfort';
 
 const baseOptions: PostboxRenderOptions = {
 	scheme: 'light',
 	showImages: false,
 	loadEverything: false,
 	showQuoted: false,
+	typography: MAIL_TYPOGRAPHY_DEFAULT,
 };
 
 function entry(srcdoc: string, height: number | null = null): PostboxRenderEntry {
@@ -38,6 +40,20 @@ describe('postboxRenderKey', () => {
 		expect(postboxRenderKey('m1', { ...baseOptions, showImages: true })).not.toBe(base);
 		expect(postboxRenderKey('m1', { ...baseOptions, loadEverything: true })).not.toBe(base);
 		expect(postboxRenderKey('m1', { ...baseOptions, showQuoted: true })).not.toBe(base);
+		// The reader's comfort settings are written into the document head, so a
+		// different text size or reading width is a different render.
+		expect(
+			postboxRenderKey('m1', {
+				...baseOptions,
+				typography: { ...MAIL_TYPOGRAPHY_DEFAULT, textSize: 'large' },
+			})
+		).not.toBe(base);
+		expect(
+			postboxRenderKey('m1', {
+				...baseOptions,
+				typography: { ...MAIL_TYPOGRAPHY_DEFAULT, readingWidth: 'wide' },
+			})
+		).not.toBe(base);
 	});
 
 	it('changes when the message id changes', () => {

@@ -75,4 +75,9 @@ useVisibleAnimation(root);
 		animation: none;
 	}
 }
+
+/* The app's own "Reduce motion" setting (the data-motion floor in base.css). */
+:root[data-motion='reduce'] .ui-skeleton::after {
+	animation: none;
+}
 </style>

@@ -1,66 +1,70 @@
 <script setup lang="ts">
 /**
- * Presentational saved-reply `;` picker overlay for {@link PostboxBasicEditor}
+ * The saved-reply `;` suggestions at the caret, for {@link PostboxBasicEditor}
  * and the Team inbox reply's textarea.
  *
- * Pure chrome: the caret-anchored dropdown of ranked snippets. All trigger /
- * positioning / keyboard / insert logic lives in `usePostboxSnippetPicker`;
- * this component only renders the list and reports hover/click back up. Items
- * use `mousedown.prevent` so clicking one never blurs the editor first.
+ * Pure chrome over the shared `UiSuggestionPopover`: the list of ranked
+ * replies, its highlight and keys (↑ ↓, Enter or Tab inserts, Esc dismisses).
+ * Trigger detection, ranking and insertion stay in the host's controller
+ * (`usePostboxSnippetPicker`, `useTeamComposerSavedReplies`), which forwards
+ * the field's keydown to `handleKeydown` first and spreads `fieldAttrs` on
+ * it. The field keeps focus throughout, so a click inserts at the caret.
  */
+import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
+import type { PopoverAnchorTarget } from '@owlat/ui/utils/popoverAnchor';
 import type { EditorSnippet } from '~/composables/postbox/usePostboxSnippetPicker';
 
 defineProps<{
 	items: EditorSnippet[];
-	activeIndex: number;
-	style: Record<string, string> | null;
+	/** The caret box (or the field) the list hangs from. */
+	anchor: PopoverAnchorTarget | null;
+	/** The field being typed into. */
+	field: HTMLElement | null;
 }>();
 
 const emit = defineEmits<{
 	(e: 'select', item: EditorSnippet): void;
-	(e: 'hover', index: number): void;
+	/** Escape or a press elsewhere: stay closed until the `;token` changes. */
+	(e: 'dismiss'): void;
 }>();
 
 const { t } = useI18n();
+
+const popover = ref<SuggestionListHandle | null>(null);
+
+defineExpose({
+	handleKeydown: (event: KeyboardEvent) => popover.value?.handleKeydown(event) ?? false,
+	fieldAttrs: computed(() => popover.value?.fieldAttrs ?? {}),
+});
 </script>
 
 <template>
-	<div
-		v-if="style"
-		class="postbox-snippet-picker absolute z-20 min-w-[220px] max-w-[320px] rounded-md border border-border-subtle bg-bg-elevated shadow-lg overflow-hidden"
-		:style="style"
-		role="listbox"
-		:aria-label="t('components.postbox.postboxSnippetPicker.listLabel')"
+	<UiSuggestionPopover
+		ref="popover"
+		:open="items.length > 0"
+		:options="items"
+		:option-key="(item: EditorSnippet) => item._id"
+		:label="t('components.postbox.postboxSnippetPicker.listLabel')"
+		:anchor="anchor"
+		:field="field"
+		class="postbox-snippet-picker min-w-[220px] max-w-[320px] rounded-md"
+		option-class="flex items-center justify-between gap-2 px-3 py-1.5 text-sm text-text-secondary data-highlighted:bg-brand-subtle data-highlighted:text-text-primary"
+		@select="(item: EditorSnippet) => emit('select', item)"
+		@update:open="(open: boolean) => !open && emit('dismiss')"
 	>
-		<div
-			v-if="items.length === 0"
-			class="px-3 py-2 text-xs text-text-tertiary"
-		>
-			{{ t('components.postbox.postboxSnippetPicker.empty') }}
-		</div>
-		<button
-			v-for="(item, i) in items"
-			:key="item._id"
-			type="button"
-			role="option"
-			:aria-selected="i === activeIndex"
-			class="w-full text-left px-3 py-1.5 flex items-center justify-between gap-2 text-sm"
-			:class="i === activeIndex ? 'bg-brand-subtle text-text-primary' : 'text-text-secondary hover:bg-bg-surface'"
-			@mousedown.prevent="emit('select', item)"
-			@mousemove="emit('hover', i)"
-		>
-			<span class="truncate">{{ item.name }}</span>
+		<template #option="{ option }">
+			<span class="truncate">{{ option.name }}</span>
 			<span class="flex shrink-0 items-center gap-1.5">
 				<Icon
-					v-if="item.isShared"
+					v-if="option.isShared"
 					name="lucide:users"
 					class="size-3 text-text-tertiary"
 					:aria-label="t('shared.savedReplies.sharedBadge')"
 				/>
-				<span v-if="item.shortcut" class="text-xs text-text-tertiary font-mono"
-					>;{{ item.shortcut }}</span
+				<span v-if="option.shortcut" class="text-xs text-text-tertiary font-mono"
+					>;{{ option.shortcut }}</span
 				>
 			</span>
-		</button>
-	</div>
+		</template>
+	</UiSuggestionPopover>
 </template>

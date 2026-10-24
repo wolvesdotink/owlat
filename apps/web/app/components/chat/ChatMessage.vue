@@ -117,7 +117,7 @@ const aiTyping = computed(
 				<textarea
 					v-model="editText"
 					rows="2"
-					class="w-full input text-sm resize-none"
+					class="w-full input resize-none"
 					@keydown.enter.exact.prevent="saveEdit"
 					@keydown.escape.prevent="cancelEdit"
 				/>
