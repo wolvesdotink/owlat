@@ -43,7 +43,7 @@ class FakeResizeObserver {
 	/** Deliver one notification for `targets` with their current real heights. */
 	deliver(targets: Element[]) {
 		const entries = targets.map((target) => {
-			const key = (target as HTMLElement).dataset.key;
+			const key = (target as HTMLElement).dataset['key'];
 			const blockSize = key === undefined ? VIEWPORT : realHeight(key);
 			return {
 				target,
@@ -54,7 +54,7 @@ class FakeResizeObserver {
 	}
 	/** Every observed row, as the browser reports newly observed elements. */
 	deliverRows() {
-		this.deliver([...this.observed].filter((el) => (el as HTMLElement).dataset.key));
+		this.deliver([...this.observed].filter((el) => (el as HTMLElement).dataset['key']));
 	}
 }
 const observer = () => FakeResizeObserver.instances.at(-1)!;
@@ -78,11 +78,11 @@ function contentHeight(el: HTMLElement): number {
 	let height = 0;
 	for (const child of Array.from(el.children) as HTMLElement[]) {
 		height += parseFloat(child.style.height || '0') + parseFloat(child.style.marginTop || '0');
-		if (child.dataset.key) height += realHeight(child.dataset.key);
+		if (child.dataset['key']) height += realHeight(child.dataset['key']);
 	}
 	return height;
 }
-const isScroller = (el: Element) => (el as HTMLElement).dataset?.scroller === 'true';
+const isScroller = (el: Element) => (el as HTMLElement).dataset?.['scroller'] === 'true';
 const maxScroll = (el: HTMLElement) => Math.max(0, contentHeight(el) - VIEWPORT);
 
 const descriptors = {
@@ -190,7 +190,9 @@ function mountList(props: {
 
 const scroller = () => wrapper!.element as HTMLElement;
 const mountedKeys = () =>
-	Array.from(scroller().querySelectorAll<HTMLElement>('[data-key]')).map((el) => el.dataset.key!);
+	Array.from(scroller().querySelectorAll<HTMLElement>('[data-key]')).map(
+		(el) => el.dataset['key']!
+	);
 
 /** A reader scroll: move, then the scroll event the browser would fire. */
 async function scrollReader(top: number) {

@@ -92,7 +92,7 @@ const dayLabel = (at: number) =>
 const messageRows = (el: Element) =>
 	Array.from(el.querySelectorAll<HTMLElement>('[data-row-kind="message"]'));
 const mountedIds = (el: Element) =>
-	Array.from(el.querySelectorAll<HTMLElement>('.msg')).map((m) => m.dataset.id);
+	Array.from(el.querySelectorAll<HTMLElement>('.msg')).map((m) => m.dataset['id']);
 const dateRows = (el: Element) =>
 	Array.from(el.querySelectorAll<HTMLElement>('[data-row-kind="date"]')).map((d) =>
 		d.textContent?.trim()
