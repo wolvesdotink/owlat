@@ -325,7 +325,8 @@ describe('useDraftAutosave', () => {
 
 		it('does nothing while no text is open', async () => {
 			const t = typing({ uncommitted: () => false });
-			await t.autosave.commitBeforeLeaving();
+			// Nothing to wait for: the leave guard decides at once.
+			expect(t.autosave.commitBeforeLeaving()).toBeUndefined();
 			expect(t.text.value).toBe('saved');
 			expect(t.driver.data.size).toBe(0);
 		});

@@ -137,9 +137,10 @@ export interface DraftAutosave {
 	 * Make typing the draft cannot see yet part of it and write its device
 	 * copy, so `atRisk` covers it. A leave guard awaits this (and the watchers
 	 * that feed it) before it decides; reading `atRisk` first would let the
-	 * page go with that text kept nowhere.
+	 * page go with that text kept nowhere. Returns nothing when no text is
+	 * open, so the guard can decide at once.
 	 */
-	commitBeforeLeaving: () => Promise<void>;
+	commitBeforeLeaving: () => Promise<void> | undefined;
 	/** Save now; resolves true when nothing is left unsaved. */
 	flush: () => Promise<boolean>;
 	/** Retry a failed save. */
@@ -410,8 +411,8 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		return onDevice.value;
 	};
 
-	const commitBeforeLeaving = async () => {
-		if (!opts.enabled() || !opts.uncommitted?.()) return;
+	const commitBeforeLeaving = () => {
+		if (!opts.enabled() || !opts.uncommitted?.()) return undefined;
 		opts.commit?.();
 		// A write that hangs (storage blocked by another tab) must not hold the
 		// page: past the wait, `atRisk` still counts the text and the guard asks.
@@ -419,8 +420,7 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		const waited = new Promise<void>((resolve) => {
 			timer = setTimeout(resolve, LEAVE_WRITE_WAIT_MS);
 		});
-		await Promise.race([keep(), waited]);
-		clearTimeout(timer);
+		return Promise.race([keep(), waited]).then(() => clearTimeout(timer));
 	};
 
 	return {

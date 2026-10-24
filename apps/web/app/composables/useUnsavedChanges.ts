@@ -23,8 +23,10 @@ export interface UseUnsavedChangesOptions {
 	onSave?: () => Promise<void>;
 	/**
 	 * Runs before a leave request is decided, for state the dirty feed cannot
-	 * see yet (text still open in an editor). The guard waits for it and for
-	 * the owner's watchers, then reads `hasUnsavedChanges`.
+	 * see yet (text still open in an editor). When it returns a promise, the
+	 * guard waits for it and for the owner's watchers, then reads
+	 * `hasUnsavedChanges`; with nothing to do it returns nothing and the guard
+	 * decides at once.
 	 */
 	beforeLeave?: () => Promise<void> | void;
 }
@@ -71,8 +73,9 @@ export function useUnsavedChanges(options: UseUnsavedChangesOptions = {}): UseUn
 
 	// Vue Router navigation guard
 	onBeforeRouteLeave(async (to, _from, next) => {
-		if (options.beforeLeave) {
-			await options.beforeLeave();
+		const preparing = options.beforeLeave?.();
+		if (preparing) {
+			await preparing;
 			await nextTick();
 		}
 		if (hasUnsavedChanges.value) {

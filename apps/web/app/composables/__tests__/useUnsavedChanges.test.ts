@@ -121,6 +121,19 @@ describe('useUnsavedChanges navigation guard', () => {
 		expect(guarded.pendingRoute.value).toBe('/target');
 	});
 
+	it('decides at once when beforeLeave has nothing to wait for', () => {
+		const beforeLeave = vi.fn(() => undefined);
+		const guarded = withSetup(() => useUnsavedChanges({ beforeLeave })).result;
+		guarded.setHasChanges(true);
+		const next = vi.fn();
+
+		h.guard?.({ fullPath: '/target' }, {}, next);
+
+		expect(beforeLeave).toHaveBeenCalledTimes(1);
+		expect(next).toHaveBeenCalledWith(false);
+		expect(guarded.showDialog.value).toBe(true);
+	});
+
 	it('cancelNavigation dismisses the dialog and stays put', () => {
 		const guarded = withSetup(() => useUnsavedChanges()).result;
 		guarded.setHasChanges(true);
