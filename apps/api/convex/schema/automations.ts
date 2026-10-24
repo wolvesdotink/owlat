@@ -206,6 +206,8 @@ export const automationTables = {
 		// `utcDayKey` of the events' UTC day (lib/clock.ts).
 		day: v.string(),
 		shardKey: v.number(),
+		// COUNTER [automationHealthEvents] — bumped by automations/health.ts in
+		// the transaction that enters, fails or stalls a run; internal only.
 		entered: v.optional(v.number()),
 		failed: v.optional(v.number()),
 		stalled: v.optional(v.number()),
