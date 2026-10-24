@@ -292,6 +292,43 @@ describe('releasesToPrune', () => {
 		});
 	});
 
+	it('decides what the defer window serves from the preferred row of each version', () => {
+		// The desktop hot-fix of 0.6.16 is past a 24-hour window, the unified
+		// 0.6.16 clients would be served is not: 0.6.15 is what they get, before
+		// the prune and after it.
+		const cache = [
+			{
+				version: '0.6.15',
+				line: 'unified' as const,
+				isPrerelease: false,
+				publishedAt: NOW - 72 * HOUR,
+			},
+			{
+				version: '0.6.16',
+				line: 'desktop' as const,
+				isPrerelease: false,
+				publishedAt: NOW - 48 * HOUR,
+			},
+			{
+				version: '0.6.16',
+				line: 'unified' as const,
+				isPrerelease: false,
+				publishedAt: NOW - 12 * HOUR,
+			},
+			...candidates(DESKTOP_RELEASE_CACHE_LIMIT),
+		];
+		const deferred: DesktopUpdatePolicy = { ...latest, deferHours: 24 };
+		const served = (rows: typeof cache) =>
+			resolve({ deferHours: 24 }, oneRowPerVersion(rows), '0.6.14');
+		expect(served(cache)).toMatchObject({ release: { version: '0.6.15' } });
+
+		const doomed = prune(cache, deferred);
+		expect(doomed).toEqual([]);
+		expect(served(cache.filter((row) => !doomed.includes(row)))).toMatchObject({
+			release: { version: '0.6.15' },
+		});
+	});
+
 	it('lets a retained stable release age out once a newer one lands', () => {
 		const cache = [
 			...rows(2),
@@ -318,6 +355,17 @@ describe('retainedStableVersions', () => {
 		expect([...retainedStableVersions(cache, 2, NOW)].sort()).toEqual(['0.4.6', '0.4.7']);
 	});
 
+	it('applies the defer window to the preferred row of a version, as the resolver does', () => {
+		const cache = [
+			{ ...release('0.4.6', { ageHours: 72 }), line: 'unified' as const },
+			{ ...release('0.4.7', { ageHours: 48 }), line: 'desktop' as const },
+			{ ...release('0.4.7', { ageHours: 12 }), line: 'unified' as const },
+		];
+		expect([...retainedStableVersions(cache, 24, NOW)].sort()).toEqual(['0.4.6', '0.4.7']);
+		// Without the unified row the desktop one is the preferred 0.4.7 and is served.
+		expect([...retainedStableVersions(cache.slice(0, 2), 24, NOW)]).toEqual(['0.4.7']);
+	});
+
 	it('is empty when only candidates are cached', () => {
 		const cache = [release('0.5.0-rc.1', { isPrerelease: true, ageHours: 1 })];
 		expect(retainedStableVersions(cache, undefined, NOW).size).toBe(0);
@@ -325,9 +373,12 @@ describe('retainedStableVersions', () => {
 });
 
 describe('stableReleaseSearch', () => {
-	const candidate = { isPrerelease: true, publishedAt: NOW - HOUR };
-	const stable = { isPrerelease: false, publishedAt: NOW - HOUR };
-	const fresh = { isPrerelease: false, publishedAt: NOW - 1000 };
+	const listed = (
+		version: string,
+		options: { isPrerelease?: boolean; ageHours?: number; line?: 'unified' | 'desktop' } = {}
+	) => ({ ...release(version, options), line: options.line ?? ('unified' as const) });
+	const candidate = listed('0.5.0-rc.1', { isPrerelease: true, ageHours: 1 });
+	const stable = listed('0.4.7', { ageHours: 1 });
 
 	it('takes the whole first page and stops once it holds a stable release', () => {
 		const search = stableReleaseSearch(undefined, NOW);
@@ -343,15 +394,46 @@ describe('stableReleaseSearch', () => {
 		expect(search.wants(2, candidate)).toBe(false);
 		expect(search.wants(2, stable)).toBe(true);
 		search.held(stable);
-		expect(search.wants(2, stable)).toBe(false);
+		expect(search.wants(2, listed('0.4.6', { ageHours: 2 }))).toBe(false);
 	});
 
 	it('looks on for one past the defer window when the newest stable is deferred', () => {
 		const search = stableReleaseSearch(2, NOW);
-		search.held(fresh);
+		search.held(listed('0.4.7', { ageHours: 0.5 }));
 		expect(search.readsOn(1, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(true);
-		expect(search.wants(2, fresh)).toBe(false);
-		expect(search.wants(2, { isPrerelease: false, publishedAt: NOW - 3 * HOUR })).toBe(true);
+		expect(search.wants(2, listed('0.4.6', { ageHours: 1 }))).toBe(false);
+		expect(search.wants(2, listed('0.4.6', { ageHours: 3 }))).toBe(true);
+	});
+
+	it('does not stop at a desktop row whose preferred unified row is still deferred', () => {
+		// Newest first, as GitHub lists them: v0.6.16 (12 h), desktop-v0.6.16
+		// (48 h), v0.6.15 (72 h), under a 24-hour window. Clients are served
+		// 0.6.15, so the walk has to reach it.
+		const search = stableReleaseSearch(24, NOW);
+		const unified = listed('0.6.16', { ageHours: 12 });
+		const desktop = listed('0.6.16', { ageHours: 48, line: 'desktop' });
+		const older = listed('0.6.15', { ageHours: 72 });
+		expect(search.wants(2, unified)).toBe(true);
+		search.held(unified);
+		// It cannot change what 0.6.16 serves, so it is not cached.
+		expect(search.wants(2, desktop)).toBe(false);
+		expect(search.readsOn(2, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(true);
+		expect(search.wants(2, older)).toBe(true);
+		search.held(older);
+		expect(search.readsOn(2, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(false);
+		// What it cached agrees with the resolver.
+		expect(resolve({ deferHours: 24 }, oneRowPerVersion([unified, older]), '0.6.14')).toMatchObject(
+			{ release: { version: '0.6.15' } }
+		);
+	});
+
+	it('stops at a desktop row past the window when no unified row of its version is held', () => {
+		const search = stableReleaseSearch(24, NOW);
+		search.held(listed('0.6.17', { ageHours: 12 }));
+		const desktop = listed('0.6.16', { ageHours: 48, line: 'desktop' });
+		expect(search.wants(2, desktop)).toBe(true);
+		search.held(desktop);
+		expect(search.readsOn(2, DESKTOP_RELEASE_CACHE_LIMIT)).toBe(false);
 	});
 
 	it('stops at the end of the history and at the page budget', () => {

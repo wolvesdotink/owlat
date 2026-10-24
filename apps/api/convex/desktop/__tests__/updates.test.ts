@@ -478,6 +478,78 @@ describe('desktop.updates stable release behind release candidates', () => {
 		expect(await cachedReleases(t)).toHaveLength(30);
 	});
 
+	describe('under a defer window, with a desktop hot-fix of the deferred version', () => {
+		// v0.6.16 (12 h old) is inside a 24-hour window; desktop-v0.6.16 (48 h)
+		// is past it but loses to the unified row of its version, so a stable
+		// client is served 0.6.15 (72 h). Times are relative to the clock at
+		// the start of the test; no test waits on it.
+		function stableListing(now: number) {
+			const hoursAgo = (hours: number) => new Date(now - hours * 3600_000).toISOString();
+			return [
+				githubRelease('v0.6.16', { published_at: hoursAgo(12) }),
+				githubRelease('desktop-v0.6.16', { published_at: hoursAgo(48) }),
+				githubRelease('v0.6.15', { published_at: hoursAgo(72) }),
+			];
+		}
+		/** Thirty candidates, all newer than the stable releases. */
+		function newerCandidates(now: number) {
+			return Array.from({ length: 30 }, (_, i) =>
+				githubRelease(`v0.7.0-rc.${30 - i}`, {
+					prerelease: true,
+					published_at: new Date(now - (i + 1) * 60_000).toISOString(),
+				})
+			);
+		}
+		const manifests = {
+			...stableManifests,
+			'desktop-v0.6.16': manifestFor('0.6.16'),
+			...candidateManifests(30),
+		};
+
+		async function deferBy24Hours(t: TestHarness) {
+			await t.mutation(api.desktop.updates.updatePolicy, {
+				mode: 'latest',
+				channel: 'stable',
+				deferHours: 24,
+			});
+		}
+
+		it('keeps the served release when candidates push it off the rolling cache', async () => {
+			const t = harness();
+			const now = Date.now();
+			await deferBy24Hours(t);
+			stubFetch({ releases: stableListing(now), manifests });
+			await t.action(internal.desktop.updates.refreshReleases, {});
+			expect((await servedTo(t, '0.6.14'))?.version).toBe('0.6.15');
+
+			stubFetch({ pages: [newerCandidates(now), stableListing(now)], manifests });
+			await t.action(internal.desktop.updates.refreshReleases, {});
+
+			const tags = (await cachedReleases(t)).map((row) => row.tag);
+			expect(tags).toContain('v0.6.15');
+			expect(tags).toContain('v0.6.16');
+			expect(tags).toContain('desktop-v0.6.16');
+			expect((await servedTo(t, '0.6.14'))?.version).toBe('0.6.15');
+		});
+
+		it('walks on to the served release on a fresh cache', async () => {
+			const t = harness();
+			const now = Date.now();
+			await deferBy24Hours(t);
+			stubFetch({ pages: [newerCandidates(now), stableListing(now)], manifests });
+
+			await t.action(internal.desktop.updates.refreshReleases, {});
+
+			const tags = (await cachedReleases(t)).map((row) => row.tag);
+			// The desktop row cannot change what 0.6.16 serves, so it is skipped.
+			expect(tags).toContain('v0.6.16');
+			expect(tags).toContain('v0.6.15');
+			expect(tags).not.toContain('desktop-v0.6.16');
+			expect(tags).toHaveLength(32);
+			expect((await servedTo(t, '0.6.14'))?.version).toBe('0.6.15');
+		});
+	});
+
 	it('keeps the first page and records the error when a later page fails', async () => {
 		const t = harness();
 		stubFetch({

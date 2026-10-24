@@ -167,7 +167,6 @@ export const pruneReleases = internalMutation({
 async function cacheFromGithub(
 	ctx: ActionCtx,
 	release: GithubRelease,
-	parsed: { version: string; line: 'unified' | 'desktop' },
 	listed: ListedRelease,
 	headers: { 'User-Agent': string }
 ): Promise<boolean> {
@@ -178,15 +177,15 @@ async function cacheFromGithub(
 	if (!manifestResp.ok) return false;
 
 	const manifest = await manifestResp.text();
-	if (!isValidManifest(manifest, parsed.version)) {
+	if (!isValidManifest(manifest, listed.version)) {
 		console.warn(`desktop updates: rejected manifest for ${tag} (failed validation)`);
 		return false;
 	}
 
 	await ctx.runMutation(internal.desktop.updates.cacheRelease, {
 		tag,
-		version: parsed.version,
-		line: parsed.line,
+		version: listed.version,
+		line: listed.line,
 		isPrerelease: listed.isPrerelease,
 		publishedAt: listed.publishedAt,
 		notes: (release.body ?? '').slice(0, NOTES_MAX_CHARS),
@@ -239,6 +238,7 @@ export const refreshReleases = internalAction({
 					const parsed = release.draft ? null : parseDesktopReleaseTag(tag);
 					if (!parsed) continue;
 					const listed: ListedRelease = {
+						...parsed,
 						// A `-rc.N` tag is a pre-release whatever GitHub's flag says.
 						isPrerelease: release.prerelease === true || parseVersion(parsed.version).pre !== '',
 						publishedAt: release.published_at
@@ -246,7 +246,7 @@ export const refreshReleases = internalAction({
 							: Date.now(),
 					};
 					if (!search.wants(page, listed)) continue;
-					if (known.has(tag) || (await cacheFromGithub(ctx, release, parsed, listed, headers))) {
+					if (known.has(tag) || (await cacheFromGithub(ctx, release, listed, headers))) {
 						search.held(listed);
 					}
 				}

@@ -43,7 +43,7 @@ export const PINNED_RELEASE_ROW_LIMIT = 2;
 /**
  * Stable versions kept outside the rolling cache (see `retainedStableVersions`),
  * and equally the most stable releases a refresh caches from beyond its first
- * page.
+ * page (see `stableReleaseSearch`).
  */
 const RETAINED_STABLE_VERSION_LIMIT = 2;
 
@@ -138,25 +138,45 @@ export function activePin(policy: DesktopUpdatePolicy): string | undefined {
 }
 
 /**
+ * The release a `latest` client on the stable channel is served out of these
+ * rows, ignoring its own version: the semver-newest stable release past the
+ * defer window. It picks one row per version (`oneRowPerVersion`) BEFORE it
+ * applies the window, exactly as `manifestForClient` feeds `resolveDesktopUpdate`:
+ * a `desktop-v0.4.7` row past the window does not make 0.4.7 servable while the
+ * preferred unified `v0.4.7` is still inside it.
+ */
+function servedStableRelease<R extends CachedReleaseRow>(
+	rows: R[],
+	deferHours: number | undefined,
+	now: number
+): R | null {
+	const deferMs = Math.max(0, deferHours ?? 0) * 3600_000;
+	return newestRelease(
+		oneRowPerVersion(rows).filter(
+			(row) => isValidTargetVersion(row.version ?? '') && (row.publishedAt ?? 0) + deferMs <= now
+		),
+		'stable'
+	);
+}
+
+/**
  * The stable versions the cache keeps whatever their age: the newest stable
- * release, and the newest one already past the defer window, which is the one
- * a `latest` client on the stable channel is actually served. Release
- * candidates are pre-releases and can outnumber the rolling cache on their own;
- * without this, a run of them would evict every stable release, leaving stable
- * clients nothing to update to and the app no reason to go around the instance.
+ * release, and the one a `latest` client on the stable channel is actually
+ * served (`servedStableRelease`). Release candidates are pre-releases and can
+ * outnumber the rolling cache on their own; without this, a run of them would
+ * evict every stable release, leaving stable clients nothing to update to and
+ * the app no reason to go around the instance.
  */
 export function retainedStableVersions<R extends CachedReleaseRow>(
 	rows: R[],
 	deferHours: number | undefined,
 	now: number
 ): Set<string> {
-	const deferMs = Math.max(0, deferHours ?? 0) * 3600_000;
-	const stable = rows.filter((row) => isValidTargetVersion(row.version ?? ''));
-	const newest = newestRelease(stable, 'stable');
-	const served = newestRelease(
-		stable.filter((row) => (row.publishedAt ?? 0) + deferMs <= now),
+	const newest = newestRelease(
+		oneRowPerVersion(rows).filter((row) => isValidTargetVersion(row.version ?? '')),
 		'stable'
 	);
+	const served = servedStableRelease(rows, deferHours, now);
 	const versions = new Set<string>();
 	for (const row of [newest, served]) if (row?.version) versions.add(row.version);
 	return versions;
@@ -188,6 +208,8 @@ export function releasesToPrune<R extends CachedReleaseRow>(
 
 /** What a refresh knows about one release on the GitHub listing. */
 export interface ListedRelease {
+	version: string;
+	line: 'unified' | 'desktop';
 	isPrerelease: boolean;
 	publishedAt: number;
 }
@@ -196,28 +218,34 @@ export interface ListedRelease {
  * A refresh's walk down the GitHub release listing, newest first, one page of
  * `DESKTOP_RELEASE_CACHE_LIMIT` at a time. The first page is cached whole: it is
  * the rolling cache. Past it, only what `retainedStableVersions` would keep is
- * wanted: the newest stable release, then the newest one past the defer window,
- * and the walk ends there. Candidates past the first page would be pruned on
- * arrival. The page budget bounds the walk when no stable release exists.
+ * wanted: the newest stable release, then the first one that makes the held
+ * rows servable by `servedStableRelease`, the rule the resolver and the prune
+ * apply, and the walk ends there. Being past the defer window is not enough: a
+ * `desktop-v0.4.7` row adds nothing while the preferred unified `v0.4.7` is
+ * held, since that row decides whether 0.4.7 is served. Any other stable row
+ * past the window is its version's preferred row, so at most two rows are
+ * cached past the first page. Candidates past it would be pruned on arrival.
+ * The page budget bounds the walk when no stable release exists.
  */
 export function stableReleaseSearch(deferHours: number | undefined, now: number) {
 	const deferMs = Math.max(0, deferHours ?? 0) * 3600_000;
-	const isServed = (release: ListedRelease) =>
-		!release.isPrerelease && release.publishedAt + deferMs <= now;
-	let newestHeld = false;
+	const heldStable: ListedRelease[] = [];
 	let servedHeld = false;
+	const unifiedHeld = (version: string) =>
+		heldStable.some((row) => row.version === version && row.line === 'unified');
 	return {
 		/** Whether a listed release is worth caching, or counting when already cached. */
 		wants(page: number, release: ListedRelease): boolean {
 			if (page === 1) return true;
 			if (servedHeld || release.isPrerelease) return false;
-			return !newestHeld || isServed(release);
+			if (heldStable.length === 0) return true;
+			return release.publishedAt + deferMs <= now && !unifiedHeld(release.version);
 		},
 		/** Record a listed release the cache now holds. */
 		held(release: ListedRelease): void {
 			if (release.isPrerelease) return;
-			newestHeld = true;
-			if (isServed(release)) servedHeld = true;
+			heldStable.push(release);
+			servedHeld = servedStableRelease(heldStable, deferHours, now) !== null;
 		},
 		/** Whether to read the next page, after reading `page` with `listed` entries. */
 		readsOn(page: number, listed: number): boolean {
