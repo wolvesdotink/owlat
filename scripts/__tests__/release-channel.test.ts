@@ -45,18 +45,13 @@ describe('release.yml with a candidate tag', () => {
 		expect(jobs['verify']!.needs).toContain('resolve');
 	});
 
-	it('runs verification, both builds and the update flow for every channel', () => {
-		for (const name of [
-			'verify',
-			'create-release',
-			'server',
-			'desktop',
-			'publish',
-			'update-versions',
-		])
+	it('runs verification, both builds and the update gate for every channel', () => {
+		for (const name of ['verify', 'create-release', 'server', 'desktop', 'publish'])
 			expect(jobs[name]!.if, name).toBeUndefined();
-		expect(jobs['post-publish-update']!.if).toBe("needs.update-versions.outputs.from != ''");
-		expect(jobs['post-publish-update']!.uses).toBe('./.github/workflows/update-flow.yml');
+		// The update gate runs inside `server`, before publication, whatever
+		// the channel (scripts/__tests__/update-gate.test.ts).
+		expect(jobs['server']!.uses).toBe('./.github/workflows/_server-build.yml');
+		expect(jobs['publish']!.needs).toContain('server');
 	});
 
 	it('publishes a candidate as a prerelease that never claims latest', () => {

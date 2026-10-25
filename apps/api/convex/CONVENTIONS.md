@@ -1081,8 +1081,8 @@ arguments of jobs the previous release scheduled on internal functions, HTTP
 routes, JSON stored in strings or what values mean, and it is no substitute for
 upgrading a real previous-release dataset. The release E2E install does not do
 that either: its seeded leg carries over Redis and ClamAV volumes, not Convex
-data. The update flow (`scripts/e2e-update-flow.sh`, run after each release and
-nightly) does: the previous release writes a contact, a sent and a draft
+data. The update flow (`scripts/e2e-update-flow.sh`, run before each release is
+published and nightly) does: the previous release writes a contact, a sent and a draft
 campaign and a queued Send. After the in-app update, those documents, the
 campaign's Sends and every document within two id references of them must still
 exist with every field they had, deep-equal, and no added soft-delete marker.

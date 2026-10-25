@@ -3,60 +3,82 @@
 # e2e-update-flow.sh — Run a real in-app update, end to end, on this machine.
 #
 # Boots a fresh install at release FROM from its published compose template,
-# asks the running updater to apply release TO (the same POST /update the web
-# app sends when an operator clicks "Update now") and then checks what an
-# operator would check: the updater answered success, every step it reports
-# went through, the containers run TO's images and report TO's version, `.env`
-# and the compose file moved with them, the updater replaced itself, the web app
-# still answers, and the Convex data FROM wrote is still there: a named contact,
-# sent campaign, draft campaign and queued Send, seeded at FROM with sending off
-# (scripts/e2e-update-flow-data.sh).
+# seeds Convex data through it (a named contact, sent campaign, draft campaign
+# and queued Send, with sending off: scripts/e2e-update-flow-data.sh), then asks
+# the running updater to apply release TO (the same POST /update the web app
+# sends when an operator clicks "Update now"). Two scenarios:
+#
+#   success   TO's template as published. The updater has to answer success
+#             with every step through, and the stack has to be what an operator
+#             would check: TO's images and version on every container, `.env`
+#             and the compose file moved with them, the updater replaced
+#             itself, the web app answers, and the seeded data is intact.
+#   rollback  TO's template with web's healthcheck made to fail, so the release
+#             deploys and starts and then fails the readiness check. The
+#             updater has to roll it back to the snapshot it took, and the
+#             stack has to be FROM again, data included
+#             (scripts/e2e-update-flow-rollback.sh).
 #
 # Every in-app update bug so far lived in the gaps between those steps (a proxy
 # that 403'd `compose up`, a version pin that never reached the containers, a
 # disk that filled with superseded images), and unit tests mock exactly those
 # gaps out. This drives real Docker, real images and a real Convex backend.
 #
+# It drives the Docker daemon it is pointed at, names its compose project
+# `owlat` like a production install, ends with `docker compose down -v`, and
+# the updater it runs prunes images. Run it inside a dedicated daemon, which is
+# what scripts/e2e-update-flow-dind.sh does.
+#
 # Usage:
 #   bash scripts/e2e-update-flow.sh <from-version> <to-version>
 #
 # Environment:
-#   UPDATER_IMAGE  Run this image as the FROM install's updater instead of the
-#                  one FROM shipped. This is how CI tests a change to the
-#                  updater itself: the PR's updater performs a real FROM → TO
-#                  rollout.
+#   SCENARIO       success (default) or rollback.
+#   UPDATER_IMAGE  Run this image as the FROM install's updater. This is how CI
+#                  tests a change to the updater itself: the PR's updater
+#                  performs a real FROM → TO rollout. Without it, `success`
+#                  runs the updater FROM shipped (what an operator clicking
+#                  "Update now" runs) and `rollback` runs TO's, since FROM's
+#                  may predate rollback.
+#   TEMPLATE_DIR   Take TO's template and checksum from this directory instead
+#                  of TO's published release. The release gate tests a draft
+#                  release, which has no anonymous download URL.
+#   STRICT=1       Fail where a pair cannot be tested (a TO naming images that no
+#                  longer pull, an updater without rollback) instead of warning
+#                  and passing. The release gate and pull requests set it.
 #   WORK_DIR       Where the install goes (default: a temp dir). Its basename
 #                  is always `owlat`, so the compose project and container
 #                  names match a production install.
 #   KEEP=1         Leave the stack running afterwards, for debugging.
 #
-# Needs docker, docker compose, curl and jq. Uses ports 3000, 3210 and 3211.
+# Needs docker, docker compose, curl, jq and openssl. Uses ports 3000, 3210
+# and 3211.
 # ═══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
 FROM="${1:-}"
 TO="${2:-}"
-if [[ -z "$FROM" || -z "$TO" ]]; then
-	echo "Usage: $0 <from-version> <to-version>" >&2
+SCENARIO="${SCENARIO:-success}"
+if [[ -z "$FROM" || -z "$TO" || ! "$SCENARIO" =~ ^(success|rollback)$ ]]; then
+	echo "Usage: SCENARIO=success|rollback $0 <from-version> <to-version>" >&2
 	exit 2
 fi
 FROM="${FROM#v}"
 TO="${TO#v}"
 
 REPO="${OWLAT_REPO:-wolvesdotink/owlat}"
+HERE="$(dirname "${BASH_SOURCE[0]}")"
+# shellcheck source=scripts/e2e-update-flow-lib.sh
+source "$HERE/e2e-update-flow-lib.sh"
 # shellcheck source=scripts/e2e-update-flow-data.sh
-source "$(dirname "${BASH_SOURCE[0]}")/e2e-update-flow-data.sh"
+source "$HERE/e2e-update-flow-data.sh"
+# shellcheck source=scripts/e2e-update-flow-rollback.sh
+source "$HERE/e2e-update-flow-rollback.sh"
+if [[ -n "${TEMPLATE_DIR:-}" ]]; then TEMPLATE_DIR="$(cd "$TEMPLATE_DIR" && pwd)"; fi
 BASE="${WORK_DIR:-$(mktemp -d)}"
 INSTALL="$BASE/owlat"
 mkdir -p "$INSTALL"
 cd "$INSTALL"
-
-log() { printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
-fail() {
-	printf '\n\033[31m✗ %s\033[0m\n' "$*" >&2
-	exit 1
-}
-pass() { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 
 # On any exit: show what the stack looked like, then take it down (unless KEEP).
 on_exit() {
@@ -79,22 +101,9 @@ on_exit() {
 trap on_exit EXIT
 
 # ── 1. The two release templates, checksum-verified ──────────────────────────
-fetch_template() {
-	local version="$1"
-	local url="https://github.com/$REPO/releases/download/v$version/docker-compose-$version.yml"
-	curl -fsSL "$url" -o "docker-compose-$version.yml" || fail "cannot download $url"
-	curl -fsSL "$url.sha256" -o "docker-compose-$version.yml.sha256" || fail "cannot download $url.sha256"
-	local expected actual
-	expected="$(awk '{print $1}' "docker-compose-$version.yml.sha256")"
-	actual="$(sha256sum "docker-compose-$version.yml" | awk '{print $1}')"
-	[[ "$expected" == "$actual" ]] || fail "checksum mismatch for docker-compose-$version.yml"
-}
-
 log "Fetching release templates $FROM and $TO"
-fetch_template "$FROM"
-fetch_template "$TO"
-mkdir -p "$BASE/templates"
-mv docker-compose-*.yml* "$BASE/templates/"
+fetch_template "$FROM" "$BASE/templates"
+fetch_template "$TO" "$BASE/templates" "${TEMPLATE_DIR:-}"
 cp "$BASE/templates/docker-compose-$FROM.yml" docker-compose.yml
 
 # Convex moved its images from ghcr.io/get-convex/ to ghcr.io/convex/, and the
@@ -104,8 +113,7 @@ cp "$BASE/templates/docker-compose-$FROM.yml" docker-compose.yml
 # validates and pulls the TO template, so this edit never reaches the rollout.
 # As TO, there is nothing to test, because no updater can pull that template.
 if grep -q 'ghcr\.io/get-convex/' "$BASE/templates/docker-compose-$TO.yml"; then
-	echo "::warning::$TO names ghcr.io/get-convex/, which no longer pulls; an update to it cannot be tested"
-	exit 0
+	untestable "$TO names ghcr.io/get-convex/, which no longer pulls; an update to it cannot be tested"
 fi
 if grep -q 'ghcr\.io/get-convex/' docker-compose.yml; then
 	sed -i 's#ghcr\.io/get-convex/#ghcr.io/convex/#g' docker-compose.yml
@@ -128,15 +136,22 @@ EOF
 chmod 600 .env
 INSTANCE_SECRET="$(grep -m1 '^INSTANCE_SECRET=' .env | cut -d= -f2-)"
 
-if [[ -n "${UPDATER_IMAGE:-}" ]]; then
+updater_image="${UPDATER_IMAGE:-}"
+if [[ -z "$updater_image" && "$SCENARIO" == rollback ]]; then
+	updater_image="$(template_image updater "$BASE/templates/docker-compose-$TO.yml")" ||
+		fail "$TO's template pins no updater image"
+fi
+if [[ -n "$updater_image" ]]; then
 	# Compose loads the override on every call, the updater's own included, so
 	# the image under test also survives the updater's self-replacement.
 	cat >docker-compose.override.yml <<EOF
 services:
   updater:
-    image: $UPDATER_IMAGE
+    image: $updater_image
 EOF
-	pass "updater under test: $UPDATER_IMAGE"
+	pass "updater under test: $updater_image"
+else
+	updater_image="$(template_image updater docker-compose.yml)"
 fi
 
 docker compose up -d --wait convex
@@ -170,29 +185,59 @@ seed_convex_data "$BASE/convex-data.json"
 from_deploy_image="$(docker image inspect --format '{{.Id}}' \
 	"$(grep -m1 -oE 'ghcr.io/[a-z0-9-]+/convex-deploy:[^[:space:]]+' docker-compose.yml)")"
 updater_before="$(docker inspect --format '{{.Id}}' owlat-updater-1)"
+network="$(docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' owlat-web-1 | tr ' ' '\n' | grep -m1 default)"
+
+# POST /update with the request in $BASE/$1, waiting at most $2 seconds.
+# Writes the answer to $BASE/response.json and prints the HTTP status.
+post_update() {
+	docker run --rm --network "$network" -u "$(id -u):$(id -g)" -v "$BASE:/work" curlimages/curl:8.10.1 \
+		-sS -o /work/response.json -w '%{http_code}' --max-time "$2" \
+		-X POST http://updater:3200/update \
+		-H 'content-type: application/json' \
+		-H "x-instance-secret: $INSTANCE_SECRET" \
+		--data-binary "@/work/$1" || true
+}
+
+print_steps() {
+	jq -r '.steps[]? | "  \(if .ok == false then "✗" else "·" end) \(.step): \((.stdout // "") | split("\n")[0] | .[0:160])"' "$1"
+}
+
+# Convex functions read OWLAT_VERSION from the deployment, not from `.env`;
+# the convex-deploy command sets it after a successful deploy. A release whose
+# deploy image predates that command leaves it where it was, so it is only
+# checked when the running release's image runs the command.
+check_backend_version() {
+	local version="$1" image backend_version
+	image="$(grep -m1 -oE 'ghcr.io/[a-z0-9-]+/convex-deploy:[^[:space:]]+' docker-compose.yml)"
+	if [[ "$(docker image inspect --format '{{json .Config.Cmd}}' "$image" 2>/dev/null || true)" != *owlat-convex-deploy* ]]; then
+		echo "  ($version's convex-deploy image does not set the deployment's OWLAT_VERSION)"
+		return 0
+	fi
+	backend_version="$(docker compose --profile deploy run --rm -T convex-deploy \
+		sh -c 'convex env get OWLAT_VERSION </dev/null' 2>/dev/null | tail -n1)" ||
+		fail "could not read OWLAT_VERSION from the Convex deployment"
+	[[ "$backend_version" == "$version" ]] ||
+		fail "the Convex deployment reports OWLAT_VERSION=$backend_version, not $version"
+	pass "the Convex deployment reports OWLAT_VERSION=$version"
+}
+
+if [[ "$SCENARIO" == rollback ]]; then
+	run_rollback_update
+	exit 0
+fi
 
 # ── 3. The update, exactly as the web app requests it ────────────────────────
 log "Updating $FROM → $TO through the updater"
 jq -n --rawfile t "$BASE/templates/docker-compose-$TO.yml" '{composeTemplate: $t}' >"$BASE/request.json"
-network="$(docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' owlat-web-1 | tr ' ' '\n' | grep -m1 default)"
-http_status="$(docker run --rm --network "$network" -u "$(id -u):$(id -g)" -v "$BASE:/work" curlimages/curl:8.10.1 \
-	-sS -o /work/response.json -w '%{http_code}' --max-time 900 \
-	-X POST http://updater:3200/update \
-	-H 'content-type: application/json' \
-	-H "x-instance-secret: $INSTANCE_SECRET" \
-	--data-binary @/work/request.json)" || true
+http_status="$(post_update request.json 900)"
 [[ -f "$BASE/response.json" ]] || fail "no response from the updater (HTTP $http_status)"
-
-jq -r '.steps[]? | "  \(if .ok == false then "✗" else "·" end) \(.step): \((.stdout // "") | split("\n")[0] | .[0:160])"' "$BASE/response.json"
-if [[ "$http_status" != "200" ]] || [[ "$(jq -r '.success' "$BASE/response.json")" != "true" ]]; then
+print_steps "$BASE/response.json"
+problems="$(update_verdict success "$BASE/response.json" "$http_status")"
+if [[ -n "$problems" ]]; then
 	jq -r '.steps[]? | select(.ok == false) | "── \(.step)\n\(.stderr)"' "$BASE/response.json" | tail -n 60
-	fail "update answered HTTP $http_status: $(jq -r '.error // "no error"' "$BASE/response.json")"
+	fail "update answered HTTP $http_status ($(tr '\n' ';' <<<"$problems")): $(jq -r '.error // "no error"' "$BASE/response.json")"
 fi
-pass "updater reported success"
-
-failed_steps="$(jq -r '[.steps[] | select(.ok == false) | .step] | join(", ")' "$BASE/response.json")"
-[[ -z "$failed_steps" ]] || fail "update succeeded but reported failed steps: $failed_steps"
-pass "no step reported a failure"
+pass "updater reported success, and no step reported a failure"
 
 # ── 4. What an operator would check ──────────────────────────────────────────
 log "Verifying the stack is on $TO"
@@ -203,6 +248,12 @@ grep -qx "OWLAT_VERSION=$TO" .env || fail ".env still pins $(grep '^OWLAT_VERSIO
 pass ".env pins OWLAT_VERSION=$TO"
 
 [[ ! -e docker-compose.next.yml ]] || fail "the staged template was left behind"
+# An updater that snapshots keeps the snapshot of a confirmed release for
+# `owlat rollback`, and never leaves it armed for an automatic one.
+if [[ -e "$JOURNAL" ]]; then
+	jq -e '.state == "kept"' "$JOURNAL" >/dev/null || fail "the snapshot journal is $(jq -c .state "$JOURNAL") after a confirmed release"
+	pass "the snapshot of $FROM is kept for owlat rollback"
+fi
 
 # Waits out the updater's self-replacement too: the helper recreates it once
 # the response has been sent.
@@ -252,20 +303,7 @@ pass "every service is running"
 wait_for_web || fail "web does not answer after the update"
 pass "web answers at $TO"
 
-# Convex functions read OWLAT_VERSION from the deployment, not from `.env`;
-# the convex-deploy command sets it after a successful deploy. A TO whose
-# deploy image predates that command leaves it where it was, so it is only
-# checked when TO's image runs the command.
-to_deploy_image="$(grep -m1 -oE 'ghcr.io/[a-z0-9-]+/convex-deploy:[^[:space:]]+' docker-compose.yml)"
-if [[ "$(docker image inspect --format '{{json .Config.Cmd}}' "$to_deploy_image" 2>/dev/null || true)" == *owlat-convex-deploy* ]]; then
-	backend_version="$(docker compose --profile deploy run --rm -T convex-deploy \
-		sh -c 'convex env get OWLAT_VERSION </dev/null' 2>/dev/null | tail -n1)" ||
-		fail "could not read OWLAT_VERSION from the Convex deployment"
-	[[ "$backend_version" == "$TO" ]] || fail "the Convex deployment reports OWLAT_VERSION=$backend_version, not $TO"
-	pass "the Convex deployment reports OWLAT_VERSION=$TO"
-else
-	echo "  ($TO's convex-deploy image does not set the deployment's OWLAT_VERSION)"
-fi
+check_backend_version "$TO"
 
 health="$(docker run --rm --network "$network" curlimages/curl:8.10.1 -fsS --retry 10 --retry-all-errors \
 	-H "x-instance-secret: $INSTANCE_SECRET" http://updater:3200/health)"
@@ -292,6 +330,6 @@ else
 fi
 
 log "Checking the Convex data seeded at $FROM"
-verify_convex_data "$BASE/convex-data.json"
+verify_convex_data "$BASE/convex-data.json" "$TO"
 
 log "Update $FROM → $TO works end to end"
