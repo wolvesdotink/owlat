@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type * as SessionModule from '../lib/sessionOrganization';
 import type { OrganizationRole } from '../lib/sessionOrganization';
 import { createTestContact, createTestDomain } from './factories';
 
@@ -25,9 +26,7 @@ let mockRole: OrganizationRole = 'owner';
 const resolutions: string[] = [];
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<typeof SessionModule>('../lib/sessionOrganization');
 	const { realPermissionGate } = await import('./helpers/permissionGateMock');
 	const gate = realPermissionGate(actual, () => mockRole);
 	const session = () => ({ userId: 'user-1', role: mockRole, activeOrganizationId: ORG });
