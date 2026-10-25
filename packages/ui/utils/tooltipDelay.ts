@@ -32,9 +32,11 @@ export function tooltipOpenDelay(): number {
 
 /** `owner` is now the one tooltip on screen; any other one closes. */
 export function claimTooltip(owner: TooltipOwner): void {
+	// Close the previous owner first: its close releases it, which starts a
+	// cooldown that would otherwise expire while `owner` is still showing.
+	if (showing && showing !== owner) showing.close();
 	clearTimeout(coolTimer);
 	warm = true;
-	if (showing && showing !== owner) showing.close();
 	showing = owner;
 }
 

@@ -161,6 +161,27 @@ describe('UiTooltip', () => {
 		expect(tooltip()?.textContent).toBe('Archive');
 	});
 
+	it('a tooltip that replaced an open one keeps the group warm however long it shows', async () => {
+		mountTooltips([
+			['a', 'Archive'],
+			['b', 'Snooze'],
+			['c', 'Delete'],
+		]);
+		await hover(button('a'));
+		await elapse(TOOLTIP_OPEN_DELAY_MS);
+		await leave(button('a'));
+		await hover(button('b'));
+		expect(tooltip()?.textContent).toBe('Snooze');
+
+		await elapse(TOOLTIP_WARM_MS * 2);
+		expect(tooltip()?.textContent).toBe('Snooze');
+		await leave(button('b'));
+		await elapse(TOOLTIP_CLOSE_DELAY_MS);
+		expect(tooltip()).toBeNull();
+		await hover(button('c'));
+		expect(tooltip()?.textContent).toBe('Delete');
+	});
+
 	it('leaving before the delay cancels the open', async () => {
 		mountTooltips([['a', 'Archive']]);
 		await hover(button('a'));
