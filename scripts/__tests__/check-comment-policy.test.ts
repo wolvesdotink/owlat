@@ -32,6 +32,7 @@ import {
 	vuePieces,
 	yamlCommentPieces,
 } from '../comment-policy';
+import { NO_AUTO_MAINTENANCE } from './gitRepository.testlib';
 
 const rulesOf = (text: string, kind: TextPiece['kind'] = 'comment') =>
 	ruleHits({ text, kind }).map((hit) => `${hit.rule}:${hit.match}`);
@@ -479,6 +480,7 @@ function repository(): { root: string; base: string } {
 	git(root, ['init', '--quiet', '--initial-branch', 'main']);
 	git(root, ['config', 'user.email', 'test@example.com']);
 	git(root, ['config', 'user.name', 'Comment Policy Test']);
+	git(root, [...NO_AUTO_MAINTENANCE]);
 	write(root, 'src/legacy.ts', '// Fixed in #1234 (D13), see SPEC §4.\nexport const a = 1;\n');
 	write(
 		root,
@@ -573,6 +575,7 @@ describe('checkCommentPolicy', () => {
 		const remote = mkdtempSync(join(tmpdir(), 'owlat-comment-policy-remote-'));
 		sandboxes.push(remote);
 		git(remote, ['init', '--quiet', '--bare']);
+		git(remote, [...NO_AUTO_MAINTENANCE]);
 		git(root, ['remote', 'add', 'origin', remote]);
 		git(root, ['push', '--quiet', 'origin', 'main']);
 		git(root, ['checkout', '--quiet', '-b', 'feature']);
@@ -588,6 +591,7 @@ describe('checkCommentPolicy', () => {
 		const remote = mkdtempSync(join(tmpdir(), 'owlat-comment-policy-remote-'));
 		sandboxes.push(remote);
 		git(remote, ['init', '--quiet', '--bare']);
+		git(remote, [...NO_AUTO_MAINTENANCE]);
 		git(root, ['remote', 'add', 'origin', remote]);
 		git(root, ['push', '--quiet', 'origin', 'main']);
 		git(root, ['checkout', '--quiet', '-b', 'feature']);

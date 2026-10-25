@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { checkCommentPolicy } from '../check-comment-policy';
+import { NO_AUTO_MAINTENANCE } from './gitRepository.testlib';
 
 const SCRIPT = resolve(import.meta.dirname, '../check-format.sh');
 
@@ -43,6 +44,7 @@ describe('check-format changed-file ratchet', () => {
 			git(root, ['init', '--quiet']);
 			git(root, ['config', 'user.email', 'test@example.com']);
 			git(root, ['config', 'user.name', 'Format Test']);
+			git(root, [...NO_AUTO_MAINTENANCE]);
 			write(root, 'baseline.ts');
 			write(root, 'deleted.ts');
 			git(root, ['add', '.']);
@@ -108,6 +110,7 @@ describe('check-format changed-file ratchet', () => {
 			git(root, ['init', '--quiet']);
 			git(root, ['config', 'user.email', 'test@example.com']);
 			git(root, ['config', 'user.name', 'Format Test']);
+			git(root, [...NO_AUTO_MAINTENANCE]);
 			git(root, ['config', 'core.quotePath', 'true']);
 			write(root, 'baseline.ts');
 			git(root, ['add', '.']);
@@ -154,11 +157,13 @@ describe('check-format changed-file ratchet', () => {
 			git(root, ['init', '--quiet']);
 			git(root, ['config', 'user.email', 'test@example.com']);
 			git(root, ['config', 'user.name', 'Format Test']);
+			git(root, [...NO_AUTO_MAINTENANCE]);
 			write(root, 'baseline.ts');
 			git(root, ['add', '.']);
 			git(root, ['commit', '--quiet', '-m', 'baseline']);
 			git(root, ['branch', '-M', 'main']);
 			git(sandbox, ['init', '--bare', '--quiet', origin]);
+			git(origin, [...NO_AUTO_MAINTENANCE]);
 			git(root, ['remote', 'add', 'origin', origin]);
 			git(root, ['push', '--quiet', '-u', 'origin', 'main']);
 
@@ -213,6 +218,7 @@ describe('a pull request whose target branch moves during the job', () => {
 		git(seed, ['init', '--quiet', '--initial-branch', 'main']);
 		git(seed, ['config', 'user.email', 'test@example.com']);
 		git(seed, ['config', 'user.name', 'Format Test']);
+		git(seed, [...NO_AUTO_MAINTENANCE]);
 		write(seed, 'baseline.ts');
 		git(seed, ['add', '.']);
 		git(seed, ['commit', '--quiet', '-m', 'baseline']);
@@ -222,10 +228,12 @@ describe('a pull request whose target branch moves during the job', () => {
 		git(seed, ['add', '.']);
 		git(seed, ['commit', '--quiet', '-m', 'feature']);
 		git(sandbox, ['clone', '--quiet', '--bare', seed, origin]);
+		git(origin, [...NO_AUTO_MAINTENANCE]);
 
 		execFileSync('git', ['clone', '--quiet', ...clone, `file://${origin}`, root]);
 		git(root, ['config', 'user.email', 'test@example.com']);
 		git(root, ['config', 'user.name', 'Format Test']);
+		git(root, [...NO_AUTO_MAINTENANCE]);
 		git(root, ['checkout', '--quiet', 'feature']);
 		// The gate and its stand-in formatter are scaffolding, not the change.
 		writeFileSync(join(root, '.git/info/exclude'), 'scripts/\nnode_modules/\n');
