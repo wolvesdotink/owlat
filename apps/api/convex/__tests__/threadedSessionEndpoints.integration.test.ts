@@ -12,10 +12,10 @@ import { createTestContact, createTestDomain } from './factories';
  * endpoints take the session their builder's floor resolved instead of
  * resolving it again in the handler or in a shared guard.
  *
- * Every session resolver the handlers used to call is replaced by a counting
- * fake, so one call through a registered function must resolve exactly once
- * (the floor). The permission checks still run the real role map against the
- * threaded session, so the access decisions are pinned too: editors keep the
+ * Every exported session resolver is replaced by a counting fake, so one call
+ * through a registered function must resolve exactly once (the floor). The
+ * permission checks run the real role map against the threaded session, so the
+ * access decisions are pinned too: editors keep the
  * campaign pipeline, contact notes and the sender picker, and stay out of
  * topics, transactional templates, domains, contact properties and sender
  * curation.
