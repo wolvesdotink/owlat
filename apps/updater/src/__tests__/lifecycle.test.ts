@@ -63,10 +63,19 @@ beforeEach(() => {
 	commandMock.mockReset().mockImplementation((file: unknown, args: unknown) => {
 		const cmd = [String(file), ...((args as string[]) ?? [])].join(' ');
 		if (cmd.includes('config --services')) return 'web\nupdater\n';
+		// convex and redis, without volumes: the snapshot finds both, copies nothing.
+		if (cmd.endsWith(' ps --all --quiet')) return 'c0ffee000001\nc0ffee000002\n';
+		if (cmd.startsWith('docker container inspect')) {
+			return ['convex', 'redis']
+				.map((Service, i) =>
+					JSON.stringify({ Id: `c0ffee00000${i + 1}`, Running: true, Service, Mounts: [] })
+				)
+				.join('\n');
+		}
 		if (cmd.startsWith('docker inspect')) {
 			return [
 				'ghcr.io/wolvesdotink/updater:0.5.0',
-				`/srv/owlat:${OWLAT_DIR}:rw `,
+				JSON.stringify([{ Type: 'bind', Source: '/srv/owlat', Destination: OWLAT_DIR, RW: true }]),
 				'owlat_default ',
 			].join('\n');
 		}
@@ -78,6 +87,8 @@ beforeEach(() => {
 		return '';
 	});
 	writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nCOMPOSE_PROFILES=\n');
+	// The snapshot an update takes before its deploy needs the compose file.
+	writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'services: {}\n');
 });
 
 afterEach(() => setShutdownHandle(undefined));

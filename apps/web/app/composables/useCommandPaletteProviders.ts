@@ -182,7 +182,7 @@ export function useCommandPaletteProviders() {
 	// own registry gates apply on top.
 	const settingsItems = computed<SettingsPaletteItem[]>(() =>
 		[
-			...settingsControlTargets({ isFeatureEnabled, isDesktop: isDesktop.value }),
+			...settingsControlTargets({ isFeatureEnabled, isDesktop: isDesktop.value, role: role.value }),
 			...adminControlTargets(adminEnvironment.value, canAdminister.value),
 		].map((target) => ({
 			id: `setting:${target.id}`,

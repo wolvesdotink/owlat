@@ -513,6 +513,7 @@ apps/updater/src/__tests__/server.test.ts	owlat(no-real-time-wait-in-tests)	setT
 apps/updater/src/__tests__/shutdown.test.ts	owlat(no-polling-loop-in-tests)	for (let i = 0; i < 250; i++) { if (existsSync(pidFile) && readFileSync(pidFile, 'utf-8').trim()) { return Number(readFileSync(pidFile, 'utf-8')); } await new P
 apps/updater/src/__tests__/shutdown.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
 apps/updater/src/__tests__/shutdown.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 200)
+apps/updater/src/snapshot.ts	owlat(no-unchecked-json-cast)	JSON.parse(line) as typeof entry
 apps/web/app/components/__tests__/ContextMenu.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 60)
 apps/web/app/components/postbox/PostboxRecipientField.vue	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { email: string; from: RecipientField }
 apps/web/app/composables/__tests__/useAnswerAskSession.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
@@ -746,3 +747,4 @@ scripts/perf-bench/postboxListPage.ts	owlat(no-unchecked-json-cast)	JSON.parse(J
 scripts/perf-bench/run.ts	owlat(no-unchecked-json-cast)	JSON.parse(readFileSync(resultPath, 'utf8')) as FamilyResult
 scripts/release-body.ts	owlat(no-unchecked-json-cast)	JSON.parse(manifest) as { name: string }[]
 scripts/release.ts	owlat(no-unchecked-json-cast)	JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string; }
+scripts/report-bundle-delta.ts	owlat(no-unchecked-json-cast)	JSON.parse(readFileSync(path, 'utf8')) as BundleReport

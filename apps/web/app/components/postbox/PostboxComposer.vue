@@ -7,6 +7,7 @@ import { usePostboxComposerAnswerFrame } from '~/composables/postbox/usePostboxC
 import { usePostboxComposerAnswerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import { usePostboxComposerGaps } from '~/composables/postbox/usePostboxComposerGaps';
 import { usePostboxComposerHandoff } from '~/composables/postbox/usePostboxComposerHandoff';
+import { usePostboxComposerSendChoice } from '~/composables/postbox/usePostboxComposerSendChoice';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
 import { mailboxComposerTarget } from '~/utils/composerTarget';
 import PostboxComposerShell from './PostboxComposerShell.vue';
@@ -45,9 +46,10 @@ const props = defineProps<{
 const emit = defineEmits<{
 	/**
 	 * The send went out (or was queued offline). The undo window is already
-	 * armed; hosts only do their own bookkeeping (close, collapse).
+	 * armed; hosts only do their own bookkeeping (close, collapse, and for a
+	 * reply marked `done`, moving on).
 	 */
-	(e: 'sent', outcome: { scheduled: boolean }): void;
+	(e: 'sent', outcome: { scheduled: boolean; done: boolean }): void;
 	(e: 'discarded'): void;
 	/** Esc from inside the composer; the host decides what it means. */
 	(e: 'minimize'): void;
@@ -270,18 +272,16 @@ defineExpose({
 	onCreated: compose.onCreated,
 });
 
-// Cmd/Ctrl+Enter send, +Shift schedule, Esc minimize — bound on the composer
-// root (capture) so each stacked composer only handles its own keys.
-const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostboxComposerKeys({
+// Cmd/Ctrl+Enter send, +Alt the opposite after-reply action, +Shift schedule, Esc
+// minimize — bound on the root (capture): each stacked composer handles its own keys.
+const { onComposerKeydown, footerSend, sendWith, scheduleAt } = usePostboxComposerSendChoice({
+	seed: () => props.seed,
 	rootEl,
 	canSend: sendable,
 	sending,
 	isScheduled,
 	scheduleOpen,
-	onSend: () => void handleSend(),
-	onSchedule: () => {
-		scheduleOpen.value = true;
-	},
+	send: handleSend,
 	onMinimize: () => emit('minimize'),
 });
 // ⌘; (the saved-reply picker) first, then the composer's own keys.
@@ -442,8 +442,7 @@ function onKeydown(event: KeyboardEvent) {
 				:sending="sending"
 				:is-uploading="isUploading"
 				:is-scheduled="isScheduled"
-				:send-shortcut-hint="sendShortcutHint"
-				:schedule-shortcut-hint="scheduleShortcutHint"
+				v-bind="footerSend"
 				:show-signature-picker="signatures.length > 0"
 				:signatures="signatures"
 				:active-signature-id="activeSignatureId"
@@ -461,7 +460,7 @@ function onKeydown(event: KeyboardEvent) {
 				:advisory-available="aiRewriteEnabled"
 				:advisory-open="frameView.advisoryOpen.value"
 				:saved-replies="savedReplies.footer"
-				@send="handleSend()"
+				@send="sendWith"
 				@toggle-quote="frameView.toggleQuote()"
 				@toggle-advisory="frameView.toggleAdvisory()"
 				@discard="handleDiscard"
@@ -490,7 +489,7 @@ function onKeydown(event: KeyboardEvent) {
 				:seal-confirm-open="seal.confirmOpen"
 				:seal-state="seal.state"
 				:stale-reply-by-name="stale.byName"
-				@schedule="(ts: number) => handleSend({ scheduledSendAt: ts })"
+				@schedule="scheduleAt"
 				@update:seal-confirm-open="seal.setConfirmOpen"
 				@confirm-unsealed="seal.confirmUnsealed"
 				@confirm-stale="stale.confirm"

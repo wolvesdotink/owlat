@@ -24,6 +24,12 @@
  * keeps route closures report-only until a few releases show how much they
  * move on their own. Exit status is 0 for any sizes, 2 for an unreadable build.
  *
+ * The JSON also lists the entry closure's own chunks, and names the commit and
+ * build toolchain it was taken from (`BUNDLE_REPORT_SHA`,
+ * `BUNDLE_REPORT_TOOLCHAIN`; null when unset). CI keeps it as an artifact per
+ * commit, and `report-bundle-delta.ts` compares a pull request's report with
+ * its base commit's.
+ *
  * Usage: bun scripts/report-bundle-closures.ts [path/to/.output] [--json]
  *   (defaults to apps/web/.output; --json prints the full report, chunk lists
  *   included, for diffing two builds)
@@ -174,10 +180,20 @@ const report = {
 		/** What the totals count: `.js` chunks reached by static imports, no CSS. */
 		assets: 'javascript-only',
 		budget: null,
+		sha: process.env['BUNDLE_REPORT_SHA'] || null,
+		toolchain: process.env['BUNDLE_REPORT_TOOLCHAIN'] || null,
 	},
 	// Keyed by source path, not file: the entry carries the build id, so its
 	// hashed name changes on every build even when nothing else does.
-	entry: { key: labels.get(entry) ?? 'entry', closure: totals([...entryClosure].sort()) },
+	entry: {
+		key: labels.get(entry) ?? 'entry',
+		closure: totals([...entryClosure].sort()),
+		// Named like the rest of the report; a chunk the manifest does not name
+		// goes by its file, whose hash moves only when its content does.
+		chunks: [...entryClosure]
+			.map((file) => ({ key: labels.get(file) ?? file, gzip: sizeOf(file).gz }))
+			.sort((a, b) => b.gzip - a.gzip || compare(a.key, b.key)),
+	},
 	routes: routeRoots.sort(byKey).map(({ key, root }) => ({ key, ...describe(root) })),
 	deferred: keyed
 		.sort(byKey)

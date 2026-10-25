@@ -24,6 +24,7 @@ function setup() {
 		isScheduled: ref(false),
 		scheduleOpen: ref(false),
 		onSend: vi.fn(),
+		onSendAlternate: vi.fn(),
 		onSchedule: vi.fn(),
 		onMinimize,
 	});

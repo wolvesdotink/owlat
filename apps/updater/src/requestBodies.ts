@@ -1,7 +1,7 @@
 /**
  * The updater's request bodies, checked before a handler reads a field. Each
  * parser answers the checked value, or `null` for a body that is not one; the
- * handlers read bodies through `readJsonBody` (http.ts), which turns `null`
+ * handlers read bodies through `readJsonBody` (jsonBody.ts), which turns `null`
  * into a 400 before any rollout, Docker or disk work starts.
  *
  * Plain parsers rather than schema validators: this sidecar bundles its whole

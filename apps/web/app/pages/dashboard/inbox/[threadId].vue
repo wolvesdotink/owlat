@@ -27,6 +27,7 @@ import {
 } from '~/utils/teamThreadPriority';
 import { useTeamThreadCommandSurface } from '~/composables/team/useTeamThreadCommandSurface';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
+import { useConversationLink } from '~/composables/useConversationLink';
 
 const { t, locale } = useI18n();
 // Zen: the conversation and the reply only; the side cards wait outside.
@@ -278,6 +279,12 @@ async function onSetPriority(next: TeamThreadPriority) {
 	}
 }
 
+// "Copy link" / "Share in chat…" (header ⋯ and palette). The link opens for
+// whoever can read the Team Inbox; it grants nothing by itself.
+const { copyConversationLink } = useConversationLink();
+const copyThreadLink = () => void copyConversationLink({ kind: 'team', threadId: threadId.value });
+const showShareInChat = ref(false);
+
 // ⌘K on this thread: every verb the page has (`~/lib/commandPaletteThreadSurfaces`),
 // and the thread joins the palette's "Jump back" list.
 useTeamThreadCommandSurface({
@@ -300,6 +307,9 @@ useTeamThreadCommandSurface({
 	// After the palette has closed and handed focus back.
 	onAddNote: () => window.setTimeout(() => composer.value?.focus('note'), 0),
 	onSetPriority: (next) => void onSetPriority(next),
+	onCopyLink: copyThreadLink,
+	canShareInChat: () => chatEnabled.value,
+	onShareInChat: () => (showShareInChat.value = true),
 });
 useRecordPaletteObjectOpen(() =>
 	thread.value
@@ -515,6 +525,8 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					@snooze="showSnoozeDialog = true"
 					@unsnooze="onUnsnooze"
 					@status="handleStatusChange"
+					@copy-link="copyThreadLink"
+					@share-in-chat="showShareInChat = true"
 				/>
 			</div>
 
@@ -530,6 +542,12 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 				v-if="showNewChannel"
 				@close="showNewChannel = false"
 				@created="onChannelCreated"
+			/>
+			<LazyChatLinkEmailDialog
+				v-if="showShareInChat && chatEnabled"
+				:conversation="{ kind: 'team', threadId }"
+				audience="team"
+				@close="showShareInChat = false"
 			/>
 
 			<!-- From xl the side column keeps a fixed width instead of a third of an

@@ -9,7 +9,7 @@
  * is exactly the drift that leaves an unread badge outliving its mail.
  */
 
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { batchGet } from '../_utils/batchLoader';
 import { deleteMailThreadCatchUps } from './legacySummaryRows';
@@ -115,6 +115,61 @@ export async function rebuildThreadAggregates(
 		participants,
 		updatedAt: Date.now(),
 	});
+}
+
+/**
+ * A thread after some of its messages changed folder and nothing else: of its
+ * aggregates only `folderRoles` can differ (counts, flags, the latest message,
+ * labels and participants do not depend on where a message sits). Bounded where
+ * {@link rebuildThreadAggregates} reads every message of the thread, so a
+ * caller that moves a long conversation in batches does not re-read all of it
+ * per batch. A source folder's role stays while an indexed lookup finds a
+ * message of the thread still in a folder with that role.
+ */
+export async function applyThreadFolderMove(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	move: { sourceFolderIds: Iterable<Id<'mailFolders'>>; target: Doc<'mailFolders'> }
+): Promise<void> {
+	const thread = await ctx.db.get(threadId);
+	if (!thread) return;
+	const roles = new Set(thread.folderRoles);
+	if (move.target.role) roles.add(move.target.role);
+	for (const sourceId of move.sourceFolderIds) {
+		const source = await ctx.db.get(sourceId);
+		const role = source?.role;
+		if (!source || !role || role === move.target.role || !roles.has(role)) continue;
+		if (!(await isRoleStillHeld(ctx, threadId, source.mailboxId, role))) roles.delete(role);
+	}
+	const folderRoles = Array.from(roles);
+	const isSame =
+		folderRoles.length === thread.folderRoles.length &&
+		folderRoles.every((role) => thread.folderRoles.includes(role));
+	if (isSame) return;
+	await ctx.db.patch(threadId, { folderRoles, updatedAt: Date.now() });
+}
+
+/** Whether a message of the thread sits in a folder of the mailbox with `role`. */
+async function isRoleStillHeld(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	mailboxId: Id<'mailboxes'>,
+	role: NonNullable<Doc<'mailFolders'>['role']>
+): Promise<boolean> {
+	const folders = await ctx.db
+		.query('mailFolders')
+		.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailboxId).eq('role', role))
+		.collect(); // bounded: a mailbox's folders of one role
+	for (const folder of folders) {
+		const row = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread_folder_received', (q) =>
+				q.eq('threadId', threadId).eq('folderId', folder._id)
+			)
+			.first();
+		if (row) return true;
+	}
+	return false;
 }
 
 /** Flag state of one message before or after a change. */

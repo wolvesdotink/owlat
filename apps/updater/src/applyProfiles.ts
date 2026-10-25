@@ -19,7 +19,8 @@ import {
 import { errorMessage } from '@owlat/shared';
 import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { applyEnvUpdates, isRateLimited, validateFlagSnapshot } from './security.js';
-import { composePsServices, exec, json, OWLAT_DIR, readJsonBody, requireAuth } from './http.js';
+import { composePsServices, exec, json, OWLAT_DIR, requireAuth } from './http.js';
+import { readJsonBody } from './jsonBody.js';
 import { parserDecoder } from '@owlat/worker-protocol/decodeJson';
 import { asRecord } from './requestBodies.js';
 import { composeArgv, recoverStackAfterFailedUp, servicesToRecreate } from './rollout.js';

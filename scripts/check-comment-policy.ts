@@ -13,7 +13,8 @@
  * staged and unstaged edits count, and an untracked file counts whole. The base:
  * - COMMENT_POLICY_BASE when set (`bun run check:changed` sets it to its own
  *   merge base);
- * - a pull request (GITHUB_BASE_REF): its target branch;
+ * - a pull request (GITHUB_BASE_REF): its target branch, pinned to PR_BASE_SHA
+ *   (the event's base commit) when CI sets it;
  * - otherwise origin/main.
  * A base that cannot be resolved fails in CI (CI=true) and skips locally.
  */
@@ -161,17 +162,29 @@ function resolveBase(
 	const explicit = env['COMMENT_POLICY_BASE'];
 	if (explicit) return { label: explicit, commit: mergeBase(explicit) };
 	const target = env['GITHUB_BASE_REF'];
-	if (target) {
+	if (!target) return { label: 'origin/main', commit: mergeBase('origin/main') };
+	// CI pins the base to the commit the event names, so a push to the target
+	// mid-job cannot move it. Fetch only a base the checkout lacks, and never
+	// with --depth: a shallow fetch into a full clone leaves the new tip
+	// without parents, and HEAD without a merge base.
+	const pinned = env['PR_BASE_SHA'];
+	const ref = pinned || `origin/${target}`;
+	const label = pinned ? `origin/${target} at ${pinned}` : ref;
+	if (!git(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).ok) {
 		git(root, [
 			'fetch',
 			'--quiet',
 			'--no-tags',
 			'origin',
-			`+refs/heads/${target}:refs/remotes/origin/${target}`,
+			pinned || `+refs/heads/${target}:refs/remotes/origin/${target}`,
 		]);
-		return { label: `origin/${target}`, commit: mergeBase(`origin/${target}`) };
 	}
-	return { label: 'origin/main', commit: mergeBase('origin/main') };
+	const commit = mergeBase(ref);
+	if (commit || git(root, ['rev-parse', '--is-shallow-repository']).out.trim() !== 'true') {
+		return { label, commit };
+	}
+	git(root, ['fetch', '--quiet', '--no-tags', '--unshallow', 'origin']);
+	return { label, commit: mergeBase(ref) };
 }
 
 export interface GateResult {
