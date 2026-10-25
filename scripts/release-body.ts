@@ -20,6 +20,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parsePublishedImages } from './ci/docker-images';
 import { classifyReleaseTag } from './ci/release-policy';
 
 export const UPDATE_DOCS_URL = 'https://docs.owlat.app/developer/self-hosting-maintenance#updating';
@@ -27,7 +28,7 @@ export const UPDATE_DOCS_URL = 'https://docs.owlat.app/developer/self-hosting-ma
 /** Published image names, in manifest order (docker/images.json is the one list). */
 function imageNames(): string[] {
 	const manifest = readFileSync(join(import.meta.dirname, '..', 'docker', 'images.json'), 'utf8');
-	return (JSON.parse(manifest) as { name: string }[]).map((image) => image.name);
+	return parsePublishedImages(manifest, 'docker/images.json').map((image) => image.name);
 }
 
 function escapeRegExp(s: string): string {

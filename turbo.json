@@ -27,13 +27,19 @@
 		},
 		// Specs and their typechecks in several workspaces import the root
 		// report-only benchmark files under scripts/perf-bench/ (the sampler, the
-		// Postbox list-page fixture). turbo hashes only the package directory by
-		// default, so these generic inputs add them; a change there is rare and
-		// re-runs every package's typecheck and tests, which is the safe side.
-		// scripts/__tests__/turbo-perf-bench-inputs.test.ts pins it.
+		// Postbox list-page fixture) and the root files those import
+		// (scripts/json.ts, the fixture's decoder). turbo hashes only the package
+		// directory by default, so these generic inputs add them; a change there
+		// is rare and re-runs every package's typecheck and tests, which is the
+		// safe side. scripts/__tests__/turbo-perf-bench-inputs.test.ts pins it,
+		// following imports transitively.
 		"typecheck": {
 			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-bench/**"]
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/scripts/perf-bench/**",
+				"$TURBO_ROOT$/scripts/json.ts"
+			]
 		},
 		// oxlint follows imports into the workspace packages a package depends on
 		// (import/no-cycle reads them), so a lint result depends on their sources
@@ -138,13 +144,21 @@
 		"test": {
 			"env": ["VITEST_MAX_WORKERS"],
 			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-bench/**"]
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/scripts/perf-bench/**",
+				"$TURBO_ROOT$/scripts/json.ts"
+			]
 		},
 		"test:coverage": {
 			"env": ["VITEST_MAX_WORKERS"],
 			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
 			"outputs": ["coverage/**"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/perf-bench/**"]
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/scripts/perf-bench/**",
+				"$TURBO_ROOT$/scripts/json.ts"
+			]
 		},
 		"test:watch": {
 			"cache": false,

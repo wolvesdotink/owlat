@@ -230,6 +230,30 @@ describe('the desktop SPA gate', () => {
 		expect(result.status).toBe(1);
 	});
 
+	it('reports a manifest or import map of the wrong shape as a problem of the build', () => {
+		const result = run(
+			build({
+				'manifest.webmanifest': JSON.stringify({ icons: [{ src: 42 }] }),
+				'_nuxt/builds/latest.json': '{"id":["b1"]}',
+			})
+		);
+		expect(result.output).toContain('manifest.webmanifest.icons[0].src must be a string');
+		expect(result.output).toContain('_nuxt/builds/latest.json.id must be a string');
+		expect(result.output).not.toContain('TypeError');
+		expect(result.status).toBe(1);
+
+		const mapped = run(
+			build({}, (files) => ({
+				'index.html': page(files).replace(
+					'{"imports":{"#entry":"/_nuxt/entry.js"}}',
+					'{"imports":{"#entry":7}}'
+				),
+			}))
+		);
+		expect(mapped.output).toContain('import map.imports.#entry must be a string');
+		expect(mapped.status).toBe(1);
+	});
+
 	it('exits 2 when there is no build to read', () => {
 		const empty = mkdtempSync(join(tmpdir(), 'owlat-desktop-spa-empty-'));
 		sandboxes.push(empty);

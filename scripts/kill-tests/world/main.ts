@@ -15,7 +15,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { listenBlocklistDns } from './blocklistDns';
 import { ConvexProxy } from './convexProxy';
 import { EventLog } from './events';
-import { SmtpSink, type HoldRule } from './smtpSink';
+import { SmtpSink } from './smtpSink';
+import { decodeHoldRules, decodeHoldUids, parseWire, WireError } from './wire';
 
 const API_PORT = 3210;
 const SITE_PORT = 3211;
@@ -46,6 +47,24 @@ function send(response: ServerResponse, status: number, body: unknown): void {
 	response.end(JSON.stringify(body));
 }
 
+/**
+ * A control request's body, checked by `decode`. A body of the wrong shape is
+ * answered 400 and arms nothing; the orchestrator fails on any non-2xx answer.
+ */
+async function controlBody<T>(
+	request: IncomingMessage,
+	response: ServerResponse,
+	decode: (body: unknown) => T
+): Promise<T | undefined> {
+	try {
+		return decode(parseWire((await readBody(request)).toString(), 'control request'));
+	} catch (error) {
+		if (!(error instanceof WireError)) throw error;
+		send(response, 400, { error: error.message });
+		return undefined;
+	}
+}
+
 async function control(url: URL, request: IncomingMessage, response: ServerResponse) {
 	if (url.pathname === '/control/wait') {
 		const key = url.searchParams.get('key') ?? '';
@@ -58,12 +77,14 @@ async function control(url: URL, request: IncomingMessage, response: ServerRespo
 		return event ? send(response, 200, event) : send(response, 408, { key });
 	}
 	if (url.pathname === '/control/smtp/hold') {
-		const { rules } = JSON.parse((await readBody(request)).toString()) as { rules: HoldRule[] };
+		const rules = await controlBody(request, response, decodeHoldRules);
+		if (!rules) return;
 		sink.arm(rules);
 		return send(response, 200, { armed: rules.length });
 	}
 	if (url.pathname === '/control/convex/hold-ingest') {
-		const { uids } = JSON.parse((await readBody(request)).toString()) as { uids: number[] };
+		const uids = await controlBody(request, response, decodeHoldUids);
+		if (!uids) return;
 		convex.holdIngest(uids);
 		return send(response, 200, { armed: uids.length });
 	}

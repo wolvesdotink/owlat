@@ -1,3 +1,4 @@
+import { arrayOf, decodeJson, JsonShapeError, object, recordOf, string } from '../json';
 export interface Task {
 	task: string;
 	package: string;
@@ -45,13 +46,15 @@ export function groupWorkspaces(workspaces: Workspace[], count = 4) {
  * Files the desktop SPA (`generate:desktop`) is built from beyond the web
  * workspace's own package graph: the bridge the web app imports by path (it is
  * not a declared dependency, so turbo does not see it), the Tauri config that
- * names the dist, and the inspector itself.
+ * names the dist, and the inspector itself with the root modules it imports
+ * (scripts/__tests__/ci-selection.test.ts reads its imports to pin this).
  */
 const DESKTOP_SPA_INPUTS = [
 	'apps/desktop/src/',
 	'apps/desktop/package.json',
 	'apps/desktop/src-tauri/tauri.conf.json',
 	'scripts/check-desktop-spa.ts',
+	'scripts/json.ts',
 ];
 export function desktopSpaSelected(full: boolean, web: boolean, changed: string[]): boolean {
 	return (
@@ -137,6 +140,23 @@ export function expectedJobs(selection: {
 		...(selection.java ? ['sdk-java'] : []),
 		...(selection.desktopSpa ? ['desktop-spa'] : []),
 	];
+}
+const decodeGroup = object({
+	workspaces: arrayOf(object({ package: string, name: string, directory: string })),
+});
+/** A test group as the detect job wrote it into the matrix (`CI_GROUP`). */
+export function parseTestGroup(text: string | undefined): { workspaces: Workspace[] } {
+	if (!text) throw new JsonShapeError('Missing CI test group');
+	return decodeJson(text, decodeGroup, 'CI_GROUP');
+}
+/** The job names the detect job expects to run (`CI_EXPECTED`). */
+export function parseExpectedJobs(text: string | undefined): string[] {
+	if (!text) throw new JsonShapeError('Missing expected CI job manifest');
+	return decodeJson(text, arrayOf(string), 'CI_EXPECTED');
+}
+/** The `needs` context of the summary job (`CI_NEEDS`): each job's result. */
+export function parseJobResults(text: string | undefined): Record<string, { result: string }> {
+	return decodeJson(text ?? '{}', recordOf(object({ result: string })), 'CI_NEEDS');
 }
 export function assertJobResults(expected: string[], needs: Record<string, { result: string }>) {
 	if (!expected.includes('detect') || new Set(expected).size !== expected.length)

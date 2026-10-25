@@ -25,6 +25,16 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { GZIP_BUDGET_KB } from './check-bundle-budget';
 import { kb } from './bundle-closure';
+import {
+	arrayOf,
+	decodeJson,
+	type Decoder,
+	nullable,
+	number,
+	object,
+	optional,
+	string,
+} from './json';
 
 const TOOL = 'report-bundle-delta';
 
@@ -56,6 +66,18 @@ export interface BundleReport {
 	routes: Closure[];
 	deferred: Closure[];
 }
+
+const totals = object({ files: number, raw: number, gzip: number });
+const closure = object({ key: string, beyondEntry: totals });
+const decodeBundleReport: Decoder<BundleReport> = object({
+	meta: object({ sha: optional(nullable(string)), toolchain: optional(nullable(string)) }),
+	entry: object({
+		closure: totals,
+		chunks: optional(arrayOf(object({ key: string, gzip: number }))),
+	}),
+	routes: arrayOf(closure),
+	deferred: arrayOf(closure),
+});
 
 export interface DeltaInput {
 	head: BundleReport;
@@ -194,9 +216,7 @@ export function renderDelta(input: DeltaInput): { markdown: string; warnings: st
 
 function readReport(path: string): BundleReport {
 	try {
-		const report = JSON.parse(readFileSync(path, 'utf8')) as BundleReport;
-		if (typeof report?.entry?.closure?.gzip !== 'number') throw new Error('no entry closure');
-		return report;
+		return decodeJson(readFileSync(path, 'utf8'), decodeBundleReport, 'report');
 	} catch (error) {
 		console.error(`${TOOL}: cannot read the report ${path}: ${(error as Error).message}`);
 		process.exit(2);

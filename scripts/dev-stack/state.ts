@@ -8,6 +8,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { isRecord } from '../json';
 import type { DevStackConfig } from './config';
 
 export const STATE_DIR = '.owlat-dev';
@@ -67,11 +68,20 @@ export function loadOrCreateSecrets(
 ): DevStackSecrets {
 	let stored: Record<string, unknown> = {};
 	if (existsSync(file)) {
+		let parsed: unknown;
 		try {
-			stored = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+			parsed = JSON.parse(readFileSync(file, 'utf8'));
 		} catch {
 			throw new Error(`${file} is not valid JSON. Fix or delete it (a new one is generated).`);
 		}
+		// An entry of the wrong shape is regenerated below; a file that is not an
+		// object at all is not this stack's secrets file, so it is not overwritten.
+		if (!isRecord(parsed)) {
+			throw new Error(
+				`${file} does not hold an object of secrets. Fix or delete it (a new one is generated).`
+			);
+		}
+		stored = parsed;
 	}
 	const secrets: Record<string, string> = {};
 	let changed = false;

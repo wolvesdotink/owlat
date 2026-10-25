@@ -36,6 +36,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { hashPassword } from '@owlat/shared/passwordHash';
 import { resolveConvexTarget } from './dev-stack/convexTarget';
+import { isRecord } from './json';
 
 const ROOT = join(import.meta.dir, '..');
 const target = resolveConvexTarget(ROOT, process.env);
@@ -86,18 +87,21 @@ async function post(
 		headers: { 'Content-Type': 'application/json', 'X-Instance-Secret': secret },
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
-	let parsed: Record<string, unknown> = {};
+	let parsed: unknown;
 	try {
-		parsed = (await response.json()) as Record<string, unknown>;
+		parsed = await response.json();
 	} catch {
 		// non-JSON error body; status alone is enough to report
 	}
-	return { status: response.status, body: parsed };
+	// A body that is not an object carries no counts; the status still decides.
+	return { status: response.status, body: isRecord(parsed) ? parsed : {} };
 }
 
 function summarize(label: string, counts: unknown): void {
-	if (!counts || typeof counts !== 'object') return;
-	const entries = Object.entries(counts as Record<string, number>).filter(([, n]) => n > 0);
+	if (!isRecord(counts)) return;
+	const entries = Object.entries(counts).filter(
+		(entry): entry is [string, number] => typeof entry[1] === 'number' && entry[1] > 0
+	);
 	if (entries.length === 0) return;
 	console.log(`  ${label}: ${entries.map(([k, n]) => `${k} ${n}`).join(', ')}`);
 }

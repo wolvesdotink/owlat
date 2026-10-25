@@ -43,6 +43,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { cpus, loadavg, platform, release, arch, totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { readPackageManifest, requiredVersion } from '../package-manifest';
+import { readFamilyResult } from './familyResult';
 import type { FamilyResult } from './sample';
 import { PERF_BENCH_OUT_ENV } from './sample';
 import { aggregateFamily, aggregateScaling, renderReport, type ReportContext } from './stats';
@@ -153,8 +155,10 @@ function main(): number {
 		os: `${platform()} ${release()} ${arch()}`,
 		cpuGovernor: readOrUnknown('/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor'),
 		bun: Bun.version,
-		vitest: JSON.parse(readFileSync(join(ROOT, 'node_modules/vitest/package.json'), 'utf8'))
-			.version,
+		vitest: requiredVersion(
+			readPackageManifest(join(ROOT, 'node_modules/vitest/package.json')),
+			'vitest/package.json'
+		),
 		commit: `${git(['rev-parse', '--short=12', 'HEAD'])}${dirty ? ' (uncommitted changes)' : ''}`,
 		startedAt,
 		loadBefore: loadAverage(),
@@ -188,7 +192,7 @@ function main(): number {
 				);
 				return 1;
 			}
-			results.push(JSON.parse(readFileSync(resultPath, 'utf8')) as FamilyResult);
+			results.push(readFamilyResult(resultPath));
 		}
 		collected.push({ runs: results });
 	}

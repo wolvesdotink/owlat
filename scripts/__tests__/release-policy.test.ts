@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { withMsiVersion } from '../ci/msi-version';
 import type { Run } from '../ci/reuse';
 import {
 	candidatesOf,
@@ -78,6 +79,39 @@ describe('msiVersion', () => {
 		expect(() => msiVersion('0.7.0-rc.65536')).toThrow();
 		expect(() => msiVersion('256.0.0-rc.1')).toThrow();
 		expect(() => msiVersion('not-a-version')).toThrow();
+	});
+});
+
+describe('withMsiVersion', () => {
+	it('sets the WiX version and keeps every other release setting', () => {
+		const config = {
+			$schema: 'https://example.com/schema.json',
+			bundle: {
+				createUpdaterArtifacts: true,
+				windows: { wix: { language: 'en-US' }, signCommand: 'x' },
+			},
+		};
+		expect(JSON.parse(withMsiVersion(JSON.stringify(config), '0.7.0.3', 'release.json'))).toEqual({
+			$schema: 'https://example.com/schema.json',
+			bundle: {
+				createUpdaterArtifacts: true,
+				windows: { wix: { language: 'en-US', version: '0.7.0.3' }, signCommand: 'x' },
+			},
+		});
+		expect(JSON.parse(withMsiVersion('{}', '0.7.0.3', 'release.json'))).toEqual({
+			bundle: { windows: { wix: { version: '0.7.0.3' } } },
+		});
+	});
+
+	it('refuses a config it would have to overwrite to edit', () => {
+		for (const [text, message] of [
+			['[]', 'release.json must be an object'],
+			['{"bundle":[]}', 'release.json.bundle must be an object'],
+			['{"bundle":{"windows":"x"}}', 'release.json.bundle.windows must be an object'],
+			['{"bundle":{"windows":{"wix":true}}}', 'release.json.bundle.windows.wix must be an object'],
+			['{"bundle":', 'release.json is not valid JSON'],
+		])
+			expect(() => withMsiVersion(text!, '0.7.0.3', 'release.json')).toThrow(message);
 	});
 });
 
