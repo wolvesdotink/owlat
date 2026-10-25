@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PROHIBITED_DIRECTORIES, findPrAssets } from '../check-no-pr-assets';
+import { NO_AUTO_MAINTENANCE } from './gitRepository.testlib';
 
 const SCRIPT = resolve(import.meta.dirname, '../check-no-pr-assets.ts');
 const REPO_ROOT = resolve(import.meta.dirname, '../..');
@@ -97,6 +98,7 @@ describe('the gate on a repository', () => {
 		git(root, ['init', '--quiet']);
 		git(root, ['config', 'user.email', 'test@example.com']);
 		git(root, ['config', 'user.name', 'Gate Test']);
+		git(root, [...NO_AUTO_MAINTENANCE]);
 		write(root, '.gitignore', '/docs/screenshots/\n');
 		write(root, 'docs/README.md');
 		git(root, ['add', '.']);

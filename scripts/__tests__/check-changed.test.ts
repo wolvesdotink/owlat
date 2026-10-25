@@ -32,6 +32,7 @@ import {
 	type TestWorkspace,
 	type TurboTaskConfig,
 } from '../ci/selection';
+import { NO_AUTO_MAINTENANCE } from './gitRepository.testlib';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const turboTasks = (
@@ -62,6 +63,7 @@ function repository(): string {
 	git(root, ['config', 'user.email', 'test@example.com']);
 	git(root, ['config', 'user.name', 'Check Changed Test']);
 	git(root, ['config', 'commit.gpgsign', 'false']);
+	git(root, [...NO_AUTO_MAINTENANCE]);
 	for (const file of ['kept.ts', 'edited.ts', 'deleted.ts', 'renamed-from.ts', 'staged.ts'])
 		write(root, file);
 	git(root, ['add', '.']);
