@@ -32,7 +32,7 @@ const registerBody = v.object({
 const selectorBody = v.object({ selector: v.optional(v.string()) });
 const activateBody = v.object({ force: v.optional(v.boolean()) });
 
-/** These routes were historically called with no body at all. */
+/** Callers may send these routes no body at all; that means "no options". */
 const BODY_LESS = { emptyBody: {} } as const;
 
 export function createDkimRoutes(redis: Redis, config: MtaConfig) {
@@ -123,9 +123,9 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	app.post('/:domain/register', async (c) => {
 		const domain = c.req.param('domain').toLowerCase();
 
-		// An empty/whitespace body is the historic body-less POST (no override);
-		// a non-empty body that is not a JSON object of the right field types is
-		// a 400 rather than being silently ignored. `{ "returnPathHost": null }`
+		// An empty/whitespace body is the body-less POST (no override); a
+		// non-empty body that is not a JSON object of the right field types is a
+		// 400, because only an absent body means "no override". `{ "returnPathHost": null }`
 		// is the documented clear path and is handled below.
 		const read = await readJsonBody(c, registerBody, BODY_LESS);
 		if (!read.ok) return read.response;

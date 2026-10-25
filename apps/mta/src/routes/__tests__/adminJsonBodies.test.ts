@@ -3,8 +3,10 @@
  *
  * A type argument on `c.req.json<T>()` checks nothing: a numeric domain would
  * reach `.toLowerCase()` and answer 500, a list element of the wrong type would
- * be stored, and a malformed body would throw out of the handler. Every case
- * here asserts the controlled 400 AND that nothing was written to Redis.
+ * be stored, and a malformed body would throw out of the handler. Every
+ * refusal case asserts the controlled 400 AND that nothing was written to
+ * Redis; the credential-create and body-less rotate cases check that a valid
+ * request still succeeds.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -97,7 +99,7 @@ describe('/dkim', () => {
 		);
 	});
 
-	it('keeps the historic body-less rotate and refuses a malformed one', async () => {
+	it('accepts a body-less rotate and refuses a malformed one', async () => {
 		const app = createDkimRoutes(redis, config);
 		const malformed = await send(app, 'POST', '/brand.example/rotate', 'selector=s2');
 		await expectRefusedWithoutWrites(malformed);

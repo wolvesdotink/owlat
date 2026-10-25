@@ -62,7 +62,8 @@ const BODY_MAX_BYTES = 1024 * 1024;
 
 /**
  * Read a route's JSON body to the checked value, or the 400/413 answering it.
- * `message` keeps each route's historic wording for a body that does not fit.
+ * `message` is the route's own refusal text: every body that does not fit
+ * gets that one message, and only a 413 says something else.
  */
 async function readBody<C extends JsonChecker>(
 	c: Context,
@@ -79,7 +80,6 @@ async function readBody<C extends JsonChecker>(
 	return { ok: false, response: c.json({ error: result.failure.message }, status) };
 }
 
-/**
 /**
  * Deadline for fetching the outgoing `.eml` back from Convex (at most 8 MiB, from
  * a storage proxy on the same network). A hung fetch answers 502 instead of

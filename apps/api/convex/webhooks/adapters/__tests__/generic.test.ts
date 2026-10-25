@@ -191,8 +191,8 @@ describe('genericAdapter.parseEvent', () => {
 	});
 
 	it('refuses a field of the wrong type instead of dispatching it', () => {
-		// A numeric sender used to become the event's `from` and fail the
-		// channel mutation's string validator one step later, as a 500.
+		// The channel mutation validates `from` as a string, so a wrong type has
+		// to be refused here, before dispatch, or it surfaces there as a 500.
 		expect(() => genericAdapter.parseEvent('{"from":42,"text":"hi"}')).toThrow(
 			'generic webhook: $.from: expected string'
 		);

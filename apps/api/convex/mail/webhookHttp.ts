@@ -47,9 +47,9 @@ import { deliveredEnvelopeFields } from './deliveryPipeline/ingestFields';
  * is called. Each field is the validator `mail.delivery.ingestFromWebhook`
  * declares for it (so the two cannot drift), except the ones this route
  * defaults: `cc`, `bcc` and `attachments` default to empty and `subject` to
- * `(no subject)`, so they may be absent here. A wrong type is refused with a
- * 400 that names the path, where it used to reach the action's validator and
- * come back as a 500.
+ * `(no subject)`, so they may be absent here. The check has to run before
+ * the action is called: a wrong type reaching the action's validator surfaces
+ * as a 500, while refusing it here answers a 400 that names the path.
  */
 const mailboxPayloadValidator = v.object({
 	deliveryId: v.string(),

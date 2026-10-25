@@ -27,7 +27,8 @@ import { ipRateLimitKey, normalizePeerIp } from '@owlat/shared/ipAddress';
 
 /**
  * Every field is optional on the wire: presence is the handler's check, after
- * the rate limit, so a body missing one keeps its historic `Missing fields`.
+ * the rate limit, so a body missing a field still counts against the limit
+ * and answers `Missing fields`.
  */
 const verifyCredentialBody = v.object({
 	address: v.optional(v.string()),
