@@ -32,6 +32,7 @@ import {
 } from '../catalog';
 import { systemMailRetryDisposition } from '../../systemMailOutcome';
 import { EmailErrorCode } from '../types';
+import type * as SendProviderCatalogModule from '../catalog';
 
 const KEY = 'stable-system-mail-key';
 
@@ -164,7 +165,7 @@ describe('a kind the old literal could never have matched', () => {
 	it('credits a mock kind that declares dedup, and refuses one that does not', async () => {
 		vi.resetModules();
 		vi.doMock('../catalog', async (importOriginal) => {
-			const actual = await importOriginal<typeof import('../catalog')>();
+			const actual = await importOriginal<typeof SendProviderCatalogModule>();
 			return {
 				...actual,
 				isSendProviderKind: (kind: string | null | undefined) =>

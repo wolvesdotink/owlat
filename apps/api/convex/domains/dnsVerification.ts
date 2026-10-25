@@ -18,7 +18,7 @@
 
 import { v, type Infer } from 'convex/values';
 import { api, internal } from '../_generated/api';
-import {
+import type {
 	dnsRecordValidator,
 	dnsRecordsValidator,
 	verificationResultValidator,

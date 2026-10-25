@@ -23,9 +23,11 @@ import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
 import { sesProvider } from '../providers/ses';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
+import type * as DomainProvidersModule from '../providers';
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: 'owner' as const });
@@ -68,7 +70,7 @@ const MOCK_SILENT_KIND = 'mock-silent';
 const MOCK_STATUS = 'MockVerified';
 
 vi.mock('../providers', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../providers')>();
+	const actual = await importOriginal<typeof DomainProvidersModule>();
 	const overrides: Record<string, unknown> = {
 		[MOCK_TELLING_KIND]: {
 			kind: MOCK_TELLING_KIND,

@@ -14,11 +14,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VERP_KEY_MIN_BYTES, parseVerpAddress } from '@owlat/shared/verp';
+import type * as SmtpClientModule from '@owlat/smtp-client';
 
 const sendMessage = vi.hoisted(() => vi.fn());
 
 vi.mock('@owlat/smtp-client', async (importOriginal) => ({
-	...(await importOriginal<typeof import('@owlat/smtp-client')>()),
+	...(await importOriginal<typeof SmtpClientModule>()),
 	sendMessage,
 }));
 

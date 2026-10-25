@@ -18,7 +18,7 @@ import {
 } from '../lib/convexValidators';
 import { dmarcPolicyValidator } from './dmarc';
 import { LIFECYCLE_USER_PUBLIC_MUTATION } from './lifecycle';
-import {
+import type {
 	dnsRecordValidator,
 	dnsRecordsValidator,
 	verificationResultValidator,

@@ -31,6 +31,7 @@ import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import type { Doc } from '../../../_generated/dataModel';
 import type { DatabaseReader } from '../../../_generated/server';
+import type * as SessionOrganizationModule from '../../../lib/sessionOrganization';
 
 const KIND = 'plugin.mail-pack.postmark';
 const PLUGIN_ID = 'mail-pack';
@@ -91,7 +92,7 @@ vi.mock('../../../plugins/sendTransportDomainIdentityModules.generated', () => (
  * BetterAuth's adapter.
  */
 vi.mock('../../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../../lib/sessionOrganization'
 	);
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org-a') };

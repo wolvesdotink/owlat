@@ -5,6 +5,7 @@ import type { DecisionProviderKind, DecisionResult } from '../../decisionProvide
 import { noul } from '../questions';
 import { runDecision } from '../dispatch';
 import { __resetDecisionPlaneCacheForTests, resolveDecisionProvider } from '../../decisionProvider';
+import type * as DecisionProvidersModule from '../../decisionProviders';
 
 // A provider that does not exist in the production catalog: no key, its own
 // model, a different latency budget, and no trusted list-price provenance.
@@ -23,7 +24,7 @@ const future = vi.hoisted(() => ({
 	ask: vi.fn(),
 }));
 vi.mock('../../decisionProviders', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../decisionProviders')>();
+	const actual = await importOriginal<typeof DecisionProvidersModule>();
 	return {
 		...actual,
 		decisionProviderFor: (kind: string) =>

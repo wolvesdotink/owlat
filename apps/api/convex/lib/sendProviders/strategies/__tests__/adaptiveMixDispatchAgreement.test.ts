@@ -24,12 +24,13 @@ import type { SendProviderKind } from '../../types';
 import { resolveSendRouteFromDb } from '../../route';
 import { recordSendAssignments } from '../../../../delivery/sendAssignments';
 import { syntheticContactIds } from './fixtures';
+import type * as SessionOrganizationModule from '../../../sessionOrganization';
 
 // The authoritative resolver resolves the tenant the way production does, so
 // the singleton lookup is stubbed to the same org the assignments are written
 // under — otherwise the recorded rows and the replay would look at two tenants.
 vi.mock('../../../sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../../sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../../sessionOrganization'
 	);
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org-agreement') };

@@ -20,6 +20,7 @@ import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
 import { YAHOO_CFL_LAPSE_SILENCE_MS, YAHOO_CFL_REPORT_COALESCE_MS } from '@owlat/shared/yahooCfl';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 let mockRole: OrganizationRole = 'admin';
 
@@ -32,7 +33,7 @@ function throwForbidden(): never {
 }
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole, activeOrganizationId: 'org-a' });

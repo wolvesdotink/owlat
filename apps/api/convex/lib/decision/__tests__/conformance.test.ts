@@ -39,12 +39,13 @@ import { llmDecisionAdapter } from '../../decisionProviders/llm';
 import { typesafeDecisionAdapter } from '../../decisionProviders/typesafe';
 import { PINNED_DECISION_MODEL } from '../../decisionProviders/typesafe';
 import { DEFAULT_LOCAL_DECISION_MODEL, localDecisionAdapter } from '../../decisionProviders/local';
+import type * as LlmDispatchModule from '../../llm/dispatch';
 
 // Only `runLlmObject` is replaced; `isRetriableLlmError` and `errorStatus` stay
 // real, because the native adapter classifies its failures through them.
 const language = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
 vi.mock('../../llm/dispatch', async (importOriginal) => ({
-	...(await importOriginal<typeof import('../../llm/dispatch')>()),
+	...(await importOriginal<typeof LlmDispatchModule>()),
 	runLlmObject: language.runLlmObject,
 }));
 
