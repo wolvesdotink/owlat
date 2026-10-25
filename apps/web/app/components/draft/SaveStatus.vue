@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * The save state of a draft that saves itself (`useDraftAutosave`), where a
- * Save button used to be: "Saved · 3s ago", "Saving…", offline with or
+ * The save state of a draft that saves itself (`useDraftAutosave`), shown in
+ * place of a Save button: "Saved · 3s ago", "Saving…", offline with or
  * without a copy on this device, not kept on this device, saved with the
  * schedule still waiting for Schedule, or a failure with Retry. It renders the
  * session's status; it decides nothing about durability itself.
