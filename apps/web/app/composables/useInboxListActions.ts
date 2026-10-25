@@ -28,10 +28,12 @@ const BULK_CONCURRENCY = 4;
  * bar, the row menu and the swipe) calls these, so a verb has one definition.
  *
  * Each row still goes through `useInboxTriage` on its own: hidden at once when
- * the verb takes it out of the current view, restored when its write fails,
- * and undoable by itself. Consecutive rows of one verb share one toast that
- * counts them ("Resolved 3 conversations · Undo all"), and an undo puts back
- * each row's own prior status or owner, captured when the verb was invoked.
+ * the verb takes it out of the current view and restored when its write
+ * fails. One invocation is one undoable action however many rows it touched
+ * ("Resolved 12 conversations · Undo"), consecutive invocations of one verb
+ * share that toast ("Resolved 13 conversations · Undo all"), and an undo puts
+ * back each row's own prior status or owner, captured when the verb was
+ * invoked.
  *
  * A bulk verb that partly fails says so once ("2 of 5 weren't resolved") and
  * leaves exactly the failed rows selected, so the person can retry them. The
@@ -43,7 +45,7 @@ const BULK_CONCURRENCY = 4;
  * while a picker is up cannot change what its confirmation acts on.
  */
 export function useInboxListActions(opts: {
-	runTriage: ReturnType<typeof useInboxTriage<InboxListThread>>['run'];
+	batchTriage: ReturnType<typeof useInboxTriage<InboxListThread>>['batch'];
 	filter: Ref<InboxFilter>;
 	assignee: Ref<string>;
 	/** Org members, for naming an assignee in the undo toast. */
@@ -79,17 +81,21 @@ export function useInboxListActions(opts: {
 	type SettleSelection = ReturnType<typeof opts.captureSelection>;
 	/** A forward write's failure claim, scoped to the run it belongs to. */
 	type ClaimError = () => boolean;
+	type Batch = ReturnType<typeof opts.batchTriage>;
+	type RowAction = Parameters<Batch['run']>[0];
 
 	/**
-	 * Run `perRow` over the targets, a few at a time, and report the rows whose
-	 * write failed. `perRow` resolves `false` for a failure and `null` for a row
-	 * the verb leaves alone (already in that state), and hands `claimError` to
-	 * its forward write as that run's `onError`.
+	 * Run `perRow`'s action for each target, a few at a time, register the
+	 * landed rows as one undo entry (`undo`), and report the rows whose write
+	 * failed. `perRow` returns `null` for a row the verb leaves alone (already
+	 * in that state), and hands `claimError` to its forward write as that run's
+	 * `onError`.
 	 */
 	async function runVerb(
 		targets: readonly InboxListThread[],
 		verb: 'resolved' | 'snoozed' | 'assigned',
-		perRow: (thread: InboxListThread, claimError: ClaimError) => Promise<boolean | null>,
+		undo: { label: string; group: UndoGroup },
+		perRow: (thread: InboxListThread, claimError: ClaimError) => RowAction | null,
 		settleSelection: SettleSelection = opts.captureSelection(targets)
 	): Promise<string[]> {
 		// The run's first failure keeps its own error toast; every later one is
@@ -102,9 +108,12 @@ export function useInboxListActions(opts: {
 			return false;
 		};
 		const failed = new Set<string>();
+		const batch = opts.batchTriage();
 		await runBounded(targets, BULK_CONCURRENCY, async (thread) => {
-			if ((await perRow(thread, claimError)) === false) failed.add(thread._id);
+			const action = perRow(thread, claimError);
+			if (action && !(await batch.run(action))) failed.add(thread._id);
 		});
+		batch.commit({ ...undo, concurrency: BULK_CONCURRENCY });
 		// Keep the list order, not the order the writes settled in.
 		const order = targets.map((thread) => thread._id).filter((id) => failed.has(id));
 		const keptSelected = settleSelection?.(order) ?? false;
@@ -178,16 +187,16 @@ export function useInboxListActions(opts: {
 		return runVerb(
 			targets,
 			'assigned',
-			async (thread, onError) => {
+			copy,
+			(thread, onError) => {
 				const previous = thread.assignedTo ?? undefined;
 				if (previous === assignedTo) return null;
-				return opts.runTriage({
+				return {
 					id: thread._id,
-					...copy,
 					leavesView,
 					mutate: () => assignThread({ threadId: thread._id, assignedTo }, { onError }),
 					inverse: () => assignThread({ threadId: thread._id, assignedTo: previous }),
-				});
+				};
 			},
 			settleSelection
 		);
@@ -224,17 +233,19 @@ export function useInboxListActions(opts: {
 	 */
 	function resolve(targets: readonly InboxListThread[]) {
 		const leavesView = INBOX_ACTIVE_WORK_FILTERS.has(opts.filter.value);
-		return runVerb(targets, 'resolved', async (thread, onError) => {
+		const undo = {
+			label: t('dashboard.inbox.index.undo.resolved'),
+			group: statusUndoGroup('resolved'),
+		};
+		return runVerb(targets, 'resolved', undo, (thread, onError) => {
 			const previousStatus = thread.status;
 			if (previousStatus === 'resolved') return null;
-			return opts.runTriage({
+			return {
 				id: thread._id,
-				label: t('dashboard.inbox.index.undo.resolved'),
-				group: statusUndoGroup('resolved'),
 				leavesView,
 				mutate: () => updateThreadStatus({ threadId: thread._id, status: 'resolved' }, { onError }),
 				inverse: () => updateThreadStatus({ threadId: thread._id, status: previousStatus }),
-			});
+			};
 		});
 	}
 
@@ -272,17 +283,16 @@ export function useInboxListActions(opts: {
 		return runVerb(
 			targets,
 			'snoozed',
+			{ label: t('dashboard.inbox.index.undo.snoozed'), group: statusUndoGroup('snoozed') },
 			(thread, onError) => {
 				// The deadline the undo goes back to, from before this snooze.
 				const previousUntil = thread.snoozedUntil ?? null;
-				return opts.runTriage({
+				return {
 					id: thread._id,
-					label: t('dashboard.inbox.index.undo.snoozed'),
-					group: statusUndoGroup('snoozed'),
 					leavesView,
 					mutate: () => snoozeThread({ threadId: thread._id, until }, { onError }),
 					inverse: () => undoSnooze(thread._id, previousUntil),
-				});
+				};
 			},
 			settle
 		);

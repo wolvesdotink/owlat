@@ -684,6 +684,94 @@ describe('Team Inbox list: snooze undo', () => {
 	});
 });
 
+describe('Team Inbox list: undo of a selection larger than the undo stack', () => {
+	// The undo stack keeps ten entries; a bulk verb must be one of them, or
+	// its own later rows would evict its earlier ones.
+	const ids = Array.from({ length: 12 }, (_, i) => `t${String(i + 1).padStart(2, '0')}`);
+	async function selectAll() {
+		await press('j');
+		await press('x');
+		for (let i = 1; i < ids.length; i++) await press('J', { shiftKey: true });
+		expect(selectedIds()).toHaveLength(ids.length);
+	}
+	const undoNotice = () => {
+		const notices = toasts.filter((t) => t.type === 'success');
+		expect(notices).toHaveLength(1);
+		return notices[0]!;
+	};
+
+	it('e on twelve rows counts all twelve, and its undo restores every one', async () => {
+		threads.value = ids.map((id, i) => thread(id, { status: i % 2 ? 'waiting' : 'open' }));
+		await mountPage();
+		await selectAll();
+		await press('e');
+		expect(forward('status')).toHaveLength(12);
+		expect(usePostboxTriageUndo().depth.value).toBe(1);
+		const notice = undoNotice();
+		expect(notice.message).toBe('Resolved 12 conversations');
+
+		calls = [];
+		notice.action!.onAction();
+		await flushPromises();
+		expect(forward('status').sort()).toEqual(
+			ids.map((id, i) => [id, i % 2 ? 'waiting' : 'open']).sort()
+		);
+		expect(wrapper.findAll('[role="option"]')).toHaveLength(12);
+	});
+
+	it('Cmd/Ctrl+Z undoes the whole twelve-row run at once', async () => {
+		threads.value = ids.map((id) => thread(id));
+		await mountPage();
+		await selectAll();
+		await press('e');
+		calls = [];
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
+		await flushPromises();
+		expect(forward('status')).toHaveLength(12);
+		expect(usePostboxTriageUndo().depth.value).toBe(0);
+	});
+
+	it('a on twelve rows gives every one back its own prior owner', async () => {
+		threads.value = ids.map((id, i) => thread(id, i < 3 ? { assignedTo: 'user1' } : {}));
+		await mountPage();
+		await selectAll();
+		await press('a');
+		await bulkBar().get('[data-testid="assign-grace"]').trigger('click');
+		await flushPromises();
+		expect(forward('assign')).toHaveLength(12);
+		const notice = undoNotice();
+		expect(notice.message).toBe('Assigned 12 conversations to Grace Hopper');
+
+		calls = [];
+		notice.action!.onAction();
+		await flushPromises();
+		expect(forward('assign').sort()).toEqual(
+			ids.map((id, i) => [id, i < 3 ? 'user1' : undefined]).sort()
+		);
+	});
+
+	it('h on twelve rows wakes every one of them on undo', async () => {
+		threads.value = ids.map((id) => thread(id));
+		await mountPage();
+		await selectAll();
+		await press('h');
+		await wrapper.get('[data-testid="snooze-confirm"]').trigger('click');
+		await flushPromises();
+		expect(forward('snooze')).toHaveLength(12);
+		const notice = undoNotice();
+		expect(notice.message).toBe('Snoozed 12 conversations');
+
+		calls = [];
+		notice.action!.onAction();
+		await flushPromises();
+		expect(
+			forward('unsnooze')
+				.map(([id]) => id)
+				.sort()
+		).toEqual(ids);
+	});
+});
+
 describe('Team Inbox list: row menu', () => {
 	it('acts on the selection when the row is part of it, and counts it', async () => {
 		await mountPage();

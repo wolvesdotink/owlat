@@ -79,7 +79,7 @@ const drafts = useComposerDrafts();
 // Optimistic hide + undo toast (Cmd/Ctrl+Z), reusing the Postbox house
 // composables. The list renders `visibleThreads`; a failed mutation restores the
 // row and a successful one is undoable for ~8s.
-const { visible: visibleThreads, run: runTriage } = useInboxTriage(
+const { visible: visibleThreads, batch: batchTriage } = useInboxTriage(
 	threads as Ref<InboxListThread[]>
 );
 
@@ -107,7 +107,7 @@ const assignMembers = computed(() =>
 const listKey = computed(() => `${filter.value}:${assignee.value}:${sort.value}:${mentions.value}`);
 const selection = useInboxSelection({ rows: visibleThreads, resetKey: listKey });
 const actions = useInboxListActions({
-	runTriage,
+	batchTriage,
 	filter,
 	assignee,
 	members: assignMembers,
