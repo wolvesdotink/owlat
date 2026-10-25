@@ -2,7 +2,7 @@
  * The team briefing's read (review round 2, F9): the items of the message
  * being answered are loaded on their own, through the source's lineage
  * record, so a thread with more open items than one read still shows every
- * current-message obligation, and the overflow holds auto-send (D3).
+ * current-message obligation, and the overflow holds auto-send.
  */
 
 import { convexTest } from 'convex-test';

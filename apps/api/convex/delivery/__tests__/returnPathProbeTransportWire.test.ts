@@ -1,5 +1,5 @@
 /**
- * A PROBE MAY ONLY EVER PRODUCE EVIDENCE ABOUT THE TRANSPORT IT RODE (plan D5).
+ * A PROBE MAY ONLY EVER PRODUCE EVIDENCE ABOUT THE TRANSPORT IT RODE.
  *
  * `runReturnPathProbe` gates on the catalog's `supportsCustomReturnPath: 'probe'`
  * declaration, and `mandrill` is the second kind to carry it. Until the wire
@@ -136,7 +136,7 @@ describe('probing a mandrill transport', () => {
 		);
 		expect(resolved.capability).toBe('unsupported');
 		// Mandrill reports bounces over its own webhooks, so the arm is coarser —
-		// not blind. D2: a widened tolerance, never a block.
+		// not blind. A widened tolerance, never a block.
 		expect(resolved.bounceToleranceMultiplier).toBe(BOUNCE_TOLERANCE_MULTIPLIER_PROVIDER_FEEDBACK);
 	});
 

@@ -1,5 +1,5 @@
 /**
- * "N things before I write this" (plan §05):
+ * "N things before I write this":
  *   - the header counts the questions and says no draft is written yet;
  *   - one input per kind: chips with "Something else...", free text, a number,
  *     a date (chips plus a picker), a file (FileAsk);
@@ -205,10 +205,20 @@ describe('AskCard', () => {
 
 	it('picks a chip of the first open question with keys 1 to 9', async () => {
 		const w = mountCard({ questions: [QUESTIONS[1]!, QUESTIONS[2]!] });
-		window.dispatchEvent(new KeyboardEvent('keydown', { key: '2' }));
+		// Through the app-wide dispatcher (`askCard.pickOption`), a document listener.
+		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '2', bubbles: true }));
 		await flushPromises();
 		await w.get('[data-testid="ask-submit"]').trigger('click');
 		expect(w.emitted('answer')?.[0]?.[0]).toEqual([{ questionId: 'when', value: 'Friday' }]);
+		w.unmount();
+	});
+
+	it('leaves a digit with no chip behind it alone', async () => {
+		const w = mountCard({ questions: [QUESTIONS[1]!, QUESTIONS[2]!] });
+		const event = new KeyboardEvent('keydown', { key: '9', bubbles: true, cancelable: true });
+		document.body.dispatchEvent(event);
+		await flushPromises();
+		expect(event.defaultPrevented).toBe(false);
 		w.unmount();
 	});
 
@@ -221,8 +231,8 @@ describe('AskCard', () => {
 			attachTo: sheet,
 			global: { plugins: [createTestI18n()], stubs: { AnswerFilePicker: PickerStub } },
 		});
-		const event = new KeyboardEvent('keydown', { key: '2', cancelable: true });
-		window.dispatchEvent(event);
+		const event = new KeyboardEvent('keydown', { key: '2', bubbles: true, cancelable: true });
+		document.body.dispatchEvent(event);
 		await flushPromises();
 		expect(event.defaultPrevented).toBe(false);
 		// Nothing picked: the date question is still open.

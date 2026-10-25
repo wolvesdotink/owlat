@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+
 interface CategoryStats {
 	approved: number;
 	rejected: number;
@@ -87,22 +89,25 @@ const editedWidth = computed(() => {
 				</div>
 			</div>
 
-			<!-- Proportional bar -->
-			<div class="w-full h-3 bg-bg-surface rounded-full overflow-hidden flex">
+			<!-- Proportional bar: approved | edited | rejected, left to right. Each
+			     segment is a full-width layer slid to its CUMULATIVE end and the
+			     earlier segments paint over the later ones, so every boundary sits
+			     where a row of widths would put it without animating layout. -->
+			<div class="relative w-full h-3 bg-bg-surface rounded-full overflow-hidden">
 				<div
-					v-if="approvedWidth > 0"
-					class="h-full bg-success transition-all duration-(--motion-slow)"
-					:style="{ width: `${approvedWidth}%` }"
+					v-if="rejectedWidth > 0"
+					class="ui-meter-fill absolute inset-y-0 left-0 bg-error transition-transform duration-(--motion-slow)"
+					:style="meterFillStyle(approvedWidth + editedWidth + rejectedWidth)"
 				/>
 				<div
 					v-if="editedWidth > 0"
-					class="h-full bg-warning transition-all duration-(--motion-slow)"
-					:style="{ width: `${editedWidth}%` }"
+					class="ui-meter-fill absolute inset-y-0 left-0 bg-warning transition-transform duration-(--motion-slow)"
+					:style="meterFillStyle(approvedWidth + editedWidth)"
 				/>
 				<div
-					v-if="rejectedWidth > 0"
-					class="h-full bg-error transition-all duration-(--motion-slow)"
-					:style="{ width: `${rejectedWidth}%` }"
+					v-if="approvedWidth > 0"
+					class="ui-meter-fill absolute inset-y-0 left-0 bg-success transition-transform duration-(--motion-slow)"
+					:style="meterFillStyle(approvedWidth)"
 				/>
 			</div>
 

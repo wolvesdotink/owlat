@@ -6,6 +6,7 @@ import { log } from './log.js';
 import type { WorkerTimers } from './env.js';
 import { configuredOpencodeBin, convexUrl, loadWorkerTimers } from './config.js';
 import { startHeartbeat } from './heartbeat.js';
+import { startWireReports } from './wireReport.js';
 
 // Route both crash channels through the worker's own log stream. Node ≥15 ends
 // the process on either one already, so what changes is that the event explaining
@@ -104,6 +105,10 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
+	// Report this worker's release and wire version, now and every 5 minutes, so
+	// the backend can show version skew and hold contract steps until it moves.
+	const wireReports = startWireReports();
+
 	// Reads the repository settings; a malformed credential URL fails here, before
 	// the worker touches the queue.
 	const pollCodeTasks = createCodeTaskPoller();
@@ -167,6 +172,7 @@ async function main(): Promise<void> {
 	// Exit explicitly: the Convex client keeps its websocket open, so returning
 	// from main() alone would leave the process alive past the signal.
 	log('Poll loop stopped — exiting');
+	wireReports.stop();
 	process.exit(0);
 }
 

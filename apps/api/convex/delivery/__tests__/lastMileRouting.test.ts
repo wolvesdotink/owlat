@@ -22,6 +22,7 @@ const input = {
 	routingReentryToken: 'reentry-1',
 	startedAt: Date.now(),
 	deliveryDomain: 'production' as const,
+	correlationId: 'dsp_test',
 };
 
 afterEach(() => {
@@ -94,7 +95,9 @@ describe('last-mile governance boundary', () => {
 		expect(resolveMtaRoutingDecision).toHaveBeenCalledWith(
 			// The lease is taken from the transport the send will go through.
 			expect.objectContaining({ id: 'mta', kind: 'mta', instanceKey: null }),
-			expect.objectContaining({ requireProviderProbe: true })
+			expect.objectContaining({ requireProviderProbe: true }),
+			// The attempt's log-only correlation id, as a header beside the body.
+			'dsp_test'
 		);
 	});
 
@@ -328,7 +331,7 @@ describe('last-mile governance boundary', () => {
 			}
 		);
 
-		// D2: an unproven / unprobed / absent relay is a SUPPORTED configuration.
+		// An unproven / unprobed / absent relay is a SUPPORTED configuration.
 		// The overflow route still sends — it just does not stamp.
 		it('carries an unproven verdict through the overflow fallback without blocking', async () => {
 			vi.stubEnv('MTA_API_URL', 'https://mta.test');

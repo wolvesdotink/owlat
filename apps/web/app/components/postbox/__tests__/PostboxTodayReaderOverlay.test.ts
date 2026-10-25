@@ -10,7 +10,7 @@
  * The reader itself is stubbed (it is Convex-backed and covered elsewhere);
  * these tests pin the overlay's keyboard/focus contract.
  */
-import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll, onTestFinished } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
 
@@ -53,7 +53,6 @@ let wrapper: VueWrapper | undefined;
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = undefined;
-	document.body.innerHTML = '';
 });
 
 function mountOverlay(id = 'm2', advanceIds = ['m1', 'm2', 'm3']) {
@@ -106,6 +105,7 @@ describe('PostboxTodayReaderOverlay', () => {
 		const opener = document.createElement('button');
 		opener.id = 'opener';
 		document.body.appendChild(opener);
+		onTestFinished(() => opener.remove());
 		opener.focus();
 		const w = mountOverlay();
 		await nextTick();
@@ -128,6 +128,7 @@ describe('PostboxTodayReaderOverlay', () => {
 		const w = mountOverlay();
 		const input = document.createElement('input');
 		document.body.appendChild(input);
+		onTestFinished(() => input.remove());
 		input.focus();
 		input.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }));
 		input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -138,6 +139,7 @@ describe('PostboxTodayReaderOverlay', () => {
 		const dialog = document.createElement('div');
 		dialog.setAttribute('role', 'dialog'); // e.g. the snooze picker
 		document.body.appendChild(dialog);
+		onTestFinished(() => dialog.remove());
 		pressOnWindow('Escape');
 		expect(w.emitted('close')).toBeUndefined();
 	});

@@ -1,5 +1,5 @@
 /**
- * Read on arrival is personal-only (SPEC §2.1, §2.9): a personal mailbox that
+ * Read on arrival is personal-only: a personal mailbox that
  * becomes a team inbox keeps none of it.
  *
  *  - {@link clearSharedThreadArrival}: per thread, from the scope change's

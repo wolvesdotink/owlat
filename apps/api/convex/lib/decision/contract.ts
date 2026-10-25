@@ -114,7 +114,7 @@ export class DecisionAccountingFailure extends Error {
 	}
 }
 
-/** Why an explicitly configured decision provider cannot answer (D3). */
+/** Why an explicitly configured decision provider cannot answer. */
 export interface DecisionUnavailable {
 	readonly code: 'missing_credentials' | 'invalid_config' | 'undecryptable';
 	/** In the adapter's own words; never contains a key. */

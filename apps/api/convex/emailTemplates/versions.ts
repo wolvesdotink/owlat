@@ -7,7 +7,8 @@
  *                                same person's save row from the same window,
  *                                `selectAutosaveVersion`)
  *   `emails.publish`           → trigger `publish`
- *   `campaigns/send.ts` PREP   → trigger `send` (via `captureForSend`)
+ *   `campaigns/sendCommit.ts`  → trigger `send` (the send preparation commit,
+ *                                for Variant B's template too in a content test)
  *   `emailCoediting/sessions.ts` → trigger `conflict` (a co-editor's change replaced)
  *
  * Restore is deliberately NOT a mutation here: the editor loads a snapshot into
@@ -106,7 +107,19 @@ export async function captureTemplateVersion(
 			? await autosaveVersionToReplace(ctx, template._id, userId, now)
 			: null;
 	const continuesBurst = replaced !== null;
-	if (!shouldCaptureVersion(previous, { contentHash: fingerprint.contentHash, trigger })) {
+	// The fingerprint leaves out the preview text, but a send record must hold
+	// what went out, so a send whose preview text differs is a new snapshot.
+	const sameSendPreview =
+		trigger !== 'send' || (previous?.previewText ?? '') === (template.previewText ?? '');
+	if (
+		sameSendPreview &&
+		!shouldCaptureVersion(previous, { contentHash: fingerprint.contentHash, trigger })
+	) {
+		// A repeated send of unchanged content keeps one row, but the review's
+		// "last send" must still date the newest send, not the first.
+		if (previous && trigger === 'send') {
+			await ctx.db.patch(previous._id, { lastSentAt: now });
+		}
 		return { versionId: null, continuesBurst };
 	}
 	if (replaced) await ctx.db.delete(replaced._id);
@@ -165,9 +178,10 @@ export async function deleteTemplateVersions(
 }
 
 /**
- * Capture a `send` snapshot from an action (the campaign send orchestrator has
- * no `ctx.db`). Silently no-ops on a template that vanished mid-send —
- * recording history must never be able to fail a send.
+ * Capture a `send` snapshot from an action. Silently no-ops on a template that
+ * vanished mid-send — recording history must never be able to fail a send.
+ * The send preparation now captures inside its own commit; this stays for
+ * preparations the previous release still has in flight.
  */
 export const captureForSend = internalMutation({
 	args: {
@@ -225,5 +239,50 @@ export const get = authedQuery({
 		const version = await getOrThrow(ctx, args.versionId, 'Template version');
 		if (!(await getLive(ctx, version.templateId))) throwNotFound('Template version');
 		return version;
+	},
+});
+
+/**
+ * The newest `send` snapshot of a template, for the campaign review's "changed
+ * since the last send": the body the template's most recent campaign send
+ * started with (captured in that send's preparation commit, whichever campaign
+ * it was), when that send started, and whether the template still holds the
+ * same body, subject and preview text.
+ *
+ * Null when the history holds no send: the template was never sent, or that
+ * snapshot was evicted by the retention cap. The caller says so instead of
+ * comparing against an older event. A template in Recently deleted reads as
+ * having no history, like `list`.
+ */
+// all-members: the same snapshot `get` returns to every org member.
+export const latestSend = authedQuery({
+	args: { templateId: v.id('emailTemplates') },
+	handler: async (ctx, args) => {
+		const template = await getLive(ctx, args.templateId);
+		if (!template) return null;
+		const version = await ctx.db
+			.query('emailTemplateVersions')
+			.withIndex('by_template_and_trigger_and_created_at', (q) =>
+				q.eq('templateId', args.templateId).eq('trigger', 'send')
+			)
+			.order('desc')
+			.first();
+		if (!version) return null;
+		return {
+			version: {
+				_id: version._id,
+				name: version.name,
+				subject: version.subject,
+				contentBytes: version.contentBytes,
+				createdAt: version.createdAt,
+				// When the newest send started: later than `createdAt` when an
+				// unchanged template was sent again into the same snapshot.
+				sentAt: version.lastSentAt ?? version.createdAt,
+			},
+			unchanged:
+				version.content === template.content &&
+				version.subject === template.subject &&
+				(version.previewText ?? '') === (template.previewText ?? ''),
+		};
 	},
 });

@@ -177,7 +177,6 @@ beforeEach(() => {
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 describe('canvas follows a hydration the tracker accepts', () => {

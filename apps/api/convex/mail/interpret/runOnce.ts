@@ -2,7 +2,7 @@
 
 /**
  * One attempt of an interpretation run (`run.ts`, split out at the file-size
- * cap): steps 1–10 of the run's module doc, plus read on arrival (SPEC §2.3):
+ * cap): steps 1–10 of the run's module doc, plus read on arrival:
  * once the message is scoped, a Postbox arrival read asks
  * `arrivalDecide.decideArrivalDepth` how deep to go. `full` goes on as
  * before, `gist` hands over to `gist.ts`, and `count` / `none` were settled
@@ -117,7 +117,7 @@ export async function runOnce(
 	try {
 		isGuardClear = await guardAllowsInterpretation(ctx, args.source, args.root?.deadlineAt);
 	} catch (error) {
-		// The late guard was refused by spend admission: a budget deferral (D1).
+		// The late guard was refused by spend admission: a budget deferral.
 		const refusal = admissionRefusalOf(error);
 		if (!refusal) throw error;
 		const budgetRefusal = { reason: refusal.reason, limit: refusal.limit };
@@ -211,7 +211,7 @@ export async function runOnce(
 				};
 			}
 		}
-		// Read on arrival (SPEC §2.3): how deep an arrival read goes, decided now
+		// Read on arrival: how deep an arrival read goes, decided now
 		// that the message is scoped. `count` / `none` were settled by the decision.
 		const arrivalArgs = isArrivalRead(args, loaded) ? args : null;
 		const arrival = arrivalArgs

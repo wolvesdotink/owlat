@@ -2,7 +2,8 @@
  * Vitest setup file for Vue composable tests
  * Mocks Vue auto-imports that Nuxt provides globally
  */
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
+import { enableAutoUnmountOnce } from '@owlat/ui/__tests__/autoUnmount';
 import { installVueWarnGuard } from './vueWarnings';
 import { registerNuxtComponents } from './nuxtComponents';
 import {
@@ -28,10 +29,20 @@ import {
 	getCurrentScope,
 	onScopeDispose,
 	useId,
+	provide,
+	inject,
 } from 'vue';
+import { useConfirm } from '~/composables/useConfirm';
 
 registerNuxtComponents();
 installVueWarnGuard();
+// Every wrapper `mount` / `shallowMount` returns is unmounted after its test,
+// also when an assertion or a wait in it failed, so no component, listener or
+// teleported node outlives the test that made it. This is the suite's only
+// registration: @vue/test-utils throws if a test file registers a second one.
+// Registered after the warn guard so a warning raised while unmounting is still
+// charged to the test that mounted (afterEach hooks run last-registered first).
+enableAutoUnmountOnce(afterEach);
 
 // Make Vue reactivity primitives available globally (Nuxt auto-imports these)
 vi.stubGlobal('ref', ref);
@@ -57,10 +68,18 @@ vi.stubGlobal('getCurrentScope', getCurrentScope);
 vi.stubGlobal('onScopeDispose', onScopeDispose);
 // Nuxt auto-imports `useId` too; components that label a control by id need it.
 vi.stubGlobal('useId', useId);
+// The UI layer's dropdown menu hands its items their close through provide/inject.
+vi.stubGlobal('provide', provide);
+vi.stubGlobal('inject', inject);
 // A plugin module can carry named exports next to its `defineNuxtPlugin` default
 // (`plugins/plugin-composition.generated.ts` exports the bundled composition the
 // admin rail and palette read), so importing it must not throw outside Nuxt.
 vi.stubGlobal('defineNuxtPlugin', (plugin: unknown) => plugin);
+// The app's own composable, not a stand-in: with no dialog host mounted every
+// question answers no, so a suite that never looks at a confirmation cannot
+// run a destructive action by accident. `~/__tests__/confirm` adds a host the
+// test answers for.
+vi.stubGlobal('useConfirm', useConfirm);
 
 // Type augmentation for global scope
 declare global {

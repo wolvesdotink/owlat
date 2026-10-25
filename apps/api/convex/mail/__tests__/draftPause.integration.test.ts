@@ -1,5 +1,5 @@
 /**
- * The unused-draft pause (SPEC §7, mail/draftPause.ts) through the real draft
+ * The unused-draft pause (mail/draftPause.ts) through the real draft
  * lifecycle: an AI draft discarded (the row, or taken back out in the editor)
  * counts, so does a reply sent without the AI reply the thread offered
  * (through Owlat or from another client), and no logical draft ever counts

@@ -15,8 +15,8 @@
  * `windowTitleFor` mapping kept, so the title assertions cover the production
  * label→title rule rather than a local re-derivation.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { mount } from '@vue/test-utils';
 import { ref, computed } from 'vue';
 
 import DesktopTitlebar from '../DesktopTitlebar.vue';
@@ -36,8 +36,6 @@ vi.mock('@owlat/desktop/src/window', async (importOriginal) => {
 		setWindowTheme: setWindowThemeMock,
 	};
 });
-
-enableAutoUnmount(afterEach);
 
 type Ws = { id: string; label: string; accentColor: string };
 

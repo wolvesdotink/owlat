@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * One internal note in the team stream (plan §4.3): a tinted team message
+ * One internal note in the team stream: a tinted team message
  * with an "Internal" chip, so it never reads as mail. `@handle` mentions are
  * emphasised, a `#` link names the action it is about ("on Refund €129.00"),
  * and teammates react with an emoji.
@@ -129,16 +129,17 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 		<p v-if="entry.isDeleted" class="mt-1.5 text-sm italic text-text-tertiary">
 			{{ t('components.team.note.deleted') }}
 		</p>
-		<InboxNoteComposer
-			v-else-if="editing && save"
-			class="mt-2"
-			:submit="saveEdit"
-			:candidates-for="candidatesFor"
-			:initial-body="entry.body"
-			editing
-			autofocus
-			@cancel="editing = false"
-		/>
+		<AppErrorBoundary v-else-if="editing && save" surface="composer" :reset-keys="[entry.noteId]">
+			<InboxNoteComposer
+				class="mt-2"
+				:submit="saveEdit"
+				:candidates-for="candidatesFor"
+				:initial-body="entry.body"
+				editing
+				autofocus
+				@cancel="editing = false"
+			/>
+		</AppErrorBoundary>
 		<p
 			v-else
 			class="mt-1.5 whitespace-pre-wrap break-words text-sm text-text-primary"

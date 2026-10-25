@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Read the exact wording" (SPEC §7, plan §8 "Terms or legal notice"): the
+ * "Read the exact wording": the
  * originals of the messages whose wording matters more than any summary of
  * it (a legal notice, changed terms, payment details), open by default next
  * to the brief rather than behind it. The brief gives the gist; this keeps
@@ -77,7 +77,9 @@ function isBodyHidden(msg: PostboxReaderMessage): boolean {
 					{{ t('components.brief.incomplete.openConversation') }}
 				</button>
 			</p>
-			<PostboxMessageBody v-else :message="msg" />
+			<AppErrorBoundary v-else surface="messageBody" :reset-keys="[msg._id]">
+				<PostboxMessageBody :message="msg" />
+			</AppErrorBoundary>
 		</section>
 	</details>
 </template>

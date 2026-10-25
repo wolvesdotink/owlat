@@ -9,6 +9,7 @@
  */
 
 import { extractDomainOrNull, ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
+import { correlationHeader } from '@owlat/shared/correlation';
 import {
 	MTA_RELAY_ALLOWED_REASON,
 	isMtaRelayDecisionReason,
@@ -52,7 +53,7 @@ const MTA_DECISION_TIMEOUT_MS = 5_000;
  * presenting one server's decision to another. The caller passes the transport
  * it is about to send through.
  *
- * `input` IS the request body, typed against its one declaration (D7) rather
+ * `input` IS the request body, typed against its one declaration rather
  * than restated field by field: the MTA's `validRequest` checks an EXACT key
  * list, so a field added to `MtaRoutingDecisionRequest` and honoured there while
  * this producer still emitted the old body would be answered 400 — and a 400 is
@@ -63,7 +64,8 @@ const MTA_DECISION_TIMEOUT_MS = 5_000;
  */
 export async function resolveMtaRoutingDecision(
 	transport: SendTransportRecord,
-	input: Omit<MtaRoutingDecisionRequest, 'ipPool'> & { ipPool?: MtaExtras['ipPool'] }
+	input: Omit<MtaRoutingDecisionRequest, 'ipPool'> & { ipPool?: MtaExtras['ipPool'] },
+	correlationId?: string
 ): Promise<MtaRoutingDecision> {
 	const baseUrl = transportEnvOptional(transport, 'MTA_API_URL');
 	const apiKey = transportEnvOptional(transport, 'MTA_API_KEY');
@@ -73,7 +75,12 @@ export async function resolveMtaRoutingDecision(
 	try {
 		const response = await fetch(`${baseUrl.replace(/\/$/, '')}/send/decision`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${apiKey}`,
+				// A header, never a body key: the decision intake checks an exact key list.
+				...correlationHeader(correlationId, 'mta'),
+			},
 			body: JSON.stringify({ ...input, ipPool: input.ipPool ?? 'transactional' }),
 			signal: controller.signal,
 		});
@@ -192,6 +199,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			// never grants it.
 			allowWarmupOverflow: Boolean(input.messageType === 'campaign' && input.warmupOverflowEnabled),
 			...(input.ipPool ? { ipPool: input.ipPool as MtaIpPool } : {}),
+			...(input.correlationId ? { correlationId: input.correlationId } : {}),
 			// Omitted, never zeroed, when the recipient has no score: the MTA reads
 			// absence as "unknown" and applies its DEFAULT band, whereas 0 would
 			// order the message behind every cold contact.
@@ -248,7 +256,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 
 		const fromDomain = extractDomainOrNull(params.from) ?? '';
 
-		// The intake wire, typed against its one declaration (D7). Every key here
+		// The intake wire, typed against its one declaration. Every key here
 		// is a field the MTA's handler reads off `MtaSendRequest`; `JSON.stringify`
 		// drops the undefined ones exactly as it always has, so the bytes are
 		// unchanged and a field renamed on either side no longer compiles on both.
@@ -296,6 +304,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 				headers: {
 					'Content-Type': 'application/json',
 					Authorization: `Bearer ${apiKey}`,
+					...correlationHeader(extras?.correlationId, 'mta'),
 				},
 				body: JSON.stringify(body),
 				signal: controller.signal,

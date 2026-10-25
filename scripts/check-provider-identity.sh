@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Provider-identity ratchet — the SEAMS plan's D2 ("capabilities, not identity;
+# Provider-identity ratchet ("capabilities, not identity;
 # enforced by a ratchet, not vigilance").
 #
 # A send provider is described by the capability catalog
@@ -147,7 +147,7 @@ SCAN_PATHS=(apps packages examples)
 ADAPTER_ROOTS=(lib/sendProviders domains/providers integrationImports/providers webhooks/adapters)
 
 # The kinds, from their single declaration: the catalog entries themselves
-# (P1.1 / D1 — SEND_TRANSPORT_KINDS is now `CATALOG.map(entry => entry.kind)`,
+# (SEND_TRANSPORT_KINDS is `CATALOG.map(entry => entry.kind)`,
 # so there is no literal array left to read). Parsed rather than restated so the
 # ratchet cannot drift from the catalog.
 #
@@ -167,7 +167,7 @@ ADAPTER_ROOTS=(lib/sendProviders domains/providers integrationImports/providers 
 # fail-closed branch below. A per-line parser has a third outcome the array had
 # not: it can read four kinds out of five, leave `kinds` non-empty, print `ok:`
 # and un-ratchet every `=== '<the fifth>'` in the repo with no signal — the
-# "vigilance, not a ratchet" failure D2 exists to prevent, made invisible by a
+# "vigilance, not a ratchet" failure the ratchet exists to prevent, made invisible by a
 # green gate. So the entry OPENINGS inside the same region are counted too, and
 # a disagreement between the two counts fails exactly like reading nothing.
 kinds_source="packages/shared/src/sendProviderCatalogData.ts"

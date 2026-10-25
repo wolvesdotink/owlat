@@ -1,5 +1,5 @@
 /**
- * The MTA -> Convex `GET /ip-reputation` snapshot (D7).
+ * The MTA -> Convex `GET /ip-reputation` snapshot.
  *
  * The MTA holds per-IP warming and readiness state in Redis; `delivery/warmingSync.ts`
  * pulls it every five minutes and caches it in Convex. This module owns the

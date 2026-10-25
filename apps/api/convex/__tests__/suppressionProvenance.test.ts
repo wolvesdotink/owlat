@@ -1,6 +1,6 @@
 /**
  * "Who put this here?" — the read that makes a provider-driven suppression
- * distinguishable from a colleague's decision (plan D9, piece P3.2).
+ * distinguishable from a colleague's decision.
  *
  * A Mandrill reject lands in `blockedEmails` with no operator behind it, and
  * (for `unsub`/rule rejects) with reason `manual` — indistinguishable on the row

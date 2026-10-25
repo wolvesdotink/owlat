@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The bottom of a team thread (plan §4.3): two explicit modes, "Internal
+ * The bottom of a team thread: two explicit modes, "Internal
  * note" and "Reply to <name>". Switching is a deliberate choice that shows
  * who reads what, and each mode keeps its own unsent text.
  *
@@ -14,6 +14,7 @@
  * the host saves the note and opens Answer mode.
  */
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
+import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
 import { isImeComposing } from '~/utils/imeComposition';
 import {
 	NOTE_BODY_MAX_LENGTH,
@@ -75,6 +76,7 @@ const activeMode = computed<TeamComposeMode>(() => {
 });
 
 const textarea = ref<HTMLTextAreaElement | null>(null);
+const mentionPicker = ref<SuggestionListHandle | null>(null);
 const saving = ref(false);
 const mention = ref<{ start: number; fragment: string } | null>(null);
 const itemQuery = ref<{ start: number; fragment: string } | null>(null);
@@ -104,6 +106,19 @@ function onBlur(event: FocusEvent) {
 	if (picker.value?.contains(event.relatedTarget as Node | null)) return;
 	mention.value = itemQuery.value = null;
 }
+/** The note box names whichever list is open and its highlighted option. */
+const noteFieldAria = computed(() =>
+	mentionCandidates.value.length > 0 && mentionPicker.value
+		? mentionPicker.value.fieldAttrs
+		: {
+				'aria-autocomplete': 'list' as const,
+				'aria-expanded': isPickerOpen.value,
+				'aria-controls': isPickerOpen.value ? pickerId : undefined,
+				'aria-activedescendant': isPickerOpen.value
+					? `${pickerId}-${activeIndex.value}`
+					: undefined,
+			}
+);
 const remaining = computed(() => NOTE_BODY_MAX_LENGTH - noteBody.value.length);
 const canPost = computed(
 	() => noteBody.value.trim().length > 0 && remaining.value >= 0 && !saving.value
@@ -177,11 +192,8 @@ function onKeydown(event: KeyboardEvent) {
 		else continueReply();
 		return;
 	}
-	if (event.key === 'Enter' && mention.value && mentionCandidates.value[0]?.handle) {
-		event.preventDefault();
-		pickMention(mentionCandidates.value[0].handle);
-		return;
-	}
+	// The open teammate list takes ↑ ↓ Enter Tab, and its first Esc.
+	if (mentionPicker.value?.handleKeydown(event)) return;
 	if (isPickerOpen.value && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
 		event.preventDefault();
 		moveActive(event.key === 'ArrowDown' ? 1 : -1);
@@ -265,8 +277,11 @@ defineExpose({ focus });
 		<div class="relative">
 			<ChatMentionPicker
 				v-if="mentionCandidates.length > 0"
+				ref="mentionPicker"
 				:candidates="mentionCandidates"
+				:anchor="textarea"
 				@pick="pickMention"
+				@dismiss="mention = null"
 			/>
 			<TeamItemPicker
 				v-else-if="isPickerOpen"
@@ -302,17 +317,14 @@ defineExpose({ focus });
 				ref="textarea"
 				v-model="noteBody"
 				rows="2"
-				class="input w-full resize-none border-warning/30 bg-warning/5 text-sm"
+				class="input input-note w-full resize-none"
 				:placeholder="
 					replyName
 						? t('components.team.composer.notePlaceholder', { name: replyName })
 						: t('components.team.composer.notePlaceholderNoName')
 				"
 				:aria-label="t('components.team.composer.note')"
-				aria-autocomplete="list"
-				:aria-expanded="isPickerOpen"
-				:aria-controls="isPickerOpen ? pickerId : undefined"
-				:aria-activedescendant="isPickerOpen ? `${pickerId}-${activeIndex}` : undefined"
+				v-bind="noteFieldAria"
 				data-testid="team-composer-note-input"
 				@input="recalc"
 				@click="recalc"
@@ -324,7 +336,7 @@ defineExpose({ focus });
 				ref="textarea"
 				v-model="replyDraft"
 				rows="2"
-				class="input w-full resize-none text-sm"
+				class="input w-full resize-none"
 				:placeholder="t('components.team.composer.replyPlaceholder', { name: replyName ?? '' })"
 				:aria-label="t('components.team.composer.replyTo', { name: replyName ?? '' })"
 				data-testid="team-composer-reply-input"

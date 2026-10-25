@@ -1,6 +1,6 @@
 /**
  * A collapsed message in a personal thread reads its own "Latest update"
- * sentence instead of the raw snippet (SPEC §7, plan §4.2), under the same
+ * sentence instead of the raw snippet, under the same
  * `signedOnly` gate as the snippet: a clearsigned message shows neither. A
  * cited message is marked and hands its quote to the body.
  */
@@ -9,6 +9,7 @@ import { defineComponent, h } from 'vue';
 import { mount } from '@vue/test-utils';
 
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
+import { readerContextProvide } from './readerContextFixture';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 vi.mock('@owlat/api', () => {
@@ -63,17 +64,13 @@ function mountCard(props: Record<string, unknown>, message: Record<string, unkno
 	return mount(PostboxReaderMessage, {
 		props: {
 			message: { ...base, ...message } as never,
-			mailboxId: 'mbx_1',
 			expanded: false,
 			relativeTime: '2h',
 			starred: false,
 			showReplyAll: false,
 			showSenderControls: true,
-			authEnabled: false,
-			sealedEnabled: false,
 			secureClass: 'none' as never,
 			hideBody: false,
-			showRenderToggle: false,
 			forcedLight: false,
 			images: { senderImagesAllowed: false, autoLoadImages: false, suspicious: false },
 			hasInvite: false,
@@ -81,6 +78,7 @@ function mountCard(props: Record<string, unknown>, message: Record<string, unkno
 		},
 		global: {
 			plugins: [createTestI18n()],
+			provide: readerContextProvide(),
 			components: {
 				UiAvatar: marker('UiAvatar'),
 				PostboxTrustChip: marker('PostboxTrustChip'),

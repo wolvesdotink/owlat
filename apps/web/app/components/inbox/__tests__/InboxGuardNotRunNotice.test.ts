@@ -1,5 +1,5 @@
 /**
- * "AI safety check not run" (D13, U4): the reason the model guard was skipped,
+ * "AI safety check not run": the reason the model guard was skipped,
  * for each recorded reason, and that it runs before the agent acts.
  */
 import { beforeAll, describe, expect, it } from 'vitest';

@@ -14,7 +14,8 @@ import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import type { MtaSendRequest } from '@owlat/mta-protocol/send';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { logError, logInfo } from '../lib/runtimeLog';
+import { logEvent, logInfo } from '../lib/runtimeLog';
+import { correlationHeader, mintCorrelationId } from '@owlat/shared/correlation';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { getMtaConfig } from './mtaClient';
@@ -50,7 +51,8 @@ export async function forwardToTarget(
 		bodyText?: string;
 		bodyHtml?: string;
 	},
-	target: string
+	target: string,
+	correlationId?: string
 ): Promise<void> {
 	const selfLower = args.mailboxAddress.toLowerCase();
 	// Same intake budget as a Postbox send: a hung MTA would otherwise hold the
@@ -63,8 +65,9 @@ export async function forwardToTarget(
 			headers: {
 				'Content-Type': 'application/json',
 				Authorization: `Bearer ${mta.apiKey}`,
+				...correlationHeader(correlationId, 'fwd'),
 			},
-			// Typed against the wire's one declaration (D7): this is the same
+			// Typed against the wire's one declaration: this is the same
 			// `/send/postbox` body `mail/outbound.ts` posts, and `allowedFromAddresses`
 			// is the field the MTA enforces From ownership with — a rename that left
 			// this literal behind would refuse every forward with a 403.
@@ -241,13 +244,27 @@ export const runPostDelivery = internalAction({
 				const lower = target.toLowerCase();
 				if (lower === selfLower || seen.has(lower)) continue;
 				seen.add(lower);
+				const correlationId = mintCorrelationId('fwd');
 				try {
-					await forwardToTarget(mta, args, target);
-					logInfo(
-						`[Forwarding] ${redactEmailAddress(args.mailboxAddress)} → ${redactEmailAddress(target)}`
-					);
+					await forwardToTarget(mta, args, target, correlationId);
+					logEvent('postbox.forward.sent', {
+						correlationId,
+						outcome: 'sent',
+						detail: {
+							mailbox: redactEmailAddress(args.mailboxAddress),
+							target: redactEmailAddress(target),
+						},
+					});
 				} catch (err) {
-					logError('[Forwarding] failed:', err);
+					logEvent(
+						'postbox.forward.failed',
+						{
+							correlationId,
+							outcome: 'failed',
+							detail: { error: err instanceof Error ? err.message : String(err) },
+						},
+						'error'
+					);
 				}
 			}
 		}
@@ -305,6 +322,7 @@ export const runPostDelivery = internalAction({
 			triggeringReferences: args.triggeringReferences,
 		});
 
+		const correlationId = mintCorrelationId('vac');
 		try {
 			await fetchWithTimeout(
 				`${mta.baseUrl}/send/postbox`,
@@ -313,9 +331,10 @@ export const runPostDelivery = internalAction({
 					headers: {
 						'Content-Type': 'application/json',
 						Authorization: `Bearer ${mta.apiKey}`,
+						...correlationHeader(correlationId, 'vac'),
 					},
 					// The third `/send/postbox` producer, bound to the same declaration
-					// (D7) as the forward above and `mail/outbound.ts`.
+					// as the forward above and `mail/outbound.ts`.
 					body: JSON.stringify({
 						messageId: `pb-vac-${args.mailboxId}-${now}-${Math.random().toString(36).slice(2, 8)}`,
 						from: args.mailboxAddress,
@@ -345,11 +364,24 @@ export const runPostDelivery = internalAction({
 				mailboxId: args.mailboxId,
 				senderEmail: fromLower,
 			});
-			logInfo(
-				`[Vacation] auto-replied ${redactEmailAddress(args.mailboxAddress)} → ${redactEmailAddress(fromLower)}`
-			);
+			logEvent('postbox.vacation_reply.sent', {
+				correlationId,
+				outcome: 'sent',
+				detail: {
+					mailbox: redactEmailAddress(args.mailboxAddress),
+					target: redactEmailAddress(fromLower),
+				},
+			});
 		} catch (err) {
-			logError('[Vacation] auto-reply failed:', err);
+			logEvent(
+				'postbox.vacation_reply.failed',
+				{
+					correlationId,
+					outcome: 'failed',
+					detail: { error: err instanceof Error ? err.message : String(err) },
+				},
+				'error'
+			);
 		}
 	},
 });

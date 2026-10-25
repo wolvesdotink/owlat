@@ -1,6 +1,6 @@
 /**
- * Mark a cited quote inside a rendered message body (plan §4.2: "scrolls to
- * the message and highlights the quoted words").
+ * Mark a cited quote inside a rendered message body (scroll to
+ * the message and highlight the quoted words).
  *
  * The evidence offsets index the interpretation's canonical text
  * (`@owlat/shared/mailSegments`); the body the reader renders has been

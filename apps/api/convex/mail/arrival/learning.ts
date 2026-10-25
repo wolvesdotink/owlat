@@ -1,5 +1,5 @@
 /**
- * Read on arrival, learning without asking (SPEC §4.3): what the signals in
+ * Read on arrival, learning without asking: what the signals in
  * `./learningSignals.ts` lead to, each one undoable operation.
  *
  *   - {@link learnDigest}: a sender whose unread-archive evidence crossed both

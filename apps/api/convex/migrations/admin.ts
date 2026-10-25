@@ -21,12 +21,17 @@
  * (`migrationDriver`) and schedules {@link advance}, which repeats that step
  * every {@link TICK_MS} until every migration has completed (`finished`) or
  * one has failed or stopped moving (`stopped`; the admin resumes it with the
- * next run). Both run in one serializable transaction over the ledger rows and
- * the runner row, so two admins clicking at once cannot start a migration
- * twice: the second sees the first's ledger rows, and an active runner.
+ * next run). A contract step that declares `requiresWorkers` waits the same
+ * way until every worker has reported the wire versions it needs; its `run`
+ * refuses to start before then too (`beginMigrationRun`), so the CLI and a
+ * cron cannot start it early either. Both run in one serializable transaction
+ * over the ledger rows and the runner row, so two admins clicking at once
+ * cannot start a migration twice: the second sees the first's ledger rows, and
+ * an active runner.
  *
  * Gating: platform admins only, like the rest of System & updates. `advance`
- * is internal.
+ * and `supportBundleState` (the support bundle's read, with the admin key) are
+ * internal.
  */
 
 import { v } from 'convex/values';
@@ -34,8 +39,10 @@ import { internal } from '../_generated/api';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { platformAdminMutation, platformAdminQuery } from '../lib/authedFunctions';
+import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { readMigrationRun, type MigrationRun } from '../lib/migrationLedger';
+import { readWorkerWaits, type WorkerWait } from '../maintenance/workerRegistry';
 import {
 	deriveMigrationState,
 	firstStoppedMigration,
@@ -47,6 +54,7 @@ import {
 	type MigrationState,
 } from '../lib/migrationPlan';
 import { logInfo, logWarn } from '../lib/runtimeLog';
+import { getOptional } from '../lib/env';
 import { throwInvalidInput } from '../_utils/errors';
 import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { DEFAULT_STALL_AFTER_MS, MIGRATION_MANIFEST } from './manifest';
@@ -91,6 +99,17 @@ async function readManifestStates(ctx: Ctx, now: number): Promise<Map<string, Ma
 		});
 	}
 	return states;
+}
+
+/** Per contract step, the workers it still waits on; steps nothing holds are absent. */
+async function readManifestWorkerWaits(ctx: Ctx, now: number): Promise<Map<string, WorkerWait[]>> {
+	const waits = new Map<string, WorkerWait[]>();
+	for (const entry of MIGRATION_MANIFEST) {
+		if (!entry.requiresWorkers) continue;
+		const held = await readWorkerWaits(ctx.db, entry.requiresWorkers, now);
+		if (held.length > 0) waits.set(entry.migration, held);
+	}
+	return waits;
 }
 
 function stateMap(states: Map<string, ManifestState>): Map<string, MigrationState> {
@@ -162,6 +181,7 @@ export const list = platformAdminQuery({
 		const now = Date.now();
 		const states = await readManifestStates(ctx, now);
 		const byMigration = stateMap(states);
+		const workerWaits = await readManifestWorkerWaits(ctx, now);
 		const runner = await readRunner(ctx);
 		return {
 			migrations: MIGRATION_MANIFEST.map((entry) => {
@@ -171,6 +191,11 @@ export const list = platformAdminQuery({
 					introducedIn: entry.introducedIn,
 					dependsOn: [...entry.dependsOn],
 					waitingFor: unfinishedDependencies(entry, byMigration),
+					// Only while it has not started: a running pass is past the gate.
+					waitingForWorkers:
+						derived.state === 'running' || derived.state === 'completed'
+							? []
+							: (workerWaits.get(entry.migration) ?? []),
 					isSteppingStone: entry.isSteppingStone,
 					requiredBefore: entry.requiredBefore ?? null,
 					startsItself: entry.startsItself === true,
@@ -231,6 +256,50 @@ export const updateBlockers = platformAdminQuery({
 	},
 });
 
+/**
+ * The ledger as `owlat support-bundle` exports it: run with the deployment's
+ * admin key (`convex run migrations/admin:supportBundleState`), so it is
+ * internal. The bundle leaves the operator's box, so it carries states, counts
+ * and timestamps only: no cursor, no auth user id and no error text (an error
+ * can quote a document), just whether there is one.
+ */
+export const supportBundleState = internalQuery({
+	args: {},
+	handler: async (ctx) => {
+		const states = await readManifestStates(ctx, Date.now());
+		const runner = await readRunner(ctx);
+		return {
+			deployedVersion: getOptional('OWLAT_VERSION') || null,
+			migrations: MIGRATION_MANIFEST.map((entry) => {
+				const { run, derived } = states.get(entry.migration)!;
+				return {
+					migration: entry.migration,
+					introducedIn: entry.introducedIn,
+					state: derived.state,
+					stalledAt: derived.stalledAt,
+					hasError: derived.error !== null,
+					startedAt: run?.startedAt ?? null,
+					updatedAt: run?.updatedAt ?? null,
+					completedAt: run?.completedAt ?? null,
+					pageCount: run?.pageCount ?? null,
+					scannedCount: run?.scannedCount ?? null,
+					changedCount: run?.changedCount ?? null,
+				};
+			}),
+			runner: runner
+				? {
+						status: runner.status,
+						startedAt: runner.startedAt,
+						updatedAt: runner.updatedAt,
+						finishedAt: runner.finishedAt ?? null,
+						stoppedMigration: runner.stoppedMigration ?? null,
+						hasStoppedError: runner.stoppedError !== undefined,
+					}
+				: null,
+		};
+	},
+});
+
 // ── Running ──────────────────────────────────────────────────────────────────
 
 /**
@@ -252,8 +321,10 @@ export const runPending = platformAdminMutation({
 		}
 
 		const states = await readManifestStates(ctx, now);
+		const workerWaits = await readManifestWorkerWaits(ctx, now);
 		const plan = planMigrationStarts(MIGRATION_MANIFEST, stateMap(states), {
 			resumeStopped: true,
+			heldByWorkers: new Set(workerWaits.keys()),
 		});
 		if (plan.start.length === 0 && plan.waiting.length === 0) {
 			return { outcome: 'nothingToRun' as const, started: [], waiting: [] };
@@ -322,7 +393,11 @@ export const advance = internalMutation({
 			return { outcome: 'stopped' as const };
 		}
 
-		const plan = planMigrationStarts(MIGRATION_MANIFEST, byMigration, { resumeStopped: false });
+		const workerWaits = await readManifestWorkerWaits(ctx, now);
+		const plan = planMigrationStarts(MIGRATION_MANIFEST, byMigration, {
+			resumeStopped: false,
+			heldByWorkers: new Set(workerWaits.keys()),
+		});
 		const { started, failure } = await startMigrations(ctx, plan.start);
 		if (failure) {
 			await stopRunner(ctx, runner, failure, now);

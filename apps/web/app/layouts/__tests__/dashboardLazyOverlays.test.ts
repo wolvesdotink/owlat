@@ -59,7 +59,6 @@ beforeEach(() => {
 	paletteLoads = 0;
 	isHelpModalOpen.value = false;
 	localStorage.clear();
-	document.body.innerHTML = '';
 	installNuxtStubs({
 		...i18nStubs,
 		...dashboardShellStubs(),
@@ -68,6 +67,7 @@ beforeEach(() => {
 		useKeyboardShortcuts: () => ({
 			isHelpModalOpen,
 			registerNavigationShortcuts: vi.fn(),
+			registerShortcut: vi.fn(),
 			closeHelpModal: vi.fn(),
 		}),
 		// What the real palette needs once it is mounted.
@@ -94,7 +94,6 @@ let wrapper: VueWrapper | null = null;
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 function mountLayout(): VueWrapper {

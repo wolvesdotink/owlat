@@ -6,9 +6,10 @@ import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
-import { resolveReviewFocusKey } from '~/utils/taskFlowKeyboard';
 import { useLocalized } from '~/composables/useLocalized';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { useShortcutScope } from '~/composables/useShortcutScope';
 import {
 	GENERIC_TEAMMATE_NAME,
 	isReplyCollision,
@@ -43,8 +44,8 @@ type ReviewEntry = FunctionReturnType<typeof api.inbox.queries.getReviewQueue>[n
  * Approve is held (the server refuses it, DRAFT_HAS_GAPS) and the card offers
  * to open the draft for editing right here.
  *
- * Keyboard on the focused card: a = approve, x = reject, Enter = the primary
- * action, s = skip. Inert while typing.
+ * Keyboard on the focused card (the `teamCard` scope): a = approve, x = reject,
+ * Enter = the primary action. Inert while typing.
  */
 const props = defineProps<{ entry: ReviewEntry; controls: AnswerCardControls }>();
 
@@ -265,24 +266,29 @@ async function sendReply() {
 	}
 }
 
-function onKeydown(event: KeyboardEvent) {
-	if (event.metaKey || event.ctrlKey || event.altKey) return;
-	// The question card has its own keys; nothing here may approve or send.
-	if (heldQuestions.value) return;
-	if (isEditableTarget(event.target)) return;
-	const action = resolveReviewFocusKey(event.key, {
-		currentKind: draftless.value ? 'reply' : 'draft_review',
-		needsReply: draftless.value || filling.value,
-	});
-	if (!action) return;
-	event.preventDefault();
-	if (action === 'reject') void reject();
-	else if (action === 'approve') void approve();
-	else if (action === 'sendReply') void sendReply();
-	else props.controls.skip();
-}
-onMounted(() => window.addEventListener('keydown', onKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+// The card's keys (the `teamCard` scope). While the AI's questions hold the
+// draft, the question card has the keyboard: nothing here may approve or send.
+// A draftless escalation (or a draft being filled in) has no draft to
+// approve, so `a` is not claimed and Enter sends the reply.
+useShortcutScope('teamCard');
+const { registerShortcut } = useKeyboardShortcuts();
+const replying = () => draftless.value || filling.value;
+registerShortcut({
+	id: 'teamCard.send',
+	handler: () => void (replying() ? sendReply() : approve()),
+	when: () => !heldQuestions.value,
+});
+registerShortcut({
+	id: 'teamCard.approve',
+	handler: () => void approve(),
+	when: () => !heldQuestions.value && !replying(),
+});
+registerShortcut({
+	id: 'teamCard.reject',
+	handler: () => void reject(),
+	when: () => !heldQuestions.value,
+});
+const { keyHints } = useShortcutLabels();
 
 const secondaryButton =
 	'inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)';
@@ -339,7 +345,7 @@ const primaryButton =
 			<textarea
 				v-model="composeBody"
 				rows="6"
-				class="input w-full text-sm resize-y mb-4"
+				class="input w-full resize-y mb-4"
 				:placeholder="t('components.agentTasks.reviewFocusFlow.replyPlaceholder')"
 			/>
 			<TaskActions
@@ -361,7 +367,7 @@ const primaryButton =
 				ref="fillField"
 				v-model="composeBody"
 				rows="8"
-				class="input w-full text-sm resize-y mb-4"
+				class="input w-full resize-y mb-4"
 				:aria-label="t('components.agentTasks.reviewFocusFlow.fillLabel')"
 				:aria-describedby="fillGapCount > 0 ? fillReasonId : undefined"
 				data-testid="team-card-fill"
@@ -421,7 +427,12 @@ const primaryButton =
 				:hints="
 					gapHeld
 						? undefined
-						: [{ keys: ['a'], label: t('components.agentTasks.reviewFocusFlow.reviewAndSend') }]
+						: keyHints([
+								{
+									id: 'teamCard.approve',
+									label: t('components.agentTasks.reviewFocusFlow.reviewAndSend'),
+								},
+							])
 				"
 				@primary="approve"
 				@skip="reject"

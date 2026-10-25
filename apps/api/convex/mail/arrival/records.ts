@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.8): the arrival record, one row per live inbound
+ * Read on arrival: the arrival record, one row per live inbound
  * message of a personal Postbox mailbox.
  *
  * Delivery writes it ({@link writeArrivalRecord}, from the post-insert tail,
@@ -36,7 +36,7 @@ type ArrivalRecord = Doc<'mailArrivalRecords'>;
 /** Reason keys one record keeps; a later writer's key never pushes out an earlier one twice. */
 const MAX_REASON_KEYS = 12;
 
-/** What the live-ingest rules pass hands the record (lane rules, SPEC §6.2). */
+/** What the live-ingest rules pass hands the record (lane rules). */
 export interface ArrivalRecordSeed {
 	pendingAiFilters?: ArrivalRecord['pendingAiFilters'];
 	rulePlacement?: ArrivalRecord['rulePlacement'];

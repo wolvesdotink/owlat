@@ -94,6 +94,8 @@ export interface ThreadSurfaceDeps {
 	isMuted: () => boolean;
 	/** "Notify me when they reply" is armed. */
 	isAlerted: () => boolean;
+	/** The conversation is in the Inbox's pinned band. */
+	isPinned: () => boolean;
 	followUp: () => ThreadFollowUpState;
 	/** Translation is offered (the AI flag is on). */
 	canTranslate: () => boolean;
@@ -108,13 +110,48 @@ export interface ThreadSurfaceDeps {
 	onMarkUnread: () => void;
 	onToggleMute: () => void;
 	onToggleAlert: () => void;
+	onTogglePin: () => void;
 	onCancelFollowUp: () => void;
 	onShowOriginal: () => void;
 	onTranslate: () => void;
 	onCopyLink: () => void;
+	/** Chat is on: the conversation's link can be posted to a room. */
+	canShareInChat: () => boolean;
+	onShareInChat: () => void;
 }
 
 const P = 'shared.commandPaletteSurfaces.thread';
+/** "Copy link" / "Share in chat…" read the same in the ⋯ menus as here. */
+const L = 'shared.conversationLink';
+
+/** The two link verbs every open conversation offers, Postbox or Team Inbox. */
+function linkItems(
+	idPrefix: string,
+	deps: {
+		t: Translate;
+		onCopyLink: () => void;
+		canShareInChat: () => boolean;
+		onShareInChat: () => void;
+	}
+): PaletteItem[] {
+	const items: PaletteItem[] = [
+		{
+			id: `${idPrefix}-copy-link`,
+			label: deps.t(`${L}.copyLink`),
+			icon: 'lucide:link',
+			run: deps.onCopyLink,
+		},
+	];
+	if (deps.canShareInChat()) {
+		items.push({
+			id: `${idPrefix}-share-in-chat`,
+			label: deps.t(`${L}.shareInChat`),
+			icon: 'lucide:message-square-share',
+			run: deps.onShareInChat,
+		});
+	}
+	return items;
+}
 
 /**
  * Every verb for the open conversation: the toolbar's two, the ⋯ menu's, the
@@ -180,6 +217,12 @@ export function buildThreadSurfaceGroups(
 			icon: 'lucide:bell',
 			run: deps.onToggleAlert,
 		},
+		{
+			id: 'postbox:thread-pin',
+			label: t(deps.isPinned() ? `${P}.unpin` : `${P}.pin`),
+			icon: deps.isPinned() ? 'lucide:pin-off' : 'lucide:pin',
+			run: deps.onTogglePin,
+		},
 	];
 	const labels = deps.labelOptions();
 	if (labels.length > 0) {
@@ -233,12 +276,7 @@ export function buildThreadSurfaceGroups(
 			icon: 'lucide:file-code',
 			run: deps.onShowOriginal,
 		},
-		{
-			id: 'postbox:thread-copy-link',
-			label: t(`${P}.copyLink`),
-			icon: 'lucide:link',
-			run: deps.onCopyLink,
-		}
+		...linkItems('postbox:thread', deps)
 	);
 	return threadGroup(POSTBOX_THREAD_COMMAND_GROUP_KEY, t(`${P}.heading`), items, query, mode);
 }
@@ -272,13 +310,16 @@ export interface TeamThreadSurfaceDeps {
 	onReopen: () => void;
 	onUnsnooze: () => void;
 	onAddNote: () => void;
+	onCopyLink: () => void;
+	canShareInChat: () => boolean;
+	onShareInChat: () => void;
 }
 
 const T = 'shared.commandPaletteSurfaces.teamThread';
 
 /**
  * The Team Inbox conversation's verbs: reply, assign / claim, close or reopen,
- * snooze or wake, an internal note, and its priority. Pure.
+ * snooze or wake, an internal note, its priority, and a link to it. Pure.
  */
 export function buildTeamThreadSurfaceGroups(
 	deps: TeamThreadSurfaceDeps,
@@ -345,7 +386,8 @@ export function buildTeamThreadSurfaceGroups(
 			{ id: 'inbox:thread-priority', label: t(`${T}.priority`), icon: 'lucide:flag' },
 			`${T}.priorityPrompt`,
 			deps.priorityOptions()
-		)
+		),
+		...linkItems('inbox:thread', deps)
 	);
 	return threadGroup(TEAM_THREAD_COMMAND_GROUP_KEY, t(`${T}.heading`), items, query, mode);
 }

@@ -61,7 +61,7 @@ export const HISTORY_STALE_MS = 15 * 60_000;
 /** Follow-ups of one Team Inbox thread read on its last page. */
 const FOLLOW_UP_SCAN = 100;
 
-/** Folder roles a thread can sit in and still be "active" (D5). */
+/** Folder roles a thread can sit in and still be "active". */
 const INACTIVE_ROLES: ReadonlySet<string> = new Set(['archive', 'trash', 'spam', 'junk']);
 /** Folders whose messages are never picked. */
 const SKIPPED_ROLES: ReadonlySet<string> = new Set(['trash', 'spam', 'junk', 'drafts']);
@@ -75,7 +75,7 @@ const SENT_STATUSES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * An active thread (D5): not muted, not the Daily Brief's own mail, and not
+ * An active thread: not muted, not the Daily Brief's own mail, and not
  * archived or trashed (in the inbox, or in no archive/trash/spam folder at
  * all, which keeps threads that live only in Sent or a custom folder). Pure.
  */

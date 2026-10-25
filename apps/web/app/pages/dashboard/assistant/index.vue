@@ -22,6 +22,7 @@ const {
 	messages,
 	messagesError,
 	refetchMessages,
+	promptHistory,
 	activeConversation,
 	streaming,
 	selectConversation,
@@ -385,14 +386,20 @@ const cancelRename = () => {
 				</div>
 			</div>
 
-			<!-- One question box for every chat, so one kept question. -->
-			<AssistantComposer
-				ref="composerRef"
-				:send="sendQuestion"
-				draft-target="assistant"
-				:streaming="streaming"
-				@stop="stop"
-			/>
+			<!-- One question box for every chat, so one kept question. The open chat
+			     is not in the route: switching chats or starting one has to clear a
+			     failed composer too. -->
+			<AppErrorBoundary surface="composer" :reset-keys="[activeId]">
+				<AssistantComposer
+					ref="composerRef"
+					:send="sendQuestion"
+					draft-target="assistant"
+					:prompt-history="promptHistory"
+					:history-key="activeId"
+					:streaming="streaming"
+					@stop="stop"
+				/>
+			</AppErrorBoundary>
 		</section>
 
 		<!-- Delete confirmation — a removed chat and its messages cannot be recovered -->

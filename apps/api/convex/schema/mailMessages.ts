@@ -103,7 +103,7 @@ export const mailMessagesTables = {
 		flagDeleted: v.boolean(),
 		customFlags: v.array(v.string()),
 		labelIds: v.array(v.id('mailLabels')),
-		// Read on arrival (SPEC §5): the first open was counted in the sender's
+		// Read on arrival: the first open was counted in the sender's
 		// opened weeks. Set once by `recordFirstOpen`.
 		isOpenCounted: v.optional(v.boolean()),
 
@@ -221,9 +221,10 @@ export const mailMessagesTables = {
 		// the Postbox outbound lifecycle module (the only writer).
 		outbound: v.optional(
 			v.object({
-				// AGGREGATED — derived from recipients[] by the lifecycle module.
-				// `partial` is the only literal that exists here but not on a
-				// per-recipient entry; it covers any mix of recipient states.
+				// AGGREGATED [postboxOutboundState] — derived from recipients[] by the
+				// lifecycle module. `partial` is the only literal that exists here
+				// but not on a per-recipient entry; it covers any mix of recipient
+				// states.
 				state: v.union(
 					v.literal('queued'),
 					v.literal('sent'),
@@ -265,12 +266,12 @@ export const mailMessagesTables = {
 		// `isSealed` is true the raw `.eml` is PGP/MIME ciphertext (real subject
 		// inside, `...` outside) and the fingerprints used are recorded; when
 		// false a `reason` explains why the message went plaintext (e.g. a
-		// recipient without a usable key — never a mixed send, per D2). Absent on
+		// recipient without a usable key — never a mixed send). Absent on
 		// inbound rows and on outbound rows written before this field existed.
 		encryptionInfo: v.optional(mailEncryptionInfoValidator),
 
 		// Sealed Mail (E4): the INBOUND unsealing outcome for a DELIVERED message
-		// (decrypt-on-ingest, D3). When present the message arrived as PGP/MIME
+		// (decrypt-on-ingest). When present the message arrived as PGP/MIME
 		// ciphertext; `isDecrypted:true` means we opened it (the row's body columns
 		// hold the restored plaintext, the raw `.eml` at `rawStorageId` is the
 		// retained sealed original) and `isSignatureValid` records whether the body's
@@ -281,7 +282,7 @@ export const mailMessagesTables = {
 		// rows written before this field existed.
 		inboundEncryptionInfo: v.optional(inboundEncryptionInfoValidator),
 
-		// Inbound PGP signature verification (F1, D9): the honest verdict for a
+		// Inbound PGP signature verification: the honest verdict for a
 		// message that arrived SIGNED but not encrypted (RFC 3156 multipart/signed
 		// or an inline clearsigned body), verified server-side at ingest against
 		// the TOFU-pinned/WKD-discovered sender key. Deliberately a SIBLING of the

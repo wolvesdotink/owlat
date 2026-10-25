@@ -1,6 +1,6 @@
 /**
  * Thread brief: the shared vocabulary and pure rules of per-thread items,
- * facts and activity (SPEC §0, §3).
+ * facts and activity.
  *
  * One list per vocabulary. The Convex validators (`apps/api/convex/lib/
  * validators/threadBrief.ts`), the interpretation call's zod contract
@@ -79,7 +79,7 @@ export const ITEM_COMPLETIONS = ['recorded', 'asserted', 'reported'] as const;
 export type ItemCompletion = (typeof ITEM_COMPLETIONS)[number];
 
 /**
- * What makes an item consequential enough for the verifier (SPEC §4 verify):
+ * What makes an item consequential enough for the verifier:
  * money, a signature, access, disclosing information, a promise, a concession
  * (price, deadline, terms) or a cancellation. The model tags each item; an
  * item whose tags are missing counts as consequential.
@@ -295,7 +295,7 @@ export type MessageSegmentKind = (typeof MESSAGE_SEGMENT_KINDS)[number];
 // ── Item states and reactions (rules: threadBriefRules.ts) ──────────────────
 
 /**
- * The user-facing item states (plan §5, labels in `components.brief.state.*`).
+ * The user-facing item states (labels in `components.brief.state.*`).
  * `addressedInDraft` is computed from a draft's response plan and never stored.
  */
 export const ITEM_STATE_KEYS = [

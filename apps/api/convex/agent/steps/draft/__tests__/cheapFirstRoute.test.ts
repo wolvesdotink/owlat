@@ -1,5 +1,5 @@
 /**
- * The Team draft step's writer route (D2, ./writerRoute.ts). With the routing
+ * The Team draft step's writer route (./writerRoute.ts). With the routing
  * policy's `cheapFirstWriter` off (the default) the step is today's: one
  * writer on today's tier, no shadow-mode read, no cheap-first mark. Switched
  * to `reviewed`, only a draft no auto-send can follow (shadow mode on) of an

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Answer mode's frame: one reply, the whole screen (plan §02, §04, §08).
+ * Answer mode's frame: one reply, the whole screen.
  *
  * A top bar ("← Inbox" with its Esc hint, the subject and message count, and
  * three slots the page fills: who the reply goes out as, queue navigation, a ⋯
@@ -30,7 +30,7 @@ import { useAnswerLayout, useAnswerSheet } from '~/composables/useAnswerSheet';
 import { useAnswerAnchor } from '~/composables/useAnswerAnchor';
 import { useKeyboardInset } from '~/composables/useKeyboardInset';
 import type { AnswerSheetState, AnswerTab } from '~/utils/answerModeLayout';
-import { pushShortcutScope } from '~/utils/shortcutScope';
+import { useShortcutScope } from '~/composables/useShortcutScope';
 
 const props = defineProps<{
 	/** Where "←" goes, spelled as a place ("Inbox", "Answer queue"). */
@@ -77,14 +77,10 @@ const metaPrefix = computed(() => {
 	return props.counterpart ? `${count} · ` : count;
 });
 
-// Answer mode's keys (Esc, t, Cmd/Ctrl+J, 1 to 9, [ and ]) are bound by the
-// pages and the ask card; claiming the scope puts them on the "?" sheet, in
-// place of the app-wide Esc they replace here.
-let releaseScope: (() => void) | null = null;
-onMounted(() => {
-	releaseScope = pushShortcutScope('answer');
-});
-onBeforeUnmount(() => releaseScope?.());
+// Answer mode's keys (Esc, t, n, Cmd/Ctrl+J, and the queue bar's [ ] e h)
+// live in the `answer` scope: the pages and the queue bar bind them, and they
+// win over the app-wide keys they share a press with (Esc, ⌘J).
+useShortcutScope('answer');
 
 const conversationPanelId = useId();
 const replyPanelId = useId();
@@ -336,7 +332,7 @@ function startReply() {
 					</div>
 				</div>
 				<!-- `data-sheet-hidden`: what is in the composer stands down its
-				     window-wide keys while it is out of sight (AskCard's 1 to 9). -->
+				     page-wide keys while it is out of sight (AskCard's 1 to 9). -->
 				<div
 					ref="contentEl"
 					class="min-h-0 flex-1 flex-col"
@@ -344,7 +340,9 @@ function startReply() {
 					:data-sheet-hidden="composerHidden ? '' : undefined"
 					data-testid="answer-composer-content"
 				>
-					<slot name="composer" />
+					<AppErrorBoundary surface="composer">
+						<slot name="composer" />
+					</AppErrorBoundary>
 				</div>
 			</section>
 		</div>

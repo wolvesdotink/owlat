@@ -28,7 +28,7 @@ export const sendRefValidator = v.union(
 );
 
 /**
- * A deliverability SEED PROBE's durable reference (D18). A shadow copy has no
+ * A deliverability SEED PROBE's durable reference. A shadow copy has no
  * `emailSends` row — that is what keeps it out of every denominator — but its
  * probe-ledger row IS durable, org-scoped and unique, which is what the
  * governed boundary needs for an idempotency key and a re-entry token.
@@ -60,6 +60,10 @@ export const issueSnapshot = internalMutation({
 		if (admitGovernedRetry(args.retryState, now).deadline !== 'ok') {
 			throw new Error('Routing re-entry deadline expired.');
 		}
+		// The Send row's stored log key, handed back beside the token rather than
+		// carried in `envelopeInput`: the callback digest covers the envelope, and a
+		// log-only id must never change what a re-entry token authenticates.
+		let correlationId: string | undefined;
 		if (args.sendRef.kind === 'seedProbe') {
 			// A seed probe is bound to its ledger row, not to a Send. The binding
 			// checked here is the one the probe header carries.
@@ -85,6 +89,7 @@ export const issueSnapshot = internalMutation({
 			if (!send || send.status !== 'queued') {
 				throw new Error('Routing re-entry token requires an existing queued Send.');
 			}
+			correlationId = send.correlationId;
 			if (
 				(args.envelopeInput.kind === 'campaign' &&
 					(args.sendRef.kind !== 'campaign' ||
@@ -123,7 +128,7 @@ export const issueSnapshot = internalMutation({
 			expiresAt,
 			callbackDigest: await callbackDigest(args.envelopeInput, args.retryState),
 		});
-		return { token, expiresAt };
+		return { token, expiresAt, ...(correlationId ? { correlationId } : {}) };
 	},
 });
 

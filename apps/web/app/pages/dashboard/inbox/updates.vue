@@ -4,7 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import { categoryIcon } from '~/utils/agentCategories';
 import { formatDateTime } from '~/utils/formatters';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { useReviewListKeys } from '~/composables/useReviewListKeys';
 
 /**
  * Updates — the team-inbox dashboard of mail that needs no reply.
@@ -24,8 +24,8 @@ import { isEditableTarget } from '~/utils/postboxShortcuts';
  * through the normal review queue and can never auto-send).
  *
  * A row shows the subject and the first lines of the message as the sender
- * wrote them (`preview`, quoted history cut). No model-written summary (D7,
- * thread brief): an old row's stored classifier summary is not shown.
+ * wrote them (`preview`, quoted history cut). No model-written summary:
+ * an old row's stored classifier summary is not shown.
  */
 const { t } = useI18n();
 
@@ -155,22 +155,14 @@ function openThread(row: UpdateRow) {
 }
 
 const rowDomId = (row: UpdateRow) => `update-${row._id}`;
-const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<UpdateRow>({
+const { focusedIndex, activeId, onKeydown, hints } = useReviewListKeys<UpdateRow>({
 	items: visibleRows,
 	resetKey: view,
 	rowDomId,
-	scope: 'review',
-	onActivate: openThread,
-	onAction: (key, row) => {
-		if (key === 'd') void onDismiss(row);
-		else if (key === 'r') void onRequestReply(row);
-	},
+	onOpen: openThread,
+	onDismiss: (row) => void onDismiss(row),
+	onRequestReply: (row) => void onRequestReply(row),
 });
-
-function onListKeydown(event: KeyboardEvent) {
-	if (isEditableTarget(event.target)) return;
-	onKeydown(event);
-}
 
 function senderLabel(item: UpdateItem): string {
 	const contact = item.contact;
@@ -222,13 +214,6 @@ function kindLabel(kind: string | undefined): string | undefined {
 	const key = `dashboard.inbox.updates.kinds.${kind}`;
 	return t(key) === key ? undefined : t(key);
 }
-
-const HINTS: ReadonlyArray<{ keys: string[]; label: string; spamToo: boolean }> = [
-	{ keys: ['j', 'k'], label: 'dashboard.inbox.updates.hintMove', spamToo: true },
-	{ keys: ['Enter'], label: 'dashboard.inbox.updates.hintOpen', spamToo: true },
-	{ keys: ['d'], label: 'dashboard.inbox.updates.dismiss', spamToo: false },
-	{ keys: ['r'], label: 'dashboard.inbox.updates.requestReply', spamToo: false },
-];
 </script>
 
 <template>
@@ -256,9 +241,9 @@ const HINTS: ReadonlyArray<{ keys: string[]; label: string; spamToo: boolean }> 
 						class="hidden flex-wrap items-center gap-x-3 gap-y-1 rounded-full surface-1 px-3.5 py-1.5 text-2xs text-text-tertiary md:flex"
 						aria-hidden="true"
 					>
-						<template v-for="hint in HINTS" :key="hint.label">
+						<template v-for="hint in hints" :key="hint.label">
 							<span
-								v-if="hint.spamToo || !isSpamView"
+								v-if="!hint.notInSpam || !isSpamView"
 								class="inline-flex items-center gap-1 whitespace-nowrap"
 							>
 								<kbd
@@ -338,7 +323,7 @@ const HINTS: ReadonlyArray<{ keys: string[]; label: string; spamToo: boolean }> 
 				:aria-activedescendant="activeId"
 				tabindex="0"
 				class="space-y-8 outline-none"
-				@keydown="onListKeydown"
+				@keydown="onKeydown"
 			>
 				<li v-for="group in groups" :key="group.tone ?? 'all'" role="presentation">
 					<div v-if="group.tone" class="mb-3 flex items-center gap-2">

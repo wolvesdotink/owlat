@@ -345,7 +345,7 @@ function onBlur() {
 				ref="inputEl"
 				v-model="inputValue"
 				type="text"
-				class="flex-1 min-w-[120px] bg-transparent outline-none text-sm"
+				class="input-bare flex-1 min-w-[120px] text-sm"
 				:placeholder="
 					modelValue.length === 0 ? t('components.postbox.postboxRecipientField.placeholder') : ''
 				"

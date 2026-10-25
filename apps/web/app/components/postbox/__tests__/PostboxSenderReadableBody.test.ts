@@ -1,5 +1,5 @@
 /**
- * Senders open counting (SPEC §5, review r3): a reader card counts its
+ * Senders open counting (review r3): a reader card counts its
  * message's first open from ONE signal, the readable body element its
  * renderer registers once the content is there, and only while that element
  * is on screen. Driven through the real renderers inside the real card wiring

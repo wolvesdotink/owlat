@@ -232,7 +232,7 @@ describe('pre-flight capacity gate — adaptive_mix splits the audience, the env
 			unknownReason: 'mix_composition_unknown',
 		});
 		// Unmeasured still ALLOWS: refusing on the peak would block the audience
-		// that really is 95% gmail, which fits in a single day (D2).
+		// that really is 95% gmail, which fits in a single day.
 		expect((await runPreflight(t, campaignId)).ok).toBe(true);
 	});
 
@@ -289,7 +289,7 @@ describe('pre-flight capacity gate — adaptive_mix splits the audience, the env
 	 * plan handed to the operator is the walk: all 600 recipients, because that is
 	 * what the walker paces and what the copy calls them. Composition the gate
 	 * cannot know changes whether the cap can strand this campaign; it changes
-	 * nothing about how long the send takes, so there is nothing to hedge (D14).
+	 * nothing about how long the send takes, so there is nothing to hedge.
 	 */
 	it('decides a refusal on the floor and quotes the walk it will run', async () => {
 		const t = convexTest(schema, modules);

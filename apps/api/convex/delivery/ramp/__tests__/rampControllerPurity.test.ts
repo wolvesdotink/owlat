@@ -1,5 +1,5 @@
 /**
- * THE DECISION FUNCTIONS ARE PURE (plan D15).
+ * THE DECISION FUNCTIONS ARE PURE.
  *
  * `nextShare` takes data and returns a verdict. The clock is a parameter. If it
  * ever reads `Date.now()`, a database or the environment, it stops being

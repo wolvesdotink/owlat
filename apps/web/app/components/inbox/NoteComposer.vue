@@ -21,6 +21,7 @@ import {
 	insertMention,
 	type NoteMentionCandidate,
 } from '~/utils/threadNotes';
+import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
 import { isImeComposing } from '~/utils/imeComposition';
 import { useComposerDraft } from '~/composables/useComposerDrafts';
 
@@ -56,6 +57,7 @@ const body = computed({
 	set: (next: string) => (draft.value = { body: next }),
 });
 const textarea = ref<HTMLTextAreaElement | null>(null);
+const picker = ref<SuggestionListHandle | null>(null);
 const saving = ref(false);
 const mention = ref<{ start: number; fragment: string } | null>(null);
 
@@ -131,15 +133,12 @@ function onKeydown(event: KeyboardEvent) {
 		void save();
 		return;
 	}
-	if (event.key === 'Enter' && mention.value && candidates.value[0]?.handle) {
-		// Enter takes the first teammate the picker shows, like Tab would.
-		event.preventDefault();
-		pick(candidates.value[0].handle);
-		return;
-	}
+	// The open teammate list takes ↑ ↓ Enter Tab (Enter picks the highlighted
+	// teammate) and, through its escape layer, the first Esc.
+	if (picker.value?.handleKeydown(event)) return;
 	if (event.key === 'Escape') {
-		// The first Esc closes the picker; the next one leaves the box (and a
-		// further one reaches the page, e.g. Answer mode's "leave").
+		// Esc leaves the box (and a further one reaches the page, e.g. Answer
+		// mode's "leave"); with an `@` still typed it first drops that.
 		event.stopPropagation();
 		if (mention.value) mention.value = null;
 		else {
@@ -171,17 +170,25 @@ defineExpose({
 			<Icon name="lucide:lock" class="size-3.5 shrink-0" aria-hidden="true" />
 			{{ t('components.inbox.notes.privacyHint') }}
 		</p>
-		<ChatMentionPicker v-if="candidates.length > 0" :candidates="candidates" @pick="pick" />
+		<ChatMentionPicker
+			v-if="candidates.length > 0"
+			ref="picker"
+			:candidates="candidates"
+			:anchor="textarea"
+			@pick="pick"
+			@dismiss="mention = null"
+		/>
 		<textarea
 			ref="textarea"
 			v-model="body"
 			rows="3"
-			class="input w-full resize-none bg-bg-elevated text-sm"
+			class="input w-full resize-none"
 			:placeholder="t('components.inbox.notes.placeholder')"
 			:aria-label="
 				editing ? t('components.inbox.notes.editLabel') : t('components.inbox.notes.composerLabel')
 			"
 			data-testid="note-composer-input"
+			v-bind="picker?.fieldAttrs"
 			@input="onInput"
 			@click="recalcMention"
 			@keydown="onKeydown"

@@ -1,0 +1,61 @@
+{
+	"name": "@owlat/worker-protocol",
+	"version": "0.6.16",
+	"private": true,
+	"description": "The Convex<->worker wire contract: the arguments and results of every Convex function the IMAP server and the mail-sync worker call, declared once as Convex validators. apps/api registers them as `args`/`returns`; the workers derive their types from them and check every result at runtime.",
+	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
+	"type": "module",
+	"sideEffects": false,
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts"
+		},
+		"./validatorMatch": {
+			"types": "./src/validatorMatch.ts",
+			"import": "./src/validatorMatch.ts"
+		},
+		"./fields": {
+			"types": "./src/fields.ts",
+			"import": "./src/fields.ts"
+		},
+		"./imap": {
+			"types": "./src/imap/index.ts",
+			"import": "./src/imap/index.ts"
+		},
+		"./mailSync": {
+			"types": "./src/mailSync/index.ts",
+			"import": "./src/mailSync/index.ts"
+		},
+		"./client": {
+			"types": "./src/client.ts",
+			"import": "./src/client.ts"
+		},
+		"./wireFixtures": {
+			"types": "./src/wireFixtures/index.ts",
+			"import": "./src/wireFixtures/index.ts"
+		}
+	},
+	"scripts": {
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@owlat/shared": "workspace:*",
+		"convex": "catalog:convex"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

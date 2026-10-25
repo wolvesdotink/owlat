@@ -1,5 +1,5 @@
 /**
- * transportOutcomes — the calibration slice (plan D8).
+ * transportOutcomes — the calibration slice.
  *
  * Stratified assignment (top engagement percentile first) maximises warming
  * quality and DESTROYS the causal comparison, so a small purely-random

@@ -86,7 +86,7 @@ function rowTitle(item: AnswerItem): string {
 	});
 }
 /**
- * Under the title (plan §7 "Queues and the Workbench"): a personal row names
+ * Under the title: a personal row names
  * the sender, the subject and the brief's latest update; a shared mailbox's
  * row and a team row name the sender and the raw preview, never a summary,
  * whether or not the thread has an item yet.

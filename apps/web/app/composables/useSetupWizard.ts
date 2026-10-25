@@ -34,6 +34,7 @@ import {
 	type TransportCredentialValues,
 } from './setupWizardCredentials';
 import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './setupWizardDraft';
+import { usePageExitGuard } from './usePageExitGuard';
 import {
 	COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS,
 	composedSendProviderCatalogEntry,
@@ -431,14 +432,7 @@ export function useSetupWizard() {
 			setupToken.value !== '' ||
 			Object.keys(env.value).length > 0;
 
-		const onBeforeUnload = (e: BeforeUnloadEvent) => {
-			if (!completed.value && hasDraftData()) {
-				e.preventDefault();
-				e.returnValue = '';
-			}
-		};
-		onMounted(() => window.addEventListener('beforeunload', onBeforeUnload));
-		onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload));
+		usePageExitGuard(() => !completed.value && hasDraftData());
 	}
 
 	const resolved = computed(() => resolveFlags(flags.value));

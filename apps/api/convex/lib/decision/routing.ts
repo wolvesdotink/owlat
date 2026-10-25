@@ -19,7 +19,7 @@ export interface BundlePlan {
 	readonly mode: BundleMode;
 }
 
-/** D11: the triage bundle is shadow only. There is deliberately no advisory mode. */
+/** The triage bundle is shadow only. There is deliberately no advisory mode. */
 export function planTriage(policy: Pick<ResolvedRoutingPolicy, 'triageBundle'>): BundlePlan | null {
 	return policy.triageBundle === 'shadow' ? { task: 'mail.triage', mode: 'shadow' } : null;
 }
@@ -30,7 +30,7 @@ export function planTriage(policy: Pick<ResolvedRoutingPolicy, 'triageBundle'>):
  *
  * - either at `enforce` → an advisory call on every eligible message, recorded
  *   under the enforced task (category first);
- * - otherwise either at `shadow` → a shadow call inside the D4 allowance,
+ * - otherwise either at `shadow` → a shadow call inside the shadow allowance,
  *   recorded under the shadowed task (category first).
  *
  * What each switch then exposes is the projection's business
@@ -59,7 +59,7 @@ function planPhase3(
 	return null;
 }
 
-/** D5: the necessity judgment. `off` keeps the sampled divergence check (the kill switch). */
+/** The necessity judgment. `off` keeps the sampled divergence check (the kill switch). */
 export function planNecessity(
 	policy: Pick<ResolvedRoutingPolicy, 'clarifyNecessity'>
 ): BundlePlan | null {
@@ -118,7 +118,7 @@ export const CORRECTED_BY_OWNER: ReadonlySet<DecisionBundleTask> = new Set([
  * - `language`: otherwise. Triage is then ONE admitted fast-tier call. A
  *   configured `llm` decision adapter is this same rung, never a second call.
  * - `unavailable`: the plane is on and an explicitly configured provider
- *   cannot answer (D3). Terminal: no language call stands in for it.
+ *   cannot answer. Terminal: no language call stands in for it.
  */
 export type DecisionRung = 'decision' | 'language' | 'unavailable';
 
@@ -138,7 +138,7 @@ export type ArtifactSubject =
 	| { readonly kind: 'mail_message'; readonly id: string };
 
 /**
- * The canonical artifact key (contract §9): task, subject, content hash,
+ * The canonical artifact key: task, subject, content hash,
  * policy version and question-set version. Any of them changing is a new key,
  * so a new policy or a reworded bundle never reuses an old answer.
  */
@@ -165,10 +165,10 @@ export const DECISION_ARTIFACT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** How long a worker holds an artifact key: past the 10-minute action limit, so a dead worker's lease lapses. */
 export const DECISION_LEASE_MS = 15 * 60 * 1000;
 
-/** How long a sender-memory entry lives after it is learned (D12). */
+/** How long a sender-memory entry lives after it is learned. */
 export const SENDER_MEMORY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** What a display surface may show from one advisory artifact (D9: nothing else reads it). */
+/** What a display surface may show from one advisory artifact (advisory only: nothing else reads it). */
 export interface AdvisoryProjection {
 	/** Display only: the category to show beside today's label. */
 	readonly category?: string;
@@ -180,7 +180,7 @@ export interface AdvisoryProjection {
  * The display and advisory projection of an artifact under the CURRENT
  * policy. Only a complete, valid, advisory artifact projects anything, and
  * only the fields whose own switch is at `enforce`. No routing, archival, Spam
- * movement, Reply Queue or eligibility code reads this (D9).
+ * movement, Reply Queue or eligibility code reads this.
  */
 export function advisoryProjection(
 	artifact: {

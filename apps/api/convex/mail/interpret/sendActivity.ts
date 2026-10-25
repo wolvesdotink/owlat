@@ -1,6 +1,5 @@
 /**
- * Activity of the replies we send (SPEC §5 "Outbound" and "Activity
- * writers"), appended in the transaction of the send event it records. Each
+ * Activity of the replies we send, appended in the transaction of the send event it records. Each
  * hook is called from the module that owns the event, and keeps the host file
  * small:
  *

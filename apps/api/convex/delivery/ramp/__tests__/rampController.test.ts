@@ -348,8 +348,8 @@ describe('nextShare — ceilings and confidence', () => {
 	});
 
 	/**
-	 * THE LADDER BOUNDS THE SHARE DIAL, so it bounds only a cell that has one
-	 * (plan D3). A cell the fold resolves to the PACE actuator has no second
+	 * THE LADDER BOUNDS THE SHARE DIAL, so it bounds only a cell that has one.
+	 * A cell the fold resolves to the PACE actuator has no second
 	 * sender: honouring a rung on it would pull mail back toward a destination
 	 * the deployment does not have, which is why "no ceiling applies" is a
 	 * property of the TICK and never a rung stamped on the row.

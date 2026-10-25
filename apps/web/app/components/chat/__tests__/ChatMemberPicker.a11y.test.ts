@@ -8,6 +8,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import ChatMemberPicker from '../ChatMemberPicker.vue';
+import UiAvatar from '~/components/ui/Avatar.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 beforeAll(() => {
@@ -27,6 +28,7 @@ function mountPicker() {
 		},
 		global: {
 			plugins: [createTestI18n()],
+			components: { UiAvatar },
 			stubs: { Icon: iconStub },
 		},
 	});

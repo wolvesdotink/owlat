@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * A customer's email in the Team Inbox stream (plan §4.3): as written, on the
+ * A customer's email in the Team Inbox stream: as written, on the
  * gray customer bubble, with its attachments, and what needs the team's hand
  * on it: another draft waiting, a failed message's Retry, the agent's
  * questions, an auto-send countdown, and (for admins) the agent's working
@@ -86,7 +86,9 @@ const absoluteTime = computed(() =>
 
 		<!-- This message also sits in someone's personal mailbox (idea 31). -->
 		<InboxCrossSurfaceStrip :inbound-message-id="message._id" class="mb-3" />
-		<InboxMessageBody :message="message" />
+		<AppErrorBoundary surface="messageBody" :reset-keys="[message._id]">
+			<InboxMessageBody :message="message" />
+		</AppErrorBoundary>
 		<InboxMessageAttachments :message="message" />
 
 		<div
@@ -106,13 +108,13 @@ const absoluteTime = computed(() =>
 			</UiButton>
 		</div>
 
-		<!-- D13: the model guard was skipped and recorded as skipped. -->
+		<!-- The model guard was skipped and recorded as skipped. -->
 		<InboxGuardNotRunNotice
 			v-if="isAdmin && message.securityFlags?.guardNotRun"
 			:marker="message.securityFlags.guardNotRun"
 		/>
 
-		<!-- D1: held for a person at the spend ceiling; replaces the failed notice. -->
+		<!-- Held for a person at the spend ceiling; replaces the failed notice. -->
 		<InboxBudgetHoldNotice
 			v-if="message.processingStatus === 'failed' && message.budgetHold"
 			:hold="message.budgetHold"

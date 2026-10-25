@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Answer mode's one AI entry point (plan §04): "What should the reply say?"
+ * Answer mode's one AI entry point: "What should the reply say?"
  * with an optional instruction, and "Draft with AI".
  *
  * Cmd/Ctrl+J inside Answer mode lands in the instruction field (the page asks
@@ -71,7 +71,7 @@ const inputId = useId();
 				ref="inputEl"
 				v-model="instruction"
 				type="text"
-				class="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary"
+				class="input-bare min-w-0 flex-1 text-sm"
 				:placeholder="t('components.answer.aiBar.placeholder')"
 				:disabled="busy"
 				maxlength="500"

@@ -2,18 +2,20 @@
 /**
  * The Team inbox thread header's actions. Reply is the one primary action; the
  * thread's state (assignee, snooze, status) and any chat channel already
- * discussing it sit beside it on wide screens, while starting a new discussion
- * waits in a ⋯ menu. Below `sm` everything but Reply folds into that one menu
- * instead of wrapping off the edge.
+ * discussing it sit beside it on wide screens, while starting a new discussion,
+ * copying the thread's link and sharing it in chat wait in a ⋯ menu. Below `sm`
+ * everything but Reply folds into that one menu instead of wrapping off the edge.
  *
- * The plain actions (discuss in chat, snooze / unsnooze) are described once in
- * `simpleActions` and rendered as buttons or menu items. Assignment and status
- * have a richer wide form (an avatar popover, a status menu) and a compact one
- * (assign to me, "mark as" items), so each gets both renderings here.
+ * The plain actions (discuss in chat, copy link, share in chat, snooze /
+ * unsnooze) are described once in `simpleActions` and rendered as buttons or
+ * menu items. Assignment and status have a richer wide form (an avatar popover,
+ * a status menu) and a compact one (assign to me, "mark as" items), so each gets
+ * both renderings here.
  *
  * Presentation only: the page owns the data and the writes.
  */
 import type { AssignPopoverMember } from '~/components/inbox/AssignPopover.vue';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 const THREAD_STATUSES = ['open', 'waiting', 'resolved'] as const;
 type ThreadStatus = (typeof THREAD_STATUSES)[number];
@@ -37,9 +39,12 @@ const emit = defineEmits<{
 	snooze: [];
 	unsnooze: [];
 	status: [status: ThreadStatus];
+	copyLink: [];
+	shareInChat: [];
 }>();
 
 const { t } = useI18n();
+const { ariaFor } = useShortcutLabels();
 
 const assignMenuOpen = ref(false);
 const statusMenuOpen = ref(false);
@@ -84,6 +89,20 @@ const simpleActions = computed<SimpleAction[]>(() => {
 			});
 		}
 	}
+	actions.push({
+		key: 'copy-link',
+		icon: 'lucide:link',
+		label: t('shared.conversationLink.copyLink'),
+		run: () => emit('copyLink'),
+	});
+	if (props.chatEnabled) {
+		actions.push({
+			key: 'share-in-chat',
+			icon: 'lucide:message-square-share',
+			label: t('shared.conversationLink.shareInChat'),
+			run: () => emit('shareInChat'),
+		});
+	}
 	return actions;
 });
 
@@ -116,7 +135,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 			size="sm"
 			class="gap-1.5"
 			data-testid="thread-reply"
-			:aria-keyshortcuts="'r'"
+			:aria-keyshortcuts="ariaFor('inbox.reply')"
 			@click="emit('reply')"
 		>
 			<Icon name="lucide:reply" class="w-4 h-4" />
@@ -210,11 +229,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 					/>
 				</UiDropdownMenuItem>
 			</UiDropdownMenu>
-			<UiDropdownMenu
-				v-if="overflowActions.length > 0"
-				v-model:open="wideMenuOpen"
-				position="right"
-			>
+			<UiDropdownMenu v-model:open="wideMenuOpen" position="right">
 				<template #trigger>
 					<UiButton
 						variant="ghost"

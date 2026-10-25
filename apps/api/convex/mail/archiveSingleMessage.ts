@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.2, §6.4): moving ONE message of a thread, for a
+ * Read on arrival: moving ONE message of a thread, for a
  * delayed archive or a rule's folder action.
  *
  * Both go through `moveMessagesToFolder` (`messageActions.ts`): the same UID,

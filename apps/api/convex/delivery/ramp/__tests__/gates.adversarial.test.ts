@@ -114,7 +114,7 @@ describeEquipped('poisoned rates', () => {
 	});
 
 	// A poisoned bucket is NOT a thin window, and the reason code is what the
-	// admin notification renders from (plan D12): reporting an unusable rate as
+	// admin notification renders from: reporting an unusable rate as
 	// `own_sample_below_floor` sends the operator to the wrong remediation.
 	it.each(poisonedOwnArm)(
 		'%s: every rate gate holds with own_rate_unmeasurable',
@@ -222,7 +222,7 @@ describeEquipped('missing arms and missing gates', () => {
 		expect(evaluateHardBounceGate(built).status).toBe('insufficient_data');
 		expect(evaluateComplaintGate(built).status).toBe('insufficient_data');
 		expect(evaluateSeedPlacementGate(built).status).toBe('insufficient_data');
-		// Deferral is one-armed by design (plan D2: a missing relay slows the ramp
+		// Deferral is one-armed by design (a missing relay slows the ramp
 		// and does nothing else), so it keeps deciding on the own arm alone.
 		expect(evaluateDeferralGate(built).status).toBe('pass');
 		expect(evaluate(built).verdict).toBe('insufficient_data');
@@ -235,7 +235,7 @@ describeEquipped('missing arms and missing gates', () => {
 		const evaluation = aggregateRampGates({ perGate: [], previousCleanStreak: 3, now: NOW });
 		expect(evaluation.verdict).toBe('insufficient_data');
 		expect(evaluation.failedGate).toBeUndefined();
-		// Hold, both ways: no increase toward K_CLEAN and no reset either (D10).
+		// Hold, both ways: no increase toward K_CLEAN and no reset either.
 		expect(evaluation.cleanStreak).toBe(3);
 	});
 

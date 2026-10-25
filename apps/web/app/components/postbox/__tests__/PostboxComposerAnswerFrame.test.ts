@@ -1,5 +1,5 @@
 /**
- * The composer's two frames (plan §04). The same composer, the same draft;
+ * The composer's two frames. The same composer, the same draft;
  * only what shows by default differs:
  *
  *   page    — the full-page composer for new mail: the full envelope, To
@@ -150,9 +150,11 @@ beforeEach(() => {
 			return {
 				sendShortcutHint: ref('Send (Ctrl+Enter)'),
 				scheduleShortcutHint: ref('Schedule send (Ctrl+Shift+Enter)'),
+				sendChords: ref({ send: 'Ctrl+Enter', alternate: 'Ctrl+Alt+Enter' }),
 				onComposerKeydown: vi.fn(),
 			};
 		},
+		usePostboxSettings: () => ({ afterReply: ref('keep') }),
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		useInboxes: () => ({ byId: ref(new Map()) }),
 		useBackendOperation: () => ({ run: vi.fn(async () => ({ ok: true })), isLoading: ref(false) }),

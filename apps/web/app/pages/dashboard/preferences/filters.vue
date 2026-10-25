@@ -61,7 +61,7 @@ interface DraftFilter {
 const editor = ref<DraftFilter | null>(null);
 
 // Plain-language and AI rules live in their own section above (read on
-// arrival, SPEC §6.1) and run after the manual filters; this list is the rest.
+// arrival) and run after the manual filters; this list is the rest.
 const manualFilters = computed(() => filters.value.filter((f) => !isPlainLanguageRule(f)));
 const ruleIds = computed(() =>
 	filters.value.filter((f) => isPlainLanguageRule(f)).map((f) => f._id)

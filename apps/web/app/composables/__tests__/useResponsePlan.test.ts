@@ -1,5 +1,5 @@
 /**
- * Answer mode's response plan (composables/useResponsePlan, SPEC §6):
+ * Answer mode's response plan (composables/useResponsePlan):
  *   - stances come from the server's plan, with the person's choices on top;
  *     unselecting an item skips it, reselecting answers it again;
  *   - a choice is written onto the draft's plan once the draft exists, the

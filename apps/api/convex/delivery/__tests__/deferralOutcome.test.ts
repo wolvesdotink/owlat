@@ -1,5 +1,5 @@
 /**
- * The `deferred` transport outcome — the emitter (plan D5/D10).
+ * The `deferred` transport outcome — the emitter.
  *
  * Three claims, and the third is the reason the piece exists:
  *
@@ -320,7 +320,7 @@ describe('one deferral per send per UTC day', () => {
 describe('what is excluded records nothing, and says so', () => {
 	it('a send with no assignment row is not telemetry — but its day is still processed', async () => {
 		const t = convexTest(schema, modules);
-		// No `assignment`: the seed-probe seam (plan D18), and any send outside the
+		// No `assignment`: the seed-probe seam, and any send outside the
 		// experiment.
 		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx));
 

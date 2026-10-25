@@ -1,5 +1,5 @@
 /**
- * Seed mailbox placement — the PURE decision core (D15).
+ * Seed mailbox placement — the PURE decision core.
  *
  * A handful of operator-owned consumer mailboxes (Gmail, Outlook, Yahoo,
  * iCloud, plus regional providers) receive a SHADOW COPY of a send; an IMAP
@@ -8,7 +8,7 @@
  * classification, the per-provider roll-up, the corroboration rule, gate 5's
  * verdict, and the probe-hygiene plan.
  *
- * D17 — A TRIPWIRE, NOT A GAUGE. Five to ten brand-new consumer mailboxes are
+ * A TRIPWIRE, NOT A GAUGE. Five to ten brand-new consumer mailboxes are
  * far too small a sample for a percentage anyone should quote, and fresh
  * consumer accounts with no engagement history are filtered more harshly than
  * real subscribers. Everything this module returns to a caller is therefore a
@@ -24,9 +24,9 @@
  * share must clear `SEED_REACHED_THRESHOLD` (90 %) AND, when a reference
  * transport carried probes of its own, sit within `SEED_REFERENCE_TOLERANCE`
  * (5 pp) of it. Standalone there is no reference arm, the second clause is
- * `no_reference_arm`, and the absolute clause is the whole gate (D3).
+ * `no_reference_arm`, and the absolute clause is the whole gate.
  *
- * D2 — ADDITIVE-ONLY. Zero seed mailboxes is a SUPPORTED CONFIGURATION. It
+ * ADDITIVE-ONLY. Zero seed mailboxes is a SUPPORTED CONFIGURATION. It
  * yields `insufficient_data` and nothing else: no error, no warning, no
  * "setup incomplete" nag, and no effect on any share or pace decision.
  *
@@ -61,7 +61,7 @@ export function isSeedProbeId(value: string): boolean {
 /**
  * How many seed mailboxes one organization may connect.
  *
- * D17 sizes a seed set at 5-10 per provider, and EVERY send drops a full
+ * A seed set is sized at 5-10 per provider, and EVERY send drops a full
  * shadow copy into EVERY seed — the cost of a seed is linear in send volume,
  * so an unbounded set is a self-inflicted volume problem, not a better
  * measurement. The limit is enforced at CONNECT time (`mail/external/accountsSeed
@@ -70,46 +70,6 @@ export function isSeedProbeId(value: string): boolean {
  * believes are being measured.
  */
 export const SEED_ACCOUNTS_PER_ORG_LIMIT = 50;
-
-/**
- * One seed mailbox's outstanding probe work — the WIRE CONTRACT between the
- * Convex poller surface (`analytics/seedProbePoller.listSeedProbeWork`) and the
- * mail-sync worker that walks the mailbox. Declared here, once, because both
- * ends are separate deployables: two hand-kept copies of a wire shape drift.
- *
- * Carries no credential and nothing from inside a mailbox — an address the
- * worker must connect to, and opaque probe ids to look for.
- */
-export interface SeedProbeWorkItem {
-	organizationId: string;
-	accountId: string;
-	address: string;
-	provider: DestinationProviderKey;
-	/** Probes dispatched, settled, and still unclassified. */
-	probeIds: string[];
-	/** Probes past the give-up horizon — report MISSING without searching. */
-	expiredProbeIds: string[];
-	/**
-	 * The ONLY hosts the hygiene click may be issued against — this deployment's
-	 * own tracking/site origins. The click target is chosen from links found
-	 * inside a message sitting in a mailbox we do not control the server of, so
-	 * the allowed set is supplied by the backend rather than inferred from the
-	 * content. An empty list means "click nothing".
-	 */
-	clickHosts: string[];
-}
-
-/**
- * One PAGE of seed work. The sweep is cursored rather than a bounded top-N:
- * a fixed page with no cursor starves whichever organizations sort last on a
- * multi-org deployment, permanently and silently. The worker holds `cursor`
- * between ticks and starts over when the sweep reports `isDone`.
- */
-export interface SeedProbeWorkPage {
-	items: SeedProbeWorkItem[];
-	cursor: string | null;
-	isDone: boolean;
-}
 
 // ============ PLACEMENT CLASSIFICATION ============
 

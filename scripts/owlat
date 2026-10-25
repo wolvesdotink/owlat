@@ -29,11 +29,17 @@
 #   owlat status              — docker compose ps
 #   owlat logs [service]      — docker compose logs -f [service]
 #   owlat doctor [--json]     — diagnose a broken install (--json: machine-readable report)
+#   owlat support-bundle [--lines N] [--output FILE]
+#                             — one redacted .tar.gz for a bug report (doctor,
+#                               compose ps, last N log lines per service,
+#                               versions, migration ledger, last rollout)
 #   owlat upgrade             — trigger in-app update to latest
 #   owlat upgrade --version X — pin to a specific semver version
 #   owlat backup [path]       — bash scripts/backup.sh [path]
 #   owlat backup-schedule [enable|disable|status] — daily automatic backups (systemd timer / cron)
 #   owlat restore <file>      — bash scripts/restore.sh <file>
+#   owlat rollback [--yes]    — restore the snapshot the updater took before the
+#                               last in-app update (data, compose file, .env)
 #   owlat shell <service>     — docker compose exec <service> sh
 #   owlat version             — print stack version
 #   owlat install-cli         — (re)link this script into /usr/local/bin
@@ -71,6 +77,10 @@ if [[ ! -f "$OWLAT_DIR/docker-compose.yml" ]]; then
 	echo "Set OWLAT_DIR=/path/to/your/owlat/clone to override." >&2
 	exit 1
 fi
+
+# Where the operator ran `owlat` from: `support-bundle` resolves a relative
+# --output against it, as any command line tool would.
+OWLAT_CALLER_PWD="$PWD"
 
 cd "$OWLAT_DIR"
 
@@ -446,6 +456,45 @@ sync_flag_mirror() {
 	printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Wrote $mirror from the backend's feature flags."
 }
 
+# ── Updater requests ──────────────────────────────────────────────────────────
+# Sends one request to the updater sidecar from inside its own container: the
+# instance secret is already in its environment, and the updater is the one
+# container a rollback never recreates, so the answer outlives the restore.
+# Node's http client rather than fetch(), which gives up on a response that
+# takes more than five minutes to start (a restore waits for readiness). Prints
+# the answer's `description` (or `error`), then `snapshot-id: <id>` when the
+# answer names a snapshot; exits non-zero on a non-2xx answer.
+UPDATER_REQUEST_JS='
+const http = require("node:http");
+const [method, path, body] = process.argv.slice(1);
+const req = http.request(
+	{
+		host: "127.0.0.1",
+		port: Number(process.env.PORT) || 3200,
+		method,
+		path,
+		headers: { "x-instance-secret": process.env.INSTANCE_SECRET || "", "content-type": "application/json" },
+	},
+	(res) => {
+		let text = "";
+		res.setEncoding("utf8");
+		res.on("data", (chunk) => (text += chunk));
+		res.on("end", () => {
+			let answer = {};
+			try { answer = JSON.parse(text); } catch {}
+			console.log(answer.description || answer.error || text);
+			if (answer.snapshot && answer.snapshot.id) console.log("snapshot-id: " + answer.snapshot.id);
+			process.exit(res.statusCode >= 200 && res.statusCode < 300 ? 0 : 1);
+		});
+	}
+);
+req.on("error", (err) => { console.error("Cannot reach the updater: " + err.message); process.exit(2); });
+req.end(body || undefined);
+'
+updater_request() {
+	docker compose exec -T updater node -e "$UPDATER_REQUEST_JS" "$@"
+}
+
 # ── Subcommands ───────────────────────────────────────────────────────────────
 cmd="${1:-help}"
 shift || true
@@ -542,7 +591,7 @@ case "$cmd" in
 esac
 
 case "$cmd" in
-	setup|quickstart|config|sample-data|feature|env|unset-env|doctor|apply)
+	setup|quickstart|config|sample-data|feature|env|unset-env|doctor|apply|support-bundle)
 		require_supported_arch
 		;;
 esac
@@ -807,6 +856,112 @@ case "$cmd" in
 			-v "$OWLAT_DIR:/opt/owlat" \
 			"$OWLAT_SETUP_IMAGE" doctor "$@"
 		;;
+	support-bundle)
+		# One archive for a bug report, collected read-only by the setup image:
+		# it needs the Docker socket (compose ps/logs, and the migration read
+		# through the convex-deploy image), this stack's project name and
+		# profiles, so the in-container compose sees THIS stack, and the stack's
+		# default network, where doctor's MTA probes resolve MTA_API_URL
+		# (`http://mta:3100`). The archive comes back on stdout and is written
+		# here, so --output can be any host path.
+		bundle_usage="Usage: owlat support-bundle [--lines N] [--output FILE]"
+		bundle_out=""
+		bundle_args=()
+		while [[ $# -gt 0 ]]; do
+			case "$1" in
+				--output|-o|--lines)
+					# A missing value is a malformed command line, not a request for
+					# the default.
+					if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+						printf '%s\n' "Error: $1 needs a value." "$bundle_usage" >&2
+						exit 2
+					fi
+					if [[ "$1" == "--lines" ]]; then bundle_args+=("$1" "$2"); else bundle_out="$2"; fi
+					shift 2
+					;;
+				--output=*)
+					bundle_out="${1#*=}"
+					if [[ -z "$bundle_out" ]]; then
+						printf '%s\n' "Error: --output needs a value." "$bundle_usage" >&2
+						exit 2
+					fi
+					shift
+					;;
+				*)
+					bundle_args+=("$1")
+					shift
+					;;
+			esac
+		done
+		if ! setup_image_has_command support-bundle; then
+			printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} No bundle was written: this stack's setup image (${OWLAT_SETUP_IMAGE}) predates 'owlat support-bundle'." \
+				"       Upgrade the stack with 'owlat upgrade', or attach 'owlat doctor --json' and 'owlat status' instead." >&2
+			exit 1
+		fi
+		[[ -n "$bundle_out" ]] || bundle_out="owlat-support-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
+		[[ "$bundle_out" == /* ]] || bundle_out="$OWLAT_CALLER_PWD/$bundle_out"
+		if [[ -e "$bundle_out" || -L "$bundle_out" ]]; then
+			echo "Error: $bundle_out already exists; choose another --output." >&2
+			exit 1
+		fi
+		# The archive is written to a temp file beside the output: mktemp creates
+		# it exclusively, owner-only, under a random name, so nothing that already
+		# exists (a file or a symlink) is ever written through. It is opened once
+		# as fd 3, checked to still be that file, and removed on every exit.
+		bundle_tmp=""
+		trap 'exec 3>&-; [[ -z "$bundle_tmp" ]] || rm -f -- "$bundle_tmp"' EXIT
+		trap 'exit 129' HUP
+		trap 'exit 130' INT
+		trap 'exit 143' TERM
+		if ! bundle_tmp="$(mktemp "$(dirname -- "$bundle_out")/.owlat-support.XXXXXXXXXX" 2>/dev/null)" \
+			|| ! exec 3>>"$bundle_tmp" \
+			|| [[ -L "$bundle_tmp" ]] || ! [[ "$bundle_tmp" -ef /dev/fd/3 ]]; then
+			echo "Error: cannot write $bundle_out." >&2
+			exit 1
+		fi
+		export_compose_profiles
+		project_name="$(compose_project_name)"
+		bundle_network=""
+		if [[ -n "$project_name" ]]; then
+			# Compose labels the network it created as the project's `default`,
+			# whatever name it was given. None while the stack is down: the MTA is
+			# then unreachable from anywhere and doctor reports exactly that.
+			bundle_network="$(docker network ls \
+				--filter "label=com.docker.compose.project=$project_name" \
+				--filter "label=com.docker.compose.network=default" \
+				--format '{{.Name}}' 2>/dev/null | sed -n 1p)" || bundle_network=""
+		fi
+		bundle_status=0
+		docker run --rm \
+			${bundle_network:+--network "$bundle_network"} \
+			-v "$OWLAT_DIR:/opt/owlat" \
+			-v /var/run/docker.sock:/var/run/docker.sock \
+			-e "OWLAT_DIR=/opt/owlat" \
+			${project_name:+-e "COMPOSE_PROJECT_NAME=$project_name"} \
+			${COMPOSE_PROFILES:+-e "COMPOSE_PROFILES=$COMPOSE_PROFILES"} \
+			"$OWLAT_SETUP_IMAGE" support-bundle --output - ${bundle_args[@]+"${bundle_args[@]}"} \
+			>&3 || bundle_status=$?
+		exec 3>&-
+		if [[ "$bundle_status" -ne 0 ]]; then
+			echo "Error: the support bundle could not be collected (see above)." >&2
+			exit "$bundle_status"
+		fi
+		# Published with a hard link: link(2) never replaces an existing path, so
+		# a file created at the output while the bundle was collected is kept and
+		# this run fails instead. The -ef check catches a directory that appeared
+		# there (ln would have linked into it).
+		if ! ln -- "$bundle_tmp" "$bundle_out" 2>/dev/null || ! [[ "$bundle_tmp" -ef "$bundle_out" ]]; then
+			bundle_stray="$bundle_out/$(basename -- "$bundle_tmp")"
+			if [[ "$bundle_stray" -ef "$bundle_tmp" ]]; then rm -f -- "$bundle_stray"; fi
+			if [[ -e "$bundle_out" || -L "$bundle_out" ]]; then
+				echo "Error: $bundle_out was created while the bundle was collected; nothing was written." >&2
+			else
+				echo "Error: cannot write $bundle_out." >&2
+			fi
+			exit 1
+		fi
+		printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Support bundle written to $bundle_out"
+		;;
 	shell|exec)
 		svc="${1:-web}"
 		shift || true
@@ -823,6 +978,42 @@ case "$cmd" in
 		;;
 	restore)
 		exec bash scripts/restore.sh "$@"
+		;;
+	rollback)
+		# Put the stack back on the snapshot the updater took before the last
+		# in-app update. The updater does the restore, with the same code an
+		# automatic rollback runs; this only shows what it would restore and
+		# asks first, since everything written since the snapshot is lost.
+		assume_yes=0
+		for arg in "$@"; do
+			case "$arg" in
+				--yes | -y) assume_yes=1 ;;
+				*)
+					echo "Unknown rollback flag: $arg" >&2
+					exit 2
+					;;
+			esac
+		done
+		info=$(updater_request GET /snapshot) || {
+			printf '%s\n' "$info" >&2
+			echo "Error: could not ask the updater for its snapshot. Is it running? (owlat status)" >&2
+			exit 1
+		}
+		snapshot_id=$(printf '%s\n' "$info" | sed -n 's/^snapshot-id: //p')
+		printf '%s\n' "$info" | grep -v '^snapshot-id: ' || true
+		[[ -n "$snapshot_id" ]] || exit 1
+		if [[ "$assume_yes" != "1" ]]; then
+			read -r -p "Type 'yes' to restore it: " answer
+			[[ "$answer" == "yes" ]] || { echo "Aborted — nothing was changed."; exit 1; }
+		fi
+		printf '%b\n' "${CYAN}${BOLD}[info]${RESET} Restoring ${snapshot_id} (this stops convex and redis while the data is copied back)…"
+		status=0
+		updater_request POST /rollback "{\"snapshot\":\"${snapshot_id}\"}" || status=$?
+		if [[ "$status" -ne 0 ]]; then
+			printf '%b\n' "${RED}${BOLD}[err ]${RESET} The rollback did not complete (see above)." >&2
+			exit "$status"
+		fi
+		printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Rolled back."
 		;;
 	version)
 		# Read version from the running web container env, or fall back to local .env / package.json

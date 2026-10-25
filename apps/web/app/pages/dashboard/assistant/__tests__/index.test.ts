@@ -11,7 +11,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { defineComponent, h, inject, nextTick, provide, ref } from 'vue';
+import { defineComponent, h, inject, nextTick, provide, ref, type Component } from 'vue';
 import UiDropdownMenu from '@owlat/ui/components/ui/DropdownMenu.vue';
 import UiDropdownMenuItem from '@owlat/ui/components/ui/DropdownMenuItem.vue';
 import AssistantComposer from '~/components/assistant/AssistantComposer.vue';
@@ -36,6 +36,7 @@ const conversations = ref([
 ]);
 const activeId = ref<string | null>('conv_1');
 const messages = ref<Message[]>([]);
+const promptHistory = ref([{ id: 'msg_u1', prompt: 'What did the October launch earn?' }]);
 const selectConversation = vi.fn((id: string) => {
 	activeId.value = id;
 });
@@ -71,6 +72,7 @@ beforeEach(() => {
 			messages,
 			messagesError: ref(null),
 			refetchMessages: vi.fn(),
+			promptHistory,
 			activeConversation: ref(conversations.value[0]),
 			streaming: ref(false),
 			selectConversation,
@@ -83,12 +85,16 @@ beforeEach(() => {
 	});
 });
 
-function mountPage(options: { attachTo?: HTMLElement } = {}): VueWrapper {
+function mountPage(options: { attachTo?: HTMLElement; composer?: Component } = {}): VueWrapper {
 	return mount(AssistantPage, {
 		attachTo: options.attachTo,
 		global: {
 			plugins: [createTestI18n()],
-			components: { UiDropdownMenu, UiDropdownMenuItem, AssistantComposer },
+			components: {
+				UiDropdownMenu,
+				UiDropdownMenuItem,
+				AssistantComposer: options.composer ?? AssistantComposer,
+			},
 			stubs: {
 				UiRailDrawer: RailDrawerStub,
 				UiConfirmationDialog: true,
@@ -215,6 +221,46 @@ describe('Assistant feed follows only a reader at the end (#1050)', () => {
 		await flushPromises();
 		expect(box.scrollTop).toBe(1900);
 		expect(w.find('[data-testid="assistant-jump-latest"]').exists()).toBe(false);
+		w.unmount();
+	});
+});
+
+describe('Assistant composer boundary', () => {
+	it('clears a failed composer when another chat opens, though the route stays the same', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const composerFails = ref(true);
+		const FlakyComposer = defineComponent({
+			setup: () => () => {
+				if (composerFails.value) throw new Error('composer could not render');
+				return h('div', { 'data-testid': 'composer' });
+			},
+		});
+		const w = mountPage({ composer: FlakyComposer });
+		await nextTick();
+		expect(w.find('[role="alert"]').text()).toContain("The composer couldn't be displayed.");
+
+		composerFails.value = false;
+		await rowButtons(w)[1]!.trigger('click');
+		await nextTick();
+
+		expect(selectConversation).toHaveBeenCalledWith('conv_2');
+		expect(w.find('[role="alert"]').exists()).toBe(false);
+		expect(w.find('[data-testid="composer"]').exists()).toBe(true);
+		w.unmount();
+	});
+});
+
+describe('Assistant question recall', () => {
+	it('hands the open conversation and its questions to the composer for ↑', async () => {
+		const w = mountPage({ attachTo: document.body });
+		const composer = w.getComponent(AssistantComposer);
+		expect(composer.props('historyKey')).toBe('conv_1');
+		expect(composer.props('promptHistory')).toEqual(promptHistory.value);
+
+		const field = w.get('textarea');
+		await field.trigger('keydown', { key: 'ArrowUp' });
+		await flushPromises();
+		expect((field.element as HTMLTextAreaElement).value).toBe('What did the October launch earn?');
 		w.unmount();
 	});
 });

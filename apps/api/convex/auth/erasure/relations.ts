@@ -183,6 +183,8 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('inboxAssignmentNotices', 'userId', 'delete', 'Notices addressed to the member.'),
 	rel('dashboardLayouts', 'userId', 'delete', 'Personal layout.'),
 	rel('pushSubscriptions', 'userId', 'delete', 'The member’s Web Push devices and their keys.'),
+	rel('marketingNotices', 'userId', 'delete', 'Notifications addressed to the member.'),
+	rel('marketingNotificationSettings', 'userId', 'delete', 'Personal notification switches.'),
 	rel(
 		'accountExportSessions',
 		'userId',

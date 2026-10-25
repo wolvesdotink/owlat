@@ -16,6 +16,7 @@ import {
 } from '~/utils/dnsRecordChecklist';
 // Explicit import so the summary also mounts inside the row's component tests.
 import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 const props = defineProps<{
 	entries: ChecklistEntry[];
@@ -75,8 +76,7 @@ const percent = computed(() =>
 const jumpTo = (entry: ChecklistEntry) => {
 	const el = document.getElementById(props.anchorFor(entry));
 	if (!el) return;
-	const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-	el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+	el.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
 	// Move focus with the view so keyboard and screen-reader users land there too.
 	el.focus({ preventScroll: true });
 };

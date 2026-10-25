@@ -118,7 +118,7 @@ export function splitCandidateSlots(slots: readonly ReplySlot[]): {
 }
 
 /**
- * An open thread item a slot may fill (SPEC §6: a clarification slot carries
+ * An open thread item a slot may fill (a clarification slot carries
  * the `itemId` of the item it came from). `ref` is how the prompt names it.
  */
 export interface SlotItem<I extends string = string> {

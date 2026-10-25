@@ -3,6 +3,7 @@ import type { SettingsPaletteItem } from '~/lib/commandPaletteCore';
 import { routePaletteTargets } from '~/lib/commandPaletteRoutes';
 import { quickCreateEntriesFor, type QuickCreateId } from '~/lib/quickCreate';
 import { parseKeywords, settingsControlTargets } from '~/lib/settingsRegistry';
+import { adminControlTargets } from '~/lib/adminSettingsControls';
 import { useAdminEnvironment } from '~/composables/useAdminEnvironment';
 import { useZenMode } from '~/composables/useZenMode';
 
@@ -16,7 +17,8 @@ import { useZenMode } from '~/composables/useZenMode';
  *     plus every other labelled route in the breadcrumb table (the admin leaves
  *     the sidebar hides behind a hub), deduped by href and gated the same way;
  *   - settings controls — the individual switches from the settings registry,
- *     each deep-linked to the section that holds it, searchable by synonym.
+ *     each deep-linked to the section that holds it, searchable by synonym,
+ *     plus the Workspace controls (DKIM, AI key, …) for owners and admins.
  *
  * The verbs CREATE: "Compose" opens a composer and "New contact" opens the Add
  * dialog, both through the shared `useQuickCreate` entry point — they used to
@@ -61,9 +63,8 @@ export function useCommandPaletteProviders() {
 	const { isZen, toggleZen } = useZenMode();
 	// The admin registry's own gates, for the Administration pages the route
 	// provider offers. Subscribed only for someone who can open those pages.
-	const { environment: adminEnvironment } = useAdminEnvironment(
-		computed(() => role.value === 'admin' || role.value === 'owner')
-	);
+	const canAdminister = computed(() => role.value === 'admin' || role.value === 'owner');
+	const { environment: adminEnvironment } = useAdminEnvironment(canAdminister);
 
 	const verbItems = computed<PaletteItem[]>(() => {
 		const environment = {
@@ -176,8 +177,14 @@ export function useCommandPaletteProviders() {
 	// Controls, not destinations: "dark mode" should find Appearance even though
 	// no page is called that. The registry declares the synonyms as message keys,
 	// so they are resolved — and re-resolved on a locale switch — right here.
+	// Workspace controls (DKIM, AI key, webhook secret, …) answer to the role
+	// first: a member gets none, whatever the deployment has, and their pages'
+	// own registry gates apply on top.
 	const settingsItems = computed<SettingsPaletteItem[]>(() =>
-		settingsControlTargets({ isFeatureEnabled, isDesktop: isDesktop.value }).map((target) => ({
+		[
+			...settingsControlTargets({ isFeatureEnabled, isDesktop: isDesktop.value, role: role.value }),
+			...adminControlTargets(adminEnvironment.value, canAdminister.value),
+		].map((target) => ({
 			id: `setting:${target.id}`,
 			label: t(target.control.titleKey),
 			subtitle: t(target.entry.titleKey),

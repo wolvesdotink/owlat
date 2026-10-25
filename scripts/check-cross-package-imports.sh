@@ -70,14 +70,14 @@ fi
 
 echo "ok:   no relative imports crossing package boundaries (use @owlat/* specifiers)"
 
-# ── The one-way edge: nothing in packages/ may import @owlat/mta-protocol ──
+# ── The one-way edge: nothing in packages/ may import a wire package ──
 #
-# D7's wire package is a LEAF: apps import it, packages/ does not. It depends on
-# `@owlat/shared` because the wire is stated in terms of the shared vocabularies
-# (DeliveryDomain, GovernedRoutingContext, the destination-provider taxonomy, the
-# readiness verdicts), and re-declaring any of them to buy literal
-# zero-dependency status would trade one duplication for a worse one. That trade
-# is only safe while the edge runs ONE WAY.
+# The two wire packages are LEAVES: apps import them, packages/ does not.
+# `@owlat/mta-protocol` (Convex<->MTA) and `@owlat/worker-protocol`
+# (Convex<->IMAP/mail-sync) both depend on `@owlat/shared` because their wires
+# are stated in terms of the shared vocabularies, and re-declaring any of them
+# to buy literal zero-dependency status would trade one duplication for a worse
+# one. That trade is only safe while the edge runs ONE WAY.
 #
 # The `@owlat/shared` direction would make an outright package cycle, which `bun
 # install`, knip, tsc and check-build-graph.ts all accept in silence. The other
@@ -85,80 +85,85 @@ echo "ok:   no relative imports crossing package boundaries (use @owlat/* specif
 # notice at all, and the leaf would have quietly become a mid-graph node that
 # every consumer of that package now carries. So the scan is every workspace
 # package except the wire package itself.
-cycle=""
+for wire in mta-protocol worker-protocol; do
+	cycle=""
 
-# ONE node, reading every manifest, instead of one interpreter start per
-# package.json. A manifest that cannot be read or parsed counts as a hit, which
-# is what the per-file version did too (a `require` that threw exited non-zero
-# and landed in this same list): the gate would rather name a broken manifest
-# than pass one it never managed to check.
-manifests=$(git ls-files -- 'packages/*/package.json' |
-	grep -v '^packages/mta-protocol/package\.json$' || true)
-if [ -n "$manifests" ]; then
-	declared=$(printf '%s\n' "$manifests" | node -e '
-		const fs = require("node:fs");
-		for (const p of fs.readFileSync(0, "utf8").split("\n").filter(Boolean)) {
-			let hit = true;
-			try {
-				const m = JSON.parse(fs.readFileSync(p, "utf8"));
-				const deps = { ...m.dependencies, ...m.devDependencies, ...m.peerDependencies };
-				hit = "@owlat/mta-protocol" in deps;
-			} catch {
-				hit = true;
+	# ONE node, reading every manifest, instead of one interpreter start per
+	# package.json. A manifest that cannot be read or parsed counts as a hit,
+	# which is what the per-file version did too (a `require` that threw exited
+	# non-zero and landed in this same list): the gate would rather name a broken
+	# manifest than pass one it never managed to check.
+	manifests=$(git ls-files -- 'packages/*/package.json' |
+		grep -v "^packages/$wire/package\.json$" || true)
+	if [ -n "$manifests" ]; then
+		declared=$(printf '%s\n' "$manifests" | WIRE="@owlat/$wire" node -e '
+			const fs = require("node:fs");
+			const wire = process.env.WIRE;
+			for (const p of fs.readFileSync(0, "utf8").split("\n").filter(Boolean)) {
+				let hit = true;
+				try {
+					const m = JSON.parse(fs.readFileSync(p, "utf8"));
+					const deps = { ...m.dependencies, ...m.devDependencies, ...m.peerDependencies };
+					hit = wire in deps;
+				} catch {
+					hit = true;
+				}
+				if (hit) process.stdout.write(p + " declares a dependency on " + wire + "\n");
 			}
-			if (hit) process.stdout.write(p + " declares a dependency on @owlat/mta-protocol\n");
-		}
-	')
-	[ -n "$declared" ] && cycle="$cycle$declared"$'\n'
-fi
+		')
+		[ -n "$declared" ] && cycle="$cycle$declared"$'\n'
+	fi
 
-imports=$(scan "['\"]@owlat/mta-protocol(/|['\"])" \
-	'packages/*.ts' 'packages/*.tsx' 'packages/*.vue' 'packages/*.js' 'packages/*.mjs' 'packages/*.cjs' |
-	grep -v '^packages/mta-protocol/' || true)
-if [ -n "$imports" ]; then
-	cycle="$cycle$(printf '%s\n' "$imports" | sed 's#$# imports @owlat/mta-protocol#')"$'\n'
-fi
+	imports=$(scan "['\"]@owlat/$wire(/|['\"])" \
+		'packages/*.ts' 'packages/*.tsx' 'packages/*.vue' 'packages/*.js' 'packages/*.mjs' 'packages/*.cjs' |
+		grep -v "^packages/$wire/" || true)
+	if [ -n "$imports" ]; then
+		cycle="$cycle$(printf '%s\n' "$imports" | sed "s#\$# imports @owlat/$wire#")"$'\n'
+	fi
 
-if [ -n "$cycle" ]; then
-	echo ""
-	echo "FAIL: packages/ must never depend on @owlat/mta-protocol (D7's one-way edge)."
-	echo "The wire package is a leaf: apps import it, packages/ does not."
-	echo ""
-	printf '%s' "$cycle" | sed 's#^#  #'
-	exit 1
-fi
+	if [ -n "$cycle" ]; then
+		echo ""
+		echo "FAIL: packages/ must never depend on @owlat/$wire (a wire package is a leaf)."
+		echo "The wire package is a leaf: apps import it, packages/ does not."
+		echo ""
+		printf '%s' "$cycle" | sed 's#^#  #'
+		exit 1
+	fi
 
-echo "ok:   no packages/ workspace depends on @owlat/mta-protocol (D7 one-way edge)"
+	echo "ok:   no packages/ workspace depends on @owlat/$wire (one-way edge)"
+done
 
-# ── `@owlat/mta-protocol/wireFixtures` is test-only, and only this says so ──
+# ── The wire packages' `/wireFixtures` are test-only, and only this says so ──
 #
 # The frozen wire fixtures live in `src/` rather than a `__tests__` folder for
-# one reason: it is the only place BOTH apps can import ONE copy from, and a
-# fixture each suite kept its own copy of would drift with the code it exists to
-# catch. The cost of that is a public subpath export — so `import { … } from
-# '@owlat/mta-protocol/wireFixtures'` resolves just as happily from a shipped
-# handler as from a suite, and knip treats the subpath as an entry, which exempts
-# everything it exports from the dead-code ratchet. Nothing else would notice
-# fixture bytes reaching production; this does.
-fixtures=$(scan "['\"]@owlat/mta-protocol/wireFixtures['\"]" "${SOURCES[@]}" |
-	grep -v -e '/__tests__/' -e '^scripts/check-cross-package-imports\.sh$' || true)
-[ -n "$fixtures" ] && fixtures="$fixtures"$'\n'
+# one reason: it is the only place both ends of a wire can import ONE copy from,
+# and a fixture each suite kept its own copy of would drift with the code it
+# exists to catch. The cost of that is a public subpath export — so `import { … }
+# from '@owlat/mta-protocol/wireFixtures'` resolves just as happily from a
+# shipped handler as from a suite, and knip treats the subpath as an entry, which
+# exempts everything it exports from the dead-code ratchet. Nothing else would
+# notice fixture bytes reaching production; this does.
+for wire in mta-protocol worker-protocol; do
+	fixtures=$(scan "['\"]@owlat/$wire/wireFixtures['\"]" "${SOURCES[@]}" |
+		grep -v -e '/__tests__/' -e '^scripts/check-cross-package-imports\.sh$' || true)
+	[ -n "$fixtures" ] && fixtures="$fixtures"$'\n'
 
-if [ -n "$fixtures" ]; then
-	count=$(printf '%s' "$fixtures" | grep -c .)
-	echo ""
-	echo "FAIL: $count file(s) outside a __tests__/ folder import @owlat/mta-protocol/wireFixtures."
-	echo "The frozen wire fixtures are test-only; production code must import the"
-	echo "wire declarations ('@owlat/mta-protocol/send', '/routingDecision', …)."
-	echo ""
-	printf '%s' "$fixtures" | while IFS= read -r f; do
-		[ -n "$f" ] || continue
-		grep -nE "['\"]@owlat/mta-protocol/wireFixtures['\"]" "$f" | sed "s#^#  $f:#"
-	done
-	exit 1
-fi
+	if [ -n "$fixtures" ]; then
+		count=$(printf '%s' "$fixtures" | grep -c .)
+		echo ""
+		echo "FAIL: $count file(s) outside a __tests__/ folder import @owlat/$wire/wireFixtures."
+		echo "The frozen wire fixtures are test-only; production code must import the"
+		echo "wire declarations (the package's other subpaths)."
+		echo ""
+		printf '%s' "$fixtures" | while IFS= read -r f; do
+			[ -n "$f" ] || continue
+			grep -nE "['\"]@owlat/$wire/wireFixtures['\"]" "$f" | sed "s#^#  $f:#"
+		done
+		exit 1
+	fi
 
-echo "ok:   @owlat/mta-protocol/wireFixtures imported only from __tests__/ folders"
+	echo "ok:   @owlat/$wire/wireFixtures imported only from __tests__/ folders"
+done
 
 # ── `@owlat/smtp-listener/testClient` is test-only, and only this says so ──
 #

@@ -56,7 +56,7 @@ export async function seedMailThread(
 	const mailboxId = await seedMailbox(t, { address: 'me@owlat.test', ...mailboxSeed });
 	await seedFolder(t, mailboxId, 'inbox');
 	// Read on arrival stays off unless a test asks for it: these suites test the
-	// full read itself, which is what a run does with the preference off (SPEC §2.1).
+	// full read itself, which is what a run does with the preference off.
 	if (isReadOnArrival !== true) await setReadOnArrival(t, mailboxId, false);
 	const messageId = await seedMessage(t, mailboxId, {
 		fromAddress: 'jonas@example.com',
@@ -151,7 +151,7 @@ export async function seedTeamThread(
 
 /**
  * A complete interpretation with no open items for one Team Inbox message:
- * the state the `interpretation_incomplete` gate (D3) needs before any
+ * the state the `interpretation_incomplete` gate needs before any
  * autonomous send, which the dispatch transaction rechecks.
  */
 export async function seedCleanInterpretation(

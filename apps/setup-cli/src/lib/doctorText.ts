@@ -48,9 +48,23 @@ export class DoctorText {
 	toString(): string {
 		return this.render((text) => text);
 	}
+
+	/**
+	 * Only the code-owned text: each run of runtime parts becomes one
+	 * `[redacted]`. For output that leaves the install (a support bundle), where
+	 * runtime text such as an MTA headline can carry personal data that no
+	 * secret list knows about.
+	 */
+	codeOwned(): string {
+		return withheld(this.parts);
+	}
 }
 
-/** Code-owned text or a trusted identifier: an env key name, a path, catalog copy. */
+/**
+ * Code-owned text or a trusted identifier: an env key name, a fixed path,
+ * catalog copy. Never anything built from operator input or runtime data: a
+ * path under the configured install directory carries that directory's name.
+ */
 export function trusted(text: string): Trusted {
 	return { trustedText: text };
 }

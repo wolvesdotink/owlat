@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Answer mode "Draft with AI that asks first" (plan §05 and §06).
+ * Answer mode "Draft with AI that asks first".
  *
  *   start   gather context → gap check → questions (status `asking`), or, when
  *           nothing is missing or the eagerness dial is off, stream the draft

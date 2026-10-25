@@ -6,7 +6,7 @@
  * {@link reserveHold} is the one place an action asks `aiRouting/admission.ts`
  * `reserve`. It skips the round trip when nothing bounds the call (no ceiling
  * configured and not shadow traffic, today's behaviour), and it fails closed:
- * a reserve that cannot complete is `spend_unverifiable` (D1, #1333), never an
+ * a reserve that cannot complete is `spend_unverifiable`, never an
  * admitted call. Runtime-neutral.
  */
 
@@ -95,7 +95,7 @@ export async function reserveHold(
 			expiresAt: Math.max(deadlineAt, now) + HOLD_GRACE_MS,
 		});
 	} catch {
-		// The reservation state could not be written or read: refuse (D1).
+		// The reservation state could not be written or read: refuse.
 		throw new AdmissionRefusedError('spend_unverifiable', 'unverifiable');
 	}
 	if (!verdict.isAdmitted) throw new AdmissionRefusedError(verdict.reason, verdict.limit);
@@ -150,7 +150,7 @@ export async function reserveHolds(
 			? await opts.reserve(allocations)
 			: await ctx.runMutation(internal.aiRouting.admission.reserveRun, { allocations });
 	} catch {
-		// The reservation state could not be written or read: refuse (D1).
+		// The reservation state could not be written or read: refuse.
 		throw new AdmissionRefusedError('spend_unverifiable', 'unverifiable');
 	}
 	if (!verdict.isAdmitted) throw new AdmissionRefusedError(verdict.reason, verdict.limit);

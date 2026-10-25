@@ -1,6 +1,6 @@
 import type { EditorBlock, EmailTheme, VariableType } from '@owlat/email-builder';
 import { parseStoredBlocks } from '@owlat/email-builder/stored-blocks';
-import { renderEmailHtml, resolvePlainText } from '@owlat/email-renderer';
+import { renderEmailHtml, resolvePlainText, type BlockChangeKind } from '@owlat/email-renderer';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
@@ -8,6 +8,8 @@ export interface RenderOptions {
 	theme?: EmailTheme;
 	variableType: VariableType;
 	minify?: boolean;
+	/** Comparison previews only: the Blocks to outline, by id. Never set on HTML that is saved or sent. */
+	diffOutlines?: Readonly<Record<string, BlockChangeKind>>;
 }
 
 interface LanguageRenderContent {
@@ -30,6 +32,7 @@ export function useEmailHtmlRendering() {
 			theme: options.theme,
 			variableType: options.variableType,
 			minify: options.minify,
+			diffOutlines: options.diffOutlines,
 		});
 	};
 

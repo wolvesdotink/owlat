@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Answer mode's coverage check (SPEC §6), in place of the catch-up card's
+ * Answer mode's coverage check, in place of the catch-up card's
  * ask ticks: which of the reply's planned items the draft addresses, with the
  * draft's own words for each, the files it says are attached (checked against
  * the draft's real attachments) and the commitments it makes. Debounced by the
@@ -49,7 +49,7 @@ const MAX_DRAFT_CHARS = 20_000;
 
 /** What the composer gets back. */
 export interface CoverageResult extends PlanCoverage<Id<'threadItems'>> {
-	/** What the result is bound to (review D1): the stance revision and the text. */
+	/** What the result is bound to: the stance revision and the text. */
 	planRevision: number;
 	draftHash: string;
 	/** The thread and item revisions it read: an item change invalidates it (review r2 F3). */
@@ -65,7 +65,7 @@ export interface CoverageResult extends PlanCoverage<Id<'threadItems'>> {
 
 /**
  * The model's plan check, or null when the gate refused or the call failed.
- * A spend-admission refusal is reported (D1) instead of read as a fault.
+ * A spend-admission refusal is reported instead of read as a fault.
  */
 async function checkWithModel(
 	ctx: ActionCtx,
@@ -171,7 +171,7 @@ export const check = authedAction({
 			threadRevision: loaded.threadRevision,
 			itemRevisions: loaded.items.map((i) => ({ itemId: i.id, revision: i.revision })),
 			isChecked: output !== null,
-			// D1 (U5): the model was not asked because the AI budget said no.
+			// The model was not asked because the AI budget said no.
 			...(budgetRefusal ? { budgetRefusal } : {}),
 			isStored: stored.isStored,
 		};

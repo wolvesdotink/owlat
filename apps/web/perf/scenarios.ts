@@ -1,8 +1,9 @@
 /**
- * The named scenarios: two families, three workloads. Shared by the runner
+ * The named scenarios: four families. Shared by the runner
  * (which picks and repeats them) and the browser fixture (which builds and
  * mounts them), so both always mean the same workload by the same id.
  */
+import { POSTBOX_VIRTUAL_THRESHOLD } from '../app/utils/postboxDensity';
 import { ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS, CHARS_PER_TOKEN, WRITER_LIMITS } from './workload';
 
 /** A model writing at a steady 50 tokens a second: 50 characters per 250 ms flush. */
@@ -37,7 +38,37 @@ export interface ChatHistoryScenario {
 	scrollStepPx: number;
 }
 
-type Scenario = AssistantStreamScenario | ChatHistoryScenario;
+export interface PostboxListScenario {
+	id: string;
+	family: 'postbox-list';
+	description: string;
+	seed: number;
+	/** Rows the folder holds, newest first. */
+	rows: number;
+	spanHours: number;
+	/** Pixels scrolled per animation frame, top to bottom of the folder. */
+	scrollStepPx: number;
+}
+
+export interface TeamInboxScenario {
+	id: string;
+	family: 'team-inbox';
+	description: string;
+	seed: number;
+	threads: number;
+	spanHours: number;
+}
+
+export type Scenario =
+	| AssistantStreamScenario
+	| ChatHistoryScenario
+	| PostboxListScenario
+	| TeamInboxScenario;
+
+/** Rows one folder page returns (`usePostboxThreads` asks the folder query for 50). */
+const POSTBOX_FOLDER_PAGE = 50;
+/** Threads one Team Inbox page returns (`useInbox` asks `listThreads` for 25). */
+const TEAM_INBOX_PAGE = 25;
 
 export const SCENARIOS: readonly Scenario[] = [
 	{
@@ -70,6 +101,32 @@ export const SCENARIOS: readonly Scenario[] = [
 		messages: WRITER_LIMITS.chatHistoryLimit,
 		days: 14,
 		scrollStepPx: 120,
+	},
+	{
+		id: 'postbox-list/50',
+		family: 'postbox-list',
+		description: `A Postbox folder's first page (${POSTBOX_FOLDER_PAGE} rows, under the ${POSTBOX_VIRTUAL_THRESHOLD}-row windowing threshold, so every row mounts): mount, one row marked read by a live update, scroll to the end, then teardown.`,
+		seed: 2207,
+		rows: POSTBOX_FOLDER_PAGE,
+		spanHours: 30,
+		scrollStepPx: 120,
+	},
+	{
+		id: 'postbox-list/500',
+		family: 'postbox-list',
+		description: `A Postbox folder after nine "Load more" pages (${POSTBOX_FOLDER_PAGE * 10} rows, over the ${POSTBOX_VIRTUAL_THRESHOLD}-row threshold, so only a window of rows mounts): mount, one row marked read by a live update, scroll to the end, then teardown.`,
+		seed: 2207,
+		rows: POSTBOX_FOLDER_PAGE * 10,
+		spanHours: 24 * 21,
+		scrollStepPx: 120,
+	},
+	{
+		id: 'team-inbox/100',
+		family: 'team-inbox',
+		description: `The Team Inbox list after three "Load more" pages (${TEAM_INBOX_PAGE * 4} threads): mount, one thread read by a live update, one tick of the list clock, then teardown.`,
+		seed: 3301,
+		threads: TEAM_INBOX_PAGE * 4,
+		spanHours: 72,
 	},
 ];
 

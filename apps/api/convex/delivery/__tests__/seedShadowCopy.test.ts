@@ -1,7 +1,7 @@
 /**
  * (b) The seed shadow copy goes through the IDENTICAL composer and the
  * IDENTICAL transport, carries the probe id, clears the worker's pre-dispatch
- * gates, and is EXCLUDED from analytics and reputation denominators (D18).
+ * gates, and is EXCLUDED from analytics and reputation denominators.
  *
  * The secret is set at MODULE scope, before any `describe` body runs: vitest
  * executes describe bodies at collection time, so a `beforeAll` would be too
@@ -240,8 +240,8 @@ describe('dispatch path — the probe clears every pre-dispatch gate', () => {
 	});
 });
 
-/** (b) D18 — EXCLUDED from analytics denominators AND reputation denominators. */
-describe('D18 exclusion — a shadow copy is not a Send', () => {
+/** (b) EXCLUDED from analytics denominators AND reputation denominators. */
+describe('denominator exclusion — a shadow copy is not a Send', () => {
 	it('carries no emailSendId, so no emailSends row and no sendRef exist for it', () => {
 		expect(shadow.emailSendId).toBeUndefined();
 	});
@@ -273,7 +273,7 @@ describe('D18 exclusion — a shadow copy is not a Send', () => {
 // Everything above proves the shadow envelope is right. This proves the module
 // that produces it does: one ledger row and one pool item per seed, the
 // (org, campaign, variant) idempotency that stops the campaign walker minting a
-// duplicate probe set on every page, and the D18 denominator exclusion asserted
+// duplicate probe set on every page, and the denominator exclusion asserted
 // against the SHIPPED counters rather than by construction alone.
 
 const rootGlob = import.meta.glob('../../**/*.*s');
@@ -419,7 +419,7 @@ describe('enqueueSeedShadowCopies — with seed mailboxes present', () => {
 			expect(envelope.seedProbeRef).toBeDefined();
 			expect(envelope.emailSendId).toBeUndefined();
 			expect(envelope.contactInfo.contactId).toBeUndefined();
-			// No `onComplete`: there is no Send lifecycle to complete (D18).
+			// No `onComplete`: there is no Send lifecycle to complete.
 			expect(call[3]).toBeUndefined();
 		}
 	});
@@ -523,7 +523,7 @@ describe('enqueueSeedShadowCopies — with seed mailboxes present', () => {
 	});
 
 	/**
-	 * (b) The D18 denominator proof against the SHIPPED counters. A probe must
+	 * (b) The denominator exclusion against the SHIPPED counters. A probe must
 	 * leave no trace in the campaign stat shards or in `sendingReputation` — the
 	 * two places a real Send is counted.
 	 */

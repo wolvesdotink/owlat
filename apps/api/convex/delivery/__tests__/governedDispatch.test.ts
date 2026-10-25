@@ -15,7 +15,7 @@ const sendProviderDispatch = vi.hoisted(() => vi.fn());
  * The declaration the catalog accessors report, steerable per test so one send
  * can be replayed under semantics that deliberately disagree with its kind —
  * the only way to prove the boundary reads the catalog rather than the kind
- * name (plan D2). `null` is pass-through: every test that does not call
+ * name. `null` is pass-through: every test that does not call
  * `declare()` sees the real catalog, and every test resets it afterwards.
  */
 const declared = vi.hoisted(() => ({
@@ -127,6 +127,8 @@ describe('dispatchGovernedEmail', () => {
 			// adaptive_mix cell dispatches on the arm the enqueue transaction
 			// recorded for this recipient.
 			sendId: 'send-row-1',
+			// A campaign send has no stored correlation id; the attempt mints one.
+			correlationId: expect.stringMatching(/^dsp_[0-9a-f]{32}$/),
 		});
 		expect(sendProviderDispatch).not.toHaveBeenCalled();
 		expect(result).toMatchObject({
@@ -176,6 +178,7 @@ describe('dispatchGovernedEmail', () => {
 				routingLease: 'lease-1',
 				allowWarmupOverflow: false,
 				ipPool: 'campaign',
+				correlationId: expect.stringMatching(/^dsp_[0-9a-f]{32}$/),
 				routingReentry: {
 					envelopeInput,
 					retryState: {
@@ -590,7 +593,7 @@ describe('dispatchGovernedEmail', () => {
 	});
 
 	/**
-	 * AN AMBIGUOUS TIMEOUT ON A RELAY (plan D4).
+	 * AN AMBIGUOUS TIMEOUT ON A RELAY.
 	 *
 	 * The MTA reconciles by REPLAYING the attempt — its idempotency key is the MTA
 	 * message id, so a repeat costs nothing. Mandrill's `send-raw` has no
@@ -639,7 +642,7 @@ describe('dispatchGovernedEmail', () => {
 		});
 
 		it('carries NOTHING a caller could re-dispatch from', async () => {
-			// D4: the lost response may sit on top of an accepted and delivered
+			// The lost response may sit on top of an accepted and delivered
 			// message. The absence of an envelope and of a provider message id is the
 			// structural guarantee — not a comment asking the callback to behave.
 			ambiguousRouting('mandrill');
@@ -827,7 +830,7 @@ describe('a provider refusal that carries a suppression', () => {
 });
 
 /**
- * THE GOVERNED BOUNDARY ASKS THE CATALOG, NOT THE KIND (plan P0.1 / D2).
+ * THE GOVERNED BOUNDARY ASKS THE CATALOG, NOT THE KIND.
  *
  * Four behaviours used to be spelled `providerKind === 'mta'` in
  * `governedDispatch.ts`: the pre-dispatch identity binding, the message-id
@@ -1123,6 +1126,114 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 				sendLatencyMs: 9,
 				isCustodyHandoff: false,
 			});
+		});
+	});
+});
+
+describe('dispatchGovernedEmail correlation id', () => {
+	beforeEach(() => {
+		resolveLastMileRouting.mockReset();
+		sendProviderDispatch.mockReset();
+		runMutation.mockClear();
+		runMutation
+			.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() })
+			.mockResolvedValueOnce({ ok: true });
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'ready',
+			providerKind: 'mta',
+			route: { ipPool: 'transactional' },
+			organizationId: 'org-1',
+			routingLease: 'lease-1',
+		});
+		sendProviderDispatch.mockResolvedValue({
+			result: { success: true, id: 'mta-1' },
+			providerType: 'mta',
+			latencyMs: 7,
+			attempts: 1,
+		});
+	});
+
+	afterEach(() => vi.restoreAllMocks());
+
+	const transactionalEnvelope: WorkerEnvelopeInput = {
+		kind: 'transactional',
+		emailPurpose: 'transactional',
+		to: 'recipient@example.com',
+		from: 'sender@example.com',
+		sendId: 'txn-row-1' as Id<'transactionalSends'>,
+		template: { subject: 'Subject', htmlContent: '<p>Body</p>' },
+		organizationId: 'org-1',
+	};
+
+	it('carries the Send correlation id to routing and the extras, and logs the attempt once', async () => {
+		const log = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+		// The snapshot mutation reads the Send row and hands its stored id back
+		// beside the token.
+		runMutation
+			.mockReset()
+			.mockResolvedValue({ token: 'reentry-token', expiresAt: Date.now() })
+			.mockResolvedValueOnce({
+				token: 'reentry-token',
+				expiresAt: Date.now(),
+				correlationId: 'txn_V1StGXR8_Z5jdHi6',
+			})
+			.mockResolvedValueOnce({ ok: true });
+
+		await dispatchGovernedEmail(ctx, {
+			...baseRequest,
+			envelopeInput: transactionalEnvelope,
+			messageType: 'transactional',
+			sendRef: { kind: 'transactional', id: 'txn-row-1' as never },
+		});
+
+		expect(resolveLastMileRouting.mock.calls[0]?.[1]).toMatchObject({
+			correlationId: 'txn_V1StGXR8_Z5jdHi6',
+		});
+		expect(sendProviderDispatch.mock.calls[0]?.[3]).toMatchObject({
+			correlationId: 'txn_V1StGXR8_Z5jdHi6',
+		});
+		// The id is a log key only: the idempotency key and the re-entry digest
+		// material (the snapshot's envelope and the body's `routingReentry`) are
+		// the envelope exactly as the producer queued it, without the id.
+		const snapshotArgs = runMutation.mock.calls[0]?.[1] as { envelopeInput: unknown };
+		expect(snapshotArgs.envelopeInput).toStrictEqual(transactionalEnvelope);
+		const extras = sendProviderDispatch.mock.calls[0]?.[3] as {
+			messageId: string;
+			routingReentry: { envelopeInput: unknown; retryState: { idempotencyKey: string } };
+		};
+		expect(extras.messageId).toBe('send_txn-row-1');
+		expect(extras.routingReentry.retryState.idempotencyKey).toBe('send_txn-row-1');
+		expect(extras.routingReentry.envelopeInput).toStrictEqual(transactionalEnvelope);
+		expect(JSON.stringify(extras.routingReentry)).not.toContain('txn_V1StGXR8_Z5jdHi6');
+		const events = log.mock.calls
+			.map((call) => call[0])
+			.filter((line): line is string => typeof line === 'string' && line.startsWith('{'))
+			.map((line) => JSON.parse(line) as Record<string, unknown>);
+		expect(events).toEqual([
+			{
+				event: 'delivery.dispatch.completed',
+				level: 'info',
+				orgId: 'org-1',
+				sendId: 'txn-row-1',
+				workAttemptId: expect.any(String),
+				messageId: 'send_txn-row-1',
+				correlationId: 'txn_V1StGXR8_Z5jdHi6',
+				durationMs: 7,
+				outcome: 'accepted',
+				detail: { providerType: 'mta' },
+			},
+		]);
+	});
+
+	it('mints a per-attempt id for a send that carries none', async () => {
+		vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+		await dispatchGovernedEmail(ctx, baseRequest);
+
+		const routed = resolveLastMileRouting.mock.calls[0]?.[1] as { correlationId?: string };
+		expect(routed.correlationId).toMatch(/^dsp_[0-9a-f]{32}$/);
+		expect(sendProviderDispatch.mock.calls[0]?.[3]).toMatchObject({
+			correlationId: routed.correlationId,
 		});
 	});
 });

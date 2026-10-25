@@ -1,5 +1,5 @@
 /**
- * The Answer queue as a session over Answer mode (plan §07).
+ * The Answer queue as a session over Answer mode.
  *
  * Opening the queue opens Answer mode on its first item: a Postbox item on
  * `/dashboard/answer/m/<messageId>`, a team draft on `/dashboard/answer/t/<threadId>`.
@@ -35,7 +35,8 @@ import {
 	parseAnswerFilter,
 } from '~/utils/answerQueue';
 import type { TaskFlowOrderKey, TaskFlowOutcome } from '~/utils/taskFlow';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { useShortcutScope } from '~/composables/useShortcutScope';
 
 const QUEUE_PAGE = '/dashboard/answer';
 /** Where leaving the queue goes when nothing says where it was opened from. */
@@ -224,16 +225,15 @@ export function createAnswerQueueSession() {
 		return true;
 	}
 
-	// Cmd/Ctrl+Z outside a text field undoes the queue's last action.
-	function onWindowKeydown(event: KeyboardEvent) {
-		if (!flow.active.value || !flow.canUndo.value) return;
-		if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
-		if (event.key.toLowerCase() !== 'z' || isEditableTarget(event.target)) return;
-		event.preventDefault();
-		void undo();
-	}
-	onMounted(() => window.addEventListener('keydown', onWindowKeydown));
-	onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
+	// Cmd/Ctrl+Z outside a text field undoes the queue's last action, on the
+	// queue page and on every Answer mode page under it.
+	useShortcutScope('answerQueue');
+	useKeyboardShortcuts().registerShortcut({
+		id: 'answerQueue.undo',
+		handler: () => void undo(),
+		ignoreInputs: true,
+		when: () => flow.active.value && flow.canUndo.value,
+	});
 
 	// Finishing the queue is a natural "I've caught up": move Today's watermark.
 	const { t } = useI18n();

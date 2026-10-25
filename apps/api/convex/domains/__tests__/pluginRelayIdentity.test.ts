@@ -1,6 +1,6 @@
 /**
  * THE ROWS LAND IN `sendingDomainRelayIdentities`, KEYED BY THE NAMESPACED KIND
- * (the seams plan's P3.2, and D10's rows-not-columns half).
+ * (rows, not columns).
  *
  * The registry gate beside this one proves the READ — that a plugin identity row
  * resolves through `relayDomainVerification` end to end. This one proves the
@@ -157,7 +157,7 @@ describe('provision writes the identity row', () => {
 			spf: row?.spf,
 			dkim: row?.dkim,
 		}).toEqual({
-			// D10: a plain string field on the generic table. No schema change, no
+			// A plain string field on the generic table. No schema change, no
 			// per-provider sibling, no column for the tier.
 			providerKind: KIND,
 			domain: DOMAIN,

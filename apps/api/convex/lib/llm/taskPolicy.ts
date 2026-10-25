@@ -111,7 +111,7 @@ function language(input: Omit<EntryInput, 'plane'>): Omit<TaskPolicyEntry, 'task
 	return { ...UNLIMITED, fallback: 'none', evalVersion: 0, plane: 'language', ...input };
 }
 
-/** A decision-plane task. Inbound ones never take the paid hop (D3). */
+/** A decision-plane task. Inbound ones never take the paid hop. */
 function decision(
 	input: Omit<EntryInput, 'plane' | 'tiers' | 'deadlineMs'> &
 		Partial<Pick<TaskPolicyEntry, 'deadlineMs'>>
@@ -173,7 +173,7 @@ const ENTRIES = {
 		...oneShot,
 		features: ['interpret', 'postbox_commitment'],
 	}),
-	// Read on arrival (INBOX_ZERO_PLAN §2.4): 1–2 verbatim spans and a fact.
+	// Read on arrival: 1–2 verbatim spans and a fact.
 	// One attempt: a failed gist counts instead (`mail/interpret/gist.ts`).
 	'mail.gist': language({
 		maxOutputTokens: 256,

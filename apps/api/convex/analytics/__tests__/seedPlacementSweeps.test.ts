@@ -8,7 +8,7 @@
  * end); here the question is only whether the counts that reach it describe the
  * ledger.
  *
- * COUNTS, NEVER A RATE (D17): every assertion below is on integers.
+ * COUNTS, NEVER A RATE: every assertion below is on integers.
  */
 
 import { convexTest } from 'convex-test';

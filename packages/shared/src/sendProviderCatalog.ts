@@ -1,6 +1,5 @@
 /**
- * THE SEND-PROVIDER CATALOG — one declaration, many derivations (the seams
- * plan's D1).
+ * THE SEND-PROVIDER CATALOG — one declaration, many derivations.
  *
  * What a provider IS, needs and can do, declared exactly once. Everything that
  * used to restate a piece of it now derives from here:
@@ -72,7 +71,7 @@ import { CORE_SEND_PROVIDER_CATALOG } from './sendProviderCatalogData';
 export const CORE_SEND_PROVIDER_CATALOG_ENTRIES = deepFreeze(CORE_SEND_PROVIDER_CATALOG);
 
 /**
- * A core send-transport kind — DERIVED from the catalog, per D1, so declaring an
+ * A core send-transport kind — DERIVED from the catalog, so declaring an
  * entry widens the union and every consumer of it at once. This is the union
  * five separate literals used to spell.
  */
@@ -142,7 +141,7 @@ type OwnCatalogEntry = Extract<(typeof CORE_SEND_PROVIDER_CATALOG)[number], { ti
 export type OwnSendProviderKind = OwnCatalogEntry['kind'];
 
 /**
- * THE OWN ARM, as a declaration — D3's "the own MTA is special by definition,
+ * THE OWN ARM, as a declaration — "the own MTA is special by definition,
  * and by nothing else".
  *
  * Derived from `tier: 'own'` rather than written out, so the one identity
@@ -172,7 +171,7 @@ export const OWN_SEND_PROVIDER_KIND: OwnSendProviderKind = (() => {
 /**
  * Is this the OWN arm — our own MTA — rather than a relay?
  *
- * The one capability-shaped reading of a kind's identity, per D3: the own MTA is
+ * The one capability-shaped reading of a kind's identity: the own MTA is
  * the arm a deliverability fallback moves traffic AWAY from, so "ours vs. not
  * ours" is a real question rather than a vendor special case. Ask it here
  * instead of comparing to a literal, so the answer moves with the catalog.

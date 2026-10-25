@@ -1,6 +1,6 @@
 /**
  * THE FAIL-CLOSED DEFAULTS, in one place — the reading half of the send-provider
- * catalog (the seams plan's D1).
+ * catalog.
  *
  * Every capability field on {@link SendProviderCatalogEntryShape} is optional,
  * and each one's ABSENT value means something: see the field's own docblock in

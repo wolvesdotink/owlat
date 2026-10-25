@@ -348,6 +348,38 @@ describe('notification actions keep their workspace', () => {
 		expect(b.calls).toEqual([]);
 	});
 
+	it('a link notification opens its page here, or in the workspace that sent it', async () => {
+		const b = instanceB();
+		const here = context({ convex: b.client, activeId: 'ws-b', known: ['ws-a', 'ws-b'] });
+		await handleNotificationAction(
+			{ action: 'navigate', url: '/dashboard/campaigns/c1/report', workspaceId: 'ws-b' },
+			here
+		);
+		expect(here.navigate).toHaveBeenCalledWith('/dashboard/campaigns/c1/report');
+		expect(here.switchTo).not.toHaveBeenCalled();
+
+		const elsewhere = context({ convex: b.client, activeId: 'ws-b', known: ['ws-a', 'ws-b'] });
+		await handleNotificationAction(
+			{ action: 'navigate', url: '/dashboard/automations/a1', workspaceId: 'ws-a' },
+			elsewhere
+		);
+		expect(elsewhere.switchTo).toHaveBeenCalledWith('ws-a', '/dashboard/automations/a1');
+		expect(elsewhere.navigate).not.toHaveBeenCalled();
+		expect(elsewhere.storage?.getItem(PENDING_NOTIFICATION_ACTION_KEY)).toBeNull();
+
+		const gone = context({ convex: b.client, activeId: 'ws-b', known: ['ws-b'] });
+		await handleNotificationAction(
+			{ action: 'navigate', url: '/dashboard/automations/a1', workspaceId: 'ws-gone' },
+			gone
+		);
+		expect(gone.onUnavailable).toHaveBeenCalledWith({
+			type: 'navigate',
+			path: '/dashboard/automations/a1',
+		});
+		expect(gone.switchTo).not.toHaveBeenCalled();
+		expect(b.calls).toEqual([]);
+	});
+
 	it.each(['open', 'archive', 'read', 'reply'])(
 		'%s from a removed workspace reports it and calls nothing',
 		async (action) => {

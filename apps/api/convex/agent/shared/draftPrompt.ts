@@ -99,7 +99,7 @@ export function buildDraftMessages(args: {
 				(args.stanceGuidance && args.stanceGuidance.trim().length > 0
 					? `[STANDING INSTRUCTION FROM THE MAILBOX OWNER] When replying to messages like this, take the following stance/posture: ${args.stanceGuidance.trim()}. Honour this stance while staying grounded in the context below and never inventing facts.\n\n`
 					: '') +
-				// The owner's stance per open item (SPEC §6): trusted choices, with
+				// The owner's stance per open item: trusted choices, with
 				// each item's own text fenced as untrusted inside the block.
 				(args.responsePlan ? `${args.responsePlan}\n\n` : '') +
 				`Draft a reply to the email below.\n\n<untrusted_email_content>\n${args.context}\n</untrusted_email_content>`,

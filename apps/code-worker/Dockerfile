@@ -92,6 +92,10 @@ RUN addgroup -S -g 10001 sandbox \
 ENV NODE_ENV=production
 ENV WORKSPACE_ROOT=/workspace
 
+# The release the worker reports with its wire version (src/wireReport.ts).
+ARG OWLAT_VERSION=dev
+ENV OWLAT_VERSION=${OWLAT_VERSION}
+
 # NOTE: intentionally NO `USER` directive — the main process runs as root (uid 0)
 # so it can setuid to `sandbox` for untrusted children (see comment above).
 

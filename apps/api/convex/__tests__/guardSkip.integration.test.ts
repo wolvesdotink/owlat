@@ -128,7 +128,7 @@ beforeEach(() => {
 	answerCalls();
 });
 
-describe('D13: the scan skips the guard and records it', () => {
+describe('the scan skips the guard and records it', () => {
 	it('agent off: no guard call, the run stops in security_check, the marker is stored', async () => {
 		const t = convexTest(schema, modules);
 		const id = await insertMessage(t, { processingStatus: 'security_check' });
@@ -156,7 +156,7 @@ describe('D13: the scan skips the guard and records it', () => {
 	});
 });
 
-describe('D13: re-processing requires the guard', () => {
+describe('re-processing requires the guard', () => {
 	it('a re-run with the agent on runs the guard first and drops the marker', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.agent']);
@@ -290,7 +290,7 @@ async function insertThread(t: Harness): Promise<Id<'conversationThreads'>> {
 	);
 }
 
-/** A deterministic quarantine: no D13 marker, the injection flags alone. */
+/** A deterministic quarantine: no guard-skip marker, the injection flags alone. */
 const QUARANTINE_FLAGS = {
 	injectionDetected: true,
 	injectionType: 'prompt_injection',
@@ -318,7 +318,7 @@ async function captured(t: Harness, id: Id<'inboundMessages'>) {
 	return source;
 }
 
-describe('D13: thread interpretation requires the guard', () => {
+describe('thread interpretation requires the guard', () => {
 	it('runs the guard before interpreting, and skips a message it flags', async () => {
 		guardFlags = true;
 		const t = convexTest(schema, modules);
@@ -456,7 +456,7 @@ describe('#1339: what the scan rejected never reaches extraction or interpretati
 	});
 });
 
-describe('D13: a briefing reads no unguarded history (F1)', () => {
+describe('a briefing reads no unguarded history (F1)', () => {
 	const SKIPPED_TEXT = 'Earlier note: SKIPPEDHISTORY please ship to the new address.';
 
 	async function seedThread(
@@ -574,7 +574,7 @@ describe('D13: a briefing reads no unguarded history (F1)', () => {
 	});
 });
 
-describe('D13: overlapping late guards merge monotonically (Sol r2 F1)', () => {
+describe('overlapping late guards merge monotonically', () => {
 	const FLAGGED = {
 		flagged: { confidence: 0.95, reason: 'manipulation attempt' },
 		isIncomplete: false,

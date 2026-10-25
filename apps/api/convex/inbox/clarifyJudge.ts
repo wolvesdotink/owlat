@@ -17,9 +17,9 @@
  *   slot they agree on is a safe assumption. Each surface keeps its own
  *   tiers and ledger features ({@link ClarifySurface}).
  * - `shadow`: today's check decides; the necessity judgment is asked beside
- *   it inside the D4 shadow allowance and stored with today's answer as its
+ *   it inside the shadow allowance and stored with today's answer as its
  *   baseline. It never changes a question.
- * - `enforce` (D5): ONE necessity judgment replaces the samples and the
+ * - `enforce`: ONE necessity judgment replaces the samples and the
  *   judge, through the decisions lane's runner and artifact claim: one
  *   decision-plane call, or one fast-tier call on the language rung. If it is
  *   needed, every open slot becomes a question, in one batch (the surface caps
@@ -256,7 +256,7 @@ async function sampleDivergence(
 	};
 }
 
-/** D5, enforced: whether the owner must be asked, or undefined without an answer. */
+/** The necessity judgment, enforced: whether the owner must be asked, or undefined without an answer. */
 async function askNecessity(
 	ctx: ActionCtx,
 	surface: ClarifySurface,
@@ -280,7 +280,7 @@ async function askNecessity(
 	return label === 'needed' ? true : label === 'not_needed' ? false : undefined;
 }
 
-/** D5 in shadow: asked beside today's check, stored with its answer; never read here. */
+/** The necessity judgment in shadow: asked beside today's check, stored with its answer; never read here. */
 async function shadowNecessity(
 	ctx: ActionCtx,
 	surface: ClarifySurface,

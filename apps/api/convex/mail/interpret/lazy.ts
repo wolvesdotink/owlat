@@ -7,7 +7,7 @@
  * the brief partial until every page is admitted). The brief turns
  * `pending`, then fills in through the live `brief.get` subscription.
  *
- * D10: a mail thread whose sources were deferred until it is opened
+ * A mail thread whose sources were deferred until it is opened
  * (`defer.ts`; `brief.get` reports `deferredSources`) has them read here,
  * also when its history was read through long ago, behind the same gate and
  * rate limit: the newest deferred source is scheduled, and its run reads the
@@ -57,7 +57,7 @@ export const ensure = threadBriefMutation({
 			return { isEnqueued: false, reason: 'fenced' };
 		}
 		const brief = await loadBriefRow(ctx, args.threadRef);
-		// D10: sources deferred until an open run now, even when the history was
+		// Sources deferred until an open run now, even when the history was
 		// read through long ago.
 		if (args.threadRef.kind === 'mail' && hasDeferredSources(brief)) {
 			// A run already in flight reads the deferred sources before it (defer.ts);

@@ -15,6 +15,12 @@ export interface EmailJob {
 	intakeReceiptId?: string;
 	/** Unique bounded work identity; provider correlation remains messageId. */
 	workAttemptId?: string;
+	/**
+	 * The intake's `x-owlat-correlation` header, validated. Echoed on every
+	 * webhook this job emits and bound to its log lines; it keys nothing else.
+	 * Absent on jobs whose producer sent none and on retained legacy jobs.
+	 */
+	correlationId?: string;
 	/** Durable predecessor→successor handoff promoted when a deferred job starts. */
 	deferHandoffId?: string;
 	/**
@@ -362,6 +368,12 @@ export interface BounceClassification {
 	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
 	/** Unknown/mixed provenance is explicitly non-destructive. */
 	feedbackProvenance?: import('@owlat/shared').DeliveryDomain | 'unknown';
+	/**
+	 * The original job's correlation id, read from the server-persisted send
+	 * record (never from the report) and echoed on the delayed-feedback webhook.
+	 * Log-only; absent for records written before it was persisted.
+	 */
+	correlationId?: string;
 	/**
 	 * The complained/bounced recipient address, extracted from the ARF
 	 * feedback-report part (RFC 5965 §3.2 `Original-Rcpt-To` /

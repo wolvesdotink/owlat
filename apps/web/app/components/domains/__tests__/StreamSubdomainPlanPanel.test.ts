@@ -3,7 +3,7 @@
  *
  * Every decision this panel renders is DERIVED by the backend's pure core, so
  * these fixtures feed it wire payloads and assert what an operator can see:
- * that an ineligible BIMI offer renders NOTHING (never a nag, D2), that a row
+ * that an ineligible BIMI offer renders NOTHING (never a nag), that a row
  * with no key yet offers nothing copyable, that the advice comes from the
  * backend's copy rather than from the component, and that a member who cannot
  * manage domains does not even subscribe.

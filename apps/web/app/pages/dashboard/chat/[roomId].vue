@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { Id } from '@owlat/api/dataModel';
+import type { ChatRecallTarget } from '~/utils/composerRecall';
+
 // The rail, its drawer and the new-channel / new-DM / browse / mentions
 // dialogs live in the parent route (pages/dashboard/chat.vue); this page is
 // the room's main column and its room-only dialogs.
@@ -32,6 +35,7 @@ const {
 	sendMessage,
 	editMessage,
 	deleteMessage,
+	recallTarget,
 	joinChannel,
 	leaveRoom,
 } = useChatRoom(roomId);
@@ -59,6 +63,16 @@ const handleUnarchive = async () => {
 };
 
 const currentUserId = computed(() => user.value?.id ?? '');
+
+// ↑ in the empty composer edits your last message, in the list's own editor.
+const messageList = ref<{ openEditor: (messageId: Id<'chatMessages'>) => void } | null>(null);
+const recallLast = (): ChatRecallTarget => {
+	const target = recallTarget(currentUserId.value);
+	if (target.kind !== 'edit') return target;
+	if (!messageList.value) return { kind: 'none' };
+	messageList.value.openEditor(target.messageId);
+	return target;
+};
 
 useHead({
 	title: () => {
@@ -167,6 +181,7 @@ const handleLeave = async () => {
 					</div>
 					<ChatMessageList
 						v-else-if="!messagesLoading"
+						ref="messageList"
 						:messages="messages"
 						:current-user-id="currentUserId"
 						@edit="(id, text) => editMessage(id, text)"
@@ -174,12 +189,14 @@ const handleLeave = async () => {
 					/>
 					<ChatRoomSkeleton v-else :header="false" />
 					<!-- Keyed by room: a send that resolves after a switch settles its own room's draft. -->
-					<ChatInput
-						v-if="room.isMember"
-						:key="room._id"
-						:send="sendMessage"
-						:draft-target="room._id"
-					/>
+					<AppErrorBoundary v-if="room.isMember" surface="composer" :reset-keys="[room._id]">
+						<ChatInput
+							:key="room._id"
+							:send="sendMessage"
+							:draft-target="room._id"
+							:recall-last="recallLast"
+						/>
+					</AppErrorBoundary>
 				</div>
 
 				<!-- Member panel (right column) -->

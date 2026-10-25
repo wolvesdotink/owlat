@@ -4,6 +4,8 @@
  * Pure function so the shortcut semantics are unit-testable without mounting
  * the (Convex-backed) composer component:
  * - Cmd/Ctrl+Enter        → send (same guarded path as the Send button)
+ * - Cmd/Ctrl+Alt+Enter    → send, doing the opposite of the "after replying"
+ *                           setting (keep in Inbox / mark done)
  * - Cmd/Ctrl+Shift+Enter  → open the schedule-send dialog
  * - Escape                → hand Esc to the composer's host, but ONLY when no
  *                           inner overlay (schedule dialog, recipient
@@ -11,7 +13,7 @@
  *                           the overlay gets to close first.
  */
 
-export type ComposerKeyAction = 'send' | 'schedule' | 'minimize';
+export type ComposerKeyAction = 'send' | 'sendAlternate' | 'schedule' | 'minimize';
 
 export interface ComposerKeyContext {
 	/**
@@ -31,10 +33,12 @@ export function resolveComposerKeyAction(
 ): ComposerKeyAction | null {
 	const mod = event.metaKey || event.ctrlKey;
 
-	if (event.key === 'Enter' && mod && !event.altKey) {
+	if (event.key === 'Enter' && mod) {
 		// Respect the same guards as the Send / Schedule buttons: a disabled
 		// button must not be bypassable via the shortcut.
 		if (!ctx.canSend) return null;
+		// Alt with Shift is no chord of ours; it is left to the browser.
+		if (event.altKey) return event.shiftKey ? null : 'sendAlternate';
 		return event.shiftKey ? 'schedule' : 'send';
 	}
 

@@ -73,17 +73,17 @@ export function dedupedRecipients(draft: Doc<'mailDrafts'>): string[] {
 
 // ─── Reducers ───────────────────────────────────────────────────────────────
 
-function generateUndoToken(at: number): string {
-	return `und_${at.toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-}
+// The undo token is minted by the dispatcher (`./undoToken.ts`) and handed in:
+// it needs a random source, and a reducer must return the same result for the
+// same input.
 
 export function reducePendingSend(
 	draft: Doc<'mailDrafts'>,
-	args: Extract<TransitionInput, { to: 'pending_send' }>
+	args: Extract<TransitionInput, { to: 'pending_send' }>,
+	undoToken: string
 ): ReducerResult {
 	const delay = Math.max(0, args.undoSendDelayMs ?? DEFAULT_UNDO_SEND_DELAY_MS);
 	const sendAt = args.at + delay;
-	const undoToken = generateUndoToken(args.at);
 	return {
 		patch: {
 			state: 'pending_send',
@@ -117,9 +117,9 @@ export function reducePendingSend(
 
 export function reduceScheduled(
 	draft: Doc<'mailDrafts'>,
-	args: Extract<TransitionInput, { to: 'scheduled' }>
+	args: Extract<TransitionInput, { to: 'scheduled' }>,
+	undoToken: string
 ): ReducerResult {
-	const undoToken = generateUndoToken(args.at);
 	return {
 		patch: {
 			state: 'scheduled',
@@ -167,6 +167,7 @@ export function reduceDraftRevert(
 			scheduledSendAt: undefined,
 			undoToken: undefined,
 			isUnsealedSendAllowed: undefined,
+			doneOnSendAt: undefined,
 			lastEditedAt: args.at,
 		},
 		effects: [
@@ -183,6 +184,22 @@ export function reduceDraftRevert(
 		],
 		applied: 'transitioned',
 	};
+}
+
+/** "Send and mark done" on a reply: the conversation is archived once it is sent. */
+function replyDoneEffects(draft: Doc<'mailDrafts'>): Effect[] {
+	const { doneOnSendAt, threadId, inReplyToMessageId, sentByUserId } = draft;
+	if (doneOnSendAt === undefined || !threadId || !inReplyToMessageId || !sentByUserId) return [];
+	return [
+		{
+			kind: 'schedule_reply_done',
+			mailboxId: draft.mailboxId,
+			threadId,
+			repliedToMessageId: inReplyToMessageId,
+			userId: sentByUserId,
+			cutoffAt: doneOnSendAt,
+		},
+	];
 }
 
 export function reduceSent(
@@ -229,6 +246,7 @@ export function reduceSent(
 				emails: recipients,
 			},
 			...learningEffects,
+			...replyDoneEffects(draft),
 			// The audit log fires AFTER the new mailMessages row insert so
 			// `messageId` is available — the runner enriches the details
 			// after insertion.

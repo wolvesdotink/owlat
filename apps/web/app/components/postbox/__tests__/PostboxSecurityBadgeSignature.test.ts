@@ -1,5 +1,5 @@
 /**
- * PostboxSecurityBadge — the signature-verdict driver (F2, D9). When the
+ * PostboxSecurityBadge — the signature-verdict driver. When the
  * `signature` prop (the inbound signature verdict persisted by F1) is present
  * and usable it replaces the structural chip's hardcoded "· not verified"
  * suffix with the verdict-driven states, VERBATIM:
@@ -8,7 +8,7 @@
  *   - "Signed · sender key not found" (no key anywhere — nothing checkable)
  *   - "Signed · sender key changed"   (TOFU pin refusal)
  *
- * Precedence (D9): sealed record → signature record → structural class. A
+ * Precedence: sealed record → signature record → structural class. A
  * sealed record silences the signature chip entirely; an unusable verdict
  * (verifier error) falls back to the structural "· not verified".
  */

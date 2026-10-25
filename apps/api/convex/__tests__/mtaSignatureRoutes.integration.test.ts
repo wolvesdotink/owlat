@@ -16,6 +16,7 @@ import { expectScheduledFailure } from './helpers/scheduledFailures';
  *   /webhooks/mta-inbound          raw message route, 300 s
  *   /webhooks/mta-tls-report       TLS-RPT report, 60 s
  *   /webhooks/mta-verify-credential app-password check, 60 s
+ *   /webhooks/mta-worker-report    wire-version report, 60 s
  *
  * Each request is signed correctly over its own timestamp string, so the
  * verdict is decided by the timestamp rule alone. A rejection is a 401; any
@@ -64,6 +65,7 @@ const ROUTES = [
 	{ path: '/webhooks/mta-inbound', windowSeconds: 300, body: { event: 'unsupported.kind' } },
 	{ path: '/webhooks/mta-tls-report', windowSeconds: 60, body: { attachments: [] } },
 	{ path: '/webhooks/mta-verify-credential', windowSeconds: 60, body: {} },
+	{ path: '/webhooks/mta-worker-report', windowSeconds: 60, body: {} },
 ] as const;
 
 // The routes that read their raw body before verifying the signature.

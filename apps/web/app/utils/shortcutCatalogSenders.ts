@@ -1,5 +1,5 @@
 /**
- * The two sender chords of the Postbox (SPEC §5), spread into
+ * The two sender chords of the Postbox, spread into
  * `SHORTCUT_CATALOG` right after the read/unread pair. Their own module only
  * because the catalog sits at its size cap.
  *

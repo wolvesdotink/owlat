@@ -10,8 +10,8 @@ import { clarificationCardState } from '~/utils/postboxReplyQueue';
 import type { ThreadFile } from '~/utils/answerThreadFiles';
 
 /**
- * The background clarification of a Reply Queue thread, above the editor
- * (plan §07): the Reply Queue needs a fact from the owner before it can draft,
+ * The background clarification of a Reply Queue thread, above the editor:
+ * the Reply Queue needs a fact from the owner before it can draft,
  * so no reply is prepared and the questions show first, as the same ask card
  * "Draft with AI" uses (chips, dates, files, remembered answers pre-picked with
  * "last time"). "Answer and draft" needs every question answered; "Draft with

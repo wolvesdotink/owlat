@@ -13,6 +13,7 @@
  * when hosted mailboxes exist; the card is not shown otherwise.
  */
 import { api } from '@owlat/api';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t } = useI18n();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
@@ -27,7 +28,8 @@ const {
 
 // Local mirror so the switch feels instant; the query re-emits the stored value.
 // Unset ⇒ required (the backend's default).
-const isRequired = ref(true);
+const REQUIRED_DEFAULT = true;
+const isRequired = ref(REQUIRED_DEFAULT);
 watch(
 	settings,
 	(value) => {
@@ -56,9 +58,18 @@ async function setRequired(value: boolean) {
 			<div class="flex min-w-0 items-start gap-3">
 				<UiIconBox icon="lucide:lock-keyhole" size="sm" variant="surface" rounded="lg" />
 				<div class="min-w-0">
-					<h3 class="text-lg font-semibold text-text-primary">
-						{{ t('components.delivery.inboundTlsRequirementCard.title') }}
-					</h3>
+					<div class="flex items-center gap-2">
+						<h3 class="text-lg font-semibold text-text-primary">
+							{{ t('components.delivery.inboundTlsRequirementCard.title') }}
+						</h3>
+						<!-- Unmarked until the setting is read, and never over a failed read. -->
+						<SettingsResetToDefault
+							:changed="settings !== undefined && !settingsError && isRequired !== REQUIRED_DEFAULT"
+							:label="t('components.delivery.inboundTlsRequirementCard.title')"
+							:disabled="saving"
+							@reset="setRequired(REQUIRED_DEFAULT)"
+						/>
+					</div>
 					<p class="mt-1 text-sm text-text-secondary">
 						{{ t('components.delivery.inboundTlsRequirementCard.description') }}
 					</p>

@@ -1,5 +1,5 @@
 /**
- * Answer mode's conversation column (plan §03, v1):
+ * Answer mode's conversation column (v1):
  *   - the thread newest last, every card in its reduced cut;
  *   - "Overview" opens the newest and the unread messages and leaves the rest
  *     as one-line rows (the thread's first message too, unlike the reader);
@@ -15,6 +15,8 @@ import { defineComponent, h, ref, computed, nextTick } from 'vue';
 import { mount } from '@vue/test-utils';
 
 import AnswerConversation from '../AnswerConversation.vue';
+import PostboxReaderMessage from '~/components/postbox/PostboxReaderMessage.vue';
+import { usePostboxReaderContext } from '~/composables/postbox/usePostboxReaderContext';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 vi.mock('@owlat/api', () => ({
@@ -66,6 +68,7 @@ const markReadPolicy = ref('immediate');
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
+		usePostboxSenderBodyOpen: vi.fn(),
 		usePostboxSettings: () => ({ markReadPolicy }),
 		useBackendOperation: () => ({ run: markRead }),
 		useFeatureFlag: () => ({ isEnabled: () => true }),
@@ -89,24 +92,24 @@ const CardStub = defineComponent({
 	props: {
 		message: { type: Object, required: true },
 		expanded: Boolean,
-		reduced: Boolean,
 		showSenderControls: Boolean,
 	},
 	emits: ['toggle-expanded'],
-	setup:
-		(props, { emit }) =>
-		() =>
+	setup(props, { emit }) {
+		const reader = usePostboxReaderContext();
+		return () =>
 			h(
 				'button',
 				{
 					'data-testid': 'card',
 					'data-id': (props.message as { _id: string })._id,
 					'data-expanded': String(props.expanded),
-					'data-reduced': String(props.reduced),
+					'data-reduced': String(reader.reduced),
 					onClick: () => emit('toggle-expanded'),
 				},
 				(props.message as { _id: string })._id
-			),
+			);
+	},
 });
 const inert = (name: string) => defineComponent({ name, setup: () => () => h('div') });
 
@@ -211,6 +214,55 @@ describe('AnswerConversation', () => {
 			.findAllComponents(CardStub)
 			.find((c) => (c.props('message') as { _id: string })._id === 'm2');
 		expect(own?.props('showSenderControls')).toBe(false);
+	});
+
+	it('renders the real card in its reduced cut, on the answered mailbox, chrome in place', () => {
+		const marker = (name: string) =>
+			defineComponent({
+				name,
+				props: ['mailboxId', 'hideWhenOk'],
+				setup: (p) => () =>
+					h('div', {
+						'data-testid': name,
+						'data-mailbox-id': String(p['mailboxId']),
+						'data-hide-when-ok': String(p['hideWhenOk']),
+					}),
+			});
+		const w = mount(AnswerConversation, {
+			props: { message: { ...THREAD[4]!, mailboxId: 'mbx_answered' } as never },
+			global: {
+				plugins: [createTestI18n()],
+				components: {
+					PostboxReaderMessage,
+					UiAvatar: marker('UiAvatar'),
+					PostboxTrustChip: marker('PostboxTrustChip'),
+					PostboxReaderMessageActions: marker('PostboxReaderMessageActions'),
+					PostboxLazyBody: marker('PostboxLazyBody'),
+					PostboxMessageAttachments: marker('PostboxMessageAttachments'),
+					PostboxUnsubscribeChip: marker('PostboxUnsubscribeChip'),
+					PostboxMessageDetails: marker('PostboxMessageDetails'),
+					PostboxSchedulingChip: marker('PostboxSchedulingChip'),
+					PostboxDeliveryStrip: marker('PostboxDeliveryStrip'),
+					PostboxReaderSkeleton: marker('PostboxReaderSkeleton'),
+					PostboxSecurityBadge: marker('PostboxSecurityBadge'),
+					PostboxMessageBody: marker('PostboxMessageBody'),
+					PostboxInviteCard: marker('PostboxInviteCard'),
+					PostboxThreadEarlier: inert('PostboxThreadEarlier'),
+					PostboxSenderProfile: inert('PostboxSenderProfile'),
+					PostboxAttachmentLightbox: inert('PostboxAttachmentLightbox'),
+				},
+				stubs: { Icon: true },
+			},
+		});
+		const cards = w.findAll('section[data-message-id]');
+		expect(cards.map((c) => c.attributes('data-message-id'))).toEqual(['m3', 'm5']);
+		expect(w.find('[data-testid="PostboxReaderMessageActions"]').exists()).toBe(false);
+		const chips = w.findAll('[data-testid="PostboxTrustChip"]');
+		expect(chips).toHaveLength(2);
+		for (const chip of chips) {
+			expect(chip.attributes('data-hide-when-ok')).toBe('true');
+			expect(chip.attributes('data-mailbox-id')).toBe('mbx_answered');
+		}
 	});
 
 	it('reads the conversation it answers, under the mark-read policy', () => {

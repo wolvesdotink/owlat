@@ -837,7 +837,7 @@ export function createTestEmailSendWithHistory(
 }
 
 /**
- * A `sendAssignments` row — the experiment record (plan D7/D16).
+ * A `sendAssignments` row — the experiment record.
  *
  * Typed against the schema so a field added later cannot leave one of the
  * assignment test suites behind with a stale row shape.

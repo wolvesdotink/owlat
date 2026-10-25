@@ -1,6 +1,6 @@
 /**
- * Pure presentation rules of the thread brief (SPEC §7, plan §5 "Item states"
- * and §4.1 rows): the ring an item shows, which evidence a cite points at, and
+ * Pure presentation rules of the thread brief (item states
+ * and rows): the ring an item shows, which evidence a cite points at, and
  * the one line a list row shows instead of its snippet. Free of Vue and Convex
  * so each rule is unit-testable.
  */
@@ -34,7 +34,7 @@ export function canUndoItem(
 	return canUndo(stateKey) || item.correction?.kind === 'confirmed';
 }
 
-/** The ring left of an item (plan §5 "Item states"). */
+/** The ring left of an item. */
 export type BriefRing = 'open' | 'half' | 'done' | 'declined' | 'replaced' | 'proposal' | 'waiting';
 
 export function briefRing(

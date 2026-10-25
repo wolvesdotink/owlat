@@ -1,5 +1,5 @@
 /**
- * Reader signature-badge derivation honesty audit (F2, D9) — the same
+ * Reader signature-badge derivation honesty audit — the same
  * exhaustive verdict→copy audit the sealed (`sealedMessage.test.ts`) and
  * sender-auth (`senderAuth.test.ts`) drivers carry. The cardinal rules:
  *

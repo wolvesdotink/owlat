@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "One thing before sending" (plan §6): the draft says a file is attached that
+ * "One thing before sending": the draft says a file is attached that
  * is not. It names the claim in the draft's own words and offers to pick the
  * file; it never holds Send. The host attaches what was picked (the Postbox
  * composer, or the team reply's attachments) and checks the draft again.

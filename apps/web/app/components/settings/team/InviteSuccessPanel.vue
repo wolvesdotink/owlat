@@ -72,7 +72,7 @@ const { copyLinkText } = useInviteLinks();
 				<input
 					:value="success.acceptUrl"
 					readonly
-					class="input flex-1 font-mono text-xs"
+					class="input flex-1 font-mono"
 					@focus="($event.target as HTMLInputElement).select()"
 				/>
 				<UiButton variant="secondary" @click="copyLinkText(success.acceptUrl)">

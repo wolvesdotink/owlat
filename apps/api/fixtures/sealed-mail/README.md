@@ -13,7 +13,7 @@ time. Regeneration is an offline, developer-only step documented below.
 | WKD hashing | `wkd/hash-vectors.json` | **Real, verified** — deterministic z-base32(SHA-1(lowercase(local-part))); the `joe.doe` vector matches the canonical WKD draft example | `node` one-liner below |
 | TLS-RPT | `tls-rpt/report.json`, `tls-rpt/report.json.gz` | **Real** — RFC 8460 report, gzipped exactly as a reporter would POST it | `node`/`zlib` below |
 | DNS mocks | `dns/tlsa.json`, `dns/mta-sts-txt.json` | **Real** — hand-authored resolver-answer shapes (TLSA usage/selector/matching-type; `_mta-sts` TXT + policy body) | edit by hand |
-| PGP/MIME | `pgp-mime/*.eml` | **Real, self-verified** — genuine OpenPGP material produced by `pgp-mime/generate.mjs` with the committed throwaway keys: `good-sig` verifies, `bad-sig` fails, `protected-headers` decrypts to the inner subject (outer `Subject` stays `...` per D4). Bytes are CRLF; `.gitattributes` exempts the corpus from EOL normalization | `node pgp-mime/generate.mjs` |
+| PGP/MIME | `pgp-mime/*.eml` | **Real, self-verified** — genuine OpenPGP material produced by `pgp-mime/generate.mjs` with the committed throwaway keys: `good-sig` verifies, `bad-sig` fails, `protected-headers` decrypts to the inner subject (outer `Subject` stays `...`, protected headers). Bytes are CRLF; `.gitattributes` exempts the corpus from EOL normalization | `node pgp-mime/generate.mjs` |
 | GnuPG interop | `gnupg/*.eml`, `gnupg/keys/*.asc` | **Real, GnuPG-generated — gpg (GnuPG) 2.5.21** — every byte of OpenPGP material (keys, encryption, signature) produced offline by `gpg` itself, then opened by the `openpgp.js` ingest path in `convex/e2ee/__tests__/open.test.ts`: true cross-implementation interop for the E4 inbound direction. Self-verified (gpg round-trip, byte-equal plaintext, `VALIDSIG`) | `bash gnupg/generate.sh` (needs gpg ≥ 2.4) |
 | ARC | `arc/*.eml` | **Structural placeholders** — RFC 8617 header sets are real; the `b=`/`bh=` signature values are placeholders. No sanctioned offline ARC sealer is in the dependency set, so real chains are a QA follow-up | `gpg`/OpenARC below |
 | GnuPG key-compat | `gnupg/key-compat-check.sh` | **Offline, developer-only script (no committed bytes)** — mints a legacy-profile and a new-style Owlat key with the checked-in `openpgp`, then proves real `gpg` CAN `--encrypt` to the legacy-profile key and CANNOT to the new-style one (the E1b interop bug). Needs `gpg` on the machine, so CI never runs it | `bash gnupg/key-compat-check.sh` |
@@ -40,7 +40,7 @@ Four cases the reader badge state machine must distinguish:
 - `no-sig.eml` — ordinary `text/plain`; no OpenPGP layer at all (falls back to
   DKIM/SPF/DMARC only).
 - `protected-headers.eml` — `multipart/encrypted` (PGP/MIME) with protected
-  headers per locked decision **D4**: the outer `Subject` is the literal `...`
+  headers: the outer `Subject` is the literal `...`
   and the real subject travels inside the encrypted part.
 
 The throwaway keys that produced these fixtures are committed under
@@ -78,7 +78,7 @@ cross-implementation interop in the direction that matters for inbound: a
 foreign implementation seals, our ingest path opens.
 
 - `sealed-protected-headers.eml` — signed + encrypted PGP/MIME with protected
-  headers per locked decision **D4**: outer `Subject` is the literal `...`; the
+  headers: outer `Subject` is the literal `...`; the
   real subject (`GnuPG sealed interop figures`) and a `multipart/alternative`
   text+html body travel inside the ciphertext.
 - `sealed-no-protected-headers.eml` — signed + encrypted PGP/MIME **without**
@@ -151,5 +151,5 @@ node -e 'const c=require("crypto");const A="ybndrfg8ejkmcpqxot1uwisza345h769";co
 ## DNS mocks (`dns/`)
 
 `tlsa.json` and `mta-sts-txt.json` are resolver-answer fixtures for the DANE
-(**D6**: absent AD bit is treated as "no TLSA") and MTA-STS discovery paths.
+(an absent AD bit is treated as "no TLSA") and MTA-STS discovery paths.
 Hand-edit to add cases.

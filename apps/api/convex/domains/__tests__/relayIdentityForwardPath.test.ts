@@ -214,7 +214,7 @@ describe('provision_relay_identity_if_enabled asks the registry, not a list of k
 	});
 
 	it('leaves a domain hosted at a provider of its own alone', async () => {
-		// D3's one sanctioned identity check, read from the registry's single
+		// The one sanctioned identity check, read from the registry's single
 		// declaration: a relay identity COEXISTS only on a domain whose primary
 		// provider is our own MTA. A domain already hosted at a relay owns its
 		// identity through the ordinary lifecycle.

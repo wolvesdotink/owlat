@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The result of "Test on recent mail" (read on arrival, SPEC §6.2): how many
+ * The result of "Test on recent mail" (read on arrival): how many
  * of the newest Inbox mails the rule matches, and for each match where the
  * answer came from (the rule's own conditions or the AI question). A mail the
  * AI question could not be asked about says "not tested" instead of

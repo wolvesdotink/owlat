@@ -1,12 +1,12 @@
 /**
- * Return-path (bounce) UI — piece D3 of the DNS Setup Revamp. Real mounts.
+ * Return-path (bounce) UI. Real mounts.
  *
  * Two surfaces:
  *   - AddDomainForm's "Advanced" disclosure (collapsed by default) collects an
  *     optional custom return-path subdomain with a live preview, and rides it on
  *     the submit payload so the page can set it after registration.
  *   - ReturnPathEditor (the expanded-row edit affordance) changes the host via
- *     the D2 mutation, warns that it re-verifies the domain, shows the pending
+ *     the return-path mutation, warns that it re-verifies the domain, shows the pending
  *     state, and surfaces the MTA sync-error marker when present.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -161,7 +161,7 @@ describe('ReturnPathEditor — edit affordance', () => {
 		expect(w.find('[data-testid="returnpath-save"]').exists()).toBe(false);
 	});
 
-	// D2 (additive-only third-party rule): RFC 9477 feedback is a CONSEQUENCE of
+	// Additive-only third-party rule: RFC 9477 feedback is a CONSEQUENCE of
 	// an optional field, never a prerequisite. The note therefore has to be
 	// informational tertiary text that always renders — not a warning, not an
 	// error, and not gated on the MTA sync-error marker.
@@ -202,7 +202,7 @@ describe('ReturnPathEditor — edit affordance', () => {
 		expect((w.get('#returnpath-input-domain_1').element as HTMLInputElement).value).toBe('bounce');
 	});
 
-	it('calls the D2 mutation with the composed host on save', async () => {
+	it('calls the return-path mutation with the composed host on save', async () => {
 		const w = mountEditor();
 		await w.get('[data-testid="returnpath-edit"]').trigger('click');
 		await w.get('#returnpath-input-domain_1').setValue('newbounce');
@@ -241,7 +241,7 @@ describe('ReturnPathEditor — edit affordance', () => {
 		const w = mountEditor({ syncError: 'permanent MTA failure' });
 		const marker = w.get('[data-testid="returnpath-sync-error"]');
 		expect(marker.exists()).toBe(true);
-		// The D2 marker is TERMINAL (set only after the retry budget is spent), so
+		// The sync-error marker is TERMINAL (set only after the retry budget is spent), so
 		// the copy is a call-to-action, not an in-progress "retrying" spinner.
 		expect(marker.text().toLowerCase()).toContain("couldn't update the bounce host");
 		expect(marker.text().toLowerCase()).not.toContain('retrying');

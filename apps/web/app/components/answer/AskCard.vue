@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Two things before I write this" (plan §05): the questions "Draft with AI"
+ * "Two things before I write this": the questions "Draft with AI"
  * asks when the draft would otherwise have to guess.
  *
  * Built on the clarification question list both background loops use
@@ -39,7 +39,8 @@ import {
 	type ClarificationAnswer,
 } from '~/utils/clarificationAnswers';
 import { localizedQuestionCopy } from '~/utils/clarificationLocale';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { useShortcutScope } from '~/composables/useShortcutScope';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import type { ThreadFile } from '~/utils/answerThreadFiles';
 import FileAsk, { type FileAnswerRef, type FileAskValue, type FileCopyPolicy } from './FileAsk.vue';
@@ -139,30 +140,34 @@ function skip() {
 	emit('skip', toAskAnswers(collectClarificationAnswers(shown.value, values, locale.value)));
 }
 
-// Keys 1 to 9: a chip of the first open question that has chips. Not while
-// the card is out of sight: on a phone the reply sheet stays mounted behind
-// the Conversation tab (AnswerModeFrame marks it `data-sheet-hidden`), and a
-// key must not pick a chip nobody can see.
+// Keys 1 to 9 (`askCard.pickOption`): a chip of the first open question that
+// has chips. Not while the card is out of sight: on a phone the reply sheet
+// stays mounted behind the Conversation tab (AnswerModeFrame marks it
+// `data-sheet-hidden`), and a key must not pick a chip nobody can see. A digit
+// with no chip behind it is left alone.
 const rootEl = ref<HTMLElement | null>(null);
-function onKeydown(event: KeyboardEvent) {
-	if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
-	if (!/^[1-9]$/.test(event.key) || props.submitting) return;
-	if (isEditableTarget(event.target) || isDialogOpen()) return;
-	if (rootEl.value?.closest('[data-sheet-hidden]')) return;
+function chipFor(key: string): { questionId: string; option: string } | null {
+	if (!/^[1-9]$/.test(key) || props.submitting || isDialogOpen()) return null;
+	if (rootEl.value?.closest('[data-sheet-hidden]')) return null;
 	const withChips = shown.value.filter((q) => kindOf(q) !== 'file' && (q.options?.length ?? 0) > 0);
 	// A remembered answer counts as answered until the person clears it.
 	const question =
 		withChips.find((q) => !(values[q.id] ?? q.answer?.value ?? '').trim()) ?? withChips[0];
-	if (!question) return;
-	const copy = localizedQuestionCopy(question, locale.value);
-	const option = copy.options[Number(event.key) - 1];
-	if (option === undefined) return;
-	event.preventDefault();
-	values[question.id] = option;
-	listRef.value?.setValue(question.id, option);
+	if (!question) return null;
+	const option = localizedQuestionCopy(question, locale.value).options[Number(key) - 1];
+	return option === undefined ? null : { questionId: question.id, option };
 }
-onMounted(() => window.addEventListener('keydown', onKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+useShortcutScope('askCard');
+useKeyboardShortcuts().registerShortcut({
+	id: 'askCard.pickOption',
+	handler: (event) => {
+		const chip = chipFor(event.key);
+		if (!chip) return;
+		values[chip.questionId] = chip.option;
+		listRef.value?.setValue(chip.questionId, chip.option);
+	},
+	when: (event) => chipFor(event.key) !== null,
+});
 
 const FOCUSABLE =
 	'input:not([type="hidden"]):not(:disabled), textarea:not(:disabled), button:not(:disabled)';

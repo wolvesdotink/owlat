@@ -1,5 +1,5 @@
 /**
- * Activity writers (SPEC §5): the housekeeping hooks in the Postbox and team
+ * Activity writers: the housekeeping hooks in the Postbox and team
  * mutations, the send hooks, files on a reply and bookings append one
  * recorded row each, with a stable key, so a repeat does not double it.
  */

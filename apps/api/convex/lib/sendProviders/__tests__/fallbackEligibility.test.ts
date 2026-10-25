@@ -1,5 +1,5 @@
 /**
- * Capability-driven deliverability-fallback eligibility (plan D6).
+ * Capability-driven deliverability-fallback eligibility.
  *
  * The gate this replaced was `relayProviderType !== 'ses' → throw`: a list of
  * one, which every future relay had to edit routing logic to join. These tests
@@ -62,8 +62,8 @@ describe('isFallbackRelayEligible', () => {
 		expect(isFallbackRelayEligible('ses', allConfigured)).toBe(true);
 		expect(isFallbackRelayEligible('resend', allConfigured)).toBe(true);
 		expect(isFallbackRelayEligible('smtp', allConfigured)).toBe(true);
-		// P1.1 registered `mandrill`, and it became fallback-eligible without a line
-		// of routing code changing — which is the whole claim of D6. It is also the
+		// `mandrill` is fallback-eligible from its catalog entry alone, without a line
+		// of routing code naming it — capabilities, not identity. It is also the
 		// activation matrix's recommended migration shape: `deliverabilityFallback:
 		// { relayProviderType: 'mandrill' }`.
 		expect(isFallbackRelayEligible('mandrill', allConfigured)).toBe(true);
@@ -98,7 +98,7 @@ describe('isFallbackRelayEligible', () => {
 	});
 });
 
-describe('DeliverabilityRouteError — kind-agnostic copy (D2)', () => {
+describe('DeliverabilityRouteError — kind-agnostic copy', () => {
 	/**
 	 * Tokenize on word boundaries rather than substrings, so "unverified" is not
 	 * read as naming `resend` and a namespaced plugin kind (`plugin.acme.esp`)
@@ -169,7 +169,7 @@ describe('DeliverabilityRouteError — kind-agnostic copy (D2)', () => {
 	});
 });
 
-describe('resolveRoute — deliverability fallback gate (D6)', () => {
+describe('resolveRoute — deliverability fallback gate', () => {
 	it('keeps routing an active fallback to a ready, verified SES relay', () => {
 		expect(resolveWithActiveFallback(hybridRoute('ses'))).toEqual({
 			providerType: 'ses',
@@ -179,8 +179,8 @@ describe('resolveRoute — deliverability fallback gate (D6)', () => {
 	});
 
 	it('now routes an active fallback to a ready, verified NON-SES relay', () => {
-		// The whole point of D6: this line used to throw
-		// DELIVERABILITY_RELAY_UNAVAILABLE purely because the kind was not `ses`.
+		// Capabilities, not identity: this line must not throw
+		// DELIVERABILITY_RELAY_UNAVAILABLE merely because the kind is not `ses`.
 		expect(resolveWithActiveFallback(hybridRoute('resend'))).toEqual({
 			providerType: 'resend',
 			source: 'deliverability_fallback',
@@ -235,7 +235,7 @@ describe('resolveRoute — deliverability fallback gate (D6)', () => {
 
 	it('still demands a verified relay domain once the kind is eligible', () => {
 		// Eligibility answers "may this kind relay at all", never "may it relay
-		// THIS domain" — the proof gate (D7) stays in front of every kind.
+		// THIS domain" — the proof gate stays in front of every kind.
 		for (const relay of ['ses', 'resend']) {
 			try {
 				resolveRoute(hybridRoute(relay), undefined, allConfigured, {

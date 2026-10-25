@@ -1,5 +1,5 @@
 /**
- * The Postbox thread's cite links (SPEC §7, plan §4.2). The reader is one
+ * The Postbox thread's cite links. The reader is one
  * page (read on arrival §3): the Overview / Conversation switch and its
  * opening-view rule are gone; a cite still shows the source of a brief line
  * in the conversation, for this visit only.

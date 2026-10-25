@@ -4,7 +4,7 @@
  *
  * It owns exactly one `data` listener at a time, follows the socket across a
  * STARTTLS upgrade (via {@link ReplyReader.pauseSource} + {@link ReplyReader.rebind}),
- * and enforces the sequential-read invariant of D5: at most one {@link
+ * and enforces the sequential-read invariant: at most one {@link
  * ReplyReader.read} may be outstanding at once. `connect()` builds one reader for
  * the opening handshake and hands the SAME instance to the {@link SmtpConnection}
  * it constructs — there is no parser hand-off and no second reader, so no reply
@@ -48,7 +48,7 @@ export class ReplyReader {
 
 	/**
 	 * `true` while a {@link ReplyReader.read} is outstanding. `command()` checks
-	 * this BEFORE serializing so a D5-violating second command is refused before
+	 * this BEFORE serializing so a second, concurrent command is refused before
 	 * its bytes reach the wire — otherwise the line would be sent, its reply
 	 * would land in the queue with no waiter, and the next read would consume a
 	 * stale reply (silent desync).
@@ -69,7 +69,7 @@ export class ReplyReader {
 
 	read(phase: SmtpPhase, timeoutMs: number, secured: boolean): Promise<SmtpReply> {
 		if (this.waiter !== undefined) {
-			// D5 is sequential command/reply: a second read while one is pending is
+			// SMTP is sequential command/reply: a second read while one is pending is
 			// a caller bug, never a wire condition. Reject loudly instead of
 			// clobbering the live waiter (which would hang both promises).
 			return Promise.reject(

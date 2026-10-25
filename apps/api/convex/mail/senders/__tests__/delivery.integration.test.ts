@@ -1,5 +1,5 @@
 /**
- * Sender status at delivery and the delivered counters (SPEC §5), through
+ * Sender status at delivery and the delivered counters, through
  * both live-ingest paths: hosted MX (`deliverToMailbox`, enforced before the
  * insert) and external forward sync (`ingestExternalMessage`, enforced after
  * the insert through `moveMessagesToFolder`). User filters run first and win;

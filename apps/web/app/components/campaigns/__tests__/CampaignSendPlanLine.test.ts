@@ -1,5 +1,5 @@
 /**
- * THE DAY-OF-N LINE (deliverability plan D14, P3-7).
+ * THE DAY-OF-N LINE.
  *
  * A multi-day send is a NORMAL, VISIBLE state for a warming deployment. This
  * suite is a copy-and-treatment audit of the component itself — the pure
@@ -9,7 +9,7 @@
  *   - it renders NOTHING when there is no walk in flight, and nothing for an
  *     ordinary same-day send: absence of a plan is not a state to explain;
  *   - it is never an error treatment — no warning colour, no alert role, no
- *     "setup incomplete" nag (plan D2);
+ *     "setup incomplete" nag;
  *   - a bounded audience count is rendered as the FLOOR it is;
  *   - a truncated plan is never quoted as a finish date.
  */

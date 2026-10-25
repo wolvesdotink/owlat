@@ -2,7 +2,7 @@
  * P0-5 — the PURE capacity planner as a table, plus the adversarial cases the
  * plan names (zero capacity, unknown horizon, clock skew, empty audience).
  * The predicate is where the correctness of the binding pre-flight lives, so
- * it is tested exhaustively and without any Convex harness (D15).
+ * it is tested exhaustively and without any Convex harness.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -168,7 +168,7 @@ describe('planCampaignCapacity — the table', () => {
 		expect(plan.days).toBe(MAX_PLAN_DAYS);
 		expect(plan.slices).toHaveLength(MAX_PLAN_DAYS);
 		// The plan does NOT reach everyone, and says so rather than letting the
-		// caller quote `days` as a finish date (D14 honesty).
+		// caller quote `days` as a finish date.
 		expect(plan.truncated).toBe(true);
 		expect(plan.covered).toBe(10 * MAX_PLAN_DAYS);
 		expect(plan.covered).toBeLessThan(10_000_000);

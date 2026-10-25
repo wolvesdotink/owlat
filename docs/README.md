@@ -49,6 +49,8 @@ source does not show.
   keep external services swappable
 - [Progressive disclosure](./design/progressive-disclosure.md): how much detail
   a UI surface shows at once
+- [Web UI form controls](./web-ui.md): the one way to build a button or a field
+  in the dashboard, and what a call site may add to it
 - [Audit log actions](../apps/api/convex/docs/audit-log-actions.md) and
   [webhook payloads](../apps/api/convex/docs/webhook-payloads.md): contracts
   that stored rows and external receivers depend on

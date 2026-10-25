@@ -21,10 +21,12 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
+		"test:browser": "vitest run --config vitest.browser.config.ts",
 		"test:e2e": "playwright test --config=e2e/playwright.config.ts",
 		"test:e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui",
 		"test:e2e:headed": "playwright test --config=e2e/playwright.config.ts --headed",
-		"perf:scenarios": "bun perf/run.ts"
+		"perf:scenarios": "bun perf/run.ts",
+		"perf:gate": "bun perf/run.ts --repeats 3"
 	},
 	"dependencies": {
 		"@convex-dev/better-auth": "catalog:convex",
@@ -62,6 +64,7 @@
 		"@types/papaparse": "^5.5.2",
 		"@types/sanitize-html": "^2.13.0",
 		"@vitejs/plugin-vue": "^6.0.6",
+		"@vitest/browser-playwright": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"@vue/test-utils": "^2.4.6",
 		"autoprefixer": "^10.4.27",

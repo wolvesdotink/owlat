@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 import vue from '@vitejs/plugin-vue';
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
@@ -18,6 +18,9 @@ export default defineConfig({
 			// `perf:scenarios`, never in this suite.
 			'perf/**/__tests__/**/*.test.ts',
 		],
+		// The real-browser component tests run only through vitest.browser.config.ts
+		// (`test:browser`); in happy-dom they would measure a layout that is not there.
+		exclude: [...configDefaults.exclude, '**/*.browser.test.ts'],
 		environment: 'happy-dom',
 		setupFiles: ['app/__tests__/setup.ts'],
 		// Composable specs reload the composable under test with `vi.resetModules()`

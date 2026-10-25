@@ -1,5 +1,5 @@
 /**
- * The interpretation eval corpus format (SPEC §9, plan §14). A corpus file is
+ * The interpretation eval corpus format. A corpus file is
  * JSON: `{ version: 1, slice, threads: EvalThread[] }`. Each thread holds the
  * messages as they would arrive, the internal notes a team keeps beside them
  * (which must never reach the model), and the labels a correct interpretation

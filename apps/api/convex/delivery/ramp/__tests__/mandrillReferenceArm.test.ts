@@ -1,6 +1,6 @@
 /**
- * ARM ATTRIBUTION WITH MANDRILL AS THE REFERENCE ARM (Mandrill plan D8/D10,
- * piece P2.3) — the measurement plane's core promise, at the cron boundary.
+ * ARM ATTRIBUTION WITH MANDRILL AS THE REFERENCE ARM
+ * — the measurement plane's core promise, at the cron boundary.
  *
  * The whole migration story rests on one claim: while the ramp controller walks
  * traffic from Mandrill onto Owlat's own MTA, each arm is judged on ITS OWN

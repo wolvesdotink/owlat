@@ -9,7 +9,7 @@
  *     counter can never disagree with the dashboard counter beside it;
  *   - the exclusions: `failed` is not a transport outcome, a duplicate
  *     transition records nothing twice, a test preview records nothing, and a
- *     send with NO assignment row (a seed shadow copy, plan D18) never enters a
+ *     send with NO assignment row (a seed shadow copy) never enters a
  *     denominator;
  *   - the bump leaves the transition's transaction, and the scheduled entry
  *     point it leaves through admits the vocabulary and nothing else.
@@ -358,7 +358,7 @@ describe('lifecycle transition → one shard of one bucket', () => {
 });
 
 describe('exclusions', () => {
-	it('records nothing for a send with no assignment row (the seed shadow-copy seam, D18)', async () => {
+	it('records nothing for a send with no assignment row (the seed shadow-copy seam)', async () => {
 		const t = convexTest(schema, modules);
 		let sendId: Id<'emailSends'> | undefined;
 		await t.run(async (ctx) => {

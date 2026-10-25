@@ -1,8 +1,8 @@
 /**
  * Wire-compat, Convex half: the adapter still puts the SAME BYTES on the wire.
  *
- * D7 moved the Convex<->MTA contract into `@owlat/mta-protocol` and typed both
- * ends against it. The stated risk of that move is that TS narrowing silently
+ * The Convex<->MTA contract lives in `@owlat/mta-protocol`, which types both
+ * ends. The risk of that is that TS narrowing silently
  * changes wire semantics — a field renamed, reordered, defaulted or dropped by
  * the new declaration rather than by anyone's intent. Types cannot be tested,
  * so this drives the SHIPPED code and compares it against the frozen fixtures in
@@ -197,7 +197,7 @@ describe('Convex -> MTA send intake bytes', () => {
 		// answer. It must stay what it always was — a definite failure — because
 		// `acceptanceUnknown` sends a custody-taking transport into an acceptance
 		// RECONCILIATION replay rather than recording the attempt as failed. This
-		// is the exact shape the D7 narrowing could have moved: `'success' in
+		// is the exact shape the protocol's narrowing could move: `'success' in
 		// result` throws on a primitive where `result.success` does not.
 		stubFetch(new Response('123', { status: 200 }));
 		const attempt = await mtaSendProvider.sendEmail(resolveSendTransport('mta'), {
@@ -236,7 +236,7 @@ describe('Convex -> MTA postbox intake bytes', () => {
 	// The Postbox leg has three producers, none of them the send adapter:
 	// `mail/outbound.ts` and the forward + vacation reply in
 	// `mail/deliveryHooks.ts`. They are the only writers of `sealedMimeBase64`,
-	// `amp` and `allowedFromAddresses`, so before D7 bound them to
+	// `amp` and `allowedFromAddresses`, so without binding them to
 	// `MtaSendRequest` those three fields had no typed producer anywhere. The
 	// forward is the one of the three that is exported and drivable, so it is
 	// what pins the CODE here; the other two are pinned by the type and by

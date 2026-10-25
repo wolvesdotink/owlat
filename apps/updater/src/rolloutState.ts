@@ -20,13 +20,14 @@ import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { json, OWLAT_DIR } from './http.js';
 
-export type RolloutKind = 'update' | 'apply-profiles' | 'rotate-env' | 'configure-ip';
+export type RolloutKind = 'update' | 'apply-profiles' | 'rotate-env' | 'configure-ip' | 'rollback';
 
 const KIND_LABEL: Record<RolloutKind, string> = {
 	update: 'an update',
 	'apply-profiles': 'a feature change',
 	'rotate-env': 'a secret rotation',
 	'configure-ip': 'an IP pool change',
+	rollback: 'a rollback',
 };
 
 let inFlight: { kind: RolloutKind; since: number } | null = null;
@@ -67,8 +68,16 @@ export async function exclusively(
 /**
  * How an update ended, from the recreate on (see update.ts) or before it.
  * `interrupted`: the updater stopped before the update reached a verdict.
+ * `rolled-back`: the release failed and the stack runs the snapshot taken
+ * before it again.
  */
-export type RolloutOutcome = 'healthy' | 'started' | 'partially-applied' | 'failed' | 'interrupted';
+export type RolloutOutcome =
+	| 'healthy'
+	| 'started'
+	| 'partially-applied'
+	| 'failed'
+	| 'interrupted'
+	| 'rolled-back';
 
 export interface LastRollout {
 	/** The caller's id for this update, when it sent one. */
@@ -76,8 +85,11 @@ export interface LastRollout {
 	/** The release the update applied; null for an update without a template. */
 	targetVersion: string | null;
 	startedAt: number;
-	/** `verifying` is the readiness wait after `up`. */
-	phase: 'applying' | 'verifying' | 'done';
+	/**
+	 * `verifying` is the readiness wait after `up`; `rolling-back` is the
+	 * restore of the snapshot after a release failed.
+	 */
+	phase: 'applying' | 'verifying' | 'rolling-back' | 'done';
 	/**
 	 * Set once the update started changing what the host runs: the compose file
 	 * is promoted (or, without a template, `up` is about to run). Before it, an
@@ -85,6 +97,11 @@ export interface LastRollout {
 	 * configuration names the new release and the containers may lag behind.
 	 */
 	committed?: boolean;
+	/**
+	 * Set before `convex-deploy` runs. From then on the backend may run the new
+	 * release's functions even if the update stops before it commits.
+	 */
+	deployStarted?: boolean;
 	outcome?: RolloutOutcome;
 	summary?: string;
 	warnings?: string[];
@@ -120,7 +137,7 @@ function isLastRollout(value: unknown): value is LastRollout {
 	return (
 		(typeof record['targetVersion'] === 'string' || record['targetVersion'] === null) &&
 		typeof record['startedAt'] === 'number' &&
-		['applying', 'verifying', 'done'].includes(record['phase'] as string)
+		['applying', 'verifying', 'rolling-back', 'done'].includes(record['phase'] as string)
 	);
 }
 
@@ -133,12 +150,20 @@ export function interruptedVerdict(record: LastRollout): LastRollout {
 		...record,
 		phase: 'done',
 		outcome: 'interrupted',
-		summary: record.committed
-			? 'The updater stopped after the release was promoted, before it confirmed the ' +
-				'containers were recreated. Run the update again, or `docker compose up -d` in the ' +
-				'install directory on the host, to finish it.'
-			: 'The updater stopped before the release was applied. The running stack was not ' +
-				'changed; run the update again.',
+		summary:
+			record.phase === 'rolling-back'
+				? 'The updater stopped while rolling a failed release back to the snapshot taken before ' +
+					'it. Run `owlat rollback` on the host to finish the rollback; no update can start until it has.'
+				: record.committed
+					? 'The updater stopped after the release was promoted, before it confirmed the ' +
+						'containers were recreated. Run the update again, or `docker compose up -d` in the ' +
+						'install directory on the host, to finish it.'
+					: record.deployStarted
+						? 'The updater stopped after convex-deploy started, before the release was promoted: ' +
+							'the new Convex functions may be live while the other containers still run the ' +
+							'previous release. Run the update again to bring the rest of the stack to the same release.'
+						: 'The updater stopped before the release was applied. The running stack was not ' +
+							'changed; run the update again.',
 	};
 }
 

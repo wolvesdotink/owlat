@@ -147,6 +147,11 @@ export const mailCompositionTables = {
 		// Per-send explicit plaintext consent. Dispatch checks this again after
 		// discovery/crypto so a trust change during the undo window fails closed.
 		isUnsealedSendAllowed: v.optional(v.boolean()),
+		// The sender chose "send and mark done" for this send of a reply. The cutoff
+		// is when they chose it: once the reply is sent, the conversation's Inbox
+		// mail up to then is archived (mail/replyDone.ts) and anything newer stays.
+		// Per send: set or cleared by `drafts.send`, cleared on every revert.
+		doneOnSendAt: v.optional(v.number()),
 
 		// Idempotency key for offline-outbox replays: the queued outbox
 		// item's client-generated id, threaded through `drafts.create` so a
@@ -174,6 +179,8 @@ export const mailCompositionTables = {
 		// hidden answered drafts never push a live one past the page.
 		.index('by_mailbox_live_and_edited', ['mailboxId', 'obsoleted.at', 'lastEditedAt'])
 		.index('by_state_and_scheduled', ['state', 'scheduledSendAt'])
+		// Today's Upcoming band: one mailbox's scheduled sends, soonest first.
+		.index('by_mailbox_state_and_scheduled', ['mailboxId', 'state', 'scheduledSendAt'])
 		.index('by_undo_token', ['undoToken'])
 		.index('by_client_nonce', ['clientNonce'])
 		.index('by_obsoleted_at', ['obsoleted.at']),
@@ -386,7 +393,8 @@ export const mailCompositionTables = {
 		ownerUserId: v.optional(v.string()),
 		authorUserId: v.optional(v.string()),
 		mailboxIds: v.optional(v.array(v.id('mailboxes'))),
-		// AGGREGATED — bumped by mail/savedReplies.ts:recordUse on every insert.
+		// COUNTER [savedReplyUsage] — bumped by mail/savedReplies.ts:recordUse on
+		// every insert.
 		useCount: v.optional(v.number()),
 		lastUsedAt: v.optional(v.number()),
 		name: v.string(),

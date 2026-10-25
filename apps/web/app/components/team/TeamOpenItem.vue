@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * One action in the "Open for the team" strip (plan §4.3): its text, what
+ * One action in the "Open for the team" strip: its text, what
  * kind of ask it is and who asked, its owner (an avatar, or "Unassigned"),
  * how many notes are about it, then ONE primary button and a ⋯ menu.
  *

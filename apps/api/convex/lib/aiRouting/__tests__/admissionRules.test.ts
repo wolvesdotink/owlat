@@ -165,7 +165,7 @@ describe('evaluateAdmission', () => {
 	});
 });
 
-describe('shadow sampling (D4)', () => {
+describe('shadow sampling', () => {
 	const shadowed = resolveRoutingPolicy({
 		policyVersion: 1,
 		updatedAt: 1,

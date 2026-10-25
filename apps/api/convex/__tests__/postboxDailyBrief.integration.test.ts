@@ -243,7 +243,7 @@ describe('mail.commitmentExtract.extractCommitment', () => {
 		expect(rows).toHaveLength(0);
 	});
 
-	it('defers the extraction to a later run when spend admission refuses it (D1)', async () => {
+	it('defers the extraction to a later run when spend admission refuses it', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);

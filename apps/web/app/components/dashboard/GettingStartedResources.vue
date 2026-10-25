@@ -71,7 +71,7 @@ function cancelEditingDashboard() {
 				:href="convexDashboardUrl"
 				target="_blank"
 				rel="noopener"
-				class="group flex flex-col gap-1 transition-all hover:-translate-y-px"
+				class="group flex flex-col gap-1 transition-transform hover:-translate-y-px"
 			>
 				<div class="flex items-center gap-2">
 					<Icon name="lucide:layout-dashboard" class="h-4 w-4 text-text-tertiary" />
@@ -114,7 +114,7 @@ function cancelEditingDashboard() {
 					inputmode="url"
 					:placeholder="t('components.dashboard.gettingStartedResources.urlPlaceholder')"
 					:aria-label="t('components.dashboard.gettingStartedResources.urlLabel')"
-					class="input input-sm text-xs"
+					class="input input-sm"
 					:class="{ 'input-error': dashboardDraftInvalid }"
 					@keydown.enter.prevent="saveDashboardUrl"
 					@keydown.esc.prevent="cancelEditingDashboard"
@@ -147,7 +147,7 @@ function cancelEditingDashboard() {
 			href="https://docs.owlat.app/developer/self-hosting"
 			target="_blank"
 			rel="noopener"
-			class="group flex flex-col gap-1 rounded-lg bg-surface-2 shadow-surface-1 border border-transparent p-3 transition-all hover:-translate-y-px hover:border-brand/40"
+			class="group flex flex-col gap-1 rounded-lg bg-surface-2 shadow-surface-1 border border-transparent p-3 transition-[translate,border-color] hover:-translate-y-px hover:border-brand/40"
 		>
 			<div class="flex items-center gap-2">
 				<Icon name="lucide:book-open" class="h-4 w-4 text-text-tertiary" />

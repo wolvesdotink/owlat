@@ -1,5 +1,5 @@
 /**
- * THE ASYMMETRY (plan D9): cheap to retreat, expensive to advance.
+ * THE ASYMMETRY: cheap to retreat, expensive to advance.
  *
  * Twenty clean windows are what it costs to walk a campaign cell from its
  * opening 2% to 100%. One breached gate halves it. The two numbers in the same
@@ -118,7 +118,7 @@ describe('multiplicative decrease', () => {
  * The cron ticks HOURLY while the gates read a 24-HOUR window of outcomes. If
  * every tick counted, K_CLEAN = 3 would be bought with three overlapping reads
  * of the same day an hour apart, and the twenty steps above would fit inside a
- * single day. That is D9's "expensive to advance" half deleted, so it has a test.
+ * single day. That deletes the "expensive to advance" half, so it has a test.
  */
 describe('the evaluation window is counted once', () => {
 	const clean = () =>

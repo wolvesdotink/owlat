@@ -11,8 +11,8 @@ import { openEvidence } from '../mail/interpret/briefOpen';
 import { rowFactKeyLabel } from '../mail/interpret/factKeys';
 import { isFencedThread } from '../mail/interpret/staleFence';
 
-// Thread brief resources of "Export my data" (SPEC §5 Erasure: "Export
-// includes authorized derived content"), next to accountExportQueries.ts.
+// Thread brief resources of "Export my data" (export
+// includes authorized derived content), next to accountExportQueries.ts.
 //
 // What the interpretation derived from the member's own personal mail: per
 // thread its items, facts and activity, unsealed and complete (paged through

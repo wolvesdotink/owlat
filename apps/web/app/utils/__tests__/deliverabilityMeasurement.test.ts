@@ -1,7 +1,7 @@
 /**
  * THE SENTENCE UNDER A GATE'S VERDICT — units, and the two places they change.
  *
- * `gateExplanation` renders the numbers an operator acts on, and under plan D12
+ * `gateExplanation` renders the numbers an operator acts on, and
  * the same fields feed the audit row and the admin notification. Almost every
  * verdict is denominated in SENDS, and the generic sentence says so in words —
  * so the exceptions have to be branched on rather than assumed away. There are
@@ -21,17 +21,17 @@
  * AND A PROBE IS NOT A MAILBOX. `seedShadowCopy.ts` writes one probe per seed
  * mailbox per campaign send, so the window's sample is mailboxes times sends;
  * "80 seed mailboxes" under a deployment that has eight would overstate the
- * coverage by the send cadence, on the one field D17 keeps precisely because it
+ * coverage by the send cadence, on the one field kept precisely because it
  * is the honesty input.
  *
- * AND THE SEED GATE MAY NOT QUOTE A RATE AT ALL (plan D17). Its unit is right
+ * AND THE SEED GATE MAY NOT QUOTE A RATE AT ALL. Its unit is right
  * and its sentence is still a gauge if it prints a share against a threshold, so
  * the placement suite below asserts the ABSENCE of one alongside the words that
  * replace it.
  *
  * The hold vocabulary is covered here too, because the switch is exhaustive on
  * purpose: a new `RampGateHoldReason` must arrive with its own sentence, and a
- * sentence that reads like a fault under a reason that is not one is the D2
+ * sentence that reads like a fault under a reason that is not one is the
  * failure mode ("nothing merely UNMEASURED is rendered as a problem").
  */
 
@@ -135,7 +135,7 @@ describe('standaloneNote', () => {
 		});
 		expect(note).toContain('Connecting a relay you already pay for');
 		expect(note).toContain('optional');
-		// An invitation, never a warning or a "setup incomplete" nag (plan D2).
+		// An invitation, never a warning or a "setup incomplete" nag.
 		expect(note).not.toMatch(/error|incomplete|required|must/i);
 	});
 
@@ -251,7 +251,7 @@ describe('gateExplanation — units', () => {
 		// `seedShadowCopy.ts` writes one probe per connected seed mailbox per
 		// campaign send. So a deployment with 8 seed mailboxes and 10 campaigns in
 		// the window renders 80 — a sentence saying "80 seed mailboxes" claims a
-		// coverage ten times what the operator connected, on the one number D17
+		// coverage ten times what the operator connected, on the one number the seed reading
 		// keeps BECAUSE it is the honesty input. Every seed sentence is checked,
 		// including the fall-through, because the noun is the whole point.
 		const wide = { ...seedPlacementPass().measurement, ownSample: 80, referenceSample: 80 };
@@ -274,7 +274,7 @@ describe('gateExplanation — units', () => {
 });
 
 /**
- * D17 — SEEDS ARE A TRIPWIRE, NOT A GAUGE.
+ * SEEDS ARE A TRIPWIRE, NOT A GAUGE.
  *
  * `seedPlacementGate.ts` keeps both arms' shares inside itself and hands out a
  * STATUS; `placementAdapter.ts` takes COUNTS from a commercial panel, "never a
@@ -316,7 +316,7 @@ describe('gateExplanation — the seed gate states a status, never a placement r
 	it('states the comparative breach as a rate comparison, with the sweeps beside it', () => {
 		// `reference_tolerance_breached` is the one seed verdict about the RELAY, and
 		// it compares two SHARES over independently-sized sweeps. The sizes are
-		// context; the size of the GAP is the number D17 forbids quoting.
+		// context; the size of the GAP is the number never to quote.
 		const sentence = explain(seedPlacementReferenceBreach());
 		expect(sentence).toContain('less often than the comparison transport');
 		expect(sentence).toContain('10 swept here, 12 there');

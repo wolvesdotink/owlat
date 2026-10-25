@@ -9,15 +9,18 @@
  * Nothing here reads or returns a credential, and nothing here reads mailbox
  * CONTENTS — a probe id and a folder NAME are the entire vocabulary.
  *
- * D2: with no seed mailboxes connected this returns an empty page forever and
+ * With no seed mailboxes connected this returns an empty page forever and
  * the worker's sweep is a no-op. Absence is a supported configuration.
  */
 
-import { v } from 'convex/values';
 import { internalQuery, type DatabaseReader } from '../_generated/server';
 import { CONNECTABLE_ACCOUNT_STATUSES, seedProviderOf } from '../mail/external/accountShared';
 import { getOptional } from '../lib/env';
-import type { SeedProbeWorkItem, SeedProbeWorkPage } from '@owlat/shared/seedPlacement';
+import {
+	listSeedProbeWork as listSeedProbeWorkContract,
+	type SeedProbeWorkItem,
+	type SeedProbeWorkPage,
+} from '@owlat/worker-protocol/mailSync';
 
 /**
  * How long after DISPATCH a probe becomes worth looking for. Filters run on
@@ -116,7 +119,8 @@ async function resolveClickHosts(db: DatabaseReader): Promise<string[]> {
  * (`analytics/seedRotationSweep.ts`).
  */
 export const listSeedProbeWork = internalQuery({
-	args: { now: v.number(), cursor: v.optional(v.union(v.string(), v.null())) },
+	args: listSeedProbeWorkContract.args,
+	returns: listSeedProbeWorkContract.returns,
 	handler: async (ctx, args): Promise<SeedProbeWorkPage> => {
 		const page = await ctx.db
 			.query('externalMailAccounts')

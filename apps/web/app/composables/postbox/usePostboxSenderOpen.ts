@@ -14,7 +14,7 @@ import { isNearViewport } from './usePostboxLazyBody';
 import { findOverflowAncestor } from './usePostboxScrollHost';
 
 /**
- * Tell the server a message's body was shown (SPEC §5): its sender's "you
+ * Tell the server a message's body was shown: its sender's "you
  * read" counter counts the first open of live mail. Called by every reader
  * message card, so an older message expanded by hand, a citation that opens
  * one, or a reply that arrives while the thread is open each count when their

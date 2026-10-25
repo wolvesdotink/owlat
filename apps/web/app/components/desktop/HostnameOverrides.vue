@@ -36,7 +36,7 @@ const props = withDefaults(
 		/** Why the disabled fields are inert (shown in place of the preview). */
 		disabledHint?: string;
 	}>(),
-	{ disabledKeys: () => [], disabledHint: '' },
+	{ disabledKeys: () => [], disabledHint: '' }
 );
 
 const { t } = useI18n();
@@ -55,9 +55,6 @@ function setLabel(key: SubdomainKey, value: string): void {
 
 /** The full hostname each label currently resolves to (via the one derivation). */
 const preview = computed(() => deriveHostnames(props.domain, labels.value));
-
-const inputBase =
-	'input input-sm font-mono text-xs disabled:cursor-not-allowed disabled:opacity-50';
 </script>
 
 <template>
@@ -76,7 +73,11 @@ const inputBase =
 			<p class="text-xs text-text-secondary">
 				{{ t('components.desktop.hostnameOverrides.intro') }}
 			</p>
-			<div v-for="f in SUBDOMAIN_FIELDS" :key="f.key" class="grid grid-cols-[8rem_1fr] items-start gap-2">
+			<div
+				v-for="f in SUBDOMAIN_FIELDS"
+				:key="f.key"
+				class="grid grid-cols-[8rem_1fr] items-start gap-2"
+			>
 				<label :for="`hostname-${f.key}`" class="pt-2 text-xs text-text-secondary">
 					{{ t(f.label) }}
 					<span class="block text-[11px] text-text-tertiary">{{ t(f.hint) }}</span>
@@ -86,7 +87,8 @@ const inputBase =
 						:id="`hostname-${f.key}`"
 						:value="labels[f.key]"
 						:disabled="isDisabled(f.key)"
-						:class="[inputBase, errors[f.key] && !isDisabled(f.key) ? 'input-error' : '']"
+						class="input input-sm font-mono disabled:cursor-not-allowed disabled:opacity-50"
+						:class="{ 'input-error': errors[f.key] && !isDisabled(f.key) }"
 						:aria-invalid="errors[f.key] && !isDisabled(f.key) ? 'true' : undefined"
 						:aria-describedby="`hostname-${f.key}-hint`"
 						autocapitalize="off"

@@ -168,6 +168,14 @@ const handleRestoreVersion = (state: HistoryState) => {
 	builderRef.value?.loadState(state);
 };
 
+// History "Compare": the canvas as it is now, unsaved edits included, copied
+// so the comparison holds still while editing goes on.
+const readCurrentState = (): HistoryState => ({
+	blocks: JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value,
+	name: name.value,
+	subject: subject.value,
+});
+
 // "Check email": the campaign pre-send checks on the canvas as it is now,
 // saved or not. The HTML is rendered once per click (the canvas keeps moving
 // while the dialog is open, the snapshot does not); "Show me" closes the
@@ -398,6 +406,7 @@ async function handlePublicationToggle() {
 								:template-id="templateId"
 								:has-unsaved-changes="hasChanges"
 								:autosaves="isDraft && !!drafts"
+								:read-current="readCurrentState"
 								@restore="handleRestoreVersion"
 							/>
 							<ShareLinksPopover

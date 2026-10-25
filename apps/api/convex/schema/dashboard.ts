@@ -17,7 +17,7 @@ export const dashboardTables = {
 		html: v.string(),
 		// Convex query used to generate data (for refresh)
 		dataQuery: v.optional(v.string()),
-		// Generation was refused for budget (D1): the stable code and reason the
+		// Generation was refused for budget: the stable code and reason the
 		// web localizes. Cleared by the next generation.
 		budgetRefusal: v.optional(budgetRefusalValidator),
 		// Dashboard integration

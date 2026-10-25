@@ -1,7 +1,7 @@
 /**
  * The destination-domain corpus — one fixture, every consumer.
  *
- * D8 gives the destination-provider taxonomy ONE declaration
+ * The destination-provider taxonomy has ONE declaration
  * (`@owlat/shared/deliverabilityRouting`). A single declaration only buys
  * agreement if every consumer that turns a recipient domain into a key reaches
  * the same answer, so the domains live here once and

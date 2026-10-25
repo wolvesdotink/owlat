@@ -10,7 +10,7 @@
  *     artifact — the whole tier stays exactly as it composed before.
  *  2. A declared identity is keyed by the NAMESPACED kind, which is what makes
  *     its rows land in `sendingDomainRelayIdentities` under
- *     `providerKind: 'plugin.<id>.<local>'` (D10: rows, not columns), and carries
+ *     `providerKind: 'plugin.<id>.<local>'` (rows, not columns), and carries
  *     the transport's OWN configuration — never the plugin's deployment-wide flag
  *     variables, which are not this transport's to hand to a module.
  *  3. `domainVerification: 'api'` on the SEND catalog entry is DERIVED from the

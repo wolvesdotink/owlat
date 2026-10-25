@@ -1,5 +1,5 @@
 /**
- * "Open for the team" (plan §4.3): each action names its owner or says
+ * "Open for the team": each action names its owner or says
  * Unassigned; an unassigned one offers Claim, an owned one its reaction;
  * assigning goes through the menu; what the customer owes and what nobody
  * can tell who owns stay visible below; it never says "nothing open" while

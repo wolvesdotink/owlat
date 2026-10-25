@@ -80,7 +80,7 @@ function setLabel(token: string, label: string) {
 				{{ tokenLiteral(token) }}
 			</code>
 			<select
-				class="input w-56 text-sm"
+				class="input w-56"
 				:value="declarationFor(token)?.source ?? ''"
 				:aria-label="t('components.postbox.postboxSnippetVariableEditor.sourceLabel', { token })"
 				@change="
@@ -97,7 +97,7 @@ function setLabel(token: string, label: string) {
 			<input
 				v-if="declarationFor(token)?.source === 'prompt'"
 				type="text"
-				class="input flex-1 min-w-[12rem] text-sm"
+				class="input flex-1 min-w-[12rem]"
 				:value="declarationFor(token)?.label ?? ''"
 				:placeholder="t('components.postbox.postboxSnippetVariableEditor.promptPlaceholder')"
 				:aria-label="t('components.postbox.postboxSnippetVariableEditor.promptLabel', { token })"

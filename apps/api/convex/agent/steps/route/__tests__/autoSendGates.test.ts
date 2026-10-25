@@ -196,7 +196,7 @@ describe('ordered core auto-send gate registry', () => {
 		expect(result.calls.map(shortName)).toEqual(['getMessage', 'getBudgetStatus']);
 	});
 
-	it('holds a message the spend ceiling held (D1), without reading the budget', async () => {
+	it('holds a message the spend ceiling held, without reading the budget', async () => {
 		const result = await finalDecision({
 			message: {
 				...cleanMessage,
@@ -252,7 +252,7 @@ describe('ordered core auto-send gate registry', () => {
 		],
 		[{ classification: { ...cleanMessage.classification, priority: 'urgent' } }, 'never auto-sent'],
 		[{ securityFlags: { guardUnavailable: true } }, 'guard was unavailable'],
-		// D13: a scan that skipped the model guard is held like a guard that failed.
+		// A scan that skipped the model guard is held like a guard that failed.
 		[
 			{
 				securityFlags: {
@@ -285,7 +285,7 @@ describe('ordered core auto-send gate registry', () => {
 		expect(decision).toEqual({ safe: false, reason: 'Manager review required' });
 	});
 
-	it('holds auto-send when interpretation is incomplete (D3)', async () => {
+	it('holds auto-send when interpretation is incomplete', async () => {
 		const { decision } = await finalDecision({
 			hold: { reason: 'Interpretation of this message is partial; not auto-sending.' },
 		});
@@ -303,7 +303,7 @@ describe('ordered core auto-send gate registry', () => {
 		});
 	});
 
-	describe('item_coverage (SPEC §6)', () => {
+	describe('item_coverage', () => {
 		const objection = {
 			objections: ['not_addressed', 'file_missing'],
 			reason: 'Item coverage: an open item the reply should answer is not addressed',

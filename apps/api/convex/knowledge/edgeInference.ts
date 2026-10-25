@@ -274,7 +274,7 @@ ${numbered}`,
 					written++;
 				}
 			} catch (error) {
-				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run
 				// Mirror extraction: a single inference failure must never derail ingestion.
 				console.error('[Knowledge Edge Inference] Failed:', error);
 			}

@@ -230,7 +230,7 @@ export const mailThreadsTables = {
 		// interpretation is not used anywhere until an operator lifts the fence.
 		// Human state on its items stays.
 		interpretationStaleSince: v.optional(v.number()),
-		// Read on arrival (SPEC §2.8, §6.5): the derived placement of the newest
+		// Read on arrival: the derived placement of the newest
 		// inbound message, rewritten only by `refreshArrivalProjection`; digest
 		// eligibility and the boundary the last sent digest consumed through (a
 		// sourceOrderKey); a Fix override and the undo ABA guard. Cleared when
@@ -271,6 +271,12 @@ export const mailThreadsTables = {
 		// recognisable as "you asked for this back" rather than looking like new
 		// mail. Advisory display state only: nothing routes off it.
 		snoozeReturnedAt: v.optional(v.number()),
+		// Pinned conversation (`mail/pins.ts`): kept in the Inbox's pinned band
+		// until someone unpins it. Mailbox-scoped like `mutedAt`, independent of
+		// the per-message star, and written only by the pin mutation, so no
+		// delivery, aggregate rebuild, archive or snooze clears it. Its value is
+		// the pin time, which orders the band. Absent = not pinned.
+		pinnedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -285,11 +291,17 @@ export const mailThreadsTables = {
 		// Backs the 1-minute follow-up sweep cron — range scan on
 		// followUpRemindAt <= now (lower-bounded gt(0) like the snooze sweep).
 		.index('by_follow_up_remind', ['followUpRemindAt'])
+		// Today's Upcoming band: one mailbox's armed follow-ups, soonest first
+		// (lower-bounded by now, which also skips the never-armed rows).
+		.index('by_mailbox_follow_up_remind', ['mailboxId', 'followUpRemindAt'])
 		// Backs the Reply Queue's "You're waiting on <name>" follow-up items —
 		// due watches per mailbox without a full-table scan.
 		.index('by_mailbox_follow_up_due', ['mailboxId', 'followUp.dueAt'])
 		// The digest's selection: a mailbox's digest-eligible threads, newest first.
-		.index('by_mailbox_digest_pending', ['mailboxId', 'digestPendingSince']),
+		.index('by_mailbox_digest_pending', ['mailboxId', 'digestPendingSince'])
+		// The pinned band: a mailbox's pinned threads in pin order (lower-bounded
+		// gt(0), since an unpinned thread's absent value sorts first).
+		.index('by_mailbox_pinned', ['mailboxId', 'pinnedAt']),
 
 	// Per-identity (mailbox) writing-voice profile, derived from the user's own
 	// SENT mail so advisory AI drafts sound like them. Recomputed lazily (see

@@ -14,7 +14,7 @@ import { SEND_PROVIDER_CATALOG } from '../catalog';
 
 /**
  * G-08 (3) — an unsupported relay flags the cell DEGRADED MEASUREMENT and
- * widens the bounce-gate tolerance, and NOTHING is blocked (plan D2).
+ * widens the bounce-gate tolerance, and NOTHING is blocked.
  *
  * The standalone matrix is the important half of this file: with no relay
  * configured, no VERP key, no probe and no external account of any kind, every
@@ -62,7 +62,7 @@ describe('degraded measurement — the flag', () => {
 	});
 });
 
-describe('D2 — absence blocks nothing', () => {
+describe('absence blocks nothing', () => {
 	it('resolves a posture for EVERY catalogued transport with no probe data at all', () => {
 		for (const entry of SEND_PROVIDER_CATALOG) {
 			const resolved = resolveReturnPathCapability(entry.kind, null, T0);
@@ -104,7 +104,7 @@ describe('D2 — absence blocks nothing', () => {
 		expect(envelopeFrom).toBe('news@example.com');
 	});
 
-	// D2 stated behaviourally: an unprobed relay is a SUPPORTED configuration, so
+	// Absence blocks nothing, stated behaviourally: an unprobed relay is a SUPPORTED configuration, so
 	// the degraded posture must still hand the send path everything it needs —
 	// a usable envelope sender, a finite positive bounce tolerance, and the stamp
 	// simply switched off.

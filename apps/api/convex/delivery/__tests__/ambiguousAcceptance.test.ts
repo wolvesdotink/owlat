@@ -1,6 +1,6 @@
 /**
  * THE PARK — what happens to a Send whose acceptance is genuinely unknown on a
- * transport that cannot be asked again (plan D4).
+ * transport that cannot be asked again.
  *
  * Mandrill's `send-raw` has no idempotency surface, so a lost response may sit
  * on top of an accepted and delivered message: replaying it (the MTA's
@@ -78,7 +78,7 @@ describe('an ambiguous-acceptance send on a feedback-capable relay', () => {
 		expect(jobs[0]?.scheduledTime).toBe(startedAt + GOVERNED_MTA_MAX_MESSAGE_AGE_MS);
 	});
 
-	it('never re-dispatches the attempt (D4) and never counts a deferral', async () => {
+	it('never re-dispatches the attempt and never counts a deferral', async () => {
 		const t = convexTest(schema, modules);
 		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx));
 

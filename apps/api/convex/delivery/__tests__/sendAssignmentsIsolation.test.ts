@@ -9,7 +9,7 @@
  *
  * The join is asserted through `readAssignmentForSend` rather than through a
  * query shell: it IS the read every caller goes through, and a shell wrapping it
- * with no consumer is the speculative seam D20 forbids.
+ * with no consumer is a speculative seam.
  */
 
 import { convexTest } from 'convex-test';

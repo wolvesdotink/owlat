@@ -2,6 +2,14 @@ export { renderEmailHtml, renderBlockFragment } from './renderer';
 export { renderAmpEmail } from './amp';
 export { diffEmails } from './diff';
 export type { EmailDiff, EmailDiffChange } from './diff';
+export { diffTemplateVersions } from './templateDiff';
+export type {
+	BlockChange,
+	FieldChange,
+	MetaChange,
+	TemplateDiff,
+	TemplateDiffSide,
+} from './templateDiff';
 export { analyzeEmail, getEmailHealthScore, suggestOptimizations } from './analyzer';
 export { renderPlainText, resolvePlainText, hasPlainTextOverride } from './plaintext';
 export { renderDraftBodies } from './draftBodies';
@@ -45,6 +53,7 @@ export {
 } from './simulators';
 export type { ClientSimulator } from './simulators';
 export type {
+	BlockChangeKind,
 	RenderOptions,
 	RenderContext,
 	TargetClient,

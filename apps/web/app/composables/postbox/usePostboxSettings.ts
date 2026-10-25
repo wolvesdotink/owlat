@@ -18,6 +18,8 @@
  *     Defaults ON (undefined => true), same master-gate reasoning as above.
  *   - `replyDefault` — whether the primary reply affordance (Reply button /
  *     `r`) opens a plain Reply or a Reply-all. Defaults to 'reply'.
+ *   - `afterReply` — whether Send keeps a replied conversation in the Inbox
+ *     ('keep', the default) or marks it done. See utils/postboxAfterReply.
  *   - `density` — 'comfortable' (roomy default) vs 'compact' (tighter rows +
  *     single-line subject/snippet). Defaults to 'comfortable'.
  *   - `viewMode` — which list renderer the inbox uses: 'flat' (default),
@@ -71,7 +73,8 @@
  *     the app with (idea 43b): a named preset (Owlat / Gmail / Superhuman /
  *     Outlook) plus their own per-shortcut remaps on top. Absent means the
  *     shipped 'owlat' map with no remaps, which is exactly the keyboard before
- *     the setting existed.
+ *     the setting existed. Read here; `useShortcutPreferences` writes them
+ *     through its own mutation, which needs no mail flag.
  *   - `markReadPolicy` — when an opened conversation loses its unread flags:
  *     'immediate' (mark on render, the default and today's behaviour),
  *     'after-dwell' (mark after a short visible dwell, cancelled by navigating
@@ -83,6 +86,7 @@ import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import { POSTBOX_AUTO_ADVANCE_DEFAULT } from '~/utils/postboxAutoAdvance';
 import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import { POSTBOX_REPLY_DEFAULT } from '~/utils/postboxReplyDefault';
+import { resolvePostboxAfterReply, type PostboxAfterReply } from '~/utils/postboxAfterReply';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { resolvePostboxDensity } from '~/utils/postboxDensity';
 import type { PostboxViewMode } from '~/utils/postboxViewMode';
@@ -135,10 +139,10 @@ export function usePostboxSettings() {
 	// this is a per-user opt-out from seeing AI briefs (`isAutoSummarizeOn`).
 	const autoSummarize = computed<boolean>(() => data.value?.isAutoSummarizeOn ?? true);
 
-	// Read on arrival (SPEC §2.1): default ON. The AI provider reads personal
+	// Read on arrival: default ON. The AI provider reads personal
 	// mail as it arrives; off, mail waits until a thread is opened.
 	const readOnArrival = computed<boolean>(() => data.value?.isReadOnArrival ?? true);
-	// Read on arrival (SPEC §6.4): archive codes and sign-in links after a day. Default OFF.
+	// Read on arrival: archive codes and sign-in links after a day. Default OFF.
 	const codeAutoArchive = computed<boolean>(() => data.value?.isCodeAutoArchiveOn ?? false);
 
 	// Which mode the primary reply affordance (Reply button / `r`) uses. Reads
@@ -147,6 +151,7 @@ export function usePostboxSettings() {
 	const replyDefault = computed<PostboxReplyDefaultMode>(
 		() => data.value?.replyDefault ?? POSTBOX_REPLY_DEFAULT
 	);
+	const afterReply = computed(() => resolvePostboxAfterReply(data.value?.afterReply));
 
 	// List/reader density. An unset (or unknown) value resolves to 'comfortable',
 	// so the reader can consume it unconditionally while the query loads.
@@ -191,6 +196,11 @@ export function usePostboxSettings() {
 	const autoLoadImages = computed<boolean>(() =>
 		data.value === undefined ? false : (data.value?.isAutoLoadImagesOn ?? true)
 	);
+
+	// Whether the saved row (or its absence) has arrived. Until then every value
+	// here is a default, so a caller whose action cannot be taken back (an OS
+	// notification that would show a name, or fire inside quiet hours) waits.
+	const isResolved = computed<boolean>(() => data.value !== undefined);
 
 	// Undo-send window. An unset (or unknown) value resolves to 10s — the server
 	// default the composer gets by sending no `undoSendDelayMs` at all.
@@ -308,6 +318,9 @@ export function usePostboxSettings() {
 	async function setReplyDefault(mode: PostboxReplyDefaultMode) {
 		await updateOp.run({ replyDefault: mode });
 	}
+	async function setAfterReply(action: PostboxAfterReply) {
+		await updateOp.run({ afterReply: action });
+	}
 
 	async function setDensity(mode: PostboxDensity) {
 		await updateOp.run({ density: mode });
@@ -391,14 +404,6 @@ export function usePostboxSettings() {
 		await updateOp.run({ shareLinkExpiryDays: days });
 	}
 
-	async function setShortcutPreset(preset: ShortcutPreset) {
-		await updateOp.run({ shortcutPreset: preset });
-	}
-
-	async function setShortcutOverrides(overrides: StoredShortcutOverride[]) {
-		await updateOp.run({ shortcutOverrides: overrides });
-	}
-
 	async function setSwipeAction(direction: 'left' | 'right', action: PostboxSwipeAction) {
 		await updateOp.run(
 			direction === 'left' ? { swipeLeftAction: action } : { swipeRightAction: action }
@@ -430,6 +435,7 @@ export function usePostboxSettings() {
 		readOnArrival,
 		codeAutoArchive,
 		replyDefault,
+		afterReply,
 		density,
 		viewMode,
 		readingPane,
@@ -455,12 +461,14 @@ export function usePostboxSettings() {
 		dailyBriefEmail,
 		hasSeenSealedMailNudge,
 		isLoading,
+		isResolved,
 		setAutoAdvance,
 		setWritingSuggestions,
 		setAutoSummarize,
 		setReadOnArrival,
 		setCodeAutoArchive,
 		setReplyDefault,
+		setAfterReply,
 		setDensity,
 		setViewMode,
 		setReadingPane,
@@ -479,8 +487,6 @@ export function usePostboxSettings() {
 		setTrashAutoPurgeDays,
 		setShareLinkExpiryDays,
 		setSwipeAction,
-		setShortcutPreset,
-		setShortcutOverrides,
 		setDailyBriefEmail,
 		dismissSealedMailNudge,
 		isSaving: updateOp.isLoading,

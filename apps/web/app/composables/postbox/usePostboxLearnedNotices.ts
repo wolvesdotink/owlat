@@ -4,7 +4,7 @@ import { watch, type Ref } from 'vue';
 import { usePostboxArrivalUndo } from '~/composables/postbox/usePostboxArrivalUndo';
 
 /**
- * The learned-digest notice (SPEC §4.3): once Owlat learned from unread
+ * The learned-digest notice: once Owlat learned from unread
  * archives that a sender belongs in the digest, the Postbox says so once,
  * "Mail from X now goes to your digest · Undo". The notice is acknowledged
  * when its toast leaves the screen, so it never comes back; Undo restores the

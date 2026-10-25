@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Full brief" (read on arrival §3, plan §6): the whole thread brief in a side
+ * "Full brief" (read on arrival §3): the whole thread brief in a side
  * sheet beside the conversation. It is the card the old Overview showed, so
  * nothing it held is lost: latest, where things stand, every item with its
  * reactions, activity, people and files, the originals whose exact wording

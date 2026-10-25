@@ -41,8 +41,8 @@
  * required-field gate, env patch and server allowlist all consume the composed
  * descriptor without learning this fixture's name.
  *
- * RETURN-PATH PROBES (plan §5's P3.3 obligation list) are SUPERSEDED, not a
- *      gap. P3.1 gave this tier `supportsCustomReturnPath: 'no'` as its only
+ * RETURN-PATH PROBES are SUPERSEDED, not a
+ *      gap. This tier has `supportsCustomReturnPath: 'no'` as its only
  *      value, because the VERP local part a probe would measure is signed with a
  *      deployment secret a third-party module is never handed. So a plugin kind
  *      is unprobeable BY CONSTRUCTION and the obligation is discharged in the
@@ -61,7 +61,7 @@
  * the copies of its kind that live outside this package.
  *
  * WHY THE GENERATED ARTIFACTS ARE MOCKED AND NOTHING ELSE IS. `plugins.config.ts`
- * is empty in this repository (D4's policy is "wire it when real"), so the four
+ * is empty in this repository (the policy is "wire it when real"), so the four
  * `*.generated.ts` files ship as empty arrays and the only way to put a plugin
  * transport in front of the core modules is to supply the composition. The values
  * supplied are the ones the REAL renderer emits for the fixture manifest
@@ -586,7 +586,7 @@ describe('its credentials form is a descriptor set the UI vocabulary can draw', 
 	/**
 	 * THE COMPOSITION BOUNDARY, STATED WHERE ITS ARCHITECTURE IS.
 	 *
-	 * Everything above is the PLUGIN's half of D5 and it is complete: the bundle
+	 * Everything above is the PLUGIN's half of descriptor-rendered credentials and it is complete: the bundle
 	 * ships a form in the vocabulary `TransportCredentialFields.vue` draws, joined
 	 * to the variables its sends read. Shared deliberately stays core-only; plugin
 	 * codegen now emits the same composed data-only catalog into web and API, so

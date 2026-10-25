@@ -6,9 +6,9 @@
  * would let a wrong date pass because the copy read plausibly; testing only the
  * arithmetic would let a correct date never reach the page.
  *
- * The D14 variant is the point of the second half: with no relay the screen is
+ * The no-relay variant is the point of the second half: with no relay the screen is
  * "Warm-up autopilot" with a capacity headline, not a degraded "Sending
- * independence" — and nothing on it renders as a warning or a setup nag (D2).
+ * independence" — and nothing on it renders as a warning or a setup nag.
  */
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -242,7 +242,7 @@ describe('independence screen', () => {
 		wrapper.unmount();
 	});
 
-	it('becomes Warm-up autopilot with no relay, headed by today’s capacity (D14)', () => {
+	it('becomes Warm-up autopilot with no relay, headed by today’s capacity', () => {
 		data.value = independenceSummary({
 			referenceTransportId: null,
 			isRelayConfigured: false,
@@ -252,7 +252,7 @@ describe('independence screen', () => {
 		});
 		const wrapper = mountPage();
 		expect(wrapper.find('h1').text()).toBe('Warm-up autopilot');
-		// The browser tab follows the h1 — the D14 rename applied all the way.
+		// The browser tab follows the h1 — the no-relay name applied all the way.
 		expect(headTitle()).toContain('Warm-up autopilot');
 		// The headline is formatted the way the sentence under it is — one figure,
 		// not "4000" sitting over "4,000 more messages".

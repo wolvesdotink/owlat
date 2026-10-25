@@ -12,7 +12,9 @@
  * hiding is the push card's own "Private notifications" switch.
  */
 import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
-import { POSTBOX_NOTIFY_ABOUT_OPTIONS } from '~/utils/postboxNotify';
+import { POSTBOX_NOTIFY_ABOUT_OPTIONS, defaultPostboxNotifyAbout } from '~/utils/postboxNotify';
+import { POSTBOX_PREFERENCE_DEFAULTS as DEFAULTS } from '~/utils/postboxPreferenceDefaults';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const props = withDefaults(defineProps<{ surface?: 'desktop' | 'web' }>(), {
 	surface: 'desktop',
@@ -52,7 +54,27 @@ const {
 	senderScreener,
 	setSenderScreener,
 	isSaving,
+	isLoading,
 } = usePostboxSettings();
+
+// The scope's default follows smart categories (the `ai` flag), the same rule
+// `usePostboxSettings` resolves an unset row with.
+const { isEnabled } = useFeatureFlag();
+const notifyAboutDefault = computed(() => defaultPostboxNotifyAbout(isEnabled('ai')));
+
+// The "changed from default" markers stay hidden while the settings row
+// loads: every value then reads as a fallback nobody chose.
+const changed = computed(() => {
+	if (isLoading.value) {
+		return { notifyAbout: false, badgeNonPeople: false, hidePreview: false, senderScreener: false };
+	}
+	return {
+		notifyAbout: notifyAbout.value !== notifyAboutDefault.value,
+		badgeNonPeople: badgeNonPeople.value !== DEFAULTS.badgeNonPeople,
+		hidePreview: hidePreview.value !== DEFAULTS.hidePreview,
+		senderScreener: senderScreener.value !== DEFAULTS.senderScreener,
+	};
+});
 
 function onNotifyAboutChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value as PostboxNotifyAbout;
@@ -73,9 +95,17 @@ function onNotifyAboutChange(event: Event) {
 			class="px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4"
 		>
 			<div class="min-w-0">
-				<label for="postbox-notify-about" class="font-medium text-sm block">
-					{{ t('components.postbox.postboxNotificationSettings.notifyAbout.label') }}
-				</label>
+				<div class="flex items-center gap-2">
+					<label for="postbox-notify-about" class="font-medium text-sm block">
+						{{ t('components.postbox.postboxNotificationSettings.notifyAbout.label') }}
+					</label>
+					<SettingsResetToDefault
+						:changed="changed.notifyAbout"
+						:label="t('components.postbox.postboxNotificationSettings.notifyAbout.label')"
+						:disabled="isSaving"
+						@reset="setNotifyAbout(notifyAboutDefault)"
+					/>
+				</div>
 				<p class="text-xs text-text-tertiary mt-0.5">
 					{{ t(notifyAboutHintKey) }}
 				</p>
@@ -97,9 +127,17 @@ function onNotifyAboutChange(event: Event) {
 			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
 		>
 			<div class="min-w-0">
-				<label for="postbox-badge-nonpeople" class="font-medium text-sm block">
-					{{ t('components.postbox.postboxNotificationSettings.badgeAll.label') }}
-				</label>
+				<div class="flex items-center gap-2">
+					<label for="postbox-badge-nonpeople" class="font-medium text-sm block">
+						{{ t('components.postbox.postboxNotificationSettings.badgeAll.label') }}
+					</label>
+					<SettingsResetToDefault
+						:changed="changed.badgeNonPeople"
+						:label="t('components.postbox.postboxNotificationSettings.badgeAll.label')"
+						:disabled="isSaving"
+						@reset="setBadgeNonPeople(DEFAULTS.badgeNonPeople)"
+					/>
+				</div>
 				<p class="text-xs text-text-tertiary mt-0.5">
 					{{ t('components.postbox.postboxNotificationSettings.badgeAll.hint') }}
 				</p>
@@ -114,6 +152,7 @@ function onNotifyAboutChange(event: Event) {
 		<PostboxQuietHoursFields
 			:value="quietHours"
 			:disabled="isSaving"
+			:loading="isLoading"
 			@update="setQuietHours($event)"
 		/>
 		<div
@@ -121,9 +160,17 @@ function onNotifyAboutChange(event: Event) {
 			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
 		>
 			<div class="min-w-0">
-				<label for="postbox-hide-preview" class="font-medium text-sm block">
-					{{ t('components.postbox.postboxNotificationSettings.hidePreview.label') }}
-				</label>
+				<div class="flex items-center gap-2">
+					<label for="postbox-hide-preview" class="font-medium text-sm block">
+						{{ t('components.postbox.postboxNotificationSettings.hidePreview.label') }}
+					</label>
+					<SettingsResetToDefault
+						:changed="changed.hidePreview"
+						:label="t('components.postbox.postboxNotificationSettings.hidePreview.label')"
+						:disabled="isSaving"
+						@reset="setHidePreview(DEFAULTS.hidePreview)"
+					/>
+				</div>
 				<p class="text-xs text-text-tertiary mt-0.5">
 					{{ t('components.postbox.postboxNotificationSettings.hidePreview.hint') }}
 				</p>
@@ -137,9 +184,17 @@ function onNotifyAboutChange(event: Event) {
 		</div>
 		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 			<div class="min-w-0">
-				<label for="postbox-sender-screener" class="font-medium text-sm block">
-					{{ t('components.postbox.postboxNotificationSettings.screener.label') }}
-				</label>
+				<div class="flex items-center gap-2">
+					<label for="postbox-sender-screener" class="font-medium text-sm block">
+						{{ t('components.postbox.postboxNotificationSettings.screener.label') }}
+					</label>
+					<SettingsResetToDefault
+						:changed="changed.senderScreener"
+						:label="t('components.postbox.postboxNotificationSettings.screener.label')"
+						:disabled="isSaving"
+						@reset="setSenderScreener(DEFAULTS.senderScreener)"
+					/>
+				</div>
 				<p class="text-xs text-text-tertiary mt-0.5">
 					{{ t('components.postbox.postboxNotificationSettings.screener.hint') }}
 				</p>

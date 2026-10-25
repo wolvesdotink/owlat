@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * What happened, as a thin line in the team stream (plan §4.3): an action
+ * What happened, as a thin line in the team stream: an action
  * closed, a reply held, a file added. Several new actions noted together
  * read as one line. Each line says how Owlat knows it (recorded, you said,
  * from their email). Never an AI sentence about the customer's mail.

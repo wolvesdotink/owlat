@@ -1,6 +1,6 @@
 /**
- * The CREDENTIAL FORM a bundled send transport declares (the seams plan's D5,
- * given to the plugin tier by P3.1) — typed descriptors, no renderer.
+ * The CREDENTIAL FORM a bundled send transport declares
+ * — typed descriptors, no renderer.
  *
  * Split out of `./sendTransport` because it is a vocabulary rather than a
  * contract: nothing here decides what a send does. The transport definition

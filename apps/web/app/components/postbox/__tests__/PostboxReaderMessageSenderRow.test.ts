@@ -1,5 +1,5 @@
 /**
- * The message card's sender row at phone widths (plan §10): the trust chip ran
+ * The message card's sender row at phone widths: the trust chip ran
  * off the card's right edge at 390px, because the row never wrapped and the
  * chip never shrinks. The wrap is for phones only; desktop keeps one line. happy-dom cannot lay out, so what is pinned is the
  * structure the fix relies on: a wrapping row, a sender that may shrink and
@@ -14,6 +14,7 @@ import { defineComponent, h } from 'vue';
 import { mount } from '@vue/test-utils';
 
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
+import { readerContextProvide } from './readerContextFixture';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 beforeAll(() => {
@@ -44,24 +45,20 @@ function mountCard(reduced: boolean) {
 	return mount(PostboxReaderMessage, {
 		props: {
 			message: message as never,
-			mailboxId: 'mbx_1',
 			expanded: true,
 			relativeTime: '2h',
 			starred: false,
 			showReplyAll: false,
 			showSenderControls: true,
-			authEnabled: true,
-			sealedEnabled: false,
 			secureClass: 'none',
 			hideBody: false,
-			showRenderToggle: false,
 			forcedLight: false,
 			images: { senderImagesAllowed: false, autoLoadImages: false, suspicious: false },
 			hasInvite: false,
-			reduced,
 		},
 		global: {
 			plugins: [createTestI18n()],
+			provide: readerContextProvide({ authEnabled: true, reduced }),
 			components: {
 				UiAvatar: marker('UiAvatar'),
 				PostboxTrustChip: marker('PostboxTrustChip'),

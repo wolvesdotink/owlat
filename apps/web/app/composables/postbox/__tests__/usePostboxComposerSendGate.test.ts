@@ -6,10 +6,11 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, ref } from 'vue';
+import { flushPromises } from '@vue/test-utils';
 
 const showToast = vi.fn();
 const showOperationError = vi.fn();
-const guardsBlock = vi.fn(() => false);
+const guardsBlock = vi.fn((_opts?: unknown) => false);
 const staleBlock = vi.fn(() => false);
 
 vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
@@ -21,7 +22,15 @@ vi.stubGlobal('usePostboxStaleReplyGuard', () => ({
 	blockSend: staleBlock,
 	confirm: vi.fn(),
 }));
-vi.stubGlobal('usePostboxComposerGuards', () => ({ blockSend: guardsBlock }));
+// The confidence layer replays a parked send through the gate's own handleSend.
+let guardsConfirm: (opts?: unknown) => void = () => {};
+vi.stubGlobal(
+	'usePostboxComposerGuards',
+	(_sources: unknown, hooks: { onConfirm: (opts?: unknown) => void }) => {
+		guardsConfirm = hooks.onConfirm;
+		return { blockSend: guardsBlock };
+	}
+);
 
 import { usePostboxComposerSendGate } from '../usePostboxComposerSendGate';
 
@@ -60,8 +69,32 @@ describe('usePostboxComposerSendGate', () => {
 		const { gate, send, onSent } = makeGate();
 		await gate.handleSend({ scheduledSendAt: 42 });
 		expect(send).toHaveBeenCalledWith({ scheduledSendAt: 42 });
-		expect(onSent).toHaveBeenCalledWith({ scheduled: true });
+		expect(onSent).toHaveBeenCalledWith({ scheduled: true, done: false });
 		expect(gate.sending.value).toBe(false);
+	});
+
+	it('reports a reply that marks its conversation done', async () => {
+		const { gate, send, onSent } = makeGate();
+		await gate.handleSend({ afterSend: 'done' });
+		expect(send).toHaveBeenCalledWith({ afterSend: 'done' });
+		expect(onSent).toHaveBeenCalledWith({ scheduled: false, done: true });
+	});
+
+	it('replays a parked send with the action and the time chosen when Send was pressed', async () => {
+		const { gate, send, onSent } = makeGate();
+		let parked: unknown;
+		guardsBlock.mockImplementationOnce((opts?: unknown) => {
+			parked = opts;
+			return true;
+		});
+		await gate.handleSend({ afterSend: 'done', afterSendChosenAt: 1_000 });
+		expect(send).not.toHaveBeenCalled();
+
+		// Confirmed later: the cutoff is still the moment done was chosen.
+		guardsConfirm(parked);
+		await flushPromises();
+		expect(send).toHaveBeenCalledWith({ afterSend: 'done', afterSendChosenAt: 1_000 });
+		expect(onSent).toHaveBeenCalledWith({ scheduled: false, done: true });
 	});
 
 	it('explains an upload in flight instead of sending', async () => {

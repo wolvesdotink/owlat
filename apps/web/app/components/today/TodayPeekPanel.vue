@@ -6,6 +6,9 @@ import { parsePeekKey, threadHref } from '~/utils/todayPeek';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { optimisticSetFlags } from '~/lib/mailOptimistic/mailUpdaters';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
+import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { useShortcutScope } from '~/composables/useShortcutScope';
 
 /**
  * The email behind a Today phrase, in a panel over the page. Today stays put
@@ -134,21 +137,19 @@ function step(delta: number) {
 	const next = index.value + delta;
 	if (next >= 0 && next < props.sources.length) emit('step', next);
 }
-function onKeydown(event: KeyboardEvent) {
-	if (!target.value || isEditableTarget(event.target)) return;
-	if (event.key === 'Escape') {
-		event.preventDefault();
-		emit('close');
-	} else if (event.key === 'ArrowDown' || event.key === 'j') {
-		event.preventDefault();
-		step(1);
-	} else if (event.key === 'ArrowUp' || event.key === 'k') {
-		event.preventDefault();
-		step(-1);
-	}
-}
-onMounted(() => window.addEventListener('keydown', onKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+// While open the panel claims the `peek` scope, so its step keys win over the
+// Workbench's own j/k underneath and follow the person's remaps. Escape goes
+// through the shared Escape stack like every other panel; in a text field it
+// stays with the field.
+const isOpen = () => !!target.value;
+useShortcutScope('peek', isOpen);
+const { registerShortcut } = useKeyboardShortcuts();
+registerShortcut({ id: 'peek.next', handler: () => step(1), when: isOpen });
+registerShortcut({ id: 'peek.previous', handler: () => step(-1), when: isOpen });
+useEscapeLayer(isOpen, (event) => {
+	if (isEditableTarget(event.target)) return false;
+	emit('close');
+});
 
 const panelRef = ref<HTMLElement | null>(null);
 watch(target, async (value, previous) => {

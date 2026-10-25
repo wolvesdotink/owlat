@@ -16,11 +16,20 @@
  *
  * A chain schedules its next page with {@link scheduleMigrationPage}, which
  * records the job on the row (`pageJob`), so a page that failed is found by id.
+ *
+ * A contract step (a manifest entry with `requiresWorkers`) is refused here,
+ * at the one start every entry point shares: the admin runner, `npx convex
+ * run migrations/NNNN_name:run`, a migration's own cron, and a resume. Holding
+ * it only in the runner would let any other caller start it under a worker
+ * that still reads what it removes.
  */
 
 import type { FunctionArgs, FunctionReference, OptionalRestArgs } from 'convex/server';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
+import { MIGRATION_MANIFEST } from '../migrations/manifest';
+import { readWorkerWaits } from '../maintenance/workerRegistry';
+import { throwInvalidState } from '../_utils/errors';
 
 export type MigrationRun = Doc<'migrationRuns'>;
 
@@ -46,6 +55,9 @@ export function readMigrationRun(
  *   `mode` to know which one that is.
  * - A completed row without `restart`: nothing changes; returns null.
  *
+ * Throws, writing nothing, while a contract step's workers have not all moved
+ * to the wire versions it needs ({@link assertWorkersMoved}).
+ *
  * Returns the row as written, whose `generation` the first page must carry.
  */
 export async function beginMigrationRun(
@@ -63,6 +75,7 @@ export async function beginMigrationRun(
 	const existing = await readMigrationRun(ctx, migration);
 	const now = Date.now();
 	if (existing && existing.status === 'completed' && !restart) return null;
+	await assertWorkersMoved(ctx, migration, now);
 
 	if (existing && existing.status === 'running' && !restart) {
 		const cursor = options.cursor === undefined ? existing.cursor : (options.cursor ?? undefined);
@@ -98,6 +111,32 @@ export async function beginMigrationRun(
 	}
 	const id = await ctx.db.insert('migrationRuns', { migration, ...fresh });
 	return await ctx.db.get(id);
+}
+
+/**
+ * Refuse to start or resume a contract step while a worker it waits on has not
+ * moved (`readWorkerWaits`). The admin runner reads the same waits and holds
+ * the step instead of calling `run`, so this only fires for callers that skip
+ * the runner. A migration without `requiresWorkers` reads nothing.
+ */
+async function assertWorkersMoved(ctx: MutationCtx, migration: string, now: number) {
+	const requirement = MIGRATION_MANIFEST.find(
+		(entry) => entry.migration === migration
+	)?.requiresWorkers;
+	if (!requirement) return;
+	const waits = await readWorkerWaits(ctx.db, requirement, now);
+	if (waits.length === 0) return;
+	const services = waits
+		.map((wait) =>
+			wait.reason === 'lagging'
+				? `${wait.service} (a live worker reports wire ${wait.oldestLiveWireVersion}, needs ${wait.requiredWireVersion})`
+				: `${wait.service} (no live worker reports wire ${wait.requiredWireVersion})`
+		)
+		.join(', ');
+	throwInvalidState(`${migration} waits for workers to move: ${services}`, {
+		migration,
+		waits,
+	});
 }
 
 /**

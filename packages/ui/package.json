@@ -13,6 +13,9 @@
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage"
 	},
+	"dependencies": {
+		"reka-ui": "^2.11.0"
+	},
 	"devDependencies": {
 		"@nuxtjs/color-mode": "catalog:vue",
 		"@owlat/shared": "workspace:*",

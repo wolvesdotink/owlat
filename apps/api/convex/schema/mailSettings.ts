@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
+	mailAfterReplyValidator,
 	mailAutoAdvanceValidator,
 	mailDailyBriefEmailValidator,
 	mailDensityValidator,
@@ -43,18 +44,22 @@ export const mailSettingsTables = {
 		// 'conversation' (the messages). Personal mailboxes only; a per-thread
 		// override lives in threadViewerState. Optional so existing rows read as
 		// undefined; the reader defaults it to 'overview', or 'conversation' when
-		// isAutoSummarizeOn is false (D1).
+		// isAutoSummarizeOn is false.
 		threadDefaultView: v.optional(threadViewValidator),
-		// Read on arrival (SPEC §2.1, spec name `readOnArrival`): personal mail is
+		// Read on arrival (spec name `readOnArrival`): personal mail is
 		// read by the AI provider when it arrives. Absent reads as on.
 		isReadOnArrival: v.optional(v.boolean()),
-		// Read on arrival (SPEC §6.4): archive one-time codes and sign-in links a
+		// Read on arrival: archive one-time codes and sign-in links a
 		// day after they arrive. Absent reads as off.
 		isCodeAutoArchiveOn: v.optional(v.boolean()),
 		// Default reply behavior: whether the primary reply affordance (Reply button
 		// and the `r` shortcut) opens a plain Reply or a Reply-all. Optional so
 		// existing rows read as undefined; the reader defaults it to 'reply'.
 		replyDefault: v.optional(mailReplyDefaultValidator),
+		// What sending a reply does to its conversation: 'keep' it in the Inbox or
+		// mark it 'done' (archive). Absent reads as 'keep', the behaviour before
+		// the setting existed. The composer's opposite-action chord flips it per send.
+		afterReply: v.optional(mailAfterReplyValidator),
 		// List/reader density: 'comfortable' (roomy default) vs 'compact' (tighter
 		// rows + single-line subject/snippet). Optional so existing rows read as
 		// undefined; the reader defaults it to 'comfortable'.
@@ -96,6 +101,13 @@ export const mailSettingsTables = {
 		// Play a short confirmation sound when a message is dispatched. Optional so
 		// existing rows read as undefined; the reader defaults it OFF (opt-in).
 		isSendSoundOn: v.optional(v.boolean()),
+		// Alert sounds, one switch per alert the user asked for: a reply on a thread
+		// armed with "notify me when they reply", a conversation assigned to them,
+		// and an agent question waiting on their answer. Optional so existing rows
+		// read as undefined; the reader defaults every one OFF (opt-in).
+		isReplyAlertSoundOn: v.optional(v.boolean()),
+		isAssignmentSoundOn: v.optional(v.boolean()),
+		isQuestionSoundOn: v.optional(v.boolean()),
 		// Load remote images when a message opens, except in suspicious mail
 		// (spam verdict, failed or misaligned sender auth, lookalike sender),
 		// which always asks first. Tracking pixels stay stripped either way.

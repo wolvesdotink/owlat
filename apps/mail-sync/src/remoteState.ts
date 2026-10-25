@@ -46,8 +46,13 @@ import {
 	type ModseqCursor,
 	type RemoteStateClient,
 } from './folderRefresh.js';
+import type { RemoteSighting } from '@owlat/worker-protocol/fields';
+import type {
+	LocalMessageRowWire,
+	remoteObservationValidator,
+} from '@owlat/worker-protocol/mailSync';
+import type { Infer } from 'convex/values';
 import { FolderView, type FlagState } from './folderView.js';
-import type { FolderRole } from './folders.js';
 
 export {
 	canonicalMessageId,
@@ -71,34 +76,17 @@ const LOOKUP_CHUNK = 200;
 const APPLY_CHUNK = 100;
 
 /** Where the provider was seen holding a message: the evidence that it once had it. */
-export interface RemoteSighting {
-	remoteName: string;
-	uidValidity: number;
-	uid: number;
-}
+export type { RemoteSighting };
 
-/** One local message as `listLocalMessages` / `lookupLocalMessages` return it. */
-export interface LocalMessageRow {
-	messageId: string;
-	/** Remote folder the local folder syncs with; null for a local-only folder. */
-	remoteName: string | null;
-	role: FolderRole | null;
-	flags: FlagState;
-	/** Where the provider was last seen holding it; absent if it never was (or not yet). */
-	sighting?: RemoteSighting | null;
-}
+/**
+ * One local message as `listLocalMessages` / `lookupLocalMessages` return it:
+ * `remoteName` is null for a local-only folder, `sighting` null when the
+ * provider was never seen holding it (or not yet).
+ */
+export type LocalMessageRow = LocalMessageRowWire;
 
 /** What `applyRemoteObservations` takes. */
-export interface RemoteObservation {
-	messageId: string;
-	remoteFolders?: string[];
-	isGone?: boolean;
-	flags?: FlagState;
-	/** Where the tracked folders hold it now; each local copy records its own folder's. */
-	sightings?: RemoteSighting[];
-	/** Drop the recorded sightings: a merge found the message in no synced folder. */
-	forgetSightings?: boolean;
-}
+export type RemoteObservation = Infer<typeof remoteObservationValidator>;
 
 /** Per Message-ID, the tracked folders holding it (with their flags). */
 export interface RemoteIndex {

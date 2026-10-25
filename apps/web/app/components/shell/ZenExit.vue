@@ -63,6 +63,7 @@ function onKeydown(event: KeyboardEvent) {
 	if (!event.repeat) toggleZen();
 }
 
+// oxlint-disable-next-line owlat/no-raw-keydown-listener -- global.zen, matched leniently and only when no surface claimed the chord first
 onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 </script>

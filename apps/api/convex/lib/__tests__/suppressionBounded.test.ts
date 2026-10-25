@@ -6,7 +6,7 @@
  * normalized address and truncated at the bound; the budget must be charged
  * what the query actually READ, including the one-row truncation probe.
  * Charging the surviving set instead silently under-counts the reads the bound
- * exists to cap (deliverability plan D16).
+ * exists to cap.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';

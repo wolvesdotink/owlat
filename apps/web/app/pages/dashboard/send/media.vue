@@ -288,7 +288,7 @@ const copyUrl = async (url: string) => {
 			<div
 				v-for="asset in assets"
 				:key="asset._id"
-				class="group relative bg-bg-elevated border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition-all duration-(--motion-moderate) hover:border-border-default hover:shadow-sm"
+				class="group relative bg-bg-elevated border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition-[border-color,box-shadow] duration-(--motion-moderate) hover:border-border-default hover:shadow-sm"
 				:class="{ 'ring-2 ring-brand border-brand': selectedAssets.has(asset._id) }"
 				@click="openDetail(asset)"
 			>

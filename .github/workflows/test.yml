@@ -241,7 +241,34 @@ jobs:
           path: apps/web/coverage/
           retention-days: 14
 
-  # THE STANDALONE MATRIX (deliverability plan D2/D3). The ramp controller has two
+  # The real-browser component tests (apps/web/vitest.browser.config.ts): what
+  # happy-dom cannot show, such as a virtual list under real scrolling, a
+  # modal's native Tab trap, or a picker placed from the caret's real box. Kept
+  # out of the coverage shards because it needs Chrome, and selected whenever
+  # the web suite is. A run takes well under a minute once Chrome is installed.
+  test-web-browser:
+    name: Test web (browser)
+    needs: detect
+    if: needs.detect.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-bun
+      # The project launches Playwright's `chrome` channel (the perf scenarios'
+      # browser too), installed explicitly so the version is the current stable
+      # release rather than whatever the runner image ships.
+      - name: Install Google Chrome
+        timeout-minutes: 10
+        run: cd apps/web && bunx playwright install --with-deps chrome
+      - name: Run the browser tests
+        timeout-minutes: 10
+        run: bun run --cwd apps/web test:browser
+
+  # THE STANDALONE MATRIX. The ramp controller has two
   # gate implementations behind one interface: the concurrent reference-arm one,
   # and the trailing-baseline one a deployment with zero third-party accounts
   # runs. A deployment with no ESP is a SUPPORTED CONFIGURATION, so the whole gate
@@ -333,6 +360,11 @@ jobs:
           # metadata).
           STORED_BLOCK_CORPUS_PUSH_BEFORE: ${{ github.event.before }}
           STORED_BLOCK_CORPUS_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # The gates that diff a pull request against its target branch
+          # (format, comment-policy, stored-block-corpus) compare with this
+          # commit, not origin/<base>, so a push to the target branch while the
+          # job runs cannot change their base. Empty on other events.
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
   typecheck:
     name: Typecheck
@@ -522,6 +554,7 @@ jobs:
         test-api-merge,
         test-web,
         test-web-merge,
+        test-web-browser,
         ramp-gate-matrix,
         lint,
         typecheck,

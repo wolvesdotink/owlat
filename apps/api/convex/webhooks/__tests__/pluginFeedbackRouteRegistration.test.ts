@@ -1,5 +1,5 @@
 /**
- * The plugin feedback route is actually MOUNTED (the seams plan's D6/P2.2).
+ * The plugin feedback route is actually MOUNTED.
  *
  * `pluginFeedbackRoute.test.ts` drives the handler directly, which is what makes
  * the adversarial cases readable — but a handler nothing routes to is a webhook

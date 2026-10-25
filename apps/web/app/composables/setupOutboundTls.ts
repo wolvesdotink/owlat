@@ -3,7 +3,7 @@
  *
  * The {@link OutboundTlsMode} values AND their labels are the shared
  * declaration: the catalog's own-MTA entry describes the floor as a `select`
- * credential field (the seams plan's D5), and this module maps that descriptor
+ * credential field, and this module maps that descriptor
  * rather than restating it. Only the `hint` paragraph is written here — a
  * descriptor carries the label a form needs, not the prose a page writes around
  * it — so renaming a mode's label is one edit in

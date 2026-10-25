@@ -1,5 +1,5 @@
 /**
- * Credentials go through the SEALED path and never come back out (P2-4, D4).
+ * Credentials go through the SEALED path and never come back out.
  *
  * Three properties, each with a way it could plausibly break:
  *   - the only place a credential is sent is the shipped

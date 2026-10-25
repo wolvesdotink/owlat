@@ -265,7 +265,7 @@ export async function createPurgeJob(ctx: MutationCtx, job: NewPurgeJob): Promis
 		createdAt: now,
 		updatedAt: now,
 	});
-	// The thread reads partial, and D3 holds, until the job's last slice.
+	// The thread reads partial, and auto-send holds, until the job's last slice.
 	await syncActivePurgeJobs(ctx, job.ref);
 	return (await ctx.db.get(id))!;
 }

@@ -1,5 +1,5 @@
 /**
- * Which messages are interpreted (SPEC §4 eligibility, D2).
+ * Which messages are interpreted.
  *
  * {@link isInterpretationEligible} is pure over the persisted
  * {@link InterpretEligibilitySignals}; the loaders below read them once, and
@@ -48,7 +48,7 @@ export type EligibilityVerdict =
 	| { isEligible: true }
 	| { isEligible: false; skipReason: InterpretationSkipReason; detail: string };
 
-/** SPEC §4: is this message interpreted at all? Pure. */
+/** Is this message interpreted at all? Pure. */
 export function isInterpretationEligible(
 	signals: InterpretEligibilitySignals,
 	options: { direction?: 'inbound' | 'outbound' } = {}
@@ -95,7 +95,7 @@ export function isProvisionalCategory(category?: { label: string; source: string
  * a thread's category may still be the provisional baseline there (`other`,
  * written by `categoryArrival.enqueueCategoryCheck` while the model refinement
  * is scheduled). Freezing that would let a stranger's newsletter through the
- * bulk rule (D2). So, for a bulk-stranger candidate only (bulk header and an
+ * bulk rule. So, for a bulk-stranger candidate only (bulk header and an
  * unknown sender, inbound): the thread's category is read again when the run
  * starts; while it is still provisional and the capture is younger than
  * {@link CATEGORY_SETTLE_MS}, the run waits (`pendingUntil`); after that, or
@@ -126,7 +126,7 @@ export function settleCategory(
 /** A fresh part at or under this length, alone in its thread, gets no "Latest update". */
 export const SHORT_MAIL_MAX_CHARS = 350;
 
-/** SPEC §4 short-mail rule. */
+/** Short mail alone in its thread (see {@link SHORT_MAIL_MAX_CHARS}). */
 export function isShortMail(input: { freshChars: number; threadMessageCount: number }): boolean {
 	return input.threadMessageCount <= 1 && input.freshChars <= SHORT_MAIL_MAX_CHARS;
 }
@@ -170,7 +170,7 @@ export function isSecurityMail(input: { subject?: string; freshText: string }): 
 
 /**
  * One-time codes and sign-in links, for the opt-in "archive after a day"
- * detector (SPEC §6.4): the code patterns of the security screen above,
+ * detector: the code patterns of the security screen above,
  * without password resets or login alerts, which stay put. Pure.
  */
 export function isCodeOrSignInMail(input: { subject?: string; text: string }): boolean {

@@ -5,8 +5,8 @@
  * multi-table cascade inline (the cascade reads its own results — the new
  * messageId is needed to patch recipients[] in place with the deterministic
  * `pb-<id>-<idx>` mtaJobIds, then re-fetches the thread for the participant
- * update). `applyNonSentEffects` is the only place that touches
- * `ctx.scheduler` and the audit log for every other effect kind. `dispatch` is
+ * update). `applyNonSentEffects` (`./nonSentEffects.ts`) is the only place
+ * that touches `ctx.scheduler` and the audit log for every other effect kind. `dispatch` is
  * the legal-edge gate that runs the reducer, writes the draft patch, applies
  * the effects, and deletes the row on a terminal send.
  *
@@ -15,11 +15,9 @@
  */
 
 import type { MutationCtx } from '../../_generated/server';
-import { deleteOwnedUpload } from '../../storage/uploads';
 import { deleteAskSessionsForDraft } from '../ai/composeDraftStore';
-import { internal } from '../../_generated/api';
+import { applyNonSentEffects } from './nonSentEffects';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { recordAuditLog } from '../../lib/auditLog';
 import { isSanctionedSendAsForUser } from '../identities';
 import { followUpWaitingOn } from '../followUps';
 import { mergeThreadParticipants } from '../threadAggregates';
@@ -34,6 +32,7 @@ import { changedRemoteFlags, recordRemoteChanges } from '../external/remoteOps';
 import { refuse } from '../../lib/lifecycle';
 import { noteDraftSent } from '../draftPause';
 import { refreshArrivalProjection } from '../arrival/projection';
+import { generateUndoToken } from './undoToken';
 import {
 	DRAFT_LIFECYCLE,
 	dedupedRecipients,
@@ -310,62 +309,6 @@ async function runSentEffects(
 	return { messageId };
 }
 
-async function applyNonSentEffects(
-	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>
-): Promise<void> {
-	for (const effect of effects) {
-		switch (effect.kind) {
-			case 'schedule_dispatch_action': {
-				await ctx.scheduler.runAt(effect.sendAt, internal.mail.outbound.dispatchDraft, {
-					draftId: effect.draftId,
-					undoToken: effect.undoToken,
-				});
-				break;
-			}
-			case 'audit_log': {
-				await recordAuditLog(ctx, {
-					userId: 'system',
-					action: effect.action,
-					resource: 'mail_message',
-					resourceId: effect.draftId,
-					details: {
-						mailboxId: effect.mailboxId,
-						...effect.details,
-					},
-				});
-				break;
-			}
-			case 'delete_attachment_storage': {
-				for (const storageId of effect.storageIds) {
-					await deleteOwnedUpload(ctx, storageId, `mailDrafts:${effect.draftId}`);
-				}
-				break;
-			}
-			case 'record_recipients_in_address_book': {
-				// Routed through the same internalMutation used by the old
-				// inline call site at outbound.dispatchDraft.
-				await ctx.runMutation(internal.mail.contacts.internalRecordRecipients, {
-					mailboxId: effect.mailboxId,
-					emails: Array.from(effect.emails),
-				});
-				break;
-			}
-			case 'schedule_edit_learning': {
-				// Fire-and-forget: the diff + recurrence gating run out of band so
-				// a learning failure can never block or delay the send.
-				await ctx.scheduler.runAfter(0, internal.mail.ai.editLearning.recordEdit, {
-					mailboxId: effect.mailboxId,
-					...(effect.contactAddress !== undefined ? { contactAddress: effect.contactAddress } : {}),
-					baselineText: effect.baselineText,
-					sentText: effect.sentText,
-				});
-				break;
-			}
-		}
-	}
-}
-
 // ─── Dispatcher ─────────────────────────────────────────────────────────────
 
 export async function dispatch(
@@ -426,10 +369,10 @@ export async function dispatch(
 	let result: ReducerResult;
 	switch (input.to) {
 		case 'pending_send':
-			result = reducePendingSend(draft, input);
+			result = reducePendingSend(draft, input, generateUndoToken(input.at));
 			break;
 		case 'scheduled':
-			result = reduceScheduled(draft, input);
+			result = reduceScheduled(draft, input, generateUndoToken(input.at));
 			break;
 		case 'draft':
 			result = reduceDraftRevert(draft, input);

@@ -20,6 +20,12 @@
 # This is a hard gate (baseline 0), unlike the ratcheted counts in
 # check-convex-patterns.sh — a forgotten auth gate is a security bug, not a
 # style drift, so it must fail CI outright.
+#
+# The oxlint rule owlat/no-raw-convex-builder (packages/oxlint-plugin-owlat)
+# enforces this on the AST and runs beside this script until
+# scripts/ast-gate-parity.ts (`bun run lint:ast-gate-parity`) shows the two
+# agree; a change to what this script reports needs the same change in the
+# rule, or that gate fails.
 
 cd "$(dirname "$0")/.."
 

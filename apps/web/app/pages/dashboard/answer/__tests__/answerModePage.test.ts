@@ -7,7 +7,8 @@
  *     REPLACE, so Back still leaves Answer mode and a reload lands here again;
  *   - Esc leaves (the draft stays saved and is offered back on the list),
  *     `t` toggles Overview / Conversation, Cmd/Ctrl+J focuses "Draft with AI";
- *   - a send goes back where the reply started;
+ *   - a send goes back where the reply started; a reply marked done moves on
+ *     to the next conversation of the list it came from;
  *   - with AI on, the composer carries "Draft with AI" (or the ask card while
  *     the AI asks), the footer the asks covered, and the resting phone sheet a
  *     "Draft" button (useAnswerModeAssist has its own suite).
@@ -18,10 +19,17 @@ import { defineComponent, h, reactive, ref, computed, useId, shallowRef } from '
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AnswerModeFrame from '~/components/answer/AnswerModeFrame.vue';
-import { useAnswerAiFocus, useAnswerLeftDraft } from '~/composables/useAnswerMode';
+import {
+	useAnswerAiFocus,
+	useAnswerLeftDraft,
+	useAnswerModeNav,
+	useListAnswerRoundTrip,
+} from '~/composables/useAnswerMode';
 import AnswerPage from '../m/[messageId].vue';
 import PostboxOverflowMenu from '~/components/postbox/PostboxOverflowMenu.vue';
 import { useClickOutside } from '~/composables/useClickOutside';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -130,6 +138,7 @@ beforeAll(() => {
 		}),
 		useConvexQuery: () => ({ data: ref(['ada@example.com']), error: ref(null) }),
 		usePostboxSettings: () => ({
+			autoAdvance: ref('next'),
 			replyDefault: ref('reply'),
 			autoLoadImages: ref(true),
 			isLoading: ref(false),
@@ -288,8 +297,11 @@ async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean
 
 const seedOf = (w: VueWrapper) =>
 	w.getComponent(ComposerStub).props('seed') as Record<string, unknown>;
+// The page's keys go through the app-wide dispatcher, a document listener.
 const press = (init: KeyboardEventInit) =>
-	window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+	document.body.dispatchEvent(
+		new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })
+	);
 
 beforeEach(() => {
 	activeQueueSession = null;
@@ -471,6 +483,58 @@ describe('Answer mode page', () => {
 		expect(useAnswerLeftDraft().left.value).toEqual(other);
 	});
 
+	it('moves a reply marked done on to the next conversation of the list it came from', async () => {
+		// The inbox list, with msg_1 open beside it, opens Answer mode on msg_1.
+		route.path = '/dashboard/postbox/inbox/msg_1';
+		route.fullPath = route.path;
+		const list = mount(
+			defineComponent({
+				setup() {
+					useListAnswerRoundTrip({
+						folderKey: ref('inbox'),
+						rows: ref([
+							{ _id: 'msg_0', threadId: 't_0' },
+							{ _id: 'msg_1', threadId: 't_1' },
+							{ _id: 'msg_2', threadId: 't_2' },
+						]),
+						focusedIndex: ref(1),
+						origin: () => ({
+							listPath: '/dashboard/postbox/inbox',
+							messagePath: '/dashboard/postbox/inbox',
+							query: '',
+							activeId: 'msg_1',
+						}),
+					});
+					return () => h('div');
+				},
+			})
+		);
+		void useAnswerModeNav().open('msg_1');
+		list.unmount();
+		route.path = '/dashboard/answer/m/msg_1';
+		navigateTo.mockClear();
+
+		const w = await mountAt({ draft: 'draft_1' });
+		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false, done: true });
+		expect(navigateTo).toHaveBeenCalledTimes(1);
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox/msg_2', { replace: true });
+	});
+
+	it('goes back the plain way after a reply marked done that came from no list', async () => {
+		const w = await mountAt({ draft: 'draft_1' });
+		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false, done: true });
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
+	});
+
+	it('in the Answer queue, a reply marked done finishes the item once and moves on', async () => {
+		const handleSent = vi.fn(() => true);
+		activeQueueSession = { handleSent };
+		const w = await mountAt({ draft: 'draft_1', queue: 'all' });
+		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false, done: true });
+		expect(handleSent).toHaveBeenCalledTimes(1);
+		expect(navigateTo).not.toHaveBeenCalled();
+	});
+
 	it('in the Answer queue, a send finishes the item and moves on instead of leaving', async () => {
 		const handleSent = vi.fn(() => true);
 		activeQueueSession = { handleSent };
@@ -489,16 +553,36 @@ describe('Answer mode page', () => {
 	});
 
 	it('gives Cmd/Ctrl+J to "Draft with AI" and keeps it from the shell', async () => {
+		// The dashboard layout binds the same chord to the Assistant.
+		const assistant = vi.fn();
+		const shell = mount(
+			defineComponent({
+				setup() {
+					useKeyboardShortcuts().registerShortcut({ id: 'global.assistant', handler: assistant });
+					return () => null;
+				},
+			})
+		);
 		await mountAt({});
 		const focusAi = vi.fn();
 		const unregister = useAnswerAiFocus().register(focusAi);
-		const shell = vi.fn();
-		document.addEventListener('keydown', shell);
 		press({ key: 'j', metaKey: true });
 		expect(focusAi).toHaveBeenCalledTimes(1);
-		expect(shell).not.toHaveBeenCalled();
-		document.removeEventListener('keydown', shell);
+		expect(assistant).not.toHaveBeenCalled();
 		unregister();
+		shell.unmount();
+	});
+
+	it('follows a remap of its keys', async () => {
+		applyShortcutPreferences('owlat', [{ id: 'answer.toggleView', keys: ['y'] }]);
+		const w = await mountAt({});
+		press({ key: 't' });
+		await flushPromises();
+		expect(w.get('[data-testid="conversation"]').attributes('data-view')).toBe('summary');
+		press({ key: 'y' });
+		await flushPromises();
+		expect(w.get('[data-testid="conversation"]').attributes('data-view')).toBe('full');
+		resetShortcutPreferences();
 	});
 
 	it('puts "Draft with AI" above the editor when AI is on, and nothing when it is off', async () => {

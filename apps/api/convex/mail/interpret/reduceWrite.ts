@@ -54,7 +54,7 @@ export interface WriteArgs {
 	keyBase: string;
 	eventAt: number;
 	mailboxId?: Id<'mailboxes'>;
-	/** Team thread assignee: the default assignee of new items (D4). */
+	/** Team thread assignee: the default assignee of new items. */
 	assigneeUserId?: string;
 	now: number;
 }

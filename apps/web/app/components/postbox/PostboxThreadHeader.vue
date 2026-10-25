@@ -3,13 +3,13 @@ import type { Id } from '@owlat/api/dataModel';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 /**
- * The calm reader's header line (read on arrival §3, plan §6): the subject,
+ * The calm reader's header line (read on arrival §3): the subject,
  * Reply, Archive and ONE ⋯ menu. Nothing else sits between the subject and
  * the strip: the follow-up chip, the team badge, the labels and the
  * cross-surface link moved into the strip's Details row.
  *
- * The ⋯ menu holds the conversation's state as checkable items (alert on
- * reply, muted, back-from-snooze, mark-read under the `manual` policy), the
+ * The ⋯ menu holds the conversation's state as checkable items (pinned, alert
+ * on reply, muted, back-from-snooze, mark-read under the `manual` policy), the
  * ways into the strip that also work without one ("Why is this here?",
  * "Details", and "Full brief", the only way to the brief when the viewer turned
  * the strip off), and the verbs that left the old Overview's button row (Snooze,
@@ -30,6 +30,8 @@ const props = defineProps<{
 		notifyOnReplyAt?: number;
 		/** Just came back from snooze (mail/snooze.ts sweep); cleared on open. */
 		snoozeReturnedAt?: number;
+		/** In the Inbox's pinned band (mail/pins.ts). */
+		pinnedAt?: number;
 	} | null;
 	/** Offer the explicit mark-read affordance (markReadPolicy 'manual', unread thread). */
 	showMarkRead?: boolean;
@@ -47,6 +49,7 @@ const emit = defineEmits<{
 	(e: 'toggle-mute'): void;
 	(e: 'mark-read'): void;
 	(e: 'toggle-alert'): void;
+	(e: 'toggle-pin'): void;
 	(e: 'reply'): void;
 	(e: 'archive'): void;
 	(e: 'snooze'): void;
@@ -64,6 +67,7 @@ const headerEl = ref<HTMLElement | null>(null);
 
 const isMuted = computed(() => props.thread?.mutedAt != null);
 const isAlerted = computed(() => props.thread?.notifyOnReplyAt != null);
+const isPinned = computed(() => props.thread?.pinnedAt != null);
 const cameBackFromSnooze = computed(() => props.thread?.snoozeReturnedAt != null);
 
 // The "(2)" count must not wrap onto a line of its own, so the subject's last
@@ -204,6 +208,26 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 					</button>
 					<div class="my-1 border-t border-border-subtle" role="separator" />
 					<!-- The conversation's state, made checkable. -->
+					<button
+						type="button"
+						role="menuitemcheckbox"
+						:aria-checked="isPinned"
+						:class="ITEM_CLASS"
+						:title="t('components.postbox.postboxThreadHeader.pinHint')"
+						data-testid="thread-menu-pin"
+						@click="
+							emit('toggle-pin');
+							close();
+						"
+					>
+						<Icon
+							name="lucide:check"
+							class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+							:class="{ invisible: !isPinned }"
+							aria-hidden="true"
+						/>
+						{{ t('components.postbox.postboxThreadHeader.pinConversation') }}
+					</button>
 					<button
 						type="button"
 						role="menuitemcheckbox"

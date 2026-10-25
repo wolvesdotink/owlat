@@ -7,6 +7,7 @@
 import { splitMentionSegments } from '@owlat/shared/chatMentions';
 import { describe, expect, it } from 'vitest';
 import { parseMarkdown } from '~/utils/markdown';
+import { postboxListWorkload, teamInboxWorkload } from '../listWorkload';
 import { SCENARIOS } from '../scenarios';
 import {
 	ASSISTANT_ANSWER_ESTIMATED_MAX_CHARS,
@@ -106,10 +107,18 @@ describe('determinism', () => {
 		const b = seededRandom(42);
 		expect(Array.from({ length: 5 }, a)).toEqual(Array.from({ length: 5 }, b));
 		for (const scenario of SCENARIOS) {
-			const build = () =>
-				scenario.family === 'assistant-stream'
-					? assistantStreamWorkload(scenario)
-					: chatHistoryWorkload(scenario);
+			const build = () => {
+				switch (scenario.family) {
+					case 'assistant-stream':
+						return assistantStreamWorkload(scenario);
+					case 'chat-history':
+						return chatHistoryWorkload(scenario);
+					case 'postbox-list':
+						return postboxListWorkload(scenario);
+					case 'team-inbox':
+						return teamInboxWorkload(scenario);
+				}
+			};
 			expect(build()).toEqual(build());
 		}
 	});

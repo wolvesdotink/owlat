@@ -1,4 +1,4 @@
-import type { OptimisticUpdate } from 'convex/browser';
+import type { OptimisticLocalStore, OptimisticUpdate } from 'convex/browser';
 import type { FunctionArgs, FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 
@@ -12,9 +12,7 @@ import { api } from '@owlat/api';
  */
 type Settings = NonNullable<FunctionReturnType<typeof api.mail.settings.get>>;
 
-export const optimisticUpdateSettings: OptimisticUpdate<
-	FunctionArgs<typeof api.mail.settings.update>
-> = (store, args) => {
+function patchCachedSettings(store: OptimisticLocalStore, args: Record<string, unknown>): void {
 	const current = store.getQuery(api.mail.settings.get, {});
 	// Still loading: nothing on screen reads a value to patch.
 	if (current === undefined) return;
@@ -23,4 +21,25 @@ export const optimisticUpdateSettings: OptimisticUpdate<
 	) as Partial<Settings>;
 	if (Object.keys(written).length === 0) return;
 	store.setQuery(api.mail.settings.get, {}, { ...current, ...written } as Settings);
-};
+}
+
+export const optimisticUpdateSettings: OptimisticUpdate<
+	FunctionArgs<typeof api.mail.settings.update>
+> = (store, args) => patchCachedSettings(store, args);
+
+/**
+ * The same repaint for `preferences.shortcuts.update`, the keyboard map's own
+ * write door: it writes two fields of the row `mail.settings.get` returns, so
+ * the shortcuts page and every hint move with the click.
+ */
+export const optimisticUpdateShortcutSettings: OptimisticUpdate<
+	FunctionArgs<typeof api.preferences.shortcuts.update>
+> = (store, args) => patchCachedSettings(store, args);
+
+/**
+ * The same repaint for `preferences.alertSounds.update`, the alert sounds' own
+ * write door: it writes three fields of the row `mail.settings.get` returns.
+ */
+export const optimisticUpdateAlertSoundSettings: OptimisticUpdate<
+	FunctionArgs<typeof api.preferences.alertSounds.update>
+> = (store, args) => patchCachedSettings(store, args);

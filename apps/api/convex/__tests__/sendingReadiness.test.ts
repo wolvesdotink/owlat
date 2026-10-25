@@ -7,7 +7,7 @@
  * (`campaigns/capacityPreflight.ts`), so the number quoted beside the send
  * button can never contradict the answer the send itself gets — and every
  * measurement fault answers "no cap to quote" rather than a number nobody can
- * stand behind (deliverability plan D2/D14).
+ * stand behind.
  */
 
 import { convexTest } from 'convex-test';
@@ -180,7 +180,7 @@ describe('getSendingReadiness — no cap to quote', () => {
 	});
 });
 
-describe('readSendingReadiness — the fail-quiet catch (D2)', () => {
+describe('readSendingReadiness — the fail-quiet catch', () => {
 	it('answers "no cap to quote" when the measurement itself throws', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t, { totalSentToday: 0 });

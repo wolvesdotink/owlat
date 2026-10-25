@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * The presentational body of a Postbox message row: sender, timestamp, the
- * sender-trust marker, the state chips (star, snoozed, muted, back from snooze,
- * attachment, follow-up), subject and snippet.
+ * sender-trust marker, the state chips (star, pinned, snoozed, muted, back
+ * from snooze, attachment, follow-up), subject and snippet.
  *
  * Every renderer that lists messages builds on this one body — the flat list
  * (PostboxThreadRow), the split inbox (PostboxThreadSectionList) and the
@@ -94,11 +94,11 @@ const isBriefPreferred = useBriefLinesShown();
 const isBriefShown = computed(
 	() => isBriefPreferred.value || props.msg.briefTop?.mode === 'actions'
 );
-/** The top open item instead of the snippet, once the thread is interpreted (SPEC §7). */
+/** The top open item instead of the snippet, once the thread is interpreted. */
 const briefLine = computed(() =>
 	isBriefShown.value ? briefRowLine(props.msg.briefTop, locale.value) : null
 );
-/** Read on arrival: the gist where a row has no brief line (SPEC §3). */
+/** Read on arrival: the gist where a row has no brief line. */
 const gistLine = computed(() => (isBriefShown.value ? rowGistOf(props.msg.briefTop) : null));
 
 const isPriority = inject(POSTBOX_PRIORITY_ROWS, false);
@@ -194,6 +194,15 @@ function onCancelFollowUp(event: MouseEvent) {
 				<span class="pbx-row-trust-label">{{ t(trustMarker.label) }}</span>
 			</span>
 			<Icon v-if="msg.flagFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
+			<!-- In the Inbox's pinned band; the star is a separate flag. -->
+			<Icon
+				v-if="msg.pinnedAt"
+				name="lucide:pin"
+				class="w-3.5 h-3.5 text-brand"
+				:title="t('components.postbox.postboxThreadRow.pinnedChip')"
+				:aria-label="t('components.postbox.postboxThreadRow.pinnedChip')"
+				data-testid="row-pinned-chip"
+			/>
 			<Icon
 				v-if="msg.snoozedUntil"
 				name="lucide:clock"

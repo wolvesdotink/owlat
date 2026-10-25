@@ -12,9 +12,9 @@
  * surface's job, through `useEmailTemplateById`, so a selected template outside
  * the current results still renders.
  *
- * Keyboard: the input is an ARIA combobox over an always-visible listbox.
- * Arrow keys, Home and End move the active option, Enter picks it, Escape
- * clears the query.
+ * Keyboard: the input is the shared `UiCombobox` over an always-visible
+ * `UiListbox`. Arrow keys, Home and End move the active option, Enter picks
+ * it, Escape clears the query; arrowing onto the last loaded row pages in more.
  */
 import { api } from '@owlat/api';
 import type { Doc, Id } from '@owlat/api/dataModel';
@@ -70,110 +70,43 @@ const templates = computed(() => results.value as Doc<'emailTemplates'>[]);
 const pending = computed(() => query.value.trim() !== search.value || isLoading.value);
 
 const listId = useId();
-const optionId = (id: string) => `${listId}-${id}`;
-const activeIndex = ref(-1);
-const listEl = ref<HTMLElement | null>(null);
-
-watch(templates, (rows) => {
-	if (activeIndex.value >= rows.length) activeIndex.value = rows.length - 1;
-});
-watch(search, () => {
-	activeIndex.value = -1;
-	listEl.value?.scrollTo?.({ top: 0 });
-});
-
-const activeDescendant = computed(() => {
-	const row = templates.value[activeIndex.value];
-	return row && !pending.value ? optionId(row._id) : undefined;
-});
 
 function loadMore() {
 	if (status.value === 'CanLoadMore') loadPage(PAGE_SIZE);
 }
 
-function onListScroll() {
-	const el = listEl.value;
-	if (!el) return;
+function onListScroll(event: Event) {
+	const el = event.currentTarget as HTMLElement;
 	if (el.scrollTop + el.clientHeight >= el.scrollHeight - LOAD_MORE_THRESHOLD) loadMore();
+}
+
+/** Arrowing onto the last loaded row pages in the next batch, like scrolling to the end. */
+function onHighlight(template: Doc<'emailTemplates'> | null) {
+	if (template && template._id === templates.value.at(-1)?._id) loadMore();
 }
 
 function choose(template: Doc<'emailTemplates'>) {
 	emit('update:modelValue', template._id);
 	emit('select', template);
 }
-
-function moveActive(index: number) {
-	const count = templates.value.length;
-	if (count === 0) return;
-	activeIndex.value = Math.min(Math.max(index, 0), count - 1);
-	const row = templates.value[activeIndex.value]!;
-	nextTick(() => {
-		document.getElementById(optionId(row._id))?.scrollIntoView?.({ block: 'nearest' });
-		// Arrowing onto the last loaded row pages in the next batch, the
-		// keyboard equivalent of scrolling to the end.
-		if (activeIndex.value === templates.value.length - 1) loadMore();
-	});
-}
-
-function onKeydown(event: KeyboardEvent) {
-	switch (event.key) {
-		case 'ArrowDown':
-			event.preventDefault();
-			moveActive(activeIndex.value + 1);
-			break;
-		case 'ArrowUp':
-			event.preventDefault();
-			moveActive(activeIndex.value - 1);
-			break;
-		case 'Home':
-			if (!templates.value.length) return;
-			event.preventDefault();
-			moveActive(0);
-			break;
-		case 'End':
-			if (!templates.value.length) return;
-			event.preventDefault();
-			moveActive(templates.value.length - 1);
-			break;
-		case 'Enter': {
-			// Enter inside a form would otherwise submit it.
-			event.preventDefault();
-			const row = templates.value[activeIndex.value];
-			if (row && !pending.value) choose(row);
-			break;
-		}
-		case 'Escape':
-			if (!query.value) return;
-			event.preventDefault();
-			query.value = '';
-			break;
-	}
-}
 </script>
 
 <template>
-	<div>
-		<div class="relative">
+	<UiCombobox
+		v-model:query="query"
+		:input-id="inputId"
+		inline
+		:label="t('components.email.templatePicker.listLabel')"
+		:placeholder="t('components.email.templatePicker.searchPlaceholder')"
+		input-class="input pl-10"
+		input-testid="template-picker-input"
+	>
+		<template #leading>
 			<Icon
 				name="lucide:search"
 				class="w-4 h-4 text-text-tertiary absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
 			/>
-			<input
-				:id="inputId"
-				v-model="query"
-				type="text"
-				role="combobox"
-				aria-autocomplete="list"
-				aria-expanded="true"
-				:aria-controls="listId"
-				:aria-activedescendant="activeDescendant"
-				autocomplete="off"
-				:placeholder="t('components.email.templatePicker.searchPlaceholder')"
-				class="input pl-10"
-				data-testid="template-picker-input"
-				@keydown="onKeydown"
-			/>
-		</div>
+		</template>
 
 		<div class="mt-3 border border-border-subtle rounded-lg overflow-hidden">
 			<UiQueryBoundary
@@ -207,32 +140,20 @@ function onKeydown(event: KeyboardEvent) {
 					</div>
 				</template>
 
-				<ul
+				<UiListbox
 					:id="listId"
-					ref="listEl"
-					role="listbox"
-					:aria-label="t('components.email.templatePicker.listLabel')"
+					:options="templates"
+					:option-key="(template: Doc<'emailTemplates'>) => template._id"
+					:label="t('components.email.templatePicker.listLabel')"
+					:model-value="modelValue ?? null"
 					class="max-h-72 overflow-y-auto divide-y divide-border-subtle"
+					option-class="flex items-center justify-between gap-3 p-3 transition-colors motion-reduce:transition-none data-highlighted:bg-bg-surface data-highlighted:ring-2 data-highlighted:ring-inset data-highlighted:ring-brand"
 					data-testid="template-picker-list"
+					@select="choose"
+					@highlight="onHighlight"
 					@scroll.passive="onListScroll"
 				>
-					<li
-						v-for="(template, index) in templates"
-						:id="optionId(template._id)"
-						:key="template._id"
-						role="option"
-						:aria-selected="template._id === modelValue"
-						:class="[
-							'flex items-center justify-between gap-3 p-3 cursor-pointer transition-colors motion-reduce:transition-none',
-							index === activeIndex
-								? 'bg-bg-surface ring-2 ring-inset ring-brand'
-								: 'hover:bg-bg-surface',
-						]"
-						data-testid="template-picker-option"
-						@mousedown.prevent
-						@click="choose(template)"
-						@mousemove="activeIndex = index"
-					>
+					<template #option="{ option: template, selected }">
 						<div class="min-w-0">
 							<p class="font-medium text-text-primary truncate">{{ template.name }}</p>
 							<p class="text-sm text-text-secondary truncate">
@@ -244,7 +165,7 @@ function onKeydown(event: KeyboardEvent) {
 							<span
 								:class="[
 									'w-5 h-5 rounded-full border flex items-center justify-center',
-									template._id === modelValue
+									selected
 										? 'border-text-primary bg-text-primary text-text-inverse'
 										: 'border-border-default text-transparent',
 								]"
@@ -253,8 +174,8 @@ function onKeydown(event: KeyboardEvent) {
 								<Icon name="lucide:check" class="w-3 h-3" />
 							</span>
 						</div>
-					</li>
-				</ul>
+					</template>
+				</UiListbox>
 				<p
 					v-if="status === 'LoadingMore'"
 					role="status"
@@ -276,5 +197,5 @@ function onKeydown(event: KeyboardEvent) {
 				</div>
 			</UiQueryBoundary>
 		</div>
-	</div>
+	</UiCombobox>
 </template>

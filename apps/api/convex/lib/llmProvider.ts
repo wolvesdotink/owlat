@@ -359,7 +359,7 @@ export async function resolveLanguageModelForUserText(
  * (never the attacker-controlled email body, so a crafted "thanks!" cannot
  * force a cheaper draft): `fast` under `LLM_COMPLEXITY_ROUTING=1` for a
  * clearly trivial message, as before; `cheap_first` for an eligible REVIEWED
- * draft with the policy's `cheapFirstWriter` on (D2); else `capable`. With
+ * draft with the policy's `cheapFirstWriter` on; else `capable`. With
  * both off (the defaults) this is exactly today's single-tier behaviour.
  */
 export function classifiedDraftRouteOf(

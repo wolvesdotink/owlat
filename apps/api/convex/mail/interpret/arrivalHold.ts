@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.6, Sol r1 F13, r2 F4): every spend refusal of a
+ * Read on arrival (r2 F4): every spend refusal of a
  * display-only arrival read is settled in the transaction that sees it.
  *
  *   - {@link reserveArrivalRun}: the run's one hold (a full read) or the

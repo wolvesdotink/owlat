@@ -1,5 +1,5 @@
 /**
- * What the thread brief reads return (SPEC §4 `brief.ts`, §7): the
+ * What the thread brief reads return (`brief.ts`): the
  * `returns` validators of `mail/interpret/brief.ts get({threadRef, locale})`
  * and of the team stream, plus their TS types, so the web can be written
  * against them before the queries exist.
@@ -246,7 +246,7 @@ const sharedViewFields = {
 	// `stalled` when it stopped (spend gate, AI off, a lost chain); the reader
 	// asks `lazy.ensure` to resume a stalled one.
 	history: v.optional(v.union(v.literal('running'), v.literal('stalled'))),
-	// D10: messages whose reading waits for the thread to be opened (the brief
+	// Messages whose reading waits for the thread to be opened (the brief
 	// reads `pending` or partial meanwhile). While it is above zero the reader
 	// asks `lazy.ensure`, which reads them.
 	deferredSources: v.optional(v.number()),
@@ -313,7 +313,7 @@ export const briefModeViewValidator = v.object({
 	),
 	// More such messages than one read lists: the reader says so.
 	isExactWordingTruncated: v.optional(v.boolean()),
-	// Read on arrival (SPEC §2.4): the extractive gist of a message read short
+	// Read on arrival: the extractive gist of a message read short
 	// of a full read, verbatim spans (unsealed) and the message they quote.
 	// Hidden by the stale fence; superseded by a later full read.
 	gist: v.optional(
