@@ -11,8 +11,11 @@
  * A selection belongs to the one document it was made in: a new `srcdoc`
  * (another message, images shown, the theme), a replaced frame or the end of
  * the component drops it and unbinds. A click on the page outside the action
- * drops it too, so the action never lingers over a selection the browser shows
- * as inactive.
+ * drops it too, and so does focus moving anywhere but the frame and its action
+ * (another message's frame, which the host page never sees a click in, or a
+ * control reached by keyboard), so the action never lingers over a selection
+ * the browser shows as inactive. Leaving the app keeps it: the frame or the
+ * action still holds the page's focus when the window comes back.
  */
 import { onScopeDispose, shallowRef, watch, type Ref, type WatchSource } from 'vue';
 import { normalizeQuotedPassage } from '~/utils/postboxSelectedQuote';
@@ -113,11 +116,39 @@ export function usePostboxFrameSelection(opts: {
 		clear();
 	}
 
+	/**
+	 * Focus moved to `next` (the host page's active element). The page's body
+	 * is the in-between state while focus crosses into a host element, whose
+	 * own `focusin` follows; the frame itself means focus stayed (or the app
+	 * lost focus as a whole).
+	 */
+	function onFocusMoved(next: EventTarget | null) {
+		if (!selection.value || !(next instanceof Element) || next === document.body) return;
+		if (next === frame || opts.actionEl()?.contains(next)) return;
+		clear();
+	}
+	const onFocusLeft = () => onFocusMoved(document.activeElement);
+	const onHostFocusIn = (event: FocusEvent) => onFocusMoved(event.target);
+
+	/** Listening on the host page, only while a selection shows. */
+	function listenOnHost() {
+		document.addEventListener('pointerdown', onHostPointerDown, true);
+		document.addEventListener('focusin', onHostFocusIn, true);
+		// Focus leaving the host document (the action) for another frame.
+		window.addEventListener('blur', onFocusLeft);
+	}
+	function stopListeningOnHost() {
+		document.removeEventListener('pointerdown', onHostPointerDown, true);
+		document.removeEventListener('focusin', onHostFocusIn, true);
+		window.removeEventListener('blur', onFocusLeft);
+	}
+
 	function unbind() {
 		if (boundDoc) {
 			boundDoc.removeEventListener('selectionchange', update);
 			boundDoc.removeEventListener('keydown', onKeydown);
 			boundDoc.defaultView?.removeEventListener('resize', update);
+			boundDoc.defaultView?.removeEventListener('blur', onFocusLeft);
 		}
 		boundDoc = null;
 		selection.value = null;
@@ -136,6 +167,9 @@ export function usePostboxFrameSelection(opts: {
 		// oxlint-disable-next-line owlat/no-raw-keydown-listener -- resolves its keys through the registry (resolvePostboxShortcut)
 		doc.addEventListener('keydown', onKeydown);
 		doc.defaultView?.addEventListener('resize', update);
+		// Focus leaving the frame: the host page's active element is already
+		// where it went when that is another frame.
+		doc.defaultView?.addEventListener('blur', onFocusLeft);
 		update();
 	}
 
@@ -174,15 +208,15 @@ export function usePostboxFrameSelection(opts: {
 		update();
 	});
 
-	// Only while a selection shows: a press anywhere else on the page drops it.
+	// Only while a selection shows: a press or focus anywhere else on the page drops it.
 	watch(selection, (current, previous) => {
-		if (current && !previous) document.addEventListener('pointerdown', onHostPointerDown, true);
-		if (!current && previous) document.removeEventListener('pointerdown', onHostPointerDown, true);
+		if (current && !previous) listenOnHost();
+		if (!current && previous) stopListeningOnHost();
 	});
 
 	onScopeDispose(() => {
 		detach();
-		document.removeEventListener('pointerdown', onHostPointerDown, true);
+		stopListeningOnHost();
 	});
 
 	return { selection, clear };

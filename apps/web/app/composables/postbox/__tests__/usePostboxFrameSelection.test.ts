@@ -176,6 +176,24 @@ describe('usePostboxFrameSelection', () => {
 		expect(selection.value).toBeNull();
 	});
 
+	it('keeps the selection while focus moves to the action, and drops it when focus goes elsewhere', async () => {
+		const doc = frameDoc('<p>Thursday works.</p>');
+		const { selection, action } = setup(doc);
+		await nextTick();
+		select(doc, 'Thursday');
+		await nextTick();
+
+		action.focus();
+		expect(document.activeElement).toBe(action);
+		expect(selection.value?.text).toBe('Thursday');
+
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		owned.push(elsewhere);
+		elsewhere.focus();
+		expect(selection.value).toBeNull();
+	});
+
 	it('drops the selection and unbinds when the frame renders a new document', async () => {
 		const first = frameDoc('<p>Old body</p>');
 		const { selection, frame, srcdoc, onQuote } = setup(first);
