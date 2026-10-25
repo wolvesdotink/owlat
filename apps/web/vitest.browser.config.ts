@@ -68,7 +68,7 @@ export default defineConfig({
 	resolve: unitConfig.resolve,
 	// Pre-bundled up front: a dependency Vite discovers mid-run reloads the page
 	// under a running test.
-	optimizeDeps: { include: ['convex/server', 'sanitize-html'] },
+	optimizeDeps: { include: ['convex/server', 'sanitize-html', 'tldts'] },
 	test: {
 		name: 'browser',
 		include: ['app/__tests__/browser/**/*.browser.test.ts'],

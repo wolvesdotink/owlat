@@ -5396,6 +5396,9 @@
 				"rewritten": "Rewritten",
 				"undo": "Undo"
 			},
+			"postboxQuoteReplyPill": {
+				"action": "Quote in reply"
+			},
 			"postboxRewritePill": {
 				"toolbarLabel": "Rewrite selection with AI"
 			},

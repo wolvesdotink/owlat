@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildQuotedReply, buildForwardedBody, resolveBodyFields } from '../usePostboxQuotedText';
+import {
+	buildQuotedReply,
+	buildForwardedBody,
+	buildReplySpec,
+	buildSelectedQuote,
+	resolveBodyFields,
+} from '../usePostboxQuotedText';
 import { resolvePostboxMessageBody } from '../postboxBodyResolver';
 
 vi.mock('@owlat/api', () => {
@@ -17,6 +23,48 @@ const base = {
 	subject: 'Lunch?',
 	receivedAt: new Date('2026-01-02T12:00:00Z').getTime(),
 };
+
+describe('buildSelectedQuote', () => {
+	const passage = 'Line one <b>& "two"\n\nÜber café — 50 €';
+
+	it('quotes only the selected passage, escaped, with its line breaks', () => {
+		const out = buildSelectedQuote(base, passage);
+		expect(out).toContain('class="gmail_quote owlat_selected_quote"');
+		expect(out).toContain(
+			'<blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;color:#555;">' +
+				'Line one &lt;b&gt;&amp; &quot;two&quot;<br><br>Über café — 50 €</blockquote>'
+		);
+		expect(out).not.toContain('<b>');
+	});
+
+	it('names the sender and the date of the message it is from, escaped', () => {
+		const out = buildSelectedQuote({ ...base, fromName: 'Sara <ops>' }, 'ok');
+		const date = new Date(base.receivedAt).toLocaleString();
+		expect(out).toContain(`On ${date}, Sara &lt;ops&gt; &lt;sara@example.com&gt; wrote:`);
+	});
+
+	it('is empty for a passage of only whitespace', () => {
+		expect(buildSelectedQuote(base, ' \n\t ')).toBe('');
+	});
+
+	it('replaces the full original in a reply seed, leaving its body and images out', () => {
+		const target = {
+			...base,
+			_id: 'm1',
+			htmlBodyInline: '<p>Before</p><p>The passage</p><img src="https://cdn.example/t.png">',
+		};
+		const spec = buildReplySpec('mb' as never, target, {
+			loadImages: true,
+			quotedPassage: 'The passage',
+		});
+		expect(spec.prefillBodyHtml).toBe(buildSelectedQuote(target, 'The passage'));
+		expect(spec.prefillBodyHtml).not.toContain('Before');
+		expect(spec.prefillBodyHtml).not.toContain('cdn.example');
+		// A blank passage quotes the original as before.
+		const blank = buildReplySpec('mb' as never, target, { loadImages: true, quotedPassage: ' ' });
+		expect(blank.prefillBodyHtml).toContain('<p>Before</p>');
+	});
+});
 
 describe('buildQuotedReply', () => {
 	it('wraps the original HTML body in an attributed quote block', () => {

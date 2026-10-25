@@ -9,6 +9,10 @@
  *   - an AI-suggested body is saved into a new draft first, and Answer mode
  *     opens on that draft (`?draft=`); if the draft cannot be created, the
  *     body waits in session state for Answer mode to pick up;
+ *   - a selected passage ("Quote in reply") is saved into a draft the same
+ *     way, as the whole quote of the primary reply to the message it is from;
+ *     if the draft cannot be saved, the passage waits for Answer mode on that
+ *     message, never as reply text;
  *   - the resend (not a reply) opens the compose page.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -55,20 +59,22 @@ vi.mock('../usePostboxQuotedText', () => ({
 	buildReplySpec: (
 		mailboxId: string,
 		target: { _id: string; fromAddress: string },
-		opts: { leadText?: string }
+		opts: { leadText?: string; quotedPassage?: string }
 	) => ({
 		mailboxId,
 		inReplyToMessageId: target._id,
 		prefillTo: [target.fromAddress],
 		prefillSubject: 'Re: Hi',
-		prefillBodyHtml: `<p>${opts.leadText ?? ''}</p><div class="gmail_quote">quote</div>`,
+		prefillBodyHtml: opts.quotedPassage
+			? `<div class="gmail_quote owlat_selected_quote">${opts.quotedPassage}</div>`
+			: `<p>${opts.leadText ?? ''}</p><div class="gmail_quote">quote</div>`,
 	}),
 	buildForwardedBody: () => '',
 	buildResendSpec: (mailboxId: string, _t: unknown, to: string[]) => ({ mailboxId, prefillTo: to }),
 }));
 
 import { usePostboxReaderComposer } from '../usePostboxReaderComposer';
-import { useAnswerPendingLead } from '~/composables/useAnswerMode';
+import { useAnswerPendingLead, useAnswerPendingQuote } from '~/composables/useAnswerMode';
 
 const message = {
 	_id: 'msg_1',
@@ -171,6 +177,42 @@ describe('usePostboxReaderComposer', () => {
 
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/answer/m/msg_1?kind=reply');
 		expect(useAnswerPendingLead().take('msg_1')).toBe('Tuesday works');
+	});
+
+	it('saves a selected passage of an older message as the quote of a reply to it', async () => {
+		const older = { ...message, _id: 'msg_0', fromAddress: 'first@example.com' };
+		const { openQuoteReply } = makeComposer((run) => run());
+		expect(await openQuoteReply(older, 'Thursday works')).toBe(true);
+
+		expect(mutations.map((m) => m.op)).toEqual(['create', 'update']);
+		expect(mutations[0]!.args).toEqual({ mailboxId: 'mbx_1', inReplyToMessageId: 'msg_0' });
+		expect(mutations[1]!.args).toMatchObject({
+			draftId: 'draft_9',
+			toAddresses: ['first@example.com'],
+			bodyHtml: '<div class="gmail_quote owlat_selected_quote">Thursday works</div>',
+		});
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/answer/m/msg_0?kind=reply&draft=draft_9');
+		expect(useAnswerPendingQuote().take('msg_0')).toBeUndefined();
+	});
+
+	it('keeps the reply-all default for a quoted passage', async () => {
+		const { openQuoteReply } = makeComposer((run) => run(), 'reply-all');
+		await openQuoteReply(message, 'Thursday works');
+		expect(navigateTo).toHaveBeenCalledWith(
+			'/dashboard/answer/m/msg_1?kind=replyAll&draft=draft_9'
+		);
+	});
+
+	it('hands the passage to Answer mode for that message alone when the draft is not saved', async () => {
+		createResult = { ok: false };
+		const { openQuoteReply } = makeComposer((run) => run());
+		expect(await openQuoteReply(message, 'Thursday works')).toBe(false);
+
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/answer/m/msg_1?kind=reply');
+		// Not reply text, and not for another message.
+		expect(useAnswerPendingLead().take('msg_1')).toBeUndefined();
+		expect(useAnswerPendingQuote().take('msg_2')).toBeUndefined();
+		expect(useAnswerPendingQuote().take('msg_1')).toBe('Thursday works');
 	});
 
 	it('opens the resend (not a reply) on the compose page', async () => {
