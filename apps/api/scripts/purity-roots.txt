@@ -81,3 +81,7 @@ convex/inbox/receiveDecision.ts
 convex/lib/emailAddress.ts
 convex/lib/inboundClassification.ts
 convex/lib/textPreview.ts
+
+# Transactional intake decisions; the mutation (transactional/dispatch.ts) is
+# the shell.
+convex/transactional/dispatchDecision.ts
