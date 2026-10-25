@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
+import type * as Shared from '@owlat/shared';
 
 vi.mock('../logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -26,7 +27,7 @@ const { backoff } = vi.hoisted(() => ({
 	}),
 }));
 vi.mock('@owlat/shared', async (importOriginal) => ({
-	...(await importOriginal<typeof import('@owlat/shared')>()),
+	...(await importOriginal<typeof Shared>()),
 	sleep: backoff,
 }));
 
