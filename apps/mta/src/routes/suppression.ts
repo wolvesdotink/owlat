@@ -6,12 +6,41 @@
  */
 
 import { Hono } from 'hono';
+import { v } from 'convex/values';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import * as suppressionList from '../intelligence/suppressionList.js';
 import type { SuppressionReason } from '../intelligence/suppressionList.js';
 import { logger } from '../monitoring/logger.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
+import { readJsonBody } from '../lib/jsonBody.js';
+import { literalUnion } from '@owlat/worker-protocol/literalUnion';
+
+const SUPPRESSION_REASONS = [
+	'hard_bounce',
+	'soft_bounce',
+	'complaint',
+	'manual',
+] as const satisfies readonly SuppressionReason[];
+const reasonValidator = literalUnion(SUPPRESSION_REASONS);
+
+const suppressBody = v.object({
+	emails: v.array(v.string()),
+	reason: v.optional(reasonValidator),
+	source: v.optional(v.string()),
+	expiresAt: v.optional(v.number()),
+});
+
+const bulkBody = v.object({
+	entries: v.array(
+		v.object({
+			email: v.string(),
+			reason: reasonValidator,
+			source: v.optional(v.string()),
+			expiresAt: v.optional(v.number()),
+		})
+	),
+});
 
 /**
  * Create the suppression list route group
@@ -24,14 +53,11 @@ export function createSuppressionRoutes(redis: Redis, config: MtaConfig): Hono {
 
 	// POST / — add addresses to suppression list
 	app.post('/', async (c) => {
-		let body: { emails: string[]; reason?: SuppressionReason; source?: string; expiresAt?: number };
-		try {
-			body = await c.req.json();
-		} catch {
-			return c.json({ error: 'Invalid JSON body' }, 400);
-		}
+		const read = await readJsonBody(c, suppressBody);
+		if (!read.ok) return read.response;
+		const body = read.value;
 
-		if (!body.emails || !Array.isArray(body.emails) || body.emails.length === 0) {
+		if (body.emails.length === 0) {
 			return c.json({ error: 'Missing required field: emails (non-empty array)' }, 400);
 		}
 
@@ -59,23 +85,9 @@ export function createSuppressionRoutes(redis: Redis, config: MtaConfig): Hono {
 
 	// POST /bulk — add up to 10,000 addresses in one request
 	app.post('/bulk', async (c) => {
-		let body: {
-			entries: Array<{
-				email: string;
-				reason: SuppressionReason;
-				source?: string;
-				expiresAt?: number;
-			}>;
-		};
-		try {
-			body = await c.req.json();
-		} catch {
-			return c.json({ error: 'Invalid JSON body' }, 400);
-		}
-
-		if (!body.entries || !Array.isArray(body.entries)) {
-			return c.json({ error: 'Missing required field: entries (array)' }, 400);
-		}
+		const read = await readJsonBody(c, bulkBody);
+		if (!read.ok) return read.response;
+		const body = read.value;
 
 		if (
 			body.entries.some(

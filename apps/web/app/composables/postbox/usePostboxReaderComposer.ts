@@ -3,7 +3,11 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import type { AnswerModeKind } from '~/utils/answerMode';
-import { useAnswerModeNav, useAnswerPendingLead } from '~/composables/useAnswerMode';
+import {
+	useAnswerModeNav,
+	useAnswerPendingLead,
+	useAnswerPendingQuote,
+} from '~/composables/useAnswerMode';
 import {
 	buildReplyComposeSeed,
 	primaryReplyKindFor,
@@ -44,6 +48,7 @@ export function usePostboxReaderComposer(opts: {
 	const composeNav = usePostboxComposeNav();
 	const answerNav = useAnswerModeNav();
 	const pendingLead = useAnswerPendingLead();
+	const pendingQuote = useAnswerPendingQuote();
 	const { autoLoadImages, isLoading: settingsLoading } = usePostboxSettings();
 	const imageAllowlist = usePostboxImageAllowlist(
 		computed(() => getMessage().mailboxId as Id<'mailboxes'>)
@@ -95,6 +100,44 @@ export function usePostboxReaderComposer(opts: {
 	}
 
 	/**
+	 * Save a `kind` reply to `target`, seeded with `seedText`, into a new draft
+	 * and open Answer mode on it (`?draft=`), so a reload keeps the seed.
+	 * Resolves false, having opened nothing, when the row was not saved.
+	 */
+	async function openSavedReply(
+		target: ReplyForwardSource,
+		kind: 'reply' | 'replyAll',
+		seedText: { leadText?: string; quotedPassage?: string }
+	): Promise<boolean> {
+		const mailboxId = getMessage().mailboxId as Id<'mailboxes'>;
+		await imagePolicySettled();
+		const seed = await buildReplyComposeSeed(kind, target, {
+			mailboxId,
+			ownAddresses: ownAddresses.value,
+			autoLoadImages: autoLoadImages.value,
+			isSenderAllowed: imageAllowlist.isAllowed(target.fromAddress),
+			...seedText,
+		});
+		const created = await createDraft.run({
+			mailboxId,
+			inReplyToMessageId: target._id as Id<'mailMessages'>,
+		});
+		if (!created.ok) return false;
+		const draftId = created.result.draftId as Id<'mailDrafts'>;
+		const saved = await updateDraft.run({
+			draftId,
+			toAddresses: seed.prefillTo ?? [],
+			ccAddresses: seed.prefillCc ?? [],
+			subject: seed.prefillSubject ?? '',
+			bodyHtml: seed.prefillBodyHtml ?? '',
+			composerMode: 'simple',
+		});
+		if (!saved.ok) return false;
+		void answerNav.open(target._id, { kind, draftId });
+		return true;
+	}
+
+	/**
 	 * A reply seeded with an AI-suggested body (a suggestion card, the
 	 * scheduling chip). The draft is created WITH the body before Answer mode
 	 * opens on it (`?draft=`), so a reload keeps the suggestion. Should the row
@@ -107,36 +150,24 @@ export function usePostboxReaderComposer(opts: {
 		replyTarget: ReplyForwardSource,
 		bodyText: string
 	): Promise<boolean> {
-		const mailboxId = getMessage().mailboxId as Id<'mailboxes'>;
-		await imagePolicySettled();
-		const seed = await buildReplyComposeSeed('reply', replyTarget, {
-			mailboxId,
-			ownAddresses: ownAddresses.value,
-			autoLoadImages: autoLoadImages.value,
-			isSenderAllowed: imageAllowlist.isAllowed(replyTarget.fromAddress),
-			leadText: bodyText,
-		});
-		const created = await createDraft.run({
-			mailboxId,
-			inReplyToMessageId: replyTarget._id as Id<'mailMessages'>,
-		});
-		if (created.ok) {
-			const draftId = created.result.draftId as Id<'mailDrafts'>;
-			const saved = await updateDraft.run({
-				draftId,
-				toAddresses: seed.prefillTo ?? [],
-				ccAddresses: seed.prefillCc ?? [],
-				subject: seed.prefillSubject ?? '',
-				bodyHtml: seed.prefillBodyHtml ?? '',
-				composerMode: 'simple',
-			});
-			if (saved.ok) {
-				void answerNav.open(replyTarget._id, { kind: 'reply', draftId });
-				return true;
-			}
-		}
+		if (await openSavedReply(replyTarget, 'reply', { leadText: bodyText })) return true;
 		pendingLead.set(replyTarget._id, bodyText);
 		openAnswer(replyTarget, 'reply');
+		return false;
+	}
+
+	/**
+	 * "Quote in reply": the primary reply to `source`, the message the passage
+	 * was selected in, quoting only that passage. Saved into a draft before
+	 * Answer mode opens on it, like a suggested body; should the save fail,
+	 * Answer mode opens anyway and quotes the passage from session state, held
+	 * for `source` alone. Callers run the reply guard first.
+	 */
+	async function openQuoteReply(source: ReplyForwardSource, passage: string): Promise<boolean> {
+		const kind = primaryReplyKindFor(replyDefault.value, source, ownAddresses.value);
+		if (await openSavedReply(source, kind, { quotedPassage: passage })) return true;
+		pendingQuote.set(source._id, passage);
+		openAnswer(source, kind);
 		return false;
 	}
 
@@ -172,6 +203,7 @@ export function usePostboxReaderComposer(opts: {
 		openReplyAll,
 		openPrimaryReply,
 		openReplyWithBody,
+		openQuoteReply,
 		openForward,
 		openResend,
 		hasOtherRecipients,

@@ -552,3 +552,119 @@ describe('transactional.dispatch.dispatch — drift-bug closures', () => {
 		expect(send?.language).toBe('de');
 	});
 });
+
+// ─── The queued envelope and the receipt replay ─────────────────────────────
+// What one intake hands the worker and writes beside the row, pinned before
+// the intake's decisions moved into `transactional/dispatchDecision.ts`.
+
+describe('transactional.dispatch.dispatch — queued envelope', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	async function queuedEnvelope(): Promise<Record<string, unknown>> {
+		const enqueue = vi.mocked(transactionalEmailPool.enqueueAction);
+		expect(enqueue).toHaveBeenCalledOnce();
+		const queued = enqueue.mock.calls[0]?.[2] as
+			| { envelopeInput: Record<string, unknown> }
+			| undefined;
+		if (!queued) throw new Error('expected one queued envelope');
+		return queued.envelopeInput;
+	}
+
+	it('queues the default language with its plain text and the unsubscribe footer', async () => {
+		vi.stubEnv('SITE_URL', 'https://app.owlat.example');
+		const t = convexTest(schema, modules);
+		const { templateId } = await seedBaseline(t);
+		await t.run(async (ctx) =>
+			ctx.db.patch(templateId, {
+				plainTextContent: 'Hello in text',
+				showUnsubscribe: true,
+				sendCount: 4,
+			})
+		);
+		vi.mocked(transactionalEmailPool.enqueueAction).mockClear();
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: { firstName: 'Ada' },
+		});
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}`);
+
+		const template = await t.run(async (ctx) => await ctx.db.get(templateId));
+		expect(template?.sendCount).toBe(5);
+		const envelope = await queuedEnvelope();
+		expect(envelope).toMatchObject({
+			kind: 'transactional',
+			emailPurpose: 'transactional',
+			to: 'recipient@example.com',
+			from: 'Owlat <noreply@example.com>',
+			sendId: outcome.sendId,
+			template: {
+				subject: 'Welcome',
+				htmlContent: '<p>Hello {{firstName}}</p>',
+				plainTextContent: 'Hello in text',
+			},
+			dataVariables: { firstName: 'Ada' },
+			showUnsubscribe: true,
+			contactId: outcome.contactId,
+			siteUrl: 'https://app.owlat.example',
+		});
+	});
+
+	it('queues a translation without the default language plain text and no footer', async () => {
+		const t = convexTest(schema, modules);
+		const { templateId } = await seedBaseline(t, {
+			supportedLanguages: ['en', 'de'],
+			htmlTranslations: JSON.stringify({
+				de: { htmlContent: '<p>Hallo</p>', subject: 'Hallo' },
+			}),
+		});
+		await t.run(async (ctx) => ctx.db.patch(templateId, { plainTextContent: 'Hello in text' }));
+		vi.mocked(transactionalEmailPool.enqueueAction).mockClear();
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			language: 'de',
+		});
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}`);
+		expect(outcome.language).toBe('de');
+
+		const envelope = await queuedEnvelope();
+		expect(envelope['template']).toEqual({ subject: 'Hallo', htmlContent: '<p>Hallo</p>' });
+		expect('showUnsubscribe' in envelope).toBe(false);
+		expect('contactId' in envelope).toBe(false);
+	});
+
+	it('answers a repeat of a committed request from its receipt and queues nothing more', async () => {
+		const t = convexTest(schema, modules);
+		const { templateId } = await seedBaseline(t);
+		const idempotency = { organizationId: 'org_1', keyHash: 'key-hash', requestHash: 'req-hash' };
+		const request = {
+			templateLookup: { kind: 'id' as const, id: templateId },
+			email: 'recipient@example.com',
+			idempotency,
+		};
+		vi.mocked(transactionalEmailPool.enqueueAction).mockClear();
+
+		const first = await t.mutation(internal.transactional.dispatch.dispatch, request);
+		const repeat = await t.mutation(internal.transactional.dispatch.dispatch, request);
+		if (!first.ok || !repeat.ok) throw new Error('expected both outcomes ok');
+		expect(repeat).toEqual({
+			ok: true,
+			sendId: first.sendId,
+			contactId: first.contactId,
+			contactCreated: true,
+			language: 'en',
+			queued: true,
+			replayed: true,
+		});
+		expect(vi.mocked(transactionalEmailPool.enqueueAction)).toHaveBeenCalledOnce();
+		const rows = await t.run(async (ctx) => await ctx.db.query('transactionalSends').collect());
+		expect(rows).toHaveLength(1);
+		const sends = await t.run(async (ctx) => await readInstanceCounter(ctx.db, 'sends'));
+		expect(sends.transactionalSendCount).toBe(1);
+	});
+});

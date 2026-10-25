@@ -1,4 +1,5 @@
-import { readBodyText } from './lib/readBody';
+import { v } from 'convex/values';
+import { decodeJson } from '@owlat/worker-protocol/decodeJson';
 import { httpAction } from './_generated/server';
 import { components } from './_generated/api';
 import { internal } from './_generated/api';
@@ -33,6 +34,18 @@ import { errorResponse, jsonResponse } from './lib/httpResponse';
  * install without a hand-run migration.
  */
 
+/**
+ * Presence of the three strings is the handler's check, so a body missing one
+ * keeps the message the setup CLI and the web wizard surface.
+ */
+const seedAdminBody = v.object({
+	email: v.optional(v.string()),
+	name: v.optional(v.string()),
+	passwordHash: v.optional(v.string()),
+	flags: v.optional(v.record(v.string(), v.boolean())),
+	isMigrationMode: v.optional(v.boolean()),
+});
+
 export const seedAdmin = httpAction(async (ctx, request) => {
 	// Per-IP rate limit BEFORE the secret check, so a caller can't brute-force
 	// the instance secret (or hammer the bootstrap) at line rate. Without a
@@ -42,25 +55,11 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 	const denied = await requireInstanceSecret(ctx, request, { limitType: 'adminSeed' });
 	if (denied) return denied;
 
-	// Parse request body
-	let body: {
-		email: string;
-		name: string;
-		passwordHash: string;
-		flags?: Record<string, boolean>;
-		isMigrationMode?: boolean;
-	};
-	try {
-		body = JSON.parse(await readBodyText(request, 100_000)) as {
-			email: string;
-			name: string;
-			passwordHash: string;
-			flags?: Record<string, boolean>;
-			isMigrationMode?: boolean;
-		};
-	} catch {
-		return errorResponse('invalid_input', 'Invalid JSON body');
-	}
+	// Every failure, an oversized body included, stays the 400 this route has
+	// always answered: the error categories have no 413.
+	const decoded = await decodeJson(request, seedAdminBody, 100_000);
+	if (!decoded.ok) return errorResponse('invalid_input', decoded.failure.message);
+	const body = decoded.value;
 
 	if (!body.email || !body.name || !body.passwordHash) {
 		return errorResponse('invalid_input', 'Missing required fields: email, name, passwordHash');

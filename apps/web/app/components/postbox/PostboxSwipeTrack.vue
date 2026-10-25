@@ -16,9 +16,13 @@
  *
  * Its own component so PostboxThreadRow stays inside the file-size ratchet.
  */
-import type { PostboxSwipeTone, PostboxSwipeTrackState } from '~/utils/postboxSwipe';
+import type {
+	PostboxSwipeTone,
+	PostboxSwipeTrackState,
+	RowSwipeAction,
+} from '~/utils/postboxSwipe';
 
-const props = defineProps<{ track: PostboxSwipeTrackState }>();
+const props = defineProps<{ track: PostboxSwipeTrackState<RowSwipeAction> }>();
 
 const { t } = useI18n();
 
@@ -31,6 +35,7 @@ const TONE_CLASSES: Record<PostboxSwipeTone, { fill: string; ink: string; armed:
 	error: { fill: 'bg-error/10', ink: 'text-error', armed: 'bg-error/25' },
 	warning: { fill: 'bg-warning/10', ink: 'text-warning', armed: 'bg-warning/25' },
 	info: { fill: 'bg-info/10', ink: 'text-info', armed: 'bg-info/25' },
+	success: { fill: 'bg-success/10', ink: 'text-success', armed: 'bg-success/25' },
 };
 
 const tone = computed(() => TONE_CLASSES[props.track.tone]);

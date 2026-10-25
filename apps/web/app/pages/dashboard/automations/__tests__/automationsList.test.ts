@@ -12,7 +12,10 @@
  *   - the last column is each automation's last 7 days, the same line in the
  *     table and the cards, its stalled/failed counts linking to those runs;
  *   - the active/paused switch pauses or resumes, and its Undo sends the
- *     change's stamp back exactly once; a failed change offers no Undo.
+ *     change's stamp back exactly once; a failed change offers no Undo;
+ *   - a right-click (or a long-press on the cards) opens the row's context
+ *     menu with the overflow menu's verbs, in the same order, run by the same
+ *     handlers, then the link verbs for where the row's name leads.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, ref, useSlots } from 'vue';
@@ -426,5 +429,93 @@ describe('automations list — active switch', () => {
 		const [message, , options] = showToast.mock.calls.at(-1)!;
 		expect(message).toBe('"Welcome sequence" has been paused');
 		expect(options?.action).toBeUndefined();
+	});
+});
+
+describe('automations list — row context menu', () => {
+	const contextLabels = () =>
+		Array.from(document.body.querySelectorAll('[role="menu"] [role="menuitem"]')).map((el) =>
+			el.textContent?.trim()
+		);
+
+	const LINK_VERBS = ['Open in new tab', 'Copy link'];
+
+	it('offers the overflow menu’s verbs on right-click, and runs them', async () => {
+		const wrapper = await mountList();
+		for (const name of ['Welcome sequence', 'Re-engagement: 90 days quiet', 'Birthday greeting']) {
+			const row = rowOf(wrapper, name);
+			const overflow = row.findAll('.menu [role="menuitem"]').map((b) => b.text());
+			await row.trigger('contextmenu', { clientX: 10, clientY: 10 });
+			expect(contextLabels()).toEqual([...overflow, ...LINK_VERBS]);
+			document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+			await flushPromises();
+		}
+
+		await rowOf(wrapper, 'Re-engagement: 90 days quiet').trigger('contextmenu', {
+			clientX: 10,
+			clientY: 10,
+		});
+		const remove = Array.from(
+			document.body.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')
+		).find((el) => el.textContent?.trim() === 'Delete');
+		remove!.click();
+		await flushPromises();
+		expect(removeAutomation).toHaveBeenCalledWith({ automationId: 'au_reengage' });
+		wrapper.unmount();
+	});
+
+	it('links each row where its name leads: a draft to its builder', async () => {
+		const open = vi.spyOn(window, 'open').mockReturnValue(null);
+		try {
+			const wrapper = await mountList();
+			for (const [name, path] of [
+				['Welcome sequence', '/dashboard/automations/au_welcome'],
+				['Birthday greeting', '/dashboard/automations/au_draft/edit'],
+			] as const) {
+				await rowOf(wrapper, name).trigger('contextmenu', { clientX: 10, clientY: 10 });
+				Array.from(document.body.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]'))
+					.find((el) => el.textContent?.trim() === 'Open in new tab')!
+					.click();
+				await flushPromises();
+				expect(open).toHaveBeenLastCalledWith(
+					`${window.location.origin}${path}`,
+					'_blank',
+					'noopener'
+				);
+			}
+			wrapper.unmount();
+		} finally {
+			open.mockRestore();
+		}
+	});
+
+	it('opens on a long-press on a card', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			tableFits.value = false;
+			const wrapper = await mountList();
+			const card = rowOf(wrapper, 'Welcome sequence').element;
+			const down = new Event('pointerdown', { bubbles: true, cancelable: true });
+			Object.defineProperties(down, {
+				clientX: { value: 40 },
+				clientY: { value: 40 },
+				pointerType: { value: 'touch' },
+				pointerId: { value: 1 },
+				isPrimary: { value: true },
+			});
+			card.dispatchEvent(down);
+			vi.advanceTimersByTime(500);
+			await flushPromises();
+			expect(contextLabels()).toEqual([
+				'View details',
+				'Edit',
+				'Duplicate',
+				'Pause',
+				...LINK_VERBS,
+			]);
+			wrapper.unmount();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

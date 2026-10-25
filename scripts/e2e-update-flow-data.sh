@@ -53,9 +53,9 @@
 # and the same `statsUpdatedAt`, and every counter is compared strictly.
 #
 # Rows are read with `convex run --inline-query` (a sandboxed read-only query).
-# The two writes call FROM's and TO's functions by name (sample data, rollup),
-# so renaming either breaks the next release's update flow until FROM has the
-# new name too.
+# The writes call FROM's and TO's functions by name (sample data, rollup, and
+# in the rollback scenario TO's sample-data removal), so renaming one breaks the
+# next release's update flow until FROM has the new name too.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # The install's own Convex CLI: FROM's convex-deploy image before the update,
@@ -76,7 +76,8 @@ DATA_HOPS=2
 #   {"to": "<TO version>", "doc": "<document label>", "field": "<dotted path>",
 #    "migration": "<migrations/NNNN_name.ts>"}
 # The label is the one failures print (`contact`, `draft/emailTemplateId`, ...).
-# An entry applies only to an update to its `to` version. v0.6.14 → v0.6.15
+# An entry applies only to an update to its `to` version, and never to the
+# check after a rollback, which compares against FROM. v0.6.14 → v0.6.15
 # needs none: no migration or schema change shipped in that range.
 DATA_REWRITE_ALLOWLIST='[]'
 
@@ -338,20 +339,23 @@ seed_convex_data() {
 	pass "seeded: contact, sent campaign, draft campaign and a queued Send ($(jq '.docs | length' "$baseline") documents in the baseline; rows $(jq -c '.rows | map_values(length)' "$baseline"))"
 }
 
-# At TO, after the update: the baseline's documents again, compared with it.
+# After the update: the baseline's documents again, compared with it, on the
+# release the stack runs now ($2). That is TO after a successful update and
+# FROM after a rollback, where no rewrite TO's migrations are allowed applies:
+# the restored documents must be the ones FROM wrote.
 verify_convex_data() {
-	local baseline="$1" after="$1.after"
-	data_rollup_stats "$TO"
+	local baseline="$1" version="$2" after="$1.after"
+	data_rollup_stats "$version"
 	convex_query "$(data_reload_query "$(jq -c '.docs | keys' "$baseline")")" >"$after" ||
-		fail "could not reload the seeded rows at $TO"
+		fail "could not reload the seeded rows at $version"
 	local report status=0 verdict name detail
-	report="$(data_compare_snapshots "$baseline" "$after" "$TO")" || status=1
+	report="$(data_compare_snapshots "$baseline" "$after" "$version")" || status=1
 	while IFS='|' read -r verdict name detail; do
 		if [[ "$verdict" == ok ]]; then
-			pass "$name survived the update"
+			pass "$name is intact at $version"
 		else
 			printf '  \033[31m✗\033[0m %s: %s\n' "$name" "$detail"
 		fi
 	done <<<"$report"
-	[[ $status -eq 0 ]] || fail "seeded Convex data did not survive the update to $TO"
+	[[ $status -eq 0 ]] || fail "the Convex data seeded at $FROM is not intact at $version"
 }

@@ -78,6 +78,7 @@ const EXTERNAL_NAMES: Readonly<Record<string, string>> = {
  */
 const EXTERNAL_PATHS: Readonly<Record<string, string>> = {
 	'./': 'the current directory, in a CLI example',
+	'.owlat-update-snapshot/': "the updater's snapshot directory, created at runtime",
 	'appendonlydir/': "Redis's own AOF directory, created at runtime",
 	'dist/': 'the build output of a plugin package',
 	'lib/contentScanner.ts': 'named to say the re-export wrapper was removed',

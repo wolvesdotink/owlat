@@ -3,6 +3,11 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ConversationStatus } from '~/utils/conversationStatus';
 import { mailThreadStatus, teamThreadStatus } from '~/utils/conversationStatus';
+import {
+	useInboxesThreadArchive,
+	type InboxesArchiveTarget,
+} from '~/composables/useInboxesThreadArchive';
+import PostboxSweepStatus from '~/components/postbox/PostboxSweepStatus.vue';
 
 /**
  * All inboxes — every conversation the viewer can read in one list, newest
@@ -10,7 +15,8 @@ import { mailThreadStatus, teamThreadStatus } from '~/utils/conversationStatus';
  * admins) the team inbox. Each row wears its inbox chip. Chips narrow the list
  * to one inbox; Unread / Needs you / a category (`?category=` — Today's
  * "Filed away" links land here) narrow it further. Opening a row goes to the
- * conversation in its own inbox.
+ * conversation in its own inbox. A mail row's hover Archive archives the whole
+ * conversation; pressing it and dragging across rows archives the range.
  */
 const { t } = useI18n();
 useHead({ title: () => t('dashboard.inboxes.pageTitle') });
@@ -55,6 +61,8 @@ type Row = {
 	status: ConversationStatus | null;
 	category: string | null;
 	href: string;
+	/** The thread an Archive acts on; a team-inbox row has none. */
+	archive: InboxesArchiveTarget;
 };
 
 const allRows = computed<Row[]>(() => {
@@ -74,6 +82,7 @@ const allRows = computed<Row[]>(() => {
 				href: thread.latestMessageId
 					? `/dashboard/postbox/inbox/${thread.latestMessageId}?mailbox=${mailboxId}`
 					: `/dashboard/postbox/inbox?mailbox=${mailboxId}`,
+				archive: { threadId: thread._id },
 			});
 		}
 	}
@@ -89,6 +98,7 @@ const allRows = computed<Row[]>(() => {
 			status: teamThreadStatus(thread),
 			category: null,
 			href: `/dashboard/inbox/${thread._id}`,
+			archive: null,
 		});
 	}
 	return rows.sort((a, b) => b.at - a.at);
@@ -121,6 +131,17 @@ const rows = computed(() =>
 		return true;
 	})
 );
+
+const listEl = ref<HTMLElement | null>(null);
+const {
+	visible: shownRows,
+	archiveRow,
+	sweep,
+} = useInboxesThreadArchive({
+	rows,
+	listEl,
+	scopeKey: () => `${inboxFilter.value}|${show.value}|${category.value ?? ''}`,
+});
 
 const isLoading = computed(() => {
 	if (inboxesLoading.value) return true;
@@ -265,27 +286,35 @@ const SHOW_OPTIONS = [
 		</div>
 
 		<InboxReadFailureNotice
-			v-if="failures.length > 0 && rows.length > 0"
+			v-if="failures.length > 0 && shownRows.length > 0"
 			class="mt-4"
 			:names="failures.map((f) => f.name)"
 			@retry="retryLoad"
 		/>
-		<div v-if="isLoading && rows.length === 0" class="mt-4 space-y-2">
+		<div v-if="isLoading && shownRows.length === 0" class="mt-4 space-y-2">
 			<UiSkeleton v-for="i in 6" :key="i" class="h-14 w-full rounded-lg" />
 		</div>
 		<UiQueryBoundary
-			v-else-if="loadError && rows.length === 0"
+			v-else-if="loadError && shownRows.length === 0"
 			:error="loadError"
 			@retry="retryLoad"
 		/>
-		<div v-else-if="rows.length === 0" class="mt-10 text-center text-sm text-text-secondary">
+		<div v-else-if="shownRows.length === 0" class="mt-10 text-center text-sm text-text-secondary">
 			{{ t('dashboard.inboxes.empty') }}
 		</div>
 		<ul
 			v-else
+			ref="listEl"
 			class="mt-4 divide-y divide-border-subtle overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated"
+			:class="{ 'select-none': sweep.active.value }"
 		>
-			<li v-for="row in rows" :key="row.key">
+			<li
+				v-for="row in shownRows"
+				:key="row.key"
+				class="group relative"
+				:class="{ 'opacity-40': sweep.markOf(row.key) === 'archive' }"
+				:data-sweep-row="row.key"
+			>
 				<NuxtLink
 					:to="row.href"
 					class="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-bg-surface"
@@ -325,8 +354,21 @@ const SHOW_OPTIONS = [
 						}}</span>
 					</span>
 				</NuxtLink>
+				<button
+					v-if="row.archive"
+					type="button"
+					class="absolute right-3 top-1/2 -translate-y-1/2 rounded-md bg-bg-surface p-1.5 text-text-tertiary opacity-0 shadow-(--shadow-1) transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100"
+					:title="t('dashboard.inboxes.archiveSweepHint')"
+					:aria-label="t('common.archive')"
+					data-testid="inboxes-row-archive"
+					@pointerdown="sweep.start('archive', row.key, $event)"
+					@click="archiveRow(row)"
+				>
+					<Icon name="lucide:archive" class="size-4" />
+				</button>
 			</li>
 		</ul>
+		<PostboxSweepStatus :status="sweep.status.value" label-key="dashboard.inboxes.sweepStatus" />
 		<p class="mt-3 text-xs text-text-tertiary">
 			{{ t('dashboard.inboxes.footnote', { count: PER_INBOX }) }}
 		</p>

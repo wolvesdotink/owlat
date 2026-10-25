@@ -75,10 +75,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
 		if (activeOrganizationId.value) return;
 
 		// No active organization: try to auto-activate one the user belongs to.
-		// `useOrganization` is built only on this path — it opens better-auth's
-		// organization requests. Its subscriptions are app-lifetime singletons,
-		// so building it after an `await` leaks nothing.
-		const { setActive } = useOrganization();
+		// `useOrganizationSession` is built only on this path — it opens
+		// better-auth's organization requests. Its subscriptions are app-lifetime
+		// singletons, so building it after an `await` leaks nothing.
+		const { setActive } = useOrganizationSession();
 		try {
 			const orgsResult = await listOrganizations();
 			const firstOrg = orgsResult.data?.[0];

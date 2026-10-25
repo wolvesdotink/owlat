@@ -80,6 +80,35 @@ describe('usePostboxEditorDocument — incoming model writes', () => {
 		expect(selection!.getRangeAt(0).collapsed).toBe(true);
 	});
 
+	it('puts the caret at the end of the written part, above the signature and the quote', async () => {
+		const tail =
+			'<br><br><div data-postbox-signature="true">Ada</div>' +
+			'<br><br><div class="gmail_quote"><blockquote>Original</blockquote></div>';
+		const { el, model } = setup(`<p>My reply</p>${tail}`);
+		el().focus();
+
+		// A quoted passage going in before the signature, as Answer mode's insertQuote writes it.
+		model.value = `<p>My reply</p><br><br><div class="gmail_quote owlat_selected_quote"><blockquote>Passage</blockquote></div>${tail}`;
+		await nextTick();
+
+		const range = window.getSelection()!.getRangeAt(0);
+		expect(range.collapsed).toBe(true);
+		expect(range.startContainer).toBe(el().firstChild);
+		expect(range.startOffset).toBe(1);
+	});
+
+	it('puts the caret before the tail of a reply nobody has written in yet', async () => {
+		const { el, model } = setup('<p><br></p><br><br><div data-postbox-signature="true">Ada</div>');
+		el().focus();
+
+		model.value = '<p><br></p><br><br><div data-postbox-signature="true">Grace</div>';
+		await nextTick();
+
+		const range = window.getSelection()!.getRangeAt(0);
+		expect(range.startContainer).toBe(el().firstChild);
+		expect(range.startOffset).toBe(0);
+	});
+
 	it('does not rewrite the DOM when the parent echoes back what was just emitted', async () => {
 		const { el, model, doc } = setup();
 		el().focus();

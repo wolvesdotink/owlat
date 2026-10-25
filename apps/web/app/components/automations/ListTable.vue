@@ -24,6 +24,9 @@ export type AutomationListItem = Pick<
  * The last column is the automation's last 7 days (`HealthSummary`): runs
  * entered, stalled and failed, the last two linking to the runs they count.
  */
+import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
+import RowContextMenu from '~/components/RowContextMenu.vue';
+import { automationRowHref } from '~/utils/automationRowVerbs';
 import { formatNumber } from '~/utils/formatters';
 import AutomationsHealthSummary, { type AutomationHealth } from './HealthSummary.vue';
 
@@ -33,7 +36,14 @@ const props = defineProps<{
 	canManage: boolean;
 	/** Last-7-days counts by automation id; a missing entry shows a dash. */
 	health: ReadonlyMap<string, AutomationHealth>;
+	/**
+	 * A row's context menu (right-click, long-press), built when it opens: the
+	 * same verbs as the row's overflow menu. Absent: the browser's own menu.
+	 */
+	menuItems?: (automation: AutomationListItem) => ContextMenuItem[];
 }>();
+
+const menuFor = (automation: AutomationListItem) => () => props.menuItems?.(automation) ?? [];
 
 defineSlots<{
 	actions?: (props: { automation: AutomationListItem; touch: boolean }) => unknown;
@@ -42,10 +52,7 @@ defineSlots<{
 const { t } = useI18n();
 const { getStatusBadge, getTriggerDisplay } = useAutomationBadges();
 
-const nameTo = (automation: AutomationListItem): string | null => {
-	if (automation.status !== 'draft') return `/dashboard/automations/${automation._id}`;
-	return props.canManage ? `/dashboard/automations/${automation._id}/edit` : null;
-};
+const nameTo = (automation: AutomationListItem) => automationRowHref(automation, props.canManage);
 
 const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand';
 const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap';
@@ -55,41 +62,45 @@ const statusPill =
 
 <template>
 	<ul v-if="layout === 'cards'" class="divide-y divide-border-subtle">
-		<li v-for="automation in items" :key="automation._id" class="flex items-center gap-1 px-4 py-2">
-			<div class="flex-1 min-w-0 py-1">
-				<NuxtLink
-					v-if="nameTo(automation)"
-					:to="nameTo(automation)!"
-					:class="['block text-text-primary font-medium truncate rounded', focusRing]"
-				>
-					{{ automation.name }}
-				</NuxtLink>
-				<span v-else class="block text-text-primary font-medium truncate">
-					{{ automation.name }}
-				</span>
-				<span class="flex items-center gap-2 mt-1 min-w-0">
-					<span :class="[statusPill, getStatusBadge(automation.status).color]">
-						<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
-						{{ t(getStatusBadge(automation.status).label) }}
-					</span>
-					<span class="text-sm text-text-secondary truncate">
-						{{ t(getTriggerDisplay(automation.triggerType).label) }}
-					</span>
-				</span>
-				<span class="flex flex-wrap items-center gap-1.5 text-xs text-text-tertiary mt-1">
-					<Icon name="lucide:users" class="w-3.5 h-3.5" />
-					<span class="tabular-nums">{{ formatNumber(automation.statsActive ?? 0) }}</span>
-					<span aria-hidden="true">·</span>
-					<span>{{ t('dashboard.automations.index.health.cardLabel') }}</span>
-					<AutomationsHealthSummary
-						:automation-id="automation._id"
-						:linkable="automation.status !== 'draft'"
-						:health="health.get(automation._id)"
-					/>
-				</span>
-			</div>
-			<slot name="actions" :automation="automation" :touch="true" />
-		</li>
+		<RowContextMenu v-for="automation in items" :key="automation._id" :items="menuFor(automation)">
+			<template #default="{ rowBindings }">
+				<li class="flex items-center gap-1 px-4 py-2" v-bind="rowBindings">
+					<div class="flex-1 min-w-0 py-1">
+						<NuxtLink
+							v-if="nameTo(automation)"
+							:to="nameTo(automation)!"
+							:class="['block text-text-primary font-medium truncate rounded', focusRing]"
+						>
+							{{ automation.name }}
+						</NuxtLink>
+						<span v-else class="block text-text-primary font-medium truncate">
+							{{ automation.name }}
+						</span>
+						<span class="flex items-center gap-2 mt-1 min-w-0">
+							<span :class="[statusPill, getStatusBadge(automation.status).color]">
+								<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
+								{{ t(getStatusBadge(automation.status).label) }}
+							</span>
+							<span class="text-sm text-text-secondary truncate">
+								{{ t(getTriggerDisplay(automation.triggerType).label) }}
+							</span>
+						</span>
+						<span class="flex flex-wrap items-center gap-1.5 text-xs text-text-tertiary mt-1">
+							<Icon name="lucide:users" class="w-3.5 h-3.5" />
+							<span class="tabular-nums">{{ formatNumber(automation.statsActive ?? 0) }}</span>
+							<span aria-hidden="true">·</span>
+							<span>{{ t('dashboard.automations.index.health.cardLabel') }}</span>
+							<AutomationsHealthSummary
+								:automation-id="automation._id"
+								:linkable="automation.status !== 'draft'"
+								:health="health.get(automation._id)"
+							/>
+						</span>
+					</div>
+					<slot name="actions" :automation="automation" :touch="true" />
+				</li>
+			</template>
+		</RowContextMenu>
 	</ul>
 
 	<div v-else class="overflow-x-auto">
@@ -109,68 +120,75 @@ const statusPill =
 				</tr>
 			</thead>
 			<tbody>
-				<tr
+				<RowContextMenu
 					v-for="automation in items"
 					:key="automation._id"
-					class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors"
+					:items="menuFor(automation)"
 				>
-					<td class="px-6 py-4">
-						<div class="min-w-0">
-							<NuxtLink
-								v-if="nameTo(automation)"
-								:to="nameTo(automation)!"
-								:class="[
-									'text-text-primary font-medium hover:text-brand transition-colors rounded',
-									focusRing,
-								]"
-							>
-								{{ automation.name }}
-							</NuxtLink>
-							<span v-else class="text-text-primary font-medium">{{ automation.name }}</span>
-							<p
-								v-if="automation.description"
-								class="text-sm text-text-tertiary truncate mt-0.5 max-w-xs"
-							>
-								{{ automation.description }}
-							</p>
-						</div>
-					</td>
-					<td class="px-6 py-4">
-						<div class="flex items-center gap-1.5">
-							<Icon
-								:name="getTriggerDisplay(automation.triggerType).icon"
-								class="w-4 h-4 text-text-tertiary"
-							/>
-							<span class="text-text-secondary text-sm">
-								{{ t(getTriggerDisplay(automation.triggerType).label) }}
-							</span>
-						</div>
-					</td>
-					<td class="px-6 py-4">
-						<span :class="[statusPill, getStatusBadge(automation.status).color]">
-							<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
-							{{ t(getStatusBadge(automation.status).label) }}
-						</span>
-					</td>
-					<td class="px-6 py-4">
-						<div class="flex items-center gap-1.5">
-							<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
-							<span class="text-text-secondary text-sm tabular-nums">
-								{{ formatNumber(automation.statsActive ?? 0) }}
-							</span>
-						</div>
-					</td>
-					<td class="px-6 py-4 text-text-secondary text-sm">
-						<AutomationsHealthSummary
-							:automation-id="automation._id"
-							:linkable="automation.status !== 'draft'"
-							:health="health.get(automation._id)"
-						/>
-					</td>
-					<td class="px-6 py-4">
-						<slot name="actions" :automation="automation" :touch="false" />
-					</td>
-				</tr>
+					<template #default="{ rowBindings }">
+						<tr
+							class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors"
+							v-bind="rowBindings"
+						>
+							<td class="px-6 py-4">
+								<div class="min-w-0">
+									<NuxtLink
+										v-if="nameTo(automation)"
+										:to="nameTo(automation)!"
+										:class="[
+											'text-text-primary font-medium hover:text-brand transition-colors rounded',
+											focusRing,
+										]"
+									>
+										{{ automation.name }}
+									</NuxtLink>
+									<span v-else class="text-text-primary font-medium">{{ automation.name }}</span>
+									<p
+										v-if="automation.description"
+										class="text-sm text-text-tertiary truncate mt-0.5 max-w-xs"
+									>
+										{{ automation.description }}
+									</p>
+								</div>
+							</td>
+							<td class="px-6 py-4">
+								<div class="flex items-center gap-1.5">
+									<Icon
+										:name="getTriggerDisplay(automation.triggerType).icon"
+										class="w-4 h-4 text-text-tertiary"
+									/>
+									<span class="text-text-secondary text-sm">
+										{{ t(getTriggerDisplay(automation.triggerType).label) }}
+									</span>
+								</div>
+							</td>
+							<td class="px-6 py-4">
+								<span :class="[statusPill, getStatusBadge(automation.status).color]">
+									<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
+									{{ t(getStatusBadge(automation.status).label) }}
+								</span>
+							</td>
+							<td class="px-6 py-4">
+								<div class="flex items-center gap-1.5">
+									<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
+									<span class="text-text-secondary text-sm tabular-nums">
+										{{ formatNumber(automation.statsActive ?? 0) }}
+									</span>
+								</div>
+							</td>
+							<td class="px-6 py-4 text-text-secondary text-sm">
+								<AutomationsHealthSummary
+									:automation-id="automation._id"
+									:linkable="automation.status !== 'draft'"
+									:health="health.get(automation._id)"
+								/>
+							</td>
+							<td class="px-6 py-4">
+								<slot name="actions" :automation="automation" :touch="false" />
+							</td>
+						</tr>
+					</template>
+				</RowContextMenu>
 			</tbody>
 		</table>
 	</div>

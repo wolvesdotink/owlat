@@ -271,6 +271,25 @@ describe('usePostboxTriageUndo', () => {
 		expect(calls).toEqual(['before', 'move:inbox:2', 'move:newsletters:1']);
 	});
 
+	it('registerMoveBack puts a long action back in moves of at most 100, one after another', async () => {
+		const undoState = usePostboxTriageUndo();
+		const calls: string[] = [];
+		const runMove = vi.fn(async (a: { messageIds: unknown[]; targetFolderId: unknown }) => {
+			calls.push(`move:${String(a.targetFolderId)}:${a.messageIds.length}`);
+		});
+		const ids = Array.from({ length: 250 }, (_, i) => `m${i}`);
+
+		undoState.registerMoveBack({
+			label: 'Archived',
+			moved: asMoved(ids.map((messageId) => ({ messageId, sourceFolderId: 'inbox' }))),
+			runMove,
+		});
+
+		expect(await undoState.undo()).toBe(true);
+		expect(calls).toEqual(['move:inbox:100', 'move:inbox:100', 'move:inbox:50']);
+		expect(runMove.mock.calls.flatMap(([a]) => a.messageIds)).toEqual(ids);
+	});
+
 	it('hints the undo chord on the newest toast only, and moves the hint as the stack shrinks', async () => {
 		const undoState = usePostboxTriageUndo();
 		undoState.register({ label: 'Archived', inverse: vi.fn() });
@@ -511,5 +530,22 @@ describe('groupMovedBySourceFolder', () => {
 			{ targetFolderId: 'f1', messageIds: ['a', 'c'] },
 			{ targetFolderId: 'f2', messageIds: ['b'] },
 		]);
+	});
+
+	it('splits a folder with more than 100 messages into consecutive groups of at most 100', () => {
+		const ids = Array.from({ length: 201 }, (_, i) => `m${i}`);
+		const groups = groupMovedBySourceFolder(
+			asMoved([
+				...ids.map((messageId) => ({ messageId, sourceFolderId: 'f1' })),
+				{ messageId: 'x', sourceFolderId: 'f2' },
+			])
+		);
+		expect(groups.map((g) => [g.targetFolderId, g.messageIds.length])).toEqual([
+			['f1', 100],
+			['f1', 100],
+			['f1', 1],
+			['f2', 1],
+		]);
+		expect(groups.slice(0, 3).flatMap((g) => g.messageIds)).toEqual(ids);
 	});
 });

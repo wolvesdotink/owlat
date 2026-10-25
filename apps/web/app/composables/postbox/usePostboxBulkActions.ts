@@ -91,6 +91,23 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		anchorId.value = anchor ?? targetId;
 	}
 
+	/**
+	 * A checkbox sweep: tick (or untick) exactly `ids`, leaving every other pick
+	 * as it was. The row the sweep started on becomes the anchor, so a
+	 * Shift+click afterwards extends from where the sweep began.
+	 */
+	function setRange(ids: Id<'mailMessages'>[], on: boolean, originId: Id<'mailMessages'>) {
+		if (ids.length === 0) return;
+		const next = new Set(selected.value);
+		for (const id of ids) {
+			if (on) next.add(id);
+			else next.delete(id);
+		}
+		selected.value = next;
+		anchorId.value = originId;
+		dropAllMatchingClaim();
+	}
+
 	/** Replace the selection with the whole page of rows the list is showing. */
 	function selectPage(pageIds: Id<'mailMessages'>[]) {
 		selectMany(pageIds);
@@ -257,6 +274,7 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		isSelected,
 		toggle,
 		extendTo,
+		setRange,
 		selectPage,
 		selectAllMatchingIds,
 		selectMany,

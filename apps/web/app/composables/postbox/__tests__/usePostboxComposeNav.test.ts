@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import {
 	COMPOSE_REQUEST_TTL_MS,
-	composePageKey,
 	composeRandomId,
 	seedCarriesText,
 	usePostboxComposeNav,
@@ -17,6 +16,7 @@ import {
 	withoutSeedText,
 	type ComposeSpec,
 } from '../usePostboxComposeNav';
+import { composePageKey } from '~/utils/composePageKey';
 
 const navigate = vi.fn(async (_target: unknown) => {});
 let states: Record<string, unknown>;

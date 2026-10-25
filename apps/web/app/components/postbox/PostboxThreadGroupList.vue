@@ -11,6 +11,7 @@ import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAuto
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import type { PostboxConversationThread } from './PostboxConversationRow.vue';
+import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
 
 const props = defineProps<{
 	threads: PostboxConversationThread[];
@@ -34,11 +35,19 @@ function threadTo(thread: { latestMessageId?: string }) {
 }
 
 const threadsRef = computed(() => props.threads);
-// What a row opens, in row order: previous/next in Zen walk this.
-const visibleIds = computed(() =>
-	props.threads.flatMap((thread) => (thread.latestMessageId ? [thread.latestMessageId] : []))
+// What a row opens and its conversation, in row order: previous/next in Zen
+// walk this, and so does a reply marked done that was opened from here.
+const rows = computed(() =>
+	props.threads.flatMap((thread) =>
+		thread.latestMessageId ? [{ id: thread.latestMessageId, threadId: thread._id }] : []
+	)
 );
+const visibleIds = computed(() => rows.value.map((row) => row.id));
 defineExpose({ visibleIds });
+useListAnswerOrigin({
+	rows: () => rows.value,
+	origin: () => folderAnswerOrigin(props.folderRole, props.activeMessageId),
+});
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 	items: threadsRef,
 	resetKey: computed(() => props.folderRole),

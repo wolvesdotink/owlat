@@ -1,28 +1,40 @@
 name: Update flow
 
 # A real in-app update, end to end (scripts/e2e-update-flow.sh): install the
-# previous release, seed Convex data through it, have the updater apply the
-# latest one, check the stack landed on it and the seeded rows survived
-# (scripts/e2e-update-flow-data.sh).
+# previous release, seed Convex data through it, and have the updater apply
+# the next one. Two scenarios, each on its own runner:
+#   - success: the published template; the stack has to land on it with the
+#     seeded rows intact (scripts/e2e-update-flow-data.sh);
+#   - rollback: the same template with web's healthcheck made to fail, so the
+#     release deploys, starts and fails readiness; the updater has to roll it
+#     back, and the stack has to be the previous release again, with the data
+#     changed after the snapshot restored (scripts/e2e-update-flow-rollback.sh).
 #
-# Two modes:
-#   - pull requests that touch the updater: the PR's updater image performs the
-#     rollout, so a change to the rollout is tested by a rollout;
-#   - nightly, on every published release, and on dispatch: the shipped updater
-#     of the previous release does it, which is exactly what an operator
-#     clicking "Update now" runs.
+# Who performs the update:
+#   - pull requests that touch the updater: the PR's updater image, in both
+#     scenarios, so a change to the rollout is tested by a rollout;
+#   - the release gate (_server-build.yml calls this before the draft release
+#     is published), nightly and dispatch: the shipped updater of the previous
+#     release for `success`, which is exactly what an operator clicking
+#     "Update now" runs, and the target release's own updater for `rollback`,
+#     since the previous one may predate rollback.
 #
-# Needs no secrets: everything comes from the public release assets and GHCR.
+# Each run gets a Docker daemon of its own (scripts/e2e-update-flow-dind.sh):
+# the updater prunes images and the harness takes its stack down with its
+# volumes, so neither may touch the runner's daemon.
+#
+# Needs no secrets: the previous release comes from its public assets and
+# GHCR, and a draft target is handed over as a run artifact by the caller.
 on:
   pull_request:
     paths:
       - 'apps/updater/**'
       - 'packages/shared/src/containerHealth*'
-      - 'scripts/e2e-update-flow.sh'
-      - 'scripts/e2e-update-flow-data.sh'
+      - 'scripts/e2e-update-flow*.sh'
       - '.github/workflows/update-flow.yml'
-  # Publication with GITHUB_TOKEN suppresses release events. The unified
-  # release explicitly calls this workflow after publishing instead.
+  # The release gate. Publication with GITHUB_TOKEN suppresses release events,
+  # and a draft release has nothing to subscribe to, so the release pipeline
+  # calls this workflow itself.
   workflow_call:
     inputs:
       from:
@@ -31,6 +43,14 @@ on:
       to:
         type: string
         required: true
+      target_artifact:
+        description: >-
+          Run artifact holding docker-compose-<to>.yml and its .sha256, which the
+          caller downloaded from the draft release with its own credentials (a
+          draft has no anonymous download URL). Empty: the published release.
+        type: string
+        required: false
+        default: ''
   schedule:
     - cron: '30 4 * * *' # nightly 04:30 UTC, after the E2E run
   workflow_dispatch:
@@ -51,15 +71,21 @@ concurrency:
 
 jobs:
   update-flow:
-    name: Update ${{ github.event_name == 'pull_request' && '(this PR''s updater)' || '(shipped updater)' }}
+    name: Update ${{ matrix.scenario }} (${{ github.event_name == 'pull_request' && 'this PR''s updater' || matrix.scenario == 'rollback' && 'target updater' || 'shipped updater' }})
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [success, rollback]
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Resolve versions
         id: versions
@@ -86,27 +112,38 @@ jobs:
           echo "to=${TO#v}" >> "$GITHUB_OUTPUT"
           echo "Updating ${FROM#v} → ${TO#v}"
 
+      # The release gate's target is a draft: its template comes from the
+      # caller, already checked against the draft's checksum, and is checked
+      # again before use. Never the published URL, which a draft does not have.
+      - name: Download the release target
+        if: inputs.target_artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ inputs.target_artifact }}
+          path: ${{ runner.temp }}/update-target
+
       # Two releases' images plus a Convex backend come to ~10 GB; a stock
       # runner has about 14 GB free, and the updater refuses to pull below 4.
+      # They land in the dedicated daemon's volume, on this same disk. The
+      # runner's own images are left alone: nothing here prunes the host.
       - name: Free runner disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          docker image prune -a -f >/dev/null
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+            /usr/local/.ghcup /usr/share/swift /usr/local/share/powershell
           df -h /
 
-      - name: Build this PR's updater
-        if: github.event_name == 'pull_request'
-        run: |
-          docker build -f apps/updater/Dockerfile \
-            --build-arg OWLAT_VERSION=${{ steps.versions.outputs.to }} \
-            --build-arg OWLAT_GIT_SHA=${{ github.sha }} \
-            -t ghcr.io/wolvesdotink/updater:ci-${{ github.sha }} .
-          echo "UPDATER_IMAGE=ghcr.io/wolvesdotink/updater:ci-${{ github.sha }}" >> "$GITHUB_ENV"
-
-      # As root, like a real install: the updater runs with every capability
-      # dropped, so it can only write an install directory root owns.
-      - name: Run the update
-        run: |
-          sudo --preserve-env=UPDATER_IMAGE,OWLAT_REPO \
-            bash scripts/e2e-update-flow.sh \
-            "${{ steps.versions.outputs.from }}" "${{ steps.versions.outputs.to }}"
+      # As root inside the dedicated daemon's container, like a real install:
+      # the updater runs with every capability dropped, so it can only write
+      # an install directory root owns. A pair that cannot be tested fails
+      # everywhere but on the nightly and dispatch runs (STRICT).
+      - name: Run the update in a dedicated Docker daemon
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+          STRICT: ${{ (github.event_name != 'schedule' && github.event_name != 'workflow_dispatch') && '1' || '0' }}
+          BUILD_UPDATER: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+          OWLAT_GIT_SHA: ${{ github.sha }}
+          TEMPLATE_DIR: ${{ inputs.target_artifact && format('{0}/update-target', runner.temp) || '' }}
+          DIND_NAME: owlat-update-flow-${{ matrix.scenario }}
+          FROM: ${{ steps.versions.outputs.from }}
+          TO: ${{ steps.versions.outputs.to }}
+        run: bash scripts/e2e-update-flow-dind.sh "$FROM" "$TO"

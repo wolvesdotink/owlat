@@ -40,6 +40,8 @@ import { createClamClient, type ClamClient } from '@owlat/email-scanner/clamav';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { logger } from '../monitoring/logger.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
+import { readJsonBody } from '../lib/jsonBody.js';
+import { parserDecoder } from '@owlat/worker-protocol/decodeJson';
 
 const MAX_ATTACHMENT_SIZE = MAX_ATTACHMENT_BYTES;
 
@@ -207,23 +209,13 @@ export function createScanRoutes(config: MtaConfig, redis: Redis): Hono {
 	// POST /scan/content — how content screening would judge this draft. Queues
 	// nothing and records nothing; the campaign pre-send check calls it.
 	app.post('/content', async (c) => {
-		const declared = Number(c.req.header('Content-Length') ?? 0);
-		if (declared > CONTENT_REQUEST_MAX_BYTES) {
-			return c.json({ error: 'Content too large' }, 413);
-		}
-		const body = await c.req.arrayBuffer();
-		if (body.byteLength > CONTENT_REQUEST_MAX_BYTES) {
-			return c.json({ error: 'Content too large' }, 413);
-		}
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(Buffer.from(body).toString('utf-8'));
-		} catch {
-			return c.json({ error: 'Invalid JSON' }, 400);
-		}
-		const request = parseContentRequest(parsed);
-		if (!request) return c.json({ error: 'Invalid content screening request' }, 400);
-		return c.json(await previewScreening(redis, request, config));
+		const read = await readJsonBody(
+			c,
+			parserDecoder(parseContentRequest, '$: not a content screening request'),
+			{ maxBytes: CONTENT_REQUEST_MAX_BYTES, tooLargeMessage: 'Content too large' }
+		);
+		if (!read.ok) return read.response;
+		return c.json(await previewScreening(redis, read.value, config));
 	});
 
 	// GET /scan/health — Check ClamAV status

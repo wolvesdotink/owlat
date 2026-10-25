@@ -6,8 +6,8 @@ import {
 	isCompleteTotpCode,
 	normalizeTotpCode,
 	parseTotpUri,
-	totpQrCode,
 } from '~/utils/accountTwoFactor';
+import { totpQrCode } from '~/utils/accountTwoFactorQr';
 
 // The exact shape BetterAuth's `two-factor/enable` returns: `Issuer:account` in
 // the label, the issuer repeated as a query parameter.

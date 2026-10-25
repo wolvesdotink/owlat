@@ -325,7 +325,9 @@ applied. For verification, state what you ran, what you saw and what you
 couldn't check; the proof each kind of change needs is described under
 [Verifying](./CLAUDE.md#verifying). A UI change includes before/after
 screenshots, uploaded to the PR description rather than committed
-(`lint:no-pr-assets` fails on captures under `docs/`).
+(`lint:no-pr-assets` fails on captures under `docs/`). `bun run capture` takes
+them from the local stack
+([how](docs/operations/development.md#screenshots-for-a-ui-pull-request)).
 
 ### CI checks
 

@@ -4,6 +4,9 @@
  *     and is recorded once as the draft's AI baseline after the row is saved;
  *   - Discard puts back what was written before the AI draft, saves, and
  *     reports the AI draft unused;
+ *   - a selected passage joins the draft beside what was written, before the
+ *     signature and the quoted original, and an AI draft or its Discard
+ *     leaves it in place;
  *   - the footer says how many gaps are left, else the host's note, else the
  *     save state.
  */
@@ -110,6 +113,27 @@ describe('usePostboxComposerAnswerApi', () => {
 		await flushPromises();
 		expect(discardRun).toHaveBeenCalledExactlyOnceWith({ draftId: 'd1' });
 		expect(state.flush).toHaveBeenCalledTimes(2);
+	});
+
+	const SIGNATURE = '<br><br><div data-postbox-signature="true">Ada</div>';
+	const PASSAGE =
+		'<br><br><div class="gmail_quote owlat_selected_quote"><div>On …, Jonas wrote:</div><blockquote>the invoice</blockquote></div>';
+
+	it('quotes a selected passage into the open draft, keeping the writing and the signature', () => {
+		const { answerApi, state } = setup(`<p>my notes</p>${SIGNATURE}${QUOTE}`);
+		answerApi.insertQuote!(PASSAGE);
+		expect(state.bodyHtml.value).toBe(`<p>my notes</p>${PASSAGE}${SIGNATURE}${QUOTE}`);
+		expect(answerApi.draftText.value).toBe('my notes');
+		expect(state.focusBody).toHaveBeenCalled();
+	});
+
+	it('keeps a quoted passage through an AI draft and its Discard', async () => {
+		const { answerApi, state } = setup(`<p>my notes</p>${QUOTE}`);
+		answerApi.insertQuote!(PASSAGE);
+		await answerApi.applyAiDraft('Hi Jonas');
+		expect(state.bodyHtml.value).toBe(`<p>Hi Jonas</p>${PASSAGE}${QUOTE}`);
+		answerApi.discardAiDraft();
+		expect(state.bodyHtml.value).toBe(`<p>my notes</p>${PASSAGE}${QUOTE}`);
 	});
 
 	it('takes the server attachments and the follow-up date', () => {

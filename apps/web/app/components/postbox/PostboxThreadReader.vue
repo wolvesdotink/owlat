@@ -108,6 +108,12 @@ import type { Placement } from '@owlat/shared/arrival';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { primaryReplyKindFor } from '~/composables/postbox/postboxReplySpec';
 import { replyDropRecipient, type ReplyDropTarget } from '~/utils/replyFileDrop';
+import type { ConversationLinkTarget } from '~/utils/conversationLink';
+import { useConversationLink } from '~/composables/useConversationLink';
+import {
+	usePostboxThreadFind,
+	type PostboxFindSeed,
+} from '~/composables/postbox/usePostboxThreadFind';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -118,6 +124,8 @@ const props = defineProps<{
 	// Overlay hosting (Today's centered reader): auto-advance swaps the reader in
 	// place via `advance`, so triaging never tears down the overlay.
 	advanceInPlace?: boolean;
+	/** Opened from a search result: find opens on its words, that message first. */
+	findSeed?: PostboxFindSeed | null;
 }>();
 
 const emit = defineEmits<{
@@ -493,6 +501,7 @@ const {
 	openReplyAll,
 	openPrimaryReply,
 	openReplyWithBody,
+	openQuoteReply,
 	openForward,
 	openResend,
 	hasOtherRecipients,
@@ -716,14 +725,46 @@ const translationTarget = computed(
 );
 const translation = usePostboxReaderTranslation(() => translationTarget.value);
 
+// "Copy link" / "Share in chat…", from any card's ⋯ menu or the palette. The
+// link names the card's message, so it opens the thread at the mail it came from,
+// and the dialog is this reader's own: a second mounted reader never opens it.
+const { copyConversationLink } = useConversationLink();
+function conversationLinkOf(messageId: string): ConversationLinkTarget {
+	return {
+		kind: 'postbox',
+		messageId,
+		mailboxId: props.message.mailboxId,
+		folder: props.folderRole,
+	};
+}
+const shareTarget = shallowRef<ConversationLinkTarget | null>(null);
+
+// Find in conversation (⌘F): collapsed messages, folded quotes and envelopes
+// included. Only the reader on top answers the shortcut.
+const find = usePostboxThreadFind({
+	threadKey,
+	messages: () => allMessages.value,
+	// Encrypted, clearsigned and signed mail shows through its security badge;
+	// its raw body is not what the reader shows, so it is not searched.
+	searchable: (msg) =>
+		secureClass(msg) === 'none' && !(msg as PostboxReaderMessage).inboundSignatureInfo,
+	isExpanded: (id) => expanded.value.has(id),
+	expand: toggleExpanded,
+	pages: threadPages,
+	seed: () => props.findSeed,
+	answersShortcut: () => threadSurface.isTopmost(),
+});
+
 // ⌘K, while a conversation is open, offers every verb this reader has. Runs the
 // actions directly, so it acts on THIS conversation.
-usePostboxThreadCommandSurface({
+const threadSurface = usePostboxThreadCommandSurface({
 	subject: () => props.message.subject,
 	messageId: () => props.message._id,
 	threadId: () => readerThread.value?._id ?? props.message.threadId,
 	mailboxId: () => props.message.mailboxId,
 	href: () => `/dashboard/postbox/${props.folderRole ?? 'inbox'}/${props.message._id}`,
+	link: () => conversationLinkOf(props.message._id),
+	shareInChat: () => (shareTarget.value = conversationLinkOf(props.message._id)),
 	hintText: () => snoozeHintText.value,
 	isMuted: () => readerThread.value?.mutedAt != null,
 	isAlerted: () => readerThread.value?.notifyOnReplyAt != null,
@@ -746,6 +787,7 @@ usePostboxThreadCommandSurface({
 	toggleAlert: toggleOpenThreadAlert,
 	togglePin: toggleOpenThreadPin,
 	translate: () => void translation.translate(),
+	find: () => find.open(),
 });
 
 // Single-key shortcuts while reading and the Cmd-K palette bridge, both
@@ -778,6 +820,15 @@ providePostboxReaderContext({
 	eagerBody: mountAllBodies,
 	reduced: false,
 	chromeOf: calm.cardOf,
+	// A selected passage replies to the message it is from, behind the guard.
+	quoteReply: {
+		canQuote: (messageId) => allMessages.value.some((m) => m._id === messageId),
+		quote: (messageId, passage) => {
+			const msg = allMessages.value.find((m) => m._id === messageId);
+			if (msg) runGuarded(msg, () => void openQuoteReply(msg, passage));
+		},
+	},
+	find,
 });
 
 /**
@@ -846,12 +897,14 @@ const replyDrop = computed<ReplyDropTarget | null>(() => {
 			@why-here="calm.openWhyHere"
 		>
 			<template #actions>
+				<PostboxThreadFindButton @click="find.open()" />
 				<PostboxThreadDiscussionToggle
 					v-if="discussionThreadId && !team.isActive.value"
 					:thread-id="discussionThreadId"
 				/>
 			</template>
 		</PostboxThreadHeader>
+		<PostboxThreadFindBar :find="find" />
 
 		<PostboxReaderStrip
 			ref="stripEl"
@@ -967,6 +1020,8 @@ const replyDrop = computed<ReplyDropTarget | null>(() => {
 					@block-sender="blockSenderOf(msg._id)"
 					@create-filter="createFilterFrom(msg)"
 					@print="runReaderAction('print')"
+					@copy-link="copyConversationLink(conversationLinkOf(msg._id))"
+					@share-in-chat="shareTarget = conversationLinkOf(msg._id)"
 					@preview-attachment="(att, all) => openAttachmentPreview(msg._id, att, all)"
 					@download-attachment="(att) => handleAttachmentDownload(msg._id, att)"
 					@trackers="onTrackersDetected(msg._id, $event)"
@@ -1038,6 +1093,13 @@ const replyDrop = computed<ReplyDropTarget | null>(() => {
 			:from-address="senderProfile.fromAddress"
 			:from-name="senderProfile.fromName"
 			@update:open="(open: boolean) => !open && (senderProfile = null)"
+		/>
+
+		<LazyChatLinkEmailDialog
+			v-if="shareTarget"
+			:conversation="shareTarget"
+			:audience="rb.isShared.value ? 'shared' : 'personal'"
+			@close="shareTarget = null"
 		/>
 
 		<!-- Quick Look overlay for image/PDF attachments (Teleports to body). -->

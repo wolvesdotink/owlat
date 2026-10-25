@@ -16,11 +16,8 @@ import { defineComponent, nextTick, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 
 import ComposePage from '../compose.vue';
-import {
-	composePageKey,
-	usePostboxComposeNav,
-	type ComposeSpec,
-} from '~/composables/postbox/usePostboxComposeNav';
+import { usePostboxComposeNav, type ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
+import { composePageKey } from '~/utils/composePageKey';
 import type { ParkableSnapshot } from '~/composables/postbox/usePostboxComposeRow';
 import { MIRROR_FIELD_NAMES, type MirrorFields } from '~/utils/postboxDraftMirror';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';

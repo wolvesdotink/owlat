@@ -181,6 +181,55 @@ bun run dev:stack --no-seed # start without seeding
 calls and its HTTP requests: the stage `.env.local` when it exists, otherwise
 whatever `apps/api` selects. It refuses any site URL that is not localhost.
 
+## Screenshots for a UI pull request
+
+A PR that changes the UI carries before/after screenshots. `bun run capture`
+takes them from the running stack: it signs in as the seeded owner through the
+login form and screenshots named surfaces in system Chrome (Playwright's
+Chromium if Chrome is missing). Start the stack and leave it running, then:
+
+```sh
+bun run capture --list                        # the named surfaces
+bun run capture before --surface postbox,contacts
+# ...make the change...
+bun run capture after --surface postbox,contacts
+```
+
+- **Surfaces.** Each one reaches a seeded page the way a person would (the
+  shared Team inbox with a message open, a contact, the sent campaign's
+  report, the draft campaign's editor, ...) and waits for its seeded content.
+  `--path /dashboard/admin/team` captures any other route as it renders.
+- **Output.** `<label>-<shot>.png` in `~/.cache/owlat-captures/<checkout>/`,
+  or `--out <dir>`. A directory inside the checkout is refused, also through a
+  symlink. Nothing is written unless every shot succeeded, so a failed sign-in,
+  a missing fixture or a page that never finished loading never leaves a PNG
+  behind. An existing capture is never replaced without `--force`.
+- **Pairs.** The first run in a directory records the theme
+  (`--theme light|dark`), the viewport (`--viewport 1440x900`), `--full-page`
+  and the app's clock in `capture.json`. Later runs reuse them, so relative
+  times such as "5m ago" match, and a flag that disagrees is refused. Use a new
+  `--out` for a new pair.
+- **Target.** The app URL follows this checkout's ports, so run it with the
+  same `OWLAT_PORT_OFFSET` as `dev:stack`. `--url http://localhost:<port>`
+  points it at another local app; remote hosts are refused.
+  `OWLAT_CAPTURE_EMAIL` and `OWLAT_CAPTURE_PASSWORD` sign in as an owner the
+  seed did not create.
+- **Postbox.** The `postbox` surfaces need the Email client feature, which a
+  fresh stack has off: turn it on once under Settings > Features. The
+  "Services out of sync" banner there does not matter for the dev stack.
+
+Capturing changes a few things in the local data, the same way a person
+clicking through would: the first run marks the welcome screen as seen,
+`postbox` opens a message (which marks it read) and both postbox surfaces save
+the inbox view they show (`--list` says which surface changes what). Those
+surfaces always run before the others, so when both labels of a pair name the
+same surfaces, every shot of the "before" sees the same state as the "after",
+also on freshly seeded data.
+
+Take "before" before you edit: once the change is in the working tree the
+original state is gone. The mock-Convex screenshot harness some contributors
+keep locally is a different tool and stays out of the repository.
+
 ## Stopping what you started
 
 | You want to                                | Run                                                   |

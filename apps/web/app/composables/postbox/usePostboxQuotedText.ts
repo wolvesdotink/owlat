@@ -18,6 +18,8 @@ import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { escapeHtml, escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
 import { applyPostboxImageConsent } from '~/utils/postboxRemoteResources';
+import { SELECTED_QUOTE_CLASS } from '~/utils/answerMode';
+import { normalizeQuotedPassage } from '~/utils/postboxSelectedQuote';
 import { api } from '@owlat/api';
 import { consumeResolvedPostboxMessageBody } from './postboxBodyResolver';
 
@@ -68,16 +70,42 @@ function formatSender(msg: QuoteSource): string {
 		: escapeHtml(msg.fromAddress);
 }
 
+/** "On <date>, <sender> wrote:", escaped. */
+function attribution(msg: Pick<QuoteSource, 'fromAddress' | 'fromName' | 'receivedAt'>): string {
+	return `On ${new Date(msg.receivedAt).toLocaleString()}, ${formatSender(msg)} wrote:`;
+}
+
+const QUOTE_BAR_STYLE = 'margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;color:#555;';
+
 /**
  * A Gmail-style quoted reply body: blank space for the reply on top, then an
  * attribution line and the original wrapped in a quote block.
  */
 export function buildQuotedReply(msg: QuoteSource, loadImages: boolean): string {
-	const attribution = `On ${new Date(msg.receivedAt).toLocaleString()}, ${formatSender(msg)} wrote:`;
 	return (
-		`<br><br><div class="gmail_quote"><div>${attribution}</div>` +
-		`<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;color:#555;">` +
+		`<br><br><div class="gmail_quote"><div>${attribution(msg)}</div>` +
+		`<blockquote class="gmail_quote" style="${QUOTE_BAR_STYLE}">` +
 		`${originalAsHtml(msg, loadImages)}</blockquote></div>`
+	);
+}
+
+/**
+ * A reply's quote of a passage the person selected in `msg`: the attribution
+ * line of a full quote, then that passage alone. The passage is plain text,
+ * escaped with its line breaks kept, so nothing of the message's markup, its
+ * images or the rest of its text comes along. Empty for a passage of only
+ * whitespace. The inner quote carries no `gmail_quote` class: Answer mode folds
+ * those, and this one stays on screen (utils/postboxSelectedQuote).
+ */
+export function buildSelectedQuote(
+	msg: Pick<QuoteSource, 'fromAddress' | 'fromName' | 'receivedAt'>,
+	passage: string
+): string {
+	const text = normalizeQuotedPassage(passage);
+	if (!text) return '';
+	return (
+		`<br><br><div class="gmail_quote ${SELECTED_QUOTE_CLASS}"><div>${attribution(msg)}</div>` +
+		`<blockquote style="${QUOTE_BAR_STYLE}">${escapeHtmlWithBreaks(text)}</blockquote></div>`
 	);
 }
 
@@ -137,22 +165,25 @@ function replySubject(subject: string): string {
 /**
  * The one-time compose seed for a reply to `target` (whose body should
  * already be resolved via resolveBodyFields): an optional escaped lead
- * paragraph (e.g. an AI suggestion) above the sanitized quoted original.
- * Shared by the thread reader's reply paths and the Reply Queue.
+ * paragraph (e.g. an AI suggestion) above the sanitized quoted original, or
+ * above only the passage the person selected in it (`quotedPassage`), which
+ * needs no body at all. Shared by the thread reader's reply paths and the
+ * Reply Queue.
  */
 export function buildReplySpec(
 	mailboxId: Id<'mailboxes'>,
 	target: ReplyQuoteTarget,
-	opts: { leadText?: string; loadImages: boolean }
+	opts: { leadText?: string; loadImages: boolean; quotedPassage?: string }
 ): ComposeSpec {
 	const leadText = opts.leadText ?? '';
 	const lead = leadText ? `<p>${escapeHtmlWithBreaks(leadText)}</p>` : '';
+	const selected = opts.quotedPassage ? buildSelectedQuote(target, opts.quotedPassage) : '';
 	return {
 		mailboxId,
 		inReplyToMessageId: target._id as Id<'mailMessages'>,
 		prefillTo: [target.fromAddress],
 		prefillSubject: replySubject(target.subject),
-		prefillBodyHtml: `${lead}${buildQuotedReply(target, opts.loadImages)}`,
+		prefillBodyHtml: `${lead}${selected || buildQuotedReply(target, opts.loadImages)}`,
 	};
 }
 

@@ -12,6 +12,7 @@
  * dialog refuses one that became active while it was open.
  */
 import type { AutomationListItem } from './ListTable.vue';
+import { automationRowVerbs, type AutomationRowVerbId } from '~/utils/automationRowVerbs';
 
 const props = defineProps<{
 	automation: AutomationListItem;
@@ -45,6 +46,29 @@ const toggleLabel = computed(() =>
 const switchLabel = computed(() =>
 	t('dashboard.automations.index.actions.activeSwitch', { name: props.automation.name })
 );
+
+// The same verbs, in the same order, as the row's context menu.
+const verbs = computed(() => automationRowVerbs(props.automation.status, props.canManage));
+
+function runVerb(id: AutomationRowVerbId) {
+	switch (id) {
+		case 'view':
+			emit('view', props.automation);
+			break;
+		case 'edit':
+			emit('edit', props.automation);
+			break;
+		case 'duplicate':
+			emit('duplicate', props.automation);
+			break;
+		case 'toggle':
+			emit('toggle', props.automation);
+			break;
+		case 'delete':
+			emit('delete', props.automation);
+			break;
+	}
+}
 
 const iconButton = computed(() => [
 	'flex items-center justify-center flex-shrink-0 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
@@ -85,7 +109,7 @@ const switchHitArea = computed(() =>
 		>
 			<Icon name="lucide:pencil" class="w-4 h-4" />
 		</button>
-		<UiDropdownMenu v-if="canManage || !isDraft" v-model:open="menuOpen">
+		<UiDropdownMenu v-if="verbs.length > 0" v-model:open="menuOpen">
 			<template #trigger>
 				<button
 					type="button"
@@ -96,30 +120,16 @@ const switchHitArea = computed(() =>
 					<Icon name="lucide:more-vertical" class="w-4 h-4" />
 				</button>
 			</template>
-			<UiDropdownMenuItem v-if="!isDraft" icon="lucide:zap" @click="emit('view', automation)">
-				{{ t('dashboard.automations.index.actions.viewDetails') }}
-			</UiDropdownMenuItem>
-			<template v-if="canManage">
-				<UiDropdownMenuItem icon="lucide:pencil" @click="emit('edit', automation)">
-					{{ t('common.edit') }}
-				</UiDropdownMenuItem>
-				<UiDropdownMenuItem icon="lucide:copy" @click="emit('duplicate', automation)">
-					{{ t('common.duplicate') }}
-				</UiDropdownMenuItem>
+			<template v-for="verb in verbs" :key="verb.id">
+				<UiDropdownDivider v-if="verb.separatorBefore" />
 				<UiDropdownMenuItem
-					v-if="!isDraft"
-					:icon="isActive ? 'lucide:pause' : 'lucide:play'"
-					:disabled="toggling"
-					@click="emit('toggle', automation)"
+					:icon="verb.icon"
+					:danger="verb.danger"
+					:disabled="verb.id === 'toggle' && toggling"
+					@click="runVerb(verb.id)"
 				>
-					{{ toggleLabel }}
+					{{ t(verb.labelKey) }}
 				</UiDropdownMenuItem>
-				<template v-if="!isActive">
-					<UiDropdownDivider />
-					<UiDropdownMenuItem icon="lucide:trash-2" danger @click="emit('delete', automation)">
-						{{ t('common.delete') }}
-					</UiDropdownMenuItem>
-				</template>
 			</template>
 		</UiDropdownMenu>
 	</div>

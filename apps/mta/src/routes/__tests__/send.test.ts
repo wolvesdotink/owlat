@@ -266,6 +266,59 @@ describe('POST /send — request validation', () => {
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		['a numeric recipient', { to: 42 }],
+		['a null subject', { subject: null }],
+		['a header map holding a number', { headers: { 'X-Campaign': 7 } }],
+		['an allowed-from list holding a number', { allowedFromAddresses: ['alice@example.com', 1] }],
+		[
+			'a re-entry clock sent as a string',
+			{
+				routingReentry: {
+					envelopeInput: {},
+					retryState: { attempt: 1, startedAt: String(Date.now()), idempotencyKey: 'msg-1' },
+				},
+			},
+		],
+		['an unknown governed messageType', { messageType: 'bulk' }],
+	])('returns 400 for %s before touching Redis or the queue', async (_name, overrides) => {
+		const queue = fakeQueue();
+		const redis = fakeRedis();
+		const res = await post(buildApp(queue, redis), validBody(overrides));
+
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as { error: string }).error).toMatch(/^Invalid request body: \$\./);
+		expect(redis.set).not.toHaveBeenCalled();
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('returns 400, not 500, for a body that is not JSON or not an object', async () => {
+		for (const body of ['{"messageId":', 'null', '[]']) {
+			const queue = fakeQueue();
+			const res = await post(buildApp(queue, fakeRedis()), body);
+			expect(res.status, body).toBe(400);
+			expect(queue.add).not.toHaveBeenCalled();
+		}
+	});
+
+	it('answers 413 for a body declared past the intake cap, before reading it', async () => {
+		const queue = fakeQueue();
+		const res = await buildApp(queue, fakeRedis()).request('/send', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', 'Content-Length': String(64 * 1024 * 1024) },
+			body: validBody(),
+		});
+		expect(res.status).toBe(413);
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('queues a body carrying a field this build does not know yet', async () => {
+		const queue = fakeQueue();
+		const res = await post(buildApp(queue, fakeRedis()), validBody({ addedNextRelease: { x: 1 } }));
+		expect(res.status).toBe(200);
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
 	it('accepts a display-name "from" and queues it (Name <addr> form)', async () => {
 		// Composers build From via formatFromAddress(defaultFromName), so the
 		// real wire value is "Owlat <noreply@...>", not a bare address. Before

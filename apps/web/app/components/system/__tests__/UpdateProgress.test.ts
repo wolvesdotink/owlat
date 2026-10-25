@@ -357,6 +357,40 @@ describe('UpdateProgress — the updater verdict', () => {
 		wrapper.unmount();
 	});
 
+	it('says the update is being rolled back, keeping the rows it showed done and spinning none', async () => {
+		health = withRecord({ phase: 'verifying' });
+		const wrapper = mountAttempt();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(rowIcons(wrapper)).toEqual([SUCCESS, SUCCESS, SUCCESS, SUCCESS]);
+
+		health = withRecord({ phase: 'rolling-back' });
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(rowIcons(wrapper)).toEqual([SUCCESS, SUCCESS, SUCCESS, SUCCESS]);
+		expect(wrapper.find('[role="status"]').text()).toContain(
+			'The update failed and is being rolled back'
+		);
+		expect(wrapper.emitted('failed')).toBeUndefined();
+
+		health = withRecord({
+			phase: 'done',
+			outcome: 'rolled-back',
+			summary: 'The update was rolled back to the snapshot.',
+		});
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(wrapper.emitted('failed')?.[0]).toEqual(['The update was rolled back to the snapshot.']);
+		wrapper.unmount();
+	});
+
+	it('spins no row when the rollback starts before the recreate', async () => {
+		health = withRecord({ phase: 'rolling-back' });
+		const wrapper = mountAttempt();
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		expect(rowIcons(wrapper)).toEqual([PENDING, PENDING, PENDING, PENDING]);
+		expect(wrapper.find('[role="status"]').text()).toContain('being rolled back');
+		wrapper.unmount();
+	});
+
 	it('moves the spinner to the recreate once web runs the new version', async () => {
 		health = withRecord({ phase: 'applying' });
 		const wrapper = mountAttempt();

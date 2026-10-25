@@ -2,6 +2,7 @@
 import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { postboxFindTermsOf } from '~/utils/postboxFindSeed';
 
 const { t } = useI18n();
 
@@ -78,6 +79,12 @@ watch(results, (rows) => {
 const { data: activeMessage } = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
 	activeMessageId.value ? { messageId: activeMessageId.value as Id<'mailMessages'> } : 'skip'
 );
+// The preview opens with the searched words found (find in conversation),
+// in the result that was picked; operators alone seed nothing.
+const findSeed = computed(() => {
+	const words = postboxFindTermsOf(parsed.value);
+	return words && activeMessageId.value ? { query: words, messageId: activeMessageId.value } : null;
+});
 
 function removeChip(key: string) {
 	query.value = removeSearchOperator(query.value, key);
@@ -374,7 +381,7 @@ async function confirmSave() {
 						</button>
 					</div>
 					<AppErrorBoundary v-if="activeMessage" surface="reader" :reset-keys="[activeMessageId]">
-						<PostboxThreadReader :message="activeMessage" />
+						<PostboxThreadReader :message="activeMessage" :find-seed="findSeed" />
 					</AppErrorBoundary>
 					<!-- Only invite a pick when there is something to pick; with no
 					     results the list pane already says why, so this stays blank. -->

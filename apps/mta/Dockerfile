@@ -31,6 +31,8 @@ COPY packages/mail-canon/ packages/mail-canon/
 COPY packages/mail-message/ packages/mail-message/
 COPY packages/smtp-client/ packages/smtp-client/
 COPY packages/smtp-listener/ packages/smtp-listener/
+# Request-body decoding for every JSON route (@owlat/worker-protocol/decodeJson).
+COPY packages/worker-protocol/ packages/worker-protocol/
 
 # Keep the TypeScript build as the container-local type/declaration check, then
 # produce one self-contained Node bundle for the runtime stage. Copying an

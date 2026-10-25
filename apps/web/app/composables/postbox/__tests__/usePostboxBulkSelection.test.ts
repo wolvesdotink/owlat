@@ -119,4 +119,36 @@ describe('usePostboxBulkActions selection', () => {
 		expect(bulk.anchorId.value).toBeNull();
 		expect(bulk.selectAllMatching.value).toEqual({ active: false, capped: false });
 	});
+
+	it('a checkbox sweep ticks exactly its range and keeps the other picks', () => {
+		const bulk = bulkFor();
+		bulk.toggle(PAGE[4]!);
+		bulk.setRange(['b', 'c'] as never[], true, PAGE[1]!);
+		expect(new Set(bulk.ids.value)).toEqual(new Set(['b', 'c', 'e']));
+		// The next Shift+click extends from where the sweep began.
+		expect(bulk.anchorId.value).toBe('b');
+	});
+
+	it('a deselecting sweep unticks its range only', () => {
+		const bulk = bulkFor();
+		bulk.selectPage(PAGE);
+		bulk.setRange(['b', 'c', 'd'] as never[], false, PAGE[3]!);
+		expect(bulk.ids.value).toEqual(['a', 'e']);
+		expect(bulk.anchorId.value).toBe('d');
+	});
+
+	it('a sweep over the whole-folder answer stops claiming to be one', () => {
+		const bulk = bulkFor();
+		bulk.selectAllMatchingIds(['a', 'b', 'c'] as never[], false);
+		bulk.setRange(['a'] as never[], false, PAGE[0]!);
+		expect(bulk.selectAllMatching.value.active).toBe(false);
+	});
+
+	it('an empty sweep changes nothing, anchor included', () => {
+		const bulk = bulkFor();
+		bulk.toggle(PAGE[2]!);
+		bulk.setRange([], true, PAGE[0]!);
+		expect(bulk.ids.value).toEqual(['c']);
+		expect(bulk.anchorId.value).toBe('c');
+	});
 });

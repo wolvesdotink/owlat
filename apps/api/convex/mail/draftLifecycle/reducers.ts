@@ -167,6 +167,7 @@ export function reduceDraftRevert(
 			scheduledSendAt: undefined,
 			undoToken: undefined,
 			isUnsealedSendAllowed: undefined,
+			doneOnSendAt: undefined,
 			lastEditedAt: args.at,
 		},
 		effects: [
@@ -183,6 +184,22 @@ export function reduceDraftRevert(
 		],
 		applied: 'transitioned',
 	};
+}
+
+/** "Send and mark done" on a reply: the conversation is archived once it is sent. */
+function replyDoneEffects(draft: Doc<'mailDrafts'>): Effect[] {
+	const { doneOnSendAt, threadId, inReplyToMessageId, sentByUserId } = draft;
+	if (doneOnSendAt === undefined || !threadId || !inReplyToMessageId || !sentByUserId) return [];
+	return [
+		{
+			kind: 'schedule_reply_done',
+			mailboxId: draft.mailboxId,
+			threadId,
+			repliedToMessageId: inReplyToMessageId,
+			userId: sentByUserId,
+			cutoffAt: doneOnSendAt,
+		},
+	];
 }
 
 export function reduceSent(
@@ -229,6 +246,7 @@ export function reduceSent(
 				emails: recipients,
 			},
 			...learningEffects,
+			...replyDoneEffects(draft),
 			// The audit log fires AFTER the new mailMessages row insert so
 			// `messageId` is available — the runner enriches the details
 			// after insertion.

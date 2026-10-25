@@ -25,6 +25,8 @@ import AudienceListTable from '~/components/audience/AudienceListTable.vue';
 import AutomationsListTable from '~/components/automations/ListTable.vue';
 import AutomationsRowActions from '~/components/automations/RowActions.vue';
 import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
+import RowContextMenu from '~/components/RowContextMenu.vue';
+import UiContextMenu from '@owlat/ui/components/ui/ContextMenu.vue';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -334,6 +336,9 @@ describe('automations list', () => {
 		AutomationsListTable,
 		AutomationsRowActions,
 		UiSwitch,
+		// Each row renders inside its context menu's slot.
+		RowContextMenu,
+		UiContextMenu,
 		UiDropdownMenu: { template: '<div><slot name="trigger" /><slot /></div>' },
 		UiDropdownMenuItem: { template: '<button role="menuitem"><slot /></button>' },
 	};

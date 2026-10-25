@@ -6,6 +6,13 @@ import type { AutomationHealth } from '~/components/automations/HealthSummary.vu
 import { useListPage } from '~/composables/useListPage';
 import { useMarketingDeleteUndo } from '~/composables/useMarketingDeleteUndo';
 import { usePostboxTriageUndo } from '~/composables/postbox/usePostboxTriageUndo';
+import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
+import { useRowLinkMenu } from '~/composables/useRowLinkMenu';
+import {
+	automationRowHref,
+	automationRowVerbs,
+	type AutomationRowVerbId,
+} from '~/utils/automationRowVerbs';
 
 const { t } = useI18n();
 
@@ -199,6 +206,32 @@ const handleEdit = (automation: AutomationListItem) =>
 
 const handleViewDetails = (automation: AutomationListItem) =>
 	router.push(`/dashboard/automations/${automation._id}`);
+
+// The row's context menu: the overflow menu's verbs, run by the same handlers,
+// then the link verbs for where the row's name leads (none when it is plain text).
+const { linkItems } = useRowLinkMenu();
+const verbHandlers: Record<AutomationRowVerbId, (automation: AutomationListItem) => unknown> = {
+	view: handleViewDetails,
+	edit: handleEdit,
+	duplicate: handleDuplicate,
+	toggle: handleToggleStatus,
+	delete: (automation) => list.openDelete(automation),
+};
+const rowMenu = (automation: AutomationListItem): ContextMenuItem[] => {
+	const verbs: ContextMenuItem[] = automationRowVerbs(automation.status, canManage.value).map(
+		(verb) => ({
+			id: verb.id,
+			label: t(verb.labelKey),
+			icon: verb.icon,
+			danger: verb.danger,
+			separatorBefore: verb.separatorBefore,
+			disabled: verb.id === 'toggle' && togglingId.value === automation._id,
+			run: () => void verbHandlers[verb.id](automation),
+		})
+	);
+	const href = automationRowHref(automation, canManage.value);
+	return href ? [...verbs, ...linkItems(href)] : verbs;
+};
 </script>
 
 <template>
@@ -280,6 +313,7 @@ const handleViewDetails = (automation: AutomationListItem) =>
 				:layout="layout"
 				:can-manage="canManage"
 				:health="healthById"
+				:menu-items="rowMenu"
 			>
 				<template #actions="{ automation, touch }">
 					<AutomationsRowActions
