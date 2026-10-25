@@ -286,6 +286,16 @@ describe('PostboxThreadList — deleting the open conversation', () => {
 		expect(registerMoveBack).not.toHaveBeenCalled();
 	});
 
+	it('stays on the neighbour when the server says the row is already gone', async () => {
+		const wrapper = mountList();
+		await rowFor(wrapper, 'msg-2').vm.$emit('trash');
+		// Convex serializes the handler's "nothing to move" `undefined` to null.
+		pending[0]!.settle({ ok: true, result: null });
+		await flushPromises();
+		expect(navigateTo).toHaveBeenCalledTimes(1);
+		expect(currentPath.value).toBe('/dashboard/postbox/inbox/msg-3');
+	});
+
 	it('stays where the person went if the failure arrives after they moved on', async () => {
 		const wrapper = mountList();
 		await rowFor(wrapper, 'msg-2').vm.$emit('trash');

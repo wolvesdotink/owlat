@@ -122,10 +122,14 @@ export function usePostboxRowTriage(args: {
 		const landed: Id<'mailMessages'>[] = [];
 		const moved: Parameters<typeof triageUndo.registerMoveBack>[0]['moved'] = [];
 		let isAllLanded = true;
+		// A `null` answer is the server's "row already gone" soft-fail: the
+		// reader has nothing to go back to for that call's rows.
+		let alreadyGone = 0;
 		for (const chunk of chunkForMove(ids)) {
 			const outcome = await mutate(chunk);
 			if (!outcome.ok || outcome.result == null) {
 				isAllLanded = false;
+				if (outcome.ok) alreadyGone = chunk.length;
 				break;
 			}
 			landed.push(...chunk);
@@ -133,7 +137,8 @@ export function usePostboxRowTriage(args: {
 		}
 		const failed = ids.slice(landed.length);
 		for (const id of failed) args.unhide(id);
-		if (failed.length > 0) returnToOpenRow?.(failed);
+		const notDeleted = failed.slice(alreadyGone);
+		if (notDeleted.length > 0) returnToOpenRow?.(notDeleted);
 		if (moved.length > 0) {
 			triageUndo.registerMoveBack({
 				label: undoLabel(landed.length),
