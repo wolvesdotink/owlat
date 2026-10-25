@@ -5585,6 +5585,27 @@
 				"trashOperation": "Move to trash",
 				"trashedUndo": "Moved to trash"
 			},
+			"threadFind": {
+				"label": "Find in conversation",
+				"placeholder": "Find in conversation",
+				"open": "Find in conversation",
+				"position": "{current} of {total}",
+				"matches": "{count} match | {count} matches",
+				"searching": "Searching…",
+				"noMatches": "No matches",
+				"previous": "Previous match",
+				"next": "Next match",
+				"close": "Close find",
+				"stillSearching": "Still reading {count} message… | Still reading {count} messages…",
+				"failed": "{count} message could not be searched. | {count} messages could not be searched.",
+				"retry": "Try again",
+				"unsearchable": "{count} encrypted or signed message is not searched. | {count} encrypted or signed messages are not searched.",
+				"loadedOnly": "Only the loaded part of the conversation is searched.",
+				"earlierFailed": "Earlier messages could not be loaded.",
+				"searchEarlier": "Search earlier messages",
+				"loadingEarlier": "Loading earlier messages…",
+				"rowCount": "{count} match | {count} matches"
+			},
 			"postboxThreadEarlier": {
 				"load": "Load earlier messages",
 				"loadCount": "Load {count} earlier message | Load {count} earlier messages",
@@ -16925,6 +16946,7 @@
 				"toggleTodayBrowse": "Switch between Priority and All mail (inbox)",
 				"undoTriage": "Undo last triage",
 				"zenMode": "Zen mode: show only the task at hand",
+				"findInConversation": "Find in conversation",
 				"goToAnswer": "Go to the Answer queue",
 				"goToMarketing": "Go to marketing",
 				"next": "Next",
@@ -18291,6 +18313,7 @@
 				"followUpPrompt": "Remind me",
 				"cancelFollowUp": "Cancel reply reminder",
 				"translate": "Translate",
+				"find": "Find in conversation",
 				"showOriginal": "Download original (.eml)",
 				"pin": "Pin conversation",
 				"unpin": "Unpin conversation"

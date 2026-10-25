@@ -51,6 +51,8 @@ export interface PostboxThreadCommandSources {
 	toggleAlert: () => void;
 	togglePin: () => void;
 	translate: () => void;
+	/** Opens the reader's find in conversation bar. */
+	find?: () => void;
 }
 
 /**
@@ -70,7 +72,10 @@ const mountedReaders = shallowRef<readonly string[]>([]);
  * translate, the original `.eml`, copy link, share in chat — and each runs THIS reader's own
  * action rather than a window-event broadcast to every mounted reader.
  */
-export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSources): void {
+export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSources): {
+	/** This reader is the one on top: it answers the palette and the reader-wide shortcuts. */
+	isTopmost: () => boolean;
+} {
 	const { t } = useI18n();
 	const instanceId = useId();
 	const followUp = usePostboxFollowUp();
@@ -85,6 +90,7 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 	onBeforeUnmount(() => {
 		mountedReaders.value = mountedReaders.value.filter((id) => id !== instanceId);
 	});
+	const isTopmost = () => mountedReaders.value[mountedReaders.value.length - 1] === instanceId;
 
 	useRecordPaletteObjectOpen(() => {
 		const messageId = sources.messageId();
@@ -114,7 +120,7 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 		priority: POSTBOX_THREAD_COMMAND_PROVIDER_PRIORITY,
 		matchRoute: matchPostboxRoute,
 		build: ({ query, mode }) => {
-			if (mountedReaders.value[mountedReaders.value.length - 1] !== instanceId) return [];
+			if (!isTopmost()) return [];
 			return buildThreadSurfaceGroups(
 				{
 					subject: sources.subject,
@@ -160,10 +166,12 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 					onCopyLink: () => void copyConversationLink(sources.link()),
 					canShareInChat: () => isFeatureEnabled('chat'),
 					onShareInChat: sources.shareInChat,
+					onFind: sources.find,
 				},
 				query,
 				mode
 			);
 		},
 	});
+	return { isTopmost };
 }

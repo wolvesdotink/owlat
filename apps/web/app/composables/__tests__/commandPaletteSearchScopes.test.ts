@@ -93,6 +93,22 @@ describe('useCommandPaletteMailScope', () => {
 		expect(mail.isSearching.value).toBe(true);
 	});
 
+	it('opens a hit with the searched words for find in conversation, never an operator', async () => {
+		const hit = { _id: 'mm1', folderId: 'inbox', mailboxId: 'mailbox-1', subject: 'Invoice' };
+		const run = async (text: string) => {
+			const mail = mailScope(ref(text));
+			queries[queries.length - 1]!.data.value = { messages: [hit] };
+			await nextTick();
+			mail.hitItems.value[0]!.run();
+		};
+		await run('from:ines@example.com "refund the duplicate" is:unread');
+		await run('from:ines@example.com is:unread');
+		expect(vi.mocked(navigateTo).mock.calls.map(([to]) => to)).toEqual([
+			{ path: '/dashboard/postbox/inbox/mm1', query: { find: 'refund the duplicate' } },
+			{ path: '/dashboard/postbox/inbox/mm1', query: {} },
+		]);
+	});
+
 	it('forgets the last session’s hits and completions on reset', () => {
 		const mail = mailScope(ref(''));
 		mail.resetQuery();

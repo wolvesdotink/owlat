@@ -19,6 +19,7 @@ import type { PaletteItem } from '~/lib/commandPalette';
 import { SEARCH_MIN_QUERY } from '~/lib/commandPaletteCore';
 import { useLocalized } from '~/composables/useLocalized';
 import { parseSearchQuery } from '@owlat/shared/mailSearch';
+import { POSTBOX_FIND_QUERY_PARAM, postboxFindTermsOf } from '~/utils/postboxFindSeed';
 import {
 	activeSearchToken,
 	applySearchSuggestion,
@@ -211,7 +212,13 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 				if (message.mailboxId) setActiveMailboxId(message.mailboxId);
 				// The Postbox route takes a system-folder role OR a folder id, and the
 				// message document carries the id — no folder read needed.
-				void navigateTo(`/dashboard/postbox/${message.folderId}/${message._id}`);
+				// The searched words travel along, so the conversation opens with them
+				// found (find in conversation).
+				const find = postboxFindTermsOf(parseSearchQuery(options.query.value));
+				void navigateTo({
+					path: `/dashboard/postbox/${message.folderId}/${message._id}`,
+					query: find ? { [POSTBOX_FIND_QUERY_PARAM]: find } : {},
+				});
 			},
 		}))
 	);
