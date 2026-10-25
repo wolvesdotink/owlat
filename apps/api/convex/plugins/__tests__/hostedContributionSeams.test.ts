@@ -16,6 +16,7 @@
  * consent, and the answer must be the one the send path gives.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as AutomationStepCatalog from '../../automations/steps/catalog';
 
 const audit = vi.hoisted(() => vi.fn(async () => undefined));
 
@@ -33,7 +34,7 @@ vi.mock('../../agent/steps/catalog', () => ({
 // Partial: the schema's automation tables (reached through lib/tenantTables)
 // read the real step-kind validator from this module at load time.
 vi.mock('../../automations/steps/catalog', async (importOriginal) => ({
-	...(await importOriginal<typeof import('../../automations/steps/catalog')>()),
+	...(await importOriginal<typeof AutomationStepCatalog>()),
 	pluginStepCatalogEntry: (kind: string) =>
 		kind === 'plugin.deliverability.notify'
 			? {
