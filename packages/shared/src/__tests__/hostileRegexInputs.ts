@@ -48,8 +48,11 @@ export const SHARED_REGEX_CASES: readonly ScalingCase[] = [
 		run: (input: string) => detectExactWording({ subject: input, text: '' }),
 	},
 	{
+		// Both sizes sit above the engine's one-off step in per-character cost
+		// (between about 125k and 250k characters); a smaller `n` puts the two
+		// sizes on either side of it and the ratio reads as growth that is not there.
 		name: 'extractClearsignedText, long inner blank run',
-		n: 125_000,
+		n: 500_000,
 		build: clearsignedBlankRun,
 		run: (input: string) => extractClearsignedText(input),
 	},

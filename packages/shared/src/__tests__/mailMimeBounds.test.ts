@@ -48,13 +48,18 @@ vi.mock('@owlat/mail-message/parse/locate', async (importOriginal) => {
 	};
 });
 
-/** Run `call` and check every walk it started read each byte of `raw` at most once. */
+/**
+ * Run `call` and check it parsed `raw` exactly once and read each of its bytes
+ * at most once. Both bounds are fixed by the input alone: a byte budget scaled
+ * by the observed walk count would let an adapter that reparses the message per
+ * megabyte go quadratic unnoticed.
+ */
 function linear<T>(raw: string, call: () => T): T {
 	walks.count = 0;
 	walks.meter.bytes = 0;
 	const value = call();
-	expect(walks.count).toBeGreaterThan(0);
-	expect(walks.meter.bytes).toBeLessThanOrEqual(walks.count * (raw.length + 1));
+	expect(walks.count).toBe(1);
+	expect(walks.meter.bytes).toBeLessThanOrEqual(raw.length + 1);
 	return value;
 }
 

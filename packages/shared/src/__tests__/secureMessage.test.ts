@@ -893,7 +893,7 @@ describe('long blank runs stay linear', () => {
 	it('extracts clearsigned text with a long inner blank run', () => {
 		// The time this takes is reported by `bun run perf:bench` (family
 		// shared-regex-scaling); here the run must survive and the tail be trimmed.
-		const body = clearsignedBlankRun(SCALING_FACTOR * 125_000);
-		expect(extractClearsignedText(body)).toBe(`Hello${' '.repeat(500_000)}world`);
+		const body = clearsignedBlankRun(SCALING_FACTOR * 500_000);
+		expect(extractClearsignedText(body)).toBe(`Hello${' '.repeat(2_000_000)}world`);
 	});
 });
