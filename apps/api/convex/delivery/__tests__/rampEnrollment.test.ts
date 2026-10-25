@@ -23,6 +23,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
@@ -52,7 +53,7 @@ const session = vi.hoisted(() => ({ organizationId: 'org_ramp_enrollment', isAdm
 // harness does not have), and the ADMIN FLOOR is real rather than stubbed away —
 // flipping `session.isAdmin` exercises the gate the card's claim rests on.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn(async () => session.organizationId),

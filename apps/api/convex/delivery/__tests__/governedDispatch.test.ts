@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SendProviderCatalog from '../../lib/sendProviders/catalog';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import { getFunctionName } from 'convex/server';
 import { internal } from '../../_generated/api';
@@ -28,7 +29,7 @@ const declared = vi.hoisted(() => ({
 vi.mock('../lastMileRouting', () => ({ resolveLastMileRouting }));
 vi.mock('../../lib/sendProviders/dispatch', () => ({ sendProviderDispatch }));
 vi.mock('../../lib/sendProviders/catalog', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sendProviders/catalog')>();
+	const actual = await importOriginal<typeof SendProviderCatalog>();
 	return {
 		...actual,
 		acceptanceSemanticsFor: (kind: SendProviderKind) =>

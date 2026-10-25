@@ -18,6 +18,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { WorkId } from '@convex-dev/workpool';
@@ -52,7 +53,7 @@ import { input, NOW } from '../ramp/__tests__/gateFixtures';
 // registered in the convex-test harness. Same override the sibling outcome
 // suites use, so the recorder's org resolution is deterministic.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	// The literal, not the `OUTCOME_ORG` import: `vi.mock` factories are hoisted
 	// above the imports, so referencing one here is a TDZ error at load time.
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org_outcomes') };

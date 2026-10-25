@@ -17,6 +17,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { MutationCtx } from '../../_generated/server';
@@ -57,7 +58,7 @@ const ORG = 'org_ramp_audit';
 // resolver; the pure cases in this file insert with `ORG` directly, so both
 // halves have to agree on the same tenant.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_audit'),

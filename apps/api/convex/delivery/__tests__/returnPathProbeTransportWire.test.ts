@@ -18,12 +18,13 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SmtpClient from '@owlat/smtp-client';
 import { VERP_KEY_MIN_BYTES, parseVerpAddress } from '@owlat/shared/verp';
 
 const sendMessage = vi.hoisted(() => vi.fn());
 
 vi.mock('@owlat/smtp-client', async (importOriginal) => ({
-	...(await importOriginal<typeof import('@owlat/smtp-client')>()),
+	...(await importOriginal<typeof SmtpClient>()),
 	sendMessage,
 }));
 

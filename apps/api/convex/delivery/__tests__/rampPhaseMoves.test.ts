@@ -23,6 +23,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
@@ -42,7 +43,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const session = vi.hoisted(() => ({ organizationId: 'org_ramp_phase_moves', isAdmin: true }));
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn(async () => session.organizationId),
