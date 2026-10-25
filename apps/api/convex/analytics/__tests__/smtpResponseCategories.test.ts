@@ -28,6 +28,7 @@ import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { newHarness } from '../../__tests__/testModules';
+import { runDeletionStepBatch } from '../../__tests__/helpers/workspaceDeletionFence';
 import { utcDayStart } from '../../lib/clock';
 import { TENANT_TABLES } from '../../lib/tenantTables';
 import {
@@ -449,9 +450,7 @@ describe('the rows are tenant data', () => {
 		});
 		expect(await allRows(t)).toHaveLength(1);
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'smtpResponseCategories',
-		});
+		await runDeletionStepBatch(t, 'smtpResponseCategories');
 		expect(await allRows(t)).toEqual([]);
 	});
 });

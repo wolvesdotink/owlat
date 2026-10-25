@@ -21,10 +21,11 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
-import { api, internal } from '../_generated/api';
+import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { nextTable } from '../workspaces/deletion/walker';
 import { ORGANIZATION_DELETION_STEPS, STEPS } from '../workspaces/deletion/steps/registry';
+import { runDeletionStepBatch } from './helpers/workspaceDeletionFence';
 import type { OrganizationDeletionTable } from '../workspaces/deletion/steps/_common';
 import {
 	createTestContact,
@@ -55,14 +56,9 @@ const modules = Object.fromEntries(
 
 /**
  * Drain the current batch of scheduled functions, then cancel anything
- * still pending or in-flight. The walker's chained `scheduler.runAfter`
- * leaves follow-up `runStep` hops pending after each unit test — under
- * convex-test@0.0.50 those chained hops hit a scheduling bug
- * (`nestedTxStorage.exit` for setTimeout, fixed in 0.0.53) and log
- * "Transaction already committed" errors via `console.error`. Logging
- * after the worker tears down surfaces as an unhandled
- * `EnvironmentTeardownError`. Cancelling the queue at end-of-test stops
- * the cascade.
+ * still pending or in-flight, so no job a step scheduled (the delegating
+ * contacts and domains steps schedule follow-up work) outlives the test and
+ * logs after the worker tears down.
  */
 type TestRunner = ReturnType<typeof convexTest>;
 async function drainAndCancel(t: TestRunner): Promise<void> {
@@ -157,9 +153,7 @@ describe('Organization deletion step modules — hard-delete shape', () => {
 			});
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'segments',
-		});
+		await runDeletionStepBatch(t, 'segments');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -181,9 +175,7 @@ describe('Organization deletion step modules — hard-delete shape', () => {
 			});
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'apiKeys',
-		});
+		await runDeletionStepBatch(t, 'apiKeys');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -206,9 +198,7 @@ describe('Organization deletion step modules — hard-delete shape', () => {
 			});
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'webhooks',
-		});
+		await runDeletionStepBatch(t, 'webhooks');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -253,15 +243,9 @@ describe('Organization deletion step modules — storage purge', () => {
 			return { storageId };
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'accountExportArtifactLeases',
-		});
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'accountExportArtifacts',
-		});
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'accountExportSessions',
-		});
+		await runDeletionStepBatch(t, 'accountExportArtifactLeases');
+		await runDeletionStepBatch(t, 'accountExportArtifacts');
+		await runDeletionStepBatch(t, 'accountExportSessions');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -297,9 +281,7 @@ describe('Organization deletion step modules — storage purge', () => {
 			expect(await ctx.storage.getUrl(storageId)).not.toBeNull();
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'mediaAssets',
-		});
+		await runDeletionStepBatch(t, 'mediaAssets');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -326,9 +308,7 @@ describe('Organization deletion step modules — storage purge', () => {
 
 		// `storageUploads` ran first and left the bound logo blobs to this
 		// step; the row is the only thing that still names them.
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'instanceSettings',
-		});
+		await runDeletionStepBatch(t, 'instanceSettings');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -359,9 +339,7 @@ describe('Organization deletion step modules — storage purge', () => {
 			});
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'semanticFiles',
-		});
+		await runDeletionStepBatch(t, 'semanticFiles');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -400,9 +378,7 @@ describe('Organization deletion step modules — storage purge', () => {
 			});
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'inboundMessages',
-		});
+		await runDeletionStepBatch(t, 'inboundMessages');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -450,10 +426,8 @@ describe('Organization deletion step modules — storage purge', () => {
 			await ctx.storage.delete(fileSid);
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'inboundMessages',
-		});
-		await t.mutation(internal.workspaces.deletion.walker.runStep, { table: 'semanticFiles' });
+		await runDeletionStepBatch(t, 'inboundMessages');
+		await runDeletionStepBatch(t, 'semanticFiles');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -546,9 +520,7 @@ describe('Organization deletion step modules — storage purge', () => {
 			});
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'mailMessages',
-		});
+		await runDeletionStepBatch(t, 'mailMessages');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -608,9 +580,7 @@ describe('Organization deletion step modules — storage purge', () => {
 			});
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'mailDrafts',
-		});
+		await runDeletionStepBatch(t, 'mailDrafts');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -637,9 +607,7 @@ describe('Organization deletion step modules — storage purge', () => {
 			});
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'transactionalSends',
-		});
+		await runDeletionStepBatch(t, 'transactionalSends');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -702,9 +670,7 @@ describe('Organization deletion — delegating steps', () => {
 			});
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'contacts',
-		});
+		await runDeletionStepBatch(t, 'contacts');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -762,9 +728,7 @@ describe('Organization deletion — delegating steps', () => {
 			});
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'domains',
-		});
+		await runDeletionStepBatch(t, 'domains');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -801,9 +765,7 @@ describe('Organization deletion walker — dispatch loop', () => {
 			});
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'instanceSettings',
-		});
+		await runDeletionStepBatch(t, 'instanceSettings');
 		await drainAndCancel(t);
 
 		await t.run(async (ctx) => {
@@ -812,15 +774,11 @@ describe('Organization deletion walker — dispatch loop', () => {
 	});
 
 	it('full walk: STEPS order empties every per-org table', async () => {
-		// We drive the walk by calling `runStep` directly for each table in
-		// `STEPS` order. This is equivalent in semantics to the
-		// `walker.start` chain (each `runStep` returns; the walker
-		// re-schedules; in production each hop is its own transaction). It
-		// works around a chain-scheduling bug in convex-test@0.0.50 that
-		// was fixed upstream in 0.0.53 (`nestedTxStorage.exit` wraps
-		// setTimeout so chained scheduled mutations don't inherit a stale
-		// parent lock). Once the project upgrades convex-test, the
-		// `walker.start` end-to-end test can replace this.
+		// We drive the walk by running one batch of each step in `STEPS`
+		// order, as the job's ticks do (in production each tick is its own
+		// transaction). The job itself, with its quiesce, checkpoints and
+		// verification, is driven end to end in
+		// `workspaceDeletionLifecycle.test.ts`.
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			// Seed some rows across the table types the wipe walks. Not
@@ -868,9 +826,7 @@ describe('Organization deletion walker — dispatch loop', () => {
 		});
 
 		for (const table of STEPS) {
-			await t.mutation(internal.workspaces.deletion.walker.runStep, {
-				table,
-			});
+			await runDeletionStepBatch(t, table);
 		}
 		await drainAndCancel(t);
 
@@ -894,7 +850,7 @@ describe('Organization deletion walker — dispatch loop', () => {
 // ────────────────────────────────────────────────────────────────────
 
 describe('organizations.settings.remove — end-to-end wipe', () => {
-	it('remove() returns success + schedules walker.start', async () => {
+	it('remove() returns success and opens the deletion job', async () => {
 		const t = convexTest(schema, modules);
 
 		const outcome = await t.mutation(api.workspaces.settings.remove, {});
@@ -905,9 +861,8 @@ describe('organizations.settings.remove — end-to-end wipe', () => {
 	});
 
 	it('end-to-end via direct STEPS iteration: wipes everything including storage', async () => {
-		// See note on `full walk: STEPS order …` — convex-test@0.0.50 has a
-		// chain-scheduling bug. Iterating STEPS directly here is equivalent
-		// to the production chain in semantics.
+		// See the note on `full walk: STEPS order …`: one batch per step in
+		// order, as the job's ticks run them.
 		const t = convexTest(schema, modules);
 		let storageId: Id<'_storage'>;
 		await t.run(async (ctx) => {
@@ -929,9 +884,7 @@ describe('organizations.settings.remove — end-to-end wipe', () => {
 		});
 
 		for (const table of STEPS) {
-			await t.mutation(internal.workspaces.deletion.walker.runStep, {
-				table,
-			});
+			await runDeletionStepBatch(t, table);
 		}
 		await drainAndCancel(t);
 

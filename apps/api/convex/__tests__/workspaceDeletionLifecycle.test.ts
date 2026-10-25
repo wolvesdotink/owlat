@@ -368,17 +368,6 @@ describe('workspace deletion — one job per generation', () => {
 		const next = await t.mutation(api.workspaces.settings.remove, {});
 		expect(next).toMatchObject({ generation: 2, isJoined: false });
 	});
-
-	it("adopts a previous release's in-flight hop into a job at its next table", async () => {
-		const t = newHarness();
-		await t.mutation(internal.workspaces.deletion.walker.runStep, { table: 'segments' });
-		expect(await status(t)).toMatchObject({
-			source: 'previous_release',
-			phase: 'quiesce',
-			step: STEPS[STEPS.indexOf('segments') + 1],
-			isActive: true,
-		});
-	});
 });
 
 describe('workspace deletion — the scheduler', () => {

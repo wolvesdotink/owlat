@@ -5,7 +5,7 @@
  * Built-in events keep their flat literals (`email.sent`, `contact.created`,
  * …); every plugin event is namespaced `plugin.<id>.<event>` so a plugin can
  * never shadow a core event or another plugin's event. The outbound fanout and
- * per-target delivery machinery (`webhooks/fanout.ts`, `webhooks/delivery.ts`)
+ * per-target delivery machinery (`webhooks/scheduleFanout.ts`, `webhooks/delivery.ts`)
  * are unchanged — only kind resolution is routed through the host here.
  */
 

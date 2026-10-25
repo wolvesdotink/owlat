@@ -181,7 +181,7 @@ export async function prepareInboundMessage(
 	}
 
 	// Inline small bodies for a fast list/reader render; stash larger bodies
-	// as separate blobs (served lazily by mailbox.messages.getMessageBody).
+	// as separate blobs (served lazily by mailbox.messages.getMessageBodyBlobUrls).
 	const textBody = await splitBodyForStorage(ctx, effectiveText, 'text/plain; charset=utf-8');
 	const htmlBody = await splitBodyForStorage(ctx, effectiveHtml, 'text/html; charset=utf-8');
 	// Snippet from the FULL body, before the inline/blob split, so >64KB

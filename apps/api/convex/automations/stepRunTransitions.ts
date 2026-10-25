@@ -1,10 +1,9 @@
 /**
  * Step-run and run transitions (helpers) — every state change the automation
  * step walker makes, as plain functions over a mutation context. The walker's
- * mutations (`stepOrchestration.ts`), the stalled-run sweep (`stalledRuns.ts`),
- * run deletion (`runDeletion.ts`) and the one-release compatibility shims in
- * `stepExecutorQueries.ts` all go through these, so the counter arithmetic and
- * the "a terminal row never moves again" rule live in one place.
+ * mutations (`stepOrchestration.ts`), the stalled-run sweep (`stalledRuns.ts`)
+ * and run deletion (`runDeletion.ts`) all go through these, so the counter
+ * arithmetic and the "a terminal row never moves again" rule live in one place.
  */
 
 import type { MutationCtx } from '../_generated/server';
@@ -162,15 +161,6 @@ export async function recentStepRunsOf(
 		.withIndex('by_automation_run', (q) => q.eq('automationRunId', automationRunId))
 		.order('desc')
 		.take(RECENT_STEP_RUNS);
-}
-
-/** The run's pending or executing step run, if it has one. */
-export async function activeStepRunOf(
-	ctx: MutationCtx,
-	automationRunId: Id<'automationRuns'>
-): Promise<Doc<'automationStepRuns'> | null> {
-	const recent = await recentStepRunsOf(ctx, automationRunId);
-	return recent.find((stepRun) => !isTerminalStepRunStatus(stepRun.status)) ?? null;
 }
 
 // ============== Runs ==============

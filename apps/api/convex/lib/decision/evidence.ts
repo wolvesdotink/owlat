@@ -87,7 +87,8 @@ export interface DecisionEvidence {
 /**
  * A segmented body as evidence: each segment's kind and text. The body is
  * scoped and segmented by interpretation's own helpers
- * (`mail/interpret/scope.ts` `scopeForInterpretation` and `segmentScoped`), so
+ * (`mail/interpret/scopeLoad.ts` `scopeForInterpretation` and
+ * `mail/interpret/scope.ts` `segmentScoped`), so
  * an encrypted body never becomes evidence, a clearsigned message is read only
  * inside its signed block, and hidden HTML is stripped.
  */

@@ -4,10 +4,6 @@
  *
  * - Scheduling: an event is handed to the scheduler as the enqueue MUTATION, so
  *   no at-most-once action sits between the event and its delivery rows.
- * - The previous release's entry points: jobs it queued under the old action
- *   paths, and its actions still running at deploy time, reach the functions
- *   they call by path and end up in the attempt model with exactly one live
- *   attempt per row.
  * - Rows the previous release left open carry no `recoverAfter`; the
  *   reconciler gives them one and recovers them like any other lost attempt,
  *   unless they have waited past the abandon cutoff, in which case they are
@@ -15,16 +11,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type * as SsrfGuard from '../../lib/ssrfGuard';
-import { MAX_WEBHOOK_ATTEMPTS, WEBHOOK_RETRY_DELAYS_MS } from '../../lib/constants';
+import { MAX_WEBHOOK_ATTEMPTS } from '../../lib/constants';
 import { WEBHOOK_ATTEMPT_LEASE_MS } from '../deliveryAttempts';
 import {
 	LEGACY_DELIVERY_ABANDON_AFTER_MS,
 	LEGACY_DELIVERY_ABANDONED_ERROR,
 } from '../deliveryReconciler';
-import { deliverEvent, fanoutEvent } from '../fanout';
 import { scheduleDeliver, scheduleFanout } from '../scheduleFanout';
 import {
 	currentAttempt,
@@ -54,14 +48,6 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.useRealTimers();
-});
-
-type Handler<A, R> = (ctx: unknown, args: A) => Promise<R>;
-const handlerOf = <A, R>(fn: unknown) => (fn as { _handler: Handler<A, R> })._handler;
-
-/** An action context whose `runMutation` reaches convex-test, like `invoke`. */
-const actionCtx = (t: T) => ({
-	runMutation: t.mutation as (ref: unknown, args: unknown) => Promise<unknown>,
 });
 
 const scheduledJobs = (t: T) =>
@@ -147,159 +133,6 @@ describe('scheduling an event', () => {
 		expect(queued?.name).toBe('webhooks/deliveryQueries:enqueueDelivery');
 		await runDueJobs(t);
 		expect(await logsOf(t)).toMatchObject([{ webhookId, event: 'test', attemptSeq: 1 }]);
-	});
-});
-
-describe('jobs the previous release queued under the old action paths', () => {
-	it('fanoutEvent still writes one row per subscribed webhook', async () => {
-		const { t, webhookId } = await setup();
-
-		const result = await handlerOf<object, { webhooksTriggered: number }>(fanoutEvent)(
-			actionCtx(t),
-			{ event: 'contact.created', data: PAYLOAD.data }
-		);
-
-		expect(result.webhooksTriggered).toBe(1);
-		expect(await logsOf(t)).toMatchObject([{ webhookId, status: 'pending', attemptSeq: 1 }]);
-	});
-
-	it('deliverEvent still writes the row for its target', async () => {
-		const { t, webhookId } = await setup();
-
-		const result = await handlerOf<object, { success: boolean; logId?: LogId }>(deliverEvent)(
-			actionCtx(t),
-			{ webhookId, event: 'contact.created', data: PAYLOAD.data }
-		);
-
-		expect(result.success).toBe(true);
-		expect(await row(t, result.logId!)).toMatchObject({ webhookId, attemptSeq: 1 });
-	});
-});
-
-describe('previous-release actions still running at deploy time', () => {
-	it("an old fanout's row gets its attempt at once, and the old job is a no-op", async () => {
-		const { t, webhookId } = await setup();
-
-		// The old fanout: look up subscribers, write the row, then schedule an
-		// unsequenced attempt. Crashing before that last step must lose nothing.
-		const subscribed = await t.query(internal.webhooks.deliveryQueries.getWebhooksForEvent, {
-			event: 'contact.created',
-		});
-		expect(subscribed.map((w) => w._id)).toEqual([webhookId]);
-		const logId = await t.mutation(internal.webhooks.deliveryQueries.createDeliveryLog, {
-			webhookId,
-			event: 'contact.created',
-			payload: PAYLOAD,
-			attemptNumber: 1,
-			maxAttempts: MAX_WEBHOOK_ATTEMPTS,
-		});
-
-		const log = await row(t, logId);
-		expect(log).toMatchObject({ status: 'pending', attemptSeq: 1 });
-		expect((await job(t, log.scheduledFunctionId))?.state.kind).toBe('pending');
-
-		expect(await invoke(t, legacyInvocation(webhookId, logId, 1))).toMatchObject({
-			skipped: true,
-			error: 'Stale attempt',
-		});
-		expect((await invoke(t, await currentAttempt(t, logId))).success).toBe(true);
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-	});
-
-	it("an old delivery's retry is scheduled with the row, and its own retry job is a no-op", async () => {
-		const { t, webhookId } = await setup();
-		const logId = await insertLegacyRow(t, webhookId);
-		expect(
-			await t.query(internal.webhooks.deliveryQueries.getWebhook, { webhookId })
-		).toMatchObject({ _id: webhookId });
-		const nextRetryAt = Date.now() + WEBHOOK_RETRY_DELAYS_MS[1]!;
-
-		await t.mutation(internal.webhooks.deliveryQueries.markDeliveryRetrying, {
-			logId,
-			httpStatusCode: 503,
-			errorMessage: 'HTTP 503: busy',
-			durationMs: 12,
-			nextRetryAt,
-			newAttemptNumber: 2,
-		});
-
-		const log = await row(t, logId);
-		expect(log).toMatchObject({
-			status: 'retrying',
-			attemptNumber: 2,
-			attemptSeq: 1,
-			httpStatusCode: 503,
-			nextRetryAt,
-		});
-		const retry = await job(t, log.scheduledFunctionId);
-		expect(retry?.scheduledTime).toBe(nextRetryAt);
-		expect(retry?.args[0]).toMatchObject({ logId, attemptNumber: 2, attemptSeq: 1 });
-
-		expect((await invoke(t, legacyInvocation(webhookId, logId, 2))).skipped).toBe(true);
-		expect((await invoke(t, await currentAttempt(t, logId))).success).toBe(true);
-	});
-
-	it('an old success or failure is recorded on a row the old code still owns', async () => {
-		const { t, webhookId } = await setup();
-		const succeeded = await insertLegacyRow(t, webhookId);
-		const failed = await insertLegacyRow(t, webhookId, { status: 'retrying', attemptNumber: 3 });
-
-		await t.mutation(internal.webhooks.deliveryQueries.markDeliverySuccess, {
-			logId: succeeded,
-			httpStatusCode: 200,
-			responseBody: 'ok',
-			durationMs: 5,
-		});
-		await t.mutation(internal.webhooks.deliveryQueries.markDeliveryFailed, {
-			logId: failed,
-			errorMessage: 'Webhook is disabled',
-		});
-
-		expect(await row(t, succeeded)).toMatchObject({ status: 'success', httpStatusCode: 200 });
-		expect(await row(t, failed)).toMatchObject({
-			status: 'failed',
-			errorMessage: 'Webhook is disabled',
-		});
-	});
-
-	it('an old failure or retry cannot move a row the attempt model owns', async () => {
-		const { t, webhookId } = await setup();
-		const logId = await t.mutation(internal.webhooks.deliveryQueries.enqueueDelivery, {
-			webhookId,
-			event: 'contact.created',
-			payload: PAYLOAD,
-		});
-		const before = await row(t, logId!);
-
-		await t.mutation(internal.webhooks.deliveryQueries.markDeliveryFailed, {
-			logId: logId!,
-			errorMessage: 'Max retries exceeded',
-		});
-		await t.mutation(internal.webhooks.deliveryQueries.markDeliveryRetrying, {
-			logId: logId!,
-			nextRetryAt: Date.now() + 60_000,
-			newAttemptNumber: 2,
-		});
-
-		expect(await row(t, logId!)).toEqual(before);
-	});
-
-	it('an old success on a finished row changes nothing', async () => {
-		const { t, webhookId } = await setup();
-		const logId = await insertLegacyRow(t, webhookId, {
-			status: 'failed',
-			errorMessage: 'Delivery attempt never completed',
-			completedAt: Date.now(),
-		});
-		const before = await row(t, logId);
-
-		await t.mutation(internal.webhooks.deliveryQueries.markDeliverySuccess, {
-			logId,
-			httpStatusCode: 200,
-			durationMs: 5,
-		});
-
-		expect(await row(t, logId)).toEqual(before);
 	});
 });
 

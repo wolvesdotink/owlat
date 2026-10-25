@@ -482,33 +482,6 @@ describe('integration import runs from the previous release', () => {
 		expectExactTotals(await readRun(t, importId));
 	});
 
-	it('still accepts that release’s progress writes on its own rows only', async () => {
-		const t = convexTest(schema, faultyModules);
-		const legacy = await seedLegacyRun(t);
-		const current = await seedLegacyRun(t, { pagesCommitted: 1 });
-		const progress = {
-			imported: 10,
-			updated: 0,
-			skipped: 0,
-			failed: 0,
-			errors: [],
-			newCursor: '200',
-		};
-
-		await t.mutation(internal.integrationImports.walker.updateImportProgress, {
-			importId: legacy,
-			...progress,
-		});
-		await t.mutation(internal.integrationImports.walker.updateImportProgress, {
-			importId: current,
-			...progress,
-		});
-
-		expect(await readRun(t, legacy)).toMatchObject({ imported: 109, cursor: '200' });
-		expect((await readRun(t, legacy)).lastPageAt).toBeDefined();
-		expect(await readRun(t, current)).toMatchObject({ imported: 99, cursor: '100' });
-	});
-
 	it('waits out the grace on a run without a lease, then ends it if it cannot resume', async () => {
 		const t = convexTest(schema, faultyModules);
 		const importId = await seedLegacyRun(t);

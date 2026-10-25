@@ -969,12 +969,11 @@ drain running functions first and the scheduler keeps every job N-1 queued:
 
 When N stops calling a function, keep it for a release at its old path with
 its old arguments and result shape, delegating to the new code, and list it in
-`PREVIOUS_RELEASE_ENTRIES` in `apps/api/scripts/entryWiringPreviousRelease.ts`
-(the webhook fanout and delivery functions and the automation step walker's
-old transitions are there). Such a shim must be safe against N's own code
-running beside it: it must never repeat a side effect N already performed, nor
-move state N already moved. Mark each one, and each N-1-only branch in N's
-code, with a `remove after release N+1` comment; the next release deletes them.
+`PREVIOUS_RELEASE_ENTRIES` in `apps/api/scripts/entryWiringPreviousRelease.ts`.
+Such a shim must be safe against N's own code running beside it: it must never
+repeat a side effect N already performed, nor move state N already moved. Mark
+each one, and each N-1-only branch in N's code, with a `remove after release
+N+1` comment; the next release deletes them.
 Where N-1 can have left work half done (an action killed between two of its
 calls), N also ships the sweep that finds it and finishes or ends it, as
 `automations/stalledRuns.ts` does for automation runs.

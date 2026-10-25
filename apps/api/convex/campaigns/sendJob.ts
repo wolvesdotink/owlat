@@ -1,7 +1,7 @@
 /**
  * Campaign send job (module) — the checkpoint store + mutations for the
  * **checkpointed campaign-send walker**. Mirrors the integration-import
- * walker's `getImportById` / `updateImportProgress` / `completeImport`
+ * walker's `getImportById` / `commitIntegrationPage` / `completeImport`
  * internal mutations: the orchestrator action (`emails.resolveCampaignPage`)
  * stays in its `'use node'` file and reaches into these non-node mutations to
  * read and patch the `campaignSendJobs` row.

@@ -30,7 +30,8 @@ import {
 } from './runShape';
 import { groundProposals } from './ground';
 import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
-import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scope';
+import { contentRevisionOf, segmentScoped } from './scope';
+import { scopeForInterpretation } from './scopeLoad';
 import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from './pipeline';
 import { needsReplyProjectionOf } from './needsReplyProjection';
 import { interpretRoot } from './verify';
