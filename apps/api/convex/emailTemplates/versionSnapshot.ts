@@ -98,6 +98,55 @@ export function shouldCaptureVersion(
 }
 
 /**
+ * How long one person's autosaves of a template share a single history row.
+ * The editor saves a draft a moment after every pause in typing, so one row
+ * per save would push every older version out of the history within minutes.
+ */
+export const AUTOSAVE_VERSION_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * How many of the window's newest rows an autosave looks through for its
+ * author's row. Every author keeps at most one save row per window, so this
+ * is the number of people saving the same template in one window; past it a
+ * save just adds a row.
+ */
+export const AUTOSAVE_VERSION_SCAN = 20;
+
+/** Where the fixed window holding `now` starts. */
+export function autosaveWindowStart(now: number, windowMs = AUTOSAVE_VERSION_WINDOW_MS): number {
+	return Math.floor(now / windowMs) * windowMs;
+}
+
+interface TemplateVersionAuthor {
+	trigger: TemplateVersionTrigger;
+	createdBy: string;
+	createdAt: number;
+}
+
+/**
+ * The row an autosave by `userId` at `now` replaces instead of adding one: that
+ * person's newest save in the same window (fixed slices of the clock, so an
+ * editing session keeps at most one row per person and slice, however the
+ * co-editors' saves interleave). A publish, send or conflict row in between
+ * is a record of an event: the saves before it stay as they were, so the
+ * search stops there. Null when there is nothing to replace.
+ *
+ * `newestFirst` is the template's newest rows, at least those of the window.
+ */
+export function selectAutosaveVersion<T extends TemplateVersionAuthor>(
+	newestFirst: readonly T[],
+	next: { userId: string; now: number },
+	windowMs = AUTOSAVE_VERSION_WINDOW_MS
+): T | null {
+	const windowStart = autosaveWindowStart(next.now, windowMs);
+	for (const row of newestFirst) {
+		if (row.createdAt < windowStart || row.trigger !== 'save') return null;
+		if (row.createdBy === next.userId) return row;
+	}
+	return null;
+}
+
+/**
  * The rows past the cap in a NEWEST-FIRST list — i.e. the oldest ones, which
  * retention evicts. Callers read at most
  * `VERSION_HISTORY_LIMIT + VERSION_PRUNE_BATCH` rows, so the result is bounded.

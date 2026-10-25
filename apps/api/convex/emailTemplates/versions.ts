@@ -3,7 +3,9 @@
  * cascade-deleter of `emailTemplateVersions`.
  *
  * Capture sites (all of them):
- *   `emails.update`            → trigger `save`
+ *   `emails.update`            → trigger `save` (an autosave replaces the
+ *                                same person's save row from the same window,
+ *                                `selectAutosaveVersion`)
  *   `emails.publish`           → trigger `publish`
  *   `campaigns/sendCommit.ts`  → trigger `send` (the send preparation commit,
  *                                for Variant B's template too in a content test)
@@ -26,9 +28,12 @@ import { getOrThrow, throwNotFound } from '../_utils/errors';
 import { getLive } from '../lib/softDelete';
 import type { ErasureBudget } from '../contacts/erasure/budget';
 import {
+	AUTOSAVE_VERSION_SCAN,
 	VERSION_HISTORY_LIMIT,
 	VERSION_PRUNE_BATCH,
+	autosaveWindowStart,
 	fingerprintSnapshot,
+	selectAutosaveVersion,
 	selectVersionsToEvict,
 	shouldCaptureVersion,
 	type TemplateVersionTrigger,
@@ -47,9 +52,34 @@ async function latestVersion(
 }
 
 /**
+ * The save row an autosave by `userId` replaces (`selectAutosaveVersion`):
+ * read from the current window only, and at most `AUTOSAVE_VERSION_SCAN` rows.
+ */
+async function autosaveVersionToReplace(
+	ctx: QueryCtx,
+	templateId: Id<'emailTemplates'>,
+	userId: string,
+	now: number
+): Promise<Doc<'emailTemplateVersions'> | null> {
+	const recent = await ctx.db
+		.query('emailTemplateVersions')
+		.withIndex('by_template_and_created_at', (q) =>
+			q.eq('templateId', templateId).gte('createdAt', autosaveWindowStart(now))
+		)
+		.order('desc')
+		.take(AUTOSAVE_VERSION_SCAN);
+	return selectAutosaveVersion(recent, { userId, now });
+}
+
+/**
  * Snapshot a template, unless the previous snapshot already records the same
- * content under the same trigger. Returns the new row id, or null when the
- * capture was deduplicated away.
+ * content under the same trigger. Returns the new row id (null when the
+ * capture was deduplicated away).
+ *
+ * With `autosave`, a save that follows the same person's save from the same
+ * window continues that burst (`continuesBurst`), also when co-editors saved
+ * in between: its row takes the earlier one's place (deleted, then the new
+ * one inserted; a stored snapshot is never rewritten).
  *
  * Runs in the caller's transaction: a save that rolls back must not leave a
  * version row claiming content that was never stored.
@@ -60,8 +90,9 @@ export async function captureTemplateVersion(
 		template: Doc<'emailTemplates'>;
 		trigger: TemplateVersionTrigger;
 		userId: string;
+		autosave?: boolean;
 	}
-): Promise<Id<'emailTemplateVersions'> | null> {
+): Promise<{ versionId: Id<'emailTemplateVersions'> | null; continuesBurst: boolean }> {
 	const { template, trigger, userId } = args;
 	const fingerprint = fingerprintSnapshot({
 		name: template.name,
@@ -70,6 +101,12 @@ export async function captureTemplateVersion(
 	});
 
 	const previous = await latestVersion(ctx, template._id);
+	const now = Date.now();
+	const replaced =
+		args.autosave === true && trigger === 'save'
+			? await autosaveVersionToReplace(ctx, template._id, userId, now)
+			: null;
+	const continuesBurst = replaced !== null;
 	// The fingerprint leaves out the preview text, but a send record must hold
 	// what went out, so a send whose preview text differs is a new snapshot.
 	const sameSendPreview =
@@ -81,10 +118,11 @@ export async function captureTemplateVersion(
 		// A repeated send of unchanged content keeps one row, but the review's
 		// "last send" must still date the newest send, not the first.
 		if (previous && trigger === 'send') {
-			await ctx.db.patch(previous._id, { lastSentAt: Date.now() });
+			await ctx.db.patch(previous._id, { lastSentAt: now });
 		}
-		return null;
+		return { versionId: null, continuesBurst };
 	}
+	if (replaced) await ctx.db.delete(replaced._id);
 
 	const versionId = await ctx.db.insert('emailTemplateVersions', {
 		templateId: template._id,
@@ -97,7 +135,7 @@ export async function captureTemplateVersion(
 		contentBytes: fingerprint.contentBytes,
 		contentHash: fingerprint.contentHash,
 		createdBy: userId,
-		createdAt: Date.now(),
+		createdAt: now,
 	});
 
 	// Enforce retention. Steady state evicts one row; the read is bounded by
@@ -111,7 +149,7 @@ export async function captureTemplateVersion(
 		await ctx.db.delete(stale._id);
 	}
 
-	return versionId;
+	return { versionId, continuesBurst };
 }
 
 /**

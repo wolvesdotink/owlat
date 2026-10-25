@@ -375,6 +375,8 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'postbox.senders.kind.spam',
 	'shared.channelKinds.addable.sms',
 	'shared.channelKinds.addable.whatsapp',
+	// The age beside "Saved": a separator and a placeholder, the same in German.
+	'shared.draftAutosave.savedAge',
 	'shared.dashboardNavigation.items.administration.teamAccess',
 	'shared.dashboardNavigation.items.assistant.chat',
 	'shared.dashboardNavigation.items.knowledge.explorer',

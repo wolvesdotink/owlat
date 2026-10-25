@@ -21,6 +21,26 @@ export class StaleDraftError extends SurfacedOperationError {
 	}
 }
 
+/**
+ * A save refused for any other reason, from a run that asked to stay quiet (a
+ * background save): nothing has been shown yet, and `op` is what to show.
+ */
+export class SaveRefusedError extends SurfacedOperationError {
+	constructor(readonly op: OperationError) {
+		super(op.message || 'Saving failed');
+	}
+}
+
+/** Per-call options of the save returned by {@link useEditorSaveOperation}. */
+export interface EditorSaveRunOptions {
+	/**
+	 * A background save: a refusal is not toasted but thrown as a
+	 * {@link SaveRefusedError} for the caller's own status to show, and the
+	 * write is not announced to screen readers.
+	 */
+	quiet?: boolean;
+}
+
 /** The server's revision when `op` is a stale-revision refusal, else null. */
 export function staleDraftRevision(op: OperationError): number | null {
 	if (op.category !== 'conflict' || op.data?.['reason'] !== 'stale_content_revision') return null;
@@ -31,23 +51,34 @@ export function staleDraftRevision(op: OperationError): number | null {
 export function useEditorSaveOperation<M extends FunctionReference<'mutation'>>(
 	operation: M,
 	opts: { label: () => string }
-): (args: FunctionArgs<M>) => Promise<FunctionReturnType<M>> {
+): (args: FunctionArgs<M>, runOpts?: EditorSaveRunOptions) => Promise<FunctionReturnType<M>> {
 	// Set by `onError` while `run` is settling; saves from one editor do not
-	// overlap (the Save button and the shortcut both wait for `isSaving`).
+	// overlap (the Save button, the shortcut and the autosave share one queue).
 	let refusedAt: number | null = null;
-	const { run } = useBackendOperation(operation, {
+	let refusal: OperationError | null = null;
+	let quiet = false;
+	const settle = (op: OperationError) => {
+		refusedAt = staleDraftRevision(op);
+		refusal = op;
+		return refusedAt !== null || quiet;
+	};
+	const loud = useBackendOperation(operation, { label: opts.label, onError: settle });
+	const silent = useBackendOperation(operation, {
 		label: opts.label,
-		onError: (op) => {
-			refusedAt = staleDraftRevision(op);
-			return refusedAt !== null;
-		},
+		onError: settle,
+		announce: false,
 	});
 
-	return async (args) => {
+	return async (args, runOpts = {}) => {
 		refusedAt = null;
-		const outcome = await run(args);
+		refusal = null;
+		quiet = runOpts.quiet === true;
+		const outcome = await (quiet ? silent : loud).run(args);
 		if (outcome.ok) return outcome.result;
 		if (refusedAt !== null) throw new StaleDraftError(refusedAt);
+		// Written by `settle` while `run` was awaited.
+		const refused = refusal as OperationError | null;
+		if (quiet && refused) throw new SaveRefusedError(refused);
 		throw new SurfacedOperationError('Saving the email failed');
 	};
 }

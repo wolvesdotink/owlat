@@ -238,12 +238,14 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 				</UiButton>
 			</UiTooltip>
 
-			<!-- Save Button -->
-			<UiButton variant="primary" size="sm" :disabled="isSaving" @click="emit('save')">
-				<Loader2 v-if="isSaving" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
-				<Save v-else class="w-4 h-4" />
-				{{ isSaving ? t('builder.header.saving') : t('builder.header.save') }}
-			</UiButton>
+			<!-- Save Button, or the host's save status where it saves on its own -->
+			<slot name="save-status">
+				<UiButton variant="primary" size="sm" :disabled="isSaving" @click="emit('save')">
+					<Loader2 v-if="isSaving" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+					<Save v-else class="w-4 h-4" />
+					{{ isSaving ? t('builder.header.saving') : t('builder.header.save') }}
+				</UiButton>
+			</slot>
 		</div>
 	</div>
 </template>

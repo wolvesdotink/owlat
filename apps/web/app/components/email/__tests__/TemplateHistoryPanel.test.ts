@@ -64,12 +64,14 @@ const compareModalStub = {
 
 function mountPanel(
 	hasUnsavedChanges: boolean,
-	readCurrent?: () => { blocks: never[]; name: string; subject: string }
+	readCurrent?: () => { blocks: never[]; name: string; subject: string },
+	autosaves = false
 ) {
 	return mount(TemplateHistoryPanel, {
 		props: {
 			templateId: 'template1' as never,
 			hasUnsavedChanges,
+			autosaves,
 			...(readCurrent ? { readCurrent } : {}),
 		},
 		attachTo: document.body,
@@ -150,6 +152,46 @@ describe('TemplateHistoryPanel — restore from the preview', () => {
 		expect(wrapper.find('[data-testid="confirm-dialog"]').exists()).toBe(false);
 		expect(wrapper.emitted('restore')).toHaveLength(1);
 		wrapper.unmount();
+	});
+
+	it('restores what the preview loaded after an autosave replaced its row', async () => {
+		const query = vi.fn(async () => SNAPSHOT);
+		vi.stubGlobal('useConvex', () => ({ query }));
+		for (const unsaved of [false, true]) {
+			query.mockClear();
+			const wrapper = mountPanel(unsaved);
+			await openPreview(wrapper);
+			// The row is gone now: asking for it again fails.
+			query.mockRejectedValue(new Error('Version not found'));
+
+			await restoreButton(wrapper)?.trigger('click');
+			await flushPromises();
+			if (unsaved) {
+				await wrapper.get('[data-testid="confirm"]').trigger('click');
+				await flushPromises();
+			}
+
+			expect(wrapper.emitted('restore')).toHaveLength(1);
+			expect(query).toHaveBeenCalledOnce();
+			wrapper.unmount();
+			query.mockResolvedValue(SNAPSHOT);
+		}
+	});
+
+	it('asks for Save after a restore only where the editor does not save by itself', async () => {
+		for (const [autosaves, key] of [
+			[false, 'components.email.templateHistoryPanel.restored'],
+			[true, 'components.email.templateHistoryPanel.restoredAutosave'],
+		] as const) {
+			const showToast = vi.fn();
+			vi.stubGlobal('useToast', () => ({ showToast }));
+			const wrapper = mountPanel(false, undefined, autosaves);
+			await openPreview(wrapper);
+			await restoreButton(wrapper)?.trigger('click');
+			await flushPromises();
+			expect(showToast).toHaveBeenCalledWith(createTestI18n().global.t(key));
+			wrapper.unmount();
+		}
 	});
 });
 
