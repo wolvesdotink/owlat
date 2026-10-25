@@ -3,7 +3,7 @@
 // Co-editing: "Apply brand kit" restyles the whole email, but a block someone
 // else holds is theirs until they let go. The restyle leaves it (and every
 // Block inside it) as it is, and the confirmation says so.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { DEFAULT_BRAND_KIT_DESIGN } from '@owlat/shared/brandKit';
 import { childBlockLists } from '@owlat/shared/blockTree';
@@ -40,10 +40,8 @@ function container(id: string, children: EditorBlock[]): EditorBlock {
 
 const locked: RemoteBlockMark = { label: 'Alex is editing', color: '#2563eb', isLocked: true };
 
-let wrapper: VueWrapper | null = null;
-
 async function mountBuilder(blocks: EditorBlock[], remoteMarks: Record<string, RemoteBlockMark>) {
-	wrapper = mount(EmailBuilder, {
+	const wrapper = mount(EmailBuilder, {
 		props: {
 			blocks,
 			subject: 'Subject',
@@ -90,12 +88,6 @@ const colorOf = (blocks: EditorBlock[], id: string): string | undefined => {
 	}
 	return undefined;
 };
-
-afterEach(() => {
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
-});
 
 describe('EmailBuilder apply brand kit with remote locks', () => {
 	it('leaves a block someone else holds unchanged', async () => {

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { describe, it, expect, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { diffEmails } from '@owlat/email-renderer';
@@ -22,15 +22,8 @@ const sourceFiles = (dir: string): string[] =>
 		return /\.(ts|vue)$/.test(name) ? [path] : [];
 	});
 
-let wrapper: VueWrapper | null = null;
-afterEach(() => {
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
-});
-
 const mountPreviewer = (props: Record<string, unknown> = {}) => {
-	wrapper = mount(EmailPreviewer, {
+	const wrapper = mount(EmailPreviewer, {
 		props: {
 			html: '<html><body><p>Hello</p></body></html>',
 			autoAnalyze: false,

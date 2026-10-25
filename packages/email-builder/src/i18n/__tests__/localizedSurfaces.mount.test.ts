@@ -5,7 +5,7 @@
 // app's vue-i18n, whose catalog does NOT contain the builder's messages — and
 // read back as a user (visible text) and a screen reader (accessible names)
 // meet it.
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { defineComponent, nextTick } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import EditorHeader from '../../components/EditorHeader.vue';
@@ -31,12 +31,8 @@ import { blockAccessibleLabel } from '../../utils/blockLabel';
 import { translate, translateLabel } from '../useBuilderI18n';
 import { createHostI18n } from './hostI18n';
 
+/** The wrapper mounted last, so a test can unmount it before mounting the next. */
 let wrapper: VueWrapper | null = null;
-afterEach(() => {
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
-});
 
 function mountIn<T>(component: T, props: Record<string, unknown>, locale: 'en' | 'de' = 'de') {
 	const i18n = createHostI18n(locale);

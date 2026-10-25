@@ -8,7 +8,7 @@
 // root it was installed on, not the root of the new element, and unmounting has
 // to remove the last one. Geometry is read at most once per animation frame no
 // matter how many scroll/resize events arrive in between.
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, onTestFinished, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import FloatingBlockSidebar from '../FloatingBlockSidebar.vue';
@@ -52,6 +52,7 @@ function makeRoot(left = 200, top = 100, rootTop = 0): Root {
 	const canvas = document.createElement('div');
 	root.appendChild(canvas);
 	document.body.appendChild(root);
+	onTestFinished(() => root.remove());
 	let reads = 0;
 	let rootReads = 0;
 	let canvasTop = top;
@@ -157,11 +158,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	// Unmount while the stubbed observer, frame and listener globals are still
+	// installed: the sidebar's teardown goes through them. The setup's own
+	// unmount would run after they are restored.
 	wrapper?.unmount();
 	wrapper = null;
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
-	document.body.innerHTML = '';
 });
 
 function mountSidebar(canvasElement: HTMLElement | null) {
@@ -344,6 +347,7 @@ describe('FloatingBlockSidebar geometry updates', () => {
 	it('keeps the viewport floor when the canvas has no scroll root', async () => {
 		const canvas = document.createElement('div');
 		document.body.appendChild(canvas);
+		onTestFinished(() => canvas.remove());
 		canvas.getBoundingClientRect = () =>
 			({ left: 200, top: -456, right: 800, bottom: 344, width: 600, height: 800 }) as DOMRect;
 		mountSidebar(canvas);

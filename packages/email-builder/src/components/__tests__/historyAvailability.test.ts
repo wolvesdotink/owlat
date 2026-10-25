@@ -21,10 +21,8 @@ function text(id: string, html: string): EditorBlock {
 	return block;
 }
 
-let wrapper: VueWrapper | null = null;
-
 async function mountBuilder() {
-	wrapper = mount(EmailBuilder, {
+	const wrapper = mount(EmailBuilder, {
 		props: {
 			blocks: [text('b-1', '<p>Body</p>')],
 			subject: 'Subject',
@@ -67,9 +65,6 @@ function buttons(w: VueWrapper) {
 
 afterEach(() => {
 	vi.useRealTimers();
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 describe('EmailBuilder undo/redo availability', () => {

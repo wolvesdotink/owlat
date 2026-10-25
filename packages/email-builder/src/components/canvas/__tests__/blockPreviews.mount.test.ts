@@ -10,7 +10,7 @@
 // being invisible in real browsers (white text on a wiped background — see the
 // background-shorthand regression below).
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { createApp, h, nextTick, type App } from 'vue';
+import { createApp, h, nextTick, type App, type VNode } from 'vue';
 import DocumentBlock from '../DocumentBlock.vue';
 import DocumentCanvas from '../DocumentCanvas.vue';
 import { getRegisteredTypes } from '../../../registry';
@@ -25,13 +25,29 @@ import type { EditorBlock, EmailTheme, BlockType } from '../../../types';
 // mounts; their HTML output is covered by the renderer package's own tests.
 const IFRAME_TYPES: ReadonlySet<string> = new Set(['table', 'rawHtml', 'video', 'carousel']);
 
-let apps: App[] = [];
+const mounted: { app: App; host: HTMLElement }[] = [];
 afterEach(() => {
-	apps.forEach((a) => a.unmount());
-	apps = [];
-	document.body.innerHTML = '';
+	for (const { app, host } of mounted.splice(0)) {
+		app.unmount();
+		host.remove();
+	}
 	vi.useRealTimers();
 });
+
+/**
+ * Mount a plain app into a fresh host in the body. Plain apps are outside the
+ * setup's wrapper auto-unmount, so the afterEach above unmounts each one and
+ * removes its host, also after a failed assertion.
+ */
+function mountApp(render: () => VNode, configure?: (app: App) => void): HTMLElement {
+	const host = document.createElement('div');
+	document.body.appendChild(host);
+	const app = createApp({ render });
+	configure?.(app);
+	app.mount(host);
+	mounted.push({ app, host });
+	return host;
+}
 
 /**
  * Run the debounced fragment render (and the resize it schedules) on the fake
@@ -43,16 +59,14 @@ async function finishRender() {
 }
 
 function mountBlock(block: EditorBlock): { host: HTMLElement; errors: unknown[] } {
-	const host = document.createElement('div');
-	document.body.appendChild(host);
 	const errors: unknown[] = [];
-	const app = createApp({
-		render: () => h(DocumentBlock, { block, theme: defaultTheme as Required<EmailTheme> }),
-	});
-	app.config.errorHandler = (err) => errors.push(err);
-	app.config.warnHandler = () => {}; // extraneous-prop warnings are asserted elsewhere
-	app.mount(host);
-	apps.push(app);
+	const host = mountApp(
+		() => h(DocumentBlock, { block, theme: defaultTheme as Required<EmailTheme> }),
+		(app) => {
+			app.config.errorHandler = (err) => errors.push(err);
+			app.config.warnHandler = () => {}; // extraneous-prop warnings are asserted elsewhere
+		}
+	);
 	return { host, errors };
 }
 
@@ -189,13 +203,7 @@ describe('text block edit↔render typography parity', () => {
 			html: 'Heading',
 			textColor: undefined,
 		});
-		const host = document.createElement('div');
-		document.body.appendChild(host);
-		const app = createApp({
-			render: () => h(DocumentBlock, { block, theme: themed }),
-		});
-		app.mount(host);
-		apps.push(app);
+		const host = mountApp(() => h(DocumentBlock, { block, theme: themed }));
 		const style = host.querySelector('h2')?.getAttribute('style') ?? '';
 		expect(style).toContain('font-weight: 800');
 		expect(style).toContain('color: #111111');
@@ -210,20 +218,18 @@ describe('DocumentCanvas renders the seeded demo template', () => {
 	) as EditorBlock[];
 
 	it('renders all three blocks with a visible button fill', () => {
-		const host = document.createElement('div');
-		document.body.appendChild(host);
 		const errors: unknown[] = [];
-		const app = createApp({
-			render: () =>
+		const host = mountApp(
+			() =>
 				h(DocumentCanvas, {
 					blocks,
 					selectedBlockId: null,
 					theme: defaultTheme as Required<EmailTheme>,
 				}),
-		});
-		app.config.errorHandler = (err) => errors.push(err);
-		app.mount(host);
-		apps.push(app);
+			(app) => {
+				app.config.errorHandler = (err) => errors.push(err);
+			}
+		);
 		expect(errors).toEqual([]);
 		expect(host.textContent).toContain('Summer Sale');
 		expect(host.textContent).toContain('Shop the sale');
