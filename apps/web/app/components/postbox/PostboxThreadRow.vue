@@ -70,7 +70,8 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
  */
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
-import { createPostboxSweepHandle, type PostboxSweepMark } from '~/utils/postboxSweep';
+import type { PostboxSweepMark } from '~/utils/postboxSweep';
+import { usePostboxRowSweep } from '~/composables/postbox/usePostboxRowSweep';
 import { usePostboxRowGestures } from '~/composables/postbox/usePostboxRowGestures';
 import { usePostboxMessageDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
@@ -150,21 +151,6 @@ const replyDrop = computed(() => replyDropForMessage(props.msg, props.folderRole
 
 /** The row accent for a danger-only sender marker; the body renders the chip. */
 const isDanger = computed(() => senderRowMarkerOf(props.msg, props.trustMarkers) !== null);
-
-/** The checkbox as it will read once the sweep covering this row is released. */
-const shownSelected = computed(() =>
-	props.sweepMark === 'select' ? true : props.sweepMark === 'deselect' ? false : props.selected
-);
-
-// A press on the checkbox or the Archive button may start a sweep (utils/postboxSweep.ts).
-const sweepHandle = createPostboxSweepHandle((kind, event) => emit('sweep-start', kind, event));
-function onRowPointerdown(event: PointerEvent) {
-	sweepHandle.onPointerdown(event);
-	gestures.onPointerdown(event);
-}
-function onDragstart(event: DragEvent) {
-	if (!sweepHandle.claimsDrag(event)) emit('drag-start', event);
-}
 
 /**
  * Checkbox toggles selection without following the row's NuxtLink. Shift means
@@ -318,6 +304,9 @@ const gestures = usePostboxRowGestures({
 			})
 		),
 });
+
+// A press on the checkbox or the Archive button may start a sweep; the checkbox previews it.
+const { shownSelected, onRowPointerdown, onDragstart } = usePostboxRowSweep(props, emit, gestures);
 
 /** Swallow the click a fired long-press or a swipe leaves behind. */
 function onCapturedClick(event: MouseEvent) {
