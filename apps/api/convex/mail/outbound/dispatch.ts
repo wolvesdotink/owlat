@@ -74,17 +74,18 @@ function readExternalSendVerdicts(body: unknown): {
 	if (!Array.isArray(recipients)) {
 		return { verdicts: [], unreadable: ['$.recipients: expected array'] };
 	}
+	const entries: unknown[] = recipients;
 	const verdicts: RecipientVerdict[] = [];
 	const unreadable: string[] = [];
-	recipients.forEach((entry: unknown, i) => {
+	for (const [i, entry] of entries.entries()) {
 		const decoded = decodeRecipientVerdict(entry);
 		if (!decoded.ok) {
 			unreadable.push(decoded.issue.replace(/^\$/, `$.recipients[${i}]`));
-			return;
+			continue;
 		}
 		const { address, status, error } = decoded.value;
 		verdicts.push({ address, status, ...(typeof error === 'string' ? { error } : {}) });
-	});
+	}
 	return { verdicts, unreadable };
 }
 
