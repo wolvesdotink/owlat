@@ -1,13 +1,12 @@
 'use node';
 
 /**
- * One attempt of an interpretation run (`run.ts`, split out at the file-size
- * cap): steps 1–10 of the run's module doc, plus read on arrival:
- * once the message is scoped, a Postbox arrival read asks
- * `arrivalDecide.decideArrivalDepth` how deep to go. `full` goes on as
- * before, `gist` hands over to `gist.ts`, and `count` / `none` were settled
- * by that mutation with no model call. A display-only source whose spend is
- * refused counts instead of retrying (§2.6).
+ * One attempt of an interpretation run (split out of `run.ts` at the file-size
+ * cap): steps 1–10 of the run's module doc, plus read on arrival: a scoped
+ * Postbox arrival asks `arrivalDecide.decideArrivalDepth` how deep to go;
+ * `full` goes on, `gist` hands over to `gist.ts`, and `count` / `none` were
+ * settled by that mutation with no model call. A display-only source whose
+ * spend is refused counts instead of retrying (§2.6).
  */
 
 import type { ActionCtx } from '../../_generated/server';
