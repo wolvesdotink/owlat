@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
 	SANDBOX_OUTPUT_LIMITS,
@@ -259,12 +259,39 @@ describe('task runners report a bounded, visibly truncated output', () => {
  * start it.
  */
 describe('runUntrusted with real child processes', () => {
+	/**
+	 * Every child this block spawned, with a promise for its pipes closing. A
+	 * test that fails before its fake deadline fires never reaps its child, so
+	 * teardown kills each group whose leader is still running and then waits for
+	 * every pipe to close, which needs every writer in the group gone,
+	 * grandchildren included. A leader that already exited had its group reaped
+	 * by `runUntrusted`'s exit handler, and its pid may since belong to an
+	 * unrelated process, so it is not signalled again.
+	 */
+	const spawned: { child: ChildProcess; pgid: number; closed: Promise<void> }[] = [];
+
+	function killGroup(pgid: number) {
+		try {
+			process.kill(-pgid, 'SIGKILL');
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+		}
+	}
+
 	beforeEach(() => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 	});
 
-	afterEach(() => {
-		vi.useRealTimers();
+	afterEach(async () => {
+		try {
+			const groups = spawned.splice(0);
+			for (const { child, pgid } of groups) {
+				if (child.exitCode === null && child.signalCode === null) killGroup(pgid);
+			}
+			await Promise.all(groups.map(({ closed }) => closed));
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	function localSpawn() {
@@ -282,7 +309,14 @@ describe('runUntrusted with real child processes', () => {
 		const spawnFn = ((command: string, args: string[], options: Record<string, unknown>) => {
 			const { uid: _uid, gid: _gid, ...rest } = options;
 			const child = spawn(command, args, rest);
-			if (child.pid) groups.push(child.pid);
+			if (child.pid) {
+				groups.push(child.pid);
+				spawned.push({
+					child,
+					pgid: child.pid,
+					closed: new Promise((resolve) => child.once('close', () => resolve())),
+				});
+			}
 			child.stdout?.on('data', (chunk: Buffer) => {
 				stdoutBytes += chunk.length;
 				flooding?.();
@@ -290,13 +324,7 @@ describe('runUntrusted with real child processes', () => {
 			return child;
 		}) as unknown as typeof spawn;
 		const reap = vi.fn(() => {
-			for (const pgid of groups.splice(0)) {
-				try {
-					process.kill(-pgid, 'SIGKILL');
-				} catch (error) {
-					if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
-				}
-			}
+			for (const pgid of groups.splice(0)) killGroup(pgid);
 		});
 		return { spawnFn, reap, stdoutReached };
 	}
