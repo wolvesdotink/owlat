@@ -27,16 +27,22 @@
  *     once per file, so a test run with `--retry` cannot hide a failure behind
  *     an attempt that passed.
  *
- * Before the file ends, `afterAll` also waits for jobs that were due within
- * {@link DRAIN_WINDOW_MS} on real timers (typically `runAfter(0, ...)` from
- * the last test), so one that would throw after the file is gone is still
- * seen. The remaining blind spot: a job scheduled further out than that, or
- * on fake timers that were never advanced, never runs at all, so there is
- * nothing to see. Drain scheduled work with `t.finishAllScheduledFunctions(...)`
- * so failures land in the test that caused them.
+ * Before the file ends, `afterAll` also runs the jobs set on real timers to
+ * fire within {@link DRAIN_WINDOW_MS} (typically `runAfter(0, ...)` from the
+ * last test), so one that would throw after the file is gone is still seen.
+ * The seam hands the gate each job's timer callback, so such a job runs at
+ * once rather than after its delay, and nothing here waits on the clock. The
+ * remaining blind spot: a job scheduled further out than that, or on fake
+ * timers that were never advanced, never runs at all, so there is nothing to
+ * see. Drain scheduled work with `t.finishAllScheduledFunctions(...)` so
+ * failures land in the test that caused them.
  */
 import { afterAll, afterEach, beforeEach, vi } from 'vitest';
-import { SCHEDULED_FAILURE_SINK, SCHEDULED_JOB_SINK } from './scheduledFailureSeam';
+import {
+	SCHEDULED_FAILURE_SINK,
+	SCHEDULED_JOB_ARM,
+	SCHEDULED_JOB_SINK,
+} from './scheduledFailureSeam';
 
 export interface ScheduledFailure {
 	/** The scheduled function, as convex-test names it (`module/path:export`). */
@@ -63,6 +69,8 @@ interface JobRecord {
 	/** When its timer fires on the real clock; null when it was set on fake timers. */
 	readonly dueAt: number | null;
 	drained: boolean;
+	/** Runs the job now if its timer has not yet; later calls, the timer's included, do nothing. */
+	fire?: () => void;
 }
 
 interface FileFailure extends ScheduledFailure {
@@ -84,13 +92,12 @@ interface GateState {
 	scheduled: JobRecord[];
 }
 
-/** How far ahead `afterAll` waits for real-timer jobs before the file ends. */
+/** How far ahead `afterAll` looks for real-timer jobs to run before the file ends. */
 const DRAIN_WINDOW_MS = 1000;
 const DRAIN_ROUNDS = 10;
 
 // Captured before any test installs fake timers.
 const realDateNow = Date.now.bind(Date);
-const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 
 // On globalThis so a test that resets the module registry still reaches the
 // same state the setup file installed.
@@ -154,6 +161,27 @@ function recordScheduledJob(job: ScheduledJob): void {
 	state.scheduled.push(record);
 }
 
+/**
+ * Arm a job's timer with a callback the gate can also call: whichever runs
+ * first runs the job, so the job still runs once.
+ */
+function armScheduledJob(
+	arm: (run: () => void, ms: number) => unknown,
+	job: { db: object; jobId: string },
+	run: () => void,
+	ms: number
+): unknown {
+	let hasRun = false;
+	const fire = () => {
+		if (hasRun) return;
+		hasRun = true;
+		run();
+	};
+	const record = gate().jobs.get(job.db)?.get(job.jobId);
+	if (record) record.fire = fire;
+	return arm(fire, ms);
+}
+
 /** Record a scheduled function that threw, unless the test behind it expects it. */
 function recordScheduledFailure(
 	name: string,
@@ -211,26 +239,37 @@ const OPT_OUT_HINT =
 	`test that sets out to cause it`;
 
 /**
- * Wait for jobs due within {@link DRAIN_WINDOW_MS} on real timers, including
- * the ones they schedule, so a job the last test left behind runs (and is
- * judged) before the file ends.
+ * Run the jobs set on real timers to fire within `windowMs` from now, without
+ * waiting for their timers, and await them and every job they schedule in that
+ * window, up to {@link DRAIN_ROUNDS} generations deep. Jobs on fake timers are
+ * left to the test's own clock.
  */
-async function drainDueJobs(state: GateState): Promise<void> {
+async function drainDueJobs(state: GateState, windowMs: number): Promise<void> {
 	for (let round = 0; round < DRAIN_ROUNDS; round++) {
-		const horizon = realDateNow() + DRAIN_WINDOW_MS;
+		const horizon = realDateNow() + windowMs;
 		const due = state.scheduled.filter(
 			(job) => !job.drained && job.dueAt !== null && job.dueAt <= horizon
 		);
 		if (due.length === 0) return;
-		const latest = Math.max(...due.map((job) => job.dueAt ?? 0));
-		await new Promise((resolve) =>
-			realSetTimeout(resolve, Math.max(0, latest - realDateNow()) + 1)
-		);
-		for (const job of due) job.drained = true;
+		for (const job of due) {
+			job.drained = true;
+			job.fire?.();
+		}
 		for (const scheduler of new Set(due.map((job) => job.scheduler))) {
 			await scheduler.finishInProgressScheduledFunctions();
 		}
 	}
+}
+
+/**
+ * Run every job already due on real timers (the `runAfter(0, ...)` fan-out a
+ * handler queued) and await it, with the jobs it schedules for now, whichever
+ * harness scheduled it. For a suite where each test builds its own harness:
+ * drained in `afterEach`, that work cannot outlive its test and run against
+ * the next test's convex-test state.
+ */
+export function drainDueScheduledJobs(): Promise<void> {
+	return drainDueJobs(gate(), 0);
 }
 
 /** Connect the sinks convex-test reports to, and register the hooks. */
@@ -239,6 +278,7 @@ export function installScheduledFailureGate(): void {
 	const sinks = globalThis as Record<symbol, unknown>;
 	sinks[Symbol.for(SCHEDULED_FAILURE_SINK)] = recordScheduledFailure;
 	sinks[Symbol.for(SCHEDULED_JOB_SINK)] = recordScheduledJob;
+	sinks[Symbol.for(SCHEDULED_JOB_ARM)] = armScheduledJob;
 
 	beforeEach((context) => {
 		state.current = { name: context.task.name, expected: [] };
@@ -255,7 +295,7 @@ export function installScheduledFailureGate(): void {
 		);
 	});
 	afterAll(async () => {
-		await drainDueJobs(state);
+		await drainDueJobs(state, DRAIN_WINDOW_MS);
 		const failures = state.fileFailures;
 		state.fileFailures = [];
 		state.fileExpected = [];

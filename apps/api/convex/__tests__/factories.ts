@@ -3,6 +3,7 @@ import { type FeatureFlagKey } from '@owlat/shared/featureFlags';
 import type { GenericActionCtx, GenericMutationCtx, WithoutSystemFields } from 'convex/server';
 import type { DataModel, Doc, Id, TableNames } from '../_generated/dataModel';
 import { FEATURE_FLAG_REGISTRY } from '../plugins/featureFlagRegistry';
+import { drainDueScheduledJobs } from './helpers/scheduledFailures';
 
 /**
  * Enable a set of feature flags in a fresh convex-test instance, including
@@ -860,16 +861,18 @@ export function createTestSendAssignment(
 }
 
 /**
- * Let the work a handler queued with `ctx.scheduler.runAfter(0, …)` drain.
- * With a harness, its in-progress scheduled functions are awaited after one
- * macrotask turn. Without one — an `afterEach` in a suite where every test
- * builds its own harness — a short real wait lets the fan-out settle before
- * the next test replaces convex-test's global state; otherwise the closures
- * hold a stale database and surface "Write outside of transaction" rejections.
+ * Run the work handlers queued with `ctx.scheduler.runAfter(0, …)` and await
+ * it, through the scheduled-failure gate, which holds every job's timer
+ * callback (`helpers/scheduledFailures.ts`). Without a harness — an
+ * `afterEach` in a suite where every test builds its own — it covers every
+ * harness's due jobs, so none of that fan-out runs after the next test has
+ * replaced convex-test's global state, where its closures would hold a stale
+ * database and surface "Write outside of transaction" rejections. With one,
+ * that harness's in-progress functions are awaited as well.
  */
 export async function flushScheduled(t?: {
 	finishInProgressScheduledFunctions(): Promise<void>;
 }): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, t === undefined ? 25 : 0));
+	await drainDueScheduledJobs();
 	if (t !== undefined) await t.finishInProgressScheduledFunctions();
 }

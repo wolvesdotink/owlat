@@ -12,6 +12,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import net from 'node:net';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { getFunctionName } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import type { FetchEnvelope } from '../format.js';
@@ -116,13 +117,9 @@ function backend(count: number, bodySize: number) {
 				downloadWaiters.splice(downloadWaiters.indexOf(waiter), 1);
 				waiter.resolve();
 			}
-			await new Promise<void>((resolve, reject) => {
-				const t = setTimeout(resolve, 1);
-				init?.signal?.addEventListener('abort', () => {
-					clearTimeout(t);
-					reject(init.signal!.reason);
-				});
-			});
+			// Answers at once, after a microtask; a cancelled FETCH's request fails.
+			await Promise.resolve();
+			init?.signal?.throwIfAborted();
 			const bytes = body(Number(new URL(url).searchParams.get('uid')), bodySize);
 			return {
 				ok: true,
@@ -164,7 +161,27 @@ function selectedState(count: number): ConnectionState {
 	};
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+/**
+ * Lets the FETCH run as far as it can without the test: every stub answers at
+ * once, so after one event-loop turn whatever could follow has happened.
+ */
+const settle = () => nextTurn();
+
+/**
+ * A `waitForDrain` that parks the FETCH on its first call until `release()`,
+ * and resolves `parked` at that moment.
+ */
+function drainGate(blocking: () => boolean = () => true) {
+	let release: () => void = () => {};
+	let markParked!: () => void;
+	const parked = new Promise<void>((resolve) => (markParked = resolve));
+	const waitForDrain = () => {
+		if (!blocking()) return undefined;
+		markParked();
+		return new Promise<void>((resolve) => (release = resolve));
+	};
+	return { waitForDrain, parked, release: () => release() };
+}
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -188,11 +205,10 @@ describe('FETCH pacing and cancellation (module)', () => {
 	}
 
 	it('stops downloading while the socket is over budget, and resumes on drain', async () => {
-		let release: () => void = () => {};
 		let blocked = true;
-		const h = start(() =>
-			blocked ? new Promise<void>((resolve) => (release = resolve)) : undefined
-		);
+		const drain = drainGate(() => blocked);
+		const h = start(drain.waitForDrain);
+		await drain.parked;
 		await settle();
 		// One response went out and is waiting for drain; only the downloads
 		// already in the ordered window may have started.
@@ -200,20 +216,21 @@ describe('FETCH pacing and cancellation (module)', () => {
 		expect(h.counts.downloads).toBeLessThanOrEqual(RAW_DOWNLOAD_CONCURRENCY + 1);
 
 		blocked = false;
-		release();
+		drain.release();
 		await h.session.completion;
 		expect(h.lines.filter((l) => l.startsWith('* '))).toHaveLength(COUNT);
 		expect(h.lines.at(-1)).toBe('a001 OK FETCH completed');
 	});
 
 	it('issues no Convex call or download after cancel, sends nothing more, and completes', async () => {
-		let release: () => void = () => {};
-		const h = start(() => new Promise<void>((resolve) => (release = resolve)));
+		const drain = drainGate();
+		const h = start(drain.waitForDrain);
+		await drain.parked;
 		await settle();
 		const before = { ...h.counts, lines: h.lines.length };
 
 		h.session.cancel();
-		release();
+		drain.release();
 		await h.session.completion;
 		await settle();
 
@@ -260,12 +277,14 @@ describe('forEachOrdered with an async emit', () => {
 		const controller = new AbortController();
 		let started = 0;
 		let settled = 0;
+		/** Each started item waits for the test to finish it. */
+		const finish = new Map<number, () => void>();
 		const done = forEachOrdered(
 			Array.from({ length: 20 }, (_, i) => i),
 			4,
 			async (n) => {
 				started++;
-				await new Promise((resolve) => setTimeout(resolve, 5));
+				await new Promise<void>((resolve) => finish.set(n, resolve));
 				settled++;
 				return n;
 			},
@@ -274,7 +293,25 @@ describe('forEachOrdered with an async emit', () => {
 			},
 			controller.signal
 		);
-		await expect(done).rejects.toThrow('gone');
+		let rejected = false;
+		const outcome = done.catch((error: unknown) => {
+			rejected = true;
+			throw error;
+		});
+		const aborted = new Promise((resolve) =>
+			controller.signal.addEventListener('abort', resolve, { once: true })
+		);
+
+		// Items 0 and 1 finish; emitting 1 aborts while later items are in flight.
+		finish.get(0)!();
+		finish.get(1)!();
+		await aborted;
+		await settle();
+		expect(rejected).toBe(false);
+		expect(started).toBeGreaterThan(settled);
+
+		for (const [n, end] of finish) if (n > 1) end();
+		await expect(outcome).rejects.toThrow('gone');
 		expect(started).toBe(settled);
 		expect(started).toBeLessThanOrEqual(6);
 	});

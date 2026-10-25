@@ -58,6 +58,35 @@ const FIXTURES: Record<string, string> = {
 		'declare function ready(): boolean;',
 		'',
 	].join('\n'),
+	// A sleep helper in its own module: driven by fake timers in one test file,
+	// left on the real clock in the other.
+	'helpers/sleep.ts': [
+		'export function sleep(ms: number): Promise<void> {',
+		'\treturn new Promise((resolve) => setTimeout(resolve, ms));',
+		'}',
+		'',
+	].join('\n'),
+	'helpers/importedSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './sleep';",
+		'',
+		"it('sleeps on fake time', async () => {",
+		'\tvi.useFakeTimers();',
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
+	'helpers/importedRealSleep.test.ts': [
+		"import { it } from 'vitest';",
+		"import { sleep } from './sleep';",
+		'',
+		"it('sleeps on the real clock', async () => {",
+		'\tawait sleep(50);',
+		'});',
+		'',
+	].join('\n'),
 	'milestones.test.ts': [
 		"import { it } from 'vitest';",
 		'',
@@ -243,11 +272,18 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(errorCodes(byFile.get('loop.test.ts'))).toEqual(['owlat(no-test-in-loop)']);
 	});
 
-	it('reports a polling loop, and warns about a real-clock sleep and an elapsed-time check', () => {
-		expect(errorCodes(byFile.get('timing.test.ts'))).toEqual(['owlat(no-polling-loop-in-tests)']);
-		expect(warningCodes(byFile.get('timing.test.ts'))).toEqual([
+	it('reports a polling loop and a real-clock sleep, and warns about an elapsed-time check', () => {
+		expect(errorCodes(byFile.get('timing.test.ts'))).toEqual([
+			'owlat(no-polling-loop-in-tests)',
 			'owlat(no-real-time-wait-in-tests)',
-			'owlat(no-wall-clock-in-tests)',
+		]);
+		expect(warningCodes(byFile.get('timing.test.ts'))).toEqual(['owlat(no-wall-clock-in-tests)']);
+	});
+
+	it('follows a sleep helper imported from a sibling module to the timer fake time drives', () => {
+		expect(byFile.get('importedSleep.test.ts')).toBeUndefined();
+		expect(errorCodes(byFile.get('importedRealSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
 		]);
 	});
 

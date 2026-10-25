@@ -70,8 +70,11 @@ afterEach(async () => {
 	imap = null;
 }, PARALLEL_GATE_TIMEOUT_MS);
 
+type ServerSeams = NonNullable<Parameters<typeof startImapServer>[3]>;
+
 async function startServer(
-	handshakeMs: number
+	handshakeMs: number,
+	seams: ServerSeams = {}
 ): Promise<{ handle: ImapServerHandle; port: number }> {
 	const config: ImapConfig = {
 		port: 0,
@@ -92,7 +95,8 @@ async function startServer(
 	const handle = startImapServer(
 		config,
 		{} as ConvexClient,
-		new AuthRateLimiter(null, config.authRateLimit)
+		new AuthRateLimiter(null, config.authRateLimit),
+		seams
 	);
 	imap = handle;
 	if (!handle.server.listening) await new Promise((r) => handle.server.once('listening', r));
@@ -191,12 +195,31 @@ describe(
 		});
 
 		it('a completed handshake keeps its session past the handshake deadline', async () => {
-			// Room for a slow handshake on a loaded runner, short enough to outwait.
-			const deadlineMs = 2_000;
-			const { port } = await startServer(deadlineMs);
+			// The deadline is armed by the test's own clock: it expires when the
+			// test says so, not after a real wait.
+			const deadlines: Array<{ expire: () => void; isDisarmed: boolean }> = [];
+			const { port } = await startServer(2_000, {
+				armHandshakeDeadline: (onExpire) => {
+					const deadline = {
+						isDisarmed: false,
+						expire: () => {
+							if (!deadline.isDisarmed) onExpire();
+						},
+					};
+					deadlines.push(deadline);
+					return () => {
+						deadline.isDisarmed = true;
+					};
+				},
+			});
 			const client = await tlsClient(port);
 			await client.waitFor('* OK');
-			await new Promise((resolve) => setTimeout(resolve, deadlineMs + 500));
+			// The session started, so the handshake deadline is off.
+			expect(deadlines).toHaveLength(1);
+			expect(deadlines[0]!.isDisarmed).toBe(true);
+
+			// Its moment comes and goes: the session is not cut, and still answers.
+			for (const deadline of deadlines) deadline.expire();
 			expect(client.socket.destroyed).toBe(false);
 			client.socket.write('a1 NOOP\r\n');
 			await client.waitFor('a1 OK');

@@ -1,0 +1,185 @@
+/**
+ * The global timer behind a `sleep` / `delay` helper a test imports from a
+ * module of its own package, so a test that drives that timer with vitest's
+ * fake timers is judged like one calling a helper declared in the same file.
+ *
+ * Only a relative import is followed, and only a helper of one shape is
+ * accepted: an exported function (declaration, arrow or function expression)
+ * whose whole body returns `new Promise(executor)`, where the executor starts a
+ * global `setTimeout` / `setInterval` itself, not from a nested callback. The
+ * module may not bind `setTimeout`, `setInterval` or `Promise` to anything
+ * else: every mention of a timer has to be a call of it, and every mention of
+ * `Promise` a `new Promise` or a type. Anything else (a package import, a
+ * re-export, a helper that awaits more work, a `node:timers` import) yields no
+ * timer, and the call stays a real-clock wait.
+ *
+ * The module is parsed with the TypeScript compiler, loaded on first use: the
+ * plugin API offers no parser for a second file, and most lint runs never
+ * reach this.
+ */
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
+import type * as TypeScript from 'typescript';
+
+type Ts = typeof TypeScript;
+
+const GLOBAL_TIMERS = new Set(['setTimeout', 'setInterval']);
+const SUFFIXES = ['', '.ts', '.mts', '.js', '.mjs', '/index.ts', '/index.js'];
+
+let loaded: Ts | undefined;
+const typescript = (): Ts => {
+	loaded ??= createRequire(import.meta.url)('typescript') as Ts;
+	return loaded;
+};
+
+/** Keyed by resolved path and export name; files do not change during a lint run. */
+const timers = new Map<string, string | undefined>();
+
+/** The files a relative specifier may name: as written, with an extension, or `.js` for `.ts`. */
+const candidates = (filename: string, source: string): string[] => {
+	const base = resolve(dirname(filename), source);
+	const paths = SUFFIXES.map((suffix) => base + suffix);
+	if (base.endsWith('.js')) paths.push(`${base.slice(0, -3)}.ts`);
+	return paths;
+};
+
+const readable = (path: string): string | undefined => {
+	try {
+		return readFileSync(path, 'utf8');
+	} catch {
+		return undefined;
+	}
+};
+
+const isExported = (ts: Ts, node: TypeScript.Node): boolean =>
+	ts.canHaveModifiers(node) &&
+	(ts.getModifiers(node) ?? []).some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+
+/** The function the module exports under `name` from its own declarations. */
+const exportedFunction = (
+	ts: Ts,
+	file: TypeScript.SourceFile,
+	name: string
+): TypeScript.FunctionLikeDeclaration | undefined => {
+	for (const statement of file.statements) {
+		if (!isExported(ts, statement)) continue;
+		if (ts.isFunctionDeclaration(statement) && statement.name?.text === name) return statement;
+		if (!ts.isVariableStatement(statement)) continue;
+		for (const declaration of statement.declarationList.declarations) {
+			const init = declaration.initializer;
+			if (
+				ts.isIdentifier(declaration.name) &&
+				declaration.name.text === name &&
+				init &&
+				(ts.isArrowFunction(init) || ts.isFunctionExpression(init))
+			) {
+				return init;
+			}
+		}
+	}
+	return undefined;
+};
+
+/** The one expression a function returns when that is its whole body. */
+const returnedExpression = (
+	ts: Ts,
+	fn: TypeScript.FunctionLikeDeclaration
+): TypeScript.Expression | undefined => {
+	const body = fn.body;
+	if (!body) return undefined;
+	if (!ts.isBlock(body)) return body;
+	const [only, ...rest] = body.statements;
+	return rest.length === 0 && only && ts.isReturnStatement(only) ? only.expression : undefined;
+};
+
+const unwrapped = (ts: Ts, node: TypeScript.Expression): TypeScript.Expression =>
+	ts.isParenthesizedExpression(node) ||
+	ts.isAsExpression(node) ||
+	ts.isSatisfiesExpression(node) ||
+	ts.isNonNullExpression(node)
+		? unwrapped(ts, node.expression)
+		: node;
+
+/**
+ * Whether every mention of a timer in the module is a call of it and every
+ * mention of `Promise` a `new Promise` or a type, so neither is rebound.
+ */
+const globalsUnbound = (ts: Ts, file: TypeScript.SourceFile): boolean => {
+	let unbound = true;
+	const visit = (node: TypeScript.Node): void => {
+		if (!unbound) return;
+		if (ts.isIdentifier(node)) {
+			const { parent } = node;
+			if (GLOBAL_TIMERS.has(node.text)) {
+				unbound = ts.isCallExpression(parent) && parent.expression === node;
+			} else if (node.text === 'Promise') {
+				unbound =
+					(ts.isNewExpression(parent) && parent.expression === node) ||
+					ts.isTypeReferenceNode(parent);
+			}
+			return;
+		}
+		ts.forEachChild(node, visit);
+	};
+	visit(file);
+	return unbound;
+};
+
+/** The global timer an executor starts directly, outside any nested function. */
+const executorTimer = (ts: Ts, executor: TypeScript.Node): string | undefined => {
+	let found: string | undefined;
+	const visit = (node: TypeScript.Node): void => {
+		if (found !== undefined || ts.isFunctionLike(node)) return;
+		if (
+			ts.isCallExpression(node) &&
+			ts.isIdentifier(node.expression) &&
+			GLOBAL_TIMERS.has(node.expression.text)
+		) {
+			found = node.expression.text;
+			return;
+		}
+		ts.forEachChild(node, visit);
+	};
+	if (!(ts.isArrowFunction(executor) || ts.isFunctionExpression(executor))) return undefined;
+	const body = executor.body;
+	if (ts.isBlock(body)) ts.forEachChild(body, visit);
+	else visit(body);
+	return found;
+};
+
+const timerOf = (path: string, text: string, name: string): string | undefined => {
+	const ts = typescript();
+	const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
+	if (!globalsUnbound(ts, file)) return undefined;
+	const fn = exportedFunction(ts, file, name);
+	const returned = fn && returnedExpression(ts, fn);
+	if (!returned) return undefined;
+	const promise = unwrapped(ts, returned);
+	if (!ts.isNewExpression(promise) || !ts.isIdentifier(promise.expression)) return undefined;
+	if (promise.expression.text !== 'Promise') return undefined;
+	const [executor] = promise.arguments ?? [];
+	return executor ? executorTimer(ts, executor) : undefined;
+};
+
+/**
+ * The global timer behind the `name` export of the module `source` names,
+ * imported by `filename`; undefined unless the helper has the shape above.
+ */
+export const importedSleepTimer = (
+	filename: string,
+	source: string,
+	name: string
+): string | undefined => {
+	if (!source.startsWith('./') && !source.startsWith('../')) return undefined;
+	for (const path of candidates(filename, source)) {
+		const key = `${path}#${name}`;
+		if (timers.has(key)) return timers.get(key);
+		const text = readable(path);
+		if (text === undefined) continue;
+		const timer = timerOf(path, text, name);
+		timers.set(key, timer);
+		return timer;
+	}
+	return undefined;
+};

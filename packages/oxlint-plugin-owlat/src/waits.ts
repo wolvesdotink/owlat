@@ -26,6 +26,7 @@ import {
 	unwrap,
 	variableOf,
 } from './ast.ts';
+import { importedSleepTimer } from './importedSleep.ts';
 import type { AstNode, Context } from './types.ts';
 
 export type WaitKind = 'sleep' | 'tick';
@@ -41,7 +42,8 @@ export interface Wait {
 	 * vitest's fake timers can replace. Undefined when nothing fake can drive
 	 * the wait: a `node:timers` or `node:timers/promises` import (vitest swaps
 	 * the globals only), Bun's `sleep`, Playwright's `waitForTimeout`, or a
-	 * `sleep` helper whose body this file does not show.
+	 * `sleep` helper whose body neither this file nor a relative import it
+	 * names shows (see importedSleep.ts).
 	 */
 	timer?: string;
 }
@@ -243,10 +245,15 @@ export const callWait = (
 	if (callee?.type === 'Identifier') {
 		if (SLEEP_HELPERS.has(callee.name)) {
 			// Fake timers drive the helper only through the global timer its body
-			// starts; an imported helper's body is out of sight.
+			// starts: a local helper's body is read here, a relative import's by
+			// importedSleep.ts, and any other import's is out of sight.
 			const fn = localFunction(context, callee);
 			const inner = fn && helperWait(context, fn, options.seen ?? new Set());
-			return { kind: delayKind(first, 'sleep'), node, viaHelper: false, timer: inner?.timer };
+			const binding = fn ? undefined : importOf(context, callee);
+			const timer =
+				inner?.timer ??
+				(binding && importedSleepTimer(context.filename, binding.source, binding.imported));
+			return { kind: delayKind(first, 'sleep'), node, viaHelper: false, timer };
 		}
 		if (options.sleepsOnly) return undefined;
 		const binding = importOf(context, callee);

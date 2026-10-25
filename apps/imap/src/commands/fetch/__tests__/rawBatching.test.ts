@@ -40,10 +40,46 @@ function envelope(uid: number, overrides: Partial<FetchEnvelope> = {}): FetchEnv
 
 const raw = (uid: number) => Buffer.from(`Subject: ${uid}\r\n\r\nbody ${uid}`, 'utf8');
 
+/**
+ * Work that takes time on a virtual clock, never the real one. `lasting(ms)`
+ * resolves once the work started now has run `ms`: each time the code under
+ * test has started all it can (one event-loop turn, as every other dependency
+ * is a stub that answers at once), the work due first finishes and the clock
+ * moves to its end.
+ */
+function virtualClock() {
+	let now = 0;
+	let order = 0;
+	let finishing = false;
+	const running: { dueAt: number; order: number; finish: () => void }[] = [];
+	const finishNext = () => {
+		finishing = false;
+		running.sort((a, b) => a.dueAt - b.dueAt || a.order - b.order);
+		const next = running.shift();
+		if (!next) return;
+		now = next.dueAt;
+		next.finish();
+		if (running.length > 0) scheduleFinish();
+	};
+	const scheduleFinish = () => {
+		if (finishing) return;
+		finishing = true;
+		setImmediate(finishNext);
+	};
+	return {
+		lasting: (ms: number) =>
+			new Promise<void>((finish) => {
+				running.push({ dueAt: now + ms, order: order++, finish });
+				scheduleFinish();
+			}),
+	};
+}
+
 function harness(envelopes: FetchEnvelope[], opts: { mintFails?: boolean } = {}) {
 	const lines: string[] = [];
 	let inFlight = 0;
 	let peak = 0;
+	const clock = virtualClock();
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async (url: string) => {
@@ -51,7 +87,7 @@ function harness(envelopes: FetchEnvelope[], opts: { mintFails?: boolean } = {})
 			inFlight++;
 			peak = Math.max(peak, inFlight);
 			// Later messages finish first, so ordering has to be enforced.
-			await new Promise((resolve) => setTimeout(resolve, (100 - (uid % 100)) / 20));
+			await clock.lasting(100 - (uid % 100));
 			inFlight--;
 			const bytes = raw(uid);
 			return {
@@ -197,13 +233,14 @@ describe('forEachOrdered', () => {
 		let running = 0;
 		let peak = 0;
 		const emitted: number[] = [];
+		const clock = virtualClock();
 		await forEachOrdered(
 			[5, 1, 4, 2, 3],
 			2,
 			async (n) => {
 				running++;
 				peak = Math.max(peak, running);
-				await new Promise((resolve) => setTimeout(resolve, n));
+				await clock.lasting(n);
 				running--;
 				return n * 10;
 			},
