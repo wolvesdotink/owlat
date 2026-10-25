@@ -26,6 +26,8 @@ import { redactContactCapabilityFields, type PublicContact } from './listing';
 /**
  * Get all identities for a contact
  */
+// all-members: a contact's channel identifiers, shown on the contact page every
+// member may view; merging them is the gated write.
 export const listByContact = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
@@ -44,6 +46,8 @@ export const listByContact = authedQuery({
  * member-readable contact read, and soft-deleted contacts are never offered on
  * either side: an erased contact is not a merge source or target.
  */
+// all-members: read-only suggestions on the contact page; mergeContacts itself
+// requires contacts:manage.
 export const getMergeSuggestions = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {

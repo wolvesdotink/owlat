@@ -15,6 +15,8 @@ export type ActivityType = ContactActivityType;
 
 // List activities for a contact with pagination
 // Returns activities in chronological order (most recent first)
+// all-members: a contact's activity timeline on the contact page every member
+// may view (editors view contacts; only writes need contacts:manage).
 export const listByContact = authedQuery({
 	args: {
 		contactId: v.id('contacts'),

@@ -19,6 +19,10 @@ import { healthWindowStart } from './health';
 // runs that ended for that reason inside the same last-7-days window
 // (automations/health.ts), most recently ended first. It takes precedence over
 // `status` (every such run is cancelled).
+//
+// all-members: run history is part of the automation page every member may
+// read; the joined contact is the display projection (id, email, name) already
+// member-visible on the contact list.
 export const getAutomationRuns = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
@@ -90,6 +94,8 @@ export const getAutomationRuns = automationsQuery({
 });
 
 // Get step-by-step analytics for funnel visualization
+// all-members: per-step funnel counts and the step config the read-only
+// automation page already shows every member.
 export const getStepAnalytics = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
@@ -126,6 +132,7 @@ export const getStepAnalytics = automationsQuery({
 });
 
 // Get summary statistics for automation
+// all-members: aggregate counts and rates for the automation page every member may read.
 export const getAutomationStats = automationsQuery({
 	args: {
 		automationId: v.id('automations'),

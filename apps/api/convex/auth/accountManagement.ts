@@ -96,6 +96,7 @@ export const exportContactsForOrganization = authedQuery({
 /**
  * Get pending deletion request for a user
  */
+// authz: self — requireSelf refuses any args.userId other than the caller's own.
 export const getPendingDeletionRequest = authedQuery({
 	args: {
 		userId: v.string(),

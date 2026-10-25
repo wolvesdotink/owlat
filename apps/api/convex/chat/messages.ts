@@ -253,6 +253,8 @@ export const markRead = chatMutation({
  * counted as messages with `createdAt > member.lastReadAt`. We cap per-room
  * counting at 100 to stay cheap; "100+" UI is acceptable.
  */
+// authz: self — counts only rooms the caller is a member of (their own
+// chatRoomMembers rows) and their own mention rows; no message content.
 export const myUnreadCounts = chatQuery({
 	args: {},
 	handler: async (ctx) => {

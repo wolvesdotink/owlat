@@ -24,6 +24,8 @@ import { duplicateHandlingValidator } from '../lib/literalValidators';
 import { batchGet } from '../_utils/batchLoader';
 
 // Query to get a single contact by ID (session-authenticated client callers).
+// all-members: editors view contacts (only writes need contacts:manage); the row
+// is redacted of its capability fields and soft-deleted contacts read as null.
 export const get = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
@@ -89,6 +91,8 @@ export const getInternal = internalQuery({
  * Listing engine — search is relevance-ordered and genuinely multi-page (the
  * `'search'` sentinel is gone), soft-delete rides the index.
  */
+// all-members: the contact list editors browse; the listing engine redacts
+// capability fields and skips soft-deleted rows.
 export const list = authedQuery({
 	args: {
 		search: v.optional(v.string()),
