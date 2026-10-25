@@ -290,7 +290,7 @@ export function useEmailEditorBridge<S>(
 			: (draftOwned()?.autosave.dirty.value ?? classicHasChanges.value)
 	);
 	watch(
-		() => hasChanges.value && (!isLive.value || coediting?.isAlone.value === true),
+		() => !draftOwned() && hasChanges.value && (!isLive.value || coediting?.isAlone.value === true),
 		(guard) => setHasChanges(guard),
 		{ immediate: true }
 	);
