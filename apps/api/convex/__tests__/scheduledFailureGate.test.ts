@@ -8,7 +8,12 @@ import { createFunctionHandle } from 'convex/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../_generated/api';
 import { scheduledFailureSeam } from './helpers/scheduledFailureSeam';
-import { expectScheduledFailure, takeScheduledFailures } from './helpers/scheduledFailures';
+import {
+	drainDueScheduledJobs,
+	drainScheduledJobsDueWithin,
+	expectScheduledFailure,
+	takeScheduledFailures,
+} from './helpers/scheduledFailures';
 import {
 	runThrowingScheduledFunction,
 	SCHEDULED_SENTINEL_SWITCH,
@@ -133,15 +138,96 @@ describe('scheduled failure gate', () => {
 		expect(takeScheduledFailures().map((failure) => failure.name)).toEqual([THROWING_FUNCTION]);
 	});
 
+	it('runs a job due now, from any harness, without waiting for its timer', async () => {
+		await newHarness().run(async (ctx) => {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.webhooks.deliveryReconciler.reconcileOverdueDeliveries,
+				{ unexpected: true } as never
+			);
+		});
+
+		await drainDueScheduledJobs();
+
+		expect(takeScheduledFailures().map((failure) => failure.name)).toEqual([THROWING_FUNCTION]);
+	});
+
+	it('leaves a job due later to its timer', async () => {
+		const t = newHarness();
+		await t.run(async (ctx) => {
+			await ctx.scheduler.runAfter(
+				60_000,
+				internal.webhooks.deliveryReconciler.reconcileOverdueDeliveries,
+				{ unexpected: true } as never
+			);
+		});
+
+		await drainDueScheduledJobs();
+
+		expect(takeScheduledFailures()).toEqual([]);
+		const jobs = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		expect(jobs.map((job) => job.state.kind)).toEqual(['pending']);
+		// Its timer is real: cancelled, it does nothing when it fires after this file.
+		await t.run((ctx) => ctx.scheduler.cancel(jobs[0]!._id));
+	});
+
+	describe('running jobs due soon, as the file drain does', () => {
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		/** Schedule the throwing function `delayMs` out on real timers; the harness is handed back. */
+		async function scheduleThrowingJob(delayMs: number) {
+			const t = newHarness();
+			await t.run(async (ctx) => {
+				await ctx.scheduler.runAfter(
+					delayMs,
+					internal.webhooks.deliveryReconciler.reconcileOverdueDeliveries,
+					{ unexpected: true } as never
+				);
+			});
+			return t;
+		}
+
+		it('moves Date to the due time before the job runs, then hands the real clock back', async () => {
+			const t = await scheduleThrowingJob(500);
+
+			await drainScheduledJobsDueWithin(1000);
+
+			expect(takeScheduledFailures().map((failure) => failure.name)).toEqual([THROWING_FUNCTION]);
+			const [job] = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+			// convex-test stamps the end of the run with Date.now(): the job never
+			// saw a clock before its scheduled time.
+			expect(job?.state.kind).toBe('failed');
+			expect(job?.completedTime).toBeGreaterThanOrEqual(job!.scheduledTime);
+			expect(vi.getMockedSystemTime()).toBeNull();
+		});
+
+		it('runs no job early on a clock the test controls', async () => {
+			vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+			const t = await scheduleThrowingJob(500);
+
+			await drainScheduledJobsDueWithin(1000);
+
+			expect(takeScheduledFailures()).toEqual([]);
+			const jobs = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+			expect(jobs.map((job) => job.state.kind)).toEqual(['pending']);
+			expect(vi.getMockedSystemTime()?.toISOString()).toBe('2026-01-01T00:00:00.000Z');
+			// Its timer is real: cancelled, it does nothing when it fires after this file.
+			await t.run((ctx) => ctx.scheduler.cancel(jobs[0]!._id));
+		});
+	});
+
 	describe('the convex-test seam', () => {
 		const seam = scheduledFailureSeam();
 		const entry = '/repo/node_modules/convex-test/dist/index.js';
 		const reportLine = 'console.error(`Error when running scheduled function ${name}`, error);';
 		const scheduleLine = 'scheduler.timerScheduled();';
+		const armCall = 'frameworkSetTimeout(() => {';
 		const convexTestShape = [
 			'const requestMetadataStorage = new AsyncLocalStorage();',
 			'const globalOverridesStorage = new AsyncLocalStorage();',
-			`function schedule() { ${scheduleLine} }`,
+			`function schedule() { ${scheduleLine} ${armCall} fire(); }, delay); }`,
 			`try { run(); } catch (error) { ${reportLine} }`,
 		].join('\n');
 
@@ -153,7 +239,12 @@ describe('scheduled failure gate', () => {
 			expect(() => seam.transform('export const changed = true;', entry)).toThrow(
 				/convex-test changed/
 			);
-			for (const missing of [reportLine, scheduleLine, 'const globalOverridesStorage = ']) {
+			for (const missing of [
+				reportLine,
+				scheduleLine,
+				armCall,
+				'const globalOverridesStorage = ',
+			]) {
 				expect(() => seam.transform(convexTestShape.replace(missing, ''), entry)).toThrow(
 					/convex-test changed/
 				);
@@ -168,6 +259,15 @@ describe('scheduled failure gate', () => {
 			expect(failureSink).toBeLessThan(out.indexOf(reportLine));
 			expect(jobSink).toBeGreaterThan(-1);
 			expect(jobSink).toBeLessThan(out.indexOf(scheduleLine));
+		});
+
+		it('hands the timer callback that runs a job to the gate, keeping the rest of the call', () => {
+			const out = seam.transform(convexTestShape, entry)!;
+			expect(out).not.toContain(armCall);
+			expect(out).toContain(
+				'(globalThis[Symbol.for("owlat.test.scheduledJobArm")] ?? ((arm, _job, run, ms) => ' +
+					'arm(run, ms)))(frameworkSetTimeout, { db, jobId }, () => { fire(); }, delay);'
+			);
 		});
 	});
 
