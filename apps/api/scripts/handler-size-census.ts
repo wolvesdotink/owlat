@@ -7,9 +7,10 @@
  *   bun scripts/handler-size-census.ts --top <n>  the n longest, `<lines> <module>:<name>`
  *   bun scripts/handler-size-census.ts --stdin <module>
  *                                                 the census of one module read from stdin, as
- *                                                 JSON (how the gate's own tests drive it)
+ *                                                 JSON `{ handlers, problems }` (how the gate's
+ *                                                 own tests drive it)
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { byLength, censusLines, censusModule, type HandlerSize } from './lib/handlerSize';
 import { productionModules } from './lib/sourceGraph';
@@ -21,24 +22,35 @@ import { productionModules } from './lib/sourceGraph';
  */
 const HANDLER_LINE_CAP = 180;
 
+const apiRoot = join(import.meta.dirname, '..');
+
+/** Modules are named relative to apps/api (`convex/mail/draftSend.ts`). */
+const readModule = (module: string): string | undefined => {
+	const path = join(apiRoot, module);
+	return existsSync(path) ? readFileSync(path, 'utf8') : undefined;
+};
+
 const stdinModule = process.argv.indexOf('--stdin');
 if (stdinModule !== -1) {
 	const module = process.argv[stdinModule + 1] ?? 'convex/stdin.ts';
-	console.info(JSON.stringify(censusModule(module, readFileSync(0, 'utf8'))));
+	console.info(JSON.stringify(censusModule(module, readFileSync(0, 'utf8'), readModule)));
 	process.exit(0);
 }
-
-const apiRoot = join(import.meta.dirname, '..');
 const handlers: HandlerSize[] = [];
+const problems: string[] = [];
 for (const file of productionModules(join(apiRoot, 'convex'))) {
 	const module = relative(apiRoot, file).split('\\').join('/');
-	handlers.push(...censusModule(module, readFileSync(file, 'utf8')));
+	const census = censusModule(module, readFileSync(file, 'utf8'), readModule);
+	handlers.push(...census.handlers);
+	problems.push(...census.problems);
 }
 
 // A parser that stopped recognising the builders would report an empty set,
 // which the ratchet would read as every long handler fixed.
-if (handlers.length < 500) {
-	console.error(`FAIL: found only ${handlers.length} Convex handlers under convex/`);
+if (handlers.length < 500)
+	problems.push(`found only ${handlers.length} Convex handlers under convex/`);
+if (problems.length > 0) {
+	for (const problem of problems) console.error(`FAIL: ${problem}`);
 	process.exit(1);
 }
 
