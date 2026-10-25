@@ -313,6 +313,23 @@ describe('usePostboxCompose — early edits merge over the loaded row (#896)', (
 		});
 	});
 
+	it('reads stored blocks that are not a Block list as none, and drops entries that are not Blocks', async () => {
+		for (const bodyBlocks of ['{not json', '{}', 'null', '"text"']) {
+			draftQuery = queryResult<unknown>(undefined);
+			const composer = await openComposer();
+			await hydrate({ ...SAVED_ROW, composerMode: 'full', bodyBlocks });
+			expect(composer.bodyBlocks.value).toEqual([]);
+		}
+		draftQuery = queryResult<unknown>(undefined);
+		const composer = await openComposer();
+		await hydrate({
+			...SAVED_ROW,
+			composerMode: 'full',
+			bodyBlocks: JSON.stringify([...BLOCKS, 'stray', null, { content: 'no type' }]),
+		});
+		expect(composer.bodyBlocks.value).toEqual(BLOCKS);
+	});
+
 	it('keeps a follow-up reminder set before the load, and one cleared before the load', async () => {
 		const setEarly = await openComposer();
 		setEarly.followUpRemindAt.value = 9_000;

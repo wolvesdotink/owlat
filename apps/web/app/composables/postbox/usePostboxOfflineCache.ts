@@ -30,6 +30,7 @@ import {
 	offlineCacheNamespace,
 	wipeOfflineReadCache,
 } from '~/utils/postboxOfflineCacheScope';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import { scheduleIdle } from '~/lib/scheduleIdle';
 
 const STORAGE_KEY = 'owlat:postbox:offline-cache-enabled';
@@ -41,11 +42,11 @@ export const POSTBOX_OFFLINE_CACHE_DEFAULT = true;
  * Deep plain-copy for values headed to IndexedDB's structured-clone boundary.
  * Convex query results are reactive proxies; passing one straight to
  * structured-clone throws and permanently disables the cache, so we strip all
- * reactivity to a plain JSON snapshot first.
+ * reactivity to a plain JSON-shaped snapshot first.
  */
 function toPlain<T>(value: readonly T[]): T[] {
 	try {
-		return JSON.parse(JSON.stringify(value)) as T[];
+		return plainClone([...value]);
 	} catch {
 		return [...value];
 	}

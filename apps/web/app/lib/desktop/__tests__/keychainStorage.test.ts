@@ -50,6 +50,24 @@ describe('keychainStorage — one storage per keychain entry', () => {
 		expect(storage.snapshot()).toBe('{}');
 	});
 
+	it('starts clean from a blob that is JSON but not an object', () => {
+		for (const blob of ['["k","v"]', 'null', '"k"', '42']) {
+			const storage = createKeychainStorage('owlat-ws:a', read(blob), persistence());
+			expect(storage.snapshot()).toBe('{}');
+		}
+	});
+
+	it('keeps only the string entries of a blob', () => {
+		const storage = createKeychainStorage(
+			'owlat-ws:a',
+			read(JSON.stringify({ k: 'v', n: 1, o: { v: 'x' }, z: null })),
+			persistence()
+		);
+		expect(storage.getItem('k')).toBe('v');
+		expect(storage.getItem('n')).toBeNull();
+		expect(JSON.parse(storage.snapshot())).toEqual({ k: 'v' });
+	});
+
 	it('writes changes to its own entry after the debounce, once', async () => {
 		const persist = vi.fn();
 		const storage = createKeychainStorage('owlat-ws:a', null, persistence(persist));

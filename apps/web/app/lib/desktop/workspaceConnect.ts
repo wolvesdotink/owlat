@@ -19,8 +19,8 @@ import {
 	writePendingConnection,
 	type PendingStorage,
 } from '~/lib/desktop/pendingConnections';
+import { readInstanceInfo } from '~/lib/desktop/instanceInfo';
 import {
-	type InstanceInfo,
 	type WorkspaceConfig,
 	pickAccentColor,
 	workspaceTokenRef,
@@ -106,8 +106,8 @@ export async function addWorkspace(siteUrlInput: string): Promise<void> {
 			siteUrl,
 		});
 	}
-	const info = (await res.json()) as InstanceInfo;
-	if (!info.convexUrl || !info.convexSiteUrl) {
+	const info = readInstanceInfo(await res.json().catch(() => undefined));
+	if (!info) {
 		throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.unusableConfig');
 	}
 

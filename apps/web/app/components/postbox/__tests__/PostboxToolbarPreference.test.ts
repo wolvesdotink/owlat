@@ -6,17 +6,18 @@
  */
 import { describe, it, expect } from 'vitest';
 import { useLocalStorage } from '~/composables/useLocalStorage';
+import { readStoredBoolean } from '~/utils/storedValue';
 
 const KEY = 'postbox-composer-persistent-toolbar';
 
 describe('composer toolbar preference', () => {
 	it('defaults to the minimal floating bar (false)', () => {
-		const { data } = useLocalStorage(KEY, false);
+		const { data } = useLocalStorage(KEY, false, readStoredBoolean);
 		expect(data.value).toBe(false);
 	});
 
 	it('toggling switches the mode reactively', () => {
-		const { data, set } = useLocalStorage(KEY, false);
+		const { data, set } = useLocalStorage(KEY, false, readStoredBoolean);
 		set(!data.value);
 		expect(data.value).toBe(true);
 		set(!data.value);

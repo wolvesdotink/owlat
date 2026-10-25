@@ -37,6 +37,41 @@ const base = (overrides: Partial<TranslationBase> = {}): TranslationBase => ({
 });
 
 describe('buildTranslationUpdate', () => {
+	it('refuses to build a write on overlays it could not read', () => {
+		const unreadable = translationBaseOf({ content: CONTENT, subject: 'S', translations: '{de' });
+		expect(() =>
+			buildTranslationUpdate(
+				unreadable,
+				'de',
+				[{ field: { kind: 'subject' }, value: 'Betreff' }],
+				renderOptions
+			)
+		).toThrow();
+	});
+
+	it('starts an overlay that has no subject or blocks yet from empty ones', () => {
+		const payload = buildTranslationUpdate(
+			base({ translations: { fr: { previewText: 'Aperçu' } } }),
+			'fr',
+			[{ field: { kind: 'block', blockId: 'b1', property: 'html' }, value: 'Bonjour' }],
+			renderOptions
+		);
+		expect(payload.subject).toBe('');
+		expect(payload.previewText).toBe('Aperçu');
+		expect(JSON.parse(payload.blocks)).toEqual({ b1: { html: 'Bonjour' } });
+	});
+
+	it('leaves the base overlay untouched', () => {
+		const frozen = base();
+		buildTranslationUpdate(
+			frozen,
+			'de',
+			[{ field: { kind: 'block', blockId: 'b1', property: 'html' }, value: 'Guten Tag' }],
+			renderOptions
+		);
+		expect(frozen.translations['de']?.blocks?.['b1']).toEqual({ html: 'Hallo Welt' });
+	});
+
 	it('renders the HTML from the edited overlay and names the base revision', () => {
 		const payload = buildTranslationUpdate(
 			base(),
@@ -119,10 +154,33 @@ describe('buildLanguageAdd', () => {
 });
 
 describe('translationBaseOf', () => {
-	it('freezes the row, reading a missing revision as 0 and bad JSON as no overlays', () => {
+	it.each([
+		['a list', '[]'],
+		['an overlay with a non-string subject', JSON.stringify({ de: { subject: 1, blocks: {} } })],
+		['Block text that is an object', JSON.stringify({ de: { blocks: { b1: { html: {} } } } })],
+	])('reads overlays that are %s as unreadable', (_case, translations) => {
+		expect(translationBaseOf({ content: CONTENT, subject: 'S', translations })).toMatchObject({
+			translations: {},
+			translationsUnreadable: true,
+		});
+	});
+
+	it('reads a row without translations as no overlays, readable', () => {
+		const frozen = translationBaseOf({ content: CONTENT, subject: 'S' });
+		expect(frozen.translations).toEqual({});
+		expect(frozen.translationsUnreadable).toBeUndefined();
+	});
+
+	it('freezes the row, reading a missing revision as 0 and bad JSON as unreadable overlays', () => {
 		expect(
 			translationBaseOf({ content: CONTENT, subject: 'S', translations: '{not json' })
-		).toEqual({ content: CONTENT, subject: 'S', translations: {}, revision: 0 });
+		).toEqual({
+			content: CONTENT,
+			subject: 'S',
+			translations: {},
+			translationsUnreadable: true,
+			revision: 0,
+		});
 		expect(
 			translationBaseOf({
 				content: CONTENT,

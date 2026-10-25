@@ -28,6 +28,10 @@
 		"./stored-blocks": {
 			"types": "./src/utils/storedBlocks.ts",
 			"import": "./src/utils/storedBlocks.ts"
+		},
+		"./plain-clone": {
+			"types": "./src/utils/plainClone.ts",
+			"import": "./src/utils/plainClone.ts"
 		}
 	},
 	"scripts": {

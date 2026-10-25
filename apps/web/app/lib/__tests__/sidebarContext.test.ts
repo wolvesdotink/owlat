@@ -6,7 +6,12 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { SectionKey } from '~/composables/useSidebarState';
-import { contextForPath, resolveSwitchTarget, splitSectionsByContext } from '../sidebarContext';
+import {
+	contextForPath,
+	readLastVisitedRoutes,
+	resolveSwitchTarget,
+	splitSectionsByContext,
+} from '../sidebarContext';
 
 function section(key: SectionKey, hrefs: string[]) {
 	return { key, items: hrefs.map((href) => ({ href })) };
@@ -125,5 +130,25 @@ describe('resolveSwitchTarget', () => {
 
 	it('falls back to the dashboard when the context has no visible items', () => {
 		expect(resolveSwitchTarget('marketing', undefined, [])).toBe('/dashboard');
+	});
+});
+
+describe('readLastVisitedRoutes', () => {
+	it('keeps the string route of each context it knows', () => {
+		expect(
+			readLastVisitedRoutes({ inbox: '/dashboard/inbox', marketing: '/dashboard/campaigns' })
+		).toEqual({ inbox: '/dashboard/inbox', marketing: '/dashboard/campaigns' });
+	});
+
+	it('drops an unknown context and a route that is not a string', () => {
+		expect(
+			readLastVisitedRoutes({ inbox: 7, marketing: '/dashboard/campaigns', chat: '/x' })
+		).toEqual({ marketing: '/dashboard/campaigns' });
+	});
+
+	it('does not accept a stored value that is not an object', () => {
+		for (const stored of [null, ['/dashboard/inbox'], '/dashboard/inbox', 1]) {
+			expect(readLastVisitedRoutes(stored)).toBeUndefined();
+		}
 	});
 });

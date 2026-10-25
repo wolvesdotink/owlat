@@ -113,6 +113,34 @@ describe('pending notification action', () => {
 		expect(takePendingAction(storage, 'ws-a', 1000)).toBeNull();
 	});
 
+	it("consumes its own workspace's entry whose payload is not an object", () => {
+		const storage = memoryStorage();
+		for (const payload of [['reply', 'm1'], null, 7]) {
+			storage.setItem(
+				PENDING_NOTIFICATION_ACTION_KEY,
+				JSON.stringify({ workspaceId: 'ws-a', at: 1000, payload })
+			);
+			expect(takePendingAction(storage, 'ws-a', 1000)).toBeNull();
+			// Taken once and dropped, never replayed.
+			expect(storage.getItem(PENDING_NOTIFICATION_ACTION_KEY)).toBeNull();
+		}
+	});
+
+	it("leaves another workspace's entry in place, whatever else it holds", () => {
+		const storage = memoryStorage();
+		const raw = JSON.stringify({ workspaceId: 'ws-a', at: 'later', payload: [] });
+		storage.setItem(PENDING_NOTIFICATION_ACTION_KEY, raw);
+		expect(takePendingAction(storage, 'ws-b', 1000)).toBeNull();
+		expect(storage.getItem(PENDING_NOTIFICATION_ACTION_KEY)).toBe(raw);
+	});
+
+	it('leaves an entry that is a list in place', () => {
+		const storage = memoryStorage();
+		storage.setItem(PENDING_NOTIFICATION_ACTION_KEY, '["ws-a",1000]');
+		expect(takePendingAction(storage, 'ws-a', 1000)).toBeNull();
+		expect(storage.getItem(PENDING_NOTIFICATION_ACTION_KEY)).toBe('["ws-a",1000]');
+	});
+
 	it('survives a storage that throws on read', () => {
 		const storage = memoryStorage({
 			getItem: () => {

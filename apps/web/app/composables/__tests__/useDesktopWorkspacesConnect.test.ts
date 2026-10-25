@@ -480,3 +480,47 @@ describe('addWorkspace — reconnecting an existing server', () => {
 		});
 	});
 });
+
+describe('addWorkspace — an unusable instance answer', () => {
+	it.each([
+		['no Convex URLs', { name: 'Acme' }],
+		['a non-string Convex URL', { ...INSTANCE, convexUrl: 42 }],
+		['a non-string name', { ...INSTANCE, name: { en: 'Acme' } }],
+		['a list', [INSTANCE]],
+		['null', null],
+	])('refuses an answer with %s and opens nothing', async (_case, body) => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({ ok: true, json: async () => body }) as unknown as Response)
+		);
+		const mod = await freshModule();
+		await mod.loadWorkspaces();
+
+		await expect(mod.useDesktopWorkspaces().addWorkspace('acme.test')).rejects.toThrow(
+			'shared.useDesktopWorkspaces.errors.unusableConfig'
+		);
+		expect(openExternal).not.toHaveBeenCalled();
+	});
+
+	it('refuses an answer that is not JSON', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					({
+						ok: true,
+						json: async () => {
+							throw new SyntaxError('Unexpected token <');
+						},
+					}) as unknown as Response
+			)
+		);
+		const mod = await freshModule();
+		await mod.loadWorkspaces();
+
+		await expect(mod.useDesktopWorkspaces().addWorkspace('acme.test')).rejects.toThrow(
+			'shared.useDesktopWorkspaces.errors.unusableConfig'
+		);
+		expect(openExternal).not.toHaveBeenCalled();
+	});
+});

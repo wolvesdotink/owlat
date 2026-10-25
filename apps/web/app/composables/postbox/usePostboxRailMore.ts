@@ -7,10 +7,13 @@
  * unfolded is about this screen, not about the mailbox. Collapsed by default —
  * the group exists precisely because none of its rows is a daily click.
  */
+
+import { readStoredBoolean } from '~/utils/storedValue';
+
 const STORAGE_KEY = 'postbox-rail-more-open';
 
 export function usePostboxRailMore() {
-	const { data: isOpen, set } = useLocalStorage(STORAGE_KEY, false);
+	const { data: isOpen, set } = useLocalStorage(STORAGE_KEY, false, readStoredBoolean);
 
 	function toggle() {
 		set(!isOpen.value);
