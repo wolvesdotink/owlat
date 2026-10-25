@@ -145,12 +145,13 @@ describe('exec', () => {
 
 	it('stops a command at its timeout, grandchildren included, and collects it', async () => {
 		const pidFile = join(DIR, 'timeout.pid');
-		const started = Date.now();
+		// The grandchild sleeps 30 s and holds the output pipes: only the timeout
+		// stopping the group lets `exec` return, and it returns once the group
+		// has gone.
 		const result = await exec('sh', ['-c', spawnsGrandchild(pidFile)], DIR, {
 			timeoutMs: 200,
 		});
 
-		expect(Date.now() - started).toBeLessThan(3_000);
 		expect(result.ok).toBe(false);
 		expect(result.stderr).toContain('sh timed out after 0.2s');
 		// A stopped command settles only once its whole group has gone, so the

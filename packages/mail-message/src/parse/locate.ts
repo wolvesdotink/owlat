@@ -88,8 +88,11 @@ interface PartFrame {
 	container: Container | null;
 }
 
-/** Locate the parts of a raw message (its bytes); see the module comment. */
-export function locateMimeTree(raw: Uint8Array): LocatedTree {
+/**
+ * Locate the parts of a raw message (its bytes); see the module comment.
+ * `meter`, which only tests pass, counts the bytes the line scan reads.
+ */
+export function locateMimeTree(raw: Uint8Array, meter?: { bytes: number }): LocatedTree {
 	const n = raw.length;
 	const text = (start: number, end: number) => bytesToBinaryString(raw.subarray(start, end));
 	const bodies = new WeakMap<MimeNode, LocatedBody>();
@@ -231,6 +234,7 @@ export function locateMimeTree(raw: Uint8Array): LocatedTree {
 		const atEnd = nl === -1;
 		const lineEnd = atEnd ? n : nl > pos && raw[nl - 1] === 0x0d ? nl - 1 : nl;
 		const next = atEnd ? n + 1 : nl + 1;
+		if (meter) meter.bytes += next - pos;
 
 		const line = delimiters.size > 0 ? delimiterText(pos, lineEnd) : null;
 		const levels = line === null ? undefined : delimiters.get(line);

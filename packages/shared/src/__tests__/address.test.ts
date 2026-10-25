@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MAX_ADDRESS_HEADER_LENGTH } from '@owlat/mail-message/parse/address';
 import {
 	parseAddress,
@@ -7,6 +7,19 @@ import {
 	extractDomainOrNull,
 	type ParsedAddress,
 } from '../address';
+import type * as AddressModule from '@owlat/mail-message/parse/address';
+
+/** The characters the bounded parser's scans read, through the adapters below. */
+const scan = vi.hoisted(() => ({ chars: 0 }));
+
+vi.mock('@owlat/mail-message/parse/address', async (importOriginal) => {
+	const actual = await importOriginal<typeof AddressModule>();
+	return {
+		...actual,
+		parseMailboxAddress: (raw: string) => actual.parseMailboxAddress(raw, scan),
+		parseAddressList: (input: string) => actual.parseAddressList(input, scan),
+	};
+});
 
 describe('parseAddress', () => {
 	it('parses a bare email', () => {
@@ -321,15 +334,23 @@ describe('parser swap — deliberate divergences', () => {
  * point of the swap, not a nicety.
  */
 describe('hostile input is bounded', () => {
-	it('parses a 1 MB no-closing-> run in milliseconds and returns nothing', () => {
+	it('parses a 1 MB no-closing-> run reading only the capped prefix, and returns nothing', () => {
+		// Counted, not timed: the work is the bounded parser's, read through its
+		// scan meter (mocked in above). One mailbox costs a comment pass and an
+		// angle split over at most the cap; the list adds its own pass.
 		const evil = 'A<'.repeat(500_000);
-		const start = performance.now();
-		const single = parseAddress(evil);
-		const list = parseAddressList(evil);
-		const elapsed = performance.now() - start;
-		expect(elapsed).toBeLessThan(500);
-		expect(single).toBeNull();
-		expect(list).toEqual([]);
+		scan.chars = 0;
+		expect(parseAddress(evil)).toBeNull();
+		expect(scan.chars).toBeGreaterThan(0);
+		expect(scan.chars).toBeLessThanOrEqual(2 * MAX_ADDRESS_HEADER_LENGTH);
+		scan.chars = 0;
+		expect(parseAddressList(evil)).toEqual([]);
+		expect(scan.chars).toBeLessThanOrEqual(3 * MAX_ADDRESS_HEADER_LENGTH);
+	});
+
+	it('never reads a single address past the cap', () => {
+		expect(parseAddress(`${'x'.repeat(MAX_ADDRESS_HEADER_LENGTH)} real@z.com`)).toBeNull();
+		expect(parseAddress(`${'x'.repeat(64)} real@z.com`)).toEqual({ address: 'real@z.com' });
 	});
 
 	it('truncates a header past the cap instead of throwing', () => {

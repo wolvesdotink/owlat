@@ -73,17 +73,33 @@ describe('the late guard on the caller’s deadline', () => {
 	});
 
 	it('cuts a guard request off when the caller’s nearly spent deadline runs out, and meters it', async () => {
-		mocks.generateObject.mockImplementation(
-			({ abortSignal }: { abortSignal: AbortSignal }) =>
-				new Promise((_resolve, reject) =>
-					abortSignal.addEventListener('abort', () => reject(abortSignal.reason), { once: true })
-				)
-		);
+		// The call's deadline is a native AbortSignal.timeout, which fake timers
+		// cannot drive: hand out a signal the test fires instead, and pin the
+		// clock so the remaining time is exact.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date('2026-10-01T10:00:00Z'));
+		const deadline = new AbortController();
+		const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+		let requestSent!: () => void;
+		const sent = new Promise<void>((resolve) => (requestSent = resolve));
+		mocks.generateObject.mockImplementation(({ abortSignal }: { abortSignal: AbortSignal }) => {
+			requestSent();
+			return new Promise((_resolve, reject) =>
+				abortSignal.addEventListener('abort', () => reject(abortSignal.reason), { once: true })
+			);
+		});
 		const { ctx, ledger, lateGuards } = makeCtx();
-		const started = Date.now();
-		await runGuardBeforeAutonomy(ctx, message, started + 40);
-		// Bounded by the caller's 40 ms, not by a fresh 480 s action budget.
-		expect(Date.now() - started).toBeLessThan(5_000);
+		try {
+			const guarded = runGuardBeforeAutonomy(ctx, message, Date.now() + 40);
+			await sent;
+			// Bounded by the caller's 40 ms, not by a fresh 480 s action budget.
+			expect(timeout.mock.calls).toEqual([[40]]);
+			deadline.abort(new DOMException('The operation timed out.', 'TimeoutError'));
+			await guarded;
+		} finally {
+			timeout.mockRestore();
+			vi.useRealTimers();
+		}
 		expect(mocks.generateObject).toHaveBeenCalledTimes(1);
 		expect(ledger.flatMap((call) => call.requests)).toEqual([
 			expect.objectContaining({ attempt: 1 }),

@@ -104,16 +104,22 @@ async function startServer(
 }
 
 /** A TCP peer that connects and never sends a byte; resolves once connected. */
-async function silentPeer(port: number): Promise<{ socket: Socket; closed: Promise<number> }> {
+async function silentPeer(port: number): Promise<{ socket: Socket; closed: Promise<void> }> {
 	const socket = connectTcp(port, '127.0.0.1');
 	clients.push(socket);
 	socket.on('error', () => {});
-	const opened = Date.now();
-	const closed = new Promise<number>((resolve) =>
-		socket.once('close', () => resolve(Date.now() - opened))
-	);
+	const closed = new Promise<void>((resolve) => socket.once('close', () => resolve()));
 	await new Promise((resolve) => socket.once('connect', resolve));
 	return { socket, closed };
+}
+
+/**
+ * The server's side of the next accepted connection, as admission left it:
+ * this listener runs after the server's own, so a refused peer is already
+ * destroyed here and an admitted one has its handshake deadline armed.
+ */
+function nextAccepted(handle: ImapServerHandle): Promise<Socket> {
+	return new Promise((resolve) => handle.server.once('connection', resolve));
 }
 
 /**
@@ -184,14 +190,26 @@ describe(
 
 		it('a raw peer that never negotiates is closed at the deadline, freeing its slot', async () => {
 			const deadlineMs = 300;
-			const { port } = await startServer(deadlineMs);
-			// Lower bounds only: load can delay a close, never hasten one.
-			const first = await silentPeer(port);
-			expect(await first.closed).toBeGreaterThanOrEqual(deadlineMs - 50);
-			// Had the expired peer kept its slot, this one would be refused at once
-			// rather than waiting out a deadline of its own.
-			const next = await silentPeer(port);
-			expect(await next.closed).toBeGreaterThanOrEqual(deadlineMs - 50);
+			const { handle, port } = await startServer(deadlineMs);
+			// Only the handshake deadline runs on the fake clock; the sockets are real.
+			vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+			try {
+				// The second peer is admitted only if the expired first one let go of
+				// the single slot; otherwise it is refused at once.
+				for (const peer of ['first', 'next']) {
+					const accepted = nextAccepted(handle);
+					const { closed } = await silentPeer(port);
+					const serverSide = await accepted;
+					expect(serverSide.destroyed, `${peer} admitted`).toBe(false);
+					await vi.advanceTimersByTimeAsync(deadlineMs - 1);
+					expect(serverSide.destroyed, `${peer} open before the deadline`).toBe(false);
+					await vi.advanceTimersByTimeAsync(1);
+					expect(serverSide.destroyed, `${peer} closed at the deadline`).toBe(true);
+					await closed;
+				}
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 
 		it('a completed handshake keeps its session past the handshake deadline', async () => {

@@ -2,12 +2,7 @@
 # oxlintrc.json (see scripts/check-owlat-lint.sh). One line per finding:
 # <file> TAB <rule> TAB <source text of the reported span>.
 # Lines only ever get deleted; a rule with no line left here moves to "error".
-apps/api/convex/__tests__/assistantNestedTools.integration.test.ts	owlat(no-wall-clock-in-tests)	draftAbortedAt! - stoppedAt!
-apps/api/convex/agent/steps/__tests__/lateGuardDeadline.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
-apps/api/convex/agent/steps/security_scan/__tests__/stripHiddenContent.perf.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/api/convex/agent/steps/security_scan/__tests__/stripHiddenContent.perf.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/api/convex/agentConfigMutations.ts	owlat(use-threaded-session)	updateConfig
-apps/api/convex/analytics/__tests__/engagementScore.adversarial.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
 apps/api/convex/analytics/complianceTelemetry.ts	owlat(use-threaded-session)	getComplianceTelemetry
 apps/api/convex/analytics/dashboard.ts	owlat(use-threaded-session)	getRecentActivity
 apps/api/convex/analytics/dashboard.ts	owlat(use-threaded-session)	getStats
@@ -186,9 +181,6 @@ apps/api/convex/lib/emailProviders/mtaIdentity.ts	owlat(no-unchecked-json-cast)	
 apps/api/convex/lib/emailTranslations.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, Translation>
 apps/api/convex/lib/emailTranslations.ts	owlat(no-unchecked-json-cast)	JSON.parse(contentJson) as Block[]
 apps/api/convex/lib/emailTranslations.ts	owlat(no-unchecked-json-cast)	JSON.parse(sanitizeOverlayBlocksJson(update.blocks)) as Record< string, TranslatableBlockContent >
-apps/api/convex/lib/llm/__tests__/dispatch.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
-apps/api/convex/lib/llm/__tests__/toolMarkup.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/api/convex/lib/llm/__tests__/toolMarkup.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/api/convex/lib/llm/batch/transport.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { id?: unknown }
 apps/api/convex/lib/llm/batch/transport.ts	owlat(no-unchecked-json-cast)	response.json() as Promise<{ id?: unknown }>
 apps/api/convex/lib/publishableEmailRender.ts	owlat(no-unchecked-json-cast)	JSON.parse(row.translations) as Record< string, { subject?: string; blocks?: Record<string, TranslatableBlockContent> } >
@@ -283,22 +275,13 @@ apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	remove
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	sendTestWebhook
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	toggle
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	update
-apps/api/convex/workspaces/__tests__/brandKitWebsite.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/api/convex/workspaces/__tests__/brandKitWebsite.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/api/convex/workspaces/__tests__/brandKitWebsite.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/api/convex/workspaces/__tests__/brandKitWebsite.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/api/convex/workspaces/featureFlags.ts	owlat(use-threaded-session)	setAllFeatureFlags
 apps/api/convex/workspaces/featureFlags.ts	owlat(use-threaded-session)	setFeatureFlag
 apps/api/convex/workspaces/featureFlags.ts	owlat(use-threaded-session)	setFeaturePack
 apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	get
 apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	remove
 apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	update
-apps/imap/src/__tests__/server.handshake.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - opened
-apps/imap/src/commands/__tests__/messageSets.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/imap/src/commands/__tests__/messageSets.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/imap/src/commands/append/index.ts	owlat(no-unchecked-json-cast)	(await uploadRes.json()) as { storageId: string }
-apps/imap/src/commands/helpers/__tests__/seqMap.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/imap/src/commands/helpers/__tests__/seqMap.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/mail-sync/src/ingest.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId: string; size: number }
 apps/marketing/app/composables/useDesktopDownload.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { assets?: { name: string; browser_download_url: string }[]; }
 apps/mta/src/auth/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as OrgCredential
@@ -320,19 +303,13 @@ apps/mta/src/monitoring/googlePostmasterApi.ts	owlat(no-unchecked-json-cast)	(aw
 apps/mta/src/queue/deferHandoff.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Record<string, unknown>
 apps/mta/src/queue/routingReentryHandoff.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Record<string, unknown>
 apps/mta/src/routes/sendReceipt.ts	owlat(no-unchecked-json-cast)	JSON.parse(value) as Record<string, unknown>
-apps/mta/src/scaling/__tests__/port25Probe.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - startedAt
-apps/mta/src/smtp/__tests__/mtaStsFetch.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
 apps/mta/src/smtp/daneResolver.ts	owlat(no-unchecked-json-cast)	JSON.parse(cached) as CachedTlsa
 apps/mta/src/smtp/mtaSts.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<StsPolicy>
 apps/mta/src/smtp/tlsRpt.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { type: string; mxHost: string; sendingIp: string }
 apps/setup-cli/src/commands/doctorRun.ts	owlat(no-unchecked-json-cast)	JSON.parse(await readFile(statePath, 'utf-8')) as FeatureFlagState
 apps/setup-cli/src/lib/flagState.ts	owlat(no-unchecked-json-cast)	JSON.parse(await file.text()) as FeatureFlagState
-apps/updater/src/__tests__/exec.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
-apps/updater/src/__tests__/portProbe.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - startedAt
 apps/updater/src/snapshot.ts	owlat(no-unchecked-json-cast)	JSON.parse(line) as typeof entry
 apps/web/app/components/postbox/PostboxRecipientField.vue	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { email: string; from: RecipientField }
-apps/web/app/composables/__tests__/usePerfMark.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/web/app/composables/__tests__/usePerfMark.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/composables/emailEditorHandlers.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId?: unknown }
 apps/web/app/composables/emailSettingsRender.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, SettingsOverlay>
 apps/web/app/composables/emailSettingsRender.ts	owlat(no-unchecked-json-cast)	JSON.parse(state.content) as BlockLikeItem[]
@@ -359,8 +336,6 @@ apps/web/app/composables/useLocalStorage.ts	owlat(no-unchecked-json-cast)	JSON.p
 apps/web/app/composables/useSegmentFilters.ts	owlat(no-unchecked-json-cast)	parsed = JSON.parse(filters)
 apps/web/app/composables/useSegmentForm.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(filters)) as typeof segmentForm.filters
 apps/web/app/composables/useSettingsForm.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(value)) as T
-apps/web/app/lib/__tests__/analyticsPrivacy.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/web/app/lib/__tests__/analyticsPrivacy.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/lib/convex-auth.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { token?: string | null }
 apps/web/app/lib/desktop/keychainStorage.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, string>
 apps/web/app/lib/desktop/notificationWorkspace.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<PendingNotificationAction>
@@ -370,10 +345,6 @@ apps/web/app/lib/desktop/workspaceConnect.ts	owlat(no-unchecked-json-cast)	(awai
 apps/web/app/pages/dashboard/send/emails/[id]/edit.vue	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value
 apps/web/app/pages/dashboard/send/emails/[id]/edit.vue	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value
 apps/web/app/pages/desktop/connect.vue	owlat(no-unchecked-json-cast)	(await res.json()) as { token?: string }
-apps/web/app/utils/__tests__/postboxBodyTidy.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/web/app/utils/__tests__/postboxBodyTidy.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/web/app/utils/__tests__/postboxDarkMode.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/web/app/utils/__tests__/postboxDarkMode.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/utils/accountJsonExport.ts	owlat(no-unchecked-json-cast)	JSON.parse(rowJson) as Record<string, unknown>
 apps/web/app/utils/answerThreadFiles.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<ThreadFile>
 apps/web/app/utils/doh.ts	owlat(no-unchecked-json-cast)	(await response.json()) as DohResponse
@@ -392,36 +363,15 @@ apps/web/server/api/system/apply-profiles.post.ts	owlat(no-unchecked-json-cast)	
 apps/web/server/api/system/port-checks.post.ts	owlat(no-unchecked-json-cast)	(await resp.json()) as PortChecksResult
 apps/web/server/api/system/profile-drift.get.ts	owlat(no-unchecked-json-cast)	(await resp.json()) as UpdaterProfileState
 apps/web/server/api/system/update.post.ts	owlat(no-unchecked-json-cast)	(await updaterResp.json()) as typeof updaterResult
-apps/web/server/utils/__tests__/updater.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
 apps/web/server/utils/authedConvexClient.ts	owlat(no-unchecked-json-cast)	(await tokenResp.json()) as { token?: string | null }
 packages/email-builder/src/utils/deltaHistory.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(checkpoint.state)) as HistoryState
 packages/email-renderer/src/draftBodies.ts	owlat(no-unchecked-json-cast)	JSON.parse(draft.bodyBlocks) as EditorBlock[]
 packages/email-renderer/src/renderer.ts	owlat(no-unchecked-json-cast)	items = JSON.parse(rawValue)
-packages/email-scanner/src/__tests__/htmlScan.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/email-scanner/src/__tests__/htmlScan.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 packages/email-scanner/src/urls/safeBrowsing.ts	owlat(no-unchecked-json-cast)	await response.json() as SafeBrowsingResponse
-packages/mail-auth/src/dkim/__tests__/dkimAdversarial.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - start
-packages/mail-message/__tests__/htmlToPlainText.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/mail-message/__tests__/htmlToPlainText.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/mail-message/src/__tests__/hostile.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/mail-message/src/__tests__/hostile.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/mail-message/src/__tests__/hostile.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/mail-message/src/__tests__/hostile.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/mail-message/src/__tests__/rfc2231Continuations.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/mail-message/src/__tests__/rfc2231Continuations.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 packages/plugin-codegen/scripts/deployGraphSmoke.ts	owlat(no-unchecked-json-cast)	JSON.parse(dryRun.stdout) as TurboDryRun
 packages/plugin-kit/scripts/packageSmoke.ts	owlat(no-unchecked-json-cast)	JSON.parse( readFileSync(join(consumerRoot, 'node_modules/@owlat/plugin-kit/package.json'), 'utf8') ) as { exports?: Record<string, unknown> }
 packages/plugin-kit/scripts/packageSmoke.ts	owlat(no-unchecked-json-cast)	JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageMetadata
 packages/sdk-js/src/utils/fetch.ts	owlat(no-unchecked-json-cast)	JSON.parse(rawBody) as ApiErrorResponse
-packages/shared/src/__tests__/address.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/shared/src/__tests__/address.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/shared/src/__tests__/exactWordingDetector.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/shared/src/__tests__/exactWordingDetector.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/shared/src/__tests__/mailMimeBounds.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/shared/src/__tests__/mailMimeBounds.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/shared/src/__tests__/mailSegments.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
-packages/shared/src/__tests__/secureMessage.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-packages/shared/src/__tests__/secureMessage.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 packages/shared/src/blockTree.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(roots)) as T[]
 packages/shared/src/blockTree.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(roots)) as unknown[]
 packages/shared/src/deliverabilityDiagnostics.ts	owlat(no-unchecked-json-cast)	JSON.parse( JSON.stringify({ ...value, schemaVersion: DELIVERABILITY_OBSERVATION_SCHEMA_VERSION, }) ) as Record<string, unknown>

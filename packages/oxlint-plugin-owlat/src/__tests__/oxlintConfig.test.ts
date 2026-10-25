@@ -353,12 +353,13 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(errorCodes(byFile.get('loop.test.ts'))).toEqual(['owlat(no-test-in-loop)']);
 	});
 
-	it('reports a polling loop and a real-clock sleep, and warns about an elapsed-time check', () => {
-		expect(errorCodes(byFile.get('timing.test.ts'))).toEqual([
+	it('rejects a polling loop, a real-clock sleep and an elapsed-time check', () => {
+		expect(errorCodes(byFile.get('timing.test.ts')).sort()).toEqual([
 			'owlat(no-polling-loop-in-tests)',
 			'owlat(no-real-time-wait-in-tests)',
+			'owlat(no-wall-clock-in-tests)',
 		]);
-		expect(warningCodes(byFile.get('timing.test.ts'))).toEqual(['owlat(no-wall-clock-in-tests)']);
+		expect(warningCodes(byFile.get('timing.test.ts'))).toEqual([]);
 	});
 
 	it('follows a sleep helper imported from a sibling module to the timer fake time drives', () => {
