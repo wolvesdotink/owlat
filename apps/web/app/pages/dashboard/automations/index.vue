@@ -2,8 +2,10 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { AutomationListItem } from '~/components/automations/ListTable.vue';
+import type { AutomationHealth } from '~/components/automations/HealthSummary.vue';
 import { useListPage } from '~/composables/useListPage';
 import { useMarketingDeleteUndo } from '~/composables/useMarketingDeleteUndo';
+import { usePostboxTriageUndo } from '~/composables/postbox/usePostboxTriageUndo';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { useRowLinkMenu } from '~/composables/useRowLinkMenu';
 import {
@@ -113,6 +115,22 @@ const {
 	{ initialNumItems: 100, keepPreviousData: true }
 );
 
+// The last-7-days column, read for the rows on screen. The server answers for
+// at most 100 automations, the size of the first page.
+const HEALTH_IDS_LIMIT = 100;
+const healthIds = computed(() =>
+	automations.value.slice(0, HEALTH_IDS_LIMIT).map((automation) => automation._id)
+);
+const { data: healthRows } = useOrganizationQuery(api.automations.health.summaries, () =>
+	healthIds.value.length > 0 ? { automationIds: healthIds.value } : undefined
+);
+const healthById = computed(
+	() =>
+		new Map<string, AutomationHealth>(
+			(healthRows.value ?? []).map((row) => [row.automationId, row])
+		)
+);
+
 const filteredAutomations = computed<AutomationListItem[]>(() => {
 	const search = list.debouncedSearch.trim().toLowerCase();
 	if (!search) return automations.value;
@@ -133,24 +151,46 @@ const showSkeleton = computed(
 
 const togglingId = ref<Id<'automations'> | null>(null);
 
+// A pause or resume goes on the app's one undo stack, like a delete. The undo
+// sends back the stamp the change wrote, and the server refuses it once the
+// status has changed again (another admin, the failure breaker), so an undo
+// never reverses a later change. It restores the status only: runs a pause
+// cancelled stay cancelled.
+const undoStack = usePostboxTriageUndo();
+
 const handleToggleStatus = async (automation: AutomationListItem) => {
 	// Re-entrancy guard: ignore repeat clicks while a toggle is already running
-	// (the inline button and the menu item both call this).
+	// (the inline switch and the menu item both call this).
 	if (togglingId.value) return;
 	if (automation.status === 'draft') {
 		showToast(t('dashboard.automations.index.toasts.draftNotToggleable'), 'error');
 		return;
 	}
 
-	togglingId.value = automation._id;
+	const automationId = automation._id;
+	const pausing = automation.status === 'active';
+	togglingId.value = automationId;
 	try {
-		if (automation.status === 'active') {
-			if (!(await pauseAutomation({ automationId: automation._id })).ok) return;
-			showToast(t('dashboard.automations.index.toasts.paused', { name: automation.name }));
-		} else {
-			if (!(await resumeAutomation({ automationId: automation._id })).ok) return;
-			showToast(t('dashboard.automations.index.toasts.activated', { name: automation.name }));
+		const outcome = pausing
+			? await pauseAutomation({ automationId })
+			: await resumeAutomation({ automationId });
+		if (!outcome.ok) return;
+		const label = pausing
+			? t('dashboard.automations.index.toasts.paused', { name: automation.name })
+			: t('dashboard.automations.index.toasts.activated', { name: automation.name });
+		// Null when it was already in that state: nothing changed, nothing to undo.
+		const statusChangedAt = outcome.result?.statusChangedAt ?? null;
+		if (statusChangedAt === null) {
+			showToast(label);
+			return;
 		}
+		undoStack.register({
+			label,
+			inverse: async () => {
+				const args = { automationId, ifStatusChangedAt: statusChangedAt };
+				await (pausing ? resumeAutomation(args) : pauseAutomation(args));
+			},
+		});
 	} finally {
 		togglingId.value = null;
 	}
@@ -272,6 +312,7 @@ const rowMenu = (automation: AutomationListItem): ContextMenuItem[] => {
 				:items="filteredAutomations"
 				:layout="layout"
 				:can-manage="canManage"
+				:health="healthById"
 				:menu-items="rowMenu"
 			>
 				<template #actions="{ automation, touch }">

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /**
  * An automation row's actions, shared by the table and the mobile card list:
- * the pause/activate toggle, edit, and the overflow menu.
+ * the active/paused switch, edit, and the overflow menu. The switch shows the
+ * state (on = active) and flipping it asks the page to pause or resume; the
+ * page offers the Undo.
  *
  * Every write needs `automations:manage`, so an editor keeps only "View
  * details" — which a draft does not have (it has never run, so there are no
@@ -40,6 +42,10 @@ const toggleLabel = computed(() =>
 		? t('dashboard.automations.index.actions.pause')
 		: t('dashboard.automations.index.actions.activate')
 );
+// A switch names the setting, never its state: aria-checked says on or off.
+const switchLabel = computed(() =>
+	t('dashboard.automations.index.actions.activeSwitch', { name: props.automation.name })
+);
 
 // The same verbs, in the same order, as the row's context menu.
 const verbs = computed(() => automationRowVerbs(props.automation.status, props.canManage));
@@ -69,31 +75,27 @@ const iconButton = computed(() => [
 	props.touch ? 'w-11 h-11' : 'p-2',
 ]);
 const neutralButton = 'text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover';
+// The switch track is 44×24. On cards a transparent ::before on the switch
+// button itself grows its hit area to 56×44, so a tap anywhere in the touch
+// target reaches the real control (and its disabled state) without enlarging
+// the track.
+const switchHitArea = computed(() =>
+	props.touch ? "before:absolute before:-inset-x-1.5 before:-inset-y-2.5 before:content-['']" : ''
+);
 </script>
 
 <template>
 	<div class="flex items-center justify-end gap-1" @click.stop>
 		<UiTooltip v-if="canManage && !isDraft" :text="toggleLabel">
-			<button
-				type="button"
-				:class="[
-					iconButton,
-					isActive
-						? 'text-warning hover:text-warning hover:bg-warning/10'
-						: 'text-success hover:text-success hover:bg-success/10',
-				]"
-				:aria-label="toggleLabel"
-				:disabled="toggling"
-				@click="emit('toggle', automation)"
-			>
-				<Icon
-					v-if="toggling"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
+			<span :class="['flex items-center justify-center flex-shrink-0', touch ? 'w-14 h-11' : '']">
+				<UiSwitch
+					:model-value="isActive"
+					:label="switchLabel"
+					:disabled="toggling"
+					:class="switchHitArea"
+					@update:model-value="emit('toggle', automation)"
 				/>
-				<Icon v-else-if="isActive" name="lucide:pause" class="w-4 h-4" />
-				<Icon v-else name="lucide:play" class="w-4 h-4" />
-			</button>
+			</span>
 		</UiTooltip>
 		<UiTooltip v-if="canManage" :text="t('common.edit')">
 			<button

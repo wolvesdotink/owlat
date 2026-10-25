@@ -6,6 +6,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { bumpAutomationStats } from './statShards';
+import { recordAutomationHealth } from './health';
 import { contactCreatedTrigger } from './triggers/contact_created';
 import { contactUpdatedTrigger } from './triggers/contact_updated';
 import { eventReceivedTrigger } from './triggers/event_received';
@@ -154,6 +155,7 @@ async function fanoutTrigger(
 		// Sharded counter (no per-entry RMW on the automations row). statsActive is
 		// derived (entered − completed − cancelled) by the rollup, so bump entered.
 		await bumpAutomationStats(ctx, automation._id, { statsEntered: 1 });
+		await recordAutomationHealth(ctx, automation._id, 'entered', now);
 
 		await ctx.scheduler.runAfter(0, internal.automations.stepWalker.startAutomationRun, {
 			automationRunId: runId,

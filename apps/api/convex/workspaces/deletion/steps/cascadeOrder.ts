@@ -8,6 +8,7 @@ import type { OrganizationDeletionTable } from './_common';
 import { THREAD_BRIEF_TABLES } from '../../../schema/threadBrief';
 import { MARKETING_NOTIFICATION_TABLES } from '../../../schema/marketingNotifications';
 import { MAIL_ARRIVAL_TABLES } from '../../../schema/mailArrival';
+import { AUTOMATION_TABLES } from '../../../schema/automations';
 
 /**
  * Ordered cascade: children before parents, storage-bearing tables
@@ -188,12 +189,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// deliverability alerts: gone before any of them.
 	...MARKETING_NOTIFICATION_TABLES,
 
-	// Automation children before parents
-	'automationStepRuns',
-	'automationRuns',
-	'automationSteps',
-	'automationStatShards',
-	'automations',
+	...AUTOMATION_TABLES, // children before parents
 
 	// Campaign machinery before the campaign parents
 	'campaignSendJobs',

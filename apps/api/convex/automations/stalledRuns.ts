@@ -34,6 +34,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { logWarn } from '../lib/runtimeLog';
 import { scheduleMarketingNotice } from '../marketing/noticeEvents';
+import { recordAutomationHealth } from './health';
 import {
 	cancelRun,
 	enterStep,
@@ -75,7 +76,9 @@ async function recoverIfStalled(
 			return 'started';
 		}
 	}
-	await cancelRun(ctx, run._id);
+	if (await cancelRun(ctx, run._id, 'stalled')) {
+		await recordAutomationHealth(ctx, run.automationId, 'stalled', now);
+	}
 	logWarn('[automations] cancelled a stalled run with no active step', {
 		automationRunId: run._id,
 		automationId: run.automationId,

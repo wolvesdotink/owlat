@@ -7,6 +7,7 @@ import { useLocalized } from '~/composables/useLocalized';
 import type { LocalizedText } from '~/utils/localizedText';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import AutomationsRunsPanel from '~/components/automations/RunsPanel.vue';
 
 const { t } = useI18n();
 
@@ -53,56 +54,10 @@ const { data: stepAnalytics } = useConvexQuery(api.automations.analytics.getStep
 	automationId: automationId.value,
 }));
 
-// Pagination state for contacts list
-const pageSize = 10;
-const runsOffset = ref(0);
-type RunStatusFilter = 'all' | 'running' | 'completed' | 'cancelled';
-const selectedRunStatus = ref<RunStatusFilter>('all');
-
-// Fetch automation runs (contacts in automation)
-const {
-	data: runs,
-	isLoading: runsLoading,
-	error: runsError,
-	refetch: refetchRuns,
-} = useConvexQuery(api.automations.analytics.getAutomationRuns, () => ({
-	automationId: automationId.value,
-	status: selectedRunStatus.value === 'all' ? undefined : selectedRunStatus.value,
-	limit: pageSize,
-	offset: runsOffset.value,
-}));
-
 const isLoading = computed(() => automationLoading.value || statsLoading.value);
 
 // Status + trigger badges (shared with the automations overview)
 const { getStatusBadge, getTriggerDisplay } = useAutomationBadges();
-
-// Get run status badge configuration
-const getRunStatusBadge = (status: 'running' | 'completed' | 'cancelled') => {
-	switch (status) {
-		case 'running':
-			return {
-				color: 'bg-brand/10 text-brand',
-				icon: 'lucide:loader-2',
-				label: t('dashboard.automations.detail.index.runs.inProgress'),
-				animated: true,
-			};
-		case 'completed':
-			return {
-				color: 'bg-success/10 text-success',
-				icon: 'lucide:check-circle-2',
-				label: t('dashboard.automations.detail.index.runs.completed'),
-				animated: false,
-			};
-		case 'cancelled':
-			return {
-				color: 'bg-error/10 text-error',
-				icon: 'lucide:x-circle',
-				label: t('dashboard.automations.detail.index.runs.cancelled'),
-				animated: false,
-			};
-	}
-};
 
 // Email templates joined onto each step by getWithRelations (enrichForQuery),
 // so an email step's label resolves to the real template name instead of
@@ -203,32 +158,6 @@ const statsCards = computed(() => {
 		},
 	];
 });
-
-// Pagination handlers
-const loadMoreRuns = () => {
-	if (runs.value?.hasMore) {
-		runsOffset.value += pageSize;
-	}
-};
-
-const loadPrevRuns = () => {
-	if (runsOffset.value > 0) {
-		runsOffset.value = Math.max(0, runsOffset.value - pageSize);
-	}
-};
-
-// Reset offset when status filter changes
-watch(selectedRunStatus, () => {
-	runsOffset.value = 0;
-});
-
-/** The contacts-list status filter. */
-const runStatusFilters = computed(() => [
-	{ value: 'all' as const, label: t('common.all') },
-	{ value: 'running' as const, label: t('dashboard.automations.detail.index.runs.inProgress') },
-	{ value: 'completed' as const, label: t('dashboard.automations.detail.index.runs.completed') },
-	{ value: 'cancelled' as const, label: t('dashboard.automations.detail.index.runs.cancelled') },
-]);
 
 // Navigate to edit
 const handleEdit = () => {
@@ -515,148 +444,8 @@ const handleEdit = () => {
 				</div>
 			</div>
 
-			<!-- Contacts List -->
-			<div class="card p-0 overflow-hidden">
-				<div
-					class="px-6 py-4 border-b border-border-subtle flex flex-wrap items-center justify-between gap-3"
-				>
-					<h3 class="text-lg font-medium text-text-primary">
-						{{ t('dashboard.automations.detail.index.runs.title') }}
-					</h3>
-					<!-- Status filter: scrolls on a phone instead of widening the page -->
-					<div class="max-w-full overflow-x-auto">
-						<UiSegmentedControl
-							:model-value="selectedRunStatus"
-							:options="runStatusFilters"
-							size="sm"
-							:aria-label="t('dashboard.automations.detail.index.runs.statusFilterLabel')"
-							class="min-w-max"
-							@update:model-value="selectedRunStatus = $event as RunStatusFilter"
-						/>
-					</div>
-				</div>
-
-				<!-- Loading -->
-				<div v-if="runsLoading && !runs" class="p-8 flex justify-center">
-					<Icon
-						name="lucide:loader-2"
-						class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none"
-					/>
-				</div>
-
-				<UiQueryBoundary v-else-if="runsError" :error="runsError" @retry="refetchRuns" />
-
-				<!-- Empty state -->
-				<div v-else-if="!runs || runs.runs.length === 0" class="py-12 text-center">
-					<Icon name="lucide:users" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
-					<p class="text-text-secondary">
-						{{ t('dashboard.automations.detail.index.runs.emptyTitle') }}
-					</p>
-					<p class="text-sm text-text-tertiary mt-1">
-						{{ t('dashboard.automations.detail.index.runs.emptyDescription') }}
-					</p>
-				</div>
-
-				<!-- Contacts table -->
-				<div v-else>
-					<div class="divide-y divide-border-subtle">
-						<div
-							v-for="run in runs.runs"
-							:key="run._id"
-							class="px-6 py-4 flex items-center justify-between hover:bg-bg-surface transition-colors"
-						>
-							<div class="flex items-center gap-3 min-w-0">
-								<UiIconBox icon="lucide:users" size="lg" rounded="full" />
-								<div class="min-w-0">
-									<div class="text-text-primary font-medium truncate">
-										{{
-											run.contact?.firstName ||
-											run.contact?.email?.split('@')[0] ||
-											t('common.unknown')
-										}}
-										{{ run.contact?.lastName || '' }}
-									</div>
-									<div class="text-sm text-text-tertiary truncate">
-										{{ run.contact?.email || t('dashboard.automations.detail.index.runs.noEmail') }}
-									</div>
-								</div>
-							</div>
-							<div class="flex items-center gap-4 shrink-0">
-								<div class="text-right">
-									<span
-										:class="[
-											'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
-											getRunStatusBadge(run.status).color,
-										]"
-									>
-										<Icon
-											:name="getRunStatusBadge(run.status).icon"
-											:class="[
-												'w-3 h-3',
-												getRunStatusBadge(run.status).animated
-													? 'animate-spin motion-reduce:animate-none'
-													: '',
-											]"
-										/>
-										{{ getRunStatusBadge(run.status).label }}
-									</span>
-									<div class="text-xs text-text-tertiary mt-1">
-										{{
-											t('dashboard.automations.detail.index.runs.stepAndTime', {
-												number: run.currentStepIndex + 1,
-												time: formatCompactRelativeTime(run.startedAt, { emptyLabel: '—' }),
-											})
-										}}
-									</div>
-								</div>
-								<UiTooltip
-									v-if="run.contact"
-									:text="t('dashboard.automations.detail.index.runs.viewContact')"
-								>
-									<NuxtLink
-										:to="`/dashboard/audience/contacts/${run.contact._id}`"
-										class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-										:aria-label="t('dashboard.automations.detail.index.runs.viewContact')"
-									>
-										<Icon name="lucide:chevron-right" class="w-4 h-4" />
-									</NuxtLink>
-								</UiTooltip>
-							</div>
-						</div>
-					</div>
-
-					<!-- Pagination -->
-					<div
-						v-if="runsOffset > 0 || runs.hasMore"
-						class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
-					>
-						<UiButton
-							variant="secondary"
-							class="text-sm"
-							:disabled="runsOffset === 0"
-							@click="loadPrevRuns"
-						>
-							{{ t('dashboard.automations.detail.index.runs.previous') }}
-						</UiButton>
-						<span class="text-sm text-text-tertiary">
-							{{
-								t('dashboard.automations.detail.index.runs.range', {
-									from: runsOffset + 1,
-									to: runsOffset + (runs.runs?.length ?? 0),
-								})
-							}}
-						</span>
-						<UiButton
-							variant="secondary"
-							class="text-sm"
-							:disabled="!runs.hasMore"
-							@click="loadMoreRuns"
-						>
-							{{ t('dashboard.automations.detail.index.runs.next') }}
-						</UiButton>
-					</div>
-				</div>
-			</div>
+			<!-- Contacts List: filterable by status, and by the list's health links -->
+			<AutomationsRunsPanel :automation-id="automationId" />
 		</div>
 	</div>
 </template>

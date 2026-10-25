@@ -250,6 +250,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	webhookPayloads: makeSweepStep('webhookPayloads'),
 	unresolvedFeedback: makeSweepStep('unresolvedFeedback'),
 	automationStatShards: makeSweepStep('automationStatShards'),
+	automationHealthDays: makeSweepStep('automationHealthDays'),
 	campaignSendJobs: makeSweepStep('campaignSendJobs'),
 	audienceCountJobs: makeSweepStep('audienceCountJobs'),
 	campaignStatShards: makeSweepStep('campaignStatShards'),

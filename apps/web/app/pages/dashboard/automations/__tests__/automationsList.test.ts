@@ -9,6 +9,10 @@
  *   - delete is offered only for an automation that is not running, runs at
  *     once (the automation goes to Recently deleted) and its toast names it and
  *     offers Undo, which restores it;
+ *   - the last column is each automation's last 7 days, the same line in the
+ *     table and the cards, its stalled/failed counts linking to those runs;
+ *   - the active/paused switch pauses or resumes, and its Undo sends the
+ *     change's stamp back exactly once; a failed change offers no Undo;
  *   - a right-click (or a long-press on the cards) opens the row's context
  *     menu with the overflow menu's verbs, in the same order, run by the same
  *     handlers, then the link verbs for where the row's name leads.
@@ -33,6 +37,7 @@ import UiInput from '@owlat/ui/components/ui/Input.vue';
 import UiPageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 import UiSegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
 import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
+import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
 import AutomationsIndex from '../index.vue';
 
 const created = Date.parse('2026-03-02T09:00:00Z');
@@ -60,10 +65,27 @@ const DRAFT = {
 	createdAt: created,
 };
 
+const HEALTH = [
+	{ automationId: 'au_welcome', entered: 230, failed: 1, stalled: 2 },
+	{ automationId: 'au_reengage', entered: 4, failed: 0, stalled: 0 },
+	{ automationId: 'au_draft', entered: 3, failed: 0, stalled: 1 },
+];
+const STAMP = Date.parse('2026-10-20T10:00:00Z');
+
 const rows = ref<Record<string, unknown>[]>([]);
 const tableFits = ref(true);
 const removeAutomation = vi.fn(async (_args: unknown) => ({ ok: true, result: null }));
 const restoreAutomation = vi.fn(async (_args: unknown) => ({ ok: true, result: null }));
+type StatusChange = { ok: true; result: { statusChangedAt: number | null } } | { ok: false };
+const pauseAutomation = vi.fn(async (_args: unknown): Promise<StatusChange> => ({
+	ok: true,
+	result: { statusChangedAt: STAMP },
+}));
+const resumeAutomation = vi.fn(async (_args: unknown): Promise<StatusChange> => ({
+	ok: true,
+	result: { statusChangedAt: STAMP + 1 },
+}));
+let healthArgs: () => Record<string, unknown> | undefined = () => undefined;
 const showToast = vi.fn(
 	(_message: string, _type?: string, _options?: { action?: { onAction: () => void } }) => 'toast-1'
 );
@@ -114,8 +136,11 @@ beforeEach(() => {
 	tableFits.value = true;
 	removeAutomation.mockClear();
 	restoreAutomation.mockClear();
+	pauseAutomation.mockClear();
+	resumeAutomation.mockClear();
 	showToast.mockClear();
 	listArgs = () => undefined;
+	healthArgs = () => undefined;
 	installNuxtStubs({
 		...i18nStubs,
 		useSlots,
@@ -129,16 +154,26 @@ beforeEach(() => {
 		usePaginatedQuery: () => {
 			throw new Error('the automations list must read through useOrganizationPaginatedQuery');
 		},
-		useOrganizationQuery: (query: unknown) =>
-			nameOf(query).endsWith('countByStatus')
-				? queryResult({ total: 3, active: 1, paused: 1, draft: 1 })
-				: queryResult(null),
+		useOrganizationQuery: (query: unknown, args?: () => Record<string, unknown> | undefined) => {
+			if (nameOf(query).endsWith('countByStatus')) {
+				return queryResult({ total: 3, active: 1, paused: 1, draft: 1 });
+			}
+			if (nameOf(query).endsWith('health:summaries')) {
+				healthArgs = args ?? (() => undefined);
+				return queryResult(HEALTH);
+			}
+			return queryResult(null);
+		},
 		useBackendOperation: (op: unknown) => ({
 			run: nameOf(op).endsWith(':remove')
 				? removeAutomation
 				: nameOf(op).endsWith(':restore')
 					? restoreAutomation
-					: vi.fn(),
+					: nameOf(op).endsWith(':pause')
+						? pauseAutomation
+						: nameOf(op).endsWith(':resume')
+							? resumeAutomation
+							: vi.fn(),
 			isLoading: ref(false),
 			error: ref(null),
 		}),
@@ -169,6 +204,7 @@ async function mountList() {
 				UiPageHeader,
 				UiSegmentedControl,
 				UiSpinner,
+				UiSwitch,
 			},
 			stubs: {
 				UiModal: UiModalStub,
@@ -230,7 +266,9 @@ describe('automations list — status tabs', () => {
 describe('automations list — rows', () => {
 	it('links each name to the detail page, and a draft to the builder', async () => {
 		const wrapper = await mountList();
-		const links = wrapper.findAll('tbody a').map((a) => [a.text(), a.attributes('href')]);
+		const links = wrapper
+			.findAll('tbody td:first-child a')
+			.map((a) => [a.text(), a.attributes('href')]);
 		expect(links).toEqual([
 			['Welcome sequence', '/dashboard/automations/au_welcome'],
 			['Re-engagement: 90 days quiet', '/dashboard/automations/au_reengage'],
@@ -245,8 +283,20 @@ describe('automations list — rows', () => {
 		const cards = wrapper.findAll('ul > li');
 		expect(cards).toHaveLength(3);
 		expect(cards[0]!.get('a').attributes('href')).toBe('/dashboard/automations/au_welcome');
-		expect(cards[0]!.find('button[aria-label="Pause"]').exists()).toBe(true);
+		const cardSwitch = cards[0]!.get('[role="switch"][aria-label="Active: Welcome sequence"]');
+		// The 44px touch target belongs to the switch button itself (a ::before
+		// hit area), not to a wrapper that would swallow taps around the track.
+		expect(cardSwitch.element.tagName).toBe('BUTTON');
+		expect(cardSwitch.classes()).toEqual(
+			expect.arrayContaining(['before:absolute', 'before:-inset-x-1.5', 'before:-inset-y-2.5'])
+		);
 		expect(cards[0]!.find('button[aria-label="More actions"]').exists()).toBe(true);
+	});
+
+	it('keeps the table switch at its track size', async () => {
+		const wrapper = await mountList();
+		const tableSwitch = wrapper.get('table [role="switch"][aria-label="Active: Welcome sequence"]');
+		expect(tableSwitch.classes().some((c) => c.startsWith('before:'))).toBe(false);
 	});
 
 	it('offers Create automation when the list is empty', async () => {
@@ -279,6 +329,106 @@ describe('automations list — delete', () => {
 		options!.action!.onAction();
 		await flushPromises();
 		expect(restoreAutomation).toHaveBeenCalledWith({ automationId: 'au_reengage' });
+	});
+});
+
+const healthLine = (row: ReturnType<Wrapper['findAll']>[number]) => row.text().replace(/\s+/g, ' ');
+
+describe('automations list — last 7 days', () => {
+	it('replaces Created with the last 7 days', async () => {
+		const wrapper = await mountList();
+		const headers = wrapper.findAll('th').map((th) => th.text());
+		expect(headers).toContain('Last 7 days');
+		expect(headers).not.toContain('Created');
+		expect(healthArgs()).toEqual({ automationIds: ['au_welcome', 'au_reengage', 'au_draft'] });
+	});
+
+	it.each([
+		['table', true],
+		['cards', false],
+	] as const)('says the same thing in the %s layout', async (_layout, fits) => {
+		tableFits.value = fits;
+		const wrapper = await mountList();
+		expect(healthLine(rowOf(wrapper, 'Welcome sequence'))).toMatch(
+			/230 entered ?· ?2 stalled ?· ?1 failed/
+		);
+		expect(healthLine(rowOf(wrapper, 'Re-engagement'))).toContain('4 entered');
+		expect(healthLine(rowOf(wrapper, 'Re-engagement'))).not.toContain('stalled');
+
+		const welcome = rowOf(wrapper, 'Welcome sequence');
+		const stalled = welcome.findAll('a').find((a) => a.text() === '2 stalled')!;
+		expect(stalled.attributes('href')).toBe('/dashboard/automations/au_welcome?runs=stalled');
+		const failed = welcome.findAll('a').find((a) => a.text() === '1 failed')!;
+		expect(failed.attributes('href')).toBe('/dashboard/automations/au_welcome?runs=failed');
+		// The red dot is decoration; the link text carries the meaning.
+		expect(failed.get('.bg-error').attributes('aria-hidden')).toBe('true');
+
+		// A draft has no detail page: its counts are not links.
+		const draft = rowOf(wrapper, 'Birthday greeting');
+		expect(healthLine(draft)).toMatch(/3 entered ?· ?1 stalled/);
+		expect(draft.findAll('a').some((a) => a.text().includes('stalled'))).toBe(false);
+	});
+});
+
+describe('automations list — active switch', () => {
+	const switchOf = (wrapper: Wrapper, name: string) =>
+		rowOf(wrapper, name).get(`[role="switch"][aria-label="Active: ${name}"]`);
+
+	it('shows the state as a switch, and none for a draft', async () => {
+		const wrapper = await mountList();
+		expect(switchOf(wrapper, 'Welcome sequence').attributes('aria-checked')).toBe('true');
+		expect(switchOf(wrapper, 'Re-engagement: 90 days quiet').attributes('aria-checked')).toBe(
+			'false'
+		);
+		expect(rowOf(wrapper, 'Birthday greeting').find('[role="switch"]').exists()).toBe(false);
+	});
+
+	it('pauses, and its Undo resumes with the pause stamp exactly once', async () => {
+		const wrapper = await mountList();
+		await switchOf(wrapper, 'Welcome sequence').trigger('click');
+		await flushPromises();
+		expect(pauseAutomation).toHaveBeenCalledWith({ automationId: 'au_welcome' });
+
+		const [message, , options] = showToast.mock.calls.at(-1)!;
+		expect(message).toBe('"Welcome sequence" has been paused');
+		options!.action!.onAction();
+		options!.action!.onAction();
+		await flushPromises();
+		expect(resumeAutomation).toHaveBeenCalledTimes(1);
+		expect(resumeAutomation).toHaveBeenCalledWith({
+			automationId: 'au_welcome',
+			ifStatusChangedAt: STAMP,
+		});
+	});
+
+	it('resumes a paused automation, and its Undo pauses it again', async () => {
+		const wrapper = await mountList();
+		await switchOf(wrapper, 'Re-engagement: 90 days quiet').trigger('click');
+		await flushPromises();
+		expect(resumeAutomation).toHaveBeenCalledWith({ automationId: 'au_reengage' });
+		const [message, , options] = showToast.mock.calls.at(-1)!;
+		expect(message).toBe('"Re-engagement: 90 days quiet" is now active');
+		options!.action!.onAction();
+		await flushPromises();
+		expect(pauseAutomation).toHaveBeenCalledWith({
+			automationId: 'au_reengage',
+			ifStatusChangedAt: STAMP + 1,
+		});
+	});
+
+	it('offers no Undo when the change failed or changed nothing', async () => {
+		const wrapper = await mountList();
+		pauseAutomation.mockResolvedValueOnce({ ok: false });
+		await switchOf(wrapper, 'Welcome sequence').trigger('click');
+		await flushPromises();
+		expect(showToast).not.toHaveBeenCalled();
+
+		pauseAutomation.mockResolvedValueOnce({ ok: true, result: { statusChangedAt: null } });
+		await switchOf(wrapper, 'Welcome sequence').trigger('click');
+		await flushPromises();
+		const [message, , options] = showToast.mock.calls.at(-1)!;
+		expect(message).toBe('"Welcome sequence" has been paused');
+		expect(options?.action).toBeUndefined();
 	});
 });
 

@@ -82,6 +82,16 @@ const COUNTER_FIELD_ENTRIES: readonly CounterFieldEntry[] = [
 		fields: ['byCategory'],
 		why: 'Receiver responses are counted as they arrive and are not stored one by one.',
 	}),
+	counter({
+		kind: 'counter',
+		id: 'automationHealthEvents',
+		table: 'automationHealthDays',
+		fields: ['entered', 'failed', 'stalled'],
+		why:
+			'Each bucket counts the runs that entered, failed or stalled on its UTC day. Contact ' +
+			'erasure deletes those runs and the bucket keeps their events, so a recount from the ' +
+			'runs would lower the window for every erased contact.',
+	}),
 ];
 
 export const DERIVED_FIELD_REGISTRY: readonly RegistryEntry[] = [

@@ -3,6 +3,7 @@ import { THREAD_BRIEF_TABLES } from '../schema/threadBrief';
 import { AI_ROUTING_TABLES } from '../schema/aiRouting';
 import { MAIL_ARRIVAL_TABLES } from '../schema/mailArrival';
 import { MARKETING_NOTIFICATION_TABLES } from '../schema/marketingNotifications';
+import { AUTOMATION_TABLES } from '../schema/automations';
 import type { NON_TENANT_TABLES } from './nonTenantTables';
 
 /**
@@ -57,12 +58,7 @@ export const TENANT_TABLES = [
 
 	...MARKETING_NOTIFICATION_TABLES, // point at automations, campaigns and domains
 
-	// ── Automations (children first) ──
-	'automationStepRuns',
-	'automationRuns',
-	'automationSteps',
-	'automationStatShards',
-	'automations',
+	...AUTOMATION_TABLES, // children first
 
 	// ── Transactional ──
 	'apiRequestReceipts', // Idempotency-Key receipts: they name the Sends and contacts below
