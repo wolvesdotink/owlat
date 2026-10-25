@@ -157,17 +157,9 @@ export function useAnswerLeftDraft() {
 	};
 }
 
-/**
- * An AI-suggested reply body waiting for Answer mode to open on `messageId`.
- * Only used when the draft could not be created up front (the normal path
- * creates the draft with the body and opens it by id); Answer mode takes it
- * once, for that message.
- */
-export function useAnswerPendingLead() {
-	const pending = useState<{ messageId: string; text: string } | null>(
-		'answer:pending-lead',
-		() => null
-	);
+/** Text waiting for Answer mode to open on one message: taken once, only for it. */
+function useAnswerPendingText(key: string) {
+	const pending = useState<{ messageId: string; text: string } | null>(key, () => null);
 	return {
 		set: (messageId: string, text: string) => {
 			pending.value = { messageId, text };
@@ -179,6 +171,26 @@ export function useAnswerPendingLead() {
 			return entry.text;
 		},
 	};
+}
+
+/**
+ * An AI-suggested reply body waiting for Answer mode to open on `messageId`.
+ * Only used when the draft could not be created up front (the normal path
+ * creates the draft with the body and opens it by id); Answer mode takes it
+ * once, for that message.
+ */
+export function useAnswerPendingLead() {
+	return useAnswerPendingText('answer:pending-lead');
+}
+
+/**
+ * A passage selected in `messageId` ("Quote in reply") waiting for Answer mode
+ * to quote it, when the draft holding it could not be saved up front. Kept
+ * apart from the lead: the lead is reply text written above the quote, this is
+ * the quote itself.
+ */
+export function useAnswerPendingQuote() {
+	return useAnswerPendingText('answer:pending-quote');
 }
 
 // The list's place, kept across the round trip

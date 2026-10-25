@@ -79,4 +79,39 @@ describe('buildReplyComposeSeed', () => {
 		);
 		expect(spam.prefillBodyHtml).not.toContain('cdn.example');
 	});
+
+	it('quotes a selected passage of an older message and replies to its sender', async () => {
+		const older = {
+			...base,
+			_id: 'msg-old',
+			fromAddress: 'sam@acme.test',
+			toAddresses: ['me@example.com', 'ops@acme.test'],
+			// The whole body is not needed: nothing is downloaded for a passage.
+			htmlBodyStorageId: 'blob-1',
+			hasBodyBlob: true,
+			htmlBodyInline: undefined,
+		};
+		const seed = await buildReplyComposeSeed('replyAll', older, {
+			mailboxId: 'mb-1' as never,
+			ownAddresses: OWN,
+			autoLoadImages: true,
+			quotedPassage: 'Fine by <me> & you',
+		});
+		expect(seed.inReplyToMessageId).toBe('msg-old');
+		expect(seed.prefillTo).toEqual(['sam@acme.test']);
+		expect(seed.prefillCc).toEqual(['ops@acme.test', 'legal@acme.test']);
+		expect(seed.prefillBodyHtml).toContain('owlat_selected_quote');
+		expect(seed.prefillBodyHtml).toContain('Fine by &lt;me&gt; &amp; you');
+		expect(seed.prefillBodyHtml).not.toContain('Could you send it?');
+	});
+
+	it('keeps the original in a forward even with a passage', async () => {
+		const seed = await buildReplyComposeSeed(
+			'forward',
+			{ ...base, fromAddress: 'sam@acme.test', toAddresses: [] },
+			{ mailboxId: 'mb-1' as never, ownAddresses: OWN, autoLoadImages: true, quotedPassage: 'x' }
+		);
+		expect(seed.prefillBodyHtml).toContain('Could you send it?');
+		expect(seed.prefillBodyHtml).not.toContain('owlat_selected_quote');
+	});
 });

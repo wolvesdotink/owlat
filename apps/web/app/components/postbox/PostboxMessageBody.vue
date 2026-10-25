@@ -46,6 +46,9 @@ import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
 import { usePostboxImageConsent } from '~/composables/postbox/usePostboxImageConsent';
 import { usePostboxQuoteHighlight } from '~/composables/postbox/usePostboxQuoteHighlight';
 import { usePostboxRenderedBody } from '~/composables/postbox/usePostboxRenderedBody';
+import { usePostboxFrameSelection } from '~/composables/postbox/usePostboxFrameSelection';
+import { usePostboxReaderQuoteReply } from '~/composables/postbox/usePostboxReaderContext';
+import PostboxQuoteReplyPill from './PostboxQuoteReplyPill.vue';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import type { CidAttachment } from '~/utils/postboxCidImages';
 import { notePostboxBodyRendered } from '~/composables/postbox/usePostboxPerfMarks';
@@ -318,6 +321,30 @@ function trustSender() {
 	emit('trustSender', from);
 }
 
+// "Quote in reply" over a passage selected in the body, where the reader
+// offers it for this message and the frame shows its text (not the
+// "(empty message)" stand-in).
+const quoteReply = usePostboxReaderQuoteReply();
+const frameBox = ref<HTMLElement | null>(null);
+const quotePill = ref<{ el: HTMLElement | null; focus: () => void } | null>(null);
+const frameSelection = usePostboxFrameSelection({
+	iframeRef,
+	srcdoc: displaySrcdoc,
+	enabled: () =>
+		!!props.message._id &&
+		(hasLiveContent.value || !!shownPlaceholder.value) &&
+		!!quoteReply?.canQuote(props.message._id),
+	onQuote: quoteSelection,
+	actionEl: () => quotePill.value?.el ?? null,
+	focusAction: () => quotePill.value?.focus(),
+});
+const selectedPassage = frameSelection.selection;
+function quoteSelection(passage: string) {
+	const id = props.message._id;
+	frameSelection.clear();
+	if (id && quoteReply?.canQuote(id)) quoteReply.quote(id, passage);
+}
+
 function untrustSender() {
 	const from = props.message.fromAddress;
 	if (!from) return;
@@ -382,19 +409,29 @@ usePostboxFrameAutosize({
 		     reads as part of the message card; `color-scheme` is pinned to the
 		     frame's own scheme because the browser paints an opaque backdrop
 		     behind a frame whose scheme differs from its embedder's. -->
-		<iframe
-			ref="iframeRef"
-			:srcdoc="displaySrcdoc"
-			sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-			class="block w-full"
-			:class="isPaper ? 'rounded-md border border-border-subtle bg-white' : 'bg-transparent'"
-			:style="{
-				minHeight: isPaper ? '200px' : '48px',
-				height: presetHeight ? `${presetHeight}px` : undefined,
-				colorScheme: renderScheme,
-			}"
-			referrerpolicy="no-referrer"
-		/>
+		<div ref="frameBox" class="relative">
+			<iframe
+				ref="iframeRef"
+				:srcdoc="displaySrcdoc"
+				sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+				class="block w-full"
+				:class="isPaper ? 'rounded-md border border-border-subtle bg-white' : 'bg-transparent'"
+				:style="{
+					minHeight: isPaper ? '200px' : '48px',
+					height: presetHeight ? `${presetHeight}px` : undefined,
+					colorScheme: renderScheme,
+				}"
+				referrerpolicy="no-referrer"
+			/>
+			<PostboxQuoteReplyPill
+				v-if="selectedPassage"
+				ref="quotePill"
+				:anchor="selectedPassage.anchor"
+				:bounds-width="frameBox?.clientWidth ?? 0"
+				@quote="quoteSelection(selectedPassage.text)"
+				@dismiss="frameSelection.clear()"
+			/>
+		</div>
 		<button
 			v-if="hasQuotedContent"
 			type="button"

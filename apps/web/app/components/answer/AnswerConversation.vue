@@ -41,6 +41,8 @@ export type AnswerConversationView = 'summary' | 'full';
 const props = defineProps<{
 	/** The message being answered: the anchor the thread is read through. */
 	message: PostboxReaderMessage;
+	/** A reply is open to take a selected passage ("Quote in reply"). */
+	quotable?: boolean;
 }>();
 
 const view = defineModel<AnswerConversationView>('view', { default: 'summary' });
@@ -48,6 +50,8 @@ const view = defineModel<AnswerConversationView>('view', { default: 'summary' })
 const emit = defineEmits<{
 	/** The conversation's size, for the top bar ("5 messages"). */
 	count: [messageCount: number];
+	/** "Quote in reply": `passage`, selected in `source`, for the open reply. */
+	quote: [source: PostboxReaderMessage, passage: string];
 }>();
 
 const { t } = useI18n();
@@ -187,6 +191,13 @@ providePostboxReaderContext({
 	downloadingAttachment,
 	eagerBody: false,
 	reduced: true,
+	quoteReply: {
+		canQuote: (messageId) => !!props.quotable && allMessages.value.some((m) => m._id === messageId),
+		quote: (messageId, passage) => {
+			const source = allMessages.value.find((m) => m._id === messageId);
+			if (source) emit('quote', source, passage);
+		},
+	},
 });
 
 const senderProfile = ref<{ fromAddress: string; fromName: string | null } | null>(null);

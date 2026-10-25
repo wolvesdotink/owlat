@@ -22,6 +22,18 @@ export interface PostboxReaderCardChrome {
 	hideDanger: boolean;
 }
 
+/**
+ * "Quote in reply" for the passage selected in a card's body. A host without
+ * it (or one that says no for a message) shows no action, so the action is
+ * never offered where pressing it would do nothing.
+ */
+export interface PostboxReaderQuoteReply {
+	/** Whether a passage selected in `messageId` can be quoted here now. */
+	canQuote(messageId: string): boolean;
+	/** Quote `passage`, selected in `messageId`, in a reply. */
+	quote(messageId: string, passage: string): void;
+}
+
 export interface PostboxReaderContext {
 	/** The reader's mailbox: the thread's, not necessarily each message's. */
 	readonly mailboxId: string;
@@ -45,15 +57,19 @@ export interface PostboxReaderContext {
 	readonly reduced: boolean;
 	/** The card's chrome placement; the calm reader owns that policy. */
 	chromeOf(messageId: string): PostboxReaderCardChrome;
+	/** Quoting a selected passage in a reply; null where the host offers none. */
+	readonly quoteReply: PostboxReaderQuoteReply | null;
 }
 
-type ContextValues = Omit<PostboxReaderContext, 'chromeOf'>;
+type ContextValues = Omit<PostboxReaderContext, 'chromeOf' | 'quoteReply'>;
 
 export type PostboxReaderContextSource = {
 	[K in keyof ContextValues]: MaybeRefOrGetter<ContextValues[K]>;
 } & {
 	/** Omitted: every card renders its chrome in place. */
 	chromeOf?: (messageId: string) => PostboxReaderCardChrome;
+	/** Omitted: no "Quote in reply" in this reader. */
+	quoteReply?: PostboxReaderQuoteReply;
 };
 
 export const POSTBOX_READER_CTX: InjectionKey<PostboxReaderContext> =
@@ -94,6 +110,7 @@ function readThrough(source: PostboxReaderContextSource): PostboxReaderContext {
 			return toValue(source.reduced);
 		},
 		chromeOf: chromeOf ? (messageId) => chromeOf(messageId) : () => IN_PLACE,
+		quoteReply: source.quoteReply ?? null,
 	};
 }
 
@@ -112,4 +129,13 @@ export function usePostboxReaderContext(): PostboxReaderContext {
 	// A card outside a reader would render without its mailbox and flags.
 	if (!context) throw new Error('PostboxReaderMessage needs a reader context provider');
 	return context;
+}
+
+/**
+ * The reader's "Quote in reply", or null: for a message body, which also
+ * renders outside any reader (the Team inbox's Answer mode) and then offers
+ * none.
+ */
+export function usePostboxReaderQuoteReply(): PostboxReaderQuoteReply | null {
+	return inject(POSTBOX_READER_CTX, null)?.quoteReply ?? null;
 }

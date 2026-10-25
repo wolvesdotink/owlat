@@ -12,6 +12,8 @@
  * reply mode), which is what `r` and the Reply button ask for.
  */
 
+import { SELECTED_QUOTE_CLASS } from './postboxSelectedQuote';
+
 export const ANSWER_MODE_KINDS = ['reply', 'replyAll', 'forward'] as const;
 export type AnswerModeKind = (typeof ANSWER_MODE_KINDS)[number];
 
@@ -67,6 +69,7 @@ export function isAnswerModePath(path: string): boolean {
  * reply with the quote (and a signature), so "the body is not empty" would be
  * true of every reply ever opened; this is the test the "Draft saved · Resume"
  * bar needs, since leaving an untouched reply must not claim a draft was saved.
+ * A passage the person chose to quote ("Quote in reply") is theirs: it counts.
  */
 export function answerDraftHasContent(bodyHtml: string, attachmentCount: number): boolean {
 	if (attachmentCount > 0) return true;
@@ -75,15 +78,24 @@ export function answerDraftHasContent(bodyHtml: string, attachmentCount: number)
 		return bodyHtml.replace(/<[^>]+>/g, '').trim().length > 0;
 	}
 	const doc = new DOMParser().parseFromString(bodyHtml, 'text/html');
-	for (const el of doc.body.querySelectorAll('.gmail_quote, [data-postbox-signature]')) {
+	const seeded = `.gmail_quote:not(.${SELECTED_QUOTE_CLASS}), [data-postbox-signature]`;
+	for (const el of doc.body.querySelectorAll(seeded)) {
 		el.remove();
 	}
 	return (doc.body.textContent ?? '').replace(/​/g, '').trim().length > 0;
 }
 
-/** True when a reply/forward body carries the quoted original the composer folds. */
+/**
+ * True when a reply/forward body carries the quoted original the composer
+ * folds. A passage the person chose to quote is never folded, so it alone
+ * offers nothing to show.
+ */
 export function bodyHasQuote(bodyHtml: string): boolean {
-	return bodyHtml.includes('gmail_quote');
+	for (const match of bodyHtml.matchAll(/\bclass\s*=\s*["']([^"']*)["']/gi)) {
+		const classes = (match[1] ?? '').split(/\s+/);
+		if (classes.includes('gmail_quote') && !classes.includes(SELECTED_QUOTE_CLASS)) return true;
+	}
+	return false;
 }
 
 /**

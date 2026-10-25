@@ -43,6 +43,7 @@ import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
 import { hasOwnWriting } from '~/utils/answerDraft';
+import { buildSelectedQuote } from '~/composables/postbox/usePostboxQuotedText';
 import { useReplyDropDelivery } from '~/composables/useReplyFileDrop';
 
 definePageMeta({
@@ -152,6 +153,15 @@ useReplyDropDelivery({
 		return answer ? (files: File[]) => void answer.addFiles(files) : null;
 	},
 });
+
+/** A passage selected in the conversation joins the reply being written. */
+function quoteIntoReply(source: PostboxReaderMessage, passage: string) {
+	const answer = composerRef.value?.answer;
+	const quote = buildSelectedQuote(source, passage);
+	if (!answer?.insertQuote || !quote) return;
+	answer.insertQuote(quote);
+	tab.value = 'reply';
+}
 
 function onDraftId(id: string) {
 	draftId.value = id;
@@ -360,7 +370,9 @@ useAnswerModeKeys({
 					v-if="message"
 					v-model:view="view"
 					:message="message"
+					:quotable="!!composerRef"
 					@count="messageCount = $event"
+					@quote="quoteIntoReply"
 				>
 					<template #brief="{ view: shown, messages, reveal }">
 						<AnswerBriefCard

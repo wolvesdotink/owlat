@@ -5396,6 +5396,9 @@
 				"rewritten": "Umgeschrieben",
 				"undo": "Rückgängig"
 			},
+			"postboxQuoteReplyPill": {
+				"action": "In Antwort zitieren"
+			},
 			"postboxRewritePill": {
 				"toolbarLabel": "Auswahl mit KI umschreiben"
 			},

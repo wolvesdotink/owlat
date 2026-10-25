@@ -495,6 +495,7 @@ const {
 	openReplyAll,
 	openPrimaryReply,
 	openReplyWithBody,
+	openQuoteReply,
 	openForward,
 	openResend,
 	hasOtherRecipients,
@@ -796,6 +797,14 @@ providePostboxReaderContext({
 	eagerBody: mountAllBodies,
 	reduced: false,
 	chromeOf: calm.cardOf,
+	// A selected passage replies to the message it is from, behind the guard.
+	quoteReply: {
+		canQuote: (messageId) => allMessages.value.some((m) => m._id === messageId),
+		quote: (messageId, passage) => {
+			const msg = allMessages.value.find((m) => m._id === messageId);
+			if (msg) runGuarded(msg, () => void openQuoteReply(msg, passage));
+		},
+	},
 });
 
 /**
