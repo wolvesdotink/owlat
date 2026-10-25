@@ -134,20 +134,18 @@ export const getForCurrentUser = publicQuery({
 // authz: self — disconnects only the caller's own external account (resolved by userId).
 export const disconnect = externalMailMutation({
 	args: {},
-	handler: async (ctx) => {
-		const s = await getBetterAuthSessionWithRole(ctx);
-		if (!s || !s.role) throwForbidden('Not authenticated');
+	handler: async (ctx, _args, session) => {
 		// Disconnect the LIVE account, not the caller's oldest row — otherwise a
 		// completed move's disconnected archive would swallow the call while the
 		// reconnected account keeps syncing.
-		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
+		const account = await getLivePersonalExternalAccountForUser(ctx, session.userId);
 		if (!account) {
 			// Nothing live to disconnect. Idempotent when an archived/disconnected
 			// PERSONAL row already exists; a genuine miss (no personal account at all,
 			// even if the caller connected a shared team inbox) is a not-found.
 			const rows = await ctx.db
 				.query('externalMailAccounts')
-				.withIndex('by_user', (q) => q.eq('userId', s.userId))
+				.withIndex('by_user', (q) => q.eq('userId', session.userId))
 				.collect(); // bounded: a handful of the caller's own account rows
 			if ((await personalAccounts(ctx, rows)).length > 0) {
 				return { ok: true, cancelledMigration: false };
@@ -172,9 +170,7 @@ export const disconnect = externalMailMutation({
 // authz: self — purges only the caller's own external account (resolved by userId).
 export const purge = externalMailMutation({
 	args: {},
-	handler: async (ctx) => {
-		const s = await getBetterAuthSessionWithRole(ctx);
-		if (!s || !s.role) throwForbidden('Not authenticated');
+	handler: async (ctx, _args, session) => {
 		// The LIVE personal account, or else the exact mailbox `getForCurrentUser`
 		// reports as retained — the two resolutions have to agree, because the only
 		// screen that calls this shows one address and offers one button.
@@ -185,9 +181,10 @@ export const purge = externalMailMutation({
 		// deleted the read-only archive this docstring promises to keep. A shared
 		// team inbox is org infrastructure and is never reachable through this
 		// personal path either way.
-		const live = await getLivePersonalExternalAccountForUser(ctx, s.userId);
+		const live = await getLivePersonalExternalAccountForUser(ctx, session.userId);
 		const account =
-			live ?? (await findRetainedPersonalAccount(ctx, s.userId, { forDeletion: true }))?.account;
+			live ??
+			(await findRetainedPersonalAccount(ctx, session.userId, { forDeletion: true }))?.account;
 		if (!account) throwNotFound('External mail account');
 		// Stop the worker (so it isn't syncing into a draining mailbox), then cascade.
 		await prepareAccountPurge(ctx, account, Date.now());

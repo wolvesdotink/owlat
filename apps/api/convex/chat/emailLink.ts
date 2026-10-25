@@ -19,7 +19,6 @@
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { openInboundMessageBody } from '../lib/messageBodyInbound';
-import { getMutationContext } from '../lib/sessionOrganization';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { isSharedInboxReader } from '../inbox/access';
@@ -76,8 +75,8 @@ export const linkChannelToInboxThread = chatMutation({
  */
 export const unlinkChannel = chatMutation({
 	args: { roomId: v.id('chatRooms') },
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		await assertCanAdministerRoom(ctx, room, userId, role);
 		if (!room.linkedInboxThreadId) return { success: true as const };

@@ -15,7 +15,7 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { adminQuery, authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { asEagernessMode, type EagernessMode } from './askEagerness';
 
 /** Read the ask-eagerness dial for the settings UI. `null` = no setting =
@@ -40,7 +40,7 @@ export const getAskEagernessInternal = internalQuery({
 
 /** Set the ask-eagerness dial. Admin-only, mirroring the autonomy-rule guard —
  * the two are one trust control. Single-row upsert. */
-// authz: org:manage via requireOrgPermission; org membership via authedMutation.
+// authz: org:manage via requirePermission on the threaded session; org membership via authedMutation.
 export const setAskEagerness = authedMutation({
 	args: {
 		mode: v.union(
@@ -50,10 +50,9 @@ export const setAskEagerness = authedMutation({
 			v.literal('off')
 		),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can change the ask-eagerness setting'
 		);
 		// Defensive: the arg validator already constrains this, but keep the write

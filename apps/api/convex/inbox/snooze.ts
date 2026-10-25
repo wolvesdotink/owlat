@@ -21,7 +21,6 @@ import { internalMutation } from '../lib/writeFence';
 import { adminMutation } from '../lib/authedFunctions';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
-import { getMutationContext } from '../lib/sessionOrganization';
 import { snoozeClockPatch } from './sla/threadClock';
 import { recordTeamSnoozed } from '../mail/interpret/threadEvents';
 
@@ -33,8 +32,8 @@ export const snoozeThread = adminMutation({
 		threadId: v.id('conversationThreads'),
 		until: v.number(),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		const now = Date.now();
 		if (args.until <= now) {
@@ -67,8 +66,8 @@ export const unsnoozeThread = adminMutation({
 	args: {
 		threadId: v.id('conversationThreads'),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		if (thread.snoozedUntil === undefined) {
 			return { success: true };

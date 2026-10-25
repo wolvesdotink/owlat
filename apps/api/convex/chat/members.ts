@@ -3,11 +3,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	getMutationContext,
-	getUserIdFromSession,
-	requireOrgPermission,
-} from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import {
 	chatQuery,
@@ -27,8 +23,9 @@ import { chatMemberRoleValidator } from '../lib/literalValidators';
  */
 export const joinChannel = chatMutation({
 	args: { roomId: v.id('chatRooms') },
-	handler: async (ctx, args) => {
-		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
+	handler: async (ctx, args, session) => {
+		requirePermission(hasPermission(session.role, 'chat:participate'), 'Chat is not available');
+		const { userId } = session;
 
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
@@ -62,8 +59,8 @@ export const joinChannel = chatMutation({
 // authz: self — a member removes only their own room membership.
 export const leaveRoom = chatMutation({
 	args: { roomId: v.id('chatRooms') },
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind === 'dm') {
 			throwInvalidInput('You cannot leave a direct message');
@@ -99,8 +96,8 @@ export const addMember = chatMutation({
 		memberId: v.string(),
 		role: v.optional(chatMemberRoleValidator),
 	},
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind === 'dm') {
 			throwInvalidInput('Add members to a DM by starting a new group DM');
@@ -129,8 +126,8 @@ export const addMember = chatMutation({
  */
 export const removeMember = chatMutation({
 	args: { roomId: v.id('chatRooms'), memberId: v.string() },
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind === 'dm') {
 			throwInvalidInput('Cannot remove a DM participant');
@@ -166,8 +163,8 @@ export const setMemberRole = chatMutation({
 		memberId: v.string(),
 		role: chatMemberRoleValidator,
 	},
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind === 'dm') {
 			throwInvalidInput('DM roles are fixed');
@@ -202,8 +199,8 @@ export const setMemberRole = chatMutation({
  */
 export const listRoomMembers = chatQuery({
 	args: { roomId: v.id('chatRooms') },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		await assertCanReadRoom(ctx, room, userId);
 
