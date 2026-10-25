@@ -8,7 +8,7 @@ import {
 import { transportArmValidator, abVariantValidator } from '../lib/literalValidators';
 
 /**
- * Retention bound for the probe ledger (D16 — write amplification is a design
+ * Retention bound for the probe ledger (write amplification is a design
  * constraint). Lives next to the `expiresAt` column and the cleanup cron it
  * bounds, so the three can never drift apart.
  */
@@ -23,9 +23,9 @@ export const SEED_PROBE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
  * no second credential model and no second IMAP client. This file adds only
  * the probe LEDGER: one row per shadow copy, carrying where it was found.
  *
- * D17 — read as a tripwire, not a gauge. Rows are raw observations; every
+ * Read as a tripwire, not a gauge. Rows are raw observations; every
  * verdict derived from them is a STATUS (see `@owlat/shared/seedPlacement`).
- * D18 — a shadow copy is NOT a send: these rows are the only record of it, and
+ * A shadow copy is NOT a send: these rows are the only record of it, and
  * no `emailSends` / `transactionalSends` row, campaign stat shard, or
  * `sendingReputation` event is ever written for one.
  *
@@ -111,7 +111,7 @@ export const seedPlacementTables = {
 		/** Set when the probe's RFC 8058 one-click target was exercised. */
 		unsubscribedAt: v.optional(v.number()),
 
-		/** Retention bound — the cleanup cron drops rows past this (D16). */
+		/** Retention bound — the cleanup cron drops rows past this. */
 		expiresAt: v.number(),
 	})
 		.index('by_probe_id', ['probeId'])

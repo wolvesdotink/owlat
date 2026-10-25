@@ -88,7 +88,7 @@ describe('SignedWebhookCard', () => {
 	});
 
 	it('tells the operator to leave open/click OFF, and says why', () => {
-		// Plan D3: first-party tracking instruments BOTH arms identically, which is
+		// First-party tracking instruments BOTH arms identically, which is
 		// the only reason the engagement ramp gate can compare them. True of every
 		// provider, so this note is not per-kind copy.
 		const note = mountCard().find('[data-testid="signed-webhook-tracking-events-off"]');

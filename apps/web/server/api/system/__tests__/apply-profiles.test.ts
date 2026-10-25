@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
- * Route tests for `POST /api/system/apply-profiles` (plan D4): platform-admin
+ * Route tests for `POST /api/system/apply-profiles`: platform-admin
  * session auth mirroring /api/system/update, body-shape validation, and the
  * proxy to the updater sidecar's /apply-profiles — forwarding flags (never
  * profile strings) with the instance secret, surfacing updater failures as

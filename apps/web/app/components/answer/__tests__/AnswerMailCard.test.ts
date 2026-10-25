@@ -5,7 +5,7 @@
  * gone (#1188).
  *
  * Its one verb is Done; Reply writes a nudge in Answer mode and finishes
- * nothing, since only a send there completes the item (plan §10). The queue bug
+ * nothing, since only a send there completes the item. The queue bug
  * that rule fixed: the card completed the item as the composer OPENED, so
  * closing it without sending dropped the email from the queue.
  */
@@ -132,7 +132,7 @@ describe('AnswerMailCard renders a follow-up reminder', () => {
 	});
 });
 
-describe('AnswerMailCard finishes an item only when something was done (plan §10)', () => {
+describe('AnswerMailCard finishes an item only when something was done', () => {
 	it('Done dismisses the reminder and completes the item', async () => {
 		const wrapper = mountCard();
 		await wrapper.get('.primary').trigger('click');
@@ -194,7 +194,7 @@ describe('AnswerMailCard keyboard', () => {
 	});
 });
 
-describe('AnswerMailCard offers "Draft a nudge" (SPEC §7)', () => {
+describe('AnswerMailCard offers "Draft a nudge"', () => {
 	const stale = { reason: 'stale' as const, itemId: 'item-1' };
 
 	it('opens Answer mode with a nudge to draft, finishing nothing', async () => {

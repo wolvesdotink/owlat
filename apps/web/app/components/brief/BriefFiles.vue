@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * "Files": every file that went through the thread, in or out, as chips with
- * who sent it and when (plan §4.1). A chip is a button when the host can do
+ * who sent it and when. A chip is a button when the host can do
  * something with it: Answer mode attaches it to the reply, the reader opens
  * the message it came with.
  */

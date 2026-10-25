@@ -1,5 +1,5 @@
 /**
- * The Convex -> MTA send-intake wire (D7).
+ * The Convex -> MTA send-intake wire.
  *
  * One body shape serves all three intake routes — `/send` (governed tenant
  * mail), `/send/postbox` (personal mailbox) and `/send/system` (auth mail).

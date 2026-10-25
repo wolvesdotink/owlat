@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The Team inbox reply, in Answer mode's composer column (plan §07).
+ * The Team inbox reply, in Answer mode's composer column.
  *
  * One composer for every state a team message can be in:
  *

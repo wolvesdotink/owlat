@@ -1,7 +1,7 @@
 /**
  * Reader sealed-badge derivation for Sealed Mail (E5, flag `sealedMail`). Turns
- * the inbound sealing record persisted at decrypt-on-ingest (D3,
- * `mailMessages.inboundEncryptionInfo`) into ONE honest badge state.
+ * the inbound sealing record persisted at decrypt-on-ingest
+ * (`mailMessages.inboundEncryptionInfo`) into ONE honest badge state.
  *
  * The cardinal rule (the honesty audit is a test, not a vibe): a state may never
  * claim more than what was cryptographically checked. "Sealed — sender verified"

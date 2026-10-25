@@ -1,10 +1,10 @@
 /**
- * Read on arrival: the cross-lane hooks (SPEC §2.9). Each hook has a stable
+ * Read on arrival: the cross-lane hooks. Each hook has a stable
  * signature that its call sites build against and an owning lane whose module
  * implements it; the hook itself only delegates.
  *
  * `ARRIVAL_HOOK_STUBS` names every hook that is still a stub. It is empty, and
- * the final wiring gate (SPEC §9, `__tests__/arrivalContract.test.ts`) fails
+ * the final wiring gate (`__tests__/arrivalContract.test.ts`) fails
  * if a name is ever added back.
  *
  * Isolate-safe helpers, no Convex functions.
@@ -90,7 +90,7 @@ export type SenderStatusAtDelivery = {
 } | null;
 
 /**
- * Lane rules (SPEC §6.2). The plain-language / Fix-origin and AI-conditioned
+ * Lane rules. The plain-language / Fix-origin and AI-conditioned
  * filter pass, called once from each live-ingest path (`mail/delivery.ts`,
  * `mail/external/delivery.ts`) right after `insertDeliveredMessage`. Never
  * called for history imports or backfill. Implemented in
@@ -105,7 +105,7 @@ export async function evaluateArrivalRules(
 }
 
 /**
- * Lane rules (SPEC §6.2). The pending AI questions of ONE message, read from
+ * Lane rules. The pending AI questions of ONE message, read from
  * its arrival record's `pendingAiFilters`; R2 (`categoryClassify`) asks them.
  * Implemented in `mail/rules/rulesPass.ts listPendingRuleQuestions`.
  */
@@ -117,7 +117,7 @@ export async function listArrivalAiQuestions(
 }
 
 /**
- * Lane rules (SPEC §6.2). Apply R2's answers for ONE message: revision-checked,
+ * Lane rules. Apply R2's answers for ONE message: revision-checked,
  * restrict-only, subject to `exclusiveWinners`, logged as a `rule_apply`
  * operation in the same mutation, then the projection is refreshed.
  * Implemented in `mail/rules/rulesPass.ts applyRuleAnswers`.
@@ -130,7 +130,7 @@ export async function applyArrivalAiAnswers(
 }
 
 /**
- * Lane senders (SPEC §5). Sender-status enforcement at delivery, after user
+ * Lane senders. Sender-status enforcement at delivery, after user
  * filters: `unsubscribed` and `auto_archive` file to Archive, `digest` stays.
  * Implemented in `mail/senders/delivery.ts applySenderStatus` (the seam with
  * the arrival record is documented there).
@@ -143,7 +143,7 @@ export async function applySenderStatusAtDelivery(
 }
 
 /**
- * Lane senders (SPEC §5). Count a live delivery in the sender's profile
+ * Lane senders. Count a live delivery in the sender's profile
  * (delivered weeks, kind, last delivered). Ignores any non-live origin.
  * Implemented in `mail/senders/delivery.ts countSenderDelivery`; both live
  * paths reach it through `settleSenderDelivery`.
@@ -156,7 +156,7 @@ export async function recordSenderDelivery(
 }
 
 /**
- * Lane senders (SPEC §5). Count a message's first reader open in its sender's
+ * Lane senders. Count a message's first reader open in its sender's
  * opened weeks, once (`mailMessages.isOpenCounted`), for live mail only.
  * Implemented in `mail/senders/opens.ts countFirstOpen`.
  */
@@ -168,7 +168,7 @@ export async function recordFirstOpen(
 }
 
 /**
- * Lane rules / wiring (SPEC §4.2, §6.1). Compile the rule a person described
+ * Lane rules / wiring. Compile the rule a person described
  * in Fix's optional "why" into its `mailRuleDrafts` row. Fix
  * (`mail/arrival/fix.ts`) writes the row (`status: 'compiling'`, origin `fix`,
  * `sourceText` sealed, `fromMessageId`) in the Fix mutation and schedules

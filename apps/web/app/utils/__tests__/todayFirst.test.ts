@@ -245,7 +245,7 @@ describe('today model', () => {
 			fromName: 'Northwind Finance',
 			snippet: 'The invoice run moves to the 28th.',
 		});
-		// D7: the subject, never a classifier summary.
+		// The subject, never a classifier summary.
 		expect(model.worth[0]).toMatchObject({ text: 'Invoice run', isSummary: false });
 	});
 

@@ -3,7 +3,7 @@
 /**
  * The host's draft-quality self-check (split out of `draftService.ts`, which
  * re-exports it): one cheap-tier structured pass that scores the generated
- * draft, and, when the draft was written to a response plan (SPEC §6), reports
+ * draft, and, when the draft was written to a response plan, reports
  * per item whether the draft addresses it and with which words, every file the
  * draft says is attached and every commitment it makes. Plugins' drafts
  * go through the same check: a strategy returns `{draftBody}` and
@@ -215,7 +215,7 @@ async function selfCheckCall<T>(
 		);
 		return object;
 	} catch (err) {
-		// A budget refusal is not a failed check: the caller holds or surfaces it (D1).
+		// A budget refusal is not a failed check: the caller holds or surfaces it.
 		rethrowAdmissionRefusal(err);
 		// Still fail-soft, but not silent: a self-check that failed on every draft
 		// (an OpenRouter client that dropped the schema, so the model guessed the

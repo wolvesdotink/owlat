@@ -182,6 +182,10 @@ async function confirmRemoveWorkspace() {
 		     Hides itself when none can fire for this person. -->
 		<PreferencesMarketingNotifications v-if="!isDesktop && hasMarketing" />
 
+		<!-- The opt-in alert chimes: account switches, like the marketing ones.
+		     Hides itself when no alert it covers can reach this person. -->
+		<PostboxAlertSoundSettings v-if="!isDesktop" />
+
 		<!-- Offline read cache: device-local, never synced. Any browser. -->
 		<div v-if="hasMail" id="offline" class="scroll-mt-6">
 			<PostboxOfflineSettings />
@@ -248,6 +252,8 @@ async function confirmRemoveWorkspace() {
 
 			<!-- Which mail is worth a notification, quiet hours, preview hiding. -->
 			<PostboxNotificationSettings v-if="hasMail" />
+
+			<PostboxAlertSoundSettings />
 
 			<PreferencesMarketingNotifications v-if="hasMarketing" />
 

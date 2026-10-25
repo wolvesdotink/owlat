@@ -67,7 +67,7 @@ type ReadCtx = Pick<QueryCtx, 'db'>;
 const DISPLAY_ONLY: InterpretDeferReason = 'display_only';
 
 /**
- * Whether the thread holds an item this message could move (D10 keeps
+ * Whether the thread holds an item this message could move (deferral keeps
  * transitions eager): any open item (unclear and proposed ones included) or
  * one closed within the lookback, which is exactly the set interpretation
  * reads and may reopen, complete or supersede (`load.ts`
@@ -118,7 +118,7 @@ export async function isDisplayOnlyInterpretation(
 
 /**
  * Defer a captured Postbox source when its interpretation is display-only
- * and its owner turned read on arrival off (SPEC §2.1: with it on, the run
+ * and its owner turned read on arrival off (with it on, the run
  * reads it now at the depth it chooses, `arrivalDecide.ts`). True when it was
  * deferred (the caller then runs nothing).
  */
@@ -264,7 +264,7 @@ export const oldestDeferredBefore = internalQuery({
 				)
 				.take(2)
 		).find((row) => row.sourceKey !== ownKey);
-		// Read on arrival (SPEC §2.3.4): a source that needs a full read (a sent
+		// Read on arrival: a source that needs a full read (a sent
 		// reply, mail that is not display-only, a full-read prerequisite's
 		// upgrade) reads the thread's earlier gist-only or counted mail first,
 		// the same way. Display-only mail never upgrades anything, and neither
@@ -312,7 +312,7 @@ export const releaseGoneDeferred = internalMutation({
 });
 
 /**
- * D10 ordering (Sol r2 F1, r3): before a Postbox source is interpreted, every
+ * Deferral ordering: before a Postbox source is interpreted, every
  * EARLIER deferred source of its thread is read, oldest first. An earlier
  * message (an invoice) can hold the item a later one cancels or completes,
  * and a run reads only the items that exist.

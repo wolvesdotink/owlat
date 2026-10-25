@@ -1,5 +1,5 @@
 /**
- * The banners `BriefIncomplete` shows, as data (plan §8 "Hard cases"). Pure:
+ * The banners `BriefIncomplete` shows, as data. Pure:
  * texts are catalog keys the component resolves.
  */
 import type { BriefModeView, ThreadBriefView } from '../../../api/convex/mail/interpret/briefShape';
@@ -35,7 +35,7 @@ const PARTIAL_REASON: Partial<Record<GapReason, string>> = {
 export type BriefGapInput = Pick<ThreadBriefView, 'completeness' | 'gap' | 'deferredSources'>;
 
 /**
- * D10: new mail in the thread waited for this open and is being read now.
+ * New mail in the thread waited for this open and is being read now.
  * Only while the overview is otherwise waiting on it: nothing recorded yet,
  * or a partial overview whose gap is exactly that wait.
  */

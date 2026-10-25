@@ -1,5 +1,5 @@
 /**
- * The team thread stream's pure rules (SPEC §7 "Team"): how loaded pages
+ * The team thread stream's pure rules: how loaded pages
  * become one list, which rows a stream shows (system lines grouped, a "new"
  * divider), and the composer's `#` item link. Free of Vue and Convex so each
  * rule is unit-testable.

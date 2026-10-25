@@ -1,5 +1,5 @@
 /**
- * "Draft with AI" that asks first (plan §05, §06), from the composer's side.
+ * "Draft with AI" that asks first, from the composer's side.
  *
  * `start` sends the optional instruction; the server checks for gaps and
  * either asks (the session goes `asking` and the ask card shows its questions)
@@ -93,8 +93,8 @@ export function useAnswerAskSession(opts: {
 	});
 
 	/**
-	 * The server refused because the safety check held the message back (D13,
-	 * #1339). The bar says so in place of a toast, until the target changes.
+	 * The server refused because the safety check held the message back. The
+	 * bar says so in place of a toast, until the target changes.
 	 */
 	const isHeldByGuard = ref(false);
 	/**

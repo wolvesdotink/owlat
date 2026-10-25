@@ -1,5 +1,5 @@
 /**
- * The Workbench peek answers in Answer mode (plan §07): Reply on a Postbox
+ * The Workbench peek answers in Answer mode: Reply on a Postbox
  * email opens `m/<messageId>`, Reply on a team message opens `t/<threadId>` on
  * that message, and a team update (which needs no reply until someone asks for
  * one) leaves the verb to the page's "Reply anyway".

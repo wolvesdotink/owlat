@@ -1,5 +1,5 @@
 /**
- * The one-click preset: six writes, in order, with the D8 warning beside them.
+ * The one-click preset: six writes, in order, with the single-reference-relay warning beside them.
  *
  * What this pins is the SHAPE that lands — three `adaptive_mix` routes over
  * `[mta, mandrill]` with Mandrill as the fallback relay, then three
@@ -197,7 +197,7 @@ describe('the preset declines to write', () => {
 	});
 });
 
-describe('D8 — the second relay', () => {
+describe('the second relay', () => {
 	it('warns, by name, without blocking the write', async () => {
 		const wrapper = await mountStep({
 			routes: [

@@ -1,5 +1,5 @@
 /**
- * Routing for desktop notification actions (D13 + D5). The Rust backend emits a
+ * Routing for desktop notification actions. The Rust backend emits a
  * `notification-action` event ({ action: 'open' | 'archive' | 'read' | 'reply',
  * messageId, folderRole, reply? }) when the user interacts with a per-message
  * notification (macOS/Linux), and ({ action: 'navigate', url }) when a link

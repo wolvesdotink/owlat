@@ -1,5 +1,5 @@
 /**
- * Generic per-provider sending-domain identity (D7).
+ * Generic per-provider sending-domain identity.
  *
  * Its own schema sibling rather than another entry in `schema/domains.ts` or
  * `schema/delivery.ts`: both of those sit at the ~500 LOC split threshold
@@ -15,7 +15,7 @@ import { v } from 'convex/values';
 import { relayIdentityStatusValidator } from '../lib/literalValidators';
 
 export const relayIdentitiesTables = {
-	// D7: the sibling-table pattern (`sendingDomainMtaIdentities` /
+	// The sibling-table pattern (`sendingDomainMtaIdentities` /
 	// `sendingDomainSesIdentities`) stops at two. A third per-provider sibling
 	// does not scale — every provider after SES shares this one table,
 	// discriminated by `providerKind`. The two existing siblings stay FROZEN
@@ -36,7 +36,7 @@ export const relayIdentitiesTables = {
 		// verification seam looks up by name.
 		domain: v.string(),
 		// A `SendTransportKind` (`@owlat/shared`) held as a plain string, not a
-		// closed union: new relay kinds are then purely ADDITIVE (D7), the same
+		// closed union: new relay kinds are then purely ADDITIVE, the same
 		// choice every other hot-path column already makes
 		// (`sendAssignments.transport`, `emailSends.providerType`,
 		// `providerHealth.providerType`).
@@ -49,7 +49,7 @@ export const relayIdentitiesTables = {
 		status: relayIdentityStatusValidator,
 		spf: v.optional(v.object({ isValid: v.boolean(), error: v.optional(v.string()) })),
 		dkim: v.optional(v.object({ isValid: v.boolean(), error: v.optional(v.string()) })),
-		// Feeds the D5 return-path probe short-circuit: a provider that already
+		// Feeds the return-path probe short-circuit: a provider that already
 		// told us the custom return-path domain is verified saves the probe.
 		isCustomReturnPathVerified: v.optional(v.boolean()),
 		// JSON-blob version sibling for `providerDetails`, per CONVENTIONS.md
@@ -71,7 +71,7 @@ export const relayIdentitiesTables = {
 		// Operator/dashboard reads: "which of this org's domains are verified at
 		// this relay?"
 		.index('by_org_provider_status', ['organizationId', 'providerKind', 'status'])
-		// THE ENQUEUE-PATH PROOF READ (D6): "may this From domain be handed to
+		// THE ENQUEUE-PATH PROOF READ: "may this From domain be handed to
 		// this relay right now?", asked by `domains/providers/<kind>/`'s
 		// `relayDomainVerified` inside a send transaction.
 		//

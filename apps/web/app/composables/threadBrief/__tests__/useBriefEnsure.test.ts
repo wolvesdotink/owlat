@@ -1,5 +1,5 @@
 /**
- * First-open interpretation (D5): a thread whose brief reads `none` is handed
+ * First-open interpretation: a thread whose brief reads `none` is handed
  * to `lazy.ensure`, for a personal and a team thread alike. Only a request
  * the server took is remembered; a refusal is retried a bounded number of
  * times, and AI turning on asks again.
@@ -138,7 +138,7 @@ describe('useBriefEnsure', () => {
 		expect(run).not.toHaveBeenCalled();
 	});
 
-	describe('D10: messages whose reading waited for the open', () => {
+	describe('messages whose reading waited for the open', () => {
 		const mail = { kind: 'mail', id: 'mt1' };
 
 		it('asks on open while deferred sources wait, also on a thread read through before', async () => {

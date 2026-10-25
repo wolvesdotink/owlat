@@ -160,7 +160,7 @@ export const connect = authedAction({
  * Same validation and the same sealed-credential envelope as `connect` — a
  * seed is an ordinary external account that happens to exist so Owlat can mail
  * itself and see where the copy lands. Entirely optional: an install with zero
- * seeds sends normally and every delivery screen renders cleanly (D2).
+ * seeds sends normally and every delivery screen renders cleanly.
  */
 // authz: seed mailbox connect — the enforced floor is ADMIN. authedAction +
 // assertExternalEnabled here; the admin floor (requireAdminContext) and

@@ -1,7 +1,7 @@
 /**
  * The catalog entries of the surfaces outside the Postbox: the composer, the
- * Team inbox, the Workbench and its peek panel, Answer mode and the desktop
- * workspaces. Spread into `SHORTCUT_CATALOG` after the Postbox, in this order,
+ * Chat and Assistant message boxes, the Team inbox, the Workbench and its peek
+ * panel, Answer mode and the desktop workspaces. Spread into `SHORTCUT_CATALOG` after the Postbox, in this order,
  * which is the order their groups appear on the shortcuts page.
  *
  * The Team inbox thread, Workbench and peek entries are bound through the
@@ -32,6 +32,15 @@ export const SURFACE_SHORTCUTS: readonly ShortcutDefinition[] = [
 		...CONVENTION,
 	},
 	{
+		// Send, then the opposite of the "after replying" setting (keep / done).
+		id: 'composer.sendAlternate',
+		scope: 'composer',
+		keys: ['mod+alt+Enter'],
+		labelKey: L('sendAlternate'),
+		groupKey: G.compose,
+		...SURFACE,
+	},
+	{
 		id: 'composer.schedule',
 		scope: 'composer',
 		keys: ['mod+shift+Enter'],
@@ -53,6 +62,25 @@ export const SURFACE_SHORTCUTS: readonly ShortcutDefinition[] = [
 		scope: 'composer',
 		keys: ['mod+;'],
 		labelKey: L('savedReplies'),
+		groupKey: G.compose,
+		...SURFACE,
+	},
+
+	// --- Chat and Assistant message boxes (each answers its own keydown, and
+	// only while the box is empty or holds a recalled question) ---------------
+	{
+		id: 'chatComposer.recallOlder',
+		scope: 'chatComposer',
+		keys: ['ArrowUp'],
+		labelKey: L('recallLastMessage'),
+		groupKey: G.compose,
+		...SURFACE,
+	},
+	{
+		id: 'chatComposer.recallNewer',
+		scope: 'chatComposer',
+		keys: ['ArrowDown'],
+		labelKey: L('recallNewerQuestion'),
 		groupKey: G.compose,
 		...SURFACE,
 	},

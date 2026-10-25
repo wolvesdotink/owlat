@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Read on arrival (SPEC §6.5): generating a digest's lines, from the brief
+ * Read on arrival: generating a digest's lines, from the brief
  * email's Node action.
  *
  * ONE `mail.digest` call over the ≤20 rendered lines: each line's input is

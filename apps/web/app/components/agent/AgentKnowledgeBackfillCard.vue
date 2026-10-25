@@ -143,7 +143,7 @@ const backfillStatusVariant = computed(() => {
 					</div>
 				</div>
 			</div>
-			<!-- D1: how many messages this run left partly read at the spend budget (cumulative). -->
+			<!-- How many messages this run left partly read at the spend budget (cumulative). -->
 			<p
 				v-if="(backfillJob.partialCount ?? 0) > 0"
 				class="text-xs text-text-tertiary"

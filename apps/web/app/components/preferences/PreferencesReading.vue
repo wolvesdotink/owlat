@@ -19,6 +19,8 @@
 import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import { POSTBOX_REPLY_DEFAULT_OPTIONS } from '~/utils/postboxReplyDefault';
+import type { PostboxAfterReply } from '~/utils/postboxAfterReply';
+import { POSTBOX_AFTER_REPLY_OPTIONS } from '~/utils/postboxAfterReply';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { POSTBOX_DENSITY_OPTIONS } from '~/utils/postboxDensity';
@@ -33,8 +35,9 @@ import PreferencesSettingRow from './PreferencesSettingRow.vue';
 
 const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
-// The reply keys as the person has them bound (a preset or a remap moves them).
-const { labelFor } = useShortcutLabels();
+// The reply keys as the person has them bound (a preset or a remap moves them),
+// and the composer's fixed opposite-action chord as this machine spells it.
+const { labelFor, chordLabel } = useShortcutLabels();
 
 const {
 	autoAdvance,
@@ -47,6 +50,8 @@ const {
 	setReadOnArrival,
 	replyDefault,
 	setReplyDefault,
+	afterReply,
+	setAfterReply,
 	density,
 	setDensity,
 	readingPane,
@@ -74,6 +79,7 @@ const values = computed<Record<ReadingField, unknown>>(() => ({
 	swipeLeftAction: swipeLeftAction.value,
 	swipeRightAction: swipeRightAction.value,
 	replyDefault: replyDefault.value,
+	afterReply: afterReply.value,
 	writingSuggestions: writingSuggestions.value,
 	autoSummarize: autoSummarize.value,
 	readOnArrival: readOnArrival.value,
@@ -99,6 +105,7 @@ const RESETS: Record<ReadingField, () => Promise<unknown>> = {
 	swipeLeftAction: () => setSwipeAction('left', DEFAULTS.swipeLeftAction),
 	swipeRightAction: () => setSwipeAction('right', DEFAULTS.swipeRightAction),
 	replyDefault: () => setReplyDefault(DEFAULTS.replyDefault),
+	afterReply: () => setAfterReply(DEFAULTS.afterReply),
 	writingSuggestions: () => setWritingSuggestions(DEFAULTS.writingSuggestions),
 	autoSummarize: () => setAutoSummarize(DEFAULTS.autoSummarize),
 	readOnArrival: () => setReadOnArrival(DEFAULTS.readOnArrival),
@@ -118,6 +125,11 @@ function onAutoAdvanceChange(event: Event) {
 function onReplyDefaultChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value as PostboxReplyDefaultMode;
 	void setReplyDefault(value);
+}
+
+function onAfterReplyChange(event: Event) {
+	const value = (event.target as HTMLSelectElement).value as PostboxAfterReply;
+	void setAfterReply(value);
 }
 
 function onDensityChange(event: Event) {
@@ -323,6 +335,42 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 			>
 				<option
 					v-for="option in POSTBOX_REPLY_DEFAULT_OPTIONS"
+					:key="option.value"
+					:value="option.value"
+				>
+					{{ t(option.label) }}
+				</option>
+			</select>
+		</PreferencesSettingRow>
+		<PreferencesSettingRow
+			control-id="postbox-after-reply"
+			:label="t('components.preferences.preferencesReading.afterReplyLabel')"
+			:changed="isChanged('afterReply')"
+			:disabled="isSaving"
+			data-testid="preferences-after-reply"
+			@reset="resetToDefault('afterReply')"
+		>
+			<template #help>
+				<I18nT
+					keypath="components.preferences.preferencesReading.afterReplyHelp"
+					tag="p"
+					class="text-xs text-text-tertiary mt-0.5"
+					scope="global"
+				>
+					<template #oppositeKey
+						><kbd>{{ chordLabel('mod+alt+Enter') }}</kbd></template
+					>
+				</I18nT>
+			</template>
+			<select
+				id="postbox-after-reply"
+				class="input w-full sm:w-64 shrink-0"
+				:value="afterReply"
+				:disabled="isSaving"
+				@change="onAfterReplyChange"
+			>
+				<option
+					v-for="option in POSTBOX_AFTER_REPLY_OPTIONS"
 					:key="option.value"
 					:value="option.value"
 				>

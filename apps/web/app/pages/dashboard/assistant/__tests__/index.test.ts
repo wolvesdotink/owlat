@@ -36,6 +36,7 @@ const conversations = ref([
 ]);
 const activeId = ref<string | null>('conv_1');
 const messages = ref<Message[]>([]);
+const promptHistory = ref([{ id: 'msg_u1', prompt: 'What did the October launch earn?' }]);
 const selectConversation = vi.fn((id: string) => {
 	activeId.value = id;
 });
@@ -71,6 +72,7 @@ beforeEach(() => {
 			messages,
 			messagesError: ref(null),
 			refetchMessages: vi.fn(),
+			promptHistory,
 			activeConversation: ref(conversations.value[0]),
 			streaming: ref(false),
 			selectConversation,
@@ -244,6 +246,21 @@ describe('Assistant composer boundary', () => {
 		expect(selectConversation).toHaveBeenCalledWith('conv_2');
 		expect(w.find('[role="alert"]').exists()).toBe(false);
 		expect(w.find('[data-testid="composer"]').exists()).toBe(true);
+		w.unmount();
+	});
+});
+
+describe('Assistant question recall', () => {
+	it('hands the open conversation and its questions to the composer for ↑', async () => {
+		const w = mountPage({ attachTo: document.body });
+		const composer = w.getComponent(AssistantComposer);
+		expect(composer.props('historyKey')).toBe('conv_1');
+		expect(composer.props('promptHistory')).toEqual(promptHistory.value);
+
+		const field = w.get('textarea');
+		await field.trigger('keydown', { key: 'ArrowUp' });
+		await flushPromises();
+		expect((field.element as HTMLTextAreaElement).value).toBe('What did the October launch earn?');
 		w.unmount();
 	});
 });

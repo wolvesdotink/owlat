@@ -24,6 +24,9 @@ import { senderRowMarkerOf } from '~/utils/senderAuth';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import { replyDropForMessage } from '~/utils/replyFileDrop';
+import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
 
 const props = defineProps<{
 	entries: Array<PostboxFeedEntry<PostboxThreadRowMessage>>;
@@ -71,8 +74,14 @@ const navigableMessages = computed(() =>
 	)
 );
 
-// Previous/next in Zen walk the same order.
+// Previous/next in Zen walk the same order, and so does a reply marked done
+// that was opened from here.
 defineExpose({ visibleIds: computed(() => navigableMessages.value.map((m) => String(m._id))) });
+useListAnswerOrigin({
+	rows: () =>
+		navigableMessages.value.map((m) => ({ id: String(m._id), threadId: m.threadId ?? null })),
+	origin: () => folderAnswerOrigin(props.folderRole, props.activeMessageId),
+});
 
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 	items: navigableMessages,
@@ -123,6 +132,7 @@ function focusIndexOf(messageId: string): number {
 					<NuxtLink
 						v-bind="pinDrag.source(String(entry.message._id), entry.message.subject)"
 						:id="`postbox-bundled-${String(entry.message._id)}`"
+						v-reply-drop="replyDropForMessage(entry.message, folderRole)"
 						role="option"
 						:aria-selected="focusedIndex === focusIndexOf(String(entry.message._id))"
 						:to="messageTo(entry.message)"
@@ -217,6 +227,7 @@ function focusIndexOf(messageId: string): number {
 							<NuxtLink
 								v-bind="pinDrag.source(String(message._id), message.subject)"
 								:id="`postbox-bundled-${String(message._id)}`"
+								v-reply-drop="replyDropForMessage(message, folderRole)"
 								role="option"
 								:aria-selected="focusedIndex === focusIndexOf(String(message._id))"
 								:to="messageTo(message)"

@@ -93,7 +93,7 @@ export async function embedRetrievalQuery(
 		embedding = toIndexVector(result.embedding);
 		measured = await measuredEmbeddingSpace(embedder.target, result.embedding, before);
 	} catch (error) {
-		// A budget refusal is the caller's to hold, defer or show (D1), not a failed embed.
+		// A budget refusal is the caller's to hold, defer or show, not a failed embed.
 		rethrowAdmissionRefusal(error);
 		logInfo(`${logTag} embed failed`, { error: secretFreeErrorText(error) });
 		return { kind: 'failed' };

@@ -93,7 +93,7 @@ describe('seed credentials', () => {
 		expect(accounts[0]?.address).toBe('owlat.seed.01@gmail.example');
 	});
 
-	it('defines no second credential model — seeds are ordinary external accounts (D4)', async () => {
+	it('defines no second credential model — seeds are ordinary external accounts', async () => {
 		// Asserted on the STORED DOCUMENT, not on the schema file's source text: a
 		// text match passes vacuously (a field could be named `secretPassword` and
 		// still satisfy a `not.toContain('password')`) and breaks on unrelated

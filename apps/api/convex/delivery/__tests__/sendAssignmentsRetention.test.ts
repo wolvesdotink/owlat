@@ -1,5 +1,5 @@
 /**
- * Retention for the experiment record (plan D16).
+ * Retention for the experiment record.
  *
  * `sendAssignments` is one row per recipient per send, so an unbounded table is
  * a design defect, not a housekeeping nicety. The sweep must be indexed,

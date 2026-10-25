@@ -26,8 +26,8 @@ import PostboxSweepStatus from '~/components/postbox/PostboxSweepStatus.vue';
  * through the normal review queue and can never auto-send).
  *
  * A row shows the subject and the first lines of the message as the sender
- * wrote them (`preview`, quoted history cut). No model-written summary (D7,
- * thread brief): an old row's stored classifier summary is not shown.
+ * wrote them (`preview`, quoted history cut). No model-written summary:
+ * an old row's stored classifier summary is not shown.
  */
 const { t } = useI18n();
 

@@ -1,5 +1,5 @@
 /**
- * Source markers on team surfaces (SPEC §7 "Team"): who sent a cited email
+ * Source markers on team surfaces: who sent a cited email
  * and when (read from the stream; a reply names its author, never its
  * recipient), and what a click does: bring that email into view and ring it,
  * walking the stream back until it is loaded, or hand it to a host that pages
@@ -11,6 +11,7 @@ import type { TeamOpenItemsView } from '../../../../api/convex/mail/interpret/br
 import type { TeamStream } from '~/composables/team/useTeamStream';
 import type { BriefContext } from '~/utils/threadBriefContext';
 import { citedMessageId, streamSources } from '~/utils/teamCite';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 export function useTeamCite(opts: {
 	stream: TeamStream;
@@ -37,8 +38,7 @@ export function useTeamCite(opts: {
 		if (opts.reveal) return opts.reveal(messageId);
 		const el = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`);
 		if (!el) return false;
-		const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-		el.scrollIntoView?.({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+		el.scrollIntoView?.({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 		el.classList.add('ring-2', 'ring-brand/50');
 		setTimeout(() => el.classList.remove('ring-2', 'ring-brand/50'), 1600);
 		return true;

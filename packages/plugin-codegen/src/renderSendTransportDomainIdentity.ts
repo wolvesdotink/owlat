@@ -7,8 +7,8 @@ import {
 } from './renderShared';
 
 /**
- * The SENDING-DOMAIN IDENTITY half of a bundled send transport (the seams plan's
- * D5, wired by P3.2) — its own module for the same reason the feedback half, the
+ * The SENDING-DOMAIN IDENTITY half of a bundled send transport — its own module for the
+ * same reason the feedback half, the
  * crons and the automation registries have theirs: `render.ts` is the
  * composition, not the renderer of every artifact.
  */
@@ -37,7 +37,7 @@ interface RenderedSendTransportDomainIdentity extends PluginModuleFileEntry {
  *
  * Keyed by the same namespaced kind as the send half — which is what makes the
  * identity rows land in `sendingDomainRelayIdentities` under
- * `providerKind: 'plugin.<id>.<local>'` (D10: rows, not columns; the field is a
+ * `providerKind: 'plugin.<id>.<local>'` (rows, not columns; the field is a
  * plain string and no schema changed for this).
  *
  * THE CONFIGURATION IT CARRIES IS THE TRANSPORT'S OWN, never the plugin's

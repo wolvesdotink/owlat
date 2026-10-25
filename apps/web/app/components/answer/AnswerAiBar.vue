@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Answer mode's one AI entry point (plan §04): "What should the reply say?"
+ * Answer mode's one AI entry point: "What should the reply say?"
  * with an optional instruction, and "Draft with AI".
  *
  * Cmd/Ctrl+J inside Answer mode lands in the instruction field (the page asks

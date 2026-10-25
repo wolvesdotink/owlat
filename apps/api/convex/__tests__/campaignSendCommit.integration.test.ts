@@ -15,6 +15,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { scannedContentDigest } from '../campaigns/sendCommit';
 import type * as SendJobModule from '../campaigns/sendJob';
+import { createTestEmailTemplate } from './factories';
 import { type Harness, type Seeded, prepared, seed, start } from './helpers/campaignPreparation';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -470,5 +471,90 @@ describe('send preparation commit — beside a previous-release preparation', ()
 		const state = await prepared(t, seeded);
 		expect(state.campaign?.status).toBe('sent');
 		expect(state.jobs).toEqual([job]);
+	});
+});
+
+// The review step's "changed since the last send" reads these snapshots, so
+// every template a send mails is captured, and only for a send that started.
+describe('send preparation commit — template history', () => {
+	/** Turn the seeded A/B campaign into a content test against a second template. */
+	async function contentTest(t: Harness, seeded: Seeded): Promise<Id<'emailTemplates'>> {
+		return await t.run(async (ctx) => {
+			const variantB = await ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({
+					status: 'published',
+					subject: 'Variant B {{firstName}}',
+					htmlContent: '<p>Variant B body</p>',
+					defaultLanguage: 'en',
+				})
+			);
+			await ctx.db.patch(seeded.campaignId, {
+				abTestConfig: {
+					testType: 'content',
+					splitPercentage: 20,
+					variantBTemplateId: variantB,
+					winnerCriteria: 'manual',
+				},
+			});
+			return variantB;
+		});
+	}
+
+	const versionsOf = (t: Harness, templateId: Id<'emailTemplates'>) =>
+		t.run(async (ctx) =>
+			ctx.db
+				.query('emailTemplateVersions')
+				.withIndex('by_template_and_created_at', (q) => q.eq('templateId', templateId))
+				.collect()
+		);
+
+	it('a content test snapshots both templates it sends', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t, { status: 'scheduled', isABTest: true });
+		const variantB = await contentTest(t, seeded);
+
+		await start(t, seeded.campaignId);
+
+		const state = await prepared(t, seeded);
+		expect(state.jobs).toHaveLength(1);
+		expect(state.versions).toEqual([expect.objectContaining({ trigger: 'send' })]);
+		expect(await versionsOf(t, variantB)).toEqual([
+			expect.objectContaining({ trigger: 'send', createdBy: 'system:orchestrator' }),
+		]);
+	});
+
+	it('a blocked content test snapshots neither template', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t, { status: 'sending', isABTest: true });
+		const variantB = await contentTest(t, seeded);
+		const contentDigest = await currentDigest(t, seeded);
+
+		await t.mutation(internal.campaigns.sendCommit.commitPreparation, {
+			campaignId: seeded.campaignId,
+			read: { status: 'sending', templateId: seeded.templateId, contentDigest },
+			verdict: {
+				kind: 'blocked',
+				contentBlockReason: 'Prohibited content',
+				scan: {
+					score: 80,
+					level: 'blocked',
+					flags: [{ type: 'prohibited_content', severity: 'high', description: 'Prohibited' }],
+				},
+			},
+		});
+
+		expect((await prepared(t, seeded)).versions).toEqual([]);
+		expect(await versionsOf(t, variantB)).toEqual([]);
+	});
+
+	it('a subject test snapshots only its one template', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t, { status: 'scheduled', isABTest: true });
+
+		await start(t, seeded.campaignId);
+
+		const versions = await t.run(async (ctx) => ctx.db.query('emailTemplateVersions').collect());
+		expect(versions.map((row) => row.templateId)).toEqual([seeded.templateId]);
 	});
 });

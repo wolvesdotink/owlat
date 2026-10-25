@@ -119,7 +119,7 @@ describe('per-(IP x mailbox provider) warming caps', () => {
 	it('never lets the union of provider sends exceed the per-IP daily cap', async () => {
 		const dailyCap = 120;
 		await seedIpCap(dailyCap);
-		// The WHOLE taxonomy (D8), not a copy of it: with a sixth destination
+		// The WHOLE taxonomy, not a copy of it: with a sixth destination
 		// provider a hardcoded five would stop being the union this bounds.
 		const providers: readonly DestinationProviderKey[] = DESTINATION_PROVIDER_KEYS;
 		let accepted = 0;
@@ -239,7 +239,7 @@ describe('per-(IP x mailbox provider) warming caps', () => {
 		expect(multiplier).toBe(1);
 	});
 
-	describe('nextProviderCapMultiplier — the D9/D10 gates, as a fixture table', () => {
+	describe('nextProviderCapMultiplier — the advance and hold gates, as a fixture table', () => {
 		const MIN = PROVIDER_WARMING_POLICY.minimumSampleSends;
 		const K = PROVIDER_WARMING_POLICY.cleanDaysForRecovery;
 		const clean = (sent: number): ProviderWarmingWindow => ({
@@ -590,7 +590,7 @@ describe('per-provider caps as the hourly cron actually drives them', () => {
 		expect(await redis.hget(warmingProviderStateKey(ip, 'yahoo'), 'capMultiplier')).toBe('0.5');
 	});
 
-	it('HOLDS on a below-minimum-sample day rather than moving on thin evidence (D10)', async () => {
+	it('HOLDS on a below-minimum-sample day rather than moving on thin evidence', async () => {
 		const thin = PROVIDER_WARMING_POLICY.minimumSampleSends - 1;
 		await sendThrough('microsoft', thin, thin);
 		await sendThrough('gmail', thin);

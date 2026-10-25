@@ -1,5 +1,5 @@
 /**
- * Interpretation state for one source message (SPEC §4 step 3, `load.ts`).
+ * Interpretation state for one source message.
  *
  * `loadForInterpretation` is the run's one read before the model call:
  *   - the source: which thread it belongs to, its date, subject and direction,
@@ -216,7 +216,7 @@ export interface SourceInfo {
 	mailboxId?: Id<'mailboxes'>;
 	/** The user whose locale and time zone apply (mailbox owner), when there is one. */
 	ownerUserId?: string;
-	/** Team thread assignee: the default item assignee (D4). */
+	/** Team thread assignee: the default item assignee. */
 	threadAssigneeUserId?: string;
 	threadMessageCount: number;
 	participants: InterpretInputParticipant[];

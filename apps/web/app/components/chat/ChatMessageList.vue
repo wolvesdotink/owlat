@@ -102,6 +102,26 @@ const onEditing = (messageId: Id<'chatMessages'>, active: boolean) => {
 	editingIds.value = next;
 };
 
+// The message the composer's ↑ asked to edit. Mounted even when it is scrolled
+// out of the window, so its row exists to open the editor in; the row takes
+// the request while it renders, and the request ends with that render.
+const requestedEditId = ref<Id<'chatMessages'> | null>(null);
+const keepMountedIds = computed<ReadonlySet<string>>(() => {
+	const id = requestedEditId.value;
+	if (!id || editingIds.value.has(id)) return editingIds.value;
+	return new Set([...editingIds.value, id]);
+});
+
+/** Open a message's inline editor and move focus into it (the composer's ↑). */
+const openEditor = (messageId: Id<'chatMessages'>) => {
+	requestedEditId.value = messageId;
+	void nextTick(() => {
+		if (requestedEditId.value === messageId) requestedEditId.value = null;
+	});
+};
+
+defineExpose({ openEditor });
+
 const {
 	rows: visibleRows,
 	paddingTop,
@@ -118,7 +138,7 @@ const {
 	// bottom stays there while a reply streams in or an attachment loads.
 	stickToEnd: true,
 	endThresholdPx: STICK_TO_BOTTOM_PX,
-	keepMounted: () => editingIds.value,
+	keepMounted: () => keepMountedIds.value,
 });
 
 const rowClass = (row: ChatListRow): string => {
@@ -190,6 +210,7 @@ watch(
 					:message="row.item.message"
 					:is-own-message="isOwnMessage(row.item.message)"
 					:current-user-id="currentUserId"
+					:edit-requested="row.item.message._id === requestedEditId"
 					@edit="(id, text) => emit('edit', id, text)"
 					@delete="(id) => emit('delete', id)"
 					@editing="onEditing"

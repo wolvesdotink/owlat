@@ -1,6 +1,6 @@
 /**
  * The migration flow's judgement, without a DOM: what each step needs, what the
- * preset writes, and the one rule (D8) the flow polices.
+ * preset writes, and the one rule the flow polices.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -118,7 +118,7 @@ describe('step 3 — the domain checklist is stricter than the routing gate', ()
 	});
 });
 
-describe('D8 — exactly one reference relay', () => {
+describe('exactly one reference relay', () => {
 	it('says nothing when Mandrill is the only relay', () => {
 		expect(competingRelayKinds([route()])).toEqual([]);
 		expect(competingRelayWarning([route()])).toBeNull();

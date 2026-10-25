@@ -1,8 +1,8 @@
 /**
- * transportOutcomes — the PURE event vocabulary (plan D5).
+ * transportOutcomes — the PURE event vocabulary.
  *
  * Which Send lifecycle transition is a transport outcome at all, and which
- * counter (plus its calibration twin, plan D8) an event bumps. No database, no
+ * counter (plus its calibration twin) an event bumps. No database, no
  * clock: these two functions are where the write path's meaning lives, so they
  * are asserted exhaustively and in isolation. The DB-side write path is
  * `transportOutcomes.test.ts`.

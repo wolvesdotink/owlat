@@ -410,7 +410,7 @@
 		},
 		"assistant": {
 			"assistantComposer": {
-				"hint": "Enter to send · Shift+Enter for newline · the assistant can search your workspace and draft copy",
+				"hint": "Enter to send · Shift+Enter for newline · ↑ for your previous question · the assistant can search your workspace and draft copy",
 				"label": "Question for the assistant",
 				"placeholder": "Ask the assistant anything…",
 				"sendFailed": "Couldn't send. Your question is still here.",
@@ -1215,6 +1215,15 @@
 				"truncated": "Only the first {covered} recipients could be scheduled at your current capacity. Reduce the audience, or send it in stages.",
 				"underCounted": "This audience is larger than we counted exactly, so the schedule above is a floor — the real send may take longer."
 			},
+			"changedSinceLastSend": {
+				"changed": "Changed since the last send ({time})",
+				"compare": "Compare",
+				"lastSendLabel": "Last send",
+				"loadFailed": "Couldn't load the last send",
+				"noSend": "No earlier send of this email in its version history.",
+				"nowLabel": "Now",
+				"unchanged": "Unchanged since the last send ({time})"
+			},
 			"commandRow": {
 				"abBadge": "A/B",
 				"abResults": "A/B results",
@@ -1804,14 +1813,31 @@
 			},
 			"chatInput": {
 				"attachFile": "Attach file",
-				"hint": "Enter to send · Shift+Enter for newline · {'@'} to mention · paste or attach files",
+				"hint": "Enter to send · Shift+Enter for newline · ↑ to edit your last message · {'@'} to mention · paste or attach files",
 				"placeholder": "Type a message… use {'@'} to mention",
+				"recallNotInHistory": "None of the messages shown here is yours to edit.",
+				"recallNotLoaded": "None of the recent messages is yours to edit. Load earlier messages to look further back.",
 				"removeAttachment": "Remove attachment {filename}"
 			},
 			"chatLinkEmailDialog": {
 				"empty": "No inbox threads found.",
 				"removeLink": "Remove current link",
 				"searchPlaceholder": "Search inbox threads…",
+				"share": {
+					"title": "Share in chat",
+					"searchPlaceholder": "Search channels and people…",
+					"roomsLabel": "Where to share",
+					"empty": "No channel or direct message to post in.",
+					"partial": "Some channels or direct messages could not be loaded.",
+					"notePlaceholder": "Add a note (optional)",
+					"send": "Share",
+					"shared": "Link shared in {room}",
+					"audience": {
+						"personal": "From your personal inbox. Others in the chat see the link, not the mail.",
+						"shared": "Members of this inbox can open the link. Anyone else sees just the link.",
+						"team": "Owners and admins can open the link. Anyone else sees just the link."
+					}
+				},
 				"title": "Link an email thread"
 			},
 			"chatLinkedEmailPanel": {
@@ -3885,10 +3911,71 @@
 				"subtitle": "The subject line and preview text for your default language",
 				"title": "Subject & preview text"
 			},
+			"templateCompareModal": {
+				"blockTypes": {
+					"accordion": "Accordion",
+					"button": "Button",
+					"carousel": "Carousel",
+					"columns": "Columns",
+					"container": "Container",
+					"divider": "Divider",
+					"hero": "Hero",
+					"image": "Image",
+					"list": "List",
+					"menu": "Menu",
+					"other": "Block",
+					"progressBar": "Progress bar",
+					"rawHtml": "HTML",
+					"social": "Social links",
+					"spacer": "Spacer",
+					"table": "Table",
+					"text": "Text",
+					"video": "Video"
+				},
+				"blocks": "Changed blocks",
+				"copyChanges": "Copy changes",
+				"copyNone": "No copy changed.",
+				"counts": {
+					"added": "{count} block added | {count} blocks added",
+					"edited": "{count} block edited | {count} blocks edited",
+					"moved": "{count} block moved | {count} blocks moved",
+					"removed": "{count} block removed | {count} blocks removed"
+				},
+				"empty": "(empty)",
+				"frameTitle": "Email preview: {side}",
+				"identical": "No differences: both versions have the same subject and content.",
+				"kinds": {
+					"added": "Added",
+					"edited": "Edited",
+					"moved": "Moved",
+					"removed": "Removed"
+				},
+				"linksChanges": "Link changes",
+				"linksNone": "No links changed.",
+				"meta": {
+					"previewText": "Preview text",
+					"subject": "Subject"
+				},
+				"parts": {
+					"copy": "Copy",
+					"links": "Links",
+					"moved": "Also moved",
+					"other": "Style or layout"
+				},
+				"steps": {
+					"added": "Added",
+					"changed": "Changed",
+					"removed": "Removed"
+				},
+				"title": "Compare versions"
+			},
 			"templateHistoryPanel": {
+				"compare": "Compare with current",
+				"compareAction": "Compare with the current editor",
 				"confirmAction": "Restore version",
 				"confirmDescription": "This email has edits you haven't saved. Restoring loads the older version onto the canvas — you can undo it, but the restore itself is not saved until you save.",
 				"confirmTitle": "Replace your unsaved changes?",
+				"currentLabel": "In the editor now",
 				"empty": "No versions yet. Saving this email records one.",
 				"frameTitle": "Version preview",
 				"loadFailed": "Couldn't load that version",
@@ -4617,6 +4704,9 @@
 				"moreOptions": "More compose options",
 				"scheduleSend": "Schedule send…",
 				"sending": "Sending…",
+				"sendOptions": "More ways to send",
+				"sendAndKeep": "Send and keep in Inbox",
+				"sendAndDone": "Send and mark done",
 				"signature": "Signature",
 				"uploadingTitle": "Waiting for attachments to finish uploading…",
 				"previewAsSent": "Preview as sent",
@@ -5139,6 +5229,24 @@
 				"screener": {
 					"hint": "When on, mail from someone you've never corresponded with is held out of the Answer queue until you accept the sender — their mail still lands in the inbox. Keeps triage focused on people you know. Off by default.",
 					"label": "Screen first-time senders"
+				}
+			},
+			"postboxAlertSoundSettings": {
+				"saveOperation": "Save alert sound",
+				"heading": "Alert sounds",
+				"scopeBadge": "All your devices",
+				"intro": "A soft chime for the alerts you pick, and for nothing else. These switches belong to your account, so they hold in every browser and in the desktop app. Quiet hours keep every chime silent, and alerts that arrive together make one sound.",
+				"reply": {
+					"label": "Replies you are waiting for",
+					"hint": "When a reply lands in a conversation where you turned on \"Notify me when they reply\"."
+				},
+				"assignment": {
+					"label": "Conversations assigned to you",
+					"hint": "When a teammate assigns you a conversation in the Team inbox."
+				},
+				"question": {
+					"label": "Questions from the agent",
+					"hint": "When the agent needs a fact from you before it can reply. The question waits in your Answer queue."
 				}
 			},
 			"postboxOfflineBanners": {
@@ -6058,6 +6166,36 @@
 			"preferencesBackLink": {
 				"label": "Back to preferences"
 			},
+			"preferencesComfort": {
+				"title": "Reading comfort",
+				"subtitle": "Text size, contrast, motion and list spacing on this device.",
+				"textSizeLabel": "Mail text size",
+				"textSizeHelp": "How large mail reads in Postbox and the Team Inbox. Designed newsletters scale as a whole.",
+				"readingWidthLabel": "Reading width",
+				"readingWidthHelp": "How long a line of mail can run before it wraps. Designed newsletters keep their own layout.",
+				"listDensityLabel": "List density",
+				"listDensityHelp": "Row spacing in the Team Inbox, contacts and campaign lists. Postbox has its own density under Reading.",
+				"highContrastLabel": "Higher contrast",
+				"highContrastHelp": "Darker text and stronger borders in light mode, brighter ones in dark mode.",
+				"reduceMotionLabel": "Reduce motion",
+				"reduceMotionHelp": "Turn off animations and smooth scrolling in Owlat. Motion is always reduced when your device asks for it.",
+				"textSize": {
+					"small": "Small",
+					"default": "Default",
+					"large": "Large",
+					"larger": "Larger"
+				},
+				"readingWidth": {
+					"narrow": "Narrow",
+					"default": "Default",
+					"wide": "Wide",
+					"full": "Full width"
+				},
+				"listDensity": {
+					"comfortable": "Comfortable",
+					"compact": "Compact"
+				}
+			},
 			"preferencesExportManifest": {
 				"loading": "Counting…",
 				"moreThan": "more than {count}",
@@ -6084,6 +6222,8 @@
 				"readingPaneHelp": "Where the reader sits next to the list. Drag the divider — or focus it and use the arrow keys — to move the seam.",
 				"replyDefaultLabel": "Default reply behavior",
 				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
+				"afterReplyLabel": "After replying",
+				"afterReplyHelp": "What Send does with the conversation you answered. Marked done, it is archived once the reply goes out, and you move on as after archiving. {oppositeKey} or the menu beside Send does the other for one reply.",
 				"writingSuggestionsLabel": "Writing suggestions",
 				"writingSuggestionsHelp": "Show inline AI autocomplete as you write. Press Tab to accept.",
 				"autoSummarizeLabel": "Show the brief above conversations",
@@ -6153,6 +6293,7 @@
 					"global": "Everywhere",
 					"postbox": "Mail",
 					"composer": "Writing a message",
+					"chatComposer": "Chat and assistant message boxes",
 					"inbox": "Team inbox threads",
 					"review": "Team inbox updates",
 					"workbench": "Workbench",
@@ -6707,6 +6848,7 @@
 			"updateProgress": {
 				"heading": "Updating to v{version}",
 				"restartNotice": "The web app may restart during the update. This page will reconnect automatically.",
+				"rollingBackNotice": "The update failed and is being rolled back to the snapshot taken before it. This can take several minutes.",
 				"stepFailed": "Failed",
 				"steps": {
 					"convexDeploy": "Deploy backend functions",
@@ -7028,6 +7170,13 @@
 			}
 		},
 		"shell": {
+			"replyDrop": {
+				"hint": "Drop to reply to {name} with {count} file | Drop to reply to {name} with {count} files",
+				"hintNoCount": "Drop to reply to {name} with these files",
+				"hintNoName": "Drop to reply with {count} file | Drop to reply with {count} files",
+				"hintNoNameNoCount": "Drop to reply with these files",
+				"refused": "This reply goes out on another channel, so it can't carry files. The dropped files were not attached."
+			},
 			"status": {
 				"draftReady": "Draft ready",
 				"needsYou": "Needs you",
@@ -7234,6 +7383,55 @@
 			"zenMore": {
 				"hidden": "{count} more update in {inbox} waits outside Zen. | {count} more updates in {inbox} wait outside Zen.",
 				"show": "Show everything"
+			},
+			"upcoming": {
+				"title": "Upcoming",
+				"loadFailed": "Could not load what is coming up",
+				"when": {
+					"now": "Now",
+					"today": "{time}",
+					"tomorrow": "Tomorrow {time}",
+					"week": "{day} {time}",
+					"date": "{date}, {time}"
+				},
+				"noSubject": "(no subject)",
+				"send": {
+					"to": "Sends to {to}",
+					"toMany": "Sends to {to} and {count} other | Sends to {to} and {count} others",
+					"noRecipient": "Scheduled send, no recipient yet"
+				},
+				"snooze": {
+					"returns": "Returns from snooze · {from}",
+					"untilReply": "Returns from snooze, sooner if they reply · {from}"
+				},
+				"followUp": {
+					"waitingOn": "Reminder if {who} has not replied",
+					"anyone": "Reminder if nobody has replied"
+				},
+				"teamSnooze": "Team inbox · returns from snooze · {contact}",
+				"campaign": {
+					"title": "Campaign {name}",
+					"toAudience": "to {audience}",
+					"recipients": "{count} recipient | {count} recipients",
+					"countedAt": "Recipients counted {when}",
+					"local": "at {time} in each recipient's time zone",
+					"optimized": "at each recipient's usual reading time"
+				},
+				"actionsFor": "Scheduled send: {subject}",
+				"actions": {
+					"sendNow": "Send now",
+					"edit": "Edit",
+					"cancel": "Cancel"
+				},
+				"operations": {
+					"sendNow": "Send now",
+					"cancel": "Unschedule the send"
+				},
+				"noLongerScheduled": "That send is no longer scheduled.",
+				"sent": "Sending now.",
+				"cancelled": "Unscheduled. It is back in Drafts.",
+				"showMore": "Show more",
+				"moreThanShown": "More is scheduled than the Workbench lists."
 			}
 		},
 		"answer": {
@@ -15907,6 +16105,10 @@
 				"scopeOperation": "changing who can open the share link"
 			}
 		},
+		"postboxAfterReply": {
+			"keep": "Keep it in the Inbox",
+			"done": "Mark it done (archive)"
+		},
 		"postboxAutoAdvance": {
 			"backToList": "Go back to the list",
 			"next": "Open the next conversation",
@@ -16447,6 +16649,26 @@
 					"title": "Appearance",
 					"keywords": "dark mode, light mode, theme, colour scheme"
 				},
+				"mailTextSize": {
+					"title": "Mail text size",
+					"keywords": "font size, text size, zoom, larger text, readability"
+				},
+				"readingWidth": {
+					"title": "Reading width",
+					"keywords": "line length, measure, column width, wide"
+				},
+				"listDensity": {
+					"title": "List density",
+					"keywords": "compact, comfortable, spacing, row height, team inbox, contacts, campaigns"
+				},
+				"highContrast": {
+					"title": "Higher contrast",
+					"keywords": "contrast, accessibility, readability, borders, low vision"
+				},
+				"reduceMotion": {
+					"title": "Reduce motion",
+					"keywords": "animation, motion, accessibility, smooth scrolling, vestibular"
+				},
 				"language": {
 					"title": "Language",
 					"keywords": "locale, translation, English, German"
@@ -16466,6 +16688,10 @@
 				"replyDefault": {
 					"title": "Default reply behavior",
 					"keywords": "reply all, reply, r key"
+				},
+				"afterReply": {
+					"title": "After replying",
+					"keywords": "send and archive, mark done, done, archive after reply, keep in inbox"
 				},
 				"shortcuts": {
 					"keywords": "keyboard, shortcuts, hotkeys, key bindings, remap, gmail keys, superhuman keys, outlook keys",
@@ -16558,6 +16784,10 @@
 				"marketingNotifications": {
 					"title": "Marketing notifications",
 					"keywords": "campaign finished, scheduled campaign reminder, bounce spike, bounce protection, sending paused, automation stalled, dns broken, alerts"
+				},
+				"alertSounds": {
+					"title": "Alert sounds",
+					"keywords": "sound, chime, audio, reply alert, assigned to me, agent question"
 				},
 				"pushNotifications": {
 					"title": "Push notifications",
@@ -16672,6 +16902,7 @@
 				"scheduleSend": "Schedule send (in composer)",
 				"selectDeselect": "Select / deselect",
 				"send": "Send (in composer)",
+				"sendAlternate": "Send, other after-reply action (in composer)",
 				"showShortcuts": "Show keyboard shortcuts",
 				"snooze": "Snooze",
 				"starUnstar": "Star / unstar",
@@ -16694,6 +16925,8 @@
 				"previousQueueItem": "Previous item in the Answer queue",
 				"nextQueueItem": "Next item in the Answer queue",
 				"savedReplies": "Insert a saved reply",
+				"recallLastMessage": "In an empty message box: edit your last chat message, or bring back your previous question to the assistant",
+				"recallNewerQuestion": "Assistant: step forward to a newer question (past the newest, back to an empty box)",
 				"writeNote": "Write an internal note (Team inbox threads)",
 				"openSettings": "Open settings",
 				"openAssistant": "Open the assistant",
@@ -18043,9 +18276,6 @@
 				"cancelFollowUp": "Cancel reply reminder",
 				"translate": "Translate",
 				"showOriginal": "Download original (.eml)",
-				"copyLink": "Copy link",
-				"linkCopied": "Link copied",
-				"linkCopyFailed": "Could not copy the link",
 				"pin": "Pin conversation",
 				"unpin": "Unpin conversation"
 			},
@@ -18066,6 +18296,13 @@
 				"priorityPrompt": "Priority",
 				"current": "Current"
 			}
+		},
+		"conversationLink": {
+			"copyLink": "Copy link",
+			"shareInChat": "Share in chat…",
+			"linkCopied": "Link copied",
+			"linkCopyFailed": "Could not copy the link",
+			"linkUnavailable": "This workspace has no web address to link to"
 		},
 		"inboxSla": {
 			"dueIn": {

@@ -1,6 +1,6 @@
 /**
- * Read on arrival: the digest's state transitions that keep item text bounded
- * (SPEC §6.5). Lane rules builds the digest and MUST move a digest through
+ * Read on arrival: the digest's state transitions that keep item text bounded.
+ * Lane rules builds the digest and MUST move a digest through
  * these helpers, because message purge relies on what they guarantee
  * (`purgeRanges.ts`).
  *

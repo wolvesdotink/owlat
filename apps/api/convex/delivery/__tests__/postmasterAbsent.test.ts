@@ -1,5 +1,5 @@
 /**
- * The Convex half of the additive-only proof (D2).
+ * The Convex half of the additive-only proof.
  *
  * With no Google Postmaster account connected there are no rows, and the
  * delivery screen's query must answer with a calm "not connected" state: no

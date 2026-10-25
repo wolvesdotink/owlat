@@ -1,4 +1,4 @@
-import { REDUCED_MOTION_QUERY } from '../composables/useReducedMotion';
+import { onReducedMotionChange, prefersReducedMotion } from '../composables/useReducedMotion';
 
 /**
  * Run a looping decoration only while someone can see it.
@@ -13,11 +13,12 @@ import { REDUCED_MOTION_QUERY } from '../composables/useReducedMotion';
  *   animation-play-state: var(--ui-animation-state, paused);
  *
  * An element is `running` only while it intersects the viewport, the document
- * is visible and reduced motion is off. The CSS fallback is `paused`, so an
+ * is visible and reduced motion is off (the OS preference or the app's own
+ * override, read through the shared reduced-motion owner). The CSS fallback is `paused`, so an
  * element that is never registered (server render, before mount) holds its
  * first frame instead of animating unobserved.
  *
- * The observer, the visibility listener and the media-query listener exist only
+ * The observer, the visibility listener and the reduced-motion listener exist only
  * while at least one element is registered; the last unregister tears them down.
  */
 
@@ -33,7 +34,7 @@ interface Registration {
 const registrations = new Map<Element, Registration>();
 let listening = false;
 let observer: IntersectionObserver | null = null;
-let reducedMotion: MediaQueryList | null = null;
+let stopReducedMotion: (() => void) | null = null;
 
 function setState(element: ElementCSSInlineStyle, state: AnimationState): void {
 	element.style.setProperty(ANIMATION_STATE_PROPERTY, state);
@@ -44,7 +45,7 @@ function documentVisible(): boolean {
 }
 
 function update(registration: Registration): void {
-	const running = registration.intersecting && documentVisible() && !reducedMotion?.matches;
+	const running = registration.intersecting && documentVisible() && !prefersReducedMotion();
 	setState(registration.element, running ? 'running' : 'paused');
 }
 
@@ -54,10 +55,7 @@ function updateAll(): void {
 
 function start(): void {
 	listening = true;
-	if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-		reducedMotion = window.matchMedia(REDUCED_MOTION_QUERY);
-		reducedMotion.addEventListener('change', updateAll);
-	}
+	stopReducedMotion = onReducedMotionChange(updateAll);
 	document.addEventListener('visibilitychange', updateAll);
 	if (typeof IntersectionObserver === 'undefined') return;
 	const created: IntersectionObserver = new IntersectionObserver((entries) => {
@@ -78,8 +76,8 @@ function stop(): void {
 	listening = false;
 	observer?.disconnect();
 	observer = null;
-	reducedMotion?.removeEventListener('change', updateAll);
-	reducedMotion = null;
+	stopReducedMotion?.();
+	stopReducedMotion = null;
 	document.removeEventListener('visibilitychange', updateAll);
 }
 

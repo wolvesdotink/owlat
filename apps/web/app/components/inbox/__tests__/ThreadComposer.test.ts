@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 /**
- * The Team inbox reply in Answer mode's composer column (#765, plan §07):
+ * The Team inbox reply in Answer mode's composer column:
  *  - no agent draft: an empty editor that sends what the person typed;
  *  - an agent draft: the editor opens with it, Send approves it as is (the
  *    fast path), an edit sends the person's text; under ⋯ the changes against

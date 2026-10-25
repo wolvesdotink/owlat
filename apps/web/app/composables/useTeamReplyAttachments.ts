@@ -218,6 +218,8 @@ export function useTeamReplyAttachments(
 
 	return {
 		attachments,
+		/** The thread's file list has arrived, so limits count what is already on it. */
+		loaded: computed(() => listData.value !== undefined),
 		uploads: uploader.uploads,
 		suggestion,
 		block,

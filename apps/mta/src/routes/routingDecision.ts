@@ -100,7 +100,7 @@ function authorizedForOrg(c: Context, organizationId: string): boolean {
 /**
  * Judge one decision request.
  *
- * The key list is the PACKAGE's, never a copy of it (D7). This check is exact —
+ * The key list is the PACKAGE's, never a copy of it. This check is exact —
  * an unknown key is a 400 — and Convex's producer spreads a typed
  * `MtaRoutingDecisionRequest` onto the wire, so a field added to the contract
  * and honoured by that producer would be refused here the moment it was added
@@ -217,7 +217,7 @@ export async function readRoutingLease(redis: Redis, token: string): Promise<Rou
  *
  * Every `decision` answer this handler gives goes through here, so the shapes
  * it may emit are exactly {@link MtaRoutingDecisionResponse} — the same
- * declaration Convex validates them against (D7). A new defer reason therefore
+ * declaration Convex validates them against. A new defer reason therefore
  * cannot be invented on this side alone: it has to be added to
  * `MTA_DEFER_REASON_ORIGIN` with an origin beside it, which is the accept-list
  * the other end reads. Refusals (`{ error }`) are not decisions and stay on

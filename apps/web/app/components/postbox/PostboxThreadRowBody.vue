@@ -94,11 +94,11 @@ const isBriefPreferred = useBriefLinesShown();
 const isBriefShown = computed(
 	() => isBriefPreferred.value || props.msg.briefTop?.mode === 'actions'
 );
-/** The top open item instead of the snippet, once the thread is interpreted (SPEC §7). */
+/** The top open item instead of the snippet, once the thread is interpreted. */
 const briefLine = computed(() =>
 	isBriefShown.value ? briefRowLine(props.msg.briefTop, locale.value) : null
 );
-/** Read on arrival: the gist where a row has no brief line (SPEC §3). */
+/** Read on arrival: the gist where a row has no brief line. */
 const gistLine = computed(() => (isBriefShown.value ? rowGistOf(props.msg.briefTop) : null));
 
 const isPriority = inject(POSTBOX_PRIORITY_ROWS, false);

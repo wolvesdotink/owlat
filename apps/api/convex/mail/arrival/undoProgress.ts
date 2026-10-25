@@ -1,5 +1,5 @@
 /**
- * Read on arrival, Undo progress (SPEC §4.4, §16): the running totals an undo
+ * Read on arrival, Undo progress: the running totals an undo
  * keeps on its operation header (`undoProgress`), shared by the undo pages
  * (`./operations.ts`) and the sender re-sort chains they start
  * (`mail/senders/resortChain.ts`). An undo is done when its last page ran and

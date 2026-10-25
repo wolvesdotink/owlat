@@ -200,7 +200,7 @@ const handlingRulesGate: CoreAutoSendGate = Object.freeze({
 	},
 });
 
-// D3: interpretation that failed, is partial, or never ran means the structured
+// Interpretation that failed, is partial, or never ran means the structured
 // actions the draft answered may be incomplete, so a person decides
 // (mail/interpret/teamActions.ts). Restrict-only; an unreadable state holds too.
 const interpretationIncompleteGate: CoreAutoSendGate = Object.freeze({
@@ -213,7 +213,7 @@ const interpretationIncompleteGate: CoreAutoSendGate = Object.freeze({
 	},
 });
 
-// SPEC §6: the reply must cover the thread's open items. Objects when an open
+// The reply must cover the thread's open items. Objects when an open
 // item of ours is not addressed (or not deliberately skipped), when an item's
 // owner is unclear, when the plan is missing or stale against the draft hash or
 // the item revisions, when the draft makes a commitment nobody authorised, or

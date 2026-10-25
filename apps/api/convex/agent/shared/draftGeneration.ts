@@ -67,7 +67,7 @@ export interface DraftStream {
 }
 
 /**
- * The cheap-first writer (plan Phase 4, D2), chosen by the caller for a
+ * The cheap-first writer, chosen by the caller for a
  * REVIEWED draft only (`lib/llm/complexity.ts` `classifiedDraftRoute`):
  * `resolveModel` resolves the fast writer, and the one escalation runs on
  * `resolveCapable`.
@@ -128,7 +128,7 @@ export type SharedDraftParams = Readonly<{
 	 */
 	replyLanguage?: string;
 	/**
-	 * The response plan (SPEC §6): the items with their stances, rendered into
+	 * The response plan: the items with their stances, rendered into
 	 * the prompt, and the files the reply carries, for the self-check's claims.
 	 * Plugin strategies do not see it; the host's self-check covers them too.
 	 */
@@ -144,7 +144,7 @@ export type SharedDraftParams = Readonly<{
 	};
 	/** Stream the generation into a live view (Answer mode). Default strategy only. */
 	stream?: DraftStream;
-	/** Write a reviewed draft cheap-first (D2). Absent: one generation on `resolveModel`. */
+	/** Write a reviewed draft cheap-first. Absent: one generation on `resolveModel`. */
 	writer?: CheapFirstWriter;
 }>;
 

@@ -89,6 +89,7 @@ describe('PreferencesShortcuts', () => {
 			'global',
 			'postbox',
 			'composer',
+			'chatComposer',
 			'inbox',
 			'inboxList',
 			'review',

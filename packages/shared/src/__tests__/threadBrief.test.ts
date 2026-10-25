@@ -72,7 +72,7 @@ describe('itemStateKey', () => {
 });
 
 describe('primaryReaction', () => {
-	it('follows the plan §5 table', () => {
+	it('follows the reaction table', () => {
 		expect(primaryReaction('question', [], 'us')).toBe('reply');
 		expect(primaryReaction('request', ['file'], 'us')).toBe('attach');
 		expect(primaryReaction('request', ['file', 'signature'], 'us')).toBe('attach');

@@ -56,7 +56,7 @@ export const interpretSourceTables = {
 		// rows, when deferred. Absent sorts first, so a legacy deferred row is
 		// read as the oldest.
 		sourceOrderKey: v.optional(v.string()),
-		// Read on arrival (SPEC §2.3, §2.5): the depth read, a terminal outcome
+		// Read on arrival: the depth read, a terminal outcome
 		// short of a full read (clears isOutstanding/isDeferred), whether the
 		// upgrade rule may still read it in full, why it was skipped; the
 		// per-message category wait marker and the per-source run lease.
@@ -81,7 +81,7 @@ export const interpretSourceTables = {
 		// Thread erasure (mail/interpret/purgeRows.ts threadBriefRanges).
 		.index('by_mail_thread', ['mailThreadId'])
 		.index('by_conversation_thread', ['conversationThreadId'])
-		// D10: a thread's deferred sources in thread order: the oldest
+		// A thread's deferred sources in thread order: the oldest
 		// predecessor of an eager source, the newest one an open reads.
 		.index('by_mail_thread_deferred_order', ['mailThreadId', 'isDeferred', 'sourceOrderKey'])
 		// Upgradeable predecessors of a source that needs a full read (§2.3.4).

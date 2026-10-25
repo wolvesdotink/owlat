@@ -5,7 +5,7 @@
  * each about one INBOUND message, with what a correct answer to each bounded
  * judgment is:
  *
- *   - `triage`: the message-only pre-filter (D11). `spam`: unsolicited,
+ *   - `triage`: the message-only pre-filter. `spam`: unsolicited,
  *     deceptive or fraudulent; `automated`: sent by a system rather than
  *     written by a person for this recipient (notifications, receipts,
  *     newsletters, promotions, invitations); `needs_work`: a person asks the

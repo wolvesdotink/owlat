@@ -78,6 +78,8 @@ import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFi
 import { inject } from 'vue';
 import { usePostboxWhyHere } from '~/composables/postbox/usePostboxWhyHere';
 import { POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import { replyDropForMessage } from '~/utils/replyFileDrop';
 
 const { t } = useI18n();
 // A filtered list (`?placement=`) keeps its filter on the message route.
@@ -141,6 +143,9 @@ const rowId = computed(() => `postbox-row-${props.msg._id}`);
 
 // Dimmed while it travels; the drag in flight is shared module state.
 const messageDrag = usePostboxMessageDrag();
+
+// Files dropped on the row reply to its message, in Answer mode.
+const replyDrop = computed(() => replyDropForMessage(props.msg, props.folderRole));
 
 /** The row accent for a danger-only sender marker; the body renders the chip. */
 const isDanger = computed(() => senderRowMarkerOf(props.msg, props.trustMarkers) !== null);
@@ -336,6 +341,7 @@ function onCapturedClick(event: MouseEvent) {
 			     one the menu pattern uses, and the presentational hop is what lets
 			     the listbox own the link. -->
 			<li
+				v-reply-drop="replyDrop"
 				role="none"
 				class="group relative pbx-row-li"
 				:class="{

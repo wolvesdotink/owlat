@@ -1,6 +1,5 @@
 /**
- * The Workbench's "To do, no reply needed" band (plan §7 "Queues and the
- * Workbench"): mail that needs no answer but still owes something, such as an
+ * The Workbench's "To do, no reply needed" band: mail that needs no answer but still owes something, such as an
  * invoice to pay or a domain to renew.
  *
  * Reads the mailbox's open for-you items (`us` and `unclear`) off

@@ -94,7 +94,7 @@ const HELD: RampGateHoldMeasurement = {
 /**
  * A gate's grade. HIGH and increase-justifying by default: these fixtures exist
  * to exercise the CONTROLLER, so the gate layer's own confidence asymmetry
- * (plan D14 — `gates.matrix.test.ts` owns it) must not silently turn a fixture's
+ * (`gates.matrix.test.ts` owns it) must not silently turn a fixture's
  * clean window into a hold here.
  */
 const GRADE = { confidence: 'high', mayJustifyIncrease: true } as const;
@@ -210,7 +210,7 @@ export function mixState(overrides: Partial<RampMixState> = {}): RampMixState {
 }
 
 /**
- * THE SECOND ACTUATOR'S FIXTURES (plan D3, P3-7).
+ * THE SECOND ACTUATOR'S FIXTURES.
  *
  * Deliberately in THIS file rather than a parallel one: the pace actuator runs
  * the same gates, the same hard-stop signals and the same clock as the share

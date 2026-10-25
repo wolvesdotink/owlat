@@ -1,5 +1,5 @@
 /**
- * The capacity refusal panel. Deliverability plan D14: a multi-day send is a
+ * The capacity refusal panel. A multi-day send is a
  * NORMAL, visible state for a warming deployment — never an error and never a
  * surprise. So this suite is a copy-and-treatment audit:
  *   - the panel is informational, not the error treatment
@@ -74,7 +74,7 @@ describe('CapacitySchedulePanel', () => {
 	it('renders the schedule as an offer, not an error', () => {
 		const wrapper = mountPanel();
 		expect(flat(wrapper.text())).toContain('Sending over 5 days');
-		// Informational palette, never the error one — the whole point of D14.
+		// Informational palette, never the error one — the whole point of the panel.
 		const html = wrapper.html();
 		expect(html).not.toContain('text-error');
 		expect(html).not.toContain('bg-error');

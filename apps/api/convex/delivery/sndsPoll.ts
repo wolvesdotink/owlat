@@ -7,7 +7,7 @@
  * ingest mutation. Storage, retention and the gate read live in `snds.ts`; every
  * decision worth testing lives in the pure modules.
  *
- * D2 — ADDITIVE ONLY. No feed configured means the poller returns early having
+ * ADDITIVE ONLY. No feed configured means the poller returns early having
  * written nothing and thrown nothing. A failed fetch, an unparseable body and
  * an empty day are all counted and returned, never raised: SNDS can only lower
  * measurement confidence and slow the Microsoft cell's ramp, never block it.
@@ -31,7 +31,7 @@ const FEED_TIMEOUT_MS = 20_000;
 /** The bound on one poll's ingest fan-out. */
 export const SNDS_INGEST_BATCH_SIZE = 64;
 /**
- * The hard ceiling on one poll's ingest fan-out (D16 — write amplification is a
+ * The hard ceiling on one poll's ingest fan-out (write amplification is a
  * design constraint). Every observation past it costs a `runMutation` round trip
  * carrying indexed reads and writes, and the feed decides how many there are:
  * `SNDS_MAX_FEEDS` feeds x `SNDS_MAX_ROWS` rows can fold to six figures of
@@ -147,7 +147,7 @@ export const poll = internalAction({
 	args: {},
 	handler: async (ctx): Promise<SndsPollSummary> => {
 		const urls = parseSndsFeedUrls(getOptional('SNDS_DATA_FEED_URLS'));
-		// D2: not enrolled is a supported configuration. Return, write nothing.
+		// Not enrolled is a supported configuration. Return, write nothing.
 		if (urls.length === 0) return notEnrolledSummary();
 
 		const allowlist = parsePoolAllowlist(getOptional('MTA_IP_POOLS'));
@@ -162,7 +162,7 @@ export const poll = internalAction({
 		// EVERY filter the mutation would apply is applied HERE first, through the
 		// SAME function the mutation calls: the round trip is the expensive part of
 		// ingest, so a day we already know will be refused must never be paid for
-		// (D16), and two spellings of one edge is how a day gets dispatched and then
+		// (write amplification), and two spellings of one edge is how a day gets dispatched and then
 		// comes back as an unexplainable `rejected`.
 		const oldestDay = oldestStorableDay(fetchedAt);
 

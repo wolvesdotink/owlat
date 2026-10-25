@@ -175,7 +175,7 @@ export const applyInterpretationArgs = {
 	sourceManifest: v.optional(sourceManifestValidator),
 	coverage: v.optional(interpretCoverageValidator),
 	result: v.optional(reduceResultValidator),
-	// Team thread assignee at load time: the default item assignee (D4).
+	// Team thread assignee at load time: the default item assignee.
 	threadAssigneeUserId: v.optional(v.string()),
 	// Fingerprint of the body the run read (sourceVersion.ts); rechecked here.
 	sourceVersion: v.optional(v.string()),
@@ -183,7 +183,7 @@ export const applyInterpretationArgs = {
 	retryCount: v.optional(v.number()),
 	// The run's hold was refused: consecutive deferrals so far (retry.ts backoff, Sol r4).
 	budgetDeferrals: v.optional(v.number()),
-	// A spend refusal the run met (D1), stored so a replay reports it.
+	// A spend refusal the run met, stored so a replay reports it.
 	budgetRefusal: v.optional(runBudgetRefusalValidator),
 	// The run's source lease (lease.ts): checked, and cleared on a recorded outcome.
 	leaseToken: v.optional(v.string()),

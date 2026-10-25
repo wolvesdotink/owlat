@@ -105,12 +105,12 @@ export async function prepareInboundMessage(
 	const unsubscribe = extractListUnsubscribe(rawHeaderBlock) ?? undefined;
 	// The raw `.eml` we store IS the E2EE-sealed original when the message
 	// arrived sealed — decrypt-on-ingest keeps that ciphertext downloadable
-	// (D3) while the row's body columns below carry the restored plaintext.
+	// while the row's body columns below carry the restored plaintext.
 	// E8b then wraps the bytes in the AT-REST byte cipher so a storage dump
 	// holds no plaintext; the reader path + `/sealed-blob` proxy unseal it.
 	const rawStorageId = await storeSealedBlob(ctx.storage, rawBytes, 'message/rfc822');
 
-	// Sealed Mail (E4, D3): decrypt-on-ingest. When the message arrived as
+	// Sealed Mail: decrypt-on-ingest. When the message arrived as
 	// PGP/MIME ciphertext AND we hold the recipient's vault key, open it here so
 	// the RESTORED plaintext (real Subject + bodies) flows into the normal
 	// pipeline (threading, categorize, needs-reply, agent, knowledge, search). A
@@ -131,7 +131,7 @@ export async function prepareInboundMessage(
 			})
 		: ({ isSealed: false } as const);
 
-	// Inbound PGP signature verification (F1, D9): a message that arrived
+	// Inbound PGP signature verification: a message that arrived
 	// SIGNED but not encrypted (RFC 3156 multipart/signed or an inline
 	// clearsigned body) gets its signature verified server-side and the honest
 	// verdict persisted beside the row. Same cheap structural pre-gate pattern
@@ -139,7 +139,7 @@ export async function prepareInboundMessage(
 	// spawns the `'use node'` verify action. Fail-open by construction: the
 	// action never throws, and even if it did the message still delivers with
 	// an honest `verification_error` verdict — signature verification adds
-	// data, never blocks delivery (D10).
+	// data, never blocks delivery.
 	let inboundSignatureInfo: InboundSignatureInfo | undefined;
 	const signedPgpMime = !opened.isSealed && isSignedPgpMime(rawBinary);
 	if (!opened.isSealed && (signedPgpMime || isClearsigned(rawBinary))) {
@@ -167,7 +167,7 @@ export async function prepareInboundMessage(
 	if (opened.isSealed) {
 		inboundEncryptionInfo = opened.encryptionInfo;
 		if (opened.isDecrypted) {
-			// Restored plaintext (real Subject + bodies, D4) replaces the outer
+			// Restored plaintext (real Subject + bodies) replaces the outer
 			// placeholder + ciphertext so the normal pipeline sees real content.
 			if (opened.subject !== undefined) effectiveSubject = opened.subject;
 			// Fail-safe: only replace when the restore yields a usable body — see
@@ -212,7 +212,7 @@ export async function prepareInboundMessage(
 		rawStorageId,
 		antiLoopHeaders,
 		unsubscribe,
-		// Restored real subject (D4) when the message was opened; the outer
+		// Restored real subject when the message was opened; the outer
 		// placeholder `...` otherwise. Threading downstream keys off this.
 		subject: effectiveSubject,
 		text: textBody,

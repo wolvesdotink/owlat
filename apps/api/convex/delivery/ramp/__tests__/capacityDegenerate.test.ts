@@ -128,7 +128,7 @@ describe('an unknown capacity reading HOLDS the controller', () => {
 		expect(decision.direction).toBe('hold');
 	});
 
-	it('and it does not RETREAT either — thin data moves nothing (plan D10)', () => {
+	it('and it does not RETREAT either — thin data moves nothing', () => {
 		const decision = nextShare(
 			controllerInput({
 				mix: mixState({ share: 0.8, cleanStreak: 3, lastCountedAt: NOW - 2 * DAY }),
@@ -138,7 +138,7 @@ describe('an unknown capacity reading HOLDS the controller', () => {
 		expect(decision.share).toBe(0.8);
 	});
 
-	it('a MISSING warming reading is the other case: it constrains nothing (plan D2)', () => {
+	it('a MISSING warming reading is the other case: it constrains nothing', () => {
 		expect(capacityCeiling({ kind: 'unconstrained' })).toBe(OWN_SHARE_CEILING);
 	});
 });

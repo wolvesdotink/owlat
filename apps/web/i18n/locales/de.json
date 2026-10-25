@@ -410,7 +410,7 @@
 		},
 		"assistant": {
 			"assistantComposer": {
-				"hint": "Enter zum Senden · Umschalt+Enter für einen Zeilenumbruch · der Assistent kann deinen Workspace durchsuchen und Texte entwerfen",
+				"hint": "Enter zum Senden · Umschalt+Enter für einen Zeilenumbruch · ↑ für deine vorige Frage · der Assistent kann deinen Workspace durchsuchen und Texte entwerfen",
 				"label": "Frage an den Assistenten",
 				"placeholder": "Frage den Assistenten alles…",
 				"sendFailed": "Senden hat nicht geklappt. Deine Frage ist noch da.",
@@ -1215,6 +1215,15 @@
 				"truncated": "Nur die ersten {covered} Empfänger konnten mit deiner aktuellen Kapazität eingeplant werden. Verkleinere die Zielgruppe oder versende in Etappen.",
 				"underCounted": "Diese Zielgruppe ist größer, als wir sie genau gezählt haben, daher ist der Plan oben eine Untergrenze — der tatsächliche Versand kann länger dauern."
 			},
+			"changedSinceLastSend": {
+				"changed": "Geändert seit dem letzten Versand ({time})",
+				"compare": "Vergleichen",
+				"lastSendLabel": "Letzter Versand",
+				"loadFailed": "Der letzte Versand konnte nicht geladen werden",
+				"noSend": "Kein früherer Versand dieser E-Mail im Versionsverlauf.",
+				"nowLabel": "Jetzt",
+				"unchanged": "Unverändert seit dem letzten Versand ({time})"
+			},
 			"commandRow": {
 				"abBadge": "A/B",
 				"abResults": "A/B-Ergebnisse",
@@ -1804,14 +1813,31 @@
 			},
 			"chatInput": {
 				"attachFile": "Datei anhängen",
-				"hint": "Enter zum Senden · Shift+Enter für Zeilenumbruch · {'@'} zum Erwähnen · Dateien einfügen oder anhängen",
+				"hint": "Enter zum Senden · Shift+Enter für Zeilenumbruch · ↑ zum Bearbeiten deiner letzten Nachricht · {'@'} zum Erwähnen · Dateien einfügen oder anhängen",
 				"placeholder": "Nachricht schreiben… mit {'@'} erwähnen",
+				"recallNotInHistory": "Unter den hier angezeigten Nachrichten ist keine von dir, die du bearbeiten kannst.",
+				"recallNotLoaded": "Unter den letzten Nachrichten ist keine von dir, die du bearbeiten kannst. Lade frühere Nachrichten, um weiter zurückzugehen.",
 				"removeAttachment": "Anhang {filename} entfernen"
 			},
 			"chatLinkEmailDialog": {
 				"empty": "Keine Posteingangs-Konversationen gefunden.",
 				"removeLink": "Aktuelle Verknüpfung entfernen",
 				"searchPlaceholder": "Posteingangs-Konversationen suchen…",
+				"share": {
+					"title": "Im Chat teilen",
+					"searchPlaceholder": "Kanäle und Personen suchen…",
+					"roomsLabel": "Wo teilen",
+					"empty": "Kein Kanal und keine Direktnachricht zum Posten.",
+					"partial": "Einige Kanäle oder Direktnachrichten konnten nicht geladen werden.",
+					"notePlaceholder": "Notiz hinzufügen (optional)",
+					"send": "Teilen",
+					"shared": "Link in {room} geteilt",
+					"audience": {
+						"personal": "Aus deinem persönlichen Posteingang. Andere im Chat sehen den Link, nicht die Mail.",
+						"shared": "Mitglieder dieses Posteingangs können den Link öffnen. Alle anderen sehen nur den Link.",
+						"team": "Inhaber und Admins können den Link öffnen. Alle anderen sehen nur den Link."
+					}
+				},
 				"title": "E-Mail-Konversation verknüpfen"
 			},
 			"chatLinkedEmailPanel": {
@@ -3885,10 +3911,71 @@
 				"subtitle": "Betreffzeile und Vorschautext für deine Standardsprache",
 				"title": "Betreff & Vorschautext"
 			},
+			"templateCompareModal": {
+				"blockTypes": {
+					"accordion": "Akkordeon",
+					"button": "Button",
+					"carousel": "Karussell",
+					"columns": "Spalten",
+					"container": "Container",
+					"divider": "Trennlinie",
+					"hero": "Hero",
+					"image": "Bild",
+					"list": "Liste",
+					"menu": "Menü",
+					"other": "Block",
+					"progressBar": "Fortschrittsbalken",
+					"rawHtml": "HTML",
+					"social": "Social-Links",
+					"spacer": "Abstand",
+					"table": "Tabelle",
+					"text": "Text",
+					"video": "Video"
+				},
+				"blocks": "Geänderte Blöcke",
+				"copyChanges": "Textänderungen",
+				"copyNone": "Kein Text geändert.",
+				"counts": {
+					"added": "{count} Block hinzugefügt | {count} Blöcke hinzugefügt",
+					"edited": "{count} Block geändert | {count} Blöcke geändert",
+					"moved": "{count} Block verschoben | {count} Blöcke verschoben",
+					"removed": "{count} Block entfernt | {count} Blöcke entfernt"
+				},
+				"empty": "(leer)",
+				"frameTitle": "E-Mail-Vorschau: {side}",
+				"identical": "Keine Unterschiede: Betreff und Inhalt sind in beiden Versionen gleich.",
+				"kinds": {
+					"added": "Hinzugefügt",
+					"edited": "Geändert",
+					"moved": "Verschoben",
+					"removed": "Entfernt"
+				},
+				"linksChanges": "Link-Änderungen",
+				"linksNone": "Keine Links geändert.",
+				"meta": {
+					"previewText": "Vorschautext",
+					"subject": "Betreff"
+				},
+				"parts": {
+					"copy": "Text",
+					"links": "Links",
+					"moved": "Auch verschoben",
+					"other": "Stil oder Layout"
+				},
+				"steps": {
+					"added": "Hinzugefügt",
+					"changed": "Geändert",
+					"removed": "Entfernt"
+				},
+				"title": "Versionen vergleichen"
+			},
 			"templateHistoryPanel": {
+				"compare": "Mit aktuellem Stand vergleichen",
+				"compareAction": "Mit dem aktuellen Stand im Editor vergleichen",
 				"confirmAction": "Version wiederherstellen",
 				"confirmDescription": "Diese E-Mail enthält Änderungen, die du nicht gespeichert hast. Beim Wiederherstellen wird die ältere Version auf die Arbeitsfläche geladen – du kannst das rückgängig machen, aber die Wiederherstellung selbst ist erst mit dem nächsten Speichern gesichert.",
 				"confirmTitle": "Deine nicht gespeicherten Änderungen ersetzen?",
+				"currentLabel": "Jetzt im Editor",
 				"empty": "Noch keine Versionen. Beim Speichern dieser E-Mail wird eine angelegt.",
 				"frameTitle": "Versionsvorschau",
 				"loadFailed": "Diese Version konnte nicht geladen werden",
@@ -4617,6 +4704,9 @@
 				"moreOptions": "Weitere Optionen zum Verfassen",
 				"scheduleSend": "Senden planen…",
 				"sending": "Wird gesendet…",
+				"sendOptions": "Weitere Sendeoptionen",
+				"sendAndKeep": "Senden und im Posteingang lassen",
+				"sendAndDone": "Senden und als erledigt markieren",
 				"signature": "Signatur",
 				"uploadingTitle": "Warten, bis die Anhänge vollständig hochgeladen sind…",
 				"previewAsSent": "Vorschau wie gesendet",
@@ -5139,6 +5229,24 @@
 				"screener": {
 					"hint": "Wenn an, wird Post von jemandem, mit dem du noch nie korrespondiert hast, aus der Antwortliste herausgehalten, bis du den Absender akzeptierst — die Post landet trotzdem im Posteingang. Hält die Triage auf Personen fokussiert, die du kennst. Standardmäßig aus.",
 					"label": "Erstabsender prüfen"
+				}
+			},
+			"postboxAlertSoundSettings": {
+				"saveOperation": "Hinweiston speichern",
+				"heading": "Hinweistöne",
+				"scopeBadge": "Alle deine Geräte",
+				"intro": "Ein leiser Ton für die Hinweise, die du auswählst, und für nichts sonst. Diese Schalter gehören zu deinem Konto und gelten in jedem Browser und in der Desktop-App. In deinen Ruhezeiten bleibt jeder Ton aus, und Hinweise, die zusammen ankommen, klingen nur einmal.",
+				"reply": {
+					"label": "Antworten, auf die du wartest",
+					"hint": "Wenn eine Antwort in einer Unterhaltung ankommt, für die du „Benachrichtigen, wenn eine Antwort kommt“ eingeschaltet hast."
+				},
+				"assignment": {
+					"label": "Dir zugewiesene Unterhaltungen",
+					"hint": "Wenn dir jemand aus dem Team eine Unterhaltung im Team-Postfach zuweist."
+				},
+				"question": {
+					"label": "Fragen des Agenten",
+					"hint": "Wenn der Agent eine Angabe von dir braucht, bevor er antworten kann. Die Frage wartet in deiner Antwortliste."
 				}
 			},
 			"postboxOfflineBanners": {
@@ -6058,6 +6166,36 @@
 			"preferencesBackLink": {
 				"label": "Zurück zu den Einstellungen"
 			},
+			"preferencesComfort": {
+				"title": "Lesekomfort",
+				"subtitle": "Textgröße, Kontrast, Bewegung und Listenabstände auf diesem Gerät.",
+				"textSizeLabel": "Textgröße in Mails",
+				"textSizeHelp": "Wie groß Mails in Postbox und im Team-Posteingang erscheinen. Gestaltete Newsletter werden als Ganzes skaliert.",
+				"readingWidthLabel": "Lesebreite",
+				"readingWidthHelp": "Wie lang eine Mailzeile werden darf, bevor sie umbricht. Gestaltete Newsletter behalten ihr eigenes Layout.",
+				"listDensityLabel": "Listendichte",
+				"listDensityHelp": "Zeilenabstand in Team-Posteingang, Kontakten und Kampagnen. Postbox hat unter Lesen eine eigene Dichte.",
+				"highContrastLabel": "Höherer Kontrast",
+				"highContrastHelp": "Dunklerer Text und kräftigere Rahmen im hellen Modus, hellere im dunklen Modus.",
+				"reduceMotionLabel": "Bewegung reduzieren",
+				"reduceMotionHelp": "Schaltet Animationen und weiches Scrollen in Owlat ab. Wenn dein Gerät weniger Bewegung verlangt, ist sie immer reduziert.",
+				"textSize": {
+					"small": "Klein",
+					"default": "Standard",
+					"large": "Groß",
+					"larger": "Größer"
+				},
+				"readingWidth": {
+					"narrow": "Schmal",
+					"default": "Standard",
+					"wide": "Breit",
+					"full": "Volle Breite"
+				},
+				"listDensity": {
+					"comfortable": "Komfortabel",
+					"compact": "Kompakt"
+				}
+			},
 			"preferencesExportManifest": {
 				"loading": "Wird gezählt…",
 				"moreThan": "mehr als {count}",
@@ -6084,6 +6222,8 @@
 				"readingPaneHelp": "Wo der Reader neben der Liste sitzt. Zieh den Trenner – oder fokussiere ihn und nutze die Pfeiltasten –, um ihn zu verschieben.",
 				"replyDefaultLabel": "Standardverhalten beim Antworten",
 				"replyDefaultHelp": "Was die Schaltfläche „Antworten“ und das Tastenkürzel {replyKey} tun. {replyAllKey} antwortet immer allen; beim Verfassen kannst du eine Antwort auf „Allen antworten“ umstellen.",
+				"afterReplyLabel": "Nach dem Antworten",
+				"afterReplyHelp": "Was „Senden“ mit der beantworteten Konversation macht. Als erledigt markiert, wird sie archiviert, sobald die Antwort rausgeht, und es geht weiter wie nach dem Archivieren. {oppositeKey} oder das Menü neben „Senden“ macht für eine Antwort das andere.",
 				"writingSuggestionsLabel": "Schreibvorschläge",
 				"writingSuggestionsHelp": "Inline-KI-Autovervollständigung beim Schreiben anzeigen. Mit Tab übernehmen.",
 				"autoSummarizeLabel": "Übersicht über dem Verlauf anzeigen",
@@ -6153,6 +6293,7 @@
 					"global": "Überall",
 					"postbox": "E-Mail",
 					"composer": "Beim Schreiben",
+					"chatComposer": "Eingabefelder in Chat und Assistent",
 					"inbox": "Threads im Team-Postfach",
 					"review": "Updates im Team-Postfach",
 					"workbench": "Werkbank",
@@ -6707,6 +6848,7 @@
 			"updateProgress": {
 				"heading": "Update auf v{version} läuft",
 				"restartNotice": "Die Web-App startet während des Updates möglicherweise neu. Diese Seite verbindet sich automatisch wieder.",
+				"rollingBackNotice": "Das Update ist fehlgeschlagen und wird auf den Snapshot von davor zurückgesetzt. Das kann einige Minuten dauern.",
 				"stepFailed": "Fehlgeschlagen",
 				"steps": {
 					"convexDeploy": "Backend-Funktionen bereitstellen",
@@ -7028,6 +7170,13 @@
 			}
 		},
 		"shell": {
+			"replyDrop": {
+				"hint": "Ablegen, um {name} mit {count} Datei zu antworten | Ablegen, um {name} mit {count} Dateien zu antworten",
+				"hintNoCount": "Ablegen, um {name} mit diesen Dateien zu antworten",
+				"hintNoName": "Ablegen, um mit {count} Datei zu antworten | Ablegen, um mit {count} Dateien zu antworten",
+				"hintNoNameNoCount": "Ablegen, um mit diesen Dateien zu antworten",
+				"refused": "Diese Antwort geht über einen anderen Kanal raus und kann keine Dateien mitnehmen. Die abgelegten Dateien wurden nicht angehängt."
+			},
 			"status": {
 				"draftReady": "Entwurf bereit",
 				"needsYou": "Braucht dich",
@@ -7234,6 +7383,55 @@
 			"zenMore": {
 				"hidden": "{count} weiteres Update in {inbox} wartet außerhalb von Zen. | {count} weitere Updates in {inbox} warten außerhalb von Zen.",
 				"show": "Alles zeigen"
+			},
+			"upcoming": {
+				"title": "Demnächst",
+				"loadFailed": "Was demnächst ansteht, konnte nicht geladen werden",
+				"when": {
+					"now": "Jetzt",
+					"today": "{time}",
+					"tomorrow": "Morgen {time}",
+					"week": "{day} {time}",
+					"date": "{date}, {time}"
+				},
+				"noSubject": "(kein Betreff)",
+				"send": {
+					"to": "Geht an {to}",
+					"toMany": "Geht an {to} und {count} weitere Person | Geht an {to} und {count} weitere Personen",
+					"noRecipient": "Geplanter Versand, noch ohne Empfänger"
+				},
+				"snooze": {
+					"returns": "Kommt aus dem Zurückstellen zurück · {from}",
+					"untilReply": "Kommt aus dem Zurückstellen zurück, früher bei einer Antwort · {from}"
+				},
+				"followUp": {
+					"waitingOn": "Erinnerung, falls {who} nicht geantwortet hat",
+					"anyone": "Erinnerung, falls niemand geantwortet hat"
+				},
+				"teamSnooze": "Team-Postfach · kommt aus dem Zurückstellen zurück · {contact}",
+				"campaign": {
+					"title": "Kampagne {name}",
+					"toAudience": "an {audience}",
+					"recipients": "{count} Empfänger | {count} Empfänger",
+					"countedAt": "Empfänger gezählt {when}",
+					"local": "um {time} in der Zeitzone jedes Empfängers",
+					"optimized": "zur üblichen Lesezeit jedes Empfängers"
+				},
+				"actionsFor": "Geplanter Versand: {subject}",
+				"actions": {
+					"sendNow": "Jetzt senden",
+					"edit": "Bearbeiten",
+					"cancel": "Abbrechen"
+				},
+				"operations": {
+					"sendNow": "Jetzt senden",
+					"cancel": "Versand nicht mehr planen"
+				},
+				"noLongerScheduled": "Dieser Versand ist nicht mehr geplant.",
+				"sent": "Wird jetzt gesendet.",
+				"cancelled": "Nicht mehr geplant. Du findest die Nachricht in den Entwürfen.",
+				"showMore": "Mehr anzeigen",
+				"moreThanShown": "Es ist mehr geplant, als die Werkbank anzeigt."
 			}
 		},
 		"answer": {
@@ -15907,6 +16105,10 @@
 				"scopeOperation": "Zugriff auf den Freigabelink ändern"
 			}
 		},
+		"postboxAfterReply": {
+			"keep": "Im Posteingang lassen",
+			"done": "Als erledigt markieren (archivieren)"
+		},
 		"postboxAutoAdvance": {
 			"backToList": "Zurück zur Liste",
 			"next": "Die nächste Konversation öffnen",
@@ -16447,6 +16649,26 @@
 					"title": "Erscheinungsbild",
 					"keywords": "Dunkelmodus, heller Modus, Design, Farbschema"
 				},
+				"mailTextSize": {
+					"title": "Textgröße in Mails",
+					"keywords": "Schriftgröße, Textgröße, Zoom, größere Schrift, Lesbarkeit"
+				},
+				"readingWidth": {
+					"title": "Lesebreite",
+					"keywords": "Zeilenlänge, Satzbreite, Spaltenbreite, breit"
+				},
+				"listDensity": {
+					"title": "Listendichte",
+					"keywords": "kompakt, komfortabel, Abstand, Zeilenhöhe, Team-Posteingang, Kontakte, Kampagnen"
+				},
+				"highContrast": {
+					"title": "Höherer Kontrast",
+					"keywords": "Kontrast, Barrierefreiheit, Lesbarkeit, Rahmen, Sehschwäche"
+				},
+				"reduceMotion": {
+					"title": "Bewegung reduzieren",
+					"keywords": "Animation, Bewegung, Barrierefreiheit, weiches Scrollen, Schwindel"
+				},
 				"language": {
 					"title": "Sprache",
 					"keywords": "Gebietsschema, Übersetzung, Englisch, Deutsch"
@@ -16466,6 +16688,10 @@
 				"replyDefault": {
 					"title": "Standardverhalten beim Antworten",
 					"keywords": "allen antworten, antworten, Taste r"
+				},
+				"afterReply": {
+					"title": "Nach dem Antworten",
+					"keywords": "senden und archivieren, als erledigt markieren, erledigt, nach dem Antworten archivieren, im Posteingang lassen"
 				},
 				"shortcuts": {
 					"keywords": "Tastatur, Tastenkürzel, Hotkeys, Tastenbelegung, neu belegen, Gmail-Tasten, Superhuman-Tasten, Outlook-Tasten",
@@ -16558,6 +16784,10 @@
 				"marketingNotifications": {
 					"title": "Marketing-Benachrichtigungen",
 					"keywords": "kampagne abgeschlossen, erinnerung, geplante kampagne, bounce-spitze, versandschutz, versand pausiert, automation hängt, dns fehlerhaft, warnungen"
+				},
+				"alertSounds": {
+					"title": "Hinweistöne",
+					"keywords": "Ton, Klang, Audio, Antwort, mir zugewiesen, Frage des Agenten"
 				},
 				"pushNotifications": {
 					"title": "Push-Benachrichtigungen",
@@ -16672,6 +16902,7 @@
 				"scheduleSend": "Senden planen (im Editor)",
 				"selectDeselect": "Auswählen / Auswahl aufheben",
 				"send": "Senden (im Editor)",
+				"sendAlternate": "Senden, andere Aktion nach dem Antworten (im Editor)",
 				"showShortcuts": "Tastenkürzel anzeigen",
 				"snooze": "Zurückstellen",
 				"starUnstar": "Markieren / Markierung entfernen",
@@ -16694,6 +16925,8 @@
 				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
 				"nextQueueItem": "Nächster Eintrag in der Antwortliste",
 				"savedReplies": "Gespeicherte Antwort einfügen",
+				"recallLastMessage": "In einem leeren Eingabefeld: deine letzte Chat-Nachricht bearbeiten oder deine vorige Frage an den Assistenten zurückholen",
+				"recallNewerQuestion": "Assistent: zu einer neueren Frage weitergehen (nach der neuesten zurück zum leeren Feld)",
 				"writeNote": "Interne Notiz schreiben (Threads im Team-Postfach)",
 				"openSettings": "Einstellungen öffnen",
 				"openAssistant": "Assistenten öffnen",
@@ -18043,9 +18276,6 @@
 				"cancelFollowUp": "Antwort-Erinnerung abbrechen",
 				"translate": "Übersetzen",
 				"showOriginal": "Original herunterladen (.eml)",
-				"copyLink": "Link kopieren",
-				"linkCopied": "Link kopiert",
-				"linkCopyFailed": "Der Link konnte nicht kopiert werden",
 				"pin": "Unterhaltung anheften",
 				"unpin": "Unterhaltung lösen"
 			},
@@ -18066,6 +18296,13 @@
 				"priorityPrompt": "Priorität",
 				"current": "Aktuell"
 			}
+		},
+		"conversationLink": {
+			"copyLink": "Link kopieren",
+			"shareInChat": "Im Chat teilen…",
+			"linkCopied": "Link kopiert",
+			"linkCopyFailed": "Der Link konnte nicht kopiert werden",
+			"linkUnavailable": "Dieser Workspace hat keine Webadresse für einen Link"
 		},
 		"inboxSla": {
 			"dueIn": {

@@ -39,7 +39,7 @@ export { createSendReceiptHandler } from './sendReceipt.js';
 const MAX_SEALED_MIME_BYTES = 25 * 1024 * 1024;
 
 /**
- * The two answers the intake may give, each bound to its one declaration (D7).
+ * The two answers the intake may give, each bound to its one declaration.
  *
  * Every `return` in the handler goes through one of these, for the same reason
  * `/send/decision`'s `decide()` exists: the request half of this wire was typed

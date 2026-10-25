@@ -1,5 +1,5 @@
 /**
- * Answer mode's response plan (SPEC §6), the pure part: which brief items a
+ * Answer mode's response plan, the pure part: which brief items a
  * reply plans for, what each item's stance and coverage read as, and the
  * composer footer's line ("3 of 4 addressed · 1 needs a file · new promise
  * noted: …"). The composable (`useResponsePlan`) holds the state; the brief's

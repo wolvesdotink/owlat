@@ -2,8 +2,8 @@
  * The cheap checks the Reply Queue classifier asks before it spends
  * (`needsReplyClassify.ts`, split out at the file-size cap): the screener
  * before clarification (L3), lazy interpretation for a delivered message that
- * is no reply candidate (D10), and the continuation while a candidate's
- * earlier deferred mail is still being read (D10). The first two fail open to
+ * is no reply candidate, and the continuation while a candidate's
+ * earlier deferred mail is still being read. The first two fail open to
  * today's behaviour.
  */
 
@@ -17,7 +17,7 @@ import { PREDECESSORS_PENDING } from '../interpret/defer';
 export const BUSY_RECHECK_MS = 30_000;
 
 /**
- * D10: defer a delivered non-candidate's interpretation when the reader
+ * Defer a delivered non-candidate's interpretation when the reader
  * display is its only consumer (`mail/interpret/defer.ts`). Fail-open: a
  * failed check interprets as before.
  */
@@ -53,7 +53,7 @@ export async function isHeldOutByScreener(
 }
 
 /**
- * D10 (Sol r4 F1): the candidate's interpretation did not run yet, because
+ * The candidate's interpretation did not run yet, because
  * its thread's earlier deferred mail is still being read (`defer.ts`; the run
  * was told the caller continues itself). The CLASSIFICATION continues at the
  * loop's `retryAt`, with the same arguments, so the model's verdict, the
@@ -69,7 +69,7 @@ export async function continuesLater(
 ): Promise<boolean> {
 	// Another run holds the source (`busy`), or it waits for its category
 	// (`wait`): the verdict comes from that run, so this continues once it can,
-	// and never settles on the heuristic because of contention (SPEC §2.5).
+	// and never settles on the heuristic because of contention.
 	const isContended = run.status === 'busy' || run.status === 'wait';
 	const isPredecessorWait = run.status === 'skipped' && run.errorCode === PREDECESSORS_PENDING;
 	if (!isContended && !isPredecessorWait) return false;

@@ -1,6 +1,7 @@
 import type { EditorBlock, ColumnItem, ContainerItem } from '@owlat/shared';
 import type { RenderContext } from '../types';
 import { wrapSection } from '../helpers/table';
+import { outlineChangedBlock } from '../helpers/diffOutline';
 import type { BlockLayout, BlockModule, BlockOf, HtmlWalk, Placement, RenderArgs } from './_module';
 import { moduleFor } from './_registry';
 import { enrolEmailBlockRegistry, latchEmailBlockRegistriesOnRead } from '../registryLatch';
@@ -152,7 +153,7 @@ const dispatchBlockModule = (
 	}
 	const layout = m.layout?.(typed.content);
 	const inner = m.html(args);
-	return wrapForPlacement(block, inner, ctx, placement, layout);
+	return outlineChangedBlock(block.id, wrapForPlacement(block, inner, ctx, placement, layout), ctx);
 };
 
 /**
@@ -172,7 +173,7 @@ export const renderBlock = (block: EditorBlock, ctx: RenderContext): string => {
 	const customRenderer = customBlockRegistry.get(block.type);
 	if (!customRenderer) return '';
 	const innerHtml = customRenderer(block.content, ctx, block);
-	return wrapSection(block, innerHtml, ctx);
+	return outlineChangedBlock(block.id, wrapSection(block, innerHtml, ctx), ctx);
 };
 
 /**

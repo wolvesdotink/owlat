@@ -118,7 +118,7 @@ export const POSTBOX_MESSAGE_BUNDLE: DecisionBundle<typeof POSTBOX_MESSAGE_QUEST
 };
 
 /**
- * D5: the necessity Noul read at one cut, `needed` at or above it. No
+ * The necessity Noul read at one cut, `needed` at or above it. No
  * abstention band: the answer gates a question the owner can skip, and the
  * provisional cut is the plain reading of the probability. Not calibrated.
  */

@@ -26,7 +26,7 @@ export const ruleDraftPreviewValidator = v.object({
 });
 
 /**
- * Read on arrival, lane rules (SPEC §6): async rule compiles, delayed
+ * Read on arrival, lane rules: async rule compiles, delayed
  * actions and the digest. Part of `MAIL_ARRIVAL_TABLES`
  * (schema/mailArrival.ts), which spreads this in.
  */

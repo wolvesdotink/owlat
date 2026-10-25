@@ -32,7 +32,7 @@ import * as setupValidators from '../setupValidators';
 import { PROVIDER_ENV_KEYS, SMTP_RELAY_PRESETS } from '../setupSendingPresets';
 
 /**
- * THE SINGLE-SOURCE GATE for the seams plan's P1.1 / D1.
+ * THE SINGLE-SOURCE GATE for the send-provider catalog.
  *
  * The catalog moved into this package so that five separate declarations of the
  * same facts could become one. The risk that move carries is not that a table is
@@ -331,7 +331,7 @@ describe('the entries themselves', () => {
 		expect(new Set(SEND_TRANSPORT_KINDS).size).toBe(SEND_TRANSPORT_KINDS.length);
 	});
 
-	it('has exactly one `own` tier — the D3 identity that legitimately exists', () => {
+	it('has exactly one `own` tier — the one identity that legitimately exists', () => {
 		const own = ENTRIES.filter((entry) => entry.tier === 'own');
 		expect(own.map((entry) => entry.kind)).toEqual(['mta']);
 	});
@@ -421,7 +421,7 @@ describe('the entries themselves', () => {
 	});
 
 	it('gives the own arm a derived declaration rather than a comparison to copy', () => {
-		// D3's one sanctioned identity, as a value: `tier: 'own'` is the
+		// The one sanctioned identity, as a value: `tier: 'own'` is the
 		// declaration and this is what a consumer reads. `apps/web`,
 		// `apps/setup-cli` and this package restated `=== 'mta'` in seven places
 		// before it existed, because the only declaration lived in Convex code they

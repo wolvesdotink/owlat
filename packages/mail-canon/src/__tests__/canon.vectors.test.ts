@@ -4,8 +4,8 @@
  * Two kinds of assertion:
  *   1. The literal worked examples from RFC 6376 §3.4.5 — the canonical
  *      relaxed header / relaxed body outputs are pinned byte-for-byte.
- *   2. BYTE-IDENTITY against the `mailauth` oracle (kept as a devDependency,
- *      locked decision D1): for a corpus of bodies, the SHA-256 of our
+ *   2. BYTE-IDENTITY against the `mailauth` oracle (kept as a devDependency):
+ *      for a corpus of bodies, the SHA-256 of our
  *      canonicalized body must equal `mailauth`'s streaming body hash for the
  *      same canonicalization. Equal hashes over adversarial whitespace prove
  *      the canonical bytes match.

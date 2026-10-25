@@ -9,7 +9,7 @@ import {
 import { buildReturnPathSpfRecord, parseReturnPathRelaySpfTerms } from '../../../../domains/spf';
 
 /**
- * D11 — NEVER give the two arms of a cell different sending identities. The
+ * NEVER give the two arms of a cell different sending identities. The
  * custom return path changes the RFC5321.MailFrom and NOTHING else: same From
  * domain, same DKIM `d=` (the composer's bytes are what gets signed), same
  * Message-ID scheme, same headers, same body. Only the envelope differs.
@@ -50,7 +50,7 @@ function composeOnce() {
 	});
 }
 
-describe('custom return path — alignment is untouched (D11)', () => {
+describe('custom return path — alignment is untouched', () => {
 	it('changes only the envelope sender, never the composed bytes', () => {
 		const composed = composeOnce();
 
@@ -137,7 +137,7 @@ describe('custom return path — the envelope-sender domain posture', () => {
 		// The direct-MX arm stamps `bounce+…@<perDomainReturnPath ?? global>`
 		// (apps/mta/src/smtp/sender.ts). Given the same resolved host, the relay
 		// arm must produce the same host — same SPF-evaluation domain, same DMARC
-		// SPF alignment, so the two arms' bounce data is comparable (D11).
+		// SPF alignment, so the two arms' bounce data is comparable.
 		const perDomainHost = 'bounces.news.example.com';
 		const mtaArm = buildVerpAddress('send-42', perDomainHost, KEY, NOW);
 		const relayArm = resolveRelayEnvelopeSender({
@@ -217,7 +217,7 @@ describe('custom return path — the envelope-sender domain posture', () => {
 		).toBe(false);
 	});
 
-	it('refuses the stamp when no relay terms are configured at all (D2)', () => {
+	it('refuses the stamp when no relay terms are configured at all', () => {
 		expect(authorized({ relaySpfTerms: parseReturnPathRelaySpfTerms(undefined) })).toBe(false);
 	});
 });

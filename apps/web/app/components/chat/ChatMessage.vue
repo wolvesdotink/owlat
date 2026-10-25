@@ -2,11 +2,15 @@
 import type { Id } from '@owlat/api/dataModel';
 import { splitMentionSegments } from '@owlat/shared/chatMentions';
 import type { ChatMessageRow } from '~/composables/chat/useChatRoom';
+import { currentConversationLinkOrigin } from '~/composables/useConversationLink';
+import { type ConversationLinkSegment, splitConversationLinks } from '~/utils/conversationLink';
 
 interface Props {
 	message: ChatMessageRow;
 	isOwnMessage: boolean;
 	currentUserId: string;
+	/** The composer's ↑ asked to edit this message: open the editor and focus it. */
+	editRequested?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -41,17 +45,43 @@ const formattedTime = computed(() =>
 
 const isMentioned = computed(() => (props.message.mentions ?? []).includes(props.currentUserId));
 
-// Render the text with @-mentions visually emphasized.
-const segments = computed(() => splitMentionSegments(props.message.text));
+// Render the text with @-mentions visually emphasized, and a link to a
+// conversation on this instance ("Share in chat…") as an in-app link.
+const linkOrigin = currentConversationLinkOrigin();
+type MessageSegment = ConversationLinkSegment | { kind: 'mention'; value: string };
+const segments = computed(() =>
+	splitMentionSegments(props.message.text).flatMap((segment): MessageSegment[] =>
+		segment.kind === 'mention'
+			? [{ kind: 'mention', value: segment.value }]
+			: splitConversationLinks(segment.value, linkOrigin)
+	)
+);
+
+const editTextareaRef = ref<HTMLTextAreaElement | null>(null);
+const editorRef = ref<HTMLElement | null>(null);
+// Where focus goes back to once an editor opened from the keyboard closes:
+// the composer the ↑ came from, so the next message can be typed at once.
+let returnFocusTo: HTMLElement | null = null;
 
 const startEdit = () => {
 	if (props.message.deletedAt) return;
 	editText.value = props.message.text;
 	isEditing.value = true;
 };
-const cancelEdit = () => {
+const closeEdit = () => {
+	// The editor's field and its Save/Cancel buttons all unmount on close, so
+	// focus held by any of them would fall to <body>. Focus that already sits
+	// on <body> (Safari does not focus a clicked button) is lost the same way.
+	// Only focus on an element outside the editor is left where it is.
+	const active = document.activeElement;
+	const focusWillBeLost =
+		!active || active === document.body || !!editorRef.value?.contains(active);
+	const target = returnFocusTo;
+	returnFocusTo = null;
 	isEditing.value = false;
+	if (focusWillBeLost && target?.isConnected) void nextTick(() => target.focus());
 };
+const cancelEdit = closeEdit;
 const saveEdit = () => {
 	const trimmed = editText.value.trim();
 	if (!trimmed || trimmed === props.message.text) {
@@ -59,8 +89,30 @@ const saveEdit = () => {
 		return;
 	}
 	emit('edit', props.message._id, trimmed);
-	isEditing.value = false;
+	closeEdit();
 };
+
+const openEditorFromKeyboard = () => {
+	if (props.message.deletedAt) return;
+	if (!isEditing.value) startEdit();
+	const active = document.activeElement;
+	if (active instanceof HTMLElement && active !== document.body) returnFocusTo = active;
+	void nextTick(() => {
+		const field = editTextareaRef.value;
+		if (!field) return;
+		field.focus();
+		field.setSelectionRange(field.value.length, field.value.length);
+		field.scrollIntoView?.({ block: 'nearest' });
+	});
+};
+watch(
+	() => props.editRequested,
+	(requested) => {
+		if (requested) openEditorFromKeyboard();
+	},
+	{ immediate: true }
+);
+
 const doDelete = () => {
 	emit('delete', props.message._id);
 };
@@ -113,8 +165,9 @@ const aiTyping = computed(
 			</div>
 
 			<!-- Edit mode -->
-			<div v-if="isEditing" class="mt-1">
+			<div v-if="isEditing" ref="editorRef" class="mt-1">
 				<textarea
+					ref="editTextareaRef"
 					v-model="editText"
 					rows="2"
 					class="w-full input resize-none"
@@ -162,7 +215,7 @@ const aiTyping = computed(
 							class="inline-block w-1.5 h-4 align-text-bottom bg-text-secondary animate-pulse motion-reduce:animate-none ml-0.5"
 						/>
 					</div>
-					<!-- Refused for budget (D1): said in the reader's language. -->
+					<!-- Refused for budget: said in the reader's language. -->
 					<AiBudgetRefusal v-if="message.budgetRefusal" :refusal="message.budgetRefusal" />
 				</div>
 				<div
@@ -174,6 +227,12 @@ const aiTyping = computed(
 							v-if="segment.kind === 'mention'"
 							class="px-1 py-0.5 rounded bg-brand-subtle text-brand font-medium"
 							>{{ segment.value }}</span
+						>
+						<NuxtLink
+							v-else-if="segment.kind === 'link'"
+							:to="segment.path"
+							class="text-brand underline underline-offset-2 hover:no-underline"
+							>{{ segment.value }}</NuxtLink
 						>
 						<template v-else>{{ segment.value }}</template>
 					</template>

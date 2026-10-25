@@ -34,8 +34,13 @@ writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'services: {}\n');
 const { exec, COMPOSE_SHADOWED_VARS } = await import('../http.js');
 const { scheduleUpdaterRecreateSafely } = await import('../rollout.js');
 
-/** `docker inspect <self>` as rollout.ts formats it: image, binds, networks. */
-const SELF_INSPECT = `ghcr.io/wolvesdotink/updater:0.5.2\n/opt/owlat:${OWLAT_DIR}:rw \ndefault docker-proxy \n`;
+/** `docker inspect <self>` as rollout.ts formats it: image, mounts (JSON), networks. */
+const SELF_INSPECT = [
+	'ghcr.io/wolvesdotink/updater:0.5.2',
+	JSON.stringify([{ Type: 'bind', Source: '/opt/owlat', Destination: OWLAT_DIR, RW: true }]),
+	'default docker-proxy ',
+	'',
+].join('\n');
 
 beforeEach(() => {
 	commandMock.mockReset().mockImplementation((_file: string, args: string[]) => {

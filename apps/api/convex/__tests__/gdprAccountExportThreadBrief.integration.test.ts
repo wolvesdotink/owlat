@@ -1,6 +1,6 @@
 /**
  * "Export my data" includes what interpretation derived from the member's
- * own personal mail (SPEC §5): per thread its items, facts and activity,
+ * own personal mail: per thread its items, facts and activity,
  * unsealed, plus the member's own brief view state. Nothing from a team
  * inbox, nothing from another member's mailbox, and no internal notes.
  */

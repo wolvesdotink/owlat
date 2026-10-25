@@ -200,11 +200,11 @@ export async function insertDeliveredMessage(
 		dkimSigningDomain?: string;
 		/** Ingest-computed sender-impersonation heuristics (Sealed Mail A4). */
 		senderHeuristics?: SenderHeuristics;
-		/** Inbound unsealing outcome (Sealed Mail E4, D3): present only for a message
+		/** Inbound unsealing outcome (Sealed Mail E4): present only for a message
 		 * that arrived sealed. The body columns above hold the RESTORED plaintext when
 		 * `decrypted:true`; the raw `.eml` stays the sealed original either way. */
 		inboundEncryptionInfo?: InboundEncryptionInfo;
-		/** Inbound signature verdict (F1, D9): present only for a message that arrived
+		/** Inbound signature verdict: present only for a message that arrived
 		 * PGP-SIGNED but not encrypted. Honest — every failure state is recorded, and
 		 * its presence never changes routing or delivery. */
 		inboundSignatureInfo?: InboundSignatureInfo;
@@ -354,7 +354,7 @@ export async function insertDeliveredMessage(
 		createdAt: now,
 		updatedAt: now,
 	});
-	// D12: a DMARC failure invalidates what is remembered about the sender here.
+	// A DMARC failure invalidates what is remembered about the sender here.
 	await invalidateSenderMemoryOnAuthFailure(
 		ctx,
 		{ scope: 'mailbox', mailboxId: mailbox._id },

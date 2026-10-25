@@ -1,5 +1,5 @@
 /**
- * /dashboard/answer/t/<threadId>: Answer mode for a Team inbox thread (plan §07).
+ * /dashboard/answer/t/<threadId>: Answer mode for a Team inbox thread.
  *
  *   - the agent's draft opens in the editor; Send approves it unchanged;
  *   - "Answering as Team inbox" and who else is here sit in the top bar, and

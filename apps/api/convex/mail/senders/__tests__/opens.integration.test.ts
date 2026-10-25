@@ -1,5 +1,5 @@
 /**
- * First opens (SPEC §5): the reader's open event and `brief.markSeen` count a
+ * First opens: the reader's open event and `brief.markSeen` count a
  * live message's first open once, in its delivery week. Bulk mark-read,
  * `setFlags` and `markThreadRead` never count, and mail that was not counted
  * as delivered (a backfill, a team inbox) never counts as opened.

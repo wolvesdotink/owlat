@@ -7,6 +7,7 @@ import {
 	POSTBOX_SRCDOC_HEAD,
 } from '~/utils/postboxBodyPlaceholder';
 import type { PostboxRenderScheme } from '~/utils/postboxDarkMode';
+import { mailTypographyKey, type MailTypography } from '~/utils/readingComfort';
 import {
 	getPostboxRenderCache,
 	postboxRenderKey,
@@ -36,8 +37,9 @@ import { getPostboxRenderClient, type PostboxRenderJob } from '~/lib/postboxRend
  * and the reader shows its skeleton; a re-render of the SAME body (a theme or
  * quote toggle) keeps the previous document on screen instead, re-finished
  * under the current image consent so a revoked consent never lingers while the
- * worker runs. Consent changes re-run only the main-thread stage over the last
- * pipeline output, which a cache hit restores from the cached entry.
+ * worker runs. Consent and typography changes re-run only the main-thread stage
+ * over the last pipeline output, which a cache hit restores from the cached
+ * entry.
  */
 
 export interface PostboxRenderedBodySource {
@@ -48,6 +50,8 @@ export interface PostboxRenderedBodySource {
 	showQuoted: boolean;
 	showImages: boolean;
 	loadEverything: boolean;
+	/** The reader's text size and reading width (the srcdoc head's comfort block). */
+	typography: MailTypography;
 	cidUrls: ReadonlyMap<string, string>;
 	/** Body and inline images are complete, so the render may be cached and kept. */
 	final: boolean;
@@ -93,6 +97,7 @@ function sameFinish(a: PostboxRenderedBodySource, b: PostboxRenderedBodySource):
 	return (
 		a.showImages === b.showImages &&
 		a.loadEverything === b.loadEverything &&
+		mailTypographyKey(a.typography) === mailTypographyKey(b.typography) &&
 		a.blockedImageLabel === b.blockedImageLabel &&
 		a.emptyLabel === b.emptyLabel
 	);
@@ -125,7 +130,7 @@ function finishRender(
 	// could not be inventoried.
 	const csp =
 		source.showImages && !gated.noRemote ? POSTBOX_BODY_META_CSP : POSTBOX_BODY_META_CSP_NO_REMOTE;
-	const srcdoc = `${POSTBOX_SRCDOC_HEAD}${csp}${buildBaseStyle(stage.scheme, stage.kind)}</head><body>${gated.html || source.emptyLabel}</body></html>`;
+	const srcdoc = `${POSTBOX_SRCDOC_HEAD}${csp}${buildBaseStyle(stage.scheme, stage.kind, source.typography)}</head><body>${gated.html || source.emptyLabel}</body></html>`;
 	return {
 		srcdoc,
 		renderScheme: stage.scheme,
@@ -157,6 +162,7 @@ export function usePostboxRenderedBody(source: () => PostboxRenderedBodySource) 
 					showImages: s.showImages,
 					loadEverything: s.loadEverything,
 					showQuoted: s.showQuoted,
+					typography: s.typography,
 				})
 			: null;
 	});
@@ -227,7 +233,8 @@ export function usePostboxRenderedBody(source: () => PostboxRenderedBodySource) 
 				return;
 			}
 		}
-		// A consent change keeps every pipeline input: only the main-thread stage reruns.
+		// A consent or typography change keeps every pipeline input: only the
+		// main-thread stage reruns.
 		if (lastStage && sameStageInput(lastStage.input, input)) {
 			accept(s, key, lastStage.output);
 			return;
@@ -280,6 +287,7 @@ export function usePostboxRenderedBody(source: () => PostboxRenderedBodySource) 
 			() => current.value.showQuoted,
 			() => current.value.showImages,
 			() => current.value.loadEverything,
+			() => mailTypographyKey(current.value.typography),
 			() => current.value.cidUrls,
 			() => current.value.final,
 			() => current.value.blockedImageLabel,

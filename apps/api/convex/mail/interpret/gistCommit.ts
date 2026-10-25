@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.4, §2.5): the gist's commit, the one write of a
+ * Read on arrival: the gist's commit, the one write of a
  * gist read. In one transaction it checks that the run still holds the
  * source's lease, that no purge ran since the run's load (the brief's
  * deletion epoch) and that the thread is neither fenced nor shared now; then

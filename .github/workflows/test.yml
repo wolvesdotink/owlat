@@ -268,7 +268,7 @@ jobs:
         timeout-minutes: 10
         run: bun run --cwd apps/web test:browser
 
-  # THE STANDALONE MATRIX (deliverability plan D2/D3). The ramp controller has two
+  # THE STANDALONE MATRIX. The ramp controller has two
   # gate implementations behind one interface: the concurrent reference-arm one,
   # and the trailing-baseline one a deployment with zero third-party accounts
   # runs. A deployment with no ESP is a SUPPORTED CONFIGURATION, so the whole gate
@@ -360,6 +360,11 @@ jobs:
           # metadata).
           STORED_BLOCK_CORPUS_PUSH_BEFORE: ${{ github.event.before }}
           STORED_BLOCK_CORPUS_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # The gates that diff a pull request against its target branch
+          # (format, comment-policy, stored-block-corpus) compare with this
+          # commit, not origin/<base>, so a push to the target branch while the
+          # job runs cannot change their base. Empty on other events.
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
   typecheck:
     name: Typecheck

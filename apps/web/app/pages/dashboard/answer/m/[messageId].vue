@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Answer mode for Postbox mail: one reply, the whole screen (plan §02).
+ * Answer mode for Postbox mail: one reply, the whole screen.
  *
  *   /dashboard/answer/m/<mailMessageId>?kind=reply|replyAll|forward&draft=<id>
  *
@@ -11,7 +11,8 @@
  *
  * Leaving (Esc, "← Inbox", or a send) goes back to the page it came from; the
  * draft stays saved, and a draft with something in it is offered back on the
- * list ("Draft to Jonas saved · Resume").
+ * list ("Draft to Jonas saved · Resume"). A reply marked done moves on to the
+ * next conversation of that list instead, as archiving does in the reader.
  *
  * Keys: Esc leaves (inside the editor the first Esc only blurs it), `t`
  * toggles Summary / Full conversation, Cmd/Ctrl+J focuses "Draft with AI"
@@ -42,6 +43,7 @@ import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
 import { hasOwnWriting } from '~/utils/answerDraft';
+import { useReplyDropDelivery } from '~/composables/useReplyFileDrop';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -141,6 +143,16 @@ const composerKey = computed(() => `${messageId.value}:${openedDraftId ?? 'new'}
 
 const draftId = ref<string | null>(openedDraftId);
 
+// Files dropped on this conversation in a list or the reader arrive once the
+// composer is up, through its own attachment pipeline.
+useReplyDropDelivery({
+	target: () => (messageId.value ? { kind: 'message', id: messageId.value } : null),
+	deliver: () => {
+		const answer = composerRef.value?.answer;
+		return answer ? (files: File[]) => void answer.addFiles(files) : null;
+	},
+});
+
 function onDraftId(id: string) {
 	draftId.value = id;
 	if (route.query['draft'] === id) return;
@@ -149,7 +161,7 @@ function onDraftId(id: string) {
 	});
 }
 
-// The response plan, "Draft with AI" and thread files (plan §03 to §06)
+// The response plan, "Draft with AI" and thread files
 const assist = useAnswerModeAssist({
 	message: () => message.value,
 	composer: () => composerRef.value?.answer ?? null,
@@ -255,10 +267,17 @@ function leaveMissing() {
 	else queueSession.goCurrent();
 }
 
-function onSent() {
+// The reader's auto-advance preference, for a reply that marks its conversation done.
+const { autoAdvance } = usePostboxSettings();
+function onSent(outcome: { done: boolean }) {
 	leftDraft.clearFor(draftId.value);
 	if (queueSession?.handleSent()) return;
-	answerNav.leave();
+	if (outcome.done)
+		answerNav.leaveDone(
+			{ messageId: messageId.value, threadId: message.value?.threadId ?? null },
+			autoAdvance.value
+		);
+	else answerNav.leave();
 }
 
 function onDiscarded() {

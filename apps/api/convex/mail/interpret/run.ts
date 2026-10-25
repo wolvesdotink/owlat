@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * `interpretMessage` (SPEC §4 `run.ts`): interpret one message and fold it
+ * `interpretMessage`: interpret one message and fold it
  * into its thread.
  *
  *   0. lease     one run per source (`lease.ts`): held elsewhere → `busy`
@@ -24,7 +24,7 @@
  *  10. reduce    `applyInterpretation`, compare-and-set, retried when stale;
  *                a changed body or mode starts the run over once
  *
- * Read on arrival (SPEC §2.3): between 5 and 6 an arrival read decides how
+ * Read on arrival: between 5 and 6 an arrival read decides how
  * deep it goes (`arrivalRun.ts`, `arrivalDecide.ts`): full as above, a gist
  * (`gist.ts`), or a count / nothing settled without a model call. Steps 1–10
  * of one attempt live in `runOnce.ts`.
@@ -90,7 +90,7 @@ async function runLeased(ctx: ActionCtx, args: InterpretArgs): Promise<Interpret
 		}
 		if (admitted.kind !== 'go') return admissionAnswer(admitted);
 	}
-	// D10: earlier deferred mail of the thread first, under the caller's deadline (defer.ts).
+	// Earlier deferred mail of the thread first, under the caller's deadline (defer.ts).
 	const deadlineAt = args.root?.deadlineAt;
 	// Each is read in full: a deferred one as today, an upgradeable one (read on
 	// arrival as gist or count) because this source needs the whole thread.

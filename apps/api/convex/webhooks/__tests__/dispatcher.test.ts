@@ -783,7 +783,7 @@ describe('dispatchInboundEvent — inbound + channel ingestion', () => {
 		expect(args['externalMessageId']).toBeUndefined();
 	});
 
-	// ── F1 (D9): clearsigned-body signature mirror on the AI-inbox path ──
+	// ── F1: clearsigned-body signature mirror on the AI-inbox path ──
 	const CLEARSIGNED_BODY = [
 		'-----BEGIN PGP SIGNED MESSAGE-----',
 		'Hash: SHA256',

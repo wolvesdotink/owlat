@@ -1,5 +1,5 @@
 /**
- * The Senders line of the Daily Brief (SPEC §5), once a week (Monday, UTC):
+ * The Senders line of the Daily Brief, once a week (Monday, UTC):
  *
  *   - how many senders are waiting on the Senders page's To review tab
  *     ("rarely read senders"), and

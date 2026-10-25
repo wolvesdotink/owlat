@@ -383,7 +383,7 @@ describe('AI routing rows validate', () => {
 	});
 });
 
-describe('guard record (D13)', () => {
+describe('guard record', () => {
 	const scanned = { injectionDetected: false, confidence: 0, scanTimestamp: NOW };
 
 	it('needs the guard when no scan is recorded or the guard was skipped', () => {

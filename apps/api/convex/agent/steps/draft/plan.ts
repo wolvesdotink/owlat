@@ -1,5 +1,5 @@
 /**
- * The `draft` step's response plan (SPEC §6): the thread's open items with
+ * The `draft` step's response plan: the thread's open items with
  * their default stances go into the prompt, and the self-check's coverage of
  * the written draft is stored against its hash (`draftResponsePlans`), where
  * the `item_coverage` auto-send gate reads it.

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The Senders page's main card (SPEC §5, PLAN §8): who writes to you and what
+ * The Senders page's main card (PLAN §8): who writes to you and what
  * Owlat does with their mail.
  *
  * Tabs: To review (the server's suggestions, bounded) / All / Digest /

@@ -16,7 +16,7 @@
  * 8-bit UTF-8, 8-bit ISO-8859-1, quoted-printable and base64 bodies all verify,
  * and a changed octet or a body re-encoded in another charset does not.
  * Plus the WKD-first ladder: `skipManifest` discovery never touches the
- * instance manifest (D9), while the sealed path's default still does.
+ * instance manifest, while the sealed path's default still does.
  */
 
 import { convexTest } from 'convex-test';
@@ -710,7 +710,7 @@ describe('verify primitives — detached + clearsigned', () => {
 	});
 });
 
-describe('WKD-first discovery (D9: skipManifest)', () => {
+describe('WKD-first discovery (skipManifest)', () => {
 	async function wkdDeps(address: string, publicKeyArmored: string) {
 		const binary = (await openpgp.readKey({ armoredKey: publicKeyArmored })).write();
 		const fetched: string[] = [];

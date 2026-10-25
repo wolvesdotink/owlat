@@ -1,5 +1,5 @@
 /**
- * The calm reader's chrome state (read on arrival §3, plan §6), kept out of
+ * The calm reader's chrome state (read on arrival §3), kept out of
  * PostboxThreadReader.vue: what sits between the header and the first body.
  *
  *  - the one notice (`pickReaderNotice`: danger > key change > left draft >

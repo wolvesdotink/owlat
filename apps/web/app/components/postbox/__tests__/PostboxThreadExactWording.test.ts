@@ -1,5 +1,5 @@
 /**
- * "Read the exact wording" (SPEC §7 legal mail): the originals the brief asked
+ * "Read the exact wording" (legal mail): the originals the brief asked
  * to keep open are rendered beside it, open by default; a signed or encrypted
  * message is not rendered bare (only its full card binds it to its verdict).
  */

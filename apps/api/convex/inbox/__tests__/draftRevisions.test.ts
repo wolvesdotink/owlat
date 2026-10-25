@@ -1,5 +1,5 @@
 /**
- * Non-destructive draft revisions (adoption-gaps piece D1', decision D7).
+ * Non-destructive draft revisions.
  *
  * Saving a draft WITHOUT approving appends to `draftRevisions[]` — the agent's
  * original is seeded as immutable revision 0 on the first save — stamps

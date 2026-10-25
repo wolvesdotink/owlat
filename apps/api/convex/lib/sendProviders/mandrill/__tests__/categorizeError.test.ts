@@ -1,5 +1,5 @@
 /**
- * Mandrill error taxonomy (plan §4).
+ * Mandrill error taxonomy.
  *
  * The classification decides RETRY vs. TERMINAL, so each row here is a real
  * operational consequence rather than a label: RATE_LIMIT and SERVER_ERROR are

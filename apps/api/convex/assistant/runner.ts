@@ -105,7 +105,7 @@ interface FinalizeArgs {
 	model?: string;
 	tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 	errorMessage?: string;
-	/** The turn's paid call was refused for budget (D1): the code and reason, no sentence. */
+	/** The turn's paid call was refused for budget: the code and reason, no sentence. */
 	budgetRefusal?: BudgetRefusal;
 	toolCalls?: ToolCall[];
 }
@@ -246,8 +246,8 @@ async function streamAssistantTurn(
 }
 
 /**
- * What a failed turn stores: a budget refusal as its stable code and reason
- * (D1), which the web says in the reader's language; any other failure as its
+ * What a failed turn stores: a budget refusal as its stable code and reason,
+ * which the web says in the reader's language; any other failure as its
  * message.
  */
 function turnError(error: unknown): Pick<FinalizeArgs, 'errorMessage' | 'budgetRefusal'> {

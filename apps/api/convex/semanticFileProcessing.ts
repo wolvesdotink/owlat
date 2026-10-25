@@ -196,7 +196,7 @@ export const processFile = internalAction({
 					filename: file.filename,
 					error,
 				});
-				// D1: a refused call is owed, with the embedding that reads its summary.
+				// A refused call is owed, with the embedding that reads its summary.
 				owed.note(error, ['summary', 'embedding']);
 				// Fallback: use filename as title
 				title = title || file.filename;

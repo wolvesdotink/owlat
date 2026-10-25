@@ -390,6 +390,9 @@ const unreadBadge = useUnreadBadge();
 const { isDesktop: isDesktopApp } = useDesktopContext();
 useTabBadge(() => (isDesktopApp.value ? null : unreadBadge.count.value));
 useDesktopNotifications(unreadBadge);
+// The opt-in alert chimes (armed replies, assignments, agent questions) read
+// the same unread peek, in the browser and the desktop app alike.
+useAlertSounds(unreadBadge);
 
 // Campaign, delivery, automation and sending-domain notices: in-app toast
 // everywhere, native notification on the desktop app.
@@ -662,6 +665,9 @@ const sidebarDesktopClass = computed(() => {
 		<!-- Compose over the current page (the top-bar button, the palette and
 		     the c chord), never by navigating to the mailbox. -->
 		<ShellComposerOverlay />
+
+		<!-- Files dragged onto a conversation: the hint, and the reply it opens. -->
+		<ShellReplyDropHint />
 
 		<!-- Where every undo countdown toast lands (mail send, review approve,
 		     campaign send): one bottom-left column, so two live windows stack

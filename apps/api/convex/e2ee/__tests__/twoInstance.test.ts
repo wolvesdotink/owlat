@@ -1,6 +1,6 @@
 /**
- * Two-instance E2EE proof — the headline evidence for the Sealed Mail plan
- * (2026-07-11, locked decisions D1/D2/D3/D4). Two INDEPENDENT convex-test
+ * Two-instance E2EE proof — the headline evidence for Sealed Mail. Two
+ * INDEPENDENT convex-test
  * "instances" (separate `INSTANCE_SECRET`s, separate OpenPGP key material) talk
  * to each other over a LOOPBACK transport shim, exercising the real backend end
  * to end: key publication, cross-instance discovery, TOFU pinning, the outbound
@@ -26,7 +26,7 @@
  *   4. The shim delivers the wire into B's real ingest action
  *      (`openInboundForMailbox`): B decrypts with bob's vault key, verifies A's
  *      signature against the alice key it pinned, and restores the protected
- *      headers (real subject, D4) — reporting `signatureValid: true`.
+ *      headers (real subject) — reporting `signatureValid: true`.
  *   5. B rotates bob's key (an UNSIGNED change). A re-discovers -> `keyChanged`,
  *      the old pin is retained, and A's NEXT send to bob refuses to seal
  *      (`reason: 'key_changed'`) rather than silently sealing to the new key.
@@ -409,7 +409,7 @@ describe('e2ee/twoInstance · two-instance E2EE proof', () => {
 			'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"'
 		);
 		expect(captured.wire).toContain('-----BEGIN PGP MESSAGE-----');
-		// …the outer subject is the literal placeholder (D4)…
+		// …the outer subject is the literal placeholder…
 		expect(captured.wire).toMatch(/^Subject: \.\.\.\r?$/m);
 		// …and NOTHING sensitive survives in the clear.
 		expect(captured.wire).not.toContain(CANARY);
@@ -424,7 +424,7 @@ describe('e2ee/twoInstance · two-instance E2EE proof', () => {
 		expect(captured.openedSignatureValid).toBe(true);
 		expect(captured.openedSignerFingerprint).toBe(captured.aliceFingerprint);
 		expect(captured.openedSignerInstance).toBe('a.test');
-		// Protected headers (D4): the real subject + body travelled INSIDE.
+		// Protected headers: the real subject + body travelled INSIDE.
 		expect(captured.openedSubject).toBe(REAL_SUBJECT);
 		expect(captured.openedText).toContain(CANARY);
 	});

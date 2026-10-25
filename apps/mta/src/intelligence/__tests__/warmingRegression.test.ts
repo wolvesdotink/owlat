@@ -19,9 +19,9 @@ vi.mock('../../webhooks/convexNotifier.js', () => ({
 }));
 
 /**
- * D19 regression guard: adding the per-provider dimension changes the SHAPE of
+ * Regression guard: adding the per-provider dimension changes the SHAPE of
  * the cap, never the schedule that bounds it. The shipped per-UTC-day
- * idempotency guard and the published base schedule stay exactly as they were.
+ * idempotency guard and the published base schedule are unchanged by it.
  */
 describe('warming regression — schedule semantics are unchanged', () => {
 	let redis: RealRedis;
@@ -133,7 +133,7 @@ describe('warming regression — schedule semantics are unchanged', () => {
 	});
 
 	/**
-	 * D1/D19: the additive dimension must not make the AUTHORITATIVE schedule more
+	 * The additive dimension must not make the AUTHORITATIVE schedule more
 	 * fragile. The per-UTC-day guard is armed before the shipped cascade runs, so
 	 * anything that throws before that cascade completes would cost this IP its
 	 * whole day of schedule progress — including the critical HALT branch — with

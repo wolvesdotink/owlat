@@ -1,5 +1,5 @@
 /**
- * The Team Inbox thread as one stream (SPEC §7 "Team"): the customer's emails
+ * The Team Inbox thread as one stream: the customer's emails
  * as written, the team's replies (from what actually went out, with their
  * queued or failed status), the team's internal notes and the thread's
  * activity as system lines, in one order and paged together
@@ -109,8 +109,8 @@ function firstOfBucket(
 
 /**
  * The top open action of each of the given Team Inbox threads, for the
- * Workbench's team rows (SPEC §7: "team rows show the top item, sender and
- * raw preview"): the first of the team's own or nobody's list (not the
+ * Workbench's team rows (team rows show the top item, sender and
+ * raw preview): the first of the team's own or nobody's list (not the
  * customer's, not an unconfirmed proposal) by due date, risk and age, read
  * from the bucket index in two reads. `count` is how many such actions the
  * thread holds (the maintained counters). Threads with none are left out.

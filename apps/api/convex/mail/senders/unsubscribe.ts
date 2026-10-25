@@ -1,5 +1,5 @@
 /**
- * Unsubscribe from a sender (SPEC §5). Two separate things:
+ * Unsubscribe from a sender. Two separate things:
  *
  *   - LOCAL suppression: the sender's status becomes `unsubscribed`, so
  *     future mail is archived at delivery. Always happens, recorded as an

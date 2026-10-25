@@ -415,7 +415,7 @@ export async function dispatch(
 	// The thread's response clock (inbox/sla): a reply sent, nothing left to answer.
 	await settleClockForMessage(ctx, message, input);
 	// A rejected draft, or one a person took over, is no draft of the agent's any
-	// more: its response plan goes (SPEC §6; the send removes it at intake).
+	// more: its response plan goes (the send removes it at intake).
 	if (input.to === 'rejected') {
 		await deletePlansForDraft(ctx, { kind: 'inboundDraft', id: message._id });
 	} else if (input.to === 'draft_ready' && input.manualTakeover === true && message.threadId) {

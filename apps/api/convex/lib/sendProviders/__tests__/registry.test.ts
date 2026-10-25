@@ -30,8 +30,8 @@ describe('Send provider registry', () => {
 	 * The fields this pin is about — "ordering, credentials, and retry behavior",
 	 * plus the capability declarations the governed boundary reads.
 	 *
-	 * A PROJECTION rather than the whole entry since P1.1 moved the entries into
-	 * `@owlat/shared`: they also carry `tier`, `optionalEnvVars`, the D5
+	 * A PROJECTION rather than the whole entry since the entries live in
+	 * `@owlat/shared`: they also carry `tier`, `optionalEnvVars`, the
 	 * `credentialFields` descriptors and `setupProbe`, and restating a form
 	 * descriptor here would be a second copy of a pin that already exists in that
 	 * package's own suite (`sendProviderCatalog.test.ts`) — the exact duplication
@@ -123,8 +123,8 @@ describe('Send provider registry', () => {
 	});
 
 	it('composes the shared catalog entries themselves, never a copy of them', () => {
-		// The backend joins adapters to the catalog; it does not re-declare it
-		// (P1.1 / D1). Reference identity is the cheapest proof that no second
+		// The backend joins adapters to the catalog; it does not re-declare it.
+		// Reference identity is the cheapest proof that no second
 		// literal crept back in.
 		for (const [index, entry] of CORE_SEND_PROVIDER_CATALOG_ENTRIES.entries()) {
 			expect(SEND_PROVIDER_CATALOG[index]).toBe(entry);
@@ -142,7 +142,7 @@ describe('Send provider registry', () => {
 				hasProviderFeedback: true,
 				domainVerification: 'none',
 				// The two dispatch semantics the governed boundary used to spell as
-				// `providerKind === 'mta'` (plan P0.1/D2). Only the own MTA takes
+				// `providerKind === 'mta'`. Only the own MTA takes
 				// custody, and only its message id is one we minted ourselves.
 				acceptanceSemantics: 'accepted',
 				messageIdSource: 'idempotency-key',

@@ -1,7 +1,7 @@
 /**
  * P0-5 — where the capacity gate must NOT bind: the fire-time path does not
  * re-run it, the schedule mutation is never blocked by it, a suppression list
- * past the bounded scan cannot refuse, and the fail-open catch (D2) turns a
+ * past the bounded scan cannot refuse, and the fail-open catch turns a
  * thrown scan into "unknown", never into a refusal.
  */
 
@@ -93,7 +93,7 @@ describe('the capacity gate never blocks the schedule mutation', () => {
 	 * `contactTopics.by_topic` range into `campaigns.scheduling.schedule` through
 	 * the unbounded condition preload. Past the Convex per-execution read limit
 	 * that made the mutation throw and the campaign unschedulable — a failure to
-	 * MEASURE blocking a SEND (D2). The budgeted scan now preloads per batch.
+	 * MEASURE blocking a SEND. The budgeted scan now preloads per batch.
 	 */
 	it('schedules a segment campaign whose filter spans a very large topic', async () => {
 		const t = convexTest(schema, modules);
@@ -173,7 +173,7 @@ describe('pre-flight capacity gate — a suppression list past the bounded scan'
 	 * `.collect()` — collecting it inside `campaigns.scheduling.schedule` would
 	 * put every suppressed address in the mutation's OCC read set, and an OCC
 	 * conflict is raised at COMMIT time, where the gate's fail-open catch can no
-	 * longer turn it into "allow" (D16).
+	 * longer turn it into "allow".
 	 *
 	 * The consequence has to be handled honestly: candidates filtered through a
 	 * SUBSET of the blocklist yield an OVER-count of eligible recipients, which
@@ -207,7 +207,7 @@ describe('pre-flight capacity gate — a suppression list past the bounded scan'
 	});
 });
 
-describe('assessCampaignCapacity — the fail-open catch (D2)', () => {
+describe('assessCampaignCapacity — the fail-open catch', () => {
 	it('allows the send with measurement_failed when the measurement itself throws', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
@@ -220,7 +220,7 @@ describe('assessCampaignCapacity — the fail-open catch (D2)', () => {
 		// GUARANTEES a measurement fault can never block a send: an exception
 		// escaping the assessment would not refuse the campaign, it would make
 		// `schedule` throw — a failure to MEASURE blocking a SEND,
-		// exactly what D2 forbids.
+		// which must never happen.
 		const assessment = await t.run(async (ctx) => {
 			const hostileCtx = {
 				...ctx,

@@ -2,7 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { AnswerModeKind } from '~/utils/answerMode';
-import { rememberListPlace, takeListPlace, useAnswerModeNav } from '~/composables/useAnswerMode';
+import { useAnswerModeNav, useListAnswerRoundTrip } from '~/composables/useAnswerMode';
 import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import type { PostboxSweepKind } from '~/utils/postboxSweep';
 import { POSTBOX_ROW_HEIGHT } from '~/utils/postboxDensity';
@@ -41,6 +41,10 @@ const props = defineProps<{
 	// renders with folder-role "inbox" for row links but must not claim
 	// "All clear" when the label simply has no messages).
 	emptyContext?: 'label';
+	// The list's own route when it is not its rows' folder route: the label
+	// view opens its rows in the Inbox reader but is a page of its own, and a
+	// reply marked done that goes back to the list goes back there.
+	listPath?: string;
 	// True when a triage filter chip (Unread/Starred/Attachments) is hiding
 	// rows that exist — the empty state then offers "Show all" instead of the
 	// folder's usual copy, so a filtered-to-zero list never reads as
@@ -331,28 +335,22 @@ const sweep = usePostboxListSweep({
 	archiveMany,
 });
 
-// Back from Answer mode: the j/k row comes back with the list (the scroll offset
-// has its own per-folder memory). Filed on every unmount, taken only on the
-// mount that is the way back.
-onBeforeUnmount(() => {
-	rememberListPlace(folderKey.value, {
-		focusedId: visibleMessages.value[focusedIndex.value]?._id ?? null,
-	});
+// Back from Answer mode the j/k row comes back with the list; a reply marked done
+// moves on through this list's rows, when the list routes its own opens.
+useListAnswerRoundTrip({
+	folderKey,
+	rows: visibleMessages,
+	focusedIndex,
+	origin: () =>
+		props.selectable
+			? null
+			: {
+					listPath: props.listPath ?? `/dashboard/postbox/${folderKey.value}`,
+					messagePath: `/dashboard/postbox/${folderKey.value}`,
+					query: listQuery.value,
+					activeId: props.activeMessageId ?? null,
+				},
 });
-const returnPlace = takeListPlace(folderKey.value);
-if (returnPlace?.focusedId) {
-	const focusedId = returnPlace.focusedId;
-	const stop = watch(
-		visibleMessages,
-		(rows) => {
-			const index = rows.findIndex((m) => m._id === focusedId);
-			if (index < 0) return;
-			focusedIndex.value = index;
-			void nextTick(() => stop());
-		},
-		{ immediate: true }
-	);
-}
 </script>
 
 <template>

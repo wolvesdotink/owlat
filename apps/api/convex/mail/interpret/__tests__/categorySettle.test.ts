@@ -1,5 +1,5 @@
 /**
- * PR review PR-4: the bulk rule (D2) reads the thread's FINAL category. A
+ * PR review PR-4: the bulk rule reads the thread's FINAL category. A
  * stranger's List-Id mail captured while the category is still the
  * provisional baseline (`other`, model refinement pending) waits for the
  * refinement, bounded, and a refinement to `newsletter` keeps it out.

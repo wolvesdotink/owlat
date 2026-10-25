@@ -1,5 +1,5 @@
 /**
- * "Draft a nudge" (SPEC §7, mail/ai/nudgeDraft.ts): `composeDraft.start` with
+ * "Draft a nudge" (mail/ai/nudgeDraft.ts): `composeDraft.start` with
  * `purpose: 'nudge'` runs the ordinary Answer mode drafter on a reply to our
  * own last message, with the server's nudge instruction as trusted owner
  * input, written as a follow-up to the person we wait on, without asking

@@ -12,6 +12,7 @@ import type { MailCategory } from '~/utils/mailCategory';
 import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import type { PostboxConversationThread } from './PostboxConversationRow.vue';
 import type { PostboxThreadListSection } from './PostboxSectionedThreadList.vue';
+import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
 
 type CategoryThread = PostboxConversationThread & { category?: { label: string } };
 
@@ -63,18 +64,26 @@ const listSections = computed<PostboxThreadListSection<CategoryThread>[]>(() =>
 	}))
 );
 
-// What a row opens, in row order, skipping collapsed sections: previous/next
-// in Zen walk this.
-const visibleIds = computed(() =>
+// What a row opens and its conversation, in row order, skipping collapsed
+// sections: previous/next in Zen walk this, and so does a reply marked done
+// that was opened from here.
+const rows = computed(() =>
 	props.sections
 		.filter((section) => !props.collapsed[section.key])
 		.flatMap((section) =>
 			section.threads.flatMap((thread) =>
-				thread.latestMessageId ? [String(thread.latestMessageId)] : []
+				thread.latestMessageId
+					? [{ id: String(thread.latestMessageId), threadId: String(thread._id) }]
+					: []
 			)
 		)
 );
+const visibleIds = computed(() => rows.value.map((row) => row.id));
 defineExpose({ visibleIds });
+useListAnswerOrigin({
+	rows: () => rows.value,
+	origin: () => folderAnswerOrigin(props.folderRole, props.activeMessageId),
+});
 
 // "Recategorize as…" picker — driven per row.
 const recategorizeTarget = ref<string | null>(null);
@@ -105,6 +114,7 @@ function pickCategory(label: MailCategory) {
 			<PostboxConversationRow
 				v-bind="pinDrag.source(thread.latestMessageId, thread.latestSubject)"
 				:thread="thread"
+				:folder-role="folderRole"
 				:dom-id="rowDomId(thread)"
 				:to="threadTo(thread)"
 				:selected="focused"

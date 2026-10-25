@@ -255,7 +255,7 @@ export const reviseDraft = authedAction({
 			// draft the human already had. Never rethrow into the caller's UI flow.
 			// Steps the stream finished before the failure were billed.
 			await recordReviseSpend(ctx, meter);
-			// D1: a budget refusal carries the stable code the web reads.
+			// A budget refusal carries the stable code the web reads.
 			const message = admissionRefusalOf(error)
 				? AI_BUDGET_ERROR_CODE
 				: error instanceof Error

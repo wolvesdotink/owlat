@@ -227,7 +227,7 @@ describe('runSeedProbeSweep — the cursor', () => {
 	});
 });
 
-describe('runSeedProbeSweep — D2: absence is a supported configuration', () => {
+describe('runSeedProbeSweep — absence is a supported configuration', () => {
 	it('is a silent no-op with no seed mailboxes', async () => {
 		const h = buildDeps({ work: [] });
 		const result = await runSeedProbeSweep(h.deps);

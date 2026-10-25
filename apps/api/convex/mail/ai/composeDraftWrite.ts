@@ -98,7 +98,7 @@ export interface AnswerDraftInput {
 	instruction?: string | undefined;
 	/** The owner's IANA zone; the promised day is named on their calendar. */
 	timeZone?: string | undefined;
-	/** The thread's open items with the owner's stances (SPEC §6). */
+	/** The thread's open items with the owner's stances. */
 	responsePlan?: readonly PlanPromptItem[] | undefined;
 	/**
 	 * The owner chose "Draft with what I have", or turned asking off: gaps may
@@ -308,7 +308,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			'[composeDraft] drafting failed:',
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
-		// D1: a budget refusal says so, with the stable code the web reads.
+		// A budget refusal says so, with the stable code the web reads.
 		const refusal = admissionRefusalOf(error);
 		await failDraft(ctx, input, await openStream(), {
 			text: visibleDraftStreamText(stream.text).trim(),

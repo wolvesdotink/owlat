@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Rules in your words (read on arrival, SPEC §6.1, §6.2): the section at the
+ * Rules in your words (read on arrival): the section at the
  * top of the Filters page. The person writes a sentence; Owlat compiles it
  * into a rule they check before it is saved. Rules that need judgement carry
  * one AI question, answered once per message as it arrives. Every rule can be

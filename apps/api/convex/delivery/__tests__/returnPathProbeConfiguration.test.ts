@@ -4,7 +4,7 @@ import { internal } from '../../_generated/api';
 import schema from '../../schema';
 
 /**
- * D2 REGRESSION PROOF — the probe must be silent on a deployment that has no
+ * ABSENCE BLOCKS NOTHING — the probe must be silent on a deployment that has no
  * relay at all.
  *
  * The default `smtp` transport record always exists (default instances are
@@ -17,7 +17,7 @@ import schema from '../../schema';
  * recorded `unsupported` / `rejected_by_relay` — a permanently misleading
  * operator-facing verdict about a relay nobody ever set up.
  *
- * Absence of a relay is a SUPPORTED CONFIGURATION (plan D2). Nothing is written
+ * Absence of a relay is a SUPPORTED CONFIGURATION. Nothing is written
  * and nothing is surfaced.
  */
 
@@ -70,14 +70,14 @@ describe('the return-path probe on a deployment with no relay', () => {
 	});
 
 	/**
-	 * PROBE-DECIDED IS A CATALOG PROPERTY, NOT A KIND LIST (P1.3, plan D5).
+	 * PROBE-DECIDED IS A CATALOG PROPERTY, NOT A KIND LIST.
 	 *
 	 * `isProbeableTransport` asks `isProbeDecidedReturnPathKind`, so a transport
 	 * whose catalog entry declares `supportsCustomReturnPath: 'probe'` is in
 	 * scope for the sweep the moment the entry lands — which is precisely what
 	 * makes the SECOND gate load-bearing. The two skip reasons are the whole
 	 * point of asserting this: `not_probeable` would mean the catalog declaration
-	 * never reached the scheduler, while `not_configured` means it did and the D2
+	 * never reached the scheduler, while `not_configured` means it did and the
 	 * configuration gate stopped it. Only the second is correct for a deployment
 	 * that has no Mandrill account.
 	 */

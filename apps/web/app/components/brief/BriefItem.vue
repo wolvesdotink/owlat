@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * One item of the brief (plan §5): a ring that says its state, the text, a
+ * One item of the brief: a ring that says its state, the text, a
  * line with the due date (in red), what kind of ask it is and its source
  * marker, then ONE primary reaction and a ⋯ menu with the rest.
  *

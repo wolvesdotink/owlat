@@ -1,5 +1,5 @@
 /**
- * THE FAIL-CLOSED DEFAULTS OF THE TWO DISPATCH SEMANTICS (plan P0.1 / D2).
+ * THE FAIL-CLOSED DEFAULTS OF THE TWO DISPATCH SEMANTICS.
  *
  * `acceptanceSemanticsFor` and `messageIdSourceFor` each apply a default to an
  * entry that declared nothing, and the safety of the whole seam rests on WHICH

@@ -1,6 +1,6 @@
 /**
- * The sending-domain identity a send transport may declare (the seams plan's
- * D5, wired by P3.2) — the MANIFEST half.
+ * The sending-domain identity a send transport may declare
+ * — the MANIFEST half.
  *
  * Declaring one is the catalog's `domainVerification: 'api'` for this kind, and
  * that word is a PROMISE three separate host paths read: the routing gate that

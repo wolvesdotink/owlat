@@ -1,5 +1,5 @@
 /**
- * Sender status and counters at delivery (SPEC §5): the implementations
+ * Sender status and counters at delivery: the implementations
  * behind the `applySenderStatusAtDelivery` and `recordSenderDelivery` hooks
  * (`mail/arrival/hooks.ts`), plus the record stamp that ties them together.
  *

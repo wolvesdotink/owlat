@@ -39,10 +39,34 @@ describe('resolveComposerKeyAction', () => {
 		it('ignores plain Enter without the modifier', () => {
 			expect(resolveComposerKeyAction(key({ key: 'Enter' }), READY)).toBeNull();
 		});
+	});
 
-		it('ignores Alt+Cmd+Enter (unrelated chord)', () => {
+	describe('Cmd/Ctrl+Alt+Enter → send with the opposite after-reply action', () => {
+		it('sends the other way with Cmd+Alt+Enter and Ctrl+Alt+Enter', () => {
 			expect(
 				resolveComposerKeyAction(key({ key: 'Enter', metaKey: true, altKey: true }), READY)
+			).toBe('sendAlternate');
+			expect(
+				resolveComposerKeyAction(key({ key: 'Enter', ctrlKey: true, altKey: true }), READY)
+			).toBe('sendAlternate');
+		});
+
+		it('respects the same guards as the Send button', () => {
+			expect(
+				resolveComposerKeyAction(key({ key: 'Enter', metaKey: true, altKey: true }), {
+					canSend: false,
+					overlayOpen: false,
+				})
+			).toBeNull();
+		});
+
+		it('leaves Alt+Enter without the modifier, and Cmd+Alt+Shift+Enter, alone', () => {
+			expect(resolveComposerKeyAction(key({ key: 'Enter', altKey: true }), READY)).toBeNull();
+			expect(
+				resolveComposerKeyAction(
+					key({ key: 'Enter', metaKey: true, altKey: true, shiftKey: true }),
+					READY
+				)
 			).toBeNull();
 		});
 	});

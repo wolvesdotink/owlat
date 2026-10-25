@@ -1,5 +1,5 @@
 /**
- * D11: the security scan schedules the message-only triage shadow only for a
+ * The security scan schedules the message-only triage shadow only for a
  * message it lets through (the guard ran and passed; nothing quarantined,
  * archived or stopped it), and only while `triageBundle` is at `shadow`. The
  * scan's own outcome is the same either way. No live model.

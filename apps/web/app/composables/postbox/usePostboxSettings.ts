@@ -18,6 +18,8 @@
  *     Defaults ON (undefined => true), same master-gate reasoning as above.
  *   - `replyDefault` — whether the primary reply affordance (Reply button /
  *     `r`) opens a plain Reply or a Reply-all. Defaults to 'reply'.
+ *   - `afterReply` — whether Send keeps a replied conversation in the Inbox
+ *     ('keep', the default) or marks it done. See utils/postboxAfterReply.
  *   - `density` — 'comfortable' (roomy default) vs 'compact' (tighter rows +
  *     single-line subject/snippet). Defaults to 'comfortable'.
  *   - `viewMode` — which list renderer the inbox uses: 'flat' (default),
@@ -84,6 +86,7 @@ import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import { POSTBOX_AUTO_ADVANCE_DEFAULT } from '~/utils/postboxAutoAdvance';
 import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import { POSTBOX_REPLY_DEFAULT } from '~/utils/postboxReplyDefault';
+import { resolvePostboxAfterReply, type PostboxAfterReply } from '~/utils/postboxAfterReply';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { resolvePostboxDensity } from '~/utils/postboxDensity';
 import type { PostboxViewMode } from '~/utils/postboxViewMode';
@@ -136,10 +139,10 @@ export function usePostboxSettings() {
 	// this is a per-user opt-out from seeing AI briefs (`isAutoSummarizeOn`).
 	const autoSummarize = computed<boolean>(() => data.value?.isAutoSummarizeOn ?? true);
 
-	// Read on arrival (SPEC §2.1): default ON. The AI provider reads personal
+	// Read on arrival: default ON. The AI provider reads personal
 	// mail as it arrives; off, mail waits until a thread is opened.
 	const readOnArrival = computed<boolean>(() => data.value?.isReadOnArrival ?? true);
-	// Read on arrival (SPEC §6.4): archive codes and sign-in links after a day. Default OFF.
+	// Read on arrival: archive codes and sign-in links after a day. Default OFF.
 	const codeAutoArchive = computed<boolean>(() => data.value?.isCodeAutoArchiveOn ?? false);
 
 	// Which mode the primary reply affordance (Reply button / `r`) uses. Reads
@@ -148,6 +151,7 @@ export function usePostboxSettings() {
 	const replyDefault = computed<PostboxReplyDefaultMode>(
 		() => data.value?.replyDefault ?? POSTBOX_REPLY_DEFAULT
 	);
+	const afterReply = computed(() => resolvePostboxAfterReply(data.value?.afterReply));
 
 	// List/reader density. An unset (or unknown) value resolves to 'comfortable',
 	// so the reader can consume it unconditionally while the query loads.
@@ -314,6 +318,9 @@ export function usePostboxSettings() {
 	async function setReplyDefault(mode: PostboxReplyDefaultMode) {
 		await updateOp.run({ replyDefault: mode });
 	}
+	async function setAfterReply(action: PostboxAfterReply) {
+		await updateOp.run({ afterReply: action });
+	}
 
 	async function setDensity(mode: PostboxDensity) {
 		await updateOp.run({ density: mode });
@@ -428,6 +435,7 @@ export function usePostboxSettings() {
 		readOnArrival,
 		codeAutoArchive,
 		replyDefault,
+		afterReply,
 		density,
 		viewMode,
 		readingPane,
@@ -460,6 +468,7 @@ export function usePostboxSettings() {
 		setReadOnArrival,
 		setCodeAutoArchive,
 		setReplyDefault,
+		setAfterReply,
 		setDensity,
 		setViewMode,
 		setReadingPane,

@@ -1,5 +1,5 @@
 /**
- * DANE TLSA resolver tests (RFC 7672 / RFC 8484 JSON, locked decision D6).
+ * DANE TLSA resolver tests (RFC 7672 / RFC 8484 JSON).
  *
  * The DNSSEC AD (Authenticated Data) bit is the trust anchor: an authenticated
  * (AD=1) answer yields usable TLSA records; an unauthenticated (AD absent/0)
@@ -50,7 +50,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-describe('lookupTlsaRecords — AD-bit enforcement (D6)', () => {
+describe('lookupTlsaRecords — AD-bit enforcement', () => {
 	it('AD=1 secure answer yields the parsed TLSA records', async () => {
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(dohResponse(secureTlsaAnswer()));
 

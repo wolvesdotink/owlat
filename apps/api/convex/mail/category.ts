@@ -410,7 +410,7 @@ export const recategorize = postboxMutation({
 					updatedAt: now,
 				});
 			}
-			// D12: an owner correction invalidates what decision artifacts and
+			// An owner correction invalidates what decision artifacts and
 			// sender memory hold about this sender's mail here (advisory data).
 			await invalidateSenderMemoryForCorrection(
 				ctx,

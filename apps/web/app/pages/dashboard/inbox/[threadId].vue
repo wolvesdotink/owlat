@@ -4,7 +4,14 @@ import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
 import { teamThreadPreview } from '~/utils/teamThreadPreviews';
 import { formatRelativeTime } from '~/utils/formatters';
-import { otherWaitingDrafts, pickReplyTarget, replySubject } from '~/utils/teamThreadReply';
+import {
+	isChannelMessage,
+	otherWaitingDrafts,
+	pickReplyTarget,
+	replySubject,
+} from '~/utils/teamThreadReply';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import type { ReplyDropTarget } from '~/utils/replyFileDrop';
 import { countMentionsOf, type ReplyEntry } from '~/utils/teamStream';
 import { useTeamThread } from '~/composables/team/useTeamThread';
 import { useZenMode } from '~/composables/useZenMode';
@@ -20,6 +27,7 @@ import {
 } from '~/utils/teamThreadPriority';
 import { useTeamThreadCommandSurface } from '~/composables/team/useTeamThreadCommandSurface';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
+import { useConversationLink } from '~/composables/useConversationLink';
 
 const { t, locale } = useI18n();
 // Zen: the conversation and the reply only; the side cards wait outside.
@@ -220,6 +228,13 @@ const replySenderLabel = computed(() => {
 	}
 	return replyTarget.value?.from ?? '';
 });
+// Files dropped on the thread reply to it with them, as Reply does. Only for a
+// viewer who may reply, and only by email: a channel reply carries no files.
+const replyDrop = computed<ReplyDropTarget | null>(() =>
+	isAdmin.value && replyTarget.value && !isChannelMessage(replyTarget.value)
+		? { kind: 'team', id: threadId.value, recipient: replySenderLabel.value }
+		: null
+);
 // ── The stream: emails, replies, internal notes and what happened, in one order ──
 const team = useTeamThread({
 	target: () => ({ kind: 'team', id: threadId.value }),
@@ -264,6 +279,12 @@ async function onSetPriority(next: TeamThreadPriority) {
 	}
 }
 
+// "Copy link" / "Share in chat…" (header ⋯ and palette). The link opens for
+// whoever can read the Team Inbox; it grants nothing by itself.
+const { copyConversationLink } = useConversationLink();
+const copyThreadLink = () => void copyConversationLink({ kind: 'team', threadId: threadId.value });
+const showShareInChat = ref(false);
+
 // ⌘K on this thread: every verb the page has (`~/lib/commandPaletteThreadSurfaces`),
 // and the thread joins the palette's "Jump back" list.
 useTeamThreadCommandSurface({
@@ -286,6 +307,9 @@ useTeamThreadCommandSurface({
 	// After the palette has closed and handed focus back.
 	onAddNote: () => window.setTimeout(() => composer.value?.focus('note'), 0),
 	onSetPriority: (next) => void onSetPriority(next),
+	onCopyLink: copyThreadLink,
+	canShareInChat: () => chatEnabled.value,
+	onShareInChat: () => (showShareInChat.value = true),
 });
 useRecordPaletteObjectOpen(() =>
 	thread.value
@@ -501,6 +525,8 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					@snooze="showSnoozeDialog = true"
 					@unsnooze="onUnsnooze"
 					@status="handleStatusChange"
+					@copy-link="copyThreadLink"
+					@share-in-chat="showShareInChat = true"
 				/>
 			</div>
 
@@ -517,6 +543,12 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 				@close="showNewChannel = false"
 				@created="onChannelCreated"
 			/>
+			<LazyChatLinkEmailDialog
+				v-if="showShareInChat && chatEnabled"
+				:conversation="{ kind: 'team', threadId }"
+				audience="team"
+				@close="showShareInChat = false"
+			/>
 
 			<!-- From xl the side column keeps a fixed width instead of a third of an
 			     ever wider page. -->
@@ -526,6 +558,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			>
 				<!-- The thread as one stream; the open actions pinned above it. -->
 				<div
+					v-reply-drop="replyDrop"
 					class="space-y-4"
 					:class="isZen ? '' : 'lg:col-span-2 xl:col-span-1'"
 					data-testid="team-thread-main"

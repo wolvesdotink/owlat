@@ -1,5 +1,5 @@
 /**
- * The team thread stream of one thread (SPEC §7 "Team"): the newest page
+ * The team thread stream of one thread: the newest page
  * live, older pages on "Show earlier", merged into one list
  * (`utils/teamStream`). A Team Inbox thread reads `inbox.teamStream.page`, a
  * shared-mailbox thread `mail.interpret.teamStream.page`.

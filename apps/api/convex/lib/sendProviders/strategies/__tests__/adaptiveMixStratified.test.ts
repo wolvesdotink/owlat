@@ -1,6 +1,6 @@
 /**
  * `adaptive_mix` — stratification, and the independence of the calibration
- * slice from engagement rank (plan D8).
+ * slice from engagement rank.
  *
  * THIS IS THE FILE THE WHOLE MEASUREMENT PLANE RESTS ON. Stratified assignment
  * deliberately biases the own arm towards engaged recipients — that is the
@@ -139,8 +139,8 @@ describe('adaptive_mix — the calibration slice is independent of engagement', 
 	});
 
 	it('holds on a batch too thin to rank, and engages one recipient later', () => {
-		// The branch that decides whether D8's stratified DEFAULT engages at all.
-		// Thin data HOLDS (D10): below the minimum cohort nobody gets a rank, so
+		// The branch that decides whether the stratified DEFAULT engages at all.
+		// Thin data HOLDS: below the minimum cohort nobody gets a rank, so
 		// every recipient falls through to the random bucket rather than being
 		// ranked against a handful of peers — a 5-person batch would otherwise
 		// hand its top recipient a rank of 1.0 on no evidence whatsoever.
@@ -212,7 +212,7 @@ describe('adaptive_mix — the calibration slice is independent of engagement', 
 		expect(minOf(gmailRanks.filter((rank): rank is number => rank !== undefined))).toBeLessThan(
 			0.1
 		);
-		// The thin cell ranks nobody (D10) and falls back to the unbiased bucket,
+		// The thin cell ranks nobody and falls back to the unbiased bucket,
 		// which realises `s` exactly — a strictly harmless degradation.
 		expect(microsoftRanks.every((rank) => rank === undefined)).toBe(true);
 	});

@@ -35,11 +35,11 @@ import { throwInvalidInput, throwNotFound } from '../../_utils/errors';
  * Connect a DELIVERABILITY SEED mailbox — step 1 of the placement probe.
  *
  * Deliberately the same table, the same sealed-credential envelope and the
- * same IMAP client as every other external account (D4/no second credential
+ * same IMAP client as every other external account (no second credential
  * model); it differs only in what it is FOR. Unlike `_connectInternal` there
  * is no one-live-per-user guard: an operator connects a handful of seeds, and
  * a seed is not a personal inbox. Zero seed accounts stays a fully supported
- * configuration (D2) — this is opt-in, never a setup step.
+ * configuration — this is opt-in, never a setup step.
  *
  * The provisioned mailbox carries `scope: 'seed'`, which is what keeps the
  * operator's consumer address out of THEIR OWN Postbox: the mailbox row has to
@@ -110,7 +110,7 @@ export const _connectSeedInternal = internalMutation({
  * would ever render it. The sweep's own stamp (`seedRotationRemindedAt`)
  * de-duplicates the audit entry and nothing more.
  *
- * D2: acknowledging is advisory housekeeping. Not acknowledging blocks nothing,
+ * Acknowledging is advisory housekeeping. Not acknowledging blocks nothing,
  * and a never-rotated seed keeps being measured — it just measures less well.
  *
  * WHO CALLS IT. The delivery admin hub renders this control beside each due

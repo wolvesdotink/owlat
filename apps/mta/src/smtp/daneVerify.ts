@@ -210,7 +210,7 @@ export type DaneDecision =
  *    cleartext; a usable RRset becomes `proceed`.
  *  - In `report`, DANE has zero delivery impact: a usable RRset becomes `report`
  *    (observe + emit only), and a `lookup-failed` becomes `none` (deliver on the
- *    normal policy) — report-only never defers or bounces (honours D6).
+ *    normal policy) — report-only never defers or bounces.
  *
  * DANE is inert (returns `none` without any lookup) when the mode is `off` or no
  * resolver is configured — byte-identical to the historic path.

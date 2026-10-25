@@ -12,7 +12,7 @@ import {
 } from '../deliverabilityRouting';
 import { GOVERNED_MESSAGE_TYPES, isGovernedMessageType } from '../routingDispatch';
 
-describe('own-share resolution (D1)', () => {
+describe('own-share resolution', () => {
 	it('resolves the migration table exactly', () => {
 		const cases: Array<{
 			state: DeliverabilityRouteShareState;
@@ -73,7 +73,7 @@ describe('own-share resolution (D1)', () => {
 		expect(isFallbackActiveForShare(Number.NaN)).toBe(true);
 		expect(isFallbackActiveForShare(Number.POSITIVE_INFINITY)).toBe(true);
 		expect(isFallbackActiveForShare(Number.NEGATIVE_INFINITY)).toBe(true);
-		// A corrupt STORED share is degenerate evidence, not an absent field: D1's
+		// A corrupt STORED share is degenerate evidence, not an absent field: the share resolution's
 		// `??` fires on absent only, so a non-finite share flows into the clamp and
 		// fails closed on the floor — on a HEALTHY row too. Read boundary and write
 		// boundary must never disagree about a NaN.
@@ -100,7 +100,7 @@ describe('own-share resolution (D1)', () => {
 	});
 });
 
-describe('ramp cell keys (D6)', () => {
+describe('ramp cell keys', () => {
 	it('round-trips every stream x destination provider cell', () => {
 		for (const stream of DELIVERABILITY_STREAM_KEYS) {
 			for (const provider of DESTINATION_PROVIDER_KEYS) {
